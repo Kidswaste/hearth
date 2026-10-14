@@ -318,6 +318,14 @@ function toolGuide(key) {
 
 // (round 31, tokensaver) the two habit lines most chats carry, in fewer words (same asks, same tags)
 const SUGGEST_LINE = 'When it helps, end with up to 3 short next steps as <suggest>…</suggest> (they become buttons; under 8 words each).';
+// (round 35, concise) ⋯ AI setup → How long its answers are (agent.verbosity, the same field Astra's verbosity uses):
+// Short / Detailed add ONE fixed line at the very end of a Claude prompt (Normal: nothing, zero tokens). Astra gets
+// Codex's own model_verbosity flag instead (codexArgs), so no line. Byte-stable: constants only.
+const ANSWER_LINES = {
+  low: 'Answer length: short. Answer first; no preamble, restating the ask, narration between tool calls or closing recap; show only the code lines that change.',
+  high: 'Answer length: detailed. Explain your reasoning, cover edge cases and give examples where they help.',
+};
+const answerLine = (agent) => (agent.engine === 'codex' ? '' : ANSWER_LINES[agent.verbosity] || '');
 const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference worth keeping for future chats (not one-off details), add <remember>short fact</remember> on its own line at the very end of your reply; never mention these tags.';
 
 // (round 32, cachewise) The prompt is built in two parts so the engines' prompt caches keep hitting:
@@ -335,7 +343,7 @@ function buildPrompt(agent, session = null) {
   // ---- head ----
   // (round 31, tokensaver) a lean Three Director's role is set by its own part below: no second "You are…" line
   if (!agent.systemPrompt && !leanDirector(agent)) {
-    parts.push(`You are ${agent.name}, chatting with the user in their personal desktop app. Answer conversationally and directly, using Markdown when it helps.`);
+    parts.push(`You are ${agent.name}, chatting with the user in their personal desktop app. Answer directly, no preamble or recap; use Markdown when it helps.`);
   }
   if (gameTools(agent)) {
     parts.push('A live debug instance of the user\'s game Forgeheart runs right next to this chat, and you control it with the forge_* tools. '
@@ -413,6 +421,8 @@ function buildPrompt(agent, session = null) {
   // saved memory last: it is what changes most often
   const notes = memoryFor(agent, session);
   if (notes) parts.push(`What you remember about the user (saved notes, keep them in mind):\n${notes}`);
+  // (round 35, concise) the answer length, last: switching it leaves everything before it cached
+  parts.push(answerLine(agent));
   return parts.filter(Boolean).join('\n\n');
 }
 
@@ -1504,7 +1514,7 @@ module.exports = {
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES },
   buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
   busy: () => running.size, // (round 16) replies running now: background work (sync) waits a little longer meanwhile
 };

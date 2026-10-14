@@ -376,6 +376,18 @@ const Meter = (() => {
   }
 
   // ---------- per-message badges and per-chat totals ----------
+  // (round 35, concise) where the output went, so the effect of "How long its answers are" shows: the reply's own
+  // words, its thinking, and the rest (tool calls: code it sent to the Lab, file edits…). Estimates (≈ characters / 4),
+  // scaled to the real total; only the parts there are.
+  function outSplit(m, out) {
+    if (!out) return '';
+    const text = Math.ceil(String(m.text || '').length / 4);
+    const think = Math.ceil(String(m.thinking || '').length / 4);
+    const k = text + think > out ? out / (text + think) : 1;
+    const parts = [[Math.round(text * k), 'written'], [Math.round(think * k), 'thinking'], [out - Math.round(text * k) - Math.round(think * k), m.tools?.length ? 'tool calls' : 'other']];
+    const shown = parts.filter(([n], i) => n > 0 && (i < 2 || m.tools?.length || n >= out * 0.1));
+    return shown.length > 1 ? `: ${shown.map(([n, w]) => `≈ ${full(n)} ${w}`).join(' · ')}` : '';
+  }
   // The token line under a reply (native.js calls this). Full: in · out · cached % · time; compact: total.
   function badge(m) {
     const u = m?.usage;
@@ -384,7 +396,7 @@ const Meter = (() => {
     const title = [`${full(u.input)} input tokens${u.cached ? ` (${full(u.cached)} from cache, ${pct(u.cached, u.input)}%)` : ''}`,
       u.cacheWrite ? `${full(u.cacheWrite)} written to cache` : null,
       cacheSaved(u.cached, u.cacheWrite) ? `≈ ${full(cacheSaved(u.cached, u.cacheWrite))} saved by the cache` : null,
-      `${full(u.output)} output tokens`, secs ? `${secs.toFixed(1)} s · ${Math.round(u.output / Math.max(secs, 0.1))} tokens/s` : null,
+      `${full(u.output)} output tokens${outSplit(m, u.output)}`, m.answers ? `Answers: ${m.answers} (⋯ AI setup)` : null, secs ? `${secs.toFixed(1)} s · ${Math.round(u.output / Math.max(secs, 0.1))} tokens/s` : null,
       u.cost ? `≈ ${money(u.cost)} at API prices (free on your subscription)` : null].filter(Boolean).join('\n');
     if (prefs.badges === 'off') return el('span', { text: `${fmt(u.input)} in · ${fmt(u.output)} out${secs ? ` · ${secs.toFixed(1)}s` : ''}` });
     if (prefs.badges === 'compact') return el('span', { class: 'meter-badge compact', title, text: `${fmt(u.input + u.output)} tok` });

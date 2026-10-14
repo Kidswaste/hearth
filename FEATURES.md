@@ -1019,3 +1019,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ No internet, a busy or rate-limited AI, a usage limit (reset shown in local time), signed out, a VPN or proxy, a reply cut off: each is one plain line with its one action (waits and sends once back · retrying in 20 s with Cancel and Ask Astra instead · Switch · Sign in · Continue).
 - ✓ Waiting messages (and the chat's own queue) survive a restart and are never sent twice. A cut-off reply resumes on the same session and is stitched in without repeats. `/offline` lists what waits.
 - ○ Tested with fake engines and a simulated internet (`sh dev/run-checks.sh offline`), not against a real outage.
+## ✂ Shorter answers (round 35, concise: docs/upgrades/concise.md)
+- ✓ ⋯ AI setup → How hard it thinks → **How long its answers are**: Short · Normal · Detailed (one fixed line at the end of Claude's instructions; Astra uses its engine's own verbosity; Normal adds nothing). `/answers`.
+- ✓ A reply's token hover splits the output (written · thinking · tool calls) and names the length; plain chats answer without preamble or recap by default; the Three Director is pointed at targeted edits when it rewrites a mostly unchanged layer.
+- ○ Measured on a labelled sample (`node dev/concise-measure.js`: Short drops ≈ 24 % of output if followed; an edit ≈ 47 tokens vs a rewrite ≈ 1,161); fake engines `sh dev/run-checks.sh concise`.

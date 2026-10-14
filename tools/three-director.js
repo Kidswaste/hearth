@@ -516,6 +516,8 @@ const ThreeDirector = (() => {
       // the owner's rule: a new effect is a new layer. Rewriting a real layer (one with sliders, not a starter) gets a
       // one-line reminder, so the habit holds for the rest of the chat (≈ 30 tokens, only then).
       if (args.report !== 'full' && rewroteReal(before.code, String(args.code))) value.note = `Rewrote "${before.name}" (/undo-edit restores it). New elements or effects go in a new layer: three_add_layer.`;
+      // (round 35, concise.js) a small change sent as a whole layer: one line on what edits would have cost (only then)
+      else if (args.report !== 'full' && window.Concise?.rewriteNote) { const n = Concise.rewriteNote(before.code, String(args.code)); if (n) value.note = n; }
       return { ok: true, value };
     }
     if (tool === 'three_add_layer') {
