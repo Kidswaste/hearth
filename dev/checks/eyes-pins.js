@@ -88,11 +88,10 @@ try {
   ok(t2.ok && t2.value.searches.includes('brutalist graphic design'), 'board_do pinterest from an aesthetic');
 
   // the Apps registry (round 14, apps stream) when it exists
-  const reg = [];
-  window.Apps = { register: (x) => reg.push(x), list: () => reg };
-  BoardPins.registerApp();
-  ok(reg.length === 1 && reg[0].id === 'pinterest' && typeof reg[0].open === 'function' && /Board/.test(reg[0].describe()), 'registers a Pinterest app when Apps exists');
-  delete window.Apps;
+  // (round 35, bugbash2) the app registry is there since round 14 and BoardPins registered on load (its window replaces
+  // the apps stream's stand-in): the check swapped in a fake window.Apps after that, which the module never reads again
+  const pinApp = typeof Apps !== 'undefined' ? Apps.get?.('pinterest') : null;
+  ok(pinApp && !pinApp.fallback && typeof pinApp.open === 'function' && /Board/.test(pinApp.describe?.() || ''), 'registers a Pinterest app when Apps exists');
   await P('close');
   await until(async () => !(await P('state')).open, 5000);
   ok(!(await P('state')).open, 'the window closes');

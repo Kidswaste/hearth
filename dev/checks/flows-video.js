@@ -107,10 +107,12 @@ try {
   // the card in the chat says it's done, with Again / Refine (back to the run's chat)
   out.chatMoved = H.activeChat[C.id] !== run.chatId;
   if (out.chatMoved) { Native.open(C.id, run.chatId); }
-  await until(() => /done/.test(Native.view(C.id).list.querySelector(`.msg.note[data-note-id="flow-${run.id}"]`)?.innerText || ''), 5000);
+  // (round 35, bugbash2) textContent: the chat may sit behind another window here (hidden surfaces are visibility:
+  // hidden, whose innerText is empty: "the chat card ()" failed every run)
+  await until(() => /done/.test(Native.view(C.id).list.querySelector(`.msg.note[data-note-id="flow-${run.id}"]`)?.textContent || ''), 5000);
   ok(/add a call to action/.test(run.steps.find((e) => e.node === 'refine1').input) && /ready with these beats/.test(run.steps.find((e) => e.node === 'refine1').input), 'the refine starts from the result');
   const card = Native.view(C.id).list.querySelector(`.msg.note[data-note-id="flow-${run.id}"]`);
-  out.card = card?.innerText.replace(/\s+/g, ' ').slice(0, 200);
+  out.card = card?.textContent.replace(/\s+/g, ' ').slice(0, 200);
   ok(card && /done/.test(out.card) && /Again/.test(out.card) && /Refine/.test(out.card), `the chat card (${out.card})`);
   await shot('card');
 } catch (err) { fail.push(`threw: ${err.stack || err}`); }
