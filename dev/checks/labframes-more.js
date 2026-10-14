@@ -196,11 +196,13 @@ const sb = await call('three_do', { cmd: 'footage', action: 'storyboard' });
 step('storyboard: the sketch at every part on one sheet (for the director too)', sb.ok && sb.value?.frames?.length === 3 && sb.images?.length === 1, sb.value || sb.error);
 // the cut rendered by the editor's ffmpeg: 3 parts of frames_a_30 with f30–f59 removed → 150 frames, read back
 await say('/footage go f40'); await say('/cut-delete'); await wait(300);
+// (round 35, bugbash2) renderCut hands the job to the render queue (round 13) and answers once it started: there is no
+// `done` to await any more (this step failed every run since); wait for the finished file instead
 const job = await ThreeFrames.renderCut().catch((e) => ({ error: e.message }));
-const done = job?.done ? await job.done : null;
 const out = job?.output;
-const probe = out ? await window.hub.capture.frames('probe', out).catch(() => null) : null;
-step('render the cut: the editor renders exactly what the sketch plays (150 frames)', done?.code === 0 && probe?.ok && Math.abs(probe.value.frames - 150) <= 1, { out, frames: probe?.value?.frames, err: job?.error });
+let probe = null;
+await until(async () => { probe = out ? await window.hub.capture.frames('probe', out).catch(() => null) : null; return probe?.ok && Math.abs(probe.value.frames - 150) <= 1; }, 90000);
+step('render the cut: the editor renders exactly what the sketch plays (150 frames)', probe?.ok && Math.abs(probe.value.frames - 150) <= 1, { out, frames: probe?.value?.frames, err: job?.error });
 activate('tool:three'); await wait(800);
 const cp = await say('/footage copy');
 step('/footage copy: this frame\'s timecode', /00:00:\d\d:\d\d \(f\d+\) copied/.test(cp), cp);

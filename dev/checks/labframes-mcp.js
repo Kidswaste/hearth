@@ -36,7 +36,11 @@ step('Claude: step 5 → frame 35', has(/three_media_control: .*frame: 35/), lin
 step('Claude: read with see → the exact frame + its picture', has(/three_media_control: .*\+ 1 image.*frame: 35/), lines[3]);
 step('Claude: three_do footage split at frame 48, then the cut listed', ThreeFrames.parts?.length === 2 && has(/three_do: .*f48/), ThreeFrames.describe());
 step('Claude: keyframes on frames 24 and 48 (1 s and 2 s)', /1s=0.*2s=1/.test(JSON.stringify(ThreeLab.director.timeline().layers)), JSON.stringify(ThreeLab.director.timeline().layers).slice(0, 200));
-step('Claude: three_do help footage answered by the server', has(/three_do: .*FOOTAGE/), lines.find((l) => /FOOTAGE/.test(l)));
+// (round 35, bugbash2) since round 25 help <cmd> answers the command's own words first, then the guide topic (FOOTAGE),
+// past the 220 characters each reply line keeps here (as sequence-mcp, bugbash round 29): the command's text and a
+// length that carries the topic too
+const helpLine = lines.find((l) => /three_do: \d+ chars · three_footage/.test(l));
+step('Claude: three_do help footage answered by the server', helpLine && Number(/three_do: (\d+) chars/.exec(helpLine)[1]) > 1000, helpLine);
 step('the server lists the three tools lean (media_control mentions footage, three_do has footage)', has(/server three-mcp\.js: \d+ tools/), lines[0]);
 // Astra (fake Codex) as the director: the same tools
 Commands.tryRun('/director-engine astra', dir.id);
