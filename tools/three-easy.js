@@ -73,6 +73,7 @@ const LabEasy = (() => {
   // ---------- the preview's right-click: ✦ More ----------
   const musicItems = () => [
     item('✦ Make it react to the music', 'Kick, bass and loudness move the right sliders', '/make-it-react', { undo: '/make-it-react undo' }),
+    ...(typeof BeatLink !== 'undefined' ? [BeatLink.item()] : []), // (round 38, beatlink) ♪ Move with the music (tools/three-beatlink.js)
     item('Stop everything following the sound', 'Every layer\'s sliders stay where they are', '/react-off everything'),
     item('Jump to the next drop', '', '/drops next'),
     item('Next cue', '', '/cue next'),

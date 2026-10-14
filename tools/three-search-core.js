@@ -94,6 +94,7 @@ const LabSearchCore = (() => {
     ['black screen', 'fix my scene restart'], ['nothing shows', 'fix my scene restart'], ['doesnt work', 'fix my scene'], ['not working', 'fix my scene'],
     ['start over', 'restart from scratch'], ['from scratch', 'restart from scratch'],
     ['react to the music', 'make it react music'], ['audio reactive', 'make it react music'], ['music reactive', 'make it react music'], ['beat sync', 'make it react music beat'],
+    ['pulse on kick', 'move slider music pulse step'], ['pulse on the beat', 'move slider music pulse step'], ['move with the beat', 'move slider music pulse step'], ['step on the beat', 'move slider music pulse step'], ['step each bar', 'move slider music pulse step'], ['beat link', 'move slider music pulse step'], // (round 38, beatlink)
     ['depth of field', 'blur dof bokeh'], ['color grade', 'grade'], ['color grading', 'grade'],
     ['new scene', 'new from template gallery'], ['new sketch', 'new from template gallery'], ['start from', 'gallery template starting'],
     ['go back', 'undo'], ['undo that', 'undo'],
@@ -273,14 +274,14 @@ const LabSearchCore = (() => {
     if (!Array.isArray(arr)) return out; // (a submenu built later, e.g. from a promise: not listed)
     for (const it of arr) {
       if (!it || typeof it === 'string') continue;
-      let label; let hint; let items = null; let fn = null; let checked = false; let danger = false; let key = '';
+      let label; let hint; let items = null; let fn = null; let checked = false; let danger = false; let key = ''; let more = null; // (round 38) more: a menu row's own search words / lean (tags, boost)
       const tuple = Array.isArray(it);
       if (tuple) {
         [label, hint] = it; checked = Boolean(it[3]);
         if (Array.isArray(it[2])) items = it[2]; else if (typeof it[2] === 'function') fn = it[2];
       } else {
         if (it.back || it.disabled || it.sep) continue;
-        ({ label, hint, key = '' } = it); checked = Boolean(it.checked); danger = Boolean(it.danger);
+        ({ label, hint, key = '' } = it); checked = Boolean(it.checked); danger = Boolean(it.danger); if (it.tags || it.boost) more = { tags: it.tags || '', boost: it.boost || 0 };
         if (it.items) items = it.items; else if (typeof it.action === 'function') fn = it.action;
       }
       label = clean(label);
@@ -294,7 +295,7 @@ const LabSearchCore = (() => {
         out.push({ id: `a:${where}›${label}`, kind: 'action', label, hint: String(hint || ''), path: where, sub: true, run: () => sub?.(label, items, tuple) });
         menuRows(items, [...path, label], out, seen, { sub, run, max }, depth + 1);
       } else if (fn) {
-        out.push({ id: `a:${where}›${label}`, kind: 'action', label, hint: [hint, key].filter(Boolean).join(' · '), path: where, checked, danger, run: run ? () => run(fn) : () => fn() });
+        out.push({ id: `a:${where}›${label}`, kind: 'action', label, hint: [hint, key].filter(Boolean).join(' · '), path: where, checked, danger, ...(more || {}), run: run ? () => run(fn) : () => fn() });
       }
     }
     return out;
@@ -304,6 +305,7 @@ const LabSearchCore = (() => {
   // { title, text, tags, go: the label of the Lab row to run from the answer (optional) }
   const HELP = [
     { title: 'How do I make it react to the music?', tags: 'music react beat kick bass audio reactive sync', text: 'Right-click the preview › ✦ More › ♪ Music › ✦ Make it react to the music. The kick, bass and loudness move the right sliders. A layer\'s right-click does it for that layer only. "Stop everything following the sound" undoes it.', go: '✦ Make it react to the music' },
+    { title: 'How do I make a slider move with the beat?', tags: 'move with the beat music pulse on kick step each bar follow bass random hats snare vocals drums loudness slider link rhythm', text: 'Right-click a slider (or its ♪) › ♪ Move with the music…: pick what drives it (beat, bar, kick, snare, hi-hats, bass, mids, highs, vocals, drums, loudness) and how (pulse, follow, step, random), then drag the two handles under the slider for how far it goes. Renders move the same.', go: '♪ Move a slider with the music…' }, // (round 38, beatlink)
     { title: 'How do I change the frame size (9:16, 1:1…)?', tags: 'frame size vertical square format aspect 9:16 16:9 4:5 1:1 tiktok instagram', text: 'Right-click the preview › Frame size, or Shift+1…5 (Fit, 9:16, 16:9, 4:5, 1:1). For every size at once, reframed: ▦ All formats (toolbar ⋯).', go: '▦ All formats' },
     { title: 'How do I add an effect (glow, grain, glitch…)?', tags: 'effect filter glow bloom grain glitch vhs ascii add', text: 'Layers › ＋ Layer (or X in the Lab) opens the effects picker: filters change every layer below them. Or type the effect\'s name here: Enter adds it above the selected layer.' },
     { title: 'How do I save my sliders?', tags: 'save sliders keep values code', text: 'Sliders › Save (Ctrl/⌘+S) writes the values into the code. Ctrl/⌘+Shift+S keeps them as a look you can switch back to.' },

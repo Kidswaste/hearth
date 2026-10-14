@@ -327,7 +327,7 @@ const ThreeSeq = (() => {
   // (rate: the clip's speed: a key at the scene's own time k lands at t0 + k / rate in the sequence)
   const shiftKeys = (keys, dt, rate = 1) => keys.map((k) => ({ ...k, t: r4(k.t / rate + dt) }));
   const ANIM = ['opacity', 'x', 'y', 'scale', 'rotate'];
-  function prepLayer(L, slot, { look = null, palette = null, t0 = 0, vary = null, cues = null, rate = 1 } = {}) {
+  function prepLayer(L, slot, { look = null, palette = null, t0 = 0, vary = null, cues = null, rate = 1, links = null } = {}) {
     const keys = Object.fromEntries(ANIM.filter((p) => L.keys?.[p]?.length).map((p) => [p, shiftKeys(L.keys[p], t0, rate)]));
     const sc = scanOf(L.code || '');
     if (!sc?.items?.length) return { code: L.code || '', values: undefined, keys, sliderKeys: {} };
@@ -353,9 +353,13 @@ const ThreeSeq = (() => {
         sliderKeys[b + i] = { call: sc.items[i].call, key: sc.items[i].key, num: false, keys: ks };
       });
     }
+    // (round 38, beatlink) its sliders' ♪ Move with the music links: the page computes them from the song's time, so the
+    // sequence and its renders move like the Lab (only links with a "how"; the older curves follow the live analyser)
+    let lk = null;
+    if (links) ids.forEach((id, i) => { const m = links[id]; if (m?.how && sc.items[i].kind === 'number') (lk ||= {})[b + i] = { ...m, int: sc.items[i].int, call: sc.items[i].call, key: sc.items[i].key }; });
     let code = sc.code;
     try { code = ThreeTweaks.instrument(sc.code, sc.items, b); } catch { return { code: L.code, values: undefined, keys, sliderKeys: {} }; }
-    return { code, values: Object.fromEntries(vals.map((v, i) => [b + i, runtime(sc.items[i], v)])), keys, sliderKeys };
+    return { code, values: Object.fromEntries(vals.map((v, i) => [b + i, runtime(sc.items[i], v)])), keys, sliderKeys, ...(lk ? { links: lk } : {}) };
   }
   function looksOf(sk) {
     const ex = lab()?.scenes.extrasOf?.(sk.id) || {};
@@ -378,8 +382,9 @@ const ThreeSeq = (() => {
       const mine = looks[ly.id] || looks.main || [];
       const look = c.look ? mine.find((l) => l.name === c.look)?.values : null;
       const cues = !c.look && map?.cues?.length ? map.cues.map((q) => ({ t: q.t, name: q.looks?.find((l) => l.layer === ly.id || l.layer === ly.name)?.name })).filter((q) => q.name).map((q) => ({ t: q.t, values: mine.find((l) => l.name === q.name)?.values })).filter((q) => q.values) : null;
-      const p = prepLayer(ly, slot0 + j, { look, palette: c.vibe?.palette, t0, vary: c.vary ? { seed: (c.vary.seed || 1) + j * 101, amount: c.vary.amount ?? 0.4 } : null, cues, rate });
-      return { id: `${c.id}~${ly.id}`, code: p.code, values: p.values, props: { name: `${c.name} · ${ly.name}`, share: shareKey(ly), opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, in: ly.in != null ? r4(ly.in / rate + t0) : null, out: ly.out != null ? r4(ly.out / rate + t0) : null, fadeIn: ly.fadeIn || 0, fadeOut: ly.fadeOut || 0, keys: p.keys, sliderKeys: p.sliderKeys, ...(marks ? { seqMarks: marks } : {}), ...(ly.precomp && typeof ThreeComp !== 'undefined' ? { precomp: ThreeComp.specOf(ly, sk.id, { slotBase: 3000 + (slot0 + j) * 50 }) } : {}) } };
+      const lex = L.scenes.extrasOf?.(sk.id) || {}; const links = (ly.id === 'main' ? lex.bindings : lex.layers?.[ly.id]?.bindings) || null; // (round 38, beatlink)
+      const p = prepLayer(ly, slot0 + j, { look, palette: c.vibe?.palette, t0, vary: c.vary ? { seed: (c.vary.seed || 1) + j * 101, amount: c.vary.amount ?? 0.4 } : null, cues, rate, links });
+      return { id: `${c.id}~${ly.id}`, code: p.code, values: p.values, props: { name: `${c.name} · ${ly.name}`, share: shareKey(ly), opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, in: ly.in != null ? r4(ly.in / rate + t0) : null, out: ly.out != null ? r4(ly.out / rate + t0) : null, fadeIn: ly.fadeIn || 0, fadeOut: ly.fadeOut || 0, keys: p.keys, sliderKeys: p.sliderKeys, ...(p.links ? { links: p.links } : {}), ...(marks ? { seqMarks: marks } : {}), ...(ly.precomp && typeof ThreeComp !== 'undefined' ? { precomp: ThreeComp.specOf(ly, sk.id, { slotBase: 3000 + (slot0 + j) * 50 }) } : {}) } };
     });
   }
   // what makes two scenes' layers "the same layer" for a morph: its name, or its code when the name says nothing
