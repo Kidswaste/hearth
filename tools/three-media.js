@@ -167,11 +167,17 @@ const ThreeMedia = (() => {
       const wasExact = Boolean(current().w);
       mode = id;
       store.set('three.aspect', id);
-      layout();
+      layoutSoon();
       if (!silent) onChange?.({ id, reload: wasExact !== Boolean(current().w) }); // device-pixel override needs a reload
     }
-    new ResizeObserver(layout).observe(host);
-    layout();
+    // (round 37, labboot) a mode set in code (the Lab's first open, a scene switch) lays out with the next frame
+    // instead of at once: reading the preview's size right after building the Lab (or switching scenes) laid out the
+    // whole window in the middle of that work (≈ 80 ms of the Lab's first open here), and again at the frame
+    // (a hidden window draws no frames: 60 ms at most, so exports and the sequence never wait on it)
+    let soon = 0; let soonT = 0;
+    const layoutNow = () => { cancelAnimationFrame(soon); clearTimeout(soonT); soon = 0; soonT = 0; layout(); };
+    function layoutSoon() { if (!soon) { soon = requestAnimationFrame(layoutNow); soonT = setTimeout(layoutNow, 60); } }
+    new ResizeObserver(layoutNow).observe(host); // (its first call: the first layout)
     return {
       get params() { return current().w ? '&dpr=1' : ''; },
       get size() { const s = current(); return s.w ? { id: s.id, width: s.w, height: s.h } : { id: 'fit', width: host.clientWidth, height: host.clientHeight }; },
