@@ -151,9 +151,15 @@ for (const [name, fn] of Object.entries(liveCases)) {
 }
 // cost
 for (const n of [100, 500, 2000]) {
-  const T = makeScene(n); const N = n > 1000 ? 200 : 1000;
-  const t0 = process.hrtime.bigint(); for (let i = 0; i < N; i += 1) P.signature(T.scene, T.camera, T.r, [1, 1, 1, 0]);
-  const us = Number(process.hrtime.bigint() - t0) / 1000 / N;
+  const T = makeScene(n); const N = n > 1000 ? 40 : 200;
+  // (round 35, bugbash2) the best of 6 rounds after a warm-up: one mean over the whole run failed now and then when the
+  // machine was busy (88 µs for 100 objects on one run, 40 on the next); the cost itself is what's asserted
+  for (let i = 0; i < N; i += 1) P.signature(T.scene, T.camera, T.r, [1, 1, 1, 0]);
+  let us = Infinity;
+  for (let k = 0; k < 6; k += 1) {
+    const t0 = process.hrtime.bigint(); for (let i = 0; i < N; i += 1) P.signature(T.scene, T.camera, T.r, [1, 1, 1, 0]);
+    us = Math.min(us, Number(process.hrtime.bigint() - t0) / 1000 / N);
+  }
   check(us < n * 0.6 + 20, `the signature of a ${n}-object scene costs ${us.toFixed(1)} µs (Node)`);
 }
 
