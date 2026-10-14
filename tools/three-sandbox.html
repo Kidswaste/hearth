@@ -2450,6 +2450,8 @@ globalThis.palette = palette;
 // video); the URLs they replace used to stay, and with them every copy of every file. They're revoked 5 s later
 // (anything that loaded them has its copy), except one a reference video still plays.
 const refVids = new Set(); // WeakRefs to refTexture()'s videos
+const refTexs = {}; // (round 42, filewatch) key → Set of WeakRefs to the textures refTexture() made (swapped in place on 'ref-update')
+const noteTex = (key, tex) => { try { (refTexs[key] ||= new Set()).add(new WeakRef(tex)); } catch { /* no WeakRef */ } return tex; };
 function setRefs(items) {
   const old = Object.values(refs);
   if (old.length) realSetTimeout(() => {
@@ -2472,7 +2474,7 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
     const tex = new THREE.VideoTexture(v);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.video = v;
-    return tex;
+    return noteTex(key, tex);
   }
   // (round 37, labboot) a picture is decoded off the page's thread (createImageBitmap, flipped there as three.js would
   // flip it at upload): the texture is there at once, empty, and gets its picture when it's decoded, as with the
@@ -2485,12 +2487,40 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
       if (who) ownNote(who, 'bmp', bmp);
       tex.image = bmp; tex.flipY = false; tex.needsUpdate = true;
     }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
-    return tex;
+    return noteTex(key, tex);
   }
   const tex = new THREE.TextureLoader().load(url);
   tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  return noteTex(key, tex);
 };
+// (round 42, filewatch) one reference changed on disk: its new bytes swapped into every live texture made from it, in
+// place (a picture decoded off the thread, then uploaded again; a video keeps its time and play state). No re-run.
+function updateRef(it) {
+  if (!it?.key || !refs[it.key]) return 0;
+  const old = refs[it.key];
+  const b = new Blob([it.buffer], { type: it.mime || '' });
+  const url = URL.createObjectURL(b);
+  refs[it.key] = url; refKinds[it.key] = it.kind;
+  if (it.kind === 'image') refBlobs[it.key] = b;
+  let n = 0;
+  for (const w of [...(refTexs[it.key] || [])]) {
+    const tex = w.deref();
+    if (!tex) { refTexs[it.key].delete(w); continue; }
+    n += 1;
+    if (tex.video) {
+      const v = tex.video; const t = v.currentTime; const playing = !v.paused;
+      v.src = url;
+      v.addEventListener('loadedmetadata', () => { try { v.currentTime = Math.min(t, (v.duration || t) - 0.01); } catch { /* fine */ } if (playing) v.play().catch(() => {}); }, { once: true });
+      continue;
+    }
+    const was = tex.image;
+    const done = (img) => { tex.image = img; tex.needsUpdate = true; if (was && was !== img) { try { was.close?.(); } catch { /* fine */ } } };
+    if (typeof createImageBitmap === 'function' && it.kind === 'image') createImageBitmap(b, { imageOrientation: tex.flipY === false ? 'flipY' : 'none', premultiplyAlpha: 'none' }).then(done).catch(() => new THREE.ImageLoader().load(url, done));
+    else new THREE.ImageLoader().load(url, done);
+  }
+  realSetTimeout(() => { if (!Object.values(refs).includes(old)) URL.revokeObjectURL(old); }, 5000);
+  return n;
+}
 // ---------- for the Three Director: look inside the running sketch, press keys, click ----------
 // __scenes = { 'Layer name': { scene, camera, renderer } } from what each layer last rendered.
 function scenesByLayer() {
@@ -11430,6 +11460,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'cam') cmCommand(msg); // (round 40, labcamera) the camera moves' layer, its pivot, the view now
   if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
+  if (msg.type === 'ref-update') { window.__refUpdates = (window.__refUpdates || 0) + 1; window.__refUpdated = updateRef(msg.item); } // (round 42, filewatch)
   if (msg.type === 'dpr') { if (globalThis.__labSetDpr?.(msg.value)) globalThis.__labDprSync?.(); return; } // (round 37, labboot) fit ⇄ exact size, in this page
   if (msg.type === 'lib') { libGot(msg); return; } // (round 25, diet) motion / lab3d code from the hub
   if (msg.type === 'grade-lut') gradeSetLut(msg.name, msg.N, msg.data); // (round 24) an imported .cube LUT (tools/three-grade.js)

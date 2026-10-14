@@ -3074,6 +3074,10 @@ const ThreeMedia = (() => {
       get loaded() { return Boolean(st.bytes); },
       get path() { return st.path; },
       get time() { return now(); },
+      // (round 42, filewatch) the file changed on disk (saved again in another app): read again in place, same time,
+      // still playing; renamed / moved outside Hearth: followed (its grid, markers and every scene using it, as a relink)
+      async reload() { if (!st.path || st.clock) return { ok: false }; const was = st.playing; const r = await load(st.path, { startAt: now(), quiet: true, relinked: true }); if (r.ok && was) toggle(true); return r; },
+      async follow(to) { const from = st.path; if (!from || !to || st.clock) return { ok: false }; const was = st.playing; copyMap(from, to).catch(() => {}); emit('relink', { from, to }); const r = await load(to, { startAt: now(), quiet: true, relinked: true }); if (r.ok && was) toggle(true); return r; },
       // For the Three Director: what's loaded, the user's grid and hit markers, and the song's shape.
       info() {
         if (!st.bytes) return { loaded: false, note: 'No music loaded. Sketches get a demo 120 bpm beat; the user can load a file with "🎵 Load audio / video…" or you can use three_load_media.' };

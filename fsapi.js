@@ -28,12 +28,16 @@ function read(file, { maxBytes = 20 * 1024 * 1024, encoding = 'utf8' } = {}) {
 function write(file, content, { base64 = false } = {}) {
   const p = assertAbs(file);
   fs.mkdirSync(path.dirname(p), { recursive: true });
+  ownWrite(p);
   const tmp = `${p}.hubtmp`;
   const bytes = content instanceof Uint8Array ? content : content instanceof ArrayBuffer ? new Uint8Array(content) : null;
   fs.writeFileSync(tmp, bytes || (base64 ? Buffer.from(content, 'base64') : content));
   fs.renameSync(tmp, p);
   return true;
 }
+
+// (round 42, filewatch) Hearth's own writes aren't "changed outside Hearth": told to the watcher service when it's loaded
+const ownWrite = (p) => { try { require.cache[path.join(__dirname, 'filewatchmain.js')]?.exports.own(p); } catch { /* not loaded */ } };
 
 const watchers = new Map();
 function watch(id, file, onChange) {
@@ -324,7 +328,7 @@ function registerIpc(ipcMain, getWin) {
   handle('fs:open', (p) => shell.openPath(assertAbs(p)));
   handle('fs:watch', (id, file) => watch(id, file, (p) => getWin()?.webContents.send('fs:changed', { id, path: p })));
   handle('fs:unwatch', (id) => unwatch(id));
-  handle('fs:copy', (from, to) => { fs.mkdirSync(path.dirname(assertAbs(to)), { recursive: true }); fs.copyFileSync(assertAbs(from), assertAbs(to)); return true; });
+  handle('fs:copy', (from, to) => { fs.mkdirSync(path.dirname(assertAbs(to)), { recursive: true }); ownWrite(to); fs.copyFileSync(assertAbs(from), assertAbs(to)); return true; });
   handle('fs:home', () => os.homedir());
   handle('backup:now', (opts) => backupNow(opts));
   handle('backup:list', () => listBackups());

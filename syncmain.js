@@ -136,6 +136,13 @@ function watch() {
   for (const w of watchers) { try { w.close(); } catch { /* closed */ } }
   watchers = [];
   const add = (dir, ms, skip) => {
+    // (round 42, filewatch) through the one watcher service, shared with what the window follows in the data folder
+    // (the Lab's references, My templates): one system watch; temp / swap files already left out there
+    try {
+      const fw = require('./filewatchmain');
+      watchers.push(fw.tree(dir, (name) => { const n = String(name || ''); if (skip(n) || S.ignoredName(path.basename(n))) return; schedule(ms, 'watch'); }));
+      return;
+    } catch { /* the service didn't load: its own watch as before */ }
     try {
       const w = fs.watch(dir, { recursive: true }, (_ev, name) => {
         const n = String(name || '');

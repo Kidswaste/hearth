@@ -275,7 +275,7 @@ const UndoAll = (() => {
   // ---------- AI changes: the newest ones, undone by aiundo.js ----------
   const aiList = () => { try { return (window.AiUndo?.list?.() || []).filter((e) => e.at >= bootAt && !e.cant); } catch { return []; } };
   const aiNewest = () => aiList().filter((e) => !e.undone).sort((a, b) => b.at - a.at)[0] || null;
-  const aiLabel = (e) => `${e.who || 'An AI'}: ${e.what}${e.target ? ` · ${e.target}` : ''}`;
+  const aiLabel = (e) => `${e.who || 'An AI'}: ${e.what}${e.target ? ` · ${e.target}` : ''}${e.outside ? (e.outside.gone ? ' · deleted outside Hearth since' : ' · changed outside Hearth since (not safely undoable: it asks first)') : ''}`; // (round 42, filewatch)
   async function undoAi(e) {
     const r = await window.AiUndo.undoThis(e.id); // it asks first and says what it did
     paintPart();
@@ -397,7 +397,7 @@ const UndoAll = (() => {
     const rs = rows();
     const shown = all ? rs.slice(0, 40) : rs.slice(0, 6);
     const box = part.querySelector('.ua-list');
-    const sig = JSON.stringify(shown.map((r) => [r.e.id, r.e.undone || 0, r.e.cant || '', C.canRedo(L, r.e), r.e.label || r.e.what, C.ago(r.e.at)]));
+    const sig = JSON.stringify(shown.map((r) => [r.e.id, r.e.undone || 0, r.e.cant || '', C.canRedo(L, r.e), r.e.label || r.e.what, C.ago(r.e.at), r.e.outside?.at || 0]));
     if (box.dataset.sig !== sig) { box.dataset.sig = sig; box.replaceChildren(...shown.map(rowEl)); }
     part.hidden = !rs.length;
     const more = part.querySelector('.ua-more');

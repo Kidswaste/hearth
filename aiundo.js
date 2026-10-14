@@ -188,6 +188,29 @@ const AiUndo = (() => {
     return x.id;
   }
 
+  // (round 42, filewatch) a file an AI changed was changed again outside Hearth (you in another app, a sync, a delete):
+  // its undo is no longer the plain "back to before", so the entry says so (its row, Ctrl/⌘+Z's list) and the undo asks
+  // first (the check below). A file it created, deleted outside: nothing left to undo. Told by filewatch.js as it happens.
+  //   st: { gone, size, mtime, to (moved / renamed to) }
+  function outside(path, st = {}) {
+    const same = (a, b) => (/^[A-Za-z]:[\\/]|^\\\\/.test(String(a)) ? String(a).toLowerCase() === String(b).toLowerCase() : a === b);
+    let n = 0;
+    for (const e of list) {
+      if (e.area !== 'file' || e.undone || !e.u?.path || !same(e.u.path, path)) continue;
+      if (e.chat && typeof Native !== 'undefined' && Native.isBusy?.(e.chat)) continue; // its own reply is still writing it
+      if (!e.after || e.after.none) continue; // not sealed yet: still the AI's own write
+      if (!st.gone && st.mtime != null && st.size === e.after.size && st.mtime <= e.after.mtime + 1500) continue; // the AI's write itself
+      const was = JSON.stringify(e.outside || null);
+      e.outside = { at: now(), ...(st.gone ? { gone: true } : {}), ...(st.to ? { to: st.to } : {}) };
+      if (st.gone && /^Created /.test(e.what) && !e.cant) e.cant = st.to ? `it was moved outside Hearth (now ${String(st.to).split(/[\\/]/).pop()})` : 'it was deleted outside Hearth';
+      if (!st.gone && e.outside.gone === undefined && /^Created /.test(e.what) && e.cant && /outside Hearth/.test(e.cant)) delete e.cant; // (back again)
+      if (JSON.stringify(e.outside) !== was) n += 1;
+    }
+    if (n) changed();
+    return n;
+  }
+  const outsideWords = (e) => (!e.outside ? '' : e.outside.to ? ` · moved outside Hearth since (now ${String(e.outside.to).split(/[\\/]/).pop()})` : e.outside.gone ? ' · deleted outside Hearth since' : ' · changed outside Hearth since: not safely undoable (it asks first)');
+
   // ---------- each area's undo, its "the owner changed it after" check, and where to look ----------
   async function needLab() {
     if (typeof ThreeHistory === 'undefined' && window.Lazy) await Lazy.load('lab');
@@ -365,7 +388,7 @@ const AiUndo = (() => {
   }
   function row(e) {
     const a = agentOf(e.by);
-    const sub = `${e.chatTitle ? `in “${e.chatTitle}” · ` : ''}${e.via ? `${e.via} · ` : ''}${ago(e.at)}${e.undone ? ' · undone' : e.cant ? ' · can\'t be undone here' : ''}`;
+    const sub = `${e.chatTitle ? `in “${e.chatTitle}” · ` : ''}${e.via ? `${e.via} · ` : ''}${ago(e.at)}${e.undone ? ' · undone' : e.cant ? ' · can\'t be undone here' : ''}${e.undone ? '' : outsideWords(e)}`;
     const menu = (ev) => { ev.preventDefault(); ev.stopPropagation(); showMenu(ev.clientX, ev.clientY, entryMenu(e)); };
     const r = el('div', { class: `ac-row au-row${e.undone ? ' au-undone' : ''}`, title: `${e.who}: ${C.line(e)}\n${new Date(e.at).toLocaleString()}\nRight-click: undo since then, the whole reply, show it`, on: { contextmenu: menu } },
       el('div', { class: 'ac-line' },
@@ -382,7 +405,7 @@ const AiUndo = (() => {
     const day = list.slice().sort(C.newestFirst);
     const shown = part.all ? day.slice(0, 60) : day.slice(0, SHOWN);
     const box = part.querySelector('.au-rows');
-    const sig = JSON.stringify(shown.map((e) => [e.id, e.undone ? 1 : 0, Math.round((now() - e.at) / 60000)]));
+    const sig = JSON.stringify(shown.map((e) => [e.id, e.undone ? 1 : 0, Math.round((now() - e.at) / 60000), e.outside?.at || 0, e.cant || '']));
     if (box.dataset.sig !== sig) { box.dataset.sig = sig; box.replaceChildren(...shown.map(row)); }
     part.hidden = !shown.length;
     if (shown.length) { const q = part.parentElement?.querySelector(':scope > .ac-empty'); if (q && !q.hidden) q.hidden = true; }
@@ -405,7 +428,7 @@ const AiUndo = (() => {
   // ---------- as text ----------
   function summary(chatId = null, n = 12) {
     const L = list.filter((e) => !chatId || e.chat === chatId).sort(C.newestFirst).slice(0, n)
-      .map((e) => `- ${C.ICON[e.area]} ${e.who}: ${C.line(e)} (${ago(e.at)}${e.undone ? ', undone' : ''})`);
+      .map((e) => `- ${C.ICON[e.area]} ${e.who}: ${C.line(e)} (${ago(e.at)}${e.undone ? ', undone' : ''}${e.undone ? '' : outsideWords(e).replace(' · ', ', ')})`);
     return L.length ? `**Changes by AIs**${chatId ? ' in this chat' : ''}\n${L.join('\n')}` : `No changes by AIs${chatId ? ' in this chat' : ''} yet.`;
   }
 
@@ -454,7 +477,7 @@ const AiUndo = (() => {
   }
   boot();
 
-  return { ready, record, board, run, undoThis, undoSince, undoReply, undoChat, forReply, summary, part: mountPart, paintPart, openPart, onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
+  return { ready, record, board, run, outside, undoThis, undoSince, undoReply, undoChat, forReply, summary, part: mountPart, paintPart, openPart, onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
     list: () => list.slice(), _test: { turns, ended, AREAS, add } };
 })();
 window.AiUndo = AiUndo;
