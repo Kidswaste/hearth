@@ -2273,8 +2273,6 @@ function blLiveHit(name) {
 // what a driver reads now: { hit, beat, level, hist }, made again when the song, its map, its parts or live changes
 function blSrc(band) {
   const C = globalThis.beatlink;
-  const ctx = BL.ctx;
-  if (!ctx || ctx.el !== mediaEl || ctx.an !== analysis || ctx.bm !== beatMap || ctx.live !== liveKind || ctx.stems !== STEMS.track || ctx.sq !== SQ.on) { BL.ctx = { el: mediaEl, an: analysis, bm: beatMap, live: liveKind, stems: STEMS.track, sq: SQ.on }; BL.srcs.clear(); }
   let s = BL.srcs.get(band);
   if (s) return s;
   const demoT = (t) => { const ph = ((t * 2) % 1 + 1) % 1; return Math.exp(-ph / 0.12); };
@@ -2309,9 +2307,18 @@ function blSrc(band) {
   BL.srcs.set(band, s);
   return s;
 }
+// the song, its analysis / map / parts or live changed: the sources are made again and every value computed again
+// (a value cached at a time before the analysis arrived stayed at the bottom of its range when read at that time again)
+function blFresh() {
+  const ctx = BL.ctx;
+  if (ctx && ctx.el === mediaEl && ctx.an === analysis && ctx.bm === beatMap && ctx.live === liveKind && ctx.stems === STEMS.track && ctx.sq === SQ.on) return;
+  BL.ctx = { el: mediaEl, an: analysis, bm: beatMap, live: liveKind, stems: STEMS.track, sq: SQ.on };
+  BL.srcs.clear(); BL.cache.clear();
+}
 // a link's value now (null until the math is here): computed once per frame time, the meter told what it did
 function blValue(i, m) {
   if (!blReady()) return null;
+  blFresh();
   const t = blTime();
   const c = BL.cache.get(i);
   if (c && c.m === m && Math.abs(c.t - t) < 0.002) return c.v;
