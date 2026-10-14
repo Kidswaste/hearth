@@ -27,7 +27,7 @@ const Hints = (() => {
   const test = () => Boolean(window.SMOKE_SAVES);
   // gap: between two tips · quiet: after the last key in a text box · start / startNotice: after Hearth opens
   // ttl: how long an offer waits · (in a test copy the gap and the start quiet are 0 unless a check sets them)
-  const cfg = { gap: 3 * 60e3, quiet: 4000, start: 6000, startNotice: 1500, ttl: 10 * 60e3, tick: 700 };
+  const cfg = { gap: 3 * 60e3, quiet: 4000, start: 6000, startNotice: 1500, ttl: 10 * 60e3, tick: 700, idle: 5000 };
   let testCfg = null; // what a check set (Hints.config; in a test copy also store hints.test, read at start for the first seconds)
   const C = (k) => (testCfg && k in testCfg ? testCfg[k] : test() && (k === 'gap' || k === 'start' || k === 'startNotice') ? 0 : cfg[k]);
   const get = (k, d) => { try { return store.get(k, d); } catch { return d; } };
@@ -131,7 +131,14 @@ const Hints = (() => {
   const order = (place) => (a, b) => ((a.place === place ? 0 : 1) - (b.place === place ? 0 : 1)) || a.rank - b.rank || a.at - b.at;
   const lastAt = () => Number(get(LAST, 0)) || 0;
   let timer = 0; let showing = false;
-  function schedule(ms = C('tick')) { if (!timer) timer = setTimeout(() => { timer = 0; pump(); }, ms); }
+  let due = 0;
+  // (a sooner look replaces a later one: the slow tick while nothing fits here gives way to a place change or an offer)
+  function schedule(ms = C('tick')) {
+    const at = Date.now() + ms;
+    if (timer && due <= at) return;
+    clearTimeout(timer); due = at;
+    timer = setTimeout(() => { timer = 0; pump(); }, ms);
+  }
   async function show(q) {
     const i = queue.indexOf(q); if (i >= 0) queue.splice(i, 1);
     showing = true;
@@ -159,12 +166,15 @@ const Hints = (() => {
       else if (q.still) { let ok = true; try { ok = q.still() !== false; } catch { ok = false; } if (!ok) drop(q, 'no longer fits'); }
     }
     if (!queue.length) return null;
-    const why = busy();
     // (round 39, powerwise) Hearth in the background: no 0.7 s look-again while away (visibilitychange looks again)
-    if (why === 'away' && !force) return null;
-    schedule();
+    if (document.hidden && !force) return null;
     const place = placeNow();
     const ready = queue.filter((q) => fits(q, place)).sort(order(place));
+    // (round 41, smooth41) nothing waiting fits here (a Lab tip while you're in a chat): no page queries every 0.7 s;
+    // moving elsewhere looks again at once (hearth:view), a slow tick still drops what waited too long
+    if (!ready.length) { schedule(C('idle')); return null; }
+    schedule();
+    const why = busy();
     // a line in a chat or a panel: as soon as you aren't typing and no reply streams (it covers nothing, so an open
     // dialog or AI setup doesn't hold it: a change made there is said in the chat right away)
     const line = ready.find((q) => q.kind === 'inline');
@@ -196,6 +206,7 @@ const Hints = (() => {
   // when it calms down, look again at once (not on the next tick)
   addEventListener('hearth:busy', (e) => { if (!e.detail?.busy && queue.length) schedule(50); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && queue.length) schedule(400); });
+  addEventListener('hearth:view', () => { if (queue.length) schedule(50); }); // (round 41) another place: what fits there
 
   // ---------- the one switch: Settings (settings-find.js), /hints, Ctrl/⌘+K ----------
   function register() {

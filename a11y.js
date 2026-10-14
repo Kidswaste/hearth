@@ -51,12 +51,25 @@ const A11y = (() => {
   }
   const pending = new Set();
   let soon = 0;
+  // (round 41, smooth41) what each control looked like when it was last named: a chat redraw moves its messages
+  // (removed + added again), and every moved control was named again (its whole text walked) after every reply
+  const named = new WeakMap();
+  const look = (n) => `${n.title}\u0001${n.getAttribute('aria-label') || ''}\u0001${n.textContent}`;
+  const stats = { looked: 0, named: 0 }; // (for dev/checks/smooth41.js: controls looked at / named again)
+  function nameIfChanged(n) {
+    stats.looked += 1;
+    const k = look(n);
+    if (named.get(n) === k) return;
+    stats.named += 1;
+    nameOne(n);
+    named.set(n, look(n));
+  }
   function flush() {
     soon = 0;
     for (const n of pending) {
       if (!n.isConnected) continue;
-      if (n.matches?.(CTRL)) nameOne(n);
-      if (n.firstElementChild) for (const c of n.querySelectorAll(CTRL)) nameOne(c);
+      if (n.matches?.(CTRL)) nameIfChanged(n);
+      if (n.firstElementChild) for (const c of n.querySelectorAll(CTRL)) nameIfChanged(c);
     }
     pending.clear();
   }
@@ -228,6 +241,6 @@ const A11y = (() => {
   // (deferred scripts run while the page is "interactive": wait for all of them, Native included)
   if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 
-  return { say, kbd: () => kbd, shortName, nameAll: () => { queue(document.body); flush(); }, _open: open };
+  return { say, kbd: () => kbd, shortName, nameAll: () => { queue(document.body); flush(); }, _open: open, _stats: stats };
 })();
 window.A11y = A11y;
