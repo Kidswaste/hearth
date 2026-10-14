@@ -1471,7 +1471,7 @@ const NodeView = (() => {
       if (miniQueued || mini.hidden || !rootShown) return;
       miniQueued = true;
       if (idle && typeof requestIdleCallback === 'function') requestIdleCallback(() => { miniQueued = false; if (root.checkVisibility?.({ visibilityProperty: true }) === false) { miniStale = true; return; } drawMini(); }, { timeout: 500 });
-      else requestAnimationFrame(() => { miniQueued = false; drawMini(); });
+      else requestAnimationFrame(() => { miniQueued = false; if (!root.matches(':hover') && root.checkVisibility?.({ visibilityProperty: true }) === false) { miniStale = true; return; } drawMini(); });
     }
     let miniMap = null;
     function drawMini() {

@@ -518,7 +518,10 @@ const LabAB = (() => {
     setTimeout(() => (typeof requestIdleCallback === 'function' ? requestIdleCallback(go, { timeout: 4000 }) : go()), 2500);
   });
   // the Lab went off screen: the split view and any peek close (the chip comes back with the next change)
-  for (const ev of ['hearth:activate', 'hearth:view']) addEventListener(ev, () => setTimeout(() => { if (!visible()) close(); }, 0));
+  // (round 38, inputlatency) asked only when something of it is showing: "is the preview on screen?" laid the page out
+  // right after every chat switch and window change
+  const showing = () => Boolean(S.press || S.peek || S.split || S.cover || badgeEl || S.chip);
+  for (const ev of ['hearth:activate', 'hearth:view']) addEventListener(ev, () => setTimeout(() => { if (showing() && !visible()) close(); }, 0));
   // a director turn ends: its change settles now
   if (typeof Native !== 'undefined' && Native.hooks?.finish) Native.hooks.finish.push((event, chat) => { if (S.pend?.chat && S.pend.chat === chat?.id) schedule(400); });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', register); else register();

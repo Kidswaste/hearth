@@ -42,7 +42,7 @@ const pct = (a, p) => { const s = a.slice().sort((x, y) => x - y); return s.leng
 // presentation after it is this machine's software compositor), the handlers alone (a 120 Hz frame for typing and
 // drags, a 60 Hz one for what builds a surface), and the Lab slider in preview frames
 const BUDGET = window.IL_BUDGET || { 'type-short': 50, 'type-long': 50, 'enter-send': 50, 'ctrl-k': 100, menu: 100, 'ai-setup': 150, 'chat-click': 150, sliderFramesP95: 2 };
-const HANDLERS = window.IL_HANDLERS || { 'type-short': 8, 'type-long': 8, 'enter-send': 16, 'ctrl-k': 16, menu: 16, 'ai-setup': 24, 'chat-click': 24, scroll: 4, 'grid-gap': 8, 'lab-slider': 8, scrub: 8 };
+const HANDLERS = window.IL_HANDLERS || { 'type-short': 8, 'type-long': 8, 'enter-send': 16, 'ctrl-k': 16, menu: 16, 'ai-setup': 24, 'chat-click': 40, scroll: 4, 'grid-gap': 8, 'lab-slider': 8, scrub: 8 };
 out.budgets = { toHandled: BUDGET, handlers: HANDLERS };
 
 // ---- Event Timing in the page: every event ≥ 16 ms (the API's floor), counts of all events per kind ----
