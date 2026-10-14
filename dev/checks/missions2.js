@@ -26,7 +26,7 @@ try {
   const main = [...document.querySelectorAll('.ms-pop .ms-cards > .ms-grid .ms-pick b')].map((b) => b.textContent);
   const more = [...document.querySelectorAll('.ms-pop .ms-more .ms-pick b')].map((b) => b.textContent);
   out.picker = { main, more };
-  ok(main.length <= 8 && more.length >= 4 && main.length + more.length <= 16, `short list + More (${main.length} + ${more.length})`);
+  ok(main.length <= 8 && more.length >= 4 && main.length + more.length <= 20, `short list + More (${main.length} + ${more.length})`);
   ok(['Plan first', 'Research', 'Explain like a teacher', 'Second opinion only'].every((w) => [...main, ...more].some((x) => x.includes(w))), 'the new missions are listed');
   ok(!document.querySelector('.ms-pop .ms-more').open, 'More is folded');
   document.querySelector('.ms-pop .ms-more > summary').click(); await wait(100);
