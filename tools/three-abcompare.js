@@ -98,7 +98,9 @@ const LabAB = (() => {
     if (c?.same && old === p.from) now.still = old.still; // nothing changed after all: its picture still holds
     S.base = now;
     if (old && old !== S.pair?.before && old.still !== now.still) drop(old);
-    if (!now.still) stillSoon();
+    // a picture only after a real change (the preview was just drawing it anyway); a scene's first state uses its thumbnail
+    if (!p.from) now.thumb = Lab()?.scenes?.thumbOf?.(now.sketch) || null;
+    else if (!now.still) stillSoon();
   }
   // a picture of the settled scene (the "before" of the next change when that one changes code): small, made by the
   // preview off its next frame, when the app is idle
@@ -115,6 +117,8 @@ const LabAB = (() => {
       if (typeof requestIdleCallback === 'function') requestIdleCallback(() => go().catch(() => {}), { timeout: 1500 }); else go().catch(() => {});
     }, ms);
   }
+  // the picture of a snap: its own, else (the scene's first state) the Lab's thumbnail of the scene
+  const stillOf = (sn) => sn?.still || sn?.thumb || null;
   function drop(s) { if (s?.still) { s.still = null; S.freed += 1; } }
   function setPair(pair) {
     if (S.peek) show(false);
@@ -157,8 +161,9 @@ const LabAB = (() => {
       if (pal) hooks().peekPalette?.(palOf(p.before));
       stepIfFrozen();
     } else {
-      if (!p.before.still) { toast('No picture of before (it changed too quickly) · ⟲ Keep before still goes back to it', { timeout: 2600 }); return false; }
-      const el = picture(p.before.still, 'ab-peek');
+      const url = stillOf(p.before);
+      if (!url) { toast('No picture of before (it changed too quickly) · ⟲ Keep before still goes back to it', { timeout: 2600 }); return false; }
+      const el = picture(url, 'ab-peek');
       if (!el) return false;
       S.peek = { mode: 'still', el };
     }
@@ -292,9 +297,10 @@ const LabAB = (() => {
     if (!s || !p) return;
     const gen = ++s.gen;
     if (p.mode === 'still') {
-      if (!p.before.still) { s.el.classList.add('ab-none'); s.tl.title = 'No picture of before (it changed too quickly)'; return; }
+      const url = stillOf(p.before);
+      if (!url) { s.el.classList.add('ab-none'); s.tl.title = 'No picture of before (it changed too quickly)'; return; }
       s.el.classList.remove('ab-none');
-      if (s.url !== p.before.still) { s.url = p.before.still; s.img.src = s.url; }
+      if (s.url !== url) { s.url = url; s.img.src = s.url; }
       s.el.dataset.mode = 'still';
       return;
     }
@@ -463,9 +469,9 @@ const LabAB = (() => {
     return ['-', { label: '◧ Before / after', hint: S.pair ? C().chipText(S.pair).replace(/^Before: /, '') : 'after a change', items: () => { follow(); return menuRows(); } }];
   }
   function state() {
-    return { pair: S.pair ? { kind: S.pair.kind, label: S.pair.label, mode: S.pair.mode, at: S.pair.at, picture: Boolean(S.pair.before.still), text: C().chipText(S.pair) } : null,
+    return { pair: S.pair ? { kind: S.pair.kind, label: S.pair.label, mode: S.pair.mode, at: S.pair.at, picture: Boolean(stillOf(S.pair.before)), text: C().chipText(S.pair) } : null,
       split: S.split ? { x: S.split.x, swapped: S.split.swapped, picture: Boolean(S.split.url), mode: S.split.el.dataset.mode || null } : null,
-      peek: S.peek ? S.peek.mode : null, chip: Boolean(S.chip), pending: S.pend ? { kind: S.pend.kind, label: C().labelOf(S.pend), n: S.pend.n } : null, base: Boolean(S.base), baseStill: Boolean(S.base?.still) };
+      peek: S.peek ? S.peek.mode : null, chip: Boolean(S.chip), pending: S.pend ? { kind: S.pend.kind, label: C().labelOf(S.pend), n: S.pend.n } : null, base: Boolean(S.base), baseStill: Boolean(stillOf(S.base)) };
   }
   // what's held (dev/checks/abcompare.js): our elements and pictures; no canvas, no WebGL context of our own
   function stats() {
@@ -507,11 +513,13 @@ const LabAB = (() => {
   addEventListener('hearth:sketch', (ev) => {
     close({ forget: true });
     const id = ev.detail?.id;
-    const go = () => { if (hooks().sketchId?.() === id && !S.base && !S.pend) { S.base = snap(); stillSoon(0); follow(); } };
+    // (no picture here: a message to the preview now would wake a still scene for nothing (labpace); the scene's own
+    // thumbnail stands in until the first change settles and its picture is made)
+    const go = () => { if (hooks().sketchId?.() === id && !S.base && !S.pend) { S.base = snap(); if (S.base) S.base.thumb = Lab()?.scenes?.thumbOf?.(id) || null; follow(); } };
     setTimeout(() => (typeof requestIdleCallback === 'function' ? requestIdleCallback(go, { timeout: 4000 }) : go()), 2500);
   });
   // the Lab went off screen: the split view and any peek close (the chip comes back with the next change)
-  for (const ev of ['hearth:activate', 'hearth:view']) addEventListener(ev, () => setTimeout(() => { if (!visible()) { close(); } else if (S.base && !S.base.still) stillSoon(); }, 0));
+  for (const ev of ['hearth:activate', 'hearth:view']) addEventListener(ev, () => setTimeout(() => { if (!visible()) close(); }, 0));
   // a director turn ends: its change settles now
   if (typeof Native !== 'undefined' && Native.hooks?.finish) Native.hooks.finish.push((event, chat) => { if (S.pend?.chat && S.pend.chat === chat?.id) schedule(400); });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', register); else register();
