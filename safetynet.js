@@ -28,7 +28,9 @@ const SafetyNet = (() => {
     const now = Date.now();
     if (!first) first = now;
     clearTimeout(t);
-    t = setTimeout(keepNow, Math.max(0, Math.min(MS, first + MAX - now)));
+    // (round 38, inputlatency) kept in an idle moment (≤ 1 s later): reading every draft and the Lab scene's state, then
+    // fingerprinting them, ran in a timer that could land between two moves of a slider or two keys of a long draft
+    t = setTimeout(() => { if (typeof requestIdleCallback !== 'function') { keepNow(); return; } requestIdleCallback(() => { if (t) keepNow(); }, { timeout: 1000 }); }, Math.max(0, Math.min(MS, first + MAX - now)));
   }
 
   function labNow() {

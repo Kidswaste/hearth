@@ -2722,9 +2722,10 @@ const ThreeLab = (() => {
         if (msg.pace) { paceLast = msg.pace; if (paceOn) paintPace(); } // (round 33 "labpace")
         if (stats.hidden) stats.hidden = false;
         // (round 16: the line shows on hover; while it can't be seen it isn't rewritten, and never with the same text)
-        // (round 38, inputlatency) asked in the coming frame, where the page's style is worked out anyway: asked here (a
-        // message between two frames, twice a second) it styled the whole Lab first whenever a drag had just changed it
-        if (!statsRaf) statsRaf = requestAnimationFrame(() => { statsRaf = 0; if (lastStatsMsg && stats.checkVisibility({ opacityProperty: true, visibilityProperty: true })) paintStats(lastStatsMsg); });
+        // (round 38, inputlatency) asked right after the coming frame, when the page's style is fresh: asked here (a
+        // message between two frames, twice a second) it styled and laid out the whole Lab first whenever a drag had
+        // just changed it (in the frame's rAF it did the same before the frame's own writes)
+        if (!statsRaf) statsRaf = requestAnimationFrame(() => setTimeout(() => { statsRaf = 0; if (lastStatsMsg && stats.checkVisibility({ opacityProperty: true, visibilityProperty: true })) paintStats(lastStatsMsg); }, 0));
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (/^audio-/.test(msg.type) && typeof ThreeAudio !== 'undefined' && ThreeAudio.onMessage(msg)) return; // (round 23, labaudio)

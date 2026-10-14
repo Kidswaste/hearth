@@ -427,7 +427,7 @@ const NodeView = (() => {
       pendingBefore = null;
       if (before != null && before !== snapshot()) { undoStack.push(before); if (undoStack.length > 120) undoStack.shift(); redoStack.length = 0; }
       onChange?.(clone(graph), { kind, ...extra });
-      drawMiniSoon();
+      drawMiniSoon(true);
     }
     const change = (kind, fn, extra) => { begin(); fn(); commit(kind, extra); };
 
@@ -439,7 +439,7 @@ const NodeView = (() => {
       renderFrames();
       drawWires();
       paintSelection();
-      drawMiniSoon();
+      drawMiniSoon(true);
     }
     function renderFrames() {
       framesLayer.replaceChildren(
@@ -1461,7 +1461,18 @@ const NodeView = (() => {
 
     // ---------- minimap ----------
     let miniQueued = false;
-    function drawMiniSoon() { if (miniQueued || mini.hidden) return; miniQueued = true; requestAnimationFrame(() => { miniQueued = false; drawMini(); }); }
+    let rootShown = true; // (round 38) the editor has a size (see ro2 below)
+    let miniStale = false; // (round 38) skipped while hidden: drawn when the pointer comes back to the editor
+    root.addEventListener('pointerenter', () => { if (miniStale) { miniStale = false; drawMiniSoon(); } });
+    // (round 38, inputlatency) after an edit or a redraw of the whole graph (a scene switch redraws the Lab's node view
+    // even while it's hidden) the minimap waits for an idle moment and skips an editor that isn't shown: drawing it asks
+    // the page's style and layout, in the frame of whatever click caused it. Panning and zooming draw it in the frame.
+    function drawMiniSoon(idle = false) {
+      if (miniQueued || mini.hidden || !rootShown) return;
+      miniQueued = true;
+      if (idle && typeof requestIdleCallback === 'function') requestIdleCallback(() => { miniQueued = false; if (root.checkVisibility?.({ visibilityProperty: true }) === false) { miniStale = true; return; } drawMini(); }, { timeout: 500 });
+      else requestAnimationFrame(() => { miniQueued = false; drawMini(); });
+    }
     let miniMap = null;
     function drawMini() {
       const g = mini.getContext('2d');
@@ -1495,7 +1506,11 @@ const NodeView = (() => {
       applyView();
     };
     mini.addEventListener('pointerdown', (e) => { e.stopPropagation(); capture(mini, e); miniJump(e); const mv = (ev) => miniJump(ev); mini.addEventListener('pointermove', mv); mini.addEventListener('pointerup', () => mini.removeEventListener('pointermove', mv), { once: true }); });
-    const ro2 = new ResizeObserver(() => drawMiniSoon());
+    // (round 38, inputlatency) an editor that isn't shown (its window hidden, the Lab's node view closed) draws no
+    // minimap: each draw asks the page's style (getComputedStyle), a whole-page style pass in the middle of whatever
+    // was being clicked or dragged elsewhere; it draws when it shows again (this observer fires then)
+
+    const ro2 = new ResizeObserver((es) => { const r = es[es.length - 1]?.contentRect; rootShown = !r || (r.width > 0 && r.height > 0); if (rootShown) drawMiniSoon(); });
     ro2.observe(root);
 
     // ---------- live values ----------
