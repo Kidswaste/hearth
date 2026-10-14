@@ -526,7 +526,10 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   // its cuts mounts and drops clips faster than their modules load: each late one made a WebGL context of its own
   // (≈ 250 ms each here, a GPU-process round trip on a Mac) only to lose it, 45 in a few seconds of scrubbing, and the
   // clip under the playhead waited behind them (black for a second or more). Its renderer now fails at once, quietly.
-  if (gl3d && mode === 'sketch' && !this.__ctxMade && typeof staleStack === 'function' && staleStack(new Error().stack)) { perfNote.staleRefused = (perfNote.staleRefused || 0) + 1; return null; }
+  // (round 35, bugbash2) not for the page's own helper renderers (`untracked`: the grade's .cube bake, the effects
+  // picker's thumbnails): made through the three module's blob, their stack read as a stale module's, so they got no
+  // context ("Error creating WebGL context": ⇩ Export the grade as a .cube failed since round 29)
+  if (gl3d && mode === 'sketch' && !this.__ctxMade && !helperNow() && typeof staleStack === 'function' && staleStack(new Error().stack)) { perfNote.staleRefused = (perfNote.staleRefused || 0) + 1; return null; }
   if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
   const ctx = realGetContext.call(this, type, opts);
   if (gl3d && ctx) this.__ctxMade = true;
@@ -3006,6 +3009,8 @@ function layerState(id) {
   }
   return L;
 }
+// (round 35) read from the getContext guard above, which can run before this line (a `let` would throw there)
+function helperNow() { try { return untracked > 0; } catch { return false; } }
 let untracked = 0; // (round 24) > 0 while the page makes a helper renderer of its own (thumbnails, grade bakes): not a layer's
 function trackRenderer(r) {
   if (untracked) return;
