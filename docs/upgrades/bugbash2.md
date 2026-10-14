@@ -74,6 +74,12 @@ steps fails on the code before the fix.
     13; now waits for the finished file (150 frames, as before).
 18. **unit:eyes-test** (failing since round 31): read the board tool words tokensaver shortened. **unit:labpace-test**
     (now and then): timed the scene signature as one mean on a busy machine; now the best of 6 rounds.
+19. **qa-ui** (never ran): its header's `--eval "window.A='x'; window.B='y'"` was wrapped in `return (…)` by
+    dev/smoke.js (a SyntaxError); several statements now run as written. **particles**: the preview's adaptive quality
+    (round 31) drew a share of the particles on this slow machine; the check holds full counts. **pinboard**: since
+    round 31 the board's ⋯ opens with "✦ What can I do here?"; the finder is the first of its own rows. **progress**:
+    the export bar moves on an estimate until ffmpeg's first report, and is titled by its preset and file.
+    **mission-tokens** is dev/mission-tokens.js's measurement, no longer run as a check (it waited 10 min for engines).
 
 ## Found, not fixed (outside this round's features)
 - **A screen recording of a still area often ends at its last change** (capture-pack failed 4 of 5 runs: a 7.4 s take
