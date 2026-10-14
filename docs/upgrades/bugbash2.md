@@ -45,20 +45,34 @@ steps fails on the code before the fix.
    is read like the chat's calm lines (round 34): "Didn't answer: Claude Code's service is busy right now" (no
    internet, usage limit until 18:00, a VPN…), and the folder lines say "not checked (it didn't answer; check again
    in a moment)". Files Off still says so.
+10. **"⇩ Export the grade as a .cube" failed, the effects picker's thumbnails came out empty, the shader workbench
+    check couldn't start** ("Error creating WebGL context"). Since round 29 the preview refuses a new WebGL context to
+    code from a layer that no longer runs (it judges by the blob URLs in the call stack); the preview's own helper
+    renderers are made through the three.js module's blob too, so they always looked like a stale layer. → The guard
+    leaves the page's helper renderers alone (the `untracked` mark `trackRenderer` already honoured). The grade,
+    labshader and the bugbash2 check pass again.
 
 ## Self-checks that were wrong or racy
-10. **qa-keys · "Lab · Shift+1 · Frame size: Fit"** (long-failing): the preview starts at Fit, so the key had nothing
+11. **qa-keys · "Lab · Shift+1 · Frame size: Fit"** (long-failing): the preview starts at Fit, so the key had nothing
     to change. The key works (9:16 → Shift+1 → Fit, probed). The check now presses it from another size.
-11. **commands-page · "missing hooks"** (now and then): a lazy group loading at that moment reads its own stand-ins as
+12. **commands-page · "missing hooks"** (now and then): a lazy group loading at that moment reads its own stand-ins as
     free; the check now lists commands once no group is loading.
-12. **comp · "nested: … shows B (blue)"** (now and then): read one shot right after the nested pages were listed (dark
+13. **comp · "nested: … shows B (blue)"** (now and then): read one shot right after the nested pages were listed (dark
     or still green from the previous step); now waits for the picture to settle. Its "right-click the precomp layer"
     step was real: app bug 8.
-13. **declutter**: asserted the old, invisible panel menu's Opacity › / Blend ›; now asserts the one layer menu.
-14. **simplify3**: asserts the dead switch is gone and "Offer to continue lighter" is there.
-15. **Harness hangs**: a CDP call the page never answered (after a check's time limit) held the run for 30 minutes
+14. **declutter**: asserted the old, invisible panel menu's Opacity › / Blend ›; now asserts the one layer menu.
+15. **simplify3**: asserts the dead switch is gone and "Offer to continue lighter" is there.
+16. **Harness hangs**: a CDP call the page never answered (after a check's time limit) held the run for 30 minutes
     with no log (declutter-count, once). `dev/smoke.js` now ends itself after every part's limit + 5 minutes.
-16. **unit:eyes-test** (failing since round 31): read the board tool words tokensaver shortened. **unit:labpace-test**
+17. **flows · "/flow-make: Claude wrote a flow"** (every run): the fake engine's long-task words (dev/fake-liveness.js)
+    matched "quiet" inside the command list Hearth sends with the request, so the fake answered "The contact sheet is
+    ready." Hearth's own structured asks are left to the normal fake now. **flows-video · "the chat card ()"**: read
+    the card's innerText while the chat sat behind the flow window (visibility: hidden → empty); textContent now.
+    **eyes-pins**: swapped in a fake `window.Apps` after the Pinterest app had registered with the real one; it now
+    checks the real registry. **labframes-mcp**: help footage's topic sits past the 220 characters a reply line keeps
+    (as sequence-mcp in round 29); **labframes-more**: awaited a `done` the render queue hasn't returned since round
+    13; now waits for the finished file (150 frames, as before).
+18. **unit:eyes-test** (failing since round 31): read the board tool words tokensaver shortened. **unit:labpace-test**
     (now and then): timed the scene signature as one mean on a busy machine; now the best of 6 rounds.
 
 ## Found, not fixed (outside this round's features)
@@ -77,6 +91,7 @@ RESULTS_PLACEHOLDER
   view, and a black frame you caused by looking away is fixed with "Back to the scene's camera" (no tokens).
 - Right-clicking a precomp layer shows ◫ Precomp › again (its time, size, crop & mask, effects); shader, particles,
   type and physics layers get their own submenu there too.
+- ⇩ Export the grade as a .cube works again, and the effects picker shows its little previews again.
 - 🎲 Variations no longer offers "Another angle" takes that look identical when your scene's camera is placed.
 - Right after "Continue lighter", mission estimates and the token meter show the lighter size straight away.
 - ⋯ AI setup › Habits lost a switch that did nothing ("Shrinks long chats by itself"); Spending's "Offer to continue
