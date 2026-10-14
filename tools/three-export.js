@@ -512,6 +512,7 @@ const LabExport = (() => {
     dlg.showModal();
     go.addEventListener('click', () => {
       store.set('three.export', { format: st.format, size: st.size, custom: st.custom, fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur });
+      window.LabRecipesHook?.note?.('export', { set: { format: st.format, size: st.size, custom: st.custom, fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur } }); // (round 39, labrecipes)
       dlg.close();
       const frame = st.source === 'seq' && SEQ()?.edit ? { w: SEQ().edit.seq.w, h: SEQ().edit.seq.h } : frameNow();
       render({ format: st.format, source: st.source, size: st.size === 'custom' ? C.size(st.custom, frame) : C.size(st.size, frame), fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur })

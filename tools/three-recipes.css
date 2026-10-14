@@ -1,0 +1,49 @@
+/* 📜 Recipes (round 39, labrecipes: tools/three-recipes.js): the red recording chip over the Lab preview and the picker
+   (the My templates dialog's frame: a list of recipes on the left, the chosen one's steps on the right). The chip's dot
+   pulses with a compositor-only opacity animation; nothing moves from JS. */
+.rc-rec {
+  position: absolute; left: 10px; bottom: 10px; z-index: 9; display: flex; align-items: center; gap: 7px; padding: 3px 4px 3px 9px;
+  border-radius: 999px; background: #1a0707e6; border: 1px solid #ff4a4a99; color: #fff; font: 600 11.5px/1.4 system-ui, sans-serif;
+  box-shadow: 0 2px 10px #0009; pointer-events: auto; user-select: none;
+}
+.rc-dot { width: 8px; height: 8px; border-radius: 50%; background: #ff3b3b; box-shadow: 0 0 6px #ff3b3b; animation: rc-pulse 1.4s ease-in-out infinite; }
+@keyframes rc-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .rc-dot { animation: none; } }
+.rc-count { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rc-rec button { padding: 1px 8px; border-radius: 999px; border: 0; background: #ffffff1f; color: #fff; font: inherit; cursor: pointer; }
+.rc-rec button:hover { background: #ff4a4a; }
+.rc-rec .rc-cancel { padding: 1px 6px; background: transparent; opacity: .7; }
+.rc-rec .rc-cancel:hover { opacity: 1; background: #ffffff1f; }
+
+/* the picker */
+dialog.rc-dlg[open] { width: min(900px, calc(100vw - 32px)); height: min(620px, calc(100vh - 32px)); }
+.rc-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(200px, 34%) 1fr; border-top: 1px solid var(--line); }
+.rc-list { overflow-y: auto; padding: 8px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; contain: content; }
+.rc-item { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; text-align: left; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.rc-item:hover { background: var(--surface, #ffffff0a); }
+.rc-item.on { border-color: var(--accent); background: var(--surface, #ffffff0d); }
+.rc-item-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-item-sum { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-none { padding: 18px 8px; text-align: center; }
+.rc-detail { min-width: 0; overflow-y: auto; padding: 10px 16px 14px; contain: content; }
+.rc-d { display: flex; flex-direction: column; gap: 10px; }
+.rc-d-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rc-name { flex: 1; min-width: 160px; padding: 5px 8px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--text); font: 600 15px/1.3 inherit; }
+.rc-name:hover, .rc-name:focus { border-color: var(--line); outline: none; }
+.rc-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; counter-reset: rc; }
+.rc-step { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 7px; background: var(--surface, #ffffff08); counter-increment: rc; }
+.rc-step::before { content: counter(rc); flex: none; width: 18px; text-align: right; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.rc-step-ic { flex: none; width: 18px; text-align: center; }
+.rc-step-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; }
+.rc-step-txt > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-step-txt small { font-size: 11px; }
+.rc-step.rc-skip .rc-step-txt > span { opacity: .55; text-decoration: line-through; text-decoration-color: #ff9b4a88; }
+.rc-step.rc-skip small { color: var(--fh-orange, #ff9b4a); }
+.rc-step-ed { flex: none; display: flex; gap: 2px; opacity: 0; }
+.rc-step:hover .rc-step-ed, .rc-step:focus-within .rc-step-ed { opacity: 1; }
+.rc-step-ed button { padding: 0 6px; }
+.rc-d-actions { display: flex; align-items: center; gap: 8px; }
+.rc-batch { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 9px; }
+.rc-bscenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 3px 10px; max-height: 160px; overflow-y: auto; }
+.rc-bscene { display: flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-batch-go { align-self: flex-start; }

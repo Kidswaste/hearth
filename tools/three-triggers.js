@@ -126,6 +126,7 @@ const ThreeTriggers = (() => {
     const hint = el('span', { class: 'trg-hint', text: 'drag a dot: sideways = which sound, up / down = the bar · drag the edges or wheel on the dot = width' });
     const presetBtn = el('button', { class: 'ghost small', text: 'Presets ▾', title: 'Bands and timing for a style of music (your bars stay), or your own saved setups', on: { click: (e) => { e.stopPropagation(); presetMenu(e.currentTarget); } } }); // (stop: the app closes menus on any outside click)
     function applyPreset(p, name) {
+      window.LabRecipesHook?.note?.('trigger', { name, preset: p }); // (round 39, labrecipes)
       for (const { id } of LIST) if (p[id]) cfg[id] = clampCfg({ ...cfg[id], ...p[id] });
       changed();
       hint.textContent = `${name}: bands set${autoBars({ quiet: true }) ? ', bars fitted to the sound' : ' · play a bit, then Auto bars'}`;

@@ -22,7 +22,7 @@ const PacksCore = (() => {
   const MANIFEST = 'hearthpack.json';
   const THUMB = 'thumb.jpg';
   const TOKEN = 'hearthpack:';
-  const KINDS = ['scene', 'sequence', 'gallery', 'template']; // (round 35, labtemplates) template: one of My templates, its fields in "template"
+  const KINDS = ['scene', 'sequence', 'gallery', 'template', 'recipe']; // (round 35, labtemplates) template: one of My templates, its fields in "template" · (round 39, labrecipes) recipe: recorded Lab steps in "recipe", no scene
   const MB = 1048576;
   const LIMITS = {
     pack: 1536 * MB, // the .hearthpack file itself
@@ -205,6 +205,7 @@ const PacksCore = (() => {
       made: { app: o.app || 'Hearth', version: String(o.version || ''), platform: o.platform || '', at: o.at || Date.now() },
       scenes: o.scenes || [], sequence: o.sequence || null, luts: o.luts || [], song: o.song || null, files: o.files || [], missing: o.missing || [],
       ...(o.template ? { template: o.template } : {}),
+      ...(o.recipe ? { recipe: o.recipe } : {}),
     };
   }
   const PLATFORM = { darwin: 'a Mac', win32: 'Windows', linux: 'Linux' };
@@ -216,8 +217,11 @@ const PacksCore = (() => {
     else if (Number(m.v) > VERSION) problems.push('It was made by a newer Hearth: update Hearth (⬆ Update) to open it.');
     if (!KINDS.includes(m.kind)) problems.push(`It is a "${String(m.kind).slice(0, 20)}", not a scene, sequence, gallery item or template.`);
     if (m.kind === 'template' && (!m.template || !Array.isArray(m.template.fields) || m.template.fields.length > 400)) problems.push('Its template fields are missing or too many.');
+    // (round 39, labrecipes) a recipe: its steps (a layer step's code counts like a layer's), no scene needed
+    if (m.kind === 'recipe' && (!m.recipe || !Array.isArray(m.recipe.steps) || !m.recipe.steps.length || m.recipe.steps.length > 300)) problems.push('Its recipe steps are missing or too many.');
+    if (m.kind === 'recipe' && Array.isArray(m.recipe?.steps) && m.recipe.steps.some((x) => x?.code != null && (typeof x.code !== 'string' || x.code.length > LIMITS.code))) problems.push('A step of the recipe has code that\'s too big or not text.');
     const scenes = Array.isArray(m.scenes) ? m.scenes : [];
-    if (!scenes.length) problems.push('It has no scene in it.');
+    if (!scenes.length && m.kind !== 'recipe') problems.push('It has no scene in it.');
     if (scenes.length > LIMITS.scenes) problems.push(`It has ${scenes.length} scenes: the most is ${LIMITS.scenes}.`);
     for (const s of scenes.slice(0, LIMITS.scenes)) {
       const Ls = s?.sketch?.layers;
@@ -271,7 +275,8 @@ const PacksCore = (() => {
   function describe(m) {
     const c = contents(m);
     const lines = [];
-    const what = m.kind === 'template' ? `A template${m.template?.fields?.length ? ` with ${plural(m.template.fields.length, ['field', 'fields'])} to fill in` : ''}` : m.kind === 'sequence' ? `A sequence of ${plural(c.scenes, ['scene', 'scenes'])}` : c.scenes > 1 ? plural(c.scenes, ['scene', 'scenes']) : 'A Lab scene';
+    const what = m.kind === 'recipe' ? `A recipe of ${plural(m.recipe?.steps?.length || 0, ['step', 'steps'])} to replay on any Lab scene` : m.kind === 'template' ? `A template${m.template?.fields?.length ? ` with ${plural(m.template.fields.length, ['field', 'fields'])} to fill in` : ''}` : m.kind === 'sequence' ? `A sequence of ${plural(c.scenes, ['scene', 'scenes'])}` : c.scenes > 1 ? plural(c.scenes, ['scene', 'scenes']) : 'A Lab scene';
+    if (m.kind === 'recipe') return [what, 'Steps only: effects, looks, sliders, music links, frame size… (a layer step carries its code)']; // (round 39, labrecipes)
     lines.push(`${what} · ${plural(c.layers, ['layer', 'layers'])}`);
     const tune = [c.sliders ? plural(c.sliders, ['slider', 'sliders']) : '', c.looks ? plural(c.looks, ['saved look', 'saved looks']) : '', c.keys ? plural(c.keys, ['keyframe', 'keyframes']) : ''].filter(Boolean);
     if (tune.length) lines.push(tune.join(' · '));

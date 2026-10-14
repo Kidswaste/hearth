@@ -546,6 +546,7 @@ const ThreeTweaks = (() => {
       refreshState();
       autoSave();
       window.LabAB?.note?.('sliders'); // (round 37, abcompare) one slider gesture / shuffle / look: ◧ Before / after
+      window.LabRecipesHook?.note?.('sliders'); // (round 39, labrecipes) a recipe being recorded compares the sliders now
     }
     function applyValues(next, { remember = true } = {}) {
       let rb = false;
@@ -1041,7 +1042,11 @@ const ThreeTweaks = (() => {
       const next = values.slice();
       ids.forEach((id, i) => { if (id in look.values) next[i] = look.values[id]; });
       window.LabAB?.note?.('look', { label: `Look "${look.name}"` });
-      applyValues(next);
+      // (round 39, labrecipes) one recipe step: the look's name and its named values (another scene may not have the look)
+      const vals = {}; const labels = {};
+      ids.forEach((id, i) => { const it = scanned.items[i]; if (id in look.values && it.key != null) { vals[it.key] = look.values[id]; labels[it.key] = labelOf(it); } });
+      const rc = window.LabRecipesHook?.begin?.('look', { name: look.name, vals, labels });
+      try { applyValues(next); } finally { rc?.(); }
       toast(`Look "${look.name}"`, { timeout: 1500 });
     }
 
