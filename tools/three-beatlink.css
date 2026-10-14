@@ -1,0 +1,48 @@
+/* ♪ Move with the music (round 38, beatlink: tools/three-beatlink.js): the card, the range handles on a slider, the badge */
+.bl-pop { position: fixed; z-index: 990; padding: 10px 12px; border-radius: 12px; display: flex; flex-direction: column; gap: 7px; border: 1px solid var(--line-hi, #443e35); background: var(--fh-pop, #0f1214); color: var(--text, #e8e2d6); box-shadow: 0 10px 30px #000a; font-size: 12.5px; }
+.bl-head { display: flex; align-items: baseline; gap: 6px; }
+.bl-head b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 62%; color: var(--ui-cyan, #48ddff); }
+.bl-sub { opacity: .6; font-size: 11.5px; }
+.bl-x { margin-left: auto; }
+.bl-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.bl-chip { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; line-height: 18px; color: var(--muted, #a9a395); background: none; border: 1px solid var(--line, #2c2a26); cursor: pointer; }
+.bl-chip:hover { color: var(--text, #e8e2d6); border-color: var(--line-hi, #443e35); }
+.bl-chip.on { color: #001a20; background: var(--ui-cyan, #48ddff); border-color: var(--ui-cyan, #48ddff); }
+.bl-seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line, #2c2a26); border-radius: 8px; overflow: hidden; }
+.bl-seg .bl-chip { border: 0; border-radius: 0; text-align: center; }
+.bl-seg .bl-chip + .bl-chip { border-left: 1px solid var(--line, #2c2a26); }
+.bl-range { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; }
+.bl-rtxt { font-variant-numeric: tabular-nums; font-size: 11.5px; opacity: .8; white-space: nowrap; }
+.bl-bar { position: relative; height: 18px; margin: 0 7px; }
+.bl-bar::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 2px; border-radius: 2px; background: var(--line-hi, #443e35); }
+.bl-bar .bl-band { position: absolute; top: 7px; height: 4px; border-radius: 3px; background: color-mix(in srgb, var(--ui-cyan, #48ddff) 55%, transparent); }
+.bl-dot { position: absolute; top: 5px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--text, #fff); box-shadow: 0 0 6px var(--ui-cyan, #48ddff); pointer-events: none; }
+.bl-h { position: absolute; top: 2px; width: 10px; height: 14px; margin-left: -5px; border-radius: 3px; background: var(--ui-cyan, #48ddff); cursor: ew-resize; touch-action: none; box-shadow: 0 1px 3px #0008; }
+.bl-h.lo { border-bottom-left-radius: 0; } .bl-h.hi { border-bottom-right-radius: 0; }
+.bl-h.drag, .bl-h:hover { filter: brightness(1.2); }
+.bl-meter { display: flex; align-items: center; gap: 8px; font-size: 11px; opacity: .85; }
+.bl-meter-bar { flex: 1; height: 4px; border-radius: 3px; background: var(--line, #2c2a26); overflow: hidden; }
+.bl-meter-fill { display: block; height: 100%; background: var(--ui-cyan, #48ddff); transform-origin: left center; transform: scaleX(0); will-change: transform; }
+.bl-meter-k { min-width: 56px; text-align: right; }
+.bl-row { display: grid; grid-template-columns: 44px 1fr 52px; align-items: center; gap: 6px; font-size: 11.5px; }
+.bl-row[hidden] { display: none; }
+.bl-row input[type=range] { width: 100%; }
+.bl-v { text-align: right; opacity: .75; font-variant-numeric: tabular-nums; }
+.bl-dice { align-self: flex-start; }
+.bl-dice[hidden] { display: none; }
+.bl-note { font-size: 11px; opacity: .65; }
+.bl-note:empty { display: none; }
+.bl-foot { display: flex; gap: 6px; justify-content: flex-end; }
+.bl-foot > :first-child { margin-right: auto; }
+/* on the slider: the range it moves in as a band, two handles under the track (the thumb stays free) */
+.bl-on-slider { position: absolute; inset: 0; pointer-events: none; }
+.bl-on-slider[hidden] { display: none; }
+.bl-on-slider .bl-band { position: absolute; bottom: 1px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--ui-cyan, #48ddff) 60%, transparent); }
+.bl-on-slider .bl-h { top: auto; bottom: -5px; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 2px 2px 50% 50%; pointer-events: auto; }
+.tw-row.bl-linked .tw-range { margin-bottom: 4px; }
+.tw-row.bl-linked .tw-music-btn, .bl-linked .tw-kicons .tw-music-btn { color: var(--ui-cyan, #48ddff); }
+.tw-knob-cell.bl-linked .kn-arc { stroke: var(--ui-cyan, #48ddff); }
+/* on a knob: the range as an arc just outside its ring, a handle at each end */
+.bl-on-knob .bl-karc { stroke: var(--ui-cyan, #48ddff); stroke-width: 2.2; stroke-linecap: round; opacity: .9; pointer-events: none; }
+.bl-on-knob .bl-h { fill: var(--ui-cyan, #48ddff); stroke: #000a; stroke-width: .8; cursor: grab; pointer-events: all; box-shadow: none; }
+.bl-on-knob .bl-h.drag { cursor: grabbing; }

@@ -1061,3 +1061,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ ⋯ AI setup → Memory → Tidy memory…: a before / after list (merge facts said twice, the newest fact replaces what it contradicts, shorter wording, Lab facts to a Lab scope only the Three Directors read, stale ones dropped), sure changes ticked, Apply, one Undo; ✦ Smarter tidy (lightest model, cost shown first); `/tidy-memory`.
 - ✓ `<remember>` replaces the fact it repeats or contradicts instead of appending (the chat's frozen prompt stays byte-stable); one quiet line in the Memory fold past ≈ 800 tokens.
 - ○ `node dev/memorytidy-test.js` (unit), `sh dev/run-checks.sh memorytidy` (fake engines).
+## ♪ Move with the music (round 38, beatlink, 31 upgrades: docs/upgrades/beatlink.md)
+- ✓ Right-click any Lab slider (or its ♪) › ♪ Move with the music…: what drives it (beat, bar, kick, snare, hi-hats, bass, mids, highs, vocals, drums, loudness), how (pulse, follow, step, random), the range as two handles on the slider / around the knob, a live meter; ♪ badge; one undo per change; `/move-with`, ✦ More › ♪ Music, Ctrl/⌘+K, Lab search / Find anything ("pulse on kick").
+- ✓ The same music link as before with a "how" and a range: saved with the scene, templates and packs; computed from the song's time, so renders / exports / the Lab sequence match the preview frame for frame; live sound too.
+- ○ `node dev/beatlink-test.js` (unit), `sh dev/run-checks.sh beatlink` (fixture song, playback, two renders, live loopback stub, undo, save / reload); not yet on the owner's real songs.

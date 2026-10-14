@@ -2247,6 +2247,94 @@ function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
 }
 const stopRecording = () => { recUntil = null; if (recorder?.state === 'recording') recorder.stop(); };
 
+// ---------- move with the music (round 38, beatlink: tools/three-beatlink-core.js) ----------
+// A slider's music link with a "how" (pulse / follow / step / random) and a range { lo, hi }: its value comes from the
+// song's time alone (the grid, the song's hits, its envelopes), so a render steps to the same values as the preview;
+// live sound and no song use the same shapes on what is heard now (or the 120 BPM demo beat). The math arrives as
+// source the first time a link does (globalThis.beatlink, like the motion kit). Main Lab: mods[i].how (valueOf);
+// a sequence / export: each layer's props.links, written into its values every frame (applyLinks).
+const BL = { want: null, ctx: null, srcs: new Map(), cache: new Map(), st: new Map(), live: {} };
+function blReady() {
+  if (globalThis.beatlink) return true;
+  BL.want ||= loadLib('beatlink').catch(() => { BL.want = null; });
+  return false;
+}
+// an export frame waits for the math when its layers have links (never a first frame without them)
+async function blWait() { if (!globalThis.beatlink && [...layers.values()].some((L) => L.props.links)) { blReady(); await BL.want; } }
+const blTime = () => (liveKind ? realNow() / 1000 : mediaEl ? mediaEl.currentTime : SQ.on ? SQ.T : realNow() / 1000);
+function blStemFn(k) { const T = STEMS.track; return fxSong() && T && STEMS.el === mediaEl ? (t) => T.data[Math.max(0, Math.min(T.n - 1, Math.floor(t * T.fps))) * T.F + k] / 255 : null; }
+// live drum hits: a rising edge of the heard hit pulse (kickOn / snareOn / hatOn), counted
+function blLiveHit(name) {
+  const s = (BL.live[name] ||= { k: -1, at: 0, prev: null, armed: true });
+  const x = featVal(name === 'hats' ? 'hatOn' : `${name}On`); const now = realNow() / 1000;
+  if (s.armed && x > 0.5 && now - s.at > 0.06) { s.k += 1; s.prev = s.k ? s.at : null; s.at = now; s.armed = false; } else if (x < 0.3) s.armed = true;
+  return s.k < 0 ? null : { k: s.k, at: s.at, prev: s.prev, next: s.at + 0.5 };
+}
+// what a driver reads now: { hit, beat, level, hist }, made again when the song, its map, its parts or live changes
+function blSrc(band) {
+  const C = globalThis.beatlink;
+  const ctx = BL.ctx;
+  if (!ctx || ctx.el !== mediaEl || ctx.an !== analysis || ctx.bm !== beatMap || ctx.live !== liveKind || ctx.stems !== STEMS.track || ctx.sq !== SQ.on) { BL.ctx = { el: mediaEl, an: analysis, bm: beatMap, live: liveKind, stems: STEMS.track, sq: SQ.on }; BL.srcs.clear(); }
+  let s = BL.srcs.get(band);
+  if (s) return s;
+  const demoT = (t) => { const ph = ((t * 2) % 1 + 1) % 1; return Math.exp(-ph / 0.12); };
+  if (liveKind) {
+    const beat = livePeriod ? (t) => C.clockHits(livePeriod, liveOrigin)(t) : () => blLiveHit('kick');
+    const bar = livePeriod ? (t) => C.clockHits(livePeriod, liveOrigin, 4)(t) : beat;
+    const LV = { bass: () => audio.bass, mids: () => audio.mid, highs: () => audio.treble, loudness: () => audio.level, vocals: () => featVal('vocal'), drums: () => stemStandIn(0) };
+    s = { beat, hit: band === 'beat' ? beat : band === 'bar' ? bar : /^(kick|snare|hats)$/.test(band) ? () => blLiveHit(band) : beat, level: LV[band] || (() => 0), hist: false };
+  } else if (mediaEl) {
+    const bs = beatMap?.beats?.length ? beatMap.beats : analysis?.beats || [];
+    const bpb = beatMap?.bpb || 4;
+    let from = beatMap?.downIndex ?? analysis?.downIndex ?? 0;
+    if (beatMap?.manual && bs.length) { let best = 0; bs.forEach((b, i) => { if (Math.abs(b - beatMap.anchor) < Math.abs(bs[best] - beatMap.anchor)) best = i; }); from = best; }
+    const period = 60 / (beatMap?.bpm || analysis?.bpm || 120);
+    const beat = C.hitsOf(bs, { period });
+    const marks = (n) => { const m = beatMap?.marks?.[n]; if (m?.length) return m; const o = analysis?.onsets?.[n]; return o?.length ? o.map((x) => (typeof x === 'number' ? x : x.t)).sort((a, b) => a - b) : []; };
+    const fps = analysis?.fps || 30;
+    const stem = (k, fb) => blStemFn(k) || fb;
+    const LV = { bass: stem(4, C.envOf(analysis?.bass, fps)), mids: C.envOf(analysis?.mid, fps), highs: C.envOf(analysis?.treble, fps), loudness: C.envOf(analysis?.level, fps) };
+    // the voice and the drums need the song's parts (asked for here, once): a stand-in at the playhead until then
+    const parts = { vocals: 5, drums: 0 };
+    let level = LV[band]; let hist = true;
+    if (parts[band] != null) { level = blStemFn(parts[band]); if (!level) { hist = false; level = () => stemVal(parts[band]); } }
+    s = { beat, hit: band === 'beat' ? beat : band === 'bar' ? C.hitsOf(bs, { every: bpb, from, period }) : /^(kick|snare|hats)$/.test(band) ? C.hitsOf(marks(band)) : beat, level: level || (() => 0), hist };
+  } else {
+    // no song: the demo beat at 120 BPM on this page's clock (a sequence's / an export's own time: still exact)
+    const beat = C.clockHits(0.5);
+    const HT = { beat, bar: C.clockHits(0.5, 0, 4), kick: beat, snare: C.clockHits(1, 0.5), hats: C.clockHits(0.25) };
+    const LV = { bass: (t) => 0.25 + 0.6 * demoT(t), mids: (t) => 0.3 + 0.15 * Math.sin(t * 1.3), highs: (t) => 0.2 + 0.1 * Math.sin(t * 3.1), loudness: (t) => 0.3 + 0.35 * demoT(t), vocals: (t) => 0.3 + 0.2 * Math.sin(t * 0.7), drums: demoT };
+    s = { beat, hit: HT[band] || beat, level: LV[band] || (() => 0), hist: true };
+  }
+  BL.srcs.set(band, s);
+  return s;
+}
+// a link's value now (null until the math is here): computed once per frame time, the meter told what it did
+function blValue(i, m) {
+  if (!blReady()) return null;
+  const t = blTime();
+  const c = BL.cache.get(i);
+  if (c && c.m === m && Math.abs(c.t - t) < 0.002) return c.v;
+  const src = blSrc(m.band);
+  let st = BL.st.get(i); if (!st) { st = {}; BL.st.set(i, st); }
+  const [v, raw, s] = globalThis.beatlink.value(m, { t, hit: src.hit, beat: src.beat, level: src.level, hist: src.hist, st, now: realNow() }, m.int);
+  BL.cache.set(i, { m, t, v });
+  if (m.mid != null) meterNote(m.mid, raw, s);
+  return v;
+}
+// a sequence / export layer's links: written into its values (like its slider keyframes, after them)
+function applyLinks(L) {
+  const lk = L.props.links;
+  if (!lk) return;
+  for (const idx of Object.keys(lk)) {
+    const m = lk[idx]; const v = blValue(idx, m);
+    if (v == null || TV[idx] === v) continue;
+    TV[idx] = v;
+    const set = L.tweakSets[m.call];
+    if (set && m.key in set.vals) { set.vals[m.key] = v; try { set.handlers[m.key]?.(v); } catch (err) { post({ type: 'error', layer: L.id, message: `${err.name}: ${err.message} (in onChange for "${m.key}")` }); } }
+  }
+}
+
 // ---------- sliders ----------
 // The Lab runs each layer with its numbers/colors swapped for __tv(i) so sliders can change them live.
 // Each layer owns the indices from slot × 10000. Reads after setup (2 frames after the layer's code has
@@ -2276,6 +2364,7 @@ let modState = {};
 const valueOf = (i, base) => {
   const m = mods[i];
   if (!m || typeof base !== 'number') return base;
+  if (m.how) { const v = blValue(i, m); return v == null ? base : v; } // (round 38, beatlink) ♪ Move with the music
   let x = LEGACY_BANDS.has(m.band) ? audio[m.band] || 0 : featVal(m.band);
   const raw = x;
   if (m.c) x = fxShape(x, m.c, modState[i] ||= {});
@@ -3328,7 +3417,7 @@ function compositorTick() {
   paceNext(compositorTick, parked && !compRec && !SQ.off); // (labpace: parked, it sleeps instead of waking every frame)
   fxPlanGen += 1; // (a new frame: which filters draw inside which is worked out again, see "merged filter passes")
   if (parked && !compRec) return; // (nothing draws: the layers' looks wait too)
-  for (const L of layers.values()) { applySliderKeys(L); styleLayer(L); }
+  for (const L of layers.values()) { applySliderKeys(L); applyLinks(L); styleLayer(L); }
   if (AD.coverBy) adCoverFrame(); // (round 31: a cover that stops covering lets the layers under it draw this frame)
   if (PC.list.size) pcManage();
   if (compRec) composite(compRec);
@@ -10437,7 +10526,8 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   }
   await Promise.all([...SQ.mounted.values()].filter((st) => st.video && T >= st.g.start - 1e-6 && T < st.g.end).map((st) => sqSeekVideo(st, T)));
   sqApply(T, { full: true });
-  for (const L of layers.values()) applySliderKeys(L);
+  await blWait(); // (round 38, beatlink) links on its sliders: the math is here before the first frame
+  for (const L of layers.values()) { applySliderKeys(L); applyLinks(L); }
   // the layers draw this frame (a group that just started gets a second pass: its first callback may only set up)
   const fresh = [...SQ.mounted.values()].some((st) => st.fresh) || PC.fresh;
   PC.fresh = false;
@@ -10923,9 +11013,9 @@ addEventListener('message', async (e) => {
   if (typeof msg.type === 'string' && msg.type.startsWith('seq-')) { sqMessage(msg); return; }
   if (msg.type === 'stage-mask') { stageMask(msg); return; }
   if (typeof msg.type === 'string' && msg.type.startsWith('xp-')) { xpMessage(msg); return; } // (round 22 "labexport")
-  if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; pcValues(); }
+  if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; BL.cache.clear(); if (Object.values(mods).some((m) => m?.how)) blReady(); pcValues(); }
   if (msg.type === 'tweak') setTweak(msg);
-  if (msg.type === 'tweak-mods') { mods = msg.mods || {}; modState = {}; }
+  if (msg.type === 'tweak-mods') { mods = msg.mods || {}; modState = {}; BL.cache.clear(); if (Object.values(mods).some((m) => m?.how)) blReady(); }
   if (msg.type === 'run') runLayers([{ id: 'main', code: msg.code, slot: 0, selected: true }]);
   if (msg.type === 'hot-run') runLayer({ id: 'main', code: msg.code, slot: 0, selected: true }, true);
   if (msg.type === 'run-layers') runLayers(msg.layers);

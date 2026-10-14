@@ -293,6 +293,8 @@ const ThreeTweaks = (() => {
   const BAND_NAME = Object.fromEntries(BANDS);
   // (round 23) the audio features a slider can also follow (tools/three-audio.js names them)
   const bandName = (b) => BAND_NAME[b] || (typeof ThreeAudio !== 'undefined' ? ThreeAudio.label(b) : b);
+  // (round 38, beatlink) a link's name: "Kick · pulse" for a ♪ Move with the music link, else the sound it follows
+  const linkName = (b) => (b?.how && typeof BeatLinkCore !== 'undefined' ? BeatLinkCore.short(b) : bandName(b?.band));
   // Ways a control can move by itself (on top of your value): [kind, name, hint]
   const MOTIONS = [['', 'Still', 'Stays where you put it'], ['lfo', 'Wave (LFO)', 'Smooth up and down in time with the beat'], ['walk', 'Random walk', 'Drifts around on its own'],
     ['beat', 'Steps on beats', 'A new random value every beat (or every few)'], ['pulse', 'Pulse on beats', 'Jumps up on each beat and falls back'], ['section', 'Song sections', 'Lower in quiet parts, higher in loud ones']];
@@ -561,6 +563,7 @@ const ThreeTweaks = (() => {
     }
     function undo() {
       const prev = undoStack.pop();
+      if (prev && !Array.isArray(prev) && prev.link) { const i = ids.indexOf(prev.link); if (i >= 0) setLink(i, prev.prev, { undo: false }); window.LabAB?.note?.('undo'); return; } // (round 38) a ♪ link change
       if (!prev || prev.length !== values.length) return;
       applyValues(prev, { remember: false });
       window.LabAB?.note?.('undo');
@@ -918,6 +921,7 @@ const ThreeTweaks = (() => {
       const set = (v) => { rows.filter((x) => x.i === i).forEach((x) => x.set(v)); setValue(i, v, { release: true }); };
       menu(e.clientX, e.clientY, [
         labelOf(it) || it.raw,
+        it.kind === 'number' && typeof BeatLink !== 'undefined' ? ['♪ Move with the music…', bindings[ids[i]] ? `now: ${linkName(bindings[ids[i]])}` : 'pulse on the kick, step on each bar, follow the bass…', () => openLink(it, i, r), Boolean(bindings[ids[i]]?.how), 'Move with the music'] : null,
         ['↺ Back to the code\'s value', fmtVal(it, it.orig), () => resetOne(i)],
         [locked ? '🔓 Unlock' : '🔒 Lock at this value', 'Shuffle, looks, resets and MIDI leave it alone', () => toggleLock(i)],
         ['🔒 Reset and lock', '', () => { if (locks.has(ids[i])) toggleLock(i); resetOne(i); toggleLock(i); }],
@@ -930,8 +934,8 @@ const ThreeTweaks = (() => {
         hist.length ? 'History (click to go back)' : null,
         ...hist.map((v) => [fmtVal(it, v), '', () => set(v)]),
         it.kind === 'number' ? 'Moves' : null,
-        it.kind === 'number' && audioMap() ? ['♪ React to a sound (curve)…', bindings[ids[i]] ? `follows ${bandName(bindings[ids[i]].band)}` : 'kick, hats, drops, bands… with a curve', () => audioMap().edit(mapAdapter(it, i, r))] : null,
-        ...(r.musicPanel ? [['♪ Follow the music / move by itself…', bindings[ids[i]] ? `follows ${bandName(bindings[ids[i]].band)}` : motions[ids[i]] ? MOTION_NAME[motions[ids[i]].kind] : 'bass, kick, LFO, random walk…', () => { r.musicPanel.hidden = false; r.paintMusic?.(); }]] : []),
+        it.kind === 'number' && audioMap() ? ['♪ React to a sound (curve)…', bindings[ids[i]] ? `follows ${linkName(bindings[ids[i]])}` : 'kick, hats, drops, bands… with a curve', () => audioMap().edit(mapAdapter(it, i, r))] : null,
+        ...(r.musicPanel ? [['♪ Follow the music / move by itself…', bindings[ids[i]] ? `follows ${linkName(bindings[ids[i]])}` : motions[ids[i]] ? MOTION_NAME[motions[ids[i]].kind] : 'bass, kick, LFO, random walk…', () => { r.musicPanel.hidden = false; r.paintMusic?.(); }]] : []),
         ...(it.kind === 'number' ? MOTIONS.filter(([k]) => k).map(([k, name, hint]) => [`${motions[ids[i]]?.kind === k ? '● ' : ''}${name}`, hint, () => setMotion(i, motions[ids[i]]?.kind === k ? null : { kind: k })]) : []),
         ...(keyframes && it.key != null && (it.kind === 'number' || it.kind === 'color') ? [['◆ Keyframe at the playhead', '', () => { keyframes.toggle(it.key, values[i]); r.paintKey?.(); }]] : []),
         learn && it.key != null ? ['🎛 Map to a MIDI knob…', 'Then turn the knob or fader', () => learn(it.key, labelOf(it))] : null,
@@ -1047,7 +1051,7 @@ const ThreeTweaks = (() => {
       if (!scanned) return mods;
       scanned.items.forEach((it, i) => {
         const b = bindings[ids[i]];
-        if (b?.band && it.kind === 'number') mods[i] = { band: b.band, amount: b.amount, span: it.range.max - it.range.min, int: it.int, mid: ids[i], ...(b.c ? { c: b.c } : {}) };
+        if (b?.band && it.kind === 'number') mods[i] = { band: b.band, amount: b.amount, span: it.range.max - it.range.min, int: it.int, mid: ids[i], ...(b.c ? { c: b.c } : {}), ...(b.how ? { how: b.how, lo: b.lo, hi: b.hi, att: b.att, dec: b.dec, steps: b.steps, glide: b.glide, seed: b.seed } : {}) };
       });
       return mods;
     }
@@ -1065,6 +1069,32 @@ const ThreeTweaks = (() => {
     // tools/three-audio-map.js fills) and opens the curve editor (any audio feature, amount, smoothing, threshold, invert)
     function audioMap() { return typeof ThreeAudioMap !== 'undefined' ? ThreeAudioMap : null; }
     function meterOn(r) { if (r?.el) audioMap()?.meterHost(r.el, ids[r.i], Boolean(bindings[ids[r.i]])); }
+    // (round 38, beatlink) ♪ Move with the music: a link with a "how" and a range (tools/three-beatlink.js edits it).
+    // Each change is one step of this panel's undo (↶, Ctrl/⌘+Z): { link: id, prev } beside the value snapshots.
+    // o.undo false: no step (a range handle being dragged); o.from: the step's "before" (the drag's start)
+    function setLink(i, link, { undo: step = true, from } = {}) {
+      const id = ids[i];
+      const prev = bindings[id] ? JSON.parse(JSON.stringify(bindings[id])) : null;
+      const before = from !== undefined ? from : prev;
+      if (step && JSON.stringify(before) !== JSON.stringify(link || null)) { undoStack.push({ link: id, prev: before }); if (undoStack.length > 60) undoStack.shift(); }
+      if (JSON.stringify(prev) === JSON.stringify(link || null)) { refreshState(); return; }
+      if (link) bindings[id] = link; else delete bindings[id];
+      persist?.('bindings', bindings);
+      send({ type: 'tweak-mods', mods: modsNow() });
+      rows.filter((x) => x.i === i).forEach((x) => { x.updateMusic?.(); meterOn(x); x.paintLink?.(); });
+      refreshState();
+    }
+    function linkAdapter(it, i, r) {
+      return {
+        key: it.key, label: labelOf(it), mid: ids[i], min: it.range.min, max: it.range.max, step: it.range.step, int: it.int,
+        get anchor() { return (r?.el?.isConnected ? r.el : null) || rows.find((x) => x.i === i)?.el || null; },
+        get live() { return reads ? reads.live.has(i) : true; }, value: () => values[i], get: () => bindings[ids[i]] || null,
+        set: (link, o) => setLink(i, link, o),
+        curve: () => audioMap()?.edit(mapAdapter(it, i, r)),
+        panel: () => { const x = rows.find((y) => y.i === i && y.musicPanel); if (x) { x.musicPanel.hidden = false; x.paintMusic?.(); } },
+      };
+    }
+    const openLink = (it, i, r) => (typeof BeatLink !== 'undefined' ? (BeatLink.open(linkAdapter(it, i, r)), true) : false);
     function mapAdapter(it, i, r) {
       return { key: it.key, label: labelOf(it), mid: ids[i], anchor: r?.el || rows.find((x) => x.i === i)?.el, live: reads ? reads.live.has(i) : true, get: () => bindings[ids[i]] || null, set: (band, amount, c) => setBinding(i, band, amount, c) };
     }
@@ -1368,8 +1398,9 @@ const ThreeTweaks = (() => {
       const music = el('button', { class: 'tw-music-btn', text: '♪', title: 'Follow the music' });
       const { panel, paint } = musicPanel(it, i, r);
       panel.classList.add('tw-kpanel');
-      music.addEventListener('click', () => { panel.hidden = !panel.hidden; paint(); });
-      r.updateMusic = () => { const b = bindings[ids[i]]; const mo = motions[ids[i]]; music.textContent = mo && !b ? '∿' : '♪'; music.title = [b ? `Follows ${bandName(b.band)}` : '', mo ? `Moves by itself: ${MOTION_NAME[mo.kind]}` : ''].filter(Boolean).join(' · ') || 'Follow the music or move by itself'; music.classList.toggle('on', Boolean(b || mo)); k.cell.classList.toggle('music', Boolean(b || mo)); };
+      // (round 38, beatlink) ♪ opens Move with the music (one gesture); its "More…" has the older panel
+      music.addEventListener('click', () => { if (!openLink(it, i, r)) { panel.hidden = !panel.hidden; paint(); } });
+      r.updateMusic = () => { const b = bindings[ids[i]]; const mo = motions[ids[i]]; music.textContent = mo && !b ? '∿' : '♪'; music.title = [b ? `Follows ${linkName(b)}` : '', mo ? `Moves by itself: ${MOTION_NAME[mo.kind]}` : ''].filter(Boolean).join(' · ') || 'Follow the music or move by itself'; music.classList.toggle('on', Boolean(b || mo)); k.cell.classList.toggle('music', Boolean(b || mo)); };
       r.paintMusic = paint;
       r.musicPanel = panel;
       icons.append(music);
@@ -1389,6 +1420,7 @@ const ThreeTweaks = (() => {
       r.panelEl = panel;
       r.updateMusic();
       r.paintLock();
+      if (typeof BeatLink !== 'undefined') BeatLink.decorate(r, () => linkAdapter(it, i, r)); // (round 38) ♪ badge
       if (it.key != null) r.el.dataset.twKey = it.key; // (round 22) MIDI learn: the knob under the pointer
       rows.push(r);
       meterOn(r);
@@ -1406,12 +1438,12 @@ const ThreeTweaks = (() => {
       scrubbable(label, it, i);
       const r = { it, i, badge, set: ctl.set, text: `${labelOf(it) || ''} ${it.hint || ''} ${it.group || ''} ${it.lineText}`.toLowerCase() };
       if (it.kind === 'number') {
-        const music = el('button', { class: 'tw-music-btn', text: '♪', title: 'Make this slider follow the music (bass, mids, highs, loudness or the beat)' });
+        const music = el('button', { class: 'tw-music-btn', text: '♪', title: 'Move with the music: pulse on the kick, step on each bar, follow the bass…' });
         const { panel, paint } = musicPanel(it, i, r);
-        music.addEventListener('click', () => { panel.hidden = !panel.hidden; paint(); });
+        music.addEventListener('click', () => { if (!openLink(it, i, r)) { panel.hidden = !panel.hidden; paint(); } }); // (round 38, beatlink)
         r.updateMusic = () => {
           const b = bindings[ids[i]]; const mo = motions[ids[i]];
-          music.textContent = [b ? `♪ ${bandName(b.band)}` : '', mo ? `∿ ${MOTION_NAME[mo.kind].split(' ')[0]}` : ''].filter(Boolean).join(' ') || '♪';
+          music.textContent = [b ? `♪ ${linkName(b)}` : '', mo ? `∿ ${MOTION_NAME[mo.kind].split(' ')[0]}` : ''].filter(Boolean).join(' ') || '♪';
           music.classList.toggle('on', Boolean(b || mo));
         };
         r.updateMusic();
@@ -1440,6 +1472,7 @@ const ThreeTweaks = (() => {
       r.el = el('div', { class: `tw-row kind-${it.kind}${named ? ' named' : ''}` }, top, it.hint ? el('div', { class: 'tw-hint', text: it.hint }) : null, ctl.node, r.musicPanel || null);
       r.el.addEventListener('contextmenu', (e) => { if (!e.target.closest('input[type=text], input[type=number]')) rowMenu(e, it, i, r); });
       r.paintLock();
+      if (it.kind === 'number' && typeof BeatLink !== 'undefined') BeatLink.decorate(r, () => linkAdapter(it, i, r)); // (round 38) ♪ badge + range handles
       if (it.key != null) r.el.dataset.twKey = it.key; // (round 22) MIDI learn: the slider under the pointer (three-stage-midi.js)
       rows.push(r);
       meterOn(r);
@@ -1775,6 +1808,11 @@ const ThreeTweaks = (() => {
       bind(key, band, amount = 0.5, c) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setBinding(i, band || null, amount, c); return true; },
       // (round 23) what a named slider follows ({ band, amount, c } or null) and the curve editor's handle on it
       binding(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i < 0 ? null : bindings[ids[i]] || null; },
+      // (round 38, beatlink) ♪ Move with the music: set / clear a link (one undo step), its editor's handle, open it
+      link(key, link, o) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setLink(i, link || null, o); return true; },
+      linkAdapter(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return null; return linkAdapter(scanned.items[i], i, rows.find((x) => x.i === i) || null); },
+      openLink(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; return openLink(scanned.items[i], i, rows.find((x) => x.i === i) || null); },
+      get undoDepth() { return undoStack.length; },
       motion(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i < 0 ? null : motions[ids[i]] || null; }, // (round 30, autopolish) its undo
       mapping(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return null; return mapAdapter(scanned.items[i], i, null); },
       // MIDI-ready: a 0..1 position (a knob, a fader, an OSC value…) → the control's range, like moving it by hand

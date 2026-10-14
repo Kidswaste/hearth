@@ -39,7 +39,7 @@ const ThreeLab = (() => {
   // into the new page once its layers have drawn their first frame (never a black flash; see "live" below).
   // (round 25, diet) the preview page's motion-design kit / 3D-model runtime (tools/sandbox-*.js): loaded here when a page
   // asks (a sandboxed page can't read files) and sent as source; nothing of them runs in the hub
-  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js' };
+  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js', beatlink: 'tools/three-beatlink-core.js' }; // (round 38, beatlink: ♪ Move with the music's math)
   const libFiles = {};
   function sandboxLib(name, deliver) {
     if (!LIB_FILES[name]) return;
