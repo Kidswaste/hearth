@@ -18,6 +18,8 @@ const SettingsFind = (() => {
     const sid = String(id ? H.surfaceIdFor(id) : '');
     return (sid.startsWith('tool:') && Tools.dockedAgent?.(sid.slice(5))) || H.claudeAgent();
   }
+  // (round 39, settingscalm) the board's switches read their state back once the board is in (unknown before)
+  const board = (k, f) => { try { return typeof Board !== 'undefined' && Board.prefs ? f(Board.prefs() || {}) : undefined; } catch { return undefined; } };
   // cost: tokens (added to what the AI reads), speed (a little drawing work), or free
   const GPU = { kind: 'speed', text: 'a little GPU' };
   const FREE = { kind: 'free', text: 'free' };
@@ -40,19 +42,20 @@ const SettingsFind = (() => {
     { home: 'chats', label: 'Wrap long code lines', tip: 'Long lines of code wrap instead of scrolling sideways', cmd: 'wrap', get: () => Boolean(pref('wrap')), cost: FREE },
     { home: 'chats', label: 'Message numbers', tip: 'A small number under each message', cmd: 'numbers', get: () => Boolean(pref('numbers')), cost: FREE },
     { home: 'chats', label: 'Spell check in the message box', tip: 'Red underlines under misspelled words while you type', cmd: 'spell', get: () => pref('spell') !== false, cost: FREE },
-    { home: 'hearth', label: 'The pick-up card when Hearth opens', tip: 'A small card that takes you back to your last chat, scene or render', cmd: 'resume', get: () => store.get('speed.resume', true) !== false, cost: FREE },
+    { home: 'start', label: 'The pick-up card when Hearth opens', tip: 'A small card that takes you back to your last chat, scene or render', cmd: 'resume', get: () => store.get('speed.resume', true) !== false, cost: FREE },
     // (round 38, hintcalm) one switch for every tip that shows by itself (hints.js); it took the "Did you know?" row's
     // place (that tip no longer comes by itself since round 31; /tip still shows one)
-    { home: 'hearth', label: 'Don\'t show tips', tip: 'No tips, cards or suggestion lines by themselves (What can I do here?, What\'s new, hints, Continue lighter…). Errors, sign-in, offline and usage-limit notes still show. The ⋯ of each window still has ✦ What can I do here?', cmd: 'hints', on: 'off', off: 'on', get: () => window.Hints?.off?.() === true, cost: FREE },
+    { home: 'updates', label: 'Don\'t show tips', tip: 'No tips, cards or suggestion lines by themselves (What can I do here?, What\'s new, hints, Continue lighter…). Errors, sign-in, offline and usage-limit notes still show. The ⋯ of each window still has ✦ What can I do here?', cmd: 'hints', on: 'off', off: 'on', get: () => window.Hints?.off?.() === true, cost: FREE },
     { home: 'hearth', label: 'Weekly tidy: never-used buttons go behind Alt', tip: 'Once a week, buttons you never press wait behind Alt (hold it to see them)', cmd: 'habits', on: 'tidy on', off: 'tidy off', get: () => store.get('habits.tidy', true) !== false, cost: FREE },
     { home: 'hearth', label: 'Pause every timer', tip: 'Holds the repeating and scheduled actions you set up, until you turn this off', cmd: 'timers-pause', get: () => lsGet('cmdbar.timersPaused', false), cost: FREE },
-    { home: 'board', label: 'Snap to other items (guides)', tip: 'Items line up with their neighbours while you drag them', cmd: 'board-snap', cost: FREE },
-    { home: 'board', label: 'Snap to a grid', tip: 'Items land on an invisible grid while you drag them', cmd: 'board-grid', cost: FREE },
-    { home: 'board', label: 'Minimap', tip: 'The small map of the whole board in a corner (Auto: only when the board is big)', cmd: 'board-minimap', choices: ['auto', 'on', 'off'], cost: FREE },
+    { home: 'board', label: 'Snap to other items (guides)', tip: 'Items line up with their neighbours while you drag them', cmd: 'board-snap', get: () => board('snap', (p) => p.snap !== false), cost: FREE },
+    { home: 'board', label: 'Snap to a grid', tip: 'Items land on an invisible grid while you drag them', cmd: 'board-grid', get: () => board('grid', (p) => Boolean(p.grid)), cost: FREE },
+    { home: 'board', label: 'Minimap', tip: 'The small map of the whole board in a corner (Auto: only when the board is big)', cmd: 'board-minimap', choices: ['auto', 'on', 'off'], get: () => board('minimap', (p) => p.minimap || 'auto'), cost: FREE },
   ];
   // only what exists in this build (a command another stream removed drops its row)
   const live = () => SWITCHES.filter((s) => typeof Commands === 'undefined' || Commands.get(s.cmd));
   const stateOf = (s) => { try { return s.get ? s.get() : undefined; } catch { return undefined; } };
+  const state = (cmd) => { const s = SWITCHES.find((x) => x.cmd === cmd); return s ? stateOf(s) : undefined; }; // (round 39) for the folds' lines
   const COST = { tokens: 'Adds to what the AI reads', speed: 'A little drawing work for your graphics card', free: 'Costs nothing' };
   const tipOf = (s) => `${s.tip}${s.cost ? `\n(${s.cost.kind === 'free' ? COST.free : `${COST[s.cost.kind]}: ${s.cost.text}`})` : ''}`;
 
@@ -62,6 +65,7 @@ const SettingsFind = (() => {
     const said = (t) => { if (note && t) note.textContent = String(t).replace(/[*`]/g, '').replace(/\s*\(\/[a-z][^)]*\)/gi, '').slice(0, 160); };
     await Commands.tryRun(`/${s.cmd} ${arg}`.trim(), a?.id, undefined, { source: 'settings', say: said, note: said, error: (m) => { said(m); row.classList.add('sf-err'); } });
     paint(row, s);
+    row.dispatchEvent(new CustomEvent('sf-changed', { bubbles: true, detail: { cmd: s.cmd } })); // (round 39) the fold's line follows
   }
   function paint(row, s) {
     const v = stateOf(s);
@@ -96,15 +100,24 @@ const SettingsFind = (() => {
     const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
     const hit = (node) => { const t = `${node.dataset?.find || ''} ${node.title || ''} ${node.textContent} ${[...node.querySelectorAll('input[placeholder], select option:checked, [title]')].map((x) => `${x.placeholder || ''} ${x.title || ''} ${x.matches('option') ? x.textContent : ''}`).join(' ')}`.toLowerCase(); return words.every((w) => t.includes(w)); };
     let any = false;
+    const found = []; // rows that match (a fold itself doesn't count: what's inside it does)
     for (const sec of form.querySelectorAll('.settings-section')) {
-      const title = hit(sec.querySelector('h3') || sec);
+      const title = hit(sec.querySelector(':scope > h3') || sec);
       let n = 0;
-      for (const r of sec.querySelectorAll(ROWS)) { const show = !words.length || title || hit(r); r.hidden = !show; if (show) n += 1; }
+      for (const r of sec.querySelectorAll(ROWS)) {
+        const show = !words.length || title || hit(r);
+        r.hidden = !show; if (show) n += 1;
+        if (show && words.length && !r.matches('details')) found.push(r);
+      }
       sec.hidden = Boolean(words.length) && !n;
       if (!sec.hidden && words.length) any = true;
     }
-    const more = form.querySelector('details.settings-more');
-    if (more) { if (words.length) { more.dataset.wasOpen ??= more.open ? '1' : ''; more.open = [...more.querySelectorAll('.settings-section')].some((s) => !s.hidden); } else if (more.dataset.wasOpen != null) { more.open = Boolean(more.dataset.wasOpen); delete more.dataset.wasOpen; } }
+    // (round 39, settingscalm) every fold (Advanced and the folds in it and in the sections) opens while a match is
+    // inside it, and goes back to how it was when the search is emptied
+    for (const d of form.querySelectorAll('details.settings-more, details.sc-fold')) {
+      if (words.length) { d.dataset.wasOpen ??= d.open ? '1' : ''; d.open = found.some((r) => d.contains(r) && !r.closest('.settings-section[hidden]')); }
+      else if (d.dataset.wasOpen != null) { d.open = Boolean(d.dataset.wasOpen); delete d.dataset.wasOpen; }
+    }
     if (none) none.hidden = !words.length || any;
   }
 
@@ -128,6 +141,27 @@ const SettingsFind = (() => {
 .settings-section[hidden], .sf-row[hidden] { display: none; }
 .settings-ai { display: flex; align-items: center; gap: 10px; margin: 2px 0 2px; font-size: 12.5px; color: var(--muted); }
 .settings-ai .spacer { flex: 1; }
+/* (round 39, settingscalm) folds: the title, one line about where it stands (right), ▸ / ▾ (⋯ AI setup's pattern) */
+.settings-dialog .sc-fold > summary.sc-sum { list-style: none; display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; padding: 4px; margin: 0; min-height: 30px; border-radius: 7px; font-size: 13.5px; color: var(--text); }
+.settings-dialog .sc-fold > summary.sc-sum::-webkit-details-marker { display: none; }
+.settings-dialog .sc-fold > summary.sc-sum::after { content: '▸'; flex: none; color: var(--muted); font-size: 11px; }
+.settings-dialog .sc-fold[open] > summary.sc-sum::after { content: '▾'; }
+.settings-dialog .sc-fold > summary.sc-sum:hover { background: var(--hover); }
+.sc-title { flex: none; }
+.sc-state { flex: 1; min-width: 0; text-align: right; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.settings-dialog .sc-fold[open]:not(.sc-adv) { padding: 0 0 6px 8px; border-left: 1px solid var(--line); }
+.settings-dialog .sc-fold[open]:not(.sc-adv) > summary.sc-sum { margin-left: -8px; }
+:root .settings-dialog details.sc-fold > .settings-section { border: 0; padding: 4px 0 0; background: none; box-shadow: none; }
+:root .settings-dialog details.sc-fold > .settings-section > h3 { display: none; }
+.settings-dialog .sc-adv { margin-top: 10px; }
+.settings-dialog .sc-adv > summary.sc-sum .sc-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.settings-dialog .sc-adv[open] > summary.sc-sum { margin-bottom: 4px; }
+.sc-row { display: flex; align-items: center; gap: 10px; }
+.sc-row .spacer { flex: 1; }
+.sc-line { font-size: 12.5px; color: var(--muted); }
+.settings-dialog .look-split .look-featured { margin: 0; }
+.ui-modal label.big-size-compact { margin: 0; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; color: var(--text); }
+.big-size-compact .big-size-label { font-weight: 400; font-size: 13.5px; }
 ` }));
   }
 
@@ -140,7 +174,7 @@ const SettingsFind = (() => {
     const { input, none } = searchBox(form);
     h2?.after(input, none);
     const anchor = form.querySelector('details.settings-more');
-    const NAMES = { chats: 'Chats', hearth: 'Hearth', board: 'Mood board', look: 'Look', updates: 'Updates' };
+    const NAMES = { chats: 'Chats', hearth: 'Housekeeping', board: 'Mood board', look: 'More looks and tweaks', updates: 'Updates and tips', start: 'Starting and closing' };
     for (const s of live()) {
       let home = form.querySelector(`.settings-section[data-home="${s.home}"]`);
       if (!home) { home = section(NAMES[s.home] || s.home); home.dataset.home = s.home; (anchor || form).append(home); }
@@ -151,5 +185,5 @@ const SettingsFind = (() => {
     requestAnimationFrame(() => input.focus({ preventScroll: true }));
     return input;
   }
-  return { SWITCHES, live, mount, filter, agentNow };
+  return { SWITCHES, live, mount, filter, agentNow, state };
 })();

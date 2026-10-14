@@ -1,5 +1,5 @@
 // Check this computer (round 28, firstrun*.js), driven like the owner on a new computer: the group waits for its first
-// use; Settings › Advanced has "Check this computer…"; the list shows every line (Claude, Codex for Astra, ffmpeg, sync,
+// use; Settings › This computer & sync has "Check this computer…" (round 39: moved up from Advanced); the list shows every line (Claude, Codex for Astra, ffmpeg, sync,
 // folders, updates) with its state; Codex missing (Settings › Engines points nowhere) is "To do" with the exact install
 // command shown BEFORE the click; Claude signed out (fake switch) shows the sign-in command, its button runs it in the
 // (test) window and the line turns Ready by itself; a chat's folder from the other computer is "To do", matched by hand
@@ -29,11 +29,11 @@ try {
   await sw({ claudeLoggedOut: '1' });
   await window.hub.saveChat({ id: 'frtest-chat', agentId: C.id, title: 'Forge site', access: { level: 'read', folders: [MISSING_FOLDER] }, messages: [], updatedAt: Date.now() });
 
-  // ---- Settings › Advanced › Check this computer… ----
+  // ---- Settings › This computer & sync › Check this computer… (round 39, settingscalm: in sight, not in Advanced) ----
   AppUI.openSettings(); await wait(700);
   const sdlg = document.querySelector('dialog.settings-dialog[open]');
   const btn = sdlg && [...sdlg.querySelectorAll('button')].find((b) => b.textContent === 'Check this computer…');
-  ok(btn && btn.closest('details.settings-more'), 'Settings › Advanced has "Check this computer…"');
+  ok(btn && btn.checkVisibility() && btn.closest('.settings-section')?.querySelector(':scope > h3')?.textContent === 'This computer & sync', 'Settings › This computer & sync has "Check this computer…", in sight');
   btn?.click();
   ok(await until(() => document.querySelector('dialog.fr-dialog[open]'), 8000), 'the list opens (group loaded on that click)');
   ok(!document.querySelector('dialog.settings-dialog[open]'), 'Settings closed behind it');
@@ -90,7 +90,7 @@ try {
   store.set('firstrun.seen', false);
   ok(FirstRun.auto({}, { test: false, chats: 0 }) === true && document.querySelector('dialog.fr-dialog[open] h2')?.textContent === 'Set up this computer', 'a fresh computer: "Set up this computer" opens once');
   const skip = [...document.querySelectorAll('dialog.fr-dialog[open] button')].find((b) => b.textContent === 'Skip for now');
-  ok(skip && /Settings › Advanced/.test(document.querySelector('.fr-later')?.textContent || ''), 'skippable, says where it comes back from');
+  ok(skip && /Settings › This computer & sync/.test(document.querySelector('.fr-later')?.textContent || ''), 'skippable, says where it comes back from');
   skip?.click(); await wait(200);
   ok(!document.querySelector('dialog.fr-dialog[open]') && FirstRun.auto({}, { test: false, chats: 0 }) === false, 'skipped: it doesn\'t come back by itself');
 

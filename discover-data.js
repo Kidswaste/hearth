@@ -144,7 +144,7 @@ const DiscoverData = (() => {
       { title: 'One-key routines', text: 'Routines you repeat are offered once as one key (Ctrl/⌘+Alt+1…9). The keys sheet (bottom left) lists them.', cmd: '/macro learned' },
     ] },
     { id: 'discover', name: 'Discover', icon: '✦', why: 'what\'s new, tips, ideas', steps: [
-      { title: 'What\'s new', text: 'After an ⬆ Update, one small card shows the few changes that fit how you work; Settings → Updates → What\'s new any time.', target: ['#up-btn:not([hidden])', '#keys-btn'], cmd: '/whats-new' },
+      { title: 'What\'s new', text: 'After an ⬆ Update, one small card shows the few changes that fit how you work; Settings › Updates & what\'s new any time.', target: ['#up-btn:not([hidden])', '#keys-btn'], cmd: '/whats-new' },
       { title: 'Feature map', text: 'On ☰ Commands › ✦ Discover: each area with what you used and what you never tried, and ✦ Surprise me.', open: 'tool:commands', target: ['.cp-row[data-ext="tour:discover"]', RAIL('commands')] },
       { title: 'Ideas for tonight', text: 'Things to make from your board, songs, scenes and apps; one click starts the right command.', target: ['.dc-tabs [data-tab="ideas"]', '.cp-row[data-ext="tour:discover"]'], cmd: '/ideas' },
     ] },

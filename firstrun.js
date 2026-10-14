@@ -1,5 +1,5 @@
 // Check this computer (round 28, firstrun): a new computer ready in two minutes. On the first launch on a fresh
-// computer (no chats yet; engine-health.js asks once the startup check is in) and from Settings › Advanced ›
+// computer (no chats yet; engine-health.js asks once the startup check is in) and from Settings › This computer & sync ›
 // "Check this computer…", one calm list in plain words (firstrun-core.js): Claude, Codex for Astra, ffmpeg, the sync
 // folder (join the Hearth already in your cloud drive), folders chats use from the other computer, the Mac's privacy
 // permissions, Windows paths + the SmartScreen note, updates. Each line has its state and one button.
@@ -165,7 +165,7 @@ const FirstRun = (() => {
       el('div', { class: 'dialog-actions' },
         el('button', { type: 'button', class: 'ghost', text: 'Check again', title: 'Look at everything again now', on: { click: () => recheck() } }),
         el('span', { class: 'spacer' }),
-        el('span', { class: 'hint fr-later', text: auto ? 'Comes back from Settings › Advanced' : '' }),
+        el('span', { class: 'hint fr-later', text: auto ? 'Comes back from Settings › This computer & sync' : '' }),
         el('button', { type: 'button', class: auto ? 'ghost' : 'primary', text: auto ? 'Skip for now' : 'Done', on: { click: close } }))));
     dlg.addEventListener('close', () => {
       for (const t of watches.values()) clearInterval(t);
@@ -192,7 +192,7 @@ const FirstRun = (() => {
     return true;
   }
 
-  // ---------- reachable: Settings › Advanced (appui.js), Ctrl/⌘+K, /check-computer ----------
+  // ---------- reachable: Settings › This computer & sync (appui.js), Ctrl/⌘+K, /check-computer ----------
   AppUI.addAction?.('Check this computer…', () => open());
   if (!Commands.get('check-computer')) {
     Commands.register({ name: 'check-computer', aliases: ['setup-computer'], area: 'Hearth', desc: 'Is this computer ready? Claude, Codex, ffmpeg, sync, folders, permissions, updates: one list, one button each',

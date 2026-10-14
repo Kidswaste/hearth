@@ -164,7 +164,10 @@ const Look = (() => {
     box.sync = () => { const cur = String(fx()[key]); for (const b of box.children) b.classList.toggle('on', b.dataset.value === cur); };
     return box;
   }
-  function picker() {
+  // (round 39, settingscalm) picker({ split: true }): Settings shows the three looks on one row (box) and folds the
+  // rest (box.rest: Now / Match my computer / Let Astra pick, yours, every look, the tweaks shown at once: the fold is
+  // their "Advanced" already). The Appearance dialog keeps the whole picker.
+  function picker({ split = false } = {}) {
     const search = el('input', { type: 'search', placeholder: 'Find a look…' });
     const now = el('span', { class: 'look-now' });
     const grid = el('div', { class: 'look-grid' });
@@ -191,7 +194,7 @@ const Look = (() => {
       const ids = [...FEATURED, presetId()].filter((id, i, a) => themes()[id] && a.indexOf(id) === i);
       featured.replaceChildren(...ids.map((id) => tile(id, themes()[id], null)));
     };
-    const moreLooks = el('details', { class: 'look-more' }, el('summary', { text: `More looks (${Object.keys(themes()).length - FEATURED.length})` }), search, grid);
+    const moreLooks = el('details', { class: 'look-more' }, el('summary', { text: `${split ? 'Every look' : 'More looks'} (${Object.keys(themes()).length - FEATURED.length})`, title: 'Every other look, by group, with a search' }), search, grid);
     for (const g of GROUPS) {
       const items = Object.entries(themes()).filter(([id, t]) => (t.group || 'Plain') === g && !FEATURED.includes(id));
       if (!items.length) continue;
@@ -230,8 +233,17 @@ const Look = (() => {
       el('span', { text: 'Your looks' }), el('span', {}, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this look and your tweaks under a name',
         on: { click: async () => { const n = await Modal.prompt('Save this look as', { placeholder: 'e.g. Night session' }); if (n) toast(saveLook(n), { timeout: 1600 }); } } })));
     const decide = typeof Decide !== 'undefined' ? el('button', { type: 'button', class: 'ghost small decide-btn', text: '✦ Let Astra pick', title: 'Astra picks a look for you (Undo puts yours back)', on: { click: () => Decide.run('theme') } }) : null;
-    const box = el('div', { class: 'look-picker' }, el('div', { class: 'look-top' }, now, el('span', { class: 'spacer' }), typeof NativeFeel !== 'undefined' ? NativeFeel.followButton() : null, decide), typeof Bigscreen !== 'undefined' ? Bigscreen.sizeRow() : null, featured, mine, moreLooks, // (round 38: the size of everything, per screen)
-      el('details', { class: 'look-adv' }, el('summary', { text: 'Advanced: textures, glow, motion, density, corners…' }), ctl));
+    const top = el('div', { class: 'look-top' }, now, el('span', { class: 'spacer' }), typeof NativeFeel !== 'undefined' ? NativeFeel.followButton() : null, decide);
+    let box;
+    if (split) {
+      box = el('div', { class: 'look-picker look-split', title: 'The colours of Hearth: click one (the fold below has every other look)' }, featured);
+      top.title = 'The look in use; ◐ makes it follow your computer\'s light / dark mode, ✦ lets Astra pick one';
+      ctl.title = 'Finer touches of the look: textures, glow, motion, spacing, corners, chat font, accent, tooltips';
+      box.rest = el('div', { class: 'look-rest' }, top, mine, moreLooks, ctl);
+    } else {
+      box = el('div', { class: 'look-picker' }, top, typeof Bigscreen !== 'undefined' ? Bigscreen.sizeRow() : null, featured, mine, moreLooks, // (round 38: the size of everything, per screen)
+        el('details', { class: 'look-adv' }, el('summary', { text: 'Advanced: textures, glow, motion, density, corners…' }), ctl));
+    }
     box.refresh = () => {
       const f = fx();
       const t = preset();

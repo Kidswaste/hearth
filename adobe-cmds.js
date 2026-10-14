@@ -113,7 +113,7 @@
     if (v === 'where') {
       const [appWord, ...p] = rest;
       const a = D.app(appWord);
-      if (!a || a.how === 'ae') return 'Which app? /adobe where photoshop|illustrator|premiere|mediaencoder|indesign <path to the app> (After Effects: Settings → Folders).';
+      if (!a || a.how === 'ae') return 'Which app? /adobe where photoshop|illustrator|premiere|mediaencoder|indesign <path to the app> (After Effects: Settings › Advanced › Folders).';
       const paths = { ...(H.config.settings?.adobePaths || {}) };
       if (p.length) paths[a.id] = unquote(p.join(' ')); else delete paths[a.id];
       H.config.settings = { ...H.config.settings, adobePaths: paths };
