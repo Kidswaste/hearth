@@ -60,6 +60,8 @@ const SceneDoctor = (() => {
   async function check() {
     const R = await read();
     const findings = C().diagnose(R);
+    // (round 35, twocomputers) a song / video of the scene that isn't on this computer: "Find this file"
+    for (const m of window.TwoComputers?.missingList?.() || []) findings.unshift({ id: `file:${m.path}`, kind: 'missing', layerName: null, text: `${m.name} isn't on this computer.`, fix: { kind: 'find', label: 'Find this file', path: m.path }, ask: `"${m.name}" isn't on this computer: keep the scene working without it for now.` });
     return { R, findings };
   }
 
@@ -94,6 +96,8 @@ const SceneDoctor = (() => {
       d.sliders(f.fix.layer, f.fix.set);
       return async () => { const back = Object.fromEntries(Object.entries(was).filter(([, v]) => v !== undefined)); try { d.sliders(f.fix.layer, back); } catch { /* the layer went away */ } };
     },
+    // (round 35, twocomputers) the file picked here stands for the missing one (nothing to undo: the scene is unchanged)
+    async find(d, f) { const p = await TwoComputers.findMissing(f.fix.path); if (p) setTimeout(() => look({ keepFixed: true }).catch(() => {}), 600); else paint(); return null; },
     async lightmode(d, f, cmd) { cmd.light(true); return async () => { cmd.light(false); }; },
     async adapt(d, f, cmd) { cmd.adapt(true); return async () => { cmd.adapt(false); }; },
     async live(d, f, cmd) {

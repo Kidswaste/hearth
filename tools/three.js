@@ -2204,6 +2204,8 @@ const ThreeLab = (() => {
       saveExtras();
       player.setClockLength(tl.len);
     }
+    // (round 35, twocomputers) a song found again on this computer (another path): every scene using it follows
+    player.on('relink', ({ from, to }) => { let n = 0; for (const id of Object.keys(extras)) if (extras[id]?.media?.path === from) { extras[id].media.path = to; n += 1; } if (n) saveExtras(); });
     player.on('clock-length', (n) => { if (current && extras[current.id]?.timeline) { extras[current.id].timeline.len = n; saveExtras(); } });
     // A song loaded on a scene that played on its own timeline: its cues and markers come along at the same seconds
     // (keyframes are in seconds on the layers already), and once the song's bars are known one click snaps them.

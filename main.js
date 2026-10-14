@@ -553,6 +553,7 @@ function registerAfterWindow() {
   syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
   require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply
   require('./reachmain').register(ipcMain, { dataDir: store.DATA_DIR, syncmain, folderMap: () => settings().reachFolders }); // (round 19) paths from the other computer, open / reveal / preview what a chat made
+  lazyIpc('twocomputersmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, syncmain, getWin: () => win })); // (round 35) two computers: this computer's id / name, media found again after a switch, "Find this file"
   lazyIpc('updatermain.js', (m, ipc) => m.register(ipc, { restart: () => appshell.restartApp(), getWin: () => win })); // ⬆ Update: pull main from the app's git checkout, reload / restart (round 29: on first use)
   lazyIpc('chromemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 30) Hearth's Chrome: Google sign-in in the owner's real Chrome, driven over the DevTools protocol
   lazyIpc('chromeviewmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 31) Chrome views: that Chrome out of sight, its pages shown and used inside Hearth's windows

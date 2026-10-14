@@ -69,8 +69,11 @@ const Sync = (() => {
 
   // ---------- the menu (the dot, Settings ⋯, /sync menu) ----------
   function items() {
-    if (!st.on) return [{ label: 'Turn on sync…', action: () => setup() }];
+    if (!st.on) return [window.TwoComputers?.hereLine?.(), window.TwoComputers?.menuItem?.(), { label: 'Turn on sync…', action: () => setup() }].filter(Boolean);
     const out = [line().length > 70 ? `${STATE_WORD[st.paused ? 'paused' : st.state] || 'Sync'} · ${where()}` : line()];
+    // (round 35, twocomputers) which computer this is, and what needs a click here after a switch
+    const here = window.TwoComputers?.hereLine?.(); if (here) out.push(here);
+    const todo = window.TwoComputers?.menuItem?.(); if (todo) out.push(todo);
     if (fresh) out.push({ label: `Reload to see changes from ${fresh.from}`, action: () => reload() });
     if (st.held) {
       out.push({ label: `Review the ${st.held.deletes} deleted files by name…`, action: () => held() });
@@ -403,7 +406,8 @@ const Sync = (() => {
     const bigRow = el('label', { class: 'check' }, bigIn, 'Sync big videos (captures and renders over 100 MB, in resumable pieces)');
     function upd() { text.textContent = line(); btn.textContent = st.on ? 'Sync now' : 'Turn on sync…'; btn.className = st.on ? 'ghost' : 'primary'; bigRow.hidden = !st.on; more.hidden = !st.on; }
     upd();
-    const sec = section('Sync (Mac and PC, through your cloud drive)', text, el('div', { class: 'button-row' }, btn, more), bigRow);
+    const here = window.TwoComputers?.hereEl?.() || ''; // (round 35) "This computer: Mac (name)"
+    const sec = section('Sync (Mac and PC, through your cloud drive)', here, text, el('div', { class: 'button-row' }, btn, more), bigRow);
     sec.classList.add('sync-settings');
     listeners.add(upd);
     return sec;
@@ -449,7 +453,7 @@ const Sync = (() => {
         const say = (t) => (ctx?.say ? ctx.say(t) : toast(t));
         await refresh();
         if (!sub) { if (!st.on) { await setup(); return null; } say(`${line()}${peersLine() ? `\n${peersLine()}` : ''}`); return null; }
-        if (sub === 'status') { say(st.on ? `${line()}${peersLine() ? `\n${peersLine()}` : ''}` : 'Sync is off. /sync turns it on (one click).'); return null; }
+        if (sub === 'status') { const here = window.TwoComputers?.hereLine?.(); say(`${here ? `${here}\n` : ''}${st.on ? `${line()}${peersLine() ? `\n${peersLine()}` : ''}` : 'Sync is off. /sync turns it on (one click).'}`); return null; }
         if (sub === 'on') { if (rest.length) { const r = await api().on({ root: rest.join(' ') }); await refresh(); say(r.ok ? `Sync is on: ${r.label}${r.joined ? ' (joined the Hearth already there; merging)' : ''}.` : r.error); } else if (!st.on) await setup(); else say(line()); return null; }
         if (!st.on) { say('Sync is off. /sync turns it on (one click).'); return null; }
         if (sub === 'now') { await now(); say(line()); return null; }

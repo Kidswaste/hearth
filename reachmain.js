@@ -63,7 +63,10 @@ function localize(input, o = {}) {
   if (!p || !absLike(p)) return null;
   const dataDir = o.dataDir || opts.dataDir;
   const relOf = (q) => { const r = path.relative(dataDir, q); return r && !r.startsWith('..') && !path.isAbsolute(r) ? fwd(r) : null; };
-  if (statOf(p)) return { path: p, foreign: false, rel: relOf(p) };
+  // (round 35, twocomputers) the other computer's way of writing a path is never looked up as it is ("/Users/x/a" on
+  // Windows is C:\Users\x\a by accident, "D:\a" on the Mac a relative name): mapped below, or nothing
+  const other = (() => { try { return require('./twocomputers-core').foreign(p, o.platform || process.platform); } catch { return false; } })();
+  if (!other && statOf(p)) return { path: p, foreign: false, rel: relOf(p) };
   const mapped = mapFolder(p, o.map !== undefined ? o.map : opts.folderMap?.());
   if (mapped) return { path: mapped, foreign: true, rel: relOf(mapped) };
   // this computer's own path written with the other slashes ("C:/Users/…" is fine; "/C:/…" was handled above)

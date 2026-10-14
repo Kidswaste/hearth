@@ -1,0 +1,22 @@
+/* Two computers (twocomputers.js): the "This computer" line, the other computer's folders in ⋯ AI setup → Files,
+   the once-per-computer welcome note, "Find this file". Calm: no animation, no blur. */
+.two-here { margin: 0 0 6px; opacity: .75; font-size: .9em; }
+.two-files { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 2px; }
+.two-files-head { margin: 2px 0 0; }
+.two-folder { opacity: .9; }
+.two-folder .two-pick { white-space: nowrap; }
+.two-folder .access-fpath { font-style: italic; }
+
+.two-welcome {
+  position: fixed; left: 64px; bottom: 16px; z-index: 900; width: min(380px, calc(100vw - 96px));
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 10px;
+  background: var(--surface, var(--panel, #1b1b1f)); color: var(--text, inherit);
+  border: 1px solid var(--line, #333); box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+}
+.two-welcome b { font-weight: 600; }
+.two-welcome .two-sub { margin: 0; opacity: .8; font-size: .9em; line-height: 1.4; }
+.two-welcome .two-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .92em; line-height: 1.35; }
+.two-welcome .two-row > span:first-child { flex: 1 1 200px; min-width: 0; }
+.two-welcome .two-acts { display: flex; flex-wrap: wrap; gap: 4px; }
+.two-welcome .two-foot { display: flex; justify-content: flex-end; }
+.two-find { white-space: nowrap; }
