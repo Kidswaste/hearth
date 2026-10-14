@@ -99,7 +99,7 @@ const Discover = (() => {
     data.updates = [rec, ...data.updates].slice(0, 30);
     save();
     // (round 38, hintcalm) after the patch notes, in turn (hints.js: one at a time, a few minutes apart)
-    if (items.length) { if (window.Hints) Hints.offer({ id: `whats-new:${rec.at}`, rank: 5, ttl: 20 * 60000, show: () => card(rec) }); else setTimeout(() => card(rec), 3500); }
+    if (items.length) { if (window.Hints) Hints.offer({ id: `whats-new:${rec.at}`, rank: 5, ttl: 20 * 60000, still: () => !window.WhatsNew?.covers?.(rec.at), show: () => card(rec) }); else setTimeout(() => card(rec), 3500); } // (round 42) still: not after the Since you were away digest
     return rec;
   }
   function picked(items, n = 6) { return D.pick(items, { n, profile: profile(), hide: new Set(data.hide), cold: data.cold }); }

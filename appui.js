@@ -192,6 +192,7 @@ const AppUI = (() => {
       el('div', { class: 'button-row', title: 'What changed lately, in plain words' },
         // (round 33, simplify3) one "What's new…" for the patch notes and what fits how you work (were two buttons)
         gbtn('What\'s new…', 'Shows what changed lately: every change in plain words, or only what fits how you work', (e) => { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, [
+          { label: 'Since you were away', hint: 'the top changes of the rounds you missed, one page', action: () => { dialog.close(); Updater.sinceAway(); } }, // (round 42, whatsnew)
           { label: 'Patch notes', hint: 'every change, round by round', action: () => { dialog.close(); Updater.patchNotes(); } },
           { label: 'What\'s new for me', hint: 'what fits how you work', action: run('/whats-new') },
           // (round 37, updatesafe) after an update: back to the version before it, chats and data kept
