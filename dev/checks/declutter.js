@@ -225,9 +225,10 @@ ThreeFX.close(); await wait(150);
 // a layer: Opacity › / Blend ›
 const ly = [...L.querySelectorAll('.ly-row')].find(vis);
 ctxAt(ly, 60, 8); await wait(200);
-out.layerMenu = [...(document.querySelector('.mb-menu.lab-pop')?.querySelectorAll('.menu-item b') || [])].map((b) => b.textContent);
-check('right-click a layer: folded into Opacity › / Blend ›', out.layerMenu.includes('Opacity') && out.layerMenu.includes('Blend'), out.layerMenu);
-check('Lab menus end with Customise this…', out.layerMenu.at(-1) === 'Customise this…', out.layerMenu);
+// (round 35, bugbash2) a layer's right-click is ONE menu since round 26 (labeasy: LabEasy.layerMenu, #menu); the older
+// panel menu (Opacity › / Blend › …) was made underneath it too and never showed: it isn't made any more
+out.layerMenu = menuLabels();
+check('right-click a layer: one menu (hide, rename, duplicate, filters; blend and the rest under More…)', out.layerMenu.some((l) => /Hide|Show/.test(l)) && out.layerMenu.some((l) => /Rename/.test(l)) && out.layerMenu.some((l) => /^More/.test(l)) && !document.querySelector('.mb-menu.lab-pop'), { menu: out.layerMenu, pop: Boolean(document.querySelector('.mb-menu.lab-pop')) });
 close();
 // the preview picture (a real right-click inside the sandboxed iframe)
 const frame = [...L.querySelectorAll('.three-preview iframe')].find(vis);

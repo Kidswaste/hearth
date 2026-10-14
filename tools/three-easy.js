@@ -142,6 +142,7 @@ const LabEasy = (() => {
       h.solo ? { label: 'Show only this one', hint: 'again: all', action: () => h.solo() } : null,
       h.rename ? { label: 'Rename…', action: () => h.rename() } : null,
       h.copy ? { label: '⧉ Duplicate', action: () => { h.select?.(); h.copy(); } } : null,
+      ...kindItems(L),
       '-',
       sel(item('✦ Make it react to the music', 'Its sliders follow the kick, bass and loudness', '/make-it-react', { undo: '/make-it-react undo' })),
       { label: 'Add a filter above…', hint: 'glow, grain, blur…', cmd: 'fx', action: fx('filter') },
@@ -155,6 +156,23 @@ const LabEasy = (() => {
       { ...sel(item('💾 Save its sliders into the code', '', '/save-sliders')), more: true },
       ...(h.remove ? ['-', { label: 'Delete this layer', danger: true, action: () => h.remove() }] : []),
     ].filter(Boolean);
+  }
+  // (round 35, bugbash2) the layer kinds' own submenus (◫ Precomp / ◫ Comp ›, ◇ Shader ›, ✦ Particles ›, 🅰 Type ›,
+  // ⚛ Physics ›) were only in the older Layers-panel menu this one replaced (it never showed again), so a precomp's
+  // time, size, crop, mask and effects had no way in. Their rows ([label, hint, fn | rows, checked]) as menu items.
+  const fromRow = (r) => {
+    if (r == null || typeof r === 'string') return r;
+    if (!Array.isArray(r)) return r;
+    const [label, hint, x, on] = r;
+    if (Array.isArray(x)) return { label, hint: hint || '', items: x.map(fromRow).filter(Boolean) };
+    return { label: on ? `✓ ${label}` : label, hint: hint || '', action: x };
+  };
+  function kindItems(L) {
+    // (◫ Comp's "another scene as a layer" stays in the preview's right-click and Alt+C: here only a precomp's own row)
+    const mods = [typeof ThreeComp !== 'undefined' && ThreeComp.isComp?.(L) ? ThreeComp : null,typeof LabShader !== 'undefined' ? LabShader : null, typeof LabParticles !== 'undefined' ? LabParticles : null, typeof LabType !== 'undefined' ? LabType : null, typeof LabPhysics !== 'undefined' ? LabPhysics : null];
+    const out = [];
+    for (const M of mods) { try { out.push(...(M?.layerMenu?.(L) || []).map(fromRow).filter(Boolean)); } catch (err) { console.warn('layer menu', err); } }
+    return out;
   }
   function layerMenu(x, y, L, h) { showMenu(x, y, layerItems(L, h)); }
 
