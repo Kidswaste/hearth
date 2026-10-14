@@ -1392,7 +1392,9 @@ const ChatCmds = (() => {
   // from the commands there are when the first screen is up (also the token meter's, registered then: before, whether
   // they made it depended on which came first, the page's load or the first screen)
   let defs = null;
-  const snap = () => { defs ||= Commands.list().filter((x) => !x.hidden && !['do', 'help'].includes(x.name)); };
+  // (round 40, firstscreen) this file loads right after the first frame: the commands there were at the first screen
+  // (Lazy.namesAtReady), not those registered since (the directors', full screen), so the lines are the same as before
+  const snap = () => { if (defs) return; const at = window.Lazy?.namesAtReady?.(); const keep = at && new Set(at); defs = Commands.list().filter((x) => !x.hidden && !['do', 'help'].includes(x.name) && (!keep || keep.has(x.name))); };
   if (performance.getEntriesByName('hearth:ready').length) snap(); else addEventListener('hearth:ready', snap, { once: true });
   window.addEventListener('load', () => setTimeout(() => {
     const build = (add) => {

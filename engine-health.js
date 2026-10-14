@@ -126,6 +126,12 @@ const EngineHealth = (() => {
       if (r?.ok && m.fixAction !== 'doctor' && !MAC_FIX[m.fixAction]) b.replaceWith(el('span', { class: 'hint', text: `Finish in the ${r.window} window, then press Retry.` }));
     } } }));
   });
+  // (round 40, firstscreen) loaded right after the first frame (lazy group 'enginehealth'): a chat already drawn with a
+  // fixable error last is drawn again, so its button is there as before
+  for (const a of (typeof H !== 'undefined' && H.agents?.()) || []) {
+    const m = Native.chatOf?.(a.id)?.messages?.at(-1);
+    if (m?.role === 'error' && m.fixAction && FIX_LABEL[m.fixAction]) { try { Native.refresh(a.id, { keepScroll: true }); } catch { /* not drawn */ } }
+  }
 
   // ---------- /doctor ----------
   function enginesText(r) {
