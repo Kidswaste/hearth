@@ -1660,7 +1660,7 @@ const ThreeLab = (() => {
     let refsAll = {};
     const refBytes = new Map(); // id → ArrayBuffer
     const refsOf = () => (current ? (refsAll[current.id] ||= []) : []);
-    const saveRefs = saver(() => window.hub.kvSet('three-refs', refsAll), 300);
+    const saveRefs = saver(() => { dispatchEvent(new Event('hearth:lab-refs')); return window.hub.kvSet('three-refs', refsAll); }, 300); // (round 42: filewatch follows them)
     const REF_KINDS = [['image', /\.(png|jpe?g|gif|webp|bmp|svg)$/i], ['video', /\.(mp4|webm|mov|m4v|mkv)$/i], ['model', /\.(glb|gltf|obj|fbx|stl|ply)$/i],
       ['audio', /\.(mp3|wav|ogg|m4a|flac|aac)$/i], ['font', /\.(ttf|otf|woff2?)$/i], ['data', /\.(json|csv|txt|hdr|exr|bin)$/i]];
     const MIMES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/mp4', m4v: 'video/mp4', mkv: 'video/webm', glb: 'model/gltf-binary', gltf: 'model/gltf+json', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac', json: 'application/json', csv: 'text/csv', txt: 'text/plain', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
@@ -1686,7 +1686,7 @@ const ThreeLab = (() => {
       const existing = refsOf().find((r) => r.name === name && r.size === st.size);
       if (existing) return existing;
       const path = await window.hub.importRef(src);
-      const r = { id: `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, key: refKey(key || name), name, kind, path, size: st.size, at: Date.now() };
+      const r = { id: `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, key: refKey(key || name), name, kind, path, size: st.size, at: Date.now(), ...(/[\\/]refs[\\/]\d{10,}-/.test(src) ? {} : { src }) }; // (round 42) src: the original, followed when you save it again
       refsOf().push(r);
       saveRefs();
       await loadRefBytes();
@@ -1725,9 +1725,29 @@ const ThreeLab = (() => {
     // (round 39, labmemory) the same references and palette as the page already has aren't copied over again (each
     // scene switch sent every file whole: a video reference was copied twice per switch); a new page asks afresh
     let refsSig = null;
+    const refsSigOf = (refs) => JSON.stringify([refs.map((r) => [r.id, r.key, r.kind, refBytes.get(r.id).byteLength]), current?.palette || []]);
+    // (round 42, filewatch) a reference changed on disk (saved again in Photoshop, replaced in Finder; from: its original,
+    // copied over Hearth's copy first): read again and swapped into the textures using it in place, no re-run; a model /
+    // sound / data reference runs the scene again (in place). Another scene's is read when that scene opens.
+    async function reloadRef(id, { from = null } = {}) {
+      const r = Object.values(refsAll).flat().find((x) => x.id === id);
+      if (!r) return { ok: false, error: 'No such reference' };
+      if (from) { try { await window.hub.fs.copy(from, r.path); } catch (err) { return { ok: false, error: err.message }; } }
+      if (!refsOf().includes(r)) { refBytes.delete(r.id); return { ok: true, later: true }; }
+      let u8; try { u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); } catch (err) { return { ok: false, error: err.message, missing: true }; }
+      const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+      refBytes.set(r.id, buf); r.size = buf.byteLength; saveRefs();
+      if (r.kind === 'image' || r.kind === 'video') {
+        refsSig = refsSigOf(refsOf().filter((x) => refBytes.has(x.id)));
+        box.send({ type: 'ref-update', item: { key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: buf.slice(0) } });
+        return { ok: true, inPlace: true };
+      }
+      refsSig = null; sendRefs(); run({ sync: true });
+      return { ok: true, inPlace: false };
+    }
     function sendRefs() {
       const refs = refsOf().filter((r) => refBytes.has(r.id));
-      const sig = JSON.stringify([refs.map((r) => [r.id, r.key, r.kind, refBytes.get(r.id).byteLength]), current?.palette || []]);
+      const sig = refsSigOf(refs);
       if (sig === refsSig && refs.length) return;
       refsSig = sig;
       const items = refs.map((r) => ({ key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: refBytes.get(r.id).slice(0) }));
@@ -3954,7 +3974,7 @@ ${code}
         if (action === 'delete') return { looks: api2.remove(name) };
         return { looks: api2.list() };
       },
-      refs: { list: () => refsOf(), add: (p, key) => addRef(p, { key }), rename: renameRef, remove: removeRef, use: refUse, size: fmtSize, url: fileUrl,
+      refs: { list: () => refsOf(), all: () => refsAll, reload: (id, o) => reloadRef(id, o), add: (p, key) => addRef(p, { key }), rename: renameRef, remove: removeRef, use: refUse, size: fmtSize, url: fileUrl,
         palette: () => current?.palette || [], setPalette: (cols) => setPalette(cols), paletteFrom: async (name) => { const r = refsOf().find((x) => x.key === name || x.name === name); if (!r || r.kind !== 'image') throw new Error(`No picture reference "${name}"`); const cols = await paletteFrom(r.path); setPalette(cols); return cols; } },
       notes: {
         list: () => notesOf().map(({ id, t, text, done, image }) => ({ id, time: t, text, done, image })),

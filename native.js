@@ -15,7 +15,7 @@ const Native = (() => {
   const unfolded = new Set(); // "chatId:index" of long replies the user unfolded (they stay open)
   // Extension points for chat-*.js: render(agentId, view, chat), message(node, m, index, agent),
   // event(event, chat), mark(chat, index, key, on), send(agentId, chat, text).
-  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [], speak: [], options: [], msgMenu: [] }; // msgMenu(agentId, index, m, chat) → more Reply › items (round 41, routines.js) // newChat(agentId): "New chat" (chat-scenes.js)
+  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [], speak: [], options: [], msgMenu: [], chips: [] }; // chips(agentId, attachments): the chat box's attachments changed (round 42, filewatch.js follows their files) // msgMenu(agentId, index, m, chat) → more Reply › items (round 41, routines.js) // newChat(agentId): "New chat" (chat-scenes.js)
   // (round 23, voice.js) speak: { text(raw) → what is read, say(text, done) → true when it reads it itself (a system
   // voice), stop() }: the last one added reads replies aloud
   // (round 9, chatcore) finish(event, chat, extras): add fields to the reply about to be saved (chat-things.js: the
@@ -396,6 +396,7 @@ const Native = (() => {
       (typeof AttachLean !== 'undefined' ? AttachLean.badge(agentId, a) : null), // (round 40, attachlean) what it costs: "≈ 1.5k of 14k tok", "sent at 1568 px"; click: send whole
       a.tokens ? el('span', { class: 'attach-tok', text: ` · ${fmt(a.tokens)} tok`, title: `≈ ${a.tokens} tokens go with your next message (exactly this text; chat-refs.js)` }) : null, // (round 24) an @ reference's cost
       el('button', { type: 'button', text: '×', title: 'Remove', on: { click: () => { v.attachments.splice(i, 1); renderChips(agentId); } } }))));
+    for (const fn of hooks.chips) { try { fn(agentId, v.attachments); } catch (err) { console.warn(err); } }
   }
   const isTextName = (name) => /\.(txt|md|markdown|js|mjs|ts|tsx|jsx|json|csv|tsv|html?|css|glsl|frag|vert|py|xml|ya?ml|ini|log|jsx|sh|bat|ps1|c|cpp|h|cs|java|rs|go|lua|toml|svg)$/i.test(name);
   async function addFiles(agentId, files) {
