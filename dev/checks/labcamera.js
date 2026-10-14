@@ -40,6 +40,7 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));`;
 
 // ---------- the Lab, the scene, the song ----------
 activate('tool:three');
+await until(() => typeof ThreeLab !== 'undefined' && typeof LabCamera !== 'undefined', 30000); // (the lab group loads on first use: slower on a busy machine)
 const c = await ThreeLab.cmd();
 await wait(1000);
 step('/camera-moves is a Lab command; no duplicate commands', Commands.get('camera-moves')?.area === 'Three.js Lab' && !(Commands.duplicates?.() || []).length, Commands.duplicates?.());
