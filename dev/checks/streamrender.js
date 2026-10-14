@@ -23,7 +23,7 @@ const fails = [];
 // what other parts of the app add to a reply's HTML, left out when it's compared with a full render: cmdbar.js marks
 // the code it checked, juice.js turns a pointed-at title into data-tip, pictures already seen hold their size
 const firstDiff = (a, b) => { let i = 0; while (i < a.length && a[i] === b[i]) i += 1; return `at ${i}: …${a.slice(Math.max(0, i - 80), i + 80)}… vs …${b.slice(Math.max(0, i - 80), i + 80)}…`; };
-const clean = (h) => h.replace(/ data-cmdchk="1"/g, '').replace(/ style="width: \d+px; aspect-ratio: [^"]*"/g, '').replace(/ (title|data-tip)="[^"]*"/g, '');
+const clean = (h) => h.replace(/ data-cmdchk="1"/g, '').replace(/ data-dd-out="1"( draggable="true")?/g, '').replace(/ style="width: \d+px; aspect-ratio: [^"]*"/g, '').replace(/ (title|data-tip)="[^"]*"/g, '');
 const claude = H.claudeAgent();
 const cdp = (method, params) => smoke({ cdp: method, params });
 const KEYS = { Escape: [27, 'Escape'], Backspace: [8, 'Backspace'], End: [35, 'End'] };
