@@ -79,7 +79,7 @@ const A11y = (() => {
     // focus goes in (unless the overlay put it somewhere itself, like Find anything's box), when you just opened it
     // and weren't typing; a task, not a frame: a busy Lab preview can hold frames back
     const typing = a && (a.matches?.('input:not([type=button]):not([type=checkbox]):not([type=range]), textarea, select') || a.isContentEditable);
-    if (typing || performance.now() - acted > 1500) return;
+    if (typing || performance.now() - acted > 3000) return;
     setTimeout(() => {
       if (!root.isConnected || root.contains(document.activeElement)) return;
       const first = kbd ? focusable(root) : null;
