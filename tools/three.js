@@ -4270,12 +4270,12 @@ ${frag}\`,
     }
     inflight += 1;
     try {
-      const r = await handleVisible(tool, args);
+      const r = await handleVisible(tool, args, ctx);
       if (route && tool === 'three_new_sketch' && r?.ok !== false) ChatScenes.relink(route.chatId, api.scenes.currentId());
       return r;
     } finally { inflight -= 1; settle(); }
   }
-  async function handleVisible(tool, args) {
+  async function handleVisible(tool, args, ctx = {}) {
     tabs.show('sketch');
     // A hidden view renders no frames, so let the Lab render (behind the current view) while the director works.
     // Only while it's hidden: the Lab on screen keeps its place (marking it too dropped the whole view, docked chat
@@ -4285,16 +4285,21 @@ ${frag}\`,
     capture();
     addEventListener('hearth:view', capture);
     api.directorWork?.(1); live.why = tool;
-    try { return await directorCall(tool, args); } finally { removeEventListener('hearth:view', capture); surface?.classList.remove('capturing'); api.directorWork?.(-1); live.why = null; }
+    try { return await directorCall(tool, args, ctx); } finally { removeEventListener('hearth:view', capture); surface?.classList.remove('capturing'); api.directorWork?.(-1); live.why = null; }
   }
-  async function directorCall(tool, args) {
+  async function directorCall(tool, args, ctx = {}) {
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
     const d = api.director;
     if (!d) return { ok: false, error: 'The sketch editor did not load.' };
     // footage frames and the cut list (tools/three-frames.js): frame steps / reads, frames in keyframes and markers
     if (typeof ThreeFrames !== 'undefined') { const r = await ThreeFrames.handle(tool, args, d); if (r) return r; }
     // the director's fast loop (tools/three-director.js): compact results, batches, diffs, screenshot options, undo
-    if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d); if (r) return r; }
+    if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d, ctx); if (r) return r; }
+    // (round 37, directorlean) the Lab's own answers, trimmed for the model (small pictures, one-line transport)
+    const r = await labCall(tool, args, d);
+    return typeof ThreeDirector !== 'undefined' && ThreeDirector.trim ? ThreeDirector.trim(tool, args, r) : r;
+  }
+  async function labCall(tool, args, d) {
     if (tool === 'three_get_code') return { ok: true, value: d.getCode() };
     if (tool === 'three_set_code') {
       if (!String(args.code || '').trim()) return { ok: false, error: 'No code given.' };

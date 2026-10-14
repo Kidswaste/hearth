@@ -16,6 +16,13 @@
 //   - an edit says where it landed (line, −/+), not the code the director just sent (diff: true for the diff)
 //   - errors are one line each: [layer] line N: message → the code on that line
 //   - safe: true undoes an edit that breaks its layer; three_do undo reverts the last change without resending code
+// (round 37, directorlean) Less input per turn (dev/directorlean-measure.js: ≈ 67 % less added per typical ask):
+//   - what this chat's engine session already has is not sent again in a later reply (code it read or wrote, slider
+//     tables, scene state, console lines): one line, or only the lines that changed (per chat, per session)
+//   - get_code / select_layer: one line per layer + only the selected layer's code (an outline past 160 lines)
+//   - pictures: small (512 px) by default, a later one in the same reply 384 px; the Lab's own pictures (play-test,
+//     notes, references, contact sheet) made small too (trim); play / seek answers with the transport in one line
+//   - slider moves answer with the sliders that moved; add_layer with code doesn't list the sliders it wrote
 const ThreeDirector = (() => {
   const clip = (s, n = 160) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -35,6 +42,9 @@ const ThreeDirector = (() => {
     return `${c.key} = ${v} · ${c.label || c.key}${range}${c.group ? ` (${c.group})` : ''}${music}${c.live === false ? ' (setup only)' : ''}`;
   }
   const sliderLines = (list) => (Array.isArray(list) ? list.map(sliderLine) : list);
+  // a list of the selected layer's slider names in a result: dropped where the director has the code (or doesn't need
+  // them); the "none: add named controls" nudge stays
+  const namesOff = (v) => { if (v && /^\d+: /.test(String(v.sliders ?? ''))) delete v.sliders; return v; };
   function compact(r, { lines = 8 } = {}) {
     if (!r || typeof r !== 'object') return r;
     const out = {};
@@ -184,29 +194,75 @@ const ThreeDirector = (() => {
     return { ...h, restored: 'after', errors: r.report?.errors?.length || 0 };
   }
 
-  // ---------- within one reply: don't send the same thing twice ----------
-  // Reset whenever the user sends a director a message (a compacted / new chat starts a new reply anyway).
-  const readCache = new Map(); // "layerId:a-b" -> text it was given
-  let lastSig = null; // { key, sig } of the last screenshot this reply
-  const savedNotes = { reads: 0, shots: 0, state: 0, waitMs: 0, pics: {} };
-  let said = {}; // scene state already told this reply: { sketch, frame, music, layers, layer } → its text
-  function newTurn() { readCache.clear(); lastSig = null; said = {}; }
-  // (round 22, labcrew) crew helpers run in parallel, each in its own engine run: each keeps its own "already said"
-  // state, so one helper's results never hide the scene state from another (or from the director)
-  const crewSaid = new Map();
-  const saidOf = (d) => {
-    const k = d?.route?.crew ? d.route.chatId : null;
-    if (!k) return said;
-    if (!crewSaid.has(k)) { crewSaid.set(k, {}); if (crewSaid.size > 12) crewSaid.delete(crewSaid.keys().next().value); }
-    return crewSaid.get(k);
-  };
-  // The scene state is said once per reply, then only when it changed (the director has it from the first result).
-  function onlyNew(v, d = null) {
-    const S = saidOf(d);
-    for (const k of ['sketch', 'layer', 'frame', 'music', 'layers']) {
+  // ---------- don't send the same thing twice ----------
+  // (round 37, directorlean) What the director's engine session already has is not sent again: the engine resumes the
+  // same session every message and its history keeps every earlier tool result, so code, slider tables and the scene
+  // state it got in an earlier reply of this chat are a one-line "unchanged" (force: true re-sends) or only the lines
+  // that changed. Kept per chat ("bucket"); forgotten when the session changes (a new chat, compact / continue lighter,
+  // a handover to the other engine, an error or a stop) and after KEEP_TURNS replies. Calls that name no chat (tests,
+  // /director try) keep the old rule: within one reply, reset whenever the user sends a director a message.
+  const KEEP_TURNS = 8;
+  const bucketNew = (session = null, chat = null) => ({ session, chat, turn: 0, seen: new Map(), lastSig: null, pics: 0 });
+  let loose = bucketNew();
+  const chatBuckets = new Map(); // chatId → bucket
+  const crewBuckets = new Map(); // (round 22, labcrew) each crew helper keeps its own "already said" state
+  const savedNotes = { reads: 0, shots: 0, state: 0, waitMs: 0, pics: {}, code: 0, trimmed: 0 };
+  // seen: key → { text, turn, how } ('read' | 'wrote'); valid this reply, or an earlier one of the same session
+  const seenOf = (B, key) => { const e = B.seen.get(key); return e && B.turn - e.turn <= KEEP_TURNS ? e : null; };
+  const see = (B, key, text, how = 'read') => { B.seen.set(key, { text, turn: B.turn, how }); if (B.seen.size > 400) B.seen.delete(B.seen.keys().next().value); };
+  const agoOf = (B, e) => (e.turn === B.turn ? 'earlier in this reply' : `${B.turn - e.turn} message${B.turn - e.turn === 1 ? '' : 's'} ago`);
+  const forgetBefore = (B, turn) => { for (const [k, e] of B.seen) if (e.turn < turn) B.seen.delete(k); };
+  // A user message to a director: a new reply. chatId + chat: that chat's bucket goes on when the chat resumes the
+  // session its last finished reply had, else starts empty. No arguments (tests): everything starts empty.
+  function newTurn(chatId = null, chat = null) {
+    loose = bucketNew();
+    for (const B of crewBuckets.values()) { for (const [k] of B.seen) if (!k.startsWith('state:')) B.seen.delete(k); B.lastSig = null; }
+    if (chatId == null) { chatBuckets.clear(); return; }
+    const sid = chat?.session?.id || null;
+    const B = chatBuckets.get(chatId);
+    if (B && sid && B.session === sid) { B.turn += 1; B.chat = chat; B.lastSig = null; B.pics = 0; return; }
+    chatBuckets.delete(chatId);
+    chatBuckets.set(chatId, bucketNew(sid, chat));
+    if (chatBuckets.size > 24) chatBuckets.delete(chatBuckets.keys().next().value);
+  }
+  // A finished reply: 'done' fixes the session the next reply resumes (a session that changed under this reply keeps
+  // only what this reply sent); an error / stop forgets the chat (what the engine kept is unknown).
+  function endTurn(event, chat) {
+    const B = chat && chatBuckets.get(chat.id);
+    if (!B) return;
+    const sid = chat.session?.id || null;
+    if (event?.type !== 'done' || !sid) { chatBuckets.delete(chat.id); return; }
+    if (B.session && B.session !== sid) forgetBefore(B, B.turn);
+    B.session = sid; B.chat = chat;
+  }
+  // The bucket of a call: its chat's (backstage routes carry it, on-screen calls get ctx.chatId), a crew helper's own.
+  function bucketOf(d, ctx) {
+    if (d?.route?.crew) {
+      const k = d.route.chatId;
+      if (!crewBuckets.has(k)) { crewBuckets.set(k, bucketNew()); if (crewBuckets.size > 12) crewBuckets.delete(crewBuckets.keys().next().value); }
+      return crewBuckets.get(k);
+    }
+    const id = d?.route?.chatId || ctx?.chatId || null;
+    const B = id ? chatBuckets.get(id) : null;
+    if (!B) return loose;
+    // the chat's session was dropped after the message went (a handover to the other engine, a compact): only what
+    // this reply sent counts
+    if (B.session && (B.chat?.session?.id || null) !== B.session) { forgetBefore(B, B.turn); B.session = null; }
+    return B;
+  }
+  // The scene state is said once, then only when it changed (the director has it from the first result).
+  function onlyNew(v, d = null, B = bucketOf(d)) {
+    for (const k of ['sketch', 'layer', 'frame', 'music', 'layers', 'note']) {
       if (v[k] === undefined) continue;
       const t = JSON.stringify(v[k]);
-      if (S[k] === t) { delete v[k]; savedNotes.state += 1; } else S[k] = t;
+      if (seenOf(B, `state:${k}`)?.text === t) { delete v[k]; savedNotes.state += 1; } else see(B, `state:${k}`, t);
+    }
+    // (round 37) console lines: only those it hasn't had (the console keeps its last lines; each result showed them all)
+    if (Array.isArray(v.console)) {
+      const was = seenOf(B, 'state:console');
+      const fresh = was ? newLines(JSON.parse(was.text), v.console) : v.console;
+      see(B, 'state:console', JSON.stringify(v.console));
+      if (fresh.length) v.console = fresh; else { delete v.console; savedNotes.state += 1; }
     }
     return v;
   }
@@ -228,7 +284,10 @@ const ThreeDirector = (() => {
       waiters.add(w);
     });
   }
-  if (typeof Native !== 'undefined') Native.hooks.send.push((agentId) => { if (H.agent(agentId)?.threeTools) newTurn(); });
+  if (typeof Native !== 'undefined') {
+    Native.hooks.send.push((agentId, chat) => { if (H.agent(agentId)?.threeTools) newTurn(chat?.id ?? null, chat); });
+    Native.hooks.event.push((event, chat) => { try { endTurn(event, chat); } catch { /* not a director chat */ } });
+  }
   // 24x24 grey thumbnail of a canvas, to tell "nothing visibly changed" without sending the picture again
   function signature(c) {
     const t = document.createElement('canvas'); t.width = 24; t.height = 24;
@@ -253,8 +312,13 @@ const ThreeDirector = (() => {
   }
 
   // ---------- pictures ----------
-  // medium (the default) was 1024 px (≈ 790 image tokens for 16:9); 768 px reads the same for judging a look (≈ 440)
+  // medium was 1024 px (≈ 790 image tokens for 16:9); 768 px reads the same for judging a look (≈ 440).
+  // (round 37, directorlean) small (512 px, ≈ 200 tokens) is the default: colour, layout and motion read fine there,
+  // and every picture stays in the session's history (re-read with every later step). medium / large / a region crop
+  // for detail. A later picture in the same reply that names no size is a thumbnail (384 px, ≈ 110).
   const SIZES = { small: 512, medium: 768, large: 1280 };
+  const LATER_PX = 384;
+  const SHOT_Q = 0.72;
   let prevShot = null; // the last picture the director got (canvas), for compare
   const loadImg = async (url) => { const img = new Image(); img.src = url; await img.decode(); return img; };
   // region [x, y, w, h] in 0..1 of the frame, then scaled to fit `max` px; returns a canvas.
@@ -315,8 +379,10 @@ const ThreeDirector = (() => {
     if (!url) return null;
     return jpeg(frameCanvas(await loadImg(url), { max }), 0.75);
   }
-  async function screenshot(d, args) {
-    const max = SIZES[args.size] || SIZES[store.get('director.shotSize', 'medium')] || SIZES.medium; // /director-shot-size
+  async function screenshot(d, args, B = bucketOf(d)) {
+    const asked = Boolean(args.size || args.region || args.compare || Number(args.frames) >= 2 || args.force);
+    const later = !asked && B.pics > 0;
+    const max = later ? LATER_PX : SIZES[args.size] || SIZES[store.get('director.shotSize', 'small')] || SIZES.small; // /director-shot-size
     const at = resolveAt(d, args.at);
     if (args.at != null && at == null) return { ok: false, error: `Can't go to "${args.at}": give seconds, drop, kick, snare, hit or a cue name (and load a song).` };
     if (at != null && d.media.loaded) { d.media.seek(at); await sleep(450); }
@@ -333,33 +399,58 @@ const ThreeDirector = (() => {
       if (!shots.length) return { ok: false, error: 'No image: the sketch is not rendering (check three_console).' };
       const sheet = tile(shots, labels, Math.min(1600, Math.round(max * 1.5)));
       prevShot = shots.at(-1);
-      return { ok: true, images: [{ data: await jpeg(sheet), mime: 'image/jpeg' }], value: `${shots.length} frames of "${d.codeOf().sketch}" ${gap} s apart, left to right${shots.length > 4 ? ', then the next row' : ''} (${sheet.width}×${sheet.height}).` };
+      B.pics += 1;
+      return { ok: true, images: [{ data: await jpeg(sheet, SHOT_Q), mime: 'image/jpeg' }], value: `${shots.length} frames of "${d.codeOf().sketch}" ${gap} s apart, left to right${shots.length > 4 ? ', then the next row' : ''} (${sheet.width}×${sheet.height}).` };
     }
     const url = await grab(d, max, args.region);
     if (!url) return { ok: false, error: 'No image: the sketch is not rendering (check three_console for errors).' };
     const img = await loadImg(url);
     const c = frameCanvas(img, { max, region: args.region });
-    // the same view again in this reply, and nothing visibly changed: say so instead of sending the picture again
-    const key = JSON.stringify([max, args.region || null, d.route?.crew ? d.route.chatId : 0]);
+    // the same view as a picture sent earlier in this reply, nothing visibly changed: say so instead of sending it again
+    // (a later thumbnail of an unchanged view too; a size asked for by name is its own view)
+    const sigKey = JSON.stringify([args.size || null, args.region || null, d.route?.crew ? d.route.chatId : 0]);
     const sig = signature(c);
-    if (!args.force && !args.compare && lastSig?.key === key && sigDiff(sig, lastSig.sig) < 0.004) {
+    if (!args.force && !args.compare && B.lastSig?.key === sigKey && sigDiff(sig, B.lastSig.sig) < 0.004) {
       savedNotes.shots += 1;
       return { ok: true, value: 'No visible change since your previous screenshot in this reply (same picture, not sent again; force: true sends it).' };
     }
-    lastSig = { key, sig };
+    B.lastSig = { key: sigKey, sig };
     let out = c; let note = '';
     if (args.compare && prevShot) { out = tile([prevShot, c], ['before', 'now'], Math.min(1600, max * 2)); note = ' Left: the previous screenshot, right: now.'; } else if (args.compare) note = ' (No earlier screenshot to compare with yet.)';
+    if (later) note += ' A later picture in this reply: small; size: small|medium for detail.';
     prevShot = c;
+    B.pics += 1;
     // the preview's own small JPEG at the right size goes out as it is (no second encode)
     const asIs = out === c && !args.region && /^data:image\/jpeg/.test(url) && img.width === c.width && img.height === c.height;
-    const data = asIs ? url.split(',')[1] : await jpeg(out);
-    const f = onlyNew({ frame: frameLine(d.report().frame) }, d).frame;
+    const data = asIs ? url.split(',')[1] : await jpeg(out, SHOT_Q);
+    const f = onlyNew({ frame: frameLine(d.report().frame) }, d, B).frame;
     return { ok: true, images: [{ data, mime: 'image/jpeg' }], value: `Screenshot (${out.width}×${out.height}${f ? `, frame ${f}` : ''}${args.region ? ', cropped' : ''}).${note}` };
   }
 
   // ---------- reading / searching code ----------
   const pad = (n, w) => String(n).padStart(w);
-  function readCode(d, args) {
+  // (round 37, directorlean) A layer's code the director already has (it read the whole layer, or wrote it with
+  // add_layer / set_code / update_layer, or edited a copy it had) is "known": the same text again is one line, a few
+  // changed lines (the owner's slider save, a hand edit) are sent as a diff of the known copy.
+  const codeKey = (L) => `code:${L.sketchId}:${L.id}`;
+  // The changed lines of `known` → `now` as hunks, or null when there are too many for a diff to be the cheaper read
+  // (over 40 changed lines, or over half the layer).
+  function codeDiff(known, now) {
+    if (known === now) return null;
+    const n = diffOps(known, now).filter(([t]) => t !== ' ').length;
+    if (!n || n > 40 || n > now.split('\n').length * 0.5) return null;
+    return diff(known, now, { max: 40 });
+  }
+  // A big layer's outline: functions, classes, top-level names, section comments, tweak() and renderer / scene calls,
+  // with line numbers (the same marks as the Lab's own outline), to read in parts.
+  const OUTLINE_AT = 160; // get_code sends a layer whole up to this many lines (was 350)
+  const MARK = /^\s{0,2}(export\s+)?(async\s+)?function\s+\w+|^\s{0,2}class\s+\w+|^\s{0,2}(const|let|var)\s+\w+\s*=\s*(tweak\(|new |\(|async|function|\[|\{)|^\s*\/\/\s*[-=#*]{2,}|^\s*\/\/\s*[A-Z][A-Z ]{3,}|^import |^\s*(renderer|scene|camera)\.\w+\s*\(/;
+  function outline(code, max = 160) {
+    const marks = [];
+    code.split('\n').forEach((ln, k) => { if (MARK.test(ln)) marks.push(`${pad(k + 1, 4)}| ${ln.trim().slice(0, 110)}`); });
+    return marks.length > max ? `${marks.slice(0, max).join('\n')}\n… ${marks.length - max} more` : marks.join('\n');
+  }
+  function readCode(d, args, B = bucketOf(d)) {
     const L = d.codeOf(args.layer || null);
     const lines = L.code.split('\n');
     let a = Math.max(1, Math.floor(Number(args.from) || 1));
@@ -369,10 +460,82 @@ const ThreeDirector = (() => {
     const w = String(b).length;
     const body = lines.slice(a - 1, b).map((ln, k) => `${pad(a + k, w)}| ${ln.replace(/\s+$/, '')}`).join('\n');
     const head = `── ${L.name} · lines ${a}–${b} of ${lines.length}${b < lines.length ? ` (more: from ${b + 1})` : ''}`;
-    const ck = `${L.sketchId}:${L.id}:${a}-${b}`;
-    if (!args.force && readCache.get(ck) === body) { savedNotes.reads += 1; return `${head}: unchanged since you read them earlier in this reply (force: true re-sends).`; }
-    readCache.set(ck, body);
+    const whole = a === 1 && b >= lines.length;
+    const rk = `read:${L.sketchId}:${L.id}:${a}-${b}`;
+    if (!args.force) {
+      const k = seenOf(B, codeKey(L));
+      const r = seenOf(B, rk);
+      const same = k?.text === L.code ? k : r?.text === body ? r : null;
+      if (same) { savedNotes.reads += 1; return `${head}: unchanged since you ${same.how === 'wrote' ? 'wrote' : 'read'} ${whole ? 'it' : 'them'} ${agoOf(B, same)} (force: true re-sends).`; }
+      const dd = whole && k ? codeDiff(k.text, L.code) : null;
+      if (dd) { savedNotes.code += 1; see(B, codeKey(L), L.code); return `${head}: changed since you ${k.how === 'wrote' ? 'wrote' : 'read'} it ${agoOf(B, k)}; only the changed lines (new line numbers; force: true sends all of it):\n${dd}`; }
+    }
+    see(B, rk, body);
+    if (whole) see(B, codeKey(L), L.code);
     return `${head}\n${body}`;
+  }
+  // ---------- the scene outline (get_code, select_layer, layers) ----------
+  // One line per layer, bottom first: "2. Sparkles* · 70 lines · sliders: Size, Glow · plays 30–60 s · keys: opacity 0s=0, 2s=1"
+  function layerLine(L, i, { lines = null, sliders = 'names' } = {}) {
+    const bits = [];
+    if (L.kind) bits.push(L.kind);
+    if (lines != null) bits.push(`${lines} lines`);
+    if (L.visible === false) bits.push('hidden');
+    if (L.opacity != null && L.opacity !== 1) bits.push(`opacity ${L.opacity}`);
+    if (L.blend && L.blend !== 'normal') bits.push(L.blend);
+    if (L.plays && typeof L.plays === 'object') bits.push(`plays ${L.plays.from}–${L.plays.to} s${L.plays.fadeIn ? ` fade in ${L.plays.fadeIn}` : ''}${L.plays.fadeOut ? ` fade out ${L.plays.fadeOut}` : ''}`);
+    if (L.transform) bits.push(Object.entries(L.transform).map(([k, v]) => `${k} ${v}`).join(' '));
+    const sl = Array.isArray(L.sliders) ? L.sliders : [];
+    if (sl.length) bits.push(sliders === 'count' ? `${sl.length} slider${sl.length === 1 ? '' : 's'}` : `sliders: ${sl.join(', ')}`);
+    if (L.keyframes) bits.push(`keys: ${Object.entries(L.keyframes).map(([p, ks]) => `${p} ${ks.slice(0, 6).join(', ')}${ks.length > 6 ? ` +${ks.length - 6}` : ''}`).join('; ')}`);
+    if (L.placedByUser) bits.push(`placed by the owner: ${JSON.stringify(L.placedByUser)}`);
+    return `${i + 1}. ${L.name}${L.selected ? '*' : ''}${bits.length ? ` · ${bits.join(' · ')}` : ''}`;
+  }
+  const layerLines = (list, opts = {}, linesOf = () => null) => (Array.isArray(list) ? list.map((L, i) => layerLine(L, i, { ...opts, lines: linesOf(L) })).join('\n') : list);
+  // Sliders when the code that declares them is in hand: their defaults are in its tweak() block, so only what the
+  // code doesn't say (music links, setup-only reads) gets a line.
+  function sliderNote(list) {
+    if (!Array.isArray(list) || !list.length) return undefined;
+    const extra = list.filter((c) => c.followsMusic || c.live === false).map(sliderLine);
+    return extra.length ? [`${list.length} in the code's tweak() block; these also:`, ...extra] : `${list.length} in the code's tweak() block (three_sliders for live values)`;
+  }
+  const unsavedLines = (list) => (Array.isArray(list) && list.length ? list.map((u) => `${u.name}${u.line ? ` (line ${u.line})` : ''}: ${u.inCode} in the code → ${typeof u.slider === 'string' ? u.slider : JSON.stringify(u.slider)} on the slider`) : undefined);
+  // get_code / select_layer: the scene as an outline (one line per layer), and only the selected layer's code: whole,
+  // as an outline past OUTLINE_AT lines, "unchanged" when the director has it, or the lines that changed.
+  function sceneCode(d, r, ref, B) {
+    const L = d.codeOf(ref ?? null);
+    const lineCount = (x) => { try { return d.codeOf(x.id).code.split('\n').length; } catch { return null; } };
+    const value = { sketch: r.sketch, layer: L.name, layers: layerLines(r.layers, { sliders: 'count' }, lineCount), frame: frameLine(r.frame) || undefined };
+    const n = L.code.split('\n').length;
+    const k = seenOf(B, codeKey(L));
+    const dd = k && k.text !== L.code ? codeDiff(k.text, L.code) : null;
+    let inHand = true;
+    if (k && k.text === L.code) { value.code = `unchanged since you ${k.how === 'wrote' ? 'wrote' : 'read'} it ${agoOf(B, k)} (${n} lines; three_read_code force: true re-sends)`; savedNotes.code += 1; } else if (dd) { value.changes = `since you ${k.how === 'wrote' ? 'wrote' : 'read'} it ${agoOf(B, k)} (${n} lines now; three_read_code force: true sends all):\n${dd}`; savedNotes.code += 1; see(B, codeKey(L), L.code, k.how); } else if (n > OUTLINE_AT) {
+      inHand = false;
+      value.outline = outline(L.code.replace(/\/\/ @nodes:v1 \{.*\}[ \t]*$/m, '// @nodes:v1 {…}'));
+      value.note = `${n} lines, so its outline: read parts with three_read_code (from / to), find with three_search_code, change with three_edit_code.`;
+    } else {
+      // the node graph's one-line JSON stays out (tools/three-nodes.js: three_nodes changes it)
+      value.code = L.code.replace(/\/\/ @nodes:v1 \{.*\}[ \t]*$/m, '// @nodes:v1 {…} (the node graph this layer is made from: change it with three_nodes)');
+      see(B, codeKey(L), L.code);
+    }
+    value.sliders = inHand ? sliderNote(r.sliders) : sliderLines(r.sliders);
+    value.unsavedSliders = unsavedLines(r.unsavedSliders);
+    // (the Lab's own note is about unsaved sliders, said here; backstage's says the scene isn't on screen)
+    const notes = [value.note, value.unsavedSliders ? 'The owner moved these sliders without saving: keep their values when you change the code.' : null, r.unsavedSliders?.length ? null : r.note];
+    value.note = notes.filter(Boolean).join(' ') || undefined;
+    const st = onlyNew({ sketch: value.sketch, frame: value.frame, note: value.note }, d, B); // said once (the layer and its code always)
+    for (const k of ['sketch', 'frame', 'note']) value[k] = st[k];
+    return value;
+  }
+  // the transport after play / pause / seek / loop: one line (it was the whole song analysis, ≈ 800 tokens)
+  function mediaLine(info) {
+    if (!info || typeof info !== 'object') return info;
+    const t = (x) => (Math.round((Number(x) || 0) * 10) / 10).toFixed(1);
+    if (!info.loaded && info.sceneTimeline) { const s = info.sceneTimeline; return `scene timeline ${s.playing ? 'playing' : 'paused'} at ${t(s.time)} / ${t(s.seconds)} s (frame ${s.frame})`; }
+    if (!info.loaded) return info.note || 'No music loaded.';
+    const lp = info.loop && typeof info.loop === 'object' ? ` · loop ${t(info.loop.start)}–${t(info.loop.end)} s${info.loop.locked ? ' (locked)' : ''}${info.loop.on === false ? ' (off)' : ''}` : info.loop === 'whole song' ? ' · looping the song' : '';
+    return `${String(info.file || '').split(/[\\/]/).pop()} ${info.playing ? 'playing' : 'paused'} at ${t(info.time)} / ${t(info.duration)} s${lp} (three_do media_info: grid, sections, hits)`;
   }
   function searchCode(d, args) {
     const pattern = String(args.pattern || '');
@@ -451,8 +614,10 @@ const ThreeDirector = (() => {
     return after;
   }
 
-  async function handle(tool, args, d) {
+  // ctx.chatId: the chat whose run made the call (tools/three.js passes it; backstage routes carry it in d.route)
+  async function handle(tool, args, d, ctx = {}) {
     if (!d.codeOf) return null; // an older Lab without the hooks: its own handler answers
+    const B = bucketOf(d, ctx);
     if (tool === 'three_edit_code') {
       const edits = Array.isArray(args.edits) ? args.edits : [];
       if (!edits.length) return { ok: false, error: 'No edits given.' };
@@ -474,6 +639,9 @@ const ThreeDirector = (() => {
         // (the wait is a cap now: the Lab answers at the layer's first new frame, see settle)
         const r = await d.updateLayer(p.L.id, { code: p.code, sketchId: p.L.sketchId }, last ? Math.min(15, Math.max(0.5, Number(args.wait) || 2.5)) : 0.4);
         record({ sketchId: p.L.sketchId, sketch: p.L.sketch, layerId: p.L.id, layer: p.L.name, before: p.L.code, after: p.code, tool });
+        // the director had this layer and wrote these edits: it has the result too (later reads say "unchanged")
+        const k = seenOf(B, codeKey(p.L));
+        if (k?.text === p.L.code) see(B, codeKey(p.L), p.code, 'wrote');
         results.push({ p, r });
       }
       const final = results.at(-1).r;
@@ -487,6 +655,7 @@ const ThreeDirector = (() => {
           await d.updateLayer(p.L.id, { code: p.L.code, sketchId: p.L.sketchId }, 0.6);
           const k = history.findLastIndex((h) => h.layerId === p.L.id && h.after === p.code);
           if (k >= 0) history.splice(k, 1);
+          if (seenOf(B, codeKey(p.L))?.text === p.code) see(B, codeKey(p.L), p.L.code, 'wrote');
         }
         changed();
         return { ok: true, value: { reverted: `The edit broke ${[...names].map((n) => `"${n}"`).join(', ')}, so it was undone (the code is as before).`, errors: why } };
@@ -502,7 +671,7 @@ const ThreeDirector = (() => {
       if (delta.length) value.slidersChanged = delta.join(' ');
       delete value.sliders;
       withErrorLines(d, value, final);
-      onlyNew(value, d);
+      onlyNew(value, d, B);
       const img = (args.shot ?? store.get('director.autoShot', false)) ? await thumb(d) : null; // /director-autoshot
       return { ok: true, value, ...(img ? { images: [{ data: img, mime: 'image/jpeg' }] } : {}) };
     }
@@ -512,7 +681,8 @@ const ThreeDirector = (() => {
       if (!d.backstage) toast('Three Director updated the sketch', { timeout: 1500 });
       const r = await d.setCode(String(args.code), Number(args.wait) || 2.5);
       record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
-      const value = args.report === 'full' ? r : onlyNew(withErrorLines(d, compact(r), r), d);
+      see(B, codeKey(before), String(args.code), 'wrote');
+      const value = args.report === 'full' ? r : onlyNew(namesOff(withErrorLines(d, compact(r), r)), d, B);
       // the owner's rule: a new effect is a new layer. Rewriting a real layer (one with sliders, not a starter) gets a
       // one-line reminder, so the habit holds for the rest of the chat (≈ 30 tokens, only then).
       if (args.report !== 'full' && rewroteReal(before.code, String(args.code))) value.note = `Rewrote "${before.name}" (/undo-edit restores it). New elements or effects go in a new layer: three_add_layer.`;
@@ -526,9 +696,15 @@ const ThreeDirector = (() => {
       const r = await d.addLayer({ name: args.name, code: args.code, template: args.template, position: args.position, props: args.settings || {} }, Number(args.wait) || 2.5);
       if (args.report === 'full') return { ok: true, value: r };
       const value = withErrorLines(d, compact(r), r);
-      // its sliders as lines (keys, values, ranges): the next call is usually a slider move, not a read
-      try { const sl = d.sliders(r.added || null, null); if (sl?.sliders?.length) value.sliders = sliderLines(sl.sliders); } catch { /* backstage: names only */ }
-      return { ok: true, value: onlyNew(value, d) };
+      if (args.code) {
+        namesOff(value);
+        // (round 37) the director wrote this code: it has its sliders (only their names stay) and its text
+        try { const L = d.codeOf(r.added || 'top'); if (L.code === String(args.code)) see(B, codeKey(L), L.code, 'wrote'); } catch { /* gone already */ }
+      } else {
+        // a template's sliders as lines (keys, values, ranges): the next call is usually a slider move, not a read
+        try { const sl = d.sliders(r.added || null, null); if (sl?.sliders?.length) value.sliders = sliderLines(sl.sliders); } catch { /* backstage: names only */ }
+      }
+      return { ok: true, value: onlyNew(value, d, B) };
     }
     if (tool === 'three_update_layer') {
       const patch = { ...(args.settings || {}) };
@@ -536,8 +712,8 @@ const ThreeDirector = (() => {
       if (args.code != null) { patch.code = args.code; before = d.codeOf(args.layer); }
       if (args.order != null) patch.order = args.order;
       const r = await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5));
-      if (before) record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
-      return { ok: true, value: args.report === 'full' ? r : onlyNew(withErrorLines(d, compact(r), r), d) };
+      if (before) { record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool }); see(B, codeKey(before), String(args.code), 'wrote'); }
+      return { ok: true, value: args.report === 'full' ? r : onlyNew(namesOff(withErrorLines(d, compact(r), r)), d, B) };
     }
     // the frame size: one line (it was the whole Lab report after a fixed 1.5 s). fit ⇄ an exact size reloads the
     // preview (answer at its first frame); between exact sizes it only resizes.
@@ -550,12 +726,13 @@ const ThreeDirector = (() => {
       await settle(reload ? 3000 : 350);
       const r = d.report();
       const value = withErrorLines(d, { frame: frameLine(r.frame) }, r);
-      said.frame = JSON.stringify(value.frame);
+      see(B, 'state:frame', JSON.stringify(value.frame));
       return { ok: true, value };
     }
     // three_do undo: the director's last code change in this scene, back (no code re-sent)
     if (tool === 'three_undo') {
       const h = await undo(d, { force: Boolean(args.force), sketchId: (() => { try { return d.codeOf().sketchId; } catch { return null; } })() });
+      B.seen.delete(codeKey({ sketchId: h.sketchId, id: h.layerId })); // its code is the "before" now: read it again if needed
       return { ok: true, value: `Undid your ${h.tool.replace(/^three_/, '')} of "${h.layer}"${h.errors ? ` (${h.errors} error${h.errors === 1 ? '' : 's'} now: three_console)` : ''}.` };
     }
     // keyframes / animation presets are the everyday way to move things (time first): a one-line result, not the
@@ -567,9 +744,15 @@ const ThreeDirector = (() => {
       const what = tool === 'three_keyframes' ? `${r.layer}.${r.property}: ${r.keyframes} key${r.keyframes === 1 ? '' : 's'}` : `${r.layer || args.layer}: ${args.preset}${r.keys != null ? ` (${r.keys} keys)` : ''}`;
       return { ok: true, value: { set: what, ...(errs.length ? { errors: errs } : {}), layers: (r.layers || []).map((L) => L.name).join(', ') || undefined } };
     }
-    if (tool === 'three_console') return { ok: true, value: args.full ? d.report() : compact(d.report(), { lines: 14 }) };
-    if (tool === 'three_screenshot') return screenshot(d, args);
-    if (tool === 'three_read_code') return { ok: true, value: readCode(d, args) };
+    // (round 37) the scene state once (like the other results), the selected layer's slider names left out (three_sliders)
+    if (tool === 'three_console') {
+      if (args.full) return { ok: true, value: d.report() };
+      const value = onlyNew(namesOff(compact(d.report(), { lines: 14 })), d, B);
+      if (!value.console) value.console = 'no new lines since your last look';
+      return { ok: true, value };
+    }
+    if (tool === 'three_screenshot') return screenshot(d, args, B);
+    if (tool === 'three_read_code') return { ok: true, value: readCode(d, args, B) };
     if (tool === 'three_search_code') return { ok: true, value: searchCode(d, args) };
     if (tool === 'three_eval' && Number(args.samples) > 1) {
       // the same expression n times, every ms: watch a value move (does it jump on kicks?) without screenshots
@@ -598,19 +781,66 @@ const ThreeDirector = (() => {
     }
     if (tool === 'three_sliders') {
       const r = d.sliders(args.layer, args.set || null);
-      return { ok: true, value: { layer: r.layer, ...(r.changed?.length ? { changed: r.changed } : {}), sliders: sliderLines(r.sliders), ...(r.looks?.length ? { looks: r.looks.map((l) => (typeof l === 'string' ? l : l.name)).join(', ') } : {}) } };
+      const looks = r.looks?.length ? r.looks.map((l) => (typeof l === 'string' ? l : l.name)).join(', ') : undefined;
+      const set = args.set && typeof args.set === 'object' ? Object.keys(args.set) : [];
+      // (round 37) a move answers with the sliders it moved (the rest didn't change); keys it couldn't set are named
+      if (set.length) {
+        const moved = new Set(r.changed || []);
+        const lines = (r.sliders || []).filter((c) => moved.has(c.key)).map(sliderLine);
+        const missed = set.filter((k) => !(r.sliders || []).some((c) => moved.has(c.key) && (c.key === k || String(c.label || '').toLowerCase() === k.toLowerCase())));
+        return { ok: true, value: { layer: r.layer, moved: lines.length ? lines : 'nothing', ...(missed.length ? { notSet: `${missed.join(', ')} (locked, unknown or a bad value; keys: ${(r.sliders || []).map((c) => c.key).join(', ')})` } : {}), others: `${(r.sliders || []).length - lines.length} unchanged`, looks } };
+      }
+      // a read: the table, or one line when this session already has the same table
+      const lines = sliderLines(r.sliders);
+      const sk = `sliders:${(() => { try { const L = d.codeOf(args.layer || null); return `${L.sketchId}:${L.id}`; } catch { return r.layer; } })()}`;
+      const k = Array.isArray(lines) && !args.force ? seenOf(B, sk) : null;
+      if (k && k.text === lines.join('\n')) { savedNotes.state += 1; return { ok: true, value: { layer: r.layer, sliders: `unchanged since you read them ${agoOf(B, k)} (force: true re-sends)`, looks } }; }
+      if (Array.isArray(lines)) see(B, sk, lines.join('\n'));
+      return { ok: true, value: { layer: r.layer, sliders: lines, looks } };
     }
-    if (tool === 'three_get_code') {
-      const r = d.getCode();
-      const { layers, sliders, ...rest } = r;
-      return { ok: true, value: { ...rest, frame: frameLine(r.frame), ...(layers?.length > 1 ? { layers: layers.map((L) => `${L.name}${L.selected ? '*' : ''}${L.kind ? ' (filter)' : ''}`).join(', ') } : {}), ...(sliders ? { sliders: sliderLines(sliders) } : {}) } };
+    // (round 37, directorlean) the scene as an outline + the selected layer's code (unchanged / a diff when known)
+    if (tool === 'three_get_code') return { ok: true, value: sceneCode(d, d.getCode(), null, B) };
+    if (tool === 'three_select_layer' && d.selectLayer) return { ok: true, value: sceneCode(d, d.selectLayer(args.layer), args.layer, B) };
+    if (tool === 'three_layers' && d.layers) {
+      const r = d.layers();
+      const value = { sketch: r.sketch, layers: `${layerLines(r.layers)}\n(bottom first, * = selected)`, note: r.note };
+      const st = onlyNew({ sketch: value.sketch, note: value.note }, d, B);
+      return { ok: true, value: { ...value, ...st, sketch: st.sketch, note: st.note } };
     }
     if (tool === 'three_help') return { ok: true, value: 'Help topics are answered by the three-lab tool server (three_do { cmd: "help", topic }).' };
     return null;
   }
 
+  // ---------- (round 37, directorlean) the Lab's own results, trimmed for the model ----------
+  // tools/three.js passes what its own handlers answered (the tools handle() leaves to it) through here: pictures the
+  // Lab sends whole (a play-test's full-size PNG, notes' screenshots, references, the contact sheet) are made small,
+  // and play / pause / seek / loop answer with the transport in one line instead of the whole song analysis.
+  const PIC_MAX = { three_input: SIZES.small, three_notes: SIZES.small, three_references: SIZES.small, three_contact_sheet: 1024 };
+  async function shrinkImages(images, max) {
+    const out = [];
+    for (const im of images) {
+      try {
+        const img = await loadImg(`data:${im.mime || 'image/png'};base64,${im.data}`);
+        if (Math.max(img.width, img.height) <= max && im.mime === 'image/jpeg') { out.push(im); continue; }
+        out.push({ data: await jpeg(frameCanvas(img, { max }), SHOT_Q), mime: 'image/jpeg' });
+      } catch { out.push(im); }
+    }
+    return out;
+  }
+  async function trim(tool, args, r) {
+    if (!r || r.ok === false) return r;
+    let out = r;
+    if (tool === 'three_media_control' && ['play', 'pause', 'seek', 'loop', undefined].includes(args?.action) && r.value && typeof r.value === 'object' && 'loaded' in r.value) {
+      const line = mediaLine(r.value);
+      savedNotes.trimmed += Math.max(0, JSON.stringify(r.value).length - line.length);
+      out = { ...out, value: line };
+    }
+    if (PIC_MAX[tool] && out.images?.length) out = { ...out, images: await shrinkImages(out.images, PIC_MAX[tool]) };
+    return out;
+  }
+
   return {
-    handle,
+    handle, trim,
     // /undo-edit, /redo-edit, the dock's ↶ button
     undo: async (opts) => undo(ThreeLab.director || (await ThreeLab.cmd({ show: false }), ThreeLab.director), opts),
     redo: async () => redo(ThreeLab.director || (await ThreeLab.cmd({ show: false }), ThreeLab.director)),
@@ -622,6 +852,8 @@ const ThreeDirector = (() => {
     pictures: { frameCanvas, tile, jpeg, loadImg },
     // tools/three.js: every preview message (onBox), and its director's waits after a run (settle)
     onBox, settle,
-    _test: { diff, landed, applyEdits, compact, sliderLine, newLines, statLine, signature, sigDiff, onlyNew },
+    _test: { diff, landed, applyEdits, compact, sliderLine, newLines, statLine, signature, sigDiff, onlyNew, codeDiff, outline, layerLine, layerLines, sliderNote, unsavedLines, mediaLine, sceneCode, bucketOf, endTurn, namesOff, OUTLINE_AT },
   };
 })();
+// (round 37) loadable in Node for its unit test (dev/directorlean-test.js); the app loads it as a plain script
+if (typeof module !== 'undefined' && module.exports) module.exports = ThreeDirector;

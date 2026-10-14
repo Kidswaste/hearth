@@ -259,9 +259,9 @@
     run: (args) => { const on = onOff(args); if (on === undefined) return `Auto preview after edits: **${store.get('director.autoShot', false) ? 'on' : 'off'}**.`; store.set('director.autoShot', on); return `Auto preview after edits **${on ? 'on' : 'off'}**.`; },
   });
   cmd({
-    name: 'director-shot-size', args: '[small | medium | large]', desc: 'Default size of the director\'s screenshots (small 512 ≈ 250 tok, medium 1024 ≈ 1k, large 1280 ≈ 1.5k)',
+    name: 'director-shot-size', args: '[small | medium | large]', desc: 'Default size of the director\'s screenshots (small 512 ≈ 200 tok, the default; medium 768 ≈ 440; large 1280 ≈ 1.2k)',
     complete: pick(['small', 'medium', 'large']),
-    run: (args) => { if (!/^(small|medium|large)$/i.test(args)) return `Director screenshots: **${store.get('director.shotSize', 'medium')}**.`; store.set('director.shotSize', args.toLowerCase()); return `Director screenshots: **${args.toLowerCase()}** by default (it can still ask for another size).`; },
+    run: (args) => { if (!/^(small|medium|large)$/i.test(args)) return `Director screenshots: **${store.get('director.shotSize', 'small')}**.`; store.set('director.shotSize', args.toLowerCase()); return `Director screenshots: **${args.toLowerCase()}** by default (it can still ask for another size).`; },
   });
 
   // "/director <sub> …" reaches all of the above; nothing opens the Three Director next to the Lab.
