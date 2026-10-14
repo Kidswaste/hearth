@@ -253,5 +253,6 @@ contextBridge.exposeInMainWorld('hub', {
     saveThumb: call('assets:saveThumb'), cacheInfo: call('assets:cacheInfo'), clearThumbs: call('assets:clearThumbs'), fetchJson: call('assets:fetchJson'), preview: call('assets:preview'),
     download: call('assets:download'), cancel: call('assets:cancel'), import: call('assets:import'), writePreset: call('assets:writePreset'), watch: call('assets:watch'), onEvent: on('assets:event'),
   },
+  rfast: { open: call('rfast:open'), write: call('rfast:write'), end: call('rfast:end'), cancel: call('rfast:cancel') }, // (round 41, renderfast) frames streamed into ffmpeg (renderfastmain.js)
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
 });

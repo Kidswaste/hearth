@@ -151,6 +151,16 @@ const LabExportCore = (() => {
     a.push('-t', r4(frames / F).toFixed(4), 'OUTPUT');
     return { args: a, note, frames };
   }
+  // (round 41, renderfast) the same arguments, with the frames coming in on ffmpeg's stdin instead of a numbered file
+  // list: image2pipe with the decoder the file list would pick (mjpeg for .jpg, png for .png), so the encoder gets
+  // the same pictures and makes the same video. args: from args() with input 'INPUT'.
+  function streamArgs(a, ext) {
+    const out = a.slice();
+    const i = out.indexOf('-i');
+    if (i < 0 || out[i + 1] !== 'INPUT') throw new Error('streamArgs: the first input must be INPUT');
+    out.splice(i, 0, '-f', 'image2pipe', '-c:v', ext === 'jpg' ? 'mjpeg' : 'png');
+    return out;
+  }
   // the sequence's sound plan (ThreeSeq.audioPlan) → ffmpeg inputs and one filter ending in [aout]; fades and the
   // ducking come from SeqCut (fx) like the sequence's own render, so a render sounds like the preview
   function audio(parts, { first = 1, fx = null, duck = null, from = 0 } = {}) {
@@ -186,6 +196,32 @@ const LabExportCore = (() => {
   // ---------- speed ----------
   const speed = (frames, ms) => (ms > 0 ? r4((frames * 1000) / ms) : 0);
   function eta(done, total, ms) { if (!done || done >= total) return 0; return Math.round(((total - done) * ms) / done / 1000); }
+  // (round 41, renderfast) time left that is right from the first frames: the recent frames' pace (an average that
+  // follows a change of speed within a few frames, the first frame left out: it compiles the shaders), the work after
+  // the last frame (what the encoder still has queued when it takes the frames as they come, the whole encode the old
+  // way), primed from the last renders by megapixel so a render shows a time from its first frame.
+  // hist: [{ mpx, ms (a frame), tail (ms a frame after the last one) }] (newest last). → { frame(ms), left(done, o) }
+  function etaModel({ total = 1, px = 2e6, hist = [] } = {}) {
+    const mpx = Math.max(0.05, px / 1e6);
+    const near = (hist || []).filter((x) => x && x.ms > 0 && x.mpx > 0).slice(-12);
+    const med = (a) => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+    const prior = med(near.map((x) => (x.ms / x.mpx) * mpx));
+    const priorTail = med(near.filter((x) => x.tail >= 0).map((x) => (x.tail / x.mpx) * mpx));
+    let ewma = null; let n = 0;
+    return {
+      frame(ms) { n += 1; if (n === 1 && total > 2) return; ewma = ewma == null ? ms : ewma * 0.7 + ms * 0.3; },
+      pace() { const w = Math.min(1, n / 6); return ewma == null ? prior : prior == null ? ewma : w * ewma + (1 - w) * prior; },
+      // done: frames made; lag: frames the encoder still holds (streaming), encMs: its pace a frame; tail: the old
+      // way's encode after the last frame (ms a frame)
+      left(done, { lag = 0, encMs = null, tail = null } = {}) {
+        const p = this.pace();
+        if (p == null) return null;
+        const after = tail != null ? tail * total : (lag > 0 ? lag * (encMs ?? priorTail ?? p * 0.3) : 0);
+        return Math.max(0, Math.round(((total - done) * p + after) / 1000));
+      },
+      prior, priorTail,
+    };
+  }
   const fmtSecs = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : s >= 90 ? `${Math.round(s / 60)} min` : `${Math.max(1, Math.round(s))} s`);
   const fmtSize = (b) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(2)} GB` : b >= 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 
@@ -250,6 +286,6 @@ const LabExportCore = (() => {
     }
     return o;
   }
-  return { FORMATS, ALIASES, get, SIZES, size, page, subTimes, BLUR, SS, QUALITY, args, audio, loopLen, dist, findLoop, speed, eta, fmtSecs, fmtSize, preset, readPreset, sheet, safe, parse, MAX_SIDE };
+  return { FORMATS, ALIASES, get, SIZES, size, page, subTimes, BLUR, SS, QUALITY, args, streamArgs, audio, loopLen, dist, findLoop, speed, eta, etaModel, fmtSecs, fmtSize, preset, readPreset, sheet, safe, parse, MAX_SIDE };
 })();
 if (typeof module !== 'undefined') module.exports = LabExportCore;

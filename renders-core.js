@@ -189,6 +189,9 @@ const RendersCore = (() => {
   }
   // seconds left from the measured rate (after 3 % and 2 s of real work, paused time left out)
   function eta(j, now = Date.now()) {
+    // (round 41, renderfast) a render that measures its own time left (its recent frames' pace, the encode after them)
+    // says it; counted down between its reports
+    if (j.status === 'running' && j.etaS != null && j.etaAt && now - j.etaAt < 60000) return Math.max(1, Math.round(j.etaS - (now - j.etaAt) / 1000));
     if (j.status !== 'running' || !(j.pct > 3) || j.pct >= 100) return null;
     const ran = (now - (j.started || now) - (j.pausedMs || 0)) / 1000;
     if (ran < 2) return null;
