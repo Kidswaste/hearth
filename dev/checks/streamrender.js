@@ -20,6 +20,10 @@
 const { wait, until } = M;
 const out = {};
 const fails = [];
+// what other parts of the app add to a reply's HTML, left out when it's compared with a full render: cmdbar.js marks
+// the code it checked, juice.js turns a pointed-at title into data-tip, pictures already seen hold their size
+const firstDiff = (a, b) => { let i = 0; while (i < a.length && a[i] === b[i]) i += 1; return `at ${i}: …${a.slice(Math.max(0, i - 80), i + 80)}… vs …${b.slice(Math.max(0, i - 80), i + 80)}…`; };
+const clean = (h) => h.replace(/ data-cmdchk="1"/g, '').replace(/ style="width: \d+px; aspect-ratio: [^"]*"/g, '').replace(/ (title|data-tip)="[^"]*"/g, '');
 const claude = H.claudeAgent();
 const cdp = (method, params) => smoke({ cdp: method, params });
 const KEYS = { Escape: [27, 'Escape'], Backspace: [8, 'Backspace'], End: [35, 'End'] };
@@ -136,11 +140,11 @@ await seg('check-live', async () => {
   const res = [];
   for (let i = 0; i < 2; i++) {
     const r = Native._test.livePaint(H.activeChat[claude.id]); if (!r) break;
-    const t = document.createElement('template'); t.innerHTML = window.renderMarkdownLive(r.text);
+    const t = document.createElement('template'); t.innerHTML = window.renderMarkdownLive(r.text); t.innerHTML = clean(t.innerHTML);
     // (pictures already seen hold their size; cmdbar.js marks the code it checked for commands)
-    const html = r.html.replace(/ style="width: \d+px; aspect-ratio: [^"]*"/g, '').replace(/ data-cmdchk="1"/g, '');
+    const html = clean(r.html);
     res.push(`${r.text.length} characters: ${html === t.innerHTML ? 'identical' : 'DIFFERENT'}`);
-    if (html !== t.innerHTML) fails.push(`the live reply differs from a full render at ${r.text.length} characters`);
+    if (html !== t.innerHTML) fails.push(`the live reply differs from a full render at ${r.text.length} characters ${firstDiff(html, t.innerHTML)}`);
     await wait(500);
   }
   out.liveEqual = res.join(' · ');
@@ -158,13 +162,12 @@ await seg('stream-end', async () => {
 });
 // the finished reply (the live node, kept: native.js messageEl `live`) equals the same message drawn from scratch
 await seg('end-equal', async () => {
-  const clean = (h) => h.replace(/ data-cmdchk="1"/g, '').replace(/ style="width: \d+px; aspect-ratio: [^"]*"/g, '');
   const lastBody = () => [...list.querySelectorAll(':scope > .msg.assistant > .body')].pop();
   const a = lastBody(); const kept = clean(a?.innerHTML || '');
   await Native.refresh(claude.id); await settle(); await wait(300);
   const b = lastBody();
   out.endEqual = `${b !== a ? 'redrawn' : 'NOT redrawn'}: ${clean(b?.innerHTML || '') === kept ? 'identical to the finished reply' : 'DIFFERENT'}`;
-  if (b === a || clean(b?.innerHTML || '') !== kept) fails.push(`finished reply vs drawn from scratch: ${out.endEqual}`);
+  if (b === a || clean(b?.innerHTML || '') !== kept) fails.push(`finished reply vs drawn from scratch: ${out.endEqual} ${firstDiff(kept, clean(b?.innerHTML || ''))}`);
 });
 out.reply = `${replyChars.toLocaleString()} characters, ${out.streamMs} ms`;
 out.parsedLive = `${(parsedLive() - parsed0).toLocaleString()} characters of Markdown parsed while streaming (${replyChars ? ((parsedLive() - parsed0) / replyChars).toFixed(1) : '?'}× the reply)${hl0 != null ? ` · highlighted ${(hlLive() - hl0).toLocaleString()}` : ''}`;
