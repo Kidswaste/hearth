@@ -156,7 +156,8 @@ for (const n of [100, 500, 2000]) {
   // machine was busy (88 µs for 100 objects on one run, 40 on the next); the cost itself is what's asserted
   for (let i = 0; i < N; i += 1) P.signature(T.scene, T.camera, T.r, [1, 1, 1, 0]);
   let us = Infinity;
-  for (let k = 0; k < 6; k += 1) {
+  // (round 37) best of 20 short rounds: same limits, but one GC pause or busy moment can no longer fail it
+  for (let k = 0; k < 20; k += 1) {
     const t0 = process.hrtime.bigint(); for (let i = 0; i < N; i += 1) P.signature(T.scene, T.camera, T.r, [1, 1, 1, 0]);
     us = Math.min(us, Number(process.hrtime.bigint() - t0) / 1000 / N);
   }
