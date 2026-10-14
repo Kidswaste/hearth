@@ -34,7 +34,7 @@ const GROUPS = {
   capture: by(/^capture/),
   journeys: by(/^journey-/),
   chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter|^simplify[]$|^grid-resize$|^appsearch$/), // (round 27) simplify2: calm Settings, no /commands on screen · (round 33) simplify3: AI setup order + folds, counts · (round 37) appsearch: Find anything (Ctrl/⌘+K)
-  lab: ['labsearch', 'labtemplates', 'scenedoctor', 'labeasy', 'labadapt', 'labvariations', 'multiformat', 'seqsolid', 'autoedit', 'gallery', 'lookmatch', 'instantscene', 'autopolish', 'perfectloop', 'music', 'labaudio', 'stems', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf', 'labpace', 'labgestures', 'abcompare'],
+  lab: ['labsearch', 'labtemplates', 'scenedoctor', 'labeasy', 'labadapt', 'labvariations', 'multiformat', 'seqsolid', 'autoedit', 'gallery', 'lookmatch', 'instantscene', 'autopolish', 'perfectloop', 'music', 'labaudio', 'stems', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf', 'labpace', 'labgestures', 'abcompare', 'labboot'],
   nodes: by(/^nodes-/),
   smooth: [...by(/^smooth-/), 'hz240', 'smooth26', 'smooth32', 'motionpolish', 'streamrender', 'unit:streamrender-test'], // (round 17) hz240: the 240 Hz interaction check · (round 26) smooth26: ⋯ / ◎ / the Lab hidden · (round 32) smooth32: streaming, grid drag, the Lab beside a streaming chat · (round 36) motionpolish: every opening on the compositor, one tempo, reduced motion
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],
@@ -86,6 +86,7 @@ const GROUPS = {
   quickstart: ['quickstart', 'unit:quickstart-test'], // (round 31) "What can I do here?": the card per window (once by itself, the ⋯ ways in, context first, used drops off) + the picking
   aicheck: ['aicheck', 'options'], // (round 32) Check this AI: the checklist through the fake engines (Read / Windows Astra / signed out), its fixes, the refusal note's button
   labpace: ['labpace', 'unit:labpace-test', 'unit:labadapt-test'], // (round 33) frame pacing: f60 (same speed at 60–240 Hz), still pictures stop drawing, a parked Lab sleeps, battery, Frame pace
+  labboot: ['labboot', 'fastboot-lab', 'labpace', 'lazy'], // (round 37) the Lab opening and switching scenes: a warm preview page taken over on open, switch → drawn, the preview's longest task, no black frame between scenes
   labgestures: ['labgestures', 'unit:labgestures-test', 'labpace'], // (round 34) trackpad / mouse navigation of the Lab preview: wheel / pinch / drags, inertia, Z / Shift+Z, still after
   labadapt: ['labadapt', 'unit:labadapt-test'], // (round 31) the Lab preview lightens itself in steps (resolution, filters, shadows, particles), covered layers skip drawing, renders unchanged
   lightweight: ['lightweight', 'unit:recall-test', 'unit:store-thread-test', 'unit:chrome-test'], // (round 34) an hour-like session (Lab, ⋯ AI setup, chats, a long reply, Astra, Activity) three times: heap budget, nothing left per session; recall index packed, chat texts held only while searching, Chrome quits when idle

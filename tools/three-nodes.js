@@ -1089,9 +1089,9 @@ let ${id}Travel = 0;`);
   // The graph in a layer's code, with slider values the Lab saved into the code since (Save, Shuffle + Save).
   // edited: the code no longer matches the graph (changed by hand or by the director).
   function fromCode(code) {
-    filterDefs();
     const hit = NodeView.extract(code);
-    if (!hit) return null;
+    if (!hit) return null; // (round 37, labboot) plain code: no need for the ≈ 170 filter types (≈ 0.15 s of the Lab's first open)
+    filterDefs();
     const graph = NodeView.normalize(hit.graph, reg);
     let items = [];
     try { items = ThreeTweaks.scan(hit.body).items.filter((it) => it.key != null && it.call === 0); } catch { /* unreadable code */ }

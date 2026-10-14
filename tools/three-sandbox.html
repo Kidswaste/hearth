@@ -17,8 +17,20 @@
 <script>
   // Import map built from ?v= so the Lab can switch three.js versions.
   const params = new URLSearchParams(location.search);
+  // (round 37, labboot) ?dpr= can change in place: switching between a fit preview and an exact size (a scene with its own
+  // frame size, Shift+1…5) used to load a whole new page (three.js, contexts, shaders, the song again); the Lab now
+  // sends { type: 'dpr', value: 1 | null } and runs the scene again in this page
+  {
+    const real = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio') || Object.getOwnPropertyDescriptor(Window.prototype, 'devicePixelRatio') || null;
+    const realGet = real?.get ? () => real.get.call(window) : null;
+    globalThis.__labSetDpr = realGet ? (v) => {
+      const n = Number(v) > 0 ? Number(v) : null;
+      Object.defineProperty(window, 'devicePixelRatio', { get: n ? () => n : realGet, configurable: true });
+      return true;
+    } : null;
+  }
   // Exact output sizes (1080×1920…) render at 1 device pixel per pixel, so the canvas matches the export.
-  if (params.get('dpr')) { const dpr = Number(params.get('dpr')); Object.defineProperty(window, 'devicePixelRatio', { get: () => dpr }); }
+  if (params.get('dpr')) { const dpr = Number(params.get('dpr')); Object.defineProperty(window, 'devicePixelRatio', { get: () => dpr, configurable: true }); }
   // (round 22 "labexport") an export page's randomness is seeded (?seed=): the same render gives the same pixels every time
   if (params.get('seed')) { let a = Number(params.get('seed')) >>> 0; Math.random = () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   const V = params.get('v') || '0.186.1';
@@ -426,6 +438,39 @@ let frameMs = 0;
 let shotPending = false;
 let shotTag = null; // echoed with the picture (the Lab's automatic thumbnails use 'thumb')
 const renderers = new Set(); // every renderer the current sketch made, so a re-run can dispose them
+// the share of the sketch's own pixel ratio a renderer draws at now: adaptive resolution, a precomp's resolution, a
+// slow drag, Light mode (at most 1 device pixel per CSS pixel: a Retina screen draws a quarter of the pixels)
+function prQ(r, EL) {
+  let q = fullRes() || r.__helper ? 1 : SQ.off ? 1 : +(quality * (EL?.props.pcOf ? pcRes(EL) : 1) * (r.__lowRes || 1) * paceDragK()).toFixed(2);
+  if (lightMode && !fullRes() && !r.__helper && !SQ.off && typeof r.getPixelRatio === 'function') q = Math.min(q, +(1 / Math.max(1, r.__basePR ?? r.getPixelRatio())).toFixed(2));
+  return q;
+}
+// (round 37, labboot) a layer's new renderer draws at that share from its first setSize: the sketch's
+// setPixelRatio(v) gives v × the share (its own v is kept as __basePR, as render() reads it). Before, a new scene first
+// sized its canvas at full resolution, then its first frame sized it again at the adapted one; and three.js's
+// setPixelRatio, called before the sketch's setSize, sizes the canvas from its pixel size once more. Each is a
+// drawing-buffer reallocation (a GPU round trip: ≈ 0.25 s each on software GL, 3–4 per switch), and a pooled canvas
+// already has the size the new scene asks for. Now the canvas keeps its pixels until the sketch's own setSize.
+function preQ(r, EL) {
+  const spr = r.setPixelRatio; const ss = r.setSize;
+  if (typeof spr !== 'function' || typeof ss !== 'function' || typeof r.getPixelRatio !== 'function' || r.__helper) return;
+  let sized = false; let inner = false;
+  const setSize = function (...a) { if (!inner) sized = true; return ss.apply(this, a); };
+  r.setSize = setSize;
+  r.setPixelRatio = function (v) {
+    if (this.__inQ) return spr.call(this, v);
+    this.__basePR = Number(v) || 1;
+    const q = prQ(this, EL);
+    this.__q = q;
+    const pr = this.__basePR * q;
+    const cv = this.domElement;
+    if (sized || !cv?.width || !cv?.height) return spr.call(this, pr);
+    // not sized by the sketch yet: three.js re-sizes the canvas from its pixels here; keep them as they are
+    const w0 = cv.width; const h0 = cv.height;
+    inner = true; this.setSize = (w, h) => ss.call(this, (w0 + 0.5) / pr, (h0 + 0.5) / pr, false);
+    try { return spr.call(this, pr); } finally { inner = false; this.setSize = setSize; }
+  };
+}
 function instrument(renderFn) {
   return function render(scene, camera) {
     if (this.__stale) return; // (round 21: a gone module's renderer draws nothing, and isn't counted back in)
@@ -462,14 +507,12 @@ function instrument(renderFn) {
     // adaptive resolution (see adaptQuality): the sketch's own pixel ratio × the current quality
     // (a precomp's layers: × that precomp's own resolution, see "precomps")
     if (paceSleeping.size) paceWake(); // (labpace: anything drawing wakes the page's loops)
-    let q = fullRes() || this.__helper ? 1 : SQ.off ? 1 : +(quality * (EL?.props.pcOf ? pcRes(EL) : 1) * (this.__lowRes || 1) * paceDragK()).toFixed(2);
-    // Light mode: at most 1 device pixel per CSS pixel in the preview (a Retina screen draws a quarter of the pixels)
-    if (lightMode && !fullRes() && !this.__helper && !SQ.off && typeof this.getPixelRatio === 'function') q = Math.min(q, +(1 / Math.max(1, this.__basePR ?? this.getPixelRatio())).toFixed(2));
+    const q = prQ(this, EL);
     if (this.__q !== q && typeof this.setPixelRatio === 'function') {
       // the sketch's own ratio: read the first time, and again if the sketch set a new one since (it no longer matches ours)
       if (this.__basePR == null || Math.abs(this.getPixelRatio() - this.__basePR * this.__q) > 1e-3) this.__basePR = this.getPixelRatio();
       this.__q = q;
-      this.setPixelRatio(this.__basePR * q);
+      this.__inQ = true; try { this.setPixelRatio(this.__basePR * q); } finally { this.__inQ = false; }
     }
     if (paceSkip(this, scene, camera, EL)) { lvBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
     PACE.drawn += 1; PACE.lastDraw = frameTick;
@@ -741,7 +784,8 @@ function dprNext(base, from, to) {
       const next = dprNext(base, from, dprNow);
       if (next === base) continue;
       r.__basePR = next; r.__q = k;
-      try { r.setPixelRatio(next * k); if (r.__lastScene && r.__lastCamera) r.render(r.__lastScene, r.__lastCamera); } catch { /* gone */ }
+      r.__inQ = true; // (round 37: the ratio as it is, not through the share applied to a sketch's own setPixelRatio)
+      try { r.setPixelRatio(next * k); r.__inQ = false; if (r.__lastScene && r.__lastCamera) r.render(r.__lastScene, r.__lastCamera); } catch { /* gone */ } finally { r.__inQ = false; }
     }
     dispatchEvent(new Event('resize'));
     return true;
@@ -753,6 +797,7 @@ function dprNext(base, from, to) {
   };
   dprWatch();
   globalThis.__labDprCheck = dprCheck; // (dev/checks/nativefeel.js)
+  globalThis.__labDprSync = () => { dprNow = devicePixelRatio; dprWatch(); }; // (round 37) the Lab changed ?dpr= in place: no rescale of what's about to go
 }
 // Adaptive quality (round 31 "labadapt"; round 5's adaptive resolution grown into a ladder). When the preview can't keep
 // up (frames dropping for a sustained moment: the GPU is busy with a big frame size, heavy filters, shadows, particles),
@@ -2254,14 +2299,15 @@ globalThis.__tv = (i, d) => {
 globalThis.__slider = (key) => { const e = Object.entries(tweakKeys).find(([n]) => n.endsWith(`.${key}`)); return e ? valueOf(e[1], TV[e[1]]) : undefined; };
 // The user's reference files for this sketch: refs.<name> is a URL any loader can use (TextureLoader,
 // GLTFLoader, fetch, new Audio…); refTexture('name') gives a ready texture (videos play muted and looping).
-const refs = {}; const refKinds = {};
+const refs = {}; const refKinds = {}; const refBlobs = {};
 globalThis.refs = refs;
 // The sketch's colors ('#rrggbb' strings), usually picked from a reference picture: new THREE.Color(palette[0]).
 const palette = [];
 globalThis.palette = palette;
 function setRefs(items) {
   for (const k of Object.keys(refs)) delete refs[k];
-  for (const it of items || []) { refs[it.key] = URL.createObjectURL(new Blob([it.buffer], { type: it.mime || '' })); refKinds[it.key] = it.kind; }
+  for (const k of Object.keys(refBlobs)) delete refBlobs[k];
+  for (const it of items || []) { const b = new Blob([it.buffer], { type: it.mime || '' }); refs[it.key] = URL.createObjectURL(b); refKinds[it.key] = it.kind; if (it.kind === 'image') refBlobs[it.key] = b; }
 }
 globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
   const url = refs[key];
@@ -2273,6 +2319,17 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
     const tex = new THREE.VideoTexture(v);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.video = v;
+    return tex;
+  }
+  // (round 37, labboot) a picture is decoded off the page's thread (createImageBitmap, flipped there as three.js would
+  // flip it at upload): the texture is there at once, empty, and gets its picture when it's decoded, as with the
+  // TextureLoader before, but the first frame that uploads it no longer decodes a big photo on the page's thread
+  if (typeof createImageBitmap === 'function' && refBlobs[key]) {
+    const tex = new THREE.Texture();
+    tex.colorSpace = THREE.SRGBColorSpace;
+    createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
+      tex.image = bmp; tex.flipY = false; tex.needsUpdate = true;
+    }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
     return tex;
   }
   const tex = new THREE.TextureLoader().load(url);
@@ -3055,7 +3112,7 @@ function trackRenderer(r) {
   if (staleStack(st)) { dropStale(r); return; }
   renderers.add(r);
   const id = layerOfStack(st) || ctxLayer;
-  if (id) { layerState(id).renderers.add(r); r.__layer = id; }
+  if (id) { layerState(id).renderers.add(r); r.__layer = id; if (mode === 'sketch') preQ(r, layers.get(id)); }
   // Transparent where nothing is drawn, so the layers below show through (a scene.background or
   // setClearColor in the layer's code still makes it opaque, e.g. for a bottom layer).
   queueMicrotask(() => { try { if (!r.__keepClear) { r.setClearAlpha(0); r.__keepClear = false; } } catch {} });
@@ -10905,6 +10962,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'view') lvCommand(msg); // (round 34 "labgestures") Z frames, Shift+Z resets, keep this view
   if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
+  if (msg.type === 'dpr') { if (globalThis.__labSetDpr?.(msg.value)) globalThis.__labDprSync?.(); return; } // (round 37, labboot) fit ⇄ exact size, in this page
   if (msg.type === 'lib') { libGot(msg); return; } // (round 25, diet) motion / lab3d code from the hub
   if (msg.type === 'grade-lut') gradeSetLut(msg.name, msg.N, msg.data); // (round 24) an imported .cube LUT (tools/three-grade.js)
   if (msg.type === 'media') mediaCommand(msg);
@@ -10955,7 +11013,7 @@ function smallShot(max, tag) {
 if (mode === 'sketch') { document.body.classList.add('sketch'); notePage(); }
 if (mode === 'shader') setupShader();
 if (mode === 'viewer') await setupViewer();
-post({ type: 'ready', mode, revision: THREE.REVISION, n: new URLSearchParams(location.search).get('n') });
+post({ type: 'ready', mode, revision: THREE.REVISION, n: new URLSearchParams(location.search).get('n'), dprLive: Boolean(globalThis.__labSetDpr) }); // (round 37: ?dpr= changes in place)
 </script>
 </body>
 </html>
