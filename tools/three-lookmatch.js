@@ -141,6 +141,7 @@ const LookMatch = (() => {
     if (S.busy) throw new Error('Still matching the last one.');
     S.busy = true;
     const busy = quiet ? null : toast(`🎨 Reading ${source.title || 'the reference'}…`, { timeout: 0 });
+    const abDone = window.LabAB?.hold?.('lookmatch', { label: `🎨 Look of ${source.title || 'a reference'}` }); // (round 37) ◧ Before / after: one change
     try {
       const { ref, frames } = await read(source);
       const d = await lab();
@@ -172,7 +173,7 @@ const LookMatch = (() => {
       if (!quiet) toast(`🎨 Matched ${source.title || 'the look'}${S.last.score != null ? ` · ≈${S.last.score} % close` : ''}`, { timeout: 4500, action: { label: 'Undo', fn: () => undo().catch(err) } });
       if (ask != null && String(ask).trim()) setTimeout(() => askDirector(String(ask).trim()).catch(err), 200);
       return { ref, match: m, before: S.last.before, score: S.last.score };
-    } finally { busy?.remove?.(); S.busy = false; }
+    } finally { busy?.remove?.(); S.busy = false; abDone?.(); }
   }
   async function undo() {
     const l = S.last;
@@ -195,6 +196,7 @@ const LookMatch = (() => {
   const recent = () => store.get(RECENT, []);
   async function reapply(row) {
     const d = await lab();
+    window.LabAB?.note?.('lookmatch', { label: `🎨 ${row.name}'s look` }); // (round 37) ◧ Before / after names it
     const snap = await snapshot(d);
     const m = { grade: { ...G().defaults('grade'), ...row.grade }, lens: row.lens ? { ...G().defaults('lens'), ...row.lens } : null, palette: row.palette || [], why: [] };
     try { await write(d, m); if (m.palette.length) d.refs?.setPalette?.(m.palette); } catch (e) { await restore(snap).catch(() => {}); throw e; }

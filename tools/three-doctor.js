@@ -124,7 +124,9 @@ const SceneDoctor = (() => {
     if (!f?.fix) throw new Error('No local fix for that one: Ask the director.');
     if (S.fixed.has(id)) return false;
     const { d, cmd } = await lab();
-    const undo = await FIX[f.fix.kind](d, f, cmd);
+    const abDone = window.LabAB?.hold?.('doctor', { label: `🩺 ${f.fix.label}` }); // (round 37) ◧ Before / after: one change
+    let undo;
+    try { undo = await FIX[f.fix.kind](d, f, cmd); } finally { abDone?.(); }
     if (!undo) return false;
     const entry = { id, label: f.fix.label, text: f.text, undo, sketch: S.sketch, f };
     S.undos.push(entry);

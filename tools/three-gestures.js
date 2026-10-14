@@ -28,6 +28,7 @@ const ThreeGestures = (() => {
   // the preview's answers: a view command done (or why not), the first gesture-able scene under the pointer
   function onBox(msg) {
     if (msg.type === 'view-state') { seq += 1; last = msg; if (msg.say) toast(msg.say, { timeout: msg.ok ? 2600 : 1800 }); return true; }
+    if (msg.type === 'view-moved') { dispatchEvent(new CustomEvent('hearth:lab-view', { detail: { steps: msg.steps } })); return true; } // (round 37) ◧ Before / after makes its picture again
     if (msg.type === 'view-hint') {
       if (store.get(HINT, false)) return true;
       store.set(HINT, true);

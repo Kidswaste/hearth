@@ -1,0 +1,32 @@
+/* ◧ Before / after (tools/three-abcompare.js): over the Lab preview's frame, under its own bar (like ◐ Compare). The split view is one picture clipped at
+   a line (the line moves with a transform; the clip is the only repaint), the chip sits at the top centre of the frame.
+   No blur over the moving preview; the chip's entrance is opacity / transform only. */
+.ab-split { position: absolute; z-index: 2; pointer-events: none; contain: layout paint; }
+.ab-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+.ab-img:not([src]) { visibility: hidden; }
+.ab-split.ab-none .ab-img { visibility: hidden; }
+.ab-bar { position: absolute; top: 0; bottom: 0; left: 0; width: 16px; margin-left: -8px; cursor: ew-resize; pointer-events: auto; touch-action: none; will-change: transform; }
+.ab-bar::before { content: ""; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: var(--fh-gold, #ffd75e); box-shadow: 0 0 6px #000; }
+.ab-knob { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #000b; border: 2px solid var(--fh-gold, #ffd75e); box-sizing: border-box; }
+.ab-knob::before { content: "◂▸"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--fh-gold, #ffd75e); font: 9px/1 system-ui, sans-serif; letter-spacing: -1px; }
+.ab-tag { position: absolute; top: 46px; padding: 1px 7px; border-radius: 4px; background: #000b; color: #fff; font: 600 10px/1.6 system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.ab-tl { left: 8px; }
+.ab-tr { right: 8px; }
+.ab-split.ab-drag { pointer-events: auto; cursor: ew-resize; } /* the line being dragged: the pointer stays here, not in the preview's page */
+.ab-split.ab-busy .ab-knob { border-style: dashed; }
+/* hold B on a code change: the earlier picture over the whole frame; values: a small badge only */
+.ab-peek { position: absolute; z-index: 2; object-fit: fill; pointer-events: none; }
+.ab-cover { position: absolute; z-index: 2; object-fit: fill; background: #000; pointer-events: none; }
+.ab-badge { position: absolute; z-index: 8; padding: 2px 8px; border-radius: 5px; background: var(--fh-gold, #ffd75e); color: #1a1408; font: 700 11px/1.5 system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase; pointer-events: none; box-shadow: 0 2px 8px #0008; }
+/* the chip: "◐ Before: Director edit · 2 min ago  ⟲ ✓" (top centre of the frame; the split's tags sit in its corners) */
+.ab-chip { position: absolute; z-index: 8; display: flex; align-items: center; gap: 2px; padding: 2px; transform: translateX(-50%); border: 1px solid var(--line, #333); border-radius: 999px;
+  background: color-mix(in srgb, var(--panel, #15181b) 94%, transparent); color: var(--text, #eae0d5); font-size: 11.5px; box-shadow: 0 6px 18px #0009; white-space: nowrap; max-width: calc(100% - 24px);
+  animation: ab-in var(--dur-med, .18s) var(--ease-out, ease-out) both; }
+.ab-chip.on { border-color: var(--fh-gold, #ffd75e); }
+.ab-chip button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; border-radius: 999px; padding: 2px 8px; line-height: 1.5; }
+.ab-chip button:hover, .ab-chip button:focus-visible { background: color-mix(in srgb, var(--fh-gold, #ffd75e) 16%, transparent); }
+.ab-what { overflow: hidden; text-overflow: ellipsis; user-select: none; touch-action: none; }
+.ab-keep-before, .ab-keep-now { padding: 2px 7px !important; font-size: 13px !important; }
+.ab-keep-now { color: var(--fh-gold, #ffd75e) !important; }
+@keyframes ab-in { from { opacity: 0; transform: translate(-50%, -6px); } }
+.three-preview.presenting .ab-chip { display: none; }
