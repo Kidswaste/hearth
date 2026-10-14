@@ -113,7 +113,12 @@ what a plain scan finds.
   `dev/run-checks.js` makes the fixture). Budgets on the list's own work and counts (draw, Show more, letters, one
   change, nodes, scroll busy, highlight, heap); input → frame is reported and fails only far over. The starting code
   fails it on 9 budgets plus the drag.
-- RESULTS_PLACEHOLDER
+- `sh dev/run-checks.sh chatlistfast`: **12/12 pass** (chatlistfast, a11y with its audit at 0, undoall + unit,
+  chatcalm, recall + unit, lightweight, inputlatency, lazy, unit:boot-test, fastboot), load 4–7. The final check run
+  (with the "rename survives a reply" step) passes too; the history first shows in the list ≈ 0.8 s after the window
+  starts there (reported, not budgeted: it is mostly the background process reading 3,000 files).
+- Before / after: 2 + 2 interleaved runs at 3,000 chats, 1 + 1 at 5,000 (tables above); screenshots of the list at
+  rest are identical before and after.
 
 ## Risks
 - Modules that decorate chat rows by watching `#chat-groups`'s own children (not `hooks.row`) see only redraws that
