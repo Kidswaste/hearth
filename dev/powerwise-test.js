@@ -278,7 +278,7 @@ check(C.describe([{ label: 'rendering' }, { label: 'recording', display: true },
   check(/Power\.every\('lab-media'/.test(read('tools/three.js')) && /Power\.every\('lab-stall'/.test(read('tools/three.js')), 'the Lab\'s media memory and stall check: on the schedule, only on screen');
   check(/Power\.every\(pollId/.test(read('chromeview.js')), 'Chrome views\' visibility check: only on screen');
   check(/powerwise\.every\(`config-stat/.test(read('main.js')) && !/fs\.watchFile\(file, \{ interval: 5000 \}/.test(read('main.js')), 'the config safety net: on the main schedule (no 5 s stat poll per file)');
-  check(/why === 'away' && !force\) return null/.test(read('hints.js')), 'hints: no look-again every 0.7 s while Hearth is hidden');
+  check(/(why === 'away'|document\.hidden) && !force\) return null/.test(read('hints.js')), 'hints: no look-again every 0.7 s while Hearth is hidden');
   check(/WAKE\.sync/.test(read('syncmain.js')) && /st\.battery \|\| st\.saver/.test(read('syncmain.js')), 'sync: waits after a wake, slower on the saver too');
   check(/Power\?\.lite\?\.\(\) \? 'calm'/.test(read('look.js')), 'look.js: Full moves like Calm while lighter');
   check(/'on battery'/.test(read('tools/three-boot.js')), 'labboot: no warm page on battery');
