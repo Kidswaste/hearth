@@ -111,9 +111,11 @@ heavy scene. Expect the 4K and All formats gains or better at home. The heavy sc
   JPEG, ProRes 4444 from PNG with alpha, GIF loop with cross-fade (bytes + framemd5). A refused stream says why and
   leaves no file. A cancelled one leaves none, and a file that was already there is kept. `streamArgs`. The time-left
   model (prior, pace, lag, tail, no made-up number).
-- Also run: `lazy`, `unit:boot-test`, `unit:labexport-test`, `unit:renders-test`, `unit:multiformat-test` (pass),
-  and `multiformat`, `labexport`, `capture-pack`, `beatlink`, `labmemory`, `renders`, `renders-seq` (see the final
-  report for the outcome). There is no `labcamera` check on this branch.
+- Also run, all pass: `lazy`, `unit:boot-test`, `unit:labexport-test`, `unit:renders-test`, `unit:multiformat-test`,
+  `multiformat`, `labexport`, `capture-pack`, `beatlink`, `labmemory` (+ its group: labboot, labvariations,
+  abcompare), `renders`, `renders-seq`. `labpace` fails one timing step ("draws again within a frame or two": lag
+  167–217 ms under load). It fails the same way on the code before this stream, so it's not caused by it. There is no
+  `labcamera` check on this branch.
 - beatlink, labpace, labmemory and labcamera all act inside the export page, which is unchanged: the scene's
   clock, links, camera moves and memory freeing run exactly as before. The equality checks cover the hand-off around
   it.
