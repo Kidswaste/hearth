@@ -22,7 +22,7 @@ const PacksCore = (() => {
   const MANIFEST = 'hearthpack.json';
   const THUMB = 'thumb.jpg';
   const TOKEN = 'hearthpack:';
-  const KINDS = ['scene', 'sequence', 'gallery'];
+  const KINDS = ['scene', 'sequence', 'gallery', 'template']; // (round 35, labtemplates) template: one of My templates, its fields in "template"
   const MB = 1048576;
   const LIMITS = {
     pack: 1536 * MB, // the .hearthpack file itself
@@ -204,6 +204,7 @@ const PacksCore = (() => {
       format: FORMAT, v: VERSION, kind: KINDS.includes(o.kind) ? o.kind : 'scene', name: safeName(o.name, 80), desc: String(o.desc || '').slice(0, 300),
       made: { app: o.app || 'Hearth', version: String(o.version || ''), platform: o.platform || '', at: o.at || Date.now() },
       scenes: o.scenes || [], sequence: o.sequence || null, luts: o.luts || [], song: o.song || null, files: o.files || [], missing: o.missing || [],
+      ...(o.template ? { template: o.template } : {}),
     };
   }
   const PLATFORM = { darwin: 'a Mac', win32: 'Windows', linux: 'Linux' };
@@ -213,7 +214,8 @@ const PacksCore = (() => {
     if (!m || typeof m !== 'object' || m.format !== FORMAT) return { ok: false, problems: ['Not a Hearth pack (its hearthpack.json says something else).'], m: null };
     if (!(Number(m.v) >= 1)) problems.push('Its version is unknown.');
     else if (Number(m.v) > VERSION) problems.push('It was made by a newer Hearth: update Hearth (⬆ Update) to open it.');
-    if (!KINDS.includes(m.kind)) problems.push(`It is a "${String(m.kind).slice(0, 20)}", not a scene, sequence or gallery item.`);
+    if (!KINDS.includes(m.kind)) problems.push(`It is a "${String(m.kind).slice(0, 20)}", not a scene, sequence, gallery item or template.`);
+    if (m.kind === 'template' && (!m.template || !Array.isArray(m.template.fields) || m.template.fields.length > 400)) problems.push('Its template fields are missing or too many.');
     const scenes = Array.isArray(m.scenes) ? m.scenes : [];
     if (!scenes.length) problems.push('It has no scene in it.');
     if (scenes.length > LIMITS.scenes) problems.push(`It has ${scenes.length} scenes: the most is ${LIMITS.scenes}.`);
@@ -269,7 +271,7 @@ const PacksCore = (() => {
   function describe(m) {
     const c = contents(m);
     const lines = [];
-    const what = m.kind === 'sequence' ? `A sequence of ${plural(c.scenes, ['scene', 'scenes'])}` : c.scenes > 1 ? plural(c.scenes, ['scene', 'scenes']) : 'A Lab scene';
+    const what = m.kind === 'template' ? `A template${m.template?.fields?.length ? ` with ${plural(m.template.fields.length, ['field', 'fields'])} to fill in` : ''}` : m.kind === 'sequence' ? `A sequence of ${plural(c.scenes, ['scene', 'scenes'])}` : c.scenes > 1 ? plural(c.scenes, ['scene', 'scenes']) : 'A Lab scene';
     lines.push(`${what} · ${plural(c.layers, ['layer', 'layers'])}`);
     const tune = [c.sliders ? plural(c.sliders, ['slider', 'sliders']) : '', c.looks ? plural(c.looks, ['saved look', 'saved looks']) : '', c.keys ? plural(c.keys, ['keyframe', 'keyframes']) : ''].filter(Boolean);
     if (tune.length) lines.push(tune.join(' · '));

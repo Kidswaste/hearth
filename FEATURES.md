@@ -1023,3 +1023,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ ⋯ AI setup → How hard it thinks → **How long its answers are**: Short · Normal · Detailed (one fixed line at the end of Claude's instructions; Astra uses its engine's own verbosity; Normal adds nothing). `/answers`.
 - ✓ A reply's token hover splits the output (written · thinking · tool calls) and names the length; plain chats answer without preamble or recap by default; the Three Director is pointed at targeted edits when it rewrites a mostly unchanged layer.
 - ○ Measured on a labelled sample (`node dev/concise-measure.js`: Short drops ≈ 24 % of output if followed; an edit ≈ 47 tokens vs a rewrite ≈ 1,161); fake engines `sh dev/run-checks.sh concise`.
+## 📐 My templates (round 35, labtemplates, 22 upgrades: docs/upgrades/labtemplates.md)
+- ✓ Any Lab scene saved as your own starting point (✦ More › 📐 My templates, the toolbar's ⋯, Sketch ▾): name, a picture, and which parts become fields (all sliders, the palette, text layers' words, picture / video / sound slots by default). Files in data/templates/ (synced), shared as a .hearthpack, deleted to the Trash.
+- ✓ New from my template…: a picker (pictures, search, newest first) → a short form with a live preview → Create makes a new scene (one Undo, its own time-machine entry). 0 tokens. The AI: `/my-template list | fields | use <name> {values}` through three_do run.
+- ○ Checked by `dev/checks/labtemplates.js` (lab group) and `node dev/labtemplates-test.js` on generated scenes.

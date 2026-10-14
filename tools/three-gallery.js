@@ -271,6 +271,8 @@ const LabGallery = (() => {
       }
       const words2 = typeof LabInstant !== 'undefined' ? LabInstant.galleryRow(query, close) : null; // (round 29) ✦ Make it from my words
       if (words2) nodes.unshift(words2);
+      const mine = !query && filter === 'all' && typeof LabTemplatesHook !== 'undefined' ? LabTemplatesHook.galleryRow(close) : null; // (round 35) 📐 My templates (tools/three-templates-hook.js)
+      if (mine) nodes.unshift(mine);
       if (!list.length) nodes.push(el('div', { class: 'lab-gal-empty muted', text: words.length ? `Nothing like "${query}" here. Try another word, or "All".` : 'Nothing here yet.' }));
       body.replaceChildren(...nodes);
       count.textContent = `${list.length} of ${all.length}`;
