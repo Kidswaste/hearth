@@ -416,11 +416,22 @@ const Lazy = (() => {
     else wanted.add(g.name);
   }
   // one frame drawn (rAF, then the task after it), or 300 ms at most (a hidden window draws no frames)
+  // (round 40, firstscreen) and that frame on screen (its 'paint' entry), ≤ 600 ms after it was made: on a busy CPU the
+  // groups parsed right after the frame was made held back its drawing (first paint ≈ +75 ms on a reload here)
   function afterPaint(fn) {
     let done = false;
-    const go = () => { if (done) return; done = true; clearTimeout(t); fn(); };
-    const t = setTimeout(go, 300);
-    try { requestAnimationFrame(() => setTimeout(go, 0)); } catch { /* no frames */ }
+    let po = null;
+    let t = 0;
+    const go = () => { if (done) return; done = true; clearTimeout(t); try { po?.disconnect(); } catch { /* gone */ } fn(); };
+    t = setTimeout(go, 300);
+    const shown = () => performance.getEntriesByType('paint').length > 0;
+    try {
+      requestAnimationFrame(() => setTimeout(() => {
+        if (done || shown()) { go(); return; }
+        clearTimeout(t); t = setTimeout(go, 600);
+        try { po = new PerformanceObserver(go); po.observe({ type: 'paint' }); } catch { go(); }
+      }, 0));
+    } catch { /* no frames */ }
   }
   // (tests: localStorage 'lazy.hold' = '1' keeps every group a stand-in until it's used, to prove first use works)
   let hold = false;
