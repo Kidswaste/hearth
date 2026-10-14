@@ -21,7 +21,13 @@ const LabCamera = (() => {
 
   // ---------- the preview's answers (cam-info) ----------
   let reqN = 0; const waits = new Map();
-  function ask(cmd, extra = {}) {
+  // (a scene that just opened may not have drawn its first frame yet: its camera is found then, so ask again a moment later)
+  async function ask(cmd, extra = {}) {
+    let r = await ask1(cmd, extra);
+    for (let i = 0; i < 6 && !r.ok && /no 3D camera/.test(r.why || ''); i += 1) { await new Promise((res) => setTimeout(res, 250)); r = await ask1(cmd, extra); }
+    return r;
+  }
+  function ask1(cmd, extra = {}) {
     if (!h) return Promise.resolve({ ok: false, why: 'Open the Lab first' });
     const req = ++reqN;
     return new Promise((res) => {
@@ -64,11 +70,12 @@ const LabCamera = (() => {
     if (!quiet) toast(label, { timeout: 2600, action: { label: 'Undo', fn: () => undo() } });
     return true;
   }
-  // entry: the timeline's Ctrl/⌘+Z hands its own entry (only the change it was made for is undone)
+  // entry: the timeline's Ctrl/⌘+Z hands its own entry: the change it was made for, or (when that one was undone
+  // already from the card / a toast) the camera change before it; an entry older than the last change does nothing
   function undo(entry = null) {
     if (entry && entry.cam === undefined) return false;
     const u = U[U.length - 1];
-    if (!u || (entry && entry.cam !== u.tok)) return false;
+    if (!u || (entry && entry.cam < u.tok)) return false;
     if (u.sid !== h.sketchId()) { toast('That camera move was on another scene', { timeout: 1800 }); return false; }
     U.pop();
     h.edit(u.lid, { camMoves: u.before.length ? clone(u.before) : null });
@@ -193,47 +200,58 @@ const LabCamera = (() => {
   }
 
   // ---------- the timeline: cyan bars under the waveform, ends dragged ----------
-  const BAND_H = 13; let geo = null; // { LT } from the last draw
+  // Moves that overlap in time stack in rows (up to 3) above the waveform's bottom edge; the rows stay put while a bar
+  // is dragged (they are worked out again after)
+  const BAND_H = 12; const ROWS = 3; let geo = null; // { LT, w, X, canvas } from the last draw
   let drag = null; // { id, lid, edge, from (the list before), m0, grab }
-  const bandY = (LT) => [LT - BAND_H - 2, LT - 2];
+  let rowMap = null;
+  function rows() {
+    if (drag && rowMap) return rowMap;
+    const all = withMoves().flatMap((L) => movesOf(L).map((m) => ({ L, m }))).sort((a, b) => a.m.t0 - b.m.t0 || (a.m.id < b.m.id ? -1 : 1));
+    const ends = []; const map = new Map();
+    for (const it of all) {
+      let k = ends.findIndex((e) => e <= it.m.t0 + 1e-6);
+      if (k < 0) k = ends.length < ROWS ? ends.length : ends.indexOf(Math.min(...ends));
+      ends[k] = it.m.t1; map.set(it.m.id, { ...it, row: k });
+    }
+    rowMap = map;
+    return map;
+  }
+  const bandY = (LT, row = 0) => { const y1 = LT - 2 - row * (BAND_H + 1); return [y1 - BAND_H, y1]; };
   function drawOver(g, o) {
-    geo = { LT: o.LT, w: o.w };
-    const Ls = withMoves(); if (!Ls.length) return;
-    const [y0, y1] = bandY(o.LT);
+    geo = { LT: o.LT, w: o.w, X: o.X, canvas: g.canvas };
+    const R = rows(); if (!R.size) return;
     g.save();
     g.font = '10px system-ui, sans-serif'; g.textBaseline = 'middle';
-    for (const L of Ls) {
-      for (const m of movesOf(L)) {
-        const xa = o.X(m.t0); const xb = o.X(m.t1);
-        if (xb < 0 || xa > o.w) continue;
-        const on = drag?.id === m.id;
-        g.fillStyle = on ? '#48ddff66' : '#48ddff33';
-        g.fillRect(xa, y0, Math.max(2, xb - xa), y1 - y0);
-        g.fillStyle = '#48ddff';
-        g.fillRect(Math.round(xa), y0, 2, y1 - y0); g.fillRect(Math.round(xb) - 2, y0, 2, y1 - y0);
-        if (!C.KIND[m.kind]?.travel) { g.fillRect(xa, y0, Math.max(2, xb - xa), 1); }
-        const label = `${C.KIND[m.kind]?.icon || '🎥'} ${C.name(m)}`;
-        if (xb - xa > 34) { g.save(); g.beginPath(); g.rect(xa + 3, y0, xb - xa - 6, y1 - y0); g.clip(); g.fillStyle = '#dff8ff'; g.fillText(label, Math.max(xa + 5, 4), (y0 + y1) / 2 + 0.5); g.restore(); }
-      }
+    for (const { m, row } of R.values()) {
+      const xa = o.X(m.t0); const xb = o.X(m.t1);
+      if (xb < 0 || xa > o.w) continue;
+      const [y0, y1] = bandY(o.LT, row);
+      const on = drag?.id === m.id;
+      g.fillStyle = on ? '#48ddff70' : '#48ddff38';
+      g.fillRect(xa, y0, Math.max(2, xb - xa), y1 - y0);
+      g.fillStyle = '#48ddff';
+      g.fillRect(Math.round(xa), y0, 2, y1 - y0); g.fillRect(Math.round(xb) - 2, y0, 2, y1 - y0);
+      if (!C.KIND[m.kind]?.travel) g.fillRect(xa, y0, Math.max(2, xb - xa), 1); // (felt only inside its range: a top line)
+      const label = `${C.KIND[m.kind]?.icon || '🎥'} ${C.name(m)}`;
+      if (xb - xa > 34) { g.save(); g.beginPath(); g.rect(xa + 3, y0, xb - xa - 6, y1 - y0); g.clip(); g.fillStyle = '#dff8ff'; g.fillText(label, Math.max(xa + 5, 4), (y0 + y1) / 2 + 0.5); g.restore(); }
     }
     g.restore();
   }
-  // what's under the pointer in the band: { L, m, edge: 'a' | 'b' | 'both' }
+  // what's under the pointer in the bars: { L, m, edge: 'a' | 'b' | 'both' }
   function hitAt(e, xOf) {
     if (!geo) return null;
     const r = e.target?.getBoundingClientRect?.(); if (!r) return null;
     const y = e.clientY - r.top; const x = e.clientX - r.left;
-    const [y0, y1] = bandY(geo.LT);
-    if (y < y0 - 2 || y > y1 + 2) return null;
     let best = null;
-    for (const L of withMoves()) {
-      for (const m of movesOf(L)) {
-        const xa = xOf(m.t0); const xb = xOf(m.t1);
-        const da = Math.abs(x - xa); const db = Math.abs(x - xb);
-        if (da <= 6 && (!best || da < best.dist)) best = { L, m, edge: 'a', dist: da };
-        if (db <= 6 && (!best || db < best.dist)) best = { L, m, edge: 'b', dist: db };
-        if (!best && x > xa && x < xb) best = { L, m, edge: 'both', dist: 99 };
-      }
+    for (const { L, m, row } of rows().values()) {
+      const [y0, y1] = bandY(geo.LT, row);
+      if (y < y0 - 1 || y > y1 + 1) continue;
+      const xa = xOf(m.t0); const xb = xOf(m.t1);
+      const da = Math.abs(x - xa); const db = Math.abs(x - xb);
+      if (da <= 6 && (!best || da < best.dist)) best = { L, m, edge: 'a', dist: da };
+      if (db <= 6 && (!best || db < best.dist)) best = { L, m, edge: 'b', dist: db };
+      if (!best && x > xa && x < xb) best = { L, m, edge: 'both', dist: 99 };
     }
     return best;
   }
@@ -360,5 +378,5 @@ const LabCamera = (() => {
   // ⌘/Ctrl+K (also what Find anything lists)
   if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Lab: 🎥 Camera moves (push in, orbit, dolly zoom, punch-in on the beat…)', async () => { try { await ThreeLab.cmd(); for (let i = 0; i < 40 && !h; i += 1) await new Promise((r) => setTimeout(r, 50)); open(); } catch (e) { err(e); } });
 
-  return { attach, onBox, previewItem, menuItems, presets, waveItems, add, setFrom, setTo, patch, remove, clearAll, setAll, undo, open, close, ask, stats, get card() { return card; }, moves: () => withMoves().map((L) => ({ layer: L.id, moves: clone(movesOf(L)) })), get undoDepth() { return U.length; } };
+  return { attach, onBox, previewItem, menuItems, presets, waveItems, add, setFrom, setTo, patch, remove, clearAll, setAll, undo, open, close, ask, stats, get card() { return card; }, moves: () => withMoves().map((L) => ({ layer: L.id, moves: clone(movesOf(L)) })), get undoDepth() { return U.length; }, _geo: () => geo, _bar: (id) => { const it = rows().get(id); if (!it || !geo) return null; const [y0, y1] = bandY(geo.LT, it.row); return { y0, y1, row: it.row }; } };
 })();

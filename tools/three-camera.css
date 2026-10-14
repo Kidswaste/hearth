@@ -5,7 +5,8 @@
 .cm-sub { opacity: .6; font-size: 11.5px; }
 .cm-x { margin-left: auto; }
 .cm-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; min-height: 0; }
-.cm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 72px 38px auto; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 8px; border: 1px solid var(--line, #2c2a26); }
+.cm-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "name name time del" "ease amt amt pct"; align-items: center; gap: 4px 8px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--line, #2c2a26); }
+.cm-name { grid-area: name; } .cm-time { grid-area: time; } .cm-del { grid-area: del; } .cm-ease { grid-area: ease; } .cm-amt { grid-area: amt; } .cm-pct { grid-area: pct; }
 .cm-row:hover { border-color: var(--line-hi, #443e35); }
 .cm-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cm-time { font-variant-numeric: tabular-nums; font-size: 11px; opacity: .7; white-space: nowrap; }
@@ -17,4 +18,3 @@
 .cm-empty, .cm-note { font-size: 11px; opacity: .65; }
 .cm-foot { display: flex; gap: 6px; justify-content: flex-end; }
 .cm-foot > :first-child { margin-right: auto; }
-@media (max-width: 520px) { .cm-row { grid-template-columns: minmax(0, 1fr) auto auto; } .cm-amt, .cm-pct { grid-column: span 1; } }

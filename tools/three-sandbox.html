@@ -3226,7 +3226,7 @@ function cmRender(r, scene, camera, EL) {
   const O = globalThis.camcore.at(moves, keyTime(EL), { since: cmSince });
   const key = O ? `${O.yaw}|${O.pitch}|${O.s}|${O.px}|${O.py}|${O.pz}|${O.lyaw}|${O.lpitch}|${O.roll}|${O.tk}` : '';
   if (EL.cmKey !== key) { EL.cmKey = key; PACE.poke += 1; } // (labpace: the picture changes now)
-  if (!O) return null;
+  if (!O) { CM.pose.delete(EL.id); return null; }
   return cmApply(camera, O, EL.id);
 }
 const cmT = {};
