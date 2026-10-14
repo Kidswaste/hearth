@@ -60,7 +60,7 @@ const Offline = (() => {
   }
   // After a restart: did the item that was going out reach its chat?
   async function wentOut(it) {
-    if (it.kind === 'new') { const chat = it.chatId ? await Native.load(it.chatId).catch(() => null) : null; return Boolean(chat?.messages.some((m) => m.qid === it.id)); }
+    if (it.kind === 'new') { const chat = it.chatId ? await Native.load(it.chatId).catch(() => null) : null; return C.reached(it, chat?.messages); }
     const chat = await Native.load(it.chatId).catch(() => null);
     const last = chat?.messages.at(-1);
     return !(last?.role === 'error' && last.at === it.errAt);
@@ -76,7 +76,7 @@ const Offline = (() => {
     // the chat's own queue (typed while a reply ran) at the last close: it waits here now, in order
     let held = null;
     try { held = store.get(HELD, null); store.set(HELD, null); } catch { /* none */ }
-    for (const h of Array.isArray(held) ? held : []) for (const text of h.texts || []) if (text?.trim()) items.push({ id: uid(), kind: 'new', reason: 'restart', agentId: h.agentId, chatId: h.chatId || null, text, at: now(), status: 'waiting' });
+    for (const h of Array.isArray(held) ? held : []) (h.texts || []).forEach((text, i) => { if (text?.trim()) items.push({ id: uid(), ...C.newItem({ agentId: h.agentId, chatId: h.chatId, text, reason: 'restart', mission: h.missions?.[i] }), at: now(), status: 'waiting' }); });
     if (items.length !== saved.length || out.size || saved.some((x) => x?.status === 'sending')) await save();
     paintAll();
     if (items.length) setTimeout(() => probeNow(), 1500);
@@ -148,6 +148,19 @@ const Offline = (() => {
       paintAll();
     }
   }
+  // A failed Ask everyone that runs again: its first try (your words, the card, the line) leaves the chat, so the new
+  // try isn't shown twice. false: an AI answered it meanwhile (it isn't asked of everyone again).
+  function dropFailedAsk(agentId, chat, at, text) {
+    const i = chat.messages.findLastIndex((x) => x.role === 'user' && x.text === text && x.mission === 'everyone' && (x.at || 0) >= at - 60000);
+    const card = chat.messages.findLast((x) => x.role === 'mission' && x.kind === 'everyone' && x.task === text && (x.at || 0) >= at - 60000);
+    if (card?.rows?.some((r) => r.status === 'done' || r.status === 'thinking')) return false;
+    const from = i >= 0 ? i : card ? chat.messages.indexOf(card) : -1;
+    if (from < 0 || !chat.messages.slice(from).every((x) => x.role === 'error' || x.role === 'mission' || x === chat.messages[i])) return true;
+    chat.messages.splice(from);
+    Native.save(chat);
+    if (H.activeChat[agentId] === chat.id) Native.refresh(agentId, { keepScroll: true });
+    return true;
+  }
   async function fire(it) {
     it.status = 'sending';
     it.sentAt = now();
@@ -161,6 +174,12 @@ const Offline = (() => {
       if (it.kind === 'new') {
         chat = it.chatId ? await Native.load(it.chatId).catch(() => null) : null;
         if (!chat) { await done(); return; } // its chat was deleted meanwhile
+        // (round 36, capturefix) typed with a mission (Swarm, Ask everyone…): it runs as that mission, in its chat
+        if (it.mission && typeof Missions !== 'undefined') {
+          if (H.activeChat[it.agentId] !== chat.id) Native.open(it.agentId, chat.id);
+          if (it.after && !dropFailedAsk(it.agentId, chat, it.after, it.text)) { await done(); return; }
+          if (Missions.start(it.agentId, it.mission, it.text)) { await done(); return; }
+        }
         await Native.send(it.agentId, it.text, { chatId: chat.id });
         await done();
         return;
@@ -172,6 +191,8 @@ const Offline = (() => {
       if (it.kind === 'retry' && before?.role !== 'user') { await done(); return; }
       if (it.kind === 'continue' && before?.role !== 'assistant') { await done(); return; }
       popped = chat.messages.pop(); // the calm line goes; the reply takes its place
+      // (round 36) a message sent with a mission goes again as that mission (split: helpers on, review: checked after…)
+      if (it.kind === 'retry' && before.mission && typeof Missions !== 'undefined' && Missions.ownSend?.(it.agentId, before.mission)) Missions.arm(it.agentId, before.mission, chat);
       if (it.kind === 'retry') await Native.send(it.agentId, before.text, { fromHistory: true, chatId: chat.id }); // same session: nothing re-sent that the engine has
       else await Native.send(it.agentId, C.continuePrompt(before.text), { chatId: chat.id });
       popped = null;
@@ -247,6 +268,19 @@ const Offline = (() => {
     }
     m.net = net;
     moveChatQueue(agentId, chat, net.kind);
+    // (round 36, capturefix) one AI's part of an Ask everyone: not re-sent here as a plain message; the whole ask runs
+    // again once, from the chat it was asked in (its answers gather in a card there)
+    const ask = net.kind !== 'cutoff' ? chat.messages.slice(0, idx).findLast((x) => x.role === 'user') : null;
+    if (ask?.mission === 'everyone' && ask.missionFrom?.agentId && ['offline', 'busy'].includes(net.kind)) {
+      if (net.kind === 'offline') { online = false; document.documentElement.classList.add('net-offline'); }
+      const from = ask.missionFrom;
+      if (!items.some((x) => x.kind === 'new' && x.mission === 'everyone' && x.agentId === from.agentId && x.text === ask.text)) {
+        add({ ...C.newItem({ agentId: from.agentId, chatId: from.chatId, text: ask.text, reason: net.kind, mission: 'everyone' }), after: ask.at, notBefore: net.kind === 'busy' ? now() + C.backoff(1, net.retryAfterMs) * scale : 0 });
+      }
+      net.rerun = true;
+      schedule();
+      return true;
+    }
     if (net.kind === 'offline') { online = false; document.documentElement.classList.add('net-offline'); }
     if (net.kind === 'offline') {
       const n = (offTries.get(chat.id) || 0) + 1;
@@ -275,13 +309,14 @@ const Offline = (() => {
     const v = Native.view(agentId);
     if (!v?.queue?.length || H.activeChat[agentId] !== chat.id) return;
     const texts = v.queue.splice(0).filter((t) => typeof t === 'string' && t.trim());
+    const missions = texts.map((t) => { const id = v.queueMissions?.get(t) || null; v.queueMissions?.delete(t); return id; }); // (round 36) each keeps its mission
     Native.renderQueue?.(agentId);
-    if (['offline', 'busy', 'cutoff'].includes(kind)) for (const text of texts) add({ kind: 'new', reason: kind, agentId, chatId: chat.id, text });
+    if (['offline', 'busy', 'cutoff'].includes(kind)) texts.forEach((text, i) => add(C.newItem({ agentId, chatId: chat.id, text, reason: kind, mission: missions[i] })));
     else if (texts.length) Native.insertDraft(agentId, texts.join('\n\n'));
   }
 
-  // Typed while offline: it waits here instead of failing (plain messages; a /command runs as usual, a message with
-  // files or a mission goes the normal way and waits if it fails).
+  // Typed while offline: it waits here instead of failing (a /command runs as usual, a message with files goes the
+  // normal way and waits if it fails). (round 36) A mission picked for it waits with it and runs as that mission.
   document.addEventListener('submit', (e) => {
     const form = e.target;
     if (online || !form?.classList?.contains('composer')) return;
@@ -291,10 +326,10 @@ const Offline = (() => {
     if (!text || text.startsWith('/') || v.attachments?.length) return;
     const chatId = H.activeChat[agent.id] || null;
     if (chatId && Native.isBusy(chatId)) return; // the chat's own queue takes it (and comes here if the reply fails)
-    if (typeof Missions !== 'undefined' && Missions.current?.(agent.id)?.id !== 'normal') return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    add({ kind: 'new', reason: 'offline', agentId: agent.id, chatId, text });
+    const mission = typeof Missions !== 'undefined' ? Missions.take?.(agent.id) || null : null; // used up as a send would
+    add(C.newItem({ agentId: agent.id, chatId, text, mission }));
     v.input.value = '';
     try { store.set(`draft.${agent.id}.${chatId || 'new'}`, null); } catch { /* no storage */ }
     v.input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -304,8 +339,9 @@ const Offline = (() => {
   addEventListener('pagehide', () => {
     const held = [];
     for (const a of H.agents()) {
-      const q = (Native.view(a.id)?.queue || []).filter((t) => typeof t === 'string' && t.trim());
-      if (q.length) held.push({ agentId: a.id, chatId: H.activeChat[a.id] || null, texts: q });
+      const v = Native.view(a.id);
+      const q = (v?.queue || []).filter((t) => typeof t === 'string' && t.trim());
+      if (q.length) held.push({ agentId: a.id, chatId: H.activeChat[a.id] || null, texts: q, missions: q.map((t) => v.queueMissions?.get(t) || null) });
     }
     try { store.set(HELD, held.length ? held : null); } catch { /* no storage */ }
   });
@@ -384,12 +420,12 @@ const Offline = (() => {
     if (!v.offBox) { v.offBox = el('div', { class: 'queue-chips offline-chips', hidden: true }); v.queueBox.before(v.offBox); }
     const chatId = H.activeChat[agentId] || null;
     const mine = items.filter((it) => it.kind === 'new' && it.agentId === agentId && (it.chatId || null) === chatId);
-    const sig = JSON.stringify(mine.map((it) => [it.id, it.status]));
+    const sig = JSON.stringify(mine.map((it) => [it.id, it.status, it.mission || '']));
     if (v.offBox.dataset.sig !== sig) {
       v.offBox.dataset.sig = sig;
       v.offBox.hidden = !mine.length;
-      v.offBox.replaceChildren(...mine.map((it) => el('span', { class: 'queue-chip offline-chip', title: `${it.text}\n\n(${it.status === 'sending' ? 'going out now' : 'waits to be sent'}; click to edit it again)` },
-        el('span', { text: `⏳ ${short(it.text)}`, on: { click: () => { drop((x) => x.id === it.id); Native.insertDraft(agentId, it.text); } } }),
+      v.offBox.replaceChildren(...mine.map((it) => el('span', { class: 'queue-chip offline-chip', title: `${it.text}\n\n(${it.mission ? `${missionLabel(it.mission)} · ` : ''}${it.status === 'sending' ? 'going out now' : 'waits to be sent'}; click to edit it again)` },
+        el('span', { text: `⏳ ${missionIcon(it.mission)}${short(it.text)}`, on: { click: () => { drop((x) => x.id === it.id); Native.insertDraft(agentId, it.text); if (it.mission && typeof Missions !== 'undefined') Missions.set(agentId, it.mission); } } }),
         el('button', { type: 'button', text: '×', title: 'Don\'t send it', on: { click: () => drop((x) => x.id === it.id) } }))));
     }
     const noteEl = v.list.querySelector('.msg.note[data-note-id="offline-q"]');
@@ -398,6 +434,9 @@ const Offline = (() => {
       Native.note(agentId, C.line('offline', { queued: true }), { id: 'offline-q', actions: [{ label: 'Cancel', title: 'Don\'t send them: back in the box', run: () => { const texts = items.filter((x) => x.kind === 'new' && x.agentId === agentId && (x.chatId || null) === chatId).map((x) => x.text); drop((x) => x.kind === 'new' && x.agentId === agentId && (x.chatId || null) === chatId); if (texts.length) Native.insertDraft(agentId, texts.join('\n\n')); } }] });
     } else if (!waiting && noteEl) { noteEl.dataset.gone = '1'; noteEl.remove(); }
   }
+  const missionOf = (id) => (id && typeof Missions !== 'undefined' ? Missions.LIST.find((m) => m.id === id) : null);
+  const missionIcon = (id) => { const m = missionOf(id); return m ? `${m.icon} ` : ''; };
+  const missionLabel = (id) => missionOf(id)?.label || id;
   function paintAll() { for (const a of H.agents?.() || []) if (Native.hasView?.(a.id)) paintChips(a.id); }
   Native.hooks.render.push((agentId) => paintChips(agentId));
 
@@ -483,7 +522,7 @@ const Offline = (() => {
         if (!items.length) return `${online ? '✓ Online' : '⚠ No internet'} · nothing waits to be sent.`;
         const name = (it) => H.agent(it.agentId)?.name || it.agentId;
         const when = (it) => (it.notBefore > now() ? `at ${C.clock(it.notBefore)}` : online ? 'next' : 'when the internet is back');
-        const what = (it) => (it.kind === 'new' ? `“${short(it.text, 50)}”` : it.kind === 'continue' ? 'continue the cut-off reply' : 'send the last message again');
+        const what = (it) => (it.kind === 'new' ? `${it.mission ? `${missionIcon(it.mission)}${missionLabel(it.mission)}: ` : ''}“${short(it.text, 50)}”` : it.kind === 'continue' ? 'continue the cut-off reply' : 'send the last message again');
         return `${online ? '✓ Online' : '⚠ No internet'} · ${items.length} waiting:\n${items.map((it) => `- ${name(it)}: ${what(it)} · ${when(it)}`).join('\n')}`;
       } });
   }

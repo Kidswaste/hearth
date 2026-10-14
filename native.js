@@ -211,6 +211,9 @@ const Native = (() => {
           return;
         }
         (v.queue ||= []).push(text);
+        // (round 36) a mission picked for it waits with it (it runs as that mission when its turn comes)
+        const mid = typeof Missions !== 'undefined' ? Missions.take?.(agentId) : null;
+        if (mid) (v.queueMissions ||= new Map()).set(text, mid);
         input.value = '';
         store.set(draftKey(agentId), null);
         autosize(input);
@@ -1378,9 +1381,12 @@ const Native = (() => {
     if (!v) return;
     if (v.queueBox.hidden !== !v.queue.length) v.queueBox.hidden = !v.queue.length;
     if (!v.queue.length && !v.queueBox.firstChild) { syncSendBtn(agentId); return; } // (round 16) empty stays empty: no write
-    v.queueBox.replaceChildren(...v.queue.map((q, i) => el('span', { class: 'queue-chip', title: `${q}\n\n(click to edit it again)` },
-      el('span', { text: `⏳ ${q.length > 60 ? `${q.slice(0, 59)}…` : q}`, on: { click: () => { v.queue.splice(i, 1); renderQueue(agentId); insertDraft(agentId, q); } } }),
-      el('button', { type: 'button', text: '×', title: 'Remove from the queue', on: { click: () => { v.queue.splice(i, 1); renderQueue(agentId); } } }))));
+    // (round 36) a queued message's mission shows on its chip (and comes back with it when you edit it)
+    const mOf = (q) => { const id = v.queueMissions?.get(q); return id && typeof Missions !== 'undefined' ? Missions.LIST.find((x) => x.id === id) || null : null; };
+    const unq = (i, q) => { v.queue.splice(i, 1); if (!v.queue.includes(q)) v.queueMissions?.delete(q); };
+    v.queueBox.replaceChildren(...v.queue.map((q, i) => { const mi = mOf(q); return el('span', { class: 'queue-chip', title: `${q}\n\n(${mi ? `${mi.label} · ` : ''}click to edit it again)` },
+      el('span', { text: `⏳ ${mi ? `${mi.icon} ` : ''}${q.length > 60 ? `${q.slice(0, 59)}…` : q}`, on: { click: () => { const id = v.queueMissions?.get(q); unq(i, q); renderQueue(agentId); insertDraft(agentId, q); if (id) Missions.set(agentId, id); } } }),
+      el('button', { type: 'button', text: '×', title: 'Remove from the queue', on: { click: () => { unq(i, q); renderQueue(agentId); } } })); }));
     syncSendBtn(agentId);
   }
 
@@ -1576,8 +1582,9 @@ const Native = (() => {
     const v = views.get(chat.agentId);
     if (v?.queue?.length && H.activeChat[chat.agentId] === chat.id && event.type !== 'stopped') {
       const next = v.queue.shift();
+      const mid = v.queueMissions?.get(next); if (mid) v.queueMissions.delete(next);
       renderQueue(chat.agentId);
-      setTimeout(() => send(chat.agentId, next).catch((err) => toast(err.message, { type: 'error' })), 250);
+      setTimeout(() => { if (mid && typeof Missions !== 'undefined' && Missions.start(chat.agentId, mid, next)) return; send(chat.agentId, next).catch((err) => toast(err.message, { type: 'error' })); }, 250);
     }
   }
 

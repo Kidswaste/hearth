@@ -202,14 +202,27 @@ const OfflineCore = (() => {
   const isContinue = (text) => /^Your last reply was cut off \(the connection dropped\)\. Continue exactly where it stopped/.test(String(text || ''));
 
   // ---------- the waiting queue ----------
-  // item: { id, kind: 'new' | 'retry' | 'continue', agentId, chatId, text?, errAt?, reason, at, notBefore?, tries?,
-  //         status: 'waiting' | 'sending' }
+  // item: { id, kind: 'new' | 'retry' | 'continue', agentId, chatId, text?, mission?, after?, errAt?, reason, at,
+  //         notBefore?, tries?, status: 'waiting' | 'sending' }
+  // (round 36, capturefix) mission: the mission picked for a waiting message (Swarm, Ask everyone, Plan first…): it
+  // runs as that mission when it goes out, not as a plain message (on disk with the item, so after a restart too).
+  // after: the failed ask a mission re-run replaces (its time).
   // After a restart: an item that was going out when Hearth closed went out if its chat shows it (sent(item) → true);
   // otherwise it waits again. Never sent twice.
   function reconcile(items, sent) {
     return (Array.isArray(items) ? items : []).filter((it) => it && it.id && it.agentId)
       .filter((it) => it.status !== 'sending' || !sent(it))
       .map((it) => (it.status === 'sending' ? { ...it, status: 'waiting' } : it));
+  }
+  // A waiting message, made from what was typed: its mission goes with it ('normal' / none: a plain message)
+  function newItem({ agentId, chatId = null, text, reason = 'offline', mission = null }) {
+    return { kind: 'new', reason, agentId, chatId: chatId || null, text: String(text || ''), ...(mission && mission !== 'normal' ? { mission: String(mission) } : {}) };
+  }
+  // Did a 'new' item that was going out reach its chat? Its tag (qid) on the sent message, or (a mission, which sends
+  // its own way) your words in the chat since it started going out.
+  function reached(it, messages) {
+    if (!Array.isArray(messages)) return false;
+    return messages.some((m) => (it.id && m.qid === it.id) || (it.mission && m.role === 'user' && m.text === it.text && (m.at || 0) >= (it.sentAt || 0) - 2000));
   }
   const chatKey = (it) => it.chatId || `new:${it.agentId}`;
   // The next item that may go out now: online, its time has come, its chat isn't answering, and nothing older waits
@@ -234,6 +247,6 @@ const OfflineCore = (() => {
     return t.length ? Math.min(...t) : null;
   }
 
-  return { classify, parseReset, retryAfter, clock, backoff, MAX_TRIES, probeWait, resendWait, line, stitch, continuePrompt, isContinue, reconcile, nextDue, wakeIn, chatKey, reasonOf, offsetOf, zoned };
+  return { classify, parseReset, retryAfter, clock, backoff, MAX_TRIES, probeWait, resendWait, line, stitch, continuePrompt, isContinue, reconcile, nextDue, wakeIn, chatKey, newItem, reached, reasonOf, offsetOf, zoned };
 })();
 if (typeof module !== 'undefined') module.exports = OfflineCore;

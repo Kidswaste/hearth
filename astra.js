@@ -667,8 +667,11 @@ function toggleFold(hostId, m) {
       if (!options.model && twin?.model) options.model = twin.model;
       if (!options.effort && twin?.effort) options.effort = twin.effort;
     }
-    const once = nextOnce.get(chat.agentId); // one message only
-    if (once) { Object.assign(options, once); nextOnce.delete(chat.agentId); }
+    // one message only. (round 36) kept on that message, so sending it again after it failed (no internet, a busy AI:
+    // offline.js) or ⋯ Retry goes with the same settings, not the chat's
+    const ask = chat.messages.at(-1)?.role === 'user' ? chat.messages.at(-1) : null;
+    const once = nextOnce.get(chat.agentId) || ask?.once;
+    if (once) { Object.assign(options, once); nextOnce.delete(chat.agentId); if (ask && !ask.once) ask.once = { ...once }; }
     if (chat.session?.id && chat.messages.length > 1) options.fallbackText = withContext({ ...chat, session: {} }, raw);
     return { text, options };
   }

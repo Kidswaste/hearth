@@ -1,6 +1,7 @@
 // Round 11 (pack11) in capture: click sounds mixed into a take, cursor smoothing, the encoder watchdog (a stalled
 // encoder slows the frame rate instead of losing the take), auto-zoom that stays put for nearby clicks, tour previews
-// (dry runs with timing) from /tour preview and capture_record { tour, dry }, the settings entries.
+// (dry runs with timing) from /tour preview and capture_record { tour, dry }, the settings entries; (round 36) still
+// takes keep their real length at a steady frame rate, in both frame pumps.
 //   node dev/smoke.js --script dev/checks/capture-pack.js --check-timeout 300000
 const out = { steps: [], errors: [] };
 const ok = (cond, what, info) => { out.steps.push(`${cond ? '✓' : '✖'} ${what}${info === undefined ? '' : ` · ${JSON.stringify(info).slice(0, 300)}`}`); if (!cond) out.errors.push(what); return cond; };
@@ -40,16 +41,35 @@ try {
   out.silence = sil;
   ok(!sil || !Array.isArray(sil.ranges || sil) || (sil.ranges || sil).reduce((n, x) => n + ((x.end ?? x.b ?? 0) - (x.start ?? x.a ?? 0)), 0) < p1.duration - 0.05, 'the clicks are heard (not all silence)', sil);
 
+  // 2b) (round 36, capturefix) a take of a still area keeps its real length at a steady frame rate: frames come on the
+  // clock, not only when the window paints (it used to end at the last change: 7.4 s saved as ≈ 1.2 s). ffprobe reads it.
+  for (const worker of [true, false]) {
+    await Capture.record({ target: 'selector:#rail', fps: 30, countdown: 0, mp4: false, audio: 'none', ...(worker ? {} : { worker: false }) });
+    const pump = Capture.status().pump;
+    const ts0 = performance.now();
+    await sleep(4000);
+    const want = (performance.now() - ts0) / 1000;
+    const rs = await Capture.stop({ quiet: true });
+    const ps = await probe(rs.path);
+    const times = (await window.hub.capture.frames('times', rs.path)).value || [];
+    const gaps = times.slice(1).map((t, i) => t - times[i]);
+    const maxGap = gaps.length ? Math.max(...gaps) : 0;
+    ok(ps?.duration > want - 0.5 && ps?.duration < want + 1, `a still take keeps its length (${pump} pump, ffprobe)`, { want: Math.round(want * 100) / 100, dur: ps?.duration });
+    ok(times.length >= 0.7 * 30 * want && maxGap < 0.3, `…at a steady frame rate (${pump} pump)`, { frames: times.length, maxGap: Math.round(maxGap * 1000) / 1000 });
+  }
+
   // 3) the encoder watchdog: a busy page (no frames, no bytes for 4.5 s) slows the take to 15 fps, the take survives
   await Capture.record({ target: 'selector:#rail', fps: 30, countdown: 0, mp4: false, audio: 'none' });
+  const tw = performance.now();
   await sleep(1200);
   const t0 = performance.now(); while (performance.now() - t0 < 4600) { /* the main thread is busy */ }
   await sleep(1500);
+  const wall2 = (performance.now() - tw) / 1000;
   const st = Capture.status();
   ok(st.slowedTo === 15, 'a stalled encoder slows the frame rate to 15 fps', st);
   const r2 = await Capture.stop({ quiet: true });
   const p2 = await probe(r2.path);
-  ok(r2.slowedTo === 15 && p2?.duration > 4, 'the take is kept, with its real length, and says it was slowed', { slowed: r2.slowedTo, dur: p2?.duration });
+  ok(r2.slowedTo === 15 && p2?.duration > wall2 - 0.8, 'the take is kept, with its real length, and says it was slowed', { slowed: r2.slowedTo, dur: p2?.duration, wall: Math.round(wall2 * 100) / 100 });
 
   // 4) auto-zoom: a click zooms, a click near the same place keeps the view still (no bounce)
   await Capture.record({ target: 'selector:#rail', fps: 30, countdown: 0, mp4: false, audio: 'none', autozoom: true });
