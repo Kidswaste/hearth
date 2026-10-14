@@ -705,11 +705,12 @@ const Capture = (() => {
     } catch { return null; }
   }
   // (round 16) The recording's frame pump in a worker (capture-worker.js): it reads the page capture, crops / scales
-  // each frame into the recording canvas (handed over with transferControlToOffscreen) and repaints it at a constant
-  // rate; the canvas's capture stream goes to the recorder. The window's thread does nothing per frame while filming (it used to draw every captured frame and run
+  // each frame into its own canvas and writes it as timed frames at a constant rate into a track generator (made here,
+  // its writable end handed over) that the recorder encodes (round 36; it used to be a transferred canvas's capture
+  // stream, which ended still takes early). The window's thread does nothing per frame while filming (it used to draw every captured frame and run
   // the frame clock here), so the UI being recorded stays smooth. Throws when the engine can't (the canvas path runs).
   async function workerPump(vTrack, o, { fixedRect, node, R }) {
-    if (typeof MediaStreamTrackProcessor === 'undefined' || !HTMLCanvasElement.prototype.transferControlToOffscreen) throw new Error('no track processor / offscreen canvas here');
+    if (typeof MediaStreamTrackProcessor === 'undefined' || typeof MediaStreamTrackGenerator === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('no track processor / generator / offscreen canvas here');
     const w = new Worker('capture-worker.js');
     w.onerror = (e) => { e.preventDefault?.(); console.warn('capture worker', e.message); };
     const next = (type, ms) => new Promise((res, rej) => {
@@ -732,11 +733,10 @@ const Capture = (() => {
       const r0 = rectNow() || { x: 0, y: 0, width: innerWidth, height: innerHeight };
       const k = f0.w / innerWidth;
       const size = outSize(o, r0.width * k, r0.height * k);
-      // the recording canvas: drawn by the worker, its capture stream (made here) goes to the recorder
-      const c = el('canvas', { width: size.w, height: size.h });
-      const track = c.captureStream(o.fps).getVideoTracks()[0];
-      const off = c.transferControlToOffscreen();
-      w.postMessage({ cmd: 'start', canvas: off, rect: rectNow(), view: view(), frame: Boolean(size.frame), fps: o.fps }, [off]);
+      // the recorder's track: the worker writes timed frames into it at a steady rate (round 36: not a canvas capture
+      // stream, which only takes a frame when this window paints, so a still screen ended the file early)
+      const track = new MediaStreamTrackGenerator({ kind: 'video' });
+      w.postMessage({ cmd: 'start', writable: track.writable, w: size.w, h: size.h, rect: rectNow(), view: view(), frame: Boolean(size.frame), fps: o.fps }, [track.writable]);
       // the target can move or resize (a panel opening, the window resized): its rectangle follows 10× a second, sent
       // only when it changed (one layout read, no per-frame work)
       let last = '';
@@ -824,8 +824,9 @@ const Capture = (() => {
         };
         const r0 = srcRect();
         const size = outSize(o, r0.w, r0.h);
-        const c = el('canvas', { width: size.w, height: size.h });
-        const g = c.getContext('2d', { alpha: false });
+        const useGen = typeof MediaStreamTrackGenerator !== 'undefined' && typeof VideoFrame !== 'undefined' && typeof OffscreenCanvas !== 'undefined';
+        const c = useGen ? new OffscreenCanvas(size.w, size.h) : el('canvas', { width: size.w, height: size.h });
+        const g = c.getContext('2d', { alpha: false, willReadFrequently: true });
         g.imageSmoothingQuality = 'high';
         const draw = (f) => {
           [sw, shh] = dimsOf(f);
@@ -836,6 +837,7 @@ const Capture = (() => {
             x = Math.max(0, Math.min(sw - w, cx - w / 2)); y = Math.max(0, Math.min(shh - h, cy - h / 2));
           }
           g.drawImage(f, x, y, w, h, 0, 0, size.w, size.h);
+          R.dirty = true;
         };
         draw(first); if (first.close) first.close();
         (async () => {
@@ -848,15 +850,30 @@ const Capture = (() => {
           }
         })();
         // a frame every 1/fps whether or not the picture changed (constant frame rate, the real length)
-        videoTrack = c.captureStream(0).getVideoTracks()[0];
-        // (an unchanged canvas sends nothing: it repaints itself first, a GPU copy)
+        // (round 36) a timed VideoFrame written into a track generator, from an OffscreenCanvas: a canvas capture
+        // stream (requestFrame) and frames of a detached <canvas> only come through when this window paints, so a still
+        // screen ended the file at its last change. An unchanged picture is the last frame again under a new time (no
+        // copy). The capture stream stays for engines without a generator.
+        const gen = useGen ? new MediaStreamTrackGenerator({ kind: 'video' }) : null;
+        const gw = gen?.writable.getWriter();
+        videoTrack = gen || c.captureStream(0).getVideoTracks()[0];
+        const t0 = performance.now(); let pending = 0; let held = null;
+        const send = () => {
+          if (!gw) { g.drawImage(c, 0, 0); videoTrack.requestFrame(); return true; } // (an unchanged canvas sends nothing: repaint it)
+          if (pending >= 15) return false; // the recorder hasn't taken the last ones (a busy machine): skip, don't pile up
+          if (R.dirty || !held) { held?.close(); held = new VideoFrame(c, { timestamp: 0 }); R.dirty = false; }
+          const f = new VideoFrame(held, { timestamp: Math.round((performance.now() - t0 - R.pausedMs) * 1000) });
+          pending += 1;
+          gw.write(f).catch(() => { try { f.close(); } catch { /* closed */ } }).finally(() => { pending -= 1; });
+          return true;
+        };
+        R.closeGen = () => { gw?.close().catch(() => {}); try { held?.close(); } catch { /* closed */ } held = null; };
         // (pack11) the ticker can restart slower when the encoder falls behind (tick() watches the bytes coming out)
         R.startTicker = (fps) => {
           clearInterval(R.ticker); R.tickFps = fps;
           R.ticker = setInterval(() => {
             if (rec !== R || R.pausedAt) return;
-            g.drawImage(c, 0, 0); // an unchanged canvas sends nothing: repaint it (a GPU copy)
-            videoTrack.requestFrame(); R.framesOut = (R.framesOut || 0) + 1;
+            if (send()) R.framesOut = (R.framesOut || 0) + 1;
           }, 1000 / fps);
         };
         R.startTicker(o.fps);
@@ -999,6 +1016,7 @@ const Capture = (() => {
     autoZoom(false); cameraBubble(null); chapters(false);
     clearInterval(rec.timer);
     clearInterval(rec.ticker);
+    rec.closeGen?.(); rec.closeGen = null;
     rec.worker?.close(); rec.worker = null;
     try { rec.display?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
     try { rec.mic?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
@@ -1019,7 +1037,9 @@ const Capture = (() => {
   }
   function resume() {
     if (!rec?.recorder || !rec.pausedAt) return status();
-    rec.pausedMs += performance.now() - rec.pausedAt; rec.pausedAt = 0; rec.worker?.post({ cmd: 'pause', on: false }); rec.recorder.resume(); tick();
+    rec.pausedMs += performance.now() - rec.pausedAt; rec.pausedAt = 0; rec.worker?.post({ cmd: 'pause', on: false }); rec.recorder.resume();
+    rec.fAt = 0; rec.wAt = performance.now(); // (round 36) the watchdog doesn't count the pause as frames or bytes missing
+    tick();
     return status();
   }
   function mark(label = '') {
