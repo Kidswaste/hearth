@@ -103,6 +103,14 @@ const Meter = (() => {
   }
   const activeChatId = () => { const a = activeAgentId(); return a ? H.activeChat[a] || null : null; };
   const chatStat = (chatId) => (chatId && stats?.chats?.[chatId]) || null;
+  // (round 35, bugbash2) a chat continued lighter (autocompact.js) with no reply since sends the light start: its size,
+  // not the long chat's last one (the chat's own context pill already said "≈ 16k" while this said 92k)
+  function ctxNow(chatId, cs) {
+    const chat = chatId && typeof Native !== 'undefined' ? Native.chatOf?.(activeAgentId()) : null;
+    const lt = chat?.id === chatId ? chat.compact?.lighter : null;
+    if (lt?.after && !chat.messages.slice(chat.compact.index).some((m) => m.role === 'assistant' && m.usage)) return lt.after;
+    return cs?.ctx || 0;
+  }
   // Context window of a chat's model: 1M for "[1m]" models, else 200k (or your override per model).
   function windowFor(agentId, chatId) {
     const model = chatStat(chatId)?.model || H.chats.find((c) => c.id === chatId)?.model || H.agent(agentId)?.model || 'default';
@@ -301,7 +309,7 @@ const Meter = (() => {
     const liveEst = [...live.values()].reduce((s, l) => s + estimate(l), 0);
     const clicks = typeof Usage !== 'undefined' && Usage.dayStats ? Usage.dayStats() : { clicks: 0, features: 0 };
     const win = windowFor(agentId, chatId);
-    const ctx = cs?.ctx || 0;
+    const ctx = ctxNow(chatId, cs);
     const week = sumOf(dayKeys(7));
     const snapFresh = lastSnap && Date.now() - lastSnap.at < 6000 && lastSnap.usage;
     return {

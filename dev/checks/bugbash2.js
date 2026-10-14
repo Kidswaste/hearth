@@ -5,7 +5,9 @@
 // 2. Lab: a look-around view (wheel / pinch / drags) and then a new camera placement (🩺 Fix my scene's "Frame it" /
 //    "Point the camera at it", its undo): the view moved on the old camera goes, so the fix shows as made
 // 3. ⋯ AI setup › Habits: no "Shrinks long chats by itself" switch (it did nothing since Continue lighter)
-//   node dev/smoke.js --check-timeout 300000 --script dev/checks/bugbash2.js --shot /tmp/bugbash2.png
+// 4. right after Continue lighter, the ◎ missions' estimates and the meter's context use the light start, not the long
+//    chat's last size
+//   node dev/smoke.js --fake-engines --check-timeout 300000 --script dev/checks/bugbash2.js --shot /tmp/bugbash2.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(80); } return false; };
 const out = { steps: [] };
@@ -94,6 +96,27 @@ await safe('habits', async () => {
   const text = Options.sheet?.body.textContent || '';
   step('⋯ AI setup › Habits has no "Shrinks long chats by itself" (Spending has "Offer to continue lighter")', !/Shrinks long chats|shrinks long chats/.test(text) && /Offer to continue lighter/.test(text));
   Options.hide();
+});
+
+// ---------- 4. after Continue lighter: estimates and the meter ----------
+await safe('lighter sizes', async () => {
+  const C = H.claudeAgent();
+  activate(C.id); await until(() => Native.hasView(C.id));
+  await Lazy.load('budget'); await Lazy.load('missions').catch(() => {});
+  Native.newChat(C.id);
+  const pad = (i) => { let t = `Step ${i}: the tunnel glow. `; while (t.length < 9000) t += `tunnel layer ${i} glow keeps the ember palette steady. `; return t; };
+  for (let i = 0; i < 5; i++) { await Native.send(C.id, pad(i)); await wait(120); await until(() => !Native.isBusy(H.activeChat[C.id]), 60000); await wait(150); }
+  const before = SwarmLean.ctxOf(C.id);
+  await Autocompact.run(C.id);
+  const chat = Native.current(C.id);
+  const after = chat.compact?.lighter?.after;
+  await wait(300);
+  const est = SwarmLean.ctxOf(C.id);
+  step('◎ estimates right after Continue lighter use the light start', after && est === after && est < before, { before, after, est });
+  const m = Meter._test.readings?.();
+  const said = m?.ctx?.[1] || '';
+  const n = Number((/sends about ([\d,.\s  ]+) tokens/.exec(said) || [])[1]?.replace(/\D/g, '')) || 0;
+  step('the meter\'s context says the light size too', n && Math.abs(n - after) < 50, { said: said.slice(0, 90), after });
 });
 
 out.ok = out.steps.every((s) => s.startsWith('✓'));
