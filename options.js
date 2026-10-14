@@ -160,9 +160,12 @@ const Options = (() => {
 
   // ---------- memory, habits, thinking ----------
   function memory(a) {
+    // (round 38, memorytidy.js) Tidy memory… next to What it remembers…, and one line in the summary once it's big
+    const tidy = typeof MemoryTidy !== 'undefined' ? btn('Tidy memory…', 'Merge facts said twice, update old ones, shorten wordy ones, keep Lab facts for the Lab: you tick, then apply (one Undo)', () => MemoryTidy.open({ agentId: a.id }), 'ghost small') : null;
+    if (tidy) MemoryTidy.nudge(a).then((n) => { if (n) setSum('memory', `${memSum(a.autoMemory !== false)} · ${n}`); }).catch(() => {});
     return fold('memory', sec('Memory', null,
       sw(a.autoMemory !== false, 'Remembers things you tell it', 'It keeps lasting facts and preferences for every chat with it', (v) => save(a, { autoMemory: v ? undefined : false }).then(() => setSum('memory', memSum(v)))),
-      el('div', { class: 'opt-row' }, btn('What it remembers…', 'See, edit or remove what it keeps in mind', () => (typeof MemoryEditor !== 'undefined' ? MemoryEditor.open({}) : Commands.exec('/memory edit', a.id)), 'ghost small'))), memSum(a.autoMemory !== false));
+      el('div', { class: 'opt-row' }, btn('What it remembers…', 'See, edit or remove what it keeps in mind', () => (typeof MemoryEditor !== 'undefined' ? MemoryEditor.open({}) : Commands.exec('/memory edit', a.id)), 'ghost small'), tidy)), memSum(a.autoMemory !== false));
   }
   const memSum = (on) => (on ? 'Remembers what you tell it' : 'Off: it forgets between chats');
   const chatsOn = (a) => TOOLS[0].on(a);

@@ -130,6 +130,7 @@ const AppSearchData = (() => {
     ['length', '', 'How long its answers are (Short answers, Normal, Detailed)', 'How long its answers are', 'answers length short concise detailed brief verbose tokens', 'Short: the answer first, fewer output tokens', 'How hard it thinks'],
     ['memory', 'memory', 'Memory: remembers things you tell it', 'Remembers things you tell it', 'memory remember forget facts', 'It keeps lasting facts and preferences for every chat with it', 'Memory'],
     ['memory-edit', 'memory', 'What it remembers…', 'What it remembers', 'memory facts edit remove forget', 'See, edit or remove what it keeps in mind', 'Memory'],
+    ['memory-tidy', 'memory', 'Tidy memory…', 'Tidy memory', 'memory tidy clean duplicates merge shorten old outdated contradictions lab', 'Merge facts said twice, update old ones, shorten, keep Lab facts for the Lab', 'Memory'], // (round 38, memorytidy)
     ['habits', 'habits', 'Habits', 'Habits', 'habits by itself automatically', 'Things it does by itself', 'Habits'],
     ['self-review', 'habits', 'Checks its own work before it answers', 'Checks its own work', 'review check own work verify', 'For visual work: a quick look at the result first', 'Habits'],
     ['suggest', 'habits', 'Suggests what to do next', 'Suggests what to do next', 'suggest next steps buttons ideas', 'Up to 3 next steps as buttons under a reply', 'Habits'],

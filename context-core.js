@@ -178,12 +178,24 @@ const ContextCore = (() => {
   // preferences ("never…", "call me…") go with the first message of a chat in relevant mode (`always` facts, capped).
   const MEMORY_HEAD = 'What you remember about the user (saved notes, keep them in mind):';
   const MEMORY_AUTO = 300;
-  const memoryNotes = (mem, agentId) => [mem?.shared, mem?.agents?.[agentId]].map((m) => String(m || '').trim()).filter(Boolean);
+  // (round 38, memorytidy) place scopes: facts kept for one place (memory.json `places`) go only to the AIs working
+  // there, e.g. Lab facts only to the Three Directors. Order is fixed (shared, places in this order, the AI's own), so
+  // the prompt stays byte-stable; an AI without a place, or a memory without places, gets exactly what it got before.
+  const PLACES = [
+    { id: 'lab', label: 'Lab', who: 'the Three Directors', on: (a) => Boolean(a && (a.threeTools || a.dock === 'three')) },
+    { id: 'game', label: 'Forgeheart', who: 'the game\'s AI', on: (a) => Boolean(a && (a.gameTools || a.companion === 'forge-game')) },
+  ];
+  // agent: the agent object (its places count) or an id (shared + its own, as before)
+  const memoryNotes = (mem, agent) => {
+    const a = agent && typeof agent === 'object' ? agent : null;
+    const places = a ? PLACES.filter((p) => p.on(a)).map((p) => mem?.places?.[p.id]) : [];
+    return [mem?.shared, ...places, mem?.agents?.[a ? a.id : agent]].map((m) => String(m || '').trim()).filter(Boolean);
+  };
   const memoryBlock = (notes) => (notes.length ? `${MEMORY_HEAD}\n${notes.join('\n')}` : '');
   function memoryRelevant(agent, mem) {
     if (agent?.memoryWhenRelevant === true) return true;
     if (agent?.memoryWhenRelevant === false) return false;
-    return tok(memoryBlock(memoryNotes(mem, agent?.id))) > MEMORY_AUTO;
+    return tok(memoryBlock(memoryNotes(mem, agent))) > MEMORY_AUTO;
   }
   const STANDING = /\b(always|never|prefer|don'?t|do not|call me|my name is|answer|repl(?:y|ies)|I hate|I like|I love)\b/i;
   const standing = (t) => STANDING.test(String(t || ''));
@@ -222,6 +234,6 @@ const ContextCore = (() => {
     return out.sort((a, b) => b.saves - a.saves);
   }
 
-  return { tok, clip, fmt, block, refName, ref, sliders, sceneCompact, sceneFull, words, localSummary, chatDigest, historyTokens, projectCompact, relevant, memoryLine, breakdown, fixes, SET_OFF, MEMORY_AUTO, memoryNotes, memoryBlock, memoryRelevant, standing };
+  return { tok, clip, fmt, block, refName, ref, sliders, sceneCompact, sceneFull, words, localSummary, chatDigest, historyTokens, projectCompact, relevant, memoryLine, breakdown, fixes, SET_OFF, MEMORY_AUTO, memoryNotes, memoryBlock, memoryRelevant, standing, PLACES };
 })();
 if (typeof module !== 'undefined') module.exports = ContextCore; else window.ContextCore = ContextCore;

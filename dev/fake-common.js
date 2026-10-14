@@ -324,6 +324,8 @@ function plan(prompt, engine = 'claude') {
     // (round 34, autocompact) continue lighter: a structured summary (fake-lighter-raw in the chat: an unshaped one)
     lighter: /^Summarize this conversation so it can continue without its history/.test(msg) ? (/fake-lighter-raw/.test(msg) ? 'Sure! Here is what we talked about: many things.' : `Goal: ${(msg.match(/<conversation>\s*(?:<earlier_summary>[\s\S]*?<\/earlier_summary>\s*)?User: ([^\n]{0,80})/) || [])[1] || 'test Hearth'}\nDecisions:\n- keep replies short\n- use the ember palette\nFiles and names:\n- dev/checks/autocompact.js\n- layer "Glow"\nOpen tasks:\n- finish the long chat test\nWhere we stopped: measuring tokens per message`) : null,
     summarize: /^Summari[sz]e\b/i.test(msg),
+    // (round 38, memorytidy) ✦ Smarter tidy: every fact over 8 words gets its first 5 words back as "N = …"
+    memtidy: /^Tidy these saved memory facts/.test(msg) ? ((msg.match(/<facts>\n([\s\S]*?)\n<\/facts>/) || [])[1] || '').split('\n').map((l) => /^(\d+)\. (.+)$/.exec(l)).filter((m) => m && m[2].split(/\s+/).length > 8).map((m) => `${m[1]} = ${m[2].split(/\s+/).slice(0, 5).join(' ')}`).join('\n') || '(nothing)' : null,
     title: /short title for this chat/i.test(msg),
     // "Let Astra decide" (decide.js): answers with the second option, like a real pick
     decide: /^Options: (.+)$/m.test(msg) && /Reply with one option name only/.test(msg) ? msg.match(/^Options: (.+)$/m)[1].split(' | ') : null,
@@ -348,6 +350,7 @@ function plan(prompt, engine = 'claude') {
   if (p.decide) return { p, text: p.decide[1] || p.decide[0], thinking: '' };
   if (p.assist) return { p, text: p.assist, thinking: '' };
   if (p.lighter) return { p, text: p.lighter, thinking: '' };
+  if (p.memtidy) return { p, text: p.memtidy, thinking: '' };
   if (p.title) parts.push('Fake chat about testing');
   else if (p.compact) parts.push('**Summary.** The user is testing Hearth with a fake engine. Decisions: keep it compact. Exists: one test chat. Left to do: nothing.');
   else if (p.echo) parts.push(prompt);

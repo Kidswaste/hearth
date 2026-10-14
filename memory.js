@@ -52,7 +52,10 @@ const MemoryEditor = (() => {
   // ---------- facts ----------
   const strip = (line) => line.trim().replace(/^[-*•]\s+/, '');
   const keyOf = (scope, text) => `${scope}|${text}`;
-  const scopeName = (scope) => (scope === 'shared' ? 'All agents' : H.agent(scope)?.name || scope);
+  // (round 38, memorytidy) place scopes ('place:lab'): facts only the AIs working there read (memory.json `places`)
+  const PLACES = () => (typeof ContextCore !== 'undefined' && ContextCore.PLACES) || [{ id: 'lab', label: 'Lab', who: 'the Three Directors' }, { id: 'game', label: 'Forgeheart', who: 'the game\'s AI' }];
+  const placeOpts = (sel) => PLACES().map((p) => el('option', { value: `place:${p.id}`, text: `${p.label} only`, selected: sel === `place:${p.id}`, title: `Only ${p.who} read it` }));
+  const scopeName = (scope) => (scope === 'shared' ? 'All agents' : scope.startsWith('place:') ? `${PLACES().find((p) => `place:${p.id}` === scope)?.label || scope.slice(6)} only` : H.agent(scope)?.name || scope);
   async function loadMeta() { meta ||= { facts: {}, ...(await window.hub.kvGet('memory-meta', {})) }; return meta; }
   const saveMeta = () => window.hub.kvSet('memory-meta', meta);
 
@@ -80,6 +83,7 @@ const MemoryEditor = (() => {
       }
     };
     add('shared', memory.shared);
+    for (const [id, body] of Object.entries(memory.places || {})) add(`place:${id}`, body);
     for (const [id, body] of Object.entries(memory.agents || {})) add(id, body);
     return out;
   }
@@ -87,11 +91,13 @@ const MemoryEditor = (() => {
   // Writes facts back into memory.json: pinned first, otherwise in their order. Lines keep their own format.
   async function writeFacts(all) {
     const memory = await window.hub.getMemory();
-    const scopes = new Set(['shared', ...Object.keys(memory.agents || {}), ...all.map((f) => f.scope)]);
+    const scopes = new Set(['shared', ...Object.keys(memory.places || {}).map((p) => `place:${p}`), ...Object.keys(memory.agents || {}), ...all.map((f) => f.scope)]);
     for (const scope of scopes) {
       const mine = all.filter((f) => f.scope === scope);
       const text = [...mine.filter((f) => f.pinned), ...mine.filter((f) => !f.pinned)].map((f) => f.line.trim()).join('\n');
-      if (scope === 'shared') memory.shared = text; else memory.agents[scope] = text;
+      if (scope === 'shared') memory.shared = text;
+      else if (scope.startsWith('place:')) { memory.places ||= {}; if (text) memory.places[scope.slice(6)] = text; else delete memory.places[scope.slice(6)]; }
+      else memory.agents[scope] = text;
     }
     // details of facts that no longer exist are dropped
     const live = new Set(all.map((f) => f.key));
@@ -150,7 +156,8 @@ const MemoryEditor = (() => {
     const usage = await window.hub.getUsage().catch(() => ({}));
     const today = usage?.[new Date().toLocaleDateString('en-CA')] || {};
     return H.agents().filter((a) => a.mode === 'native').map((a) => {
-      const own = (memory.agents?.[a.id] || '').trim().length;
+      // (round 38) + the places it works in (Lab facts count for the Directors only)
+      const own = (memory.agents?.[a.id] || '').trim().length + (typeof ContextCore !== 'undefined' && ContextCore.PLACES ? ContextCore.PLACES.filter((p) => p.on(a)).reduce((n, p) => n + String(memory.places?.[p.id] || '').trim().length, 0) : 0);
       // (round 31) a memory that goes only with the messages it's about isn't on every message (ContextCore.memoryRelevant)
       const rel = typeof ContextCore !== 'undefined' && ContextCore.memoryRelevant?.(a, memory);
       const chars = (!rel && (shared || own) ? HEADER_CHARS + shared + own : 0) + (a.autoMemory !== false ? AUTO_CHARS : 0);
@@ -213,12 +220,12 @@ const MemoryEditor = (() => {
     view = dlg;
     const q = el('input', { type: 'search', placeholder: 'Search memory…', value: query });
     const catSel = el('select', {}, el('option', { value: '', text: 'All categories' }), ...Object.entries(CATS).map(([v, t]) => el('option', { value: v, text: t })));
-    const scopeSel = el('select', {}, el('option', { value: '', text: 'Everyone' }), el('option', { value: 'shared', text: 'All agents (shared)' }),
+    const scopeSel = el('select', {}, el('option', { value: '', text: 'Everyone' }), el('option', { value: 'shared', text: 'All agents (shared)' }), ...placeOpts(''),
       ...H.agents().filter((a) => a.mode === 'native').map((a) => el('option', { value: a.id, text: `${a.name} only` })));
     const costBox = el('div', { class: 'memory-cost' });
     const box = el('div', { class: 'memory-list' });
     const newText = el('input', { placeholder: 'Add a fact, e.g. "I make 9:16 music visuals for Shorts"' });
-    const newScope = el('select', {}, el('option', { value: 'shared', text: 'All agents' }), ...H.agents().filter((a) => a.mode === 'native').map((a) => el('option', { value: a.id, text: a.name })));
+    const newScope = el('select', {}, el('option', { value: 'shared', text: 'All agents' }), ...placeOpts(''), ...H.agents().filter((a) => a.mode === 'native').map((a) => el('option', { value: a.id, text: a.name })));
     let all = [];
     const paintCost = async () => {
       const rows = await cost();
@@ -261,7 +268,7 @@ const MemoryEditor = (() => {
         cat, text,
         el('button', { type: 'button', class: 'ghost small', text: exp == null ? '⏳' : `${exp}d`, title: exp == null ? 'Set an expiry date' : `Expires ${new Date(f.expires).toLocaleDateString()}`, on: { click: (e) => expiryMenu(e, f) } }),
         el('select', { class: 'memory-move', title: 'Who remembers it', on: { change: async (e) => { const to = e.target.value; const old = meta.facts[f.key]; delete meta.facts[f.key]; f.scope = to; f.key = keyOf(to, f.text); meta.facts[f.key] = old; await commit(); } } },
-          el('option', { value: 'shared', text: 'All', selected: f.scope === 'shared' }), ...H.agents().filter((a) => a.mode === 'native').map((a) => el('option', { value: a.id, text: a.name, selected: f.scope === a.id }))),
+          el('option', { value: 'shared', text: 'All', selected: f.scope === 'shared' }), ...placeOpts(f.scope), ...H.agents().filter((a) => a.mode === 'native').map((a) => el('option', { value: a.id, text: a.name, selected: f.scope === a.id }))),
         el('button', { type: 'button', class: 'ghost small danger', text: '×', title: 'Forget', on: { click: async () => { all = all.filter((x) => x !== f); await commit(); toast(`Forgot "${f.text.slice(0, 50)}"`, { timeout: 4000, action: { label: 'Undo', fn: async () => { const cur = await facts(); cur.push(f); await writeFacts(cur); paint(); } } }); } } }));
     }
     function expiryMenu(e, f) {
@@ -301,6 +308,22 @@ const MemoryEditor = (() => {
     return dlg;
   }
 
+  // (round 38, memorytidy) facts the AI just saved get their date (so Tidy memory knows which is newer, and what is
+  // stale); a fact it replaced hands its details (pin, category) to the new one. r: MemoryTidyCore.saveFacts' result.
+  async function stamp(agentId, r) {
+    await loadMeta();
+    const now = Date.now();
+    for (const t of r?.added || []) meta.facts[keyOf(agentId, t)] ||= { cat: guessCat(t), added: now };
+    for (const x of r?.replaced || []) {
+      const from = keyOf(x.scope, strip(x.from)); const to = keyOf(x.scope, strip(x.to));
+      meta.facts[to] = { ...meta.facts[from], cat: meta.facts[from]?.cat || guessCat(strip(x.to)), added: now };
+      delete meta.facts[from];
+    }
+    await saveMeta();
+    paintButton();
+  }
+  const metaFacts = async () => (await loadMeta()).facts;
+
   // The 🧠 button's tooltip shows what memory costs per message.
   async function paintButton() {
     const rows = await cost().catch(() => []);
@@ -310,5 +333,5 @@ const MemoryEditor = (() => {
   // Expired facts are dropped a few seconds after start-up.
   setTimeout(() => purgeExpired().catch(() => {}).then(paintButton), 4000);
 
-  return { open, openText, facts, remember, forget, setPinned, setExpiry, cost, costText, purgeExpired, exportAll, importFile, guessCat, CATS };
+  return { open, openText, facts, stamp, metaFacts, writeFacts, paintButton, remember, forget, setPinned, setExpiry, cost, costText, purgeExpired, exportAll, importFile, guessCat, CATS };
 })();

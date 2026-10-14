@@ -63,7 +63,7 @@ function measure(agent, d = { engines: deps.engines(), cost: deps.cost(), Conn: 
   for (const t of tools) { try { t.saves = Math.max(0, total - fixedOf(without(a, t), d)); } catch { /* measured without it: no */ } }
   // memory that goes only with the messages it's about (big, or /memory relevant on): no part in the prompt
   let memory = parts.some(([k]) => k === 'memory') ? 'prompt' : 'none';
-  try { const m = req('./store')?.getMemory?.(); if (memory === 'none' && !a.memoryOff && [m?.shared, m?.agents?.[a.id]].some((x) => String(x || '').trim())) memory = 'relevant'; } catch { /* no store */ }
+  try { const m = req('./store')?.getMemory?.(); if (memory === 'none' && !a.memoryOff && [m?.shared, ...Object.entries(m?.places || {}).filter(([p]) => (req('./context-core')?.PLACES || []).some((x) => x.id === p && x.on(a))).map(([, v]) => v), m?.agents?.[a.id]].some((x) => String(x || '').trim())) memory = 'relevant'; /* (round 38) + its places */ } catch { /* no store */ }
   return { parts, tools, total, chars: d.engines.buildPrompt(a).length, hooks: (Array.isArray(a.hooks) ? a.hooks : []).filter((h) => h && h.on !== false).length, memory };
 }
 

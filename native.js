@@ -1390,8 +1390,17 @@ const Native = (() => {
     syncSendBtn(agentId);
   }
 
+  const knownSaves = new Set(); // (round 38) `${agentId}|fact` saved again but already known (nothing added)
   async function rememberFacts(agentId, facts) {
     const memory = await window.hub.getMemory();
+    // (round 38, memorytidy) a fact that repeats or contradicts one it has replaces it instead of piling up
+    if (window.MemoryTidyCore) {
+      const r = MemoryTidyCore.saveFacts(memory, H.agent(agentId) || { id: agentId }, facts);
+      await window.hub.saveMemory(r.memory);
+      window.MemoryEditor?.stamp?.(agentId, r);
+      for (const t of r.skipped) knownSaves.add(`${agentId}|${t}`); // it knew it already: its Undo leaves the old fact
+      return r;
+    }
     const current = (memory.agents[agentId] || '').trim();
     memory.agents[agentId] = [current, ...facts.map((f) => `- ${f}`)].filter(Boolean).join('\n');
     await window.hub.saveMemory(memory);
@@ -1399,6 +1408,7 @@ const Native = (() => {
 
   async function forgetFacts(agentId, facts) {
     const memory = await window.hub.getMemory();
+    if (window.MemoryTidyCore) { await window.hub.saveMemory(MemoryTidyCore.unsave(memory, agentId, facts.filter((f) => !knownSaves.has(`${agentId}|${MemoryTidyCore.strip(f)}`)))); return; } // (round 38) puts back what a fact replaced
     const drop = new Set(facts.map((f) => `- ${f}`));
     memory.agents[agentId] = (memory.agents[agentId] || '').split('\n').filter((l) => !drop.has(l.trim())).join('\n');
     await window.hub.saveMemory(memory);
