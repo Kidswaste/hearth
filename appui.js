@@ -292,8 +292,15 @@ const AppUI = (() => {
     }
     flushLater();
     for (const act of actions) items.push({ kind: 'Action', label: act.label, keys: act.keys, run: act.run });
-    return typeof SpeedRank !== 'undefined' ? SpeedRank.palette(items) : items; // (round 13) what you pick most here, now, first; ↻ Again on top
+    const ranked = typeof SpeedRank !== 'undefined' ? SpeedRank.palette(items) : items; // (round 13) what you pick most here, now, first; ↻ Again on top
+    // (round 37, appsearch) Find anything: rows say what they do (no "/name"), and it indexes them with everything else
+    const f = finder();
+    return f ? f.prepare(ranked) : ranked;
   }
+  // (round 37, appsearch) Find anything (appsearch.js, lazy group "appsearch", loaded the first time the palette opens):
+  // plain words, synonyms and typos over Settings, ⋯ AI setup, menus, missions, chats and their messages, the Lab, patch
+  // notes and "how do I…"; until it's in, the plain match below
+  const finder = () => (window.Lazy && !Lazy.isIn('appsearch') ? null : typeof AppSearch !== 'undefined' ? AppSearch : null);
 
   // (round 17, hz240) the palette is built once and reused: opening it fills the same rows (text written only where
   // it changed), one listener each for clicks and pointing (they were one pair per row, rebuilt per keystroke), the
@@ -301,7 +308,7 @@ const AppUI = (() => {
   let pal = null;
   function paletteNode() {
     if (pal) return pal;
-    const input = el('input', { class: 'palette-input', placeholder: 'Find chats, tools, actions…  (? first: search inside messages)' });
+    const input = el('input', { class: 'palette-input', placeholder: 'Find anything: a setting, a chat, an action, “how do I…”', attrs: { 'aria-label': 'Find anything' } });
     const list = el('div', { class: 'palette-list' });
     const box = el('div', { class: 'palette' }, el('div', { class: 'palette-card' }, input, list));
     pal = { box, input, list, items: [], shown: [], sel: 0, selEl: null, rows: [], empty: el('div', { class: 'palette-empty' }), scrollFrame: 0 };
@@ -344,6 +351,7 @@ const AppUI = (() => {
       // (round 18, tidy) nothing typed: a short list, not a thousand rows: ↻ Again, your agents and tools (with their
       // keys), what you pick most here, your latest chats; typing searches everything
       if (!ql) { let chats = 0; pal.shown = pal.items.filter((it) => ['Again', 'Agent', 'Tool'].includes(it.kind) || it.used || (it.chat && chats++ < 5)).slice(0, 30); }
+      else if (finder()) pal.shown = finder().find(q);
       else pal.shown = pal.items.map((it) => ({ ...it, score: fuzzy(ql, it.hay ||= `${it.label} ${it.kind}`.toLowerCase()) })).filter((it) => it.score > 0)
         .sort((a, b) => b.score - a.score).slice(0, 60);
     }
@@ -362,7 +370,7 @@ const AppUI = (() => {
         r.__i = i; pal.rows[i] = r;
       }
       const [label, detail, kind] = r.children;
-      setText(label, it.label);
+      setText(label, it.label.replace(/^\/[\w:.-]+\s+—\s+/, '')); // (round 37) never a "/name" on screen, even before Find anything is in
       setText(detail, it.detail || ''); if (detail.hidden !== !it.detail) detail.hidden = !it.detail;
       setText(kind, it.keys ? `${it.kind} · ${Commands.keyText(it.keys)}` : it.kind);
       if (r.parentNode !== list || list.children[i] !== r) list.insertBefore(r, list.children[i] || null);
@@ -380,6 +388,8 @@ const AppUI = (() => {
     if (!p.box.isConnected) document.body.append(p.box);
     p.input.focus();
     const n = ++palFresh;
+    // (round 37, appsearch) the first opening loads Find anything; what's typed by then is searched in it
+    if (window.Lazy && !Lazy.isIn('appsearch')) Lazy.load('appsearch').then(() => { AppSearch.warm(); if (!p.box.isConnected) return; p.items = paletteItems(); paletteRender(); }).catch(() => {});
     if (!p.items.length) { p.items = paletteItems(); paletteRender(); return; } // the first opening: all at once
     paletteRender();
     setTimeout(() => { if (n !== palFresh || !p.box.isConnected) return; p.items = paletteItems(); paletteRender(); }, 0);
@@ -424,7 +434,7 @@ const AppUI = (() => {
 
   // ---------- shortcuts help ----------
   const SHORTCUTS = [
-    ['Ctrl+K', 'Command palette (type ? to search messages, / for chat commands)'], ['Ctrl+;', 'Command bar: run a /command over any tool (↑ history, ? help)'], ['Ctrl+1…9', 'The rail, top to bottom: agents, then tools'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
+    ['Ctrl+K', 'Find anything: settings, AI setup, menus, chats and their messages, “how do I…”'], ['Ctrl+;', 'Command bar: run a /command over any tool (↑ history, ? help)'], ['Ctrl+1…9', 'The rail, top to bottom: agents, then tools'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
     ['Ctrl+N', 'New native chat'], ['Ctrl+F', 'Find in the current view'], ['Ctrl+J', 'Notes'], ['Ctrl+\\', 'Show/hide chats panel'],
     ['Ctrl+G', 'All agents side by side'], ['Ctrl+Shift+Space', 'Ask all agents'], ['Ctrl+B', 'Show/hide ask-all bar'],
     ['Ctrl + / − / 0', 'Text size'], ['Ctrl+R', 'Reload website'], ['Ctrl+Shift+R', 'Reload the hub itself'], ['Ctrl+,', 'Settings'], ['Ctrl+/', 'This list'],
@@ -856,5 +866,7 @@ const AppUI = (() => {
     for (const [id, t] of Object.entries(THEMES)) addAction(`Theme: ${t.label}`, () => Look.applyPreset(id));
   }
 
-  return { actions: () => { flushLater(); return actions.slice(); }, addActionsLater, init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop, backupsDialog, backupNow, restoreBackup, autoBackup, exportData, downloadHistory: dlHistory };
+  // (round 37, appsearch) what it shows, again (rows that joined: a chat's messages, the Lab's things, patch notes)
+  const paletteRefresh = () => { if (pal?.box.isConnected && !pal.input.value.startsWith('?')) paletteRender(); };
+  return { actions: () => { flushLater(); return actions.slice(); }, addActionsLater, paletteRefresh, init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop, backupsDialog, backupNow, restoreBackup, autoBackup, exportData, downloadHistory: dlHistory };
 })();

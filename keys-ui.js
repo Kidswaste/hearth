@@ -348,7 +348,7 @@ const KeysUI = (() => {
       { area: 'Hidden buttons', keys: 'Right-click anything', what: '… → Customise this…: pin a tucked button back on screen, hide one, or show everything', run: () => Commands.exec('/customise', H.claudeAgent()?.id) },
       { area: 'Hidden buttons', keys: 'Right-click ⌨', what: 'Show everything, always (untick it to tidy again)', run: () => Commands.exec('/calm off', H.claudeAgent()?.id) },
       // everywhere
-      { area: G, keys: 'Ctrl+K', what: 'Find anything: chats, tools, actions (? first searches messages)', run: () => AppUI.palette() },
+      { area: G, keys: 'Ctrl+K', what: 'Find anything: a setting, an AI setup row, a menu action, a chat (and what was said in it), "how do I…"', run: () => AppUI.palette() },
       { area: G, keys: 'Ctrl+;', what: 'Command bar over any tool: plain words work ("make it 9 by 16")', run: () => CmdBar.toggle() },
       { area: G, keys: 'F1', what: 'Every chat command, searchable', run: () => CmdBar.help() },
       { area: G, keys: 'Ctrl+/', what: 'This sheet (the keys button, bottom left)' },
