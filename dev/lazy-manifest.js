@@ -86,6 +86,17 @@ if (a < 0 || b < 0) { console.error('markers missing in lazy-data.js'); process.
 const next = `${src.slice(0, a)}${A}  const META = ${JSON.stringify(meta)};\n${src.slice(b)}`;
 console.log(Object.entries(meta).map(([n, o]) => `${n}: ${o.commands?.length || 0} cmds, ${o.actions?.length || 0} actions, ${o.keys?.length || 0} keys, ${o.bridge?.length || 0} tool prefixes, ${o.apps?.length || 0} apps, ${o.tools?.length || 0} tools`).join('\n'));
 let bad = 0;
+// (round 36) a recording cut short (a busy machine: the old-order copy not finished when it was read) wrote a manifest
+// with most groups empty, so their stand-ins (commands, agent tool prefixes like adobe_) vanished and dev/checks/lazy.js
+// failed. A group that registered something before and nothing now is a broken recording, not a change: don't write
+// it (run again; --force writes anyway, for a group that really lost everything on purpose).
+const prev = LazyData.META || {};
+const lost = Object.keys(prev).filter((n) => Object.keys(prev[n] || {}).some((k) => ['commands', 'actions', 'keys', 'bridge', 'apps', 'tools'].includes(k)) && !Object.keys(meta[n] || {}).length && LazyData.GROUPS.some((g) => g.name === n));
+if (lost.length && !process.argv.includes('--force')) {
+  console.error(`✖ the recording looks cut short: ${lost.length} group(s) registered nothing (${lost.join(', ')}); lazy-data.js left as it was. Run again (the machine may be busy), or --force.`);
+  try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ }
+  process.exit(1);
+}
 if (next !== src) {
   if (check) { console.log('✖ lazy-data.js is out of date: run node dev/lazy-manifest.js'); bad++; } else { fs.writeFileSync(FILE, next); console.log('wrote lazy-data.js'); }
 }
