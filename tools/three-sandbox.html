@@ -719,6 +719,41 @@ function letGoRenderer(r) {
   perfNote.pooled += 1;
   while (POOL.length > POOL_MAX()) poolEvict(POOL[0]);
 }
+// (round 36, nativefeel) a new screen scale (the window moved to a monitor at 150 %, Windows' scaling changed, a Retina
+// screen and back): every renderer draws at the new ratio at once, so the preview is never blurry (or 4× too heavy)
+// until the next run. A sketch that capped its ratio (Math.min(devicePixelRatio, 2)) or fixed it keeps its cap; ?dpr=
+// (an exact frame size) never changes. Sketches' own resize listeners run too (2D canvases sized by devicePixelRatio).
+// <dpr-core> (pure: dev/nativefeel-test.js runs it in Node; NativeCore.nextRatio is the same rule)
+function dprNext(base, from, to) {
+  if (!(base > 0) || !(to > 0)) return base;
+  if (!(from > 0) || base >= from - 1e-3) return to;
+  return Math.min(base, to);
+}
+// </dpr-core>
+{
+  let dprNow = devicePixelRatio;
+  const dprCheck = () => {
+    const from = dprNow; dprNow = devicePixelRatio;
+    if (Math.abs(dprNow - from) <= 1e-3) return false;
+    for (const r of renderers) {
+      if (r.__stale || r.__helper || typeof r.setPixelRatio !== 'function') continue;
+      const base = r.__basePR ?? r.getPixelRatio(); const k = r.__q ?? 1;
+      const next = dprNext(base, from, dprNow);
+      if (next === base) continue;
+      r.__basePR = next; r.__q = k;
+      try { r.setPixelRatio(next * k); if (r.__lastScene && r.__lastCamera) r.render(r.__lastScene, r.__lastCamera); } catch { /* gone */ }
+    }
+    dispatchEvent(new Event('resize'));
+    return true;
+  };
+  const dprWatch = () => {
+    let mq = null;
+    try { mq = matchMedia(`(resolution: ${dprNow}dppx)`); } catch { return; }
+    mq.addEventListener('change', () => { dprCheck(); dprWatch(); }, { once: true });
+  };
+  dprWatch();
+  globalThis.__labDprCheck = dprCheck; // (dev/checks/nativefeel.js)
+}
 // Adaptive quality (round 31 "labadapt"; round 5's adaptive resolution grown into a ladder). When the preview can't keep
 // up (frames dropping for a sustained moment: the GPU is busy with a big frame size, heavy filters, shadows, particles),
 // it gets lighter one step at a time, least visible first: the internal resolution (1 → 0.85 → 0.7 → 0.5; the picture

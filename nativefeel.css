@@ -1,0 +1,39 @@
+/* Native feel (round 36, nativefeel): what differs between the Mac and Windows on screen. nativefeel.js sets
+   <html data-os="mac|win|linux">, data-frame="inset" (the Mac's hidden title bar) and data-fullscreen. */
+
+/* form controls, select lists and the system's scrollbars in the look's own kind (dark / light); a frame keeps the
+   page's default so a transparent sandbox (the Lab) stays transparent */
+:root[data-scheme=dark] { color-scheme: dark; }
+:root[data-scheme=light] { color-scheme: light; }
+:root[data-scheme] :is(iframe, webview) { color-scheme: normal; }
+
+/* ---------- the Mac: no title bar, the traffic lights in the rail ---------- */
+#nf-drag { display: none; }
+:root[data-frame=inset] #nf-drag { display: block; position: fixed; left: 0; top: 0; width: var(--sidebar-w, 64px); height: 40px; -webkit-app-region: drag; z-index: 1; }
+:root[data-frame=inset] #rail { padding-top: 44px; }
+/* the headers move the window (and a double-click zooms it, as System Settings says); what's on them stays clickable */
+:root[data-frame=inset] :is(.native-head, .tool-head) { -webkit-app-region: drag; }
+:root[data-frame=inset] .native-head > :not(.spacer),
+:root[data-frame=inset] .tool-head :is(button, a, input, select, textarea, label, summary, [contenteditable], [tabindex], [role=button]) { -webkit-app-region: no-drag; }
+/* anything opened over a header (menus, dialogs, toasts, popovers) takes clicks, never moves the window */
+:root[data-frame=inset] body > :not(#app):not(#nf-drag),
+:root[data-frame=inset] :is(dialog, [popover], #menu, #menu-fly, .toast) { -webkit-app-region: no-drag; }
+/* full screen: no traffic lights, the rail as usual */
+:root[data-frame=inset][data-fullscreen] #rail { padding-top: 12px; }
+:root[data-frame=inset][data-fullscreen] #nf-drag { display: none; }
+
+/* ---------- scrollbars ---------- */
+/* the Mac: thin, and only while the pointer is over what scrolls (the system's overlay scrollbars; the plain looks keep
+   the system's own) */
+:root[data-os=mac]:is([data-look~=v2], [data-skin~=forge]) ::-webkit-scrollbar { width: 9px; height: 9px; background: transparent; }
+:root[data-os=mac]:is([data-look~=v2], [data-skin~=forge]) ::-webkit-scrollbar-track { background: transparent; }
+:root[data-os=mac]:is([data-look~=v2], [data-skin~=forge]) ::-webkit-scrollbar-thumb { border: 2px solid transparent; background-clip: padding-box; }
+:root[data-os=mac]:is([data-look~=v2], [data-skin~=forge]) :not(:hover)::-webkit-scrollbar-thumb { background: transparent; }
+/* Windows: a slim bar that widens under the pointer (Windows 11's own), on every look */
+:root[data-os=win] ::-webkit-scrollbar { width: 12px; height: 12px; }
+:root[data-os=win] ::-webkit-scrollbar-track, :root[data-os=win] ::-webkit-scrollbar-corner { background: transparent; }
+:root[data-os=win] ::-webkit-scrollbar-thumb { border: 4px solid transparent; background-clip: padding-box; min-height: 32px; }
+:root[data-os=win] ::-webkit-scrollbar-thumb:hover, :root[data-os=win] ::-webkit-scrollbar-thumb:active { border-width: 3px; }
+:root[data-os=win]:not([data-look~=v2]):not([data-skin~=forge]) ::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--text) 32%, transparent); border-radius: 6px; }
+:root[data-os=win]:not([data-look~=v2]):not([data-skin~=forge]) ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text) 48%, transparent); }
+:root[data-os=win][data-corners=round] ::-webkit-scrollbar-thumb { border-radius: 6px; }

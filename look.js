@@ -56,16 +56,20 @@ const Look = (() => {
     save();
   }
 
-  function applyPreset(id, { quiet = false } = {}) {
+  // (round 36, nativefeel) auto: the computer switched light / dark and the look follows it (NativeFeel): not saved, so
+  // two computers in different modes never send the look back and forth through sync; any other pick is the owner's
+  // own and stops following
+  function applyPreset(id, { quiet = false, auto = false } = {}) {
     const t = themes()[id];
     if (!t) return false;
     const { label, group, look, vars, fx: presetFx, ...base } = t;
     const accent = H.config.theme?.fx?.accent;
     H.config.theme = { ...H.config.theme, ...base, preset: id };
+    if (!auto) delete H.config.theme.followOS;
     if (accent) H.config.theme.accent = accent;
     applyTheme($('user-theme')?.textContent || '');
     apply();
-    saveConfig();
+    if (!auto) saveConfig();
     if (!quiet) toast(`Look: ${label}`, { timeout: 1400 });
     return true;
   }
@@ -226,7 +230,7 @@ const Look = (() => {
       el('span', { text: 'Your looks' }), el('span', {}, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this look and your tweaks under a name',
         on: { click: async () => { const n = await Modal.prompt('Save this look as', { placeholder: 'e.g. Night session' }); if (n) toast(saveLook(n), { timeout: 1600 }); } } })));
     const decide = typeof Decide !== 'undefined' ? el('button', { type: 'button', class: 'ghost small decide-btn', text: '✦ Let Astra pick', title: 'Astra picks a look for you (Undo puts yours back)', on: { click: () => Decide.run('theme') } }) : null;
-    const box = el('div', { class: 'look-picker' }, el('div', { class: 'look-top' }, now, el('span', { class: 'spacer' }), decide), featured, mine, moreLooks,
+    const box = el('div', { class: 'look-picker' }, el('div', { class: 'look-top' }, now, el('span', { class: 'spacer' }), typeof NativeFeel !== 'undefined' ? NativeFeel.followButton() : null, decide), featured, mine, moreLooks,
       el('details', { class: 'look-adv' }, el('summary', { text: 'Advanced: textures, glow, motion, density, corners…' }), ctl));
     box.refresh = () => {
       const f = fx();

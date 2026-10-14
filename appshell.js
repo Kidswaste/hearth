@@ -107,8 +107,11 @@ function drawIcon(size) {
   return pngFromRgba(px, size);
 }
 // Writes the PNG and a multi-size .ico (16–256 px) so the taskbar, desktop and window all get a sharp icon.
+// (round 36, nativefeel) 20 and 40 px too: Windows' taskbar / title bar at 125 % and 250 % scaling pick an exact size
+// instead of blurring the next one
+const ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256];
 function writeIconFiles() {
-  const sizes = [16, 24, 32, 48, 64, 128, 256];
+  const sizes = ICO_SIZES;
   const pngs = sizes.map((z) => drawIcon(z));
   fs.writeFileSync(ICON_PNG, pngs[pngs.length - 1]);
   const header = Buffer.alloc(6);
@@ -124,8 +127,10 @@ function writeIconFiles() {
   });
   fs.writeFileSync(ICON_ICO, Buffer.concat([header, dir, ...pngs]));
 }
+// (an .ico from before round 36 has fewer sizes: drawn again once)
+const icoCount = () => { try { const b = Buffer.alloc(6); const fd = fs.openSync(ICON_ICO, 'r'); fs.readSync(fd, b, 0, 6, 0); fs.closeSync(fd); return b.readUInt16LE(4); } catch { return 0; } };
 function ensureIcon() {
-  if (!fs.existsSync(ICON_PNG) || !fs.existsSync(ICON_ICO)) writeIconFiles();
+  if (!fs.existsSync(ICON_PNG) || icoCount() !== ICO_SIZES.length) writeIconFiles();
   return nativeImage.createFromPath(ICON_PNG);
 }
 
@@ -153,8 +158,17 @@ function toggleWindow(win) {
   if (win.isVisible() && win.isFocused()) win.hide();
   else { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
 }
+// (round 36, nativefeel) the tray / menu-bar icon drawn at each screen scale (16 px at 100 %, 20 / 24 / 32 at 125 / 150 /
+// 200 %), not the 256 px picture shrunk: crisp on a scaled Windows screen and on a Retina menu bar
+function trayIcon(fallback) {
+  try {
+    const img = nativeImage.createFromBuffer(drawIcon(16), { scaleFactor: 1 });
+    for (const [scaleFactor, z] of [[1.25, 20], [1.5, 24], [2, 32]]) img.addRepresentation({ scaleFactor, buffer: drawIcon(z) });
+    return img;
+  } catch { return fallback.resize({ width: 16, height: 16 }); }
+}
 function setupTray(win, icon, actions) {
-  tray = new Tray(icon.resize({ width: 16, height: 16 }));
+  tray = new Tray(trayIcon(icon));
   tray.setToolTip(APP_NAME);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Show ${APP_NAME}`, click: () => { win.show(); win.focus(); } },
@@ -306,4 +320,5 @@ module.exports = {
   ensureIcon, loadWindowState, trackWindowState, setupTray, applySettings, setupCloseToTray,
   createShortcuts, restartApp, writeIconFiles, APP_NAME, ICON_ICO_PATH: ICON_ICO, attachContextMenu, setupDownloads, skipDownloads, toggleWindow, ICON_ICO,
   markQuitting: () => { quitting = true; },
+  pngFromRgba, trayIcon, // (round 36, nativefeel) the taskbar badge, the tray icon
 };
