@@ -9130,6 +9130,10 @@ function removeLayer(id, { fade = false } = {}) {
 }
 function setLayerProps(L, props) {
   const { code, id, ...rest } = props;
+  // (round 35, bugbash2) a new camera placement from the hub (🩺 Fix my scene's "Point the camera at it" / "Frame it",
+  // an undo) is what the picture should show: the look-around view moved on the old camera goes (it stayed on top, so
+  // a zoomed-out view kept the framed subject tiny)
+  if ('overrides' in rest && LV.views.has(L.id) && JSON.stringify(rest.overrides?.['@camera'] || null) !== JSON.stringify(L.props.overrides?.['@camera'] || null)) LV.views.delete(L.id);
   Object.assign(L.props, rest);
   layerVer += 1;
   if (rest.slot != null) L.slot = rest.slot;
