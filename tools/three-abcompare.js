@@ -223,7 +223,7 @@ const LabAB = (() => {
   const inLab = () => H.surfaceIdFor?.(H.activeId) === 'tool:three';
   function onKeyDown(e) {
     const pane = hooks().pane;
-    if (!pane || !(pane.contains(e.target) || e.target === document.body) || !inLab() || typing(e) || e.ctrlKey || e.altKey || e.metaKey) return;
+    if (!pane || !(e.target instanceof Node && pane.contains(e.target) || e.target === document.body) || !inLab() || typing(e) || e.ctrlKey || e.altKey || e.metaKey) return;
     if (e.key === 'Escape' && S.split) { e.preventDefault(); split(false); return; }
     if (e.shiftKey || e.code !== 'KeyB' || e.defaultPrevented || document.querySelector('dialog[open]')) return;
     e.preventDefault();
