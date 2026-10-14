@@ -105,6 +105,8 @@ contextBridge.exposeInMainWorld('hub', {
   gameResult: (id, result) => ipcRenderer.invoke('game:result', id, result),
   directorCost: call('director:cost'), // (agents?) → per-message cost of each director's tools (mcp/cost.js)
   directorGuide: call('director:guide'), // (topic) → the Three Director's guide text for that topic
+  tokenAudit: call('tokenaudit:measure'), // (round 36) (agent) → its fixed part per message: prompt parts, tool definitions, what turning each off saves
+  tokenAuditSeed: call('tokenaudit:seed'), // (round 36) () → tool calls in the last 35 days of chats (the tool-use log's start)
 
   // files & tools
   fs: {

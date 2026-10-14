@@ -151,6 +151,26 @@ const F = require('./fake-common');
   if (/\bruninfo\b/i.test(prompt)) text += `\n\nrun: model=${arg('--model') || 'default'} effort=${arg('--effort') || 'none'}`;
   // (round 35, concise) "promptinfo": the reply ends with the system prompt this run really got (dev/checks/concise.js)
   if (/\bpromptinfo\b/i.test(prompt)) text += `\n\nsystem<<<${arg('--system-prompt') || ''}>>>`;
+  // (round 36, tokenaudit) "toolsinfo": the tool definitions this run really got from Hearth's MCP servers in --mcp-config,
+  // each server's list measured the way mcp/cost.js does (instructions + tools JSON, ≈ chars / 4), with its own env
+  if (/\btoolsinfo\b/i.test(prompt)) {
+    const sizes = {};
+    let servers = {};
+    try { servers = JSON.parse(require('fs').readFileSync(arg('--mcp-config'), 'utf8')).mcpServers || {}; } catch { /* none */ }
+    for (const [name, spec] of Object.entries(servers)) {
+      const file = (spec.args || [])[0];
+      if (!/[\\/]mcp[\\/][\w-]+\.js$/.test(String(file || ''))) { sizes[name] = 'external'; continue; }
+      const keep = { ...process.env };
+      try {
+        for (const k of ['HUB_NODES_TOOL', 'HUB_TOOL_MODE', 'HUB_CHAT_LEAN', 'HUB_CHAT_ONLY']) delete process.env[k];
+        Object.assign(process.env, spec.env || {});
+        delete require.cache[require.resolve(file)];
+        const def = require(file);
+        sizes[name] = Math.round(String(def.instructions || '').length / 4) + Math.round(JSON.stringify(def.tools).length / 4);
+      } catch (err) { sizes[name] = `error ${err.message}`; } finally { for (const k of Object.keys(process.env)) if (!(k in keep)) delete process.env[k]; Object.assign(process.env, keep); }
+    }
+    text += `\n\ntools<<<${JSON.stringify(sizes)}>>>`;
+  }
   F.out({ type: 'stream_event', event: { type: 'content_block_start', index, content_block: { type: 'text', text: '' } } });
   if (cutting) {
     const half = Math.max(text.indexOf(' ', Math.floor(text.length / 2)), 1);

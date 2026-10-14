@@ -164,6 +164,7 @@ const Budget = (() => {
       s.limit ? el('div', { class: 'opt-row', title: tip }, el('span', { class: 'opt-label', text: 'Near it' }), mode) : null,
       s.limit && s.mode === 'cheaper' && !smart ? el('p', { class: 'opt-hint', text: tip }) : null,
       typeof Autocompact !== 'undefined' ? Autocompact.row(a, { repaint }) : null, // (round 34) offer to continue lighter at about N tokens
+      typeof TokenAudit !== 'undefined' ? TokenAudit.section(a, { repaint }) : null, // (round 36) where its tokens go: the fixed part of each message, trims
       el('div', { class: 'opt-row' }, el('button', { type: 'button', class: 'ghost small', text: 'This week at a glance…', title: 'Biggest chats, biggest tools, one-click fixes', on: { click: () => glance() } })));
   }
   const parseTokens = (t) => { const m = String(t || '').trim().toLowerCase().replace(/,/g, '').match(/^([\d.]+)\s*([km]?)/); return m ? Math.round(Number(m[1]) * (m[2] === 'm' ? 1e6 : m[2] === 'k' ? 1e3 : 1)) : 0; };
