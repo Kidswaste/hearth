@@ -115,7 +115,12 @@ const LabVariations = (() => {
   // ---------- open / apply / undo / more / locks / close ----------
   async function open({ steer = '' } = {}) {
     const { d } = await lab();
-    const params = C().params(readSliders(d));
+    // (round 35, bugbash2) a layer whose camera is placed by its '@camera' override (📷 Use this view, Keep this view,
+    // 🩺 Fix my scene's framing) is put back there every frame: its camera sliders change nothing, so "Another angle"
+    // showed the same picture six times. They're left out (zoom still works on top of the placement).
+    let pinned = new Set();
+    try { pinned = new Set((d.capture()?.layers || []).filter((L) => L.overrides?.['@camera']).map((L) => L.id)); } catch { /* none */ }
+    const params = C().params(readSliders(d)).filter((p) => !(p.group === 'camera' && pinned.has(p.layer) && !/zoom/i.test(`${p.key} ${p.label}`)));
     if (!params.length) throw new Error('This scene has no sliders to vary yet: ask the director to "add sliders for the main knobs".');
     S.params = params; S.cur = valuesOf(params); S.steer = C().steer(steer); S.sketch = hooks().sketchId?.() || null;
     S.applied = null;

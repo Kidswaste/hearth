@@ -98,6 +98,31 @@ await safe('habits', async () => {
   Options.hide();
 });
 
+// ---------- 5. 🎲 Variations on a scene whose camera is placed ('@camera') ----------
+await safe('variations pinned camera', async () => {
+  activate('tool:three'); await wait(300);
+  await ThreeLab.cmd({ show: true });
+  const d = ThreeLab.director;
+  await d.newSketch('bugbash2 angles', `import * as THREE from 'three';
+const r = new THREE.WebGLRenderer({ antialias: false }); r.setPixelRatio(1); r.setSize(innerWidth, innerHeight); document.body.append(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#101820');
+const P = tweak({ camDistance: [6, 2, 12], camHeight: [1, -3, 4], fov: [50, 20, 90], spin: [0.5, 0, 3], tint: '#ff7040' });
+const cam = new THREE.PerspectiveCamera(P.fov, innerWidth / innerHeight, 0.1, 100);
+const box = new THREE.Mesh(new THREE.TorusKnotGeometry(1, 0.3, 64, 8), new THREE.MeshBasicMaterial({ color: P.tint })); scene.add(box);
+r.setAnimationLoop((t) => { cam.fov = P.fov; cam.updateProjectionMatrix(); cam.position.set(0, P.camHeight, P.camDistance); cam.lookAt(0, 0, 0); box.rotation.y = t * 0.001 * P.spin; box.material.color.set(P.tint); r.render(scene, cam); });`, 3);
+  await wait(2500);
+  await Lazy.load('labvar');
+  await LabVariations.open({ steer: '' });
+  const g0 = LabVariations.state().groups.map((g) => g.id);
+  LabVariations.close();
+  const c = d.capture(); c.layers[0].overrides = { ...(c.layers[0].overrides || {}), '@camera': { p: [0, 1, 6], q: [0, 0, 0, 1], fov: 50 } };
+  await d.restore(c, { wait: 0.6 }); await wait(600);
+  await LabVariations.open({ steer: '' });
+  const st = LabVariations.state();
+  LabVariations.close();
+  step('🎲 Variations: with the camera placed ("Point the camera at it", Keep this view) no "Another angle" made of camera sliders that change nothing', g0.includes('camera') && !st.groups.some((g) => g.id === 'camera') && !st.tiles.some((t) => t.lean === 'camera'), { before: g0, after: st.groups.map((g) => g.id), leans: st.tiles.map((t) => t.lean) });
+});
+
 // ---------- 4. after Continue lighter: estimates and the meter ----------
 await safe('lighter sizes', async () => {
   const C = H.claudeAgent();
