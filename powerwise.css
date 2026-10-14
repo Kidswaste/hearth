@@ -1,0 +1,5 @@
+/* (round 39, powerwise) the ☕ in the rail's status corner while Hearth keeps the computer awake (powerwise.js) */
+#pw-awake { width: 32px; height: 20px; padding: 0; margin: 2px 0 0; display: grid; place-items: center; font-size: 12px; line-height: 1; opacity: .6; filter: saturate(.6); }
+#pw-awake[hidden] { display: none; }
+#pw-awake:hover { opacity: 1; filter: none; }
+#pw-awake[data-kind="display"] { opacity: .85; filter: none; }

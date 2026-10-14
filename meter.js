@@ -378,10 +378,14 @@ const Meter = (() => {
   }
   // While replies stream the numbers tick (at most ~8 repaints a second).
   let ticking = 0;
+  // (round 39, powerwise) nobody sees it while Hearth is hidden: one repaint when it's back, not 8 a second meanwhile
+  let behind = false;
   function tick() {
+    if (document.hidden) { behind = true; return; }
     if (ticking) return;
     ticking = setTimeout(() => { ticking = 0; paint(); }, 120);
   }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && behind) { behind = false; tick(); } });
 
   // ---------- per-message badges and per-chat totals ----------
   // (round 35, concise) where the output went, so the effect of "How long its answers are" shows: the reply's own

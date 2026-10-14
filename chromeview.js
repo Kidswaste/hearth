@@ -121,7 +121,11 @@ const ChromeView = (() => {
     const onVis = () => look();
     document.addEventListener('visibilitychange', onVis);
     document.addEventListener('hearth:activate', onVis); // (the hub switched chats)
-    const poll = setInterval(() => { if (st.visible || (inView && !seen)) look(); }, 1500); // (anything else that hides it: checked slowly, only while it draws)
+    // (anything else that hides it: checked slowly, only while it draws; round 39, powerwise: not while Hearth is hidden,
+    // the visibility event covers that)
+    const pollFn = () => { if (st.visible || (inView && !seen)) look(); };
+    const pollId = `chromeview:${id}`;
+    const poll = window.Power ? (Power.every(pollId, 1500, pollFn, { hidden: 'skip', battery: false }), pollId) : setInterval(pollFn, 1500);
     let rzTimer = 0; let lastSize = '';
     const ro = new ResizeObserver(() => {
       place();
@@ -327,7 +331,7 @@ const ChromeView = (() => {
       for (const p of [...popups]) closePopup(p.pid, close);
       views.delete(id);
       io.disconnect(); ro.disconnect(); dprQ.removeEventListener?.('change', onDpr);
-      document.removeEventListener('visibilitychange', onVis); document.removeEventListener('hearth:activate', onVis); clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVis); document.removeEventListener('hearth:activate', onVis); if (typeof poll === 'string') Power.stop(poll); else clearInterval(poll);
       clearTimeout(curTimer); clearTimeout(rzTimer);
       api.stop(id, { close }).catch(() => {});
       el.remove();

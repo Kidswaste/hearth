@@ -76,7 +76,7 @@ function start() {
 // (round 16) the calm check paces itself: every minute while things change, up to every 5 minutes after quiet passes
 // (the watchers still bring changes within seconds), ×3 on battery, ×2 while Hearth is minimized, and none while the
 // computer sleeps (one pass when it wakes up). Passes that start while a reply streams wait for a quieter moment.
-let quiet = 0; let pace = { hidden: false, battery: false, asleep: false };
+let quiet = 0; let pace = { hidden: false, battery: false, asleep: false }; let wokeAt = 0;
 function tickEvery() { return Math.min(5, 1 + Math.floor(quiet / 3)) * EVERY * (pace.battery ? 3 : 1) * (pace.hidden ? 2 : 1); }
 function armTick() {
   clearTimeout(tick); tick = null;
@@ -85,8 +85,10 @@ function armTick() {
 }
 function setPace(st = {}) {
   const was = pace;
-  pace = { hidden: Boolean(st.hidden), battery: Boolean(st.battery), asleep: Boolean(st.asleep) };
-  if (was.asleep && !pace.asleep) { quiet = 0; schedule(3000, 'wake'); }
+  // (round 39, powerwise) battery saver / Low Power Mode counts as battery; after a wake the pass waits for the
+  // network and the cloud drive's own client (15 s, was 3 s)
+  pace = { hidden: Boolean(st.hidden), battery: Boolean(st.battery || st.saver), asleep: Boolean(st.asleep) };
+  if (was.asleep && !pace.asleep) { quiet = 0; wokeAt = Date.now(); schedule(require('./powerwise').WAKE.sync, 'wake'); }
   if (was.asleep !== pace.asleep || was.battery !== pace.battery || was.hidden !== pace.hidden) armTick();
 }
 let busy = () => 0;
@@ -107,7 +109,10 @@ function schedule(ms, why) {
   // while a reply streams (its chat file is saved again and again) or on battery: wait for a longer quiet moment
   const slow = busy() > 0 || pace.battery;
   if (slow && why === 'watch') ms *= 2;
-  const wait = Math.max(0, Math.min(ms, (slow ? 60000 : 20000) - (Date.now() - firstAt)));
+  let wait = Math.max(0, Math.min(ms, (slow ? 60000 : 20000) - (Date.now() - firstAt)));
+  // (round 39, powerwise) just woken: changes the cloud client brings in meanwhile wait for the same moment
+  const settle = wokeAt ? wokeAt + require('./powerwise').WAKE.sync - Date.now() : 0;
+  if (settle > 0) wait = Math.max(wait, settle);
   clearTimeout(timer);
   // (round 20, jankwatch) a pass due while the owner types / drags / scrolls waits for the gesture to end (≤ 30 s)
   let tries = 0;

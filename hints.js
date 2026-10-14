@@ -158,8 +158,10 @@ const Hints = (() => {
       else if (q.still) { let ok = true; try { ok = q.still() !== false; } catch { ok = false; } if (!ok) drop(q, 'no longer fits'); }
     }
     if (!queue.length) return null;
-    schedule();
     const why = busy();
+    // (round 39, powerwise) Hearth in the background: no 0.7 s look-again while away (visibilitychange looks again)
+    if (why === 'away' && !force) return null;
+    schedule();
     const place = placeNow();
     const ready = queue.filter((q) => fits(q, place)).sort(order(place));
     // a line in a chat or a panel: as soon as you aren't typing and no reply streams (it covers nothing, so an open

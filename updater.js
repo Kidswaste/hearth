@@ -247,8 +247,10 @@ const Updater = (() => {
     if (performance.getEntriesByName('hearth:ready').length) ready(); else addEventListener('hearth:ready', ready, { once: true });
     AppUI.addAction?.('Patch notes: what changed, round by round', () => patchNotes());
     AppUI.addAction?.('Go back to the previous Hearth version (before the last update)', () => goBack());
-    setTimeout(() => { if (auto()) check(); }, 25000);
-    setInterval(() => { if (auto() && !document.hidden) check(); }, EVERY);
+    // (round 39, powerwise) on the background schedule: only while Hearth is on screen, every hour on battery, never
+    // while the computer sleeps and not before a minute after it wakes (the network comes back first)
+    if (window.Power) Power.every('updater', EVERY, () => { if (auto()) check(); }, { first: 25000, hidden: 'skip', wakeSettle: 60000 });
+    else { setTimeout(() => { if (auto()) check(); }, 25000); setInterval(() => { if (auto() && !document.hidden) check(); }, EVERY); }
     // (round 19, splash) not on the window's first focus at launch (a git fetch while the first screen builds): the
     // check 25 s in covers that; later, coming back after 10 minutes away checks again
     window.addEventListener('focus', () => { if (auto() && performance.now() > 20000 && Date.now() - checkedAt > 10 * 60000) check(); });

@@ -297,6 +297,7 @@ function setupDownloads(send) {
   const hook = (ses) => {
     ses.on('will-download', (_e, item) => {
       if (ses.storagePath && SKIP_DOWNLOADS.has(ses.storagePath)) return;
+      try { require('./powerwisemain').download(item); } catch { /* (round 39, powerwise) a big one keeps the computer awake */ }
       const dir = app.getPath('downloads');
       const parsed = path.parse(item.getFilename());
       let target = path.join(dir, parsed.base);

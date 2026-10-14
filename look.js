@@ -31,7 +31,8 @@ const Look = (() => {
     const f = fx();
     setAttr('data-look', p?.look || '');
     setAttr('data-tex', f.texture ? '' : 'off');
-    setAttr('data-motion', f.motion === 'full' ? '' : f.motion);
+    // (round 39, powerwise) on battery / battery saver, Full moves like Calm (not saved; plugged in, Full again)
+    setAttr('data-motion', f.motion === 'full' ? (window.Power?.lite?.() ? 'calm' : '') : f.motion);
     setAttr('data-density', f.density === 'normal' ? '' : f.density);
     setAttr('data-corners', f.corners === 'cut' ? '' : f.corners);
     for (const k of applied) root.style.removeProperty(k);
