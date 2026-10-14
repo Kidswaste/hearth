@@ -419,11 +419,11 @@ const LabAB = (() => {
   }
   function chipPaint() {
     if (!S.chip) return;
+    placeChip(); // (round 38, inputlatency) measured before its own writes: after them, each repaint laid the page out
     const t = S.pair ? `${S.split ? '◧' : '◐'} ${C().chipText(S.pair)}` : '';
     const what = S.chip.firstChild;
     if (what.textContent !== t) what.textContent = t;
     S.chip.classList.toggle('on', Boolean(S.split || S.peek));
-    placeChip();
   }
   function placeChip() {
     const c = S.chip; const host = hooks().host; if (!c || !host) return;
@@ -436,8 +436,7 @@ const LabAB = (() => {
   // ms: how long it stays (0: until the split / peek ends)
   function chipShow(ms = CHIP_MS) {
     if (!S.pair || !hooks().host) return;
-    if (!S.chip) { S.chip = chipBuild(); hooks().host.append(S.chip); }
-    chipPaint();
+    if (!S.chip) { S.chip = chipBuild(); chipPaint(); hooks().host.append(S.chip); } else chipPaint(); // (placed before it's in the page)
     clearTimeout(S.chipT);
     if (ms > 0) S.chipT = setTimeout(() => { if (!S.split && !S.peek && !S.chip?.matches(':hover')) chipHide(); }, ms);
     if (!S.chipTick) S.chipTick = setInterval(() => { if (S.chip) chipPaint(); }, 15000); // "· 2 min ago"
@@ -522,7 +521,10 @@ const LabAB = (() => {
     setTimeout(() => (typeof requestIdleCallback === 'function' ? requestIdleCallback(go, { timeout: 4000 }) : go()), 2500);
   });
   // the Lab went off screen: the split view and any peek close (the chip comes back with the next change)
-  for (const ev of ['hearth:activate', 'hearth:view']) addEventListener(ev, () => setTimeout(() => { if (!visible()) close(); }, 0));
+  // (round 38, inputlatency) asked only when something of it is showing: "is the preview on screen?" laid the page out
+  // right after every chat switch and window change
+  const showing = () => Boolean(S.press || S.peek || S.split || S.cover || badgeEl || S.chip);
+  for (const ev of ['hearth:activate', 'hearth:view']) addEventListener(ev, () => setTimeout(() => { if (showing() && !visible()) close(); }, 0));
   // a director turn ends: its change settles now
   if (typeof Native !== 'undefined' && Native.hooks?.finish) Native.hooks.finish.push((event, chat) => { if (S.pend?.chat && S.pend.chat === chat?.id) schedule(400); });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', register); else register();

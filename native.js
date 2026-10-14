@@ -264,15 +264,21 @@ const Native = (() => {
     const max = Math.max(160, Math.round(window.innerHeight * 0.45));
     // (round 16) typing more text that still fits (or a box already at its tallest) changes nothing: one cheap read
     // instead of resetting the height, which laid out the whole chat above it on every keystroke
-    const len = input.value.length; const grew = len >= (input.lenSeen ?? Infinity); input.lenSeen = len;
+    // (round 38, inputlatency) textLength, not value.length: reading a textarea's value copies its whole text (a long
+    // draft: 30,000 characters per keystroke, several times)
+    const len = input.textLength ?? input.value.length; const grew = len >= (input.lenSeen ?? Infinity); input.lenSeen = len;
     if (grew && input.style.height && (input.style.height === `${max}px` || input.scrollHeight <= input.clientHeight)) return;
+    // (round 38) deleting in a box at its tallest whose text still overflows it: it stays as it is (one read instead of
+    // resetting the height and laying the chat out twice per Backspace in a long draft)
+    if (!grew && input.style.height === `${max}px` && input.scrollHeight > input.clientHeight + 2) return;
     input.style.height = 'auto';
     input.style.height = `${Math.min(Math.max(input.scrollHeight + 2, 84), max)}px`;
     input.style.overflowY = input.scrollHeight + 2 > max ? 'auto' : 'hidden';
   }
+  const numFmt = new Intl.NumberFormat(); // (round 38) n.toLocaleString() built a formatter on every keystroke
   function updateCounter(v) {
-    const n = v.input.value.length;
-    const t = n > 200 ? `${n.toLocaleString()} chars · ~${fmt(Math.ceil(n / 4))} tokens` : '';
+    const n = v.input.textLength ?? v.input.value.length;
+    const t = n > 200 ? `${numFmt.format(n)} chars · ~${fmt(Math.ceil(n / 4))} tokens` : '';
     if (v.counter.textContent !== t) v.counter.textContent = t; // (round 16) per keystroke: only when it changes
   }
 
@@ -1369,7 +1375,8 @@ const Native = (() => {
     const busy = pending.has(H.activeChat[agentId]);
     if (!v) return;
     // (round 16) runs on every keystroke: written only when it changes
-    const typed = Boolean(v.input.value.trim());
+    // (round 38) the text is only read while it answers (Queue / Stop): reading a long draft copies it
+    const typed = busy && Boolean(v.input.value.trim());
     const label = busy ? (typed ? 'Queue' : 'Stop') : 'Send';
     if (v.sendBtn.textContent === label) return;
     v.sendBtn.textContent = label;
@@ -2124,7 +2131,9 @@ const Native = (() => {
     for (const fn of hooks.newChat) { try { fn(agentId); } catch (err) { console.warn(err); } }
   }
 
-  function focus(agentId) { views.get(agentId)?.input.focus(); }
+  // (round 38, inputlatency) the chat box is always in view: focusing it needn't lay the page out to scroll it there
+  // (switching chats focused it inside the click, a layout of the chat each time)
+  function focus(agentId) { views.get(agentId)?.input.focus({ preventScroll: true }); }
 
   function setDraft(agentId, text) {
     const v = views.get(agentId);

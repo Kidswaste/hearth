@@ -44,10 +44,14 @@ const AppSearch = (() => {
     return { name: m[1], text: t.charAt(0).toUpperCase() + t.slice(1) };
   }
   // the palette's rows say what they do (appui.js calls this on every opening, before showing anything)
+  // (round 38, inputlatency) each label's plain words are worked out once (≈ 1,000 rows, five patterns each, on every
+  // opening: ≈ 3 ms in the task right after Ctrl/⌘+K, where the first letters typed wait)
+  const plainMemo = new Map();
+  const plainOf = (label) => { let p = plainMemo.get(label); if (p === undefined) { p = plain(label); if (plainMemo.size > 4000) plainMemo.clear(); plainMemo.set(label, p); } return p; };
   function tidy(items) {
     for (const it of items) {
       if (it.kind !== 'Action' || it.cmdName) continue;
-      const p = plain(it.label);
+      const p = plainOf(it.label);
       if (p) { it.cmdName = p.name; it.label = p.text; }
     }
     return items;
