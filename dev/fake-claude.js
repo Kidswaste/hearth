@@ -151,6 +151,13 @@ const F = require('./fake-common');
   if (/\bruninfo\b/i.test(prompt)) text += `\n\nrun: model=${arg('--model') || 'default'} effort=${arg('--effort') || 'none'}`;
   // (round 35, concise) "promptinfo": the reply ends with the system prompt this run really got (dev/checks/concise.js)
   if (/\bpromptinfo\b/i.test(prompt)) text += `\n\nsystem<<<${arg('--system-prompt') || ''}>>>`;
+  // (round 40, attachlean) "attachinfo": what the attachments really cost this run: the message's size, the tools and
+  // folders it got (the Read tool on the attachments folder for a trimmed file), the pictures it was told to open
+  if (/\battachinfo\b/i.test(prompt)) {
+    const dirs = []; const at = argv.indexOf('--add-dir'); if (at >= 0) for (let j = at + 1; j < argv.length && !argv[j].startsWith('--'); j++) dirs.push(argv[j]);
+    const imgs = (prompt.split('[Attached image')[1] || '').split('\n').slice(1).filter((l) => /^[\\/]|^[A-Za-z]:/.test(l.trim()));
+    text += `\n\nattach<<<${JSON.stringify({ chars: prompt.length, tools: arg('--tools'), dirs, images: imgs })}>>>`;
+  }
   // (round 36, tokenaudit) "toolsinfo": the tool definitions this run really got from Hearth's MCP servers in --mcp-config,
   // each server's list measured the way mcp/cost.js does (instructions + tools JSON, ≈ chars / 4), with its own env
   if (/\btoolsinfo\b/i.test(prompt)) {

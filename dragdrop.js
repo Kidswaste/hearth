@@ -123,7 +123,7 @@ const DragDrop = (() => {
     const entries = await entriesOf(list);
     const agent = H.agent(agentId);
     const access = Boolean(agent?.workspace || (typeof Access !== 'undefined' && Access.isOn?.(agentId)));
-    const plan = C.planChat(entries, { access });
+    const plan = C.planChat(entries, { access, lean: typeof AttachLean !== 'undefined' }); // (round 40) big texts go in trimmed
     const v = Native.view(agentId);
     const before = v?.attachments.length || 0;
     const blobs = plan.steps.filter((s) => s.do === 'blob').map((s) => s.e.blob);

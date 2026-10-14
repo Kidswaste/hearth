@@ -67,8 +67,12 @@ try {
   const added = v().attachments.slice(n2);
   step('chat: a file: URL with # and accents attaches the picture by its place (not copied)', added.some((a) => a.kind === 'image' && a.path === PIC), added.map((a) => a.path || a.name));
   step('chat: a small text file is read in', added.some((a) => a.kind === 'text' && /more punch/.test(a.content)));
-  step('chat: iCloud placeholder, big text and PDF left out with plain reasons', r.skipped.length === 3 && r.skipped.some((w) => /still in iCloud/.test(w)) && r.skipped.some((w) => /too big to paste in/.test(w)) && r.skipped.some((w) => /PDFs need/.test(w)), r.skipped);
-  step('chat: one calm line', typeof r.line === 'string' && r.line.length < 400 && /Attached 2/.test(r.line), r.line);
+  // (round 40, attachlean) with lean attachments a big text is read in (trimmed when sent), not left out
+  const lean = typeof AttachLean !== 'undefined';
+  step('chat: iCloud placeholder, big text and PDF left out with plain reasons', lean
+    ? r.skipped.length === 2 && r.skipped.some((w) => /still in iCloud/.test(w)) && r.skipped.some((w) => /PDFs need/.test(w)) && added.some((a) => a.kind === 'text' && a.name === 'big.log')
+    : r.skipped.length === 3 && r.skipped.some((w) => /still in iCloud/.test(w)) && r.skipped.some((w) => /too big to paste in/.test(w)) && r.skipped.some((w) => /PDFs need/.test(w)), r.skipped);
+  step('chat: one calm line', typeof r.line === 'string' && r.line.length < 400 && new RegExp(`Attached ${lean ? 3 : 2}`).test(r.line), r.line);
   // a folder: asked first, never granted silently
   const chatOf = () => Native.chatOf(C.id);
   const folder = `${DIR}/Project Folder`;
