@@ -194,6 +194,14 @@ const A11y = (() => {
   function start() {
     build();
     hookChat();
+    // the keys sheet (the keys button, bottom left) lists the keyboard's ways around
+    if (typeof Keys !== 'undefined') Keys.add([
+      { area: 'Keyboard', keys: 'Tab', what: 'Every button and box in turn (the first stop: Skip to the chat)' },
+      { area: 'Keyboard', keys: 'Esc', what: 'Close what is on top (a menu, a picker, AI setup, a dialog); focus goes back where it was' },
+      { area: 'Keyboard', keys: '↑ / ↓', what: 'In a menu, a list or a picker: move; Enter or Space picks' },
+      { area: 'Keyboard', keys: 'Shift+F10', what: 'The right-click menu of what has focus (a chat in the list, a message…)' },
+      { area: 'Keyboard', keys: '↑ / ↓ in the chats list', what: 'The next / previous chat (one Tab stop for the whole list); Enter opens it' },
+    ]);
     const groups = document.getElementById('chat-groups');
     if (groups) { new MutationObserver(rovePanel).observe(groups, { childList: true }); rovePanel(); }
     // overlays are put straight on <body>

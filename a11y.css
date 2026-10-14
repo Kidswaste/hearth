@@ -18,8 +18,7 @@
 input[type=range]:focus-visible { outline: 1px solid var(--a11y-ring) !important; outline-offset: 3px; }
 /* rows inside a list or a menu: the ring inside the row, so a scrolling box doesn't cut it */
 :is(#menu, #menu-fly) button:focus-visible, .palette-item:focus-visible, #chat-groups .item:focus-visible { outline-offset: -2px; }
-/* text boxes: the looks without their own focus frame get a thin ring */
-:root:not([data-look~=v2]) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), textarea, select):focus-visible { outline: 1px solid var(--a11y-ring) !important; outline-offset: 1px; }
+/* (text boxes keep their own focus look: every look already changes their frame) */
 /* an overlay focused as a whole (focus moved into it as it opened) shows no ring of its own */
 [data-a11y-root]:focus { outline: none !important; }
 
