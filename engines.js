@@ -338,52 +338,55 @@ const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference
 //         Claude re-reads its system prompt after any change, and a same-chat prompt is byte-identical message after message.
 // Nothing here depends on the time, a counter, a random id or a Set / Map's order. session (optional: the chat's engine
 // session, saved with the chat): saved memory is frozen per session while it only grows (memoryFor below).
-function buildPrompt(agent, session = null) {
+// (round 36, tokenaudit) the prompt as named parts, in order ([key, text]): ⋯ AI setup → Spending → "Where its tokens go"
+// reads the same parts the engine gets (tokenauditmain.js); buildPrompt joins them, byte for byte as before.
+function promptParts(agent, session = null) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
   const folder = fileFolder(agent);
   const web = agent.engine === 'codex' && WEB_SEARCH.includes(agent.webSearch) && agent.webSearch !== 'disabled';
   const parts = [];
+  const add = (key, text) => { parts.push([key, text]); };
   // ---- head ----
   // (round 31, tokensaver) a lean Three Director's role is set by its own part below: no second "You are…" line
   if (!agent.systemPrompt && !leanDirector(agent)) {
-    parts.push(`You are ${agent.name}, chatting with the user in their personal desktop app. Answer directly, no preamble or recap; use Markdown when it helps.`);
+    add('role', `You are ${agent.name}, chatting with the user in their personal desktop app. Answer directly, no preamble or recap; use Markdown when it helps.`);
   }
   if (gameTools(agent)) {
-    parts.push('A live debug instance of the user\'s game Forgeheart runs right next to this chat, and you control it with the forge_* tools. '
+    add('game', 'A live debug instance of the user\'s game Forgeheart runs right next to this chat, and you control it with the forge_* tools. '
       + 'When the user asks for something in the game ("spawn me enemies", "make me invincible", "go to stage 80", "make drones faster"), do it right away with the tools '
       + 'instead of explaining how; check forge_status or forge_screenshot when you need to see the result. Reply briefly with what you changed.');
-    parts.push(toolGuide('gameTools'));
+    add('guide:gameTools', toolGuide('gameTools'));
   }
   const sets = hubToolsets(agent);
   if (sets.includes('chatTools')) {
     // directors get the chat tools' when-to-use guide; plain chats only the <suggest> convention
-    if (chatGuideOn(agent)) parts.push(toolGuide('chatTools'));
-    if (agent.suggestNext !== false) parts.push(SUGGEST_LINE);
+    if (chatGuideOn(agent)) add('guide:chatTools', toolGuide('chatTools'));
+    if (agent.suggestNext !== false) add('suggest', SUGGEST_LINE);
   } else if (agent.suggestNext) {
-    parts.push(SUGGEST_LINE);
+    add('suggest', SUGGEST_LINE);
   }
   // the board's one-line guide (references give a vibe, never footage) only for agents that have its tools
-  if (sets.includes('boardTools')) parts.push(toolGuide('boardTools'));
-  if (sets.includes('appsTools')) parts.push(toolGuide('appsTools')); // Meshy costs credits: one line
+  if (sets.includes('boardTools')) add('guide:boardTools', toolGuide('boardTools'));
+  if (sets.includes('appsTools')) add('guide:appsTools', toolGuide('appsTools')); // Meshy costs credits: one line
   // Directors (agents docked in a tool) check their own work unless switched off.
-  if (agent.selfReview ?? Boolean(agent.dock)) parts.push('Before you finish, check the result against what was asked (visual work: one fresh small picture), fix real problems, then say in one line what you checked.');
+  if (agent.selfReview ?? Boolean(agent.dock)) add('selfReview', 'Before you finish, check the result against what was asked (visual work: one fresh small picture), fix real problems, then say in one line what you checked.');
   // (round 11) opt-in (`/progress tags on`, directors only): the agent says how far it is; Hearth draws the bar and hides the tag
-  if (agent.dock && agent.progressTag) parts.push('During long work, now and then write <progress pct="40" note="what\'s next"/> (hidden; it drives the user\'s progress bar).');
+  if (agent.dock && agent.progressTag) add('progress', 'During long work, now and then write <progress pct="40" note="what\'s next"/> (hidden; it drives the user\'s progress bar).');
   // (round 22, labcrew) a crew helper: the sketch rules in five lines, no app map (its brief says what to explore)
   if (sets.includes('threeTools') && agent.toolMode === 'crew') {
-    parts.push('SKETCH = layers (bottom first), each a complete ES module: import * as THREE from \'three\'; its own WebGLRenderer (alpha: true above the bottom layer) appended to document.body, sized to innerWidth/innerHeight, renderer.setAnimationLoop((now) => …).\n'
+    add('director', 'SKETCH = layers (bottom first), each a complete ES module: import * as THREE from \'three\'; its own WebGLRenderer (alpha: true above the bottom layer) appended to document.body, sized to innerWidth/innerHeight, renderer.setAnimationLoop((now) => …).\n'
       + 'Sliders: const P = tweak({ key: { value, min, max, label, group } | \'#rrggbb\' }) near the top, read every frame. Music globals: audio.bass, audio.kick, audio.level (0..1).\n'
       + 'Change code with three_edit_code (small finds), a new element with three_add_layer, rewrite with three_set_code only when your angle needs it. Fix errors the results report. Stay within your call budget; end with one small three_screenshot, then one line: what you changed.');
   } else
   // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
   // (round 32) the same role line with a personality too (it sits in the tail): changing one keeps this part cached
   if (sets.includes('threeTools') && agent.toolMode !== 'full') {
-    parts.push(`You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`}, chatting with the user in their desktop app. Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n`
+    add('director', `You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`}, chatting with the user in their desktop app. Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n`
       + threeGuide().CORE
       + (nodesOn(agent) ? `\n${threeGuide().NODES_LINE}` : '')
       + `\n${hearthMap().LINE('three_do help')}`);
   } else if (sets.includes('threeTools')) {
-    parts.push('You turn the user\'s descriptions into three.js scenes in the Three.js Lab shown next to this chat. They prompt; you write the code. '
+    add('director', 'You turn the user\'s descriptions into three.js scenes in the Three.js Lab shown next to this chat. They prompt; you write the code. '
       + 'Build with three_set_code (complete sketches) and change existing code with three_edit_code (read / search big layers with three_read_code and three_search_code), read the errors it returns, look with three_screenshot, and iterate until it matches what they asked for. '
       + 'Don\'t paste the code into the chat unless they ask for it: describe what you made and what they can ask for next (camera, mood, motion, materials…). '
       + 'Prefer good-looking defaults: tone mapping, environment lighting, soft shadows, smooth animation, sensible performance. '
@@ -393,40 +396,43 @@ function buildPrompt(agent, session = null) {
       + (nodesOn(agent) ? `${threeGuide().NODES_LINE} ` : '')
       + 'Sketches can have layers (like Photoshop / After Effects): when the user asks to add, remove, time, fade, move or blend a layer, use the layer tools (three_add_layer, three_update_layer, three_remove_layer, three_layers); upper layers must be transparent. For changes over time ("fade in on the drop", "zoom during the build") use three_keyframes or three_animate presets. You can read and edit the timeline (three_timeline, three_timeline_edit) and the notes the user pins on moments (three_notes: they come with screenshots; mark them done when handled). Looks like ASCII, datamosh, found footage/VHS, glitch, CRT, pixelate, halftone, film, kaleidoscope, edge glow, thermal, duotone or glow are filter layers (three_add_layer with that template) placed above what they should affect. The user can give you reference files (pictures, logos, clips, models, sounds): three_references lists them and adds pictures they attach here; use them in code with refTexture(name) or refs.name. '
       + 'If three_get_code reports unsavedSliders, the user tuned those by hand: keep their values.');
-    parts.push(threeGuide().FULL);
-    parts.push(hearthMap().LINE('three_help'));
+    add('director', threeGuide().FULL);
+    add('director', hearthMap().LINE('three_help'));
   }
-  if (agent.crewOn && sets.includes('threeTools') && agent.toolMode !== 'crew') parts.push('Crew (on for this chat): for an open look question, three_do crew {op: "start", n: 2–6, brief, angles: [one per helper]} explores variations in parallel on copies of this scene (the owner approves the cost first; it answers when they finish). Then crew {op: "pick", n, reason} when asked to choose, or {op: "copy", from: n, layer} / {op: "code", n, layer} to merge parts.');
-  if (web) parts.push('You can search the web when the answer depends on recent or specific facts; say briefly where facts come from.');
-  if (agent.autoMemory !== false) parts.push(REMEMBER_LINE);
+  if (agent.crewOn && sets.includes('threeTools') && agent.toolMode !== 'crew') add('crew', 'Crew (on for this chat): for an open look question, three_do crew {op: "start", n: 2–6, brief, angles: [one per helper]} explores variations in parallel on copies of this scene (the owner approves the cost first; it answers when they finish). Then crew {op: "pick", n, reason} when asked to choose, or {op: "copy", from: n, layer} / {op: "code", n, layer} to merge parts.');
+  if (web) add('web', 'You can search the web when the answer depends on recent or specific facts; say briefly where facts come from.');
+  if (agent.autoMemory !== false) add('remember', REMEMBER_LINE);
   // ---- tail: what the owner changes mid-chat ----
-  if (agent.systemPrompt) parts.push(agent.systemPrompt); // the personality (⋯ AI setup) or a run's persona
+  if (agent.systemPrompt) add('personality', agent.systemPrompt); // the personality (⋯ AI setup) or a run's persona
   // (round 26) ⋯ AI setup: the user's standing instructions, each one on / off
   const rules = (Array.isArray(agent.instructions) ? agent.instructions : []).filter((r) => r && r.on !== false && String(r.text || '').trim()).slice(0, 40).map((r) => `- ${String(r.text).trim().slice(0, 600)}`);
-  if (rules.length) parts.push(`The user's standing instructions (always follow them):\n${rules.join('\n')}`);
+  if (rules.length) add('instructions', `The user's standing instructions (always follow them):\n${rules.join('\n')}`);
   const acc = accessOf(agent);
-  if (acc) parts.push(accessLine(agent, acc));
+  if (acc) add('access', accessLine(agent, acc));
   if (folder && agent.engine === 'codex') {
-    parts.push(agent.codexFiles === 'edit'
+    add('folder', agent.codexFiles === 'edit'
       ? `You can read and edit files in the project folder ${folder}: look with short read-only commands (ls, cat, rg, sed -n) and edit with apply_patch. `
         + 'Commands run in a sandbox with no network; never run builds, installs, deletes or anything outside that folder. Read before you edit, make focused changes, and list the files you changed at the end.'
       : `You can read files in the project folder ${folder} with short read-only commands (ls, cat, rg, sed -n). Stay inside that folder. `
         + 'You cannot change files: describe the edits instead, and tell the user what to run or test themselves.');
   } else if (folder) {
-    parts.push(`You can read and edit files in the project folder ${folder} with your file tools `
+    add('folder', `You can read and edit files in the project folder ${folder} with your file tools `
       + '(Read, Edit, Write, Glob, Grep). Read before you edit, make focused changes, and list the files you changed '
       + 'at the end. You cannot run commands, so tell the user what to run or test themselves.');
   }
   if (usesApps) {
-    parts.push('You can use the connected apps in your tools (for example email, documents or calendars) when the user asks about them or when it clearly helps.');
+    add('apps', 'You can use the connected apps in your tools (for example email, documents or calendars) when the user asks about them or when it clearly helps.');
   }
-  if (!folder && !acc && !usesApps && !sets.length && !conns(agent).length) parts.push(web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
+  if (!folder && !acc && !usesApps && !sets.length && !conns(agent).length) add('notools', web ? 'Apart from web search you have no tools: never try to run commands or read files.' : 'You have no tools: never try to run commands, read files or browse the web.');
   // saved memory last: it is what changes most often
   const notes = memoryFor(agent, session);
-  if (notes) parts.push(`What you remember about the user (saved notes, keep them in mind):\n${notes}`);
+  if (notes) add('memory', `What you remember about the user (saved notes, keep them in mind):\n${notes}`);
   // (round 35, concise) the answer length, last: switching it leaves everything before it cached
-  parts.push(answerLine(agent));
-  return parts.filter(Boolean).join('\n\n');
+  add('answers', answerLine(agent));
+  return parts.filter((p) => p[1]);
+}
+function buildPrompt(agent, session = null) {
+  return promptParts(agent, session).map((p) => p[1]).join('\n\n');
 }
 
 // (round 24, context) /memory relevant on: the notes leave the system prompt; chat-memory.js sends only the facts a
@@ -1518,6 +1524,6 @@ module.exports = {
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
   _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES },
-  buildPrompt, HUB_TOOLSETS, // the director cost report (mcp/cost.js)
+  buildPrompt, promptParts, HUB_TOOLSETS, // the director cost report (mcp/cost.js); (round 36) the prompt's parts (tokenauditmain.js)
   busy: () => running.size, // (round 16) replies running now: background work (sync) waits a little longer meanwhile
 };

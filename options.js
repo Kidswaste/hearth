@@ -239,7 +239,8 @@ const Options = (() => {
     return `${m.icon || ''} ${m.label}${Missions.isSticky(a.id) ? ', every message' : ', next message'}`.trim();
   }
   function spendSum(a) {
-    try { const s = Budget.state(a.id); return s.limit ? `${s.pct}% of this week's limit` : 'No weekly limit'; } catch { return ''; }
+    // (round 36, tokenaudit) + one line, once, when an unused tool costs more than ≈ 500 tokens a message
+    try { const s = Budget.state(a.id); const n = typeof TokenAudit !== 'undefined' ? TokenAudit.nudge(a) : ''; return `${s.limit ? `${s.pct}% of this week's limit` : 'No weekly limit'}${n ? ` · ${n}` : ''}`; } catch { return ''; }
   }
   function build(host, agentId, page = false, show = null) {
     // (round 31, quickstart-hooks.js) "?": What can I do here? (the card shows in the window, so the drawer goes)

@@ -1,0 +1,18 @@
+/* Where its tokens go (round 36, tokenaudit.js): a calm fold inside ⋯ AI setup → Spending */
+details.ta { margin: 4px 0 2px; border-radius: 7px; }
+details.ta > summary.opt-fold-sum { padding: 4px; min-height: 28px; border-radius: 7px; }
+details.ta > summary.opt-fold-sum:hover { background: var(--hover); }
+.ta .opt-fold-h { font-size: 12.5px; }
+.ta-body { padding: 2px 4px 4px; }
+.ta-group { margin: 4px 0 6px; }
+.ta-group h5 { margin: 6px 0 2px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.ta-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; min-height: 24px; padding: 2px 4px; border-radius: 6px; font-size: 12.5px; }
+.ta-line:hover { background: var(--hover); }
+.ta-line .ta-l { min-width: 0; display: flex; flex-direction: column; }
+.ta-line .ta-l > span, .ta-line .ta-l > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ta-line small { color: var(--muted); font-size: 11px; }
+.ta-line b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 40px; text-align: right; }
+.ta-line.ta-sub { padding-left: 16px; color: var(--muted); }
+.ta-trim { grid-column: 1 / -1; justify-self: end; margin: 1px 0 3px; padding: 1px 7px; font-size: 11px; } /* its own row under the line: the sheet is narrow */
+.ta-save { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.ta-save.on { color: var(--text); }
