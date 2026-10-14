@@ -236,11 +236,11 @@ const DragDrop = (() => {
   document.addEventListener('paste', (e) => {
     if (e.defaultPrevented || editable(e.target) || chatAt(e.target) || e.target?.closest?.('dialog, .bd-root, .bdd') || !labInFront()) return;
     const files = [...(e.clipboardData?.files || [])];
-    e.preventDefault();
+    if (files.length) e.preventDefault();
     (async () => {
       const list = files.length ? files : await clipboardPaths();
       last.paste = { zone: 'lab', files: files.length, clipboard: files.length ? 0 : list.length };
-      if (!list.length) { say('Nothing to paste into the scene: copy a picture, a song, a video or a file first'); return; }
+      if (!list.length) return; // copied words: the Lab's own keys (slider copy / paste) keep them
       await toLab(list);
     })().catch(fail);
   });
@@ -286,6 +286,8 @@ const DragDrop = (() => {
     { sel: '.rq-row[data-rq]', hint: 'Drag out: the finished file', get: (n) => { const j = window.Renders?.get?.(n.dataset.rq); return j?.status === 'done' && j.output && !j.trashed ? { path: j.output } : null; } },
     // 📐 a template: its folder (template.json, its picture and media)
     { sel: '.lt-card[data-id]', hint: 'Drag out: the template\'s folder', get: async (n) => { const t = (await window.LabTemplates?.list?.())?.find((x) => x.id === n.dataset.id); return t?._dir ? { path: t._dir } : null; } },
+    // the Lab preview's 📷 Still: drag it out for a PNG of the frame on screen
+    { sel: '.stage-btn[data-feature="Still"]', hint: 'Drag out: a PNG of this frame', get: async () => { const url = await ThreeLab.shot(); const name = ThreeLab.scenes?.get?.(ThreeLab.scenes.currentId())?.name || 'Lab'; return url ? { name: `${C.safeName(name)} still.png`, dataUrl: url } : null; } },
     // the time machine's snapshots of a scene
     { sel: '.tm-pic img', get: (n) => imgSpec(n, `${n.closest('[data-id]')?.dataset.id || 'snapshot'}`) },
   ];

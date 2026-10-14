@@ -166,6 +166,16 @@ try {
   document.body.dispatchEvent(lp);
   await until(() => layerCount() > L1, 10000);
   step('lab: a pasted screenshot joins the scene as a picture layer', layerCount() === L1 + 1 && lp.defaultPrevented, DragDrop.last.paste);
+  // a Lab still dragged out from the preview's 📷
+  const outs = [];
+  DragDrop._stubOut((s) => outs.push(s));
+  const stillBtn = document.querySelector('.three-preview .stage-btn[data-feature="Still"]');
+  stillBtn?.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+  const sd = new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
+  stillBtn?.dispatchEvent(sd);
+  await until(() => outs.length, 12000);
+  step('out: the Lab\'s 📷 drags out a PNG of the frame', sd.defaultPrevented && /still\.png$/.test(outs[0]?.name || '') && (outs[0]?.base64 || '').length > 100, { btn: Boolean(stillBtn), prevented: sd.defaultPrevented, name: outs[0]?.name, bytes: outs[0]?.base64?.length, shot: (await ThreeLab.shot().catch((e) => String(e)))?.length });
+  DragDrop._stubOut(null);
   await wait(800);
   S.remove?.(sc.id);
 } catch (err) { step('no exception', false, String(err?.stack || err).slice(0, 600)); }

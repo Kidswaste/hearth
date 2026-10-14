@@ -143,6 +143,11 @@ const tb = [...document.querySelectorAll('.three-toolbar')].find((x) => x.offset
 await cdp('Input.dispatchDragEvent', { type: 'dragEnter', x: tb.left + 10, y: tb.top + tb.height / 2, data });
 for (const type of ['dragOver', 'drop']) await cdp('Input.dispatchDragEvent', { type, x: hr.left + hr.width / 2, y: hr.top + hr.height / 2, data });
 await wait(300);
+// (round 38, dragdrop) the dropped picture becomes a picture layer first; its note offers "🎨 Match its look" (the menu)
+const lookToast = () => [...document.querySelectorAll('#toasts button')].find((b) => /Match its look/.test(b.textContent));
+await until(() => lookToast() || [...document.querySelectorAll('#menu button')].some((b) => /^🎨 Match this look/.test(b.textContent)), 15000);
+lookToast()?.click();
+await wait(300);
 const dropBtn = [...document.querySelectorAll('#menu button')].find((b) => /^🎨 Match this look/.test(b.textContent));
 step('a picture dropped on the preview → "🎨 Match this look"', Boolean(dropBtn), [...document.querySelectorAll('#menu button')].map((b) => b.textContent).slice(0, 6));
 dropBtn?.click();
