@@ -1907,7 +1907,7 @@ const ThreeLab = (() => {
         },
         // in place (a page that isn't up yet gets a full run anyway); resolves once that layer has drawn (≤ 1.5 s)
         rerun: () => (run({ hot: true, layer: id }) ? whenDrawn(id) : null),
-        persist: (kind, data) => { const Lx = layerById(id); if (!Lx || !current) return; extrasOf(Lx)[kind] = data; saveExtras(); },
+        persist: (kind, data) => { const Lx = layerById(id); if (!Lx || !current) return; extrasOf(Lx)[kind] = data; saveExtras(); window.LabRecipesHook?.note?.(kind); }, // (round 39, labrecipes: ♪ links)
         quickAsk: (text) => askDirector(text === '3 variations to pick from'
           ? `Make 3 clearly different variations of the layer "${layerById(id)?.name}" using only its sliders (three_sliders), no code changes. For each: set the values, save it as a look named "Variation A", "B" or "C" (three_looks), and show it to me with chat_show. Then ask me with chat_ask which one I like (A, B, C or none) and apply that look.`
           : text.endsWith('…') ? `${text.slice(0, -1)} ` : `${text} (layer "${layerById(id)?.name}")`, { send: !text.endsWith('…') }),
@@ -2045,7 +2045,7 @@ const ThreeLab = (() => {
       renderLayers();
     }
     const saveSoon = debounce(() => save(), 300);
-    function touch() { current.updatedAt = Date.now(); current.code = layersOf()[0]?.code ?? current.code; saveSoon(); window.ThreeHistory?.changed?.('layers'); }
+    function touch() { current.updatedAt = Date.now(); current.code = layersOf()[0]?.code ?? current.code; saveSoon(); window.ThreeHistory?.changed?.('layers'); window.LabRecipesHook?.note?.('layers'); }
     // direct: set the base value even when the property is animated (the director does this; keyframes still win).
     function editLayer(id, patch, { live = false, direct = false } = {}) {
       const L = layerById(id);
@@ -2356,6 +2356,7 @@ const ThreeLab = (() => {
       // (the Lab sequence on screen: the swap is the sequence's shape, not the scene's own frame size: seqguard)
       const seqOn = typeof ThreeSeq !== 'undefined' && ThreeSeq.active;
       if (current && !seqOn) { (extras[current.id] ||= {}).frame = id; saveExtras(); }
+      if (current && !seqOn) window.LabRecipesHook?.note?.('frame', { id, w: stage?.size?.width, h: stage?.size?.height }); // (round 39, labrecipes)
       if (seqOn) ThreeSeq.sizeChanged?.(id);
       if (reload && current) run();
     } });

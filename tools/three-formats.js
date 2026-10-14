@@ -154,6 +154,7 @@ const LabFormats = (() => {
     box.addEventListener('change', () => {
       if (box.checked) st.picks.add(f.id); else st.picks.delete(f.id);
       store.set('three.formats.picks', FC.FORMATS.map((x) => x.id).filter((id) => st.picks.has(id)));
+      window.LabRecipesHook?.note?.('formats', { formats: FC.FORMATS.map((x) => x.id).filter((id) => st.picks.has(id)) }); // (round 39, labrecipes)
       c.classList.toggle('lf-off', !box.checked); st.paintSum?.();
     });
     // drag = pan, wheel = zoom (a crop of the zoomed-out picture: nothing is drawn again)

@@ -97,7 +97,13 @@ const ThreeFX = (() => {
   }
 
   // Applies an item. alt = the Shift+Enter variant (see hint()).
-  async function apply(it, { alt = false } = {}) {
+  // (round 39, labrecipes) one recipe step while a recipe is being recorded (what the item changes is part of it)
+  async function apply(it, o = {}) {
+    const rc = window.LabRecipesHook?.begin?.('fx', { fx: { kind: it.kind, id: it.id, name: it.name }, ...(o.alt ? { alt: true } : {}) });
+    let ok = false;
+    try { const r = await applyItem(it, o); ok = true; return r; } finally { rc?.(ok ? {} : false); }
+  }
+  async function applyItem(it, { alt = false } = {}) {
     const d = await lab();
     pushRecent(it);
     (typeof Usage !== 'undefined') && Usage.track?.(`Lab FX › ${KIND_LABEL[it.kind]}: ${it.name}`);

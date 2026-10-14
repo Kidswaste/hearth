@@ -11,6 +11,7 @@ const ABCore = (() => {
   // several notes make up one change (a variation also moves sliders and runs the time machine)
   const KINDS = {
     keep: { label: 'Before you kept the earlier one', rank: 9, ms: 600 },
+    recipe: { label: '📜 Recipe', rank: 9, ms: 900 }, // (round 39, labrecipes) a whole recipe replayed is one change
     variations: { label: '🎲 Variation', rank: 8, ms: 700 },
     doctor: { label: '🩺 Fix my scene', rank: 8, ms: 900 },
     autopolish: { label: '✨ Look finished', rank: 8, ms: 900 },

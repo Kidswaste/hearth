@@ -171,7 +171,12 @@ const LabGallery = (() => {
     if (!Ls.length) throw new Error('Nothing to start from in it');
     if (how === 'layer') {
       const pick = Ls.length > 1 ? Ls.filter((L) => !L.filter) : Ls;
-      for (const L of pick) await d.addLayer({ name: L.name, code: L.code, props: { ...(L.blend ? { blend: L.blend } : {}), ...(L.opacity != null ? { opacity: L.opacity } : {}) } }, 0.2);
+      // (round 39, labrecipes) one recipe step per layer, the code itself in it (it replays without the gallery)
+      for (const L of pick) {
+        const props = { ...(L.blend ? { blend: L.blend } : {}), ...(L.opacity != null ? { opacity: L.opacity } : {}) };
+        const rc = window.LabRecipesHook?.begin?.('layer', { name: L.name, code: L.code, props, from: 'gallery' });
+        try { await d.addLayer({ name: L.name, code: L.code, props }, 0.2); } finally { rc?.(); }
+      }
       toast(`Added ${pick.length === 1 ? `"${pick[0].name}"` : `${pick.length} layers from "${item.name}"`} on top`, { timeout: 3000 });
       return { added: pick.map((L) => L.name) };
     }

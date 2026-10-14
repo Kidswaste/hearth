@@ -94,7 +94,7 @@ const LabPacks = (() => {
       (okBtn || d.querySelector('.pk-cancel')).focus();
     });
   }
-  const KIND_LABEL = { scene: 'Lab scene', sequence: 'Lab sequence', gallery: 'Gallery starting point', template: 'One of My templates' };
+  const KIND_LABEL = { scene: 'Lab scene', sequence: 'Lab sequence', gallery: 'Gallery starting point', template: 'One of My templates', recipe: 'One of my recipes' };
 
   // ---------- saving ----------
   // o: { kind, name, desc, scenes: [sceneData], sequence, song: path | null, thumb: url | null }
@@ -105,13 +105,13 @@ const LabPacks = (() => {
     let songSize = 0;
     if (songPath) { try { songSize = (await window.hub.fs.stat(songPath))?.size || 0; } catch { songSize = 0; } }
     const bodyOf = (withSong) => {
-      let b = { scenes: clone(scenes), sequence: clone(o.sequence), luts, song: withSong && songSize ? { file: songPath, name: songPath.split(/[\\/]/).pop() } : null, ...(o.template ? { template: clone(o.template) } : {}) }; // (round 35) a template's fields
+      let b = { scenes: clone(scenes), sequence: clone(o.sequence), luts, song: withSong && songSize ? { file: songPath, name: songPath.split(/[\\/]/).pop() } : null, ...(o.template ? { template: clone(o.template) } : {}), ...(o.recipe ? { recipe: clone(o.recipe) } : {}) }; // (round 35) a template's fields · (round 39) a recipe's steps
       if (!withSong && songPath) { b = P.rewrite(b, (s) => (s === songPath ? '' : s)); for (const s of b.scenes) if (s.extras?.media?.path === '') delete s.extras.media; }
       return b;
     };
     const plan = await api().plan(bodyOf(true), inline);
     const thumb = await jpegOf(o.thumb);
-    const draft = P.makeManifest({ kind: o.kind, name: o.name, scenes, sequence: o.sequence, luts, song: songSize ? { file: songPath } : null, files: plan.files.map((f) => ({ name: f.entry, size: f.size, kind: f.kind, song: f.path === songPath })), missing: plan.missing, template: o.template || null });
+    const draft = P.makeManifest({ kind: o.kind, name: o.name, scenes, sequence: o.sequence, luts, song: songSize ? { file: songPath } : null, files: plan.files.map((f) => ({ name: f.entry, size: f.size, kind: f.kind, song: f.path === songPath })), missing: plan.missing, template: o.template || null, recipe: o.recipe || null });
     if (draft.song) { const sf = plan.files.find((f) => f.path === songPath); if (sf) draft.song.file = sf.entry; else draft.song = null; }
     const dropped = scenes.reduce((n, s) => n + (s.dropped || 0), 0);
     const lines = P.describe(draft);
@@ -181,8 +181,8 @@ const LabPacks = (() => {
     const r = await card({
       head: 'Open a pack', name: m.name, sub: `${KIND_LABEL[m.kind] || 'Scene'}${m.desc ? ` · ${m.desc}` : ''}`, thumb: pv.thumb, lines: P.describe(m),
       facts: [`${P.fmtSize(pv.size)}${pv.unpacked > pv.size * 1.15 ? ` (${P.fmtSize(pv.unpacked)} unpacked)` : ''}`, P.from(m), `The file: ${path}`],
-      note: `🛡 Its ${c.layers} layer${c.layers === 1 ? ' is' : 's are'} code, the same kind as any Lab scene: ${c.layers === 1 ? 'it runs' : 'they run'} only in the Lab's sandboxed preview, with no way into your files or the rest of Hearth. ${c.count ? `Its ${c.count} file${c.count === 1 ? '' : 's'} go${c.count === 1 ? 'es' : ''} into Hearth's own folder, in your asset library. ` : ''}Nothing is added until you say so.`,
-      ok: m.kind === 'template' ? 'Add to my templates' : c.scenes > 1 ? `Add as ${c.scenes} new scenes` : 'Add as a new scene',
+      note: m.kind === 'recipe' ? '🛡 A recipe is a list of Lab steps (effects, looks, sliders, music links, frame size…); a step that adds a layer carries that layer\'s code, which runs only in the Lab\'s sandboxed preview. Nothing runs until you use the recipe on a scene.' : `🛡 Its ${c.layers} layer${c.layers === 1 ? ' is' : 's are'} code, the same kind as any Lab scene: ${c.layers === 1 ? 'it runs' : 'they run'} only in the Lab's sandboxed preview, with no way into your files or the rest of Hearth. ${c.count ? `Its ${c.count} file${c.count === 1 ? '' : 's'} go${c.count === 1 ? 'es' : ''} into Hearth's own folder, in your asset library. ` : ''}Nothing is added until you say so.`,
+      ok: m.kind === 'template' ? 'Add to my templates' : m.kind === 'recipe' ? 'Add to my recipes' : c.scenes > 1 ? `Add as ${c.scenes} new scenes` : 'Add as a new scene',
     });
     if (!r) return null;
     return importFile(path);
@@ -211,6 +211,15 @@ const LabPacks = (() => {
       }
     }
     if (renames.size) m = { ...m, scenes: P.rewrite(m.scenes, (s) => (renames.has(s) ? renames.get(s) : s)), sequence: m.sequence ? P.rewrite(m.sequence, (s) => (renames.has(s) ? renames.get(s) : s)) : null };
+    // (round 39, labrecipes) a recipe goes to the recipes (data/recipes/), not into a scene
+    if (m.kind === 'recipe') {
+      if (typeof LabRecipes === 'undefined' && typeof Lazy !== 'undefined') await Lazy.load('labrecipes');
+      if (typeof LabRecipes === 'undefined') throw new Error('Recipes did not load');
+      const r = await LabRecipes.fromPack(m);
+      if (u.dir) await window.hub.fs.trash([u.dir]).catch(() => {});
+      last.imported = { recipe: r.recipe, id: r.id, steps: r.steps, dir: u.dir, notes };
+      return last.imported;
+    }
     // (round 35, labtemplates) a template goes to My templates (its media copied into its own folder), not into a scene
     if (m.kind === 'template') {
       if (typeof LabTemplates === 'undefined' && typeof Lazy !== 'undefined') await Lazy.load('labtemplates');
