@@ -1,0 +1,52 @@
+/* ♿ Accessibility (round 40, a11y): nothing here changes how Hearth looks with a mouse. Keyboard focus rings that
+   show in every look, the skip link (only when focused), screen-reader-only text, Windows High Contrast (forced
+   colors), "more contrast" (prefers-contrast) and a few text colors that were under WCAG AA in the light looks. */
+
+/* screen readers only */
+.a11y-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* "Skip to the chat": the first Tab stop, off screen until focused */
+.a11y-skip { position: fixed; z-index: 2147483001; left: 8px; top: 8px; padding: 6px 12px; border-radius: 6px; font: 600 13px/1.4 var(--font, system-ui); color: var(--text); background: var(--bg); border: 2px solid var(--a11y-ring); text-decoration: none; transform: translateY(-200%); }
+.a11y-skip:focus { transform: none; }
+
+/* ---------- keyboard focus: one clear ring on every control, in every look ---------- */
+:root { --a11y-ring: var(--focus-c, var(--fh-gold, var(--accent))); }
+:is(button, a[href], summary, select, [role=button], [role=switch], [role=tab], [role=option], [role=menuitem], [role=slider], [role=link], input[type=checkbox], input[type=radio], input[type=color], svg[tabindex], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--a11y-ring) !important; outline-offset: 2px;
+}
+/* a range shows it on its thumb (polish.css) and its track */
+input[type=range]:focus-visible { outline: 1px solid var(--a11y-ring) !important; outline-offset: 3px; }
+/* rows inside a list or a menu: the ring inside the row, so a scrolling box doesn't cut it */
+:is(#menu, #menu-fly) button:focus-visible, .palette-item:focus-visible, #chat-groups .item:focus-visible { outline-offset: -2px; }
+/* text boxes: the looks without their own focus frame get a thin ring */
+:root:not([data-look~=v2]) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), textarea, select):focus-visible { outline: 1px solid var(--a11y-ring) !important; outline-offset: 1px; }
+/* an overlay focused as a whole (focus moved into it as it opened) shows no ring of its own */
+[data-a11y-root]:focus { outline: none !important; }
+
+/* ---------- text contrast (WCAG AA) in the light looks ---------- */
+/* the current AI's name in the chats list took its gold / its own color, too light on cream and white */
+:root[data-scheme=light] .group.current .group-name { color: color-mix(in srgb, var(--fh-gold, var(--agent)) 45%, var(--text)); }
+
+/* ---------- more contrast, when the computer asks for it (macOS Increase contrast, Windows contrast themes) ---------- */
+@media (prefers-contrast: more) {
+  :root { --muted: color-mix(in srgb, var(--text) 82%, transparent); --line: color-mix(in srgb, var(--text) 35%, transparent); }
+  .hint, .msg-time, .msg-num, .p-kind, .menu-hint, .menu-key, ::placeholder { opacity: 1 !important; color: color-mix(in srgb, var(--text) 82%, transparent) !important; }
+  :is(button, .item, .palette-item, input, textarea, select) { border-color: color-mix(in srgb, var(--text) 45%, transparent); }
+}
+
+/* ---------- Windows High Contrast (forced colors) ---------- */
+@media (forced-colors: active) {
+  :root { --a11y-ring: Highlight; }
+  /* every button keeps an edge (backgrounds are flattened) and its icon follows the text color */
+  :is(button, [role=button], [role=switch], [role=tab], .agent-btn, .tool-btn) { border: 1px solid ButtonText; forced-color-adjust: auto; }
+  :is(button, [role=button], [role=switch]) svg :is(path, circle, rect, line, polyline, polygon, ellipse):not([fill=none]) { fill: currentColor; }
+  :is(button, [role=button], [role=switch]) svg :is(path, circle, rect, line, polyline, polygon, ellipse)[stroke]:not([stroke=none]) { stroke: currentColor; }
+  svg { forced-color-adjust: auto; }
+  /* what's on / picked shows as selected */
+  :is(.on, .active, .sel, .kb-on, .checked, [aria-pressed=true], [aria-checked=true], [aria-selected=true]):is(button, .item, .palette-item, [role]) { background: Highlight !important; color: HighlightText !important; }
+  .opt-switch, .tw-toggle { border: 1px solid ButtonText; }
+  :focus-visible { outline: 2px solid Highlight !important; }
+  .a11y-skip { border-color: Highlight; }
+  /* pictures and the Lab preview keep their colors */
+  img, video, canvas, iframe, .three-preview, .tw-color, input[type=color] { forced-color-adjust: none; }
+}

@@ -295,19 +295,27 @@ function showMenu(x, y, items, parent = null, dir = 0) {
   menu.classList.toggle('m-in', dir > 0);
   menu.classList.toggle('m-back', dir < 0);
   menu.classList.toggle('m-long', Boolean(filter));
-  menuState = { x, y, given, parent, list, pick, kb: -1, filter };
+  // (round 40, a11y) what had focus before the menu (a submenu keeps its menu's), so closing gives it back
+  const before = document.activeElement;
+  const opener = menuState?.opener || (before && before !== document.body && !before.closest?.('#menu, #menu-fly') ? before : null);
+  menuState = { x, y, given, parent, list, pick, kb: -1, filter, opener };
   menu.hidden = false;
   topLayer(menu, true);
   menuOpenedAt = performance.now(); // the click that opened it must not close it (start.js)
   const { innerWidth: w, innerHeight: h } = window;
   menu.style.left = `${Math.max(4, Math.min(x, w - menu.offsetWidth - 8))}px`;
   menu.style.top = `${Math.max(4, Math.min(y, h - menu.offsetHeight - 8))}px`;
+  if (window.A11y?.kbd() || parent || (dir < 0 && menu.contains(before))) menuKb(filter ? -1 : 0); // opened from the keyboard: on its first row
+  if (filter && window.A11y?.kbd()) filter.focus({ preventScroll: true });
 }
 function hideMenu() {
   const menu = $('menu');
+  const back = menuState?.opener;
+  const had = menu && (menu.contains(document.activeElement) || $('menu-fly')?.contains(document.activeElement));
   if (menu) { menu.hidden = true; topLayer(menu, false); if (menu.parentElement !== document.body) document.body.append(menu); }
   hideMenuFly();
   menuState = null;
+  if (had && back?.isConnected) back.focus({ preventScroll: true }); // (round 40, a11y) focus back where it was
 }
 // A menu under an element (a button's own menu): showMenuAt(button, items)
 function showMenuAt(anchor, items) {
@@ -351,6 +359,7 @@ function menuKb(i) {
   const b = rows[menuState.kb];
   b.classList.add('kb-on');
   b.scrollIntoView({ block: 'nearest' });
+  if (document.activeElement !== b && document.activeElement !== menuState.filter) b.focus({ preventScroll: true }); // (round 40, a11y) a real focus: screen readers follow it
 }
 
 // pointing at a submenu row: its items show beside the menu (a second panel, #menu-fly)
@@ -403,6 +412,7 @@ addEventListener('keydown', (e) => {
   } else if (e.key === 'ArrowRight' && at >= 0 && rows[at].classList.contains('has-sub')) { done(); rows[at].click(); }
   else if ((e.key === 'ArrowLeft' || (e.key === 'Backspace' && !menuState.filter?.value)) && menuState.parent) { done(); menu.querySelector('.menu-back')?.click(); }
   else if (e.key === 'Escape') { done(); hideMenu(); }
+  else if (e.key === 'Tab') hideMenu(); // (round 40, a11y) Tab leaves the menu (it closes; Tab goes on from what opened it)
   else if (e.key.length === 1 && e.key !== ' ' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName) && !e.target.isContentEditable) {
     if (menuState.filter) { done(); menuState.filter.focus(); menuState.filter.value += e.key; filterMenu(menuState.filter.value); return; }
     const k = e.key.toLowerCase();

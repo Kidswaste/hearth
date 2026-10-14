@@ -1210,8 +1210,8 @@ const ThreeTweaks = (() => {
       if (it.kind === 'bool') {
         // one click: an On / Off pill
         let on = Boolean(v);
-        const pill = el('button', { type: 'button', class: 'tw-toggle', dataset: { feature: labelOf(it) || 'Switch' } });
-        const set = (x) => { on = Boolean(x); pill.classList.toggle('on', on); pill.textContent = on ? 'On' : 'Off'; };
+        const pill = el('button', { type: 'button', class: 'tw-toggle', role: 'switch', dataset: { feature: labelOf(it) || 'Switch' }, attrs: { 'aria-label': labelOf(it) || it.raw || 'Switch' } });
+        const set = (x) => { on = Boolean(x); pill.classList.toggle('on', on); pill.textContent = on ? 'On' : 'Off'; pill.setAttribute('aria-checked', String(on)); };
         pill.addEventListener('click', () => { if (locks.has(ids[i])) return; set(!on); setValue(i, on, { release: true }); });
         set(on);
         return { node: pill, set };
@@ -1223,9 +1223,9 @@ const ThreeTweaks = (() => {
         if (opts.length <= 5 && opts.every((o) => humanize(o).length <= 12)) {
           let cur = v;
           const segs = opts.map((o) => el('button', { type: 'button', class: 'tw-seg-btn', text: humanize(o), dataset: { feature: `${labelOf(it) || 'Choice'}: ${humanize(o)}` } }));
-          const set = (x) => { cur = x; segs.forEach((b, k) => b.classList.toggle('on', opts[k] === x)); };
+          const set = (x) => { cur = x; segs.forEach((b, k) => { b.classList.toggle('on', opts[k] === x); b.setAttribute('aria-pressed', String(opts[k] === x)); }); };
           segs.forEach((b, k) => b.addEventListener('click', () => { if (locks.has(ids[i])) return; set(opts[k]); setValue(i, opts[k], { release: true }); }));
-          const node = el('div', { class: 'tw-seg' }, segs);
+          const node = el('div', { class: 'tw-seg', role: 'group', attrs: { 'aria-label': labelOf(it) || it.raw || 'Choice' } }, segs);
           node.addEventListener('wheel', (e) => { if (locks.has(ids[i])) return; e.preventDefault(); const x = pickIdx(cur, e.deltaY > 0 ? 1 : -1); set(x); setValue(i, x, { release: true }); }, { passive: false });
           set(v);
           return { node, set };
@@ -1249,8 +1249,8 @@ const ThreeTweaks = (() => {
         return { node: el('div', { class: 'tw-color' }, pick, hex), set: (x) => { pick.value = x; hex.value = x; } };
       }
       const r = it.range;
-      const slider = el('input', { type: 'range', min: r.min, max: r.max, step: r.step, value: v, title: 'Clicks into the value in the code as you pass it · double-click to go back to it' });
-      const num = el('input', { type: 'number', class: 'tw-num', step: r.step, value: it.int ? v : trimNum(v) });
+      const slider = el('input', { type: 'range', min: r.min, max: r.max, step: r.step, value: v, title: 'Clicks into the value in the code as you pass it · double-click to go back to it', attrs: { 'aria-label': labelOf(it) || it.raw || 'Value' } });
+      const num = el('input', { type: 'number', class: 'tw-num', step: r.step, value: it.int ? v : trimNum(v), attrs: { 'aria-label': `${labelOf(it) || it.raw || 'Value'}, exact value` } });
       // a tick where the code's value sits, and a detent there (like a center-click knob)
       const tick = el('i', { class: 'tw-orig' });
       const placeTick = () => { const lo = Number(slider.min); const hi = Number(slider.max); tick.style.left = `calc(7px + (100% - 14px) * ${(it.orig - lo) / ((hi - lo) || 1)})`; };
@@ -1316,14 +1316,15 @@ const ThreeTweaks = (() => {
       let lo = rg.min; let hi = rg.max;
       const NS = 'http://www.w3.org/2000/svg';
       const svgEl = (tag, attrs) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
-      const svg = svgEl('svg', { viewBox: '0 0 48 48', class: 'tw-knob', tabindex: '0' });
+      // (round 40, a11y) a slider to screen readers: its name, range and value (arrows already turn it)
+      const svg = svgEl('svg', { viewBox: '0 0 48 48', class: 'tw-knob', tabindex: '0', role: 'slider', 'aria-label': labelOf(it) || it.raw || 'Value', 'aria-valuemin': lo, 'aria-valuemax': hi });
       const track = svgEl('circle', { cx: 24, cy: 24, r: KNOB_R, class: 'kn-track', 'stroke-dasharray': `${KNOB_ARC} ${KNOB_C}`, transform: 'rotate(135 24 24)' });
       const arc = svgEl('circle', { cx: 24, cy: 24, r: KNOB_R, class: 'kn-arc', transform: 'rotate(135 24 24)' });
       const notch = svgEl('line', { x1: 24, y1: 3, x2: 24, y2: 8, class: 'kn-notch' });
       const cap = svgEl('circle', { cx: 24, cy: 24, r: 12, class: 'kn-cap' });
       const ptr = svgEl('line', { x1: 24, y1: 24, x2: 24, y2: 14, class: 'kn-ptr' });
       svg.append(track, arc, notch, cap, ptr);
-      const valEl = el('button', { class: 'tw-kval', title: 'Click to type a value' });
+      const valEl = el('button', { class: 'tw-kval', title: 'Click to type a value', attrs: { 'aria-label': `Type a value for ${labelOf(it) || it.raw || 'this knob'}` } });
       const frac = (x) => Math.max(0, Math.min(1, (x - lo) / ((hi - lo) || 1)));
       const ang = (x) => -135 + frac(x) * 270;
       let cur = values[i];
@@ -1333,6 +1334,7 @@ const ThreeTweaks = (() => {
         ptr.setAttribute('transform', `rotate(${ang(x)} 24 24)`);
         notch.setAttribute('transform', `rotate(${ang(it.orig)} 24 24)`);
         valEl.textContent = it.int ? String(Math.round(x)) : trimNum(Number(x).toPrecision(3));
+        if (svg.getAttribute('aria-valuenow') !== valEl.textContent) { svg.setAttribute('aria-valuenow', valEl.textContent); if (Number(svg.getAttribute('aria-valuemax')) !== hi || Number(svg.getAttribute('aria-valuemin')) !== lo) { svg.setAttribute('aria-valuemin', lo); svg.setAttribute('aria-valuemax', hi); } }
         cell.classList.toggle('at-orig', Math.abs(x - it.orig) < 1e-9);
       }
       // Detent: near the code's value the knob clicks into it, and stays there until you turn clearly past.
