@@ -109,7 +109,8 @@ function checkSaver(force = false) {
   const done = (key, v) => { saverBusy = false; if (v != null) setSys({ [key]: v }); };
   try {
     if (process.platform === 'darwin') execFile('pmset', ['-g'], { timeout: 4000 }, (err, out) => done('lowPower', err ? null : Core.parseMacLowPower(out)));
-    else execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', Core.WIN_SAVER_PS], { timeout: 8000, windowsHide: true }, (err, out) => done('saver', err ? null : Core.parseWinSaver(out)));
+    else if (process.platform === 'win32') execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', Core.WIN_SAVER_PS], { timeout: 8000, windowsHide: true }, (err, out) => done('saver', err ? null : Core.parseWinSaver(out)));
+    else saverBusy = false; // (round 40) other systems: no saver to read
   } catch { saverBusy = false; }
 }
 

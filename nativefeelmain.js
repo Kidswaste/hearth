@@ -88,10 +88,27 @@ function applyFlags(win, placed) {
 
 // ---------- light / dark ----------
 let follow = false;
+// (round 40, firstscreen) the last light / dark of this computer, set before the window is made (earlyTheme): setting it
+// once the page asks (native:look) re-themed a window already there, ≈ 25–70 ms of the main process during the start
+const THEMES = new Set(['system', 'light', 'dark']);
+function keepTheme(want) {
+  try {
+    const s = C.read(readJson(file()), machine());
+    if (s.machines[machine()]?.theme === want) return;
+    s.machines[machine()] = { ...(s.machines[machine()] || {}), theme: want };
+    writeJson(file(), s);
+  } catch { /* not critical */ }
+}
+function earlyTheme(nativeTheme) {
+  try {
+    const t = C.read(readJson(file()), machine()).machines[machine()]?.theme;
+    if (THEMES.has(t) && nativeTheme.themeSource !== t) nativeTheme.themeSource = t;
+  } catch { /* the page sets it */ }
+}
 function setLook(win, nativeTheme, { scheme, background, follow: f } = {}) {
   follow = Boolean(f);
   const want = follow ? 'system' : scheme === 'light' ? 'light' : 'dark';
-  if (nativeTheme.themeSource !== want) nativeTheme.themeSource = want;
+  if (nativeTheme.themeSource !== want) { nativeTheme.themeSource = want; keepTheme(want); }
   if (win && !win.isDestroyed() && /^#[0-9a-f]{6}$/i.test(String(background || ''))) {
     try { win.setBackgroundColor(background); } catch { /* fine */ }
   }
@@ -169,5 +186,5 @@ function register(ipcMain, { getWin, nativeTheme, systemPreferences, app, native
   return { attention: () => attention(getWin(), { app, nativeImage, appshell }), clear: () => clearAttention(getWin(), { app }) };
 }
 
-module.exports = { frameOptions, frameKind, restore, readState, writeState, capture, save, track, applyFlags, setLook, attention, clearAttention, setupMenu, register, machine, LIGHTS,
+module.exports = { frameOptions, frameKind, restore, earlyTheme, readState, writeState, capture, save, track, applyFlags, setLook, attention, clearAttention, setupMenu, register, machine, LIGHTS,
   _set: (x) => { o = { ...o, ...x }; away = 0; bounced = false; follow = false; }, _away: () => away };

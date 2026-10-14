@@ -46,4 +46,15 @@ for (const a of at) ok(names.has(a), `lazy-at.js#${a}: no such group`);
 for (const g of names) ok(at.includes(g), `${g}: no lazy-at.js tag (its stand-ins would come last)`);
 ok(html.indexOf('src="lazy.js"') > html.indexOf('src="commands.js"') && html.indexOf('src="lazy.js"') < html.indexOf('lazy-at.js'), 'lazy.js loads after commands.js, before the first lazy-at.js');
 console.log(`✓ ${LazyData.GROUPS.length} lazy groups, ${LazyData.GROUPS.reduce((a, g) => a + g.files.length, 0)} files`);
+
+// 3. (round 40, firstscreen) what the first screen reads before its first frame stays within budget: a new feature goes
+// in a lazy group (lazy-data.js) or merges into a file that is already there; raise a budget only with a reason in
+// docs/upgrades/firstscreen.md
+const BUDGET = { scripts: 72, jsKB: 2350, sheets: 29, cssKB: 450 };
+const eager = [...html.matchAll(/<script defer src="([^"#]+)"/g)].map((m) => m[1]).filter((f) => f !== 'lazy-at.js');
+const sheets = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map((m) => m[1]);
+const kb = (files) => Math.round(files.reduce((a, f) => a + fs.statSync(path.join(ROOT, f)).size, 0) / 1024);
+const first = { scripts: eager.length, jsKB: kb(eager), sheets: sheets.length, cssKB: kb(sheets) };
+for (const k of Object.keys(BUDGET)) ok(first[k] <= BUDGET[k], `first screen: ${k} ${first[k]} > budget ${BUDGET[k]} (move it to a lazy group: lazy-data.js)`);
+console.log(`✓ first screen: ${first.scripts} scripts (${first.jsKB} KB), ${first.sheets} stylesheets (${first.cssKB} KB) · budget ${BUDGET.scripts} / ${BUDGET.jsKB} KB / ${BUDGET.sheets} / ${BUDGET.cssKB} KB`);
 console.log(`boot-test: ${n} checks passed`);

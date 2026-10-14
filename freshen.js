@@ -139,7 +139,9 @@ const Freshen = (() => {
     if (g && s.panelTop) { g.scrollTop = s.panelTop; setTimeout(() => { g.scrollTop = s.panelTop; }, 400); }
     if (s.reason !== 'soak') toast('Freshened: everything is where you left it', { timeout: 2500 });
   }
-  addEventListener('hearth:ready', () => { setTimeout(() => restore().catch((err) => console.warn('freshen', err)).finally(() => restoredDone()), 0); arm(); }, { once: true });
+  const up = () => { setTimeout(() => restore().catch((err) => console.warn('freshen', err)).finally(() => restoredDone()), 0); arm(); };
+  // (round 40, firstscreen) loaded right after the first frame (lazy group 'resume'): the first screen may be up already
+  if (performance.getEntriesByName('hearth:ready').length) up(); else addEventListener('hearth:ready', up, { once: true });
 
   // ---------- the command and the palette ----------
   function status() {

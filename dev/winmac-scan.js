@@ -79,6 +79,7 @@ const RULES = [
 
 // Reviewed and fine as they are (rule, file, a piece of the line): guarded per platform a few lines up, or not a path
 const REVIEWED = [
+  ['shell-cmd', 'powerwisemain.js', "execFile('powershell.exe'"], // (round 40) Windows battery saver, guarded by process.platform === 'win32'
   ['file-url', 'portable.js', 'file:///'], // stored file:/// prefixes from the old data folder, matched as they were written
   ['file-url', 'sync-merge.js', 'file://'], // both the raw and the encoded spellings, on purpose (path tokens across machines)
   ['slash-split', 'sync.js', 'rel.split'], ['slash-split', 'sync-engine.js', 'rel.'], // sync's own relative names always use /

@@ -124,6 +124,7 @@ function createWindow() {
   nativefeel._set({ dataDir: store.DATA_DIR });
   let placed = null;
   try { placed = nativefeel.restore(screen); } catch { placed = null; }
+  nativefeel.earlyTheme(require('electron').nativeTheme); // (round 40, firstscreen) light / dark before the window, not after
   const state = { ...(placed?.bounds || {}), maximized: Boolean(placed?.maximized) };
   const st = settings();
   win = new BrowserWindow({
