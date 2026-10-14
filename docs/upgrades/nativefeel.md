@@ -103,8 +103,9 @@ windows keep their own ⌘W), Ctrl+Q on Windows (not a Windows convention; Exit 
   on in Appearance), a pick of your own stops it, `/lightdark` status, the menu bar's actions (keys sheet, Settings,
   text size), the Window key lines, `/titlebar` off the Mac, a device scale factor change → `hearth:dpr`, and the Lab
   preview's canvas at twice the pixels after a scale change inside its sandbox, without a re-run. No page errors.
-- `unit:winmac-test`, `unit:winpolish-test`, `unit:macpolish-test`, `unit:boot-test`, `lazy`, `fastboot`, `qa-keys`
-  (see the final report for the outcomes); `node dev/winmac-scan.js` 0 hits; `node --check` on every touched file.
+- `unit:winmac-test`, `unit:winpolish-test`, `unit:macpolish-test`, `unit:boot-test` (937 checks), `lazy`, `fastboot`,
+  `qa-keys`: all passed (fastboot's log still lists its "first-screen scripts ≤ 72" line as bad: 77 on main before this
+  round, 78 now); `node dev/winmac-scan.js` 0 hits; `node --check` on every touched file.
 - Not testable here: a real Mac (the traffic lights' exact place, macOS taking the double-click itself, the Dock badge)
   and a real Windows PC (the overlay icon at 125 / 150 %, the dark title bar, F11, Alt), real monitors being unplugged.
 
