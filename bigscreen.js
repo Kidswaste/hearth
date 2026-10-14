@@ -41,8 +41,27 @@ const Bigscreen = (() => {
 
   // the row in Appearance: Auto · 100 · 125 · 150 · 175 · 200, for the screen the window is on
   const rows = new Set();
-  function sizeRow() {
+  function sizeRow({ compact = false } = {}) {
     if (!big || typeof el !== 'function') return null;
+    // (round 39, settingscalm) Settings shows one control per row: the same choices in one list, its note on hover
+    if (compact) {
+      const sel = el('select', { class: 'big-size-pick', attrs: { 'aria-label': 'Size of everything' } });
+      for (const v of C()?.CHOICES || ['auto', 1, 1.25, 1.5, 1.75, 2]) sel.append(el('option', { value: String(v), text: v === 'auto' ? 'Auto' : `${Math.round(v * 100)} %` }));
+      sel.addEventListener('change', () => setSize(sel.value === 'auto' ? 'auto' : Number(sel.value)));
+      const row = el('label', { class: 'big-size big-size-compact' }, el('span', { class: 'big-size-label', text: 'Size of everything' }), sel);
+      row.sync = () => {
+        const pref = info.pref === 'auto' || info.pref == null ? 'auto' : String(info.pref);
+        if (![...sel.options].some((o) => o.value === pref)) sel.append(el('option', { value: pref, text: `${Math.round(Number(pref) * 100)} %` })); // a ⌘/Ctrl + / − step
+        if (sel.value !== pref) sel.value = pref;
+        const auto = `Auto (${Math.round(info.zoom * 100)} %)`;
+        if (sel.options[0] && sel.options[0].textContent !== auto) sel.options[0].textContent = auto;
+        const tip = `How big everything is on ${info.name}, kept for each screen (Auto picks it from the screen's size; ${mac ? '⌘' : 'Ctrl'} + / − too)`;
+        if (row.title !== tip) row.title = tip;
+      };
+      row.sync();
+      rows.add(row);
+      return row;
+    }
     const seg = el('div', { class: 'tw-seg big-size-seg', role: 'group', 'aria-label': 'Size of everything' });
     const note = el('span', { class: 'hint big-size-note' });
     for (const v of C()?.CHOICES || ['auto', 1, 1.25, 1.5, 1.75, 2]) {

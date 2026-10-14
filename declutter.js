@@ -553,11 +553,11 @@ const Declutter = (() => {
   // Settings: jump to a section (the rarer ones sit folded in Advanced)
   ctx('dialog.settings-dialog', 'Settings', (dlg) => {
     const more = dlg.querySelector('details.settings-more');
-    const go = (sec) => () => { if (more && more.contains(sec)) more.open = true; sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); sec.classList.add('ks-flash'); setTimeout(() => sec.classList.remove('ks-flash'), 1600); };
+    const go = (sec) => () => { for (let d = sec.closest('details'); d; d = d.parentElement?.closest('details')) d.open = true; sec.scrollIntoView({ block: 'start', behavior: 'smooth' }); sec.classList.add('ks-flash'); setTimeout(() => sec.classList.remove('ks-flash'), 1600); };
     const secs = [...dlg.querySelectorAll('.settings-section')];
     return [
       { label: 'Appearance…', key: 'Ctrl+Shift+L', action: () => Look.openDialog() },
-      { label: 'Go to', items: () => secs.map((sec) => ({ label: sec.querySelector('h3')?.textContent || 'Section', hint: more?.contains(sec) ? 'advanced' : '', action: go(sec) })) },
+      { label: 'Go to', items: () => secs.map((sec) => ({ label: sec.querySelector('h3')?.textContent || 'Section', hint: more?.contains(sec) ? 'advanced' : sec.closest('details.sc-fold') ? 'folded' : '', action: go(sec) })) },
       { label: more?.open ? 'Fold Advanced' : 'Open Advanced', action: () => { if (more) more.open = !more.open; } },
       { label: 'Back up now…', action: () => AppUI.exportData() },
       { label: 'Your usage…', action: () => Usage.dialog() },

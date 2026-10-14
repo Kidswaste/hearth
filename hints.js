@@ -8,7 +8,7 @@
 //   · what fits where you are first (a Lab hint waits for the Lab; "any" hints show anywhere), then by rank
 //   · at most one new tip every 3 minutes; a tip that waited too long is dropped (not remembered: it can come again)
 //   · remembered on this computer once shown (or dismissed): store hints.seen
-//   · Settings › Hearth › "Don't show tips" (store hints.off, /hints off) silences every optional tip at once
+//   · Settings › Updates & what's new › Updates and tips › "Don't show tips" (store hints.off, /hints off) silences every optional tip at once
 // Kinds: 'tip' (the default: all of the above), 'notice' (about this copy: the update note, your fixed reports, the welcome
 // on a new computer: queued and one at a time, first after an update, but not silenced and not rate-limited),
 // 'inline' (a line inside a chat or a panel: waits while you type or a reply streams, silenced by Don't show tips;
@@ -214,7 +214,7 @@ const Hints = (() => {
         },
       });
     }
-    try { AppUI.addAction?.('Tips that show by themselves: on / off', () => { setOff(!off()); toast(off() ? 'Tips are off (Settings › Hearth brings them back)' : 'Tips are on', { timeout: 2400 }); }); } catch { /* no palette */ }
+    try { AppUI.addAction?.('Tips that show by themselves: on / off', () => { setOff(!off()); toast(off() ? 'Tips are off (Settings › Updates and tips brings them back)' : 'Tips are on', { timeout: 2400 }); }); } catch { /* no palette */ }
   }
   // (a defer script early in index.html: Commands and AppUI come later, so after every script)
   if (document.readyState === 'complete' || typeof Commands !== 'undefined') register(); else document.addEventListener('DOMContentLoaded', register);

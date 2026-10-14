@@ -68,43 +68,49 @@ const AppSearchData = (() => {
   const KIND = { setting: 0.22, aisetup: 0.24, menu: 0.16, mission: 0.12, agent: 0.3, tool: 0.28, chat: 0.1, msg: 0.02, action: 0.06, cmd: -0.04, lab: 0.12, news: -0.04, help: -0.02, ask: -9 };
 
   // ---------- Settings (besides SettingsFind's switches) ----------
-  // [id, section, label, find (on screen), tags, hint, sel?]; under Advanced: everything after Keys
-  const ADVANCED = new Set(['Chats', 'Hearth', 'Mood board', 'Spell check languages', 'Tools in the rail', 'Claude and Codex programs', 'Folders', 'Backup and files']);
+  // [id, section, label, find (on screen), tags, hint, sel?]; section = the name of the part it sits in (a fold's own
+  // name when it's in a fold). (round 39, settingscalm) Settings reads Look & size · Your AIs · This computer & sync ·
+  // Updates & what's new, each with a fold or two (PARENT), then the folds under Advanced (ADVANCED).
+  const ADVANCED = new Set(['Chats', 'Keys', 'Mood board', 'Spell check languages', 'Tools in the rail', 'Folders', 'Housekeeping', 'Backup and files']);
+  const PARENT = { 'More looks and tweaks': 'Look & size', 'Claude and Codex programs': 'Your AIs', 'Starting and closing': 'This computer & sync', 'Updates and tips': 'Updates & what\'s new' };
+  const pathOf = (sec) => `Settings › ${ADVANCED.has(sec) ? 'Advanced › ' : ''}${PARENT[sec] ? `${PARENT[sec]} › ` : ''}${sec}`;
   const SETTINGS = [
-    ['look', 'Look', 'Look: the colours of Hearth', 'Now:', 'look theme appearance colors dark light skin', 'Pick a look; More looks… holds the rest', '.look-picker'],
-    ['follow', 'Look', '◐ Match my computer', 'Match my computer', 'dark mode light mode follow system appearance theme', 'The look follows your computer\'s light / dark mode', '.nf-follow'],
-    ['ui-size', 'Look', 'Size of everything (this screen)', 'Size of everything', 'zoom scale bigger smaller text size ui 4k big screen monitor readable distance', 'Auto picks it from the screen\'s size; 100 … 200 %, kept for each screen', '.big-size'], // (round 38, bigscreen)
-    ['astra-look', 'Look', '✦ Let Astra pick a look', 'Let Astra pick', 'look theme random surprise choose', 'Astra picks a look for you'],
-    ['sync', 'Sync', 'Sync your computers', 'sync', 'sync cloud drive icloud dropbox onedrive two computers mac pc', 'Keeps your Mac and PC the same through a cloud drive folder you already use'],
-    ['sync-big', 'Sync', 'Sync big videos', 'Sync big videos', 'sync captures renders large files', 'Captures and renders over 100 MB travel too, in resumable pieces'],
-    ['update-now', 'Updates', 'Look for updates now', 'Look now', 'update check upgrade version', 'Ask for updates now (nothing is installed without you)'],
-    ['whatsnew', 'Updates', 'What\'s new…', 'What\'s new', 'whats new patch notes changelog changes', 'Patch notes, or only what fits how you work'],
+    ['look', 'Look & size', 'Look: the colours of Hearth', '', 'look theme appearance colors dark light skin', 'Pick a look; More looks and tweaks holds the rest', '.look-picker'],
+    ['follow', 'More looks and tweaks', '◐ Match my computer', 'Match my computer', 'dark mode light mode follow system appearance theme', 'The look follows your computer\'s light / dark mode', '.nf-follow'],
+    ['ui-size', 'Look & size', 'Size of everything (this screen)', 'Size of everything', 'zoom scale bigger smaller text size ui 4k big screen monitor readable distance', 'Auto picks it from the screen\'s size; 100 … 200 %, kept for each screen', '.big-size'], // (round 38, bigscreen)
+    ['astra-look', 'More looks and tweaks', '✦ Let Astra pick a look', 'Let Astra pick', 'look theme random surprise choose', 'Astra picks a look for you'],
+    ['look-tweaks', 'More looks and tweaks', 'Textures, glow, motion, spacing, corners, chat font, accent, tooltips', 'Glow', 'textures glow motion animation density spacing corners font accent colour tooltips tweaks', 'The finer touches of the look', '.look-ctl'],
+    ['sync', 'This computer & sync', 'Sync your computers', 'sync', 'sync cloud drive icloud dropbox onedrive two computers mac pc', 'Keeps your Mac and PC the same through a cloud drive folder you already use'],
+    ['sync-big', 'This computer & sync', 'Sync big videos', 'Sync big videos', 'sync captures renders large files', 'Captures and renders over 100 MB travel too, in resumable pieces'],
+    ['check-computer', 'This computer & sync', 'Check this computer…', 'Check this computer', 'computer ready install ffmpeg claude codex setup permissions', 'Is this computer ready? Each thing with one button to fix it'],
+    ['update-now', 'Updates & what\'s new', 'Look for updates now', 'Look now', 'update check upgrade version', 'Ask for updates now (nothing is installed without you)'],
+    ['whatsnew', 'Updates & what\'s new', 'What\'s new…', 'What\'s new', 'whats new patch notes changelog changes', 'Patch notes, or only what fits how you work'],
+    ['ai-setup', 'Your AIs', '⋯ AI setup', 'AI setup', 'ai setup personality instructions what it can use memory', 'Who your AIs are and what they can use'],
+    ['claude-path', 'Claude and Codex programs', 'Claude program (only if it isn\'t found)', 'Claude program', 'claude path engine engines program cli', 'Where the Claude program is, when Hearth can\'t find it'],
+    ['codex-path', 'Claude and Codex programs', 'Codex program (only if it isn\'t found)', 'Codex program', 'codex astra path engine engines program cli', 'Where the Codex program is, when Hearth can\'t find it'],
+    ['start-on', 'Starting and closing', 'Open on start', 'Open on start', 'startup first screen open launch', 'What Hearth shows when it opens'],
+    ['startup', 'Starting and closing', 'Start Hearth with your computer', 'Start Hearth', 'startup login launch boot start automatically', 'Hearth opens by itself when you sign in'],
+    ['tray', 'Starting and closing', 'Closing the window keeps Hearth running in the tray', 'running in the tray', 'tray close background keep running', 'Replies, renders and sync keep going'],
+    ['notify', 'Chats', 'Desktop notifications while I\'m elsewhere', 'Desktop notifications', 'notifications notify alert system', 'A notification when an AI finishes while you are in another app'],
     ['keys', 'Keys', 'Keyboard keys…', 'Keyboard keys', 'keys shortcuts hotkeys keyboard alt right-click', 'Every key, what waits behind Alt, every right-click menu'],
     ['hotkey', 'Keys', 'Show / hide Hearth from anywhere', 'Show / hide Hearth', 'hotkey global shortcut bring up hide', 'A key combination that brings Hearth up or hides it, even from another app'],
-    ['start-on', 'Chats', 'Open on start', 'Open on start', 'startup first screen open launch', 'What Hearth shows when it opens'],
-    ['notify', 'Chats', 'Desktop notifications while I\'m elsewhere', 'Desktop notifications', 'notifications notify alert system', 'A notification when an AI finishes while you are in another app'],
-    ['tray', 'Hearth', 'Closing the window keeps Hearth running in the tray', 'running in the tray', 'tray close background keep running', 'Replies, renders and sync keep going'],
-    ['startup', 'Hearth', 'Start Hearth with your computer', 'Start Hearth', 'startup login launch boot start automatically', 'Hearth opens by itself when you sign in'],
-    ['sleep-webs', 'Hearth', 'Unload websites I haven\'t opened', 'Unload websites', 'memory websites sleep unload free', 'Frees memory; a website loads again when you open it'],
-    ['meshy-key', 'Hearth', 'Meshy key…', 'Meshy key', 'meshy api key 3d', 'Paste your Meshy API key once (stored encrypted)'],
+    ['sleep-webs', 'Housekeeping', 'Unload websites I haven\'t opened', 'Unload websites', 'memory websites sleep unload free', 'Frees memory; a website loads again when you open it'],
+    ['meshy-key', 'Housekeeping', 'Meshy key…', 'Meshy key', 'meshy api key 3d', 'Paste your Meshy API key once (stored encrypted)'],
     ['spell-langs', 'Spell check languages', 'Spell check languages', '', 'spell spelling languages english french spanish german', 'The languages the message box checks your spelling in'],
     ['rail-tools', 'Tools in the rail', 'Tools in the rail', '', 'rail tools sidebar hide show buttons', 'Untick a tool to take it off the rail'],
-    ['check-computer', 'Claude and Codex programs', 'Check this computer…', 'Check this computer', 'computer ready install ffmpeg claude codex setup permissions', 'Is this computer ready? Each thing with one button to fix it'],
-    ['claude-path', 'Claude and Codex programs', 'Claude program (only if it isn\'t found)', 'Claude program', 'claude path engine program cli', 'Where the Claude program is, when Hearth can\'t find it'],
-    ['codex-path', 'Claude and Codex programs', 'Codex program (only if it isn\'t found)', 'Codex program', 'codex astra path engine program cli', 'Where the Codex program is, when Hearth can\'t find it'],
     ['forge-folder', 'Folders', 'Forgeheart project folder', 'Forgeheart project', 'forgeheart folder game project', 'The game project the Forge agents work in'],
     ['forge-build', 'Folders', 'Forgeheart debug build', 'Forgeheart debug build', 'forgeheart debug build game', 'The game page the Forge Debug agent plays'],
     ['ae-path', 'Folders', 'After Effects install', 'After Effects install', 'after effects adobe ae folder', 'Only when After Effects is installed somewhere unusual'],
     ['ae-dirs', 'Folders', 'Where to look for .aep projects', '.aep projects', 'after effects projects aep folders', 'Folders searched for After Effects projects'],
+    ['backup', 'Backup and files', 'Backups…', 'Backups', 'backup back up hub data export save chats settings memory restore automatic daily weekly', 'Back up now, a copy as one file, restore, or back up by itself'],
     ['shortcuts', 'Backup and files', 'Create Hearth shortcuts (Start menu, desktop, Applications)', 'Create ', 'shortcut desktop start menu applications app icon', 'Open Hearth like any other app'],
-    ['backup', 'Backup and files', 'Back up hub data…', 'Back up hub data', 'backup export save chats settings memory', 'One file with your chats, settings and memory'],
     ['pack-mac', 'Backup and files', 'Pack Hearth for a Mac…', 'Pack Hearth for a Mac', 'mac move copy zip other computer', 'One zip with the app and your things, plus the Mac setup'],
     ['data-folder', 'Backup and files', 'Open data folder', 'Open data folder', 'data folder files where chats kept', 'Where Hearth keeps your chats and files'],
     ['config', 'Backup and files', 'Edit config.json', 'Edit config.json', 'config json settings file expert', 'Every setting as a text file (for experts)'],
     ['theme-css', 'Backup and files', 'Edit theme.css', 'Edit theme.css', 'css theme colors styles expert', 'Your own colours and styles as a text file (for experts)'],
-  ].map(([id, sec, label, find, tags, hint, sel]) => ({ id: `set:${id}`, kind: 'setting', sec, label, find, tags, hint, sel: sel || '', adv: ADVANCED.has(sec), path: `Settings › ${ADVANCED.has(sec) ? 'Advanced › ' : ''}${sec}` }));
+  ].map(([id, sec, label, find, tags, hint, sel]) => ({ id: `set:${id}`, kind: 'setting', sec, label, find, tags, hint, sel: sel || '', adv: ADVANCED.has(sec), path: pathOf(sec) }));
   // SettingsFind's homes → the section they go in
-  const HOMES = { look: 'Look', updates: 'Updates', chats: 'Chats', hearth: 'Hearth', board: 'Mood board' };
+  const HOMES = { look: 'More looks and tweaks', updates: 'Updates and tips', chats: 'Chats', start: 'Starting and closing', hearth: 'Housekeeping', board: 'Mood board' };
 
   // ---------- ⋯ AI setup ----------
   // [id, fold ('' = always open), label, find (on screen), tags, hint, part (where it lives, after "⋯ AI setup")]
@@ -147,29 +153,29 @@ const AppSearchData = (() => {
 
   // ---------- how do I… ----------
   const HELP = [
-    { title: 'How do I switch to dark or light mode?', tags: 'dark mode light mode theme look appearance colors night', text: 'Settings › Look: pick a look. ◐ Match my computer makes Hearth follow your computer\'s light / dark mode by itself.', go: 'set:follow' },
+    { title: 'How do I switch to dark or light mode?', tags: 'dark mode light mode theme look appearance colors night', text: 'Settings › Look & size: pick a look. More looks and tweaks › ◐ Match my computer makes Hearth follow your computer\'s light / dark mode by itself.', go: 'set:follow' },
     { title: 'How do I spend fewer tokens?', tags: 'cheaper cheap tokens cost money spend save budget limit', text: '⋯ AI setup › Spending: a weekly limit, Continue lighter for long chats, and Where its tokens go. How long its answers are › Short and How hard it thinks › Smart both save tokens too.', go: 'ai:spending' },
     { title: 'How do I let an AI use my files?', tags: 'files folders permission access read write disk', text: '⋯ AI setup › What it can use › Files on this computer, for every chat with that AI. For one chat only: right-click the chat header › Files it can use.', go: 'ai:files' },
     { title: 'How do I give an AI rules it always follows?', tags: 'instructions rules always standing prompt', text: '⋯ AI setup › Instructions: add one per line; untick one to pause it.', go: 'ai:instructions' },
     { title: 'How do I change how an AI talks?', tags: 'personality persona tone voice character style', text: '⋯ AI setup › Personality: pick one, or write your own.', go: 'ai:personality' },
     { title: 'How do I connect Gmail, Drive or Notion?', tags: 'connections connectors gmail drive notion calendar mcp apps', text: 'Connect them once at claude.ai › Settings › Connectors, then ⋯ AI setup › What it can use › Connections: Off, Read only or Full per app.', go: 'ai:c-apps' },
     { title: 'How do I make an AI act by itself when something happens?', tags: 'hooks automation automate when trigger', text: '⋯ AI setup › What it can use › Hooks: "when… then…", each on / off.', go: 'ai:hooks' },
-    { title: 'How do I check an AI works on this computer?', tags: 'check test computer broken working engine install', text: '⋯ AI setup › What it can use › Check this AI runs a short real test with a fix per line. Settings › Advanced › Check this computer… checks the whole computer.', go: 'ai:check' },
+    { title: 'How do I check an AI works on this computer?', tags: 'check test computer broken working engine install', text: '⋯ AI setup › What it can use › Check this AI runs a short real test with a fix per line. Settings › This computer & sync › Check this computer… checks the whole computer.', go: 'ai:check' },
     { title: 'How do I make its answers shorter?', tags: 'short shorter answers concise brief length long', text: '⋯ AI setup › How hard it thinks › How long its answers are › Short: the answer first, fewer tokens.', go: 'ai:length' },
     { title: 'How do I keep a long chat light?', tags: 'long chat slow compact lighter summary tokens', text: 'When a chat gets long, a line under the reply offers 🗜 Continue lighter: a summary replaces the old messages for the AI (every message stays in the chat). When it offers: ⋯ AI setup › Spending.', go: 'ai:lighter' },
     { title: 'How do I make it remember (or forget) things?', tags: 'memory remember forget facts', text: '⋯ AI setup › Memory: on or off, and What it remembers… to edit or remove facts.', go: 'ai:memory-edit' },
     { title: 'How do I get several AIs on one question?', tags: 'missions swarm debate several ais everyone side by side second opinion', text: '◎ in the chat box: Swarm, Debate, Side by side, Answer then review, Ask everyone… for the next message (📌: every message).', go: 'mission:swarm' },
     { title: 'How do I find what we decided in an old chat?', tags: 'find old chat decided decision remember search message', text: 'Type a few of its words here: chats and their messages are found too. ◎ › Remind me what we decided answers from all your chats, for free.' },
-    { title: 'How do I keep my Mac and PC the same?', tags: 'sync two computers mac pc cloud drive', text: 'Settings › Sync: pick a cloud drive folder you already use (iCloud Drive, Google Drive, Dropbox, OneDrive).', go: 'set:sync' },
-    { title: 'How do I see what changed lately?', tags: 'whats new patch notes changes update', text: 'Settings › Updates › What\'s new…, or type "what\'s new" and a word here.', go: 'set:whatsnew' },
-    { title: 'Which keys are there?', tags: 'keys shortcuts keyboard hotkeys alt', text: 'The keys button bottom left (or Settings › Keys › Keyboard keys…) lists every key; every key also has a menu row.', go: 'set:keys' },
-    { title: 'How do I back up my chats?', tags: 'backup export save chats copy', text: 'Settings › Advanced › Backup and files › Back up hub data…: one file with your chats, settings and memory.', go: 'set:backup' },
+    { title: 'How do I keep my Mac and PC the same?', tags: 'sync two computers mac pc cloud drive', text: 'Settings › This computer & sync: pick a cloud drive folder you already use (iCloud Drive, Google Drive, Dropbox, OneDrive).', go: 'set:sync' },
+    { title: 'How do I see what changed lately?', tags: 'whats new patch notes changes update', text: 'Settings › Updates & what\'s new › What\'s new…, or type "what\'s new" and a word here.', go: 'set:whatsnew' },
+    { title: 'Which keys are there?', tags: 'keys shortcuts keyboard hotkeys alt', text: 'The keys button bottom left (or Settings › Advanced › Keys › Keyboard keys…) lists every key; every key also has a menu row.', go: 'set:keys' },
+    { title: 'How do I back up my chats?', tags: 'backup export save chats copy', text: 'Settings › Advanced › Backup and files › Backups…: back up now, save a copy as one file, restore, or let it back up by itself every day or week.', go: 'set:backup' },
     { title: 'How do I start a new chat?', tags: 'new chat start conversation', text: 'Ctrl/⌘+N in a chat, or right-click an AI in the rail › New chat.' },
     { title: 'How do I take a tool off the rail?', tags: 'rail tools hide sidebar remove button', text: 'Right-click it in the rail › Hide from the rail. Settings › Advanced › Tools in the rail brings it back.', go: 'set:rail-tools' },
     { title: 'How do I make a Lab slider move with the music?', tags: 'lab move with the beat music pulse on kick step bar follow bass slider react rhythm three', text: 'In the Lab, right-click a slider (or its ♪) › ♪ Move with the music…: what drives it (beat, bar, kick, snare, hi-hats, bass, mids, highs, vocals, loudness), how (pulse, follow, step, random), and two handles under the slider for its range. Ctrl/⌘+K › Lab: ♪ Move a slider with the music picks the slider.' }, // (round 38, beatlink)
     { title: 'How do I find something in the Lab?', tags: 'lab search find effect layer slider three', text: 'Press / in the Lab (or the 🔎 next to ⋯). Here, with the Lab open, its things are found too.' },
     { title: 'How do I change what the next message does?', tags: 'mission next message plan research review', text: '◎ in the chat box: what your next message becomes (plan first, research, review…). Right-click ◎: back to a normal reply.', go: 'ai:next' },
   ];
-  return { SYN, PHRASES, KIND, SETTINGS, HOMES, ADVANCED, AI_SETUP, HELP };
+  return { SYN, PHRASES, KIND, SETTINGS, HOMES, ADVANCED, PARENT, pathOf, AI_SETUP, HELP };
 })();
 if (typeof module !== 'undefined') module.exports = AppSearchData;

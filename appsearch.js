@@ -63,13 +63,13 @@ const AppSearch = (() => {
     for (const s of switches || []) {
       const sec = D.HOMES[s.home] || s.home;
       const adv = D.ADVANCED.has(sec);
-      const r = { id: `set:sw:${s.cmd}`, kind: 'setting', sec, adv, label: s.label, find: s.label, hint: s.tip, tags: `${s.cmd.replace(/-/g, ' ')} on off switch`, path: `Settings › ${adv ? 'Advanced › ' : ''}${sec}` };
+      const r = { id: `set:sw:${s.cmd}`, kind: 'setting', sec, adv, label: s.label, find: s.label, hint: s.tip, tags: `${s.cmd.replace(/-/g, ' ')} on off switch`, path: D.pathOf ? D.pathOf(sec) : `Settings › ${adv ? 'Advanced › ' : ''}${sec}` };
       out.push({ ...r, run: () => toSettings(r) });
     }
     // every look (Enter: Settings on that look, More looks unfolded)
     try {
       for (const [id, t] of Object.entries(AppUI.THEMES || {})) {
-        const r = { id: `set:look:${id}`, kind: 'setting', sec: 'Look', label: `Look: ${String(t.label || id).replace(/ \(.*\)$/, '')}`, hint: `${t.group || ''}${t.scheme ? ` · ${t.scheme}` : ''}`, tags: `look theme appearance colors ${t.scheme || ''} ${t.group || ''}`, path: 'Settings › Look', sel: `.look-tile[data-id="${CSS.escape(id)}"]`, boost: -0.1 };
+        const r = { id: `set:look:${id}`, kind: 'setting', sec: 'Look & size', label: `Look: ${String(t.label || id).replace(/ \(.*\)$/, '')}`, hint: `${t.group || ''}${t.scheme ? ` · ${t.scheme}` : ''}`, tags: `look theme appearance colors ${t.scheme || ''} ${t.group || ''}`, path: 'Settings › Look & size', sel: `.look-tile[data-id="${CSS.escape(id)}"]`, boost: -0.1 };
         out.push({ ...r, run: () => toSettings(r) });
       }
     } catch { /* no looks */ }

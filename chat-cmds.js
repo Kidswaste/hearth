@@ -1303,12 +1303,12 @@ const ChatCmds = (() => {
     run: (_a, ctx) => { const chat = need(ctx); ctx.send(chat.messages[mustIndex(chat, 'last', 'user')].text); },
   });
   R({
-    name: 'engines', aliases: ['engine'], area: 'Agents', desc: 'Whether Claude Code and Codex were found (and the paths from Settings → Engines)',
+    name: 'engines', aliases: ['engine'], area: 'Agents', desc: 'Whether Claude Code and Codex were found (and the paths from Settings › Claude and Codex programs)',
     run: async () => {
       const st = await window.hub.engineStatus();
       H.engineStatus = st;
       const paths = H.settings().enginePaths || {};
-      return `**Engines**\n${Object.entries(st).map(([e, ok]) => `- ${e === 'claude' ? 'Claude Code' : 'Codex'}: ${ok ? 'found' : '**not found**'}${paths[e] ? ` · ${safe(paths[e])}` : ''}`).join('\n')}\n\nSettings → Engines points at them directly.`;
+      return `**Engines**\n${Object.entries(st).map(([e, ok]) => `- ${e === 'claude' ? 'Claude Code' : 'Codex'}: ${ok ? 'found' : '**not found**'}${paths[e] ? ` · ${safe(paths[e])}` : ''}`).join('\n')}\n\nSettings › Your AIs › Claude and Codex programs points at them directly.`;
     },
   });
   R({

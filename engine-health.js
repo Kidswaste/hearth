@@ -34,7 +34,7 @@ const EngineHealth = (() => {
     const out = [];
     if (r.broken) out.push({ kind: 'broken', text: `${L} at ${home(r.chosen)} didn't answer`, action: 'update', label: `Update ${L}` });
     if (r.tooOld) out.push({ kind: 'old', text: `${L} ${r.semver} is too old (the model needs ${r.min} or newer)`, action: r.newer ? 'use-newest' : 'update', label: r.newer ? `Use ${r.newer.version}` : `Update ${L}` });
-    else if (r.newer) out.push({ kind: 'newer', text: `Settings → Engines uses ${L} ${r.semver || '?'}; a newer one is installed (${r.newer.version})`, action: 'use-newest', label: `Use ${r.newer.version}` });
+    else if (r.newer) out.push({ kind: 'newer', text: `Settings › Claude and Codex programs uses ${L} ${r.semver || '?'}; a newer one is installed (${r.newer.version})`, action: 'use-newest', label: `Use ${r.newer.version}` });
     if (r.signedIn === false) out.push({ kind: 'login', text: `${L} isn't signed in`, action: 'login', label: `Sign in to ${L}` });
     return out;
   }
@@ -134,14 +134,14 @@ const EngineHealth = (() => {
       const x = r[e];
       if (!x) continue;
       const mark = !x.found || x.broken || x.tooOld || x.signedIn === false ? '✗' : '✓';
-      out.push(`- ${mark} **${x.label}**${x.found ? ` ${x.semver || x.version || '(no version)'} · ${x.from === 'settings' ? 'Settings → Engines' : kindText(x.from, x.via)} · \`${home(x.chosen)}\`` : ': not found'}${x.signedIn === true ? ' · signed in' : x.signedIn === false ? ' · **not signed in**' : ''}${x.tooOld ? ` · **too old** (needs ${x.min}+)` : x.min ? ` · needs ${x.min}+` : ''}${used(e) ? '' : ' · no agent uses it'}`);
+      out.push(`- ${mark} **${x.label}**${x.found ? ` ${x.semver || x.version || '(no version)'} · ${x.from === 'settings' ? 'Settings › Claude and Codex programs' : kindText(x.from, x.via)} · \`${home(x.chosen)}\`` : ': not found'}${x.signedIn === true ? ' · signed in' : x.signedIn === false ? ' · **not signed in**' : ''}${x.tooOld ? ` · **too old** (needs ${x.min}+)` : x.min ? ` · needs ${x.min}+` : ''}${used(e) ? '' : ' · no agent uses it'}`);
       const others = (x.copies || []).filter((c) => !c.chosen);
       if (others.length) out.push(`  - other copies: ${others.map((c) => `${c.semver || '?'} (${kindText(c.kind, c.via)}) \`${home(c.path)}\`${c.ok === false ? ' too old' : ''}`).join(' · ')}`);
       if (x.found && (x.tooOld || x.broken)) out.push(`  - update: \`${x.plan?.command}\``);
     }
     return out.join('\n');
   }
-  const KIND = { homebrew: 'Homebrew', npm: 'npm', pnpm: 'pnpm', scoop: 'scoop', winget: 'winget', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings → Engines' };
+  const KIND = { homebrew: 'Homebrew', npm: 'npm', pnpm: 'pnpm', scoop: 'scoop', winget: 'winget', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings › Claude and Codex programs' };
   // (round 33) on a Mac, where it came from too: "npm · nvm", "npm · asdf", "on PATH · mise shim", "desktop app · Codex app"
   const kindText = (kind, via) => { const k = KIND[kind] || kind || ''; return via && via.toLowerCase() !== k.toLowerCase() && !(kind === 'native' && via === 'installer') ? `${k} · ${via}` : k; };
   function actionsFor(r, ctx) {
@@ -223,7 +223,7 @@ const EngineHealth = (() => {
         }
         const r = await check({ fresh: false });
         H.engineStatus = Object.fromEntries(ENGINES.map((x) => [x, Boolean(r[x]?.found)]));
-        return `**Engines**\n${enginesText(r)}\n\nHearth uses the newest working copy unless Settings → Engines (or \`/engines claude <path>\`) pins one; \`/engines claude auto\` unpins it. /doctor fixes problems.`;
+        return `**Engines**\n${enginesText(r)}\n\nHearth uses the newest working copy unless Settings › Your AIs › Claude and Codex programs (or \`/engines claude <path>\`) pins one; \`/engines claude auto\` unpins it. /doctor fixes problems.`;
       },
     });
     if (!Commands.get('engine-update')) {

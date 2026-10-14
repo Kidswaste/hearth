@@ -102,6 +102,7 @@ const GROUPS = {
   offline: ['offline', 'unit:offline-test'], // (round 34) calm when things go wrong outside Hearth: no internet (the queue sends once when back), busy (retry / cancel / switch), usage limit, signed out, a reply cut off (continue + stitch), restart survival
   dragdrop: ['dragdrop', 'unit:dragdrop-test', 'access-chat'], // (round 38) files with Finder / Explorer: drops on chats / the Lab preview with an overlay per spot, pasted screenshots and copied files, folders asked first, native drags out
   hintcalm: ['hintcalm', 'unit:hintcalm-test'], // (round 38) one hint at a time: after an update the patch notes first, never two optional hints on screen, none while typing / streaming, Don't show tips, essential notes at once
+  settingscalm: ['settingscalm', 'appsearch', 'tidy', 'simplify2', 'firstrun', 'unit:appsearch-test'], // (round 39) Settings in four plain sections + folds that say where they stand: control budget, every row Find anything knows found in its place, fold lines follow a switch, nothing gone
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];
