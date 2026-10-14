@@ -65,7 +65,7 @@ function saveState(id, s) { try { fs.writeFileSync(path.join(STATE_DIR, `${id}.j
 
 // The user's own words: what follows any context the hub wrapped around it.
 function userPart(prompt) {
-  const cut = prompt.split(/<\/(?:earlier_conversation|summary|since_then|recent_messages)>/).pop();
+  const cut = prompt.split(/<\/(?:earlier_conversation|summary|since_then|recent_messages|handoff_brief)>/).pop();
   return cut.replace(/<file name="[^"]*"[^>]*>[\s\S]*?<\/file>/g, '').trim();
 }
 
@@ -453,7 +453,7 @@ const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', a
 //   claudeCut                      the reply is cut off halfway ("API Error: Connection error."), as when the laptop slept
 //                                  or the Wi-Fi dropped; asked to continue, it writes the rest (repeating its last words)
 const SWITCHES = ['windows', 'claudeNoAuth', 'claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo',
-  'claudeBusy', 'codexBusy', 'claudeRate', 'claudeLimit', 'codexLimit', 'limitForm', 'limitAt', 'claudeExpired', 'claudeProxy', 'claudeCut'];
+  'claudeBusy', 'codexBusy', 'claudeRate', 'claudeLimit', 'codexLimit', 'limitForm', 'limitAt', 'claudeExpired', 'claudeProxy', 'claudeCut', 'seenLog'];
 const kvFile = () => path.join(process.cwd(), '..', 'kv', 'fake-switches.json');
 function switches() {
   const env = {};
@@ -494,6 +494,15 @@ const older = (a, b) => { const pa = String(a).match(/\d+/g) || []; const pb = S
 // prompt, the new message, the conversation the engine re-reads on a resume) and what it wrote, so dev/mission-tokens.js
 // can count the tokens a mission costs. Development only.
 function logRun(engine, { system = '', prompt = '', prior = 0, text = '', thinking = '', model = null, effort = null, session = '' } = {}) {
+  // (round 42, handoff) the `seenLog` switch: the last runs' messages in data/kv/fake-seen.json, so a check reads exactly
+  // what reached the engine (dev/checks/handoff.js)
+  if (switches().seenLog) {
+    const seen = path.join(path.dirname(kvFile()), 'fake-seen.json');
+    let list = [];
+    try { list = JSON.parse(fs.readFileSync(seen, 'utf8')) || []; } catch { /* first run */ }
+    list.push({ at: Date.now(), engine, session, model, prompt, prior, system: system.length });
+    try { fs.writeFileSync(seen, JSON.stringify(list.slice(-40))); } catch { /* no data folder */ }
+  }
   const file = process.env.FAKE_TOKEN_LOG;
   if (!file) return;
   try {

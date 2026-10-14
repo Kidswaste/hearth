@@ -155,7 +155,11 @@ const DirectorTask = (() => {
     const from = ENGINE[prev] || chat.handoffEngine || 'the other engine';
     delete chat.handoffNext; delete chat.handoffEngine;
     chat.session = {};
-    if (!isDirector(agent)) return withContext(chat, raw);
+    if (!isDirector(agent)) {
+      // (round 42, handoff) a plain chat: a short brief instead of the whole chat (handoff.js), when it's loaded
+      if (typeof Handoff !== 'undefined' && typeof ContextCore !== 'undefined' && chat.messages.length > 2) { try { Handoff.attachNow(chat, agent, from); } catch (err) { console.warn('handoff', err); } }
+      return withContext(chat, raw);
+    }
     const state = text(chat.id, { from });
     const recent = chat.messages.slice(0, -1).filter((m) => (m.role === 'user' || m.role === 'assistant') && m.text).slice(-3)
       .map((m) => `${m.role === 'user' ? 'User' : 'Director'}: ${cap(m.text, 300)}`).join('\n');

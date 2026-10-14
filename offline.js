@@ -494,18 +494,25 @@ const Offline = (() => {
       await Native.send(agentId, question.text, { fromHistory: true, chatId: chat.id });
       return;
     }
-    const lines = chat.messages.slice(0, ui).filter((x) => (x.role === 'user' || x.role === 'assistant') && x.text && !x.cont).slice(-6)
-      .map((x) => `**${x.role === 'user' ? 'User' : agent.name}:** ${x.text.length > 600 ? `${x.text.slice(0, 599)}…` : x.text}`);
     const t = now();
     const copy = {
       id: `${other.id}-${t.toString(36)}`, agentId: other.id, title: `${chat.title} (→ ${other.name})`, createdAt: t, updatedAt: t,
-      session: {}, continuedFrom: agent.name, handoffFrom: chat.id,
-      messages: lines.length ? [{ role: 'assistant', text: `**Picked up from ${agent.name}** (${why})\n\n${lines.join('\n\n')}`, at: t }] : [],
+      session: {}, continuedFrom: agent.name, handoffFrom: chat.id, messages: [],
     };
+    // (round 42, handoff) the other AI gets a short brief (goal, decisions, files, the last exchange word for word)
+    if (window.Lazy && typeof Handoff === 'undefined') await window.Lazy.load('handoff').catch(() => {});
+    if (typeof Handoff !== 'undefined' && chat.messages.slice(0, ui).some((x) => x.role === 'user' || x.role === 'assistant')) {
+      await Handoff.startCopy(copy, chat, ui, { from: agent, to: other, title: `Picked up from ${agent.name} (${why})` });
+    } else {
+      const lines = chat.messages.slice(0, ui).filter((x) => (x.role === 'user' || x.role === 'assistant') && x.text && !x.cont).slice(-6)
+        .map((x) => `**${x.role === 'user' ? 'User' : agent.name}:** ${x.text.length > 600 ? `${x.text.slice(0, 599)}…` : x.text}`);
+      if (lines.length) copy.messages = [{ role: 'assistant', text: `**Picked up from ${agent.name}** (${why})\n\n${lines.join('\n\n')}`, at: t }];
+    }
     const msg = chat.messages[ei];
     if (msg.net) { msg.net.switched = other.name; msg.net.cancelled = true; }
     Native.save(chat);
     Native.adopt(copy);
+    if (copy.handoff) Handoff.show(other.id, copy);
     await Native.send(other.id, question.sent || question.text, { chatId: copy.id });
   }
 
