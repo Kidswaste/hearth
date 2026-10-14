@@ -1330,12 +1330,18 @@ const ThreeTweaks = (() => {
       const frac = (x) => Math.max(0, Math.min(1, (x - lo) / ((hi - lo) || 1)));
       const ang = (x) => -135 + frac(x) * 270;
       let cur = values[i];
+      let painted = ''; // (round 41, smooth41) what the knob shows: an animated scene sets every knob 10× a second, mostly to the same value
       function paint(x) {
         cur = x;
-        arc.setAttribute('stroke-dasharray', `${Math.max(0.001, frac(x) * KNOB_ARC)} ${KNOB_C}`);
-        ptr.setAttribute('transform', `rotate(${ang(x)} 24 24)`);
-        notch.setAttribute('transform', `rotate(${ang(it.orig)} 24 24)`);
-        valEl.textContent = it.int ? String(Math.round(x)) : trimNum(Number(x).toPrecision(3));
+        const sig = `${x}|${lo}|${hi}|${it.orig}`;
+        if (sig === painted) return;
+        painted = sig;
+        const set = (n, a, v) => { if (n.getAttribute(a) !== v) n.setAttribute(a, v); };
+        set(arc, 'stroke-dasharray', `${Math.max(0.001, frac(x) * KNOB_ARC)} ${KNOB_C}`);
+        set(ptr, 'transform', `rotate(${ang(x)} 24 24)`);
+        set(notch, 'transform', `rotate(${ang(it.orig)} 24 24)`); // (the code's value: the same while a scene plays)
+        const txt = it.int ? String(Math.round(x)) : trimNum(Number(x).toPrecision(3));
+        if (valEl.textContent !== txt) valEl.textContent = txt;
         if (svg.getAttribute('aria-valuenow') !== valEl.textContent) { svg.setAttribute('aria-valuenow', valEl.textContent); if (Number(svg.getAttribute('aria-valuemax')) !== hi || Number(svg.getAttribute('aria-valuemin')) !== lo) { svg.setAttribute('aria-valuemin', lo); svg.setAttribute('aria-valuemax', hi); } }
         cell.classList.toggle('at-orig', Math.abs(x - it.orig) < 1e-9);
       }
