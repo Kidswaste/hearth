@@ -25,7 +25,7 @@
     return s;
   }
 
-  function inline(text) {
+  function inlineRaw(text) {
     const codes = [];
     const maths = [];
     let s = text.replace(/`([^`]+)`/g, (_, c) => `\u0000${codes.push(c) - 1}\u0000`);
@@ -44,6 +44,8 @@
     return s.replace(/\u0003(\d+)\u0003/g, (_, i) => `<span class="math">${math(maths[i])}</span>`)
       .replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${escape(codes[i])}</code>`);
   }
+
+  let inline = inlineRaw; // (round 35) the live renderer swaps in a memo while it parses (Md.live)
 
   // ---------- syntax highlighting (moved here from ui.js in round 20 so the Markdown worker shares it) ----------
   const escapeHtml = escape;
@@ -118,21 +120,27 @@
     return [ordered ? `<ol${start > 1 ? ` start="${start}"` : ''}>${html}</ol>` : `<ul${items.some((x) => /^\[[ xX]\]\s/.test(x.text)) ? ' class="tasks"' : ''}>${html}</ul>`, i];
   }
 
-  function renderMarkdown(src) {
-    const lines = src.replace(/\r\n/g, '\n').split('\n');
+  // The top-level blocks of `lines`, in order: { html, start, end, look }: end is the line after the block, look the
+  // last line its shape depended on (the line that ended it, or its closing fence / $$). (round 35, streamrender) the
+  // streaming reply freezes a block once `look` is a complete line: nothing written after it can change the block.
+  // In `live` mode code blocks are left to the caller (fence: { lang, tag, code, line }; Md.live highlights them in pieces).
+  function blocks(lines, live = false) {
     const out = [];
     let i = 0;
     while (i < lines.length) {
       const line = lines[i];
+      const start = i;
       const fence = line.match(/^\s*```\s*([\w+-]*)/);
       if (fence) {
         const body = [];
         i += 1;
         while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++]);
+        const look = i;
         i += 1;
         const codeText = body.join('\n');
-        const highlighted = highlight(codeText, fence[1].toLowerCase() || 'text');
-        out.push(`<pre data-lang="${escape(fence[1])}"><button class="copy-code" title="Copy">Copy</button><code>${highlighted}</code></pre>`);
+        const tag = `<pre data-lang="${escape(fence[1])}"><button class="copy-code" title="Copy">Copy</button><code>`;
+        if (live) out.push({ html: null, start, end: i, look, fence: { lang: fence[1].toLowerCase() || 'text', tag, code: codeText, line: start + 1 } });
+        else out.push({ html: `${tag}${highlight(codeText, fence[1].toLowerCase() || 'text')}</code></pre>`, start, end: i, look });
         continue;
       }
       // $$ … $$ block formula
@@ -142,32 +150,34 @@
         if (closed) body[0] = body[0].replace(/\$\$\s*$/, '');
         i += 1;
         while (!closed && i < lines.length) { const l = lines[i++]; if (/\$\$\s*$/.test(l)) { body.push(l.replace(/\$\$\s*$/, '')); closed = true; } else body.push(l); }
-        out.push(`<div class="math math-block">${math(body.join(' ').trim())}</div>`);
+        out.push({ html: `<div class="math math-block">${math(body.join(' ').trim())}</div>`, start, end: i, look: closed ? i - 1 : i });
         continue;
       }
       const heading = line.match(/^(#{1,4})\s+(.*)/);
-      if (heading) { out.push(`<h${heading[1].length + 2}>${inline(heading[2])}</h${heading[1].length + 2}>`); i += 1; continue; }
-      if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { out.push('<hr>'); i += 1; continue; }
+      if (heading) { i += 1; out.push({ html: `<h${heading[1].length + 2}>${inline(heading[2])}</h${heading[1].length + 2}>`, start, end: i, look: start }); continue; }
+      if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { i += 1; out.push({ html: '<hr>', start, end: i, look: start }); continue; }
       if (/^\s*>/.test(line)) {
         const body = [];
         while (i < lines.length && /^\s*>/.test(lines[i])) body.push(lines[i++].replace(/^\s*>\s?/, ''));
         // > [!NOTE] / [!TIP] / [!WARNING] … callouts (GitHub / Obsidian style); "[!NOTE]-" starts folded
         const call = body[0].match(/^\[!(\w+)\]([-+]?)\s*(.*)$/);
+        let html;
         if (call) {
           const kind = call[1].toUpperCase();
           const title = call[3] || kind[0] + kind.slice(1).toLowerCase();
           const inner = renderMarkdown(body.slice(1).join('\n'));
           const head = `<span class="callout-icon">${CALLOUTS[kind] || '📌'}</span> ${inline(title)}`;
-          out.push(call[2] === '-'
+          html = call[2] === '-'
             ? `<details class="callout callout-${kind.toLowerCase()}"><summary>${head}</summary>${inner}</details>`
-            : `<div class="callout callout-${kind.toLowerCase()}"><div class="callout-title">${head}</div>${inner}</div>`);
-        } else out.push(`<blockquote>${renderMarkdown(body.join('\n'))}</blockquote>`);
+            : `<div class="callout callout-${kind.toLowerCase()}"><div class="callout-title">${head}</div>${inner}</div>`;
+        } else html = `<blockquote>${renderMarkdown(body.join('\n'))}</blockquote>`;
+        out.push({ html, start, end: i, look: i });
         continue;
       }
       if (LIST.test(line)) {
         const [html, next] = list(lines, i);
-        out.push(html);
         i = next;
+        out.push({ html, start, end: i, look: i });
         continue;
       }
       if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|?[\s:-]+\|/.test(lines[i + 1] || '')) {
@@ -180,17 +190,104 @@
         i += 2;
         const rows = [];
         while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
-        out.push(`<div class="table-wrap"><table><thead><tr>${head.map((c, k) => td('th', c, k)).join('')}</tr></thead><tbody>${
-          rows.map((r) => `<tr>${r.map((c, k) => td('td', c, k)).join('')}</tr>`).join('')}</tbody></table></div>`);
+        out.push({ html: `<div class="table-wrap"><table><thead><tr>${head.map((c, k) => td('th', c, k)).join('')}</tr></thead><tbody>${
+          rows.map((r) => `<tr>${r.map((c, k) => td('td', c, k)).join('')}</tr>`).join('')}</tbody></table></div>`, start, end: i, look: i });
         continue;
       }
       if (!line.trim()) { i += 1; continue; }
       const para = [];
       while (i < lines.length && lines[i].trim() && !/^\s*(```|#{1,4}\s|>|[-*+]\s|\d+[.)]\s|\$\$)/.test(lines[i])) para.push(lines[i++]);
       if (!para.length) para.push(lines[i++]);
-      out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+      // (a first line shaped like a table row also read the next one: is it the |---| line?)
+      out.push({ html: `<p>${para.map(inline).join('<br>')}</p>`, start, end: i, look: Math.max(i, start + 1) });
     }
-    return out.join('');
+    return out;
+  }
+  function renderMarkdown(src) {
+    return blocks(src.replace(/\r\n/g, '\n').split('\n')).map((b) => b.html).join('');
+  }
+
+  // ---------- (round 35, streamrender) the streaming reply, rendered incrementally ----------
+  // Md.live() follows one growing reply. update(text) parses only what isn't frozen yet: a top-level block is frozen
+  // (parsed once, never again) as soon as its shape can't change any more (its lines and the line that ended it are
+  // complete); only the block still being written is parsed on each update (a growing table, list or paragraph, with
+  // its lines' inline formatting remembered). Code blocks are highlighted in pieces: whole lines once, as soon as
+  // nothing after them can change their colors (no comment or template string left open), and only the newest lines
+  // on each update. The HTML is exactly what renderMarkdown gives for the same text (dev/streamrender-test.js and
+  // dev/checks/streamrender.js compare them on a corpus of tricky Markdown streamed in random pieces).
+  // update(text) → null when the text didn't change, else { reset, frozen, tail }: `frozen` the blocks frozen by this
+  // update (in order, right after the ones frozen before), `tail` the blocks after them. A block is { html }, or for
+  // code { fence, tail, html }: fence.chunks = its frozen highlighted pieces (append-only), tail = the rest's HTML.
+  const HL_LANGS = new Set(['js', 'glsl', 'py', 'css', 'html']);
+  // the longest start of `code` (ending after a newline) whose highlighting nothing written after it can change
+  function hlCut(code, lang) {
+    const end = code.lastIndexOf('\n') + 1;
+    if (!end) return 0;
+    const l = LANG_ALIAS[lang] || lang;
+    if (!HL_LANGS.has(l)) return end;
+    if (!HL.has(l)) highlight('', l); // builds the language's tokenizer
+    const { re } = HL.get(l);
+    const open = l === 'html' ? /<!--|`/ : l === 'py' ? /`/ : /\/\*|`/;
+    let cut = 0; let last = 0;
+    // a stretch between tokens: its newlines are safe cuts, up to something that opens a comment / string and isn't
+    // closed yet (it may close in a later line and recolor everything in between)
+    const gap = (a, b) => {
+      const s = code.slice(a, b); const o = s.search(open); const lim = o < 0 ? s.length : o;
+      const nl = lim ? s.lastIndexOf('\n', lim - 1) : -1;
+      if (nl >= 0) cut = a + nl + 1;
+      return o >= 0;
+    };
+    for (const m of code.slice(0, end).matchAll(re)) { if (gap(last, m.index)) return cut; last = m.index + m[0].length; }
+    gap(last, end);
+    return cut;
+  }
+  const liveStats = { chars: 0, hlChars: 0, updates: 0, frozen: 0 };
+  function live() {
+    let src = ''; // the frozen start of the text
+    let lastText = null;
+    const fences = new Map(); // where a code block's code starts in the text → { lang, tag, done, src, chunks }
+    const memo = new Map(); // inline HTML of the lines parsed again while their block grows
+    const inlineMemo = (t) => { let h = memo.get(t); if (h === undefined) { h = inlineRaw(t); if (memo.size > 4000) memo.clear(); memo.set(t, h); } return h; };
+    function fenceOf(b, key) {
+      const { code, lang, tag } = b.fence;
+      let f = fences.get(key);
+      if (!f || f.lang !== lang || f.tag !== tag || !code.startsWith(f.src)) { f = { lang, tag, done: 0, src: '', chunks: [] }; fences.set(key, f); }
+      const rest = code.slice(f.done);
+      const cut = hlCut(rest, lang);
+      if (cut) { f.chunks.push(highlight(rest.slice(0, cut), lang)); liveStats.hlChars += cut; f.done += cut; f.src = code.slice(0, f.done); }
+      const tailCode = code.slice(f.done);
+      liveStats.hlChars += tailCode.length;
+      const tail = highlight(tailCode, lang);
+      return { fence: f, tail, get html() { return `${f.tag}${f.chunks.join('')}${tail}</code></pre>`; } };
+    }
+    function update(text0) {
+      const text = text0.includes('\r') ? text0.replace(/\r\n/g, '\n') : text0;
+      if (text === lastText) return null;
+      lastText = text;
+      let reset = false;
+      if (!text.startsWith(src)) { src = ''; fences.clear(); reset = true; }
+      const base = src.length;
+      const rest = text.slice(base);
+      const lines = rest.split('\n');
+      liveStats.updates += 1; liveStats.chars += rest.length;
+      let bl;
+      inline = inlineMemo;
+      try { bl = blocks(lines, true); } finally { inline = inlineRaw; }
+      const at = [0]; // where each line starts in `rest`
+      for (let k = 0; k < lines.length; k++) at.push(at[k] + lines[k].length + 1);
+      const all = bl.map((b) => (b.fence ? fenceOf(b, base + at[b.fence.line]) : { html: b.html }));
+      // complete lines: 0 … lines.length - 2 (the last one is still being written)
+      let k = 0;
+      while (k < bl.length && bl[k].look <= lines.length - 2) k += 1;
+      if (k) {
+        for (let j = 0; j < k; j++) if (bl[j].fence) fences.delete(base + at[bl[j].fence.line]);
+        src = text.slice(0, base + Math.min(at[bl[k - 1].end], rest.length));
+        liveStats.frozen += k;
+        memo.clear();
+      }
+      return { reset, frozen: all.slice(0, k), tail: all.slice(k) };
+    }
+    return { update, get src() { return src; } };
   }
 
   // Finished messages are rendered again on every chat switch / redraw: the same text gives the same HTML, so recent
@@ -268,7 +365,8 @@
   }
   // how many characters of these texts still need rendering (what's worth handing to the worker)
   const uncached = (texts) => (texts || []).reduce((a, t) => a + (typeof t === 'string' && t.length >= WARM_MIN && !mdCache.has(t) ? t.length : 0), 0);
-  G.Md = { warm, uncached, has: (t) => mdCache.has(t), html: (t) => warm([t], Infinity).then(() => renderMarkdownCached(t)), stats: () => ({ ...stats, cached: mdCache.size, worker: Boolean(worker), broken }) };
+  G.Md = { warm, uncached, has: (t) => mdCache.has(t), html: (t) => warm([t], Infinity).then(() => renderMarkdownCached(t)), stats: () => ({ ...stats, cached: mdCache.size, worker: Boolean(worker), broken }),
+    live, liveStats: () => ({ ...liveStats }), _hlCut: hlCut }; // (round 35) the streaming reply's renderer (native.js paintBody)
   // the worker is started at the first idle moment after the start, so the first long chat doesn't wait for it
   addEventListener('hearth:ready', () => (G.requestIdleCallback || setTimeout)(() => spawn(), { timeout: 4000 }), { once: true });
 })();

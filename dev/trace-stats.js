@@ -96,6 +96,7 @@ function stats(events, opts = {}) {
     const foBy = {}; for (const e of fo) foBy[e.__by] = (foBy[e.__by] || 0) + e.dur / 1000;
     out.segments[s.name] = {
       inputs: ins.length,
+      busyMs: r1(busyIn(s.from, s.to)), // (round 35, streamrender) all main-thread task time in the stretch
       latency: { p50: r1(pct(lat, 0.5)), p95: r1(pct(lat, 0.95)), max: r1(lat.at(-1) || 0) },
       work: { p50: r1(pct(work, 0.5)), p95: r1(pct(work, 0.95)), max: r1(work.at(-1) || 0), over4: work.filter((w) => w > budget).length },
       frames: { n: fr.length, over4: fr.filter((w) => w > budget).length, over8: fr.filter((w) => w > 8.3).length, worst: r1(Math.max(0, ...fr)) },

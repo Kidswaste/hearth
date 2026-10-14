@@ -45,7 +45,21 @@ const IGNORE = [/A VideoFrame was garbage collected without being closed/, /GPU|
 
 // https://cdn.jsdelivr.net/npm/three@V/<path> -> /opt/cdn-cache/three@V/package/<path> (fetched once from the npm registry).
 const CDN_CACHE = process.env.CDN_CACHE || '/opt/cdn-cache';
-const CDN_PATTERNS = [{ urlPattern: 'https://cdn.jsdelivr.net/*', requestStage: 'Request' }];
+const CDN_PATTERNS = [{ urlPattern: 'https://cdn.jsdelivr.net/*', requestStage: 'Request' }, { urlPattern: 'https://img.hearth.test/*', requestStage: 'Request' }];
+// (round 35, streamrender) https://img.hearth.test/<w>x<h>/<name>.png: a plain PNG of that size, answered after
+// SMOKE_IMG_MS (default 400) like a slow network: pictures in streamed replies (dev/fake-huge.js) load late, as real ones do
+function testPng(url) {
+  const m = url.match(/^https:\/\/img\.hearth\.test\/(\d+)x(\d+)\/(\d*)/);
+  if (!m) return null;
+  const zlib = require('zlib');
+  const [w, h, n] = [Math.min(4000, +m[1]), Math.min(4000, +m[2]), +m[3] || 0];
+  const row = Buffer.alloc(1 + w * 3); for (let x = 0; x < w; x++) row.writeUIntBE(0x203040 + ((n * 2654435761) & 0x7f7f7f), 1 + x * 3, 3);
+  const crcT = Array.from({ length: 256 }, (_, k) => { let c = k; for (let j = 0; j < 8; j++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (b) => { let c = 0xffffffff; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.concat(Array(h).fill(row)))), chunk('IEND', Buffer.alloc(0))]);
+}
 function cdnFile(url) {
   const m = url.match(/^https:\/\/cdn\.jsdelivr\.net\/npm\/([^@/]+)@([^/]+)\/([^?#]*)/);
   if (!m) return null;
@@ -190,6 +204,8 @@ async function cdpConnect() {
     };
     const send = (method, params = {}, sessionId) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params, ...(sessionId ? { sessionId } : {}) })); });
     const serveCdn = (p, sid) => {
+      const png = testPng(p.request.url);
+      if (png) { setTimeout(() => send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'image/png' }, { name: 'Cache-Control', value: 'max-age=3600' }], body: png.toString('base64') }, sid), Number(process.env.SMOKE_IMG_MS || 400)); return; }
       const file = cdnFile(p.request.url);
       if (!file) { send('Fetch.continueRequest', { requestId: p.requestId }, sid); return; }
       const type = /\.m?js$/.test(file) ? 'text/javascript' : /\.json$/.test(file) ? 'application/json' : /\.wasm$/.test(file) ? 'application/wasm' : 'application/octet-stream';

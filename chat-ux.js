@@ -58,18 +58,26 @@ const ChatUX = (() => {
   // A small bar over the messages: every match highlighted, Enter / Shift+Enter (or ↑ ↓) step through them.
   const finds = new Map(); // agentId -> { bar, input, count, hits, at }
   function clearMarks(list) {
-    for (const m of list.querySelectorAll('mark.find-hit')) m.replaceWith(document.createTextNode(m.textContent));
-    list.normalize();
+    // (round 35, streamrender) only where marks were is joined back (normalizing the whole list walked every node of
+    // a long chat on each keystroke)
+    const parents = new Set();
+    for (const m of list.querySelectorAll('mark.find-hit')) { parents.add(m.parentNode); m.replaceWith(document.createTextNode(m.textContent)); }
+    for (const p of parents) p?.normalize();
   }
   function markAll(list, q) {
     const hits = [];
     if (!q) return hits;
     const needle = q.toLowerCase();
-    const walker = document.createTreeWalker(list, NodeFilter.SHOW_TEXT, {
-      acceptNode: (n) => (n.parentElement.closest('.msg .body, .msg .thinking-text') && !n.parentElement.closest('.code-acts, .copy-code, .code-label, .note-acts') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
-    });
     const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
+    // (round 35, streamrender) only the messages whose text has it are walked: in a 1,200-message chat every text node
+    // was tested (two closest() each), ≈ 250 ms a search here
+    for (const root of list.children) {
+      if (!root.textContent.toLowerCase().includes(needle)) continue;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: (n) => (n.parentElement.closest('.msg .body, .msg .thinking-text') && !n.parentElement.closest('.code-acts, .copy-code, .code-label, .note-acts') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+      });
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+    }
     for (const node of nodes) {
       const text = node.nodeValue;
       const lower = text.toLowerCase();
