@@ -2483,10 +2483,12 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
     const tex = new THREE.Texture();
     tex.colorSpace = THREE.SRGBColorSpace;
     let who = null; try { who = ownerUrl(); } catch { /* fine */ } // (round 39: its picture is closed with the layer that asked for it)
-    createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
+    const dec = createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
       if (who) ownNote(who, 'bmp', bmp);
       tex.image = bmp; tex.flipY = false; tex.needsUpdate = true;
     }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
+    // (round 42, labbatch) an exact frame (exports, a batch's logo per row) waits for the picture like for a font
+    const pend = dec.finally(() => TY.pending.delete(pend)); TY.pending.add(pend);
     return noteTex(key, tex);
   }
   const tex = new THREE.TextureLoader().load(url);

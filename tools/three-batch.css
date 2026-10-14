@@ -1,0 +1,42 @@
+/* ⧉ Make a batch (round 42, labbatch: tools/three-batch.js): one dialog, the inputs on the left, the first videos as
+   stills on the right. Nothing animates from JS; the stills are plain images. */
+dialog.lb-dlg { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+dialog.lb-dlg:not([open]) { display: none; }
+.lb-head { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 6px; flex: none; }
+.lb-head h3 { margin: 0; font-size: 16px; white-space: nowrap; }
+.lb-head .spacer, .lb-foot .spacer { flex: 1; }
+.lb-x { align-self: center; }
+.lb-main-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; padding: 4px 16px 10px; overflow: hidden; }
+.lb-in { min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; padding-right: 4px; }
+.lb-lab { margin-top: 4px; }
+.lb-src, .lb-main, .lb-recipe { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface, #0000); color: var(--text); font: inherit; min-width: 0; }
+.lb-rows { min-height: 120px; resize: vertical; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface, #0000); color: var(--text); font: 12px/1.45 var(--mono, ui-monospace, Menlo, Consolas, monospace); white-space: pre; overflow-wrap: normal; }
+.lb-rows:focus, .lb-pattern:focus, .lb-secs:focus { outline: none; border-color: var(--accent); }
+.lb-get { display: flex; flex-wrap: wrap; gap: 6px; }
+.lb-fields { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-dlg label.lb-mainrow { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.lb-dlg label.lb-mainrow[hidden] { display: none; }
+.lb-status { min-height: 1.4em; line-height: 1.4; }
+.lb-warn { color: var(--fh-orange, #f0a040); }
+.lb-fmts { display: flex; flex-wrap: wrap; gap: 6px; }
+.lb-dlg label.lb-fmt { display: inline-flex; flex-direction: row; align-items: center; gap: 5px; padding: 3px 10px 3px 7px; border-radius: 999px; border: 1px solid var(--line); cursor: pointer; font-size: 12.5px; color: var(--text); white-space: nowrap; }
+.lb-fmt:has(input:checked) { border-color: var(--accent); }
+.lb-fmt span { font-size: 11px; color: var(--muted); }
+.lb-dlg .lb-line { display: flex; flex-direction: row; align-items: center; gap: 8px; min-width: 0; }
+.lb-line > span:first-child { flex: none; min-width: 88px; }
+.lb-pattern { flex: 1; min-width: 0; padding: 5px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface, #0000); color: var(--text); font: inherit; }
+.lb-example { display: block; padding-left: 96px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-secs { width: 80px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface, #0000); color: var(--text); font: inherit; }
+.lb-more summary { cursor: pointer; padding: 4px 0; }
+.lb-more[open] { display: flex; flex-direction: column; gap: 5px; }
+.lb-prev { min-width: 0; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.lb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
+.lb-card { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.lb-pic { position: relative; aspect-ratio: var(--ar, 1); max-height: 240px; border-radius: 9px; overflow: hidden; background: #07070a; border: 1px solid var(--line); display: grid; place-items: center; color: #fff6; }
+.lb-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.lb-pic.lb-wait::after { content: '…'; font-size: 20px; }
+.lb-pic.lb-bad { border-color: var(--fh-orange, #f0a040); }
+.lb-cname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-foot { padding: 9px 16px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 10px; flex: none; margin: 0; }
+.lb-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) { .lb-main-grid { grid-template-columns: 1fr; overflow-y: auto; } }
