@@ -72,8 +72,12 @@ Count: **35** upgrades.
   Ctrl+Z → Ctrl+Shift+Z → Ctrl+Z; rename and folder → Ctrl+Z; the message box keeps its own undo; the Lab's sliders and
   the Lab on screen keep theirs; back in the chat Ctrl+Z works; Activity › Recent changes ↷ / ↶; Find anything "undo";
   `/undo-change list`; the log on disk; the keys sheet; no duplicate command.
-- Also run: options, settingscalm, aiundo, memorytidy, labrecipes, labtemplates, qa-keys, a11y, lazy,
-  unit:boot-test, unit:cache-test, unit:director-mcp-test; `node dev/lazy-manifest.js` (rebuilt, matches).
+- Also run, all green: options, settingscalm (+ tidy, simplify2, firstrun, appsearch on a re-run: its AI setup jump
+  missed its 6 s window twice under load, as it can on the base branch), aiundo, memorytidy, labrecipes, labtemplates,
+  a11y, lazy, unit:boot-test, unit:cache-test, unit:director-mcp-test; `node dev/lazy-manifest.js` (rebuilt, matches).
+- qa-keys fails on the base branch too (a few app-wide keys "dead" under load, a different few each run); the new
+  Ctrl+Z / Ctrl+Shift+Z lines aren't among them (noted as text-box no-ops; the board's own Ctrl+Z is listed as a
+  conflict on purpose: the board wins there).
 
 ## Notes / risks
 - The Mac: the Edit menu also has ⌘Z. Chromium normally lets the page see ⌘Z first (this stops it only where it acts,
