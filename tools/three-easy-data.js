@@ -18,6 +18,7 @@ const LabEasyData = (() => {
     'Drop a picture on the preview, a board item\'s right-click, ✦ More › Look & motion, the ◎ mission "Make it look like this" (round 28)': 'look-match',
     'Sketch ▾ › Share, ✦ More › ⇪ Share, the gallery\'s right-click, dropping a .hearthpack (round 28)': 'pack',
     'Footage (the frames chip and its menu)': 'footage frame-step next-frame goto-frame edit-points shuttle hold-frame clip-speed loop-frames cut-here cut-delete cut-restore cut-range cut-keep cut-clear cut-bars cut-markers cut-scenes lab-cuts markers-at-cuts footage-scenes footage-sequence footage-back frame-display frame-read',
+    'Toolbar: 🔎 Lab search, / in the Lab, Ctrl/⌘+K (round 36)': 'lab-search',
     'References (🖼) and their clips': 'refs ref-frames ref-motion match-pacing',
     'Sequence (▤) and the time machine': 'sequence sequence-render arrange add-scene motion-seq back',
     'Docked director: ↶ (its menu: redo), activity strip, last picture, fold, width, scene mark': 'undo-edit redo-edit director-activity director-edits director-peek dock-collapse dock-width scene fix-errors',
