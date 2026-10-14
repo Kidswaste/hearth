@@ -105,7 +105,7 @@
   }
   function remember(state, machine, layout, entry, now = Date.now()) {
     const s = read(state, machine);
-    const m = { last: layout, layouts: { ...(s.machines[machine]?.layouts || {}) } };
+    const m = { ...(s.machines[machine] || {}), last: layout, layouts: { ...(s.machines[machine]?.layouts || {}) } }; // (round 38: other keys, bigscreen's screens, kept)
     m.layouts[layout] = { ...entry, at: now };
     const keys = Object.keys(m.layouts).sort((a, b) => (m.layouts[b].at || 0) - (m.layouts[a].at || 0));
     for (const k of keys.slice(KEEP_LAYOUTS)) delete m.layouts[k];
@@ -136,7 +136,7 @@
     const view = { label: 'View', submenu: [
       { role: 'togglefullscreen' }, // ⌃⌘F on the Mac, F11 on Windows
       { type: 'separator' },
-      show('Bigger text', 'CmdOrCtrl+=', () => a.zoom?.(1)), show('Smaller text', 'CmdOrCtrl+-', () => a.zoom?.(-1)), show('Normal text', 'CmdOrCtrl+0', () => a.zoom?.(0)),
+      show('Bigger', 'CmdOrCtrl+=', () => a.zoom?.(1)), show('Smaller', 'CmdOrCtrl+-', () => a.zoom?.(-1)), show('Automatic size', 'CmdOrCtrl+0', () => a.zoom?.(0)), // (round 38, bigscreen: everything's size, per screen)
       { type: 'separator' },
       { label: 'Developer tools', accelerator: mac ? 'Alt+Cmd+I' : 'Ctrl+Shift+I', click: () => a.devtools?.() },
     ] };

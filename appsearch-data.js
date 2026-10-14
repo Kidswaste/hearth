@@ -72,6 +72,7 @@ const AppSearchData = (() => {
   const SETTINGS = [
     ['look', 'Look', 'Look: the colours of Hearth', 'Now:', 'look theme appearance colors dark light skin', 'Pick a look; More looks… holds the rest', '.look-picker'],
     ['follow', 'Look', '◐ Match my computer', 'Match my computer', 'dark mode light mode follow system appearance theme', 'The look follows your computer\'s light / dark mode', '.nf-follow'],
+    ['ui-size', 'Look', 'Size of everything (this screen)', 'Size of everything', 'zoom scale bigger smaller text size ui 4k big screen monitor readable distance', 'Auto picks it from the screen\'s size; 100 … 200 %, kept for each screen', '.big-size'], // (round 38, bigscreen)
     ['astra-look', 'Look', '✦ Let Astra pick a look', 'Let Astra pick', 'look theme random surprise choose', 'Astra picks a look for you'],
     ['sync', 'Sync', 'Sync your computers', 'sync', 'sync cloud drive icloud dropbox onedrive two computers mac pc', 'Keeps your Mac and PC the same through a cloud drive folder you already use'],
     ['sync-big', 'Sync', 'Sync big videos', 'Sync big videos', 'sync captures renders large files', 'Captures and renders over 100 MB travel too, in resumable pieces'],

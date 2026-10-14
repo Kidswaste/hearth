@@ -13,6 +13,7 @@
 //   node dev/smoke.js --fake-meshy --script dev/checks/apps-meshy.js   # app windows against dev/fake-meshy.js (no network)
 //   node dev/smoke.js --fake-assets --script dev/checks/assets.js    # the asset library against dev/fake-assets.js
 //   node dev/smoke.js --pw-chrome --script dev/checks/chrome.js     # Hearth's Chrome: Playwright's Chromium as "Chrome", test pages
+//   node dev/smoke.js --screen 3840x2160 --dpr 2 --script dev/checks/bigscreen.js   # (round 38) a 4K screen at 200 %
 //   node dev/smoke.js --coverage /tmp/cov.json --script dev/checks/trim-drive.js   # JS function + CSS rule coverage of the
 //       page from the first byte (CDP Profiler precise coverage, CSS rule usage), written as JSON (dev/coverage-report.js reads it)
 //
@@ -151,7 +152,11 @@ async function cdpConnect() {
     const pages = await require('./fake-cdp').pages();
     Object.assign(env, { HEARTH_CHROME_PATH: path.join(root, dirN || 'chromium', 'chrome-linux', 'chrome'), HEARTH_CHROME_FLAGS: '--no-sandbox --disable-gpu --password-store=basic', HEARTH_CHROME_REJECT_HOSTS: '127.0.0.1', HEARTH_CHROME_TEST_BASE: pages.base });
   }
-  const child = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24', ELECTRON, dir, '--no-sandbox', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
+  // (round 38, bigscreen) --screen WxH: the virtual screen's size in pixels (default 1600x1000; 3840x2160 for a 4K monitor),
+  // --dpr N: the screen's scale (Electron's --force-device-scale-factor: 2 = a Retina / 200 % screen, its size in points halves)
+  const screenSize = /^\d{3,5}x\d{3,5}$/.test(opt('--screen', '')) ? opt('--screen') : '1600x1000';
+  const dprFlag = Number(opt('--dpr', 0)) > 0 ? [`--force-device-scale-factor=${Number(opt('--dpr'))}`] : [];
+  const child = spawn('xvfb-run', ['-a', '-s', `-screen 0 ${screenSize}x24`, ELECTRON, dir, '--no-sandbox', ...dprFlag, `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
   // Kill Xvfb + Electron (their own process group) however the harness ends, so no stray instances pile up.
   const killAll = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } };
   process.on('exit', killAll);
@@ -297,7 +302,7 @@ async function cdpConnect() {
     if (scriptFile) {
       const body = fs.readFileSync(scriptFile, 'utf8');
       // LF → labframes-lib (which itself uses J, so the helpers already added count as users too)
-      const AUTO = [[/\bLF\.\w|=\s*LF;/, /\bconst LF =/, 'checks/labframes-lib.js'], [/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js'], [/\bSQL\.\w|=\s*SQL;/, /\bconst SQL =/, 'checks/sequence-lib.js']];
+      const AUTO = [[/\bLF\.\w|=\s*LF;/, /\bconst LF =/, 'checks/labframes-lib.js'], [/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js'], [/\bSQL\.\w|=\s*SQL;/, /\bconst SQL =/, 'checks/sequence-lib.js'], [/\bBS\.run\(/, /\bconst BS =/, 'checks/bigscreen-lib.js']];
       for (const [uses, defines, lib] of AUTO) {
         const f = path.join(__dirname, lib);
         const users = [body, ...libFiles.map((x) => fs.readFileSync(x, 'utf8'))].join('\n');

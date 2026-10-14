@@ -230,7 +230,7 @@ const Look = (() => {
       el('span', { text: 'Your looks' }), el('span', {}, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this look and your tweaks under a name',
         on: { click: async () => { const n = await Modal.prompt('Save this look as', { placeholder: 'e.g. Night session' }); if (n) toast(saveLook(n), { timeout: 1600 }); } } })));
     const decide = typeof Decide !== 'undefined' ? el('button', { type: 'button', class: 'ghost small decide-btn', text: '✦ Let Astra pick', title: 'Astra picks a look for you (Undo puts yours back)', on: { click: () => Decide.run('theme') } }) : null;
-    const box = el('div', { class: 'look-picker' }, el('div', { class: 'look-top' }, now, el('span', { class: 'spacer' }), typeof NativeFeel !== 'undefined' ? NativeFeel.followButton() : null, decide), featured, mine, moreLooks,
+    const box = el('div', { class: 'look-picker' }, el('div', { class: 'look-top' }, now, el('span', { class: 'spacer' }), typeof NativeFeel !== 'undefined' ? NativeFeel.followButton() : null, decide), typeof Bigscreen !== 'undefined' ? Bigscreen.sizeRow() : null, featured, mine, moreLooks, // (round 38: the size of everything, per screen)
       el('details', { class: 'look-adv' }, el('summary', { text: 'Advanced: textures, glow, motion, density, corners…' }), ctl));
     box.refresh = () => {
       const f = fx();

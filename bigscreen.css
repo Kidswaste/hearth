@@ -1,0 +1,21 @@
+/* Big screen (round 38, bigscreen): full screen and wide windows. bigscreen.js sets <html data-bigfull> (full screen);
+   the rest are media queries in CSS pixels, so they follow the size of everything too (150 % on a 4K monitor gives
+   a 2560-wide page). */
+
+/* ---------- ⛶ in the rail, the size row in Appearance ---------- */
+#full-btn svg.hi { width: 20px; height: 20px; }
+.big-size { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0 4px; }
+.big-size-label { font-weight: 600; font-size: 12.5px; }
+.big-size-seg button { border-radius: 0; padding: 3px 9px; min-width: 40px; }
+.big-size-seg button.on { background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--text); }
+.big-size-note { margin: 0; font-size: 11.5px; max-width: none; }
+
+/* ---------- full screen with the chats list hidden: resting on the rail shows it over the page ---------- */
+#app { position: relative; }
+#panel.hidden.big-peek {
+  display: flex; position: absolute; z-index: 60; top: 0; bottom: 0; left: var(--sidebar-w, 64px);
+  box-shadow: 12px 0 32px rgb(0 0 0 / .35); background: var(--sidebar);
+}
+:root:not([data-motion=off]) #panel.hidden.big-peek { animation: big-peek var(--dur-med, .18s) var(--ease-out, ease-out); }
+@keyframes big-peek { from { transform: translateX(-12px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #panel.hidden.big-peek { animation-name: none; } }

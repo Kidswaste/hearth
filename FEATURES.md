@@ -1053,3 +1053,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ After any change to the look (director edit, 🎲 variation, 🩺 fix, ✨ polish, 🎨 look match, a look, shuffle, slider session, undo): hold B = before, tap B = split view (drag the line, double-click swaps), a chip "Before: Claude's edit · 2 min ago" with ⟲ Keep before (= undo to it) / ✓ Keep now; right-click › View › ◧ Before / after, Lab search, the keys sheet. `/before-after`.
 - ✓ One renderer: values / palette show live on the preview itself, code changes as the preview's own picture of before; a still scene keeps not drawing; gestures remake the before side.
 - ○ `dev/checks/abcompare.js` (lab group, fake engines) and `node dev/abcompare-test.js` (unit).
+## ⛶ Big screen (round 38, bigscreen, 24 upgrades: docs/upgrades/bigscreen.md)
+- ✓ ⛶ Full screen in the rail (under ☰), Ctrl/⌘+K, `/fullscreen`, plus F11 / ⌃⌘F / the green button; remembered per screen (the big monitor full screen, the laptop windowed); Esc never leaves it; a hint the first time; the chats list peeks in from the rail when hidden in full screen.
+- ✓ Size of everything (Appearance: Auto · 100 · 125 · 150 · 175 · 200) per screen; Auto from the screen's size (a 4K at 100 % → 150 %), set before the first frame; Ctrl/⌘ + / − / 0 per screen; the Lab crisp at every size and quicker to lighten a huge preview.
+- ○ `node dev/bigscreen-test.js` (unit), `sh dev/run-checks.sh bigscreen` (4K at 100 % and 200 %, ultrawide, pictures in /tmp/hearth-bigscreen); real Mac / Windows full screen untested here.
