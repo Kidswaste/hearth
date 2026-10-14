@@ -1,0 +1,6 @@
+/* (round 40, attachlean) the cost on an attachment chip: tiny and plain; a button only when it can change */
+.attach-chip .attach-lean { font: inherit; font-size: 0.86em; color: var(--muted, #8a8f98); background: none; border: 0; padding: 0 2px; margin: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.attach-chip button.attach-lean { cursor: pointer; border-radius: 4px; }
+.attach-chip button.attach-lean:hover { color: var(--text, inherit); text-decoration: underline dotted; }
+.attach-chip button.attach-lean.whole { color: var(--fh-gold, #e6b450); }
+.attach-chip .attach-lean.wait { opacity: 0.6; }

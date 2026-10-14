@@ -329,9 +329,11 @@ const Native = (() => {
     if (!t || !v) return;
     if (t.length > 6000) {
       e.preventDefault();
-      v.attachments.push({ kind: 'text', name: `pasted-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.txt`, content: t.slice(0, TEXT_ATTACH_LIMIT) });
+      // (round 40, attachlean) a "Pasted text" chip with its cost; trimmed like any big text when sent (attachlean.js)
+      const lean = typeof AttachLean !== 'undefined';
+      v.attachments.push({ kind: 'text', name: lean ? 'Pasted text' : `pasted-${new Date().toTimeString().slice(0, 8).replace(/:/g, '')}.txt`, content: t.slice(0, lean ? AttachLean.MAX_BYTES : TEXT_ATTACH_LIMIT), ...(lean ? { pasted: true } : {}) });
       renderChips(agentId);
-      toast(`Long paste (${t.length.toLocaleString()} chars) attached as a text file`, { timeout: 2500, action: { label: 'Paste as text', fn: () => { v.attachments.pop(); renderChips(agentId); insertDraft(agentId, t); } } });
+      toast(lean ? `Long paste attached as “Pasted text” (≈ ${fmt(Math.ceil(t.length / 4))} tokens; only what your message is about is sent)` : `Long paste (${t.length.toLocaleString()} chars) attached as a text file`, { timeout: 2500, action: { label: 'Paste as text', fn: () => { v.attachments.pop(); renderChips(agentId); insertDraft(agentId, t); } } });
       return;
     }
     const i = v.input;
@@ -390,6 +392,7 @@ const Native = (() => {
     v.chips.replaceChildren(...v.attachments.map((a, i) => el('span', { class: `attach-chip ${a.kind}` },
       a.kind === 'image' && a.preview ? el('img', { src: a.preview, alt: '' }) : el('span', { text: a.kind === 'text' ? '📄' : '📎' }),
       el('span', { text: a.name }),
+      window.AttachLean?.badge(agentId, a) || null, // (round 40, attachlean) what it costs: "≈ 1.5k of 14k tok", "sent at 1568 px"; click: send whole
       a.tokens ? el('span', { class: 'attach-tok', text: ` · ${fmt(a.tokens)} tok`, title: `≈ ${a.tokens} tokens go with your next message (exactly this text; chat-refs.js)` }) : null, // (round 24) an @ reference's cost
       el('button', { type: 'button', text: '×', title: 'Remove', on: { click: () => { v.attachments.splice(i, 1); renderChips(agentId); } } }))));
   }
@@ -405,8 +408,9 @@ const Native = (() => {
         const path = await window.hub.saveAttachment(name, btoa(bin));
         v.attachments.push({ kind: 'image', name, path, preview: URL.createObjectURL(file) });
       } else if (isTextName(file.name) || file.type.startsWith('text/')) {
-        if (file.size > TEXT_ATTACH_LIMIT) { toast(`${file.name} is over 200 KB; attach a smaller excerpt.`, { type: 'error' }); continue; }
-        v.attachments.push({ kind: 'text', name: file.name, content: await file.text() });
+        const max = window.AttachLean ? AttachLean.MAX_BYTES : TEXT_ATTACH_LIMIT; // (round 40) big texts are trimmed when sent
+        if (file.size > max) { toast(`${file.name} is over ${Math.round(max / 1048576) || '0.2'} MB; attach a smaller excerpt.`, { type: 'error' }); continue; }
+        v.attachments.push({ kind: 'text', name: file.name, content: await file.text(), src: window.hub.pathForFile?.(file) || undefined });
       } else {
         const path = window.hub.pathForFile(file);
         if (path) await addPath(agentId, path); else toast(`Can't attach ${file.name}`, { type: 'error' });
@@ -451,7 +455,7 @@ const Native = (() => {
       if (H.agent(agentId)?.threeTools) { try { path = await window.hub.saveAttachment(name, await window.hub.fs.read(path, { encoding: 'base64' })); } catch { /* keep the original path */ } }
       v.attachments.push({ kind: 'image', name, path, preview: WinMac.fileUrl(path) }); // (round 31, winmac) # / % / a Mac's /Users path
     } else if (isTextName(name)) {
-      try { v.attachments.push({ kind: 'text', name, content: await window.hub.fs.read(path, { maxBytes: TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }
+      try { v.attachments.push({ kind: 'text', name, src: path, content: await window.hub.fs.read(path, { maxBytes: window.AttachLean ? AttachLean.MAX_BYTES : TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }
     } else {
       const agent = H.agent(agentId);
       if (agent.workspace || (typeof Access !== 'undefined' && Access.isOn(agentId))) v.attachments.push({ kind: 'file', name, path }); // Claude reads it with Read, Astra with a sandboxed command
@@ -654,7 +658,7 @@ const Native = (() => {
     if (m.suggest?.length && (isLast || m.lastReply)) node.append(el('div', { class: 'suggest-chips' }, m.suggest.map((s) => (s.startsWith('/')
       ? el('button', { class: 'suggest-chip cmd', text: s, dataset: { suggest: s }, title: 'Run this chat command (nothing is sent)' })
       : el('button', { class: 'suggest-chip', text: s, dataset: { suggest: s }, title: 'Send this' })))));
-    if (m.attachments?.length) node.append(el('div', { class: 'msg-attachments' }, m.attachments.map((a) => el('span', { class: 'attach-chip small', text: `${a.kind === 'image' ? '🖼' : '📄'} ${a.name}` }))));
+    if (m.attachments?.length) node.append(el('div', { class: 'msg-attachments' }, m.attachments.map((a) => el('span', { class: 'attach-chip small', text: `${a.kind === 'image' ? '🖼' : '📄'} ${a.name}`, ...(a.lean ? { title: a.lean.same ? `Not sent again: the same as at ${a.lean.same}` : a.lean.diff ? `Only the changes since ${a.lean.diff} were sent (≈ ${a.lean.tokens} tokens)` : `Sent ≈ ${a.lean.tokens} tokens${a.lean.wholeTokens > a.lean.tokens ? ` of ≈ ${a.lean.wholeTokens}` : ''}${a.lean.px ? ` (at ${a.lean.px} px)` : ''}` } : {}) }))));
     if (m.role === 'error' && m.needsLogin) {
       node.append(el('button', { class: 'primary login-btn', text: `Sign in to ${ENGINE_LABEL[agent.engine] || agent.engine}`, dataset: { engine: agent.engine } }));
     }
@@ -1457,11 +1461,11 @@ const Native = (() => {
     const atts = v ? v.attachments.splice(0) : [];
     if (v) renderChips(agentId);
     let full = text;
-    for (const a of atts.filter((x) => x.kind === 'text')) full += `\n\n<file name="${a.name}">\n${a.content}\n</file>`;
+    for (const a of atts.filter((x) => x.kind === 'text')) full += `\n\n${a.wrapped || `<file name="${a.name}">\n${a.content}\n</file>`}`; // wrapped: attachlean's trimmed / referenced form
     const files = atts.filter((x) => x.kind === 'file');
     if (files.length) full += `\n\n[Attached files, open them with your ${H.agent(agentId)?.engine === 'codex' ? 'read-only commands' : 'Read tool'}]\n${files.map((f) => f.path).join('\n')}`;
     const images = atts.filter((x) => x.kind === 'image').map((x) => x.path);
-    return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name, ...(a.tokens ? { tokens: a.tokens, ref: a.ref } : {}) })) };
+    return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name, ...(a.tokens ? { tokens: a.tokens, ref: a.ref } : {}), ...(a.leanMeta ? { lean: a.leanMeta } : {}) })) };
   }
 
   // chatId: send into that chat of the agent even when it isn't the open one (a part dispatched by comp-dispatch.js
@@ -1471,6 +1475,9 @@ const Native = (() => {
     if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);
     let chat = chatId ? await loadChat(chatId) : null;
     if (only && !chat) throw new Error('That chat is gone.');
+    // (round 40, attachlean) pictures scaled, big texts trimmed to what the message is about, a file sent before referenced
+    const lean = !fromHistory && !only && window.AttachLean && views.get(agentId)?.attachments.length ? await AttachLean.prepare(agentId, chat, text).catch((err) => { console.warn('attachlean', err); return null; }) : null;
+    if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);
     const now = Date.now();
     const { full, images, meta } = fromHistory || only ? { full: text, images: [], meta: [] } : packAttachments(agentId, text);
     if (!chat) {
@@ -1485,6 +1492,7 @@ const Native = (() => {
       const message = { role: 'user', text: text || '(see attachments)', at: now, ...(compact ? { compactReq: true } : {}) };
       if (meta.length) { message.attachments = meta; message.sent = full; message.images = images; }
       chat.messages.push(message);
+      lean?.commit(chat);
     }
     const last = chat.messages.at(-1);
     chat.updatedAt = now;
@@ -1510,7 +1518,7 @@ const Native = (() => {
     window.hub.send({
       agentId, chatId: chat.id, session: chat.session,
       text: style ? `[${style}]\n\n${extra.text}` : extra.text,
-      options: { model: chat.model || undefined, images: last.images || images, ...extra.options, ...(chat.captureTools ? { captureTools: true } : {}), ...(chat.subagents ? { subagents: true } : {}), ...(chat.crew ? { crewOn: true } : {}), ...(typeof Access !== 'undefined' ? Access.sendOptions(chat) : {}) },
+      options: { model: chat.model || undefined, images: last.images || images, ...(lean?.readFiles ? { readFiles: true } : {}), ...extra.options, ...(chat.captureTools ? { captureTools: true } : {}), ...(chat.subagents ? { subagents: true } : {}), ...(chat.crew ? { crewOn: true } : {}), ...(typeof Access !== 'undefined' ? Access.sendOptions(chat) : {}) },
     }).catch((err) => onEvent({ chatId: chat.id, type: 'error', message: err.message }));
   }
 

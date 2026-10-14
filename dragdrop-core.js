@@ -15,7 +15,7 @@ const DragDropCore = (() => {
   // eslint-disable-next-line no-undef
   const W = typeof WinMac !== 'undefined' ? WinMac : (typeof require === 'function' ? require('./winmac') : null);
   const MB = 1048576;
-  const LIMITS = { chat: 20, lab: 12, textBytes: 200 * 1024, bigImage: 25 * MB, huge: 2048 * MB, folders: 3 };
+  const LIMITS = { chat: 20, lab: 12, textBytes: 200 * 1024, leanBytes: 64 * MB, bigImage: 25 * MB, huge: 2048 * MB, folders: 3 };
 
   // ---------- paths ----------
   const baseName = (p) => (W ? W.baseName(p) : String(p || '').split(/[\\/]/).pop());
@@ -147,12 +147,14 @@ const DragDropCore = (() => {
       if (k === 'heic') { skipped.push({ name, why: `${name} is a HEIC photo the AIs can't read: export it as JPEG (Photos: File › Export), then drop that` }); continue; }
       if (k === 'image') { steps.push({ e, do: e.path ? 'image' : 'blob', big: (e.size || 0) > LIMITS.bigImage }); continue; }
       if (!e.path) {
-        if (k === 'text' && (e.size || 0) <= LIMITS.textBytes) steps.push({ e, do: 'blob' });
+        if (k === 'text' && (e.size || 0) <= (o.lean ? LIMITS.leanBytes : LIMITS.textBytes)) steps.push({ e, do: 'blob' });
         else skipped.push({ name, why: `${name} has no place on this computer (save it first, then drop the file)` });
         continue;
       }
       if (k === 'video') { steps.push({ e, do: 'video' }); continue; }
       if (k === 'text' && (e.size || 0) <= LIMITS.textBytes) { steps.push({ e, do: 'text' }); continue; }
+      // (round 40, attachlean) o.lean: a big text is read in and trimmed when sent (outline + the parts asked about)
+      if (k === 'text' && !o.access && o.lean && (e.size || 0) <= LIMITS.leanBytes) { steps.push({ e, do: 'text', lean: true }); continue; }
       if (o.access) { steps.push({ e, do: 'file', big: (e.size || 0) > LIMITS.textBytes }); continue; }
       skipped.push({ name, why: k === 'text'
         ? `${name} is ${size(e.size || 0)}, too big to paste in: let this AI read files (⋯ AI setup › Files on this computer) and it's attached by its place instead`

@@ -484,8 +484,11 @@ function claudeToolArgs(agent, options = {}, session = {}) {
   // (round 32, cachewise) …and the Read tool stays for the rest of that engine session: switching the tool list on for
   // the picture's message and off again for the next one made both re-read the whole chat without the cache (one cached
   // tool definition costs far less than one uncached re-read)
-  const images = Boolean(options.images?.length) || session?.readTool === true;
-  if (options.images?.length && session) session.readTool = true;
+  // (round 40, attachlean) readFiles: a trimmed attachment's whole copy sits in the attachments folder for the AI to
+  // open on demand; same Read tool, same stickiness
+  const reads = Boolean(options.images?.length || options.readFiles);
+  const images = reads || session?.readTool === true;
+  if (reads && session) session.readTool = true;
   // (round 14) a chat's own access level: reads in its folders are free, edits / commands go through Hearth's check
   const acc = accessOf(agent);
   const asks = accessAsks(agent);
