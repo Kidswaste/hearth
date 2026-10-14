@@ -66,7 +66,7 @@ const layerOf = () => ThreeLab.scenes.layersOf(ThreeLab.scenes.get(ThreeLab.scen
   LabSearch.buildIndex?.();
   const top = (q) => LabSearch.find(q, 4).map((y) => `${y.item.label} @ ${y.item.path || ''}`);
   const a = top('camera push in'); const b = top('dolly zoom');
-  step('Lab search: "camera push in", "dolly zoom" → the 🎥 rows', a.some((l) => /Push in/.test(l)) && b.some((l) => /Dolly zoom/.test(l)), { a, b });
+  step('Lab search: "camera push in", "dolly zoom" → the 🎥 rows', a.some((l) => /⇥ Push in/.test(l)) && b.some((l) => /Dolly zoom/.test(l)), { a, b });
   let found = null;
   try {
     AppUI.palette();

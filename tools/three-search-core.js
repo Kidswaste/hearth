@@ -95,7 +95,7 @@ const LabSearchCore = (() => {
     ['start over', 'restart from scratch'], ['from scratch', 'restart from scratch'],
     ['react to the music', 'make it react music'], ['audio reactive', 'make it react music'], ['music reactive', 'make it react music'], ['beat sync', 'make it react music beat'],
     ['pulse on kick', 'move slider music pulse step'], ['pulse on the beat', 'move slider music pulse step'], ['move with the beat', 'move slider music pulse step'], ['step on the beat', 'move slider music pulse step'], ['step each bar', 'move slider music pulse step'], ['beat link', 'move slider music pulse step'], // (round 38, beatlink)
-    ['camera move', 'camera moves push orbit dolly'], ['dolly zoom', 'camera moves dolly zoom vertigo'], ['push in', 'camera moves push in'], ['punch in', 'camera moves punch beat'], ['whip pan', 'camera moves whip pan'], // (round 40, labcamera)
+    ['camera move', 'camera moves push orbit dolly'], ['dolly zoom', 'camera moves dolly zoom vertigo'], ['punch in', 'camera moves punch beat'], ['whip pan', 'camera moves whip pan'], // (round 40, labcamera)
     ['depth of field', 'blur dof bokeh'], ['color grade', 'grade'], ['color grading', 'grade'],
     ['new scene', 'new from template gallery'], ['new sketch', 'new from template gallery'], ['start from', 'gallery template starting'],
     ['go back', 'undo'], ['undo that', 'undo'],

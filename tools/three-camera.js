@@ -59,6 +59,7 @@ const LabCamera = (() => {
     const before = clone(from ?? movesOf(L));
     const after = clone(next);
     if (JSON.stringify(before) === JSON.stringify(after)) { if (from) liveSet(lid, after); return false; }
+    window.LabAB?.note?.('cam', { label }); // (round 37's ◧ Before / after names it)
     h.edit(lid, { camMoves: after.length ? after : null });
     const tok = ++tokN;
     U.push({ tok, sid: h.sketchId(), lid, before, after, label }); if (U.length > 80) U.shift();
@@ -155,19 +156,20 @@ const LabCamera = (() => {
   // the presets as rows; o: { t0 } from the timeline's right-click (4 bars from there)
   function presets(o = {}) {
     const go = (kind, x = {}) => () => add(kind, { ...o, ...x }).catch(err);
+    const tg = (kind) => `camera move ${C.KIND[kind].words}`; // (Lab search / Find anything find each row by its words)
     return [
-      { label: '⇥ Push in', hint: 'toward the subject', action: go('push') },
-      { label: '⇤ Pull out', hint: 'away, revealing more', action: go('pull') },
-      { label: '↻ Orbit', hint: 'around the subject', items: () => [
+      { label: '⇥ Push in', tags: tg('push'), hint: 'toward the subject', action: go('push') },
+      { label: '⇤ Pull out', tags: tg('pull'), hint: 'away, revealing more', action: go('pull') },
+      { label: '↻ Orbit', tags: tg('orbit'), hint: 'around the subject', items: () => [
         ...[[0.25, '¼'], [0.5, '½'], [1, 'a full turn']].map(([t, n]) => ({ label: `↻ Right ${n}`, action: go('orbit', { dir: 1, turns: t }) })),
         ...[[0.25, '¼'], [0.5, '½'], [1, 'a full turn']].map(([t, n]) => ({ label: `↺ Left ${n}`, action: go('orbit', { dir: -1, turns: t }) }))] },
-      { label: '⧖ Dolly zoom', hint: 'the vertigo shot', items: () => [{ label: 'Pull back, zoom in', hint: 'the world stretches away', action: go('dolly', { dir: 1 }) }, { label: 'Push in, zoom out', hint: 'the world closes in', action: go('dolly', { dir: -1 }) }] },
-      { label: '⇡ Crane up', hint: 'rises over the subject', action: go('crane', { dir: 1 }) },
-      { label: '⇣ Crane down', hint: 'comes down to it', action: go('crane', { dir: -1 }) },
-      { label: '≋ Handheld shake', hint: 'subtle', action: go('shake') },
-      { label: '⟿ Whip pan', hint: 'a fast swing away and back', items: () => [{ label: 'To the right', action: go('whip', { dir: 1 }) }, { label: 'To the left', action: go('whip', { dir: -1 }) }] },
-      { label: '〜 Slow drift', hint: 'a slow float', action: go('drift') },
-      { label: '✸ Punch-in on the beat', hint: 'a quick push on each hit', items: () => C.BANDS.map((b) => ({ label: `On ${b.name}`, hint: b.id === 'kick' ? 'your kick markers, else the song’s' : b.id === 'bar' ? 'the 1 of each bar' : 'the beat grid', action: go('punch', { band: b.id }) })) },
+      { label: '⧖ Dolly zoom', tags: tg('dolly'), hint: 'the vertigo shot', items: () => [{ label: 'Pull back, zoom in', hint: 'the world stretches away', action: go('dolly', { dir: 1 }) }, { label: 'Push in, zoom out', hint: 'the world closes in', action: go('dolly', { dir: -1 }) }] },
+      { label: '⇡ Crane up', tags: tg('crane'), hint: 'rises over the subject', action: go('crane', { dir: 1 }) },
+      { label: '⇣ Crane down', tags: tg('crane'), hint: 'comes down to it', action: go('crane', { dir: -1 }) },
+      { label: '≋ Handheld shake', tags: tg('shake'), hint: 'subtle', action: go('shake') },
+      { label: '⟿ Whip pan', tags: tg('whip'), hint: 'a fast swing away and back', items: () => [{ label: 'To the right', action: go('whip', { dir: 1 }) }, { label: 'To the left', action: go('whip', { dir: -1 }) }] },
+      { label: '〜 Slow drift', tags: tg('drift'), hint: 'a slow float', action: go('drift') },
+      { label: '✸ Punch-in on the beat', tags: tg('punch'), hint: 'a quick push on each hit', items: () => C.BANDS.map((b) => ({ label: `On ${b.name}`, hint: b.id === 'kick' ? 'your kick markers, else the song’s' : b.id === 'bar' ? 'the 1 of each bar' : 'the beat grid', action: go('punch', { band: b.id }) })) },
     ];
   }
   const tags = 'camera move moves cinematic push in pull out orbit dolly zoom vertigo crane up down handheld shake whip pan slow drift punch in on the beat kick bar from this view to that view keyframe camera path timeline';

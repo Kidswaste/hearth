@@ -21,6 +21,7 @@ const ABCore = (() => {
     restore: { label: 'Restored version', rank: 6, ms: 900 },
     pick: { label: 'Picked from a version', rank: 6, ms: 900 },
     shuffle: { label: 'Shuffle', rank: 5, ms: 900 },
+    cam: { label: '🎥 Camera move', rank: 5, ms: 900 }, // (round 40, labcamera)
     undo: { label: 'Undo', rank: 4, ms: 800 },
     sliders: { label: 'Slider change', rank: 3, ms: 1500 }, // a drag session: several drags in a row are one change
     run: { label: 'Code run', rank: 2, ms: 900 },
