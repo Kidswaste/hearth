@@ -1,0 +1,20 @@
+/* 🎥 Camera moves (round 40, labcamera: tools/three-camera.js): the "Your moves" card (the bars on the timeline are drawn on its canvas) */
+.cm-pop { position: fixed; z-index: 990; padding: 10px 12px; border-radius: 12px; display: flex; flex-direction: column; gap: 7px; border: 1px solid var(--line-hi, #443e35); background: var(--fh-pop, #0f1214); color: var(--text, #e8e2d6); box-shadow: 0 10px 30px #000a; font-size: 12.5px; max-height: min(70vh, 520px); }
+.cm-head { display: flex; align-items: baseline; gap: 6px; }
+.cm-head b { color: var(--ui-cyan, #48ddff); white-space: nowrap; }
+.cm-sub { opacity: .6; font-size: 11.5px; }
+.cm-x { margin-left: auto; }
+.cm-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; min-height: 0; }
+.cm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 72px 38px auto; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 8px; border: 1px solid var(--line, #2c2a26); }
+.cm-row:hover { border-color: var(--line-hi, #443e35); }
+.cm-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-time { font-variant-numeric: tabular-nums; font-size: 11px; opacity: .7; white-space: nowrap; }
+.cm-ease { font-size: 11.5px; padding: 1px 4px; max-width: 96px; }
+.cm-amt { width: 100%; }
+.cm-pct { text-align: right; font-size: 11px; opacity: .75; font-variant-numeric: tabular-nums; }
+.cm-del { opacity: .55; }
+.cm-row:hover .cm-del { opacity: 1; }
+.cm-empty, .cm-note { font-size: 11px; opacity: .65; }
+.cm-foot { display: flex; gap: 6px; justify-content: flex-end; }
+.cm-foot > :first-child { margin-right: auto; }
+@media (max-width: 520px) { .cm-row { grid-template-columns: minmax(0, 1fr) auto auto; } .cm-amt, .cm-pct { grid-column: span 1; } }

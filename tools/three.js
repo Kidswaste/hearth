@@ -39,7 +39,7 @@ const ThreeLab = (() => {
   // into the new page once its layers have drawn their first frame (never a black flash; see "live" below).
   // (round 25, diet) the preview page's motion-design kit / 3D-model runtime (tools/sandbox-*.js): loaded here when a page
   // asks (a sandboxed page can't read files) and sent as source; nothing of them runs in the hub
-  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js', beatlink: 'tools/three-beatlink-core.js' }; // (round 38, beatlink: ♪ Move with the music's math)
+  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js', beatlink: 'tools/three-beatlink-core.js', camcore: 'tools/three-camera-core.js' }; // (round 38, beatlink: ♪ Move with the music's math)
   const libFiles = {};
   function sandboxLib(name, deliver) {
     if (!LIB_FILES[name]) return;
@@ -1899,7 +1899,7 @@ const ThreeLab = (() => {
     }
     addEventListener('keydown', (e) => { if (e.key === 'Escape' && focusOn) setFocus(false); });
 
-    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), overrides: L.overrides || null, name: L.name, visible: L.visible !== false && (!soloId || L.id === soloId), opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
+    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), overrides: L.overrides || null, camMoves: L.camMoves?.length ? L.camMoves : null, name: L.name, visible: L.visible !== false && (!soloId || L.id === soloId), opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
     const extrasOf = (L) => {
       const ex = (extras[current.id] ||= {});
       return L.id === 'main' ? ex : ((ex.layers ||= {})[L.id] ||= {});
@@ -2573,6 +2573,8 @@ const ThreeLab = (() => {
     if (typeof ThreeModels !== 'undefined') ThreeModels.attach({ send: (msg) => box.send(msg), previewHost, sketchId: () => current?.id });
     // (round 34 "labgestures") Z / Shift+Z, the view rows, the hint (tools/three-gestures.js; the gestures are in the preview)
     if (typeof ThreeGestures !== 'undefined') ThreeGestures.attach({ send: (msg) => box.send(msg), pane, layer: () => sel()?.id });
+    // (round 40, labcamera) 🎥 camera moves on the timeline (tools/three-camera.js; the moves are drawn in the preview)
+    if (typeof LabCamera !== 'undefined') LabCamera.attach({ send: (msg) => box.send(msg), player, layers: () => layersOf(), layerById: (id) => layerById(id), sel: () => sel() || null, edit: (id, patch) => editLayer(id, patch, { direct: true }), sketchId: () => current?.id || null, host: previewHost, ensureClock: () => { if (!player.loaded) ensureTimeline(); } });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -2690,6 +2692,7 @@ const ThreeLab = (() => {
       if (msg.type === 'type-info') { window.LabType?.onBox?.(msg); return; } // (round 25) 🅰 type layers' glyphs / fonts
       if (/^motionin-/.test(msg.type)) { window.LabMotionIn?.onBox?.(msg); return; } // (round 25) 📷 camera input: what the scene reads, tracking state
       if (msg.type === 'physics-info') { window.LabPhysics?.onBox?.(msg); return; } // (round 25) ⚛ physics layers' bodies
+      if (msg.type === 'cam-info' && typeof LabCamera !== 'undefined' && LabCamera.onBox(msg)) return; // (round 40) the camera moves' answers
       if (/^view-/.test(msg.type) && typeof ThreeGestures !== 'undefined' && ThreeGestures.onBox(msg)) return; // (round 34) Z / Shift+Z answers, the first-time hint
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
@@ -2884,6 +2887,7 @@ const ThreeLab = (() => {
         ...(typeof LabGrade !== 'undefined' ? [LabGrade.previewItem()] : []), // (round 24) ◐ Grade: color, LUTs, film & lens, scopes (tools/three-grade.js)
         ...(typeof LabExport !== 'undefined' ? [LabExport.previewItem()] : []), // ⇪ Export: renders and the scene itself (tools/three-export.js)
         ...(typeof LabEasy !== 'undefined' ? [LabEasy.previewItem()] : []), // (round 26) ✦ More: music, look & motion, make (tools/three-easy.js)
+        ...(typeof LabCamera !== 'undefined' ? [LabCamera.previewItem()] : []), // (round 40) 🎥 Camera moves (tools/three-camera.js)
         { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
