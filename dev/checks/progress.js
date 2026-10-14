@@ -103,9 +103,12 @@ try {
   const js = seen[jk] || [];
   out.render = js.map((x) => `${x.v}${x.est ? '~' : ''}${x.st === 'done' ? '✓' : ''}`).join(' ');
   ok(js.some((x) => x.st === 'done' && x.v === 100), `the export's bar finished (${out.render})`);
-  ok(js.filter((x) => x.st !== 'done').every((x) => !x.est), 'an ffmpeg export is measured, not estimated');
+  // (round 35, bugbash2) the bar moves at once on an estimate until ffmpeg's first report, then it's measured
+  const firstMeasured = js.findIndex((x) => !x.est);
+  ok(firstMeasured >= 0 && js.slice(firstMeasured).filter((x) => x.st !== 'done').every((x) => !x.est), 'an ffmpeg export is measured, not estimated');
   ok(forward(jk), 'the export only moved forward');
-  ok(/Export/.test(out.renderTitle || ''), `the export's bar is named (${out.renderTitle})`);
+  // (the bar names the preset and the file: "⇪ Reels / TikTok / Shorts · clip.mp4")
+  ok(/⇪ .+ · .+\.\w+$/.test(out.renderTitle || ''), `the export's bar is named (${out.renderTitle})`);
 
   // ---- 4. a Commands-page chain: /wait 2s, then /wait 2s ----
   const right = () => document.querySelector('.cp-right');

@@ -28,7 +28,10 @@ try {
   const n0 = B.items().length;
 
   // 1. the ways in
-  const top = B._.boardItems()[0];
+  // (round 35, bugbash2) since round 31 the ⋯ menus open with "✦ What can I do here?" (quickstart-hooks.js): the finder
+  // is the first of the board's own rows, right after it
+  const rows = B._.boardItems().filter((x) => x && typeof x === 'object' && !/What can I do here/.test(x.label || ''));
+  const top = rows[0];
   step(/Find images like this/.test(top?.label || ''), 'board ⋯ (and right-click › Board) starts with "Find images like this…"', top?.label);
   step(B._.addItems({ x: 0, y: 0 }).some((x) => /Images like this board/.test(x?.label || '')), 'Add › Images like this board…');
   const m = Missions.LIST.find((x) => x.id === 'find-images');
