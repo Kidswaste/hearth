@@ -74,7 +74,7 @@ const UndoAll = (() => {
 
   // ---------- who changed it: the owner, not a feature by itself or an AI ----------
   let lastInput = 0;
-  for (const t of ['pointerdown', 'keydown', 'click', 'change']) addEventListener(t, () => { lastInput = performance.now(); }, true);
+  for (const t of ['pointerdown', 'keydown', 'click', 'change', 'drop']) addEventListener(t, () => { lastInput = performance.now(); }, true); // (round 42) drop: a chat dragged onto a folder
   const ownerActing = (ms = 3000) => performance.now() - lastInput < ms;
   let quiet = 0; // our own undo / redo: never recorded
   let aiCmd = 0; // a command an AI runs during its reply (aiundo.js records those)
