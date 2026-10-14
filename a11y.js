@@ -16,8 +16,9 @@
 // added controls and changed tooltips, batched into one idle pass; it writes an attribute only when it differs.
 const A11y = (() => {
   let kbd = false;
-  addEventListener('keydown', (e) => { if (/^(Tab|Enter| |Arrow|Escape|F6|F10|ContextMenu|Home|End|Page)/.test(e.key)) kbd = true; }, true);
-  addEventListener('pointerdown', () => { kbd = false; }, true);
+  let acted = 0; // when you last pressed or clicked something (an overlay that shows by itself never takes focus)
+  addEventListener('keydown', (e) => { acted = performance.now(); if (/^(Tab|Enter| |Arrow|Escape|F6|F10|ContextMenu|Home|End|Page)/.test(e.key)) kbd = true; }, true);
+  addEventListener('pointerdown', () => { acted = performance.now(); kbd = false; }, true);
 
   // ---------- names ----------
   const CTRL = 'button, a[href], [role=button], [role=link], [role=switch], [role=tab], [role=menuitem], [role=option], input:not([type=hidden]), select, textarea';
@@ -75,8 +76,10 @@ const A11y = (() => {
     const a = document.activeElement;
     open.push({ root, opener: a && a !== document.body && !root.contains(a) ? a : lastOut && !root.contains(lastOut) ? lastOut : null });
     if (!root.getAttribute('role')) root.setAttribute('role', 'dialog');
-    // focus goes in (unless the overlay put it somewhere itself, like Find anything's box); a task, not a frame: a
-    // busy Lab preview can hold frames back
+    // focus goes in (unless the overlay put it somewhere itself, like Find anything's box), when you just opened it
+    // and weren't typing; a task, not a frame: a busy Lab preview can hold frames back
+    const typing = a && (a.matches?.('input:not([type=button]):not([type=checkbox]):not([type=range]), textarea, select') || a.isContentEditable);
+    if (typing || performance.now() - acted > 1500) return;
     setTimeout(() => {
       if (!root.isConnected || root.contains(document.activeElement)) return;
       const first = kbd ? focusable(root) : null;
