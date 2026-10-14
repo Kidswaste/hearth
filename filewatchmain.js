@@ -107,22 +107,31 @@ function onRaw(r, ev, name) {
   stats.raw += 1;
   touched.add(r);
   const rel = name == null ? '' : String(name);
+  const abs = rel ? path.join(r.dir, rel) : r.dir;
+  // sync's folders hear every event as fs.watch gave it (its own debounce and ignore list: an iCloud placeholder
+  // arriving is news to sync, which asks iCloud for the file)
+  for (const t of trees) if (C.inside(abs, t.dir, P, platform)) { try { t.fn(path.relative(t.dir, abs), ev); } catch (err) { console.warn('filewatch tree', err.message); } }
+  if (!wants.length) { touched.delete(r); return; } // only sync listens here: no batch to make
   if (rel && C.ignored(rel)) {
     // an iCloud placeholder appearing / going is news for the file it stands for
     const real = C.icloudOf(path.basename(rel));
     if (!real) return;
-    const abs = path.join(r.dir, path.dirname(rel), real);
-    if (stamps.has(key(abs))) co.push(abs, ev);
+    const file = path.join(r.dir, path.dirname(rel), real);
+    if (stamps.has(key(file))) co.push(file, ev);
     return;
   }
-  const abs = rel ? path.join(r.dir, rel) : r.dir;
-  // sync's folders hear every event at once (it has its own debounce)
-  for (const t of trees) if (C.inside(abs, t.dir, P, platform)) { try { t.fn(path.relative(t.dir, abs), ev); } catch (err) { console.warn('filewatch tree', err.message); } }
-  if (!wants.length) { touched.delete(r); return; } // only sync listens here: no batch to make
-  // the watched folder itself renamed / deleted: checked in the batch
+  // an event without a name (the system lost track): the folder is looked at in the batch
   if (!rel) { co.push(r.dir, 'self'); return; }
+  // only what a want can be about (a wanted file's folder, a wanted folder): the data folder's own saves (chats, kv)
+  // under sync's watch never make a batch
+  if (!near.dirs.has(key(path.dirname(abs))) && !near.folders.some((f) => C.inside(abs, f, P, platform))) {
+    if (ev === 'rename') co.push(r.dir, 'touch'); // (a rename might be the folder itself going: looked at in the batch)
+    else touched.delete(r);
+    return;
+  }
   co.push(abs, ev);
 }
+const near = { dirs: new Set(), folders: [] };
 const busyFirst = new Map(); // key → when a file still being written was first seen
 function flush(items, rawN) {
   stats.batches += 1;
@@ -140,6 +149,7 @@ function flush(items, rawN) {
     // an event without a name (the system lost track): the folder's wanted files are looked at again
     const r = roots.get(k);
     if (r && it.evs.includes('self')) { checkRoot(r); if (r.mode !== 'gone') resync(r); continue; }
+    if (r && it.evs.every((e) => e === 'touch')) continue; // (its folder was looked at above)
     const wanted = stamps.has(k);
     const folderTags = C.tagsFor(it.path, wants.filter((w) => w.kind === 'folder'), { P, platform });
     if (!wanted && !folderTags.length) { changes.push({ path: it.path, unknown: true }); continue; }
@@ -293,6 +303,8 @@ function setWants(topic, items) {
     .map((x) => ({ path: path.resolve(x.path), kind: x.kind === 'folder' ? 'folder' : 'file', tag: String(x.tag || topic), deep: x.deep !== false && !x.presence, presence: Boolean(x.presence), topic: String(topic) }));
   if (list.length) topics.set(String(topic), list); else topics.delete(String(topic));
   wants = [...topics.values()].flat();
+  near.dirs = new Set(wants.filter((w) => w.kind === 'file').map((w) => key(path.dirname(w.path))));
+  near.folders = wants.filter((w) => w.kind === 'folder' && !w.presence).map((w) => w.path); // (presence only: the folder itself, through its own root)
   replan();
   return { ok: true, n: list.length };
 }

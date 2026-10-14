@@ -203,7 +203,7 @@ check(C.words([{ path: '/x/logo.png', kind: 'change' }]) === 'logo.png updated f
   await wait(150);
   write(D('sync', 'chat.json'), '{}'); write(D('sync', 'chat.json.hubtmp'), '{}');
   await wait(600);
-  check(names.includes('chat.json') && !names.some((n) => /hubtmp/.test(n)), 'sync\'s folder through the same service: its names, no temp files', names);
+  check(names.includes('chat.json') && names.includes('chat.json.hubtmp'), 'sync\'s folder through the same service: every name as fs.watch gives it (sync filters with its own list)', names);
   h.close();
 
   // a folder deleted (renamed away): its file and the folder said once; back → re-armed
