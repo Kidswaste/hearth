@@ -321,5 +321,5 @@ const LabSearch = (() => {
   function init() { register(); actions(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  return { open, close, find, buildIndex, loadLater, pick, askDirector, last, get isOpen() { return Boolean(dlg); }, get results() { return results.map((r) => ({ id: r.item.id, kind: r.item.kind, label: r.item.label, path: r.item.path, score: r.score })); }, input: () => input };
+  return { open, close, find, buildIndex, loadLater, pick, askDirector, last, get isOpen() { return Boolean(dlg); }, get results() { return results.map((r) => ({ id: r.item.id, kind: r.item.kind, label: r.item.label, path: r.item.path, score: r.score })); }, input: () => input, get index() { return { fixed: fixedIx, live: liveIx }; } }; // (round 37) index: for the check's timing (word memo emptied before a retype)
 })();
