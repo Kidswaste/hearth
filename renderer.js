@@ -305,8 +305,7 @@ function showMenu(x, y, items, parent = null, dir = 0) {
   const { innerWidth: w, innerHeight: h } = window;
   menu.style.left = `${Math.max(4, Math.min(x, w - menu.offsetWidth - 8))}px`;
   menu.style.top = `${Math.max(4, Math.min(y, h - menu.offsetHeight - 8))}px`;
-  if (window.A11y?.kbd() || parent || (dir < 0 && menu.contains(before))) menuKb(filter ? -1 : 0); // opened from the keyboard: on its first row
-  if (filter && window.A11y?.kbd()) filter.focus({ preventScroll: true });
+  if (window.A11y?.kbd()) { menuKb(filter ? -1 : 0); if (filter) filter.focus({ preventScroll: true }); } // opened from the keyboard (a submenu too): on its first row
 }
 function hideMenu() {
   const menu = $('menu');
