@@ -308,13 +308,13 @@ async function escCase(name, opener, isOpen, { how = 'Enter' } = {}) {
   if (!open) { note('escReturn', name, 'did not open'); return; }
   await wait(250);
   const inside = open.contains?.(document.activeElement);
-  if (!inside && !/menu|Find anything/.test(name)) note('escReturn', name, `focus did not move into it (on ${desc(document.activeElement || document.body)}; open: ${A11y._open.map((x) => x.root.className).join(', ')}; same: ${open === isOpen()})`);
+  if (!inside && !/menu|Find anything/.test(name)) note('escReturn', name, `focus did not move into it (on ${desc(document.activeElement || document.body)}; open: ${(window.A11y?._open || []).map((x) => x.root.className).join(', ')}; same: ${open === isOpen()})`);
   const at = desc(document.activeElement || document.body);
   const seen = []; const onWin = (e) => seen.push(`win:${e.defaultPrevented}`); const onRoot = () => seen.push('root'); const onCap = (e) => seen.push(`cap:${desc(e.target)}`);
   addEventListener('keydown', onWin); addEventListener('keydown', onCap, true); open.addEventListener?.('keydown', onRoot, true);
   await key('Escape');
   removeEventListener('keydown', onWin); removeEventListener('keydown', onCap, true); open.removeEventListener?.('keydown', onRoot, true); await settle(); await wait(150);
-  if (await until(() => !isOpen(), 1500) === null) note('escReturn', name, `Esc did not close it (focus on ${at}; ${typeof Options !== 'undefined' ? `sheet same: ${Options.sheet?.root === isOpen()}, page: ${Options.sheet?.page}` : ''}; open: ${A11y._open.map((x) => x.root.className).join(', ')}; keys: ${seen.join(' ')})`);
+  if (await until(() => !isOpen(), 1500) === null) note('escReturn', name, `Esc did not close it (focus on ${at}; ${typeof Options !== 'undefined' ? `sheet same: ${Options.sheet?.root === isOpen()}, page: ${Options.sheet?.page}` : ''}; open: ${(window.A11y?._open || []).map((x) => x.root.className).join(', ')}; keys: ${seen.join(' ')})`);
   else if (document.activeElement !== o) note('escReturn', name, `focus went to ${desc(document.activeElement || document.body)}, not back to ${desc(o)}`);
 }
 if (part('esc')) {
