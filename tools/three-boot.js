@@ -113,7 +113,7 @@ const LabBoot = (() => {
         removeEventListener('message', onMsg);
         if (w === mine) w = null;
         if (query !== mine.query) { st.skipped = 'other query'; return null; }
-        return { n: mine.n, ready: mine.ready, ran: mine.ran && mine.drawn ? 'drawn' : mine.ran, times: mine.times };
+        return { n: mine.n, ready: mine.ready, ran: mine.ran && mine.drawn ? 'drawn' : mine.ran, sketch: mine.sketch, times: mine.times };
       },
     };
   }

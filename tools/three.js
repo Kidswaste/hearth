@@ -149,7 +149,7 @@ const ThreeLab = (() => {
         nonce = got.n; loadedWith = queryNow(); ready = null; retries = 0;
         live.reload(name);
         clearTimeout(watchdog);
-        if (got.ready) { deliver({ target: 'three-sandbox', type: 'park', on: false }); warmRun = got.ran === 'drawn'; handle(got.ready); } else {
+        if (got.ready) { deliver({ target: 'three-sandbox', type: 'park', on: false }); warmRun = got.ran === 'drawn' ? got.sketch || true : false; handle(got.ready); } else {
           const mine = nonce;
           watchdog = setTimeout(() => { if (!ready && nonce === mine && target === 'frame' && frame.isConnected && retries < 2) { retries += 1; load(true); } }, 10000);
         }
@@ -208,8 +208,18 @@ const ThreeLab = (() => {
     if (!lazy) load();
     return {
       frame, send, reload: (fresh) => load(Boolean(fresh)), useStage,
-      // (round 37, labboot) once: the page just taken over already drew this scene's warm run (run() swaps over it)
+      // (round 37, labboot) once: the page just taken over drew a warm run (of this sketch id): run() swaps over it
       takeWarmRun: () => { const r = warmRun; warmRun = false; return r; },
+      // (round 37, labboot) the page was loaded for another ?dpr= only (fit ⇄ an exact frame size): it switches in place
+      // instead of a new page (run() then runs the scene again in it); false when something else differs
+      retune() {
+        const want = queryNow(); const noDpr = (q) => String(q).replace('&dpr=1', '');
+        if (!ready?.dprLive || target !== 'frame' || !loadedWith || loadedWith === want || noDpr(loadedWith) !== noDpr(want)) return false;
+        if (tweaks.size) flushTweaks();
+        deliver({ target: 'three-sandbox', type: 'dpr', value: /&dpr=1/.test(want) ? 1 : null });
+        loadedWith = want; live.retune(name);
+        return true;
+      },
       // (round 29, bugbash) the picture on screen now as a small JPEG the page makes at once (the cover's own shot: no
       // waiting for a frame, no full-size PNG), for chat switching's cross-fade (chat-scenes.js); null if not up in time
       cover: (ms = 700) => new Promise((resolve) => {
@@ -242,6 +252,7 @@ const ThreeLab = (() => {
     const note = (what) => { c.log.push({ at: Date.now(), what, why: why || 'ui' }); if (c.log.length > 200) c.log.splice(0, c.log.length - 200); };
     return {
       reload(name) { c.reloads[name] = (c.reloads[name] || 0) + 1; note(`reload ${name}`); },
+      retune(name) { c.retunes = (c.retunes || 0) + 1; note(`retune ${name}`); }, // (round 37, labboot) fit ⇄ exact size in place
       sent(name, type) { if (!COUNTED.test(type)) return; const k = `${name} ${type}`; c.sent[k] = (c.sent[k] || 0) + 1; if (type !== 'layer-props') note(k); },
       set why(v) { why = v; }, get why() { return why; },
       counts: () => JSON.parse(JSON.stringify(c)),
@@ -3088,6 +3099,10 @@ const ThreeLab = (() => {
     // again: the page restarted by itself and is up but empty: everything runs as on a new page, without loading another
     function run({ hot = false, layer = null, sync = false, reload = false, again = false } = {}) {
       if (!current) return false;
+      // (round 37, labboot) only the pixel ratio changed (a fit scene ⇄ one with its own frame size): the page switches
+      // in place and every layer runs again in it, over the old picture, instead of a new page
+      const seqKeeps = typeof ThreeSeq !== 'undefined' && ThreeSeq.keep(current.id);
+      if (!again && !reload && !restartNext && !seqKeeps && !player.recording && box.ready && ranOnce && box.stale && box.retune()) { hot = false; sync = false; }
       const up = !again && box.ready && ranOnce && !box.stale && !restartNext && !reload;
       // the Sequence view owns the preview: the sketch's changes reach the clips that use it; a page that has to be
       // replaced (a new frame size, a restart) is, and the sequence goes back on it ('ready')
@@ -3138,7 +3153,8 @@ const ThreeLab = (() => {
       if (fresh) { stats.hidden = true; if (!again && (!box.loading || box.stale || restartNext || reload)) box.reload(restartNext); restartNext = false; }
       // (round 37, labboot) a warmed page that already drew a run of this scene: the run swaps in over that picture,
       // on the contexts and compiled shaders it left (tools/three-boot.js)
-      const overWarm = fresh && box.takeWarmRun();
+      const warmOf = fresh ? box.takeWarmRun() : false;
+      const overWarm = Boolean(warmOf);
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
       if (fresh) { player.attach(); sendRefs(); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
       if (!fresh && !partial && !player.path) box.send({ type: 'media-unload' }); // a sketch without a song: the last one stops
@@ -3153,7 +3169,8 @@ const ThreeLab = (() => {
         for (const L of layersOf()) if (!rerun.includes(L)) box.send({ type: 'layer-props', id: L.id, props: layerProps(L) });
         for (const L of rerun) { box.send({ type: 'hot-layer', layer: { ...spec(L), fx: fx(L) } }); building(L.id, true); }
       } else {
-        box.send(fresh && !overWarm ? { type: 'run-layers', layers: layersOf().map(spec) } : { type: 'swap-layers', layers: layersOf().map(spec), fx: 'xfade' });
+        // (a warm run of another scene than this one, e.g. the chat on screen owns another: no cross-fade from it, as on a new page)
+        box.send(fresh && !overWarm ? { type: 'run-layers', layers: layersOf().map(spec) } : { type: 'swap-layers', layers: layersOf().map(spec), fx: !overWarm || warmOf === current.id ? 'xfade' : '' });
         for (const id of [...builds.keys()]) if (!layerById(id)) building(id, false);
         for (const L of layersOf()) building(L.id, true);
       }

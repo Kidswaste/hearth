@@ -17,8 +17,20 @@
 <script>
   // Import map built from ?v= so the Lab can switch three.js versions.
   const params = new URLSearchParams(location.search);
+  // (round 37, labboot) ?dpr= can change in place: switching between a fit preview and an exact size (a scene with its own
+  // frame size, Shift+1…5) used to load a whole new page (three.js, contexts, shaders, the song again); the Lab now
+  // sends { type: 'dpr', value: 1 | null } and runs the scene again in this page
+  {
+    const real = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio') || Object.getOwnPropertyDescriptor(Window.prototype, 'devicePixelRatio') || null;
+    const realGet = real?.get ? () => real.get.call(window) : null;
+    globalThis.__labSetDpr = realGet ? (v) => {
+      const n = Number(v) > 0 ? Number(v) : null;
+      Object.defineProperty(window, 'devicePixelRatio', { get: n ? () => n : realGet, configurable: true });
+      return true;
+    } : null;
+  }
   // Exact output sizes (1080×1920…) render at 1 device pixel per pixel, so the canvas matches the export.
-  if (params.get('dpr')) { const dpr = Number(params.get('dpr')); Object.defineProperty(window, 'devicePixelRatio', { get: () => dpr }); }
+  if (params.get('dpr')) { const dpr = Number(params.get('dpr')); Object.defineProperty(window, 'devicePixelRatio', { get: () => dpr, configurable: true }); }
   // (round 22 "labexport") an export page's randomness is seeded (?seed=): the same render gives the same pixels every time
   if (params.get('seed')) { let a = Number(params.get('seed')) >>> 0; Math.random = () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   const V = params.get('v') || '0.186.1';
@@ -772,7 +784,8 @@ function dprNext(base, from, to) {
       const next = dprNext(base, from, dprNow);
       if (next === base) continue;
       r.__basePR = next; r.__q = k;
-      try { r.setPixelRatio(next * k); if (r.__lastScene && r.__lastCamera) r.render(r.__lastScene, r.__lastCamera); } catch { /* gone */ }
+      r.__inQ = true; // (round 37: the ratio as it is, not through the share applied to a sketch's own setPixelRatio)
+      try { r.setPixelRatio(next * k); r.__inQ = false; if (r.__lastScene && r.__lastCamera) r.render(r.__lastScene, r.__lastCamera); } catch { /* gone */ } finally { r.__inQ = false; }
     }
     dispatchEvent(new Event('resize'));
     return true;
@@ -784,6 +797,7 @@ function dprNext(base, from, to) {
   };
   dprWatch();
   globalThis.__labDprCheck = dprCheck; // (dev/checks/nativefeel.js)
+  globalThis.__labDprSync = () => { dprNow = devicePixelRatio; dprWatch(); }; // (round 37) the Lab changed ?dpr= in place: no rescale of what's about to go
 }
 // Adaptive quality (round 31 "labadapt"; round 5's adaptive resolution grown into a ladder). When the preview can't keep
 // up (frames dropping for a sustained moment: the GPU is busy with a big frame size, heavy filters, shadows, particles),
@@ -10946,6 +10960,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'view') lvCommand(msg); // (round 34 "labgestures") Z frames, Shift+Z resets, keep this view
   if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
+  if (msg.type === 'dpr') { if (globalThis.__labSetDpr?.(msg.value)) globalThis.__labDprSync?.(); return; } // (round 37, labboot) fit ⇄ exact size, in this page
   if (msg.type === 'lib') { libGot(msg); return; } // (round 25, diet) motion / lab3d code from the hub
   if (msg.type === 'grade-lut') gradeSetLut(msg.name, msg.N, msg.data); // (round 24) an imported .cube LUT (tools/three-grade.js)
   if (msg.type === 'media') mediaCommand(msg);
@@ -10996,7 +11011,7 @@ function smallShot(max, tag) {
 if (mode === 'sketch') { document.body.classList.add('sketch'); notePage(); }
 if (mode === 'shader') setupShader();
 if (mode === 'viewer') await setupViewer();
-post({ type: 'ready', mode, revision: THREE.REVISION, n: new URLSearchParams(location.search).get('n') });
+post({ type: 'ready', mode, revision: THREE.REVISION, n: new URLSearchParams(location.search).get('n'), dprLive: Boolean(globalThis.__labSetDpr) }); // (round 37: ?dpr= changes in place)
 </script>
 </body>
 </html>

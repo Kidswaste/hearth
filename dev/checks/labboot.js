@@ -141,16 +141,21 @@ async function measure(kind, go) {
   return { kind, ms: drawn, pageLongest: Math.max(0, ...(p.longs || [])), pageLongMs: (p.longs || []).reduce((a, b) => a + b, 0), darkest: p.min, frames: p.frames, black: p.min != null && p.min < DARK, hubLongest: Math.max(0, ...hl) };
 }
 const open = (id) => () => ThreeLab.scenes.open(id);
+// the last scene has its own frame size (9:16, 1 pixel per pixel: another page before round 37): switching to it and
+// back changes the preview's pixel ratio
+ThreeLab.scenes.setFrame?.('lbD', '9:16');
+const reloads0 = ThreeLab.live?.counts().reloads.preview || 0;
 const sw = [];
 for (const id of ['lbB', 'lbC', 'lbD']) sw.push(await measure(`first ${id}`, open(id))); // new programs on each
 for (const id of ['lbA', 'lbB', 'lbC', 'lbD']) sw.push(await measure(`again ${id}`, open(id))); // programs seen before
+out.reloadsInSwitches = (ThreeLab.live?.counts().reloads.preview || 0) - reloads0; // whole new pages (fit ⇄ 9:16 twice)
 const tpl = ThreeData.TEMPLATES.find((x) => /PBR/.test(x.name)) || ThreeData.TEMPLATES[1];
 sw.push(await measure('template', () => d.newSketch('labboot template', tpl.code, 0.1)));
 const med = (a) => { const s = a.filter((v) => v != null).sort((p, q) => p - q); return s.length ? s[Math.floor(s.length / 2)] : null; };
 out.switches = sw;
 out.summary = {
   open: out.open.shown, openDrawn: out.open.drawn, firstSwitchMed: med(sw.filter((s) => /^first/.test(s.kind)).map((s) => s.ms)), againSwitchMed: med(sw.filter((s) => /^again/.test(s.kind)).map((s) => s.ms)),
-  templateMs: sw.at(-1).ms, pageLongest: Math.max(...sw.map((s) => s.pageLongest)), hubLongest: Math.max(out.open.hubLongest, ...sw.map((s) => s.hubLongest)), blackFrames: sw.filter((s) => s.black).length, darkest: Math.min(...sw.map((s) => s.darkest ?? 1)),
+  templateMs: sw.at(-1).ms, frameSwitchMed: med(sw.filter((s) => /lbD|lbA/.test(s.kind) && !/first lbB|first lbC/.test(s.kind)).map((s) => s.ms)), reloads: out.reloadsInSwitches, pageLongest: Math.max(...sw.map((s) => s.pageLongest)), hubLongest: Math.max(out.open.hubLongest, ...sw.map((s) => s.hubLongest)), blackFrames: sw.filter((s) => s.black).length, darkest: Math.min(...sw.map((s) => s.darkest ?? 1)),
 };
 // the verdict: the scene showed, every switch drew, none went black; with the warm page: it was taken and showed at once
 const fails = [];
@@ -158,6 +163,7 @@ if (out.open.drawn == null) fails.push('the Lab never drew its scene');
 if (sw.some((s) => s.ms == null)) fails.push('a switch never drew');
 if (out.summary.blackFrames) fails.push(`${out.summary.blackFrames} switch(es) went black (darkest ${out.summary.darkest})`);
 if (sw.some((s) => !s.frames)) fails.push('the frame probe saw no frames');
+if (out.warm && window.LabBoot && out.reloadsInSwitches > 0) fails.push(`${out.reloadsInSwitches} whole page reload(s) switching fit ⇄ 9:16`);
 if (out.warm && out.boot?.warmed && !out.open.taken) fails.push('the warm page was not taken');
 if (out.warm && out.boot?.drawn && out.open.taken && out.open.shown > 1500) fails.push(`warm open took ${out.open.shown} ms`);
 out.fails = fails;
