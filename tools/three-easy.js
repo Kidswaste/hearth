@@ -97,6 +97,7 @@ const LabEasy = (() => {
   ];
   const makeItems = () => [
     formatsItem(),
+    ...(typeof LabBatchHook !== 'undefined' ? [LabBatchHook.item()] : []), // (round 42) ⧉ Make a batch: one template → many videos (tools/three-batch-hook.js)
     askItem('👥 4 variations of this scene…', 'A crew explores them side by side (cost shown first); you pick one', { title: 'What should the 4 variations explore?', placeholder: 'e.g. hit harder on the drop' }, (v) => `/crew 4 ${v || 'clearly different takes on this scene'}`, 'crew'),
     item('Render this chat\'s sequence again', 'Here, on this computer', '/render-again'),
     ...(typeof AutoEdit !== 'undefined' ? [AutoEdit.item()] : []), // (round 27, autoedit)
@@ -131,7 +132,7 @@ const LabEasy = (() => {
   // ThreeTweaks.menu rows ([label, hint, fn | [rows]]) from showMenu items
   const toRow = (it) => (it.items ? [it.label, it.hint || '', (typeof it.items === 'function' ? it.items() : it.items).map(toRow)] : [it.label, it.hint || '', it.action]);
   function toolbarItems() {
-    return [...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.toolbarRow()] : []), ['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.toolbarRow()] : []), ...(typeof LabRecipesHook !== 'undefined' ? [LabRecipesHook.toolbarRow()] : []), ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
+    return [...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.toolbarRow()] : []), ['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ...(typeof LabBatchHook !== 'undefined' ? [LabBatchHook.toolbarRow()] : []), ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.toolbarRow()] : []), ...(typeof LabRecipesHook !== 'undefined' ? [LabRecipesHook.toolbarRow()] : []), ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
   }
 
   // ---------- a layer's right-click (tools/three-layers.js) ----------

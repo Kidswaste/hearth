@@ -234,10 +234,11 @@ const LabExport = (() => {
       }
       T0 = r4(Math.max(0, T0));
       if (o.source === 'seq') { e = CutData.copy(seqE); e = CutData.setSeq(e, { w: o.w, h: o.h, fps: F, format: D_FORMATS()[seqE.seq?.format] && aspectKey(o.w, o.h) === seqE.seq.format ? seqE.seq.format : aspectKey(o.w, o.h) }); } else ({ e, sk } = await sceneEdit({ w: o.w, h: o.h, F, end: T0 + N / F }));
-      const { plan, assets } = compileLive(e, sk);
+      const { plan, assets } = o.compiled || compileLive(e, sk); // (round 42, labbatch) a batch row compiles its own scene (not the one on screen)
       plan.w = o.w; plan.h = o.h; plan.fps = F;
       ctl.total = N;
       page = await openPage({ w: o.w, h: o.h, ss: o.ss, alpha: o.alpha, seed: o.seed });
+      if (o.refs) page.send(o.refs); // (round 42, labbatch) that scene's references and palette, before its layers run
       progress(0.01, 'loading the scene');
       await loadPlan(page, plan, assets, plan.song);
       // (round 31, perfectloop) the scene's loop clock on the export page (its loopT / loopNoise… go round with the

@@ -218,6 +218,7 @@ const LabTemplates = (() => {
       el('div', { class: 'lt-head' }, el('h2', { text: '📐 My templates' }), search, el('button', { type: 'button', class: 'ghost small lt-x', title: 'Close (Esc)', text: '✕', on: { click: () => close() } })),
       body,
       el('div', { class: 'lt-foot' }, el('span', { class: 'muted small', text: 'Click: fill it in, then a new scene · right-click: more' }), el('span', { class: 'spacer' }),
+        typeof LabBatchHook !== 'undefined' ? el('button', { type: 'button', class: 'ghost small lt-batch', text: '⧉ Make a batch…', title: 'Many videos from one template: a list of titles, a CSV, every song in a folder (round 42)', on: { click: () => { const id = pk?.body.querySelector('.lt-card:focus')?.dataset.id || null; close(); LabBatchHook.open({ template: id }); } } }) : null,
         el('button', { type: 'button', class: 'ghost small lt-save-this', text: '＋ Save this scene as a template…', on: { click: () => { close(); saveDialog().catch(err); } } }), count));
     const shade = el('div', { class: 'lt-shade', on: { pointerdown: (e) => { e.preventDefault(); close(); } } });
     dlg.addEventListener('keydown', (e) => {
@@ -266,6 +267,7 @@ const LabTemplates = (() => {
       t.name,
       { label: '✦ Fill it in…', hint: 'then a new scene', action: () => { close(); form(t).catch(err); } },
       { label: 'A new scene as it is', hint: 'its own values, no form', action: () => { close(); create(t, {}).catch(err); } },
+      ...(typeof LabBatchHook !== 'undefined' ? [{ label: '⧉ Make a batch…', hint: 'many videos from a list: titles, songs, pictures', action: () => { close(); LabBatchHook.open({ template: t.id }); } }] : []), // (round 42, labbatch)
       { label: 'Rename…', action: () => rename(t).catch(err) },
       { label: '⇪ Share as a pack…', hint: 'one .hearthpack file with its media', action: () => share(t).catch(err) },
       { label: 'Show in folder', more: true, action: () => window.hub.fs.reveal(join(t._dir, 'template.json')) },
@@ -611,7 +613,7 @@ const LabTemplates = (() => {
   function init() { register(); actions(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  return { open, close, saveDialog, saveCurrent, form, closeForm, create, undoCreate, list, byName, remove, rename, share, fromPack, root, splitNameArgs, last,
+  return { open, close, saveDialog, saveCurrent, form, closeForm, create, undoCreate, list, byName, remove, rename, share, fromPack, root, splitNameArgs, last, sceneNow, // (sceneNow: round 42, labbatch)
     state: () => ({ picker: Boolean(pk), form: fm ? { template: fm.t.name, values: { ...fm.vals } } : null, save: Boolean(saveDlg), count: cache?.length ?? null }),
     get formApi() { return fm; } };
 })();
