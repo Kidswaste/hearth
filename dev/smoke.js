@@ -146,6 +146,12 @@ async function cdpConnect() {
   child.stderr.on('data', (d) => log.push(String(d)));
   const problems = [];
   let code = 0;
+  // (round 35, bugbash2) a hang outside a check's own time limit (a CDP call the page never answers: the startup, a
+  // reload, the last screenshot) kept the harness alive until run-checks' 30-minute limit (declutter-count: 26 min, no
+  // log): past every part's time + 5 minutes it says so and quits (Xvfb and Electron go with it, see killAll)
+  const parts = (scriptFile ? fs.readFileSync(scriptFile, 'utf8').split(/\n\/\/@@ reload\b/).length : 0) + evals.length;
+  const deadline = Number(opt('--check-timeout', 90000)) * Math.max(1, parts) + 300000;
+  setTimeout(() => { console.log(`\n1 problem(s):\nharness: still running after ${Math.round(deadline / 1000)} s (a call the page never answered)`); process.exit(1); }, deadline).unref();
   try {
     const ws = new WebSocket(await cdpConnect());
     await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
