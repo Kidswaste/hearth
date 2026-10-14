@@ -463,8 +463,8 @@ const Activity = (() => {
       window.AiUndo?.part?.() || null, // (round 28) aiundo.js: Changes by AIs, with undo
       el('p', { class: 'ac-empty', hidden: true, text: 'All quiet: nothing runs, nothing waits for you.' }));
     pop.all = false;
+    place(); // (round 36, motionpolish) placed before it's in the page: reading the rail then needs no fresh layout
     document.body.append(pop);
-    place();
     paint();
     setTimeout(() => { document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escKey, true); }, 0);
     rearm();

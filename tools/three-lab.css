@@ -65,7 +65,9 @@ html[data-skin~="forge"] .lab-tabs .lab-tools-btn::after, html[data-skin~="forge
 /* scrubbing a number by its name */
 .tw-scrub { cursor: ew-resize; user-select: none; }
 .tw-scrub:hover { color: var(--ui-gold); }
-body.tw-scrubbing, body.tw-scrubbing * { cursor: ew-resize !important; }
+/* (round 36, motionpolish) a sheet over the window holds the cursor while a value is scrubbed: `body.tw-scrubbing *`
+   restyled every element of the page when a scrub started and again when it ended */
+:root:has(> body.tw-scrubbing)::after { content: ''; position: fixed; inset: 0; z-index: 2147483000; cursor: ew-resize; }
 
 /* follow the music / move by itself */
 .tw-bind-k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 6px 0 3px; }

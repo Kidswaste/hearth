@@ -83,7 +83,7 @@ html[data-skin~="forge"] .agent-btn {
   background:
     linear-gradient(110deg, transparent 40%, #ffffff2a 50%, transparent 60%) 160% 0 / 250% 100% no-repeat,
     linear-gradient(160deg, color-mix(in srgb, var(--agent) 22%, #0000), color-mix(in srgb, var(--agent) 8%, #0000));
-  transition: transform .18s ease; /* (round 17) only the nudge eases; brightness and the sheen (juice.js glint) don't repaint per frame */
+  transition: transform var(--dur-fast, .12s) var(--ease-out, ease); /* (round 17) only the nudge eases; brightness and the sheen (juice.js glint) don't repaint per frame */
 }
 html[data-skin~="forge"] .agent-btn:hover { transform: translateX(2px); filter: brightness(1.15); }
 html[data-skin~="forge"] .agent-btn.active {
@@ -104,9 +104,9 @@ html[data-skin~="forge"] #add-btn { border: 1px dashed var(--line-hi); }
 html[data-skin~="forge"] #panel { background: linear-gradient(180deg, #101316, #0c0f11); border-right: 1px solid var(--line); }
 html[data-skin~="forge"] .group-toggle { border-radius: 0; font-weight: 600; letter-spacing: .04em; }
 html[data-skin~="forge"] .group.current .group-name { color: var(--r-rare); }
-html[data-skin~="forge"] .item { border-radius: 0; position: relative; transition: background .15s ease; }
+html[data-skin~="forge"] .item { border-radius: 0; position: relative; transition: background var(--dur-fast, .12s) var(--ease-out, ease); }
 /* the hover nudge moves the text with a transform (animating padding laid out the whole chat list every frame) */
-html[data-skin~="forge"] .item > :is(.pin-mark, .item-title) { transition: translate .15s ease; }
+html[data-skin~="forge"] .item > :is(.pin-mark, .item-title) { transition: translate var(--dur-fast, .12s) var(--ease-out, ease); }
 html[data-skin~="forge"] .item:hover > :is(.pin-mark, .item-title) { translate: 4px 0; }
 html[data-skin~="forge"] .item.active { background: linear-gradient(90deg, #ffd75e1f, transparent); color: #fff; }
 html[data-skin~="forge"] :where(span).busy { background: var(--r-mythic); border-radius: 0; transform: rotate(45deg); }
@@ -116,7 +116,7 @@ html[data-skin~="forge"] .panel-resize:hover, html[data-skin~="forge"] body.resi
 html[data-skin~="forge"] :is(input:not([type=checkbox]):not([type=color]):not([type=range]), select, textarea) {
   border-radius: 0; background: #080a0c; border: 1px solid var(--line-hi);
   box-shadow: inset 0 1px 0 #000, inset 0 0 0 1px #ffffff04;
-  transition: border-color .15s ease;
+  transition: border-color var(--dur-fast, .12s) var(--ease-out, ease);
 }
 html[data-skin~="forge"] :is(input, select, textarea):focus { border-color: var(--r-rare) !important; box-shadow: 0 0 0 3px #ffd75e1a, inset 0 1px 0 #000; }
 html[data-skin~="forge"] input[type=checkbox] { accent-color: var(--r-rare); }
@@ -127,7 +127,7 @@ html[data-skin~="forge"] :is(.primary, .dialog-actions .primary, #broadcast butt
   position: relative; overflow: hidden; border-radius: 0; clip-path: var(--cut-sm);
   background: linear-gradient(180deg, #d8c8ae, var(--parchment)); color: #17130e; border: 0;
   text-transform: uppercase; letter-spacing: .14em; font-weight: 700; font-size: 12px;
-  transition: transform .15s ease;
+  transition: transform var(--dur-fast, .12s) var(--ease-out, ease);
 }
 html[data-skin~="forge"] :is(.primary, #broadcast button)::after {
   content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%; pointer-events: none;
@@ -138,7 +138,7 @@ html[data-skin~="forge"] :is(.primary, #broadcast button):hover::after { animati
 html[data-skin~="forge"] :is(.primary.stop, #broadcast button.stop) { /* :is() so it outranks the #broadcast rule above */ background: linear-gradient(180deg, #ff8a7a, var(--r-ultima)); color: #1a0606; --pulse: var(--r-ultima); } /* (round 17) its outer pulse was cut off by the corner clip: invisible, repainted every frame */
 html[data-skin~="forge"] :is(.ghost, .dialog-actions button:not(.primary), .web-btn, .find-bar button, .code-act, .notes-item, .kanban-add) {
   border-radius: 0; border: 1px solid var(--line-hi); background: #ffffff03;
-  transition: border-color .15s ease, color .15s ease, background .15s ease;
+  transition: border-color var(--dur-fast, .12s) var(--ease-out, ease), color var(--dur-fast, .12s) var(--ease-out, ease), background var(--dur-fast, .12s) var(--ease-out, ease);
 }
 html[data-skin~="forge"] .web-btn { border-color: transparent; }
 html[data-skin~="forge"] :is(.ghost, .dialog-actions button:not(.primary), .web-btn, .code-act):hover { border-color: var(--cyan); color: var(--cyan); background: #48ddff0d; }
@@ -147,8 +147,8 @@ html[data-skin~="forge"] .danger, html[data-skin~="forge"] .ghost.danger { color
 
 /* ---------- surfaces & views: slide in on activation ---------- */
 html[data-skin~="forge"] .surface { background: transparent; }
-html[data-skin~="forge"] .surface.active:not(.capturing) { animation: fh-in .24s cubic-bezier(.2, .9, .1, 1); }
-html[data-skin~="forge"] .tabpane:not([hidden]) { animation: fh-in .2s cubic-bezier(.2, .9, .1, 1); }
+html[data-skin~="forge"] .surface.active:not(.capturing) { animation: fh-in var(--dur-slow, .24s) var(--ease-out, ease-out); }
+html[data-skin~="forge"] .tabpane:not([hidden]) { animation: fh-in var(--dur-med, .18s) var(--ease-out, ease-out); }
 html[data-skin~="forge"] .tool-head, html[data-skin~="forge"] .native-head {
   background: linear-gradient(180deg, #13171a, #0f1214); border-bottom: 1px solid var(--line-hi);
   box-shadow: 0 1px 0 #000;
@@ -161,7 +161,7 @@ html[data-skin~="forge"] .tabbar button {
 }
 html[data-skin~="forge"] .tabbar button::after {
   content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px;
-  background: var(--agent); transform: scaleX(0); transition: transform .22s cubic-bezier(.2, .9, .1, 1); box-shadow: 0 0 10px var(--agent);
+  background: var(--agent); transform: scaleX(0); transition: transform var(--dur-med, .18s) var(--ease-out, ease); box-shadow: 0 0 10px var(--agent);
 }
 html[data-skin~="forge"] .tabbar button.on { background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--agent) 10%, transparent)); color: #fff; }
 html[data-skin~="forge"] .tabbar button.on::after, html[data-skin~="forge"] .tabbar button:hover::after { transform: scaleX(1); }
@@ -177,14 +177,14 @@ html[data-skin~="forge"] :is(.dash-card, .calc-card, .preset-card, .tex-card, .m
     linear-gradient(var(--hud, var(--line-hi)), var(--hud, var(--line-hi))) bottom right / 10px 1px no-repeat,
     linear-gradient(var(--hud, var(--line-hi)), var(--hud, var(--line-hi))) bottom right / 1px 10px no-repeat,
     linear-gradient(180deg, #ffffff06, #ffffff02);
-  transition: --hud .2s ease, transform .18s ease;
+  transition: --hud var(--dur-fast, .12s) var(--ease-out, ease), transform var(--dur-fast, .12s) var(--ease-out, ease);
 }
 html[data-skin~="forge"] :is(.dash-card, .calc-card, .preset-card, .gallery-item, .kit-format):hover { --hud: var(--r-rare); }
 html[data-skin~="forge"] .dash-card h3 { color: var(--r-rare); }
 html[data-skin~="forge"] .dash-counts b, html[data-skin~="forge"] .devlog-clock { font-family: var(--mono); color: var(--r-rare); text-shadow: 0 0 12px #ffd75e40; }
 html[data-skin~="forge"] .bar { border-radius: 0; background: #1d2023; }
 html[data-skin~="forge"] .bar span { background: linear-gradient(90deg, var(--r-magic), var(--r-rare)); box-shadow: 0 0 8px #ffd75e60; }
-html[data-skin~="forge"] .kanban-card { border-radius: 0; clip-path: var(--cut-sm); background: #12161a; transition: transform .15s ease; }
+html[data-skin~="forge"] .kanban-card { border-radius: 0; clip-path: var(--cut-sm); background: #12161a; transition: transform var(--dur-fast, .12s) var(--ease-out, ease); }
 html[data-skin~="forge"] .kanban-card:hover { transform: translateX(2px); }
 html[data-skin~="forge"] .kanban-card.p1 { --prio: var(--r-ultima); }
 html[data-skin~="forge"] .tag { border-radius: 0; font-family: var(--mono); letter-spacing: .08em; text-transform: uppercase; font-size: 10px; }
@@ -202,7 +202,10 @@ html[data-skin~="forge"] .msg.user .body {
   border-radius: 0; clip-path: var(--cut);
   background: linear-gradient(160deg, color-mix(in srgb, var(--agent) 20%, #14181b), #14181b);
 }
-html[data-skin~="forge"] .messages > .msg:last-child:not(.streaming) { animation: fh-in .22s ease both; }
+/* (round 36, motionpolish) a message comes in once: yours when you send it, a reply when it starts. It was every last
+   message that wasn't streaming, so a reply played its entrance again (from transparent) the moment it finished, and
+   the last reply slid in on its own inside the chat's own slide on every chat switch */
+html[data-skin~="forge"] .messages > .msg:last-child:is(.user, .streaming) { animation: fh-in var(--dur-med, .18s) var(--ease-out, ease-out) both; }
 /* (nobars) a reply being written: the typing dots and the look's shimmer show it; no rainbow side edge, and no
    14px indent that made the reply jump left when it finished */
 html[data-skin~="forge"] .msg.assistant.streaming { position: relative; }
@@ -232,25 +235,25 @@ html[data-skin~="forge"] dialog {
   border-radius: 0; clip-path: var(--cut); background: linear-gradient(180deg, #14181b, #0e1113);
   border: 1px solid var(--line-hi); box-shadow: 0 24px 80px #000c, inset 0 1px 0 #ffffff0a;
 }
-html[data-skin~="forge"] dialog[open] { animation: fh-scan .28s cubic-bezier(.2, .9, .1, 1); }
-html[data-skin~="forge"] dialog::backdrop { background: #000a; backdrop-filter: blur(3px); animation: fh-fade .2s ease; }
+html[data-skin~="forge"] dialog[open] { animation: fh-scan var(--dur-slow, .24s) var(--ease-out, ease-out); }
+html[data-skin~="forge"] dialog::backdrop { background: #000a; backdrop-filter: blur(3px); animation: fh-fade var(--dur-slow, .24s) var(--ease-out, ease-out); }
 html[data-skin~="forge"] dialog h2 { text-transform: uppercase; letter-spacing: .2em; font-size: 15px; color: var(--r-rare); }
 html[data-skin~="forge"] dialog h2::before { content: "◆ "; }
-html[data-skin~="forge"] .palette { background: #000000a0; backdrop-filter: blur(4px); animation: fh-fade .15s ease; }
-html[data-skin~="forge"] .palette-card { border-radius: 0; clip-path: var(--cut); background: #101316; border: 1px solid var(--line-hi); animation: fh-scan .22s cubic-bezier(.2, .9, .1, 1); position: relative; }
+html[data-skin~="forge"] .palette { background: #000000a0; backdrop-filter: blur(4px); animation: fh-fade var(--dur-med, .18s) var(--ease-out, ease-out); }
+html[data-skin~="forge"] .palette-card { border-radius: 0; clip-path: var(--cut); background: #101316; border: 1px solid var(--line-hi); animation: fh-scan var(--dur-med, .18s) var(--ease-out, ease-out); position: relative; }
 html[data-skin~="forge"] .palette-card::before { content: ""; display: block; height: 2px; background: var(--rainbow); }
 html[data-skin~="forge"] .palette-item { border-radius: 0; }
-html[data-skin~="forge"] .palette-item > * { transition: translate .12s ease; }
+html[data-skin~="forge"] .palette-item > * { transition: translate var(--dur-fast, .12s) var(--ease-out, ease); }
 html[data-skin~="forge"] .palette-item.sel { background: linear-gradient(90deg, #ffd75e2a, transparent); }
 html[data-skin~="forge"] .palette-item.sel > :first-child { translate: 4px 0; }
-html[data-skin~="forge"] .toast { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); padding-left: 14px; animation: fh-in .22s cubic-bezier(.2, .9, .1, 1); }
+html[data-skin~="forge"] .toast { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); padding-left: 14px; animation: fh-in var(--dur-med, .18s) var(--ease-out, ease-out); }
 html[data-skin~="forge"] .toast.error { border-color: color-mix(in srgb, var(--r-ultima) 55%, transparent); background: color-mix(in srgb, var(--r-ultima) 8%, #121619); }
 html[data-skin~="forge"] .toast button { color: var(--r-rare); }
-html[data-skin~="forge"] #menu { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); animation: fh-scan .16s ease; }
+html[data-skin~="forge"] #menu { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); animation: fh-scan var(--dur-med, .18s) var(--ease-out, ease-out); }
 html[data-skin~="forge"] #menu button { border-radius: 0; }
 html[data-skin~="forge"] #menu button:hover { background: linear-gradient(90deg, #48ddff1a, transparent); color: var(--cyan); }
 html[data-skin~="forge"] .find-bar, html[data-skin~="forge"] .notes-panel, html[data-skin~="forge"] .slash-menu { border-radius: 0; clip-path: var(--cut); background: #111518; border: 1px solid var(--line-hi); }
-html[data-skin~="forge"] .notes-panel { animation: fh-in .22s ease; }
+html[data-skin~="forge"] .notes-panel { animation: fh-in var(--dur-slow, .24s) var(--ease-out, ease-out); }
 html[data-skin~="forge"] kbd { border-radius: 0; background: #07090b; border-color: var(--line-hi); color: var(--r-rare); }
 
 /* ---------- code, tables, editors ---------- */

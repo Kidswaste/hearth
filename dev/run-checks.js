@@ -36,7 +36,7 @@ const GROUPS = {
   chat: by(/^chat-|^chatcore|^cmdbar$|^clutter$|^declutter|^simplify[23]$|^grid-resize$/), // (round 27) simplify2: calm Settings, no /commands on screen · (round 33) simplify3: AI setup order + folds, counts
   lab: ['labtemplates', 'scenedoctor', 'labeasy', 'labadapt', 'labvariations', 'multiformat', 'seqsolid', 'autoedit', 'gallery', 'lookmatch', 'instantscene', 'autopolish', 'perfectloop', 'music', 'labaudio', 'stems', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf', 'labpace', 'labgestures'],
   nodes: by(/^nodes-/),
-  smooth: [...by(/^smooth-/), 'hz240', 'smooth26', 'smooth32', 'streamrender', 'unit:streamrender-test'], // (round 17) hz240: the 240 Hz interaction check · (round 26) smooth26: ⋯ / ◎ / the Lab hidden · (round 32) smooth32: streaming, grid drag, the Lab beside a streaming chat
+  smooth: [...by(/^smooth-/), 'hz240', 'smooth26', 'smooth32', 'motionpolish', 'streamrender', 'unit:streamrender-test'], // (round 17) hz240: the 240 Hz interaction check · (round 26) smooth26: ⋯ / ◎ / the Lab hidden · (round 32) smooth32: streaming, grid drag, the Lab beside a streaming chat · (round 36) motionpolish: every opening on the compositor, one tempo, reduced motion
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],
   sequence: by(/^sequence/),
   robust: by(/^robust/),

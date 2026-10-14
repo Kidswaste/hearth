@@ -480,17 +480,16 @@ const Missions = (() => {
     const pop = el('div', { class: 'ms-pop', role: 'dialog', attrs: { 'aria-label': 'Mission for your next message' } },
       el('div', { class: 'ms-head' }, el('b', { text: 'Your next message will…' }), el('span', { class: 'hint', text: 'click: next message only · 📌 from now on' })),
       cards(agentId, { onPick: close }));
-    // measured hidden, placed, then shown: one layout, before it paints
-    pop.style.visibility = 'hidden';
-    document.body.append(pop);
+    // (round 36, motionpolish) placed by its bottom-right corner above ◎, before it's in the page: its own size isn't
+    // needed (measuring it forced a style + layout of the page as it opened), and opening "More" grows it upwards
     const place = () => {
-      const r = anchor.getBoundingClientRect(); const w = pop.offsetWidth; const h = pop.offsetHeight;
-      pop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.right - w))}px`;
-      pop.style.top = `${Math.max(8, r.top - h - 8)}px`;
+      const r = anchor.getBoundingClientRect();
+      pop.style.right = `${Math.max(8, Math.round(innerWidth - r.right))}px`;
+      pop.style.bottom = `${Math.max(8, Math.round(innerHeight - r.top + 8))}px`;
+      pop.style.maxHeight = `${Math.max(160, Math.round(r.top - 16))}px`; pop.style.overflowY = 'auto';
     };
     place();
-    pop.style.visibility = '';
-    pop.querySelector('.ms-more')?.addEventListener('toggle', place);
+    document.body.append(pop);
     const away = (e) => { if (!pop.contains(e.target) && e.target !== anchor) close(); };
     const esc = (e) => { if (e.key === 'Escape') close(); };
     addEventListener('pointerdown', away, true); addEventListener('keydown', esc, true);
