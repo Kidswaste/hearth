@@ -187,8 +187,19 @@ function create(opts = {}) {
       };
     }
     const last = C.readState(DIR, 'last');
-    const swapped = C.readState(DIR, 'swapped');
-    if (swapped) C.writeState(DIR, 'swapped', null); // said once
+    // an update finished (or not) as Hearth restarted: said once, in the same words as any other
+    let swapped = C.readState(DIR, 'swapped');
+    if (swapped) {
+      C.writeState(DIR, 'swapped', null);
+      if (swapped.ok) {
+        const n = [swapped.kept?.length ? `Your own edits to ${swapped.kept.join(', ')} clashed with the update: kept in the stash "${swapped.stash?.name}".` : '',
+          swapped.keptFiles ? `You had added ${swapped.keptFiles.files.join(', ')} by hand: the update's file is in place, yours is kept in the stash "${swapped.keptFiles.name}".` : ''].filter(Boolean).join(' ');
+        swapped = { ...swapped, note: `Finished as Hearth restarted.${n ? ` ${n}` : ''}` };
+      } else {
+        const e = C.explain(swapped.reason, { platform: PLAT, dir: DIR, detail: swapped.detail });
+        swapped = { ...swapped, ...e, message: `The update couldn't finish as Hearth restarted. ${e.message}` };
+      }
+    }
     return {
       notes, plan, swapped,
       ok: true, head: head.out.slice(0, 7), remote: remote.out.slice(0, 7), branch: pre.branch,

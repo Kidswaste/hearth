@@ -146,6 +146,8 @@ function startSwap(app, { dir = __dirname, gitBin = 'git', log = () => {} } = {}
   if (!d || !fs.existsSync(path.join(d, 'pending.json'))) return false; // the usual start: one stat
   let pending;
   try { pending = JSON.parse(fs.readFileSync(path.join(d, 'pending.json'), 'utf8')); } catch { return false; }
+  // a second launch while Hearth still runs (files still held): leave it for the real restart
+  try { if (app?.requestSingleInstanceLock && !app.requestSingleInstanceLock()) return false; } catch { /* tests */ }
   const r = swapSync({ dir, gitBin, pending, log });
   writeState(dir, 'pending', null);
   writeState(dir, 'swapped', { ...r, at: Date.now() });

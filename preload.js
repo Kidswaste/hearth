@@ -153,7 +153,7 @@ contextBridge.exposeInMainWorld('hub', {
   // (round 35, twocomputers) which computer this is, media found again after switching computers (twocomputersmain.js)
   two: { info: call('two:info'), hash: call('two:hash'), relink: call('two:relink'), link: call('two:link'), exists: call('two:exists'), pickFile: call('two:pickFile') },
   firstrun: { facts: call('firstrun:facts'), folders: call('firstrun:folders'), perm: call('firstrun:perm'), run: call('firstrun:run') }, // (round 28) Check this computer (firstrunmain.js)
-  update: { status: call('update:status'), apply: call('update:apply'), restart: call('update:restart'), reload: call('update:reload') },
+  update: { status: call('update:status'), apply: call('update:apply'), restart: call('update:restart'), reload: call('update:reload'), back: call('update:back'), fix: call('update:fix') }, // (round 37) back: the previous version · fix: the one fix for a failed update
   net: { probe: call('net:probe'), onPower: on('net:power') }, // (round 34, offline) is the internet there? the computer slept / woke (offlinemain.js)
   safetynet: { status: call('safetynet:status'), keep: call('safetynet:keep'), done: call('safetynet:done'), testCrash: call('safetynet:test-crash') }, // (round 29) after an unexpected exit: what was kept (safetynetmain.js)
   devreport: { info: call('devreport:info'), gh: call('devreport:gh'), send: call('devreport:send'), states: call('devreport:states'), log: call('devreport:log'), crashes: call('devreport:crashes') }, // (round 21) Report to the developer
