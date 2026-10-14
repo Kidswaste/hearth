@@ -697,15 +697,13 @@ function toggleFold(hostId, m) {
       }).catch(() => {});
       // one line instead of rows of chips: the settings are a / away (/astra-model, /astra-persona, /astra-web…)
       return el('div', { class: 'astra-hints' }, status,
-        el('div', { class: 'astra-try' }, `${chips.slice(0, 2).map(([, t]) => t).join(' · ')} · `, el('a', { href: '#', text: '/astra', on: { click: (e) => { e.preventDefault(); Native.setDraft(agent.id, '/astra-'); } } }), ' for the rest'));
+        el('div', { class: 'astra-try' }, `${chips.slice(0, 2).map(([, t]) => t).join(' · ')} · `, el('a', { href: '#', text: '⋯ AI setup', title: 'Who it is, its instructions and what it can use', on: { click: (e) => { e.preventDefault(); (window.Lazy?.load ? Lazy.load('options') : Promise.resolve()).then(() => Options.open({ agentId: agent.id, place: 'chat' })).catch(() => Native.setDraft(agent.id, '/astra-')); } } }), ' for the rest')); // (round 40, chatcalm) no command name on screen
     }
     // (round 31) the card "What can I do here?" (quickstart-hooks.js) says it, with what fits: one link instead of the line
     if (window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined') {
       return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, el('a', { href: '#', text: '✦ What can I do here?', on: { click: (e) => { e.preventDefault(); QuickstartHooks.open(QuickstartHooks.placeOf(agent.id), { agentId: agent.id }); } } })));
     }
-    if (astra() && agent.engine === 'claude') {
-      return el('div', { class: 'astra-hints' }, el('div', { class: 'astra-try' }, `◎ in the chat box: jam, a second opinion or side by side with ${astra().name}`));
-    }
+    // (round 40, chatcalm) Claude's empty chat says what ◎ does in its own line (native.js emptyState): not twice
     return null;
   }
   // First time an Astra chat is empty: is Codex there and signed in? (cached for 10 minutes)
