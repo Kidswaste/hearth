@@ -117,7 +117,14 @@ summaries, links. Screenshots looked at before and after (first sight, and every
   the 53 rows Find anything knows isn't found in its section (and in or out of Advanced as its path says), when
   something Settings had before is gone (45 labels, Sync, the rail ticks), when a /command shows, or when searching
   "chime" doesn't open its folds. Before this pass: 5 failures; after: PASS.
-- See the final report for the other checks run.
+- Updated (same strength, new place): `dev/checks/firstrun.js` (Check this computer… in This computer & sync, in sight).
+- Run (`sh dev/run-checks.sh settingscalm …`): settingscalm, appsearch, tidy, simplify2, simplify3, options, firstrun,
+  declutter (70 ok, 0 bad), bigscreen, bigscreen-hidpi, nativefeel, updater, hintcalm, twocomputers, sync, lazy and the
+  unit tests appsearch-test (10/10), boot-test, firstrun, bigscreen, nativefeel, winmac, winpolish, macpolish, hintcalm,
+  sync: all pass, with two things that are not from this pass (both seen on the base commit 46e12c3 too / in a file not
+  touched): appsearch's "cheaper → Spending … in the first 6" step (fails the same way on the base commit), and page
+  errors from `tools/three-abcompare.js` (its keydown handler gets a synthetic event in the declutter check).
+- Screenshots: first sight (before / after) and every fold open, scrolled through.
 
 ## For the patch notes
 - Settings reads top to bottom in four plain sections: Look & size, Your AIs, This computer & sync, Updates & what's
