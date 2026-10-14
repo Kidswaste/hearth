@@ -593,6 +593,7 @@ function registerAfterWindow() {
   require('./connectionsmain').register(ipcMain, { readConfig }); // (round 26) the owner's own MCP servers: Test, and what engines.js hands each AI
   lazyIpc('hooksmain.js', (m, ipc) => m.register(ipc, () => win)); // (round 26) hooks: "when a file appears in a folder" (fs.watch, only while a hook asks; round 29: loaded then)
   lazyIpc('tokenauditmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 36) ⋯ AI setup → Spending: where each AI's fixed tokens go (reads only)
+  lazyIpc('dragdropmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 38) files with Finder / Explorer: native drags out, drops checked (folders, iCloud placeholders), copied files pasted
 
   // config.json / theme.css edited outside Hearth (an editor, sync): told to the window. (round 16) the OS tells us
   // (fs.watch, re-armed when an editor replaces the file); a calm stat every 5 s is the safety net (was a stat every

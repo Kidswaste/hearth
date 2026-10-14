@@ -108,6 +108,9 @@ contextBridge.exposeInMainWorld('hub', {
   setZoom: (factor) => webFrame.setZoomFactor(factor),
   getZoom: () => webFrame.getZoomFactor(),
   pathForFile: (file) => webUtils.getPathForFile(file),
+  // (round 38, dragdrop) files with Finder / Explorer: a native drag out, what a drop really is (folder, missing, still in
+  // iCloud), files copied in Finder / Explorer (dragdropmain.js)
+  dragdrop: { out: (spec) => ipcRenderer.send('dragdrop:out', spec), check: call('dragdrop:check'), clipboard: call('dragdrop:clipboard') },
   onTray: (cb) => {
     ipcRenderer.on('tray:new-chat', () => cb('new-chat'));
     ipcRenderer.on('tray:palette', () => cb('palette'));
