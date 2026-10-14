@@ -59,7 +59,7 @@ const A11y = (() => {
     }
     pending.clear();
   }
-  const queue = (n) => { pending.add(n); if (!soon) soon = (window.requestIdleCallback || setTimeout)(flush, { timeout: 300 }); };
+  const queue = (n) => { pending.add(n); if (!soon) soon = (window.requestIdleCallback || setTimeout)(flush, { timeout: 150 }); };
 
   // ---------- overlays: dialogs to assistive tech, focus in, Esc, focus back ----------
   const OVERLAY = 'aside.opt-sheet:not(.opt-page), .ms-pop, .palette, .fx-picker, [role=dialog]:not(dialog), [role=alertdialog]:not(dialog)';

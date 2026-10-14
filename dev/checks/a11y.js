@@ -170,16 +170,16 @@ if (part('surfaces')) {
   // ⋯ AI setup, every fold open
   view().root.querySelector('.native-head button[aria-label="Chat options"]')?.click();
   const sheet = await until(() => document.querySelector('aside.opt-sheet'), 8000);
-  if (sheet) { await wait(400); sheet.querySelectorAll('details').forEach((d) => { d.open = true; }); await settle(); audit('AI setup', sheet); (typeof Options !== 'undefined' && Options.hide()); }
+  if (sheet) { await wait(400); sheet.querySelectorAll('details').forEach((d) => { d.open = true; }); await settle(); await wait(250); audit('AI setup', sheet); (typeof Options !== 'undefined' && Options.hide()); }
   await wait(200);
   // Settings, every fold open
   await AppUI.openSettings(); const sd = await until(() => document.querySelector('dialog.settings-dialog[open]'));
-  if (sd) { sd.querySelectorAll('details').forEach((d) => { d.open = true; }); await settle(); audit('Settings', sd); sd.close(); }
+  if (sd) { sd.querySelectorAll('details').forEach((d) => { d.open = true; }); await settle(); await wait(250); audit('Settings', sd); sd.close(); }
   await wait(200);
   // ◎ missions (More open)
   view().root.querySelector('.ms-btn')?.click();
   const pop = await until(() => document.querySelector('.ms-pop'));
-  if (pop) { pop.querySelectorAll('details').forEach((d) => { d.open = true; }); await settle(); audit('missions', pop); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); pop.remove(); }
+  if (pop) { pop.querySelectorAll('details').forEach((d) => { d.open = true; }); await settle(); await wait(250); audit('missions', pop); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); pop.remove(); }
   // Find anything
   AppUI.palette(); const pal = await until(() => document.querySelector('.palette'));
   if (pal) { await wait(500); audit('Find anything', pal); pal.remove(); }
@@ -212,10 +212,27 @@ if (part('surfaces') || part('esc') || part('forced')) {
   try {
     const { L } = await openLab();
     await until(() => L.querySelector('.tw-range input[type=range], svg.tw-knob'), 8000);
+    for (const d of L.querySelectorAll('details')) if (!d.open && vis(d)) d.open = true;
+    await wait(400);
     audit('Lab', L);
     // knobs too
-    const lay = L.querySelector('select.tw-layoutsel');
-    if (lay) { const was = lay.value; lay.value = 'knobs'; lay.dispatchEvent(new Event('change', { bubbles: true })); await until(() => L.querySelector('svg.tw-knob'), 4000); audit('Lab knobs', L); out.knobs = L.querySelectorAll('svg.tw-knob').length; lay.value = was; lay.dispatchEvent(new Event('change', { bubbles: true })); await wait(300); }
+    // named controls: knobs (decimals), an on / off, a color, a choice
+    const SKETCH = `import * as THREE from 'three';
+const P = tweak({ glow: { value: 0.2, min: 0, max: 2, label: 'Glow' }, size: { value: 1, min: 0.2, max: 3, label: 'Size' }, spin: { value: true, label: 'Spin' }, tint: { value: '#ff3cac', label: 'Tint' }, mode: { value: 'soft', options: ['soft', 'hard'], label: 'Mode' } });
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(1); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color();
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); camera.position.set(0, 0, 5);
+const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: '#ff3cac' })); scene.add(cube);
+renderer.setAnimationLoop(() => { scene.background.setScalar(Math.min(1, P.glow * 0.45)); cube.scale.setScalar(P.size); if (P.spin) cube.rotation.y += 0.01; cube.material.color.set(P.tint); renderer.render(scene, camera); });`;
+    ThreeLab.openCode(SKETCH);
+    await until(() => lab.c.sliders().some((x) => x.key === 'glow'), 12000);
+    await wait(800);
+    for (const d of L.querySelectorAll('details')) if (!d.open && vis(d)) d.open = true;
+    await until(() => L.querySelector('svg.tw-knob'), 4000); await wait(300);
+    audit('Lab named controls', L);
+    out.knobs = L.querySelectorAll('svg.tw-knob').length;
+    out.labKinds = { toggle: L.querySelectorAll('.tw-toggle').length, color: L.querySelectorAll('.tw-color').length, seg: L.querySelectorAll('.tw-seg').length };
     if (typeof ThreeFX !== 'undefined') { ThreeFX.openPicker('add'); const p = await until(() => document.querySelector('.fx-picker')); if (p) { await wait(300); audit('Lab ✦ picker', p); ThreeFX.close?.(); p.isConnected && p.querySelector('button[title^="Close"]')?.click(); } }
     if (typeof LabSearchHook !== 'undefined') { await LabSearchHook.open(); const d = await until(() => document.querySelector('dialog.ls-dlg[open]'), 15000); if (d) { await wait(300); audit('Lab search', d); if (typeof LabSearch !== 'undefined') LabSearch.close(); } }
   } catch (e) { out.labError = String(e.message || e); }
