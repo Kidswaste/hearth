@@ -283,7 +283,11 @@ const Routines = (() => {
       tagNext = null;
       return;
     }
-    // the owner wrote (not a hook's line, not offline.js's "continue", not a compacting step, not a re-send)
+    // the owner wrote (not a hook's line, not offline.js's "continue", not a compacting step, not a re-send): read once
+    // every send hook has run (hooks.js marks its own message in its hook, whichever loaded first)
+    queueMicrotask(() => ownerSent(chat, m));
+  });
+  function ownerSent(chat, m) {
     if (m?.role !== 'user' || m.routine || m.hook || m.cont || m.compactReq || Date.now() - (m.at || 0) > 3000) return;
     lastWrote = Date.now(); store.set('routines.wrote', lastWrote);
     const r = forChat(chat.id);
@@ -292,7 +296,7 @@ const Routines = (() => {
     C.ownerWrote(r, Date.now());
     awake(r, false); save(); paintAll();
     if (r.status === 'paused' && was === 'running') { say(r, `🔁 Keep going is paused: you wrote in this chat. ▶ Resume when you want it to go on.`); activity(r, `Keep going paused in “${titleOf(r)}”: you wrote`, '❚❚'); }
-  });
+  }
   Native.hooks.finish.push((event, chat) => {
     if (!chat) return;
     const r = forChat(chat.id);
