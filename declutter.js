@@ -311,8 +311,8 @@ const Declutter = (() => {
     const v = Native.view(agentId);
     const busy = Boolean(Native.pendingFor?.(agentId));
     return [
-      typeof ChatAttach !== 'undefined' ? { label: '＋ Attach from…', hint: 'board, captures, Lab, screen, renders', action: () => ChatAttach.menu(agentId, form.querySelector('.attach-btn') || form) } : null,
-      { label: 'Attach files…', action: () => Native.pickFiles(agentId) },
+      // (round 40, chatcalm) one Attach row: the ＋ menu (Files… is its first row); files straight away without it
+      typeof ChatAttach !== 'undefined' ? { label: '＋ Attach…', hint: 'files, board, captures, Lab, screen', action: () => ChatAttach.menu(agentId, form.querySelector('.attach-btn') || form) } : { label: 'Attach files…', action: () => Native.pickFiles(agentId) },
       { label: 'Paste', action: async () => { try { const t = await navigator.clipboard.readText(); if (t) Native.insertDraft(agentId, t); } catch { v.input.focus(); toast('Press Ctrl+V in the chat box', { timeout: 1600 }); } } },
       // (round 33, simplify3) typed actions are the power users' way: one level deeper, in plain words
       { label: 'Typed actions', more: true, items: () => [

@@ -121,6 +121,7 @@ const AppSearch = (() => {
   const MENUS = [
     ['Right-click the chat header', '.surface.active .native-head', 'Chat ⋯ (right-click)'],
     ['Right-click around the chat box', '.surface.active form.composer', 'The chat box (right-click)'],
+    ['Right-click a message', '.surface.active .messages .msg.assistant > .body, .surface.active .messages .msg.user > .body', 'A message ⋯ (right-click)'], // (round 40, chatcalm) Retry, Branch, Pin… live in a message's ⋯
     ['Right-click a chat in the list', '#panel .item.active, #panel .item', 'A chat in the list (right-click)'],
     ['Right-click a chat group', '#panel .group-head', 'A chat group (right-click)'],
     ['Right-click an agent', '#agent-buttons .agent-btn.active:not(.tool-btn-rail), #agent-buttons .agent-btn:not(.tool-btn-rail)', 'An AI in the rail (right-click)'],

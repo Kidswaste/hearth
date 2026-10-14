@@ -1155,3 +1155,18 @@ mark.find-hit.cur { background: var(--ui-hot); color: #000; }
 .slash-item b { max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .messages .msg .body { font-family: var(--chat-font, inherit); }
 .msg .body.raw { white-space: pre-wrap; font: 12.5px/1.5 var(--mono, ui-monospace, monospace); padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; }
+
+/* (round 40, chatcalm) a reply at rest: what it is and its one next step; the bar of what it sent and Smart's pick
+   show when you point at it (or tab to them) */
+.msg:not(:hover):not(:focus-within) > .msg-foot :is(.ctx-bd, .route-chip) { opacity: 0; }
+.msg-foot :is(.ctx-bd, .route-chip) { transition: opacity .15s; }
+.msg-foot .msg-act.primary-act { opacity: 1; }
+.msg-foot .calm-tucked { display: none; }
+/* two or more quiet notes under a reply: one line */
+.note-stack { display: flex; align-items: center; gap: 6px; align-self: stretch; margin: 6px 0; min-width: 0; font-size: 12.5px; color: var(--muted); }
+.note-stack .ns-toggle { display: flex; gap: 6px; align-items: baseline; min-width: 0; flex: 1; border: 1px dashed var(--line); border-radius: 10px; padding: 5px 10px; background: color-mix(in srgb, var(--accent) 4%, transparent); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.note-stack .ns-toggle:hover { color: var(--text); }
+.note-stack .ns-n { white-space: nowrap; color: var(--text); }
+.note-stack .ns-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.note-stack .ns-act { flex: none; }
+.msg.note.stacked { display: none; }

@@ -123,8 +123,9 @@ const Native = (() => {
     const chips = el('div', { class: 'attach-chips' });
     const input = el('textarea', { rows: 3, spellcheck: true });
     // (round 9) ＋ opens one menu: files, the board, captures, the Lab's frame, a screen region, recent renders (chat-attach.js)
-    const attachBtn = el('button', { type: 'button', class: 'ghost attach-btn', text: '＋', title: 'Attach: files, the board, captures, the Lab, the screen, renders (or drop / paste them)' });
-    const sendBtn = el('button', { type: 'submit', class: 'primary', text: 'Send' });
+    // (round 40, chatcalm) one sentence per tooltip, and Send says its key from the start
+    const attachBtn = el('button', { type: 'button', class: 'ghost attach-btn', text: '＋', title: 'Attach files, the board, a capture, the Lab or the screen (or drop / paste them)', attrs: { 'aria-label': 'Attach' } });
+    const sendBtn = el('button', { type: 'submit', class: 'primary', text: 'Send', title: 'Send (Enter)' });
     const counter = el('span', { class: 'composer-count' });
     const queueBox = el('div', { class: 'queue-chips', hidden: true });
     const styleBox = el('div', { class: 'style-chips', hidden: true });
@@ -685,18 +686,36 @@ const Native = (() => {
         m.stopped ? el('span', { text: 'stopped' }) : null,
         timeEl, num,
         // Copy + ⋯ only (read aloud, retry… are in ⋯); a stopped reply keeps its one obvious next step
-        el('button', { class: 'copy-msg', text: 'Copy' }),
-        isLast && m.stopped ? act('continue', 'Continue', 'Ask it to continue where it stopped (Retry is in ⋯)') : null,
+        el('button', { class: 'copy-msg', text: 'Copy', title: 'Copy this reply' }),
+        // (round 40, chatcalm) a stopped reply's one next step shows without pointing at it
+        isLast && m.stopped ? el('button', { class: 'msg-act primary-act', text: 'Continue', title: 'Ask it to continue where it stopped (Retry is in ⋯)', dataset: { msgAct: 'continue' } }) : null,
         more));
     } else if (m.role === 'user') {
       node.append(el('div', { class: 'msg-foot user-foot' }, num, m.edited ? el('span', { class: 'edited-mark', text: 'edited', title: m.edits?.length ? `Before: ${m.edits.at(-1).slice(0, 300)}` : '' }) : null, timeEl,
-        el('button', { class: 'copy-msg', text: 'Copy' }), more));
+        el('button', { class: 'copy-msg', text: 'Copy', title: 'Copy this message' }), more));
     } else if (m.role === 'error' && isLast) {
       node.append(el('div', { class: 'msg-foot' }, act('retry', 'Retry', 'Send the last message again'),
         act('copy-error', 'Copy error', 'Copy the error text'), act('engines', 'Check engines', 'Whether Claude Code / Codex were found (/engines)')));
     }
     for (const fn of hooks.message) { try { fn(node, m, index, agent); } catch (err) { console.warn(err); } }
+    calmFoot(node);
     return node;
+  }
+  // (round 40, chatcalm) one order under every message, whatever added to it: what it is (tokens, Smart's pick, time)
+  // → its one next step (Continue, ↶ Undo what it did) → Copy → ⋯. A failed reply keeps Retry in sight; copy the
+  // error, check the programs and Report wait in its ⋯.
+  function calmFoot(node) {
+    const foot = node.querySelector(':scope > .msg-foot');
+    if (!foot || foot.classList.contains('net-acts')) return; // offline.js draws its own (Retry / Cancel / Sign in)
+    const copy = foot.querySelector(':scope > .copy-msg');
+    const more = foot.querySelector(':scope > .msg-more');
+    const at = copy || more;
+    if (at) for (const b of foot.querySelectorAll(':scope > .primary-act, :scope > .au-reply')) if (b.nextElementSibling !== at) at.before(b);
+    if (!node.classList.contains('error') || !foot.querySelector(':scope > [data-msg-act="copy-error"]') || foot.querySelector(':scope > .err-more')) return;
+    const rest = [...foot.querySelectorAll(':scope > .msg-act:not([data-msg-act="retry"])')];
+    for (const b of rest) b.classList.add('calm-tucked');
+    foot.append(el('button', { type: 'button', class: 'msg-act msg-more err-more', text: '⋯', title: 'More: copy the error, check the AI programs, report it',
+      on: { click: (e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, rest.filter((b) => b.isConnected).map((b) => ({ label: b.textContent, action: () => b.click() }))); } } }));
   }
   // The tool calls of a reply, folded: "⚙ 3 steps · three · capture", open for the list (repeats counted)
   function toolFold(tools) {
@@ -728,8 +747,10 @@ const Native = (() => {
     const r = anchor.getBoundingClientRect();
     // (round 7) five open entries that branch into the detail: Copy and Read aloud stay one click away, the rest
     // sit in Reply ›, Mark › and Save › (right-click a message for the same menu at the pointer)
+    // (round 40, chatcalm) opened from its ⋯, Copy is the button right beside it: the menu doesn't say it twice
+    const besideCopy = anchor?.classList?.contains('msg-more') && anchor.parentElement?.querySelector(':scope > .copy-msg');
     const items = [
-      { label: 'Copy', action: () => copyText(m.text, 'Copied') },
+      besideCopy ? null : { label: 'Copy', action: () => copyText(m.text, 'Copied') },
       m.role === 'assistant' ? { label: 'Read aloud', key: last ? 'Alt+R' : '', action: () => speak(m.text) } : null,
       { label: 'Reply', items: () => [
         { label: 'Quote in my message', action: () => quote(agentId, index) },
@@ -804,15 +825,21 @@ const Native = (() => {
 
   function emptyState(agent) {
     const engineOk = H.engineStatus[agent.engine] !== false;
+    const hint = el('p', { class: 'hint', text: engineOk
+      ? 'Ask anything. ＋ attaches files (or drop / paste them), ◎ turns your next message into a mission (a second opinion, side by side, a jam…), ⋯ at the top sets up the AI.'
+      : `Couldn't find the ${agent.engine === 'claude' ? 'Claude' : 'Codex'} app on this computer, so this chat can't run yet.` });
+    // (round 40, chatcalm) one line in an empty chat: a lone link (✦ What can I do here?) joins the hint instead of a
+    // line of its own; Astra's status lines, when it shows them, stay lines
+    let extra = typeof Astra !== 'undefined' ? Astra.emptyHints(agent) : null;
+    const links = extra && !extra.querySelector('.astra-onboard') ? [...extra.querySelectorAll('a')] : [];
+    if (engineOk && links.length === 1 && extra.textContent.trim() === links[0].textContent.trim()) { hint.append(' ', links[0]); extra = null; }
     return el('div', { class: 'empty' },
       el('div', { class: 'empty-icon', attrs: { style: `--agent: ${agent.color || 'var(--accent)'}` } }, Icons.for(agent) || document.createTextNode(agent.icon || agent.name[0])),
       el('h3', { text: `New chat with ${agent.name}` }),
-      el('p', { class: 'hint', text: engineOk
-        ? 'Ask anything · drop or paste files to attach them · ⋯ at the top: what it can use.'
-        : `Couldn't find the ${agent.engine === 'claude' ? 'Claude' : 'Codex'} app on this computer, so this chat can't run yet.` }),
+      hint,
       // (round 18, tidy) first run without the engine: one action, straight to the setting that fixes it
       engineOk ? null : el('button', { type: 'button', class: 'primary', text: 'Show me where to set it', on: { click: () => AppUI.openSettings('program') } }),
-      typeof Astra !== 'undefined' ? Astra.emptyHints(agent) : null);
+      extra);
   }
 
   function fillModelSelect(v, agent, chat) {
@@ -1005,6 +1032,7 @@ const Native = (() => {
       out.push(p.el);
     }
     placeChildren(v.list, out);
+    restack(agentId); // (round 40, chatcalm) two or more quiet notes: one line
     syncSendBtn(agentId);
     renderQueue(agentId);
     // Long replies start folded so the conversation stays scannable.
@@ -2174,20 +2202,21 @@ const Native = (() => {
 
   // A note in the chat from the hub itself (command output, help): shown, never sent, not saved.
   // actions: optional buttons [{ label, run, title? }] under the note. Returns the note element.
-  function note(agentId, text, { actions = [], id } = {}) {
+  function note(agentId, text, { actions = [], id, quiet } = {}) {
     const v = views.get(agentId);
     if (!v) { toast(text, { timeout: 8000 }); return null; }
     if (id) v.list.querySelector(`.msg.note[data-note-id="${id}"]`)?.remove(); // a newer note of the same kind replaces the old one
     // (round 10) …for good: a replaced note no longer comes back when the chat redraws
     if (id) for (const n of v.notes || []) if (n.box.dataset.noteId === id) n.box.dataset.gone = '1';
     const body = el('div', { class: 'body', html: renderMarkdown(text) });
-    const box = el('div', { class: 'msg note', dataset: id ? { noteId: id } : {} }, body,
-      actions.length ? el('div', { class: 'note-acts' }, actions.map((a) => el('button', { type: 'button', class: 'ghost small', text: a.label, title: a.title || '', on: { click: () => a.run(box) } }))) : null,
-      el('button', { type: 'button', class: 'ghost note-x', text: '×', title: 'Dismiss (Esc in an empty box clears every note)', on: { click: () => { box.dataset.gone = '1'; box.remove(); } } }));
+    const box = el('div', { class: 'msg note', dataset: { ...(id ? { noteId: id } : {}), ...((quiet ?? QUIET_NOTES.has(id)) ? { quiet: '1' } : {}) } }, body,
+      actions.length ? el('div', { class: 'note-acts' }, actions.map((a) => el('button', { type: 'button', class: 'ghost small', text: a.label, title: a.title || '', on: { click: () => { a.run(box); restack(agentId); } } }))) : null,
+      el('button', { type: 'button', class: 'ghost note-x', text: '×', title: 'Dismiss (Esc in an empty box clears every note)', on: { click: () => { box.dataset.gone = '1'; box.remove(); restack(agentId); } } }));
     // notes belong to the chat they were shown in and survive re-renders until dismissed
     v.notes = (v.notes || []).filter((n) => !n.box.dataset.gone).slice(-30);
     v.notes.push({ box, chatId: H.activeChat[agentId] || null });
     v.list.append(box);
+    restack(agentId);
     v.list.scrollTop = v.list.scrollHeight;
     return box;
   }
@@ -2196,6 +2225,39 @@ const Native = (() => {
     if (!v) return;
     v.list.querySelectorAll('.msg.note').forEach((n) => n.remove());
     v.notes = (v.notes || []).filter((n) => n.chatId !== (H.activeChat[agentId] || null));
+    restack(agentId);
+  }
+  // (round 40, chatcalm) the quiet lines that come by themselves under a reply (the cache note, 🗜 Continue lighter,
+  // what Smart learned): when two or more apply they fold into one line: their first words, their buttons (still one
+  // click), ▸ to read them all. Errors, offline lines, your commands' output and your hooks' notes never fold.
+  const QUIET_NOTES = new Set(['cachewise', 'autocompact', 'routerlearn']);
+  const firstWords = (n) => { const t = (n.querySelector(':scope > .body')?.textContent || '').trim().split('\n')[0]; const s = t.split(/(?<=[.:;?!])\s/)[0].replace(/[.:;]$/, ''); return s.length > 56 ? `${s.slice(0, 55)}…` : s; };
+  function restack(agentId) {
+    const v = views.get(agentId);
+    if (!v) return;
+    const quiet = [...v.list.querySelectorAll(':scope > .msg.note[data-quiet]')].filter((n) => !n.dataset.gone);
+    let row = v.noteStack;
+    if (quiet.length < 2) {
+      if (row?.isConnected) row.remove();
+      for (const n of quiet) if (n.classList.contains('stacked')) n.classList.remove('stacked');
+      if (!quiet.length) v.stackOpen = false;
+      return;
+    }
+    const open = Boolean(v.stackOpen);
+    const acts = open ? [] : quiet.flatMap((n) => [...n.querySelectorAll(':scope > .note-acts > button')]);
+    const titles = quiet.map(firstWords);
+    const sig = JSON.stringify([open, titles, acts.map((b) => b.textContent)]);
+    if (!row || row.dataset.sig !== sig) {
+      row ||= v.noteStack = el('div', { class: 'note-stack' });
+      row.dataset.sig = sig;
+      row.replaceChildren(
+        el('button', { type: 'button', class: 'ns-toggle', title: open ? 'Fold these notes into one line' : 'Show each note', attrs: { 'aria-expanded': String(open) },
+          on: { click: () => { v.stackOpen = !v.stackOpen; restack(agentId); } } },
+        el('span', { class: 'ns-n', text: `${open ? '▾' : '▸'} ${quiet.length} notes` }), el('span', { class: 'ns-t', text: titles.join(' · ') })),
+        ...acts.map((b) => el('button', { type: 'button', class: 'ghost small ns-act', text: b.textContent, title: b.title, on: { click: () => { b.click(); restack(agentId); } } })));
+    }
+    if (row.nextElementSibling !== quiet[0]) quiet[0].before(row);
+    for (const n of quiet) if (n.classList.contains('stacked') === open) n.classList.toggle('stacked', !open);
   }
 
   // ---------- for astra.js (collaborations, handoff, per-chat engine options) ----------
