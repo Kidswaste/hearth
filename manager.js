@@ -236,6 +236,8 @@ const Manager = (() => {
     f.showThinking.checked = agent.showThinking !== false;
     f.selfReview.checked = agent.selfReview ?? Boolean(agent.dock);
     f.autoCompact.checked = agent.autoCompact !== false;
+    // (round 35, bugbash2) Continue lighter (autocompact.js) replaced the silent compaction: that box did nothing
+    { const row = f.autoCompact.closest('label'); if (row) row.hidden = typeof Autocompact !== 'undefined' || window.Lazy?.loaded?.('budget') === false; }
     connectorModes = { ...agent.connectors };
     syncModeFields();
   }

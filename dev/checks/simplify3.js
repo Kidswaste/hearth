@@ -101,7 +101,9 @@ for (const d of long) d.open = true;
 await wait(300);
 rows['AI setup (all open)'] = count(S);
 const all = S.textContent;
-const kept = ['Remembers things you tell it', 'Suggests what to do next', 'Shrinks long chats by itself', 'Check this AI', 'Mood board', 'Connected apps'].filter((t) => !all.includes(t));
+// (round 35, bugbash2) 'Shrinks long chats by itself' is gone: it did nothing since Continue lighter (its row is in Spending)
+const kept = ['Remembers things you tell it', 'Suggests what to do next', 'Offer to continue lighter', 'Check this AI', 'Mood board', 'Connected apps'].filter((t) => !all.includes(t));
+if (all.includes('Shrinks long chats by itself') || /shrinks long chats/.test(all)) fails.push('AI setup still shows the dead "Shrinks long chats by itself" switch');
 if (kept.length) fails.push(`AI setup lost: ${kept.join(', ')}`);
 if (!S.querySelector('.ms-grid')) fails.push('AI setup lost the missions');
 if (!S.querySelector('.bud-sec')) fails.push('AI setup lost Spending');

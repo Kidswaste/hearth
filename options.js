@@ -166,17 +166,21 @@ const Options = (() => {
   }
   const memSum = (on) => (on ? 'Remembers what you tell it' : 'Off: it forgets between chats');
   const chatsOn = (a) => TOOLS[0].on(a);
+  // Continue lighter (autocompact.js, in the lazy group 'budget') replaces the silent auto-compact
+  const lighterHere = () => typeof Autocompact !== 'undefined' || window.Lazy?.loaded?.('budget') === false;
   function habits(a) {
     const re = () => setSum('habits', habitSum(H.agent(a.id) || a));
     return fold('habits', sec('Habits', 'Things it does by itself.',
       sw(a.selfReview ?? Boolean(a.dock), 'Checks its own work before it answers', 'For visual work: it takes a quick look at the result and fixes what\'s off', (v) => save(a, { selfReview: v }).then(re)),
       sw(chatsOn(a) ? a.suggestNext !== false : Boolean(a.suggestNext), 'Suggests what to do next', 'Up to 3 next steps show as buttons under a reply', (v) => save(a, { suggestNext: chatsOn(a) ? (v ? undefined : false) : (v || undefined) }).then(re)),
       sw(a.showThinking !== false, 'Shows its thinking', 'Its thought process shows folded under the reply', (v) => save(a, { showThinking: v ? undefined : false }).then(re)),
-      sw(a.autoCompact !== false, 'Shrinks long chats by itself', 'Old messages get summed up when a chat gets long, so it stays fast', (v) => save(a, { autoCompact: v ? undefined : false }).then(re)),
+      // (round 35, bugbash2) since Continue lighter (round 34) nothing summarizes a chat by itself: the switch did nothing
+      // (and its "shrinks long chats" line said the opposite). The offer's own row is in Spending.
+      lighterHere() ? null : sw(a.autoCompact !== false, 'Shrinks long chats by itself', 'Old messages get summed up when a chat gets long, so it stays fast', (v) => save(a, { autoCompact: v ? undefined : false }).then(re)),
       ...(a.threeTools ? lab(a) : [])), habitSum(a));
   }
   function habitSum(a) {
-    const on = [[a.selfReview ?? Boolean(a.dock), 'checks its work'], [chatsOn(a) ? a.suggestNext !== false : Boolean(a.suggestNext), 'suggests next steps'], [a.showThinking !== false, 'shows its thinking'], [a.autoCompact !== false, 'shrinks long chats']].filter(([v]) => v).map(([, t]) => t);
+    const on = [[a.selfReview ?? Boolean(a.dock), 'checks its work'], [chatsOn(a) ? a.suggestNext !== false : Boolean(a.suggestNext), 'suggests next steps'], [a.showThinking !== false, 'shows its thinking'], [a.autoCompact !== false && !lighterHere(), 'shrinks long chats']].filter(([v]) => v).map(([, t]) => t);
     const t = list3(on, 'none');
     return t.charAt(0).toUpperCase() + t.slice(1);
   }
