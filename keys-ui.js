@@ -464,7 +464,7 @@ const KeysUI = (() => {
       { area: 'Lab timeline', keys: 'Ctrl+C / V / D / A', what: 'Copy, paste at the playhead, duplicate, select all points', when: inLab },
       { area: 'Lab timeline', keys: 'Double-click', what: 'Delete a marker', when: inLab },
       // Lab sliders & layers
-      { area: 'Lab sliders & layers', keys: '/', what: 'Find a slider', when: inLab, sel: '.tw-search' },
+      { area: 'Lab sliders & layers', keys: '/ (in the sliders column)', what: 'Find a slider (elsewhere in the Lab, / is 🔎 Lab search)', when: inLab, sel: '.tw-search' },
       { area: 'Lab sliders & layers', keys: 'Alt+1…9', what: 'Hide / show layer 1…9 (Alt+Shift: only that one)', when: inLab },
       { area: 'Lab sliders & layers', keys: 'Alt+click', what: 'A layer’s eye: show only that layer · a look: morph into it', when: inLab, sel: '.ly-eye' },
       { area: 'Lab sliders & layers', keys: 'Double-click', what: 'A slider’s value: back to the code’s value · a layer’s name: rename', when: inLab },

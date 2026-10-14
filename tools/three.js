@@ -390,7 +390,7 @@ const ThreeLab = (() => {
     // ?: the Lab's keys in one sheet
     function labKeys() {
       const rows = [['Space', 'Play / pause'], ['T · Shift+T', 'Tap tempo (locks to the song\'s grid) · this tap is the 1 · with live sound: sets the latency'], [', · .', 'Nudge the grid 5 ms earlier / later by ear (Shift 1 ms, Alt 20 ms)'], ['K · S · H', 'Kick / snare / hit marker at the playhead'], ['Q', 'Quantize taps to the grid on / off'], ['C', 'Cue here'], ['1–9', 'Jump to cue'],
-        ['R · Shift+R', 'Shuffle the sliders · the shuffle before'], ['Ctrl+S · Ctrl+Shift+S', 'Save the sliders · as a look'], ['/', 'Find a slider'],
+        ['R · Shift+R', 'Shuffle the sliders · the shuffle before'], ['Ctrl+S · Ctrl+Shift+S', 'Save the sliders · as a look'], ['/', 'Lab search: actions, effects, layers, sliders, templates…'],
         ['F · \\', 'Freeze the picture'], ['Z · Shift+Z', 'Frame the subject · back to the scene\'s own camera'], ['Two fingers · pinch · right-drag', 'Turn around the scene · zoom · turn (Shift: pan)'], ['.', 'One frame (while frozen)'], ['|', 'Pin this frame to compare (onion / wipe)'], ['Shift+1–5', 'Fit · 9:16 · 16:9 · 4:5 · 1:1'],
         ['Shift+L', 'Live sound on / off'], ['O', 'Your sketches'], ['`', 'Console'], ['P · Shift+F', 'Present · Focus'], ['I · PgUp / PgDn', 'In Present: info · other sketches'],
         ['Shift+drag the waveform', 'Draw a loop'], ['= · - · 0', 'Zoom in · out · whole song'], ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'], ['L', 'Loop this bar'], ['G', 'Next snap setting'],
@@ -417,7 +417,11 @@ const ThreeLab = (() => {
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
     const sketchMenuBtn = btn('Sketch ▾', 'Rename, copy, delete or export this scene, or see its history', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
-      popup(r.left, r.bottom + 4, [
+      popup(r.left, r.bottom + 4, sketchMenuRows());
+    });
+    // (round 36, labsearch: the rows on their own, so 🔎 Lab search lists them too)
+    function sketchMenuRows() {
+      return [
         ['New from a template…', 'Right-click it for the list', () => templateGallery()],
         ['▦ All your sketches', 'As pictures', () => browseSketches()],
         ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.sketchRow()] : []), // (round 35) 📐 My templates (tools/three-templates-hook.js)
@@ -435,8 +439,8 @@ const ThreeLab = (() => {
         ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()],
         'Careful',
         ['Delete…', 'Moves it to History → deleted sketches', () => removeSketch()],
-      ]);
-    });
+      ];
+    }
     // ⋯ in the Lab toolbar: the controls you rarely or never use, still one click away (with their old names for usage)
     const labMoreBtn = btn('⋯', 'More: focus, screenshot, snippets, three.js version, live code, frame rate, keys', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
     labMoreBtn.dataset.feature = 'Lab more';
@@ -1816,6 +1820,29 @@ const ThreeLab = (() => {
       midiMessage: (bytes) => onMidi({ data: bytes }), midiLearn: (o) => { midiLearn = o; }, write: (on) => setWrite(on),
     };
     api.shaderHost = { editor, errors: () => errors, selId: () => selId }; // (round 23) ◇ shader layers' inline errors (tools/three-shader.js)
+    // (round 36, labsearch) what 🔎 Lab search lists and runs (tools/three-search*.js): the Lab's own menus as they are
+    // built right now (the preview's right-click, the toolbar's ⋯, Sketch ▾, a layer's right-click), its layers and sliders
+    api.search = {
+      get pane() { return pane; },
+      menus: () => ({ preview: previewMenuItems(), more: labMoreItems(), sketch: sketchMenuRows() }),
+      layerMenu: (id) => layersPanel.menuFor?.(id) || null,
+      layers: () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, visible: L.visible !== false, selected: L.id === selId, color: L.color, filter: ThreeLayers.isFilter(L.code || '') })),
+      selectLayer: (id) => { if (!layerById(id)) return false; selectLayer(id); return true; },
+      // the sliders of the layers whose panel exists (the selected one at least)
+      sliders: () => layersOf().flatMap((L) => { const c = controllers.get(L.id); return c ? c.controls().map((x) => ({ layerId: L.id, layer: L.name, key: x.key, label: x.label, group: x.group || '' })) : []; }),
+      revealSlider(layerId, label) {
+        if (!layerById(layerId)) return false;
+        if (selId !== layerId) selectLayer(layerId);
+        setSlidersVisible(true);
+        const c = ctlFor(layerById(layerId));
+        c?.find?.(label);
+        c?.focusSearch?.();
+        requestAnimationFrame(() => { const s = [...pane.querySelectorAll('.tw-search')].find((n) => n.checkVisibility?.({ visibilityProperty: true })); s?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+        return true;
+      },
+      looks: () => { const c = selCtl(); return c ? c.looksApi.list() : []; },
+      applyLook: (name) => { const c = selCtl(); if (!c) return false; c.looksApi.apply(name); return true; },
+    };
     function setFocus(on) {
       focusOn = on;
       document.body.classList.toggle('lab-focus', on);
@@ -2510,7 +2537,8 @@ const ThreeLab = (() => {
       if (plain && e.shiftKey && /^[abc]$/i.test(e.key)) { e.preventDefault(); const cc = selCtl(); if (cc && !cc.slotRecall(e.key.toUpperCase())) toast(`Slot ${e.key.toUpperCase()} is empty`, { timeout: 1000 }); return; }
       if (e.ctrlKey && !e.altKey && (e.key === 'PageDown' || e.key === 'PageUp')) { e.preventDefault(); stepSketch(e.key === 'PageDown' ? 1 : -1); return; }
       if (plain && e.key === '`') { e.preventDefault(); consolePeek = !consoleShown(); syncConsole(); return; }
-      if (plain && e.key === '/') { e.preventDefault(); setSlidersVisible(true); selCtl()?.focusSearch(); return; }
+      // (round 36, labsearch) / opens 🔎 Lab search (sliders are in it too); in the sliders column it still finds a slider there
+      if (plain && e.key === '/') { e.preventDefault(); if (typeof LabSearchHook !== 'undefined' && !e.target.closest?.('.tw-column')) { LabSearchHook.open(); return; } setSlidersVisible(true); selCtl()?.focusSearch(); return; }
       if (plain && e.key === '|') { e.preventDefault(); pinFrame(); return; }
       if (plain && e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); setLive(liveKind ? null : store.get('three.lastLive', /Mac/.test(navigator.platform) ? 'mic' : 'system')); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
@@ -3413,7 +3441,7 @@ ${code}
         group('View', slidersBtn, codeBtn, consoleBtn, editBtn, presentBtn),
         group('Code', liveLabel),
         el('span', { class: 'spacer' }),
-        group('Assets', paletteBox, refsBtn, stageBtn, labMoreBtn));
+        group('Assets', paletteBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
       { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Beat"]').after(el('span', { class: 'tb-group mb-g-sound', dataset: { cat: 'Sound' } }, liveBtn, trigBtn, trigPresetBtn, autoBarsBtn, npBox)); for (const n of [notesBtn, sheetBtn, writeBtn, midiBtn]) n.classList.add('mb-adv'); const rec = row.querySelector('.mb-g-live .mb-rec'); if (rec) { row.querySelector('.mb-g-capture').prepend(rec); rec.classList.add('mb-adv'); } row.querySelector('.mb-g-live').classList.add('mb-adv'); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
@@ -4421,6 +4449,7 @@ ${frag}\`,
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js
     get tm() { return api.tm || null; }, // (round 23) tools/three-history*.js
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
+    get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),
     _sandbox: (parent, onMessage, params) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage' }), // tools/three-backstage.js

@@ -325,6 +325,9 @@ filter('${type}', P);
       setTimeout(() => addEventListener('pointerdown', close, true));
     }
 
+    // what a layer's right-click acts with (LabEasy.layerItems); (round 36, labsearch) also for 🔎 Lab search: menuFor(id)
+    const menuHandlers = (L) => ({ select: () => onSelect(L.id), change: (p) => onChange(L.id, p, { live: false }), solo: onSolo ? () => onSolo(L.id) : null, copy: () => onAdd('copy'), remove: layers.length > 1 ? () => onRemove(L.id) : null,
+      rename: () => { const n = list.querySelector(`.ly-row[data-id="${CSS.escape(L.id)}"] .ly-name`); if (n) n.dispatchEvent(new MouseEvent('dblclick')); } });
     let dragId = null;
     function renderList() {
       count.textContent = layers.length > 1 ? `${layers.length}` : '';
@@ -341,7 +344,7 @@ filter('${type}', P);
         const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · drag to reorder', on: { click: () => onSelect(L.id) } },
           eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }));
         // (round 26) right-click: hide, solo, rename, duplicate, react, a filter above… (tools/three-easy.js)
-        row.addEventListener('contextmenu', (e) => { if (typeof LabEasy === 'undefined') return; e.preventDefault(); onSelect(L.id); LabEasy.layerMenu(e.clientX, e.clientY, L, { select: () => onSelect(L.id), change: (p) => onChange(L.id, p, { live: false }), solo: onSolo ? () => onSolo(L.id) : null, copy: () => onAdd('copy'), remove: layers.length > 1 ? () => onRemove(L.id) : null, rename: () => name.dispatchEvent(new MouseEvent('dblclick')) }); });
+        row.addEventListener('contextmenu', (e) => { if (typeof LabEasy === 'undefined') return; e.preventDefault(); onSelect(L.id); LabEasy.layerMenu(e.clientX, e.clientY, L, menuHandlers(L)); });
         row.addEventListener('dragstart', (e) => { dragId = L.id; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
         row.addEventListener('dragend', () => { dragId = null; row.classList.remove('dragging'); });
         row.addEventListener('dragover', (e) => { if (dragId && dragId !== L.id) { e.preventDefault(); row.classList.add('drop-target'); } });
@@ -430,6 +433,7 @@ filter('${type}', P);
       el: root,
       render(next, sel) { layers = next; selectedId = sel; renderList(); renderProps(); },
       refreshProps: () => renderProps(),
+      menuFor: (id) => { const L = layers.find((x) => x.id === id); return L ? { L, h: menuHandlers(L) } : null; }, // (round 36, labsearch)
       // While the song plays: animated fields show their current value, and ◆ shows whether you're on a keyframe.
       sync(values, states) {
         for (const [k, ui] of Object.entries(liveRanges)) {

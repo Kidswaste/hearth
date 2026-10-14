@@ -1,0 +1,35 @@
+/* 🔎 Lab search (round 36, labsearch: tools/three-search.js): one box near the top, one ranked list under it, a small
+   picture per row where there is one. Nothing animates from JS; the list is rewritten only when the words change. */
+dialog.ls-dlg[open] {
+  position: fixed; inset: 64px 0 auto; margin: 0 auto; z-index: 9001; display: flex; flex-direction: column; padding: 0; overflow: hidden;
+  width: min(640px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 96px));
+  border: 1px solid var(--line); border-radius: 14px; background: var(--bg); color: var(--text); box-shadow: 0 24px 64px #000a;
+}
+dialog.ls-dlg::backdrop { background: #0006; }
+.ls-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex: none; }
+.ls-glass { opacity: .7; font-size: 15px; }
+.ls-input { flex: 1; min-width: 0; padding: 7px 4px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; }
+.ls-input:focus { outline: none; }
+.ls-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px; contain: content; }
+.ls-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; border: 0; border-radius: 8px; text-align: left; cursor: pointer;
+  background: transparent; color: var(--text); font: inherit;
+}
+.ls-row.on { background: color-mix(in srgb, var(--fh-gold, var(--accent)) 10%, transparent); box-shadow: inset 2px 0 var(--fh-gold, var(--accent)); }
+.ls-row.ls-danger .ls-label { color: var(--danger, #e0605a); }
+.ls-row[data-kind="ask"] { border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; margin-top: 2px; }
+.ls-row[data-kind="ask"] .ls-label { color: var(--fh-ai, var(--accent)); }
+.ls-pic { flex: none; width: 40px; height: 26px; border-radius: 5px; overflow: hidden; display: grid; place-items: center; border: 1px solid var(--line); background: color-mix(in srgb, var(--text) 6%, var(--bg)) center / cover no-repeat; font-size: 13px; color: var(--muted); }
+.ls-pic.fx-thumb b { font-size: 12px; }
+.ls-pic.fx-thumb i, .ls-pic.fx-thumb-img::before { font-size: 7px; }
+.ls-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ls-icon { background: transparent; }
+.ls-k-ask { color: var(--fh-ai, var(--accent)); }
+.ls-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ls-label { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls-hint { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ls-kind { flex: none; font-size: 10.5px; color: var(--muted); padding: 1px 6px; border: 1px solid var(--line); border-radius: 999px; }
+.ls-foot { flex: none; padding: 6px 12px; border-top: 1px solid var(--line); }
+/* a layer found and jumped to: its row in the Layers list lights up once */
+.ly-row.ls-flash { animation: ls-flash 1.2s ease-out; }
+@keyframes ls-flash { from { background: color-mix(in srgb, var(--fh-gold, var(--accent)) 35%, transparent); } to { background: transparent; } }

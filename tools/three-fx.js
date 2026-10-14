@@ -413,5 +413,5 @@ const ThreeFX = (() => {
   for (const [label, kind] of [['Lab: Effects & layers picker (X)', 'add'], ['Lab: Looks…', 'look'], ['Lab: Palettes…', 'palette'], ['Lab: Trigger presets…', 'trigger'], ['Lab: Animate the selected layer…', 'animate'], ['Lab: Keyframe eases…', 'ease'], ['Lab: Blend presets…', 'blend']]) AppUI.addAction?.(label, open(kind));
   AppUI.addAction?.('Lab: Surprise me (random filter)', async () => { try { toast(await surprise('filter'), { timeout: 2600 }); } catch (err) { toast(err.message, { type: 'error' }); } });
 
-  return { openPicker, close, items, find, apply, surprise, toggleFav, extend, KIND_LABEL, TABS, SUGGESTED, keyOf };
+  return { openPicker, close, items, find, apply, surprise, toggleFav, extend, KIND_LABEL, TABS, SUGGESTED, keyOf, thumb, hint, thumbCached: (id) => thumbCache.get(id) || null }; // (round 36: thumb / hint / thumbCached for 🔎 Lab search)
 })();
