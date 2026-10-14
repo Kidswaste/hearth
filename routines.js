@@ -427,8 +427,9 @@ const Routines = (() => {
     if (need === ticking) return;
     ticking = need;
     if (window.Power?.every) { if (need) Power.every('routines', 30000, tick, { first: 30000, max: 60000 }); else Power.stop?.('routines'); }
-    else if (need) { ticking = setInterval(tick, 30000); } else clearInterval(ticking);
+    else { clearInterval(tickT); tickT = need ? setInterval(tick, 30000) : 0; }
   }
+  let tickT = 0;
 
   // ---------- after a restart: a resume prompt (or on by itself, when chosen) ----------
   function afterStart() {
