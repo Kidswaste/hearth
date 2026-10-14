@@ -79,7 +79,7 @@ switch), `mcp/chat-mcp.js` (`chat_do` op `earlier`, not listed), `lazy-data.js` 
 (`seenLog` switch, `handoff_brief` read like the other context tags), `dev/run-checks.js` (UNIT + group).
 
 ## Tested
-- `node dev/handoff-test.js`: 44 checks (brief contents and order, size ≤ 8 % of the chat, the last exchange word for
+- `node dev/handoff-test.js`: 39 checks (brief contents and order, size ≤ 8 % of the chat, the last exchange word for
   word, a huge paste clipped, a one-exchange chat, files once each, byte-stable, the whole chat and its cap, when the
   cheapest model is worth it, the line, the opinion head, chat_do earlier).
 - `dev/checks/handoff.js` (fake engines): Continue with, `/handoff` (no extra run), Ask Astra instead after a busy
