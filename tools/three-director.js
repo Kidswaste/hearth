@@ -450,6 +450,7 @@ const ThreeDirector = (() => {
     code.split('\n').forEach((ln, k) => { if (MARK.test(ln)) marks.push(`${pad(k + 1, 4)}| ${ln.trim().slice(0, 110)}`); });
     return marks.length > max ? `${marks.slice(0, max).join('\n')}\n… ${marks.length - max} more` : marks.join('\n');
   }
+  const NODES_LINE = /^(\s*\/\/ @nodes:v1 )\{.{200,}\}$/;
   function readCode(d, args, B = bucketOf(d)) {
     const L = d.codeOf(args.layer || null);
     const lines = L.code.split('\n');
@@ -458,7 +459,8 @@ const ThreeDirector = (() => {
     if (args.around != null) { const c = Math.floor(Number(args.around)); a = Math.max(1, c - 20); b = c + 20; }
     b = Math.min(lines.length, b);
     const w = String(b).length;
-    const body = lines.slice(a - 1, b).map((ln, k) => `${pad(a + k, w)}| ${ln.replace(/\s+$/, '')}`).join('\n');
+    // a node-built layer's graph is one long JSON comment line (often most of the layer's bytes): three_nodes edits it
+    const body = lines.slice(a - 1, b).map((ln, k) => `${pad(a + k, w)}| ${ln.replace(/\s+$/, '').replace(NODES_LINE, '$1{…} (the node graph: change it with three_nodes)')}`).join('\n');
     const head = `── ${L.name} · lines ${a}–${b} of ${lines.length}${b < lines.length ? ` (more: from ${b + 1})` : ''}`;
     const whole = a === 1 && b >= lines.length;
     const rk = `read:${L.sketchId}:${L.id}:${a}-${b}`;
