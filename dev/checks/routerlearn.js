@@ -48,7 +48,7 @@ for (let i = 0; i < 3; i++) {
 }
 out.log = (st().code?.hist || []).map((c) => `${c.from}→${c.to} ${c.why}: ${c.what}`);
 ok(st().code?.d === 1, `three "think harder" on code fixes → Smart steps code fixes up (${JSON.stringify({ d: st().code?.d, s: st().code?.s, log: st().code?.log, hist: out.log })})`);
-ok(/asked again with more/.test(out.log.join(' ')), `why it learned it (${out.log})`);
+ok(/asked again with a stronger model/.test(out.log.join(' ')), `why it learned it (${out.log})`);
 
 // ---------- after: the next code fix gets the top rung ----------
 m = await reply(CODE);

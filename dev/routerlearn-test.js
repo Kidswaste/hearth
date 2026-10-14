@@ -26,7 +26,7 @@ ok('explicit asks and go-aheads are their own kinds (never learned)', claude('th
   const st = {};
   let c = null;
   for (let i = 0; i < 3 && !c; i++) c = L.record(st, 'code', 'stronger', T0 + i * 60e3);
-  ok('3 "asked again stronger" on code fixes → one rung up', c && c.kind === 'code' && c.from === 0 && c.to === 1 && c.why === 'up' && /3 times you asked again with more/.test(c.what), c);
+  ok('3 "asked again stronger" on code fixes → one rung up', c && c.kind === 'code' && c.from === 0 && c.to === 1 && c.why === 'up' && /you asked again with a stronger model or more thinking \(3 times\)/.test(c.what), c);
   ok('…shifts say so', JSON.stringify(L.shiftsOf(st)) === '{"code":1}');
   const d = claude('fix this:\n```js\nconst a = b.map(x => x*2)\n```', { learned: L.shiftsOf(st) });
   ok('router.js: a learned code fix gets the top rung (own model, xhigh)', d.rung === 'max' && d.tier === 'hard' && d.effort === 'xhigh' && d.model === null && d.label === 'Opus · xhigh' && d.learned === 1 && /learned it from you/.test(d.why), d);

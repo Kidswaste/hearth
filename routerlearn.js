@@ -28,7 +28,7 @@ const RouterLearn = (() => {
   const RUNG_NAMES = { chat: 'Lightest', quick: 'Quick', normal: 'Normal', hard: 'Deep', max: 'Deepest' };
   // + wanted more (weight), − was more than needed; accepted counts toward a clean run
   const SIGNALS = {
-    stronger: { w: 1.5, what: 'asked again with more' }, // the clearest one
+    stronger: { w: 1.5, what: 'asked again with a stronger model or more thinking' }, // the clearest one
     switchUp: { w: 1, what: 'switched to a stronger model right after' },
     complaint: { w: 1, what: 'said it was wrong or asked to try again' },
     labfix: { w: 1, what: 'asked for a fix in the Lab right after' },
@@ -84,7 +84,7 @@ const RouterLearn = (() => {
     const c = {};
     for (const e of log) { const s = SIGNALS[e.s]; if (s && Math.sign(s.w) === sign) c[e.s] = (c[e.s] || 0) + 1; }
     const top = Object.keys(c).sort((a, b) => c[b] - c[a])[0];
-    return top ? `${c[top] > 1 ? `${c[top]} times ` : ''}you ${SIGNALS[top].what}` : '';
+    return top ? `you ${SIGNALS[top].what}${c[top] > 1 ? ` (${c[top]} times)` : ''}` : '';
   }
   // what the evidence says now: a change, or null (stay put)
   function evaluate(k, kind, now, rules = RULES) {
@@ -266,10 +266,10 @@ const RouterLearn = (() => {
     if (!a || data.off) return null;
     const items = describe(data.agents[a.id], { engine: a.engine, base: a.model });
     if (!items.length) return null;
-    return el('div', { class: 'opt-row opt-learned' }, el('span', { class: 'opt-label', text: 'Smart has learned:' }),
-      el('div', { class: 'rl-items' }, items.map((x) => el('span', { class: 'rl-item', title: `${x.words}: ${x.plan || x.rung}${x.why ? `, because ${x.why}` : ''}.\nIt keeps watching and moves back when you need it.` },
+    return el('div', { class: 'opt-learned' }, el('span', { class: 'rl-label', text: 'Smart has learned:' }),
+      ...items.map((x) => el('span', { class: 'rl-item', title: `${x.words}: ${x.plan || x.rung}${x.why ? `, because ${x.why}` : ''}.\nIt keeps watching and moves back when you need it.` },
         `${x.words} → ${x.rung}`,
-        el('button', { type: 'button', class: 'ghost rl-x', text: '✕', title: `Forget this: ${x.words} go back to Smart's usual pick`, on: { click: () => { forget(a.id, x.kind); repaint?.(); } } })))));
+        el('button', { type: 'button', class: 'ghost rl-x', text: '✕', title: `Forget this: ${x.words} go back to Smart's usual pick`, on: { click: () => { forget(a.id, x.kind); repaint?.(); } } }))));
   }
   // /route learned · /route forget <kind|all> · /route learn on|off (router.js passes these here)
   function command(args, agentId) {
