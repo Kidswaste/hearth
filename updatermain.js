@@ -79,7 +79,6 @@ function create(opts = {}) {
   }
   const lines = (r) => (r.ok && r.out ? r.out.split('\n').filter(Boolean) : []);
   const sha = async (rev) => { const r = await git(['rev-parse', '--verify', '-q', rev]); return r.ok ? r.out : ''; };
-  const same = (a, b) => { const n = (p) => { try { p = fs.realpathSync.native(p); } catch { /* as is */ } p = path.resolve(p); return PLAT === 'win32' || PLAT === 'darwin' ? p.toLowerCase() : p; }; return n(a) === n(b); };
   const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 
   // ---------- before anything: can git work here, is something half-done? ----------
@@ -92,7 +91,10 @@ function create(opts = {}) {
       if (why === 'owner') return ex('owner');
       return ex('repo');
     }
-    if (!same(top.out, DIR)) return ex('repo-other', { top: top.out });
+    // Hearth's folder must BE the checkout, not a folder inside another project (asked from git itself: no path
+    // comparison to trip over subst drives, symlinks or letter case)
+    const prefix = await git(['rev-parse', '--show-prefix']);
+    if (prefix.ok && prefix.out) return ex('repo-other', { top: top.out });
     const gd = await git(['rev-parse', '--absolute-git-dir']);
     const gitDir = gd.ok ? gd.out : path.join(DIR, '.git');
     const lock = path.join(gitDir, 'index.lock');
