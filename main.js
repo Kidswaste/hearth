@@ -31,6 +31,7 @@ const appsmain = later('./appsmain');
 const bgmain = require('./bgmain'); // (round 16) is anybody looking / on battery / asleep, and the steady idle cursor
 // (round 36) native feel: window memory per computer + screen layout, the Mac's inset title bar, light / dark, menus, the badge
 const nativefeel = require('./nativefeelmain');
+const bigscreen = require('./bigscreenmain'); // (round 38) full screen + size of everything per screen
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
@@ -136,7 +137,7 @@ function createWindow() {
     backgroundColor: SPLASH_BG,
     ...nativefeel.frameOptions(st), // the Mac: traffic lights in the rail (titleBarStyle hiddenInset)
     webPreferences: {
-      additionalArguments: [`--hearth-frame=${nativefeel.frameKind(st)}`], // (preload.js → hub.native.frame)
+      additionalArguments: [`--hearth-frame=${nativefeel.frameKind(st)}`, ...bigscreen.startArgs(placed, screen)], // (preload.js → hub.native.frame; round 38: the screen's zoom for the first frame)
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       webviewTag: true,
@@ -167,6 +168,7 @@ function createWindow() {
     appshell.applySettings(win, settings());
   };
   nativefeel.track(win, screen, send);
+  bigscreen.track(win, screen, send); // (round 38) the screen it's on, full screen per screen
   // Links clicked in native chats open in your normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     openExternal(url);
@@ -553,6 +555,7 @@ ipcMain.handle('packs:pending', () => { const p = packPending; packPending = nul
 function registerAfterWindow() {
   const { nativeTheme, systemPreferences, nativeImage } = require('electron');
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
+  bigscreen.register(ipcMain, { getWin: () => win, screen: require('electron').screen }); // (round 38) ⛶ full screen, size of everything
   fsapi.registerIpc(ipcMain, () => win);
   gamebridge.start(() => win);
   aemain.registerIpc(ipcMain, () => win, () => settings().aePath);

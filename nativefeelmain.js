@@ -15,6 +15,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const C = require('./nativefeel-core');
+const B = require('./bigscreen-core');
 
 let o = { dataDir: path.join(__dirname, 'data'), platform: process.platform, host: os.hostname() };
 const file = () => path.join(o.dataDir, 'window.json');
@@ -37,9 +38,20 @@ const frameKind = (settings = {}) => (o.platform === 'darwin' && settings.macTit
 function restore(screen) {
   const displays = screen.getAllDisplays();
   const state = C.read(readJson(file()), machine());
-  const entry = C.pick(state, machine(), C.layoutKey(displays), displays);
-  return C.place(entry, displays, screen.getPrimaryDisplay()?.id);
+  const key = C.layoutKey(displays);
+  const entry = C.pick(state, machine(), key, displays);
+  const placed = C.place(entry, displays, screen.getPrimaryDisplay()?.id);
+  // (round 38, bigscreen) a set of screens not seen yet: full screen as the screen it opens on had it last (the big
+  // monitor full screen, the laptop windowed), and that screen handed to the zoom
+  const d = displays.find((x) => x.id === placed.displayId) || null;
+  const fsOf = d ? B.fullscreenFor(state, machine(), d, Boolean(state.machines?.[machine()]?.layouts?.[key])) : null;
+  if (fsOf != null) placed.fullscreen = fsOf;
+  placed.display = d;
+  return placed;
 }
+// (round 38, bigscreen) the same file, for bigscreenmain.js (each screen's size of everything and full screen)
+const readState = () => C.read(readJson(file()), machine());
+function writeState(state) { try { writeJson(file(), state); } catch { /* not critical */ } }
 function capture(win, screen) {
   const bounds = typeof win.getNormalBounds === 'function' ? win.getNormalBounds() : win.getBounds();
   const d = screen.getDisplayMatching(bounds);
@@ -157,5 +169,5 @@ function register(ipcMain, { getWin, nativeTheme, systemPreferences, app, native
   return { attention: () => attention(getWin(), { app, nativeImage, appshell }), clear: () => clearAttention(getWin(), { app }) };
 }
 
-module.exports = { frameOptions, frameKind, restore, capture, save, track, applyFlags, setLook, attention, clearAttention, setupMenu, register, machine, LIGHTS,
+module.exports = { frameOptions, frameKind, restore, readState, writeState, capture, save, track, applyFlags, setLook, attention, clearAttention, setupMenu, register, machine, LIGHTS,
   _set: (x) => { o = { ...o, ...x }; away = 0; bounced = false; follow = false; }, _away: () => away };

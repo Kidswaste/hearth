@@ -361,7 +361,7 @@ const KeysUI = (() => {
       { area: G, keys: 'Ctrl+G', what: 'All agents side by side', run: sc('g') },
       { area: G, keys: 'Ctrl+B', what: 'Show / hide the ask-all bar', run: sc('b') },
       { area: G, keys: 'Ctrl+Shift+Space', what: 'Ask all agents at once', run: sc(' ', true) },
-      { area: G, keys: 'Ctrl+= / Ctrl+- / Ctrl+0', what: 'Text size bigger / smaller / normal', run: () => AppUI.zoom(0) },
+      { area: G, keys: 'Ctrl+= / Ctrl+- / Ctrl+0', what: 'Size of everything bigger / smaller / automatic (kept for each screen)', run: () => AppUI.zoom(0) },
       { area: G, keys: 'Ctrl+,', what: 'Settings', run: () => AppUI.openSettings() },
       { area: G, keys: 'Ctrl+Shift+L', what: 'Appearance: looks, textures, glow, motion', run: () => Look.openDialog() },
       { area: G, keys: 'Ctrl+Shift+U', what: 'Token & usage dashboard' },

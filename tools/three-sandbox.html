@@ -781,6 +781,7 @@ function adaptCore(opt = {}) {
   const FLOOR = 3; // the lowest resolution: below it the page may cap the frame rate instead (onFloor)
   const UP0 = opt.upWait ?? 4000; const UP_MAX = opt.upMax ?? 64000; const FLIP = opt.flip ?? 10000; const SETTLE = opt.settle ?? 600; const HELD = opt.held ?? 60000;
   const useful = opt.useful || (() => true); // (knob) → does the scene have anything it lowers
+  const quick = opt.quick || (() => false); // (round 38, bigscreen) a huge preview (a 4K / 5K screen): one slow window is enough to step down
   const S = { level: 0, frames: 0, slow: 0, win0: 0, winMin: Infinity, prevGap: 0, since: -1e9, calm0: 0, upWait: UP0, lastUp: -1e9, lastDown: -1e9, slowWins: 0, downs: 0, ups: 0, flips: 0, hold: false, min: 0, byFloor: false };
   // the next level down / up that changes something here
   const nextDown = (l) => { for (let k = l + 1; k < STEPS.length; k += 1) if (KNOB[k] === 'scale' || useful(KNOB[k])) return k; return l; };
@@ -817,7 +818,7 @@ function adaptCore(opt = {}) {
     if (share > 0.25) {
       S.slowWins += 1;
       // sustained: two slow windows in a row (one when it's badly slow); the first window after a step only settles
-      if ((S.slowWins >= 2 || share > 0.6) && now - S.since >= SETTLE) {
+      if ((S.slowWins >= 2 || share > 0.6 || (S.level < FLOOR && quick())) && now - S.since >= SETTLE) {
         if (S.level === FLOOR && onFloor?.()) { S.since = now; S.slowWins = 0; } else step = down(now);
       }
     } else {
@@ -849,7 +850,11 @@ const XP_PAGE = new URLSearchParams(location.search).get('xp') === '1';
 // what the scene has for each knob to lower
 const adShows = (id) => { const L = id ? layers.get(id) : null; return !L || layerMix(L) > 0; };
 const AD_USE = { fx: () => [...layers.values()].some((L) => L.fx && !L.fxSkip && layerMix(L) > 0), shadow: () => [...renderers].some((r) => r.shadowMap?.enabled && !r.__stale && adShows(r.__layer)), parts: () => [...PT.stats.keys()].some(adShows) };
-const AD = { on: !XP_PAGE, core: adaptCore({ useful: (k) => Boolean(AD_USE[k]?.()) }), cull: 0 };
+// (round 38, bigscreen) the pixels the preview draws per frame (every visible renderer's canvas): over ≈ 6 million (a
+// preview filling a 4K / 5K screen) a slow moment steps the resolution down after one window instead of two
+const AD_BIG_PX = 6e6;
+const adBigPx = () => { let px = 0; for (const r of renderers) { const c = r.domElement; if (c && !r.__stale && adShows(r.__layer)) px += (c.width || 0) * (c.height || 0); } return px > AD_BIG_PX; };
+const AD = { on: !XP_PAGE, core: adaptCore({ useful: (k) => Boolean(AD_USE[k]?.()), quick: adBigPx }), cull: 0 };
 // full quality right now: a still / screenshot / recording, an offline render step, the export page, adapting off
 const adFull = () => !AD.on || fullRes() || SQ.off || XP_PAGE;
 const adStep = () => (adFull() ? AD.core.STEPS[0] : AD.core.step);

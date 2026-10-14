@@ -501,6 +501,8 @@ const AppUI = (() => {
 
   // ---------- zoom ----------
   function zoom(delta) {
+    // (round 38, bigscreen) the size of everything is kept per screen (Auto on a big monitor): bigscreen.js decides
+    if (typeof Bigscreen !== 'undefined') { Bigscreen.zoomStep(delta); return; }
     const next = delta === 0 ? 1 : Math.min(2, Math.max(0.6, Math.round((window.hub.getZoom() + delta) * 10) / 10));
     window.hub.setZoom(next);
     store.set('zoom.app', next);
@@ -831,7 +833,7 @@ const AppUI = (() => {
   }
   function init() {
     const z = store.get('zoom.app', 1);
-    if (z !== 1) window.hub.setZoom(z);
+    if (z !== 1 && !window.hub.big) window.hub.setZoom(z); // (round 38: with bigscreen, the zoom is per screen, set before the first frame)
     setupPanelResize();
     window.hub.onDownload(onDownload);
     window.hub.onTray((what) => {

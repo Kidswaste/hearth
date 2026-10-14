@@ -264,7 +264,7 @@ function rest() {
   ok(wf.find((i) => i.label === 'Close window').accelerator === 'Alt+F4' && wf.find((i) => i.label === 'Exit'), 'Windows: Close window (Alt+F4) and Exit');
   wf.find((i) => i.label === 'Exit').click(); eq(clicks.pop(), ['quit'], 'Windows: Exit quits');
   wf.find((i) => i.label === 'Close window').click(); eq(clicks.pop(), ['close'], 'Windows: Close window closes (the tray setting decides the rest)');
-  const zoomIn = win[2].submenu.find((i) => i.label === 'Bigger text'); zoomIn.click(); eq(clicks.pop(), ['zoom', 1], 'View → Bigger text');
+  const zoomIn = win[2].submenu.find((i) => i.label === 'Bigger'); zoomIn.click(); eq(clicks.pop(), ['zoom', 1], 'View → Bigger');
   ok(!JSON.stringify(win).includes('Ctrl+W') && !JSON.stringify(win).includes('Ctrl+R') && !JSON.stringify(win).includes('Ctrl+Q'), 'Windows: no Ctrl+W / Ctrl+R / Ctrl+Q in the menu (Electron\'s default menu closed or reloaded the window)');
   // setupMenu builds it (with a fake Menu)
   let built = null;

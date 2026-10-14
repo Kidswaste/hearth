@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer, webFrame, webUtils } = require('electron');
 
 const on = (channel) => (cb) => ipcRenderer.on(channel, (_e, data) => cb(data));
 const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
+// (round 38, bigscreen) the size of everything for this screen, before the page's first frame (main.js picks it)
+const startZoom = Number((process.argv.find((a) => a.startsWith('--hearth-zoom=')) || '').slice(14)) || 1;
+if (startZoom !== 1) { try { webFrame.setZoomFactor(startZoom); } catch { /* the page re-applies it */ } }
 
 contextBridge.exposeInMainWorld('hub', {
   getConfig: call('config:get'),
@@ -67,6 +70,12 @@ contextBridge.exposeInMainWorld('hub', {
     os: process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux',
     look: call('native:look'), titleDblClick: call('native:titleDblClick'), info: call('native:info'),
     onOsScheme: on('native:os-scheme'), onState: on('native:state'), onMenu: on('native:menu'),
+  },
+  // (round 38, bigscreen) full screen (⛶), the size of everything per screen
+  big: {
+    startZoom,
+    info: call('big:info'), fullscreen: call('big:fullscreen'), zoom: call('big:zoom'), testBounds: call('big:testBounds'),
+    onDisplay: on('big:display'),
   },
   isWindowFocused: call('window:isFocused'),
   reloadWindow: call('window:reload'),
