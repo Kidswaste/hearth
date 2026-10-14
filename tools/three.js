@@ -883,10 +883,12 @@ const ThreeLab = (() => {
     // Parked: the preview draws nothing while the Lab isn't on screen (another tool or chat in front, the window
     // hidden or minimised, another Lab tab). Recordings, the Stage window and offline renders go on.
     let parkedNow = false;
+    let stallArm = null; // (round 39, powerwise) the stall / park safety timer's pace follows the park (set below)
     function syncPark(force = false) {
       const on = !box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }));
       if (on === parkedNow && !force) return;
       parkedNow = on;
+      stallArm?.(on);
       if (box.ready || !on) box.send({ type: 'park', on });
       if (paceOn) paintPace(); // (round 33 "labpace")
     }
@@ -934,9 +936,13 @@ const ThreeLab = (() => {
     function setPaceOn(on) { paceOn = Boolean(on); store.set('three.paceReadout', paceOn); paintPace(); return paceOn; }
     // on battery (the computer says so): the preview holds 60 fps at most in Auto and starts a step lighter
     let onBattery = false;
+    // (round 39, powerwise) also when the main process says so: Windows battery saver / Mac Low Power Mode count too
+    let batApi = false; let sysLite = false;
+    const updPower = () => { const v = batApi || sysLite; if (v === onBattery) return; onBattery = v; if (box.ready) box.send({ type: 'power', battery: v }); };
+    addEventListener('hearth:power', (e) => { sysLite = Boolean(e.detail && e.detail.mode !== 'plugged'); updPower(); });
     try {
       navigator.getBattery?.().then((b) => {
-        const upd = () => { const v = !b.charging; if (v === onBattery) return; onBattery = v; if (box.ready) box.send({ type: 'power', battery: v }); };
+        const upd = () => { batApi = !b.charging; updPower(); };
         upd(); b.addEventListener('chargingchange', upd);
       }).catch(() => { /* no battery API: plugged in */ });
     } catch { /* none */ }
@@ -2200,7 +2206,8 @@ const ThreeLab = (() => {
       extras[current.id].media.time = t;
       saveExtras();
     }
-    setInterval(rememberMedia, 5000);
+    // (round 39, powerwise) while Hearth is on screen (the background schedule; nothing to remember behind a minimized window)
+    if (window.Power) Power.every('lab-media', 5000, rememberMedia, { hidden: 'skip', battery: false }); else setInterval(rememberMedia, 5000);
     // ---------- the scene's own timeline (round 10, orb) ----------
     // One clock per scene. A scene with a song plays on the song (as before); a scene without one plays on its own
     // timeline, extras[id].timeline = { len, fps, time }: the player's silent clock (tools/three-media.js loadClock),
@@ -3097,12 +3104,15 @@ const ThreeLab = (() => {
       if (Date.now() - lastStatsAt > 8000) showStall('The preview stopped responding.');
     };
     let idleAsked = false;
-    setInterval(() => {
+    const stallTick = () => {
       if (typeof requestIdleCallback !== 'function') { idleCheck(); return; }
       if (idleAsked) return;
       idleAsked = true;
       requestIdleCallback(() => { idleAsked = false; idleCheck(); }, { timeout: 1500 });
-    }, 2000);
+    };
+    // (round 39, powerwise) only while Hearth is on screen (a hidden window's preview draws nothing to watch), and every
+    // 10 s while the Lab is parked behind a chat (then it only makes sure a park can't stick; the view events come first)
+    if (window.Power) { stallArm = (parked) => Power.every('lab-stall', parked ? 10000 : 2000, stallTick, { hidden: 'skip', battery: false }); stallArm(parkedNow); } else setInterval(stallTick, 2000);
     // How a change reaches the preview (round 6 "live": no whole-page reloads for edits):
     //   hot     one layer re-runs in place (its old picture cross-fades into the new one; a new layer wipes in)
     //   sync    only the layers whose code changed re-run, removed ones fade out, the others just get their props

@@ -451,7 +451,7 @@ function create(opts = {}) {
 const self = create();
 function register(ipcMain, { restart, getWin } = {}) {
   ipcMain.handle('update:status', (_e, o) => self.status(o || {}));
-  ipcMain.handle('update:apply', () => self.apply());
+  ipcMain.handle('update:apply', () => require('./powerwisemain').during('update', () => self.apply())); // (round 39) awake while it updates
   ipcMain.handle('update:back', () => self.back()); // (round 37) Go back to the previous version
   ipcMain.handle('update:fix', (_e, id) => self.fix(String(id || ''))); // (round 37) the one fix for a failed update
   ipcMain.handle('update:restart', () => { setTimeout(restart, 150); return true; }); // after the answer reaches the window

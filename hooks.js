@@ -190,8 +190,9 @@ const Hooks = (() => {
     }
     syncWatch();
   }
-  setInterval(tick, 30000);
-  setTimeout(tick, 2000);
+  // (round 39, powerwise) on the background schedule (never more than a minute late; none while the computer sleeps,
+  // a moment after it wakes)
+  if (window.Power) Power.every('hooks', 30000, tick, { first: 2000, max: 60000 }); else { setInterval(tick, 30000); setTimeout(tick, 2000); }
   window.hub.onConfigChanged?.(() => setTimeout(syncWatch, 200));
 
   // ---------- ⋯ AI setup: "Hooks: when… then…" ----------

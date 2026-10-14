@@ -686,7 +686,8 @@ function sleepIdleWebsites() {
     try { v.dataset.sleptUrl = v.getURL(); v.dataset.sleeping = '1'; v.loadURL('about:blank'); } catch { /* not ready yet */ }
   }
 }
-setInterval(sleepIdleWebsites, 60000);
+// (round 39, powerwise) on the background schedule: slower minimized / on battery, never while the computer sleeps
+if (window.Power) Power.every('websites', 60000, sleepIdleWebsites, { max: 5 * 60000 }); else setInterval(sleepIdleWebsites, 60000);
 function wakeWebsite(s) {
   const v = s.webview;
   const url = v.dataset.sleptUrl;

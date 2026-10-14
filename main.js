@@ -1,6 +1,9 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
+// (round 39, powerwise) keep the computer awake only while it matters, battery / saver, calm timers after a wake (first, so
+// its test counter sees every timer the main process starts)
+const powerwise = require('./powerwisemain');
 // (round 31, winmac) started from the Mac's Dock, PATH lacks Homebrew / npm / nvm: claude, codex, ffmpeg, git and the
 // chats' own commands are found again (Windows / Linux: unchanged)
 require('./winmac').fixProcessPath();
@@ -292,7 +295,9 @@ ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) 
   engines.setEnginePaths(settings().enginePaths);
   const agent = readConfig().agents.find((a) => a.id === agentId);
   if (!agent || agent.mode !== 'native') throw new Error(`${agentId} is not a native agent`);
+  const turn = powerwise.turn(chatId); // (round 39) a long turn keeps the computer awake until it ends
   engines.send({ agent, chatId, session: session || {}, text, options: options || {} }, (event) => {
+    if (event.type === 'done' || event.type === 'error' || event.type === 'stopped') turn.end();
     send('engine:event', { chatId, ...event });
   }, (event) => send('engine:live', { chatId, ...event })); // (round 21) steps, subagents, pulses: native.js / chat-live.js
 });
@@ -445,7 +450,8 @@ ipcMain.handle('stage:open', (_e, { query, width, height, fresh }) => {
       webPreferences: { preload: path.join(__dirname, 'stage-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
     });
     const w = stageWin;
-    w.on('closed', () => { if (stageWin === w) stageWin = null; if (!w.__silent && !win.isDestroyed()) win.webContents.send('stage:closed'); });
+    const awake = powerwise.hold('present', { label: 'the Stage window is showing' }); // (round 39) a second screen: the screen stays on
+    w.on('closed', () => { awake(); if (stageWin === w) stageWin = null; if (!w.__silent && !win.isDestroyed()) win.webContents.send('stage:closed'); });
     stageWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   }
   // a new frame size: reshape the window to it (re-runs with the same size leave your window alone)
@@ -556,6 +562,7 @@ function registerAfterWindow() {
   const { nativeTheme, systemPreferences, nativeImage } = require('electron');
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
   bigscreen.register(ipcMain, { getWin: () => win, screen: require('electron').screen }); // (round 38) ⛶ full screen, size of everything
+  powerwise.register(ipcMain, { bgmain, getWin: () => win }); // (round 39) staying awake while it matters, battery / saver, wake
   fsapi.registerIpc(ipcMain, () => win);
   gamebridge.start(() => win);
   aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
@@ -606,7 +613,9 @@ function registerAfterWindow() {
     const soon = () => { clearTimeout(t); t = setTimeout(check, 60); };
     const arm = () => { try { w?.close(); w = fs.watch(file, (ev) => { soon(); if (ev === 'rename') setTimeout(arm, 100); }); w.on('error', () => { w = null; }); } catch { w = null; } };
     arm();
-    fs.watchFile(file, { interval: 5000 }, () => { if (!w) arm(); soon(); });
+    // (round 39, powerwise) the safety net on the background schedule: every 10 s on screen, slower minimized / on
+    // battery, none while the computer sleeps (was a stat every 5 s per file, always)
+    powerwise.every(`config-stat:${path.basename(file)}`, 10000, () => { if (!w) arm(); check(); });
   }
   bgmain.register(() => win);
   bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });

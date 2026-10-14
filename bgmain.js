@@ -12,7 +12,7 @@ const { app, powerMonitor } = require('electron');
 const CALM_MS = Number(process.env.HEARTH_CALM_MS) || 12000;
 const CALM_CSS = '*, *::before, *::after { caret-animation: manual !important; }';
 let getWin = () => null;
-const state = { hidden: false, battery: false, asleep: false, since: Date.now() };
+const state = { hidden: false, battery: false, asleep: false, saver: false, since: Date.now() }; // (round 39, powerwise: saver = Mac Low Power Mode / Windows battery saver, set by powerwisemain.js)
 const subs = new Set();
 
 function set(patch) {
@@ -73,4 +73,4 @@ function register(gw) {
   });
 }
 
-module.exports = { register, attach, subscribe, state: () => ({ ...state }), CALM_MS, _test: { onInput, calm: () => calmKey } };
+module.exports = { register, attach, subscribe, state: () => ({ ...state }), CALM_MS, _set: set, _test: { onInput, calm: () => calmKey } }; // (_set: powerwisemain.js — the saver, and its tests' simulated battery / sleep)

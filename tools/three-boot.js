@@ -68,7 +68,8 @@ const LabBoot = (() => {
     if (started) return;
     started = true;
     const f = flag();
-    const why = f === '0' ? 'off' : !can() ? 'no moveBefore' : labUp() ? 'lab already up' : (f !== '1' && !usedRecently()) ? 'lab not used lately' : null;
+    // (round 39, powerwise) no warm page on battery / battery saver: the Lab opens the usual way
+    const why = f === '0' ? 'off' : !can() ? 'no moveBefore' : labUp() ? 'lab already up' : (f !== '1' && !usedRecently()) ? 'lab not used lately' : (f !== '1' && window.Power?.warm?.() === false) ? 'on battery' : null;
     if (why) { st.skipped = why; return; }
     let sketches = [];
     try { sketches = await window.hub.kvGet('three-sketches', []); } catch { /* none */ }

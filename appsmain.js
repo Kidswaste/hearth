@@ -109,6 +109,7 @@ function hookSession(partition, appIdOf) {
   const ses = session.fromPartition(partition);
   appshell?.skipDownloads?.(ses); // the hub's own download toast (appshell.setupDownloads) leaves these to us
   ses.on('will-download', (_e, item, wc) => {
+    try { require('./powerwisemain').download(item); } catch { /* (round 39, powerwise) a big one keeps the computer awake */ }
     const appId = appIdOf(wc);
     const spec = wins.get(appId)?.spec || catalog.find((a) => a.id === appId) || { id: appId, name: appId };
     const target = uniquePath(downloadsDir(spec.name), item.getFilename() || 'download');
