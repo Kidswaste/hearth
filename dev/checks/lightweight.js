@@ -120,7 +120,8 @@ ok(z.observers <= a.observers && z.observers - s0.observers <= 16, `observers do
 ok(z.intervals <= a.intervals && z.intervals - s0.intervals <= 3, `intervals don't grow per session (${s0.intervals} · ${a.intervals} → ${z.intervals}: ${z.topIntervals.join(' · ')})`);
 ok((z.detached['aside.opt-sheet'] || 0) <= 400, `closed ⋯ AI setup sheets are let go (${z.detached['aside.opt-sheet'] || 0} detached nodes of them)`);
 const sheetBtns = Object.entries(z.byListener).filter(([k]) => /btn options\.js/.test(k)).reduce((n, [, v]) => n + v, 0);
-ok(sheetBtns <= 6, `AI setup's buttons kept for two sheets at most (${sheetBtns} listeners; 3 a sheet, ${N * 3} sheets opened)`);
+// (round 39) a sheet now has 4 of these buttons (round 38's Tidy memory… is the 4th): two sheets = 8
+ok(sheetBtns <= 8, `AI setup's buttons kept for two sheets at most (${sheetBtns} listeners; 4 a sheet, ${N * 3} sheets opened)`);
 ok(z.gl === 0, `no WebGL context left in the window (${z.gl})`);
 const pages = z.targets.filter((t) => /^page /.test(t)); const frames = z.targets.filter((t) => /^iframe /.test(t));
 ok(pages.length === 1 && frames.length <= 1 && frames.every((t) => /three-sandbox/.test(t)), `no hidden page left but the Lab's preview (${z.targets.join(' | ')})`);
