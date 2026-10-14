@@ -19,7 +19,10 @@ const early = Lazy.state().filter((g) => typeof g.at === 'number' && g.at - (g.m
 check('every group starts loading after the first frame', Number.isFinite(gate) && !early.length, `ready ${Math.round(ready)} · first paint ${Math.round(paint)} ms · ${early.map((g) => `${g.name}@${g.at - g.ms}`).join(' ')}`);
 check('the command bar and Flows load after the first screen', ['cmdbar', 'flows'].every((n) => Lazy.loaded(n)) && typeof CmdBar !== 'undefined' && typeof FlowsUI !== 'undefined');
 const first = [...document.querySelectorAll('script[src]')].filter((s) => !/lazy-at\.js/.test(s.src) && s.defer).length;
-check('first-screen scripts', first <= 72, `${first} (index.html, without the lazy-at.js tags)`);
+check('first-screen scripts', first <= 72, `${first} (index.html, without the lazy-at.js tags; sizes: dev/boot-test.js)`);
+// (round 40, firstscreen) a stall guard, not a speed test: medians here are 0.4–1.1 s (software GL, a shared machine);
+// 3 s means something now runs in front of the first screen (a lazy group parsed early, a sync wait)
+check('the first screen is up within 3 s', ready <= 3000, `ready ${Math.round(ready)} ms`);
 const r = await window.hub.renders.pause('nope').catch((err) => ({ error: err.message }));
 const u = await window.hub.update.status({ quick: true }).catch((err) => ({ error: err.message }));
 const a = await window.hub.assets.status().catch((err) => ({ error: err.message }));

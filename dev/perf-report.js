@@ -99,6 +99,11 @@ function analyzeStartup(events) {
     styleRecalcMs: sum('UpdateLayoutTree'), layoutMs: sum('Layout'), paintMs: sum('Paint'),
     mainThreadBusyMs: r1(tasks.reduce((a, e) => a + e.dur / 1000, 0)),
     longTasks: long, longTaskMs: r1(long.reduce((a, l) => a + l.ms, 0)),
+    // (round 40, firstscreen) the work in front of the first screen: main-thread tasks, script evaluation and long tasks
+    // from navigation to 'hearth:ready' (CPU time: steadier than the wall clock on a shared machine)
+    busyToReadyMs: r1(on.filter((e) => e.name === TASK && e.ph === 'X' && rel(e.ts) >= 0 && rel(e.ts) <= readyMs).reduce((a, e) => a + e.dur / 1000, 0)),
+    scriptToReadyMs: r1(on.filter((e) => e.name === 'EvaluateScript' && e.ph === 'X' && e.dur && rel(e.ts) >= 0 && rel(e.ts) <= readyMs).reduce((a, e) => a + e.dur / 1000, 0)),
+    longToReady: long.filter((l) => l.at <= readyMs).length, longToReadyMs: r1(long.filter((l) => l.at <= readyMs).reduce((a, l) => a + Math.min(l.ms, readyMs - l.at), 0)),
     scripts: Object.fromEntries(Object.entries(scripts).map(([k, s]) => [k, { evalMs: r1(s.evalMs), compileMs: r1(s.compileMs) }]).sort((a, b) => b[1].evalMs - a[1].evalMs)),
     css: Object.fromEntries(Object.entries(css).map(([k, v]) => [k, r1(v)]).sort((a, b) => b[1] - a[1])),
   };
@@ -201,7 +206,7 @@ function analyzeIdle(events, ms) {
       report.runs.push(a);
       console.log(`run ${run + 1}: FCP ${a.fcpMs} ms · ready ${a.readyMs} ms · interactive ${a.interactiveMs} ms · script ${a.scriptEvalMs} ms · long tasks ${a.longTasks.length} (${a.longTaskMs} ms)`);
     }
-    const keys = ['fcpMs', 'readyMs', 'interactiveMs', 'scriptEvalMs', 'scriptCompileMs', 'cssParseMs', 'styleRecalcMs', 'layoutMs', 'paintMs', 'mainThreadBusyMs', 'longTaskMs'];
+    const keys = ['fcpMs', 'readyMs', 'interactiveMs', 'scriptEvalMs', 'scriptCompileMs', 'cssParseMs', 'styleRecalcMs', 'layoutMs', 'paintMs', 'mainThreadBusyMs', 'longTaskMs', 'busyToReadyMs', 'scriptToReadyMs', 'longToReady', 'longToReadyMs'];
     report.startup = Object.fromEntries(keys.map((k) => [k, r1(median(report.runs.map((r) => r[k])))]));
     report.startup.longTasks = median(report.runs.map((r) => r.longTasks.length));
     // per-file medians
