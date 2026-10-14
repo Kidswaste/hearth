@@ -207,6 +207,7 @@ const Options = (() => {
     return sec('How hard it thinks', smart ? 'Smart picks for each message: lighter for small asks, deeper for code and builds. Click the pick on a reply to ask again, harder.' : null,
       el('div', { class: 'opt-seg' }, levels.map(([v, label]) => el('button', { type: 'button', class: `ghost small${cur === v || (v === 'high' && cur === 'xhigh') ? ' on' : ''}`, text: label,
         title: v === 'low' ? 'It answers fast and short' : v === 'medium' ? 'It picks for each message: light for small asks, thorough for hard ones (saves tokens)' : 'It thinks longer and answers more thoroughly (more tokens)', on: { click: () => save(a, { effort: v === 'medium' ? undefined : v }).then(paint) } }))),
+      smart && typeof RouterLearn !== 'undefined' ? RouterLearn.row(a, paint) : null, // (round 39, routerlearn.js) what Smart learned from you, ✕ forgets
       answers(a));
   }
   // (round 35, concise) How long its answers are: one row under the thinking buttons. Saved as agent.verbosity (the

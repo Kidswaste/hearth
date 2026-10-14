@@ -9,6 +9,9 @@
 // Pure rules (decide / classify) run in Node too: dev/router-test.js.
 const Router = (() => {
   const TIERS = ['chat', 'quick', 'normal', 'hard'];
+  // (round 39, routerlearn.js) what Smart learned from the owner can move a kind of message one rung: the tiers, plus
+  // 'max' on top (the chat's own model at xhigh; its tier stays 'hard' for everything else that reads tiers)
+  const RUNGS = [...TIERS, 'max'];
   // what each tier asks for; no model = the chat's own (agent default), so routing only ever picks a cheaper one
   const PLAN = {
     claude: { chat: { model: 'haiku', effort: 'low' }, quick: { model: 'sonnet', effort: 'low' }, normal: { effort: 'medium' }, hard: { effort: 'high' } },
@@ -44,28 +47,30 @@ const Router = (() => {
     const codeWord = CODEWORD.test(t);
     const build = BUILD.test(t);
     const analysis = ANALYSIS.test(t);
-    if (HARDER.test(t)) return { tier: 'hard', why: 'you asked it to think it through' };
-    if (ctx.prevTier && words <= 6 && FOLLOW.test(t)) return { tier: ctx.prevTier, why: 'a go-ahead: same as the last reply' };
-    if (code && (build || analysis || chars > 400)) return { tier: 'hard', why: 'code to write, fix or explain' };
-    if (ctx.director && build && words >= 3) return { tier: 'hard', why: 'a build in the Lab' };
-    if (codeWord && build && words >= 4) return { tier: 'hard', why: 'code to write or fix' };
-    if (analysis && words >= 8) return { tier: 'hard', why: 'an analysis or a plan' };
-    if (chars > 3000) return { tier: 'hard', why: 'a long, detailed message' };
-    if (fileTokens > 8000) return { tier: 'hard', why: 'big files attached' };
+    if (HARDER.test(t)) return { tier: 'hard', why: 'you asked it to think it through', kind: 'asked' };
+    if (ctx.prevTier && words <= 6 && FOLLOW.test(t)) return { tier: ctx.prevTier, why: 'a go-ahead: same as the last reply', kind: 'follow' };
+    if (code && (build || analysis || chars > 400)) return { tier: 'hard', why: 'code to write, fix or explain', kind: 'code' };
+    if (ctx.director && build && words >= 3) return { tier: 'hard', why: 'a build in the Lab', kind: 'lab' };
+    if (codeWord && build && words >= 4) return { tier: 'hard', why: 'code to write or fix', kind: 'code' };
+    if (analysis && words >= 8) return { tier: 'hard', why: 'an analysis or a plan', kind: 'analysis' };
+    if (chars > 3000) return { tier: 'hard', why: 'a long, detailed message', kind: 'make' };
+    if (fileTokens > 8000) return { tier: 'hard', why: 'big files attached', kind: 'make' };
     const light = LIGHT.test(t) && words <= 30;
     if (code || build || analysis || files.length || chars > 400 || words > 60) {
       const why = code ? 'some code' : build ? 'something to make' : analysis ? 'something to think over' : files.length ? 'files attached' : 'a longer message';
-      return light && !code ? { tier: 'quick', why: `${why}, but you asked for it quick` } : { tier: 'normal', why };
+      const kind = code ? 'code' : ctx.director && build ? 'lab' : analysis ? 'analysis' : 'make';
+      return light && !code ? { tier: 'quick', why: `${why}, but you asked for it quick`, kind: 'asked' } : { tier: 'normal', why, kind };
     }
-    if (light) return { tier: 'quick', why: 'you asked for a quick answer' };
+    if (light) return { tier: 'quick', why: 'you asked for a quick answer', kind: 'asked' };
     let r;
-    if (CHAT.test(t) && words <= 6 && !/\?/.test(t)) r = { tier: 'chat', why: 'chit-chat' };
-    else if (QUESTION.test(t) && words <= 25) r = { tier: 'quick', why: 'a short question' };
-    else if (words <= 12) r = { tier: 'quick', why: 'a small ask' };
-    else r = { tier: 'normal', why: 'an everyday message' };
+    if (CHAT.test(t) && words <= 6 && !/\?/.test(t)) r = { tier: 'chat', why: 'chit-chat', kind: 'chat' };
+    else if (QUESTION.test(t) && words <= 25) r = { tier: 'quick', why: 'a short question', kind: 'question' };
+    else if (words <= 12) r = { tier: 'quick', why: 'a small ask', kind: 'small' };
+    else r = { tier: 'normal', why: 'an everyday message', kind: 'make' };
     // floors: a picture or a Lab director's tools want at least the middle model
-    if ((images || ctx.director) && TIERS.indexOf(r.tier) < 1) r = { tier: 'quick', why: images ? 'a picture to look at' : 'a Lab chat (its tools need a steady model)' };
-    if (images && r.tier === 'quick' && words > 12) r = { tier: 'normal', why: 'a picture to look at' };
+    if ((images || ctx.director) && TIERS.indexOf(r.tier) < 1) r = { tier: 'quick', why: images ? 'a picture to look at' : 'a Lab chat (its tools need a steady model)', kind: images ? 'picture' : r.kind };
+    if (images && r.tier === 'quick' && words > 12) r = { tier: 'normal', why: 'a picture to look at', kind: 'picture' };
+    if (images && r.kind !== 'picture') r = { ...r, kind: 'picture' };
     return r;
   }
 
@@ -83,21 +88,42 @@ const Router = (() => {
     let pick;
     if (input.force) pick = { tier: 'hard', why: 'you asked it to think harder' };
     else pick = classify(input.text, { attachments: input.attachments, images: input.images, director: input.director, prevTier });
+    // (round 39) a rung learned from the owner for this kind of message (routerlearn.js): never for an explicit ask
+    // ("think carefully", "quick") or a go-ahead (it follows the last reply, already learned)
+    let rung = pick.tier;
+    let learned = 0;
+    const shift = !input.force && pick.kind && input.learned ? Number(input.learned[pick.kind]) || 0 : 0;
+    if (shift) {
+      const floor = (input.images || (input.attachments || []).some((a) => a && a.kind === 'image') || input.director) ? 1 : 0;
+      const i = Math.max(floor, Math.min(RUNGS.length - 1, RUNGS.indexOf(pick.tier) + shift));
+      if (RUNGS[i] !== pick.tier) {
+        learned = i - RUNGS.indexOf(pick.tier);
+        rung = RUNGS[i];
+        pick = { ...pick, tier: rung === 'max' ? 'hard' : rung, why: `${pick.why}; ${learned > 0 ? 'more' : 'less'} than the rule says: Smart learned it from you` };
+      }
+    }
+    if (pick.tier === prevTier && rung === 'hard' && lastReply?.route?.rung === 'max' && pick.kind === 'follow') rung = 'max';
     // a big context never steps down (its cache belongs to the model + effort it has)
     let kept = false;
     const ctxTokens = lastReply?.usage?.input || 0;
-    if (!input.force && lastReply && ctxTokens >= STICKY_TOKENS && TIERS.indexOf(pick.tier) < TIERS.indexOf(prevTier)) {
-      pick = { tier: prevTier, why: `${pick.why}; kept as before: switching now would re-read ${fmtK(ctxTokens)} tokens without the cache` };
+    const prevRung = lastReply?.route?.rung || prevTier;
+    if (!input.force && lastReply && ctxTokens >= STICKY_TOKENS && RUNGS.indexOf(rung) < RUNGS.indexOf(prevRung)) {
+      pick = { ...pick, tier: prevTier, why: `${pick.why}; kept as before: switching now would re-read ${fmtK(ctxTokens)} tokens without the cache` };
+      rung = prevRung;
       kept = true;
+      learned = 0;
     }
-    const plan = PLAN[engine][pick.tier];
+    // a learned step UP in a big chat changes its model / effort: the next message re-reads it once uncached, and
+    // routerlearn.js says so in the chat (the cachewise line) before it happens
+    const reread = learned > 0 && ctxTokens >= STICKY_TOKENS && RUNGS.indexOf(rung) > RUNGS.indexOf(prevRung) ? ctxTokens : 0;
+    const plan = rung === 'max' ? { effort: 'xhigh' } : PLAN[engine][pick.tier];
     const base = pinned.model || input.baseModel || '';
     let model = null;
     if (!pinned.model && plan.model && rankOf(engine, plan.model) < rankOf(engine, base)) model = plan.model;
     let effort = pinned.effort && !input.force ? null : (input.force ? (input.force === true ? 'high' : input.force) : plan.effort);
     const shown = model || base;
     const shownEffort = effort || pinned.effort || 'medium';
-    return { tier: pick.tier, model, effort, why: pick.why, kept, forced: Boolean(input.force), label: `${nameOf(engine, shown)} · ${shownEffort}`, engine };
+    return { tier: pick.tier, rung, kind: pick.kind || null, learned, reread, model, effort, why: pick.why, kept, forced: Boolean(input.force), label: `${nameOf(engine, shown)} · ${shownEffort}`, engine };
   }
 
   // ---------- in the app ----------
@@ -115,6 +141,7 @@ const Router = (() => {
       engine, text: last?.role === 'user' ? last.text : raw, attachments: last?.attachments, images: (last?.images || []).length,
       director: Boolean(agent.dock), history: chat.messages.slice(0, last?.role === 'user' ? -1 : undefined),
       pinned: { model: options.model, effort: options.effort }, baseModel: twin ? twin.model : agent.model, force,
+      learned: typeof RouterLearn !== 'undefined' ? RouterLearn.shifts(agentId) : null, // (round 39) what Smart learned from the owner
     });
   }
   function onOptions(agentId, chat, raw, last, options, how = {}) {
@@ -131,7 +158,8 @@ const Router = (() => {
     const d = routes.get(chat.id);
     routes.delete(chat.id);
     if (!d) return;
-    extras.route = { tier: d.tier, label: d.label, why: d.why, ...(d.model ? { model: d.model } : {}), ...(d.effort ? { effort: d.effort } : {}), ...(d.kept ? { kept: true } : {}), ...(d.forced ? { forced: true } : {}) };
+    extras.route = { tier: d.tier, label: d.label, why: d.why, ...(d.model ? { model: d.model } : {}), ...(d.effort ? { effort: d.effort } : {}), ...(d.kept ? { kept: true } : {}), ...(d.forced ? { forced: true } : {}),
+      ...(d.kind ? { kind: d.kind } : {}), ...(d.rung && d.rung !== d.tier ? { rung: d.rung } : {}), ...(d.learned ? { learned: d.learned } : {}) };
     if (d.model) extras.model = d.model; // the meter prices the model that really answered
   }
 
@@ -168,7 +196,8 @@ const Router = (() => {
   function preview(agentId, text) {
     const chat = Native.current(agentId) || { messages: [] };
     const agent = H.agent(agentId);
-    const d = decide({ engine: agent?.engine, text, director: Boolean(agent?.dock), history: chat.messages, pinned: { model: chat.model, effort: chat.effort }, baseModel: agent?.model });
+    const d = decide({ engine: agent?.engine, text, director: Boolean(agent?.dock), history: chat.messages, pinned: { model: chat.model, effort: chat.effort }, baseModel: agent?.model,
+      learned: typeof RouterLearn !== 'undefined' ? RouterLearn.shifts(agentId) : null });
     return d ? `${d.label}: ${d.why}${smartOn(agent) ? '' : ' (this AI is not on Smart: ⋯ AI setup → How hard it thinks)'}` : 'This chat has its own model and effort: nothing to pick.';
   }
 
@@ -179,15 +208,16 @@ const Router = (() => {
   }
   if (typeof Commands !== 'undefined' && !Commands.get('route')) {
     Commands.register({
-      name: 'route', area: 'Chat', args: '[harder | test <words>]',
+      name: 'route', area: 'Chat', args: '[harder | test <words> | learned | forget <kind|all>]',
       desc: 'Smart: which model and effort the last reply got and why; ask again thinking harder; or test some words',
       keywords: 'smart router model effort cheaper think harder',
       examples: ['/route', '/route harder', '/route test fix this shader'],
-      complete: () => [{ value: 'harder', hint: 'ask again, thinking harder' }, { value: 'test ', hint: 'what Smart would pick' }],
+      complete: () => [{ value: 'harder', hint: 'ask again, thinking harder' }, { value: 'test ', hint: 'what Smart would pick' }, { value: 'learned', hint: 'what Smart learned from you' }, { value: 'forget ', hint: 'forget what it learned' }],
       run: async (args, ctx) => {
         const a = String(args || '').trim();
         if (/^harder$/i.test(a)) return (await harder(ctx.agentId)) || null;
         if (/^test\s+/i.test(a)) return preview(ctx.agentId, a.replace(/^test\s+/i, ''));
+        if (/^(learned|learn|forget)\b/i.test(a) && typeof RouterLearn !== 'undefined') return RouterLearn.command(a, ctx.agentId); // (round 39)
         const r = [...(Native.current(ctx.agentId)?.messages || [])].reverse().find((m) => m.role === 'assistant')?.route;
         return r ? `Last reply: ${r.label}: ${r.why}.` : `No routed reply yet. ${smartOn(H.agent(ctx.agentId)) ? 'Smart is on: the next reply shows its pick.' : 'Smart is off for this AI (⋯ AI setup → How hard it thinks → Smart).'}`;
       },
