@@ -1093,3 +1093,6 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Your words each round (remembered per chat), marked 🔁 with each round's cost; the header chip "🔁 3 of 5 · ≈ 42k tokens so far · ❚❚ ■"; pauses between rounds (1 min, idle 10 min, not written for an hour); you writing pauses it (or it goes on after a quiet time).
 - ✓ A spending cap (required for long ones, from the weekly limit); stops on the same error twice, usage limits (or waits for the reset), "done / stuck" twice; never answers a permission card (pauses); continue lighter between rounds; awake only while a round runs; resume prompt after a restart; ◉ Activity and ⋯ AI setup (■ Stop).
 - ○ `sh dev/run-checks.sh routines` (fake engines) + `node dev/routines-test.js`; not run against real engines.
+## ↶ One undo for everything (round 41, undoall, 35 upgrades: docs/upgrades/undoall.md)
+- ✓ Ctrl/⌘+Z outside text boxes / the Lab / the board undoes your last change (a setting, an AI's setup, a chat deleted / renamed / moved, Tidy memory, a recipe or template deleted, the newest AI change via Changes by AIs); Ctrl/⌘+Shift+Z redoes; toast "Undid: … · Redo"; Activity › Recent changes with ↶ / ↷; Find anything "undo"; `/undo-change`, `/redo-change`.
+- ○ `node dev/undoall-test.js`, `sh dev/run-checks.sh undoall` (real key presses); ⌘Z not tried on a real Mac.

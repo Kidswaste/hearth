@@ -126,6 +126,7 @@ const MemoryTidy = (() => {
     const r = C.apply(before, ticked);
     await window.hub.saveMemory(r.memory);
     last = { before, after: r.memory, n: r.done };
+    window.UndoAll?.memoryTidied?.({ before, after: r.memory, n: r.done }); // (round 41) Ctrl/⌘+Z anywhere undoes it too
     try { MemoryEditor.paintButton?.(); } catch { /* no editor */ }
     if (typeof Options !== 'undefined' && Options.sheet) Options.paint();
     return { done: r.done, from: C.allTokens(before), to: C.allTokens(r.memory) };

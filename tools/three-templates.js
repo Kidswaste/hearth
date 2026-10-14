@@ -294,7 +294,9 @@ const LabTemplates = (() => {
   }
   async function remove(t, { ask = false } = {}) {
     if (ask && !(await Modal.confirm('Delete this template?', `"${t.name}" goes to the Trash (with its picture and media). Scenes you made from it stay.`, { ok: 'Move to Trash', danger: true }))) return false;
+    const kept = await window.UndoAll?.keepFiles?.([t._dir]); // (round 41, undoall) a copy first: Ctrl/⌘+Z brings it back
     await trashDir(t._dir);
+    window.UndoAll?.deleted?.(kept, { what: 'template', name: t.name });
     cache = null;
     last.removed = { id: t.id, name: t.name, dir: t._dir };
     toast(`📐 "${t.name}" is in the Trash`, { timeout: 3500 });

@@ -63,7 +63,9 @@ const SettingsFind = (() => {
     const a = agentNow();
     const note = row.querySelector('.sf-said');
     const said = (t) => { if (note && t) note.textContent = String(t).replace(/[*`]/g, '').replace(/\s*\(\/[a-z][^)]*\)/gi, '').slice(0, 160); };
-    await Commands.tryRun(`/${s.cmd} ${arg}`.trim(), a?.id, undefined, { source: 'settings', say: said, note: said, error: (m) => { said(m); row.classList.add('sf-err'); } });
+    const go = (x) => Commands.tryRun(`/${s.cmd} ${x}`.trim(), a?.id, undefined, { source: 'settings', say: said, note: said, error: (m) => { said(m); row.classList.add('sf-err'); } });
+    // (round 41, undoall.js) through the app's change log when it's in: Ctrl/⌘+Z and Activity › Recent changes put it back
+    await (window.UndoAll?.viaSwitch ? UndoAll.viaSwitch({ cmd: s.cmd, label: s.label, on: s.on, off: s.off, choices: s.choices, agentId: a?.id, get: () => stateOf(s), go, arg }) : go(arg));
     paint(row, s);
     row.dispatchEvent(new CustomEvent('sf-changed', { bubbles: true, detail: { cmd: s.cmd } })); // (round 39) the fold's line follows
   }
@@ -83,6 +85,7 @@ const SettingsFind = (() => {
       el('div', { class: 'sf-seg', role: 'group', attrs: { 'aria-label': s.label } }, ...opts.map((o) => el('button', { type: 'button', class: 'ghost small', dataset: { v: o }, text: o === 'on' ? 'On' : o === 'off' ? 'Off' : o[0].toUpperCase() + o.slice(1),
         on: { click: () => run(s, s.choices ? o : o === 'on' ? (s.on || 'on') : (s.off || 'off'), row).catch((e) => toast(e.message, { type: 'error' })) } }))));
     paint(row, s);
+    row.addEventListener('sf-repaint', () => paint(row, s)); // (round 41) an undo elsewhere changed it
     return row;
   }
 
