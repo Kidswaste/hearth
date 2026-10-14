@@ -76,15 +76,28 @@ steps fails on the code before the fix.
     (now and then): timed the scene signature as one mean on a busy machine; now the best of 6 rounds.
 
 ## Found, not fixed (outside this round's features)
-- **A screen recording of a still area ends at its last change** (capture-pack fails every run: a 7.4 s take saves as
-  ≈ 1.2 s). The repaint meant to keep a constant frame rate doesn't reach the encoder, in the worker pump and the
+- **A screen recording of a still area often ends at its last change** (capture-pack failed 4 of 5 runs: a 7.4 s take
+  saved as ≈ 1.2 s). The repaint meant to keep a constant frame rate doesn't reach the encoder, in the worker pump and the
   window pump alike; a standalone canvas with the same calls works, so it is something in capture.js's setup.
   Diagnosis and probes are in the suggested follow-up task ("Fix capture takes of a still screen ending early").
 - A message sent with a helper mission (Swarm, Ask everyone…) that fails offline is re-sent as a normal message when
   the internet is back (the retry carries the text; NOTE-type missions like Plan first do carry over).
 
 ## The full suite
-RESULTS_PLACEHOLDER
+`sh dev/run-checks.sh all` (281 checks: every Electron check, the three Astra ones, 76 Node tests), each run split in
+two because a background job stops after 2 hours; a loaded machine (other streams' runs alongside), software GL.
+- **Before** (round 34's main, 687395f): **20 failed**. Real app bugs: grade and labshader (app bug 10), comp's precomp
+  menu (app bug 8). Stale or racy checks: qa-keys (Shift+1), commands-page, flows, flows-video, eyes-pins,
+  labframes-mcp, labframes-more, pinboard, progress, particles, qa-ui (its header eval never ran), unit:eyes-test,
+  mission-tokens (a measurement listed as a check). Flakes, passed on a re-run: reach-open, declutter-count (the harness
+  hung 26 min), comp's nested picture. Not fixed: capture-pack (below). Environment: unit:devreport-test needs a
+  checkout with history (the suite ran from an exported copy; it passes in the worktree).
+- **After** (this branch): the first half ran on 1d51011 and failed only on things fixed right after (bugbash2's own
+  thumbnail probe, particles, pinboard, mission-tokens), each re-run green; the second half on 6ee84e3: 139/141, the two
+  being seqguard-swap (passed on its re-run) and unit:devreport-test (no history in the exported copy). capture-pack
+  passed in this run (5.8 s kept) but failed 4 of 5 other runs today: intermittent, see below.
+- Also run on the worktree: qa (6/6, qa-keys included), unit (76/76), the bugbash2 group, comp, declutter, simplify3,
+  scenedoctor and labgestures.
 
 ## For the patch notes
 - Fix my scene and looking around now work together: a camera fix shows as made even after you zoomed or turned the
