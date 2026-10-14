@@ -66,7 +66,9 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   check(/batch \{ops/.test(doT.description) && /undo \{force\}/.test(doT.description) && !doT.inputSchema.properties.cmd.enum, 'three_do: batch and undo listed, no repeated enum of commands');
   const listTok = Math.round(JSON.stringify(lean.tools).length / 4);
   // (round 25, diet) the ceiling came down from 1,700: new director ops go behind three_do + help <cmd>, not in descriptions
-  check(listTok <= 1300, `lean tool list ≤ 1300 tokens (${listTok}; 1687 before round 25, 1878 before round 21)`);
+  // (round 37, directorlean) and to 1,220 (1,186 now): the per-turn savings are in the results, the list stays put
+  check(listTok <= 1220, `lean tool list ≤ 1220 tokens (${listTok}; 1300 before round 37, 1687 before round 25, 1878 before round 21)`);
+  check(lean.tools.find((t) => t.name === 'three_read_code').inputSchema.properties.force, 'three_read_code takes force (code it already has is one line)');
   check(JSON.stringify(doT).length / 4 <= 200 && lean.tools.every((t) => JSON.stringify(t).length / 4 <= 130 || t.name === 'three_do'), `three_do ≤ 200 tokens (${Math.round(JSON.stringify(doT).length / 4)}), every other tool ≤ 130`);
   for (const [topic, re] of [['edit_code', /three_edit_code: .*find.*\nargs: layer, edits/s], ['update_layer', /three_do update_layer.*fadeIn/], ['particles', /particles \{op: .*GPU PARTICLES/s], ['batch', /batch \{ops/], ['screenshot', /three_screenshot: .*compare/], ['nodes', /three_nodes: .*NODES|three_nodes: /]]) {
     const r = await lean.call('three_do', { cmd: 'help', topic });

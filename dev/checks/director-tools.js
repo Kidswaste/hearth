@@ -47,7 +47,8 @@ const e3 = await call('three_edit_code', { edits: [{ find: 'mesh.name =  \'knot\
 out.editMiss = e3.error;
 // layers + batch across layers (atomic: one bad edit changes nothing)
 await call('three_do', { cmd: 'add_layer', name: 'Glow rings', template: 'rings', wait: 1.5 });
-out.layers = (await call('three_do', { cmd: 'layers' })).value?.layers?.map((L) => L.name);
+// (round 37) one line per layer: "1. Name* · …"
+out.layers = String((await call('three_do', { cmd: 'layers' })).value?.layers || '').split('\n').filter((l) => /^\d+\. /.test(l)).map((l) => l.replace(/^\d+\. /, '').split(' · ')[0].replace(/\*$/, ''));
 const bad = await call('three_edit_code', { edits: [{ layer: 1, find: 'camera.position.z = 4;', replace: 'camera.position.z = 5;' }, { layer: 'Glow rings', find: 'NOT THERE', replace: '' }] });
 out.batchBadIsAtomic = bad.ok === false && d.codeOf(1).code.includes('camera.position.z = 4;');
 const b = await call('three_edit_code', { edits: [{ layer: 1, find: 'camera.position.z = 4;', replace: 'camera.position.z = 5;' }, { layer: 'Glow rings', lines: [1, 1], replace: '// rings, edited by the batch\n' + d.codeOf('Glow rings').code.split('\n')[0] }], wait: 1.5 });
