@@ -754,7 +754,7 @@ function toggleFold(hostId, m) {
     Native.refresh?.(d.id);
     return true;
   }
-  async function handoff(hostId, targetId, { raw = false, from = null, model = null, persona = null } = {}) {
+  async function handoff(hostId, targetId, { raw = false, from = null, model = null, persona = null, whole = false } = {}) {
     const host = H.agent(hostId);
     const target = H.agent(targetId);
     const chat = Native.chatOf(hostId);
@@ -770,7 +770,21 @@ function toggleFold(hostId, m) {
     let summary = '';
     if (from) summary = collabText(from);
     else if (!chat?.messages.length) throw new Error('Nothing to hand off yet.');
-    else if (!raw && chat.session?.id && !Native.isBusy(chat.id)) {
+    // (round 42, handoff) a short brief made here (the cheapest model only for a weak brief on a big chat), not a summary
+    // turn on this chat's own model; whole: the whole chat goes with the first message
+    if (window.Lazy && typeof Handoff === 'undefined' && !from) await window.Lazy.load('handoff').catch(() => {});
+    if (!from && typeof Handoff !== 'undefined') {
+      const now = Date.now();
+      const copy = {
+        id: `${targetId}-${now.toString(36)}`, agentId: targetId, title: `${chat?.title || 'Handoff'} (→ ${target.name})`, createdAt: now, updatedAt: now,
+        session: {}, continuedFrom: host.name, handoffFrom: chat.id, ...(model ? { model } : {}), ...(persona ? { persona } : {}), messages: [],
+      };
+      await Handoff.startCopy(copy, chat, chat.messages.length, { from: host, to: target, title: `Handoff from ${host.name}${chat.title ? ` ("${chat.title}")` : ''}`, whole });
+      Native.adopt(copy);
+      Handoff.show(targetId, copy);
+      return;
+    }
+    if (!summary && !raw && chat.session?.id && !Native.isBusy(chat.id)) {
       const t = toast(`${host.name} is writing a handoff summary…`, { timeout: 60000 });
       const r = await call(seatOf(host), 'Write a compact handoff summary of this conversation for another assistant who will continue it: the goal, decisions and preferences, what exists now (with exact names), and what is left to do. Under 200 words, no preamble.', { session: chat.session });
       t.remove();
@@ -1109,14 +1123,14 @@ function toggleFold(hostId, m) {
       if (!seats) return 'Name what to compare first, e.g. `/compare-agents astra:gpt-6-sol,astra:gpt-6-luna explain monads` or `/compare-agents claude,astra …`.';
       go(ctx, 'compare', task, seats.slice(0, 3));
     } });
-  R({ name: 'handoff', area: 'Collab', args: '[agent] [--raw]', desc: 'Continue this chat with the other agent from a compact summary (--raw: last messages, no extra turn)',
+  R({ name: 'handoff', area: 'Collab', args: '[agent] [--whole]', desc: 'Continue this chat with the other agent from a short brief (--whole: send the whole chat)',
     complete: () => [{ value: 'back', hint: 'return to the chat this one came from' }, ...natives().filter((a) => !a.dock).map((a) => ({ value: a.name.toLowerCase(), hint: a.engine === 'codex' ? 'Astra engine' : 'Claude engine' }))],
     run: async (args, ctx) => {
       const host = H.agent(ctx.agentId);
       if (/^back\b/i.test(args.trim())) { await handoffBack(ctx.agentId); return; }
       const seat = stripFlags(args) ? parseSeat(stripFlags(args), ctx.agentId) : null;
       const target = (seat && H.agent(seat.agentId)) || partner(host);
-      await handoff(ctx.agentId, target?.id, { raw: /--raw\b/.test(args), model: seat?.model, persona: seat?.persona });
+      await handoff(ctx.agentId, target?.id, { raw: /--raw\b/.test(args), whole: /--whole\b/.test(args), model: seat?.model, persona: seat?.persona });
     } });
   R({ name: 'collab', area: 'Collab', args: '[duo|relay|critique|debate|council|off] [rounds]', desc: 'Set the composer\'s collab mode (the ⚇ chip): your next messages go to both',
     complete: completeFrom([...Object.entries(MODES).filter(([k]) => k !== 'compare').map(([k, m]) => ({ value: k, hint: m.desc })), { value: 'off', hint: 'back to solo' }, { value: 'swap', hint: 'swap who goes first' }]),

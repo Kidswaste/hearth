@@ -1458,6 +1458,16 @@ const Native = (() => {
   // continued from another agent), send the earlier conversation along once.
   function withContext(chat, text) {
     if (chat.session?.id || chat.messages.length <= 1) return text;
+    // (round 42, handoff) handed over from the other AI: the short brief (handoff.js) stands in for what came before,
+    // then what was said since; "Send the whole chat instead" put the whole chat there instead
+    const h = chat.handoff;
+    if (h?.brief && !(chat.compact && chat.compact.index >= h.at)) {
+      const since = chat.messages.slice(h.at, -1).filter((m) => m.role !== 'error' && !m.handoffBrief && (m.ctx || m.text))
+        .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`).join('\n\n');
+      const tail = since.length > CONTEXT_CHARS ? `…${since.slice(-CONTEXT_CHARS)}` : since;
+      if (h.whole) return `Here is our earlier conversation (from a ${h.from || chat.continuedFrom || 'another'} chat). Continue it naturally.\n\n<earlier_conversation>\n${h.whole}${tail ? `\n\n${tail}` : ''}\n</earlier_conversation>\n\n${text}`;
+      return `${h.brief}${tail ? `\n\n<since_then>\n${tail}\n</since_then>` : ''}\n\n${text}`;
+    }
     if (chat.compact) {
       // (round 34, autocompact) a lighter continuation carries its last exchanges word for word: from `tail`
       const after = chat.messages.slice(chat.compact.tail ?? chat.compact.index, -1).filter((m) => m.role !== 'error' && !m.compactSummary && !m.compactReq)
@@ -1883,7 +1893,7 @@ const Native = (() => {
     return { ok: false, error: `Unknown tool ${tool}` };
   });
   // The 👁 button: Astra judges the last reply (with a screenshot for docked tools); its answer joins the chat.
-  async function secondOpinion(agentId, to = null, { screenshot = null } = {}) {
+  async function secondOpinion(agentId, to = null, { screenshot = null, whole = false } = {}) {
     const chat = chats.get(H.activeChat[agentId]);
     const agent = H.agent(agentId);
     if (!chat || pending.has(chat.id)) return;
@@ -1893,13 +1903,18 @@ const Native = (() => {
     const asked = replyMsg?.qa?.length ? `\n(While working it asked the user: ${replyMsg.qa.map((x) => `"${x.q}" → ${x.a}`).join('; ')})` : '';
     const offered = replyMsg?.suggest?.length ? `\n(It offered these next steps as buttons: ${replyMsg.suggest.join(' | ')})` : '';
     const lastReply = `${replyMsg?.text || ''}${asked}${offered}`;
+    // (round 42, handoff) the judge reads a short brief (goal, decisions, files, the last exchange word for word);
+    // whole: the whole chat ("Send the whole chat instead" under the opinion)
+    if (window.Lazy && typeof Handoff === 'undefined') await window.Lazy.load('handoff').catch(() => {});
+    const hb = typeof Handoff !== 'undefined' ? Handoff.opinion(chat, agent, judge, { whole, extra: `${asked}${offered}` }) : null;
     const t = toast(`Asking ${judge?.name || 'Astra'} for a second opinion…`, { timeout: 60000 });
-    const r = await askAstra(agentId, `The user asked ${agent.name}: "${lastUser.slice(0, 2000)}"\n\n${agent.name} answered: "${lastReply.slice(0, 4000)}"\n\nGive your second opinion on the result.`, { screenshot: screenshot ?? Boolean(agent.dock), to: judge?.id });
+    const r = await askAstra(agentId, hb?.text || `The user asked ${agent.name}: "${lastUser.slice(0, 2000)}"\n\n${agent.name} answered: "${lastReply.slice(0, 4000)}"\n\nGive your second opinion on the result.`, { screenshot: screenshot ?? Boolean(agent.dock), to: judge?.id });
     t?.remove();
     if (!r.ok) { toast(r.error || 'No answer', { type: 'error' }); return; }
-    chat.messages.push({ role: 'opinion', from: r.from, text: r.text, at: Date.now(), ...(r.usage ? { cost: r.usage } : {}) }); // not "usage": that one drives the context meter
+    chat.messages.push({ role: 'opinion', from: r.from, text: r.text, at: Date.now(), ...(r.usage ? { cost: r.usage } : {}), ...(whole ? { wholeAsked: true } : {}) }); // not "usage": that one drives the context meter
     remember(chat);
     if (H.activeChat[agentId] === chat.id) render(agentId);
+    if (hb) Handoff.opinionShown(agentId, chat, hb, judge);
   }
 
   // ---------- message actions ----------
@@ -2127,6 +2142,9 @@ const Native = (() => {
     chats.set(copy.id, copy);
     remember(copy);
     open(targetId, copy.id);
+    // (round 42, handoff) the other AI gets a short brief instead of the whole chat (every message stays here)
+    if (window.Lazy && typeof Handoff === 'undefined') await window.Lazy.load('handoff').catch(() => {});
+    if (typeof Handoff !== 'undefined') await Handoff.continued(copy, chat).catch((err) => console.warn('handoff', err));
   }
 
   function open(agentId, chatId) {
