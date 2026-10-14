@@ -169,6 +169,25 @@ f();`;
     step('/batch status says what the last batch made and where', /Last batch: \d+ made/.test(said.join(' ')) && /cancelled/.test(said.join(' ')), said.join(' '));
   });
 
+  // ---------- every song in a folder: one video each, with its sound, titled from the file's name ----------
+  await safe('songs', async () => {
+    const SONG = '/tmp/hearth-test-song.wav'; const DIR = '/tmp/hearth-labbatch-songs';
+    await window.hub.fs.copy(SONG, `${DIR}/01 first_song.wav`); await window.hub.fs.copy(SONG, `${DIR}/02 Second-Song.wav`); await window.hub.fs.write(`${DIR}/cover.png`, 'x');
+    const t2 = TemplateCore.make({ ...t.scene, extras: { ...t.scene.extras, media: { path: SONG } } }, [...t.fields, { id: 'm:song', kind: 'audio', label: 'Song', value: SONG, where: 'song' }], { name: 'Batch song' });
+    const st2 = await LabBatch.open({ template: 'scene' });
+    st2.t = t2;
+    await st2.useFolder(DIR, 'audio');
+    await until(() => st2.parsed?.rows.length === 2, 3000);
+    const rs = st2.rowsOk();
+    step('"Every song in a folder…": one row per song (not the picture), the title from each file\'s name', rs.length === 2 && rs[0].values['t:words'] === 'first song' && rs[1].values['t:words'] === 'Second - Song' && /02 Second-Song\.wav$/.test(rs[1].values['m:song']), rs.map((r) => r.values));
+    LabBatch.close();
+    const r = await LabBatch.start({ t: t2, rows: rs, formats: ['1:1'], long: 96, secs: 0.5, fps: 30, quiet: true });
+    dirs.push(r.dir);
+    const pr = await Promise.all(r.files.map((f) => window.hub.video.probe(f.path)));
+    step('…each video has its song\'s sound and the length asked (0.5 s = 15 frames)', r.files.length === 2 && pr.every((p) => p?.audio && p.frames === 15 && p.w === 96) && /first song 1x1\.mp4$/.test(r.files[0].path), pr.map((p) => p && `${p.w}x${p.h} ${p.frames}f audio ${p.audio?.codec || 'none'}`));
+    await window.hub.fs.trash?.([DIR]);
+  });
+
   // ---------- the AI's way ----------
   await safe('ai', async () => {
     let said = '';
