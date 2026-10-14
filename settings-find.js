@@ -114,10 +114,16 @@ const SettingsFind = (() => {
     }
     // (round 39, settingscalm) every fold (Advanced and the folds in it and in the sections) opens while a match is
     // inside it, and goes back to how it was when the search is emptied
+    let toggled = false;
     for (const d of form.querySelectorAll('details.settings-more, details.sc-fold')) {
+      const was = d.open;
       if (words.length) { d.dataset.wasOpen ??= d.open ? '1' : ''; d.open = found.some((r) => d.contains(r) && !r.closest('.settings-section[hidden]')); }
       else if (d.dataset.wasOpen != null) { d.open = Boolean(d.dataset.wasOpen); delete d.dataset.wasOpen; }
+      if (d.open !== was) toggled = true;
     }
+    // a fold opened inside a fold that just opened stays "not rendered" (checkVisibility false, no box) until the
+    // next layout, which a busy page can push past a frame: lay the matches out now, in the same task as the typing
+    if (toggled) void form.offsetHeight;
     if (none) none.hidden = !words.length || any;
   }
 
