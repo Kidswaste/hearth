@@ -95,7 +95,7 @@ try {
   if (spend) spend.open = true;
   const sel = await until(() => S.querySelector('select[aria-label="Offer to continue lighter"]'), 4000);
   out.options = sel ? [...sel.options].map((o) => `${o.text}${o.selected ? ' ✓' : ''}`) : null;
-  ok(sel && sel.value === '40000' && [...sel.options][0].text === 'Off' && [...sel.options].some((o) => o.text === 'At about 100k tokens'), `the Spending row: ${out.options}`);
+  ok(sel && sel.value === '40000' && [...sel.options][0].text === 'Off' && [...sel.options].some((o) => o.text === '≈ 100k tokens'), `the Spending row: ${out.options}`);
   if (sel) { sel.value = '0'; sel.dispatchEvent(new Event('change')); await until(() => A().lighterAt === 0, 3000); }
   ok(A().lighterAt === 0, 'Off is saved on the AI');
   Options.hide?.();
