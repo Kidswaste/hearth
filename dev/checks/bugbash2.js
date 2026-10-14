@@ -150,7 +150,7 @@ await safe('helper renderers', async () => {
   await Commands.tryRun('/grade kodak', H.claudeAgent().id, null, { say() {}, note() {}, error() {} });
   await wait(3000);
   const r = await d.evalInSketch('try { const b = window.__grade.bake({ N: 9 }); return b.N === 9 ? "ok" : "bad"; } catch (e) { return e.message; }');
-  const t = await d.evalInSketch('try { const o = filter.thumbs([{ id: "a", type: "cgrade", P: {} }], 60, 40, { card: true }); return Object.keys(o).length ? "ok" : "none"; } catch (e) { return e.message; }');
+  const t = await d.evalInSketch('try { const o = filter.thumbs([{ id: "a", type: "cgrade", P: window.__grade.info().find((x) => x.type === "cgrade").P }], 60, 40, { card: true }); return Object.keys(o).length ? "ok" : "none"; } catch (e) { return e.message; }');
   step('the grade bakes into a .cube and effect thumbnails draw (the stale-module guard let helper renderers have no context)', r?.value === 'ok' && t?.value === 'ok', { bake: r?.value || r?.error, thumbs: t?.value || t?.error });
   await Commands.tryRun('/grade off', H.claudeAgent().id, null, { say() {}, note() {}, error() {} });
 });
