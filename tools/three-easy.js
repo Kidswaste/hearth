@@ -112,6 +112,7 @@ const LabEasy = (() => {
     { label: '⇪ Make', hint: 'variations, render again', items: makeItems },
     { label: 'ℹ What\'s going on', items: infoItems },
     ...(typeof LabPacksHook !== 'undefined' ? [LabPacksHook.moreItem()] : []), // (round 28) ⇪ Share: save as a pack, open one
+    ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.moreItem()] : []), // (round 35) 📐 My templates: new from one, save as one (tools/three-templates-hook.js)
   ];
   function previewItem() {
     return { label: '✦ More', hint: 'music, motion, make…', items: moreItems };
@@ -128,7 +129,7 @@ const LabEasy = (() => {
   // ThreeTweaks.menu rows ([label, hint, fn | [rows]]) from showMenu items
   const toRow = (it) => (it.items ? [it.label, it.hint || '', (typeof it.items === 'function' ? it.items() : it.items).map(toRow)] : [it.label, it.hint || '', it.action]);
   function toolbarItems() {
-    return [...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.toolbarRow()] : []), ['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
+    return [...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.toolbarRow()] : []), ['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.toolbarRow()] : []), ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
   }
 
   // ---------- a layer's right-click (tools/three-layers.js) ----------

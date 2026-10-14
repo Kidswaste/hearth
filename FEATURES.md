@@ -1019,3 +1019,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ No internet, a busy or rate-limited AI, a usage limit (reset shown in local time), signed out, a VPN or proxy, a reply cut off: each is one plain line with its one action (waits and sends once back · retrying in 20 s with Cancel and Ask Astra instead · Switch · Sign in · Continue).
 - ✓ Waiting messages (and the chat's own queue) survive a restart and are never sent twice. A cut-off reply resumes on the same session and is stitched in without repeats. `/offline` lists what waits.
 - ○ Tested with fake engines and a simulated internet (`sh dev/run-checks.sh offline`), not against a real outage.
+## 📐 My templates (round 35, labtemplates, 22 upgrades: docs/upgrades/labtemplates.md)
+- ✓ Any Lab scene saved as your own starting point (✦ More › 📐 My templates, the toolbar's ⋯, Sketch ▾): name, a picture, and which parts become fields (all sliders, the palette, text layers' words, picture / video / sound slots by default). Files in data/templates/ (synced), shared as a .hearthpack, deleted to the Trash.
+- ✓ New from my template…: a picker (pictures, search, newest first) → a short form with a live preview → Create makes a new scene (one Undo, its own time-machine entry). 0 tokens. The AI: `/my-template list | fields | use <name> {values}` through three_do run.
+- ○ Checked by `dev/checks/labtemplates.js` (lab group) and `node dev/labtemplates-test.js` on generated scenes.

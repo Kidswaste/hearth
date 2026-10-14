@@ -420,6 +420,7 @@ const ThreeLab = (() => {
       popup(r.left, r.bottom + 4, [
         ['New from a template…', 'Right-click it for the list', () => templateGallery()],
         ['▦ All your sketches', 'As pictures', () => browseSketches()],
+        ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.sketchRow()] : []), // (round 35) 📐 My templates (tools/three-templates-hook.js)
         ...(typeof LabPacksHook !== 'undefined' ? [LabPacksHook.sketchRow(() => current?.id)] : []), // (round 28) Share › Save as a pack (tools/three-packs-hook.js)
         'This sketch',
         ['Rename…', current?.name || '', () => renameSketch()],
@@ -3526,6 +3527,19 @@ ${code}
       timelineOf: (id) => timelineOf(id), setTimeline: (id, tl) => setTimeline(id, tl),
       mediaUp: (id = current?.id) => (id ? sceneMedia(id, { playing: false }) : null),
       extrasOf: (id) => extras[id] || null, // looks / music links per layer (the Lab sequence applies a clip's look)
+      // (round 35, labtemplates) a scene made a moment ago, taken back (a toast's Undo): to History's deleted sketches, as Delete… does
+      remove(id) {
+        const s = sketches.find((x) => x.id === id);
+        if (!s || sketches.length === 1) return false;
+        if (s === current) persist();
+        trash.unshift({ id: s.id, name: s.name, code: s.code, layers: s.layers, deletedAt: Date.now() });
+        trash.length = Math.min(trash.length, 30);
+        saveHistory();
+        sketches = sketches.filter((x) => x.id !== id);
+        save();
+        if (s === current) openSketch(sketches[0].id); else renderPicker();
+        return true;
+      },
       setExtras(id, ex) { if (!sketches.some((x) => x.id === id) || !ex || typeof ex !== 'object') return false; extras[id] = { ...(extras[id] || {}), ...JSON.parse(JSON.stringify(ex)) }; saveExtras(); return true; }, // (round 28, packs) a scene from a .hearthpack: its sliders, looks, song link
       thumbOf: (id) => thumbs[id]?.url || null,
       previewHost: () => previewHost,

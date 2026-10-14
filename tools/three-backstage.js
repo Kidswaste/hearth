@@ -284,7 +284,10 @@ function makeBackstage(opts = {}) {
   // (round 22) a crew stage is thrown away when its crew ends: its page and GPU go with it
   function dispose() { clearTimeout(idleTimer); if (box) box.frame.src = 'about:blank'; host?.remove(); host = null; box = null; loaded = null; }
   const self = { handle, dataDirector: (sketchId) => director(sketchId, null, { quiet: true }), log: () => log.slice(), get running() { return loaded?.id || null; }, OK_TOOLS, thumb, dispose,
-    director: (sketchId, route) => director(sketchId, route) };
+    director: (sketchId, route) => director(sketchId, route),
+    // (round 35, labtemplates) a stage shown as a live preview (My templates' form lays its page over a box) and fed
+    // what code doesn't carry (references, the palette)
+    get host() { return host; }, send: (m) => box?.send(m) };
   return self;
 }
 const ThreeBackstage = makeBackstage();
