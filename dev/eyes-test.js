@@ -17,9 +17,11 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   const def = require(path.join(root, 'mcp', 'board-mcp.js'));
   const look = def.tools.find((t) => t.name === 'board_look'); const watch = def.tools.find((t) => t.name === 'board_watch');
   check(look && watch, 'board_look and board_watch are tools');
-  check(/small \(default\)/.test(look.description) && look.inputSchema.properties.size.enum.join() === 'small,medium,large', 'small by default, the model asks for more');
+  // (round 35, bugbash2) since round 31 (tokensaver) the words are shorter: "size small|medium|large", small when left out
+  check(/size small\|medium\|large/.test(look.description) && look.inputSchema.properties.size.enum.join() === 'small,medium,large', 'small by default, the model asks for more');
   check(JSON.stringify(look).length < 700 && JSON.stringify(watch).length < 700, `lean definitions (${JSON.stringify(look).length} + ${JSON.stringify(watch).length} chars)`);
-  check(def.tools.find((t) => t.name === 'board_do').inputSchema.properties.op.enum.includes('pinterest'), 'board_do has find / caption / pinterest');
+  // (round 31, tokensaver) board_do's ops are named in its description (no enum)
+  check(/\bfind\b.*\bcaption\b.*\bpinterest\b/.test(def.tools.find((t) => t.name === 'board_do').description), 'board_do has find / caption / pinterest');
   check(/source/.test(def.tools.find((t) => t.name === 'board_add').description), 'board_add takes a source and a credit');
   check(/name items by id/.test(def.guide), 'the guide line says to name items by id');
 

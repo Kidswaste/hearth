@@ -171,6 +171,9 @@ const nest = await say(`/comp set 1 source=${title(C)}`, agent.id);
 await until(async () => (await pcInfo()).some((p) => p.kids.some((k) => k.split('>').length > 2)), 30000);
 await at(1);
 info = await pcInfo();
+// (round 35, bugbash2) the nested pages draw a moment after they're listed (and B's color was just put back from the
+// green of section 5): wait for the picture to settle instead of one shot at once (dark / green on loaded runs)
+await until(async () => hue((await screen()).at(0.25, 0.5)) === 'blue', 20000);
 s2 = await screen();
 step(info.some((p) => p.kids.some((k) => k.split('>').length >= 3)) && hue(s2.at(0.25, 0.5)) === 'blue', 'nested: the left precomp shows C, which shows B (blue)', { said: nest, kids: info.map((p) => p.kids.length), left: s2.at(0.25, 0.5) });
 const loop1 = await HubBridge.call('three_do', { cmd: 'comp', op: 'add', source: title(M) }, { chatId: C });
@@ -209,8 +212,14 @@ await say('/comp set 1 speed=1', agent.id);
 const row = [...document.querySelectorAll('.ly-list .ly-row')].find((r) => r.textContent.includes(pcA.name.replace(/^◫\s*/, '')));
 row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 300 }));
 await wait(300);
-const pop = document.querySelector('.mb-menu.lab-pop');
-step(Boolean(pop && /Precomp/.test(pop.textContent)), 'right-click the precomp layer: ◫ Precomp ›', pop?.textContent.slice(0, 120));
+// (round 35, bugbash2) the layer's right-click is LabEasy's menu (#menu) since round 26: it lacked ◫ Precomp › (this
+// step looked for the older panel menu, which no longer showed); now it carries the layer kinds' submenus
+const pop = document.querySelector('#menu:not([hidden])');
+const pcBtn = [...(pop?.querySelectorAll('button') || [])].find((b) => /◫ Precomp/.test(b.textContent));
+pcBtn?.click(); await wait(300);
+const sub = document.querySelector('#menu:not([hidden])')?.textContent || '';
+step(Boolean(pcBtn && /Open its scene/.test(sub) && /Time/.test(sub)), 'right-click the precomp layer: ◫ Precomp › (its time, size, crop…)', (pcBtn ? sub : pop?.textContent || '').slice(0, 120));
+try { hideMenu(); } catch { /* none */ }
 document.querySelector('.mb-menu.lab-pop')?.remove();
 document.body.click();
 step(Keys.all().some((k) => k.keys === 'Alt+C'), 'Alt+C is in the keys list');

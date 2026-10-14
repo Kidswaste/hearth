@@ -17,6 +17,9 @@ const F = require('./fake-common');
 
 const WORDS = ['subagents', 'marathon', 'hugeout', 'longthink', 'quiet', 'busyquiet', 'hang', 'die', 'orphan'];
 function wants(msg) {
+  // (round 35, bugbash2) Hearth's own structured asks (a flow to write, the setup check) list command descriptions: a
+  // word like "quiet" in one of them ran a long-task scenario instead (flows: /flow-make got "The contact sheet is ready.")
+  if (/^(Flow · make|Hearth setup check)\b/.test(String(msg).trimStart())) return null;
   const got = {};
   for (const w of WORDS) {
     const m = msg.match(new RegExp(`\\b${w}(?::(\\d+))?\\b`, 'i'));

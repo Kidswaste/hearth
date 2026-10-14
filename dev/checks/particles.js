@@ -9,7 +9,11 @@ const out = { steps: [], presets: {} };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 const safe = async (name, fn) => { try { await fn(); } catch (err) { step(name, false, { error: String(err?.message || err).slice(0, 300) }); } };
 activate('tool:three'); await wait(400);
-await ThreeLab.cmd();
+const labCmd = await ThreeLab.cmd();
+// (round 35, bugbash2) full particle counts: on this software-GL machine the preview's adaptive quality (round 31,
+// labadapt) draws a share of them once frames run slow (the kick's burst read 12 % of 35 %); put back at the end
+const adaptWas = labCmd.adapt?.();
+labCmd.adapt?.(false);
 const d = ThreeLab.director;
 const sbx1 = (code) => d.evalInSketch(code).then((r) => (r?.ok ? r.value : { error: r?.error }));
 const sbx = async (code) => { let r; for (let i = 0; i < 5; i++) { r = await sbx1(code); if (!r?.error) return r; await wait(500); } return r; };
@@ -153,4 +157,5 @@ await safe('export', async () => {
 const h = await sbx('return window.__labHealth()');
 out.health = h;
 const failed = out.steps.filter((x) => !x.ok).map((x) => x.name);
+labCmd.adapt?.(adaptWas !== false);
 return JSON.stringify({ ok: !failed.length, failed, ...out }, null, 1);

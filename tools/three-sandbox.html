@@ -526,7 +526,10 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   // its cuts mounts and drops clips faster than their modules load: each late one made a WebGL context of its own
   // (≈ 250 ms each here, a GPU-process round trip on a Mac) only to lose it, 45 in a few seconds of scrubbing, and the
   // clip under the playhead waited behind them (black for a second or more). Its renderer now fails at once, quietly.
-  if (gl3d && mode === 'sketch' && !this.__ctxMade && typeof staleStack === 'function' && staleStack(new Error().stack)) { perfNote.staleRefused = (perfNote.staleRefused || 0) + 1; return null; }
+  // (round 35, bugbash2) not for the page's own helper renderers (`untracked`: the grade's .cube bake, the effects
+  // picker's thumbnails): made through the three module's blob, their stack read as a stale module's, so they got no
+  // context ("Error creating WebGL context": ⇩ Export the grade as a .cube failed since round 29)
+  if (gl3d && mode === 'sketch' && !this.__ctxMade && !helperNow() && typeof staleStack === 'function' && staleStack(new Error().stack)) { perfNote.staleRefused = (perfNote.staleRefused || 0) + 1; return null; }
   if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
   const ctx = realGetContext.call(this, type, opts);
   if (gl3d && ctx) this.__ctxMade = true;
@@ -2634,6 +2637,8 @@ window.__labGest = {
   state: () => ({ views: [...LV.views].map(([id, V]) => ({ id, yaw: V.yaw, pitch: V.pitch, s: V.s, px: V.px, py: V.py, pz: V.pz, d: V.d, moving: LV.loop, idle: LV.core.identity(V) })), loop: LV.loop, steps: LV.steps, applied: LV.applied, self: LV.self, drag: Boolean(LV.drag), target: lvGestureLayer()?.id || null, keys: lvKeyLayer()?.id || null, pose: Array.from(LV.pose), kept: [...layers.values()].filter((L) => L.props.overrides?.['@camera']).map((L) => L.id), edit: edit.on, seqOn: SQ.on, layers: [...layers.values()].map((L) => ({ id: L.id, cam: Boolean(L.lvCam), camGen: L.lvCamGen === L.gen, own: L.lvOwn === L.gen, clicks: L.lvClicks === L.gen, mix: layerMix(L) })), orbits: [...LV.orbits].filter((c) => lvOrbitAlive(c)).length, seq: LV.seq }),
   view: (id) => LV.views.get(id) || null,
   cmd: (m) => lvCommand(m),
+  // (round 35, bugbash2) a view put back where it was (🩺 Fix my scene's "Back to the scene's camera", undone)
+  goTo: (id, to) => { const L = layers.get(id); const V = L && lvViewOf(L); if (!V) return false; V.back = null; LV.core.goTo(V, to); lvKick(); return true; },
 };
 const lvOrbitable = (c) => Boolean(c && !c.isArrayCamera && (c.isPerspectiveCamera ? !(c.fov === 90 && c.aspect === 1) : c.isOrthographicCamera && !(c.left === -1 && c.right === 1 && c.top === 1 && c.bottom === -1)));
 // a layer's own controls: its code listened to the wheel / pointer-down / touch (OrbitControls, its own drag), or to
@@ -3004,6 +3009,8 @@ function layerState(id) {
   }
   return L;
 }
+// (round 35) read from the getContext guard above, which can run before this line (a `let` would throw there)
+function helperNow() { try { return untracked > 0; } catch { return false; } }
 let untracked = 0; // (round 24) > 0 while the page makes a helper renderer of its own (thumbnails, grade bakes): not a layer's
 function trackRenderer(r) {
   if (untracked) return;
@@ -9130,6 +9137,10 @@ function removeLayer(id, { fade = false } = {}) {
 }
 function setLayerProps(L, props) {
   const { code, id, ...rest } = props;
+  // (round 35, bugbash2) a new camera placement from the hub (🩺 Fix my scene's "Point the camera at it" / "Frame it",
+  // an undo) is what the picture should show: the look-around view moved on the old camera goes (it stayed on top, so
+  // a zoomed-out view kept the framed subject tiny)
+  if ('overrides' in rest && LV.views.has(L.id) && JSON.stringify(rest.overrides?.['@camera'] || null) !== JSON.stringify(L.props.overrides?.['@camera'] || null)) LV.views.delete(L.id);
   Object.assign(L.props, rest);
   layerVer += 1;
   if (rest.slot != null) L.slot = rest.slot;

@@ -48,6 +48,13 @@ const J = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
   // kv: .prev copy, skip identical
   store.setKV('big', { a: 1 }); store.setKV('big', { a: 2 }); await store.idle();
   ok(J(path.join(kv, 'big.json')).a === 2 && J(path.join(kv, 'big.prev.json')).a === 1, 'kv saved with its .prev');
+  // (round 35, bugbash2) a save's promise settles only once the file holds it (hub.kvSet is awaitable until on disk)
+  for (let i = 0; i < 20; i++) {
+    const p = store.setKV('awaited', { i, pad: 'x'.repeat(2e5) });
+    ok(p && typeof p.then === 'function', 'setKV returns a promise');
+    await p;
+    ok(J(path.join(kv, 'awaited.json')).i === i, `awaited setKV ${i} is on disk`);
+  }
   const m0 = fs.statSync(path.join(kv, 'big.json')).mtimeMs;
   await new Promise((r) => setTimeout(r, 30));
   store.setKV('big', { a: 2 }); await store.idle();

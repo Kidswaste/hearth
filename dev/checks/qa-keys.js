@@ -226,7 +226,9 @@ if (AREAS.includes('Lab')) {
     reset: async () => { await wait(1500); },
     // (round 30) the click's input ack can be lost like a key's when the frame it lands on is being rebuilt by the key
     // before (Shift+2 → Shift+3: "the key still running after 15s"): don't wait on it for more than 3 s either
-    before: async () => { if (H.activeId !== 'tool:three') activate('tool:three'); const r = pic?.getBoundingClientRect(); const m = (type) => Promise.race([smoke({ cdp: 'Input.dispatchMouseEvent', params: { type, x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }), wait(3000)]); if (r) { await m('mousePressed'); await m('mouseReleased'); } await wait(100); },
+    // (round 35, bugbash2) Shift+1 is Fit, the size the preview starts at: pressed first it had nothing to change and
+    // was "dead" on every run (the key works: Fit from 9:16). Start it from another size, like Ctrl+1 below
+    before: async (c) => { if (H.activeId !== 'tool:three') activate('tool:three'); if (c.label === 'Shift+1' && store.get('three.aspect', 'fit') === 'fit') { ThreeLab.act('size916'); await wait(1500); } const r = pic?.getBoundingClientRect(); const m = (type) => Promise.race([smoke({ cdp: 'Input.dispatchMouseEvent', params: { type, x: r.left + r.width / 2, y: r.top + r.height * 0.6, button: 'left', clickCount: 1 } }), wait(3000)]); if (r) { await m('mousePressed'); await m('mouseReleased'); } await wait(100); },
     // keys, not calls (a size change can keep a call waiting for the next frame); and don't wait on the key's own
     // acknowledgement for more than 3 s: a frame size change rebuilds the preview frame, and the test harness's
     // input ack for a key routed there can be lost (the next keys work: the app isn't stuck)

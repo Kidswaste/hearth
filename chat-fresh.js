@@ -93,7 +93,9 @@ const ChatFresh = (() => {
     const limit = agent?.freshAuto;
     const input = event.usage?.input || 0;
     if (!limit || event.type !== 'done' || input < limit) return;
-    if (input >= 110000 && agent.autoCompact !== false) return; // the auto-compact (native.js) takes that one
+    // the auto-compact (native.js) takes that one; (round 35, bugbash2) not since Continue lighter replaced it (it never
+    // compacts silently now): a fresh start you turned on no longer stops working past 110k
+    if (input >= 110000 && agent.autoCompact !== false && typeof Autocompact === 'undefined' && window.Lazy?.loaded?.('budget') !== false) return;
     if (H.activeChat[chat.agentId] !== chat.id || Native.view(chat.agentId)?.queue?.length) return;
     setTimeout(() => start(chat.agentId, { auto: true }).catch(() => {}), 500);
   });

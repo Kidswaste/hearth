@@ -1935,7 +1935,7 @@ const ThreeLab = (() => {
     // Right-click a layer: everything for it in one menu (its ⧉ / 🗑 buttons were never used, so they're tucked away)
     layersPanel.el.addEventListener('contextmenu', (e) => {
       const row = e.target.closest('.ly-row');
-      if (!row) return;
+      if (!row || e.defaultPrevented) return; // (round 35, bugbash2) the row's own menu (LabEasy.layerMenu) took it: one menu, not two
       e.preventDefault();
       const idx = [...layersPanel.el.querySelectorAll('.ly-list .ly-row')].indexOf(row);
       const L = [...layersOf()].reverse()[idx];

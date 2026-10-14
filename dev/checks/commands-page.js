@@ -34,6 +34,9 @@ try {
   // ≈ 860 now. What this asserts is that the whole registry was checked, lazy groups included, so: every command a
   // lazy group registers (LazyData.META, the manifest dev/checks/lazy.js keeps up to date) is in the list, plus the
   // same floor as dev/checks/lazy.js. Commands left the chat box in round 26 but stay the app's API (and this page).
+  // (round 35, bugbash2) not while a group is loading: its own stand-ins read as free then (lazy.js patch), so a group
+  // that came in at that moment (hooks, soon after the start) looked "missing" now and then
+  await until(() => !Lazy.state().some((g) => g.state === 'loading'), 15000);
   const lazyMissing = Object.values(LazyData.META || {}).flatMap((g) => (g.commands || []).map((c) => c.name)).filter((n) => !Commands.get(n));
   ok(out.commands > 750 && !lazyMissing.length && !badQ.length, `every command (${out.commands}, lazy ones too${lazyMissing.length ? `, missing ${lazyMissing.slice(0, 4)}` : ''}) has a valid question list (${badQ.slice(0, 4)})`);
   ok(!Commands.duplicates().length, `no duplicate commands (${JSON.stringify(Commands.duplicates()).slice(0, 160)})`);

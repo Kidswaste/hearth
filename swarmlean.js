@@ -121,9 +121,13 @@ const SwarmLean = (() => {
   // how big this chat is: the meter's last context size, else its text
   function ctxOf(agentId) {
     const chatId = H.activeChat?.[agentId];
+    const chat = typeof Native !== 'undefined' ? Native.chatOf?.(agentId) : null;
+    // (round 35, bugbash2) continued lighter and no reply since: the next message sends the light start (the meter
+    // still holds the long chat's last size until a reply comes)
+    const lt = chat?.compact?.lighter;
+    if (lt?.after && !chat.messages.slice(chat.compact.index).some((m) => m.role === 'assistant' && m.usage)) return lt.after;
     const s = chatId && typeof Meter !== 'undefined' ? Meter.stats?.chats?.[chatId] : null;
     if (s?.ctx) return s.ctx;
-    const chat = typeof Native !== 'undefined' ? Native.chatOf?.(agentId) : null;
     if (!chat?.messages?.length) return 0;
     return Math.min(60000, Math.ceil(chat.messages.reduce((n, m) => n + String(m.text || '').length, 0) / 4) + 300);
   }

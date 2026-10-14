@@ -34,7 +34,7 @@ const Autocompact = (() => {
   const tok = (s) => Math.ceil(String(s || '').length / 4);
   const fmt = (n) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(Math.round(n || 0)));
   const atOf = (agent) => (agent && agent.lighterAt === 0 ? 0 : Number(agent?.lighterAt) || DEFAULT_AT);
-  const presetLabel = (n) => (n ? `At about ${fmt(n)} tokens` : 'Off');
+  const presetLabel = (n) => (n ? `≈ ${fmt(n)} tokens` : 'Off'); // (round 35, bugbash2) "At about 40k tokens" was cut off in its box (Spending's limit row says ≈ too)
   const STOP = new Set('the and for that this with you your are was were have has had not but can will would could should just like into from them they then than what when where which who how about there their here also some more very much make made want need lets let use its our out all any one two get got now new yes okay sure please thanks thank'.split(' '));
   const words = (t) => { const s = new Set(); for (const w of String(t || '').toLowerCase().replace(/```[\s\S]*?```/g, ' ').match(/[a-z][a-z0-9_-]{2,}/g) || []) if (!STOP.has(w)) s.add(w.slice(0, 6)); return s; };
   const shared = (a, b) => { let n = 0; for (const w of a) if (b.has(w)) n++; return n; };

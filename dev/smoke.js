@@ -160,6 +160,12 @@ async function cdpConnect() {
   child.stderr.on('data', (d) => log.push(String(d)));
   const problems = [];
   let code = 0;
+  // (round 35, bugbash2) a hang outside a check's own time limit (a CDP call the page never answers: the startup, a
+  // reload, the last screenshot) kept the harness alive until run-checks' 30-minute limit (declutter-count: 26 min, no
+  // log): past every part's time + 5 minutes it says so and quits (Xvfb and Electron go with it, see killAll)
+  const parts = (scriptFile ? fs.readFileSync(scriptFile, 'utf8').split(/\n\/\/@@ reload\b/).length : 0) + evals.length;
+  const deadline = Number(opt('--check-timeout', 90000)) * Math.max(1, parts) + 300000;
+  setTimeout(() => { console.log(`\n1 problem(s):\nharness: still running after ${Math.round(deadline / 1000)} s (a call the page never answered)`); process.exit(1); }, deadline).unref();
   try {
     const ws = new WebSocket(await cdpConnect());
     await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
@@ -275,8 +281,10 @@ async function cdpConnect() {
     if (coverage) { await new Promise((r) => setTimeout(r, 300)); await send('CSS.enable'); await send('CSS.startRuleUsageTracking'); }
     await new Promise((r) => setTimeout(r, waitMs));
     const CHECK_MS = Number(opt('--check-timeout', 90000));
+    // (round 35, bugbash2) an --eval of several statements ("window.A='x'; window.B='y'", qa-ui's header) runs as they are;
+    // wrapped in return (…) it was a SyntaxError and the check never ran
     const run = async (expr) => {
-      const r = await Promise.race([send('Runtime.evaluate', { expression: `(async () => { ${/\breturn\b/.test(expr) ? expr : `return (${expr})`} })()`, awaitPromise: true, returnByValue: true }),
+      const r = await Promise.race([send('Runtime.evaluate', { expression: `(async () => { ${/\breturn\b/.test(expr) || /;\s*\S/.test(expr.trim()) ? expr : `return (${expr})`} })()`, awaitPromise: true, returnByValue: true }),
         new Promise((res) => setTimeout(() => res({ result: { exceptionDetails: { text: `check still running after ${CHECK_MS / 1000}s (the page may have reloaded)` } } }), CHECK_MS))]);
       if (r.result?.exceptionDetails) return { error: r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text };
       return { value: r.result?.result?.value };
