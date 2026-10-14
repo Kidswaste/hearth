@@ -1096,3 +1096,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ↶ One undo for everything (round 41, undoall, 35 upgrades: docs/upgrades/undoall.md)
 - ✓ Ctrl/⌘+Z outside text boxes / the Lab / the board undoes your last change (a setting, an AI's setup, a chat deleted / renamed / moved, Tidy memory, a recipe or template deleted, the newest AI change via Changes by AIs); Ctrl/⌘+Shift+Z redoes; toast "Undid: … · Redo"; Activity › Recent changes with ↶ / ↷; Find anything "undo"; `/undo-change`, `/redo-change`.
 - ○ `node dev/undoall-test.js`, `sh dev/run-checks.sh undoall` (real key presses); ⌘Z not tried on a real Mac.
+## 🗂 A fast chats list (round 42, chatlistfast, 8 upgrades: docs/upgrades/chatlistfast.md)
+- ✓ With 3,000 chats: a redraw ≈ 14 → 3 ms, one chat changing redraws only its row (≈ 30 → 5 ms), a search letter's key handlers ≈ 45 → 1 ms (the list follows once per frame, narrowing the last matches), a long "Show more" list keeps only the rows near the screen (2,968 → 303 elements), wheeling through it ≈ 415 → 175 ms busy per second. Nothing looks different.
+- ✓ Drag a chat onto a 📁 folder (onto its AI's name: out of the folder), Ctrl/⌘+Z puts it back; a rename in progress survives a reply arriving.
+- ○ `sh dev/run-checks.sh chatlistfast` (dev/checks/chatlistfast.js on a made-up 3,000-chat history: dev/make-chatlist-fixture.js); not measured on the owner's real history.

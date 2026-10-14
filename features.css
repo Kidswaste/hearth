@@ -1129,6 +1129,11 @@ mark.find-hit.cur { background: var(--ui-hot); color: #000; }
 .panel-view button { border: 0; background: none; color: var(--muted); cursor: pointer; }
 #chat-groups .item:focus { outline: 1px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: -1px; }
 #chat-groups .item.unread .item-title { font-weight: 650; color: var(--text); }
+/* (round 42, chatlistfast) a long group keeps only the rows near the screen (spacers hold the rest): those rows are
+   real, sized as they look (no skipped layout to guess at); a folder or an AI's name under a dragged chat */
+#chat-groups .group.vlist > .item:not(.vspace):nth-child(n) { content-visibility: visible; }
+#chat-groups .vspace { pointer-events: none; }
+#chat-groups .drop-on { background: var(--hover); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent); border-radius: 6px; }
 .unread-dot { flex: none; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--ui-hot); box-shadow: 0 0 6px color-mix(in srgb, var(--ui-hot) 60%, transparent); }
 .item-tags { flex: none; max-width: 40%; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--muted); }
 .group-unread { margin-left: auto; min-width: 16px; padding: 0 5px; border-radius: 99px; font-size: 10px; line-height: 16px; text-align: center; color: #000; background: var(--ui-hot); }

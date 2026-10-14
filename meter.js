@@ -430,16 +430,18 @@ const Meter = (() => {
   function decoratePanel() {
     const root = document.getElementById('chat-groups');
     if (!root) return;
-    for (const row of root.querySelectorAll('.item')) {
-      const has = row.querySelector('.item-tok');
-      if (!prefs.panelTotals) { has?.remove(); continue; }
-      const c = chatStat(row.dataset.key);
-      if (!c) { has?.remove(); continue; }
-      const text = fmt(tot(c));
-      const title = `${full(tot(c))} tokens · ${c.r} replies · context now ${fmt(c.ctx || 0)}`;
-      if (has) { if (has.textContent !== text) { has.textContent = text; has.title = title; } continue; }
-      row.append(el('span', { class: 'item-tok', text, title }));
-    }
+    for (const row of root.querySelectorAll('.item')) decorateRow(row);
+  }
+  // (round 42, chatlistfast) one row: the chats list keeps rows between draws and adds new ones inside its groups
+  function decorateRow(row) {
+    const has = row.querySelector('.item-tok');
+    if (!prefs.panelTotals) { has?.remove(); return; }
+    const c = chatStat(row.dataset.key);
+    if (!c) { has?.remove(); return; }
+    const text = fmt(tot(c));
+    const title = `${full(tot(c))} tokens · ${c.r} replies · context now ${fmt(c.ctx || 0)}`;
+    if (has) { if (has.textContent !== text) { has.textContent = text; has.title = title; } return; }
+    row.append(el('span', { class: 'item-tok', text, title }));
   }
 
   // ---------- canvas charts (no libraries) ----------
@@ -1008,6 +1010,7 @@ const Meter = (() => {
     if (typeof Usage !== 'undefined' && Usage.onTrack) Usage.onTrack(() => tick());
     const groups = document.getElementById('chat-groups');
     if (groups) new MutationObserver(() => { if (prefs.panelTotals) decoratePanel(); }).observe(groups, { childList: true });
+    if (typeof Panel !== 'undefined') Panel.hooks?.row?.push((row) => { if (prefs.panelTotals && row.dataset.key) decorateRow(row); }); // (round 42) rows made inside a kept group
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'u') { e.preventDefault(); if (dlg) dlg.close(); else dashboard(); Usage.key?.('Ctrl+Shift+U', 'Token dashboard'); }
     });

@@ -390,7 +390,7 @@ const Projects = (() => {
     try { const r = typeof Makes !== 'undefined' && Makes.roomOf(chatId); return Boolean(r && r.part.own && !r.make.dismissed && !hidesMake(r.make.id)); } catch { return false; }
   }
   const chatsOf = (p) => p.items.filter((x) => x.type === 'chat').map((x) => summary(x.ref)).filter((c) => c && !roomElsewhere(c.id) && !(typeof ChatUX !== 'undefined' && ChatUX.metaOf(c.id).archived));
-  const panelSkip = (c) => Boolean(loaded && grouping() && projectOfChat(c.id) && !roomElsewhere(c.id) && chatsOf(projectOfChat(c.id)).length);
+  const panelSkip = (c) => Boolean(loaded && projectOfChat(c.id) && grouping() && !roomElsewhere(c.id) && chatsOf(projectOfChat(c.id)).length); // (round 42) the index first: grouping() reads localStorage, once per chat of a big list
   function panelTop(root, { row, itemOf, q, collapsed, toggleGroup }) {
     if (!loaded || !grouping()) return;
     const list = live().filter((p) => p.status !== 'archived' && chatsOf(p).length);
