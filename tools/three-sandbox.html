@@ -2274,6 +2274,9 @@ function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
   recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate, audioBitsPerSecond: 320000 });
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = async () => {
+    // (round 39, labmemory) the canvas' capture track stops with the take: left running it kept copying every frame of
+    // the layer's (pooled, long-lived) canvas after the recording (the song's sound tracks are shared: they stay)
+    for (const tr of stream.getVideoTracks()) { try { tr.stop(); } catch { /* ended */ } }
     const buf = await new Blob(chunks, { type: mime }).arrayBuffer();
     post({ type: 'recording', mime, width: canvas.width, height: canvas.height, buffer: buf }, [buf]);
     recorder = null;
