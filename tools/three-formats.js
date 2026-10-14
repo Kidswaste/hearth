@@ -219,25 +219,52 @@ const LabFormats = (() => {
     const title = `▦ All formats · ${formats.join(' · ')}`;
     window.Progress?.set(pk, { title, icon: '▦', kind: 'lab-export:formats', pct: 0, label: 'starting', jump: () => { if (typeof activate === 'function') activate('tool:three'); }, actions: [{ label: '■', title: 'Cancel', run: () => cancel() }] });
     const rq = window.Renders?.track?.({ kind: 'export', title, pk, quiet: true, cancel: () => cancel(), pause: (on) => X().pause(on), again: { type: 'cmd', line: `/all-formats ${formats.join(' ')} now` } });
-    const say = (pct, label) => { window.Progress?.set(pk, { pct, label }); rq?.progress?.(pct, label); };
+    // (round 41, renderfast) side by side on a machine with cores to spare: two formats at a time, each in its own
+    // export page and ffmpeg (each makes exactly what it would alone); one after another otherwise
+    const side = Math.max(1, Math.min(formats.length, Number(o.parallel) || (navigator.hardwareConcurrency >= 8 ? 2 : 1)));
+    // time left for the whole batch: the running formats' own (they measure it) and the waiting ones from the pace so
+    // far, by their pixels; side by side, the work is shared between the lanes
+    const sz0 = formats.map((fid) => FC.sizeOf(fid, o.long || 0));
+    const px = sz0.map((z) => z.w * z.h);
+    const st = formats.map(() => ({ p: 0, left: null, t0: 0 }));
+    const batchLeft = () => {
+      let ref = null; // seconds a megapixel of a started format (elapsed + its own time left)
+      st.forEach((x, k) => { if (x.t0 && x.left != null) { const total = (performance.now() - x.t0) / 1000 + x.left; ref = Math.max(ref || 0, total / (px[k] / 1e6)); } });
+      if (ref == null) return null;
+      let sum = 0;
+      st.forEach((x, k) => { if (x.p >= 1) return; sum += x.t0 ? (x.left ?? ref * (px[k] / 1e6) * (1 - x.p)) : ref * (px[k] / 1e6); });
+      return Math.max(1, Math.round(sum / side));
+    };
+    const paint = (i, label) => {
+      const pct = Math.min(99.5, (st.reduce((n, x) => n + Math.min(1, x.p), 0) / formats.length) * 100);
+      const left = batchLeft();
+      window.Progress?.set(pk, { pct, label }); rq?.progress?.(pct, label, left ?? undefined);
+    };
+    const one = async (i) => {
+      if (b.cancel) return;
+      b.i = i;
+      const fid = formats[i]; const sz = sz0[i];
+      const n = FC.clamp(o.nudges?.[fid] || saved[fid] || { z: 1, x: 0, y: 0 });
+      st[i].t0 = performance.now();
+      try {
+        const r = await X().render({
+          format: 'mp4', source, size: sz, fps: o.fps || undefined, secs: o.secs || undefined, frames: o.frames || undefined, at: o.at,
+          reframe: FC.toPage(n), dir, stem: FC.stem(name, fid, sz.w, sz.h), name, track: false, quiet: true, again: null, direct: side > 1,
+          onProgress: (p, label, left) => { st[i].p = p; if (left !== undefined) st[i].left = left; paint(i, `${fid} (${i + 1} of ${formats.length}) · ${label}`); },
+        });
+        b.done.push({ id: fid, path: r.path, w: r.w, h: r.h, frames: r.frames });
+      } catch (e) {
+        if (b.cancel || /cancel/i.test(e.message)) { b.cancel = true; X().cancel(); return; }
+        b.failed.push({ id: fid, error: e.message });
+      } finally { st[i].p = 1; st[i].left = 0; }
+    };
     try {
-      for (let i = 0; i < formats.length; i += 1) {
-        if (b.cancel) break;
-        b.i = i;
-        const fid = formats[i]; const sz = FC.sizeOf(fid, o.long || 0);
-        const n = FC.clamp(o.nudges?.[fid] || saved[fid] || { z: 1, x: 0, y: 0 });
-        try {
-          const r = await X().render({
-            format: 'mp4', source, size: sz, fps: o.fps || undefined, secs: o.secs || undefined, frames: o.frames || undefined, at: o.at,
-            reframe: FC.toPage(n), dir, stem: FC.stem(name, fid, sz.w, sz.h), name, track: false, quiet: true, again: null,
-            onProgress: (p, label) => say(Math.min(99.5, ((i + p) / formats.length) * 100), `${fid} (${i + 1} of ${formats.length}) · ${label}`),
-          });
-          b.done.push({ id: fid, path: r.path, w: r.w, h: r.h, frames: r.frames });
-        } catch (e) {
-          if (b.cancel || /cancel/i.test(e.message)) break;
-          b.failed.push({ id: fid, error: e.message });
-        }
-      }
+      if (side > 1) {
+        let next = 0;
+        await Promise.all(Array.from({ length: side }, async () => { while (next < formats.length && !b.cancel) await one(next++); }));
+        b.done.sort((x, y) => formats.indexOf(x.id) - formats.indexOf(y.id)); // (the order you picked, whichever finished first)
+      } else for (let i = 0; i < formats.length && !b.cancel; i += 1) await one(i);
+      b.side = side;
       const ok = b.done.length > 0 && !b.cancel;
       if (ok) { window.Progress?.done(pk, { label: `${b.done.length} made` }); rq?.done(b.done[0].path); } else { window.Progress?.done(pk, { ok: false, label: b.cancel ? 'cancelled' : 'failed' }); if (b.cancel) rq?.cancelled?.(); else rq?.fail(b.failed[0]?.error || 'Nothing was made'); }
       const folderName = FC.folder(name);

@@ -569,6 +569,7 @@ function registerAfterWindow() {
   require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file import, website snapshots
   require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
   lazyIpc('rendersmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // the render queue: pause / resume / cancel ffmpeg jobs (round 29: on first use)
+  lazyIpc('renderfastmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 41, renderfast) Lab exports stream their frames into ffmpeg (on first use)
   lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
   lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
   lazyIpc('voicemain.js', (m, ipc) => m.register(ipc, () => win, { settings, dataDir: store.DATA_DIR })); // (round 23) voice: local speech-to-text (whisper), system voices

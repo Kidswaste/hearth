@@ -416,7 +416,7 @@ const Renders = (() => {
     changed(j, 'run');
     return {
       job: j,
-      progress: (pct, label) => { if (pct >= j.pct) j.pct = pct; if (label) j.label = label; changed(j, 'progress'); },
+      progress: (pct, label, left) => { if (pct >= j.pct) j.pct = pct; if (label) j.label = label; if (left !== undefined) { j.etaS = left; j.etaAt = now(); } changed(j, 'progress'); }, // (round 41, renderfast: the render's own time left, in s)
       done: (output) => { byPk.delete(o.pk); finish(j, output); },
       fail: (err) => { byPk.delete(o.pk); const m = errText(err); if (j.cancelling || /cancel/i.test(m)) ended(j, 'cancelled'); else fail(j, m, { toast: !o.quietFail }); },
       cancelled: () => { byPk.delete(o.pk); if (live(j)) ended(j, 'cancelled'); },

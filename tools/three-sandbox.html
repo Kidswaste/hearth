@@ -10803,7 +10803,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   if (!ret) { post({ type: 'seq-frame', n, ok: true }); return; }
   const c = (SQ.out ||= document.createElement('canvas'));
   composite(c, 1, { w, h });
-  const blob = await new Promise((r) => c.toBlob(r, kind, q));
+  const blob = await xpEncode(c, kind, q); // (round 41, renderfast: encoded at once, not when the page is idle)
   const buffer = await blob.arrayBuffer();
   post({ type: 'seq-frame', n, buffer, w, h }, [buffer]);
 }
@@ -10908,6 +10908,19 @@ async function xpStep(T) {
   if (!SQ.on) throw new Error('nothing to export (no plan)');
   await sqFrame({ n: -1, T: Math.max(0, T), w: 2, h: 2, ret: false });
 }
+// (round 41, renderfast) a frame's JPEG / PNG bytes. canvas.toBlob waits for the page to be idle before it encodes
+// (Chromium's idle-time encoder), and an export page is never idle: every frame waited for the ~1 s fallback timer
+// (measured: 1.2 s a 1080p frame for a ~30 ms encode). The same picture handed to an OffscreenCanvas
+// (createImageBitmap: a snapshot taken at the call; bitmaprenderer: no copy) and its convertToBlob encodes at once,
+// with the same encoder and quality, so the bytes are the same. `legacy` keeps the old way (renderfast's reference).
+function xpEncode(c, kind, q, legacy = false) {
+  if (legacy || typeof OffscreenCanvas === 'undefined' || XP.slowEnc) return new Promise((r) => c.toBlob(r, kind, q));
+  return createImageBitmap(c).then((bmp) => {
+    const oc = new OffscreenCanvas(bmp.width, bmp.height);
+    oc.getContext('bitmaprenderer').transferFromImageBitmap(bmp);
+    return oc.convertToBlob({ type: kind, quality: q });
+  }).catch(() => { XP.slowEnc = true; return new Promise((r) => c.toBlob(r, kind, q)); });
+}
 const XP_ACC_MAX = 16.8e6; // pixels: above it (8K…) the exact accumulation would take > 1 GB; sub-frames blend on a canvas instead
 async function xpFrame(m) {
   const { n, T, w, h, ss = 1, sub = 1, shutter = 0.5, F = 30, kind = 'image/png', q = 0.95, alpha = false, sig = false } = m;
@@ -10918,8 +10931,10 @@ async function xpFrame(m) {
   const S2 = Math.max(1, Math.round(ss) || 1);
   const out = (XP.out ||= document.createElement('canvas'));
   let raw = null;
+  let stepMs = 0; // (round 41, renderfast) where a frame's time goes: the scene's draw, the merge / read back, the encode
+  const step = async (t) => { const a = realNow(); await xpStep(t); stepMs += realNow() - a; };
   if (S2 === 1 && k === 1 && kind !== 'raw16') {
-    await xpStep(T);
+    await step(T);
     xpMerge(out, w, h, 0, h, alpha);
   } else if (w * h > XP_ACC_MAX && kind !== 'raw16') {
     // very large frames: the merge scales down by itself (high-quality smoothing), sub-frames are a running average
@@ -10927,7 +10942,7 @@ async function xpFrame(m) {
     if (out.width !== w || out.height !== h) { out.width = w; out.height = h; }
     const g = out.getContext('2d');
     for (let j = 0; j < k; j += 1) {
-      await xpStep(times[j]);
+      await step(times[j]);
       xpMerge(tmp, w, h, 0, h, alpha);
       g.globalCompositeOperation = j ? 'source-over' : 'copy';
       g.globalAlpha = 1 / (j + 1);
@@ -10943,7 +10958,7 @@ async function xpFrame(m) {
     const FW = w * S2;
     const rows = Math.max(1, Math.min(h, Math.floor(4e6 / (FW * S2)))); // output rows per stripe (≈ 4 MP read at a time)
     for (let j = 0; j < k; j += 1) {
-      await xpStep(times[j]);
+      await step(times[j]);
       for (let y = 0; y < h; y += rows) {
         const rh = Math.min(rows, h - y);
         xpMerge(st, FW, h * S2, y * S2, rh * S2, alpha);
@@ -10980,13 +10995,18 @@ async function xpFrame(m) {
     const d = g.getImageData(0, 0, 16, 16).data; sg = [];
     for (let i = 0; i < d.length; i += 4) sg.push(Math.round((0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) * (d[i + 3] / 255)));
   }
+  // (measuring: one pixel read back waits for the GPU, so its drawing counts as the draw instead of the encode)
+  if (m.prof && !raw) { const g0 = realNow(); out.getContext('2d').getImageData(0, 0, 1, 1); stepMs += realNow() - g0; }
   const drawMs = realNow() - t0;
-  if (raw) { post({ type: 'xp-frame', n, buffer: raw.buffer, w, h, raw16: true, ms: drawMs, drawMs }, [raw.buffer]); return; }
-  // (the encode runs while the next frame draws: toBlob takes a copy of the canvas when it's called)
-  new Promise((r) => out.toBlob(r, kind, q)).then(async (blob) => {
+  const split = { step: stepMs, merge: drawMs - stepMs };
+  if (raw) { post({ type: 'xp-frame', n, buffer: raw.buffer, w, h, raw16: true, ms: drawMs, drawMs, split }, [raw.buffer]); return; }
+  // (the encode runs while the next frame draws: the picture is copied when it's asked for)
+  const e0 = realNow();
+  xpEncode(out, kind, q, m.legacy).then(async (blob) => {
     if (!blob) throw new Error(`the ${w}×${h} frame could not be encoded (too big for this GPU?)`);
     const buffer = await blob.arrayBuffer();
-    post({ type: 'xp-frame', n, buffer, w, h, sig: sg, ms: realNow() - t0, drawMs }, [buffer]);
+    split.enc = realNow() - e0;
+    post({ type: 'xp-frame', n, buffer, w, h, sig: sg, ms: realNow() - t0, drawMs, split }, [buffer]);
   }).catch((err) => post({ type: 'xp-frame', n, error: String(err?.message || err) }));
 }
 // the 3D content at T as a GLB (every layer's last-rendered scene; one scene as it is, several side by side in one file)

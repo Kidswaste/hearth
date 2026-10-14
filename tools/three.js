@@ -874,7 +874,11 @@ const ThreeLab = (() => {
     const fpsSel = el('select', { class: 'fps-sel', title: 'Preview frame rate: Auto follows the screen and the window; lower = lighter on the GPU and steadier recordings', dataset: { feature: 'Preview fps' } },
       FPS_OPTS.map(([v, l]) => el('option', { value: v, text: l, selected: v === String(fpsPref()) })));
     let winFocused = document.hasFocus();
-    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: winFocused || box.onStage }; };
+    // (round 41, renderfast) while a Lab export renders, Auto eases the preview to its background rate (30): the export
+    // page gets the GPU / CPU it would share with it. Never the Stage window, never during a recording.
+    let xpOn = false;
+    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording)) }; };
+    addEventListener('hearth:lab-export', (e) => { const on = Boolean(e.detail?.on); if (on === xpOn) return; xpOn = on; if (fpsPref() < 0 && box.ready) box.send(capMsg()); });
     fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send(capMsg()); });
     // the window in front or not (an iframe taking the focus is still this window: document.hasFocus() says so)
     let focusT = 0;

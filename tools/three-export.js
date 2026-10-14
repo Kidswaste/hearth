@@ -20,7 +20,7 @@ const LabExport = (() => {
   const IS_MAC = /Mac/.test(navigator.platform);
   const SEQ = () => (typeof ThreeSeq !== 'undefined' ? ThreeSeq : null);
   const LAB = () => SEQ()?._S?.L || null; // the Lab's handle (player, scenes, stage, sketchId), as the sequence has it
-  const S = { chain: Promise.resolve(), cur: null, waiting: 0, stats: [], last: null };
+  const S = { chain: Promise.resolve(), cur: null, runs: new Set(), waiting: 0, stats: [], last: null };
   const opts0 = () => store.get('three.export', {});
   const D_FORMATS = () => ThreeSeqData.FORMATS;
   const openFile = (p) => (typeof MediaFile !== 'undefined' ? MediaFile.open(p) : window.hub.fs.open?.(p));
@@ -183,6 +183,9 @@ const LabExport = (() => {
   // queue it: one export at a time (the others wait in the render queue as "waiting")
   function render(o0 = {}) {
     const o = resolve(o0);
+    // (round 41, renderfast) a batch that runs its formats side by side (All formats on a machine with cores to
+    // spare) starts its jobs at once; each is its own page and its own ffmpeg, so each makes what it would alone
+    if (o.direct) return job(o);
     S.waiting += 1;
     const run = S.chain.then(() => { S.waiting -= 1; return job(o); }, () => { S.waiting -= 1; return job(o); });
     S.chain = run.catch(() => null);
@@ -195,13 +198,14 @@ const LabExport = (() => {
     if (f.id === 'still16' && o.w * o.h > 24e6) throw new Error(`A 16-bit still goes up to 24 megapixels (A3 at 300 dpi is 17); ${o.w}×${o.h} is ${Math.round(o.w * o.h / 1e6)}: export a Still · PNG at that size instead`);
     const id = uid();
     const ctl = { cancel: false, paused: false, t0: performance.now(), frames: 0, total: 0 };
-    S.cur = ctl;
+    S.cur = ctl; S.runs.add(ctl);
+    window.dispatchEvent(new CustomEvent('hearth:lab-export', { detail: { on: true } })); // (round 41, renderfast: the preview eases off)
     const title = `⇪ ${f.name} · ${o.w}×${o.h}${o.ss > 1 ? ` · ${o.ss}× SS` : ''}${o.blur > 1 ? ` · blur ${o.blur}` : ''}`;
     const pk = `lab-export:${id}`;
     const own = o.track !== false; // (round 33, multiformat: a batch shows one line of its own instead)
     if (own) window.Progress?.set(pk, { title, icon: '⇪', kind: 'lab-export', pct: 0, label: 'opening the export page', jump: () => { if (typeof activate === 'function') activate('tool:three'); }, actions: [{ label: '■', title: 'Cancel', run: () => { ctl.cancel = true; } }] });
     const rq = !own ? null : window.Renders?.track?.({ kind: o.trackKind || 'export', title: o.title || title, pk, quiet: Boolean(o.quiet), cancel: () => { ctl.cancel = true; }, pause: (on) => { ctl.paused = on; }, again: o.again !== undefined ? o.again : { type: 'cmd', line: cmdLine(o) } });
-    const progress = (p, label) => { if (own) window.Progress?.set(pk, { pct: Math.min(99.5, p * 100), label }); rq?.progress?.(Math.min(99.5, p * 100), label); o.onProgress?.(p, label); };
+    const progress = (p, label, left) => { if (own) window.Progress?.set(pk, { pct: Math.min(99.5, p * 100), label }); rq?.progress?.(Math.min(99.5, p * 100), label, left); o.onProgress?.(p, label, left); }; // (left: seconds, round 41 renderfast)
     let page = null; let tmp = null; let ok = false; let result = null; let errOut = null;
     try {
       const tools = await ffmpegOf();
@@ -250,35 +254,81 @@ const LabExport = (() => {
       const ext = kind === 'image/jpeg' ? 'jpg' : kind === 'raw16' ? 'rgba' : 'png';
       const sigs = [];
       let writes = Promise.resolve(); let pending = 0;
-      const tFrames = performance.now();
       let drawMs = 0;
-      const ahead = new Map(); const LOOKAHEAD = 2;
+      const sp = { step: 0, merge: 0, enc: 0, wait: 0, ipc: 0, ff: 0, bytes: 0 }; // (round 41, renderfast) where the time goes
+      // the sound and the encoder's arguments (known before the first frame unless the loop is searched in the frames)
+      const soundOf = () => {
+        if (!(o.sound && f.audio && !f.loop && SEQ()?.audioPlan)) return null;
+        const parts = SEQ().audioPlan(e, (T0 * F + N) / F, T0);
+        return C.audio(parts, { fx: typeof SeqCut !== 'undefined' ? SeqCut : null, duck: SEQ().duckOf?.(e) || null, from: T0 });
+      };
+      const argsOf = async (input) => C.args({ format: f.id, F, n: N, input, w: o.w, h: o.h, quality: o.quality, audio: soundOf(), loop: f.loop ? loop : null, encoders: await encodersOf(), alpha: o.alpha, gifFps: F, gifLong: o.gifLong || 0 });
+      // (round 41, renderfast) a video's frames go straight into ffmpeg while the next ones draw (renderfastmain.js):
+      // no temporary pictures, and the encode is done when the last frame is. The old way (a folder of frames, then
+      // ffmpeg) stays for a loop searched in the frames, an ffmpeg that can't be reached this way, and `legacy`.
+      let stream = null; let a = null;
+      if (f.kind === 'video' && tools && !o.detect && !o.legacy && window.hub.rfast && store.get('three.export.stream', true) !== false) {
+        a = await argsOf('INPUT');
+        const sid = `xs${id}`;
+        const r = await window.hub.rfast.open({ id: sid, args: C.streamArgs(a.args, ext), output }, ffOver()).catch((err) => ({ ok: false, error: err.message }));
+        if (r?.ok) { stream = { id: sid, encoded: 0, open: true }; ctl.stream = stream; } else console.warn('Lab export: streaming to ffmpeg failed, frames go to a folder', r?.error);
+      }
+      // the export page draws a frame while the ones before it are encoded and handed on: the old path asked 2 frames
+      // ahead; streaming keeps 3 (the encodes of two frames run beside the third one's drawing)
+      const LOOKAHEAD = o.ahead || (stream ? 3 : 2);
+      const ahead = new Map();
       const ask = (n) => {
         const got = page.wait((m) => m.type === 'xp-frame' && m.n === n, 120000, `frame ${n + 1}`);
-        page.send({ type: 'xp-frame', n, T: r4(T0 + n / F), w: o.w, h: o.h, ss: o.ss, sub: o.blur, shutter: o.shutter, F, kind, q: 0.97, alpha: o.alpha, sig: Boolean(o.detect) });
+        page.send({ type: 'xp-frame', n, T: r4(T0 + n / F), w: o.w, h: o.h, ss: o.ss, sub: o.blur, shutter: o.shutter, F, kind, q: 0.97, alpha: o.alpha, sig: Boolean(o.detect), prof: Boolean(o.prof), legacy: Boolean(o.legacy) });
         return got;
       };
+      const eta = C.etaModel({ total: N, px: o.w * o.h * o.ss * o.ss * o.blur, hist: store.get('three.export.pace', []) });
+      const tFrames = performance.now();
+      let tLast = tFrames;
       for (let n = 0; n < N; n += 1) {
-        while (ctl.paused && !ctl.cancel) await sleep(200);
+        while (ctl.paused && !ctl.cancel) { await sleep(200); tLast = performance.now(); }
         // (a drag, a scroll or typing in the app: the next frame waits for the gesture to end, ≤ 1.5 s, so the GPU and
         // the CPU go to what you're doing first)
         if (window.Jank?.busy?.()) { ctl.yields = (ctl.yields || 0) + 1; await window.Jank.calm?.(1500); }
         if (ctl.cancel) throw new Error('Render cancelled');
-        // the next frame is asked for before this one arrives: the page draws it while this one is encoded and written
+        // the next frames are asked for before this one arrives: the page draws them while this one is encoded and handed on
         for (let k = n; k < Math.min(N, n + LOOKAHEAD); k += 1) if (!ahead.has(k)) ahead.set(k, ask(k));
+        const w0 = performance.now();
         const m = await ahead.get(n); ahead.delete(n);
+        sp.wait += performance.now() - w0;
         if (m.error) throw new Error(`Frame ${n + 1}: ${m.error}`);
         drawMs += m.drawMs || 0;
+        if (m.split) { sp.step += m.split.step || 0; sp.merge += m.split.merge || 0; sp.enc += m.split.enc || 0; }
+        sp.bytes += m.buffer?.byteLength || 0;
         if (o.detect) sigs.push(m.sig);
-        const file = f.kind === 'still' && ext === 'png' ? output : `${tmp}/${isSeqOut ? `${C.safe(stem)}_` : 'f_'}${String(n).padStart(5, '0')}.${ext}`;
-        // the file is written while the next frame draws (at most two in flight)
+        const bytes = new Uint8Array(m.buffer);
+        // handed on while the next frame draws (at most two in flight, in order)
         pending += 1;
-        const w = writes.then(() => window.hub.fs.write(file, new Uint8Array(m.buffer))).finally(() => { pending -= 1; });
+        let w;
+        if (stream) {
+          w = writes.then(async () => {
+            const i0 = performance.now();
+            const r = await window.hub.rfast.write(stream.id, bytes);
+            sp.ipc += performance.now() - i0;
+            if (!r?.ok) throw new Error(`ffmpeg: ${r?.error || 'stopped'}`);
+            stream.encoded = r.encoded || stream.encoded;
+          }).finally(() => { pending -= 1; });
+        } else {
+          const file = f.kind === 'still' && ext === 'png' ? output : `${tmp}/${isSeqOut ? `${C.safe(stem)}_` : 'f_'}${String(n).padStart(5, '0')}.${ext}`;
+          w = writes.then(() => { const i0 = performance.now(); return window.hub.fs.write(file, bytes).then(() => { sp.ipc += performance.now() - i0; }); }).finally(() => { pending -= 1; });
+        }
         writes = w;
+        w.catch(() => {}); // (a failed hand-on surfaces at the next await of the chain; after a cancel nobody waits for it)
         if (pending > 2) await w;
         ctl.frames = n + 1;
-        const el2 = performance.now() - tFrames;
-        progress(((n + 1) / N) * (f.kind === 'video' ? 0.85 : 0.97), `frame ${n + 1} / ${N} · ${C.speed(n + 1, el2)} fps${N - n > 2 ? ` · ${C.fmtSecs(C.eta(n + 1, N, el2))} left` : ''}`);
+        const now = performance.now();
+        eta.frame(now - tLast); tLast = now;
+        const el2 = now - tFrames;
+        const lag = stream ? Math.max(0, n + 1 - stream.encoded) : 0;
+        const left = eta.left(n + 1, stream ? { lag, encMs: stream.encoded > 2 ? el2 / stream.encoded : null } : f.kind === 'video' ? { tail: eta.priorTail } : {});
+        ctl.left = left;
+        // (the old way still encodes after the frames: they are 85 % of the bar; streamed, the frames are the work)
+        progress(((n + 1) / N) * (f.kind === 'video' ? (stream ? 0.97 : 0.85) : 0.97), `frame ${n + 1} / ${N} · ${C.speed(n + 1, el2)} fps${left != null && N - n > 1 ? ` · ${C.fmtSecs(left)} left` : ''}`, left);
         // a loop the frames make by themselves: stop once it is found
         if (o.detect && loop && n + 1 >= Math.round(F) + 3 && (n + 1) % 6 === 0) {
           const fl = C.findLoop(sigs, { min: Math.round(F * 0.5) });
@@ -293,7 +343,7 @@ const LabExport = (() => {
         // no loop of its own: the bars' length with its cross-fade (the frames past it are there)
         if (loop.L + loop.X > N) loop = { ...loop, L: Math.max(2, N - loop.X) };
       }
-      const stat = { format: f.id, w: o.w, h: o.h, ss: o.ss, blur: o.blur, frames: N, ms: Math.round(frameMs), fps: C.speed(N, frameMs), drawMs: Math.round(drawMs) };
+      const stat = { format: f.id, w: o.w, h: o.h, ss: o.ss, blur: o.blur, frames: N, ms: Math.round(frameMs), fps: C.speed(N, frameMs), drawMs: Math.round(drawMs), stream: Boolean(stream) };
       S.stats.push(stat); if (S.stats.length > 40) S.stats.shift();
       page.close(); page = null;
       if (f.kind === 'still') {
@@ -301,37 +351,49 @@ const LabExport = (() => {
           if (!tools) throw new Error('A 16-bit PNG needs ffmpeg: /ffmpeg install (or export a Still · PNG)');
           await runFfmpeg({ id: `xp${id}`, input: `${tmp}/f_00000.rgba`, output, args: ['-y', '-f', 'rawvideo', '-pix_fmt', 'rgba64le', '-s', `${o.w}x${o.h}`, '-i', `${tmp}/f_00000.rgba`, '-frames:v', '1', '-pix_fmt', o.alpha ? 'rgba64be' : 'rgb48be', 'OUTPUT'], duration: 0.04 });
         }
+      } else if (stream) {
+        progress(0.975, 'finishing the video', Math.max(1, ctl.left || 1));
+        const f0 = performance.now();
+        const r = await window.hub.rfast.end(stream.id);
+        stream.open = false;
+        sp.ff = performance.now() - f0;
+        if (!r?.ok) throw new Error(`ffmpeg: ${r?.error || 'stopped'}`);
+        if (a.note) stat.note = a.note;
       } else if (f.kind === 'video') {
         progress(0.86, 'encoding');
-        const enc = await encodersOf();
-        let audio = null;
-        if (o.sound && f.audio && !f.loop && SEQ()?.audioPlan) {
-          const parts = SEQ().audioPlan(e, (T0 * F + N) / F, T0);
-          audio = C.audio(parts, { fx: typeof SeqCut !== 'undefined' ? SeqCut : null, duck: SEQ().duckOf?.(e) || null, from: T0 });
-        }
-        const a = C.args({ format: f.id, F, n: N, input: `${tmp}/f_%05d.${ext}`, w: o.w, h: o.h, quality: o.quality, audio, loop: f.loop ? loop : null, encoders: enc, alpha: o.alpha, gifFps: F, gifLong: o.gifLong || 0 });
-        await runFfmpeg({ id: `xp${id}`, input: `${tmp}/f_00000.${ext}`, output, args: a.args, duration: a.frames / F, onProgress: (p) => progress(0.86 + p * 0.13, 'encoding') });
+        a = await argsOf(`${tmp}/f_%05d.${ext}`);
+        const f0 = performance.now();
+        const tailMs = eta.priorTail != null ? eta.priorTail * N : null;
+        await runFfmpeg({ id: `xp${id}`, input: `${tmp}/f_00000.${ext}`, output, args: a.args, duration: a.frames / F, onProgress: (p) => progress(0.86 + p * 0.13, 'encoding', tailMs != null ? Math.max(1, Math.round((tailMs * (1 - p)) / 1000)) : (p > 0.05 ? Math.round(((performance.now() - f0) * (1 - p)) / p / 1000) : null)) });
+        sp.ff = performance.now() - f0;
         if (a.note) stat.note = a.note;
       }
+      // (this render's pace, for the next one's time left)
+      if (N > 2) { const hist = store.get('three.export.pace', []); hist.push({ mpx: r4((o.w * o.h * o.ss * o.ss * o.blur) / 1e6), ms: Math.round(eta.pace() || frameMs / N), tail: Math.round(sp.ff / N) }); store.set('three.export.pace', hist.slice(-12)); }
       const st = await window.hub.fs.stat(output).catch(() => null);
       const secs = Math.round((performance.now() - ctl.t0) / 100) / 10;
-      result = { path: output, format: f.id, w: o.w, h: o.h, fps: F, frames: f.loop && loop ? loop.L : N, seconds: secs, size: st?.size || null, speed: stat.fps, loop: loop ? { frames: loop.L, fade: loop.X, natural: Boolean(loop.found), secs: r4(loop.L / F) } : null, capped: o.capped, errors: [] };
+      stat.split = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, k === 'bytes' ? v : Math.round(v)]));
+      stat.wall = Math.round(performance.now() - ctl.t0);
+      result = { path: output, format: f.id, w: o.w, h: o.h, fps: F, frames: f.loop && loop ? loop.L : N, seconds: secs, size: st?.size || null, speed: stat.fps, split: stat.split, wall: stat.wall, loop: loop ? { frames: loop.L, fade: loop.X, natural: Boolean(loop.found), secs: r4(loop.L / F) } : null, capped: o.capped, errors: [] };
       S.last = result;
       ok = true;
       if (!o.quiet && !rq?.notifies) toast(`Exported ${base(output)} (${o.w}×${o.h}, ${result.frames} frame${result.frames === 1 ? '' : 's'}) in ${secs} s`, { timeout: 6000, action: { label: 'Open', fn: () => openFile(output) } });
       return result;
     } catch (err) { errOut = err; throw err; } finally {
       if (page) page.close();
+      if (ctl.stream?.open) window.hub.rfast.cancel(ctl.stream.id).catch(() => {}); // (an ffmpeg left waiting for frames: stopped, its partial file removed)
       if (tmp && !(f.id === 'png') && tmp.includes('.hearth-titles-xp')) window.hub.video.rmtemp?.(tmp).catch(() => {});
       if (!own) { /* the batch's own line */ } else if (ok) { window.Progress?.done(pk); rq?.done(result?.path); } else { window.Progress?.done(pk, { ok: false, label: ctl.cancel ? 'cancelled' : 'failed' }); rq?.fail(ctl.cancel ? 'Render cancelled' : errOut || 'The export stopped'); }
-      if (S.cur === ctl) S.cur = null;
+      S.runs.delete(ctl);
+      if (S.cur === ctl) S.cur = [...S.runs].pop() || null;
+      if (!S.runs.size) window.dispatchEvent(new CustomEvent('hearth:lab-export', { detail: { on: false } }));
     }
   }
   function cmdLine(o) {
     return ['/lab-export', o.format, `${o.w}x${o.h}`, `${o.F}fps`, o.ss > 1 ? `ss${o.ss}` : '', o.blur > 1 ? `blur${o.blur}` : '', o.quality !== 'high' ? o.quality : '', o.secs ? `${o.secs}s` : '', o.bars ? `${o.bars}bars` : '', o.source === 'seq' ? 'seq' : '', o.alpha === false && o.f.alpha ? 'opaque' : '', o.sound === false && o.f.audio ? 'mute' : ''].filter(Boolean).join(' ');
   }
-  function pause(on = true) { if (!S.cur) return false; S.cur.paused = on; return true; }
-  function cancel() { if (!S.cur) return false; S.cur.cancel = true; return true; }
+  function pause(on = true) { if (!S.runs.size) return false; for (const c of S.runs) c.paused = on; return true; }
+  function cancel() { if (!S.runs.size) return false; for (const c of S.runs) c.cancel = true; return true; }
 
   // ---------- the scene itself: GLB, one-file web page, slider preset, contact sheet ----------
   async function exportScene(o) {
@@ -536,7 +598,7 @@ const LabExport = (() => {
       { label: 'Contact sheet', action: () => render({ format: 'sheet' }).catch((e) => toast(e.message, { type: 'error' })) },
     ] };
   }
-  const status = () => ({ running: S.cur ? { frames: S.cur.frames, total: S.cur.total, paused: S.cur.paused } : null, waiting: S.waiting, last: S.last, speeds: S.stats.slice(-8) });
+  const status = () => ({ running: S.cur ? { frames: S.cur.frames, total: S.cur.total, paused: S.cur.paused, left: S.cur.left ?? null, side: S.runs.size } : null, waiting: S.waiting, last: S.last, speeds: S.stats.slice(-8) });
   // (round 31, perfectloop) small frames of the scene on screen from the export page, for the seamless check: n frames
   // at times(k) (in order: a simulation steps through them), JPEG buffers back; clock: the loop clock for its helpers
   async function probe({ w, h, F = 30, n, times, clock = null, onFrame = null }) {
