@@ -152,7 +152,9 @@ const AppUI = (() => {
           // (round 33, simplify3) one "What's new…" for the patch notes and what fits how you work (were two buttons)
           gbtn('What\'s new…', 'Shows what changed lately: every change in plain words, or only what fits how you work', (e) => { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, [
             { label: 'Patch notes', hint: 'every change, round by round', action: () => { dialog.close(); Updater.patchNotes(); } },
-            { label: 'What\'s new for me', hint: 'what fits how you work', action: run('/whats-new') }]); }))), 'updates'),
+            { label: 'What\'s new for me', hint: 'what fits how you work', action: run('/whats-new') },
+            // (round 37, updatesafe) after an update: back to the version before it, chats and data kept
+            ...(Updater.status?.back ? [{ label: 'Go back to the previous version', hint: `before the last update (${Updater.status.back.from})`, action: () => { dialog.close(); Updater.goBack(); } }] : [])]); }))), 'updates'),
       home(section('Keys',
         el('div', { class: 'button-row', title: 'Your keyboard keys and what hides behind Alt' },
           gbtn('Keyboard keys…', 'Shows every key, what waits behind Alt, and every right-click menu', () => { dialog.close(); KeysUI.open(); })),

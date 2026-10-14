@@ -25,6 +25,7 @@ const ok = (c, what) => { console.log(`${c ? '✓' : '✖'} ${what}`); if (!c) f
   write(path.join(dev, 'main.js'), '// main 1\n');
   write(path.join(dev, 'notes.txt'), 'one\n');
   fs.copyFileSync(path.join(__dirname, '..', 'updatermain.js'), path.join(dev, 'updatermain.js'));
+  fs.copyFileSync(path.join(__dirname, '..', 'updatesafe-core.js'), path.join(dev, 'updatesafe-core.js')); // (round 37) its plain-words + swap part
   g(dev, 'add', '-A'); g(dev, 'commit', '-qm', 'first'); g(dev, 'push', '-q', 'origin', 'main');
   const app = path.join(T, 'app');
   g(T, 'clone', '-q', origin, app);
@@ -83,6 +84,7 @@ const ok = (c, what) => { console.log(`${c ? '✓' : '✖'} ${what}`); if (!c) f
   // not a repo
   const bare = path.join(T, 'plain'); fs.mkdirSync(bare);
   fs.copyFileSync(path.join(__dirname, '..', 'updatermain.js'), path.join(bare, 'updatermain.js'));
+  fs.copyFileSync(path.join(__dirname, '..', 'updatesafe-core.js'), path.join(bare, 'updatesafe-core.js'));
   const U2 = require(path.join(bare, 'updatermain.js'));
   s = await U2.status();
   ok(!s.ok && s.reason === 'repo', `not a git checkout: a plain message (${s.reason})`);

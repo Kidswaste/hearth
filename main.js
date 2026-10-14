@@ -4,6 +4,9 @@ const path = require('path');
 // (round 31, winmac) started from the Mac's Dock, PATH lacks Homebrew / npm / nvm: claude, codex, ffmpeg, git and the
 // chats' own commands are found again (Windows / Linux: unchanged)
 require('./winmac').fixProcessPath();
+// (round 37, updatesafe) an update Windows couldn't finish while Hearth ran (files held open) goes in now, before the
+// rest loads; when main-process files changed, Hearth starts once more right away (no window yet). Usually: one stat.
+if (require('./updatesafe-core').startSwap(app, { log: console.log })) return;
 const store = require('./store');
 // (round 19, splash) modules the first screen doesn't need are required on their first use instead of before the window
 // opens (Electron's 'ready' waits for everything main.js does at load): the same object to every caller, made on demand
