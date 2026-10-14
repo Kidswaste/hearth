@@ -121,7 +121,7 @@ step('a view move (labgestures) makes the before side again, so both sides share
 await d.evalInSketch('return __labGest.cmd({ cmd: "reset" })?.ok').catch(() => null);
 await smoke({ shot: '/tmp/abcompare-split.png' });
 const c1 = { hub: hubCanvases(), frames: document.querySelectorAll('iframe').length, sb: await sbCanvases() };
-step('no extra WebGL context: no new canvas or iframe in the hub, none in the preview page', JSON.stringify(c0) === JSON.stringify(c1) && AB.stats().canvases === 0 && AB.stats().webgl === 0, { c0, c1, stats: AB.stats() });
+step('no extra WebGL context: no new canvas or iframe in the hub, none in the preview page', c1.hub <= c0.hub && c1.frames <= c0.frames && c1.sb <= c0.sb && AB.stats().canvases === 0 && AB.stats().webgl === 0, { c0, c1, stats: AB.stats() });
 // Esc closes it, freeing the picture
 const freed0 = AB.stats().freed;
 pane.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
