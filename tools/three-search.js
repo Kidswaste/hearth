@@ -94,7 +94,7 @@ const LabSearch = (() => {
       out.push({ id: `l:${L.id}`, kind: 'layer', label: L.name, hint: `${L.selected ? 'selected · ' : ''}${L.visible ? '' : 'hidden · '}${L.filter ? 'filter layer' : 'layer'} in this scene`, path: 'Layers', tags: 'layer', color: L.color, run: () => jumpLayer(L.id) });
     }
     for (const x of s.sliders()) {
-      out.push({ id: `s:${x.layerId}|${x.key}`, kind: 'slider', label: x.label, hint: `slider · ${x.layer}${x.group ? ` · ${x.group}` : ''}`, path: 'Sliders', tags: `${x.key} slider`, run: () => s.revealSlider(x.layerId, x.label) });
+      out.push({ id: `s:${x.layerId}|${x.key}`, kind: 'slider', label: x.label, hint: `${x.layer}${x.group ? ` · ${x.group}` : ''}`, path: 'Sliders', tags: `${x.key} slider`, run: () => s.revealSlider(x.layerId, x.label) });
     }
     for (const name of s.looks()) out.push({ id: `k:${name}`, kind: 'look', label: name, hint: 'a saved look of this layer\'s sliders', path: 'Sliders › Looks', tags: 'look saved', run: () => s.applyLook(name) });
     const sc = ThreeLab.scenes;
@@ -306,7 +306,7 @@ const LabSearch = (() => {
   async function showHelp(h) {
     const go = h.go ? [...(liveIx?.items || []), ...(fixedIx?.items || [])].find((it) => it.kind === 'action' && it.label === h.go) : null;
     if (!go) { await Modal.alert(h.title, h.text); return; }
-    if (await Modal.confirm(h.title, h.text, { ok: `${h.go.replace(/…$/, '')}` })) await go.run();
+    if (await Modal.confirm(h.title, h.text, { ok: 'Show me' })) await go.run();
   }
   const when = (at) => { const d = (Date.now() - (at || 0)) / 1000; if (!at) return 'some time ago'; if (d < 3600) return `${Math.max(1, Math.round(d / 60))} min ago`; if (d < 86400) return `${Math.round(d / 3600)} h ago`; return `${Math.round(d / 86400)} days ago`; };
   // nothing found: your words in the Three Director's box, not sent (the director is made when there is none, like 🩺 does)
