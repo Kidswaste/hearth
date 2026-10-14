@@ -214,8 +214,8 @@ if (part('surfaces') || part('esc') || part('forced')) {
     await until(() => L.querySelector('.tw-range input[type=range], svg.tw-knob'), 8000);
     audit('Lab', L);
     // knobs too
-    const knobToggle = [...L.querySelectorAll('button')].find((b) => /Knobs or sliders|knobs/i.test(b.title || '') && vis(b));
-    if (knobToggle) { knobToggle.click(); await wait(500); out.places['Lab knobs'] = audit('Lab knobs', L); knobToggle.click(); await wait(300); }
+    const lay = L.querySelector('select.tw-layoutsel');
+    if (lay) { const was = lay.value; lay.value = 'knobs'; lay.dispatchEvent(new Event('change', { bubbles: true })); await until(() => L.querySelector('svg.tw-knob'), 4000); audit('Lab knobs', L); out.knobs = L.querySelectorAll('svg.tw-knob').length; lay.value = was; lay.dispatchEvent(new Event('change', { bubbles: true })); await wait(300); }
     if (typeof ThreeFX !== 'undefined') { ThreeFX.openPicker('add'); const p = await until(() => document.querySelector('.fx-picker')); if (p) { await wait(300); audit('Lab ✦ picker', p); ThreeFX.close?.(); p.isConnected && p.querySelector('button[title^="Close"]')?.click(); } }
     if (typeof LabSearchHook !== 'undefined') { await LabSearchHook.open(); const d = await until(() => document.querySelector('dialog.ls-dlg[open]'), 15000); if (d) { await wait(300); audit('Lab search', d); if (typeof LabSearch !== 'undefined') LabSearch.close(); } }
   } catch (e) { out.labError = String(e.message || e); }
@@ -291,13 +291,18 @@ async function escCase(name, opener, isOpen, { how = 'Enter' } = {}) {
   if (!open) { note('escReturn', name, 'did not open'); return; }
   await wait(250);
   const inside = open.contains?.(document.activeElement);
-  if (!inside && !/menu|Find anything/.test(name)) note('escReturn', name, `focus did not move into it (on ${desc(document.activeElement || document.body)})`);
-  await key('Escape'); await settle(); await wait(150);
-  if (await until(() => !isOpen(), 1500) === null) note('escReturn', name, 'Esc did not close it');
+  if (!inside && !/menu|Find anything/.test(name)) note('escReturn', name, `focus did not move into it (on ${desc(document.activeElement || document.body)}; open: ${A11y._open.map((x) => x.root.className).join(', ')}; same: ${open === isOpen()})`);
+  const at = desc(document.activeElement || document.body);
+  const seen = []; const onWin = (e) => seen.push(`win:${e.defaultPrevented}`); const onRoot = () => seen.push('root'); const onCap = (e) => seen.push(`cap:${desc(e.target)}`);
+  addEventListener('keydown', onWin); addEventListener('keydown', onCap, true); open.addEventListener?.('keydown', onRoot, true);
+  await key('Escape');
+  removeEventListener('keydown', onWin); removeEventListener('keydown', onCap, true); open.removeEventListener?.('keydown', onRoot, true); await settle(); await wait(150);
+  if (await until(() => !isOpen(), 1500) === null) note('escReturn', name, `Esc did not close it (focus on ${at}; ${typeof Options !== 'undefined' ? `sheet same: ${Options.sheet?.root === isOpen()}, page: ${Options.sheet?.page}` : ''}; open: ${A11y._open.map((x) => x.root.className).join(', ')}; keys: ${seen.join(' ')})`);
   else if (document.activeElement !== o) note('escReturn', name, `focus went to ${desc(document.activeElement || document.body)}, not back to ${desc(o)}`);
 }
 if (part('esc')) {
   activate(claude.id); await wait(300);
+  if (window.A11Y_DEBUG) { const r = await cdp('Runtime.evaluate', { expression: "[...getEventListeners(window).keydown, ...getEventListeners(document).keydown].filter((l) => l.useCapture).map((l) => String(l.listener).slice(0, 220))", includeCommandLineAPI: true, returnByValue: true }); out.listeners = r.result?.value; }
   await escCase('AI setup', () => view().root.querySelector('.native-head button[aria-label="Chat options"]'), () => document.querySelector('aside.opt-sheet'));
   await escCase('Settings', () => $('config-btn')?.checkVisibility() ? $('config-btn') : [...document.querySelectorAll('#rail button')].find((b) => /Settings/.test(b.title) && vis(b)), () => document.querySelector('dialog.settings-dialog[open]'));
   await escCase('missions', () => view().root.querySelector('.ms-btn'), () => document.querySelector('.ms-pop'));
@@ -305,7 +310,7 @@ if (part('esc')) {
   // a menu: opened from the keyboard (the rail's ⋯ More), arrows move a real focus
   {
     const more = [...document.querySelectorAll('#rail button')].find((b) => /^More\b/.test(b.title) && vis(b));
-    await escCase('menu', () => more, () => (!$('menu').hidden ? $('menu') : null), { how: async () => { await key('Enter'); await wait(200); await key('ArrowDown'); await key('ArrowDown'); const f = document.activeElement; if (!$('menu').contains(f) || f.getAttribute('role') !== 'menuitem') note('escReturn', 'menu', `arrow keys don't move focus into the menu (on ${desc(f || document.body)})`); } });
+    await escCase('menu', () => more, () => (!$('menu').hidden ? $('menu') : null), { how: async () => { await key('Enter'); await wait(200); await key('ArrowDown'); await key('ArrowDown'); const f0 = document.activeElement; const f = f0?.getAttribute('aria-activedescendant') ? document.getElementById(f0.getAttribute('aria-activedescendant')) : f0; if (!$('menu').contains(f) || f.getAttribute('role') !== 'menuitem') note('escReturn', 'menu', `arrow keys don't move focus into the menu (on ${desc(f || document.body)})`); } });
   }
   // nested: a menu over Settings: Esc closes the menu first, then Settings
   {
@@ -336,6 +341,7 @@ const TEXTS = [
   ['search chats placeholder', () => $('chat-search'), 3, '::placeholder'],
 ];
 if (part('contrast')) {
+  still(true); // (a message's entrance fade would read as faint text)
   const was = { ...(H.config.theme || {}) };
   for (const id of Object.keys(AppUI.THEMES)) {
     H.config.theme = { ...(H.config.theme || {}), ...AppUI.THEMES[id], preset: id }; delete H.config.theme.label; delete H.config.theme.group;
@@ -352,6 +358,7 @@ if (part('contrast')) {
     (out.looks[id] ||= {}).contrast = res;
   }
   H.config.theme = was; applyTheme(document.getElementById('user-theme').textContent); await settle();
+  still(false);
 }
 
 // ---------- 5. Windows High Contrast (forced colors) ----------

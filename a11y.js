@@ -75,13 +75,14 @@ const A11y = (() => {
     const a = document.activeElement;
     open.push({ root, opener: a && a !== document.body && !root.contains(a) ? a : lastOut && !root.contains(lastOut) ? lastOut : null });
     if (!root.getAttribute('role')) root.setAttribute('role', 'dialog');
-    // focus goes in (unless the overlay put it somewhere itself, like Find anything's box)
-    requestAnimationFrame(() => {
+    // focus goes in (unless the overlay put it somewhere itself, like Find anything's box); a task, not a frame: a
+    // busy Lab preview can hold frames back
+    setTimeout(() => {
       if (!root.isConnected || root.contains(document.activeElement)) return;
       const first = kbd ? focusable(root) : null;
       if (first) first.focus({ preventScroll: true });
       else { if (!root.hasAttribute('tabindex')) { root.tabIndex = -1; root.dataset.a11yRoot = ''; } root.focus({ preventScroll: true }); }
-    });
+    }, 0);
   }
   function closed(root) {
     const i = open.findIndex((o) => o.root === root);
@@ -113,7 +114,7 @@ const A11y = (() => {
   addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
     const top = open.at(-1);
-    if (!top || !top.root.isConnected || !top.root.contains(document.activeElement)) return;
+    if (!top || !top.root.isConnected || !(top.root.contains(document.activeElement) || document.activeElement === top.opener)) return;
     if (document.querySelector('dialog[open]') && !top.root.closest('dialog')) return; // a dialog above it handles its own
     const x = [...top.root.querySelectorAll('button')].find((b) => /^(✕|×|Close)\b/.test(b.getAttribute('aria-label') || b.title || b.textContent.trim()));
     e.preventDefault();

@@ -105,6 +105,7 @@ const GROUPS = {
   hintcalm: ['hintcalm', 'unit:hintcalm-test'], // (round 38) one hint at a time: after an update the patch notes first, never two optional hints on screen, none while typing / streaming, Don't show tips, essential notes at once
   settingscalm: ['settingscalm', 'appsearch', 'tidy', 'simplify2', 'firstrun', 'unit:appsearch-test'], // (round 39) Settings in four plain sections + folds that say where they stand: control budget, every row Find anything knows found in its place, fold lines follow a switch, nothing gone
   powerwise: ['powerwise', 'unit:powerwise-test', 'unit:hintcalm-test'], // (round 39) awake only while it matters (a stub blocker: renders, recordings, long AI turns, downloads, updates, always released), battery / saver policies, background wakeups per minute, sleep / resume
+  a11y: ['a11y', 'options', 'settingscalm', 'appsearch', 'missions', 'labeasy', 'labsearch', 'motionpolish', 'qa-keys', 'lazy', 'unit:boot-test'], // (round 40) keyboard + screen readers + contrast: names on every control, roles and states, focus rings in every look, the Tab order and skip link, Esc closes the top-most thing and focus returns, contrast per look, Windows High Contrast (forced colors), replies / tips read out once
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];

@@ -359,7 +359,8 @@ function menuKb(i) {
   const b = rows[menuState.kb];
   b.classList.add('kb-on');
   b.scrollIntoView({ block: 'nearest' });
-  if (document.activeElement !== b && document.activeElement !== menuState.filter) b.focus({ preventScroll: true }); // (round 40, a11y) a real focus: screen readers follow it
+  // (round 40, a11y) a real focus, screen readers follow it (typing in the filter: the row is its active descendant)
+  if (menuState.filter && document.activeElement === menuState.filter) { b.id ||= `menu-row-${menuState.kb}-${Math.random().toString(36).slice(2, 6)}`; menuState.filter.setAttribute('aria-activedescendant', b.id); } else if (document.activeElement !== b) b.focus({ preventScroll: true });
 }
 
 // pointing at a submenu row: its items show beside the menu (a second panel, #menu-fly)
@@ -822,7 +823,8 @@ function popMenu(x, y, items, { width = 300 } = {}) {
   const stack = [];
   let kb = -1;
   const off = () => { removeEventListener('pointerdown', away, true); removeEventListener('keydown', keys, true); };
-  const close = () => { m.remove(); off(); };
+  const opener = document.activeElement; // (round 40, a11y) focus goes back there when the menu closes with it inside
+  const close = () => { const had = m.contains(document.activeElement); m.remove(); off(); if (had && opener?.isConnected && opener !== document.body) opener.focus({ preventScroll: true }); };
   const rowsNow = () => [...m.querySelectorAll(':scope > .menu-item')].filter((b) => b.style.display !== 'none');
   const mark = (i) => {
     const rows = rowsNow();
@@ -831,6 +833,7 @@ function popMenu(x, y, items, { width = 300 } = {}) {
     kb = (i + rows.length) % rows.length;
     rows[kb].classList.add('kb-on');
     rows[kb].scrollIntoView({ block: 'nearest' });
+    if (document.activeElement !== m.querySelector('.menu-filter')) rows[kb].focus({ preventScroll: true }); // (round 40, a11y) a real focus
   };
   const row = (it, onClick, extra = '') => el('button', { type: 'button', role: 'menuitem', class: `menu-item${it[3] ? ' on' : ''}${extra}`, dataset: it[4] ? { feature: it[4] } : {}, on: { click: onClick } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' }));
   function render(list, dir = 0) {
@@ -875,6 +878,6 @@ function popMenu(x, y, items, { width = 300 } = {}) {
   Object.assign(m.style, { left: `${Math.max(8, Math.min(innerWidth - width - 12, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '70vh', overflowY: 'auto' });
   document.body.append(m);
   topLayer(m, true);
-  setTimeout(() => { addEventListener('pointerdown', away, true); addEventListener('keydown', keys, true); });
+  setTimeout(() => { addEventListener('pointerdown', away, true); addEventListener('keydown', keys, true); if (window.A11y?.kbd()) mark(0); });
   return m;
 }
