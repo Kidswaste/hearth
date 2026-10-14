@@ -476,9 +476,9 @@ const Missions = (() => {
       // (round 33, swarmlean) a costly mission says what it will take, in one line (no extra click)
       const est = !no && m.id !== 'normal' && typeof SwarmLean !== 'undefined' ? SwarmLean.estimate(agentId, m.id) : null;
       return el('div', { class: `ms-card${cur === m.id ? ' on' : ''}${no ? ' off' : ''}`, title: no || m.desc },
-        el('button', { type: 'button', class: 'ms-pick', on: { click: () => { if (no) { toast(no, { timeout: 3500 }); return; } set(agentId, m.id); onPick?.(); } } }, el('b', { text: `${m.icon} ${m.label}` }), el('span', { text: no || m.desc }),
+        el('button', { type: 'button', class: 'ms-pick', attrs: { 'aria-pressed': String(cur === m.id) }, on: { click: () => { if (no) { toast(no, { timeout: 3500 }); return; } set(agentId, m.id); onPick?.(); } } }, el('b', { text: `${m.icon} ${m.label}` }), el('span', { text: no || m.desc }),
           est ? el('span', { class: `ms-est${est.over ? ' over' : ''}`, text: est.line, title: 'An estimate before it starts (input + output, all the AIs together); the result card shows what it really took' }) : null),
-        m.id === 'normal' || no ? null : el('button', { type: 'button', class: `ms-keep${cur === m.id && sticky ? ' on' : ''}`, text: '📌', title: 'From now on (every message in this AI\'s chats) · click again: back to next message only',
+        m.id === 'normal' || no ? null : el('button', { type: 'button', class: `ms-keep${cur === m.id && sticky ? ' on' : ''}`, text: '📌', attrs: { 'aria-label': `${m.label}: from now on` }, title: 'From now on (every message in this AI\'s chats) · click again: back to next message only',
           on: { click: () => { set(agentId, cur === m.id && sticky ? 'normal' : m.id, { keep: !(cur === m.id && sticky) }); onPick?.(); } } }));
     };
     const here = shown(agentId);

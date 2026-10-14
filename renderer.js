@@ -295,19 +295,26 @@ function showMenu(x, y, items, parent = null, dir = 0) {
   menu.classList.toggle('m-in', dir > 0);
   menu.classList.toggle('m-back', dir < 0);
   menu.classList.toggle('m-long', Boolean(filter));
-  menuState = { x, y, given, parent, list, pick, kb: -1, filter };
+  // (round 40, a11y) what had focus before the menu (a submenu keeps its menu's), so closing gives it back
+  const before = document.activeElement;
+  const opener = menuState?.opener || (before && before !== document.body && !before.closest?.('#menu, #menu-fly') ? before : null);
+  menuState = { x, y, given, parent, list, pick, kb: -1, filter, opener };
   menu.hidden = false;
   topLayer(menu, true);
   menuOpenedAt = performance.now(); // the click that opened it must not close it (start.js)
   const { innerWidth: w, innerHeight: h } = window;
   menu.style.left = `${Math.max(4, Math.min(x, w - menu.offsetWidth - 8))}px`;
   menu.style.top = `${Math.max(4, Math.min(y, h - menu.offsetHeight - 8))}px`;
+  if (window.A11y?.kbd()) { menuKb(filter ? -1 : 0); if (filter) filter.focus({ preventScroll: true }); } // opened from the keyboard (a submenu too): on its first row
 }
 function hideMenu() {
   const menu = $('menu');
+  const back = menuState?.opener;
+  const had = menu && (menu.contains(document.activeElement) || $('menu-fly')?.contains(document.activeElement));
   if (menu) { menu.hidden = true; topLayer(menu, false); if (menu.parentElement !== document.body) document.body.append(menu); }
   hideMenuFly();
   menuState = null;
+  if (had && back?.isConnected) back.focus({ preventScroll: true }); // (round 40, a11y) focus back where it was
 }
 // A menu under an element (a button's own menu): showMenuAt(button, items)
 function showMenuAt(anchor, items) {
@@ -351,6 +358,8 @@ function menuKb(i) {
   const b = rows[menuState.kb];
   b.classList.add('kb-on');
   b.scrollIntoView({ block: 'nearest' });
+  // (round 40, a11y) a real focus, screen readers follow it (typing in the filter: the row is its active descendant)
+  if (menuState.filter && document.activeElement === menuState.filter) { b.id ||= `menu-row-${menuState.kb}-${Math.random().toString(36).slice(2, 6)}`; menuState.filter.setAttribute('aria-activedescendant', b.id); } else if (document.activeElement !== b) b.focus({ preventScroll: true });
 }
 
 // pointing at a submenu row: its items show beside the menu (a second panel, #menu-fly)
@@ -403,6 +412,7 @@ addEventListener('keydown', (e) => {
   } else if (e.key === 'ArrowRight' && at >= 0 && rows[at].classList.contains('has-sub')) { done(); rows[at].click(); }
   else if ((e.key === 'ArrowLeft' || (e.key === 'Backspace' && !menuState.filter?.value)) && menuState.parent) { done(); menu.querySelector('.menu-back')?.click(); }
   else if (e.key === 'Escape') { done(); hideMenu(); }
+  else if (e.key === 'Tab') hideMenu(); // (round 40, a11y) Tab leaves the menu (it closes; Tab goes on from what opened it)
   else if (e.key.length === 1 && e.key !== ' ' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName) && !e.target.isContentEditable) {
     if (menuState.filter) { done(); menuState.filter.focus(); menuState.filter.value += e.key; filterMenu(menuState.filter.value); return; }
     const k = e.key.toLowerCase();
@@ -812,7 +822,8 @@ function popMenu(x, y, items, { width = 300 } = {}) {
   const stack = [];
   let kb = -1;
   const off = () => { removeEventListener('pointerdown', away, true); removeEventListener('keydown', keys, true); };
-  const close = () => { m.remove(); off(); };
+  const opener = document.activeElement; // (round 40, a11y) focus goes back there when the menu closes with it inside
+  const close = () => { const had = m.contains(document.activeElement); m.remove(); off(); if (had && opener?.isConnected && opener !== document.body) opener.focus({ preventScroll: true }); };
   const rowsNow = () => [...m.querySelectorAll(':scope > .menu-item')].filter((b) => b.style.display !== 'none');
   const mark = (i) => {
     const rows = rowsNow();
@@ -821,6 +832,7 @@ function popMenu(x, y, items, { width = 300 } = {}) {
     kb = (i + rows.length) % rows.length;
     rows[kb].classList.add('kb-on');
     rows[kb].scrollIntoView({ block: 'nearest' });
+    if (document.activeElement !== m.querySelector('.menu-filter')) rows[kb].focus({ preventScroll: true }); // (round 40, a11y) a real focus
   };
   const row = (it, onClick, extra = '') => el('button', { type: 'button', role: 'menuitem', class: `menu-item${it[3] ? ' on' : ''}${extra}`, dataset: it[4] ? { feature: it[4] } : {}, on: { click: onClick } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' }));
   function render(list, dir = 0) {
@@ -865,6 +877,6 @@ function popMenu(x, y, items, { width = 300 } = {}) {
   Object.assign(m.style, { left: `${Math.max(8, Math.min(innerWidth - width - 12, x))}px`, top: `${Math.max(8, y)}px`, transform: 'none', maxHeight: '70vh', overflowY: 'auto' });
   document.body.append(m);
   topLayer(m, true);
-  setTimeout(() => { addEventListener('pointerdown', away, true); addEventListener('keydown', keys, true); });
+  setTimeout(() => { addEventListener('pointerdown', away, true); addEventListener('keydown', keys, true); if (window.A11y?.kbd()) mark(0); });
   return m;
 }

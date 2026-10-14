@@ -75,7 +75,7 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
   const toastLog = []; // the last notifications (Ctrl+K → Recent notifications)
   globalThis.recentToasts = () => toastLog.slice();
   function toast(message, { type = 'info', action, timeout = 4500 } = {}) {
-    if (!toastBox) { toastBox = el('div', { id: 'toasts' }); document.body.append(toastBox); }
+    if (!toastBox) { toastBox = el('div', { id: 'toasts', role: 'status', attrs: { 'aria-live': 'polite' } }); document.body.append(toastBox); } // (round 40, a11y) read out politely
     toastLog.unshift({ message, type, at: Date.now() }); toastLog.length = Math.min(toastLog.length, 40);
     // (round 16, chatperf) the same notification again while it shows counts up ("×3") instead of stacking copies,
     // and at most 5 show at once (the oldest goes)

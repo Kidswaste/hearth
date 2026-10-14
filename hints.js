@@ -140,6 +140,7 @@ const Hints = (() => {
     showing = false;
     if (!node) { note('nothing', q); q.resolve(false); return false; }
     if (q.once) mark(q.id);
+    if (node instanceof Element) window.A11y?.say(node.textContent); // (round 40, a11y) a tip is read out, politely
     stats.shown += 1; note('show', q);
     if (q.kind !== 'inline') {
       cur = { id: q.id, kind: q.kind, node: node instanceof Element ? node : null, at: Date.now() };
@@ -181,7 +182,7 @@ const Hints = (() => {
   function essential(show) {
     let n = null;
     try { n = show(); } catch (err) { console.warn('essential note', err); }
-    if (n instanceof Element) requestAnimationFrame(() => dodge(n));
+    if (n instanceof Element) { requestAnimationFrame(() => dodge(n)); window.A11y?.say(n.textContent); }
     return n;
   }
   // (tests and "show me now") the next one that fits here, without waiting for calm, the gap or the start

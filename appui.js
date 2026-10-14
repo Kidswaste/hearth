@@ -382,9 +382,10 @@ const AppUI = (() => {
   let pal = null;
   function paletteNode() {
     if (pal) return pal;
-    const input = el('input', { class: 'palette-input', placeholder: 'Find anything: a setting, a chat, an action, “how do I…”', attrs: { 'aria-label': 'Find anything' } });
-    const list = el('div', { class: 'palette-list' });
-    const box = el('div', { class: 'palette' }, el('div', { class: 'palette-card' }, input, list));
+    // (round 40, a11y) a combobox over a listbox: the arrows move aria-activedescendant, screen readers read the row
+    const input = el('input', { class: 'palette-input', placeholder: 'Find anything: a setting, a chat, an action, “how do I…”', attrs: { 'aria-label': 'Find anything', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'palette-list', 'aria-autocomplete': 'list' } });
+    const list = el('div', { class: 'palette-list', id: 'palette-list', attrs: { role: 'listbox', 'aria-label': 'Results' } });
+    const box = el('div', { class: 'palette', attrs: { role: 'dialog', 'aria-label': 'Find anything' } }, el('div', { class: 'palette-card' }, input, list));
     pal = { box, input, list, items: [], shown: [], sel: 0, selEl: null, rows: [], empty: el('div', { class: 'palette-empty' }), scrollFrame: 0 };
     const close = () => box.remove();
     const run = (it) => { close(); it.run(); };
@@ -411,7 +412,8 @@ const AppUI = (() => {
   function paletteMark() {
     const next = pal.shown.length ? pal.rows[pal.sel] : null;
     if (pal.selEl === next) return;
-    pal.selEl?.classList.remove('sel'); next?.classList.add('sel'); pal.selEl = next;
+    pal.selEl?.classList.remove('sel'); pal.selEl?.setAttribute('aria-selected', 'false'); next?.classList.add('sel'); next?.setAttribute('aria-selected', 'true'); pal.selEl = next;
+    if (next) pal.input.setAttribute('aria-activedescendant', next.id); else pal.input.removeAttribute('aria-activedescendant');
   }
   async function paletteRender() {
     const { input, list } = pal;
@@ -440,7 +442,7 @@ const AppUI = (() => {
     pal.shown.forEach((it, i) => {
       let r = pal.rows[i];
       if (!r) {
-        r = el('div', { class: 'palette-item' }, el('span', { class: 'p-label' }), el('span', { class: 'p-detail' }), el('span', { class: 'p-kind' }));
+        r = el('div', { class: 'palette-item', id: `pal-row-${i}`, attrs: { role: 'option', 'aria-selected': 'false' } }, el('span', { class: 'p-label' }), el('span', { class: 'p-detail' }), el('span', { class: 'p-kind' }));
         r.__i = i; pal.rows[i] = r;
       }
       const [label, detail, kind] = r.children;
@@ -450,7 +452,7 @@ const AppUI = (() => {
       if (r.parentNode !== list || list.children[i] !== r) list.insertBefore(r, list.children[i] || null);
     });
     while (list.childElementCount > pal.shown.length) list.lastElementChild.remove();
-    pal.selEl?.classList.remove('sel'); pal.selEl = null; paletteMark();
+    pal.selEl?.classList.remove('sel'); pal.selEl?.setAttribute('aria-selected', 'false'); pal.selEl = null; paletteMark();
   }
   // opening is split in two: the card shows at once with the last opening's items (usually the same list), and the
   // fresh, ranked items arrive in the next task (gathering and ranking them is the long part); what you've typed by
