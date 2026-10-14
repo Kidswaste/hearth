@@ -91,8 +91,9 @@ const Bigscreen = (() => {
     if (on && !was) {
       try {
         if (!store.get('bigscreen.hinted')) {
-          store.set('bigscreen.hinted', 1);
-          toast(`Full screen. ${fullKey} or ⛶ in the rail leaves it (Esc doesn't, so typing is safe)`, { timeout: 5000 });
+          // (round 38, hintcalm) one tip at a time (hints.js); remembered once it showed
+          const show = () => { if (!root.hasAttribute('data-bigfull') || store.get('bigscreen.hinted')) return null; store.set('bigscreen.hinted', 1); return toast(`Full screen. ${fullKey} or ⛶ in the rail leaves it (Esc doesn't, so typing is safe)`, { timeout: 5000 }); };
+          if (window.Hints) Hints.offer({ id: 'bigscreen.full', rank: 20, once: false, ttl: 30000, still: () => root.hasAttribute('data-bigfull'), show }); else show();
         }
       } catch { /* the hint is optional */ }
     }

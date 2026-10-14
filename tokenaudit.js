@@ -135,6 +135,7 @@ const TokenAudit = (() => {
   function markSeen(agentId, key) { if (seen[`${agentId}|${key}`]) return; seen[`${agentId}|${key}`] = Date.now(); try { store.set(SEEN_KEY, seen); } catch { /* no storage */ } }
   function nudge(a) {
     const n = last.get(a?.id)?.nudge;
+    if (window.Hints?.off?.()) return ''; // (round 38, hintcalm) Don't show tips: the breakdown inside still says it
     return n && !seen[`${a.id}|${n.key}`] ? n.text : '';
   }
 

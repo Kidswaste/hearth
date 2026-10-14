@@ -89,8 +89,9 @@ ok(/#42/.test(l1.text()) && /open/.test(l1.text()), '/report list shows #42 open
 
 // an update fixing it
 const fixed = await DevReport.checkUpdate({ from: 'aaa1111', to: 'bbb2222', messages: ['Sync: write chats.json atomically\n\nFixes #42'] });
-await wait(150);
-ok(fixed.length === 1 && [...document.querySelectorAll('#toasts .toast')].some((t) => /Your report #42 is fixed in this update/.test(t.textContent)), 'the update says report #42 is fixed');
+// (round 38, hintcalm) the note comes through the one-at-a-time queue (hints.js): it shows once nothing else is up
+const said = await until(() => [...document.querySelectorAll('#toasts .toast')].some((t) => /Your report #42 is fixed in this update/.test(t.textContent)), 8000);
+ok(fixed.length === 1 && said, 'the update says report #42 is fixed');
 l1 = run('/report list'); await l1.p;
 ok(/✓ fixed in bbb2222/.test(l1.text()), '/report list shows it fixed');
 

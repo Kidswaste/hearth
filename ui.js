@@ -96,6 +96,8 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     toastBox.append(node);
     // (round 17, hz240) above a docked chat's composer (was a page-wide :has() in polish.css): checked when one shows
     toastBox.classList.toggle('over-dock', Boolean(document.querySelector('.surface.active .tool-dock:not([hidden])')));
+    // (round 38, hintcalm) never over the chat box you type in or the Lab preview's centre (hints.js), errors included
+    if (window.Hints?.dodge) requestAnimationFrame(() => Hints.dodge(toastBox));
     if (timeout) {
       // hovering a notification keeps it until you leave it
       let timer = setTimeout(() => node.remove(), timeout);

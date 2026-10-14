@@ -66,11 +66,18 @@ const Cachewise = (() => {
     if (chat.cacheWarned === key) return null; // once per change
     return { keys, ctx, key };
   }
+  // (round 38, hintcalm) the line waits for calm (not while you type or a reply streams) and stays away with Don't
+  // show tips (hints.js); the chat it's about must still be the one on screen
+  function say(agentId, chat, text) {
+    const show = () => Native.note(agentId, text, { id: 'cachewise' });
+    if (!window.Hints) return show();
+    return Hints.offer({ id: `cachewise:${agentId}`, kind: 'inline', once: false, ttl: 15 * 60000, still: () => H.activeChat?.[agentId] === chat.id, show });
+  }
   // before each send (Native.hooks.options): note a change made elsewhere (a command, the model menu), then remember
   function onOptions(agentId, chat, raw, last, options, how = {}) {
     if (how.compact) return;
     const d = due(agentId, chat);
-    if (d) { chat.cacheWarned = d.key; Native.note(agentId, note(d.keys, d.ctx), { id: 'cachewise' }); }
+    if (d) { chat.cacheWarned = d.key; say(agentId, chat, note(d.keys, d.ctx)); }
     chat.cacheSig = sigFor(agentId, chat);
   }
   // ⋯ AI setup saved a change (options.js): the open chat of that AI hears it right away, once
@@ -80,7 +87,7 @@ const Cachewise = (() => {
     const d = due(agentId, chat);
     if (!d) return;
     chat.cacheWarned = d.key;
-    Native.note(agentId, note(d.keys, d.ctx, { now: true }), { id: 'cachewise' });
+    say(agentId, chat, note(d.keys, d.ctx, { now: true }));
   }
   if (inApp && Native.hooks) (Native.hooks.options ||= []).push(onOptions);
 

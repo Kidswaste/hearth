@@ -263,8 +263,9 @@ const EngineHealth = (() => {
   async function ffmpegNotice(test) {
     const st = await window.hub.ffmpegStatus?.().catch(() => null);
     if (!st || st.ffmpeg || test || store.get('ffmpeg.snooze', 0) > Date.now()) return;
-    store.set('ffmpeg.snooze', Date.now() + 7 * 864e5);
-    toast('Install ffmpeg for sharp MP4 recordings, exact frames and fast renders (one click, a few minutes).', { timeout: 15000, action: { label: 'Install ffmpeg', fn: installFfmpeg } });
+    // (round 38, hintcalm) a suggestion: in turn with the other tips (hints.js); the week's snooze starts once it showed
+    const go = () => { store.set('ffmpeg.snooze', Date.now() + 7 * 864e5); return toast('Install ffmpeg for sharp MP4 recordings, exact frames and fast renders (one click, a few minutes).', { timeout: 15000, action: { label: 'Install ffmpeg', fn: installFfmpeg } }); };
+    if (window.Hints) Hints.offer({ id: 'ffmpeg', rank: 70, once: false, ttl: 30 * 60e3, show: go }); else go();
   }
 
   // ---------- startup: one check once the window is idle ----------

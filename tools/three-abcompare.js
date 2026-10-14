@@ -125,7 +125,10 @@ const LabAB = (() => {
     if (S.pair && S.pair.before !== S.base && S.pair.before !== pair.before) drop(S.pair.before);
     S.pair = pair; S.pairs += 1;
     if (S.split) renderSplit().catch(() => {});
-    if (visible()) chipShow(CHIP_MS);
+    // (round 38, hintcalm) by itself: one at a time with the other hints, never while you type, drag or a reply
+    // streams (hints.js; the newest change replaces a waiting one); B, the menu and the keys work meanwhile
+    // (a chip already on screen just takes the newer change)
+    if (visible()) { if (window.Hints && !S.chip) Hints.offer({ id: 'abcompare', kind: 'chip', place: 'lab', ttl: 5 * 60000, still: () => S.pair === pair, show: () => { chipShow(CHIP_MS); return S.chip; } }); else chipShow(CHIP_MS); }
   }
 
   // ---------- "before" on the preview (hold B) ----------

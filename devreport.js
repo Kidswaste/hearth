@@ -231,7 +231,8 @@ const DevReport = (() => {
     if (fixed.length) {
       await save();
       const names = fixed.map((x) => (x.number ? `#${x.number}` : `“${short(x.title, 40)}”`));
-      toast(fixed.length === 1 ? `Your report ${names[0]} is fixed in this update.` : `Your reports ${names.join(', ')} are fixed in this update.`, { timeout: 12000, action: { label: 'Your reports', fn: () => Commands.exec('/report list', H.claudeAgent()?.id) } });
+      const show = () => toast(fixed.length === 1 ? `Your report ${names[0]} is fixed in this update.` : `Your reports ${names.join(', ')} are fixed in this update.`, { timeout: 12000, action: { label: 'Your reports', fn: () => Commands.exec('/report list', H.claudeAgent()?.id) } });
+      if (window.Hints) Hints.offer({ id: `report-fixed:${j.to || ''}`, kind: 'notice', rank: 2, once: false, ttl: 15 * 60000, show }); else show(); // (round 38, hintcalm) after the patch notes
     }
     return fixed;
   }

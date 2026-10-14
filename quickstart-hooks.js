@@ -56,7 +56,9 @@ const QuickstartHooks = (() => {
       if (window.SMOKE_SAVES && !store.get('quickstart.testAuto', false)) return; // never by itself in the headless test runs
       if (Date.now() - T0 < 5000 || busyScreen() || window.Jank?.busy?.()) { soon(2500); return; }
       if (place === 'lab' && !((typeof Lazy === 'undefined' || Lazy.isIn('lab')) && typeof ThreeLab !== 'undefined' && ThreeLab.peek())) { soon(1500); return; } // the Lab still coming up
-      const go = () => { if (placeOf() === place && due(place) && !busyScreen()) open(place, { auto: true }); };
+      let go = () => { if (placeOf() === place && due(place) && !busyScreen()) open(place, { auto: true }); };
+      // (round 38, hintcalm) in turn with the other tips (hints.js: one at a time, never while busy, Don't show tips)
+      if (window.Hints) { if (Hints.off()) return; go = () => Hints.offer({ id: `quickstart:${place}`, place, rank: 30, once: false, ttl: 5 * 60000, still: () => due(place), show: () => (placeOf() === place && due(place) && !busyScreen() ? open(place, { auto: true }) : null) }); }
       if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 2000 }); else go();
     }, ms);
   }

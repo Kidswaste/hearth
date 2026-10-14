@@ -98,7 +98,8 @@ const Discover = (() => {
     const rec = { to: j.to || '', from: j.from || '', at: j.at || Date.now(), files, items: items.map((x) => x.id), n: items.length };
     data.updates = [rec, ...data.updates].slice(0, 30);
     save();
-    if (items.length) setTimeout(() => card(rec), 3500);
+    // (round 38, hintcalm) after the patch notes, in turn (hints.js: one at a time, a few minutes apart)
+    if (items.length) { if (window.Hints) Hints.offer({ id: `whats-new:${rec.at}`, rank: 5, ttl: 20 * 60000, show: () => card(rec) }); else setTimeout(() => card(rec), 3500); }
     return rec;
   }
   function picked(items, n = 6) { return D.pick(items, { n, profile: profile(), hide: new Set(data.hide), cold: data.cold }); }
@@ -230,7 +231,11 @@ const Discover = (() => {
     cardEl.dataset.tip = tip.id;
     return tip;
   }
-  const tipSoon = debounce(() => { maybeTip().catch(() => {}); }, 6000);
+  // (round 38, hintcalm) by itself: through the one-at-a-time queue, and never with Don't show tips
+  const tipSoon = debounce(() => {
+    if (!window.Hints) { maybeTip().catch(() => {}); return; }
+    if (!Hints.off()) Hints.offer({ id: `tip:${today()}`, rank: 60, ttl: 5 * 60000, show: () => maybeTip().then((t) => (t ? cardEl : null)) });
+  }, 6000);
 
   // ---------- feature map + Surprise me ----------
   function featureMap() {
