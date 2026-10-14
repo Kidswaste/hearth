@@ -48,12 +48,4 @@ dialog.lab-gal-dlg[open] {
 .lab-gal-stage { position: fixed; left: 0; top: 0; z-index: -1; opacity: 0; pointer-events: none; overflow: hidden; contain: strict; transform-origin: 0 0; border-radius: 0; }
 .lab-gal-stage.on { z-index: 9002; opacity: 1; transition: opacity .2s; }
 .lab-gal-stage .three-frame { width: 100%; height: 100%; border: 0; display: block; }
-/* the new-chat starter's chip on the Lab preview */
-.lab-gal-chip-start {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 2px;
-  border: 1px solid #fff3; border-radius: 999px; background: #000b; color: #fff; font-size: 12.5px; box-shadow: 0 6px 18px #0008;
-}
-.lab-gal-chip-start button { border: 0; background: none; color: inherit; font: inherit; padding: 6px 12px; cursor: pointer; border-radius: 999px; }
-.lab-gal-chip-start button:hover { background: #ffffff1a; }
-.lab-gal-chip-start .x { padding: 6px 10px 6px 4px; color: #fff9; }
 @media (prefers-reduced-motion: reduce) { .lab-gal-img, .lab-gal-stage.on, .lab-gal-layer { transition: none; } }

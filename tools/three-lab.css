@@ -266,3 +266,12 @@ html[data-skin~="forge"] .lab-tabs .lab-tools-btn::after, html[data-skin~="forge
 :where(dialog.lab-light-dlg[open]) { max-width: calc(100% - 2em - 6px); max-height: calc(100% - 2em - 6px); overflow: auto; }
 dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9001; }
 .lab-light-shade { position: fixed; inset: 0; z-index: 9000; background: #0009; }
+/* the new-chat starter's chip on the Lab preview (three-gallery-hook.js). Here, with the Lab, not in the lazy gallery
+   CSS: the chip shows before the gallery is ever opened, and unstyled it fell under the preview behind the music bar. */
+.lab-gal-chip-start {
+  position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 2px;
+  border: 1px solid #fff3; border-radius: 999px; background: #000b; color: #fff; font-size: 12.5px; box-shadow: 0 6px 18px #0008;
+}
+.lab-gal-chip-start button { border: 0; background: none; color: inherit; font: inherit; padding: 6px 12px; cursor: pointer; border-radius: 999px; }
+.lab-gal-chip-start button:hover { background: #ffffff1a; }
+.lab-gal-chip-start .x { padding: 6px 10px 6px 4px; color: #fff9; }
