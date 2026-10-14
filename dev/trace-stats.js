@@ -69,8 +69,10 @@ function stats(events, opts = {}) {
   for (const e of on) {
     if (e.name !== 'EventTiming' || e.ph !== 'b') continue;
     const d = e.args?.data; if (!d || !INPUT.test(d.type)) continue;
-    const k = d.timeStamp; const i = inputs.get(k) || { ts: e.ts, type: d.type, proc: 0, commit: 0 };
+    const k = d.timeStamp; const i = inputs.get(k) || { ts: e.ts, type: d.type, proc: 0, commit: 0, t: d.timeStamp, pStart: Infinity, pEnd: 0 };
     i.proc += Math.max(0, d.processingEnd - d.processingStart);
+    // (round 38, inputlatency) the input's phases: waiting for the main thread, handlers, then until the frame commits
+    if (d.processingStart > 0) { i.pStart = Math.min(i.pStart, d.processingStart); i.pEnd = Math.max(i.pEnd, d.processingEnd); }
     if (d.commitFinishTime) i.commit = Math.max(i.commit, e.ts + (d.commitFinishTime - d.timeStamp) * 1000);
     inputs.set(k, i);
   }
@@ -98,6 +100,13 @@ function stats(events, opts = {}) {
       inputs: ins.length,
       busyMs: r1(busyIn(s.from, s.to)), // (round 35, streamrender) all main-thread task time in the stretch
       latency: { p50: r1(pct(lat, 0.5)), p95: r1(pct(lat, 0.95)), max: r1(lat.at(-1) || 0) },
+      // (round 38, inputlatency) input delay (timeStamp → first handler) · processing (handlers, summed per input) ·
+      // presentation (last handler → the frame's commit), p50 / p95 ms
+      phasesOfInput: (() => {
+        const ok = ins.filter((i) => i.pEnd > 0);
+        const s = (f) => { const a = ok.map(f).filter((x) => x >= 0).sort((x, y) => x - y); return { p50: r1(pct(a, 0.5)), p95: r1(pct(a, 0.95)), max: r1(a.at(-1) || 0) }; };
+        return { n: ok.length, delay: s((i) => i.pStart - i.t), proc: s((i) => i.proc), pres: s((i) => (i.commit - i.ts) / 1000 - (i.pEnd - i.t)) };
+      })(),
       work: { p50: r1(pct(work, 0.5)), p95: r1(pct(work, 0.95)), max: r1(work.at(-1) || 0), over4: work.filter((w) => w > budget).length },
       frames: { n: fr.length, over4: fr.filter((w) => w > budget).length, over8: fr.filter((w) => w > 8.3).length, worst: r1(Math.max(0, ...fr)) },
       longTasks: { over4: tk.filter((d) => d > budget).length, over8: tk.filter((d) => d > 8.3).length, max: r1(Math.max(0, ...tk)) },

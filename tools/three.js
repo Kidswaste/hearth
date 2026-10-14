@@ -2603,7 +2603,7 @@ const ThreeLab = (() => {
     let consoleLines = [];
     let lastStats = null;
     // the fps / draw-call line (on hover): rebuilt only when its text changes, and painted when it shows again
-    let lastStatsMsg = null; let statsSig = '';
+    let lastStatsMsg = null; let statsSig = ''; let statsRaf = 0;
     function paintStats(msg) {
       const sig = `${Math.round(msg.fps)}|${msg.quality}|${Math.round(msg.worst || 0)}|${msg.ms.toFixed(1)}|${msg.calls}|${msg.triangles}|${msg.points}|${msg.geometries}|${msg.textures}|${msg.programs}`;
       if (sig === statsSig) return;
@@ -2722,8 +2722,9 @@ const ThreeLab = (() => {
         if (msg.pace) { paceLast = msg.pace; if (paceOn) paintPace(); } // (round 33 "labpace")
         if (stats.hidden) stats.hidden = false;
         // (round 16: the line shows on hover; while it can't be seen it isn't rewritten, and never with the same text)
-        if (!stats.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return;
-        paintStats(msg);
+        // (round 38, inputlatency) asked in the coming frame, where the page's style is worked out anyway: asked here (a
+        // message between two frames, twice a second) it styled the whole Lab first whenever a drag had just changed it
+        if (!statsRaf) statsRaf = requestAnimationFrame(() => { statsRaf = 0; if (lastStatsMsg && stats.checkVisibility({ opacityProperty: true, visibilityProperty: true })) paintStats(lastStatsMsg); });
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (/^audio-/.test(msg.type) && typeof ThreeAudio !== 'undefined' && ThreeAudio.onMessage(msg)) return; // (round 23, labaudio)
@@ -3084,12 +3085,22 @@ const ThreeLab = (() => {
     function showStall(text) { stall.querySelector('.three-stall-text').textContent = text; stall.hidden = false; }
     function hideStall() { stall.hidden = true; }
     previewHost.append(stall);
-    setInterval(() => {
+    // (round 38, inputlatency) the safety check runs when the window is idle: it asks the page whether the preview is on
+    // screen (a style and layout of the whole Lab), and on a timer it landed in the middle of slider drags and scrubs,
+    // holding up the next pointer move
+    const idleCheck = () => {
       syncPark();
       if (!lastStatsAt || !stall.hidden) return;
       const visible = document.visibilityState === 'visible' && (box.onStage || previewHost.offsetParent);
       if (!visible) { lastStatsAt = Math.max(lastStatsAt, Date.now() - 2000); return; } // hidden views draw nothing
       if (Date.now() - lastStatsAt > 8000) showStall('The preview stopped responding.');
+    };
+    let idleAsked = false;
+    setInterval(() => {
+      if (typeof requestIdleCallback !== 'function') { idleCheck(); return; }
+      if (idleAsked) return;
+      idleAsked = true;
+      requestIdleCallback(() => { idleAsked = false; idleCheck(); }, { timeout: 1500 });
     }, 2000);
     // How a change reaches the preview (round 6 "live": no whole-page reloads for edits):
     //   hot     one layer re-runs in place (its old picture cross-fades into the new one; a new layer wipes in)

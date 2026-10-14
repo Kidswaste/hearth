@@ -221,7 +221,7 @@ const Voice = (() => {
   const MODS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Fn']);
   addEventListener('keydown', (e) => {
     if (MODS.has(e.key) || e.repeat || e.altKey) return; // Alt+R (read / stop) keeps its own toggle
-    if (get('anyKeyStops', true) !== false && Native.isSpeaking?.()) Native.stopSpeaking();
+    if (Native.isSpeaking?.() && get('anyKeyStops', true) !== false) Native.stopSpeaking(); // (round 38) the setting is read only while it speaks, not on every key
   }, true);
 
   // ---------- push to talk ----------

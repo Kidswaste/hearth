@@ -416,11 +416,11 @@ const LabAB = (() => {
   }
   function chipPaint() {
     if (!S.chip) return;
+    placeChip(); // (round 38, inputlatency) measured before its own writes: after them, each repaint laid the page out
     const t = S.pair ? `${S.split ? '◧' : '◐'} ${C().chipText(S.pair)}` : '';
     const what = S.chip.firstChild;
     if (what.textContent !== t) what.textContent = t;
     S.chip.classList.toggle('on', Boolean(S.split || S.peek));
-    placeChip();
   }
   function placeChip() {
     const c = S.chip; const host = hooks().host; if (!c || !host) return;
@@ -433,8 +433,7 @@ const LabAB = (() => {
   // ms: how long it stays (0: until the split / peek ends)
   function chipShow(ms = CHIP_MS) {
     if (!S.pair || !hooks().host) return;
-    if (!S.chip) { S.chip = chipBuild(); hooks().host.append(S.chip); }
-    chipPaint();
+    if (!S.chip) { S.chip = chipBuild(); chipPaint(); hooks().host.append(S.chip); } else chipPaint(); // (placed before it's in the page)
     clearTimeout(S.chipT);
     if (ms > 0) S.chipT = setTimeout(() => { if (!S.split && !S.peek && !S.chip?.matches(':hover')) chipHide(); }, ms);
     if (!S.chipTick) S.chipTick = setInterval(() => { if (S.chip) chipPaint(); }, 15000); // "· 2 min ago"

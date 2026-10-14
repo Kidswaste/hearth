@@ -264,6 +264,7 @@ const ThreeMedia = (() => {
     let recording = null;
     let analyzing = false;
     let dragging = null;
+    let paintRaf = 0; // (round 38) a paint waiting for the next frame (scrubbing: see seek)
     let selected = null; // { type: 'edge', edge } | { type: 'mark', lane, t }
     let map = { grid: null, marks: emptyMarks(), cues: [] };
     const shownLanes = () => LANES.filter((l) => !l.extra || map.marks[l.id]?.length);
@@ -754,8 +755,12 @@ const ThreeMedia = (() => {
       }
       // A jump outside the zoomed view brings the view along (unless it's locked).
       if (view && !locked && !dragging && (st.time < view.start || st.time > view.end)) setView({ start: st.time - span() / 2, end: st.time + span() / 2 });
-      paint();
+      // (round 38, inputlatency) scrubbing: the seek goes out at once, the timeline is drawn once in the coming frame
+      // (before its rendering, so the same frame): the pointer move and the preview's answer each drew it, and each
+      // draw styled the page first (≈ 2–5 ms per move here)
+      if (dragging?.kind === 'seek') paintSoon(); else paint();
     }
+    function paintSoon() { if (!paintRaf) paintRaf = requestAnimationFrame(() => { paintRaf = 0; paint(); }); }
     function onMessage(msg) {
       if (hooks.message?.(msg)) return;
       if (msg.type === 'media-state') {
@@ -770,7 +775,7 @@ const ThreeMedia = (() => {
           if (Math.abs(err) < 0.3) { st.time = predicted + err * 0.15; st.stampAt = performance.now(); if (!wish) return; }
         }
         Object.assign(st, { time: hooks.stateTime ? hooks.stateTime(msg.time, msg.playing) : msg.time, duration: finiteDur(msg.duration) || st.duration, playing: msg.playing, stampAt: performance.now() });
-        if (same && !wish) { if (!st.playing) livePaint(); return; }
+        if (same && !wish) { if (!st.playing) { if (dragging?.kind === 'seek') paintSoon(); else livePaint(); } return; }
         if (wish && wish.play === msg.playing) wish = null;
         if (recording && !recording.stopping && msg.ended && recording.kind === 'track') stopRecord();
         if (recording && !recording.stopping && !msg.playing && recording.kind === 'loop') finishRecord(); // the sandbox stopped exactly at the loop end
@@ -1710,6 +1715,7 @@ const ThreeMedia = (() => {
     // paint() runs on every seek, step and state change: each control is only written when its value changes (a
     // same-value write still counts as a DOM change and restyles the row)
     function paint() {
+      if (paintRaf) { cancelAnimationFrame(paintRaf); paintRaf = 0; }
       bar.classList.toggle('mb-empty', !st.bytes);
       bar.classList.toggle('mb-clock', Boolean(st.clock));
       bar.classList.toggle('locked', locked);

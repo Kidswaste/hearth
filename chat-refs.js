@@ -125,7 +125,11 @@ const ChatRefs = (() => {
     const find = () => {
       const pos = ta.selectionStart ?? ta.value.length;
       const before = ta.value.slice(0, pos);
-      const m = before.match(/(^|\s)@([a-z]*)(?::([^\n@]*))?$/i);
+      // (round 38, inputlatency) the "@" is the last one before the cursor (nothing after it may hold another): the
+      // pattern runs from the character before it, not over the whole draft on every keystroke
+      const at = before.lastIndexOf('@');
+      if (at < 0) return null;
+      const m = before.slice(Math.max(0, at - 1)).match(/(^|\s)@([a-z]*)(?::([^\n@]*))?$/i);
       if (!m || ta.value.startsWith('/')) return null;
       return { start: pos - m[0].length + m[1].length, end: pos, kind: m[2].toLowerCase(), query: m[3] ?? null };
     };
