@@ -1701,6 +1701,10 @@ const ThreeLab = (() => {
     // Bytes for every reference of the open sketch; a run that needed a missing one runs again.
     async function loadRefBytes() {
       let added = false;
+      // (round 39, labmemory) only the open scene's references stay in memory: every scene visited kept its files' bytes
+      // (a video reference is the whole video) until the Lab closed; another scene's are read again when it opens
+      const mine = new Set(refsOf().map((r) => r.id));
+      for (const id of [...refBytes.keys()]) if (!mine.has(id)) refBytes.delete(id);
       for (const r of refsOf()) {
         if (refBytes.has(r.id)) continue;
         try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ }
@@ -1708,8 +1712,15 @@ const ThreeLab = (() => {
       sendRefs();
       return added;
     }
+    // (round 39, labmemory) the same references and palette as the page already has aren't copied over again (each
+    // scene switch sent every file whole: a video reference was copied twice per switch); a new page asks afresh
+    let refsSig = null;
     function sendRefs() {
-      const items = refsOf().filter((r) => refBytes.has(r.id)).map((r) => ({ key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: refBytes.get(r.id).slice(0) }));
+      const refs = refsOf().filter((r) => refBytes.has(r.id));
+      const sig = JSON.stringify([refs.map((r) => [r.id, r.key, r.kind, refBytes.get(r.id).byteLength]), current?.palette || []]);
+      if (sig === refsSig && refs.length) return;
+      refsSig = sig;
+      const items = refs.map((r) => ({ key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: refBytes.get(r.id).slice(0) }));
       box.send({ type: 'refs', items, palette: current?.palette || [] });
     }
     const refsBtn = btn('🖼 References', 'Images, videos, 3D models, sounds and data for this sketch. The Three Director can see and use them; you can also drop files in its chat.', () => openRefs());
@@ -2711,6 +2722,12 @@ const ThreeLab = (() => {
       }
       if (msg.type === 'adapt') { paintAdapt(msg); return; }
       if (msg.type === 'gpu-lost') { showStall('The preview lost its GPU context.'); window.Jank?.gpu('The Lab preview'); return; }
+      // (round 39, labmemory) the preview cleaned up by itself after a scene switch and is still heavy: one calm tip
+      if (msg.type === 'mem-note') {
+        const go = () => toast('The Lab preview is holding a lot of graphics memory after many scenes. ⟲ Restart from scratch lightens it.', { timeout: 12000, action: { label: '⟲ Restart', fn: () => restartSim() } });
+        if (window.Hints) Hints.offer({ id: 'lab-memory', place: 'lab', rank: 60, once: false, ttl: 10 * 60e3, show: go }); else go();
+        return;
+      }
       if (msg.type === 'trig-viz') { trigPanel?.feed(msg); return; }
       if (msg.type === 'stats') {
         lastStatsAt = Date.now();
@@ -2735,6 +2752,7 @@ const ThreeLab = (() => {
       if (msg.type === 'ready' && msg.again && ranOnce) { console.warn('Lab preview restarted by itself: running the sketch again'); run({ again: true }); }
       if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
       if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
+      if (msg.type === 'ready') refsSig = null; // (round 39, labmemory) a fresh page has no references yet
       if (msg.type === 'ready') window.PerfectLoop?.onReady?.(); // (round 31) ∞ a fresh page gets the scene's loop clock again
       if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); if (!adaptOn) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); parkedNow = false; syncPark(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
