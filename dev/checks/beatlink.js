@@ -237,6 +237,20 @@ await say('/move-with glow kick pulse from 0.2 to 1.8');
   step('Find anything: "pulse on kick" finds it', Array.isArray(found) && found.some((l) => /move .*with the music/i.test(l || '')), found);
 }
 {
+  // a slider that follows an older curve (/react-to) keeps it when the card opens; a choice there replaces it (one undo step back)
+  await say('/react-to size kick 40');
+  const ctl3 = ThreeAudio.lab.selCtl();
+  const old = JSON.stringify(ctl3.binding('size'));
+  ctl3.openLink('size'); await wait(250);
+  const kept = JSON.stringify(ctl3.binding('size')) === old;
+  [...document.querySelectorAll('.bl-pop .bl-seg .bl-chip')].find((b) => b.textContent === 'Step')?.click(); await wait(100);
+  const now = ctl3.binding('size');
+  ctl3.undo(); await wait(100);
+  step('an older curve is kept until a choice in the card (Kick, the sound it followed, is offered); undo brings the curve back', kept && now?.how === 'step' && now.band === 'kick' && JSON.stringify(ctl3.binding('size')) === old, { now, back: ctl3.binding('size') });
+  BeatLink.close();
+  await say('/react-to size off');
+}
+{
   // Knobs or sliders › Sliders: the range is a band under the slider's track with two handles; drag the "from" one
   const mi = (re) => [...document.querySelectorAll('.mb-menu .menu-item')].find((x) => re.test(x.textContent));
   const layoutTo = async (re) => { document.querySelector('.tweaks .tw-more')?.click(); await wait(200); if (!mi(re)) { mi(/^Show/)?.click(); await wait(250); } mi(re)?.click(); await wait(300); };

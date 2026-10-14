@@ -30,6 +30,9 @@ const BeatLink = (() => {
     const g = guess(a.label);
     return C.make({ band: band || g.band, how: how || g.how, v: Number(a.value()), min: a.min, max: a.max, int: a.int });
   }
+  // an older curve's sound → the driver it is closest to
+  const LEGACY = { kick: 'kick', kickOn: 'kick', stemKick: 'kick', snare: 'snare', snareOn: 'snare', stemSnare: 'snare', hats: 'hats', hatOn: 'hats', stemHats: 'hats', beat: 'beat', barPhase: 'bar', bar: 'bar',
+    bass: 'bass', low: 'bass', sub: 'bass', stemBass: 'bass', mid: 'mids', mids: 'mids', lowMid: 'mids', treble: 'highs', presence: 'highs', brilliance: 'highs', air: 'highs', vocal: 'vocals', stemVocals: 'vocals', stemDrums: 'drums', level: 'loudness', loudness: 'loudness' };
   // the link with a new driver / how: the range stays, the timing goes back to that pair's defaults
   function retime(link, patch) {
     const n = { ...link, ...patch };
@@ -47,20 +50,26 @@ const BeatLink = (() => {
   function open(a) {
     close(); stats.opened += 1;
     let link = a.get();
-    // a slider that follows an older curve (or nothing) becomes a link: one undo step
-    if (!C.isLink(link)) { link = fresh(a); a.set(link); stats.made += 1; }
+    // a still slider moves at once (one undo step); one that follows an older curve (the ♪ panel, the curve editor,
+    // /react-to) keeps it until a choice is made here (its sound, when one fits, is the driver offered)
+    let legacy = link && !C.isLink(link) ? link : null;
+    let draft = Boolean(legacy);
+    if (!C.isLink(link)) { link = fresh(a, legacy ? LEGACY[legacy.band] : undefined); if (!draft) { a.set(link); stats.made += 1; } }
+    const put = (l, o) => { draft = false; a.set(l, o); };
+    // what is stored now (an undo elsewhere, the slider's own handles): a link, an older curve, or nothing (draft)
+    const sync = () => { const g = a.get(); if (C.isLink(g)) { link = g; draft = false; } else { draft = true; legacy = g; } paint(); };
     const before = () => clone(a.get());
-    const set = (patch, o) => { link = { ...link, ...patch }; a.set(link, o); paint(); };
+    const set = (patch, o) => { link = { ...link, ...patch }; put(link, o); paint(); };
     const chip = (text, title, on) => el('button', { type: 'button', class: 'bl-chip', text, title, on: { click: on } });
-    const drvBtns = C.DRIVERS.map((d) => chip(d.name, d.hint, () => { link = retime(link, { band: d.id }); a.set(link); paint(); }));
-    const howBtns = C.HOWS.map((h) => chip(h.name, h.hint, () => { link = retime(link, { how: h.id }); a.set(link); paint(); }));
+    const drvBtns = C.DRIVERS.map((d) => chip(d.name, d.hint, () => { link = retime(link, { band: d.id }); put(link); paint(); }));
+    const howBtns = C.HOWS.map((h) => chip(h.name, h.hint, () => { link = retime(link, { how: h.id }); put(link); paint(); }));
     // the range: a bar with two handles (the same as on the slider) and the live value as a dot
     const bar = el('div', { class: 'bl-bar', title: 'Drag the two handles: the lowest and highest value it moves between' });
     const band = el('i', { class: 'bl-band' }); const dot = el('i', { class: 'bl-dot' });
     const hLo = el('i', { class: 'bl-h lo', title: 'From (drag)' }); const hHi = el('i', { class: 'bl-h hi', title: 'To (drag)' });
     bar.append(band, dot, hLo, hHi);
     const rangeTxt = el('span', { class: 'bl-rtxt' });
-    dragHandles(bar, a, () => link, (l) => { link = l; paint(); }, along(0));
+    dragHandles(bar, new Proxy(a, { get: (t, k) => (k === 'set' ? put : t[k]) }), () => link, (l) => { link = l; paint(); }, along(0));
     // the driver, live (what the preview reads now: ~12 times a second while it moves)
     const meter = el('i', { class: 'bl-meter-fill' });
     const meterTxt = el('span', { class: 'bl-meter-k' });
@@ -83,7 +92,7 @@ const BeatLink = (() => {
     const note = el('div', { class: 'bl-note' });
     const more = el('button', { type: 'button', class: 'ghost small', text: 'More ▾', title: 'Other sounds with a curve, move by itself', on: { click: (e) => {
       const r = e.currentTarget.getBoundingClientRect();
-      ThreeTweaks.menu(r.left, r.bottom + 4, ['More', ['♪ Any sound, with a curve…', 'drops, builds, the key, 8 bands…', () => { close(); a.curve?.(); }], ['∿ Move by itself…', 'a wave, a random walk… (no music)', () => { close(); a.panel?.(); }], ['↶ Undo the last change', 'the sliders\' undo (Ctrl/⌘+Z)', () => { lab()?.selCtl?.()?.undo?.(); link = a.get() || link; paint(); }]]);
+      ThreeTweaks.menu(r.left, r.bottom + 4, ['More', ['♪ Any sound, with a curve…', 'drops, builds, the key, 8 bands…', () => { close(); a.curve?.(); }], ['∿ The ♪ panel: amounts, the song\'s parts, move by itself…', 'a wave, a random walk… (no music)', () => { close(); a.panel?.(); }], ['↶ Undo the last change', 'the sliders\' undo (Ctrl/⌘+Z)', () => { lab()?.selCtl?.()?.undo?.(); sync(); }]]);
     } } });
     const pop = el('div', { class: 'bl-pop lab-pop', role: 'dialog', attrs: { 'aria-label': `Move ${a.label} with the music` } },
       el('div', { class: 'bl-head' }, el('b', { text: `♪ ${a.label}` }), el('span', { class: 'bl-sub', text: 'moves with' }), el('button', { type: 'button', class: 'ghost small bl-x', text: '✕', title: 'Close (Esc)', on: { click: close } })),
@@ -97,8 +106,8 @@ const BeatLink = (() => {
         more,
         el('button', { type: 'button', class: 'small primary', text: 'Done', on: { click: close } })));
     function paint() {
-      drvBtns.forEach((b, k) => b.classList.toggle('on', C.DRIVERS[k].id === link.band));
-      howBtns.forEach((b, k) => b.classList.toggle('on', C.HOWS[k].id === link.how));
+      drvBtns.forEach((b, k) => b.classList.toggle('on', !draft && C.DRIVERS[k].id === link.band));
+      howBtns.forEach((b, k) => b.classList.toggle('on', !draft && C.HOWS[k].id === link.how));
       const span = (a.max - a.min) || 1; const f = (x) => Math.max(0, Math.min(1, (x - a.min) / span));
       const l = f(Math.min(link.lo, link.hi)); const h = f(Math.max(link.lo, link.hi));
       band.style.left = `${l * 100}%`; band.style.right = `${(1 - h) * 100}%`;
@@ -111,7 +120,8 @@ const BeatLink = (() => {
       meterTxt.textContent = C.name(link);
       const d = C.DRIVER[link.band];
       // (the sliders' "read every frame" report can lag a re-run: a meter from the preview says it is read live)
-      note.textContent = a.live === false && !(typeof ThreeAudioMap !== 'undefined' && ThreeAudioMap.lastMeter.has(a.mid)) ? 'This value is only read when the scene is built: ask the director to read it every frame.'
+      note.textContent = draft ? (legacy ? `It follows ${typeof ThreeAudio !== 'undefined' ? ThreeAudio.label(legacy.band) : legacy.band} with a curve now: pick what drives it to change that.` : 'It stays still now: pick what drives it.')
+        : a.live === false && !(typeof ThreeAudioMap !== 'undefined' && ThreeAudioMap.lastMeter.has(a.mid)) ? 'This value is only read when the scene is built: ask the director to read it every frame.'
         : d.kind === 'level' && /^(step|random)$/.test(link.how) ? `${d.name} is a level: it steps on each beat.`
           : link.band === 'vocals' || link.band === 'drums' ? 'Uses the song\'s parts (split once on this computer); a stand-in until then.' : '';
     }
@@ -138,12 +148,12 @@ const BeatLink = (() => {
     const away = (e) => { if (!pop.contains(e.target) && !e.target.closest?.('.mb-menu, .lab-pop, .bl-h')) close(); };
     const keys = (e) => {
       if (e.key === 'Escape' && !document.querySelector('.mb-menu.lab-pop')) { e.stopPropagation(); close(); }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) { setTimeout(() => { link = a.get() || link; paint(); }, 0); }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) { setTimeout(sync, 0); }
     };
     document.body.append(pop);
     paint(); place();
     setTimeout(() => { addEventListener('pointerdown', away, true); addEventListener('keydown', keys, true); }, 0);
-    card = { a, pop, get link() { return link; }, paint: () => { link = a.get() || link; paint(); }, close() { clearInterval(tick); pop.remove(); removeEventListener('pointerdown', away, true); removeEventListener('keydown', keys, true); } };
+    card = { a, pop, get link() { return link; }, paint: sync, close() { clearInterval(tick); pop.remove(); removeEventListener('pointerdown', away, true); removeEventListener('keydown', keys, true); } };
     return card;
   }
 
@@ -164,7 +174,7 @@ const BeatLink = (() => {
       if (!h || e.button !== 0) return;
       e.preventDefault(); e.stopPropagation();
       const which = h.classList.contains('lo') ? 'lo' : 'hi';
-      const from = clone(getLink());
+      const from = clone(a.get ? a.get() : getLink());
       try { h.setPointerCapture(e.pointerId); } catch { /* a synthetic pointer */ }
       h.classList.add('drag'); stats.drags += 1;
       const valueAt = (ev) => {

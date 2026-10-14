@@ -87,6 +87,8 @@ step('the Lab mission "React to the drums, bass and voice"', Missions.LIST.some(
 {
   // the ♪ panel of a slider: three chips in plain words
   document.querySelector('.tw-music-btn')?.click();
+  // (round 38, beatlink) ♪ opens ♪ Move with the music; its More ▾ has this panel
+  if (typeof BeatLink !== 'undefined' && BeatLink.card) { const a = BeatLink.card.a; BeatLink.close(); a.panel(); }
   await wait(400);
   const chips = [...document.querySelectorAll('.tw-bind:not([hidden]) .tw-chip')].map((b) => b.textContent);
   step('the slider\'s ♪ panel offers The drums / The bass / The voice', ['The drums', 'The bass', 'The voice'].every((t) => chips.includes(t)), chips.slice(-6));
