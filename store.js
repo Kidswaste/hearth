@@ -93,11 +93,14 @@ function writeSync(file, value, prev) {
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
   fs.renameSync(tmp, file);
 }
+// (round 35, bugbash2) returns a promise that settles once this save is on disk (or was given up on: never rejects), so
+// the kv:set / chats:save IPC answers only then: `await hub.kvSet(…)` means "written", and something reading the file
+// itself right after (a fake engine's switches, another process) sees the new value
 function writeOff(file, value, { prev = null, chat = false } = {}) {
-  if (!thread()) { writeSync(file, value, prev); return; }
+  if (!thread()) { writeSync(file, value, prev); return Promise.resolve(); }
   const n = ++writeSeq;
   pending.set(file, { value, n });
-  ask({ op: 'write', file, value, prev, chatDir: chat })
+  return ask({ op: 'write', file, value, prev, chatDir: chat })
     .then((r) => { wstats.writes += 1; if (r?.skipped) wstats.skipped += 1; })
     .catch(() => { wstats.fallbacks += 1; if (pending.get(file)?.n === n) { try { writeSync(file, value, prev); } catch (err) { console.error('save failed', file, err.message); } } })
     .finally(() => { if (pending.get(file)?.n === n) pending.delete(file); });
@@ -135,7 +138,9 @@ function flushSync() {
 let beforeWrite = null;
 function writeJson(file, value, o) {
   if (beforeWrite) { try { value = beforeWrite(file, value) ?? value; } catch { /* save as given */ } }
-  if (o?.off) writeOff(file, value, o); else writeSync(file, value, o?.prev);
+  if (o?.off) return writeOff(file, value, o);
+  writeSync(file, value, o?.prev);
+  return undefined;
 }
 
 function allChats() {
@@ -356,7 +361,7 @@ module.exports = {
     // Keep the previous version of every store as <name>.prev.json (one step of undo for tools).
     // (round 20) the copy is made on the store thread right before the write, and skipped with it when nothing changed
     const file = kvPath(name);
-    writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json') });
+    return writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json') });
   },
   saveAttachment,
   importRef,

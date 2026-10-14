@@ -14,17 +14,9 @@
 //     restart (page reload) they're all still there, then go out once the internet is back, each exactly once
 //   node dev/smoke.js --fake-engines --check-timeout 400000 --lib dev/checks/journey-lib.js --script dev/checks/offline.js
 const { step, wait, until, click } = J;
-// hub.kvSet returns before the store thread has written the file: the fake engine reads the file, so wait until it
-// holds these switches (a fake started right after could read the previous step's switches under load)
-const kvDir = `${String(await window.hub.attachmentsDir()).replace(/[\\/]attachments[\\/]?$/, '')}/kv`;
-const sw = async (o) => {
-  await window.hub.kvSet('fake-switches', o);
-  const want = JSON.stringify(o);
-  // (listed first: reading a file that isn't there yet would log an error in the main process)
-  const there = async () => ((await window.hub.fs.list(kvDir).catch(() => [])) || []).some((f) => (f.name || f) === 'fake-switches.json');
-  const ok = await until(async () => { if (!(await there())) return false; try { return JSON.stringify(JSON.parse(await window.hub.fs.read(`${kvDir}/fake-switches.json`))) === want; } catch { return false; } }, 5000);
-  if (!ok) await wait(800);
-};
+// (round 35, bugbash2) hub.kvSet answers once the file is on disk (store.js writeOff), so the fake engine started next
+// reads these switches (before, it could read the previous step's under load: the wait for the file that was here)
+const sw = (o) => window.hub.kvSet('fake-switches', o);
 const claude = H.claudeAgent();
 const astra = H.agents().find((a) => a.mode === 'native' && a.engine === 'codex');
 const chatOf = (id) => Native.chatOf(id);
