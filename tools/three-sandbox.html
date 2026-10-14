@@ -103,6 +103,24 @@
   const lineOf = (stack) => { const m = /blob:[^\s)]*?:(\d+):(\d+)/.exec(stack || ''); return m ? Number(m[1]) : null; };
   addEventListener('error', (e) => !window.__isStale(e.error?.stack) && post({ type: 'error', message: e.message, line: e.filename?.startsWith('blob:') ? e.lineno : lineOf(e.error?.stack), layer: window.__layerOfUrl(e.filename) || window.__layerOfStack(e.error?.stack) }));
   addEventListener('unhandledrejection', (e) => !window.__isStale(e.reason?.stack) && post({ type: 'error', message: String(e.reason?.message || e.reason), line: lineOf(e.reason?.stack), layer: window.__layerOfStack(e.reason?.stack) }));
+  // (round 39, labmemory) what the page holds that the garbage collector can't see by itself: object URLs not revoked,
+  // ImageBitmaps not closed, AudioContexts not closed. Counters only (a Set add / delete per call); window.__labMem()
+  // reads them with the GPU side (dev/checks/labmemory.js).
+  {
+    const M = window.__labMemRaw = { urls: new Set(), bitmaps: new Set(), actx: new Set(), urlsMade: 0, bitmapsMade: 0 };
+    const mk = URL.createObjectURL; const rv = URL.revokeObjectURL;
+    URL.createObjectURL = function (o) { const u = mk.call(URL, o); M.urlsMade += 1; if (M.urls.size < 4096) M.urls.add(u); return u; };
+    URL.revokeObjectURL = function (u) { M.urls.delete(u); return rv.call(URL, u); };
+    if (typeof createImageBitmap === 'function' && typeof ImageBitmap !== 'undefined') {
+      const cib = window.createImageBitmap; const close = ImageBitmap.prototype.close;
+      window.createImageBitmap = function (...a) { return cib.apply(window, a).then((b) => { M.bitmapsMade += 1; if (M.bitmaps.size < 4096) M.bitmaps.add(new WeakRef(b)); return b; }); };
+      ImageBitmap.prototype.close = function () { this.__closed = true; return close.call(this); };
+    }
+    if (typeof AudioContext === 'function') {
+      const AC = AudioContext;
+      window.AudioContext = class extends AC { constructor(...a) { super(...a); M.actx.add(new WeakRef(this)); } };
+    }
+  }
 </script>
 </head>
 <body>
@@ -528,6 +546,7 @@ function instrument(renderFn) {
     if (EL?.props.pcOf) pcCost(EL, frameMs);
     lastRenderer = this;
     this.__lastScene = scene; this.__lastCamera = camera;
+    if (scene !== this.__seen1) { this.__seen1 = scene; const sn = (this.__seen ||= new Set()); if (!sn.has(scene) && sn.size < 8) sn.add(scene); } // (round 39, labmemory: what it draws is in use)
     renderers.add(this);
     if (frameSeen !== frameTick) { frameSeen = frameTick; frames += 1; } // one per displayed frame, however many layers render
     if (shotPending) { shotPending = false; postShot(this.domElement, shotTag); }
@@ -713,7 +732,25 @@ globalThis.__labPoolTake = (p) => {
   return e.cv;
 };
 // what a re-run / removed layer's renderer does with its context: back to the pool when it can, lost otherwise
-function letGoRenderer(r) {
+function letGoRenderer(r) { letGoRenderer0(r); gutRenderer(r); }
+// (round 39, labmemory) the gone code still holds its renderer (the page keeps every module it imported, see "what a
+// gone layer's code still holds"), and the renderer holds everything three.js built inside it: its programs' objects,
+// render lists, state, caches, every closure of its constructor (≈ 150 KB of JS heap per renderer, more with shadows /
+// post-processing). Every method and part comes off it: a call from the gone code finds nothing to do. (Not the page's
+// own helper renderers, which come back.)
+function gutRenderer(r) {
+  if (!r || r.__helper || r.__gutted || !OWN.on) return;
+  r.__gutted = true;
+  // (the scenes it drew: three.js' "dispose" listeners on their geometries / materials / textures are closures of this
+  // renderer, which keep all of it; they come off with the sweep, once the next scene drew: see ownSweep)
+  if (OWN.on) { for (const sc of r.__seen || []) OWN.scenes.add(sc); if (r.__lastScene) OWN.scenes.add(r.__lastScene); if (!OWN.timer) OWN.timer = realSetTimeout(ownSweep, 2500); }
+  const noop = () => {};
+  for (const k of Object.keys(r)) {
+    if (k === 'domElement' || k === '__stale' || k === '__gutted' || k === '__layer') continue;
+    try { const v = r[k]; if (typeof v === 'function') r[k] = noop; else if (v && typeof v === 'object') r[k] = null; } catch { /* read-only */ }
+  }
+}
+function letGoRenderer0(r) {
   try { r.setAnimationLoop(null); } catch { /* gone */ }
   const cv = r.domElement; const gl = cv?.__gl;
   const ok = mode === 'sketch' && gl && gl.__objs && !r.__stale && !r.__noPool && POOL_MAX() > 0 && !gl.isContextLost() && r.getContext?.() === gl;
@@ -2405,7 +2442,17 @@ globalThis.refs = refs;
 // The sketch's colors ('#rrggbb' strings), usually picked from a reference picture: new THREE.Color(palette[0]).
 const palette = [];
 globalThis.palette = palette;
+// (round 39, labmemory) the references come again with every scene switch (each a whole file: a video reference is the
+// video); the URLs they replace used to stay, and with them every copy of every file. They're revoked 5 s later
+// (anything that loaded them has its copy), except one a reference video still plays.
+const refVids = new Set(); // WeakRefs to refTexture()'s videos
 function setRefs(items) {
+  const old = Object.values(refs);
+  if (old.length) realSetTimeout(() => {
+    const busy = new Set(); for (const w of [...refVids]) { const v = w.deref(); if (!v || !v.getAttribute('src')) refVids.delete(w); else busy.add(v.getAttribute('src')); }
+    const now = new Set(Object.values(refs));
+    for (const u of old) if (!now.has(u) && !busy.has(u)) URL.revokeObjectURL(u);
+  }, 5000);
   for (const k of Object.keys(refs)) delete refs[k];
   for (const k of Object.keys(refBlobs)) delete refBlobs[k];
   for (const it of items || []) { const b = new Blob([it.buffer], { type: it.mime || '' }); refs[it.key] = URL.createObjectURL(b); refKinds[it.key] = it.kind; if (it.kind === 'image') refBlobs[it.key] = b; }
@@ -2417,6 +2464,7 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
     const v = document.createElement('video');
     Object.assign(v, { src: url, loop, muted, playsInline: true, crossOrigin: 'anonymous' });
     v.play().catch(() => {});
+    refVids.add(new WeakRef(v)); try { ownNote(ownerUrl(), 'media', v); } catch { /* fine */ } // (round 39: it stops with the layer that asked for it)
     const tex = new THREE.VideoTexture(v);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.video = v;
@@ -2428,7 +2476,9 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
   if (typeof createImageBitmap === 'function' && refBlobs[key]) {
     const tex = new THREE.Texture();
     tex.colorSpace = THREE.SRGBColorSpace;
+    let who = null; try { who = ownerUrl(); } catch { /* fine */ } // (round 39: its picture is closed with the layer that asked for it)
     createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
+      if (who) ownNote(who, 'bmp', bmp);
       tex.image = bmp; tex.flipY = false; tex.needsUpdate = true;
     }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
     return tex;
@@ -3222,6 +3272,7 @@ function trackRenderer(r) {
 function dropStale(r) {
   r.__stale = true;
   const go = () => { try { r.setAnimationLoop(null); } catch {} if (r.domElement) r.domElement.__letGo = true; try { r.dispose(); r.forceContextLoss(); } catch {} r.domElement?.remove(); };
+  realSetTimeout(() => gutRenderer(r), 50); // (round 39, labmemory)
   queueMicrotask(go); realSetTimeout(go, 0);
   perfNote.stale += 1;
 }
@@ -9294,7 +9345,185 @@ function installRunGuards() {
 }
 const realClearInterval = clearInterval.bind(window);
 const sketchIntervals = new Set(); // sketch intervals still running (a dead layer's stop at their next tick)
+// ---------- what a gone layer's code still holds (round 39, labmemory) ----------
+// A layer's code is an ES module, and the page keeps every module it imported for its whole life (revoking the blob
+// URL doesn't let it go): its top-level names, and everything they reach, stayed in memory after a re-run, a removed
+// layer or a scene switch. Measured: a scene with a 2M-number point cloud kept 8 MB more per switch, forever (99 MB
+// after 12 switches); every director edit of a heavy scene kept a full copy of its data. The GPU side was already let
+// go (context pool); the JS side wasn't. Now the big things a layer's own code makes are noted as they're made, against
+// the module that made them (geometry data and textures' pixels of 32 KB or more, its canvases, object URLs,
+// ImageBitmaps, video / audio elements, AudioContexts, camera / microphone streams), and once that module stops
+// running: its media pause and its streams stop at once, and 2.5 s later (its last picture taken, the new one drawn)
+// the rest is emptied: arrays to length 0, canvases to 0 × 0, URLs revoked, bitmaps closed, contexts closed.
+// "Its own": the first caller after three.js / its addons is the layer's module (not the page's own helpers, whose
+// caches several layers share). Never what a running layer still draws (checked on the scenes live renderers draw).
+const OWN = { on: true, mods: new Set(), by: new Map(), queue: [], scenes: new Set(), timer: 0, min: 32768, n: { modules: 0, arrays: 0, textures: 0, canvases: 0, urls: 0, bitmaps: 0, media: 0, audio: 0, streams: 0, unhooked: 0, scenes: 0, mb: 0 } };
+const OWN_PAGE = location.href.split(/[?#]/)[0];
+const OWN_URL = /((?:blob:)?[a-z][\w+.-]*:[^\s()]+?):\d+:\d+\)?\s*$/;
+function ownerUrl() {
+  if (!OWN.mods.size) return null;
+  const lines = String(new Error().stack).split('\n');
+  for (let i = 3; i < lines.length; i += 1) { // (0: "Error", 1: here, 2: the hook)
+    const m = OWN_URL.exec(lines[i]); if (!m) continue;
+    const u = m[1];
+    if (OWN.mods.has(u)) return u;
+    if (u.split(/[?#]/)[0] === OWN_PAGE || /\beval\b/.test(lines[i])) return null; // (the page's helpers, an eval)
+  }
+  return null;
+}
+function ownNote(u, kind, o) {
+  if (!u || !o) return;
+  let e = OWN.by.get(u);
+  if (!e) { e = { kind: [] }; OWN.by.set(u, e); }
+  e.kind.push([kind, kind === 'url' ? o : new WeakRef(o)]);
+  if (!urlLayer.has(u)) ownRetire(u); // (a module that stopped while it still loaded: what it makes now goes too)
+}
+const ownBytes = (a) => (a && typeof a.byteLength === 'number' ? a.byteLength : 0);
+{
+  const BG = THREE.BufferGeometry?.prototype;
+  if (BG?.setAttribute) {
+    const setA = BG.setAttribute; const setI = BG.setIndex;
+    BG.setAttribute = function (name, attr) { const r = setA.call(this, name, attr); try { const a = attr?.isInterleavedBufferAttribute ? attr.data : attr; if (ownBytes(a?.array) >= OWN.min) ownNote(ownerUrl(), 'arr', a); } catch { /* fine */ } return r; };
+    if (setI) BG.setIndex = function (i) { const r = setI.call(this, i); try { if (ownBytes(this.index?.array) >= OWN.min) ownNote(ownerUrl(), 'arr', this.index); } catch { /* fine */ } return r; };
+  }
+  // a texture's first needsUpdate (CanvasTexture sets it in its constructor; DataTexture / Texture when the code does)
+  const TP = THREE.Texture?.prototype; const nu = TP && Object.getOwnPropertyDescriptor(TP, 'needsUpdate');
+  if (nu?.set) Object.defineProperty(TP, 'needsUpdate', { ...nu, set(v) { nu.set.call(this, v); if (v && !this.__ownSeen) { this.__ownSeen = true; try { const im = this.image; const b = im ? (ownBytes(im.data) || (im.width * im.height * 4) || 0) : 0; if (b >= OWN.min) ownNote(ownerUrl(), 'tex', this); } catch { /* fine */ } } } });
+  const ce = Document.prototype.createElement;
+  Document.prototype.createElement = function (tag, ...a) { const n = ce.call(this, tag, ...a); if (OWN.mods.size && /^(canvas|video|audio|img)$/i.test(tag)) { try { const u = ownerUrl(); if (u) ownNote(u, /^canvas$/i.test(tag) ? 'cv' : /^img$/i.test(tag) ? 'img' : 'media', n); else n.__page = true; } catch { /* fine */ } } return n; };
+  // (new Audio(…) / new Image() aren't made through createElement: a sound a layer plays is noted when it plays)
+  const play = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function (...a) { if (!this.__ownSeen && !this.__page && this !== mediaEl && OWN.mods.size) { this.__ownSeen = true; try { ownNote(ownerUrl(), 'media', this); } catch { /* fine */ } } return play.apply(this, a); };
+  if (typeof OffscreenCanvas === 'function') { const OC = OffscreenCanvas; window.OffscreenCanvas = class extends OC { constructor(...a) { super(...a); try { ownNote(ownerUrl(), 'cv', this); } catch { /* fine */ } } }; }
+  const mk = URL.createObjectURL;
+  URL.createObjectURL = function (o) { const u = mk.call(URL, o); if (OWN.mods.size) { try { ownNote(ownerUrl(), 'url', u); } catch { /* fine */ } } return u; };
+  if (typeof createImageBitmap === 'function') { const cib = window.createImageBitmap; window.createImageBitmap = function (...a) { const u = OWN.mods.size ? ownerUrl() : null; const p = cib.apply(window, a); if (u) p.then((b) => ownNote(u, 'bmp', b), () => {}); return p; }; }
+  if (typeof AudioContext === 'function') { const AC = AudioContext; window.AudioContext = class extends AC { constructor(...a) { super(...a); try { ownNote(ownerUrl(), 'ac', this); } catch { /* fine */ } } }; }
+  const md = navigator.mediaDevices;
+  if (md?.getUserMedia) { const gum = md.getUserMedia.bind(md); md.getUserMedia = function (c) { const u = ownerUrl(); const p = gum(c); if (u) p.then((s) => ownNote(u, 'stream', s), () => {}); return p; }; }
+}
+// the module stopped running: its sound and camera stop now; the rest is emptied in a moment
+function ownRetire(u) {
+  const e = OWN.by.get(u); if (!e || !OWN.on) return;
+  OWN.by.delete(u); OWN.n.modules += 1;
+  for (const [k, w] of e.kind) {
+    const o = k === 'url' ? null : w.deref(); if (!o) continue;
+    try {
+      if (k === 'media' && !o.paused) o.pause();
+      else if (k === 'ac' && o.state === 'running') o.suspend();
+      else if (k === 'stream') { for (const t of o.getTracks()) t.stop(); OWN.n.streams += 1; }
+    } catch { /* gone */ }
+  }
+  OWN.queue.push(e);
+  if (!OWN.timer) OWN.timer = realSetTimeout(ownSweep, 2500);
+}
+// what the layers still running draw (their renderers' scenes): never emptied, even if a gone module made it
+function ownInUse() {
+  const use = new Set();
+  const tex = (t) => { if (t?.isTexture) { use.add(t); if (t.image) use.add(t.image); if (t.source?.data) use.add(t.source.data); if (t.renderTarget) use.add(t.renderTarget); } };
+  const mat = (m) => { if (!m || use.has(m)) return; use.add(m); for (const k in m) { const v = m[k]; if (v?.isTexture) tex(v); } for (const u of Object.values(m.uniforms || {})) { const v = u?.value; if (v?.isTexture) tex(v); else if (Array.isArray(v)) v.forEach(tex); else if (v?.texture?.isTexture) tex(v.texture); } };
+  for (const r of renderers) {
+    if (r.__stale) continue;
+    for (const s of r.__seen || (r.__lastScene ? [r.__lastScene] : [])) {
+      if (!s?.isObject3D) continue;
+      use.add(s); tex(s.background); tex(s.environment); mat(s.overrideMaterial);
+      s.traverse((o) => {
+        const g = o.geometry;
+        if (g) { use.add(g); for (const a of Object.values(g.attributes || {})) use.add(a.isInterleavedBufferAttribute ? a.data : a); if (g.index) use.add(g.index); for (const l of Object.values(g.morphAttributes || {})) for (const a of l) use.add(a); }
+        if (o.instanceMatrix) { use.add(o); use.add(o.instanceMatrix); }
+        if (Array.isArray(o.material)) o.material.forEach(mat); else mat(o.material);
+      });
+    }
+  }
+  return use;
+}
+// three.js' own listeners that tie a geometry / material / texture / render target to the renderer that drew it
+const OWN_LIS = /^(on\w*Dispose|dispose(Texture|Event))$/;
+function ownUnhook(scenes, inUse) {
+  const seen = new Set();
+  const strip = (o) => {
+    if (!o || seen.has(o) || inUse(o)) return; seen.add(o);
+    const l = o._listeners?.dispose; if (!l?.length) return;
+    const keep = l.filter((f) => !OWN_LIS.test(f?.name || ''));
+    if (keep.length !== l.length) { o._listeners.dispose = keep; OWN.n.unhooked += l.length - keep.length; }
+  };
+  const tex = (t) => { if (t?.isTexture) { strip(t); if (t.renderTarget) strip(t.renderTarget); } };
+  const mat = (m) => { if (!m || seen.has(m)) return; strip(m); for (const k in m) { const v = m[k]; if (v?.isTexture) tex(v); } for (const u of Object.values(m.uniforms || {})) { const v = u?.value; if (v?.isTexture) tex(v); else if (Array.isArray(v)) v.forEach(tex); else if (v?.texture?.isTexture) tex(v.texture); } };
+  for (const sc of scenes) {
+    if (!sc?.isObject3D) continue;
+    tex(sc.background); tex(sc.environment); mat(sc.overrideMaterial);
+    sc.traverse((o) => { if (o.geometry) strip(o.geometry); if (o.isInstancedMesh) strip(o); if (Array.isArray(o.material)) o.material.forEach(mat); else mat(o.material); });
+    // a gone scene lets go of what hangs on it (what the code made in a loop and only added to the scene: thousands of
+    // objects in a particle or instanced scene); what its code's own names hold stays, emptied as above
+    if (sc.isScene && !inUse(sc)) { sc.clear(); sc.background = null; sc.environment = null; OWN.n.scenes += 1; }
+  }
+}
+function ownSweep() {
+  OWN.timer = 0;
+  const q = OWN.queue.splice(0);
+  const scenes = [...OWN.scenes]; OWN.scenes.clear();
+  if (!q.length && !scenes.length) return;
+  let use = null; let bytes = 0;
+  const inUse = (o) => (use ||= ownInUse()).has(o);
+  if (scenes.length) { try { ownUnhook(scenes, inUse); } catch { /* fine */ } }
+  for (const e of q) for (const [k, w] of e.kind) {
+    try {
+      if (k === 'url') { URL.revokeObjectURL(w); OWN.n.urls += 1; continue; }
+      const o = w.deref(); if (!o) continue;
+      if (k === 'arr') { if (o.array?.length && !inUse(o)) { bytes += o.array.byteLength; o.array = new o.array.constructor(0); OWN.n.arrays += 1; } }
+      else if (k === 'tex') {
+        if (inUse(o)) continue;
+        const im = o.image;
+        if (typeof ImageBitmap !== 'undefined' && im instanceof ImageBitmap) { if (im.width) { bytes += im.width * im.height * 4; im.close(); OWN.n.textures += 1; } }
+        else if (im?.data?.length) { bytes += im.data.byteLength; im.data = new im.data.constructor(0); OWN.n.textures += 1; }
+      } else if (k === 'cv') {
+        // (never a WebGL canvas: the context pool keeps those, at their size, for the next renderer)
+        if (o.__ctxMade || o.__gl || o.isConnected || inUse(o) || !(o.width * o.height)) continue;
+        bytes += o.width * o.height * 4; o.width = 0; o.height = 0; OWN.n.canvases += 1;
+      } else if (k === 'img') { if (!o.isConnected && !inUse(o) && o.getAttribute('src')) { o.removeAttribute('src'); OWN.n.media += 1; } }
+      else if (k === 'media') { if (!o.isConnected && !inUse(o)) { o.pause(); o.srcObject = null; o.removeAttribute('src'); o.load(); OWN.n.media += 1; } }
+      else if (k === 'bmp') { if (o.width && !inUse(o)) { bytes += o.width * o.height * 4; o.close(); OWN.n.bitmaps += 1; } }
+      else if (k === 'ac') { if (o.state !== 'closed') { o.close().catch(() => {}); OWN.n.audio += 1; } }
+    } catch { /* gone */ }
+  }
+  OWN.n.mb = +(OWN.n.mb + bytes / 1048576).toFixed(1);
+}
+// ---------- a quiet guard after scene switches (round 39, labmemory) ----------
+// 3 s after a scene switch has drawn, the page's GPU counters are read (GL objects alive on every context, linked
+// programs, contexts, the GPU estimate). Above the budget (far above a normal session: 40 switches of six scenes
+// stay under a tenth of it), it cleans up by itself: what gone layers left is emptied now, linked programs nothing uses
+// go (8 kept per context), waiting contexts go, the thumbnail renderer goes. Still above after two switches in a row:
+// one calm note through Hints (the Lab's own message 'mem-note'), once per page. window.__labMem().guard tells.
+const MEMG = { budget: { objects: 6000, programs: 96, contexts: 8, gpuMB: 1024 }, cleaned: 0, over: 0, noted: false, last: null, timer: 0,
+  info() { return { cleaned: this.cleaned, noted: this.noted, last: this.last, budget: { ...this.budget }, own: { ...OWN.n, waiting: OWN.queue.length, modules: OWN.by.size } }; } };
+window.__labMemGuard = { set: (b) => Object.assign(MEMG.budget, b || {}), now: () => memAfterSwitch(), own: (on) => { OWN.on = Boolean(on); return OWN.on; } }; // (own(false): the before, for checks)
+function memRead() {
+  glAlive();
+  let objects = 0; let programs = 0; let contexts = 0;
+  for (const w of glRefs) { const c = w.deref(); if (!c) continue; contexts += 1; for (const k of c.__objs?.values() || []) { objects += 1; if (k === 'Program') programs += 1; } }
+  return { objects, programs, contexts, gpuMB: gpuEstimate() };
+}
+const memOver = (r) => Object.keys(MEMG.budget).filter((k) => r[k] > MEMG.budget[k]);
+function memClean() {
+  if (OWN.timer) { realClearTimeout(OWN.timer); OWN.timer = 0; }
+  ownSweep();
+  for (const w of glRefs) { const c = w.deref(); if (c && !c.isContextLost()) progTrim(c, 8); }
+  for (const e of [...POOL]) poolEvict(e);
+  try { dropThumbR(); } catch { /* not made */ }
+  MEMG.cleaned += 1;
+}
+function memAfterSwitch() {
+  MEMG.timer = 0;
+  let r = memRead(); let over = memOver(r);
+  if (over.length) { memClean(); r = memRead(); over = memOver(r); }
+  MEMG.last = { ...r, over };
+  MEMG.over = over.length ? MEMG.over + 1 : 0;
+  if (MEMG.over >= 2 && !MEMG.noted) { MEMG.noted = true; post({ type: 'mem-note', over, ...r }); }
+  return MEMG.last;
+}
+const memSwitched = () => { if (mode !== 'sketch') return; if (MEMG.timer) realClearTimeout(MEMG.timer); MEMG.timer = realSetTimeout(memAfterSwitch, 3000); };
 function teardownLayer(L) {
+  if (L.url) ownRetire(L.url); // (round 39, labmemory)
   if (L.pc) pcUnmount(L);
   L.gen += 1;
   // (round 16: what the sandbox made for the layer itself, e.g. a filter's merged picture: its canvas memory goes now,
@@ -9430,6 +9659,28 @@ function resetPage() {
 // For the live check (dev/checks/live.js): what runs leave behind. Nothing here should grow with edits.
 window.__labHealth = () => ({ hz: Math.round(1000 / dispMs), contexts: glAlive(), renderers: renderers.size, listeners: sketchListeners.length, intervals: sketchIntervals.size, layers: layers.size,
   parked, stale: perfNote.stale, pooled: POOL.length, poolHit: perfNote.poolHit, gpuMB: gpuEstimate(), overlays: document.querySelectorAll('.lab-xfade, .lab-swap, .lab-ghost').length, heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null });
+// (round 39, labmemory) everything a long session could pile up, in one read: the GL objects alive on every context
+// (pooled ones included), linked programs kept, three.js' own counters, canvases / videos / audio / object URLs /
+// ImageBitmaps / blob modules. dev/checks/labmemory.js samples it after scene switches.
+window.__labMem = () => {
+  glAlive();
+  const gl = { contexts: 0, pooled: 0, objects: 0, programs: 0, textures: 0, buffers: 0, framebuffers: 0, cached: 0, cachedIdle: 0 };
+  for (const w of glRefs) {
+    const c = w.deref(); if (!c) continue;
+    if (c.__pooled) gl.pooled += 1; else gl.contexts += 1;
+    for (const k of c.__objs?.values() || []) { gl.objects += 1; if (k === 'Program') gl.programs += 1; else if (k === 'Texture') gl.textures += 1; else if (k === 'Buffer') gl.buffers += 1; else if (k === 'Framebuffer') gl.framebuffers += 1; }
+    for (const e of c.__prog?.cache.values() || []) { gl.cached += 1; if (!e.users) gl.cachedIdle += 1; }
+  }
+  const three = { renderers: 0, geometries: 0, textures: 0, programs: 0 };
+  for (const r of renderers) { if (r.__stale) continue; three.renderers += 1; three.geometries += r.info?.memory?.geometries || 0; three.textures += r.info?.memory?.textures || 0; three.programs += r.info?.programs?.length || 0; }
+  const M = window.__labMemRaw || { urls: new Set(), bitmaps: new Set(), actx: new Set() };
+  let bitmaps = 0; for (const w of [...M.bitmaps]) { const b = w.deref(); if (!b || b.__closed || !b.width) M.bitmaps.delete(w); else bitmaps += 1; }
+  let audio = 0; for (const w of [...M.actx]) { const a = w.deref(); if (!a || a.state === 'closed') M.actx.delete(w); else audio += 1; }
+  const vids = [...document.getElementsByTagName('video')];
+  return { gl, three, canvases: document.getElementsByTagName('canvas').length, videos: vids.length, videosPlaying: vids.filter((v) => !v.paused).length,
+    audioContexts: audio, objectURLs: M.urls.size, urlsMade: M.urlsMade, bitmaps, layers: layers.size, layerUrls: urlLayer.size, intervals: sketchIntervals.size, listeners: sketchListeners.length,
+    overlays: document.querySelectorAll('.lab-xfade, .lab-swap, .lab-ghost').length, heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null, guard: typeof MEMG === 'object' ? MEMG.info() : null };
+};
 
 // ---------- sketch mode ----------
 // spec.fx: 'xfade' (new code for this layer: cross-fade from its old picture) | 'reveal' (a new layer: wipe in)
@@ -9476,6 +9727,7 @@ async function runLayer(spec, hot = false) {
   const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
   L.url = url;
   urlLayer.set(url, L.id);
+  OWN.mods.add(url); if (OWN.mods.size > 4000) OWN.mods.delete(OWN.mods.values().next().value); // (round 39, labmemory: its own things are noted)
   sketchRunning = true;
   const inPc = Boolean(L.props.pcOf);
   if (inPc) PC.importing += 1;
@@ -9534,7 +9786,7 @@ function swapLayers(specs, fx = 'xfade') {
   }
   lastRenderer = null;
   resetPage();
-  waitStack(specs.map((s) => s.id), () => { if (cover) fadeAway(cover, stageSwapMs ?? 420); post({ type: 'stack-drawn' }); });
+  waitStack(specs.map((s) => s.id), () => { if (cover) fadeAway(cover, stageSwapMs ?? 420); post({ type: 'stack-drawn' }); memSwitched(); });
   specs.forEach((s, z) => runLayer({ z, ...s, swap: true }));
 }
 

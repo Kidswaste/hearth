@@ -195,6 +195,7 @@ async function cdpConnect() {
       if (msg.method === 'Runtime.bindingCalled' && msg.params.name === '__smoke') { smokeCall(msg.params.payload); return; }
       if (msg.method === 'Tracing.dataCollected') { traceEvents.push(...msg.params.value); return; }
       if (msg.method === 'Tracing.tracingComplete') { traceDone?.(); return; }
+      if (msg.method === 'HeapProfiler.addHeapSnapshotChunk') { snapChunks?.push(msg.params.chunk); return; } // (round 39, labmemory: { snapshot })
       if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params.exceptionDetails;
         const txt = `exception: ${d.exception?.description || d.text} @ ${d.url || ''}:${d.lineNumber}`;
@@ -223,14 +224,22 @@ async function cdpConnect() {
       send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: fs.readFileSync(file).toString('base64') }, sid);
     };
     // The `smoke()` bridge for check scripts: real input events (Input.*), screenshots and other CDP calls.
-    let traceEvents = []; let traceDone = null;
+    let traceEvents = []; let traceDone = null; let snapChunks = null;
     const sheets = new Map(); // styleSheetId → header (--coverage)
     const coverage = opt('--coverage');
     const smokeCall = async (payload) => {
       let req; try { req = JSON.parse(payload); } catch { return; }
       let result;
       // { trace: 'start' } / { trace: 'stop' }: a timeline trace; stop returns what was painted (count, area per layer)
-      if (req.trace === 'start') {
+      // (round 39, labmemory) { snapshot: file, target? }: a heap snapshot of the window (or an iframe target) saved to file
+      if (req.snapshot) {
+        const infos = req.target ? (await send('Target.getTargets', {})).result?.targetInfos || [] : [];
+        const ids = new Set(infos.filter((x) => new RegExp(req.target).test(x.url)).map((x) => x.targetId));
+        const t = req.target ? attached.filter((a) => ids.has(a.id)).pop() : null;
+        snapChunks = [];
+        await send('HeapProfiler.enable', {}, t?.sid); await send('HeapProfiler.takeHeapSnapshot', { reportProgress: false }, t?.sid);
+        fs.writeFileSync(req.snapshot, snapChunks.join('')); result = { saved: req.snapshot, bytes: snapChunks.reduce((a, c) => a + c.length, 0) }; snapChunks = null;
+      } else if (req.trace === 'start') {
         // (detail: also the top-level tasks and frame events, for dev/trace-stats.js: long tasks, forced layouts, input → paint)
         traceEvents = []; result = (await send('Tracing.start', { categories: `devtools.timeline,disabled-by-default-devtools.timeline${req.detail ? ',toplevel,disabled-by-default-devtools.timeline.frame,disabled-by-default-devtools.timeline.stack,blink.user_timing' : ''}`, transferMode: 'ReportEvents' })).result || {};
       } else if (req.trace === 'stop') {
