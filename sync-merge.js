@@ -24,7 +24,8 @@ const LOCAL_DIRS = new Set(['sync', 'mcp-runs', 'ae', 'node_modules', 'electron'
 const HEAVY_DIRS = new Set(['node_modules', '__pycache__', 'venv', 'bower_components', '.venv', '.git', '.cache', '.next', '.parcel-cache', '.turbo']);
 const LOCAL_FILES = new Set(['window.json', 'game-bridge.json', 'hearth-origin.json', 'hearth-icon.png', 'hearth-icon.ico', 'engine-installs.json',
   'connectors.json', 'claude-flags.json', 'now-playing.ps1', 'now-playing-control.ps1', 'now-playing-cover.jpg', 'kv/fake-switches.json', 'kv/downloads-log.json',
-  'kv/jank-log.json', 'kv/dev-reports.json', 'devreport-crashes.json', 'kv/offline-queue.json']); // (round 20) this computer's smoothness log: about this machine, never synced · (round 34) offline-queue: messages waiting to go out from THIS computer (synced, the other one would send them too)
+  'kv/jank-log.json', 'kv/dev-reports.json', 'devreport-crashes.json', 'kv/offline-queue.json',
+  'chrome-prefs.json', 'interop/obs.json', 'kv/media-here.json']); // (round 20) this computer's smoothness log: about this machine, never synced · (round 34) offline-queue: messages waiting to go out from THIS computer (synced, the other one would send them too) · (round 35, twocomputers) chrome-prefs: this computer's Chrome (browser, shown or not) · interop/obs.json: this computer's OBS address + keychain-sealed password · media-here: files found again on this computer
 function localOnly(rel) {
   const r = rel.replace(/\\/g, '/');
   if (LOCAL_FILES.has(r)) return true;
@@ -245,13 +246,16 @@ const MACHINE_SETTINGS = new Set(['enginePaths', 'aePath', 'ffmpegPath', 'captur
   'launchAtStartup', 'closeToTray', 'hotkey', 'sync', 'zoom']);
 const MACHINE_KEY = /(Path|Paths|Dir|Dirs|Folder|Folders|Exe|Bin)$/;
 const MACHINE_TOP = new Set(['layout']);
+// (round 35, twocomputers) fields that are this computer's own wherever they are (an agent's "Run commands without its
+// sandbox" is a Windows opt-in: copied to the Mac it would run Astra unsandboxed there)
+const MACHINE_FIELD = new Set(['astraNoSandbox']);
 const absPath = (s) => typeof s === 'string' && (isWinPath(s) || (s.startsWith('/') && s.length > 1 && !s.startsWith('//')));
 function stripMachine(v, isSettings) {
   if (Array.isArray(v)) return v.filter((x) => !absPath(x)).map((x) => stripMachine(x, false));
   if (!isObj(v)) return v;
   const out = {};
   for (const k of Object.keys(v)) {
-    if ((isSettings && MACHINE_SETTINGS.has(k)) || MACHINE_KEY.test(k) || absPath(v[k])) continue;
+    if ((isSettings && MACHINE_SETTINGS.has(k)) || MACHINE_KEY.test(k) || MACHINE_FIELD.has(k) || absPath(v[k])) continue;
     out[k] = stripMachine(v[k], false);
   }
   return out;
@@ -273,10 +277,13 @@ function applyPortable(local, portable) {
       for (const k of Object.keys(pv)) out[k] = keep(lv[k], pv[k], false);
       for (const k of Object.keys(lv)) {
         if (Object.prototype.hasOwnProperty.call(pv, k)) continue;
-        if ((settings && MACHINE_SETTINGS.has(k)) || MACHINE_KEY.test(k) || absPath(lv[k])) out[k] = lv[k]; // this computer's own
+        if ((settings && MACHINE_SETTINGS.has(k)) || MACHINE_KEY.test(k) || MACHINE_FIELD.has(k) || absPath(lv[k])) out[k] = lv[k]; // this computer's own
       }
       return out;
     }
+    // (round 35, twocomputers) a list with this computer's own paths in it (an AI's folders): the portable form never has
+    // them, so they were dropped on every arrival (the Mac's folders gone after the PC synced); they stay now
+    if (Array.isArray(lv) && Array.isArray(pv) && lv.some(absPath)) { const own = lv.filter(absPath); return [...pv.filter((x) => !own.includes(x)), ...own]; }
     if (Array.isArray(lv) && Array.isArray(pv) && keyed(lv) && keyed(pv)) {
       // agents: each keeps its own machine fields (an agent's file folder…)
       const L = keyed(lv);

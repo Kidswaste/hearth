@@ -26,6 +26,9 @@ const Access = (() => {
   let dirs = null; // { data, home, cwd, win }
   let winTest = false; // tests act as if on Windows (Access._setWindows)
   const onWindows = () => winTest || Boolean(dirs?.win);
+  // (round 35, twocomputers) a folder written the other computer's way (a chat's folder from the PC, seen on the Mac)
+  // never counts here: on Windows "/Users/x/proj" would quietly be C:\Users\x\proj (engines.js drops them too)
+  const hereOnly = (list) => (dirs && typeof TwoCore !== 'undefined' ? TwoCore.usable(list, dirs.win ? 'win32' : 'darwin') : (list || []));
   const uid = () => `a${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const short = (s, n = 90) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const sep = (p) => (/^[A-Za-z]:\\/.test(p) || p.includes('\\') ? '\\' : '/');
@@ -211,7 +214,7 @@ const Access = (() => {
     if (!chat) return {};
     const acc = effective(chat);
     if (acc.from !== 'chat' && acc.from !== 'ai') return {};
-    return { access: { level: acc.level, folders: acc.folders.slice(0, 12) } };
+    return { access: { level: acc.level, folders: hereOnly(acc.folders).slice(0, 12) } };
   }
 
   // ---------- activity log ----------
@@ -352,7 +355,7 @@ const Access = (() => {
     const acc = effective(chat, agentOf(agentId || chat?.agentId));
     agentId ||= chat?.agentId;
     const d = await paths();
-    const c = R.classify({ tool, input, level: acc.level, folders: acc.folders, cwd: cwd || d.cwd, home: d.home, mac: d.mac });
+    const c = R.classify({ tool, input, level: acc.level, folders: hereOnly(acc.folders), cwd: cwd || d.cwd, home: d.home, mac: d.mac });
     const cmdTool = tool === 'Bash' || tool === 'PowerShell'; // (winshell) Claude Code on Windows runs commands with PowerShell
     const detail = cmdTool ? String(input.command || '') : tool === 'Edit' ? `- ${short(input.old_string, 400)}\n+ ${short(input.new_string, 400)}` : tool === 'Write' ? `${String(input.content || '').length} characters` : JSON.stringify(input).slice(0, 600);
     const base = { id, tool, action: c.action, what: c.what, target: c.targets?.[0] || '', risk: c.risk, detail: cmdTool ? detail : '' };
@@ -648,6 +651,9 @@ const Access = (() => {
         const own = effective(chat, a);
         kids.push(el('p', { class: 'opt-hint access-ai-own' }, `The open chat has its own setting (${R.LEVEL_LABEL[own.level]}). `, el('button', { type: 'button', class: 'ghost small', text: 'Use this one there too', on: { click: () => { useAi(agentId, chat); again(); } } })));
       }
+      // (round 35, twocomputers) the other computer's folders: used here when found at the same place, else one
+      // click ("Pick this folder on this computer")
+      if (acc.level !== 'off' && typeof TwoComputers !== 'undefined') { const t = TwoComputers.filesRows?.(a, again); if (t) kids.push(t); }
       box.replaceChildren(...kids);
     };
     paint();

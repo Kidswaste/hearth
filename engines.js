@@ -265,7 +265,10 @@ function accessOf(agent) {
   if (!a || !ACCESS_LEVELS.includes(a.level) || a.level === 'off') return null;
   // (round 19) a folder stored on the other computer (a Mac path on Windows…) is this computer's same folder
   const here = (f) => { if (typeof f !== 'string' || (path.isAbsolute(f) && fs.existsSync(f))) return f; try { return require('./reachmain').localize(f)?.path || f; } catch { return f; } };
-  const folders = [...new Set((Array.isArray(a.folders) ? a.folders : []).map(here).filter((f) => typeof f === 'string' && path.isAbsolute(f) && fs.existsSync(f)))].slice(0, 12);
+  // (round 35, twocomputers) a path still written the other computer's way after that is never used: on Windows
+  // "/Volumes/Work" would quietly be C:\Volumes\Work, a folder the owner never chose
+  const foreign = (f) => { try { return require('./twocomputers-core').foreign(f, process.platform); } catch { return false; } };
+  const folders = [...new Set((Array.isArray(a.folders) ? a.folders : []).map(here).filter((f) => typeof f === 'string' && !foreign(f) && path.isAbsolute(f) && fs.existsSync(f)))].slice(0, 12);
   return { level: a.level, folders };
 }
 // Claude asks Hearth (the permission tool) unless this Claude Code rejected the flag before.

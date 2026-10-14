@@ -567,14 +567,28 @@ const ThreeMedia = (() => {
     }
     const loopKey = (p) => `three.loop:${p}`;
     let loadSeq = 0; // a newer load / unload (e.g. switching sketches fast) cancels an older one
-    async function load(path, { startAt = 0, quiet = false } = {}) {
+    async function load(path, { startAt = 0, quiet = false, relinked = false } = {}) {
       if (!isMedia(path)) { toast(`${base(path)} isn't an audio or video file`, { type: 'error' }); return { ok: false, error: 'Not an audio/video file' }; }
       const seq = ++loadSeq;
       let bytes;
       try {
         const u8 = await window.hub.fs.read(path, { encoding: 'buffer', maxBytes: 2 * 1024 ** 3 });
         bytes = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
-      } catch (err) { if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' }); return { ok: false, error: err.message }; }
+      } catch (err) {
+        // (round 35, twocomputers) a song / video from the other computer: found again here (its place in the home
+        // folder or a cloud drive, else its content), else one calm note with "Find this file"
+        const tc = window.TwoComputers;
+        if (tc && !relinked && seq === loadSeq) {
+          const moved = (to) => { copyMap(path, to).catch(() => {}); emit('relink', { from: path, to }); return load(to, { startAt, quiet, relinked: true }); };
+          const alt = await tc.relink(path).catch(() => null);
+          if (alt && seq === loadSeq) return moved(alt);
+          if (seq === loadSeq) tc.missingNote?.({ path, where: 'scene', retry: moved });
+          return { ok: false, error: err.message, missing: true };
+        }
+        if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' });
+        return { ok: false, error: err.message };
+      }
+      window.TwoComputers?.noteFile?.(path, bytes.byteLength).catch?.(() => {}); // its place + content, for the other computer
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), clock: null, analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false });
       emit('load', { path, video: st.video });
