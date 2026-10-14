@@ -96,6 +96,7 @@ const LabRecipes = (() => {
       if (kind === 'frame') { diffNow(); if (data.id) push({ k: 'frame', id: data.id, ...(data.id === 'custom' && data.w ? { w: data.w, h: data.h } : {}) }); return; }
       if (kind === 'formats') { if ((data.formats || []).length) push({ k: 'formats', formats: data.formats.slice(0, 8) }); return; }
       if (kind === 'export') { if (data.set) push({ k: 'export', set: { ...data.set } }); return; }
+      if (kind === 'cam') { if (Array.isArray(data.moves)) push({ k: 'cam', moves: JSON.parse(JSON.stringify(data.moves)) }); return; } // (round 40, labcamera)
       if (kind === 'trigger') { diffNow(); if (data.preset) push({ k: 'trigger', name: String(data.name || 'Preset'), preset: JSON.parse(JSON.stringify(data.preset)) }); return; }
       diffSoon(); // sliders, layers, links, the palette: compared with the scene as it was (one step per change)
     },
@@ -313,6 +314,7 @@ const LabRecipes = (() => {
         else HK().ctlOf?.(m.layer.id)?.link?.(m.ctl.key, C.linkFor(s, m.ctl));
         return null;
       }
+      case 'cam': if (typeof LabCamera === 'undefined') return '🎥 isn\'t loaded'; return LabCamera.setAll(s.moves, { rel: true, label: '🎥 Camera moves (recipe)' }); // (round 40, labcamera)
       default: return 'an unknown step';
     }
   }

@@ -520,6 +520,7 @@ function instrument(renderFn) {
     if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; return; }
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
     camera = editCamera(this, scene, camera);
+    const cmBack = EL?.props.camMoves?.length && !this.__helper && !edit.on ? cmRender(this, scene, camera, EL) : null; // (round 40 "labcamera": its camera moves, under the view)
     const lvBack = EL && mode === 'sketch' && !this.__helper ? lvRender(this, scene, camera, EL) : null; // (round 34 "labgestures": the view you moved to)
     if (this.shadowMap?.enabled && scene?.isObject3D) adShadows(this, scene);
     // adaptive resolution (see adaptQuality): the sketch's own pixel ratio × the current quality
@@ -532,13 +533,13 @@ function instrument(renderFn) {
       this.__q = q;
       this.__inQ = true; try { this.setPixelRatio(this.__basePR * q); } finally { this.__inQ = false; }
     }
-    if (paceSkip(this, scene, camera, EL)) { lvBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
+    if (paceSkip(this, scene, camera, EL)) { lvBack?.(); cmBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
     PACE.drawn += 1; PACE.lastDraw = frameTick;
     const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
     // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
     const rfBack = RF.on && !this.__helper ? rfApply(camera) : null; // (round 33, multiformat) a format's pan / zoom
-    try { renderFn.call(this, scene, camera); } finally { rfBack?.(); camBack?.(); lvBack?.(); }
+    try { renderFn.call(this, scene, camera); } finally { rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     frameMs = realNow() - t0;
     frameWork += frameMs; frameCalls += this.info?.render?.calls || 0;
@@ -3186,6 +3187,94 @@ function lvCommand(m) {
   post({ type: 'view-state', cmd: m.cmd, seq: LV.seq, layer: L?.id || null, ...r });
   return r;
 }
+
+// ---------- 🎥 Camera moves (round 40, labcamera: tools/three-camera-core.js, tools/three-camera.js) ----------
+// A layer's props.camMoves (push in, orbit, dolly zoom, crane, shake, whip pan, drift, punch-in on the beat, from one
+// view to another) move its own 3D camera (the same one the look-around gestures move, found the same way) for each of
+// its renders and put it back after, like the gestures' view, which goes on top. The offset comes from the clock's time
+// alone (keyTime: the song / the scene's own timeline, a sequence's or an export's program time), and a punch from the
+// song's hits (beatlink's sources), so a render steps to the same pictures every time. The math arrives as source the
+// first time a move does (globalThis.camcore). Nothing runs for layers without moves.
+const CM = { want: null, applied: 0, pose: new Map() };
+function cmReady(punch = false) {
+  if (punch) blReady();
+  if (globalThis.camcore) return true;
+  CM.want ||= loadLib('camcore').catch(() => { CM.want = null; });
+  return false;
+}
+// an export / sequence frame waits for the math when its layers have moves (never a first frame without them)
+async function cmWait() {
+  const Ls = [...layers.values()].filter((L) => L.props.camMoves?.length);
+  if (!Ls.length) return;
+  const punch = Ls.some((L) => L.props.camMoves.some((m) => m.kind === 'punch'));
+  if (!cmReady(punch)) await CM.want;
+  if (punch && !globalThis.beatlink) await BL.want;
+}
+// seconds since a band's last hit on the song's clock (beatlink's sources: your markers, else the song's analysis)
+function cmSince(band) {
+  if (!blReady()) return null;
+  blFresh();
+  const t = blTime(); const h = blSrc(band).hit(t);
+  return h && Number.isFinite(h.at) ? t - h.at : null;
+}
+function cmRender(r, scene, camera, EL) {
+  if (!lvOrbitable(camera) || r.getRenderTarget?.()) return null;
+  if (EL.lvCamGen !== EL.gen) { EL.lvCam = camera; EL.lvCamGen = EL.gen; } // (the same main camera the gestures use)
+  if (camera !== EL.lvCam) return null;
+  const moves = EL.props.camMoves;
+  if (!cmReady(moves.some((m) => m.kind === 'punch'))) return null;
+  const O = globalThis.camcore.at(moves, keyTime(EL), { since: cmSince });
+  const key = O ? `${O.yaw}|${O.pitch}|${O.s}|${O.px}|${O.py}|${O.pz}|${O.lyaw}|${O.lpitch}|${O.roll}|${O.tk}` : '';
+  if (EL.cmKey !== key) { EL.cmKey = key; PACE.poke += 1; } // (labpace: the picture changes now)
+  if (!O) { CM.pose.delete(EL.id); return null; }
+  return cmApply(camera, O, EL.id);
+}
+const cmT = {};
+function cmApply(cam, O, id) {
+  if (!cmT.R) { for (const k of ['R', 'Ry', 'Rp', 'Q', 'L']) cmT[k] = new THREE.Quaternion(); for (const k of ['pan', 'T', 'P', 'sc', 'Y', 'X', 'Z']) cmT[k] = new THREE.Vector3(); cmT.M = new THREE.Matrix4(); cmT.pi = new THREE.Matrix4(); cmT.Y.set(0, 1, 0); cmT.X.set(1, 0, 0); cmT.Z.set(0, 0, 1); }
+  const B = lvPose(cam); const d = O.d;
+  // the gestures' offset (lvApply): a turn around the pivot d in front, the distance × s, the pivot shifted
+  cmT.Rp.setFromAxisAngle(B.r, O.pitch); cmT.Ry.setFromAxisAngle(cmT.Y, O.yaw); cmT.R.copy(cmT.Ry).multiply(cmT.Rp);
+  cmT.T.copy(B.P).addScaledVector(B.f, d);
+  cmT.pan.set(0, 0, 0).addScaledVector(B.r, O.px).addScaledVector(B.u, O.py).addScaledVector(B.f, O.pz).applyQuaternion(cmT.R);
+  cmT.T.add(cmT.pan);
+  const persp = !cam.isOrthographicCamera;
+  cmT.P.copy(B.f).applyQuaternion(cmT.R).multiplyScalar(-d * (persp ? O.s : 1)).add(cmT.T);
+  cmT.Q.copy(cmT.R).multiply(B.Q);
+  // then a turn in place: about the world's up (a pan, a whip), the camera's own right (a tilt) and its view (a roll)
+  if (O.lyaw) cmT.Q.premultiply(cmT.L.setFromAxisAngle(cmT.Y, O.lyaw));
+  if (O.lpitch) cmT.Q.multiply(cmT.L.setFromAxisAngle(cmT.X, O.lpitch));
+  if (O.roll) cmT.Q.multiply(cmT.L.setFromAxisAngle(cmT.Z, O.roll));
+  const p0 = cam.position.clone(); const q0 = cam.quaternion.clone(); const s0 = cam.scale.clone(); const z0 = cam.zoom; const f0 = cam.fov;
+  cmT.M.compose(cmT.P, cmT.Q, B.S);
+  if (cam.parent) { cmT.pi.copy(cam.parent.matrixWorld).invert(); cmT.M.premultiply(cmT.pi); }
+  cmT.M.decompose(cam.position, cam.quaternion, cmT.sc);
+  let proj = false;
+  if (persp && O.tk !== 1 && f0) { cam.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(f0) / 2) * O.tk)); proj = true; } // (the dolly zoom's lens)
+  if (!persp && O.s !== 1) { cam.zoom = z0 / O.s; proj = true; }
+  if (proj) cam.updateProjectionMatrix();
+  cam.updateMatrixWorld(true);
+  CM.applied += 1; CM.pose.set(id, [cmT.P.x, cmT.P.y, cmT.P.z, cam.fov ?? cam.zoom]); // (for the checks)
+  return () => { cam.position.copy(p0); cam.quaternion.copy(q0); cam.scale.copy(s0); if (proj) { if (persp) cam.fov = f0; else cam.zoom = z0; cam.updateProjectionMatrix(); } cam.updateMatrixWorld(true); };
+}
+// the layer the hub's camera moves go on: the one asked for when it has a camera, else the top one with a camera
+function cmLayer(id) {
+  if (mode !== 'sketch' || SQ.on || XP_PAGE || edit.on) return null;
+  const list = lvLayers();
+  return list.find((L) => L.id === id) || list[0] || null;
+}
+// the hub asks: info (the layer, its pivot distance), grab (the look-around view now, for "from this view to that")
+function cmCommand(m) {
+  const L = cmLayer(m.layer);
+  const out = { type: 'cam-info', req: m.req, cmd: m.cmd };
+  if (!L) { post({ ...out, ok: false, why: mode !== 'sketch' || SQ.on ? 'Not while the sequence plays' : edit.on ? 'Not in the scene editor' : 'This scene has no 3D camera to move' }); return; }
+  const V = LV.views.get(L.id);
+  const d = V && V.L === L ? V.d : lvPivot(L);
+  const view = V && V.L === L ? Object.fromEntries(LV.core.KEYS.map((k) => [k, V.t[k]])) : { yaw: 0, pitch: 0, s: 1, px: 0, py: 0, pz: 0 };
+  if (m.cmd === 'grab' && m.reset && V) LV.views.delete(L.id); // (the end view is set: the move plays it, not the look-around view)
+  post({ ...out, ok: true, layer: L.id, name: L.props.name || L.id, d: Math.round(d * 1e4) / 1e4, view, own: L.lvOwn === L.gen, orbit: Boolean(lvOrbitOf(L)) });
+}
+window.__labCam = { state: () => ({ lib: Boolean(globalThis.camcore), applied: CM.applied, pose: Object.fromEntries(CM.pose), layers: [...layers.values()].filter((L) => L.props.camMoves?.length).map((L) => ({ id: L.id, n: L.props.camMoves.length, cam: L.lvCamGen === L.gen })) }) };
 
 // Named controls: const P = tweak({ speed: [1, 0, 5], glow: { value: 1, min: 0, max: 3, label: 'Glow', group: 'Look', onChange }, tint: '#ff3cac', wire: false })
 globalThis.tweak = (spec = {}) => {
@@ -10789,6 +10878,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   await Promise.all([...SQ.mounted.values()].filter((st) => st.video && T >= st.g.start - 1e-6 && T < st.g.end).map((st) => sqSeekVideo(st, T)));
   sqApply(T, { full: true });
   await blWait(); // (round 38, beatlink) links on its sliders: the math is here before the first frame
+  await cmWait(); // (round 40, labcamera) camera moves on its layers: the same
   for (const L of layers.values()) { applySliderKeys(L); applyLinks(L); }
   // the layers draw this frame (a group that just started gets a second pass: its first callback may only set up)
   const fresh = [...SQ.mounted.values()].some((st) => st.fresh) || PC.fresh;
@@ -11317,6 +11407,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'eval') runEval(msg);
   if (msg.type === 'edit') editCommand(msg);
   if (msg.type === 'view') lvCommand(msg); // (round 34 "labgestures") Z frames, Shift+Z resets, keep this view
+  if (msg.type === 'cam') cmCommand(msg); // (round 40, labcamera) the camera moves' layer, its pivot, the view now
   if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
   if (msg.type === 'dpr') { if (globalThis.__labSetDpr?.(msg.value)) globalThis.__labDprSync?.(); return; } // (round 37, labboot) fit ⇄ exact size, in this page

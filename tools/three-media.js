@@ -277,6 +277,10 @@ const ThreeMedia = (() => {
     // Synchronous hooks for the footage side (tools/three-frames.js, round 8): seek / snap / keys / drawing / time text
     // on exact frames when a video is loaded. Unset, the player behaves as before.
     const hooks = {};
+    // (round 40, labcamera) more modules drawing on / dragging on the waveform beside the footage side: addHooks({ drawOver,
+    // pointerDown, cursorAt, waveItems, undo, frameKey }), each asked after `hooks`
+    const xhooks = [];
+    const xhook = (name, ...a) => { for (const x of xhooks) { const r = x[name]?.(...a); if (r) return r; } return null; };
     const emit = (ev, data) => { for (const fn of listeners[ev] || []) { try { fn(data); } catch (err) { console.error(err); } } };
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     const sep = () => el('span', { class: 'mb-sep' });
@@ -829,7 +833,7 @@ const ThreeMedia = (() => {
     function undoMap() {
       const prev = mapUndo.pop();
       if (!prev) return;
-      if (prev.hook) { hooks.undo?.(prev.hook); paint(); return; }
+      if (prev.hook) { hooks.undo?.(prev.hook); for (const x of xhooks) x.undo?.(prev.hook); paint(); return; }
       if (typeof prev === 'object') {
         const { id, prop, keys } = prev.lane;
         autoSel = null;
@@ -1582,7 +1586,7 @@ const ThreeMedia = (() => {
       return [W, h, devicePixelRatio, scroll.on ? 'strip' : `${v0()}|${span()}`, D(), anaVer, st.path, waveRGB, scroll.on, JSON.stringify(gridView), snapMode, bpmNow(), G()?.anchor, bpbNow(), dIdx(),
         LANES.map((l) => sumOf(map.marks[l.id])).join(), map.cues.map((c) => `${c.t}${c.name}${c.looks?.length || 0}`).join(), region ? `${region.a}|${region.b}|${locked}|${st.loop}` : '', map.trim ? `${map.trim.a}|${map.trim.b}` : '',
         selected ? JSON.stringify(selected) : '', notes.map((n) => `${n.t}${n.done}`).join(), JSON.stringify(tracks), autoSel ? `${autoSel.id}|${autoSel.prop}|${[...autoSel.idx].join(',')}` : '',
-        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', lanesMoving ? Math.round(now() * 20) : '', hooks.frameKey?.() || ''].join('~');
+        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', lanesMoving ? Math.round(now() * 20) : '', hooks.frameKey?.() || '', ...xhooks.map((x) => x.frameKey?.() || '')].join('~');
     }
     let lastMiniKey = '';
     let lastFull = 0;
@@ -2062,6 +2066,7 @@ const ThreeMedia = (() => {
         for (const [x, d] of [[xa, 1], [xb, -1]]) if (x >= -2 && x <= w + 2) { g.fillRect(Math.round(x) - (d < 0 ? 2 : 0), 0, 2, h); g.fillRect(Math.round(x) - (d < 0 ? 8 : 0), 0, 8, 2); g.fillRect(Math.round(x) - (d < 0 ? 8 : 0), h - 2, 8, 2); }
       }
       hooks.drawOver?.(g, { X, s0, sp, w, h, top, H, LT, ruler: RULER });
+      for (const x of xhooks) x.drawOver?.(g, { X, s0, sp, w, h, top, H, LT, ruler: RULER });
       // notes on moments: green pins on the ruler (grey once done)
       for (const n of notes) {
         if (n.t < s0 || n.t > s0 + sp) continue;
@@ -2327,7 +2332,7 @@ const ThreeMedia = (() => {
       if (typeof Usage !== 'undefined') Usage.track(`Timeline › canvas: ${hit.zone}${e.ctrlKey ? ' (draw)' : e.shiftKey ? ' (select)' : ''}`, { area: 'Timeline' });
       canvas.setPointerCapture(e.pointerId);
       // footage: a cut line under the pointer drags (tools/three-frames.js decides; it commits once on release)
-      const hd = (hit.zone === 'wave' || hit.zone === 'ruler') && !e.shiftKey && !e.altKey && !e.ctrlKey && !locked ? hooks.pointerDown?.(e, tt, { xOf }) : null;
+      const hd = (hit.zone === 'wave' || hit.zone === 'ruler') && !e.shiftKey && !e.altKey && !e.ctrlKey && !locked ? hooks.pointerDown?.(e, tt, { xOf }) || xhook('pointerDown', e, tt, { xOf }) : null;
       if (hd) {
         dragging = { kind: 'hook' };
         const mv = (ev) => { hd.move(Math.max(0, Math.min(D(), timeAt(ev)))); draw(); };
@@ -2818,7 +2823,7 @@ const ThreeMedia = (() => {
         track: hit.key ? `Keyframe at ${fmtMs(hit.key.t)}: click to jump there · drag to move · double-click to delete · right-click for Ease / Linear / Hold` : `${hit.track?.name || 'Layer'}: drag the bar to move it in time · drag its ends to trim · double-click to fit it to the loop (again: whole song)`,
       };
       setProp(canvas, 'title', `${hooks.hoverText?.(tt) ?? fmtMs(tt)}\n${tips[hit.zone]}`);
-      const cur = hooks.cursorAt?.(tt, hit, xOf) || '';
+      const cur = hooks.cursorAt?.(tt, hit, xOf) || xhook('cursorAt', tt, hit, xOf, e) || '';
       if (canvas.style.cursor !== cur) canvas.style.cursor = cur;
       // a hairline with the time under the mouse (and the bar · beat when there's a grid)
       const x = xOf(tt);
@@ -2836,7 +2841,7 @@ const ThreeMedia = (() => {
       const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
       const bar = snapStep('bar', G(), bpmNow()); let a = snapTime(t, 'bar', G(), beats(), dIdx()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar;
       const sec = st.analysis?.sections.find((x) => t >= x.start && t < x.end);
-      const extra = hooks.waveItems?.(t) || [];
+      const extra = [...(hooks.waveItems?.(t) || []), ...xhooks.flatMap((x) => x.waveItems?.(t) || [])];
       menuAt(anchor, [
         ...extra, ...(extra.length ? [null] : []),
         ['Play from here', fmtMs(t), () => { seek(t); toggle(true); }],
@@ -2888,6 +2893,7 @@ const ThreeMedia = (() => {
       load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks, setNotes, setSize, restoreSize,
       // ---------- for the footage side (tools/three-frames.js) ----------
       hooks,
+      addHooks: (o) => { if (!xhooks.includes(o)) xhooks.push(o); draw(); }, // (round 40, labcamera)
       redraw: () => draw(), paintAll: () => paint(),
       pushUndo(entry) { mapUndo.push({ hook: entry }); if (mapUndo.length > 80) mapUndo.shift(); paint(); },
       // J / L shuttle speeds (2×, 4×, 8×) outside the speed menu; 1 goes back to normal

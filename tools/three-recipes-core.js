@@ -11,6 +11,7 @@
 //   layer     a layer added (from the gallery, or any other way): { name, code, props, from }
 //   slider    a slider moved: { on: ref, key, label, group, type, v, min, max, options }
 //   link      ♪ a slider's music link: { on: ref, key, label, group, min, max, link (null: off) }
+//   cam       🎥 the scene's camera moves (round 40, labcamera): { moves } with times as fractions of the scene's length
 // Each step has a stable `sid`. A layer reference (`on`) is { made: sid, n } when the layer was made by an earlier
 // step of the recipe, else { name, sel, filter } (the layer's name, whether it was the selected one, its filter type).
 // On another scene a slider step finds its slider by key, then by label, then by ROLE (glow ≈ bloom, speed ≈ tempo…,
@@ -24,7 +25,7 @@ const RecipeCore = (() => {
   const FORMAT = 'hearth-recipe';
   const VERSION = 1;
   const LIMITS = { steps: 300, name: 80, code: 512 * 1024, colors: 16 };
-  const KINDS = ['fx', 'look', 'palette', 'trigger', 'frame', 'formats', 'export', 'autopolish', 'lookmatch', 'layer', 'slider', 'link'];
+  const KINDS = ['fx', 'look', 'palette', 'trigger', 'frame', 'formats', 'export', 'autopolish', 'lookmatch', 'layer', 'slider', 'link', 'cam'];
   const HEX = /^#[0-9a-f]{6}$/i;
   const clone = (x) => JSON.parse(JSON.stringify(x ?? null));
   const clip = (s, n) => String(s ?? '').slice(0, n);
@@ -121,7 +122,7 @@ const RecipeCore = (() => {
       }
       run = new Map();
       const last = out.filter(Boolean).pop();
-      if (last && last.k === s.k && ['frame', 'palette', 'export', 'formats'].includes(s.k)) out[out.lastIndexOf(last)] = null;
+      if (last && last.k === s.k && ['frame', 'palette', 'export', 'formats', 'cam'].includes(s.k)) out[out.lastIndexOf(last)] = null;
       out.push(s);
     }
     return out.filter(Boolean);
@@ -155,10 +156,11 @@ const RecipeCore = (() => {
       case 'layer': return `${s.from === 'gallery' ? 'Layer from the gallery' : 'Layer'}: ${s.name}`;
       case 'slider': return `"${s.label}" → ${fmtV(s.v)}${onText(s.on)}`;
       case 'link': return `♪ "${s.label}" ${linkText(s.link)}${onText(s.on)}`;
+      case 'cam': return (s.moves || []).length ? `Camera moves: ${s.moves.map((m) => (typeof CamCore !== 'undefined' ? CamCore.name(m) : m.kind)).join(', ')}` : 'No camera moves';
       default: return 'Step';
     }
   }
-  const ICON = { fx: '✦', look: '◑', palette: '🎨', trigger: '⚡', frame: '▭', formats: '▦', export: '⇪', autopolish: '✨', lookmatch: '🎨', layer: '＋', slider: '⇆', link: '♪' };
+  const ICON = { fx: '✦', look: '◑', palette: '🎨', trigger: '⚡', frame: '▭', formats: '▦', export: '⇪', autopolish: '✨', lookmatch: '🎨', layer: '＋', slider: '⇆', link: '♪', cam: '🎥' };
   const icon = (s) => ICON[s?.k] || '•';
   function summary(r) {
     const steps = r?.steps || [];
@@ -274,6 +276,7 @@ const RecipeCore = (() => {
     if (o.k === 'layer' && !o.code) return null;
     if (o.k === 'fx' && !(o.fx?.kind && o.fx?.id != null)) return null;
     if ((o.k === 'slider' || o.k === 'link') && !o.key) return null;
+    if (o.k === 'cam' && !Array.isArray(o.moves)) return null;
     if (o.k === 'palette') { o.colors = (o.colors || []).filter((c) => HEX.test(c)).slice(0, LIMITS.colors); if (!o.colors.length) return null; }
     if (o.on && typeof o.on !== 'object') delete o.on;
     if (o.name != null) o.name = clip(o.name, 120);
