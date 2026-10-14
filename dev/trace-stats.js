@@ -118,6 +118,7 @@ function stats(events, opts = {}) {
       // (round 41, smooth41) script time per file (JS entries: listeners, timers, rAF, idle callbacks, observers) and
       // what fired by itself (timers, idle callbacks): the per-feature cost of a stretch
       files: (() => { const by = {}; for (const e of fcalls) { if (e.ts < s.from || e.ts >= s.to) continue; const k = e.args.data.url.split('/').pop().split('?')[0] || '?'; const o = by[k] ||= { ms: 0, n: 0 }; o.ms += e.dur / 1000; o.n += 1; } return Object.fromEntries(Object.entries(by).sort((x, y) => y[1].ms - x[1].ms).slice(0, 14).map(([k, v]) => [k, `${r1(v.ms)}ms/${v.n}`])); })(),
+      forcedFiles: (() => { const by = {}; for (const e of fo) { const m = /([\w.-]+\.js):\d+/.exec(e.__by || ''); const k = m ? m[1] : '?'; by[k] = (by[k] || 0) + 1; } return by; })(),
       fired: (() => { const n = { timer: 0, idle: 0, raf: 0 }; for (const e of X) { if (e.ts < s.from || e.ts >= s.to) continue; if (e.name === 'TimerFire') n.timer++; else if (e.name === 'FireIdleCallback') n.idle++; else if (e.name === 'FireAnimationFrame') n.raf++; } return n; })(),
     };
   }

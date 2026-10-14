@@ -40,13 +40,12 @@ if (!H.agents().some((a) => a.dock === 'three' && a.mode === 'native')) {
 }
 activate('tool:three'); await wait(400);
 const lab = await ThreeLab.cmd();
-try { store.set('three.twLayout', 'sliders'); } catch { /* default layout */ }
 const SCENE = `import * as THREE from 'three';
-const P = tweak({ turn: { value: 0.5, min: 0, max: 1, step: 0.001, label: 'Turn', group: 'Motion' }, glow: { value: 0.4, min: 0, max: 1, label: 'Glow', group: 'Look' }, tint: { value: '#7c5cff', label: 'Tint', group: 'Look' } });
+const P = tweak({ turn: { value: 100, min: 0, max: 200, step: 1, label: 'Turn', group: 'Motion' }, glow: { value: 0.4, min: 0, max: 1, label: 'Glow', group: 'Look' }, tint: { value: '#7c5cff', label: 'Tint', group: 'Look' } });
 const renderer = new THREE.WebGLRenderer({ antialias: false }); renderer.setPixelRatio(1); renderer.setSize(innerWidth, innerHeight); document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene(); scene.background = new THREE.Color('#0b0d12'); const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); camera.position.z = 6;
 const mesh = new THREE.Mesh(new THREE.TorusKnotGeometry(1.2, 0.35, 160, 24), new THREE.MeshNormalMaterial()); scene.add(mesh);
-renderer.setAnimationLoop((t) => { mesh.rotation.x = t / 900; mesh.rotation.z = P.turn * 6.283; renderer.render(scene, camera); });`;
+renderer.setAnimationLoop((t) => { mesh.rotation.x = t / 900; mesh.rotation.z = P.turn / 200 * 6.283; renderer.render(scene, camera); });`;
 await ThreeLab.director.newSketch('smooth41 scene', SCENE, 1);
 await wait(2000);
 
@@ -117,6 +116,21 @@ await seg('replies', async () => {
   out.replies = await a11yWork(() => watchPage(async () => { for (let i = 0; i < 3; i++) { await (streamIn(claude.id, `short answer ${i}`)); await wait(150); } })); delete out.replies.by;
 });
 
+// ⋯ AI setup and ◎ missions opened and closed with the mouse ×3 each: a11y moves focus into each and back after (reported:
+// one forced style each time, the price of focus going in; measured in round 41 and left)
+const shown = (n) => n && n.getBoundingClientRect().width > 0;
+const mid = (n) => { const r = n.getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)]; };
+const click = async (x, y) => { await press(x, y); await release(x, y); };
+await seg('overlays', async () => {
+  const optBtn = () => [...v.root.querySelectorAll('.native-head button')].find((n) => (n.getAttribute('aria-label') === 'Chat options' || n.textContent.trim() === '⋯') && shown(n));
+  for (let i = 0; i < 3; i++) {
+    await click(...mid(optBtn())); await until(() => document.querySelector('.opt-sheet'), 4000); await wait(300);
+    await click(...mid(optBtn())); await wait(300);
+  }
+  const ms = v.root.querySelector('.ms-btn');
+  if (ms) for (let i = 0; i < 3; i++) { await click(...mid(ms)); await until(() => document.querySelector('.ms-pop'), 3000); await wait(300); await click(...mid(ms)); await wait(300); }
+});
+
 // a tip that waits for another place (the board): the queue looks again while it waits
 let hintWaits = false;
 if (window.Hints) { Hints.offer({ id: `s41-wait-${Date.now()}`, place: 'board', kind: 'tip', ttl: 60000, show: () => null }).catch(() => {}); hintWaits = true; }
@@ -143,16 +157,14 @@ await seg('lab-slider', async () => {
 await seg('lab-stream', async () => {
   const dir = H.agents().find((a) => a.dock === 'three' && a.mode === 'native');
   if (!dir) { out.labNote = 'no director'; return; }
-  // the panel back on its default layout (knobs for decimals), as the owner has it
-  const sel = document.querySelector('.tw-layoutsel');
-  if (sel && sel.value !== 'auto') { sel.value = 'auto'; sel.dispatchEvent(new Event('change')); }
-  out.layout = sel ? sel.value : 'no layout select';
   Tools.syncDocks?.(); Native.newChat(dir.id); await wait(300);
   out.streamLab = await a11yWork(() => streamIn(dir.id, 'long please'));
   delete out.streamLab.by;
 });
 // the orb playing (its knobs animate): what the page writes per second
 let playBy = {};
+try { if (lab.player && !lab.player.playing) lab.player.toggle?.(true); await until(() => lab.player?.playing, 6000); await wait(800); } catch { /* reported by the guard */ }
+out.orbPlaying = Boolean(lab.player?.playing);
 await seg('lab-playing', async () => { out.labPlaying = await watchPage(() => wait(3000)); playBy = out.labPlaying.by; delete out.labPlaying.by; });
 out.knobs = document.querySelectorAll('.tw-knob').length;
 await seg('idle-lab', () => wait(3000));
@@ -183,6 +195,7 @@ out.guard = {
   hintsIdleN: fileN(S['idle-hint'], 'hints.js'), hintsIdleMs: fileMs(S['idle-hint'], 'hints.js'), hintWaits,
   idleChatTimers: S['idle-chat']?.fired.timer ?? null, idleLabTimers: S['idle-lab']?.fired.timer ?? null,
   repliesNativeMs: fileMs(S.replies, 'native.js'),
+  a11yForcedOverlays: S.overlays?.forcedFiles?.['a11y.js'] || 0, forcedOverlays: S.overlays?.forced.n ?? null,
   a11yLookedStream: out.streamChat?.a11yLooked ?? null, a11yLookedReplies: out.replies?.a11yLooked ?? null, a11yNamedReplies: out.replies?.a11yNamed ?? null,
   // writes of what didn't change while the orb plays: the knobs' code-value notch, and the hints queue's looks
   notchWrites: playBy['attributes:transform:line.kn-notch'] || 0, knobTextWrites: playBy['childList:button.tw-kval'] || 0, knobArcWrites: playBy['attributes:stroke-dasharray:circle.kn-arc'] || 0,
