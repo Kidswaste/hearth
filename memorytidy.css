@@ -1,0 +1,22 @@
+/* Tidy memory (round 38, memorytidy.js): the before / after list in its dialog */
+.memtidy { width: min(640px, calc(100vw - 40px)); }
+.memtidy .mt-head { margin: 0 0 2px; }
+.memtidy .mt-per { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.memtidy .mt-per:empty { display: none; }
+.memtidy .mt-list { display: flex; flex-direction: column; gap: 2px; max-height: min(56vh, 520px); overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; }
+.memtidy .mt-row { display: grid; grid-template-columns: auto 74px minmax(0, 1fr); gap: 8px; align-items: start; padding: 6px 4px; border-radius: 7px; cursor: pointer; }
+.memtidy .mt-row:hover { background: var(--hover); }
+.memtidy .mt-row input { margin-top: 3px; accent-color: var(--accent); }
+.memtidy .mt-kind { font-size: 11.5px; color: var(--muted); padding-top: 2px; }
+.memtidy .mt-update .mt-kind, .memtidy .mt-drop .mt-kind { color: var(--fh-orange, var(--accent)); }
+.memtidy .mt-ai .mt-kind::before { content: '✦ '; color: var(--fh-ai, var(--accent)); }
+.memtidy .mt-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; line-height: 1.35; }
+.memtidy .mt-before s { color: var(--muted); }
+.memtidy .mt-body small { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.memtidy .mt-after b { color: var(--accent); font-weight: 600; }
+.memtidy .mt-gone { color: var(--muted); font-style: italic; }
+.memtidy small.mt-why { margin-left: 0; }
+.memtidy .dialog-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.memtidy .dialog-actions .spacer { flex: 1; }
+.memtidy .mt-smart-note { color: var(--muted); font-size: 11.5px; }
+.memtidy .mt-smart-note:empty { display: none; }

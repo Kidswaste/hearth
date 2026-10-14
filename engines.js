@@ -444,21 +444,31 @@ function buildPrompt(agent, session = null) {
 function memoryFor(agent, session) {
   if (agent.memoryOff) return ''; // (round 33) a mission's helper (send: options.helper)
   const memory = getMemory();
-  const notes = [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
+  // (round 38, memorytidy) + the place scopes this AI works in (Lab facts only for the Three Directors), fixed order
+  const notes = CtxCore ? CtxCore.memoryNotes(memory, agent) : [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   if (!notes.length || (CtxCore ? CtxCore.memoryRelevant(agent, memory) : agent.memoryWhenRelevant)) { if (session) delete session.mem; return ''; }
   const now = notes.join('\n');
   if (!session) return now;
   const was = typeof session.mem === 'string' ? session.mem : null;
-  if (was !== null && session.id && onlyGrew(was, now)) return was;
+  if (was !== null && session.id && onlyGrew(was, now, memory.replaced)) return was;
   session.mem = now;
   return now;
 }
-// every line of the older notes is still there (anywhere): only facts were added
-function onlyGrew(was, now) {
+// every line of the older notes is still there (anywhere): only facts were added.
+// (round 38, memorytidy) replaced: [{ from, to }] facts the AI itself updated with <remember> (a newer fact replaced a
+// duplicate or contradicted one, memorytidy-core.js saveFacts): the old line may be gone when its newer one is there,
+// so a fact updated mid-chat keeps this chat's prompt as it was, like a fact added (the AI that saved it has it).
+function onlyGrew(was, now, replaced = []) {
   if (was === now) return true;
   const have = new Map();
   for (const l of now.split('\n')) have.set(l, (have.get(l) || 0) + 1);
-  for (const l of was.split('\n')) { const n = have.get(l) || 0; if (!n) return false; have.set(l, n - 1); }
+  const swapped = new Map((Array.isArray(replaced) ? replaced : []).filter((r) => r && r.from && r.to).map((r) => [String(r.from).trim(), String(r.to).trim()]));
+  for (const l of was.split('\n')) {
+    const n = have.get(l) || 0;
+    if (n) { have.set(l, n - 1); continue; }
+    const to = swapped.get(l.trim());
+    if (!to || !now.split('\n').some((x) => x.trim() === to)) return false;
+  }
   return true;
 }
 

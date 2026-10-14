@@ -52,7 +52,7 @@ const ChatMemory = (() => {
     if (!agent) return [];
     if (!memCache || Date.now() - memAt > 10000) { memCache = await window.hub.getMemory().catch(() => ({ agents: {} })); memAt = Date.now(); }
     if (!C.memoryRelevant(agent, memCache)) return [];
-    const lines = [memCache.shared, memCache.agents?.[agent.id]].flatMap((m) => String(m || '').split('\n')).map((l) => l.trim().replace(/^[-*•]\s+/, '')).filter(Boolean);
+    const lines = C.memoryNotes(memCache, agent).flatMap((m) => String(m || '').split('\n')).map((l) => l.trim().replace(/^[-*•]\s+/, '')).filter(Boolean);
     return lines.map((t) => ({ t, scope: 'agent', ...(C.standing(t) ? { always: true } : {}) }));
   }
   // what always-on memory costs this agent per message (the system prompt's memory part, engines.js)
@@ -60,7 +60,7 @@ const ChatMemory = (() => {
     if (!agent) return 0;
     const m = await window.hub.getMemory().catch(() => null);
     if (C.memoryRelevant(agent, m)) return 0;
-    const notes = C.memoryNotes(m, agent.id);
+    const notes = C.memoryNotes(m, agent); // (round 38, memorytidy) its places count
     return notes.length ? C.tok(C.memoryBlock(notes)) : 0;
   }
 
