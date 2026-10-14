@@ -200,7 +200,26 @@ await say('/move-with glow kick pulse from 0.2 to 1.8');
   const k = hits.find((t) => t > 5);
   let v = 0;
   await until(async () => { c.seek(k + 0.004); await wait(150); v = Number(await ev('__slider("glow")')); return v > 1.6; }, 10000);
-  step('…and it still pulses there', v > 1.6, r3(v));
+  const diag = v > 1.6 ? null : { page: await ev('JSON.stringify({ lib: Boolean(globalThis.beatlink), t: audio.time, kicks: audio.analysis?.onsets?.kick?.length ?? null, loaded: audio.loaded })'), link: ThreeAudio.lab.selCtl()?.binding?.('glow'), song: c.player.path, loaded: c.player.loaded, live: ThreeAudio.lab.selCtl()?.controls?.().find((q) => q.key === 'glow') };
+  step('…and it still pulses there', v > 1.6, diag ? { v: r3(v), diag } : r3(v));
+  // (round 38 merge) the race behind a flaky "…still pulses there": a value computed at a playhead time before the song's
+  // hits arrived stayed cached for that time (a paused scene reads the same time every frame), so it never caught up.
+  // Made deterministic: paused just after a beat, the grid moves under it (new beats, same playhead): the value must follow.
+  {
+    const ctl4 = ThreeAudio.lab.selCtl();
+    const keep = ctl4.binding('glow');
+    ctl4.link('glow', { ...keep, band: 'beat', how: 'pulse' });
+    c.seek(6.2); await wait(300);
+    const bt = Number(await ev('audio.time - audio.since("beat")')); // the grid's beat (yours or the analysis')
+    c.seek(bt + 0.004); await wait(400);
+    const onBeat = Number(await ev('__slider("glow")'));
+    c.nudgeGrid(60); await wait(500); // the beats move 60 ms later: the playhead is now just before one
+    const moved = Number(await ev('__slider("glow")'));
+    c.nudgeGrid(-60); await wait(500);
+    const back = Number(await ev('__slider("glow")'));
+    step('the grid changes under a paused playhead: the value follows at once (nothing stale from before)', onBeat > 1.6 && moved < 0.4 && back > 1.6, { onBeat: r3(onBeat), moved: r3(moved), back: r3(back) });
+    ctl4.link('glow', keep);
+  }
   await Lazy.load('packs');
   const pd = await LabPacks.sceneData(sceneId);
   step('in the scene\'s pack (.hearthpack)', pd.extras?.bindings?.['k:glow']?.how === 'pulse');

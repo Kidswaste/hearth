@@ -93,6 +93,15 @@ Count: 31 upgrades.
 - `dev/run-checks.js`: the unit test, `beatlink` in `lab:`, and a `beatlink` group.
 - `dev/checks/stems.js`: its ♪ panel step opens the panel through the card.
 
+## Fix after the merge (a flaky "…and it still pulses there")
+The preview caches a link's value per frame time. That cache was keyed on the link and the time only, so a value
+computed before the song's hits / grid / analysis / parts arrived (the bottom of the range) stayed for that time. A
+paused scene reads the same time every frame, so after a scene switch it could stay at the bottom until the playhead
+moved. Now any change of the song, its analysis, beat map, parts, live input or the sequence clears the sources and
+the cache (`blFresh` in tools/three-sandbox.html). New check step, deterministic: paused just after a beat, the grid is
+nudged 60 ms (new beats, same playhead) and the value must follow (it stayed at 1.697 before the fix, 0.201 after);
+5 runs in a row under parallel load (labhub, stems, labaudio) pass.
+
 ## Not done / limits
 - The slider's thumb shows its own value, not the moving one. The band, the knob arc and the meter show the movement.
 - Older curve links (`/react-to`, the curve editor) still use the live analyser's smoothing and are not carried into the Lab sequence / renders. Only links with a "how" are. Picking anything in the card turns an older curve into a link.
