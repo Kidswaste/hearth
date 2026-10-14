@@ -1051,6 +1051,7 @@ const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e)
 // the reply (jams, collaborations, once()) never see it.
 function send({ agent, chatId, session, text, options = {} }, emit, live = null) {
   emit = batched(emit);
+  const base = agent; // the agent as the owner set it up (toolwake.js forgets the sets switched off there)
   // a chat with its own engine (a comp part on Astra while its director runs on Claude, or the reverse): the same
   // agent on that engine, with its tools (Astra directors get the hub servers through -c), the twin's model / effort
   if (options.engine && options.engine !== agent.engine && ENGINES[options.engine]) agent = { ...agent, engine: options.engine, model: undefined, effort: undefined, ...(options.engine === 'codex' ? { hubTools: true } : {}) };
@@ -1080,7 +1081,7 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   if (options.captureTools && !options.lean) agent = { ...agent, captureTools: true };
   // (round 41, toolslim) the AI's opt-in tool sets (board, capture, Adobe, publishing, apps) sleep until it's likely to
   // need them (used this week, named in the message, already in this session): toolwake.js
-  const woke = Wake && agent.id ? Wake.plan(agent, { text, session, keep: options.captureTools ? ['captureTools'] : [] }) : null;
+  const woke = Wake && agent.id ? Wake.plan(agent, { text, session, base, keep: options.captureTools ? ['captureTools'] : [] }) : null;
   if (woke?.sleep.length) agent = { ...agent, ...Object.fromEntries(woke.sleep.map((k) => [k, false])) };
   if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };
   const original = text;

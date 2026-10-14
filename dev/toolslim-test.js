@@ -97,6 +97,8 @@ const DAY = 86400000;
   W.noteTool('c1', 'board · board_vibe', now + 9 * DAY);
   check(!W.plan(ag, { text: 'hi', now: now + 10 * DAY }).sleep.length, 'Codex\'s "board · board_vibe" counts too');
   check(!W.plan({ id: 'c1', captureTools: true }, { text: 'hi', keep: ['captureTools'], now: now + 30 * DAY }).sleep.length, 'a chat\'s own /capture-tools on never sleeps');
+  W.plan({ id: 'c1', boardTools: true }, { text: 'hi', base: { id: 'c1', boardTools: true }, now: now + 40 * DAY }); // Adobe switched off by the owner
+  check(!W._test.log.c1.adobeTools && W.plan(ag, { text: 'hi', base: ag, now: now + 41 * DAY }).sleep.join() === 'boardTools', 'switched off, then on again later: a fresh week (the old date is forgotten)');
   check(W.setOfTool('mcp__apps__apps_do') === 'appsTools' && W.setOfTool('meshy_generate') === 'appsTools' && W.setOfTool('mcp__three__three_eval') === null && W.setOfTool('mcp__chat__chat_do') === null, 'tool names → sets (Lab / chat tools never)');
   for (const [k, yes, no] of [['boardTools', 'like my Pinterest references', 'make the vibe dreamier'], ['captureTools', 'take a screenshot of the Lab', 'make it 9:16 for TikTok'], ['adobeTools', 'send it to Photoshop', 'make it pop'], ['deployTools', 'publish this scene on Vercel', 'make it brighter'], ['appsTools', 'make a 3D model with Meshy', 'use the song']]) {
     check(W.WORDS[k].test(yes) && !W.WORDS[k].test(no), `${k}: "${yes}" wakes it, "${no}" doesn't`);

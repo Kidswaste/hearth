@@ -1073,3 +1073,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ ✦ More › 📜 Recipes › ● Record a recipe (also the toolbar's ⋯, Lab search, ⌘/Ctrl+K): a red chip counts the steps (effects / filters with their settings, looks, palettes, presets, slider moves and ♪ links by name or role, frame size, All formats picks, ✨ polish, 🎨 look match, gallery layers, export settings); ■ Stop names it → data/recipes/ (synced).
 - ✓ Use a recipe…: its steps with what fits this scene and what's skipped (with why); ▶ Use = one undo step (◧ names it); edit (↑ ↓ ✕, rename), several scenes at once, ⇪ pack (kind recipe), delete to the Trash; `/recipe` for the director via three_do run.
 - ○ `node dev/labrecipes-test.js` (unit), `sh dev/run-checks.sh labrecipes`; not yet on the owner's real scenes.
+## ✂ Slimmer tool lists (round 41, toolslim, 23 upgrades: docs/upgrades/toolslim.md)
+- ✓ Shorter tool definitions everywhere, same abilities: plain Claude chats 571 → 483 tokens a message, the Three Director 2,829 → 2,554 a step (chat_ask + chat_progress + chat_do), board 785 → 479, screens 485 → 325, apps 455 → 231, Adobe 301 → 151; merged tools reach the hub by their old names; details via help.
+- ✓ Opt-in sets (board, screens, Adobe, publishing, apps) sleep until needed: used this week, just switched on, or named in the message; sticky per chat session (cache-safe). toolwake.js, data/tool-wake.json.
+- ○ `node dev/tokens-test.js --table` (wire + asleep columns), `sh dev/run-checks.sh toolslim`; not yet measured on the owner's real chats.

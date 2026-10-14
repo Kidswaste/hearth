@@ -50,7 +50,10 @@ function noteTool(agentId, name, now = Date.now()) { const s = setOfTool(name); 
 // The opt-in sets this message leaves out (sleeping), and the sets the session keeps from now on (sticky).
 //   agent: the agent as send() built it; text: the message; session: the chat's engine session (its .sets is the
 //   sticky list); keep: sets the chat itself turned on (always sent).
-function plan(agent, { text = '', session = null, keep = [], now = Date.now() } = {}) {
+//   base: the agent as the owner set it up (before a run's own changes): a set switched off there is forgotten, so
+//   switching it on again later starts a fresh week.
+function plan(agent, { text = '', session = null, keep = [], now = Date.now(), base = null } = {}) {
+  if (base && agent.id) { const m = read()[agent.id]; const off = m ? SETS.filter((k) => m[k] && !base[k]) : []; if (off.length) { for (const k of off) delete m[k]; write(); } }
   const on = SETS.filter((k) => agent[k]);
   if (!on.length) return { sleep: [], sticky: Array.isArray(session?.sets) ? session.sets : [] };
   const had = new Set(Array.isArray(session?.sets) ? session.sets : []);
