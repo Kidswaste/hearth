@@ -777,6 +777,13 @@ const Access = (() => {
     async maybeFolder(agentId, p) {
       const st = await window.hub.fs.stat(p).catch(() => null);
       if (!st?.isDir) return false;
+      // (round 38, dragdrop) a dropped / pasted folder is offered, never granted silently
+      const chat = chatFor(agentId);
+      if (chat && !effective(chat).folders.includes(p)) {
+        const ai = H.agent?.(agentId)?.name || 'this AI';
+        const yes = await Modal.confirm(`Let ${ai} use this folder?`, `${p} · this chat's AI may then read the files in it${effective(chat).level === 'off' ? ' (read only; you can allow edits after)' : ''}. Nothing is copied or uploaded. ⋯ AI setup › Files on this computer changes it any time.`, { ok: 'Let it use this folder' });
+        if (!yes) { toast(`${R.baseName(p)} not shared`, { timeout: 2200 }); return true; }
+      }
       const a = await addFolder(agentId, p);
       toast(`${R.baseName(p)} added to this chat's folders (${R.LEVEL_LABEL[a.level]})`, { timeout: 5000, action: a.level === 'read' ? { label: 'Allow edits', fn: () => setLevel(agentId, 'write') } : undefined });
       return true;

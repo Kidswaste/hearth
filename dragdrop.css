@@ -1,0 +1,15 @@
+/* Files with Finder / Explorer (round 38, dragdrop): the one overlay that says what dropping on this spot does.
+   Placed once per spot (no per-frame moves), opacity only, no backdrop-filter (the Lab preview animates under it). */
+.dd-over { position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: 9000; pointer-events: none; box-sizing: border-box;
+  border: 2px dashed var(--ui-gold, var(--accent, #e6b450)); border-radius: 10px; background: color-mix(in srgb, #000 45%, transparent);
+  display: grid; place-items: center; opacity: 0; transition: opacity var(--dur-fast, .12s) var(--ease-out, ease-out); contain: strict; }
+.dd-over.on { opacity: 1; }
+.dd-over[data-zone="lab"] { border-color: var(--ui-violet, #a78bfa); background: color-mix(in srgb, #000 28%, transparent); }
+.dd-card { display: flex; align-items: center; gap: 10px; max-width: min(86%, 520px); padding: 12px 18px; border-radius: 12px;
+  background: color-mix(in srgb, var(--bg, #15131a) 92%, #fff 6%); color: var(--text, #f2eee6); box-shadow: 0 6px 24px #0007;
+  border: 1px solid color-mix(in srgb, var(--ui-gold, var(--accent, #e6b450)) 55%, transparent);
+  font-size: 15px; line-height: 1.35; text-align: left; }
+.dd-ic { font-size: 22px; line-height: 1; }
+.dd-text { font-weight: 600; }
+/* the old per-spot hints stay quiet while this one shows */
+body:has(.dd-over.on) .dropping::after { display: none; }

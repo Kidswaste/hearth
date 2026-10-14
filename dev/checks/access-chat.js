@@ -114,7 +114,12 @@ document.querySelector('.access-log-modal')?.close();
 const dir2 = `${dir}-dropped`;
 await fsx.write(`${dir2}/d.txt`, 'd');
 await fsx.write(`${dir2}/e.txt`, 'e');
-await Native.addPath(claude.id, dir2);
+// (round 38, dragdrop) a dropped folder is offered first ("Let … use this folder?"), never granted silently
+const folderAdded = Native.addPath(claude.id, dir2);
+for (let i = 0; i < 60 && !document.querySelector('dialog.ui-modal[open] button.primary'); i += 1) await new Promise((r) => setTimeout(r, 50));
+step('a dropped folder is offered first', /use this folder/.test(document.querySelector('dialog.ui-modal[open]')?.textContent || ''));
+document.querySelector('dialog.ui-modal[open] button.primary')?.click();
+await folderAdded;
 step('a folder dropped on the chat joins its folders', Native.chatOf(claude.id).access.folders.includes(dir2));
 // (round 33) a card here must be answered, never time out: on a loaded machine clicking within the 5 s used for the
 // timeout steps raced (the first card expired, the second asked: "cards2: 2"); the timeout steps keep 5 s
