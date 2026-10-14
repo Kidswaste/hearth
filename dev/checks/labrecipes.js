@@ -10,7 +10,8 @@
 //   node dev/smoke.js --check-timeout 300000 --save-dir /tmp/hearth-labrecipes-saves --script dev/checks/labrecipes.js --shot /tmp/labrecipes.png
 const out = { steps: [] };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
-const { wait, until } = SQL;
+const { wait } = SQL;
+const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(80); } return null; }; // (the value it waited for)
 const lazyState = () => Lazy.state().find((g) => g.name === 'labrecipes')?.state;
 const exists = async (p) => Boolean(await window.hub.fs.stat(p).catch(() => null));
 const ctlOf = (id) => ThreeLab.stageHooks.ctlOf(id);

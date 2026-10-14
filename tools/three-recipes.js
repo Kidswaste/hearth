@@ -402,20 +402,21 @@ const LabRecipes = (() => {
     await lab();
     close();
     const all = await list({ fresh: true });
-    const shade = el('div', { class: 'lt-shade rc-shade', on: { click: () => close() } });
-    const search = el('input', { class: 'lt-search rc-search', type: 'search', placeholder: 'Find a recipe…', value: query });
+    const shade = el('div', { class: 'rc-shade', on: { click: () => close() } });
+    const search = el('input', { class: 'rc-search', type: 'search', placeholder: 'Find a recipe…', value: query });
     const listBox = el('div', { class: 'rc-list', attrs: { role: 'listbox' } });
     const detail = el('div', { class: 'rc-detail' });
-    const dlg = el('dialog', { class: 'lt-dlg rc-dlg', attrs: { 'aria-label': 'Recipes' } },
-      el('div', { class: 'lt-head' }, el('h2', { text: batch ? '📜 Use a recipe on several scenes' : '📜 Recipes' }), search,
-        el('button', { type: 'button', class: 'ghost small lt-x', text: '✕', title: 'Close (Esc)', on: { click: () => close() } })),
+    const dlg = el('dialog', { class: 'rc-dlg', attrs: { 'aria-label': 'Recipes' } },
+      el('div', { class: 'rc-head' }, el('h2', { text: batch ? '📜 Use a recipe on several scenes' : '📜 Recipes' }), search,
+        el('button', { type: 'button', class: 'ghost small rc-x', text: '✕', title: 'Close (Esc)', on: { click: () => close() } })),
       el('div', { class: 'rc-body' }, listBox, detail),
-      el('div', { class: 'lt-foot' }, el('span', { class: 'muted small', text: 'Recipes replay your recorded Lab steps on the scene on screen: no tokens.' }), el('span', { class: 'spacer' }),
+      el('div', { class: 'rc-foot' }, el('span', { class: 'muted small', text: 'Recipes replay your recorded Lab steps on the scene on screen: no tokens.' }), el('span', { class: 'spacer' }),
         el('button', { type: 'button', class: R.on ? 'primary rc-rec-btn' : 'ghost rc-rec-btn', text: R.on ? '■ Stop recording…' : '● Record a recipe', on: { click: () => { close(); toggleRecord().catch(err); } } })));
     pk = { dlg, shade, sel: pick || all[0]?.id || null, q: query, batch, all };
     document.body.append(shade, dlg);
     dlg.addEventListener('close', () => { if (pk?.dlg === dlg) close(); });
     dlg.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const vis = C.search(pk.all, pk.q); const i = vis.findIndex((r) => r.id === pk.sel); const n = vis[Math.max(0, Math.min(vis.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]; if (n) { pk.sel = n.id; paint(); } }
       if (e.key === 'Enter' && e.target === search) { e.preventDefault(); const r = pk.all.find((x) => x.id === pk.sel); if (r && !pk.batch) go(r); }
     });
@@ -435,7 +436,7 @@ const LabRecipes = (() => {
     return pk;
   }
   function emptyDetail() {
-    return el('div', { class: 'lt-empty' }, el('div', { class: 'lt-empty-big', text: '📜' }),
+    return el('div', { class: 'rc-empty' }, el('div', { class: 'rc-empty-big', text: '📜' }),
       el('p', { text: 'A recipe is your usual finishing steps, recorded once: the look, the filters with their settings, the palette, the frame size, the music links, the sliders you always move.' }),
       el('p', { class: 'muted', text: 'Record it on one scene, then replay it on any other scene in one click. Steps that don\'t fit a scene are skipped with a note.' }),
       el('button', { type: 'button', class: 'primary', text: '● Record a recipe', on: { click: () => { close(); start().catch(err); } } }));
