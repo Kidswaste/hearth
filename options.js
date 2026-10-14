@@ -199,7 +199,18 @@ const Options = (() => {
     const smart = cur === 'medium' && typeof Router !== 'undefined';
     return sec('How hard it thinks', smart ? 'Smart picks for each message: lighter for small asks, deeper for code and builds. Click the pick on a reply to ask again, harder.' : null,
       el('div', { class: 'opt-seg' }, levels.map(([v, label]) => el('button', { type: 'button', class: `ghost small${cur === v || (v === 'high' && cur === 'xhigh') ? ' on' : ''}`, text: label,
-        title: v === 'low' ? 'It answers fast and short' : v === 'medium' ? 'It picks for each message: light for small asks, thorough for hard ones (saves tokens)' : 'It thinks longer and answers more thoroughly (more tokens)', on: { click: () => save(a, { effort: v === 'medium' ? undefined : v }).then(paint) } }))));
+        title: v === 'low' ? 'It answers fast and short' : v === 'medium' ? 'It picks for each message: light for small asks, thorough for hard ones (saves tokens)' : 'It thinks longer and answers more thoroughly (more tokens)', on: { click: () => save(a, { effort: v === 'medium' ? undefined : v }).then(paint) } }))),
+      answers(a));
+  }
+  // (round 35, concise) How long its answers are: one row under the thinking buttons. Saved as agent.verbosity (the
+  // field Astra's verbosity already used): Short / Detailed add one fixed line at the end of Claude's instructions,
+  // Astra gets its engine's own verbosity setting; Normal adds nothing.
+  const LENGTHS = [['low', 'Short', 'The answer first: no preamble, no recap, only the code that changes (fewer output tokens)'], ['', 'Normal', 'As it is'], ['high', 'Detailed', 'Fuller answers with reasons and examples (more output tokens)']];
+  function answers(a) {
+    const cur = a.verbosity === 'low' || a.verbosity === 'high' ? a.verbosity : '';
+    return el('div', { class: 'opt-row opt-answers' }, el('span', { class: 'opt-label', text: 'How long its answers are' }),
+      el('div', { class: 'opt-seg' }, LENGTHS.map(([v, label, title]) => el('button', { type: 'button', class: `ghost small${cur === v ? ' on' : ''}`, text: label, title,
+        on: { click: () => save(a, { verbosity: v || undefined }).then(paint) } }))));
   }
 
   // ---------- the panel ----------

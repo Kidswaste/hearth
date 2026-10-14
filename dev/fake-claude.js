@@ -149,6 +149,8 @@ const F = require('./fake-common');
   text += mcpReport;
   // (round 28, router) "runinfo": the reply ends with the model + effort this run really got (dev/checks/router.js)
   if (/\bruninfo\b/i.test(prompt)) text += `\n\nrun: model=${arg('--model') || 'default'} effort=${arg('--effort') || 'none'}`;
+  // (round 35, concise) "promptinfo": the reply ends with the system prompt this run really got (dev/checks/concise.js)
+  if (/\bpromptinfo\b/i.test(prompt)) text += `\n\nsystem<<<${arg('--system-prompt') || ''}>>>`;
   F.out({ type: 'stream_event', event: { type: 'content_block_start', index, content_block: { type: 'text', text: '' } } });
   if (cutting) {
     const half = Math.max(text.indexOf(' ', Math.floor(text.length / 2)), 1);
