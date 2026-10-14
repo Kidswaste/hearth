@@ -1,15 +1,18 @@
-// 🔎 Lab search (round 36, labsearch): the ranking, without the DOM (Node-tested: dev/labsearch-test.js).
-// One index over everything the Lab can find (its menus' rows, effects / looks / palettes, layers, sliders, My
-// templates, gallery starting points, recent scenes, help and keys), searched as you type:
+// 🔎 Search core (round 36, labsearch; shared since round 37, appsearch): the ranking, without the DOM (Node-tested:
+// dev/labsearch-test.js, dev/appsearch-test.js). Lab search (tools/three-search.js) and the app-wide Find anything
+// (Ctrl/⌘+K, appsearch.js) both rank with it; each brings its own words (a vocabulary: synonym groups, phrases, how
+// much each kind of row leans ahead), the engine is the same:
 //   · plain words: "make it brighter" (little words dropped), "glow" → bloom, "slow motion" → playback speed ½,
-//     "vertical video" → ▦ All formats + 9:16 (SYN groups and PHRASES below)
+//     "vertical video" → ▦ All formats + 9:16 (the Lab's SYN groups and PHRASES below; the app's in appsearch-data.js)
 //   · typos: one wrong / missing / extra / swapped letter in words of 4+ letters, two in words of 7+ ("blom", "glwo")
 //   · prefixes while typing ("partic" → particles)
 // Fast on the whole index: an inverted index (word → items), a sorted word list for prefixes, word lookups memoised
 // per index, so a keystroke scores only the items that share a word with the query (well under a millisecond on
 // ~3 000 items; the UI measures every keystroke).
-//   LabSearchCore.build([{ id, kind, label, hint?, path?, tags?, boost? }]) → index
+//   LabSearchCore.build([{ id, kind, label, hint?, path?, tags?, boost? }], { vocab? }) → index (the Lab's words by default)
 //   LabSearchCore.search(index, 'words', { limit, recent: Map(id → rank) }) → [{ item, score }]
+//   LabSearchCore.vocab({ syn: ['word word…'], phrases: [['said', 'meant']], kind: { kind: lean }, base? }) → a vocabulary
+// SearchCore is the same object (the name the app-wide search uses).
 const LabSearchCore = (() => {
   // ---------- words ----------
   const STOP = new Set('a an the it its it s this that these my me i im to of in on for with and or please let lets want wanna can could would you your some be is are do does how what where which there here up just so very really thing things stuff make get turn more bit little much lot'.split(' '));
@@ -81,7 +84,7 @@ const LabSearchCore = (() => {
     'cue marker',
     'intro opener reveal logo',
     'scene sketch project',
-  ].map((g) => [...new Set(words(g))]);
+  ];
   // a few phrases that say what they want in other words (all of its words in the query, in order)
   const PHRASES = [
     ['slow motion', 'playback speed half slow'], ['slow mo', 'playback speed half slow'], ['half speed', 'playback speed half'],
@@ -96,9 +99,19 @@ const LabSearchCore = (() => {
     ['go back', 'undo'], ['undo that', 'undo'],
     ['more light', 'brightness exposure adjust'], ['less light', 'brightness exposure adjust dark'], ['brighter', 'brightness exposure adjust'], ['darker', 'brightness exposure adjust dark'],
     ['second screen', 'stage window'], ['save sliders', 'save into the code sliders'],
-  ].map(([p, e]) => [words(p).filter((w) => !STOP.has(w)), words(e)]);
-  const synOf = new Map();
-  for (const g of SYN) for (const w of g) synOf.set(w, [...new Set([...(synOf.get(w) || []), ...g.filter((x) => x !== w)])]);
+  ];
+  // how much each kind of the Lab's rows leans ahead among equals
+  const KIND = { action: 0.18, layer: 0.22, fx: 0.08, slider: 0.1, look: 0.1, template: 0.14, gallery: 0.04, scene: 0.06, help: -0.05, key: -0.08, ask: -9 };
+  // (round 37, appsearch) a vocabulary: its synonym groups (as words), its phrases ([said, meant] as words), each word's
+  // synonyms, its kinds' leans; `base` adds another vocabulary's groups and phrases under these
+  function vocab({ syn = [], phrases = [], kind = {}, base = null } = {}) {
+    const groups = [...(base?.groups || []), ...syn.map((g) => [...new Set(words(g))])];
+    const ph = [...phrases.map(([p, e]) => [words(p).filter((w) => !STOP.has(w)), [...new Set(words(e))]]), ...(base?.phrases || [])];
+    const synOf = new Map();
+    for (const g of groups) for (const w of g) synOf.set(w, [...new Set([...(synOf.get(w) || []), ...g.filter((x) => x !== w)])]);
+    return { groups, phrases: ph, synOf, kind: { ...(base?.kind || {}), ...kind } };
+  }
+  const LAB = vocab({ syn: SYN, phrases: PHRASES, kind: KIND });
 
   // ---------- typos ----------
   // optimal string alignment distance (a swap counts once), stopped as soon as it can't be ≤ max
@@ -122,7 +135,7 @@ const LabSearchCore = (() => {
 
   // ---------- the index ----------
   const FIELDS = [['label', 1], ['tags', 0.6], ['hint', 0.5], ['path', 0.4]];
-  function build(items) {
+  function build(items, { vocab: V = LAB } = {}) {
     const list = items.filter((it) => it && it.label);
     const post = new Map(); // word → Map(item index → best field weight)
     const labels = []; const labelLen = [];
@@ -139,7 +152,7 @@ const LabSearchCore = (() => {
       labelLen.push(lw.length);
     });
     const vocab = [...post.keys()].sort();
-    return { items: list, post, vocab, labels, labelLen, memo: new Map() };
+    return { items: list, post, vocab, labels, labelLen, memo: new Map(), V };
   }
   // the index words a query word reaches: [[index word, quality]] (exact 1, prefix .8 / .7, a typo .6 / .45)
   // (a synonym or a phrase's word: `exact`, the word itself only, so "halo" never becomes "half")
@@ -171,13 +184,13 @@ const LabSearchCore = (() => {
     return r;
   }
   // what the query asks for: terms, each a list of alternatives [[word, weight]]; `need`: it must match
-  function parse(text) {
+  function parse(text, V = LAB) {
     let ws = words(text);
     const kept = ws.filter((w) => !STOP.has(w));
     if (kept.length) ws = kept;
     const terms = [];
     const used = new Set();
-    for (const [p, e] of PHRASES) {
+    for (const [p, e] of V.phrases) {
       if (!p.length) continue;
       for (let i = 0; i + p.length <= ws.length; i += 1) {
         if (p.every((w, k) => ws[i + k] === w) && ![...p.keys()].some((k) => used.has(i + k))) {
@@ -188,13 +201,13 @@ const LabSearchCore = (() => {
     }
     ws.forEach((w, i) => {
       if (used.has(i)) return;
-      terms.push({ alts: [[w, 1], ...(synOf.get(w) || []).map((s) => [s, 0.8])], need: true, last: i === ws.length - 1, words: [w] });
+      terms.push({ alts: [[w, 1], ...(V.synOf.get(w) || []).map((s) => [s, 0.8])], need: true, last: i === ws.length - 1, words: [w] });
     });
     return terms;
   }
-  const KIND = { action: 0.18, layer: 0.22, fx: 0.08, slider: 0.1, look: 0.1, template: 0.14, gallery: 0.04, scene: 0.06, help: -0.05, key: -0.08, ask: -9 };
   function search(ix, text, { limit = 40, recent = null } = {}) {
-    const terms = parse(text);
+    const V = ix.V || LAB;
+    const terms = parse(text, V);
     if (!terms.length) return [];
     const n = ix.items.length;
     const total = new Float32Array(n);
@@ -235,7 +248,7 @@ const LabSearchCore = (() => {
       else if (qFlat && lab.startsWith(qFlat)) s += 0.6;
       else if (qFlat.length > 2 && lab.includes(qFlat)) s += 0.3;
       s += 0.5 * Math.min(1, inLabel[i] / Math.max(1, ix.labelLen[i])); // "Glow" for glwo beats "Glow amount"
-      s += KIND[it.kind] || 0;
+      s += V.kind[it.kind] || 0;
       s += Math.max(-0.5, Math.min(0.4, Number(it.boost) || 0));
       if (recent?.has(it.id)) s += 0.35 - Math.min(0.3, recent.get(it.id) * 0.03);
       if (it.danger) s -= 0.25;
@@ -243,6 +256,48 @@ const LabSearchCore = (() => {
     }
     out.sort((a, b) => b.score - a.score || a.item.label.length - b.item.label.length);
     return out.slice(0, limit);
+  }
+
+  // ---------- menus → rows ----------
+  // (round 37, appsearch; was Lab search's own walk) a showMenu list ({ label, hint, key, items, action }) or a
+  // ThreeTweaks.menu / popMenu list ([label, hint, fn | rows, checked]) walked into rows { id, kind: 'action', label,
+  // hint, path, sub?, checked?, danger?, run }. Nothing is copied: a row runs the menu's own function (`run(fn)` wraps
+  // the call), a submenu is a row too (`sub(label, items, tuple)` opens it). The same row in two menus is listed once;
+  // short generic labels ("9:16", "Off") once per submenu. `seen` is shared across calls (one list from many menus).
+  const clean = (x) => String(x ?? '').replace(/^✓\s*/, '').trim();
+  const SKIP = new Set(['‹ back', 'More…', 'Customise this…']);
+  function menuRows(list, path, out, seen, { sub, run, max = 1500 } = {}, depth = 0) {
+    if (depth > 4 || out.length > max) return out;
+    let arr;
+    try { arr = typeof list === 'function' ? list() : list; } catch { return out; }
+    if (!Array.isArray(arr)) return out; // (a submenu built later, e.g. from a promise: not listed)
+    for (const it of arr) {
+      if (!it || typeof it === 'string') continue;
+      let label; let hint; let items = null; let fn = null; let checked = false; let danger = false; let key = '';
+      const tuple = Array.isArray(it);
+      if (tuple) {
+        [label, hint] = it; checked = Boolean(it[3]);
+        if (Array.isArray(it[2])) items = it[2]; else if (typeof it[2] === 'function') fn = it[2];
+      } else {
+        if (it.back || it.disabled || it.sep) continue;
+        ({ label, hint, key = '' } = it); checked = Boolean(it.checked); danger = Boolean(it.danger);
+        if (it.items) items = it.items; else if (typeof it.action === 'function') fn = it.action;
+      }
+      label = clean(label);
+      if (!label || SKIP.has(label)) { if (items) menuRows(items, path, out, seen, { sub, run, max }, depth + 1); continue; }
+      const bare = fold(label.replace(/…$/, '')).trim();
+      const k = words(bare).length >= 2 || bare.length >= 10 ? `|${bare}` : `${fold(path.at(-1) || '')}|${bare}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const where = path.join(' › ');
+      if (items) {
+        out.push({ id: `a:${where}›${label}`, kind: 'action', label, hint: String(hint || ''), path: where, sub: true, run: () => sub?.(label, items, tuple) });
+        menuRows(items, [...path, label], out, seen, { sub, run, max }, depth + 1);
+      } else if (fn) {
+        out.push({ id: `a:${where}›${label}`, kind: 'action', label, hint: [hint, key].filter(Boolean).join(' · '), path: where, checked, danger, run: run ? () => run(fn) : () => fn() });
+      }
+    }
+    return out;
   }
 
   // ---------- help: short answers to "how do I…", each pointing at where it lives ----------
@@ -265,6 +320,7 @@ const LabSearchCore = (() => {
     { title: 'How do I share a scene?', tags: 'share pack send file hearthpack', text: '✦ More › ⇪ Share saves the scene and every file it uses as one .hearthpack.' },
     { title: 'What are the Lab\'s keys?', tags: 'keys shortcuts keyboard hotkeys', text: '? in the Lab (or the keys button bottom left) lists them; every key also has a menu row.', go: 'Lab keys' },
   ];
-  return { build, search, parse, words, stem, dist, fold, SYN, PHRASES, HELP, STOP };
+  return { build, search, parse, words, stem, dist, fold, vocab, menuRows, LAB, SYN: LAB.groups, PHRASES: LAB.phrases, HELP, STOP };
 })();
+const SearchCore = LabSearchCore; // (round 37, appsearch) the shared name
 if (typeof module !== 'undefined') module.exports = LabSearchCore;

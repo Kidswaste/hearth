@@ -534,6 +534,7 @@ dialog .ghost:not(.small) { min-height: 32px; }
 /* (round 20, offmain) rows past the first screenful skip layout and paint until scrolled to (typing re-laid out 60 rows a key) */
 .palette-list > .palette-item:nth-child(n+14) { content-visibility: auto; contain-intrinsic-size: auto 34px; }
 .p-kind { font-variant-numeric: tabular-nums; }
+.palette-item > .p-kind { grid-row: 1; grid-column: 2; } /* (round 37, appsearch) a row with a second line (where it lives) keeps its kind on the first line, not a third */
 :root[data-look~=v2] .palette-item:hover:not(.sel) { background: color-mix(in srgb, var(--fh-gold) 6%, transparent); }
 /* the Appearance picker: tiles hover with the active color and a light sweep */
 :root[data-look~=v2] .look-tile { background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 4%, var(--fh-iron-1)), var(--fh-iron-2)); border-color: var(--line-hi); box-shadow: var(--m-bevel); min-height: 34px; }

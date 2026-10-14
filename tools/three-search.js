@@ -25,44 +25,11 @@ const LabSearch = (() => {
   let later = { gallery: null, templates: null, galleryPics: null }; // joined when their groups are in
   let fixedIx = null; let liveIx = null;
   const err = (e) => toast(e?.message || String(e), { type: 'error', timeout: 5000 });
-  const clean = (s) => String(s ?? '').replace(/^✓\s*/, '').trim();
 
   // ---------- the sources ----------
-  // a showMenu list ({ label, hint, key, items, action }) and a ThreeTweaks.menu / popMenu list ([label, hint, fn | rows, checked]),
-  // walked into rows: { label, hint, path, run } (a submenu is a row too: Enter opens it)
-  function walk(list, path, out, seen, depth = 0, kind = 'show') {
-    if (depth > 4 || out.length > 1500) return;
-    let arr;
-    try { arr = typeof list === 'function' ? list() : list; } catch { return; }
-    if (!Array.isArray(arr)) return; // (a submenu built later, e.g. from a promise: not listed)
-    for (const it of arr || []) {
-      if (!it || typeof it === 'string') continue;
-      let label; let hint; let sub = null; let fn = null; let checked = false; let danger = false; let key = '';
-      if (Array.isArray(it)) {
-        [label, hint] = it; checked = Boolean(it[3]);
-        if (Array.isArray(it[2])) sub = it[2]; else if (typeof it[2] === 'function') fn = it[2];
-      } else {
-        if (it.back || it.disabled || it.sep) continue;
-        ({ label, hint, key = '' } = it); checked = Boolean(it.checked); danger = Boolean(it.danger);
-        if (it.items) sub = it.items; else if (typeof it.action === 'function') fn = it.action;
-      }
-      label = clean(label);
-      if (!label || label === '‹ back' || label === 'More…' || label === 'Customise this…') { if (sub) walk(sub, path, out, seen, depth + 1); continue; }
-      // the same row in two menus (▦ All formats in ✦ More and the toolbar's ⋯) is listed once; short generic labels
-      // ("9:16", "Off") only once per submenu
-      const bare = C.fold(label.replace(/…$/, '')).trim();
-      const k = C.words(bare).length >= 2 || bare.length >= 10 ? `|${bare}` : `${C.fold(path.at(-1) || '')}|${bare}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      const where = path.join(' › ');
-      if (sub) {
-        out.push({ id: `a:${where}›${label}`, kind: 'action', label, hint: String(hint || ''), path: where, sub: true, run: () => openSub(label, sub, Array.isArray(it)) });
-        walk(sub, [...path, label], out, seen, depth + 1);
-      } else if (fn) {
-        out.push({ id: `a:${where}›${label}`, kind: 'action', label, hint: [hint, key].filter(Boolean).join(' · '), path: where, checked, danger, run: () => fn(anchor?.isConnected ? anchor : undefined) });
-      }
-    }
-  }
+  // the menus walked into rows (LabSearchCore.menuRows, shared with Find anything): a submenu row opens it here, a
+  // row runs the menu's own function with the 🔎 as its anchor
+  const walk = (list, path, out, seen) => C.menuRows(list, path, out, seen, { sub: openSub, run: (fn) => fn(anchor?.isConnected ? anchor : undefined) });
   function actionItems() {
     const out = []; const seen = new Set();
     const s = S();
