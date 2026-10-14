@@ -127,7 +127,8 @@ const LabAB = (() => {
     if (S.split) renderSplit().catch(() => {});
     // (round 38, hintcalm) by itself: one at a time with the other hints, never while you type, drag or a reply
     // streams (hints.js; the newest change replaces a waiting one); B, the menu and the keys work meanwhile
-    if (visible()) { if (window.Hints) Hints.offer({ id: 'abcompare', kind: 'chip', place: 'lab', ttl: 5 * 60000, still: () => S.pair === pair, show: () => { chipShow(CHIP_MS); return S.chip; } }); else chipShow(CHIP_MS); }
+    // (a chip already on screen just takes the newer change)
+    if (visible()) { if (window.Hints && !S.chip) Hints.offer({ id: 'abcompare', kind: 'chip', place: 'lab', ttl: 5 * 60000, still: () => S.pair === pair, show: () => { chipShow(CHIP_MS); return S.chip; } }); else chipShow(CHIP_MS); }
   }
 
   // ---------- "before" on the preview (hold B) ----------

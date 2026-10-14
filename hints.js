@@ -9,10 +9,11 @@
 //   · at most one new tip every 3 minutes; a tip that waited too long is dropped (not remembered: it can come again)
 //   · remembered on this computer once shown (or dismissed): store hints.seen
 //   · Settings › Hearth › "Don't show tips" (store hints.off, /hints off) silences every optional tip at once
-// Kinds: 'tip' (the default: all of the above), 'notice' (about this copy: the update note, What came back, the welcome
+// Kinds: 'tip' (the default: all of the above), 'notice' (about this copy: the update note, your fixed reports, the welcome
 // on a new computer: queued and one at a time, first after an update, but not silenced and not rate-limited),
-// 'inline' (a line inside a chat or a panel: waits for calm, silenced by Don't show tips, never covers anything so it
-// doesn't count as "on screen"), 'chip' (a small control that comes back after each change, like ◧ Before / after:
+// 'inline' (a line inside a chat or a panel: waits while you type or a reply streams, silenced by Don't show tips;
+// it never covers anything, so it doesn't count as "on screen" and an open dialog doesn't hold it), 'chip' (a small
+// control that comes back after each change, like ◧ Before / after:
 // one at a time and never while busy, but neither remembered nor rate-limited nor silenced).
 // Essential notes (errors, refusals with their fix, offline, sign-in, usage limits) don't come here: they show at once.
 // Hints.dodge(node) keeps any of them, essential included, off the chat box you're typing in and the Lab preview's
@@ -159,12 +160,13 @@ const Hints = (() => {
     if (!queue.length) return null;
     schedule();
     const why = busy();
-    if (why && !force) return null;
     const place = placeNow();
     const ready = queue.filter((q) => fits(q, place)).sort(order(place));
-    // a line in a chat or a panel: as soon as it's calm (it covers nothing)
+    // a line in a chat or a panel: as soon as you aren't typing and no reply streams (it covers nothing, so an open
+    // dialog or AI setup doesn't hold it: a change made there is said in the chat right away)
     const line = ready.find((q) => q.kind === 'inline');
-    if (line) { show(line); return line.id; }
+    if (line && (force || !why || why === 'dialog' || why === 'busy')) { show(line); return line.id; }
+    if (why && !force) return null;
     if (visible() && !force) return null;
     const since = now - T0;
     const pick = ready.find((q) => (force || since >= (q.kind === 'tip' ? C('start') : C('startNotice'))) && (force || q.kind !== 'tip' || now - lastAt() >= C('gap')));

@@ -53,6 +53,8 @@ try {
   Native.current(C.id).messages.at(-1).usage.input = 30000;
   A().instructions = [...(A().instructions || []), { text: 'Use metric units' }];
   await reply('fourth one');
+  // (round 38, hintcalm) the line waits for the reply to end (hints.js: none while a reply streams), then replaces the old one
+  await until(() => notes().some((t) => /standing instructions changed/.test(t)), 8000);
   out.notes3 = notes();
   ok(out.notes3.length === 1 && /Its standing instructions changed since the last message: this message/.test(out.notes3[0]), `a change made elsewhere: one line at the send (${out.notes3})`);
 

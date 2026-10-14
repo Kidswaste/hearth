@@ -186,6 +186,11 @@ const reset = () => { for (const q of Hints.queue) q.resolve(false); Hints.queue
     streaming = false; await tick();
     ok(Boolean(line2.node), '… and comes after it');
     reset();
+    dom.open = true;
+    const line3 = hint('line3', { kind: 'inline' }); const tip3 = hint('tip3');
+    await tick();
+    ok(line3.node && !tip3.node, 'a line shows while a dialog is open (it is in the chat, not over the dialog); a tip waits');
+    reset();
     const c1 = hint('chip', { kind: 'chip' }); await tick();
     ok(Boolean(c1.node) && !Hints.seen('chip'), 'a chip shows and is not remembered (it comes back after each change)');
     c1.node.remove();

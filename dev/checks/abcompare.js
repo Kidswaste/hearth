@@ -19,6 +19,9 @@ const d = ThreeLab.director;
 const cmd = await ThreeLab.cmd({ show: true });
 const hk = ThreeLab.stageHooks;
 const AB = LabAB;
+// (round 38, hintcalm) one hint at a time: 🩺's own hint about this test scene (a frame it finds blank) would hold the chip
+// back for its 14 s; its own switch keeps it out of this check (dev/checks/hintcalm.js checks the order of the two)
+store.set('three.doctorHints', false);
 const CODE = `import * as THREE from 'three';
 const P = tweak({ spin: { value: 0, min: -2, max: 2, label: 'Spin' }, size: { value: 1, min: 0.2, max: 3, label: 'Size' }, tint: { value: '#7a5cff', label: 'Tint', group: 'Color' } });
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -55,9 +58,11 @@ const c0 = { hub: hubCanvases(), frames: document.querySelectorAll('iframe').len
 await Native.send(agent.id, `mcp: ${JSON.stringify([['three_edit_code', { layer: main(), edits: [{ find: 'IcosahedronGeometry(1, 0)', replace: 'IcosahedronGeometry(1, 2)' }], wait: 0.5 }]])}`);
 await until(() => !Native.isBusy(chatId), 60000);
 await until(() => AB.state().pair?.kind === 'director', 15000);
+// (round 38, hintcalm) the chip comes through the one-at-a-time queue once the reply has ended (hints.js): wait for it
+await until(() => document.querySelector('.ab-chip'), 5000);
 let s = AB.state();
 const chip = () => document.querySelector('.ab-chip');
-step('after a director edit the chip shows "Before: Claude\'s edit · just now" (code changed: a picture)', s.pair?.label === "Claude's edit" && s.pair.mode === 'still' && s.pair.picture && /Before: Claude's edit · just now/.test(chip()?.textContent || '') && /⟲/.test(chip()?.textContent) && /✓/.test(chip()?.textContent), { s, chip: chip()?.textContent });
+step('after a director edit the chip shows "Before: Claude\'s edit · just now" (code changed: a picture)', s.pair?.label === "Claude's edit" && s.pair.mode === 'still' && s.pair.picture && /Before: Claude's edit · just now/.test(chip()?.textContent || '') && /⟲/.test(chip()?.textContent) && /✓/.test(chip()?.textContent), { s, chip: chip()?.textContent, hints: window.Hints?.state?.() });
 await smoke({ shot: '/tmp/abcompare-chip.png' });
 // hold B: the picture of before over the preview; let go: gone
 const pane = hk.pane;
@@ -161,6 +166,7 @@ await wait(2000);
 step('making the variation pictures (quiet values) is not a change', !AB.state().pair && !AB.state().pending, AB.state());
 await LabVariations.apply(0);
 await until(() => AB.state().pair?.kind === 'variations', 8000);
+await until(() => /Before: 🎲/.test(chip()?.textContent || ''), 5000); // (round 38) through the hint queue
 s = AB.state();
 step('after a variation: "Before: 🎲 <its take>", live', /^🎲 /.test(s.pair?.label || '') && s.pair.mode === 'live' && /Before: 🎲/.test(chip()?.textContent || ''), s.pair);
 LabVariations.close();
