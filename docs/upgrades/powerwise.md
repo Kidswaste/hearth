@@ -27,7 +27,7 @@ app's own scripts: every timer / interval / animation frame / idle callback that
 | Same: the main process | 0 JS timers + **24 stat polls** (config.json / theme.css every 5 s) | **4–6** timers, **0** stat polls |
 | **In the background on battery: the page** | 48 | **1** |
 | Same: the main process | 24 stat polls | **2–4** timers |
-| On screen, idle (a chat in front, the Lab opened earlier) | 81 | ≈ 50 (the Lab's park safety check every 10 s instead of 2 s while it's parked; the rest on the same pace) |
+| On screen, idle (a chat in front, the Lab opened earlier): the page · the main process | 81 · 24 stat polls | **33** · 12 timers, 0 stat polls (the Lab's park safety check every 10 s instead of 2 s while it's parked) |
 | While a reply streams with Hearth hidden: the token meter's repaints | ≈ 44 / min (8 a second at peaks) | 0 (one repaint when you're back) |
 | A render / export / All formats / long AI turn / big download / update | the computer could sleep mid-render (nothing kept it awake) | kept awake for exactly that long, released at the end (0 ms later in the check) |
 | After a wake | timers that came due during the sleep all ran at once; sync looked 3 s after the wake; the updater could check before the network was back | nothing for 20 s, then one timer every 4 s; sync waits 15 s; the updater waits ≥ 60 s |
@@ -151,8 +151,10 @@ changed here.
     told, the note once), plugged back, the saver;
   - sleep / resume (nothing runs asleep, everything waits ≥ 15 s after, one at a time, the updater ≥ 60 s, main timers too);
   - the background wakeups budget (page ≤ 6 / min, main ≤ 12 / min and no stat polling, battery no worse).
-- Also run: labpace, labadapt, offline, capture-pack, updater, sync, lightweight, lazy, unit:boot-test, fastboot
-  (results in the final report).
+- Also run: labpace (passed on a re-run; its first run failed its 20 % animated-fps noise budget while the suite loaded the
+  machine), labadapt, offline, capture-pack, updater, sync, lazy, unit:boot-test, fastboot: pass. lightweight fails one
+  budget ("AI setup's buttons kept for two sheets at most": 8 listeners) on this round's starting commit too, so it was
+  already failing before this round.
 
 ## Edits outside this lane (small, additive)
 - `main.js`: the first require, register, the AI-turn hook in engine:send, the Stage window's hold, the config safety
