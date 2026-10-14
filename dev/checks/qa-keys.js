@@ -94,7 +94,9 @@ const hiddenBy = {}; // area → labels pressed while their keys-sheet line was 
 // keys that rightly do nothing in this test's setup (no music: no beats or sections)
 const NOOP = {
   'Lab|Space': 'no song loaded here (journey-lab plays one)', 'Lab|T': 'taps count while a song plays (journey-lab)', 'Lab|Ctrl+Enter': 're-runs the layers: nothing to see change', 'Lab|Ctrl+Z': 'nothing to undo yet', 'Lab|Esc': 'only from a Lab tool tab', 'Lab|.': 'only while frozen',
-  'Capture|Esc': 'no tour running', 'Capture|Ctrl+Z': 'nothing drawn to undo (capture-shots.js draws and undoes)', 'Capture|Ctrl+Shift+Z': 'nothing undone to redo' };
+  'Capture|Esc': 'no tour running', 'Capture|Ctrl+Z': 'nothing drawn to undo (capture-shots.js draws and undoes)', 'Capture|Ctrl+Shift+Z': 'nothing undone to redo',
+  // (round 41, undoall) the app-wide undo: in a text box it's the box's own undo; dev/checks/undoall.js presses them on real changes
+  'Everywhere|Ctrl+Z': 'in a text box: the box\'s own undo (undoall.js checks the app-wide one)', 'Everywhere|Ctrl+Shift+Z': 'nothing undone to redo (undoall.js checks it)', 'Everywhere|Ctrl+Y': 'nothing undone to redo (undoall.js checks it)' };
 const closeAll = async () => {
   for (const d of [...document.querySelectorAll('dialog[open]')]) { try { d.close(); } catch { /* gone */ } }
   try { hideMenu(); } catch { /* none */ }

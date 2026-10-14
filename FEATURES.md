@@ -1084,3 +1084,6 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ⚡ First screen (round 40, firstscreen, 5 upgrades: docs/upgrades/firstscreen.md)
 - ✓ The first picture ≈ 10 % sooner (cold start and reload): light / dark set before the window instead of re-theming it during the start (main-process IPC work in the first 5 s 88 → 38 ms); ten files the first screen doesn't need load right after it (82 → 72 scripts, −253 KB); feature loads wait until the first frame is on screen.
 - ○ Budgets: `node dev/boot-test.js` (72 scripts / 2,350 KB JS / 29 sheets / 450 KB CSS), `dev/checks/fastboot.js` (stall guard 3 s); `dev/perf-report.js` reports the work before the first screen. Not measured on the owner's Mac.
+## ↶ One undo for everything (round 41, undoall, 35 upgrades: docs/upgrades/undoall.md)
+- ✓ Ctrl/⌘+Z outside text boxes / the Lab / the board undoes your last change (a setting, an AI's setup, a chat deleted / renamed / moved, Tidy memory, a recipe or template deleted, the newest AI change via Changes by AIs); Ctrl/⌘+Shift+Z redoes; toast "Undid: … · Redo"; Activity › Recent changes with ↶ / ↷; Find anything "undo"; `/undo-change`, `/redo-change`.
+- ○ `node dev/undoall-test.js`, `sh dev/run-checks.sh undoall` (real key presses); ⌘Z not tried on a real Mac.
