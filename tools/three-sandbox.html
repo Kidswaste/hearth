@@ -2634,6 +2634,8 @@ window.__labGest = {
   state: () => ({ views: [...LV.views].map(([id, V]) => ({ id, yaw: V.yaw, pitch: V.pitch, s: V.s, px: V.px, py: V.py, pz: V.pz, d: V.d, moving: LV.loop, idle: LV.core.identity(V) })), loop: LV.loop, steps: LV.steps, applied: LV.applied, self: LV.self, drag: Boolean(LV.drag), target: lvGestureLayer()?.id || null, keys: lvKeyLayer()?.id || null, pose: Array.from(LV.pose), kept: [...layers.values()].filter((L) => L.props.overrides?.['@camera']).map((L) => L.id), edit: edit.on, seqOn: SQ.on, layers: [...layers.values()].map((L) => ({ id: L.id, cam: Boolean(L.lvCam), camGen: L.lvCamGen === L.gen, own: L.lvOwn === L.gen, clicks: L.lvClicks === L.gen, mix: layerMix(L) })), orbits: [...LV.orbits].filter((c) => lvOrbitAlive(c)).length, seq: LV.seq }),
   view: (id) => LV.views.get(id) || null,
   cmd: (m) => lvCommand(m),
+  // (round 35, bugbash2) a view put back where it was (🩺 Fix my scene's "Back to the scene's camera", undone)
+  goTo: (id, to) => { const L = layers.get(id); const V = L && lvViewOf(L); if (!V) return false; V.back = null; LV.core.goTo(V, to); lvKick(); return true; },
 };
 const lvOrbitable = (c) => Boolean(c && !c.isArrayCamera && (c.isPerspectiveCamera ? !(c.fov === 90 && c.aspect === 1) : c.isOrthographicCamera && !(c.left === -1 && c.right === 1 && c.top === 1 && c.bottom === -1)));
 // a layer's own controls: its code listened to the wheel / pointer-down / touch (OrbitControls, its own drag), or to

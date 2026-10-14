@@ -45,8 +45,8 @@ const scene = new THREE.Scene(); scene.background = new THREE.Color(0x000000);
 const cam = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); cam.position.set(0, 0, 5);
 const box = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshBasicMaterial({ color: 0xff2020 })); box.position.set(0, 0, -6); scene.add(box);
 r.setAnimationLoop(() => { box.rotation.y += 0.01; r.render(scene, cam); });`, 3);
-  await wait(2000);
-  for (let i = 0; i < 4; i++) { await mouse({ type: 'mouseWheel', ...at(), deltaX: 0, deltaY: 120 }); await wait(80); }
+  await until(async () => (await GS())?.target, 15000); // (the scene drew with its camera: a gesture layer)
+  for (let k = 0; k < 3 && !(await GS())?.views?.[0]; k++) { for (let i = 0; i < 4; i++) { await mouse({ type: 'mouseWheel', ...at(), deltaX: 0, deltaY: 120 }); await wait(80); } await wait(300); }
   await until(async () => !(await GS())?.loop, 6000);
   const v0 = (await GS())?.views?.[0];
   step('the wheel zoomed the view out (an offset on the scene camera)', v0 && !v0.idle && v0.s > 1.2, v0 && { s: v0.s });
@@ -56,6 +56,33 @@ r.setAnimationLoop(() => { box.rotation.y += 0.01; r.render(scene, cam); });`, 3
   await wait(800);
   const v1 = await GS();
   step('a new camera placement drops the view moved on the old camera (the fix shows as made)', v1 && !v1.views.some((v) => v.id === c.layers[0].id && !v.idle), v1?.views);
+  // panned away from the box: black; 🩺 Fix my scene says why and puts the scene's camera back
+  const red = async () => {
+    const img = new Image(); img.src = await d.shotSmall(96); await img.decode();
+    const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    const g = cv.getContext('2d'); g.drawImage(img, 0, 0); const px = g.getImageData(0, 0, cv.width, cv.height).data;
+    let n = 0; for (let i = 0; i < px.length; i += 4) if (px[i] > 150 && px[i + 1] < 90 && px[i + 2] < 90) n += 1;
+    return n / (px.length / 4);
+  };
+  // (panned far to the side: the gestures themselves are dev/checks/labgestures.js's; a drag coasts, this is exact)
+  await sbx(`return __labGest.goTo(${JSON.stringify(c.layers[0].id)}, { yaw: 0, pitch: 0, s: 1, px: 40, py: 0, pz: 0 })`);
+  await until(async () => !(await GS())?.loop, 8000); await wait(300);
+  const r0 = await red();
+  step('panned away from the box: the frame is black', r0 === 0, { r0, view: (await GS())?.views?.[0] });
+  await SceneDoctorHook.doctor();
+  await until(() => SceneDoctor.state().findings.length && !SceneDoctor.busy, 20000);
+  const blank = SceneDoctor.state().findings.find((f) => f.kind === 'blank');
+  step('🩺 Fix my scene: the black frame is the moved view\'s, its fix is "Back to the scene\'s camera" (not the director)', blank?.fix?.kind === 'view' && /moved the view/.test(blank.text), blank && { text: blank.text, fix: blank.fix?.kind });
+  if (blank?.fix) {
+    await SceneDoctor.fix(blank.id);
+    await until(async () => !(await GS())?.loop, 8000); await wait(400);
+    const r1 = await red();
+    step('one click: the box shows again (the scene\'s own camera)', r1 > 0.01, { r1 });
+    await SceneDoctor.undo();
+    await until(async () => !(await GS())?.loop, 8000); await wait(400);
+    step('↶ Undo: the view you had comes back', (await red()) === 0);
+  }
+  SceneDoctor.close?.();
 });
 
 // ---------- 3. no dead auto-compact switch ----------

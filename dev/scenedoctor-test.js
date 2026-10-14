@@ -57,6 +57,13 @@ t('a black frame: why, and the fix that matches', () => {
   // a layer error → the blank says so
   f = D.diagnose({ ...healthy, pic: black, errors: [{ layer: 'Orb', message: 'ReferenceError: foo is not defined' }] }).find((x) => x.kind === 'blank');
   assert.ok(/error/.test(f.text) && /foo is not defined/.test(f.ask));
+  // (round 35, bugbash2) a look-around view moved off the scene's camera → back to the scene's camera (not the director)
+  const mv = [{ id: 'L1', yaw: 3, pitch: 0, s: 1, px: 0, py: 0, pz: 0 }];
+  f = D.diagnose({ ...healthy, pic: black, moved: mv }).find((x) => x.kind === 'blank');
+  assert.strictEqual(f.fix.kind, 'view'); assert.deepStrictEqual(f.fix.views, mv); assert.ok(/moved the view/.test(f.text));
+  // a hidden layer still comes first
+  f = D.diagnose({ ...healthy, pic: black, moved: mv, layers: [layer({ visible: false })] }).find((x) => x.kind === 'blank');
+  assert.strictEqual(f.fix.kind, 'show');
 });
 t('the subject off-screen, tiny, the camera inside it (frame fixes; none for an ortho camera or a rig)', () => {
   let f = D.diagnose({ ...healthy, probe: { Orb: probe({ subject: { share: 0, offscreen: true, behind: false } }) } });

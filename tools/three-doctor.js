@@ -48,13 +48,18 @@ const SceneDoctor = (() => {
     let probe = null;
     const ev = await d.evalInSketch(C().probeSource()).catch(() => null);
     if (ev?.ok && typeof ev.value === 'string') { try { probe = JSON.parse(ev.value); } catch { probe = null; } }
+    // (round 35, bugbash2) a look-around view moved off the scene's camera (Lab gestures): the picture shows the view,
+    // the probe reads the scene's camera; a black frame there is the view's, not the scene's
+    let moved = [];
+    const mv = await d.evalInSketch('return JSON.stringify((window.__labGest?.state?.().views || []).filter((v) => !v.idle).map((v) => ({ id: v.id, yaw: v.yaw, pitch: v.pitch, s: v.s, px: v.px, py: v.py, pz: v.pz })))').catch(() => null);
+    if (mv?.ok && typeof mv.value === 'string') { try { moved = JSON.parse(mv.value) || []; } catch { moved = []; } }
     const st = cmd.state;
     const p = (() => { try { return cmd.perf(); } catch { return null; } })();
     const pl = cmd.player;
     return {
       pic, subject, layers, probe, errors: rep.errors || [], console: (rep.console || []).slice(-30),
       perf: p ? { fps: p.fps ?? null, p50: p.frameMsP50 ?? null, parked: Boolean(p.parked || st.frozen), light: Boolean(p.light), adapt: p.adapt?.on !== false } : null,
-      sound: Boolean(st.live || (pl?.loaded && !pl.isClock)), frozen: Boolean(st.frozen), shot: url, sketch: st.sketch || '',
+      sound: Boolean(st.live || (pl?.loaded && !pl.isClock)), frozen: Boolean(st.frozen), shot: url, sketch: st.sketch || '', moved,
     };
   }
   async function check() {
@@ -80,6 +85,13 @@ const SceneDoctor = (() => {
       const back = await viaRestore(d, (Ls) => { const L = Ls.find((x) => x.id === f.fix.layer); if (L) L.overrides = { ...(L.overrides || {}), '@camera': { p: fr.p, q: fr.q, fov: fr.fov } }; });
       // undone, the layer runs again so a camera its code placed once goes back there (as the scene editor's Reset does)
       return async () => { await back(); try { await d.updateLayer(f.fix.layer, { code: d.codeOf(f.fix.layer).code }, 0.5); } catch { /* the layer went away */ } };
+    },
+    // (round 35, bugbash2) back to the scene's own camera (Shift+Z); undone: the view you had
+    async view(d, f) {
+      const views = f.fix.views || [];
+      for (const v of views) await d.evalInSketch(`return __labGest.cmd(${JSON.stringify({ cmd: 'reset', layer: v.id })})?.ok`).catch(() => null);
+      await sleep(600);
+      return async () => { for (const v of views) await d.evalInSketch(`return __labGest.goTo(${JSON.stringify(v.id)}, ${JSON.stringify({ yaw: v.yaw, pitch: v.pitch, s: v.s, px: v.px, py: v.py, pz: v.pz })})`).catch(() => null); };
     },
     async light(d, f) {
       if (typeof AutoPolish === 'undefined') throw new Error('Make it look finished did not load.');
