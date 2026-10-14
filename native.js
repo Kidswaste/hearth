@@ -2084,8 +2084,11 @@ const Native = (() => {
     // restart it without forcing a layout of the chat you're leaving (that was a full layout of a long chat per switch)
     const running = list.getAnimations().find((a) => a.animationName === 'hx-chat');
     if (running) { running.currentTime = 0; running.play(); return; }
+    if (list.classList.contains('chat-enter')) return; // waiting for its end already (/motion off: none comes)
     list.classList.add('chat-enter');
-    list.addEventListener('animationend', () => list.classList.remove('chat-enter'), { once: true });
+    // (round 36, motionpolish) its own end only: a message's entrance ending inside it bubbled up and cut the slide short
+    const end = (e) => { if (e.target !== list) return; list.removeEventListener('animationend', end); list.removeEventListener('animationcancel', end); list.classList.remove('chat-enter'); };
+    list.addEventListener('animationend', end); list.addEventListener('animationcancel', end);
   }
 
   // A blank chat (＋) isn't saved until its first message, but it shows in the chats list right away as "New chat"

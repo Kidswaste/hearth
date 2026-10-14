@@ -223,7 +223,7 @@ const Options = (() => {
     const a = H.agent(sheet.agentId) || natives()[0]; // read fresh on every paint (see save)
     if (!a) { sheet.body.replaceChildren(el('p', { class: 'opt-hint', text: 'No chat AI yet.' })); return; }
     sheet.agentId = a.id;
-    const scroll = sheet.body.scrollTop;
+    const scroll = sheet.body.firstChild ? sheet.body.scrollTop : 0; // (round 36, motionpolish) a sheet just built is at the top: asking forced a style + layout as it came in
     const who = el('div', { class: 'opt-who' }, natives().map((x) => el('button', { type: 'button', class: `opt-chip${x.id === a.id ? ' on' : ''}`, text: `${x.icon || ''} ${x.name}`.trim(), title: `Set up ${x.name}`, on: { click: () => { sheet.agentId = x.id; paint(); } } })));
     // (round 33, simplify3) ◎ in the chat box is the missions' place; here they wait folded at the end
     const mission = typeof Missions !== 'undefined' ? fold('missions', sec('Your next message', 'Click: the next message only · 📌 every message from now on. Right-click ◎ in the chat box: back to a normal reply.', Missions.cards(a.id, { onPick: paint })), missionSum(a)) : null;

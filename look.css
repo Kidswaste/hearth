@@ -167,7 +167,7 @@
     var(--m-gold) border-box;
   box-shadow: inset 0 0 calc(12px * var(--glow)) var(--g-gold);
 }
-:root[data-look~=v2] .tool-btn { transition: background .15s ease, color .15s ease; }
+:root[data-look~=v2] .tool-btn { transition: background var(--dur-fast, .12s) var(--ease-out, ease), color var(--dur-fast, .12s) var(--ease-out, ease); }
 :root[data-look~=v2] .tool-btn:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold) 14%, transparent), color-mix(in srgb, var(--fh-gold) 5%, transparent)); color: var(--fh-gold-text); box-shadow: var(--m-bevel); }
 :root[data-look~=v2] .tool-btn.on { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 22%, transparent), color-mix(in srgb, var(--fh-gold) 6%, transparent)); color: var(--fh-gold); box-shadow: var(--m-bevel); }
 :root[data-look~=v2] .rail-sep { height: 1px; background: var(--hairline); }
@@ -196,10 +196,10 @@
 :root[data-look~=v2] input[type=checkbox] {
   appearance: none; -webkit-appearance: none; flex: none; width: 15px; height: 15px; margin: 0 2px; display: inline-grid; place-content: center; vertical-align: -2px; cursor: pointer;
   border: 1px solid var(--line-hi); background: linear-gradient(180deg, var(--fh-ink), var(--fh-iron-2)); box-shadow: inset 0 1px 2px var(--fh-shade);
-  transition: border-color .12s ease;
+  transition: border-color var(--dur-fast, .12s) var(--ease-out, ease);
 }
 :root[data-look~=v2] input[type=checkbox]::before {
-  content: ""; width: 10px; height: 10px; transform: scale(0); transition: transform .14s cubic-bezier(.3, 1.6, .5, 1);
+  content: ""; width: 10px; height: 10px; transform: scale(0); transition: transform var(--dur-fast, .12s) var(--ease-spring, cubic-bezier(.3, 1.6, .5, 1));
   background: var(--m-gold); clip-path: polygon(12% 46%, 0 62%, 40% 100%, 100% 18%, 86% 4%, 39% 70%);
 }
 :root[data-look~=v2] input[type=checkbox]:checked { border-color: var(--fh-gold); box-shadow: inset 0 1px 2px var(--fh-shade), 0 0 calc(8px * var(--glow)) var(--g-gold); }
@@ -235,7 +235,7 @@
   color: var(--m-primary-ink, var(--m-gold-ink)); text-shadow: 0 1px 0 #ffffff55; border: 0;
   background: var(--m-primary, var(--m-gold));
   box-shadow: inset 0 1px 0 #ffffffb0, inset 0 -2px 0 #00000040, inset 0 0 0 1px color-mix(in srgb, var(--fh-gold-lo) 60%, transparent);
-  transition: transform .12s ease;
+  transition: transform var(--dur-fast, .12s) var(--ease-out, ease);
 }
 :root[data-look~=v2] :is(.primary, #broadcast button):hover { filter: brightness(1.1) saturate(1.1); }
 :root[data-look~=v2] :is(.primary, #broadcast button)::after { width: 45%; background: linear-gradient(90deg, transparent, #ffffffd0, transparent); }
@@ -260,7 +260,7 @@
     var(--tx-brushed),
     linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 5%, var(--fh-iron-1)), var(--fh-iron-2));
   box-shadow: var(--m-bevel);
-  transition: border-color .15s ease, color .15s ease, transform .12s ease;
+  transition: border-color var(--dur-fast, .12s) var(--ease-out, ease), color var(--dur-fast, .12s) var(--ease-out, ease), transform var(--dur-fast, .12s) var(--ease-out, ease);
 }
 :root[data-look~=v2] :is(.ghost, .dialog-actions button:not(.primary), .code-act, .find-bar button):hover {
   border-color: color-mix(in srgb, var(--fh-gold) 60%, var(--line-hi)); color: var(--fh-gold-text);
@@ -279,7 +279,7 @@
 
 /* ---------- toggles & segmented controls: chrome-lit when on ---------- */
 :root[data-look~=v2] .tabbar { border-bottom: 1px solid var(--line-hi); background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fh-iron-3) 60%, transparent)); }
-:root[data-look~=v2] .tabbar button { color: var(--muted); transition: color .15s ease, background .15s ease; }
+:root[data-look~=v2] .tabbar button { color: var(--muted); transition: color var(--dur-fast, .12s) var(--ease-out, ease), background var(--dur-fast, .12s) var(--ease-out, ease); }
 :root[data-look~=v2] .tabbar button:hover { color: var(--text); }
 :root[data-look~=v2] .tabbar button::after { height: 2px; background: linear-gradient(90deg, var(--fh-ember), var(--fh-gold-hi), var(--fh-ember)); box-shadow: 0 0 calc(10px * var(--glow)) var(--g-ember); }
 :root[data-look~=v2] .tabbar button.on { color: var(--fh-strong); background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fh-gold) 12%, transparent)); }
@@ -291,7 +291,7 @@
 :root[data-look~=v2] :is(.tw-chip, .trg-chip, .ask-opt) {
   border: 1px solid var(--line-hi); border-radius: 0;
   background: linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 4%, var(--fh-iron-1)), var(--fh-iron-2)); box-shadow: var(--m-bevel);
-  transition: border-color .15s ease, color .15s ease, background .15s ease;
+  transition: border-color var(--dur-fast, .12s) var(--ease-out, ease), color var(--dur-fast, .12s) var(--ease-out, ease), background var(--dur-fast, .12s) var(--ease-out, ease);
 }
 :root[data-look~=v2] :is(.tw-chip, .ask-opt):hover { border-color: var(--fh-gold); color: var(--fh-gold-text); }
 :root[data-look~=v2] :is(.tw-chip.on, .ask-opt.on, .mb-size.on) { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); box-shadow: inset 0 1px 0 #ffffffa0, inset 0 -1px 0 #0004; text-shadow: 0 1px 0 #fff6; }

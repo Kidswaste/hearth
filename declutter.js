@@ -121,7 +121,7 @@ const Declutter = (() => {
       // (focus: false when the area holds something that keeps the focus, like the Lab picture's iframe)
       const state = `:not(:hover)${r.focus === false ? '' : ':not(:focus-within)'}`;
       for (const host of expand(r.host)) for (const x of expand(r.sel)) {
-        css.push(`:root:not(.reveal-alt) ${host}${state} ${x}${notKeep(r)} { opacity: 0; visibility: hidden; transition: opacity .16s ease, visibility .16s; }`);
+        css.push(`:root:not(.reveal-alt) ${host}${state} ${x}${notKeep(r)} { opacity: 0; visibility: hidden; transition: opacity var(--dur-fast, .12s) var(--ease-out, ease), visibility var(--dur-fast, .12s); }`);
       }
     }
     styleEl.textContent = css.join('\n');

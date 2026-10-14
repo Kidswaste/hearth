@@ -35,7 +35,7 @@ button { font: inherit; color: inherit; }
   position: relative; width: 44px; height: 44px; border-radius: var(--radius); cursor: pointer;
   border: 2px solid transparent; font-weight: 700; font-size: 17px; color: var(--agent);
   background: color-mix(in srgb, var(--agent) 20%, transparent);
-  display: grid; place-items: center; transition: background .15s, border-color .15s;
+  display: grid; place-items: center; transition: background var(--dur-fast, .12s) var(--ease-out, ease), border-color var(--dur-fast, .12s) var(--ease-out, ease);
 }
 .agent-btn:hover { background: color-mix(in srgb, var(--agent) 34%, transparent); }
 .agent-btn.active { border-color: var(--agent); }
@@ -132,7 +132,7 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .msg.error .login-btn { margin-top: 8px; }
 .msg-foot { display: flex; gap: 12px; align-items: center; margin-top: 4px; font-size: 11.5px; color: var(--muted); opacity: .8; }
 .copy-msg, .copy-code { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 11.5px; padding: 0; }
-.copy-msg { opacity: 0; transition: opacity .15s; }
+.copy-msg { opacity: 0; transition: opacity var(--dur-fast, .12s) var(--ease-out, ease); }
 .msg:hover .copy-msg { opacity: 1; }
 .body > :first-child { margin-top: 0; }
 .body > :last-child { margin-bottom: 0; }

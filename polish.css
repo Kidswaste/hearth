@@ -11,6 +11,11 @@
   --r-sm: 4px; --r-md: 6px; --r-lg: 10px; --r-pill: 999px;
   --t-fast: .12s; --t-med: .18s; --t-slow: .28s;
   --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-spring: cubic-bezier(.3, 1.4, .5, 1);
+  /* (round 36, motionpolish) one tempo for everything that moves: hovers / presses / small fades = fast, menus /
+     popovers / toasts / folds = med, drawers / dialogs / switching windows and chats = slow. Entrances ease out
+     (pop: a hair of overshoot for things that scale in), exits ease in. Only transform / opacity move. */
+  --dur-fast: .12s; --dur-med: .18s; --dur-slow: .24s;
+  --ease-pop: cubic-bezier(.2, .9, .3, 1.1); --ease-in: cubic-bezier(.4, 0, 1, 1);
   --h-ctl: 28px; --h-ctl-sm: 24px;
   /* importance colors for new UI: gold = active, cyan = info / frozen, violet = AI, red = stop, orange = attention */
   --ui-gold: var(--accent);
@@ -35,7 +40,7 @@ html[data-skin~="swirl"] { --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-pill: 999
   --ui-ink: var(--m-gold-ink); --focus-c: var(--fh-gold);
 }
 :root[data-look~=v2][data-scheme=light] { --fh-ok: #1f8a4c; --ui-ink: #fff; }
-:root[data-motion=off] { --t-fast: 0s; --t-med: 0s; --t-slow: 0s; }
+:root[data-motion=off] { --t-fast: 0s; --t-med: 0s; --t-slow: 0s; --dur-fast: 0s; --dur-med: 0s; --dur-slow: 0s; }
 
 /* ====================================================================================================== */
 /* ---------- motion: the OS "reduce motion" setting reaches every look (plain ones too) ---------- */
@@ -69,6 +74,11 @@ html[data-skin~="swirl"] { --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-pill: 999
 /* hover / press feedback shares one tempo */
 :root[data-look~=v2] :is(.ghost, .primary, .tool-btn, .stage-btn, .tw-chip, .tw-gchip, .nv-hud-btn, .fx-tab, .mt-seg button, .seg button, .look-tile) {
   transition-duration: var(--t-fast); transition-timing-function: var(--ease-out);
+}
+/* (round 36, motionpolish) …and only colors, opacity and transforms ease: where nothing named the properties this
+   tempo eased `all` of them (a frame size's bold weight relaid the Lab's toolbar every frame, its glow repainted) */
+:root[data-look~=v2] :is(.stage-btn, .tw-chip, .tw-gchip, .nv-hud-btn, .fx-tab, .mt-seg button, .seg button, .look-tile) {
+  transition-property: color, background-color, border-color, opacity, transform, translate, scale;
 }
 
 /* ====================================================================================================== */
@@ -584,10 +594,10 @@ dialog .ghost:not(.small) { min-height: 32px; }
 
 /* ---------- Hearth icons (icons.js) ---------- */
 svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible; }
-.agent-btn svg.hi { width: 22px; height: 22px; color: var(--agent, var(--accent)); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--agent, var(--accent)) 35%, transparent)); transition: transform var(--t-fast, .12s) ease; }
+.agent-btn svg.hi { width: 22px; height: 22px; color: var(--agent, var(--accent)); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--agent, var(--accent)) 35%, transparent)); transition: transform var(--dur-fast) var(--ease-out); }
 .agent-btn:hover svg.hi { transform: scale(1.1) rotate(-4deg); }
 .agent-btn.active svg.hi { transform: scale(1.06); }
-.tool-btn svg.hi { width: 19px; height: 19px; opacity: .85; transition: opacity .12s, transform .12s; }
+.tool-btn svg.hi { width: 19px; height: 19px; opacity: .85; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
 .tool-btn:hover svg.hi { opacity: 1; transform: translateY(-1px); }
 .empty-icon svg.hi { width: 30px; height: 30px; color: var(--agent, var(--accent)); }
 .group-head .dot.dot-icon { width: 14px; height: 14px; background: none; box-shadow: none; color: var(--agent, var(--accent)); display: inline-grid; place-items: center; }
@@ -603,11 +613,11 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 @keyframes hx-scene { from { opacity: 0; transform: translateY(6px); } }
 @keyframes hx-chat { from { opacity: 0; transform: translateY(10px); } }
 @keyframes hx-reveal { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
-:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) { animation: hx-pop .17s cubic-bezier(.2, .9, .3, 1.15) both; transform-origin: top left; }
-:root:not([data-motion=off]) .slash-menu { animation: hx-rise .18s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: bottom left; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) { animation: hx-pop var(--dur-med) var(--ease-pop) both; transform-origin: top left; }
+:root:not([data-motion=off]) .slash-menu { animation: hx-rise var(--dur-med) var(--ease-pop) both; transform-origin: bottom left; }
 /* (round 17) only the first rows slide in: a long menu animated every row, one compositor layer each */
-:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) > :is(.menu-item, button, .menu-head, .nv-menu-sec):nth-child(-n+11) { animation: hx-item .2s ease-out both; }
-:root:not([data-motion=off]) .slash-menu > .slash-item:nth-child(-n+11) { animation: hx-item .18s ease-out both; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) > :is(.menu-item, button, .menu-head, .nv-menu-sec):nth-child(-n+11) { animation: hx-item var(--dur-med) var(--ease-out) both; }
+:root:not([data-motion=off]) .slash-menu > .slash-item:nth-child(-n+11) { animation: hx-item var(--dur-med) var(--ease-out) both; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(1) { animation-delay: 14ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(2) { animation-delay: 28ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(3) { animation-delay: 42ms; }
@@ -618,13 +628,13 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(8) { animation-delay: 112ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(9) { animation-delay: 126ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(10) { animation-delay: 140ms; }
-:root:not([data-motion=off]) dialog[open] { animation: hx-dialog .22s cubic-bezier(.2, .9, .3, 1.1) both; }
-:root:not([data-motion=off]) dialog[open]::backdrop { animation: hx-fade .22s ease both; }
-:root:not([data-motion=off]) .palette-card { animation: hx-pop .18s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: top center; }
+:root:not([data-motion=off]) dialog[open] { animation: hx-dialog var(--dur-slow) var(--ease-pop) both; }
+:root:not([data-motion=off]) dialog[open]::backdrop { animation: hx-fade var(--dur-slow) var(--ease-out) both; }
+:root:not([data-motion=off]) .palette-card { animation: hx-pop var(--dur-med) var(--ease-pop) both; transform-origin: top center; }
 /* switching agents / tools: the new surface eases in */
-:root:not([data-motion=off]) .surface.active { animation: hx-scene .24s cubic-bezier(.2, .8, .3, 1) both; }
+:root:not([data-motion=off]) .surface.active { animation: hx-scene var(--dur-slow) var(--ease-out) both; }
 /* switching chats: the conversation slides up into place */
-:root:not([data-motion=off]) .chat-enter { animation: hx-chat .26s cubic-bezier(.2, .8, .3, 1) both; }
+:root:not([data-motion=off]) .chat-enter { animation: hx-chat var(--dur-slow) var(--ease-out) both; }
 /* the Lab preview: a cover that fades away once the new scene has drawn (see three.js scene-cover) */
 .scene-cover { position: absolute; inset: 0; z-index: 4; pointer-events: none; background: var(--bg, #0b0d10); }
 .scene-cover.out { animation: hx-reveal .35s ease both; }
@@ -703,9 +713,9 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
 @keyframes dc-back { from { opacity: 0; transform: translateX(-12px); } }
 @keyframes dc-fly { from { opacity: 0; transform: translateX(-6px) scale(.98); } }
 @keyframes dc-fly-left { from { opacity: 0; transform: translateX(6px) scale(.98); } }
-:root:not([data-motion=off]) :is(#menu, .mb-menu.lab-pop).m-in > * { animation-name: dc-in; animation-duration: .18s; }
-:root:not([data-motion=off]) :is(#menu, .mb-menu.lab-pop).m-back > * { animation-name: dc-back; animation-duration: .18s; }
-:root:not([data-motion=off]) #menu-fly:not([hidden]) { animation: dc-fly .16s cubic-bezier(.2, .9, .3, 1.1) both; }
+:root:not([data-motion=off]) :is(#menu, .mb-menu.lab-pop).m-in > * { animation-name: dc-in; animation-duration: var(--dur-med); }
+:root:not([data-motion=off]) :is(#menu, .mb-menu.lab-pop).m-back > * { animation-name: dc-back; animation-duration: var(--dur-med); }
+:root:not([data-motion=off]) #menu-fly:not([hidden]) { animation: dc-fly var(--dur-med) var(--ease-pop) both; }
 :root:not([data-motion=off]) #menu-fly.to-left:not([hidden]) { animation-name: dc-fly-left; }
 
 /* Alt held (or tapped twice): the tucked buttons come back in place, outlined (declutter.js writes the rules) */
@@ -720,7 +730,7 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
   font: 600 10px/1.45 var(--mono, ui-monospace, monospace); letter-spacing: .02em;
   color: #1a1305; background: var(--ui-gold, var(--accent)); box-shadow: 0 2px 8px #0008, 0 0 0 1px #0006;
 }
-:root:not([data-motion=off]) .key-hint { animation: dc-hint .16s cubic-bezier(.2, .9, .3, 1.3) both; }
+:root:not([data-motion=off]) .key-hint { animation: dc-hint var(--dur-fast) var(--ease-pop) both; }
 @keyframes dc-hint { from { opacity: 0; transform: translate(-50%, -3px) scale(.85); } }
 
 /* the keys button, bottom left of the rail: calm until pointed at */
@@ -735,8 +745,8 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
   background: var(--sidebar); border: 1px solid var(--line); box-shadow: 0 18px 50px #000b; color: var(--text);
 }
 :root[data-look~=v2] .keys-sheet { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 96%, transparent); border-color: var(--line-hi); box-shadow: var(--m-glass-edge), 0 18px 50px #000b; }
-:root:not([data-motion=off]) .keys-sheet { animation: hx-rise .2s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: bottom left; }
-:root:not([data-motion=off]) .keys-sheet.out { animation: hx-reveal .14s ease both; }
+:root:not([data-motion=off]) .keys-sheet { animation: hx-rise var(--dur-med) var(--ease-pop) both; transform-origin: bottom left; }
+:root:not([data-motion=off]) .keys-sheet.out { animation: hx-reveal var(--dur-fast) var(--ease-in) both; }
 .keys-sheet .ks-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .keys-sheet .ks-head b { font-family: var(--font-head, inherit); letter-spacing: .02em; }
 .keys-sheet .ks-x { border: 0; background: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 0 4px; }
@@ -774,3 +784,59 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
 }
 .group .item.draft .item-title { font-style: italic; opacity: .85; }
 .messages .show-earlier { display: block; margin: 8px auto 14px; font-size: 12px; opacity: .8; }
+
+/* ====================================================================================================== */
+/* ---------- (round 36, motionpolish) the drawers, popovers and folds come in like the menus ----------
+   One tempo (--dur-* / --ease-* at the top), transform / opacity only, entrances only (closing stays instant: what
+   you dismiss is gone at once). No fill after the end: nothing stays on its own layer once it has arrived. */
+@keyframes mp-drawer { from { opacity: 0; transform: translateX(14px); } }
+@keyframes mp-side { from { opacity: 0; transform: translateX(-8px); } }
+@keyframes mp-fold { from { opacity: 0; transform: translateY(-4px); } }
+/* ⋯ AI setup, the drawer beside a chat (its ⚙ page doesn't move) */
+:root:not([data-motion=off]) .opt-sheet:not(.opt-page) { animation: mp-drawer var(--dur-slow) var(--ease-out); }
+/* a fold opening (AI setup's Memory, Habits, Spending…): what it holds settles in under its title */
+:root:not([data-motion=off]) .opt-fold[open] > :not(summary) { animation: mp-fold var(--dur-med) var(--ease-out); }
+/* ◎ missions rises from the chat box; ◉ Activity flies out of the rail */
+:root:not([data-motion=off]) .ms-pop { animation: hx-rise var(--dur-med) var(--ease-pop); transform-origin: bottom right; }
+:root:not([data-motion=off]) .ac-pop { animation: dc-fly var(--dur-med) var(--ease-pop); transform-origin: bottom left; }
+/* the chats panel shown again (☰, Ctrl+\) slides in from the rail */
+:root:not([data-motion=off]) #panel:not(.hidden) { animation: mp-side var(--dur-med) var(--ease-out); }
+/* a docked chat opening or coming back from its thin bar fades in (its width changes at once: no width animation) */
+:root:not([data-motion=off]) .tool-surface:not(.dock-collapsed) > .tool-main > .tool-dock:not([hidden]),
+:root:not([data-motion=off]) .tool-surface.dock-collapsed .dd-rail { animation: hx-fade var(--dur-med) var(--ease-out); }
+
+/* the popovers lay out on their own: what changes inside them (hover, a fold) never reaches the page */
+.ms-pop, .ac-pop { contain: layout paint; }
+
+/* /motion off: the dialogs' backdrop too (`*` doesn't reach ::backdrop) */
+:root[data-motion=off] ::backdrop { animation: none !important; }
+
+/* reduced motion (the OS setting) in every look: entrances become a short fade, nothing slides, scales or springs.
+   (Forgeheart Classic already turns every animation off.) The same names, faded, so each rule above keeps working. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-med: var(--dur-fast); --dur-slow: var(--dur-fast); }
+  @keyframes hx-pop { from { opacity: 0; } }
+  @keyframes hx-rise { from { opacity: 0; } }
+  @keyframes hx-item { from { opacity: 0; } }
+  @keyframes hx-dialog { from { opacity: 0; } }
+  @keyframes hx-scene { from { opacity: 0; } }
+  @keyframes hx-chat { from { opacity: 0; } }
+  @keyframes dc-in { from { opacity: 0; } }
+  @keyframes dc-back { from { opacity: 0; } }
+  @keyframes dc-fly { from { opacity: 0; } }
+  @keyframes dc-fly-left { from { opacity: 0; } }
+  @keyframes dc-reveal { from { opacity: 0; } }
+  @keyframes dc-hint { from { opacity: 0; } }
+  @keyframes pl-pop { from { opacity: 0; } }
+  @keyframes toast-in { from { opacity: 0; } }
+  @keyframes ask-in { from { opacity: 0; } }
+  @keyframes j-tip-in { from { opacity: 0; } }
+  @keyframes mp-drawer { from { opacity: 0; } }
+  @keyframes mp-side { from { opacity: 0; } }
+  @keyframes mp-fold { from { opacity: 0; } }
+  @keyframes fh-in { from { opacity: 0; } }
+  @keyframes fh-scan { from { opacity: 0; } }
+  /* press feedback that bounces, shakes or spins rests */
+  .j-pop, .j-shake, .j-roll { animation: none !important; }
+  :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > * { animation-delay: 0s !important; }
+}

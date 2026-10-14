@@ -57,7 +57,7 @@ const GridResize = (() => {
       const start = kind === 'col' ? e.clientX : e.clientY;
       const a0 = fr[i]; const b0 = fr[i + 1];
       h.setPointerCapture(e.pointerId);
-      document.body.classList.add('resizing');
+      document.body.classList.add('resizing', ...(kind === 'col' ? [] : ['resizing-row'])); // (round 36) the drag sheet's cursor (features.css)
       let next = fr; let pending = 0;
       const move = (ev) => {
         const d = (((kind === 'col' ? ev.clientX : ev.clientY) - start) / Math.max(1, size)) * total;
@@ -67,7 +67,7 @@ const GridResize = (() => {
         if (!pending) pending = requestAnimationFrame(() => { pending = 0; c.style.setProperty(kind === 'col' ? '--gcols' : '--grows', tmpl(next)); });
       };
       h.addEventListener('pointermove', move);
-      h.addEventListener('pointerup', () => { h.removeEventListener('pointermove', move); document.body.classList.remove('resizing'); store_(kind, next); }, { once: true });
+      h.addEventListener('pointerup', () => { h.removeEventListener('pointermove', move); document.body.classList.remove('resizing', 'resizing-row'); store_(kind, next); }, { once: true });
     });
     return h;
   }
