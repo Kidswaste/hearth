@@ -213,7 +213,8 @@ const A11y = (() => {
     }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['title', 'aria-label'] });
     queue(document.body);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
+  // (deferred scripts run while the page is "interactive": wait for all of them, Native included)
+  if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 
   return { say, kbd: () => kbd, shortName, nameAll: () => { queue(document.body); flush(); }, _open: open };
 })();

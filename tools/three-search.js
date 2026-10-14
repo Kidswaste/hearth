@@ -166,8 +166,8 @@ const LabSearch = (() => {
   function rowEl(r, i) {
     const it = r.item;
     let b = it.kind !== 'ask' ? rowCache.get(it.id) : null;
-    if (b) { b.dataset.i = String(i); b.classList.remove('on'); return b; }
-    b = el('button', { type: 'button', class: `ls-row${it.danger ? ' ls-danger' : ''}`, dataset: { kind: it.kind, i: String(i) }, attrs: { role: 'option' },
+    if (b) { b.dataset.i = String(i); b.classList.remove('on'); b.setAttribute('aria-selected', 'false'); return b; }
+    b = el('button', { type: 'button', class: `ls-row${it.danger ? ' ls-danger' : ''}`, dataset: { kind: it.kind, i: String(i) }, attrs: { role: 'option', 'aria-selected': 'false' },
       on: { click: (e) => pick(Number(e.currentTarget.dataset.i), e.shiftKey), mousemove: (e) => { const k = Number(e.currentTarget.dataset.i); if (sel !== k) mark(k); } } },
     pic(it),
     el('span', { class: 'ls-text' },
@@ -189,15 +189,15 @@ const LabSearch = (() => {
     if (!q) sel = 0;
     rows = results.map(rowEl);
     listEl.replaceChildren(...rows);
-    if (rows[sel]) rows[sel].classList.add('on');
+    if (rows[sel]) { rows[sel].classList.add('on'); rows[sel].setAttribute('aria-selected', 'true'); }
     foot.textContent = q ? `${results.length - 1 >= MAX ? `${MAX}+` : results.length - 1 || 'Nothing'} found · ↑↓ · Enter${results[sel]?.item.kind === 'fx' ? ' · Shift+Enter: the other way' : ''} · Esc` : `${last.items} things in the Lab · type a few words (plain words and typos are fine)`;
     const ms = performance.now() - t0;
     last.ms = Math.round(ms * 100) / 100; last.maxMs = Math.max(last.maxMs, last.ms); last.searches += 1; last.query = q;
   }
   function mark(i) {
-    rows[sel]?.classList.remove('on');
+    rows[sel]?.classList.remove('on'); rows[sel]?.setAttribute('aria-selected', 'false');
     sel = Math.max(0, Math.min(results.length - 1, i));
-    rows[sel]?.classList.add('on');
+    rows[sel]?.classList.add('on'); rows[sel]?.setAttribute('aria-selected', 'true');
     rows[sel]?.scrollIntoView({ block: 'nearest' });
   }
   function remember(id) {

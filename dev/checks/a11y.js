@@ -226,6 +226,8 @@ if (part('surfaces') || part('esc') || part('forced')) {
 const SNAP = ['outlineStyle', 'outlineWidth', 'outlineColor', 'boxShadow', 'borderTopColor', 'borderBottomColor', 'backgroundColor', 'color', 'textDecorationLine'];
 // the control, and up to three boxes around it (a chat box shows focus on its frame: :focus-within)
 const snap = (n) => { const s = getComputedStyle(n); const up = []; for (let x = n.parentElement, i = 0; x && i < 3; x = x.parentElement, i++) { const p = getComputedStyle(x); up.push(p.boxShadow, p.borderTopColor, p.outlineStyle, p.backgroundColor); } return JSON.stringify([...SNAP.map((k) => s[k]), ...up]); };
+// transitions / animations off while measuring: the focused end state, not a frame of the fade into it
+const still = (on) => { let s = document.getElementById('a11y-still'); if (on && !s) { s = el('style', { id: 'a11y-still', text: '*, *::before, *::after { transition: none !important; animation: none !important; }' }); document.head.append(s); } else if (!on) s?.remove(); };
 const shows = (n) => { const on = snap(n); const keep = document.activeElement; n.blur(); const off = snap(n); keep?.focus?.({ preventScroll: true }); return on !== off; };
 async function walk(where, n = 70) {
   // start from the top of the page: a throwaway focus target first in <body>
@@ -244,6 +246,7 @@ async function walk(where, n = 70) {
   return { stops, stuck };
 }
 if (part('focus')) {
+  still(true);
   const looks = Object.keys(AppUI.THEMES);
   const was = { ...(H.config.theme || {}) };
   const setLook = (id) => { H.config.theme = { ...(H.config.theme || {}), ...AppUI.THEMES[id], preset: id }; delete H.config.theme.label; delete H.config.theme.group; applyTheme(document.getElementById('user-theme').textContent); };
@@ -274,6 +277,7 @@ if (part('focus')) {
     (out.looks[id] ||= {}).noRing = bad;
   }
   H.config.theme = was; applyTheme(document.getElementById('user-theme').textContent); await settle();
+  still(false);
 }
 
 // ---------- 3. Esc closes the top-most thing; focus goes back ----------
@@ -298,10 +302,10 @@ if (part('esc')) {
   await escCase('Settings', () => $('config-btn')?.checkVisibility() ? $('config-btn') : [...document.querySelectorAll('#rail button')].find((b) => /Settings/.test(b.title) && vis(b)), () => document.querySelector('dialog.settings-dialog[open]'));
   await escCase('missions', () => view().root.querySelector('.ms-btn'), () => document.querySelector('.ms-pop'));
   await escCase('Find anything', () => box(), () => document.querySelector('.palette'), { how: async () => { AppUI.palette(); } });
-  // a menu: opened from the keyboard (the chat ⋯ in a message, else the chat row's menu key), arrows move a real focus
+  // a menu: opened from the keyboard (the rail's ⋯ More), arrows move a real focus
   {
-    const more = view().root.querySelector('.msg-more') || view().root.querySelector('.msg-act');
-    await escCase('menu', () => more, () => (!$('menu').hidden ? $('menu') : null), { how: async (o) => { o.click(); await wait(200); await key('ArrowDown'); await key('ArrowDown'); const f = document.activeElement; if (!$('menu').contains(f) || f.getAttribute('role') !== 'menuitem') note('escReturn', 'menu', `arrow keys don't move focus into the menu (on ${desc(f || document.body)})`); } });
+    const more = [...document.querySelectorAll('#rail button')].find((b) => /^More\b/.test(b.title) && vis(b));
+    await escCase('menu', () => more, () => (!$('menu').hidden ? $('menu') : null), { how: async () => { await key('Enter'); await wait(200); await key('ArrowDown'); await key('ArrowDown'); const f = document.activeElement; if (!$('menu').contains(f) || f.getAttribute('role') !== 'menuitem') note('escReturn', 'menu', `arrow keys don't move focus into the menu (on ${desc(f || document.body)})`); } });
   }
   // nested: a menu over Settings: Esc closes the menu first, then Settings
   {
@@ -370,6 +374,7 @@ async function forcedScan(where, root) {
   }
 }
 if (part('forced')) {
+  still(true);
   await cdp('Emulation.setEmulatedMedia', { features: [{ name: 'forced-colors', value: 'active' }] }); await settle(); await wait(300);
   out.forcedMatches = matchMedia('(forced-colors: active)').matches;
   activate(claude.id); await wait(400);
@@ -379,6 +384,7 @@ if (part('forced')) {
   try { const { L } = await openLab(); await forcedScan('Lab', L); } catch { /* the Lab is optional here */ }
   activate(claude.id); await wait(300);
   await cdp('Emulation.setEmulatedMedia', { features: [] }); await settle();
+  still(false);
 }
 
 // ---------- 6. announcements ----------

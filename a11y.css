@@ -24,6 +24,8 @@ input[type=range]:focus-visible { outline: 1px solid var(--a11y-ring) !important
 [data-a11y-root]:focus { outline: none !important; }
 
 /* ---------- text contrast (WCAG AA) in the light looks ---------- */
+/* placeholders ("Message Claude…", "Search chats") were a little under 3:1 on cream and white */
+:root[data-scheme=light] :is(input, textarea)::placeholder { color: color-mix(in srgb, var(--text) 62%, var(--bg)); opacity: 1; }
 /* the current AI's name in the chats list took its gold / its own color, too light on cream and white */
 :root[data-scheme=light] .group.current .group-name { color: color-mix(in srgb, var(--fh-gold, var(--agent)) 45%, var(--text)); }
 
@@ -39,11 +41,11 @@ input[type=range]:focus-visible { outline: 1px solid var(--a11y-ring) !important
   :root { --a11y-ring: Highlight; }
   /* every button keeps an edge (backgrounds are flattened) and its icon follows the text color */
   :is(button, [role=button], [role=switch], [role=tab], .agent-btn, .tool-btn) { border: 1px solid ButtonText; forced-color-adjust: auto; }
-  :is(button, [role=button], [role=switch]) svg :is(path, circle, rect, line, polyline, polygon, ellipse):not([fill=none]) { fill: currentColor; }
-  :is(button, [role=button], [role=switch]) svg :is(path, circle, rect, line, polyline, polygon, ellipse)[stroke]:not([stroke=none]) { stroke: currentColor; }
   svg { forced-color-adjust: auto; }
-  /* what's on / picked shows as selected */
-  :is(.on, .active, .sel, .kb-on, .checked, [aria-pressed=true], [aria-checked=true], [aria-selected=true]):is(button, .item, .palette-item, [role]) { background: Highlight !important; color: HighlightText !important; }
+  /* icons drawn with a stroke follow the text color (some looks tint them with a fixed color, which isn't forced) */
+  svg[stroke]:not([stroke=none]) { stroke: currentColor !important; }
+  /* what's on / picked keeps a mark (backgrounds are flattened) */
+  :is(.on, .active, .sel, .kb-on, .checked, [aria-pressed=true], [aria-checked=true], [aria-selected=true]):is(button, .item, .palette-item, [role]) { outline: 2px solid Highlight; outline-offset: -2px; }
   .opt-switch, .tw-toggle { border: 1px solid ButtonText; }
   :focus-visible { outline: 2px solid Highlight !important; }
   .a11y-skip { border-color: Highlight; }
