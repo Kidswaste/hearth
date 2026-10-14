@@ -1027,3 +1027,8 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Any Lab scene saved as your own starting point (✦ More › 📐 My templates, the toolbar's ⋯, Sketch ▾): name, a picture, and which parts become fields (all sliders, the palette, text layers' words, picture / video / sound slots by default). Files in data/templates/ (synced), shared as a .hearthpack, deleted to the Trash.
 - ✓ New from my template…: a picker (pictures, search, newest first) → a short form with a live preview → Create makes a new scene (one Undo, its own time-machine entry). 0 tokens. The AI: `/my-template list | fields | use <name> {values}` through three_do run.
 - ○ Checked by `dev/checks/labtemplates.js` (lab group) and `node dev/labtemplates-test.js` on generated scenes.
+## 🪟 Native feel on the Mac and Windows (round 36, nativefeel, 40 upgrades: docs/upgrades/nativefeel.md)
+- ✓ The window opens where it was on this computer and this set of screens, never off-screen (a monitor gone → back on one that's there); maximised / full screen remembered.
+- ✓ Mac: traffic lights in the rail (hidden-inset title bar), headers move the window, double-click per System Settings, full Mac menus (Settings… ⌘,, Hide, Quit, Edit, Window, Help), the Dock's count of replies finished while away. Windows: native title bar dark / light with the look, a clean Alt menu bar, taskbar flash + a number on the icon, slim scrollbars.
+- ✓ ◐ Match my computer (Appearance, `/lightdark`): the look follows the system's light / dark mode live. Crisp Lab preview / wave / timeline when the screen scale changes; tray icon drawn per scale.
+- ○ Unit-tested with injected screens and platforms (`sh dev/run-checks.sh nativefeel`); not yet tried on a real Mac / PC.

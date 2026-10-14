@@ -61,6 +61,13 @@ contextBridge.exposeInMainWorld('hub', {
   // window & desktop
   showWindow: call('window:show'),
   flashWindow: call('window:flash'),
+  // (round 36, nativefeel) the frame main.js made (inset: the Mac's traffic lights in the rail), light / dark, menus
+  native: {
+    frame: (process.argv.find((a) => a.startsWith('--hearth-frame=')) || '').slice(15) || 'system',
+    os: process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : 'linux',
+    look: call('native:look'), titleDblClick: call('native:titleDblClick'), info: call('native:info'),
+    onOsScheme: on('native:os-scheme'), onState: on('native:state'), onMenu: on('native:menu'),
+  },
   isWindowFocused: call('window:isFocused'),
   reloadWindow: call('window:reload'),
   onWindowFocus: on('window:focus'),

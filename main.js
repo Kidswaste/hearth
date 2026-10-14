@@ -26,6 +26,8 @@ const gamebridge = later('./gamebridge');
 const syncmain = later('./syncmain');
 const appsmain = later('./appsmain');
 const bgmain = require('./bgmain'); // (round 16) is anybody looking / on battery / asleep, and the steady idle cursor
+// (round 36) native feel: window memory per computer + screen layout, the Mac's inset title bar, light / dark, menus, the badge
+const nativefeel = require('./nativefeelmain');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const THEME_PATH = path.join(__dirname, 'theme.css');
@@ -110,7 +112,13 @@ const SPLASH_BG = '#08090c';
 const SHOW_AT_MOST_MS = 250;
 function createWindow() {
   const icon = appshell.ensureIcon();
-  const state = appshell.loadWindowState();
+  // (round 36, nativefeel) where it was on this computer with these screens, never off-screen (a monitor that's gone)
+  const { screen } = require('electron');
+  nativefeel._set({ dataDir: store.DATA_DIR });
+  let placed = null;
+  try { placed = nativefeel.restore(screen); } catch { placed = null; }
+  const state = { ...(placed?.bounds || {}), maximized: Boolean(placed?.maximized) };
+  const st = settings();
   win = new BrowserWindow({
     show: false,
     x: state.x,
@@ -120,10 +128,12 @@ function createWindow() {
     minWidth: 760,
     minHeight: 480,
     title: appshell.APP_NAME,
-    icon,
+    icon: process.platform === 'win32' && fs.existsSync(appshell.ICON_ICO) ? appshell.ICON_ICO : icon, // (Windows: every size of the .ico, crisp at 125 / 150 %)
     autoHideMenuBar: true,
     backgroundColor: SPLASH_BG,
+    ...nativefeel.frameOptions(st), // the Mac: traffic lights in the rail (titleBarStyle hiddenInset)
     webPreferences: {
+      additionalArguments: [`--hearth-frame=${nativefeel.frameKind(st)}`], // (preload.js → hub.native.frame)
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       webviewTag: true,
@@ -141,6 +151,7 @@ function createWindow() {
     shown = true;
     clearTimeout(showTimer);
     if (state.maximized) win.maximize(); else win.show();
+    nativefeel.applyFlags(win, placed); // full screen as it was
     bootMark('shown');
     setImmediate(afterShown);
   };
@@ -152,7 +163,7 @@ function createWindow() {
     appshell.setupDownloads(send);
     appshell.applySettings(win, settings());
   };
-  appshell.trackWindowState(win);
+  nativefeel.track(win, screen, send);
   // Links clicked in native chats open in your normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     openExternal(url);
@@ -175,7 +186,7 @@ function createWindow() {
       send('shortcut', { key: '.', shift: input.shift });
     }
   });
-  win.on('focus', () => { win.flashFrame(false); send('window:focus', true); });
+  win.on('focus', () => { nativeAttention?.clear(); send('window:focus', true); }); // (round 36: the Dock / taskbar badge goes too)
   win.on('blur', () => send('window:focus', false));
 
   appshell.setupCloseToTray(win, settings);
@@ -370,7 +381,10 @@ ipcMain.handle('engine:status', () => { engines.setEnginePaths(settings().engine
 
 // ---------- window & desktop ----------
 ipcMain.handle('window:show', () => { win.show(); win.focus(); });
-ipcMain.handle('window:flash', () => { if (win.isFocused()) return; if (process.platform === 'darwin') app.dock?.bounce('informational'); else win.flashFrame(true); });
+// (round 36, nativefeel) something finished while Hearth was in the background: the Dock's number + one bounce (Mac),
+// the taskbar flash + a number on the icon (Windows); cleared when the window gets the focus
+let nativeAttention = null;
+ipcMain.handle('window:flash', () => (nativeAttention ? nativeAttention.attention() : null));
 ipcMain.handle('window:isFocused', () => win.isFocused() && win.isVisible());
 ipcMain.handle('window:reload', () => win.webContents.reloadIgnoringCache());
 ipcMain.handle('find:start', (_e, text, opts) => (text ? win.webContents.findInPage(text, opts) : null));
@@ -534,6 +548,8 @@ ipcMain.handle('packs:pending', () => { const p = packPending; packPending = nul
 // tick (the page can't send anything before this returns), instead of before Electron's 'ready': the window opens that
 // much sooner and the requires below run while its page process starts. Order unchanged.
 function registerAfterWindow() {
+  const { nativeTheme, systemPreferences, nativeImage } = require('electron');
+  nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
   fsapi.registerIpc(ipcMain, () => win);
   gamebridge.start(() => win);
   aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
@@ -606,14 +622,10 @@ app.whenReady().then(async () => {
   session.defaultSession.setDisplayMediaRequestHandler((_req, cb) => {
     desktopCapturer.getSources({ types: ['screen'] }).then(([src]) => cb(src ? { video: src, ...(process.platform === 'win32' ? { audio: 'loopback' } : {}) } : {})).catch(() => cb({}));
   });
+  // a Mac app needs a menu bar for ⌘C / ⌘V / ⌘Q and friends; (round 36, nativefeel) the full Mac menus (About, Settings…
+  // ⌘,, Hide, Quit, Edit, View, Window, Help) and on Windows a clean menu bar Alt shows (nativefeel-core.js menuTemplate)
+  nativefeel.setupMenu({ Menu, app, getWin: () => win, send, appName: appshell.APP_NAME });
   if (process.platform === 'darwin') {
-    // a Mac app needs a menu bar for ⌘C / ⌘V / ⌘Q and friends
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: 'Hearth', submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] },
-      { role: 'editMenu' },
-      { label: 'View', submenu: [{ role: 'togglefullscreen' }] },
-      { role: 'windowMenu' },
-    ]));
     try { app.dock?.setIcon(appshell.ensureIcon()); } catch { /* the icon is optional */ }
   }
   // sync on: what the other computer did arrives before the window reads your data (≤ 1.5 s; see afterSync above)

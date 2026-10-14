@@ -2412,6 +2412,8 @@ const ThreeSeq = (() => {
     refs.tl.addEventListener('dragleave', () => { S.drop = null; redraw(); });
     refs.tl.addEventListener('drop', onDrop);
     new ResizeObserver(() => { measure(); redraw(); placeHead(); }).observe(refs.tl);
+    const onDpr = () => { if (!refs.tl.isConnected) removeEventListener('hearth:dpr', onDpr); else { measure(); redraw(); } }; // (round 36, nativefeel) crisp after a screen-scale change
+    addEventListener('hearth:dpr', onDpr);
     // the name chip follows the sequence (written only when it changes)
     listeners.change = [...(listeners.change || []), () => { const n = S.key ? `${S.key.slice(4)} · ${D.formatOf(S.edit)}` : 'Sequence'; if (refs.name.textContent !== `${n} ▾`) refs.name.textContent = `${n} ▾`; }];
   }

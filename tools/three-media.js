@@ -2866,6 +2866,9 @@ const ThreeMedia = (() => {
     // layout of the page ten times a second while a song played
     new ResizeObserver(() => { sizes.mw = minimap.clientWidth; sizes.mh = minimap.clientHeight; sizes.mOk = true; draw(); }).observe(minimap);
     new ResizeObserver(() => { sizes.cw = canvas.clientWidth; sizes.ch = canvas.clientHeight; sizes.cOk = true; draw(); }).observe(canvas);
+    // (round 36, nativefeel) a new screen scale (another monitor, Windows' scaling) redraws the wave crisp (the sizes didn't change)
+    const onDpr = () => { if (!canvas.isConnected) removeEventListener('hearth:dpr', onDpr); else draw(); };
+    addEventListener('hearth:dpr', onDpr);
     paint();
 
     return {
