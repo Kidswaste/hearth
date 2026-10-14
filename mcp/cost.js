@@ -19,15 +19,21 @@ function defOf(key, opts = {}) {
   if (opts.nodesTool) process.env.HUB_NODES_TOOL = '1'; else delete process.env.HUB_NODES_TOOL;
   if (opts.toolMode) process.env.HUB_TOOL_MODE = opts.toolMode; else delete process.env.HUB_TOOL_MODE;
   if (opts.chatLean) process.env.HUB_CHAT_LEAN = '1'; else delete process.env.HUB_CHAT_LEAN;
+  if (opts.only) process.env.HUB_CHAT_ONLY = opts.only; else delete process.env.HUB_CHAT_ONLY; // (round 41) Astra's lone chat_open
   delete require.cache[require.resolve(file)];
-  try { return require(file); } finally { if (before == null) delete process.env.HUB_NODES_TOOL; else process.env.HUB_NODES_TOOL = before; delete process.env.HUB_TOOL_MODE; delete process.env.HUB_CHAT_LEAN; }
+  try { return require(file); } finally { if (before == null) delete process.env.HUB_NODES_TOOL; else process.env.HUB_NODES_TOOL = before; delete process.env.HUB_TOOL_MODE; delete process.env.HUB_CHAT_LEAN; delete process.env.HUB_CHAT_ONLY; }
 }
+
+// (round 41, toolslim) the names the engines list a hub tool under (engines.js HUB_TOOLSETS servers): Claude Code sends
+// mcp__<server>__<tool> with input_schema; `wire` counts the list that way (≈ what the model really reads).
+const SERVER = { threeTools: 'three', gameTools: 'forgeheart', chatTools: 'chat', boardTools: 'board', captureTools: 'capture', adobeTools: 'adobe', deployTools: 'deploy', appsTools: 'apps' };
+const wireOf = (key, tools) => tok(JSON.stringify(tools.map((t) => ({ name: `mcp__${SERVER[key] || key}__${t.name}`, description: t.description, input_schema: t.inputSchema }))));
 
 function measure(key, opts = {}) {
   const def = defOf(key, opts);
   const list = JSON.stringify(def.tools);
   return {
-    key, server: def.name, tools: def.tools.length, guide: tok(def.instructions), list: tok(list), total: tok(def.instructions) + tok(list),
+    key, server: def.name, tools: def.tools.length, guide: tok(def.instructions), list: tok(list), total: tok(def.instructions) + tok(list), wire: wireOf(key, def.tools),
     each: def.tools.map((t) => ({ name: t.name, tokens: tok(JSON.stringify(t)) })),
   };
 }
@@ -45,15 +51,17 @@ function promptPart(agent) {
 // counted on its own) and each tool set it really gets (engines.js hubToolsets). chat-cost.js splits a message with it.
 // (measured once per tool-set variant: the servers' definitions don't change while the app runs, and chats ask often)
 const memo = new Map();
-const measured = (k, opts = {}) => { const key = `${k}|${opts.nodesTool ? 1 : 0}|${opts.toolMode || ''}|${opts.chatLean ? 1 : 0}`; if (!memo.has(key)) memo.set(key, measure(k, opts)); return memo.get(key); };
+const measured = (k, opts = {}) => { const key = `${k}|${opts.nodesTool ? 1 : 0}|${opts.toolMode || ''}|${opts.chatLean ? 1 : 0}|${opts.only || ''}`; if (!memo.has(key)) memo.set(key, measure(k, opts)); return memo.get(key); };
 function exactOf(a, sets) {
   let engines = null;
   try { engines = require(path.join(__dirname, '..', 'engines.js')); } catch { /* no engines here */ }
   const on = engines?._test?.hubToolsets ? engines._test.hubToolsets(a) : Object.keys(SETS).filter((k) => a[k]);
   const tools = [];
+  let wire = 0; // (round 41) the same lists as the engines name them (mcp__server__tool)
   for (const k of on) {
     if (k === 'openTool') { // one tool of the chat server (chat_open)
-      try { const t = measured('chatTools').each.find((x) => x.name === 'chat_open'); if (t) tools.push([k, t.tokens]); } catch { /* none */ }
+      // (round 41) measured as Astra gets it (engines.js HUB_CHAT_ONLY): chat lists reach chat_open through chat_do now
+      try { const m = measured('chatTools', { only: 'chat_open' }); if (m.tools) { tools.push([k, m.total]); wire += m.wire; } } catch { /* none */ }
       continue;
     }
     if (!SETS[k]) continue;
@@ -62,10 +70,11 @@ function exactOf(a, sets) {
     const lean = k === 'chatTools' && engines?._test?.chatGuideOn && !engines._test.chatGuideOn(a);
     const m = k === 'threeTools' && (nodes || a.toolMode) ? measured(k, { nodesTool: nodes, toolMode: a.toolMode }) : lean ? measured(k, { chatLean: true }) : (sets?.find((s) => s.key === k) || measured(k));
     tools.push([k, m.total]);
+    wire += m.wire ?? m.total;
   }
   const prompt = engines?.buildPrompt ? tok(engines.buildPrompt(a)) : 0;
   const memory = engines?.buildPrompt && !a.memoryWhenRelevant ? Math.max(0, prompt - tok(engines.buildPrompt({ ...a, memoryWhenRelevant: true }))) : 0;
-  return { id: a.id, name: a.name, engine: a.engine, exact: true, system: prompt, memory, tools, total: prompt + tools.reduce((n, t) => n + t[1], 0) };
+  return { id: a.id, name: a.name, engine: a.engine, exact: true, system: prompt, memory, tools, wire, total: prompt + tools.reduce((n, t) => n + t[1], 0) };
 }
 
 function report(agents = DIRECTORS) {
@@ -87,4 +96,4 @@ function report(agents = DIRECTORS) {
   return { sets, directors, note: 'tokens ≈ characters / 4; sent with every message (mostly read from the prompt cache after the first)' };
 }
 
-module.exports = { report, measure, tok, DIRECTORS, exactOf: (a) => exactOf(a, null) };
+module.exports = { report, measure, tok, wireOf, DIRECTORS, exactOf: (a) => exactOf(a, null) };

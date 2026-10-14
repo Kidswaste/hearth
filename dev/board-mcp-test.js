@@ -14,10 +14,10 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
 (async () => {
   const script = path.join(root, 'mcp', 'board-mcp.js');
   const def = require(script);
-  // round 14 added the eyes (board_look, board_watch): 7 tools
-  check(def.tools.length === 7 && def.tools.every((t) => t.name.startsWith('board_')), `7 lean tools (${def.tools.map((t) => t.name).join(', ')})`);
+  // round 14 added the eyes (board_look, board_watch): 7 tools; (round 41, toolslim) 4 listed: list / arrange / watch are board_do ops
+  check(def.tools.length === 4 && def.tools.every((t) => t.name.startsWith('board_')), `4 lean tools (${def.tools.map((t) => t.name).join(', ')})`);
   const size = JSON.stringify(def.tools).length;
-  check(size < 4200, `tool definitions ≈ ${Math.round(size / 4)} tokens`);
+  check(size < 2000, `tool definitions (< 500 tokens; 785 before round 41) ≈ ${Math.round(size / 4)} tokens`);
   check(/never place reference media/.test(def.tools.find((t) => t.name === 'board_vibe').description), 'board_vibe says: vibe, never the media');
   check(/never place reference media/.test(def.guide), 'guide line says it too');
 
@@ -35,10 +35,16 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   fs.writeFileSync(infoPath, JSON.stringify({ port: server.address().port, token: 'tok', pid: process.pid }));
   try {
     const c = await F.mcpClient({ command: process.execPath, args: [script], env: { HUB_CHAT_ID: 'chat-1' } });
-    check(c.tools.length === 7 && !c.instructions, 'served over stdio, no MCP instructions');
+    check(c.tools.length === 4 && !c.instructions, 'served over stdio, no MCP instructions');
     const r = await c.call('board_vibe', { focus: 'palette' });
     check(!r.isError && /palette #000000/.test(r.content[0].text), 'board_vibe round trip through the hub bridge');
     check(calls[0]?.token === 'tok' && calls[0]?.args.hubChatId === 'chat-1' && calls[0]?.args.focus === 'palette', 'the chat id and arguments reach the hub');
+    // (round 41) a merged tool reaches the hub under its own name, without the op
+    const w = await c.call('board_do', { op: 'watch', item: 'i3', count: 4 });
+    check(calls[1]?.tool === 'board_watch' && calls[1]?.args.item === 'i3' && !('op' in calls[1].args) && w.isError, 'board_do watch → the hub\'s board_watch');
+    await c.call('board_do', { op: 'pins', query: 'neon' });
+    check(calls[2]?.tool === 'board_do' && calls[2]?.args.op === 'pins', 'board_do pins still goes to the hub\'s board_do');
+    calls.length = 1;
     const e = await c.call('board_add', { kind: 'note', text: 'x' });
     check(e.isError && /nope/.test(e.content[0].text), 'hub errors come back as tool errors');
     c.close();

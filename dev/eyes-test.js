@@ -15,8 +15,9 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
 (async () => {
   // ---------- the tools ----------
   const def = require(path.join(root, 'mcp', 'board-mcp.js'));
-  const look = def.tools.find((t) => t.name === 'board_look'); const watch = def.tools.find((t) => t.name === 'board_watch');
-  check(look && watch, 'board_look and board_watch are tools');
+  // (round 41, toolslim) board_watch is a board_do op now (the hub still gets board_watch); its whole words are in def.all
+  const look = def.tools.find((t) => t.name === 'board_look'); const watch = def.all.find((t) => t.name === 'board_watch');
+  check(look && watch && /watch \{item/.test(def.tools.find((t) => t.name === 'board_do').description), 'board_look is a tool, board_do watch reaches board_watch');
   // (round 35, bugbash2) since round 31 (tokensaver) the words are shorter: "size small|medium|large", small when left out
   check(/size small\|medium\|large/.test(look.description) && look.inputSchema.properties.size.enum.join() === 'small,medium,large', 'small by default, the model asks for more');
   check(JSON.stringify(look).length < 700 && JSON.stringify(watch).length < 700, `lean definitions (${JSON.stringify(look).length} + ${JSON.stringify(watch).length} chars)`);

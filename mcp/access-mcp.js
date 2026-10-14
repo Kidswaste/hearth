@@ -7,7 +7,8 @@
 const { serve, callHub } = require('./common');
 
 const TOOLS = [
-  { name: 'access_permission', description: 'Hearth\'s permission check (used by the app, not by you).',
+  // (round 41, toolslim) listed to the model too (Claude Code can't hide a permission tool): a few words only
+  { name: 'access_permission', description: 'Hearth\'s own check; never call it.',
     inputSchema: { type: 'object', properties: { tool_name: { type: 'string' }, input: { type: 'object' }, tool_use_id: { type: 'string' } }, required: ['tool_name'] } },
 ];
 

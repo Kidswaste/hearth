@@ -91,8 +91,8 @@ const Options = (() => {
   const TOOLS = [
     { k: 'chatTools', label: 'Your chats and Hearth', tip: 'Read and search your other chats, open things in Hearth', on: (a) => (a.engine === 'codex' ? a.chatTools === true : a.chatTools !== false), set: (a, v) => ({ chatTools: a.engine === 'codex' ? (v || undefined) : (v ? undefined : false) }) },
     { k: 'threeTools', label: 'Three.js Lab', tip: 'Build and change scenes in the Lab (the Three Director)' },
-    { k: 'boardTools', label: 'Mood board', tip: 'See and arrange your mood boards (≈ 1,000 tokens a message)' },
-    { k: 'captureTools', label: 'Screenshots and recordings', tip: 'Take screenshots, record, read video frames (≈ 550 tokens a message)' },
+    { k: 'boardTools', label: 'Mood board', tip: 'See and arrange your mood boards (≈ 500 tokens, only on messages that need it)' },
+    { k: 'captureTools', label: 'Screenshots and recordings', tip: 'Take screenshots, record, read video frames (≈ 330 tokens, only on messages that need it)' },
     { k: 'appsTools', label: 'App windows (Meshy, Suno…)', tip: 'Use the AI apps in Hearth\'s windows (Meshy costs credits: it asks)' },
     { k: 'adobeTools', label: 'Adobe', tip: 'Drive Photoshop / After Effects / Premiere on this computer' },
     { k: 'deployTools', label: 'Publishing', tip: 'Publish sites and pages (it always asks before anything goes public)' },

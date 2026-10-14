@@ -5,7 +5,7 @@
 // When the hub isn't running, capture_frames still reads a video file with ffmpeg here (framereader.js).
 const fs = require('fs');
 const path = require('path');
-const { serve, callHub, leanTools } = require('./common');
+const { serve, callHub, leanTools, dispatch } = require('./common');
 
 const TOOLS = [
   { name: 'capture_shot', description: 'Screenshot of Hearth itself → path + a small view. target: window, tool, chat, transcript (whole chat, tall), dock, lab (full size), composer; or selector (CSS). crop: 9:16, 4:5, 1:1, 16:9… see: false = path only.',
@@ -55,12 +55,17 @@ const local = {
 };
 
 // (round 31, tokensaver) short words in the list; the whole descriptions come from capture_list { help: '<tool>' }
+// (round 41, toolslim) three tools listed: recording and the list are capture_do ops (capture_do {op: "start", …} is
+// capture_record {action: "start", …} for the hub, unchanged); rare args are named in the words.
 const SHORT = {
-  capture_shot: 'Screenshot of Hearth → path + a small view. target: window|tool|chat|transcript|dock|lab|composer, or selector; crop: 9:16, 1:1…; see: false = path only.',
-  capture_record: 'Record Hearth (webm + mp4): action start {target, preset, fps, size, sound: none|app|mic, seconds} | stop | status | pause | resume | mark {label} | tour {name or steps, dry}. help: tour steps.',
-  capture_frames: 'Exact frames of any video. path: file or "last". mode: at {times|frames} | every | spread {count} | scenes | sheet | motion | pacing | palette | info | make {op}… (help: all modes). → timecodes, paths, pictures.',
-  capture_list: 'Newest screenshots and recordings (paths). kind: shot | video. help: a capture tool → its details.',
+  capture_shot: ['Screenshot of Hearth → path + a small view. target: window|tool|chat|transcript|dock|lab|composer, or selector; crop: 9:16, 1:1…; see: false = path only.', ['target', 'selector', 'crop', 'see']],
+  capture_frames: ['Exact frames of any video. path: file or "last". mode: at {times: [s or timecode], frames: [n]} | every {every} | spread {count} | scenes | sheet | motion | pacing | palette | info | make {op}… (help: all modes); from / to. → timecodes, paths, pictures.', ['path', 'mode', 'times', 'frames', 'from', 'to']],
+  capture_do: 'Record Hearth (webm + mp4): op start {target, preset, fps, size, sound: none|app|mic, seconds} | stop | status | pause | resume | mark {label} | tour {name or steps, dry}; op list {kind: shot|video} = newest captures. help: a tool, op or "tour".',
 };
-const L = leanTools(TOOLS, SHORT, 'capture_list');
+const RECORD = ['start', 'stop', 'status', 'pause', 'resume', 'mark', 'tour'];
+const DO = { name: 'capture_do', description: '', inputSchema: { type: 'object', properties: { op: { type: 'string' } }, required: ['op'] } };
+const L = leanTools([...TOOLS, DO], SHORT, 'capture_do', { capture_do: ['capture_record', 'capture_list'] });
+delete L.help.capture_do;
+local.capture_do = dispatch({ ...Object.fromEntries(RECORD.map((a) => [a, ['capture_record', { action: a }]])), record: 'capture_record', list: 'capture_list' });
 
-module.exports = serve({ name: 'capture', instructions: '', guide: '', tools: L.list, help: L.help, local }, module);
+module.exports = serve({ name: 'capture', instructions: '', guide: '', tools: L.list, help: L.help, local, all: TOOLS }, module);

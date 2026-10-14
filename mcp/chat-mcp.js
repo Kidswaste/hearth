@@ -3,8 +3,12 @@
 // The guide says when to use them, the descriptions how: nothing is said twice (both ride along with every message).
 const { serve, callHub } = require('./common');
 
-const GUIDE = `CHAT TOOLS: chat_ask only when a choice is really the user's (style, direction, missing info), not small things you can decide; chat_progress only for work with several steps; chat_show + chat_ask to pick between variants; chat_second_opinion for visual work you're unsure about or when asked (weigh its advice yourself).`;
+// (round 41, toolslim) chat_show / chat_second_opinion / chat_open are reached through chat_do for directors too
+// (≈ 230 tokens less on every director step); the guide names them that way.
+const GUIDE = `CHAT TOOLS: chat_ask only when a choice is really the user's (style, direction, missing info), not small things you can decide; chat_progress only for work with several steps; chat_do show + chat_ask to pick between variants; chat_do second_opinion for visual work you're unsure about or when asked (weigh its advice yourself).`;
 
+const PARTNER = process.env.HUB_PARTNER || 'Astra';
+// The whole descriptions (help <tool or op> answers with them, locally); the list sends the SHORT words below.
 const TOOLS = [
   { name: 'chat_ask', description: 'Ask the user and wait (a card in the chat). options: 2–5 short choices as buttons (free: false = no typing; multiple: true = several). Returns the answer, or that they skipped.',
     inputSchema: { type: 'object', properties: { question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, multiple: { type: 'boolean' }, free: { type: 'boolean' } }, required: ['question'] } },
@@ -12,7 +16,7 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { steps: { type: 'array', items: { type: 'object', properties: { text: { type: 'string' }, status: { type: 'string', enum: ['todo', 'doing', 'done'] } }, required: ['text'] } } }, required: ['steps'] } },
   { name: 'chat_show', description: 'A picture in the chat with a caption ("Variant A: neon"); screenshot: true = what the user sees now (a director: the Lab preview).',
     inputSchema: { type: 'object', properties: { caption: { type: 'string' }, screenshot: { type: 'boolean' } }, required: ['caption'] } },
-  { name: 'chat_second_opinion', description: `${process.env.HUB_PARTNER || 'Astra'} (another AI, good with visuals) critiques what you're making; screenshot: true attaches what the user sees.`,
+  { name: 'chat_second_opinion', description: `${PARTNER} (another AI, good with visuals) critiques what you're making; screenshot: true attaches what the user sees.`,
     inputSchema: { type: 'object', properties: { question: { type: 'string' }, screenshot: { type: 'boolean' } }, required: ['question'] } },
   // (round 19, reach) you can open things for the user: no more "double-click it yourself"
   { name: 'chat_open', description: 'Open a file, folder, page or URL for the user: how default (its app) | browser | reveal (Finder / Explorer) | preview (in Hearth). Paths from their other computer work.',
@@ -26,14 +30,34 @@ const ONLY = (process.env.HUB_CHAT_ONLY || '').split(',').filter(Boolean);
 // (round 31, tokensaver) a plain chat (no director guide: engines.js sets HUB_CHAT_LEAN) gets chat_ask + chat_open +
 // one chat_do for the rest (plan checklist, picture, second opinion, problem report): each call still reaches the hub
 // under its own name (native.js handles chat_progress, chat_show… as before); the details come from help.
-// ≈ 250 tokens less on every message of every plain Claude chat. Directors keep the whole list (they use them a lot).
+// ≈ 250 tokens less on every message of every plain Claude chat.
+// (round 41, toolslim) directors keep chat_ask + chat_progress (their everyday two), plain chats chat_ask, and both reach
+// the rest through chat_do (chat_open too: chat_do open); old names keep working when called (the hub routes by name),
+// they're just not listed. Astra's lone chat_open (HUB_CHAT_ONLY) stays its own tool.
 const LEAN = process.env.HUB_CHAT_LEAN === '1';
-const REST = TOOLS.filter((t) => !['chat_ask', 'chat_open'].includes(t.name));
+const KEEP = LEAN ? ['chat_ask'] : ['chat_ask', 'chat_progress'];
+const REST = TOOLS.filter((t) => !KEEP.includes(t.name));
 const opOf = (name) => name.replace(/^chat_/, '');
-const HELP = Object.fromEntries(TOOLS.map((t) => [t.name, `${t.name}${LEAN && REST.includes(t) ? ` (chat_do op "${opOf(t.name)}")` : ''}: ${t.description}\nargs: ${Object.keys(t.inputSchema.properties).join(', ')}`]));
-const CHAT_DO = { name: 'chat_do', description: `op progress {steps: [{text, status: todo|doing|done}]} (your plan, live) | show {caption, screenshot} (a picture in the chat) | second_opinion {question, screenshot} (${process.env.HUB_PARTNER || 'Astra'}'s critique)${REST.some((t) => t.name === 'chat_report_problem') ? ' | report_problem {title, details} (Hearth itself broke)' : ''}. help: an op.`,
+const HELP = Object.fromEntries(TOOLS.map((t) => [t.name, `${t.name}${REST.includes(t) ? ` (chat_do op "${opOf(t.name)}")` : ''}: ${t.description}\nargs: ${Object.keys(t.inputSchema.properties).join(', ')}`]));
+const OPS = {
+  chat_progress: 'progress {steps: [{text, status: todo|doing|done}]} (your plan, live)',
+  chat_show: 'show {caption} (a picture of the screen in the chat)',
+  chat_second_opinion: `second_opinion {question, screenshot} (${PARTNER}'s critique)`,
+  chat_open: 'open {path|url, how: default|browser|reveal|preview} (a file, folder or page, for the user)',
+  chat_report_problem: 'report_problem {title, details} (Hearth itself broke)',
+};
+const CHAT_DO = { name: 'chat_do', description: `op ${REST.map((t) => OPS[t.name]).join(' | ')}. help: an op.`,
   inputSchema: { type: 'object', properties: { op: { type: 'string' }, help: { type: 'string' } } } };
-const LIST = ONLY.length ? TOOLS.filter((t) => ONLY.includes(t.name)) : LEAN ? [...TOOLS.filter((t) => !REST.includes(t)), CHAT_DO] : TOOLS;
+// (round 41, toolslim) the listed tools in fewer words (same args; the whole words are in help)
+const SHORT = {
+  chat_ask: 'Ask the user and wait (a card). options: 2–5 button choices (multiple: several; free: false = no typing).',
+  chat_progress: 'Your plan as a live checklist: steps [{text, status: todo|doing|done}], all of them each time (3–7).',
+  chat_open: 'Open a file, folder or URL for the user (their other computer\'s paths work). how: reveal = in Finder/Explorer, preview = in Hearth.',
+};
+// a step's object schema is said once in the words above (native.js reads text / status, strings work too)
+const SCHEMA = { chat_progress: { type: 'object', properties: { steps: { type: 'array', items: { type: 'object' } } }, required: ['steps'] } };
+const slim = (t) => (SHORT[t.name] ? { ...t, description: SHORT[t.name], inputSchema: SCHEMA[t.name] || t.inputSchema } : t);
+const LIST = ONLY.length ? TOOLS.filter((t) => ONLY.includes(t.name)).map(slim) : [...TOOLS.filter((t) => KEEP.includes(t.name)).map(slim), CHAT_DO];
 const local = {
   chat_do: (a) => {
     const { op, ...rest } = a;

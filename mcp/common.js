@@ -66,13 +66,37 @@ function helpOf(help, topic) {
 // The tool list as it's sent (short words) and its help (the whole descriptions + args, enums included) from one
 // full definition: short = { tool: 'its short description' }; helpOn = the tool whose schema takes { help }.
 // Long enums leave the schema (they're in help); short ones stay, they steer the model for a few tokens.
-function leanTools(tools, short, helpOn) {
+// (round 41, toolslim) short[tool] can also be [words, ['arg', …]]: only those args stay in the schema (the rest are
+// named in the words or in help; the servers pass every arg on, listed or not). `merge` = { dispatcher: [tool, …] }:
+// those tools leave the list and are reached as dispatcher { op: '<tool without its prefix>' } (see dispatch()).
+function leanTools(tools, short, helpOn, merge = {}) {
   const argsOf = (t) => Object.entries(t.inputSchema?.properties || {}).map(([k, v]) => (v.enum ? `${k} (${v.enum.join('|')})` : k)).join(', ');
-  const help = Object.fromEntries(tools.map((t) => [t.name, `${t.name}: ${t.description}\nargs: ${argsOf(t) || 'none'}`]));
+  const via = Object.fromEntries(Object.entries(merge).flatMap(([d, names]) => names.map((n) => [n, d])));
+  const help = Object.fromEntries(tools.map((t) => [t.name, `${t.name}${via[t.name] ? ` (${via[t.name]} op "${opName(t.name)}")` : ''}: ${t.description}\nargs: ${argsOf(t) || 'none'}`]));
   const slim = (props) => Object.fromEntries(Object.entries(props || {}).map(([k, v]) => [k, v.enum && JSON.stringify(v.enum).length > 60 ? { type: v.type } : v]));
-  const list = tools.map((t) => ({ ...t, description: short[t.name] ?? t.description,
-    inputSchema: { ...t.inputSchema, properties: { ...slim(t.inputSchema?.properties), ...(t.name === helpOn ? { help: { type: 'string' } } : {}) } } }));
+  const pick = (props, keep) => (keep ? Object.fromEntries(keep.filter((k) => props?.[k]).map((k) => [k, props[k]])) : props);
+  const list = tools.filter((t) => !via[t.name]).map((t) => {
+    const [words, keep] = Array.isArray(short[t.name]) ? short[t.name] : [short[t.name], null];
+    const required = (t.inputSchema?.required || []).filter((k) => !keep || keep.includes(k));
+    return { ...t, description: words ?? t.description,
+      inputSchema: { type: 'object', properties: { ...slim(pick(t.inputSchema?.properties, keep)), ...(t.name === helpOn ? { help: { type: 'string' } } : {}) }, ...(required.length ? { required } : {}) } };
+  });
   return { list, help };
+}
+// a merged tool's op: board_watch → watch, meshy_generate → meshy_generate's own short op (named by the server)
+const opName = (name) => name.replace(/^[a-z]+_/, '');
+// The local handler of a dispatcher: { op: 'watch', ...args } → the hub's board_watch(args), as if called by name, so
+// the hub's handlers (and its usage counts) see the same tool names as before. ops = { op: 'real_tool_name' } (an
+// entry may give the op's fixed args: { op: ['capture_record', { action: 'start' }] }). Any other op returns null:
+// the dispatcher itself goes to the hub.
+function dispatch(ops) {
+  return (a) => {
+    const { op, ...rest } = a;
+    const hit = ops[String(op || '').trim().toLowerCase().replace(/-/g, '_')];
+    if (!hit) return null;
+    const [tool, fixed] = Array.isArray(hit) ? hit : [hit, {}];
+    return callHub(tool, { ...rest, ...fixed });
+  };
 }
 
 // Each server file ends with `module.exports = serve({ name, instructions, tools }, module)`: run as a program it
@@ -123,4 +147,4 @@ function serve(def, mod) {
   return def;
 }
 
-module.exports = { serve, callHub, fmtValue, helpOf, leanTools };
+module.exports = { serve, callHub, fmtValue, helpOf, leanTools, dispatch };

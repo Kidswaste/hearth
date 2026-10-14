@@ -16,6 +16,8 @@ const MacPolish = (() => { try { return require('./macpolish'); } catch { return
 const Conn = (() => { try { return require('./connectionsmain'); } catch { return null; } })();
 // (round 31, tokensaver) where saved memory goes (system prompt or only relevant messages), shared with chat-memory.js
 const CtxCore = (() => { try { return require('./context-core'); } catch { return null; } })();
+// (round 41, toolslim) opt-in tool sets that sleep until needed (data/tool-wake.json: when each AI last used each set)
+const Wake = (() => { try { const w = require('./toolwake'); w.setFile(path.join(DATA_DIR, 'tool-wake.json')); return w; } catch { return null; } })();
 const conns = (agent) => (Conn ? Conn.enabledFor(agent) : []);
 
 const WORKSPACE = path.join(DATA_DIR, 'workspace');
@@ -1052,6 +1054,7 @@ const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e)
 // the reply (jams, collaborations, once()) never see it.
 function send({ agent, chatId, session, text, options = {} }, emit, live = null) {
   emit = batched(emit);
+  const base = agent; // the agent as the owner set it up (toolwake.js forgets the sets switched off there)
   // a chat with its own engine (a comp part on Astra while its director runs on Claude, or the reverse): the same
   // agent on that engine, with its tools (Astra directors get the hub servers through -c), the twin's model / effort
   if (options.engine && options.engine !== agent.engine && ENGINES[options.engine]) agent = { ...agent, engine: options.engine, model: undefined, effort: undefined, ...(options.engine === 'codex' ? { hubTools: true } : {}) };
@@ -1079,6 +1082,10 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   if (options.asDirector === 'three') agent = { ...agent, threeTools: true, hubTools: agent.engine === 'codex' ? true : agent.hubTools, dock: agent.dock || 'three' };
   // a chat that turned on /capture-tools gets the capture tool set for its runs (not lean ones)
   if (options.captureTools && !options.lean) agent = { ...agent, captureTools: true };
+  // (round 41, toolslim) the AI's opt-in tool sets (board, capture, Adobe, publishing, apps) sleep until it's likely to
+  // need them (used this week, named in the message, already in this session): toolwake.js
+  const woke = Wake && agent.id ? Wake.plan(agent, { text, session, base, keep: options.captureTools ? ['captureTools'] : [] }) : null;
+  if (woke?.sleep.length) agent = { ...agent, ...Object.fromEntries(woke.sleep.map((k) => [k, false])) };
   if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };
   const original = text;
   if (engine === 'claude' && options.images?.length) {
@@ -1097,6 +1104,7 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   // Sessions always live in the hub's own workspace so chats resume even after the folder changes;
   // the project folder is reached through --add-dir (Claude) or the sandbox's writable roots (Codex).
   const state = { ...session };
+  if (woke?.sticky.length) state.sets = woke.sticky; // the sets this session keeps (its tool list never shrinks)
   if (engine === 'claude') loadDropped(bin);
   const args = engine === 'claude' ? claudeArgs(agent, state, options) : codexArgs(agent, state, options);
   const parse = engine === 'claude' ? claudeParser(state) : codexParser(state, agent);
@@ -1224,6 +1232,7 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   const handleOne = (event) => {
     if (!event) return;
     if (event.type === 'tool' || (event.type === 'agent' && event.status === 'running')) toolCount += 1;
+    if (event.type === 'tool' && Wake) Wake.noteTool(agent.id, event.name); // (round 41) a used set stays awake a week
     if (event.type === 'tool' && event.id) open.set(event.id, { name: event.name, args: event.args || '', at: Date.now() });
     if (event.type === 'agent' && event.status === 'running' && !open.has(event.id)) open.set(event.id, { name: `agent · ${event.description || 'subagent'}`, args: '', at: Date.now() });
     if ((event.type === 'step' || event.type === 'agent') && event.status !== 'running') open.delete(event.id);

@@ -16,7 +16,7 @@ const F = require('./fake-common');
 const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2);
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokens-test-'));
-for (const f of ['engines.js', 'store.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
+for (const f of ['engines.js', 'store.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js', 'toolwake.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
 // a typical saved memory: 12 short facts shared + 3 of Claude's own (≈ 150 tokens)
@@ -49,13 +49,24 @@ const KINDS = [
   ['apps', 'Claude + apps tools', { ...CLAUDE, appsTools: true }],
   ['astraBoard', 'Astra + board tools', { ...ASTRA, boardTools: true }],
   ['conn', 'Claude + a connection', { ...CLAUDE, connections: { k1: 'read' } }],
+  // (round 41, toolslim) more of the owner's kinds: board + screen tools together, Adobe, publishing, Forge Debug, a director with the board
+  ['boardCapture', 'Claude + board + screens', { ...CLAUDE, boardTools: true, captureTools: true }],
+  ['adobe', 'Claude + Adobe tools', { ...CLAUDE, adobeTools: true }],
+  ['deploy', 'Claude + publishing tools', { ...CLAUDE, deployTools: true }],
+  ['directorBoard', 'Three Director + board', { ...DIRECTOR, boardTools: true }],
+  ['forge', 'Forge Debug (Claude)', { id: 'forge', name: 'Forge Debug', engine: 'claude', mode: 'native', gameTools: true }],
 ];
+const OPT_IN = ['boardTools', 'captureTools', 'adobeTools', 'deployTools', 'appsTools'];
 // Per-message ceilings (system prompt with the sample memory as each kind really gets it + tool definitions).
 // Raise one only on purpose (an opt-in the owner asked for), never to make a growth pass.
 // Before round 31: claude 869, astra 332, director 2930, board 1977, capture 1419, apps 1501, astra + board 1440, conn 1010.
-const BUDGET = { claude: 600, astra: 340, director: 2900, directorAstra: 2900, board: 1500, capture: 1100, apps: 1120, astraBoard: 1240, conn: 750 };
+// Before round 41 (toolslim): claude 571, astra 318, director 2829, board 1444, capture 1056, apps 1068, astra + board 1191,
+// conn 712, board + screens 1929, adobe 872, deploy 803, director + board 3701, forge 1912. A message that needs none of an
+// AI's opt-in sets now sends none of them (toolwake.js: the "asleep" column).
+const BUDGET = { claude: 495, astra: 320, director: 2580, directorAstra: 2580, board: 1080, capture: 830, apps: 775, astraBoard: 900, conn: 640, boardCapture: 1410, adobe: 650, deploy: 670, directorBoard: 3160, forge: 1650 };
 // each opt-in tool set's own list (mcp/cost.js measure; the chat list as a plain chat gets it)
-const SET_BUDGET = { chatLean: 310, chatTools: 560, boardTools: 800, captureTools: 500, appsTools: 470 };
+// (round 41, toolslim) before: chatLean 296, chatTools 532, board 785, capture 485, apps 455, adobe 301, deploy 232, forge 514
+const SET_BUDGET = { chatLean: 215, chatTools: 265, boardTools: 495, captureTools: 340, appsTools: 240, adobeTools: 160, deployTools: 180, gameTools: 515 };
 
 async function connTokens() {
   const c = await F.mcpClient({ command: CONN.command, args: CONN.args });
@@ -87,7 +98,12 @@ async function measureAll() {
     writeMemory(MEMORY);
     const inMsg = memoryInMessage(agent);
     const memory = r.system - bare + inMsg;
-    rows.push({ key, label, system: r.system - (r.system - bare), memory, inMsg, tools, sets: r.tools.map(([k, t]) => `${k} ${t}`).concat(Conn.enabledFor(agent).length ? [`connection ${connTok}`] : []), total: bare + memory + tools, prompt });
+    // (round 41) asleep: the same AI on a message that doesn't need its opt-in sets (toolwake.js); wire: the tool lists as
+    // the engines name them (mcp__server__tool, input_schema)
+    const sleepy = OPT_IN.some((k) => agent[k]) ? { ...agent, ...Object.fromEntries(OPT_IN.map((k) => [k, false])) } : null;
+    const asleep = sleepy ? (() => { const z = cost.exactOf({ ...sleepy, exact: true }); writeMemory({}); const b = tok(engines.buildPrompt(sleepy)); writeMemory(MEMORY); return b + (z.system - b) + inMsg + z.tools.reduce((n, t) => n + t[1], 0) + (Conn.enabledFor(sleepy).length ? connTok : 0); })() : null;
+    const wire = r.wire + (Conn.enabledFor(agent).length ? connTok : 0);
+    rows.push({ key, label, system: r.system - (r.system - bare), memory, inMsg, tools, wire, asleep, sets: r.tools.map(([k, t]) => `${k} ${t}`).concat(Conn.enabledFor(agent).length ? [`connection ${connTok}`] : []), total: bare + memory + tools, prompt });
   }
   return rows;
 }
@@ -95,8 +111,9 @@ async function measureAll() {
 function printTable(rows) {
   const pad = (s, n) => String(s).padEnd(n);
   const num = (n) => String(n).padStart(7);
-  console.log(`${pad('per message', 28)}${num('prompt')}${num('memory')}${num('tools')}${num('total')}${num('budget')}   tool sets`);
-  for (const r of rows) console.log(`${pad(r.label, 28)}${num(r.system)}${num(r.memory)}${num(r.tools)}${num(r.total)}${num(BUDGET[r.key])}   ${r.sets.join(', ') || '–'}`);
+  console.log(`${pad('per message', 28)}${num('prompt')}${num('memory')}${num('tools')}${num('total')}${num('budget')}${num('wire')}${num('asleep')}   tool sets`);
+  for (const r of rows) console.log(`${pad(r.label, 28)}${num(r.system)}${num(r.memory)}${num(r.tools)}${num(r.total)}${num(BUDGET[r.key] ?? '–')}${num(r.wire)}${num(r.asleep ?? '–')}   ${r.sets.join(', ') || '–'}`);
+  console.log('wire = tool lists as the engines name them (mcp__server__tool); asleep = a message that needs none of its opt-in sets (toolwake.js)');
 }
 
 (async () => {
@@ -129,7 +146,7 @@ function printTable(rows) {
   writeMemory(MEMORY);
   check(CC.standing('Never use stock footage') && CC.standing('Call me Sam') && !CC.standing('My channel is called Hearthbeat'), 'standing preferences are told apart');
   // help on demand: what left the descriptions comes back, answered without the hub
-  for (const [script, tool, topic, re, env] of [['board-mcp.js', 'board_do', 'board_vibe', /never place reference media/], ['board-mcp.js', 'board_do', 'pins', /pins \{query\?\}|Pinterest/], ['capture-mcp.js', 'capture_list', 'capture_frames', /barcode/], ['apps-mcp.js', 'apps_open', 'apps_open', /YouTube Studio/], ['chat-mcp.js', 'chat_do', 'progress', /checklist/, { HUB_CHAT_LEAN: '1' }]]) {
+  for (const [script, tool, topic, re, env] of [['board-mcp.js', 'board_do', 'board_vibe', /never place reference media/], ['board-mcp.js', 'board_do', 'pins', /pins \{query\?\}|Pinterest/], ['capture-mcp.js', 'capture_do', 'capture_frames', /barcode/], ['capture-mcp.js', 'capture_do', 'tour', /tour/], ['adobe-mcp.js', 'adobe_do', 'photoshop', /sizes/], ['deploy-mcp.js', 'deploy_do', 'deploy_do', /rollback/], ['apps-mcp.js', 'apps_do', 'meshy', /credits/], ['board-mcp.js', 'board_do', 'watch', /scenes/], ['apps-mcp.js', 'apps_open', 'apps_open', /YouTube Studio/], ['chat-mcp.js', 'chat_do', 'progress', /checklist/, { HUB_CHAT_LEAN: '1' }]]) {
     const c = await F.mcpClient({ command: process.execPath, args: [path.join(ROOT, 'mcp', script)], env: { HUB_BRIDGE_INFO: path.join(dir, 'no-hub.json'), ...(env || {}) } });
     const r = await c.call(tool, { help: topic });
     check(!r.isError && re.test(r.content[0].text), `${tool} help ${topic}: the details, locally (${r.content[0].text.length} chars)`);
@@ -145,7 +162,7 @@ function printTable(rows) {
   const names = lc.tools.map((t) => t.name).join(',');
   const r1 = await lc.call('chat_do', { op: 'progress', steps: [{ text: 'a', status: 'doing' }] });
   const r2 = await lc.call('chat_progress', { steps: [] }); // an old name still works (not listed, still served)
-  check(names === 'chat_ask,chat_open,chat_do' && !r1.isError && seen[0]?.tool === 'chat_progress' && seen[0]?.args.steps?.[0]?.text === 'a' && !('op' in seen[0].args) && seen[0].args.agentId === 'claude' && !r2.isError && seen[1]?.tool === 'chat_progress', `lean chat list (${names}); chat_do progress → the hub's chat_progress`);
+  check(names === 'chat_ask,chat_do' && !r1.isError && seen[0]?.tool === 'chat_progress' && seen[0]?.args.steps?.[0]?.text === 'a' && !('op' in seen[0].args) && seen[0].args.agentId === 'claude' && !r2.isError && seen[1]?.tool === 'chat_progress', `lean chat list (${names}); chat_do progress → the hub's chat_progress`);
   lc.close(); hub.close();
   return finish(fails.length ? 1 : 0, fails);
 })().catch((e) => { console.error(e); finish(1); });

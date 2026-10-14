@@ -10,7 +10,7 @@ const root = path.join(__dirname, '..');
 const fails = [];
 const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (!ok) fails.push(what); };
 (async () => {
-  for (const [file, tool, key, max] of [['adobe-mcp.js', 'adobe_do', 'adobeTools', 330], ['deploy-mcp.js', 'deploy_do', 'deployTools', 260]]) {
+  for (const [file, tool, key, max] of [['adobe-mcp.js', 'adobe_do', 'adobeTools', 160], ['deploy-mcp.js', 'deploy_do', 'deployTools', 180]]) {
     const c = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', file)], env: { HUB_CHAT_ID: 'test-chat' } });
     check(c.tools.map((t) => t.name).join(',') === tool, `${file}: one tool (${tool})`);
     check(!c.instructions, `${file}: no MCP instructions`);

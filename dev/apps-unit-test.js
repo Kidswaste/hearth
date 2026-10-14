@@ -141,9 +141,11 @@ async function t(name, fn) {
   // ---------- the MCP server ----------
   await t('apps MCP: lean tools, in the cost report', () => {
     const def = require(path.join(ROOT, 'mcp', 'apps-mcp.js'));
-    assert.deepStrictEqual(def.tools.map((x) => x.name), ['apps_open', 'meshy_generate', 'apps_page', 'meshy_status']);
+    // (round 41, toolslim) the page and Meshy are apps_do ops (the hub still gets apps_page / meshy_generate / meshy_status)
+    assert.deepStrictEqual(def.tools.map((x) => x.name), ['apps_open', 'apps_do']);
+    assert.deepStrictEqual(def.all.map((x) => x.name), ['apps_open', 'meshy_generate', 'apps_page', 'meshy_status']);
     const chars = JSON.stringify(def.tools).length + def.guide.length;
-    assert.ok(chars < 2800, `≈ ${Math.round(chars / 4)} tokens per message`);
+    assert.ok(chars < 1200, `≈ ${Math.round(chars / 4)} tokens per message`);
     const cost = require(path.join(ROOT, 'mcp', 'cost.js'));
     const src = require('fs').readFileSync(path.join(ROOT, 'mcp', 'cost.js'), 'utf8');
     assert.ok(/appsTools: 'apps-mcp.js'/.test(src) && cost);
