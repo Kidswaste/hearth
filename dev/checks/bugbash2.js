@@ -123,6 +123,25 @@ r.setAnimationLoop((t) => { cam.fov = P.fov; cam.updateProjectionMatrix(); cam.p
   step('🎲 Variations: with the camera placed ("Point the camera at it", Keep this view) no "Another angle" made of camera sliders that change nothing', g0.includes('camera') && !st.groups.some((g) => g.id === 'camera') && !st.tiles.some((t) => t.lean === 'camera'), { before: g0, after: st.groups.map((g) => g.id), leans: st.tiles.map((t) => t.lean) });
 });
 
+// ---------- 6. Check this AI while the service is busy ----------
+await safe('aicheck busy', async () => {
+  const C = H.claudeAgent();
+  await Lazy.load('options');
+  const dir = `/tmp/hearth-bugbash2-${Date.now().toString(36)}`;
+  await window.hub.fs.write(`${dir}/seed.txt`, 'seed');
+  const was = H.agent(C.id).fileAccess;
+  H.agent(C.id).fileAccess = { level: 'full', folders: [dir] }; await saveConfig(); await wait(300);
+  await window.hub.kvSet('fake-switches', { claudeBusy: 'always' }); // (on disk when it answers: 1.)
+  const r = await AiCheck.run(C.id);
+  await window.hub.kvSet('fake-switches', {});
+  const left = ((await window.hub.fs.list(dir).catch(() => [])) || []).filter((f) => /\.hearth-check-/.test(f.name || f.path || f));
+  if (was) H.agent(C.id).fileAccess = was; else delete H.agent(C.id).fileAccess;
+  await saveConfig();
+  step('…and its probe file went to the Trash', !left.length, left);
+  const by = Object.fromEntries((r?.lines || []).map((l) => [l.k, l]));
+  step('Check this AI with the service busy: "Didn\'t answer: … busy right now", the folder lines not judged (no "Open AI setup" for a fine setup)', /busy right now/.test(by.answers?.text || '') && ['read', 'write', 'run'].every((k) => by[k]?.ok === null && !by[k]?.fix), (r?.lines || []).map((l) => `${l.k}:${l.ok}:${l.fix || ''}:${String(l.text).slice(0, 60)}`));
+});
+
 // ---------- 4. after Continue lighter: estimates and the meter ----------
 await safe('lighter sizes', async () => {
   const C = H.claudeAgent();

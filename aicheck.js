@@ -144,9 +144,23 @@ const AiCheck = (() => {
     // the real answer settles "signed in?" when the engine couldn't say
     if (r.needsLogin) Object.assign(sign, { ok: false, text: `Not signed in to ${LABEL[engine]}`, fix: 'login' });
     else if (sign.ok === null && r.ok) Object.assign(sign, { ok: true, text: 'Signed in' });
+    // (round 35, bugbash2) no answer because of the internet, a busy service, a usage limit or a VPN (offline-core.js
+    // reads the engine's error like the chat does): said in those words, and the folder lines aren't judged (they read
+    // "Can't read / write / run" with "Open AI setup" before, for a setup that was fine)
+    const net = !r.ok && !r.needsLogin && typeof OfflineCore !== 'undefined' ? OfflineCore.classify(String(r.error || '')) : null;
+    const netWhy = net && { offline: 'no internet right now', busy: `${LABEL[engine]}'s service is busy right now`, limit: `usage limit reached${net.resetAt ? ` until ${OfflineCore.clock(net.resetAt)}` : ''}`, proxy: 'a VPN or proxy on this network may be blocking it' }[net.kind];
     out.push(r.ok
       ? { k: 'answers', ok: true, text: `Answers a message (${(r.ms / 1000).toFixed(1)} s${state.tokens ? `, ≈ ${state.tokens.toLocaleString()} tokens` : ''})` }
-      : { k: 'answers', ok: false, text: `Didn't answer: ${short(String(r.error || 'stopped').split('\n')[0], 160)}`, fix: r.needsLogin ? 'login' : ['install', 'update'].includes(r.fixAction) ? r.fixAction : 'again', cmd: rep?.[engine]?.plan?.command || '' });
+      : { k: 'answers', ok: false, text: `Didn't answer: ${netWhy || short(String(r.error || 'stopped').split('\n')[0], 160)}`, fix: r.needsLogin ? 'login' : ['install', 'update'].includes(r.fixAction) ? r.fixAction : 'again', cmd: rep?.[engine]?.plan?.command || '' });
+    if (netWhy && filesOn) { // (Files Off / no folder: the lines below say so, whatever the answer)
+      const wait = (k, t) => ({ k, ok: null, text: `${t}: not checked (it didn't answer; check again ${net.kind === 'offline' ? 'once you\'re back online' : 'in a moment'})` });
+      out.push(wait('read', 'Reads its folder'), wait('write', 'Writes a file there'), wait('run', 'Runs a command'));
+      const left = [];
+      for (const p of [probe, made]) if (p && await window.hub.fs.stat(p).catch(() => null)) left.push(p);
+      if (left.length) await window.hub.fs.trash(left).catch(() => {});
+      state.lines = out;
+      return state;
+    }
     // ---- files: judged from what happened ----
     const L = (typeof AccessRules !== 'undefined' && AccessRules.LEVEL_LABEL) || { off: 'Off', read: 'Read', write: 'Read & write', full: 'Full' };
     const rank = (l) => ['off', 'read', 'write', 'full'].indexOf(l);
