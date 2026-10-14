@@ -84,7 +84,7 @@ const AppSearchData = (() => {
     ['sync-big', 'This computer & sync', 'Sync big videos', 'Sync big videos', 'sync captures renders large files', 'Captures and renders over 100 MB travel too, in resumable pieces'],
     ['check-computer', 'This computer & sync', 'Check this computer…', 'Check this computer', 'computer ready install ffmpeg claude codex setup permissions', 'Is this computer ready? Each thing with one button to fix it'],
     ['update-now', 'Updates & what\'s new', 'Look for updates now', 'Look now', 'update check upgrade version', 'Ask for updates now (nothing is installed without you)'],
-    ['whatsnew', 'Updates & what\'s new', 'What\'s new…', 'What\'s new', 'whats new patch notes changelog changes', 'Patch notes, or only what fits how you work'],
+    ['whatsnew', 'Updates & what\'s new', 'What\'s new…', 'What\'s new', 'whats new patch notes changelog changes since you were away digest missed', 'Since you were away (one page), patch notes, or only what fits how you work'],
     ['ai-setup', 'Your AIs', '⋯ AI setup', 'AI setup', 'ai setup personality instructions what it can use memory', 'Who your AIs are and what they can use'],
     ['claude-path', 'Claude and Codex programs', 'Claude program (only if it isn\'t found)', 'Claude program', 'claude path engine engines program cli', 'Where the Claude program is, when Hearth can\'t find it'],
     ['codex-path', 'Claude and Codex programs', 'Codex program (only if it isn\'t found)', 'Codex program', 'codex astra path engine engines program cli', 'Where the Codex program is, when Hearth can\'t find it'],

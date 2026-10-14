@@ -1,0 +1,27 @@
+/* ✦ Since you were away (round 42, whatsnew.js): the after-update card (a .speed-card, bottom left) and the dialog.
+   Compositor-only motion (the card's own speed-in), nothing over anything that animates. */
+.wn-card { width: min(380px, calc(100vw - 100px)); max-height: min(72vh, 620px); }
+.wn-card .wn-body { overflow-y: auto; overscroll-behavior: contain; min-height: 0; flex: 1; padding-right: 2px; }
+.wn-lead { margin: 0 2px 6px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.wn-group { margin: 2px 0 6px; }
+.wn-gh { display: flex; align-items: center; gap: 6px; margin: 4px 2px 2px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--fh-gold, var(--accent)); }
+.wn-gi { width: 16px; text-align: center; text-transform: none; }
+.wn-list { list-style: none; margin: 0; padding: 0; }
+.wn-row { display: flex; align-items: flex-start; gap: 6px; padding: 3px 4px 3px 24px; border-radius: var(--r-md, 7px); line-height: 1.4; }
+.wn-row:hover { background: var(--hover); }
+.wn-text { flex: 1; min-width: 0; }
+.wn-text b { font-weight: 600; color: var(--text); }
+.wn-card .wn-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.wn-fix .wn-text { color: var(--muted); }
+.wn-show { flex: none; padding: 1px 7px; font-size: 11px; white-space: nowrap; }
+.wn-more { margin: 2px 0 2px 22px; }
+.wn-foot { display: flex; align-items: center; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); margin-top: 4px; }
+.wn-foot .spacer, .wn-dhead .spacer { flex: 1; }
+.wn-dialog { width: min(640px, calc(100vw - 40px)); max-height: min(82vh, 860px); flex-direction: column; gap: 6px; padding: 16px 20px; }
+.wn-dialog[open] { display: flex; }
+.wn-dhead { display: flex; align-items: center; gap: 10px; }
+.wn-dhead h2 { margin: 0; }
+.wn-scroll:focus { outline: none; }
+.wn-dialog .modal-buttons .spacer { flex: 1; }
+.wn-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 2px 8px; }
+.wn-dialog .wn-row { font-size: 13px; }

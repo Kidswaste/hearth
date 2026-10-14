@@ -219,7 +219,11 @@ const Updater = (() => {
     // (round 38, hintcalm) first in the one-at-a-time queue (hints.js): the patch notes come before any other note
     const say = (show) => (window.Hints ? Hints.offer({ id: `update:${j.at}`, kind: 'notice', rank: 0, once: false, ttl: 5 * 60000, show }) : show());
     if (j.back) { say(() => toast(`Back on the previous version (${j.to}). ⬆ offers the update again whenever you want.${j.note ? ` ${j.note}` : ''}`, { timeout: 9000 })); return; }
-    say(() => {
+    // (round 42, whatsnew) two rounds or more: ONE digest card (Since you were away) is the note; one round: as before
+    justUpdated = true;
+    say(async () => {
+      const card = await sinceAway(j);
+      if (card) return card;
       const t = toast(`Hearth updated (${j.from} → ${j.to}, ${j.n} file${j.n === 1 ? '' : 's'}).${j.note ? ` ${j.note}` : ''}`, { timeout: j.note ? 14000 : 10000, action: { label: '📰 Patch notes', fn: () => patchNotes() } });
       // (round 37) something feels wrong? one click back to the version before, for this session
       t?.lastElementChild?.before?.(el('button', { class: 'up-back', text: '↶ Go back', title: `Go back to the version before this update (${j.from}): your chats and data stay`, on: { click: () => { t.remove(); goBack(); } } }));
@@ -239,11 +243,28 @@ const Updater = (() => {
     afterUpdate();
   }
 
+  // (round 42, whatsnew) ✦ Since you were away (whatsnew.js, its own lazy group): after an update, the digest card or
+  // null (≤ 2.5 s, else the usual note); openSinceAway() = the digest any time (Settings › What's new…, Ctrl/⌘+K)
+  let justUpdated = false;
+  const loadWn = () => (typeof Lazy !== 'undefined' ? Lazy.load('whatsnew') : Promise.resolve());
+  const sinceAway = (j) => Promise.race([loadWn().then(() => WhatsNew.afterUpdate(j, { goBack })), new Promise((res) => setTimeout(() => res(null), 2500))]).catch((err) => { console.warn('whatsnew', err); return null; });
+  const openSinceAway = () => loadWn().then(() => WhatsNew.open()).catch((err) => toast(err.message, { type: 'error' }));
+  // Hearth updated some other way (pulled by hand): the newest round's notes vs what this computer saw, cheaply
+  // (index.txt only); the group loads only when there is something new
+  async function sinceAwayAtStart() {
+    if (justUpdated) return;
+    let top = 0;
+    try { top = Math.max(0, ...(await (await fetch('docs/patch-notes/index.txt', { cache: 'no-store' })).text()).split('\n').map((l) => Number((/^round-(\d+)\.md$/.exec(l.trim()) || [])[1]) || 0)); } catch { return; }
+    if (!top || justUpdated) return;
+    const seen = store.get('whatsnew.seen', null);
+    if (seen == null) { store.set('whatsnew.seen', top); return; } // the first start with it: from here on
+    if (top > Number(seen)) loadWn().then(() => WhatsNew.atStart()).catch(() => {});
+  }
   // (round 29) the patch-notes reader (patchnotes.js, its own lazy group)
   const patchNotes = (file) => (typeof Lazy !== 'undefined' ? Lazy.load('patchnotes') : Promise.resolve()).then(() => PatchNotes.open(file)).catch((err) => toast(err.message, { type: 'error' }));
   function start() {
     afterUpdate();
-    const ready = () => { restoreView(); afterSwap(); };
+    const ready = () => { restoreView(); afterSwap(); setTimeout(() => sinceAwayAtStart(), 4000); };
     if (performance.getEntriesByName('hearth:ready').length) ready(); else addEventListener('hearth:ready', ready, { once: true });
     AppUI.addAction?.('Patch notes: what changed, round by round', () => patchNotes());
     AppUI.addAction?.('Go back to the previous Hearth version (before the last update)', () => goBack());
@@ -275,5 +296,5 @@ const Updater = (() => {
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
-  return { check, run, dialog, patchNotes, goBack, trouble, restoreView, keepView, get status() { return last; }, _setApi: (fn) => { api = fn; } };
+  return { check, run, dialog, patchNotes, sinceAway: openSinceAway, goBack, trouble, restoreView, keepView, get status() { return last; }, _setApi: (fn) => { api = fn; } };
 })();
