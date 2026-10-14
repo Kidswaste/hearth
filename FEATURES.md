@@ -1096,3 +1096,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ↶ One undo for everything (round 41, undoall, 35 upgrades: docs/upgrades/undoall.md)
 - ✓ Ctrl/⌘+Z outside text boxes / the Lab / the board undoes your last change (a setting, an AI's setup, a chat deleted / renamed / moved, Tidy memory, a recipe or template deleted, the newest AI change via Changes by AIs); Ctrl/⌘+Shift+Z redoes; toast "Undid: … · Redo"; Activity › Recent changes with ↶ / ↷; Find anything "undo"; `/undo-change`, `/redo-change`.
 - ○ `node dev/undoall-test.js`, `sh dev/run-checks.sh undoall` (real key presses); ⌘Z not tried on a real Mac.
+## ⧉ Make a batch (round 42, labbatch, 35 upgrades: docs/upgrades/labbatch.md)
+- ✓ ✦ More › ⇪ Make › ⧉ Make a batch… (also the toolbar's ⋯, My templates' picker and cards, Lab search, ⌘/Ctrl+K): one of My templates (or this scene) → one video per row and format; rows from typed lines, a CSV / TSV naming the fields (Mac / Windows paths, relative to the CSV), every song or picture in a folder; a recipe on each; names like "{title} {format}".
+- ✓ Stills of the first 4 before it starts; one render-queue row (cancel, pause, time left for the batch), kept awake; one folder + "Batch summary.csv"; `/batch` for the director via three_do run. Exported frames now wait for reference pictures.
+- ○ `node dev/labbatch-test.js` (unit), `sh dev/run-checks.sh labbatch` (real ffmpeg); not yet on the owner's real songs / Mac.
