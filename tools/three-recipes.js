@@ -305,7 +305,9 @@ const LabRecipes = (() => {
         return nu.length ? null : 'the layer wasn\'t added';
       }
       case 'slider': case 'link': {
-        const m = C.matchSlider(s, sceneModel().layers, made);
+        let m = C.matchSlider(s, sceneModel().layers, made);
+        // a layer the recipe just made shows its sliders once it ran (a moment): wait for them
+        for (let i = 0; i < 25 && m.why && s.on?.made && made.has(s.on.made); i += 1) { await sleep(150); m = C.matchSlider(s, sceneModel().layers, made); }
         if (m.why) return m.why;
         if (s.k === 'slider') d.sliders(m.layer.id, { [m.ctl.key]: C.valueFor(s, m.ctl) });
         else HK().ctlOf?.(m.layer.id)?.link?.(m.ctl.key, C.linkFor(s, m.ctl));

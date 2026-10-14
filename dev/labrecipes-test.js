@@ -98,6 +98,7 @@ ok('replay mapping: by key, by label, by role; numbers keep their place in the r
   // a step on a layer the recipe made: that layer only
   const made = new Map([['s9', ['L2']]]);
   assert.strictEqual(C.matchSlider({ k: 'slider', on: { made: 's9', n: 0 }, key: 'size', label: 'Size', type: 'number', v: 1 }, OTHER, made).layer.id, 'L2');
+  assert.strictEqual(C.matchSlider({ k: 'slider', on: { name: 'Tunnel' }, key: 'size', label: 'Size', type: 'number', v: 1 }, OTHER, new Map([['s9', ['L1']]])).layer.id, 'L2', 'not on a layer the recipe made');
   assert.ok(/wasn't made/.test(C.matchSlider({ k: 'slider', on: { made: 'zz' }, key: 'size', label: 'Size', v: 1 }, OTHER, made).why));
 });
 

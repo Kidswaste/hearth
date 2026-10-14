@@ -181,7 +181,10 @@ const RecipeCore = (() => {
       return L ? { list: [[L, 30]] } : { why: 'its layer is gone' };
     }
     const n = norm(on?.name);
-    const list = layers.map((L) => [L, (n && norm(L.name) === n ? 30 : 0) + (on?.filter && L.filter === on.filter ? 20 : 0) + (L.sel ? (on?.sel ? 12 : 6) : 0)]);
+    // a step recorded on a layer the scene already had never lands on a layer this recipe just made
+    const mine = new Set([...(made?.values?.() || [])].flat());
+    const pool = layers.filter((L) => !mine.has(L.id));
+    const list = (pool.length ? pool : layers).map((L) => [L, (n && norm(L.name) === n ? 30 : 0) + (on?.filter && L.filter === on.filter ? 20 : 0) + (L.sel ? (on?.sel ? 12 : 6) : 0)]);
     return { list: list.sort((a, b) => b[1] - a[1]) };
   }
   function matchSlider(step, layers, made = new Map()) {
