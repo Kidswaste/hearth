@@ -1057,3 +1057,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ ⛶ Full screen in the rail (under ☰), Ctrl/⌘+K, `/fullscreen`, plus F11 / ⌃⌘F / the green button; remembered per screen (the big monitor full screen, the laptop windowed); Esc never leaves it; a hint the first time; the chats list peeks in from the rail when hidden in full screen.
 - ✓ Size of everything (Appearance: Auto · 100 · 125 · 150 · 175 · 200) per screen; Auto from the screen's size (a 4K at 100 % → 150 %), set before the first frame; Ctrl/⌘ + / − / 0 per screen; the Lab crisp at every size and quicker to lighten a huge preview.
 - ○ `node dev/bigscreen-test.js` (unit), `sh dev/run-checks.sh bigscreen` (4K at 100 % and 200 %, ultrawide, pictures in /tmp/hearth-bigscreen); real Mac / Windows full screen untested here.
+## 🧹 Tidy memory (round 38, memorytidy, 20 upgrades: docs/upgrades/memorytidy.md)
+- ✓ ⋯ AI setup → Memory → Tidy memory…: a before / after list (merge facts said twice, the newest fact replaces what it contradicts, shorter wording, Lab facts to a Lab scope only the Three Directors read, stale ones dropped), sure changes ticked, Apply, one Undo; ✦ Smarter tidy (lightest model, cost shown first); `/tidy-memory`.
+- ✓ `<remember>` replaces the fact it repeats or contradicts instead of appending (the chat's frozen prompt stays byte-stable); one quiet line in the Memory fold past ≈ 800 tokens.
+- ○ `node dev/memorytidy-test.js` (unit), `sh dev/run-checks.sh memorytidy` (fake engines).
