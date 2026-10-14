@@ -9,6 +9,7 @@
 //   slow      streams slowly (~6 s, to test Stop)       error    the engine fails (is_error / turn.failed)
 //   login     fails with "not logged in"                crash    exits with code 3 and a stderr line
 //   big       reports a huge input usage (auto-compact) echo     replies with the exact prompt it got
+//   huge      (round 35) a ≈ 100 KB reply: long Markdown, big code, tables, lists, pictures (dev/fake-huge.js)
 //   progress  hidden <progress pct="35|75" note="…"/> tags inside the reply (round 11)
 //   mcp       really calls the hub MCP servers it was given (--mcp-config / -c mcp_servers.*): the tools in a line
 //             `mcp: [["three_console", {}], ["three_do", {"cmd": "layers"}]]` (default: tools/list + three_console)
@@ -338,6 +339,10 @@ function plan(prompt, engine = 'claude') {
     Object.assign(p, { think: false, mcp: Boolean(jam.mcpCalls), mcpCalls: jam.mcpCalls || null, error: Boolean(jam.error), code: false, table: false, long: false, remember: false, suggest: false, slow: false, tool: false, tools3: false });
     return { p, text: jam.text || '', thinking: '' };
   }
+  // (round 35, streamrender) "huge" / "huge-code|table|list|images|text": a ≈ 100 KB realistic reply (dev/fake-huge.js),
+  // streamed in bigger, quicker pieces (16 characters every 4 ms, FAKE_HUGE_DELAY)
+  const huge = require('./fake-huge').huge(msg);
+  if (huge) { p.huge = true; return { p, text: huge, thinking: p.think ? 'Let me plan the parts first.' : '' }; }
   const parts = [];
   const short = msg.replace(/\s+/g, ' ').slice(0, 80);
   if (p.decide) return { p, text: p.decide[1] || p.decide[0], thinking: '' };
@@ -362,8 +367,8 @@ function plan(prompt, engine = 'claude') {
 }
 
 // Splits text into small pieces like a model streams tokens.
-function pieces(text) { return text.match(/[\s\S]{1,12}/g) || []; }
-const delayMs = (p) => (p.slow ? 120 : Number(process.env.FAKE_DELAY || 15));
+function pieces(text, p) { return text.match(p?.huge ? /[\s\S]{1,16}/g : /[\s\S]{1,12}/g) || []; }
+const delayMs = (p) => (p.slow ? 120 : p.huge ? Number(process.env.FAKE_HUGE_DELAY || 4) : Number(process.env.FAKE_DELAY || 15));
 
 // A real MCP client for the `mcp` keyword: starts a server the way the CLI would ({ command, args, env }), speaks
 // JSON-RPC over stdio, and returns { tools, call(name, args), close() }.

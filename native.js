@@ -79,6 +79,9 @@ const Native = (() => {
     const list = el('div', { class: 'messages' });
     list.addEventListener('click', (e) => onListClick(e, agentId));
     list.addEventListener('toggle', fillFold, true); // (round 16) folded tool steps fill in when opened (toggle doesn't bubble: capture)
+    // (round 35, streamrender) a picture in a reply loaded: its size is remembered (it takes its place before it loads
+    // next time: the finished reply, the chat opened again), and a chat following its end stays at the end
+    list.addEventListener('load', (e) => { if (e.target.tagName !== 'IMG') return; rememberSize(e.target); if (follows(v)) scrollToEnd(list, v); }, true);
     // Selected text in the chat gets a small bar: quote it, copy it, find it in the chat, or save it to notes.
     const selAct = (label, title, fn) => el('button', { type: 'button', text: label, title, on: { click: () => { const t = String(getSelection()).trim(); quoteSel.hidden = true; if (t) fn(t); } } });
     const quoteSel = el('div', { class: 'quote-sel sel-bar', hidden: true },
@@ -104,6 +107,10 @@ const Native = (() => {
     let userAt = 0;
     const byUser = () => { userAt = performance.now(); };
     for (const ev of ['wheel', 'touchmove', 'pointerdown', 'keydown']) list.addEventListener(ev, byUser, { passive: true });
+    // (round 35, streamrender) a wheel turned up (or Page Up / Home / ↑) stops following at once: waiting for the scroll
+    // it starts let a reply's next paint scroll to the end first, which cancelled your wheel
+    list.addEventListener('wheel', (e) => { if (e.deltaY < 0 && list.scrollTop > 0) v.follow = false; }, { passive: true });
+    list.addEventListener('keydown', (e) => { if (['PageUp', 'Home', 'ArrowUp'].includes(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) v.follow = false; }, { passive: true });
     list.addEventListener('scroll', () => {
       const gap = list.scrollHeight - list.scrollTop - list.clientHeight;
       if (gap < 4) v.follow = true; // at the very bottom (End, ↓, the jump button, or scrolled there): follow again
@@ -602,22 +609,38 @@ const Native = (() => {
     }
   }
 
-  function messageEl(m, agent, index, isLast) {
+  function messageEl(m, agent, index, isLast, live = null) {
     // Claude × Astra collaborations (duo, relay, debate…) draw their own card (astra.js)
     if (m.role === 'collab' && typeof Astra !== 'undefined') return Astra.collabEl(m, agent, index, isLast);
     if (m.role === 'jam' && typeof Jam !== 'undefined') return Jam.cardEl(m, agent, index); // jam.js
     if (m.role === 'intro') return el('div', { class: 'msg note', dataset: { index }, text: `🎬 Video project${m.name ? ` “${m.name}”` : ''} (video projects left with Video Review in round 17; the Lab sequence makes videos now)` });
     if (m.role === 'comp' && typeof CompDispatch !== 'undefined') return CompDispatch.cardEl(m, agent, index); // comp-dispatch.js (parts in other chats)
-    const node = el('div', { class: `msg ${m.role}`, dataset: { raw: m.text, index }, title: m.at ? fmtDate(m.at) : '' });
-    const body = el('div', { class: 'body' });
-    if (m.role === 'assistant' || m.role === 'opinion') { body.innerHTML = renderMarkdown(m.text); decorateCode(body); } else body.textContent = m.text;
-    if (m.role === 'opinion') node.append(el('div', { class: 'opinion-head', text: `🔎 Second opinion from ${m.from}${m.cost ? ` · ${fmt(m.cost.input)} in · ${fmt(m.cost.output)} out` : ''}` }));
-    if (m.thinking) node.append(thinkingEl(m.thinking, false, m.thinkMs));
-    for (const qa of m.qa || []) node.append(el('div', { class: 'qa-done' }, el('span', { class: 'qa-q', text: `❓ ${qa.q}` }), el('span', { class: 'qa-a', text: `→ ${qa.a}` })));
-    for (const op of m.opinions || []) node.append(opinionCard(op));
-    if (m.progress) node.append(progressCard(m.progress));
-    for (const sh of m.shows || []) node.append(showCard(sh));
-    node.append(body);
+    // (round 35, streamrender) `live`: the reply that just finished streaming becomes this message in place: its node
+    // and its text (already exactly a full render's, see paintBody) stay where they are, only what's around the text
+    // is built again. Drawn as a new node, a long reply was styled and laid out from scratch when it ended (≈ 0.45 s
+    // for 60K characters here: the end of every long reply was a visible hitch).
+    let node; let body;
+    if (live) {
+      node = live.el; body = node.querySelector(':scope > .body');
+      paintBody(live.p, body, m.text);
+      for (const c of [...node.childNodes]) if (c !== body) c.remove();
+      for (const a of [...node.attributes]) if (a.name !== 'class') node.removeAttribute(a.name);
+      // (the class only loses "streaming": only what depends on it is styled again)
+      node.className = `msg ${m.role}`; node.dataset.raw = m.text; node.dataset.index = index; node.title = m.at ? fmtDate(m.at) : '';
+      decorateCode(body); sizeImages(body);
+    } else {
+      node = el('div', { class: `msg ${m.role}`, dataset: { raw: m.text, index }, title: m.at ? fmtDate(m.at) : '' });
+      body = el('div', { class: 'body' });
+      if (m.role === 'assistant' || m.role === 'opinion') { body.innerHTML = renderMarkdown(m.text); decorateCode(body); sizeImages(body); } else body.textContent = m.text;
+    }
+    const above = live ? (...xs) => body.before(...xs) : (...xs) => node.append(...xs); // (the text never moves)
+    if (m.role === 'opinion') above(el('div', { class: 'opinion-head', text: `🔎 Second opinion from ${m.from}${m.cost ? ` · ${fmt(m.cost.input)} in · ${fmt(m.cost.output)} out` : ''}` }));
+    if (m.thinking) above(thinkingEl(m.thinking, false, m.thinkMs));
+    for (const qa of m.qa || []) above(el('div', { class: 'qa-done' }, el('span', { class: 'qa-q', text: `❓ ${qa.q}` }), el('span', { class: 'qa-a', text: `→ ${qa.a}` })));
+    for (const op of m.opinions || []) above(opinionCard(op));
+    if (m.progress) above(progressCard(m.progress));
+    for (const sh of m.shows || []) above(showCard(sh));
+    if (!live) node.append(body);
     if (m.role === 'opinion') node.append(el('div', { class: 'msg-foot' }, el('button', { class: 'msg-act primary-act', text: `Ask ${agent.name} to use it`, dataset: { msgAct: 'apply-opinion' } })));
     if (m.suggest?.length && (isLast || m.lastReply)) node.append(el('div', { class: 'suggest-chips' }, m.suggest.map((s) => (s.startsWith('/')
       ? el('button', { class: 'suggest-chip cmd', text: s, dataset: { suggest: s }, title: 'Run this chat command (nothing is sent)' })
@@ -735,7 +758,7 @@ const Native = (() => {
     if (!node || !m) return false;
     const body = node.querySelector(':scope > .body');
     if (body.classList.toggle('raw')) body.textContent = m.text;
-    else { body.innerHTML = renderMarkdown(m.text); decorateCode(body); }
+    else { body.innerHTML = renderMarkdown(m.text); decorateCode(body); sizeImages(body); }
     return body.classList.contains('raw');
   }
   const plainText = (t) => String(t || '').replace(/```[\w+-]*\n?/g, '').replace(/\*\*|__|~~|==|`/g, '').replace(/^#{1,6}\s+/gm, '').replace(/^\s*>\s?/gm, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
@@ -799,12 +822,16 @@ const Native = (() => {
     try { rest = JSON.stringify(m, function skip(k, val) { return this === m && SIG_SKIP.has(k) ? undefined : val; }); } catch { return null; }
     return `${gen}|${index}|${isLast ? 1 : 0}|${m.lastReply ? 1 : 0}|${m.thinking?.length || 0}|${m.edits?.length || 0}|${m.images?.length || 0}|${rest}`;
   }
+  const handoff = new WeakMap(); // (round 35) a finished reply → its live node { el, p } (onEvent)
   const REUSABLE = new Set(['user', 'assistant', 'opinion']); // cards of collaborations / jams / dispatches draw live state: always fresh
   function nodeFor(cache, next, m, agent, index, isLast) {
     if (!REUSABLE.has(m.role)) return messageEl(m, agent, index, isLast);
     const sig = msgSig(m, index, isLast);
     const hit = cache.get(m);
-    const node = sig && hit && hit.sig === sig && hit.text === m.text ? hit.node : messageEl(m, agent, index, isLast);
+    // (round 35) the reply that just finished: its live node becomes the message (messageEl, `live`)
+    const h = handoff.get(m); if (h) handoff.delete(m);
+    const live = h && m.role === 'assistant' && h.el.isConnected && h.el.classList.contains('streaming') && h.el.querySelector(':scope > .body') ? h : null;
+    const node = sig && hit && hit.sig === sig && hit.text === m.text ? hit.node : messageEl(m, agent, index, isLast, live);
     if (sig) next.set(m, { node, sig, text: m.text });
     return node;
   }
@@ -864,12 +891,19 @@ const Native = (() => {
     const v = views.get(agentId);
     const agent = H.agent(agentId);
     if (!v || !agent) return;
+    v.drawing = (v.drawing || 0) + 1; // (round 35) draws under way (a jump waits for them: jumpTo)
+    const seq = v.drawSeq = (v.drawSeq || 0) + 1; // (round 35) a newer draw of this view makes this one stop
+    const stale = () => { if (v.drawSeq === seq) return false; v.drawing = Math.max(0, v.drawing - 1); return true; };
     const chatId = H.activeChat[agentId];
     const chat = chatId ? await loadChat(chatId) : null;
     if (chatId && !chat) H.activeChat[agentId] = null;
     if (chat && window.Md) await warmReplies(v, chat);
+    if (stale()) return;
     const wasNearBottom = nearBottom(v.list);
     const prevScroll = v.list.scrollTop;
+    // (round 35) reading higher up: what's at the top of the chat stays there (a reply finishing below, or changing
+    // height above, used to move the chat under you: only the scroll offset was kept)
+    const anchor = keepScroll && !(wasNearBottom && v.follow !== false) ? topAnchor(v.list) : null;
 
     // (round 16) the header is written only where it changed (a redraw of the same chat left it as it was)
     const put = (node, key, value) => { if (node[key] !== value) node[key] = value; };
@@ -919,17 +953,26 @@ const Native = (() => {
       let day = '';
       const busy = pending.has(chat.id);
       const onlyOpinionsAfter = chat.messages.slice(lastReplyIdx + 1).every((x) => x.role === 'opinion');
-      chat.messages.forEach((m, i) => {
-        if (i < from) return;
-        if (m.compactReq) return; // the "please compact" request is shown as part of the divider
+      // (round 35, streamrender) many messages to draw (a long chat shown whole for a jump, the next earlier ones):
+      // built a few ms at a time with frames in between (it was one long task: ≈ 0.6 s for 1,200 messages here, the
+      // window frozen); the chat shows them all at once when they're ready, as before
+      let sliceAt = performance.now();
+      for (let i = from; i < chat.messages.length; i++) {
+        const m = chat.messages[i];
+        if (m.compactReq) continue; // the "please compact" request is shown as part of the divider
         // a quiet date line where the day changes (Today / Yesterday / the date)
         const d = m.at ? dayLabel(m.at) : '';
         if (d && d !== day) { if (day || chat.messages.length > 1) out.push(el('div', { class: 'day-sep', text: d })); day = d; }
         if (firstNew === i) out.push(el('div', { class: 'new-sep', text: 'New' }));
-        if (m.compactSummary) { out.push(compactDivider(m)); return; }
+        if (m.compactSummary) { out.push(compactDivider(m)); continue; }
         m.lastReply = i === lastReplyIdx && onlyOpinionsAfter && !busy ? true : undefined;
         out.push(nodeFor(cache, nextCache, m, agent, i, i === lastIdx && !busy));
-      });
+        if (performance.now() - sliceAt > SLICE_MS) {
+          await nextSlice();
+          if (stale()) { keepBuilt(v, chatId, nextCache); return; }
+          sliceAt = performance.now();
+        }
+      }
       // the nodes of the last few chats shown stay ready for switching back (older ones are let go)
       v.nodes ||= new Map(); v.nodes.delete(chatId); v.nodes.set(chatId, nextCache);
       while (v.nodes.size > NODE_CHATS) v.nodes.delete(v.nodes.keys().next().value);
@@ -953,6 +996,7 @@ const Native = (() => {
     renderQueue(agentId);
     // Long replies start folded so the conversation stays scannable.
     requestAnimationFrame(() => {
+      v.drawing = Math.max(0, (v.drawing || 1) - 1);
       // measure every reply first, then fold: folding one between two measurements made each measurement lay out the
       // whole chat again (one full layout per folded reply)
       const autoFold = store.get('chat.autoFold', true) !== false;
@@ -968,13 +1012,77 @@ const Native = (() => {
       // nodes that left the list stop being watched (measured again if they come back)
       for (const node of v.foldWatch || []) if (!node.isConnected) { v.foldIO.unobserve(node); v.foldWatch.delete(node); measured.delete(node); }
       const newSep = v.list.querySelector('.new-sep');
-      if (keepScroll && !(wasNearBottom && v.follow !== false)) v.list.scrollTop = prevScroll;
-      else if (newSep && !keepScroll) v.list.scrollTop = Math.max(0, newSep.offsetTop - 40);
+      if (keepScroll && !(wasNearBottom && v.follow !== false)) { v.list.scrollTop = prevScroll; if (anchor) keepAnchor(v.list, anchor); }
+      else if (newSep && !keepScroll) { v.list.scrollTop = Math.max(0, newSep.offsetTop - 40); v.follow = v.list.scrollHeight - v.list.scrollTop - v.list.clientHeight < 4; }
       else if (!(v.scrollLock && keepScroll)) { v.follow = true; v.list.scrollTop = v.list.scrollHeight; }
+      if (v.jumpAfter != null) { const at = v.jumpAfter; v.jumpAfter = null; jumpTo(agentId, at); } // (round 35) a jump waiting for this draw
       const near = nearBottom(v.list);
       if (v.jump.hidden !== near) v.jump.hidden = near;
       for (const fn of hooks.render) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
     });
+  }
+
+  // (round 35, streamrender) what's at the top edge of the chat: a message, or a block of the reply being written
+  // (that one is replaced by the finished message when it ends: found again by its place in the reply)
+  function firstBelow(nodes, top) { // nodes are in order down the page: the first whose bottom is under `top`
+    let lo = 0; let hi = nodes.length - 1; let hit = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (nodes[mid].getBoundingClientRect().bottom > top + 1) { hit = mid; hi = mid - 1; } else lo = mid + 1; }
+    return hit;
+  }
+  function topAnchor(list) {
+    const top = list.getBoundingClientRect().top;
+    const kids = list.children; let i = firstBelow(kids, top);
+    if (i < 0) return null;
+    // a message rather than what's drawn anew each time (the "Show earlier" button, a day line)
+    for (let j = i; j < kids.length && j < i + 4; j++) if (kids[j].classList.contains('msg')) { i = j; break; }
+    const n = kids[i];
+    const body = n.classList.contains('streaming') ? n.querySelector(':scope > .body') : null;
+    const k = body ? firstBelow(body.children, top) : -1;
+    if (k >= 0) { const b = body.children[k]; return { live: n, k, tag: b.tagName, y: b.getBoundingClientRect().top - top }; }
+    return { node: n, y: n.getBoundingClientRect().top - top };
+  }
+  function keepAnchor(list, a) {
+    let n = a.node?.isConnected ? a.node : null;
+    if (a.live) { // still streaming: the same block; finished: the same place in the finished reply
+      const body = a.live.isConnected ? a.live.querySelector(':scope > .body') : [...list.querySelectorAll(':scope > .msg.assistant:not(.streaming) > .body')].pop();
+      const b = body?.children[a.k]; n = b?.tagName === a.tag ? b : null;
+    }
+    if (!n) return;
+    const d = n.getBoundingClientRect().top - list.getBoundingClientRect().top - a.y;
+    if (Math.abs(d) >= 1) list.scrollTop += d;
+  }
+  // Pictures in replies (![…](https://…)): their sizes, once seen, so they hold their place before they load
+  const imgSizes = new Map(Object.entries(store.get('chat.imgSizes', {}) || {}));
+  const saveSizes = saver(() => store.set('chat.imgSizes', Object.fromEntries([...imgSizes].slice(-300))), 2000);
+  let sizing = true; // (off while _test.streamCorpus compares the live HTML with a full render)
+  function rememberSize(img) {
+    if (!img.classList.contains('md-img') || !img.naturalWidth) return;
+    const src = img.getAttribute('src'); const s = [img.naturalWidth, img.naturalHeight];
+    if (String(imgSizes.get(src)) === String(s)) return;
+    imgSizes.delete(src); imgSizes.set(src, s);
+    while (imgSizes.size > 300) imgSizes.delete(imgSizes.keys().next().value);
+    saveSizes();
+  }
+  // the size it will have once loaded (features.css: max-width min(100%, 420px), max-height 320px): the width that
+  // fits the height cap, the ratio for the height; a narrower chat still shrinks it (max-width) in proportion
+  function sizeImages(root) {
+    if (!sizing || !imgSizes.size) return;
+    for (const img of root.querySelectorAll('img.md-img')) {
+      const s = imgSizes.get(img.getAttribute('src'));
+      if (!s || img.style.aspectRatio) continue;
+      img.style.width = `${Math.round(Math.min(s[0], (320 * s[0]) / s[1]))}px`;
+      img.style.aspectRatio = `${s[0]} / ${s[1]}`;
+    }
+  }
+
+  // (round 35, streamrender) drawing many messages: a few ms, then the frame goes on (scheduler.yield)
+  const SLICE_MS = 6;
+  const nextSlice = () => (window.scheduler?.yield ? scheduler.yield() : new Promise((r) => setTimeout(r, 0)));
+  // a draw that stopped for a newer one: the nodes it built are kept for that one
+  function keepBuilt(v, chatId, built) {
+    v.nodes ||= new Map();
+    const kept = v.nodes.get(chatId);
+    if (kept) { for (const [m, e] of built) if (!kept.has(m)) kept.set(m, e); } else v.nodes.set(chatId, built);
   }
 
   // ---------- day lines, unread replies, pinned messages ----------
@@ -1042,14 +1150,20 @@ const Native = (() => {
     const h0 = v.list.scrollHeight; const t0 = v.list.scrollTop;
     const keep = () => { v.list.scrollTop = t0 + (v.list.scrollHeight - h0); };
     keep();
-    render(agentId).then(keep); // (round 20) render waits for its chat (and the Markdown worker): keep the place after it drew
+    // (round 20) render waits for its chat (and the Markdown worker): keep the place after it drew
+    // (round 35) as a redraw that keeps your place (keepScroll: the message at the top stays there): drawn as a fresh
+    // one it ended by scrolling to the bottom, so scrolling up into earlier messages threw you back to the end
+    render(agentId, { keepScroll: true }).then(keep);
   }
   // Scrolls to message #index (0-based) and flashes it; unfolds it when folded.
   function jumpTo(agentId, index) {
     const v = views.get(agentId);
-    if (v && !v.list.querySelector(`.msg[data-index="${index}"]`) && H.activeChat[agentId] && !fullChats.has(H.activeChat[agentId])) { fullChats.add(H.activeChat[agentId]); render(agentId); }
+    // (round 35, streamrender) an older message of a long chat: the chat is drawn whole, and the jump happens once that
+    // draw has placed its scroll (it put you back at the bottom after the jump: recall's "show me" landed on the end)
+    if (v && !v.list.querySelector(`.msg[data-index="${index}"]`) && H.activeChat[agentId] && !fullChats.has(H.activeChat[agentId])) { fullChats.add(H.activeChat[agentId]); v.jumpAfter = index; render(agentId); }
     const node = v?.list.querySelector(`.msg[data-index="${index}"]`);
-    if (!node) return false;
+    if (!node) { if (v?.drawing) v.jumpAfter = index; return false; }
+    if (v.drawing) v.jumpAfter = index; // a draw on its way would put the scroll back: jump again after it
     node.scrollIntoView({ block: index === 0 ? 'start' : 'center' });
     node.classList.add('flash-msg');
     setTimeout(() => node.classList.remove('flash-msg'), 900);
@@ -1058,44 +1172,72 @@ const Native = (() => {
 
   // The live reply: its thinking (open while it thinks), what it's doing, the text so far, and any
   // question / second-opinion cards (kept as the same DOM nodes so typed answers survive re-renders).
-  // The growing reply is re-rendered as Markdown on each paint, but only the blocks that changed are swapped in:
-  // finished paragraphs above keep their DOM, so a long reply isn't re-laid out from the top 16× a second.
-  // (round 16, chatperf) nodes from `start` on become `html`; the ones that are already equal stay
-  const mdLive = (s) => (window.renderMarkdownLive || window.renderMarkdown)(s); // not cached: the growing text never repeats
-  function patchHTML(body, html, start = 0) {
-    const tpl = document.createElement('template');
-    tpl.innerHTML = html;
-    const next = [...tpl.content.childNodes];
-    const cur = body.childNodes;
+  // (round 35, streamrender) the reply is rendered by Md.live (md.js): a block whose shape can't change any more is
+  // frozen (parsed and inserted once, never compared again: it was everything up to the last blank line before, so a
+  // long table, list or code block without one was parsed and swapped whole on every paint); a code block is
+  // highlighted line by line as it arrives (its frozen lines are appended, never highlighted twice); and only the
+  // block still being written is parsed on each paint and morphed into place (a table gets its new row, a list its new
+  // item: the rows and items above keep their nodes, styles and layout). The DOM ends up exactly as a full render's
+  // (Native._test.streamCorpus compares them in the page, dev/streamrender-test.js in Node).
+  const fragOf = (html) => { const t = document.createElement('template'); t.innerHTML = html; return [...t.content.childNodes]; };
+  // makes `a` like `b` (a fresh parse of the new HTML), touching only what differs; returns the node now in place
+  function morph(a, b) {
+    if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) { a.replaceWith(b); return b; }
+    if (a.nodeType === 3) { if (a.data !== b.data) { if (b.data.startsWith(a.data)) a.appendData(b.data.slice(a.data.length)); else a.data = b.data; } return a; }
+    if (a.nodeType !== 1) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; return a; }
+    for (const at of b.attributes) if (a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value);
+    // (a folded callout you opened while it streams stays open)
+    for (const at of [...a.attributes]) if (!b.hasAttribute(at.name) && !(at.name === 'open' && a.nodeName === 'DETAILS')) a.removeAttribute(at.name);
+    const ac = a.childNodes; const bc = [...b.childNodes];
     let i = 0;
-    while (start + i < cur.length && i < next.length && cur[start + i].isEqualNode(next[i])) i += 1;
-    while (cur.length > start + i) body.lastChild.remove();
-    body.append(...next.slice(i));
-    return next.length;
+    while (i < bc.length && i < ac.length && ac[i].isEqualNode(bc[i])) i += 1;
+    for (; i < bc.length; i += 1) { if (i < ac.length) morph(ac[i], bc[i]); else a.append(bc[i]); }
+    while (ac.length > bc.length) a.lastChild.remove();
+    return a;
   }
-  // The finished part of a streaming reply is frozen: everything up to its last blank line outside a code fence or
-  // a $$ formula renders once and its DOM is never compared again; only the paragraph still being written is parsed
-  // and patched on each paint (it was the whole reply, 16× a second: a long answer cost more and more per piece).
-  // Markdown blocks never span a blank line here (md.js), so the parts render exactly like the whole.
-  const FENCE = /^\s*```/gm;
+  // puts the nodes of `next` where those of `cur` are (or at the end), removing them
+  function swapBlock(body, cur, next) {
+    const ref = cur?.nodes[0] || null;
+    for (const n of next.nodes) body.insertBefore(n, ref);
+    if (cur) for (const n of cur.nodes) n.remove();
+    return next;
+  }
+  // one block of the live reply in the DOM: `cur` = what shows there now ({ html, nodes } or a code block's
+  // { fence, nodes, code, applied, chunkNodes, tail }), `b` = the block from Md.live
+  function putBlock(body, cur, b) {
+    if (b.fence) {
+      const e = cur?.fence === b.fence ? cur : swapBlock(body, cur, (() => { const [pre] = fragOf(`${b.fence.tag}</code></pre>`); return { fence: b.fence, nodes: [pre], code: pre.lastChild, applied: 0, chunkNodes: 0, tail: '' }; })());
+      const { chunks } = b.fence; const { code } = e;
+      if (e.applied < chunks.length || e.tail !== b.tail) {
+        while (code.childNodes.length > e.chunkNodes) code.lastChild.remove(); // the unfrozen end (the last lines)
+        if (e.applied < chunks.length) { code.insertAdjacentHTML('beforeend', chunks.slice(e.applied).join('')); e.applied = chunks.length; e.chunkNodes = code.childNodes.length; }
+        if (b.tail) code.insertAdjacentHTML('beforeend', b.tail);
+        e.tail = b.tail;
+      }
+      return e;
+    }
+    if (cur && !cur.fence && cur.html === b.html) return cur;
+    const next = fragOf(b.html);
+    if (b.html.includes('<img')) for (const n of next) if (n.nodeType === 1) sizeImages(n);
+    if (cur && !cur.fence && cur.nodes.length === 1 && next.length === 1 && cur.nodes[0].nodeName === next[0].nodeName) {
+      cur.nodes = [morph(cur.nodes[0], next[0])]; cur.html = b.html;
+      return cur;
+    }
+    return swapBlock(body, cur, { html: b.html, nodes: next });
+  }
   function paintBody(p, body, text) {
     if (!text && body.childNodes.length === 1 && body.firstChild.classList?.contains('typing')) return; // still waiting: the dots stay
+    if (!window.Md?.live) { body.innerHTML = window.renderMarkdown(text); return; }
     let st = p.md;
-    if (!st || st.body !== body || !text.startsWith(st.src)) { st = p.md = { body, src: '', count: 0 }; body.replaceChildren(); }
-    // inside an open code block: the blank line before it (the block itself stays live until it closes)
-    let cut = text.lastIndexOf('\n\n');
-    for (let tries = 0; tries < 2 && cut > st.src.length; tries += 1) {
-      const seg = text.slice(st.src.length, cut);
-      const fences = [...seg.matchAll(FENCE)];
-      if (fences.length % 2 === 0 && (seg.split('$$').length - 1) % 2 === 0) {
-        st.count += patchHTML(body, mdLive(seg), st.count);
-        st.src = text.slice(0, cut);
-        break;
-      }
-      cut = fences.length % 2 ? text.lastIndexOf('\n\n', st.src.length + fences.at(-1).index) : -1;
-    }
-    const tail = text.slice(st.src.length);
-    patchHTML(body, tail.trim() ? mdLive(tail) : '', st.count);
+    if (!st || st.body !== body) { st = p.md = { body, live: Md.live(), tail: [] }; body.replaceChildren(); }
+    if (text && body.lastChild?.classList?.contains('typing')) body.lastChild.remove();
+    const r = st.live.update(text);
+    if (!r) return; // the same text (a paint for the thinking, a step or a card)
+    if (r.reset) { body.replaceChildren(); st.tail = []; }
+    const all = r.frozen.length ? [...r.frozen, ...r.tail] : r.tail;
+    const next = all.map((b, i) => putBlock(body, st.tail[i], b));
+    for (const e of st.tail.slice(all.length)) for (const n of e.nodes) n.remove();
+    st.tail = next.slice(r.frozen.length); // the frozen ones stay in the body, never looked at again
   }
   // (round 21) thinking text as paragraph blocks (a long one cut at 4,000 characters): a new piece only touches the
   // last block, and blocks out of view skip layout (content-visibility in features.css)
@@ -1198,19 +1340,26 @@ const Native = (() => {
   }
   // Streaming text arrives in many small pieces; re-rendering the whole reply for each one gets heavy on
   // long answers, so pieces are gathered and painted at most every 60 ms.
+  // (round 35, streamrender) the paint itself runs at the start of the next frame (requestAnimationFrame): its DOM
+  // changes, the scroll that follows them and the frame's style / layout happen together, once. Painted from a timer,
+  // the changes waited for the next frame half-done, and a key press in between (typing while it streams) had to
+  // style and lay out the new part of the reply first, inside the key's handler.
   function schedulePaint(chatId) {
     const p = pending.get(chatId);
     if (!p || p.paintTimer) return;
-    p.paintTimer = setTimeout(() => { p.paintTimer = 0; repaintPending(chatId); }, 60);
+    p.paintTimer = setTimeout(() => { p.paintTimer = requestAnimationFrame(() => { p.paintTimer = 0; repaintPending(chatId, true); }); }, 60);
   }
-  function repaintPending(chatId) {
+  function repaintPending(chatId, inFrame = false) {
     const p = pending.get(chatId);
     if (!p?.el?.isConnected) return;
     const list = p.el.closest('.messages');
     const v = views.get(chats.get(chatId)?.agentId);
     paintStreaming(p);
-    if (v ? follows(v) : nearBottom(list)) scrollToEnd(list, v);
-    else if (v && !v.jump.classList.contains('has-new')) v.jump.classList.add('has-new'); // "↓" turns into "↓ new" while the reply grows below
+    if (v ? follows(v) : nearBottom(list)) {
+      // in the frame already: scroll now (one layout for both), not one frame later (a frame drawn with the new text
+      // below the bottom edge)
+      if (inFrame && !list.endRaf) { const top = list.scrollHeight - list.clientHeight; if (top - list.scrollTop >= 1) list.scrollTop = top; } else scrollToEnd(list, v);
+    } else if (v && !v.jump.classList.contains('has-new')) v.jump.classList.add('has-new'); // "↓" turns into "↓ new" while the reply grows below
   }
   function syncSendBtn(agentId) {
     const v = views.get(agentId);
@@ -1401,6 +1550,7 @@ const Native = (() => {
         if (!window.ChatMemory?.intercept?.(chat, facts, message)) rememberFacts(chat.agentId, facts); // (round 24) /memory approve on: it waits for your OK
       }
       chat.messages.push(message);
+      if (p.el && p.md) handoff.set(message, { el: p.el, p });
       chat.session = event.session;
       replyText = message.text;
     } else if (event.type === 'stopped') {
@@ -2080,6 +2230,33 @@ const Native = (() => {
     repaint: (chatId) => schedulePaint(chatId), // (round 21) chat-live.js: its panel opened / changed
     liveCard(chatId, node) { const p = pending.get(chatId); if (!p) return null; p.cards.push(node); repaintPending(chatId); return node; },
     toolLabel, renderChips,
+    // (round 35, streamrender) for dev/checks/streamrender.js: tricky Markdown streamed in random pieces through the
+    // live renderer into a real (detached) reply body; after every piece its HTML must equal a full render
+    _test: {
+      streamCorpus({ docs = [], runs = 4, seed = 35 } = {}) {
+        let s = seed; const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+        const diffs = []; let steps = 0; sizing = false;
+        try {
+        for (const [k, doc] of docs.entries()) {
+          for (let r = 0; r < runs; r++) {
+            const p = { md: null }; const body = el('div', { class: 'body' });
+            for (let at = 0; at < doc.length && diffs.length < 10;) {
+              at = Math.min(doc.length, at + 1 + Math.floor(rnd() * (r % 2 ? 4 : 40)));
+              const text = doc.slice(0, at);
+              paintBody(p, body, text); steps += 1;
+              const t = document.createElement('template'); t.innerHTML = window.renderMarkdownLive(text);
+              const want = t.innerHTML; // (as the browser writes it back: disabled="", ' for &#39; …)
+              if (body.innerHTML !== want) { diffs.push(`doc ${k} run ${r} at ${at}: ${JSON.stringify(text.slice(-60))}`); break; }
+            }
+          }
+        }
+        } finally { sizing = true; }
+        return { docs: docs.length, runs, steps, diffs };
+      },
+      paintBody: (p, body, text) => paintBody(p, body, text), // (dev/checks/streamrender.js times it against the old way)
+      // the live reply of a chat painted now with all its text; its HTML and the text it shows
+      livePaint(chatId) { const p = pending.get(chatId); if (!p?.el) return null; const text = visibleText(p.text); paintBody(p, p.el.querySelector('.body'), text); return { html: p.el.querySelector('.body').innerHTML, text }; },
+    },
     // (round 10, sync.js) a chat that arrived from another computer: read again from disk next time (not mid-reply)
     forget: (chatId) => { if (pending.has(chatId)) return false; chats.delete(chatId); return true; },
     // (round 16, dev/checks/chatperf.js) a text streamed in pieces of `step` characters, painted like a live reply: its HTML

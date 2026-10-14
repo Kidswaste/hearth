@@ -83,6 +83,16 @@ const Usage = (() => {
     const hotAt = Math.max(8, counts[Math.min(counts.length - 1, 11)] || 8); // roughly your top 12, at least 8 uses
     return { hotAt, warmAt: 3 };
   }
+  // (round 35, streamrender) a control's name is worked out once per button (again only when its words change): a long
+  // chat drawn whole has thousands of message buttons, and this pass (after changes on screen: ≈ every 0.8 s while a
+  // reply streams) took ≈ 0.4 s here, in one go
+  const named = new WeakMap();
+  function nameOf(node) {
+    const sig = `${node.textContent}|${node.title}|${node.dataset?.feature || ''}|${node.tagName === 'SELECT' ? node.className : ''}`;
+    let c = named.get(node);
+    if (!c || c.sig !== sig) { const label = labelOf(node); const area = areaOf(node); c = { sig, key: label ? `${area} › ${label}` : null, label, area }; named.set(node, c); }
+    return c;
+  }
   function decorate() {
     if (!data) return;
     const { hotAt, warmAt } = tiers();
@@ -91,9 +101,9 @@ const Usage = (() => {
     const roots = document.querySelectorAll('.three-toolbar, .media-bar .mb-main, .native-head, .msg-foot, .tw-head, .tool-head');
     for (const root of roots) {
       for (const node of root.querySelectorAll('button, select')) {
-        const key = keyOf(node);
+        const { key, label, area } = nameOf(node);
         if (!key) continue;
-        seen(key, labelOf(node), areaOf(node));
+        if (!data.items[key]) seen(key, label, area);
         const it = data.items[key];
         node.classList.toggle('use-hot', it.n >= hotAt);
         node.classList.toggle('use-warm', it.n >= warmAt && it.n < hotAt);

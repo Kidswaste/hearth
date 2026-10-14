@@ -162,7 +162,7 @@ const F = require('./fake-common');
     fail('API Error: Connection error.');
     return;
   }
-  for (const t of F.pieces(text)) { F.out({ type: 'stream_event', event: { type: 'content_block_delta', index, delta: { type: 'text_delta', text: t } } }); await F.sleep(wait); }
+  for (const t of F.pieces(text, p)) { F.out({ type: 'stream_event', event: { type: 'content_block_delta', index, delta: { type: 'text_delta', text: t } } }); await F.sleep(wait); }
   F.out({ type: 'stream_event', event: { type: 'content_block_stop', index } });
   F.out({ type: 'assistant', message: { content: [{ type: 'text', text }] }, session_id: sessionId });
   // Input grows with the conversation; most of it comes from the cache after the first turn.

@@ -1,0 +1,21 @@
+{
+ "about": "(round 35, streamrender) Tricky Markdown for comparing the streaming renderer (md.js Md.live) with a full render: each document is streamed in random pieces and after every piece the live HTML must equal renderMarkdown(text so far). Used by dev/streamrender-test.js (Node) and dev/checks/streamrender.js (the chat page, through its DOM).",
+ "docs": [
+  "First line\nsecond line of the same paragraph\n\nNew paragraph\n# Heading right after\nText under it\n- a list right after\n- two\nback to text?\n> a quote\n> continued\nafter the quote",
+  "Para then fence\n```js\nconst a = 1;\n```\nPara after fence\n```\nno language\n```\n\n```py\n# comment\nx = \"s\" + `odd`\n```",
+  "| a | b | c |\n|:--|:-:|--:|\n| 1 | **two** | `x|y` |\n| 4 | 5 | 6 |\nnot a row\n\ntext before\n| x | y |\n| --- | --- |\n| p | q |\n\n| lonely | row |\nnext line\n\n| h |\n| - |",
+  "- one\n  continued line\n- two\n  - nested a\n  - nested b\n    - deeper\n- three\n\n3. third\n4. fourth\n\n1) paren\n2) style\n- [ ] open task\n- [x] done task\n* star\n+ plus\n\n- after blank\n\n- another\n10. ten\n11. eleven",
+  "```js\n/* a comment\n   over lines */\nconst s = `template ${x}\nspans lines`;\nconst t = \"a \\\" quote\"; // and /* not a comment\nconst u = 'single';\nfunction f(a) { return a * 2.5e3 + 0xff; }\nconst re = \"`\";\nlet back = `\n`;\n```\nafter",
+  "```glsl\nprecision highp float;\n/* uniform\n   block */\nuniform float uTime;\nvoid main() { gl_FragColor = vec4(1.0); }\n```\n```css\n.a { color: red; } /* c */\n```\n```html\n<div class=\"x\"><!-- note\nover lines --></div>\n<span>`tick</span>\n```",
+  "```js\nconst open = `never closed\nline 2\nline 3\n```\n\nThen text.",
+  "```\nunclosed fence at the end\nstill code\n",
+  "```ts\nlet x: number = 1 // ts maps to js\n```\n```jsx\nconst y = <div/>;\n```\n```bash\necho \"hi\" | grep h\n```\n``` js \nspaces around the language\n```",
+  "$$\nE = mc^2\n$$\nInline $x^2 + y_i$ and prices $5 and $10.\n$$ a + b $$\n$$\n\\alpha + \\beta\n= \\frac{1}{2}\n$$\ntext",
+  "> [!NOTE]\n> Inside the note\n> - a list\n> - in it\n\n> [!WARNING]- Folded title\n> hidden text\n\n> plain quote\n> > nested quote\n> ```js\n> const q = 1;\n> ```\n\n> [!TIP]\n> tip",
+  "# H1\n## H2\n### H3\n#### H4\n##### not a heading\n  # indented hash\n---\n***\n___\n- - -\ntext\n\n   \n\n\t\nspaces only lines above",
+  "**bold** *em* ~~del~~ ==mark== [[Ctrl]] `code` [link](https://a.b/c) https://bare.link/x ![pic](https://img.hearth.test/40x30/1.png) <b>escaped</b> & \"quotes\"",
+  "Windows line\r\nsecond\r\n\r\n- item\r\n- item 2\r\n\r\n```js\r\nconst c = 1;\r\n```\r\n",
+  "| looks | like a row\n| a | b |\n|---|---|\n| 1 | 2 |",
+  "```js\nconst a = \"```\";\n``` trailing\nafter\n````\nfour backticks\n````"
+ ]
+}
