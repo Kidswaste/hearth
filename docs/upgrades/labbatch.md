@@ -165,8 +165,17 @@ videos from one template…"), and **⌘/Ctrl+K** "Lab: Make a batch…". The ap
     15 frames for 0.5 s;
   - the AI's `/batch "Batch check" lines One | Two formats 1:1 … now` makes 2 × 96×96;
   - cleanup.
-- Also run: `lazy`, `unit:boot-test`, `labtemplates`, `labrecipes`, `multiformat`, `renderfast`, `powerwise`,
-  `labsearch`, `node dev/labsearch-test.js`, `node dev/appsearch-test.js` (results in the final report of this round).
+- Also run:
+  - **pass**: `lazy` (manifest regenerated), `unit:boot-test`, `labtemplates`, `labrecipes`, `multiformat`,
+    `labsearch`, `unit:hintcalm-test`, `node dev/labsearch-test.js`, `node dev/appsearch-test.js`.
+  - **`powerwise`**: every step passed, but the Electron copy hung on quit and was stopped by hand after its result was
+    printed.
+  - **`unit:powerwise-test`**: 82 / 83. "hints: no look-again every 0.7 s while Hearth is hidden" fails the same way on
+    this round's starting commit, so it isn't from this stream.
+  - **`renderfast`**: every equality step passes, but its timing-budget step failed twice under load 10–11 (gain −20 %,
+    −4 %). The same check on the starting commit passed once in the same window (+10 %). Its scenes don't use
+    `refTexture` and the export changes only act when `compiled` / `refs` are given, so this reads as timing noise
+    under load. Worth a re-run on a quiet machine.
 - Screenshot looked at: the dialog over the Lab (the pasted CSV, 16:9 + 9:16 ticked, three colored stills on the right,
   "⇪ Make 6 videos"). An earlier picture showed the format checkboxes drawn as tall ovals (a modal-wide label style);
   fixed.
@@ -176,7 +185,7 @@ videos from one template…"), and **⌘/Ctrl+K** "Lab: Make a batch…". The ap
   per-row subject measuring). Scenes that lay themselves out from the frame's size look right; a 3D subject far off
   centre may leave a vertical frame. Use All formats on one row to see it.
 - **The recipe is replayed once on the template**, not on each row, so a step that measures the scene (✨ polish, 🩺)
-  measures the template's look.
+  measures the template's look. The scratch copy it used ends in History's deleted sketches (like My templates' Undo).
 - **A video file as the song** (footage templates) isn't used as the sound. Songs are audio files.
 - **Music reaction in the render** follows the song as the export page hears it; a hand-placed beat grid belongs to the
   Lab's player song and isn't carried to other songs.
