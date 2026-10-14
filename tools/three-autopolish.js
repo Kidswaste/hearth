@@ -173,6 +173,7 @@ const AutoPolish = (() => {
     if (S.busy) throw new Error('Still polishing.');
     S.busy = true;
     const busy = quiet ? null : toast('✨ Looking at the picture…', { timeout: 0 });
+    const abDone = window.LabAB?.hold?.('autopolish'); // (round 37) ◧ Before / after: the whole polish is one change
     try {
       const { d, cmd } = await lab();
       closeCard();
@@ -194,7 +195,7 @@ const AutoPolish = (() => {
         if (!quiet && l.fixes.length) toast(`✨ ${l.fixes.length} fix${l.fixes.length === 1 ? '' : 'es'}${l.after ? ` · finish ${l.before.score} → ${l.after.score}` : ''}`, { timeout: 4500, action: { label: 'Undo', fn: () => undo().catch(err) } });
       }
       return state();
-    } finally { busy?.remove?.(); S.busy = false; }
+    } finally { busy?.remove?.(); S.busy = false; abDone?.(); }
   }
   // tick / untick one fix: the rest stay, the picture is read again
   function toggle(id, yes) {

@@ -137,6 +137,7 @@ const LabVariations = (() => {
     if (S.peek >= 0) { setValues(S.cur); S.peek = -1; } // a hover peek ends here
     syncCur();
     const before = { values: { ...S.cur }, palette: (d.refs?.palette?.() || []).slice(), applied: S.applied };
+    window.LabAB?.note?.('variations', { label: `🎲 ${t.label}` }); // (round 37) ◧ Before / after names it
     setValues(t.values, { quiet: false, from: S.cur });
     if (t.hue && before.palette.length) d.refs?.setPalette?.(C().shiftPalette(before.palette, t.hue));
     S.cur = { ...t.values };

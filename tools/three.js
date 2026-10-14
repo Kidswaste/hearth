@@ -2409,6 +2409,8 @@ const ThreeLab = (() => {
       get fps() { return fpsPref(); }, setFps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); },
       ctl: () => selCtl(), layer: () => sel() || null, layerById: (id) => layerById(id), ctlOf: (id) => { const L = layerById(id); return L ? ctlFor(L) : null; },
       sketchId: () => current?.id || null, sketchName: () => current?.name || '', blackout: (on) => setBlackout(on),
+      // (round 37, abcompare) a palette on the preview for a moment, not saved (null: the scene's own again)
+      peekPalette: (cols) => { if (!current) return; const was = current.palette; if (Array.isArray(cols)) current.palette = cols; try { sendRefs(); } finally { if (was) current.palette = was; else delete current.palette; } },
     };
     // ---------- everything the chat commands drive (tools/three-cmds.js); each returns a short result ----------
     const ctl = () => { const c = selCtl(); if (!c) throw new Error('No sketch is open'); if (!c.visible) setSlidersVisible(true); return c; };
@@ -2644,6 +2646,7 @@ const ThreeLab = (() => {
       if (typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
       // a key pressed while the picture had focus: the Lab's shortcuts handle it as if pressed here
       if (msg.type === 'host-key') { const { type: _t, source: _s, ...k } = msg; pane.dispatchEvent(new KeyboardEvent('keydown', { ...k, bubbles: true, cancelable: true })); return; }
+      if (msg.type === 'host-keyup') { const { type: _t, source: _s, ...k } = msg; pane.dispatchEvent(new KeyboardEvent('keyup', { ...k, bubbles: true, cancelable: true })); return; } // (round 37: B held over the picture)
       if (msg.type === 'console') log(msg.level, msg.text, null, msg.layer);
       if (msg.type === 'tweak-reads') {
         // global indices → each layer's own
@@ -2852,6 +2855,7 @@ const ThreeLab = (() => {
           { label: 'Lighten to stay smooth', hint: 'full quality in renders', checked: adaptOn, action: () => { setAdaptOn(!adaptOn); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } },
           { label: 'Guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
           ...(typeof ThreeGestures !== 'undefined' ? ThreeGestures.viewItems() : []), // (round 34) frame, reset, keep the view, moving around
+          ...(window.LabAB ? LabAB.viewItems() : []), // (round 37) ◧ Before / after the last change (tools/three-abcompare.js)
         ] },
         '-',
         { label: '⟲ Restart from scratch', key: 'Ctrl+Shift+Enter', action: () => restartSim() },

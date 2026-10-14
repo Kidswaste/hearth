@@ -2540,6 +2540,8 @@ addEventListener('keydown', (e) => {
   if (edit.on && /^[werqf]$|^Escape$/i.test(e.key)) return;
   realSetTimeout(() => { if (!e.defaultPrevented) post({ type: 'host-key', key: e.key, code: e.code, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, repeat: e.repeat }); }, 0);
 });
+// (round 37, abcompare) B let go over the picture ends the Lab's "hold B: before" (only B: no other key needs its key-up)
+addEventListener('keyup', (e) => { if (e.isTrusted && e.code === 'KeyB') post({ type: 'host-keyup', key: e.key, code: e.code, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); });
 addEventListener('keydown', (e) => {
   if (!edit.on || !edit.gizmo || /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   const k = e.key.toLowerCase();
@@ -2667,7 +2669,7 @@ function gestCore(opt = {}) {
   return { wheel, act, approach, coast, velocity, view, identity, step, turn, pan, zoom, fling, goTo, near, fitDistance, clampPitch, KEYS, TAU, LIM };
 }
 // </gest-core>
-const LV = { core: gestCore(), views: new Map(), loop: false, lastT: -1, drag: null, wheelPrev: null, pref: null, hint: false, seq: 0, orbits: new Set(), anims: new Set(), steps: 0, applied: 0, self: 0, pose: new Float64Array(7) };
+const LV = { core: gestCore(), views: new Map(), loop: false, lastT: -1, drag: null, wheelPrev: null, pref: null, hint: false, seq: 0, orbits: new Set(), anims: new Set(), steps: 0, told: 0, applied: 0, self: 0, pose: new Float64Array(7) };
 window.__labGest = {
   state: () => ({ views: [...LV.views].map(([id, V]) => ({ id, yaw: V.yaw, pitch: V.pitch, s: V.s, px: V.px, py: V.py, pz: V.pz, d: V.d, moving: LV.loop, idle: LV.core.identity(V) })), loop: LV.loop, steps: LV.steps, applied: LV.applied, self: LV.self, drag: Boolean(LV.drag), target: lvGestureLayer()?.id || null, keys: lvKeyLayer()?.id || null, pose: Array.from(LV.pose), kept: [...layers.values()].filter((L) => L.props.overrides?.['@camera']).map((L) => L.id), edit: edit.on, seqOn: SQ.on, layers: [...layers.values()].map((L) => ({ id: L.id, cam: Boolean(L.lvCam), camGen: L.lvCamGen === L.gen, own: L.lvOwn === L.gen, clicks: L.lvClicks === L.gen, mix: layerMix(L) })), orbits: [...LV.orbits].filter((c) => lvOrbitAlive(c)).length, seq: LV.seq }),
   view: (id) => LV.views.get(id) || null,
@@ -2826,7 +2828,7 @@ function lvTick(t) {
     busy = true;
   }
   if (busy) PACE.poke += 1; // (labpace: the picture changes now; the still check looks at once)
-  if (busy && !parked) realRAF(lvTick); else LV.loop = false;
+  if (busy && !parked) realRAF(lvTick); else { LV.loop = false; if (LV.steps !== LV.told) { LV.told = LV.steps; post({ type: 'view-moved', steps: LV.steps }); } } // (round 37, abcompare: the view settled)
 }
 // a scene that draws only now and then (once at the start, on its own events) or a frozen one: the view is drawn
 // here, from what it drew last (one plain render a frame; not for renderers drawing passes, the composite does that)

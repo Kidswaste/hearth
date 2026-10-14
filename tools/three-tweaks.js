@@ -543,6 +543,7 @@ const ThreeTweaks = (() => {
       committed = values.slice();
       refreshState();
       autoSave();
+      window.LabAB?.note?.('sliders'); // (round 37, abcompare) one slider gesture / shuffle / look: ◧ Before / after
     }
     function applyValues(next, { remember = true } = {}) {
       let rb = false;
@@ -562,6 +563,7 @@ const ThreeTweaks = (() => {
       const prev = undoStack.pop();
       if (!prev || prev.length !== values.length) return;
       applyValues(prev, { remember: false });
+      window.LabAB?.note?.('undo');
     }
     // ---------- shuffle: amount, which controls, seeds, and a history you can step through ----------
     // shufOpt = { amount: 0.1 … 1 of each range, scope: 'all' | 'favs' | 'colors' | 'numbers' | 'visible' | 'changed' | 'group:<name>' }
@@ -1034,6 +1036,7 @@ const ThreeTweaks = (() => {
     function applyLook(look) {
       const next = values.slice();
       ids.forEach((id, i) => { if (id in look.values) next[i] = look.values[id]; });
+      window.LabAB?.note?.('look', { label: `Look "${look.name}"` });
       applyValues(next);
       toast(`Look "${look.name}"`, { timeout: 1500 });
     }

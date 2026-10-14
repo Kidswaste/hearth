@@ -102,6 +102,7 @@ const ThreeHistory = (() => {
       // next move is never counted as the director's
       a.running = Math.max(0, a.running - 1);
       if (!a.running) capture(id, { kind: 'director', by: a.by, actor: a }).catch(() => null);
+      if (!a.running) window.LabAB?.note?.('director', { id, by: a.by, chat: a.chat }); // (round 37, abcompare)
     }
   }
   const as = (id, by, ms = 4000) => { if (id) hints.set(id, { by, until: Date.now() + ms }); };
@@ -125,6 +126,7 @@ const ThreeHistory = (() => {
     if (!id) return;
     if (scrub && id === scrub.id) { if (!inShow) scrubTouched(); return; }
     if (tm.quiet) return;
+    window.LabAB?.note?.(kind, { id }); // (round 37, abcompare) ◧ Before / after: a change to the look is being made
     schedule(id, kind);
   }
   const chains = new Map(); // one capture at a time per scene
