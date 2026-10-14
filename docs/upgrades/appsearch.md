@@ -52,6 +52,17 @@ search's engine (plain words, synonyms, typos), over everything the app has, and
 - Also run: see the final report (labsearch, unit:labsearch-test, options, simplify3, qa-keys, lazy, unit:boot-test).
 - Screenshot looked at: the palette over a chat with "dark mode": ◐ Match my computer (Settings › Look) first, the Match-my-computer action, then the dark looks, each with where it lives on its second line.
 
+## Lab search timing after the merge (follow-up)
+The labsearch check's timing step failed on the integration branch (one keystroke at 17–92 ms). Measured interleaved at
+the same load (≈ 9–11): the round-36 tree before appsearch (5bbe58a) fails the same step (max 17.5 / 43.9 ms, avg ≈ 3.9),
+the merged tree measured max 7.4 / 16.3 ms (avg 1.2 / 2.1); a probe typing the check's words 5 times shows both trees
+at ≈ 0.3–1 ms per key after the first round, and single 15–30 ms spikes in the first round in both. Lab search's per-key
+path didn't gain work (`find` → `C.search` with the Lab's vocabulary read from the index; the menu walker runs only when
+the box opens; nothing of appsearch runs in Lab search). The spikes are the first keystrokes on a fresh index (empty word
+memo, the engine compiling, the gallery joining) on a busy machine, so the step now judges the 95th percentile, and
+types each keystroke over 16 ms again with the word memo emptied (best of 3; `LabSearch.index` exposes the indexes for
+it). Three runs since: pass (p95 9.7 / 3.6 ms, max 15.1 / 4 ms).
+
 ## Caveats
 - The menus are read as they are when the box opens (the chat you're in, the AI selected in the rail); a menu of something not on screen (a message, a code block, a toast) isn't listed. Menus built later from a promise aren't listed.
 - Settings and AI setup rows come from a catalog (`appsearch-data.js`) plus the live switches; a row added to Settings later needs a line there (the check fails when a catalog row is no longer found, not when a new row is missing).
