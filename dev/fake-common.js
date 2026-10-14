@@ -66,7 +66,7 @@ function saveState(id, s) { try { fs.writeFileSync(path.join(STATE_DIR, `${id}.j
 // The user's own words: what follows any context the hub wrapped around it.
 function userPart(prompt) {
   const cut = prompt.split(/<\/(?:earlier_conversation|summary|since_then|recent_messages)>/).pop();
-  return cut.replace(/<file name="[^"]*">[\s\S]*?<\/file>/g, '').trim();
+  return cut.replace(/<file name="[^"]*"[^>]*>[\s\S]*?<\/file>/g, '').trim();
 }
 
 // A small but real music sketch for jam builds (color / shape from the seed), or a broken one.

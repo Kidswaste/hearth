@@ -392,7 +392,7 @@ const Native = (() => {
     v.chips.replaceChildren(...v.attachments.map((a, i) => el('span', { class: `attach-chip ${a.kind}` },
       a.kind === 'image' && a.preview ? el('img', { src: a.preview, alt: '' }) : el('span', { text: a.kind === 'text' ? '📄' : '📎' }),
       el('span', { text: a.name }),
-      window.AttachLean?.badge(agentId, a) || null, // (round 40, attachlean) what it costs: "≈ 1.5k of 14k tok", "sent at 1568 px"; click: send whole
+      (typeof AttachLean !== 'undefined' ? AttachLean.badge(agentId, a) : null), // (round 40, attachlean) what it costs: "≈ 1.5k of 14k tok", "sent at 1568 px"; click: send whole
       a.tokens ? el('span', { class: 'attach-tok', text: ` · ${fmt(a.tokens)} tok`, title: `≈ ${a.tokens} tokens go with your next message (exactly this text; chat-refs.js)` }) : null, // (round 24) an @ reference's cost
       el('button', { type: 'button', text: '×', title: 'Remove', on: { click: () => { v.attachments.splice(i, 1); renderChips(agentId); } } }))));
   }
@@ -408,7 +408,7 @@ const Native = (() => {
         const path = await window.hub.saveAttachment(name, btoa(bin));
         v.attachments.push({ kind: 'image', name, path, preview: URL.createObjectURL(file) });
       } else if (isTextName(file.name) || file.type.startsWith('text/')) {
-        const max = window.AttachLean ? AttachLean.MAX_BYTES : TEXT_ATTACH_LIMIT; // (round 40) big texts are trimmed when sent
+        const max = typeof AttachLean !== 'undefined' ? AttachLean.MAX_BYTES : TEXT_ATTACH_LIMIT; // (round 40) big texts are trimmed when sent
         if (file.size > max) { toast(`${file.name} is over ${Math.round(max / 1048576) || '0.2'} MB; attach a smaller excerpt.`, { type: 'error' }); continue; }
         v.attachments.push({ kind: 'text', name: file.name, content: await file.text(), src: window.hub.pathForFile?.(file) || undefined });
       } else {
@@ -455,7 +455,7 @@ const Native = (() => {
       if (H.agent(agentId)?.threeTools) { try { path = await window.hub.saveAttachment(name, await window.hub.fs.read(path, { encoding: 'base64' })); } catch { /* keep the original path */ } }
       v.attachments.push({ kind: 'image', name, path, preview: WinMac.fileUrl(path) }); // (round 31, winmac) # / % / a Mac's /Users path
     } else if (isTextName(name)) {
-      try { v.attachments.push({ kind: 'text', name, src: path, content: await window.hub.fs.read(path, { maxBytes: window.AttachLean ? AttachLean.MAX_BYTES : TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }
+      try { v.attachments.push({ kind: 'text', name, src: path, content: await window.hub.fs.read(path, { maxBytes: typeof AttachLean !== 'undefined' ? AttachLean.MAX_BYTES : TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }
     } else {
       const agent = H.agent(agentId);
       if (agent.workspace || (typeof Access !== 'undefined' && Access.isOn(agentId))) v.attachments.push({ kind: 'file', name, path }); // Claude reads it with Read, Astra with a sandboxed command
@@ -1476,7 +1476,7 @@ const Native = (() => {
     let chat = chatId ? await loadChat(chatId) : null;
     if (only && !chat) throw new Error('That chat is gone.');
     // (round 40, attachlean) pictures scaled, big texts trimmed to what the message is about, a file sent before referenced
-    const lean = !fromHistory && !only && window.AttachLean && views.get(agentId)?.attachments.length ? await AttachLean.prepare(agentId, chat, text).catch((err) => { console.warn('attachlean', err); return null; }) : null;
+    const lean = !fromHistory && !only && typeof AttachLean !== 'undefined' && views.get(agentId)?.attachments.length ? await AttachLean.prepare(agentId, chat, text).catch((err) => { console.warn('attachlean', err); return null; }) : null;
     if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);
     const now = Date.now();
     const { full, images, meta } = fromHistory || only ? { full: text, images: [], meta: [] } : packAttachments(agentId, text);

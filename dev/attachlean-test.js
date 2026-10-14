@@ -113,6 +113,9 @@ const PASTE = Array.from({ length: 180 }, (_, i) => `Paragraph ${i + 1}. The int
   ok(dv.mode === 'diff' && dv.added === 1 && dv.removed === 1 && /\+  function renderChips\(agentId, opts = \{\}\) \{/.test(dv.text) && dv.tokens < 200, 'changed: only the diff', dv);
   ok(/@@ new lines \d+–\d+ @@/.test(dv.text), 'the diff has the new line numbers');
   eq(C.again({ name: 'n', text: 'totally different', seen, prev: CODE }).mode, 'new', 'a rewrite is sent as new');
+  const dl = C.again({ name: 'native.js', text: changed, seen: { ...seen, lean: true }, prev: CODE, copy: '/att/new.js' });
+  ok(dl.mode === 'diff' && /The whole new version: \/att\/new\.js/.test(dl.text), 'only parts were sent before, the AI can read: the diff + where the new version is');
+  eq(C.again({ name: 'n', text: changed, seen: { ...seen, lean: true }, prev: CODE, canRead: false }).mode, 'new', 'only parts before and it can\'t read: parts again');
   // validity
   ok(C.valid({ sid: 's1', n: 4 }, { sessionId: 's1', messages: 10 }), 'valid in the same session');
   ok(!C.valid({ sid: 's1', n: 4 }, { sessionId: 's2', messages: 10 }), 'not after a new session (compact, handover)');
@@ -136,6 +139,7 @@ const PASTE = Array.from({ length: 180 }, (_, i) => `Paragraph ${i + 1}. The int
   eq(C.chipText({ kind: 'text', mode: 'whole', tokens: 800, wholeTokens: 800 }), '≈ 800 tok', 'chip: a small text');
   eq(C.chipText({ kind: 'text', same: '14:02', tokens: 40 }), 'same as 14:02 · ≈ 40 tok', 'chip: the same file again');
   eq(C.fmtTok(1310000), '1.3M', 'millions');
+  eq(C.chipText({ kind: 'text', same: '14:02', tokens: 40, wholeTokens: 25000, whole: true }), 'whole · ≈ 25k tok', 'chip: "same" sent whole anyway');
 
   // ---------- byte-stable: the same inputs give the same message ----------
   eq(C.leanText({ name: 'hearth.log', text: LOG, message: 'why does it crash when I send?', canRead: true, path: '/att/hearth.log' }).text, rg.text, 'the same attachment and message → the same bytes');

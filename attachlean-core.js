@@ -267,7 +267,8 @@ const AttachLeanCore = (() => {
 
   // What to do with an attachment already seen in this chat. seen: { hash, at, lean, copy, valid } (valid: the engine
   // session still holds that message). → { mode: 'same' | 'diff' | 'new', text?, tokens? }
-  function again({ name, text, seen, prev = null, canRead = true, whole = false }) {
+  // copy: where this version's whole text is (an AI that only got parts before can open it)
+  function again({ name, text, seen, prev = null, canRead = true, whole = false, copy = null }) {
     if (!seen || !seen.valid || whole) return { mode: 'new' };
     const h = hash(text);
     const when = `your message at ${clock(seen.at)}`;
@@ -277,9 +278,9 @@ const AttachLeanCore = (() => {
       const t = `<file name="${name}" same-as="${when}">Unchanged since ${when}: it's earlier in this chat${where}.</file>`;
       return { mode: 'same', text: t, tokens: tok(t) };
     }
-    if (prev == null || seen.lean) return { mode: 'new', note: `changed since ${when}` };
+    if (prev == null || (seen.lean && !(canRead && copy))) return { mode: 'new', note: `changed since ${when}` };
     const d = diff(prev, text);
-    const t = `<file name="${name}" changed-since="${when}">Changed since ${when} (that version is earlier in this chat): ${d.added} line${d.added === 1 ? '' : 's'} added, ${d.removed} removed. Only the changes, with the new line numbers:\n${d.text}\n</file>`;
+    const t = `<file name="${name}" changed-since="${when}">Changed since ${when} (that version is earlier in this chat): ${d.added} line${d.added === 1 ? '' : 's'} added, ${d.removed} removed.${seen.lean ? ` The whole new version: ${copy}.` : ''} Only the changes, with the new line numbers:\n${d.text}\n</file>`;
     // a diff bigger than half the file (or than the trimmed send) isn't worth it
     if (tok(t) > tok(text) * 0.5) return { mode: 'new', note: `changed since ${when}` };
     return { mode: 'diff', text: t, tokens: tok(t), added: d.added, removed: d.removed };
@@ -293,6 +294,7 @@ const AttachLeanCore = (() => {
   // The chip's words: "≈ 1.5k of 14k tok" / "sent at 1568 px · ≈ 1.8k tok" / "same as 14:02" (and "whole" when forced)
   function chipText(s) {
     if (!s) return '';
+    if (s.whole && s.wholeTokens) return `whole · ≈ ${fmtTok(s.wholeTokens)} tok`;
     if (s.same) return `same as ${s.same} · ≈ ${fmtTok(s.tokens)} tok`;
     if (s.kind === 'image') return s.whole ? `whole · ≈ ${fmtTok(s.wholeTokens)} tok` : s.scale ? `sent at ${MAX_PX} px · ≈ ${fmtTok(s.tokens)} tok` : `≈ ${fmtTok(s.tokens)} tok`;
     if (s.whole) return `whole · ≈ ${fmtTok(s.wholeTokens)} tok`;

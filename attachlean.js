@@ -127,9 +127,6 @@ const AttachLean = (() => {
       const text = a.full ?? a.content;
       const h = C.hash(text);
       const seen = seenFor(chat, a, h);
-      let prev = null;
-      if (seen?.valid && seen.copy && seen.hash !== h && !seen.lean) { try { prev = await window.hub.fs.read(seen.copy, { maxBytes: C.MAX_BYTES }); } catch { prev = null; } }
-      const ag = C.again({ name: a.name, text, seen, prev, canRead: read, whole: a.whole });
       // the whole text is kept in the attachments folder (by its content, written once) when the AI may open it
       // or a later message may diff against it
       let copy = null;
@@ -137,8 +134,11 @@ const AttachLean = (() => {
         copy = `${dir}${sep(dir)}lean-${h}-${safe(a.name)}${/\.\w{1,6}$/.test(a.name) ? '' : '.txt'}`;
         try { if (!(await window.hub.fs.stat(copy))) await window.hub.fs.write(copy, text); } catch (err) { console.warn('attachlean: copy', err); copy = null; }
       }
+      let prev = null;
+      if (seen?.valid && seen.copy && seen.hash !== h && (!seen.lean || read)) { try { prev = await window.hub.fs.read(seen.copy, { maxBytes: C.MAX_BYTES }); } catch { prev = null; } }
+      const ag = C.again({ name: a.name, text, seen, prev, canRead: read, whole: a.whole, copy });
       let out;
-      if (ag.mode === 'same' || ag.mode === 'diff') out = { text: ag.text, tokens: ag.tokens, wholeTokens: C.tok(text), mode: ag.mode };
+      if (ag.mode === 'same' || ag.mode === 'diff') { out = { text: ag.text, tokens: ag.tokens, wholeTokens: C.tok(text), mode: ag.mode }; if (read && seen.lean && engine === 'claude') readFiles = true; }
       else {
         out = C.leanText({ name: a.name, text, message, canRead: read && Boolean(copy), path: copy, whole: a.whole, engine });
         if (ag.note && out.mode === 'lean') out.text = out.text.replace('\n', `\n(${ag.note})\n`);
@@ -148,7 +148,7 @@ const AttachLean = (() => {
       a.wrapped = out.text; // packAttachments sends it as is (attributes and all)
       a.leanMeta = { mode: out.mode, tokens: out.tokens, wholeTokens: out.wholeTokens, ...(ag.mode === 'same' || ag.mode === 'diff' ? { [ag.mode]: C.clock(seen.at) } : {}) };
       // the same file: the record stays as it was (the AI has that message); changed: the new version is what it has now
-      if (ag.mode !== 'same') records.push({ key: keyOf(a), hash: h, name: a.name, lean: out.mode === 'lean', copy, ...(ag.mode === 'diff' ? { n: seen.n, at: seen.at } : {}) });
+      if (ag.mode !== 'same') records.push({ key: keyOf(a), hash: h, name: a.name, lean: ag.mode === 'diff' ? Boolean(seen.lean) : out.mode === 'lean', copy, ...(ag.mode === 'diff' ? { n: seen.n, at: seen.at } : {}) });
     }
     return {
       readFiles,
