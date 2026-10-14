@@ -97,7 +97,8 @@ owner; the CUSUM test, the trial and the locks cut that.
     a stronger model or more thinking (3 times)…"
 ### Seeing and undoing it
 13. **⋯ AI setup → How hard it thinks: "Smart has learned: code fixes → Deepest · quick questions → Normal"**, one quiet
-    line under Quick / Smart / Deep, only when it learned something; hover: the model and effort it means and why.
+    line under Quick / Smart / Deep, always there ("Smart has learned: nothing yet" until it has; "it learns while Smart
+    is on" on Quick / Deep); hover: the model and effort it means and why.
 14. **✕ on each forgets it**: back to Smart's usual pick for that kind.
 15. **The pick on a reply says so**: hover "Opus · xhigh": "code to write, fix or explain; more than the rule says:
     Smart learned it from you".
@@ -116,7 +117,8 @@ owner; the CUSUM test, the trial and the locks cut that.
   the chat's own model at high (the fake engine reports what it got); a new message marks it fine; three "think harder"
   (one by clicking the pick) step code fixes up; the next code fix runs at xhigh with "Smart learned it from you" in its
   why; chit-chat unchanged; the one-time line in the chat; `/route learned`; ⋯ AI setup shows "code fixes → Deepest"
-  under How hard it thinks; ✕ forgets it and the next code fix is back on high; stored in kv router-learn.
+  under How hard it thinks; ✕ forgets it (the line says "nothing yet") and the next code fix is back on high; stored in
+  kv router-learn. `appsearch` finds the row on a fresh copy (Ctrl/⌘ K → What Smart has learned).
 - Also run: `unit:router-test` (39/39, unchanged), `unit:tokens-test`, `unit:cache-test`, `unit:appsearch-test`,
   `router`, `options`, `budget`.
 
@@ -129,6 +131,8 @@ owner; the CUSUM test, the trial and the locks cut that.
 - Learning is per AI, not per chat: a director's code fixes and a plain chat's are learned separately only because they
   are different AIs.
 - Astra uses the same rules; its top rung is its own model at xhigh, like "think harder" already asks.
+- Find anything: "What's new" rows now lean back a little (kind weight −0.04 → −0.2) so a plain-words search
+  ("cheaper") finds the place itself (Spending) before the patch note about it; "what's new: …" still finds the note first.
 - Budget's "cheaper near the weekly limit" still steps down after Smart (it runs later and wins), as before.
 
 ## For the patch notes

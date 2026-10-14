@@ -262,12 +262,19 @@ const RouterLearn = (() => {
     save();
     return n;
   }
+  // always there (Find anything jumps to it): nothing learned yet / learning paused / Smart off say so in the same line
   function row(a, repaint) {
-    if (!a || data.off) return null;
-    const items = describe(data.agents[a.id], { engine: a.engine, base: a.model });
-    if (!items.length) return null;
-    return el('div', { class: 'opt-learned' }, el('span', { class: 'rl-label', text: 'Smart has learned:' }),
-      ...items.map((x) => el('span', { class: 'rl-item', title: `${x.words}: ${x.plan || x.rung}${x.why ? `, because ${x.why}` : ''}.\nIt keeps watching and moves back when you need it.` },
+    if (!a) return null;
+    const items = data.off ? [] : describe(data.agents[a.id], { engine: a.engine, base: a.model });
+    const smart = typeof Router === 'undefined' || Router.smartOn(a);
+    const head = el('span', { class: 'opt-label rl-label', text: 'Smart has learned:' });
+    if (!items.length) {
+      const why = data.off ? 'nothing (learning is paused: /route learn on)' : !smart ? 'nothing here (it learns while Smart is on)' : 'nothing yet';
+      return el('div', { class: 'opt-learned', title: 'Smart watches how its replies go for you (asking again harder, "that\'s wrong", switching models, keeping going) and, after the same thing several times, picks higher or lower for that kind of message. Local, no tokens.' },
+        head, el('span', { class: 'rl-none', text: why }));
+    }
+    return el('div', { class: `opt-learned${smart ? '' : ' rl-idle'}` }, head,
+      ...items.map((x) => el('span', { class: 'rl-item', title: `${x.words}: ${x.plan || x.rung}${x.why ? `, because ${x.why}` : ''}.\nIt keeps watching and moves back when you need it.${smart ? '' : '\n(Used while Smart is on.)'}` },
         `${x.words} → ${x.rung}`,
         el('button', { type: 'button', class: 'ghost rl-x', text: '✕', title: `Forget this: ${x.words} go back to Smart's usual pick`, on: { click: () => { forget(a.id, x.kind); repaint?.(); } } }))));
   }

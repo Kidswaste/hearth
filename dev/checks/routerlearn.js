@@ -81,7 +81,7 @@ await wait(300);
 const x = row?.querySelector('.rl-x');
 ok(x && /Forget/.test(x.title), 'each with ✕');
 x?.click();
-ok(await until(() => !document.querySelector('.opt-sheet .opt-learned')), '✕ forgets it: the line goes');
+ok(await until(() => /Smart has learned: *nothing yet/.test(document.querySelector('.opt-sheet .opt-learned')?.textContent || '')), '✕ forgets it: the line says nothing yet');
 ok(!RouterLearn.shifts(A.id).code, 'and Smart is back to its usual pick');
 Options.hide();
 m = await reply(CODE);
