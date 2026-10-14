@@ -460,6 +460,7 @@ const Activity = (() => {
       el('div', { class: 'ac-head' }, el('b', { text: 'Activity' }), el('span', { class: 'spacer' }),
         el('button', { type: 'button', class: 'ghost small', text: '⋯', title: 'Notifications, clear the history', on: { click: (e) => { const rr = e.currentTarget.getBoundingClientRect(); showMenu(rr.left, rr.bottom + 2, quickMenu().filter((i) => i.label !== 'Activity…')); } } })),
       section('ac-wait', 'Waiting for you'), section('ac-run', 'Now running'), section('ac-day', 'Last 24 h'), showAll,
+      window.UndoAll?.part?.() || null, // (round 41) undoall.js: Recent changes, one click undoes each (Ctrl/⌘+Z the last)
       window.AiUndo?.part?.() || null, // (round 28) aiundo.js: Changes by AIs, with undo
       el('p', { class: 'ac-empty', hidden: true, text: 'All quiet: nothing runs, nothing waits for you.' }));
     pop.all = false;
@@ -504,7 +505,7 @@ const Activity = (() => {
     more.hidden = day.length <= HIST_SHOWN;
     const mt = pop.all ? 'Show fewer' : `Show all ${day.length}`;
     if (more.textContent !== mt) more.textContent = mt;
-    pop.querySelector('.ac-empty').hidden = Boolean(wait.length || run.length || shown.length || pop.querySelector('.au-part:not([hidden])'));
+    pop.querySelector('.ac-empty').hidden = Boolean(wait.length || run.length || shown.length || pop.querySelector('.au-part:not([hidden]), .ua-part:not([hidden])'));
     // an update ready on main sits at the bottom of what waits (not counted: ⬆ shows it already)
     const up = typeof Updater !== 'undefined' ? Updater.status : null;
     let upRow = pop.querySelector('.ac-up');

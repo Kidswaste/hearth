@@ -231,8 +231,10 @@ const LabRecipes = (() => {
   async function remove(r, { ask = false } = {}) {
     if (ask && !(await Modal.confirm('Delete this recipe?', `"${r.name}" goes to the Trash. Scenes it was used on stay as they are.`, { ok: 'Move to Trash', danger: true }))) return false;
     const file = r._file || join(await root(), `${r.id}.json`);
+    const kept = await window.UndoAll?.keepFiles?.([file]); // (round 41, undoall) a copy first: Ctrl/⌘+Z brings it back
     const res = await window.hub.fs.trash([file]);
     if (res?.failed?.length) throw new Error(`It couldn't go to the Trash: ${res.failed[0].error || 'unknown reason'}. Nothing was deleted.`);
+    window.UndoAll?.deleted?.(kept, { what: 'recipe', name: r.name });
     cache = null;
     last.removed = { id: r.id, name: r.name, file };
     toast(`📜 "${r.name}" is in the Trash`, { timeout: 3500 });

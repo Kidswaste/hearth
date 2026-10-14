@@ -1,0 +1,14 @@
+/* One "Undo last change" (round 41, undoall.js): the "Recent changes" part of the Activity panel (it reuses the
+   panel's .ac-row / .ac-line). One line per change: icon, what, when, ↶ (or ↷ after an undo). */
+.ua-part .ac-row { cursor: default; }
+.ua-part h4 .ua-key { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted, #8a8f98); }
+.ua-row .ua-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ua-row .ua-ago { flex: none; font-size: 11px; color: var(--muted, #8a8f98); white-space: nowrap; }
+.ua-row .ua-undo, .ua-row .ua-redo { flex: none; min-width: 26px; padding: 0 6px; }
+.ua-row .ua-state { flex: none; font-size: 11px; color: var(--muted, #8a8f98); padding: 0 4px; }
+.ua-row.ua-undone { opacity: .55; }
+.ua-row.ua-undone .ua-t { text-decoration: line-through; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+.ua-row.ua-ai .ac-ic { color: var(--fh-ai, #b48cff); }
+.ua-part .ua-foot { margin: 2px 0 0; font-size: 11px; color: var(--muted, #8a8f98); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ua-part .ua-foot .ua-lab { font-size: 11px; padding: 0 4px; }
+.ua-part .ua-more { font-size: 11px; }
