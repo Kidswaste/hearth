@@ -26,6 +26,13 @@ After any change to the look (a director edit, a 🎲 variation, a 🩺 fix, a l
 - Windows holding files open? The update finishes as Hearth restarts. A crash mid-update is noticed and offers Finish or Go back.
 - **↶ Go back** in the "Hearth updated" note returns to the previous version; your chats and data are never touched.
 
+## ⛶ Big screen
+- **⛶ in the rail** (or F11 on Windows, ⌃⌘F on the Mac, ⌘/Ctrl+K "Full screen") makes Hearth full screen. Esc never kicks you out while typing.
+- Full screen is remembered per screen: on a new monitor setup, Hearth opens full screen on the big monitor and in a window on the laptop.
+- **Size of everything** (Appearance): Auto · 100–200 %, kept per screen. Auto makes a 4K at 100 % show at 150 % so text is readable from your chair. ⌘/Ctrl + / − change it, ⌘/Ctrl 0 goes back to Auto.
+- In full screen with the chats list hidden, rest the pointer on the rail and the list slides in.
+- The Lab drops its preview resolution sooner on a huge preview when frames get slow (renders stay full quality).
+
 ## 🐞 Fixed
 - The new-chat "Start from something like…" chip was hidden under the Lab preview (behind the music bar) until the gallery had been opened once.
 
