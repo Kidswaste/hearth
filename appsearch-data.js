@@ -128,6 +128,7 @@ const AppSearchData = (() => {
     ['hooks', 'hooks', 'Hooks: when something happens, it acts', 'Hooks', 'hooks automation automate when trigger then', 'When something happens, it acts by itself', 'What it can use'],
     ['check', '', 'Check this AI', 'Check this AI', 'check test works working ai engine diagnose computer', 'A short real test, with a fix on each failing line', 'What it can use'],
     ['thinks', '', 'How hard it thinks (Quick, Smart, Deep)', 'How hard it thinks', 'thinking effort reasoning quick smart deep model', 'Smart picks for each message: lighter for small asks, deeper for code', 'How hard it thinks'],
+    ['learned', '', 'What Smart has learned from you', 'Smart has learned', 'smart learned learn router model effort retry harder forget', 'Kinds of messages Smart now picks higher or lower for, from how replies went; ✕ forgets', 'How hard it thinks'], // (round 39, routerlearn)
     ['length', '', 'How long its answers are (Short answers, Normal, Detailed)', 'How long its answers are', 'answers length short concise detailed brief verbose tokens', 'Short: the answer first, fewer output tokens', 'How hard it thinks'],
     ['memory', 'memory', 'Memory: remembers things you tell it', 'Remembers things you tell it', 'memory remember forget facts', 'It keeps lasting facts and preferences for every chat with it', 'Memory'],
     ['memory-edit', 'memory', 'What it remembers…', 'What it remembers', 'memory facts edit remove forget', 'See, edit or remove what it keeps in mind', 'Memory'],
