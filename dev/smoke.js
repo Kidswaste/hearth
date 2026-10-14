@@ -265,8 +265,10 @@ async function cdpConnect() {
     if (coverage) { await new Promise((r) => setTimeout(r, 300)); await send('CSS.enable'); await send('CSS.startRuleUsageTracking'); }
     await new Promise((r) => setTimeout(r, waitMs));
     const CHECK_MS = Number(opt('--check-timeout', 90000));
+    // (round 35, bugbash2) an --eval of several statements ("window.A='x'; window.B='y'", qa-ui's header) runs as they are;
+    // wrapped in return (…) it was a SyntaxError and the check never ran
     const run = async (expr) => {
-      const r = await Promise.race([send('Runtime.evaluate', { expression: `(async () => { ${/\breturn\b/.test(expr) ? expr : `return (${expr})`} })()`, awaitPromise: true, returnByValue: true }),
+      const r = await Promise.race([send('Runtime.evaluate', { expression: `(async () => { ${/\breturn\b/.test(expr) || /;\s*\S/.test(expr.trim()) ? expr : `return (${expr})`} })()`, awaitPromise: true, returnByValue: true }),
         new Promise((res) => setTimeout(() => res({ result: { exceptionDetails: { text: `check still running after ${CHECK_MS / 1000}s (the page may have reloaded)` } } }), CHECK_MS))]);
       if (r.result?.exceptionDetails) return { error: r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text };
       return { value: r.result?.result?.value };
