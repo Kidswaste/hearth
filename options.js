@@ -233,7 +233,9 @@ const Options = (() => {
     const mission = typeof Missions !== 'undefined' ? fold('missions', sec('Your next message', 'Click: the next message only · 📌 every message from now on. Right-click ◎ in the chat box: back to a normal reply.', Missions.cards(a.id, { onPick: paint })), missionSum(a)) : null;
     // (round 30, budget.js) Spending: this week's use, a weekly limit, what happens near it
     const spent = window.Lazy?.loaded?.('budget') === false ? (window.Lazy.load('budget').then(() => paint()).catch(() => {}), null) : typeof Budget !== 'undefined' ? Budget.section(a, { repaint: paint }) : null;
-    sheet.body.replaceChildren(who, personality(a), instructions(a), access(a), thinking(a), memory(a), habits(a), spent ? fold('spending', spent, spendSum(a)) : null, mission);
+    // (round 41, routines.js) 🔁 Keep going: this AI's routines with ■ Stop (only while one runs or waits)
+    const rt = typeof Routines !== 'undefined' && Routines.section ? Routines.section(a, { repaint: paint }) : null;
+    sheet.body.replaceChildren(who, personality(a), instructions(a), access(a), thinking(a), memory(a), habits(a), spent ? fold('spending', spent, spendSum(a)) : null, rt ? fold('routines', rt, Routines.summary(a.id)) : null, mission);
     if (sheet.show && sheet.body.querySelector(`[data-fold="${sheet.show}"]`)) { const k = sheet.show; sheet.show = null; requestAnimationFrame(() => sheet?.body.querySelector(`[data-fold="${k}"]`)?.scrollIntoView({ block: 'start' })); }
     if (scroll) sheet.body.scrollTop = scroll; // (round 26, smooth26: at the top already, no layout forced mid-build)
   }

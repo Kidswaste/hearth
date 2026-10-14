@@ -15,7 +15,7 @@ const Native = (() => {
   const unfolded = new Set(); // "chatId:index" of long replies the user unfolded (they stay open)
   // Extension points for chat-*.js: render(agentId, view, chat), message(node, m, index, agent),
   // event(event, chat), mark(chat, index, key, on), send(agentId, chat, text).
-  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [], speak: [], options: [] }; // newChat(agentId): "New chat" (chat-scenes.js)
+  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [], speak: [], options: [], msgMenu: [] }; // msgMenu(agentId, index, m, chat) → more Reply › items (round 41, routines.js) // newChat(agentId): "New chat" (chat-scenes.js)
   // (round 23, voice.js) speak: { text(raw) → what is read, say(text, done) → true when it reads it itself (a system
   // voice), stop() }: the last one added reads replies aloud
   // (round 9, chatcore) finish(event, chat, extras): add fields to the reply about to be saved (chat-things.js: the
@@ -760,6 +760,7 @@ const Native = (() => {
         m.role === 'assistant' && last ? { label: 'Retry with another model', items: () => (MODEL_CHOICES[agent.engine] || []).filter((x) => x !== (chat.model || agent.model)).map((x) => ({ label: x, action: async () => { await setChatModel(agentId, x); regenerate(agentId); } })) } : null,
         m.role === 'assistant' && last && agent.engine === 'claude' ? { label: '🔍 Review: check its own result', action: () => send(agentId, REVIEW_PROMPT).catch((err) => toast(err.message, { type: 'error' })) } : null,
         m.role === 'assistant' && last && astra && astra.id !== agentId ? { label: `👁 Second opinion from ${astra.name}`, key: 'Ctrl+Alt+O', action: () => secondOpinion(agentId) } : null,
+        ...hooks.msgMenu.flatMap((fn) => { try { return fn(agentId, index, m, chat) || []; } catch (err) { console.warn(err); return []; } }),
       ] },
       // (round 9) what this reply made (chat-things.js): open any of them
       m.things?.length && typeof ChatThings !== 'undefined' ? { label: 'Made here', hint: String(m.things.length), items: () => m.things.filter((t) => !t.gone).map((t) => ({ label: `${ChatThings.GLYPH[t.k] || '◇'} ${String(t.name || ChatThings.KIND[t.k]).slice(0, 36)}`, action: () => ChatThings.openThing(t, { agentId, index }) })) } : null,

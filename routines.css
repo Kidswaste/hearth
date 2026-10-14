@@ -1,0 +1,31 @@
+/* 🔁 Keep going (round 41, routines.js): the header chip, the mark on a routine's message, the card, ⋯ AI setup rows */
+.rt-chip { display: inline-flex; align-items: center; gap: 1px; min-width: 0; flex: 0 1 auto; margin-left: 6px; padding: 0 2px 0 0; border-radius: 99px; font-size: 11px; line-height: 20px; color: var(--text); background: color-mix(in srgb, var(--fh-ai, var(--accent)) 14%, transparent); border: 1px solid color-mix(in srgb, var(--fh-ai, var(--accent)) 32%, transparent); white-space: nowrap; }
+.rt-chip.paused { background: color-mix(in srgb, var(--muted) 12%, transparent); border-color: var(--line); color: var(--muted); }
+.rt-chip button { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0 5px; border-radius: 99px; line-height: 18px; }
+.rt-chip .rt-chip-label { padding-left: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rt-chip button:hover, .rt-chip button:focus-visible { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.rt-chip .rt-stop { color: var(--danger, #e5534b); }
+.tool-dock .rt-chip .rt-chip-label { max-width: 150px; }
+.rt-msg-chip { font-size: 11px; color: var(--fh-ai, var(--accent)); opacity: .9; margin-right: auto; white-space: nowrap; }
+.msg.routine-msg > .body { opacity: .92; }
+
+.rt-dlg { width: min(520px, calc(100vw - 32px)); }
+.rt-dlg form { display: flex; flex-direction: column; gap: 10px; }
+.rt-dlg h2 { margin: 0; }
+.rt-intro { margin: 0; }
+.rt-field { display: flex; flex-direction: column; gap: 4px; }
+.rt-label { font-size: 12px; color: var(--muted); }
+.rt-row { display: flex; align-items: center; gap: 10px; }
+.rt-row > .rt-label { flex: none; width: 150px; }
+.rt-row > select { flex: 1; min-width: 0; }
+.rt-words { width: 100%; resize: vertical; min-height: 56px; }
+.rt-how { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.rt-opt { padding: 2px 9px; border-radius: 99px; border: 1px solid var(--line); background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.rt-opt.on { border-color: var(--fh-ai, var(--accent)); background: color-mix(in srgb, var(--fh-ai, var(--accent)) 18%, transparent); }
+.rt-num { width: 64px; }
+.rt-time { width: 96px; }
+.rt-cap-hint { margin: -6px 0 0 160px; font-size: 11px; }
+.rt-more > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.rt-more[open] { display: flex; flex-direction: column; gap: 8px; }
+.rt-check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.rt-setup-row .ghost.small { padding: 1px 6px; }
