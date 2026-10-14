@@ -95,9 +95,14 @@ const ChatCost = (() => {
     // (round 34) a long history: the calm "Continue lighter?" line under the reply says it (autocompact.js), not a toast
     const f = fixesFor(chat, x).filter((y) => y.kind !== 'history' || !window.Autocompact?.handles?.(H.agent(agentId)))[0];
     if (!f || f.saves < 2000 || chat.ctxTips?.[f.kind]) return;
-    chat.ctxTips = { ...(chat.ctxTips || {}), [f.kind]: Date.now() };
-    Native.save(chat);
-    toast(`💡 ${f.text}`, { timeout: 9000, action: { label: 'Fix', fn: () => Commands.exec(f.cmd, agentId) } });
+    // (round 38, hintcalm) in turn with the other tips, in this chat (hints.js); once per chat and kind once it showed
+    const go = () => {
+      if (H.activeChat?.[agentId] !== chat.id || chat.ctxTips?.[f.kind]) return null;
+      chat.ctxTips = { ...(chat.ctxTips || {}), [f.kind]: Date.now() };
+      Native.save(chat);
+      return toast(`💡 ${f.text}`, { timeout: 9000, action: { label: 'Fix', fn: () => Commands.exec(f.cmd, agentId) } });
+    };
+    if (window.Hints) Hints.offer({ id: `ctx-tip:${chat.id}`, place: 'chat', rank: 40, once: false, ttl: 3 * 60e3, show: go }); else go();
   }
 
   // ---------- the bar under a reply ----------

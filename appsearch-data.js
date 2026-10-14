@@ -35,6 +35,7 @@ const AppSearchData = (() => {
     'backup export archive',
     'notification notifications notify alert chime sound',
     'spell spelling spellcheck typo',
+    'tip tips hint hints nudge nudges popup popups suggestion suggestions', // (round 38, hintcalm) → Don't show tips
     'tray background minimize',
     'startup login boot launch start',
     'model engine claude astra codex gpt',

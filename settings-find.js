@@ -41,7 +41,9 @@ const SettingsFind = (() => {
     { home: 'chats', label: 'Message numbers', tip: 'A small number under each message', cmd: 'numbers', get: () => Boolean(pref('numbers')), cost: FREE },
     { home: 'chats', label: 'Spell check in the message box', tip: 'Red underlines under misspelled words while you type', cmd: 'spell', get: () => pref('spell') !== false, cost: FREE },
     { home: 'hearth', label: 'The pick-up card when Hearth opens', tip: 'A small card that takes you back to your last chat, scene or render', cmd: 'resume', get: () => store.get('speed.resume', true) !== false, cost: FREE },
-    { home: 'hearth', label: 'A “Did you know?” now and then', tip: 'At most one small tip a day, about something you have never used', cmd: 'tip', get: () => !store.get('discover.tips', {}).off, cost: FREE },
+    // (round 38, hintcalm) one switch for every tip that shows by itself (hints.js); it took the "Did you know?" row's
+    // place (that tip no longer comes by itself since round 31; /tip still shows one)
+    { home: 'hearth', label: 'Don\'t show tips', tip: 'No tips, cards or suggestion lines by themselves (What can I do here?, What\'s new, hints, Continue lighter…). Errors, sign-in, offline and usage-limit notes still show. The ⋯ of each window still has ✦ What can I do here?', cmd: 'hints', on: 'off', off: 'on', get: () => window.Hints?.off?.() === true, cost: FREE },
     { home: 'hearth', label: 'Weekly tidy: never-used buttons go behind Alt', tip: 'Once a week, buttons you never press wait behind Alt (hold it to see them)', cmd: 'habits', on: 'tidy on', off: 'tidy off', get: () => store.get('habits.tidy', true) !== false, cost: FREE },
     { home: 'hearth', label: 'Pause every timer', tip: 'Holds the repeating and scheduled actions you set up, until you turn this off', cmd: 'timers-pause', get: () => lsGet('cmdbar.timersPaused', false), cost: FREE },
     { home: 'board', label: 'Snap to other items (guides)', tip: 'Items line up with their neighbours while you drag them', cmd: 'board-snap', cost: FREE },

@@ -226,7 +226,9 @@ ${transcript(parts)}
   function onEvent(event, chat) {
     if (event.type !== 'done' || !chat || H.activeChat[chat.agentId] !== chat.id) return;
     if (Native.view(chat.agentId)?.queue?.length) return; // more is on its way
-    setTimeout(() => { if (H.activeChat[chat.agentId] !== chat.id) return; const d = offerFor(chat); if (d) show(chat.agentId, chat, d); }, 300);
+    // (round 38, hintcalm) the offer waits for calm (not while you type) and stays away with Don't show tips (hints.js)
+    const offer = (d) => (window.Hints ? Hints.offer({ id: `lighter:${chat.id}`, kind: 'inline', once: false, ttl: 15 * 60000, still: () => H.activeChat[chat.agentId] === chat.id && Boolean(offerFor(chat)), show: () => show(chat.agentId, chat, offerFor(chat) || d) }) : show(chat.agentId, chat, d));
+    setTimeout(() => { if (H.activeChat[chat.agentId] !== chat.id) return; const d = offerFor(chat); if (d) offer(d); }, 300);
   }
 
   async function summaryFor(agent, parts, chat) {

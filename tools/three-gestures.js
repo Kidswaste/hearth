@@ -31,8 +31,9 @@ const ThreeGestures = (() => {
     if (msg.type === 'view-moved') { dispatchEvent(new CustomEvent('hearth:lab-view', { detail: { steps: msg.steps } })); return true; } // (round 37) ◧ Before / after makes its picture again
     if (msg.type === 'view-hint') {
       if (store.get(HINT, false)) return true;
-      store.set(HINT, true);
-      toast(`Look around: ${mac() ? 'two fingers' : 'two fingers or right-drag'} turn · pinch or the wheel zooms · Z frames · Shift+Z resets`, { timeout: 6500, action: { label: 'How', fn: () => help() } });
+      // (round 38, hintcalm) one tip at a time, in the Lab (hints.js); remembered once it showed
+      const show = () => { if (store.get(HINT, false)) return null; store.set(HINT, true); return toast(`Look around: ${mac() ? 'two fingers' : 'two fingers or right-drag'} turn · pinch or the wheel zooms · Z frames · Shift+Z resets`, { timeout: 6500, action: { label: 'How', fn: () => help() } }); };
+      if (window.Hints) Hints.offer({ id: 'lab.view', place: 'lab', rank: 20, once: false, ttl: 60000, show }); else show();
       return true;
     }
     return false;

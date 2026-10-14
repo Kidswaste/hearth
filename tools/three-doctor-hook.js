@@ -27,9 +27,18 @@ const SceneDoctorHook = (() => {
   const onScreen = () => { const h = host(); return Boolean(h && !document.hidden && h.checkVisibility?.({ visibilityProperty: true })); };
   const sketchId = () => ThreeLab.stageHooks?.sketchId?.() || '';
   function hideHint() { clearTimeout(hideTimer); hintEl?.remove(); hintEl = null; }
+  // (round 38, hintcalm) in turn with the other tips (hints.js: one at a time, never while you type or drag, Don't
+  // show tips): offered here, drawn by show() below; the same problem is remembered once it showed
   function hint(key, text) {
     if (store.get('three.doctorHints', true) === false || seenSet().has(key) || !onScreen()) return false;
     if (typeof SceneDoctor !== 'undefined' && SceneDoctor.card?.isConnected) return false; // the card is open: it already says
+    if (!window.Hints) return show(key, text);
+    const sk = sketchId();
+    Hints.offer({ id: 'scenedoctor', place: 'lab', rank: 10, once: false, ttl: 30000, still: () => sketchId() === sk && onScreen() && !seenSet().has(key), show: () => (show(key, text) ? hintEl : null) });
+    return true;
+  }
+  function show(key, text) {
+    if (seenSet().has(key) || !onScreen() || (typeof SceneDoctor !== 'undefined' && SceneDoctor.card?.isConnected)) return false;
     remember(key);
     hideHint();
     const h = host();

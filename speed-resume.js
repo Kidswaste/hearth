@@ -111,7 +111,8 @@ const SpeedResume = (() => {
   function atStart() {
     if (!on() || !prev) return;
     if (Date.now() - (prev.t || 0) < 60e3 && prev.active === H.activeId) return;
-    show(items(prev));
+    // (round 38, hintcalm) in turn with the other notes (hints.js): after an update the patch notes come first
+    if (window.Hints) Hints.offer({ id: 'resume', kind: 'notice', rank: 10, once: false, ttl: 60e3, show: () => show(items(prev)) }); else show(items(prev));
   }
   addEventListener('DOMContentLoaded', () => setTimeout(atStart, 2500));
 

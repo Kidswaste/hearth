@@ -54,10 +54,14 @@ const SpeedLearn = (() => {
   function offer(id, r) {
     if (!hintsOn() || Date.now() - lastOffer < 10 * 60e3) return;
     lastOffer = Date.now();
-    L().offered[id] = Date.now();
-    S.save();
-    const d = freeDigit();
-    toast(`You often do ${r.labels.join(' → ')} (${r.n}×). Make it one key?`, { timeout: 12000, action: { label: d ? `Make it ${Commands.keyText(`Ctrl+Alt+${d}`)}` : 'Make it a command', fn: () => make(id).catch((err) => toast(err.message, { type: 'error' })) } });
+    // (round 38, hintcalm) in turn with the other tips (hints.js); the routine counts as offered once it showed
+    const go = () => {
+      L().offered[id] = Date.now();
+      S.save();
+      const d = freeDigit();
+      return toast(`You often do ${r.labels.join(' → ')} (${r.n}×). Make it one key?`, { timeout: 12000, action: { label: d ? `Make it ${Commands.keyText(`Ctrl+Alt+${d}`)}` : 'Make it a command', fn: () => make(id).catch((err) => toast(err.message, { type: 'error' })) } });
+    };
+    if (window.Hints) Hints.offer({ id: 'speed.routine', rank: 60, once: false, ttl: 3 * 60e3, still: () => !L().offered[id], show: go }); else go();
   }
   const freeDigit = () => { const b = L().binds; for (let d = 1; d <= 9; d += 1) if (!b[d] || !Commands.get(b[d])) return d; return 0; };
   const slug = (labels) => labels.map((l) => String(l).toLowerCase().replace(/^\/|^open\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim().split(' ').slice(0, 2).join('-')).filter(Boolean).join('-').slice(0, 32).replace(/-+$/, '') || 'routine';

@@ -221,6 +221,12 @@ const TwoComputers = (() => {
     const i = await info(true);
     if (!i) return null;
     if (!force && (!i.peers.length || store.get('two.welcomed', 0))) return null;
+    // (round 38, hintcalm) by itself: in turn with the other notes (hints.js), remembered once it showed
+    if (!force && window.Hints && !welcome.queued) {
+      welcome.queued = true;
+      Hints.offer({ id: 'two.welcome', kind: 'notice', rank: 8, once: false, ttl: 30 * 60000, show: () => welcome({ force: true }).then(() => note) }).finally(() => { welcome.queued = false; });
+      return null;
+    }
     store.set('two.welcomed', Date.now());
     await reconcile().catch(() => null);
     const pend = await pendingAll().catch(() => []);

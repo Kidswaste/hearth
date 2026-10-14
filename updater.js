@@ -216,10 +216,15 @@ const Updater = (() => {
     store.set('update.last', j); // (round 15) discover.js: What's new from the docs this update changed
     document.dispatchEvent(new CustomEvent('hearth:updated', { detail: j }));
     if (Date.now() - j.at > 5 * 60000) return;
-    if (j.back) { toast(`Back on the previous version (${j.to}). ⬆ offers the update again whenever you want.${j.note ? ` ${j.note}` : ''}`, { timeout: 9000 }); return; }
-    const t = toast(`Hearth updated (${j.from} → ${j.to}, ${j.n} file${j.n === 1 ? '' : 's'}).${j.note ? ` ${j.note}` : ''}`, { timeout: j.note ? 14000 : 10000, action: { label: '📰 Patch notes', fn: () => patchNotes() } });
-    // (round 37) something feels wrong? one click back to the version before, for this session
-    t?.lastElementChild?.before?.(el('button', { class: 'up-back', text: '↶ Go back', title: `Go back to the version before this update (${j.from}): your chats and data stay`, on: { click: () => { t.remove(); goBack(); } } }));
+    // (round 38, hintcalm) first in the one-at-a-time queue (hints.js): the patch notes come before any other note
+    const say = (show) => (window.Hints ? Hints.offer({ id: `update:${j.at}`, kind: 'notice', rank: 0, once: false, ttl: 5 * 60000, show }) : show());
+    if (j.back) { say(() => toast(`Back on the previous version (${j.to}). ⬆ offers the update again whenever you want.${j.note ? ` ${j.note}` : ''}`, { timeout: 9000 })); return; }
+    say(() => {
+      const t = toast(`Hearth updated (${j.from} → ${j.to}, ${j.n} file${j.n === 1 ? '' : 's'}).${j.note ? ` ${j.note}` : ''}`, { timeout: j.note ? 14000 : 10000, action: { label: '📰 Patch notes', fn: () => patchNotes() } });
+      // (round 37) something feels wrong? one click back to the version before, for this session
+      t?.lastElementChild?.before?.(el('button', { class: 'up-back', text: '↶ Go back', title: `Go back to the version before this update (${j.from}): your chats and data stay`, on: { click: () => { t.remove(); goBack(); } } }));
+      return t;
+    });
   }
   // (round 37) an update finished as Hearth restarted (Windows had files open): said like any other, once
   // (asked for once after the restart; any later look would also bring it)
