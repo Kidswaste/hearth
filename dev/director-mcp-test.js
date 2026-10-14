@@ -56,6 +56,11 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
     check(c.tools.length > 0 && !c.instructions, `${s}: ${c.tools.length} tools, no instructions`);
     c.close();
   }
+  // (round 41, toolslim) a director's chat list: chat_ask + chat_progress + chat_do (show, second opinion, open, report)
+  const dc = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'chat-mcp.js')], env: { HUB_CHAT_LEAN: '' } });
+  const dTok = Math.round(JSON.stringify(dc.tools).length / 4);
+  check(dc.tools.map((t) => t.name).join(',') === 'chat_ask,chat_progress,chat_do' && dTok <= 265 && /show .*second_opinion .*open /.test(dc.tools[2].description) && /chat_do show/.test(pc) && !/chat_show/.test(pc), `director chat list: ${dc.tools.map((t) => t.name).join(', ')}, ${dTok} tokens (532 before round 41); the guide names chat_do show`);
+  dc.close();
   const { fmtValue } = require(path.join(root, 'mcp', 'common.js'));
   check(fmtValue({ a: 1, b: 'x\ny', c: ['p', 'q'] }) === 'a: 1\nb:\nx\ny\nc:\n  p\n  q', 'result text format');
   // (round 21, labdirector) a light boot, the new three_do commands, the lean list's size, hub errors and a restarted hub

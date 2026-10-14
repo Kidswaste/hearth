@@ -18,10 +18,10 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   // no data/game-bridge.json for this server: it behaves as if Hearth were closed
   const c = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'capture-mcp.js')], env: { HUB_CHAT_ID: 'test-chat' } });
   const names = c.tools.map((t) => t.name);
-  check(names.join(',') === 'capture_shot,capture_record,capture_frames,capture_list', `tools: ${names.join(', ')}`);
+  check(names.join(',') === 'capture_shot,capture_frames,capture_do', `tools: ${names.join(', ')}`);
   check(!c.instructions, 'no MCP instructions (guides live in the prompt / the app map)');
   const cost = require(path.join(root, 'mcp', 'cost.js')).measure('captureTools');
-  check(cost.total < 560, `tool list ≈ ${cost.total} tokens`);
+  check(cost.total < 340, `tool list ≈ ${cost.total} tokens`);
   const shot = await c.call('capture_shot', { target: 'tool' });
   check(shot.isError && /not running|Couldn't reach/i.test(shot.content[0].text), `shot without Hearth: clean error (${shot.content[0].text.slice(0, 60)})`);
   const info = await c.call('capture_frames', { path: video, mode: 'info' });

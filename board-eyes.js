@@ -30,7 +30,7 @@ const BoardEyes = (() => {
   // ---------- which board, which items ----------
   async function boardOf(a = {}, ctx = {}) {
     await B.ready();
-    if (a.board) { const e = B.findBoard(a.board); if (!e) throw new Error(`No board "${a.board}" (board_list lists them).`); return B.load(e.id); }
+    if (a.board) { const e = B.findBoard(a.board); if (!e) throw new Error(`No board "${a.board}" (board_do list lists them).`); return B.load(e.id); }
     return ctx.chatId ? B.boardFor(ctx.chatId) : B.current();
   }
   // an item by id, then by its title / tags / alt words (the model may name it)
@@ -295,7 +295,7 @@ const BoardEyes = (() => {
     if (list.length === 1 && list[0].type !== 'frame') {
       const it = list[0];
       const c = await stillOf(it, sizeOf(size), a.region);
-      const v = { item: label(it), vibe: V.text(it), ...(it.alt ? { seen: it.alt } : {}), ...(isClip(it) ? { clip: `${it.type === 'gif' ? 'gif' : 'clip'}${it.duration ? ` ${r2(it.duration)}s` : ''}: board_watch shows it over time` } : {}), ...(it.text ? { text: String(it.text).slice(0, 600) } : {}), ...(it.source || it.url ? { source: it.source || it.url } : {}), rule: RULE, tip: altNote(list) };
+      const v = { item: label(it), vibe: V.text(it), ...(it.alt ? { seen: it.alt } : {}), ...(isClip(it) ? { clip: `${it.type === 'gif' ? 'gif' : 'clip'}${it.duration ? ` ${r2(it.duration)}s` : ''}: board_do watch shows it over time` } : {}), ...(it.text ? { text: String(it.text).slice(0, 600) } : {}), ...(it.source || it.url ? { source: it.source || it.url } : {}), rule: RULE, tip: altNote(list) };
       return result(b, list, v, pack([c]));
     }
     if (list.length > 1) {

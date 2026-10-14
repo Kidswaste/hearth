@@ -1926,7 +1926,7 @@ const ThreeLab = (() => {
         rerun: () => (run({ hot: true, layer: id }) ? whenDrawn(id) : null),
         persist: (kind, data) => { const Lx = layerById(id); if (!Lx || !current) return; extrasOf(Lx)[kind] = data; saveExtras(); window.LabRecipesHook?.note?.(kind); }, // (round 39, labrecipes: ♪ links)
         quickAsk: (text) => askDirector(text === '3 variations to pick from'
-          ? `Make 3 clearly different variations of the layer "${layerById(id)?.name}" using only its sliders (three_sliders), no code changes. For each: set the values, save it as a look named "Variation A", "B" or "C" (three_looks), and show it to me with chat_show. Then ask me with chat_ask which one I like (A, B, C or none) and apply that look.`
+          ? `Make 3 clearly different variations of the layer "${layerById(id)?.name}" using only its sliders (three_sliders), no code changes. For each: set the values, save it as a look named "Variation A", "B" or "C" (three_looks), and show it to me (chat_do show). Then ask me with chat_ask which one I like (A, B, C or none) and apply that look.`
           : text.endsWith('…') ? `${text.slice(0, -1)} ` : `${text} (layer "${layerById(id)?.name}")`, { send: !text.endsWith('…') }),
         goToLine: (line) => { if (selId !== id) selectLayer(id); setCodeVisible(true); requestAnimationFrame(() => goToLine(line)); },
         commit: (code) => {

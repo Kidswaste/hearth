@@ -16,8 +16,9 @@ const GAME_GUIDE = `Forgeheart runs as one big classic script, so its globals ar
 
 const TOOLS = [
   { name: 'forge_status', description: 'The live debug game now: stage, gold, player HP, enemies by type, boss, debug flags, gear, onTitleScreen.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'forge_spawn', description: 'Spawn enemies: type = a FOES type, "random" or "boss" (the stage boss).',
-    inputSchema: { type: 'object', properties: { type: { type: 'string', default: 'random' }, count: { type: 'integer', minimum: 1, maximum: 200, default: 10 }, mult: { type: 'number', description: 'strength ×', default: 1 } } } },
+  // (round 41, toolslim) defaults and ranges said once in the words, not as schema keywords
+  { name: 'forge_spawn', description: 'Spawn enemies: type = a FOES type, "random" (default) or "boss" (the stage boss); count 1–200 (10); mult = strength × (1).',
+    inputSchema: { type: 'object', properties: { type: { type: 'string' }, count: { type: 'integer' }, mult: { type: 'number' } } } },
   { name: 'forge_debug', description: 'Debug Deck options and cheats; only the fields you pass change. timeScale 0.1–8; stage jumps there; start leaves the title screen.',
     inputSchema: { type: 'object', properties: {
       god: { type: 'boolean' }, oneshot: { type: 'boolean' }, paused: { type: 'boolean' }, timeScale: { type: 'number' },

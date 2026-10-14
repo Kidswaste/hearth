@@ -164,7 +164,7 @@ const BoardCmds = (() => {
   cmd({ name: 'board-peek', aliases: ['board-drawer'], desc: 'The board drawer over this chat (Ctrl+Shift+M): drag a reference into the chat for its vibe', keys: 'Ctrl+Shift+M', run: async () => { await B.ready(); BoardDrawer.toggle(); return null; } });
   cmd({ name: 'board-save-reply', desc: 'Save the last reply of this chat as a note on the board', run: async (_a, ctx) => { const t = Native.lastReplyText?.(ctx?.agentId); if (!t) return 'No reply to save.'; const b = await boardOf(ctx); if (b !== B.current()) await B.open(b.id); B.addNote(t.slice(0, 4000), B.visible() ? null : freeSpot(b), { style: 'paper', w: 420, h: 360 }); return `Saved to **${b.name}**.`; } });
   cmd({ name: 'board-clean', desc: 'Move media no board uses any more to the Recycle Bin', run: async () => { await B.ready(); await Board._.cleanMedia(); return null; } });
-  cmd({ name: 'board-tools', desc: 'Let this agent use the board itself (board tools: list, vibe, look, watch, add, arrange; ≈ 1,100 tokens a message, see /director-cost): on, off, or directors', args: '<on|off|directors>', complete: (a) => opts(['on', 'off', 'directors'], a),
+  cmd({ name: 'board-tools', desc: 'Let this agent use the board itself (board tools: list, vibe, look, watch, add, arrange; ≈ 500 tokens, only on messages that need the board, see /director-cost): on, off, or directors', args: '<on|off|directors>', complete: (a) => opts(['on', 'off', 'directors'], a),
     run: async (args, ctx) => {
       // no word: say where they're on (it used to switch them on: ≈ 550 tokens a message by accident)
       if (!args.trim()) { const on = H.agents().filter((a) => a.boardTools).map((a) => a.name); return on.length ? `Board tools are on for ${on.join(', ')} (/board-tools off here turns them off).` : 'Board tools are off everywhere (/board-tools on for this chat\'s agent, or directors).'; }
@@ -179,7 +179,7 @@ const BoardCmds = (() => {
   // ---------- the board_ tools (mcp/board-mcp.js) ----------
   async function boardArg(a, ctx) {
     await B.ready();
-    if (a.board) { const e = B.findBoard(a.board); if (!e) throw new Error(`No board "${a.board}". board_list lists them.`); return B.load(e.id); }
+    if (a.board) { const e = B.findBoard(a.board); if (!e) throw new Error(`No board "${a.board}". board_do list lists them.`); return B.load(e.id); }
     return ctx?.chatId ? B.boardFor(ctx.chatId) : B.current();
   }
   async function smallPreview(it) {

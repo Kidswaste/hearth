@@ -122,7 +122,7 @@ const AppSearchData = (() => {
     ['tools', 'tools', 'Hearth\'s tools', 'Hearth\'s tools', 'tools hearth abilities', 'Your chats, the Lab, the mood board, recordings, apps…', 'What it can use'],
     ['t-chats', 'tools', 'Use your chats and Hearth', 'Your chats and Hearth', 'chats search read other chats open', 'Read and search your other chats, open things in Hearth', 'What it can use › Hearth\'s tools'],
     ['t-lab', 'tools', 'Use the Three.js Lab', 'Three.js Lab', 'lab three director scenes build', 'Build and change scenes in the Lab', 'What it can use › Hearth\'s tools'],
-    ['t-board', 'tools', 'Use the mood board', 'Mood board', 'board moodboard references see arrange', 'See and arrange your mood boards (≈ 1,000 tokens a message)', 'What it can use › Hearth\'s tools'],
+    ['t-board', 'tools', 'Use the mood board', 'Mood board', 'board moodboard references see arrange', 'See and arrange your mood boards (≈ 500 tokens, only on messages that need it)', 'What it can use › Hearth\'s tools'],
     ['t-capture', 'tools', 'Take screenshots and recordings', 'Screenshots and recordings', 'screenshot record capture video frames', 'Take screenshots, record, read video frames', 'What it can use › Hearth\'s tools'],
     ['t-apps', 'tools', 'Use app windows (Meshy, Suno…)', 'App windows', 'apps meshy suno windows', 'Use the AI apps in Hearth\'s windows', 'What it can use › Hearth\'s tools'],
     ['t-adobe', 'tools', 'Drive Adobe apps', 'Adobe', 'adobe photoshop after effects premiere', 'Drive Photoshop / After Effects / Premiere on this computer', 'What it can use › Hearth\'s tools'],
