@@ -12,6 +12,9 @@
 //     slept" after a wake); the continuation is stitched in: one reply, word for word the uncut one, same session
 //   typed while offline → waits in the box as a chip (cancellable), the draft and the chat's own queue too; after a
 //     restart (page reload) they're all still there, then go out once the internet is back, each exactly once
+//   (round 36, capturefix) a mission keeps itself: Swarm typed while offline waits with its mission (🐝 on the chip),
+//     survives the restart and runs as a Swarm once back (not as a plain message); "Split it up" sent when the internet
+//     dropped goes again with its helpers on
 //   node dev/smoke.js --fake-engines --check-timeout 400000 --lib dev/checks/journey-lib.js --script dev/checks/offline.js
 const { step, wait, until, click } = J;
 // (round 35, bugbash2) hub.kvSet answers once the file is on disk (store.js writeOff), so the fake engine started next
@@ -150,6 +153,25 @@ ms = chatOf(claude.id).messages;
 step('back online it resumed by itself: the same single reply', ms.length === 2 && ms[1].text.trim() === whole.trim() && !Offline.items().length, ms.map((m) => m.role));
 await sw({});
 
+// ---------- 5b. (round 36) a message sent with a mission that failed offline goes again as that mission ----------
+const seen = [];
+const spy = (agentId, chat, raw, last, options, how) => { if (agentId === claude.id) seen.push({ text: last?.text, mission: last?.mission, subagents: Boolean(chat.subagents), again: Boolean(how?.fromHistory) }); };
+(Native.hooks.options ||= []).push(spy);
+await fresh(claude.id);
+Offline._test.net(false);
+await sw({ claudeNetwork: 'always' });
+Missions.set(claude.id, 'split');
+await click(Native.view(claude.id).input); await J.type('split this flaky one'); await J.key('Enter');
+await until(() => lastRole(claude.id) === 'error', 20000); await wait(400);
+step('Split it up, sent as the internet dropped: it waits ("will send when you\'re back"), helpers back off meanwhile', lineOf(claude.id) === 'No internet — will send when you\'re back' && !chatOf(claude.id).subagents, { line: lineOf(claude.id), sub: chatOf(claude.id).subagents });
+await sw({});
+Offline._test.net(true);
+dispatchEvent(new Event('online'));
+await until(() => lastRole(claude.id) === 'assistant', 30000); await idle(claude.id); await wait(500);
+const again = seen.filter((x) => x.text === 'split this flaky one');
+step('… back online it went again as Split it up (its helper agents on), the question once', again.length === 2 && again[1].again && again[1].subagents && again[1].mission === 'split' && users(claude.id, 'split this flaky one') === 1, again);
+Native.hooks.options.splice(Native.hooks.options.indexOf(spy), 1);
+
 // ---------- 6. typed while offline, a draft, the chat's own queue: then a restart ----------
 await fresh(astra.id);
 await Native.send(astra.id, 'quiet:12 story please'); // 12 s of silence: still running at the restart
@@ -167,6 +189,12 @@ const chip = Native.view(claude.id).root.querySelector('.offline-chips .offline-
 step('typed while offline: it waits as a chip in the box (cancellable), the box is empty', Boolean(chip?.querySelector('button')) && /sent while offline/.test(chip?.textContent || '') && !Native.view(claude.id).input.value, chip?.textContent);
 step('… one line says so: "No internet — will send when you\'re back"', [...list(claude.id).querySelectorAll('.msg.note')].some((n) => /No internet — will send when you're back/.test(n.textContent)));
 step('… nothing went to the engine', !chatOf(claude.id)?.messages?.length);
+// (round 36) with a mission picked: it waits with its mission (nothing runs now), the picker is back to a normal reply
+Missions.set(claude.id, 'swarm');
+await click(Native.view(claude.id).input); await J.type('swarm while offline'); await J.key('Enter'); await wait(300);
+const swItem = Offline.items().find((x) => x.text === 'swarm while offline');
+const swChip = [...Native.view(claude.id).root.querySelectorAll('.offline-chips .offline-chip')].find((c) => /swarm while offline/.test(c.textContent));
+step('typed while offline with Swarm: it waits with its mission (🐝 on its chip), nothing ran, the next message is a normal one again', swItem?.mission === 'swarm' && /🐝/.test(swChip?.textContent || '') && !chatOf(claude.id)?.messages?.length && Missions.current(claude.id).id === 'normal', { swItem, chip: swChip?.textContent });
 await click(Native.view(claude.id).input); await J.type('a draft kept across a restart'); await wait(900);
 await smoke({ shot: '/tmp/offline-6-queued.png' });
 localStorage.setItem('offline.check', JSON.stringify({ astraChat, quietEnd }));
@@ -179,11 +207,13 @@ const T = JSON.parse(localStorage.getItem('offline.check') || '{}');
 await Offline.ready;
 const items = Offline.items();
 step('after a restart the queue is still there: the offline message and the chat\'s own queued one', items.some((x) => x.text === 'sent while offline') && items.some((x) => x.text === 'queued behind a running reply' && x.chatId === T.astraChat), items.map((x) => `${x.kind}:${x.reason}:${x.text}`));
+step('… the Swarm one still has its mission', items.find((x) => x.text === 'swarm while offline')?.mission === 'swarm', items.map((x) => `${x.text}:${x.mission || '-'}`));
 activate(claude.id); await wait(500);
 step('… shown as a chip again in its box', /sent while offline/.test(Native.view(claude.id).root.querySelector('.offline-chips')?.textContent || ''));
 step('… and the draft is back in the box', /a draft kept across a restart/.test(Native.view(claude.id).input.value), Native.view(claude.id).input.value);
 await Commands.tryRun('/offline', claude.id); await wait(300);
-step('/offline lists what waits', /No internet · 2 waiting/.test(J.lastNote(claude.id)) || /2 waiting/.test([...Native.view(claude.id).list.querySelectorAll('.msg.note')].map((n) => n.textContent).join(' ')));
+const offLines = `${J.lastNote(claude.id)} ${[...Native.view(claude.id).list.querySelectorAll('.msg.note')].map((n) => n.textContent).join(' ')}`;
+step('/offline lists what waits (the Swarm one as a Swarm)', /3 waiting/.test(offLines) && /Swarm: “swarm while offline”/.test(offLines), offLines.slice(-300));
 Native.view(claude.id).input.value = ''; Native.view(claude.id).input.dispatchEvent(new Event('input', { bubbles: true }));
 await wait(Math.max(0, (T.quietEnd || 0) - Date.now())); // the reply that ran at the restart has ended (the engine kept it)
 Offline._test.net(true);
@@ -192,9 +222,16 @@ const sentTo = async (agentId, text) => { for (const c of H.chats.filter((x) => 
 await until(async () => (await sentTo(claude.id, 'sent while offline')).n && (await sentTo(astra.id, 'queued behind a running reply')).n, 40000);
 await until(() => !Offline.items().length && !H.agents().some((a) => Native.isAgentBusy(a.id)), 60000); await wait(800);
 dispatchEvent(new Event('online')); await Offline.pump(); await wait(2500);
+await until(async () => (await sentTo(claude.id, 'swarm while offline')).n, 40000); await wait(1500);
+const a3 = await sentTo(claude.id, 'swarm while offline');
+const a3m = a3.chat?.messages || [];
+const a3u = a3m.find((m) => m.role === 'user' && m.text === 'swarm while offline');
+step('back online the Swarm message ran as a Swarm (its card, the 🐝 on your words), not as a plain message, once', a3.n === 1 && a3u?.mission === 'swarm' && a3m.some((m) => m.role === 'collab' && m.mission === 'swarm') && !a3m.some((m) => m.role === 'assistant' && /swarm while offline/.test(m.text || '')), a3m.map((m) => `${m.role}${m.mission ? `[${m.mission}]` : ''}`));
+await until(() => !H.agents().some((a) => Native.isAgentBusy(a.id)), 60000);
 const a1 = await sentTo(claude.id, 'sent while offline');
 const a2 = await sentTo(astra.id, 'queued behind a running reply');
-step('back online: both went out, each exactly once, and were answered', a1.n === 1 && a2.n === 1 && a1.chat.messages.at(-1).role === 'assistant' && a2.chat.messages.at(-1).role === 'assistant', { claude: a1.n, astra: a2.n });
+const answered = (r, text) => r.chat?.messages[r.chat.messages.findIndex((m) => m.role === 'user' && m.text === text) + 1]?.role === 'assistant'; // (the Swarm runs after it in the same chat)
+step('back online: both went out, each exactly once, and were answered', a1.n === 1 && a2.n === 1 && answered(a1, 'sent while offline') && answered(a2, 'queued behind a running reply'), { claude: a1.n, astra: a2.n });
 step('the queue on disk is empty', ((await window.hub.kvGet('offline-queue', [])) || []).length === 0);
 step('the chip and its line are gone', !Native.view(claude.id).root.querySelector('.offline-chips .offline-chip'));
 Offline._test.net(null);

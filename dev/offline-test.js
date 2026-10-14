@@ -152,6 +152,21 @@ check(C.nextDue([{ ...r[0], notBefore: NOW + 20000 }, r[2]], { online: true, now
 check(C.wakeIn([{ ...r[0], notBefore: NOW + 20000 }, { ...r[2], notBefore: NOW + 5000 }], NOW) === 5000 && C.wakeIn(r, NOW) === null, 'the next wake');
 check(C.chatKey({ agentId: 'astra', chatId: null }) === 'new:astra', 'a message for a chat not started yet');
 
+// ---------- (round 36, capturefix) a waiting message keeps its mission ----------
+const sw0 = C.newItem({ agentId: 'claude', chatId: 'c9', text: 'make three takes on the logo', mission: 'swarm' });
+check(sw0.kind === 'new' && sw0.mission === 'swarm' && sw0.reason === 'offline' && sw0.text === 'make three takes on the logo', 'typed while offline with Swarm: the waiting item carries the mission', sw0);
+check(!('mission' in C.newItem({ agentId: 'claude', text: 'hi', mission: 'normal' })) && !('mission' in C.newItem({ agentId: 'claude', text: 'hi' })), 'a plain message (Just answer) carries none');
+const disk = JSON.parse(JSON.stringify([{ id: 'm1', ...sw0, status: 'sending', sentAt: NOW }, { id: 'm2', ...C.newItem({ agentId: 'claude', chatId: 'c9', text: 'then this', mission: 'everyone', reason: 'restart' }), after: NOW - 5000, status: 'waiting' }]));
+const back = C.reconcile(disk, () => false);
+check(back[0].mission === 'swarm' && back[0].status === 'waiting' && back[1].mission === 'everyone' && back[1].after === NOW - 5000, 'after a restart (the queue read back from disk) each keeps its mission', back);
+check(C.nextDue(back, { online: true })?.mission === 'swarm', 'back online, the first goes out with its mission');
+check(C.reached({ id: 'm1', mission: 'swarm', text: 'make three takes on the logo', sentAt: NOW }, [{ role: 'user', text: 'make three takes on the logo', at: NOW + 300, mission: 'swarm' }]), 'a mission that went out is found in its chat (it sends its own way, untagged): never twice');
+check(!C.reached({ id: 'm1', mission: 'swarm', text: 'make three takes on the logo', sentAt: NOW }, [{ role: 'user', text: 'make three takes on the logo', at: NOW - 60000 }]), '… the same words asked long before don\'t count');
+check(C.reached({ id: 'q1', text: 'x' }, [{ role: 'user', text: 'x', qid: 'q1' }]) && !C.reached({ id: 'q1', text: 'x', sentAt: NOW }, [{ role: 'user', text: 'x', at: NOW }]), 'a plain message is found by its tag only (as before)');
+const held = { agentId: 'astra', chatId: 'a1', texts: ['one', 'two'], missions: [null, 'plan'] };
+const fromHeld = held.texts.map((t, i) => C.newItem({ agentId: held.agentId, chatId: held.chatId, text: t, reason: 'restart', mission: held.missions[i] }));
+check(!fromHeld[0].mission && fromHeld[1].mission === 'plan', 'the chat\'s own queue across a restart: each message keeps its own mission', fromHeld);
+
 // ---------- the main side ----------
 check(JSON.stringify(M.proxyTarget({ HTTPS_PROXY: 'http://10.0.0.2:3128' })) === '["10.0.0.2",3128]' && M.proxyTarget({}) === null, 'the internet check goes through the proxy this computer uses');
 M.probe().then((r2) => {

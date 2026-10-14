@@ -115,10 +115,16 @@ const Missions = (() => {
   }
   // native.js asks before sending a typed message: true = handled here
   function submit(agentId, text) {
+    const id = take(agentId);
+    return id ? start(agentId, id, text) : false;
+  }
+  // (round 36, capturefix) the mission picked for the message being typed, used up like a send would (a "next message
+  // only" one is cleared): a message that waits (offline, or behind a running reply) keeps it and runs as it later
+  function take(agentId) {
     const m = current(agentId);
-    if (m.id === 'normal') return false;
+    if (m.id === 'normal') return null;
     if (next.has(agentId)) { next.delete(agentId); changed(agentId); }
-    return start(agentId, m.id, text);
+    return m.id;
   }
   // Runs a mission on a message (the composer's, or ↻ on a message sent with one). false: it can't (sent normally).
   function start(agentId, id, text) {
@@ -151,21 +157,32 @@ const Missions = (() => {
       askOther(agentId, 'research', text, a, { webSearch: 'live', persona: `${(typeof Astra !== 'undefined' && Astra.PERSONAS?.researcher?.text) || 'You are a careful researcher.'} Search the web for current, reliable sources and cite each fact with a numbered link; end with a short Sources list.` });
       return true;
     }
-    const chat = Native.ensureChat(agentId);
-    if (m.id === 'split') forThisMessage(agentId, chat, 'subagents', true);
-    if (m.id === 'research') forThisMessage(agentId, chat, 'web', 'live');
-    if (m.id === 'review') afterReply(chat.id, (answered) => { if (answered) { if (typeof SwarmLean !== 'undefined') SwarmLean.markReview(agentId); run('/opinion', agentId); } });
-    if (m.id === 'plan') {
+    arm(agentId, m.id, Native.ensureChat(agentId));
+    armed.set(agentId, m.id);
+    Native.send(agentId, text).catch((err) => { armed.delete(agentId); toast(err.message, { type: 'error' }); });
+    return true;
+  }
+
+  // What a mission sent as this chat's own message sets up for its one reply (split: helper agents on; research on Astra:
+  // live web search; review: the other AI checks it after; plan: ▶ Go ahead under it). (round 36) Also called by
+  // offline.js when that message is sent again after it failed (no internet, a busy AI): it goes out as the mission
+  // again, not as a plain message (the words a mission adds are already in what is re-sent).
+  function arm(agentId, id, chat) {
+    if (!chat) return;
+    if (id === 'split') forThisMessage(agentId, chat, 'subagents', true);
+    if (id === 'research' && H.agent(agentId)?.engine === 'codex') forThisMessage(agentId, chat, 'web', 'live');
+    if (id === 'review') afterReply(chat.id, (answered) => { if (answered) { if (typeof SwarmLean !== 'undefined') SwarmLean.markReview(agentId); run('/opinion', agentId); } });
+    if (id === 'plan') {
       afterReply(chat.id, (answered) => {
         if (!answered) return;
         for (const c of chatsLike(chat, agentId)) { const r = c.messages.at(-1); if (r?.role === 'assistant') { r.plan = 'waiting'; Native.save(c); } }
         if (Native.chatOf(agentId)?.id === chat.id) Native.refresh(agentId, { keepScroll: true });
       });
     }
-    armed.set(agentId, m.id);
-    Native.send(agentId, text).catch((err) => { armed.delete(agentId); toast(err.message, { type: 'error' }); });
-    return true;
   }
+  // the missions that go out as this chat's own message (Native.send): a failed one is sent again as it was (+ arm)
+  const OWN = new Set(['split', 'review', 'plan', 'teach', 'research']);
+  const ownSend = (agentId, id) => OWN.has(id) && !(id === 'research' && H.agent(agentId)?.engine !== 'codex') && !byId(id).submit;
 
   // ---------- result cards drawn here ("mission" messages: Ask everyone, Research / Second opinion via the other AI) ----------
   const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n || 0));
@@ -214,7 +231,7 @@ const Missions = (() => {
     if (!targets.some((a) => a.id === agentId)) chat.messages.push({ role: 'user', text, at, mission: 'everyone' }); // this AI isn't asked: your message still shows here
     live.set(m.id, { m, chat, agentId });
     tell('start', m.id);
-    broadcast = { m, agentId };
+    broadcast = { m, agentId, chatId: chat.id };
     // (round 33, swarmlean) the other AIs answer in a new chat of theirs: a question for everyone doesn't need (or pay
     // for) whatever unrelated chat is open there. A Lab director keeps its chat (its scene goes with it).
     for (const a of targets) if (a.mode === 'native' && a.id !== agentId && !a.dock && Native.chatOf(a.id)?.messages?.length && !Native.isAgentBusy(a.id)) H.activeChat[a.id] = null;
@@ -436,6 +453,7 @@ const Missions = (() => {
       const row = broadcast.m.rows.find((r) => r.agentId === agentId && r.status === 'sending');
       if (row) Object.assign(row, { status: 'thinking', chatId: chat.id });
       last.mission = 'everyone';
+      last.missionFrom = { agentId: broadcast.agentId, chatId: broadcast.chatId }; // (round 36) offline.js: a failed one runs the whole ask again from there
       return;
     }
     const id = armed.get(agentId);
@@ -520,5 +538,5 @@ const Missions = (() => {
     Native.hooks.compose.push(onCompose);
     Native.hooks.finish.push(onFinish);
   }
-  return { LIST, NOTE, current, set, submit, start, cards, button, isSticky, why, decorateCollab, resultCard, add, shown, _live: live };
+  return { LIST, NOTE, current, set, submit, take, start, arm, ownSend, cards, button, isSticky, why, decorateCollab, resultCard, add, shown, _live: live };
 })();
