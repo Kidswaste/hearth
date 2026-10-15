@@ -262,6 +262,8 @@ const ErrorCalmCore = (() => {
     const { lead, raw } = ctx.lead != null ? { lead: ctx.lead, raw: msg } : split(msg);
     const e = explain(raw, ctx);
     let text = lead ? `${lead}: ${lower(e.text)}` : e.text;
+    // a lead that already says "it broke" needs no generic second half ("Something broke inside Hearth.")
+    if (lead && /^Something (went wrong inside Hearth|unexpected went wrong)/.test(e.text) && /inside Hearth|went wrong|broke|failed|didn.t work/i.test(lead)) text = sentence(lead);
     // the lead often says what the plain sentence says again ("Couldn't open song.wav: “song.wav” isn't there…")
     if (lead && e.path && lead.includes(base(e.path))) text = `${lead}: ${lower(e.text.replace(`“${base(e.path)}”`, 'it'))}`;
     return { text, action: e.action, raw: (message && typeof message === 'object' && message.stack) || msg, path: e.path, kind: e.kind, changed: true };

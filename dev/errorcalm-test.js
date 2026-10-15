@@ -93,6 +93,8 @@ for (const [raw, ctx, re, act, target] of CASES) {
   ok(c.action?.id === 'show' && c.path === '/x/song.wav', 'Show file → the song');
   const d = C.calm('Studio: x.map is not a function');
   ok(d.text === 'Studio: something went wrong inside Hearth (not your fault).', `Studio lead: ${d.text}`);
+  const k = C.calm('Something broke inside Hearth: TypeError: Cannot read properties of null (reading \'x\')');
+  ok(k.text === 'Something broke inside Hearth.' && k.action?.id === 'report', `a lead that already says it broke: ${k.text}`);
   const e = C.calm('Error: EACCES: permission denied, open \'/a/b\'');
   ok(!/^Error/.test(e.text) && /wasn't allowed/.test(e.text), `"Error:" is no lead: ${e.text}`);
   const f = C.calm('/x/a.mp4: Invalid data found when processing input');
