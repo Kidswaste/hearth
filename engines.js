@@ -1052,13 +1052,13 @@ const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e)
 
 // live(event): what a run is doing (step / agent / pulse / status), on its own channel so the turns that only want
 // the reply (jams, collaborations, once()) never see it.
-function send({ agent, chatId, session, text, options = {} }, emit, live = null) {
-  emit = batched(emit);
+// (round 46, promptdiet) the agent one run really gets (a run's persona, a mission helper, lean / hubOnly / crew runs, a
+// chat's own engine or opt-ins, the sets toolwake.js lets sleep): send() and dev/promptdiet-measure.js use the same one
+function runAgent(agent, { chatId = '', session = {}, text = '', options = {} } = {}) {
   const base = agent; // the agent as the owner set it up (toolwake.js forgets the sets switched off there)
   // a chat with its own engine (a comp part on Astra while its director runs on Claude, or the reverse): the same
   // agent on that engine, with its tools (Astra directors get the hub servers through -c), the twin's model / effort
   if (options.engine && options.engine !== agent.engine && ENGINES[options.engine]) agent = { ...agent, engine: options.engine, model: undefined, effort: undefined, ...(options.engine === 'codex' ? { hubTools: true } : {}) };
-  const engine = agent.engine;
   // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
@@ -1087,6 +1087,12 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   const woke = Wake && agent.id ? Wake.plan(agent, { text, session, base, keep: options.captureTools ? ['captureTools'] : [] }) : null;
   if (woke?.sleep.length) agent = { ...agent, ...Object.fromEntries(woke.sleep.map((k) => [k, false])) };
   if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };
+  return { agent, woke };
+}
+function send({ agent: agent0, chatId, session, text, options = {} }, emit, live = null) {
+  emit = batched(emit);
+  const { agent, woke } = runAgent(agent0, { chatId, session, text, options });
+  const engine = agent.engine;
   const original = text;
   if (engine === 'claude' && options.images?.length) {
     text += `\n\n[Attached image${options.images.length > 1 ? 's' : ''}: open with your Read tool before answering]\n${options.images.join('\n')}`;
@@ -1545,7 +1551,7 @@ module.exports = {
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs },
   buildPrompt, promptParts, HUB_TOOLSETS, // the director cost report (mcp/cost.js); (round 36) the prompt's parts (tokenauditmain.js)
   busy: () => running.size, // (round 16) replies running now: background work (sync) waits a little longer meanwhile
 };
