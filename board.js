@@ -478,6 +478,10 @@ const Board = (() => {
       if (k < 1) requestAnimationFrame(step); else anim = null;
     };
     requestAnimationFrame(step);
+    // (capturefix2) the move ends on time even when frames come slowly (a clip decoding, a busy machine): its last frame
+    // used to wait for the next paint, so a 520 ms fly to a saved view could still be under way 700 ms later
+    const dur = mode === 'fly' ? 520 : 180;
+    setTimeout(() => { if (anim && anim.target === target) { anim = null; S.view = { ...target }; writeView(); } }, dur + 40);
   }
   function setZoom(z, smooth = true) { const r = S.ui.vp.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, z / S.view.z, smooth); }
   function zoomToBox(box, pad = 70, smooth = true) {
