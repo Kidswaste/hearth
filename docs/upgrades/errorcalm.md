@@ -148,7 +148,10 @@ batch tile that shows ⚠ keeps the raw reason only in its tooltip.
   - a command's raw note
   - a refused key: "Meshy key…" opens Settings on that row
   - no jargon anywhere, no page errors
-- Also run: `lazy`, `unit:boot-test` (first screen still 72 scripts / 29 sheets), `fastboot`, `offline`, `sync`, `devreport`, `datasafe`, `a11y`, `hintcalm`, `unit:offline-test`, `unit:winpolish-test`, `unit:macpolish-test`, `unit:renders-test`. Results in the final report.
+- Also run (machine load 25–35):
+  - These passed: `lazy`, `unit:boot-test` (first screen still 72 scripts / 29 sheets), `fastboot`, `offline` + `unit:offline-test`, `sync` + `unit:sync-test`, `devreport` + `unit:devreport-test`, `datasafe` + `unit:datasafe-scan` + `unit:store-thread-test`, `hintcalm`, `options`, `settingscalm`, `missions`, `labeasy`, `motionpolish`, `unit:winpolish-test`, `unit:macpolish-test`, `unit:renders-test`. `qa-keys` also passed when re-run alone.
+  - The a11y audit passes (0 findings), but its run logged a SwiftShader shader / WebGL console error. The untouched base logs WebGL errors too.
+  - `appsearch` ("Where its tokens go" fold), `labsearch` (keystroke timing, "backdrop") and `unit:datasafe-test` (token stats) fail the same way on the untouched base commit (a3341cf), run side by side, so this round didn't cause them.
 
 ## Risks
 - The calm layer only rewrites a message that reads raw (a Node code, a stack, JSON, `undefined`, spawn, IPC, an HTTP
