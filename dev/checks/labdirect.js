@@ -152,10 +152,14 @@ step('a double-click on the blue square picks it and opens its sliders', GH.sele
 step('a 2D-canvas layer has no ✥ 3D', st.three === false);
 
 // ---------- 7. cost: nothing read while idle; the preview dozes again ----------
+// A still preview dozes after 5 s with nothing waking it, and a read here is a message that wakes it: so read only after
+// quiet stretches of 8 s, a few times (on a loaded machine the scene, re-run for the sliders just opened, settles slowly:
+// its still check needs ~120 frames first)
 const s7 = await DS(); const dz0 = (await sbx('return window.__labPace.state().doze')).dozes;
-await wait(11500); // (no evals meanwhile: they wake the preview; a still one dozes after 10 s)
-const s8 = await DS(); const dz1 = await sbx('return window.__labPace.state().doze');
-step('nothing reads the picture while idle; the still preview dozes again (after 10 s still)', s8.reads === s7.reads && (dz1.dozes > dz0 || dz1.on), { reads: [s7.reads, s8.reads], dozes: [dz0, dz1.dozes], why: dz1.why });
+let dz1 = null; let quiet = 0;
+for (let i = 0; i < 5; i++) { await wait(8000); quiet += 8; dz1 = await sbx('return window.__labPace.state().doze'); if (dz1.dozes > dz0 || dz1.on) break; }
+const s8 = await DS();
+step('nothing reads the picture while idle; the still preview dozes again', s8.reads === s7.reads && (dz1.dozes > dz0 || dz1.on), { reads: [s7.reads, s8.reads], dozes: [dz0, dz1.dozes], quiet, why: dz1.why, by: dz1.by, log: dz1.log });
 
 out.errors = errs.filter((m) => !/ResizeObserver/.test(m));
 out.pass = out.problems.length === 0;
