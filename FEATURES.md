@@ -1116,3 +1116,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ The Lab picture's right-click 23 → 11 rows, most used first (Freeze, Frame size, Sliders, ♪ Music, Capture, View · ＋ Add, ✨ Look & motion, ⇪ Make & export, ✦ More); the toolbar ⋯ 17 → 11; Sketch ▾ shows all 9 rows (History ›, ⇪ Share & export ›); Board ▾ 20 → 12; the waveform's right-click 7 + More.
 - ✓ Pointing opens a submenu inside a flyout too (#menu-fly2); one name and icon per action in every menu, no command names, one-sentence tooltips where a hint is cut; rows that mean nothing now stay hidden; nothing removed.
 - ○ `sh dev/run-checks.sh menucalm` (dev/checks/menucalm.js: 17 menus, budgets, ≤ 2 clicks, nothing gone + the checks that read the moved rows).
+## 💡 Answered by Hearth (round 45, localanswers, 20 upgrades: docs/upgrades/localanswers.md)
+- ✓ A question about Hearth itself typed in a chat ("how do I make a 9:16 version?", "where's the spending limit?", "what changed today?") gets Hearth's own answer in a card above the chat box instead of an AI turn: Show me (the row lit, the Lab row run, the menu opened, the notes), Ask the AI anyway (sends it; that question stops triggering). 0 tokens.
+- ✓ Never for the owner's work (code, scenes, writing, "can you…"), only Lab-UI questions in a director chat; ⋯ AI setup › Habits switch; `/hearth-answer`.
+- ○ `node dev/localanswers-test.js` (40 / 40 Hearth questions, 0 / 40 work questions), `sh dev/run-checks.sh localanswers`; not yet tried on the owner's real questions.

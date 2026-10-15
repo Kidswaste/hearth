@@ -179,6 +179,8 @@ const Options = (() => {
       sw(a.showThinking !== false, 'Shows its thinking', 'Its thought process shows folded under the reply', (v) => save(a, { showThinking: v ? undefined : false }).then(re)),
       // (round 35, bugbash2) since Continue lighter (round 34) nothing summarizes a chat by itself: the switch did nothing
       // (and its "shrinks long chats" line said the opposite). The offer's own row is in Spending.
+      // (round 45, localanswers.js) questions about Hearth answered by Hearth itself (0 tokens); not a prompt change
+      sw(a.localAnswers !== false, 'Answer questions about Hearth itself, for free', 'A question like "how do I make a 9:16 version?" gets Hearth\'s own short answer with Show me, instead of a paid AI turn ("Ask the AI anyway" sends it)', (v) => { for (const t of new Set([a, H.agent(a.id)].filter(Boolean))) { if (v) delete t.localAnswers; else t.localAnswers = false; } return saveConfig(); }),
       lighterHere() ? null : sw(a.autoCompact !== false, 'Shrinks long chats by itself', 'Old messages get summed up when a chat gets long, so it stays fast', (v) => save(a, { autoCompact: v ? undefined : false }).then(re)),
       ...(a.threeTools ? lab(a) : [])), habitSum(a));
   }
