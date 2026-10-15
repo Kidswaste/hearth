@@ -16,7 +16,7 @@ engines.setEnginePaths({ codex: path.join(__dirname, 'fake-codex-astra.js'), cla
 const T = engines._test;
 const lastArgs = (name) => JSON.parse(fs.readFileSync(path.join(os.tmpdir(), name, 'last-args.json'), 'utf8'));
 
-const astra = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex', model: 'gpt-6-astra', effort: 'high' };
+const astra = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex', codexTransport: 'exec', model: 'gpt-6-astra', effort: 'high' };
 const claude = { id: 'claude', name: 'Claude', mode: 'native', engine: 'claude', model: 'opus' };
 let passed = 0;
 const ok = (name) => { passed += 1; console.log(`✓ ${name}`); };

@@ -132,7 +132,7 @@ T.loadDropped(FAKE_CLAUDE);
 const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'access-proj-'));
 const art = fs.mkdtempSync(path.join(os.tmpdir(), 'access-art-'));
 const claude = { id: 'claude', name: 'Claude', mode: 'native', engine: 'claude' };
-const astra = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex' };
+const astra = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex', codexTransport: 'exec' };
 const withAcc = (a, level, folders = [proj]) => ({ ...a, access: { level, folders }, accessChatId: 'chat-1' });
 const after = (args, flag) => args[args.indexOf(flag) + 1];
 const strip = (args) => args.filter((x, i) => args[i - 1] !== '--session-id' && args[i - 1] !== '--mcp-config');

@@ -25,7 +25,7 @@ const switches = (o) => { fs.writeFileSync(path.join(KV, 'fake-switches.json'), 
 const learned = () => JSON.parse(fs.readFileSync(path.join(dir, 'data', 'engine-installs.json'), 'utf8')).learnedMin || {};
 
 const claude = { id: 'claude', name: 'Claude', mode: 'native', engine: 'claude' };
-const astra = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex' };
+const astra = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex', codexTransport: 'exec' };
 let passed = 0;
 const ok = (name) => { passed += 1; console.log(`✓ ${name}`); };
 function turn(agent, text, options = {}, onStart) {

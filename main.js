@@ -495,6 +495,7 @@ app.on('before-quit', (e) => {
     return;
   }
   store.flushSync();
+  engines.stopAll(); // includes idle persistent Codex connections and their MCP children
   if (nowplaying.loaded) nowplaying.stop(); syncmain.quit();
 });
 let quitFlushed = false;

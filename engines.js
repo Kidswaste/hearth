@@ -55,6 +55,7 @@ const ENGINES = {
 };
 
 const running = new Map(); // chatId -> child process
+let codexServers = null; // loaded only when the app-server transport is used
 const LOG_PATH = path.join(DATA_DIR, 'engine.log');
 
 // (round 20, soak) the log keeps the last ≈ 2 MB: past that it moves to engine.prev.log (checked every 200 lines)
@@ -577,7 +578,9 @@ function unsupportedFlag(text) {
 
 // The command line a new chat would run, for /astra-flags (prompt text shortened; its tool-server file removed again).
 function shownArgs(a) {
-  let args = a.engine === 'codex' ? codexArgs(a, {}, {}) : claudeArgs(a, {}, {});
+  let args = a.engine === 'codex'
+    ? (a.codexTransport === 'exec' || process.env.HEARTH_CODEX_TRANSPORT === 'exec' ? codexArgs(a, {}, {}) : codexServerPlan(a, {}, {}).args)
+    : claudeArgs(a, {}, {});
   if (args.includes('--mcp-config')) fs.rm(args[args.indexOf('--mcp-config') + 1], { force: true }, () => {});
   if (Conn) args = Conn.maskArgs(args); // the owner's env values / headers never show
   return args.map((x) => (x.length > 160 ? `${x.slice(0, 157)}…` : x));
@@ -691,6 +694,41 @@ function codexArgs(agent, session, options = {}) {
   for (const image of options.images || []) args.push('-i', image);
   args.push('-');
   return args;
+}
+
+// Reuse the same model, tool, prompt and file-access configuration as exec. Only transport
+// flags change. Each chat gets its own server because MCP environments contain HUB_CHAT_ID.
+function codexServerPlan(agent, session, options = {}) {
+  const old = codexArgs(agent, session, options);
+  const args = ['app-server', '--listen', 'stdio://', '-c', 'mcp_servers={}', '-c', 'approval_policy="never"', '-c', 'model_provider="openai"'];
+  const servers = [];
+  for (let i = 0; i < old.length; i++) {
+    if (old[i] === '-c' || old[i] === '--disable') {
+      const flag = old[i]; const value = old[++i]; args.push(flag, value);
+      const match = /^mcp_servers\.([^.]+)\./.exec(value);
+      if (match && !servers.includes(match[1])) servers.push(match[1]);
+    }
+  }
+  const folder = fileFolder(agent); const acc = accessOf(agent);
+  const edit = Boolean(folder && agent.codexFiles === 'edit') || Boolean(acc && acc.level !== 'read');
+  const open = codexOpen(agent, acc);
+  const sandbox = open ? 'danger-full-access' : edit ? 'workspace-write' : 'read-only';
+  const cwd = open && acc.folders[0] ? acc.folders[0] : WORKSPACE;
+  // Explicit defaults prevent the desktop app's personal config from enabling tools or
+  // approvals that Hearth's previous isolated exec invocation did not expose.
+  args.push('-c', `sandbox_mode=${tomlStr(sandbox)}`, '-c', `features.shell_tool=${Boolean(folder || acc || agent.codexFeatures?.includes('shell_tool'))}`);
+  const model = options.model || agent.model;
+  let effort = pick(options.effort, EFFORTS.codex) || pick(agent.effort, EFFORTS.codex);
+  const web = pick(options.webSearch, WEB_SEARCH) || pick(agent.webSearch, WEB_SEARCH) || 'disabled';
+  if (effort === 'minimal' && web !== 'disabled') effort = 'low';
+  const summary = agent.showThinking === false ? 'none' : pick(agent.reasoningSummary, SUMMARIES);
+  const sandboxPolicy = open ? { type: 'dangerFullAccess' } : edit
+    ? { type: 'workspaceWrite', writableRoots: acc ? acc.folders : [folder], networkAccess: false }
+    : { type: 'readOnly' };
+  return { args, cwd, servers,
+    thread: { cwd, approvalPolicy: 'never', sandbox, baseInstructions: buildPrompt(agent, session), developerInstructions: '', ...(model ? { model } : {}) },
+    turn: { cwd, approvalPolicy: 'never', sandboxPolicy, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(summary ? { summary } : {}), input: (options.images || []).map((p) => ({ type: 'localImage', path: p })) },
+  };
 }
 
 // Each parser turns one JSON line into events: { delta }, { done }, { error } (or a list of them).
@@ -1105,6 +1143,19 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   // the project folder is reached through --add-dir (Claude) or the sandbox's writable roots (Codex).
   const state = { ...session };
   if (woke?.sticky.length) state.sets = woke.sticky; // the sets this session keeps (its tool list never shrinks)
+  if (engine === 'codex' && agent.codexTransport !== 'exec' && process.env.HEARTH_CODEX_TRANSPORT !== 'exec') {
+    codexServers ||= new (require('./codex-server').Pool)({ spawn: WinPolish.spawn, kill, log });
+    const plan = codexServerPlan(agent, state, options);
+    let toolCount = 0;
+    codexServers.run({ chatId, bin, ...plan, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) }, session: state,
+      parser: codexParser(state, agent), fallbackText: options.fallbackText, text, showThinking: agent.showThinking !== false }, (event) => {
+      if (event.type === 'tool') { toolCount += 1; if (Wake) Wake.noteTool(agent.id, event.name); }
+      if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message, { bin }));
+      if (event.type === 'done') { try { addUsage(agent.id, event.usage, { chatId, model: options.model || agent.model || '', dock: agent.dock || '', ms: event.timing.totalMs, tools: toolCount }); } catch { /* best effort */ } }
+      emit(event);
+    }, live);
+    return;
+  }
   if (engine === 'claude') loadDropped(bin);
   const args = engine === 'claude' ? claudeArgs(agent, state, options) : codexArgs(agent, state, options);
   const parse = engine === 'claude' ? claudeParser(state) : codexParser(state, agent);
@@ -1333,6 +1384,7 @@ function once({ agent, text, images = [], options = {}, timeoutMs = 8 * 60000 })
 
 function stop(chatId) {
   log(`stop requested ${chatId}`);
+  if (codexServers?.stop(chatId)) return true;
   const child = running.get(chatId);
   if (!child) return false;
   // a retry waiting out a dropped connection: it doesn't start
@@ -1353,7 +1405,7 @@ function kill(child) {
 }
 
 function stopAll() {
-  const count = running.size;
+  const count = running.size + (codexServers?.stopAll() || 0);
   for (const id of [...running.keys()]) stop(id);
   return count;
 }
@@ -1545,7 +1597,7 @@ module.exports = {
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES },
   buildPrompt, promptParts, HUB_TOOLSETS, // the director cost report (mcp/cost.js); (round 36) the prompt's parts (tokenauditmain.js)
-  busy: () => running.size, // (round 16) replies running now: background work (sync) waits a little longer meanwhile
+  busy: () => running.size + (codexServers?.active.size || 0), // idle persistent connections don't count as work
 };

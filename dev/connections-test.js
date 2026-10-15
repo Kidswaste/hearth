@@ -34,7 +34,7 @@ const off = { id: 'c3', name: 'Broken', kind: 'stdio', command: '' };
 let LIST = [notes, web, off];
 C.setReader(() => ({ connections: LIST }));
 const claude = { id: 'claude', name: 'Claude', mode: 'native', engine: 'claude' };
-const astra = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex' };
+const astra = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex', codexTransport: 'exec' };
 
 (async () => {
   // ---------- names ----------

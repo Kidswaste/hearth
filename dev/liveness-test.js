@@ -23,7 +23,7 @@ process.env.HEARTH_QUIET_MS = '2000'; process.env.HEARTH_PULSE_MS = '1000'; // p
 const engines = require(path.join(dir, 'engines.js'));
 engines.setEnginePaths({ claude: path.join(__dirname, 'fake-claude.js'), codex: path.join(__dirname, 'fake-codex.js') });
 const claude = { id: 'claude', name: 'Claude', mode: 'native', engine: 'claude', noHubTools: true };
-const codex = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex', noHubTools: true };
+const codex = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex', codexTransport: 'exec', noHubTools: true };
 const END = new Set(['done', 'error', 'stopped']);
 
 // one turn: its events, the end, the reply text, how many emits, the main thread's worst block while it ran

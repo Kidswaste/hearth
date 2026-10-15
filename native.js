@@ -682,7 +682,11 @@ const Native = (() => {
     const more = el('button', { class: 'msg-act msg-more', text: '⋯', title: 'More: quote, branch, retry, pin, bookmark, react, save…', dataset: { msgAct: 'menu' } });
     if (m.role === 'assistant') {
       const u = m.usage;
+      const timing = m.timing;
+      const seconds = (ms) => ms == null ? 'not recorded' : `${(ms / 1000).toFixed(1)}s`;
       node.append(el('div', { class: 'msg-foot' },
+        timing ? el('span', { class: 'tok-badge reply-timing', text: `First text ${seconds(timing.firstTextReceivedMs)} · total ${seconds(timing.uiTotalMs ?? timing.totalMs)}`,
+          title: `Codex · ${timing.connectionReused ? 'reused connection' : 'new connection'}\nSetup: ${seconds(timing.setupMs)}\nFirst engine activity: ${seconds(timing.firstEventMs)}\nFirst text from engine: ${seconds(timing.firstTextMs)}\nFirst text received by chat: ${seconds(timing.firstTextReceivedMs)}\nFirst text rendered: ${seconds(timing.firstTextPaintMs)}\nTotal: ${seconds(timing.uiTotalMs ?? timing.totalMs)}` }) : null,
         u && typeof Meter !== 'undefined' ? Meter.badge(m) : u ? el('span', { class: 'tok-badge', text: `${fmt(u.input)} in · ${fmt(u.output)} out${m.ms ? ` · ${(m.ms / 1000).toFixed(1)}s` : ''}`, title: `${u.input.toLocaleString()} tokens sent (context) · ${u.output.toLocaleString()} written${m.ms && u.output ? ` · ~${Math.round(u.output / (m.ms / 1000))} tokens/s` : ''}${m.model ? ` · ${m.model}` : ''}` }) : null,
         m.stopped ? el('span', { text: 'stopped' }) : null,
         timeEl, num,
@@ -1326,6 +1330,8 @@ const Native = (() => {
     }
     window.ChatLive?.paint(p.chatId, p.el, body); // (round 21) agents deployed + the activity panel
     paintBody(p, body, text);
+    // DOM update time, not a compositor timestamp. A background chat stays null until rendered.
+    if (text && p.firstTextPaintMs == null) p.firstTextPaintMs = Date.now() - p.started;
     const dots = !text && !p.cards.some((c) => c.classList.contains('ask-card') && !c.classList.contains('answered'));
     if (dots && !body.lastChild?.classList?.contains('typing')) body.insertAdjacentHTML('beforeend', '<span class="typing"><i></i><i></i><i></i></span>');
     let host = p.el.querySelector('.live-cards');
@@ -1587,6 +1593,7 @@ const Native = (() => {
         p.tools.push(event.name);
         if (p.text && !p.text.endsWith('\n\n')) p.text += '\n\n';
       } else {
+        if (event.text && p.firstTextReceivedMs == null) p.firstTextReceivedMs = Date.now() - p.started;
         p.text += event.text;
       }
       schedulePaint(event.chatId);
@@ -1603,6 +1610,8 @@ const Native = (() => {
     for (const c of p.cards) c.dispatchEvent(new Event('expire'));
     const at = Date.now();
     const extras = {};
+    if (event.timing) extras.timing = { ...event.timing, firstTextReceivedMs: p.firstTextReceivedMs ?? null,
+      firstTextPaintMs: p.firstTextPaintMs ?? null, uiTotalMs: at - p.started };
     if (p.thinking.trim()) { extras.thinking = p.thinking.trim().slice(0, 30000); extras.thinkMs = (p.thinkEnd || at) - (p.thinkStart || p.started); }
     if (p.qa.length) extras.qa = p.qa;
     if (p.opinions.length) extras.opinions = p.opinions;
@@ -1630,7 +1639,8 @@ const Native = (() => {
     } else {
       // what it wrote before failing stays (marked stopped), then the error
       if (visibleText(p.text)) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, ...extras });
-      chat.messages.push({ role: 'error', text: event.message, needsLogin: event.needsLogin, ...(event.fixAction ? { fixAction: event.fixAction, fixEngine: event.fixEngine } : {}), at });
+      chat.messages.push({ role: 'error', text: event.message, needsLogin: event.needsLogin, ...(event.fixAction ? { fixAction: event.fixAction, fixEngine: event.fixEngine } : {}), ...(extras.timing ? { timing: extras.timing } : {}), at });
+      if (event.session?.id) chat.session = event.session;
       replyText = `Error: ${event.message}`;
     }
     chat.updatedAt = at;
