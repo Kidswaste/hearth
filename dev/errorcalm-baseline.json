@@ -1,0 +1,9 @@
+{
+ "note": "errorcalm-scan findings audited at round 45: each shows a raw error on purpose (with why). New code goes through calmError(err) / ErrorCalm.node / an error toast.",
+ "audited": {
+  "tools/three-batch.js|}catch(e){errors.push(e.message);c.pic.classList.remove('lb-wait');c.pic.classList.add('lb-bad');c.pic.textContent='⚠';c": "not shown: the tile shows ⚠ and the raw reason is only its tooltip (textContent and title share one line)",
+  "tools/three-shader.js|el('span',{class:'sh-lens-msg',style:{left:`${lead+len+2}ch`},text:short(String(e.message).replace(/^GLSL\\((\\w+(?:\\w)?)\\": "the shader workbench error lens: a GLSL compile error on the code line it belongs to, for code work (like the Lab console)",
+  "tools/three-shader.js|constread=()=>{try{constr=SL.importText(area.value,name.value.trim()||null);notes.textContent=`${r.kind==='isf'?'ISF':'S": "the shader import box: what is wrong with the pasted shader text, under the code being pasted (code work)",
+  "tools/three.js|errorsBox.replaceChildren(...msg.errors.map((e)=>el('div',{class:'console-rowerror'},e.line?el('span',{class:'console-li": "a shader layer compile errors in its own console rows next to the code (code work; errorcalm puts a plain line above the main Lab console)"
+ }
+}

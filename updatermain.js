@@ -253,6 +253,9 @@ function create(opts = {}) {
     if (!s.behind) return { ok: true, changed: 0, restart: false, message: 'Already up to date.' };
     if (s.plan.data.length) return ex('data');
     if (s.plan.tooLong.length) return { ...ex('longpath', { files: s.plan.tooLong }), files: s.plan.tooLong };
+    // (round 45, backupauto) a backup of your things first (skipped when a good one is under an hour old; never more
+    // than 3 minutes in the way; a failed one doesn't stop the update: data/ isn't touched by it)
+    try { await require('./backupautomain').before('update'); } catch { /* backups not there */ }
     const from = await sha('HEAD');
     const to = await sha(`origin/${BRANCH}`);
     const j = { step: 'start', from, to, at: Date.now(), branch: s.branch };

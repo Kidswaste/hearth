@@ -30,7 +30,7 @@ function stats(events, opts = {}) {
   const tasks = X.filter((e) => e.name === 'RunTask');
   // which task each event belongs to (tasks don't overlap on one thread)
   let ti = 0; const taskOf = (ts) => { while (ti < tasks.length && tasks[ti].ts + tasks[ti].dur < ts) ti++; const t = tasks[ti]; return t && t.ts <= ts ? t : null; };
-  for (const e of X) { if (e.name === 'RunTask') continue; const t = taskOf(e.ts); if (t && RENDER.has(e.name)) t.render = true; }
+  for (const e of X) { if (e.name === 'RunTask') continue; const t = taskOf(e.ts); if (t && RENDER.has(e.name)) t.render = true; if (t && (e.name === 'TimerFire' || e.name === 'FireIdleCallback')) t.bg = true; }
   // forced: style / layout inside a script event
   const scripts = X.filter((e) => SCRIPT.has(e.name));
   let si = 0; const open = [];
@@ -77,10 +77,15 @@ function stats(events, opts = {}) {
     inputs.set(k, i);
   }
   const marks = on.filter((e) => e.cat?.includes('user_timing') && /^hz240:/.test(e.name) && e.ph !== 'e').sort((a, b) => a.ts - b.ts);
+  const markAt = events.filter((e) => e.cat?.includes('user_timing') && /^at:/.test(e.name) && e.ph !== 'e').sort((a, b) => a.ts - b.ts);
   const markAll = events.filter((e) => e.cat?.includes('user_timing') && /^hz240:/.test(e.name) && e.ph !== 'e').sort((a, b) => a.ts - b.ts);
   const segs = (marks.length ? marks : markAll).map((m, i, a) => ({ name: m.name.slice(6), from: m.ts, to: a[i + 1]?.ts ?? Infinity }));
   // main-thread busy µs between two trace times
   const busyIn = (a, b) => { let s = 0; for (const t of tasks) { if (t.ts > b) break; const x = Math.max(a, t.ts); const y = Math.min(b, t.ts + t.dur); if (y > x) s += y - x; } return s / 1000; };
+  // (round 45, chatswitch) the same in the thread's own CPU time (tdur): what the work costs, whatever else the machine
+  // runs (on a loaded machine wall time stretches 5–20×; a task's share is its CPU time × the part inside the span)
+  // (fg: without the tasks that ran a timer or an idle callback: other features' background work in between)
+  const cpuIn = (a, b, fg = false) => { let s = 0; for (const t of tasks) { if (t.ts > b) break; if (fg && t.bg && !t.render) continue; const x = Math.max(a, t.ts); const y = Math.min(b, t.ts + t.dur); if (y > x) s += (t.tdur ?? t.dur) * (t.dur ? (y - x) / t.dur : 1); } return s / 1000; };
   // where main-thread time goes: the leaf-most well-known phases inside tasks, by name (ms), per stretch
   const PHASES = new Set(['UpdateLayoutTree', 'Layout', 'PrePaint', 'Paint', 'Layerize', 'UpdateLayer', 'HitTest', 'FunctionCall', 'EventDispatch', 'TimerFire', 'FireAnimationFrame', 'v8.callFunction', 'RunMicrotasks', 'ParseHTML', 'MajorGC', 'MinorGC', 'V8.GC_SCAVENGER', 'ScrollLayer', 'IntersectionObserverController::computeIntersections', 'LocalFrameView::RunPostLifecycleSteps', 'ProxyMain::BeginMainFrame::commit', 'Commit']);
   const phases = X.filter((e) => PHASES.has(e.name));
@@ -99,6 +104,12 @@ function stats(events, opts = {}) {
     out.segments[s.name] = {
       inputs: ins.length,
       busyMs: r1(busyIn(s.from, s.to)), // (round 35, streamrender) all main-thread task time in the stretch
+      cpuMs: r1(cpuIn(s.from, s.to)), // (round 45) … its CPU time
+      workCpu: (() => { const a = ins.map((i) => cpuIn(i.ts, i.commit)).sort((x, y) => x - y); return { p50: r1(pct(a, 0.5)), max: r1(a.at(-1) || 0) }; })(), // (round 45) input → its frame, CPU time
+      workFg: (() => { const a = ins.map((i) => cpuIn(i.ts, i.commit, true)).sort((x, y) => x - y); return { p50: r1(pct(a, 0.5)), max: r1(a.at(-1) || 0) }; })(), // … without timers / idle callbacks in between
+      // (round 45) the check's own 'at:<what>' marks in the stretch: from its first input (or its start) to each, wall · CPU ms
+      at: (() => { const t0 = ins.length ? Math.min(...ins.map((i) => i.ts)) : s.from; const o = {}; for (const e of markAt) { if (e.ts < s.from || e.ts >= s.to || o[e.name.slice(3)]) continue; o[e.name.slice(3)] = { ms: r1((e.ts - t0) / 1000), cpuMs: r1(cpuIn(t0, e.ts)), fgMs: r1(cpuIn(t0, e.ts, true)) }; } return o; })(),
+      longestCpu: r1(Math.max(0, ...tasks.filter((t) => t.ts >= s.from && t.ts < s.to).map((t) => (t.tdur ?? t.dur) / 1000))),
       latency: { p50: r1(pct(lat, 0.5)), p95: r1(pct(lat, 0.95)), max: r1(lat.at(-1) || 0) },
       // (round 38, inputlatency) input delay (timeStamp → first handler) · processing (handlers, summed per input) ·
       // presentation (last handler → the frame's commit), p50 / p95 ms
@@ -118,6 +129,8 @@ function stats(events, opts = {}) {
       // (round 41, smooth41) script time per file (JS entries: listeners, timers, rAF, idle callbacks, observers) and
       // what fired by itself (timers, idle callbacks): the per-feature cost of a stretch
       files: (() => { const by = {}; for (const e of fcalls) { if (e.ts < s.from || e.ts >= s.to) continue; const k = e.args.data.url.split('/').pop().split('?')[0] || '?'; const o = by[k] ||= { ms: 0, n: 0 }; o.ms += e.dur / 1000; o.n += 1; } return Object.fromEntries(Object.entries(by).sort((x, y) => y[1].ms - x[1].ms).slice(0, 14).map(([k, v]) => [k, `${r1(v.ms)}ms/${v.n}`])); })(),
+      // (round 45) script CPU ms per file (thread time: holds on a loaded machine)
+      filesCpu: (() => { const by = {}; for (const e of fcalls) { if (e.ts < s.from || e.ts >= s.to) continue; const k = e.args.data.url.split('/').pop().split('?')[0] || '?'; by[k] = (by[k] || 0) + (e.tdur ?? e.dur) / 1000; } return Object.fromEntries(Object.entries(by).map(([k, v]) => [k, r1(v)])); })(),
       forcedFiles: (() => { const by = {}; for (const e of fo) { const m = /([\w.-]+\.js):\d+/.exec(e.__by || ''); const k = m ? m[1] : '?'; by[k] = (by[k] || 0) + 1; } return by; })(),
       fired: (() => { const n = { timer: 0, idle: 0, raf: 0 }; for (const e of X) { if (e.ts < s.from || e.ts >= s.to) continue; if (e.name === 'TimerFire') n.timer++; else if (e.name === 'FireIdleCallback') n.idle++; else if (e.name === 'FireAnimationFrame') n.raf++; } return n; })(),
     };

@@ -60,7 +60,7 @@ out.pixel = px;
 await S.run('undo');
 // every round-2 command is registered under its own area (none silently shadowed)
 const mine = { 'Shader nodes': ['shader-nodes', 'shader-nodes-new', 'shader-nodes-presets', 'shader-nodes-types', 'shader-nodes-list', 'shader-nodes-add', 'shader-nodes-link', 'shader-nodes-unlink', 'shader-nodes-set', 'shader-nodes-rm', 'shader-nodes-bypass', 'shader-nodes-layout', 'shader-nodes-undo', 'shader-nodes-apply', 'shader-nodes-to', 'shader-nodes-code'],
-  Video: ['video-nodes', 'video-flow', 'video-flow-run', 'video-flow-stop', 'video-flow-continue', 'video-flow-presets', 'video-flow-list', 'video-flow-types', 'video-flow-add', 'video-flow-link', 'video-flow-set', 'video-flow-rm', 'video-flow-skip', 'video-flow-commands', 'video-flow-save', 'video-flow-load', 'video-flow-saved'],
+  // (round 44) Video: /video-nodes and /video-flow… went with Video Review in round 17 (docs/upgrades/novideo.md, 6.)
   Messages: ['code-nodes', 'code-nodes-paste', 'code-nodes-file', 'code-outline'] };
 out.missingCommands = Object.entries(mine).flatMap(([a, list]) => list.filter((n) => Commands.get(n)?.area !== a));
 out.commandCount = Commands.list().length;

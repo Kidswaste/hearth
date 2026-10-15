@@ -455,14 +455,14 @@ const Capture = (() => {
     document.dispatchEvent(new CustomEvent('hearth:capture', { detail: last }));
     return last;
   }
-  async function countdown(n, label = '') {
+  async function countdown(n, label = '', gone = () => false) {
     if (!n) return;
     const box = el('div', { class: 'cap-count' }, el('b', { text: String(n) }), label ? el('span', { text: label }) : null);
     fx().append(box);
-    for (let i = n; i > 0; i -= 1) {
+    for (let i = n; i > 0 && !gone(); i -= 1) { // gone(): the take was cancelled (stop during the countdown)
       box.firstChild.textContent = String(i);
       box.firstChild.animate([{ transform: 'scale(1.4)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 260, easing: 'ease-out' });
-      await sleep(1000);
+      for (let k = 0; k < 10 && !gone(); k += 1) await sleep(100);
     }
     box.remove();
     await frames2();
@@ -626,7 +626,8 @@ const Capture = (() => {
   let rec = null; // { opts, stream, recorder, started, pausedAt, pausedMs, marks, id, path, timer, … }
   const pending = { stop: null };
   const fmtClock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-  function elapsed() { if (!rec) return 0; const now = rec.pausedAt || performance.now(); return Math.max(0, (now - rec.started - rec.pausedMs) / 1000); }
+  function elapsed() { if (!rec?.started) return 0; // (keysfix) not before the take starts (the countdown showed the page's age)
+    const now = rec.pausedAt || performance.now(); return Math.max(0, (now - rec.started - rec.pausedMs) / 1000); }
   function status() {
     if (!rec) return { recording: false, last: last ? { path: last.path, kind: last.kind } : null };
     return { recording: true, paused: Boolean(rec.pausedAt), seconds: Math.round(elapsed() * 10) / 10, max: Number(rec.opts.max) || 0, framesIn: rec.framesIn || 0, framesOut: rec.framesOut || 0, pump: rec.worker ? 'worker' : 'window', ...(rec.slowed ? { slowedTo: rec.slowed } : {}), target: rec.opts.target, fps: rec.opts.fps, size: rec.size, audio: rec.audioNote || rec.opts.audio, marks: rec.marks.length, path: rec.path, tour: rec.tour || null };
@@ -750,12 +751,18 @@ const Capture = (() => {
     if (rec) return status();
     const o = resolveRec(opts);
     rec = { opts: o, marks: [], pausedMs: 0, pausedAt: 0, started: 0, chunks: Promise.resolve(), tour: opts.tour || null };
+    // (keysfix) stop() while the take is still starting (the countdown, the region picker, a slow capture source)
+    // cancels it: `rec` is no longer this take, and each step below gives up instead of starting a recorder on tracks
+    // that were just stopped ("Failed to execute 'start' on 'MediaRecorder'", a codec strike, the next take killed)
+    const T = rec;
+    const alive = () => { if (rec !== T) throw new Error('cancelled'); };
     try {
       // the target is pinned now (a region is picked before the countdown)
       let node = null; let fixedRect = null;
       if (TARGETS[o.target]?.pick) {
         const p = await pickRegion({ ratio: D.parseFrame(o.size), hint: 'Drag the region to record (or click a thing) · Esc cancels' });
-        if (!p) { rec = null; return { recording: false, cancelled: true }; }
+        alive();
+        if (!p) { if (rec === T) rec = null; return { recording: false, cancelled: true }; }
         node = p.el; fixedRect = node ? null : p.rect;
       } else if (o.target !== 'window') {
         node = elementFor(o.target);
@@ -763,11 +770,14 @@ const Capture = (() => {
       }
       const wantsApp = o.audio === 'app' || o.audio === 'app+mic' || o.audio === 'system';
       await api().prep({ audio: o.audio === 'system' && /Win/.test(navigator.platform) ? 'system' : wantsApp ? 'app' : 'none', source: o.source || 'frame' });
+      alive();
       // at the screen's real pixels (Retina / HiDPI: twice the window's size), never scaled down by the capture
       const dpr = Math.max(1, devicePixelRatio || 1);
       const display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: o.fps, max: o.fps }, width: { ideal: Math.round(innerWidth * dpr), max: 7680 }, height: { ideal: Math.round(innerHeight * dpr), max: 4320 }, resizeMode: 'none' }, audio: wantsApp });
-      rec.display = display;
+      T.display = display;
+      alive();
       const got = await audioFor(o, display);
+      alive();
       const note = got.note;
       let audioTracks = got.tracks;
       // click sounds (pack11): a soft tick on every click, mixed into the take's sound (only the file hears it)
@@ -786,6 +796,7 @@ const Capture = (() => {
         const R = rec;
         // (round 16) the frame pump off the window's thread (capture-worker.js); this thread's own canvas is the fallback
         const W0 = o.reader !== 'video' && o.worker !== false ? await workerPump(vTrack, o, { fixedRect, node, R }).catch((err) => { console.warn('capture: worker pump unavailable, drawing here', err?.message || err); return null; }) : null;
+        if (rec !== T) { W0?.close(); alive(); }
         if (W0) {
           videoTrack = W0.track;
           R.worker = W0;
@@ -814,6 +825,7 @@ const Capture = (() => {
         heartbeat(true);
         const pokes = setInterval(poke, 300);
         const first = await Promise.race([next(), sleep(8000).then(() => null)]).finally(() => { clearInterval(pokes); heartbeat(false); });
+        if (rec !== T) { first?.close?.(); alive(); }
         if (!first) throw new Error('The page capture sent no picture');
         const dimsOf = (f) => (f instanceof HTMLVideoElement ? [f.videoWidth, f.videoHeight] : [f.displayWidth, f.displayHeight]);
         [sw, shh] = dimsOf(first);
@@ -903,7 +915,8 @@ const Capture = (() => {
       rec.recorder = recorder;
       recorder.onerror = (e) => { rec && (rec.recError = e.error?.message || 'encoder error'); console.warn('capture: recorder', e.error); };
       const file = await api().recOpen({ ext: /mp4/.test(mime) ? 'mp4' : 'webm', name: o.name || `${window.Makes?.fileHere?.() || `Hearth ${o.target === 'window' ? 'recording' : o.target}`} ${new Date().toISOString().slice(0, 19).replace('T', ' ').replace(/:/g, '-')}` });
-      rec.id = file.id; rec.path = file.path;
+      T.id = file.id; T.path = file.path;
+      alive();
       const R0 = rec;
       recorder.ondataavailable = (e) => { if (e.data?.size) { R0.bytes = (R0.bytes || 0) + e.data.size; R0.chunks = R0.chunks.then(async () => api().recWrite(file.id, new Uint8Array(await e.data.arrayBuffer()))); } };
       // effects drawn into the page while filming (they are part of the picture on purpose)
@@ -911,19 +924,25 @@ const Capture = (() => {
       cursorFx.sound = rec.clickMix ? rec.clickMix.click : null;
       cursorFx.set(o.cursor, { clicks: o.clicks, keys: o.keys });
       if (o.autozoom) autoZoom(true);
-      if (o.camera && o.camera !== 'off') await cameraBubble(o.camera);
+      if (o.camera && o.camera !== 'off') { await cameraBubble(o.camera); alive(); }
       if (o.chapters !== false) chapters(true);
-      await countdown(Number(o.countdown) || 0, 'recording');
+      await countdown(Number(o.countdown) || 0, 'recording', () => rec !== T);
+      alive();
       recorder.start(1000);
       rec.started = performance.now(); rec.wAt = rec.started;
-      await api().indicator({ on: true, time: '0:00', label: rec.tour ? 'tour' : '' });
+      // (keysfix) the REC window is only a reminder: when it can't load (seen on a loaded Linux machine: ERR_FAILED on
+      // its page) the take goes on without it instead of being thrown away after it started
+      await api().indicator({ on: true, time: '0:00', label: rec.tour ? 'tour' : '' }).catch((err) => console.warn('capture: no REC window', err?.message || err));
       rec.timer = setInterval(tick, 500);
       document.documentElement.classList.add('cap-recording');
       document.dispatchEvent(new CustomEvent('hearth:recording', { detail: status() }));
       return status();
     } catch (err) {
-      cleanupRec();
-      rec = null;
+      const cancelled = rec !== T;
+      cleanupRec(T);
+      if (rec === T) rec = null;
+      if (T.id) api().recClose(T.id).catch(() => {}); // the empty part file goes
+      if (cancelled) return { recording: false, cancelled: true };
       throw err;
     }
   }
@@ -948,7 +967,7 @@ const Capture = (() => {
     if (!rec) return;
     watchThroughput();
     const s = elapsed();
-    api().indicator({ on: true, time: fmtClock(s), paused: Boolean(rec.pausedAt), label: rec.tour ? `tour ${rec.tour}` : rec.marks.length ? `◆${rec.marks.length}` : '' });
+    api().indicator({ on: true, time: fmtClock(s), paused: Boolean(rec.pausedAt), label: rec.tour ? `tour ${rec.tour}` : rec.marks.length ? `◆${rec.marks.length}` : '' }).catch(() => {}); // (keysfix) no REC window: the take goes on
     // once: the ticks that come while the take is being finished used to stop it again (and show the same error 5 times)
     if (rec.opts.max && s >= rec.opts.max && !rec.pausedAt && !pending.stop) stop().catch((e) => toast(e.message, { type: 'error' }));
   }
@@ -1011,23 +1030,29 @@ const Capture = (() => {
     addEventListener('hearth:view', chap);
   }
 
-  function cleanupRec() {
-    if (!rec) return;
+  // (keysfix) cleans one take (the running one by default); a take cancelled while starting can finish cleaning after
+  // a new one began: then only its own things go, never the new take's page effects or REC window. Safe to call twice.
+  function cleanupRec(r = rec) {
+    if (!r) return;
+    clearInterval(r.timer);
+    clearInterval(r.ticker);
+    r.closeGen?.(); r.closeGen = null;
+    r.worker?.close(); r.worker = null;
+    try { r.display?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
+    try { r.mic?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
+    try { r.audioCtx?.close().catch(() => {}); } catch { /* gone */ }
+    r.display = null; r.mic = null; r.audioCtx = null;
+    r.clickMix?.close(); r.clickMix = null;
+    try { r.reader?.cancel().catch?.(() => {}); } catch { /* done */ }
+    r.reader = null;
+    if (r.video) { r.video.srcObject = null; r.video.remove(); r.video = null; }
+    if (rec && rec !== r) return; // another take owns the page now
     autoZoom(false); cameraBubble(null); chapters(false);
-    clearInterval(rec.timer);
-    clearInterval(rec.ticker);
-    rec.closeGen?.(); rec.closeGen = null;
-    rec.worker?.close(); rec.worker = null;
-    try { rec.display?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
-    try { rec.mic?.getTracks().forEach((t) => t.stop()); } catch { /* gone */ }
-    try { rec.audioCtx?.close(); } catch { /* gone */ }
-    rec.clickMix?.close(); cursorFx.sound = null;
-    try { rec.reader?.cancel(); } catch { /* done */ }
-    if (rec.video) { rec.video.srcObject = null; rec.video.remove(); rec.video = null; }
-    if (rec.opts?.clean) clean(false);
+    cursorFx.sound = null;
+    if (r.opts?.clean) clean(false);
     cursorFx.set('off', { clicks: 'off', keys: false });
     heartbeat(false);
-    api().indicator({ on: false });
+    api().indicator({ on: false }).catch(() => {});
     document.documentElement.classList.remove('cap-recording');
   }
   function pause() {
@@ -1051,6 +1076,10 @@ const Capture = (() => {
   async function stop({ quiet = false, open = false } = {}) {
     if (!rec) return null;
     if (pending.stop) return pending.stop;
+    // (keysfix) still starting (the countdown, picking the region): stopping cancels it, there's nothing to save. It used
+    // to "finish" a recorder that never started: "Nothing was recorded (the VP9 encoder gave nothing)", a strike against
+    // a codec that works, then the start failing on the stopped tracks
+    if (!rec.started) { const r = rec; rec = null; cleanupRec(r); return { recording: false, cancelled: true }; }
     const r = rec;
     pending.stop = (async () => {
       const duration = elapsed();
@@ -1078,7 +1107,11 @@ const Capture = (() => {
       if (r.mime) delete codecStrikes[String(r.mime).match(/codecs=(\w+)/)?.[1]];
       const busy = quiet ? null : toast('Finishing the recording…', { timeout: 0 });
       let fin = { webm: p };
-      try { fin = await api().finish({ path: p, mp4: r.opts.mp4 !== false, fps: r.opts.fps, id: r.id, size: r.final, crf: 14, keep: Boolean(r.opts.keepWebm), ms: Math.round(duration * 1000) }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
+      // (capturefix2) a social / 1080p size the canvas couldn't reach (it never upscales the window's pixels) is made by
+      // the MP4 step, so a take that needs it gets its MP4 even with MP4 off (a 9:16 take came out 528×940); the WebM
+      // the owner asked for stays beside it then
+      const sized = Boolean(r.final?.w);
+      try { fin = await api().finish({ path: p, mp4: r.opts.mp4 !== false || sized, fps: r.opts.fps, id: r.id, size: r.final, crf: 14, keep: Boolean(r.opts.keepWebm) || (r.opts.mp4 === false && sized), ms: Math.round(duration * 1000) }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
       const main = fin.mp4 || fin.webm || p;
       const marks = r.marks;
       // an encoder that fell behind (a busy machine, a software codec) keeps only the first frames: a 6 s take came

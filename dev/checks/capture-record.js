@@ -99,6 +99,26 @@ document.dispatchEvent(new Event('noop'));
 const stopped = Capture.stop({ quiet: true });
 await stopped;
 ok(!Capture.recording, 'stop');
+// (keysfix) stop during the countdown (Ctrl+Alt+R twice) cancels: no "Nothing was recorded", no failed start after it,
+// no codec strike, the clock at 0 while counting down; and a take started right away isn't killed by the cancelled one
+{
+  const toasts = []; const t0 = window.toast; window.toast = (msg, o) => { toasts.push(String(msg)); return t0(msg, o); };
+  try {
+    const starting = Capture.record({ target: 'window', countdown: 2, mp4: false, audio: 'none' });
+    await sleep(700);
+    ok(Capture.status().seconds === 0, `the clock waits for the countdown: ${Capture.status().seconds}`);
+    const c = await Capture.stop({ quiet: true });
+    ok(c?.cancelled && !Capture.recording, `stop during the countdown cancels: ${JSON.stringify(c)}`);
+    const next = await Capture.record({ target: 'composer', countdown: 0, mp4: false, audio: 'none' });
+    const late = await starting;
+    ok(late?.cancelled, `the cancelled take says so: ${JSON.stringify(late)?.slice(0, 80)}`);
+    await sleep(2500);
+    ok(next.recording && Capture.recording && Capture.status().target === 'composer' && Capture.status().seconds > 2, `the next take keeps going: ${JSON.stringify(Capture.status()).slice(0, 120)}`);
+    const r = await Capture.stop({ quiet: true });
+    ok(r?.path, 'the next take is saved');
+    ok(!toasts.some((x) => /Nothing was recorded|Failed to execute/.test(x)), `no error from the cancel: ${toasts.join(' | ')}`);
+  } finally { window.toast = t0; }
+}
 // the player: open the reel, step frames
 const dlg = await CaptureView.open(r1.mp4);
 await sleep(500);

@@ -517,7 +517,7 @@ function instrument(renderFn) {
       }
     }
     // (round 31 "labadapt") a layer fully under an opaque one draws nothing; its code still runs (see "covered layers")
-    if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; return; }
+    if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; EL.dzSkip = frameTick; return; }
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
     camera = editCamera(this, scene, camera);
     const cmBack = EL?.props.camMoves?.length && !this.__helper && !edit.on ? cmRender(this, scene, camera, EL) : null; // (round 40 "labcamera": its camera moves, under the view)
@@ -535,6 +535,7 @@ function instrument(renderFn) {
     }
     if (paceSkip(this, scene, camera, EL)) { lvBack?.(); cmBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
     PACE.drawn += 1; PACE.lastDraw = frameTick;
+    if (PACE.refreshAt !== frameTick) { PACE.drawPrev = frameTick; if (DOZE.on) dozeWake('drew'); } // (round 44, idlecpu: it moved: full rate at once)
     const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
     // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
@@ -1104,13 +1105,14 @@ function paceCore(opt = {}) {
   // The signature isn't worked out every frame: a scene that was "live" not for 60 frames, one that keeps moving only
   // every 8th frame (it draws anyway), a still one at most every LOOK ms (its own change shows within one 60 Hz frame).
   const LOOK = opt.look ?? 15;
-  function still(st, now, poke, sigOf) {
+  // (round 44, idlecpu) refresh: the safety redraw's period (a dozing page, see "dozing", asks for a longer one)
+  function still(st, now, poke, sigOf, refresh = REFRESH) {
     st.refreshes ||= 0; st.looks ||= 0;
     if (poke !== st.poke) { st.poke = poke; const s = sigOf(); st.looks += 1; st.a = s.a; st.b = s.b; st.same = 0; st.moving = 0; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0; return false; }
     if (st.liveFor > 0) { st.liveFor -= 1; return false; }
     if ((st.moving || 0) >= 30) { st.k = ((st.k || 0) + 1) % 8; if (st.k) return false; }
     if ((st.same || 0) > AFTER && now - st.lookAt < LOOK) {
-      if (now - st.at < REFRESH) return true;
+      if (now - st.at < refresh) return true;
       st.at = now; st.refreshes += 1; return false;
     }
     st.lookAt = now;
@@ -1121,7 +1123,7 @@ function paceCore(opt = {}) {
     if (changed) { st.same = 0; st.moving = (st.moving || 0) + 1; st.at = now; return false; }
     st.moving = 0; st.same = (st.same || 0) + 1;
     if (st.same <= AFTER) { st.at = now; return false; }
-    if (now - (st.at ?? -1e9) >= REFRESH) { st.at = now; st.refreshes += 1; return false; }
+    if (now - (st.at ?? -1e9) >= refresh) { st.at = now; st.refreshes += 1; return false; }
     return true;
   }
   // ---- the meter: frame gaps → "120 fps · steady" ----
@@ -1153,9 +1155,71 @@ globalThis.f60 = 1; // (a sketch's setup, before its first frame: one 60 fps fra
 // Lab is parked with nothing to do, they don't ask for frames at all (a parked page used to wake every frame for
 // nothing); a message from the Lab, a pointer, a key, unparking or any render wakes them.
 const paceSleeping = new Set();
-function paceNext(fn, sleep) { if (sleep) { if (!paceSleeping.has(fn)) { paceSleeping.add(fn); PACE.sleeps += 1; } return; } realRAF(fn); }
+function paceNext(fn, sleep) { if (sleep) { if (!paceSleeping.has(fn)) { paceSleeping.add(fn); PACE.sleeps += 1; } return; } if (DOZE.on) dozeRAF(fn); else realRAF(fn); }
 function paceWake() { if (!paceSleeping.size) return; const l = [...paceSleeping]; paceSleeping.clear(); PACE.wakes += 1; for (const fn of l) realRAF(fn); }
-const pacePoke = () => { PACE.poke += 1; if (paceSleeping.size) paceWake(); };
+const pacePoke = (e) => {
+  PACE.poke += 1; if (paceSleeping.size) paceWake();
+  if (DOZE.on || DOZE.from >= 0) dozeWake(e?.type === 'message' ? `message ${e.data?.type || '?'}` : e?.type);
+};
+// Dozing (round 44, idlecpu): the Lab on screen with a picture that stays still (nothing moved for 5 s: every layer
+// that ran a frame had its frame skipped by the still check above, no song / live sound / sequence / recording / edit
+// / drag) no longer wakes the page on every screen frame for nothing. The page's loops and the layers' frame callbacks
+// then run together once every 100 ms (after 5 s still), 250 ms (10 s) or 500 ms (30 s), in a real animation frame,
+// and the safety redraw comes every 4 s instead of every second once it's been still for 10 s. The layers' code
+// still runs (a change it makes by itself shows on the next of those frames); anything from outside (a slider, a
+// message from the Lab, a pointer, a key, a resize) and any frame that really draws wake it to full rate at once.
+// It used to cost ≈ 4 % of a CPU (the page) and the GPU process' frame clock while you looked at a still scene.
+// Layers whose frames can't be checked (2D canvas, raw WebGL, a layer that draws without three.js) never doze.
+const DOZE = { on: false, ms: 0, from: -1, q: [], timer: 0, seq: 0, dozes: 0, wakes: 0, flushes: 0, log: [] };
+const DOZE_STEPS = [[30000, 500], [10000, 250], [5000, 100]]; // (still for ≥ ms → one frame every ms; the first 5 s still run at full rate: a change the scene makes by itself right after one of yours shows on the next screen frame, as labpace promised)
+function dozeRAF(fn) { const id = -(++DOZE.seq); DOZE.q.push({ id, fn }); if (!DOZE.timer) DOZE.timer = realSetTimeout(dozeFlush, DOZE.ms || 100); return id; }
+// the waiting callbacks run in one real animation frame, in the order they asked (the compositor first, as always);
+// a callback cancelled meanwhile (cancelAnimationFrame) is skipped
+function dozeFlush() {
+  DOZE.timer = 0; DOZE.flushes += 1;
+  realRAF((t) => {
+    const l = DOZE.q; DOZE.q = [];
+    for (const e of l) { try { e.fn(t); } catch (err) { realSetTimeout(() => { throw err; }, 0); } }
+  });
+}
+function dozeWake(by = '') {
+  if (DOZE.from >= 0 || DOZE.on) { DOZE.by = by; DOZE.log.push(by); if (DOZE.log.length > 12) DOZE.log.shift(); } // (what woke it last, for checks)
+  DOZE.from = -1;
+  if (!DOZE.on) return;
+  DOZE.on = false; DOZE.ms = 0; DOZE.wakes += 1;
+  if (DOZE.timer) { realClearTimeout(DOZE.timer); DOZE.timer = 0; }
+  if (DOZE.q.length) dozeFlush();
+}
+{
+  const realCAF = cancelAnimationFrame.bind(window);
+  window.cancelAnimationFrame = (id) => { if (id < 0) { const i = DOZE.q.findIndex((e) => e.id === id); if (i >= 0) DOZE.q.splice(i, 1); return; } realCAF(id); };
+}
+// once per displayed frame (tickFrames): may the page doze, and how deeply? (the frame that just ended is `prev`)
+// (what keeps it awake right now, for checks: __labPace.state().doze.why)
+function dozeWhy(prev) {
+  if (!PACE.on) return 'pacing off';
+  if (mode !== 'sketch' || XP_PAGE) return 'not the preview';
+  if (parked) return 'parked';
+  if (SQ.on || SQ.off || SQ.cam) return 'sequence';
+  if (stepping || edit.on) return 'editing';
+  if (PC.list.size) return 'precomps';
+  if (stackWait) return 'loading';
+  if (compRec || fullRes()) return 'recording';
+  if (mediaEl && !mediaEl.paused) return 'playing';
+  if (liveKind) return 'live sound';
+  if (PACE.drag || realNow() < PACE.wheelUntil) return 'dragging';
+  if (PACE.drawPrev === prev) return 'drawing';
+  for (const L of layers.values()) if (L.dzRun === prev && L.dzSkip !== prev) return `layer ${L.id} unchecked`;
+  return '';
+}
+function dozeCheck(t, prev) {
+  DOZE.why = dozeWhy(prev);
+  if (DOZE.why) { if (DOZE.on || DOZE.from >= 0) dozeWake(DOZE.why); return; }
+  if (DOZE.from < 0) DOZE.from = t;
+  const ms = DOZE_STEPS.find(([after]) => t - DOZE.from >= after)?.[1] || 0;
+  if (ms && !DOZE.on) DOZE.dozes += 1;
+  DOZE.on = ms > 0; DOZE.ms = ms;
+}
 for (const ev of ['message', 'pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'resize', 'focus']) addEventListener(ev, pacePoke, { capture: true, passive: true });
 // orbit / drag / scrub: a held pointer (or a wheel turn) is an interaction; if frames are slow while it lasts, the
 // preview draws at 70 % of its resolution until the pointer comes up (full again on release; adapting on only)
@@ -1189,9 +1253,10 @@ function paceSkip(r, scene, camera, EL) {
     return s;
   };
   const before = st.refreshes || 0;
-  const skip = PACE.core.still(st, realNow(), PACE.poke, sigOf);
-  if (!skip) { if ((st.refreshes || 0) !== before) PACE.refreshes += 1; return false; }
+  const skip = PACE.core.still(st, realNow(), PACE.poke, sigOf, DOZE.ms >= 250 ? 4000 : undefined);
+  if (!skip) { if ((st.refreshes || 0) !== before) { PACE.refreshes += 1; PACE.refreshAt = frameTick; if (EL) EL.dzSkip = frameTick; } return false; }
   PACE.skipped += 1; PACE.lastSkip = frameTick;
+  if (EL) EL.dzSkip = frameTick; // (round 44, idlecpu: this layer's frame was checked and still, see "dozing")
   if (frameSeen !== frameTick && PACE.stillSeen !== frameTick) { PACE.stillSeen = frameTick; frames += 1; } // (the picture shows this frame too)
   return true;
 }
@@ -1212,8 +1277,8 @@ function pacePower(on) {
 }
 // (checks and /lab perf: window.__labPace.state() / .on(false) / .power(true) / .reset() / .hold(level))
 window.__labPace = {
-  state: () => ({ ...paceInfo(), poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level }),
-  on: (v) => { PACE.on = v !== false; PACE.poke += 1; return PACE.on; },
+  state: () => ({ ...paceInfo(), poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level, doze: { on: DOZE.on, ms: DOZE.ms, why: DOZE.why || '', by: DOZE.by || '', log: DOZE.log.slice(-6), dozes: DOZE.dozes, wakes: DOZE.wakes, flushes: DOZE.flushes } }),
+  on: (v) => { PACE.on = v !== false; PACE.poke += 1; dozeWake('pacing switched'); return PACE.on; },
   power: (v) => { pacePower(v); return { cap: fpsCap, level: AD.core.level, quality }; },
   reset: () => { PACE.drawn = 0; PACE.skipped = 0; PACE.refreshes = 0; PACE.sigs = 0; PACE.sigMs = 0; PACE.sleeps = 0; PACE.wakes = 0; PACE.meter.reset(); return 1; },
   sleeping: () => paceSleeping.size,
@@ -1223,11 +1288,14 @@ const tickFrames = (t) => {
   if (frameSeen === frameTick) { workRing.push(frameWork); if (workRing.length > 120) workRing.shift(); lastCalls = frameCalls; }
   frameWork = 0; frameCalls = 0;
   frameTick += 1;
-  if (frameSeen === frameTick - 1 && lastFrameAt) { worstGap = Math.max(worstGap, t - lastFrameAt); if (mode === 'sketch') adaptQuality(t - lastFrameAt); }
+  const dozed = DOZE.on; // (this frame came after a doze's wait: its gap isn't a slow frame)
+  if (frameSeen === frameTick - 1 && lastFrameAt && !dozed) { worstGap = Math.max(worstGap, t - lastFrameAt); if (mode === 'sketch') adaptQuality(t - lastFrameAt); }
   // (labpace) the frames the layers showed (drawn or still), for the steadiness readout
-  PACE.drewAvg = (PACE.drewAvg || 0) * 0.9 + (PACE.lastDraw === frameTick - 1 ? 0.1 : 0);
-  if ((frameSeen === frameTick - 1 || PACE.stillSeen === frameTick - 1) && !parked) { if (PACE.presentAt) PACE.meter.feed(t - PACE.presentAt); PACE.presentAt = t; }
+  if (!dozed) PACE.drewAvg = (PACE.drewAvg || 0) * 0.9 + (PACE.lastDraw === frameTick - 1 ? 0.1 : 0);
+  if ((frameSeen === frameTick - 1 || PACE.stillSeen === frameTick - 1) && !parked && !dozed) { if (PACE.presentAt) PACE.meter.feed(t - PACE.presentAt); PACE.presentAt = t; }
   lastFrameAt = t;
+  dozeCheck(t, frameTick - 1); // (round 44, idlecpu)
+  if (DOZE.on) { lastFrameAt = 0; PACE.presentAt = 0; }
   // (labpace) parked with nothing to draw (no recording, no offline render): no more frames asked for until woken
   const sleep = parked && !SQ.off && !fullRes() && !compRec;
   if (sleep) { lastFrameAt = 0; PACE.presentAt = 0; }
@@ -1378,7 +1446,7 @@ function setGuides(kind) {
 // Present: the mouse hides after 2 s still
 let presentCursor = false; let cursorTimer = 0;
 addEventListener('mousemove', () => { if (!presentCursor) return; document.documentElement.style.cursor = ''; clearTimeout(cursorTimer); cursorTimer = realSetTimeout(() => { document.documentElement.style.cursor = 'none'; }, 2000); });
-let statsTimer = 0;
+let statsTimer = 0; let statsDozed = 0;
 function statsRun(on) {
   if (!on) { if (statsTimer) clearInterval(statsTimer); statsTimer = 0; return; }
   if (statsTimer) return;
@@ -1392,6 +1460,11 @@ function statsTick() {
   lastTick = now;
   const worst = worstGap; worstGap = 0;
   if (!lastRenderer || parked) return; // (parked: the Lab knows it asked for nothing to draw)
+  // (round 44, idlecpu) a dozing still picture, or no frame at all since the last one (the preview not drawn by the
+  // window): every 4 s, enough for the Lab's stall check (it waits 8 s); it said so twice a second
+  const ticked = frameTick !== statsTick.at; statsTick.at = frameTick;
+  if ((DOZE.on || (!ticked && statsTick.idle)) && (++statsDozed % 8)) return;
+  statsTick.idle = !ticked;
   adCoverTick(); // (round 31 "labadapt": covered layers)
   const i = lastRenderer.info;
   const w = workRing.slice(-60).sort((a, b) => a - b);
@@ -1415,7 +1488,8 @@ function gpuEstimate() {
 }
 
 function requestShot() {
-  if (mode === 'sketch' && needsComposite()) {
+  // (round 44, layergroups) nothing shows (a hidden group, every layer off): an empty picture, not the last renderer's
+  if (mode === 'sketch' && (needsComposite() || (ordered().length && !ordered().some((L) => layerMix(L) > 0)))) {
     // (round 31 "labadapt") a lighter preview (adaptive steps, covered layers, Light mode): every layer draws two frames
     // at full quality first, then the merge (a frozen picture is merged as it is: nothing draws while frozen)
     if (adLighter() && !frozen) { adFullFrame(() => postShot(composite(), shotTag)); return; }
@@ -2290,6 +2364,14 @@ function watchFrames(m) {
   if (!m.requestVideoFrameCallback) return;
   const cb = (_now, meta) => {
     if (mediaEl !== m) return;
+    // (capturefix2) a removed frame the decoder showed anyway (the jump's timer fired late: a busy machine, or a frame
+    // due right at the cut) is not handed on: the sketch, the texture and the frame number keep the last kept frame,
+    // and the jump happens now (labframes: "the sketch never sees a removed frame", f24 slipped through 3 runs of 3)
+    if (fparts && !m.paused && recUntil == null && !(region && loopOn) && fclock && !fparts[fpart]?.hold && partAt(meta.mediaTime) < 0) {
+      partFrame(meta.mediaTime, meta);
+      m.requestVideoFrameCallback(cb);
+      return;
+    }
     fpres.time = meta.mediaTime; fpres.presented = meta.presentedFrames;
     if (videoTex && videoTex.image === m) videoTex.needsUpdate = true; // (a new frame: media.texture() uploads it once)
     fpres.frame = fclock ? fFrameAt(meta.mediaTime) : -1;
@@ -7379,6 +7461,7 @@ const TY_DEF = {
   glow: 0, glowColor: '#ff8c42', softness: 0, fill: 1, inAnim: 'wave', outAnim: 'fade', unit: 'glyph', order: 'forward', ease: 'out', start: 0.2, stagger: 0.05, dur: 0.6, hold: 2.5,
   amount: 1, wobble: 0, path: 'line', pathSize: 0.6, pathOffset: 0, pathSpin: 0, depth: 0.25, bevel: 0.03, material: 'plain', spin: 0, tilt: 0, kickScale: 0, kickGlow: 0, kickJitter: 0,
   bassColor: 0, beatBounce: 0, letterReact: 0, look: 'fades', lead: 0, mode: '2d', weight: 800, font: '',
+  kSync: 'off', kEvery: 1, kSecs: 0.5, kHold: 0, kFlow: 'build', kFx: 'none', kDur: 0.6, // (round 45, kinetictype) moves with the music
 };
 const TY_SCRAMBLE = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#$%&*+=<>?/';
 const tyRaw = (h, out) => { const n = parseInt(String(h).replace('#', '').slice(0, 6), 16) || 0; out.r = ((n >> 16) & 255) / 255; out.g = ((n >> 8) & 255) / 255; out.b = (n & 255) / 255; return out; }; // (raw sRGB numbers: the 2D layer draws them as they are)
@@ -7422,7 +7505,30 @@ const TY_ANIM = {
   rise: (e, o, c) => { o.y = -(1 - e) * 0.9 * c.k; o.sy = 0.3 + 0.7 * e; o.a = e; },
   neon: (e, o, c) => { o.a = c.p <= 0 ? 0 : c.p >= 1 ? 1 : tyHash(Math.floor(c.p * 24) + c.gi * 5) > 0.45 ? 1 : 0.1; o.glow += 0.6 * (c.p < 1 ? 1 : 0); },
   shatter: (e, o, c) => { const r = 1 - e; o.x = (c.h1 - 0.5) * 3 * r * c.k; o.y = -r * r * 4 * c.k + (c.h2 - 0.2) * r * c.k; o.r = (c.h3 - 0.5) * 6 * r; o.z = (c.h1 - 0.5) * 4 * r; o.a = e; },
+  // (round 45, kinetictype) four more for the "text that moves" presets
+  'slide-blur': (e, o, c) => { o.x = (1 - e) * 1.6 * c.k; o.soft = (1 - e) * 0.9; o.sx = 1 + (1 - e) * 0.6 * c.k; o.a = e; },
+  split: (e, o, c) => { o.x = -c.rel * (1 - e) * 0.95; o.sy = 0.2 + 0.8 * e; o.a = tyC01(e * 1.6); },
+  'outline-draw': (e, o, c) => { o.sx = Math.max(0.02, e); o.soft = (1 - e) * 0.5; o.a = tyC01(e * 2); },
+  'zoom-through': (e, o, c) => { o.s = 0.15 + 0.85 * e; o.z = -(1 - e) * 8 * c.k; o.soft = (1 - e) * 0.6; o.a = tyC01(e * 1.5); },
 };
+// (round 45, kinetictype) the "moves with the music" math (tools/three-kinetic-core.js, globalThis.kinetic), sent as
+// source the first time a type layer moves on hits; the hits are beatlink's sources (the song's grid, your markers or
+// the hits found in it; no song: the 120 BPM demo beat), read at the layer's own clock time, so a render is exact
+const KIN = { want: null };
+function tyKinReady(sync) {
+  let ok = true;
+  if (sync !== 'seconds' && !blReady()) { ok = false; if (BL.want && !KIN.blP) { KIN.blP = BL.want; tyPend(BL.want, 8000); } }
+  if (globalThis.kinetic) return ok;
+  if (!KIN.want) { KIN.want = loadLib('kinetic').catch(() => { KIN.want = null; }); tyPend(KIN.want, 8000); }
+  if (sync !== 'seconds' && !globalThis.beatlink && BL.want) KIN.blP = BL.want;
+  return false;
+}
+// the hits a type layer moves on, as a function of time ({ k, at, prev, next }); "seconds" is a clock from `start`
+function tyHits(sync, secs, start, memo) {
+  if (sync === 'seconds') { const key = `${secs}|${start}`; if (memo.key !== key) { memo.key = key; memo.fn = globalThis.kinetic.clockHits(secs, start); } return memo.fn; }
+  blFresh();
+  return blSrc(sync === 'off' ? 'beat' : sync).hit;
+}
 // ---- fonts: a family, "google:Family" (a Google Fonts download), "ref:<key>" (a reference / asset-library file) ----
 const TY_FALL = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 function tyPend(p, ms = 5000) { const q = Promise.race([p, new Promise((r) => realSetTimeout(r, ms))]).catch(() => {}).finally(() => { TY.pending.delete(q); TY.fontsV += 1; }); TY.pending.add(q); return q; }
@@ -7628,12 +7734,12 @@ function tyLayout(A, text, tracking, leading, align) {
   const lines = String(text ?? '').split('\n');
   const glyphs = []; const lineW = []; let gi = 0; let wi = 0;
   lines.forEach((ln, li) => {
-    let pen = 0; let iw = 0; let inWord = false; const chars = Array.from(ln);
+    let pen = 0; let iw = 0; let il = 0; let inWord = false; const chars = Array.from(ln);
     chars.forEach((ch, k) => {
       const G = tyGlyph(A, ch);
       if (/\s/.test(ch)) { if (inWord) { wi += 1; inWord = false; iw = 0; } pen += G.adv + tracking; return; }
       inWord = true;
-      if (!G.empty) glyphs.push({ ch, G, li, wi, iw, gi: gi++, px: pen, bx: 0, by: 0, wl: 0, k });
+      if (!G.empty) glyphs.push({ ch, G, li, wi, iw, il: il++, gi: gi++, px: pen, bx: 0, by: 0, wl: 0, k });
       iw += 1;
       pen += G.adv + (k < chars.length - 1 ? tracking : 0);
     });
@@ -7817,6 +7923,8 @@ globalThis.textLayer = (P = {}, opts = {}) => {
     used3 += 1;
   }
   let curEm = 1; let k3 = 1;
+  const kinMemo = {}; let kinP = null; // (round 45, kinetictype) the steps' plan, made once the math is here, reused every frame
+  if ((String(pv('kSync')) !== 'off' || String(pv('kFx')) !== 'none')) tyKinReady(String(pv('kSync'))); // (an export frame waits for the math)
   // one block of text (a title, a lyric line) with its own timing: tIn (its start), tOut (when it goes out, or Infinity)
   const tmp = { a: 0, r: 0, g: 0, b: 0 };
   function block(A, lay, t, tIn, tOut, o0) {
@@ -7825,13 +7933,22 @@ globalThis.textLayer = (P = {}, opts = {}) => {
     const fIn = TY_ANIM[inA] || TY_ANIM.fade; const fOut = outA === 'none' ? null : TY_ANIM[outA] || TY_ANIM.fade;
     const ef = TY_EASE[ease] || TY_EASE.out;
     const X0 = num('x') * W / 2; const Y0 = num('y') * H / 2;
+    // (round 45, kinetictype) moving on the music's hits: each step's in / out time from the plan (kin.P), the letters
+    // of one step a stagger apart; on each hit the step's effect (kin.fx)
+    const kin = o0.kin; const KP = kin?.P; const steps = kin?.steps ? KP : null;
     for (const gl of lay.glyphs) {
       const u = unit === 'word' ? gl.wi : unit === 'line' ? gl.li : gl.gi;
       const rk = rankOf(u, nU, order);
-      const t0 = tIn + rk * stag;
-      let p = (t - t0) / dur;
+      let t0 = tIn + rk * stag; let tO = tOut + rk * stag; let du = dur; let ri = 0;
+      if (steps) {
+        ri = Math.min(steps.nR - 1, Math.max(0, Math.floor(rk + 1e-9)));
+        const inner = unit === 'word' ? gl.iw : unit === 'line' ? gl.il : 0;
+        t0 = steps.starts[ri] + inner * stag; du = steps.dur;
+        tO = steps.outs[ri] + (kin.swap ? 0 : ri * kin.ostag) + inner * stag * 0.5;
+      }
+      let p = (t - t0) / du;
       let fn = fIn; let pp = tyC01(p);
-      if (fOut && t >= tOut) { const q = (t - (tOut + rk * stag)) / dur; if (q > 0) { fn = fOut; pp = 1 - tyC01(q); p = pp; if (q >= 1) continue; } }
+      if (fOut && t >= tO) { const q = (t - tO) / du; if (q > 0) { fn = fOut; pp = 1 - tyC01(q); p = pp; if (q >= 1) continue; } }
       o.a = 1; o.x = 0; o.y = 0; o.z = 0; o.s = 1; o.sx = 1; o.sy = 1; o.r = 0; o.rx = 0; o.ry = 0; o.soft = 0; o.glow = 0; o.ch = null;
       cc.p = p; cc.h1 = tyHash(gl.gi * 3.1 + seed); cc.h2 = tyHash(gl.gi * 5.7 + seed * 2); cc.h3 = tyHash(gl.gi * 9.3 + seed * 3); cc.k = amt; cc.gi = gl.gi;
       cc.rel = gl.bx - (lay.lc[gl.li * 3] || 0); cc.side = Math.sign(cc.rel);
@@ -7840,6 +7957,7 @@ globalThis.textLayer = (P = {}, opts = {}) => {
       // idle float, then the music
       if (wob > 0) { o.y += Math.sin(t * 2.1 + gl.gi * 0.7) * 0.06 * wob; o.r += Math.sin(t * 1.3 + gl.gi * 1.9) * 0.04 * wob; }
       let rr = o0.r; let rg = o0.g; let rb = o0.b;
+      if (kin && kin.fx !== 'none') { const m = globalThis.kinetic.fx(kin.fx, o, KP, gl.gi, rk, amt); if (m > 0) { rr += (o0.r2 - rr) * m; rg += (o0.g2 - rg) * m; rb += (o0.b2 - rb) * m; } if (o.a <= 0.003) continue; }
       if (react) {
         const f = 1 - react.spread + react.spread * (0.5 + 0.5 * Math.sin(gl.gi * 1.9 + t * 7));
         const kk = react.kick * f;
@@ -7907,6 +8025,15 @@ globalThis.textLayer = (P = {}, opts = {}) => {
       o0.react = { kick, bass: dr.bass ?? audio.bass, kScale: ks, kGlow: kg, kJit: kj, bCol: bc, bounce: bb, spread: tyC01(num('letterReact')) };
     }
     U.uGlow.value = Math.max(0, num('glow'));
+    // (round 45, kinetictype) moving on the music's hits (the steps) and / or an effect on each hit
+    const kSync = String(pv('kSync')); const kFx = String(pv('kFx'));
+    if ((kSync !== 'off' || kFx !== 'none') && tyKinReady(kSync)) {
+      const hit = tyHits(kSync, Math.max(0.02, num('kSecs')), num('start'), kinMemo);
+      kinP ||= globalThis.kinetic.newPlan();
+      if (hit) o0.kin = { hit, sync: kSync, fx: kFx, steps: false, swap: String(pv('kFlow')) === 'one at a time', ostag: 0, P: kinP };
+    }
+    const kinFx = (tt) => { if (o0.kin && !o0.kin.steps) globalThis.kinetic.plan(kinP, { hit: o0.kin.hit, t: tt, start: 0, nR: 1, every: 1, hold: 0, durFrac: 0.6 }); };
+    stat.kin = null;
     const tr = num('tracking'); const ld = num('leading'); const al = String(pv('align'));
     const base = num('size') * Math.min(W, H) * (W < H ? 1.25 : 1);
     n2 = 0; used3 = 0; sig = 0; asum = 0;
@@ -7923,12 +8050,27 @@ globalThis.textLayer = (P = {}, opts = {}) => {
       const start = num('start'); const hold = num('hold');
       const inEnd = start + Math.max(0, nU - 1) * o0.stag + o0.dur;
       const tOut = hold > 0 && o0.outA !== 'none' ? inEnd + hold : Infinity;
-      if (!follows && Number.isFinite(tOut)) { const loop = tOut + Math.max(0, nU - 1) * o0.stag + o0.dur + 0.8; t = ((t % loop) + loop) % loop; }
-      block(A, lay, t, start, tOut, o0);
+      const K = o0.kin;
+      if (K && kSync !== 'off') {
+        // (round 45, kinetictype) a step on each hit: build up (or one at a time), hold, out, again
+        const C = globalThis.kinetic; const nR = C.nRanks(nU, o0.order);
+        C.plan(kinP, { hit: K.hit, t, start, nR, every: num('kEvery'), hold: o0.outA === 'none' ? 0 : num('kHold'), swap: K.swap, durFrac: Math.max(0.05, num('kDur')) });
+        K.steps = true; K.ostag = Math.min(0.05, (kinP.gap * 0.5) / Math.max(1, nR));
+        stat.kin = { k: kinP.k, at: Number.isFinite(kinP.at) ? Math.round(kinP.at * 1000) / 1000 : null, cur: kinP.cur, steps: nR, cycle: kinP.cycle };
+        // an outline drawn on fills in once every step is in
+        if (o0.inA === 'outline-draw' && !mode3d) U.uFill.value *= tyC01((t - kinP.allIn - kinP.dur) / Math.max(0.1, kinP.gap * 0.6));
+        block(A, lay, t, start, Infinity, o0);
+      } else {
+        if (!follows && Number.isFinite(tOut)) { const loop = tOut + Math.max(0, nU - 1) * o0.stag + o0.dur + 0.8; t = ((t % loop) + loop) % loop; }
+        if (o0.inA === 'outline-draw' && !mode3d) U.uFill.value *= tyC01((t - inEnd) / 0.4);
+        kinFx(t); if (K) stat.kin = { k: kinP.k, at: Number.isFinite(kinP.at) ? Math.round(kinP.at * 1000) / 1000 : null };
+        block(A, lay, t, start, tOut, o0);
+      }
       stat.chars = lay.nGlyphs;
     } else {
       const tt = t - num('lead');
       const look = String(pv('look'));
+      kinFx(tt); if (o0.kin) stat.kin = { k: kinP.k, at: Number.isFinite(kinP.at) ? Math.round(kinP.at * 1000) / 1000 : null }; // (round 45, kinetictype) an effect on each hit
       let cur = -1; for (let i = 0; i < lyr.length; i += 1) if (lyr[i].a <= tt) cur = i; else break;
       stat.line = cur;
       const fitTo = (lay) => Math.min(base, (W * 0.92) / Math.max(0.01, lay.maxW));
@@ -8016,12 +8158,20 @@ globalThis.textLayer = (P = {}, opts = {}) => {
   return { renderer, scene, camera: cam, ok: true };
 };
 // an export frame waits for the fonts a type layer asked for (a Google font, an asset font): at most a few seconds
-globalThis.__labTypeReady = () => (TY.pending.size ? Promise.race([Promise.all([...TY.pending]), new Promise((r) => realSetTimeout(r, 6000))]) : null);
+globalThis.__labTypeReady = () => {
+  // (round 45, kinetictype) the "moves with the music" math is waited for longer than a font (up to 30 s on a busy
+  // machine): a frame drawn without it would put the words on another time than the next render's
+  const must = [KIN.want, KIN.blP].filter((p) => p && (!globalThis.kinetic || !globalThis.beatlink));
+  const fonts = TY.pending.size ? Promise.race([Promise.all([...TY.pending]), new Promise((r) => realSetTimeout(r, 6000))]) : null;
+  if (!must.length) return fonts;
+  return Promise.all([fonts, Promise.race([Promise.all(must), new Promise((r) => realSetTimeout(r, 30000))])]);
+};
 // checks and three_eval: each type layer's numbers, the music held at a value
 window.__labType = {
   info: () => [...TY.stats.values()].map((x) => ({ ...x, ms: Math.round(x.ms * 100) / 100 })),
   drive: (o = {}) => { for (const k of ['kick', 'bass']) if (k in o) TY.drive[k] = o[k] == null ? null : Number(o[k]); return { ...TY.drive }; },
   anims: () => Object.keys(TY_ANIM),
+  kinetic: () => Boolean(globalThis.kinetic), // (round 45, kinetictype) the "moves with the music" math is here
 };
 
 // ---------- light physics (round 25 "physics": the hub side is tools/three-physics*.js) ----------
@@ -9556,6 +9706,7 @@ function installRunGuards() {
         if (!SQ.off && !capOk(t)) { sched(run); return; }
         // (labpace) f60: this frame's length in 60 fps frames (a cap's skipped frames count; a pause starts again at 1)
         globalThis.f60 = PACE.core.f60(lt < 0 ? -1 : t - lt); lt = t;
+        if (o.L) o.L.dzRun = frameTick; // (round 44, idlecpu: it ran this frame; see "dozing")
         within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(mediaEl.currentTime) * 1000 : t);
         if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
       };
@@ -10333,7 +10484,7 @@ const SQ = { on: false, plan: null, T: 0, T0: 0, at0: 0, playing: false, rate: 1
 const WARM = 0.35; // seconds a group runs (hidden) before its clip: its first frames are drawn when it shows
 const PRE = 1.2; // seconds ahead a group is mounted while playing
 // layer frames during an offline render wait for the next step instead of the screen
-function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } return realRAF(fn); }
+function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } return DOZE.on ? dozeRAF(fn) : realRAF(fn); }
 // a sequence scene's own clock: performance.now inside its layers is its time (ms) since its own start, and 0 while
 // its module sets up (a start time a sketch keeps from its setup is the scene's start, wherever the clip was entered);
 // a THREE.Clock started in it counts from the scene's start too

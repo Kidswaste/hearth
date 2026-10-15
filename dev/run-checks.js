@@ -8,7 +8,7 @@
 //   sh dev/run-checks.sh board capture        # groups, or check names (journey-board…)
 //   sh dev/run-checks.sh unit                 # the Node-only tests (no Electron)
 //   sh dev/run-checks.sh --list               # groups and checks
-//   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
+//   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step) · --names (list) / --exact (run names as checks, not groups)
 //   · --fixtures-only · --stop (first failure)
 // Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, offline, unit, all.
 const fs = require('fs');
@@ -26,17 +26,17 @@ const names = argv.filter((a, i) => !a.startsWith('--') && !['--out'].includes(a
 
 const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequence-lib', 'mission-tokens', 'bigscreen-lib']); // helpers / made to run in the old app · (round 35) mission-tokens: a measurement dev/mission-tokens.js runs (fake engines, its token log, > 10 min), not a check: alone it waited 10 min for engines
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
-const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test', 'projects-test', 'timemachine-test', 'audio-test', 'remote-qr-test', 'interop-test', 'context-test', 'assets-test', 'type-test', 'motion-in-test', 'physics-test', 'connections-test', 'hooks-test', 'autoedit-test', 'publishkit-test', 'router-test', 'firstrun-test', 'lookmatch-test', 'aiundo-test', 'packs-test', 'safetynet-test', 'instantscene-test', 'chrome-test', 'budget-test', 'recall-test', 'autopolish-test', 'stems-test', 'pinboard-test', 'chromeview-test', 'tokens-test', 'cache-test', 'winmac-test', 'quickstart-test', 'perfectloop-test', 'labadapt-test', 'labvariations-test', 'winpolish-test', 'macpolish-test', 'multiformat-test', 'labpace-test', 'scenedoctor-test', 'autocompact-test', 'offline-test', 'labgestures-test', 'concise-test', 'twocomputers-test', 'labtemplates-test', 'streamrender-test', 'tokenaudit-test', 'nativefeel-test', 'labsearch-test', 'updatesafe-test', 'appsearch-test', 'directorlean-test', 'abcompare-test', 'bigscreen-test', 'memorytidy-test', 'dragdrop-test', 'beatlink-test', 'hintcalm-test', 'routerlearn-test', 'labrecipes-test', 'powerwise-test', 'attachlean-test', 'labcamera-test', 'toolslim-test', 'routines-test', 'undoall-test', 'renderfast-test', 'whatsnew-test', 'handoff-test', 'filewatch-test', 'labbatch-test', 'scenesafe-test', 'directorpreview-test', 'datasafe-test', 'datasafe-scan', 'costcoach-test', 'glrecover-test'];
+const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test', 'projects-test', 'timemachine-test', 'audio-test', 'remote-qr-test', 'interop-test', 'context-test', 'assets-test', 'type-test', 'motion-in-test', 'physics-test', 'connections-test', 'hooks-test', 'autoedit-test', 'publishkit-test', 'router-test', 'firstrun-test', 'lookmatch-test', 'aiundo-test', 'packs-test', 'safetynet-test', 'instantscene-test', 'chrome-test', 'budget-test', 'recall-test', 'autopolish-test', 'stems-test', 'pinboard-test', 'chromeview-test', 'tokens-test', 'cache-test', 'winmac-test', 'quickstart-test', 'perfectloop-test', 'labadapt-test', 'labvariations-test', 'winpolish-test', 'macpolish-test', 'multiformat-test', 'labpace-test', 'scenedoctor-test', 'autocompact-test', 'offline-test', 'labgestures-test', 'concise-test', 'twocomputers-test', 'labtemplates-test', 'streamrender-test', 'tokenaudit-test', 'nativefeel-test', 'labsearch-test', 'updatesafe-test', 'appsearch-test', 'directorlean-test', 'abcompare-test', 'bigscreen-test', 'memorytidy-test', 'dragdrop-test', 'beatlink-test', 'hintcalm-test', 'routerlearn-test', 'labrecipes-test', 'powerwise-test', 'attachlean-test', 'labcamera-test', 'toolslim-test', 'routines-test', 'undoall-test', 'renderfast-test', 'whatsnew-test', 'handoff-test', 'filewatch-test', 'labbatch-test', 'scenesafe-test', 'directorpreview-test', 'datasafe-test', 'datasafe-scan', 'costcoach-test', 'glrecover-test', 'localanswers-test', 'notify-test', 'backupauto-test', 'sendpreview-test', 'errorcalm-test', 'errorcalm-scan', 'kinetictype-test', 'layergroups-test'];
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy', 'fastboot'], // (round 29) fastboot: first frame before any lazy group, keys of lazy groups, first-use main modules
   board: by(/^board/),
   capture: by(/^capture/),
   journeys: by(/^journey-/),
-  lab: ['labbatch', 'labcamera', 'labrecipes', 'labsearch', 'labtemplates', 'scenedoctor', 'labeasy', 'labadapt', 'labvariations', 'multiformat', 'seqsolid', 'autoedit', 'gallery', 'lookmatch', 'instantscene', 'autopolish', 'perfectloop', 'music', 'labaudio', 'stems', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf', 'labpace', 'labgestures', 'abcompare', 'labboot', 'beatlink', 'labmemory', 'scenesafe', 'directorpreview', 'glrecover', 'menucalm'],
-  chat: by(/^chat-|^chatcore|^chatcalm$|^cmdbar$|^clutter$|^declutter|^simplify[]$|^grid-resize$|^appsearch$/), // (round 40) chatcalm: budgets per part of a chat, ≤ 2 clicks, one order, folded notes · // (round 27) simplify2: calm Settings, no /commands on screen · (round 33) simplify3: AI setup order + folds, counts · (round 37) appsearch: Find anything (Ctrl/⌘+K)
+  lab: ['labbatch', 'labcamera', 'labrecipes', 'labsearch', 'labtemplates', 'scenedoctor', 'labeasy', 'labadapt', 'labvariations', 'multiformat', 'seqsolid', 'autoedit', 'gallery', 'lookmatch', 'instantscene', 'autopolish', 'perfectloop', 'music', 'labaudio', 'stems', 'live', 'scenes', 'labstage', 'remote', 'interop', 'labshader', 'particles', 'physics', 'grade', 'type', 'motion-in', 'jam', 'assist', 'decide', 'brain', 'director-dock', 'director-tools', 'labdirector', 'crew', 'timemachine', 'perf', 'labpace', 'labgestures', 'abcompare', 'labboot', 'beatlink', 'labmemory', 'scenesafe', 'directorpreview', 'glrecover', 'menucalm', 'kinetictype', 'layergroups'],
+  chat: by(/^chat-|^chatcore|^chatcalm$|^cmdbar$|^clutter$|^declutter|^simplify[]$|^grid-resize$|^appsearch$|^localanswers$/), // (round 45) localanswers: Answered by Hearth · (round 40) chatcalm: budgets per part of a chat, ≤ 2 clicks, one order, folded notes · // (round 27) simplify2: calm Settings, no /commands on screen · (round 33) simplify3: AI setup order + folds, counts · (round 37) appsearch: Find anything (Ctrl/⌘+K)
   nodes: by(/^nodes-/),
-  smooth: [...by(/^smooth-/), 'hz240', 'smooth26', 'smooth32', 'motionpolish', 'streamrender', 'unit:streamrender-test', 'inputlatency', 'smooth41', 'chatlistfast'], // (round 42) chatlistfast: the chats list with 3,000 chats // (round 41) smooth41: a11y / chatcalm / attachlean / hints / powerwise in the everyday stretches, // (round 38) inputlatency: input → handled → painted per interaction, Lab slider → preview frame · (round 17) hz240: the 240 Hz interaction check · (round 26) smooth26: ⋯ / ◎ / the Lab hidden · (round 32) smooth32: streaming, grid drag, the Lab beside a streaming chat · (round 36) motionpolish: every opening on the compositor, one tempo, reduced motion
+  smooth: ['hz240', 'smooth26', 'smooth32', 'motionpolish', 'streamrender', 'unit:streamrender-test', 'inputlatency', 'smooth41', 'chatlistfast', 'idlecpu', 'chatswitch'], // (round 44) idlecpu: CPU / wakeups per process over 10 s idle in six setups · (round 42) chatlistfast: the chats list with 3,000 chats // (round 41) smooth41: a11y / chatcalm / attachlean / hints / powerwise in the everyday stretches, // (round 38) inputlatency: input → handled → painted per interaction, Lab slider → preview frame · (round 17) hz240: the 240 Hz interaction check · (round 26) smooth26: ⋯ / ◎ / the Lab hidden · (round 32) smooth32: streaming, grid drag, the Lab beside a streaming chat · (round 36) motionpolish: every opening on the compositor, one tempo, reduced motion
   astra: ['astra-collab', 'astra-ui', 'astra-manager'],
   sequence: by(/^sequence/),
   robust: by(/^robust/),
@@ -80,6 +80,7 @@ const GROUPS = {
   routerlearn: ['routerlearn', 'unit:routerlearn-test', 'unit:router-test'], // (round 39) Smart learns from you, per AI and kind of message
   memorytidy: ['memorytidy', 'unit:memorytidy-test', 'unit:cache-test', 'unit:tokens-test', 'unit:tokenaudit-test', 'options'], // (round 38) Tidy memory: before / after list, confirm, Undo, smarter tidy's cost, the Lab scope only in the Director's prompt, <remember> replaces instead of piling up
   concise: ['concise', 'unit:concise-test', 'unit:tokens-test', 'unit:cache-test'], // (round 35) how long its answers are: saved on the AI, the prompt's end only, byte-stable; edits as diffs
+  kinetictype: ['kinetictype', 'unit:kinetictype-test', 'type', 'beatlink', 'labtemplates', 'labrecipes', 'renderfast', 'menucalm', 'lazy', 'unit:boot-test'], // (round 45) 🅰 Text that moves: presets on the beat / bar / kick, renders the same twice, steps on the kicks, lyric lines on markers, undo, saved, template words
   beatlink: ['beatlink', 'unit:beatlink-test'], // (round 38) ♪ Move with the music: a slider pulses on the kick / steps each bar, renders the same, badge, undo, saved
   stems: ['stems', 'unit:stems-test'], // (round 30) the song's parts: audio.stems.drums / bass / vocals, split once per song (HPSS), sliders follow "the drums"
   chrome: ['chrome', 'unit:chrome-test', 'unit:apps-unit-test'], // (round 30) Hearth's Chrome: Playwright's Chromium as Chrome (smoke --pw-chrome), the DevTools client against dev/fake-cdp.js
@@ -107,6 +108,7 @@ const GROUPS = {
   scenesafe: ['scenesafe', 'unit:scenesafe-test', 'unit:store-thread-test', 'unit:sync-test'], // (round 43) the Lab never saves over scenes it couldn't read (a locked file at start → the calm card, nothing written, Retry), a starter list never replaces scenes, Delete still deletes, 🛟 Recover lost scenes finds .prev / copies / History / a backup and merges with one Undo
   directorpreview: ['directorpreview', 'unit:directorpreview-test', 'abcompare', 'directorlean', 'labdirector', 'director-tools', 'scenesafe', 'labrecipes', 'lazy', 'unit:boot-test', 'unit:director-mcp-test', 'unit:cache-test'], // (round 43) ◧ Try it first: the director's edit waits in the preview (scenes file untouched) for Keep (one version, one Undo) / Undo (nothing changed) / Try another way (one short message), ◎ Show me first, Astra too
   costcoach: ['costcoach', 'unit:costcoach-test', 'budget', 'tokenaudit', 'autocompact', 'options', 'undoall', 'unit:undoall-test'], // (round 43) 🧭 Cost coach: fake usage → the card's 3 fixes, a click changes the setting, Undo; attribution, savings, top 3, nothing already applied
+  sendpreview: ['sendpreview', 'unit:sendpreview-test', 'chatcalm', 'attachlean', 'autocompact', 'budget', 'a11y', 'inputlatency', 'lazy', 'unit:boot-test'], // (round 44) send preview: a long chat with a cold cache + a big attachment → "≈ 52k" next to Send with its breakdown and the one cheaper way (it sends lighter); a small message → nothing; calibration moves the estimate toward what the engine reported
   handoff: ['handoff', 'unit:handoff-test'], // (round 42) lean handoffs: Continue with, /handoff, Ask Astra instead, second opinions send a short brief (what the fake engine gets), Send the whole chat instead
   offline: ['offline', 'unit:offline-test'], // (round 34) calm when things go wrong outside Hearth: no internet (the queue sends once when back), busy (retry / cancel / switch), usage limit, signed out, a reply cut off (continue + stitch), restart survival
   attachlean: ['attachlean', 'unit:attachlean-test', 'dragdrop', 'access-chat', 'chat-stream', 'unit:tokens-test', 'unit:cache-test'], // (round 40) lean attachments: pictures at 1568 px, big texts as outline + asked parts, the same file referenced / diffed, the cost on each chip (click: send whole)
@@ -114,13 +116,19 @@ const GROUPS = {
   hintcalm: ['hintcalm', 'unit:hintcalm-test'], // (round 38) one hint at a time: after an update the patch notes first, never two optional hints on screen, none while typing / streaming, Don't show tips, essential notes at once
   settingscalm: ['settingscalm', 'appsearch', 'tidy', 'simplify2', 'firstrun', 'unit:appsearch-test'], // (round 39) Settings in four plain sections + folds that say where they stand: control budget, every row Find anything knows found in its place, fold lines follow a switch, nothing gone
   toolslim: ['unit:toolslim-test', 'unit:tokens-test', 'unit:cache-test', 'unit:tokenaudit-test', 'unit:board-mcp-test', 'unit:capture-mcp-test', 'unit:adobe-mcp-test', 'unit:director-mcp-test'], // (round 41) slimmer tool definitions: merged tools reach the hub by their old names, help answers locally, opt-in sets sleep until needed, budgets down
+  notify: ['notify', 'unit:notify-test'], // (round 44) Tell me when…: desktop notifications while away (a long reply → one with Open the chat, render → Show the file, a permission's Allow… opens the card and never approves, one per chat, bursts summed up, each switch silences its events; recorder in place of the OS)
   routines: ['routines', 'unit:routines-test'], // (round 41) 🔁 Keep going: a chat keeps improving by itself (rounds / time / forever with a cap, pauses, owner writing, errors, permission asks, restart, chip costs; fake engines)
+  backupauto: ['backupauto', 'unit:backupauto-test', 'unit:datasafe-test', 'unit:scenesafe-test'], // (round 45) automatic, checked backups: an idle backup (never while rendering / on a low battery), Settings › Backups with counts, the rotation, a damaged zip reported, Retry, Restore missing things merges a deleted scene back, the calm note
+  idlecpu: ['idlecpu', 'unit:labpace-test', 'unit:hintcalm-test', 'labpace', 'powerwise', 'smooth41', 'motionpolish', 'hintcalm', 'a11y', 'filewatch', 'lazy', 'unit:boot-test'], // (round 44) Hearth on screen and idle: the window, the main process and the Lab preview's page budgeted per setup (a chat, the Lab still / paused, the board, the grid, Activity); the still preview dozes, the hush
   powerwise: ['powerwise', 'unit:powerwise-test', 'unit:hintcalm-test'], // (round 39) awake only while it matters (a stub blocker: renders, recordings, long AI turns, downloads, updates, always released), battery / saver policies, background wakeups per minute, sleep / resume
   filewatch: ['filewatch', 'unit:filewatch-test', 'unit:twocomputers-test', 'unit:sync-test'], // (round 42) files changed outside Hearth: a Lab picture / song saved again → swapped in place, swap files ignored, 200 writes → one update, deleted → Find this file, AI changes marked, attachments read again, idle cost; the service on real folders (simulated Mac / Windows plans)
   undoall: ['undoall', 'unit:undoall-test'], // (round 41) one "Undo last change": a Settings switch / an AI setup row / a deleted / renamed / moved chat back with Ctrl+Z, redo, the Lab and text boxes keep their own undo, Recent changes in Activity
   chatlistfast: ['chatlistfast', 'a11y', 'undoall', 'unit:undoall-test', 'chatcalm', 'recall', 'unit:recall-test', 'lightweight', 'inputlatency', 'lazy', 'unit:boot-test', 'fastboot'], // (round 42) the chats list with 3,000 made-up chats (dev/make-chatlist-fixture.js): open / Show more / wheel / search / one chat changing / switching budgets, no gap in a long group, ↑ ↓ Home End Enter past the drawn rows, right-click, F2, Delete + Ctrl+Z, pins, drag onto a folder; and what it touches
   a11y: ['a11y', 'options', 'settingscalm', 'appsearch', 'missions', 'labeasy', 'labsearch', 'motionpolish', 'qa-keys', 'lazy', 'unit:boot-test'], // (round 40) keyboard + screen readers + contrast: names on every control, roles and states, focus rings in every look, the Tab order and skip link, Esc closes the top-most thing and focus returns, contrast per look, Windows High Contrast (forced colors), replies / tips read out once
+  chatswitch: ['chatswitch', 'chatlistfast', 'streamrender', 'unit:streamrender-test', 'lightweight', 'chatcalm', 'a11y', 'inputlatency', 'recall', 'unit:recall-test', 'lazy', 'unit:boot-test'], // (round 45) switching chats feels instant: kept lists for recent chats, the end first, ready on pointing; and what it touches
   menucalm: ['menucalm', 'labeasy', 'labsearch', 'appsearch', 'chatcalm', 'a11y', 'labrecipes', 'labcamera', 'labtemplates', 'labbatch', 'multiformat', 'qa-keys', 'lazy', 'unit:boot-test'], // (round 43) calm menus: budgets per menu, every action ≤ 2 clicks (pointing opens two levels), one name per action, nothing gone; and the checks that read the moved rows
+  localanswers: ['localanswers', 'unit:localanswers-test', 'appsearch', 'unit:appsearch-test', 'labsearch', 'unit:whatsnew-test', 'whatsnew', 'chatcalm', 'options', 'lazy', 'unit:boot-test'], // (round 45) 💡 Answered by Hearth: questions about Hearth answered here for free; and what it reuses / touches
+  errorcalm: ['errorcalm', 'unit:errorcalm-test', 'unit:errorcalm-scan', 'unit:offline-test', 'unit:winpolish-test', 'unit:macpolish-test', 'unit:renders-test'], // (round 45) errors in plain words: real errors provoked (a missing file / song, ffmpeg on a damaged video, the sync folder gone / replaced, the engine missing, a scene error, a raw note) → one sentence + one action, the raw text behind Details; the mapper; the lint
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];
@@ -130,7 +138,10 @@ if (argv.includes('--list')) {
   console.log(`all: every check above (${GROUPS.all.length})`);
   process.exit(0);
 }
-const wanted = [...new Set((names.length ? names : ['qa']).flatMap((n) => GROUPS[n] || [UNIT.includes(n) ? `unit:${n}` : n]))];
+// (round 44) --names <group…>: the checks one per line (to split "all" into parts that fit a time limit)
+if (argv.includes('--names')) { console.log([...new Set((names.length ? names : ['qa']).flatMap((n) => GROUPS[n] || [n]))].join('\n')); process.exit(0); } // run them with --exact
+// (round 44) --exact: the names are checks, never groups ("a11y" is both: a part of "all" ran its whole group again)
+const wanted = [...new Set((names.length ? names : ['qa']).flatMap((n) => (!argv.includes('--exact') && GROUPS[n]) || [UNIT.includes(n) ? `unit:${n}` : n]))];
 for (const n of wanted) if (!n.startsWith('unit:') && !all.includes(n)) { console.error(`No check "${n}" (sh dev/run-checks.sh --list)`); process.exit(2); }
 
 // ---------- fixtures (made once, reused; all in the temp folder, never in the app) ----------
@@ -172,11 +183,38 @@ function flagsOf(src) {
   for (let i = 0; i < toks.length; i++) {
     const t = toks[i];
     if (['--script', '--shot', '--lib'].includes(t)) { i++; continue; } // set here (libs: by smoke.js)
-    if (['--check-timeout', '--wait', '--data', '--eval', '--open', '--save-dir', '--screen', '--dpr'].includes(t)) { keep.push(t, toks[++i].replace(/^["']|["']$/g, '')); continue; }
+    // (round 44) --coverage takes its file too: without it smoke.js wrote trim-drive's coverage to a file named "--script"
+    if (['--check-timeout', '--wait', '--data', '--eval', '--open', '--save-dir', '--screen', '--dpr', '--coverage'].includes(t)) { keep.push(t, toks[++i].replace(/^["']|["']$/g, '')); continue; }
     if (t.startsWith('--')) keep.push(t);
   }
   if (!keep.includes('--check-timeout')) keep.push('--check-timeout', '600000');
   return keep;
+}
+// (round 44) What a check returned, judged by its top-level fields, whatever shape it reports in: an explicit
+// "ok" / "pass" boolean is the check's own verdict (report modes keep their lists but say true); otherwise a non-empty
+// errors / problems / fail(s) / failures / failed / bad / dups list, a "missing…" / "bad…" list or map (nodes-shader's
+// badTypes, missingCommands) or a bad / failed count over 0 fails it. Each value smoke.js prints after its "▶ <code>"
+// line is read as JSON, or the {…} inside a text result (declutter's "DECLUTTER FAIL … {json}", fastboot's
+// "[FASTBOOT]{json} FAIL"). Returns the first failing field ("errors: a 9:16 take…"), or ''.
+const FAIL_KEY = /^(?:errors|problems|fails?|failures|failed|bad|dups|missing\w*|bad[A-Z]\w*)$/;
+function verdictOf(text) {
+  // (the "▶" line shows the start of the check's code, which can run over several lines: the value is the JSON that
+  // runs to the section's last "}", tried from each "{" on)
+  const sections = text.split(/\n▶ /).slice(1).map((s) => s.split(/\n(?:screenshot: |coverage: |kept: |OK: no page errors\.|\d+ problem\(s\):)/)[0].trim());
+  for (const s of sections) {
+    let v = null;
+    const b = s.lastIndexOf('}');
+    for (let a = s.indexOf('{'), tries = 0; a >= 0 && a < b && !v && tries < 400; a = s.indexOf('{', a + 1), tries += 1) { try { v = JSON.parse(s.slice(a, b + 1)); } catch { /* not there yet */ } }
+    if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+    if (v.ok === false || v.pass === false) return `${v.ok === false ? 'ok' : 'pass'}: false`;
+    if (v.ok === true || v.pass === true) continue;
+    for (const [k, x] of Object.entries(v)) {
+      if (!FAIL_KEY.test(k)) continue;
+      const n = Array.isArray(x) ? x.length : x && typeof x === 'object' ? Object.keys(x).length : /^(?:bad|failed|failures|fails?)$/.test(k) && typeof x === 'number' ? x : 0;
+      if (n > 0) return `${k}: ${Array.isArray(x) ? String(x[0]) : x && typeof x === 'object' ? Object.keys(x)[0] : x}${n > 1 ? ` (+${n - 1})` : ''}`;
+    }
+  }
+  return '';
 }
 const results = [];
 const t0 = Date.now();
@@ -200,10 +238,11 @@ for (const n of wanted) {
   }
   const text = `${r.stdout || ''}${r.stderr || ''}`;
   fs.writeFileSync(log, text);
-  // failed: a non-zero exit, a result with a top-level "ok": false or "pass": false (round 39: appsearch reports "pass") (not one nested in what a check reports), a ✖ step,
-  // or a FAIL line from a Node test
-  const bad = r.status !== 0 || /^(?:\{ ?| )"(?:ok|pass)":\s*false/m.test(text) || /^\s*"?✖/m.test(text) || /^(FAIL|✖)/m.test(text);
-  const why = bad ? (text.match(/\d+ problem\(s\):\n([^\n]*)/)?.[1] || text.match(/^\s*"?✖[^\n]*/m)?.[0] || text.match(/"problems":\s*\[[^\]]*\]/)?.[0] || (r.error ? r.error.message : `exit ${r.status}`)).trim().slice(0, 200) : '';
+  // failed: a non-zero exit, a result with a top-level "ok": false or "pass": false (round 39: appsearch reports "pass"; round 43: a non-empty top-level "errors" list, as the capture checks report) (not one nested in what a check reports), a ✖ step,
+  // or a FAIL line from a Node test; (round 44) any failing top-level field of a check's result, in whatever shape (verdictOf)
+  const verdict = n.startsWith('unit:') || n.startsWith('astra-') ? '' : verdictOf(text);
+  const bad = r.status !== 0 || Boolean(verdict) || /^(?:\{ ?| )"(?:ok|pass)":\s*false/m.test(text) || /^ "errors": \[\s*"/m.test(text) || /^\s*"?✖/m.test(text) || /^(FAIL|✖)/m.test(text);
+  const why = bad ? (text.match(/\d+ problem\(s\):\n([^\n]*)/)?.[1] || text.match(/^\s*"?✖[^\n]*/m)?.[0] || verdict || text.match(/^FAIL[^\n]*/m)?.[0] || text.match(/"problems":\s*\[[^\]]*\]/)?.[0] || (r.error ? r.error.message : `exit ${r.status}`)).trim().slice(0, 200) : '';
   results.push({ n, ok: !bad, s: Math.round((Date.now() - started) / 1000), why });
   console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}`);
   if (bad && argv.includes('--stop')) break;

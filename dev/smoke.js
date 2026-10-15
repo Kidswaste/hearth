@@ -42,7 +42,7 @@ const PORT = 9400 + Math.floor(Math.random() * 500);
 
 // Errors that come from the test environment, not the app (no GPU, no engines installed, no network).
 // (Chromium warns when the page capture's frame reader is cancelled with frames still queued: a GC note, not an app error)
-const IGNORE = [/A VideoFrame was garbage collected without being closed/, /GPU|gpu_|viz|dri3|libva|vaInitialize|Vulkan|EGL|GLES|ANGLE/i, /net::ERR_/, /Autofill\./, /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_PROXY|ERR_TUNNEL/, /Electron Security Warning/, /favicon/i, /DevTools/, /dbus|org\.freedesktop/i, /Render frame was disposed before WebFrameMain could be accessed/, /seqsolid (boom|throws)/]; // (round 29) a message to a page that just crashed (dev/checks/safetynet.js crashes it on purpose)
+const IGNORE = [/A VideoFrame was garbage collected without being closed/, /GPU|gpu_|viz|dri3|libva|vaInitialize|Vulkan|EGL|GLES|ANGLE/i, /net::ERR_/, /Autofill\./, /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_PROXY|ERR_TUNNEL/, /Electron Security Warning/, /favicon/i, /DevTools/, /dbus|org\.freedesktop/i, /Render frame was disposed before WebFrameMain could be accessed/, /seqsolid (boom|throws)/, /hearth-errorcalm-\d+/]; // (round 45) errors dev/checks/errorcalm.js provokes on purpose in its throwaway folder · (round 29) a message to a page that just crashed (dev/checks/safetynet.js crashes it on purpose)
 
 // https://cdn.jsdelivr.net/npm/three@V/<path> -> /opt/cdn-cache/three@V/package/<path> (fetched once from the npm registry).
 const CDN_CACHE = process.env.CDN_CACHE || '/opt/cdn-cache';
@@ -330,6 +330,13 @@ async function cdpConnect() {
         await send('Page.reload', {});
         await new Promise((r) => setTimeout(r, waitMs));
         for (let i = 0; i < 60; i++) { const ready = await run('document.readyState === "complete" && typeof H !== "undefined" && H.agents().length > 0'); if (ready.value === true) break; await new Promise((r) => setTimeout(r, 500)); }
+      }
+      // (round 44, capturefix2) the groups that load by themselves after the first screen (every tier but 'use') are in
+      // before a check runs: on a loaded machine `Capture` was still a stand-in (undefined) after --wait, and
+      // capture-record failed at its first line. Up to 30 s; --no-lazy-wait keeps the old timing (boot checks).
+      if (scriptFile && ci >= evals.length && !args.includes('--no-lazy-wait')) {
+        // (and the page is up: chatcalm once ran into a window still loading, "H is not defined")
+        for (let i = 0; i < 60; i++) { const ready = await run('document.readyState === "complete" && (typeof H !== "undefined" || !/index\\.html/.test(location.href)) && (!window.Lazy || localStorage.getItem("lazy.hold") === "1" || Lazy.state().every((g) => g.tier === "use" || (g.state !== "stub" && g.state !== "loading")))'); if (ready.value === true) break; await new Promise((r) => setTimeout(r, 500)); }
       }
       const r = await run(c);
       console.log(`\n▶ ${c.length > 160 ? `${c.slice(0, 160)}…` : c}\n${r.error ? `✖ ${r.error}` : typeof r.value === 'string' ? r.value : JSON.stringify(r.value, null, 2)}`);

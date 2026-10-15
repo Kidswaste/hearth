@@ -168,7 +168,10 @@ await measure('restart from scratch', async () => { out.coverDuringReload.restar
 
 const want = { edit: 'lab-xfade:opacity', addLayer: 'lab-layer:opacity+clipPath', removeLayer: 'lab-ghost:opacity', sceneSwitch: 'lab-swap:opacity' };
 for (const [k, a] of Object.entries(want)) if (!out.transitions[k]?.animations.some((x) => x.split(':')[0].split(' ')[0] === a.split(':')[0] && x.endsWith(a.split(':')[1]))) out.problems.push(`no ${a} animation during ${k}`);
-for (const [k, st] of Object.entries(out.coverDuringReload)) if (!st.includes('covered with the old picture')) out.problems.push(`the ${k} reload showed no picture of the old scene`);
+// (round 44) only where the page really reloaded: fit → 9:16 switches its pixel ratio in place since round 37 (labboot
+// retune: 0 reloads), so there is no reload to cover
+const reloadOf = { frameSize: 'frame size fit → 9:16 (new pixel ratio)', restart: 'restart from scratch' };
+for (const [k, st] of Object.entries(out.coverDuringReload)) if (out.actions[reloadOf[k]]?.reloads !== 0 && !st.includes('covered with the old picture')) out.problems.push(`the ${k} reload showed no picture of the old scene`);
 out.hubWindowReloaded = !window.__liveMarker;
 if (out.hubWindowReloaded) out.problems.push('the hub window reloaded');
 out.coverOut = host.querySelector('.three-preview > .scene-cover')?.classList.contains('out');

@@ -105,7 +105,7 @@ const DataSafe = (() => {
       sec(`Settings (${r.settings?.length || 0})`, (r.settings || []).map((s) => tick(s.key, true, s.what === 'agent' ? `The AI “${s.name}”` : `The setting “${s.name}”`, `from ${s.from}`))),
       sec(`Tool data (${r.kv?.length || 0})`, (r.kv || []).map((k) => tick(k.key, true, k.label, `a copy kept aside ${day(k.at)} held ${k.count}, now ${k.now} · joined with yours`))),
     ].filter(Boolean);
-    if (r.error) body.replaceChildren(el('p', { class: 'hint', text: `Couldn't look: ${r.error}` }));
+    if (r.error) body.replaceChildren(el('p', { class: 'hint', text: `Couldn't look: ${calmError(r.error)}` })); // (round 45, errorcalm)
     else if (!parts.length) body.replaceChildren(el('p', { class: 'hint', text: `Nothing is missing: everything in ${plural((r.sources || []).length, 'place')} Hearth looked is already in your lists.` }));
     else body.replaceChildren(...parts);
     const paint = () => { const n = boxes.filter((b) => b.checked).length; go.disabled = !n; go.textContent = n ? `Bring back ${n}` : 'Bring back'; };

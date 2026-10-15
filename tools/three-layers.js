@@ -329,39 +329,93 @@ filter('${type}', P);
     const menuHandlers = (L) => ({ select: () => onSelect(L.id), change: (p) => onChange(L.id, p, { live: false }), solo: onSolo ? () => onSolo(L.id) : null, copy: () => onAdd('copy'), remove: layers.length > 1 ? () => onRemove(L.id) : null,
       rename: () => { const n = list.querySelector(`.ly-row[data-id="${CSS.escape(L.id)}"] .ly-name`); if (n) n.dispatchEvent(new MouseEvent('dblclick')); } });
     let dragId = null;
+    // (round 44, layergroups) dragKind: 'layer' | 'group' (a group's header drags its whole run); picked: layers chosen
+    // with Ctrl/⌘+click or Shift+click for Group (Ctrl/⌘+G); the groups' own work is tools/three-groups*.js
+    let dragKind = 'layer';
+    let picked = new Set();
+    let lastPick = null;
+    const GC = () => (typeof LayerGroups !== 'undefined' ? LayerGroups : null);
+    const GU = () => (typeof LabGroups !== 'undefined' ? LabGroups : null);
+    function pickRow(L, e) {
+      const order = [...list.querySelectorAll('.ly-row[data-id]')].map((r) => r.dataset.id);
+      if (e.shiftKey && (lastPick || selectedId)) {
+        const a = order.indexOf(lastPick || selectedId); const b = order.indexOf(L.id);
+        if (a >= 0 && b >= 0) for (const id of order.slice(Math.min(a, b), Math.max(a, b) + 1)) picked.add(id);
+      } else if (picked.has(L.id)) picked.delete(L.id); else picked.add(L.id);
+      if (selectedId && !e.shiftKey && picked.size === 1 && !picked.has(selectedId)) picked.add(selectedId);
+      lastPick = L.id;
+      paintPicks();
+    }
+    function paintPicks() { for (const r of list.querySelectorAll('.ly-row[data-id]')) { const on = picked.has(r.dataset.id); if (r.classList.contains('picked') !== on) r.classList.toggle('picked', on); } }
+    function dropOn(e, target, row) {
+      e.preventDefault();
+      row?.classList.remove('drop-target');
+      if (!dragId) return;
+      const drag = dragKind === 'group' ? { group: dragId } : { layer: dragId };
+      if (GU()?.drop(drag, target)) return;
+      if (drag.group || !target.layer || dragId === target.layer) return;
+      // dropped onto a layer: the dragged layer takes its place (above it when moving up the list)
+      const ids = layers.map((x) => x.id).filter((x) => x !== dragId);
+      const from = layers.findIndex((x) => x.id === dragId);
+      const to = layers.findIndex((x) => x.id === target.layer);
+      ids.splice(ids.indexOf(target.layer) + (from < to ? 1 : 0), 0, dragId);
+      onReorder(ids);
+    }
+    const dragFrom = (row, kind, id) => {
+      row.addEventListener('dragstart', (e) => { dragId = id; dragKind = kind; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
+      row.addEventListener('dragend', () => { dragId = null; row.classList.remove('dragging'); });
+    };
+    const dropInto = (row, target, same) => {
+      row.addEventListener('dragover', (e) => { if (dragId && !same()) { e.preventDefault(); row.classList.add('drop-target'); } });
+      row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
+      row.addEventListener('drop', (e) => { e.stopPropagation(); dropOn(e, target, row); });
+    };
+    // a drop under the last row: the bottom of the list, out of any group
+    list.addEventListener('dragover', (e) => { if (dragId && e.target === list) e.preventDefault(); });
+    list.addEventListener('drop', (e) => { if (e.target === list && dragId) { e.preventDefault(); GU()?.drop(dragKind === 'group' ? { group: dragId } : { layer: dragId }, { end: true }); } });
+    function layerRow(L, r = {}) {
+      const eye = el('button', { class: `ly-eye${L.visible === false ? ' off' : ''}${L.hid ? ' by-group' : ''}`, text: L.visible === false ? '◌' : '👁', title: `${L.visible === false ? (L.hid === 'solo' ? 'Hidden by a solo: show it too' : L.hid === 'group' ? 'Hidden with its group: show it' : 'Show this layer') : 'Hide this layer'} · Alt+click: show only this one (again: all)`, on: { click: (e) => { e.stopPropagation(); if (e.altKey && onSolo) { onSolo(L.id); return; } onChange(L.id, { visible: L.visible === false }, { live: false }); } } });
+      const name = el('span', { class: 'ly-name', text: L.name, title: 'Double-click to rename' });
+      name.addEventListener('dblclick', async (e) => {
+        e.stopPropagation();
+        const v = await Modal.prompt('Rename layer', { value: L.name });
+        if (v?.trim()) onChange(L.id, { name: v.trim() }, { live: false });
+      });
+      const tags = [isFilter(L.code) ? 'FX' : '', L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
+      // (round 44) S: this layer alone (lit while it is; shows on hover otherwise)
+      const solo = onSolo ? el('button', { class: `ly-solo${L.solo === L.id ? ' on' : ''}`, text: 'S', title: L.solo === L.id ? 'Show every layer again' : 'Show only this layer (solo; Alt+click its eye does it too)', attrs: { 'aria-label': `Solo ${L.name}` }, on: { click: (e) => { e.stopPropagation(); onSolo(L.id); } } }) : null;
+      const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}${r.gid ? ' in-group' : ''}${r.last ? ' group-last' : ''}${picked.has(L.id) ? ' picked' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · Ctrl/⌘ or Shift+click: pick several (Ctrl/⌘+G groups them) · drag to reorder, onto a group to put it in', on: { click: (e) => { if ((e.ctrlKey || e.metaKey || e.shiftKey) && GC()) { pickRow(L, e); return; } if (picked.size) { picked.clear(); paintPicks(); } lastPick = L.id; onSelect(L.id); } } },
+        eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }), solo);
+      // (round 26) right-click: hide, solo, rename, duplicate, react, a filter above… (tools/three-easy.js)
+      row.addEventListener('contextmenu', (e) => { if (typeof LabEasy === 'undefined') return; e.preventDefault(); onSelect(L.id); LabEasy.layerMenu(e.clientX, e.clientY, L, menuHandlers(L)); });
+      dragFrom(row, 'layer', L.id);
+      dropInto(row, { layer: L.id }, () => dragId === L.id);
+      return row;
+    }
+    // (round 44) a group's header: ▾ fold, its eye (Alt+click: solo), 📁 name (double-click: rename), how many, S
+    function groupRow(r) {
+      const g = r.g; const gu = GU();
+      const caret = el('button', { class: 'ly-caret', text: g.closed ? '▸' : '▾', title: g.closed ? 'Show its layers' : 'Fold it', attrs: { 'aria-label': `${g.closed ? 'Unfold' : 'Fold'} the group ${g.name}`, 'aria-expanded': String(!g.closed) }, on: { click: (e) => { e.stopPropagation(); gu?.fold(g.id); } } });
+      const eye = el('button', { class: `ly-eye${r.vis === 'off' ? ' off' : ''}${r.vis === 'some' ? ' some' : ''}`, text: r.vis === 'off' ? '◌' : '👁', title: `${r.vis === 'off' ? 'Show the group' : 'Hide the whole group'} · Alt+click: show only this group (again: all)`, attrs: { 'aria-label': `${r.vis === 'off' ? 'Show' : 'Hide'} the group ${g.name}` }, on: { click: (e) => { e.stopPropagation(); if (e.altKey) gu?.solo(g.id); else gu?.toggle(g.id); } } });
+      const name = el('span', { class: 'ly-name', text: g.name, title: 'Double-click to rename' });
+      name.addEventListener('dblclick', (e) => { e.stopPropagation(); gu?.rename(g.id); });
+      const solo = el('button', { class: `ly-solo${r.solo ? ' on' : ''}`, text: 'S', title: r.solo ? 'Show every layer again' : 'Show only this group (solo; Alt+click its eye does it too)', attrs: { 'aria-label': `Solo the group ${g.name}` }, on: { click: (e) => { e.stopPropagation(); gu?.solo(g.id); } } });
+      const ids = layers.filter((L) => L.group?.id === g.id).map((L) => L.id);
+      const row = el('div', { class: `ly-row ly-group${r.vis === 'off' ? ' hidden-layer' : ''}${ids.length && ids.every((id) => picked.has(id)) ? ' picked' : ''}`, attrs: { draggable: 'true' }, dataset: { group: g.id }, title: 'A group · click: pick its layers · drag: move the whole group · drop a layer here: into the group · right-click: Ungroup, Rename, Precomp…', on: { click: () => { picked = new Set(ids); paintPicks(); row.classList.add('picked'); } } },
+        caret, eye, el('span', { class: 'ly-folder', text: '📁', attrs: { 'aria-hidden': 'true' } }), name, el('span', { class: 'ly-tags', text: `${r.n}` }), solo);
+      row.addEventListener('contextmenu', (e) => { if (!gu) return; e.preventDefault(); e.stopPropagation(); gu.groupMenu(e.clientX, e.clientY, g.id); });
+      dragFrom(row, 'group', g.id);
+      dropInto(row, { group: g.id }, () => dragKind === 'group' && dragId === g.id);
+      return row;
+    }
     function renderList() {
       count.textContent = layers.length > 1 ? `${layers.length}` : '';
       delBtn.disabled = layers.length <= 1;
-      list.replaceChildren(...[...layers].reverse().map((L) => {
-        const eye = el('button', { class: `ly-eye${L.visible === false ? ' off' : ''}`, text: L.visible === false ? '◌' : '👁', title: `${L.visible === false ? 'Show this layer' : 'Hide this layer'} · Alt+click: show only this one (again: all)`, on: { click: (e) => { e.stopPropagation(); if (e.altKey && onSolo) { onSolo(L.id); return; } onChange(L.id, { visible: L.visible === false }, { live: false }); } } });
-        const name = el('span', { class: 'ly-name', text: L.name, title: 'Double-click to rename' });
-        name.addEventListener('dblclick', async (e) => {
-          e.stopPropagation();
-          const v = await Modal.prompt('Rename layer', { value: L.name });
-          if (v?.trim()) onChange(L.id, { name: v.trim() }, { live: false });
-        });
-        const tags = [isFilter(L.code) ? 'FX' : '', L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
-        const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · drag to reorder', on: { click: () => onSelect(L.id) } },
-          eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }));
-        // (round 26) right-click: hide, solo, rename, duplicate, react, a filter above… (tools/three-easy.js)
-        row.addEventListener('contextmenu', (e) => { if (typeof LabEasy === 'undefined') return; e.preventDefault(); onSelect(L.id); LabEasy.layerMenu(e.clientX, e.clientY, L, menuHandlers(L)); });
-        row.addEventListener('dragstart', (e) => { dragId = L.id; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); });
-        row.addEventListener('dragend', () => { dragId = null; row.classList.remove('dragging'); });
-        row.addEventListener('dragover', (e) => { if (dragId && dragId !== L.id) { e.preventDefault(); row.classList.add('drop-target'); } });
-        row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
-        row.addEventListener('drop', (e) => {
-          e.preventDefault();
-          row.classList.remove('drop-target');
-          if (!dragId || dragId === L.id) return;
-          // dropped onto L: the dragged layer takes L's place (above it when moving up the list)
-          const ids = layers.map((x) => x.id).filter((x) => x !== dragId);
-          const from = layers.findIndex((x) => x.id === dragId);
-          const to = layers.findIndex((x) => x.id === L.id);
-          ids.splice(ids.indexOf(L.id) + (from < to ? 1 : 0), 0, dragId);
-          onReorder(ids);
-        });
-        return row;
-      }));
+      picked = new Set([...picked].filter((id) => layers.some((x) => x.id === id)));
+      const rows = GC() ? GC().rows(layers) : [...layers].reverse().map((L) => ({ kind: 'layer', L }));
+      list.replaceChildren(...rows.filter((r) => !r.folded).map((r) => (r.kind === 'group' ? groupRow(r) : layerRow(r.L, r))));
+      const sid = GC()?.soloId(layers);
+      root.classList.toggle('ly-soloing', Boolean(sid));
     }
 
     function renderProps() {
@@ -433,6 +487,8 @@ filter('${type}', P);
       el: root,
       render(next, sel) { layers = next; selectedId = sel; renderList(); renderProps(); },
       refreshProps: () => renderProps(),
+      picked: () => [...picked], // (round 44) the layers picked with Ctrl/⌘ / Shift+click (Group)
+      clearPicks: () => { picked.clear(); paintPicks(); },
       menuFor: (id) => { const L = layers.find((x) => x.id === id); return L ? { L, h: menuHandlers(L) } : null; }, // (round 36, labsearch)
       // While the song plays: animated fields show their current value, and ◆ shows whether you're on a keyframe.
       sync(values, states) {

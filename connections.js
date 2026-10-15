@@ -31,7 +31,9 @@ const Connections = (() => {
   const all = () => (Array.isArray(H.config?.connections) ? H.config.connections : []);
   const byId = (id) => all().find((c) => c.id === id);
   const find = (q) => { const s = String(q || '').trim().toLowerCase(); return all().find((c) => c.id === s || c.name.toLowerCase() === s) || all().find((c) => c.name.toLowerCase().includes(s)); };
-  async function putList(next) { H.config.connections = next.length ? next : undefined; if (!next.length) delete H.config.connections; await saveConfig(); }
+  // (capturefix2) the last one removed leaves an empty list: a config saved without the key got it back from disk (the
+  // round-43 save guard keeps any top-level part a save leaves out), so Remove brought the connection back
+  async function putList(next) { H.config.connections = next; await saveConfig(); }
   // the agent's own switches (the config watcher may hand back a fresh agent object: change both)
   async function setMode(agentId, id, mode) {
     const a = H.agent(agentId);
@@ -127,7 +129,10 @@ const Connections = (() => {
   async function remove(id) {
     const c = byId(id);
     if (!c || !(await Modal.confirm('Remove this connection?', `${c.name} goes for every AI (its settings too).`, { ok: 'Remove', danger: true }))) return;
-    for (const a of H.config.agents || []) if (a.connections?.[id]) { delete a.connections[id]; if (!Object.keys(a.connections).length) delete a.connections; }
+    // (capturefix2) both agent objects, as setMode does: the live one (H.agent) can be another object than the config's
+    // after a config reload, and kept the switch (connections check: "Remove takes it away for every AI")
+    const live = (H.config.agents || []).flatMap((a) => [a, H.agent(a.id)]).filter(Boolean);
+    for (const a of new Set(live)) if (a.connections?.[id]) { const m = { ...a.connections }; delete m[id]; if (Object.keys(m).length) a.connections = m; else delete a.connections; }
     results.delete(id);
     await putList(all().filter((x) => x.id !== id));
     repaint();

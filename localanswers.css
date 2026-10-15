@@ -1,0 +1,16 @@
+/* 💡 Answered by Hearth (round 45, localanswers.js): the small card above the chat box. Compositor-only entrance
+   (opacity + transform), no backdrop-filter, the look's own variables. */
+.la-card {
+  margin: 0 max(18px, calc((100% - 820px) / 2)) 4px; padding: 7px 10px 8px; /* as wide as the chat box (app.css .composer) */ border: 1px solid color-mix(in srgb, var(--fh-gold, var(--accent)) 45%, var(--line));
+  border-radius: 10px; background: color-mix(in srgb, var(--fh-gold, var(--accent)) 7%, var(--surface, var(--bg)));
+  font-size: 12.5px; line-height: 1.4; animation: la-in var(--dur-2, 160ms) var(--ease-out, ease-out) both;
+}
+@keyframes la-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.la-head { display: flex; align-items: center; gap: 8px; }
+.la-mark { font-weight: 600; color: var(--fh-gold, var(--accent)); }
+.la-free { color: var(--muted, inherit); opacity: 0.75; font-size: 11px; }
+.la-x { margin-left: auto; padding: 0 6px; line-height: 1.2; }
+.la-text { margin: 3px 0 6px; }
+.la-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.tool-dock .la-card, .companion-chat .la-card { margin: 0 10px 4px; }
+@media (prefers-reduced-motion: reduce) { .la-card { animation: none; } }

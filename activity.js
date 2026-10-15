@@ -139,8 +139,9 @@ const Activity = (() => {
     if (document.hidden) return true;
     try { return !(await window.hub.isWindowFocused()); } catch { return !document.hasFocus(); }
   }
-  async function notify(title, body, g) {
+  async function notify(title, body, g, ev = null) {
     if (!allowed() || !(await away())) return;
+    if (ev && window.Notify) { show(title, body, g, ev); return; } // (round 44, notify) one per chat, bursts summed up there
     const t = now();
     if (t - lastNote < NOTE_GAP) {
       held.push({ title, body, g });
@@ -156,12 +157,14 @@ const Activity = (() => {
     if (h.length === 1) { show(h[0].title, h[0].body, h[0].g); return; }
     show(`Hearth: ${h.length} things`, h.map((x) => x.title).slice(0, 4).join(' · '), null);
   }
-  function show(title, body, g) {
+  function show(title, body, g, ev = null) {
     lastNote = now();
     sent.push({ title, body, at: lastNote });
     if (sent.length > 30) sent.shift();
     try {
       window.hub.flashWindow?.();
+      // (round 44, notify) Electron's own notification (Settings › Advanced › Tell me when…), its words made from the facts
+      if (ev && window.Notify) { Notify.send({ ...ev, go: g }); return; }
       const n = new Notification(title, { body: short(body, 160), silent: false });
       n.onclick = () => { window.hub.showWindow?.(); if (g) go(g); else open(); };
     } catch { /* notifications off */ }
@@ -196,7 +199,7 @@ const Activity = (() => {
       const m = chat.messages.at(-1);
       if (event.type === 'done' && m?.plan === 'waiting') {
         plans.set(chat.id, { agentId, chatId: chat.id, title: chat.title || 'Chat', at: now() });
-        notify(`${nameOf(agentId)}'s plan is ready`, 'It waits for your ▶ Go ahead.', { chat: [agentId, chat.id] });
+        notify(`${nameOf(agentId)}'s plan is ready`, 'It waits for your ▶ Go ahead.', { chat: [agentId, chat.id] }, { type: 'plan', agentId, chatId: chat.id });
       }
       soon(); arm();
     }, 450);
@@ -233,12 +236,12 @@ const Activity = (() => {
     const took = j.seconds != null ? j.seconds * 1000 : (j.ended || now()) - (j.started || j.created || now());
     if (what === 'done') {
       remember({ icon: '⇪', text: `Render done: ${short(name, 50)}${took >= 1000 ? ` · ${secs(took)}` : ''}`, go: j.output ? { file: j.output } : { renders: 1 } });
-      if (took >= LONG_JOB_MS) notify('Render done', short(name, 80), j.output ? { file: j.output } : { renders: 1 });
+      if (took >= LONG_JOB_MS || window.Notify) notify('Render done', short(name, 80), j.output ? { file: j.output } : { renders: 1 }, { type: 'render', file: j.output || null, name: j.title, ms: took }); // (round 44: Notify decides how long is long)
     } else {
       const why = j.error?.reason || 'failed';
       remember({ icon: '✕', text: `Render failed: ${short(j.title, 40)} (${short(why, 50)})`, go: { renders: 1 } });
       fails.set(`render:${j.id}`, { icon: '⇪', text: `Render failed: ${short(j.title, 40)} (${short(why, 60)})`, at: now(), go: { renders: 1 } });
-      notify('A render failed', `${short(j.title, 60)}: ${short(why, 90)}`, { renders: 1 });
+      notify('A render failed', `${short(j.title, 60)}: ${short(why, 90)}`, { renders: 1 }, { type: 'render', failed: true, name: j.title, why });
     }
   }
   // other work with a bar (flows, comps, Lab renders, captures, installs…): its end, when it was a long one
@@ -249,7 +252,7 @@ const Activity = (() => {
       if (took >= LONG_JOB_MS && !it.parent) {
         const ok = it.state !== 'failed';
         remember({ icon: ok ? '✓' : '✕', text: `${short(it.title || it.key, 50)} ${ok ? 'finished' : 'failed'} · ${secs(took)}` });
-        notify(`${short(it.title || 'A job', 50)} ${ok ? 'finished' : 'failed'}`, `It took ${secs(took)}.`, null);
+        notify(`${short(it.title || 'A job', 50)} ${ok ? 'finished' : 'failed'}`, `It took ${secs(took)}.`, null, { type: 'job', name: it.title || 'A job', ms: took, failed: !ok });
       }
     }
     soon();
@@ -257,7 +260,7 @@ const Activity = (() => {
   let syncWas = null;
   function onSync() {
     const s = syncNeed();
-    if (s && s !== syncWas) notify(s, 'Open Hearth to look at it.', { sync: 1 });
+    if (s && s !== syncWas) notify(s, 'Open Hearth to look at it.', { sync: 1 }, { type: 'sync', text: s });
     syncWas = s;
     soon();
   }
@@ -281,7 +284,7 @@ const Activity = (() => {
       if (x.kind !== 'reply') continue;
       if (x.l.stall && !stalled.has(x.r.chatId)) {
         stalled.add(x.r.chatId);
-        notify(`${nameOf(x.r.agentId)} looks stuck`, x.l.stall, { chat: [x.r.agentId, x.r.chatId] });
+        notify(`${nameOf(x.r.agentId)} looks stuck`, x.l.stall, { chat: [x.r.agentId, x.r.chatId] }, { type: 'stuck', agentId: x.r.agentId, chatId: x.r.chatId, text: x.l.stall });
       } else if (!x.l.stall) stalled.delete(x.r.chatId);
     }
     paint(run);
