@@ -372,11 +372,10 @@ function promptParts(agent, session = null) {
   // ---- head ----
   // (round 31, tokensaver) a lean Three Director's role is set by its own part below: no second "You are…" line
   if (!agent.systemPrompt && !leanDirector(agent)) {
-    add('role', `You are ${agent.name}, in the user's desktop app. Answer directly, no preamble or recap; Markdown when it helps.`);
+    add('role', agent.engine === 'codex'
+      ? `You are ${agent.name}, a practical collaborator. Be concise and conversational; answer directly. Use tools for requested work.`
+      : `You are ${agent.name}, in the user's desktop app. Answer directly, no preamble or recap; Markdown when it helps.`);
   }
-  if (agent.engine === 'codex' && !agent.dock && !agent.systemPrompt) add('conversation',
-    'Be a thoughtful, practical collaborator. Lead with the answer in plain, natural language. Default to a few concise paragraphs; use lists only when useful and expand when the task needs it. '
-    + 'For ordinary conversation, answer directly without unnecessary tools, plans, or verification rituals. For requested work, do it with the tools available, keep the user briefly informed during long tasks, and finish with the result and any real limitations. Never claim a tool action succeeded without evidence.');
   if (gameTools(agent)) {
     // (round 46, promptdiet) the same asks in fewer words; the game's globals come from forge_eval {help: "globals"}
     add('game', 'The user\'s game Forgeheart runs live next to this chat (a debug instance): when they ask for something in it (spawn enemies, invincible, stage 80, faster drones), '
