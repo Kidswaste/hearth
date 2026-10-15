@@ -13,6 +13,20 @@
   .lab-layer { position: fixed; inset: 0; overflow: hidden; pointer-events: none; transform-origin: 50% 50%; }
   .lab-layer.interactive { pointer-events: auto; }
   .lab-ghost { position: fixed; inset: 0; overflow: hidden; pointer-events: none; transform-origin: 50% 50%; }
+  /* (round 46, labdirect) the picked layer's outline, handles and snap guides: one overlay, moved like the layer */
+  #lab-direct { position: fixed; inset: 0; pointer-events: none; z-index: 2147483000; --k: 1; }
+  #lab-direct[hidden], #lab-direct [hidden] { display: none; }
+  #lab-direct .ld-frame { position: absolute; inset: 0; transform-origin: 50% 50%; }
+  #lab-direct .ld-box { position: absolute; box-sizing: border-box; border: calc(1px * var(--k)) solid #ffb45a; box-shadow: 0 0 0 calc(1px * var(--k)) #0009; }
+  #lab-direct .ld-h, #lab-direct .ld-rot { position: absolute; width: 10px; height: 10px; box-sizing: border-box; background: #fff; border: 1.5px solid #ff8a3d; border-radius: 2px; pointer-events: auto; transform: translate(-50%, -50%) scale(var(--k)); }
+  #lab-direct [data-h="nw"] { left: 0; top: 0; cursor: nwse-resize; } #lab-direct [data-h="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+  #lab-direct [data-h="ne"] { left: 100%; top: 0; cursor: nesw-resize; } #lab-direct [data-h="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+  #lab-direct .ld-rot { left: 50%; top: calc(-22px * var(--k)); border-radius: 50%; cursor: grab; }
+  #lab-direct .ld-stem { position: absolute; left: 50%; top: calc(-17px * var(--k)); height: calc(17px * var(--k)); width: calc(1px * var(--k)); background: #ffb45a; }
+  #lab-direct .ld-3d { position: absolute; left: 0; bottom: 100%; margin-bottom: calc(5px * var(--k)); transform: scale(var(--k)); transform-origin: 0 100%; pointer-events: auto; cursor: pointer; font: 600 11px system-ui, sans-serif; color: #1a1206; background: #ffb45a; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+  #lab-direct .ld-gx, #lab-direct .ld-gy { position: absolute; background: #ff4fa3; box-shadow: 0 0 0 0.5px #0006; }
+  #lab-direct .ld-gx { top: 0; bottom: 0; width: 1px; } #lab-direct .ld-gy { left: 0; right: 0; height: 1px; }
+  html.ld-dragging, html.ld-dragging * { cursor: grabbing !important; }
 </style>
 <script>
   // Import map built from ?v= so the Lab can switch three.js versions.
@@ -2984,6 +2998,298 @@ addEventListener('keydown', (e) => {
   if (k === 'escape') select(null);
 }, true);
 
+// ---------- ✥ Direct (round 46, labdirect): work on the picture itself ----------
+// Click something in the preview: its layer is picked (the Lab selects it in the Layers list); drag moves it, Shift-drag
+// snaps it to the centre / thirds / edges / the other layers (thin guides), the corners scale it, the small circle above
+// turns it, Alt/Option+wheel scales it, the arrows nudge it (Shift: 10×), Esc lets go, a double-click opens its sliders.
+// What moves is the layer's own Move X / Move Y / Scale / Rotate (props x, y, scale, rotate: keyframes at the playhead
+// when they're animated), so renders, recipes, templates, the sequence and the directors follow; the Lab
+// (tools/three-direct.js) makes one undo step per drag. A 3D layer gets "✥ 3D": the scene editor's gizmo on the object
+// that was clicked (a 🧊 model's own gizmo). Layers with controls of their own (orbit controls, their own drags) are
+// picked but keep their drags; the director's synthetic input never moves anything.
+// Cost: the picture is read only on pointer events (a 7×7 look under the pointer; the picked layer's outline once per
+// pick / drag); nothing runs per frame: the outline is one overlay with the layer's own transform.
+// <direct-core> (pure: dev/labdirect-test.js runs it in Node)
+function directCore() {
+  const RAD = Math.PI / 180;
+  // a point of the layer's own (untransformed) box → where it shows; t = { x, y (% of the frame), scale, rotate (°) }
+  // about the frame's centre, as the layer's CSS transform: translate(x%, y%) rotate() scale()
+  const fwd = (qx, qy, W, H, t) => { const s = t.scale ?? 1; const a = (t.rotate || 0) * RAD; const dx = (qx - W / 2) * s; const dy = (qy - H / 2) * s; const c = Math.cos(a); const n = Math.sin(a); return [W / 2 + ((t.x || 0) / 100) * W + dx * c - dy * n, H / 2 + ((t.y || 0) / 100) * H + dx * n + dy * c]; };
+  const inv = (px, py, W, H, t) => { const s = t.scale || 1; const a = -(t.rotate || 0) * RAD; const dx = px - W / 2 - ((t.x || 0) / 100) * W; const dy = py - H / 2 - ((t.y || 0) / 100) * H; const c = Math.cos(a); const n = Math.sin(a); return [W / 2 + (dx * c - dy * n) / s, H / 2 + (dx * n + dy * c) / s]; };
+  // a box of the layer's own pixels → the box it covers on screen
+  function screenBox(b, W, H, t) {
+    let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+    for (const [qx, qy] of [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]]) { const [x, y] = fwd(qx, qy, W, H, t); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    return { x0, y0, x1, y1 };
+  }
+  // the x / y (%) that keep the layer's own point q where it shows while scale / rotate go from `from` to `to`
+  function pin(q, W, H, from, to) { const p = fwd(q[0], q[1], W, H, from); const z = fwd(q[0], q[1], W, H, { ...to, x: 0, y: 0 }); return { x: ((p[0] - z[0]) / W) * 100, y: ((p[1] - z[1]) / H) * 100 }; }
+  // Shift-drag: the box's edges or middle onto the nearest line within thr px, each axis on its own
+  function snapAxis(a0, a1, lines, thr) { let best = null; for (const e of [a0, (a0 + a1) / 2, a1]) for (const c of lines) { const d = c - e; if (Math.abs(d) <= thr && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, at: c }; } return best; }
+  function snap(b, lines, thr = 8) { const x = snapAxis(b.x0, b.x1, lines.xs, thr); const y = snapAxis(b.y0, b.y1, lines.ys, thr); return { dx: x ? x.d : 0, dy: y ? y.d : 0, gx: x ? x.at : null, gy: y ? y.at : null }; }
+  // the frame's own lines: edges, thirds, centre (px)
+  const frameLines = (W, H) => ({ xs: [0, W / 3, W / 2, (2 * W) / 3, W], ys: [0, H / 3, H / 2, (2 * H) / 3, H] });
+  // what's drawn (alpha over thr) in an RGBA picture w × h → { x0, y0, x1, y1 } in 0…1, null when nothing is
+  function bbox(data, w, h, thr = 12) {
+    let x0 = w; let y0 = h; let x1 = -1; let y1 = -1;
+    for (let y = 0; y < h; y++) { const row = y * w * 4; for (let x = 0; x < w; x++) if (data[row + x * 4 + 3] > thr) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+    return x1 < 0 ? null : { x0: x0 / w, y0: y0 / h, x1: (x1 + 1) / w, y1: (y1 + 1) / h };
+  }
+  // within the sliders' ranges (Move X / Y −100…100 %, Scale 0.1…3, Rotate −180…180°), rounded as they step
+  function clampT(t) {
+    const out = {}; const r2 = (v) => Math.round(v * 100) / 100;
+    if (t.x != null) out.x = r2(Math.max(-100, Math.min(100, t.x)));
+    if (t.y != null) out.y = r2(Math.max(-100, Math.min(100, t.y)));
+    if (t.scale != null) out.scale = r2(Math.max(0.1, Math.min(3, t.scale)));
+    if (t.rotate != null) out.rotate = Math.round(((((t.rotate + 180) % 360) + 360) % 360 - 180) * 2) / 2;
+    return out;
+  }
+  // an arrow: 1 px of the frame (Shift: 10), in %
+  const nudge = (key, shift, W, H) => { const k = shift ? 10 : 1; return { x: key === 'ArrowLeft' ? (-k * 100) / W : key === 'ArrowRight' ? (k * 100) / W : 0, y: key === 'ArrowUp' ? (-k * 100) / H : key === 'ArrowDown' ? (k * 100) / H : 0 }; };
+  const angle = (cx, cy, x, y) => Math.atan2(y - cy, x - cx) / RAD;
+  return { fwd, inv, screenBox, pin, snap, frameLines, bbox, clampT, nudge, angle };
+}
+// </direct-core>
+const DR = { core: directCore(), sel: null, bb: null, ui: null, drag: null, down: null, run: null, tok: 0, at: null, cv: null, busy: new Map(), picks: 0, reads: 0, view: 1 }; // view: how big a page pixel shows (the Lab scales exact frame sizes to fit)
+// not in an export page, the scene editor, a playing sequence, Present or a recording
+const drOk = () => mode === 'sketch' && !XP_PAGE && !SQ.on && !edit.on && !presentCursor && !compRec;
+function drCanvas(w, h) { const c = DR.cv || (DR.cv = document.createElement('canvas')); if (c.width !== w) c.width = w; if (c.height !== h) c.height = h; const g = c.getContext('2d'); g.clearRect(0, 0, w, h); return g; }
+// the layers a click can pick, top first (not filters, precomps' insides, a sequence's hidden side, hidden ones)
+const drLayers = () => ordered().filter((L) => !L.pseudo && !L.isFilter && !L.props.pcOf && !L.seqHide && L.box.style.display !== 'none' && layerMix(L) > 0.02).reverse();
+const drT = (L) => { const f = xform(L); return { x: f.x, y: f.y, scale: f.scale, rotate: f.rotate }; };
+const drCvs = (L) => layerCanvases(L).filter((cv) => cv.width && cv.height && cv.style.display !== 'none' && cv.style.visibility !== 'hidden');
+// is something of L drawn at (px, py)? (a 7×7 look, so thin lines and small type can be hit)
+function drHits(L, px, py) {
+  const W = innerWidth; const H = innerHeight;
+  const [qx, qy] = DR.core.inv(px, py, W, H, drT(L));
+  for (const cv of drCvs(L)) {
+    const ow = cv.offsetWidth || W; const oh = cv.offsetHeight || H;
+    const lx = qx - (cv.offsetLeft || 0); const ly = qy - (cv.offsetTop || 0);
+    if (lx < 0 || ly < 0 || lx >= ow || ly >= oh) continue;
+    DR.reads += 1;
+    try {
+      const g = drCanvas(7, 7);
+      g.drawImage(cv, (lx * cv.width) / ow - 3, (ly * cv.height) / oh - 3, 7, 7, 0, 0, 7, 7);
+      const d = g.getImageData(0, 0, 7, 7).data;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 20) return true;
+    } catch { return true; } // (a picture that can't be read counts as hit)
+  }
+  return false;
+}
+function drPick(px, py) { for (const L of drLayers()) if (drHits(L, px, py)) return L; return null; }
+// what L draws, as a box of its own pixels (its canvases at 128 px, alpha over 12); all of it when unreadable
+function drBox(L) {
+  const W = innerWidth; const H = innerHeight; const n = 128;
+  const w = W >= H ? n : Math.max(8, Math.round((n * W) / H)); const h = W >= H ? Math.max(8, Math.round((n * H) / W)) : n;
+  const g = drCanvas(w, h); const all = { x0: 0, y0: 0, x1: W, y1: H };
+  const cvs = drCvs(L);
+  if (!cvs.length) return all;
+  DR.reads += 1;
+  try {
+    for (const cv of cvs) g.drawImage(cv, ((cv.offsetLeft || 0) / W) * w, ((cv.offsetTop || 0) / H) * h, ((cv.offsetWidth || W) / W) * w, ((cv.offsetHeight || H) / H) * h);
+    const b = DR.core.bbox(g.getImageData(0, 0, w, h).data, w, h);
+    return b ? { x0: b.x0 * W, y0: b.y0 * H, x1: b.x1 * W, y1: b.y1 * H } : all;
+  } catch { return all; }
+}
+function drUi() {
+  if (DR.ui) return DR.ui;
+  const root = document.createElement('div');
+  root.id = 'lab-direct'; root.hidden = true;
+  root.innerHTML = '<div class="ld-frame"><div class="ld-box"><i class="ld-h" data-h="nw"></i><i class="ld-h" data-h="ne"></i><i class="ld-h" data-h="sw"></i><i class="ld-h" data-h="se"></i><i class="ld-stem"></i><i class="ld-rot" data-h="rot" title="Turn (Shift: 15° steps)"></i><b class="ld-3d" data-h="3d" title="Move, turn or scale it in 3D (the gizmo)">✥ 3D</b></div></div><i class="ld-gx" hidden></i><i class="ld-gy" hidden></i>';
+  document.documentElement.append(root); // (not <body>: what's appended there goes into the running layer's box)
+  DR.ui = { root, frame: root.firstChild, box: root.querySelector('.ld-box'), gx: root.querySelector('.ld-gx'), gy: root.querySelector('.ld-gy'), d3: root.querySelector('.ld-3d') };
+  return DR.ui;
+}
+// the outline where the picked layer shows (written only when something changed)
+function drPaint() {
+  const L = DR.sel;
+  if (L && layers.get(L.id) !== L) { DR.sel = null; DR.bb = null; }
+  if (!DR.sel && !DR.ui) return;
+  const u = drUi();
+  const show = Boolean(DR.sel && DR.bb && drOk() && layerMix(DR.sel) > 0);
+  DR.shown = show;
+  if (u.root.hidden !== !show) u.root.hidden = !show;
+  if (!show) return;
+  const b = DR.bb; const t = drT(DR.sel);
+  const tf = DR.sel.box.style.transform || '';
+  if (u.frame.style.transform !== tf) u.frame.style.transform = tf;
+  const k = String(Math.round((1 / Math.max(0.05, (t.scale || 1) * DR.view)) * 1000) / 1000); // (handles keep their size on screen)
+  if (u.root.style.getPropertyValue('--k') !== k) u.root.style.setProperty('--k', k);
+  const css = `left:${b.x0}px;top:${b.y0}px;width:${Math.max(1, b.x1 - b.x0)}px;height:${Math.max(1, b.y1 - b.y0)}px`;
+  if (u.box.dataset.css !== css) { u.box.dataset.css = css; u.box.style.cssText = css; }
+  const d3 = !(DR.sel.lvCam && DR.sel.lvCamGen === DR.sel.gen);
+  if (u.d3.hidden !== d3) u.d3.hidden = d3;
+}
+function drGuides(gx, gy) {
+  if (!DR.ui) return;
+  const { gx: X, gy: Y } = DR.ui;
+  if (X.hidden !== (gx == null)) X.hidden = gx == null;
+  if (Y.hidden !== (gy == null)) Y.hidden = gy == null;
+  if (gx != null) X.style.left = `${Math.round(Math.min(innerWidth - 1, gx))}px`;
+  if (gy != null) Y.style.top = `${Math.round(Math.min(innerHeight - 1, gy))}px`;
+}
+function drSelect(L, tell) {
+  DR.sel = L; DR.bb = L ? drBox(L) : null; DR.picks += 1;
+  drPaint();
+  if (L && tell) post({ type: 'direct', op: 'select', layer: L.id });
+}
+function drClear() { if (!DR.sel) return; DR.sel = null; DR.bb = null; drPaint(); post({ type: 'direct', op: 'clear' }); }
+// a change, shown here at once and sent to the Lab (which makes it the layer's values and one undo step at the end)
+function drApply(L, patch, tok, final) {
+  DR.busy.set(L.id, realNow());
+  if (Object.keys(patch).some((k) => L.props[k] !== patch[k])) setLayerProps(L, patch);
+  post({ type: 'direct', op: final ? 'end' : 'live', layer: L.id, tok, patch });
+  PACE.poke += 1;
+}
+// (the Lab's answers to a drag in flight come back late: its x / y / scale / rotate are ours until it sends the layer whole)
+function drEcho(L, props) {
+  const t = DR.busy.get(L.id);
+  if (t == null) return props;
+  if ('visible' in props || realNow() - t > 1500) { DR.busy.delete(L.id); return props; }
+  const { x: _x, y: _y, scale: _s, rotate: _r, ...rest } = props;
+  return rest;
+}
+// the lines Shift snaps to: the frame's, then the other layers' edges and middles (read once per drag)
+function drLines(L) {
+  const W = innerWidth; const H = innerHeight; const out = DR.core.frameLines(W, H);
+  for (const O of drLayers().filter((x) => x !== L).slice(0, 8)) {
+    const b = drBox(O); if (b.x0 <= 0 && b.y0 <= 0 && b.x1 >= W && b.y1 >= H) continue;
+    const s = DR.core.screenBox(b, W, H, drT(O));
+    out.xs.push(s.x0, (s.x0 + s.x1) / 2, s.x1); out.ys.push(s.y0, (s.y0 + s.y1) / 2, s.y1);
+  }
+  return out;
+}
+function drStart(e, kind, L) {
+  if (DR.sel !== L) drSelect(L, true); else DR.bb = drBox(L);
+  DR.down = null;
+  const W = innerWidth; const H = innerHeight; const b = DR.bb; const t0 = drT(L);
+  const q = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+  const [cx, cy] = DR.core.fwd(q[0], q[1], W, H, t0);
+  DR.tok += 1;
+  DR.drag = { id: e.pointerId, kind, L, x: e.clientX, y: e.clientY, t0, q, cx, cy, a0: DR.core.angle(cx, cy, e.clientX, e.clientY), r0: Math.hypot(e.clientX - cx, e.clientY - cy), tok: DR.tok, lines: null, last: null };
+  try { document.documentElement.setPointerCapture(e.pointerId); } catch { /* fine */ }
+  document.documentElement.classList.add('ld-dragging');
+  dozeWake('direct'); // (round 44, idlecpu: awake while the picture moves under the pointer)
+}
+function drMove(e) {
+  const D = DR.drag; const C = DR.core; const W = innerWidth; const H = innerHeight;
+  const t = { ...D.t0 }; let gx = null; let gy = null;
+  if (D.kind === 'move') {
+    let dx = e.clientX - D.x; let dy = e.clientY - D.y;
+    if (e.shiftKey) {
+      D.lines ||= drLines(D.L);
+      const s = C.snap(C.screenBox(DR.bb, W, H, { ...t, x: t.x + (dx / W) * 100, y: t.y + (dy / H) * 100 }), D.lines, 7 / DR.view); // (7 px on screen)
+      dx += s.dx; dy += s.dy; gx = s.gx; gy = s.gy;
+    }
+    t.x += (dx / W) * 100; t.y += (dy / H) * 100;
+  } else if (D.kind === 'rot') {
+    let a = D.t0.rotate + C.angle(D.cx, D.cy, e.clientX, e.clientY) - D.a0;
+    if (e.shiftKey) a = Math.round(a / 15) * 15;
+    t.rotate = a; Object.assign(t, C.pin(D.q, W, H, D.t0, t));
+  } else {
+    let s = (D.t0.scale * Math.hypot(e.clientX - D.cx, e.clientY - D.cy)) / Math.max(4, D.r0);
+    if (e.shiftKey) s = Math.round(s * 20) / 20;
+    t.scale = Math.max(0.1, Math.min(3, s)); Object.assign(t, C.pin(D.q, W, H, D.t0, t));
+  }
+  drGuides(gx, gy);
+  D.last = C.clampT(t);
+  drApply(D.L, D.last, D.tok, false);
+}
+function drEnd(D) {
+  DR.drag = null;
+  try { document.documentElement.releasePointerCapture(D.id); } catch { /* fine */ }
+  document.documentElement.classList.remove('ld-dragging');
+  drGuides(null, null);
+  if (D.last) drApply(D.L, D.last, D.tok, true);
+  drPaint();
+}
+// keys and the wheel come in runs: one undo step when they stop for a moment
+function drRun(L, patch, ms) {
+  if (!DR.run || DR.run.L !== L) { if (DR.run) drRunEnd(); DR.tok += 1; DR.run = { L, tok: DR.tok, last: null, timer: 0 }; }
+  const R = DR.run; R.last = patch;
+  drApply(L, patch, R.tok, false);
+  realClearTimeout(R.timer); R.timer = realSetTimeout(drRunEnd, ms);
+  dozeWake('direct');
+}
+function drRunEnd() { const R = DR.run; if (!R) return; DR.run = null; realClearTimeout(R.timer); if (R.last) drApply(R.L, R.last, R.tok, true); drPaint(); }
+// the object under the click in a 3D layer (its path, as the scene editor names it), for ✥ 3D
+function drObjectAt(L, px, py) {
+  if (!L.lvScene || !L.lvCam || !px) return null;
+  try {
+    const [qx, qy] = DR.core.inv(px, py, innerWidth, innerHeight, drT(L));
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2((qx / innerWidth) * 2 - 1, 1 - (qy / innerHeight) * 2), L.lvCam);
+    const hit = ray.intersectObjects(L.lvScene.children, true).find((h) => h.object.visible && h.object.isMesh);
+    return hit ? pathOf(hit.object, L.lvScene) : null;
+  } catch { return null; }
+}
+addEventListener('pointerdown', (e) => {
+  if (!e.isTrusted || e.button !== 0 || !drOk()) return;
+  const h = e.target?.closest?.('#lab-direct [data-h]')?.dataset.h;
+  if (h && DR.sel) {
+    e.preventDefault(); e.stopPropagation();
+    if (h === '3d') { const L = DR.sel; post({ type: 'direct', op: '3d', layer: L.id, path: drObjectAt(L, DR.at?.x, DR.at?.y) }); return; }
+    drStart(e, h === 'rot' ? 'rot' : 'scale', DR.sel);
+    return;
+  }
+  if (e.ctrlKey || e.metaKey) return;
+  const L = drPick(e.clientX, e.clientY);
+  // (a layer with controls of its own keeps its drags: a click only picks it)
+  DR.down = { x: e.clientX, y: e.clientY, id: e.pointerId, L, own: Boolean(L && L.lvOwn === L.gen) };
+}, true);
+addEventListener('pointermove', (e) => {
+  const D = DR.drag;
+  if (D) { if (e.pointerId === D.id) drMove(e); return; }
+  const d = DR.down;
+  if (!d || e.pointerId !== d.id || !d.L || d.own || Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
+  drStart({ pointerId: d.id, clientX: d.x, clientY: d.y }, 'move', d.L);
+  drMove(e);
+}, true);
+const drUp = (e) => {
+  const D = DR.drag;
+  if (D) { if (e.pointerId == null || e.pointerId === D.id) drEnd(D); return; }
+  const d = DR.down; DR.down = null;
+  if (!d || e.type !== 'pointerup' || e.pointerId !== d.id) return;
+  // a click: pick what's under it; on nothing, let go
+  DR.at = { x: d.x, y: d.y };
+  if (d.L) drSelect(d.L, true); else drClear();
+};
+addEventListener('pointerup', drUp, true);
+addEventListener('pointercancel', drUp, true);
+addEventListener('blur', () => { if (DR.drag) drEnd(DR.drag); if (DR.run) drRunEnd(); });
+addEventListener('dblclick', (e) => {
+  if (!e.isTrusted || e.button !== 0 || !drOk()) return;
+  const L = DR.sel && drHits(DR.sel, e.clientX, e.clientY) ? DR.sel : drPick(e.clientX, e.clientY);
+  if (L) post({ type: 'direct', op: 'open', layer: L.id });
+}, true);
+// Alt/Option+wheel scales the picked layer (or what's under the pointer) about its middle (before the look-around's wheel)
+addEventListener('wheel', (e) => {
+  if (!e.isTrusted || !e.altKey || e.ctrlKey || e.metaKey || !drOk()) return;
+  let L = DR.sel;
+  if (!L) { L = drPick(e.clientX, e.clientY); if (!L) return; DR.at = { x: e.clientX, y: e.clientY }; drSelect(L, true); }
+  e.preventDefault(); e.stopImmediatePropagation();
+  const W = innerWidth; const H = innerHeight; const b = DR.bb;
+  const d = (e.deltaY || e.deltaX) * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 800 : 1);
+  const t0 = drT(L); const t = { ...t0, scale: Math.max(0.1, Math.min(3, t0.scale * Math.exp(-Math.max(-300, Math.min(300, d)) * 0.002))) };
+  Object.assign(t, DR.core.pin([(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2], W, H, t0, t));
+  drRun(L, DR.core.clampT(t), 350);
+}, { capture: true, passive: false });
+// arrows nudge (Shift: 10 px), Esc lets go; the Lab's own keys don't get them while something is picked
+addEventListener('keydown', (e) => {
+  if (!e.isTrusted || !DR.sel || !drOk() || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); drClear(); return; }
+  if (!/^Arrow(Left|Right|Up|Down)$/.test(e.key)) return;
+  e.preventDefault(); e.stopPropagation();
+  const L = DR.sel; const n = DR.core.nudge(e.key, e.shiftKey, innerWidth, innerHeight);
+  const t = DR.run?.L === L && DR.run.last ? DR.run.last : drT(L);
+  drRun(L, DR.core.clampT({ x: t.x + n.x, y: t.y + n.y }), 700);
+}, true);
+// (checks) window.__labDirect.state() / .pick(x, y)
+window.__labDirect = {
+  state: () => ({ sel: DR.sel?.id || null, bb: DR.bb, shown: Boolean(DR.ui && !DR.ui.root.hidden), drag: DR.drag ? DR.drag.kind : null, run: Boolean(DR.run), guides: DR.ui ? [!DR.ui.gx.hidden, !DR.ui.gy.hidden] : [false, false], three: Boolean(DR.ui && !DR.ui.d3.hidden), picks: DR.picks, reads: DR.reads, ok: drOk(), W: innerWidth, H: innerHeight }),
+  pick: (x, y) => drPick(x, y)?.id || null,
+};
+
 // ---------- Lab gestures (round 34 "labgestures"): look around the preview with a trackpad or a mouse ----------
 // For a layer that draws with an orbit-able camera (perspective, or orthographic that isn't a full-screen pass) and
 // whose code listens to no wheel / pointer-down / touch itself (no OrbitControls or own controls: those keep theirs):
@@ -3723,7 +4029,8 @@ function styleLayer(L) {
     L.tfX = x; L.tfY = y; L.tfS = scale; L.tfR = rotate;
     const tf = x || y || scale !== 1 || rotate ? `translate(${x}%, ${y}%) rotate(${rotate}deg) scale(${scale})` : '';
     if (s.transform !== tf) s.transform = tf;
-  }
+    if (DR.sel === L) drPaint(); // (round 46, labdirect) the picked layer's outline moves with it
+  } else if (DR.sel === L && DR.shown !== (mix > 0 && drOk())) drPaint(); // (… and shows / hides with it, Present, the editor)
   if (L.zSet !== p.z) { L.zSet = p.z; const z = String(p.z ?? 0); if (s.zIndex !== z) s.zIndex = z; }
   // (labcut) a sequence clip's color look: one SVG color matrix (a precomp sets its own filter)
   if (!L.pc) { const fl = p.seqFilter || ''; if (s.filter !== fl) s.filter = fl; }
@@ -9936,6 +10243,7 @@ function removeLayer(id, { fade = false } = {}) {
   teardownLayer(L);
   L.box.remove();
   layers.delete(id);
+  if (DR.sel === L) drPaint(); // (round 46, labdirect) its outline goes with it
   layerVer += 1;
   if (L.pc) { PC.list.delete(L); L.pc = null; }
   if (L.url) { urlLayer.delete(L.url); URL.revokeObjectURL(L.url); }
@@ -9951,6 +10259,7 @@ function setLayerProps(L, props) {
   layerVer += 1;
   if (rest.slot != null) L.slot = rest.slot;
   styleLayer(L);
+  if (rest.selected && DR.sel && DR.sel !== L && !DR.drag) drSelect(L, false); // (round 46, labdirect) the outline follows the Layers list
 }
 
 // ---------- live edits: things build in front of you ----------
@@ -11687,7 +11996,8 @@ addEventListener('message', async (e) => {
   if (msg.type === 'run-layers') runLayers(msg.layers);
   if (msg.type === 'hot-layer') runLayer(msg.layer, true);
   if (msg.type === 'swap-layers') swapLayers(msg.layers, msg.fx ?? 'xfade');
-  if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, msg.props); }
+  if (msg.type === 'direct-view') { DR.view = msg.k > 0 ? msg.k : 1; drPaint(); } // (round 46, labdirect: how big the picture shows)
+  if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, drEcho(L, msg.props)); } // (round 46, labdirect: a drag's late answers don't pull it back)
   if (msg.type === 'remove-layer') removeLayer(msg.id, { fade: Boolean(msg.fade) });
   if (msg.type === 'pc-sync') { const P = layers.get(msg.id); if (P?.pc) pcSync(P, msg.precomp); }
   if (msg.type === 'media-load') loadMedia(msg);
