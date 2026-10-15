@@ -8,3 +8,4 @@
 .ac-card button, .ac-card select { margin: 5px 8px 5px 0; }
 .ac-card fieldset { margin: 12px 0; border: 0; padding: 0; }
 .ac-card input { width: 100%; box-sizing: border-box; padding: 8px; }
+.aw-diff{white-space:pre-wrap;overflow-wrap:anywhere;max-height:45vh;overflow:auto;padding:12px;background:var(--surface);border:1px solid var(--line);font-size:12px}.aw-selected{color:var(--fh-gold)}

@@ -23,7 +23,16 @@ rl.on('line', (line) => {
   if (m.method === 'app/list') { reply(m.id, { data: [{ id: 'app-demo', name: '<Demo>', isAccessible: true, isEnabled: true }], nextCursor: null }); return; }
   if (m.method === 'app/installed') { reply(m.id, { apps: [{ id: 'app-demo', enabled: true, callable: false }] }); return; }
   if (m.method === 'app/read') { reply(m.id, { apps: [{ id: 'app-demo', toolSummaries: [{ name: 'read', isReadOnly: true }] }] }); return; }
-  if (m.method === 'mcpServerStatus/list') { reply(m.id, { data: [{ name: 'demo', authStatus: 'notLoggedIn', runtimeStatus: 'authenticationRequired', tools: {} }], nextCursor: null }); return; }
+  if (m.method === 'mcpServerStatus/list') { reply(m.id, { data: [{ name: 'demo', authStatus: 'notLoggedIn', runtimeStatus: 'authenticationRequired', tools: {}, resources: [{ name: 'Project brief', uri: 'demo://brief' }], resourceTemplates: [] }], nextCursor: null }); return; }
+  if (m.method === 'skills/list') { reply(m.id, { data: [{ cwd: m.params.cwds[0], skills: [{ name: 'demo-skill', path: '/demo/SKILL.md', description: 'A fixture skill', enabled: true }, { name: 'disabled', path: '/disabled/SKILL.md', enabled: false }], errors: [] }] }); return; }
+  if (m.method === 'mcpServer/resource/read') { reply(m.id, { contents: [{ uri: 'demo://brief', text: '<script>not executable</script> Project brief' }] }); return; }
+  if (m.method === 'thread/fork') { const id = crypto.randomUUID(); threads.set(id, { n: 0 }); reply(m.id, { thread: { id } }); return; }
+  if (m.method === 'thread/compact/start') {
+    const threadId = m.params.threadId, turnId = crypto.randomUUID();
+    notify('turn/started', { threadId, turn: { id: turnId } }); reply(m.id, {});
+    notify('item/started', { threadId, turnId, item: { id: 'compact', type: 'contextCompaction' } });
+    setTimeout(() => { notify('item/completed', { threadId, turnId, item: { id: 'compact', type: 'contextCompaction' } }); notify('turn/completed', { threadId, turn: { id: turnId, status: 'completed' } }); }, 80); return;
+  }
   if (m.method === 'turn/steer') {
     if (!active || active.turnId !== m.params.expectedTurnId) send({ id: m.id, error: { message: 'Turn mismatch' } });
     else reply(m.id, { turnId: active.turnId }); return;
@@ -69,6 +78,7 @@ rl.on('line', (line) => {
   notify('item/reasoning/summaryTextDelta', { ...meta, itemId: 'r', delta: 'Checking' });
   notify('item/started', { ...meta, item: { type: 'commandExecution', id: 'tool', command: 'echo test', status: 'inProgress' } });
   notify('item/completed', { ...meta, item: { type: 'commandExecution', id: 'tool', command: 'echo test', status: 'completed', aggregatedOutput: 'test', exitCode: 0 } });
+  notify('turn/diff/updated', { ...meta, diff: '--- a/demo.txt\n+++ b/demo.txt\n+hello' });
   notify('item/agentMessage/delta', { ...meta, itemId: 'm', delta: 'Hello ' });
   timer = setTimeout(() => {
     const encoded = Buffer.from(JSON.stringify({ method: 'item/agentMessage/delta', params: { ...meta, itemId: 'm', delta: '🌱' } }) + '\n');

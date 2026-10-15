@@ -91,7 +91,7 @@ function ok(text) { console.log(`✓ ${text}`); checks++; }
 
   // Exercise the real engines.send boundary in a temp copy, including batching and usage writes.
   const copy = path.join(dir, 'app'); fs.mkdirSync(copy);
-  for (const f of ['engines.js', 'codex-server.js', 'codex-usage.js', 'codex-capabilities.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'connectionsmain.js']) fs.copyFileSync(path.join(root, f), path.join(copy, f));
+  for (const f of ['engines.js', 'codex-server.js', 'codex-workspace.js', 'codex-usage.js', 'codex-capabilities.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'connectionsmain.js']) fs.copyFileSync(path.join(root, f), path.join(copy, f));
   fs.cpSync(path.join(root, 'mcp'), path.join(copy, 'mcp'), { recursive: true });
   const engines = require(path.join(copy, 'engines.js')); engines.setEnginePaths({ codex: fixture });
   const agent = { id: 'astra', engine: 'codex', model: 'gpt-6-astra', effort: 'high', openTool: false };

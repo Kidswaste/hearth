@@ -74,6 +74,17 @@ function getCodexUsage() {
     args: ['app-server', '--listen', 'stdio://'], cwd: WORKSPACE, env: process.env });
   return codexAccount.read();
 }
+async function codexWorkspace(agent, chat, { kind, ...args } = {}) {
+  if (agent?.engine !== 'codex' || chat?.agentId !== agent.id) throw new Error('Open an Astra / Codex chat first.');
+  const bin = LOCATE.codex(); if (!bin) throw new Error('Codex is not installed.');
+  codexServers ||= new (require('./codex-server').Pool)({ spawn: WinPolish.spawn, kill, log });
+  if (kind === 'activity') return require('./codex-workspace').manage(codexServers, { chatId: chat.id }, kind);
+  const session = chat.session || {};
+  const access = ['off', 'read', 'write', 'full'].includes(chat.access?.level) ? chat.access : agent.fileAccess;
+  const options = { model: chat.model, effort: chat.effort, access, captureTools: chat.captureTools, crewOn: chat.crew };
+  const prepared = runAgent(agent, { chatId: chat.id, session, text: '', options }).agent;
+  return require('./codex-workspace').manage(codexServers, { chatId: chat.id, bin, ...codexServerPlan(prepared, session, options), env: process.env, session }, kind, args);
+}
 const LOG_PATH = path.join(DATA_DIR, 'engine.log');
 
 // (round 20, soak) the log keeps the last ≈ 2 MB: past that it moves to engine.prev.log (checked every 200 lines)
@@ -744,7 +755,7 @@ function codexServerPlan(agent, session, options = {}) {
     : { type: 'readOnly' };
   return { args, cwd, servers,
     thread: { cwd, approvalPolicy: 'never', sandbox, baseInstructions: buildPrompt(agent, session), developerInstructions: '', ...(model ? { model } : {}) },
-    turn: { cwd, approvalPolicy: 'never', sandboxPolicy, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(summary ? { summary } : {}), input: [...(options.images || []).map((p) => ({ type: 'localImage', path: p })), ...require('./codex-capabilities').mentions(options.appMentions, agent.chatgptApps)] },
+    turn: { cwd, approvalPolicy: 'never', sandboxPolicy, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(summary ? { summary } : {}), skillMentions: options.skillMentions, input: [...(options.images || []).map((p) => ({ type: 'localImage', path: p })), ...require('./codex-capabilities').mentions(options.appMentions, agent.chatgptApps)] },
   };
 }
 
@@ -1623,6 +1634,7 @@ function discoverConnectors() {
 
 module.exports = {
   codexCapabilities,
+  codexWorkspace,
   codexSteer: ({ chatId, turnId, text }) => { if (!codexServers) throw new Error('No Astra reply is running.'); return codexServers.steer(chatId, turnId, text); },
   codexAnswer: ({ chatId, token, answers }) => { if (!codexServers) throw new Error('The question is no longer active.'); return codexServers.answer(chatId, token, answers); },
   getCodexUsage,

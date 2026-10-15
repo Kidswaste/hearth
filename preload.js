@@ -42,7 +42,7 @@ contextBridge.exposeInMainWorld('hub', {
   getUsage: call('usage:get'),
   getTokenStats: call('usage:stats'),
   getCodexUsage: call('usage:codex'),
-  codex: { capabilities: call('codex:capabilities'), steer: call('codex:steer'), answer: call('codex:answer') },
+  codex: { capabilities: call('codex:capabilities'), steer: call('codex:steer'), answer: call('codex:answer'), workspace: call('codex:workspace') },
   rebuildTokenStats: call('usage:rebuild'),
 
   send: call('engine:send'),

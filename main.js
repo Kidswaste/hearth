@@ -312,6 +312,13 @@ ipcMain.handle('usage:codex', () => engines.getCodexUsage());
 ipcMain.handle('codex:capabilities', (_e, args) => { engines.setEnginePaths(settings().enginePaths); return engines.codexCapabilities(args); });
 ipcMain.handle('codex:steer', (_e, args) => engines.codexSteer(args));
 ipcMain.handle('codex:answer', (_e, args) => engines.codexAnswer(args));
+ipcMain.handle('codex:workspace', (_e, args = {}) => {
+  engines.setEnginePaths(settings().enginePaths);
+  const chat = store.getChat(args.chatId);
+  if (!chat) throw new Error('This chat could not be found.');
+  const agent = readConfig().agents.find(a => a.id === chat.agentId);
+  return engines.codexWorkspace(agent, chat, args);
+});
 // Token meter aggregates (kv/token-stats.json); the first call builds them from the chats.
 const configAgents = () => { try { return readConfig().agents || []; } catch { return []; } };
 ipcMain.handle('usage:stats', () => store.getTokenStats(configAgents()));

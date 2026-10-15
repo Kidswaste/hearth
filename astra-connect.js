@@ -154,6 +154,7 @@ const AstraConnect = (() => {
   function open(agentId) {
     agentFor(agentId); const { d, body } = sheet('Astra tools');
     for (const [label, run] of [['Connected apps', apps], ['Connection health', connections], ['Models and reasoning', models]]) body.append(button(label, () => { d.close(); return run(agentId); }));
+    for (const [label, method] of [['Skills for next message', 'skills'], ['Branch this conversation', 'branch'], ['Context and compaction', 'context'], ['Activity and changes', 'activity'], ['Connected resources', 'resources']]) body.append(button(label, () => { d.close(); return AstraWorkspace[method](agentId); }));
     const input = el('textarea', { placeholder: 'Add guidance to the reply that is running…', attrs: { 'aria-label': 'Follow-up for current reply' } });
     body.append(para('Steer the current reply'), input, button('Send follow-up now', async () => { await steer(agentId, input.value); d.close(); }));
     body.append(para('Ordinary messages typed during a reply still queue for the next turn.'));

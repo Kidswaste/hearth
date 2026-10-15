@@ -97,7 +97,7 @@ class Pool {
     this.connections = new Map(); this.active = new Map();
   }
   run({ chatId, bin, args, cwd, env, session, thread, turn, servers, parser, fallbackText, text, showThinking = true }, emit, live) {
-    if (this.active.has(chatId)) { emit({ type: 'error', message: 'This Hearth chat already has a running Codex turn.' }); return; }
+    if (this.active.has(chatId) || this.maintenance?.has(chatId)) { emit({ type: 'error', message: 'This Hearth chat already has a running Codex operation.' }); return; }
     const start = performance.now(); const elapsed = () => Math.round(performance.now() - start);
     const timing = { engine: 'codex', transport: 'app-server', connectionReused: false, setupMs: null, firstEventMs: null, firstTextMs: null, totalMs: null };
     const key = crypto.createHash('sha256').update(JSON.stringify({ bin, args, cwd })).digest('hex');
@@ -188,6 +188,8 @@ class Pool {
           resumeTotals = p.tokenUsage?.total; return;
         }
         if (done || !threadReady || p.threadId !== session.id || (turnId && p.turnId && p.turnId !== turnId)) return;
+        if (method === 'turn/completed' && turnId && p.turn.id !== turnId) return;
+        require('./codex-workspace').record(this, chatId, method, p);
         touch(); if (timing.firstEventMs == null) timing.firstEventMs = elapsed();
         if (method === 'turn/started') { turnId = p.turn.id; emit({ type: 'codexTurn', turnId }); return; }
         if (method === 'serverRequest/resolved') {
@@ -258,7 +260,10 @@ class Pool {
           cached: resumeTotals.cachedInputTokens || 0, reasoning: resumeTotals.reasoningOutputTokens || 0 }
           : { ...(session.totals || conn.totals || {}) }; threadReady = true;
         timing.setupMs = elapsed();
-        const result = await conn.request('turn/start', { ...turn, threadId: session.id, input: [{ type: 'text', text: inputText }, ...(turn.input || [])] });
+        const { skillMentions, ...startTurn } = turn;
+        const skillItems = await require('./codex-workspace').skillInputs(conn, cwd, skillMentions);
+        if (done || cancelled) return;
+        const result = await conn.request('turn/start', { ...startTurn, threadId: session.id, input: [{ type: 'text', text: inputText }, ...(turn.input || []), ...skillItems] });
         if (!done) { turnId = result.turn.id; emit({ type: 'codexTurn', turnId }); }
       })().catch((err) => { if (!done) { conn.close(err); finish({ type: cancelled ? 'stopped' : 'error', message: err.message }); } });
     } catch (err) { finish({ type: 'error', message: err.message }); }
