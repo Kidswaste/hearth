@@ -1116,3 +1116,6 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ The Lab picture's right-click 23 → 11 rows, most used first (Freeze, Frame size, Sliders, ♪ Music, Capture, View · ＋ Add, ✨ Look & motion, ⇪ Make & export, ✦ More); the toolbar ⋯ 17 → 11; Sketch ▾ shows all 9 rows (History ›, ⇪ Share & export ›); Board ▾ 20 → 12; the waveform's right-click 7 + More.
 - ✓ Pointing opens a submenu inside a flyout too (#menu-fly2); one name and icon per action in every menu, no command names, one-sentence tooltips where a hint is cut; rows that mean nothing now stay hidden; nothing removed.
 - ○ `sh dev/run-checks.sh menucalm` (dev/checks/menucalm.js: 17 menus, budgets, ≤ 2 clicks, nothing gone + the checks that read the moved rows).
+## ⚡ Instant chat switching (round 45, chatswitch, 8 upgrades: docs/upgrades/chatswitch.md)
+- ✓ The last few chats stay ready out of sight (their own lists, content-visibility, within a 20,000-element budget): going back to one only shows it again; a chat opened afresh shows its end first, the rest slips in above; resting on a chat in the list (or ↑ / ↓) gets it ready; its pictures are sized ahead. A waiting jump no longer lands in the next chat.
+- ○ `sh dev/run-checks.sh chatswitch` (dev/checks/chatswitch.js: counts + main-thread CPU per switch; trace-stats now reports CPU time).

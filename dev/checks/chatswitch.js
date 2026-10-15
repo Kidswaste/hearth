@@ -7,7 +7,9 @@
 // each first opened (nothing of it in memory), then switched back to (recent); the Lab → a chat → the Lab.
 // Then: memory (DOM nodes, JS heap after GC, what the kept chats hold) and what must still be right after the
 // switches (the chat shown is the one clicked, at its end, its draft back, find / jump / ↑ Show earlier work).
-// Fails above the budgets (BUDGET below; window.CS_REPORT = 1 reports without failing).
+// Fails above the budgets (BUDGET below; window.CS_REPORT = 1 reports without failing; window.CS_DETAIL = 1 prints where
+// the time went in every switch). Timings use the main thread's own CPU time (dev/trace-stats.js workFg / at marks):
+// on this shared machine wall time stretches 5–20× with the load.
 //   node dev/smoke.js --fake-engines --check-timeout 600000 --lib dev/checks/smooth-lib.js --script dev/checks/chatswitch.js
 const { wait, until } = M;
 const out = { budgets: {}, numbers: {}, problems: [] };

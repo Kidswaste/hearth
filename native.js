@@ -125,7 +125,7 @@ const Native = (() => {
       const near = gap < 80;
       if (jump.hidden !== near) jump.hidden = near;
       if (near && jump.classList.contains('has-new')) jump.classList.remove('has-new');
-    });
+    }, true);
 
     const chips = el('div', { class: 'attach-chips' });
     const input = el('textarea', { rows: 3, spellcheck: true });
@@ -988,9 +988,15 @@ const Native = (() => {
     if (pane) v.panes.delete(key);
     else { pane = { list: el('div', { class: 'messages parked' }) }; v.jump.before(pane.list); }
     v.panes.set(key, pane);
-    if (old) { old.list.classList.add('parked'); old.size = 0; }
+    if (old) {
+      const l = old.list; l.classList.add('parked'); old.size = 0;
+      // (its fold watch lets go while it's hidden: one observer per chat window, not one per kept list)
+      if (l.foldIO) { l.foldWait = [...l.foldWatch]; l.foldIO.disconnect(); l.foldIO = null; l.foldWatch = null; }
+    }
     pane.list.classList.remove('parked');
     v.list = pane.list; v.paneKey = key;
+    const wait = pane.list.foldWait; pane.list.foldWait = null;
+    for (const n of wait || []) if (n.parentElement === pane.list) foldWhenNear(v, n);
     trimPanes(v);
     return true;
   }
@@ -1008,7 +1014,7 @@ const Native = (() => {
     const p = v.panes.get(key);
     if (!p || key === v.paneKey) return;
     v.panes.delete(key);
-    p.list.foldIO?.disconnect(); p.list.foldWatch?.clear();
+    p.list.foldIO?.disconnect(); p.list.foldWatch?.clear(); p.list.foldWait = null;
     p.list.remove();
     v.nodes?.delete(key);
   }
@@ -1437,6 +1443,7 @@ const Native = (() => {
     if (!node) { if (v?.drawing) later(); return false; }
     if (v.drawing) later(); // a draw on its way would put the scroll back: jump again after it
     node.scrollIntoView({ block: index === 0 ? 'start' : 'center' });
+    if (index < (chats.get(H.activeChat[agentId])?.messages.length ?? 0) - 1) v.follow = false; // (round 45) reading an old message: a picture loading below no longer pulls you back to the end
     node.classList.add('flash-msg');
     setTimeout(() => node.classList.remove('flash-msg'), 900);
     return true;

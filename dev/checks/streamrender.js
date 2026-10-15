@@ -85,7 +85,7 @@ const t0 = performance.now();
 // ---- 1. a huge reply streaming in a fresh chat ----
 Native.newChat(claude.id); await settle();
 const v = Native.view(claude.id);
-const list = v.list;
+let list = v.list; // (round 45, chatswitch: each chat has its own list; taken again after a switch)
 const [lx, ly] = mid(list);
 const gapNow = () => list.scrollHeight - list.scrollTop - list.clientHeight;
 // what you see: the gap to the bottom as each frame is drawn (a ResizeObserver runs after the frame's scripts and layout)
@@ -220,7 +220,7 @@ async function bench(text, paint, step = 250) {
 }
 await seg('bench', async () => {
   if (!reply?.text) return;
-  Native.newChat(claude.id); await settle();
+  Native.newChat(claude.id); await settle(); list = v.list;
   const runs = { old: [], new: [] };
   const order = Native._test?.paintBody ? ['old', 'new', 'new', 'old'] : ['old', 'old'];
   for (const k of order) runs[k].push(await bench(reply.text, k === 'old' ? oldPaint : Native._test.paintBody));
@@ -233,7 +233,7 @@ await seg('bench', async () => {
 await seg('open-long', async () => {
   const t = performance.now();
   Native.open(claude.id, long.id);
-  await until(() => list.querySelector('.msg[data-index="1199"]'), 15000);
+  await until(() => (list = v.list).querySelector('.msg[data-index="1199"]'), 15000);
   await settle();
   out.openLongMs = Math.round(performance.now() - t);
 });
