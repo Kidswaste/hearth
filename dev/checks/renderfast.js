@@ -145,8 +145,12 @@ await safe('preview eases', async () => {
 
 // 5) timing budget: the reference path vs the new path, same scenes, same sizes
 const timed = async (label, o) => {
+  // (each way twice, in the order ref · fast · fast · ref, and each way's best: the same order every time favoured
+  //  one of them, and one busy moment decided the total on a computer where the two are close)
   const ref = await run({ ...o, legacy: true });
   const fast = await run(o);
+  const fast2 = await run(o); const ref2 = await run({ ...o, legacy: true });
+  ref.wall = Math.min(ref.wall, ref2.wall); fast.wall = Math.min(fast.wall, fast2.wall);
   out.timing[label] = { ref: ref.wall, fast: fast.wall, gain: Math.round((1 - fast.wall / ref.wall) * 100), refSplit: ref.split, fastSplit: fast.split, same: (await hash(ref.path)) === (await hash(fast.path)) };
 };
 await safe('timing simple 1080p', () => timed('simple 1080p MP4, 30 frames', { format: 'mp4', size: '1080p', fps: 30, frames: 30 }));
