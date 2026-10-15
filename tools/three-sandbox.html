@@ -3430,12 +3430,15 @@ window.__labOrbit = (c) => {
   if (mode !== 'sketch' || edit.on) return;
   const id = currentLayer(); const L = id ? layers.get(id) : null; if (!L) return;
   c.__lab = { layer: id, L, gen: L.gen, p0: null, t0: null };
+  // (round 48, memory48) controls of runs that are gone go first: each one held its whole old layer (scene, renderer,
+  // canvas, a video texture) for the page's life, one more per scene switch or re-run
+  for (const o of LV.orbits) lvOrbitAlive(o);
   LV.orbits.add(c);
   // where it starts (Shift+Z goes back there): the pose at its first update, after the sketch's setup placed it
   const up = c.update;
   if (typeof up === 'function') c.update = function (...a) { const z = c.__lab; if (z && !z.p0 && c.object?.position && c.target) { z.p0 = c.object.position.clone(); z.t0 = c.target.clone(); } return up.apply(this, a); };
 };
-const lvOrbitAlive = (c) => { const L = layers.get(c.__lab?.layer); if (!L || L !== c.__lab.L || L.gen !== c.__lab.gen) { LV.orbits.delete(c); return false; } return true; }; // (a layer made again under the same id starts at gen 0 too)
+const lvOrbitAlive = (c) => { const L = layers.get(c.__lab?.layer); if (!L || L !== c.__lab.L || L.gen !== c.__lab.gen) { LV.orbits.delete(c); if (c.__lab) c.__lab.L = null; return false; } return true; }; // (a layer made again under the same id starts at gen 0 too)
 // layers that could be looked around, top first
 function lvLayers() {
   const out = [];
@@ -10233,6 +10236,7 @@ function teardownLayer(L) {
   if (L.url) ownRetire(L.url); // (round 39, labmemory)
   if (L.pc) pcUnmount(L);
   L.gen += 1;
+  for (const c of LV.orbits) if (c.__lab?.L === L) { LV.orbits.delete(c); c.__lab.L = null; } // (round 48, memory48) its run's controls go with it, and let go of the layer (the run's module keeps its controls for the page's life)
   // (round 16: what the sandbox made for the layer itself, e.g. a filter's merged picture: its canvas memory goes now,
   // not whenever the garbage collector gets to it)
   for (const fn of (L.cleanups || []).splice(0)) { try { fn(); } catch {} }
@@ -10449,6 +10453,9 @@ async function runLayer(spec, hot = false) {
     // a layer that draws without a WebGLRenderer (2D canvas, DOM) or is hidden right now: done after a moment
     realSetTimeout(() => { if (L.gen === g && layers.get(L.id) === L) layerDrew(L); }, 700);
   } catch (err) {
+    // (round 48, memory48) the browser keeps a failed module's error for the page's life, and an error whose stack was
+    // never read keeps every object of its frames (a stopped run's WebGLRenderer, its canvas): reading it lets them go
+    try { void err?.stack; } catch { /* not an Error */ }
     if (L.gen !== g || layers.get(L.id) !== L) return; // (seqsolid) a run replaced meanwhile (a scrub, a re-run): its failure isn't the layer's
     post({ type: 'error', layer: pcTop(L.id), message: `${L.props.pcOf ? `[◫ ${L.props.name || L.id}] ` : ''}${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
     if (L.gen === g) layerDrew(L);

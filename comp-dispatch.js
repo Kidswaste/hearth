@@ -28,7 +28,7 @@ const CompDispatch = (() => {
   const cards = new Map(); // card id → { m, hostChatId }
   const lastAct = new Map(); // chat id → last time its run did something (a tool call)
   const byChat = new Map(); // part chat id → { m, p, hostChatId }
-  if (typeof HubBridge !== 'undefined') HubBridge.onCall((e) => { if (e?.chatId) lastAct.set(e.chatId, Date.now()); });
+  if (typeof HubBridge !== 'undefined') HubBridge.onCall((e) => { if (!e?.chatId) return; const t = Date.now(); lastAct.set(e.chatId, t); if (lastAct.size > 64) for (const [k, at] of lastAct) if (t - at > 600000) lastAct.delete(k); }); // (round 48, memory48) quiet 10 min: let go
 
   // ---------- the main chat and its scene ----------
   async function ensureDirector() {

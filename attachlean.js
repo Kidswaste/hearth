@@ -180,7 +180,7 @@ const AttachLean = (() => {
   }
 
   function register() {
-    Native.hooks.send.push((agentId, chat) => { sendSid.set(chat.id, chat.session?.id || null); });
+    Native.hooks.send.push((agentId, chat) => { sendSid.delete(chat.id); sendSid.set(chat.id, chat.session?.id || null); if (sendSid.size > 64) sendSid.delete(sendSid.keys().next().value); }); // (round 48, memory48) the last 64 chats sent into, not every chat of the day
     Native.hooks.event.push(onEvent);
     if (typeof Commands === 'undefined') return;
     const need = (ctx) => { if (!ctx.agentId || H.agent(ctx.agentId)?.mode !== 'native') throw new Error('Run it in a Claude or Astra chat'); return ctx.agentId; };

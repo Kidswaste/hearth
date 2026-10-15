@@ -617,6 +617,8 @@ const Native = (() => {
       if (keep.has(id) || pending.has(id) || now - (chatUsed.get(id) || 0) < 60000) continue;
       chats.delete(id); chatUsed.delete(id);
     }
+    // (round 48, memory48) a chat that never loaded (or was deleted) left its "used" time behind: one per chat of the day
+    if (chatUsed.size > chats.size + 8) for (const id of chatUsed.keys()) if (!chats.has(id)) chatUsed.delete(id);
   }
 
   // Adds Save / Run buttons to code blocks depending on their language and content. Long blocks start
@@ -2485,7 +2487,7 @@ const Native = (() => {
     const summary = H.chats.find((c) => c.id === chatId);
     if (pending.has(chatId)) window.hub.stop(chatId);
     await window.hub.deleteChat(chatId);
-    chats.delete(chatId);
+    chats.delete(chatId); chatUsed.delete(chatId); earlierFrom.delete(chatId); fullChats.delete(chatId); unreadFrom.delete(chatId); // (round 48, memory48)
     H.chats = H.chats.filter((c) => c.id !== chatId);
     if (summary && H.activeChat[summary.agentId] === chatId) newChat(summary.agentId);
     for (const v of views.values()) dropPane(v, chatId); // (round 45) its kept list goes with it
@@ -2649,6 +2651,8 @@ const Native = (() => {
       paintBody: (p, body, text) => paintBody(p, body, text), // (dev/checks/streamrender.js times it against the old way)
       // (round 45, chatswitch) what the kept lists hold: lists per chat window, elements in the parked ones
       kept() { let lists = 0; let nodes = 0; for (const v of views.values()) for (const [k, p] of v.panes || []) { lists += 1; if (k !== v.paneKey) nodes += p.list.getElementsByTagName('*').length; } return { lists, nodes }; },
+      // (round 48, memory48) sizes of what's kept per chat id (dev/checks/memory48.js: nothing grows with chats visited)
+      maps() { let nodes = 0; for (const v of views.values()) nodes += v.nodes?.size || 0; return { chats: chats.size, used: chatUsed.size, unread: unreadFrom.size, earlier: earlierFrom.size, full: fullChats.size, after: afterReply.size, pending: pending.size, nodeChats: nodes }; },
       // the live reply of a chat painted now with all its text; its HTML and the text it shows
       livePaint(chatId) { const p = pending.get(chatId); if (!p?.el) return null; const text = visibleText(p.text); paintBody(p, p.el.querySelector('.body'), text); return { html: p.el.querySelector('.body').innerHTML, text }; },
     },
