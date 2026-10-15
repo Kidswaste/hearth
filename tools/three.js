@@ -2726,6 +2726,11 @@ const ThreeLab = (() => {
     if (typeof ThreeGestures !== 'undefined') ThreeGestures.attach({ send: (msg) => box.send(msg), pane, layer: () => sel()?.id });
     // (round 40, labcamera) 🎥 camera moves on the timeline (tools/three-camera.js; the moves are drawn in the preview)
     if (typeof LabCamera !== 'undefined') LabCamera.attach({ send: (msg) => box.send(msg), player, layers: () => layersOf(), layerById: (id) => layerById(id), sel: () => sel() || null, edit: (id, patch) => editLayer(id, patch, { direct: true }), sketchId: () => current?.id || null, host: previewHost, ensureClock: () => { if (!player.loaded) ensureTimeline(); } });
+    // (round 46, labdirect) ✥ click / drag / scale / turn layers on the picture itself (tools/three-direct.js; the gestures are in the preview)
+    if (typeof LabDirect !== 'undefined') LabDirect.attach({ send: (msg) => box.send(msg), pane, player, layerById: (id) => layerById(id), sel: () => sel() || null, select: (id) => selectLayer(id), edit: (id, patch, o) => editLayer(id, patch, o), sketchId: () => current?.id || null, setEdit: (on) => setEdit(on), frame: () => box.frame,
+      openSliders: (id) => { if (selId !== id) selectLayer(id); setSlidersVisible(true); },
+      snapshot: (L) => ({ x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, keys: JSON.parse(JSON.stringify(Object.fromEntries(['x', 'y', 'scale', 'rotate'].filter((p) => L.keys?.[p]?.length).map((p) => [p, L.keys[p]])))) }),
+      restore: (L, b) => { Object.assign(L, { x: b.x, y: b.y, scale: b.scale, rotate: b.rotate }); L.keys ||= {}; for (const p of ['x', 'y', 'scale', 'rotate']) { if (b.keys?.[p]) L.keys[p] = JSON.parse(JSON.stringify(b.keys[p])); else delete L.keys[p]; } box.send({ type: 'layer-props', id: L.id, props: layerProps(L) }); touch(); renderLayers(); } });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -2846,6 +2851,7 @@ const ThreeLab = (() => {
       if (/^motionin-/.test(msg.type)) { window.LabMotionIn?.onBox?.(msg); return; } // (round 25) 📷 camera input: what the scene reads, tracking state
       if (msg.type === 'physics-info') { window.LabPhysics?.onBox?.(msg); return; } // (round 25) ⚛ physics layers' bodies
       if (msg.type === 'cam-info' && typeof LabCamera !== 'undefined' && LabCamera.onBox(msg)) return; // (round 40) the camera moves' answers
+      if (msg.type === 'direct' && typeof LabDirect !== 'undefined' && LabDirect.onBox(msg)) return; // (round 46, labdirect) a pick / a move on the picture
       if (/^view-/.test(msg.type) && typeof ThreeGestures !== 'undefined' && ThreeGestures.onBox(msg)) return; // (round 34) Z / Shift+Z answers, the first-time hint
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
