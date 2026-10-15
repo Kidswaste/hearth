@@ -13,6 +13,9 @@ const HISTORY_PATH = path.join(DATA_DIR, 'web-history.json');
 const MEMORY_PATH = path.join(DATA_DIR, 'memory.json');
 const USAGE_PATH = path.join(DATA_DIR, 'usage.json');
 const SAFE_ID = /^[\w-]{1,80}$/;
+// (round 43, scenesafe) reads that say what happened, the Lab scenes' guard and rotating copies (scenesafe-core.js)
+const SS = require('./scenesafe-core');
+const ssEnv = { fs, path, cache: new Map() };
 
 for (const dir of [CHATS_DIR, KV_DIR, ATTACH_DIR, TRASH_DIR]) fs.mkdirSync(dir, { recursive: true });
 
@@ -87,22 +90,31 @@ function ask(msg) {
   const id = ++jobSeq;
   return new Promise((resolve, reject) => { jobs.set(id, { resolve, reject }); w.postMessage({ ...msg, id }); });
 }
-function writeSync(file, value, prev) {
-  if (prev && fs.existsSync(file)) fs.copyFileSync(file, prev);
+function writeSync(file, value, prev, g = null) {
+  let keepPrev = true; let restored = null;
+  if (SS.guardedName(file)) { // (round 43, scenesafe) as on the store thread (storework.js write)
+    const r = SS.prepareWrite(ssEnv, { file, value, sent: g?.sent, removed: g?.removed });
+    keepPrev = r.keepPrev;
+    if (r.value !== value) { value = r.value; restored = r.restored.length ? r.restored : null; }
+  }
+  if (prev && keepPrev && fs.existsSync(file)) fs.copyFileSync(file, prev);
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
   fs.renameSync(tmp, file);
+  if (SS.guardedName(file)) SS.afterWrite(ssEnv, file, value);
+  return restored ? { restored } : undefined;
 }
 // (round 35, bugbash2) returns a promise that settles once this save is on disk (or was given up on: never rejects), so
 // the kv:set / chats:save IPC answers only then: `await hub.kvSet(…)` means "written", and something reading the file
 // itself right after (a fake engine's switches, another process) sees the new value
-function writeOff(file, value, { prev = null, chat = false } = {}) {
-  if (!thread()) { writeSync(file, value, prev); return Promise.resolve(); }
+// (round 43, scenesafe) resolves with { restored: [ids] } when the scenes guard kept scenes the save would have dropped
+function writeOff(file, value, { prev = null, chat = false, sent, removed } = {}) {
+  if (!thread()) { try { return Promise.resolve(writeSync(file, value, prev, { sent, removed })); } catch (err) { console.error('save failed', file, err.message); return Promise.resolve(); } }
   const n = ++writeSeq;
   pending.set(file, { value, n });
-  return ask({ op: 'write', file, value, prev, chatDir: chat })
-    .then((r) => { wstats.writes += 1; if (r?.skipped) wstats.skipped += 1; })
-    .catch(() => { wstats.fallbacks += 1; if (pending.get(file)?.n === n) { try { writeSync(file, value, prev); } catch (err) { console.error('save failed', file, err.message); } } })
+  return ask({ op: 'write', file, value, prev, chatDir: chat, sent, removed })
+    .then((r) => { wstats.writes += 1; if (r?.skipped) wstats.skipped += 1; return r?.restored ? { restored: r.restored } : undefined; })
+    .catch(() => { wstats.fallbacks += 1; if (pending.get(file)?.n === n) { try { return writeSync(file, value, prev, { sent, removed }); } catch (err) { console.error('save failed', file, err.message); } } return undefined; })
     .finally(() => { if (pending.get(file)?.n === n) pending.delete(file); });
 }
 // (round 20) a second copy of the thread for folder work (fsapi.js: recursive listings, searching a folder), so a big
@@ -129,7 +141,7 @@ function flushSync() {
   const w = worker; worker = null; workerOff = true;
   try { w?.terminate(); } catch { /* gone */ }
   try { filesWorker?.terminate(); } catch { /* gone */ }
-  for (const [file, { value }] of pending) { try { writeSync(file, value, null); } catch (err) { console.error('save failed', file, err.message); } }
+  for (const [file, { value }] of pending) { try { writeSync(file, value, null, SS.guardedName(file) ? { sent: SS.idsOf(value) } : null); } catch (err) { console.error('save failed', file, err.message); } }
   pending.clear();
 }
 
@@ -137,10 +149,11 @@ function flushSync() {
 // Sync (syncmain.js) can merge a save with a version that just arrived from another computer (beforeWrite).
 let beforeWrite = null;
 function writeJson(file, value, o) {
+  // (round 43, scenesafe) the ids the caller sent, before sync's merge: the guard tells "not sent" from "merged away"
+  const sent = SS.guardedName(file) && Array.isArray(value) ? SS.idsOf(value) : undefined;
   if (beforeWrite) { try { value = beforeWrite(file, value) ?? value; } catch { /* save as given */ } }
-  if (o?.off) return writeOff(file, value, o);
-  writeSync(file, value, o?.prev);
-  return undefined;
+  if (o?.off) return writeOff(file, value, { ...o, sent });
+  return writeSync(file, value, o?.prev, { sent, removed: o?.removed });
 }
 
 function allChats() {
@@ -204,14 +217,22 @@ function searchChatsSync(query) {
 
 // (round 29, safetynet) a kv store that can't be read (cut short by a crash, garbled) falls back to its previous
 // version (<name>.prev.json, kept by every save) instead of starting empty and being saved over
-function readKV(file, fallback) {
+// (round 43, scenesafe) a file another program holds for a moment (Windows: an antivirus, OneDrive / iCloud for Windows,
+// the search indexer; an online-only placeholder) is read again a few times, and if it still can't be read its previous
+// version is used too: "couldn't read it" used to return the fallback (an empty list), which the Lab then saved over
+// your scenes. readKVStatus says which it was ('ok' / 'missing' / 'unreadable') for callers that must know.
+function readKVStatus(file) {
   const p = pending.get(file);
-  if (p) return structuredClone(p.value);
-  let text;
-  try { text = fs.readFileSync(file, 'utf8'); } catch { return fallback; }
-  try { return JSON.parse(text); } catch { /* below */ }
-  const prev = readJson(file.replace(/\.json$/, '.prev.json'), undefined);
-  if (prev !== undefined) { console.warn(`store: ${path.basename(file)} could not be read; using its previous version`); return prev; }
+  if (p) return { state: 'ok', value: structuredClone(p.value), from: 'pending' };
+  const r = SS.readStatus(fs, file);
+  if (r.garbled) console.warn(`store: ${path.basename(file)} could not be read; using its previous version`);
+  if (r.state === 'unreadable') console.warn(`store: ${path.basename(file)} could not be read (${r.code})`);
+  return r;
+}
+function readKV(file, fallback) {
+  const r = readKVStatus(file);
+  if (r.state === 'ok') return r.value;
+  if (r.state === 'unreadable' && r.prev !== undefined) return r.prev;
   return fallback;
 }
 const kvPath = (name) => {
@@ -354,14 +375,24 @@ module.exports = {
   getKVOff: (name, fallback = null) => {
     const file = kvPath(name);
     if (pending.has(file) || !thread()) return readKV(file, fallback);
-    let size = 0; try { size = fs.statSync(file).size; } catch { return fallback; }
+    // (round 43) only a file that isn't there is "not there": a stat that fails otherwise goes on to the careful read
+    let size = 0; try { size = fs.statSync(file).size; } catch (err) { if (err.code === 'ENOENT') return fallback; }
     return size > 512 * 1024 ? ask({ op: 'read', file, fallback }).catch(() => readKV(file, fallback)) : readKV(file, fallback);
   },
-  setKV: (name, value) => {
+  // (round 43, scenesafe) the same read, saying what happened: { state: 'ok' | 'missing' | 'unreadable', value?, from?, prev? }
+  getKVStatus: (name) => {
+    const file = kvPath(name);
+    if (pending.has(file) || !thread()) return readKVStatus(file);
+    let size = 0; try { size = fs.statSync(file).size; } catch { /* the read says */ }
+    return size > 512 * 1024 ? ask({ op: 'read', file, status: true }).catch(() => readKVStatus(file)) : readKVStatus(file);
+  },
+  // o.removed: (the Lab's scenes) ids deleted on purpose; any other scene the save would drop is kept (scenesafe-core.js)
+  setKV: (name, value, o = null) => {
     // Keep the previous version of every store as <name>.prev.json (one step of undo for tools).
     // (round 20) the copy is made on the store thread right before the write, and skipped with it when nothing changed
     const file = kvPath(name);
-    return writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json') });
+    const removed = Array.isArray(o?.removed) ? o.removed.filter((x) => typeof x === 'string').slice(0, 5000) : undefined;
+    return writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json'), removed });
   },
   saveAttachment,
   importRef,

@@ -26,6 +26,8 @@ const path = require('path');
 const crypto = require('crypto');
 const { list: flist, search: fsearch } = require('./fswalk');
 
+const SS = require('./scenesafe-core');
+const ssEnv = { fs, path, cache: new Map() };
 const sha = (s) => crypto.createHash('sha1').update(s).digest('hex');
 const TEXT_CAP = 16 * 1024 * 1024;
 const TEXT_IDLE_MS = Number(process.env.HEARTH_TEXT_IDLE_MS) || 10 * 60 * 1000; // texts let go after this long without a search
@@ -94,11 +96,19 @@ function chats(dir) {
 }
 
 const OPS = {
-  write({ file, value, prev, chatDir }) {
-    const text = JSON.stringify(value, null, 2);
-    const h = sha(text);
+  write({ file, value, prev, chatDir, sent, removed }) {
+    let text = JSON.stringify(value, null, 2);
+    let h = sha(text);
     if (sameOnDisk(file, h)) return { skipped: true };
-    if (prev && fs.existsSync(file)) fs.copyFileSync(file, prev);
+    // (round 43, scenesafe) the Lab's scenes / History: scenes nobody deleted are kept, rotating copies, a damaged file
+    // kept aside (scenesafe-core.js); a file held by another program throws here: the save waits for the next one
+    let restored = null; let keepPrev = true;
+    if (SS.guardedName(file)) {
+      const g = SS.prepareWrite(ssEnv, { file, value, sent, removed });
+      keepPrev = g.keepPrev;
+      if (g.value !== value) { value = g.value; restored = g.restored.length ? g.restored : null; text = JSON.stringify(value, null, 2); h = sha(text); if (sameOnDisk(file, h)) return { skipped: true, ...(restored ? { restored } : {}) }; }
+    }
+    if (prev && keepPrev && fs.existsSync(file)) fs.copyFileSync(file, prev);
     const tmp = `${file}.w.tmp`;
     // (round 29, safetynet) flushed to the disk before the rename: after a power cut the file is the old one or the
     // new one, never an empty one (this thread waits for it; the window and the main process don't)
@@ -107,6 +117,8 @@ const OPS = {
     renameRetry(tmp, file);
     const st = stat(file);
     if (st) written.set(file, { h, size: st.size, mtimeMs: st.mtimeMs });
+    if (SS.guardedName(file)) SS.afterWrite(ssEnv, file, value);
+    if (restored) return { bytes: text.length, restored };
     // a chat saved here goes straight into the index (no read back)
     if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); if (recallIdx) recallIdx.add(file, value, index.get(file)); }
     return { bytes: text.length };
@@ -140,9 +152,10 @@ const OPS = {
     return hits.sort((a, b) => b.count - a.count || b.updatedAt - a.updatedAt).slice(0, 100);
   },
   // a big store read and parsed here (the main thread only receives the result)
-  read({ file, fallback }) {
+  read({ file, fallback, status }) {
+    if (status) return SS.readStatus(fs, file); // (round 43, scenesafe) ok / missing / unreadable, never a silent fallback
     let text;
-    try { text = fs.readFileSync(file, 'utf8'); } catch { return fallback ?? null; }
+    try { text = SS.readRetry(fs, file); } catch { return fallback ?? null; }
     try { const v = JSON.parse(text); const st = stat(file); if (st) written.set(file, { h: sha(text), size: st.size, mtimeMs: st.mtimeMs }); return v; } catch { /* cut short or garbled */ }
     // (round 29, safetynet) a store that can't be read falls back to its previous version (<name>.prev.json)
     try { return JSON.parse(fs.readFileSync(file.replace(/\.json$/, '.prev.json'), 'utf8')); } catch { return fallback ?? null; }

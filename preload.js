@@ -163,6 +163,7 @@ contextBridge.exposeInMainWorld('hub', {
   // (round 19, reach) paths from the other computer → this one's; open / reveal / preview what a chat made (reachmain.js)
   reach: { resolve: call('reach:resolve'), open: call('reach:open'), info: call('reach:info') },
   // (round 35, twocomputers) which computer this is, media found again after switching computers (twocomputersmain.js)
+  scenesafe: { scan: call('scenes:scan') }, // (round 43, scenesafe) 🛟 Recover lost scenes (scenesafemain.js)
   fw: { want: call('fw:want'), own: call('fw:own'), state: call('fw:state'), test: call('fw:test'), onChanges: on('fw:changes') }, // (round 42, filewatch) files changed outside Hearth (filewatchmain.js)
   two: { info: call('two:info'), hash: call('two:hash'), relink: call('two:relink'), link: call('two:link'), exists: call('two:exists'), pickFile: call('two:pickFile') },
   firstrun: { facts: call('firstrun:facts'), folders: call('firstrun:folders'), perm: call('firstrun:perm'), run: call('firstrun:run') }, // (round 28) Check this computer (firstrunmain.js)
