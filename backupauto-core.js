@@ -133,11 +133,12 @@
     if (!p) return { join: (...a) => a.filter(Boolean).join(platform === 'win32' ? '\\' : '/') };
     return platform === 'win32' ? p.win32 : p.posix;
   };
-  // is `dir` inside (or the same as) `root`? (Windows: case-insensitive, either slash)
+  // is `dir` inside (or the same as) `root`? (Windows: case-insensitive, either slash; (round 46) the Mac too: its disks
+  // ignore case by default, and a name typed with an accent can come in either Unicode form)
   function inside(dir, root, platform) {
     if (!dir || !root) return false;
     const P = pathOf(platform);
-    const norm = (x) => { let s = P.resolve ? P.resolve(x) : x; s = s.replace(/[\\/]+$/, ''); return platform === 'win32' ? s.replace(/\//g, '\\').toLowerCase() : s; };
+    const norm = (x) => { let s = P.resolve ? P.resolve(x) : x; s = s.replace(/[\\/]+$/, ''); return platform === 'win32' ? s.replace(/\//g, '\\').toLowerCase() : platform === 'darwin' ? s.normalize('NFC').toLowerCase() : s; };
     const a = norm(dir); const b = norm(root);
     const sep = platform === 'win32' ? '\\' : '/';
     return a === b || a.startsWith(b + sep);
@@ -257,6 +258,11 @@
         : platform === 'darwin' ? 'macOS didn\'t let Hearth write in the backup folder. Allow it in System Settings › Privacy & Security › Files and Folders, or choose another folder.'
           : `${sys} didn't let Hearth write in the backup folder. Choose another folder.` };
     }
+    // (round 46) a cloud drive's online-only file it couldn't fetch (OneDrive paused / signed out: Windows' "UNKNOWN" /
+    // "cloud file provider"; iCloud: EDEADLK), a path over Windows' 260 characters, too many open files
+    if (code === 'UNKNOWN' || code === 'EDEADLK' || /cloud (file )?provider|cloud operation|0x8007016a/i.test(msg)) return { code: 'CLOUD', fix: 'retry', why: `${platform === 'darwin' ? 'iCloud Drive' : platform === 'win32' ? 'OneDrive' : 'A cloud drive'} couldn't hand over a file in time (it may be paused, offline or signed out). Retry once it's running, or choose a folder that is only on this computer.` };
+    if (code === 'ENAMETOOLONG') return { code, fix: 'folder', why: `A path got too long${platform === 'win32' ? ' for Windows (over 260 characters)' : ''}. Choose a backup folder with a shorter path${platform === 'win32' ? ', e.g. C:\\Hearth backups' : ''}.` };
+    if (code === 'EMFILE' || code === 'ENFILE') return { code, fix: 'retry', why: 'Too many files were open at once. Retry in a moment (restarting Hearth clears it).' };
     if (code === 'EROFS') return { code, fix: 'folder', why: 'The backup folder is on a disk that can\'t be written to (read-only). Choose another folder.' };
     if (code === 'NOTOOL' || (code === 'ENOENT' && e.syscall && /spawn/.test(e.syscall))) return { code: 'NOTOOL', fix: 'retry', why: `The zip tool Hearth uses wasn't found (${platform === 'linux' ? 'zip / unzip' : 'tar'}). ${platform === 'win32' ? 'It comes with Windows 10 and 11 (System32\\tar.exe).' : 'Install it, then Retry.'}` };
     if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'NODIR') return { code: 'NODIR', fix: 'folder', why: 'The backup folder isn\'t there any more: a disk was unplugged, or a cloud drive was signed out or moved. Plug it back in, or choose another folder.' };

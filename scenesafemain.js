@@ -28,8 +28,14 @@ function backupDir() {
 }
 // the files of a zip we need, into a temp folder (Windows' own bsdtar, the Mac's tar, unzip on Linux); missing members
 // are fine (an old backup without History)
-function unzipSome(zip, members) {
+// (round 46, platform46) plain Node first (zipkit: the same on the Mac and Windows); the system's tool as before when
+// it can't read the zip
+async function unzipSome(zip, members) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-scenesafe-'));
+  try { await require('./zipkit').extract(zip, dir, { members, skipBad: true }); return dir; } catch { /* not one zipkit reads */ }
+  return unzipSomeTool(zip, members, dir);
+}
+function unzipSomeTool(zip, members, dir) {
   const TAR = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
   return new Promise((resolve) => {
     const done = () => resolve(dir);
