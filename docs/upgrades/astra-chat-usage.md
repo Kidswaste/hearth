@@ -15,3 +15,16 @@ The installed Codex model list on 2026-10-15 reports that `gpt-6-astra` accepts 
 Validation: app-server protocol/adapter tests (12 groups), account limits tests (multi-bucket, missing versus zero, reset units, clamping, concurrent/cached reads, no model turns, unavailable state), existing Astra engine tests (27), streaming render equivalence (9,912 renders), and compaction tests. Relevant commands: `node dev/codex-server-test.js`, `node dev/codex-usage-test.js`, `node dev/astra-engine-test.js`, `node dev/streamrender-test.js`, `node dev/autocompact-test.js`.
 
 Protocol reference: https://learn.chatgpt.com/docs/app-server
+
+## In-app verification on the owner's PC
+
+Integrated without changing the eight other locally modified/untracked files; the only local config differences are Astra's `effort: max` and `verbosity: low`. Backup manifest: `C:/Users/quent/hearth-integration-backups/astra-chat-usage-1792080816195/manifest.json`. Hearth was restarted cleanly and the account card visually checked: 96% remaining, 4% used, 7-day window, reset shown in local time. This is a point-in-time account-wide reading.
+
+Two test replies in the existing streaming-test chat:
+
+| Test | Reused server | Setup | First text received | First text painted | Total |
+| --- | --- | --- | --- | --- | --- |
+| Integers 1–50 | No | 736 ms | 3,796 ms | 3,797 ms | 5,768 ms |
+| Explain token counts, no tools | Yes | 0 ms | 18,456 ms | 18,456 ms | 20,693 ms |
+
+The second reply was three concise paragraphs; 552 output tokens included 454 reasoning tokens. Its 10,915 input tokens included 10,624 cached tokens. Maximum reasoning was accepted by the real server; neither test used tools. Display latency fell from the earlier 216–349 ms to 0–1 ms in these samples. They are not a controlled model-speed benchmark: prompts, effort, cache warmth and network conditions differ. The 18.5-second wait on the second prompt occurred before text reached Hearth.
