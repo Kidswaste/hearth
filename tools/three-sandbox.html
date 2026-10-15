@@ -2364,6 +2364,14 @@ function watchFrames(m) {
   if (!m.requestVideoFrameCallback) return;
   const cb = (_now, meta) => {
     if (mediaEl !== m) return;
+    // (capturefix2) a removed frame the decoder showed anyway (the jump's timer fired late: a busy machine, or a frame
+    // due right at the cut) is not handed on: the sketch, the texture and the frame number keep the last kept frame,
+    // and the jump happens now (labframes: "the sketch never sees a removed frame", f24 slipped through 3 runs of 3)
+    if (fparts && !m.paused && recUntil == null && !(region && loopOn) && fclock && !fparts[fpart]?.hold && partAt(meta.mediaTime) < 0) {
+      partFrame(meta.mediaTime, meta);
+      m.requestVideoFrameCallback(cb);
+      return;
+    }
     fpres.time = meta.mediaTime; fpres.presented = meta.presentedFrames;
     if (videoTex && videoTex.image === m) videoTex.needsUpdate = true; // (a new frame: media.texture() uploads it once)
     fpres.frame = fclock ? fFrameAt(meta.mediaTime) : -1;
