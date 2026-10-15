@@ -461,8 +461,11 @@ const KeysUI = (() => {
       { area: 'Lab timeline', keys: 'Esc', what: 'Clear the taps / the selection', when: inLab },
       { area: 'Lab timeline', keys: 'Shift+drag', what: 'Select points in a curve lane', when: inLab },
       { area: 'Lab timeline', keys: 'Ctrl+drag', what: 'Draw points in a curve lane', when: inLab },
-      { area: 'Lab timeline', keys: 'Alt+drag', what: 'Stretch the swing of a selection', when: inLab },
-      { area: 'Lab timeline', keys: 'Ctrl+C / V / D / A', what: 'Copy, paste at the playhead, duplicate, select all points', when: inLab },
+      { area: 'Lab timeline', keys: 'Click a ◆', what: 'Its ease: Linear, Ease, Ease in, Ease out, Bounce, Hold, or a curve with two handles', when: inLab },
+      { area: 'Lab timeline', keys: 'Shift+click / Shift+drag', what: 'Pick several keyframes ◆ on the layers’ tracks (drag one: they all move)', when: inLab },
+      { area: 'Lab timeline', keys: 'Alt+drag', what: 'Copy keyframes / points to another time', when: inLab },
+      { area: 'Lab timeline', keys: 'Shift+Alt+drag', what: 'Stretch the swing of a selection', when: inLab },
+      { area: 'Lab timeline', keys: 'Ctrl+C / V / D / A', what: 'Copy, paste at the playhead (keyframes: onto the selected layer), duplicate, select all points', when: inLab },
       { area: 'Lab timeline', keys: 'Double-click', what: 'Delete a marker', when: inLab },
       // Lab sliders & layers
       { area: 'Lab sliders & layers', keys: '/ (in the sliders column)', what: 'Find a slider (elsewhere in the Lab, / is 🔎 Lab search)', when: inLab, sel: '.tw-search' },
