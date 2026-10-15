@@ -142,7 +142,7 @@ lab3d.model(refs.${refKey}, P, { ${o} });
     return !r || r.sketchId === ThreeLab.scenes?.currentId();
   }
   const isModelLayer = (L) => (L.sliders || []).includes('Crane (°)') && (L.sliders || []).includes('Material');
-  async function modelLayers(ctx) { const v = await call('three_layers', {}, ctx); return (v.layers || []).filter(isModelLayer); }
+  async function modelLayers(ctx) { const v = await call('three_layers', { rows: true }, ctx); return (v.layers || []).filter(isModelLayer); }
   async function target(ref, ctx) {
     const ms = await modelLayers(ctx);
     if (!ms.length) throw new Error('No 3D model in this scene yet: /model add <file> or /model library.');

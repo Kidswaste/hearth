@@ -131,6 +131,8 @@ if (argv.includes('--list')) {
   console.log(`all: every check above (${GROUPS.all.length})`);
   process.exit(0);
 }
+// (round 44) --names <group…>: the checks one per line (to split "all" into parts that fit a time limit)
+if (argv.includes('--names')) { console.log([...new Set((names.length ? names : ['qa']).flatMap((n) => GROUPS[n] || [n]))].join('\n')); process.exit(0); }
 const wanted = [...new Set((names.length ? names : ['qa']).flatMap((n) => GROUPS[n] || [UNIT.includes(n) ? `unit:${n}` : n]))];
 for (const n of wanted) if (!n.startsWith('unit:') && !all.includes(n)) { console.error(`No check "${n}" (sh dev/run-checks.sh --list)`); process.exit(2); }
 
@@ -173,7 +175,8 @@ function flagsOf(src) {
   for (let i = 0; i < toks.length; i++) {
     const t = toks[i];
     if (['--script', '--shot', '--lib'].includes(t)) { i++; continue; } // set here (libs: by smoke.js)
-    if (['--check-timeout', '--wait', '--data', '--eval', '--open', '--save-dir', '--screen', '--dpr'].includes(t)) { keep.push(t, toks[++i].replace(/^["']|["']$/g, '')); continue; }
+    // (round 44) --coverage takes its file too: without it smoke.js wrote trim-drive's coverage to a file named "--script"
+    if (['--check-timeout', '--wait', '--data', '--eval', '--open', '--save-dir', '--screen', '--dpr', '--coverage'].includes(t)) { keep.push(t, toks[++i].replace(/^["']|["']$/g, '')); continue; }
     if (t.startsWith('--')) keep.push(t);
   }
   if (!keep.includes('--check-timeout')) keep.push('--check-timeout', '600000');

@@ -805,6 +805,10 @@ const ThreeDirector = (() => {
     if (tool === 'three_select_layer' && d.selectLayer) return { ok: true, value: sceneCode(d, d.selectLayer(args.layer), args.layer, B) };
     if (tool === 'three_layers' && d.layers) {
       const r = d.layers();
+      // (capturefix2) Hearth's own helpers (◇ shader, ✦ particles, 🅰 type, physics, models, assets) read the rows
+      // ({ rows: true }, not in the tool's schema): since the lean text below (round 37) their layer lookups threw
+      // ("v?.layers?.find is not a function") and a layer they had just added wasn't found
+      if (args.rows) return { ok: true, value: r };
       const value = { sketch: r.sketch, layers: `${layerLines(r.layers)}\n(bottom first, * = selected)`, note: r.note };
       const st = onlyNew({ sketch: value.sketch, note: value.note }, d, B);
       return { ok: true, value: { ...value, ...st, sketch: st.sketch, note: st.note } };

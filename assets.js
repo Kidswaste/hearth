@@ -418,7 +418,7 @@ requestAnimationFrame(frame);
 `;
   async function lab() { await need('lab', 'apps'); return ThreeLab.cmd(); }
   async function labRef(p) { await lab(); return ThreeLab.addReference(p); }
-  async function labLayers(ctx = {}) { const r = await HubBridge.call('three_layers', {}, { chatId: ctx.chatId || null }); return r?.ok ? r.value.layers || [] : []; }
+  async function labLayers(ctx = {}) { const r = await HubBridge.call('three_layers', { rows: true }, { chatId: ctx.chatId || null }); return r?.ok ? r.value.layers || [] : []; }
   async function selectedLayer(ctx) { const ls = await labLayers(ctx); return ls.find((L) => L.selected) || null; }
   async function isShaderLayer(L) { if (!L) return false; try { return /\bshader\s*\(/.test(ThreeLab.director?.codeOf(L.id)?.code || ''); } catch { return false; } }
   async function addLayer(name, code, ctx = {}) {
