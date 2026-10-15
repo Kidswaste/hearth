@@ -174,7 +174,15 @@ const sbx = async (code) => { const d = ThreeLab.director; if (!d) return null; 
 // CPU per process until then; the window's main-thread CPU (trace)
 // (the preview idle first: a heavy scene's late GPU work, a model's environment, can hold the page for seconds after
 // its first frame on a software GPU; that belongs to the stretch before)
-const settle = async () => { if (!ThreeLab?.director || !document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame')?.checkVisibility?.()) return; let ok = 0; const t = performance.now(); while (ok < 2 && performance.now() - t < 25000) { const a = performance.now(); await sbx('return 1'); ok = performance.now() - a < 150 ? ok + 1 : 0; await wait(100); } };
+// (and the GPU process quiet: under a quarter of a CPU for half a second; a software GPU finishes a heavy scene's shaders
+// there long after the page answers)
+const settle = async () => {
+  const t = performance.now();
+  if (typeof ThreeLab !== 'undefined' && ThreeLab.director && document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame')?.checkVisibility?.()) {
+    let ok = 0; while (ok < 2 && performance.now() - t < 25000) { const a = performance.now(); await sbx('return 1'); ok = performance.now() - a < 150 ? ok + 1 : 0; await wait(100); }
+  }
+  while (performance.now() - t < 30000) { const m0 = await M(); await wait(500); const m1 = await M(); if ((cpuOf(m0, m1).gpu || 0) < 125) break; }
+};
 async function stretch(name, go, { ready = null, quiet = 1500, trace = true } = {}) {
   await settle();
   await wait(300);

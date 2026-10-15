@@ -264,6 +264,7 @@ const ThreeMedia = (() => {
     let view = null; // { start, end } seconds when zoomed in
     let recording = null;
     let analyzing = false;
+    let loadingMini = 0; // (round 48, labstartfast) a load under way keeps the overview's row (see load, miniShown)
     let dragging = null;
     let paintRaf = 0; // (round 38) a paint waiting for the next frame (scrubbing: see seek)
     let selected = null; // { type: 'edge', edge } | { type: 'mark', lane, t }
@@ -1752,6 +1753,7 @@ const ThreeMedia = (() => {
       if (paintRaf) { cancelAnimationFrame(paintRaf); paintRaf = 0; }
       bar.classList.toggle('mb-empty', !st.bytes);
       bar.classList.toggle('mb-clock', Boolean(st.clock));
+      miniShown();
       bar.classList.toggle('locked', locked);
       setText(nameEl, st.name ? (analyzing ? `${st.name} · analyzing…` : st.name) : 'No music loaded: sketches get a demo beat');
       setText(loadBtn, st.bytes ? '🎵' : '🎵 Load audio / video…');
@@ -2251,10 +2253,15 @@ const ThreeMedia = (() => {
     // only redrawn when one of those changes; each draw just copies it and adds the zoomed view's box, and nothing
     // is drawn at all while the box hasn't moved by a pixel (a song playing doesn't change the overview).
     const miniCache = { key: '', canvas: document.createElement('canvas') };
-    let loadingMini = 0; // (round 48) a load under way keeps the overview's row (see load)
-    function drawMinimap(t) {
+    // the overview's row: there with a song or a timeline, and while one is read or decoded (round 48: set by paint()
+    // too, so a scene's own timeline has its row at the Lab's first layout, not when the overview first draws)
+    function miniShown() {
       if (D()) loadingMini = 0;
-      minimap.hidden = !D() && !(loadingMini && (analyzing || !st.bytes)); // (still reading the file, or decoding it)
+      const hide = !D() && !(loadingMini && (analyzing || !st.bytes));
+      if (minimap.hidden !== hide) minimap.hidden = hide;
+    }
+    function drawMinimap(t) {
+      miniShown();
       const w = mW(); const h = mH();
       if (!D() || !w || !h) return;
       const dpr = devicePixelRatio || 1;
