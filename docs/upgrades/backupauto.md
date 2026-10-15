@@ -13,7 +13,7 @@ New files:
   check's comparison, plain words.
 - `backupautomain.js`: the main process. It does the backups, runs the schedule and keeps the state.
 - `backupauto.js` + `backupauto.css`: the window. Lazy group `backupauto`, right after the first screen.
-- `dev/backupauto-test.js` (UNIT, 107 checks) and `dev/checks/backupauto.js` (smoke, 28 steps).
+- `dev/backupauto-test.js` (UNIT, 107 checks) and `dev/checks/backupauto.js` (smoke, 31 steps).
 
 ## How it works
 - **What's in a backup**: the zip holds the whole data folder as before (minus the chats' workspace, the After Effects
@@ -137,7 +137,7 @@ New files:
     kept; a full disk; a folder on a gone disk not re-made; 60 days of rotation on a moving clock; cards and media
     tidied; big media restored; an older zip looked into; Recover's list; before an update skipped when fresh; a held
     state file never written over, then read again.
-- **`dev/checks/backupauto.js` (smoke, throwaway data, 28 steps)**:
+- **`dev/checks/backupauto.js` (smoke, throwaway data, 31 steps)**:
   - waits while rendering (a real powerwise hold), on a 25 % battery and while in use, then runs when idle; checked,
     with counts;
   - "Last backup: just now ✓" under This computer & sync;
@@ -152,8 +152,13 @@ New files:
   - `/backup status`;
   - the 3-day note queued in Hints.
   - Screenshots looked at (Settings line, Backups list, the failed state).
-- Re-run (see the final report for results): scenesafe, datasafe, sync, settingscalm, powerwise, updater, lazy,
-  unit:boot-test, unit:datasafe-test, unit:scenesafe-test.
+- Re-run: scenesafe, datasafe, sync, unit:sync-test, unit:store-thread-test, unit:datasafe-scan, settingscalm (with
+  tidy, simplify2, firstrun), powerwise, unit:powerwise-test, unit:hintcalm-test, updater, lazy, unit:boot-test,
+  unit:datasafe-test, unit:scenesafe-test: pass.
+  - unit:datasafe-test and unit:scenesafe-test failed once each on a loaded machine and passed alone.
+  - unit:appsearch-test failed its 16 ms keystroke budget once under load (18.7 ms) and passed alone.
+  - appsearch's "Enter on an AI setup row in a closed fold" step fails intermittently on this round's starting commit
+    too (1 of 3 runs there), so it isn't caused by this round.
 
 ## Caveats
 - **Not tried on a real Mac or PC.** Windows' bsdtar and the Mac's tar make and check the zips there (the same tools
