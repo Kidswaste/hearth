@@ -13,6 +13,17 @@ const ok = (c, what, info) => { out.steps.push(`${c ? '✓' : '✗'} ${what}${in
 const lz = (n) => Lazy.state().find((g) => g.name === n)?.state;
 const card = () => document.querySelector('.qs-card:not(.qs-out)');
 const rows = () => [...document.querySelectorAll('.qs-card:not(.qs-out) .qs-row')].map((b) => b.dataset.qs);
+// (round 44) since round 43 (menucalm) the row sits one level down (the Lab's ⋯ › View & help, the board's ⋯ › More…):
+// point at that row like a person (its flyout opens on hover; a click if it doesn't), then click the row itself
+const menuVia = async (parent, re) => {
+  const p = await until(() => [...document.querySelectorAll('.mb-menu .menu-item, #menu button, #menu .menu-item, #menu-fly button, #menu-fly .menu-item')].find((x) => parent.test(x.textContent) && x.offsetParent), 3000);
+  if (p) {
+    const r = p.getBoundingClientRect(); const mv = (x) => smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x, y: r.top + r.height / 2, button: 'none' } });
+    await mv(r.left + 20); await mv(r.left + 40); await wait(500);
+    if (![...document.querySelectorAll('button')].some((x) => re.test(x.textContent) && x.offsetParent)) { p.click(); await wait(500); }
+  }
+  return menuClick(re);
+};
 const menuClick = async (re) => { const it = await until(() => [...document.querySelectorAll('button')].find((x) => re.test(x.textContent) && x.offsetParent && !x.closest('.qs-card, .surface'))); it?.click(); return Boolean(it); };
 const C = H.claudeAgent();
 let sends = 0;
@@ -86,8 +97,8 @@ try {
   LabInstantHook.paint();
   await until(() => document.querySelector('.lab-inst-empty'), 4000);
   document.querySelector('[data-feature="Lab more"]')?.click();
-  const labRow = await menuClick(/What can I do here/);
-  ok(labRow, 'the Lab toolbar\'s ⋯ has "✦ What can I do here?"');
+  const labRow = await menuVia(/View & help/, /What can I do here/);
+  ok(labRow, 'the Lab toolbar\'s ⋯ › View & help has "✦ What can I do here?"');
   if (!labRow) await QuickstartHooks.open('lab');
   await until(() => card());
   ok(card()?.dataset.place === 'lab' && card().closest('.surface')?.dataset.id === 'tool:three', 'the card in the Lab');
@@ -121,8 +132,8 @@ try {
   await Board.create('QS board');
   await wait(400);
   await Board._.boardMenu({ currentTarget: document.querySelector('.bd-boardbtn') });
-  const bRow = await menuClick(/What can I do here/);
-  ok(bRow, 'the board\'s ⋯ has "✦ What can I do here?"');
+  const bRow = await menuVia(/^More…/, /What can I do here/);
+  ok(bRow, 'the board\'s ⋯ › More… has "✦ What can I do here?"');
   await until(() => card());
   ok(card()?.dataset.place === 'board' && rows()[0] === 'board-add', 'an empty board → Add pictures first', rows());
   Quickstart.close();
