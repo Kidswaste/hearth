@@ -51,7 +51,7 @@ const ThreeLab = (() => {
     });
     libFiles[name].then(() => deliver({ target: 'three-sandbox', type: 'lib', name, code: String(have()) }), (err) => deliver({ target: 'three-sandbox', type: 'lib', name, error: err.message }));
   }
-  function sandboxFrame(parent, mode, onMessage, extraParams = () => '', { lazy = false, pretty = false, name = mode } = {}) {
+  function sandboxFrame(parent, mode, onMessage, extraParams = () => '', { lazy = false, pretty = false, name = mode, gpuStuck = 'reload' } = {}) {
     // No allow-same-origin: sketch code (which may come from a chat) can't reach the hub's APIs.
     // (round 37, labboot) the Lab preview takes the page warmed after the start (tools/three-boot.js), moved in running
     let warmed = name === 'preview' ? window.LabBoot?.take?.(parent) || null : null;
@@ -75,8 +75,27 @@ const ThreeLab = (() => {
     let stageSize = () => null; // → { width, height } for exact frame sizes (read at every load)
     const deliver = (m) => (target === 'stage' ? window.hub.stageSend(m) : frame.contentWindow.postMessage(m, '*'));
     let coverShot = null; // resolves with the picture the page answered for the cover
+    // (round 43, glrecover) the GPU took the page's WebGL contexts ('gpu-lost'): the page rebuilds its layers in place
+    // when they come back ('gpu-restored'). None back within GL_WAIT: the owner is told ('gpu-stuck') and, unless it
+    // handles that itself (gpuStuck: 'owner', the export page), the page is made again for the same content: its
+    // 'ready' says `again` (+ `gl`), so the owner runs what it ran (the Lab: the scene, its song at its place, nothing
+    // saved). Same path as a page the browser restarted by itself.
+    const gl = { lost: false, epoch: 0, timer: 0, stuck: 0, restored: 0, again: false, at: 0 };
+    const glWaitMs = () => Number(store.get('glrecover.wait', 4000)) || 4000;
+    const glStuck = () => {
+      gl.timer = 0;
+      if (!gl.lost) return;
+      gl.stuck += 1; live.gl('stuck', name);
+      onMessage({ source: 'three-sandbox', type: 'gpu-stuck', epoch: gl.epoch, count: gl.stuck });
+      if (gpuStuck !== 'owner' && (target === 'stage' || frame.isConnected)) { gl.again = true; load(true); }
+    };
+    const glTrack = (data) => {
+      if (data.type === 'gpu-lost') { gl.epoch = data.epoch || gl.epoch + 1; if (!gl.lost) { gl.lost = true; gl.at = Date.now(); live.gl('lost', name); } clearTimeout(gl.timer); gl.timer = setTimeout(glStuck, glWaitMs()); }
+      if (data.type === 'gpu-restored') { clearTimeout(gl.timer); gl.timer = 0; if (gl.lost) { gl.lost = false; gl.restored += 1; live.gl('restored', name); } }
+    };
     const handle = (data) => {
       if (data?.source !== 'three-sandbox') return;
+      if (data.type === 'gpu-lost' || data.type === 'gpu-restored') glTrack(data);
       if (data.type === 'lib-need') { sandboxLib(data.name, deliver); return; } // (round 25, diet) motion / lab3d for the page
       if (data.type === 'shot' && data.tag === 'cover') { const fn = coverShot; coverShot = null; fn?.(data.dataUrl); return; }
       if (data.type === 'ready') {
@@ -85,6 +104,8 @@ const ThreeLab = (() => {
         // the same load saying "ready" twice: the browser restarted the page by itself (its frame was moved in the
         // page), so it is up but empty; the owner runs its content again (data.again)
         if (ready && data.n && ready.n === data.n) data.again = true;
+        // (round 43, glrecover) the page made again after the GPU didn't come back: the same as above, and quiet
+        if (gl.again) { gl.again = false; data.again = true; data.gl = true; if (gl.lost) { gl.lost = false; clearTimeout(gl.timer); gl.timer = 0; } }
         ready = data; retries = 0;
         // a sketch page uncovers once its layers have drawn (stack-drawn); the others right away
         if (mode !== 'sketch') setTimeout(uncover, 160);
@@ -232,6 +253,8 @@ const ThreeLab = (() => {
         setTimeout(() => fin(null), ms);
       }),
       set onStageClosed(fn) { onStageClosed = fn; },
+      // (round 43, glrecover) is the page without its GPU contexts right now; { lost, stuck, restored, since }
+      get gl() { return { lost: gl.lost, stuck: gl.stuck, restored: gl.restored, since: gl.lost ? gl.at : 0, remaking: gl.again }; },
       get onStage() { return target === 'stage'; },
       get revision() { return ready?.revision; }, get ready() { return Boolean(ready); },
       get query() { return loadedWith; }, // (round 37, labboot)
@@ -253,6 +276,7 @@ const ThreeLab = (() => {
     return {
       reload(name) { c.reloads[name] = (c.reloads[name] || 0) + 1; note(`reload ${name}`); },
       retune(name) { c.retunes = (c.retunes || 0) + 1; note(`retune ${name}`); }, // (round 37, labboot) fit ⇄ exact size in place
+      gl(what, name) { const g = (c.gl ||= {}); g[what] = (g[what] || 0) + 1; note(`gpu ${what} ${name}`); }, // (round 43, glrecover) lost / restored / stuck
       sent(name, type) { if (!COUNTED.test(type)) return; const k = `${name} ${type}`; c.sent[k] = (c.sent[k] || 0) + 1; if (type !== 'layer-props') note(k); },
       set why(v) { why = v; }, get why() { return why; },
       counts: () => JSON.parse(JSON.stringify(c)),
@@ -401,6 +425,12 @@ const ThreeLab = (() => {
   const SLOT = 10000; // each layer's slider values live from slot × SLOT in the sandbox
   function sketchTab(pane) {
     let sketches = [];
+    // (round 43, scenesafe) a store is written only once it was read for sure: a read that failed (Windows: a file held
+    // by an antivirus / OneDrive / iCloud for a moment) used to look like "no scenes", and the starter scene was saved
+    // over yours. kvOk: the stores read fine (or truly not there yet); removedIds: scenes deleted on purpose since the
+    // last save (the store keeps any other scene a save would drop: scenesafe-core.js)
+    const kvOk = new Set();
+    const removedIds = new Set();
     let current = null;
     let selId = null; // selected layer
     let soloId = null; // a layer shown alone while you work on it (not saved)
@@ -446,56 +476,71 @@ const ThreeLab = (() => {
     const newBtn = btn('New', 'New sketch from a template · right-click: the templates as a list', () => templateGallery(), 'ghost small imp-main');
     newBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['New sketch from', ...ThreeData.TEMPLATES.map((t) => [t.name, t.desc || '', () => create(t.name, t.code)]), ['Duplicate this one', current?.name || '', () => duplicate()]]); });
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
-    const sketchMenuBtn = btn('Sketch ▾', 'Rename, copy, delete or export this scene, or see its history', (e) => {
+    const sketchMenuBtn = btn('Sketch ▾', 'Start a new one, or rename, copy, share, export or delete this one, or see its history', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       popup(r.left, r.bottom + 4, sketchMenuRows());
     });
     // (round 36, labsearch: the rows on their own, so 🔎 Lab search lists them too)
     function sketchMenuRows() {
+      // (round 43, menucalm) nine rows, nothing folded away: start something, this sketch (Rename, ⧉ Duplicate, History ›,
+      // ⇪ Share & export ›, More ›), Delete last; every row ≤ 2 clicks (it was 6 rows hiding 11 behind "This sketch ›")
+      const packs = typeof LabPacksHook !== 'undefined' ? LabPacksHook.sketchRow(() => current?.id)[2] : []; // (round 28) ⇪ Save as a pack, open one (tools/three-packs-hook.js)
       return [
         ['New from a template…', 'Right-click it for the list', () => templateGallery()],
         ['▦ All your sketches', 'As pictures', () => browseSketches()],
         ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.sketchRow()] : []), // (round 35) 📐 My templates (tools/three-templates-hook.js)
-        ...(typeof LabPacksHook !== 'undefined' ? [LabPacksHook.sketchRow(() => current?.id)] : []), // (round 28) Share › Save as a pack (tools/three-packs-hook.js)
         'This sketch',
         ['Rename…', current?.name || '', () => renameSketch()],
-        ['Duplicate', 'A copy you can change freely', () => duplicate()],
-        ['History…', 'Earlier versions of the selected layer, and deleted sketches', () => historyDialog()],
-        ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H · /history', () => window.ThreeHistoryUI?.open()],
-        ['Copy all the code', 'Every layer, one after the other, to the clipboard', () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); }],
-        ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
-        ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
-        ['Export HTML…', 'A standalone .html file', () => exportHtml()],
-        ...(typeof Deploy !== 'undefined' ? [['Publish & Adobe', 'A web page (Vercel, Netlify…) · Photoshop', [['Publish as a web page…', 'Preview first; asks before it goes public', () => Deploy.menuAt(sketchMenuBtn)], ['Preview the web page here', 'Built like the published one, on this computer', () => Deploy.build('scene', current?.id || '').then((b) => Deploy.preview(b)).catch((err) => toast(err.message, { type: 'error' }))], ...(typeof Adobe !== 'undefined' ? [['Open the picture in Photoshop', 'A still of the preview (all layers)', () => Adobe.labToPhotoshop().catch((err) => toast(err.message, { type: 'error', timeout: 9000 }))]] : [])]]] : []), // (round 14: deploy.js, adobe.js)
-        ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()],
+        ['⧉ Duplicate', 'A copy you can change freely', () => duplicate()],
+        ['History', 'Time machine, earlier versions, deleted and lost scenes', [
+          ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H', () => window.ThreeHistoryUI?.open()],
+          ['Earlier versions and deleted sketches…', 'Of the selected layer; deleted sketches come back from here', () => historyDialog()],
+          ...(window.LabSceneSafe ? [LabSceneSafe.sketchRow()] : [])]], // (round 43) 🛟 Recover lost scenes… (tools/three-scenesafe.js)
+        ['⇪ Share & export', 'A pack, the code, a web page, Photoshop', [
+          ...packs,
+          ['Copy all the code', 'Every layer, one after the other, to the clipboard', () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); }],
+          ['Web page (one .html)…', 'A standalone .html file of this sketch', () => exportHtml()],
+          ...(typeof Deploy !== 'undefined' ? [['Publish as a web page…', 'Vercel, Netlify… · preview first; asks before it goes public', () => Deploy.menuAt(sketchMenuBtn)], ['Preview the web page here', 'Built like the published one, on this computer', () => Deploy.build('scene', current?.id || '').then((b) => Deploy.preview(b)).catch((err) => toast(err.message, { type: 'error' }))]] : []), // (round 14: deploy.js)
+          ...(typeof Adobe !== 'undefined' ? [['Open the picture in Photoshop', 'A still of the preview (all layers)', () => Adobe.labToPhotoshop().catch((err) => toast(err.message, { type: 'error', timeout: 9000 }))]] : [])]], // (round 14: adobe.js)
+        ['More', 'Cycle looks, restart, ask about this layer', [
+          ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
+          ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
+          ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()]]],
         'Careful',
         ['Delete…', 'Moves it to History → deleted sketches', () => removeSketch()],
       ];
     }
     // ⋯ in the Lab toolbar: the controls you rarely or never use, still one click away (with their old names for usage)
-    const labMoreBtn = btn('⋯', 'More: focus, screenshot, snippets, three.js version, live code, frame rate, keys', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
+    const labMoreBtn = btn('⋯', 'More: variations, all formats, a batch, the director, fix my scene, capture, code, view', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
     labMoreBtn.dataset.feature = 'Lab more';
     function labMoreItems() {
       const v = store.get('three.version', ThreeData.VERSIONS[0]);
-      // (round 7) six open entries: Capture ›, Console ›, Code › branch into the detail
-      return ['View',
-        ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
-        ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture
-        ['Capture', 'Screenshot, copy', [
-          ['📷 Screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
+      // (round 43, menucalm) two short parts, no row twice: what you make from the scene (🎲 ▦ ⧉ 📐 📜 Director ›), then
+      // the Lab itself (🩺 Fix my scene, Capture ›, Code & console ›, View & help ›); 17 rows → 11, every row ≤ 2 clicks
+      const easy = typeof LabEasy !== 'undefined' ? LabEasy.toolbarItems() : []; // (round 26) Director › (tools/three-easy.js)
+      const fix = easy.filter((r) => /Fix my scene/.test(r[0]));
+      return ['Make',
+        ...easy.filter((r) => !fix.includes(r)),
+        'This Lab',
+        ...fix,
+        ['Capture', 'Screenshot, copy, contact sheet', [
+          ['🖼 Save a screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
           ['🎞 Contact sheet', 'Frames across the song', () => showSheet()],
-          ...(typeof Capture !== 'undefined' ? [['The capture menu…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : [])]], // (round 8) the Lab reaches the whole capture menu
-        ['Console', CONSOLE_MODES.find(([m]) => m === consoleMode)[1], CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m])],
-        ['Code', `r${v.split('.')[1]}${autoRun ? ' · live' : ''}`, [
+          ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : [])]], // (round 8) the Lab reaches the whole capture menu
+        ['Code & console', `r${v.split('.')[1]}${autoRun ? ' · live' : ''} · console: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1].toLowerCase()}`, [
           ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
           [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
-          ['Live code', 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }, autoRun]]],
-        ...(typeof LabEasy !== 'undefined' ? LabEasy.toolbarItems() : []), // (round 26) Director › (tools/three-easy.js)
-        ...(window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? [QuickstartHooks.labRow()] : []), // (round 31) ✦ What can I do here? (quickstart-hooks.js)
-        ['Frame pace', paceText(paceLast), () => { setPaceOn(!paceOn); }, paceOn, 'Frame pace'], // (round 33 "labpace") the readout lives here; ticked: also in the preview's corner
-        ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
-        ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
+          ['Live code', 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }, autoRun],
+          'The console shows',
+          ...CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m])]],
+        ['View & help', 'Focus, frame pace, keys', [
+          ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
+          ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture
+          ['Frame pace', paceText(paceLast), () => { setPaceOn(!paceOn); }, paceOn, 'Frame pace'], // (round 33 "labpace") the readout lives here; ticked: also in the preview's corner
+          ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
+          ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
+          ...(window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? [QuickstartHooks.labRow()] : [])]], // (round 31) ✦ What can I do here? (quickstart-hooks.js)
         ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab') : [])]; // (round 8) ends like every menu
       // (copy / export are in Sketch ▾, the frame rate in the preview's ⋯)
     }
@@ -1356,7 +1401,7 @@ const ThreeLab = (() => {
     // { sketchId: [{ id, t, text, image, at, done }] } in kv 'three-notes'. A note = the song time, a screenshot and what to change.
     let notesAll = {};
     const notesOf = () => (current ? (notesAll[current.id] ||= []) : []);
-    const saveNotes = saver(() => window.hub.kvSet('three-notes', notesAll), 300);
+    const saveNotes = saver(() => (kvOk.has('three-notes') ? window.hub.kvSet('three-notes', notesAll) : null), 300);
     const fileUrl = (p) => WinMac.fileUrl(p); // (round 31, winmac) a # or ? in a file name no longer cuts the URL
     // ---------- contact sheet ----------
     // One picture of the whole piece: a frame at each cue (or evenly over the loop / song), labeled with
@@ -1660,7 +1705,7 @@ const ThreeLab = (() => {
     let refsAll = {};
     const refBytes = new Map(); // id → ArrayBuffer
     const refsOf = () => (current ? (refsAll[current.id] ||= []) : []);
-    const saveRefs = saver(() => { dispatchEvent(new Event('hearth:lab-refs')); return window.hub.kvSet('three-refs', refsAll); }, 300); // (round 42: filewatch follows them)
+    const saveRefs = saver(() => { dispatchEvent(new Event('hearth:lab-refs')); return kvOk.has('three-refs') ? window.hub.kvSet('three-refs', refsAll) : null; }, 300); // (round 42: filewatch follows them)
     const REF_KINDS = [['image', /\.(png|jpe?g|gif|webp|bmp|svg)$/i], ['video', /\.(mp4|webm|mov|m4v|mkv)$/i], ['model', /\.(glb|gltf|obj|fbx|stl|ply)$/i],
       ['audio', /\.(mp3|wav|ogg|m4a|flac|aac)$/i], ['font', /\.(ttf|otf|woff2?)$/i], ['data', /\.(json|csv|txt|hdr|exr|bin)$/i]];
     const MIMES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/mp4', m4v: 'video/mp4', mkv: 'video/webm', glb: 'model/gltf-binary', gltf: 'model/gltf+json', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac', json: 'application/json', csv: 'text/csv', txt: 'text/plain', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
@@ -2232,6 +2277,7 @@ const ThreeLab = (() => {
       saveExtras();
     }
     function rememberMedia() {
+      if (glp.phase) return; // (round 43, glrecover) nothing noted while the preview waits for the graphics card
       // the scene's own timeline: where its playhead is (no song)
       const tl = current && extras[current.id]?.timeline;
       if (tl && !extras[current.id].media && player.path === clockPath(current.id)) { const t = Math.round(player.time * 1000) / 1000; if (tl.time !== t) { tl.time = t; saveExtras(); } return; }
@@ -2365,7 +2411,7 @@ const ThreeLab = (() => {
       saveExtras();
       sceneMedia(id, { playing: false });
     }
-    addEventListener('beforeunload', () => { rememberMedia(); if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); });
+    addEventListener('beforeunload', () => { rememberMedia(); if (extrasLoaded && kvOk.has('three-lab-extras')) window.hub.kvSet('three-lab-extras', extras); });
     split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
     previewHost.append(presentHint, presentHud, blackout, editPanel, stageNote);
     function setCodeVisible(show) {
@@ -2644,7 +2690,7 @@ const ThreeLab = (() => {
     // Per-sketch looks and music links for the sliders, song, frame size and selected layer.
     let extras = {};
     let extrasLoaded = false; // never write the empty placeholder over your saved extras (a reload while loading)
-    const saveExtras = debounce(() => { if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); }, 500);
+    const saveExtras = debounce(() => { if (extrasLoaded && kvOk.has('three-lab-extras')) window.hub.kvSet('three-lab-extras', extras); }, 500);
     let consoleLines = [];
     let lastStats = null;
     // the fps / draw-call line (on hover): rebuilt only when its text changes, and painted when it shows again
@@ -2710,6 +2756,8 @@ const ThreeLab = (() => {
     }
     function onMessage(msg) {
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
+      if (/^gpu-(lost|restored|stuck)$/.test(msg.type)) { glPreview(msg); return; } // (round 43, glrecover)
+      if (msg.type === 'stack-drawn' && glp.phase === 'remaking') glBack('new page');
       if (msg.type === 'obs-frame') { window.InteropObs?.frame(msg); return; } // (round 25, interop) a frame for OBS's Browser Source
       if (msg.type === 'shader-info') { window.LabShader?.onBox?.(msg); return; } // (round 23) ◇ shader layers' compile state
       if (msg.type === 'particles-info') { window.LabParticles?.onBox?.(msg); return; } // (round 24) ✦ particle layers' counts / sources
@@ -2755,7 +2803,6 @@ const ThreeLab = (() => {
         return;
       }
       if (msg.type === 'adapt') { paintAdapt(msg); return; }
-      if (msg.type === 'gpu-lost') { showStall('The preview lost its GPU context.'); window.Jank?.gpu('The Lab preview'); return; }
       // (round 39, labmemory) the preview cleaned up by itself after a scene switch and is still heavy: one calm tip
       if (msg.type === 'mem-note') {
         const go = () => toast('The Lab preview is holding a lot of graphics memory after many scenes. ⟲ Restart from scratch lightens it.', { timeout: 12000, action: { label: '⟲ Restart', fn: () => restartSim() } });
@@ -2783,7 +2830,7 @@ const ThreeLab = (() => {
       if (/^audio-/.test(msg.type) && typeof ThreeAudio !== 'undefined' && ThreeAudio.onMessage(msg)) return; // (round 23, labaudio)
       if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); if (typeof ThreeMusic !== 'undefined') ThreeMusic.liveTempo(msg); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
-      if (msg.type === 'ready' && msg.again && ranOnce) { console.warn('Lab preview restarted by itself: running the sketch again'); run({ again: true }); }
+      if (msg.type === 'ready' && msg.again && ranOnce) { console.warn(msg.gl ? 'Lab preview made again after the GPU went away: running the scene again' : 'Lab preview restarted by itself: running the sketch again'); run({ again: true, quiet: Boolean(msg.gl) }); }
       if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
       if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
       if (msg.type === 'ready') refsSig = null; // (round 39, labmemory) a fresh page has no references yet
@@ -2814,7 +2861,7 @@ const ThreeLab = (() => {
     let trash = [];
     // (round 21: written 1.5 s after the last change, not 0.4 s: with auto-run every pause in typing takes a snapshot,
     // and the whole history, 40 versions of every layer, went to disk each time)
-    const saveHistory = debounce(() => window.hub.kvSet('three-history', { versions: history, trash }), 1500);
+    const saveHistory = debounce(() => { if (kvOk.has('three-history')) window.hub.kvSet('three-history', { versions: history, trash }); }, 1500);
     const histKey = (L) => (!L || L.id === 'main' ? current.id : `${current.id}:${L.id}`);
     function snapshot() {
       if (!current || !editor.value.trim() || api.tm?.quiet) return; // (round 23: not while the time machine shows a version)
@@ -2893,33 +2940,64 @@ const ThreeLab = (() => {
     // ⟲ Restart: everything from scratch (a new page, GPU context and audio), when a sketch bugs out.
     // right-click on the picture
     // Right-click the picture (round 7): the frequent things first, the rest in a few open submenus.
+    // (round 43, menucalm) one order, most used first (the owner's counts: Freeze, the frame sizes, Save / Shuffle, the
+    // music): Freeze · Frame size › · Sliders › · ♪ Music › · Capture › · View › — then what you add or make: ＋ Add ›
+    // (layers, models, the webcam, the sequence) · ✨ Look & motion › (grade, camera moves, variations) · ⇪ Make & export ›
+    // · ✦ More › (fix my scene, restart, live, share, templates, recipes, keys). 23 rows → 11; pointing opens two levels.
     function previewMenuItems() {
       const ctl = selCtl();
-      return [
-        { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', action: () => setFreeze(!frozenNow) },
-        ...(typeof AutoPolish !== 'undefined' ? [AutoPolish.previewItem()] : []), // (round 30) ✨ make it look finished (tools/three-autopolish.js)
-        ...(typeof ThreeSeq !== 'undefined' ? [ThreeSeq.previewItem()] : []),
-        ...(typeof ThreeComp !== 'undefined' ? [ThreeComp.previewItem()] : []),
-        ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
-        ...(window.AssetsHooks ? [AssetsHooks.previewItem()] : []), // (round 24) 🗂 the asset library (assets-cmds.js)
+      const seqItem = typeof ThreeSeq !== 'undefined' ? ThreeSeq.previewItem() : null;
+      const inSeq = Boolean(seqItem?.items); // the sequence is on screen: its own menu (back to the scene…) right at the top
+      // ◫ Comp's rows sit in ＋ Add itself (another scene as a layer, picture in picture first; dispatch, precomps,
+      // render after the layers), so a precomp's settings stay two levels down
+      const comp = typeof ThreeComp !== 'undefined' ? (ThreeComp.previewItem().items?.() || []) : [];
+      const compAdd = comp.filter((x) => typeof x === 'object' && /^＋/.test(x.label));
+      const compRest = comp.filter((x) => !compAdd.includes(x));
+      const add = [
+        ...compAdd,
+        ...(seqItem && !inSeq ? [seqItem] : []),
+        '-',
         ...(typeof LabShader !== 'undefined' ? [LabShader.previewItem()] : []), // (round 23) ◇ shader layers (tools/three-shader.js)
         ...(typeof LabParticles !== 'undefined' ? [LabParticles.previewItem()] : []), // (round 24) ✦ GPU particles (tools/three-particles.js)
         ...(typeof LabType !== 'undefined' ? [LabType.previewItem()] : []), // (round 25) 🅰 kinetic type, lyrics (tools/three-type.js)
-        ...(typeof LabMotionIn !== 'undefined' ? [LabMotionIn.previewItem()] : []), // (round 25) 📷 the camera as a live input (tools/three-motion-in.js)
         ...(typeof LabPhysics !== 'undefined' ? [LabPhysics.previewItem()] : []), // (round 25) ⚛ light physics (tools/three-physics.js)
-        ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
+        ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
+        ...(window.AssetsHooks ? [AssetsHooks.previewItem()] : []), // (round 24) 🗂 the asset library (assets-cmds.js)
+        ...(typeof LabMotionIn !== 'undefined' ? [LabMotionIn.previewItem()] : []), // (round 25) 📷 the webcam as a live input (tools/three-motion-in.js)
+        ...(compRest.length ? ['-', '◫ Comp', ...compRest] : []),
+      ];
+      const look = [
         ...(typeof LabGrade !== 'undefined' ? [LabGrade.previewItem()] : []), // (round 24) ◐ Grade: color, LUTs, film & lens, scopes (tools/three-grade.js)
-        ...(typeof LabExport !== 'undefined' ? [LabExport.previewItem()] : []), // ⇪ Export: renders and the scene itself (tools/three-export.js)
-        ...(typeof LabEasy !== 'undefined' ? [LabEasy.previewItem()] : []), // (round 26) ✦ More: music, look & motion, make (tools/three-easy.js)
         ...(typeof LabCamera !== 'undefined' ? [LabCamera.previewItem()] : []), // (round 40) 🎥 Camera moves (tools/three-camera.js)
-        { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
+      ];
+      // ⇪ Export's rows after the making ones (tools/three-export.js); its rarer formats one level down
+      const ex = typeof LabExport !== 'undefined' ? (LabExport.previewItem().items?.() || []).filter((x) => typeof x === 'object' && !/All formats/.test(x.label)) : [];
+      const make = ex.length ? [ex[0], { label: 'Other formats', hint: '4K, ProRes, GIF, print, GLB…', tip: 'Export in one of the other formats: 4K, ProRes with alpha, a loop GIF, a still for print, 3D, a web page', items: ex.slice(1) }] : [];
+      const more = [
+        { label: '⟲ Restart from scratch', key: 'Ctrl+Shift+Enter', tip: 'A fresh page, GPU and sound, for when something bugs out', action: () => restartSim() },
+        ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
+      ];
+      const tail = ['-', { label: 'Lab keys', key: '?', tip: 'Every key of the Lab, and what it does', action: () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys()) }];
+      const E = typeof LabEasy !== 'undefined' ? LabEasy : null;
+      return [
+        ...(inSeq ? [seqItem, '-'] : []),
+        { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', tip: 'Hold the picture; the music and the timeline go on', action: () => setFreeze(!frozenNow) },
+        { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, tip: 'The size of the picture: fit the window, or exactly 9:16, 16:9, 4:5, 1:1', items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
         ] },
-        { label: 'Capture', items: () => [
+        ctl ? { label: 'Sliders', tip: 'Shuffle, save into the code, looks, for the selected layer', items: () => [
+          { label: '💾 Save into the code', key: 'Ctrl+S', action: () => { ctl.save(); toast('Sliders saved into the code', { timeout: 1200 }); } },
+          { label: '🎲 Shuffle', key: 'R', action: () => ctl.shuffle() },
+          { label: 'The shuffle before', key: 'Shift+R', action: () => ctl.shuffleStep(-1) },
+          { label: 'Save as a look', key: 'Ctrl+Shift+S', action: () => ctl.quickLook() },
+          { label: 'Next look', action: () => ctl.lookStep(1) },
+        ] } : null,
+        ...(E ? [E.musicItem()] : []),
+        { label: 'Capture', tip: 'A still, a screenshot, a frame to compare, a recording', items: () => [
           { label: '📷 Still at the frame size', action: () => still() },
           { label: '📋 Copy this frame', action: () => still({ copy: true }) },
-          { label: 'Save a screenshot', hint: 'as it shows here', action: () => box.send({ type: 'screenshot' }) },
+          { label: '🖼 Save a screenshot', hint: 'as it shows here', action: () => box.send({ type: 'screenshot' }) },
           { label: '◐ Pin this frame to compare', key: '|', action: () => pinFrame() },
           { label: '🎞 Contact sheet', action: () => showSheet() },
           { label: '📌 Note at this moment', key: 'N', action: () => takeNote() },
@@ -2928,25 +3006,18 @@ const ThreeLab = (() => {
             { label: '● Record the Lab preview…', hint: 'for your intro video', action: () => Capture.record({ target: 'lab' }).catch((e) => toast(e.message, { type: 'error' })) },
             { label: '◉ More capture…', key: 'Ctrl+Alt+S', action: () => Capture.menu(Math.max(8, innerWidth / 2 - 120), 80, Capture.mainItems()) }] : []),
         ] },
-        ctl ? { label: 'Sliders', items: () => [
-          { label: '🎲 Shuffle', key: 'R', action: () => ctl.shuffle() },
-          { label: 'The shuffle before', key: 'Shift+R', action: () => ctl.shuffleStep(-1) },
-          { label: '💾 Save into the code', key: 'Ctrl+S', action: () => { ctl.save(); toast('Sliders saved into the code', { timeout: 1200 }); } },
-          { label: 'Save as a look', key: 'Ctrl+Shift+S', action: () => ctl.quickLook() },
-          { label: 'Next look', action: () => ctl.lookStep(1) },
-        ] } : null,
-        { label: 'View', items: () => [
+        { label: 'View', tip: 'Present, the Stage window, focus, guides, moving around', items: () => [
           { label: '▣ Present', key: 'P', action: () => togglePresent() },
           { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
           { label: 'Lighten to stay smooth', hint: 'full quality in renders', checked: adaptOn, action: () => { setAdaptOn(!adaptOn); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } },
-          { label: 'Guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
+          { label: '⌗ Composition guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
           ...(typeof ThreeGestures !== 'undefined' ? ThreeGestures.viewItems() : []), // (round 34) frame, reset, keep the view, moving around
           ...(window.LabAB ? LabAB.viewItems() : []), // (round 37) ◧ Before / after the last change (tools/three-abcompare.js)
         ] },
         '-',
-        { label: '⟲ Restart from scratch', key: 'Ctrl+Shift+Enter', action: () => restartSim() },
-        { label: 'Lab keys', key: '?', action: () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys()) },
+        add.some((x) => typeof x === 'object') ? { label: '＋ Add', hint: 'layers, models, webcam…', tip: 'Add to the scene: shader, particle, type and physics layers, a 3D model, an asset, another scene, the webcam', items: add } : null,
+        ...(E ? [E.lookItem(look), E.makeItem(make), E.previewItem(more, tail)] : [...look, ...make, ...more, ...tail]),
         ...(typeof Declutter !== 'undefined' ? Declutter.customiseItems('Lab preview') : []),
       ];
     }
@@ -3139,6 +3210,40 @@ const ThreeLab = (() => {
       el('button', { class: 'ghost small', text: '×', title: 'Hide', on: { click: () => hideStall() } }));
     function showStall(text) { stall.querySelector('.three-stall-text').textContent = text; stall.hidden = false; }
     function hideStall() { stall.hidden = true; }
+    // (round 43, glrecover) the GPU took the preview's WebGL contexts. The page keeps the scene and rebuilds its layers
+    // when they come back ('gpu-restored', in place: the song plays on at its place, sliders, camera views and undo as
+    // they were); none back within a few seconds: sandboxFrame makes the page again and run({ again, quiet }) runs the
+    // scene in it (the song re-sent at its place; nothing saved: no history snapshot, no thumbnail). No banner while it
+    // works itself out; one calm note after (glrecover.js). The banner only when even a new page can't draw.
+    const glp = { phase: null, at: 0, stuck: 0, waits: [], log: [] };
+    const glEvent = (state, how = null) => { glp.log.push({ state, how, at: Date.now() }); if (glp.log.length > 20) glp.log.shift(); dispatchEvent(new CustomEvent('hearth:lab-gl', { detail: { state, how } })); };
+    function glPreview(msg) {
+      if (msg.type === 'gpu-lost') {
+        if (glp.phase) return;
+        glp.phase = 'lost'; glp.at = Date.now(); glp.stuck = 0;
+        window.Jank?.gpu('The Lab preview');
+        glEvent('lost');
+      } else if (msg.type === 'gpu-restored') {
+        if (msg.reload) return; // (not a sketch page: it loads again by itself)
+        glBack('in place');
+      } else if (msg.type === 'gpu-stuck') {
+        glp.stuck += 1;
+        glp.phase = 'remaking';
+        glEvent('remaking');
+        if (player.recording || glp.stuck > 1) showStall('The graphics card isn\u2019t drawing the preview right now.');
+      }
+    }
+    function glBack(how) {
+      if (!glp.phase) return;
+      glp.phase = null;
+      if (/graphics card/.test(stall.querySelector('.three-stall-text').textContent)) hideStall();
+      glEvent('restored', how);
+      window.GLRecover?.labBack?.({ how, ms: Date.now() - glp.at });
+      for (const fn of glp.waits.splice(0)) fn(true);
+    }
+    // a picture asked for while the GPU is away waits for it (≤ ms): 🎲 variations, ◧ before / after, the director
+    const glWait = (ms = 8000) => (!glp.phase ? Promise.resolve(true) : new Promise((r) => { glp.waits.push(r); setTimeout(() => r(false), ms); }));
+    api.gl = { wait: glWait, state: () => ({ phase: glp.phase, since: glp.phase ? glp.at : 0, stuck: glp.stuck, log: glp.log.slice(), box: box.gl }) };
     previewHost.append(stall);
     // (round 38, inputlatency) the safety check runs when the window is idle: it asks the page whether the preview is on
     // screen (a style and layout of the whole Lab), and on a timer it landed in the middle of slider drags and scrubs,
@@ -3170,7 +3275,9 @@ const ThreeLab = (() => {
     //           the Stage window, ⟲ Restart from scratch, a page that isn't up. It keeps a picture of the scene on screen
     //           and cross-fades once the new page has drawn (sandboxFrame `pretty`).
     // again: the page restarted by itself and is up but empty: everything runs as on a new page, without loading another
-    function run({ hot = false, layer = null, sync = false, reload = false, again = false } = {}) {
+    // quiet (round 43, glrecover): the same scene made again after the GPU went away: no history snapshot, no time
+    // machine version, no thumbnail, no "ran" event (nothing changed, nothing is saved)
+    function run({ hot = false, layer = null, sync = false, reload = false, again = false, quiet = false } = {}) {
       if (!current) return false;
       // (round 37, labboot) only the pixel ratio changed (a fit scene ⇄ one with its own frame size): the page switches
       // in place and every layer runs again in it, over the old picture, instead of a new page
@@ -3191,9 +3298,9 @@ const ThreeLab = (() => {
         toast('Stop the recording first', { type: 'error' });
         return false;
       }
-      snapshot();
+      if (!quiet) snapshot();
       window.LabShader?.beforeRun?.(layersOf(), sel(), editor); // (round 23) ◇ shader layers: their sliders follow their uniforms
-      window.ThreeHistory?.changed?.('run'); // (round 23) a version for the time machine (tools/three-history.js)
+      if (!quiet) window.ThreeHistory?.changed?.('run'); // (round 23) a version for the time machine (tools/three-history.js)
       const target = hot ? layerById(layer || selId) : null;
       if (hot && !target) hot = false;
       // every layer's sliders go into one table, each layer at its own offset
@@ -3251,16 +3358,22 @@ const ThreeLab = (() => {
       for (const L of rerun) { ranCode.set(L.id, codeOf(L)); ranRaw.set(L.id, L.code); }
       for (const id of gone) ranRaw.delete(id);
       ranSketch = current.id;
-      if (!partial && !box.onStage) window.LabBoot?.ran(current.id, box.query); // (round 37) the query to warm a page with next time
+      if (!partial && !box.onStage && !quiet) window.LabBoot?.ran(current.id, box.query); // (round 37) the query to warm a page with next time
       if (editOn && !partial && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
       if (fresh) box.send(capMsg());
       ranOnce = true;
-      if (!partial) scheduleThumb();
-      dispatchEvent(new CustomEvent('hearth:lab-ran', { detail: { id: current.id, partial } })); // (round 34) 🩺 the blank-frame hint (tools/three-doctor-hook.js)
+      if (!partial && !quiet) scheduleThumb();
+      if (!quiet) dispatchEvent(new CustomEvent('hearth:lab-ran', { detail: { id: current.id, partial } })); // (round 34) 🩺 the blank-frame hint (tools/three-doctor-hook.js)
       return true;
     }
 
-    const save = saver(() => window.hub.kvSet('three-sketches', sketches), 600); // (round 29) written during long typing too, and on leaving
+    const save = saver(() => { // (round 29) written during long typing too, and on leaving
+      if (!kvOk.has('three-sketches')) return null; // (round 43) not before your scenes were read for sure
+      const removed = [...removedIds]; removedIds.clear();
+      // the store kept scenes this save would have dropped (sync, a list out of date): they join the list on screen
+      const list = window.LabTry ? LabTry.disk(sketches) : sketches; // (round 43, directorpreview) an edit tried first isn't saved until Keep
+      return window.hub.kvSet('three-sketches', list, removed.length ? { removed } : undefined).then((r) => { if (r?.restored?.length) { refreshFromDisk().catch(() => {}); window.LabSceneSafe?.kept?.(r.restored.length); } });
+    }, 600);
     function persist() {
       if (!current) return;
       const L = sel();
@@ -3272,7 +3385,7 @@ const ThreeLab = (() => {
     // ---------- sketch browser ----------
     // A grid of every sketch with a thumbnail taken automatically a few seconds after it runs (kv 'three-thumbs').
     let thumbs = {};
-    const saveThumbs = debounce(() => window.hub.kvSet('three-thumbs', thumbs), 800);
+    const saveThumbs = debounce(() => { if (kvOk.has('three-thumbs')) window.hub.kvSet('three-thumbs', thumbs); }, 800);
     let thumbTimer = 0;
     let thumbShot = null;
     function scheduleThumb() {
@@ -3332,6 +3445,7 @@ const ThreeLab = (() => {
             trash.unshift({ id: sk.id, name: sk.name, code: sk.code, layers: sk.layers, deletedAt: Date.now() });
             trash.length = Math.min(trash.length, 30);
             saveHistory();
+            removedIds.add(sk.id);
             sketches = sketches.filter((s) => s.id !== sk.id);
             save();
             if (sk.id === current?.id) openSketch(sketches[0].id); else renderPicker();
@@ -3463,6 +3577,7 @@ const ThreeLab = (() => {
       trash.unshift({ id: current.id, name: current.name, code: current.code, layers: current.layers, deletedAt: Date.now() });
       trash.length = Math.min(trash.length, 30);
       saveHistory();
+      removedIds.add(current.id);
       sketches = sketches.filter((s) => s.id !== current.id);
       save();
       openSketch(sketches[0].id);
@@ -3538,12 +3653,23 @@ ${code}
 
     (async () => {
       // (round 37, labboot) the six reads at once: one IPC round trip's wait instead of six in a row
-      const kv = (k, d) => window.hub.kvGet(k, d);
-      let hist;
-      [sketches, hist, extras, notesAll, refsAll, thumbs] = await Promise.all([kv('three-sketches', []), kv('three-history', {}), kv('three-lab-extras', {}), kv('three-notes', {}), kv('three-refs', {}), kv('three-thumbs', {})]);
+      // (round 43, scenesafe) each read says whether it worked: a store that couldn't be read is retried and never
+      // saved over (tools/three-scenesafe.js); scenes made before the read finished (a chat's starter) are kept
+      const SSafe = window.LabSceneSafe;
+      const kv = (k, d) => (SSafe ? SSafe.read(k, d) : window.hub.kvGet(k, d).then((value) => ({ ok: true, state: 'ok', value })));
+      const early = sketches;
+      const reads = await Promise.all([kv('three-sketches', []), kv('three-history', {}), kv('three-lab-extras', {}), kv('three-notes', {}), kv('three-refs', {}), kv('three-thumbs', {})]);
+      const names = ['three-sketches', 'three-history', 'three-lab-extras', 'three-notes', 'three-refs', 'three-thumbs'];
+      reads.forEach((r, i) => { if (r.ok) kvOk.add(names[i]); });
+      const val = (r, d) => (r.ok && r.value != null && typeof r.value === 'object' ? r.value : d);
+      const scenesRead = reads[0];
+      sketches = Array.isArray(scenesRead.value) && scenesRead.ok ? scenesRead.value : [];
+      for (const x of early) if (!sketches.some((y) => y.id === x.id)) sketches.push(x);
+      const hist = val(reads[1], {}); extras = val(reads[2], {}); notesAll = val(reads[3], {}); refsAll = val(reads[4], {}); thumbs = val(reads[5], {});
       ({ versions: history = {}, trash = [] } = hist || {}); extrasLoaded = true;
       // (round 21) pictures of sketches that are gone (deleted and not in the trash) are let go
-      if (Array.isArray(sketches) && sketches.length) { const keep = new Set([...sketches.map((x) => x.id), ...trash.map((x) => x.id)]); const gone = Object.keys(thumbs || {}).filter((id) => !keep.has(id)); if (gone.length) { for (const id of gone) delete thumbs[id]; saveThumbs(); } }
+      // (round 43: only a few at a time, and only with every scene read: a short list must never wipe the pictures)
+      if (kvOk.has('three-sketches') && kvOk.has('three-history') && sketches.length) { const keep = new Set([...sketches.map((x) => x.id), ...trash.map((x) => x.id)]); const gone = Object.keys(thumbs || {}).filter((id) => !keep.has(id)); if (gone.length && gone.length <= Math.max(3, sketches.length / 4)) { for (const id of gone) delete thumbs[id]; saveThumbs(); } }
       // The toolbar in labeled groups: what you see, the sketch, its code, its assets, capture.
       const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes);
       // One row, in the order of your workflow: your sketch and Run, then what you look at, then assets. The
@@ -3560,12 +3686,18 @@ ${code}
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
       if (firstId && lastMedia && extras[firstId]?.media === undefined) { (extras[firstId] ||= {}).media = { path: lastMedia, time: 0 }; saveExtras(); }
-      if (!sketches.length) { sketches = [{ id: `s${Date.now()}`, name: 'Basic scene', code: ThreeData.TEMPLATES[0].code, updatedAt: Date.now() }]; save(); }
+      // the starter scene: saved only when there truly were no scenes (not when the read failed, nor when copies of
+      // earlier scenes exist: then it waits on screen and the Recover card offers them)
+      const fresh = !sketches.length;
+      if (fresh) sketches = [{ id: `s${Date.now()}`, name: 'Basic scene', code: ThreeData.TEMPLATES[0].code, updatedAt: Date.now() }];
+      if (fresh && kvOk.has('three-sketches') && !scenesRead.hold) save();
+      else if (early.length && kvOk.has('three-sketches')) save();
       // the chat on screen may own another sketch (chat-scenes.js): open that one instead of the last one
       const want = typeof ChatScenes !== 'undefined' ? ChatScenes.startSketch?.(sketches.map((x) => x.id)) : null;
       openSketch(want || store.get('three.current', sketches[0].id), { by: want ? 'scene' : 'start' });
       api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
       dispatchEvent(new Event('hearth:lab-ready'));
+      SSafe?.opened?.({ read: scenesRead, fresh, others: reads.slice(1).map((r, i) => (r.ok ? null : names[i + 1])).filter(Boolean) }); // (round 43) the calm card, when needed
     })();
 
     // ---------- per-chat scenes (chat-scenes.js, tools/three-backstage.js) ----------
@@ -3678,6 +3810,7 @@ ${code}
         trash.unshift({ id: s.id, name: s.name, code: s.code, layers: s.layers, deletedAt: Date.now() });
         trash.length = Math.min(trash.length, 30);
         saveHistory();
+        removedIds.add(id);
         sketches = sketches.filter((x) => x.id !== id);
         save();
         if (s === current) openSketch(sketches[0].id); else renderPicker();
@@ -3686,6 +3819,39 @@ ${code}
       setExtras(id, ex) { if (!sketches.some((x) => x.id === id) || !ex || typeof ex !== 'object') return false; extras[id] = { ...(extras[id] || {}), ...JSON.parse(JSON.stringify(ex)) }; saveExtras(); return true; }, // (round 28, packs) a scene from a .hearthpack: its sliders, looks, song link
       thumbOf: (id) => thumbs[id]?.url || null,
       previewHost: () => previewHost,
+      // (round 43, scenesafe) 🛟 Recover lost scenes (tools/three-scenesafe.js): found scenes join the list (never replacing
+      // one: SceneSafeCore.mergeInto), saved at once; unrecover takes exactly those back (the toast's Undo)
+      blocked: () => !kvOk.has('three-sketches'),
+      recover(picks) {
+        const r = SceneSafeCore.mergeInto(sketches, picks);
+        if (!r.added.length) return [];
+        sketches = r.list;
+        kvOk.add('three-sketches'); // (bringing scenes back is an answer to a scenes file that couldn't be read: saved now)
+        save(); save.flush?.(); renderPicker();
+        return r.added;
+      },
+      unrecover(ids) {
+        const drop = new Set((ids || []).filter((id) => sketches.some((x) => x.id === id)));
+        if (!drop.size || drop.size >= sketches.length) return 0;
+        for (const id of drop) removedIds.add(id);
+        sketches = sketches.filter((x) => !drop.has(x.id));
+        save(); save.flush?.();
+        if (current && drop.has(current.id)) openSketch(sketches[0].id); else renderPicker();
+        return drop.size;
+      },
+      // the scenes file can be read again (the card's Retry): what it holds joins the list, saving is back on
+      adopt(list) {
+        if (!Array.isArray(list)) return false;
+        const starter = sketches.length === 1 && SceneSafeCore.onlyStarter(sketches) && !list.some((x) => x.id === sketches[0].id) ? sketches[0] : null;
+        const mine = sketches.filter((x) => x !== starter && !list.some((y) => y.id === x.id));
+        sketches = [...list.map((x) => JSON.parse(JSON.stringify(x))), ...mine];
+        if (!sketches.length) sketches = starter ? [starter] : sketches;
+        kvOk.add('three-sketches');
+        if (mine.length) save();
+        if (!current || !sketches.includes(current)) openSketch(store.get('three.current', sketches[0].id)); else renderPicker();
+        return true;
+      },
+      okStores: () => [...kvOk],
     };
 
     // (round 23, timemachine) the scene's state for its versions (tools/three-history*.js), and showing one: scrubbing
@@ -3992,7 +4158,7 @@ ${code}
       // falls through to the user's "save screenshot" dialog.
       // (round 21, labdirector) a small JPEG made by the preview itself (no full-size PNG): the director's pictures.
       // Shares the thumbnail channel: a Lab thumbnail on its way gets the same picture (shrunk to its size).
-      shotSmall: (max) => new Promise((resolve) => {
+      shotSmall: (max) => glWait().then(() => new Promise((resolve) => { // (round 43: after the GPU is back, never a blank picture)
         const prev = thumbShot;
         let done = false;
         const mine = (url, small) => { if (done) return; done = true; if (thumbShot === mine) thumbShot = null; resolve(url || null); if (prev && url) prev(url, small && !prev.forDirector ? false : small); };
@@ -4000,16 +4166,16 @@ ${code}
         thumbShot = mine;
         box.send({ type: 'screenshot', tag: 'thumb', max: Math.max(64, Math.round(max)) });
         setTimeout(() => mine(null), 10000); // a heavy scene can take a while to draw its next frame
-      }),
+      })),
       coverShot: (ms) => box.cover(ms), // (round 29, bugbash) quick picture for chat switching (see box.cover)
-      shot: () => new Promise((resolve) => {
+      shot: () => glWait().then(() => new Promise((resolve) => { // (round 43: after the GPU is back)
         const prev = pendingShot;
         const mine = (url) => { prev?.(url); resolve(url); };
         pendingShot = mine;
         box.send({ type: 'screenshot', tag: 'get' });
         // a slow frame (a heavy scene, a shader still compiling, software rendering) is not "not rendering": wait 15 s
         setTimeout(() => { if (pendingShot === mine) { pendingShot = null; mine(null); } }, 15000);
-      }),
+      })),
     };
     api.runSketch = run;
     // Nodes ⇄ Code (tools/three-nodes.js): the selected layer as a node graph over the code pane.
@@ -4570,9 +4736,12 @@ ${frag}\`,
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),
-    _sandbox: (parent, onMessage, params) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage' }), // tools/three-backstage.js
+    _sandbox: (parent, onMessage, params, o = {}) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage', ...o }), // tools/three-backstage.js · (round 43) o.gpuStuck: 'owner' (the export page)
     _lib: sandboxLib, // (round 37, labboot) the motion / lab3d kits for the warm page (tools/three-boot.js)
     live: { counts: () => live.counts() }, // reloads vs in-place updates of the preview (dev/checks/live.js)
+    // (round 43, glrecover) the preview without its GPU contexts: state() { phase: null | 'lost' | 'remaking', … },
+    // wait(ms) resolves true once it draws again (at once when it does)
+    gl: { state: () => api.gl?.state?.() || { phase: null }, wait: (ms) => (api.gl ? api.gl.wait(ms) : Promise.resolve(true)) },
     _util: { codeOrOutline, numbered },
     // A picture of the Lab preview (data URL) for second opinions; null when nothing renders.
     shot: async () => (api.director ? api.director.shot() : null),

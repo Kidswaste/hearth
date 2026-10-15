@@ -2,7 +2,7 @@
 // - A type layer is plain layer code calling textLayer(P, opts) (drawn by tools/three-sandbox.html "kinetic type
 //   layers": SDF glyphs or 3D extruded letters, in / out animations by glyph / word / line, paths, music reactions,
 //   timed lyrics on the scene's clock). Its sliders are a normal tweak(): Save, Shuffle, keyframes, ♪ react-to work.
-// - Presets (tools/three-type-data.js): one searchable picker (/text, right-click the preview › 🅰 Type, Ctrl/⌘+K, the
+// - Presets (tools/three-type-data.js): one searchable picker (/text, right-click the preview › ＋ Add › 🅰 Type, Ctrl/⌘+K, the
 //   FX picker's "Type" category, /template type-<id>).
 // - Lyrics (tools/three-type-lyrics.js): paste them or load an .lrc / .srt; untimed lines are aligned to the song
 //   (the music analysis' onsets and beats), words too; /lyrics tap is the tap-along correction (Space at each line).

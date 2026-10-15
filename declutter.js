@@ -197,7 +197,7 @@ const Declutter = (() => {
       ...(typeof Habits !== 'undefined' && Habits.customiseItems ? Habits.customiseItems() : []), // (round 13) what the weekly tidy tucked
       hidden.length ? { label: 'Bring back hidden buttons', hint: String(hidden.length), items: () => hidden.map((k) => ({ label: k.split(' › ').pop(), hint: k.split(' › ')[0], action: () => Usage.setHidden(k, false) })) } : null,
       { label: 'Show the tucked buttons for now', key: 'Alt Alt', action: () => KeysUI.latch(true) },
-      { label: off ? 'Tidy again (tuck them away)' : 'Show everything, always', hint: '/calm', action: () => { setOff(!off); toast(off ? 'Everything shows (/calm on tucks it away again)' : 'Tidy again', { timeout: 1800 }); } },
+      { label: off ? 'Tidy again (tuck them away)' : 'Show everything, always', tip: off ? 'Tuck the rarely used buttons away again' : 'Every tucked button stays on screen, everywhere', action: () => { setOff(!off); toast(off ? 'Everything shows (Customise this… › Tidy again tucks it away)' : 'Tidy again', { timeout: 1800 }); } }, // (round 43, menucalm) no command name on screen
       { label: 'Keys and hidden buttons…', key: 'Ctrl+/', action: () => KeysUI.open() },
     ].filter(Boolean);
     return ['-', { label: 'Customise this…', icon: 'sliders', items }];
@@ -343,10 +343,12 @@ const Declutter = (() => {
   ]);
 
   // the rail's empty space and its own buttons (agents and tools have their own menus)
+  // (round 43, menucalm) Ctrl/⌘+K is Find anything now (round 37), the command bar is "Typed actions" (as in the chat
+  // box's right-click); Your usage and Import wait in More…
   const railItems = () => [
     { label: '＋ Add an agent or website…', action: () => Manager.open() },
-    { label: '⌘ Command palette', key: 'Ctrl+K', action: () => AppUI.palette() },
-    { label: 'Command bar', key: 'Ctrl+;', action: () => (window.Lazy?.isIn && !Lazy.isIn('cmdbar') ? Lazy.load('cmdbar').then(() => CmdBar.toggle()).catch(() => AppUI.palette()) : typeof CmdBar !== 'undefined' ? CmdBar.toggle?.() : AppUI.palette()) },
+    { label: '⌕ Find anything…', key: 'Ctrl+K', tip: 'Find any setting, menu row, chat or answer in plain words', action: () => AppUI.palette() },
+    { label: 'Typed actions…', key: 'Ctrl+;', tip: 'A bar to type an action by its name', action: () => (window.Lazy?.isIn && !Lazy.isIn('cmdbar') ? Lazy.load('cmdbar').then(() => CmdBar.toggle()).catch(() => AppUI.palette()) : typeof CmdBar !== 'undefined' ? CmdBar.toggle?.() : AppUI.palette()) },
     { label: 'Panels', items: [
       { label: '☰ Chats panel', key: 'Ctrl+\\', checked: H.panelOpen, action: () => handleShortcut({ key: '\\' }) },
       { label: '🗒 Notes', key: 'Ctrl+J', action: () => Notes.toggle() },
@@ -354,9 +356,9 @@ const Declutter = (() => {
       { label: '▦ All side by side', key: 'Ctrl+G', checked: H.grid, action: () => handleShortcut({ key: 'g' }) },
       { label: '⌨ Ask-all bar', key: 'Ctrl+B', checked: !document.getElementById('broadcast')?.classList.contains('hidden'), action: () => handleShortcut({ key: 'b' }) },
     ] },
-    { label: 'Your usage…', action: () => Usage.dialog() },
-    { label: '⇪ Import past chats…', action: () => document.getElementById('import-btn')?.click() },
     { label: '⚙ Settings', key: 'Ctrl+,', action: () => AppUI.openSettings() },
+    { label: 'Your usage…', tip: 'What you use, and what you never touch', more: true, action: () => Usage.dialog() },
+    { label: '⇪ Import past chats…', tip: 'Your claude.ai or ChatGPT export', more: true, action: () => document.getElementById('import-btn')?.click() },
   ];
   ctx('#rail', 'Rail', (node, e) => (e.target.closest('.agent-btn, .meter-pill') ? null : railItems()));
 

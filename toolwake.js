@@ -33,8 +33,10 @@ const setOfTool = (name) => (TOOL.find(([re]) => re.test(String(name || ''))) ||
 
 let file = null;
 let log = null; // { agentId: { set: last time it was used or switched on (ms) } }
-const read = () => { if (!log) { try { log = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { log = {}; } } return log; };
-const write = () => { if (!file) return; try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(log)); } catch { /* best effort */ } };
+// (round 43, datasafe) a file held for a moment is read again; still unreadable → used empty but never written over
+let unread = false;
+const read = () => { if (!log) { try { log = JSON.parse(require('./scenesafe-core').readRetry(fs, file)) || {}; unread = false; } catch (err) { log = {}; unread = Boolean(err?.code && err.code !== 'ENOENT'); } } return log; };
+const write = () => { if (!file || unread) return; try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(log)); } catch { /* best effort */ } };
 function setFile(f) { file = f; log = null; }
 
 // a use (or a first sighting: the owner just switched it on) keeps the set awake for DAYS; written at most hourly

@@ -1,6 +1,13 @@
 # Round 42: Make a batch, lean handoffs, a fast chats list, Since you were away, files changed elsewhere
 *October 2026*
 
+## 🛟 Your Lab scenes are safe (urgent fix)
+- **Fixed:** on Windows, if another program (antivirus, OneDrive / iCloud for Windows, the search indexer) held the scenes file at the moment the Lab started, Hearth treated "couldn't read" as "no scenes" and saved a single Basic scene over your list — and sync carried that to the other computer.
+- Now a failed read is never "empty": Hearth retries, uses the previous copy, and if it still can't read, says "nothing was changed" with Retry / Recover.
+- The Lab saves nothing before it has really read your scenes; a save or a sync that would drop scenes you didn't delete keeps them.
+- Automatic copies of your scenes every 10 minutes and before any scene leaves the list (kept on each computer, included in backups).
+- **🛟 Recover lost scenes…** (Lab › Sketch ▾, Ctrl/⌘+K, Settings › Backups) finds scenes in those copies, History, sync's set-aside files and your backup zips, and adds back the ones you pick — never removing anything; one Undo.
+
 ## ⧉ Make a batch (Lab)
 One template (or the scene on screen) → many videos, 0 tokens.
 **Find it:** right-click the preview › ✦ More › ⇪ Make › ⧉ Make a batch… (also the toolbar's ⋯ and 📐 My templates).

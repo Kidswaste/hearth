@@ -718,6 +718,30 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
 :root:not([data-motion=off]) :is(#menu, .mb-menu.lab-pop).m-back > * { animation-name: dc-back; animation-duration: var(--dur-med); }
 :root:not([data-motion=off]) #menu-fly:not([hidden]) { animation: dc-fly var(--dur-med) var(--ease-pop) both; }
 :root:not([data-motion=off]) #menu-fly.to-left:not([hidden]) { animation-name: dc-fly-left; }
+/* (round 43, menucalm) the flyout's own flyout: pointing at a submenu row inside #menu-fly shows its rows beside it,
+   drawn exactly like #menu-fly */
+#menu-fly2[popover] { inset: auto; margin: 0; color: var(--text); overflow-y: auto; }
+#menu-fly2 {
+  position: fixed; z-index: 10002; min-width: 170px; max-width: 340px; max-height: min(70vh, 520px); padding: 4px; display: flex; flex-direction: column;
+  background: var(--sidebar); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 28px #0009;
+}
+#menu-fly2[hidden] { display: none; }
+#menu-fly2 button { border: 0; background: none; text-align: left; padding: 6px 10px; border-radius: 5px; cursor: pointer; display: flex; align-items: baseline; gap: 18px; white-space: nowrap; color: inherit; font: inherit; }
+#menu-fly2 button:hover { background: var(--hover); }
+:root[data-look~=v2] #menu-fly2 { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 92%, transparent); border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge), 0 14px 40px #000a; }
+:root[data-look~=v2] #menu-fly2 button:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 18%, transparent), transparent); color: var(--fh-gold-text); }
+html[data-skin~="forge"] #menu-fly2 { border-radius: 0; clip-path: var(--cut-sm); }
+#menu-fly2 .menu-key { margin-left: auto; font: 10.5px var(--mono, ui-monospace, monospace); letter-spacing: .04em; color: var(--muted); opacity: .85; }
+#menu-fly2 .menu-key.menu-sub { font-size: 13px; opacity: .7; letter-spacing: 0; }
+#menu-fly2 .menu-hint { font-size: 11px; color: var(--muted); opacity: .8; max-width: 180px; overflow: hidden; text-overflow: ellipsis; margin-left: -8px; }
+#menu-fly2 button.checked::before { content: "✓"; color: var(--ui-gold, var(--accent)); margin-left: -2px; margin-right: -10px; width: 10px; flex: none; }
+#menu-fly2 button:disabled { opacity: .45; cursor: default; }
+#menu-fly2 .menu-sep { height: 1px; margin: 4px 8px; background: var(--line); flex: none; }
+#menu-fly2 .menu-head { padding: 6px 10px 2px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: color-mix(in srgb, var(--ui-gold, var(--accent)) 45%, var(--muted)); }
+#menu-fly2 button .menu-ico { order: -1; flex: none; width: 15px; height: 15px; align-self: center; margin-right: -9px; color: var(--fh-gold, var(--accent)); opacity: .9; }
+html.p8-over-media #menu-fly2 { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: var(--sidebar) !important; }
+:root:not([data-motion=off]) #menu-fly2:not([hidden]) { animation: dc-fly var(--dur-med) var(--ease-pop) both; }
+:root:not([data-motion=off]) #menu-fly2.to-left:not([hidden]) { animation-name: dc-fly-left; }
 
 /* Alt held (or tapped twice): the tucked buttons come back in place, outlined (declutter.js writes the rules) */
 @keyframes dc-reveal { from { opacity: 0; transform: translateY(3px) scale(.9); } }

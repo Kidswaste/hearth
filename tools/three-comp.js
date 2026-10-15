@@ -360,7 +360,7 @@ const ThreeComp = (() => {
     const chats = dirChats(hostId).map((c) => [`${CS()?.identity(c.id).glyph || '◆'} ${cap(c.title, 34)}`, Native.isBusy(c.id) ? 'working' : '', tryDo(() => { add(hostId, { chat: c.id }, { layout }); return `◫ ${c.title} is a layer here`; })]);
     const sks = (S()?.all() || []).filter((x) => x.id !== hostId && !CS()?.ownerOf(x.id)).slice(-20).reverse().map((x) => [cap(x.name, 36), '', tryDo(() => { add(hostId, { sketch: x.id }, { layout }); return `◫ ${x.name} is a layer here`; })]);
     return [
-      ['A chat\'s scene', `${chats.length}`, chats.length ? chats : [['No other director chats yet', '/dispatch makes some', () => {}]]],
+      ['A chat\'s scene', `${chats.length}`, chats.length ? chats : [['No other director chats yet', '⇉ Dispatch parts to other chats… makes some', () => {}]]],
       ['A sketch', `${sks.length}`, sks.length ? sks : [['No other sketches', '', () => {}]]],
       ['A sequence…', 'by name', tryDo(async () => { const v = await Modal.prompt('Which Lab sequence?', { placeholder: 'its name' }); if (!v) return null; add(hostId, `seq:${v.trim()}`, { layout }); return `◫ ▤ ${v} is a layer here`; })],
     ];

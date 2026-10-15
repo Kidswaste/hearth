@@ -21,8 +21,14 @@ function read(file, { maxBytes = 20 * 1024 * 1024, encoding = 'utf8' } = {}) {
   const p = assertAbs(file);
   const { size } = fs.statSync(p);
   if (size > maxBytes) throw new Error(`File is ${Math.round(size / 1048576)} MB, over the ${Math.round(maxBytes / 1048576)} MB limit`);
-  if (encoding === 'buffer') return fs.readFileSync(p); // arrives in the renderer as a Uint8Array
-  return fs.readFileSync(p, encoding === 'base64' ? 'base64' : 'utf8');
+  // (round 43, datasafe) a file held for a moment (Windows: an antivirus, OneDrive) is read again a few times (≈ 0.4 s)
+  // instead of failing: templates, recipes and the undo log read through here
+  for (let i = 0; ; i++) {
+    try { return encoding === 'buffer' ? fs.readFileSync(p) : fs.readFileSync(p, encoding === 'base64' ? 'base64' : 'utf8'); } catch (err) {
+      if (i >= 4 || !['EBUSY', 'EPERM', 'EACCES', 'EAGAIN', 'EIO', 'UNKNOWN'].includes(err.code)) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30 * (i + 1));
+    }
+  }
 }
 
 function write(file, content, { base64 = false } = {}) {
@@ -226,7 +232,7 @@ function unzipTo(zipPath) {
     else execFile(TAR, ['-xf', assertAbs(zipPath), '-C', dir], { windowsHide: true }, done);
   });
 }
-const readJsonSafe = (p, fallback) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; } };
+const readJsonSafe = (p, fallback) => { try { return JSON.parse(require('./scenesafe-core').readRetry(fs, p)); } catch { return fallback; } };
 const jsonFiles = (dir) => { try { return fs.readdirSync(dir).filter((n) => n.endsWith('.json') && !n.endsWith('.prev.json') && !n.endsWith('.tmp')); } catch { return []; } };
 
 // Compares a backup with the current data and (unless dryRun) merges it in. Nothing of yours is deleted:
@@ -253,6 +259,8 @@ async function restoreBackup(zipPath, { dryRun = true, newer = false } = {}) {
       if (!theirs) continue;
       const mineP = path.join(chatsDst, n);
       const mine = fs.existsSync(mineP) ? readJsonSafe(mineP, null) : null;
+      // (round 43, datasafe) yours is there but can't be read just now: never copied over (it was, as "missing")
+      if (!mine && fs.existsSync(mineP)) { report.chats.unreadable = (report.chats.unreadable || 0) + 1; continue; }
       if (!mine) {
         report.chats.add += 1;
         if (report.titles.length < 8) report.titles.push(theirs.title || n);
@@ -282,7 +290,10 @@ async function restoreBackup(zipPath, { dryRun = true, newer = false } = {}) {
     const memSrc = readJsonSafe(path.join(src, 'memory.json'), null);
     if (memSrc) {
       const memP = path.join(HUB.data, 'memory.json');
-      const mem = { shared: '', agents: {}, ...readJsonSafe(memP, {}) };
+      // (round 43, datasafe) your memory there but unreadable: merged later, never replaced by the backup's lines alone
+      const memNow = fs.existsSync(memP) ? readJsonSafe(memP, null) : {};
+      if (!memNow) throw new Error('Your memory file can\'t be read just now (another program may be holding it). Nothing was changed; try again in a moment.');
+      const mem = { shared: '', agents: {}, ...memNow };
       const merge = (mine, theirs) => {
         const have = new Set(String(mine || '').split('\n').map((l) => l.trim()).filter(Boolean));
         const add = String(theirs || '').split('\n').map((l) => l.trim()).filter((l) => l && !have.has(l));
@@ -291,7 +302,7 @@ async function restoreBackup(zipPath, { dryRun = true, newer = false } = {}) {
       };
       mem.shared = merge(mem.shared, memSrc.shared);
       for (const [id, text] of Object.entries(memSrc.agents || {})) mem.agents[id] = merge(mem.agents[id], text);
-      if (!dryRun && report.memory.add) fs.writeFileSync(memP, JSON.stringify(mem, null, 2));
+      if (!dryRun && report.memory.add) { const st = require('./store'); await st.saveMemory(mem); } // (round 43) through the store: its copies and .prev
     }
     // attachments
     const attSrc = path.join(src, 'attachments');

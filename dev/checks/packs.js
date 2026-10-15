@@ -52,12 +52,12 @@ f();`;
   // ---------- save: Sketch ▾ › Share › Save as a pack… ----------
   const sketchBtn = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Sketch ▾');
   sketchBtn.click();
-  const shareRow = await clickRow('Share');
+  const shareRow = await clickRow('⇪ Share & export'); // (round 43, menucalm) Sketch ▾ › ⇪ Share & export holds the pack rows
   const saveRow = shareRow && await clickRow('⇪ Save as a pack…');
   await until(cardOpen, 15000);
   const c1 = cardOpen();
   const lines1 = [...(c1?.querySelectorAll('.pk-lines li') || [])].map((x) => x.textContent);
-  step('Sketch ▾ › Share › Save as a pack… → the save card (loads the packs group then)', shareRow && saveRow && c1 && lazyState() === 'loaded' && c1.querySelector('.pk-name').textContent === 'Packtest', { lines: lines1, state: lazyState() });
+  step('Sketch ▾ › ⇪ Share & export › Save as a pack… → the save card (loads the packs group then)', shareRow && saveRow && c1 && lazyState() === 'loaded' && c1.querySelector('.pk-name').textContent === 'Packtest', { lines: lines1, state: lazyState() });
   step('the save card says what\'s inside: 2 layers, sliders, a look, keyframes, the texture, the LUT, the song (a toggle)', /2 layers/.test(lines1[0]) && /2 sliders · 1 saved look · 2 keyframes/.test(lines1[1]) && /1 texture, 1 LUT, the song/.test(lines1[2]) && c1.querySelector('.pk-toggle input')?.checked, lines1);
   await smoke({ shot: '/tmp/packs-save.png' });
   c1.querySelector('.pk-ok').click();
@@ -65,10 +65,10 @@ f();`;
   const saved = LabPacks.last.saved;
   step('saved one .hearthpack (in the test save folder), 3 files in it, nothing missing', saved?.ok && /Packtest\.hearthpack$/.test(saved.path) && saved.files === 3 && !saved.missing.length, saved);
 
-  // ---------- open: Share › Open a pack… → the preview card ----------
+  // ---------- open: Sketch ▾ › ⇪ Share & export › Open a pack… → the preview card ----------
   const before = S.all().length;
   sketchBtn.click();
-  await clickRow('Share');
+  await clickRow('⇪ Share & export');
   await clickRow('Open a pack…');
   await until(cardOpen, 15000);
   const c2 = cardOpen();

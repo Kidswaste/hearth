@@ -1,7 +1,7 @@
 // Find images like this (round 30, pinboard), end to end with a real Chromium standing in for Google Chrome
 // (Playwright's, launched "as Chrome" in the throwaway profile) and local pages standing in for the sites
 // (dev/fake-cdp.js pages(): a Pinterest-like search, an Unsplash-like search, a sign-in page, their pictures):
-//  1. the ways in: board ⋯ and right-click › Find images like this…, Add › Images like this board…, the ◎ mission, /find-images
+//  1. the ways in: board ⋯ and right-click › Find images like this…, Add › 📌 Find images like this…, the ◎ mission, /find-images
 //  2. board ⋯ › Find images like this… → Pinterest opens in the Hearth Chrome, the pictures on screen show in the picker
 //     (no logo / avatar / ad / shopping link, each picture once), three picked → on the board, saved locally, with their
 //     pin link, credit and title; searching again leaves them out ("already on your board"); More = one more screen
@@ -33,7 +33,7 @@ try {
   const rows = B._.boardItems().filter((x) => x && typeof x === 'object' && !/What can I do here/.test(x.label || ''));
   const top = rows[0];
   step(/Find images like this/.test(top?.label || ''), 'board ⋯ (and right-click › Board) starts with "Find images like this…"', top?.label);
-  step(B._.addItems({ x: 0, y: 0 }).some((x) => /Images like this board/.test(x?.label || '')), 'Add › Images like this board…');
+  step(B._.addItems({ x: 0, y: 0 }).some((x) => /^📌 Find images like this…/.test(x?.label || '')), 'Add › 📌 Find images like this… (round 43: one name in every menu)');
   const m = Missions.LIST.find((x) => x.id === 'find-images');
   step(Boolean(m?.submit) && /Find images for this vibe/.test(m.label), 'the ◎ mission "Find images for this vibe"');
   step(Boolean(Commands.get('find-images')), '/find-images (the internal API)');

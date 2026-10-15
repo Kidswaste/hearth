@@ -266,7 +266,7 @@ const BeatLink = (() => {
     for (const L of l.layers?.() || []) if (L.ctl !== sel) add(L.ctl, L.name);
     return out;
   }
-  // the preview's ✦ More › ♪ Music row (also found by Lab search and Find anything)
+  // the preview's right-click › ♪ Music row (also found by Lab search and Find anything)
   function pickMenu(anchor) {
     const list = sliders();
     const r = (anchor?.getBoundingClientRect?.() || document.querySelector('.three-preview')?.getBoundingClientRect?.() || { left: 80, bottom: 80 });

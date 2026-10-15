@@ -44,7 +44,7 @@ const redIn = async (src, crop = null) => {
 
 // ---------- ways in ----------
 const lazyBefore = typeof LabFormats === 'undefined';
-const make = LabEasy.previewItem().items().find((x) => /Make/.test(x.label)).items();
+const make = LabEasy.previewGroups().find((x) => /Make/.test(x.label)).items();
 step('✦ More › ⇪ Make has ▦ All formats first; the toolbar\'s ⋯ and ⇪ Export have it; the Lab audit finds it',
   /All formats/.test(make[0]?.label) && LabEasy.toolbarItems().some((r) => /All formats/.test(r[0])) && LabExport.previewItem().items().some((x) => /All formats/.test(x?.label || '')) && LabEasy.placed().has('all-formats'),
   make.slice(0, 2).map((x) => x.label));

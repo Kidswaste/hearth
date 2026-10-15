@@ -181,9 +181,16 @@ await safe('readout', async () => {
   step('Frame pace readout is off by default', c.pace() === false && document.querySelector('.three-preview .lab-pace-note')?.hidden !== false);
   const more = [...document.querySelectorAll('button')].find((b) => b.dataset.feature === 'Lab more' && b.getBoundingClientRect().width > 0);
   more?.click(); await wait(400);
-  const rows = [...document.querySelectorAll('.menu, .ctx-menu, [role=menu], .tw-menu, .hub-menu')].flatMap((m) => [...m.querySelectorAll('*')]).filter((x) => /Frame pace/.test(x.textContent || '') && x.children.length < 4);
+  // (round 43, menucalm) Frame pace sits under ⋯ › View & help: point at that row to open its flyout
+  const vh = [...document.querySelectorAll('.mb-menu .menu-item, #menu button, #menu .menu-item')].find((x) => /View & help/.test(x.textContent || ''));
+  if (vh) { // a real pointer move, like menucalm's check (the flyout opens on hover)
+    const r = vh.getBoundingClientRect(); const mv = (x) => smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x, y: r.top + r.height / 2, button: 'none' } });
+    await mv(r.left + 20); await mv(r.left + 40); await wait(500);
+    if (![...document.querySelectorAll('*')].some((x) => x.children.length < 4 && /Frame pace/.test(x.textContent || '') && x.getBoundingClientRect().width > 0)) { vh.click(); await wait(500); }
+  }
+  const rows = [...document.querySelectorAll('.menu, .ctx-menu, [role=menu], .tw-menu, .hub-menu, .mb-menu, #menu, #menu-fly, #menu-fly2')].flatMap((m) => [...m.querySelectorAll('*')]).filter((x) => /Frame pace/.test(x.textContent || '') && x.children.length < 4);
   const rowText = rows[0]?.closest('[role=menuitem], .menu-item, button, li, div')?.textContent || '';
-  step('⋯ in the Lab toolbar has a "Frame pace" row that shows the readout', rows.length > 0 && /fps|still|measuring|parked/.test(rowText), rowText.slice(0, 80));
+  step('⋯ › View & help in the Lab toolbar has a "Frame pace" row that shows the readout', rows.length > 0 && /fps|still|measuring|parked/.test(rowText), rowText.slice(0, 80));
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(200);
   c.pace(true); await wait(1500);
   const note = document.querySelector('.three-preview .lab-pace-note');

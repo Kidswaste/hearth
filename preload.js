@@ -126,6 +126,7 @@ contextBridge.exposeInMainWorld('hub', {
   directorGuide: call('director:guide'), // (topic) → the Three Director's guide text for that topic
   tokenAudit: call('tokenaudit:measure'), // (round 36) (agent) → its fixed part per message: prompt parts, tool definitions, what turning each off saves
   tokenAuditSeed: call('tokenaudit:seed'), // (round 36) () → tool calls in the last 35 days of chats (the tool-use log's start)
+  costCoachScan: call('costcoach:scan'), // (round 43) ({ days }) → { records, chats }: the replies of the last days, compact (costcoach-core.js recordsOf)
 
   // files & tools
   fs: {
@@ -163,6 +164,8 @@ contextBridge.exposeInMainWorld('hub', {
   // (round 19, reach) paths from the other computer → this one's; open / reveal / preview what a chat made (reachmain.js)
   reach: { resolve: call('reach:resolve'), open: call('reach:open'), info: call('reach:info') },
   // (round 35, twocomputers) which computer this is, media found again after switching computers (twocomputersmain.js)
+  scenesafe: { scan: call('scenes:scan') }, // (round 43, scenesafe) 🛟 Recover lost scenes (scenesafemain.js)
+  datasafe: { health: call('data:health'), recheck: call('data:recheck'), scan: call('data:scan'), recover: call('data:recover'), onDoubt: on('data:doubt') }, // (round 43, datasafe) what couldn't be read · 🛟 Recover… (datasafemain.js)
   fw: { want: call('fw:want'), own: call('fw:own'), state: call('fw:state'), test: call('fw:test'), onChanges: on('fw:changes') }, // (round 42, filewatch) files changed outside Hearth (filewatchmain.js)
   two: { info: call('two:info'), hash: call('two:hash'), relink: call('two:relink'), link: call('two:link'), exists: call('two:exists'), pickFile: call('two:pickFile') },
   firstrun: { facts: call('firstrun:facts'), folders: call('firstrun:folders'), perm: call('firstrun:perm'), run: call('firstrun:run') }, // (round 28) Check this computer (firstrunmain.js)
@@ -255,5 +258,6 @@ contextBridge.exposeInMainWorld('hub', {
     download: call('assets:download'), cancel: call('assets:cancel'), import: call('assets:import'), writePreset: call('assets:writePreset'), watch: call('assets:watch'), onEvent: on('assets:event'),
   },
   rfast: { open: call('rfast:open'), write: call('rfast:write'), end: call('rfast:end'), cancel: call('rfast:cancel') }, // (round 41, renderfast) frames streamed into ffmpeg (renderfastmain.js)
+  glr: { state: call('glrecover:state'), shown: call('glrecover:shown'), sim: call('glrecover:sim'), onNote: on('glrecover:note') }, // (round 43, glrecover) the graphics card restarted / drawing without it (glrecovermain.js)
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
 });

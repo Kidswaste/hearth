@@ -193,7 +193,7 @@ const menuLabel = (it) => String(it.label ?? '').split(/\s{2,}(?=\S+$)/);
 // popover call; they're shown afresh only when something else went into the top layer since (topLayer's count) or
 // they moved into a dialog. keep: false (other callers) closes the popover as before.
 let topLayerSeq = 0;
-function topLayer(node, on, { keep = node.id === 'menu' || node.id === 'menu-fly' } = {}) {
+function topLayer(node, on, { keep = node.id === 'menu' || node.id === 'menu-fly' || node.id === 'menu-fly2' } = {}) {
   if (!node.hasAttribute('popover')) node.setAttribute('popover', 'manual');
   try {
     if (on) {
@@ -219,6 +219,9 @@ function menuButton(it, onPick) {
   b.textContent = typeof macText === 'function' ? macText(text) : text; // the label stays the first text node (usage counts and checks read it); "(Ctrl+N)" reads ⌘N on a Mac
   if (it.icon && typeof Icons !== 'undefined') { const ic = Icons.node(it.icon); if (ic) { ic.classList.add('menu-ico'); b.append(ic); b.classList.add('has-ico'); } } // drawn first by CSS (order: -1)
   if (it.hint) b.append(el('span', { class: 'menu-hint', text: it.hint }));
+  // (round 43, menucalm) a one-sentence tooltip: the row's own (tip), else its hint when the menu has to cut it short
+  const tip = menuTip(it);
+  if (tip) b.title = tip;
   const sub = Boolean(it.items);
   // on a Mac the keys at the right of a menu read ⌘ ⌥ ⇧ (every stream's menus wrote "Ctrl+D", "Ctrl+Shift+S"…)
   const key0 = sub ? '›' : it.key || inlineKey;
@@ -233,6 +236,49 @@ function menuButton(it, onPick) {
   if (it.feature) b.dataset.feature = it.feature;
   b.addEventListener('click', (e) => { e.stopPropagation(); onPick(it, b); });
   return b;
+}
+
+// (round 43, menucalm) what a row says when you point at it: its tip, else a hint too long to show whole (hints are
+// cut at ~180 px), as one sentence
+function menuTip(it) {
+  const t = String(it.tip || (String(it.hint || '').length > 24 ? it.hint : '') || '').trim();
+  return t ? `${t[0].toUpperCase()}${t.slice(1)}${/[.!?…)]$/.test(t) ? '' : '.'}` : '';
+}
+// (round 43, menucalm) a rare row (more: true) you use often stays out of More…: 5 uses on this computer (Usage counts
+// menu rows as "Menus › <label>")
+const MORE_STAYS_AT = 5;
+function menuUses(it) {
+  try {
+    if (!window.Usage?.keyOf || !Usage.data) return 0;
+    const b = menuButton({ ...it, items: undefined }, () => {});
+    menuNode().append(b);
+    const k = Usage.keyOf(b);
+    b.remove();
+    return Usage.data.items?.[k]?.n || 0;
+  } catch { return 0; }
+}
+
+// (round 43, menucalm) a menu several modules add rows to, put in one order by name. order: [regex…] — matching rows come
+// first in that order, the others keep theirs after them (a danger row stays last); groups: [{ label, hint, tip,
+// match }] — matching rows go into one submenu row standing where the group sits in the order (a group of one stays a
+// row); seps: after which `order` positions a line goes. Rows are matched by their label without ✓ / spaces in front.
+function menuArrange(list, { order = [], groups = [], seps = [] } = {}) {
+  const bare = (it) => menuLabel(it)[0].replace(/^[✓\s]+/, '');
+  const rows = list.filter((it) => it && typeof it === 'object' && !it.sep && it !== '-');
+  const made = new Map();
+  const flat = [];
+  for (const it of rows) {
+    const g = !it.danger && groups.find((x) => x.match.test(bare(it)));
+    if (!g) { flat.push(it); continue; }
+    if (!made.has(g)) { const row = { label: g.label, hint: g.hint || '', tip: g.tip || '', items: [] }; made.set(g, row); flat.push(row); }
+    made.get(g).items.push({ ...it, more: false });
+  }
+  const out = flat.map((it) => (it.items && [...made.values()].includes(it) && it.items.length === 1 ? it.items[0] : it));
+  const rank = (it) => { if (it.danger) return order.length + 2; const i = order.findIndex((re) => re.test(bare(it))); return i < 0 ? order.length : i; };
+  const sorted = out.map((it, i) => [it, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([it]) => it);
+  const res = [];
+  sorted.forEach((it, i) => { res.push(it); const r = rank(it); const nx = sorted[i + 1]; if (nx && seps.some((k) => r <= k && rank(nx) > k)) res.push('-'); });
+  return res;
 }
 
 // (round 18, tidy) every menu reads the same: what deletes or trashes something is red and comes last, after a line
@@ -254,8 +300,10 @@ function showMenu(x, y, items, parent = null, dir = 0) {
   const menu = menuNode();
   hideMenuFly();
   const given = items;
-  let list = menuTidy((typeof items === 'function' ? items() : items || []).filter(Boolean));
-  // rare items behind one "More…" (a submenu, so ‹ back returns here)
+  // (round 43, menucalm) a submenu with nothing in it doesn't show (a list given as an empty array)
+  let list = menuTidy((typeof items === 'function' ? items() : items || []).filter((it) => it && !(Array.isArray(it.items) && !it.items.filter(Boolean).length)));
+  // rare items behind one "More…" (a submenu, so ‹ back returns here); the ones you use often stay out
+  for (const it of list) if (typeof it === 'object' && it.more && menuUses(it) >= MORE_STAYS_AT) it.more = false;
   const rest = list.filter((it) => typeof it === 'object' && it.more);
   if (rest.length > 1) {
     const main = list.filter((it) => !(typeof it === 'object' && it.more));
@@ -297,7 +345,7 @@ function showMenu(x, y, items, parent = null, dir = 0) {
   menu.classList.toggle('m-long', Boolean(filter));
   // (round 40, a11y) what had focus before the menu (a submenu keeps its menu's), so closing gives it back
   const before = document.activeElement;
-  const opener = menuState?.opener || (before && before !== document.body && !before.closest?.('#menu, #menu-fly') ? before : null);
+  const opener = menuState?.opener || (before && before !== document.body && !before.closest?.('#menu, #menu-fly, #menu-fly2') ? before : null);
   menuState = { x, y, given, parent, list, pick, kb: -1, filter, opener };
   menu.hidden = false;
   topLayer(menu, true);
@@ -310,7 +358,7 @@ function showMenu(x, y, items, parent = null, dir = 0) {
 function hideMenu() {
   const menu = $('menu');
   const back = menuState?.opener;
-  const had = menu && (menu.contains(document.activeElement) || $('menu-fly')?.contains(document.activeElement));
+  const had = menu && (menu.contains(document.activeElement) || $('menu-fly')?.contains(document.activeElement) || $('menu-fly2')?.contains(document.activeElement));
   if (menu) { menu.hidden = true; topLayer(menu, false); if (menu.parentElement !== document.body) document.body.append(menu); }
   hideMenuFly();
   menuState = null;
@@ -362,37 +410,51 @@ function menuKb(i) {
   if (menuState.filter && document.activeElement === menuState.filter) { b.id ||= `menu-row-${menuState.kb}-${Math.random().toString(36).slice(2, 6)}`; menuState.filter.setAttribute('aria-activedescendant', b.id); } else if (document.activeElement !== b) b.focus({ preventScroll: true });
 }
 
-// pointing at a submenu row: its items show beside the menu (a second panel, #menu-fly)
+// pointing at a submenu row: its items show beside the menu (a second panel, #menu-fly); (round 43, menucalm) pointing
+// at a submenu row in that panel shows its items beside it too (#menu-fly2), so a row three levels down is one click
 let menuFlyTimer = 0;
-function showMenuFly(row, it, ctx) {
+let menuFly2Timer = 0;
+function flyNode(level) {
+  const id = level > 1 ? 'menu-fly2' : 'menu-fly';
+  let fly = $(id);
+  if (!fly) { fly = el('div', { id, role: 'menu' }); document.body.append(fly); fly.addEventListener('pointerenter', () => { clearTimeout(menuFlyTimer); if (level > 1) clearTimeout(menuFly2Timer); }); }
+  return fly;
+}
+function showMenuFly(row, it, ctx, level = 1) {
   if (!row.isConnected || !menuState) return;
-  let fly = $('menu-fly');
-  if (!fly) { fly = el('div', { id: 'menu-fly', role: 'menu' }); document.body.append(fly); fly.addEventListener('pointerenter', () => clearTimeout(menuFlyTimer)); }
+  if (level === 1) hideMenuFly2();
+  const fly = flyNode(level);
   const items = menuSubItems(it);
-  if (!items.length) { hideMenuFly(); return; }
+  if (!items.length) { if (level === 1) hideMenuFly(); else hideMenuFly2(); return; }
   const parentCtx = { x: ctx.x, y: ctx.y, items: ctx.given, parent: ctx.parent, label: menuLabel(it)[0] };
   fly.replaceChildren(...items.map((sub) => {
     if (sub === '-' || sub.sep) return el('div', { class: 'menu-sep' });
     if (typeof sub === 'string') return el('div', { class: 'menu-head', text: sub });
-    return menuButton(sub, (s) => {
+    const b = menuButton(sub, (s) => {
       if (s.items) { menuOpenedAt = performance.now(); setTimeout(() => showMenu(ctx.x, ctx.y, menuSubItems(s), { x: ctx.x, y: ctx.y, items: items, parent: parentCtx, label: menuLabel(s)[0] }, 1), 0); hideMenuFly(); return; }
       if (s.disabled) return;
       hideMenu();
       try { s.action?.(); } catch (err) { toast(err.message, { type: 'error' }); }
     });
+    if (level === 1 && sub.items) {
+      b.addEventListener('pointerenter', () => { clearTimeout(menuFly2Timer); menuFly2Timer = setTimeout(() => showMenuFly(b, sub, { x: ctx.x, y: ctx.y, given: items, parent: parentCtx }, 2), 230); });
+      b.addEventListener('pointerleave', () => clearTimeout(menuFly2Timer));
+    } else if (level === 1) b.addEventListener('pointerenter', () => { clearTimeout(menuFly2Timer); menuFly2Timer = setTimeout(hideMenuFly2, 160); });
+    return b;
   }));
   fly.hidden = false;
   topLayer(fly, true);
   fly.dataset.for = menuLabel(it)[0];
   const r = row.getBoundingClientRect();
-  const m = $('menu').getBoundingClientRect();
+  const m = (level > 1 ? $('menu-fly') : $('menu')).getBoundingClientRect();
   const fw = fly.offsetWidth; const fh = fly.offsetHeight;
-  const right = m.right + 2 + fw < innerWidth - 4;
+  const right = level > 1 && $('menu-fly')?.classList.contains('to-left') ? m.left - fw - 2 < 4 : m.right + 2 + fw < innerWidth - 4;
   fly.style.left = `${right ? m.right + 2 : Math.max(4, m.left - fw - 2)}px`;
   fly.style.top = `${Math.max(4, Math.min(r.top - 5, innerHeight - fh - 8))}px`;
   fly.classList.toggle('to-left', !right);
 }
-function hideMenuFly() { clearTimeout(menuFlyTimer); const f = $('menu-fly'); if (f) { f.hidden = true; topLayer(f, false); if (f.parentElement !== document.body) document.body.append(f); } }
+function hideMenuFly2() { clearTimeout(menuFly2Timer); const f = $('menu-fly2'); if (f) { f.hidden = true; topLayer(f, false); if (f.parentElement !== document.body) document.body.append(f); } }
+function hideMenuFly() { clearTimeout(menuFlyTimer); hideMenuFly2(); const f = $('menu-fly'); if (f) { f.hidden = true; topLayer(f, false); if (f.parentElement !== document.body) document.body.append(f); } }
 
 // the menu's keys (capture: while it's open, arrows and letters belong to it, not to the Lab or the chat)
 addEventListener('keydown', (e) => {
@@ -834,7 +896,7 @@ function popMenu(x, y, items, { width = 300 } = {}) {
     rows[kb].scrollIntoView({ block: 'nearest' });
     if (document.activeElement !== m.querySelector('.menu-filter')) rows[kb].focus({ preventScroll: true }); // (round 40, a11y) a real focus
   };
-  const row = (it, onClick, extra = '') => el('button', { type: 'button', role: 'menuitem', class: `menu-item${it[3] ? ' on' : ''}${extra}`, dataset: it[4] ? { feature: it[4] } : {}, on: { click: onClick } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' }));
+  const row = (it, onClick, extra = '') => { const b = el('button', { type: 'button', role: 'menuitem', class: `menu-item${it[3] ? ' on' : ''}${extra}`, dataset: it[4] ? { feature: it[4] } : {}, on: { click: onClick } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] || '' })); const tip = extra ? '' : menuTip({ tip: it[5], hint: it[1] }); if (tip) b.title = tip; return b; }; // (round 43, menucalm) [5]: its tooltip
   function render(list, dir = 0) {
     const nodes = [];
     if (stack.length) nodes.push(row(['‹ back', stack.at(-1).title], () => { const prev = stack.pop(); render(prev.list, -1); }, ' menu-back'));

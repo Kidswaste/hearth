@@ -1,6 +1,8 @@
 // The Lab without commands (round 26, labeasy). The owner hid the commands ("I hate commands"): the Lab features that
 // were mostly reachable by typing one get a home where they belong, in plain words, behind one level:
 //   · the preview's right-click: one "✦ More" entry → ♪ Music · ✨ Look & motion · ⇪ Make · ℹ What's going on
+//     (round 43, menucalm: ♪ Music, ✨ Look & motion and ⇪ Make & export are rows of the right-click itself, most used
+//     first; ✦ More keeps the rarer ones: fix my scene, what's going on, share, templates, recipes)
 //   · the toolbar's ⋯: "Director ›" (what it's making, what it did, what it costs, its last picture, undo)
 //   · a layer's right-click in the Layers list (new): hide, solo, rename, duplicate, react to the music, a filter above,
 //     a look, and the rest behind "More…"
@@ -107,19 +109,28 @@ const LabEasy = (() => {
     item('What the Lab shows now', 'Sketch, layer, frame size, song, tempo', '/lab-state'),
     item('What the Lab hears now', 'Hits, bands, loudness, beat', '/audio'),
   ];
-  const moreItems = () => [
+  // (round 43, menucalm) the preview's right-click shows ♪ Music, ✨ Look & motion and ⇪ Make & export itself (the
+  // owner's habits: music first); ✦ More keeps the rarer rows. extra: rows the Lab adds in front (its ◐ Grade and
+  // 🎥 Camera moves in Look & motion, its export rows in Make & export, ⟲ Restart / 🎚 Live in More).
+  const musicItem = () => ({ label: '♪ Music', hint: 'react, drops, cues, the song', tip: 'Make the scene follow the song: react to the kick, jump to drops, cues, the beat', items: musicItems });
+  const lookItem = (extra = []) => ({ label: '✨ Look & motion', hint: 'grade, camera, variations…', tip: 'How it looks and moves: the grade, camera moves, variations, a finished look', items: () => [...extra, ...(extra.length ? ['-'] : []), ...lookItems()] });
+  const makeItem = (extra = []) => ({ label: '⇪ Make & export', hint: 'formats, batch, export…', tip: 'Videos from this scene: every format, a batch, a loop, an export', items: () => { const own = makeItems(); const have = new Set(own.map((x) => calmKey(x.label))); const ex = extra.filter((x) => typeof x !== 'object' || !have.has(calmKey(x.label))); return [...own, ...(ex.length ? ['-', ...ex] : [])]; } });
+  const calmKey = (l) => String(l || '').replace(/^[^\p{L}\p{N}]+/u, '').replace(/…$/, '').trim().toLowerCase();
+  const moreItems = (extra = [], tail = []) => [
     ...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.item()] : []), // (round 34) 🩺 fix my scene (tools/three-doctor-hook.js)
-    { label: '♪ Music', hint: 'react, drops, cues, the song', items: musicItems },
-    { label: '✨ Look & motion', hint: 'surprise, Hearth on screen, intro', items: lookItems },
-    { label: '⇪ Make', hint: 'variations, render again', items: makeItems },
-    { label: 'ℹ What\'s going on', items: infoItems },
+    ...extra,
+    '-',
+    { label: 'ℹ What\'s going on', hint: 'what it shows, what it hears', items: infoItems },
     ...(typeof LabPacksHook !== 'undefined' ? [LabPacksHook.moreItem()] : []), // (round 28) ⇪ Share: save as a pack, open one
     ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.moreItem()] : []), // (round 35) 📐 My templates: new from one, save as one (tools/three-templates-hook.js)
     ...(typeof LabRecipesHook !== 'undefined' ? [LabRecipesHook.moreItem()] : []), // (round 39) 📜 Recipes: record your finishing steps, replay them (tools/three-recipes-hook.js)
+    ...tail,
   ];
-  function previewItem() {
-    return { label: '✦ More', hint: 'music, motion, make…', items: moreItems };
+  function previewItem(extra = [], tail = []) {
+    return { label: '✦ More', hint: 'fix it, share, templates…', tip: 'The rarer things: fix my scene, live shows, share, templates, recipes', items: () => moreItems(extra, tail) };
   }
+  // the four rows this file gives the preview's right-click, in their order (checks and the audit read them here)
+  const previewGroups = () => [musicItem(), lookItem(), makeItem(), previewItem()];
 
   // ---------- the toolbar's ⋯: Director › ----------
   const directorItems = (has = Boolean(director())) => (has ? [
@@ -218,10 +229,11 @@ const LabEasy = (() => {
         else if (it.cmd && !out.has(it.cmd)) out.set(it.cmd, `${where} › ${it.label}`);
       }
     };
+    walk([musicItem(), lookItem(), makeItem()], 'Preview right-click');
     walk(moreItems(), 'Preview right-click › ✦ More');
     walk([...directorItems(true), ...directorItems(false)], 'Toolbar ⋯ › Director');
     walk(layerItems({ name: 'Layer' }, { change() {}, solo() {}, rename() {}, copy() {}, remove() {} }), 'Layer right-click');
     return out;
   }
-  return { previewItem, toolbarItems, layerItems, layerMenu, run, plain, placed, last, MISSIONS, addMissions, variations, formats, formatsItem };
+  return { previewItem, previewGroups, musicItem, lookItem, makeItem, toolbarItems, layerItems, layerMenu, run, plain, placed, last, MISSIONS, addMissions, variations, formats, formatsItem };
 })();

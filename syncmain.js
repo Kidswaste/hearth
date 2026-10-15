@@ -18,8 +18,16 @@ let settings = {};
 const DEBOUNCE_LOCAL = 2500; const DEBOUNCE_CLOUD = 4000; const EVERY = 60 * 1000;
 
 const settingsFile = () => path.join(opts.dataDir, 'sync', 'settings.json');
-function readSettings() { try { return JSON.parse(fs.readFileSync(settingsFile(), 'utf8')); } catch { return {}; } }
+// (round 43, datasafe) a settings file held for a moment is read again; one that still can't be read is never saved over
+// (sync would have been switched off and its drive forgotten): changes wait in memory until it reads (settingsHeld)
+let settingsHeld = false;
+function readSettings() {
+  const r = require('./datasafe-core').load(fs, settingsFile(), {}, { prev: false });
+  settingsHeld = r.state === 'unreadable' && !r.canSave;
+  return r.value && typeof r.value === 'object' ? r.value : {};
+}
 function saveSettings() {
+  if (settingsHeld) { const again = readSettings(); if (settingsHeld) return; settings = { ...again, ...settings }; }
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
   const tmp = `${settingsFile()}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(settings, null, 2));

@@ -70,7 +70,8 @@ const UndoAllCore = (() => {
 
   // ---------- config: settings, the AIs, the look ----------
   // what is never "a change the owner made" (bookkeeping kept in the config by features)
-  const IGNORE = /^(last|seen|stats|cache|tested|session)|(At|Ts|Seen|Count|Stamp)$/;
+  const IGNORE_RE = /^(last|seen|stats|cache|tested|session)|(At|Ts|Seen|Count|Stamp)$/;
+  const IGNORE = { test: (k) => k !== 'lighterAt' && IGNORE_RE.test(k) }; // (round 43, costcoach) lighterAt is a setting (Continue lighter at…), not a stamp
   const snapshot = (cfg) => clone({ settings: cfg?.settings || {}, agents: cfg?.agents || [], theme: cfg?.theme || {} });
   // a → b as changes: { path: ['settings', k] | ['theme', k] | ['agents', id, k] | ['agents', id], old, now, idx? }
   function diffConfig(a, b) {
@@ -182,6 +183,7 @@ const UndoAllCore = (() => {
     if (k === 'instructions') return instructionWords(who, c.old, c.now);
     if (k === 'effort') return `${who} thinks: ${EFFORT[c.now] || 'Smart'}`;
     if (k === 'verbosity') return `${who}'s answers: ${LENGTH[c.now] || 'Normal'}`;
+    if (k === 'lighterAt') return c.now === 0 ? `Turned off Continue lighter for ${who}` : `${who}: continue lighter at ${c.now ? `${Math.round(c.now / 1000)}k` : '40k'}`; // (round 43, costcoach)
     if (k === 'fileAccess' || k === 'workspace' || k === 'codexFiles') return `Changed what ${who} can reach on this computer`;
     if (k === 'connectors' || k === 'connections') return `Changed ${who}'s connections`;
     if (k === 'hooks') return `Changed ${who}'s hooks`;

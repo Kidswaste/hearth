@@ -13,7 +13,7 @@ const F = require('./fake-common');
 
 const ROOT = path.join(__dirname, '..');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'toolslim-test-'));
-for (const f of ['engines.js', 'store.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'context-core.js', 'toolwake.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'context-core.js', 'toolwake.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data', 'kv'), { recursive: true });
 const fails = [];

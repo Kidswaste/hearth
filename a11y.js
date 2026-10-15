@@ -83,7 +83,7 @@ const A11y = (() => {
   const usable = (n) => n && n.isConnected && n !== document.body && n.checkVisibility?.({ visibilityProperty: true });
   // what last had focus outside every overlay (an overlay that focuses its own box as it opens took it already)
   let lastOut = null;
-  addEventListener('focusout', (e) => { const t = e.target; if (t instanceof Element && !t.closest(OVERLAY) && !t.closest('#menu, #menu-fly')) lastOut = t; }, true);
+  addEventListener('focusout', (e) => { const t = e.target; if (t instanceof Element && !t.closest(OVERLAY) && !t.closest('#menu, #menu-fly, #menu-fly2')) lastOut = t; }, true);
   function opened(root) {
     if (open.some((o) => o.root === root)) return;
     const a = document.activeElement;

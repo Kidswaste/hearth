@@ -172,7 +172,7 @@
     } },
     { label: 'All boards…', action: overview, more: true },
     { label: 'As a table…', action: listView, more: true },
-    { label: 'Chats get…', more: true, items: () => D.FOCUS.map((f) => ({ label: `${(S.cur.focus || 'full') === f.id ? '✓ ' : '   '}${f.name}`, action: () => setFocus(f.id) })) }];
+    { label: 'Chats get…', more: true, items: () => D.FOCUS.map((f) => ({ label: `${(S.cur.focus || 'full') === f.id ? '✓ ' : ''}${f.name}`, action: () => setFocus(f.id) })) }];
   const baseAddItems = B._.addItems;
   B._.addItems = (p) => [...baseAddItems(p),
     { label: 'Color from the screen (eyedropper)  E', action: () => eyedropper(p), more: true },

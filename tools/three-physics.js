@@ -3,7 +3,7 @@
 //   physics": a compact position-based solver for rigid boxes / letters / dominoes / model hulls, balls, ragdolls,
 //   cloth, ropes, jelly and water, 60 fixed steps a second of the scene's clock, cached states for scrubbing, sleeping
 //   bodies, instanced drawing). Its sliders are a normal tweak(): Save, Shuffle, looks, keyframes and ♪ react-to work.
-// - Presets (tools/three-physics-data.js): one searchable picker (/physics, right-click the preview › ⚛ Physics,
+// - Presets (tools/three-physics-data.js): one searchable picker (/physics, right-click the preview › ＋ Add › ⚛ Physics,
 //   Ctrl/⌘+K, the FX picker's "Physics" category, /template physics-<id>).
 // - Edits go through the layer's code (undoable, the time machine sees them): a slider's value, a slider added, the
 //   options (build, text, source, bodies…). Kick / drop / reset now are live pokes (not on the timeline).

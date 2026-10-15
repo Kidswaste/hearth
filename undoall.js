@@ -36,21 +36,32 @@ const UndoAll = (() => {
   }
   const join = (...p) => { const sep = String(p[0]).includes('\\') ? '\\' : '/'; return p.map((x, i) => (i ? String(x).replace(/^[\\/]+/, '') : String(x).replace(/[\\/]+$/, ''))).join(sep); };
   let loaded = null;
-  const ready = () => (loaded ||= (async () => {
+  // (round 43, datasafe) a log that's there but can't be read (held for a moment on Windows) is not "none yet": nothing is
+  // saved over it and no kept copy is swept to the Trash until it reads (tried again every 5 s); a damaged one is kept aside
+  let logOk = false; let logTries = 0;
+  async function loadLog() {
+    const f = join(await holdDir(), 'log.json');
+    let txt;
     try {
-      const f = join(await holdDir(), 'log.json');
-      if (!(await window.hub.fs.stat(f))) throw new Error('none yet');
-      const txt = await window.hub.fs.read(f);
+      if (!(await window.hub.fs.stat(f))) { logOk = true; return; }
+      txt = await window.hub.fs.read(f);
+    } catch {
+      if ((logTries += 1) < 60) setTimeout(() => loadLog().then(() => { if (logOk) { save(); sweep(); } }), 5000);
+      return;
+    }
+    try {
       const saved = C.makeLog(JSON.parse(txt));
       const mine = new Set(L.list.map((e) => e.id));
       L.list = saved.list.filter((e) => !mine.has(e.id)).concat(L.list);
       L.seq = Math.max(L.seq, saved.seq);
       C.prune(L);
-    } catch { /* none yet */ }
-    sweep();
-  })());
+    } catch { try { await window.hub.fs.copy(f, join(await holdDir(), `log.damaged-${Date.now()}.json`)); } catch { /* kept as it is */ } }
+    logOk = true;
+  }
+  const ready = () => (loaded ||= (async () => { await loadLog().catch(() => {}); if (logOk) { if (L.list.length) save(); sweep(); } })());
   let saveT = 0;
   function save() {
+    if (!logOk) return; // (round 43) written once the saved log has been read
     clearTimeout(saveT);
     saveT = setTimeout(async () => { try { await window.hub.fs.write(join(await holdDir(), 'log.json'), JSON.stringify(C.toJSON(L))); } catch { /* kept in memory */ } }, 400);
   }
@@ -270,7 +281,24 @@ const UndoAll = (() => {
         await refreshLab(e.u.what);
       },
     },
+    // (round 43, costcoach) a value this window keeps in its store (a mission pinned 📌 from now on): put back as it was
+    store: {
+      check(e, side = 'now') { const v = storeGet(e.u.key); const want = side === 'now' ? e.u.now : e.u.was; const other = side === 'now' ? e.u.was : e.u.now; return C.same(v, want) ? null : C.same(v, other) ? { already: true } : { warn: 'It was changed again since.' }; },
+      undo: (e) => storePut(e.u, e.u.was),
+      redo: (e) => storePut(e.u, e.u.now),
+    },
   };
+  // the store value as missions.js reads it (null = not set); a mission goes back through Missions.set so its button follows
+  const storeGet = (k) => { try { return store.get(k, null) ?? null; } catch { return null; } };
+  function storePut(u, v) {
+    if (u.via === 'mission' && typeof Missions !== 'undefined' && u.agentId) return hush(() => Missions.set(u.agentId, v || 'normal', { keep: true }));
+    try { store.set(u.key, v ?? null); } catch { /* storage is a convenience */ }
+  }
+  // stored({ key, label, was, now, via?, agentId? }): a store change the owner just made (a click), one entry
+  function stored(s) {
+    if (quiet || !s?.key || C.same(s.was ?? null, s.now ?? null)) return null;
+    return add({ kind: 'store', key: `store:${s.key}`, label: s.label || 'Changed a setting', u: { key: s.key, was: s.was ?? null, now: s.now ?? null, via: s.via || null, agentId: s.agentId || null } });
+  }
 
   // ---------- AI changes: the newest ones, undone by aiundo.js ----------
   const aiList = () => { try { return (window.AiUndo?.list?.() || []).filter((e) => e.at >= bootAt && !e.cant); } catch { return []; } };
@@ -467,7 +495,7 @@ const UndoAll = (() => {
   boot();
 
   return {
-    ready, undo, redo, viaSwitch, memoryTidied, keepFiles, deleted, part: mountPart, paintPart, openPart, summary,
+    ready, undo, redo, viaSwitch, memoryTidied, keepFiles, deleted, stored, part: mountPart, paintPart, openPart, summary,
     list: () => L.list.slice(), onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
     _test: { get L() { return L; }, ours, acting: () => { lastInput = performance.now(); }, rebase, KINDS, aiNewest },
   };

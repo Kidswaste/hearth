@@ -42,6 +42,7 @@ const LabBoot = (() => {
     const d = e.data;
     if (d?.source !== 'three-sandbox') return;
     if (d.type === 'lib-need') { if (typeof ThreeLab !== 'undefined') ThreeLab._lib?.(d.name, (m) => post(m)); return; } // motion / lab3d kits (tools/three.js)
+    if (d.type === 'gpu-lost') { drop('gpu lost'); return; } // (round 43, glrecover) the GPU took its contexts: the Lab opens the usual way, on a clean page
     if (d.type === 'ready') {
       if (d.n && d.n !== w.n) return;
       w.ready = d; mark('ready');

@@ -4,7 +4,7 @@
 //     3 picks show, one click opens a scene (0 tokens, nothing goes to the director); closing it puts your words back
 //   · the empty Lab: "✦ Describe it" on a new chat's untouched starter (next to "Start from something like…") and on a
 //     scene that is just the plain "Shape" you start from
-//   · ✦ More › ✨ Look & motion › ✦ Describe it… (tools/three-easy.js)
+//   · right-click the preview › ✨ Look & motion › ✦ Describe it… (tools/three-easy.js)
 //   · the gallery's search, when it reads like a description (tools/three-gallery.js asks LabInstant.galleryRow)
 //   · /describe [words] · /describe make <words> (the first pick at once) · /describe list <words> · /describe ask
 const LabInstantHook = (() => {

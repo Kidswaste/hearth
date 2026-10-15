@@ -24,9 +24,9 @@ const P = () => ThreeLab.stageHooks.player;
 // ---------- ways in ----------
 step('loaded with the Lab: LoopCore, PerfectLoop, /make-loop', typeof LoopCore !== 'undefined' && Boolean(Commands.get('make-loop')));
 step('the ◎ mission "Make it loop" is there for the Lab director (only)', Missions.shown(dir.id).some((m) => m.id === 'lab-loop') && !Missions.shown(H.claudeAgent().id).some((m) => m.id === 'lab-loop'));
-const mk = LabEasy.previewItem().items().find((x) => /Make/.test(x.label)).items();
+const mk = LabEasy.previewGroups().find((x) => /Make/.test(x.label)).items();
 const mi = mk.find((x) => /Make it loop/.test(x.label));
-step('✦ More › ⇪ Make › ∞ Make it loop (a length submenu), and the Lab audit finds it', mi && mi.items().length >= 4 && LabEasy.placed().has('make-loop'), mk.map((x) => x.label));
+step('Right-click the preview › ⇪ Make & export › ∞ Make it loop (a length submenu), and the Lab audit finds it', mi && mi.items().length >= 4 && LabEasy.placed().has('make-loop'), mk.map((x) => x.label));
 step('⌘/Ctrl+K "Lab: Make it loop"', AppUI.actions().some((a) => /Make it loop/.test(a.label)));
 
 // ---------- a scene made to loop (no song: its own timeline), 9:16, a keyframe that ends elsewhere ----------

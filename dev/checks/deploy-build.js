@@ -123,11 +123,11 @@ try {
   ok(AppUI.actions().some((a) => /Publish the Lab scene on the web/.test(a.label)), 'Ctrl/⌘+K: Publish the Lab scene on the web…');
   const sketchBtn = [...document.querySelectorAll('button')].find((x) => /^Sketch ▾/.test(x.textContent));
   sketchBtn?.click(); await wait(300);
-  // a long menu folds its sections: "This sketch ›" holds it
-  const sec = [...document.querySelectorAll('.lab-pop .menu-item')].find((x) => /^This sketch/.test(x.textContent));
-  if (sec && !/Publish & Adobe/.test(document.querySelector('.lab-pop')?.innerText || '')) { sec.click(); await wait(250); }
+  // (round 43, menucalm) Sketch ▾ › ⇪ Share & export holds Publish as a web page… and Photoshop
+  const sec = [...document.querySelectorAll('.lab-pop .menu-item')].find((x) => /^⇪ Share & export/.test(x.textContent));
+  if (sec) { sec.click(); await wait(250); }
   const menuText = document.querySelector('.lab-pop')?.innerText || '';
-  ok(/Publish & Adobe/.test(menuText), 'Lab Sketch ▾ → Publish & Adobe');
+  ok(/Publish as a web page/.test(menuText) && /Preview the web page here/.test(menuText), 'Lab Sketch ▾ → ⇪ Share & export → Publish as a web page…');
   await smoke({ shot: `${SHOTS}/deploy-sketch-menu.png` }).catch(() => {});
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(200);
   if (window.Apps?.list) ok(window.Apps.list().some((a) => a.id === 'deploy'), 'Apps: Publish on the web');

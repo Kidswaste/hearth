@@ -9,7 +9,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenaudit-test-'));
-for (const f of ['engines.js', 'store.js', 'installs.js', 'winpolish.js', 'macpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js', 'tokenauditmain.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'macpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js', 'tokenauditmain.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data', 'chats'), { recursive: true });
 const MEMORY = { shared: '- I post 9:16 visuals on Shorts\n- Keep bloom subtle\n- I hate camera shake', agents: { claude: '- Call me Sam' } };

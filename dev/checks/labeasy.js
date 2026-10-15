@@ -45,11 +45,14 @@ for (let i = 0; i < 4 && !rowsOf().some((t) => t.startsWith('❚❚') || t.start
 }
 const prev = rowsOf();
 keep();
-step('preview right-click: one "✦ More" row', prev.filter((t) => t.startsWith('✦ More')).length === 1, prev.slice(0, 20));
+// (round 43, menucalm) ♪ Music, ✨ Look & motion and ⇪ Make & export are rows of the right-click itself; ✦ More keeps
+// the rarer ones (what's going on, share, templates, recipes)
+step('preview right-click: one "✦ More" row, and ♪ Music, ✨ Look & motion, ⇪ Make & export beside it', prev.filter((t) => t.startsWith('✦ More')).length === 1 && ['♪ Music', '✨ Look & motion', '⇪ Make & export'].every((s) => prev.filter((t) => t.startsWith(s)).length === 1), prev.slice(0, 20));
 clickRow('✦ More');
-await until(() => rowsOf().some((t) => t.startsWith('♪ Music')), 3000);
+await until(() => rowsOf().some((t) => t.startsWith('ℹ What')), 3000);
 const more = rowsOf(); keep();
-step('✦ More: Music, Look & motion, Make, What\'s going on', ['♪ Music', '✨ Look & motion', '⇪ Make', 'ℹ What'].every((s) => more.some((t) => t.startsWith(s))), more);
+step('✦ More: What\'s going on', ['ℹ What'].every((s) => more.some((t) => t.startsWith(s))), more);
+clickRow('‹ back'); await wait(150);
 clickRow('♪ Music');
 await until(() => rowsOf().some((t) => t.startsWith('✦ Make it react')), 3000);
 const music = rowsOf(); keep();
@@ -58,12 +61,12 @@ await smoke({ shot: '/tmp/labeasy-more.png' });
 clickRow('‹ back'); await wait(150);
 clickRow('✨ Look & motion'); await until(() => rowsOf().some((t) => t.startsWith('Put Hearth on screen')), 3000); keep();
 clickRow('‹ back'); await wait(150);
-clickRow('⇪ Make'); await until(() => rowsOf().some((t) => t.startsWith('👥 4 variations')), 3000); keep();
-step('⇪ Make: 4 variations of this scene', rowsOf().some((t) => t.startsWith('👥 4 variations')), rowsOf());
+clickRow('⇪ Make & export'); await until(() => rowsOf().some((t) => t.startsWith('👥 4 variations')), 3000); keep();
+step('⇪ Make & export: 4 variations of this scene', rowsOf().some((t) => t.startsWith('👥 4 variations')), rowsOf());
 esc(); hideMenu?.(); await wait(150);
 
 // ---------- 3. the toolbar's ⋯ › Director ----------
-const moreBtn = [...document.querySelectorAll('button')].find((b) => b.offsetParent && b.textContent === '⋯' && /^More: focus/.test(b.title));
+const moreBtn = [...document.querySelectorAll('button')].find((b) => b.offsetParent && b.textContent === '⋯' && b.dataset.feature === 'Lab more');
 moreBtn?.click();
 await until(() => rowsOf('.mb-menu.lab-pop').some((t) => t.startsWith('Director')), 3000);
 keep('.mb-menu.lab-pop');

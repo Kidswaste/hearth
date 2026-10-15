@@ -12,7 +12,7 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cache-test-'));
-for (const f of ['engines.js', 'store.js', 'installs.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
 const MEMORY = { shared: '- I post 9:16 visuals on Shorts\n- Keep bloom subtle\n- I hate camera shake', agents: { claude: '- Call me Sam' } };
