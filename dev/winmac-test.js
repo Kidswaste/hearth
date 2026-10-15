@@ -107,7 +107,7 @@ ok(W.fixProcessPath() === null || process.platform === 'darwin', 'fixProcessPath
 // the scan: the path / URL rules stay at zero (anything new is fixed or reviewed in dev/winmac-scan.js), and it still
 // catches the patterns it is for
 const hits = scan();
-for (const rule of ['file-url', 'slash-split', 'slash-join', 'ctrl-text', 'shell-cmd', 'path-delim', 'ext-case', 'crlf', 'hard-path']) {
+for (const rule of ['file-url', 'slash-split', 'slash-join', 'ctrl-text', 'shell-cmd', 'path-delim', 'ext-case', 'crlf', 'hard-path', 'zip-tool', 'trash-direct', 'case-win-only']) {
   const mine = hits.filter((h) => h.rule === rule);
   ok(!mine.length, `scan ${rule}: ${mine.length} new hit(s)${mine.length ? `\n  ${mine.slice(0, 5).map((h) => `${h.file}:${h.line} ${h.text.slice(0, 120)}`).join('\n  ')}` : ''}`);
 }
@@ -121,10 +121,23 @@ const planted = [
   "const lines = fs.readFileSync(p, 'utf8').split('\\n');",
   "const out = `${dir}/render.mp4`;",
   "const DEF = '/Users/someone/Desktop/x.html';",
+  "execFile(TAR, ['-a', '-cf', target, '-C', src]);", // (round 46)
+  "await shell.trashItem(p);",
+  "const key = (p) => (platform === 'win32' ? p.toLowerCase() : p);",
 ].join('\n');
 const caught = new Set(scanText(planted, 'planted.js').map((h) => h.rule));
-for (const rule of ['file-url', 'slash-split', 'ctrl-text', 'shell-cmd', 'path-delim', 'ext-case', 'crlf', 'slash-join', 'hard-path']) ok(caught.has(rule), `scan catches a planted ${rule}`);
+for (const rule of ['file-url', 'slash-split', 'ctrl-text', 'shell-cmd', 'path-delim', 'ext-case', 'crlf', 'slash-join', 'hard-path', 'zip-tool', 'trash-direct', 'case-win-only']) ok(caught.has(rule), `scan catches a planted ${rule}`);
 ok(!scanText("v.src = WinMac.fileUrl(c.src); // winmac-ok", 'x.js').length, 'scan: the helper and winmac-ok lines pass');
+ok(!scanText("const c = WinPolish.trashCheck(p); await shell.trashItem(check.path);", 'x.js').length && !scanText("const k = platform === 'win32' ? p.toLowerCase() : platform === 'darwin' ? p.normalize('NFC').toLowerCase() : p;", 'x.js').length, 'scan (round 46): the checked trash and the Mac-aware fold pass');
+
+// (round 46, platform46) the same file named two ways, and "Ctrl/⌘+K" as each computer says it
+ok(W.sameFile('C:\\Users\\Q\\Song.WAV', 'c:/users/q/song.wav', { mac: false }), 'sameFile: Windows ignores case and the slash kind');
+ok(W.sameFile('/Users/q/Mu\u0301sique.mp3', '/users/q/M\u00fasique.MP3', { mac: true }), 'sameFile: the Mac ignores case and the Unicode form (NFD / NFC)');
+ok(!W.sameFile('/home/q/Song.wav', '/home/q/song.wav', { mac: false }), 'sameFile: Linux compares as written');
+eq(W.keyWords('Ctrl/⌘+K is Find anything', { mac: true }), '⌘K is Find anything', 'keyWords: the Mac says ⌘K');
+eq(W.keyWords('Ctrl/⌘+K is Find anything', { mac: false }), 'Ctrl+K is Find anything', 'keyWords: Windows says Ctrl+K');
+eq(W.keyWords('Ctrl/⌘+Alt+O, then Ctrl+click', { mac: true }), '⌘⌥O, then Ctrl+click', 'keyWords: ⌥ on the Mac; Ctrl+click stays (the Mac\'s right-click)');
+eq(W.macKeys('try Ctrl/⌘+K', { mac: true }), 'try ⌘K', 'macKeys: a both-computers label collapses to ⌘ on the Mac');
 
 console.log(`winmac-test: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -189,7 +189,7 @@ async function entriesOf(fh) {
       }
       x += 4 + len;
     }
-    out.push({ name, size: usize, csize, method, crc, offset, flags, dir: name.endsWith('/') });
+    out.push({ name, size: usize, csize, method, crc, offset, flags, mode: (cd.readUInt32LE(p + 38) >>> 16) & 0o777, dir: name.endsWith('/') });
     p += 46 + nl + xl + cl;
   }
   return out;

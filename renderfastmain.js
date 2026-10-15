@@ -26,7 +26,10 @@ function open(job, overrides) {
   const fresh = !fs.existsSync(job.output);
   const args = job.args.map((a) => (a === 'INPUT' ? 'pipe:0' : a === 'OUTPUT' ? job.output : String(a)));
   args.splice(args.length - 1, 0, '-progress', 'pipe:1', '-nostats');
-  const child = spawn(ffmpeg, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  // (round 46) a start that fails at once (Windows: a .cmd / .bat set as ffmpeg throws spawn EINVAL; a blocked program
+  // EPERM) is an answer, not an exception the export never hears about
+  let child;
+  try { child = spawn(ffmpeg, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); } catch (err) { return { ok: false, error: `${err.code || 'spawn'}: ffmpeg couldn't be started (${ffmpeg})` }; }
   if (job.priority !== 'normal') lowPriority(child);
   const j = { child, err: '', encoded: 0, t0: Date.now(), code: undefined, output: job.output, fresh };
   j.done = new Promise((resolve) => {
@@ -58,7 +61,7 @@ async function end(id) {
   return { ok: code === 0, code, encoded: j.encoded, ms: Date.now() - j.t0, error: code === 0 ? null : tail(j) };
 }
 // a video that won't be finished: its partial file goes (only one this job started: never a file that was there)
-function drop(j) { if (j.fresh) fs.rm(j.output, { force: true }, () => {}); }
+function drop(j) { if (j.fresh) fs.rm(j.output, { force: true, maxRetries: 6, retryDelay: 250 }, () => {}); } // (Windows: an antivirus may still hold it a moment)
 function cancel(id) {
   const j = jobs.get(id);
   if (!j) return false;

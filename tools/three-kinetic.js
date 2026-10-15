@@ -98,7 +98,7 @@ const LabKinetic = (() => {
     const opts = { ...p.opts };
     if (c.font) opts.font = c.font;
     if (Array.isArray(c.lyrics)) { opts.lyrics = c.lyrics; delete opts.text; } else if (!Array.isArray(opts.lyrics)) opts.text = clip(c.text || p.words, 400);
-    const name = c.lyrics ? 'Lyrics' : String(opts.text || p.name).split('\n')[0].slice(0, 24);
+    const name = c.lyrics ? 'Lyrics' : String(opts.text || p.name).split(/\r?\n/)[0].slice(0, 24);
     return { code: LT().codeFor({ id: `kinetic ${p.id}`, name: p.name, sliders: sliderValues(p, c), opts }, { name, opts }), name };
   }
   const presetOf = (code) => { try { const id = LT().optsOf(code).kinetic; return id ? KC.preset(id) : null; } catch { return null; } };

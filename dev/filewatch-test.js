@@ -33,7 +33,9 @@ for (const [ctx, dir] of [[MAC, '/'], [MAC, '/Users/quent'], [MAC, '/Users'], [M
 for (const [ctx, dir] of [[MAC, '/Users/quent/Projects'], [MAC, '/Volumes/USB/clips'], [WIN, 'C:\\Users\\quent\\Projects'], [WIN, 'D:\\Work'], [LIN, '/home/quent/site']]) check(!C.huge(dir, ctx), `recursive ok: ${dir}`);
 check(C.volumeOf('/Volumes/USB/clips/a.mp4', MAC) === '/Volumes/USB' && C.volumeOf('/Users/quent/a.mp4', MAC) === null, 'Mac: the disk a file is on (/Volumes/X)');
 check(C.volumeOf('D:\\clips\\a.mp4', WIN) === 'D:\\' && C.volumeOf('C:\\Users\\quent\\a.mp4', WIN) === null && C.volumeOf('\\\\nas\\share\\a.mp4', WIN) === '\\\\nas\\share\\', 'Windows: another drive / a share is a disk that can be out', C.volumeOf('\\\\nas\\share\\a.mp4', WIN));
-check(C.inside('C:\\users\\QUENT\\proj\\a.png', 'c:\\Users\\quent\\Proj', WIN.P, 'win32') && !C.inside('/Users/quent/Proj/a.png', '/Users/quent/proj', MAC.P, 'darwin'), 'Windows ignores case, the Mac compares as written');
+check(C.inside('C:\\users\\QUENT\\proj\\a.png', 'c:\\Users\\quent\\Proj', WIN.P, 'win32') && C.inside('/Users/quent/Proj/a.png', '/Users/quent/proj', MAC.P, 'darwin') && !C.inside('/home/q/Proj/a.png', '/home/q/proj', MAC.P, 'linux'), 'Windows and (round 46) the Mac ignore case; Linux compares as written');
+// (round 46) FSEvents names an accented file decomposed (NFD), the window composed (NFC): one key
+check(C.keyOf('/Users/quent/M\u0075\u0301sique.mp3', 'darwin') === C.keyOf('/Users/quent/M\u00fasique.mp3', 'darwin') && C.inside('/Users/quent/Mu\u0301sique/a.mp3', '/Users/quent/M\u00fasique', MAC.P, 'darwin'), 'the Mac: NFD and NFC name one file');
 check(!C.inside('/Users/quent/projects2/a', '/Users/quent/projects', MAC.P, 'darwin'), 'a sibling with a longer name is not inside');
 
 // ---------- the plan ----------
