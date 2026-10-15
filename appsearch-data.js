@@ -109,6 +109,7 @@ const AppSearchData = (() => {
     ['ae-path', 'Folders', 'After Effects install', 'After Effects install', 'after effects adobe ae folder', 'Only when After Effects is installed somewhere unusual'],
     ['ae-dirs', 'Folders', 'Where to look for .aep projects', '.aep projects', 'after effects projects aep folders', 'Folders searched for After Effects projects'],
     ['backup', 'Backup and files', 'Backups…', 'Backups', 'backup back up hub data export save chats settings memory restore automatic daily weekly', 'Back up now, a copy as one file, restore, or back up by itself'],
+    ['backup-last', 'This computer & sync', 'Last backup (automatic backups)', 'Backups…', 'last backup automatic backups daily verified checked restore missing scenes lost icloud onedrive folder', 'When the last backup worked, every backup with what\'s inside, Restore missing things, where this computer keeps them'],
     ['shortcuts', 'Backup and files', 'Create Hearth shortcuts (Start menu, desktop, Applications)', 'Create ', 'shortcut desktop start menu applications app icon', 'Open Hearth like any other app'],
     ['pack-mac', 'Backup and files', 'Pack Hearth for a Mac…', 'Pack Hearth for a Mac', 'mac move copy zip other computer', 'One zip with the app and your things, plus the Mac setup'],
     ['data-folder', 'Backup and files', 'Open data folder', 'Open data folder', 'data folder files where chats kept', 'Where Hearth keeps your chats and files'],

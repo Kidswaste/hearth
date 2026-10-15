@@ -183,6 +183,8 @@ const AppUI = (() => {
       syncSec.querySelector('.two-here')?.setAttribute('title', 'The name this computer goes by in sync and in your chats');
     }
     pcSec.append(
+      // (round 45, backupauto) "Last backup: 2 h ago ✓" with Backups… (backupauto.js; loaded right after the first screen)
+      (() => { if (window.BackupAuto) return BackupAuto.line(); const slot = el('span', { class: 'sf-slot' }); window.Lazy?.load?.('backupauto').then(() => { if (window.BackupAuto) slot.replaceWith(BackupAuto.line()); }).catch(() => {}); return slot; })(),
       el('div', { class: 'button-row', title: 'Claude, Codex, ffmpeg, sync, folders from the other computer, permissions, updates: one list, one button each' },
         gbtn('Check this computer…', 'Is this computer ready? Each thing with its state and one button to fix it (nothing installs without your click)', () => { dialog.close(); (window.Lazy?.load ? Lazy.load('firstrun') : Promise.resolve()).then(() => FirstRun.open()); })), // (round 28, firstrun)
       fold('start', 'Starting and closing', 'What Hearth does when your computer starts, when it opens and when you close its window',
@@ -243,7 +245,7 @@ const AppUI = (() => {
           el('div', { class: 'button-row', title: 'The keys of services Hearth talks to' },
             gbtn('Meshy key…', 'Paste your Meshy API key once (stored encrypted on this computer, never shown to a chat)', run('/meshy key'))), el('span', { class: 'sf-slot' })), 'hearth')),
       fold('files', 'Backup and files', 'Backups of your chats and settings, Hearth\'s shortcuts and its own files',
-        () => { const d = Number(H.settings().autoBackupDays) || 0; return d ? `Backs up by itself ${d === 1 ? 'daily' : d === 7 ? 'weekly' : d === 30 ? 'monthly' : `every ${d} days`}` : 'Backups when you ask'; },
+        () => { if (window.BackupAuto) return BackupAuto.lineText().text; const d = Number(H.settings().autoBackupDays) || 0; return d ? `Backs up by itself ${d === 1 ? 'daily' : d === 7 ? 'weekly' : d === 30 ? 'monthly' : `every ${d} days`}` : 'Backups when you ask'; },
         section('Backup and files',
           el('div', { class: 'button-row', title: 'Backups, shortcuts and Hearth\'s own files' },
             // (round 39) one Backups… (back up now, a copy as one file, restore, automatic backups) instead of "Back up hub data…"
@@ -755,6 +757,8 @@ const AppUI = (() => {
   // One-click backups to a folder (settings.backupDir, default Documents/Hearth backups), the list of them, and a
   // restore that merges (adds what's missing; never deletes anything of yours). /backup, /restore.
   async function backupNow({ quiet = false } = {}) {
+    // (round 45, backupauto) checked after it's written, big media once, the rotation, failures in plain words
+    if (window.BackupAuto) { const r = await BackupAuto.backupNow({ quiet }); return r?.ok ? r : null; }
     const t = quiet ? null : toast('Backing up…', { timeout: 60000 });
     try {
       const r = await window.hub.backup.now({ keep: H.settings().backupKeep || 10 });
@@ -766,6 +770,8 @@ const AppUI = (() => {
   }
   function restoreText(r) {
     return [`Chats: ${r.chats.add} to add${r.chats.newer ? ` · ${r.chats.newer} newer in the backup` : ''}${r.chats.older ? ` · ${r.chats.older} older in the backup (yours kept)` : ''} · ${r.chats.same} identical`,
+      r.kv.merge?.length ? `Brought back into your lists (what you don't have; nothing removed): ${r.kv.merge.map((m) => `${m.name === 'three-sketches' ? 'Lab scenes' : m.name} +${m.n}`).slice(0, 8).join(', ')}` : '',
+      r.media?.add ? `Big media files to bring back: ${r.media.add}` : '',
       `Tool data (notes, prompts, sketches…): ${r.kv.add} to add${r.kv.differ.length ? ` · ${r.kv.differ.length} differ (yours kept): ${r.kv.differ.slice(0, 8).join(', ')}${r.kv.differ.length > 8 ? '…' : ''}` : ''}`,
       `Memory: ${r.memory.add} line(s) to add · Attachments: ${r.attachments.add} to add`,
       r.agentsMissing.length ? `Agents in the backup you don't have (add them by hand): ${r.agentsMissing.join(', ')}` : '',
@@ -776,7 +782,7 @@ const AppUI = (() => {
     if (!file) return null;
     let r;
     try { r = await window.hub.backup.restore(file, { dryRun: true }); } catch (err) { toast(err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { type: 'error' }); return null; }
-    const nothing = !r.chats.add && !r.chats.newer && !r.kv.add && !r.memory.add && !r.attachments.add;
+    const nothing = !r.chats.add && !r.chats.newer && !r.kv.add && !r.memory.add && !r.attachments.add && !r.kv.merge?.length && !r.media?.add;
     if (nothing) { Modal.alert('Nothing to restore', `Everything in that backup is already here.\n\n${restoreText(r)}`); return r; }
     const v = await new Promise((resolve) => {
       const newer = el('input', { type: 'checkbox' });
@@ -795,10 +801,14 @@ const AppUI = (() => {
     const done = await window.hub.backup.restore(file, { dryRun: false, newer: Boolean(v.newer) });
     H.chats = await window.hub.listChats();
     Panel.render();
-    toast(`Restored: ${done.chats.add} chat(s)${done.chats.replaced ? `, ${done.chats.replaced} updated` : ''}, ${done.kv.add} tool store(s), ${done.memory.add} memory line(s), ${done.attachments.add} attachment(s). Reload to see restored tool data.`, { timeout: 9000, action: { label: 'Reload', fn: () => window.hub.reloadWindow() } });
+    toast(`Restored: ${done.chats.add} chat(s)${done.chats.replaced ? `, ${done.chats.replaced} updated` : ''}, ${done.kv.add} tool store(s)${done.kv.merge?.length ? `, ${done.kv.merge.reduce((a, m) => a + m.n, 0)} item(s) back in your lists` : ''}, ${done.memory.add} memory line(s), ${done.attachments.add} attachment(s). Reload to see restored tool data.`, { timeout: 9000, action: { label: 'Reload', fn: () => window.hub.reloadWindow() } });
     return done;
   }
   async function backupsDialog() {
+    // (round 45, backupauto) Settings › Backups: by date, what's inside, checked, Restore missing things, Show in Finder /
+    // Explorer, where this computer keeps them (backupauto.js); this older dialog only if that can't load
+    if (!window.BackupAuto && window.Lazy?.load) { try { await Lazy.load('backupauto'); } catch { /* the older dialog */ } }
+    if (window.BackupAuto) return BackupAuto.dialog();
     const dlg = el('dialog', { class: 'ui-modal backups-dialog' });
     const list = el('div', { class: 'download-list' });
     const dirLabel = el('code', {});
@@ -835,6 +845,7 @@ const AppUI = (() => {
   }
   // At start-up: a quiet backup when auto backup is on and the newest one is older than its interval.
   async function autoBackup() {
+    if (window.hub?.backupauto) return false; // (round 45, backupauto) the main process backs up by itself (powerwise's schedule)
     const days = H.settings().autoBackupDays;
     if (!days) return false;
     const { items } = await window.hub.backup.list();

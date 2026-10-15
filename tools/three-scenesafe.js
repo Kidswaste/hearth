@@ -143,9 +143,11 @@ const LabSceneSafe = (() => {
     }), el('p', { class: 'hint', text: where }));
     count();
     return new Promise((resolve) => {
-      go.onclick = () => {
+      go.onclick = async () => {
         const picks = boxes.filter((b) => b.checked).map((b) => found[Number(b.dataset.i)]);
         dlg.close();
+        // (round 45, backupauto) a backup of how things are first (skipped when a good one is minutes old; 20 s at most)
+        try { await Promise.race([window.hub.backupauto?.before?.('recover'), new Promise((r) => setTimeout(r, 20000))]); } catch { /* bringing back only adds */ }
         const added = lab.recover(picks.map((p) => p.scene));
         st.recovered += added.length;
         closeCard();
