@@ -62,6 +62,7 @@ const Updater = (() => {
       if (last?.swapped) swapped(last.swapped); // (round 37) the main side says it once
       checkedAt = Date.now();
       paint();
+      if (!loud) window.Notify?.update?.(last); // (round 44, notify) "A Hearth update is ready", once per new set of changes, while you're elsewhere
       if (loud) {
         if (!last.ok && last.fix) trouble(last);
         else if (!last.ok) toast(last.message, { type: 'error', timeout: 8000 });

@@ -398,7 +398,7 @@ ipcMain.handle('window:show', () => { win.show(); win.focus(); });
 // the taskbar flash + a number on the icon (Windows); cleared when the window gets the focus
 let nativeAttention = null;
 ipcMain.handle('window:flash', () => (nativeAttention ? nativeAttention.attention() : null));
-ipcMain.handle('window:isFocused', () => win.isFocused() && win.isVisible());
+ipcMain.handle('window:isFocused', () => !require('./notifymain').awayForChecks() && win.isFocused() && win.isVisible()); // (round 44: a check can play "Hearth in the background")
 ipcMain.handle('window:reload', () => win.webContents.reloadIgnoringCache());
 ipcMain.handle('find:start', (_e, text, opts) => (text ? win.webContents.findInPage(text, opts) : null));
 ipcMain.handle('find:stop', () => win.webContents.stopFindInPage('keepSelection'));
@@ -598,6 +598,7 @@ function registerAfterWindow() {
     send('chrome:offer', { wcId: target.id, url: (() => { try { return target.getURL(); } catch { return ''; } })(), popup: Boolean(opener) });
     if (opener) { try { BrowserWindow.fromWebContents(contents)?.close(); } catch { /* gone */ } } // the dead-end sign-in popup goes
   } });
+  require('./notifymain').register(ipcMain, { getWin: () => win, app, shell, appshell, Notification: require('electron').Notification, send }); // (round 44, notify) desktop notifications: Electron's own (Hearth's name / icon, Focus / Do Not Disturb), one per chat, a burst summed up, a click opens the chat / card / file
   require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
   require('./safetynetmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 29) Hearth never loses work: the session marker, the page reloading after a crash, the work journal
   require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
