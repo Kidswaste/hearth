@@ -124,6 +124,11 @@ async function cdpConnect() {
   const saveDir = opt('--save-dir', path.join(dir, 'test-saves'));
   fs.mkdirSync(saveDir, { recursive: true });
   const env = { ...process.env, HEARTH_TEST_SAVE_DIR: saveDir, ...(opt('--open') != null ? { HEARTH_TEST_OPEN: opt('--open') } : {}) };
+  // (round 48, bugbash3) dev/fake-codex.js speaks Codex's exec JSONL only; since Astra moved to the app-server
+  // transport (codex-server.js, Codex's round 47 work) every Astra reply in a --fake-engines check failed to start.
+  // The fake engines' scenarios run through the exec transport (still the agent's codexTransport: 'exec'); the
+  // app-server path has its own fixture (dev/fake-codex-server.js: astra-connect / astra-workspace smokes, codex-server-test).
+  if (args.includes('--fake-engines') && !env.HEARTH_CODEX_TRANSPORT) env.HEARTH_CODEX_TRANSPORT = 'exec';
   // --fake-meshy: a local fake of Meshy's API, Poly Haven's API and test web pages (dev/fake-meshy.js) for the apps
   // checks; the app finds it through HEARTH_MESHY_BASE (checks read it back with hub.apps.status().testBase)
   if (args.includes('--fake-meshy')) {
@@ -171,6 +176,7 @@ async function cdpConnect() {
   child.stdout.on('data', (d) => log.push(String(d)));
   child.stderr.on('data', (d) => log.push(String(d)));
   const problems = [];
+  const warnings = [];
   let code = 0;
   // (round 35, bugbash2) a hang outside a check's own time limit (a CDP call the page never answers: the startup, a
   // reload, the last screenshot) kept the harness alive until run-checks' 30-minute limit (declutter-count: 26 min, no
@@ -212,6 +218,8 @@ async function cdpConnect() {
         const text = msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ');
         if (text.startsWith('[J]')) console.log(text);
       }
+      // (round 48, bugbash3) SMOKE_WARN=1: the page's console.warn lines are listed after the verdict (never a failure)
+      if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'warning' && process.env.SMOKE_WARN) warnings.push(msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ').slice(0, 300));
       if (msg.method === 'Runtime.consoleAPICalled' && (msg.params.type === 'error' || msg.params.type === 'assert')) {
         const text = msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ');
         if (!IGNORE.some((re) => re.test(text))) problems.push(`console.error: ${text}`);
@@ -375,5 +383,6 @@ async function cdpConnect() {
     else console.log(`kept: ${dir}`);
   }
   if (problems.length) { console.log(`\n${problems.length} problem(s):\n${[...new Set(problems)].join('\n')}`); code = 1; } else console.log('\nOK: no page errors.');
+  if (warnings.length) console.log(`\nwarnings (${warnings.length}, not failures):\n${[...new Set(warnings)].slice(0, 40).join('\n')}`);
   process.exit(code);
 })();

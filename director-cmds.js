@@ -231,6 +231,8 @@
   });
   cmd({
     name: 'astra-tools', args: '[on | off]', desc: 'Give an Astra (Codex) director the hub tools of its toolsets (Three.js / Forge) through MCP',
+    // (round 48, bugbash3) shares the name with round 47's Astra tools window (astra-connect.js): on / off is this one
+    when: (ctx, args) => onOff(String(args).trim()) !== undefined, whenLabel: 'on / off',
     complete: pick(['on', 'off']),
     run: async (args, ctx) => {
       const a = H.agent(ctx.agentId)?.engine === 'codex' ? H.agent(ctx.agentId) : directors().find((x) => x.engine === 'codex');
@@ -268,7 +270,7 @@
   const SUBS = { guide: 'director-guide', tools: 'director-tools', ask: 'director-ask', cost: 'director-cost', undo: 'undo-edit', redo: 'redo-edit', edits: 'director-edits', activity: 'director-activity', stats: 'director-stats', clear: 'director-clear', peek: 'director-peek', try: 'director-try', width: 'dock-width', collapse: 'dock-collapse', chips: 'director-chips', mode: 'director-mode', engine: 'director-engine', setup: 'director-setup', autoshot: 'director-autoshot', 'shot-size': 'director-shot-size' };
   function registerAll() {
     for (const def of defs) {
-      if (Commands.get(def.name)) { console.warn(`/${def.name} is taken; the director's version isn't registered`); continue; }
+      if (Commands.get(def.name) && !def.when) { console.warn(`/${def.name} is taken; the director's version isn't registered`); continue; }
       Commands.register(def);
     }
     const prev = Commands.get('director');
