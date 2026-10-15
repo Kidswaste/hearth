@@ -350,5 +350,27 @@ async function main() {
   process.exit(fails ? 1 : 0);
 }
 
-if (process.argv.includes('--store')) storeRun().then(() => process.exit(0), (err) => { console.log(`✖ store run threw: ${err.stack}`); process.exit(1); });
+// --make-fixture <dir>: the throwaway data for dev/checks/datasafe.js (smoke.js --data <dir>): config.json, memory, a chat
+// and notes held (EBUSY / EPERM) for the first 20 s of the app's start, an automatic copy of the settings, a backup zip
+function makeFixture(dir) {
+  fs.rmSync(dir, { recursive: true, force: true });
+  const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'));
+  const backups = `${dir}-backups`;
+  fs.rmSync(backups, { recursive: true, force: true }); fs.mkdirSync(backups, { recursive: true });
+  W(path.join(dir, 'config.json'), { ...cfg, settings: { ...(cfg.settings || {}), backupDir: backups, dsMarker: 'real' } });
+  W(path.join(dir, '.history', 'config', '2026-10-14T09-00-00-n2.json'), { ...cfg, settings: { ...(cfg.settings || {}), backupDir: backups, dsMarker: 'copy' } });
+  W(path.join(dir, 'memory.json'), { shared: 'ds line A\nds line B', agents: {} });
+  W(path.join(dir, 'kv', 'notes.json'), [1, 2, 3].map((i) => ({ id: `dsn${i}`, title: `Note ${i}`, text: `note ${i}`, updatedAt: i })));
+  const chat = (id, title, n) => ({ id, agentId: 'claude', title, createdAt: 1, updatedAt: Date.now() - n * 1000, session: {}, messages: Array.from({ length: n }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: `${title} ${i}`, at: i + 1 })) });
+  W(path.join(dir, 'chats', 'claude-dsa.json'), chat('claude-dsa', 'Datasafe A', 2));
+  W(path.join(dir, 'chats', 'claude-dsb.json'), chat('claude-dsb', 'Datasafe B (held)', 3));
+  const bsrc = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-datasafe-bsrc-'));
+  W(path.join(bsrc, 'data', 'chats', 'claude-dsz.json'), chat('claude-dsz', 'Only in a backup', 4));
+  try { execFileSync('zip', ['-qr', path.join(backups, 'hearth-backup-2026-10-14-09-00.zip'), 'data'], { cwd: bsrc }); } catch { console.log('(no zip: the backup step will be skipped)'); }
+  W(path.join(dir, '.datasafe-faults.json'), { 'config.json': { code: 'EBUSY', ms: 20000 }, 'memory.json': { code: 'EPERM', ms: 20000 }, 'chats/claude-dsb.json': { code: 'EBUSY', ms: 20000 }, 'kv/notes.json': { code: 'EBUSY', ms: 20000 } });
+  console.log(`fixture: ${dir}`);
+}
+
+if (process.argv.includes('--make-fixture')) makeFixture(process.argv[process.argv.indexOf('--make-fixture') + 1] || '/tmp/hearth-datasafe-fixture');
+else if (process.argv.includes('--store')) storeRun().then(() => process.exit(0), (err) => { console.log(`✖ store run threw: ${err.stack}`); process.exit(1); });
 else main().catch((err) => { console.log(`✖ threw: ${err.stack}`); process.exit(1); });

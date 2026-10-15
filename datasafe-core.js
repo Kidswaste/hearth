@@ -196,7 +196,7 @@
     if (disk === undefined) { copy(text, 0, 'garbled'); out.keepPrev = false; } // damaged: aside, the good .prev stays
     else if (o.doubt) {
       if (env.cache.get(`aside:${o.file}`) !== text.length) { copy(text, count(disk), 'unread'); env.cache.set(`aside:${o.file}`, text.length); }
-      const v = name === 'memory' ? mergeMemory(o.value, disk).value : name === 'config' ? rebaseConfig(o.base, o.value, disk) : union(disk, o.value);
+      const v = name === 'memory' ? mergeMemory(disk, o.value).value : name === 'config' ? rebaseConfig(o.base, o.value, disk) : union(disk, o.value);
       out.kept = Math.max(0, count(v) - count(o.value)); out.merged = true; out.value = v;
     } else if (o.blind && shrinks(disk, o.value)) copy(text, count(disk), 'before');
     if (due && disk !== undefined && !out.copied.length) copy(text, count(disk), '');

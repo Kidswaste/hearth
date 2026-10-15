@@ -70,6 +70,7 @@ const DataSafe = (() => {
     if (!r) return;
     if (r.still?.length) { toast('Still held by another program. Nothing was changed; try again in a moment.', { timeout: 6000 }); return; }
     closeCard();
+    try { H.chats = await window.hub.listChats(); if (typeof Panel !== 'undefined') Panel.render(); } catch { /* the list stays */ } // a held chat's real row
     toast('Everything reads again. Reload to see all of it?', { timeout: 15000, action: { label: 'Reload', fn: () => window.hub.reloadWindow?.() || location.reload() } });
   }
   let doubtT = 0;

@@ -63,7 +63,8 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
     const base = good || fromCopy;
     if (!base) throw err; // nothing at all (a first start without config.json): as before, the window says so
     const fresh = !doubt;
-    doubt = { why: code === 'EGARBLED' ? 'damaged' : code === 'ENOENT' ? 'missing' : 'unreadable', code, from: good ? 'memory' : 'copy', at: Date.now(), copyAt: fromCopy?.at || null, base: JSON.parse(base.text) };
+    if (doubt) doubt.at = Date.now(); // (still the same doubt: what the window was given stays its base)
+    else doubt = { why: code === 'EGARBLED' ? 'damaged' : code === 'ENOENT' ? 'missing' : 'unreadable', code, from: good ? 'memory' : 'copy', at: Date.now(), copyAt: fromCopy?.at || null, base: JSON.parse(base.text) };
     if (!good) good = { text: base.text };
     if (fresh) { console.warn(`config.json could not be read (${code}); using ${doubt.from === 'copy' ? 'its newest automatic copy' : 'the last good version'}; it won't be saved over until it reads again`); onDoubt(); }
     watch();
