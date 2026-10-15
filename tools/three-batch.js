@@ -296,7 +296,7 @@ const LabBatch = (() => {
 
     // the preview grid: the first rows at the first picked format, as stills from the export page
     let ptm = 0;
-    function schedulePreview() { clearTimeout(ptm); ptm = setTimeout(() => preview().catch((e) => { pcap.textContent = `⚠ ${e.message}`; }), 650); }
+    function schedulePreview() { clearTimeout(ptm); ptm = setTimeout(() => preview().catch((e) => { pcap.textContent = `⚠ ${calmError(e)}`; }), 650); }
     async function preview() {
       const fid = FC().FORMATS.find((f) => st.formats.has(f.id))?.id;
       const rs = st.rowsOk().slice(0, BC.PREVIEW);

@@ -271,8 +271,8 @@ const Renders = (() => {
   }
 
   // ---------- notes ----------
-  function noteNode(text, cls, buttons) {
-    const node = toast(text, { type: cls, timeout: cls === 'rq-fail' ? 14000 : 9000 });
+  function noteNode(text, cls, buttons, raw) {
+    const node = toast(text, { type: cls, timeout: cls === 'rq-fail' ? 14000 : 9000, ...(raw ? { raw } : {}) }); // (round 45, errorcalm) raw: what ffmpeg said, behind Details
     const x = node?.querySelector?.('.toast-x');
     for (const b of buttons.filter(Boolean)) node?.insertBefore(el('button', { text: b.label, title: b.title || '', on: { click: () => { try { b.fn(); } catch (err) { toast(err.message, { type: 'error' }); } node.remove(); } } }), x);
     return node;
@@ -285,7 +285,7 @@ const Renders = (() => {
   }
   function notifyFail(j) {
     const e = j.error || {};
-    noteNode(`✕ ${j.title}: ${e.reason}\nFix: ${e.fix}`, 'rq-fail', [j.again ? { label: '↻ Retry', fn: () => retry(j.id) } : null, { label: 'Renders', fn: () => open() }]);
+    noteNode(`✕ ${j.title}: ${e.reason}\nFix: ${e.fix}`, 'rq-fail', [j.again ? { label: '↻ Retry', fn: () => retry(j.id) } : null, { label: 'Renders', fn: () => open() }], e.raw);
   }
 
   // ---------- what you can do with a job ----------

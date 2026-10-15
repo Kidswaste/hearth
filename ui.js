@@ -74,7 +74,15 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
   let toastBox;
   const toastLog = []; // the last notifications (Ctrl+K → Recent notifications)
   globalThis.recentToasts = () => toastLog.slice();
-  function toast(message, { type = 'info', action, timeout = 4500 } = {}) {
+  // (round 45, errorcalm) an error for the owner is one plain sentence + the one action that fixes it: errorcalm.js
+  // (loaded right after the first frame) fills these in; until then calmError gives the error's own first line
+  const errorCalm = { toast: null, text: (err) => String((err && err.message) || err || '').replace(/^(Uncaught )?(\w*Error: )+/, '').split('\n')[0] };
+  globalThis.errorCalm = errorCalm;
+  globalThis.calmError = (err, ctx) => errorCalm.text(err, ctx);
+  // opts: { type, action, timeout } · for errors also raw (the error object / text: the message is then the place's own
+  // words, "Couldn't load the song"), calm (errorcalm's ctx: { where, app, path, what }), retry (a function: Retry)
+  function toast(message, opts = {}) {
+    const { type = 'info', action, timeout = 4500 } = opts || {};
     if (!toastBox) { toastBox = el('div', { id: 'toasts', role: 'status', attrs: { 'aria-live': 'polite' } }); document.body.append(toastBox); } // (round 40, a11y) read out politely
     toastLog.unshift({ message, type, at: Date.now() }); toastLog.length = Math.min(toastLog.length, 40);
     // (round 16, chatperf) the same notification again while it shows counts up ("×3") instead of stacking copies,
@@ -93,6 +101,7 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     node.toastKey = `${type}\n${message}`; node.hasAction = Boolean(action);
     if (action) node.append(el('button', { text: action.label, on: { click: () => { action.fn(); node.remove(); } } }));
     node.append(el('button', { class: 'toast-x', text: '×', title: 'Dismiss', on: { click: () => node.remove() } }));
+    if (type === 'error' || opts?.raw != null) { node.toastOpts = opts; node.logEntry = toastLog[0]; try { errorCalm.toast?.(node, message, opts); } catch (err) { console.warn('errorcalm:', err); } } // (round 45: a note that is already plain can carry its raw text too: Details)
     toastBox.append(node);
     // (round 17, hz240) above a docked chat's composer (was a page-wide :has() in polish.css): checked when one shows
     toastBox.classList.toggle('over-dock', Boolean(document.querySelector('.surface.active .tool-dock:not([hidden])')));

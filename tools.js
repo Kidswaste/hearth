@@ -101,7 +101,7 @@ const Tools = (() => {
   function mountOnce(s, tool) {
     if (s.mounted) return;
     s.mounted = true;
-    try { tool.mount(s.body, s.head); } catch (err) { s.body.append(el('p', { class: 'hint', text: `This tool failed to load: ${err.message}` })); console.error(err); }
+    try { tool.mount(s.body, s.head); } catch (err) { s.body.append(el('p', { class: 'hint', text: `This tool failed to load: ${calmError(err)}` })); console.error(err); }
   }
   function shown(tool) {
     const s = H.surfaces.get(`tool:${tool.id}`);

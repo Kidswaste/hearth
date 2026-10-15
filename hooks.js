@@ -82,7 +82,7 @@ const Hooks = (() => {
     tagNext = { agentId, text, hook: { id: h.id, when } };
     Native.ensureChat(agentId); // (the note belongs to the chat the message goes to)
     Native.note(agentId, `⚡ hook · ${when}`, { id: `hook-${h.id}`, actions: [{ label: 'Hooks…', title: 'See, pause or remove this AI\'s hooks', run: () => openSetup(agentId) }] });
-    const failed = (err) => { tagNext = null; Native.note(agentId, `⚡ hook couldn't send: ${err.message}`, { id: `hook-${h.id}` }); };
+    const failed = (err) => { tagNext = null; Native.note(agentId, `⚡ hook couldn't send: ${calmError(err)}`, { id: `hook-${h.id}` }); };
     if (h.then.kind === 'mission' && typeof Missions !== 'undefined') {
       const before = Missions.current(agentId);
       const once = before.id !== 'normal' && !Missions.isSticky(agentId); // you picked a mission for your next message: it stays yours

@@ -24,7 +24,7 @@ const Sync = (() => {
     if (st.conflicts) bits.push(`${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'} to look at`);
     if (st.skippedBig?.length) bits.push(`${st.skippedBig.length} big video${st.skippedBig.length === 1 ? '' : 's'} kept on this computer`);
     if (st.unreadable?.length) bits.push(`${st.unreadable.length} unreadable file${st.unreadable.length === 1 ? '' : 's'} skipped`);
-    if (s === 'error') bits.push(st.error || 'something went wrong');
+    if (s === 'error') bits.push(st.error ? calmError(st.error, { where: 'sync', what: 'the sync folder' }).replace(/\.$/, '') : 'something went wrong'); // (round 45, errorcalm) the raw reason: Sync now's note has it under Details
     return `${s === 'synced' || s === 'conflict' ? 'Everything is synced' : 'Syncing'} with ${where()} (checked ${ago(st.at)})${bits.length ? `: ${bits.join(', ')}` : '.'}`;
   }
   function peersLine() {
@@ -105,7 +105,10 @@ const Sync = (() => {
     st = { ...st, state: 'syncing' }; paintDot();
     st = await api().now(o);
     mountDot();
-    toast(line(), { timeout: 3500 });
+    if (st.state === 'error' && st.error) toast(`Sync couldn't finish with ${where()}`, { type: 'error', timeout: 9000, raw: st.error, calm: { where: 'sync', what: 'The sync folder' }, retry: () => now() }); // (round 45, errorcalm)
+    // (round 45, errorcalm) the folder gone: the line says it plainly, the one fix is a click away
+    else if (st.state === 'offline' && st.error !== 'held') toast(line(), { timeout: 9000, raw: `${st.error === 'missing' ? 'Hearth/files missing in' : 'Not reachable:'} ${st.root || where()}`, action: st.error === 'missing' ? { label: 'Start it again from here', fn: () => now({ fresh: true }) } : { label: 'Pick the folder again…', fn: () => setup({ change: true }) } });
+    else toast(line(), { timeout: 3500 });
     return st;
   }
   async function pause(on) { st = await api().pause(on); mountDot(); toast(on ? 'Sync paused. Hearth keeps everything here meanwhile.' : 'Sync resumed.', { timeout: 2500 }); }
