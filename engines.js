@@ -792,6 +792,8 @@ function claudeParser(session) {
     // a subagent's own streamed text / thinking belongs to it, never to the reply (its stream_event lines carry a parent)
     const parent = msg.parent_tool_use_id || null;
     if (msg.type === 'stream_event' && parent) return null;
+    // (round 48, usagelimits) the plan's usage per window, as Claude Code reports it with each reply: usagelimits.js keeps it
+    if (msg.type === 'rate_limit_event') return msg.rate_limit_info ? { type: 'limits', engine: 'claude', info: msg.rate_limit_info, at: Date.now() } : null;
     if (msg.type === 'system' && msg.subtype === 'api_retry') return { type: 'status', text: `API retry${msg.attempt ? ` ${msg.attempt}${msg.max_retries ? `/${msg.max_retries}` : ''}` : ''}${msg.error_status ? ` (${msg.error_status})` : ''}` };
     // newer versions also report subagent / background tasks as system lines (task_started, task_notification…)
     if (msg.type === 'system' && /^task_/.test(msg.subtype || '') && msg.tool_use_id) {
@@ -1393,7 +1395,7 @@ function send({ agent: agent0, chatId, session, text, options = {} }, emit, live
 // Events that stream into the live reply (everything else ends it).
 const STREAM_EVENTS = new Set(['delta', 'tool', 'thinking', 'progress']);
 // (round 21) What a run is doing, sent to live() (main.js: the engine:live channel), never to the reply's emit.
-const LIVE_EVENTS = new Set(['step', 'agent', 'pulse', 'status']);
+const LIVE_EVENTS = new Set(['step', 'agent', 'pulse', 'status', 'limits']); // (round 48) limits: usagelimits.js
 // The most telling stderr line: an "Error:" line when there is one, else the last line.
 // A line ending in ":" ("Error: Invalid MCP configuration:") keeps the lines after it, where the reason is.
 function lastErrorLine(stderr) {

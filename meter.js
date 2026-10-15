@@ -553,7 +553,7 @@ const Meter = (() => {
     const rangeBar = el('div', { class: 'mt-seg' }, Object.keys(RANGES).map((r) => el('button', { type: 'button', text: { today: 'Today', week: '7 days', month: '30 days', all: 'All' }[r], dataset: { r, feature: `Range ${r}` } })));
     const tabBar = el('div', { class: 'mt-tabs' }, TABS.map((t) => el('button', { type: 'button', text: t.label, dataset: { t: t.id, feature: `Tab ${t.label}` } })));
     const kpis = el('div', { class: 'mt-kpis' });
-    const account = el('section', { class: 'mt-account' }, el('h3', { text: 'Codex account limits' }), el('p', { class: 'hint', text: 'Checking your account…' }));
+    const account = el('section', { class: 'mt-account' }, el('h3', { text: 'Usage left' }), el('p', { class: 'hint', text: 'Checking…' }));
     const pane = el('div', { class: 'mt-pane' });
     const close = el('button', { type: 'button', class: 'ghost mt-x', text: '×', title: 'Close (Esc)' });
     const copy = el('button', { type: 'button', class: 'ghost mt-x', text: '⧉', title: 'Copy a summary of this range (Markdown)', dataset: { feature: 'Copy summary' }, on: { click: () => copyText(report(range), 'Usage summary') } });
@@ -578,8 +578,9 @@ const Meter = (() => {
     dlg.showModal();
     dlg.focus(); // not the first range button (its focus ring looked like the selected range)
     draw();
-    if (window.hub.getCodexUsage) window.hub.getCodexUsage().then(r => { if (account.isConnected) accountCard(account, r); }).catch(() => { if (account.isConnected) accountCard(account, null); });
-    else accountCard(account, null);
+    // (round 48, usagelimits) one card per AI with what's left of its plan (usagelimits.js, a lazy group); the Codex card before it loads
+    const codexOnly = () => { if (window.hub.getCodexUsage) window.hub.getCodexUsage().then(r => { if (account.isConnected) accountCard(account, r); }).catch(() => { if (account.isConnected) accountCard(account, null); }); else accountCard(account, null); };
+    (window.UsageLimits || !window.Lazy ? Promise.resolve() : Lazy.load('usagelimits').catch(() => {})).then(() => { if (!account.isConnected) return; if (window.UsageLimits) UsageLimits.paint(account); else codexOnly(); });
     return dlg;
   }
   function kpi(label, value, sub, extra) {

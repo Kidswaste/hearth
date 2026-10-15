@@ -453,7 +453,8 @@ const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', a
 //   claudeCut                      the reply is cut off halfway ("API Error: Connection error."), as when the laptop slept
 //                                  or the Wi-Fi dropped; asked to continue, it writes the rest (repeating its last words)
 const SWITCHES = ['windows', 'claudeNoAuth', 'claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo',
-  'claudeBusy', 'codexBusy', 'claudeRate', 'claudeLimit', 'codexLimit', 'limitForm', 'limitAt', 'claudeExpired', 'claudeProxy', 'claudeCut', 'seenLog'];
+  'claudeBusy', 'codexBusy', 'claudeRate', 'claudeLimit', 'codexLimit', 'limitForm', 'limitAt', 'claudeExpired', 'claudeProxy', 'claudeCut', 'seenLog',
+  'claudeRateEvent', 'claudeUsageText']; // (round 48, usagelimits) a rate_limit_event with each reply; what `claude -p /usage` prints
 const kvFile = () => path.join(process.cwd(), '..', 'kv', 'fake-switches.json');
 function switches() {
   const env = {};
@@ -486,6 +487,7 @@ function limitText(engine, sw) {
   const at = Number(sw.limitAt) || (Math.floor(Date.now() / 3600000) + 2) * 3600000;
   if (engine === 'codex' || sw.limitForm === 'in') return "You've hit your usage limit. Upgrade to Pro (https://openai.com/chatgpt/pricing) or try again in 2 hours 13 minutes.";
   if (sw.limitForm === 'zone') return "You've hit your limit · resets 6pm (Europe/Paris)";
+  if (sw.limitForm === 'session') return '5-hour limit reached ∙ resets 6pm'; // (round 48) names its window
   return `Claude AI usage limit reached|${Math.floor(at / 1000)}`;
 }
 const older = (a, b) => { const pa = String(a).match(/\d+/g) || []; const pb = String(b).match(/\d+/g) || []; for (let i = 0; i < 3; i++) { const d = (+pa[i] || 0) - (+pb[i] || 0); if (d) return d < 0; } return false; };

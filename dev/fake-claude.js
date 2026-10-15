@@ -27,6 +27,12 @@ const F = require('./fake-common');
   const mcpAt = argv.indexOf('--mcp-config');
   if (mcpAt >= 0 && F.trip('claude-mcp', sw.claudeMcpMissing)) require('fs').rmSync(argv[mcpAt + 1], { force: true });
   if (mcpAt >= 0 && !require('fs').existsSync(argv[mcpAt + 1])) { process.stderr.write(`Error: Invalid MCP configuration:\nMCP config file not found: ${argv[mcpAt + 1]}\n`); process.exit(1); }
+  // (round 48, usagelimits) `claude -p /usage`: Claude Code's local command (no model turn): the plan's usage as text
+  if (argv.includes('-p') && argv.includes('/usage')) {
+    const text = sw.claudeUsageText || 'Total cost:            $0.0000\nUsage:                 0 input, 0 output, 0 cache read, 0 cache write';
+    F.out({ type: 'result', subtype: 'success', is_error: false, num_turns: 0, duration_api_ms: 0, result: text, local_command: 'usage', session_id: F.uuid() });
+    return;
+  }
   const arg = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
   const sessionId = arg('--resume') || arg('--session-id') || F.uuid();
   const model = arg('--model') || 'fake-opus';
@@ -34,6 +40,8 @@ const F = require('./fake-common');
   if (F.trip('claude-network', sw.claudeNetwork)) { process.stderr.write('Error: getaddrinfo ENOTFOUND api.anthropic.com\n'); process.exit(1); }
   const tools = (arg('--allowedTools') || '').split(',').filter(Boolean);
   F.out({ type: 'system', subtype: 'init', session_id: sessionId, model, tools: ['Read', ...tools], mcp_servers: [], cwd: process.cwd() });
+  // (round 48) the plan's usage per window, as the real CLI reports it (rate_limit_info; utilization 0–1, resetsAt in s)
+  if (sw.claudeRateEvent) F.out({ type: 'rate_limit_event', rate_limit_info: typeof sw.claudeRateEvent === 'object' ? sw.claudeRateEvent : { status: 'allowed', rateLimitType: 'five_hour', resetsAt: Math.floor(Date.now() / 1000) + 7800, utilization: 0.42 }, session_id: sessionId });
   // (round 21) long-task scenarios: subagents, marathons, huge results, silences, a dead process (dev/fake-liveness.js)
   if (await require('./fake-liveness').claude(prompt, sessionId)) return;
   const { p, thinking } = F.plan(prompt, 'claude');

@@ -128,6 +128,7 @@ contextBridge.exposeInMainWorld('hub', {
   directorGuide: call('director:guide'), // (topic) → the Three Director's guide text for that topic
   tokenAudit: call('tokenaudit:measure'), // (round 36) (agent) → its fixed part per message: prompt parts, tool definitions, what turning each off saves
   tokenAuditSeed: call('tokenaudit:seed'), // (round 36) () → tool calls in the last 35 days of chats (the tool-use log's start)
+  usageLimitsClaude: call('usagelimits:claude'), // (round 48) ({ fresh }) → Claude Code's local /usage text (no model request) or { ok: false, why }
   costCoachScan: call('costcoach:scan'), // (round 43) ({ days }) → { records, chats }: the replies of the last days, compact (costcoach-core.js recordsOf)
 
   // files & tools

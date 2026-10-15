@@ -26,7 +26,7 @@ ok('an unknown event never notifies', C.decide({ type: 'confetti' }, away).why =
 
 // ---------- the switches silence each type ----------
 ok('the master switch silences everything', ['reply', 'render', 'keepgoing', 'permission', 'update'].every((t) => C.decide({ type: t, ms: 99999 }, { settings: { notify: false } }).why === 'off'));
-for (const [sw, types] of Object.entries({ replies: ['reply', 'back'], renders: ['render', 'job'], keepgoing: ['keepgoing'], needs: ['permission', 'question', 'plan', 'stuck', 'sync'], updates: ['update'] })) {
+for (const [sw, types] of Object.entries({ replies: ['reply', 'back', 'limit'], renders: ['render', 'job'], keepgoing: ['keepgoing'], needs: ['permission', 'question', 'plan', 'stuck', 'sync'], updates: ['update'] })) {
   const settings = { notifyWhen: { [sw]: false } };
   const others = Object.keys(C.TYPE).filter((t) => !types.includes(t));
   ok(`${sw} off silences ${types.join(', ')} and nothing else`, types.every((t) => C.decide({ type: t, ms: 99999 }, { settings }).why === 'switch') && others.every((t) => C.decide({ type: t, ms: 99999 }, { settings }).show));
