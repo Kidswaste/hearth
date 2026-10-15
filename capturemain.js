@@ -241,16 +241,28 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     const b = w.getContentBounds();
     ind.setPosition(Math.round(b.x + b.width - 196), Math.round(b.y + 6));
   }
+  let indFailedAt = 0; // (keysfix) a REC window that couldn't load: tried again 5 s later, not on every tick
   ipcMain.handle('capture:indicator', async (_e, o = {}) => {
     const w = getWin();
-    if (!o.on) { if (ind && !ind.isDestroyed()) ind.destroy(); ind = null; return false; }
+    if (!o.on) { if (ind && !ind.isDestroyed()) ind.destroy(); ind = null; indFailedAt = 0; return false; }
+    if ((!ind || ind.isDestroyed()) && Date.now() - indFailedAt < 5000) return false;
     if (!ind || ind.isDestroyed()) {
       ind = new BrowserWindow({ width: 190, height: 34, frame: false, transparent: true, resizable: false, movable: true, minimizable: false, maximizable: false, alwaysOnTop: true, skipTaskbar: true, focusable: false, show: false, hasShadow: false, backgroundColor: '#00000000', webPreferences: { sandbox: true, contextIsolation: true } });
       // left out of the OS's own screen recordings and screenshots too (macOS / Windows)
       try { ind.setContentProtection(true); } catch { /* not on every platform */ }
       ind.setAlwaysOnTop(true, 'screen-saver');
       ind.webContents.on('page-title-updated', (_ev, title) => { const action = String(title).split(':')[0]; if (action === 'stop' || action === 'pause') send('capture:indicator', { action }); });
-      await ind.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(IND_HTML)}`);
+      // (keysfix) its page can fail to load (ERR_FAILED on a loaded Linux machine): no REC window then, never a failed
+      // take; a half-made window isn't kept (it was: hidden, and every later update went to a page that wasn't there)
+      const mine = ind;
+      try { await mine.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(IND_HTML)}`); } catch (err) {
+        if (mine.isDestroyed()) return false; // turned off while it loaded
+        console.warn('capture: the REC window did not load:', err.message.slice(0, 80));
+        mine.destroy();
+        if (ind === mine) { ind = null; indFailedAt = Date.now(); }
+        return false;
+      }
+      if (ind !== mine || mine.isDestroyed()) return false; // turned off while it loaded
       placeIndicator();
       ind.showInactive();
       if (w) { w.on('move', placeIndicator); w.on('resize', placeIndicator); ind.once('closed', () => { if (!w.isDestroyed()) { w.off('move', placeIndicator); w.off('resize', placeIndicator); } }); }
