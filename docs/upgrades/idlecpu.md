@@ -36,15 +36,15 @@ differently, except that it's quieter. Nothing is added to any prompt (0 tokens)
   process's CPU % swings a lot from run to run here. On a real graphics card all the absolute numbers are smaller, and
   the ratios hold.
 
-## Before → after (10 s idle, per second; after = two runs)
+## Before → after (10 s idle, per second; after = three runs)
 
 | Setup | The window: CPU · wakeups · ctx switches | The Lab preview's page: CPU · frames · ctx switches | GPU process (software GL): CPU · ctx switches |
 |---|---|---|---|
-| **A chat open** | 0.1 % · 0.4 · 10 → **0–0.1 % · 0.1–0.3 · 5–8** | — | 3.4 % · 287 → 0–4.9 % · 1–272 |
-| **The Lab, a still scene** | 0.6 % · **15.4** · 48 → **0.1 % · 1.1–1.3 · 7–8** | 3.3 % · **47.8 frames** · 354 → **0.7 % · 3.8–3.9 frames · 67–72** | 12.6 % · 676 → **1.9–3.0 % · 126–195** |
-| **The Lab, an animated scene paused** | 0.5 % · **15.3** · 46 → **0–0.1 % · 1.3 · 8–9** | 3.4 % · **45.2 frames** · 323 → **0.5–0.7 % · 3.8–4 frames · 56–62** | 10.6 % · 760 → **2.0–3.2 % · 166–295** |
-| **The board** | 2.1 % (a garbage collection) · 0.7 · 25 → 0.2 % · 0.5–0.7 · 7 | (parked) 0 | 0 % |
-| **The grid view** | 0.7 % · 3.7 · 41 → **0.1–0.3 % · 1.1–1.5 · 11** | (on screen, not drawn) 0 | 42 % · 2,540 → 8–11 % · 490–660 |
+| **A chat open** | 0.1 % · 0.4 · 10 → **0–0.1 % · 0–0.3 · 2–8** | — | 3.4 % · 287 → 0–4.9 % · 0–272 |
+| **The Lab, a still scene** | 0.6 % · **15.4** · 48 → **0.1 % · 1.1–1.4 · 7–9** | 3.3 % · **47.8 frames** · 354 → **0.7–0.8 % · 3.8–4 frames · 67–78** | 12.6 % · 676 → **1.9–3.0 % · 126–228** |
+| **The Lab, an animated scene paused** | 0.5 % · **15.3** · 46 → **0–0.1 % · 1–1.3 · 8–9** | 3.4 % · **45.2 frames** · 323 → **0.5–0.7 % · 3.8–4 frames · 56–62** | 10.6 % · 760 → **2.0–3.2 % · 136–295** |
+| **The board** | 2.1 % (a garbage collection) · 0.7 · 25 → 0.1–0.2 % · 0.5–0.8 · 5–7 | (parked) 0 | 0 % |
+| **The grid view** | 0.7 % · 3.7 · 41 → **0.1–0.3 % · 0.9–1.5 · 9–11** | (on screen, not drawn) 0 | 42 % · 2,540 → 0–11 % · 4–660 |
 | **◉ Activity open** | 0.1 % · 0.9 · 9 → 0.1–0.3 % · 0.6–0.9 · 5–9 | (parked) 0 | 0.1 % → 0–1.6 % |
 | **The main process** (every setup) | 0.2–0.3 % · 12 timers / min → the same (the config safety net, round 39) | | |
 
@@ -140,13 +140,27 @@ Found quiet already, left as they are:
   before counting. Read the GPU % as a trend, the counts as the result.
 
 ## Tested
-- `node --check` on every touched JS file, and the sandbox page's three scripts extracted and checked.
-- `node dev/labpace-test.js` 59/59 (one run failed its timing line "a 2000-object signature costs …" at load 30; it isn't
-  touched here). `node dev/hintcalm-test.js` 59/59, `node dev/powerwise-test.js` 83/83, `node dev/boot-test.js` 1215
-  checks (first screen still 72 scripts / 29 sheets).
-- `sh dev/run-checks.sh idlecpu` (the check plus labpace, powerwise, smooth41, motionpolish, hintcalm, a11y, filewatch,
-  lazy, unit:boot-test): see the final report for the outcome of each, with the starting commit run the same way for the
-  ones that failed under load.
+- `node --check` on every touched JS file; the sandbox page's three scripts extracted and checked; the check's two parts
+  compiled.
+- Unit: `node dev/labpace-test.js` 59/59, `node dev/hintcalm-test.js` 59/59, `node dev/powerwise-test.js` 83/83,
+  `node dev/boot-test.js` 1,215 checks (first screen still 72 scripts / 29 sheets).
+  - labpace-test failed once on its timing line "a 2000-object signature costs …" at load 30. That code isn't touched
+    here, and it passed on the re-runs.
+- `idlecpu` passes (3 runs; one earlier run caught the hush step's pointer outside the page, which the check fixed).
+  The starting commit fails it as listed above.
+- Passed: powerwise, smooth41, motionpolish (×2), hintcalm (×2), filewatch (+ its unit tests), lazy, unit:boot-test,
+  a11y (audit `pass: true`), options, settingscalm, missions, labeasy, labsearch, qa-keys.
+- **filewatch caught a regression in a first version of the hints change.** A Lab line ("logo.png updated from disk")
+  waited too long when nothing fitted the place at first. That part was reverted (see 11), and filewatch passes.
+- Failed, and the same on the starting commit under the same load:
+  - **labpace**: its frame-time lines ("pacing off draws every frame it can", "the frame rates really differ", "the
+    sketch changes itself … within a frame or two", lag 167 ms = one frame at 6 fps). The machine drew 5–8 fps at
+    load 15–30. The starting commit failed the same lines back to back (lag 167). The doze can't take part in those
+    steps: it starts after 5 s still, and they last ≤ 4.5 s.
+  - **appsearch**: "Enter on an AI setup row in a closed fold". The starting commit fails it the same way.
+  - **a11y** once: WebGL context loss under load ("Web page caused context loss and was blocked"). It passed on the
+    re-run.
+  - **smooth41** once: "a long paste: a 144 ms task" at load 30. It passed on the re-run.
 
 ## Edits outside this lane (small)
 - `tools/three-sandbox.html` (lab / fx): the dozing (next to labpace's pacing), `paceCore.still`'s optional refresh, the
