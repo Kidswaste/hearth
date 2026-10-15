@@ -6,7 +6,8 @@
 //     (Forgeheart's star dust, floating icon, header glints and twinkles; the swirl look's turning rings) pause where
 //     they are. An endless animation, even one the compositor runs by itself, makes the GPU process draw the whole
 //     window again on every screen frame, forever, while nobody looks at it. The first input in the window plays them
-//     on in the same frame. Indicators of something running (a streaming reply, a render, a sync) never pause.
+//     on in the same frame. Indicators of something running (a streaming reply, a render, a sync) never pause (an
+//     unread chat's dot stays lit, it only stops pulsing).
 //   · never while Hearth records itself (a capture), so a recording of the app shows its look as it is
 //   · <html data-hush> (idlecpu.css: the same loops Motion › Calm stops, paused instead of removed)
 //   · one timer a minute at most while you use Hearth, none while hushed

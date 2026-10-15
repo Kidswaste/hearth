@@ -243,14 +243,16 @@ Activity.close?.();
 // ---------- budgets (window.IDLE_REPORT = 1 reports without failing; window.IDLE_BUDGET overrides) ----------
 // per setup, over 10 s of idle: the window's CPU and wakeups (timers, frames, idle callbacks, observers), the main
 // process', and the Lab preview's page while the Lab is on screen (CPU, frames it wakes for)
-const B = { windowCpu: 1.5, wakeups: 1.5, mainCpu: 1, mainTimersPerMin: 20, labCpu: 2.5, labFrames: 15, ...(window.IDLE_BUDGET || {}) };
+const B = { windowCpu: 1.5, wakeups: 1.5, labWakeups: 2, mainCpu: 1, mainTimersPerMin: 20, labCpu: 2.5, labFrames: 15, ...(window.IDLE_BUDGET || {}) };
 out.table = [];
 for (const [name, r] of Object.entries(out.setups)) {
   const w = r.procs.window || { cpuPct: 0 }; const m = r.procs.main || { cpuPct: 0 }; const l = r.procs['lab preview'];
   const onLab = Boolean(r.lab && !r.lab.parked && /lab/.test(name));
   out.table.push(`${name}: window ${w.cpuPct}% ${r.page.perSec}/s · main ${m.cpuPct}% ${r.mainTimers.perMin}/min · gpu ${r.procs.gpu?.cpuPct ?? '?'}%${l ? ` · lab preview ${l.cpuPct}%${r.lab ? ` ${r.lab.framesPerSec} frames/s` : ''}` : ''}`);
   if (w.cpuPct > B.windowCpu) out.problems.push(`${name}: the window used ${w.cpuPct} % of a CPU idle (> ${B.windowCpu})`);
-  if (r.page.perSec > B.wakeups) out.problems.push(`${name}: the window woke ${r.page.perSec}×/s idle (> ${B.wakeups}): ${r.page.top.slice(0, 3).join('; ')}`);
+  // (the Lab on screen: its stall check and the preview's stats every 4 s, each a timer and a frame / idle callback: ≈ 1 / s)
+  const wb = onLab ? B.labWakeups : B.wakeups;
+  if (r.page.perSec > wb) out.problems.push(`${name}: the window woke ${r.page.perSec}×/s idle (> ${wb}): ${r.page.top.slice(0, 3).join('; ')}`);
   if (m.cpuPct > B.mainCpu) out.problems.push(`${name}: the main process used ${m.cpuPct} % idle (> ${B.mainCpu})`);
   if (r.mainTimers.perMin > B.mainTimersPerMin) out.problems.push(`${name}: the main process ran ${r.mainTimers.perMin} timers/min (> ${B.mainTimersPerMin})`);
   if (onLab && l && l.cpuPct > B.labCpu) out.problems.push(`${name}: the Lab preview used ${l.cpuPct} % idle (> ${B.labCpu})`);

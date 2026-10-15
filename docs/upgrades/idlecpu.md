@@ -78,7 +78,7 @@ Found quiet already, left as they are:
 ## Upgrades
 
 ### The Lab on screen, nothing moving
-1. **A still Lab preview dozes.** When the picture hasn't changed for 3 s (every layer that ran a frame had it skipped by
+1. **A still Lab preview dozes.** When the picture hasn't changed for 5 s (every layer that ran a frame had it skipped by
    labpace's still check), the preview stops waking on every screen frame. Its loops and the layers' frame callbacks run
    together in one real frame every 100 ms. Before, that was 60–240 times a second for an identical picture. Nothing
    dozes while a song or the timeline plays, during live sound, a sequence, a recording, an export, the scene editor or
@@ -106,7 +106,7 @@ Found quiet already, left as they are:
    loops pause where they are. These are Forgeheart's star dust, floating empty-chat icon, header glints and twinkles,
    and the swirl look's turning rings. An endless animation, even one the compositor runs alone, makes the GPU redraw
    the window every screen frame. The first input plays them on in the same frame. Indicators of something running (a
-   streaming reply, a render, sync) never pause.
+   streaming reply, a render, sync) never pause. An unread chat's dot stays lit; it only stops pulsing.
 10. **Never hushed while Hearth records itself** (a capture), so a recording shows the look as it is.
 11. **Tips wait quietly.** When a tip fits where you are but has to wait for the gap between two tips (3 min) or the
     start's calm, the tips queue looks again when it can show (checking at least every 5 s), not every 0.7 s until
@@ -119,7 +119,8 @@ Found quiet already, left as they are:
 ## For the next measurer (not counted)
 - `dev/checks/idlecpu.js` budgets (over 10 s idle, per setup). `window.IDLE_REPORT = 1` reports without failing;
   `window.IDLE_BUDGET` overrides the numbers:
-  - the window ≤ 1.5 % CPU and ≤ 1.5 wakeups / s;
+  - the window ≤ 1.5 % CPU and ≤ 1.5 wakeups / s (2 with the Lab on screen: its stall check and the preview's stats,
+    every 4 s each, are a timer plus a frame or idle callback);
   - the main process ≤ 1 % and ≤ 20 timers / min;
   - on the Lab with a still or paused scene, its preview ≤ 2.5 % and ≤ 15 frames / s;
   - plus steps: the preview dozes, its own change shows within a doze step, a pointer wakes it, the knob timer sleeps

@@ -1161,17 +1161,17 @@ const pacePoke = (e) => {
   PACE.poke += 1; if (paceSleeping.size) paceWake();
   if (DOZE.on || DOZE.from >= 0) dozeWake(e?.type === 'message' ? `message ${e.data?.type || '?'}` : e?.type);
 };
-// Dozing (round 44, idlecpu): the Lab on screen with a picture that stays still (nothing moved for 3 s: every layer
+// Dozing (round 44, idlecpu): the Lab on screen with a picture that stays still (nothing moved for 5 s: every layer
 // that ran a frame had its frame skipped by the still check above, no song / live sound / sequence / recording / edit
 // / drag) no longer wakes the page on every screen frame for nothing. The page's loops and the layers' frame callbacks
-// then run together once every 100 ms (after 3 s still), 250 ms (10 s) or 500 ms (30 s), in a real animation frame,
+// then run together once every 100 ms (after 5 s still), 250 ms (10 s) or 500 ms (30 s), in a real animation frame,
 // and the safety redraw comes every 4 s instead of every second once it's been still for 10 s. The layers' code
 // still runs (a change it makes by itself shows on the next of those frames); anything from outside (a slider, a
 // message from the Lab, a pointer, a key, a resize) and any frame that really draws wake it to full rate at once.
 // It used to cost ≈ 4 % of a CPU (the page) and the GPU process' frame clock while you looked at a still scene.
 // Layers whose frames can't be checked (2D canvas, raw WebGL, a layer that draws without three.js) never doze.
 const DOZE = { on: false, ms: 0, from: -1, q: [], timer: 0, seq: 0, dozes: 0, wakes: 0, flushes: 0, log: [] };
-const DOZE_STEPS = [[30000, 500], [10000, 250], [3000, 100]]; // (still for ≥ ms → one frame every ms)
+const DOZE_STEPS = [[30000, 500], [10000, 250], [5000, 100]]; // (still for ≥ ms → one frame every ms; the first 5 s still run at full rate: a change the scene makes by itself right after one of yours shows on the next screen frame, as labpace promised)
 function dozeRAF(fn) { const id = -(++DOZE.seq); DOZE.q.push({ id, fn }); if (!DOZE.timer) DOZE.timer = realSetTimeout(dozeFlush, DOZE.ms || 100); return id; }
 // the waiting callbacks run in one real animation frame, in the order they asked (the compositor first, as always);
 // a callback cancelled meanwhile (cancelAnimationFrame) is skipped
