@@ -1,0 +1,20 @@
+/* ◧ Try it first (tools/three-try.js): one bar at the top centre of the Lab preview's frame, where ◧ Before / after's chip
+   sits (the chip waits while the bar shows; hold B still works). Entrance on opacity / transform only, no blur over the
+   moving preview. */
+.lab-try { position: absolute; z-index: 9; display: flex; align-items: center; gap: 2px; padding: 2px 2px 2px 10px; transform: translateX(-50%);
+  border: 1px solid var(--fh-gold, #ffd75e); border-radius: 999px; background: color-mix(in srgb, var(--panel, #15181b) 95%, transparent);
+  color: var(--text, #eae0d5); font-size: 11.5px; box-shadow: 0 6px 18px #0009; white-space: nowrap; max-width: calc(100% - 24px);
+  animation: lt-in var(--dur-med, .18s) var(--ease-out, ease-out) both; }
+.lab-try.lt-working { border-color: var(--fh-ai, #a78bfa); padding-right: 10px; }
+.lt-what { overflow: hidden; text-overflow: ellipsis; min-width: 0; user-select: none; }
+.lt-cost { color: var(--muted, #9a9086); font-variant-numeric: tabular-nums; padding: 0 4px; }
+.lt-cost:empty { display: none; }
+.lab-try button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; border-radius: 999px; padding: 2px 9px; line-height: 1.5; flex: none; }
+.lab-try button:hover, .lab-try button:focus-visible { background: color-mix(in srgb, var(--fh-gold, #ffd75e) 16%, transparent); }
+.lab-try .lt-keep { color: #1a1408; background: var(--fh-gold, #ffd75e); font-weight: 600; }
+.lab-try .lt-keep:hover, .lab-try .lt-keep:focus-visible { background: color-mix(in srgb, var(--fh-gold, #ffd75e) 82%, #fff); }
+.lab-try .lt-ab { padding: 2px 7px; font-size: 13px; touch-action: none; }
+.lab-try button[hidden] { display: none; }
+.lt-on .ab-chip { display: none; }
+.three-preview.presenting .lab-try { display: none; }
+@keyframes lt-in { from { opacity: 0; transform: translate(-50%, -6px); } }

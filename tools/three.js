@@ -3271,7 +3271,8 @@ const ThreeLab = (() => {
       if (!kvOk.has('three-sketches')) return null; // (round 43) not before your scenes were read for sure
       const removed = [...removedIds]; removedIds.clear();
       // the store kept scenes this save would have dropped (sync, a list out of date): they join the list on screen
-      return window.hub.kvSet('three-sketches', sketches, removed.length ? { removed } : undefined).then((r) => { if (r?.restored?.length) { refreshFromDisk().catch(() => {}); window.LabSceneSafe?.kept?.(r.restored.length); } });
+      const list = window.LabTry ? LabTry.disk(sketches) : sketches; // (round 43, directorpreview) an edit tried first isn't saved until Keep
+      return window.hub.kvSet('three-sketches', list, removed.length ? { removed } : undefined).then((r) => { if (r?.restored?.length) { refreshFromDisk().catch(() => {}); window.LabSceneSafe?.kept?.(r.restored.length); } });
     }, 600);
     function persist() {
       if (!current) return;

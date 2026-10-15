@@ -93,6 +93,7 @@ const ThreeHistory = (() => {
     const id = READ.test(tool) ? null : sceneFor(ctx.chatId);
     if (!id || !T()) return fn(tool, args, ctx);
     if (timers.has(id)) await capture(id).catch(() => null);
+    window.LabTry?.touch?.(id, ctx.chatId); // (round 43, directorpreview) Try it first: the scene as it was, before this edit
     const a = active.get(id) || { tools: new Set(), running: 0 };
     a.by = engineOf(ctx.chatId); a.chat = ctx.chatId || null; a.running += 1;
     a.tools.add(String(args?.cmd ? `${args.cmd}` : tool).replace(/^three_/, ''));
@@ -141,6 +142,7 @@ const ThreeHistory = (() => {
   async function record(id, kind, extra) {
     const tm = T();
     if (!tm || (scrub && scrub.id === id && !extra.force)) return null;
+    if (!extra.force && kind !== 'turn' && kind !== 'start' && window.LabTry?.holds?.(id)) return null; // (round 43) an edit tried first: Keep is its one version
     const e = await docOf(id);
     const t0 = performance.now();
     const st = tm.state(id);

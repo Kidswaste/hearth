@@ -196,6 +196,7 @@ const Options = (() => {
       ['nodes-director', a.nodesTool !== false, 'Builds in node graphs', 'Its scenes come with nodes and wires you can see and change (≈ 75 tokens a message)'],
       ['progress', Boolean(a.progressTag), 'Shows a progress bar while it builds', 'How far along it seems, as a bar (≈ 30 tokens a message)', (v) => `/progress tags ${v ? 'on' : 'off'}`],
       ['director-autoshot', store.get('director.autoShot', false), 'Looks at a picture after each edit', 'A small preview after every code change, so it sees what it made (a picture per edit)'],
+      ['try-first', a.tryFirst === true, 'Shows me its edit first', 'Its edit shows in the preview but isn\'t saved until you press Keep (or Undo, or Try another way). No extra tokens'], // (round 43, directorpreview: tools/three-try.js)
     ];
     return rows.filter(([cmd]) => typeof Commands === 'undefined' || Commands.get(cmd)).map(([cmd, on, label, tip, line]) => sw(on, `In the Lab: ${label.toLowerCase()}`, tip, (v) => run(line ? line(v) : `/${cmd} ${v ? 'on' : 'off'}`)));
   }
