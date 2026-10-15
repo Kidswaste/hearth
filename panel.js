@@ -723,7 +723,7 @@ const Panel = (() => {
     });
     search.after(btn);
     search.placeholder = 'Search chats (#tag)';
-    if (typeof Keys !== 'undefined') Keys.add({ area: 'Chats panel', keys: 'Drag a chat onto a 📁 folder', what: `Move it into that folder (onto its AI’s name: out of the folder); ${/Mac/.test(navigator.platform) ? '⌘Z' : 'Ctrl+Z'} puts it back`, sel: '#panel .item' }); // (capturefix2) the Mac's sheet says ⌘ only (qa-mac)
+    if (typeof Keys !== 'undefined') Keys.add({ area: 'Chats panel', keys: 'Drag a chat onto a 📁 folder', what: 'Move it into that folder (onto its AI’s name: out of the folder); Ctrl/⌘+Z puts it back', sel: '#panel .item' });
   }
   setTimeout(wireKeys, 0);
 
