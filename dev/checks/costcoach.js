@@ -75,6 +75,7 @@ ok(/Claude thinks: Smart/.test(out.undoTop || ''), `in the app's undo log (${out
 const undoBtn = await until(() => smartRow.querySelector('.cc-undo'));
 undoBtn?.click();
 ok(await until(() => H.agent(A.id).effort === 'high'), 'Undo: back on Deep');
+await until(() => !smartRow.querySelector('.cc-undo')); // the undo has finished (its save answered), like a person's next click
 
 // Continue lighter: Turn on, then the app's own undo (what Ctrl/⌘+Z runs)
 const lighterRow = fixes().find((f) => /Continue lighter/.test(f.textContent));
