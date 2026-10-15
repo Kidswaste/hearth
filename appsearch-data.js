@@ -142,6 +142,7 @@ const AppSearchData = (() => {
     ['habits', 'habits', 'Habits', 'Habits', 'habits by itself automatically', 'Things it does by itself', 'Habits'],
     ['self-review', 'habits', 'Checks its own work before it answers', 'Checks its own work', 'review check own work verify', 'For visual work: a quick look at the result first', 'Habits'],
     ['suggest', 'habits', 'Suggests what to do next', 'Suggests what to do next', 'suggest next steps buttons ideas', 'Up to 3 next steps as buttons under a reply', 'Habits'],
+    ['local-answers', 'habits', 'Answer questions about Hearth itself, for free', 'Answer questions about Hearth itself', 'answered by hearth free questions help how do i local answers tokens save', 'Questions about the app get Hearth\'s own short answer with Show me, instead of a paid AI turn', 'Habits'], // (round 45, localanswers)
     ['show-thinking', 'habits', 'Shows its thinking', 'Shows its thinking', 'thinking thought process show hide', 'Its thought process shows folded under the reply', 'Habits'],
     ['spending', 'spending', 'Spending', 'Spending', 'spending tokens cost money budget usage cheaper', 'This week\'s use, a weekly limit, what happens near it', 'Spending'],
     ['limit', 'spending', 'Weekly limit', 'Weekly limit', 'limit budget cap tokens week', 'A weekly limit of tokens for this AI', 'Spending'],
