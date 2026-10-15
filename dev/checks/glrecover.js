@@ -68,8 +68,8 @@ renderer.setAnimationLoop(() => { scene.background.setScalar(Math.min(1, P.glow 
   const hist0 = (ThreeLab.tm?.versions?.(sceneId) || []).length;
   // the Lab's saved files (kv three-*): what they hold before, compared after each recovery (the song's playhead, which
   // the Lab notes every 5 s while it plays, aside)
-  const files = async () => { const o = {}; for (const f of await window.hub.fs.list(KV).catch(() => [])) { const name = f.name || f; if (/^three-.*\.json$/.test(name) && !/\.prev\./.test(name)) o[name] = String(await window.hub.fs.read(`${KV}/${name}`).catch(() => '')).replace(/"time":[0-9.e-]+/g, '"time":0'); } return o; };
-  const same = (a, b) => Object.keys(a).filter((k) => a[k] !== b[k]);
+  const files = async () => { const o = {}; for (const f of await window.hub.fs.list(KV).catch(() => [])) { const name = f.name || f; if (/^three-.*\.json$/.test(name) && !/\.prev\./.test(name)) o[name] = String(await window.hub.fs.read(`${KV}/${name}`).catch(() => '')).replace(/"time":\s*[0-9.e-]+/g, '"time":0'); } return o; };
+  const same = (a, b) => Object.keys(a).filter((k) => a[k] !== b[k]).map((k) => { let i = 0; while (i < a[k].length && a[k][i] === b[k]?.[i]) i += 1; return `${k} @${i}: ${String(a[k]).slice(Math.max(0, i - 80), i + 60)} → ${String(b[k] || '').slice(Math.max(0, i - 80), i + 60)}`; });
   const bright = async (url) => { if (!url) return -1; const img = new Image(); img.src = url; await img.decode(); const cv = document.createElement('canvas'); cv.width = 32; cv.height = 32; const g = cv.getContext('2d'); g.drawImage(img, 0, 0, 32, 32); const d = g.getImageData(0, 0, 32, 32).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; return s / (d.length / 4) / 765; };
   const thumbs = () => evJ('Object.values(filter.thumbs([{ id: "t1", type: "ascii", P: {} }], 48, 32)).filter((u) => /^data:image/.test(u)).length');
   step('setup: an effect thumbnail draws', (await thumbs()) === 1);
