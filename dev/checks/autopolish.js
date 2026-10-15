@@ -20,8 +20,8 @@ const d = ThreeLab.director;
 const cmd = await ThreeLab.cmd({ show: true });
 step('loaded with the Lab: PolishCore, AutoPolish, /autopolish', typeof PolishCore !== 'undefined' && Boolean(Commands.get('autopolish')));
 step('the ◎ mission "Polish the look" is there for the Lab director (only)', Missions.shown(dir.id).some((m) => m.id === 'lab-polish') && !Missions.shown(H.claudeAgent().id).some((m) => m.id === 'lab-polish'));
-const look = LabEasy.previewItem().items().find((x) => /Look & motion/.test(x.label)).items();
-step('✦ More › ✨ Look & motion › ✨ Make it look finished (and the Lab audit finds it)', look.some((x) => /Make it look finished/.test(x.label)) && LabEasy.placed().has('autopolish'), look.map((x) => x.label));
+const look = LabEasy.previewGroups().find((x) => /Look & motion/.test(x.label)).items();
+step('Right-click the preview › ✨ Look & motion › ✨ Make it look finished (and the Lab audit finds it)', look.some((x) => /Make it look finished/.test(x.label)) && LabEasy.placed().has('autopolish'), look.map((x) => x.label));
 
 // ---------- the deliberately bad scene: dark, clashing, static, 9:16 ----------
 const hsl = (h, s, l) => PolishCore.hslToHex(h, s, l);

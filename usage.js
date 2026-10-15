@@ -20,7 +20,7 @@ const Usage = (() => {
     ['.three-console-wrap', 'Console'], ['.refs-dialog', 'References'], ['.sb-dialog', 'Lab dialogs'], ['.three-preview', 'Preview'],
     ['.meter-strip, .meter-pill', 'Meter'], ['.meter-dlg', 'Token dashboard'], ['.native-head', 'Chat header'], ['.composer', 'Chat composer'], ['.msg-foot, .msg', 'Chat messages'], ['.tool-dock', 'Docked chat'],
     ['#rail', 'Rail'], ['#panel', 'Chats panel'], ['#broadcast', 'Ask-all bar'], ['.tool-head', 'Tool header'],
-    ['.mb-menu, .lab-pop, #menu', 'Menus'], ['dialog', 'Dialogs'], ['.tool-surface', 'Tools'],
+    ['.mb-menu, .lab-pop, #menu, #menu-fly, #menu-fly2', 'Menus'], ['dialog', 'Dialogs'], ['.tool-surface', 'Tools'],
   ];
   function areaOf(node) {
     for (const [sel, name] of AREAS) if (node.closest(sel)) return name;
@@ -220,10 +220,10 @@ const Usage = (() => {
     document.addEventListener('click', onClick, true);
     document.addEventListener('change', onChange, true);
     // Re-check buttons when the layout changes, not for every clock tick or streamed word.
-    const NOISY = '.mb-time, .mb-minitime, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg, .meter-strip, .meter-pill, .cp-list, .cp-right, .juice-layer, #menu, #menu-fly, .palette, .slash-menu'; // the meter ticks while replies stream
+    const NOISY = '.mb-time, .mb-minitime, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg, .meter-strip, .meter-pill, .cp-list, .cp-right, .juice-layer, #menu, #menu-fly, #menu-fly2, .palette, .slash-menu'; // the meter ticks while replies stream
     // (round 17, hz240) what comes and goes right under <body> without new buttons to note: tips, sparks, menus, the
     // palette (a tooltip or a press re-ran the whole decorate pass 0.8 s later)
-    const QUIET = '.juice-tip, .juice-layer, .juice-glint, #menu, #menu-fly, .palette, #toasts, .quote-sel, .sel-bar, .ms-pop, .opt-sheet'; // (round 26: ◎ Missions, ⋯ AI setup)
+    const QUIET = '.juice-tip, .juice-layer, .juice-glint, #menu, #menu-fly, #menu-fly2, .palette, #toasts, .quote-sel, .sel-bar, .ms-pop, .opt-sheet'; // (round 26: ◎ Missions, ⋯ AI setup)
     const noisy = (r) => {
       const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
       if (t?.closest?.(NOISY)) return true;

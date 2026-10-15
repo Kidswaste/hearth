@@ -452,57 +452,71 @@ const ThreeLab = (() => {
     const newBtn = btn('New', 'New sketch from a template · right-click: the templates as a list', () => templateGallery(), 'ghost small imp-main');
     newBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['New sketch from', ...ThreeData.TEMPLATES.map((t) => [t.name, t.desc || '', () => create(t.name, t.code)]), ['Duplicate this one', current?.name || '', () => duplicate()]]); });
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
-    const sketchMenuBtn = btn('Sketch ▾', 'Rename, copy, delete or export this scene, or see its history', (e) => {
+    const sketchMenuBtn = btn('Sketch ▾', 'Start a new one, or rename, copy, share, export or delete this one, or see its history', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       popup(r.left, r.bottom + 4, sketchMenuRows());
     });
     // (round 36, labsearch: the rows on their own, so 🔎 Lab search lists them too)
     function sketchMenuRows() {
+      // (round 43, menucalm) nine rows, nothing folded away: start something, this sketch (Rename, ⧉ Duplicate, History ›,
+      // ⇪ Share & export ›, More ›), Delete last; every row ≤ 2 clicks (it was 6 rows hiding 11 behind "This sketch ›")
+      const packs = typeof LabPacksHook !== 'undefined' ? LabPacksHook.sketchRow(() => current?.id)[2] : []; // (round 28) ⇪ Save as a pack, open one (tools/three-packs-hook.js)
       return [
         ['New from a template…', 'Right-click it for the list', () => templateGallery()],
         ['▦ All your sketches', 'As pictures', () => browseSketches()],
         ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.sketchRow()] : []), // (round 35) 📐 My templates (tools/three-templates-hook.js)
-        ...(typeof LabPacksHook !== 'undefined' ? [LabPacksHook.sketchRow(() => current?.id)] : []), // (round 28) Share › Save as a pack (tools/three-packs-hook.js)
         'This sketch',
         ['Rename…', current?.name || '', () => renameSketch()],
-        ['Duplicate', 'A copy you can change freely', () => duplicate()],
-        ['History…', 'Earlier versions of the selected layer, and deleted sketches', () => historyDialog()],
-        ...(window.LabSceneSafe ? [LabSceneSafe.sketchRow()] : []), // (round 43) 🛟 Recover lost scenes… (tools/three-scenesafe.js)
-        ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H · /history', () => window.ThreeHistoryUI?.open()],
-        ['Copy all the code', 'Every layer, one after the other, to the clipboard', () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); }],
-        ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
-        ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
-        ['Export HTML…', 'A standalone .html file', () => exportHtml()],
-        ...(typeof Deploy !== 'undefined' ? [['Publish & Adobe', 'A web page (Vercel, Netlify…) · Photoshop', [['Publish as a web page…', 'Preview first; asks before it goes public', () => Deploy.menuAt(sketchMenuBtn)], ['Preview the web page here', 'Built like the published one, on this computer', () => Deploy.build('scene', current?.id || '').then((b) => Deploy.preview(b)).catch((err) => toast(err.message, { type: 'error' }))], ...(typeof Adobe !== 'undefined' ? [['Open the picture in Photoshop', 'A still of the preview (all layers)', () => Adobe.labToPhotoshop().catch((err) => toast(err.message, { type: 'error', timeout: 9000 }))]] : [])]]] : []), // (round 14: deploy.js, adobe.js)
-        ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()],
+        ['⧉ Duplicate', 'A copy you can change freely', () => duplicate()],
+        ['History', 'Time machine, earlier versions, deleted and lost scenes', [
+          ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H', () => window.ThreeHistoryUI?.open()],
+          ['Earlier versions and deleted sketches…', 'Of the selected layer; deleted sketches come back from here', () => historyDialog()],
+          ...(window.LabSceneSafe ? [LabSceneSafe.sketchRow()] : [])]], // (round 43) 🛟 Recover lost scenes… (tools/three-scenesafe.js)
+        ['⇪ Share & export', 'A pack, the code, a web page, Photoshop', [
+          ...packs,
+          ['Copy all the code', 'Every layer, one after the other, to the clipboard', () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); }],
+          ['Web page (one .html)…', 'A standalone .html file of this sketch', () => exportHtml()],
+          ...(typeof Deploy !== 'undefined' ? [['Publish as a web page…', 'Vercel, Netlify… · preview first; asks before it goes public', () => Deploy.menuAt(sketchMenuBtn)], ['Preview the web page here', 'Built like the published one, on this computer', () => Deploy.build('scene', current?.id || '').then((b) => Deploy.preview(b)).catch((err) => toast(err.message, { type: 'error' }))]] : []), // (round 14: deploy.js)
+          ...(typeof Adobe !== 'undefined' ? [['Open the picture in Photoshop', 'A still of the preview (all layers)', () => Adobe.labToPhotoshop().catch((err) => toast(err.message, { type: 'error', timeout: 9000 }))]] : [])]], // (round 14: adobe.js)
+        ['More', 'Cycle looks, restart, ask about this layer', [
+          ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
+          ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
+          ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()]]],
         'Careful',
         ['Delete…', 'Moves it to History → deleted sketches', () => removeSketch()],
       ];
     }
     // ⋯ in the Lab toolbar: the controls you rarely or never use, still one click away (with their old names for usage)
-    const labMoreBtn = btn('⋯', 'More: focus, screenshot, snippets, three.js version, live code, frame rate, keys', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
+    const labMoreBtn = btn('⋯', 'More: variations, all formats, a batch, the director, fix my scene, capture, code, view', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
     labMoreBtn.dataset.feature = 'Lab more';
     function labMoreItems() {
       const v = store.get('three.version', ThreeData.VERSIONS[0]);
-      // (round 7) six open entries: Capture ›, Console ›, Code › branch into the detail
-      return ['View',
-        ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
-        ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture
-        ['Capture', 'Screenshot, copy', [
-          ['📷 Screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
+      // (round 43, menucalm) two short parts, no row twice: what you make from the scene (🎲 ▦ ⧉ 📐 📜 Director ›), then
+      // the Lab itself (🩺 Fix my scene, Capture ›, Code & console ›, View & help ›); 17 rows → 11, every row ≤ 2 clicks
+      const easy = typeof LabEasy !== 'undefined' ? LabEasy.toolbarItems() : []; // (round 26) Director › (tools/three-easy.js)
+      const fix = easy.filter((r) => /Fix my scene/.test(r[0]));
+      return ['Make',
+        ...easy.filter((r) => !fix.includes(r)),
+        'This Lab',
+        ...fix,
+        ['Capture', 'Screenshot, copy, contact sheet', [
+          ['🖼 Save a screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
           ['🎞 Contact sheet', 'Frames across the song', () => showSheet()],
-          ...(typeof Capture !== 'undefined' ? [['The capture menu…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : [])]], // (round 8) the Lab reaches the whole capture menu
-        ['Console', CONSOLE_MODES.find(([m]) => m === consoleMode)[1], CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m])],
-        ['Code', `r${v.split('.')[1]}${autoRun ? ' · live' : ''}`, [
+          ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : [])]], // (round 8) the Lab reaches the whole capture menu
+        ['Code & console', `r${v.split('.')[1]}${autoRun ? ' · live' : ''} · console: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1].toLowerCase()}`, [
           ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
           [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
-          ['Live code', 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }, autoRun]]],
-        ...(typeof LabEasy !== 'undefined' ? LabEasy.toolbarItems() : []), // (round 26) Director › (tools/three-easy.js)
-        ...(window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? [QuickstartHooks.labRow()] : []), // (round 31) ✦ What can I do here? (quickstart-hooks.js)
-        ['Frame pace', paceText(paceLast), () => { setPaceOn(!paceOn); }, paceOn, 'Frame pace'], // (round 33 "labpace") the readout lives here; ticked: also in the preview's corner
-        ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
-        ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
+          ['Live code', 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }, autoRun],
+          'The console shows',
+          ...CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m])]],
+        ['View & help', 'Focus, frame pace, keys', [
+          ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
+          ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture
+          ['Frame pace', paceText(paceLast), () => { setPaceOn(!paceOn); }, paceOn, 'Frame pace'], // (round 33 "labpace") the readout lives here; ticked: also in the preview's corner
+          ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
+          ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
+          ...(window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? [QuickstartHooks.labRow()] : [])]], // (round 31) ✦ What can I do here? (quickstart-hooks.js)
         ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab') : [])]; // (round 8) ends like every menu
       // (copy / export are in Sketch ▾, the frame rate in the preview's ⋯)
     }
@@ -2900,33 +2914,64 @@ const ThreeLab = (() => {
     // ⟲ Restart: everything from scratch (a new page, GPU context and audio), when a sketch bugs out.
     // right-click on the picture
     // Right-click the picture (round 7): the frequent things first, the rest in a few open submenus.
+    // (round 43, menucalm) one order, most used first (the owner's counts: Freeze, the frame sizes, Save / Shuffle, the
+    // music): Freeze · Frame size › · Sliders › · ♪ Music › · Capture › · View › — then what you add or make: ＋ Add ›
+    // (layers, models, the webcam, the sequence) · ✨ Look & motion › (grade, camera moves, variations) · ⇪ Make & export ›
+    // · ✦ More › (fix my scene, restart, live, share, templates, recipes, keys). 23 rows → 11; pointing opens two levels.
     function previewMenuItems() {
       const ctl = selCtl();
-      return [
-        { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', action: () => setFreeze(!frozenNow) },
-        ...(typeof AutoPolish !== 'undefined' ? [AutoPolish.previewItem()] : []), // (round 30) ✨ make it look finished (tools/three-autopolish.js)
-        ...(typeof ThreeSeq !== 'undefined' ? [ThreeSeq.previewItem()] : []),
-        ...(typeof ThreeComp !== 'undefined' ? [ThreeComp.previewItem()] : []),
-        ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
-        ...(window.AssetsHooks ? [AssetsHooks.previewItem()] : []), // (round 24) 🗂 the asset library (assets-cmds.js)
+      const seqItem = typeof ThreeSeq !== 'undefined' ? ThreeSeq.previewItem() : null;
+      const inSeq = Boolean(seqItem?.items); // the sequence is on screen: its own menu (back to the scene…) right at the top
+      // ◫ Comp's rows sit in ＋ Add itself (another scene as a layer, picture in picture first; dispatch, precomps,
+      // render after the layers), so a precomp's settings stay two levels down
+      const comp = typeof ThreeComp !== 'undefined' ? (ThreeComp.previewItem().items?.() || []) : [];
+      const compAdd = comp.filter((x) => typeof x === 'object' && /^＋/.test(x.label));
+      const compRest = comp.filter((x) => !compAdd.includes(x));
+      const add = [
+        ...compAdd,
+        ...(seqItem && !inSeq ? [seqItem] : []),
+        '-',
         ...(typeof LabShader !== 'undefined' ? [LabShader.previewItem()] : []), // (round 23) ◇ shader layers (tools/three-shader.js)
         ...(typeof LabParticles !== 'undefined' ? [LabParticles.previewItem()] : []), // (round 24) ✦ GPU particles (tools/three-particles.js)
         ...(typeof LabType !== 'undefined' ? [LabType.previewItem()] : []), // (round 25) 🅰 kinetic type, lyrics (tools/three-type.js)
-        ...(typeof LabMotionIn !== 'undefined' ? [LabMotionIn.previewItem()] : []), // (round 25) 📷 the camera as a live input (tools/three-motion-in.js)
         ...(typeof LabPhysics !== 'undefined' ? [LabPhysics.previewItem()] : []), // (round 25) ⚛ light physics (tools/three-physics.js)
-        ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
+        ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
+        ...(window.AssetsHooks ? [AssetsHooks.previewItem()] : []), // (round 24) 🗂 the asset library (assets-cmds.js)
+        ...(typeof LabMotionIn !== 'undefined' ? [LabMotionIn.previewItem()] : []), // (round 25) 📷 the webcam as a live input (tools/three-motion-in.js)
+        ...(compRest.length ? ['-', '◫ Comp', ...compRest] : []),
+      ];
+      const look = [
         ...(typeof LabGrade !== 'undefined' ? [LabGrade.previewItem()] : []), // (round 24) ◐ Grade: color, LUTs, film & lens, scopes (tools/three-grade.js)
-        ...(typeof LabExport !== 'undefined' ? [LabExport.previewItem()] : []), // ⇪ Export: renders and the scene itself (tools/three-export.js)
-        ...(typeof LabEasy !== 'undefined' ? [LabEasy.previewItem()] : []), // (round 26) ✦ More: music, look & motion, make (tools/three-easy.js)
         ...(typeof LabCamera !== 'undefined' ? [LabCamera.previewItem()] : []), // (round 40) 🎥 Camera moves (tools/three-camera.js)
-        { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, items: () => [
+      ];
+      // ⇪ Export's rows after the making ones (tools/three-export.js); its rarer formats one level down
+      const ex = typeof LabExport !== 'undefined' ? (LabExport.previewItem().items?.() || []).filter((x) => typeof x === 'object' && !/All formats/.test(x.label)) : [];
+      const make = ex.length ? [ex[0], { label: 'Other formats', hint: '4K, ProRes, GIF, print, GLB…', tip: 'Export in one of the other formats: 4K, ProRes with alpha, a loop GIF, a still for print, 3D, a web page', items: ex.slice(1) }] : [];
+      const more = [
+        { label: '⟲ Restart from scratch', key: 'Ctrl+Shift+Enter', tip: 'A fresh page, GPU and sound, for when something bugs out', action: () => restartSim() },
+        ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
+      ];
+      const tail = ['-', { label: 'Lab keys', key: '?', tip: 'Every key of the Lab, and what it does', action: () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys()) }];
+      const E = typeof LabEasy !== 'undefined' ? LabEasy : null;
+      return [
+        ...(inSeq ? [seqItem, '-'] : []),
+        { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', tip: 'Hold the picture; the music and the timeline go on', action: () => setFreeze(!frozenNow) },
+        { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, tip: 'The size of the picture: fit the window, or exactly 9:16, 16:9, 4:5, 1:1', items: () => [
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
         ] },
-        { label: 'Capture', items: () => [
+        ctl ? { label: 'Sliders', tip: 'Shuffle, save into the code, looks, for the selected layer', items: () => [
+          { label: '💾 Save into the code', key: 'Ctrl+S', action: () => { ctl.save(); toast('Sliders saved into the code', { timeout: 1200 }); } },
+          { label: '🎲 Shuffle', key: 'R', action: () => ctl.shuffle() },
+          { label: 'The shuffle before', key: 'Shift+R', action: () => ctl.shuffleStep(-1) },
+          { label: 'Save as a look', key: 'Ctrl+Shift+S', action: () => ctl.quickLook() },
+          { label: 'Next look', action: () => ctl.lookStep(1) },
+        ] } : null,
+        ...(E ? [E.musicItem()] : []),
+        { label: 'Capture', tip: 'A still, a screenshot, a frame to compare, a recording', items: () => [
           { label: '📷 Still at the frame size', action: () => still() },
           { label: '📋 Copy this frame', action: () => still({ copy: true }) },
-          { label: 'Save a screenshot', hint: 'as it shows here', action: () => box.send({ type: 'screenshot' }) },
+          { label: '🖼 Save a screenshot', hint: 'as it shows here', action: () => box.send({ type: 'screenshot' }) },
           { label: '◐ Pin this frame to compare', key: '|', action: () => pinFrame() },
           { label: '🎞 Contact sheet', action: () => showSheet() },
           { label: '📌 Note at this moment', key: 'N', action: () => takeNote() },
@@ -2935,25 +2980,18 @@ const ThreeLab = (() => {
             { label: '● Record the Lab preview…', hint: 'for your intro video', action: () => Capture.record({ target: 'lab' }).catch((e) => toast(e.message, { type: 'error' })) },
             { label: '◉ More capture…', key: 'Ctrl+Alt+S', action: () => Capture.menu(Math.max(8, innerWidth / 2 - 120), 80, Capture.mainItems()) }] : []),
         ] },
-        ctl ? { label: 'Sliders', items: () => [
-          { label: '🎲 Shuffle', key: 'R', action: () => ctl.shuffle() },
-          { label: 'The shuffle before', key: 'Shift+R', action: () => ctl.shuffleStep(-1) },
-          { label: '💾 Save into the code', key: 'Ctrl+S', action: () => { ctl.save(); toast('Sliders saved into the code', { timeout: 1200 }); } },
-          { label: 'Save as a look', key: 'Ctrl+Shift+S', action: () => ctl.quickLook() },
-          { label: 'Next look', action: () => ctl.lookStep(1) },
-        ] } : null,
-        { label: 'View', items: () => [
+        { label: 'View', tip: 'Present, the Stage window, focus, guides, moving around', items: () => [
           { label: '▣ Present', key: 'P', action: () => togglePresent() },
           { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
           { label: 'Lighten to stay smooth', hint: 'full quality in renders', checked: adaptOn, action: () => { setAdaptOn(!adaptOn); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } },
-          { label: 'Guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
+          { label: '⌗ Composition guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
           ...(typeof ThreeGestures !== 'undefined' ? ThreeGestures.viewItems() : []), // (round 34) frame, reset, keep the view, moving around
           ...(window.LabAB ? LabAB.viewItems() : []), // (round 37) ◧ Before / after the last change (tools/three-abcompare.js)
         ] },
         '-',
-        { label: '⟲ Restart from scratch', key: 'Ctrl+Shift+Enter', action: () => restartSim() },
-        { label: 'Lab keys', key: '?', action: () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys()) },
+        add.some((x) => typeof x === 'object') ? { label: '＋ Add', hint: 'layers, models, webcam…', tip: 'Add to the scene: shader, particle, type and physics layers, a 3D model, an asset, another scene, the webcam', items: add } : null,
+        ...(E ? [E.lookItem(look), E.makeItem(make), E.previewItem(more, tail)] : [...look, ...make, ...more, ...tail]),
         ...(typeof Declutter !== 'undefined' ? Declutter.customiseItems('Lab preview') : []),
       ];
     }

@@ -3,7 +3,7 @@
 // a punch-in on each kick / beat / bar, and "from this view to that view" (two views set by looking around the
 // preview: the gestures' view, as "Keep this view" uses it). Each move is a keyframed offset on the layer's own 3D
 // camera over a range of the scene's clock (its song, else its own timeline), with an easing preset and an intensity:
-//   · right-click the preview › 🎥 Camera moves (the presets, your moves, from / to this view)
+//   · right-click the preview › ✨ Look & motion › 🎥 Camera moves (the presets, your moves, from / to this view)
 //   · the timeline: the moves are cyan bars under the waveform, drag an end (or the bar); right-click the waveform ›
 //     🎥 Camera move from here…
 //   · the card (🎥 Your moves…): each move's easing, intensity, remove; add more
@@ -362,7 +362,7 @@ const LabCamera = (() => {
           await ready();
           const a = String(args || '').trim();
           const all = () => withMoves().flatMap((L) => movesOf(L));
-          if (!a || /^list$/i.test(a)) { const ms = all(); return ms.length ? `Camera moves:\n${ms.map((m) => C.describe(m)).join('\n')}` : 'No camera moves on this scene: /camera-moves push in (or right-click the preview › 🎥 Camera moves)'; }
+          if (!a || /^list$/i.test(a)) { const ms = all(); return ms.length ? `Camera moves:\n${ms.map((m) => C.describe(m)).join('\n')}` : 'No camera moves on this scene: /camera-moves push in (or right-click the preview › ✨ Look & motion › 🎥 Camera moves)'; }
           if (/^undo$/i.test(a)) return undo() ? 'Undone' : 'Nothing to undo';
           if (/^(clear|off|none|remove all)$/i.test(a)) { const n = clearAll(); return n ? `${n} camera move${n === 1 ? '' : 's'} removed (/camera-moves undo brings them back)` : 'No camera moves to remove'; }
           if (/^from\b/i.test(a)) { const r = await setFrom(); return r ? 'Start view kept: look around to the end view, then /camera-moves to' : 'No 3D camera here'; }

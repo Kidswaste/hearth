@@ -383,7 +383,7 @@ const LookMatch = (() => {
     ].filter(Boolean));
   }
 
-  // ---------- ✦ More › ✨ Look & motion ----------
+  // ---------- right-click the preview › ✨ Look & motion ----------
   function item() {
     const rc = recent();
     if (!rc.length && !S.last) return { label: '🎨 Make it look like this…', hint: 'a picture or video: its colors, light, grain', action: () => pickAndRun().catch(err) };

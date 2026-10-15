@@ -46,8 +46,8 @@ try {
   await ThreeLab.cmd({ show: true });
   await until(() => typeof LabEasy !== 'undefined' && typeof LabExport !== 'undefined' && typeof LabBatchHook !== 'undefined' && ThreeLab.director, 30000);
   const d = ThreeLab.director; const S = ThreeLab.scenes;
-  const make = LabEasy.previewItem().items().find((x) => /Make/.test(x.label)).items();
-  step('✦ More › ⇪ Make has ⧉ Make a batch… (after ▦ All formats); the toolbar\'s ⋯ too; still not loaded', /All formats/.test(make[0]?.label) && /Make a batch/.test(make[1]?.label) && LabEasy.toolbarItems().some((r) => /Make a batch/.test(r[0])) && lazyState() === 'stub', make.slice(0, 3).map((x) => x.label));
+  const make = LabEasy.previewGroups().find((x) => /Make/.test(x.label)).items();
+  step('Right-click the preview › ⇪ Make & export has ⧉ Make a batch… (after ▦ All formats); the toolbar\'s ⋯ too; still not loaded', /All formats/.test(make[0]?.label) && /Make a batch/.test(make[1]?.label) && LabEasy.toolbarItems().some((r) => /Make a batch/.test(r[0])) && lazyState() === 'stub', make.slice(0, 3).map((x) => x.label));
 
   // ---------- a scene worth batching, saved as a template ----------
   const CODE = `const P = tweak({ bg: { value: '#ff0000', label: 'Background' } });

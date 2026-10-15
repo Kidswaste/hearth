@@ -777,7 +777,7 @@ const Native = (() => {
       { label: 'Copy & save', items: () => [
         { label: 'Copy as plain text', action: () => copyText(plainText(m.text), 'Copied as plain text') },
         m.thinking ? { label: 'Copy its thinking', action: () => copyText(m.thinking, 'Thinking copied') } : null,
-        { label: `Copy “/jump ${index + 1}”`, hint: 'to come back here', action: () => copyText(`/jump ${index + 1}`, 'Paste it in this chat to come back to this message') },
+        { label: 'Copy a way back here', hint: 'paste it in this chat', tip: 'Copies a short line that brings this chat back to this message when you send it', action: () => copyText(`/jump ${index + 1}`, 'Paste it in this chat to come back to this message') },
         '-',
         m.role === 'assistant' ? { label: 'Save as a Markdown file…', action: () => saveReply(m) } : null,
         { label: 'Save to notes', action: () => Notes.append(m.text) },

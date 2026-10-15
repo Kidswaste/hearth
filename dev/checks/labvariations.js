@@ -42,8 +42,8 @@ const canvases0 = document.querySelectorAll('canvas').length;
 const frames0 = document.querySelectorAll('iframe').length;
 
 // ---------- ways in ----------
-const look = LabEasy.previewItem().items().find((x) => /Look & motion/.test(x.label)).items();
-step('✦ More › ✨ Look & motion › 🎲 Variations (first row; the Lab audit finds it)', /Variations/.test(look[0]?.label) && LabEasy.placed().has('variations'), look.slice(0, 3).map((x) => x.label));
+const look = LabEasy.previewGroups().find((x) => /Look & motion/.test(x.label)).items();
+step('Right-click the preview › ✨ Look & motion › 🎲 Variations (first row; the Lab audit finds it)', /Variations/.test(look[0]?.label) && LabEasy.placed().has('variations'), look.slice(0, 3).map((x) => x.label));
 step('the toolbar\'s ⋯ has 🎲 Variations', LabEasy.toolbarItems().some((r) => /Variations/.test(r[0])));
 step('the ◎ mission "Quick variations (free)" is there for the Lab director only', Missions.shown(dir.id).some((m) => m.id === 'lab-quickvars') && !Missions.shown(H.claudeAgent().id).some((m) => m.id === 'lab-quickvars'));
 

@@ -596,7 +596,7 @@ const LabExport = (() => {
       { label: '🧊 GLB of the 3D content', action: () => render({ format: 'glb' }).catch((e) => toast(e.message, { type: 'error' })) },
       { label: 'Web page (one .html)', action: () => render({ format: 'html' }).catch((e) => toast(e.message, { type: 'error' })) },
       { label: 'Sliders as a preset file', action: () => render({ format: 'preset' }).catch((e) => toast(e.message, { type: 'error' })) },
-      { label: 'Contact sheet', action: () => render({ format: 'sheet' }).catch((e) => toast(e.message, { type: 'error' })) },
+      { label: '🎞 Contact sheet as a file', hint: 'frames across the song, one picture', action: () => render({ format: 'sheet' }).catch((e) => toast(e.message, { type: 'error' })) },
     ] };
   }
   const status = () => ({ running: S.cur ? { frames: S.cur.frames, total: S.cur.total, paused: S.cur.paused, left: S.cur.left ?? null, side: S.runs.size } : null, waiting: S.waiting, last: S.last, speeds: S.stats.slice(-8) });

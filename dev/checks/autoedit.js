@@ -122,8 +122,8 @@ step('three_do autoedit render all: one video per frame size', all3.ok && calls.
 ThreeSeq.render = real;
 
 // ---------- 7. reached without commands: ✦ More › ⇪ Make, the ◎ mission ----------
-const make = LabEasy.previewItem().items().find((x) => x.label.startsWith('⇪ Make')).items();
-step('✦ More › ⇪ Make: "A music video from this song"', make.some((x) => x.label.startsWith('🎬 A music video')) && LabEasy.placed().has('music-video'), make.map((x) => x.label));
+const make = LabEasy.previewGroups().find((x) => x.label.startsWith('⇪ Make')).items();
+step('Right-click the preview › ⇪ Make & export: "A music video from this song"', make.some((x) => x.label.startsWith('🎬 A music video')) && LabEasy.placed().has('music-video'), make.map((x) => x.label));
 const mids = (id) => Missions.shown(id).map((m) => m.id);
 step('◎ mission "Make a music video from this song": in the Lab\'s director only', mids(dir.id).includes('lab-music-video') && !mids(H.claudeAgent().id).includes('lab-music-video'));
 AutoEdit.close();

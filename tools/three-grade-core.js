@@ -131,7 +131,7 @@ const GradeCore = (() => {
       return `  ${k}: { ${parts.join(', ')} },`;
     });
     return `// ${NAMES[kind]} (round 24): ${kind === 'lens' ? 'bloom, halation, anamorphic streaks, chromatic aberration, lens distortion' : 'tone mapping, exposure, white balance, lift / gamma / gain, curves, HSL, LUT, vignette, grain, letterbox'}.
-// It changes everything below it; the ◐ Grade panel (right-click the preview › ◐ Grade, /grade) moves these sliders.
+// It changes everything below it; the ◐ Grade panel (right-click the preview › ✨ Look & motion › ◐ Grade, /grade) moves these sliders.
 const P = tweak({
 ${lines.join('\n')}
 });

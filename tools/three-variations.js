@@ -7,7 +7,7 @@
 // Light by design (the 240 Hz rule): no extra WebGL context. The pictures come from the preview's own renderer, one
 // after another (values set without an undo step, a small JPEG of the next frame), behind a still of the scene so
 // nothing flickers; a set of 6 takes about a second. Closing drops the pictures, listeners and the cover.
-// Ways in (no command needed): ✦ More › ✨ Look & motion › 🎲 Variations; the toolbar's ⋯ › 🎲 Variations; the
+// Ways in (no command needed): right-click the preview › ✨ Look & motion › 🎲 Variations; the toolbar's ⋯ › 🎲 Variations; the
 // ◎ mission "Quick variations (free)" (your words steer it: "warmer", "calmer", "another angle"); ⌘/Ctrl+K.
 // The app's internal command: /variations.
 //   LabVariations.open({ steer, n }) · more(i) · apply(i) · undo() · lock(group, on) · close() · state() · stats()

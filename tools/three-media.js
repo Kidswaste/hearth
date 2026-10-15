@@ -1379,7 +1379,7 @@ const ThreeMedia = (() => {
       if (out) toast(`Song ${edge === 'a' ? 'starts' : 'ends'} at ${fmtMs(out[edge])} · right-click the time › Untrim the song undoes it`, { timeout: 1800 });
       return out;
     }
-    const cutRange = () => (region ? { ...region, what: 'the loop' } : map.trim ? { ...map.trim, what: 'the trimmed song' } : { a: 0, b: D(), what: 'the whole file' });
+    const cutRange = () => (region ? { ...region, what: 'the loop' } : map.trim ? { ...map.trim, what: 'the trimmed song' } : { a: 0, b: D(), what: 'the whole song' });
     async function cutLoop() {
       if (!st.path || !D()) return null;
       const tools = await window.hub.video.tools({ ffmpeg: H.settings().ffmpegPath || undefined });
@@ -2837,30 +2837,32 @@ const ThreeMedia = (() => {
     });
     canvas.addEventListener('mouseleave', () => { hoverEl.hidden = true; });
     // right-click the waveform / ruler: loop, cue, section and zoom actions at that spot
+    // (round 43, menucalm) the Lab's menu (submenus, filter, keys, tooltips): what's at this spot first (the footage's
+    // cut / camera move), then play / loop / cue, the rarer ones (trim, save as a file, the 1, zoom out) in More ›;
+    // one cue row (the footage's "Cue at f…" stands for it), no command names
     function waveMenu(e, t) {
-      const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
       const bar = snapStep('bar', G(), bpmNow()); let a = snapTime(t, 'bar', G(), beats(), dIdx()); if (a > t + 1e-3) a -= bar; if (a < -1e-3) a += bar;
       const sec = st.analysis?.sections.find((x) => t >= x.start && t < x.end);
-      const extra = [...(hooks.waveItems?.(t) || []), ...xhooks.flatMap((x) => x.waveItems?.(t) || [])];
-      menuAt(anchor, [
-        ...extra, ...(extra.length ? [null] : []),
+      const extra = [...(hooks.waveItems?.(t) || []), ...xhooks.flatMap((x) => x.waveItems?.(t) || [])].filter(Boolean);
+      const cueRow = extra.some((x) => /^Cue at /.test(x[0]));
+      popMenu(e.clientX, e.clientY, [
+        ...extra,
         ['Play from here', fmtMs(t), () => { seek(t); toggle(true); }],
         ['Loop this bar', 'L at the playhead', () => setRegion({ a, b: a + bar })],
-        ['Loop 4 bars from here', '', () => setRegion({ a, b: Math.min(D(), a + bar * 4) })],
         sec ? [`Loop this ${sec.energy} part`, `${fmtTime(sec.start)}–${fmtTime(sec.end)} · or double-click`, () => setRegion({ a: snapT(sec.start), b: snapT(sec.end) })] : false,
         region ? ['Remove the loop', '', () => setRegion(null)] : false,
-        null,
-        ['Song starts here', '{ · trims the song (the sketch hears only the trimmed part)', () => setTrimEdge('a', t)],
-        ['Song ends here', '}', () => setTrimEdge('b', t)],
-        map.trim ? ['Untrim the song', `${fmtMs(map.trim.a)} → ${fmtMs(map.trim.b)}`, () => setTrim(null)] : false,
-        [`Save ${cutRange().what} as a file`, '/cut-loop · ffmpeg, next to the original', () => cutLoop()],
-        null,
-        ['Cue here', 'C at the playhead', () => addCue(t)],
-        ['Section here…', 'Intro, Build, Drop…', () => menuAt(anchor, SECTION_NAMES.map((n) => [n, '', () => addCue(t, n)]))],
-        ['The 1 is here', 'The grid\'s downbeat', () => editGrid((g) => { g.anchor = r4(snapToHit(t + 0.05, 'kick')); })],
-        null,
-        ['Whole song', '0', () => setView(null)],
-      ].filter((x) => x !== false));
+        cueRow ? false : ['Cue here', 'C at the playhead', () => addCue(t)],
+        ['Section here', 'Intro, Build, Drop…', SECTION_NAMES.map((n) => [n, '', () => addCue(t, n)])],
+        ['More', 'Loop 4 bars, trim, save as a file, the 1, zoom out', [
+          ['Loop 4 bars from here', '', () => setRegion({ a, b: Math.min(D(), a + bar * 4) })],
+          ['Song starts here', '{ · the sketch hears only the trimmed part', () => setTrimEdge('a', t)],
+          ['Song ends here', '}', () => setTrimEdge('b', t)],
+          map.trim ? ['Untrim the song', `${fmtMs(map.trim.a)} → ${fmtMs(map.trim.b)}`, () => setTrim(null)] : false,
+          [`Save ${cutRange().what} as its own file`, 'Next to the original (needs ffmpeg)', () => cutLoop()],
+          ['The 1 is here', 'The grid\'s downbeat', () => editGrid((g) => { g.anchor = r4(snapToHit(t + 0.05, 'kick')); })],
+          ['Zoom out to the whole song', '0', () => setView(null)],
+        ].filter((x) => x !== false)],
+      ].filter((x) => x !== false), { width: 300 });
     }
     minimap.addEventListener('dblclick', () => setView(null)); // double-click the overview: the whole song
     minimap.addEventListener('pointerdown', (e) => {

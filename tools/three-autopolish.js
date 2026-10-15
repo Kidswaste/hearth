@@ -9,7 +9,7 @@
 //      what really changed ("brightest parts: 18 % → 79 %", the finish score before → after), with Before / After
 //   4. what sliders can't fix is left for the director: "✦ Ask the director" sends what was done + what's left, the
 //      cost shown first. The ◎ mission "Polish the look" runs this pass first and only then offers the director.
-// Ways in (no command needed): right-click the preview › ✨ Make it look finished; ✦ More › ✨ Look & motion; the
+// Ways in (no command needed): right-click the preview › ✨ Look & motion › ✨ Make it look finished; right-click the preview › ✨ Look & motion; the
 // ◎ mission "Polish the look"; ⌘/Ctrl+K "Lab: Make it look finished". The app's internal command: /autopolish.
 //   AutoPolish.run({ quiet }) · check() · undo() · toggle(id, on) · ask(note, { confirm }) · mission(agentId, text)
 //   item() · previewItem() · state() · card

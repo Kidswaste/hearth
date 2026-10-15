@@ -98,7 +98,7 @@ const BoardEyesUI = (() => {
     const baseBoard = B._.boardItems;
     B._.boardItems = () => [...baseBoard(),
       { label: 'Show the board to a chat', items: () => [...chatsMenu((id) => showTo(id, { whole: true, boardId: B.current().id })), '-', { label: 'Ask about the board…', action: () => askAbout(null, { whole: true, boardId: B.current().id }) }] },
-      { label: 'Pinterest: find more like this', items: () => pinItems() }];
+      { label: '📌 Pinterest searches for this vibe', tip: 'Search phrases made from the board, opened on Pinterest', items: () => pinItems() }]; // (round 43, menucalm) one 📌 for finding pictures everywhere
     // a frame: show what is inside it as one picture
     const baseFrame = B._.itemExtras;
     B._.itemExtras = (list) => (list.length === 1 && list[0].type === 'frame'
