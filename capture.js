@@ -1107,7 +1107,11 @@ const Capture = (() => {
       if (r.mime) delete codecStrikes[String(r.mime).match(/codecs=(\w+)/)?.[1]];
       const busy = quiet ? null : toast('Finishing the recording…', { timeout: 0 });
       let fin = { webm: p };
-      try { fin = await api().finish({ path: p, mp4: r.opts.mp4 !== false, fps: r.opts.fps, id: r.id, size: r.final, crf: 14, keep: Boolean(r.opts.keepWebm), ms: Math.round(duration * 1000) }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
+      // (capturefix2) a social / 1080p size the canvas couldn't reach (it never upscales the window's pixels) is made by
+      // the MP4 step, so a take that needs it gets its MP4 even with MP4 off (a 9:16 take came out 528×940); the WebM
+      // the owner asked for stays beside it then
+      const sized = Boolean(r.final?.w);
+      try { fin = await api().finish({ path: p, mp4: r.opts.mp4 !== false || sized, fps: r.opts.fps, id: r.id, size: r.final, crf: 14, keep: Boolean(r.opts.keepWebm) || (r.opts.mp4 === false && sized), ms: Math.round(duration * 1000) }); } catch (err) { fin.error = err.message; } finally { busy?.remove(); }
       const main = fin.mp4 || fin.webm || p;
       const marks = r.marks;
       // an encoder that fell behind (a busy machine, a software codec) keeps only the first frames: a 6 s take came

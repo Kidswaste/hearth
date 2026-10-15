@@ -178,6 +178,32 @@ function flagsOf(src) {
   if (!keep.includes('--check-timeout')) keep.push('--check-timeout', '600000');
   return keep;
 }
+// (round 44) What a check returned, judged by its top-level fields, whatever shape it reports in: an explicit
+// "ok" / "pass" boolean is the check's own verdict (report modes keep their lists but say true); otherwise a non-empty
+// errors / problems / fail(s) / failures / failed / bad / dups list, a "missing…" / "bad…" list or map (nodes-shader's
+// badTypes, missingCommands) or a bad / failed count over 0 fails it. Each value smoke.js prints after its "▶ <code>"
+// line is read as JSON, or the {…} inside a text result (declutter's "DECLUTTER FAIL … {json}", fastboot's
+// "[FASTBOOT]{json} FAIL"). Returns the first failing field ("errors: a 9:16 take…"), or ''.
+const FAIL_KEY = /^(?:errors|problems|fails?|failures|failed|bad|dups|missing\w*|bad[A-Z]\w*)$/;
+function verdictOf(text) {
+  // (the "▶" line shows the start of the check's code, which can run over several lines: the value is the JSON that
+  // runs to the section's last "}", tried from each "{" on)
+  const sections = text.split(/\n▶ /).slice(1).map((s) => s.split(/\n(?:screenshot: |coverage: |kept: |OK: no page errors\.|\d+ problem\(s\):)/)[0].trim());
+  for (const s of sections) {
+    let v = null;
+    const b = s.lastIndexOf('}');
+    for (let a = s.indexOf('{'), tries = 0; a >= 0 && a < b && !v && tries < 400; a = s.indexOf('{', a + 1), tries += 1) { try { v = JSON.parse(s.slice(a, b + 1)); } catch { /* not there yet */ } }
+    if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+    if (v.ok === false || v.pass === false) return `${v.ok === false ? 'ok' : 'pass'}: false`;
+    if (v.ok === true || v.pass === true) continue;
+    for (const [k, x] of Object.entries(v)) {
+      if (!FAIL_KEY.test(k)) continue;
+      const n = Array.isArray(x) ? x.length : x && typeof x === 'object' ? Object.keys(x).length : /^(?:bad|failed|failures|fails?)$/.test(k) && typeof x === 'number' ? x : 0;
+      if (n > 0) return `${k}: ${Array.isArray(x) ? String(x[0]) : x && typeof x === 'object' ? Object.keys(x)[0] : x}${n > 1 ? ` (+${n - 1})` : ''}`;
+    }
+  }
+  return '';
+}
 const results = [];
 const t0 = Date.now();
 for (const n of wanted) {
@@ -201,9 +227,10 @@ for (const n of wanted) {
   const text = `${r.stdout || ''}${r.stderr || ''}`;
   fs.writeFileSync(log, text);
   // failed: a non-zero exit, a result with a top-level "ok": false or "pass": false (round 39: appsearch reports "pass"; round 43: a non-empty top-level "errors" list, as the capture checks report) (not one nested in what a check reports), a ✖ step,
-  // or a FAIL line from a Node test
-  const bad = r.status !== 0 || /^(?:\{ ?| )"(?:ok|pass)":\s*false/m.test(text) || /^ "errors": \[\s*"/m.test(text) || /^\s*"?✖/m.test(text) || /^(FAIL|✖)/m.test(text);
-  const why = bad ? (text.match(/\d+ problem\(s\):\n([^\n]*)/)?.[1] || text.match(/^\s*"?✖[^\n]*/m)?.[0] || text.match(/"problems":\s*\[[^\]]*\]/)?.[0] || (r.error ? r.error.message : `exit ${r.status}`)).trim().slice(0, 200) : '';
+  // or a FAIL line from a Node test; (round 44) any failing top-level field of a check's result, in whatever shape (verdictOf)
+  const verdict = n.startsWith('unit:') || n.startsWith('astra-') ? '' : verdictOf(text);
+  const bad = r.status !== 0 || Boolean(verdict) || /^(?:\{ ?| )"(?:ok|pass)":\s*false/m.test(text) || /^ "errors": \[\s*"/m.test(text) || /^\s*"?✖/m.test(text) || /^(FAIL|✖)/m.test(text);
+  const why = bad ? (text.match(/\d+ problem\(s\):\n([^\n]*)/)?.[1] || text.match(/^\s*"?✖[^\n]*/m)?.[0] || verdict || text.match(/"problems":\s*\[[^\]]*\]/)?.[0] || (r.error ? r.error.message : `exit ${r.status}`)).trim().slice(0, 200) : '';
   results.push({ n, ok: !bad, s: Math.round((Date.now() - started) / 1000), why });
   console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}`);
   if (bad && argv.includes('--stop')) break;
