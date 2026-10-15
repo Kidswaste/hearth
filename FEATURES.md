@@ -1142,3 +1142,6 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ⚡ Instant chat switching (round 45, chatswitch, 8 upgrades: docs/upgrades/chatswitch.md)
 - ✓ The last few chats stay ready out of sight (their own lists, content-visibility, within a 20,000-element budget): going back to one only shows it again; a chat opened afresh shows its end first, the rest slips in above; resting on a chat in the list (or ↑ / ↓) gets it ready; its pictures are sized ahead. A waiting jump no longer lands in the next chat.
 - ○ `sh dev/run-checks.sh chatswitch` (dev/checks/chatswitch.js: counts + main-thread CPU per switch; trace-stats now reports CPU time).
+## 🎚 240 Hz pass over rounds 44–45 (round 46, smooth46, 6 upgrades: docs/upgrades/smooth46.md)
+- ✓ A press in the chat on screen no longer re-activates it (no "view changed" round to ~20 modules per right-click / Send); menus find an open dialog without searching the page; the jank watch's slow-frame notes no longer walk the page each frame (the hub's script during Lab play ≈ halved); a burst of error notes is placed once; the chats list search filters by the letter first; a 🅰 layer moving on the music reuses its step objects frame to frame.
+- ○ `sh dev/run-checks.sh smooth46` (dev/checks/smooth46.js: counts that fail on the base commit, plus what must stay right).
