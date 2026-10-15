@@ -255,7 +255,9 @@ const BoardCmds = (() => {
   function registerAll() {
     let skipped = [];
     for (const d of defs) {
-      if (Commands.get(d.name)) { skipped.push(d.name); continue; }
+      // (capturefix2) a name another stream shares by a `when` (chat-refs' /ref): this one joins it as the plain variant
+      const had = Commands.get(d.name);
+      if (had && !(had.variants || had.when)) { skipped.push(d.name); continue; }
       Commands.register({ area: AREA, ...d, aliases: (d.aliases || []).filter((a) => !Commands.get(a)) });
     }
     if (skipped.length) console.warn('Board: command names already taken', skipped);

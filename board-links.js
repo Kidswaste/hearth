@@ -130,7 +130,7 @@
     B._.updateOverlay(); saveSoon();
   };
   const hookWheel = () => { const r = S.mounted && S.ui?.root; if (r && !r.__altWheel) { r.__altWheel = true; r.addEventListener('wheel', altWheel, { passive: false, capture: true }); } };
-  addEventListener('hearth:view', hookWheel); hookWheel();
+  addEventListener('hearth:view', hookWheel); document.addEventListener('hearth:board-mounted', hookWheel); hookWheel();
   const saveSoon = debounce(() => B.save(), 500);
   B._.KEYS('Alt+wheel on the selection', 'opacity up / down'); B._.KEYS('Shift+Alt+wheel on the selection', 'rotate');
   B._.KEYS('Alt+click a palette stripe', 'copy that color');

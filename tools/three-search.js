@@ -263,11 +263,18 @@ const LabSearch = (() => {
     const s = S();
     if (!s?.selectLayer(id)) throw new Error('That layer is gone');
     requestAnimationFrame(() => {
-      const row = s.pane.querySelector(`.ly-row[data-id="${CSS.escape(id)}"]`);
+      const rowOf = () => s.pane.querySelector(`.ly-row[data-id="${CSS.escape(id)}"]`);
+      const row = rowOf();
       if (!row) return;
       row.scrollIntoView({ block: 'nearest' });
       row.classList.remove('ls-flash'); void row.offsetWidth; row.classList.add('ls-flash');
-      setTimeout(() => row.classList.remove('ls-flash'), 1300);
+      // (capturefix2) the layers list is rebuilt whole when the preview answers (layer props, a hot run): a row made
+      // during the flash takes it over where it was, instead of the light going out early (a busy machine answers
+      // after this frame, so the flash was often gone at once)
+      const t0 = performance.now();
+      const mo = new MutationObserver(() => { const r = rowOf(); if (r && !r.classList.contains('ls-flash')) { r.style.animationDelay = `-${Math.round(performance.now() - t0)}ms`; r.classList.add('ls-flash'); } });
+      if (row.parentElement) mo.observe(row.parentElement, { childList: true });
+      setTimeout(() => { mo.disconnect(); const r = rowOf(); r?.classList.remove('ls-flash'); if (r) r.style.animationDelay = ''; }, 1300);
     });
   }
   async function showHelp(h) {

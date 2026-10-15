@@ -593,7 +593,7 @@ const ThreeMedia = (() => {
           const moved = (to) => { copyMap(path, to).catch(() => {}); emit('relink', { from: path, to }); return load(to, { startAt, quiet, relinked: true }); };
           const alt = await tc.relink(path).catch(() => null);
           if (alt && seq === loadSeq) return moved(alt);
-          if (seq === loadSeq) tc.missingNote?.({ path, where: 'scene', retry: moved });
+          if (seq === loadSeq) tc.missingNote?.({ path, where: 'scene', retry: moved, raw: err.message });
           return { ok: false, error: err.message, missing: true };
         }
         if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' });

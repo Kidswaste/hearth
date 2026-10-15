@@ -119,7 +119,8 @@ check('report: areas table (long frames where you were)', /\| chat \| \d+ \| [^|
 check('report: culprits with file:line and where they started', /board-jankfixture\.js:2/.test(text) && /tools\/three-jankfixture\.js:3/.test(text) && /started from/.test(text), text.slice(0, 1200));
 check('report: plain names', /the mood board/.test(text) && /the Lab/.test(text));
 check('report: causes, Lab, adapted, profile, GPU', /Why frames ran long/.test(text) && /Lab preview/.test(text) && /test job 1/.test(text) && /short profile/.test(text) && /Test view/.test(text), text.slice(-700));
-check('report: Copy for Claude + Last week buttons', note?.o?.actions?.map((a) => a.label).join('|') === '📋 Copy for Claude|Last week', JSON.stringify(note?.o?.actions?.map((a) => a.label)));
+// (round 44) devreport (round 21) adds its ⚑ Report to the developer after them: that one is expected too
+check('report: Copy for Claude + Last week buttons', /^📋 Copy for Claude\|Last week(\|⚑ Report to the developer)?$/.test(note?.o?.actions?.map((a) => a.label).join('|') || ''), JSON.stringify(note?.o?.actions?.map((a) => a.label)));
 const g = await JankReport.gather('day');
 const claudeText = JankReport.forClaude(g);
 out.info.forClaude = claudeText.slice(0, 1400);

@@ -465,7 +465,9 @@ const Board = (() => {
     anim = { target, start, t0: performance.now(), mode };
     const step = (t) => {
       if (!anim || anim.target !== target) return;
-      const k = Math.min(1, (t - anim.t0) / (mode === 'fly' ? 520 : 180));
+      // (capturefix2) never below 0: a frame's timestamp can be earlier than the moment the move began, and a negative
+      // k ran the first frame the wrong way (a wheel zoom-in first zoomed out: 0.66 → 0.64 on a busy machine)
+      const k = Math.max(0, Math.min(1, (t - anim.t0) / (mode === 'fly' ? 520 : 180)));
       const e = 1 - (1 - k) ** 3;
       // zoom in log space so fly-outs feel even
       const z = Math.exp(Math.log(start.z) + (Math.log(target.z) - Math.log(start.z)) * e);
@@ -476,6 +478,10 @@ const Board = (() => {
       if (k < 1) requestAnimationFrame(step); else anim = null;
     };
     requestAnimationFrame(step);
+    // (capturefix2) the move ends on time even when frames come slowly (a clip decoding, a busy machine): its last frame
+    // used to wait for the next paint, so a 520 ms fly to a saved view could still be under way 700 ms later
+    const dur = mode === 'fly' ? 520 : 180;
+    setTimeout(() => { if (anim && anim.target === target) { anim = null; S.view = { ...target }; writeView(); } }, dur + 40);
   }
   function setZoom(z, smooth = true) { const r = S.ui.vp.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, z / S.view.z, smooth); }
   function zoomToBox(box, pad = 70, smooth = true) {
@@ -663,7 +669,10 @@ const Board = (() => {
   const playing = new Map(); // id -> { v, stopT }
   function startPreview(id) {
     const it = item(id); const n = S.nodes.get(id);
-    if (!it || !n || lastOff.get(id) || S.moving) return;
+    // (capturefix2) no S.moving test here: hovers check it themselves (pointerenter). An asked-for play (▶ in a menu,
+    // /board-play, a tour stop, Ask about a clip) right after the view moved was dropped while the view settled
+    // (140 ms + two frames: often longer on a busy machine): "Played 1" with nothing playing
+    if (!it || !n || lastOff.get(id)) return;
     const p = playing.get(id);
     if (p) { clearTimeout(p.stopT); return; }
     if (it.type === 'gif') { const img = n.__img; img.__src = fileUrl(it.src); img.src = img.__src; playing.set(id, { gif: true }); return; }
@@ -1097,6 +1106,9 @@ const Board = (() => {
     ui.root.append(ui.vp, ui.hud);
     body.append(ui.root);
     S.mounted = true;
+    // (capturefix2) for what hooks the board's own elements (board-links' Alt+wheel): the first mount came with no
+    // view change after it, so Alt+wheel opacity did nothing until you switched away and back
+    document.dispatchEvent(new CustomEvent('hearth:board-mounted'));
 
     ui.vp.addEventListener('pointerdown', onPointerDown);
     ui.vp.addEventListener('pointermove', onPointerMove);

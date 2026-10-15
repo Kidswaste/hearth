@@ -289,9 +289,12 @@ function menuTidy(list) {
   for (const it of list) if (isItem(it) && !it.danger && !it.items && !it.back && MENU_DANGER.test(menuLabel(it)[0])) it.danger = true;
   const bad = list.filter((it) => isItem(it) && it.danger && !it.more);
   if (bad.length && list.length > bad.length) {
-    list = list.filter((it) => !bad.includes(it));
+    // (capturefix2) …except "Customise this…", which closes every menu (declutter.js): Delete goes right above it. It
+    // went below it (board items, the Boards chip, capture cards: polish8)
+    const custom = list.filter((it) => isItem(it) && menuLabel(it)[0] === 'Customise this…');
+    list = list.filter((it) => !bad.includes(it) && !custom.includes(it));
     while (list.length && (list.at(-1) === '-' || list.at(-1)?.sep)) list.pop();
-    list.push('-', ...bad);
+    list.push('-', ...bad, ...(custom.length ? ['-', ...custom] : []));
   }
   return list.filter((it, i, a) => !((it === '-' || it?.sep) && (i === 0 || a[i - 1] === '-' || a[i - 1]?.sep)));
 }

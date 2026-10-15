@@ -179,13 +179,13 @@ const TwoComputers = (() => {
   const missing = new Map(); // path → { path, name, retry } (this session; 🩺 Fix my scene lists them)
   const noted = new Set();
   // a file that isn't here: one calm note with "Find this file" (once per file per session)
-  function missingNote({ path, retry, where = 'scene' } = {}) {
+  function missingNote({ path, retry, where = 'scene', raw } = {}) { // (round 45, errorcalm) raw: what the computer said, behind Details
     if (!path) return;
     const name = T()?.baseName(path) || path;
     missing.set(path, { path, name, retry, where });
     if (noted.has(path)) return;
     noted.add(path);
-    toast(`${name} isn't on this computer${me?.peers?.length ? ` (the ${where} came from ${yourOther(T().shortLabel(otherOf(me)))})` : ''}.`, { timeout: 12000, action: { label: 'Find this file', fn: () => findMissing(path).catch((err) => toast(err.message, { type: 'error' })) } });
+    toast(`${name} isn't on this computer${me?.peers?.length ? ` (the ${where} came from ${yourOther(T().shortLabel(otherOf(me)))})` : ''}.`, { timeout: 12000, ...(raw ? { raw } : {}), action: { label: 'Find this file', fn: () => findMissing(path).catch((err) => toast(err.message, { type: 'error' })) } });
   }
   // "Find this file": pick it here; remembered on this computer only (the other one keeps its own)
   async function findFile(path) {

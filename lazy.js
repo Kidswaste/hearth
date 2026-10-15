@@ -178,7 +178,7 @@ const Lazy = (() => {
           r.mount(body, head);
           Tools.syncDocks?.();
           if (!s || H.surfaceIdFor?.(H.activeId) === s.el.dataset.id || H.grid) r.onShow?.();
-        }).catch((err) => { wait.textContent = `${t.name} didn't load: ${err.message}`; });
+        }).catch((err) => { wait.textContent = `${t.name} didn't load: ${calmError(err)}`; });
       },
       onShow() { real()?.onShow?.(); },
       commands: (t.commands || []).map((c) => ({ label: c.label, run: () => load(g.name).then(() => real()?.commands?.find((x) => x.label === c.label)?.run()) })),

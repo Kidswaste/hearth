@@ -292,7 +292,8 @@ const Access = (() => {
     if (onScreen && focused) return null;
     const name = agentOf(agentId)?.name || 'A chat';
     const t = toast(`${name} asks: ${text}`, { timeout: 15000, action: agentId && chatId ? { label: 'Open', fn: () => Native.open(agentId, chatId) } : undefined });
-    if (!focused) { try { window.hub.flashWindow(); new Notification(`${name} asks permission`, { body: text }).onclick = () => { window.hub.showWindow?.(); if (agentId && chatId) Native.open(agentId, chatId); }; } catch { /* no notifications */ } }
+    if (!focused && window.Notify) { try { window.hub.flashWindow(); } catch { /* fine */ } } // (round 44, notify) the card notifies by itself ('hearth:needs-you'): "Allow…" opens it, never approves
+    else if (!focused) { try { window.hub.flashWindow(); new Notification(`${name} asks permission`, { body: text }).onclick = () => { window.hub.showWindow?.(); if (agentId && chatId) Native.open(agentId, chatId); }; } catch { /* no notifications */ } }
     return t;
   }
   // Resolves { allow, always, note, timedOut }. In a reply that is streaming the card joins it; otherwise it waits in

@@ -16,7 +16,8 @@ const KeysUI = (() => {
   const keyText = (k) => (MAC ? MAC_SYM.reduce((s, [re, to]) => s.replace(re, to), String(k)) : String(k));
   // the descriptions name keys too ("⌘ Command palette (Ctrl+K)"): on a Mac they read ⌘ / ⌥ there as well
   // ("Ctrl+click" stays: on a Mac that is the right-click)
-  const whatText = (t) => (MAC ? String(t).replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥') : String(t));
+  // (capturefix2) "Ctrl/⌘+Z" (both, written for either computer: the chats panel, layer groups) reads ⌘Z on a Mac
+  const whatText = (t) => (MAC ? String(t).replace(/\bCtrl\/⌘\+?/g, '⌘').replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥') : String(t));
   // "Ctrl+Shift+U / Alt+1…9" → <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>U</kbd> / <kbd>Alt</kbd><kbd>1…9</kbd>
   function kbds(keys) {
     const out = [];

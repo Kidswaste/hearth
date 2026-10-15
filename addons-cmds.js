@@ -356,11 +356,14 @@ const Addons = (() => {
 
   // ---------- data: backup, trash, downloads, import ----------
   const D = reg('Data');
-  D({ name: 'backup', args: '[now | list | as]', desc: 'Back up Hearth now (to your backup folder), or list / save a copy elsewhere',
-    complete: (a) => startsWith(['now', 'list', 'as'].map((v) => ({ value: v })), a),
+  D({ name: 'backup', args: '[now | list | status | check | folder … | auto on|off | as]', desc: 'Back up Hearth now (checked), see your backups and the last one, check the newest, choose where this computer keeps them, automatic backups on / off, or save a copy elsewhere',
+    complete: (a) => startsWith((window.BackupAuto?.ARGS || ['now', 'list', 'as']).map((v) => ({ value: v })), a),
     run: async (args) => {
-      if (/^list/i.test(args)) { AppUI.backupsDialog(); return; }
       if (/^as/i.test(args)) { await AppUI.exportData(); return; }
+      // (round 45, backupauto) automatic, checked backups: backupauto.js answers
+      if (!window.BackupAuto && window.Lazy?.load) { try { await Lazy.load('backupauto'); } catch { /* the older way */ } }
+      if (window.BackupAuto) return (await BackupAuto.command(args)) || undefined;
+      if (/^list/i.test(args)) { AppUI.backupsDialog(); return; }
       const r = await AppUI.backupNow();
       return r ? `💾 Backup saved: \`${r.path}\` (${fmtBytes(r.size)})` : undefined;
     } });

@@ -448,7 +448,7 @@ const LabTemplates = (() => {
     // one at a time; the newest values win
     function update(vals) {
       if (busy) { again = vals; return busy; }
-      busy = run(vals).catch((e) => { caption.textContent = `⚠ ${e.message}`; }).finally(() => { busy = null; if (again) { const v = again; again = false; update(v); } });
+      busy = run(vals).catch((e) => { caption.textContent = `⚠ ${calmError(e)}`; }).finally(() => { busy = null; if (again) { const v = again; again = false; update(v); } });
       return busy;
     }
     addEventListener('resize', place);

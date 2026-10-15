@@ -209,10 +209,35 @@ function testHook(t) {
   if (t.probe === 'take' && probe) out.probe = probe.take();
   if (t.probe === 'start' && probe) { probe.take(); out.probe = 'started'; }
   if (t.timers) out.timers = sched.list();
+  if (t.metrics) { try { out.metrics = metrics(); } catch (err) { out.metrics = { error: String(err?.stack || err).slice(0, 600), procs: [], pages: [] }; } } // (round 44, idlecpu) CPU time and wakeups per process, for dev/checks/idlecpu.js
   out.state = snapshot();
   out.stub = stub ? { starts: stub.starts.slice(), stops: stub.stops.slice(), live: [...stub.live] } : null;
   out.bg = bg?.state?.() || null;
   return out;
+}
+
+// (round 44, idlecpu; tests only) every process' CPU time (seconds since it started), Chromium's idle wakeups / s since the
+// last call, and on Linux each process' context switches over all its threads (/proc: wakeups, counted by the kernel);
+// which page / frame runs in which process; the store threads' busy time (event loop utilization)
+function metrics() {
+  const { app, webContents } = require('electron');
+  const fs = require('fs');
+  const switches = (pid) => {
+    if (process.platform !== 'linux') return null;
+    let n = 0;
+    try { for (const tid of fs.readdirSync(`/proc/${pid}/task`)) { try { const s = fs.readFileSync(`/proc/${pid}/task/${tid}/status`, 'utf8'); n += Number(/voluntary_ctxt_switches:\s+(\d+)/.exec(s)?.[1] || 0) + Number(/nonvoluntary_ctxt_switches:\s+(\d+)/.exec(s)?.[1] || 0); } catch { /* thread gone */ } } } catch { return null; }
+    return n;
+  };
+  const procs = app.getAppMetrics().map((m) => ({ pid: m.pid, type: m.type, name: m.name || m.serviceName || '', cpuS: m.cpu?.cumulativeCPUUsage ?? null, pct: m.cpu?.percentCPUUsage ?? null, wake: m.cpu?.idleWakeupsPerSecond ?? null, ctx: switches(m.pid) }));
+  const pages = [];
+  for (const wc of webContents.getAllWebContents()) {
+    try {
+      pages.push({ id: wc.id, type: wc.getType(), url: wc.getURL().slice(0, 160), pid: wc.getOSProcessId() });
+      for (const f of wc.mainFrame?.framesInSubtree || []) if (f !== wc.mainFrame) pages.push({ id: wc.id, type: 'frame', url: String(f.url || '').slice(0, 160), pid: f.osProcessId, name: f.name || '' });
+    } catch { /* closing */ }
+  }
+  let threads = null; try { threads = require('./store')._threads?.() || null; } catch { /* none */ }
+  return { at: Date.now(), mainCpu: process.cpuUsage(), procs, pages, threads };
 }
 
 module.exports = { register, hold, during, turn, download, every: (id, ms, fn, o) => sched.every(id, ms, fn, o), stop: (id) => sched.stop(id), state: snapshot, policy: () => Core.policy(st),

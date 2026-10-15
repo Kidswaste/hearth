@@ -183,7 +183,9 @@ const Hints = (() => {
     if (visible() && !force) return null;
     const since = now - T0;
     const pick = ready.find((q) => (force || since >= (q.kind === 'tip' ? C('start') : C('startNotice'))) && (force || q.kind !== 'tip' || now - lastAt() >= C('gap')));
-    if (!pick) return null;
+    // (round 44, idlecpu) only waiting for the start's calm or the gap between two tips (3 min): look again when the
+    // first one is due, not every 0.7 s until then (a reply, typing or a place change look sooner)
+    if (!pick) { const dueIn = Math.min(...ready.map((q) => Math.max(T0 + (q.kind === 'tip' ? C('start') : C('startNotice')), q.kind === 'tip' ? lastAt() + C('gap') : 0) - now)); schedule(Math.max(C('tick'), Math.min(dueIn + 20, C('idle')))); return null; }
     show(pick);
     return pick.id;
   }

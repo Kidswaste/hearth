@@ -537,6 +537,17 @@ const Panel = (() => {
       const t = tipOf(d.item);
       if (r.title !== t && !r.title.includes('\n')) r.title = t;
     }, { passive: true });
+    // (round 45, chatswitch) a chat you rest on (pointer or keys) is made ready before you open it (Native.prefetch)
+    let preT = 0; let preRow = null;
+    const ready = (e, ms) => {
+      const r = e.target.closest?.('.item'); const d = r && rows.get(r);
+      if (r === preRow) return;
+      clearTimeout(preT); preRow = r;
+      if (d?.item.chatId && d.agent.mode === 'native') preT = setTimeout(() => { if (preRow === r) Native.prefetch?.(d.agent.id, d.item.chatId); }, ms);
+    };
+    root.addEventListener('pointerover', (e) => ready(e, 90), { passive: true });
+    root.addEventListener('pointerleave', () => { clearTimeout(preT); preRow = null; }, { passive: true });
+    root.addEventListener('focusin', (e) => ready(e, 160));
   }
 
   let listedMark = false;

@@ -83,7 +83,10 @@ const A11y = (() => {
   const usable = (n) => n && n.isConnected && n !== document.body && n.checkVisibility?.({ visibilityProperty: true });
   // what last had focus outside every overlay (an overlay that focuses its own box as it opens took it already)
   let lastOut = null;
-  addEventListener('focusout', (e) => { const t = e.target; if (t instanceof Element && !t.closest(OVERLAY) && !t.closest('#menu, #menu-fly, #menu-fly2')) lastOut = t; }, true);
+  // (capturefix2) focus that went nowhere (a click on the Lab preview, on empty space) forgets it: you left that box. It
+  // was kept, so closing the X effects picker put the focus back in the director's chat box you had clicked away from,
+  // and the next X typed "x" in the chat instead of opening the picker again (journey-lab)
+  addEventListener('focusout', (e) => { const t = e.target; if (t instanceof Element && !t.closest(OVERLAY) && !t.closest('#menu, #menu-fly, #menu-fly2')) lastOut = e.relatedTarget ? t : null; }, true);
   function opened(root) {
     if (open.some((o) => o.root === root)) return;
     const a = document.activeElement;

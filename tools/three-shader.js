@@ -100,7 +100,7 @@ const LabShader = (() => {
   const onScreen = (ctx = {}) => { if (!ctx.chatId || typeof ChatScenes === 'undefined') return true; const r = ChatScenes.routeThree('three_layers', ctx.chatId); return !r || r.sketchId === ThreeLab.scenes?.currentId(); };
   const isShaderRow = (L) => /^shader/.test(L.kind || '');
   async function target(ref, ctx = {}, { any = false } = {}) {
-    const v = await call('three_layers', {}, ctx);
+    const v = await call('three_layers', { report: 'full' }, ctx);
     const all = v.layers || [];
     const pool = any ? all : all.filter(isShaderRow);
     if (!pool.length) throw new Error('No ◇ shader layer in this scene: /shader new <starter> or /shader import.');
@@ -131,7 +131,7 @@ const LabShader = (() => {
   async function addLayer(code, name, ctx = {}, wait = 1.5) {
     const out = await call('three_add_layer', { name, code, wait }, ctx);
     const L = { id: null, name: out.added || name };
-    const v = await call('three_layers', {}, ctx).catch(() => null);
+    const v = await call('three_layers', { report: 'full' }, ctx).catch(() => null);
     const row = v?.layers?.find((x) => x.name === L.name);
     return row ? stateOf(row, ctx) : { layer: L.name };
   }

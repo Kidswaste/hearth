@@ -441,6 +441,8 @@ function getTokenStats(agents) {
 }
 
 module.exports = {
+  // (round 44, idlecpu; tests) the store threads' busy time since they started (event loop utilization: active / idle ms)
+  _threads: () => Object.fromEntries([['store', worker], ['files', filesWorker]].filter(([, w]) => w?.performance?.eventLoopUtilization).map(([k, w]) => { const u = w.performance.eventLoopUtilization(); return [k, { activeMs: Math.round(u.active * 10) / 10, idleMs: Math.round(u.idle) }]; })),
   DATA_DIR,
   ATTACH_DIR,
   listChats,

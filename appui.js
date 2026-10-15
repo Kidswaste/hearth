@@ -97,6 +97,12 @@ const AppUI = (() => {
     const claudePath = el('input', { value: s.enginePaths?.claude || '', placeholder: 'Found automatically (Claude desktop app or the claude command)' });
     const codexPath = el('input', { value: s.enginePaths?.codex || '', placeholder: 'Found automatically (Codex / ChatGPT app or the codex command)' });
     const [notifyRow, notifyIn] = check('Desktop notifications while I\'m elsewhere', s.notify !== false, '', 'A system notification when an AI finishes, something needs you, or a long job ends while you are in another window or app');
+    // (round 44, notify) Tell me when…: what notifies, five switches under the one above (notify-core.js SWITCHES)
+    const NC = typeof NotifyCore !== 'undefined' ? NotifyCore : null;
+    const whenBoxes = NC ? NC.SWITCHES.map((sw) => { const [row, input] = check(sw.label, NC.prefs(s)[sw.id], '', sw.tip); input.dataset.notify = sw.id; row.classList.add('nt-when'); return [row, input]; }) : [];
+    const whenNow = () => ({ notify: notifyIn.checked, notifyWhen: Object.fromEntries(whenBoxes.map(([, i]) => [i.dataset.notify, i.checked])) });
+    const whenDim = () => { for (const [row, i] of whenBoxes) { i.disabled = !notifyIn.checked; row.style.opacity = notifyIn.checked ? '' : '0.55'; } };
+    notifyIn.addEventListener('change', whenDim); whenDim();
     const sleepSel = el('select', {}, [['0', 'Never'], ['10', 'after 10 minutes'], ['30', 'after 30 minutes'], ['60', 'after an hour']].map(([v, l]) => el('option', { value: v, text: l, selected: String(s.sleepWebsAfter || 0) === v })));
     const langs = new Set(s.spellLanguages || ['en-US']);
     const langBoxes = SPELL_LANGS.map(([code, label]) => {
@@ -177,6 +183,8 @@ const AppUI = (() => {
       syncSec.querySelector('.two-here')?.setAttribute('title', 'The name this computer goes by in sync and in your chats');
     }
     pcSec.append(
+      // (round 45, backupauto) "Last backup: 2 h ago ✓" with Backups… (backupauto.js; loaded right after the first screen)
+      (() => { if (window.BackupAuto) return BackupAuto.line(); const slot = el('span', { class: 'sf-slot' }); window.Lazy?.load?.('backupauto').then(() => { if (window.BackupAuto) slot.replaceWith(BackupAuto.line()); }).catch(() => {}); return slot; })(),
       el('div', { class: 'button-row', title: 'Claude, Codex, ffmpeg, sync, folders from the other computer, permissions, updates: one list, one button each' },
         gbtn('Check this computer…', 'Is this computer ready? Each thing with its state and one button to fix it (nothing installs without your click)', () => { dialog.close(); (window.Lazy?.load ? Lazy.load('firstrun') : Promise.resolve()).then(() => FirstRun.open()); })), // (round 28, firstrun)
       fold('start', 'Starting and closing', 'What Hearth does when your computer starts, when it opens and when you close its window',
@@ -203,12 +211,15 @@ const AppUI = (() => {
 
     // ---- Advanced: the rarer folds ----
     const onOf = (sec) => { const rows = [...sec.querySelectorAll('.sf-row')]; return { on: rows.filter((r) => r.querySelector('.sf-seg button.on')?.dataset.v === 'on').length, n: rows.length }; };
-    const chatsSec = home(section('Chats', notifyRow, el('span', { class: 'sf-slot' })), 'chats');
+    const chatsSec = home(section('Chats', el('span', { class: 'sf-slot' })), 'chats');
+    const notifySec = section('Tell me when…', notifyRow, ...whenBoxes.map(([row]) => row));
     const boardSec = home(section('Mood board', el('span', { class: 'sf-slot' })), 'board');
     const adv = el('details', { class: 'settings-more sc-fold sc-adv', dataset: { fold: 'advanced' } },
-      el('summary', { class: 'sc-sum', title: 'The rarer settings: chats, keys, the mood board, spelling, the rail, folders, backups and files' }, el('span', { class: 'sc-title', text: 'Advanced' }), el('span', { class: 'sc-state', text: 'Chats, keys, mood board, spelling, the rail, folders, backups' })),
+      el('summary', { class: 'sc-sum', title: 'The rarer settings: chats, notifications, keys, the mood board, spelling, the rail, folders, backups and files' }, el('span', { class: 'sc-title', text: 'Advanced' }), el('span', { class: 'sc-state', text: 'Chats, notifications, keys, mood board, spelling, the rail, folders, backups' })),
       fold('chats', 'Chats', 'How the chats behave: Enter, long replies, sounds, notifications, spelling',
-        () => { const c = onOf(chatsSec); return [swOn('enter-sends') === false ? 'Ctrl/⌘+Enter sends' : 'Enter sends', `${c.on + (notifyIn.checked ? 1 : 0)} of ${c.n + 1} on`].join(' · '); }, chatsSec),
+        () => { const c = onOf(chatsSec); return [swOn('enter-sends') === false ? 'Ctrl/⌘+Enter sends' : 'Enter sends', `${c.on} of ${c.n} on`].join(' · '); }, chatsSec),
+      fold('notify', 'Tell me when…', 'Which desktop notifications Hearth shows while you are in another app (your computer\'s Focus / Do Not Disturb still holds them)',
+        () => (NC ? NC.summary(whenNow()) : notifyIn.checked ? 'On' : 'Off'), notifySec),
       fold('keys', 'Keys', 'Your keyboard keys, and one key that shows or hides Hearth from anywhere',
         () => (hotkey.value.trim() ? `Show / hide: ${hotkey.value.trim()}` : 'No show / hide key'),
         home(section('Keys',
@@ -234,7 +245,7 @@ const AppUI = (() => {
           el('div', { class: 'button-row', title: 'The keys of services Hearth talks to' },
             gbtn('Meshy key…', 'Paste your Meshy API key once (stored encrypted on this computer, never shown to a chat)', run('/meshy key'))), el('span', { class: 'sf-slot' })), 'hearth')),
       fold('files', 'Backup and files', 'Backups of your chats and settings, Hearth\'s shortcuts and its own files',
-        () => { const d = Number(H.settings().autoBackupDays) || 0; return d ? `Backs up by itself ${d === 1 ? 'daily' : d === 7 ? 'weekly' : d === 30 ? 'monthly' : `every ${d} days`}` : 'Backups when you ask'; },
+        () => { if (window.BackupAuto) return BackupAuto.lineText().text; const d = Number(H.settings().autoBackupDays) || 0; return d ? `Backs up by itself ${d === 1 ? 'daily' : d === 7 ? 'weekly' : d === 30 ? 'monthly' : `every ${d} days`}` : 'Backups when you ask'; },
         section('Backup and files',
           el('div', { class: 'button-row', title: 'Backups, shortcuts and Hearth\'s own files' },
             // (round 39) one Backups… (back up now, a copy as one file, restore, automatic backups) instead of "Back up hub data…"
@@ -265,6 +276,7 @@ const AppUI = (() => {
         closeToTray: trayIn.checked,
         launchAtStartup: startupIn.checked,
         notify: notifyIn.checked,
+        ...(NC ? { notifyWhen: whenNow().notifyWhen } : {}),
         sleepWebsAfter: Number(sleepSel.value) || undefined,
         hotkey: hotkey.value.trim(),
         spellLanguages: langBoxes.map((l) => l.querySelector('input')).filter((i) => i.checked).map((i) => i.dataset.code),
@@ -607,7 +619,7 @@ const AppUI = (() => {
   }
 
   // ---------- reply notifications & unread badges ----------
-  async function replyFinished(agentId, chatId, text) {
+  async function replyFinished(agentId, chatId, text, ms) {
     const agent = H.agent(agentId);
     if (!agent) return;
     const focused = await window.hub.isWindowFocused();
@@ -630,6 +642,9 @@ const AppUI = (() => {
     }
     if (!focused) {
       window.hub.flashWindow();
+      // (round 44, notify) Electron's own notification, only for a reply that took more than ~20 s (ms unknown: told),
+      // one per chat (a newer one replaces it), under Settings › Advanced › Tell me when… › Replies
+      if (window.Notify) { Notify.send({ type: 'reply', agentId, chatId, text, ms, failed: /^Error: /.test(text || ''), title: typeof ChatScenes !== 'undefined' ? ChatScenes.noteTitle(chatId, `${agent.name} replied`) : undefined }); return; }
       const n = new Notification(typeof ChatScenes !== 'undefined' ? ChatScenes.noteTitle(chatId, `${agent.name} replied`) : `${agent.name} replied`, { body: (text || '').replace(/[#*`>_]/g, '').slice(0, 160), silent: false });
       n.onclick = () => { window.hub.showWindow(); Native.open(agentId, chatId); };
     }
@@ -742,6 +757,8 @@ const AppUI = (() => {
   // One-click backups to a folder (settings.backupDir, default Documents/Hearth backups), the list of them, and a
   // restore that merges (adds what's missing; never deletes anything of yours). /backup, /restore.
   async function backupNow({ quiet = false } = {}) {
+    // (round 45, backupauto) checked after it's written, big media once, the rotation, failures in plain words
+    if (window.BackupAuto) { const r = await BackupAuto.backupNow({ quiet }); return r?.ok ? r : null; }
     const t = quiet ? null : toast('Backing up…', { timeout: 60000 });
     try {
       const r = await window.hub.backup.now({ keep: H.settings().backupKeep || 10 });
@@ -753,6 +770,8 @@ const AppUI = (() => {
   }
   function restoreText(r) {
     return [`Chats: ${r.chats.add} to add${r.chats.newer ? ` · ${r.chats.newer} newer in the backup` : ''}${r.chats.older ? ` · ${r.chats.older} older in the backup (yours kept)` : ''} · ${r.chats.same} identical`,
+      r.kv.merge?.length ? `Brought back into your lists (what you don't have; nothing removed): ${r.kv.merge.map((m) => `${m.name === 'three-sketches' ? 'Lab scenes' : m.name} +${m.n}`).slice(0, 8).join(', ')}` : '',
+      r.media?.add ? `Big media files to bring back: ${r.media.add}` : '',
       `Tool data (notes, prompts, sketches…): ${r.kv.add} to add${r.kv.differ.length ? ` · ${r.kv.differ.length} differ (yours kept): ${r.kv.differ.slice(0, 8).join(', ')}${r.kv.differ.length > 8 ? '…' : ''}` : ''}`,
       `Memory: ${r.memory.add} line(s) to add · Attachments: ${r.attachments.add} to add`,
       r.agentsMissing.length ? `Agents in the backup you don't have (add them by hand): ${r.agentsMissing.join(', ')}` : '',
@@ -763,7 +782,7 @@ const AppUI = (() => {
     if (!file) return null;
     let r;
     try { r = await window.hub.backup.restore(file, { dryRun: true }); } catch (err) { toast(err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { type: 'error' }); return null; }
-    const nothing = !r.chats.add && !r.chats.newer && !r.kv.add && !r.memory.add && !r.attachments.add;
+    const nothing = !r.chats.add && !r.chats.newer && !r.kv.add && !r.memory.add && !r.attachments.add && !r.kv.merge?.length && !r.media?.add;
     if (nothing) { Modal.alert('Nothing to restore', `Everything in that backup is already here.\n\n${restoreText(r)}`); return r; }
     const v = await new Promise((resolve) => {
       const newer = el('input', { type: 'checkbox' });
@@ -782,10 +801,14 @@ const AppUI = (() => {
     const done = await window.hub.backup.restore(file, { dryRun: false, newer: Boolean(v.newer) });
     H.chats = await window.hub.listChats();
     Panel.render();
-    toast(`Restored: ${done.chats.add} chat(s)${done.chats.replaced ? `, ${done.chats.replaced} updated` : ''}, ${done.kv.add} tool store(s), ${done.memory.add} memory line(s), ${done.attachments.add} attachment(s). Reload to see restored tool data.`, { timeout: 9000, action: { label: 'Reload', fn: () => window.hub.reloadWindow() } });
+    toast(`Restored: ${done.chats.add} chat(s)${done.chats.replaced ? `, ${done.chats.replaced} updated` : ''}, ${done.kv.add} tool store(s)${done.kv.merge?.length ? `, ${done.kv.merge.reduce((a, m) => a + m.n, 0)} item(s) back in your lists` : ''}, ${done.memory.add} memory line(s), ${done.attachments.add} attachment(s). Reload to see restored tool data.`, { timeout: 9000, action: { label: 'Reload', fn: () => window.hub.reloadWindow() } });
     return done;
   }
   async function backupsDialog() {
+    // (round 45, backupauto) Settings › Backups: by date, what's inside, checked, Restore missing things, Show in Finder /
+    // Explorer, where this computer keeps them (backupauto.js); this older dialog only if that can't load
+    if (!window.BackupAuto && window.Lazy?.load) { try { await Lazy.load('backupauto'); } catch { /* the older dialog */ } }
+    if (window.BackupAuto) return BackupAuto.dialog();
     const dlg = el('dialog', { class: 'ui-modal backups-dialog' });
     const list = el('div', { class: 'download-list' });
     const dirLabel = el('code', {});
@@ -822,6 +845,7 @@ const AppUI = (() => {
   }
   // At start-up: a quiet backup when auto backup is on and the newest one is older than its interval.
   async function autoBackup() {
+    if (window.hub?.backupauto) return false; // (round 45, backupauto) the main process backs up by itself (powerwise's schedule)
     const days = H.settings().autoBackupDays;
     if (!days) return false;
     const { items } = await window.hub.backup.list();

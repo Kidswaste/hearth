@@ -194,7 +194,7 @@ const AppsMeshy = (() => {
   }
 
   // ---------- chat command ----------
-  const sayJob = (r) => (r.ok ? `🧊 Meshy started **${r.job.name}** (~${r.credits} credits): a bar shows its progress; the model lands in your library${r.job.to === 'lab' ? ' and the Lab' : r.job.to === 'board' ? ' and on the board' : ''}.` : r.error);
+  const sayJob = (r) => (r.ok ? `🧊 Meshy started **${r.job.name}** (~${r.credits} credits): a bar shows its progress; the model lands in your library${r.job.to === 'lab' ? ' and the Lab' : r.job.to === 'board' ? ' and on the board' : ''}.` : calmError(r.error, { app: 'Meshy' })); // (round 45, errorcalm: plain words)
   const placeTo = (ctx) => (ctx.place === 'three' || H.agent?.(ctx.agentId)?.dock === 'three' ? 'lab' : ctx.place === 'board' ? 'board' : null);
   const SUBS = ['draft', 'image', 'texture', 'remesh', 'models', 'lab', 'board', 'balance', 'cost', 'key', 'status', 'resume', 'stop', 'open'];
   function commands() {

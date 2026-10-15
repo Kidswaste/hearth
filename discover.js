@@ -318,7 +318,7 @@ const Discover = (() => {
     const what = id === 'tour:discover' ? want : id.slice(5);
     want = 'new';
     const pane = el('div', { class: 'dc-pane', dataset: { pane: what } }, el('p', { class: 'hint', text: '…' }));
-    const draw = (k) => ({ new: paneNew, map: paneMap, ideas: paneIdeas, tours: paneTours }[k] || paneNew)(pane).catch((err) => pane.replaceChildren(el('p', { class: 'hint', text: err.message })));
+    const draw = (k) => ({ new: paneNew, map: paneMap, ideas: paneIdeas, tours: paneTours }[k] || paneNew)(pane).catch((err) => pane.replaceChildren(el('p', { class: 'hint', text: calmError(err) })));
     const tabs = el('div', { class: 'dc-tabs', role: 'tablist' }, ...PARTS.map(([k, ic, name]) => el('button', { type: 'button', class: `ghost small${k === what ? ' on' : ''}`, text: `${ic} ${name}`, dataset: { tab: k }, on: { click: (e) => { for (const b of tabs.children) b.classList.toggle('on', b === e.currentTarget); pane.dataset.pane = k; draw(k); } } })));
     right.replaceChildren(el('div', { class: 'dc-wrap' }, tabs, pane));
     draw(what);

@@ -20,6 +20,10 @@ const index = fs.readFileSync(path.join(DIR, 'index.txt'), 'utf8').split('\n').m
 const real = index.map((round) => ({ round, text: fs.readFileSync(path.join(DIR, `round-${round}.md`), 'utf8') }));
 const R = (n) => real.find((r) => r.round === n);
 ok(index.includes(33) && index.includes(41), 'the real notes have rounds 33–41', index);
+// (round 44, capturefix2) the digest numbers below were written against rounds 33–41: they read those, so a new round's
+// notes don't break them (the newest round is read from index.txt, as dev/checks/whatsnew.js does, and checked below)
+const upTo41 = real.filter((r) => r.round <= 41);
+const newest = index.at(-1);
 
 // ---------- parse ----------
 const p37 = C.parse(R(37).text, 37);
@@ -50,7 +54,7 @@ ok(G('🔁 Keep going') === 'chats' && G('🧠 Smart learns from you') === 'chat
 ok(G('🐞 Fixed') === 'fixes' && G('↶ One Undo everywhere') === 'all' && G('🤫 Calmer tips') === 'all', 'fixes → Fixes; app-wide → Everywhere');
 
 // ---------- the digest of rounds 33–41 (seen = 32) ----------
-const d = C.digest(real, { seen: 32 });
+const d = C.digest(upTo41, { seen: 32 });
 const lines = d.groups.flatMap((g) => g.items);
 ok(d.from === 33 && d.to === 41 && d.rounds.length === 9, 'seen 32 → rounds 33–41', { from: d.from, to: d.to, rounds: d.rounds });
 ok(lines.length === 12 && d.shown === 12, 'about 12 lines', lines.length);
@@ -75,14 +79,16 @@ const doctor = allItems.find((x) => x.name === 'Fix my scene');
 ok(doctor?.fixedIn?.includes(35) && !allItems.some((x) => /^Fix my scene works with looking around/.test(x.line)), 'round 35\'s Fix my scene fix folds into round 34\'s Fix my scene', doctor);
 ok(d.folded >= 3, 'some fixes folded', d.folded);
 // …but a fix of something older than the digest stays
-const d38 = C.digest(real, { seen: 38 });
+const d38 = C.digest(upTo41, { seen: 38 });
 const all38 = [...d38.groups, ...d38.rest].flatMap((g) => g.items);
 ok(all38.some((x) => x.kind === 'fix' && /"cheaper" in Find anything/.test(x.line)), 'seen 38: the Find anything fix (its feature is older) stays a fix');
 // one round: its details too, nothing more
-const d1 = C.digest(real, { seen: 40 });
+const d1 = C.digest(upTo41, { seen: 40 });
 ok(d1.from === 41 && d1.to === 41 && d1.groups.flatMap((g) => g.items).some((x) => x.kind === 'detail'), 'one round: its bold-named details fill in', d1.groups.flatMap((g) => g.items).map((x) => x.name));
-ok(C.digest(real, { seen: index.at(-1) }).shown === 0, 'nothing missed → empty');
-const d5 = C.digest(real, { seen: 32, cap: 5 });
+ok(C.digest(real, { seen: newest }).shown === 0, 'nothing missed → empty');
+const dn = C.digest(real, { seen: newest - 1 });
+ok(dn.from === newest && dn.to === newest && dn.shown > 0, `the newest round (${newest}, from index.txt) is in the digest`, { from: dn.from, to: dn.to, shown: dn.shown });
+const d5 = C.digest(upTo41, { seen: 32, cap: 5 });
 ok(d5.shown === 5 && d5.more === d5.total - 5, 'the cap holds', { shown: d5.shown, more: d5.more, total: d5.total });
 
 // ---------- dedupe (made-up rounds) ----------

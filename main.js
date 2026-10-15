@@ -402,7 +402,7 @@ ipcMain.handle('window:show', () => { win.show(); win.focus(); });
 // the taskbar flash + a number on the icon (Windows); cleared when the window gets the focus
 let nativeAttention = null;
 ipcMain.handle('window:flash', () => (nativeAttention ? nativeAttention.attention() : null));
-ipcMain.handle('window:isFocused', () => win.isFocused() && win.isVisible());
+ipcMain.handle('window:isFocused', () => !require('./notifymain').awayForChecks() && win.isFocused() && win.isVisible()); // (round 44: a check can play "Hearth in the background")
 ipcMain.handle('window:reload', () => win.webContents.reloadIgnoringCache());
 ipcMain.handle('find:start', (_e, text, opts) => (text ? win.webContents.findInPage(text, opts) : null));
 ipcMain.handle('find:stop', () => win.webContents.stopFindInPage('keepSelection'));
@@ -603,6 +603,7 @@ function registerAfterWindow() {
     send('chrome:offer', { wcId: target.id, url: (() => { try { return target.getURL(); } catch { return ''; } })(), popup: Boolean(opener) });
     if (opener) { try { BrowserWindow.fromWebContents(contents)?.close(); } catch { /* gone */ } } // the dead-end sign-in popup goes
   } });
+  require('./notifymain').register(ipcMain, { getWin: () => win, app, shell, appshell, Notification: require('electron').Notification, send }); // (round 44, notify) desktop notifications: Electron's own (Hearth's name / icon, Focus / Do Not Disturb), one per chat, a burst summed up, a click opens the chat / card / file
   require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
   require('./safetynetmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 29) Hearth never loses work: the session marker, the page reloading after a crash, the work journal
   require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
@@ -614,6 +615,7 @@ function registerAfterWindow() {
   lazyIpc('scenesafemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, syncmain })); // (round 43) 🛟 Recover lost scenes: every copy of the Lab's scenes still on this computer, the cloud folder, backups (reads only)
   datasafe.register(ipcMain, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, store, cfg: cfgStore, syncmain, onConfig: () => send('config:changed', loadAll()) }); // (round 43, datasafe) what couldn't be read (the calm card), 🛟 Recover… (chats, memory, settings, tool data)
   store.onDoubt(() => send('data:doubt', {}));
+  require('./backupautomain').register(ipcMain, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, appDir: __dirname, syncmain, store, getWin: () => win }); // (round 45, backupauto) automatic, checked backups: once a day when idle (powerwise's schedule), before updates / restores, the rotation, Settings › Backups
   lazyIpc('dragdropmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 38) files with Finder / Explorer: native drags out, drops checked (folders, iCloud placeholders), copied files pasted
 
   // config.json / theme.css edited outside Hearth (an editor, sync): told to the window. (round 16) the OS tells us
