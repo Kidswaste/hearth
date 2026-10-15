@@ -197,7 +197,9 @@ function topLayer(node, on, { keep = node.id === 'menu' || node.id === 'menu-fly
   if (!node.hasAttribute('popover')) node.setAttribute('popover', 'manual');
   try {
     if (on) {
-      const host = [...document.querySelectorAll('dialog[open]')].filter((d) => d.matches(':modal')).at(-1) || document.body;
+      // (round 46, smooth46) the dialogs by tag (a list the page keeps), not a selector matched on every element
+      let host = document.body;
+      for (const d of document.getElementsByTagName('dialog')) if (d.open && d.matches(':modal')) host = d;
       if (node.parentElement !== host) { if (node.matches(':popover-open')) node.hidePopover(); host.append(node); }
       const open = node.matches(':popover-open');
       if (open && node.__topSeq !== topLayerSeq) node.hidePopover();
@@ -632,7 +634,17 @@ function createSurface(agent) {
     surface.native = Native.mount(agent.id, chatPane);
   } else if (agent.mode === 'native') surface.native = Native.mount(agent.id, host);
   else surface.webview = createWebSurface(agent, host);
-  host.addEventListener('mousedown', () => activate(agent.id, { focus: false }));
+  // (round 46, smooth46) a press in the chat already on screen (a right-click menu, Send, the chat box) doesn't
+  // activate it again: that sent 'hearth:view' to ~20 modules and marked the chats list inside every press (≈ 9 ms of
+  // each right-click's handlers here)
+  host.addEventListener('mousedown', () => {
+    if (H.activeId === agent.id && H.surfaces.get(H.surfaceIdFor(agent.id))?.el.classList.contains('active')) {
+      lastSeen.set(H.surfaceIdFor(agent.id), Date.now());
+      if (H.unread.delete(agent.id)) renderRail();
+      return;
+    }
+    activate(agent.id, { focus: false });
+  });
   return surface;
 }
 

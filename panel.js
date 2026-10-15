@@ -112,7 +112,9 @@ const Panel = (() => {
   function listFor(agent, q) {
     if (agent.mode === 'native') {
       const base = (inc && inc.lists.get(agent.id)) || model().get(agent.id) || [];
-      return base.filter((c) => inView(c, agent) && !skipped(c) && hit(c, q));
+      // (round 46, smooth46) the search first: a letter typed rules out most chats before the view and the projects'
+      // grouping are asked about each of them (the same chats pass)
+      return base.filter((c) => hit(c, q) && inView(c, agent) && !skipped(c));
     }
     if (view && view.toLowerCase() !== agent.name.toLowerCase()) return [];
     return (H.history[agent.id] || []).map((h) => ({ key: h.url, title: h.title, url: h.url })).filter((i) => matches(i, q));

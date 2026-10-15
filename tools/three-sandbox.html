@@ -7525,7 +7525,7 @@ function tyKinReady(sync) {
 }
 // the hits a type layer moves on, as a function of time ({ k, at, prev, next }); "seconds" is a clock from `start`
 function tyHits(sync, secs, start, memo) {
-  if (sync === 'seconds') { const key = `${secs}|${start}`; if (memo.key !== key) { memo.key = key; memo.fn = globalThis.kinetic.clockHits(secs, start); } return memo.fn; }
+  if (sync === 'seconds') { if (memo.fn == null || !Object.is(memo.secs, secs) || !Object.is(memo.start, start)) { memo.secs = secs; memo.start = start; memo.fn = globalThis.kinetic.clockHits(secs, start); } return memo.fn; } // (round 46: compared as numbers, no text made per frame)
   blFresh();
   return blSrc(sync === 'off' ? 'beat' : sync).hit;
 }
@@ -7924,6 +7924,13 @@ globalThis.textLayer = (P = {}, opts = {}) => {
   }
   let curEm = 1; let k3 = 1;
   const kinMemo = {}; let kinP = null; // (round 45, kinetictype) the steps' plan, made once the math is here, reused every frame
+  // (round 46, smooth46) the plan's question, the hits' state and the readout are reused too: nothing new per frame
+  const kinA = { hit: null, t: 0, start: 0, nR: 1, every: 1, hold: 0, swap: false, durFrac: 0.6 };
+  const kinPlan = (hit, t, start, nR, every, hold, swap, durFrac) => { kinA.hit = hit; kinA.t = t; kinA.start = start; kinA.nR = nR; kinA.every = every; kinA.hold = hold; kinA.swap = swap; kinA.durFrac = durFrac; return globalThis.kinetic.plan(kinP, kinA); };
+  const kinO = { hit: null, sync: '', fx: '', steps: false, swap: false, ostag: 0, P: null };
+  const kinFx = (K, tt) => { if (K && !K.steps) kinPlan(K.hit, tt, 0, 1, 1, 0, false, 0.6); };
+  const kinS = { k: -1, at: null, cur: -1, steps: 0, cycle: 0 }; const kinS2 = { k: -1, at: null };
+  const kinRead = (o) => { o.k = kinP.k; o.at = Number.isFinite(kinP.at) ? Math.round(kinP.at * 1000) / 1000 : null; return o; };
   if ((String(pv('kSync')) !== 'off' || String(pv('kFx')) !== 'none')) tyKinReady(String(pv('kSync'))); // (an export frame waits for the math)
   // one block of text (a title, a lyric line) with its own timing: tIn (its start), tOut (when it goes out, or Infinity)
   const tmp = { a: 0, r: 0, g: 0, b: 0 };
@@ -8030,9 +8037,8 @@ globalThis.textLayer = (P = {}, opts = {}) => {
     if ((kSync !== 'off' || kFx !== 'none') && tyKinReady(kSync)) {
       const hit = tyHits(kSync, Math.max(0.02, num('kSecs')), num('start'), kinMemo);
       kinP ||= globalThis.kinetic.newPlan();
-      if (hit) o0.kin = { hit, sync: kSync, fx: kFx, steps: false, swap: String(pv('kFlow')) === 'one at a time', ostag: 0, P: kinP };
+      if (hit) { kinO.hit = hit; kinO.sync = kSync; kinO.fx = kFx; kinO.steps = false; kinO.swap = String(pv('kFlow')) === 'one at a time'; kinO.ostag = 0; kinO.P = kinP; o0.kin = kinO; }
     }
-    const kinFx = (tt) => { if (o0.kin && !o0.kin.steps) globalThis.kinetic.plan(kinP, { hit: o0.kin.hit, t: tt, start: 0, nR: 1, every: 1, hold: 0, durFrac: 0.6 }); };
     stat.kin = null;
     const tr = num('tracking'); const ld = num('leading'); const al = String(pv('align'));
     const base = num('size') * Math.min(W, H) * (W < H ? 1.25 : 1);
@@ -8054,23 +8060,23 @@ globalThis.textLayer = (P = {}, opts = {}) => {
       if (K && kSync !== 'off') {
         // (round 45, kinetictype) a step on each hit: build up (or one at a time), hold, out, again
         const C = globalThis.kinetic; const nR = C.nRanks(nU, o0.order);
-        C.plan(kinP, { hit: K.hit, t, start, nR, every: num('kEvery'), hold: o0.outA === 'none' ? 0 : num('kHold'), swap: K.swap, durFrac: Math.max(0.05, num('kDur')) });
+        kinPlan(K.hit, t, start, nR, num('kEvery'), o0.outA === 'none' ? 0 : num('kHold'), K.swap, Math.max(0.05, num('kDur')));
         K.steps = true; K.ostag = Math.min(0.05, (kinP.gap * 0.5) / Math.max(1, nR));
-        stat.kin = { k: kinP.k, at: Number.isFinite(kinP.at) ? Math.round(kinP.at * 1000) / 1000 : null, cur: kinP.cur, steps: nR, cycle: kinP.cycle };
+        stat.kin = kinRead(kinS); kinS.cur = kinP.cur; kinS.steps = nR; kinS.cycle = kinP.cycle;
         // an outline drawn on fills in once every step is in
         if (o0.inA === 'outline-draw' && !mode3d) U.uFill.value *= tyC01((t - kinP.allIn - kinP.dur) / Math.max(0.1, kinP.gap * 0.6));
         block(A, lay, t, start, Infinity, o0);
       } else {
         if (!follows && Number.isFinite(tOut)) { const loop = tOut + Math.max(0, nU - 1) * o0.stag + o0.dur + 0.8; t = ((t % loop) + loop) % loop; }
         if (o0.inA === 'outline-draw' && !mode3d) U.uFill.value *= tyC01((t - inEnd) / 0.4);
-        kinFx(t); if (K) stat.kin = { k: kinP.k, at: Number.isFinite(kinP.at) ? Math.round(kinP.at * 1000) / 1000 : null };
+        kinFx(K, t); if (K) stat.kin = kinRead(kinS2);
         block(A, lay, t, start, tOut, o0);
       }
       stat.chars = lay.nGlyphs;
     } else {
       const tt = t - num('lead');
       const look = String(pv('look'));
-      kinFx(tt); if (o0.kin) stat.kin = { k: kinP.k, at: Number.isFinite(kinP.at) ? Math.round(kinP.at * 1000) / 1000 : null }; // (round 45, kinetictype) an effect on each hit
+      kinFx(o0.kin, tt); if (o0.kin) stat.kin = kinRead(kinS2); // (round 45, kinetictype) an effect on each hit
       let cur = -1; for (let i = 0; i < lyr.length; i += 1) if (lyr[i].a <= tt) cur = i; else break;
       stat.line = cur;
       const fitTo = (lay) => Math.min(base, (W * 0.92) / Math.max(0.01, lay.maxW));
@@ -8168,7 +8174,7 @@ globalThis.__labTypeReady = () => {
 };
 // checks and three_eval: each type layer's numbers, the music held at a value
 window.__labType = {
-  info: () => [...TY.stats.values()].map((x) => ({ ...x, ms: Math.round(x.ms * 100) / 100 })),
+  info: () => [...TY.stats.values()].map((x) => ({ ...x, kin: x.kin && { ...x.kin }, ms: Math.round(x.ms * 100) / 100 })), // (kin: a copy, its object is reused frame to frame)
   drive: (o = {}) => { for (const k of ['kick', 'bass']) if (k in o) TY.drive[k] = o[k] == null ? null : Number(o[k]); return { ...TY.drive }; },
   anims: () => Object.keys(TY_ANIM),
   kinetic: () => Boolean(globalThis.kinetic), // (round 45, kinetictype) the "moves with the music" math is here
