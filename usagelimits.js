@@ -150,7 +150,7 @@ const UsageLimits = (() => {
       el('header', { class: 'ul-head' }, el('b', { class: 'ul-who', text: NAMES[engine] }),
         el('small', { class: 'ul-fresh', text: freshest ? `as of ${C.ago(now - freshest)}` : '' })),
       vs.length ? el('div', { class: 'ul-wins' }, vs.map((v) => windowRow(v, engine))) : el('p', { class: 'ul-unknown', text: empty }),
-      head ? el('p', { class: `ul-ahead ${head.f.state}`, text: head.words }) : null,
+      head ? el('p', { class: `ul-ahead ${head.f.state}${head.f.high ? ' hit' : ''}`, text: head.words }) : null,
       el('div', { class: 'ul-tok', title: 'Counted on this computer by the meter (Hearth\'s own traffic)' },
         el('span', { text: `Today ≈ ${C.fmt(local.today)} · 7 days ≈ ${C.fmt(local.week)} tokens` }), spark(local.spark)));
   }

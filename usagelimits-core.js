@@ -200,8 +200,11 @@ const UsageLimitsCore = (() => {
     if (!w || w.used == null) return { state: 'unknown' };
     if (w.resetsAt && now >= w.resetsAt) return { state: 'reset' };
     if (w.used >= 100 || w.status === 'rejected') return { state: 'reached', resetsAt: w.resetsAt || null };
+    // no pace to go on: the number itself speaks (never "too early" next to a bar that's mostly used)
+    const asIs = () => (w.used >= 50 ? { state: 'used', used: Math.round(w.used), left: Math.max(0, 100 - Math.round(w.used)), resetsAt: w.resetsAt || null, high: w.used >= 80 }
+      : { state: 'early', used: Math.round(w.used) });
     const D = msOf(key, w);
-    if (!w.resetsAt || !D) return { state: 'unknown' };
+    if (!w.resetsAt || !D) return w.used >= 50 ? asIs() : { state: 'unknown' };
     const start = w.resetsAt - D;
     const elapsed = w.at - start;
     let pace = null; let method = null; // percent per ms
@@ -214,7 +217,8 @@ const UsageLimitsCore = (() => {
       if (span >= Math.min(D / 10, 6 * HOUR) && s[s.length - 1][1] > s[0][1]) { pace = (s[s.length - 1][1] - s[0][1]) / span; method = 'samples'; }
     }
     if (pace == null) {
-      if (elapsed < Math.min(D / 20, 6 * HOUR) || w.used < 1) return { state: 'early' };
+      // too little of the window gone (or a reset further away than one window: the numbers don't line up)
+      if (elapsed < Math.min(D / 20, 6 * HOUR) || w.used < 1) return asIs();
       pace = w.used / elapsed; method = 'average';
     }
     if (!(pace > 0)) return { state: 'ok', atReset: Math.round(w.used), method };
@@ -232,14 +236,19 @@ const UsageLimitsCore = (() => {
       case 'ok': return week ? `At your pace you'll have used about ${f.atReset}% of this week when it resets${resetsAt ? ` (${when(resetsAt, now)})` : ''}: you're fine.`
         : `At this pace you'll stay under the ${long}${resetsAt ? ` until it resets in ${countdown(resetsAt - now)}` : ''}.`;
       case 'reached': return `${long[0].toUpperCase()}${long.slice(1)} reached${f.resetsAt ? `: it resets ${f.resetsAt - now < DAY ? `in ${countdown(f.resetsAt - now)}` : when(f.resetsAt, now)}` : ''}.`;
-      case 'early': return week ? 'Too early in the week to tell your pace.' : 'Too early in this session to tell your pace.';
+      case 'early': return `${f.used >= 1 ? `Only ${f.used}% used so far: too` : 'Too'} early in ${week ? 'the week' : key === 'five_hour' ? 'this session' : 'this window'} to tell your pace.`;
+      case 'used': {
+        const scope = key === 'seven_day' ? 'this week\'s limit' : key === 'five_hour' ? 'this session\'s limit' : `the ${long}`;
+        const until = f.resetsAt ? ` until ${f.resetsAt - now < DAY ? `it resets in ${countdown(f.resetsAt - now)}` : when(f.resetsAt, now)}` : '';
+        return `${f.used}% of ${scope} is used; ${f.left}% left${until}${f.high ? ' — go lighter (tips below)' : ''}.`;
+      }
       case 'reset': return `The ${long} has reset: new numbers come with your next message.`;
       default: return '';
     }
   }
   // the card's one heads-up: the most urgent window (reached > runs out soonest > the week's outlook)
   function headline(list) {
-    const rank = (x) => (x.f.state === 'reached' ? 0 : x.f.state === 'hit' ? 1 : /^seven_day$/.test(x.key) ? 2 : x.key === 'five_hour' ? 3 : 4);
+    const rank = (x) => (x.f.state === 'reached' ? 0 : x.f.state === 'hit' || (x.f.state === 'used' && x.f.high) ? 1 : /^seven_day$/.test(x.key) ? 2 : x.key === 'five_hour' ? 3 : 4);
     const ok = list.filter((x) => x.words);
     ok.sort((a, b) => rank(a) - rank(b) || (a.f.hitAt || 0) - (b.f.hitAt || 0));
     return ok[0] || null;

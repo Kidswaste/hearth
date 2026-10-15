@@ -127,6 +127,9 @@ ok(/Claude \(as of/.test(out.words) && /This week: 16% left/.test(out.words), `/
 await Meter.dashboard();
 await until(() => document.querySelector('.ul-card.ul-claude .ul-win'), 10000);
 await wait(600);
+const ahead2 = document.querySelector('.ul-card.ul-claude .ul-ahead')?.textContent || '';
+out.ahead2 = ahead2;
+ok(/^84% of this week's limit is used; 16% left until .+go lighter/.test(ahead2) && !/early/i.test(ahead2), `84 % used: the line follows the bar, never "too early" (${ahead2})`);
 await smoke({ shot: '/tmp/usagelimits-card2.png' });
 // the Light look: the cards follow the theme (readable text on its background)
 const wasTheme = H.config.theme;

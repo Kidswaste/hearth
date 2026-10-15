@@ -97,6 +97,19 @@ ok('countdown: 45 min · 2 h 10 min · 3 h · 1 d 4 h', [C.countdown(45 * MIN), 
   ok('forecast (samples): +30 % in the last hour → the session limit in ≈ 1 h 40 min', sm.method === 'samples' && sm.state === 'hit' && Math.abs(sm.hitAt - (NOW + 100 * MIN)) < MIN, sm);
   ok('… in words: "At this pace the session limit comes around …, … before it resets"', /^At this pace the session limit comes around .+, 1 h 20 min before it resets\.$/.test(C.forecastWords(sm, 'five_hour', NOW, NOW + 3 * HOUR)), C.forecastWords(sm, 'five_hour', NOW, NOW + 3 * HOUR));
   ok('forecast: too early in the window → "early"', C.forecast({ key: 'seven_day', used: 2, resetsAt: NOW + 7 * DAY - HOUR, at: NOW }, { now: NOW }).state === 'early');
+  // a mostly-used window never says "too early": the number itself, next to its bar
+  const hi = C.forecast({ key: 'seven_day', used: 84, resetsAt: new Date(2026, 9, 31, 9).getTime(), at: NOW, source: 'usage' }, { now: NOW });
+  const hiW = C.forecastWords(hi, 'seven_day', NOW);
+  ok('forecast: 84 % used, no pace to go on (the reset further than a week) → the number, not "too early"', hi.state === 'used' && hi.high && /^84% of this week's limit is used; 16% left until .+ — go lighter \(tips below\)\.$/.test(hiW) && !/early/i.test(hiW), hiW);
+  const early85 = C.forecastWords(C.forecast({ key: 'five_hour', used: 85, resetsAt: NOW + 5 * HOUR - 5 * MIN, at: NOW }, { now: NOW }), 'five_hour', NOW);
+  ok('forecast: 85 % in the first minutes of a session → the number with its countdown', /^85% of this session's limit is used; 15% left until it resets in 4 h 55 min — go lighter/.test(early85), early85);
+  const mid = C.forecastWords(C.forecast({ key: 'seven_day', used: 60, resetsAt: NOW + 7 * DAY - HOUR, at: NOW }, { now: NOW }), 'seven_day', NOW);
+  ok('forecast: 60 % early → the number without "go lighter"', /^60% of this week's limit is used; 40% left until /.test(mid) && !/lighter|early/.test(mid), mid);
+  const low = C.forecastWords(C.forecast({ key: 'seven_day', used: 4, resetsAt: NOW + 7 * DAY - HOUR, at: NOW }, { now: NOW }), 'seven_day', NOW);
+  ok('forecast: a small number early → "Only 4% used so far: too early…"', low === 'Only 4% used so far: too early in the week to tell your pace.', low);
+  const noReset = C.forecastWords(C.forecast({ key: 'five_hour', used: 90, at: NOW }, { now: NOW }), 'five_hour', NOW);
+  ok('forecast: 90 % with no reset time → the number, no date invented', noReset === "90% of this session's limit is used; 10% left — go lighter (tips below).", noReset);
+  ok('headline: a mostly-used window ranks with what runs out first', C.headline([{ key: 'five_hour', f: { state: 'ok' }, words: 's' }, { key: 'seven_day', f: hi, words: hiW }]).key === 'seven_day');
   ok('forecast: reached → its reset', C.forecast({ key: 'five_hour', used: 100, resetsAt: NOW + HOUR, at: NOW }, { now: NOW }).state === 'reached');
   ok('forecast: past the reset → "reset"', C.forecast({ key: 'five_hour', used: 70, resetsAt: NOW - 1, at: NOW - HOUR }, { now: NOW }).state === 'reset');
   ok('forecast: unknown number or reset → "unknown" (nothing invented)', C.forecast({ key: 'five_hour', used: null, resetsAt: NOW + HOUR, at: NOW }).state === 'unknown' && C.forecast({ key: 'five_hour', used: 40, at: NOW }).state === 'unknown');
