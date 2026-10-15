@@ -30,7 +30,9 @@ step('🎬 is hidden without a song', vb() && vb().hidden);
 await c.loadSong(SONG);
 await until(() => c.player.analysis?.sections?.length, 30000);
 await wait(300);
-step('🎬 shows next to the song once one is loaded', vb() && !vb().hidden && vb().offsetParent, c.player.analysis?.sections?.map((s) => s.label));
+// (round 48, labcalm) 🎬 waits in the timeline's ⋯ (every timeline control): ⋯ on, it shows next to the song
+{ const more = document.querySelector('.media-bar .mb-more'); if (more && !document.querySelector('.media-bar.mb-all')) { more.click(); await wait(200); } }
+step('🎬 shows next to the song once one is loaded (timeline ⋯ on)', vb() && !vb().hidden && vb().offsetParent, c.player.analysis?.sections?.map((s) => s.label));
 const seqsBefore = (await ThreeSeq.list()).length;
 vb().click();
 await until(() => AutoEdit.plan && document.querySelectorAll('.ae-sec').length, 40000);

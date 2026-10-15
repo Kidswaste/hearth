@@ -94,7 +94,7 @@ const LabDirect = (() => {
   const HINT = 'three.directHint';
   function hint() {
     if (store.get(HINT, false)) return;
-    const show = () => { if (store.get(HINT, false)) return null; store.set(HINT, true); return toast(`Picked on the picture: drag to move · Shift snaps · corners scale · ◯ turns · ${mac() ? 'Option' : 'Alt'}+scroll scales · arrows nudge · double-click: its sliders · Esc lets go`, { timeout: 7000, action: { label: 'How', fn: () => help() } }); };
+    const show = () => { if (store.get(HINT, false)) return null; store.set(HINT, true); return toast('Picked: drag to move · corners scale · ◯ turns · double-click: its sliders', { timeout: 5000, action: { label: 'How', fn: () => help() } }); };
     if (window.Hints) Hints.offer({ id: 'lab.direct', place: 'lab', rank: 15, once: false, ttl: 60000, show }); else show();
   }
   const ROWS = () => [

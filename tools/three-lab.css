@@ -307,3 +307,26 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
 .ly-eye.some { opacity: .55; }
 .ly-eye.by-group { opacity: .6; }
 .layers.ly-soloing .ly-row.hidden-layer:not(.ly-group) { opacity: .55; }
+
+/* ---------- (round 48, labcalm) a calmer Lab ---------- */
+/* the picture's pill at rest: ❚❚ Freeze and the frame sizes; More…, Safe, 📷 still and ⋯ come on a second row while you
+   point at the picture (or tab into the pill), so the size buttons never move under the pointer */
+.three-preview:not(:hover):not(:focus-within) .stage-pill :is(.stage-more, .stage-btn:not(.freeze-btn):not(.stage-size-btn)) { display: none; }
+.three-preview:is(:hover, :focus-within) .stage-pill { flex-wrap: wrap; }
+.three-preview:is(:hover, :focus-within) .stage-pill::after { content: ''; order: 5; flex-basis: 100%; height: 0; }
+.three-preview:is(:hover, :focus-within) .stage-pill .stage-seg ~ :not(.stage-size) { order: 6; }
+.three-preview:focus-within .stage-pill .stage-size { display: revert; }
+/* the "lighter to stay smooth" note folds to a small ◐ after its first seconds (the tooltip keeps the words) */
+.three-preview .lab-adapt-note.quiet { font-size: 0; padding: 0; width: 14px; height: 14px; border-radius: 50%; opacity: .45; display: grid; place-items: center; }
+.three-preview .lab-adapt-note.quiet::before { content: ''; width: 8px; height: 8px; border-radius: 50%; border: 1px solid currentColor; background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
+/* the toolbar's View buttons: icon + label; a narrow Lab (the director docked) shows the icons, so the row stays one row */
+.three-toolbar .tb-iconic .tb-ic { display: inline-block; min-width: 1em; text-align: center; }
+@container (max-width: 640px) {
+  .three-toolbar .tb-iconic .tb-tx { display: none; }
+  .three-toolbar .tb-iconic { padding-left: 7px; padding-right: 7px; }
+  .three-toolbar .tb-iconic.has-errors .tb-ic { color: var(--ui-red, #ff6a6a); }
+}
+/* a layer's "When it plays" fold, drawn like "Position, size, rotation", with where it stands on the right */
+.ly-plays > summary { cursor: pointer; font-size: 11.5px; color: var(--muted); padding: 2px 0; display: list-item; }
+.ly-plays > summary .ly-plays-state { float: right; margin-left: 8px; color: var(--muted); opacity: .8; font-variant-numeric: tabular-nums; }
+.ly-plays[open] { display: flex; flex-direction: column; gap: 5px; }

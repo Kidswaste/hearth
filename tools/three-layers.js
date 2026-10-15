@@ -513,6 +513,10 @@ filter('${type}', P);
         el('div', { class: 'ly-sel' }, el('span', { class: 'ly-swatch', style: { background: L.color } }), el('b', { text: L.name })),
         range('Opacity', 'opacity', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`),
         el('label', { class: 'ly-field' }, el('span', { text: 'Blend' }), blend),
+        // (round 48, labcalm) when it plays, its fades and Animate ▾ fold into one row that says where it stands
+        // ("whole song", "0:02.000 → 0:08.000"); it was 8 controls and a hint always open under every layer
+        el('details', { class: 'ly-plays', open: store.get('three.layerPlays', false), on: { toggle: (e) => store.set('three.layerPlays', e.currentTarget.open) } },
+        el('summary', { title: 'When this layer plays in the song, its fades and one-click animations' }, 'When it plays', el('span', { class: 'ly-plays-state', text: !hasSong ? 'load a song to time it' : L.in == null && L.out == null ? 'whole song' : `${L.in == null ? 'start' : fmtMs(L.in)} → ${L.out == null ? 'end' : fmtMs(L.out)}` })),
         el('div', { class: 'ly-time' },
           el('span', { class: 'ly-label', text: 'Plays' }),
           hasSong ? el('span', { class: 'ly-timebox' }, timeIn('in'), here('in'), el('span', { class: 'mb-arrow', text: '→' }), timeIn('out'), here('out')) : el('span', { class: 'hint', text: 'Load a song to time layers' }),
@@ -530,7 +534,7 @@ filter('${type}', P);
             const close = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); removeEventListener('pointerdown', close, true); } };
             setTimeout(() => addEventListener('pointerdown', close, true));
           }),
-          el('span', { class: 'hint', text: 'over this layer\'s time (or the loop)' })) : null,
+          el('span', { class: 'hint', text: 'over this layer\'s time (or the loop)' })) : null),
         el('details', { class: 'ly-transform', open: store.get('three.layerTransform', false), on: { toggle: (e) => store.set('three.layerTransform', e.currentTarget.open) } },
           el('summary', { text: 'Position, size, rotation' }),
           range('Move X', 'x', -100, 100, 0.5, (v) => `${v}%`, 'Move left / right (% of the frame)'),
