@@ -43,6 +43,8 @@ const Routines = (() => {
   const titleOf = (r) => r.title || 'this chat';
   const fmt = C.fmt;
   const activity = (r, text, icon = '🔁') => document.dispatchEvent(new CustomEvent('hearth:activity', { detail: { icon, text, go: { chat: [r.agentId, r.chatId] } } }));
+  // (round 44, notify) a desktop notification while you're in another app (Settings › Advanced › Tell me when… › Keep going)
+  const tell = (r, phase, extra = {}) => { try { window.Notify?.send({ type: 'keepgoing', phase, agentId: r.agentId, chatId: r.chatId, chatTitle: titleOf(r), ...extra }); } catch { /* fine */ } };
   const shownHere = (r) => H.activeChat[r.agentId] === r.chatId && Native.hasView(r.agentId);
 
   // ---------- the scheduler ----------
@@ -128,6 +130,7 @@ const Routines = (() => {
     awake(r, false); clearTimeout(timers.get(r.id)); save(); paintAll();
     say(r, `🔁 Keep going is paused: ${why}.`);
     activity(r, `Keep going paused in “${titleOf(r)}”: ${why}`, '❚❚');
+    if (!/by you|you wrote|your OK/i.test(why)) tell(r, 'pause', { why }); // (a permission / question notifies by itself)
   }
   function end(r, status, why) {
     if (!C.live(r)) return;
@@ -137,6 +140,7 @@ const Routines = (() => {
     const sum = `${r.done} round${r.done === 1 ? '' : 's'} · ≈ ${fmt(r.tokens)} tokens`;
     say(r, `🔁 Keep going ${r.status === 'done' ? 'finished' : 'stopped'}: ${why} (${sum}).`, { buttons: false });
     activity(r, `Keep going ${r.status === 'done' ? 'finished' : 'stopped'} in “${titleOf(r)}”: ${why} · ${sum}`, r.status === 'done' ? '✓' : '■');
+    if (!/by you/i.test(why || '')) tell(r, r.status === 'done' ? 'done' : 'stop', { why, cost: sum });
     if (!shownHere(r)) toast(`🔁 ${nameOf(r)}: Keep going ${r.status === 'done' ? 'finished' : 'stopped'} in “${titleOf(r)}”: ${why}`, { timeout: 6000, action: { label: 'Open', fn: () => openChat(r) } });
   }
   function openChat(r) { try { activate(H.surfaceIdFor ? H.surfaceIdFor(r.agentId) : r.agentId); Native.open(r.agentId, r.chatId); } catch { /* gone */ } }
@@ -318,6 +322,7 @@ const Routines = (() => {
     if (out.act === 'continue' || out.act === 'wait') {
       const of = r.how.kind === 'rounds' ? ` of ${r.how.rounds}` : '';
       if (event.type === 'done') activity(r, `Keep going: round ${r.round}${of} done in “${titleOf(r)}” · ≈ ${fmt(tokens)} tokens (≈ ${fmt(r.tokens)} so far)`);
+      if (event.type === 'done') tell(r, 'round', { n: r.round, of: r.how.kind === 'rounds' ? r.how.rounds : 0, cost: `≈ ${fmt(tokens)} tokens (≈ ${fmt(r.tokens)} so far)` });
       save(); paintAll();
       if (out.act === 'continue') checkSoon(r);
       return;

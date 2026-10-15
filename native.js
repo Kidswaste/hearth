@@ -1647,7 +1647,7 @@ const Native = (() => {
     afterReply.delete(event.chatId);
     after?.(event.type === 'done' ? visibleText(event.text || p.text) : null);
     if (H.activeChat[chat.agentId] === chat.id) render(chat.agentId, { keepScroll: true });
-    if (replyText) AppUI.replyFinished(chat.agentId, chat.id, replyText);
+    if (replyText) AppUI.replyFinished(chat.agentId, chat.id, replyText, chat.messages.at(-1)?.ms ?? (p.started ? Date.now() - p.started : undefined)); // (round 44, notify: how long it took)
     for (const fn of hooks.event) { try { fn(event, chat); } catch (err) { console.warn(err); } }
     if (event.type === 'done' && !after && !chat.messages.at(-1)?.compactSummary && maybeAutoCompact(chat, chat.messages.at(-1))) return;
     // messages typed while it worked go out now, one at a time
@@ -1787,6 +1787,7 @@ const Native = (() => {
     if (typeof ChatScenes !== 'undefined') ChatScenes.markToast(note, chatId); // a director chat's color + mark
     if (!focused) {
       window.hub.flashWindow();
+      if (window.Notify) return note; // (round 44, notify) the question card notifies by itself ('hearth:needs-you'), with Answer…
       const n = new Notification(`${agent?.name || 'Hearth'} ${text.split(':')[0]}`, { body: text, silent: false });
       n.onclick = () => { window.hub.showWindow(); open(agentId, chatId); };
     }

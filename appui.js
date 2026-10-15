@@ -97,6 +97,12 @@ const AppUI = (() => {
     const claudePath = el('input', { value: s.enginePaths?.claude || '', placeholder: 'Found automatically (Claude desktop app or the claude command)' });
     const codexPath = el('input', { value: s.enginePaths?.codex || '', placeholder: 'Found automatically (Codex / ChatGPT app or the codex command)' });
     const [notifyRow, notifyIn] = check('Desktop notifications while I\'m elsewhere', s.notify !== false, '', 'A system notification when an AI finishes, something needs you, or a long job ends while you are in another window or app');
+    // (round 44, notify) Tell me when…: what notifies, five switches under the one above (notify-core.js SWITCHES)
+    const NC = typeof NotifyCore !== 'undefined' ? NotifyCore : null;
+    const whenBoxes = NC ? NC.SWITCHES.map((sw) => { const [row, input] = check(sw.label, NC.prefs(s)[sw.id], '', sw.tip); input.dataset.notify = sw.id; row.classList.add('nt-when'); return [row, input]; }) : [];
+    const whenNow = () => ({ notify: notifyIn.checked, notifyWhen: Object.fromEntries(whenBoxes.map(([, i]) => [i.dataset.notify, i.checked])) });
+    const whenDim = () => { for (const [row, i] of whenBoxes) { i.disabled = !notifyIn.checked; row.style.opacity = notifyIn.checked ? '' : '0.55'; } };
+    notifyIn.addEventListener('change', whenDim); whenDim();
     const sleepSel = el('select', {}, [['0', 'Never'], ['10', 'after 10 minutes'], ['30', 'after 30 minutes'], ['60', 'after an hour']].map(([v, l]) => el('option', { value: v, text: l, selected: String(s.sleepWebsAfter || 0) === v })));
     const langs = new Set(s.spellLanguages || ['en-US']);
     const langBoxes = SPELL_LANGS.map(([code, label]) => {
@@ -203,12 +209,15 @@ const AppUI = (() => {
 
     // ---- Advanced: the rarer folds ----
     const onOf = (sec) => { const rows = [...sec.querySelectorAll('.sf-row')]; return { on: rows.filter((r) => r.querySelector('.sf-seg button.on')?.dataset.v === 'on').length, n: rows.length }; };
-    const chatsSec = home(section('Chats', notifyRow, el('span', { class: 'sf-slot' })), 'chats');
+    const chatsSec = home(section('Chats', el('span', { class: 'sf-slot' })), 'chats');
+    const notifySec = section('Tell me when…', notifyRow, ...whenBoxes.map(([row]) => row));
     const boardSec = home(section('Mood board', el('span', { class: 'sf-slot' })), 'board');
     const adv = el('details', { class: 'settings-more sc-fold sc-adv', dataset: { fold: 'advanced' } },
-      el('summary', { class: 'sc-sum', title: 'The rarer settings: chats, keys, the mood board, spelling, the rail, folders, backups and files' }, el('span', { class: 'sc-title', text: 'Advanced' }), el('span', { class: 'sc-state', text: 'Chats, keys, mood board, spelling, the rail, folders, backups' })),
+      el('summary', { class: 'sc-sum', title: 'The rarer settings: chats, notifications, keys, the mood board, spelling, the rail, folders, backups and files' }, el('span', { class: 'sc-title', text: 'Advanced' }), el('span', { class: 'sc-state', text: 'Chats, notifications, keys, mood board, spelling, the rail, folders, backups' })),
       fold('chats', 'Chats', 'How the chats behave: Enter, long replies, sounds, notifications, spelling',
-        () => { const c = onOf(chatsSec); return [swOn('enter-sends') === false ? 'Ctrl/⌘+Enter sends' : 'Enter sends', `${c.on + (notifyIn.checked ? 1 : 0)} of ${c.n + 1} on`].join(' · '); }, chatsSec),
+        () => { const c = onOf(chatsSec); return [swOn('enter-sends') === false ? 'Ctrl/⌘+Enter sends' : 'Enter sends', `${c.on} of ${c.n} on`].join(' · '); }, chatsSec),
+      fold('notify', 'Tell me when…', 'Which desktop notifications Hearth shows while you are in another app (your computer\'s Focus / Do Not Disturb still holds them)',
+        () => (NC ? NC.summary(whenNow()) : notifyIn.checked ? 'On' : 'Off'), notifySec),
       fold('keys', 'Keys', 'Your keyboard keys, and one key that shows or hides Hearth from anywhere',
         () => (hotkey.value.trim() ? `Show / hide: ${hotkey.value.trim()}` : 'No show / hide key'),
         home(section('Keys',
@@ -265,6 +274,7 @@ const AppUI = (() => {
         closeToTray: trayIn.checked,
         launchAtStartup: startupIn.checked,
         notify: notifyIn.checked,
+        ...(NC ? { notifyWhen: whenNow().notifyWhen } : {}),
         sleepWebsAfter: Number(sleepSel.value) || undefined,
         hotkey: hotkey.value.trim(),
         spellLanguages: langBoxes.map((l) => l.querySelector('input')).filter((i) => i.checked).map((i) => i.dataset.code),
@@ -607,7 +617,7 @@ const AppUI = (() => {
   }
 
   // ---------- reply notifications & unread badges ----------
-  async function replyFinished(agentId, chatId, text) {
+  async function replyFinished(agentId, chatId, text, ms) {
     const agent = H.agent(agentId);
     if (!agent) return;
     const focused = await window.hub.isWindowFocused();
@@ -630,6 +640,9 @@ const AppUI = (() => {
     }
     if (!focused) {
       window.hub.flashWindow();
+      // (round 44, notify) Electron's own notification, only for a reply that took more than ~20 s (ms unknown: told),
+      // one per chat (a newer one replaces it), under Settings › Advanced › Tell me when… › Replies
+      if (window.Notify) { Notify.send({ type: 'reply', agentId, chatId, text, ms, failed: /^Error: /.test(text || ''), title: typeof ChatScenes !== 'undefined' ? ChatScenes.noteTitle(chatId, `${agent.name} replied`) : undefined }); return; }
       const n = new Notification(typeof ChatScenes !== 'undefined' ? ChatScenes.noteTitle(chatId, `${agent.name} replied`) : `${agent.name} replied`, { body: (text || '').replace(/[#*`>_]/g, '').slice(0, 160), silent: false });
       n.onclick = () => { window.hub.showWindow(); Native.open(agentId, chatId); };
     }

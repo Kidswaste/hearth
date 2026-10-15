@@ -71,7 +71,7 @@ const AppSearchData = (() => {
   // [id, section, label, find (on screen), tags, hint, sel?]; section = the name of the part it sits in (a fold's own
   // name when it's in a fold). (round 39, settingscalm) Settings reads Look & size · Your AIs · This computer & sync ·
   // Updates & what's new, each with a fold or two (PARENT), then the folds under Advanced (ADVANCED).
-  const ADVANCED = new Set(['Chats', 'Keys', 'Mood board', 'Spell check languages', 'Tools in the rail', 'Folders', 'Housekeeping', 'Backup and files']);
+  const ADVANCED = new Set(['Chats', 'Tell me when…', 'Keys', 'Mood board', 'Spell check languages', 'Tools in the rail', 'Folders', 'Housekeeping', 'Backup and files']);
   const PARENT = { 'More looks and tweaks': 'Look & size', 'Claude and Codex programs': 'Your AIs', 'Starting and closing': 'This computer & sync', 'Updates and tips': 'Updates & what\'s new' };
   const pathOf = (sec) => `Settings › ${ADVANCED.has(sec) ? 'Advanced › ' : ''}${PARENT[sec] ? `${PARENT[sec]} › ` : ''}${sec}`;
   const SETTINGS = [
@@ -91,7 +91,13 @@ const AppSearchData = (() => {
     ['start-on', 'Starting and closing', 'Open on start', 'Open on start', 'startup first screen open launch', 'What Hearth shows when it opens'],
     ['startup', 'Starting and closing', 'Start Hearth with your computer', 'Start Hearth', 'startup login launch boot start automatically', 'Hearth opens by itself when you sign in'],
     ['tray', 'Starting and closing', 'Closing the window keeps Hearth running in the tray', 'running in the tray', 'tray close background keep running', 'Replies, renders and sync keep going'],
-    ['notify', 'Chats', 'Desktop notifications while I\'m elsewhere', 'Desktop notifications', 'notifications notify alert system', 'A notification when an AI finishes while you are in another app'],
+    ['notify', 'Tell me when…', 'Desktop notifications while I\'m elsewhere', 'Desktop notifications', 'notifications notify alert system tell me when', 'A notification when an AI finishes while you are in another app'],
+    // (round 44, notify) Tell me when…: what notifies while you're in another app
+    ['notify-replies', 'Tell me when…', 'Tell me when… a long reply finished', 'Replies', 'notifications notify reply replies finished done long away back online usage limit reset', 'A reply that took more than 20 s finished, or a message that waited went out'],
+    ['notify-renders', 'Tell me when…', 'Tell me when… a render finished or failed', 'Renders', 'notifications notify render renders export batch all formats finished failed show file finder explorer', 'A render, a batch or All formats finished or failed: Show the file in one click'],
+    ['notify-keepgoing', 'Tell me when…', 'Tell me when… a Keep going round finished or stopped', 'Keep going', 'notifications notify keep going routine round stopped paused', 'A 🔁 Keep going round finished, or the routine paused or stopped (and why)'],
+    ['notify-needs', 'Tell me when…', 'Tell me when… an AI needs me (permission, a question)', 'When an AI needs me', 'notifications notify permission allow ask question blocked waiting plan stuck sync needs me', 'An AI waits for your OK or your answer: Allow… opens the card (it never approves by itself)'],
+    ['notify-updates', 'Tell me when…', 'Tell me when… a Hearth update is ready', 'Updates', 'notifications notify update ready new version', 'A Hearth update is ready (nothing installs without your click)'],
     ['keys', 'Keys', 'Keyboard keys…', 'Keyboard keys', 'keys shortcuts hotkeys keyboard alt right-click', 'Every key, what waits behind Alt, every right-click menu'],
     ['hotkey', 'Keys', 'Show / hide Hearth from anywhere', 'Show / hide Hearth', 'hotkey global shortcut bring up hide', 'A key combination that brings Hearth up or hides it, even from another app'],
     ['sleep-webs', 'Housekeeping', 'Unload websites I haven\'t opened', 'Unload websites', 'memory websites sleep unload free', 'Frees memory; a website loads again when you open it'],
