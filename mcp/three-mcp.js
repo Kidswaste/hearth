@@ -89,13 +89,14 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the Nodes view). command: layer <preset> (new layer) · presets · types [word] · list · add <type> k=v [to=n.in] · link a.out b.in · unlink b.in · set <n> k=v · rm <n> · preset <p> (replace) · rebuild. help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'batch', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'help'];
+const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'help'];
 // (round 25, diet) three_do names its commands, grouped; each one's details come from three_do help <cmd> (DO_HELP,
 // MORE_TOOLS, the guide topics), answered here without a hub call. Was ≈ 370 tokens per message.
 const DO_TOOL = {
   name: 'three_do',
   description: `More Lab actions: {cmd, ...args}. help {topic}: any cmd's args (topic = cmd), a guide topic, or app. layer = name|id|n (1 = bottom)|top|bottom|selected.
 batch {ops: [{cmd, ...}]} several calls in one, in order · undo {force} your last code change
+Look: contact_sheet {count | times} the song as one picture · input {actions} play-test
 Layers: layers select_layer remove_layer update_layer keyframes animate looks references
 Time: timeline timeline_edit triggers media_info load_media footage sequence autoedit loop
 Make: new_sketch set_frame model motion particles shader type physics asset comp crew make task notes
@@ -116,22 +117,24 @@ const DO_HELP = {
 };
 
 // (round 25, diet) the everyday tools as the lean list sends them: short words, the details in help <tool>
+// (round 46, promptdiet) only the args a typical call uses stay in the schema; the rarer ones are named in the words (the
+// server passes every arg on, listed or not; help <tool> lists them all)
 // (full mode keeps the long descriptions above). layer: {} = the reference three_do explains.
 const S = { type: 'string' }; const B = { type: 'boolean' }; const N = { type: 'number' }; const A = { type: 'array' };
 const LEAN = {
   three_add_layer: ['NEW layer per new element or effect (top; position: bottom|n), selected + run. code: complete module (alpha: true, no background) or template (help filters). settings as update_layer. Returns sliders.', { name: S, code: S, template: S, position: {}, settings: {} }],
-  three_eval: ['Run JS in the live preview (expression, or statements with return; await ok). __scenes[layer] = {scene, camera, renderer}. max chars (3000); samples n every ms.', { code: S, max: N, samples: N, every: N }],
-  three_edit_code: ['Change code, re-run that layer: edits [{find, replace, all?} | {lines: [from, to], replace}] (an edit may name its layer). Answers once on screen: errors, console, fps. shot: small picture; safe: undo if it breaks; diff.', { layer: {}, edits: A, shot: B, safe: B, diff: B }],
-  three_screenshot: ['Preview picture. size small|medium|large; region [x, y, w, h] 0..1; at: s|drop|kick|cue (seeks); compare: beside the last; frames 2–8 every gap s; force: even unchanged.', { size: S, region: A, at: {}, compare: B, frames: N, gap: N, force: B }],
-  three_read_code: ['A layer\'s numbered code (1–250); from / to, or around: line; force: even if you have it.', { layer: {}, from: N, to: N, around: N, force: B }],
-  three_search_code: ['Find text (regex) in all layers or one: line numbers, context (1), max (40).', { pattern: S, layer: {}, regex: B, context: N, max: N }],
+  three_eval: ['Run JS in the live preview (expression, or statements with return; await ok). __scenes[layer] = {scene, camera, renderer}. max chars (3000); samples n every ms.', { code: S }],
+  three_edit_code: ['Change code, re-run that layer: edits [{find, replace, all?} | {lines: [from, to], replace}] (an edit may name its layer). Answers once on screen: errors, console, fps. shot: small picture; safe: undo if it breaks; diff.', { layer: {}, edits: A, shot: B }],
+  three_screenshot: ['Preview picture. size small|medium|large; region [x, y, w, h] 0..1; at: s|drop|kick|cue (seeks); compare: beside the last; frames 2–8 every gap s; force: even unchanged.', { size: S, region: A, at: {} }],
+  three_read_code: ['A layer\'s numbered code (1–250); from / to, or around: line; force: even if you have it.', { layer: {}, from: N, to: N, force: B }],
+  three_search_code: ['Find text (regex) in all layers or one: line numbers, context (1), max (40).', { pattern: S, layer: {} }],
   three_sliders: ['Read or move a layer\'s tweak() sliders (no code change): set {key: value}, unsaved for the owner.', { layer: {}, set: {} }],
-  three_set_code: ['Rewrite the selected layer (complete module), run it, undoable: an empty sketch or when asked; new elements go in a new layer. report: full.', { code: S, report: S }],
+  three_set_code: ['Rewrite the selected layer (complete module), run it, undoable: an empty sketch or when asked; new elements go in a new layer. report: full.', { code: S }],
   three_get_code: ['Scene outline + the selected layer\'s code (outline past 160 lines), unsaved slider values.', {}],
   three_console: ['Errors, console lines, fps / draw calls; full: + sliders, layers, music.', { full: B }],
-  three_media_control: ['Music: play|pause|seek {time}|loop {time, end; none clears}. Footage: frame {frame: n|"f120"|timecode}|step {n}|read (see: picture).', { action: S, time: N, end: N, frame: {}, n: N, see: B }],
-  three_input: ['Play-test, in order: {key, ms} held, {keys: [], ms}, {click: [x, y]} 0..1, {move: [x, y]}, {wait: ms}; screenshot after.', { actions: A, screenshot: B }],
-  three_contact_sheet: ['One image of numbered frames at the owner\'s cues (or count over loop / song, or times s).', { times: A, count: N }],
+  three_media_control: ['Music: play|pause|seek {time}|loop {time, end; none clears}. Footage: frame {frame: n|"f120"|timecode}|step {n}|read (see: picture).', { action: S, time: N }],
+  three_input: ['Play-test, in order: {key, ms} held, {keys: [], ms}, {click: [x, y]} 0..1, {move: [x, y]}, {wait: ms}; screenshot: true = a picture after.', { actions: A }],
+  three_contact_sheet: ['One image of numbered frames at the owner\'s cues (or count over loop / song, or times s).', {}],
 };
 const lean = (t) => (LEAN[t.name] ? { name: t.name, description: LEAN[t.name][0], inputSchema: obj(LEAN[t.name][1], t.inputSchema.required) } : t);
 
@@ -139,8 +142,11 @@ const lean = (t) => (LEAN[t.name] ? { name: t.name, description: LEAN[t.name][0]
 // backstage, for a few calls: only the tools that work there and that a variation needs (lean words, round 25).
 const CREW = process.env.HUB_TOOL_MODE === 'crew';
 const CREW_TOOLS = ['three_edit_code', 'three_add_layer', 'three_set_code', 'three_read_code', 'three_screenshot', 'three_console'];
+// (round 46, promptdiet) the two least used everyday tools (≈ 5 % of the owner's director calls) are three_do commands in
+// the lean list (≈ 115 tokens less on every director step); their words come back with help; the hub gets the same names
+const VIA_DO = ['three_input', 'three_contact_sheet'];
 const tools = CREW ? CORE_TOOLS.filter((t) => CREW_TOOLS.includes(t.name)).map(lean)
-  : [...(FULL ? CORE_TOOLS : CORE_TOOLS.map(lean)), ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
+  : [...(FULL ? CORE_TOOLS : CORE_TOOLS.filter((t) => !VIA_DO.includes(t.name)).map(lean)), ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
 
 // help <topic>: a tool or command by name gives its whole description + args (then the guide topic of the same name,
 // if any); anything else goes to the guide / app map. (round 25)
@@ -148,7 +154,7 @@ const BY = Object.fromEntries([...CORE_TOOLS, ...MORE_TOOLS, NODES_TOOL].map((t)
 function help(topic) {
   const k = String(topic || '').toLowerCase().trim().replace(/^three_/, '').replace(/[\s-]+/g, '_');
   const t = BY[k];
-  const line = DO_HELP[k] || (t && `${t.name}${MORE_TOOLS.includes(t) ? ` (lean: three_do ${k})` : ''}: ${t.description}\nargs: ${Object.keys(t.inputSchema.properties).join(', ') || 'none'}`);
+  const line = DO_HELP[k] || (t && `${t.name}${MORE_TOOLS.includes(t) || VIA_DO.includes(t.name) ? ` (lean: three_do ${k})` : ''}: ${t.description}\nargs: ${Object.keys(t.inputSchema.properties).join(', ') || 'none'}`);
   const guide = G().help(topic || 'app');
   if (!line) return guide;
   return /^Topics:/.test(guide) ? line : `${line}\n\n${guide}`;

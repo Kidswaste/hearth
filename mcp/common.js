@@ -99,11 +99,32 @@ function dispatch(ops) {
   };
 }
 
+// (round 46, promptdiet) A result's text past its cap (def.caps[tool], else RESULT_CAP characters ≈ 4k tokens) is cut at a
+// line end: everything a tool returns stays in the engine session and is re-read at every later step, so one runaway
+// result (a whole game state from forge_eval, a long log) taxed the rest of the chat. The rest waits in this server (it
+// lives as long as the engine run) and comes back, a part at a time, with the same tool and { more: true }, answered
+// here without the hub (nothing runs again). Pictures are never cut.
+const RESULT_CAP = 16000;
+function capper() {
+  const rest = new Map(); // tool → the text not sent yet
+  return {
+    cut(tool, text, cap = RESULT_CAP) {
+      if (text.length <= cap) { rest.delete(tool); return text; }
+      let at = text.lastIndexOf('\n', cap);
+      if (at < cap * 0.6) at = cap;
+      rest.set(tool, text.slice(at).replace(/^\n/, ''));
+      return `${text.slice(0, at)}\n… ${text.length - at} more characters cut (${tool} {more: true} sends the next part)`;
+    },
+    more(tool, cap) { return rest.has(tool) ? { ok: true, value: this.cut(tool, rest.get(tool), cap) } : { ok: true, value: `Nothing more from ${tool}: its last result was whole.` }; },
+  };
+}
+
 // Each server file ends with `module.exports = serve({ name, instructions, tools }, module)`: run as a program it
 // serves stdio; required (by the hub's cost report / tests) it only hands back its definitions.
 function serve(def, mod) {
   if (mod && require.main !== mod) return def;
-  const { name, instructions, tools, extraArgs = {}, local = {} } = def;
+  const { name, instructions, tools, extraArgs = {}, local = {}, caps = {} } = def;
+  const capped = capper();
   const send = (msg) => process.stdout.write(`${JSON.stringify(msg)}\n`);
   async function handle(msg) {
     const { id, method, params } = msg;
@@ -116,12 +137,14 @@ function serve(def, mod) {
       // local[name](args) can answer without the hub (help text); null means "ask the hub".
       // hubChatId: which chat's run made the call (engines.js HUB_CHAT_ID); the hub routes by it and strips it
       const args = { ...(params.arguments || {}), ...extraArgs, ...(process.env.HUB_CHAT_ID ? { hubChatId: process.env.HUB_CHAT_ID } : {}) };
-      const r = (def.help && typeof args.help === 'string' && helpOf(def.help, args.help)) || (local[params.name] && await local[params.name](args)) || await callHub(params.name, args);
+      const asked = params.arguments || {};
+      const more = asked.more === true && Object.keys(asked).length === 1; // { more: true } alone: the rest of the last cut result
+      const r = (more && capped.more(params.name, caps[params.name])) || (def.help && typeof args.help === 'string' && helpOf(def.help, args.help)) || (local[params.name] && await local[params.name](args)) || await callHub(params.name, args);
       const content = [];
       for (const img of [].concat(r.images || (r.image ? [{ data: r.image, mime: r.mime }] : []))) {
         content.push({ type: 'image', data: img.data, mimeType: img.mime || 'image/png' });
       }
-      content.push({ type: 'text', text: r.ok ? fmtValue(r.value) : `Error: ${r.error}` });
+      content.push({ type: 'text', text: more ? r.value : capped.cut(params.name, r.ok ? fmtValue(r.value) : `Error: ${r.error}`, caps[params.name]) });
       send({ jsonrpc: '2.0', id, result: { content, isError: !r.ok } });
     } else if (method === 'ping') {
       send({ jsonrpc: '2.0', id, result: {} });
@@ -147,4 +170,4 @@ function serve(def, mod) {
   return def;
 }
 
-module.exports = { serve, callHub, fmtValue, helpOf, leanTools, dispatch };
+module.exports = { serve, callHub, fmtValue, helpOf, leanTools, dispatch, capper, RESULT_CAP };

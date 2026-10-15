@@ -63,10 +63,13 @@ const OPT_IN = ['boardTools', 'captureTools', 'adobeTools', 'deployTools', 'apps
 // Before round 41 (toolslim): claude 571, astra 318, director 2829, board 1444, capture 1056, apps 1068, astra + board 1191,
 // conn 712, board + screens 1929, adobe 872, deploy 803, director + board 3701, forge 1912. A message that needs none of an
 // AI's opt-in sets now sends none of them (toolwake.js: the "asleep" column).
-const BUDGET = { claude: 495, astra: 320, director: 2580, directorAstra: 2580, board: 1080, capture: 830, apps: 775, astraBoard: 900, conn: 640, boardCapture: 1410, adobe: 650, deploy: 670, directorBoard: 3160, forge: 1650 };
+// Before round 46 (promptdiet): claude 483, astra 310, director 2554, board 1052, capture 808, apps 757, astra + board 879, conn 624,
+// board + screens 1377, adobe 634, deploy 655, director + board 3123, forge 1625 (dev/promptdiet-test.js keeps its own cases).
+const BUDGET = { claude: 455, astra: 300, director: 2265, directorAstra: 2265, board: 1035, capture: 790, apps: 735, astraBoard: 880, conn: 600, boardCapture: 1370, adobe: 610, deploy: 630, directorBoard: 2845, forge: 1295 };
 // each opt-in tool set's own list (mcp/cost.js measure; the chat list as a plain chat gets it)
 // (round 41, toolslim) before: chatLean 296, chatTools 532, board 785, capture 485, apps 455, adobe 301, deploy 232, forge 514
-const SET_BUDGET = { chatLean: 215, chatTools: 265, boardTools: 495, captureTools: 340, appsTools: 240, adobeTools: 160, deployTools: 180, gameTools: 515 };
+// (round 46, promptdiet) before: chatLean 208, chatTools 256
+const SET_BUDGET = { chatLean: 200, chatTools: 250, boardTools: 495, captureTools: 340, appsTools: 240, adobeTools: 160, deployTools: 180, gameTools: 515 };
 
 async function connTokens() {
   const c = await F.mcpClient({ command: CONN.command, args: CONN.args });
