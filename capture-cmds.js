@@ -108,6 +108,7 @@
         return 'Not recording.';
       }
       const r = await Capture.stop();
+      if (r?.cancelled) return 'Cancelled before it started.';
       return `🎬 Saved \`${r.path}\` (${r.duration}s, ${r.size}${r.mp4 ? ', MP4' : ''})`;
     }
     if (Capture.recording) return `Already recording (${Capture.fmtClock(Capture.status().seconds)}). /record stop`;

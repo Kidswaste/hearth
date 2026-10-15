@@ -61,7 +61,8 @@ const globalSig = async () => JSON.stringify({ zoom: await window.hub.getZoom?.(
 const uiSig = () => JSON.stringify({ kids: document.body.children.length, overlays: document.querySelectorAll('.bd-compare, .bd-viewer, .bd-info, .bd-card, .ui-modal, [class*="-overlay"], [class*="-viewer"]').length, dialogs: document.querySelectorAll('dialog[open]').length, menu: vis('#menu'), toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.slice(0, 30)).join('|'), focus: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 30)}` });
 // app-wide actions an area key may legitimately do itself (the key IS that action there)
 const OWN_GLOBAL = /palette|Ctrl\+K|Ctrl\+;|Ctrl\+\/|F1|Command|Settings|Notes|Find|sheet|Ctrl\+Shift\+M/i;
-async function tryKey(area, line, c, { sig, before, after }) {
+async function tryKey(area, line, c, opts) {
+  const { sig, before, after } = opts;
   if (before) await before(c, line);
   await wait(120);
   const s0 = sig(); const g0 = await globalSig(); const u0 = uiSig();
@@ -75,7 +76,10 @@ async function tryKey(area, line, c, { sig, before, after }) {
   await wait(c.slow ? 900 : 450);
   const s1 = sig(); const g1 = await globalSig(); const u1 = uiSig();
   const dm = mutations - m1;
-  const worked = s1 !== s0 || u1 !== u0 || dm > Math.max(3, idle * 3);
+  // (keysfix) a surface can name what a key must change (judge → true / false); otherwise any change counts: its state,
+  // the UI, or clearly more DOM writes than while idle
+  const judged = opts.judge?.(c, s0, s1);
+  const worked = judged ?? (s1 !== s0 || u1 !== u0 || dm > Math.max(3, idle * 3));
   out.pressed += 1;
   // (bugbash) a line the keys sheet itself hides right now (its `when` is false, e.g. the lyrics tap-along's Enter
   // while no tap-along runs) rightly does nothing: noted, not dead (more than 3 in one area: the surface wasn't ready)
@@ -192,10 +196,15 @@ if (AREAS.includes('Capture')) {
   const vid = `${dir}/recordings/keys check.mp4`;
   await window.hub.fs.copy(`${EV}/frames_a_30.mp4`, vid);
   const shotR = await Capture.shot({ target: 'window', quiet: true });
-  const sigC = () => JSON.stringify({ rec: Capture.status(), v: document.querySelector('dialog[open].cap-view video')?.currentTime, p: document.querySelector('dialog[open].cap-view video')?.paused, ann: CaptureAnnotate.current ? JSON.stringify(CaptureAnnotate.current).length : 0, tool: document.querySelector('dialog[open].cap-ann .on, dialog[open].cap-ann [aria-pressed="true"]')?.textContent, size: document.querySelector('dialog[open].cap-ann button[title^="Thickness"]')?.textContent, region: vis('.cap-region, .cap-pick'), tour: typeof CaptureTour !== 'undefined' && CaptureTour.running?.() });
+  // (keysfix) the recording's state, not its running clock / frame counts: those change every moment while recording,
+  // so Ctrl+Alt+P "worked" whether or not it paused
+  const recSig = () => { const r = Capture.status(); return r.recording ? { on: true, paused: r.paused, target: r.target, marks: r.marks, tour: r.tour } : { on: false }; };
+  const sigC = () => JSON.stringify({ rec: recSig(), v: document.querySelector('dialog[open].cap-view video')?.currentTime, p: document.querySelector('dialog[open].cap-view video')?.paused, ann: CaptureAnnotate.current ? JSON.stringify(CaptureAnnotate.current).length : 0, tool: document.querySelector('dialog[open].cap-ann .on, dialog[open].cap-ann [aria-pressed="true"]')?.textContent, size: document.querySelector('dialog[open].cap-ann button[title^="Thickness"]')?.textContent, region: vis('.cap-region, .cap-pick'), tour: typeof CaptureTour !== 'undefined' && CaptureTour.running?.() });
   await runArea('Capture', {
     sig: sigC,
     skip: /^(G|Ctrl\+Alt\+T)$/, // G makes a GIF (minutes on this machine); the tour picker is checked by journey-capture
+    // (keysfix) the record / pause keys do their own job: recording starts (or stops), the take pauses (or resumes)
+    judge: (c, s0, s1) => { const a = JSON.parse(s0).rec; const b = JSON.parse(s1).rec; if (c.label === 'Ctrl+Alt+R') return a.on !== b.on; if (c.label === 'Ctrl+Alt+P') return a.on && b.on && a.paused !== b.paused; return undefined; },
     before: async (c, line) => {
       const where = /\(player\)/.test(line.keys) || /player/.test(line.what) ? 'player' : /\(annotate\)/.test(line.keys) ? 'annotate' : /\(picture\)/.test(line.keys) ? 'picture' : 'global';
       c.slow = where === 'global';
@@ -203,7 +212,7 @@ if (AREAS.includes('Capture')) {
       if (where === 'picture') { await CaptureView.open(shotR.path); await wait(400); document.querySelector('dialog[open].cap-view')?.focus(); }
       if (where === 'annotate') { if (!document.querySelector('dialog[open].cap-ann')) CaptureAnnotate.open(shotR.path); await until(() => document.querySelector('dialog[open].cap-ann'), 4000); await wait(300); document.querySelector('dialog[open].cap-ann canvas, dialog[open].cap-ann')?.focus?.(); } // open() resolves only when the annotator closes
       if (where === 'annotate' && c.label === '[') { await press(one(']')); await wait(150); } // a size to go down from
-      if (/^Ctrl\+Alt\+P$/.test(c.label)) { await Capture.record({ target: 'composer', countdown: 0, mp4: false, audio: 'none' }); await wait(1200); }
+      if (/^Ctrl\+Alt\+P$/.test(c.label)) { await Capture.record({ target: 'composer', countdown: 0, mp4: false, audio: 'none' }); await wait(1200); if (!Capture.status().recording) throw new Error('the take to pause did not start'); }
     },
     restore: async (c) => {
       if (/^Ctrl\+Alt\+[RP]$/.test(c.label)) { await wait(1200); if (Capture.recording) await Capture.stop({ quiet: true }).catch(() => {}); }
@@ -244,8 +253,12 @@ if (AREAS.includes('Lab')) {
 // ---------- app-wide ----------
 if (AREAS.includes('Everywhere')) {
   activate(H.claudeAgent().id); await wait(300);
+  // (keysfix) the app state these keys change (the rail item, side by side, the chats panel, the ask-all bar, the
+  // palette…): Ctrl+\ and Ctrl+B did their job (handleShortcut ran from the chat box, the state changed) but write only
+  // 2 nodes, under the "more DOM writes than idle" bar, so they were "dead (keys at TEXTAREA)" on some runs
+  const appSig = () => JSON.stringify({ grid: H.grid, panel: H.panelOpen, active: H.activeId, chat: H.activeChat?.[H.activeId] || null, palette: vis('.palette'), find: vis('.find-bar'), notes: vis('.notes-panel'), bar: vis('.cmdbar-input'), sheet: vis('.keys-sheet'), broadcast: !document.getElementById('broadcast')?.classList.contains('hidden'), atts: Native.view(H.claudeAgent().id)?.attachments?.length || 0, onTop: document.body.classList.contains('on-top') });
   await runArea('Everywhere', {
-    sig: () => '',
+    sig: appSig,
     skip: /^(Esc|Ctrl\+=|Ctrl\+-|Ctrl\+0)$/, // Esc only closes; the text size is checked below
     // (bugbash) Ctrl+1 opens rail item 1, which is the Claude chat this area starts from: start from another item,
     // or the key has nothing to change (it was "dead" only because it was already there)
