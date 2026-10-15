@@ -626,7 +626,6 @@ const ThreeMedia = (() => {
       }
       window.TwoComputers?.noteFile?.(path, bytes.byteLength).catch?.(() => {}); // its place + content, for the other computer
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
-      loadingMini = 0;
       Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), clock: null, analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false });
       emit('load', { path, video: st.video });
       const saved = store.get(loopKey(path), null);
@@ -2254,7 +2253,8 @@ const ThreeMedia = (() => {
     const miniCache = { key: '', canvas: document.createElement('canvas') };
     let loadingMini = 0; // (round 48) a load under way keeps the overview's row (see load)
     function drawMinimap(t) {
-      minimap.hidden = !D() && !loadingMini;
+      if (D()) loadingMini = 0;
+      minimap.hidden = !D() && !(loadingMini && (analyzing || !st.bytes)); // (still reading the file, or decoding it)
       const w = mW(); const h = mH();
       if (!D() || !w || !h) return;
       const dpr = devicePixelRatio || 1;

@@ -81,20 +81,6 @@
     if (u.endsWith('core.js') && !(Number(/^0\.(\d+)\./.exec(V)?.[1]) >= 176)) continue; // (three.core.js exists from r176)
     const l = document.createElement('link'); l.rel = 'modulepreload'; l.href = u; l.crossOrigin = 'anonymous'; document.head.append(l);
   }
-  // (round 48, labstartfast) a new page's first WebGL context (the GPU's own first steps for this page) is made here,
-  // while three.js downloads and compiles, instead of when the scene's first layer asks for one after it: it waits in
-  // the context pool for that layer ("context pool"). The Lab says in the address's #gl= which kind its scene asked
-  // for last (antialias or not); none said, nothing is made. One that no layer takes goes after 20 s, as pooled ones do.
-  if (params.get('mode') === 'sketch' && !window.__stageHost && !params.get('xp') && params.get('pool') !== '0' && /^#gl=(aa|plain)$/.test(location.hash)) {
-    try {
-      const cv = document.createElement('canvas');
-      const pr = Math.min(window.devicePixelRatio || 1, 2);
-      cv.width = Math.max(1, Math.round(innerWidth * pr)); cv.height = Math.max(1, Math.round(innerHeight * pr));
-      const st = !(Number(/^0\.(\d+)\./.exec(V)?.[1]) >= 163); // three.js asks for a stencil buffer before r163
-      const gl = cv.getContext('webgl2', { alpha: true, depth: true, stencil: st, antialias: location.hash === '#gl=aa', premultipliedAlpha: true, preserveDrawingBuffer: true, powerPreference: 'default', failIfMajorPerformanceCaveat: false });
-      if (gl) { gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); globalThis.__labEarlyGL = { cv, gl }; }
-    } catch { /* the first layer makes its own */ }
-  }
 
   const post = (msg) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*'));
   // In the Stage window an exact frame size (fw × fh) is rendered at full size and scaled to fit the window.
@@ -12119,17 +12105,6 @@ function smallShot(max, tag) {
 }
 
 if (mode === 'sketch') { document.body.classList.add('sketch'); notePage(); }
-// (round 48, labstartfast) the context the head script made while three.js loaded joins the pool for the first layer
-if (globalThis.__labEarlyGL) {
-  const { cv, gl } = globalThis.__labEarlyGL; globalThis.__labEarlyGL = null;
-  if (mode === 'sketch' && gl && !gl.isContextLost() && typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext && POOL_MAX() > 0) {
-    gl.__counted = true; glRefs.push(new WeakRef(gl)); globalThis.__glrWatch?.(cv, gl);
-    trackGL(gl); cv.__gl = gl; cv.__ctxMade = true; gl.__pooled = true;
-    const e = { key: poolKeyOf(gl), cv, gl, timer: 0 };
-    e.timer = realSetTimeout(() => poolEvict(e), POOL_IDLE);
-    POOL.push(e); perfNote.early = (perfNote.early || 0) + 1;
-  } else { try { gl?.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* gone */ } }
-}
 if (mode === 'shader') setupShader();
 if (mode === 'viewer') await setupViewer();
 post({ type: 'ready', mode, revision: THREE.REVISION, n: new URLSearchParams(location.search).get('n'), dprLive: Boolean(globalThis.__labSetDpr) }); // (round 37: ?dpr= changes in place)

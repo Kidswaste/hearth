@@ -51,18 +51,6 @@ const ThreeLab = (() => {
     });
     libFiles[name].then(() => deliver({ target: 'three-sandbox', type: 'lib', name, code: String(have()) }), (err) => deliver({ target: 'three-sandbox', type: 'lib', name, error: err.message }));
   }
-  // (round 48, labstartfast) which kind of WebGL context the last scene's bottom renderer asked for (antialias or not):
-  // a new preview page makes one while three.js loads (tools/three-sandbox.html, "#gl="), for the first layer to take
-  const glHint = () => { const h = store.get('three.glHint', null); return h === 'aa' || h === 'plain' ? `#gl=${h}` : ''; };
-  function noteGlHint(codes) {
-    for (const c of codes) {
-      const m = /new\s+THREE\.WebGLRenderer\(\s*(\{[^}]*\})?\s*\)/.exec(c || '');
-      if (!m) continue;
-      const h = /antialias\s*:\s*true/.test(m[1] || '') ? 'aa' : 'plain';
-      if (store.get('three.glHint', null) !== h) store.set('three.glHint', h);
-      return;
-    }
-  }
   function sandboxFrame(parent, mode, onMessage, extraParams = () => '', { lazy = false, pretty = false, name = mode, gpuStuck = 'reload' } = {}) {
     // No allow-same-origin: sketch code (which may come from a chat) can't reach the hub's APIs.
     // (round 37, labboot) the Lab preview takes the page warmed after the start (tools/three-boot.js), moved in running
@@ -205,7 +193,7 @@ const ThreeLab = (() => {
         if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height, fresh });
         else {
           if (fresh && frame.parentNode) { const p = frame.parentNode; const next = frame.nextSibling; frame.remove(); p.insertBefore(frame, next); }
-          frame.src = `${SANDBOX}${query}${glHint()}`;
+          frame.src = `${SANDBOX}${query}`;
         }
       };
       const coverUp = (url) => {
@@ -3462,7 +3450,6 @@ const ThreeLab = (() => {
       for (const id of gone) ranRaw.delete(id);
       ranSketch = current.id;
       if (!partial && !box.onStage && !quiet) window.LabBoot?.ran(current.id, box.query); // (round 37) the query to warm a page with next time
-      if (!partial) noteGlHint(layersOf().map(codeOf)); // (round 48) the context a new page makes early
       if (editOn && !partial && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
       if (fresh) box.send(capMsg());
       ranOnce = true;

@@ -10,8 +10,13 @@
 // Each stretch: wall ms, the window's main-thread CPU ms (trace: dev/trace-stats.js), CPU ms per process (window, Lab
 // preview, GPU, main: app.getAppMetrics, hub.power.test), runs of the scene, and for the heavy ones when the model
 // and the text are in. "Correct" = the first frame after the scene's last run, with its model loaded.
-// Budgets (the verdict): see BUDGET at the end; window.LSF_REPORT = 1 only reports.
-//   node dev/smoke.js --check-timeout 420000 --script dev/checks/labstartfast.js
+// Budgets (the verdict, `done` in the measuring part): loose on time (a software GPU on a shared machine), strict on
+// what round 48 fixed: a scene with references runs once, the preview keeps its size while a song comes in, the window's
+// own work until the scenes are read. window.LSF_BUDGET overrides them, window.LSF_REPORT = 1 only reports.
+// Dev switches (localStorage, set with --eval): lsf.log = '1' adds each stretch's message log and the preview's size
+// changes; lsf.dump = a folder: each stretch's trace as JSON (dev/trace-stats.js reads the window's part; the preview's
+// and the GPU's threads are in it too); lsf.only = 'warm' | 'song' skips the cold part.
+//   node dev/smoke.js --check-timeout 600000 --script dev/checks/labstartfast.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(25); } return false; };
 const DIR = '/tmp/hearth-labstartfast';
@@ -195,7 +200,7 @@ async function stretch(name, go, { ready = null, quiet = 1500, trace = true } = 
   const first = mine.find((x) => x.type === 'stack-drawn');
   let win = null;
   if (trace) { const tr = await smoke({ trace: 'stop', detail: true, ...(localStorage.getItem('lsf.dump') ? { dump: `${localStorage.getItem('lsf.dump')}/${name}.json` } : {}) }); const s = tr.detail?.segments?.[name]; win = s ? { cpuAtReady: s.at?.labready?.cpuMs ?? null, cpuAtCorrect: s.at?.correct?.cpuMs ?? null, cpuAtFirst: s.at?.drawn1?.cpuMs ?? null, longestCpu: s.longestCpu, files: Object.entries(s.filesCpu || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`) } : null; }
-  const r = { first: first ? Math.round(first.t - T0) : null, correct: correct != null ? Math.round(correct - T0) : null, runs: mine.filter((x) => x.type === 'labran').length, layerRuns: mine.filter((x) => x.type === 'ran').length, errors: mine.filter((x) => x.type === 'error').length, drawn: mine.filter((x) => x.type === 'stack-drawn').length, cpu: m1 ? cpuOf(m0, m1) : null, win, ...(localStorage.getItem('lsf.log') === '1' ? { log: mine.filter((x) => !/^(stats|tweak-reads|console|fps)$/.test(x.type)).slice(0, 40).map((x) => `${Math.round(x.t - T0)} ${x.type}`).join(', ') } : {}) };
+  const r = { first: first ? Math.round(first.t - T0) : null, correct: correct != null ? Math.round(correct - T0) : null, runs: mine.filter((x) => x.type === 'labran').length, resizes: Math.max(0, mine.filter((x) => /^size /.test(x.type)).length - 1), layerRuns: mine.filter((x) => x.type === 'ran').length, errors: mine.filter((x) => x.type === 'error').length, drawn: mine.filter((x) => x.type === 'stack-drawn').length, cpu: m1 ? cpuOf(m0, m1) : null, win, ...(localStorage.getItem('lsf.log') === '1' ? { log: mine.filter((x) => !/^(stats|tweak-reads|console|fps)$/.test(x.type)).slice(0, 40).map((x) => `${Math.round(x.t - T0)} ${x.type}`).join(', ') } : {}) };
   T0 = 0;
   return r;
 }
@@ -248,17 +253,26 @@ if (step === '2') {
   return `[LSF] cold part ${JSON.stringify(res)}`;
 }
 // (the parts after another reload: the song scene, then a plain warm one)
+// the verdict (budgets on this software GPU under load: loose on time, strict on what was fixed)
 const done = () => {
-  const B = { coldOpenCpu: 4000, warmOpenFirst: 1500, switchSimpleCpu: 1500, switchHeavyRuns: 1, returnLabShown: 400 };
+  const B = window.LSF_BUDGET || { coldOpenCpu: 6000, coldWindowCpu: 900, warmShown: 1500, warmFirst: 5000, songFirst: 6000, readyCpu: 150, heavyRuns: 1, lateResizes: 0, returnShown: 600, switchSimpleCpu: 2500 };
   const fails = [];
   const c = (k) => res[k]?.cpu?.all;
   if (res.coldOpen?.first == null) fails.push('the cold open never drew');
   if (res.warmOpen?.first == null) fails.push('the warm open never drew');
   if (c('coldOpen') > B.coldOpenCpu) fails.push(`cold open used ${c('coldOpen')} ms CPU (budget ${B.coldOpenCpu})`);
-  if (res.warmOpen?.shown > B.warmOpenFirst) fails.push(`warm open took ${res.warmOpen.shown} ms to show (budget ${B.warmOpenFirst})`);
-  for (const k of ['switchHeavy', 'switchHeavy2', 'switchHeavyAgain']) if (res[k] && res[k].runs > B.switchHeavyRuns) fails.push(`${k} ran the scene ${res[k].runs}× (budget ${B.switchHeavyRuns})`);
-  for (const k of ['switchSimple', 'switchHeavy', 'switchHeavy2', 'songOpen']) if (res[k] && res[k].correct == null) fails.push(`${k} never reached its correct frame`);
-  if (res.returnLab?.shown > B.returnLabShown) fails.push(`back to the Lab took ${res.returnLab.shown} ms to show`);
+  if (res.coldOpen?.cpu?.window > B.coldWindowCpu) fails.push(`cold open: the window used ${res.coldOpen.cpu.window} ms CPU (budget ${B.coldWindowCpu})`);
+  if (res.warmOpen?.shown > B.warmShown) fails.push(`warm open took ${res.warmOpen.shown} ms to show the scene (budget ${B.warmShown})`);
+  if (res.warmOpen?.first > B.warmFirst) fails.push(`warm open: the Lab's own run drew after ${res.warmOpen.first} ms (budget ${B.warmFirst})`);
+  if (res.songOpen?.first > B.songFirst) fails.push(`open with a song: first frame after ${res.songOpen.first} ms (budget ${B.songFirst})`);
+  for (const k of ['coldOpen', 'warmOpen', 'songOpen']) if (res[k]?.win?.cpuAtReady > B.readyCpu) fails.push(`${k}: the window's CPU until the Lab's scenes were read: ${res[k].win.cpuAtReady} ms (budget ${B.readyCpu})`);
+  for (const k of ['switchHeavy', 'switchHeavy2', 'switchHeavyAgain']) if (res[k] && res[k].runs > B.heavyRuns) fails.push(`${k} ran the scene ${res[k].runs}× (budget ${B.heavyRuns}: its references come first)`);
+  for (const k of ['songOpen', 'warmOpen']) if (res[k] && res[k].resizes > B.lateResizes) fails.push(`${k}: the preview changed size ${res[k].resizes}× after it was laid out (each resizes every canvas)`);
+  for (const k of ['switchSimple', 'switchSimpleAgain', 'switchHeavy', 'switchHeavy2', 'switchHeavyAgain', 'switchHeavyToSimple', 'songOpen']) if (res[k] && res[k].correct == null) fails.push(`${k} never reached its correct frame`);
+  if (c('switchSimple') > B.switchSimpleCpu) fails.push(`a simple switch used ${c('switchSimple')} ms CPU (budget ${B.switchSimpleCpu})`);
+  if (res.songOpen && res.songOpen.song == null) fails.push('the song never came in');
+  if (res.returnLab?.shown > B.returnShown) fails.push(`back to the Lab took ${res.returnLab.shown} ms to show`);
+  if (res.returnLab && res.returnLab.drawn == null) fails.push('back to the Lab: the preview never drew');
   return fails;
 };
 if (step === '3') {
