@@ -90,6 +90,7 @@ const LoopCore = (() => {
     if (a.ease === 'hold') return a.v;
     let u = (t - a.t) / (b.t - a.t || 1);
     if (a.ease === 'curve' && a.c) u = a.c > 0 ? u ** (1 + a.c * 4) : 1 - (1 - u) ** (1 - a.c * 4);
+    else if (a.ease === 'bezier' && a.b && typeof ThreeLayers !== 'undefined') u = ThreeLayers.bezierAt(a.b, u); // (round 46, labkeys)
     else u = (EASE[a.ease] || EASE.ease)(u);
     if (typeof a.v === 'string' && typeof b.v === 'string') return mixHex(a.v, b.v, u);
     return a.v + (b.v - a.v) * u;

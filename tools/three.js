@@ -1193,6 +1193,8 @@ const ThreeLab = (() => {
       const at = keyAt(ks, player.time);
       if (at) setKeys(L, prop, ks.filter((k) => k !== at));
       else setKeys(L, prop, upsertKey(ks, player.time, value ?? valueAt(L, prop)));
+      // (round 46, labkeys) a setting's first keyframe shows its lane under the layer: its diamonds, where you shape them
+      if (!ks.length && !at && laneData(L, prop) && !lanesOf(L).includes(prop) && lanesOf(L).length < 3) setLanes(L, [...lanesOf(L), prop]);
     }
     // Moving an animated slider sets a keyframe where the move started (so dragging while it plays stays on one key).
     let dragKeyT = null;
@@ -1232,8 +1234,8 @@ const ThreeLab = (() => {
     // All of a layer's keyframe times (for the ◆ on its track).
     function trackKeys(L) {
       const m = new Map();
-      for (const ks of Object.values(L.keys || {})) for (const k of ks) { const r = Math.round(k.t * 1000) / 1000; if (![...m.keys()].some((x) => Math.abs(x - r) < KEY_EPS)) m.set(r, k.ease || 'ease'); }
-      return [...m].map(([t, ease]) => ({ t, ease })).sort((a, b) => a.t - b.t);
+      for (const ks of Object.values(L.keys || {})) for (const k of ks) { const r = Math.round(k.t * 1000) / 1000; if (![...m.keys()].some((x) => Math.abs(x - r) < KEY_EPS)) m.set(r, k.ease === 'bezier' && k.b ? { ease: 'bezier', b: k.b } : { ease: k.ease || 'ease' }); }
+      return [...m].map(([t, o]) => ({ t, ...o })).sort((a, b) => a.t - b.t);
     }
     function editKeysAt(id, t, fn) {
       const L = layerById(id);
@@ -1245,7 +1247,47 @@ const ThreeLab = (() => {
       renderTracksOnly();
       syncKeyUI(true);
     }
+    // (round 46, labkeys) several ◆ at once on the layers' tracks: sel = { layerId: [times] }; every setting keyed at
+    // those times goes along. The timeline keeps snapKeys(ids) from before a change as its one undo step.
+    const keysCopy = (keys) => JSON.parse(JSON.stringify(keys || {}));
+    function putKeys(L, keys, final = true) {
+      L.keys = keys;
+      for (const p of Object.keys(L.keys)) if (!L.keys[p]?.length) delete L.keys[p];
+      sendKeys(L);
+      if (final) { fitClock(); touch(); renderTracksOnly(); syncKeyUI(true); }
+    }
+    const eachSel = (sel, fn) => { for (const [id, ts] of Object.entries(sel || {})) { const L = layerById(id); if (L && ts?.length) fn(L, ts); } };
+    const keyable = (L) => (prop) => ANIM.includes(prop) || (prop.startsWith('s:') && Boolean(controllers.get(L.id)?.keyInfo(prop.slice(2))));
+    const keysHandlers = {
+      snapKeys: (ids) => ids.map((id) => layerById(id)).filter(Boolean).map((L) => ({ id: L.id, keys: keysCopy(L.keys) })),
+      onKeysRestore: (snap) => { for (const s of snap || []) { const L = layerById(s.id); if (L) putKeys(L, keysCopy(s.keys)); } },
+      onKeysShift: (sel, dt, { copy = false } = {}) => eachSel(sel, (L, ts) => putKeys(L, ThreeLayers.shiftKeysAt(L.keys, ts, dt, { copy }))),
+      onKeysEase: (sel, ease, b, { final = true } = {}) => eachSel(sel, (L, ts) => putKeys(L, ThreeLayers.easeKeysAt(L.keys, ts, ease, b), final)),
+      onKeysDelete: (sel) => eachSel(sel, (L, ts) => putKeys(L, ThreeLayers.shiftKeysAt(Object.fromEntries(Object.entries(L.keys || {}).map(([p, ks]) => [p, ks.filter((k) => !ts.some((t) => Math.abs(k.t - t) < KEY_EPS))])), [], 0))),
+      // a copy: each layer's keys at its times, with where they start from the earliest one
+      onKeysCopy: (sel) => {
+        const parts = []; eachSel(sel, (L, ts) => { const clip = ThreeLayers.copyKeysAt(L.keys, ts); if (clip) parts.push({ id: L.id, t0: Math.min(...ts), clip }); });
+        if (!parts.length) return null;
+        const t0 = Math.min(...parts.map((x) => x.t0));
+        return { layers: parts.map((x) => ({ id: x.id, off: Math.round((x.t0 - t0) * 1000) / 1000, clip: x.clip })) };
+      },
+      // pasted at `at`: one layer's keys go to the selected layer (another layer works: settings it doesn't have stay
+      // out); several layers' keys go back to those layers. Returns the layers changed.
+      onKeysPaste: (clip, at) => {
+        const one = clip?.layers?.length === 1;
+        const out = [];
+        for (const part of clip?.layers || []) {
+          const L = one ? sel() : layerById(part.id);
+          if (!L) continue;
+          putKeys(L, ThreeLayers.pasteKeys(L.keys, part.clip, at + part.off, keyable(L)));
+          out.push(L.id);
+        }
+        return out;
+      },
+      pasteTargets: (clip) => (clip?.layers?.length === 1 ? [sel()?.id].filter(Boolean) : (clip?.layers || []).map((x) => x.id).filter((id) => layerById(id))),
+    };
     const trackHandlers = {
+      ...keysHandlers,
       onSelect: (id) => selectLayer(id),
       onChange: (id, v, { final }) => editLayer(id, v, { live: !final }),
       onKeyMove: (id, from, to) => editKeysAt(id, from, (ks, hit) => [...ks.filter((k) => !hit(k) && Math.abs(k.t - to) >= KEY_EPS), ...ks.filter(hit).map((k) => ({ ...k, t: Math.round(to * 1000) / 1000 }))]),
@@ -2684,6 +2726,11 @@ const ThreeLab = (() => {
     if (typeof ThreeGestures !== 'undefined') ThreeGestures.attach({ send: (msg) => box.send(msg), pane, layer: () => sel()?.id });
     // (round 40, labcamera) 🎥 camera moves on the timeline (tools/three-camera.js; the moves are drawn in the preview)
     if (typeof LabCamera !== 'undefined') LabCamera.attach({ send: (msg) => box.send(msg), player, layers: () => layersOf(), layerById: (id) => layerById(id), sel: () => sel() || null, edit: (id, patch) => editLayer(id, patch, { direct: true }), sketchId: () => current?.id || null, host: previewHost, ensureClock: () => { if (!player.loaded) ensureTimeline(); } });
+    // (round 46, labdirect) ✥ click / drag / scale / turn layers on the picture itself (tools/three-direct.js; the gestures are in the preview)
+    if (typeof LabDirect !== 'undefined') LabDirect.attach({ send: (msg) => box.send(msg), pane, player, layerById: (id) => layerById(id), sel: () => sel() || null, select: (id) => selectLayer(id), edit: (id, patch, o) => editLayer(id, patch, o), sketchId: () => current?.id || null, setEdit: (on) => setEdit(on), frame: () => box.frame,
+      openSliders: (id) => { if (selId !== id) selectLayer(id); setSlidersVisible(true); },
+      snapshot: (L) => ({ x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, keys: JSON.parse(JSON.stringify(Object.fromEntries(['x', 'y', 'scale', 'rotate'].filter((p) => L.keys?.[p]?.length).map((p) => [p, L.keys[p]])))) }),
+      restore: (L, b) => { Object.assign(L, { x: b.x, y: b.y, scale: b.scale, rotate: b.rotate }); L.keys ||= {}; for (const p of ['x', 'y', 'scale', 'rotate']) { if (b.keys?.[p]) L.keys[p] = JSON.parse(JSON.stringify(b.keys[p])); else delete L.keys[p]; } box.send({ type: 'layer-props', id: L.id, props: layerProps(L) }); touch(); renderLayers(); } });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -2804,6 +2851,7 @@ const ThreeLab = (() => {
       if (/^motionin-/.test(msg.type)) { window.LabMotionIn?.onBox?.(msg); return; } // (round 25) 📷 camera input: what the scene reads, tracking state
       if (msg.type === 'physics-info') { window.LabPhysics?.onBox?.(msg); return; } // (round 25) ⚛ physics layers' bodies
       if (msg.type === 'cam-info' && typeof LabCamera !== 'undefined' && LabCamera.onBox(msg)) return; // (round 40) the camera moves' answers
+      if (msg.type === 'direct' && typeof LabDirect !== 'undefined' && LabDirect.onBox(msg)) return; // (round 46, labdirect) a pick / a move on the picture
       if (/^view-/.test(msg.type) && typeof ThreeGestures !== 'undefined' && ThreeGestures.onBox(msg)) return; // (round 34) Z / Shift+Z answers, the first-time hint
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js

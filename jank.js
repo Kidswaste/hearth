@@ -39,15 +39,29 @@ const Jank = (() => {
     [/^(cmdbar|keys-ui)/, 'menus'], [/^(native|panel|chat-|md\.js|meter|director-dock)/, 'chat'], [/^(capture|framereader)/, 'capture'], [/^tools\/forge/, 'Forge']];
   const fileArea = (f) => { for (const [re, a] of FILE_AREA) if (re.test(f)) return a; return ''; };
   const surfArea = (sid) => TOOL_AREA[sid] || (String(sid).startsWith('tool:') ? sid.slice(5) : 'chat');
+  // (round 46, smooth46) asked for every long frame (several per second while the Lab plays or a list redraws on a
+  // busy machine): its two page-wide searches walked every element each time (≈ 20,000 with kept chat lists) and were
+  // the hub's top script during Lab play and slider drags. Now one search tells whether any of them is open (the usual
+  // answer: none), and the answer holds for a second or until the next press / key or change of view
+  let vaAt = -1e9; let vaWas = 'start';
+  const OVER = '.palette, .cmdbar:not([hidden]), dialog[open]';
   function viewArea() {
     if (!readyAt) return 'start';
+    const now = performance.now();
+    if (now - vaAt < 1000) return vaWas;
+    let a = '';
     const m = document.getElementById('menu');
-    if ((m && !m.hidden) || document.querySelector('.palette, .cmdbar:not([hidden])')) return 'menus';
-    if (document.querySelector('dialog[open]')) return 'dialogs';
-    let sid = '';
-    try { sid = H.surfaceIdFor(H.activeId) || ''; } catch { /* before the app is up */ }
-    return surfArea(sid);
+    if (m && !m.hidden) a = 'menus';
+    else if (document.querySelector(OVER)) a = document.querySelector('.palette, .cmdbar:not([hidden])') ? 'menus' : 'dialogs';
+    else {
+      let sid = '';
+      try { sid = H.surfaceIdFor(H.activeId) || ''; } catch { /* before the app is up */ }
+      a = surfArea(sid);
+    }
+    vaAt = now; vaWas = a;
+    return a;
   }
+  addEventListener('hearth:view', () => { vaAt = -1e9; });
   function targetArea(t) {
     if (!readyAt) return 'start';
     const e = t?.closest ? t : t?.parentElement;
@@ -106,6 +120,7 @@ const Jank = (() => {
   function interact(e) {
     if (off) return;
     poke(e.type === 'pointerdown');
+    vaAt = -1e9; // (what's open may change with this input)
     if (e.repeat) return;
     lastArea = targetArea(e.target);
     areaOf(bucket(), lastArea).n += 1;

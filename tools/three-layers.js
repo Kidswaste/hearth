@@ -35,6 +35,18 @@ const ThreeLayers = (() => {
       pulse: (t) => Math.sin(t * Math.PI),
     };
   })();
+  // 'bezier' (round 46, labkeys): an After Effects-style speed curve from the key's two handles b = [x1, y1, x2, y2]
+  // (like CSS cubic-bezier: x in 0..1, y free), solved for the time, then read for the value. The preview page
+  // (tools/three-sandbox.html) has the same lines, so renders and the preview agree (dev/labkeys-test.js).
+  function bezierAt(b, u) {
+    const cx = 3 * b[0]; const bx = 3 * (b[2] - b[0]) - cx; const ax = 1 - cx - bx;
+    const cy = 3 * b[1]; const by = 3 * (b[3] - b[1]) - cy; const ay = 1 - cy - by;
+    const X = (s) => ((ax * s + bx) * s + cx) * s;
+    let s = u;
+    for (let i = 0; i < 8; i += 1) { const e = X(s) - u; const d = (3 * ax * s + 2 * bx) * s + cx; if (Math.abs(e) < 1e-7 || Math.abs(d) < 1e-6) break; s -= e / d; }
+    if (!(s >= 0 && s <= 1) || Math.abs(X(s) - u) > 1e-5) { let lo = 0; let hi = 1; s = u; for (let i = 0; i < 40; i += 1) { const x = X(s); if (Math.abs(x - u) < 1e-7) break; if (x < u) lo = s; else hi = s; s = (lo + hi) / 2; } }
+    return ((ay * s + by) * s + cy) * s;
+  }
   function evalKeys(keys, t, base) {
     if (!keys?.length || t == null) return base;
     if (t <= keys[0].t) return keys[0].v;
@@ -48,6 +60,7 @@ const ThreeLayers = (() => {
     if (a.ease === 'ease') u = u * u * (3 - 2 * u);
   // 'curve' (FL Studio-style tension): c in -1..1 bends the move toward the start or the end
   else if (a.ease === 'curve' && a.c) u = a.c > 0 ? Math.pow(u, 1 + a.c * 4) : 1 - Math.pow(1 - u, 1 - a.c * 4);
+    else if (a.ease === 'bezier' && a.b) u = bezierAt(a.b, u);
     else if (EASE_FN[a.ease]) u = EASE_FN[a.ease](u);
     if (typeof a.v === 'string' && typeof b.v === 'string') return mixColor(a.v, b.v, u);
     if (typeof a.v === 'boolean') return a.v;
@@ -62,6 +75,50 @@ const ThreeLayers = (() => {
     return next.sort((a, b) => a.t - b.t);
   }
   const keyAt = (keys, t) => keys?.find((k) => Math.abs(k.t - t) < KEY_EPS) || null;
+  // ---------- several keyframes at once (round 46, labkeys): a layer's keys = { prop: [{ t, v, ease, c?, b? }] } ----------
+  const r3 = (t) => Math.round(t * 1000) / 1000;
+  const atAny = (times, t) => times.some((x) => Math.abs(x - t) < KEY_EPS);
+  // the keys at `times` (every setting) moved by dt (copy: the originals stay); a moved key replaces one it lands on.
+  // lo / hi clamp the move so no key leaves the timeline.
+  function shiftKeysAt(keys, times, dt, { copy = false, lo = 0, hi = Infinity } = {}) {
+    const picked = Object.values(keys || {}).flat().filter((k) => atAny(times, k.t)).map((k) => k.t);
+    if (!picked.length) return { ...keys };
+    const d = Math.max(lo - Math.min(...picked), Math.min(hi - Math.max(...picked), dt));
+    const out = {};
+    for (const [prop, ks] of Object.entries(keys || {})) {
+      const moved = ks.filter((k) => atAny(times, k.t)).map((k) => ({ ...k, t: r3(k.t + d) }));
+      const kept = ks.filter((k) => (copy || !atAny(times, k.t)) && !moved.some((m) => Math.abs(m.t - k.t) < KEY_EPS)).map((k) => ({ ...k }));
+      const all = [...kept, ...moved].sort((a, b) => a.t - b.t);
+      if (all.length) out[prop] = all;
+    }
+    return out;
+  }
+  // the keys at `times`, every setting, as a clip: { span, props: { prop: [{ dt, v, ease, c?, b? }] } } (dt from the first)
+  function copyKeysAt(keys, times) {
+    const picked = Object.entries(keys || {}).map(([prop, ks]) => [prop, ks.filter((k) => atAny(times, k.t))]).filter(([, ks]) => ks.length);
+    if (!picked.length) return null;
+    const t0 = Math.min(...picked.flatMap(([, ks]) => ks.map((k) => k.t)));
+    const props = Object.fromEntries(picked.map(([prop, ks]) => [prop, ks.map(({ t, ...rest }) => ({ ...rest, dt: r3(t - t0) }))]));
+    return { span: Math.max(...picked.flatMap(([, ks]) => ks.map((k) => k.t))) - t0, props };
+  }
+  // a clip put in at `at`: its keys replace the ones at the same times; only the settings `allow(prop)` says exist
+  function pasteKeys(keys, clip, at, allow = () => true) {
+    const out = Object.fromEntries(Object.entries(keys || {}).map(([p, ks]) => [p, ks.map((k) => ({ ...k }))]));
+    for (const [prop, ks] of Object.entries(clip?.props || {})) {
+      if (!allow(prop)) continue;
+      const add = ks.map(({ dt, ...rest }) => ({ ...rest, t: r3(Math.max(0, at + dt)) }));
+      out[prop] = [...(out[prop] || []).filter((k) => !add.some((x) => Math.abs(x.t - k.t) < KEY_EPS)), ...add].sort((a, b) => a.t - b.t);
+    }
+    return out;
+  }
+  // an ease (and its handles for 'bezier') on the keys at `times`
+  function easeKeysAt(keys, times, ease, b) {
+    return Object.fromEntries(Object.entries(keys || {}).map(([p, ks]) => [p, ks.map((k) => {
+      if (!atAny(times, k.t)) return { ...k };
+      const { c, b: ob, ...rest } = k; // eslint-disable-line no-unused-vars
+      return ease === 'bezier' ? { ...rest, ease, b: b.map((x) => Math.round(x * 1000) / 1000) } : { ...rest, ease };
+    })]));
+  }
   const newId = () => `l${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
   const defaults = (o = {}) => ({ id: newId(), name: 'Layer', code: '', visible: true, opacity: 1, blend: 'normal', in: null, out: null, fadeIn: 0, fadeOut: 0, x: 0, y: 0, scale: 1, rotate: 0, ...o });
 
@@ -507,5 +564,5 @@ filter('${type}', P);
     b.title = state === 'on' ? 'Remove this keyframe' : state === 'animated' ? 'Add a keyframe here (it\'s animated: moving the slider also adds one)' : 'Animate: add a keyframe at the playhead';
   }
 
-  return { panel, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt, EASE_IDS: ['linear', 'ease', 'hold', 'curve', ...Object.keys(EASE_FN)] };
+  return { panel, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt, bezierAt, shiftKeysAt, copyKeysAt, pasteKeys, easeKeysAt, EASE_IDS: ['linear', 'ease', 'hold', 'curve', ...Object.keys(EASE_FN)] };
 })();

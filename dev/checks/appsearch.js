@@ -174,13 +174,17 @@ try {
   Missions.set(claude.id, 'normal');
 
   // ---------- patch notes ----------
+  // a part of the newest round (search only keeps the newest 8 rounds, so a fixed one would age out)
+  const newest = ((await (await fetch('docs/patch-notes/index.txt', { cache: 'no-store' })).text()).match(/round-\d+\.md/) || [])[0];
+  const NEWS = ((await (await fetch(`docs/patch-notes/${newest}`, { cache: 'no-store' })).text()).match(/\n## ([^\n]+)/) || [])[1].replace(/^[^\p{L}\p{N}]+/u, '').trim();
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   await openPal();
-  await type('what\'s new: lab search');
+  await type(`what's new: ${NEWS.toLowerCase()}`);
   const pn = rows()[0];
   await enterOn((r) => r.label === pn?.label);
   const pnd = await until(() => document.querySelector('dialog.pn-dialog[open]'), 5000);
-  const pnh = await until(() => [...(pnd?.querySelectorAll('.pn-body :is(h2, h3, h4, h5)') || [])].find((h) => /Lab search/.test(h.textContent) && lit(h)), 4000);
-  step('"what\'s new: lab search" → that part of the patch notes, opened and lit', /What's new: Lab search/.test(pn?.label) && pnh, { row: pn, jumped: AppSearch.last.jumped });
+  const pnh = await until(() => [...(pnd?.querySelectorAll('.pn-body :is(h2, h3, h4, h5)') || [])].find((h) => h.textContent.includes(NEWS) && lit(h)), 4000);
+  step('"what\'s new: <a part of the newest round>" → that part of the patch notes, opened and lit', new RegExp(`What's new: ${esc(NEWS)}`).test(pn?.label || '') && pnh, { NEWS, row: pn, jumped: AppSearch.last.jumped });
   pnd?.close();
 
   // ---------- the Lab: Lab search's things, and its own box ----------

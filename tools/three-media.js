@@ -469,7 +469,9 @@ const ThreeMedia = (() => {
     // and the zoomed window you can drag.
     const minimap = el('canvas', { class: 'mb-minimap', title: 'The whole song: each layer\'s time, the loop and the playhead. Drag the box to move the zoomed view; click to jump.' });
     // Layer tracks under the song (top layer first): { id, name, color, in, out, visible, selected, keys: [{ t, ease }] }.
-    // Handlers: onSelect(id), onChange(id, { in, out }, { final }), onKeyMove(id, from, to), onKeyDelete(id, t), onKeyEase(id, t, ease).
+    // Handlers: onSelect(id), onChange(id, { in, out }, { final }), onKeyDelete(id, t), onKeyEase(id, t, ease);
+    // (round 46, labkeys) several ◆: snapKeys(ids), onKeysRestore(snap), onKeysShift(sel, dt, { copy }), onKeysEase(sel, ease, b, { final }),
+    // onKeysDelete(sel), onKeysCopy(sel), onKeysPaste(clip, at), pasteTargets(clip) — sel = { layerId: [times] }.
     // A track can show several automation lanes under it (Ableton-style), picked with the ▾ in the header column
     // at the right (outside the timeline, so it never covers it):
     // lanes = [{ prop, label, min, max, step, base, keys, tall }], animated = how many settings have points.
@@ -495,9 +497,25 @@ const ThreeMedia = (() => {
     let autoSel = null; // { id, prop, idx: Set }
     let activeLane = null; // { id, prop }
     let autoClip = null; // { prop, min, max, keys: [{ t (from 0), v, ease, c }] }
+    // (round 46, labkeys) ◆ picked on the layers' tracks (Shift+click, Shift+drag a box): Map(layer id → Set(times));
+    // dragged together (Alt: copies), Ctrl/⌘+C / V to another time or layer, Delete. keysClip: the last ◆ copy.
+    let keySel = null;
+    let keysClip = null;
+    let lastCopy = ''; // 'lane' | 'keys': what Ctrl/⌘+V pastes
+    const keySelObj = () => (keySel ? Object.fromEntries([...keySel].filter(([, x]) => x.size).map(([id, x]) => [id, [...x]])) : {});
+    const keySelN = () => (keySel ? [...keySel.values()].reduce((n, x) => n + x.size, 0) : 0);
+    const keyPicked = (id, t) => Boolean(keySel?.get(id) && [...keySel.get(id)].some((x) => Math.abs(x - t) < 1e-3));
+    function keyPick(id, t, toggle) {
+      if (!toggle || !keySel) keySel = new Map();
+      const set = keySel.get(id) || new Set(); const had = [...set].find((x) => Math.abs(x - t) < 1e-3);
+      if (had != null && toggle) set.delete(had); else set.add(t);
+      keySel.set(id, set);
+    }
     function setTracks(list, handlers) {
       tracks = list || [];
       if (handlers) trackHandlers = handlers;
+      // (labkeys) picked ◆ that are gone (deleted, undone, another scene) leave the selection
+      if (keySel) for (const [id, set] of keySel) { const tr = tracks.find((x) => x.id === id); for (const t of [...set]) if (!tr?.keys?.some((k) => Math.abs(k.t - t) < 1e-3)) set.delete(t); if (!set.size) keySel.delete(id); }
       sizeCanvas();
       draw();
     }
@@ -834,6 +852,7 @@ const ThreeMedia = (() => {
       const prev = mapUndo.pop();
       if (!prev) return;
       if (prev.hook) { hooks.undo?.(prev.hook); for (const x of xhooks) x.undo?.(prev.hook); paint(); return; }
+      if (prev.keysSnap) { keySel = null; trackHandlers.onKeysRestore?.(prev.keysSnap); paint(); return; } // (labkeys) ◆ moved / copied / pasted / eased
       if (typeof prev === 'object') {
         const { id, prop, keys } = prev.lane;
         autoSel = null;
@@ -1408,6 +1427,9 @@ const ThreeMedia = (() => {
       if (hk != null) return hk;
       // curve points: copy / paste at the playhead / duplicate after themselves / select all in the lane
       if (ctrl && e.key.toLowerCase() === 'c' && autoSel?.idx.size) { copyPoints(); return true; }
+      // (labkeys) the ◆ picked on the tracks: copy; paste at the playhead (into the selected layer when they came from one)
+      if (ctrl && e.key.toLowerCase() === 'c' && keySelN()) { keysCopy(); return true; }
+      if (ctrl && e.key.toLowerCase() === 'v' && keysClip && (lastCopy === 'keys' || !autoClip || !activeLane)) { keysPaste(); return true; }
       if (ctrl && e.key.toLowerCase() === 'v' && autoClip && activeLane) { pastePoints(); return true; }
       if (ctrl && e.key.toLowerCase() === 'd' && autoSel?.idx.size) { duplicatePoints(); return true; }
       if (ctrl && e.key.toLowerCase() === 'a' && activeLane) { selectAllPoints(); return true; }
@@ -1436,8 +1458,9 @@ const ThreeMedia = (() => {
       if (e.key === '[') { setRegionEdge('a', now()); return true; }
       if (e.key === ']') { setRegionEdge('b', now()); return true; }
       if ((e.key === 'Delete' || e.key === 'Backspace') && autoSel?.idx.size) { deletePoints(); return true; }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && keySelN()) { const sel = keySelObj(); keySel = null; keysChange(Object.keys(sel), () => trackHandlers.onKeysDelete?.(sel)); return true; }
       if (e.key === 'Delete' || e.key === 'Backspace') return deleteSelectedMark();
-      if (e.key === 'Escape') { if (taps.length) { taps = []; tapSong = []; tapRaw = []; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); } if (autoSel) { autoSel = null; draw(); return true; } selected = null; draw(); return true; }
+      if (e.key === 'Escape') { if (taps.length) { taps = []; tapSong = []; tapRaw = []; tapBtn.textContent = 'Tap'; tapBtn.classList.remove('on'); } if (autoSel || keySel) { autoSel = null; keySel = null; draw(); return true; } selected = null; draw(); return true; }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const dir = e.key === 'ArrowLeft' ? -1 : 1;
         const d = hooks.arrowStep?.(dir, e) ?? (st.clock && !e.altKey ? dir * (e.shiftKey ? 10 : 1) / clockFps() : dir * (e.shiftKey ? snapStep(snapMode, G(), bpmNow()) : e.altKey ? 0.001 : 0.01));
@@ -1586,7 +1609,7 @@ const ThreeMedia = (() => {
       return [W, h, devicePixelRatio, scroll.on ? 'strip' : `${v0()}|${span()}`, D(), anaVer, st.path, waveRGB, scroll.on, JSON.stringify(gridView), snapMode, bpmNow(), G()?.anchor, bpbNow(), dIdx(),
         LANES.map((l) => sumOf(map.marks[l.id])).join(), map.cues.map((c) => `${c.t}${c.name}${c.looks?.length || 0}`).join(), region ? `${region.a}|${region.b}|${locked}|${st.loop}` : '', map.trim ? `${map.trim.a}|${map.trim.b}` : '',
         selected ? JSON.stringify(selected) : '', notes.map((n) => `${n.t}${n.done}`).join(), JSON.stringify(tracks), autoSel ? `${autoSel.id}|${autoSel.prop}|${[...autoSel.idx].join(',')}` : '',
-        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', lanesMoving ? Math.round(now() * 20) : '', hooks.frameKey?.() || '', ...xhooks.map((x) => x.frameKey?.() || '')].join('~');
+        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', keySel ? JSON.stringify(keySelObj()) : '', lanesMoving ? Math.round(now() * 20) : '', hooks.frameKey?.() || '', ...xhooks.map((x) => x.frameKey?.() || '')].join('~');
     }
     let lastMiniKey = '';
     let lastFull = 0;
@@ -2020,21 +2043,28 @@ const ThreeMedia = (() => {
         g.fillStyle = tr.selected ? '#ffffff' : '#eae0d5b0';
         g.fillText(`${tr.visible === false ? '(hidden) ' : ''}${tr.name}${tr.in == null && tr.out == null ? ' · whole song' : ''}`, Math.max(4, Math.min(xa + 6, xb - 40)), y + 11);
         if (tr.selected) { g.strokeStyle = '#ffd75e'; g.lineWidth = 1; g.strokeRect(Math.max(0, xa) + 0.5, y + 1.5, Math.max(2, Math.min(w, xb) - Math.max(0, xa) - 1), TRACK_H - 3); }
-        // keyframes: ◆ (filled = ease, square = hold, outline diamond = linear)
+        // keyframes: ◆ (filled = ease, square = hold, outline diamond = linear); picked ones ringed in gold, and while
+        // they're dragged they show where they land (Alt: the copies, the originals stay)
+        const dk = dragging?.kind === 'keys' && dragging.moved ? dragging : null;
         for (const k of tr.keys || []) {
-          const kt = dragging?.kind === 'key' && dragging.id === tr.id && Math.abs(dragging.from - k.t) < 1e-3 ? dragging.now : k.t;
-          if (kt < s0 || kt > s0 + sp) continue;
-          const kx = Math.round(X(kt)); const ky = y + TRACK_H / 2; const r0 = 4.5;
-          g.fillStyle = tr.selected ? '#ffffff' : '#eae0d5';
-          g.strokeStyle = '#0b0e10';
-          g.lineWidth = 1;
-          g.beginPath();
-          if (k.ease === 'hold') g.rect(kx - 3.5, ky - 3.5, 7, 7);
-          else { g.moveTo(kx, ky - r0); g.lineTo(kx + r0, ky); g.lineTo(kx, ky + r0); g.lineTo(kx - r0, ky); g.closePath(); }
-          if (k.ease === 'linear') { g.stroke(); g.strokeStyle = tr.selected ? '#ffffff' : '#eae0d5'; g.stroke(); } else { g.fill(); g.stroke(); }
+          const going = dk && dk.sel[tr.id]?.some((x) => Math.abs(x - k.t) < 1e-3);
+          const picked = keyPicked(tr.id, k.t);
+          for (const kt of going ? (dk.copy ? [k.t, k.t + dk.dt] : [k.t + dk.dt]) : [k.t]) {
+            if (kt < s0 || kt > s0 + sp) continue;
+            const kx = Math.round(X(kt)); const ky = y + TRACK_H / 2; const r0 = 4.5;
+            g.fillStyle = tr.selected ? '#ffffff' : '#eae0d5';
+            g.strokeStyle = '#0b0e10';
+            g.lineWidth = 1;
+            g.beginPath();
+            if (k.ease === 'hold') g.rect(kx - 3.5, ky - 3.5, 7, 7);
+            else { g.moveTo(kx, ky - r0); g.lineTo(kx + r0, ky); g.lineTo(kx, ky + r0); g.lineTo(kx - r0, ky); g.closePath(); }
+            if (k.ease === 'linear') { g.stroke(); g.strokeStyle = tr.selected ? '#ffffff' : '#eae0d5'; g.stroke(); } else { g.fill(); g.stroke(); }
+            if (picked && (!going || kt !== k.t || !dk.copy)) { g.strokeStyle = '#ffd75e'; g.lineWidth = 2; g.stroke(); }
+          }
         }
       });
       for (const row of trackRows(h)) for (const lr of row.lanes) drawLane(g, row.tr, lr, X, s0, sp, w);
+      if (dragging?.kind === 'keyBox' && dragging.box) { const b = dragging.box; g.fillStyle = '#ffd75e14'; g.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.strokeStyle = '#ffd75e90'; g.lineWidth = 1; g.strokeRect(b.x0 + 0.5, b.y0 + 0.5, b.x1 - b.x0, b.y1 - b.y0); }
       if (dragging?.kind === 'autoBox' && dragging.box) {
         const b = dragging.box;
         g.fillStyle = '#ffffff12'; g.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
@@ -2189,10 +2219,13 @@ const ThreeMedia = (() => {
         }
         const kx = X(k.t);
         if (kx < -6 || kx > w + 6) return;
-        const on = isSel(tr, L, i);
-        g.fillStyle = on ? '#ffffff' : '#0b0e10';
-        g.beginPath(); g.arc(kx, Y(k.v), on ? 4.8 : 4.2, 0, Math.PI * 2); g.fill();
-        g.strokeStyle = on ? col : k.ease === 'hold' ? '#ffffff' : col; g.lineWidth = 2; g.stroke();
+        // (round 46, labkeys) a keyframe diamond like the track's: filled = eased, outline = linear, square = hold
+        const on = isSel(tr, L, i); const ky = Y(k.v); const r0 = on ? 6 : 5.2;
+        g.beginPath();
+        if (k.ease === 'hold') g.rect(kx - r0 * 0.72, ky - r0 * 0.72, r0 * 1.44, r0 * 1.44);
+        else { g.moveTo(kx, ky - r0); g.lineTo(kx + r0, ky); g.lineTo(kx, ky + r0); g.lineTo(kx - r0, ky); g.closePath(); }
+        g.fillStyle = on ? '#ffffff' : k.ease === 'linear' ? '#0b0e10' : col; g.fill();
+        g.strokeStyle = on ? col : k.ease === 'linear' ? col : '#0b0e10'; g.lineWidth = on ? 2 : 1.5; g.stroke();
       });
       // the value next to the point being dragged
       const d = dragging;
@@ -2379,7 +2412,8 @@ const ThreeMedia = (() => {
         activeLane = { id: tr.id, prop: L.prop };
         const keys = (L.keys || []).map((k) => ({ ...k }));
         const before = keys.map((k) => ({ ...k }));
-        const base = { id: tr.id, L, top: lr.top, lh: lr.h, keys, before, moved: false };
+        const base = { id: tr.id, L, top: lr.top, lh: lr.h, keys, before, moved: false, cx: e.clientX, cy: e.clientY };
+        keySel = null;
         const sameLane = autoSel && autoSel.id === tr.id && autoSel.prop === L.prop;
         const rr = canvas.getBoundingClientRect();
         if (e.ctrlKey || e.metaKey) {
@@ -2387,6 +2421,9 @@ const ThreeMedia = (() => {
           dragging = { ...base, kind: 'autoDraw', drawn: new Map() };
           autoSel = null;
           drawAt(dragging, e);
+        } else if (e.shiftKey && e.altKey && hit.point >= 0 && sameLane && autoSel.idx.has(hit.point)) {
+          // Shift+Alt+drag the selection: stretch its values apart / together
+          dragging = { ...base, kind: 'autoGroup', idx0: new Set(autoSel.idx), lead0: hit.point, lead: hit.point, t0: tt, y0: e.clientY, alt: true };
         } else if (e.shiftKey && hit.point >= 0) {
           // Shift+click a point: add it to / remove it from the selection
           const idx = sameLane ? new Set(autoSel.idx) : new Set();
@@ -2395,9 +2432,13 @@ const ThreeMedia = (() => {
           dragging = { kind: 'none' };
         } else if (e.shiftKey) {
           dragging = { ...base, kind: 'autoBox', x0: e.clientX - rr.left, y0: e.clientY - rr.top, box: null, add: sameLane ? new Set(autoSel.idx) : new Set() };
-        } else if (hit.point >= 0 && sameLane && autoSel.idx.has(hit.point) && (autoSel.idx.size > 1 || e.altKey)) {
-          // drag the whole selection (Alt: stretch its values apart / together)
-          dragging = { ...base, kind: 'autoGroup', idx0: new Set(autoSel.idx), lead0: hit.point, lead: hit.point, t0: tt, y0: e.clientY, alt: e.altKey };
+        } else if (hit.point >= 0 && e.altKey) {
+          // (labkeys) Alt+drag: a copy of the point (or of the selection it's in), the originals stay
+          const idx0 = sameLane && autoSel.idx.has(hit.point) ? new Set(autoSel.idx) : new Set([hit.point]);
+          dragging = { ...base, kind: 'autoGroup', idx0, lead0: hit.point, lead: hit.point, t0: tt, y0: e.clientY, alt: false, copy: true };
+        } else if (hit.point >= 0 && sameLane && autoSel.idx.has(hit.point) && autoSel.idx.size > 1) {
+          // drag the whole selection
+          dragging = { ...base, kind: 'autoGroup', idx0: new Set(autoSel.idx), lead0: hit.point, lead: hit.point, t0: tt, y0: e.clientY, alt: false };
         } else if (hit.point >= 0) {
           autoSel = { id: tr.id, prop: L.prop, idx: new Set([hit.point]) };
           dragging = { ...base, kind: 'autoPoint', i: hit.point };
@@ -2417,14 +2458,22 @@ const ThreeMedia = (() => {
         const { id } = hit.track;
         const a0 = hit.track.in ?? 0; const b0 = hit.track.out ?? D();
         trackHandlers.onSelect?.(id);
-        if (hit.key) dragging = { kind: 'key', id, from: hit.key.t, now: hit.key.t, grab: tt, moved: false };
-        else if (hit.edge) dragging = { kind: 'trim', id, edge: hit.edge, a: a0, b: b0 };
-        else if (hit.inside) dragging = { kind: 'clip', id, from: tt, a: a0, b: b0 };
-        else dragging = { kind: 'none' };
+        autoSel = null;
+        // (labkeys) a ◆: Shift+click picks / unpicks it; a drag moves every picked ◆ (Alt: copies them); a click
+        // without moving opens its ease. Shift+drag on the track: a box picks the ◆ inside (across layers).
+        if (hit.key && e.shiftKey) { keyPick(id, hit.key.t, true); dragging = { kind: 'none' }; }
+        else if (hit.key) {
+          if (!keyPicked(id, hit.key.t)) keyPick(id, hit.key.t, false);
+          dragging = { kind: 'keys', key: hit.key, grab: tt, dt: 0, copy: e.altKey, moved: false, sel: keySelObj(), cx: e.clientX, cy: e.clientY };
+        } else if (e.shiftKey && !hit.edge) {
+          const rr = canvas.getBoundingClientRect();
+          dragging = { kind: 'keyBox', x0: e.clientX - rr.left, y0: e.clientY - rr.top, box: null, add: keySelObj() };
+        } else if (hit.edge) { keySel = null; dragging = { kind: 'trim', id, edge: hit.edge, a: a0, b: b0 }; }
+        else if (hit.inside) { keySel = null; dragging = { kind: 'clip', id, from: tt, a: a0, b: b0 }; } else { keySel = null; dragging = { kind: 'none' }; }
       } else if ((e.shiftKey || e.altKey) && !locked) {
         // Shift+drag (or Alt+drag) the waveform: draw a loop over that part
-        dragging = { kind: 'new', from: snapT(tt) }; selected = null; autoSel = null;
-      } else { dragging = { kind: 'seek' }; selected = null; autoSel = null; seek(tt); }
+        dragging = { kind: 'new', from: snapT(tt) }; selected = null; autoSel = null; keySel = null;
+      } else { dragging = { kind: 'seek' }; selected = null; autoSel = null; keySel = null; seek(tt); }
       draw();
       const move = (ev) => {
         const t2 = Math.max(0, Math.min(D(), timeAt(ev)));
@@ -2445,9 +2494,23 @@ const ThreeMedia = (() => {
           moveSelectedMark(snapT(dragging.orig + (t2 - dragging.from)));
           sendMap();
           draw();
-        } else if (dragging.kind === 'key') {
-          const to = Math.max(0, Math.min(D(), snapT(dragging.from + (t2 - dragging.grab))));
-          if (Math.abs(to - dragging.from) > 1e-4 || dragging.moved) { dragging.moved = true; dragging.now = to; draw(); }
+        } else if (dragging.kind === 'keys') {
+          // every picked ◆ by the same step: the grabbed one lands on the snap, none leaves the timeline
+          const d = dragging; const ts = Object.values(d.sel).flat();
+          if (!d.moved && Math.abs(ev.clientX - d.cx) < 3) return;
+          d.moved = true;
+          d.dt = r4(Math.max(-Math.min(...ts), Math.min(D() - Math.max(...ts), snapT(d.key.t + (t2 - d.grab)) - d.key.t)));
+          draw();
+        } else if (dragging.kind === 'keyBox') {
+          const rr = canvas.getBoundingClientRect(); const d = dragging;
+          const x1 = Math.max(0, Math.min(tw(), ev.clientX - rr.left)); const y1 = ev.clientY - rr.top;
+          d.box = { x0: Math.min(d.x0, x1), x1: Math.max(d.x0, x1), y0: Math.min(d.y0, y1), y1: Math.max(d.y0, y1) };
+          keySel = new Map(Object.entries(d.add).map(([id, ts]) => [id, new Set(ts)]));
+          for (const row of trackRows(rr.height)) {
+            if (row.y + TRACK_H < d.box.y0 || row.y > d.box.y1) continue;
+            for (const k of row.tr.keys || []) { const kx = xOf(k.t); if (kx >= d.box.x0 - 4 && kx <= d.box.x1 + 4) { const set = keySel.get(row.tr.id) || new Set(); set.add(k.t); keySel.set(row.tr.id, set); } }
+          }
+          draw();
         } else if (dragging.kind === 'autoPoint') {
           const rr = canvas.getBoundingClientRect();
           const d = dragging; const k = d.keys[d.i];
@@ -2461,7 +2524,7 @@ const ThreeMedia = (() => {
           const dt = d.alt ? 0 : snapT(lead.t + (t2 - d.t0)) - lead.t;
           const dv = d.alt ? 0 : ((d.y0 - ev.clientY) / (d.lh - 10)) * (d.L.max - d.L.min);
           const amp = d.alt ? Math.max(0, 1 + (d.y0 - ev.clientY) / 40) : 1;
-          const r = moveGroup(d.L, d.before, d.idx0, d.lead0, dt, dv, amp);
+          const r = moveGroup(d.L, d.before, d.idx0, d.lead0, dt, dv, amp, d.copy);
           d.keys = r.keys; d.lead = r.lead; d.moved = true;
           autoSel = { id: d.id, prop: d.L.prop, idx: r.idx };
           laneEmit(d, false);
@@ -2499,10 +2562,21 @@ const ThreeMedia = (() => {
         canvas.removeEventListener('pointermove', move);
         if (dragging?.kind === 'edge' || dragging?.kind === 'move' || dragging?.kind === 'new') saveLoop();
         if ((dragging?.kind === 'trim' || dragging?.kind === 'clip') && dragging.now) trackHandlers.onChange?.(dragging.id, dragging.now, { final: true });
-        if (['autoPoint', 'autoCurve', 'autoGroup', 'autoDraw'].includes(dragging?.kind)) { if (dragging.moved) laneEmit(dragging, true); else if (dragging.kind === 'autoPoint') seek(dragging.keys[dragging.i].t); }
+        if (['autoPoint', 'autoCurve', 'autoGroup', 'autoDraw'].includes(dragging?.kind)) {
+          if (dragging.moved) laneEmit(dragging, true);
+          // (labkeys) a click on a point (or the selection it's in): there, and its ease to pick
+          else if (dragging.kind === 'autoPoint' || dragging.kind === 'autoGroup') { const i = dragging.kind === 'autoPoint' ? dragging.i : dragging.lead0; seek(dragging.keys[i].t); laneEase(dragging.cx, dragging.cy, dragging.id, dragging.L.prop, i); }
+        }
         if (dragging?.kind === 'autoBox' && !dragging.box) autoSel = null;
         if (dragging?.kind === 'cue' && dragging.moved) { mapUndo.push(dragging.before); if (mapUndo.length > 80) mapUndo.shift(); mapChanged(); }
-        if (dragging?.kind === 'key') { if (dragging.moved && Math.abs(dragging.now - dragging.from) > 1e-4) trackHandlers.onKeyMove?.(dragging.id, dragging.from, dragging.now); else seek(dragging.from); }
+        if (dragging?.kind === 'keys') {
+          const d = dragging;
+          if (d.moved && Math.abs(d.dt) > 1e-4) {
+            keysChange(Object.keys(d.sel), () => trackHandlers.onKeysShift?.(d.sel, d.dt, { copy: d.copy }));
+            keySel = new Map(Object.entries(d.sel).map(([id, ts]) => [id, new Set(ts.map((t) => Math.round((t + d.dt) * 1000) / 1000))]));
+          } else if (!d.moved) { seek(d.key.t); trackEase(d.cx, d.cy, d.sel, d.key); }
+        }
+        if (dragging?.kind === 'keyBox' && !dragging.box && !Object.keys(dragging.add).length) keySel = null;
         if (dragging?.kind === 'mark') {
           // Only a marker that actually moved becomes an undo step.
           if (dragging.before && dragging.before !== JSON.stringify(map)) { mapUndo.push(dragging.before); if (mapUndo.length > 80) mapUndo.shift(); }
@@ -2527,12 +2601,14 @@ const ThreeMedia = (() => {
     function laneCommit(id, L, keys) { laneEmit({ id, L, keys, before: copyKeys(laneOf(id, L.prop)?.keys || L.keys) }, true); }
     // Moves the points in idx by dt / dv (or stretches their values around their middle by amp); moved points
     // replace the ones they land on. Returns the new keys, the new selection and where the grabbed point went.
-    function moveGroup(L, base, idx, leadIdx, dt, dv, amp = 1) {
+    // copy (Alt+drag): the moved points are copies; the originals stay where they were.
+    function moveGroup(L, base, idx, leadIdx, dt, dv, amp = 1, copy = false) {
       const sel = base.filter((_, i) => idx.has(i));
       const lo = Math.min(...sel.map((k) => k.t)); const hi = Math.max(...sel.map((k) => k.t));
       const d = Math.max(-lo, Math.min(D() - hi, dt));
       const vs = sel.map((k) => k.v); const mid = (Math.min(...vs) + Math.max(...vs)) / 2;
       const tagged = base.map((k, i) => (idx.has(i) ? { k: { ...k, t: r4(k.t + d), v: roundV(L, mid + (k.v - mid) * amp + dv) }, s: true, l: i === leadIdx } : { k, s: false, l: false }));
+      if (copy) for (const k of sel) tagged.push({ k: { ...k }, s: false, l: false });
       const out = tagged.filter((x) => x.s || !tagged.some((y) => y.s && Math.abs(y.k.t - x.k.t) < 1e-3));
       out.sort((a, b) => a.k.t - b.k.t);
       return { keys: out.map((x) => x.k), idx: new Set(out.flatMap((x, i) => (x.s ? [i] : []))), lead: out.findIndex((x) => x.l) };
@@ -2566,11 +2642,84 @@ const ThreeMedia = (() => {
       activeLane = { id, prop };
       laneEmit({ id, L: ln, keys: tagged.map((x) => x.k), before }, true);
     }
+    // ---------- (round 46, labkeys) ◆ on the tracks: one undo step per change, copy / paste, the ease chooser ----------
+    // The Lab keeps the layers' keys; the timeline keeps their state from before each change (trackHandlers.snapKeys)
+    // in its own undo (Ctrl/⌘+Z, ↶), only when something changed.
+    function pushKeysUndo(snap) {
+      if (!snap?.length) return;
+      const after = trackHandlers.snapKeys?.(snap.map((x) => x.id)) || [];
+      if (JSON.stringify(after) === JSON.stringify(snap)) return;
+      mapUndo.push({ keysSnap: snap }); if (mapUndo.length > 80) mapUndo.shift();
+      undoBtn.disabled = false;
+    }
+    function keysChange(ids, fn) { const snap = trackHandlers.snapKeys?.(ids) || []; const r = fn(); pushKeysUndo(snap); return r; }
+    function keysCopy() {
+      keysClip = trackHandlers.onKeysCopy?.(keySelObj()) || null;
+      if (!keysClip) return;
+      lastCopy = 'keys';
+      const n = keySelN();
+      toast(`Copied ${n} keyframe${n === 1 ? '' : 's'} · Ctrl/⌘+V puts them at the playhead${keysClip.layers.length === 1 ? ' on the selected layer' : ''}`, { timeout: 2200 });
+    }
+    function keysPaste() {
+      if (!keysClip) return;
+      const at = r4(Math.max(0, Math.min(D(), snapT(now()))));
+      const ids = trackHandlers.pasteTargets?.(keysClip) || [];
+      if (!ids.length) return;
+      keysChange(ids, () => trackHandlers.onKeysPaste?.(keysClip, at));
+      // the pasted ◆ are picked (to drag them on at once)
+      keySel = new Map();
+      const one = keysClip.layers.length === 1;
+      for (const part of keysClip.layers) {
+        const id = one ? ids[0] : part.id;
+        const ts = new Set(Object.values(part.clip.props).flat().map((k) => Math.round((at + part.off + k.dt) * 1000) / 1000));
+        keySel.set(id, new Set([...(keySel.get(id) || []), ...ts]));
+      }
+      draw();
+    }
+    // the ease of a key (and its two handles for 'bezier'), its old shape gone
+    const easeOne = (k, ease, b) => { const { c, b: ob, ...rest } = k; return ease === 'bezier' ? { ...rest, ease, b: b.map((x) => Math.round(x * 1000) / 1000) } : { ...rest, ease }; }; // eslint-disable-line no-unused-vars
+    // tools/three-keys.js (loaded the first time a ◆ is clicked) shows the chooser; apply(ease, b, final) is called
+    // live while the curve's handles move and once more on release (final: the one undo step)
+    async function easeChooser(x, y, o) {
+      if (typeof LabKeys === 'undefined' && typeof Lazy !== 'undefined') { try { await Lazy.load('labkeys'); } catch { /* no chooser */ } }
+      if (typeof LabKeys === 'undefined') return;
+      const snap = D() && !st.clock ? { on: snapMode !== 'off', set: (on) => { snapSel.value = on ? (snapMode !== 'off' ? snapMode : '1/4') : 'off'; snapSel.dispatchEvent(new Event('change')); } } : null;
+      LabKeys.chooser({ x, y, snap, ...o });
+    }
+    function laneEase(x, y, id, prop, point) {
+      const ln0 = laneOf(id, prop); const k = ln0?.keys?.[point];
+      if (!k) return;
+      const inSel = autoSel && autoSel.id === id && autoSel.prop === prop && autoSel.idx.has(point);
+      const targets = inSel ? new Set(autoSel.idx) : new Set([point]);
+      let before = null;
+      easeChooser(x, y, {
+        ease: k.ease || 'ease', b: k.b, n: targets.size, what: ln0.label,
+        apply: (ease, b, final) => {
+          const ln = laneOf(id, prop); if (!ln) return;
+          before ||= copyKeys(ln.keys);
+          laneEmit({ id, L: ln, keys: before.map((q, i) => (targets.has(i) ? easeOne(q, ease, b) : { ...q })), before: final ? before : null }, final);
+          if (final) before = null;
+        },
+      });
+    }
+    function trackEase(x, y, sel, key) {
+      let snap = null;
+      const n = Object.values(sel).reduce((m, ts) => m + ts.length, 0);
+      easeChooser(x, y, {
+        ease: key.ease || 'ease', b: key.b, n, what: n > 1 ? 'these keyframes' : 'this keyframe',
+        apply: (ease, b, final) => {
+          snap ||= trackHandlers.snapKeys?.(Object.keys(sel)) || [];
+          trackHandlers.onKeysEase?.(sel, ease, b, { final });
+          if (final) { pushKeysUndo(snap); snap = null; }
+        },
+      });
+    }
     function copyPoints() {
       const s = selPicked();
       if (!s?.picked.length) return;
       const t0 = s.picked[0].t;
       autoClip = { prop: s.ln.prop, min: s.ln.min, max: s.ln.max, keys: s.picked.map((k) => ({ ...k, t: k.t - t0 })) };
+      lastCopy = 'lane';
       toast(`Copied ${s.picked.length} point${s.picked.length === 1 ? '' : 's'} · Ctrl+V pastes them at the playhead in the lane you last clicked`, { timeout: 2200 });
     }
     function pastePoints() {
@@ -2692,7 +2841,7 @@ const ThreeMedia = (() => {
       }
       if (!pts?.length) return;
       insertPoints(tr.id, ln.prop, pts.map((k) => ({ ...k, t: r4(k.t) })));
-      toast(`${SHAPES.find((x) => x[0] === kind)[1]} ${where} on ${ln.label}. The new points are selected: drag one to move them all, Alt+drag to make the swing bigger or smaller.`, { timeout: 4500 });
+      toast(`${SHAPES.find((x) => x[0] === kind)[1]} ${where} on ${ln.label}. The new points are selected: drag one to move them all, Shift+Alt+drag to make the swing bigger or smaller.`, { timeout: 4500 });
     }
     function laneMenu(e, tr, ln) {
       const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
@@ -2728,7 +2877,7 @@ const ThreeMedia = (() => {
         return;
       }
       if (hit.zone === 'lane' && hit.mark != null) { selected = { type: 'mark', lane: hit.lane, t: hit.mark }; deleteSelectedMark(); return; }
-      if (hit.zone === 'track' && hit.key) { trackHandlers.onKeyDelete?.(hit.track.id, hit.key.t); return; }
+      if (hit.zone === 'track' && hit.key) { keysChange([hit.track.id], () => trackHandlers.onKeyDelete?.(hit.track.id, hit.key.t)); return; }
       if (hit.zone === 'track') {
         // Fit the layer to the loop; again (or with no loop) → the whole song.
         const tr = hit.track;
@@ -2776,13 +2925,13 @@ const ThreeMedia = (() => {
       if (hit.zone === 'track' && hit.key) {
         e.preventDefault();
         const anchor = { getBoundingClientRect: () => ({ left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }) };
-        const set = (ease) => () => trackHandlers.onKeyEase?.(hit.track.id, hit.key.t, ease);
+        const set = (ease) => () => keysChange([hit.track.id], () => trackHandlers.onKeyEase?.(hit.track.id, hit.key.t, ease));
         menuAt(anchor, [
           ['Ease', 'Smooth start and stop (default)', set('ease')],
           ['Linear', 'Constant speed to the next keyframe', set('linear')],
           ['Hold', 'Jump to the next keyframe\'s value when it comes', set('hold')],
           null,
-          ['Delete keyframe', `At ${fmtMs(hit.key.t)}`, () => trackHandlers.onKeyDelete?.(hit.track.id, hit.key.t)],
+          ['Delete keyframe', `At ${fmtMs(hit.key.t)}`, () => keysChange([hit.track.id], () => trackHandlers.onKeyDelete?.(hit.track.id, hit.key.t))],
         ]);
       }
     });
@@ -2811,7 +2960,7 @@ const ThreeMedia = (() => {
         ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust · C drops a cue at the playhead',
         wave: 'Click to jump · double-click to loop this part · wheel to zoom · Shift+wheel to scroll',
         lane: 'Click to add a marker here · drag to move · double-click or right-click to delete · or press K / S / H while it plays',
-        auto: hit.point >= 0 ? 'Drag the point · Shift+click to add it to the selection · double-click to delete · right-click for Smooth / Linear / Hold' : hit.handle >= 0 ? 'Drag up or down to bend the curve' : `Click to add a ${hit.lane?.label} point (snaps to the grid) · Ctrl+drag to draw · Shift+drag to select points · right-click for shapes (pulse on kicks, ramps, waves…)`,
+        auto: hit.point >= 0 ? 'Click: its ease (Linear, Ease, Bounce, a curve…) · drag to move · Alt+drag copies · Shift+click adds it to the selection · double-click deletes' : hit.handle >= 0 ? 'Drag up or down to bend the curve' : `Click to add a ${hit.lane?.label} point (snaps to the grid) · Ctrl+drag to draw · Shift+drag to select points · right-click for shapes (pulse on kicks, ramps, waves…)`,
         chip: 'Choose which settings of this layer show as curves below it (several at once) · A shows every animated one',
         laneHead: `${hit.lane?.label}: click the name to switch it to another setting · double-click to make the lane taller / shorter · right-click for more`,
         laneClose: 'Hide this lane (the animation stays)',
@@ -2896,6 +3045,13 @@ const ThreeMedia = (() => {
       // ---------- for the footage side (tools/three-frames.js) ----------
       hooks,
       addHooks: (o) => { if (!xhooks.includes(o)) xhooks.push(o); draw(); }, // (round 40, labcamera)
+      // (round 46, labkeys) for checks: where a layer's ◆ row and a lane value are on the canvas, what's picked
+      _keysGeo: () => {
+        const h = canvas.getBoundingClientRect().height; const rows = trackRows(h);
+        return { canvas, X: (t) => xOf(t), trackY: (id) => { const r = rows.find((x) => x.tr.id === id); return r ? r.y + TRACK_H / 2 : null; },
+          laneY: (id, prop, v) => { const r = rows.find((x) => x.tr.id === id); const lr = r?.lanes.find((l) => l.ln.prop === prop); return lr ? laneY(lr.ln, lr.top, lr.h, v) : null; },
+          picked: keySelObj(), points: autoSel ? autoSel.idx.size : 0, undoDepth: mapUndo.length };
+      },
       redraw: () => draw(), paintAll: () => paint(),
       pushUndo(entry) { mapUndo.push({ hook: entry }); if (mapUndo.length > 80) mapUndo.shift(); paint(); },
       // J / L shuttle speeds (2×, 4×, 8×) outside the speed menu; 1 goes back to normal
