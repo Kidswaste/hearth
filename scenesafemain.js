@@ -106,7 +106,9 @@ async function scan({ quick = false, current = null } = {}) {
     }
     // backups: the newest 8 zips
     const bdir = backupDir();
-    const zips = (await ls(bdir)).filter((n) => /\.zip$/i.test(n)).map((n) => ({ n, f: path.join(bdir, n), t: mtime(path.join(bdir, n)) })).sort((a, b) => b.t - a.t).slice(0, 8);
+    // (round 45, backupauto) every backup folder of this computer, newest first, without the ones a check found damaged
+    let zips = null; try { zips = await require('./backupautomain').recoverZips(8); } catch { zips = null; }
+    zips ||= (await ls(bdir)).filter((n) => /\.zip$/i.test(n)).map((n) => ({ n, f: path.join(bdir, n), t: mtime(path.join(bdir, n)) })).sort((a, b) => b.t - a.t).slice(0, 8);
     for (const z of zips) {
       const tmp = await unzipSome(z.f, ['data/kv/three-sketches.json', 'data/kv/three-history.json', 'data/kv/three-thumbs.json']);
       try {

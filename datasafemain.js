@@ -193,7 +193,9 @@ async function scan({ quick = false } = {}) {
     }
     // backups: the newest 4 zips (chats, memory, settings)
     const bdir = backupDir();
-    const zips = (await ls(bdir)).filter((n) => /\.zip$/i.test(n)).map((n) => ({ n, f: path.join(bdir, n), t: mtime(path.join(bdir, n)) })).sort((a, b) => b.t - a.t).slice(0, 4);
+    // (round 45, backupauto) every backup folder of this computer, newest first, without the ones a check found damaged
+    let zips = null; try { zips = await require('./backupautomain').recoverZips(4); } catch { zips = null; }
+    zips ||= (await ls(bdir)).filter((n) => /\.zip$/i.test(n)).map((n) => ({ n, f: path.join(bdir, n), t: mtime(path.join(bdir, n)) })).sort((a, b) => b.t - a.t).slice(0, 4);
     for (const [i, z] of zips.entries()) {
       const dir = path.join(tmp, `z${i}`); fs.mkdirSync(dir, { recursive: true });
       await unzipSome(z.f, ['data/chats/', 'data/memory.json', 'config.json'], dir);
@@ -243,6 +245,7 @@ async function scan({ quick = false } = {}) {
 // picks: [keys from the scan] → brought back by merging; nothing of yours is replaced or deleted
 async function recover(picks = []) {
   if (!lastScan) throw new Error('Look again: that list is out of date');
+  try { await require('./backupautomain').before('recover'); } catch { /* (round 45, backupauto) a backup first, unless a fresh one exists; Recover only adds */ }
   const recs = [...new Set(picks)].map((k) => lastScan.keys.get(k)).filter(Boolean);
   const done = { chats: [], memory: 0, agents: 0, settings: 0, kv: [] };
   // chats: one that isn't here comes back as it was; one you have comes in next to it as "… (recovered)"

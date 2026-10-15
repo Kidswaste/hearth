@@ -199,7 +199,9 @@ async function fetchText(url) {
 const HUB = { data: path.join(__dirname, 'data'), config: path.join(__dirname, 'config.json'), theme: path.join(__dirname, 'theme.css') };
 const BACKUP_SKIP = ['workspace', 'ae', 'sync'];
 function hubSettings() { try { return JSON.parse(fs.readFileSync(HUB.config, 'utf8')).settings || {}; } catch { return {}; } }
-const backupDir = () => hubSettings().backupDir || path.join(os.homedir(), 'Documents', 'Hearth backups');
+// (round 45, backupauto) this computer's own backup folder (data/.backup/state.json; the old synced settings.backupDir
+// only while it is a folder here): backupautomain.js
+const backupDir = () => { try { return require('./backupautomain').dir(); } catch { return hubSettings().backupDir || path.join(os.homedir(), 'Documents', 'Hearth backups'); } };
 
 function listBackups(dir = backupDir()) {
   let names = [];
@@ -214,6 +216,14 @@ function listBackups(dir = backupDir()) {
 // Zips data + config + theme into the backup folder (no dialog) and keeps the newest `keep` hearth-*.zip files;
 // older ones go to the Recycle Bin / Trash.
 async function backupNow({ keep = 10 } = {}) {
+  // (round 45, backupauto) one backup the new way (checked after it's written, big media once, the rotation); the
+  // answer keeps its old shape ({ path, size, dir, removed }) and throws in plain words when it failed
+  let BA = null; try { BA = require('./backupautomain'); } catch { BA = null; }
+  if (BA) {
+    const r = await BA.run('manual');
+    if (!r.ok) throw Object.assign(new Error(r.why), { fix: r.fix, code: r.code });
+    return { ...r, removed: r.removed || 0 };
+  }
   const dir = backupDir();
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const entries = [{ path: HUB.data, name: 'data' }, { path: HUB.config, name: 'config.json' }, { path: HUB.theme, name: 'theme.css' }].filter((e) => fs.existsSync(e.path));
@@ -242,12 +252,33 @@ const jsonFiles = (dir) => { try { return fs.readdirSync(dir).filter((n) => n.en
 //   memory     lines missing here are added
 //   attachments missing files are copied
 // config.json and theme.css are never restored automatically (agents in the backup but not here are listed).
+// (round 45, backupauto) a list store (each item with an id: Lab scenes, notes, prompts, boards…) or a keyed store that
+// differs: what the backup has and yours doesn't is added (never removed or replaced). Not stores about this run / this
+// computer (an old offline queue would send old messages again).
+const NO_MERGE = new Set(['offline-queue', 'fake-switches', 'jank-log', 'dev-reports', 'downloads-log', 'token-stats', 'ui-usage', 'media-here', 'toolwake']);
+function missingOf(mine, theirs) {
+  const withIds = (v) => Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === 'object' && (typeof x.id === 'string' || typeof x.id === 'number'));
+  if (Array.isArray(mine) && withIds(theirs) && (!mine.length || withIds(mine))) {
+    const have = new Set(mine.map((x) => String(x.id)));
+    const add = theirs.filter((x) => !have.has(String(x.id)));
+    return add.length ? { n: add.length, value: [...mine, ...add], ids: add.map((x) => String(x.id)) } : null;
+  }
+  if (mine && theirs && typeof mine === 'object' && typeof theirs === 'object' && !Array.isArray(mine) && !Array.isArray(theirs)) {
+    const add = Object.keys(theirs).filter((k) => !(k in mine));
+    return add.length ? { n: add.length, value: { ...mine, ...Object.fromEntries(add.map((k) => [k, theirs[k]])) } } : null;
+  }
+  return null;
+}
 async function restoreBackup(zipPath, { dryRun = true, newer = false } = {}) {
+  let BA = null; try { BA = require('./backupautomain'); } catch { BA = null; }
+  // (round 45, backupauto) a backup of how things are now comes first (unless a good one is a few minutes old); the zip
+  // being restored is kept out of that backup's rotation
+  if (!dryRun && BA) { BA.pin?.(zipPath, true); try { await BA.before('restore'); } catch { /* the restore only adds */ } }
   const tmp = await unzipTo(zipPath);
   try {
     const src = fs.existsSync(path.join(tmp, 'data')) ? path.join(tmp, 'data') : tmp;
     if (!fs.existsSync(path.join(src, 'chats')) && !fs.existsSync(path.join(src, 'kv'))) throw new Error("That zip doesn't look like a Hearth backup (no data/chats or data/kv).");
-    const report = { dryRun, chats: { add: 0, newer: 0, same: 0, older: 0, replaced: 0 }, kv: { add: 0, differ: [], same: 0 }, memory: { add: 0 }, attachments: { add: 0 }, agentsMissing: [], titles: [] };
+    const report = { dryRun, chats: { add: 0, newer: 0, same: 0, older: 0, replaced: 0 }, kv: { add: 0, differ: [], same: 0, merge: [] }, memory: { add: 0 }, attachments: { add: 0 }, media: { add: 0, missing: 0 }, agentsMissing: [], titles: [] };
     const stamp = new Date().toISOString().slice(0, 10);
     const keepDir = path.join(HUB.data, 'trash', `restored-${stamp}`);
     // chats
@@ -283,9 +314,16 @@ async function restoreBackup(zipPath, { dryRun = true, newer = false } = {}) {
     for (const n of jsonFiles(kvSrc)) {
       const mineP = path.join(kvDst, n);
       if (!fs.existsSync(mineP)) { report.kv.add += 1; if (!dryRun) fs.copyFileSync(path.join(kvSrc, n), mineP); continue; }
-      if (fs.readFileSync(mineP, 'utf8') === fs.readFileSync(path.join(kvSrc, n), 'utf8')) report.kv.same += 1;
-      else report.kv.differ.push(n.replace(/\.json$/, ''));
+      if (fs.readFileSync(mineP, 'utf8') === fs.readFileSync(path.join(kvSrc, n), 'utf8')) { report.kv.same += 1; continue; }
+      const name = n.replace(/\.json$/, '');
+      // (round 45, backupauto) what the backup has and yours doesn't comes in (a deleted Lab scene, a lost note)
+      const mine = NO_MERGE.has(name) ? undefined : readJsonSafe(mineP, undefined);
+      const m = mine === undefined ? null : missingOf(mine, readJsonSafe(path.join(kvSrc, n), undefined));
+      if (!m) { report.kv.differ.push(name); continue; }
+      report.kv.merge.push({ name, n: m.n });
+      if (!dryRun) { const st = require('./store'); await st.setKV(name, m.value); } // through the store: its guard, .prev and copies
     }
+    if (BA) { try { report.media = await BA.restoreMedia(zipPath, { dryRun }); } catch { /* the zip's own files are what matters */ } }
     // memory
     const memSrc = readJsonSafe(path.join(src, 'memory.json'), null);
     if (memSrc) {
@@ -322,6 +360,7 @@ async function restoreBackup(zipPath, { dryRun = true, newer = false } = {}) {
     return report;
   } finally {
     fs.rm(tmp, { recursive: true, force: true }, () => {});
+    if (!dryRun) BA?.pin?.(zipPath, false);
   }
 }
 
