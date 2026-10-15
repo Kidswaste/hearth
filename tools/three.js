@@ -1258,7 +1258,9 @@ const ThreeLab = (() => {
     const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, solo: L.id === soloId, selected: L.id === selId, keys: trackKeys(L), lanes: lanesOf(L).map((p) => laneData(L, p)).filter(Boolean), animated: Object.values(L.keys || {}).filter((k) => k?.length).length }));
     // Animated values follow the playhead in the panels.
     let lastSyncT = -1;
+    let keyTimer = 0; let keyQuiet = 0; // (the follow timer below; declared here: an edit re-arms it from syncKeyUI)
     function syncKeyUI(force = false) {
+      if (force && !keyTimer) keyLoop(); // (round 44, idlecpu) a key / layer edit: the follow timer runs again
       const L = sel();
       if (!L || !current) return;
       const t = player.time;
@@ -1273,21 +1275,28 @@ const ThreeLab = (() => {
     }
     // keyframed values follow the playhead while the Lab is on screen; the timer stops when it isn't (and
     // 'hearth:view' from start.js starts it again), so a hidden Lab doesn't wake up 10× a second
-    let keyTimer = 0;
+    // (round 44, idlecpu) it also stops when nothing can move: nothing keyframed on the selected layer, or the player
+    // paused with its playhead where it was for a second. A layer picked, a key edited, the player playing / seeking
+    // (its 'media-state' message, see onMessage), a click or key in the Lab and showing the Lab start it again. It
+    // used to wake the window 10× a second while the Lab sat on screen untouched.
     // (round 21) nothing keyframed on the selected layer: nothing to do, not even the visibility check (a style
     // recalculation of the Lab ten times a second while you drag a slider or type)
+    const keyStop = () => { clearInterval(keyTimer); keyTimer = 0; keyQuiet = 0; };
     const keyTick = () => {
-      if (parkedNow && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; } // the preview isn't on screen (no layout read)
+      if (parkedNow && !box.onStage) { keyStop(); return; } // the preview isn't on screen (no layout read)
       const keys = current ? sel()?.keys : null;
-      if (!keys || !Object.values(keys).some((k) => k?.length)) return;
+      if (!keys || !Object.values(keys).some((k) => k?.length)) { keyStop(); return; }
       // (round 32, smooth32) not parked = on screen (syncPark keeps that current from view events, an observer and the
       // stall timer): asking the page again here styled the whole window 10× a second while a chat streamed beside it
-      if ((parkedNow || player.recording) && !(split || previewHost).checkVisibility({ visibilityProperty: true }) && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; }
+      if ((parkedNow || player.recording) && !(split || previewHost).checkVisibility({ visibilityProperty: true }) && !box.onStage) { keyStop(); return; }
+      if (!player.playing && Math.abs(player.time - lastSyncT) < 1e-3) { if (++keyQuiet >= 10) keyStop(); return; }
+      keyQuiet = 0;
       syncKeyUI();
     };
-    const keyLoop = () => { if (!keyTimer) keyTimer = setInterval(keyTick, 100); };
+    function keyLoop() { keyQuiet = 0; if (!keyTimer) keyTimer = setInterval(keyTick, 100); }
     keyLoop();
     addEventListener('hearth:view', keyLoop);
+    for (const ev of ['pointerdown', 'keydown', 'wheel']) pane.addEventListener(ev, () => { if (!keyTimer) keyLoop(); }, { capture: true, passive: true });
     // ---------- automation lanes (Ableton placement, FL Studio curves) ----------
     // L.lanes = the settings shown as curves under the layer's track ('opacity' … or 's:<slider key>'), in order;
     // L.laneTall = { prop: true } for taller lanes. (Older sketches have a single L.lane.)
@@ -2288,7 +2297,11 @@ const ThreeLab = (() => {
       saveExtras();
     }
     // (round 39, powerwise) while Hearth is on screen (the background schedule; nothing to remember behind a minimized window)
-    if (window.Power) Power.every('lab-media', 5000, rememberMedia, { hidden: 'skip', battery: false }); else setInterval(rememberMedia, 5000);
+    // (round 44, idlecpu) every 5 s while the song / timeline plays; paused, the place is noted at once and the timer
+    // only looks every 30 s (it used to wake the window every 5 s to find the playhead where it was)
+    let mediaPlaying = false;
+    const mediaArm = (playing) => { mediaPlaying = playing; Power.every('lab-media', playing ? 5000 : 30000, rememberMedia, { hidden: 'skip', battery: false }); };
+    if (window.Power) mediaArm(false); else setInterval(rememberMedia, 5000);
     // ---------- the scene's own timeline (round 10, orb) ----------
     // One clock per scene. A scene with a song plays on the song (as before); a scene without one plays on its own
     // timeline, extras[id].timeline = { len, fps, time }: the player's silent clock (tools/three-media.js loadClock),
@@ -2785,6 +2798,8 @@ const ThreeLab = (() => {
       }
       if (/^(media-state|record-started|record-error|recording)$/.test(msg.type)) {
         player.onMessage(msg);
+        if (!keyTimer && msg.type === 'media-state') keyLoop(); // (round 44, idlecpu) playing / a seek: the knobs follow again
+        if (msg.type === 'media-state' && window.Power && Boolean(msg.playing) !== mediaPlaying) { if (!msg.playing) rememberMedia(); mediaArm(Boolean(msg.playing)); }
         if (msg.type === 'recording' && rebuildWaiting) { rebuildWaiting = false; run({ hot: true }); }
       }
       if (msg.type === 'drawn') { building(msg.layer, false); return; }
@@ -3264,7 +3279,7 @@ const ThreeLab = (() => {
     };
     // (round 39, powerwise) only while Hearth is on screen (a hidden window's preview draws nothing to watch), and every
     // 10 s while the Lab is parked behind a chat (then it only makes sure a park can't stick; the view events come first)
-    if (window.Power) { stallArm = (parked) => Power.every('lab-stall', parked ? 10000 : 2000, stallTick, { hidden: 'skip', battery: false }); stallArm(parkedNow); } else setInterval(stallTick, 2000);
+    if (window.Power) { stallArm = (parked) => Power.every('lab-stall', parked ? 10000 : 4000, stallTick, { hidden: 'skip', battery: false }); stallArm(parkedNow); } else setInterval(stallTick, 2000);
     // How a change reaches the preview (round 6 "live": no whole-page reloads for edits):
     //   hot     one layer re-runs in place (its old picture cross-fades into the new one; a new layer wipes in)
     //   sync    only the layers whose code changed re-run, removed ones fade out, the others just get their props

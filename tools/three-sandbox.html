@@ -517,7 +517,7 @@ function instrument(renderFn) {
       }
     }
     // (round 31 "labadapt") a layer fully under an opaque one draws nothing; its code still runs (see "covered layers")
-    if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; return; }
+    if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; EL.dzSkip = frameTick; return; }
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
     camera = editCamera(this, scene, camera);
     const cmBack = EL?.props.camMoves?.length && !this.__helper && !edit.on ? cmRender(this, scene, camera, EL) : null; // (round 40 "labcamera": its camera moves, under the view)
@@ -535,6 +535,7 @@ function instrument(renderFn) {
     }
     if (paceSkip(this, scene, camera, EL)) { lvBack?.(); cmBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
     PACE.drawn += 1; PACE.lastDraw = frameTick;
+    if (PACE.refreshAt !== frameTick) { PACE.drawPrev = frameTick; if (DOZE.on) dozeWake('drew'); } // (round 44, idlecpu: it moved: full rate at once)
     const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
     // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
@@ -1104,13 +1105,14 @@ function paceCore(opt = {}) {
   // The signature isn't worked out every frame: a scene that was "live" not for 60 frames, one that keeps moving only
   // every 8th frame (it draws anyway), a still one at most every LOOK ms (its own change shows within one 60 Hz frame).
   const LOOK = opt.look ?? 15;
-  function still(st, now, poke, sigOf) {
+  // (round 44, idlecpu) refresh: the safety redraw's period (a dozing page, see "dozing", asks for a longer one)
+  function still(st, now, poke, sigOf, refresh = REFRESH) {
     st.refreshes ||= 0; st.looks ||= 0;
     if (poke !== st.poke) { st.poke = poke; const s = sigOf(); st.looks += 1; st.a = s.a; st.b = s.b; st.same = 0; st.moving = 0; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0; return false; }
     if (st.liveFor > 0) { st.liveFor -= 1; return false; }
     if ((st.moving || 0) >= 30) { st.k = ((st.k || 0) + 1) % 8; if (st.k) return false; }
     if ((st.same || 0) > AFTER && now - st.lookAt < LOOK) {
-      if (now - st.at < REFRESH) return true;
+      if (now - st.at < refresh) return true;
       st.at = now; st.refreshes += 1; return false;
     }
     st.lookAt = now;
@@ -1121,7 +1123,7 @@ function paceCore(opt = {}) {
     if (changed) { st.same = 0; st.moving = (st.moving || 0) + 1; st.at = now; return false; }
     st.moving = 0; st.same = (st.same || 0) + 1;
     if (st.same <= AFTER) { st.at = now; return false; }
-    if (now - (st.at ?? -1e9) >= REFRESH) { st.at = now; st.refreshes += 1; return false; }
+    if (now - (st.at ?? -1e9) >= refresh) { st.at = now; st.refreshes += 1; return false; }
     return true;
   }
   // ---- the meter: frame gaps → "120 fps · steady" ----
@@ -1153,9 +1155,71 @@ globalThis.f60 = 1; // (a sketch's setup, before its first frame: one 60 fps fra
 // Lab is parked with nothing to do, they don't ask for frames at all (a parked page used to wake every frame for
 // nothing); a message from the Lab, a pointer, a key, unparking or any render wakes them.
 const paceSleeping = new Set();
-function paceNext(fn, sleep) { if (sleep) { if (!paceSleeping.has(fn)) { paceSleeping.add(fn); PACE.sleeps += 1; } return; } realRAF(fn); }
+function paceNext(fn, sleep) { if (sleep) { if (!paceSleeping.has(fn)) { paceSleeping.add(fn); PACE.sleeps += 1; } return; } if (DOZE.on) dozeRAF(fn); else realRAF(fn); }
 function paceWake() { if (!paceSleeping.size) return; const l = [...paceSleeping]; paceSleeping.clear(); PACE.wakes += 1; for (const fn of l) realRAF(fn); }
-const pacePoke = () => { PACE.poke += 1; if (paceSleeping.size) paceWake(); };
+const pacePoke = (e) => {
+  PACE.poke += 1; if (paceSleeping.size) paceWake();
+  if (DOZE.on || DOZE.from >= 0) dozeWake(e?.type === 'message' ? `message ${e.data?.type || '?'}` : e?.type);
+};
+// Dozing (round 44, idlecpu): the Lab on screen with a picture that stays still (nothing moved for 3 s: every layer
+// that ran a frame had its frame skipped by the still check above, no song / live sound / sequence / recording / edit
+// / drag) no longer wakes the page on every screen frame for nothing. The page's loops and the layers' frame callbacks
+// then run together once every 100 ms (after 3 s still), 250 ms (10 s) or 500 ms (30 s), in a real animation frame,
+// and the safety redraw comes every 4 s instead of every second once it's been still for 10 s. The layers' code
+// still runs (a change it makes by itself shows on the next of those frames); anything from outside (a slider, a
+// message from the Lab, a pointer, a key, a resize) and any frame that really draws wake it to full rate at once.
+// It used to cost ≈ 4 % of a CPU (the page) and the GPU process' frame clock while you looked at a still scene.
+// Layers whose frames can't be checked (2D canvas, raw WebGL, a layer that draws without three.js) never doze.
+const DOZE = { on: false, ms: 0, from: -1, q: [], timer: 0, seq: 0, dozes: 0, wakes: 0, flushes: 0, log: [] };
+const DOZE_STEPS = [[30000, 500], [10000, 250], [3000, 100]]; // (still for ≥ ms → one frame every ms)
+function dozeRAF(fn) { const id = -(++DOZE.seq); DOZE.q.push({ id, fn }); if (!DOZE.timer) DOZE.timer = realSetTimeout(dozeFlush, DOZE.ms || 100); return id; }
+// the waiting callbacks run in one real animation frame, in the order they asked (the compositor first, as always);
+// a callback cancelled meanwhile (cancelAnimationFrame) is skipped
+function dozeFlush() {
+  DOZE.timer = 0; DOZE.flushes += 1;
+  realRAF((t) => {
+    const l = DOZE.q; DOZE.q = [];
+    for (const e of l) { try { e.fn(t); } catch (err) { realSetTimeout(() => { throw err; }, 0); } }
+  });
+}
+function dozeWake(by = '') {
+  if (DOZE.from >= 0 || DOZE.on) { DOZE.by = by; DOZE.log.push(by); if (DOZE.log.length > 12) DOZE.log.shift(); } // (what woke it last, for checks)
+  DOZE.from = -1;
+  if (!DOZE.on) return;
+  DOZE.on = false; DOZE.ms = 0; DOZE.wakes += 1;
+  if (DOZE.timer) { realClearTimeout(DOZE.timer); DOZE.timer = 0; }
+  if (DOZE.q.length) dozeFlush();
+}
+{
+  const realCAF = cancelAnimationFrame.bind(window);
+  window.cancelAnimationFrame = (id) => { if (id < 0) { const i = DOZE.q.findIndex((e) => e.id === id); if (i >= 0) DOZE.q.splice(i, 1); return; } realCAF(id); };
+}
+// once per displayed frame (tickFrames): may the page doze, and how deeply? (the frame that just ended is `prev`)
+// (what keeps it awake right now, for checks: __labPace.state().doze.why)
+function dozeWhy(prev) {
+  if (!PACE.on) return 'pacing off';
+  if (mode !== 'sketch' || XP_PAGE) return 'not the preview';
+  if (parked) return 'parked';
+  if (SQ.on || SQ.off || SQ.cam) return 'sequence';
+  if (stepping || edit.on) return 'editing';
+  if (PC.list.size) return 'precomps';
+  if (stackWait) return 'loading';
+  if (compRec || fullRes()) return 'recording';
+  if (mediaEl && !mediaEl.paused) return 'playing';
+  if (liveKind) return 'live sound';
+  if (PACE.drag || realNow() < PACE.wheelUntil) return 'dragging';
+  if (PACE.drawPrev === prev) return 'drawing';
+  for (const L of layers.values()) if (L.dzRun === prev && L.dzSkip !== prev) return `layer ${L.id} unchecked`;
+  return '';
+}
+function dozeCheck(t, prev) {
+  DOZE.why = dozeWhy(prev);
+  if (DOZE.why) { if (DOZE.on || DOZE.from >= 0) dozeWake(DOZE.why); return; }
+  if (DOZE.from < 0) DOZE.from = t;
+  const ms = DOZE_STEPS.find(([after]) => t - DOZE.from >= after)?.[1] || 0;
+  if (ms && !DOZE.on) DOZE.dozes += 1;
+  DOZE.on = ms > 0; DOZE.ms = ms;
+}
 for (const ev of ['message', 'pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'resize', 'focus']) addEventListener(ev, pacePoke, { capture: true, passive: true });
 // orbit / drag / scrub: a held pointer (or a wheel turn) is an interaction; if frames are slow while it lasts, the
 // preview draws at 70 % of its resolution until the pointer comes up (full again on release; adapting on only)
@@ -1189,9 +1253,10 @@ function paceSkip(r, scene, camera, EL) {
     return s;
   };
   const before = st.refreshes || 0;
-  const skip = PACE.core.still(st, realNow(), PACE.poke, sigOf);
-  if (!skip) { if ((st.refreshes || 0) !== before) PACE.refreshes += 1; return false; }
+  const skip = PACE.core.still(st, realNow(), PACE.poke, sigOf, DOZE.ms >= 250 ? 4000 : undefined);
+  if (!skip) { if ((st.refreshes || 0) !== before) { PACE.refreshes += 1; PACE.refreshAt = frameTick; if (EL) EL.dzSkip = frameTick; } return false; }
   PACE.skipped += 1; PACE.lastSkip = frameTick;
+  if (EL) EL.dzSkip = frameTick; // (round 44, idlecpu: this layer's frame was checked and still, see "dozing")
   if (frameSeen !== frameTick && PACE.stillSeen !== frameTick) { PACE.stillSeen = frameTick; frames += 1; } // (the picture shows this frame too)
   return true;
 }
@@ -1212,8 +1277,8 @@ function pacePower(on) {
 }
 // (checks and /lab perf: window.__labPace.state() / .on(false) / .power(true) / .reset() / .hold(level))
 window.__labPace = {
-  state: () => ({ ...paceInfo(), poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level }),
-  on: (v) => { PACE.on = v !== false; PACE.poke += 1; return PACE.on; },
+  state: () => ({ ...paceInfo(), poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level, doze: { on: DOZE.on, ms: DOZE.ms, why: DOZE.why || '', by: DOZE.by || '', log: DOZE.log.slice(-6), dozes: DOZE.dozes, wakes: DOZE.wakes, flushes: DOZE.flushes } }),
+  on: (v) => { PACE.on = v !== false; PACE.poke += 1; dozeWake('pacing switched'); return PACE.on; },
   power: (v) => { pacePower(v); return { cap: fpsCap, level: AD.core.level, quality }; },
   reset: () => { PACE.drawn = 0; PACE.skipped = 0; PACE.refreshes = 0; PACE.sigs = 0; PACE.sigMs = 0; PACE.sleeps = 0; PACE.wakes = 0; PACE.meter.reset(); return 1; },
   sleeping: () => paceSleeping.size,
@@ -1223,11 +1288,14 @@ const tickFrames = (t) => {
   if (frameSeen === frameTick) { workRing.push(frameWork); if (workRing.length > 120) workRing.shift(); lastCalls = frameCalls; }
   frameWork = 0; frameCalls = 0;
   frameTick += 1;
-  if (frameSeen === frameTick - 1 && lastFrameAt) { worstGap = Math.max(worstGap, t - lastFrameAt); if (mode === 'sketch') adaptQuality(t - lastFrameAt); }
+  const dozed = DOZE.on; // (this frame came after a doze's wait: its gap isn't a slow frame)
+  if (frameSeen === frameTick - 1 && lastFrameAt && !dozed) { worstGap = Math.max(worstGap, t - lastFrameAt); if (mode === 'sketch') adaptQuality(t - lastFrameAt); }
   // (labpace) the frames the layers showed (drawn or still), for the steadiness readout
-  PACE.drewAvg = (PACE.drewAvg || 0) * 0.9 + (PACE.lastDraw === frameTick - 1 ? 0.1 : 0);
-  if ((frameSeen === frameTick - 1 || PACE.stillSeen === frameTick - 1) && !parked) { if (PACE.presentAt) PACE.meter.feed(t - PACE.presentAt); PACE.presentAt = t; }
+  if (!dozed) PACE.drewAvg = (PACE.drewAvg || 0) * 0.9 + (PACE.lastDraw === frameTick - 1 ? 0.1 : 0);
+  if ((frameSeen === frameTick - 1 || PACE.stillSeen === frameTick - 1) && !parked && !dozed) { if (PACE.presentAt) PACE.meter.feed(t - PACE.presentAt); PACE.presentAt = t; }
   lastFrameAt = t;
+  dozeCheck(t, frameTick - 1); // (round 44, idlecpu)
+  if (DOZE.on) { lastFrameAt = 0; PACE.presentAt = 0; }
   // (labpace) parked with nothing to draw (no recording, no offline render): no more frames asked for until woken
   const sleep = parked && !SQ.off && !fullRes() && !compRec;
   if (sleep) { lastFrameAt = 0; PACE.presentAt = 0; }
@@ -1378,7 +1446,7 @@ function setGuides(kind) {
 // Present: the mouse hides after 2 s still
 let presentCursor = false; let cursorTimer = 0;
 addEventListener('mousemove', () => { if (!presentCursor) return; document.documentElement.style.cursor = ''; clearTimeout(cursorTimer); cursorTimer = realSetTimeout(() => { document.documentElement.style.cursor = 'none'; }, 2000); });
-let statsTimer = 0;
+let statsTimer = 0; let statsDozed = 0;
 function statsRun(on) {
   if (!on) { if (statsTimer) clearInterval(statsTimer); statsTimer = 0; return; }
   if (statsTimer) return;
@@ -1392,6 +1460,11 @@ function statsTick() {
   lastTick = now;
   const worst = worstGap; worstGap = 0;
   if (!lastRenderer || parked) return; // (parked: the Lab knows it asked for nothing to draw)
+  // (round 44, idlecpu) a dozing still picture, or no frame at all since the last one (the preview not drawn by the
+  // window): every 4 s, enough for the Lab's stall check (it waits 8 s); it said so twice a second
+  const ticked = frameTick !== statsTick.at; statsTick.at = frameTick;
+  if ((DOZE.on || (!ticked && statsTick.idle)) && (++statsDozed % 8)) return;
+  statsTick.idle = !ticked;
   adCoverTick(); // (round 31 "labadapt": covered layers)
   const i = lastRenderer.info;
   const w = workRing.slice(-60).sort((a, b) => a - b);
@@ -9556,6 +9629,7 @@ function installRunGuards() {
         if (!SQ.off && !capOk(t)) { sched(run); return; }
         // (labpace) f60: this frame's length in 60 fps frames (a cap's skipped frames count; a pause starts again at 1)
         globalThis.f60 = PACE.core.f60(lt < 0 ? -1 : t - lt); lt = t;
+        if (o.L) o.L.dzRun = frameTick; // (round 44, idlecpu: it ran this frame; see "dozing")
         within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(mediaEl.currentTime) * 1000 : t);
         if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
       };
@@ -10333,7 +10407,7 @@ const SQ = { on: false, plan: null, T: 0, T0: 0, at0: 0, playing: false, rate: 1
 const WARM = 0.35; // seconds a group runs (hidden) before its clip: its first frames are drawn when it shows
 const PRE = 1.2; // seconds ahead a group is mounted while playing
 // layer frames during an offline render wait for the next step instead of the screen
-function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } return realRAF(fn); }
+function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } return DOZE.on ? dozeRAF(fn) : realRAF(fn); }
 // a sequence scene's own clock: performance.now inside its layers is its time (ms) since its own start, and 0 while
 // its module sets up (a start time a sketch keeps from its setup is the scene's start, wherever the clip was entered);
 // a THREE.Clock started in it counts from the scene's start too
