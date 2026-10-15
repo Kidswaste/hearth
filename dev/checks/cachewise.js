@@ -24,7 +24,9 @@ try {
   ok(r2?.usage?.cached > 0, `the second message reads from the cache (${JSON.stringify(r2?.usage)})`);
   const badge = Native.view(C.id).list.querySelector('.msg.assistant:last-of-type .meter-badge') || [...Native.view(C.id).list.querySelectorAll('.meter-badge')].at(-1);
   out.badge = badge?.title;
-  ok(/saved by the cache/.test(badge?.title || ''), `the reply's token line says what the cache saved (${badge?.title})`);
+  // (round 48, bugbash3) round 47 (Codex, meter.js badge) reworded the line: "725 input tokens (673 from cache, 93%)"
+  // and "· 673 cached" on the badge itself, instead of "≈ … saved by the cache"
+  ok(/saved by the cache|\d[\d,.]*k? from cache, \d+%/.test(badge?.title || ''), `the reply's token line says what the cache saved (${badge?.title})`);
   const chat = Native.current(C.id);
   ok(chat.cacheSig && chat.session?.id, 'the chat remembers its setup at send');
   ok(!notes().length, 'no note while nothing changed');
