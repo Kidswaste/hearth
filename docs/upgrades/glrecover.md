@@ -132,8 +132,13 @@ calm note when it happened, and a Restart button only when restarting Hearth is 
   never-GPU machine, info-only falls, ≤ 10 notes kept, the words matching the window's, and main with a stand-in
   app / ipc / window: notes sent, a note before the window kept, shown, sim refused outside a test copy, a throwing
   status, a destroyed window, and dispose.
-- Also run: see the final report (labboot, labpace, labmemory, renderfast, multiformat, labvariations, abcompare,
-  scenesafe, lazy, unit:boot-test).
+- `sh dev/run-checks.sh glrecover labboot labpace labmemory renderfast multiformat labvariations abcompare scenesafe
+  lazy unit:boot-test`: 18/19 pass. These include fastboot-lab, beatlink, the labpace / labadapt / scenesafe /
+  store-thread / sync unit tests, and boot-test with 1,183 checks, the first screen still at 72 scripts. `labpace`
+  fails timing steps under load: "draws again within a frame or two" (100 ms lag) and, on the re-run, "a still scene"
+  that wasn't still yet when the shot came. The starting commit 4992f1a, run from a copy right after, fails the same
+  first step. No context was lost in its log. `node dev/lazy-manifest.js`: ✓ names 904, aliases 317, actions
+  1283, keys 482, dups 0.
 
 ## Caveats
 - Simulated with WEBGL_lose_context and stubbed GPU events. A real driver reset (TDR on Windows, sleep / wake on a Mac)
