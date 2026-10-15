@@ -101,13 +101,19 @@ const w = (root, rel, v) => { const f = path.join(root, ...rel.split('/')); fs.m
   fs.renameSync(path.join(dir, `.${r1.name}.icloud`), r1.path);
   const v = await BA.verify(r1.path);
   check(v.ok, 'the check still passes', v);
-  // a Windows PC whose backup folder has no Recycle Bin (here: not a drive path at all) → rotation removes nothing
+  // A Windows PC whose backup folder has no Recycle Bin → rotation removes nothing.
+  // Simulate the bin probe: the host's temp folder may be on a drive that does have a bin.
   // older backups of this computer (by name), more than the rotation keeps; the folder chosen by hand
   for (let d = 1; d <= 9; d++) fs.copyFileSync(r1.path, path.join(dir, `hearth-backup-2020-0${d}-0${d}-10-00.zip`));
   await BA._test.testHook({ state: { dir } });
-  BA._test.set({ platform: 'win32' }); // (a path Windows can't put in a Recycle Bin: no drive letter)
+  BA._test.set({ platform: 'win32' });
   const zipsBefore = fs.readdirSync(dir).filter((n) => n.endsWith('.zip')).length;
-  const removed = (await BA._test.testHook({ rotate: true })).removed;
+  const WP = require(path.join(ROOT, 'winpolish.js')); const realTrashCheck = WP.trashCheck;
+  let removed;
+  try {
+    WP.trashCheck = () => ({ ok: false });
+    removed = (await BA._test.testHook({ rotate: true })).removed;
+  } finally { WP.trashCheck = realTrashCheck; }
   check(removed === 0 && fs.readdirSync(dir).filter((n) => n.endsWith('.zip')).length === zipsBefore, 'Windows: a folder with no Recycle Bin keeps its backups (never deleted for good)', { removed, zipsBefore });
   BA._test.set({ platform: 'linux' });
   const rm2 = (await BA._test.testHook({ rotate: true })).removed;
