@@ -1,0 +1,7 @@
+/* Idle CPU (round 44, idlecpu.js): nobody has used the window for a minute: the look's ambient loops (the ones
+   Motion › Calm stops) pause where they are, so the GPU stops redrawing the window every screen frame for them.
+   The first input plays them on. */
+:root[data-hush] :is(#rail, #broadcast, .palette-card, .tool-head, .native-head, .empty, .empty-icon, .tabbar button, .item, .agent-btn)::before,
+:root[data-hush] :is(#rail, #broadcast, .palette-card, .tool-head, .native-head, .empty, .empty-icon, .tabbar button, .item, .agent-btn)::after,
+:root[data-hush] .empty-icon,
+:root[data-hush] body::before, :root[data-hush] body::after { animation-play-state: paused !important; }

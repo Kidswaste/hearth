@@ -1135,3 +1135,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## 📁 Layer groups (round 44, layergroups, 36 upgrades: docs/upgrades/layergroups.md)
 - ✓ The Lab's Layers list has groups: Ctrl/⌘+click layers, Ctrl/⌘+G (scoped to the list; right-click › 📁 Group layers), ▾ fold, a group's eye, drag in / out, Ctrl/⌘+Shift+G ungroup, Ctrl/⌘+Z there undoes; S / Alt+click an eye solos a layer or a group, saved with the scene so renders match; ◫ group → precomp and back; recipes record group steps; `/group`.
 - ○ `node dev/layergroups-test.js` (unit), `sh dev/run-checks.sh layergroups` (pixels, real keys, reload); not yet on the owner's real scenes.
+## 🌙 Idle on screen, next to nothing running (round 44, idlecpu, 11 upgrades: docs/upgrades/idlecpu.md)
+- ✓ A still or paused Lab scene dozes (frames every 100 / 250 / 500 ms instead of every screen frame; wakes at once on any input, message or change): the preview's page 3.3 % → 0.7 % of a CPU, 48 → 4 frames / s; the window's wakeups on the Lab 15 → ~1 / s (the knob timer sleeps, stats every 4 s while dozing).
+- ✓ The hush: a minute without input pauses the look's ambient loops (idlecpu.js); tips wait quietly until they can show.
+- ○ `sh dev/run-checks.sh idlecpu` (dev/checks/idlecpu.js: CPU / wakeups per process in six idle setups, budgets).
