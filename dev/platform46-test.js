@@ -77,7 +77,8 @@ const w = (root, rel, v) => { const f = path.join(root, ...rel.split('/')); fs.m
   w(data, `attachments/${NFD}.json`, JSON.stringify({ a: 1 }));
   w(data, 'captures/take.mp4', Buffer.alloc(21 * 1048576, 9));
   const BA = require(path.join(ROOT, 'backupautomain.js'));
-  BA._test.set({ dataDir: data, configPath: path.join(app, 'config.json'), themePath: path.join(app, 'theme.css'), appDir: app, platform: 'darwin', home: path.join(T, 'home'), getWin: () => null });
+  // (a Windows host's temp folders are C:\… paths, which the Mac's path rules can't judge: there the run uses Windows' rules)
+  BA._test.set({ dataDir: data, configPath: path.join(app, 'config.json'), themePath: path.join(app, 'theme.css'), appDir: app, platform: process.platform === 'win32' ? 'win32' : 'darwin', home: path.join(T, 'home'), getWin: () => null });
   BA.register({ handle: () => {} }, { dataDir: data, configPath: path.join(app, 'config.json'), themePath: path.join(app, 'theme.css'), appDir: app, getWin: () => null });
   const r1 = await BA.run('manual');
   check(r1.ok, 'a Mac backup with "._" / .DS_Store / Thumbs.db in the data folder is good (they were read as damaged stores)', r1);
