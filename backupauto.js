@@ -217,7 +217,7 @@ const BackupAuto = (() => {
     };
     let looked = new Set();
     const paintList = async () => {
-      let r; try { r = await A().list(); } catch (err) { list.replaceChildren(el('p', { class: 'hint', text: `Couldn't look: ${err.message}` })); return; }
+      let r; try { r = await A().list(); } catch (err) { list.replaceChildren(el('p', { class: 'hint', text: `Couldn't look: ${calmError(err)}` })); return; }
       if (r.state) set(r.state);
       if (!r.items.length) { list.replaceChildren(el('p', { class: 'hint', text: 'No backups yet. Back up now, or wait: the first one runs by itself when the computer is idle.' })); return; }
       const kids = []; let day = '';
