@@ -35,7 +35,7 @@ const CODEX_DISABLED_FEATURES = [
 // Reasoning efforts each engine accepts (anything else is dropped rather than failing the run).
 const EFFORTS = {
   claude: ['low', 'medium', 'high', 'xhigh', 'max'],
-  codex: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+  codex: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
 };
 const WEB_SEARCH = ['disabled', 'cached', 'live'];
 const SUMMARIES = ['auto', 'concise', 'detailed', 'none'];
@@ -56,6 +56,15 @@ const ENGINES = {
 
 const running = new Map(); // chatId -> child process
 let codexServers = null; // loaded only when the app-server transport is used
+let codexAccount = null;
+function getCodexUsage() {
+  const bin = LOCATE.codex();
+  if (!bin) return Promise.resolve({ available: false, buckets: [], checkedAt: Date.now(), error: 'Codex is not installed. Check Settings → Engines.' });
+  if (codexAccount?.options.bin !== bin) { codexAccount?.close(); codexAccount = null; }
+  codexAccount ||= new (require('./codex-usage').AccountUsage)({ spawn: WinPolish.spawn, kill, bin,
+    args: ['app-server', '--listen', 'stdio://'], cwd: WORKSPACE, env: process.env });
+  return codexAccount.read();
+}
 const LOG_PATH = path.join(DATA_DIR, 'engine.log');
 
 // (round 20, soak) the log keeps the last ≈ 2 MB: past that it moves to engine.prev.log (checked every 200 lines)
@@ -354,6 +363,9 @@ function promptParts(agent, session = null) {
   if (!agent.systemPrompt && !leanDirector(agent)) {
     add('role', `You are ${agent.name}, chatting with the user in their personal desktop app. Answer directly, no preamble or recap; use Markdown when it helps.`);
   }
+  if (agent.engine === 'codex' && !agent.dock && !agent.systemPrompt) add('conversation',
+    'Be a thoughtful, practical collaborator. Lead with the answer in plain, natural language. Default to a few concise paragraphs; use lists only when useful and expand when the task needs it. '
+    + 'For ordinary conversation, answer directly without unnecessary tools, plans, or verification rituals. For requested work, do it with the tools available, keep the user briefly informed during long tasks, and finish with the result and any real limitations. Never claim a tool action succeeded without evidence.');
   if (gameTools(agent)) {
     add('game', 'A live debug instance of the user\'s game Forgeheart runs right next to this chat, and you control it with the forge_* tools. '
       + 'When the user asks for something in the game ("spawn me enemies", "make me invincible", "go to stage 80", "make drones faster"), do it right away with the tools '
@@ -372,7 +384,7 @@ function promptParts(agent, session = null) {
   if (sets.includes('boardTools')) add('guide:boardTools', toolGuide('boardTools'));
   if (sets.includes('appsTools')) add('guide:appsTools', toolGuide('appsTools')); // Meshy costs credits: one line
   // Directors (agents docked in a tool) check their own work unless switched off.
-  if (agent.selfReview ?? Boolean(agent.dock)) add('selfReview', 'Before you finish, check the result against what was asked (visual work: one fresh small picture), fix real problems, then say in one line what you checked.');
+  if (agent.selfReview ?? Boolean(agent.dock)) add('selfReview', (agent.engine === 'codex' && !agent.dock ? 'For work that creates or changes something: ' : '') + 'Before you finish, check the result against what was asked (visual work: one fresh small picture), fix real problems, then say in one line what you checked.');
   // (round 11) opt-in (`/progress tags on`, directors only): the agent says how far it is; Hearth draws the bar and hides the tag
   if (agent.dock && agent.progressTag) add('progress', 'During long work, now and then write <progress pct="40" note="what\'s next"/> (hidden; it drives the user\'s progress bar).');
   // (round 22, labcrew) a crew helper: the sketch rules in five lines, no app map (its brief says what to explore)
@@ -384,7 +396,7 @@ function promptParts(agent, session = null) {
   // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
   // (round 32) the same role line with a personality too (it sits in the tail): changing one keeps this part cached
   if (sets.includes('threeTools') && agent.toolMode !== 'full') {
-    add('director', `You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`}, chatting with the user in their desktop app. Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n`
+    add('director', (agent.engine === 'codex' && !agent.dock ? 'When the user asks for Three.js Lab work, act as their visual director. ' : `You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`}, chatting with the user in their desktop app. `) + `Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n`
       + threeGuide().CORE
       + (nodesOn(agent) ? `\n${threeGuide().NODES_LINE}` : '')
       + `\n${hearthMap().LINE('three_do help')}`);
@@ -1036,8 +1048,11 @@ function batched(emit) {
   if (emit.batched) return emit;
   let held = null;
   let timer = null;
+  let firstText = true;
   const flush = () => { clearTimeout(timer); timer = null; if (held) { const h = held; held = null; emit(h); } };
   const fn = (e) => {
+    // Make the first visible text available immediately; batch the rest to protect long replies.
+    if (e.type === 'delta' && e.text && firstText) { firstText = false; flush(); emit(e); return; }
     if (e.type === 'delta' || e.type === 'thinking') {
       if (held && held.type === e.type) { held.text += e.text; return; }
       flush();
@@ -1405,6 +1420,7 @@ function kill(child) {
 }
 
 function stopAll() {
+  codexAccount?.close();
   const count = running.size + (codexServers?.stopAll() || 0);
   for (const id of [...running.keys()]) stop(id);
   return count;
@@ -1594,6 +1610,7 @@ function discoverConnectors() {
 }
 
 module.exports = {
+  getCodexUsage,
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)

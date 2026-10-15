@@ -13,6 +13,14 @@
   --meter-h: 22px;
   --meter-bg: color-mix(in srgb, var(--sidebar) 88%, transparent);
 }
+.mt-account { margin: 12px 20px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.mt-account h3 { margin: 0 0 8px; }
+.mt-account-row { margin: 14px 0; }
+.mt-account-row > div { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.mt-account-row progress { display: block; width: 100%; height: 8px; margin: 8px 0; accent-color: var(--meter-astra); }
+.mt-account-row small { color: var(--muted); }
+.mt-traffic-note { margin: 8px 20px; }
+dialog.meter-dlg[open] { overflow: auto; }
 html[data-skin~="forge"] {
   --meter-active: var(--r-rare, #ffd75e);
   --meter-ai: var(--r-mythic, #bd8bff);

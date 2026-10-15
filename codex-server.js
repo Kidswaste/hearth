@@ -102,7 +102,7 @@ class Pool {
     timing.connectionReused = Boolean(conn);
     let done = false; let cancelled = false; let turnId = null; let output = ''; let usage = null;
     let activeIdle; let interruptTimer; let pulse; let lastEvent = performance.now(); const messages = new Map(); const reasoning = new Set();
-    let baseline = null; let threadReady = false;
+    let baseline = null; let threadReady = false; let resumeTotals = null;
     const touch = () => { lastEvent = performance.now(); clearTimeout(activeIdle); activeIdle = setTimeout(() => conn?.close(new Error('Codex stopped responding; the turn was not replayed.')), this.activeIdleMs); };
     const finish = (event) => {
       if (done) return; done = true; clearTimeout(activeIdle); clearTimeout(interruptTimer); clearInterval(pulse);
@@ -145,6 +145,10 @@ class Pool {
       conn.onClose = (err) => finish(cancelled ? { type: 'stopped' } : { type: 'error', message: `${err.message}\nThe turn was not replayed. Check any partial work before retrying.` });
       conn.onRequest = (method) => { if (!done) emit({ type: 'thinking', text: `Hearth could not complete the Codex request (${method}); no additional permission was granted.\n\n` }); };
       conn.onNotification = (method, p) => {
+        // Some versions publish the saved cumulative baseline while thread/resume resolves.
+        if (!threadReady && method === 'thread/tokenUsage/updated' && p.threadId === session.id) {
+          resumeTotals = p.tokenUsage?.total; return;
+        }
         if (done || !threadReady || p.threadId !== session.id || (turnId && p.turnId && p.turnId !== turnId)) return;
         touch(); if (timing.firstEventMs == null) timing.firstEventMs = elapsed();
         if (method === 'turn/started') { turnId = p.turn.id; return; }
@@ -161,6 +165,9 @@ class Pool {
           // Some server versions reset usage totals when a saved thread is reloaded.
           if (totals.input < (prev.input || 0) || totals.output < (prev.output || 0)) { baseline = {}; prev = baseline; }
           usage = Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, Math.max(0, v - (prev[k] || 0))]));
+          if (Number.isFinite(p.tokenUsage.last?.inputTokens)) usage.contextInput = p.tokenUsage.last.inputTokens;
+          if (Number.isFinite(p.tokenUsage.last?.cachedInputTokens)) usage.contextCached = p.tokenUsage.last.cachedInputTokens;
+          if (Number.isFinite(p.tokenUsage.modelContextWindow)) usage.contextWindow = p.tokenUsage.modelContextWindow;
           session.totals = totals; conn.totals = totals;
           return;
         }
@@ -205,7 +212,9 @@ class Pool {
           if (conn.threadId !== result.thread.id) conn.totals = null;
           session.id = result.thread.id; conn.threadId = session.id; conn.signature = signature;
         }
-        baseline = { ...(session.totals || conn.totals || {}) }; threadReady = true;
+        baseline = resumeTotals ? { input: resumeTotals.inputTokens || 0, output: resumeTotals.outputTokens || 0,
+          cached: resumeTotals.cachedInputTokens || 0, reasoning: resumeTotals.reasoningOutputTokens || 0 }
+          : { ...(session.totals || conn.totals || {}) }; threadReady = true;
         timing.setupMs = elapsed();
         const result = await conn.request('turn/start', { ...turn, threadId: session.id, input: [{ type: 'text', text: inputText }, ...(turn.input || [])] });
         if (!done) turnId = result.turn.id;

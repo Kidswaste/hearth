@@ -33,7 +33,7 @@ function ok(text) { console.log(`✓ ${text}`); checks++; }
   assert.equal(a.events.filter(e => e.type === 'delta').map(e => e.text).join(''), a.end.text);
   assert(a.events.find(e => e.type === 'delta').receivedMs + 100 < a.events.at(-1).receivedMs);
   assert(a.end.timing.firstTextMs < a.end.timing.totalMs); assert(a.end.timing.setupMs <= a.end.timing.firstTextMs);
-  assert(a.live.some(e => e.type === 'step')); assert.deepStrictEqual(a.end.usage, { input: 100, output: 20, cached: 50, reasoning: 5 });
+  assert(a.live.some(e => e.type === 'step')); assert.deepStrictEqual(a.end.usage, { input: 100, output: 20, cached: 50, reasoning: 5, contextInput: 10 });
   ok('partial text arrives before completion, UTF-8 survives, final text is not duplicated, tools and timings arrive');
   const b = await turn('a', 'again', a.end.session);
   assert(b.end.timing.connectionReused); assert.equal(b.end.session.id, a.end.session.id); assert.equal(b.end.usage.input, 100);
@@ -41,9 +41,18 @@ function ok(text) { console.log(`✓ ${text}`); checks++; }
   assert.equal(trace().filter(x => x.method === 'thread/start').length, 1);
   assert(trace().find(x => x.method === 'thread/start').params.config['mcp_servers.unrelated.enabled'] === false);
   ok('second turn reuses process/thread; inherited unrelated MCP is disabled; cumulative usage becomes per-turn');
+  const multi = await turn('multi', 'MULTI');
+  assert.equal(multi.end.usage.input, 200); assert.equal(multi.end.usage.cached, 100);
+  assert.equal(multi.end.usage.contextInput, 10, 'Final context is not the sum across model calls');
+  assert.equal(multi.end.usage.output, 40, 'Duplicate notifications must not add usage twice');
+  const resumed = await turn('resume-baseline', 'hello', { id: 'with-baseline' });
+  assert.equal(resumed.end.usage.input, 100, 'Saved thread baseline must not be billed to the new turn');
+  const warmMulti = await turn('multi', 'hello', multi.end.session);
+  assert.equal(warmMulti.end.usage.input, 100);
+  ok('multiple model calls, duplicate usage updates, and a saved baseline keep per-turn traffic separate from context');
   const pair = await Promise.all([turn('a', 'again', b.end.session), turn('b', 'hello')]);
   assert(pair.every(x => x.end.text === 'Hello 🌱')); assert.notEqual(pair[0].end.session.id, pair[1].end.session.id);
-  assert.equal(trace().filter(x => x.start).length, 2);
+  assert.equal(trace().filter(x => x.start).length, 4);
   ok('parallel chats have separate processes and cannot receive each other’s text');
   const stopped = turn('a', 'WAIT', pair[0].end.session);
   await new Promise(r => setTimeout(r, 100)); assert(pool.stop('a'));
@@ -82,11 +91,18 @@ function ok(text) { console.log(`✓ ${text}`); checks++; }
 
   // Exercise the real engines.send boundary in a temp copy, including batching and usage writes.
   const copy = path.join(dir, 'app'); fs.mkdirSync(copy);
-  for (const f of ['engines.js', 'codex-server.js', 'store.js', 'installs.js', 'winpolish.js', 'connectionsmain.js']) fs.copyFileSync(path.join(root, f), path.join(copy, f));
+  for (const f of ['engines.js', 'codex-server.js', 'codex-usage.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'connectionsmain.js']) fs.copyFileSync(path.join(root, f), path.join(copy, f));
   fs.cpSync(path.join(root, 'mcp'), path.join(copy, 'mcp'), { recursive: true });
   const engines = require(path.join(copy, 'engines.js')); engines.setEnginePaths({ codex: fixture });
   const agent = { id: 'astra', engine: 'codex', model: 'gpt-6-astra', effort: 'high', openTool: false };
+  const firstEvents = []; const batch = engines._test.batched(e => firstEvents.push(e));
+  batch({ type: 'thinking', text: 'Think' }); batch({ type: 'delta', text: 'First' });
+  assert.equal(firstEvents.at(-1).text, 'First', 'First visible text must bypass the batching timer');
+  batch({ type: 'delta', text: ' second' }); batch({ type: 'done' });
+  assert.equal(firstEvents.map(e => e.text || '').join(''), 'ThinkFirst second');
   const p = engines._test.codexServerPlan(agent, {}, {});
+  const deepest = engines._test.codexServerPlan({ ...agent, effort: 'max', verbosity: 'low' }, {}, {});
+  assert.equal(deepest.turn.effort, 'max'); assert(deepest.args.includes('model_verbosity="low"'));
   assert.equal(p.args[0], 'app-server'); assert(!p.args.includes('--ignore-user-config')); assert.equal(p.turn.sandboxPolicy.type, 'readOnly');
   const edit = engines._test.codexServerPlan({ ...agent, workspace: copy, codexFiles: 'edit' }, {}, { images: ['test.png'] });
   assert.equal(edit.turn.sandboxPolicy.networkAccess, false); assert.deepStrictEqual(edit.turn.sandboxPolicy.writableRoots, [copy]);

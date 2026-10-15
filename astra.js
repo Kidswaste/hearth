@@ -10,7 +10,7 @@
 const Astra = (() => {
   const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n || 0));
   const MODELS = { codex: ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'], claude: ['opus', 'sonnet', 'haiku', 'fable'] };
-  const EFFORTS = { codex: ['minimal', 'low', 'medium', 'high', 'xhigh'], claude: ['low', 'medium', 'high', 'xhigh', 'max'] };
+  const EFFORTS = { codex: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], claude: ['low', 'medium', 'high', 'xhigh', 'max'] };
   const WEB = ['off', 'cached', 'live'];
   const REMEMBER = /<remember>([\s\S]*?)<\/remember>/gi;
   const SUGGEST = /<suggest>([\s\S]*?)<\/suggest>/gi;
@@ -41,8 +41,8 @@ const Astra = (() => {
     frugal: { label: 'Frugal', effort: 'minimal', verbosity: 'low', desc: 'fewest tokens: minimal reasoning, short answers' },
     fast: { label: 'Fast', effort: 'low', verbosity: 'low', desc: 'quick answers' },
     balanced: { label: 'Balanced', effort: 'medium', verbosity: null, desc: 'medium reasoning' },
-    deep: { label: 'Deep', effort: 'high', verbosity: null, desc: 'careful reasoning (Astra\'s default)' },
-    max: { label: 'Max', effort: 'xhigh', verbosity: 'high', desc: 'the most reasoning and detail (most tokens)' },
+    deep: { label: 'Deep', effort: 'high', verbosity: null, desc: 'careful reasoning' },
+    max: { label: 'Max', effort: 'max', verbosity: 'low', desc: 'maximum reasoning, concise answers (requires a model that supports max)' },
   };
   const MODES = {
     duo: { icon: '⚇', label: 'Duo', desc: 'both answer side by side' },
@@ -693,7 +693,7 @@ function toggleFold(hostId, m) {
       checkOnboarding(status);
       window.hub.getUsage().then((all) => {
         const u = all?.[new Date().toLocaleDateString('en-CA')]?.[agent.id];
-        if (u && status.isConnected) status.after(el('div', { class: 'hint astra-today', text: `Today: ${fmt((u.input || 0) + (u.output || 0))} tokens in ${u.replies || 0} replies` }));
+        if (u && status.isConnected) status.after(el('button', { type: 'button', class: 'ghost hint astra-today', text: `Today: ${u.replies || 0} replies · Account usage`, on: { click: () => Meter.dashboard() } }));
       }).catch(() => {});
       // one line instead of rows of chips: the settings are a / away (/astra-model, /astra-persona, /astra-web…)
       return el('div', { class: 'astra-hints' }, status,
@@ -1238,7 +1238,7 @@ function toggleFold(hostId, m) {
       if (isDefault(args)) { setAgent(agent, { model }); return `${agent.name} now uses ${model} by default.`; }
       return chatSetting({ agentId: agent.id }, 'model', model, `This chat now uses ${model}.`);
     } });
-  R({ name: 'astra-effort', area: 'Astra', args: '[level] [--default]', desc: 'Reasoning effort for this chat (minimal…xhigh for Astra, low…max for Claude)',
+  R({ name: 'astra-effort', area: 'Astra', args: '[level] [--default]', desc: 'Reasoning effort for this chat (minimal…max for Astra, low…max for Claude; model support varies)',
     complete: (a, ctx) => (EFFORTS[H.agent(ctx.agentId)?.engine] || EFFORTS.codex).map((v) => ({ value: v })).filter((x) => x.value.startsWith(a.trim())),
     run: (args, ctx) => {
       const agent = targetAgent(ctx);

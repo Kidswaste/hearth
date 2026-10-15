@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('hub', {
   attachmentsDir: call('attachments:dir'),
   getUsage: call('usage:get'),
   getTokenStats: call('usage:stats'),
+  getCodexUsage: call('usage:codex'),
   rebuildTokenStats: call('usage:rebuild'),
 
   send: call('engine:send'),

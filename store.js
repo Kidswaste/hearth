@@ -387,8 +387,10 @@ function statInto(stats, agentId, usage, meta, at = Date.now()) {
     const c = (stats.chats[meta.chatId] ||= { a: agentId });
     bump(c, usage, meta);
     c.last = at;
-    c.peak = Math.max(c.peak || 0, usage.input || 0);
-    c.ctx = usage.input || 0; // what the latest message sent as context
+    const context = usage.contextInput ?? usage.input ?? 0;
+    c.peak = Math.max(c.peak || 0, context);
+    c.ctx = context; // last model call's input, not all repeated inputs across a tool-using turn
+    if (usage.contextWindow) c.contextWindow = usage.contextWindow;
     if (meta.model) c.model = meta.model;
   }
 }

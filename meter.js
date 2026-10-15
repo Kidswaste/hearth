@@ -114,7 +114,7 @@ const Meter = (() => {
   // Context window of a chat's model: 1M for "[1m]" models, else 200k (or your override per model).
   function windowFor(agentId, chatId) {
     const model = chatStat(chatId)?.model || H.chats.find((c) => c.id === chatId)?.model || H.agent(agentId)?.model || 'default';
-    return prefs.windows[model] || (/\[1m\]/i.test(model) ? 1e6 : 200000);
+    return prefs.windows[model] || chatStat(chatId)?.contextWindow || (/\[1m\]/i.test(model) ? 1e6 : 200000);
   }
   const agentOfChat = (chatId) => H.chats.find((c) => c.id === chatId)?.agentId
     || H.agents().filter((a) => chatId?.startsWith(`${a.id}-`)).sort((a, b) => b.id.length - a.id.length)[0]?.id || null;
@@ -166,7 +166,8 @@ const Meter = (() => {
       lastSnap = { agentId, chatId: ev.chatId, est, usage: ev.usage || null, at: Date.now() };
       if (ev.usage) merge(session, { i: ev.usage.input, o: ev.usage.output, c: ev.usage.cached, r: 1 });
       live.delete(ev.chatId);
-      if (ev.usage && prefs.longCtx && ev.usage.input >= prefs.longCtx) longContextWarning(agentId, ev.chatId, ev.usage.input);
+      const context = ev.usage?.contextInput ?? ev.usage?.input;
+      if (context != null && prefs.longCtx && context >= prefs.longCtx) longContextWarning(agentId, ev.chatId, context);
       if (ev.local && ev.usage) localAdd(agentId, ev.chatId, ev.usage);
       else refreshSoon();
       paint(true);
@@ -340,7 +341,7 @@ const Meter = (() => {
     const today = tot(r._today);
     // (only what changed is written: this runs ~8× a second while a reply streams, beside a playing Lab)
     const num = pill.querySelector('.mp-num');
-    const numText = live.size ? fmt([...live.values()].reduce((s, l) => s + estimate(l), 0)) : fmt(today);
+    const numText = 'Usage';
     // while a reply streams the live count moves on every piece: written at most twice a second
     if (num.textContent !== numText && (!live.size || force || performance.now() - (paint.numAt || 0) > 500)) { num.textContent = numText; paint.numAt = performance.now(); }
     pill.classList.toggle('is-live', live.size > 0);
@@ -349,7 +350,7 @@ const Meter = (() => {
     const budgetTotal = Object.values(prefs.budgets).reduce((s, b) => s + (b || 0), 0);
     const fill = `${Math.min(100, budgetTotal ? pct(today, budgetTotal) : pct(r._ctx, r._win))}%`;
     if (pill.style.getPropertyValue('--fill') !== fill) pill.style.setProperty('--fill', fill);
-    const pillTitle = `${live.size ? 'Streaming now · ' : ''}Tokens today: ${full(today)}${budgetTotal ? ` of ${fmt(budgetTotal)} budget` : ''} · click for the dashboard · right-click for options`;
+    const pillTitle = 'Usage · Codex account limits and Hearth token traffic (Ctrl+Shift+U)';
     if (pill.title !== pillTitle) pill.title = pillTitle;
     if (strip.hidden) return;
     const sig = JSON.stringify([prefs.fields, Object.entries(r).filter(([k]) => !k.startsWith('_')).map(([, v]) => v), live.size]);
@@ -405,16 +406,18 @@ const Meter = (() => {
     const u = m?.usage;
     if (!u) return null;
     const secs = m.ms ? m.ms / 1000 : 0;
-    const title = [`${full(u.input)} input tokens${u.cached ? ` (${full(u.cached)} from cache, ${pct(u.cached, u.input)}%)` : ''}`,
+    const title = ['Token traffic for this reply, not a subscription allowance or bill. Input is counted again on each model call.',
+      `${full(u.input)} input tokens${u.cached ? ` (${full(u.cached)} from cache, ${pct(u.cached, u.input)}%)` : ''}`,
       u.cacheWrite ? `${full(u.cacheWrite)} written to cache` : null,
-      cacheSaved(u.cached, u.cacheWrite) ? `≈ ${full(cacheSaved(u.cached, u.cacheWrite))} saved by the cache` : null,
-      `${full(u.output)} output tokens${outSplit(m, u.output)}`, m.answers ? `Answers: ${m.answers} (⋯ AI setup)` : null, secs ? `${secs.toFixed(1)} s · ${Math.round(u.output / Math.max(secs, 0.1))} tokens/s` : null,
-      u.cost ? `≈ ${money(u.cost)} at API prices (free on your subscription)` : null].filter(Boolean).join('\n');
-    if (prefs.badges === 'off') return el('span', { text: `${fmt(u.input)} in · ${fmt(u.output)} out${secs ? ` · ${secs.toFixed(1)}s` : ''}` });
-    if (prefs.badges === 'compact') return el('span', { class: 'meter-badge compact', title, text: `${fmt(u.input + u.output)} tok` });
+      `${full(u.output)} output tokens${u.reasoning != null ? ` (includes ${full(u.reasoning)} reasoning tokens)` : outSplit(m, u.output)}`,
+      u.contextInput != null ? `${full(u.contextInput)} input tokens in the final model call (current context)` : null,
+      m.answers ? `Answers: ${m.answers} (⋯ AI setup)` : null, secs ? `${secs.toFixed(1)} s total` : null,
+      u.cost ? `≈ ${money(u.cost)} at API list prices; not your subscription usage or bill` : null].filter(Boolean).join('\n');
+    if (prefs.badges === 'off') return null;
+    if (prefs.badges === 'compact') return el('span', { class: 'meter-badge compact', title, text: `${fmt(u.output)} out` });
     return el('span', { class: 'meter-badge', title },
-      el('span', { text: `${fmt(u.input)} in` }), ' · ', el('span', { text: `${fmt(u.output)} out` }),
-      u.cached ? el('span', { class: 'mb-cache', text: ` · ⚡${pct(u.cached, u.input)}%` }) : null,
+      el('span', { text: `${fmt(u.output)} out` }), ' · ', el('span', { text: `${fmt(Math.max(0, (u.input || 0) - (u.cached || 0)))} fresh in` }),
+      u.cached ? el('span', { class: 'mb-cache', text: ` · ${fmt(u.cached)} cached`, title: 'Previously processed input served from cache; included in total input, not extra tokens.' }) : null,
       secs ? ` · ${secs.toFixed(1)}s` : null);
   }
   // "12k" for the chats panel (null when the chat has no recorded replies).
@@ -439,7 +442,7 @@ const Meter = (() => {
     const c = chatStat(row.dataset.key);
     if (!c) { has?.remove(); return; }
     const text = fmt(tot(c));
-    const title = `${full(tot(c))} tokens · ${c.r} replies · context now ${fmt(c.ctx || 0)}`;
+    const title = `${full(tot(c))} tokens of traffic, including repeated and cached input · ${c.r} replies · not subscription usage`;
     if (has) { if (has.textContent !== text) { has.textContent = text; has.title = title; } return; }
     row.append(el('span', { class: 'item-tok', text, title }));
   }
@@ -524,6 +527,24 @@ const Meter = (() => {
     { id: 'budgets', label: 'Budgets & alerts' }, { id: 'export', label: 'Export' },
   ];
   let dlg = null;
+  function accountCard(host, result) {
+    host.replaceChildren(el('h3', { text: 'Codex account limits' }),
+      el('p', { class: 'hint', text: 'From the Codex account signed in on this computer. Shared across its Codex sessions and devices; separate from the Hearth traffic below. Claude limits are not available here.' }));
+    if (!result?.available) { host.append(el('p', { text: result?.error || 'Account limits are unavailable for this sign-in. Missing limits do not mean zero usage.' })); return; }
+    for (const b of result.buckets) {
+      for (const w of b.windows) {
+        const mins = w.minutes;
+        const label = mins == null ? `${w.key} window` : mins % 1440 === 0 ? `${mins / 1440}-day window` : mins % 60 === 0 ? `${mins / 60}-hour window` : `${mins}-minute window`;
+        const reset = w.resetsAt ? `Resets ${new Date(w.resetsAt).toLocaleString()}` : 'Reset time unavailable';
+        host.append(el('div', { class: 'mt-account-row' },
+          el('div', {}, el('strong', { text: `${b.name} · ${label}` }), el('span', { text: `${w.remaining}% remaining · ${w.used}% used` })),
+          el('progress', { attrs: { max: '100', value: String(w.used), 'aria-label': `${b.name} ${label}: ${w.used}% used` } }),
+          el('small', { text: reset })));
+      }
+    }
+    if (result.ordinaryUsageAllowed === false) host.append(el('p', { text: 'The account currently reports that ordinary included usage is unavailable.' }));
+    host.append(el('small', { class: 'hint', text: `Checked ${new Date(result.checkedAt).toLocaleTimeString()}. Reopen to refresh (at most once a minute).` }));
+  }
   async function dashboard(tab) {
     await refresh();
     dlg?.close();
@@ -532,11 +553,14 @@ const Meter = (() => {
     const rangeBar = el('div', { class: 'mt-seg' }, Object.keys(RANGES).map((r) => el('button', { type: 'button', text: { today: 'Today', week: '7 days', month: '30 days', all: 'All' }[r], dataset: { r, feature: `Range ${r}` } })));
     const tabBar = el('div', { class: 'mt-tabs' }, TABS.map((t) => el('button', { type: 'button', text: t.label, dataset: { t: t.id, feature: `Tab ${t.label}` } })));
     const kpis = el('div', { class: 'mt-kpis' });
+    const account = el('section', { class: 'mt-account' }, el('h3', { text: 'Codex account limits' }), el('p', { class: 'hint', text: 'Checking your account…' }));
     const pane = el('div', { class: 'mt-pane' });
     const close = el('button', { type: 'button', class: 'ghost mt-x', text: '×', title: 'Close (Esc)' });
     const copy = el('button', { type: 'button', class: 'ghost mt-x', text: '⧉', title: 'Copy a summary of this range (Markdown)', dataset: { feature: 'Copy summary' }, on: { click: () => copyText(report(range), 'Usage summary') } });
     dlg = el('dialog', { class: 'ui-modal wide meter-dlg' },
-      el('div', { class: 'mt-head' }, el('h2', { text: 'Tokens & usage' }), rangeBar, el('span', { class: 'spacer' }), copy, close),
+      el('div', { class: 'mt-head' }, el('h2', { text: 'Usage' }), rangeBar, el('span', { class: 'spacer' }), copy, close),
+      account,
+      el('p', { class: 'mt-traffic-note hint', text: 'Hearth token traffic · Each model call counts its input again, including cached history and tool results. Output includes reasoning and tool calls. These totals are not your subscription allowance or bill. Historical records are preserved.' }),
       kpis, tabBar, pane);
     const draw = () => {
       for (const b of rangeBar.children) b.classList.toggle('on', b.dataset.r === range);
@@ -554,6 +578,8 @@ const Meter = (() => {
     dlg.showModal();
     dlg.focus(); // not the first range button (its focus ring looked like the selected range)
     draw();
+    if (window.hub.getCodexUsage) window.hub.getCodexUsage().then(r => { if (account.isConnected) accountCard(account, r); }).catch(() => { if (account.isConnected) accountCard(account, null); });
+    else accountCard(account, null);
     return dlg;
   }
   function kpi(label, value, sub, extra) {
@@ -564,12 +590,12 @@ const Meter = (() => {
     const clicks = days.reduce((n, d) => n + (Usage.data?.days?.[d] || 0), 0);
     const series = days.slice(-30).map((d) => tot(sumOf([d])));
     return [
-      kpi('Tokens', fmt(tot(s)), `${fmt(s.i)} in · ${fmt(s.o)} out`, days.length > 1 ? sparkline(series, { w: 64, h: 18 }) : null),
+      kpi('Token traffic', fmt(tot(s)), `${fmt(s.i)} in · ${fmt(s.o)} out`, days.length > 1 ? sparkline(series, { w: 64, h: 18 }) : null),
       kpi('Cached', `${pct(s.c || 0, s.i || 0)}%`, `${fmt(s.c || 0)} of the input`),
       kpi('Replies', full(s.r || 0), `⌀ ${fmt(s.r ? tot(s) / s.r : 0)} tokens each`),
       kpi('Reply time', s.r && s.ms ? `${(s.ms / s.r / 1000).toFixed(1)} s` : '–', s.ms ? `${Math.round((s.o || 0) / (s.ms / 1000))} out tokens/s` : null),
       kpi('Tool calls', full(s.tools || 0), s.r ? `${((s.tools || 0) / s.r).toFixed(1)} per reply` : null),
-      s.cost ? kpi('API value', money(s.cost), 'what it would cost via the API · you pay $0 extra') : null,
+      s.cost ? kpi('API estimate', money(s.cost), 'API list-price estimate; not your bill') : null,
       kpi('Feature clicks', full(clicks), typeof Usage !== 'undefined' && days.length === 1 ? `${Usage.dayStats(days[0]).features} features` : `${days.length} day${days.length === 1 ? '' : 's'}`),
     ];
   }

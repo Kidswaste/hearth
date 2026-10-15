@@ -18,10 +18,15 @@ rl.on('line', (line) => {
   if (m.method === 'initialized') { initialized = true; return; }
   if (!initialized) { send({ id: m.id, error: { message: 'Not initialized' } }); return; }
   if (m.method === 'config/read') { reply(m.id, { config: { mcp_servers: { unrelated: {} } } }); return; }
+  if (m.method === 'account/rateLimits/read') { reply(m.id, { rateLimits: { primary: { usedPercent: 23, windowDurationMins: 10080, resetsAt: 1900000000 } } }); return; }
   if (m.method === 'thread/start' || m.method === 'thread/resume') {
     if (m.params.threadId === 'missing') { send({ id: m.id, error: { message: 'thread not found' } }); return; }
     const id = m.params.threadId || crypto.randomUUID();
     if (!threads.has(id)) threads.set(id, { n: 0 });
+    if (id === 'with-baseline') {
+      threads.get(id).n = 7;
+      notify('thread/tokenUsage/updated', { threadId: id, turnId: 'prior', tokenUsage: { total: { inputTokens: 700, outputTokens: 140, cachedInputTokens: 350, reasoningOutputTokens: 35 } } });
+    }
     reply(m.id, { thread: { id } }); return;
   }
   if (m.method === 'turn/interrupt') {
@@ -39,6 +44,11 @@ rl.on('line', (line) => {
   reply(m.id, { turn: { id: turnId, status: 'inProgress' } });
   notify('turn/completed', { threadId, turn: { id: 'old-turn', status: 'completed' } });
   if (text === 'WAIT') return;
+  if (text === 'MULTI') {
+    const n = ++threads.get(threadId).n;
+    const params = { ...meta, tokenUsage: { total: { inputTokens: n * 100, outputTokens: n * 20, cachedInputTokens: n * 50, reasoningOutputTokens: n * 5 }, last: { inputTokens: 100, outputTokens: 20 } } };
+    notify('thread/tokenUsage/updated', params); notify('thread/tokenUsage/updated', params);
+  }
   if (text === 'CRASH') { notify('item/agentMessage/delta', { ...meta, itemId: 'm', delta: 'Partial' }); setTimeout(() => process.exit(3), 80); return; }
   if (text === 'APPROVAL') send({ id: 'ask-1', method: 'item/commandExecution/requestApproval', params: { ...meta, command: 'blocked' } });
   if (text === 'BLOCKED') notify('item/completed', { ...meta, item: { type: 'mcpToolCall', id: 'blocked-tool', server: 'test', tool: 'read', status: 'failed', error: { message: 'Approval declined' } } });

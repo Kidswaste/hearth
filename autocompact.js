@@ -122,8 +122,8 @@ const Autocompact = (() => {
     const first = ms.slice(start).find((m) => m.role === 'assistant' && m.usage);
     const firstUser = ms.slice(start).find((m) => m.role === 'user');
     const carried = chat?.compact ? tok(chat.compact.summary) + WRAP + historyTok(ms.slice(chat.compact.tail ?? start, start).filter(talk)) : 0;
-    const fixed = first ? Math.max(300, first.usage.input - tok(firstUser?.sent || firstUser?.text) - carried) : 1500;
-    return { ctx: u?.input || 0, cached: u?.cached || 0, at: atOf(agent), fixed, older, kept, previous, hitRate,
+    const fixed = first ? Math.max(300, (first.usage.contextInput ?? first.usage.input) - tok(firstUser?.sent || firstUser?.text) - carried) : 1500;
+    return { ctx: u?.contextInput ?? u?.input ?? 0, cached: u?.contextCached ?? u?.cached ?? 0, at: atOf(agent), fixed, older, kept, previous, hitRate,
       userCount: ms.filter((m) => m.role === 'user' && !m.compactReq).length, lastUser: [...ms].reverse().find((m) => m.role === 'user')?.text || '' };
   }
   const line = (d) => `This chat re-reads ≈ ${fmt(d.before)} tokens each message. Continue lighter? (keeps a summary, ≈ ${fmt(d.after)})`;
@@ -277,9 +277,10 @@ ${transcript(parts)}
     if (!m.usage || m.role !== 'assistant') return;
     const chat = Native.current(agent.id);
     const lt = chat?.compact?.lighter;
-    if (!lt || index < chat.compact.index || !(lt.before > m.usage.input)) return;
+    const context = m.usage.contextInput ?? m.usage.input;
+    if (!lt || index < chat.compact.index || !(lt.before > context)) return;
     const b = node.querySelector('.meter-badge, .tok-badge');
-    if (b && !/Continued lighter/.test(b.title)) b.title += `\nContinued lighter: ≈ ${fmt(m.usage.input)} instead of ≈ ${fmt(lt.before)} per message (≈ ${fmt(lt.before - m.usage.input)} less)`;
+    if (b && !/Continued lighter/.test(b.title)) b.title += `\nContinued lighter: ≈ ${fmt(context)} instead of ≈ ${fmt(lt.before)} per message (≈ ${fmt(lt.before - context)} less)`;
   }
 
   // ⋯ AI setup → Spending: "Offer to continue lighter"

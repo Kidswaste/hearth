@@ -308,6 +308,7 @@ ipcMain.handle('attachments:save', (_e, name, base64) => store.saveAttachment(na
 ipcMain.handle('refs:import', (_e, src) => store.importRef(String(src)));
 ipcMain.handle('attachments:dir', () => store.ATTACH_DIR);
 ipcMain.handle('usage:get', () => store.getUsage());
+ipcMain.handle('usage:codex', () => engines.getCodexUsage());
 // Token meter aggregates (kv/token-stats.json); the first call builds them from the chats.
 const configAgents = () => { try { return readConfig().agents || []; } catch { return []; } };
 ipcMain.handle('usage:stats', () => store.getTokenStats(configAgents()));

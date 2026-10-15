@@ -957,7 +957,7 @@ const Native = (() => {
     put(v.title, 'title', chat ? `${chat.title}\n${chat.messages.length} messages · started ${fmtDate(chat.createdAt || chat.updatedAt)}\nDouble-click to rename` : 'Double-click to rename');
     const total = (chat?.messages || []).reduce((sum, m) => sum + (m.usage ? m.usage.input + m.usage.output : 0), 0);
     const folder = agent.workspace ? `edits ${agent.workspace.split(/[\\/]/).filter(Boolean).pop() || agent.workspace}` : null;
-    const metaText = [folder, total ? `${fmt(total)} tokens this chat` : null].filter(Boolean).join(' · ');
+    const metaText = [folder, total ? `${fmt(total)} token traffic this chat` : null].filter(Boolean).join(' · ');
     if (v.metaText !== metaText) { v.metaText = metaText; const badge = v.meta.querySelector('.access-badge'); v.meta.textContent = metaText; if (badge) v.meta.append(badge); }
     put(v.meta, 'title', agent.workspace ? `Can read and edit files in ${agent.workspace}` : '');
     paintContext(v, chat);
@@ -1393,8 +1393,13 @@ const Native = (() => {
   // changes, the scroll that follows them and the frame's style / layout happen together, once. Painted from a timer,
   // the changes waited for the next frame half-done, and a key press in between (typing while it streams) had to
   // style and lay out the new part of the reply first, inside the key's handler.
-  function schedulePaint(chatId) {
+  function schedulePaint(chatId, immediate = false) {
     const p = pending.get(chatId);
+    if (immediate && p) {
+      // First text bypasses the timer and a second frame, subsequent chunks remain batched.
+      repaintPending(chatId);
+      return;
+    }
     if (!p || p.paintTimer) return;
     p.paintTimer = setTimeout(() => { p.paintTimer = requestAnimationFrame(() => { p.paintTimer = 0; repaintPending(chatId, true); }); }, 60);
   }
@@ -1592,8 +1597,13 @@ const Native = (() => {
         if (event.parent) { schedulePaint(event.chatId); return; } // a subagent's step: under its agent (chat-live.js), not in the reply
         p.tools.push(event.name);
         if (p.text && !p.text.endsWith('\n\n')) p.text += '\n\n';
-      } else {
-        if (event.text && p.firstTextReceivedMs == null) p.firstTextReceivedMs = Date.now() - p.started;
+        } else {
+          if (event.text && p.firstTextReceivedMs == null) {
+            p.firstTextReceivedMs = Date.now() - p.started;
+            p.text += event.text;
+            schedulePaint(event.chatId, true);
+            return;
+          }
         p.text += event.text;
       }
       schedulePaint(event.chatId);
@@ -1674,7 +1684,8 @@ const Native = (() => {
     if (!chat.messages.some((m) => m.role === 'assistant' && !m.compactSummary)) { toast('Nothing to compact yet', { timeout: 1500 }); return; }
     // (round 34, autocompact.js) continue lighter: the cheapest model writes the summary, the last exchanges stay word for word
     if (window.Autocompact?.run) { await Autocompact.run(agentId, { auto }).catch((err) => toast(err.message, { type: 'error' })); return; }
-    const before = [...chat.messages].reverse().find((m) => m.usage)?.usage.input || 0;
+    const priorUsage = [...chat.messages].reverse().find((m) => m.usage)?.usage;
+    const before = priorUsage?.contextInput ?? priorUsage?.input ?? 0;
     await send(agentId, COMPACT_PROMPT, { compact: true });
     afterReply.set(chat.id, (summary) => {
       const reply = chat.messages.at(-1);
@@ -1698,7 +1709,7 @@ const Native = (() => {
     const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
     // (round 34) continued lighter and nothing sent since: what the next message will send (≈), hover: what it was
     const lt = chat?.compact?.lighter && chat.messages.lastIndexOf(last) < chat.compact.index ? chat.compact.lighter : null;
-    const n = lt ? lt.after : last?.usage.input || 0;
+    const n = lt ? lt.after : last?.usage.contextInput ?? last?.usage.input ?? 0;
     if (v.ctx.hidden !== !n) v.ctx.hidden = !n;
     if (!n || v.ctxSeen === n) return; // (round 16) unchanged: nothing written
     v.ctxSeen = n;
@@ -1713,7 +1724,7 @@ const Native = (() => {
   // After a reply that pushed the context past the limit: compact on its own (agent setting, on by default).
   function maybeAutoCompact(chat, message) {
     const agent = H.agent(chat.agentId);
-    if (!agent || agent.autoCompact === false || !message?.usage || message.usage.input < AUTO_COMPACT_TOKENS) return false;
+    if (!agent || agent.autoCompact === false || !message?.usage || (message.usage.contextInput ?? message.usage.input) < AUTO_COMPACT_TOKENS) return false;
     if (window.Autocompact) return false; // (round 34) never silently: the offer to continue lighter (or the banner when it's off)
     if (H.activeChat[chat.agentId] !== chat.id || views.get(chat.agentId)?.queue?.length) return false;
     setTimeout(() => compactChat(chat.agentId, { auto: true }), 400);
@@ -1762,10 +1773,10 @@ const Native = (() => {
   }
   function longChatBanner(agent, chat) {
     const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
-    if (!last || last.usage.input < LONG_CHAT_TOKENS || chat.longDismissed || pending.has(chat.id)) return null;
+    if (!last || (last.usage.contextInput ?? last.usage.input) < LONG_CHAT_TOKENS || chat.longDismissed || pending.has(chat.id)) return null;
     if (window.Autocompact?.handles(agent)) return null; // (round 34) one calm line under the reply instead (autocompact.js)
     return el('div', { class: 'long-chat' },
-      el('span', { text: `This chat now sends about ${fmt(last.usage.input)} tokens with every message.` }),
+      el('span', { text: `This chat now sends about ${fmt(last.usage.contextInput ?? last.usage.input)} tokens with every message.` }),
       el('button', { class: 'primary small', text: '🗜 Compact context', title: 'It summarizes the conversation; this chat continues from the summary (every message stays visible)', on: { click: () => compactChat(agent.id) } }),
       el('button', { class: 'ghost small', text: 'New chat from a summary', title: 'A short summary (goal, decisions, open tasks, key files), shown and editable; a new chat continues from it', on: { click: () => (window.ChatFresh ? ChatFresh.start(agent.id).catch((err) => toast(err.message, { type: 'error' })) : summarizeAndContinue(agent.id)) } }), // (round 24) a free summary, editable first
       el('button', { class: 'ghost small', text: 'Keep going', on: { click: () => { chat.longDismissed = true; remember(chat); render(agent.id, { keepScroll: true }); } } }));
