@@ -164,6 +164,7 @@ const ThreeMedia = (() => {
     // silent: set by the Lab when a sketch opens (it runs the sketch itself afterwards).
     function setMode(id, { silent = false } = {}) {
       if (!SIZES.some((s) => s.id === id)) return;
+      if (silent && id === mode) return; // (round 48, labstartfast) a scene switch to the same frame size: nothing to lay out (a size change is the ResizeObserver's)
       const wasExact = Boolean(current().w);
       mode = id;
       store.set('three.aspect', id);
@@ -599,6 +600,10 @@ const ThreeMedia = (() => {
     async function load(path, { startAt = 0, quiet = false, relinked = false } = {}) {
       if (!isMedia(path)) { toast(`${base(path)} isn't an audio or video file`, { type: 'error' }); return { ok: false, error: 'Not an audio/video file' }; }
       const seq = ++loadSeq;
+      // (round 48, labstartfast) the overview's row shows from the start of a load, not once the song is decoded: it
+      // came in under the preview half a second into the Lab's first run, and every canvas of the scene was resized
+      loadingMini = seq; if (minimap.hidden) minimap.hidden = false;
+      const miniBack = () => { if (loadingMini === seq) { loadingMini = 0; minimap.hidden = !D(); } };
       let bytes;
       try {
         const u8 = await window.hub.fs.read(path, { encoding: 'buffer', maxBytes: 2 * 1024 ** 3 });
@@ -612,13 +617,16 @@ const ThreeMedia = (() => {
           const alt = await tc.relink(path).catch(() => null);
           if (alt && seq === loadSeq) return moved(alt);
           if (seq === loadSeq) tc.missingNote?.({ path, where: 'scene', retry: moved, raw: err.message });
+          miniBack();
           return { ok: false, error: err.message, missing: true };
         }
+        miniBack();
         if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' });
         return { ok: false, error: err.message };
       }
       window.TwoComputers?.noteFile?.(path, bytes.byteLength).catch?.(() => {}); // its place + content, for the other computer
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
+      loadingMini = 0;
       Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), clock: null, analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false });
       emit('load', { path, video: st.video });
       const saved = store.get(loopKey(path), null);
@@ -655,7 +663,7 @@ const ThreeMedia = (() => {
     }
     // silent: the Lab is switching sketches and runs the new one itself.
     function unload({ silent = false } = {}) {
-      loadSeq += 1;
+      loadSeq += 1; loadingMini = 0;
       analyzing = false;
       const from = st.path; const wasClock = Boolean(st.clock);
       Object.assign(st, { path: null, name: null, bytes: null, clock: null, analysis: null, samples: null, wave: null, time: 0, duration: 0, playing: false });
@@ -2244,8 +2252,9 @@ const ThreeMedia = (() => {
     // only redrawn when one of those changes; each draw just copies it and adds the zoomed view's box, and nothing
     // is drawn at all while the box hasn't moved by a pixel (a song playing doesn't change the overview).
     const miniCache = { key: '', canvas: document.createElement('canvas') };
+    let loadingMini = 0; // (round 48) a load under way keeps the overview's row (see load)
     function drawMinimap(t) {
-      minimap.hidden = !D();
+      minimap.hidden = !D() && !loadingMini;
       const w = mW(); const h = mH();
       if (!D() || !w || !h) return;
       const dpr = devicePixelRatio || 1;
