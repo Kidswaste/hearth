@@ -106,8 +106,11 @@ New: `usagelimits-core.js` (pure: reading, store, freshness, forecast, notes), `
   resets 6 pm; /usage read (2.1.301 fake) → the week from it; an older copy never asked; `/usage-left`; the Light look.
   No page errors. Screenshot looked at: two calm cards side by side (Claude warm, Astra teal), bars with large "% left",
   the forecast in a soft box, three fix rows with violet buttons below.
-- Targeted: see the final report (usagelimits group: costcoach, budget, sendpreview, offline, a11y, lazy, unit:boot-test,
-  unit:codex-usage-test), `node dev/notify-test.js`, `node dev/datasafe-scan.js`, `node dev/errorcalm-scan.js`.
+- `sh dev/run-checks.sh usagelimits`: usagelimits, unit:usagelimits-test, unit:codex-usage-test, costcoach, budget,
+  sendpreview, lazy, unit:boot-test passed; a11y failed once on a WebGL context loss under load and passed alone;
+  offline fails at "Ask Astra instead" (Astra's reply never comes) both here and on the base commit ea03b29, so the
+  failure was already there. Also `node dev/notify-test.js` (52/52), `node dev/datasafe-scan.js`,
+  `node dev/errorcalm-scan.js`, `node dev/lazy-manifest.js`.
 
 ## Risks / not done
 - **Claude Code's /usage text for a subscription** wasn't seen here (this machine has no subscription sign-in); the
