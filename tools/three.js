@@ -1779,6 +1779,7 @@ const ThreeLab = (() => {
     // the sandbox gets their bytes (refs.<key> = blob URL, refTexture(key)) before each full run.
     let refsAll = {};
     const refBytes = new Map(); // id → ArrayBuffer
+    let refsHold = null; // (round 48, labstartfast) a scene switch waiting for its references' bytes before its run (openSketch)
     const refsOf = () => (current ? (refsAll[current.id] ||= []) : []);
     const saveRefs = saver(() => { dispatchEvent(new Event('hearth:lab-refs')); return kvOk.has('three-refs') ? window.hub.kvSet('three-refs', refsAll) : null; }, 300); // (round 42: filewatch follows them)
     const REF_KINDS = [['image', /\.(png|jpe?g|gif|webp|bmp|svg)$/i], ['video', /\.(mp4|webm|mov|m4v|mkv)$/i], ['model', /\.(glb|gltf|obj|fbx|stl|ply)$/i],
@@ -1835,10 +1836,10 @@ const ThreeLab = (() => {
       // (a video reference is the whole video) until the Lab closed; another scene's are read again when it opens
       const mine = new Set(refsOf().map((r) => r.id));
       for (const id of [...refBytes.keys()]) if (!mine.has(id)) refBytes.delete(id);
-      for (const r of refsOf()) {
-        if (refBytes.has(r.id)) continue;
+      // (round 48, labstartfast) read at once, not one after the other
+      await Promise.all(refsOf().filter((r) => !refBytes.has(r.id)).map(async (r) => {
         try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ }
-      }
+      }));
       sendRefs();
       return added;
     }
@@ -3649,8 +3650,24 @@ const ThreeLab = (() => {
       renderNotes();
       renderRefsBtn();
       renderPalette();
-      run();
-      loadRefBytes().then((added) => { if (added && layersOf().some((L) => /\brefs\b|refTexture/.test(L.code))) run(); });
+      // (round 48, labstartfast) a scene whose code uses its references runs once, with them: their bytes are read
+      // first (a few ms from disk; the old picture stays meanwhile). It used to run without them (errors, no picture or
+      // model), then again once they came: every layer built and every shader compiled twice. A read slower than
+      // 1.5 s (a huge video on a slow drive) doesn't hold the scene back: it runs, and again with the files, as before.
+      const usesRefs = () => layersOf().some((L) => /\brefs\b|refTexture/.test(L.code));
+      const want = current;
+      const reading = loadRefBytes();
+      if (usesRefs() && refsOf().some((r) => !refBytes.has(r.id))) {
+        const token = refsHold = {};
+        let ran = false;
+        const go = () => { if (ran || refsHold !== token) return; ran = true; refsHold = null; if (current === want) run(); };
+        reading.then(go, go);
+        setTimeout(() => { if (ran || refsHold !== token) return; go(); reading.then((added) => { if (added && current === want && usesRefs()) run(); }).catch(() => {}); }, 1500);
+      } else {
+        refsHold = null;
+        run();
+        reading.then((added) => { if (added && current === want && usesRefs()) run(); }).catch(() => {});
+      }
       dispatchEvent(new CustomEvent('hearth:sketch', { detail: { id: current.id, from: left?.id || null, by: opts.by || 'user' } }));
     }
     // The sketch on screen changed as data (a jam round, a backstage edit, an undo of several layers): the editor,
@@ -3766,18 +3783,19 @@ ${code}
       const SSafe = window.LabSceneSafe;
       const kv = (k, d) => (SSafe ? SSafe.read(k, d) : window.hub.kvGet(k, d).then((value) => ({ ok: true, state: 'ok', value })));
       const early = sketches;
-      const reads = await Promise.all([kv('three-sketches', []), kv('three-history', {}), kv('three-lab-extras', {}), kv('three-notes', {}), kv('three-refs', {}), kv('three-thumbs', {})]);
-      const names = ['three-sketches', 'three-history', 'three-lab-extras', 'three-notes', 'three-refs', 'three-thumbs'];
+      // (round 48, labstartfast) the scene's own four first; the versions and the pictures (the two biggest: 40 versions
+      // of every layer, a picture per scene, megabytes to copy into the window) after the first frame is on its way:
+      // nothing on screen needs them (see laterReads)
+      const reads = await Promise.all([kv('three-sketches', []), kv('three-lab-extras', {}), kv('three-notes', {}), kv('three-refs', {})]);
+      const names = ['three-sketches', 'three-lab-extras', 'three-notes', 'three-refs'];
       reads.forEach((r, i) => { if (r.ok) kvOk.add(names[i]); });
       const val = (r, d) => (r.ok && r.value != null && typeof r.value === 'object' ? r.value : d);
       const scenesRead = reads[0];
       sketches = Array.isArray(scenesRead.value) && scenesRead.ok ? scenesRead.value : [];
       for (const x of early) if (!sketches.some((y) => y.id === x.id)) sketches.push(x);
-      const hist = val(reads[1], {}); extras = val(reads[2], {}); notesAll = val(reads[3], {}); refsAll = val(reads[4], {}); thumbs = val(reads[5], {});
-      ({ versions: history = {}, trash = [] } = hist || {}); extrasLoaded = true;
-      // (round 21) pictures of sketches that are gone (deleted and not in the trash) are let go
-      // (round 43: only a few at a time, and only with every scene read: a short list must never wipe the pictures)
-      if (kvOk.has('three-sketches') && kvOk.has('three-history') && sketches.length) { const keep = new Set([...sketches.map((x) => x.id), ...trash.map((x) => x.id)]); const gone = Object.keys(thumbs || {}).filter((id) => !keep.has(id)); if (gone.length && gone.length <= Math.max(3, sketches.length / 4)) { for (const id of gone) delete thumbs[id]; saveThumbs(); } }
+      extras = val(reads[1], {}); notesAll = val(reads[2], {}); refsAll = val(reads[3], {});
+      extrasLoaded = true;
+      laterRead = laterReads(kv, val);
       // The toolbar in labeled groups: what you see, the sketch, its code, its assets, capture.
       const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes);
       // One row, in the order of your workflow: your sketch and Run, then what you look at, then assets. The
@@ -3807,6 +3825,36 @@ ${code}
       dispatchEvent(new Event('hearth:lab-ready'));
       SSafe?.opened?.({ read: scenesRead, fresh, others: reads.slice(1).map((r, i) => (r.ok ? null : names[i + 1])).filter(Boolean) }); // (round 43) the calm card, when needed
     })();
+    // (round 48, labstartfast) the versions (History, the trash) and the scenes' pictures, read in the first idle moment
+    // after the Lab's first run went out. What was made before they arrived (the first run's version, a scene deleted,
+    // a picture taken) joins what was read, and is saved then. A read that failed is never saved over (round 43).
+    let laterRead = null;
+    async function laterReads(kv, val) {
+      await new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(r, { timeout: 1200 }) : setTimeout(r, 300)));
+      const [h, t] = await Promise.all([kv('three-history', {}), kv('three-thumbs', {})]);
+      if (h.ok) {
+        const hv = val(h, {});
+        const disk = hv.versions && typeof hv.versions === 'object' ? hv.versions : {};
+        const made = Object.keys(history).length + trash.length;
+        for (const [k, list] of Object.entries(history)) { const d = Array.isArray(disk[k]) ? disk[k] : []; disk[k] = [...list, ...d.filter((v) => !list.some((x) => x.code === v.code))].slice(0, 40); }
+        const dt = Array.isArray(hv.trash) ? hv.trash : [];
+        trash = [...trash, ...dt.filter((x) => !trash.some((y) => y.id === x.id && y.deletedAt === x.deletedAt))].slice(0, 30);
+        history = disk;
+        kvOk.add('three-history');
+        if (made) saveHistory();
+      }
+      if (t.ok) {
+        const made = Object.keys(thumbs).length;
+        thumbs = { ...val(t, {}), ...thumbs };
+        kvOk.add('three-thumbs');
+        if (made) saveThumbs();
+      }
+      const failed = [h.ok ? null : 'three-history', t.ok ? null : 'three-thumbs'].filter(Boolean);
+      if (failed.length) console.warn('Lab: could not read', failed.join(', '), '(nothing was saved over them)');
+      // (round 21) pictures of sketches that are gone (deleted and not in the trash) are let go
+      // (round 43: only a few at a time, and only with every scene read: a short list must never wipe the pictures)
+      if (kvOk.has('three-sketches') && kvOk.has('three-history') && kvOk.has('three-thumbs') && sketches.length) { const keep = new Set([...sketches.map((x) => x.id), ...trash.map((x) => x.id)]); const gone = Object.keys(thumbs || {}).filter((id) => !keep.has(id)); if (gone.length && gone.length <= Math.max(3, sketches.length / 4)) { for (const id of gone) delete thumbs[id]; saveThumbs(); } }
+    }
 
     // ---------- per-chat scenes (chat-scenes.js, tools/three-backstage.js) ----------
     // The sketches as data: each director chat owns one; the backstage runs the ones that aren't on screen.
@@ -3815,6 +3863,7 @@ ${code}
     // since). Without this the Lab kept its old list, and a chat whose scene was made on the other computer fell back
     // to a new starter (the orb) on its next message.
     async function refreshFromDisk() {
+      await laterRead?.catch(() => {}); // (round 48: the trash says which scenes were deleted here)
       let disk;
       try { disk = await window.hub.kvGet('three-sketches', null); } catch { return { added: 0, updated: 0 }; }
       if (!Array.isArray(disk)) return { added: 0, updated: 0 };

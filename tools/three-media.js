@@ -175,6 +175,7 @@ const ThreeMedia = (() => {
     // silent: set by the Lab when a sketch opens (it runs the sketch itself afterwards).
     function setMode(id, { silent = false } = {}) {
       if (!SIZES.some((s) => s.id === id)) return;
+      if (silent && id === mode) return; // (round 48, labstartfast) a scene switch to the same frame size: nothing to lay out (a size change is the ResizeObserver's)
       const wasExact = Boolean(current().w);
       mode = id;
       store.set('three.aspect', id);
@@ -274,6 +275,7 @@ const ThreeMedia = (() => {
     let view = null; // { start, end } seconds when zoomed in
     let recording = null;
     let analyzing = false;
+    let loadingMini = 0; // (round 48, labstartfast) a load under way keeps the overview's row (see load, miniShown)
     let dragging = null;
     let paintRaf = 0; // (round 38) a paint waiting for the next frame (scrubbing: see seek)
     let selected = null; // { type: 'edge', edge } | { type: 'mark', lane, t }
@@ -611,6 +613,10 @@ const ThreeMedia = (() => {
     async function load(path, { startAt = 0, quiet = false, relinked = false } = {}) {
       if (!isMedia(path)) { toast(`${base(path)} isn't an audio or video file`, { type: 'error' }); return { ok: false, error: 'Not an audio/video file' }; }
       const seq = ++loadSeq;
+      // (round 48, labstartfast) the overview's row shows from the start of a load, not once the song is decoded: it
+      // came in under the preview half a second into the Lab's first run, and every canvas of the scene was resized
+      loadingMini = seq; if (minimap.hidden) minimap.hidden = false;
+      const miniBack = () => { if (loadingMini === seq) { loadingMini = 0; minimap.hidden = !D(); } };
       let bytes;
       try {
         const u8 = await window.hub.fs.read(path, { encoding: 'buffer', maxBytes: 2 * 1024 ** 3 });
@@ -624,8 +630,10 @@ const ThreeMedia = (() => {
           const alt = await tc.relink(path).catch(() => null);
           if (alt && seq === loadSeq) return moved(alt);
           if (seq === loadSeq) tc.missingNote?.({ path, where: 'scene', retry: moved, raw: err.message });
+          miniBack();
           return { ok: false, error: err.message, missing: true };
         }
+        miniBack();
         if (!quiet) toast(`Couldn't open ${base(path)}: ${err.message}`, { type: 'error' });
         return { ok: false, error: err.message };
       }
@@ -667,7 +675,7 @@ const ThreeMedia = (() => {
     }
     // silent: the Lab is switching sketches and runs the new one itself.
     function unload({ silent = false } = {}) {
-      loadSeq += 1;
+      loadSeq += 1; loadingMini = 0;
       analyzing = false;
       const from = st.path; const wasClock = Boolean(st.clock);
       Object.assign(st, { path: null, name: null, bytes: null, clock: null, analysis: null, samples: null, wave: null, time: 0, duration: 0, playing: false });
@@ -1757,6 +1765,7 @@ const ThreeMedia = (() => {
       if (paintRaf) { cancelAnimationFrame(paintRaf); paintRaf = 0; }
       bar.classList.toggle('mb-empty', !st.bytes);
       bar.classList.toggle('mb-clock', Boolean(st.clock));
+      miniShown();
       bar.classList.toggle('locked', locked);
       setText(nameEl, st.name ? (analyzing ? `${st.name} · analyzing…` : st.name) : 'No music loaded: sketches get a demo beat');
       setText(loadBtn, st.bytes ? '🎵' : '🎵 Load audio / video…');
@@ -2256,8 +2265,15 @@ const ThreeMedia = (() => {
     // only redrawn when one of those changes; each draw just copies it and adds the zoomed view's box, and nothing
     // is drawn at all while the box hasn't moved by a pixel (a song playing doesn't change the overview).
     const miniCache = { key: '', canvas: document.createElement('canvas') };
+    // the overview's row: there with a song or a timeline, and while one is read or decoded (round 48: set by paint()
+    // too, so a scene's own timeline has its row at the Lab's first layout, not when the overview first draws)
+    function miniShown() {
+      if (D()) loadingMini = 0;
+      const hide = !D() && !(loadingMini && (analyzing || !st.bytes));
+      if (minimap.hidden !== hide) minimap.hidden = hide;
+    }
     function drawMinimap(t) {
-      minimap.hidden = !D();
+      miniShown();
       const w = mW(); const h = mH();
       if (!D() || !w || !h) return;
       const dpr = devicePixelRatio || 1;

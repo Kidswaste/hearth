@@ -1482,7 +1482,8 @@ let ${id}Travel = 0;`);
   let lab = null; // set by attach()
   const MODE_KEY = 'three.nodesMode';
   function attach(hook) {
-    requestIdleCallback(filterDefs); // ≈170 filter types: scanned after the Lab is on screen (was ~50 ms of its first open)
+    // (round 48, labstartfast) the ≈170 filter types are scanned when nodes are first used (the nodes view, a graph,
+    // the node commands: each calls filterDefs), not in the idle moments of every Lab open (≈ 20–30 ms of the window)
     const host = hook.host;
     host.classList.add('tn-host');
     window.ShaderNodes?.setLabHook?.(hook); // shader-node layers write back to the Lab through this hook
@@ -1526,6 +1527,7 @@ let ${id}Travel = 0;`);
       pane.hidden = mode !== 'nodes';
       host.closest('.three-split')?.classList.toggle('tn-wide', mode === 'nodes');
       if (mode === 'nodes') {
+        filterDefs(); // (round 48: the picker lists them)
         if (!init && !hook.codeShown()) hook.showCode(true);
         sync(hook.editor.value, { force: true });
         requestAnimationFrame(() => { view.relayout(); if (!quiet) view.focus(); });

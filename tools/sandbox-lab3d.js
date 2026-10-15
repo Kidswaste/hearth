@@ -60,22 +60,46 @@ const lab3d = (() => {
     zip: 'it is a .zip: unzip it and drop the .glb (or the .gltf with its files)',
     unknown: 'not a 3D model the Lab reads (.glb, .gltf, .fbx, .obj, .stl, .ply; Spline / Blender: export as GLB)',
   };
-  let gltfLoader = null;
-  async function loaders() {
-    if (gltfLoader) return gltfLoader;
-    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
-    const l = new GLTFLoader();
-    try { const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js'); const d = new DRACOLoader(); d.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'); l.setDRACOLoader(d); } catch { /* Draco models then say why */ }
-    try { const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js'); l.setMeshoptDecoder(MeshoptDecoder); } catch { /* optional */ }
-    try { const { KTX2Loader } = await import('three/addons/loaders/KTX2Loader.js'); const k = new KTX2Loader().setTranscoderPath(globalThis.__sbxResolve('three/addons/libs/basis/')); l.__ktx2 = k; } catch { /* optional */ }
-    gltfLoader = l;
+  // (round 48, labstartfast) the GLTF loader comes first, and the decoders (Draco, meshopt, KTX2: each a module and
+  // its own imports, from the network on a real computer) only when a model uses them, all at once: a plain .glb
+  // waited for the three, one after the other, before its first frame
+  let gltfLoader = null; let gltfLoading = null;
+  const DECODERS = {
+    draco: async (l) => { const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js'); const d = new DRACOLoader(); d.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'); l.setDRACOLoader(d); },
+    meshopt: async (l) => { const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js'); l.setMeshoptDecoder(MeshoptDecoder); },
+    ktx2: async (l) => { const { KTX2Loader } = await import('three/addons/loaders/KTX2Loader.js'); l.__ktx2 = new KTX2Loader().setTranscoderPath(globalThis.__sbxResolve('three/addons/libs/basis/')); },
+  };
+  const decodersHad = new Map(); // decoder → its load (one per page)
+  // which decoders a glTF asks for (its extensionsUsed, from the JSON chunk of a .glb or the .gltf text); all of
+  // them when it can't be read (as before)
+  function decodersFor(bytes) {
+    try {
+      const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+      const text = dv.getUint32(0, true) === 0x46546c67 ? new TextDecoder().decode(u.subarray(20, 20 + dv.getUint32(12, true))) : new TextDecoder().decode(u);
+      const ext = JSON.parse(text).extensionsUsed || [];
+      const need = [];
+      if (ext.includes('KHR_draco_mesh_compression')) need.push('draco');
+      if (ext.some((x) => /meshopt_compression/.test(x))) need.push('meshopt');
+      if (ext.includes('KHR_texture_basisu')) need.push('ktx2');
+      return need;
+    } catch { return Object.keys(DECODERS); }
+  }
+  async function loaders(need = Object.keys(DECODERS)) {
+    if (!gltfLoader) {
+      gltfLoading ||= import('three/addons/loaders/GLTFLoader.js').then(({ GLTFLoader }) => { gltfLoader = new GLTFLoader(); });
+      await gltfLoading;
+    }
+    const l = gltfLoader;
+    for (const k of need) if (!decodersHad.has(k)) decodersHad.set(k, DECODERS[k](l).catch(() => { /* optional: a model that needs it then says why */ }));
+    await Promise.all(need.map((k) => decodersHad.get(k)));
     return l;
   }
   // bytes → { root: Object3D, clips: AnimationClip[] }
   async function parse(bytes, kind, renderer) {
     const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     if (kind === 'glb' || kind === 'gltf') {
-      const l = await loaders();
+      const l = await loaders(decodersFor(bytes));
       if (l.__ktx2 && renderer && !l.__ktx2On) { try { l.__ktx2.detectSupport(renderer); l.setKTX2Loader(l.__ktx2); l.__ktx2On = true; } catch { /* no KTX2 */ } }
       const g = await new Promise((res, rej) => l.parse(buf, '', res, (e) => rej(e)));
       return { root: g.scene || g.scenes?.[0], clips: g.animations || [] };
