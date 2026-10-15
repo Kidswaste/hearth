@@ -154,7 +154,8 @@ const LabEasy = (() => {
     return [
       L.name,
       { label: L.visible === false ? '👁 Show' : '◌ Hide', cmd: 'layer', action: () => h.change?.({ visible: L.visible === false }) },
-      h.solo ? { label: 'Show only this one', hint: 'again: all', action: () => h.solo() } : null,
+      h.solo ? { label: 'Show only this one', hint: 'solo · again: all', action: () => h.solo() } : null,
+      ...(typeof LabGroups !== 'undefined' ? LabGroups.layerItems(L) : []), // (round 44) 📁 Group layers › (tools/three-groups.js)
       h.rename ? { label: 'Rename…', action: () => h.rename() } : null,
       h.copy ? { label: '⧉ Duplicate', action: () => { h.select?.(); h.copy(); } } : null,
       ...kindItems(L),

@@ -433,7 +433,9 @@ const ThreeLab = (() => {
     const removedIds = new Set();
     let current = null;
     let selId = null; // selected layer
-    let soloId = null; // a layer shown alone while you work on it (not saved)
+    // (round 44, layergroups) solo is saved with the scene now, as layer data (tools/three-groups-core.js): what shows
+    // alone is what every render / export / variation draws too
+    const soloNow = () => (typeof LayerGroups !== 'undefined' ? LayerGroups.soloId(current?.layers || []) : null);
     if (!store.get('three.autorunLive')) { store.set('three.autorun', true); store.set('three.autorunLive', true); }
     let autoRun = store.get('three.autorun', true);
     let errors = [];
@@ -1253,9 +1255,9 @@ const ThreeLab = (() => {
       onLaneTall: (id, prop) => { const L = layerById(id); if (!L) return; L.laneTall = { ...L.laneTall, [prop]: !L.laneTall?.[prop] }; if (!L.laneTall[prop]) delete L.laneTall[prop]; touch(); renderTracksOnly(); },
       onLanesAll: () => toggleAllLanes(),
       onMute: (id) => { const L = layerById(id); if (L) editLayer(id, { visible: L.visible === false }); },
-      onSolo: (id) => setSolo(soloId === id ? null : id),
+      onSolo: (id) => setSolo(soloNow() === id ? null : id),
     };
-    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, solo: L.id === soloId, selected: L.id === selId, keys: trackKeys(L), lanes: lanesOf(L).map((p) => laneData(L, p)).filter(Boolean), animated: Object.values(L.keys || {}).filter((k) => k?.length).length }));
+    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, solo: Boolean(L.solo), selected: L.id === selId, keys: trackKeys(L), lanes: lanesOf(L).map((p) => laneData(L, p)).filter(Boolean), animated: Object.values(L.keys || {}).filter((k) => k?.length).length }));
     // Animated values follow the playhead in the panels.
     let lastSyncT = -1;
     function syncKeyUI(force = false) {
@@ -1312,11 +1314,12 @@ const ThreeLab = (() => {
     }
     const animatedProps = (L) => laneProps(L).map((x) => x.prop).filter((p) => keysOf(L, p).length);
     function popup(x, y, items) { return popMenu(x, y, items, { width: 290 }); } // renderer.js (submenus, filter, keys)
+    // (round 44, layergroups) a layer or a group alone, saved with the scene, one undo step (tools/three-groups.js)
     function setSolo(id) {
-      soloId = id && layerById(id) ? id : null;
-      for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: { visible: x.visible !== false && (!soloId || x.id === soloId) } });
-      renderTracksOnly();
-      if (soloId) toast(`Only "${layerById(soloId).name}" shows · the same again (S, Alt+click its eye or Alt+Shift+number) shows every layer`, { timeout: 2200 });
+      if (typeof LabGroups !== 'undefined') { LabGroups.solo(id || null); return; }
+      if (typeof LayerGroups === 'undefined' || !current) return;
+      LayerGroups.solo(layersOf(), id || null);
+      api.groupsHost.commit();
     }
     function setLanes(L, list) { L.lanes = [...new Set(list.filter(Boolean))]; delete L.lane; touch(); renderTracksOnly(); }
     // A: show every animated setting of every layer; again (when they all show): hide every lane.
@@ -1968,7 +1971,7 @@ const ThreeLab = (() => {
     }
     addEventListener('keydown', (e) => { if (e.key === 'Escape' && focusOn) setFocus(false); });
 
-    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), overrides: L.overrides || null, camMoves: L.camMoves?.length ? L.camMoves : null, name: L.name, visible: L.visible !== false && (!soloId || L.id === soloId), opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
+    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), overrides: L.overrides || null, camMoves: L.camMoves?.length ? L.camMoves : null, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
     const extrasOf = (L) => {
       const ex = (extras[current.id] ||= {});
       return L.id === 'main' ? ex : ((ex.layers ||= {})[L.id] ||= {});
@@ -2061,7 +2064,7 @@ const ThreeLab = (() => {
     addEventListener('hearth:sketch', () => paintBuilding());
     const tweaksSlot = el('div', { class: 'tw-slot' });
     const layersPanel = ThreeLayers.panel({
-      onSolo: (id) => setSolo(soloId === id ? null : id),
+      onSolo: (id) => setSolo(soloNow() === id ? null : id),
       onSelect: (id) => selectLayer(id),
       onChange: (id, patch, { live }) => editLayer(id, patch, { live }),
       onAdd: (kind) => addLayer(kind),
@@ -2081,14 +2084,13 @@ const ThreeLab = (() => {
       const row = e.target.closest('.ly-row');
       if (!row || e.defaultPrevented) return; // (round 35, bugbash2) the row's own menu (LabEasy.layerMenu) took it: one menu, not two
       e.preventDefault();
-      const idx = [...layersPanel.el.querySelectorAll('.ly-list .ly-row')].indexOf(row);
-      const L = [...layersOf()].reverse()[idx];
+      const L = layerById(row.dataset.id); // (round 44) by id: group headers sit between the rows now
       if (!L) return;
       const Ls = layersOf(); const at = Ls.indexOf(L);
       const move = (to) => { const ids = Ls.map((x) => x.id).filter((x) => x !== L.id); ids.splice(Math.max(0, Math.min(ids.length, to)), 0, L.id); reorderLayers(ids); };
       ThreeTweaks.menu(e.clientX, e.clientY, [L.name,
         [L.visible === false ? '👁 Show' : '◌ Hide', `Alt+${[...Ls].reverse().indexOf(L) + 1}`, () => editLayer(L.id, { visible: L.visible === false })],
-        [soloId === L.id ? 'Show every layer' : 'Only this layer (solo)', 'Alt+click its eye', () => setSolo(soloId === L.id ? null : L.id)],
+        [soloNow() === L.id ? 'Show every layer' : 'Only this layer (solo)', 'Alt+click its eye', () => setSolo(soloNow() === L.id ? null : L.id)],
         ['Rename…', 'Or double-click its name', async () => { const v = await Modal.prompt('Rename layer', { value: L.name }); if (v?.trim()) editLayer(L.id, { name: v.trim() }); }],
         ['Duplicate', 'A copy on top', () => { selectLayer(L.id); addLayer('copy'); }, false, 'Duplicate layer'],
         at < Ls.length - 1 ? ['Move up', '', () => move(at + 1)] : null,
@@ -2146,6 +2148,7 @@ const ThreeLab = (() => {
         for (const k of animated) { L.keys[k] = upsertKey(keysOf(L, k), dragKeyT, patch[k]); delete patch[k]; }
         if (!live) dragKeyT = null;
       }
+      if ('visible' in patch && typeof LayerGroups !== 'undefined') LayerGroups.manual(L); // (round 44) its own eye now, not a group's / a solo's
       Object.assign(L, patch);
       // (round 21) a drag (live) sends only what it moves, not every prop with every keyframe ~60 times a second (the
       // preview merges them); the timeline's tracks follow once a frame
@@ -2227,6 +2230,27 @@ const ThreeLab = (() => {
       touch();
       renderLayers();
     }
+    // (round 44, layergroups) what the layer groups (tools/three-groups*.js) work with: the scene's layers as data, and
+    // commit(next): the new order / visibility shown in place (no re-run), saved, noted for the time machine and recipes
+    api.groupsHost = {
+      sketchId: () => current?.id || null,
+      sketchName: () => current?.name || '',
+      layers: () => layersOf(),
+      selected: () => selId,
+      picked: () => layersPanel.picked?.() || [],
+      clearPicks: () => layersPanel.clearPicks?.(),
+      select: (id) => selectLayer(id),
+      get panel() { return layersPanel.el; },
+      commit(next) {
+        if (!current) return;
+        if (Array.isArray(next) && next !== current.layers) current.layers = next;
+        layersOf().forEach((L, z) => box.send({ type: 'layer-props', id: L.id, props: layerProps(L, z) }));
+        touch();
+        renderLayers();
+      },
+      refresh: (want) => refreshInPlace(want),
+      persist: () => persist(),
+    };
 
     // Sends (or drafts) a message to the Three Director docked next to the Lab.
     function askDirector(text, { send = true } = {}) {
@@ -2492,7 +2516,7 @@ const ThreeLab = (() => {
         const L = [...layersOf()].reverse()[Number(e.code.slice(5)) - 1];
         if (!L) return;
         e.preventDefault(); e.stopPropagation();
-        if (e.shiftKey) setSolo(soloId === L.id ? null : L.id);
+        if (e.shiftKey) setSolo(soloNow() === L.id ? null : L.id);
         else editLayer(L.id, { visible: L.visible === false });
         Usage.key(`Alt+${e.shiftKey ? 'Shift+' : ''}digit`, 'Lab layers');
       }
@@ -2595,7 +2619,7 @@ const ThreeLab = (() => {
       layers: () => layersOf().map((L) => ({ name: L.name, visible: L.visible !== false, selected: L.id === selId })).reverse(),
       selectLayer: (q) => { const L = findLayer(q); if (!L) return null; selectLayer(L.id); return L.name; },
       showLayer: (q, on) => { const L = findLayer(q); if (!L) return null; editLayer(L.id, { visible: on ?? L.visible === false }); return L.name; },
-      solo: (q) => { const L = q ? findLayer(q) : null; setSolo(L && soloId !== L.id ? L.id : null); return L?.name || null; },
+      solo: (q) => { const L = q ? findLayer(q) : null; setSolo(L && soloNow() !== L.id ? L.id : null); return L?.name || null; },
       // music
       live: async (kind) => { if (kind === 'off') { await setLive(null); return 'off'; } await setLive(kind || (liveKind ? null : store.get('three.lastLive', 'system'))); return liveKind || 'off'; },
       liveIo: (patch) => (patch ? setLiveIo(patch) : liveIo()),
@@ -3498,7 +3522,6 @@ const ThreeLab = (() => {
     }
     // opts.by: who switched ('scene' = chat-scenes.js following the chat on screen); fires 'hearth:sketch'
     function openSketch(id, opts = {}) {
-      soloId = null;
       // unsaved slider values in any layer of the sketch you leave
       const left = current;
       const pendings = left ? [...controllers.entries()].map(([lid, c]) => ({ lid, p: c.pending() })).filter((x) => x.p) : [];
@@ -3888,6 +3911,7 @@ ${code}
     const sleep = (ms) => (typeof ThreeDirector !== 'undefined' && ThreeDirector.settle ? ThreeDirector.settle(ms) : new Promise((r) => setTimeout(r, ms)));
     const layersSummary = () => layersOf().map((L, i) => ({
       id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), ...(typeof ShaderLib !== 'undefined' && ShaderLib.isShader(L.code) ? { kind: 'shader (GLSL: three_do shader)' } : {}), ...(typeof LabParticles !== 'undefined' && LabParticles.isParticles(L.code) ? { kind: 'particles (GPU: three_do particles)' } : {}), ...(typeof LabPhysics !== 'undefined' && LabPhysics.isPhysics(L.code) ? { kind: 'physics (three_do physics)' } : {}), ...(typeof LabType !== 'undefined' && LabType.isType(L.code) ? { kind: 'type (text / lyrics: three_do type)' } : {}), ...(L.precomp && typeof ThreeComp !== 'undefined' && ThreeComp.isComp(L) ? { kind: `precomp of ${ThreeComp.describe(L)} (three_do comp)` } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
+      ...(L.group ? { group: L.group.name } : {}), ...(L.solo ? { solo: true } : {}), // (round 44, layergroups)
       visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal',
       ...(L.overrides ? { placedByUser: Object.fromEntries(Object.entries(L.overrides).map(([k, o]) => [k, { position: o.p, rotationDegrees: o.rd, scale: o.s, ...(o.v === false ? { hidden: true } : {}), ...(o.fov ? { fov: o.fov } : {}) }])) } : {}),
       plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
@@ -4733,6 +4757,7 @@ ${frag}\`,
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js
     get tm() { return api.tm || null; }, // (round 23) tools/three-history*.js
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
+    get groupsHost() { return api.groupsHost || null; }, // (round 44) layer groups (tools/three-groups.js)
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),

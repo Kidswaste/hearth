@@ -25,7 +25,7 @@ const RecipeCore = (() => {
   const FORMAT = 'hearth-recipe';
   const VERSION = 1;
   const LIMITS = { steps: 300, name: 80, code: 512 * 1024, colors: 16 };
-  const KINDS = ['fx', 'look', 'palette', 'trigger', 'frame', 'formats', 'export', 'autopolish', 'lookmatch', 'layer', 'slider', 'link', 'cam'];
+  const KINDS = ['fx', 'look', 'palette', 'trigger', 'frame', 'formats', 'export', 'autopolish', 'lookmatch', 'layer', 'slider', 'link', 'cam', 'groups'];
   const HEX = /^#[0-9a-f]{6}$/i;
   const clone = (x) => JSON.parse(JSON.stringify(x ?? null));
   const clip = (s, n) => String(s ?? '').slice(0, n);
@@ -156,18 +156,33 @@ const RecipeCore = (() => {
       case 'layer': return `${s.from === 'gallery' ? 'Layer from the gallery' : 'Layer'}: ${s.name}`;
       case 'slider': return `"${s.label}" → ${fmtV(s.v)}${onText(s.on)}`;
       case 'link': return `♪ "${s.label}" ${linkText(s.link)}${onText(s.on)}`;
+      case 'groups': return groupsText(s); // (round 44, layergroups)
       case 'cam': return (s.moves || []).length ? `Camera moves: ${s.moves.map((m) => (typeof CamCore !== 'undefined' ? CamCore.name(m) : m.kind)).join(', ')}` : 'No camera moves';
       default: return 'Step';
     }
   }
-  const ICON = { fx: '✦', look: '◑', palette: '🎨', trigger: '⚡', frame: '▭', formats: '▦', export: '⇪', autopolish: '✨', lookmatch: '🎨', layer: '＋', slider: '⇆', link: '♪', cam: '🎥' };
+  // (round 44, layergroups) 📁 group steps: { op: group | ungroup | hide | show | rename | solo | unsolo, name, layers, to, target, kind }
+  function groupsText(s) {
+    const q = (x) => `"${x}"`;
+    switch (s.op) {
+      case 'group': return `📁 Group ${(s.layers || []).map(q).join(', ')}${s.name ? ` as ${q(s.name)}` : ''}`;
+      case 'ungroup': return `Ungroup ${q(s.name)}`;
+      case 'hide': return `Hide the group ${q(s.name)}`;
+      case 'show': return `Show the group ${q(s.name)}`;
+      case 'rename': return `Rename the group ${q(s.name)} to ${q(s.to)}`;
+      case 'solo': return `Only ${s.kind === 'group' ? 'the group ' : ''}${q(s.target)} shows (solo)`;
+      case 'unsolo': return 'Every layer shows (solo off)';
+      default: return 'Group step';
+    }
+  }
+  const ICON = { groups: '📁', fx: '✦', look: '◑', palette: '🎨', trigger: '⚡', frame: '▭', formats: '▦', export: '⇪', autopolish: '✨', lookmatch: '🎨', layer: '＋', slider: '⇆', link: '♪', cam: '🎥' };
   const icon = (s) => ICON[s?.k] || '•';
   function summary(r) {
     const steps = r?.steps || [];
     const n = steps.length;
     const by = {};
     for (const s of steps) by[s.k] = (by[s.k] || 0) + 1;
-    const W = { fx: ['effect', 'effects'], slider: ['slider', 'sliders'], link: ['music link', 'music links'], layer: ['layer', 'layers'], look: ['look', 'looks'], palette: ['palette', 'palettes'], frame: ['frame size', 'frame sizes'], trigger: ['trigger preset', 'trigger presets'], autopolish: ['polish', 'polishes'], lookmatch: ['look match', 'look matches'], export: ['export setting', 'export settings'], formats: ['format pick', 'format picks'] };
+    const W = { fx: ['effect', 'effects'], slider: ['slider', 'sliders'], link: ['music link', 'music links'], layer: ['layer', 'layers'], look: ['look', 'looks'], palette: ['palette', 'palettes'], frame: ['frame size', 'frame sizes'], trigger: ['trigger preset', 'trigger presets'], autopolish: ['polish', 'polishes'], lookmatch: ['look match', 'look matches'], export: ['export setting', 'export settings'], formats: ['format pick', 'format picks'], groups: ['group step', 'group steps'] };
     const parts = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, c]) => `${c} ${W[k]?.[c === 1 ? 0 : 1] || k}`);
     return `${n} step${n === 1 ? '' : 's'}${parts.length ? `: ${parts.join(', ')}` : ''}`;
   }
@@ -259,6 +274,10 @@ const RecipeCore = (() => {
         }
       } else if (s.k === 'frame') {
         if (scene?.frame && scene.frame === s.id && s.id !== 'custom') where = 'already this size';
+      } else if (s.k === 'groups') { // (round 44) layers by name; groups are made or named by earlier steps, checked when it runs
+        const names = s.op === 'group' ? s.layers || [] : s.op === 'solo' && s.kind === 'layer' ? [s.target] : [];
+        const hits = names.filter((n) => layers.some((L) => norm(L.name) === norm(n)));
+        if (names.length && !hits.length) { ok = false; why = `no layer like ${names.map((n) => `"${n}"`).join(', ')} here`; } else if (names.length) where = hits.length < names.length ? `${hits.length} of ${names.length} layers` : '';
       }
       if (ok && (s.k === 'layer' || (s.k === 'fx' && ['layer', 'filter', 'look'].includes(s.fx?.kind)) || s.k === 'lookmatch')) made.set(s.sid, ['(new)']);
       out.push({ sid: s.sid, ok, why, where });
@@ -277,6 +296,8 @@ const RecipeCore = (() => {
     if (o.k === 'fx' && !(o.fx?.kind && o.fx?.id != null)) return null;
     if ((o.k === 'slider' || o.k === 'link') && !o.key) return null;
     if (o.k === 'cam' && !Array.isArray(o.moves)) return null;
+    if (o.k === 'groups' && !['group', 'ungroup', 'hide', 'show', 'rename', 'solo', 'unsolo'].includes(o.op)) return null;
+    if (o.k === 'groups' && o.layers) o.layers = (Array.isArray(o.layers) ? o.layers : []).slice(0, 64).map((n) => clip(n, 120));
     if (o.k === 'palette') { o.colors = (o.colors || []).filter((c) => HEX.test(c)).slice(0, LIMITS.colors); if (!o.colors.length) return null; }
     if (o.on && typeof o.on !== 'object') delete o.on;
     if (o.name != null) o.name = clip(o.name, 120);
