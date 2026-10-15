@@ -1142,3 +1142,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ⚡ Instant chat switching (round 45, chatswitch, 8 upgrades: docs/upgrades/chatswitch.md)
 - ✓ The last few chats stay ready out of sight (their own lists, content-visibility, within a 20,000-element budget): going back to one only shows it again; a chat opened afresh shows its end first, the rest slips in above; resting on a chat in the list (or ↑ / ↓) gets it ready; its pictures are sized ahead. A waiting jump no longer lands in the next chat.
 - ○ `sh dev/run-checks.sh chatswitch` (dev/checks/chatswitch.js: counts + main-thread CPU per switch; trace-stats now reports CPU time).
+## 🪶 Prompt diet (round 46, promptdiet, 20 upgrades: docs/upgrades/promptdiet.md)
+- ✓ The fixed part of every message, per case: Three Director 2,476 → 2,128 tokens a step (−14 %), full mode 9,785 → 9,061, Forge Debug 1,530 → 1,171 (−23 %), plain Claude 333 → 296, Astra 177 → 159, mission helpers 53 → 46, a 🔁 Keep going round −348; nothing said twice, rare words behind help (three_do help, forge_eval {help: "globals"}), play-test / contact sheet via three_do.
+- ✓ Runaway tool results are cut (≈ 4k tokens; Forge eval ≈ 1.5k) with the rest one `{more: true}` away; Forge screenshots for the AI 768 px; only the owner's own words wake a sleeping tool set (not memory, context notes or attachments).
+- ○ `node dev/promptdiet-measure.js`, `node dev/promptdiet-test.js` (budgets per case), `sh dev/run-checks.sh promptdiet`.
