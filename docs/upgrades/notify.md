@@ -175,7 +175,14 @@ out), its notification leaves the OS's notification centre.
     master off dims the five.
   - Find anything's 6 rows with their path; `/notify-when renders off / on`; the Ctrl/⌘+K row opens the fold.
   - PASS.
-- Also run: see the final report (nativefeel, routines, offline, settingscalm, appsearch, lazy, unit:boot-test).
+- Also run, all passing: nativefeel (with unit tests winmac, winpolish and macpolish), routines and its unit test,
+  offline and its unit test, settingscalm, tidy, firstrun (passed when run again), lazy (manifest regenerated: only
+  the `notify` group was added), unit:boot-test, renderfast, activity.
+- `unit:appsearch-test` passed when run again. Its first run missed the 16 ms keystroke budget once (106 ms) at a
+  load average of about 20–35.
+- Two checks fail **the same way on the base commit a3341cf**, so they don't come from this round:
+  - **appsearch**: the "AI setup row in a closed fold" step (and, under load, the 16 ms keystroke step).
+  - **simplify2**: `CmdBar` isn't loaded at line 59.
 
 ## Risks and limits
 - Not testable here: a real Mac or Windows PC. On a real Mac or PC, not checked:
