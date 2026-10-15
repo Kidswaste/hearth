@@ -90,7 +90,7 @@ try {
   sketchBtn?.click();
   await wait(300);
   let row = [...document.querySelectorAll('.lab-pop .menu-item')].find((x) => /Recover lost scenes/.test(x.textContent));
-  if (!row) { const sec = [...document.querySelectorAll('.lab-pop .menu-item')].find((x) => /^History/.test(x.textContent)); // (round 43, menucalm) Sketch ▾ › History › if (sec) { sec.click(); await wait(250); row = [...document.querySelectorAll('.lab-pop .menu-item')].find((x) => /Recover lost scenes/.test(x.textContent)); } }
+  if (!row) { const sec = [...document.querySelectorAll('.lab-pop .menu-item')].find((x) => /^History/.test(x.textContent)); /* (round 43, menucalm) Sketch ▾ › History › */ if (sec) { sec.click(); await wait(250); row = [...document.querySelectorAll('.lab-pop .menu-item')].find((x) => /Recover lost scenes/.test(x.textContent)); } }
   step('Sketch ▾ › History has 🛟 Recover lost scenes…', Boolean(row));
   if (row) row.click(); else LabSceneSafe.recover();
   await until(() => document.querySelectorAll('.lab-ssafe-dialog .lab-ssafe-item').length > 0, 30000);

@@ -65,10 +65,10 @@ f();`;
   const saved = LabPacks.last.saved;
   step('saved one .hearthpack (in the test save folder), 3 files in it, nothing missing', saved?.ok && /Packtest\.hearthpack$/.test(saved.path) && saved.files === 3 && !saved.missing.length, saved);
 
-  // ---------- open: Share › Open a pack… → the preview card ----------
+  // ---------- open: Sketch ▾ › ⇪ Share & export › Open a pack… → the preview card ----------
   const before = S.all().length;
   sketchBtn.click();
-  await clickRow('Share');
+  await clickRow('⇪ Share & export');
   await clickRow('Open a pack…');
   await until(cardOpen, 15000);
   const c2 = cardOpen();

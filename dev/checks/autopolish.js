@@ -91,7 +91,12 @@ await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'rig
 await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 });
 await until(() => document.querySelector('#menu button'), 4000);
 const menu = [...document.querySelectorAll('#menu button')].map((b) => b.textContent);
-step('the preview\'s right-click: ✨ Make it look finished, near the top', menu.slice(0, 4).some((t) => /Make it look finished/.test(t)), menu.slice(0, 8));
+// (round 43, menucalm) it sits in the right-click's ✨ Look & motion (a top row), once, not also at the top
+const lookRow = [...document.querySelectorAll('#menu button')].find((b) => /Look & motion/.test(b.textContent));
+lookRow?.click();
+await until(() => [...document.querySelectorAll('#menu button')].some((b) => /Make it look finished/.test(b.textContent)), 3000);
+const lookMenu = [...document.querySelectorAll('#menu button')].map((b) => b.textContent);
+step('the preview\'s right-click: ✨ Look & motion (a top row) › ✨ Make it look finished', menu.slice(0, 10).some((t) => /Look & motion/.test(t)) && lookMenu.some((t) => /Make it look finished/.test(t)), { top: menu.slice(0, 10), look: lookMenu.slice(0, 14) });
 document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 await wait(200);
 
