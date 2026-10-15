@@ -286,7 +286,6 @@ const TwoComputers = (() => {
   }
   async function init() {
     if (!api() || !T()) return;
-    register();
     // (after the start settles: the main side loads on first use, never before the first frame)
     await new Promise((r) => setTimeout(r, 2500));
     await info();
@@ -297,6 +296,9 @@ const TwoComputers = (() => {
     window.hub.sync?.onStatus?.(onSt);
     window.hub.sync?.status?.().then(onSt).catch(() => {});
   }
+  // (round 48, bugbash3) the command goes in as the file runs: the lazy group drops a stand-in its files didn't fill
+  // in, so registering from init (a timer later) left /this-computer missing for a moment and warned at every start
+  if (api() && T()) register();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 0));
   else setTimeout(init, 0);
 

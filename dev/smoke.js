@@ -171,6 +171,7 @@ async function cdpConnect() {
   child.stdout.on('data', (d) => log.push(String(d)));
   child.stderr.on('data', (d) => log.push(String(d)));
   const problems = [];
+  const warnings = [];
   let code = 0;
   // (round 35, bugbash2) a hang outside a check's own time limit (a CDP call the page never answers: the startup, a
   // reload, the last screenshot) kept the harness alive until run-checks' 30-minute limit (declutter-count: 26 min, no
@@ -212,6 +213,8 @@ async function cdpConnect() {
         const text = msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ');
         if (text.startsWith('[J]')) console.log(text);
       }
+      // (round 48, bugbash3) SMOKE_WARN=1: the page's console.warn lines are listed after the verdict (never a failure)
+      if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'warning' && process.env.SMOKE_WARN) warnings.push(msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ').slice(0, 300));
       if (msg.method === 'Runtime.consoleAPICalled' && (msg.params.type === 'error' || msg.params.type === 'assert')) {
         const text = msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ');
         if (!IGNORE.some((re) => re.test(text))) problems.push(`console.error: ${text}`);
@@ -375,5 +378,6 @@ async function cdpConnect() {
     else console.log(`kept: ${dir}`);
   }
   if (problems.length) { console.log(`\n${problems.length} problem(s):\n${[...new Set(problems)].join('\n')}`); code = 1; } else console.log('\nOK: no page errors.');
+  if (warnings.length) console.log(`\nwarnings (${warnings.length}, not failures):\n${[...new Set(warnings)].slice(0, 40).join('\n')}`);
   process.exit(code);
 })();
