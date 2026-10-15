@@ -471,6 +471,15 @@ const ThreeLab = (() => {
     }
     let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
+    // (round 48, labcalm) the View buttons: an icon and a label (one name each: ⚡ Sliders, </> Code, ›_ Console, ✥ Edit,
+    // ▣ Present); a narrow Lab (the director docked) shows the icons only, so the toolbar keeps one row. Their text reads
+    // the same as before ("⚡ Sliders"), their name for screen readers is the label, the tooltip says the rest.
+    const LabCalmBar = (rows) => rows.map(([b, icon, label]) => {
+      const live = b.querySelector('.tb-tx')?.textContent.trim() || (label === 'Console' ? b.textContent.trim() : label);
+      b.replaceChildren(el('span', { class: 'tb-ic', text: icon, attrs: { 'aria-hidden': 'true' } }), el('span', { class: 'tb-tx', text: ` ${live}` }));
+      b.setAttribute('aria-label', live); b.classList.add('tb-iconic');
+      return b;
+    });
     const runBtn = btn('▶ Run', 'Runs the scene again from the start (Shift+click: from scratch; Ctrl+Enter in the code: only what you changed)', (e) => (e.shiftKey ? restartSim() : run()), 'primary small');
     runBtn.dataset.key = 'Ctrl+Enter';
     const restartBtn = btn('⟲', 'Restart from scratch: a fresh page, GPU and sound, for when something bugs out (Ctrl+Shift+Enter)', () => restartSim(), 'ghost small');
@@ -634,7 +643,9 @@ const ThreeLab = (() => {
       if (consoleBtn.classList.contains('has-errors') !== errs) consoleBtn.classList.toggle('has-errors', errs);
       const n = unseen.errors + unseen.other;
       const t = !shown && n ? `Console ${unseen.errors ? '●' : '·'} ${n}` : 'Console';
-      if (consoleBtn.textContent !== t) consoleBtn.textContent = t;
+      // (round 48, labcalm) the label sits in its own span beside the icon (icon only when the Lab is narrow)
+      const tx = consoleBtn.querySelector('.tb-tx');
+      if (tx) { if (tx.textContent !== ` ${t}`) { tx.textContent = ` ${t}`; consoleBtn.setAttribute('aria-label', t); } } else if (consoleBtn.textContent !== t) consoleBtn.textContent = t;
       if (shown && !consoleScroll) consoleScroll = requestAnimationFrame(() => { consoleScroll = 0; consoleBox.scrollTop = consoleBox.scrollHeight; });
     }
     // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
@@ -965,8 +976,16 @@ const ThreeLab = (() => {
       // (round 33 "labpace") lighter only because the computer is on battery: the note says so
       const txt = adaptLast?.battery && (adaptLast.level || 0) <= (adaptLast.floor || 0) ? 'lighter on battery · full quality in renders' : 'lighter to stay smooth · full quality in renders';
       if (show && adaptNote.textContent !== txt) adaptNote.textContent = txt;
+      // (round 48, labcalm) the words show for a few seconds each time it lightens, then fold to a small ◐ in the
+      // corner (its tooltip says the rest); it no longer sits on the picture in words for as long as it stays lighter
+      // (once in ten minutes: a preview that goes lighter and back often only shows the ◐)
+      if (show && adaptNote.hidden) {
+        clearTimeout(adaptQuietT);
+        if (Date.now() - adaptWordsAt > 10 * 60e3) { adaptWordsAt = Date.now(); adaptNote.classList.remove('quiet'); adaptQuietT = setTimeout(() => adaptNote.classList.add('quiet'), 6000); } else adaptNote.classList.add('quiet');
+      }
       if (adaptNote.hidden === show) adaptNote.hidden = !show;
     }
+    let adaptQuietT = 0; let adaptWordsAt = 0;
     // (round 33 "labpace") Frame pace: how steady the preview's frames are ("120 fps · steady", "still · not
     // drawing"), read in the toolbar's ⋯ › Frame pace; ticking it keeps a tiny readout in the preview's corner (off by
     // default). The sandbox measures it (see "Frame pacing" in three-sandbox.html).
@@ -3766,7 +3785,7 @@ ${code}
       toolbar.replaceChildren(
         // round 4: New, ▦ and ⟲ moved into Sketch ▾ (Ctrl+Shift+Enter still restarts)
         group('Sketch', picker, sketchMenuBtn, runBtn),
-        group('View', slidersBtn, codeBtn, consoleBtn, editBtn, presentBtn),
+        group('View', ...LabCalmBar([[slidersBtn, '⚡', 'Sliders'], [codeBtn, '</>', 'Code'], [consoleBtn, '›_', 'Console'], [editBtn, '✥', 'Edit'], [presentBtn, '▣', 'Present']])),
         group('Code', liveLabel),
         el('span', { class: 'spacer' }),
         group('Assets', paletteBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)

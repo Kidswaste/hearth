@@ -148,6 +148,15 @@ const LabEasy = (() => {
 
   // ---------- a layer's right-click (tools/three-layers.js) ----------
   // h: { select, change(props), solo, copy, remove, rename } from the Layers panel
+  // (round 48, labcalm) a layer's "When it plays" fold (Layers › its settings), opened and brought into view
+  function openPlays() {
+    if (typeof ThreeLab !== 'undefined' && ThreeLab.cmd) ThreeLab.cmd().then((c) => c?.panel?.(true)).catch(() => {});
+    setTimeout(() => {
+      const d = [...document.querySelectorAll('.ly-plays')].find((x) => x.getClientRects().length);
+      if (!d) { toast('Open ⚡ Sliders to see the layer\'s timing', { timeout: 2500 }); return; }
+      d.open = true; d.scrollIntoView({ block: 'nearest' }); d.querySelector('summary')?.focus({ preventScroll: true });
+    }, 120);
+  }
   function layerItems(L, h = {}) {
     const fx = (kind) => () => { h.select?.(); if (typeof ThreeFX !== 'undefined') setTimeout(() => ThreeFX.openPicker(kind), 60); };
     const sel = (it) => ({ ...it, action: () => { h.select?.(); it.action(); } });
@@ -166,6 +175,8 @@ const LabEasy = (() => {
       { label: 'Blend…', more: true, cmd: 'blend', action: fx('blend') },
       { label: 'Animate…', hint: 'bounce in, heartbeat, punch zoom…', more: true, cmd: 'animate', action: fx('animate') },
       { label: 'Ease every keyframe…', more: true, cmd: 'ease', action: fx('ease') },
+      // (round 48, labcalm) its timing folded under the layer's settings: this row opens the fold
+      { label: '⏱ When it plays…', hint: 'start, end, fade in / out, Animate ▾', more: true, action: () => { h.select?.(); setTimeout(() => openPlays(), 80); } },
       { ...sel(item('Recolor with the palette', '', '/recolor')), more: true },
       { ...sel(item('Stop it following the sound', '', '/react-off all')), more: true },
       { ...sel(item('Reset its sliders to the code', '', '/reset-sliders')), more: true },

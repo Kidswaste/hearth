@@ -137,6 +137,18 @@ const ThreeMedia = (() => {
     // this runs from a ResizeObserver (after the frame's layout, so the read is free), and writing first made the read
     // style + lay out the page again (≈ 1–2 ms per call here, every resize of the window, the panel or the grid)
     const put = (n, k, v) => { if (n[k] !== v) n[k] = v; };
+    // (round 48, labcalm) where an exact frame sits: centred, scaled to fit, and clear of the pill (❚❚ Freeze and the
+    // sizes, top right) when the picture would reach under it: the top of a 16:9 or 9:16 frame (titles, captions) is
+    // never covered. Only the picture on screen moves: the page still draws at the frame's exact pixels (renders and
+    // stills are the same). Presenting and full screen hide the pill, so they keep the whole room.
+    const PILL_ROOM = 44; const PILL_W = 340;
+    function place(W, H, s) {
+      let k = Math.min(W / s.w, H / s.h);
+      let top = (H - s.h * k) / 2;
+      const room = !host.classList.contains('presenting') && H > PILL_ROOM * 4 && top < PILL_ROOM && (W + s.w * k) / 2 > W - PILL_W;
+      if (room) { k = Math.min(W / s.w, (H - PILL_ROOM) / s.h); top = PILL_ROOM + (H - PILL_ROOM - s.h * k) / 2; }
+      return { k, left: (W - s.w * k) / 2, top };
+    }
     function layout() {
       const s = current();
       const W = host.clientWidth; const H = host.clientHeight;
@@ -153,8 +165,7 @@ const ThreeMedia = (() => {
         put(sizeLabel, 'textContent', `${W}×${H}`);
         return;
       }
-      const k = Math.min(W / s.w, H / s.h);
-      const left = (W - s.w * k) / 2; const top = (H - s.h * k) / 2;
+      const { k, left, top } = place(W, H, s);
       frame.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${s.w}px;height:${s.h}px;transform:scale(${k});transform-origin:0 0;`;
       Object.assign(zones.style, { left: `${left}px`, top: `${top}px`, width: `${s.w * k}px`, height: `${s.h * k}px` });
       put(zones, 'hidden', !safe);
@@ -182,7 +193,7 @@ const ThreeMedia = (() => {
       get params() { return current().w ? '&dpr=1' : ''; },
       get size() { const s = current(); return s.w ? { id: s.id, width: s.w, height: s.h } : { id: 'fit', width: host.clientWidth, height: host.clientHeight }; },
       // where the picture sits inside the preview (for overlays such as the onion skin): { left, top, width, height } in px
-      get rect() { const s = current(); if (!s.w) return { left: 0, top: 0, width: host.clientWidth, height: host.clientHeight }; const W = host.clientWidth; const H = host.clientHeight; const k = Math.min(W / s.w, H / s.h); return { left: (W - s.w * k) / 2, top: (H - s.h * k) / 2, width: s.w * k, height: s.h * k }; },
+      get rect() { const s = current(); if (!s.w) return { left: 0, top: 0, width: host.clientWidth, height: host.clientHeight }; const { k, left, top } = place(host.clientWidth, host.clientHeight, s); return { left, top, width: s.w * k, height: s.h * k }; },
       setMode, pill,
       setCustom(w, h) { setCustom(w, h); fillMore(); setMode('custom'); return this.size; },
       setSafe(on, plat) { if (plat && SAFE[plat]) { platform = plat; store.set('three.safePlatform', plat); } safe = on ?? !safe; store.set('three.safeZones', safe); zones.dataset.for = ''; layout(); return safe; },
@@ -529,7 +540,7 @@ const ThreeMedia = (() => {
     const miniPlay = btn('▶', 'Play / pause (Space)', () => toggle(), 'ghost small mb-miniplay');
     const miniTime = el('span', { class: 'mb-minitime' });
     const SIZE_ORDER = ['full', 'compact', 'strip'];
-    const sizeBtns = [['full', '▤', 'Full timeline'], ['compact', '▭', 'Compact: hide the grid and hits row'], ['strip', '▁', 'Just the overview strip']]
+    const sizeBtns = [['full', '▥', 'Full timeline'], ['compact', '▭', 'Compact: hide the grid and hits row'], ['strip', '▁', 'Just the overview strip']]
       .map(([id, text, title]) => btn(text, title, () => setSize(id), `ghost small mb-size mb-size-${id}`));
     const grip = el('div', { class: 'mb-grip', title: 'Drag up or down to resize the timeline · double-click to cycle sizes' });
     const handle = el('div', { class: 'mb-handle' }, miniPlay, miniTime, grip, ...sizeBtns);
@@ -575,6 +586,7 @@ const ThreeMedia = (() => {
     setSize(size);
     // Fewer controls by default; ⋯ shows every one (zoom buttons, loop points, grid tools…). Rarely used ones get .mb-adv.
     for (const n of [rateSel, loopBtn, loopBox, lockBtn, dblBtn, halfBtn, bpmCands, meterSel, autoBtn, gridState, snapSel, fillBtn, undoBtn, snapTapsBox.parentElement, zoomOut.parentElement]) n?.classList.add('mb-adv');
+    videoBtn.classList.add('mb-adv'); // (round 48, labcalm) 🎬 waits in ⋯ here; right-click the preview › ⇪ Make & export has it too
     gridRow.querySelectorAll('.mb-sep').forEach((s) => s.classList.add('mb-adv'));
     let allCtl = store.get('three.mbAll', false);
     const moreBtn = btn('⋯', '', () => setAll(!allCtl), 'ghost small mb-more');
@@ -2133,7 +2145,7 @@ const ThreeMedia = (() => {
       g.font = '10px Consolas, monospace';
       const LT = laneTop(h);
       g.fillStyle = '#8f877d';
-      if (D()) g.fillText(tracks.length ? 'A: all curves' : '', w + 8, LT - 6);
+      // (round 48, labcalm) no standing "A: all curves" line here: A is in a track's ▾ menu and the keys sheet
       const fmtV = (v) => (Math.abs(v) >= 100 ? Math.round(v) : Math.abs(v) >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100);
       for (const row of trackRows(h)) {
         const { tr, y } = row;
