@@ -130,9 +130,15 @@ const LabType = (() => {
   }
   const onScreen = (ctx = {}) => { if (!ctx.chatId || typeof ChatScenes === 'undefined') return true; const r = ChatScenes.routeThree('three_layers', ctx.chatId); return !r || r.sketchId === ThreeLab.scenes?.currentId(); };
   const isRow = (L) => /^type/.test(L.kind || '');
-  async function target(ref, ctx = {}) {
+  // (round 45, kinetictype) the layer rows as data: since round 37 (directorlean) three_layers answers the model with
+  // text lines, so the scene on screen is read from the Lab itself (a chat's scene still goes through the tools)
+  async function layerRows(ctx = {}) {
+    if (onScreen(ctx) && D()?.layers) return D().layers().layers || [];
     const v = await call('three_layers', {}, ctx);
-    const pool = (v.layers || []).filter(isRow);
+    return Array.isArray(v?.layers) ? v.layers : [];
+  }
+  async function target(ref, ctx = {}) {
+    const pool = (await layerRows(ctx)).filter(isRow);
     if (!pool.length) throw new Error('No 🅰 type layer in this scene: /text <preset> adds one (/text list).');
     if (ref != null && ref !== '' && ref !== 'selected') {
       const r = String(ref).toLowerCase().replace(/^🅰\s*/, '');
@@ -157,8 +163,7 @@ const LabType = (() => {
   const layerName = (n) => `🅰 ${String(n || 'Type').replace(/^🅰\s*/, '').replace(/\s+/g, ' ').slice(0, 36)}`;
   async function addLayer(code, name, ctx = {}, wait = 1.2) {
     const out = await call('three_add_layer', { name, code, wait }, ctx);
-    const v = await call('three_layers', {}, ctx).catch(() => null);
-    const row = v?.layers?.find((x) => x.name === (out.added || name));
+    const row = (await layerRows(ctx).catch(() => [])).find((x) => x.name === (out.added || name));
     return row ? { ...stateOf(row, ctx), id: row.id } : { layer: out.added || name };
   }
 
@@ -272,8 +277,7 @@ const LabType = (() => {
   // ---------- lyrics ----------
   // the type layer that already shows lyrics (the selected one first); a title layer is never turned into lyrics
   async function lyricsLayer(ctx = {}) {
-    const v = await call('three_layers', {}, ctx).catch(() => null);
-    const pool = (v?.layers || []).filter(isRow);
+    const pool = (await layerRows(ctx).catch(() => [])).filter(isRow);
     const withLyrics = [];
     for (const L of pool) { try { if (Array.isArray(optsOf(await codeOf(L, ctx)).lyrics)) withLyrics.push(L); } catch { /* hand-written */ } }
     return withLyrics.find((L) => L.selected) || withLyrics[withLyrics.length - 1] || null;
