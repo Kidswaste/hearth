@@ -809,8 +809,9 @@ const AppUI = (() => {
         el('button', { type: 'button', class: 'primary small', text: 'Back up now', on: { click: async () => { await backupNow(); paint(); } } }),
         el('button', { type: 'button', class: 'ghost small', text: 'Save a copy as…', on: { click: exportData } }),
         el('button', { type: 'button', class: 'ghost small', text: 'Restore from a file…', on: { click: () => restoreBackup() } }),
-        // (round 43, scenesafe) 🛟 Lab scenes from backups and every other copy, added next to yours (tools/three-scenesafe.js)
-        el('button', { type: 'button', class: 'ghost small', text: 'Recover lost Lab scenes…', title: 'Scenes from backups, automatic copies, History or sync that aren\'t in your list, added next to yours', on: { click: async () => { dlg.close(); try { if (!window.LabSceneSafe && window.Lazy) await window.Lazy.load('lab'); await window.LabSceneSafe?.recover(); } catch (err) { toast(err.message, { type: 'error' }); } } } }),
+        // (round 43, scenesafe → datasafe) 🛟 Recover…: lost chats, memory lines, settings, tool data and Lab scenes from
+        // backups and every other copy, added next to yours (datasafe.js; the Lab scenes row opens tools/three-scenesafe.js)
+        el('button', { type: 'button', class: 'ghost small', text: 'Recover…', title: 'Lost chats, memory, settings, tool data and Lab scenes from backups, automatic copies or sync, added next to yours', on: { click: async () => { dlg.close(); try { if (!window.DataSafe && window.Lazy) await window.Lazy.load('datasafe'); await window.DataSafe?.recover(); } catch (err) { toast(err.message, { type: 'error' }); } } } }),
         el('label', { class: 'hint' }, 'Auto ', auto),
         el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Close' }))));
     dlg.addEventListener('close', () => dlg.remove());

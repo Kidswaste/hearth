@@ -55,8 +55,15 @@ const toChrome = (appId, channel, data) => { const e = wins.get(appId); if (e?.w
 const uid = () => `${Date.now().toString(36)}${crypto.randomBytes(3).toString('hex')}`;
 const testDir = () => process.env.HEARTH_TEST_SAVE_DIR || null;
 const dataDir = () => store?.DATA_DIR || path.join(__dirname, 'data');
-const readJson = (p, d) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return d; } };
-const writeJson = (p, v) => { try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(`${p}.tmp`, JSON.stringify(v, null, 1)); fs.renameSync(`${p}.tmp`, p); } catch (err) { console.warn('apps:', err.message); } };
+// (round 43, datasafe) a file held for a moment (Windows) is read again; one that still can't be read isn't "empty": a
+// save built on that read is merged with the file once it reads (the other API keys / Meshy jobs are never wiped)
+const DS = require('./datasafe-core');
+const unread = new Set();
+const readJson = (p, d) => { const r = DS.load(fs, p, d); if (r.canSave && !r.doubt) unread.delete(p); else unread.add(p); return r.value; };
+const writeJson = (p, v) => {
+  if (unread.has(p)) { const r = DS.load(fs, p, null); if (!r.canSave) { console.warn('apps: not saved over', path.basename(p), '(it can\'t be read just now)'); return; } v = DS.union(r.value, v); unread.delete(p); }
+  try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(`${p}.tmp`, JSON.stringify(v, null, 1)); fs.renameSync(`${p}.tmp`, p); } catch (err) { console.warn('apps:', err.message); }
+};
 
 // ---------- folders ----------
 function downloadsRoot() { return testDir() ? path.join(testDir(), 'apps-downloads') : path.join(app.getPath('downloads'), 'Hearth'); }

@@ -13,7 +13,8 @@ const ORIGIN = path.join(DATA_DIR, 'hearth-origin.json');
 // rewritten to the new one. Paths elsewhere (music on a Windows Desktop…) can't be guessed and are left.
 function fixMovedPaths() {
   let origin = null;
-  try { origin = JSON.parse(fs.readFileSync(ORIGIN, 'utf8')); } catch { /* first start */ }
+  // (round 43, datasafe) held for a moment: read again; still unreadable → nothing decided (or written) this start
+  try { origin = JSON.parse(require('./scenesafe-core').readRetry(fs, ORIGIN)); } catch (err) { if (err?.code && err.code !== 'ENOENT') return { moved: false, held: true }; }
   const here = { dataDir: DATA_DIR, appDir: APP_DIR, platform: process.platform, at: Date.now() };
   if (!origin?.dataDir || norm(origin.dataDir) === norm(DATA_DIR)) { writeOrigin(here); return { moved: false }; }
   const from = [origin.dataDir, origin.dataDir.replace(/\\/g, '/'), origin.dataDir.replace(/\//g, '\\')];

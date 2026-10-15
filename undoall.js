@@ -36,21 +36,32 @@ const UndoAll = (() => {
   }
   const join = (...p) => { const sep = String(p[0]).includes('\\') ? '\\' : '/'; return p.map((x, i) => (i ? String(x).replace(/^[\\/]+/, '') : String(x).replace(/[\\/]+$/, ''))).join(sep); };
   let loaded = null;
-  const ready = () => (loaded ||= (async () => {
+  // (round 43, datasafe) a log that's there but can't be read (held for a moment on Windows) is not "none yet": nothing is
+  // saved over it and no kept copy is swept to the Trash until it reads (tried again every 5 s); a damaged one is kept aside
+  let logOk = false; let logTries = 0;
+  async function loadLog() {
+    const f = join(await holdDir(), 'log.json');
+    let txt;
     try {
-      const f = join(await holdDir(), 'log.json');
-      if (!(await window.hub.fs.stat(f))) throw new Error('none yet');
-      const txt = await window.hub.fs.read(f);
+      if (!(await window.hub.fs.stat(f))) { logOk = true; return; }
+      txt = await window.hub.fs.read(f);
+    } catch {
+      if ((logTries += 1) < 60) setTimeout(() => loadLog().then(() => { if (logOk) { save(); sweep(); } }), 5000);
+      return;
+    }
+    try {
       const saved = C.makeLog(JSON.parse(txt));
       const mine = new Set(L.list.map((e) => e.id));
       L.list = saved.list.filter((e) => !mine.has(e.id)).concat(L.list);
       L.seq = Math.max(L.seq, saved.seq);
       C.prune(L);
-    } catch { /* none yet */ }
-    sweep();
-  })());
+    } catch { try { await window.hub.fs.copy(f, join(await holdDir(), `log.damaged-${Date.now()}.json`)); } catch { /* kept as it is */ } }
+    logOk = true;
+  }
+  const ready = () => (loaded ||= (async () => { await loadLog().catch(() => {}); if (logOk) { if (L.list.length) save(); sweep(); } })());
   let saveT = 0;
   function save() {
+    if (!logOk) return; // (round 43) written once the saved log has been read
     clearTimeout(saveT);
     saveT = setTimeout(async () => { try { await window.hub.fs.write(join(await holdDir(), 'log.json'), JSON.stringify(C.toJSON(L))); } catch { /* kept in memory */ } }, 400);
   }
