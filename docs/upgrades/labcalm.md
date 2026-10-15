@@ -106,7 +106,12 @@ Screenshots looked at before and after (all five states, both sizes).
   state and its controls inside; 🎬 folded; Full timeline's icon not ▤; the lighter note folding to ◐; pointing at the
   pill shows its extras without moving the sizes; Lab search finds safe zones, more frame sizes, still, when it plays,
   fade in, music video, animate. After: PASS.
-- Targeted runs: see the final report.
+- Targeted runs (`sh dev/run-checks.sh labcalm qa-keys`, while four other streams loaded the machine, load ≈ 20 on
+  4 CPUs): labcalm, menucalm, labeasy, layergroups, labdirect, autoedit (updated), lazy, `unit:boot-test` pass.
+  labkeys (hung 600 s in the group), a11y (audit 0, but WebGL "context could not be created" console errors under load)
+  and qa-keys (the "|" key in the preview frame once) passed when run again alone. labsearch fails only its
+  per-keystroke timing step (p95 41–65 ms; the same word typed again 0.5 ms), in both runs, under that load; every
+  other labsearch step passes. menucalm's doc records the same flake, and this pass adds one menu row to its index.
 
 ## Risks
 - The frame moving down under the pill shrinks the on-screen picture a little when the preview is short (at 1280 with
