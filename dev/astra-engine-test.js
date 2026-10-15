@@ -51,7 +51,8 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   assert(a2.includes('model_reasoning_effort="xhigh"') && a2.includes('web_search="live"') && a2.includes('gpt-6-luna') && a2.includes('/x.png'));
   assert(!a2.includes('-C'), 'resume runs keep their session folder');
   ok('per-chat effort / web search / model / images reach codex exec resume');
-  assert(!T.codexArgs({ ...astra, effort: 'max' }, {}, {}).some((x) => /reasoning_effort/.test(x)), 'unknown effort is dropped');
+  assert(T.codexArgs({ ...astra, effort: 'max' }, {}, {}).includes('model_reasoning_effort="max"'), 'maximum reasoning is supported');
+  assert(!T.codexArgs({ ...astra, effort: 'unknown' }, {}, {}).some((x) => /reasoning_effort/.test(x)), 'unknown effort is dropped');
   ok('an effort Codex does not know is dropped instead of failing');
   assert(T.codexArgs(astra, {}, { effort: 'minimal', webSearch: 'cached' }).includes('model_reasoning_effort="low"'));
   ok('minimal effort with web search on becomes low (they don\'t mix)');

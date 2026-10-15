@@ -171,7 +171,10 @@ const strip = (args) => args.filter((x, i) => args[i - 1] !== '--session-id' && 
   const pOff = T.buildPrompt(claude).length;
   const lineW = T.buildPrompt(withAcc(claude, 'write')).length - pOff;
   const lineF = T.buildPrompt(withAcc(claude, 'full')).length - pOff;
-  assert(lineW > 0 && lineW < 260 + proj.length && lineF < 360 + proj.length, `${lineW} / ${lineF}`);
+  // Both the allowed folder and Hearth's data folder appear in the access line.
+  // Exclude host-dependent path lengths from the fixed wording budget.
+  const locationChars = proj.length + path.join(dir, 'data').length;
+  assert(lineW > 0 && lineW < 260 + locationChars && lineF < 360 + locationChars, `${lineW} / ${lineF}`);
   assert(!/You have no tools/.test(T.buildPrompt(withAcc(claude, 'read'))));
   assert.strictEqual(T.buildPrompt(withAcc(claude, 'full')).split('\n').filter((l) => /File access/.test(l)).length, 1);
   ok(`the prompt gets one line when access is on (~${Math.round(lineF / 4)} tokens at Full)`);
@@ -253,7 +256,7 @@ const strip = (args) => args.filter((x, i) => args[i - 1] !== '--session-id' && 
   assert.strictEqual(r.end.type, 'done', JSON.stringify(r.end));
   const t = r.end.text;
   assert(/permission tool: yes/.test(t), t);
-  assert(/Read: ran · alpha/.test(t) && /Write: ran/.test(t) && /Bash: ran · Hearth moved 1 item to the Trash/.test(t) && /Bash: denied · sudo can ask for a password/.test(t) && /Bash: denied · The user denied this/.test(t), t);
+  assert(/Read: ran · alpha/.test(t) && /Write: ran/.test(t) && /Bash: ran · "?Hearth moved 1 item to the Trash/.test(t) && /Bash: denied · sudo can ask for a password/.test(t) && /Bash: denied · The user denied this/.test(t), t);
   assert.strictEqual(fs.readFileSync(path.join(proj, 'b.txt'), 'utf8'), 'bravo');
   assert(fs.existsSync(path.join(proj, 'c.txt')), 'the rm itself did not run (Hearth does it with the Trash)');
   assert(!calls.some((c) => c.args.tool === 'Read'), 'reads inside the folder never ask');
