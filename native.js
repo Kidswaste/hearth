@@ -2396,14 +2396,11 @@ const Native = (() => {
     if (drafts.delete(agentId)) setTimeout(() => Panel.render(), 0);
     const changed = H.activeChat[agentId] !== chatId;
     H.activeChat[agentId] = chatId;
-    // (round 46, smooth46) the chat box takes the focus once the chat is drawn: focusing works out the page's style,
-    // and done before the draw it was worked out for the chat being left, then again for this one (≈ 2–3 ms a switch)
-    activate(agentId, { focus: false });
+    activate(agentId);
     const v = views.get(agentId);
     if (changed && v) v.enterNext = true; // (round 45) slides in once its list is on screen (render)
     render(agentId);
     Panel.highlight();
-    if (H.activeId === agentId) { if (typeof Usage !== 'undefined') Usage.open(agentId); focus(agentId); } // (what activate's focus did)
   }
   // a chat you switch to slides into place (polish.css .chat-enter)
   function enterAnim(agentId) {

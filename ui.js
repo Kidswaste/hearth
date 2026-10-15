@@ -104,9 +104,16 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     if (type === 'error' || opts?.raw != null) { node.toastOpts = opts; node.logEntry = toastLog[0]; try { errorCalm.toast?.(node, message, opts); } catch (err) { console.warn('errorcalm:', err); } } // (round 45: a note that is already plain can carry its raw text too: Details)
     toastBox.append(node);
     // (round 17, hz240) above a docked chat's composer (was a page-wide :has() in polish.css): checked when one shows
-    toastBox.classList.toggle('over-dock', Boolean(document.querySelector('.surface.active .tool-dock:not([hidden])')));
     // (round 38, hintcalm) never over the chat box you type in or the Lab preview's centre (hints.js), errors included
-    if (window.Hints?.dodge) requestAnimationFrame(() => Hints.dodge(toastBox));
+    // (round 46, smooth46) both once in the coming frame, however many notes arrive before it (a burst of errors did
+    // a page-wide search and a measure of every chat box per note)
+    if (!toastBox.placeRaf) {
+      toastBox.placeRaf = requestAnimationFrame(() => {
+        toastBox.placeRaf = 0;
+        toastBox.classList.toggle('over-dock', Boolean(document.querySelector('.surface.active .tool-dock:not([hidden])')));
+        if (window.Hints?.dodge) Hints.dodge(toastBox);
+      });
+    }
     if (timeout) {
       // hovering a notification keeps it until you leave it
       let timer = setTimeout(() => node.remove(), timeout);

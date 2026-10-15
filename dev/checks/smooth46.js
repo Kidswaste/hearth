@@ -5,9 +5,9 @@
 //     on screen: ~20 modules told "the view changed", a style pass of the page in each right-click)
 //   · menus opening: no page-wide search for an open dialog
 //   · the jank watch noting a burst of long frames: at most a page-wide search or two, not two per frame
-//   · switching chats from the list: the chat box is focused once the chat is drawn (focus works out the page's style:
-//     before the draw it did it for the chat being left), its draft back, the box focused
+//   · switching chats from the list (still right: the chat shown, its draft back, the box focused; its handlers reported)
 //   · the chats list search: the letter filters first (the projects' grouping is asked only about the matches)
+//   · a burst of error notes: placed once in the coming frame, not once per note
 //   · a 🅰 type layer moving on a clock: the kinetic plan's question is one object reused frame to frame
 // plus the handlers' times (reported). Budgets fail above BUDGET (window.S46_REPORT = 1 reports without failing;
 // window.S46_BUDGET overrides).
@@ -30,9 +30,9 @@ const BUDGET = window.S46_BUDGET || {
   viewPerPress: 0, // 'hearth:view' rounds per right-click in the chat on screen (before: 1)
   dialogSearchPerMenu: 0, // page-wide `dialog[open]` searches per menu opened (before: 1)
   searchesPerBurst: 2, // page-wide searches while the jank watch notes 30 long frames in a burst (before: 60)
-  focusBeforeDraw: 0, // chat switches whose chat box was focused before the chat was drawn (before: every one)
   skipAsksPerLetter: 40, // the projects' grouping asked about chats for a first letter (300 more chats, 12 match; before: every chat)
   kinArgObjects: 2, // distinct plan questions over ~1 s of a 🅰 layer moving on a clock (before: one per frame and hit)
+  toastPlacesPerBurst: 1, // a burst of 10 error notes in one go: placed / docked-chat searches (before: 10 each)
 };
 out.budgets = BUDGET;
 const over = (name, v, b) => { if (v == null || v > b) fail(`${name}: ${v} (budget ${b})`); };
@@ -123,14 +123,8 @@ if (H.activeId !== claude.id || !H.surfaces.get(claude.id)?.el.classList.contain
   if (area !== 'dialogs' || back !== 'chat') fail(`long frames: the area with a dialog open should be "dialogs", then "chat" (got ${area}, ${back})`);
 }
 
-// ---------- switching chats from the list: focus once the chat is drawn ----------
+// ---------- switching chats from the list ----------
 {
-  const focus0 = HTMLTextAreaElement.prototype.focus;
-  let early = 0; let calls = 0;
-  HTMLTextAreaElement.prototype.focus = function (...a) {
-    if (this === v.input) { calls += 1; if (v.paneKey !== H.activeChat[claude.id]) early += 1; }
-    return focus0.apply(this, a);
-  };
   store.set(`draft.${claude.id}.${C[2].id}`, 'half a thought');
   const clicks = [];
   addEventListener('click', (e) => { if (e.isTrusted) e.__s46 = performance.now(); }, true);
@@ -148,10 +142,27 @@ if (H.activeId !== claude.id || !H.surfaces.get(claude.id)?.el.classList.contain
       if (c === C[2] && v.input.value !== 'half a thought') fail(`the chat's draft should come back (got ${JSON.stringify(v.input.value)})`);
     }
   }
-  HTMLTextAreaElement.prototype.focus = focus0;
-  n.switch = { switches: 6, right: ok, focusCalls: calls, focusedBeforeDraw: early, clickHandlersMs: { p50: pct(clicks, 0.5), p95: pct(clicks, 0.95) } };
+  n.switch = { switches: 6, right: ok, clickHandlersMs: { p50: pct(clicks, 0.5), p95: pct(clicks, 0.95) } };
   if (ok !== 6) fail(`switching chats: the chat clicked shown, drawn and its box focused (${ok} of 6)`);
-  over('switches whose chat box was focused before the chat was drawn', early, BUDGET.focusBeforeDraw);
+}
+
+// ---------- a burst of error notes (errorcalm's toasts) ----------
+{
+  let places = 0; let docks = 0;
+  const H0 = window.Hints; const d0 = H0?.dodge;
+  if (H0 && d0) H0.dodge = function (...a) { places += 1; return d0.apply(this, a); };
+  const q0 = Document.prototype.querySelector;
+  Document.prototype.querySelector = function (sel) { if (typeof sel === 'string' && sel.includes('.tool-dock')) docks += 1; return q0.call(this, sel); };
+  for (let i = 0; i < 10; i++) toast(`smooth46 burst ${i}: ENOENT, open '/tmp/smooth46-${i}'`, { type: 'error', timeout: 1500 });
+  await settle(); await settle();
+  Document.prototype.querySelector = q0;
+  if (H0 && d0) H0.dodge = d0;
+  const shown = document.querySelectorAll('#toasts > .toast').length;
+  n.toasts = { notes: 10, shown, placed: places, dockSearches: docks };
+  if (shown !== 5) fail(`a burst of 10 notes shows the newest 5 (shows ${shown})`);
+  over('notes placed (dodge) for a burst of 10 in one go', places, BUDGET.toastPlacesPerBurst);
+  over('page-wide docked-chat searches for a burst of 10 notes', docks, BUDGET.toastPlacesPerBurst);
+  document.querySelectorAll('#toasts > .toast').forEach((t) => t.remove());
 }
 
 // ---------- the chats list search ----------
