@@ -23,13 +23,11 @@ const fs = require('fs');
 const fsp = fs.promises;
 const os = require('os');
 const path = require('path');
-const { execFile } = require('child_process');
 const C = require('./backupauto-core');
 
 const TEST = Boolean(process.env.HEARTH_TEST_SAVE_DIR);
-const TAR = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 const SKIP_DIRS = new Set(['workspace', 'ae', 'sync', '.backup', 'node_modules', 'mcp-runs']); // (as before: workspace / ae / sync) + this computer's backup state
-const SKIP_NAME = /\.(hubtmp|tmp|partial|crdownload|download)$|^\.hearth-tmp-|\.hearth-part/i;
+const SKIP_NAME = /\.(hubtmp|tmp|partial|crdownload|download|icloud)$|^\.hearth-tmp-|\.hearth-part|^\._|^\.DS_Store$|^Thumbs\.db$|^desktop\.ini$/i; // (round 46) + the Mac's "._" / .DS_Store, Windows' Thumbs.db / desktop.ini, iCloud placeholders
 const DETAILS = '.hearth';
 const MAX_MS = 30 * 60000;
 
@@ -99,32 +97,15 @@ function dir() { const s = S(); return s.dir || legacyDir() || C.places(io()).de
 function dirs() { return [...new Set([dir(), legacyDir(), C.places(io()).def.dir].filter(Boolean))].filter((d, i) => i === 0 || fs.existsSync(d)); }
 
 // ---------- zip tools ----------
-function exec(cmd, args, opts = {}) {
-  return new Promise((resolve, reject) => {
-    execFile(cmd, args, { windowsHide: true, maxBuffer: 64 * 1024 * 1024, timeout: MAX_MS, ...opts }, (err, out, errOut) => {
-      if (err) { if (err.code === 'ENOENT' && /spawn/.test(err.syscall || err.message)) err.code = 'NOTOOL'; err.detail = String(errOut || '').trim().slice(0, 300); reject(err); } else resolve(String(out || ''));
-    });
-  });
-}
-async function zipDir(src, target) {
-  const names = fs.readdirSync(src);
-  if (o.platform === 'linux') await exec('zip', ['-qr', '-X', target, ...names], { cwd: src });
-  else await exec(TAR, ['-a', '-cf', target, '-C', src, ...names]);
-}
-async function unzipAll(zip, dest) {
-  if (o.platform === 'linux') await exec('unzip', ['-qq', '-o', zip, '-d', dest]);
-  else await exec(TAR, ['-xf', zip, '-C', dest]);
-}
+// (round 46, platform46) plain Node (zipkit.js) on every computer: Windows' tar.exe garbled accented names and the
+// Mac's tar added "._name" files the check read as damaged stores; no outside tool to be missing or blocked
+const Zip = require('./zipkit');
+async function zipDir(src, target) { await Zip.writeZip(src, target); }
+async function unzipAll(zip, dest) { await Zip.extract(zip, dest); }
 async function unzipSome(zip, members, dest) {
-  try {
-    if (o.platform === 'linux') await exec('unzip', ['-qq', '-o', zip, ...members, '-d', dest]);
-    else await exec(TAR, ['-xf', zip, '-C', dest, ...members]);
-  } catch { /* a member that isn't there (an older backup) is fine */ }
+  try { await Zip.extract(zip, dest, { members, skipBad: true }); } catch { /* not a zip it reads: nothing came out */ }
 }
-async function names(zip) {
-  const out = o.platform === 'linux' ? await exec('unzip', ['-Z1', zip]) : await exec(TAR, ['-tf', zip]);
-  return out.split(/\r?\n/).map((l) => l.trim().replace(/\\/g, '/').replace(/^\.\//, '')).filter((l) => l && !l.endsWith('/'));
-}
+async function names(zip) { return Zip.names(zip); }
 
 // ---------- walking the data folder ----------
 async function walk(root, relBase, out) {
@@ -166,6 +147,7 @@ async function verify(zip, { media = true, base = path.dirname(zip) } = {}) {
   try {
     try { await unzipAll(zip, dest); } catch (err) {
       // in plain words, without the temp folder: "data/kv/notes.json doesn't read back the same"
+      if (err.entry) return { ok: false, problems: [`the zip is damaged (${err.entry} doesn't read back the same)`], at: now() }; // (round 46) zipkit names the file
       const raw = String(err.detail || err.message || '').split(dest).join('').replace(/^[\\/]+/gm, '');
       const crc = raw.match(/([^\s:]+)\s+bad CRC/i) || raw.match(/(?:CRC|checksum)[^\n]*?([\w./-]+\.\w+)/i);
       const what = crc ? `${crc[1].replace(/^[\\/]+/, '')} doesn't read back the same` : raw.split('\n')[0].replace(/^(unzip|tar):\s*/i, '').slice(0, 140) || 'it is damaged';
@@ -186,7 +168,7 @@ async function verify(zip, { media = true, base = path.dirname(zip) } = {}) {
     if (!manifest) return { ok: !bad.length, legacy: true, problems: bad.map((r) => `${r} is damaged`), counts, files, at: now() };
     counts.media = (manifest.media || []).length;
     const missing = [];
-    if (media) for (const m of manifest.media || []) { try { if (fs.statSync(path.join(base, DETAILS, 'media', m.key)).size !== m.size) missing.push(m.rel); } catch { missing.push(m.rel); } }
+    if (media) for (const m of manifest.media || []) { const f = path.join(base, DETAILS, 'media', m.key); try { if (fs.statSync(f).size !== m.size) missing.push(m.rel); } catch { if (!present(f)) missing.push(m.rel); } }
     const r = C.compare(manifest, { counts, files, bad, media: { missing } });
     return { ...r, counts, files, at: now() };
   } finally { fs.rm(dest, { recursive: true, force: true, maxRetries: 4 }, () => {}); }
@@ -271,7 +253,7 @@ async function doRun(reason) {
     const files = await walk(o.dataDir, 'data', []);
     for (const [rel, abs] of [['config.json', o.configPath], ['theme.css', o.themePath]]) { try { const st = fs.statSync(abs); files.push({ rel, abs, size: st.size, mtime: st.mtimeMs }); } catch { /* none */ } }
     const mediaDir = path.join(target, DETAILS, 'media');
-    let have = new Set(); try { have = new Set(fs.readdirSync(mediaDir)); } catch { /* none yet */ }
+    let have = new Set(); try { have = new Set(fs.readdirSync(mediaDir).map((n) => offloadedName(n) || n)); } catch { /* none yet */ }
     const plan = C.split(files, have);
     const free = freeBytes(target);
     const need = Math.round(plan.zipBytes * 0.7) + plan.copyBytes + 20 * 1048576;
@@ -339,6 +321,17 @@ function corrupt(file) { // tests: a few bytes in the middle of the zip changed 
 }
 
 // ---------- the rotation ----------
+// (round 46) iCloud on an older macOS swaps a file it offloaded for ".name.icloud"; Sonoma and later, and OneDrive's
+// online-only files, keep the real name (a read downloads it)
+const offloadedName = (n) => { const m = /^\.(.+)\.icloud$/.exec(String(n)); return m ? m[1] : null; };
+const present = (p) => fs.existsSync(p) || fs.existsSync(path.join(path.dirname(p), `.${path.basename(p)}.icloud`));
+function trashable(p) {
+  try {
+    if (o.platform === 'win32') return require('./winpolish').trashCheck(p, { platform: 'win32' }).ok;
+    if (o.platform === 'darwin') return require('./macpolish').trashCheck(p, { platform: 'darwin' }).ok;
+  } catch { /* no check: the bin decides */ }
+  return true;
+}
 const pinned = new Set(); // zips being restored right now: never rotated away meanwhile
 function pin(file, on = true) { const k = path.normalize(String(file || '')); if (on) pinned.add(k); else pinned.delete(k); }
 async function rotateNow() {
@@ -351,21 +344,27 @@ async function rotateNow() {
     const p = path.join(target, nm);
     if (pinned.has(path.normalize(p))) continue;
     try {
+      // (round 46) a disk with no bin (a network share, a USB stick on Windows) would delete for good: left as it is
+      if (!trashable(p)) continue;
       if (TEST) fs.rmSync(p); else await require('electron').shell.trashItem(p); // to the Trash / Recycle Bin (tests: no desktop bin here)
       try { fs.rmSync(cardOf(p), { force: true }); } catch { /* none */ }
       removed += 1;
     } catch { /* a disk with no bin (a network share): left as it is */ }
   }
   // the media store keeps what a remaining backup (of any computer) points at
+  // (round 46) a card or zip iCloud offloaded (older macOS: ".name.icloud") is still there: nothing is tidied while
+  // one is, and an offloaded media file is never taken for a stray one
   const mediaDir = path.join(target, DETAILS, 'media');
   try {
     const keepKeys = new Set();
-    for (const n of await fsp.readdir(path.join(target, DETAILS))) {
+    const cards = await fsp.readdir(path.join(target, DETAILS));
+    if (cards.some((n) => /\.icloud$/i.test(n))) return removed;
+    for (const n of cards) {
       if (!n.endsWith('.zip.json')) continue;
-      if (!fs.existsSync(path.join(target, n.slice(0, -5)))) { fs.rmSync(path.join(target, DETAILS, n), { force: true }); continue; }
+      if (!present(path.join(target, n.slice(0, -5)))) { fs.rmSync(path.join(target, DETAILS, n), { force: true }); continue; }
       try { for (const m of JSON.parse(fs.readFileSync(path.join(target, DETAILS, n), 'utf8')).media || []) keepKeys.add(m.key); } catch { /* a card we can't read: keep everything */ return removed; }
     }
-    for (const k of await fsp.readdir(mediaDir).catch(() => [])) if (!keepKeys.has(k)) fs.rmSync(path.join(mediaDir, k), { force: true });
+    for (const k of await fsp.readdir(mediaDir).catch(() => [])) if (!keepKeys.has(offloadedName(k) || k)) fs.rmSync(path.join(mediaDir, k), { force: true });
   } catch { /* nothing to tidy */ }
   return removed;
 }

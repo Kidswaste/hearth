@@ -193,7 +193,7 @@ const AiUndo = (() => {
   // first (the check below). A file it created, deleted outside: nothing left to undo. Told by filewatch.js as it happens.
   //   st: { gone, size, mtime, to (moved / renamed to) }
   function outside(path, st = {}) {
-    const same = (a, b) => (/^[A-Za-z]:[\\/]|^\\\\/.test(String(a)) ? String(a).toLowerCase() === String(b).toLowerCase() : a === b);
+    const same = (a, b) => (typeof WinMac !== 'undefined' && WinMac.sameFile ? WinMac.sameFile(a, b) : /^[A-Za-z]:[\\/]|^\\\\/.test(String(a)) ? String(a).toLowerCase() === String(b).toLowerCase() : a === b); // (round 46) the Mac: no case, one Unicode form
     let n = 0;
     for (const e of list) {
       if (e.area !== 'file' || e.undone || !e.u?.path || !same(e.u.path, path)) continue;

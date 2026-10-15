@@ -47,8 +47,10 @@
   const icloudOf = (base) => { const m = /^\.(.+)\.icloud$/.exec(String(base || '')); return m ? m[1] : null; };
 
   // ---------- paths ----------
-  // Windows compares paths without case; the Mac and Linux exactly (a want is written the way the file is)
-  const keyOf = (p, platform) => (platform === 'win32' ? String(p).toLowerCase() : String(p));
+  // Windows compares paths without case; (round 46) the Mac too (its disks ignore case by default) and in one Unicode
+  // form: FSEvents names "Músique.mp3" decomposed (NFD) while the window names it composed (NFC), so an accented file
+  // was never matched; Linux exactly
+  const keyOf = (p, platform) => (platform === 'win32' ? String(p).toLowerCase() : platform === 'darwin' ? String(p).normalize('NFC').toLowerCase() : String(p));
   function inside(child, dir, P, platform) {
     const c = keyOf(P.resolve(String(child)), platform); const d = keyOf(P.resolve(String(dir)), platform);
     if (c === d) return true;

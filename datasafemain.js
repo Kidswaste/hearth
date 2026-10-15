@@ -129,7 +129,13 @@ function backupDir() {
   try { const d = o.cfg?.read()?.settings?.backupDir; if (d) return d; } catch { /* default */ }
   return path.join(os.homedir(), 'Documents', 'Hearth backups');
 }
-function unzipSome(zip, members, dir) {
+// (round 46, platform46) plain Node first (zipkit: the same on the Mac and Windows); the system's tool as before when
+// it can't read the zip
+async function unzipSome(zip, members, dir) {
+  try { await require('./zipkit').extract(zip, dir, { members, skipBad: true }); return dir; } catch { /* not one zipkit reads */ }
+  return unzipSomeTool(zip, members, dir);
+}
+function unzipSomeTool(zip, members, dir) {
   const TAR = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
   return new Promise((resolve) => {
     if (process.platform === 'linux') execFile('unzip', ['-q', '-o', zip, ...members.map((m) => (m.endsWith('/') ? `${m}*` : m)), '-d', dir], { timeout: 60000 }, () => resolve(dir));

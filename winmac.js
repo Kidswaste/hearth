@@ -72,15 +72,30 @@ const WinMac = (() => {
     return caseless ? n(a).toLowerCase() === n(b).toLowerCase() : n(a) === n(b);
   };
 
+  // (round 46) one file named two ways? Windows paths (a drive / a share) without case and with either slash; the Mac
+  // without case and in one Unicode form (Finder / FSEvents give decomposed accents, the window composed); Linux exactly
+  function sameFile(a, b, { mac = onMac() } = {}) {
+    const x = String(a ?? ''); const y = String(b ?? '');
+    if (x === y) return true;
+    if (/^[A-Za-z]:[\\/]|^[\\/]{2}/.test(x)) return x.replace(/\//g, '\\').toLowerCase() === y.replace(/\//g, '\\').toLowerCase();
+    return mac ? x.normalize('NFC').toLowerCase() === y.normalize('NFC').toLowerCase() : false;
+  }
+
   // ---------- key names ----------
   // "Ctrl+Shift+S" → "⌘⇧S" on a Mac (Hearth's own shortcuts take ⌘ where they say Ctrl). "Ctrl+click" stays: on a Mac
   // that is the right-click. { mac } defaults to this computer (a window: navigator.platform; Node: process.platform).
   const onMac = () => (typeof navigator !== 'undefined' && navigator.platform ? /Mac/.test(navigator.platform) : typeof process !== 'undefined' && process.platform === 'darwin');
   function macKeys(text, { mac = onMac(), shift = false } = {}) {
     if (!mac || text == null || typeof text !== 'string' || !/\b(?:Ctrl|Alt)\b/.test(text)) return text;
-    let t = text.replace(/\bCtrl\+(?!click|drag)/g, '⌘').replace(/\bAlt\+(?!click|drag)/g, '⌥');
+    let t = text.replace(/\bCtrl\/⌘\+?|⌘\/Ctrl\+?/g, '⌘+').replace(/\bCtrl\+(?!click|drag)/g, '⌘').replace(/\bAlt\+(?!click|drag)/g, '⌥');
     if (shift) t = t.replace(/\bShift\+/g, '⇧');
     return t.replace(/⌘\/⌘/g, '⌘').replace(/([⌘⌥⇧])\+/g, '$1');
+  }
+
+  // (round 46) "Ctrl/⌘+K" (written for both computers) as this computer says it: ⌘K on a Mac, Ctrl+K elsewhere
+  function keyWords(text, { mac = onMac() } = {}) {
+    if (text == null || typeof text !== 'string') return text;
+    return mac ? macKeys(text, { mac: true }) : text.replace(/\bCtrl\/⌘\+?|⌘\/Ctrl\+?/g, 'Ctrl+');
   }
 
   // ---------- programs a Dock launch can't find ----------
@@ -114,6 +129,6 @@ const WinMac = (() => {
     return process.env.PATH === before ? null : process.env.PATH.slice(before.length).replace(/^:/, '');
   }
 
-  return { fileUrl, fromFileUrl, parts, baseName, dirName, join, extOf, samePath, macKeys, withToolDirs, fixProcessPath };
+  return { fileUrl, fromFileUrl, parts, baseName, dirName, join, extOf, samePath, sameFile, macKeys, keyWords, withToolDirs, fixProcessPath };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = WinMac;

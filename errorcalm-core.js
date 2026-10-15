@@ -34,7 +34,7 @@ const ErrorCalmCore = (() => {
   const MacP = () => (NODE ? lib(() => null, './macpolish') : null);
 
   // ---------- does it read like a machine wrote it? ----------
-  const NODE_CODES = 'NOENT|ACCES|PERM|BUSY|EXIST|ISDIR|NOTDIR|NOTEMPTY|NOSPC|ROFS|MFILE|NFILE|NAMETOOLONG|XDEV|INVAL|PIPE|CONNREFUSED|CONNRESET|CONNABORTED|TIMEDOUT|NOTFOUND|AI_AGAIN|HOSTUNREACH|NETUNREACH|NETDOWN|ADDRINUSE|2BIG|CANCELED|OPNOTSUPP|LOOP|NOMEM|AGAIN|IO|SRCH|NOEXEC|BADF|DQUOT|FBIG|NXIO|NODEV|NOSYS|PROTO';
+  const NODE_CODES = 'DEADLK|NOENT|ACCES|PERM|BUSY|EXIST|ISDIR|NOTDIR|NOTEMPTY|NOSPC|ROFS|MFILE|NFILE|NAMETOOLONG|XDEV|INVAL|PIPE|CONNREFUSED|CONNRESET|CONNABORTED|TIMEDOUT|NOTFOUND|AI_AGAIN|HOSTUNREACH|NETUNREACH|NETDOWN|ADDRINUSE|2BIG|CANCELED|OPNOTSUPP|LOOP|NOMEM|AGAIN|IO|SRCH|NOEXEC|BADF|DQUOT|FBIG|NXIO|NODEV|NOSYS|PROTO';
   const CODE = new RegExp(`\\bE(${NODE_CODES})\\b`);
   const SIGNS = [
     CODE, /\bERR_[A-Z0-9_]{3,}\b/, // Node's codes
@@ -49,8 +49,12 @@ const ErrorCalmCore = (() => {
     /\bGL_[A-Z_]{4,}\b|CONTEXT_LOST|WebGL context|webglcontextlost|THREE\.WebGLRenderer|GLSL|glCompileShader/i,
     /[{[]\s*"[\w$-]+"\s*:/, /\b0x[0-9a-f]{6,}\b/i, /file:\/\/\//,
     /\bfetch failed\b|Failed to fetch|NetworkError when attempting|socket hang up|getaddrinfo|\bECONN\w+/,
+    /\bUNKNOWN: unknown error\b|cloud file provider/i, // (round 46) Windows' unmapped codes (OneDrive's online-only files)
   ];
   const isRaw = (text) => { const t = String(text ?? ''); return Boolean(t.trim()) && SIGNS.some((re) => re.test(t)); };
+
+  // (round 46) the computer: given by the caller, else Node's, else the window's
+  const platformOf = (ctx = {}) => ctx.platform || (NODE ? process.platform : typeof navigator !== 'undefined' ? (/Mac/.test(navigator.platform) ? 'darwin' : /Win/.test(navigator.platform) ? 'win32' : 'linux') : '');
 
   // ---------- small helpers ----------
   const STACK = /^\s*at\s+(?:.+\(.+:\d+:\d+\)|[^\s]+:\d+:\d+|node:|new |async |\S+\s*\(<anonymous>\)|\S+\s*\(native\))|^\s*at\s+\S+\s*$|^node:internal|^\s*\^+\s*$|^Node\.js v\d+/;
@@ -135,7 +139,12 @@ const ErrorCalmCore = (() => {
     // Node's file errors (the file named when there is one)
     [new RegExp('\\bENOENT\\b|No such file or directory|cannot find the (file|path) specified|File not found', 'i'), (m, ctx, p) => `${the(ctx, p)} isn't there any more (moved, renamed or deleted)`, A.folder],
     [/\bEBUSY\b|resource busy or locked|being used by another process/i, (m, ctx, p) => `${the(ctx, p)} is open in another program — close it there, then try again`, A.retry],
-    [/\bE(ACCES|PERM)\b|permission denied|operation not permitted|access is denied/i, (m, ctx, p) => `Hearth wasn't allowed to open ${p ? the(ctx, p) : 'that file'} (it's protected, read-only, or blocked by privacy settings)`, A.folder],
+    // (round 46) a cloud drive's online-only file it couldn't fetch: OneDrive paused / signed out (Windows says
+    // "UNKNOWN" or "cloud file provider"), iCloud offline (EDEADLK)
+    [/\bUNKNOWN: unknown error, (open|read|copyfile|stat|lstat|scandir)|cloud file provider|cloud operation|0x8007016a|\bEDEADLK\b|resource deadlock/i, (m, ctx, p) => `${p ? the(ctx, p) : 'That file'} is kept online by ${platformOf(ctx) === 'darwin' ? 'iCloud Drive' : platformOf(ctx) === 'win32' ? 'OneDrive' : 'a cloud drive'}, which couldn't download it right now — check it's running and signed in, then try again`, A.retry],
+    // Windows: EPERM / EBUSY on a rename / delete is usually another program (an antivirus, a sync) holding the file
+    [/\bEPERM\b[^\n]*\b(rename|unlink|rmdir|rm)\b/, (m, ctx, p) => (platformOf(ctx) === 'win32' ? `${the(ctx, p)} is held by another program (often an antivirus or OneDrive) — try again in a moment` : `Hearth wasn't allowed to change ${p ? the(ctx, p) : 'that file'} (it's locked or read-only)`), null, (ctx) => (platformOf(ctx) === 'win32' ? A.retry : A.folder)],
+    [/\bE(ACCES|PERM)\b|permission denied|operation not permitted|access is denied/i, (m, ctx, p) => `Hearth wasn't allowed to open ${p ? the(ctx, p) : 'that file'} (${platformOf(ctx) === 'win32' ? 'it\'s read-only, or Windows Security\'s "Controlled folder access" blocks it' : platformOf(ctx) === 'darwin' ? 'it\'s locked, or macOS privacy settings block it: System Settings › Privacy & Security › Files and Folders' : 'it\'s protected or read-only'})`, A.folder],
     [/\bENOSPC\b|no space left|disk (is )?full|\bEDQUOT\b/i, () => 'The disk is full — free some space, then try again', A.folder],
     [/\bEROFS\b|read-only file system/i, (m, ctx, p) => `${p ? the(ctx, p) : 'That file'} is on a disk that can't be changed (read-only)`, A.folder],
     [/\bEEXIST\b|already exists/i, (m, ctx, p) => `Something named ${p ? the(ctx, p) : 'like that'} is already there`, A.folder],
