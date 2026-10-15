@@ -13,7 +13,7 @@
 //     click to fix it: blend the last beat into the first (the preview fades its seam; renders cross-fade the frames),
 //     or (cost shown first) the director makes the motion itself periodic.
 //   · Render the loop: a perfect-loop MP4 (or GIF) of exactly the loop, with the song's bars under it when it has one.
-// Ways in: ✦ More › ⇪ Make › ∞ Make it loop, the ◎ mission "Make it loop", Ready to post's loop fix on a Lab render,
+// Ways in: right-click the preview › ⇪ Make & export › ∞ Make it loop, the ◎ mission "Make it loop", Ready to post's loop fix on a Lab render,
 // ⌘/Ctrl+K, the director (three_do loop), and /make-loop (the app's internal API). Model: tools/three-loop-core.js.
 const PerfectLoop = (() => {
   const C = () => LoopCore;

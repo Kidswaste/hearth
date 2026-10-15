@@ -710,7 +710,7 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ Every Lab render runs in a hidden export page (own process + GPU context): the preview keeps its size and plays, the sequence stays editable, 0 long tasks on the app's thread; the sequence's own ⇪ Render uses it too.
 - ✓ Frame-exact on the scene's clock, seeded randomness (same render = same pixels); any size up to 8K (16K stills), any fps, 2–4× supersampling, 4–64 sub-frame motion blur, GPU memory cap.
 - ✓ MP4, HEVC 10-bit, ProRes 4444 + alpha, WebM VP9 + alpha, PNG sequence + alpha, perfect-loop GIF / MP4 (on the bars with a cross-fade, or found in the frames), stills (PNG, 16-bit); GLB, one-file web page, slider preset (+ load), contact sheet.
-- ✓ Right-click the preview › ⇪ Export, the Render panel › Export…, Ctrl/⌘+K, `/lab-export` (`/lx`); directors via `three_do run`; render queue rows with time left, pause / resume / cancel.
+- ✓ Right-click the preview › ⇪ Make & export, the Render panel › Export…, Ctrl/⌘+K, `/lab-export` (`/lx`); directors via `three_do run`; render queue rows with time left, pause / resume / cancel.
 - ○ Measured headless on SwiftShader (1080p 6.4 frames/s, 4K 2.2); not on a real GPU.
 
 ## Voice (round 23, voice, 53 upgrades: docs/upgrades/voice.md)
@@ -735,7 +735,7 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 - ✓ ◇ shader layers: Shadertoy-style GLSL (or main() / ISF) as a Lab layer on the scene's clock, with music uniforms (uKick, uBass, uBeat…), the audio texture, feedback (self), Buffers A–D, the layers below / other layers / references as textures, a resolution scale.
 - ✓ `uniform float uGlow; // [Look] 0..2, 1 Glow` lines become sliders (colors, toggles, choices, XY pads) and follow the code on each run; errors show inline on their line while the last good shader keeps drawing.
 - ✓ 38 starters (noise, patterns, raymarch, music, feedback, filters), Shadertoy import (tab, tabs, JSON) and ISF import, copy back to Shadertoy; workbench card with channels per pass, resolution, alpha, + Buffer.
-- ✓ `/shader`, `/shadertoy`, right-click a layer › ◇ Shader, the preview › ◇ Shaders, the FX picker's Shaders, Ctrl/⌘+K; directors: `three_do shader` (help on demand, no prompt growth).
+- ✓ `/shader`, `/shadertoy`, right-click a layer › ◇ Shader, the preview › ＋ Add › ◇ Shaders, the FX picker's Shaders, Ctrl/⌘+K; directors: `three_do shader` (help on demand, no prompt growth).
 - ○ No TSL / node-material layers; ISF vertex shaders aren't run; tested on SwiftShader only.
 ## Lab audio reactivity (round 23, labaudio, 87 upgrades: docs/upgrades/labaudio.md)
 - ✓ Live input analysed in an AudioWorklet (86 frames/s, one 3.3 KB buffer per frame to the preview); input picker for mics / interfaces / line-ins, loopback devices (BlackHole, Loopback, VB-Cable, Stereo Mix) found and listed first with a how-to, monitoring off by default (`/audio-in`, `/loopback`).
@@ -768,7 +768,7 @@ The chats' workspace syncs (no dependencies, caches or huge files); a Mac path o
 ## Lab grade (round 24, grade, 115 upgrades: docs/upgrades/grade.md)
 - ✓ ◐ Grade + ◐ Film & lens filter layers drawn as one GPU pass (free at amount 0): ACES / AgX / Filmic / Reinhard / Neutral tone mapping, exposure, white balance, lift / gamma / gain wheels, RGB + luma curves, an HSL qualifier, saturation / vibrance, split toning, LUT strength, vignette, grain (luma response), letterbox per format; bloom with threshold, halation, anamorphic streaks, chromatic aberration, lens distortion.
 - ✓ LUTs: 14 procedural starters, .cube import (1D / 3D, kept, sent to every Lab page incl. the export page), the current grade exported as a 33³ .cube for Premiere / Resolve; 19 presets.
-- ✓ One compact panel (right-click the preview › ◐ Grade, `/grade`): tabs, wheels, curves, hue strip, LUT grid, scopes (waveform, vectorscope, histogram from a small read, only while open).
+- ✓ One compact panel (right-click the preview › ✨ Look & motion › ◐ Grade, `/grade`): tabs, wheels, curves, hue strip, LUT grid, scopes (waveform, vectorscope, histogram from a small read, only while open).
 - ✓ Per-clip and whole-sequence grades in the Lab sequence (right-click a clip › ◐ Grade, `/grade clip 2 noir`): the same shader in the preview and the render.
 - ○ Tested headless on SwiftShader (`sh dev/run-checks.sh grade`); imported LUTs aren't packed into a one-file web page export.
 ## Interop (round 25, interop, 88 upgrades: docs/upgrades/interop.md)
@@ -845,7 +845,7 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ ⚇ Work with Astra waits behind Alt (◎ Missions does the same; right-click the chat box has it); AI setup's rail icon is ❖, not a second ⚙.
 - ○ Checked by `dev/checks/simplify2.js` (chat group) and the updated `tidy` check.
 ## 🎬 Drop a song, get a music video (round 27, autoedit, 33 upgrades: docs/upgrades/autoedit.md)
-- ✓ 🎬 next to the song in the Lab timeline (also ✦ More › ⇪ Make, the director's ◎ mission "Make a music video from this song", or just asking the director): a plan of the whole video by section (intro / build / drop / break / outro) as one strip, nothing made yet.
+- ✓ 🎬 next to the song in the Lab timeline (also right-click the preview › ⇪ Make & export, the director's ◎ mission "Make a music video from this song", or just asking the director): a plan of the whole video by section (intro / build / drop / break / outro) as one strip, nothing made yet.
 - ✓ Each section: a scene (the one on screen, your others, or a new one the director makes), its length in bars, the transition into it on the beat, an intensity from the song's energy (faster cuts, bolder variations, a stronger look), a look from the song's key, lyrics on / off; click a block to change any of it.
 - ✓ Make it: new scenes go to the crew (cost first, your Start), then a Lab sequence with every cut on a bar, the song under it, section markers and the lyrics as captions (one undo step); ⇪ Render 9:16 / 16:9 / 1:1 or all three.
 - ○ Tested with the fake engines and a generated song (`sh dev/run-checks.sh autoedit unit:autoedit-test`); real crew-made scenes and real renders need a real engine and GPU.
@@ -876,7 +876,7 @@ In ⋯ AI setup, **⚡ Hooks: when… then…** gives each AI a short list of ru
 - ✓ Give the Lab a picture, a video, a mood-board item or a render: its palette, light, contrast, saturation, warmth (in kelvin), grain, vignette, glow and bars land on the scene's ◐ Grade / ◐ Film & lens layers (as sliders) and its colors become the palette, at once and with no tokens; measured against your scene's own picture, then checked and corrected once ("≈82 % close").
 - ✓ A small card: Strength, hold for Before, ↶ Undo, ◐ Fine-tune; your matched looks come back in one click.
 - ✓ ✦ Ask the director: a small picture of the reference + the numbers (cost shown first) so it matches shapes, light and motion.
-- ✓ Ways in: the director's ◎ mission "Make it look like this", ✦ More › ✨ Look & motion, a board item's right-click "🎨 Use this look in the Lab", dropping a picture on the Lab preview.
+- ✓ Ways in: the director's ◎ mission "Make it look like this", right-click the preview › ✨ Look & motion, a board item's right-click "🎨 Use this look in the Lab", dropping a picture on the Lab preview.
 - ○ Checked with generated pictures, a recorded clip and the fake engines (`sh dev/run-checks.sh lookmatch unit:lookmatch-test`); how close a match gets on real footage depends on the scene.
 ## One undo for what the AIs did (round 28, aiundo, 32 upgrades: docs/upgrades/aiundo.md)
 - ✓ Every change an AI makes (Lab scenes through the director, the mood board, files through chat access, settings through the commands it runs) lands in **one timeline**: who (the AI, the chat, the reply, a hook or mission that started it), what in plain words, when.
@@ -899,7 +899,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ✦ Describe it: a scene from your words, 0 tokens (round 29, instantscene, 50 upgrades: docs/upgrades/instantscene.md)
 - ✓ Write a sentence ("dreamy pink chrome tunnel that pulses on the kick, slow"). A small hand-written vocabulary matches it on this computer, with no model call, against the gallery's starting points, the library, particles / physics / type presets, ◐ looks, palettes and music reactions.
 - ✓ 3 different picks as cards (a picture of each as it will open, what it understood, why). One click opens a new scene with colors, speed, intensity and the music reaction set from the words, and the look on top.
-- ✓ Ways in: the gallery's search ("✦ Make it from my words"), an empty scene / a new chat's starter, the director's ◎ mission "Make it from my words", ✦ More › ✨ Look & motion. "✦ Ask the director to take it further" shows the cost first.
+- ✓ Ways in: the gallery's search ("✦ Make it from my words"), an empty scene / a new chat's starter, the director's ◎ mission "Make it from my words", right-click the preview › ✨ Look & motion. "✦ Ask the director to take it further" shows the cost first.
 - ○ Tested with the fake engines (`sh dev/run-checks.sh instantscene unit:instantscene-test`); the picks' look on a real GPU wasn't seen here.
 ## A Lab sequence that doesn't bug out (round 29, seqsolid: docs/upgrades/seqsolid.md)
 - ✓ Fast scrubbing across cuts no longer leaves the preview black: code from clips you scrubbed past no longer makes WebGL contexts, logs or errors.
@@ -929,7 +929,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ✨ Make it look finished (round 30, autopolish, 35 upgrades: docs/upgrades/autopolish.md)
 - ✓ One click, 0 tokens: the Lab measures its own picture (levels, black / white, contrast, glow, color harmony, detail under the 9:16 apps' buttons), a few frames of motion, what follows the music and the frame rate, then fixes what's off with ◐ Grade and slider changes, as one undo step.
 - ✓ The card shows the measured numbers before → after, a finish score, Before / After pictures; untick any fix, hold Before, ↶ Undo all, ✦ ask the director for what's left (cost first).
-- ✓ Ways in: right-click the preview › ✨ Make it look finished, ✦ More › ✨ Look & motion, the director's ◎ "Polish the look" (local pass first, then the director), ⌘/Ctrl+K.
+- ✓ Ways in: right-click the preview › ✨ Look & motion › ✨ Make it look finished, right-click the preview › ✨ Look & motion, the director's ◎ "Polish the look" (local pass first, then the director), ⌘/Ctrl+K.
 - ○ Tested on a generated bad scene with the fake engines (`sh dev/run-checks.sh autopolish unit:autopolish-test`); not seen on the owner's real scenes / GPU.
 ## 🥁 React to the drums, the bass, the voice (round 30, stems, 26 upgrades: docs/upgrades/stems.md)
 - ✓ The Lab splits the loaded song into its parts once, on this computer, no AI model (harmonic / percussive separation + bands + onsets, in a Worker, kept on disk): **the drums** (kick, snare, hats), **the bass**, **the voice**, **everything else**, smooth 0..1 at the playhead, so renders match the preview.
@@ -968,7 +968,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ One place for things to try: Discover's daily tip no longer pops up by itself; the Lab's starter chips step aside while the card is up; an empty chat's "◎…" line became the one link.
 - ○ Tested with fake engines (`sh dev/run-checks.sh quickstart`) and a unit test of the picking (`node dev/quickstart-test.js`).
 ## ∞ Make it loop (round 31, perfectloop, 35 upgrades: docs/upgrades/perfectloop.md)
-- ✓ ✦ More › ⇪ Make › **∞ Make it loop** (or the ◎ mission, or just asking the director): the scene loops over N bars of the song (or N seconds of its own timeline). The preview's clock and renders' wrap with it, keyframes come back round, music reactions loop with the bars.
+- ✓ Right-click the preview › ⇪ Make & export › **∞ Make it loop** (or the ◎ mission, or just asking the director): the scene loops over N bars of the song (or N seconds of its own timeline). The preview's clock and renders' wrap with it, keyframes come back round, music reactions loop with the bars.
 - ✓ Code that loops by itself: `loopT()`, `loopSin(n)`, `loopCos(n)`, `loopWave(n)`, `loopAngle(n)`, `loopNoise(x, y)` (noise on a circle), `loop.len`; the director reads them with `help loop`, on demand.
 - ✓ The seamless check compares the loop's last frame with its first (publishkit's loop check): **≈ seamless** or **a visible jump**, with one click to fix it (blend the last beat into the first: the preview fades its seam, renders cross-fade it), or the director (cost first).
 - ✓ ⇪ Render the loop: a perfect-loop MP4 (or GIF) of exactly the loop, with its bars of the song. Ready to post's loop fix renders a Lab render's scene again as a perfect loop.
@@ -1062,7 +1062,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ `<remember>` replaces the fact it repeats or contradicts instead of appending (the chat's frozen prompt stays byte-stable); one quiet line in the Memory fold past ≈ 800 tokens.
 - ○ `node dev/memorytidy-test.js` (unit), `sh dev/run-checks.sh memorytidy` (fake engines).
 ## ♪ Move with the music (round 38, beatlink, 31 upgrades: docs/upgrades/beatlink.md)
-- ✓ Right-click any Lab slider (or its ♪) › ♪ Move with the music…: what drives it (beat, bar, kick, snare, hi-hats, bass, mids, highs, vocals, drums, loudness), how (pulse, follow, step, random), the range as two handles on the slider / around the knob, a live meter; ♪ badge; one undo per change; `/move-with`, ✦ More › ♪ Music, Ctrl/⌘+K, Lab search / Find anything ("pulse on kick").
+- ✓ Right-click any Lab slider (or its ♪) › ♪ Move with the music…: what drives it (beat, bar, kick, snare, hi-hats, bass, mids, highs, vocals, drums, loudness), how (pulse, follow, step, random), the range as two handles on the slider / around the knob, a live meter; ♪ badge; one undo per change; `/move-with`, right-click the preview › ♪ Music, Ctrl/⌘+K, Lab search / Find anything ("pulse on kick").
 - ✓ The same music link as before with a "how" and a range: saved with the scene, templates and packs; computed from the song's time, so renders / exports / the Lab sequence match the preview frame for frame; live sound too.
 - ○ `node dev/beatlink-test.js` (unit), `sh dev/run-checks.sh beatlink` (fixture song, playback, two renders, live loopback stub, undo, save / reload); not yet on the owner's real songs.
 ## 🧭 Smart learns from you (round 39, routerlearn, 18 upgrades: docs/upgrades/routerlearn.md)
@@ -1074,7 +1074,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Use a recipe…: its steps with what fits this scene and what's skipped (with why); ▶ Use = one undo step (◧ names it); edit (↑ ↓ ✕, rename), several scenes at once, ⇪ pack (kind recipe), delete to the Trash; `/recipe` for the director via three_do run.
 - ○ `node dev/labrecipes-test.js` (unit), `sh dev/run-checks.sh labrecipes`; not yet on the owner's real scenes.
 ## 🎥 Camera moves (round 40, labcamera, 35 upgrades: docs/upgrades/labcamera.md)
-- ✓ Right-click the preview › 🎥 Camera moves: push in, pull out, orbit left / right ¼ ½ full, dolly zoom, crane up / down, handheld shake, whip pan, slow drift, punch-in on each kick / beat / bar, from this view to that view (look around, set start and end); on scenes with a 3D camera only, as an offset on the scene's own camera.
+- ✓ Right-click the preview › ✨ Look & motion › 🎥 Camera moves: push in, pull out, orbit left / right ¼ ½ full, dolly zoom, crane up / down, handheld shake, whip pan, slow drift, punch-in on each kick / beat / bar, from this view to that view (look around, set start and end); on scenes with a 3D camera only, as an offset on the scene's own camera.
 - ✓ Cyan bars under the waveform (drag ends, beat snap; right-click the waveform › from here), 🎥 Your moves… (6 easings, intensity, remove); one undo per change; saved with the scene / templates / packs; renders and the Lab sequence match the preview; a 📜 recipe step; Lab search, ⌘/Ctrl+K, `/camera-moves`.
 - ○ `node dev/labcamera-test.js` (unit), `sh dev/run-checks.sh labcamera`; not yet on a real Mac / PC GPU.
 ## ♿ Keyboard and screen readers (round 40, a11y, 24 upgrades: docs/upgrades/a11y.md)
@@ -1105,10 +1105,14 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Lab: a picture / video reference or the song saved again in another app is swapped into the preview in place (one quiet "↻ logo.png updated from disk"); renamed → followed; deleted → Find this file. AI changes edited outside Hearth say "changed outside Hearth since: not safely undoable"; a chat box's file saved again before sending is read again. `/watching`.
 - ○ `node dev/filewatch-test.js` (simulated Mac / Windows plans + the service on real folders), `sh dev/run-checks.sh filewatch`; real FSEvents / Windows not tried here.
 ## ⧉ Make a batch (round 42, labbatch, 35 upgrades: docs/upgrades/labbatch.md)
-- ✓ ✦ More › ⇪ Make › ⧉ Make a batch… (also the toolbar's ⋯, My templates' picker and cards, Lab search, ⌘/Ctrl+K): one of My templates (or this scene) → one video per row and format; rows from typed lines, a CSV / TSV naming the fields (Mac / Windows paths, relative to the CSV), every song or picture in a folder; a recipe on each; names like "{title} {format}".
+- ✓ Right-click the preview › ⇪ Make & export › ⧉ Make a batch… (also the toolbar's ⋯, My templates' picker and cards, Lab search, ⌘/Ctrl+K): one of My templates (or this scene) → one video per row and format; rows from typed lines, a CSV / TSV naming the fields (Mac / Windows paths, relative to the CSV), every song or picture in a folder; a recipe on each; names like "{title} {format}".
 - ✓ Stills of the first 4 before it starts; one render-queue row (cancel, pause, time left for the batch), kept awake; one folder + "Batch summary.csv"; `/batch` for the director via three_do run. Exported frames now wait for reference pictures.
 - ○ `node dev/labbatch-test.js` (unit), `sh dev/run-checks.sh labbatch` (real ffmpeg); not yet on the owner's real songs / Mac.
 ## 🛟 Data safety everywhere (round 43, datasafe, 31 upgrades: docs/upgrades/datasafe.md)
 - ✓ A read that failed is never "empty": every kv store, chats, memory, website history, usage, settings (config.json), sync's state, app keys and the undo log are read again when held, fall back to their copies, are merged (never written over) when saved after a failed read, and keep rotating copies (data/.history, data/kv/.history). Chats never vanish from the list; sync never reads a folder it couldn't list as "deleted".
 - ✓ A calm card says what couldn't be read ("nothing was changed", Retry); 🛟 Recover… (Settings › Backups, Ctrl/⌘+K, /recover) brings back chats, memory lines, AIs / settings, tool data and Lab scenes from every copy, by merging.
 - ○ `node dev/datasafe-test.js`, `node dev/datasafe-scan.js` (lint), `sh dev/run-checks.sh datasafe`; Windows locks / placeholders simulated, not yet on the owner's PC.
+## ☰ Calm menus (round 43, menucalm, 31 upgrades: docs/upgrades/menucalm.md)
+- ✓ The Lab picture's right-click 23 → 11 rows, most used first (Freeze, Frame size, Sliders, ♪ Music, Capture, View · ＋ Add, ✨ Look & motion, ⇪ Make & export, ✦ More); the toolbar ⋯ 17 → 11; Sketch ▾ shows all 9 rows (History ›, ⇪ Share & export ›); Board ▾ 20 → 12; the waveform's right-click 7 + More.
+- ✓ Pointing opens a submenu inside a flyout too (#menu-fly2); one name and icon per action in every menu, no command names, one-sentence tooltips where a hint is cut; rows that mean nothing now stay hidden; nothing removed.
+- ○ `sh dev/run-checks.sh menucalm` (dev/checks/menucalm.js: 17 menus, budgets, ≤ 2 clicks, nothing gone + the checks that read the moved rows).

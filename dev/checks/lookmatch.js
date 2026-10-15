@@ -18,7 +18,7 @@ const dir = H.agents().find((a) => a.dock === 'three');
 const d = ThreeLab.director;
 step('loaded with the Lab: LookCore, LookMatch, /look-match', typeof LookCore !== 'undefined' && Boolean(Commands.get('look-match')));
 step('the ◎ mission "Make it look like this" is there for the Lab director (only)', Missions.shown(dir.id).some((m) => m.id === 'lab-lookmatch') && !Missions.shown(H.claudeAgent().id).some((m) => m.id === 'lab-lookmatch'));
-const look = LabEasy.previewItem().items().find((x) => /Look & motion/.test(x.label)).items();
+const look = LabEasy.previewGroups().find((x) => /Look & motion/.test(x.label)).items();
 step('✦ More › ✨ Look & motion › 🎨 Make it look like this', look.some((x) => /^🎨 Make it look like this/.test(x.label)), look.map((x) => x.label));
 
 // ---------- test pictures, made here ----------

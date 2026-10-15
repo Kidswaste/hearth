@@ -7,7 +7,7 @@
 // only if you want, "✦ Ask the director to take it further", with the cost shown first.
 // Loads with the gallery (lazy group "gallery"); the ways in live in tools/three-instant-hook.js (loaded with the Lab):
 // the gallery's search ("Make it from my words" when it reads like a description), the empty Lab, the ◎ mission
-// "Make it from my words", ✦ More › ✨ Look & motion › ✦ Describe it…, and /describe (the app's internal API).
+// "Make it from my words", right-click the preview › ✨ Look & motion › ✦ Describe it…, and /describe (the app's internal API).
 // Pictures: each pick is drawn in the gallery's ONE shared preview page, one at a time, then the page sleeps.
 const LabInstant = (() => {
   const C = InstantCore;

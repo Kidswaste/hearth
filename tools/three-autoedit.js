@@ -7,7 +7,7 @@
 //   · then the Lab sequence is built from the plan (tools/three-seq.js: one undo step; the song under it, every cut on
 //     a bar, a named marker per section, the lyrics as captions) and shown
 //   · "⇪ Render" renders it the usual way (9:16 / 16:9 / 1:1, tools/three-export.js)
-// Reached without commands: the 🎬 next to the song's name in the Lab timeline, ✦ More › ⇪ Make (the preview's
+// Reached without commands: the 🎬 next to the song's name in the Lab timeline, right-click the preview › ⇪ Make & export (the preview's
 // right-click), the director's ◎ mission "Make a music video from this song", or asking the director (three_do
 // autoedit). /music-video stays the internal API.
 const AutoEdit = (() => {
@@ -145,7 +145,7 @@ const AutoEdit = (() => {
       const r = A.build(ThreeSeq.edit, p, { D: ThreeSeqData, C: CutData, captionItem: SeqCut.captionItem, cues });
       ThreeSeq.applyEdit(r.edit, `🎬 Music video: ${r.info.clips} clips on ${r.info.sections} sections`);
       S.key = ThreeSeq.key; S.made = { at: Date.now(), ...r.info };
-      // the sequence takes the view: the strip steps aside (✦ More › ⇪ Make, or 🎬 by the song, brings the plan back)
+      // the sequence takes the view: the strip steps aside (right-click the preview › ⇪ Make & export, or 🎬 by the song, brings the plan back)
       Panel.close();
       toast(`🎬 Made: ${r.info.clips} clips, ${Math.round(r.info.seconds)} s, every cut on a bar${r.info.captions ? `, ${r.info.captions} lyric lines` : ''}. ⇪ Render when you like it.`, { timeout: 7000, action: { label: '⇪ Render', fn: () => { Panel.open(); Panel.paint(); Panel.renderMenu(Panel.el?.querySelector('.ae-render')); } } });
       return r.info;
@@ -314,7 +314,7 @@ const AutoEdit = (() => {
       submit: (agent, text, t) => { open({ brief: t || null }).catch((err) => toast(err.message, { type: 'error' })); return true; },
     });
   }
-  // the 🎬 next to the song in the Lab timeline, ✦ More › ⇪ Make
+  // the 🎬 next to the song in the Lab timeline, right-click the preview › ⇪ Make & export
   const item = () => ({ label: '🎬 A music video from this song', hint: 'a plan per section first; nothing renders until you say', cmd: 'music-video', action: () => open().catch((err) => toast(err.message, { type: 'error' })) });
 
   return { open, close: () => Panel.close(), make, render, tool, item, makePlan, get plan() { return S.plan; }, set plan(p) { S.plan = p; Panel.paint(); }, get key() { return S.key; }, get busy() { return S.busy; }, get panel() { return Panel.el; }, _Panel: Panel, _S: S };

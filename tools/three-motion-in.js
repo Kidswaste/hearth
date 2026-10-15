@@ -12,7 +12,7 @@
 // camera light goes off) while the Lab isn't on screen; nothing is recorded or sent (frames go to the preview and are
 // dropped); the director's pictures are pixelated while the camera shows unless /webcam share on; a director asks
 // before turning the camera on.
-// Where: right-click the preview › 📷 Camera ›, /webcam (alias /camera-in, /tracking), Ctrl/⌘+K "Lab: 📷 …", the
+// Where: right-click the preview › ＋ Add › 📷 Webcam ›, /webcam (alias /camera-in, /tracking), Ctrl/⌘+K "Lab: 📷 …", the
 // curve editor's sound picker (📷 groups), directors: three_do motion { op: camera | track | follow | look }.
 const LabMotionIn = (() => {
   const C = MotionInCore;
@@ -386,7 +386,7 @@ const LabMotionIn = (() => {
     return showMenu(r.left + 40, r.top + 40, items.map(([label, hint, action]) => ({ label, hint, action })));
   }
 
-  // ---------- menus (right-click the preview › 📷 Camera, the pill) ----------
+  // ---------- menus (right-click the preview › ＋ Add › 📷 Webcam, the pill) ----------
   function menuItems() {
     const p = prefs();
     return [
@@ -411,7 +411,7 @@ const LabMotionIn = (() => {
       { label: 'What it sees now', action: () => nowText().then((t) => toast(t.replace(/\*\*/g, ''), { timeout: 7000 })) },
     ];
   }
-  function previewItem() { return { label: '📷 Camera', hint: st.on ? (st.paused ? 'paused' : 'on') : 'off', items: () => menuItems() }; }
+  function previewItem() { return { label: '📷 Webcam', tip: 'Your webcam (or a capture card, a video) as a live input the scene can follow', hint: st.on ? (st.paused ? 'paused' : 'on') : 'off', items: () => menuItems() }; }
   async function pickFile() {
     const [p] = (await window.hub.openDialog({ title: 'A video to use as the camera', properties: ['openFile'], filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'webm', 'm4v', 'mkv'] }] })) || [];
     if (!p) return null;
@@ -439,7 +439,7 @@ const LabMotionIn = (() => {
   // ---------- directors: three_do motion { op: camera | track | follow | look } (help webcam) ----------
   const OPS = new Set(['camera', 'webcam', 'track', 'follow', 'look', 'looks']);
   const owns = (op) => OPS.has(String(op || '').toLowerCase());
-  const HELP = `CAMERA IN (round 25): the owner's webcam / capture card / a video file as a live Lab input, tracked on this computer (light tracker: movement; MediaPipe after the owner's one-time download: hands, body, face, mask). Off by default; turning it on asks the owner. Tool: three_do { cmd: "motion", op } — camera {on: true|false, device, file, mirror, res: 480|720|1080, tracker: auto|light} (status without args) · track {names} (the values now) · follow {slider, feature, amount, layer} (a slider follows a feature: the ♪ react-to mapping) · look {preset} (${LOOKS.map((l) => l.id).join(', ')}) · looks. Features (0..1, x left→right on screen, y bottom→top, turns 0.5 = straight): ${C.GROUPS.map(([g, l]) => `${g}: ${l.map((x) => x[0]).join(' ')}`).join(' · ')} · camZ0…camZ8 (3×3 movement grid). In code: webcam.feat.handX (also audio.feat.handX, onHit('pinch')), webcam.layer(P, {mode: 'video'|'cutout'|'silhouette'|'trails'|'mask'|'debug'}) shows the camera in a layer (sliders opacity zoom x y fit bright contrast sat hue blur color glow soft fade), webcam.texture() / webcam.maskTexture() (THREE textures that follow it), webcam.points (hands). Particles from the body: a 'mask' or 'silhouette' layer + particles emitter 'layer' (source: it). Your screenshots are pixelated while the camera shows unless the owner shares it. The owner: /webcam, right-click the preview › 📷 Camera.`;
+  const HELP = `CAMERA IN (round 25): the owner's webcam / capture card / a video file as a live Lab input, tracked on this computer (light tracker: movement; MediaPipe after the owner's one-time download: hands, body, face, mask). Off by default; turning it on asks the owner. Tool: three_do { cmd: "motion", op } — camera {on: true|false, device, file, mirror, res: 480|720|1080, tracker: auto|light} (status without args) · track {names} (the values now) · follow {slider, feature, amount, layer} (a slider follows a feature: the ♪ react-to mapping) · look {preset} (${LOOKS.map((l) => l.id).join(', ')}) · looks. Features (0..1, x left→right on screen, y bottom→top, turns 0.5 = straight): ${C.GROUPS.map(([g, l]) => `${g}: ${l.map((x) => x[0]).join(' ')}`).join(' · ')} · camZ0…camZ8 (3×3 movement grid). In code: webcam.feat.handX (also audio.feat.handX, onHit('pinch')), webcam.layer(P, {mode: 'video'|'cutout'|'silhouette'|'trails'|'mask'|'debug'}) shows the camera in a layer (sliders opacity zoom x y fit bright contrast sat hue blur color glow soft fade), webcam.texture() / webcam.maskTexture() (THREE textures that follow it), webcam.points (hands). Particles from the body: a 'mask' or 'silhouette' layer + particles emitter 'layer' (source: it). Your screenshots are pixelated while the camera shows unless the owner shares it. The owner: /webcam, right-click the preview › ＋ Add › 📷 Webcam.`;
   async function op(a = {}, ctx = {}) {
     const o = String(a.op || '').toLowerCase();
     if (o === 'camera' || o === 'webcam') {

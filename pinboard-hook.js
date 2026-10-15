@@ -1,7 +1,7 @@
 // Find images like this (round 30, pinboard stream): the ways in, loaded with the board. The finder itself
 // (pinboard.js + pinboard-core.js, lazy group "pinboard") loads the first time one is used:
 //   · the board's ⋯ menu and its right-click › "Find images like this…" (the board's vibe), the right-click on
-//     selected references (their vibe), Add › "Images like this board…"
+//     selected references (their vibe), Add › "📌 Find images like this…"
 //   · the ◎ mission "Find images for this vibe": your message is the vibe (or an aesthetic), with this chat's board
 //   · the AIs with board tools: board_do pins {query?} → a short list, shown here as a picker card the owner confirms
 //   · /find-images [pinterest|unsplash|arena|cosmos] [words] (the app's internal API; the buttons are the way in)
@@ -24,7 +24,7 @@ const PinboardHook = (() => {
   const baseExtras = B._.itemExtras;
   B._.itemExtras = (list) => [...(baseExtras?.(list) || []), ...(list.some(media) ? [{ label: '📌 Find images like this…', hint: list.length > 1 ? `like these ${list.length}` : 'like this one', action: () => open({ itemIds: list.map((i) => i.id) }) }] : [])];
   const baseAdd = B._.addItems;
-  B._.addItems = (p) => [...baseAdd(p), { label: '📌 Images like this board…', action: () => open({}) }];
+  B._.addItems = (p) => [...baseAdd(p), { label: '📌 Find images like this…', hint: 'matched to this board', action: () => open({}) }]; // (round 43, menucalm) its name in every menu
 
   // ---------- the ◎ mission ----------
   if (typeof Missions !== 'undefined' && Missions.add) {

@@ -8,7 +8,7 @@
 // made, or why not, with the values used). Each row renders on its own: the template's scene with that row's values
 // is compiled for the export page directly (no scene is made, the Lab on screen is untouched); a recipe is replayed
 // once on a scratch copy of the template (opened for a moment, then removed) and every row starts from that.
-// Ways in: tools/three-batch-hook.js (✦ More › ⇪ Make, the toolbar's ⋯, My templates' picker and cards; Lab search
+// Ways in: tools/three-batch-hook.js (right-click the preview › ⇪ Make & export, the toolbar's ⋯, My templates' picker and cards; Lab search
 // reads those menus) and ⌘/Ctrl+K. For the AI: /batch. Model: tools/three-batch-core.js. Lazy group "labbatch".
 //   LabBatch.open({ template, text, formats, recipe, pattern }) · start(o) · cancel() · pause(on) · status() · close()
 const LabBatch = (() => {

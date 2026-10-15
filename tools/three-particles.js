@@ -2,7 +2,7 @@
 // - A ✦ layer is plain layer code calling particles(P, opts) (simulated and drawn by tools/three-sandbox.html "GPU
 //   particles": float textures stepped on the GPU at 60 steps a second of the scene's clock, points / streaks /
 //   instanced meshes, trails). Its sliders are a normal tweak(): Save, Shuffle, looks, keyframes and ♪ react-to work.
-// - Presets (tools/three-particles-data.js): one searchable picker (/particles, right-click the preview › ✦ Particles,
+// - Presets (tools/three-particles-data.js): one searchable picker (/particles, right-click the preview › ＋ Add › ✦ Particles,
 //   Ctrl/⌘+K, the FX picker's "Particles" category, /template particles-<id>).
 // - Edits go through the layer's code (undoable, the time machine sees them): a slider's value, a slider added, the
 //   options (emitter, text, source layer, look).

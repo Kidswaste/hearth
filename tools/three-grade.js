@@ -196,7 +196,7 @@ const LabGrade = (() => {
     const d = await lab();
     let arg = '';
     if (isClip(target)) arg = `{ N: ${N}, P: ${JSON.stringify(clipValues(target, 'grade'))} }`;
-    else { const have = await findLayers(d); if (!have.grade) throw new Error('No ◐ Grade in this scene yet (/grade preset blockbuster, or right-click the preview › ◐ Grade).'); arg = `{ N: ${N}, layer: ${JSON.stringify(have.grade.id)} }`; }
+    else { const have = await findLayers(d); if (!have.grade) throw new Error('No ◐ Grade in this scene yet (/grade preset blockbuster, or right-click the preview › ✨ Look & motion › ◐ Grade).'); arg = `{ N: ${N}, layer: ${JSON.stringify(have.grade.id)} }`; }
     const r = await d.evalInSketch(`return window.__grade.bake(${arg})`);
     if (!r?.ok) throw new Error(r?.error || 'The preview did not answer');
     return { N: r.value.N, data: b64ToF32(r.value.data) };

@@ -7,7 +7,7 @@
 // applies the same pan / zoom to every scene camera (the sandbox's "reframe"). Exports run one after another in the
 // background with ONE progress line (and one render-queue row), MP4s named "<scene> 9x16 1080x1920.mp4" in one
 // folder. Nothing is uploaded. No tokens.
-// Ways in: the preview's right-click › ⇪ Export › ▦ All formats…, ✦ More › ⇪ Make, the toolbar's ⋯, Ready to post
+// Ways in: the preview's right-click › ⇪ Make & export › ▦ All formats…, right-click the preview › ⇪ Make & export, the toolbar's ⋯, Ready to post
 // (📮), ⌘/Ctrl+K. For the AI: /all-formats. Model: tools/three-formats-core.js. Lazy group "multiformat".
 const LabFormats = (() => {
   const FC = FormatsCore;

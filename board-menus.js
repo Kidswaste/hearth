@@ -4,7 +4,7 @@
 // tags, stamps, notes, copy / paste between boards, the vibe card. Everything here is also a chat command (board-cmds.js).
 (() => {
   const B = Board; const { S, D, V, LY } = B._;
-  const ck = (on, label) => `${on ? '✓ ' : '   '}${label}`;
+  const ck = (on, label) => `${on ? '✓ ' : ''}${label}`; // (round 43, menucalm) no padding: showMenu read "   Starred" as an empty row with the key "Starred"
   const at = (e) => [e?.clientX ?? innerWidth / 2, e?.clientY ?? innerHeight / 3];
   const menu = (e, items) => showMenu(...at(e), items);
   const sel = () => B.selected();
@@ -333,8 +333,8 @@
       { label: 'Rename…', action: () => renameItems(), more: true },
       { label: 'Info…  I', action: () => B._.info(), more: true },
       { label: 'Hide  H', action: () => B._.hide(), more: true },
-      { label: 'Move to board', items: () => B.boards().filter((b) => b.id !== S.cur.id).map((b) => ({ label: b.name, action: () => B._.toBoard(b.id, { move: true }) })), more: true },
-      { label: 'Copy to board', items: () => B.boards().filter((b) => b.id !== S.cur.id).map((b) => ({ label: b.name, action: () => B._.toBoard(b.id) })), more: true },
+      ...(B.boards().length < 2 ? [] : [{ label: 'Move to board', items: () => B.boards().filter((b) => b.id !== S.cur.id).map((b) => ({ label: b.name, action: () => B._.toBoard(b.id, { move: true }) })), more: true },
+      { label: 'Copy to board', items: () => B.boards().filter((b) => b.id !== S.cur.id).map((b) => ({ label: b.name, action: () => B._.toBoard(b.id) })), more: true }]), // (round 43, menucalm) only with another board
       { label: 'Copy as a picture  Ctrl+Shift+C', action: () => B._.copyImage(), more: true },
       ...(it?.src ? MediaFile.items(it.src).map((x) => ({ ...x, more: true })) : []), // (round 18) Open · Reveal · Copy path, the app's one wording
       ...(it?.from ? [{ label: 'Go to the clip it came from', action: () => { B.select(it.from); B.zoomSel(); }, more: true }] : []),
@@ -371,7 +371,7 @@
       { label: 'Lens', items: lensItems },
       { label: 'Select', items: selectItems },
       { label: 'View', items: viewItems },
-      { label: 'Board', items: () => Board._.boardItems() },
+      { label: 'Board', items: () => calmBoard(Board._.boardItems()) },
       { label: 'Present', items: presentItems },
       { label: 'Search and filter…  /', action: () => Board._.search?.() },
       { label: 'Send the board\'s vibe to a chat', items: () => sendItems([]) },
@@ -434,11 +434,11 @@
       by(() => true, 'Everything  Ctrl+A'), { label: 'Nothing  Esc', action: () => B.select([]) }, { label: 'Invert', action: () => B.select(B.items().filter((i) => !S.sel.has(i.id)).map((i) => i.id)) },
       by((i) => i.type === 'image' || i.type === 'gif', 'Pictures'), by((i) => i.type === 'video', 'Clips'), by((i) => i.type === 'web', 'Sites'), by((i) => i.type === 'note' || i.type === 'text', 'Notes and text'),
       by((i) => i.type === 'swatch' || i.type === 'palette', 'Colors'), by((i) => i.type === 'frame', 'Frames'), by((i) => i.stamp, 'Stamped'), by((i) => !i.tags?.length && i.type !== 'frame', 'Untagged'),
-      { label: 'With tag', items: () => allTags().map((t) => by((i) => i.tags?.includes(t), `#${t}`)) },
+      allTags().length ? { label: 'With tag', items: () => allTags().map((t) => by((i) => i.tags?.includes(t), `#${t}`)) } : null, // (round 43, menucalm) only with tags
       { label: 'Same kind as selected', action: () => { const k = new Set(sel().map((i) => i.type)); B.select(B.items().filter((i) => k.has(i.type)).map((i) => i.id)); } },
       by((i) => Date.now() - (i.added || 0) < 3600e3, 'Added in the last hour'), by((i) => new Date(i.added || 0).toDateString() === new Date().toDateString(), 'Added today'),
       { label: 'Like the selected (vibe)', action: () => findSimilar() },
-    ];
+    ].filter(Boolean);
   }
   function viewItems() {
     const p = B.prefs();
@@ -469,13 +469,30 @@
       { label: 'Give the vibe to the Three Director', action: () => B._.toLab() },
       { label: 'Duplicate the board', action: () => B.duplicate(), more: true },
       { label: ck(Boolean(S.index.list.find((x) => x.id === cur.id)?.star), 'Starred'), action: () => B._.star(), more: true },
-      { label: `Show hidden (${cur.items.filter((i) => i.hidden).length})`, action: () => B._.showHidden(), more: true },
+      ...(cur.items.some((i) => i.hidden) ? [{ label: `Show hidden (${cur.items.filter((i) => i.hidden).length})`, action: () => B._.showHidden(), more: true }] : []), // (round 43, menucalm) only when something is hidden
       { label: 'Statistics', action: () => Modal.alert('Board', B._.stats().replace(/\*\*/g, '')), more: true },
-      { label: 'Compare with another board', items: () => B.boards().filter((b) => b.id !== cur.id).map((b) => ({ label: b.name, action: async () => Modal.alert('Vibe differences', B._.diff(cur, await B.load(b.id))) })), more: true },
+      B.boards().length < 2 ? null : { label: 'Compare with another board', items: () => B.boards().filter((b) => b.id !== cur.id).map((b) => ({ label: b.name, action: async () => Modal.alert('Vibe differences', B._.diff(cur, await B.load(b.id))) })), more: true },
       { label: 'Copy the board as a picture', action: () => B._.copyImage(B.items()), more: true },
+    ].filter(Boolean).concat([
       { label: 'Tidy media folder (unused files)', action: () => Board._.cleanMedia?.(), more: true },
       { label: `Delete "${cur.name}"`, danger: true, action: async () => { if (await Modal.confirm('Delete this board?', `"${cur.name}" and its ${cur.items.length} items (Undo in the notification).`, { ok: 'Delete', danger: true })) B.remove(cur.id); } },
-    ];
+    ]);
+  }
+  // (round 43, menucalm) Board ▾ in one order whatever the board's layers added: your boards, New board…, New from a
+  // template › — 📌 Find images like this…, Show the board to a chat ›, Export › — Rename…, Link to a chat ›,
+  // Organise ›, Use it ›, More…, Delete last (20 rows → 12; every row still there, ≤ 2 clicks with the flyouts)
+  function calmBoard(list) {
+    const names = new Set(B.boards().map((b) => b.name));
+    const isBoard = { test: (l) => names.has(l) };
+    for (const it of list) if (it && /What can I do here/.test(it.label || '')) it.more = true;
+    return menuArrange(list, {
+      order: [isBoard, /^New board/, /^New from a template/, /^📌 Find images/, /^Show the board to a chat/, /^Export$/, /^Rename/, /^Link to a chat/, /^Organise$/, /^Use it$/],
+      seps: [2, 5],
+      groups: [
+        { label: 'Organise', hint: 'lock, brief, collections, style…', tip: 'Keep this board in order: lock it, its brief, collections, one style for everything, views', match: /^(Lock the board|Unlock the board|Brief…|Collections$|Group by vibe|Style everything|Starred|Duplicate the board|Show hidden|Untangle overlaps|Views$|Selected picture as the background|No background picture|Tidy media folder)/ },
+        { label: 'Use it', hint: 'the Lab, chats, Pinterest…', tip: 'Take the board elsewhere: the Lab, a chat, Pinterest, a picture, a template of yours', match: /^(Give the vibe to the Three Director|Palette → Lab look|Clips on a timeline|Ask a chat about the board|Chats get|📌 Pinterest|Copy the board as a picture|Save as a template…|Compare with another board)/ },
+      ],
+    });
   }
   const recentChats = () => (H.chats || []).filter((c) => H.agent(c.agentId)?.mode === 'native').slice(0, 14);
   const presentItems = () => [
@@ -493,7 +510,7 @@
   // the chips and right-click menus go through Board._ so later layers (board-plus.js) can add entries
   function addMenu(e) { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, Board._.addItems(null)); }
   function viewMenu(e) { if (e.altKey) { B.zoomFit(); return; } const r = e.currentTarget.getBoundingClientRect(); showMenu(r.right - 220, r.bottom + 4, viewItems()); }
-  function boardMenu(e) { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, Board._.boardItems()); }
+  function boardMenu(e) { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, calmBoard(Board._.boardItems())); }
 
   Object.assign(Board._, {
     openItem, editText, itemMenu, canvasMenu, addMenu, viewMenu, boardMenu, copy, pasteItems, askUrl, pickFiles, vibeCard, frameGrab, posterHere, stepFrame, cropTo, resetLook,
