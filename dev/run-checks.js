@@ -8,7 +8,7 @@
 //   sh dev/run-checks.sh board capture        # groups, or check names (journey-board…)
 //   sh dev/run-checks.sh unit                 # the Node-only tests (no Electron)
 //   sh dev/run-checks.sh --list               # groups and checks
-//   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step)
+//   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step) · --names (list) / --exact (run names as checks, not groups)
 //   · --fixtures-only · --stop (first failure)
 // Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, offline, unit, all.
 const fs = require('fs');
@@ -132,8 +132,9 @@ if (argv.includes('--list')) {
   process.exit(0);
 }
 // (round 44) --names <group…>: the checks one per line (to split "all" into parts that fit a time limit)
-if (argv.includes('--names')) { console.log([...new Set((names.length ? names : ['qa']).flatMap((n) => GROUPS[n] || [n]))].join('\n')); process.exit(0); }
-const wanted = [...new Set((names.length ? names : ['qa']).flatMap((n) => GROUPS[n] || [UNIT.includes(n) ? `unit:${n}` : n]))];
+if (argv.includes('--names')) { console.log([...new Set((names.length ? names : ['qa']).flatMap((n) => GROUPS[n] || [n]))].join('\n')); process.exit(0); } // run them with --exact
+// (round 44) --exact: the names are checks, never groups ("a11y" is both: a part of "all" ran its whole group again)
+const wanted = [...new Set((names.length ? names : ['qa']).flatMap((n) => (!argv.includes('--exact') && GROUPS[n]) || [UNIT.includes(n) ? `unit:${n}` : n]))];
 for (const n of wanted) if (!n.startsWith('unit:') && !all.includes(n)) { console.error(`No check "${n}" (sh dev/run-checks.sh --list)`); process.exit(2); }
 
 // ---------- fixtures (made once, reused; all in the temp folder, never in the app) ----------
