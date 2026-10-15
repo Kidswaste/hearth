@@ -5,7 +5,7 @@
 //  2. Settings › Backups: the backup by date with what's inside (3 scenes · 2 chats…), Restore missing things, Show in
 //     Finder / Explorer; never a folder inside the data folder
 //  3. the rotation trims: two weeks of daily backups on a moving clock leave fewer, the newest kept
-//  4. a damaged zip is reported (Check again, the ⚠ row, left out of Recover); a backup whose check fails says why in
+//  4. a damaged zip is reported (Check again, the ⚠ row) and tidied once a good one follows; a backup whose check fails says why in
 //     plain words with Retry (Settings line + dialog), and Retry works
 //  5. Restore missing things merges a deleted scene (and a deleted chat) back; a "before a restore" backup comes first
 //  6. /backup status, the calm note after 3 days without a good backup
@@ -105,7 +105,7 @@ try {
   step('Retry: a good backup', Boolean(fixed));
   document.querySelector('.backups-dialog')?.close();
   const zips = (await window.hub.backupauto.list()).items;
-  step('the damaged one stays marked in the list', zips.some((b) => b.ok === false));
+  step('the damaged backup is tidied away once a good one follows', !zips.some((b) => b.name === victim.name) && !zips.some((b) => b.ok === false), zips.map((b) => [b.name, b.ok]));
 
   // ---------- 5. restore merges a deleted scene back ----------
   const newest = zips.find((b) => b.ok === true);
