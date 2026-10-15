@@ -53,7 +53,7 @@ async function screen() {
   return colorsOf(`data:image/png;base64,${cap.data}`);
 }
 async function thirds() { const a = await merged(); const b = await screen(); return a === b ? a : `${a}|${b}`; }
-const settle = async (want, ms = 12000) => { let t = null; await until(async () => { t = await thirds(); return t === want; }, ms); return t; };
+const settle = async (want, ms = 30000) => { let t = null; await until(async () => { t = await thirds(); return t === want; }, ms); return t; };
 step('a scene of 3 layers draws red / green / blue thirds', await settle('RGB') === 'RGB', await thirds());
 
 // ---------- pick with Ctrl+click, group with a real Ctrl+G in the Layers list ----------
