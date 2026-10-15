@@ -14,8 +14,10 @@ const { execFile } = require('child_process');
 const T = require('./twocomputers-core');
 
 let o = { dataDir: path.join(__dirname, 'data'), syncmain: null, getWin: () => null, platform: process.platform, home: os.homedir() };
-const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return d; } };
-function writeJson(f, v) { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = `${f}.${process.pid}.tmp`; fs.writeFileSync(t, JSON.stringify(v, null, 1)); fs.renameSync(t, f); }
+// (round 43, datasafe) read again when held; a file that still can't be read is never written over (its links stay)
+const unread = new Set();
+const readJson = (f, d) => { const r = require('./datasafe-core').load(fs, f, d); if (r.canSave && !r.doubt) unread.delete(f); else unread.add(f); return r.value; };
+function writeJson(f, v) { if (unread.has(f)) throw new Error(`${path.basename(f)} can't be read just now: not saved over`); fs.mkdirSync(path.dirname(f), { recursive: true }); const t = `${f}.${process.pid}.tmp`; fs.writeFileSync(t, JSON.stringify(v, null, 1)); fs.renameSync(t, f); }
 
 // ---------- this computer ----------
 let niceName = null;
