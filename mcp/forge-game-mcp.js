@@ -14,24 +14,35 @@ const GAME_GUIDE = `Forgeheart runs as one big classic script, so its globals ar
 - The game opens on a title screen (button #mm-start, "Ignite the Forge"). forge_status reports onTitleScreen; use forge_debug {start:true} before testing combat so the player can see it.
 - forge_eval changes are lost on reload: keep one with forge_patch save.`;
 
+// (round 46, promptdiet) what rides along with every message: the few rules a typical ask needs (≈ 95 tokens); the whole
+// globals reference above (≈ 420 tokens) comes back from any forge tool with { help: "globals" }, answered here (no hub)
+const GAME_CORE = `Forgeheart is one big classic script: its globals work by name in forge_eval (S saved state, C live combat, FOES enemy types, spawnFoe, spawnBoss, startStage, stats(), makeItem, UNIQUES, window.__fhDbg; the whole list: forge_eval {help: "globals"}).
+- After changing S: save(); renderHdr(); set ST=null when gear / tree changes.
+- The game opens on a title screen (forge_status onTitleScreen): forge_debug {start: true} before testing combat.
+- forge_eval changes are lost on reload: keep one with forge_patch save.`;
+
 const TOOLS = [
   { name: 'forge_status', description: 'The live debug game now: stage, gold, player HP, enemies by type, boss, debug flags, gear, onTitleScreen.', inputSchema: { type: 'object', properties: {} } },
   // (round 41, toolslim) defaults and ranges said once in the words, not as schema keywords
   { name: 'forge_spawn', description: 'Spawn enemies: type = a FOES type, "random" (default) or "boss" (the stage boss); count 1–200 (10); mult = strength × (1).',
     inputSchema: { type: 'object', properties: { type: { type: 'string' }, count: { type: 'integer' }, mult: { type: 'number' } } } },
-  { name: 'forge_debug', description: 'Debug Deck options and cheats; only the fields you pass change. timeScale 0.1–8; stage jumps there; start leaves the title screen.',
+  { name: 'forge_debug', description: 'Debug Deck options and cheats (only the fields you pass change): timeScale 0.1–8; stage jumps there; start leaves the title screen.',
     inputSchema: { type: 'object', properties: {
       god: { type: 'boolean' }, oneshot: { type: 'boolean' }, paused: { type: 'boolean' }, timeScale: { type: 'number' },
       gold: { type: 'number' }, stage: { type: 'integer' }, killAll: { type: 'boolean' }, heal: { type: 'boolean' }, openDeck: { type: 'boolean' }, start: { type: 'boolean' } } } },
-  { name: 'forge_eval', description: 'Run JS in the live game like the console (last expression returned, Promises awaited; the globals are in your instructions). For anything the other tools don\'t cover; changes last until reload.',
+  { name: 'forge_eval', description: 'Run JS in the live game like the console (last expression returned, Promises awaited) for what the other tools don\'t cover; lasts until reload. help: "globals" lists the game\'s globals.',
     inputSchema: { type: 'object', properties: { code: { type: 'string' } }, required: ['code'] } },
-  { name: 'forge_screenshot', description: 'See the live game now.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'forge_screenshot', description: 'See the live game now (768 px; size: "large" = 1280).', inputSchema: { type: 'object', properties: {} } },
   { name: 'forge_reload', description: 'Reload the game (saved patches re-apply).', inputSchema: { type: 'object', properties: {} } },
   { name: 'forge_patch', description: 'Saved patches: JS that runs now and after every reload (e.g. "fast drones": FOES.kes_drone.spd *= 2). action save (name, code, description; a used name is replaced) | list | remove (name; reload to fully undo).',
     inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['save', 'list', 'remove'] }, name: { type: 'string' }, code: { type: 'string' }, description: { type: 'string' } }, required: ['action'] } },
 ];
 
+// (round 46, promptdiet) forge_eval / forge_status answers past ≈ 1.5k tokens are cut (the rest: the same tool {more: true});
+// a whole S or C dumped by eval was the biggest thing a Forge chat re-read at every later step
+const CAPS = { forge_eval: 6000, forge_status: 6000 };
+
 // The guide reaches the agent through its system prompt (engines.js), which the hub controls: the CLI may drop MCP
 // instructions when the system prompt is replaced, and saying it once is cheaper than repeating it in forge_eval.
 // forge_patch { action } reaches the hub as forge_patch_save / _list / _remove (bridge.js), the names it always had.
-module.exports = serve({ name: 'forgeheart-debug', instructions: '', guide: GAME_GUIDE, tools: TOOLS }, module);
+module.exports = serve({ name: 'forgeheart-debug', instructions: '', guide: GAME_CORE, help: { globals: GAME_GUIDE, game: GAME_GUIDE }, tools: TOOLS, caps: CAPS }, module);
