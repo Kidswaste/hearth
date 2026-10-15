@@ -132,8 +132,13 @@ Count: 66 upgrades.
   (two changes, two undos, as before) and undoing an add removes the layer; saved on disk with the scene and moving on
   the kicks again after a scene switch; a 📐 template made from the scene keeps the words as a field that edits the
   text and keeps the motion. Passed.
-- Also run: see the final report (type, beatlink, menucalm's group: menucalm, labeasy, labsearch, appsearch, chatcalm,
-  a11y, labrecipes, labcamera, labtemplates, labbatch, multiformat, qa-keys, lazy, boot-test; renderfast).
+- Also run (machine load average ≈ 27–30): pass: `beatlink`, `unit:beatlink-test`, `labtemplates`, `labrecipes`,
+  `renderfast`, `menucalm`, `labeasy`, `multiformat`, `lazy`, `unit:boot-test` (after adding the lazy-at tag),
+  `qa-keys` (on a re-run), `node dev/director-mcp-test.js`, `node dev/datasafe-scan.js`, and **`type` (35 / 35)** after the
+  fix below. Fail the same way on the untouched base commit (a3341cf, run from an exported copy), so not from this
+  stream: `labcamera` ("This scene has no 3D camera to move"), `labbatch` (ThreeLab not loaded after 400 ms),
+  `appsearch` (an AI setup fold row), `chatcalm` (chat box right-click rows), `labsearch` (per-keystroke timing).
+  `a11y` failed on a WebGL context error under load (twice).
 - `node dev/lazy-manifest.js` regenerated (only the new `kinetictype` group's entry changed).
 - Looked at screenshots of the picker and the scene.
 
@@ -147,6 +152,11 @@ Count: 66 upgrades.
 - `tools/three-search-core.js`, `appsearch-data.js`: phrases and help answers. `mcp/hearth-map.js`: one paragraph in
   the on-demand `type` topic. `lazy-data.js`: the hook in `lab`, the `kinetictype` group (+ regenerated META).
   `dev/run-checks.js`: the unit test, `kinetictype` in `lab:`, a `kinetictype` group.
+- `index.html`: `kinetictype` in the lazy-at.js tag (dev/boot-test.js wants every 'use' group there).
+- **A fix in `tools/three-type.js`**: since round 37 (directorlean) `three_layers` answers with text lines, so every
+  🅰 type operation that found its layer that way (`/text set`, `/lyrics`, tap-along, `three_do type`…) failed with
+  "find is not a function" and `dev/checks/type.js` failed on main. The scene on screen is now read from the Lab
+  (`layerRows`). `dev/checks/type.js`: its animation samples wait for a frame drawn at the sought time.
 
 ## Not done / risks
 - The previews are a 2D canvas approximation of the page's animations (the same timing math, close motion); the
