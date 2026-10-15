@@ -444,6 +444,7 @@ const LabType = (() => {
     const lyr = Array.isArray(o.lyrics);
     const pick = (list, fn) => list.map((x) => [x, '', quick(() => fn(x), `🅰 ${x}`)]);
     return [['🅰 Type', `${o.mode === '3d' ? '3D' : '2D'}${lyr ? ` · ${o.lyrics.length} lyric lines` : ''}`, [
+      ...(typeof LabKineticHook !== 'undefined' ? LabKineticHook.typeRows(L, o, L.code) : []), // (round 45, kinetictype) Text that moves…, Moves on ›
       ...(lyr ? [] : [['Text…', String(o.text || '').slice(0, 24), () => Promise.resolve(Modal.prompt('Text', { value: o.text || '', label: 'The words (/ or a new line starts a line)', multiline: true })).then((t) => t !== null && setText(L.id, t)).catch((e) => toast(e.message, { type: 'error' }))]]),
       ['In', '', pick(TD.ANIM_IDS, (x) => anim(L.id, { in: x }))],
       ['Out', '', pick(['none', ...TD.ANIM_IDS], (x) => anim(L.id, { out: x }))],
@@ -460,6 +461,7 @@ const LabType = (() => {
   function previewItem() {
     return { label: '🅰 Type', hint: 'kinetic type, lyrics', items: () => [
       { label: '🅰 New type layer…', hint: `${TD.PRESETS.length} presets`, action: () => picker() },
+      ...(typeof LabKineticHook !== 'undefined' ? LabKineticHook.previewRows() : []), // (round 45, kinetictype)
       { label: 'Lyrics…', hint: 'paste, aligned to the song', action: () => pasteLyrics().then((r) => r && toast(`🅰 ${r.lines} lyric lines · ${r.how}`, { timeout: 2400 })).catch((e) => toast(e.message, { type: 'error' })) },
       { label: 'Lyrics from a file…', hint: '.lrc · .srt', action: () => loadLyricsFile().then((r) => r && toast(`🅰 ${r.lines} lyric lines`, { timeout: 2000 })).catch((e) => toast(e.message, { type: 'error' })) },
       { label: '🎤 Tap along…', hint: 'fix the lyric timing', action: () => tapMode().catch((e) => toast(e.message, { type: 'error' })) },
@@ -472,7 +474,7 @@ const LabType = (() => {
   }
 
   // ---------- the director's tool: three_do type { op } ----------
-  const OPS = 'list {filter} | add {preset, text, mode: 2d|3d, font, sliders} | set {layer, values} | anim {layer, in, out, unit, order, ease, stagger, dur} | path {layer, kind, size, offset, spin, points} | text {layer, text} | font {layer, font} | mode {layer, mode} | letter {layer, index, color, scale, x, y, turn} | lyrics {layer?, text | file, look} | align {layer} | shift {layer, by} | react {layer, kick, bass, jitter, bounce, letters, off} | particles {layer} | export {layer, format: lrc|srt} | sequence {layer} | info {layer} | help';
+  const OPS = 'list {filter} | add {preset, text, mode: 2d|3d, font, sliders} | set {layer, values} | anim {layer, in, out, unit, order, ease, stagger, dur} | path {layer, kind, size, offset, spin, points} | text {layer, text} | font {layer, font} | mode {layer, mode} | letter {layer, index, color, scale, x, y, turn} | lyrics {layer?, text | file, look} | align {layer} | shift {layer, by} | react {layer, kick, bass, jitter, bounce, letters, off} | particles {layer} | export {layer, format: lrc|srt} | sequence {layer} | info {layer} | kinetic {preset, text, sync: beat|bar|kick|snare|seconds, every, stagger, intensity, ease, layer, lyrics} | help';
   async function op(a = {}, ctx = {}) {
     const o = String(a.op || 'help');
     if (o === 'help') return TD.HELP;
@@ -493,6 +495,7 @@ const LabType = (() => {
     if (o === 'export') return exportLyrics(a.layer, a.format || 'lrc', ctx);
     if (o === 'sequence') return toSequence(a.layer, ctx);
     if (o === 'info') return infoOf(a.layer, ctx);
+    if (o === 'kinetic' && typeof LabKineticHook !== 'undefined') return LabKineticHook.op(a, ctx); // (round 45, kinetictype) text that moves with the music
     throw new Error(`type ops: ${OPS}`);
   }
   if (typeof HubBridge !== 'undefined') HubBridge.register(['three_type'], async (tool, args, ctx) => {

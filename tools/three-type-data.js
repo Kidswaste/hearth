@@ -10,6 +10,8 @@ const TypeData = (() => {
     'blur-in': 'comes into focus', 'split-flap': 'flips through letters like a departures board', drop: 'drops and bounces', spin: 'spins in', flip: 'flips over (3D)',
     zoom: 'zooms down from big', elastic: 'snaps in on a spring', bounce: 'bounces in from above', scramble: 'decodes from random letters', tracking: 'letters gather from wide spacing',
     swing: 'swings in', stretch: 'stretches in', 'fly-in': 'flies at the camera (3D) / grows in', rise: 'rises from the baseline', neon: 'flickers on like neon', shatter: 'shatters (best as an out)',
+    // (round 45, kinetictype)
+    'slide-blur': 'slides in out of a blur', split: 'splits open from the middle', 'outline-draw': 'draws on as an outline, the fill floods in after', 'zoom-through': 'flies in from far away',
   };
   const ANIM_IDS = Object.keys(ANIMS);
   const EASES = ['out', 'smooth', 'linear', 'in', 'inOut', 'expo', 'expoInOut', 'back', 'elastic', 'bounce', 'sine'];
@@ -42,12 +44,18 @@ const TypeData = (() => {
     bassColor: n(0, 0, 1, 'Color on bass', 'Music', 0.01, 'toward the accent'), beatBounce: n(0, 0, 1, 'Bounce on kick', 'Music', 0.01), letterReact: n(0, 0, 1, 'Per letter', 'Music', 0.01, '0 = all together'),
     // Lyrics
     look: o('fades', Object.keys(LOOKS), 'Lyric look', 'Lyrics'), lead: n(0, -1, 1, 'Sync nudge', 'Lyrics', 0.01, 's (+ later)'),
+    // (round 45, kinetictype) moves with the music: a step (word / letter / line) on each hit instead of a seconds stagger
+    kSync: o('off', ['off', 'beat', 'bar', 'kick', 'snare', 'seconds'], 'Moves on', 'Moves with the music', 'off = its own timing in seconds'),
+    kEvery: n(1, 0, 8, 'Every', 'Moves with the music', 1, 'hits per step (0 = all together)'), kSecs: n(0.5, 0.04, 4, 'Seconds', 'Moves with the music', 0.01, 'between steps, when it moves on seconds'),
+    kHold: n(4, 0, 64, 'Hold', 'Moves with the music', 1, 'hits before going out (0 = stays)'), kFlow: o('build', ['build', 'one at a time'], 'Flow', 'Moves with the music'),
+    kFx: o('none', ['none', 'punch', 'bounce', 'wave', 'flicker', 'glow', 'shake', 'highlight'], 'On each hit', 'Moves with the music'), kDur: n(0.6, 0.05, 2, 'Each takes', 'Moves with the music', 0.01, 'of the time between hits'),
   };
   // every layer gets these; presets add theirs
   const BASE = ['size', 'tracking', 'x', 'y', 'color', 'color2', 'glow', 'glowColor', 'outline', 'inAnim', 'outAnim', 'unit', 'order', 'ease', 'start', 'stagger', 'dur', 'hold', 'amount', 'kickScale', 'kickGlow', 'kickJitter', 'bassColor'];
   const P3D = ['depth', 'bevel', 'material', 'spin', 'tilt'];
   const PPATH = ['path', 'pathSize', 'pathOffset', 'pathSpin'];
   const PLYR = ['look', 'lead', 'leading'];
+  const PKIN = ['kSync', 'kEvery', 'kHold', 'kFlow', 'kFx', 'kDur']; // (round 45, kinetictype)
   // layer presets: { id, name, cat, desc, sliders, opts }
   const P = (id, name, cat, desc, sliders = {}, opts = {}) => ({ id, name, cat, desc, sliders, opts });
   const PRESETS = [
@@ -89,9 +97,10 @@ opts: text ("line one\\nline two"), mode 2d | 3d, font (a family, "google:Family
 Sliders (P): ${Object.entries(SLIDERS).map(([k, s]) => `${k}${s.options ? ` (${s.options.slice(0, 8).join('|')}${s.options.length > 8 ? '…' : ''})` : ''}`).join(' ')}.
 In / out: ${ANIM_IDS.join(', ')} (out also none). By glyph | word | line, order forward | reverse | center | edges | random, easing ${EASES.join(', ')}.
 Paths: ${Object.keys(PATHS).join(', ')}. 3D materials: ${MATERIALS.join(', ')}. Lyric looks: ${Object.entries(LOOKS).map(([k, v]) => `${k} (${v})`).join(' · ')}.
+Moves with the music (kSync beat|bar|kick|snare|seconds): a step (by glyph / word / line) on each hit, kEvery hits apart, kHold hits then out and again, kFlow build | one at a time, kFx on each hit (punch, bounce, wave, flicker, glow, shake, highlight), kDur = an entrance as a share of the time between hits; 22 presets: three_do type kinetic {preset, text, sync}.
 Lyrics: paste them, or an .lrc / .srt; untimed lines are put on the song (the music analysis' onsets and beats), words too; /lyrics tap corrects them by tapping Space at each line.
 Chat: /text [preset | text <words> | 3d <words> | in <anim> | out <anim> | by glyph|word|line | path <kind> | font <family> | material <kind> | set <slider> <value> | react kick|bass|off | particles | list | info] · /lyrics [paste | load <file> | look <look> | align | tap | shift <s> | export lrc|srt | sequence].
 Director: three_do { cmd: "type", op } — list · add {preset, text, mode, font, sliders} · set {layer, values} · anim {layer, in, out, unit, order, ease, stagger, dur} · path {layer, kind, size} · text {layer, text} · lyrics {layer?, text (pasted / .lrc / .srt content) | file, look} (aligned to the song) · align {layer} · shift {layer, by} · react {layer, kick, bass, jitter} · info {layer}.`;
-  return { ANIMS, ANIM_IDS, EASES, ORDERS, UNITS, PATHS, LOOKS, MATERIALS, SLIDERS, BASE, P3D, PPATH, PLYR, PRESETS, HELP };
+  return { ANIMS, ANIM_IDS, EASES, ORDERS, UNITS, PATHS, LOOKS, MATERIALS, SLIDERS, BASE, P3D, PPATH, PLYR, PKIN, PRESETS, HELP };
 })();
 window.TypeData = TypeData;
