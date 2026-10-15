@@ -80,6 +80,9 @@ function hearthKineticCore() {
   // = long ago), dur, k (hits since step 0, -1 before), local (hits into this round), cur (the step of this hit),
   // sweep (k mod steps: the highlight), pulse (1 on the hit, falling), phase (0..1 to the next hit), gap, at, allIn
   const W = 6; // (how many hits back a time is looked up: older entrances are long finished)
+  // the time of hit K, from the last few hits walked back from hit k (B[0] = hit k): Infinity = not yet, -Infinity =
+  // long ago ((round 46, smooth46) a plain function: it was a new closure in every frame's plan)
+  const timeAt = (B, n, k, K) => { const d = k - K; if (d < 0) return Infinity; return d < n ? B[d] : -Infinity; };
   function newPlan() { return { starts: new Float64Array(16), outs: new Float64Array(16), back: new Float64Array(W + 1), nR: 0, dur: 0.3, k: -1, local: -1, cur: -1, sweep: -1, pulse: 0, phase: 0, gap: 0.5, at: NaN, allIn: Infinity, cycle: 0 }; }
   function plan(P, a) {
     const nR = Math.max(1, a.nR | 0);
@@ -111,11 +114,10 @@ function hearthKineticCore() {
     // the times of the last few hits, walking back from this one
     const B = P.back; B[0] = hn.at; let h = hn; let n = 1;
     for (; n <= W; n += 1) { h = h && h.k > -1e9 ? a.hit(h.at - 1e-6) : null; if (!h || h.k !== hn.k - n) break; B[n] = h.at; }
-    const timeAt = (K) => { const d = hn.k - K; if (d < 0) return Infinity; return d < n ? B[d] : -Infinity; };
     for (let r = 0; r < nR; r += 1) {
-      P.starts[r] = timeAt(base + r * ev);
+      P.starts[r] = timeAt(B, n, hn.k, base + r * ev);
       const Kout = !hold ? (a.swap && r < nR - 1 ? base + (r + 1) * Math.max(1, ev) : null) : a.swap && r < nR - 1 ? base + (r + 1) * Math.max(1, ev) : base + last + hold;
-      P.outs[r] = Kout == null ? Infinity : timeAt(Kout);
+      P.outs[r] = Kout == null ? Infinity : timeAt(B, n, hn.k, Kout);
     }
     P.allIn = P.starts[nR - 1];
     return P;
