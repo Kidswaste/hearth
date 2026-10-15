@@ -199,7 +199,7 @@
     view.addEventListener('did-stop-loading', () => { $('aw-load').hidden = true; where(); });
     view.addEventListener('did-fail-load', (e) => {
       if (e.errorCode === -3 || !e.isMainFrame) return; // -3: a navigation replaced by another
-      toast(`${spec.name} didn't load (${e.errorDescription || e.errorCode}). Offline? ↻ tries again.`, 6000);
+      { const raw = e.errorDescription || `ERR ${e.errorCode}`; const c = typeof ErrorCalmCore !== 'undefined' ? ErrorCalmCore.calm(raw, { app: spec.name, lead: `${spec.name} didn't load` }) : null; toast(c?.changed ? `${c.text} ↻ tries again.` : `${spec.name} didn't load (${raw}). Offline? ↻ tries again.`, 6000); $('aw-toast').title = raw; } // (round 45, errorcalm) plain words (errorcalm-core.js); the raw words in its tooltip
     });
     $('aw-back').addEventListener('click', () => go('back'));
     $('aw-back').addEventListener('contextmenu', (e) => { e.preventDefault(); go('forward'); });

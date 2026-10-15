@@ -522,7 +522,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
             el('button', { class: 'ghost small', text: 'Open itch.io dashboard', on: { click: () => window.hub.openExternal('https://itch.io/dashboard') } })));
         state.done['Package the zip (index.html at the root)'] = true;
         save(); renderChecks(); load();
-      } catch (err) { result.replaceChildren(el('p', { class: 'bad', text: err.message })); }
+      } catch (err) { result.replaceChildren(el('p', { class: 'bad', text: calmError(err, { what: 'The zip' }) })); } // (round 45, errorcalm)
     }
     load();
   }

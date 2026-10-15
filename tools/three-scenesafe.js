@@ -118,7 +118,7 @@ const LabSceneSafe = (() => {
     document.body.append(dlg);
     dlg.showModal();
     let res;
-    try { res = await scan(); } catch (err) { list.replaceChildren(el('p', { class: 'hint', text: `Couldn't look: ${err.message}` })); return null; }
+    try { res = await scan(); } catch (err) { list.replaceChildren(el('p', { class: 'hint', text: `Couldn't look: ${calmError(err)}` })); return null; }
     if (res?.error) { list.replaceChildren(el('p', { class: 'hint', text: `Couldn't look everywhere: ${res.error}` })); }
     const found = res?.found || [];
     const where = (res?.sources || []).length ? `Looked in ${res.sources.length} place${res.sources.length === 1 ? '' : 's'}: ${[...new Set(res.sources.map((s) => s.label.replace(/,.*$| \(.*$/, '')))].join(', ')}.` : 'No copies were found on this computer.';

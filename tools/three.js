@@ -4452,7 +4452,7 @@ ${frag}\`,
           const html = await window.hub.fetchText('https://threejs.org/docs/');
           classes = [...new Set([...html.matchAll(/<a href="([A-Za-z0-9_]+)\.html">\1<\/a>/g)].map((m) => m[1]))].sort();
           store.set('three.docsIndex', { at: Date.now(), classes });
-        } catch (err) { list.append(el('p', { class: 'hint', text: `Couldn't load the class list: ${err.message}` })); }
+        } catch (err) { list.append(el('p', { class: 'hint', text: `Couldn't load the class list: ${calmError(err)}` })); }
       }
       render();
     })();

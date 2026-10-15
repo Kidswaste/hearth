@@ -1,0 +1,28 @@
+/* (round 45, errorcalm) errors in plain words: the small "Details" fold, the action, the Lab console's plain line */
+.ec-details { font-size: 11.5px; color: var(--muted); }
+.ec-details > summary { cursor: pointer; list-style: none; user-select: none; opacity: .75; }
+.ec-details > summary::-webkit-details-marker { display: none; }
+.ec-details > summary::before { content: '▸ '; }
+.ec-details[open] > summary::before { content: '▾ '; }
+.ec-details > summary:hover, .ec-details > summary:focus-visible { opacity: 1; }
+.ec-details > .ec-raw { margin: 4px 0 2px; padding: 6px 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font: 11px/1.4 var(--mono, ui-monospace, monospace); background: color-mix(in srgb, var(--bg, #000) 70%, transparent); border-radius: 6px; user-select: text; }
+.ec-details:not([open]) > .ec-copy { display: none; }
+.ec-details > .ec-copy { font-size: 11px; }
+/* in a toast: the sentence and its "Details" stack in one column, the buttons stay on the row beside them */
+.toast > .ec-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.toast > .ec-body > span { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.toast .ec-details > summary { color: var(--muted); font-weight: 400; }
+.toast .ec-details .ec-copy { color: var(--accent); }
+/* a failed reply / a note: the fold under the sentence */
+.msg .ec-details { margin-top: 4px; }
+.msg.note .ec-act { margin: 4px 6px 0 0; }
+/* any place: ErrorCalm.node() */
+.ec-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.ec-line > .ec-details { flex-basis: 100%; }
+.ec-line > .ec-act, .ec-lab > .ec-act { border: 0; background: none; color: var(--accent); cursor: pointer; font-weight: 600; padding: 0; }
+/* the Lab console: one plain line above the raw ones */
+.ec-lab { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px; border-left: 2px solid var(--ui-red, #e55);
+  background: color-mix(in srgb, var(--ui-red, #e55) 8%, transparent); }
+.ec-lab > .ec-text { flex: 1; min-width: 0; }
+.ec-lab > .ec-x { color: var(--muted); }
