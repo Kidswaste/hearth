@@ -123,7 +123,7 @@ per switch, but it never stopped growing:
 - `node --check` on every touched JS file and the sandbox's scripts (extracted).
 - `node dev/smoke.js --fake-engines --script dev/checks/memory48.js` passes on this branch. Run from a copy of the base
   commit, it fails on the per-chat maps (+6/h), and its gone-layers check shows +16 boxes and +20 canvases.
-- `sh dev/run-checks.sh memory48`: see the final report.
+- `sh dev/run-checks.sh memory48`: 7/7 (memory48, labmemory, lightweight, chatswitch, idlecpu, lazy, unit:boot-test).
 
 ## Edits outside my lane
 - `main.js`: the `bg:state` answer also carries the main process's heap, timers and handles (3 lines, additive).
