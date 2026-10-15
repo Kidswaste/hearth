@@ -51,11 +51,11 @@ try {
   // 1. a small message → nothing
   Native.newChat(C.id);
   type('hi there, what is a good name for a dusk palette?');
-  await wait(700);
+  await wait(1200);
   ok(!shownHint(), 'a small message in a new chat: nothing next to Send');
   for (const t of ['Name three dusk colors.', 'And a fourth one?', 'Thanks, which one for the title?']) { await Native.send(C.id, t); await wait(100); await idle(); }
   type('Make the second one a bit warmer please.');
-  await wait(700);
+  await wait(1200);
   ok(!shownHint(), 'a small message in a chat with short replies: nothing');
   const w0 = SendPreview.work(C.id, 'Make the second one a bit warmer please.');
   out.small = { tokens: w0.est.tokens, median: w0.st.median, show: w0.sh.show };
@@ -116,8 +116,9 @@ try {
   ok(cheap && /— ≈ \d/.test(cheap.textContent), `one cheaper way: “${cheap?.textContent}”`);
   await smoke({ shot: '/tmp/sendpreview-hint.png' });
   // Esc closes it, focus back on the hint
-  cheap?.focus();
-  cheap?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  const cheapNow = pop()?.querySelector('.sp-cheap');
+  cheapNow?.focus();
+  cheapNow?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await wait(100);
   ok(!pop()?.isConnected && document.activeElement === shownHint(), 'Esc closes it and focus returns to the hint');
   // with the attachment sent whole: the trimmed attachment is the lossless way
@@ -125,7 +126,7 @@ try {
   // take the attachment away: Continue lighter first is the way for the chat itself
   V().attachments.splice(0); Native.renderChips(C.id);
   type('Tighten the outro pacing so the logo lands on the last kick.');
-  await wait(700);
+  await until(() => SendPreview.shown.get(C.id) && !SendPreview.shown.get(C.id).est.att, 4000);
   const w1 = SendPreview.shown.get(C.id);
   out.long = w1 ? { tokens: w1.est.tokens, fresh: w1.est.fresh, cold: w1.est.why, best: w1.best?.label, bestTokens: w1.best?.tokens } : null;
   ok(w1?.best?.id === 'lighter' && w1.best.tokens < w1.est.tokens * 0.4, `the long chat alone: ${w1?.best?.label} — ≈ ${w1?.best?.tokens} (was ≈ ${w1?.est.tokens})`);

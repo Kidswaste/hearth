@@ -85,7 +85,7 @@ const SendPreview = (() => {
     if (typeof Router === 'undefined' || !Router.smartOn?.(agent)) return null;
     let d = null;
     try {
-      d = Router.decide({ engine: chat?.engine || agent.engine, text, attachments: (v?.attachments || []).map((a) => ({ kind: a.kind, name: a.name, tokens: a.lean?.tokens })), images: (v?.attachments || []).filter((a) => a.kind === 'image').length,
+      d = Router.decide({ engine: chat?.engine || agent.engine, text: text.length > 4000 ? text.slice(0, 4000) : text, attachments: (v?.attachments || []).map((a) => ({ kind: a.kind, name: a.name, tokens: a.lean?.tokens })), images: (v?.attachments || []).filter((a) => a.kind === 'image').length,
         director: Boolean(agent.dock), history: chat?.messages || [], pinned: { model: chat?.model, effort: chat?.effort }, baseModel: agent.model,
         learned: typeof RouterLearn !== 'undefined' ? RouterLearn.shifts?.(agent.id) : null });
     } catch { d = null; }
@@ -104,17 +104,30 @@ const SendPreview = (() => {
     return e ? { id: m.id, label: `${m.icon || '◎'} ${m.label}`, tokens: e.tokens, replacesOwn: true, sticky: Boolean(Missions.isSticky?.(agentId)), line: e.line } : null;
   }
   // → { est, st, sh, ctx } for this text in this agent's chat box (sync: everything it reads is in memory)
-  function work(agentId, text, { now = Date.now() } = {}) {
+  // what a chat's messages give (its usual, the history): worked out once per change of the chat, not per pause
+  const memo = new WeakMap(); // chat → { key, st, history }
+  function chatPart(chat) {
+    if (!chat) return { st: C.stats(null), history: C.historyOf(null) };
+    const ms = chat.messages || [];
+    const key = `${ms.length}|${ms.at(-1)?.at || 0}|${ms.at(-1)?.text?.length || 0}|${chat.session?.id || ''}|${chat.compact?.index ?? ''}|${chat.handoff?.at ?? ''}|${chat.handoff?.whole ? 1 : 0}`;
+    const m = memo.get(chat);
+    if (m?.key === key) return m;
+    const r = { key, st: C.stats(chat), history: C.historyOf(chat) };
+    memo.set(chat, r);
+    return r;
+  }
+  // o: { now, chat, attachments, mission } stand in for what's on screen (calibration works out a message after it went)
+  function work(agentId, text, o = {}) {
+    const now = o.now ?? Date.now();
     const agent = agentOf(agentId);
     const v = Native.view(agentId);
     if (!agent || agent.mode !== 'native') return null;
-    const chat = Native.chatOf(agentId);
-    const st = C.stats(chat);
-    const history = C.historyOf(chat);
+    const chat = 'chat' in o ? o.chat : Native.chatOf(agentId);
+    const { st, history } = chatPart(chat);
     const fx = fixedOf(agent, chat);
-    const attachments = attachmentsOf(v);
-    const pick = pickOf(agent, chat, text, v, st);
-    const mission = missionOf(agentId);
+    const attachments = o.attachments || attachmentsOf(v);
+    const pick = pickOf(agent, chat, text, o.attachments ? { attachments: o.attachments } : v, st);
+    const mission = 'mission' in o ? o.mission : missionOf(agentId);
     const cal = calOf(agentId);
     const est = C.estimate({ fixed: fx.tokens, history, words: C.tok(text), attachments, answer: st.out || undefined, effort: pick?.effort, baseEffort: pick?.baseEffort, pick, mission, now, lastAt: st.lastAt, hit: st.hit ?? undefined, factor: cal.f });
     const sh = C.should(est, st);
@@ -138,10 +151,16 @@ const SendPreview = (() => {
     if (mission && !mission.sticky) out.push({ id: 'mission', label: `Just ${agent.name}, without ${mission.label}`, tokens: C.variant(est, { id: 'mission' }), title: 'One answer from this AI instead of the mission\'s AIs.' });
     const histShare = est.history.tokens / Math.max(1, est.raw || est.tokens);
     if (chat?.messages?.length && histShare >= 0.3 && !Native.isBusy(chat.id)) {
-      let d = null;
-      if (typeof Autocompact !== 'undefined') {
-        try { if (Autocompact.split(chat).older.length) d = Autocompact.decide({ ...Autocompact.inputOf(chat, agent), at: 1 }); } catch { d = null; }
+      // what continuing lighter would leave (autocompact's own numbers; read once per change of the chat: it reads
+      // every older message)
+      const part = chatPart(chat);
+      if (!('lighter' in part)) {
+        part.lighter = null;
+        if (typeof Autocompact !== 'undefined') {
+          try { if (Autocompact.split(chat).older.length) part.lighter = Autocompact.decide({ ...Autocompact.inputOf(chat, agent), at: 1 }); } catch { part.lighter = null; }
+        }
       }
+      const d = part.lighter;
       if (d?.after) out.push({ id: 'lighter', label: 'Continue lighter first', tokens: C.variant(est, { id: 'lighter', after: d.after }), prefer: !d.topic, title: 'A short summary (goal, decisions, files, open tasks) by the cheapest model stands in for the older messages; your last 2 exchanges go word for word. Then your message goes.' });
       out.push({ id: 'newchat', label: 'Ask on a new chat', tokens: C.variant(est, { id: 'newchat' }), prefer: Boolean(d?.topic) || !d, title: 'A new chat with this AI, your message and attachments moved there. This chat stays as it is.' });
     }
@@ -201,7 +220,13 @@ const SendPreview = (() => {
         el('button', { type: 'button', class: 'sp-anyway ghost', text: 'Send anyway', title: 'Send it as it is (Enter does too)', dataset: { feature: 'Chat › Send preview › Send anyway' }, on: { click: () => { close(false); Native.view(agentId)?.form.requestSubmit(); } } })),
       el('div', { class: 'sp-foot', text: `An estimate made on this computer (0 tokens)${ctx.cal.n ? `, adjusted to ${ctx.agent.name}'s real use` : ''}. Sending is never blocked.` }),
     ];
+    // a look again while it's open: written only when it says something else, and the focus stays on the same button
+    const sig = kids.map((k) => k?.textContent || '').join('|');
+    if (pop.dataset.sig === sig && pop.dataset.agent === agentId) return;
+    const was = pop.contains(document.activeElement) ? document.activeElement.className : '';
+    pop.dataset.sig = sig;
     pop.replaceChildren(...kids);
+    if (was) pop.querySelector(`button.${was.split(' ')[0]}`)?.focus();
   }
   function open(agentId, focus) {
     const v = Native.view(agentId);
@@ -284,7 +309,8 @@ const SendPreview = (() => {
   }
   function soon(agentId, ms = PAUSE) {
     clearTimeout(timers.get(agentId));
-    timers.set(agentId, setTimeout(() => refresh(agentId), ms));
+    // after the pause, in an idle moment (the first look at a long chat reads all of it once)
+    timers.set(agentId, setTimeout(() => { if (window.requestIdleCallback) requestIdleCallback(() => refresh(agentId), { timeout: 500 }); else refresh(agentId); }, ms));
   }
   function agentOfBox(t) {
     let id = boxes.get(t);
@@ -300,32 +326,38 @@ const SendPreview = (() => {
   }
 
   // ---------- calibration: what the engine reports after a plain message ----------
+  // at Enter only a snapshot (Enter must stay light: inputlatency); the estimate is worked out when the reply is in
   function armAt(agentId) {
     const v = Native.view(agentId);
     const chat = Native.chatOf(agentId);
     armed.delete(agentId);
     if (!v || (chat && Native.isBusy(chat.id))) return;
     const text = v.input.value.trim();
-    if (!text && !v.attachments.length) return;
-    if (text.startsWith('/')) return;
-    try {
-      const w = work(agentId, text);
-      if (w && !w.ctx.mission && w.est.raw > 0) armed.set(agentId, { raw: w.est.raw, at: Date.now() });
-    } catch { /* no estimate: nothing learned */ }
+    if ((!text && !v.attachments.length) || text.startsWith('/')) return;
+    if (typeof Missions !== 'undefined' && Missions.current(agentId)?.id !== 'normal') return; // other AIs: nothing to learn about this one
+    armed.set(agentId, { at: Date.now(), text, attachments: attachmentsOf(v), n: chat?.messages.length || 0, session: chat?.session || {} });
   }
   function onSend(agentId, chat) {
     hide(agentId);
     const a = armed.get(agentId);
     armed.delete(agentId);
-    if (a && Date.now() - a.at < 15000 && chat?.id) sent.set(chat.id, { agentId, raw: a.raw });
+    if (a && Date.now() - a.at < 15000 && chat?.id) sent.set(chat.id, { agentId, ...a });
+  }
+  function rawOf(s, chat) {
+    try {
+      const before = { ...chat, session: s.session, messages: chat.messages.slice(0, s.n) };
+      const w = work(s.agentId, s.text, { now: s.at, chat: s.n ? before : null, attachments: s.attachments, mission: null });
+      return w?.est.raw || 0;
+    } catch { return 0; }
   }
   function onEvent(event, chat) {
     const s = chat && sent.get(chat.id);
     if (s && event.type !== 'delta') {
       sent.delete(chat.id);
       const u = event.type === 'done' ? (event.usage || chat.messages.at(-1)?.usage) : null;
-      if (u && u.input > 0) {
-        load().then((st) => { st.ai[s.agentId] = C.calibrate(st.ai[s.agentId], s.raw, (u.input || 0) + (u.output || 0)); saveSoon(); });
+      const raw = u && u.input > 0 ? rawOf(s, chat) : 0;
+      if (raw > 0) {
+        load().then((st) => { st.ai[s.agentId] = C.calibrate(st.ai[s.agentId], raw, (u.input || 0) + (u.output || 0)); saveSoon(); });
       }
     }
     if (chat?.agentId && event.type === 'done' && H.activeChat[chat.agentId] === chat.id) soon(chat.agentId);
