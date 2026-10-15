@@ -3620,6 +3620,17 @@ const EASE_FN = (() => {
     pulse: (t) => Math.sin(t * Math.PI),
   };
 })();
+// 'bezier' (round 46, labkeys): an After Effects-style speed curve from the key's two handles b = [x1, y1, x2, y2];
+// the same lines as ThreeLayers.bezierAt (tools/three-layers.js), so the hub's curves and renders agree
+function bezierAt(b, u) {
+  const cx = 3 * b[0]; const bx = 3 * (b[2] - b[0]) - cx; const ax = 1 - cx - bx;
+  const cy = 3 * b[1]; const by = 3 * (b[3] - b[1]) - cy; const ay = 1 - cy - by;
+  const X = (s) => ((ax * s + bx) * s + cx) * s;
+  let s = u;
+  for (let i = 0; i < 8; i += 1) { const e = X(s) - u; const d = (3 * ax * s + 2 * bx) * s + cx; if (Math.abs(e) < 1e-7 || Math.abs(d) < 1e-6) break; s -= e / d; }
+  if (!(s >= 0 && s <= 1) || Math.abs(X(s) - u) > 1e-5) { let lo = 0; let hi = 1; s = u; for (let i = 0; i < 40; i += 1) { const x = X(s); if (Math.abs(x - u) < 1e-7) break; if (x < u) lo = s; else hi = s; s = (lo + hi) / 2; } }
+  return ((ay * s + by) * s + cy) * s;
+}
 function evalKeys(keys, t, base) {
   if (!keys?.length || t == null) return base;
   if (t <= keys[0].t) return keys[0].v;
@@ -3633,6 +3644,7 @@ function evalKeys(keys, t, base) {
   if (a.ease === 'ease') u = u * u * (3 - 2 * u);
   // 'curve' (FL Studio-style tension): c in -1..1 bends the move toward the start or the end
   else if (a.ease === 'curve' && a.c) u = a.c > 0 ? Math.pow(u, 1 + a.c * 4) : 1 - Math.pow(1 - u, 1 - a.c * 4);
+  else if (a.ease === 'bezier' && a.b) u = bezierAt(a.b, u);
   else if (EASE_FN[a.ease]) u = EASE_FN[a.ease](u);
   if (typeof a.v === 'string' && typeof b.v === 'string') return mixColor(a.v, b.v, u);
   return a.v + (b.v - a.v) * u;

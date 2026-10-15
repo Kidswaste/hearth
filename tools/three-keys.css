@@ -1,0 +1,21 @@
+/* ◆ Keyframes you can see and shape (round 46, labkeys: tools/three-keys.js): the ease card a click on a diamond opens */
+.lk-pop { position: fixed; z-index: 990; width: 212px; padding: 9px 10px; border-radius: 12px; display: flex; flex-direction: column; gap: 7px; border: 1px solid var(--line-hi, #443e35); background: var(--fh-pop, #0f1214); color: var(--text, #e8e2d6); box-shadow: 0 10px 30px #000a; font-size: 12px; }
+.lk-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.lk-head b { white-space: nowrap; color: var(--ui-cyan, #48ddff); }
+.lk-sub { opacity: .6; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lk-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.lk-tile { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 2px 3px; border-radius: 8px; border: 1px solid var(--line, #2c2a26); background: none; color: var(--muted, #a9a395); font-size: 10.5px; line-height: 13px; cursor: pointer; }
+.lk-tile:hover, .lk-tile:focus-visible { color: var(--text, #e8e2d6); border-color: var(--line-hi, #443e35); }
+.lk-tile.on { color: var(--text, #e8e2d6); border-color: var(--ui-cyan, #48ddff); background: color-mix(in srgb, var(--ui-cyan, #48ddff) 12%, transparent); }
+.lk-ico path { stroke: currentColor; }
+.lk-tile.on .lk-ico path { stroke: var(--ui-cyan, #48ddff); }
+.lk-curve[hidden] { display: none; }
+.lk-graph { display: block; margin: 0 auto; touch-action: none; }
+.lk-frame { fill: #ffffff06; stroke: var(--line, #2c2a26); stroke-dasharray: 2 3; }
+.lk-arm { stroke: var(--muted, #a9a395); stroke-width: 1; opacity: .7; }
+.lk-line { stroke: var(--ui-cyan, #48ddff); stroke-width: 2; stroke-linecap: round; }
+.lk-end { fill: var(--muted, #a9a395); }
+.lk-h { fill: var(--fh-gold, #ffd75e); stroke: #0b0e10; stroke-width: 1.5; cursor: grab; }
+.lk-h:active { cursor: grabbing; }
+.lk-note { font-size: 10.5px; opacity: .6; text-align: center; }
+.lk-snap { display: flex; align-items: center; gap: 6px; font-size: 11.5px; opacity: .85; cursor: pointer; }
