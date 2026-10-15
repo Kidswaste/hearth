@@ -18,6 +18,8 @@ return 'set';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(60); } return null; };
 const fail = []; const out = { steps: [] };
+// (round 42) the newest round comes from the notes themselves, so this check doesn't need editing every round
+const NEW = Number(((await (await fetch('docs/patch-notes/index.txt', { cache: 'no-store' })).text()).match(/round-(\d+)\.md/) || [])[1]) || 41;
 const ok = (c, what, info) => { out.steps.push(`${c ? '✓' : '✗'} ${what}${info === undefined ? '' : ` · ${JSON.stringify(info).slice(0, 300)}`}`); if (!c) fail.push(what); return Boolean(c); };
 try {
   activate(H.claudeAgent().id);
@@ -27,7 +29,7 @@ try {
   ok(log[0]?.startsWith('update:'), 'it is the first after-update note (patch notes first)', log);
   ok(![...document.querySelectorAll('#toasts .toast')].some((t) => /Hearth updated/.test(t.textContent)), 'no separate "Hearth updated" toast on top of it');
   const lead = card?.querySelector('.wn-lead')?.textContent || '';
-  ok(/^Hearth updated: 9 rounds of changes \(33–41\)/.test(lead), 'it says what: Hearth updated, 9 rounds (33–41)', lead);
+  ok(new RegExp(`^Hearth updated: ${NEW - 32} rounds of changes \\(33–${NEW}\\)`).test(lead), `it says what: Hearth updated, ${NEW - 32} rounds (33–${NEW})`, lead);
   const groups = [...(card?.querySelectorAll('.wn-body > .wn-group') || [])].map((g) => g.dataset.group);
   const order = WhatsNewCore.GROUPS.map((g) => g.id);
   ok(groups.length >= 4 && groups.every((g, i) => !i || order.indexOf(groups[i - 1]) < order.indexOf(g)) && groups[0] === 'lab', 'grouped: Lab first, then Chats & AIs, Saving tokens, Mac & Windows…', groups);
@@ -88,6 +90,7 @@ return JSON.stringify({ pass: !fail.length, fail, ...out }, null, 1);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(60); } return null; };
 const fail = []; const out = { steps: [] };
+const NEW = Number(((await (await fetch('docs/patch-notes/index.txt', { cache: 'no-store' })).text()).match(/round-(\d+)\.md/) || [])[1]) || 41;
 const ok = (c, what, info) => { out.steps.push(`${c ? '✓' : '✗'} ${what}${info === undefined ? '' : ` · ${JSON.stringify(info).slice(0, 300)}`}`); if (!c) fail.push(what); return Boolean(c); };
 try {
   // not shown again: the next start (4 s after ready: the index check) brings nothing
@@ -98,7 +101,7 @@ try {
   if (window.Lazy && !Lazy.isIn('whatsnew')) await Lazy.load('whatsnew');
   const p = WhatsNew.atStart();
   const card = await until(() => document.querySelector('.wn-card'), 10000);
-  ok(card && /2 rounds of changes \(40–41\)/.test(card.querySelector('.wn-lead')?.textContent || '') && Hints.state().log.some((x) => x.what === 'show' && /^whatsnew:/.test(x.id)), 'pulled by hand (seen 39): once, through the queue, rounds 40–41', card?.querySelector('.wn-lead')?.textContent);
+  ok(card && new RegExp(`${NEW - 39} rounds of changes \\(40–${NEW}\\)`).test(card.querySelector('.wn-lead')?.textContent || '') && Hints.state().log.some((x) => x.what === 'show' && /^whatsnew:/.test(x.id)), `pulled by hand (seen 39): once, through the queue, rounds 40–${NEW}`, card?.querySelector('.wn-lead')?.textContent);
   await p;
   card?.querySelector('.sr-x')?.click();
   ok((await WhatsNew.atStart()) === false, '…and not again', store.get('whatsnew.seen', 0));
