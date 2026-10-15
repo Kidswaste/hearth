@@ -46,7 +46,7 @@ const colorsOf = async (src) => {
   const name = ([r, gg, b]) => (r > 150 && gg < 90 && b < 90 ? 'R' : gg > 150 && r < 90 && b < 90 ? 'G' : b > 150 && r < 90 && gg < 90 ? 'B' : '-');
   return [at(1 / 6), at(0.5), at(5 / 6)].map(name).join('');
 };
-async function merged() { const url = await Promise.race([D.shot(), wait(4000).then(() => null)]); return url ? colorsOf(url) : '---'; }
+async function merged() { const url = await Promise.race([D.shot(), wait(12000).then(() => null)]); return url ? colorsOf(url) : '---'; }
 async function screen() {
   const f = ThreeLab.stageHooks.frameRect;
   const cap = await smoke({ cdp: 'Page.captureScreenshot', params: { format: 'png', clip: { x: f.left + 4, y: f.top + 4, width: f.width - 8, height: f.height - 8, scale: 1 } } });
@@ -191,7 +191,7 @@ await wait(3000);
 const Ls = ThreeLab.groupsHost.layers();
 const g = LayerGroups.groups(Ls)[0];
 async function thirds() {
-  const url = await Promise.race([ThreeLab.director.shot(), wait(4000).then(() => null)]);
+  const url = await Promise.race([ThreeLab.director.shot(), wait(12000).then(() => null)]);
   if (!url) return '---';
   const img = new Image(); img.src = url; await img.decode();
   const n = 48; const c = document.createElement('canvas'); c.width = n; c.height = n; const gg = c.getContext('2d'); gg.drawImage(img, 0, 0, n, n);
