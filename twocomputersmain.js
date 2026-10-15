@@ -29,7 +29,10 @@ function friendlyName() {
 }
 function machine() {
   const file = path.join(o.dataDir, 'sync', 'machine.json');
-  let m = readJson(file, null);
+  // (round 43, datasafe) a held machine file isn't "none": no new id is written over it (an id for this run only)
+  const r = require('./datasafe-core').load(fs, file, null, { prev: false });
+  let m = r.value;
+  if (r.state === 'unreadable') return { id: `held-${process.pid}`, name: friendlyName(), platform: o.platform, os: T.osOf(o.platform), held: true };
   if (!m?.id) {
     m = { id: `${os.hostname().replace(/[^\w-]+/g, '').slice(0, 20) || 'pc'}-${crypto.randomBytes(4).toString('hex')}`, created: Date.now() };
     try { writeJson(file, m); } catch { /* read-only: an id for this run */ }

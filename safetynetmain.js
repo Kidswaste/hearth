@@ -21,7 +21,8 @@ let atCrash = null; // the journal as it was when the page crashed / the last ru
 let started = false;
 const crashTimes = [];
 
-function readJson(p, fallback) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; } }
+// (round 43, datasafe) a journal / session file held for a moment (Windows) is read again before it counts as missing
+function readJson(p, fallback) { try { return JSON.parse(require('./scenesafe-core').readRetry(fs, p)); } catch { return fallback; } }
 function writeSync(p, value) {
   const tmp = `${p}.tmp`;
   const fd = fs.openSync(tmp, 'w');

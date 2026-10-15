@@ -21,6 +21,9 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const S = require('./sync-merge');
+const SS = require('./scenesafe-core');
+// (round 43, datasafe) a state / machine file held for a moment (Windows) isn't "none": no new id or empty state over it
+const HELD = Symbol('held');
 
 const SMALL = 8 * 1024 * 1024; // up to this, files are read whole (hash + copy); bigger ones stream
 const BIG_CAP = 100 * 1024 * 1024; // with "Sync big videos" off, bigger files stay on each computer
@@ -79,7 +82,9 @@ function createEngine(o) {
   // ---------- this computer ----------
   const machineFile = path.join(stateDir, 'machine.json');
   let machine = readJsonSync(machineFile);
-  if (!machine?.id) {
+  let heldStart = machine === HELD; // read again at the first pass; until then nothing is synced
+  if (heldStart) machine = { id: `held-${rand()}`, created: now() };
+  else if (!machine?.id) {
     machine = { id: `${(o.machineName || os.hostname()).replace(/[^\w-]+/g, '').slice(0, 20) || 'pc'}-${rand()}`, created: now() };
     writeJsonSync(machineFile, machine);
   }
@@ -89,7 +94,9 @@ function createEngine(o) {
   // ---------- state ----------
   const stateFile = path.join(stateDir, 'state.json');
   let state = readJsonSync(stateFile);
-  if (!state || state.v !== 1 || state.cloudRoot !== cloudRoot) {
+  if (state === HELD) { heldStart = true; state = null; }
+  if (heldStart) state = { v: 1, cloudRoot, base: {}, local: {}, cloud: {}, ext: {}, lastPass: 0, lastOk: 0, purgedAt: 0, held: true }; // not saved: re-read first
+  else if (!state || state.v !== 1 || state.cloudRoot !== cloudRoot) {
     // a new drive (or the first time): no base, so the first pass merges both sides without overwriting either
     state = { v: 1, cloudRoot, base: {}, local: {}, cloud: {}, ext: {}, lastPass: 0, lastOk: 0, purgedAt: 0 };
     try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ }
@@ -98,6 +105,7 @@ function createEngine(o) {
   // minute): now it's written when something in it changed, or every 10 minutes for the clocks (lastPass / lastOk)
   let savedKey = ''; let savedAt = 0;
   const saveState = () => {
+    if (heldStart) return; // (round 43, datasafe) the real one couldn't be read yet: never written over
     const text = JSON.stringify(state);
     const key = JSON.stringify({ ...state, lastPass: 0, lastOk: 0 });
     if (key === savedKey && now() - savedAt < 10 * 60000) return;
@@ -135,22 +143,25 @@ function createEngine(o) {
   };
 
   // ---------- scanning ----------
-  async function walk(root, fn, rel = '') {
+  // (round 43, datasafe) a folder that can't be listed (held, a cloud client busy with it) is "unknown", not "empty":
+  // walk.blind collects it, and nothing under it is deleted or pulled over this pass
+  async function walk(root, fn, rel = '', blind = null) {
     let ents;
-    try { ents = await fsp.readdir(rel ? path.join(root, ...rel.split('/')) : root, { withFileTypes: true }); } catch { return; }
+    try { ents = await fsp.readdir(rel ? path.join(root, ...rel.split('/')) : root, { withFileTypes: true }); } catch (err) { if (blind && err.code !== 'ENOENT' && err.code !== 'ENOTDIR') blind.add(rel ? `${nfc(rel)}/` : ''); return; }
     for (const e of ents) {
       const r = rel ? `${rel}/${e.name}` : e.name;
-      if (e.isDirectory()) { if (!S.dirLocalOnly(nfc(r)) && !S.localOnly(`${nfc(r)}/x`)) await walk(root, fn, r); continue; }
+      if (e.isDirectory()) { if (!S.dirLocalOnly(nfc(r)) && !S.localOnly(`${nfc(r)}/x`)) await walk(root, fn, r, blind); continue; }
       await fn(e, r);
     }
   }
   async function scanLocal() {
     const out = new Map();
+    out.blind = new Set();
     await walk(dataDir, async (e, r) => {
       if (!e.isFile() || S.ignoredName(e.name) || S.localOnly(nfc(r))) return;
       const file = path.join(dataDir, ...r.split('/'));
-      try { const st = await fsp.stat(file); out.set(nfc(r), { file, size: st.size, mtime: st.mtimeMs }); } catch { /* gone */ }
-    });
+      try { const st = await fsp.stat(file); out.set(nfc(r), { file, size: st.size, mtime: st.mtimeMs }); } catch (err) { if (err.code !== 'ENOENT') out.blind.add(nfc(r)); /* else gone */ }
+    }, '', out.blind);
     for (const [rel, file] of Object.entries(SPECIAL)) {
       if (!file) continue;
       try { const st = await fsp.stat(file); out.set(rel, { file, size: st.size, mtime: st.mtimeMs }); } catch { /* none */ }
@@ -198,6 +209,7 @@ function createEngine(o) {
   const JSON_COPY = /^([\w-]+)(?: \d+| \(\d+\))\.json$/; // iCloud "x 2.json", Google Drive "x (1).json"
   async function scanCloud() {
     const out = new Map(); const copies = [];
+    out.blind = new Set();
     const hosts = new Set([machine.name, ...peers.map((p) => p.name)].filter(Boolean).map((n) => String(n).toUpperCase().replace(/\.LOCAL$/, '')));
     await walk(FILES, async (e, r) => {
       if (!e.isFile()) return;
@@ -207,7 +219,7 @@ function createEngine(o) {
       const rel = nfc(r.replace(/[^/]+$/, name));
       if (S.localOnly(rel)) return;
       const file = path.join(FILES, ...r.split('/'));
-      let st; try { st = await fsp.stat(file); } catch { return; }
+      let st; try { st = await fsp.stat(file); } catch (err) { if (err.code !== 'ENOENT') out.blind.add(rel); return; }
       // a Mac "dataless" file (Optimise Mac Storage, Google Drive streaming): stat works, reading downloads it
       if (!placeholder && platform === 'darwin' && st.size > 0 && st.blocks === 0) placeholder = true;
       const ent = { file, size: placeholder && stub ? null : st.size, mtime: st.mtimeMs, placeholder };
@@ -221,7 +233,7 @@ function createEngine(o) {
       if (!orig && od && hosts.has(od[2].toUpperCase()) && !state.base[rel]) orig = `${dir}${od[1]}.json`;
       if (orig && orig !== rel && !state.base[rel]) { copies.push({ rel, orig, ...ent }); return; }
       out.set(rel, ent);
-    });
+    }, '', out.blind);
     return { files: out, copies };
   }
 
@@ -720,6 +732,14 @@ function createEngine(o) {
   async function passOnce(opts) {
     sum = counts(); pulledNow = []; texts = new Map(); hashed = new Map(); status.resumed = 0; status.bytes = 0;
     const t0 = now();
+    if (heldStart) { // (round 43, datasafe) the machine / state file read now, or this pass waits
+      const m = readJsonSync(machineFile); const s = readJsonSync(stateFile);
+      if (m === HELD || s === HELD) return finish({ state: 'offline', error: 'held' }, t0);
+      heldStart = false;
+      if (m?.id) machine = { ...m, name: machine.name, platform }; else writeJsonSync(machineFile, { id: machine.id, created: machine.created });
+      state = s && s.v === 1 && s.cloudRoot === cloudRoot ? s : { v: 1, cloudRoot, base: {}, local: {}, cloud: {}, ext: {}, lastPass: 0, lastOk: 0, purgedAt: 0 };
+      ctx = baseCtx();
+    }
     if (!(await exists(cloudRoot))) return finish({ state: 'offline', error: '' }, t0);
     if (!(await exists(FILES))) {
       if (Object.keys(state.base).length && !opts.fresh) return finish({ state: 'offline', error: 'missing' }, t0);
@@ -734,10 +754,14 @@ function createEngine(o) {
     const cap = o.big === false ? (o.bigCap || BIG_CAP) : Infinity;
     const plan = []; const skippedBig = []; const cloudOnly = []; const unreadable = []; let pending = 0;
     const rels = new Set([...local.keys(), ...cloud.keys(), ...Object.keys(state.base)]);
+    // (round 43, datasafe) a file or folder that couldn't be listed / looked at on one side is unknown there this pass:
+    // never "deleted" (a held chats folder on Windows looked like every chat deleted, and the cloud copy went to trash)
+    const blindIn = (set, rel) => set.size > 0 && (set.has(rel) || set.has('') || [...set].some((b) => b.endsWith('/') && rel.startsWith(b)));
     for (const rel of rels) {
       if (stopping) break;
       const L = local.get(rel); const C = cloud.get(rel); const bh = state.base[rel];
       if (L?.unavailable) { pending += 0; continue; } // a render on a drive that isn't plugged in: left alone
+      if ((!L && blindIn(local.blind, rel)) || (!C && blindIn(cloud.blind, rel))) { pending += 1; continue; }
       if (!L && !C) { dropBase(rel); delete state.local[rel]; delete state.cloud[rel]; continue; }
       // (round 19) the chats' workspace syncs what they make, never a huge file (a model checkpoint, a build archive)
       const capHere = S.isWorkspaceRel(rel) ? Math.min(cap, o.bigCap || BIG_CAP) : cap;
@@ -1026,7 +1050,7 @@ function createEngine(o) {
     return isCfg ? S.applyPortable(value, merged) : merged;
   }
 
-  function readJsonSync(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } }
+  function readJsonSync(f) { try { return JSON.parse(SS.readRetry(fs, f)); } catch (err) { return err?.code && SS.BUSY.has(err.code) ? HELD : null; } }
   function writeJsonSync(f, v) { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = `${f}.${rand()}.tmp`; fs.writeFileSync(t, JSON.stringify(v)); fs.renameSync(t, f); }
 
   return {

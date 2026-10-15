@@ -131,8 +131,8 @@ try {
   step('/recover-scenes list answers in the chat', /in your list|Scenes that aren't/.test(document.querySelector('.native-note:last-of-type, .note:last-of-type')?.textContent || document.body.textContent));
   AppUI.backupsDialog?.();
   await wait(500);
-  const bbtn = [...document.querySelectorAll('.backups-dialog button')].find((b) => /Recover lost Lab scenes/.test(b.textContent));
-  step('Settings › Backups has "Recover lost Lab scenes…"', Boolean(bbtn));
+  const bbtn = [...document.querySelectorAll('.backups-dialog button')].find((b) => /Recover lost Lab scenes|^Recover…$/.test(b.textContent) && /Lab scenes/.test(b.title || b.textContent)); // (round 43, datasafe: one Recover… with a Lab scenes row)
+  step('Settings › Backups has "Recover…" (Lab scenes included)', Boolean(bbtn));
   document.querySelector('.backups-dialog')?.close();
 } catch (err) {
   step('no error', false, String(err?.stack || err).slice(0, 600));

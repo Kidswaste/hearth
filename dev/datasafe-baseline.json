@@ -1,0 +1,354 @@
+{
+ "note": "Audited in round 43 (datasafe). New code: use DataSafe.load / DataSafe.save (renderer) or datasafe-core load (main).",
+ "audited": [
+  {
+   "file": "access.js",
+   "kind": "kv",
+   "store": "access-log",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "aiundo.js",
+   "kind": "kv",
+   "store": "aiundo",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "apps-discover.js",
+   "kind": "kv",
+   "store": "apps-habits",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "apps-meshy.js",
+   "kind": "kv",
+   "store": "meshy-library",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "appshell.js",
+   "kind": "main",
+   "why": "window position / tray state (data/window.json): not the owner's work; a lost read only resets the window size"
+  },
+  {
+   "file": "appui.js",
+   "kind": "kv",
+   "store": "downloads-log",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "assets.js",
+   "kind": "kv",
+   "store": "assets",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "assetsmain.js",
+   "kind": "main",
+   "why": "reads a model's .gltf to list its files (no read → default → save); the library index goes through the kv store"
+  },
+  {
+   "file": "astra.js",
+   "kind": "kv",
+   "store": "astra-scoreboard",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "astra.js",
+   "kind": "kv",
+   "store": "astra-personas",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "board-links.js",
+   "kind": "kv",
+   "store": "board-templates",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "board-links.js",
+   "kind": "kv",
+   "store": "board-palettes",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "board.js",
+   "kind": "kv",
+   "store": "boards",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "capture-tour.js",
+   "kind": "kv",
+   "store": "capture-tours",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "capture.js",
+   "kind": "kv",
+   "store": "capture-marks",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "chat-context.js",
+   "kind": "kv",
+   "store": "chat-context",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "chat-memory.js",
+   "kind": "kv",
+   "store": "context-memory",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "chat-scenes.js",
+   "kind": "kv",
+   "store": "chat-scenes",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "chat-scenes.js",
+   "kind": "kv",
+   "store": "chat-scene-thumbs",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "chat-ux.js",
+   "kind": "kv",
+   "store": "chat-meta",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "chat-ux.js",
+   "kind": "kv",
+   "store": "chat-bookmarks",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "chat-ux.js",
+   "kind": "kv",
+   "store": "chat-snippets",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "chromemain.js",
+   "kind": "main",
+   "why": "the Hearth Chrome profile's own prefs: rebuilt by Chrome; not the owner's work"
+  },
+  {
+   "file": "deploy.js",
+   "kind": "kv",
+   "store": "deploy-history",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "deploymain.js",
+   "kind": "main",
+   "why": "a deploy folder's package.json version check (read only); deploy history is a kv store (guarded)"
+  },
+  {
+   "file": "devreport.js",
+   "kind": "kv",
+   "store": "dev-reports",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "devreportmain.js",
+   "kind": "main",
+   "why": "crash / report markers: diagnostic, rebuilt"
+  },
+  {
+   "file": "discover.js",
+   "kind": "kv",
+   "store": "discover",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "engines.js",
+   "kind": "main",
+   "why": "MCP configs written fresh for each run (data/mcp-*.json); nothing read back and saved"
+  },
+  {
+   "file": "flows-ui.js",
+   "kind": "kv",
+   "store": "flows-mine",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "habits.js",
+   "kind": "kv",
+   "store": "error-log",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "installs.js",
+   "kind": "main",
+   "why": "engine install cache (engine-installs.json): rebuilt by a scan"
+  },
+  {
+   "file": "interopmain.js",
+   "kind": "main",
+   "why": "OSC / OBS connection prefs: small, re-entered in one click"
+  },
+  {
+   "file": "jank.js",
+   "kind": "kv",
+   "store": "jank-log",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "makes.js",
+   "kind": "kv",
+   "store": "makes",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "memory.js",
+   "kind": "kv",
+   "store": "memory-meta",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "nativefeelmain.js",
+   "kind": "main",
+   "why": "window memory per screen: not the owner's work"
+  },
+  {
+   "file": "notes.js",
+   "kind": "kv",
+   "store": "notes",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "notes.js",
+   "kind": "kv",
+   "store": "prompts",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "notes.js",
+   "kind": "kv",
+   "store": "prompts-meta",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "offline.js",
+   "kind": "kv",
+   "store": "offline-queue",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "projects.js",
+   "kind": "kv",
+   "store": "projects",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "remotemain.js",
+   "kind": "main",
+   "why": "paired phones (keys): a failed read means re-pairing, the file is only rewritten on a new pairing"
+  },
+  {
+   "file": "renders.js",
+   "kind": "kv",
+   "store": "renders",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "routerlearn.js",
+   "kind": "kv",
+   "store": "router-learn",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "speed-core.js",
+   "kind": "kv",
+   "store": "speed",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tokenaudit.js",
+   "kind": "kv",
+   "store": "tool-use",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/cut-store.js",
+   "kind": "kv",
+   "store": "video-cuts",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/forge-game.js",
+   "kind": "kv",
+   "store": "forge-patches",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/forge-game.js",
+   "kind": "kv",
+   "store": "forge-snapshots",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/forge-game.js",
+   "kind": "kv",
+   "store": "forge-patch-sets",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/three-frames.js",
+   "kind": "kv",
+   "store": "video-cuts",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/three-frames.js",
+   "kind": "kv",
+   "store": "three-footage",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/three-gallery.js",
+   "kind": "kv",
+   "store": "lab-gallery-thumbs",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/three-grade.js",
+   "kind": "kv",
+   "store": "lab-grade-luts",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/three-media.js",
+   "kind": "kv",
+   "store": "three-beatmaps",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "tools/three-models.js",
+   "kind": "kv",
+   "store": "lab3d-library",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "twocomputers.js",
+   "kind": "kv",
+   "store": "media-ids",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "updatesafe-core.js",
+   "kind": "main",
+   "why": "the update swap's own marker files (updatesafe.md): read-or-nothing by design"
+  },
+  {
+   "file": "usage.js",
+   "kind": "kv",
+   "store": "ui-usage",
+   "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  }
+ ]
+}

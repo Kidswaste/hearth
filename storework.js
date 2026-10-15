@@ -28,6 +28,10 @@ const { list: flist, search: fsearch } = require('./fswalk');
 
 const SS = require('./scenesafe-core');
 const ssEnv = { fs, path, cache: new Map() };
+// (round 43, datasafe) every other store: a save built on a failed read merges with the disk; copies; chats never vanish
+const DS = require('./datasafe-core');
+const dfs = DS.faults(fs, path.join(__dirname, 'data'));
+const dsEnv = { fs: dfs, path, cache: new Map() };
 const sha = (s) => crypto.createHash('sha1').update(s).digest('hex');
 const TEXT_CAP = 16 * 1024 * 1024;
 const TEXT_IDLE_MS = Number(process.env.HEARTH_TEXT_IDLE_MS) || 10 * 60 * 1000; // texts let go after this long without a search
@@ -39,6 +43,7 @@ function warmTexts() {
 }
 const written = new Map(); // file → { h, size, mtimeMs } of the text this thread last wrote / saw there
 const index = new Map(); // chat file → { size, mtimeMs, sum, texts, lower }
+const stubs = new Map(); // (round 43) chat file → its stub row, while it can't be read (kept for a folder that can't be listed)
 let textChars = 0;
 let recallIdx = null; // (round 30) recall-core.js's index, made on the first recall op
 
@@ -69,13 +74,25 @@ function entryOf(chat, st) {
   return { size: st.size, mtimeMs: st.mtimeMs, sum: { id, agentId, title, updatedAt, pinned: Boolean(pinned), model }, texts: keep ? texts : null, n: keep ? n : 0 };
 }
 function drop(file) { const e = index.get(file); if (e) { textChars -= e.n; index.delete(file); } }
-function readChat(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } }
+function readChat(file) { try { return JSON.parse(SS.readRetry(dfs, file)); } catch { return null; } }
 // every chat file, fresh: unchanged files come from the index, changed / new ones are read once
+// (round 43, datasafe) a held chat file is read again a few times; one that still can't be read keeps its last row (or
+// a stub row: chats never vanish from the list because a read failed); a folder that can't be listed (held, a cloud
+// client) gives what the index already knows instead of "no chats" — chats.doubt says which happened
 function chats(dir) {
   let names;
-  try { names = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch { return []; }
+  chats.doubt = null;
+  for (let i = 0; ; i++) {
+    try { names = dfs.readdirSync(dir).filter((f) => f.endsWith('.json')); break; } catch (err) {
+      if (err.code === 'ENOENT') return [];
+      if (i < 4 && DS.BUSY.has(err.code)) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * (i + 1)); continue; }
+      chats.doubt = { why: 'folder', code: err.code };
+      return [...index.entries(), ...[...stubs.entries()].filter(([file]) => !index.has(file))].filter(([file]) => file.startsWith(dir)).map(([file, e]) => ({ file, e }));
+    }
+  }
   const seen = new Set();
   const out = [];
+  let bad = 0;
   for (const f of names) {
     const file = path.join(dir, f);
     seen.add(file);
@@ -83,20 +100,31 @@ function chats(dir) {
     if (!st) continue;
     let e = index.get(file);
     if (!e || e.size !== st.size || e.mtimeMs !== st.mtimeMs) {
-      drop(file);
       const chat = readChat(file);
-      if (!chat) continue;
+      if (!chat) { bad += 1; const s = e || { size: -1, mtimeMs: -1, sum: DS.chatStub(f, st), texts: null, n: 0, stub: true }; if (!e) stubs.set(file, s); out.push({ file, e: s }); continue; }
+      stubs.delete(file);
+      drop(file);
       e = entryOf(chat, st);
       index.set(file, e);
     }
     out.push({ file, e });
   }
+  if (bad) chats.doubt = { why: 'files', n: bad };
   for (const file of [...index.keys()]) if (file.startsWith(dir) && !seen.has(file)) drop(file);
+  for (const file of [...stubs.keys()]) if (file.startsWith(dir) && !seen.has(file)) stubs.delete(file);
   return out;
 }
 
 const OPS = {
-  write({ file, value, prev, chatDir, sent, removed }) {
+  write({ file, value, prev, chatDir, sent, removed, doubt, blind }) {
+    // (round 43, datasafe) a save built on a failed read: merged with the file (throws when it's still held: nothing is
+    // written); the first save of a session that shrinks a store a lot keeps a copy aside; rotating copies
+    let kept = 0;
+    if (!SS.guardedName(file) && (doubt || blind || DS.storeOf(file))) {
+      const d = DS.guardWrite(dsEnv, { file, value, doubt, blind });
+      if (!d.keepPrev) prev = null;
+      value = d.value; kept = d.kept;
+    }
     let text = JSON.stringify(value, null, 2);
     let h = sha(text);
     if (sameOnDisk(file, h)) return { skipped: true };
@@ -119,12 +147,14 @@ const OPS = {
     if (st) written.set(file, { h, size: st.size, mtimeMs: st.mtimeMs });
     if (SS.guardedName(file)) SS.afterWrite(ssEnv, file, value);
     if (restored) return { bytes: text.length, restored };
+    if (kept) return { bytes: text.length, kept };
     // a chat saved here goes straight into the index (no read back)
     if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); if (recallIdx) recallIdx.add(file, value, index.get(file)); }
     return { bytes: text.length };
   },
-  list({ dir }) {
-    return chats(dir).map(({ e }) => e.sum).sort((a, b) => b.updatedAt - a.updatedAt);
+  list({ dir, ds }) {
+    const list = chats(dir).map(({ e }) => e.sum).sort((a, b) => b.updatedAt - a.updatedAt);
+    return ds ? { list, doubt: chats.doubt } : list; // (round 43, datasafe) with what couldn't be read
   },
   search({ dir, query }) {
     const q = String(query || '').trim().toLowerCase();
@@ -152,8 +182,9 @@ const OPS = {
     return hits.sort((a, b) => b.count - a.count || b.updatedAt - a.updatedAt).slice(0, 100);
   },
   // a big store read and parsed here (the main thread only receives the result)
-  read({ file, fallback, status }) {
+  read({ file, fallback, status, ds }) {
     if (status) return SS.readStatus(fs, file); // (round 43, scenesafe) ok / missing / unreadable, never a silent fallback
+    if (ds) { const r = DS.load(dfs, file, fallback ?? null); delete r.prev; return r; } // (round 43, datasafe) + what happened
     let text;
     try { text = SS.readRetry(fs, file); } catch { return fallback ?? null; }
     try { const v = JSON.parse(text); const st = stat(file); if (st) written.set(file, { h: sha(text), size: st.size, mtimeMs: st.mtimeMs }); return v; } catch { /* cut short or garbled */ }

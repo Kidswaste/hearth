@@ -1,0 +1,17 @@
+/* 🛟 Data safety (round 43, datasafe): the calm card when something couldn't be read, and Recover… (datasafe.js) */
+.ds-card {
+  position: fixed; right: 16px; bottom: 16px; z-index: 900; max-width: 380px; padding: 12px 14px;
+  background: var(--surface, #15171c); color: var(--text, #e8e8ea); border: 1px solid var(--line, #2a2d35);
+  border-left: 3px solid var(--fh-info, #5aa0ff); border-radius: 10px; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+  font-size: 13px; line-height: 1.4;
+}
+.ds-card p { margin: 6px 0; opacity: 0.85; }
+.ds-card ul { margin: 4px 0 8px; padding-left: 18px; }
+.ds-actions { display: flex; gap: 6px; }
+.ds-recover { width: min(640px, 92vw); }
+.ds-recover .ds-body { max-height: 56vh; overflow: auto; }
+.ds-recover h3 { margin: 12px 0 4px; font-size: 13px; opacity: 0.8; }
+.ds-recover .ds-row { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; cursor: pointer; }
+.ds-recover .ds-row > span { display: flex; flex-direction: column; min-width: 0; }
+.ds-recover .ds-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-recover .ds-lab { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line, #2a2d35); }

@@ -229,7 +229,7 @@ for (const a of NASTY) {
 // ---------- 8. through engines.js (a temp copy, like the other engine tests) ----------
 {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'winpolish-'));
-  for (const f of ['engines.js', 'store.js', 'installs.js', 'winpolish.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+  for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
   fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
   const T = require(path.join(dir, 'engines.js'))._test;
   const fe = (m, win = true) => T.friendlyError('claude', m, { win });

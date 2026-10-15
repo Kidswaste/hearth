@@ -77,13 +77,11 @@ if (!app.requestSingleInstanceLock()) {
 
 // (round 16) config.json is read on every message (engine:send / once, settings()): read from disk once per version of
 // the file (size + modified time: one stat instead of a read), parsed fresh each call so callers can't edit the cache
-let cfgCache = null;
-function readConfig() {
-  const st = fs.statSync(CONFIG_PATH);
-  const key = `${st.size}:${st.mtimeMs}`;
-  if (cfgCache?.key !== key) cfgCache = { key, text: fs.readFileSync(CONFIG_PATH, 'utf8') };
-  return JSON.parse(cfgCache.text);
-}
+// (round 43, datasafe) through datasafemain.js: a held / damaged config.json is read again, then the last good version or
+// its newest automatic copy (data/.history/config) is used, and it is never saved over until it reads again
+const datasafe = require('./datasafemain');
+const cfgStore = datasafe.config({ configPath: CONFIG_PATH, dataDir: store.DATA_DIR, onRecovered: () => send('config:changed', loadAll()), onDoubt: () => send('data:doubt', { what: 'config' }) });
+function readConfig() { return cfgStore.read(); }
 function settings() {
   try { return readConfig().settings || {}; } catch { return {}; }
 }
@@ -183,6 +181,8 @@ function createWindow() {
     openExternal(url);
   });
   win.webContents.on('found-in-page', (_e, result) => send('find:result', result));
+  // (round 43, datasafe) a new page reads everything again: what the old one couldn't read is forgotten with it
+  win.webContents.on('did-start-navigation', (d) => { if (d?.isMainFrame !== false && !d?.isSameDocument) store.newPage(); });
   // Ctrl/⌘+; opens the command bar (cmdbar.js) even while the Lab's sandboxed frame has the keyboard.
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type === 'keyDown' && (input.control || (process.platform === 'darwin' && input.meta)) && (input.key === ';' || input.code === 'Semicolon')) {
@@ -244,12 +244,11 @@ ipcMain.handle('config:get', afterSync(() => loadAll()));
 ipcMain.handle('config:save', afterSync((_e, config) => {
   config = syncmain.guardConfig(config); // a config that just arrived from another computer is merged, not undone
   // (round 29, safetynet) temp file + rename: a crash or a power cut mid-save can't leave half a config.json
-  const tmp = `${CONFIG_PATH}.tmp`;
-  const text = `${JSON.stringify(config, null, 2)}\n`;
-  fs.writeFileSync(tmp, text);
-  try { fs.renameSync(tmp, CONFIG_PATH); } catch { fs.writeFileSync(CONFIG_PATH, text); fs.rmSync(tmp, { force: true }); } // (Windows: a file held for a moment)
-  cfgCache = null;
-  return appshell.applySettings(win, config.settings || {});
+  // (round 43, datasafe) never a config that isn't one, never over a file it couldn't read, never every agent at once
+  const r = cfgStore.save(config);
+  if (!r.ok) return r;
+  if (r.kept) send('config:changed', loadAll()); // the guard kept something the window dropped: the window gets it back
+  return appshell.applySettings(win, (r.value || config).settings || {});
 }));
 ipcMain.handle('open-file', (_e, which) => shell.openPath(which === 'theme' ? THEME_PATH : CONFIG_PATH));
 ipcMain.handle('open-external', (_e, url) => openExternal(url));
@@ -607,6 +606,8 @@ function registerAfterWindow() {
   lazyIpc('hooksmain.js', (m, ipc) => m.register(ipc, () => win)); // (round 26) hooks: "when a file appears in a folder" (fs.watch, only while a hook asks; round 29: loaded then)
   lazyIpc('tokenauditmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 36) ⋯ AI setup → Spending: where each AI's fixed tokens go (reads only)
   lazyIpc('scenesafemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, syncmain })); // (round 43) 🛟 Recover lost scenes: every copy of the Lab's scenes still on this computer, the cloud folder, backups (reads only)
+  datasafe.register(ipcMain, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, store, cfg: cfgStore, syncmain, onConfig: () => send('config:changed', loadAll()) }); // (round 43, datasafe) what couldn't be read (the calm card), 🛟 Recover… (chats, memory, settings, tool data)
+  store.onDoubt(() => send('data:doubt', {}));
   lazyIpc('dragdropmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 38) files with Finder / Explorer: native drags out, drops checked (folders, iCloud placeholders), copied files pasted
 
   // config.json / theme.css edited outside Hearth (an editor, sync): told to the window. (round 16) the OS tells us
