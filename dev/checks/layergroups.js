@@ -12,6 +12,7 @@ const step = (label, ok, extra) => { out.steps.push(`${ok ? '✓' : '✖'} ${lab
 const errs = []; addEventListener('error', (e) => errs.push(e.message));
 
 activate('tool:three');
+await until(() => typeof ThreeLab !== 'undefined' && typeof LabGroups !== 'undefined', 60000); // the Lab's lazy group (late on a busy machine)
 const cmd = await ThreeLab.cmd();
 await until(() => ThreeLab.scenes && ThreeLab.director && ThreeLab.groupsHost);
 const S = ThreeLab.scenes; const D = ThreeLab.director; const G = LayerGroups; const GH = ThreeLab.groupsHost;
@@ -182,6 +183,7 @@ const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now(
 const out = JSON.parse(localStorage.getItem('layergroups.out') || '{"steps":[],"problems":[]}');
 const step = (label, ok, extra) => { out.steps.push(`${ok ? '✓' : '✖'} ${label}${extra !== undefined ? ` · ${typeof extra === 'string' ? extra : JSON.stringify(extra)}` : ''}`); if (!ok) out.problems.push(label); };
 activate('tool:three');
+await until(() => typeof ThreeLab !== 'undefined' && typeof LabGroups !== 'undefined', 60000); // the Lab's lazy group (late on a busy machine)
 await ThreeLab.cmd();
 await until(() => ThreeLab.scenes && ThreeLab.director && ThreeLab.groupsHost);
 const id = localStorage.getItem('layergroups.check');
