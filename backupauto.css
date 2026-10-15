@@ -14,11 +14,11 @@
 .ba-offer { margin: 2px 0 0; }
 .ba-list { max-height: min(46vh, 420px); overflow: auto; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--line, rgba(255,255,255,0.08)); padding-top: 4px; contain: content; }
 .ba-day { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.6; margin: 8px 0 2px; }
-.ba-row { display: grid; grid-template-columns: 18px 46px 1fr auto auto; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; }
+.ba-row { display: grid; grid-template-columns: 18px auto 1fr auto auto; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; }
 .ba-row:hover, .ba-row:focus-visible { background: var(--hover, rgba(255,255,255,0.05)); }
-.ba-row .ba-when { font-variant-numeric: tabular-nums; opacity: 0.8; }
+.ba-row .ba-when { font-variant-numeric: tabular-nums; opacity: 0.8; white-space: nowrap; }
 .ba-row .ba-body { display: flex; flex-direction: column; min-width: 0; }
-.ba-row .ba-what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ba-row .ba-what { line-height: 1.35; }
 .ba-row .ba-sub { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ba-mark { text-align: center; opacity: 0.55; }
 .ba-mark.ok { color: var(--ok, #7fd49b); opacity: 1; }
@@ -29,4 +29,4 @@
 .ba-row:hover > button, .ba-row:focus-within > button { opacity: 1; }
 @media (hover: none) { .ba-row > button { opacity: 1; } }
 .ba-auto { display: inline-flex; align-items: center; gap: 4px; }
-@media (max-width: 560px) { .ba-row { grid-template-columns: 18px 46px 1fr; } .ba-row > button { display: none; } }
+@media (max-width: 560px) { .ba-row { grid-template-columns: 18px auto 1fr; } .ba-row > button { display: none; } }

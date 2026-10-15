@@ -84,7 +84,8 @@ function drives() {
 }
 const io = () => ({ platform: o.platform, home: o.home, documents: documents(), env: o.env, drives: drives() });
 const syncDir = () => { const st = o.syncmain?.status?.() || {}; return st.on && st.root ? path.join(st.root, 'Hearth') : null; };
-const ctx = () => ({ platform: o.platform, dataDir: o.dataDir, appDir: o.appDir, syncDir: syncDir() });
+// (a test run's own Documents sits inside the throwaway app copy: the app-folder rule is left out there only)
+const ctx = () => ({ platform: o.platform, dataDir: o.dataDir, appDir: TEST && C.inside(process.env.HEARTH_TEST_SAVE_DIR, o.appDir, o.platform) ? null : o.appDir, syncDir: syncDir() });
 // the old place (settings.backupDir in config.json: it syncs, so it can be the other computer's path)
 function legacyDir() {
   try {
@@ -164,7 +165,11 @@ async function verify(zip, { media = true, base = path.dirname(zip) } = {}) {
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-backup-check-'));
   try {
     try { await unzipAll(zip, dest); } catch (err) {
-      return { ok: false, problems: [`the zip can't be opened (${(err.detail || err.message || '').split('\n')[0].slice(0, 140) || 'damaged'})`], at: now() };
+      // in plain words, without the temp folder: "data/kv/notes.json doesn't read back the same"
+      const raw = String(err.detail || err.message || '').split(dest).join('').replace(/^[\\/]+/gm, '');
+      const crc = raw.match(/([^\s:]+)\s+bad CRC/i) || raw.match(/(?:CRC|checksum)[^\n]*?([\w./-]+\.\w+)/i);
+      const what = crc ? `${crc[1].replace(/^[\\/]+/, '')} doesn't read back the same` : raw.split('\n')[0].replace(/^(unzip|tar):\s*/i, '').slice(0, 140) || 'it is damaged';
+      return { ok: false, problems: [`the zip is damaged (${what})`], at: now() };
     }
     const read = readJsonIn(dest);
     const manifest = read('hearth-backup.json');
@@ -207,6 +212,8 @@ async function inspect(zip) {
 // ---------- the list ----------
 async function list() {
   const me = machine();
+  // every id this computer went by (sync makes its own id later; the host name before that)
+  const ids = new Set([me.id, `host:${os.hostname()}`, ...(S().ids || [])]);
   const items = [];
   for (const d of dirs()) {
     let ns = [];
@@ -217,7 +224,7 @@ async function list() {
       const card = readCard(p);
       const parsed = C.parseName(n);
       const machineId = card?.machine?.id || null;
-      const mine = machineId ? machineId === me.id : Boolean(parsed) && (!parsed.computer || parsed.computer === me.slug);
+      const mine = machineId ? ids.has(machineId) : Boolean(parsed) && (!parsed.computer || parsed.computer === me.slug);
       items.push({ name: n, path: p, dir: d, here: d === dirs()[0], at: card?.at || parsed?.at || st.mtimeMs, size: st.size, ok: card?.ok ?? undefined, problems: card?.problems || [], counts: card?.counts || null,
         reason: card?.reason || (parsed ? 'legacy' : 'other'), computer: card?.machine?.name || parsed?.computer || '', mine, hearth: Boolean(parsed || card), checkedAt: card?.checkedAt || 0, media: (card?.media || []).length });
     }
@@ -246,6 +253,7 @@ async function doRun(reason) {
   const s = S();
   const at = now(); const t0 = Date.now();
   const me = machine();
+  if (!(s.ids || []).includes(me.id)) s.ids = [...(s.ids || []), me.id].slice(-6);
   const target = dir();
   let stage = null;
   s.lastTry = at;
