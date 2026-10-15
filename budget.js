@@ -159,6 +159,7 @@ const Budget = (() => {
     return el('section', { class: 'opt-sec bud-sec' },
       el('h4', { class: 'opt-h', text: 'Spending' }),
       el('p', { class: 'opt-hint', text: now }),
+      typeof CostCoach !== 'undefined' ? CostCoach.row(a) : null, // (round 43) 🧭 Cost coach: where the tokens went, the 3 fixes that save most
       s.limit ? meterBar(s) : null,
       row('Weekly limit', pick),
       s.limit ? el('div', { class: 'opt-row', title: tip }, el('span', { class: 'opt-label', text: 'Near it' }), mode) : null,

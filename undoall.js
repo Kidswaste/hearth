@@ -270,7 +270,24 @@ const UndoAll = (() => {
         await refreshLab(e.u.what);
       },
     },
+    // (round 43, costcoach) a value this window keeps in its store (a mission pinned 📌 from now on): put back as it was
+    store: {
+      check(e, side = 'now') { const v = storeGet(e.u.key); const want = side === 'now' ? e.u.now : e.u.was; const other = side === 'now' ? e.u.was : e.u.now; return C.same(v, want) ? null : C.same(v, other) ? { already: true } : { warn: 'It was changed again since.' }; },
+      undo: (e) => storePut(e.u, e.u.was),
+      redo: (e) => storePut(e.u, e.u.now),
+    },
   };
+  // the store value as missions.js reads it (null = not set); a mission goes back through Missions.set so its button follows
+  const storeGet = (k) => { try { return store.get(k, null) ?? null; } catch { return null; } };
+  function storePut(u, v) {
+    if (u.via === 'mission' && typeof Missions !== 'undefined' && u.agentId) return hush(() => Missions.set(u.agentId, v || 'normal', { keep: true }));
+    try { store.set(u.key, v ?? null); } catch { /* storage is a convenience */ }
+  }
+  // stored({ key, label, was, now, via?, agentId? }): a store change the owner just made (a click), one entry
+  function stored(s) {
+    if (quiet || !s?.key || C.same(s.was ?? null, s.now ?? null)) return null;
+    return add({ kind: 'store', key: `store:${s.key}`, label: s.label || 'Changed a setting', u: { key: s.key, was: s.was ?? null, now: s.now ?? null, via: s.via || null, agentId: s.agentId || null } });
+  }
 
   // ---------- AI changes: the newest ones, undone by aiundo.js ----------
   const aiList = () => { try { return (window.AiUndo?.list?.() || []).filter((e) => e.at >= bootAt && !e.cant); } catch { return []; } };
@@ -467,7 +484,7 @@ const UndoAll = (() => {
   boot();
 
   return {
-    ready, undo, redo, viaSwitch, memoryTidied, keepFiles, deleted, part: mountPart, paintPart, openPart, summary,
+    ready, undo, redo, viaSwitch, memoryTidied, keepFiles, deleted, stored, part: mountPart, paintPart, openPart, summary,
     list: () => L.list.slice(), onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
     _test: { get L() { return L; }, ours, acting: () => { lastInput = performance.now(); }, rebase, KINDS, aiNewest },
   };

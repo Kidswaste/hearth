@@ -147,6 +147,7 @@ const AppSearchData = (() => {
     ['limit', 'spending', 'Weekly limit', 'Weekly limit', 'limit budget cap tokens week', 'A weekly limit of tokens for this AI', 'Spending'],
     ['lighter', 'spending', 'Continue lighter (offer it in long chats)', 'Offer to continue lighter', 'continue lighter compact summary long chat cheaper', 'In a long chat, one line offers a summary instead of re-reading everything', 'Spending'],
     ['tokens-go', 'spending', 'Where its tokens go', 'Where its tokens go', 'tokens where cost audit prompt tools fixed part', 'What every message carries before your words, line by line', 'Spending'],
+    ['cost-coach', 'spending', 'Cost coach: where your tokens went, what to change', 'Cost coach', 'coach save saving waste where went week fixes suggestions advice', 'The last 7 days by AI, kind of chat and cause, and the 3 changes that would save the most', 'Spending'], // (round 43)
     ['glance', 'spending', 'This week at a glance…', 'This week at a glance', 'week usage biggest chats tools stats', 'Biggest chats, biggest tools, one-click fixes', 'Spending'],
     ['next', 'missions', 'Your next message (missions)', 'Your next message', 'mission missions next message mode swarm', 'What the next message becomes (◎ in the chat box)', 'Your next message'],
   ].map(([id, fold, label, find, tags, hint, part]) => ({ id: `ai:${id}`, kind: 'aisetup', fold, label, find, tags, hint, path: `⋯ AI setup › ${part}` }));
