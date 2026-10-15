@@ -97,7 +97,7 @@ await safe('anims', async () => {
   await d.updateLayer(title, { visible: true }, 0.3);
   const anims = await sbx('return window.__labType.anims()');
   const bad = {};
-  const at = async (t) => { c.seek(t); await wait(260); return statOf(title); };
+  const at = async (t) => { c.seek(t); await wait(260); await until(async () => Math.abs(((await statOf(title))?.t ?? -9) - t) < 0.02, 6000); await wait(150); return statOf(title); }; // (round 45: wait for a frame drawn at t: a paused scene draws a few a second on a busy machine)
   for (const a of anims) {
     await LabType.set(L.id, { inAnim: a, outAnim: 'none', start: 0.5, stagger: 0.03, dur: 1, hold: 0, ease: 'out' });
     await until(async () => (await statOf(title))?.frames > 2, 6000);
