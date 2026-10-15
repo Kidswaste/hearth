@@ -68,7 +68,8 @@ ok(cmp.ok && cmp.images.length === 1 && /apart/.test(cmp.value.differences[0]), 
 const cmp2 = await call('board_compare', { items: [gold.id, neon.id] });
 ok(cmp2.ok, 'board_compare (same thing, old name)');
 const clipLook = await call('board_look', { item: clip.id });
-ok(clipLook.ok && /board_watch/.test(clipLook.value.clip), 'looking at a clip points to board_watch');
+// (round 44) board_watch is an op of board_do since round 41 (toolslim): the pointer names the tool the AI has
+ok(clipLook.ok && /board_do watch/.test(clipLook.value.clip), 'looking at a clip points to board_do watch');
 
 // a clip over time: contact sheet with timestamps, scenes, exact times, frames
 const w1 = await call('board_watch', { item: clip.id });

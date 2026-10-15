@@ -234,7 +234,7 @@ for (const n of wanted) {
   // or a FAIL line from a Node test; (round 44) any failing top-level field of a check's result, in whatever shape (verdictOf)
   const verdict = n.startsWith('unit:') || n.startsWith('astra-') ? '' : verdictOf(text);
   const bad = r.status !== 0 || Boolean(verdict) || /^(?:\{ ?| )"(?:ok|pass)":\s*false/m.test(text) || /^ "errors": \[\s*"/m.test(text) || /^\s*"?✖/m.test(text) || /^(FAIL|✖)/m.test(text);
-  const why = bad ? (text.match(/\d+ problem\(s\):\n([^\n]*)/)?.[1] || text.match(/^\s*"?✖[^\n]*/m)?.[0] || verdict || text.match(/"problems":\s*\[[^\]]*\]/)?.[0] || (r.error ? r.error.message : `exit ${r.status}`)).trim().slice(0, 200) : '';
+  const why = bad ? (text.match(/\d+ problem\(s\):\n([^\n]*)/)?.[1] || text.match(/^\s*"?✖[^\n]*/m)?.[0] || verdict || text.match(/^FAIL[^\n]*/m)?.[0] || text.match(/"problems":\s*\[[^\]]*\]/)?.[0] || (r.error ? r.error.message : `exit ${r.status}`)).trim().slice(0, 200) : '';
   results.push({ n, ok: !bad, s: Math.round((Date.now() - started) / 1000), why });
   console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}`);
   if (bad && argv.includes('--stop')) break;
