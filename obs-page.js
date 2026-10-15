@@ -10,6 +10,10 @@
   const S = { frames: 0, drawn: 0, connected: false, cfg: { key: 'alpha', fit: 'contain', lo: 0.04, hi: 0.18 }, last: null, size: [0, 0] };
   window.__obs = S;
   let gl = cv.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: true });
+  // (round 43, glrecover) the GPU took the context (a driver reset, sleep / wake): the page loads again when it comes
+  // back (it reconnects by itself and the next frame draws), or after 4 s without it
+  cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); setTimeout(() => location.reload(), 4000); });
+  cv.addEventListener('webglcontextrestored', () => location.reload());
   let g2 = null; let prog = null; let tex = null; let U = {};
   if (gl) {
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };

@@ -628,6 +628,7 @@ function registerAfterWindow() {
   bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });
   syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)
   require('./jankmain').register(ipcMain, bgmain, () => win); // (round 20) jank watch: main loop lag, GPU crashes, the owner's busy moments
+  require('./glrecovermain').register(ipcMain, { getWin: () => win }); // (round 43) the graphics card restarted / drawing without it: one calm note
   syncmain.setHold?.(() => require('./jankmain').hold()); // a sync pass waits out a drag / typing burst
 }
 // /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs

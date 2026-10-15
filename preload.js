@@ -256,5 +256,6 @@ contextBridge.exposeInMainWorld('hub', {
     download: call('assets:download'), cancel: call('assets:cancel'), import: call('assets:import'), writePreset: call('assets:writePreset'), watch: call('assets:watch'), onEvent: on('assets:event'),
   },
   rfast: { open: call('rfast:open'), write: call('rfast:write'), end: call('rfast:end'), cancel: call('rfast:cancel') }, // (round 41, renderfast) frames streamed into ffmpeg (renderfastmain.js)
+  glr: { state: call('glrecover:state'), shown: call('glrecover:shown'), sim: call('glrecover:sim'), onNote: on('glrecover:note') }, // (round 43, glrecover) the graphics card restarted / drawing without it (glrecovermain.js)
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
 });

@@ -823,22 +823,41 @@ float sgSimplex(vec2 v) {
   function createPreview(canvas) {
     const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, premultipliedAlpha: false });
     if (!gl) return null;
-    const vs = gl.createShader(gl.VERTEX_SHADER);
-    gl.shaderSource(vs, '#version 300 es\nin vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }');
-    gl.compileShader(vs);
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    let vs = null; let buf = null; let tex = null;
+    // (round 43, glrecover) made again when the GPU gives the context back after a reset
+    function init() {
+      vs = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(vs, '#version 300 es\nin vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }');
+      gl.compileShader(vs);
+      buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    init();
     let prog = null; let locs = {}; let hasSrc = 0; let raf = 0; let playing = true; let t = 0; let last = performance.now();
+    let lastSrc = null; let lastPic = null; let lost = false; let gone = false;
+    // the GPU took the context (a driver reset, sleep / wake…): kept as it is (time, values, the picture) and built
+    // again when it comes back; the graph itself never lived on the GPU
+    canvas.addEventListener('webglcontextlost', (e) => { if (gone) return; e.preventDefault(); lost = true; cancelAnimationFrame(raf); raf = 0; });
+    canvas.addEventListener('webglcontextrestored', () => {
+      if (gone) return;
+      lost = false; prog = null; locs = {};
+      init();
+      if (lastSrc) compile(lastSrc);
+      if (lastPic) { gl.bindTexture(gl.TEXTURE_2D, tex); try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, lastPic); } catch { hasSrc = 0; } }
+      last = performance.now(); raf = requestAnimationFrame(frame);
+    });
     const values = new Map(); // uniform name → number | [r, g, b]
     const mouse = [0.5, 0.5];
     let bpm = 120;
     canvas.addEventListener('pointermove', (e) => { const r = canvas.getBoundingClientRect(); mouse[0] = (e.clientX - r.left) / r.width; mouse[1] = 1 - (e.clientY - r.top) / r.height; });
     function compile(src) {
+      lastSrc = src;
+      if (lost) return [];
       const fs = gl.createShader(gl.FRAGMENT_SHADER);
       gl.shaderSource(fs, src);
       gl.compileShader(fs);
@@ -866,7 +885,7 @@ float sgSimplex(vec2 v) {
         uBass: Math.min(1, Math.max(0, 0.5 + 0.3 * Math.sin(time * 2.1) + 0.2 * kick)), uLevel: Math.min(1, 0.55 + 0.25 * Math.sin(time * 0.9) + 0.2 * Math.exp(-ph * 4)), uDrop: Math.exp(-(time % (beat * 32)) / 0.6), uBeatPhase: ph };
     }
     function draw() {
-      if (!prog) return;
+      if (!prog || lost) return;
       const dpr = Math.min(devicePixelRatio || 1, 1.5);
       const w = Math.max(2, Math.round(canvas.clientWidth * dpr)); const h = Math.max(2, Math.round(canvas.clientHeight * dpr));
       if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
@@ -883,6 +902,7 @@ float sgSimplex(vec2 v) {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
     function frame(now) {
+      if (lost) return;
       raf = requestAnimationFrame(frame);
       if (playing) t += Math.min(0.1, (now - last) / 1000);
       last = now;
@@ -893,7 +913,7 @@ float sgSimplex(vec2 v) {
       compile, draw,
       setValue(name, v) { values.set(name, typeof v === 'string' && v.startsWith('#') ? hexRgb(v) : typeof v === 'boolean' ? Number(v) : Number(v)); },
       clearValues: () => values.clear(),
-      setPicture(img) { if (!img) { hasSrc = 0; return; } gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img); hasSrc = 1; },
+      setPicture(img) { lastPic = img || null; if (!img) { hasSrc = 0; return; } hasSrc = 1; if (lost) return; gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img); },
       get hasPicture() { return Boolean(hasSrc); },
       toggle(on) { playing = on ?? !playing; return playing; },
       get playing() { return playing; },
@@ -901,7 +921,8 @@ float sgSimplex(vec2 v) {
       set bpm(v) { bpm = Math.max(40, Math.min(220, Number(v) || 120)); }, get bpm() { return bpm; },
       get time() { return t; },
       shot: () => canvas.toDataURL('image/png'),
-      destroy() { cancelAnimationFrame(raf); gl.getExtension('WEBGL_lose_context')?.loseContext(); },
+      get lost() { return lost; }, // (round 43)
+      destroy() { gone = true; cancelAnimationFrame(raf); gl.getExtension('WEBGL_lose_context')?.loseContext(); },
     };
   }
 

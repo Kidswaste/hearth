@@ -51,7 +51,7 @@ const ThreeLab = (() => {
     });
     libFiles[name].then(() => deliver({ target: 'three-sandbox', type: 'lib', name, code: String(have()) }), (err) => deliver({ target: 'three-sandbox', type: 'lib', name, error: err.message }));
   }
-  function sandboxFrame(parent, mode, onMessage, extraParams = () => '', { lazy = false, pretty = false, name = mode } = {}) {
+  function sandboxFrame(parent, mode, onMessage, extraParams = () => '', { lazy = false, pretty = false, name = mode, gpuStuck = 'reload' } = {}) {
     // No allow-same-origin: sketch code (which may come from a chat) can't reach the hub's APIs.
     // (round 37, labboot) the Lab preview takes the page warmed after the start (tools/three-boot.js), moved in running
     let warmed = name === 'preview' ? window.LabBoot?.take?.(parent) || null : null;
@@ -75,8 +75,27 @@ const ThreeLab = (() => {
     let stageSize = () => null; // → { width, height } for exact frame sizes (read at every load)
     const deliver = (m) => (target === 'stage' ? window.hub.stageSend(m) : frame.contentWindow.postMessage(m, '*'));
     let coverShot = null; // resolves with the picture the page answered for the cover
+    // (round 43, glrecover) the GPU took the page's WebGL contexts ('gpu-lost'): the page rebuilds its layers in place
+    // when they come back ('gpu-restored'). None back within GL_WAIT: the owner is told ('gpu-stuck') and, unless it
+    // handles that itself (gpuStuck: 'owner', the export page), the page is made again for the same content: its
+    // 'ready' says `again` (+ `gl`), so the owner runs what it ran (the Lab: the scene, its song at its place, nothing
+    // saved). Same path as a page the browser restarted by itself.
+    const gl = { lost: false, epoch: 0, timer: 0, stuck: 0, restored: 0, again: false, at: 0 };
+    const glWaitMs = () => Number(store.get('glrecover.wait', 4000)) || 4000;
+    const glStuck = () => {
+      gl.timer = 0;
+      if (!gl.lost) return;
+      gl.stuck += 1; live.gl('stuck', name);
+      onMessage({ source: 'three-sandbox', type: 'gpu-stuck', epoch: gl.epoch, count: gl.stuck });
+      if (gpuStuck !== 'owner' && (target === 'stage' || frame.isConnected)) { gl.again = true; load(true); }
+    };
+    const glTrack = (data) => {
+      if (data.type === 'gpu-lost') { gl.epoch = data.epoch || gl.epoch + 1; if (!gl.lost) { gl.lost = true; gl.at = Date.now(); live.gl('lost', name); } clearTimeout(gl.timer); gl.timer = setTimeout(glStuck, glWaitMs()); }
+      if (data.type === 'gpu-restored') { clearTimeout(gl.timer); gl.timer = 0; if (gl.lost) { gl.lost = false; gl.restored += 1; live.gl('restored', name); } }
+    };
     const handle = (data) => {
       if (data?.source !== 'three-sandbox') return;
+      if (data.type === 'gpu-lost' || data.type === 'gpu-restored') glTrack(data);
       if (data.type === 'lib-need') { sandboxLib(data.name, deliver); return; } // (round 25, diet) motion / lab3d for the page
       if (data.type === 'shot' && data.tag === 'cover') { const fn = coverShot; coverShot = null; fn?.(data.dataUrl); return; }
       if (data.type === 'ready') {
@@ -85,6 +104,8 @@ const ThreeLab = (() => {
         // the same load saying "ready" twice: the browser restarted the page by itself (its frame was moved in the
         // page), so it is up but empty; the owner runs its content again (data.again)
         if (ready && data.n && ready.n === data.n) data.again = true;
+        // (round 43, glrecover) the page made again after the GPU didn't come back: the same as above, and quiet
+        if (gl.again) { gl.again = false; data.again = true; data.gl = true; if (gl.lost) { gl.lost = false; clearTimeout(gl.timer); gl.timer = 0; } }
         ready = data; retries = 0;
         // a sketch page uncovers once its layers have drawn (stack-drawn); the others right away
         if (mode !== 'sketch') setTimeout(uncover, 160);
@@ -232,6 +253,8 @@ const ThreeLab = (() => {
         setTimeout(() => fin(null), ms);
       }),
       set onStageClosed(fn) { onStageClosed = fn; },
+      // (round 43, glrecover) is the page without its GPU contexts right now; { lost, stuck, restored, since }
+      get gl() { return { lost: gl.lost, stuck: gl.stuck, restored: gl.restored, since: gl.lost ? gl.at : 0, remaking: gl.again }; },
       get onStage() { return target === 'stage'; },
       get revision() { return ready?.revision; }, get ready() { return Boolean(ready); },
       get query() { return loadedWith; }, // (round 37, labboot)
@@ -253,6 +276,7 @@ const ThreeLab = (() => {
     return {
       reload(name) { c.reloads[name] = (c.reloads[name] || 0) + 1; note(`reload ${name}`); },
       retune(name) { c.retunes = (c.retunes || 0) + 1; note(`retune ${name}`); }, // (round 37, labboot) fit ⇄ exact size in place
+      gl(what, name) { const g = (c.gl ||= {}); g[what] = (g[what] || 0) + 1; note(`gpu ${what} ${name}`); }, // (round 43, glrecover) lost / restored / stuck
       sent(name, type) { if (!COUNTED.test(type)) return; const k = `${name} ${type}`; c.sent[k] = (c.sent[k] || 0) + 1; if (type !== 'layer-props') note(k); },
       set why(v) { why = v; }, get why() { return why; },
       counts: () => JSON.parse(JSON.stringify(c)),
@@ -2239,6 +2263,7 @@ const ThreeLab = (() => {
       saveExtras();
     }
     function rememberMedia() {
+      if (glp.phase) return; // (round 43, glrecover) nothing noted while the preview waits for the graphics card
       // the scene's own timeline: where its playhead is (no song)
       const tl = current && extras[current.id]?.timeline;
       if (tl && !extras[current.id].media && player.path === clockPath(current.id)) { const t = Math.round(player.time * 1000) / 1000; if (tl.time !== t) { tl.time = t; saveExtras(); } return; }
@@ -2717,6 +2742,8 @@ const ThreeLab = (() => {
     }
     function onMessage(msg) {
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
+      if (/^gpu-(lost|restored|stuck)$/.test(msg.type)) { glPreview(msg); return; } // (round 43, glrecover)
+      if (msg.type === 'stack-drawn' && glp.phase === 'remaking') glBack('new page');
       if (msg.type === 'obs-frame') { window.InteropObs?.frame(msg); return; } // (round 25, interop) a frame for OBS's Browser Source
       if (msg.type === 'shader-info') { window.LabShader?.onBox?.(msg); return; } // (round 23) ◇ shader layers' compile state
       if (msg.type === 'particles-info') { window.LabParticles?.onBox?.(msg); return; } // (round 24) ✦ particle layers' counts / sources
@@ -2762,7 +2789,6 @@ const ThreeLab = (() => {
         return;
       }
       if (msg.type === 'adapt') { paintAdapt(msg); return; }
-      if (msg.type === 'gpu-lost') { showStall('The preview lost its GPU context.'); window.Jank?.gpu('The Lab preview'); return; }
       // (round 39, labmemory) the preview cleaned up by itself after a scene switch and is still heavy: one calm tip
       if (msg.type === 'mem-note') {
         const go = () => toast('The Lab preview is holding a lot of graphics memory after many scenes. ⟲ Restart from scratch lightens it.', { timeout: 12000, action: { label: '⟲ Restart', fn: () => restartSim() } });
@@ -2790,7 +2816,7 @@ const ThreeLab = (() => {
       if (/^audio-/.test(msg.type) && typeof ThreeAudio !== 'undefined' && ThreeAudio.onMessage(msg)) return; // (round 23, labaudio)
       if (msg.type === 'live-tempo') { if (liveKind) { liveBpm = msg; paintLive(); if (typeof ThreeMusic !== 'undefined') ThreeMusic.liveTempo(msg); } return; }
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
-      if (msg.type === 'ready' && msg.again && ranOnce) { console.warn('Lab preview restarted by itself: running the sketch again'); run({ again: true }); }
+      if (msg.type === 'ready' && msg.again && ranOnce) { console.warn(msg.gl ? 'Lab preview made again after the GPU went away: running the scene again' : 'Lab preview restarted by itself: running the sketch again'); run({ again: true, quiet: Boolean(msg.gl) }); }
       if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
       if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
       if (msg.type === 'ready') refsSig = null; // (round 39, labmemory) a fresh page has no references yet
@@ -3146,6 +3172,40 @@ const ThreeLab = (() => {
       el('button', { class: 'ghost small', text: '×', title: 'Hide', on: { click: () => hideStall() } }));
     function showStall(text) { stall.querySelector('.three-stall-text').textContent = text; stall.hidden = false; }
     function hideStall() { stall.hidden = true; }
+    // (round 43, glrecover) the GPU took the preview's WebGL contexts. The page keeps the scene and rebuilds its layers
+    // when they come back ('gpu-restored', in place: the song plays on at its place, sliders, camera views and undo as
+    // they were); none back within a few seconds: sandboxFrame makes the page again and run({ again, quiet }) runs the
+    // scene in it (the song re-sent at its place; nothing saved: no history snapshot, no thumbnail). No banner while it
+    // works itself out; one calm note after (glrecover.js). The banner only when even a new page can't draw.
+    const glp = { phase: null, at: 0, stuck: 0, waits: [], log: [] };
+    const glEvent = (state, how = null) => { glp.log.push({ state, how, at: Date.now() }); if (glp.log.length > 20) glp.log.shift(); dispatchEvent(new CustomEvent('hearth:lab-gl', { detail: { state, how } })); };
+    function glPreview(msg) {
+      if (msg.type === 'gpu-lost') {
+        if (glp.phase) return;
+        glp.phase = 'lost'; glp.at = Date.now(); glp.stuck = 0;
+        window.Jank?.gpu('The Lab preview');
+        glEvent('lost');
+      } else if (msg.type === 'gpu-restored') {
+        if (msg.reload) return; // (not a sketch page: it loads again by itself)
+        glBack('in place');
+      } else if (msg.type === 'gpu-stuck') {
+        glp.stuck += 1;
+        glp.phase = 'remaking';
+        glEvent('remaking');
+        if (player.recording || glp.stuck > 1) showStall('The graphics card isn\u2019t drawing the preview right now.');
+      }
+    }
+    function glBack(how) {
+      if (!glp.phase) return;
+      glp.phase = null;
+      if (/graphics card/.test(stall.querySelector('.three-stall-text').textContent)) hideStall();
+      glEvent('restored', how);
+      window.GLRecover?.labBack?.({ how, ms: Date.now() - glp.at });
+      for (const fn of glp.waits.splice(0)) fn(true);
+    }
+    // a picture asked for while the GPU is away waits for it (≤ ms): 🎲 variations, ◧ before / after, the director
+    const glWait = (ms = 8000) => (!glp.phase ? Promise.resolve(true) : new Promise((r) => { glp.waits.push(r); setTimeout(() => r(false), ms); }));
+    api.gl = { wait: glWait, state: () => ({ phase: glp.phase, since: glp.phase ? glp.at : 0, stuck: glp.stuck, log: glp.log.slice(), box: box.gl }) };
     previewHost.append(stall);
     // (round 38, inputlatency) the safety check runs when the window is idle: it asks the page whether the preview is on
     // screen (a style and layout of the whole Lab), and on a timer it landed in the middle of slider drags and scrubs,
@@ -3177,7 +3237,9 @@ const ThreeLab = (() => {
     //           the Stage window, ⟲ Restart from scratch, a page that isn't up. It keeps a picture of the scene on screen
     //           and cross-fades once the new page has drawn (sandboxFrame `pretty`).
     // again: the page restarted by itself and is up but empty: everything runs as on a new page, without loading another
-    function run({ hot = false, layer = null, sync = false, reload = false, again = false } = {}) {
+    // quiet (round 43, glrecover): the same scene made again after the GPU went away: no history snapshot, no time
+    // machine version, no thumbnail, no "ran" event (nothing changed, nothing is saved)
+    function run({ hot = false, layer = null, sync = false, reload = false, again = false, quiet = false } = {}) {
       if (!current) return false;
       // (round 37, labboot) only the pixel ratio changed (a fit scene ⇄ one with its own frame size): the page switches
       // in place and every layer runs again in it, over the old picture, instead of a new page
@@ -3198,9 +3260,9 @@ const ThreeLab = (() => {
         toast('Stop the recording first', { type: 'error' });
         return false;
       }
-      snapshot();
+      if (!quiet) snapshot();
       window.LabShader?.beforeRun?.(layersOf(), sel(), editor); // (round 23) ◇ shader layers: their sliders follow their uniforms
-      window.ThreeHistory?.changed?.('run'); // (round 23) a version for the time machine (tools/three-history.js)
+      if (!quiet) window.ThreeHistory?.changed?.('run'); // (round 23) a version for the time machine (tools/three-history.js)
       const target = hot ? layerById(layer || selId) : null;
       if (hot && !target) hot = false;
       // every layer's sliders go into one table, each layer at its own offset
@@ -3258,12 +3320,12 @@ const ThreeLab = (() => {
       for (const L of rerun) { ranCode.set(L.id, codeOf(L)); ranRaw.set(L.id, L.code); }
       for (const id of gone) ranRaw.delete(id);
       ranSketch = current.id;
-      if (!partial && !box.onStage) window.LabBoot?.ran(current.id, box.query); // (round 37) the query to warm a page with next time
+      if (!partial && !box.onStage && !quiet) window.LabBoot?.ran(current.id, box.query); // (round 37) the query to warm a page with next time
       if (editOn && !partial && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
       if (fresh) box.send(capMsg());
       ranOnce = true;
-      if (!partial) scheduleThumb();
-      dispatchEvent(new CustomEvent('hearth:lab-ran', { detail: { id: current.id, partial } })); // (round 34) 🩺 the blank-frame hint (tools/three-doctor-hook.js)
+      if (!partial && !quiet) scheduleThumb();
+      if (!quiet) dispatchEvent(new CustomEvent('hearth:lab-ran', { detail: { id: current.id, partial } })); // (round 34) 🩺 the blank-frame hint (tools/three-doctor-hook.js)
       return true;
     }
 
@@ -4057,7 +4119,7 @@ ${code}
       // falls through to the user's "save screenshot" dialog.
       // (round 21, labdirector) a small JPEG made by the preview itself (no full-size PNG): the director's pictures.
       // Shares the thumbnail channel: a Lab thumbnail on its way gets the same picture (shrunk to its size).
-      shotSmall: (max) => new Promise((resolve) => {
+      shotSmall: (max) => glWait().then(() => new Promise((resolve) => { // (round 43: after the GPU is back, never a blank picture)
         const prev = thumbShot;
         let done = false;
         const mine = (url, small) => { if (done) return; done = true; if (thumbShot === mine) thumbShot = null; resolve(url || null); if (prev && url) prev(url, small && !prev.forDirector ? false : small); };
@@ -4065,16 +4127,16 @@ ${code}
         thumbShot = mine;
         box.send({ type: 'screenshot', tag: 'thumb', max: Math.max(64, Math.round(max)) });
         setTimeout(() => mine(null), 10000); // a heavy scene can take a while to draw its next frame
-      }),
+      })),
       coverShot: (ms) => box.cover(ms), // (round 29, bugbash) quick picture for chat switching (see box.cover)
-      shot: () => new Promise((resolve) => {
+      shot: () => glWait().then(() => new Promise((resolve) => { // (round 43: after the GPU is back)
         const prev = pendingShot;
         const mine = (url) => { prev?.(url); resolve(url); };
         pendingShot = mine;
         box.send({ type: 'screenshot', tag: 'get' });
         // a slow frame (a heavy scene, a shader still compiling, software rendering) is not "not rendering": wait 15 s
         setTimeout(() => { if (pendingShot === mine) { pendingShot = null; mine(null); } }, 15000);
-      }),
+      })),
     };
     api.runSketch = run;
     // Nodes ⇄ Code (tools/three-nodes.js): the selected layer as a node graph over the code pane.
@@ -4635,9 +4697,12 @@ ${frag}\`,
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),
-    _sandbox: (parent, onMessage, params) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage' }), // tools/three-backstage.js
+    _sandbox: (parent, onMessage, params, o = {}) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage', ...o }), // tools/three-backstage.js · (round 43) o.gpuStuck: 'owner' (the export page)
     _lib: sandboxLib, // (round 37, labboot) the motion / lab3d kits for the warm page (tools/three-boot.js)
     live: { counts: () => live.counts() }, // reloads vs in-place updates of the preview (dev/checks/live.js)
+    // (round 43, glrecover) the preview without its GPU contexts: state() { phase: null | 'lost' | 'remaking', … },
+    // wait(ms) resolves true once it draws again (at once when it does)
+    gl: { state: () => api.gl?.state?.() || { phase: null }, wait: (ms) => (api.gl ? api.gl.wait(ms) : Promise.resolve(true)) },
     _util: { codeOrOutline, numbered },
     // A picture of the Lab preview (data URL) for second opinions; null when nothing renders.
     shot: async () => (api.director ? api.director.shot() : null),

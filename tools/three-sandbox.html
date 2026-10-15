@@ -598,6 +598,7 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   if (gl3d && ctx) this.__ctxMade = true;
   if (gl3d && ctx && !ctx.__counted) {
     ctx.__counted = true; glRefs.push(new WeakRef(ctx)); if (glRefs.length > 64) glAlive();
+    globalThis.__glrWatch?.(this, ctx); // (round 43, glrecover) a lost GPU: told apart from the page's own let-go, rebuilt
     if (mode === 'sketch' && typeof WebGL2RenderingContext !== 'undefined' && ctx instanceof WebGL2RenderingContext) { trackGL(ctx); this.__gl = ctx; }
   }
   return ctx;
@@ -727,7 +728,7 @@ globalThis.__labPoolTake = (p) => {
   if (!e) { perfNote.poolMiss += 1; return null; }
   POOL.splice(POOL.indexOf(e), 1);
   realClearTimeout(e.timer);
-  if (e.gl.isContextLost()) return null;
+  if (e.gl.isContextLost() || e.gl.__glDead) return null;
   e.gl.__pooled = false;
   perfNote.poolHit += 1;
   return e.cv;
@@ -754,7 +755,7 @@ function gutRenderer(r) {
 function letGoRenderer0(r) {
   try { r.setAnimationLoop(null); } catch { /* gone */ }
   const cv = r.domElement; const gl = cv?.__gl;
-  const ok = mode === 'sketch' && gl && gl.__objs && !r.__stale && !r.__noPool && POOL_MAX() > 0 && !gl.isContextLost() && r.getContext?.() === gl;
+  const ok = mode === 'sketch' && gl && gl.__objs && !gl.__glDead && !r.__stale && !r.__noPool && POOL_MAX() > 0 && !gl.isContextLost() && r.getContext?.() === gl; // (round 43: a context the GPU took back once isn't pooled)
   if (!ok) {
     if (cv) cv.__letGo = true;
     try { r.dispose(); r.forceContextLoss(); } catch { /* gone */ }
@@ -1233,8 +1234,114 @@ const tickFrames = (t) => {
   paceNext(tickFrames, sleep);
 };
 realRAF(tickFrames);
-// (a context the page lets go of itself, a re-run or removed layer's, is not a GPU loss: teardownLayer marks it)
-addEventListener('webglcontextlost', (e) => { if (!e.target?.__letGo) post({ type: 'gpu-lost' }); }, true);
+// ---------- the graphics card coming back (round 43, glrecover) ----------
+// The GPU can take every WebGL context of the page away: a driver reset or update (Windows' TDR), sleep / wake, a
+// monitor plugged in, too much GPU memory, another app; Chromium then restarts its GPU process and, when the page
+// asked for it (preventDefault on the loss), gives the contexts back. Before, the preview went blank under "lost its
+// GPU context" and ⟲ Restart made a new page. Now nothing the scene is made of goes: slider values, the song and its
+// place, camera views, keyframes, layer props all live outside the GPU, in this page or the Lab. When a context comes
+// back, the layers that drew with WebGL run again in place on fresh renderers (their old GL objects are gone), and
+// the Lab is told ('gpu-lost' → 'gpu-restored'). No restore in a few seconds: the Lab makes a new page for the same
+// scene (tools/three.js sandboxFrame). An export frame drawn while contexts were gone is never sent as a picture
+// (xpFrame says `lost`). This page saves nothing, during a recovery or ever.
+// (a context the page lets go of itself: a re-run or removed layer's, the pool's, a sketch's own forceContextLoss(),
+// is not a GPU loss: marked __letGo)
+const GLR = { lost: 0, epoch: 0, losses: 0, restores: 0, rebuilds: 0, sim: false, timer: 0, last: null, wait: null };
+function glrWatch(cv, ctx) {
+  if (cv.__glrOn) return;
+  cv.__glrOn = true; cv.__glCtx = ctx;
+  // a sketch (or three.js' forceContextLoss) losing its own context on purpose: not the GPU
+  const ge = ctx.getExtension;
+  ctx.getExtension = function (name) {
+    const x = ge.call(ctx, name);
+    if (x && !x.__glrWrapped && /lose_context$/i.test(String(name))) {
+      x.__glrWrapped = true;
+      const lose = x.loseContext;
+      x.loseContext = function () { if (!GLR.sim) cv.__letGo = true; return lose.call(x); };
+    }
+    return x;
+  };
+  // (on the canvas itself: a canvas that isn't in the page, a helper's or a scene's offscreen one, fires no event at
+  // the window)
+  cv.addEventListener('webglcontextlost', glrLost);
+  cv.addEventListener('webglcontextrestored', glrRestored);
+}
+globalThis.__glrWatch = glrWatch;
+function glrLost(e) {
+  const cv = e.target;
+  if (cv.__letGo) return;
+  e.preventDefault(); // (the browser may give it back only then)
+  cv.__glDead = true;
+  const ctx = cv.__glCtx; if (ctx) ctx.__glDead = true;
+  GLR.losses += 1;
+  // the pool's waiting contexts and the thumbnails' renderer: gone for good (a pooled context's programs and objects
+  // belong to the context that was)
+  for (const p of [...POOL]) if (p.gl.__glDead || p.gl.isContextLost()) poolEvict(p);
+  if (thumbR && (thumbR.canvas === cv || thumbR.renderer.getContext?.()?.isContextLost?.())) dropThumbR();
+  // a context nothing on screen draws with (a waiting one, a helper's, one the browser took back because there were too
+  // many): let go, nothing to rebuild
+  const inUse = mode !== 'sketch' || Boolean(cv.closest?.('.lab-layer')) || [...renderers].some((r) => r.domElement === cv && !r.__stale && !r.__gutted && !r.__helper);
+  if (!inUse) { cv.__letGo = true; return; }
+  if (!GLR.lost) {
+    GLR.lost = realNow(); GLR.epoch += 1;
+    post({ type: 'gpu-lost', epoch: GLR.epoch, mode, layers: [...layers.keys()].length });
+  }
+}
+function glrRestored(e) {
+  if (!e.target.__glDead) return;
+  GLR.restores += 1;
+  // (a GPU process restart gives every context back, one event each: one rebuild after the last of them)
+  realClearTimeout(GLR.timer);
+  GLR.timer = realSetTimeout(glrRebuild, 120);
+}
+// a layer that drew with WebGL whose context went: it runs again
+function glrHit(L) {
+  for (const r of L.renderers) { const cv = r.domElement; if (cv?.__glDead || r.__glDead) return true; }
+  for (const cv of L.box.querySelectorAll('canvas')) if (cv.__glDead) return true;
+  return false;
+}
+async function glrRebuild() {
+  if (!GLR.lost) return;
+  const t0 = realNow();
+  // the shader / model viewer pages: a fresh load of the same page (the Lab runs its content again on 'ready' again)
+  if (mode !== 'sketch') { GLR.lost = 0; post({ type: 'gpu-restored', epoch: GLR.epoch, reload: true }); realSetTimeout(() => location.reload(), 30); return; }
+  let hit = ordered().filter((L) => glrHit(L));
+  for (const L of [...layers.values()]) if (!hit.includes(L) && glrHit(L)) hit.push(L); // (precomps' own layers)
+  const inHit = (L) => { for (let P = layers.get(L.props.pcOf); P; P = P.props.pcOf ? layers.get(P.props.pcOf) : null) if (hit.includes(P)) return true; return false; };
+  hit = hit.filter((L) => !inHit(L)); // (a precomp running again runs its own layers)
+  GLR.lost = 0; GLR.rebuilds += 1;
+  pacePoke();
+  // the layer runs again as it is now (its code, props, keyframes, camera moves); no `values`: the sliders' live
+  // values stay what they are (a slider moved since the scene ran keeps its place)
+  const runs = hit.map((L) => runLayer({ ...L.props, id: L.id, code: L.code, values: undefined, fx: '', swap: false }, true).catch(() => {}));
+  await Promise.all(runs);
+  const ids = hit.map((L) => L.id);
+  await new Promise((r) => (ids.length ? waitStack(ids, r, 2500) : r()));
+  GLR.last = { at: Date.now(), layers: ids.length, ms: Math.round(realNow() - t0) };
+  post({ type: 'gpu-restored', epoch: GLR.epoch, layers: ids, ms: GLR.last.ms });
+}
+// any context a live renderer uses is lost right now (an export frame drawn then is no picture)
+function glrAnyLost() {
+  if (GLR.lost) return true;
+  for (const r of renderers) { if (r.__stale || r.__gutted) continue; try { if (r.getContext?.()?.isContextLost?.()) return true; } catch { /* gone */ } }
+  return false;
+}
+// (checks: window.__glRecover.lose({ restore: ms | null }) loses every live context the way a GPU reset does
+// (WEBGL_lose_context), and gives them back after `restore` ms, or never; .state())
+window.__glRecover = {
+  lose({ restore = 300 } = {}) {
+    const list = [];
+    glAlive();
+    for (const w of glRefs) { const c = w.deref(); if (c && !c.isContextLost()) list.push(c); }
+    GLR.sim = true;
+    const exts = [];
+    try { for (const c of list) { const x = c.getExtension('WEBGL_lose_context'); if (x) { x.loseContext(); exts.push(x); } } } finally { GLR.sim = false; }
+    if (restore != null) realSetTimeout(() => { for (const x of exts) { try { x.restoreContext(); } catch { /* not lost */ } } }, Math.max(50, restore));
+    return exts.length;
+  },
+  state: () => ({ lost: Boolean(GLR.lost), epoch: GLR.epoch, losses: GLR.losses, restores: GLR.restores, rebuilds: GLR.rebuilds, last: GLR.last, contexts: glAlive(), layers: layers.size,
+    views: Object.fromEntries([...LV.views].map(([id, V]) => [id, LV.core.KEYS.map((k) => Math.round((V.t?.[k] ?? V[k] ?? 0) * 1e4) / 1e4)])) }),
+};
 // Right-click the picture: the Lab's menu. A still right-click opens it even over OrbitControls (which takes every
 // right-click for its pan); a right-drag stays the sketch's. (Round 7: menus where you point.) The menu opens when the
 // button comes up, so on a Mac / Linux, where contextmenu fires on the way down, a drag can still cancel it.
@@ -6098,7 +6205,7 @@ function testCard(c) {
 let thumbR = null;
 function dropThumbR() { if (!thumbR) return; clearTimeout(thumbR.timer); try { thumbR.renderer.dispose(); thumbR.renderer.forceContextLoss(); } catch {} renderers.delete(thumbR.renderer); thumbR = null; }
 function withThumbRenderer(w, h, fn) {
-  if (!thumbR || thumbR.w !== w || thumbR.h !== h) {
+  if (!thumbR || thumbR.w !== w || thumbR.h !== h || thumbR.canvas.__glDead || thumbR.renderer.getContext?.()?.isContextLost?.()) { // (round 43: a renderer whose context the GPU took is made again)
     dropThumbR();
     const canvas = document.createElement('canvas');
     untracked += 1; // (made from an eval or a message, its stack has no layer's module: it isn't a stale module's renderer)
@@ -11046,6 +11153,8 @@ function xpEncode(c, kind, q, legacy = false) {
 const XP_ACC_MAX = 16.8e6; // pixels: above it (8K…) the exact accumulation would take > 1 GB; sub-frames blend on a canvas instead
 async function xpFrame(m) {
   const { n, T, w, h, ss = 1, sub = 1, shutter = 0.5, F = 30, kind = 'image/png', q = 0.95, alpha = false, sig = false } = m;
+  // (round 43, glrecover) the GPU took the contexts: no frame now (the render resumes here once they're back)
+  if (glrAnyLost()) { post({ type: 'xp-frame', n, lost: true }); return; }
   const t0 = realNow();
   const times = [];
   const k = Math.max(1, Math.min(64, Math.round(sub) || 1));
@@ -11117,6 +11226,8 @@ async function xpFrame(m) {
     const d = g.getImageData(0, 0, 16, 16).data; sg = [];
     for (let i = 0; i < d.length; i += 4) sg.push(Math.round((0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) * (d[i + 3] / 255)));
   }
+  // (round 43) a context lost while this frame drew: its picture is blank somewhere, never sent as a frame
+  if (glrAnyLost()) { post({ type: 'xp-frame', n, lost: true }); return; }
   // (measuring: one pixel read back waits for the GPU, so its drawing counts as the draw instead of the encode)
   if (m.prof && !raw) { const g0 = realNow(); out.getContext('2d').getImageData(0, 0, 1, 1); stepMs += realNow() - g0; }
   const drawMs = realNow() - t0;
@@ -11172,7 +11283,7 @@ async function xpSheet({ times, cols, tw, th, pad = 28, labels = [], bg = '#1113
   post({ type: 'xp-sheet', buffer, w: c.width, h: c.height }, [buffer]);
 }
 function xpMessage(msg) {
-  const fail = (err) => post({ type: msg.type, n: msg.n, error: String(err?.message || err) });
+  const fail = (err) => post(msg.type === 'xp-frame' && glrAnyLost() ? { type: msg.type, n: msg.n, lost: true } : { type: msg.type, n: msg.n, error: String(err?.message || err) }); // (round 43: a frame the GPU dropped is "lost", not an error)
   if (msg.type === 'xp-frame') XP.chain = XP.chain.then(() => xpFrame(msg)).catch(fail); // (one at a time: a frame asked ahead waits its turn)
   else if (msg.type === 'xp-glb') xpGlb(msg).catch(fail);
   else if (msg.type === 'xp-sheet') xpSheet(msg).catch(fail);
@@ -11459,6 +11570,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'eval') runEval(msg);
   if (msg.type === 'edit') editCommand(msg);
   if (msg.type === 'view') lvCommand(msg); // (round 34 "labgestures") Z frames, Shift+Z resets, keep this view
+  if (msg.type === 'gl-sim') { window.__glRecover.lose(msg); return; } // (round 43, glrecover: checks lose the contexts of a page they can't eval in, the export page)
   if (msg.type === 'cam') cmCommand(msg); // (round 40, labcamera) the camera moves' layer, its pivot, the view now
   if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
@@ -11476,6 +11588,8 @@ addEventListener('message', async (e) => {
   if (msg.type === 'load') viewer?.load(msg);
   if (msg.type === 'viewer') viewer?.command(msg);
   // the hub covers the preview with this picture while the page reloads (a small JPEG, right now: no waiting for a frame)
+  // (round 43, glrecover) no picture while the GPU is away: a blank one would be kept as the scene's thumbnail / cover
+  if (msg.type === 'screenshot' && GLR.lost && mode === 'sketch') { post({ type: 'shot', tag: msg.tag || null, dataUrl: null, lost: true }); return; }
   if (msg.type === 'screenshot' && msg.tag === 'cover') { try { post({ type: 'shot', tag: 'cover', dataUrl: composite(null, Math.min(1, 1280 / (Math.max(innerWidth, innerHeight) * devicePixelRatio))).toDataURL('image/jpeg', 0.82) }); } catch { post({ type: 'shot', tag: 'cover', dataUrl: null }); } return; }
   // a sketch's thumbnail: small, merged and encoded off the page's frames (toBlob encodes on another thread), so
   // making one doesn't stall the preview the way a full-size PNG did
