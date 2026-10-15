@@ -247,11 +247,18 @@ const Native = (() => {
         Commands.tryRun(text, agentId, input);
         return;
       }
-      input.value = '';
-      store.set(draftKey(agentId), null);
-      autosize(input);
-      updateCounter(v);
-      send(agentId, text).catch((err) => toast(err.message, { type: 'error' }));
+      const go = () => {
+        input.value = '';
+        store.set(draftKey(agentId), null);
+        autosize(input);
+        updateCounter(v);
+        send(agentId, text).catch((err) => toast(err.message, { type: 'error' }));
+      };
+      // (round 45, localanswers.js) a question about Hearth itself may be answered here, for free: a card above the box
+      // (Show me · Ask the AI anyway) instead of sending; null / false = sent as always
+      const held = text && !v.attachments.length && window.LocalAnswers ? LocalAnswers.gate(agentId, text, { form, input }) : null;
+      if (held) { held.then((shown) => { if (!shown && input.value.trim() === text) go(); }, () => { if (input.value.trim() === text) go(); }); return; }
+      go();
     });
 
     root.append(header, el('div', { class: 'messages-wrap' }, list, jump), form);
