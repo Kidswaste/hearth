@@ -100,8 +100,8 @@ Small edit outside the lane: `tools/forge-game.js` (the AI's screenshot 768 px u
 - Unit: promptdiet-test, tokens-test, cache-test, director-mcp-test, toolslim-test, tokenaudit-test, concise-test,
   directorlean-test, director-cost, swarmlean-test, astra-engine-test, robust-engine-test, access-test,
   connections-test, handoff-test, memorytidy-test: pass.
-- Smoke (fake engines): see the final report of this round (tokenaudit, cachewise, directorlean, concise, access-chat,
-  lazy, boot-test).
+- Smoke (fake engines, `--exact`): tokenaudit, cachewise, directorlean, concise, access-chat, lazy + unit boot-test,
+  promptdiet-test: 8/8 passed on the first run.
 
 ## Not done (on purpose) / risks
 - **Moved words cost a help call when needed**: a rare arg (eval samples, screenshot frames) or the Forge globals are
