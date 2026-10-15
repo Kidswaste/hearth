@@ -124,6 +124,11 @@ async function cdpConnect() {
   const saveDir = opt('--save-dir', path.join(dir, 'test-saves'));
   fs.mkdirSync(saveDir, { recursive: true });
   const env = { ...process.env, HEARTH_TEST_SAVE_DIR: saveDir, ...(opt('--open') != null ? { HEARTH_TEST_OPEN: opt('--open') } : {}) };
+  // (round 48, bugbash3) dev/fake-codex.js speaks Codex's exec JSONL only; since Astra moved to the app-server
+  // transport (codex-server.js, Codex's round 47 work) every Astra reply in a --fake-engines check failed to start.
+  // The fake engines' scenarios run through the exec transport (still the agent's codexTransport: 'exec'); the
+  // app-server path has its own fixture (dev/fake-codex-server.js: astra-connect / astra-workspace smokes, codex-server-test).
+  if (args.includes('--fake-engines') && !env.HEARTH_CODEX_TRANSPORT) env.HEARTH_CODEX_TRANSPORT = 'exec';
   // --fake-meshy: a local fake of Meshy's API, Poly Haven's API and test web pages (dev/fake-meshy.js) for the apps
   // checks; the app finds it through HEARTH_MESHY_BASE (checks read it back with hub.apps.status().testBase)
   if (args.includes('--fake-meshy')) {
