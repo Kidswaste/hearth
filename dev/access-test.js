@@ -121,7 +121,7 @@ ok('"Allow for this chat" keys group alike requests (never for password commands
 
 // ---------------------------------------------------------------- engines: flags and prompt
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'access-engine-'));
-for (const f of ['engines.js', 'store.js', 'installs.js', 'winpolish.js', 'access-rules.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'installs.js', 'winpolish.js', 'access-rules.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 const engines = require(path.join(dir, 'engines.js'));
 const FAKE_CLAUDE = path.join(__dirname, 'fake-claude.js');

@@ -401,6 +401,12 @@ const ThreeLab = (() => {
   const SLOT = 10000; // each layer's slider values live from slot × SLOT in the sandbox
   function sketchTab(pane) {
     let sketches = [];
+    // (round 43, scenesafe) a store is written only once it was read for sure: a read that failed (Windows: a file held
+    // by an antivirus / OneDrive / iCloud for a moment) used to look like "no scenes", and the starter scene was saved
+    // over yours. kvOk: the stores read fine (or truly not there yet); removedIds: scenes deleted on purpose since the
+    // last save (the store keeps any other scene a save would drop: scenesafe-core.js)
+    const kvOk = new Set();
+    const removedIds = new Set();
     let current = null;
     let selId = null; // selected layer
     let soloId = null; // a layer shown alone while you work on it (not saved)
@@ -461,6 +467,7 @@ const ThreeLab = (() => {
         ['Rename…', current?.name || '', () => renameSketch()],
         ['Duplicate', 'A copy you can change freely', () => duplicate()],
         ['History…', 'Earlier versions of the selected layer, and deleted sketches', () => historyDialog()],
+        ...(window.LabSceneSafe ? [LabSceneSafe.sketchRow()] : []), // (round 43) 🛟 Recover lost scenes… (tools/three-scenesafe.js)
         ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H · /history', () => window.ThreeHistoryUI?.open()],
         ['Copy all the code', 'Every layer, one after the other, to the clipboard', () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); }],
         ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
@@ -1356,7 +1363,7 @@ const ThreeLab = (() => {
     // { sketchId: [{ id, t, text, image, at, done }] } in kv 'three-notes'. A note = the song time, a screenshot and what to change.
     let notesAll = {};
     const notesOf = () => (current ? (notesAll[current.id] ||= []) : []);
-    const saveNotes = saver(() => window.hub.kvSet('three-notes', notesAll), 300);
+    const saveNotes = saver(() => (kvOk.has('three-notes') ? window.hub.kvSet('three-notes', notesAll) : null), 300);
     const fileUrl = (p) => WinMac.fileUrl(p); // (round 31, winmac) a # or ? in a file name no longer cuts the URL
     // ---------- contact sheet ----------
     // One picture of the whole piece: a frame at each cue (or evenly over the loop / song), labeled with
@@ -1660,7 +1667,7 @@ const ThreeLab = (() => {
     let refsAll = {};
     const refBytes = new Map(); // id → ArrayBuffer
     const refsOf = () => (current ? (refsAll[current.id] ||= []) : []);
-    const saveRefs = saver(() => { dispatchEvent(new Event('hearth:lab-refs')); return window.hub.kvSet('three-refs', refsAll); }, 300); // (round 42: filewatch follows them)
+    const saveRefs = saver(() => { dispatchEvent(new Event('hearth:lab-refs')); return kvOk.has('three-refs') ? window.hub.kvSet('three-refs', refsAll) : null; }, 300); // (round 42: filewatch follows them)
     const REF_KINDS = [['image', /\.(png|jpe?g|gif|webp|bmp|svg)$/i], ['video', /\.(mp4|webm|mov|m4v|mkv)$/i], ['model', /\.(glb|gltf|obj|fbx|stl|ply)$/i],
       ['audio', /\.(mp3|wav|ogg|m4a|flac|aac)$/i], ['font', /\.(ttf|otf|woff2?)$/i], ['data', /\.(json|csv|txt|hdr|exr|bin)$/i]];
     const MIMES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/mp4', m4v: 'video/mp4', mkv: 'video/webm', glb: 'model/gltf-binary', gltf: 'model/gltf+json', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac', json: 'application/json', csv: 'text/csv', txt: 'text/plain', ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2' };
@@ -2365,7 +2372,7 @@ const ThreeLab = (() => {
       saveExtras();
       sceneMedia(id, { playing: false });
     }
-    addEventListener('beforeunload', () => { rememberMedia(); if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); });
+    addEventListener('beforeunload', () => { rememberMedia(); if (extrasLoaded && kvOk.has('three-lab-extras')) window.hub.kvSet('three-lab-extras', extras); });
     split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
     previewHost.append(presentHint, presentHud, blackout, editPanel, stageNote);
     function setCodeVisible(show) {
@@ -2644,7 +2651,7 @@ const ThreeLab = (() => {
     // Per-sketch looks and music links for the sliders, song, frame size and selected layer.
     let extras = {};
     let extrasLoaded = false; // never write the empty placeholder over your saved extras (a reload while loading)
-    const saveExtras = debounce(() => { if (extrasLoaded) window.hub.kvSet('three-lab-extras', extras); }, 500);
+    const saveExtras = debounce(() => { if (extrasLoaded && kvOk.has('three-lab-extras')) window.hub.kvSet('three-lab-extras', extras); }, 500);
     let consoleLines = [];
     let lastStats = null;
     // the fps / draw-call line (on hover): rebuilt only when its text changes, and painted when it shows again
@@ -2814,7 +2821,7 @@ const ThreeLab = (() => {
     let trash = [];
     // (round 21: written 1.5 s after the last change, not 0.4 s: with auto-run every pause in typing takes a snapshot,
     // and the whole history, 40 versions of every layer, went to disk each time)
-    const saveHistory = debounce(() => window.hub.kvSet('three-history', { versions: history, trash }), 1500);
+    const saveHistory = debounce(() => { if (kvOk.has('three-history')) window.hub.kvSet('three-history', { versions: history, trash }); }, 1500);
     const histKey = (L) => (!L || L.id === 'main' ? current.id : `${current.id}:${L.id}`);
     function snapshot() {
       if (!current || !editor.value.trim() || api.tm?.quiet) return; // (round 23: not while the time machine shows a version)
@@ -3260,7 +3267,12 @@ const ThreeLab = (() => {
       return true;
     }
 
-    const save = saver(() => window.hub.kvSet('three-sketches', sketches), 600); // (round 29) written during long typing too, and on leaving
+    const save = saver(() => { // (round 29) written during long typing too, and on leaving
+      if (!kvOk.has('three-sketches')) return null; // (round 43) not before your scenes were read for sure
+      const removed = [...removedIds]; removedIds.clear();
+      // the store kept scenes this save would have dropped (sync, a list out of date): they join the list on screen
+      return window.hub.kvSet('three-sketches', sketches, removed.length ? { removed } : undefined).then((r) => { if (r?.restored?.length) { refreshFromDisk().catch(() => {}); window.LabSceneSafe?.kept?.(r.restored.length); } });
+    }, 600);
     function persist() {
       if (!current) return;
       const L = sel();
@@ -3272,7 +3284,7 @@ const ThreeLab = (() => {
     // ---------- sketch browser ----------
     // A grid of every sketch with a thumbnail taken automatically a few seconds after it runs (kv 'three-thumbs').
     let thumbs = {};
-    const saveThumbs = debounce(() => window.hub.kvSet('three-thumbs', thumbs), 800);
+    const saveThumbs = debounce(() => { if (kvOk.has('three-thumbs')) window.hub.kvSet('three-thumbs', thumbs); }, 800);
     let thumbTimer = 0;
     let thumbShot = null;
     function scheduleThumb() {
@@ -3332,6 +3344,7 @@ const ThreeLab = (() => {
             trash.unshift({ id: sk.id, name: sk.name, code: sk.code, layers: sk.layers, deletedAt: Date.now() });
             trash.length = Math.min(trash.length, 30);
             saveHistory();
+            removedIds.add(sk.id);
             sketches = sketches.filter((s) => s.id !== sk.id);
             save();
             if (sk.id === current?.id) openSketch(sketches[0].id); else renderPicker();
@@ -3463,6 +3476,7 @@ const ThreeLab = (() => {
       trash.unshift({ id: current.id, name: current.name, code: current.code, layers: current.layers, deletedAt: Date.now() });
       trash.length = Math.min(trash.length, 30);
       saveHistory();
+      removedIds.add(current.id);
       sketches = sketches.filter((s) => s.id !== current.id);
       save();
       openSketch(sketches[0].id);
@@ -3538,12 +3552,23 @@ ${code}
 
     (async () => {
       // (round 37, labboot) the six reads at once: one IPC round trip's wait instead of six in a row
-      const kv = (k, d) => window.hub.kvGet(k, d);
-      let hist;
-      [sketches, hist, extras, notesAll, refsAll, thumbs] = await Promise.all([kv('three-sketches', []), kv('three-history', {}), kv('three-lab-extras', {}), kv('three-notes', {}), kv('three-refs', {}), kv('three-thumbs', {})]);
+      // (round 43, scenesafe) each read says whether it worked: a store that couldn't be read is retried and never
+      // saved over (tools/three-scenesafe.js); scenes made before the read finished (a chat's starter) are kept
+      const SSafe = window.LabSceneSafe;
+      const kv = (k, d) => (SSafe ? SSafe.read(k, d) : window.hub.kvGet(k, d).then((value) => ({ ok: true, state: 'ok', value })));
+      const early = sketches;
+      const reads = await Promise.all([kv('three-sketches', []), kv('three-history', {}), kv('three-lab-extras', {}), kv('three-notes', {}), kv('three-refs', {}), kv('three-thumbs', {})]);
+      const names = ['three-sketches', 'three-history', 'three-lab-extras', 'three-notes', 'three-refs', 'three-thumbs'];
+      reads.forEach((r, i) => { if (r.ok) kvOk.add(names[i]); });
+      const val = (r, d) => (r.ok && r.value != null && typeof r.value === 'object' ? r.value : d);
+      const scenesRead = reads[0];
+      sketches = Array.isArray(scenesRead.value) && scenesRead.ok ? scenesRead.value : [];
+      for (const x of early) if (!sketches.some((y) => y.id === x.id)) sketches.push(x);
+      const hist = val(reads[1], {}); extras = val(reads[2], {}); notesAll = val(reads[3], {}); refsAll = val(reads[4], {}); thumbs = val(reads[5], {});
       ({ versions: history = {}, trash = [] } = hist || {}); extrasLoaded = true;
       // (round 21) pictures of sketches that are gone (deleted and not in the trash) are let go
-      if (Array.isArray(sketches) && sketches.length) { const keep = new Set([...sketches.map((x) => x.id), ...trash.map((x) => x.id)]); const gone = Object.keys(thumbs || {}).filter((id) => !keep.has(id)); if (gone.length) { for (const id of gone) delete thumbs[id]; saveThumbs(); } }
+      // (round 43: only a few at a time, and only with every scene read: a short list must never wipe the pictures)
+      if (kvOk.has('three-sketches') && kvOk.has('three-history') && sketches.length) { const keep = new Set([...sketches.map((x) => x.id), ...trash.map((x) => x.id)]); const gone = Object.keys(thumbs || {}).filter((id) => !keep.has(id)); if (gone.length && gone.length <= Math.max(3, sketches.length / 4)) { for (const id of gone) delete thumbs[id]; saveThumbs(); } }
       // The toolbar in labeled groups: what you see, the sketch, its code, its assets, capture.
       const group = (cat, ...nodes) => el('span', { class: 'tb-group', dataset: { cat } }, ...nodes);
       // One row, in the order of your workflow: your sketch and Run, then what you look at, then assets. The
@@ -3560,12 +3585,18 @@ ${code}
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
       if (firstId && lastMedia && extras[firstId]?.media === undefined) { (extras[firstId] ||= {}).media = { path: lastMedia, time: 0 }; saveExtras(); }
-      if (!sketches.length) { sketches = [{ id: `s${Date.now()}`, name: 'Basic scene', code: ThreeData.TEMPLATES[0].code, updatedAt: Date.now() }]; save(); }
+      // the starter scene: saved only when there truly were no scenes (not when the read failed, nor when copies of
+      // earlier scenes exist: then it waits on screen and the Recover card offers them)
+      const fresh = !sketches.length;
+      if (fresh) sketches = [{ id: `s${Date.now()}`, name: 'Basic scene', code: ThreeData.TEMPLATES[0].code, updatedAt: Date.now() }];
+      if (fresh && kvOk.has('three-sketches') && !scenesRead.hold) save();
+      else if (early.length && kvOk.has('three-sketches')) save();
       // the chat on screen may own another sketch (chat-scenes.js): open that one instead of the last one
       const want = typeof ChatScenes !== 'undefined' ? ChatScenes.startSketch?.(sketches.map((x) => x.id)) : null;
       openSketch(want || store.get('three.current', sketches[0].id), { by: want ? 'scene' : 'start' });
       api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
       dispatchEvent(new Event('hearth:lab-ready'));
+      SSafe?.opened?.({ read: scenesRead, fresh, others: reads.slice(1).map((r, i) => (r.ok ? null : names[i + 1])).filter(Boolean) }); // (round 43) the calm card, when needed
     })();
 
     // ---------- per-chat scenes (chat-scenes.js, tools/three-backstage.js) ----------
@@ -3678,6 +3709,7 @@ ${code}
         trash.unshift({ id: s.id, name: s.name, code: s.code, layers: s.layers, deletedAt: Date.now() });
         trash.length = Math.min(trash.length, 30);
         saveHistory();
+        removedIds.add(id);
         sketches = sketches.filter((x) => x.id !== id);
         save();
         if (s === current) openSketch(sketches[0].id); else renderPicker();
@@ -3686,6 +3718,39 @@ ${code}
       setExtras(id, ex) { if (!sketches.some((x) => x.id === id) || !ex || typeof ex !== 'object') return false; extras[id] = { ...(extras[id] || {}), ...JSON.parse(JSON.stringify(ex)) }; saveExtras(); return true; }, // (round 28, packs) a scene from a .hearthpack: its sliders, looks, song link
       thumbOf: (id) => thumbs[id]?.url || null,
       previewHost: () => previewHost,
+      // (round 43, scenesafe) 🛟 Recover lost scenes (tools/three-scenesafe.js): found scenes join the list (never replacing
+      // one: SceneSafeCore.mergeInto), saved at once; unrecover takes exactly those back (the toast's Undo)
+      blocked: () => !kvOk.has('three-sketches'),
+      recover(picks) {
+        const r = SceneSafeCore.mergeInto(sketches, picks);
+        if (!r.added.length) return [];
+        sketches = r.list;
+        kvOk.add('three-sketches'); // (bringing scenes back is an answer to a scenes file that couldn't be read: saved now)
+        save(); save.flush?.(); renderPicker();
+        return r.added;
+      },
+      unrecover(ids) {
+        const drop = new Set((ids || []).filter((id) => sketches.some((x) => x.id === id)));
+        if (!drop.size || drop.size >= sketches.length) return 0;
+        for (const id of drop) removedIds.add(id);
+        sketches = sketches.filter((x) => !drop.has(x.id));
+        save(); save.flush?.();
+        if (current && drop.has(current.id)) openSketch(sketches[0].id); else renderPicker();
+        return drop.size;
+      },
+      // the scenes file can be read again (the card's Retry): what it holds joins the list, saving is back on
+      adopt(list) {
+        if (!Array.isArray(list)) return false;
+        const starter = sketches.length === 1 && SceneSafeCore.onlyStarter(sketches) && !list.some((x) => x.id === sketches[0].id) ? sketches[0] : null;
+        const mine = sketches.filter((x) => x !== starter && !list.some((y) => y.id === x.id));
+        sketches = [...list.map((x) => JSON.parse(JSON.stringify(x))), ...mine];
+        if (!sketches.length) sketches = starter ? [starter] : sketches;
+        kvOk.add('three-sketches');
+        if (mine.length) save();
+        if (!current || !sketches.includes(current)) openSketch(store.get('three.current', sketches[0].id)); else renderPicker();
+        return true;
+      },
+      okStores: () => [...kvOk],
     };
 
     // (round 23, timemachine) the scene's state for its versions (tools/three-history*.js), and showing one: scrubbing

@@ -275,3 +275,17 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
 .lab-gal-chip-start button { border: 0; background: none; color: inherit; font: inherit; padding: 6px 12px; cursor: pointer; border-radius: 999px; }
 .lab-gal-chip-start button:hover { background: #ffffff1a; }
 .lab-gal-chip-start .x { padding: 6px 10px 6px 4px; color: #fff9; }
+
+/* (round 43, scenesafe) 🛟 the calm card over the preview and the Recover lost scenes dialog (tools/three-scenesafe.js) */
+.lab-ssafe-card { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 12; width: min(440px, calc(100% - 24px)); padding: 12px 14px; border-radius: 10px; background: var(--surface, #1b1c20); color: var(--text, #eee); border: 1px solid var(--line, #ffffff22); box-shadow: 0 8px 24px #0007; font-size: 13px; }
+.lab-ssafe-card p { margin: 6px 0 10px; line-height: 1.4; color: var(--muted, #bbb); }
+.lab-ssafe-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.lab-ssafe-dialog { width: min(620px, calc(100vw - 32px)); }
+.lab-ssafe-list { max-height: min(60vh, 520px); overflow: auto; display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.lab-ssafe-dialog .lab-ssafe-list label.lab-ssafe-item { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; text-align: left; gap: 10px; padding: 6px 8px; margin: 0; border-radius: 8px; cursor: pointer; }
+.lab-ssafe-dialog .lab-ssafe-item input { flex: none; margin: 0; }
+.lab-ssafe-item:hover { background: var(--hover, #ffffff0f); }
+.lab-ssafe-thumb { flex: none; width: 64px; height: 40px; border-radius: 6px; overflow: hidden; background: #0006; display: grid; place-items: center; color: var(--muted, #999); }
+.lab-ssafe-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.lab-ssafe-dialog .lab-ssafe-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; gap: 1px; }
+.lab-ssafe-text .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

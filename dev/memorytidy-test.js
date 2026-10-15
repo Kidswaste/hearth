@@ -18,7 +18,7 @@ const ROOT = path.join(__dirname, '..');
 const M = require(path.join(ROOT, 'memorytidy-core.js'));
 const CC = require(path.join(ROOT, 'context-core.js'));
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'memtidy-test-'));
-for (const f of ['engines.js', 'store.js', 'installs.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js', 'memorytidy-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'installs.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js', 'memorytidy-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
 const writeMemory = (m) => fs.writeFileSync(path.join(dir, 'data', 'memory.json'), JSON.stringify(m));

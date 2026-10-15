@@ -265,13 +265,16 @@ ipcMain.handle('chats:trash', () => store.listTrash());
 ipcMain.handle('chats:restore', afterSync((_e, id) => store.restoreChat(id)));
 ipcMain.handle('history:get', afterSync(() => store.getHistory()));
 ipcMain.handle('history:save', afterSync((_e, history) => store.saveHistory(history)));
-ipcMain.handle('kv:get', (_e, name, fallback) => {
-  if (!syncGate) return store.getKVOff(name, fallback);
+// (round 43, scenesafe) o.status: { state: 'ok' | 'missing' | 'unreadable', value } instead of a silent fallback (the Lab's
+// scenes); kv:set's o.removed: the scenes deleted on purpose (any other one a save would drop is kept)
+const kvRead = (name, fallback, o) => (o?.status ? store.getKVStatus(name) : store.getKVOff(name, fallback));
+ipcMain.handle('kv:get', (_e, name, fallback, o) => {
+  if (!syncGate) return kvRead(name, fallback, o);
   const k = String(name);
   waiting.set(k, Date.now());
-  return syncGate.then(() => { waiting.delete(k); return store.getKVOff(name, fallback); });
+  return syncGate.then(() => { waiting.delete(k); return kvRead(name, fallback, o); });
 });
-ipcMain.handle('kv:set', afterSync((_e, name, value) => store.setKV(name, value)));
+ipcMain.handle('kv:set', afterSync((_e, name, value, o) => store.setKV(name, value, o)));
 // (round 20, offmain) how long the main process's thread was blocked since the last ask (event-loop delay: max / p99 in
 // ms, and the store thread's writes): dev/checks/offmain.js measures flows with it; started on the first ask
 let lagH = null;
@@ -603,6 +606,7 @@ function registerAfterWindow() {
   require('./connectionsmain').register(ipcMain, { readConfig }); // (round 26) the owner's own MCP servers: Test, and what engines.js hands each AI
   lazyIpc('hooksmain.js', (m, ipc) => m.register(ipc, () => win)); // (round 26) hooks: "when a file appears in a folder" (fs.watch, only while a hook asks; round 29: loaded then)
   lazyIpc('tokenauditmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 36) ⋯ AI setup → Spending: where each AI's fixed tokens go (reads only)
+  lazyIpc('scenesafemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, syncmain })); // (round 43) 🛟 Recover lost scenes: every copy of the Lab's scenes still on this computer, the cloud folder, backups (reads only)
   lazyIpc('dragdropmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 38) files with Finder / Explorer: native drags out, drops checked (folders, iCloud placeholders), copied files pasted
 
   // config.json / theme.css edited outside Hearth (an editor, sync): told to the window. (round 16) the OS tells us

@@ -49,7 +49,7 @@ check(JSON.stringify(SL.helperPick({ engine: 'claude', model: 'haiku' }, { R: Ro
 
 // 4. a helper run: no memory, no habits, byte-stable when memory changes (a real engines.js run on the fake CLI)
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'swarmlean-test-'));
-for (const f of ['engines.js', 'store.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
 const writeMemory = (m) => fs.writeFileSync(path.join(dir, 'data', 'memory.json'), JSON.stringify(m));

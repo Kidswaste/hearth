@@ -509,6 +509,7 @@ function createEngine(o) {
       if (sha(text) !== h) return false;
       const value = S.toCloud(JSON.parse(text), ctx); // (old paths of another computer written as-is are fixed too)
       const prev = L ? await localText(rel, L).catch(() => null) : null;
+      keepScenesAside(rel, L, value);
       ok = await casWrite(file, lent, localJsonText(rel, S.fromCloud(value, ctx), L), 'pull');
       if (ok) {
         setBase(rel, h, text);
@@ -540,6 +541,25 @@ function createEngine(o) {
     if (rel === 'app/config.json') v = S.portableConfig(v);
     return sha(canon(S.toCloud(v, ctx)));
   }
+  // (round 43, scenesafe) before what arrives replaces this computer's Lab scenes with a list missing some of them (a
+  // delete on the other computer… or a list lost there), this computer's file is kept in data/kv/.history/three-sketches
+  // (not synced: a hidden folder) so 🛟 Recover lost scenes finds them; the store's guard keeps them when the Lab saves
+  function keepScenesAside(rel, L, next) {
+    if (rel !== 'kv/three-sketches.json' || !L?.file || L.unavailable || !Array.isArray(next)) return;
+    try {
+      const text = fs.readFileSync(L.file, 'utf8');
+      const mine = JSON.parse(text);
+      if (!Array.isArray(mine)) return;
+      const have = new Set(next.map((x) => x?.id));
+      const gone = mine.filter((x) => x?.id && !have.has(x.id));
+      if (!gone.length) return;
+      const SS = require('./scenesafe-core');
+      const dir = path.join(dataDir, 'kv', '.history', 'three-sketches');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, SS.copyName(now(), mine.length, 'sync')), text);
+      log('scenes kept aside before sync', gone.length);
+    } catch (err) { log('scenes aside', err.message); }
+  }
   const kindOf = (rel) => (rel.startsWith('chats/') ? 'chat' : rel.startsWith('kv/') ? 'kv' : rel === 'app/config.json' ? 'config' : rel === 'app/theme.css' ? 'theme' : rel === 'memory.json' ? 'memory' : 'file');
 
   // both changed (or the first join): merge JSON, keep both copies of anything else
@@ -557,6 +577,7 @@ function createEngine(o) {
       // this computer first, then the cloud: a cloud write that loses its race leaves the old base, so the next pass
       // merges again instead of pushing a version that misses the other computer's changes
       if (hm !== lh) {
+        keepScenesAside(rel, L, r.value);
         const ok = await casWrite(L.file, lent, localJsonText(rel, S.fromCloud(r.value, ctx), L), 'merge-local');
         if (!ok) return false;
         remember(rel, ours);
@@ -665,6 +686,7 @@ function createEngine(o) {
         const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(cp.orig) });
         const text = canon(r.value);
         if (sha(text) !== state.local[cp.orig]?.[2]) {
+          keepScenesAside(cp.orig, L, r.value);
           const ok = await casWrite(L.file, L, localJsonText(cp.orig, S.fromCloud(r.value, ctx), L), 'absorb');
           if (!ok) return;
           remember(cp.orig, ours);

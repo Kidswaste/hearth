@@ -16,7 +16,7 @@ const argv = process.argv.slice(2);
 const opt = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : null; };
 const measureOnly = argv.includes('--measure');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'liveness-'));
-for (const f of ['engines.js', 'store.js', 'installs.js', 'winpolish.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'installs.js', 'winpolish.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
 if (opt('--engines')) fs.copyFileSync(path.resolve(opt('--engines')), path.join(dir, 'engines.js'));
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 process.env.HEARTH_QUIET_MS = '2000'; process.env.HEARTH_PULSE_MS = '1000'; // pulses within seconds, not 15 s
