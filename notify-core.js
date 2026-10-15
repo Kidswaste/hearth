@@ -26,7 +26,7 @@ const NotifyCore = (() => {
   const IDS = SWITCHES.map((s) => s.id);
   // event type → the switch it answers to
   const TYPE = {
-    reply: 'replies', back: 'replies',
+    reply: 'replies', back: 'replies', limit: 'replies', // (round 48, usagelimits) limit: a usage heads-up (80 / 95 %, reset)
     render: 'renders', job: 'renders',
     keepgoing: 'keepgoing',
     permission: 'needs', question: 'needs', plan: 'needs', stuck: 'needs', sync: 'needs',

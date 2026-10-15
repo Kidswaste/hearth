@@ -1,0 +1,46 @@
+/* ⏳ Usage left (round 48, usagelimits.js): one calm card per AI in the Usage window, slim bars per window, the
+   forecast line, the tokens sparkline and How to save from now on. Theme colors only (light / dark / Forgeheart);
+   bars move with transform (compositor), sizes in rem so Size of everything scales them. */
+.mt-account.ul-host { border: 0; padding: 0; margin: 4px 0 6px; }
+.ul-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 2px 8px; }
+.ul-title h3 { margin: 0; font-size: 1rem; }
+.ul-title small { color: var(--muted); font-size: 0.75rem; }
+.ul-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 10px; }
+.ul-card { --ul-c: var(--meter-claude); display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--ul-c) 28%, var(--line)); background: color-mix(in srgb, var(--ul-c) 5%, transparent); min-width: 0; contain: layout paint; }
+.ul-card.ul-codex { --ul-c: var(--meter-astra); }
+.ul-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ul-who { font-size: 0.95rem; display: flex; align-items: center; gap: 7px; }
+.ul-who::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--ul-c); }
+.ul-fresh { color: var(--muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.ul-wins { display: flex; flex-direction: column; gap: 10px; }
+.ul-win { display: flex; flex-direction: column; gap: 4px; }
+.ul-top, .ul-sub { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.ul-name { font-size: 0.82rem; font-weight: 600; }
+.ul-num { font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ul-num b { font-size: 1rem; color: var(--text); font-weight: 650; }
+.ul-sub { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ul-bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--text) 9%, transparent); overflow: hidden; }
+.ul-bar i { display: block; height: 100%; width: 100%; border-radius: 3px; background: var(--ul-c); transform-origin: left center; transition: transform var(--dur-2, 240ms) var(--ease-out, ease-out); }
+.ul-win.lv-near .ul-bar i { background: var(--meter-warn); }
+.ul-win.lv-high .ul-bar i { background: var(--meter-over); }
+.ul-win.lv-near .ul-num b { color: color-mix(in srgb, var(--meter-warn) 72%, var(--text)); }
+.ul-win.lv-high .ul-num b { color: color-mix(in srgb, var(--meter-over) 78%, var(--text)); }
+.ul-win.reset { opacity: 0.75; }
+.ul-unknown { margin: 0; font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+.ul-ahead { margin: 0; font-size: 0.8rem; line-height: 1.4; padding: 6px 9px; border-radius: 8px; background: color-mix(in srgb, var(--text) 5%, transparent); }
+.ul-ahead.hit, .ul-ahead.reached { background: color-mix(in srgb, var(--meter-warn) 13%, transparent); }
+.ul-tok { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ul-spark { flex: none; color: var(--ul-c); }
+.ul-spark-l { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.ul-spark-a { fill: currentColor; opacity: 0.14; }
+.ul-tips { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.ul-tips h4 { margin: 0 2px 2px; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.ul-tip { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); }
+.ul-tip.done { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.ul-tip-w { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 0.82rem; line-height: 1.35; }
+.ul-tip-w small { color: var(--muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.ul-go, .ul-undo { white-space: nowrap; }
+.ul-lean { margin: 0 2px; font-size: 0.75rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .ul-bar i { transition: none; } }
+@media (forced-colors: active) { .ul-bar { border: 1px solid CanvasText; } .ul-bar i { background: Highlight; } }
