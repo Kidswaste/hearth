@@ -783,6 +783,9 @@ const ThreeDirector = (() => {
     }
     if (tool === 'three_sliders') {
       const r = d.sliders(args.layer, args.set || null);
+      // (capturefix2) the helpers' raw answer (sliders with keys and values, changed): /model material said nothing and
+      // the asset library saved a preset with no values since the lean lines (round 37)
+      if (args.report === 'full') return { ok: true, value: r };
       const looks = r.looks?.length ? r.looks.map((l) => (typeof l === 'string' ? l : l.name)).join(', ') : undefined;
       const set = args.set && typeof args.set === 'object' ? Object.keys(args.set) : [];
       // (round 37) a move answers with the sliders it moved (the rest didn't change); keys it couldn't set are named
@@ -806,9 +809,9 @@ const ThreeDirector = (() => {
     if (tool === 'three_layers' && d.layers) {
       const r = d.layers();
       // (capturefix2) Hearth's own helpers (◇ shader, ✦ particles, 🅰 type, physics, models, assets) read the rows
-      // ({ rows: true }, not in the tool's schema): since the lean text below (round 37) their layer lookups threw
+      // (report: 'full', as three_add_layer has): since the lean text below (round 37) their layer lookups threw
       // ("v?.layers?.find is not a function") and a layer they had just added wasn't found
-      if (args.rows) return { ok: true, value: r };
+      if (args.report === 'full') return { ok: true, value: r };
       const value = { sketch: r.sketch, layers: `${layerLines(r.layers)}\n(bottom first, * = selected)`, note: r.note };
       const st = onlyNew({ sketch: value.sketch, note: value.note }, d, B);
       return { ok: true, value: { ...value, ...st, sketch: st.sketch, note: st.note } };

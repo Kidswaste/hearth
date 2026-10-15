@@ -142,7 +142,7 @@ lab3d.model(refs.${refKey}, P, { ${o} });
     return !r || r.sketchId === ThreeLab.scenes?.currentId();
   }
   const isModelLayer = (L) => (L.sliders || []).includes('Crane (°)') && (L.sliders || []).includes('Material');
-  async function modelLayers(ctx) { const v = await call('three_layers', { rows: true }, ctx); return (v.layers || []).filter(isModelLayer); }
+  async function modelLayers(ctx) { const v = await call('three_layers', { report: 'full' }, ctx); return (v.layers || []).filter(isModelLayer); }
   async function target(ref, ctx) {
     const ms = await modelLayers(ctx);
     if (!ms.length) throw new Error('No 3D model in this scene yet: /model add <file> or /model library.');
@@ -155,8 +155,8 @@ lab3d.model(refs.${refKey}, P, { ${o} });
     const txt = typeof v === 'string' ? v : String(v.code || '');
     return txt.split('\n').filter((ln) => !/^── /.test(ln)).map((ln) => ln.replace(/^\s*\d+\| /, '')).join('\n');
   }
-  async function values(L, ctx) { const v = await call('three_sliders', { layer: L.id }, ctx); return Object.fromEntries((v.sliders || []).map((x) => [x.key, x.value])); }
-  async function setValues(L, set, ctx) { const v = await call('three_sliders', { layer: L.id, set }, ctx); return v.changed; }
+  async function values(L, ctx) { const v = await call('three_sliders', { layer: L.id, report: 'full' }, ctx); return Object.fromEntries((v.sliders || []).map((x) => [x.key, x.value])); }
+  async function setValues(L, set, ctx) { const v = await call('three_sliders', { layer: L.id, set, report: 'full' }, ctx); return v.changed; }
 
   // ---------- adding / replacing ----------
   async function addRef(path) { await ThreeLab.cmd({ show: true }); return ThreeLab.addReference(path); }

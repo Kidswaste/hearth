@@ -118,7 +118,7 @@ const LabParticles = (() => {
   const onScreen = (ctx = {}) => { if (!ctx.chatId || typeof ChatScenes === 'undefined') return true; const r = ChatScenes.routeThree('three_layers', ctx.chatId); return !r || r.sketchId === ThreeLab.scenes?.currentId(); };
   const isRow = (L) => /^particles/.test(L.kind || '');
   async function target(ref, ctx = {}) {
-    const v = await call('three_layers', { rows: true }, ctx);
+    const v = await call('three_layers', { report: 'full' }, ctx);
     const all = v.layers || [];
     const pool = all.filter(isRow);
     if (!pool.length) throw new Error('No ✦ particle layer in this scene: /particles <preset> adds one (/particles list).');
@@ -148,7 +148,7 @@ const LabParticles = (() => {
   const uniqueName = (n) => `✦ ${String(n || 'Particles').replace(/^✦\s*/, '').slice(0, 36)}`;
   async function addLayer(code, name, ctx = {}, wait = 1.5) {
     const out = await call('three_add_layer', { name, code, wait }, ctx);
-    const v = await call('three_layers', { rows: true }, ctx).catch(() => null);
+    const v = await call('three_layers', { report: 'full' }, ctx).catch(() => null);
     const row = v?.layers?.find((x) => x.name === (out.added || name));
     return row ? stateOf(row, ctx) : { layer: out.added || name };
   }

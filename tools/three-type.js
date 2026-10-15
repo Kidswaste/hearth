@@ -131,7 +131,7 @@ const LabType = (() => {
   const onScreen = (ctx = {}) => { if (!ctx.chatId || typeof ChatScenes === 'undefined') return true; const r = ChatScenes.routeThree('three_layers', ctx.chatId); return !r || r.sketchId === ThreeLab.scenes?.currentId(); };
   const isRow = (L) => /^type/.test(L.kind || '');
   async function target(ref, ctx = {}) {
-    const v = await call('three_layers', { rows: true }, ctx);
+    const v = await call('three_layers', { report: 'full' }, ctx);
     const pool = (v.layers || []).filter(isRow);
     if (!pool.length) throw new Error('No 🅰 type layer in this scene: /text <preset> adds one (/text list).');
     if (ref != null && ref !== '' && ref !== 'selected') {
@@ -157,7 +157,7 @@ const LabType = (() => {
   const layerName = (n) => `🅰 ${String(n || 'Type').replace(/^🅰\s*/, '').replace(/\s+/g, ' ').slice(0, 36)}`;
   async function addLayer(code, name, ctx = {}, wait = 1.2) {
     const out = await call('three_add_layer', { name, code, wait }, ctx);
-    const v = await call('three_layers', { rows: true }, ctx).catch(() => null);
+    const v = await call('three_layers', { report: 'full' }, ctx).catch(() => null);
     const row = v?.layers?.find((x) => x.name === (out.added || name));
     return row ? { ...stateOf(row, ctx), id: row.id } : { layer: out.added || name };
   }
@@ -272,7 +272,7 @@ const LabType = (() => {
   // ---------- lyrics ----------
   // the type layer that already shows lyrics (the selected one first); a title layer is never turned into lyrics
   async function lyricsLayer(ctx = {}) {
-    const v = await call('three_layers', { rows: true }, ctx).catch(() => null);
+    const v = await call('three_layers', { report: 'full' }, ctx).catch(() => null);
     const pool = (v?.layers || []).filter(isRow);
     const withLyrics = [];
     for (const L of pool) { try { if (Array.isArray(optsOf(await codeOf(L, ctx)).lyrics)) withLyrics.push(L); } catch { /* hand-written */ } }

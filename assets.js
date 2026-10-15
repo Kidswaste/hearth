@@ -418,7 +418,7 @@ requestAnimationFrame(frame);
 `;
   async function lab() { await need('lab', 'apps'); return ThreeLab.cmd(); }
   async function labRef(p) { await lab(); return ThreeLab.addReference(p); }
-  async function labLayers(ctx = {}) { const r = await HubBridge.call('three_layers', { rows: true }, { chatId: ctx.chatId || null }); return r?.ok ? r.value.layers || [] : []; }
+  async function labLayers(ctx = {}) { const r = await HubBridge.call('three_layers', { report: 'full' }, { chatId: ctx.chatId || null }); return r?.ok ? r.value.layers || [] : []; }
   async function selectedLayer(ctx) { const ls = await labLayers(ctx); return ls.find((L) => L.selected) || null; }
   async function isShaderLayer(L) { if (!L) return false; try { return /\bshader\s*\(/.test(ThreeLab.director?.codeOf(L.id)?.code || ''); } catch { return false; } }
   async function addLayer(name, code, ctx = {}) {
@@ -520,7 +520,7 @@ requestAnimationFrame(frame);
         const set = j.values || j.sliders || j.set || j;
         const L = await selectedLayer(ctx);
         if (!L) throw new Error('Select a layer first: the preset sets its sliders.');
-        const r = await HubBridge.call('three_sliders', { layer: L.id, set }, { chatId: ctx.chatId || null });
+        const r = await HubBridge.call('three_sliders', { layer: L.id, set, report: 'full' }, { chatId: ctx.chatId || null });
         if (!r?.ok) throw new Error(r?.error || 'The sliders didn\'t take it');
         what = `🎚 ${it.n} on ${L.name} (${(r.value?.changed || Object.keys(set)).length || 0} sliders)`;
         break;
@@ -561,7 +561,7 @@ requestAnimationFrame(frame);
     await lab();
     const L = await selectedLayer(ctx);
     if (!L) throw new Error('Select a layer first');
-    const r = await HubBridge.call('three_sliders', { layer: L.id }, { chatId: ctx.chatId || null });
+    const r = await HubBridge.call('three_sliders', { layer: L.id, report: 'full' }, { chatId: ctx.chatId || null });
     if (!r?.ok) throw new Error(r?.error || 'No sliders');
     const values = Object.fromEntries((r.value.sliders || []).map((s) => [s.key, s.value]));
     const nm = name || `${String(L.name).replace(/^\W+\s*/, '')} preset`;
