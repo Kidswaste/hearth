@@ -73,7 +73,9 @@ const ThreeLab = (() => {
     // 'frame' = the iframe here; 'stage' = the separate Stage window (main.js relays its messages).
     let target = 'frame';
     let stageSize = () => null; // → { width, height } for exact frame sizes (read at every load)
-    const deliver = (m) => (target === 'stage' ? window.hub.stageSend(m) : frame.contentWindow.postMessage(m, '*'));
+    // (capturefix2) a frame taken off the page (the Lab closed, the preview remade) has no window: what arrives for it
+    // late (a library file loaded for /still) goes nowhere instead of throwing
+    const deliver = (m) => (target === 'stage' ? window.hub.stageSend(m) : frame.contentWindow?.postMessage(m, '*'));
     let coverShot = null; // resolves with the picture the page answered for the cover
     // (round 43, glrecover) the GPU took the page's WebGL contexts ('gpu-lost'): the page rebuilds its layers in place
     // when they come back ('gpu-restored'). None back within GL_WAIT: the owner is told ('gpu-stuck') and, unless it

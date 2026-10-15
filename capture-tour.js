@@ -113,9 +113,13 @@ const CaptureTour = (() => {
     const form = (v) => (both ? tf({ ...v, rx: v.rx || 0.0001 }) : tf(v));
     const from = form(before); const to = form(view);
     app.style.transformOrigin = '0 0';
-    const a = Capture.anim(app, [{ transform: from }, { transform: to }], { duration: Math.max(1, ms), easing: ease || easeNow, fill: 'forwards' });
+    // (capturefix2) the view's end state goes on the page at once and the move plays over it: it used to be written
+    // only when the move finished, so on a busy machine (a take's main-thread animations start late) the page said
+    // "not zoomed" well after the zoom began, and a move that never finished left the old view behind it
     const still = view.k === 1 && view.x === 0 && view.y === 0 && !view.rx && !view.ry && !view.rz;
-    return a.finished.catch(() => {}).then(() => { app.style.transform = still ? '' : tf(view); a.cancel(); });
+    app.style.transform = still ? '' : tf(view);
+    const a = Capture.anim(app, [{ transform: from }, { transform: to }], { duration: Math.max(1, ms), easing: ease || easeNow, fill: 'forwards' });
+    return a.finished.catch(() => {}).then(() => a.cancel());
   }
   function zoomTo(n, k = 1.5, ms = 1000, ease) {
     // where the thing is without the current zoom
