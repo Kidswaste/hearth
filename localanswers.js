@@ -117,7 +117,7 @@ const LocalAnswers = (() => {
         el('span', { class: 'la-mark', text: '💡 Answered by Hearth' }),
         el('span', { class: 'la-free', text: 'free · not sent', title: 'Hearth answered this from its own help: no AI turn, no tokens' }),
         el('button', { type: 'button', class: 'ghost la-x', text: '×', title: 'Close (your words stay in the box)', attrs: { 'aria-label': 'Close' }, on: { click: () => hide() } })),
-      el('div', { class: 'la-text', text: ans.text }),
+      el('div', { class: 'la-text', text: typeof WinMac !== 'undefined' && WinMac.keyWords ? WinMac.keyWords(ans.text) : ans.text }), // (round 46) ⌘K on the Mac, Ctrl+K on Windows
       el('div', { class: 'la-acts' }, showBtn,
         el('button', { type: 'button', class: 'ghost small la-ask', text: 'Ask the AI anyway', title: 'Sends your message as usual (and Hearth won\'t answer these words again)', on: { click: () => askAnyway() } })));
     form.before(node);

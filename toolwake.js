@@ -27,6 +27,13 @@ const WORDS = {
   deployTools: /\b(deploy\w*|publish\w*|vercel|netlify|cloudflare|github pages|web ?sites?|web ?pages?|hosting|go live|roll ?back)\b/i,
   appsTools: /\b(meshy|suno|figma|spline|sketchfab|mixamo|poly ?haven|unsplash|coolors|google fonts|runway|elevenlabs|youtube studio|3d models?|app windows?)\b/i,
 };
+// (round 46, promptdiet) only the owner's own words wake a set: what Hearth wraps around them is left out first (the earlier
+// conversation of a resumed chat, a handoff / compact summary, attached files' text and paths, a [Hearth context: …] /
+// [Memory …] / [Make …] / [Mission …] / [Task state …] note). A saved fact like "I use the Lab sequence as my video
+// timeline" rode along with relevant memory and woke the screen tools (≈ 330 tokens) on messages that never asked.
+const WRAPS = /<(earlier_conversation|since_then|summary|file)\b[^>]*>[\s\S]*?<\/\1>|^\[(?:Hearth context|Memory|Make|Mission|Task state|Attached)\b[^\]\n]*\](?:\n(?:[A-Za-z]:\\|[\\/~]).*)*$/gm;
+const ownWords = (text) => String(text || '').replace(WRAPS, ' ');
+
 // a tool call's name (Claude: mcp__board__board_vibe; Codex: "board · board_vibe") → its set
 const TOOL = [[/(^|[_\s·])board_/, 'boardTools'], [/(^|[_\s·])capture_/, 'captureTools'], [/(^|[_\s·])adobe_/, 'adobeTools'], [/(^|[_\s·])deploy_/, 'deployTools'], [/(^|[_\s·])(apps|meshy)_/, 'appsTools']];
 const setOfTool = (name) => (TOOL.find(([re]) => re.test(String(name || ''))) || [])[1] || null;
@@ -61,8 +68,9 @@ function plan(agent, { text = '', session = null, keep = [], now = Date.now(), b
   const had = new Set(Array.isArray(session?.sets) ? session.sets : []);
   const mine = read()[agent.id] || {};
   const sleep = [];
+  const own = ownWords(text);
   for (const k of on) {
-    if (keep.includes(k) || had.has(k) || WORDS[k].test(String(text || ''))) continue;
+    if (keep.includes(k) || had.has(k) || WORDS[k].test(own)) continue;
     if (!mine[k]) { note(agent.id, k, now); continue; } // switched on since we last looked: a week to show it's used
     if (now - mine[k] < DAYS * DAY) continue;
     sleep.push(k);
@@ -71,4 +79,4 @@ function plan(agent, { text = '', session = null, keep = [], now = Date.now(), b
   return { sleep, sticky };
 }
 
-module.exports = { plan, note, noteTool, setOfTool, setFile, SETS, WORDS, DAYS, _test: { reset: () => { log = null; }, get log() { return read(); } } };
+module.exports = { plan, note, noteTool, setOfTool, setFile, ownWords, SETS, WORDS, DAYS, _test: { reset: () => { log = null; }, get log() { return read(); } } };

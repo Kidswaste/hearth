@@ -6,7 +6,8 @@
 //   node dev/winmac-scan.js                 # every rule, grouped
 //   node dev/winmac-scan.js --rule file-url  # one rule
 //   node dev/winmac-scan.js --json           # machine-readable
-//   node dev/winmac-scan.js --count          # rule → number of hits (dev/winmac-test.js wants 0 for the path / URL rules)
+//   node dev/winmac-scan.js --count          # rule → number of hits (dev/winmac-test.js wants 0 for the path / URL rules;
+//                                            (round 46) and for zip-tool / trash-direct / case-win-only)
 //   node dev/winmac-scan.js --all            # also the hits reviewed as fine (REVIEWED below)
 'use strict';
 const fs = require('fs');
@@ -75,6 +76,24 @@ const RULES = [
     test: (l) => /['"`](?:\/Users\/|\/home\/|\/tmp\/|C:\\\\Users|\/Applications\/|\/opt\/homebrew)/.test(l),
     ok: (l) => /IS_WIN|IS_MAC|platform|darwin|win32|isMac|isWin|e\.g\.|\/\/ |example|→|\bmac\b/i.test(l),
   },
+  // (round 46, platform46) what rounds 41–45 tripped on
+  {
+    id: 'zip-tool',
+    what: 'a zip made or read with an outside tool (zip / unzip / tar / ditto / PowerShell): Windows\' tar.exe garbles accented names, the Mac\'s tar adds "._" files, Linux may lack unzip — use zipkit.js',
+    test: (l) => /\b(?:execFile|execFileSync|spawn|spawnSync)\(\s*(?:TAR\b|['"`](?:zip|unzip|tar|ditto)['"`])|Compress-Archive|Expand-Archive/.test(l),
+  },
+  {
+    id: 'trash-direct',
+    what: 'shell.trashItem without the bin check: on a network share (and a USB stick on Windows) the "Trash" deletes for good — WinPolish / MacPolish.trashCheck first',
+    test: (l) => /\btrashItem\(/.test(l),
+    ok: (l) => /trashCheck|check\.path|trashable|binCheck/.test(l),
+  },
+  {
+    id: 'case-win-only',
+    what: 'paths folded to lower case on Windows only: the Mac\'s disks ignore case too, and its FSEvents / Finder give accents decomposed (NFD) — fold on darwin too, with normalize(\'NFC\')',
+    test: (l) => /win32['"]\s*\?[^:;]*toLowerCase\(\)\s*:/.test(l),
+    ok: (l) => /darwin|NFC/.test(l),
+  },
 ];
 
 // Reviewed and fine as they are (rule, file, a piece of the line): guarded per platform a few lines up, or not a path
@@ -101,6 +120,10 @@ const REVIEWED = [
   ['*', 'winmac.js', ''], // the helpers themselves
   ['shell-cmd', 'winpolish.js', 'powershell.exe'], // (round 32) the Windows-only drive-type probe (trashCheck runs it only on win32)
   ['*', 'macpolish.js', ''], // (round 33) the Mac's own helpers: Mac folders, ':' PATHs, xattr / mount (each runs only on darwin)
+  // (round 46) the system's zip tool only as the fallback for a zip zipkit can't read (another program's compression)
+  ['zip-tool', 'fsapi.js', 'execFile('], ['zip-tool', 'datasafemain.js', 'execFile('], ['zip-tool', 'scenesafemain.js', 'execFile('],
+  ['zip-tool', 'importer.js', 'execFileSync('], // claude.ai / ChatGPT exports (other programs' zips), read once at import
+  ['trash-direct', 'backupautomain.js', 'trashItem(p)'], // trashable(p) the line before
 ];
 const reviewed = (h) => REVIEWED.some(([r, f, piece]) => (r === '*' || r === h.rule) && h.file.startsWith(f) && h.text.includes(piece));
 

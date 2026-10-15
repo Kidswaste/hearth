@@ -20,7 +20,7 @@ const FileWatch = (() => {
   const api = () => window.hub?.fw;
   const isAbs = (p) => /^(\/|[A-Za-z]:[\\/]|\\\\)/.test(String(p || ''));
   const base = (p) => String(p || '').split(/[\\/]/).pop();
-  const same = (a, b) => (/^[A-Za-z]:[\\/]|^\\\\/.test(String(a)) ? String(a).toLowerCase() === String(b).toLowerCase() : a === b);
+  const same = (a, b) => (typeof WinMac !== 'undefined' && WinMac.sameFile ? WinMac.sameFile(a, b) : /^[A-Za-z]:[\\/]|^\\\\/.test(String(a)) ? String(a).toLowerCase() === String(b).toLowerCase() : a === b); // (round 46) the Mac: no case, one Unicode form
   // a lazy group's global only once the group is in (touching it before would load it: Lazy's stand-ins)
   const inG = (group, get) => { try { return !window.Lazy || Lazy.isIn(group) ? get() : null; } catch { return null; } };
   const Lab = () => inG('lab', () => (typeof ThreeLab !== 'undefined' ? ThreeLab : null));

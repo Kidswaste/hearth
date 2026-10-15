@@ -130,7 +130,9 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
     else await clipboard.write([new (require('electron').ClipboardItem)({ 'image/png': img.toPNG() })]); // Electron 44: ClipboardItem objects (a plain { image } threw)
     return true;
   });
-  ipcMain.handle('capture:trash', async (_e, p) => { await shell.trashItem(String(p)); return true; });
+  // (round 46, platform46) a disk with no bin (a network share; a USB stick on Windows) would delete for good: left, said why
+  const binCheck = (p) => (process.platform === 'darwin' ? require('./macpolish').trashCheck(p) : require('./winpolish').trashCheck(p));
+  ipcMain.handle('capture:trash', async (_e, p) => { const c = binCheck(String(p)); if (!c.ok) throw new Error(c.error); await shell.trashItem(c.path); return true; });
 
   // ---------- recording: the hub page's own frame through getDisplayMedia ----------
   let armed = null; // { audio, source, until }
@@ -216,7 +218,7 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
         out.mp4 = mp4;
         // the WebM may not say how long it is: the MP4's length is the real one (the renderer warns on a short take)
         if (!(out.duration > 0)) { try { out.duration = (await FR.probe(mp4)).duration; } catch { /* unknown */ } }
-        if (o.keep === false) { await shell.trashItem(src).catch(() => {}); out.webm = null; }
+        if (o.keep === false && binCheck(src).ok) { await shell.trashItem(src).catch(() => {}); out.webm = null; }
       } catch (err) { out.mp4Error = err.message; }
     }
     return out;

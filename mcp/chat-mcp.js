@@ -5,7 +5,8 @@ const { serve, callHub } = require('./common');
 
 // (round 41, toolslim) chat_show / chat_second_opinion / chat_open are reached through chat_do for directors too
 // (≈ 230 tokens less on every director step); the guide names them that way.
-const GUIDE = `CHAT TOOLS: chat_ask only when a choice is really the user's (style, direction, missing info), not small things you can decide; chat_progress only for work with several steps; chat_do show + chat_ask to pick between variants; chat_do second_opinion for visual work you're unsure about or when asked (weigh its advice yourself).`;
+// (round 46, promptdiet) the same four rules in fewer words
+const GUIDE = `CHAT TOOLS: chat_ask only for choices that are really the user's (style, direction, missing info), not small ones; chat_progress only for work with several steps; chat_do show + chat_ask to pick between variants; chat_do second_opinion when unsure about visual work or asked (weigh it yourself).`;
 
 const PARTNER = process.env.HUB_PARTNER || 'Astra';
 // The whole descriptions (help <tool or op> answers with them, locally); the list sends the SHORT words below.
@@ -55,7 +56,8 @@ const SHORT = {
   chat_open: 'Open a file, folder or URL for the user (their other computer\'s paths work). how: reveal = in Finder/Explorer, preview = in Hearth.',
 };
 // a step's object schema is said once in the words above (native.js reads text / status, strings work too)
-const SCHEMA = { chat_progress: { type: 'object', properties: { steps: { type: 'array', items: { type: 'object' } } }, required: ['steps'] } };
+// (round 46, promptdiet) chat_ask's multiple / free are named in its words, not its schema (the hub reads them either way)
+const SCHEMA = { chat_progress: { type: 'object', properties: { steps: { type: 'array', items: { type: 'object' } } }, required: ['steps'] }, chat_ask: { type: 'object', properties: { question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } }, required: ['question'] } };
 const slim = (t) => (SHORT[t.name] ? { ...t, description: SHORT[t.name], inputSchema: SCHEMA[t.name] || t.inputSchema } : t);
 const LIST = ONLY.length ? TOOLS.filter((t) => ONLY.includes(t.name)).map(slim) : [...TOOLS.filter((t) => KEEP.includes(t.name)).map(slim), CHAT_DO];
 const local = {

@@ -12,7 +12,8 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   for (const mode of ['lean', 'full']) {
     const c = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'three-mcp.js')], env: mode === 'full' ? { HUB_TOOL_MODE: 'full' } : { HUB_TOOL_MODE: '' } });
     const names = c.tools.map((t) => t.name);
-    check(mode === 'lean' ? names.includes('three_do') && names.length === 14 : !names.includes('three_do') && names.length === 38, `${mode}: ${names.length} tools`);
+    // (round 46, promptdiet) lean: three_input / three_contact_sheet are three_do commands (12 tools; 14 before)
+    check(mode === 'lean' ? names.includes('three_do') && names.length === 12 && !names.includes('three_input') && !names.includes('three_contact_sheet') : !names.includes('three_do') && names.length === 38, `${mode}: ${names.length} tools`);
     check(names.includes('three_add_layer') && names.filter((n) => n === 'three_add_layer').length === 1, `${mode}: three_add_layer is an everyday tool (layers always)`);
     check(!c.instructions, `${mode}: no MCP instructions`);
     const h = await c.call('three_do', { cmd: 'help', topic: 'cues' });
@@ -28,7 +29,7 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   // the node tool: on for Three directors (engines.js sets HUB_NODES_TOOL=1 unless agent.nodesTool === false), lean
   const n = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'three-mcp.js')], env: { HUB_NODES_TOOL: '1', HUB_TOOL_MODE: '' } });
   const nt = n.tools.find((t) => t.name === 'three_nodes');
-  check(n.tools.length === 15 && nt && JSON.stringify(nt).length < 520, `nodes on: ${n.tools.length} tools, three_nodes ${nt ? JSON.stringify(nt).length : 0} chars`);
+  check(n.tools.length === 13 && nt && JSON.stringify(nt).length < 520, `nodes on: ${n.tools.length} tools, three_nodes ${nt ? JSON.stringify(nt).length : 0} chars`);
   n.close();
   const engines = require(path.join(root, 'engines.js'))._test;
   const dir = { id: 'td', name: 'Three Director', engine: 'claude', dock: 'three', threeTools: true };
@@ -72,7 +73,8 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   const listTok = Math.round(JSON.stringify(lean.tools).length / 4);
   // (round 25, diet) the ceiling came down from 1,700: new director ops go behind three_do + help <cmd>, not in descriptions
   // (round 37, directorlean) and to 1,220 (1,186 now): the per-turn savings are in the results, the list stays put
-  check(listTok <= 1220, `lean tool list ≤ 1220 tokens (${listTok}; 1300 before round 37, 1687 before round 25, 1878 before round 21)`);
+  // (round 46, promptdiet) and to 990: rare args named in the words, input / contact_sheet behind three_do
+  check(listTok <= 990, `lean tool list ≤ 990 tokens (${listTok}; 1184 before round 46, 1300 before round 37, 1687 before round 25, 1878 before round 21)`);
   check(lean.tools.find((t) => t.name === 'three_read_code').inputSchema.properties.force, 'three_read_code takes force (code it already has is one line)');
   check(JSON.stringify(doT).length / 4 <= 200 && lean.tools.every((t) => JSON.stringify(t).length / 4 <= 130 || t.name === 'three_do'), `three_do ≤ 200 tokens (${Math.round(JSON.stringify(doT).length / 4)}), every other tool ≤ 130`);
   for (const [topic, re] of [['edit_code', /three_edit_code: .*find.*\nargs: layer, edits/s], ['update_layer', /three_do update_layer.*fadeIn/], ['particles', /particles \{op: .*GPU PARTICLES/s], ['batch', /batch \{ops/], ['screenshot', /three_screenshot: .*compare/], ['nodes', /three_nodes: .*NODES|three_nodes: /]]) {

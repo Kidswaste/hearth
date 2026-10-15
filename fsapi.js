@@ -91,15 +91,12 @@ function zip(entries, out, { skipDirs = [] } = {}) {
     const target = assertAbs(out);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     if (fs.existsSync(target)) fs.rmSync(target);
-    return new Promise((resolve, reject) => {
-      // GNU tar (Linux) can't write zips: use zip there
-      const [cmd, args, opts] = process.platform === 'linux' ? ['zip', ['-qr', target, ...fs.readdirSync(tmp)], { cwd: tmp }] : [TAR, ['-a', '-cf', target, '-C', tmp, ...fs.readdirSync(tmp)], { windowsHide: true }];
-      execFile(cmd, args, opts, (err) => {
-        // the temp copy: Windows (antivirus, indexer) can still hold it for a moment; never crash over it
-        try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }); } catch { setTimeout(() => fs.rm(tmp, { recursive: true, force: true }, () => {}), 5000); }
-        if (err) reject(err); else resolve({ path: target, size: fs.statSync(target).size });
-      });
-    });
+    // (round 46, platform46) plain Node on every computer (zipkit.js): Windows' tar.exe garbled accented names, the
+    // Mac's tar added "._" files; nothing outside to be missing
+    const done = () => { try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 }); } catch { setTimeout(() => fs.rm(tmp, { recursive: true, force: true }, () => {}), 5000); } };
+    // the temp copy: Windows (antivirus, indexer) can still hold it for a moment; never crash over it
+    return require('./zipkit').writeZip(tmp, target, { skip: (rel) => /(^|\/)(\._[^/]*|\.DS_Store)$/.test(rel) })
+      .then(() => { done(); return { path: target, size: fs.statSync(target).size }; }, (err) => { done(); try { fs.rmSync(target, { force: true }); } catch { /* none */ } throw err; });
   } catch (err) {
     fs.rmSync(tmp, { recursive: true, force: true });
     throw err;
@@ -235,12 +232,15 @@ async function backupNow({ keep = 10 } = {}) {
 
 function unzipTo(zipPath) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-restore-'));
-  return new Promise((resolve, reject) => {
+  // (round 46) plain Node first (zipkit: the same on both computers, every file's CRC checked); the system's tool only
+  // for a zip it can't read (another program's compression)
+  return require('./zipkit').extract(assertAbs(zipPath), dir).then(() => dir, (zerr) => new Promise((resolve, reject) => {
+    if (zerr.code === 'EZIPCRC') { reject(zerr); return; }
     const done = (err) => (err ? reject(err) : resolve(dir));
     // GNU tar (Linux) can't read zips; unzip can
     if (process.platform === 'linux') execFile('unzip', ['-q', '-o', assertAbs(zipPath), '-d', dir], done);
     else execFile(TAR, ['-xf', assertAbs(zipPath), '-C', dir], { windowsHide: true }, done);
-  });
+  }));
 }
 const readJsonSafe = (p, fallback) => { try { return JSON.parse(require('./scenesafe-core').readRetry(fs, p)); } catch { return fallback; } };
 const jsonFiles = (dir) => { try { return fs.readdirSync(dir).filter((n) => n.endsWith('.json') && !n.endsWith('.prev.json') && !n.endsWith('.tmp')); } catch { return []; } };

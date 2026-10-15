@@ -212,7 +212,8 @@ const gameTools = (agent) => hubToolsets(agent).includes('gameTools');
 const nodesOn = (agent) => Boolean(agent.threeTools) && agent.nodesTool !== false;
 // (round 31, tokensaver) who gets the chat tools' when-to-use guide and their whole list: directors (docked, or with a
 // working tool set besides the chat). A plain chat gets the lean chat list (chat_ask, chat_open, chat_do + help).
-const leanDirector = (agent) => Boolean(agent.threeTools) && !agent.noHubTools && agent.toolMode !== 'full' && agent.toolMode !== 'crew';
+// (round 46, promptdiet) full mode too: its director part has the same role line (a second "You are…" was sent there)
+const leanDirector = (agent) => Boolean(agent.threeTools) && !agent.noHubTools && agent.toolMode !== 'crew';
 const OPT_IN_SETS = ['boardTools', 'captureTools', 'adobeTools', 'deployTools', 'appsTools'];
 const chatGuideOn = (agent) => Boolean(agent.dock) || hubToolsets(agent).filter((k) => !OPT_IN_SETS.includes(k)).length > 1;
 // What every hub MCP server gets: Node mode, the agent (for chat_ tools), opt-ins that change the tool list.
@@ -341,7 +342,8 @@ function toolGuide(key) {
 }
 
 // (round 31, tokensaver) the two habit lines most chats carry, in fewer words (same asks, same tags)
-const SUGGEST_LINE = 'When it helps, end with up to 3 short next steps as <suggest>…</suggest> (they become buttons; under 8 words each).';
+// (round 46, promptdiet) the habit lines again, in fewer words (same tags, same asks)
+const SUGGEST_LINE = 'When it helps, end with up to 3 next steps as <suggest>…</suggest> (buttons, under 8 words each).';
 // (round 35, concise) ⋯ AI setup → How long its answers are (agent.verbosity, the same field Astra's verbosity uses):
 // Short / Detailed add ONE fixed line at the very end of a Claude prompt (Normal: nothing, zero tokens). Astra gets
 // Codex's own model_verbosity flag instead (codexArgs), so no line. Byte-stable: constants only.
@@ -350,7 +352,7 @@ const ANSWER_LINES = {
   high: 'Answer length: detailed. Explain your reasoning, cover edge cases and give examples where they help.',
 };
 const answerLine = (agent) => (agent.engine === 'codex' ? '' : ANSWER_LINES[agent.verbosity] || '');
-const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference worth keeping for future chats (not one-off details), add <remember>short fact</remember> on its own line at the very end of your reply; never mention these tags.';
+const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference (not a one-off detail), end your reply with <remember>short fact</remember> on its own line; never mention these tags.';
 
 // (round 32, cachewise) The prompt is built in two parts so the engines' prompt caches keep hitting:
 //   head: what only changes with an app update or a tool set (the role line, tool guides, habits, the director part);
@@ -370,15 +372,15 @@ function promptParts(agent, session = null) {
   // ---- head ----
   // (round 31, tokensaver) a lean Three Director's role is set by its own part below: no second "You are…" line
   if (!agent.systemPrompt && !leanDirector(agent)) {
-    add('role', `You are ${agent.name}, chatting with the user in their personal desktop app. Answer directly, no preamble or recap; use Markdown when it helps.`);
+    add('role', `You are ${agent.name}, in the user's desktop app. Answer directly, no preamble or recap; Markdown when it helps.`);
   }
   if (agent.engine === 'codex' && !agent.dock && !agent.systemPrompt) add('conversation',
     'Be a thoughtful, practical collaborator. Lead with the answer in plain, natural language. Default to a few concise paragraphs; use lists only when useful and expand when the task needs it. '
     + 'For ordinary conversation, answer directly without unnecessary tools, plans, or verification rituals. For requested work, do it with the tools available, keep the user briefly informed during long tasks, and finish with the result and any real limitations. Never claim a tool action succeeded without evidence.');
   if (gameTools(agent)) {
-    add('game', 'A live debug instance of the user\'s game Forgeheart runs right next to this chat, and you control it with the forge_* tools. '
-      + 'When the user asks for something in the game ("spawn me enemies", "make me invincible", "go to stage 80", "make drones faster"), do it right away with the tools '
-      + 'instead of explaining how; check forge_status or forge_screenshot when you need to see the result. Reply briefly with what you changed.');
+    // (round 46, promptdiet) the same asks in fewer words; the game's globals come from forge_eval {help: "globals"}
+    add('game', 'The user\'s game Forgeheart runs live next to this chat (a debug instance): when they ask for something in it (spawn enemies, invincible, stage 80, faster drones), '
+      + 'do it right away with the forge_* tools instead of explaining how; check with forge_status or forge_screenshot. Reply briefly with what you changed.');
     add('guide:gameTools', toolGuide('gameTools'));
   }
   const sets = hubToolsets(agent);
@@ -393,33 +395,28 @@ function promptParts(agent, session = null) {
   if (sets.includes('boardTools')) add('guide:boardTools', toolGuide('boardTools'));
   if (sets.includes('appsTools')) add('guide:appsTools', toolGuide('appsTools')); // Meshy costs credits: one line
   // Directors (agents docked in a tool) check their own work unless switched off.
-  if (agent.selfReview ?? Boolean(agent.dock)) add('selfReview', (agent.engine === 'codex' && !agent.dock ? 'For work that creates or changes something: ' : '') + 'Before you finish, check the result against what was asked (visual work: one fresh small picture), fix real problems, then say in one line what you checked.');
+  if (agent.selfReview ?? Boolean(agent.dock)) add('selfReview', (agent.engine === 'codex' && !agent.dock ? 'For work that creates or changes something: ' : '') + 'Before you finish, check the result against the ask (visual work: one fresh small picture), fix real problems, then say in one line what you checked.');
   // (round 11) opt-in (`/progress tags on`, directors only): the agent says how far it is; Hearth draws the bar and hides the tag
   if (agent.dock && agent.progressTag) add('progress', 'During long work, now and then write <progress pct="40" note="what\'s next"/> (hidden; it drives the user\'s progress bar).');
+  // (round 46, promptdiet) one role line for both modes; 'full' then sends the whole guide (which carries the core and every
+  // topic) instead of a long second how-to that said the same things again (≈ 590 tokens a message)
+  const role = (agent.engine === 'codex' && !agent.dock ? 'When the user asks for Three.js Lab work, act as their visual director.' : `You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`} in the user's desktop app.`) + ' Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance).';
   // (round 22, labcrew) a crew helper: the sketch rules in five lines, no app map (its brief says what to explore)
   if (sets.includes('threeTools') && agent.toolMode === 'crew') {
     add('director', 'SKETCH = layers (bottom first), each a complete ES module: import * as THREE from \'three\'; its own WebGLRenderer (alpha: true above the bottom layer) appended to document.body, sized to innerWidth/innerHeight, renderer.setAnimationLoop((now) => …).\n'
       + 'Sliders: const P = tweak({ key: { value, min, max, label, group } | \'#rrggbb\' }) near the top, read every frame. Music globals: audio.bass, audio.kick, audio.level (0..1).\n'
       + 'Change code with three_edit_code (small finds), a new element with three_add_layer, rewrite with three_set_code only when your angle needs it. Fix errors the results report. Stay within your call budget; end with one small three_screenshot, then one line: what you changed.');
   } else
-  // Lean (default): the three-lab tool guide carries the how-to, so the prompt only sets the role. 'full' keeps the long version.
+  // Lean (default): the guide's core + help on demand. 'full' sends the whole guide (every topic) and lists every tool.
   // (round 32) the same role line with a personality too (it sits in the tail): changing one keeps this part cached
   if (sets.includes('threeTools') && agent.toolMode !== 'full') {
-    add('director', (agent.engine === 'codex' && !agent.dock ? 'When the user asks for Three.js Lab work, act as their visual director. ' : `You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`}, chatting with the user in their desktop app. `) + `Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance) and small edits over rewrites.\n`
+    add('director', `${role}\n`
       + threeGuide().CORE
       + (nodesOn(agent) ? `\n${threeGuide().NODES_LINE}` : '')
       + `\n${hearthMap().LINE('three_do help')}`);
   } else if (sets.includes('threeTools')) {
-    add('director', 'You turn the user\'s descriptions into three.js scenes in the Three.js Lab shown next to this chat. They prompt; you write the code. '
-      + 'Build with three_set_code (complete sketches) and change existing code with three_edit_code (read / search big layers with three_read_code and three_search_code), read the errors it returns, look with three_screenshot, and iterate until it matches what they asked for. '
-      + 'Don\'t paste the code into the chat unless they ask for it: describe what you made and what they can ask for next (camera, mood, motion, materials…). '
-      + 'Prefer good-looking defaults: tone mapping, environment lighting, soft shadows, smooth animation, sensible performance. '
-      + 'The user mostly makes music visualizers (often 9:16 for Shorts) and does not write code: every sketch must have clearly named sliders made with tweak() (labels, groups, hints, sensible ranges, options for styles; see the tool guide), read live every frame. Animate on the timeline first, like After Effects (time, easing, keyframes, the song\'s cues and sections); add music reactivity only when they ask. '
-      + 'When they do, check the track with three_media_info: if the user placed kick / snare / hit markers or set a beat grid, build the hits on those (audio.kick, audio.snare, audio.hit, audio.beatInBar) instead of guessing from the audio, or link sliders with /make-it-react (three_run). Look at a hit or drop (three_media_control) when you check your work. '
-      + 'Every new element or effect goes in a new layer (three_add_layer); rewrite an existing layer only when asked. '
-      + (nodesOn(agent) ? `${threeGuide().NODES_LINE} ` : '')
-      + 'Sketches can have layers (like Photoshop / After Effects): when the user asks to add, remove, time, fade, move or blend a layer, use the layer tools (three_add_layer, three_update_layer, three_remove_layer, three_layers); upper layers must be transparent. For changes over time ("fade in on the drop", "zoom during the build") use three_keyframes or three_animate presets. You can read and edit the timeline (three_timeline, three_timeline_edit) and the notes the user pins on moments (three_notes: they come with screenshots; mark them done when handled). Looks like ASCII, datamosh, found footage/VHS, glitch, CRT, pixelate, halftone, film, kaleidoscope, edge glow, thermal, duotone or glow are filter layers (three_add_layer with that template) placed above what they should affect. The user can give you reference files (pictures, logos, clips, models, sounds): three_references lists them and adds pictures they attach here; use them in code with refTexture(name) or refs.name. '
-      + 'If three_get_code reports unsavedSliders, the user tuned those by hand: keep their values.');
+    add('director', `${role} Every Lab action is its own tool here: three_do <cmd> in the guide is three_<cmd>; help: three_help {topic}.`
+      + (nodesOn(agent) ? `\n${threeGuide().NODES_LINE}` : ''));
     add('director', threeGuide().FULL);
     add('director', hearthMap().LINE('three_help'));
   }
@@ -1114,13 +1111,13 @@ const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e)
 
 // live(event): what a run is doing (step / agent / pulse / status), on its own channel so the turns that only want
 // the reply (jams, collaborations, once()) never see it.
-function send({ agent, chatId, session, text, options = {} }, emit, live = null) {
-  emit = batched(emit);
+// (round 46, promptdiet) the agent one run really gets (a run's persona, a mission helper, lean / hubOnly / crew runs, a
+// chat's own engine or opt-ins, the sets toolwake.js lets sleep): send() and dev/promptdiet-measure.js use the same one
+function runAgent(agent, { chatId = '', session = {}, text = '', options = {} } = {}) {
   const base = agent; // the agent as the owner set it up (toolwake.js forgets the sets switched off there)
   // a chat with its own engine (a comp part on Astra while its director runs on Claude, or the reverse): the same
   // agent on that engine, with its tools (Astra directors get the hub servers through -c), the twin's model / effort
   if (options.engine && options.engine !== agent.engine && ENGINES[options.engine]) agent = { ...agent, engine: options.engine, model: undefined, effort: undefined, ...(options.engine === 'codex' ? { hubTools: true } : {}) };
-  const engine = agent.engine;
   // A per-run persona replaces the agent's own instructions; "lean" runs (collaborations, quick asks) drop
   // the hub tool sets and file tools so they cost no more than a plain chat turn.
   if (options.persona) agent = { ...agent, systemPrompt: String(options.persona).slice(0, 4000) };
@@ -1149,6 +1146,12 @@ function send({ agent, chatId, session, text, options = {} }, emit, live = null)
   const woke = Wake && agent.id ? Wake.plan(agent, { text, session, base, keep: options.captureTools ? ['captureTools'] : [] }) : null;
   if (woke?.sleep.length) agent = { ...agent, ...Object.fromEntries(woke.sleep.map((k) => [k, false])) };
   if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };
+  return { agent, woke };
+}
+function send({ agent: agent0, chatId, session, text, options = {} }, emit, live = null) {
+  emit = batched(emit);
+  const { agent, woke } = runAgent(agent0, { chatId, session, text, options });
+  const engine = agent.engine;
   const original = text;
   if (engine === 'claude' && options.images?.length) {
     text += `\n\n[Attached image${options.images.length > 1 ? 's' : ''}: open with your Read tool before answering]\n${options.images.join('\n')}`;
@@ -1627,7 +1630,7 @@ module.exports = {
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs },
   buildPrompt, promptParts, HUB_TOOLSETS, // the director cost report (mcp/cost.js); (round 36) the prompt's parts (tokenauditmain.js)
   busy: () => running.size + (codexServers?.active.size || 0), // idle persistent connections don't count as work
 };

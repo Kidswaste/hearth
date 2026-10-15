@@ -121,10 +121,13 @@ const ForgeGame = (() => {
       if (width > 1280) img = img.resize({ width: 1280, quality: 'good' });
       log('Claude took a screenshot', 'claude');
       // JPEG keeps the image Claude reads small (~100 KB instead of ~600 KB as PNG).
+      // (round 46, promptdiet) and 768 px wide unless the AI asks for size: "large" (1280): ≈ 440 tokens instead of ≈ 1,230 a
+      // picture, re-read at every later step of the chat; the saved PNG (the 📷 button) keeps the full size
+      const w = args.size === 'large' ? 1280 : 768;
       const jpeg = await new Promise((resolve) => {
         const c = document.createElement('canvas');
         const i = new Image();
-        i.onload = () => { c.width = i.width; c.height = i.height; c.getContext('2d').drawImage(i, 0, 0); resolve(c.toDataURL('image/jpeg', 0.82).split(',')[1]); };
+        i.onload = () => { const k = Math.min(1, w / i.width); c.width = Math.round(i.width * k); c.height = Math.round(i.height * k); c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); resolve(c.toDataURL('image/jpeg', 0.82).split(',')[1]); };
         i.onerror = () => resolve(null);
         i.src = img.toDataURL();
       });

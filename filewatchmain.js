@@ -106,7 +106,8 @@ const touched = new Set(); // roots that had events in this batch (is the folder
 function onRaw(r, ev, name) {
   stats.raw += 1;
   touched.add(r);
-  const rel = name == null ? '' : String(name);
+  // (round 46) the Mac's FSEvents names files decomposed (NFD): composed like every other path Hearth holds
+  const rel = name == null ? '' : platform === 'darwin' ? String(name).normalize('NFC') : String(name);
   const abs = rel ? path.join(r.dir, rel) : r.dir;
   // sync's folders hear every event as fs.watch gave it (its own debounce and ignore list: an iCloud placeholder
   // arriving is news to sync, which asks iCloud for the file)
