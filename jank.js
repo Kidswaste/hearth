@@ -42,13 +42,13 @@ const Jank = (() => {
   // (round 46, smooth46) asked for every long frame (several per second while the Lab plays or a list redraws on a
   // busy machine): its two page-wide searches walked every element each time (≈ 20,000 with kept chat lists) and were
   // the hub's top script during Lab play and slider drags. Now one search tells whether any of them is open (the usual
-  // answer: none), and the answer holds for 200 ms or until the next press / key or change of view
+  // answer: none), and the answer holds for a second or until the next press / key or change of view
   let vaAt = -1e9; let vaWas = 'start';
   const OVER = '.palette, .cmdbar:not([hidden]), dialog[open]';
   function viewArea() {
     if (!readyAt) return 'start';
     const now = performance.now();
-    if (now - vaAt < 200) return vaWas;
+    if (now - vaAt < 1000) return vaWas;
     let a = '';
     const m = document.getElementById('menu');
     if (m && !m.hidden) a = 'menus';
