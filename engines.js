@@ -57,6 +57,15 @@ const ENGINES = {
 const running = new Map(); // chatId -> child process
 let codexServers = null; // loaded only when the app-server transport is used
 let codexAccount = null;
+let codexCatalog = null;
+async function codexCapabilities({ kind, chatId, appId, refresh } = {}) {
+  const cap = require('./codex-capabilities');
+  if (['connections', 'appTools', 'installed'].includes(kind)) return cap.inspect(codexServers, chatId, kind, appId);
+  const bin = LOCATE.codex(); if (!bin) throw new Error('Codex is not installed. Check Settings → Engines.');
+  if (codexCatalog?.options.bin !== bin) { codexCatalog?.close(); codexCatalog = null; }
+  codexCatalog ||= new cap.Catalog({ spawn: WinPolish.spawn, kill, bin, args: ['app-server', '--listen', 'stdio://', '-c', 'features.apps=true'], cwd: WORKSPACE, env: process.env });
+  return codexCatalog.read(kind, refresh);
+}
 function getCodexUsage() {
   const bin = LOCATE.codex();
   if (!bin) return Promise.resolve({ available: false, buckets: [], checkedAt: Date.now(), error: 'Codex is not installed. Check Settings → Engines.' });
@@ -739,7 +748,7 @@ function codexServerPlan(agent, session, options = {}) {
     : { type: 'readOnly' };
   return { args, cwd, servers,
     thread: { cwd, approvalPolicy: 'never', sandbox, baseInstructions: buildPrompt(agent, session), developerInstructions: '', ...(model ? { model } : {}) },
-    turn: { cwd, approvalPolicy: 'never', sandboxPolicy, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(summary ? { summary } : {}), input: (options.images || []).map((p) => ({ type: 'localImage', path: p })) },
+    turn: { cwd, approvalPolicy: 'never', sandboxPolicy, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(summary ? { summary } : {}), input: [...(options.images || []).map((p) => ({ type: 'localImage', path: p })), ...require('./codex-capabilities').mentions(options.appMentions, agent.chatgptApps)] },
   };
 }
 
@@ -1610,6 +1619,9 @@ function discoverConnectors() {
 }
 
 module.exports = {
+  codexCapabilities,
+  codexSteer: ({ chatId, turnId, text }) => { if (!codexServers) throw new Error('No Astra reply is running.'); return codexServers.steer(chatId, turnId, text); },
+  codexAnswer: ({ chatId, token, answers }) => { if (!codexServers) throw new Error('The question is no longer active.'); return codexServers.answer(chatId, token, answers); },
   getCodexUsage,
   send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,

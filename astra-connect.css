@@ -1,0 +1,10 @@
+.ac-dialog { width: min(720px, 92vw); max-height: 85vh; padding: 22px; }
+.ac-dialog header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.ac-body { max-height: 65vh; overflow: auto; }
+.ac-body > button { margin: 5px; }
+.ac-body > input, .ac-body > textarea { box-sizing: border-box; width: 100%; padding: 10px; }
+.ac-card { padding: 14px; margin: 12px 0; border: 1px solid var(--border, #5555); border-radius: 12px; overflow-wrap: anywhere; }
+.ac-card p { margin: 7px 0; white-space: pre-wrap; }
+.ac-card button, .ac-card select { margin: 5px 8px 5px 0; }
+.ac-card fieldset { margin: 12px 0; border: 0; padding: 0; }
+.ac-card input { width: 100%; box-sizing: border-box; padding: 8px; }

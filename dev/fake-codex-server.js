@@ -18,6 +18,15 @@ rl.on('line', (line) => {
   if (m.method === 'initialized') { initialized = true; return; }
   if (!initialized) { send({ id: m.id, error: { message: 'Not initialized' } }); return; }
   if (m.method === 'config/read') { reply(m.id, { config: { mcp_servers: { unrelated: {} } } }); return; }
+  if (m.method === 'model/list') { reply(m.id, { data: [{ id: 'test', model: 'test', displayName: 'Test', hidden: false, supportedReasoningEfforts: [{ reasoningEffort: 'max' }], inputModalities: ['text'] }], nextCursor: null }); return; }
+  if (m.method === 'app/list') { reply(m.id, { data: [{ id: 'app-demo', name: '<Demo>', isAccessible: true, isEnabled: true }], nextCursor: null }); return; }
+  if (m.method === 'app/installed') { reply(m.id, { apps: [{ id: 'app-demo', enabled: true, callable: false }] }); return; }
+  if (m.method === 'app/read') { reply(m.id, { apps: [{ id: 'app-demo', toolSummaries: [{ name: 'read', isReadOnly: true }] }] }); return; }
+  if (m.method === 'mcpServerStatus/list') { reply(m.id, { data: [{ name: 'demo', authStatus: 'notLoggedIn', runtimeStatus: 'authenticationRequired', tools: {} }], nextCursor: null }); return; }
+  if (m.method === 'turn/steer') {
+    if (!active || active.turnId !== m.params.expectedTurnId) send({ id: m.id, error: { message: 'Turn mismatch' } });
+    else reply(m.id, { turnId: active.turnId }); return;
+  }
   if (m.method === 'account/rateLimits/read') { reply(m.id, { rateLimits: { primary: { usedPercent: 23, windowDurationMins: 10080, resetsAt: 1900000000 } } }); return; }
   if (m.method === 'thread/start' || m.method === 'thread/resume') {
     if (m.params.threadId === 'missing') { send({ id: m.id, error: { message: 'thread not found' } }); return; }
@@ -44,6 +53,9 @@ rl.on('line', (line) => {
   reply(m.id, { turn: { id: turnId, status: 'inProgress' } });
   notify('turn/completed', { threadId, turn: { id: 'old-turn', status: 'completed' } });
   if (text === 'WAIT') return;
+  if (text === 'QUESTION') {
+    send({ id: 'question-1', method: 'item/tool/requestUserInput', params: { ...meta, itemId: 'q', isBlocking: true, questions: [{ id: 'color', header: 'Color', question: 'Which color?', options: [{ label: 'Blue', description: 'Blue color' }] }] } }); return;
+  }
   if (text === 'MULTI') {
     const n = ++threads.get(threadId).n;
     const params = { ...meta, tokenUsage: { total: { inputTokens: n * 100, outputTokens: n * 20, cachedInputTokens: n * 50, reasoningOutputTokens: n * 5 }, last: { inputTokens: 100, outputTokens: 20 } } };

@@ -26,7 +26,7 @@ class Connection {
     this.child.stdin.on('error', (err) => this.close(err));
     this.child.on('error', (err) => this.close(err));
     this.child.on('close', (code) => this.close(new Error(`Codex connection closed (${code ?? 'signal'}). ${this.stderr || ''}`)));
-    this.ready = this.request('initialize', { clientInfo: { name: 'hearth', title: 'Hearth', version: '0.1.0' } })
+    this.ready = this.request('initialize', { clientInfo: { name: 'hearth', title: 'Hearth', version: '0.1.0' }, capabilities: { experimentalApi: true } })
       .then(() => { this.write({ method: 'initialized' }); return this.request('config/read', { includeLayers: false }); })
       .then((r) => { this.inheritedServers = Object.keys(r.config?.mcp_servers || {}); });
     // A failed handshake is observed by run(), even if Stop was pressed during initialization.
@@ -36,11 +36,14 @@ class Connection {
     if (this.closed) throw new Error('Codex connection is closed');
     this.child.stdin.write(`${JSON.stringify(msg)}\n`);
   }
-  request(method, params) {
+  request(method, params, { soft = false } = {}) {
     if (this.closed) return Promise.reject(new Error('Codex connection is closed'));
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => this.close(new Error(`Codex ${method} timed out; the request was not replayed.`)), this.requestMs);
+      const timer = setTimeout(() => {
+        const err = new Error(`Codex ${method} timed out; the request was not replayed.`);
+        if (soft) { this.pending.delete(id); reject(err); } else this.close(err);
+      }, this.requestMs);
       this.pending.set(id, { resolve, reject, timer });
       try { this.write({ id, method, params }); } catch (err) { this.close(err); }
     });
@@ -66,6 +69,7 @@ class Connection {
     if (this.bytes > MAX_LINE) this.close(new Error('Codex response exceeded the message size limit'));
   }
   serverRequest(msg) {
+    if (msg.method === 'item/tool/requestUserInput' && this.onQuestion?.(msg)) return;
     // Hearth's existing tools ask through chat_ask / access. Never silently grant a new native
     // permission or leave the model waiting forever for an approval UI this client doesn't own.
     let result;
@@ -101,14 +105,22 @@ class Pool {
     if (conn && (conn.closed || conn.key !== key)) { conn.close(); this.connections.delete(chatId); conn = null; }
     timing.connectionReused = Boolean(conn);
     let done = false; let cancelled = false; let turnId = null; let output = ''; let usage = null;
+    const questions = new Map();
+    const resolveQuestion = (token, result) => {
+      const q = questions.get(token); if (!q) return false;
+      questions.delete(token); clearTimeout(q.timer);
+      if (result && !conn.closed) conn.write({ id: q.id, result });
+      emit({ type: 'codexQuestionResolved', token }); return true;
+    };
     let activeIdle; let interruptTimer; let pulse; let lastEvent = performance.now(); const messages = new Map(); const reasoning = new Set();
     let baseline = null; let threadReady = false; let resumeTotals = null;
     const touch = () => { lastEvent = performance.now(); clearTimeout(activeIdle); activeIdle = setTimeout(() => conn?.close(new Error('Codex stopped responding; the turn was not replayed.')), this.activeIdleMs); };
     const finish = (event) => {
       if (done) return; done = true; clearTimeout(activeIdle); clearTimeout(interruptTimer); clearInterval(pulse);
+      for (const token of questions.keys()) resolveQuestion(token, { answers: {} });
       this.active.delete(chatId); timing.totalMs = elapsed();
       if (conn) {
-        conn.onNotification = null; conn.onClose = null; conn.onRequest = null;
+        conn.onNotification = null; conn.onClose = null; conn.onRequest = null; conn.onQuestion = null;
         if (conn.closed || chatId.startsWith('once-')) { conn.close(); this.connections.delete(chatId); }
         else { conn.idleTimer = setTimeout(() => { conn.close(); if (this.connections.get(chatId) === conn) this.connections.delete(chatId); }, this.idleMs); conn.idleTimer.unref?.(); }
       }
@@ -138,10 +150,36 @@ class Pool {
       interruptTimer = setTimeout(() => { conn.close(); finish({ type: 'stopped' }); }, 5000);
       conn.request('turn/interrupt', { threadId: session.id, turnId }).catch(() => { conn.close(); finish({ type: 'stopped' }); });
     };
-    this.active.set(chatId, { stop, finish });
+    this.active.set(chatId, { stop, finish,
+      steer: async (expectedTurnId, text) => {
+        if (done || cancelled || !turnId || expectedTurnId !== turnId) throw new Error('This reply has ended or changed. Your message was not sent.');
+        if (typeof text !== 'string' || !text.trim() || text.length > 100000) throw new Error('Enter a message under 100,000 characters.');
+        await conn.request('turn/steer', { threadId: session.id, expectedTurnId, input: [{ type: 'text', text }] }, { soft: true });
+        emit({ type: 'codexSteered', text }); return { ok: true };
+      },
+      answer: (token, answers) => {
+        const q = questions.get(token);
+        if (done || cancelled || !q) throw new Error('This question is no longer waiting for an answer.');
+        const clean = Object.create(null);
+        for (const question of q.questions) {
+          const values = answers?.[question.id]?.answers;
+          if (Array.isArray(values) && values.length === 1 && typeof values[0] === 'string' && values[0].length <= 20000) clean[question.id] = { answers: values };
+        }
+        resolveQuestion(token, { answers: clean }); return { ok: true };
+      },
+    });
     try {
       if (!conn) { conn = new Connection({ spawn: this.spawn, kill: this.kill, bin, args, cwd, env, requestMs: this.requestMs }); conn.key = key; this.connections.set(chatId, conn); }
       clearTimeout(conn.idleTimer);
+      conn.onQuestion = (msg) => {
+        const p = msg.params;
+        if (done || cancelled || !threadReady || p.threadId !== session.id || (turnId && p.turnId !== turnId) || !Array.isArray(p.questions) || !p.questions.length || p.questions.length > 3) return false;
+        const token = crypto.randomUUID();
+        const timer = setTimeout(() => resolveQuestion(token, { answers: {} }), 45 * 60000);
+        questions.set(token, { id: msg.id, questions: p.questions, timer });
+        emit({ type: 'codexQuestion', token, questions: p.questions, blocking: p.isBlocking !== false });
+        return true;
+      };
       conn.onClose = (err) => finish(cancelled ? { type: 'stopped' } : { type: 'error', message: `${err.message}\nThe turn was not replayed. Check any partial work before retrying.` });
       conn.onRequest = (method) => { if (!done) emit({ type: 'thinking', text: `Hearth could not complete the Codex request (${method}); no additional permission was granted.\n\n` }); };
       conn.onNotification = (method, p) => {
@@ -151,7 +189,11 @@ class Pool {
         }
         if (done || !threadReady || p.threadId !== session.id || (turnId && p.turnId && p.turnId !== turnId)) return;
         touch(); if (timing.firstEventMs == null) timing.firstEventMs = elapsed();
-        if (method === 'turn/started') { turnId = p.turn.id; return; }
+        if (method === 'turn/started') { turnId = p.turn.id; emit({ type: 'codexTurn', turnId }); return; }
+        if (method === 'serverRequest/resolved') {
+          for (const [token, q] of questions) if (q.id === p.requestId) resolveQuestion(token);
+          return;
+        }
         if (method === 'item/agentMessage/delta') { append(p.itemId, p.delta); return; }
         if (method === 'item/reasoning/summaryTextDelta') { reasoning.add(p.itemId); if (showThinking) emit({ type: 'thinking', text: p.delta }); return; }
         if (method === 'item/reasoning/summaryPartAdded') { if (showThinking && reasoning.has(p.itemId)) emit({ type: 'thinking', text: '\n\n' }); return; }
@@ -217,11 +259,21 @@ class Pool {
           : { ...(session.totals || conn.totals || {}) }; threadReady = true;
         timing.setupMs = elapsed();
         const result = await conn.request('turn/start', { ...turn, threadId: session.id, input: [{ type: 'text', text: inputText }, ...(turn.input || [])] });
-        if (!done) turnId = result.turn.id;
+        if (!done) { turnId = result.turn.id; emit({ type: 'codexTurn', turnId }); }
       })().catch((err) => { if (!done) { conn.close(err); finish({ type: cancelled ? 'stopped' : 'error', message: err.message }); } });
     } catch (err) { finish({ type: 'error', message: err.message }); }
   }
   stop(chatId) { const run = this.active.get(chatId); if (!run) return false; run.stop(); return true; }
+  steer(chatId, turnId, text) { const run = this.active.get(chatId); if (!run) return Promise.reject(new Error('No reply is running in this chat.')); return run.steer(turnId, text); }
+  answer(chatId, token, answers) { const run = this.active.get(chatId); if (!run) throw new Error('This question has ended.'); return run.answer(token, answers); }
+  async inspect(chatId, method, params = {}) {
+    if (!['app/list', 'app/installed', 'app/read', 'mcpServerStatus/list'].includes(method)) throw new Error('Unsupported inspection');
+    const conn = this.connections.get(chatId);
+    if (!conn || conn.closed || !conn.threadId) throw new Error('Send a message in this chat first, then refresh its connections.');
+    clearTimeout(conn.idleTimer);
+    try { return await conn.request(method, { ...params, threadId: conn.threadId }, { soft: true }); }
+    finally { if (!this.active.has(chatId)) { conn.idleTimer = setTimeout(() => { conn.close(); if (this.connections.get(chatId) === conn) this.connections.delete(chatId); }, this.idleMs); conn.idleTimer.unref?.(); } }
+  }
   stopAll() { const count = this.active.size; for (const run of this.active.values()) run.stop(); for (const c of this.connections.values()) c.close(); this.connections.clear(); return count; }
 }
 

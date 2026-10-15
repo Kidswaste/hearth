@@ -309,6 +309,9 @@ ipcMain.handle('refs:import', (_e, src) => store.importRef(String(src)));
 ipcMain.handle('attachments:dir', () => store.ATTACH_DIR);
 ipcMain.handle('usage:get', () => store.getUsage());
 ipcMain.handle('usage:codex', () => engines.getCodexUsage());
+ipcMain.handle('codex:capabilities', (_e, args) => { engines.setEnginePaths(settings().enginePaths); return engines.codexCapabilities(args); });
+ipcMain.handle('codex:steer', (_e, args) => engines.codexSteer(args));
+ipcMain.handle('codex:answer', (_e, args) => engines.codexAnswer(args));
 // Token meter aggregates (kv/token-stats.json); the first call builds them from the chats.
 const configAgents = () => { try { return readConfig().agents || []; } catch { return []; } };
 ipcMain.handle('usage:stats', () => store.getTokenStats(configAgents()));

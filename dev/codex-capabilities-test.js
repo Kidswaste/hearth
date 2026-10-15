@@ -1,0 +1,45 @@
+const assert = require('assert/strict');
+const fs = require('fs'); const os = require('os'); const path = require('path'); const { spawn } = require('child_process');
+const { Pool, Connection } = require('../codex-server'); const { Catalog, pages, mentions, inspect } = require('../codex-capabilities');
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-capabilities-'));
+const opts = { spawn, kill: p => p.kill(), bin: process.execPath, args: [path.join(__dirname, 'fake-codex-server.js')], cwd: dir, env: { ...process.env, HEARTH_SERVER_TEST_DIR: dir }, requestMs: 800 };
+const delay = ms => new Promise(r => setTimeout(r, ms));
+const trace = () => fs.readFileSync(path.join(dir, 'trace.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+(async () => {
+  const catalog = new Catalog(opts); const pool = new Pool(opts);
+  try {
+    const [models, apps] = await Promise.all([catalog.read('models'), catalog.read('apps')]);
+    assert.equal(models.data[0].model, 'test'); assert.equal(apps.installed[0].callable, false);
+    await catalog.read('models'); assert.equal(trace().filter(t => t.method === 'model/list').length, 1);
+    assert(!trace().some(t => t.method === 'thread/start' || t.method === 'turn/start'));
+    const seen = []; const paged = await pages(async (_, p) => { seen.push(p.cursor); return p.cursor ? { data: [2] } : { data: [1], nextCursor: 'next' }; }, 'test');
+    assert.deepEqual(paged, [1, 2]); assert.deepEqual(seen, [null, 'next']);
+    await assert.rejects(pages(async () => ({ data: [], nextCursor: 'same' }), 'test'), /repeated/);
+    assert.deepEqual(mentions([{ id: 'app-demo', name: 'Demo' }], false), []);
+    assert.equal(mentions([{ id: 'app-demo', name: 'Demo' }, { id: '../bad', name: 'Bad' }], true)[0].path, 'app://app-demo');
+    console.log('✓ cached, paginated read-only catalogs; callable differs from installed; explicit valid app mentions');
+    const events = []; pool.run({ ...opts, chatId: 'a', session: {}, thread: {}, turn: {}, servers: [], parser: () => [], text: 'QUESTION' }, e => events.push(e));
+    for (let i = 0; i < 60 && !events.some(e => e.type === 'codexQuestion'); i++) await delay(20);
+    const q = events.find(e => e.type === 'codexQuestion'); assert(q); const turn = events.find(e => e.type === 'codexTurn'); assert(turn);
+    assert.throws(() => pool.answer('other-chat', q.token, {}));
+    await assert.rejects(pool.steer('a', 'wrong', 'Wrong chat'), /ended or changed/);
+    await pool.steer('a', turn.turnId, 'Please use blue'); assert(events.some(e => e.type === 'codexSteered'));
+    const health = await inspect(pool, 'a', 'connections'); assert.equal(health.data[0].runtimeStatus, 'authenticationRequired');
+    const conn = pool.connections.get('a'); conn.requestMs = 30;
+    await assert.rejects(conn.request('unknown-test-method', {}, { soft: true }), /timed out/); assert(!conn.closed); conn.requestMs = 800;
+    pool.answer('a', q.token, { color: { answers: ['Blue'] }, injected: { answers: ['bad'] } });
+    assert.throws(() => pool.answer('a', q.token, {}), /no longer/);
+    await delay(50); const answer = trace().find(t => t.id === 'question-1' && t.result);
+    assert.deepEqual(answer.result, { answers: { color: { answers: ['Blue'] } } });
+    assert(events.some(e => e.type === 'codexQuestionResolved'));
+    pool.stop('a'); await delay(60); assert(!pool.active.has('a')); await assert.rejects(pool.steer('a', turn.turnId, 'late'));
+    console.log('✓ correlated questions, answer validation, no duplicate answers, steering, stale-turn rejection, safe live inspection timeout');
+    const cancelled = []; pool.run({ ...opts, chatId: 'b', session: {}, thread: {}, turn: {}, servers: [], parser: () => [], text: 'QUESTION' }, e => cancelled.push(e));
+    for (let i = 0; i < 60 && !cancelled.some(e => e.type === 'codexQuestion'); i++) await delay(20);
+    pool.stop('b'); await delay(60); assert(cancelled.some(e => e.type === 'codexQuestionResolved'));
+    const c = new Connection(opts); await c.ready; const observed = []; c.onNotification = (...a) => observed.push(a);
+    c.serverRequest({ id: 999, method: 'item/commandExecution/requestApproval' }); await delay(50); c.close();
+    assert(trace().some(t => t.id === 999 && t.result?.decision === 'decline'));
+    console.log('✓ stopping closes pending questions; command approvals remain denied');
+  } finally { catalog.close(); pool.stopAll(); }
+})().catch(err => { console.error(err); process.exitCode = 1; });

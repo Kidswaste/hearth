@@ -7,6 +7,7 @@
 //   places: { file: the file it came after } for a file that sat elsewhere · after: groups it needs loaded first
 const LazyData = (() => {
   const GROUPS = [
+    { name: 'astraconnect', tier: 'use', at: 'astra.js', files: ['astra-connect.js'], css: ['astra-connect.css'], globals: ['AstraConnect'] },
     { name: 'enginehealth', asap: true, at: 'routerlearn.js', files: ['engine-health.js'], globals: ['EngineHealth'] }, // (round 40, firstscreen; before chatcmds: its /engines and /astra-doctor replace the chat's, as before) Claude Code / Codex installs: the check a moment after the start, /doctor, the fix buttons under a failed reply
     { name: 'chatcmds', asap: true, at: 'chat-ux.js', files: ['chat-cmds.js'], globals: ['ChatCmds'] }, // (round 40, firstscreen; first: its Ctrl/⌘+K lines are the commands there were at the first screen, as before) the chat's own /commands (+ their Ctrl/⌘+K lines, auto-title)
     { name: 'bigscreen', asap: true, at: 'nativefeel.js', files: ['bigscreen-core.js', 'bigscreen.js'], globals: ['BigCore', 'Bigscreen'] }, // (round 38) ⛶ full screen + size of everything per screen (the zoom itself is set before the first frame by preload.js)
