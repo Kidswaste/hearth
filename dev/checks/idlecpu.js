@@ -60,7 +60,7 @@ H.config.theme = { ...(H.config.theme || {}), ...AppUI.THEMES.forgeheart, preset
 delete H.config.theme.label; delete H.config.theme.group;
 applyTheme(document.getElementById('user-theme').textContent);
 step('the counters are in', Boolean(P) && Boolean((await T({ metrics: true })).metrics?.procs?.length));
-// park the pointer in a corner (no hover effects), nothing focused that blinks a caret
+// park the pointer outside the page (no hover effects), nothing focused that blinks a caret
 await J.mouse('mouseMoved', 2, 990, { button: 'none' });
 
 // which process is what: the window, the Lab's preview page(s), the rest by Chromium's type
@@ -95,6 +95,9 @@ async function measure(name) {
   await sleep(6000); // (what the last step started lands first: software GL draws for a few seconds after a change)
   // (the Lab on screen: someone away for a while, the still picture past its first 10 s)
   if (labUp() && /lab/.test(name)) out[`${name} doze wait`] = await until(async () => (await sbx('return window.__labPace?.state()'))?.doze?.ms >= 250, 25000);
+  // (the garbage the last step left collected now: a big collection after the board read its clips took ≈ 1 s of the
+  // window's CPU, once, whenever it came; that's the last step's cost, not idle work)
+  await smoke({ cdp: 'HeapProfiler.collectGarbage' }); await sleep(1500);
   const m0 = await met();
   const s0 = labUp() ? await sbx('return window.__labPace?.state()') : null;
   P.take(); await T({ probe: 'start' });
@@ -139,7 +142,7 @@ out.labboot = window.LabBoot?.state?.() || null;
 if (typeof IdleCpu !== 'undefined') {
   await until(() => IdleCpu.state().hushed, 6000);
   step('nobody using the window: the hush is on (<html data-hush>)', IdleCpu.state().hushed && document.documentElement.hasAttribute('data-hush'), IdleCpu.state());
-  await J.mouse('mouseMoved', 6, 980, { button: 'none' });
+  await J.mouse('mouseMoved', Math.round(innerWidth / 2), innerHeight - 6, { button: 'none' }); // (inside the page: the parking spot is outside it)
   await until(() => !IdleCpu.state().hushed, 1000); // (pointer moves reach the page with the next frame)
   step('… a pointer move plays the look on at once', !IdleCpu.state().hushed && !document.documentElement.hasAttribute('data-hush'));
   document.dispatchEvent(new CustomEvent('hearth:recording', { detail: { recording: true } }));

@@ -1116,3 +1116,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ The Lab picture's right-click 23 → 11 rows, most used first (Freeze, Frame size, Sliders, ♪ Music, Capture, View · ＋ Add, ✨ Look & motion, ⇪ Make & export, ✦ More); the toolbar ⋯ 17 → 11; Sketch ▾ shows all 9 rows (History ›, ⇪ Share & export ›); Board ▾ 20 → 12; the waveform's right-click 7 + More.
 - ✓ Pointing opens a submenu inside a flyout too (#menu-fly2); one name and icon per action in every menu, no command names, one-sentence tooltips where a hint is cut; rows that mean nothing now stay hidden; nothing removed.
 - ○ `sh dev/run-checks.sh menucalm` (dev/checks/menucalm.js: 17 menus, budgets, ≤ 2 clicks, nothing gone + the checks that read the moved rows).
+## 🌙 Idle on screen, next to nothing running (round 44, idlecpu, 11 upgrades: docs/upgrades/idlecpu.md)
+- ✓ A still or paused Lab scene dozes (frames every 100 / 250 / 500 ms instead of every screen frame; wakes at once on any input, message or change): the preview's page 3.3 % → 0.7 % of a CPU, 48 → 4 frames / s; the window's wakeups on the Lab 15 → ~1 / s (the knob timer sleeps, stats every 4 s while dozing).
+- ✓ The hush: a minute without input pauses the look's ambient loops (idlecpu.js); tips wait quietly until they can show.
+- ○ `sh dev/run-checks.sh idlecpu` (dev/checks/idlecpu.js: CPU / wakeups per process in six idle setups, budgets).
