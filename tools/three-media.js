@@ -469,7 +469,9 @@ const ThreeMedia = (() => {
     // and the zoomed window you can drag.
     const minimap = el('canvas', { class: 'mb-minimap', title: 'The whole song: each layer\'s time, the loop and the playhead. Drag the box to move the zoomed view; click to jump.' });
     // Layer tracks under the song (top layer first): { id, name, color, in, out, visible, selected, keys: [{ t, ease }] }.
-    // Handlers: onSelect(id), onChange(id, { in, out }, { final }), onKeyMove(id, from, to), onKeyDelete(id, t), onKeyEase(id, t, ease).
+    // Handlers: onSelect(id), onChange(id, { in, out }, { final }), onKeyDelete(id, t), onKeyEase(id, t, ease);
+    // (round 46, labkeys) several ◆: snapKeys(ids), onKeysRestore(snap), onKeysShift(sel, dt, { copy }), onKeysEase(sel, ease, b, { final }),
+    // onKeysDelete(sel), onKeysCopy(sel), onKeysPaste(clip, at), pasteTargets(clip) — sel = { layerId: [times] }.
     // A track can show several automation lanes under it (Ableton-style), picked with the ▾ in the header column
     // at the right (outside the timeline, so it never covers it):
     // lanes = [{ prop, label, min, max, step, base, keys, tall }], animated = how many settings have points.

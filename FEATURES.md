@@ -1142,3 +1142,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ⚡ Instant chat switching (round 45, chatswitch, 8 upgrades: docs/upgrades/chatswitch.md)
 - ✓ The last few chats stay ready out of sight (their own lists, content-visibility, within a 20,000-element budget): going back to one only shows it again; a chat opened afresh shows its end first, the rest slips in above; resting on a chat in the list (or ↑ / ↓) gets it ready; its pictures are sized ahead. A waiting jump no longer lands in the next chat.
 - ○ `sh dev/run-checks.sh chatswitch` (dev/checks/chatswitch.js: counts + main-thread CPU per switch; trace-stats now reports CPU time).
+## ◆ Keyframes you can see and shape (round 46, labkeys, 19 upgrades: docs/upgrades/labkeys.md)
+- ✓ Slider keyframes are diamonds in their lane (a slider's ◇ opens its lane); a click on a diamond opens a small card: Linear, Ease, Ease in, Ease out, Bounce, Hold drawn small, or Curve (drag two handles), Snap to beats while a song is loaded.
+- ✓ On the layers' tracks: Shift+click / Shift+drag picks several ◆, a drag moves them together on the beat, Alt+drag copies, Ctrl/⌘+C / V to another time or layer, Delete; one undo each. The curve renders exactly like the preview (same evaluation in the Lab and the page).
+- ○ `node dev/labkeys-test.js`, `sh dev/run-checks.sh labkeys` (real drags on the timeline, preview + export values, undo).
