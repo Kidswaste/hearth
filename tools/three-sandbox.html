@@ -1415,7 +1415,8 @@ function gpuEstimate() {
 }
 
 function requestShot() {
-  if (mode === 'sketch' && needsComposite()) {
+  // (round 44, layergroups) nothing shows (a hidden group, every layer off): an empty picture, not the last renderer's
+  if (mode === 'sketch' && (needsComposite() || (ordered().length && !ordered().some((L) => layerMix(L) > 0)))) {
     // (round 31 "labadapt") a lighter preview (adaptive steps, covered layers, Light mode): every layer draws two frames
     // at full quality first, then the merge (a frozen picture is merged as it is: nothing draws while frozen)
     if (adLighter() && !frozen) { adFullFrame(() => postShot(composite(), shotTag)); return; }

@@ -1132,3 +1132,6 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Any 🅰 type layer gains a "Moves with the music" slider group (kSync, kEvery, kHold, kFlow, kFx, kDur) read by the preview page from the song's time alone (tools/three-kinetic-core.js): renders are identical; saved with scenes, templates, recipes, packs.
 - ✓ Lyric lines: paste, then tap along, put them on your Hit markers, or spread them on the song. `/text-moves`, `three_do type { op: "kinetic" }`, Lab search / Find anything ("text animation", "lyrics").
 - ○ `node dev/kinetictype-test.js`, `sh dev/run-checks.sh kinetictype` (dev/checks/kinetictype.js + type, beatlink, templates, recipes, renderfast, menucalm, lazy, boot-test).
+## 📁 Layer groups (round 44, layergroups, 36 upgrades: docs/upgrades/layergroups.md)
+- ✓ The Lab's Layers list has groups: Ctrl/⌘+click layers, Ctrl/⌘+G (scoped to the list; right-click › 📁 Group layers), ▾ fold, a group's eye, drag in / out, Ctrl/⌘+Shift+G ungroup, Ctrl/⌘+Z there undoes; S / Alt+click an eye solos a layer or a group, saved with the scene so renders match; ◫ group → precomp and back; recipes record group steps; `/group`.
+- ○ `node dev/layergroups-test.js` (unit), `sh dev/run-checks.sh layergroups` (pixels, real keys, reload); not yet on the owner's real scenes.

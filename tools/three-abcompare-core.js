@@ -50,9 +50,10 @@ const ABCore = (() => {
 
   // ---------- comparing two snaps ----------
   // the layers without what only the sliders' values / the selection change (those are compared on their own)
-  // (a layer's name and its label color in the list don't change the picture)
+  // (a layer's name and its label color in the list don't change the picture; nor its 📁 group: folder, name, folded,
+  // round 44 — what a group's eye or a solo does is in `visible`)
   const layersSig = (snap) => JSON.stringify((snap?.st?.layers || []).map((L) => {
-    const { vals: _v, name: _n, color: _c, ...rest } = L; return rest;
+    const { vals: _v, name: _n, color: _c, group: _g, hid: _h, solo: _s, soloShown: _ss, ...rest } = L; return rest;
   }));
   const palSig = (snap) => JSON.stringify(snap?.st?.palette || snap?.palette || []);
   // every slider value that differs: { layer: { key: before value } } (keys only one side has are left out: a layer
