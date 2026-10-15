@@ -172,9 +172,7 @@ const Hints = (() => {
     const ready = queue.filter((q) => fits(q, place)).sort(order(place));
     // (round 41, smooth41) nothing waiting fits here (a Lab tip while you're in a chat): no page queries every 0.7 s;
     // moving elsewhere looks again at once (hearth:view), a slow tick still drops what waited too long
-    // (round 44, idlecpu) …and that slow tick waits until the first one could be dropped (a place change looks sooner)
-    const dropIn = () => Math.min(...queue.map((q) => q.at + (q.ttl ?? C('ttl')) - now)) + 50;
-    if (!ready.length) { schedule(Math.max(C('idle'), dropIn())); return null; }
+    if (!ready.length) { schedule(C('idle')); return null; }
     schedule();
     const why = busy();
     // a line in a chat or a panel: as soon as you aren't typing and no reply streams (it covers nothing, so an open
@@ -187,7 +185,7 @@ const Hints = (() => {
     const pick = ready.find((q) => (force || since >= (q.kind === 'tip' ? C('start') : C('startNotice'))) && (force || q.kind !== 'tip' || now - lastAt() >= C('gap')));
     // (round 44, idlecpu) only waiting for the start's calm or the gap between two tips (3 min): look again when the
     // first one is due, not every 0.7 s until then (a reply, typing or a place change look sooner)
-    if (!pick) { const dueIn = Math.min(...ready.map((q) => Math.max(T0 + (q.kind === 'tip' ? C('start') : C('startNotice')), q.kind === 'tip' ? lastAt() + C('gap') : 0) - now)); schedule(Math.max(C('tick'), Math.min(dueIn + 20, dropIn()))); return null; }
+    if (!pick) { const dueIn = Math.min(...ready.map((q) => Math.max(T0 + (q.kind === 'tip' ? C('start') : C('startNotice')), q.kind === 'tip' ? lastAt() + C('gap') : 0) - now)); schedule(Math.max(C('tick'), Math.min(dueIn + 20, C('idle')))); return null; }
     show(pick);
     return pick.id;
   }

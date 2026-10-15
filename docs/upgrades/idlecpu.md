@@ -109,9 +109,10 @@ Found quiet already, left as they are:
    streaming reply, a render, sync) never pause.
 10. **Never hushed while Hearth records itself** (a capture), so a recording shows the look as it is.
 11. **Tips wait quietly.** When a tip fits where you are but has to wait for the gap between two tips (3 min) or the
-    start's calm, the tips queue looks again when it can show, not every 0.7 s until then. With nothing fitting here, its
-    slow look waits until the first waiting tip could be dropped. Moving to another place, a reply ending or typing
-    stopping look again at once, as before.
+    start's calm, the tips queue looks again when it can show (checking at least every 5 s), not every 0.7 s until
+    then. Moving to another place, a reply ending or typing stopping look again at once, as before. (A first version
+    also slowed the "nothing fits here" look further. The filewatch check caught a Lab line that then waited too long,
+    so that part stays at 5 s.)
 
 **11 upgrades.**
 
