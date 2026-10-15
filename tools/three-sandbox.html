@@ -7667,7 +7667,9 @@ globalThis.particles = (P = {}, opts = {}) => {
     const warm = Math.round(Math.min(exact ? 8 : 2.5, life > 0 ? life * 1.1 : 3) * PT_RATE);
     renderer.autoClear = false;
     let fresh = false;
-    if (simStep === null || target < simStep || target - simStep > (exact ? warm : 30)) {
+    // (round 48, bugbash3) the preview starts again only after 2 s away (a seek, a parked or hidden Lab): a slow frame
+    // of 0.5–2 s used to restart it too, and wiped what a kick had just burst; the catch-up below skips that time
+    if (simStep === null || target < simStep || target - simStep > (exact ? warm : 120)) {
       const s0 = Math.max(0, target - warm);
       U.uPrewarm.value = HN && (num('emit') > 0 || life <= 0) ? 1 : 0; U.uBurst.value = 0; U.uPush.value = 0; U.uForceMul.value = 1;
       // (both targets start from the same state: rows the adaptive count skips come back clean later)
