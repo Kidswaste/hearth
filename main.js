@@ -650,7 +650,10 @@ function registerAfterWindow() {
 // /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs
 ipcMain.handle('bg:state', () => {
   const procs = app.getAppMetrics().map((m) => ({ type: m.type, name: m.name || m.serviceName || '', cpu: Math.round((m.cpu?.percentCPUUsage || 0) * 10) / 10, mb: Math.round((m.memory?.workingSetSize || 0) / 1024) }));
-  return { ...bgmain.state(), calmMs: bgmain.CALM_MS, sync: syncmain._pace?.() || null, replies: engines.loaded ? engines.busy?.() || 0 : 0, procs };
+  // (round 48, memory48) the main process' own JS heap / handles, for the long-day memory check
+  const mu = process.memoryUsage(); const handles = process.getActiveResourcesInfo?.() || [];
+  const main = { heapMB: Math.round(mu.heapUsed / 1e5) / 10, extMB: Math.round(mu.external / 1e5) / 10, timers: handles.filter((h) => /Timeout|Immediate/.test(h)).length, handles: handles.length };
+  return { ...bgmain.state(), calmMs: bgmain.CALM_MS, sync: syncmain._pace?.() || null, replies: engines.loaded ? engines.busy?.() || 0 : 0, procs, main };
 });
 
 app.whenReady().then(async () => {

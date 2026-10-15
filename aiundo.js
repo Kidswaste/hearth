@@ -40,6 +40,7 @@ const AiUndo = (() => {
   const turns = new Map(); // chat id → { id, agentId, chatId, at, asked, via } while the reply runs
   const ended = new Map(); // chat id → the reply that just ended (late changes still count for it)
   const vias = new Map(); // agent id | chat id → { text, until } (a hook fired / a mission started: the next reply came from it)
+  const setVia = (k, v) => { for (const [x, o] of vias) if (o.until < now()) vias.delete(x); vias.set(k, v); }; // (round 48, memory48) expired ones go
   function onSend(agentId, chat, text) {
     if (!chat?.id) return;
     const v = vias.get(chat.id) || vias.get(agentId);
@@ -442,13 +443,13 @@ const AiUndo = (() => {
     }
     addEventListener('hearth:tm', onVersion);
     document.addEventListener('hearth:access-log', onAccessLog);
-    document.addEventListener('hearth:hook-fired', (ev) => { const d = ev.detail || {}; if (d.agentId) vias.set(d.agentId, { text: `⚡ ${short(d.when || 'a hook', 40)}`, until: now() + 15000 }); });
+    document.addEventListener('hearth:hook-fired', (ev) => { const d = ev.detail || {}; if (d.agentId) setVia(d.agentId, { text: `⚡ ${short(d.when || 'a hook', 40)}`, until: now() + 15000 }); });
     document.addEventListener('hearth:mission', (ev) => {
       const d = ev.detail || {};
       if (d.phase !== 'start') return;
       const mi = window.Missions?.LIST?.find((x) => x.id === d.kind);
       const v = { text: `${mi?.icon || '◎'} ${mi?.label || 'mission'}`, until: now() + 15000 };
-      if (d.chatId) vias.set(d.chatId, v); else if (d.agentId) vias.set(d.agentId, v);
+      if (d.chatId) setVia(d.chatId, v); else if (d.agentId) setVia(d.agentId, v);
     });
     if (typeof Commands !== 'undefined') {
       Commands.onBefore?.(onBefore);
