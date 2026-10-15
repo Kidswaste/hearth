@@ -22,7 +22,7 @@ function smoke(root, body) {
   fs.writeFileSync(script, body);
   let text = '';
   try {
-    text = execFileSync(process.execPath, [path.join(root, 'dev', 'smoke.js'), '--script', script, '--wait', '4000'], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'inherit'] });
+    text = execFileSync(process.execPath, [path.join(root, 'dev', 'smoke.js'), '--script', script, '--wait', process.env.LAZY_WAIT || '4000'], { encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'inherit'] });
   } catch (err) { text = String(err.stdout || ''); }
   const m = text.match(/\[LAZY\](\{[\s\S]*\})/);
   if (!m) { console.error(text.slice(-3000)); throw new Error('no result in the smoke output'); }

@@ -76,12 +76,16 @@ const Native = (() => {
     menuBtn.addEventListener('pointerenter', () => { if (typeof Lazy !== 'undefined' && Lazy.load && !Lazy.loaded('options')) window.Jank?.calm?.(1500, null).then(() => Lazy.load('options')).catch(() => {}) ?? Lazy.load('options').catch(() => {}); }, { once: true });
     modelSel.addEventListener('change', () => setChatModel(agentId, modelSel.value));
 
+    // (round 45, chatswitch) each recent chat keeps its own list (panes, see usePane): v.list is the one on screen, and
+    // the list's listeners sit on the wrap around them (only what happens in the list on screen counts)
     const list = el('div', { class: 'messages' });
-    list.addEventListener('click', (e) => onListClick(e, agentId));
-    list.addEventListener('toggle', fillFold, true); // (round 16) folded tool steps fill in when opened (toggle doesn't bubble: capture)
+    const wrap = el('div', { class: 'messages-wrap' }, list);
+    const inList = (e) => v.list.contains(e.target);
+    wrap.addEventListener('click', (e) => { if (inList(e)) onListClick(e, agentId); });
+    wrap.addEventListener('toggle', fillFold, true); // (round 16) folded tool steps fill in when opened (toggle doesn't bubble: capture)
     // (round 35, streamrender) a picture in a reply loaded: its size is remembered (it takes its place before it loads
     // next time: the finished reply, the chat opened again), and a chat following its end stays at the end
-    list.addEventListener('load', (e) => { if (e.target.tagName !== 'IMG') return; rememberSize(e.target); if (follows(v)) scrollToEnd(list, v); }, true);
+    wrap.addEventListener('load', (e) => { if (e.target.tagName !== 'IMG') return; rememberSize(e.target); if (inList(e) && follows(v)) scrollToEnd(v.list, v); }, true);
     // Selected text in the chat gets a small bar: quote it, copy it, find it in the chat, or save it to notes.
     const selAct = (label, title, fn) => el('button', { type: 'button', text: label, title, on: { click: () => { const t = String(getSelection()).trim(); quoteSel.hidden = true; if (t) fn(t); } } });
     const quoteSel = el('div', { class: 'quote-sel sel-bar', hidden: true },
@@ -90,35 +94,38 @@ const Native = (() => {
       selAct('🔎', 'Find it in this chat', (t) => (typeof ChatUX !== 'undefined' ? ChatUX.find(agentId, t.slice(0, 80)) : null)),
       selAct('📝', 'Save it to notes', (t) => Notes.append(t)));
     quoteSel.addEventListener('mousedown', (e) => e.preventDefault());
-    list.addEventListener('mouseup', () => setTimeout(() => {
+    wrap.addEventListener('mouseup', (e) => { if (inList(e)) setTimeout(() => {
       const s = getSelection(); const t = String(s).trim();
-      if (!t || !s.rangeCount || !list.contains(s.anchorNode)) { quoteSel.hidden = true; return; }
+      if (!t || !s.rangeCount || !v.list.contains(s.anchorNode)) { quoteSel.hidden = true; return; }
       const r = s.getRangeAt(0).getBoundingClientRect();
       Object.assign(quoteSel.style, { left: `${r.left + r.width / 2}px`, top: `${r.top - 30}px` });
       quoteSel.hidden = false;
-    }));
-    list.addEventListener('scroll', () => { if (!quoteSel.hidden) quoteSel.hidden = true; });
+    }); });
     document.body.append(quoteSel);
-    queueMicrotask(() => list.parentElement?.addEventListener('keydown', (e) => {
+    wrap.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') { e.preventDefault(); copyLastReply(agentId); }
-    }));
-    const jump = el('button', { class: 'jump-bottom', text: '↓', title: 'Jump to the latest message', hidden: true, on: { click: () => { v.follow = true; list.scrollTop = list.scrollHeight; } } });
+    });
+    const jump = el('button', { class: 'jump-bottom', text: '↓', title: 'Jump to the latest message', hidden: true, on: { click: () => { v.follow = true; v.list.scrollTop = v.list.scrollHeight; } } });
     // the user's own scrolling (see follows): input in the last moment + where the scroll ended up
     let userAt = 0;
-    const byUser = () => { userAt = performance.now(); };
-    for (const ev of ['wheel', 'touchmove', 'pointerdown', 'keydown']) list.addEventListener(ev, byUser, { passive: true });
+    const byUser = (e) => { if (inList(e)) userAt = performance.now(); };
+    for (const ev of ['wheel', 'touchmove', 'pointerdown', 'keydown']) wrap.addEventListener(ev, byUser, { passive: true });
     // (round 35, streamrender) a wheel turned up (or Page Up / Home / ↑) stops following at once: waiting for the scroll
     // it starts let a reply's next paint scroll to the end first, which cancelled your wheel
-    list.addEventListener('wheel', (e) => { if (e.deltaY < 0 && list.scrollTop > 0) v.follow = false; }, { passive: true });
-    list.addEventListener('keydown', (e) => { if (['PageUp', 'Home', 'ArrowUp'].includes(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) v.follow = false; }, { passive: true });
-    list.addEventListener('scroll', () => {
+    wrap.addEventListener('wheel', (e) => { if (inList(e) && e.deltaY < 0 && v.list.scrollTop > 0) v.follow = false; }, { passive: true });
+    wrap.addEventListener('keydown', (e) => { if (inList(e) && ['PageUp', 'Home', 'ArrowUp'].includes(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) v.follow = false; }, { passive: true });
+    // (scroll doesn't bubble: caught on its way down, for the list on screen only)
+    wrap.addEventListener('scroll', (e) => {
+      const list = v.list;
+      if (e.target !== list) return;
+      if (!quoteSel.hidden) quoteSel.hidden = true;
       const gap = list.scrollHeight - list.scrollTop - list.clientHeight;
       if (gap < 4) v.follow = true; // at the very bottom (End, ↓, the jump button, or scrolled there): follow again
       else if (performance.now() - userAt < 700) v.follow = gap < 24;
       const near = gap < 80;
       if (jump.hidden !== near) jump.hidden = near;
       if (near && jump.classList.contains('has-new')) jump.classList.remove('has-new');
-    });
+    }, true);
 
     const chips = el('div', { class: 'attach-chips' });
     const input = el('textarea', { rows: 3, spellcheck: true });
@@ -147,7 +154,7 @@ const Native = (() => {
       // Ctrl+↑ / Ctrl+↓: jump between your own messages
       if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
-        const mine = [...list.querySelectorAll('.msg.user')]; const top = list.scrollTop; const up = e.key === 'ArrowUp';
+        const list = v.list; const mine = [...list.querySelectorAll('.msg.user')]; const top = list.scrollTop; const up = e.key === 'ArrowUp';
         const target = up ? mine.reverse().find((m) => m.offsetTop < top - 8) : mine.find((m) => m.offsetTop > top + 8);
         if (target) { list.scrollTop = target.offsetTop - 12; target.classList.add('flash-msg'); setTimeout(() => target.classList.remove('flash-msg'), 700); }
       }
@@ -185,9 +192,9 @@ const Native = (() => {
     });
     dropZone(root, (files) => addFiles(agentId, files), { hint: 'Drop to attach' });
     // Text or a link dragged onto the messages goes into your message (text as a quote).
-    list.addEventListener('dragover', (e) => { if (!e.dataTransfer?.types.includes('Files') && e.dataTransfer?.types.some((t) => t === 'text/plain' || t === 'text/uri-list')) e.preventDefault(); });
-    list.addEventListener('drop', (e) => {
-      if (e.dataTransfer?.files.length) return;
+    wrap.addEventListener('dragover', (e) => { if (inList(e) && !e.dataTransfer?.types.includes('Files') && e.dataTransfer?.types.some((t) => t === 'text/plain' || t === 'text/uri-list')) e.preventDefault(); });
+    wrap.addEventListener('drop', (e) => {
+      if (!inList(e) || e.dataTransfer?.files.length) return;
       const url = e.dataTransfer?.getData('text/uri-list');
       const text = e.dataTransfer?.getData('text/plain');
       if (!url && !text) return;
@@ -261,7 +268,9 @@ const Native = (() => {
       go();
     });
 
-    root.append(header, el('div', { class: 'messages-wrap' }, list, jump), form);
+    wrap.append(jump);
+    root.append(header, wrap, form);
+    v.wrap = wrap; v.panes = new Map(); // (round 45, chatswitch) chat id ('' = no chat yet) → its list, most recent last
     views.set(agentId, v);
     render(agentId);
     return v;
@@ -600,6 +609,7 @@ const Native = (() => {
   function trimChats() {
     if (chats.size <= CHAT_KEEP) return;
     const keep = new Set(Object.values(H.activeChat || {}));
+    for (const v of views.values()) for (const k of v.panes?.keys() || []) keep.add(k); // (round 45) the kept lists' chats
     const now = Date.now();
     for (const id of chats.keys()) {
       if (chats.size <= CHAT_KEEP) break;
@@ -907,34 +917,174 @@ const Native = (() => {
       node.append(el('button', { class: 'show-more-msg msg-act', text: `Show full reply · ${words.toLocaleString()} words`, dataset: { msgAct: 'more' } }));
     });
   }
+  // (round 45, chatswitch) one watch per chat list (each recent chat keeps its own list, see usePane)
   function foldWhenNear(v, node) {
-    v.foldWatch ||= new Set();
-    v.foldIO ||= new IntersectionObserver((entries) => {
+    const list = v.list;
+    list.foldWatch ||= new Set();
+    list.foldIO ||= new IntersectionObserver((entries) => {
       const near = entries.filter((e) => e.isIntersecting).map((e) => e.target);
-      for (const n of near) { v.foldIO.unobserve(n); v.foldWatch.delete(n); }
+      for (const n of near) { list.foldIO.unobserve(n); list.foldWatch.delete(n); }
       const chatId = H.activeChat[[...views].find(([, x]) => x === v)?.[0]];
       const todo = near.filter((n) => n.isConnected && !unfolded.has(`${chatId}:${n.dataset.index}`));
       foldIfLong(todo, todo.map((n) => n.querySelector('.body').scrollHeight));
-    }, { root: v.list, rootMargin: '1200px 0px' });
-    v.foldWatch.add(node);
-    v.foldIO.observe(node);
+    }, { root: list, rootMargin: '1200px 0px' });
+    list.foldWatch.add(node);
+    list.foldIO.observe(node);
+  }
+  // Long replies start folded so the conversation stays scannable: replies not measured yet are, the last few now
+  // (they're on screen, the chat opens at its end), older ones when they come near the screen (foldWhenNear)
+  function foldFresh(v, chat, now = FOLD_NOW) {
+    if (store.get('chat.autoFold', true) === false) return;
+    // measure every reply first, then fold: folding one between two measurements made each measurement lay out the
+    // whole chat again (one full layout per folded reply)
+    const lastReply = v.list.querySelector('.msg.assistant:last-of-type');
+    // (round 16) a reply kept from the last redraw was measured then: only new ones are. Measuring them all forced a
+    // layout of every reply, even the ones content-visibility lets the browser skip.
+    const fresh = [...v.list.querySelectorAll('.msg.assistant:not(.streaming)')]
+      .filter((node) => !measured.has(node) && (measured.add(node), node !== lastReply && !unfolded.has(`${chat?.id}:${node.dataset.index}`)));
+    const soon = now ? fresh.splice(-now) : [];
+    foldIfLong(soon, soon.map((node) => node.querySelector('.body').scrollHeight));
+    for (const node of fresh) foldWhenNear(v, node);
+    // nodes that left the list stop being watched (measured again if they come back)
+    const fw = v.list.foldWatch;
+    for (const node of fw || []) if (!node.isConnected || node.parentElement !== v.list) { v.list.foldIO.unobserve(node); fw.delete(node); measured.delete(node); }
   }
 
   // (round 20, offmain) the replies about to be drawn whose Markdown isn't ready are rendered on the Markdown worker
   // first (md.js Md.warm), so this thread only inserts them: worth it from ~24k characters (a few ms here); a short
   // chat, or one already drawn, renders at once as before. The earlier messages of a long chat (behind ↑ Show earlier)
   // are warmed at the next idle moment, so showing them only builds their nodes.
+  // (round 45, chatswitch) returns { wait: what to wait for (null: nothing), misses: replies to make }, so a chat with
+  // nothing to warm draws without waiting a turn; `ms` how long a wait may last
   const WARM_CHARS = 24000;
-  async function warmReplies(v, chat) {
+  function warmReplies(v, chat, ms = 400) {
     const from = shownFrom(chat, unreadFrom.get(chat.id));
     const kept = v.nodes?.get(chat.id);
     const texts = [];
     for (let i = from; i < chat.messages.length; i++) { const m = chat.messages[i]; if ((m.role === 'assistant' || m.role === 'opinion') && kept?.get(m)?.text !== m.text) texts.push(m.text); }
-    if (Md.uncached(texts) >= WARM_CHARS) await Md.warm(texts, 400);
-    if (from > 0) {
+    const wait = texts.length && Md.uncached(texts) >= WARM_CHARS ? Md.warm(texts, ms) : null;
+    const misses = texts.length;
+    if (from > 0 && !warmedEarlier.has(chat)) {
+      warmedEarlier.add(chat);
       const earlier = chat.messages.slice(0, from).filter((m) => m.role === 'assistant' || m.role === 'opinion').map((m) => m.text);
       if (Md.uncached(earlier)) (window.requestIdleCallback || setTimeout)(() => Md.warm(earlier, 0), { timeout: 1500 });
     }
+    return { wait, misses };
+  }
+  const warmedEarlier = new WeakSet(); // (round 45) a long chat's earlier messages are handed to the worker once per load
+
+  // ---------- (round 45, chatswitch) the last few chats keep their own list ----------
+  // Switching chats put every message of the chat back into the one list: all of it styled and laid out again (≈ 30–
+  // 370 ms here for 40 messages with code). Now each chat shown recently keeps its own list in the page, parked out of
+  // sight (features.css .messages.parked: content-visibility: hidden keeps its style, layout and scroll): switching
+  // back shows it again. Kept within a budget: PANES lists per chat window, PANE_NODES elements in the parked ones
+  // (the oldest go first, with the nodes kept for them); a chat that is answering keeps its list.
+  const PANES = 4; // the chat on screen + the last 3 (the nodes of 3 chats were kept for switching back before)
+  const PANE_NODES = 20000; // (≈ 3 chats with big highlighted code: their nodes were kept for switching back before too)
+  // the list of chat `key` ('' = no chat yet) becomes the one on screen; true when it changed
+  function usePane(v, key) {
+    if (v.paneKey === key) { const p = v.panes.get(key); if (p) { v.panes.delete(key); v.panes.set(key, p); } return false; }
+    let pane = v.panes.get(key);
+    if (!pane && (v.paneKey === undefined || v.paneKey === '')) {
+      // the first chat shown, or the first message of a blank "New chat": the list on screen becomes its list
+      pane = v.panes.get(v.paneKey) || { list: v.list };
+      v.panes.delete(v.paneKey); v.panes.set(key, pane); v.paneKey = key;
+      return false;
+    }
+    const old = v.panes.get(v.paneKey);
+    if (pane) v.panes.delete(key);
+    else { pane = { list: el('div', { class: 'messages parked' }) }; v.jump.before(pane.list); }
+    v.panes.set(key, pane);
+    if (old) {
+      const l = old.list; l.classList.add('parked'); old.size = 0;
+      // (its fold watch lets go while it's hidden: one observer per chat window, not one per kept list)
+      if (l.foldIO) { l.foldWait = [...l.foldWatch]; l.foldIO.disconnect(); l.foldIO = null; l.foldWatch = null; }
+    }
+    pane.list.classList.remove('parked');
+    v.list = pane.list; v.paneKey = key;
+    const wait = pane.list.foldWait; pane.list.foldWait = null;
+    for (const n of wait || []) if (n.parentElement === pane.list) foldWhenNear(v, n);
+    trimPanes(v);
+    return true;
+  }
+  function trimPanes(v) {
+    let n = 0; let size = 0;
+    for (const [k, p] of [...v.panes].reverse()) { // most recent first
+      if (k === v.paneKey) continue;
+      n += 1;
+      p.size ||= p.list.getElementsByTagName('*').length; // (counted once per parking)
+      size += p.size;
+      if ((n >= PANES || size > PANE_NODES) && !pending.has(k)) dropPane(v, k);
+    }
+  }
+  function dropPane(v, key) {
+    const p = v.panes.get(key);
+    if (!p || key === v.paneKey) return;
+    v.panes.delete(key);
+    p.list.foldIO?.disconnect(); p.list.foldWatch?.clear(); p.list.foldWait = null;
+    p.list.remove();
+    v.nodes?.delete(key);
+  }
+  const parked = (node) => Boolean(node?.closest?.('.messages.parked'));
+
+  // (round 45, chatswitch) a chat opened afresh draws its end first: the last TAIL messages are made and shown at once,
+  // the earlier ones of the window (up to 40 in all) are made a few ms at a time after it and slip in above, where you
+  // don't see them yet (it used to make all 40, waiting for the Markdown worker too, before showing anything)
+  const TAIL = 8;
+  const LATER_SLICE_MS = 4; // (a 240 Hz frame: the end is on screen, you may be reading or scrolling it)
+  // a quiet date line, the "New" line, ↑ Show earlier: kept per list by what they say (made again on every draw, they
+  // were styled and laid out again on every switch back)
+  function bitOf(list, used, key, make) {
+    const n = list.bits?.get(key) || make();
+    used.set(key, n);
+    return n;
+  }
+  // What a chat's list shows, in order (cheap: the messages' nodes are made by `make`, from the cache when they're
+  // the same): head = the banners and ↑ Show earlier, plan = date lines / dividers (nodes) and message indexes
+  function planOf(list, agentId, agent, chat, cache, nextCache, used) {
+    const head = [];
+    if (chat.imported || chat.continuedFrom) {
+      head.push(el('div', { class: 'import-banner', text: chat.continuedFrom
+        ? `Continued from a ${chat.continuedFrom} chat. ${chat.session?.id ? '' : 'Your next message sends the earlier conversation along as context.'}`
+        : chat.session?.id ? `Imported from ${chat.imported}, continued here.` : `Imported from ${chat.imported}. Send a message to continue it here; the earlier conversation goes along as context.` }));
+    }
+    const lastIdx = chat.messages.length - 1;
+    // suggestions stay on the latest reply even after a second opinion is added below it
+    const lastReplyIdx = chat.messages.findLastIndex((m) => m.role === 'assistant' && !m.compactSummary);
+    const pins = chat.messages.map((m, i) => (m.pinnedMsg ? i : -1)).filter((i) => i >= 0);
+    if (pins.length) head.push(pinnedStrip(agentId, chat, pins));
+    const firstNew = unreadFrom.get(chat.id);
+    // A long chat opens on its last 40 messages (switching to one rebuilt every message: ~36k laid-out objects);
+    // "↑ Show earlier" or scrolling up to it brings the rest, and jumpTo() loads them when it needs an older one.
+    const from = shownFrom(chat, firstNew);
+    let more = null;
+    if (from > 0) {
+      const label = from > EARLIER + 10 ? `↑ Show earlier messages (${from} more)` : `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`;
+      more = bitOf(list, used, `more|${label}`, () => el('button', { type: 'button', class: 'ghost show-earlier', text: label, on: { click: () => showEarlier(agentId, EARLIER) } }));
+      head.push(more);
+    }
+    let day = '';
+    const busy = pending.has(chat.id);
+    const onlyOpinionsAfter = chat.messages.slice(lastReplyIdx + 1).every((x) => x.role === 'opinion');
+    const plan = [];
+    for (let i = from; i < chat.messages.length; i++) {
+      const m = chat.messages[i];
+      if (m.compactReq) continue; // the "please compact" request is shown as part of the divider
+      // a quiet date line where the day changes (Today / Yesterday / the date)
+      const d = m.at ? dayLabel(m.at) : '';
+      if (d && d !== day) { if (day || chat.messages.length > 1) plan.push(bitOf(list, used, `day|${d}`, () => el('div', { class: 'day-sep', text: d }))); day = d; }
+      if (firstNew === i) plan.push(bitOf(list, used, 'new', () => el('div', { class: 'new-sep', text: 'New' })));
+      if (m.compactSummary) { plan.push(compactDivider(m)); continue; }
+      m.lastReply = i === lastReplyIdx && onlyOpinionsAfter && !busy ? true : undefined;
+      plan.push(i);
+    }
+    const make = (x) => (typeof x === 'number' ? nodeFor(cache, nextCache, chat.messages[x], agent, x, x === lastIdx && !busy) : x);
+    return { head, plan, make, more };
+  }
+  function touchChat(id) {
+    chatUsed.set(id, Date.now());
+    if (chats.size > CHAT_KEEP) { const c = chats.get(id); chats.delete(id); chats.set(id, c); }
+    return chats.get(id);
   }
   async function render(agentId, { keepScroll = false, rebuild = false } = {}) {
     const v = views.get(agentId);
@@ -944,12 +1094,24 @@ const Native = (() => {
     const seq = v.drawSeq = (v.drawSeq || 0) + 1; // (round 35) a newer draw of this view makes this one stop
     const stale = () => { if (v.drawSeq === seq) return false; v.drawing = Math.max(0, v.drawing - 1); return true; };
     const chatId = H.activeChat[agentId];
-    const chat = chatId ? await loadChat(chatId) : null;
+    // (round 45, chatswitch) a chat in memory draws right away (no turn waited: the click's own frame shows it)
+    const chat = chatId ? (chats.has(chatId) ? touchChat(chatId) : await loadChat(chatId)) : null;
     if (chatId && !chat) H.activeChat[agentId] = null;
-    if (chat && window.Md) await warmReplies(v, chat);
+    // a fresh draw of a chat with many replies to make shows its end first (below): it waits for the worker only for
+    // what it makes after that
+    const w = chat && window.Md ? warmReplies(v, chat) : null;
+    // (a list that has to be filled: a chat not kept, or whose replies changed; a kept one only shows again)
+    const kept = chat && v.panes.get(chatId)?.list;
+    const filling = chat && (!kept || kept.childElementCount < 8 || (w && w.misses > TAIL / 2));
+    const tailFirst = Boolean(filling && !keepScroll && v.jumpAfter == null && !fullChats.has(chat.id));
+    const warm = w?.wait || null;
+    if (warm && !tailFirst) await warm;
     if (stale()) return;
-    const wasNearBottom = nearBottom(v.list);
-    const prevScroll = v.list.scrollTop;
+    if (usePane(v, chatId && chat ? chatId : '')) keepScroll = false; // (round 45) another chat's list: no place to keep
+    if (v.enterNext) { v.enterNext = false; enterAnim(agentId); }
+    // (round 45) read only when kept: reading the list's size here laid out the chat before it changed (twice per switch)
+    const wasNearBottom = keepScroll && nearBottom(v.list);
+    const prevScroll = keepScroll ? v.list.scrollTop : 0;
     // (round 35) reading higher up: what's at the top of the chat stays there (a reply finishing below, or changing
     // height above, used to move the chat under you: only the scroll offset was kept)
     const anchor = keepScroll && !(wasNearBottom && v.follow !== false) ? topAnchor(v.list) : null;
@@ -969,64 +1131,55 @@ const Native = (() => {
     const modelKey = `${agent.model}|${agent.engine}|${chat?.model || ''}`;
     if (v.modelKey !== modelKey) { v.modelKey = modelKey; fillModelSelect(v, agent, chat); }
     renderStyle(agentId);
-    if (!v.input.value) { v.input.value = store.get(draftKey(agentId), '') || ''; autosize(v.input); updateCounter(v); }
+    // (round 45) an empty box that stays empty isn't measured (that laid the page out inside the click)
+    if (!v.input.value) { const d = store.get(draftKey(agentId), '') || ''; if (d) { v.input.value = d; autosize(v.input); updateCounter(v); } }
 
     // (round 16, chatperf) the list is gathered as nodes, then put in place with the fewest moves (placeChildren):
     // messages that didn't change keep their DOM (nodeFor), so a reply ending in a 300-message chat adds one message
     // instead of rebuilding them all, and switching back to a chat reuses what it showed
     const out = [];
-    const cache = (!rebuild && v.nodes?.get(chatId)) || new Map(); const nextCache = new Map();
+    const pre = v.preNodes?.id === chatId && chatId ? v.preNodes.cache : null; // (round 45) made ahead (prefetch)
+    if (pre) v.preNodes = null;
+    const cache = (!rebuild && (v.nodes?.get(chatId) || pre)) || new Map(); const nextCache = new Map();
+    const usedBits = new Map();
+    let later = null; // (round 45) the earlier part of a chat drawn end first: { plan, before } made after the first frame
     if (!chat) out.push(emptyState(agent));
     else {
-      if (chat.imported || chat.continuedFrom) {
-        out.push(el('div', { class: 'import-banner', text: chat.continuedFrom
-          ? `Continued from a ${chat.continuedFrom} chat. ${chat.session?.id ? '' : 'Your next message sends the earlier conversation along as context.'}`
-          : chat.session?.id ? `Imported from ${chat.imported}, continued here.` : `Imported from ${chat.imported}. Send a message to continue it here; the earlier conversation goes along as context.` }));
-      }
-      const lastIdx = chat.messages.length - 1;
-      // suggestions stay on the latest reply even after a second opinion is added below it
-      const lastReplyIdx = chat.messages.findLastIndex((m) => m.role === 'assistant' && !m.compactSummary);
-      const pins = chat.messages.map((m, i) => (m.pinnedMsg ? i : -1)).filter((i) => i >= 0);
-      if (pins.length) out.push(pinnedStrip(agentId, chat, pins));
-      const firstNew = unreadFrom.get(chat.id);
-      // A long chat opens on its last 40 messages (switching to one rebuilt every message: ~36k laid-out objects);
-      // "↑ Show earlier" or scrolling up to it brings the rest, and jumpTo() loads them when it needs an older one.
-      const from = shownFrom(chat, firstNew);
+      const { head, plan, make, more } = planOf(v.list, agentId, agent, chat, cache, nextCache, usedBits);
+      out.push(...head);
       v.earlierIO?.disconnect(); v.earlierIO = null; clearTimeout(v.earlierT); // (the last draw's "Show earlier" watch)
-      if (from > 0) {
-        const more = el('button', { type: 'button', class: 'ghost show-earlier', text: from > EARLIER + 10 ? `↑ Show earlier messages (${from} more)` : `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`, on: { click: () => showEarlier(agentId, EARLIER) } });
-        out.push(more);
-        // reaching it by scrolling up loads them too (after the chat has settled at the bottom)
-        watchEarlier(v, agentId, more);
+      // reaching ↑ Show earlier by scrolling up loads them too (after the chat has settled at the bottom)
+      if (more) watchEarlier(v, agentId, more);
+      // (round 45) many messages to make (a chat opened afresh): its end first
+      let cut = 0;
+      if (tailFirst) {
+        let msgs = 0;
+        for (let k = plan.length - 1; k >= 0; k--) { if (typeof plan[k] !== 'number') continue; msgs += 1; if (msgs === TAIL) cut = k; }
+        if (msgs <= TAIL + 4) cut = 0;
+        else while (cut > 0 && typeof plan[cut - 1] !== 'number') cut -= 1; // (its date line goes with it)
       }
-      let day = '';
-      const busy = pending.has(chat.id);
-      const onlyOpinionsAfter = chat.messages.slice(lastReplyIdx + 1).every((x) => x.role === 'opinion');
+      if (cut) later = { plan: plan.slice(0, cut) };
       // (round 35, streamrender) many messages to draw (a long chat shown whole for a jump, the next earlier ones):
       // built a few ms at a time with frames in between (it was one long task: ≈ 0.6 s for 1,200 messages here, the
       // window frozen); the chat shows them all at once when they're ready, as before
       let sliceAt = performance.now();
-      for (let i = from; i < chat.messages.length; i++) {
-        const m = chat.messages[i];
-        if (m.compactReq) continue; // the "please compact" request is shown as part of the divider
-        // a quiet date line where the day changes (Today / Yesterday / the date)
-        const d = m.at ? dayLabel(m.at) : '';
-        if (d && d !== day) { if (day || chat.messages.length > 1) out.push(el('div', { class: 'day-sep', text: d })); day = d; }
-        if (firstNew === i) out.push(el('div', { class: 'new-sep', text: 'New' }));
-        if (m.compactSummary) { out.push(compactDivider(m)); continue; }
-        m.lastReply = i === lastReplyIdx && onlyOpinionsAfter && !busy ? true : undefined;
-        out.push(nodeFor(cache, nextCache, m, agent, i, i === lastIdx && !busy));
+      if (later) later.at = out.length; // (where the end starts: the earlier part goes in above it)
+      for (let k = cut; k < plan.length; k++) {
+        out.push(make(plan[k]));
         if (performance.now() - sliceAt > SLICE_MS) {
           await nextSlice();
           if (stale()) { keepBuilt(v, chatId, nextCache); return; }
           sliceAt = performance.now();
         }
       }
-      // the nodes of the last few chats shown stay ready for switching back (older ones are let go)
+      if (later) later.make = make;
+      // the nodes of the chats whose lists are kept stay ready for switching back (the others are let go)
       v.nodes ||= new Map(); v.nodes.delete(chatId); v.nodes.set(chatId, nextCache);
-      while (v.nodes.size > NODE_CHATS) v.nodes.delete(v.nodes.keys().next().value);
+      for (const k of [...v.nodes.keys()]) if (!v.panes.has(k) && k !== chatId) v.nodes.delete(k);
+      while (v.nodes.size > Math.max(NODE_CHATS, v.panes.size)) v.nodes.delete(v.nodes.keys().next().value);
     }
     if (chat) markSeen(chat.id);
+    v.list.bits = usedBits;
 
     // hub notes shown in this chat (command output) come back after the redraw; dismissed ones stay gone
     v.notes = (v.notes || []).filter((n) => !n.box.dataset.gone);
@@ -1040,34 +1193,97 @@ const Native = (() => {
       paintStreaming(p);
       out.push(p.el);
     }
+    // (round 45) the earlier part comes in above the first message made now
+    if (later) later.before = out[later.at] || null;
     placeChildren(v.list, out);
     restack(agentId); // (round 40, chatcalm) two or more quiet notes: one line
     syncSendBtn(agentId);
     renderQueue(agentId);
-    // Long replies start folded so the conversation stays scannable.
     requestAnimationFrame(() => {
       v.drawing = Math.max(0, (v.drawing || 1) - 1);
-      // measure every reply first, then fold: folding one between two measurements made each measurement lay out the
-      // whole chat again (one full layout per folded reply)
-      const autoFold = store.get('chat.autoFold', true) !== false;
-      const lastReply = v.list.querySelector('.msg.assistant:last-of-type');
-      // (round 16) a reply kept from the last redraw was measured then: only new ones are. The last few are measured
-      // now (they're on screen, the chat opens at its end); older ones when they come near the screen (foldWhenNear):
-      // measuring them all forced a layout of every reply, even the ones content-visibility lets the browser skip.
-      const fresh = !autoFold ? [] : [...v.list.querySelectorAll('.msg.assistant:not(.streaming)')]
-        .filter((node) => !measured.has(node) && (measured.add(node), node !== lastReply && !unfolded.has(`${chat?.id}:${node.dataset.index}`)));
-      const now = fresh.splice(-FOLD_NOW);
-      foldIfLong(now, now.map((node) => node.querySelector('.body').scrollHeight));
-      for (const node of fresh) foldWhenNear(v, node);
-      // nodes that left the list stop being watched (measured again if they come back)
-      for (const node of v.foldWatch || []) if (!node.isConnected) { v.foldIO.unobserve(node); v.foldWatch.delete(node); measured.delete(node); }
+      foldFresh(v, chat);
       const newSep = v.list.querySelector('.new-sep');
       if (keepScroll && !(wasNearBottom && v.follow !== false)) { v.list.scrollTop = prevScroll; if (anchor) keepAnchor(v.list, anchor); }
       else if (newSep && !keepScroll) { v.list.scrollTop = Math.max(0, newSep.offsetTop - 40); v.follow = v.list.scrollHeight - v.list.scrollTop - v.list.clientHeight < 4; }
-      else if (!(v.scrollLock && keepScroll)) { v.follow = true; v.list.scrollTop = v.list.scrollHeight; }
-      if (v.jumpAfter != null) { const at = v.jumpAfter; v.jumpAfter = null; jumpTo(agentId, at); } // (round 35) a jump waiting for this draw
+      else if (!(v.scrollLock && keepScroll)) { v.follow = true; const top = v.list.scrollHeight - v.list.clientHeight; if (Math.abs(v.list.scrollTop - top) >= 1) v.list.scrollTop = top; }
+      if (v.jumpAfter != null && !later) takeJump(agentId, v, chat); // (round 35) a jump waiting for this draw
       const near = nearBottom(v.list);
       if (v.jump.hidden !== near) v.jump.hidden = near;
+      for (const fn of hooks.render) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
+    });
+    if (later) await drawLater(agentId, v, chat, chatId, later, warm, seq);
+  }
+  // (round 45, chatswitch) the earlier messages of a chat drawn end first: made in slices once the end is on screen
+  // (and the Markdown worker had its chance), then put in above it in one go; the chat stays at its end
+  // ---------- (round 45, chatswitch) a chat you rest on in the chats list is made ready before you open it ----------
+  // Pointing at its row a moment (or reaching it with ↑ / ↓, panel.js): it is read from disk, its replies' Markdown is
+  // made on the worker, its pictures are sized ahead, then its messages' nodes are made a few ms at a time while the
+  // window is idle (kept aside, not in the page: nothing to style or lay out until it opens). The click then only puts
+  // them in: its end first, the rest in the next frame. One such chat per chat window (the last one pointed at), never
+  // the one on screen nor one whose list is kept already.
+  // (Drawn whole into a hidden list, as tried first, the click had to style and lay out all of it at once: slower than
+  // drawing it fresh, end first.)
+  const PREFETCH_SLICE_MS = 4;
+  const idle = () => new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 1000 }) : setTimeout(r, 16)));
+  async function prefetch(agentId, chatId) {
+    const v = views.get(agentId); const agent = H.agent(agentId);
+    if (!v || !agent || !chatId || H.activeChat[agentId] === chatId || v.panes.has(chatId) || v.pre === chatId || v.preNodes?.id === chatId) return false;
+    v.pre = chatId;
+    try { return await prefetchInto(v, agent, agentId, chatId); } finally { if (v.pre === chatId) v.pre = null; }
+  }
+  async function prefetchInto(v, agent, agentId, chatId) {
+    const gone = () => v.pre !== chatId || H.activeChat[agentId] === chatId || !views.has(agentId) || v.panes.has(chatId);
+    const chat = await loadChat(chatId).catch(() => null);
+    if (!chat || gone()) return false;
+    sizeAhead(chat);
+    const w = window.Md ? warmReplies(v, chat, 1500) : null;
+    if (w?.wait) await w.wait;
+    await idle();
+    if (gone()) return false;
+    // its nodes are kept as they're made (a click before the end draws with the ones made already)
+    const pre = { id: chatId, cache: new Map() };
+    v.preNodes = pre;
+    const { plan, make } = planOf({}, agentId, agent, chat, new Map(), pre.cache, new Map()); // (its lines aren't kept: made again on the click)
+    let t = performance.now();
+    for (let k = plan.length - 1; k >= 0; k--) { // (the end first: the part shown first)
+      if (typeof plan[k] === 'number') make(plan[k]);
+      if (performance.now() - t > PREFETCH_SLICE_MS) {
+        await idle();
+        if (gone() || v.preNodes !== pre) return false;
+        t = performance.now();
+      }
+    }
+    return true;
+  }
+  function takeJump(agentId, v, chat) {
+    const at = v.jumpAfter; v.jumpAfter = null;
+    if (v.jumpFor === (chat?.id ?? null)) jumpTo(agentId, at);
+  }
+  async function drawLater(agentId, v, chat, chatId, later, warm, seq) {
+    v.drawing += 1;
+    const stale = () => { if (v.drawSeq === seq && v.paneKey === chatId) return false; v.drawing = Math.max(0, v.drawing - 1); return true; };
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); // the end goes on screen first
+    if (warm) await warm;
+    if (stale()) return;
+    const made = [];
+    let sliceAt = performance.now();
+    for (const x of later.plan) {
+      made.push(later.make(x));
+      if (performance.now() - sliceAt > LATER_SLICE_MS) {
+        await nextSlice();
+        if (stale()) return;
+        sliceAt = performance.now();
+      }
+    }
+    const list = v.list;
+    if (later.before?.parentElement === list) later.before.before(...made);
+    else { v.drawing = Math.max(0, v.drawing - 1); return render(agentId, { keepScroll: true }); } // (changed meanwhile: drawn again as it is now)
+    requestAnimationFrame(() => {
+      v.drawing = Math.max(0, v.drawing - 1);
+      if (v.list !== list) return;
+      foldFresh(v, chat, 0);
+      if (follows(v)) { const top = list.scrollHeight - list.clientHeight; if (top - list.scrollTop >= 1) list.scrollTop = top; }
+      if (v.jumpAfter != null) takeJump(agentId, v, chat);
       for (const fn of hooks.render) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
     });
   }
@@ -1107,7 +1323,10 @@ const Native = (() => {
   let sizing = true; // (off while _test.streamCorpus compares the live HTML with a full render)
   function rememberSize(img) {
     if (!img.classList.contains('md-img') || !img.naturalWidth) return;
-    const src = img.getAttribute('src'); const s = [img.naturalWidth, img.naturalHeight];
+    noteSize(img.getAttribute('src'), img.naturalWidth, img.naturalHeight);
+  }
+  function noteSize(src, w, h) {
+    const s = [w, h];
     if (String(imgSizes.get(src)) === String(s)) return;
     imgSizes.delete(src); imgSizes.set(src, s);
     while (imgSizes.size > 300) imgSizes.delete(imgSizes.keys().next().value);
@@ -1123,6 +1342,19 @@ const Native = (() => {
       img.style.width = `${Math.round(Math.min(s[0], (320 * s[0]) / s[1]))}px`;
       img.style.aspectRatio = `${s[0]} / ${s[1]}`;
     }
+  }
+
+  // (round 45, chatswitch) the pictures of a chat about to open, sized ahead: fetched without being shown, their sizes
+  // remembered, so they hold their place from the chat's first frame (the last replies' pictures, a dozen at most)
+  const MD_IMG = /!\[[^\]]*\]\((https:\/\/[^)\s]+)\)/g;
+  function sizeAhead(chat) {
+    const want = [];
+    for (let i = chat.messages.length - 1; i >= 0 && i >= chat.messages.length - WINDOW && want.length < 12; i--) {
+      const m = chat.messages[i];
+      if (m.role !== 'assistant' || !m.text.includes('](https://')) continue;
+      for (const [, src] of m.text.matchAll(MD_IMG)) if (!imgSizes.has(src) && !want.includes(src) && want.length < 12) want.push(src);
+    }
+    for (const src of want) { const im = new Image(); im.decoding = 'async'; im.onload = () => { if (im.naturalWidth) noteSize(src, im.naturalWidth, im.naturalHeight); }; im.src = src; }
   }
 
   // (round 35, streamrender) drawing many messages: a few ms, then the frame goes on (scheduler.yield)
@@ -1210,11 +1442,15 @@ const Native = (() => {
     const v = views.get(agentId);
     // (round 35, streamrender) an older message of a long chat: the chat is drawn whole, and the jump happens once that
     // draw has placed its scroll (it put you back at the bottom after the jump: recall's "show me" landed on the end)
-    if (v && !v.list.querySelector(`.msg[data-index="${index}"]`) && H.activeChat[agentId] && !fullChats.has(H.activeChat[agentId])) { fullChats.add(H.activeChat[agentId]); v.jumpAfter = index; render(agentId); }
+    // (round 45, chatswitch) a waiting jump belongs to its chat (it jumped in the next chat you opened: a jump done while
+    // another draw was on its way stayed waiting, and the next draw, of any chat, took it)
+    const later = () => { v.jumpAfter = index; v.jumpFor = H.activeChat[agentId]; };
+    if (v && !v.list.querySelector(`.msg[data-index="${index}"]`) && H.activeChat[agentId] && !fullChats.has(H.activeChat[agentId])) { fullChats.add(H.activeChat[agentId]); later(); render(agentId); }
     const node = v?.list.querySelector(`.msg[data-index="${index}"]`);
-    if (!node) { if (v?.drawing) v.jumpAfter = index; return false; }
-    if (v.drawing) v.jumpAfter = index; // a draw on its way would put the scroll back: jump again after it
+    if (!node) { if (v?.drawing) later(); return false; }
+    if (v.drawing) later(); // a draw on its way would put the scroll back: jump again after it
     node.scrollIntoView({ block: index === 0 ? 'start' : 'center' });
+    if (index < (chats.get(H.activeChat[agentId])?.messages.length ?? 0) - 1) v.follow = false; // (round 45) reading an old message: a picture loading below no longer pulls you back to the end
     node.classList.add('flash-msg');
     setTimeout(() => node.classList.remove('flash-msg'), 900);
     return true;
@@ -1401,7 +1637,7 @@ const Native = (() => {
   }
   function repaintPending(chatId, inFrame = false) {
     const p = pending.get(chatId);
-    if (!p?.el?.isConnected) return;
+    if (!p?.el?.isConnected || parked(p.el)) return; // (round 45) its chat out of sight: painted when it shows again
     const list = p.el.closest('.messages');
     const v = views.get(chats.get(chatId)?.agentId);
     paintStreaming(p);
@@ -1545,7 +1781,7 @@ const Native = (() => {
     chat.updatedAt = now;
     remember(chat);
     const p = { chatId: chat.id, text: '', tools: [], started: now, thinking: '', cards: [], qa: [], opinions: [], progress: null, shows: [] };
-    p.tick = setInterval(() => { if (p.el?.isConnected) paintStatus(p); }, 1000);
+    p.tick = setInterval(() => { if (p.el?.isConnected && !parked(p.el)) paintStatus(p); }, 1000);
     pending.set(chat.id, p);
     for (const fn of hooks.send) { try { fn(agentId, chat, text); } catch (err) { console.warn(err); } }
     render(agentId);
@@ -1647,7 +1883,7 @@ const Native = (() => {
     afterReply.delete(event.chatId);
     after?.(event.type === 'done' ? visibleText(event.text || p.text) : null);
     if (H.activeChat[chat.agentId] === chat.id) render(chat.agentId, { keepScroll: true });
-    if (replyText) AppUI.replyFinished(chat.agentId, chat.id, replyText);
+    if (replyText) AppUI.replyFinished(chat.agentId, chat.id, replyText, chat.messages.at(-1)?.ms ?? (p.started ? Date.now() - p.started : undefined)); // (round 44, notify: how long it took)
     for (const fn of hooks.event) { try { fn(event, chat); } catch (err) { console.warn(err); } }
     if (event.type === 'done' && !after && !chat.messages.at(-1)?.compactSummary && maybeAutoCompact(chat, chat.messages.at(-1))) return;
     // messages typed while it worked go out now, one at a time
@@ -1787,6 +2023,7 @@ const Native = (() => {
     if (typeof ChatScenes !== 'undefined') ChatScenes.markToast(note, chatId); // a director chat's color + mark
     if (!focused) {
       window.hub.flashWindow();
+      if (window.Notify) return note; // (round 44, notify) the question card notifies by itself ('hearth:needs-you'), with Answer…
       const n = new Notification(`${agent?.name || 'Hearth'} ${text.split(':')[0]}`, { body: text, silent: false });
       n.onclick = () => { window.hub.showWindow(); open(agentId, chatId); };
     }
@@ -2160,8 +2397,9 @@ const Native = (() => {
     const changed = H.activeChat[agentId] !== chatId;
     H.activeChat[agentId] = chatId;
     activate(agentId);
+    const v = views.get(agentId);
+    if (changed && v) v.enterNext = true; // (round 45) slides in once its list is on screen (render)
     render(agentId);
-    if (changed) enterAnim(agentId);
     Panel.highlight();
   }
   // a chat you switch to slides into place (polish.css .chat-enter)
@@ -2169,9 +2407,12 @@ const Native = (() => {
     const list = views.get(agentId)?.list;
     if (!list) return;
     // restart it without forcing a layout of the chat you're leaving (that was a full layout of a long chat per switch)
-    const running = list.getAnimations().find((a) => a.animationName === 'hx-chat');
-    if (running) { running.currentTime = 0; running.play(); return; }
-    if (list.classList.contains('chat-enter')) return; // waiting for its end already (/motion off: none comes)
+    // (round 45, chatswitch) asked only when it is sliding already: asking styled the chat inside the click
+    if (list.classList.contains('chat-enter')) {
+      const running = list.getAnimations().find((a) => a.animationName === 'hx-chat');
+      if (running) { running.currentTime = 0; running.play(); }
+      return; // (or waiting for its end already: /motion off, none comes)
+    }
     list.classList.add('chat-enter');
     // (round 36, motionpolish) its own end only: a message's entrance ending inside it bubbled up and cut the slide short
     const end = (e) => { if (e.target !== list) return; list.removeEventListener('animationend', end); list.removeEventListener('animationcancel', end); list.classList.remove('chat-enter'); };
@@ -2186,9 +2427,8 @@ const Native = (() => {
     drafts.add(agentId);
     H.activeChat[agentId] = null;
     const v = views.get(agentId);
-    if (v) v.input.value = '';
+    if (v) { v.input.value = ''; v.enterNext = true; } // (round 45) slides in once its list is on screen (render)
     render(agentId);
-    enterAnim(agentId);
     Panel.render();
     focus(agentId);
     for (const fn of hooks.newChat) { try { fn(agentId); } catch (err) { console.warn(err); } }
@@ -2223,6 +2463,7 @@ const Native = (() => {
     chats.delete(chatId);
     H.chats = H.chats.filter((c) => c.id !== chatId);
     if (summary && H.activeChat[summary.agentId] === chatId) newChat(summary.agentId);
+    for (const v of views.values()) dropPane(v, chatId); // (round 45) its kept list goes with it
     Panel.render();
     toast(`Deleted "${summary?.title || 'chat'}"`, { action: { label: 'Undo', fn: async () => { await window.hub.restoreChat(chatId); H.chats = await window.hub.listChats(); Panel.render(); } } });
   }
@@ -2352,6 +2593,7 @@ const Native = (() => {
       return (paths || []).length;
     },
     unreadFrom, rememberFacts, forgetFacts, fmt, clearNotes,
+    prefetch, // (round 45, chatswitch) a chat you rest on in the chats list is made ready before the click (panel.js)
     // (round 9) a card in a reply that is still streaming (chat-things.js); null when no reply runs in that chat
     repaint: (chatId) => schedulePaint(chatId), // (round 21) chat-live.js: its panel opened / changed
     liveCard(chatId, node) { const p = pending.get(chatId); if (!p) return null; p.cards.push(node); repaintPending(chatId); return node; },
@@ -2380,11 +2622,13 @@ const Native = (() => {
         return { docs: docs.length, runs, steps, diffs };
       },
       paintBody: (p, body, text) => paintBody(p, body, text), // (dev/checks/streamrender.js times it against the old way)
+      // (round 45, chatswitch) what the kept lists hold: lists per chat window, elements in the parked ones
+      kept() { let lists = 0; let nodes = 0; for (const v of views.values()) for (const [k, p] of v.panes || []) { lists += 1; if (k !== v.paneKey) nodes += p.list.getElementsByTagName('*').length; } return { lists, nodes }; },
       // the live reply of a chat painted now with all its text; its HTML and the text it shows
       livePaint(chatId) { const p = pending.get(chatId); if (!p?.el) return null; const text = visibleText(p.text); paintBody(p, p.el.querySelector('.body'), text); return { html: p.el.querySelector('.body').innerHTML, text }; },
     },
     // (round 10, sync.js) a chat that arrived from another computer: read again from disk next time (not mid-reply)
-    forget: (chatId) => { if (pending.has(chatId)) return false; chats.delete(chatId); return true; },
+    forget: (chatId) => { if (pending.has(chatId)) return false; chats.delete(chatId); for (const v of views.values()) dropPane(v, chatId); return true; },
     // (round 16, dev/checks/chatperf.js) a text streamed in pieces of `step` characters, painted like a live reply: its HTML
     _streamHTML(text, step = 12) { const p = {}; const body = document.createElement('div'); for (let i = step; i < text.length + step; i += step) paintBody(p, body, text.slice(0, i).trim()); return body.innerHTML; },
   };

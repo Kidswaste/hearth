@@ -146,7 +146,8 @@ const Splash = (() => {
       if (done || marks.ready != null) return;
       err = e?.message || e?.reason?.message || String(e?.reason || 'unknown error');
       const line = $q('.sp-slow');
-      if (line) line.textContent = `Something went wrong while starting: ${err}`;
+      if (line) line.textContent = `Something went wrong while starting: ${globalThis.calmError ? calmError(err) : String(err).split('\n')[0]}`; // (round 45, errorcalm: plain words; the raw text in its tooltip)
+      if (line) line.title = err;
       root.classList.add('slow', 'failed');
       showGo();
     };

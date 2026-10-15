@@ -118,7 +118,7 @@ const LabSceneSafe = (() => {
     document.body.append(dlg);
     dlg.showModal();
     let res;
-    try { res = await scan(); } catch (err) { list.replaceChildren(el('p', { class: 'hint', text: `Couldn't look: ${err.message}` })); return null; }
+    try { res = await scan(); } catch (err) { list.replaceChildren(el('p', { class: 'hint', text: `Couldn't look: ${calmError(err)}` })); return null; }
     if (res?.error) { list.replaceChildren(el('p', { class: 'hint', text: `Couldn't look everywhere: ${res.error}` })); }
     const found = res?.found || [];
     const where = (res?.sources || []).length ? `Looked in ${res.sources.length} place${res.sources.length === 1 ? '' : 's'}: ${[...new Set(res.sources.map((s) => s.label.replace(/,.*$| \(.*$/, '')))].join(', ')}.` : 'No copies were found on this computer.';
@@ -143,9 +143,11 @@ const LabSceneSafe = (() => {
     }), el('p', { class: 'hint', text: where }));
     count();
     return new Promise((resolve) => {
-      go.onclick = () => {
+      go.onclick = async () => {
         const picks = boxes.filter((b) => b.checked).map((b) => found[Number(b.dataset.i)]);
         dlg.close();
+        // (round 45, backupauto) a backup of how things are first (skipped when a good one is minutes old; 20 s at most)
+        try { await Promise.race([window.hub.backupauto?.before?.('recover'), new Promise((r) => setTimeout(r, 20000))]); } catch { /* bringing back only adds */ }
         const added = lab.recover(picks.map((p) => p.scene));
         st.recovered += added.length;
         closeCard();

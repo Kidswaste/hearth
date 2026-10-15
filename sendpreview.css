@@ -1,0 +1,18 @@
+/* (round 44, sendpreview) "≈ 52k" next to Send, only when a message costs much more than usual, and its explanation */
+.composer > .sp-wrap { align-self: flex-end; display: inline-flex; margin: 0 -2px 9px; }
+.composer > .sp-wrap[hidden] { display: none; }
+.sp-hint { font: inherit; font-size: 11.5px; line-height: 1; padding: 4px 6px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--fh-gold, #e6b450) 45%, transparent); background: color-mix(in srgb, var(--fh-gold, #e6b450) 10%, transparent); color: var(--fh-gold, #e6b450); cursor: help; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sp-hint.big { border-color: color-mix(in srgb, var(--fh-orange, #ff8a3d) 55%, transparent); background: color-mix(in srgb, var(--fh-orange, #ff8a3d) 12%, transparent); color: var(--fh-orange, #ff8a3d); }
+.sp-hint:hover, .sp-hint[aria-expanded="true"] { background: color-mix(in srgb, var(--fh-gold, #e6b450) 20%, transparent); }
+.sp-hint:focus-visible { outline: 2px solid var(--accent, #e6b450); outline-offset: 2px; }
+.sp-pop { position: fixed; z-index: 60; width: min(380px, 92vw); padding: 10px 12px 9px; border-radius: 10px; border: 1px solid var(--line-hi, var(--line)); background: var(--surface, #15181c); color: var(--text); box-shadow: 0 10px 28px rgba(0, 0, 0, .35); font-size: 12.5px; line-height: 1.4; display: flex; flex-direction: column; gap: 6px; }
+.sp-pop .sp-head { font-weight: 600; font-size: 13px; }
+.sp-pop .sp-why { color: var(--muted); }
+.sp-pop .sp-parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.sp-pop .sp-parts li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; }
+.sp-pop .sp-parts .sp-k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-pop .sp-parts b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.sp-pop .sp-parts small { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; margin-top: -1px; }
+.sp-pop .sp-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.sp-pop .sp-acts button { font-size: 12.5px; padding: 5px 10px; }
+.sp-pop .sp-foot { color: var(--muted); font-size: 11px; }

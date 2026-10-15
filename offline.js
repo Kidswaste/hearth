@@ -161,6 +161,8 @@ const Offline = (() => {
     if (H.activeChat[agentId] === chat.id) Native.refresh(agentId, { keepScroll: true });
     return true;
   }
+  // (round 44, notify) a message that waited (no internet, a usage limit) went out while you were in another app
+  const told = (it) => { if (it.kind !== 'continue' && (it.reason === 'offline' || it.reason === 'limit')) { try { window.Notify?.send({ type: 'back', reason: it.reason, agentId: it.agentId, chatId: it.chatId }); } catch { /* fine */ } } };
   async function fire(it) {
     it.status = 'sending';
     it.sentAt = now();
@@ -182,6 +184,7 @@ const Offline = (() => {
         }
         await Native.send(it.agentId, it.text, { chatId: chat.id });
         await done();
+        told(it);
         return;
       }
       chat = await Native.load(it.chatId).catch(() => null);
@@ -197,6 +200,7 @@ const Offline = (() => {
       else await Native.send(it.agentId, C.continuePrompt(before.text), { chatId: chat.id });
       popped = null;
       await done();
+      told(it);
     } catch (err) {
       if (popped && chat) chat.messages.push(popped);
       it.status = 'waiting';

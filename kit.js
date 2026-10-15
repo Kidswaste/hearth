@@ -618,7 +618,7 @@ gradientTex.colorSpace = THREE.SRGBColorSpace;`;
           el('button', { type: 'button', class: 'ghost small', text: 'Sorted light → dark', on: { click: () => show([...cols].sort((a, b) => luminance(parseColor(b)) - luminance(parseColor(a))), from) } }),
           el('button', { type: 'button', class: 'ghost small', text: 'Smooth ramp', on: { click: () => show(ramp(cols, Number(count.value)), 'OKLab ramp') } })));
     };
-    const run = async (label, get) => { try { out.replaceChildren(el('p', { class: 'hint', text: 'Reading colors…' })); show(await get(), label); } catch (err) { out.replaceChildren(el('p', { class: 'hint', text: err.message })); } };
+    const run = async (label, get) => { try { out.replaceChildren(el('p', { class: 'hint', text: 'Reading colors…' })); show(await get(), label); } catch (err) { out.replaceChildren(el('p', { class: 'hint', text: calmError(err) })); } };
     paste.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); show(hexList(paste.value), 'Pasted'); } });
     pane.append(el('div', { class: 'kit-col' },
       el('div', { class: 'row' },

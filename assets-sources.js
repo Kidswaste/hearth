@@ -97,7 +97,7 @@ const AssetsFree = (() => {
       const my = ++seq;
       note.textContent = 'Searching…';
       let list;
-      try { list = await search(state.q, { source: state.source, type: state.type }); } catch (err) { if (my === seq) { note.textContent = err.message; grid.replaceChildren(); } return; }
+      try { list = await search(state.q, { source: state.source, type: state.type }); } catch (err) { if (my === seq) { note.textContent = calmError(err, { app: 'The asset library' }); grid.replaceChildren(); } return; }
       if (my !== seq) return;
       note.textContent = list.length ? `${list.length} free ${SRC[state.source].types[state.type].toLowerCase()} · CC0 · click: download (${(store.get(`assets.size.${state.type}`, DEF_SIZE[state.type]) || '1k').toUpperCase()}) into your library · right-click: size, page` : `Nothing for “${state.q}”. Try brick, wood, sunset, studio, metal…`;
       grid.replaceChildren(...list.map(card));

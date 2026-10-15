@@ -79,7 +79,7 @@ const Remote = (() => {
       if (msg.t === 'scene') { if (!ThreeLab.scenes?.open(String(msg.id))) throw new Error('That scene is gone'); soon(); return; }
       if (msg.t === 'layer') { lab().selectLayer(String(msg.name || '')); soon(); return; }
       if (msg.t === 'bpm') { say(peer, `${S.setBpm(msg.v)} BPM`); soon(); }
-    } catch (err) { sendTo(peer, { t: 'toast', text: err.message, err: true }); }
+    } catch (err) { sendTo(peer, { t: 'toast', text: calmError(err), err: true }); }
   }
   const say = (peer, text) => sendTo(peer, { t: 'toast', text });
   // one frame applies every phone's latest value per slider (the same moves as the hub's sliders and MIDI knobs)

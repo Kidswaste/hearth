@@ -24,7 +24,7 @@ const PatchNotes = (() => {
     let cur = files.includes(file) ? file : files[0];
     const body = el('div', { class: 'pn-scroll' });
     const pick = el('select', { class: 'pn-pick', attrs: { 'aria-label': 'Round' } }, files.map((f) => el('option', { value: f, text: `Round ${roundOf(f)}`, selected: f === cur })));
-    const show = async () => { body.replaceChildren(el('p', { class: 'hint', text: 'Loading…' })); try { body.replaceChildren(block(await readText(`docs/patch-notes/${cur}`))); } catch (err) { body.replaceChildren(el('p', { class: 'hint', text: err.message })); } body.scrollTop = 0; };
+    const show = async () => { body.replaceChildren(el('p', { class: 'hint', text: 'Loading…' })); try { body.replaceChildren(block(await readText(`docs/patch-notes/${cur}`))); } catch (err) { body.replaceChildren(el('p', { class: 'hint', text: calmError(err) })); } body.scrollTop = 0; };
     pick.addEventListener('change', () => { cur = pick.value; show(); });
     const dlg = el('dialog', { class: 'ui-modal pn-dialog' },
       el('div', { class: 'pn-head' }, el('h2', { text: '📰 Patch notes' }), el('span', { class: 'spacer' }), pick),

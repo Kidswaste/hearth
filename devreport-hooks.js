@@ -28,7 +28,7 @@ const DevReportHooks = (() => {
     try {
       if (typeof DevReport === 'undefined' && window.Lazy) await Lazy.load('devreport');
       return await DevReport.open(opts);
-    } catch (err) { console.warn('devreport:', err); toast(`Couldn't open the report: ${err.message}`, { timeout: 5000 }); return null; }
+    } catch (err) { console.warn('devreport:', err); toast('Couldn\'t open the report', { type: 'error', raw: err, devreport: false, timeout: 5000 }); return null; } // (round 45, errorcalm)
   }
 
   // ---------- page errors ----------

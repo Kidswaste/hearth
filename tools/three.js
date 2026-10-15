@@ -39,7 +39,7 @@ const ThreeLab = (() => {
   // into the new page once its layers have drawn their first frame (never a black flash; see "live" below).
   // (round 25, diet) the preview page's motion-design kit / 3D-model runtime (tools/sandbox-*.js): loaded here when a page
   // asks (a sandboxed page can't read files) and sent as source; nothing of them runs in the hub
-  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js', beatlink: 'tools/three-beatlink-core.js', camcore: 'tools/three-camera-core.js' }; // (round 38, beatlink: ♪ Move with the music's math)
+  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js', beatlink: 'tools/three-beatlink-core.js', camcore: 'tools/three-camera-core.js', kinetic: 'tools/three-kinetic-core.js' }; // (round 38, beatlink: ♪ Move with the music's math; round 45, kinetictype: text that moves on the hits)
   const libFiles = {};
   function sandboxLib(name, deliver) {
     if (!LIB_FILES[name]) return;
@@ -435,7 +435,9 @@ const ThreeLab = (() => {
     const removedIds = new Set();
     let current = null;
     let selId = null; // selected layer
-    let soloId = null; // a layer shown alone while you work on it (not saved)
+    // (round 44, layergroups) solo is saved with the scene now, as layer data (tools/three-groups-core.js): what shows
+    // alone is what every render / export / variation draws too
+    const soloNow = () => (typeof LayerGroups !== 'undefined' ? LayerGroups.soloId(current?.layers || []) : null);
     if (!store.get('three.autorunLive')) { store.set('three.autorun', true); store.set('three.autorunLive', true); }
     let autoRun = store.get('three.autorun', true);
     let errors = [];
@@ -1255,12 +1257,14 @@ const ThreeLab = (() => {
       onLaneTall: (id, prop) => { const L = layerById(id); if (!L) return; L.laneTall = { ...L.laneTall, [prop]: !L.laneTall?.[prop] }; if (!L.laneTall[prop]) delete L.laneTall[prop]; touch(); renderTracksOnly(); },
       onLanesAll: () => toggleAllLanes(),
       onMute: (id) => { const L = layerById(id); if (L) editLayer(id, { visible: L.visible === false }); },
-      onSolo: (id) => setSolo(soloId === id ? null : id),
+      onSolo: (id) => setSolo(soloNow() === id ? null : id),
     };
-    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, solo: L.id === soloId, selected: L.id === selId, keys: trackKeys(L), lanes: lanesOf(L).map((p) => laneData(L, p)).filter(Boolean), animated: Object.values(L.keys || {}).filter((k) => k?.length).length }));
+    const trackList = () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, color: L.color, in: L.in ?? null, out: L.out ?? null, fadeIn: L.in != null ? L.fadeIn || 0 : 0, fadeOut: L.out != null ? L.fadeOut || 0 : 0, visible: L.visible !== false, solo: Boolean(L.solo), selected: L.id === selId, keys: trackKeys(L), lanes: lanesOf(L).map((p) => laneData(L, p)).filter(Boolean), animated: Object.values(L.keys || {}).filter((k) => k?.length).length }));
     // Animated values follow the playhead in the panels.
     let lastSyncT = -1;
+    let keyTimer = 0; let keyQuiet = 0; // (the follow timer below; declared here: an edit re-arms it from syncKeyUI)
     function syncKeyUI(force = false) {
+      if (force && !keyTimer) keyLoop(); // (round 44, idlecpu) a key / layer edit: the follow timer runs again
       const L = sel();
       if (!L || !current) return;
       const t = player.time;
@@ -1275,21 +1279,28 @@ const ThreeLab = (() => {
     }
     // keyframed values follow the playhead while the Lab is on screen; the timer stops when it isn't (and
     // 'hearth:view' from start.js starts it again), so a hidden Lab doesn't wake up 10× a second
-    let keyTimer = 0;
+    // (round 44, idlecpu) it also stops when nothing can move: nothing keyframed on the selected layer, or the player
+    // paused with its playhead where it was for a second. A layer picked, a key edited, the player playing / seeking
+    // (its 'media-state' message, see onMessage), a click or key in the Lab and showing the Lab start it again. It
+    // used to wake the window 10× a second while the Lab sat on screen untouched.
     // (round 21) nothing keyframed on the selected layer: nothing to do, not even the visibility check (a style
     // recalculation of the Lab ten times a second while you drag a slider or type)
+    const keyStop = () => { clearInterval(keyTimer); keyTimer = 0; keyQuiet = 0; };
     const keyTick = () => {
-      if (parkedNow && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; } // the preview isn't on screen (no layout read)
+      if (parkedNow && !box.onStage) { keyStop(); return; } // the preview isn't on screen (no layout read)
       const keys = current ? sel()?.keys : null;
-      if (!keys || !Object.values(keys).some((k) => k?.length)) return;
+      if (!keys || !Object.values(keys).some((k) => k?.length)) { keyStop(); return; }
       // (round 32, smooth32) not parked = on screen (syncPark keeps that current from view events, an observer and the
       // stall timer): asking the page again here styled the whole window 10× a second while a chat streamed beside it
-      if ((parkedNow || player.recording) && !(split || previewHost).checkVisibility({ visibilityProperty: true }) && !box.onStage) { clearInterval(keyTimer); keyTimer = 0; return; }
+      if ((parkedNow || player.recording) && !(split || previewHost).checkVisibility({ visibilityProperty: true }) && !box.onStage) { keyStop(); return; }
+      if (!player.playing && Math.abs(player.time - lastSyncT) < 1e-3) { if (++keyQuiet >= 10) keyStop(); return; }
+      keyQuiet = 0;
       syncKeyUI();
     };
-    const keyLoop = () => { if (!keyTimer) keyTimer = setInterval(keyTick, 100); };
+    function keyLoop() { keyQuiet = 0; if (!keyTimer) keyTimer = setInterval(keyTick, 100); }
     keyLoop();
     addEventListener('hearth:view', keyLoop);
+    for (const ev of ['pointerdown', 'keydown', 'wheel']) pane.addEventListener(ev, () => { if (!keyTimer) keyLoop(); }, { capture: true, passive: true });
     // ---------- automation lanes (Ableton placement, FL Studio curves) ----------
     // L.lanes = the settings shown as curves under the layer's track ('opacity' … or 's:<slider key>'), in order;
     // L.laneTall = { prop: true } for taller lanes. (Older sketches have a single L.lane.)
@@ -1314,11 +1325,12 @@ const ThreeLab = (() => {
     }
     const animatedProps = (L) => laneProps(L).map((x) => x.prop).filter((p) => keysOf(L, p).length);
     function popup(x, y, items) { return popMenu(x, y, items, { width: 290 }); } // renderer.js (submenus, filter, keys)
+    // (round 44, layergroups) a layer or a group alone, saved with the scene, one undo step (tools/three-groups.js)
     function setSolo(id) {
-      soloId = id && layerById(id) ? id : null;
-      for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: { visible: x.visible !== false && (!soloId || x.id === soloId) } });
-      renderTracksOnly();
-      if (soloId) toast(`Only "${layerById(soloId).name}" shows · the same again (S, Alt+click its eye or Alt+Shift+number) shows every layer`, { timeout: 2200 });
+      if (typeof LabGroups !== 'undefined') { LabGroups.solo(id || null); return; }
+      if (typeof LayerGroups === 'undefined' || !current) return;
+      LayerGroups.solo(layersOf(), id || null);
+      api.groupsHost.commit();
     }
     function setLanes(L, list) { L.lanes = [...new Set(list.filter(Boolean))]; delete L.lane; touch(); renderTracksOnly(); }
     // A: show every animated setting of every layer; again (when they all show): hide every lane.
@@ -1970,7 +1982,7 @@ const ThreeLab = (() => {
     }
     addEventListener('keydown', (e) => { if (e.key === 'Escape' && focusOn) setFocus(false); });
 
-    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), overrides: L.overrides || null, camMoves: L.camMoves?.length ? L.camMoves : null, name: L.name, visible: L.visible !== false && (!soloId || L.id === soloId), opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
+    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), overrides: L.overrides || null, camMoves: L.camMoves?.length ? L.camMoves : null, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
     const extrasOf = (L) => {
       const ex = (extras[current.id] ||= {});
       return L.id === 'main' ? ex : ((ex.layers ||= {})[L.id] ||= {});
@@ -2063,7 +2075,7 @@ const ThreeLab = (() => {
     addEventListener('hearth:sketch', () => paintBuilding());
     const tweaksSlot = el('div', { class: 'tw-slot' });
     const layersPanel = ThreeLayers.panel({
-      onSolo: (id) => setSolo(soloId === id ? null : id),
+      onSolo: (id) => setSolo(soloNow() === id ? null : id),
       onSelect: (id) => selectLayer(id),
       onChange: (id, patch, { live }) => editLayer(id, patch, { live }),
       onAdd: (kind) => addLayer(kind),
@@ -2083,14 +2095,13 @@ const ThreeLab = (() => {
       const row = e.target.closest('.ly-row');
       if (!row || e.defaultPrevented) return; // (round 35, bugbash2) the row's own menu (LabEasy.layerMenu) took it: one menu, not two
       e.preventDefault();
-      const idx = [...layersPanel.el.querySelectorAll('.ly-list .ly-row')].indexOf(row);
-      const L = [...layersOf()].reverse()[idx];
+      const L = layerById(row.dataset.id); // (round 44) by id: group headers sit between the rows now
       if (!L) return;
       const Ls = layersOf(); const at = Ls.indexOf(L);
       const move = (to) => { const ids = Ls.map((x) => x.id).filter((x) => x !== L.id); ids.splice(Math.max(0, Math.min(ids.length, to)), 0, L.id); reorderLayers(ids); };
       ThreeTweaks.menu(e.clientX, e.clientY, [L.name,
         [L.visible === false ? '👁 Show' : '◌ Hide', `Alt+${[...Ls].reverse().indexOf(L) + 1}`, () => editLayer(L.id, { visible: L.visible === false })],
-        [soloId === L.id ? 'Show every layer' : 'Only this layer (solo)', 'Alt+click its eye', () => setSolo(soloId === L.id ? null : L.id)],
+        [soloNow() === L.id ? 'Show every layer' : 'Only this layer (solo)', 'Alt+click its eye', () => setSolo(soloNow() === L.id ? null : L.id)],
         ['Rename…', 'Or double-click its name', async () => { const v = await Modal.prompt('Rename layer', { value: L.name }); if (v?.trim()) editLayer(L.id, { name: v.trim() }); }],
         ['Duplicate', 'A copy on top', () => { selectLayer(L.id); addLayer('copy'); }, false, 'Duplicate layer'],
         at < Ls.length - 1 ? ['Move up', '', () => move(at + 1)] : null,
@@ -2148,6 +2159,7 @@ const ThreeLab = (() => {
         for (const k of animated) { L.keys[k] = upsertKey(keysOf(L, k), dragKeyT, patch[k]); delete patch[k]; }
         if (!live) dragKeyT = null;
       }
+      if ('visible' in patch && typeof LayerGroups !== 'undefined') LayerGroups.manual(L); // (round 44) its own eye now, not a group's / a solo's
       Object.assign(L, patch);
       // (round 21) a drag (live) sends only what it moves, not every prop with every keyframe ~60 times a second (the
       // preview merges them); the timeline's tracks follow once a frame
@@ -2229,6 +2241,27 @@ const ThreeLab = (() => {
       touch();
       renderLayers();
     }
+    // (round 44, layergroups) what the layer groups (tools/three-groups*.js) work with: the scene's layers as data, and
+    // commit(next): the new order / visibility shown in place (no re-run), saved, noted for the time machine and recipes
+    api.groupsHost = {
+      sketchId: () => current?.id || null,
+      sketchName: () => current?.name || '',
+      layers: () => layersOf(),
+      selected: () => selId,
+      picked: () => layersPanel.picked?.() || [],
+      clearPicks: () => layersPanel.clearPicks?.(),
+      select: (id) => selectLayer(id),
+      get panel() { return layersPanel.el; },
+      commit(next) {
+        if (!current) return;
+        if (Array.isArray(next) && next !== current.layers) current.layers = next;
+        layersOf().forEach((L, z) => box.send({ type: 'layer-props', id: L.id, props: layerProps(L, z) }));
+        touch();
+        renderLayers();
+      },
+      refresh: (want) => refreshInPlace(want),
+      persist: () => persist(),
+    };
 
     // Sends (or drafts) a message to the Three Director docked next to the Lab.
     function askDirector(text, { send = true } = {}) {
@@ -2290,7 +2323,11 @@ const ThreeLab = (() => {
       saveExtras();
     }
     // (round 39, powerwise) while Hearth is on screen (the background schedule; nothing to remember behind a minimized window)
-    if (window.Power) Power.every('lab-media', 5000, rememberMedia, { hidden: 'skip', battery: false }); else setInterval(rememberMedia, 5000);
+    // (round 44, idlecpu) every 5 s while the song / timeline plays; paused, the place is noted at once and the timer
+    // only looks every 30 s (it used to wake the window every 5 s to find the playhead where it was)
+    let mediaPlaying = false;
+    const mediaArm = (playing) => { mediaPlaying = playing; Power.every('lab-media', playing ? 5000 : 30000, rememberMedia, { hidden: 'skip', battery: false }); };
+    if (window.Power) mediaArm(false); else setInterval(rememberMedia, 5000);
     // ---------- the scene's own timeline (round 10, orb) ----------
     // One clock per scene. A scene with a song plays on the song (as before); a scene without one plays on its own
     // timeline, extras[id].timeline = { len, fps, time }: the player's silent clock (tools/three-media.js loadClock),
@@ -2494,7 +2531,7 @@ const ThreeLab = (() => {
         const L = [...layersOf()].reverse()[Number(e.code.slice(5)) - 1];
         if (!L) return;
         e.preventDefault(); e.stopPropagation();
-        if (e.shiftKey) setSolo(soloId === L.id ? null : L.id);
+        if (e.shiftKey) setSolo(soloNow() === L.id ? null : L.id);
         else editLayer(L.id, { visible: L.visible === false });
         Usage.key(`Alt+${e.shiftKey ? 'Shift+' : ''}digit`, 'Lab layers');
       }
@@ -2597,7 +2634,7 @@ const ThreeLab = (() => {
       layers: () => layersOf().map((L) => ({ name: L.name, visible: L.visible !== false, selected: L.id === selId })).reverse(),
       selectLayer: (q) => { const L = findLayer(q); if (!L) return null; selectLayer(L.id); return L.name; },
       showLayer: (q, on) => { const L = findLayer(q); if (!L) return null; editLayer(L.id, { visible: on ?? L.visible === false }); return L.name; },
-      solo: (q) => { const L = q ? findLayer(q) : null; setSolo(L && soloId !== L.id ? L.id : null); return L?.name || null; },
+      solo: (q) => { const L = q ? findLayer(q) : null; setSolo(L && soloNow() !== L.id ? L.id : null); return L?.name || null; },
       // music
       live: async (kind) => { if (kind === 'off') { await setLive(null); return 'off'; } await setLive(kind || (liveKind ? null : store.get('three.lastLive', 'system'))); return liveKind || 'off'; },
       liveIo: (patch) => (patch ? setLiveIo(patch) : liveIo()),
@@ -2787,6 +2824,8 @@ const ThreeLab = (() => {
       }
       if (/^(media-state|record-started|record-error|recording)$/.test(msg.type)) {
         player.onMessage(msg);
+        if (!keyTimer && msg.type === 'media-state') keyLoop(); // (round 44, idlecpu) playing / a seek: the knobs follow again
+        if (msg.type === 'media-state' && window.Power && Boolean(msg.playing) !== mediaPlaying) { if (!msg.playing) rememberMedia(); mediaArm(Boolean(msg.playing)); }
         if (msg.type === 'recording' && rebuildWaiting) { rebuildWaiting = false; run({ hot: true }); }
       }
       if (msg.type === 'drawn') { building(msg.layer, false); return; }
@@ -2962,6 +3001,7 @@ const ThreeLab = (() => {
         ...(typeof LabShader !== 'undefined' ? [LabShader.previewItem()] : []), // (round 23) ◇ shader layers (tools/three-shader.js)
         ...(typeof LabParticles !== 'undefined' ? [LabParticles.previewItem()] : []), // (round 24) ✦ GPU particles (tools/three-particles.js)
         ...(typeof LabType !== 'undefined' ? [LabType.previewItem()] : []), // (round 25) 🅰 kinetic type, lyrics (tools/three-type.js)
+        ...(typeof LabKineticHook !== 'undefined' ? [LabKineticHook.addItem()] : []), // (round 45) 🅰 Text that moves… (tools/three-kinetic-hook.js)
         ...(typeof LabPhysics !== 'undefined' ? [LabPhysics.previewItem()] : []), // (round 25) ⚛ light physics (tools/three-physics.js)
         ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
         ...(window.AssetsHooks ? [AssetsHooks.previewItem()] : []), // (round 24) 🗂 the asset library (assets-cmds.js)
@@ -3266,7 +3306,7 @@ const ThreeLab = (() => {
     };
     // (round 39, powerwise) only while Hearth is on screen (a hidden window's preview draws nothing to watch), and every
     // 10 s while the Lab is parked behind a chat (then it only makes sure a park can't stick; the view events come first)
-    if (window.Power) { stallArm = (parked) => Power.every('lab-stall', parked ? 10000 : 2000, stallTick, { hidden: 'skip', battery: false }); stallArm(parkedNow); } else setInterval(stallTick, 2000);
+    if (window.Power) { stallArm = (parked) => Power.every('lab-stall', parked ? 10000 : 4000, stallTick, { hidden: 'skip', battery: false }); stallArm(parkedNow); } else setInterval(stallTick, 2000);
     // How a change reaches the preview (round 6 "live": no whole-page reloads for edits):
     //   hot     one layer re-runs in place (its old picture cross-fades into the new one; a new layer wipes in)
     //   sync    only the layers whose code changed re-run, removed ones fade out, the others just get their props
@@ -3500,7 +3540,6 @@ const ThreeLab = (() => {
     }
     // opts.by: who switched ('scene' = chat-scenes.js following the chat on screen); fires 'hearth:sketch'
     function openSketch(id, opts = {}) {
-      soloId = null;
       // unsaved slider values in any layer of the sketch you leave
       const left = current;
       const pendings = left ? [...controllers.entries()].map(([lid, c]) => ({ lid, p: c.pending() })).filter((x) => x.p) : [];
@@ -3890,6 +3929,7 @@ ${code}
     const sleep = (ms) => (typeof ThreeDirector !== 'undefined' && ThreeDirector.settle ? ThreeDirector.settle(ms) : new Promise((r) => setTimeout(r, ms)));
     const layersSummary = () => layersOf().map((L, i) => ({
       id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), ...(typeof ShaderLib !== 'undefined' && ShaderLib.isShader(L.code) ? { kind: 'shader (GLSL: three_do shader)' } : {}), ...(typeof LabParticles !== 'undefined' && LabParticles.isParticles(L.code) ? { kind: 'particles (GPU: three_do particles)' } : {}), ...(typeof LabPhysics !== 'undefined' && LabPhysics.isPhysics(L.code) ? { kind: 'physics (three_do physics)' } : {}), ...(typeof LabType !== 'undefined' && LabType.isType(L.code) ? { kind: 'type (text / lyrics: three_do type)' } : {}), ...(L.precomp && typeof ThreeComp !== 'undefined' && ThreeComp.isComp(L) ? { kind: `precomp of ${ThreeComp.describe(L)} (three_do comp)` } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
+      ...(L.group ? { group: L.group.name } : {}), ...(L.solo ? { solo: true } : {}), // (round 44, layergroups)
       visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal',
       ...(L.overrides ? { placedByUser: Object.fromEntries(Object.entries(L.overrides).map(([k, o]) => [k, { position: o.p, rotationDegrees: o.rd, scale: o.s, ...(o.v === false ? { hidden: true } : {}), ...(o.fov ? { fov: o.fov } : {}) }])) } : {}),
       plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
@@ -4454,7 +4494,7 @@ ${frag}\`,
           const html = await window.hub.fetchText('https://threejs.org/docs/');
           classes = [...new Set([...html.matchAll(/<a href="([A-Za-z0-9_]+)\.html">\1<\/a>/g)].map((m) => m[1]))].sort();
           store.set('three.docsIndex', { at: Date.now(), classes });
-        } catch (err) { list.append(el('p', { class: 'hint', text: `Couldn't load the class list: ${err.message}` })); }
+        } catch (err) { list.append(el('p', { class: 'hint', text: `Couldn't load the class list: ${calmError(err)}` })); }
       }
       render();
     })();
@@ -4735,6 +4775,7 @@ ${frag}\`,
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js
     get tm() { return api.tm || null; }, // (round 23) tools/three-history*.js
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
+    get groupsHost() { return api.groupsHost || null; }, // (round 44) layer groups (tools/three-groups.js)
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),

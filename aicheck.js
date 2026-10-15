@@ -93,7 +93,7 @@ const AiCheck = (() => {
     if (live.has(agentId)) return live.get(agentId).promise;
     const state = { at: Date.now(), engine: agent.engine, lines: [{ k: 'found', ok: null, text: `Looking for ${LABEL[agent.engine]}…` }], running: true };
     const promise = check(agent, state).catch((err) => {
-      state.lines.push({ k: 'error', ok: false, text: `The check stopped: ${short(err.message, 160)}`, fix: 'again' });
+      state.lines.push({ k: 'error', ok: false, text: `The check stopped: ${short(calmError(err), 160)}`, fix: 'again' });
       return state;
     }).then((r) => {
       live.delete(agentId);
