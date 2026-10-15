@@ -156,9 +156,16 @@ async function cdpConnect() {
   // --dpr N: the screen's scale (Electron's --force-device-scale-factor: 2 = a Retina / 200 % screen, its size in points halves)
   const screenSize = /^\d{3,5}x\d{3,5}$/.test(opt('--screen', '')) ? opt('--screen') : '1600x1000';
   const dprFlag = Number(opt('--dpr', 0)) > 0 ? [`--force-device-scale-factor=${Number(opt('--dpr'))}`] : [];
-  const child = spawn('xvfb-run', ['-a', '-s', `-screen 0 ${screenSize}x24`, ELECTRON, dir, '--no-sandbox', ...dprFlag, `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true, env });
+  const winTest = process.platform === 'win32';
+  const launchArgs = [dir, '--no-sandbox', ...dprFlag, `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)];
+  const child = spawn(winTest ? ELECTRON : 'xvfb-run', winTest ? launchArgs : ['-a', '-s', `-screen 0 ${screenSize}x24`, ELECTRON, ...launchArgs], { stdio: ['ignore', 'pipe', 'pipe'], detached: !winTest, windowsHide: true, env });
   // Kill Xvfb + Electron (their own process group) however the harness ends, so no stray instances pile up.
-  const killAll = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } };
+  let killed = false;
+  const killAll = () => {
+    if (killed || !child.pid) return; killed = true;
+    if (winTest) { try { execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch { /* test process already gone */ } }
+    else { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } }
+  };
   process.on('exit', killAll);
   for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => { killAll(); process.exit(1); });
   child.stdout.on('data', (d) => log.push(String(d)));
@@ -361,8 +368,7 @@ async function cdpConnect() {
   } catch (err) {
     problems.push(`harness: ${err.message}`);
   } finally {
-    try { execFileSync('pkill', ['-f', dir]); } catch { /* already gone */ }
-    child.kill('SIGKILL');
+    killAll();
     const mainErrors = log.join('').split('\n').filter((l) => /Error|Uncaught|TypeError|ReferenceError|SyntaxError/.test(l) && !IGNORE.some((re) => re.test(l)));
     for (const l of mainErrors.slice(0, 30)) problems.push(`main: ${l.trim()}`);
     if (!keep) { for (const d of [dir, userData]) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a helper process still writing; tmp is cleaned later */ } } }

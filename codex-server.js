@@ -130,7 +130,7 @@ class Pool {
     const forward = (events) => {
       for (const e of (Array.isArray(events) ? events : events ? [events] : [])) {
         if (terminal.has(e.type)) continue;
-        if (e.type === 'blocked') { emit({ type: 'thinking', text: `${e.name}: ${e.message}\n\n` }); continue; }
+        if (e.type === 'blocked') { emit({ type: 'thinking', text: `${e.name}: this tool is blocked by the current permissions.\n\n` }); continue; }
         if (['step', 'agent', 'pulse', 'status'].includes(e.type)) live?.(e); else emit(e);
       }
     };
@@ -222,7 +222,7 @@ class Pool {
           forward(parser({ type: method === 'item/started' ? 'item.started' : 'item.completed', item: legacyItem(item) })); return;
         }
         if (method === 'error') {
-          if (p.willRetry) emit({ type: 'thinking', text: `Codex is reconnecting: ${p.error?.message || 'temporary error'}\n\n` });
+          if (p.willRetry) emit({ type: 'thinking', text: 'Codex is reconnecting after a temporary connection error.\n\n' });
           else { conn.close(new Error(p.error?.message || 'Codex turn failed')); }
           return;
         }

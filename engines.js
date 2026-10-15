@@ -1429,6 +1429,7 @@ function kill(child) {
 }
 
 function stopAll() {
+  codexCatalog?.close();
   codexAccount?.close();
   const count = running.size + (codexServers?.stopAll() || 0);
   for (const id of [...running.keys()]) stop(id);

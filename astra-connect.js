@@ -20,7 +20,7 @@ const AstraConnect = (() => {
   async function apps(agentId) {
     const agent = agentFor(agentId); const target = key(agentId); const chatId = Native.chatOf(agentId)?.id;
     const { d, body } = sheet('Apps for Astra');
-    const search = el('input', { type: 'search', placeholder: 'Find an app…', 'aria-label': 'Find an app' });
+    const search = el('input', { type: 'search', placeholder: 'Find an app…', attrs: { 'aria-label': 'Find an app' } });
     const status = para('Loading your apps…'); const list = el('div');
     body.append(para('Select apps to mention in your next message. Selection adds a reference; it does not grant new permissions.'), search, status, list);
     let snapshot;
@@ -45,7 +45,7 @@ const AstraConnect = (() => {
             details.body.replaceChildren(); const tools = r.apps?.[0]?.toolSummaries || [];
             if (!tools.length) details.body.append(para('No tools were returned for this app.'));
             for (const t of tools) details.body.append(el('section', { class: 'ac-card' }, el('strong', { text: t.title || t.name }), para(t.description), para(t.isEnabled === false ? `Unavailable: ${t.disabledReason || 'disabled'}` : t.isReadOnly ? 'Reads information' : 'May change information')));
-          } catch (err) { details.body.replaceChildren(para(`Tools unavailable: ${err.message}`)); }
+          } catch (err) { details.body.replaceChildren(para(`Tools unavailable: ${calmError(err)}`)); }
         }));
         if (!app.isAccessible && /^https:\/\//.test(app.installUrl || '')) card.append(button('Connect app…', () => window.hub.openExternal(app.installUrl)));
         list.append(card);
@@ -58,8 +58,8 @@ const AstraConnect = (() => {
         snapshot = await api().capabilities({ kind: 'apps', refresh: true });
         if (chatId) { try { snapshot.installed = (await api().capabilities({ kind: 'installed', chatId })).apps; snapshot.scope = 'this chat'; } catch { /* account catalog remains explicitly labeled */ } }
         if (!d.isConnected) return;
-        status.textContent = `${snapshot.data.length} apps · checked ${new Date(snapshot.checkedAt).toLocaleTimeString()}${snapshot.runtimeError ? ' · runtime availability unavailable' : ''}`; draw();
-      } catch (err) { status.textContent = `Apps unavailable: ${err.message}`; list.replaceChildren(); }
+        status.textContent = `${snapshot.data.length} apps · checked ${new Date(snapshot.checkedAt).toLocaleTimeString()}${snapshot.runtimeError ? ' · app descriptions unavailable' : ''}`; draw();
+      } catch (err) { status.textContent = `Apps unavailable: ${calmError(err)}`; list.replaceChildren(); }
     };
     if (!agent.chatgptApps) body.prepend(para('ChatGPT apps are off for this agent.'), button('Enable ChatGPT apps for this agent', async () => {
       agent.chatgptApps = true; await saveConfig(); d.close(); await apps(agentId);
@@ -78,10 +78,10 @@ const AstraConnect = (() => {
         for (const s of r.data) {
           const tools = el('details', {}, el('summary', { text: `${s.tools.length} tools` }));
           for (const t of s.tools) tools.append(para(`${t.name} — ${t.readOnly ? 'read only' : 'may change information'}${t.description ? ` · ${t.description}` : ''}`));
-          list.append(el('section', { class: 'ac-card' }, el('strong', { text: s.name }), para(`${s.runtimeStatus} · sign-in: ${s.authStatus}`), ...(s.error ? [para(s.error)] : []), tools));
+          list.append(el('section', { class: 'ac-card' }, el('strong', { text: s.name }), para(`${({connected: 'Connected', authenticationRequired: 'Sign-in required', starting: 'Connecting', failed: 'Connection failed', disabled: 'Disabled', cancelled: 'Cancelled', notStarted: 'Not started'})[s.runtimeStatus] || 'Status unavailable'} · ${({notLoggedIn: 'not signed in', oAuth: 'signed in', bearerToken: 'token configured', unsupported: 'no sign-in needed'})[s.authStatus] || 'sign-in status unknown'}`), ...(s.error ? [para(calmError(s.error))] : []), tools));
         }
         if (!r.data.length) list.append(para('No connections are loaded in this chat. Enable tools in AI setup, then send a message.'));
-      } catch (err) { status.textContent = err.message; list.replaceChildren(); }
+      } catch (err) { status.textContent = calmError(err); list.replaceChildren(); }
     };
     body.append(button('Refresh connections', load), button('AI setup', () => { d.close(); Commands.exec('/connections', agentId); })); await load();
   }
@@ -92,19 +92,21 @@ const AstraConnect = (() => {
       const r = await api().capabilities({ kind: 'models', refresh: true }); if (!d.isConnected) return;
       status.textContent = 'Choose a model and reasoning depth for this chat. Your current settings stay until you choose Apply.';
       if (!target) body.append(para('Send your first message to create a chat, then choose its model here.'));
+      else if (Native.isBusy(target.id)) body.append(para('Wait for the current reply to finish before changing its model.'));
       for (const m of r.data.filter(m => !m.hidden)) {
         const efforts = m.supportedReasoningEfforts.filter(x => ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(x.reasoningEffort));
-        const select = el('select', { 'aria-label': `${m.displayName} reasoning` }, ...efforts.map(e => el('option', { value: e.reasoningEffort, text: e.reasoningEffort })));
+        const select = el('select', { attrs: { 'aria-label': `${m.displayName} reasoning` } }, ...efforts.map(e => el('option', { value: e.reasoningEffort, text: e.reasoningEffort })));
         const wanted = target?.effort || agent.effort || 'max';
         select.value = efforts.some(e => e.reasoningEffort === wanted) ? wanted : efforts.at(-1)?.reasoningEffort || '';
         const apply = button('Apply to this chat', async () => {
           if (!target || Native.chatOf(agentId)?.id !== target.id) throw new Error('The active chat changed. Open the model picker again.');
+          if (Native.isBusy(target.id)) throw new Error('Wait for this reply to finish before changing models.');
           target.model = m.model; if (select.value) target.effort = select.value; else delete target.effort;
           Native.save(target); Native.refresh(agentId, { keepScroll: true }); d.close(); toast(`${m.displayName} · ${select.value || 'default reasoning'} from the next reply`);
-        }); apply.disabled = !target;
+        }); apply.disabled = !target || Native.isBusy(target.id) || !efforts.length;
         body.append(el('section', { class: 'ac-card' }, el('strong', { text: m.displayName }), para(m.description), para(`Accepts ${(m.inputModalities || []).join(', ') || 'unspecified input'}`), select, apply));
       }
-    } catch (err) { status.textContent = `Models unavailable: ${err.message}`; }
+    } catch (err) { status.textContent = `Models unavailable: ${calmError(err)}`; }
   }
   async function steer(agentId, text) {
     agentFor(agentId); const chat = Native.chatOf(agentId); const turnId = turns.get(chat?.id);
@@ -116,7 +118,7 @@ const AstraConnect = (() => {
     const state = para(event.blocking ? 'Astra is waiting for your answer.' : 'Astra has a question. You can answer while it continues.'); card.append(state);
     for (const q of event.questions) {
       const field = el('fieldset', {}, el('legend', { text: q.question }));
-      const input = el('input', { type: q.isSecret ? 'password' : 'text', placeholder: 'Your answer…', 'aria-label': q.question, autocomplete: 'off' });
+      const input = el('input', { type: q.isSecret ? 'password' : 'text', placeholder: 'Your answer…', attrs: { 'aria-label': q.question }, autocomplete: 'off' });
       for (const o of q.options || []) field.append(button(o.label, () => { input.value = o.label; input.dispatchEvent(new Event('input')); }), para(o.description || ''));
       field.append(input); fields.set(q.id, input); card.append(field);
     }
@@ -152,7 +154,7 @@ const AstraConnect = (() => {
   function open(agentId) {
     agentFor(agentId); const { d, body } = sheet('Astra tools');
     for (const [label, run] of [['Connected apps', apps], ['Connection health', connections], ['Models and reasoning', models]]) body.append(button(label, () => { d.close(); return run(agentId); }));
-    const input = el('textarea', { placeholder: 'Add guidance to the reply that is running…', 'aria-label': 'Follow-up for current reply' });
+    const input = el('textarea', { placeholder: 'Add guidance to the reply that is running…', attrs: { 'aria-label': 'Follow-up for current reply' } });
     body.append(para('Steer the current reply'), input, button('Send follow-up now', async () => { await steer(agentId, input.value); d.close(); }));
     body.append(para('Ordinary messages typed during a reply still queue for the next turn.'));
   }
@@ -169,7 +171,7 @@ const AstraConnect = (() => {
   Native.hooks.finish.push((e) => { turns.delete(e.chatId); for (const [token, q] of questions) if (q.chatId === e.chatId) resolved(token); });
   Native.hooks.render.push(id => paintSelection(id));
   Commands.register({ name: 'astra-tools', desc: 'Astra apps, live tools, models and follow-ups', area: 'Chat', run: (_, ctx) => open(ctx.agentId) });
-  Commands.register({ name: 'astra-apps', desc: 'Find connected apps and mention them in your next message', area: 'Chat', run: (_, ctx) => apps(ctx.agentId) });
+  Commands.register({ name: 'astra-connect', desc: 'Find connected apps and mention them in your next message', area: 'Chat', run: (_, ctx) => apps(ctx.agentId) });
   Commands.register({ name: 'astra-connections', desc: 'Inspect this Astra chat’s live tools and connection health', area: 'Chat', run: (_, ctx) => connections(ctx.agentId) });
   Commands.register({ name: 'astra-models', desc: 'Choose from available models and supported reasoning depths', area: 'Chat', run: (_, ctx) => models(ctx.agentId) });
   Commands.register({ name: 'astra-steer', args: '<follow-up>', desc: 'Send guidance into the Astra reply that is running', area: 'Chat', run: (text, ctx) => steer(ctx.agentId, text) });

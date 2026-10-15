@@ -337,7 +337,7 @@ const AppUI = (() => {
     for (let i = 0; i < actions.length; i += 1) {
       if (!actions[i].later) continue;
       const made = [];
-      try { actions[i].later((label, run, keys = '') => made.push({ label, run, keys })); } catch (err) { console.warn('palette actions', err); }
+      try { actions[i].later((label, run, keys = '') => made.push({ get label() { return typeof label === 'function' ? label() : label; }, run, keys })); } catch (err) { console.warn('palette actions', err); }
       actions.splice(i, 1, ...made);
       i += made.length - 1;
       later -= 1;

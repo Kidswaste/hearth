@@ -91,7 +91,7 @@ function ok(text) { console.log(`✓ ${text}`); checks++; }
 
   // Exercise the real engines.send boundary in a temp copy, including batching and usage writes.
   const copy = path.join(dir, 'app'); fs.mkdirSync(copy);
-  for (const f of ['engines.js', 'codex-server.js', 'codex-usage.js', 'codex-capabilities.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'connectionsmain.js']) fs.copyFileSync(path.join(root, f), path.join(copy, f));
+  for (const f of ['engines.js', 'codex-server.js', 'codex-usage.js', 'codex-capabilities.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'connectionsmain.js']) fs.copyFileSync(path.join(root, f), path.join(copy, f));
   fs.cpSync(path.join(root, 'mcp'), path.join(copy, 'mcp'), { recursive: true });
   const engines = require(path.join(copy, 'engines.js')); engines.setEnginePaths({ codex: fixture });
   const agent = { id: 'astra', engine: 'codex', model: 'gpt-6-astra', effort: 'high', openTool: false };
@@ -121,7 +121,7 @@ function ok(text) { console.log(`✓ ${text}`); checks++; }
   let result = await pending; assert.equal(result.type, 'done', result.message); result = await runEngine(result.session); assert(result.timing.connectionReused);
   result = await runEngine(result.session, 'BLOCKED'); assert.equal(result.type, 'done');
   assert(!adapterEvents.some(e => e.type === 'blocked'), 'Internal parser events must not end the UI turn');
-  assert(adapterEvents.some(e => e.type === 'thinking' && /Approval declined/.test(e.text)));
+  assert(adapterEvents.some(e => e.type === 'thinking' && /blocked by the current permissions/.test(e.text)));
   assert.equal(legacyItem({ type: 'fileChange', status: 'declined' }).status, 'failed');
   assert.equal(engines.busy(), 0); engines.stopAll();
   ok('default engines.send uses app-server; sandbox/image settings survive; warm turns work through the real adapter');

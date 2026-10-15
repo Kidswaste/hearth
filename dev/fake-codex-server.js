@@ -3,6 +3,7 @@
 const fs = require('fs');
 const readline = require('readline');
 const crypto = require('crypto');
+if (process.argv.includes('--version')) { console.log('codex-cli 0.162.0'); process.exit(0); }
 const dir = process.env.HEARTH_SERVER_TEST_DIR;
 const trace = (value) => { if (dir) fs.appendFileSync(`${dir}/trace.jsonl`, JSON.stringify({ pid: process.pid, ...value }) + '\n'); };
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n');

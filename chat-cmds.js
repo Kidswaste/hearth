@@ -1396,11 +1396,11 @@ const ChatCmds = (() => {
   // (Lazy.namesAtReady), not those registered since (the directors', full screen), so the lines are the same as before
   const snap = () => { if (defs) return; const at = window.Lazy?.namesAtReady?.(); const keep = at && new Set(at); defs = Commands.list().filter((x) => !x.hidden && !['do', 'help'].includes(x.name) && (!keep || keep.has(x.name))); };
   if (performance.getEntriesByName('hearth:ready').length) snap(); else addEventListener('hearth:ready', snap, { once: true });
-  window.addEventListener('load', () => setTimeout(() => {
+  const addCommandActions = () => {
     const build = (add) => {
       snap();
       for (const d of defs) {
-        add(`/${d.name} — ${d.desc}`, () => {
+        add(() => `/${d.name} — ${Commands.get(d.name)?.desc || d.desc}`, () => {
           const agentId = chatAgentNow();
           if (!agentId) return;
           if (/^</.test(d.args)) { activate(agentId); Native.setDraft(agentId, `/${d.name} `); } else Commands.exec(`/${d.name}`, agentId);
@@ -1408,7 +1408,11 @@ const ChatCmds = (() => {
       }
     };
     if (AppUI.addActionsLater) AppUI.addActionsLater(build); else build(AppUI.addAction);
-  }, 0));
+  };
+  // A fast window load can precede the async first screen and meter registration.
+  // Keep the same command names in both eager recordings and the lazy app; labels follow live defs.
+  if (performance.getEntriesByName('hearth:ready').length) addCommandActions();
+  else addEventListener('hearth:ready', addCommandActions, { once: true });
 
   return { undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS, localTitle };
 })();

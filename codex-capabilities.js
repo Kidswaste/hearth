@@ -35,10 +35,14 @@ class Catalog {
       let result;
       if (kind === 'models') result = { data: await pages(request, 'model/list', { includeHidden: false }) };
       else {
-        const data = await pages(request, 'app/list', { forceRefetch: true });
-        let installed = []; let runtimeError = null;
-        try { installed = (await request('app/installed', { forceRefresh: true })).apps || []; }
-        catch (err) { runtimeError = err.message; }
+        // The full marketplace can be slow/offline; installed runtime apps are useful immediately.
+        const installed = (await request('app/installed', { forceRefresh: false })).apps || [];
+        let metadata = []; let runtimeError = null;
+        try {
+          for (let i = 0; i < installed.length; i += 100) metadata.push(...((await request('app/read', { appIds: installed.slice(i, i + 100).map(a => a.id), includeTools: false })).apps || []));
+        } catch (err) { runtimeError = 'App descriptions are unavailable; showing installed app names.'; }
+        const data = installed.map(a => ({ ...metadata.find(m => m.id === a.id), id: a.id,
+          name: metadata.find(m => m.id === a.id)?.name || a.runtimeName || a.id, isAccessible: true, isEnabled: a.enabled }));
         result = { data, installed, runtimeError, scope: 'account' };
       }
       result.checkedAt = Date.now(); this.cache.set(kind, result); return result;
