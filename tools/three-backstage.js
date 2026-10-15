@@ -30,6 +30,7 @@ function makeBackstage(opts = {}) {
   function onMessage(m) {
     // a fresh page has started at its first stats; a layer re-run in place once it has drawn
     if (onStart && (m.type === 'drawn' || m.type === 'error' || (m.type === 'stats' && !waitDrawn))) { const fn = onStart; onStart = null; fn(); }
+    if (m.type === 'gpu-stuck') { loaded = null; return; } // (round 43, glrecover) the page is made again empty: the next call runs the scene in it
     if (m.type === 'error') errors.push({ layer: m.layer || null, message: String(m.message || ''), line: m.line || null });
     else if (m.type === 'console') { consoleLines.push({ level: m.level, text: clip(m.text, 500), layer: m.layer || null }); if (consoleLines.length > 60) consoleLines.splice(0, consoleLines.length - 60); }
     else if (m.type === 'stats') lastStats = { fps: m.fps, worstFrameMs: m.worst, renderMs: m.ms, drawCalls: m.calls, triangles: m.triangles, points: m.points, lines: m.lines, textures: m.textures, fpsCap: 15 };

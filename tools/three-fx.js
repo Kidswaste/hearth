@@ -187,7 +187,7 @@ const ThreeFX = (() => {
   // ---------- thumbnails ----------
   const thumbCache = new Map(); // filter id → data URL (per Lab picture; cleared when the picker opens on another one)
   const thumbFor = { pic: null, at: 0 }; // the scene the cached thumbnails were made on, and when the cache started
-  let thumbQueue = []; let thumbBusy = false;
+  let thumbQueue = []; let thumbBusy = false; let glTries = 0;
   function queueThumb(it, img) {
     if (thumbCache.has(it.id)) { if (thumbCache.get(it.id)) img.src = thumbCache.get(it.id); return; }
     thumbQueue.push([it, img]);
@@ -205,7 +205,10 @@ const ThreeFX = (() => {
         if (!batch.length) continue;
         await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 34)));
         const list = batch.map(([it]) => ({ id: it.id, type: it.type, P: ThreeLayers.filterValues(it.id) }));
+        await ThreeLab.gl?.wait?.(8000); // (round 43, glrecover) not while the graphics card is away
         const r = await d.evalInSketch(`return filter.thumbs(${JSON.stringify(list)}, 96, 60)`);
+        // the GPU went away while they drew: asked again once it's back (not kept as "no picture")
+        if (ThreeLab.gl?.state?.().phase && (glTries += 1) <= 3) { thumbQueue.unshift(...batch); await ThreeLab.gl.wait(8000); continue; }
         const urls = r?.ok ? r.value || {} : {};
         for (const [it, img] of batch) { thumbCache.set(it.id, urls[it.id] || null); if (urls[it.id]) img.src = urls[it.id]; }
         if (!r?.ok) break;

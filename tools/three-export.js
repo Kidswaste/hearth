@@ -34,14 +34,24 @@ const LabExport = (() => {
     const host = el('div', { class: 'lab-xp-host', attrs: { 'aria-hidden': 'true' }, style: { position: 'fixed', left: '0', top: '0', width: `${pg.cssW}px`, height: `${pg.cssH}px`, zIndex: '-1', opacity: '0', pointerEvents: 'none', overflow: 'hidden', contain: 'strict' } });
     document.body.append(host);
     const waits = new Set();
-    const onMsg = (m) => { for (const x of [...waits]) if (x.test(m)) { waits.delete(x); x.resolve(m); } if (m.type === 'error' && page.errors.length < 20) page.errors.push(String(m.message || '')); };
+    const onMsg = (m) => {
+      if (m.type === 'gpu-restored') page.gl.restored += 1; // (round 43, glrecover)
+      for (const x of [...waits]) if (x.test(m)) { waits.delete(x); x.resolve(m); }
+      if (m.type === 'error' && page.errors.length < 20) page.errors.push(String(m.message || ''));
+    };
     const wait = (test, ms = 60000, what = 'a frame') => new Promise((resolve, reject) => {
       const x = { test, resolve }; waits.add(x);
       setTimeout(() => { if (waits.delete(x)) reject(new Error(`The export page stopped answering (${what})`)); }, ms);
     });
-    const box = ThreeLab._sandbox(host, onMsg, () => `&dpr=${pg.dpr}&xp=1${alpha ? '&alpha=1' : ''}&seed=${seed}`);
+    const box = ThreeLab._sandbox(host, onMsg, () => `&dpr=${pg.dpr}&xp=1${alpha ? '&alpha=1' : ''}&seed=${seed}`, { gpuStuck: 'owner' }); // (round 43: a render picks up itself)
     box.frame.style.cssText = 'width:100%;height:100%;border:0;display:block';
-    const page = { pg, box, host, errors: [], send: (m) => box.send(m), wait, close() { waits.clear(); try { box.frame.src = 'about:blank'; } catch { /* gone */ } host.remove(); } };
+    const page = { pg, box, host, errors: [], send: (m) => box.send(m), wait, close() { waits.clear(); try { box.frame.src = 'about:blank'; } catch { /* gone */ } host.remove(); },
+      // (round 43, glrecover) the GPU gave the page's contexts back and its layers ran again (true), or not within ms
+      gl: { restored: 0, used: 0 },
+      glBack(ms = 5000) {
+        if (page.gl.restored > page.gl.used) { page.gl.used = page.gl.restored; return Promise.resolve(true); }
+        return wait((m) => m.type === 'gpu-restored', ms, 'the graphics card').then(() => { page.gl.used = page.gl.restored; return true; }, () => false);
+      } };
     const ready = wait((m) => m.type === 'ready', 45000, 'starting');
     box.reload();
     try { await ready; } catch (err) { page.close(); throw err; }
@@ -237,15 +247,22 @@ const LabExport = (() => {
       const { plan, assets } = o.compiled || compileLive(e, sk); // (round 42, labbatch) a batch row compiles its own scene (not the one on screen)
       plan.w = o.w; plan.h = o.h; plan.fps = F;
       ctl.total = N;
-      page = await openPage({ w: o.w, h: o.h, ss: o.ss, alpha: o.alpha, seed: o.seed });
-      if (o.refs) page.send(o.refs); // (round 42, labbatch) that scene's references and palette, before its layers run
-      progress(0.01, 'loading the scene');
-      await loadPlan(page, plan, assets, plan.song);
       // (round 31, perfectloop) the scene's loop clock on the export page (its loopT / loopNoise… go round with the
       // loop's frames; the cross-fade's frames past the end are what the scene does next, blended into the start)
       const lc = o.source === 'scene' ? window.PerfectLoop?.clockFor?.(o, loop) || null : null;
-      if (lc) page.send({ type: 'loop-clock', ...lc });
-      if (o.reframe) page.send({ type: 'reframe', ...o.reframe }); // (round 33, multiformat) this format's pan / zoom
+      // the export page with the scene on it (again after the graphics card went away: round 43, glrecover)
+      const bringUp = async (label) => {
+        const pg = await openPage({ w: o.w, h: o.h, ss: o.ss, alpha: o.alpha, seed: o.seed });
+        try {
+          if (o.refs) pg.send(o.refs); // (round 42, labbatch) that scene's references and palette, before its layers run
+          progress(Math.max(0.01, (ctl.frames / Math.max(1, N)) * 0.97), label);
+          await loadPlan(pg, plan, assets, plan.song);
+          if (lc) pg.send({ type: 'loop-clock', ...lc });
+          if (o.reframe) pg.send({ type: 'reframe', ...o.reframe }); // (round 33, multiformat) this format's pan / zoom
+        } catch (err) { pg.close(); throw err; }
+        return pg;
+      };
+      page = await bringUp('loading the scene');
       const dir = o.dir || await outDir();
       const stem = o.stem ? C.safe(o.stem) : C.safe(`${o.name || sk?.name || seqE?.seq?.name || 'Lab'} ${f.id === 'still16' ? 'print' : f.id} ${o.w}x${o.h}${o.ss > 1 ? ` ss${o.ss}` : ''}${o.blur > 1 ? ` mb${o.blur}` : ''}`);
       const isSeqOut = f.id === 'png';
@@ -268,12 +285,13 @@ const LabExport = (() => {
       // no temporary pictures, and the encode is done when the last frame is. The old way (a folder of frames, then
       // ffmpeg) stays for a loop searched in the frames, an ffmpeg that can't be reached this way, and `legacy`.
       let stream = null; let a = null;
-      if (f.kind === 'video' && tools && !o.detect && !o.legacy && window.hub.rfast && store.get('three.export.stream', true) !== false) {
+      const openStream = async (k = 0) => {
         a = await argsOf('INPUT');
-        const sid = `xs${id}`;
+        const sid = `xs${id}${k ? `r${k}` : ''}`;
         const r = await window.hub.rfast.open({ id: sid, args: C.streamArgs(a.args, ext), output }, ffOver()).catch((err) => ({ ok: false, error: err.message }));
-        if (r?.ok) { stream = { id: sid, encoded: 0, open: true }; ctl.stream = stream; } else console.warn('Lab export: streaming to ffmpeg failed, frames go to a folder', r?.error);
-      }
+        if (r?.ok) { stream = { id: sid, encoded: 0, open: true }; ctl.stream = stream; } else { stream = null; ctl.stream = null; console.warn('Lab export: streaming to ffmpeg failed, frames go to a folder', r?.error); }
+      };
+      if (f.kind === 'video' && tools && !o.detect && !o.legacy && window.hub.rfast && store.get('three.export.stream', true) !== false) await openStream();
       // the export page draws a frame while the ones before it are encoded and handed on: the old path asked 2 frames
       // ahead; streaming keeps 3 (the encodes of two frames run beside the third one's drawing)
       const LOOKAHEAD = o.ahead || (stream ? 3 : 2);
@@ -286,6 +304,12 @@ const LabExport = (() => {
       const eta = C.etaModel({ total: N, px: o.w * o.h * o.ss * o.ss * o.blur, hist: store.get('three.export.pace', []) });
       const tFrames = performance.now();
       let tLast = tFrames;
+      // (round 43, glrecover) the graphics card restarting mid-render: the frames drawn so far stay (streamed into
+      // ffmpeg or in the folder) and the render picks up at the first frame not finished, on the same page once its
+      // layers ran again, else on a new one. Resuming fails (or it keeps happening): the whole render starts again,
+      // once, and says so. Each frame is the scene at its own time on the export page, so a resumed frame is the same.
+      const gpu = { lost: 0, row: 0, restarted: false };
+      const glFail = (why) => Object.assign(new Error(`The graphics card restarted during the render (${why})`), { glLost: true });
       for (let n = 0; n < N; n += 1) {
         while (ctl.paused && !ctl.cancel) { await sleep(200); tLast = performance.now(); }
         // (a drag, a scroll or typing in the app: the next frame waits for the gesture to end, ≤ 1.5 s, so the GPU and
@@ -297,6 +321,34 @@ const LabExport = (() => {
         const w0 = performance.now();
         const m = await ahead.get(n); ahead.delete(n);
         sp.wait += performance.now() - w0;
+        if (m.lost) {
+          for (const p of ahead.values()) p.catch(() => {}); // (asked ahead on a page without its GPU: not waited for)
+          ahead.clear();
+          gpu.lost += 1; gpu.row += 1; ctl.gpuLost = gpu.lost;
+          console.warn(`Lab export: the graphics card went away at frame ${n + 1}; picking up there`);
+          progress((n / N) * 0.97, `the graphics card restarted · picking up at frame ${n + 1}`, ctl.left);
+          let ok = gpu.row <= 3;
+          if (ok && !(await page.glBack(5000))) {
+            // no restore on that page: a new one with the same scene
+            try { page.close(); page = null; page = await bringUp(`the graphics card restarted · picking up at frame ${n + 1}`); gpu.newPage = (gpu.newPage || 0) + 1; } catch (err) { ok = false; gpu.why = err.message; }
+          }
+          if (!ok) {
+            if (gpu.restarted || o.glAgain) throw glFail(gpu.why || 'it kept happening');
+            // resuming didn't work: the render starts again from its first frame, once (a new export page, a new video)
+            gpu.restarted = true; ctl.gpuRestarted = true;
+            toast('The graphics card restarted during the render — rendering it again from the start', { timeout: 6000 });
+            await writes.catch(() => {}); writes = Promise.resolve(); pending = 0;
+            if (stream?.open) { await window.hub.rfast.cancel(stream.id).catch(() => {}); stream.open = false; await openStream(1); }
+            if (page) page.close();
+            page = null; page = await bringUp('rendering again from the start');
+            sigs.length = 0; drawMs = 0; ctl.frames = 0;
+            n = -1; gpu.row = 0;
+            continue;
+          }
+          n -= 1;
+          continue;
+        }
+        gpu.row = 0;
         if (m.error) throw new Error(`Frame ${n + 1}: ${m.error}`);
         drawMs += m.drawMs || 0;
         if (m.split) { sp.step += m.split.step || 0; sp.merge += m.split.merge || 0; sp.enc += m.split.enc || 0; }
@@ -344,7 +396,7 @@ const LabExport = (() => {
         // no loop of its own: the bars' length with its cross-fade (the frames past it are there)
         if (loop.L + loop.X > N) loop = { ...loop, L: Math.max(2, N - loop.X) };
       }
-      const stat = { format: f.id, w: o.w, h: o.h, ss: o.ss, blur: o.blur, frames: N, ms: Math.round(frameMs), fps: C.speed(N, frameMs), drawMs: Math.round(drawMs), stream: Boolean(stream) };
+      const stat = { format: f.id, w: o.w, h: o.h, ss: o.ss, blur: o.blur, frames: N, ms: Math.round(frameMs), fps: C.speed(N, frameMs), drawMs: Math.round(drawMs), stream: Boolean(stream), ...(gpu.lost ? { gpu: { lost: gpu.lost, newPage: gpu.newPage || 0, restarted: gpu.restarted } } : {}) };
       S.stats.push(stat); if (S.stats.length > 40) S.stats.shift();
       page.close(); page = null;
       if (f.kind === 'still') {
@@ -375,7 +427,7 @@ const LabExport = (() => {
       const secs = Math.round((performance.now() - ctl.t0) / 100) / 10;
       stat.split = Object.fromEntries(Object.entries(sp).map(([k, v]) => [k, k === 'bytes' ? v : Math.round(v)]));
       stat.wall = Math.round(performance.now() - ctl.t0);
-      result = { path: output, format: f.id, w: o.w, h: o.h, fps: F, frames: f.loop && loop ? loop.L : N, seconds: secs, size: st?.size || null, speed: stat.fps, split: stat.split, wall: stat.wall, loop: loop ? { frames: loop.L, fade: loop.X, natural: Boolean(loop.found), secs: r4(loop.L / F) } : null, capped: o.capped, errors: [] };
+      result = { path: output, format: f.id, w: o.w, h: o.h, fps: F, frames: f.loop && loop ? loop.L : N, seconds: secs, size: st?.size || null, speed: stat.fps, split: stat.split, wall: stat.wall, loop: loop ? { frames: loop.L, fade: loop.X, natural: Boolean(loop.found), secs: r4(loop.L / F) } : null, capped: o.capped, errors: [], ...(stat.gpu ? { gpu: stat.gpu } : {}) };
       S.last = result;
       ok = true;
       if (!o.quiet && !rq?.notifies) toast(`Exported ${base(output)} (${o.w}×${o.h}, ${result.frames} frame${result.frames === 1 ? '' : 's'}) in ${secs} s`, { timeout: 6000, action: { label: 'Open', fn: () => openFile(output) } });
@@ -616,6 +668,7 @@ const LabExport = (() => {
         page.send({ type: 'xp-frame', n: k, T: r4(times(k)), w, h, ss: 1, sub: 1, F, kind: 'image/jpeg', q: 0.9 });
         const m = await got;
         if (m.error) throw new Error(`Frame ${k + 1}: ${m.error}`);
+        if (m.lost) { if ((page.gl.tries = (page.gl.tries || 0) + 1) > 3 || !(await page.glBack(5000))) throw new Error('The graphics card restarted: try again'); k -= 1; continue; } // (round 43, glrecover) that frame again once the GPU is back
         out.push(m.buffer);
         onFrame?.(k + 1, n);
       }
