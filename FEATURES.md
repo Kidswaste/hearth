@@ -1139,3 +1139,6 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ A still or paused Lab scene dozes (frames every 100 / 250 / 500 ms instead of every screen frame; wakes at once on any input, message or change): the preview's page 3.3 % → 0.7 % of a CPU, 48 → 4 frames / s; the window's wakeups on the Lab 15 → ~1 / s (the knob timer sleeps, stats every 4 s while dozing).
 - ✓ The hush: a minute without input pauses the look's ambient loops (idlecpu.js); tips wait quietly until they can show.
 - ○ `sh dev/run-checks.sh idlecpu` (dev/checks/idlecpu.js: CPU / wakeups per process in six idle setups, budgets).
+## ⚡ Instant chat switching (round 45, chatswitch, 8 upgrades: docs/upgrades/chatswitch.md)
+- ✓ The last few chats stay ready out of sight (their own lists, content-visibility, within a 20,000-element budget): going back to one only shows it again; a chat opened afresh shows its end first, the rest slips in above; resting on a chat in the list (or ↑ / ↓) gets it ready; its pictures are sized ahead. A waiting jump no longer lands in the next chat.
+- ○ `sh dev/run-checks.sh chatswitch` (dev/checks/chatswitch.js: counts + main-thread CPU per switch; trace-stats now reports CPU time).
