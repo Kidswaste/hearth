@@ -1116,3 +1116,6 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ The Lab picture's right-click 23 → 11 rows, most used first (Freeze, Frame size, Sliders, ♪ Music, Capture, View · ＋ Add, ✨ Look & motion, ⇪ Make & export, ✦ More); the toolbar ⋯ 17 → 11; Sketch ▾ shows all 9 rows (History ›, ⇪ Share & export ›); Board ▾ 20 → 12; the waveform's right-click 7 + More.
 - ✓ Pointing opens a submenu inside a flyout too (#menu-fly2); one name and icon per action in every menu, no command names, one-sentence tooltips where a hint is cut; rows that mean nothing now stay hidden; nothing removed.
 - ○ `sh dev/run-checks.sh menucalm` (dev/checks/menucalm.js: 17 menus, budgets, ≤ 2 clicks, nothing gone + the checks that read the moved rows).
+## 📁 Layer groups (round 44, layergroups, 36 upgrades: docs/upgrades/layergroups.md)
+- ✓ The Lab's Layers list has groups: Ctrl/⌘+click layers, Ctrl/⌘+G (scoped to the list; right-click › 📁 Group layers), ▾ fold, a group's eye, drag in / out, Ctrl/⌘+Shift+G ungroup, Ctrl/⌘+Z there undoes; S / Alt+click an eye solos a layer or a group, saved with the scene so renders match; ◫ group → precomp and back; recipes record group steps; `/group`.
+- ○ `node dev/layergroups-test.js` (unit), `sh dev/run-checks.sh layergroups` (pixels, real keys, reload); not yet on the owner's real scenes.
