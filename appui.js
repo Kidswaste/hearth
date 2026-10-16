@@ -249,7 +249,7 @@ const AppUI = (() => {
           // (round 33, simplify3) moved from Keys: used once, when you subscribe to Meshy (Apps › Meshy › More has it too)
           el('div', { class: 'button-row', title: 'The keys of services Hearth talks to' },
             gbtn('Meshy key…', 'Paste your Meshy API key once (stored encrypted on this computer, never shown to a chat)', run('/meshy key'))), el('span', { class: 'sf-slot' })), 'hearth')),
-      fold('graphics', 'Graphics', 'The graphics card Hearth draws with, the screen\'s refresh rate and hardware video (/graphics power or /graphics backend change the card or path)',
+      fold('graphics', 'Graphics', 'The graphics card Hearth draws with, the screen\'s refresh rate and hardware video (ask in a chat to use another card or way of drawing)',
         () => (window.Gpu52 ? Gpu52.summary() : 'Graphics card, screen refresh, hardware video'), section('Graphics', gpuBox)),
       fold('files', 'Backup and files', 'Backups of your chats and settings, Hearth\'s shortcuts and its own files',
         () => { if (window.BackupAuto) return BackupAuto.lineText().text; const d = Number(H.settings().autoBackupDays) || 0; return d ? `Backs up by itself ${d === 1 ? 'daily' : d === 7 ? 'weekly' : d === 30 ? 'monthly' : `every ${d} days`}` : 'Backups when you ask'; },

@@ -42,7 +42,7 @@ const Gpu52 = (() => {
       if (d.power && d.power !== 'auto') bits.push(d.power === 'high' ? 'always the fast card' : 'the power-saving card');
       if (d.ignoreBlocklist) bits.push('driver guard off');
       if (d.fellBack) bits.push('your pick didn\'t start: back on the usual path');
-      extra.textContent = `${bits.length ? `${bits.join(' · ')} — ` : ''}/graphics power, /graphics backend change it (at the next start)`;
+      extra.textContent = `${bits.length ? `${bits.join(' · ')} — ` : ''}ask in a chat to use another card or way of drawing (from the next start)`; // (no /command on Settings: settingscalm)
       node.closest('details')?.dispatchEvent(new Event('sf-changed', { bubbles: true }));
     });
   }
