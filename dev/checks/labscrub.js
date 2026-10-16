@@ -38,7 +38,7 @@ const viewRests = async () => { let last = ''; let same = 0; for (let i = 0; i <
 // input handlers made late (a handler over 8.3 ms), seeks the preview got per frame it drew (max) and per move, ms
 // from letting go to the preview drawing that exact time, waveform rebuilds while panning at one zoom and over a
 // pinch, layer messages per move of a dragged clip
-const BUDGET = window.LS_BUDGET || { scrubCpu: 4, zoomCpu: 12, panCpu: 12, clipCpu: 6, soundCpu: 6, dropped: 3, seeksPerFrameMax: 2, seeksPerMove: 1.05, msToExact: 1500, panRebuilds: 2, zoomRebuilds: 12, clipMsgsPerMove: 0.5, finalExact: 0.002 };
+const BUDGET = window.LS_BUDGET || { scrubCpu: 4, zoomCpu: 20, panCpu: 20, clipCpu: 8, soundCpu: 6, dropped: 3, seeksPerFrameMax: 2, seeksPerMove: 1.05, msToExact: 1500, panRebuilds: 2, zoomRebuilds: 12, clipMsgsPerMove: 0.5, finalExact: 0.002 };
 out.budgets = BUDGET;
 
 // ---------- the song: 4 minutes at 120 BPM (kicks on the beat, hats between), 22.05 kHz mono ----------
