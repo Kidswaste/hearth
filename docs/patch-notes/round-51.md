@@ -33,6 +33,21 @@
   - **Window at an exact size…**: Capture › Settings › Recording….
 - Fixed: the board's right-click lost a website's, note's, shape's, frame's and colour's own rows once the Apps had been opened.
 
+## ▣ Present gets everything ready
+- Press ▣ Present (or P): a short "Getting ready…" card loads every picture, video and model, prepares every effect, and warms up the graphics card across your whole song — so the show starts without the first-time stutters.
+- During the show the Lab holds 100 % quality and Hearth's background work (backups, sync, tips) waits until you press Esc.
+- If your computer can't hold full quality live, Present offers to **bake** the show: a full-quality video of it, played in sync with the song, with zero lag. Baked shows are kept, so presenting an unchanged scene again starts at once. A bake isn't live: the mic, camera and slider moves won't react.
+
+## ✺ Creative Playground (by Astra)
+- In the rail, or `/playground`: 15 small creative activities that run on your computer with no AI tokens — palette posters, seamless tiles, motion loops, pixel sprites, sound to light, a beat sketcher, a melody garden, game sounds, a sample cutter, pocket effects, an arcade, mazes, a rhythm runner, daily quests and an idea mixer.
+- Export SVG/PNG, WAV, MIDI and playable HTML; save recipes. "Prepare Astra draft" puts an idea in Astra's chat box without sending it.
+
+## 🔧 Fixes
+- A Lab preview that crashes is noticed at once (it used to be checked every 2 s even with the Lab closed) and comes back in under 2 s.
+- If the graphics card reset twice in a session, the Lab preview stayed black; now it recovers or shows a calm message with Restart.
+- Half-finished files after a crash go to the Trash only where there is one (a USB stick or network drive keeps the file).
+- The first screen loads less (2,353 → 2,267 KB). `/tokens` shows its description again.
+
 ## Try it
 - Add a ◆ Shape › underline swoosh with Draws on each kick, and play your song.
 - Open Ctrl/⌘+K while a long reply is being written and type — it keeps up.
