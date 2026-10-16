@@ -9,7 +9,7 @@
 //   · a "/command" shows anywhere in Settings
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --script dev/checks/settingscalm.js --shot /tmp/sc.png
 // Set window.SC_SHOTS = '/dir' (via --eval) to keep a picture of first sight and of everything open.
-const BUDGET = 18; // 17 with three looks up front; a fourth tile shows while you're on a look that isn't one of them
+const BUDGET = 19; // 17 with three looks up front; a fourth tile shows while you're on a look that isn't one of them · (round 53, diskcalm) +1: the folded "Space Hearth uses" line in This computer & sync
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 6000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(60); } return null; };
 const SEL = 'button, select, input:not([type=hidden]), textarea, summary, a[href], [role=button]';
