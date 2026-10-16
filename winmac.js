@@ -103,9 +103,10 @@ const WinMac = (() => {
   // Mac's right-click); keys macOS itself takes with ⌘ (⌘Tab, ⌘Space, ⌥⌘D Dock, ⌥⌘H) are the real Control there (⌃),
   // which Hearth's handlers take too. Windows: "Ctrl+Alt+Shift+K" words. { both: true }: only the "Ctrl/⌘" spellings
   // (text that may name one system's keys on purpose: patch notes). Idempotent.
-  const MODS = String.raw`(?:Ctrl\/⌘\+?|⌘\/Ctrl\+?|(?:Ctrl|Control|Cmd|Command|Alt|Option|Shift)\+)`;
+  const MODS = String.raw`(?:Ctrl\/⌘\+?|⌘\/Ctrl\+?|(?:Ctrl|Control|Cmd|Command|Alt|Option|Shift)\+|[⌃⌥⇧⌘]\+(?=(?:Ctrl|Alt|Shift|Cmd)\+))`; // (also "⌘+Alt+R")
   const KEY = String.raw`(?:F\d{1,2}(?!\d)|Enter|Return|Tab|Space|Esc(?:ape)?|Backspace|Delete|Del|Home|End|PgUp|PgDn|PageUp|PageDown|Insert|right-click|double-click|click|drag|wheel|scroll|drop|[A-Za-z0-9](?![A-Za-z0-9])|[↑↓←→↩⇥⌫,.;:'/\\=\-+\`\[\]{}|?<>*])`;
   const WORD_CHAIN = new RegExp(`(?<![A-Za-z/])((?:${MODS})+)(${KEY})`, 'g');
+  const SYM_KEY = new RegExp(`[⌃⌥⇧⌘]+(?!\\+)${KEY}`); // a symbol naming a key ("⌘V"; not "⌘ Command palette")
   const SYM_CHAIN = new RegExp(`((?:[⌃⌥⇧⌘]\\+?){1,4})(${KEY})`, 'g');
   const MOUSE = /^(?:right-click|double-click|click|drag|wheel|scroll|drop)$/;
   const MAC_ORDER = ['ctrl', 'alt', 'shift', 'cmd'];
@@ -127,11 +128,11 @@ const WinMac = (() => {
     if (text == null || typeof text !== 'string' || !/Ctrl|Control|Cmd|Command|Alt|Option|Shift|[⌃⌥⇧⌘]/.test(text)) return text;
     // a text that names both systems' keys on purpose ("⌘V / Ctrl+V") keeps them; only "Ctrl/⌘" is made this one's
     const rest = text.replace(/Ctrl\/⌘|⌘\/Ctrl/g, '');
-    if (!both && /(?<![A-Za-z/])(?:Ctrl|Alt|Cmd)\+/.test(rest) && /[⌃⌥⇧⌘]/.test(rest)) both = true;
+    if (!both && /(?<![A-Za-z/])(?:Ctrl|Alt|Cmd)\+/.test(rest) && SYM_KEY.test(rest)) both = true;
     let t = text.replace(WORD_CHAIN, (all, chain, key) => {
       if (both && !/⌘/.test(chain)) return all;
       if (mac && /^Ctrl\+$/.test(chain) && key === 'click') return all; // the Mac's right-click, said as such
-      return sayChain(chain.match(/Ctrl\/⌘|⌘\/Ctrl|[A-Za-z]+/g).map(modOf), key, mac);
+      return sayChain(chain.match(/Ctrl\/⌘|⌘\/Ctrl|[A-Za-z]+|[⌃⌥⇧⌘]/g).map(modOf), key, mac);
     });
     // (⌃ names the Mac's own Control key — "F11 / ⌃⌘F": Windows leaves it as written)
     if (!both) t = t.replace(SYM_CHAIN, (all, chain, key) => (!mac && chain.includes('⌃') ? all : sayChain([...chain.replace(/\+/g, '')].map(modOf), key, mac)));
