@@ -158,3 +158,25 @@ the hub); the owner: `/playtest`.
   Resting: hidden (the Mac leaves its full-screen space first), throttled, muted, a Lab page parked (`park`); closes
   after 10 minutes resting. gamemodemain's `before-input-event`: gameinput's `gameinputmain.key` (Esc card, Enter, F), then `playloopmain.key(input)` (Ctrl/⌘+P; resting closes an open Esc card: `game:menu-close`, the card's Fix sends `game:menu-off`); no key listener in the preload.
 - The game window's preload: `.blip` ("↻ Updated"), `.err` (`.m` the line, `.fixit`, `.x`), `.box .fix` on the Esc card.
+
+## Loads during play (round 54, gamestream: tools/gamestream-page.js)
+- gamemodemain serves `/__gamestream-page.js` and puts `<script src="/__gamestream-page.js?off=0|1">` right after
+  GameReady's tag in every HTML page of the window (Lab scene pages and HTML builds; always, armed or not). `game:play`
+  takes `stream: { off }` (a check's "before": localStorage `gamestream.test = { off: true }` on the hub; not a setting).
+- Active once `__gameReady.phase === 'playing'` (or 1.5 s after the first frame without GameReady). Then:
+  `img.src = …` (same origin, or CORS) is fetched + decoded to an ImageBitmap (`flipY`, no premultiply, no color
+  conversion) before the real load (a blob: address; `src` / `complete` / `decode()` answer as the game set them);
+  `texImage2D` / `texSubImage2D` with that `<img>` take the bitmap when the unpack state matches (flip on, premultiply
+  off, conversion NONE: three r152+), else the element as before.
+- `Object3D.prototype.add` / `attach` (the game's own three.js, found from the first scene drawn) note what's added; in
+  the next `renderer.render` of that scene, an object whose materials have no program gets `renderer.compile(obj,
+  camera, scene)` (the whole scene when it brings lights) + a fence, and is drawn hidden (visible only during that
+  render) until the fence is signaled, its programs' first use is done (getUniforms), its textures are uploaded one per
+  frame (≥ 2M pixels: in strips, `UNPACK_SKIP_ROWS`, mipmaps after the last) and 2 frames passed; at most
+  max(1.5 s, 45 frames) (× 2.5 while strips go in), then shown whatever is left (a strip job finishes first).
+- `window.__gameStream`: `near(a, b, { w, h, shader })` → the name of the load most likely behind a slow frame,
+  `renderers()` → `[{ renderer, scene, camera }]` (the probe's discover), `report(t0)` → `{ on, parallel, images,
+  slices, holds, uploads, loads: [{ kind: model | picture | sound | file | object, name, t, done, mb, w, h, smooth }] }`,
+  `pub()`. The gameperf probe puts `load` on its slow frames, `stream` in its report; GamePerfCore names it in the
+  shader / texture findings ("— from “crate.glb”") and adds `load-late` for the other causes; the chip's last stutter
+  shows it ("last: texture 84 ms · big.jpg").

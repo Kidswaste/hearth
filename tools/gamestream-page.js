@@ -224,7 +224,8 @@
     let nm = ''; o.traverse((x) => { if (!nm && x !== o && x.name) nm = x.name; });
     if (nm) return nm.slice(0, 40);
     for (const t of tex) { const im = t.image; if (im instanceof HTMLImageElement) return `the ${o.isMesh ? 'mesh' : 'object'} with ${nameOf(shown.get(im) ?? im.src)}`.slice(0, 48); }
-    return `a new ${o.type || 'object'}`;
+    let m = null; o.traverse((x) => { if (!m && isDrawn(x)) m = matsOf(x)[0]; });
+    return m ? `a new ${String(m.type || '').replace(/^Mesh|Material$/g, '').toLowerCase() || 'plain'} ${o.isMesh ? 'mesh' : 'object'}` : `a new ${o.type || 'object'}`;
   }
   function take(r, scene, camera) {
     const P = r.properties; if (!P?.get) { fresh.clear(); return; }

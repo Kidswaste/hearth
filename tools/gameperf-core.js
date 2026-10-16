@@ -263,7 +263,7 @@ const GamePerfCore = (() => {
       const worst = lf[0];
       const model = /\.(glb|gltf|fbx|obj|drc|bin)$/i.test(worst.load);
       add({ id: 'load-late', kind: 'stutter', impact: (lf.reduce((a, f) => a + f.ms, 0) / Math.max(1, R.secs)) * 3 + worst.ms * 0.1,
-        title: `“${worst.load}” loaded mid-game at ${at(worst.t)}: a ${n0(worst.ms)} ms freeze (${CAUSE[worst.cause] || worst.cause}${worst.fn ? ` in ${worst.fn}()` : ''})${lf.length > 1 ? `, ${lf.length} in all` : ''}`,
+        title: `“${worst.load}” ${/\.\w{2,5}$/.test(worst.load) ? 'loaded' : 'appeared'} mid-game at ${at(worst.t)}: a ${n0(worst.ms)} ms freeze (${CAUSE[worst.cause] || worst.cause}${worst.fn ? ` in ${worst.fn}()` : ''})${lf.length > 1 ? `, ${lf.length} in all` : ''}`,
         fix: model ? 'Load it while the game starts (await loader.loadAsync(…) behind your loading screen, add it hidden), or in smaller pieces; a meshopt model decodes in the background with MeshoptDecoder.useWorkers(2).' : 'Load it while the game starts (behind your loading screen), or in smaller pieces spread over a few frames.',
         snippet: model ? 'const gltf = await loader.loadAsync(url); // during loading, then scene.add(gltf.scene) when it\'s needed' : null });
     }
