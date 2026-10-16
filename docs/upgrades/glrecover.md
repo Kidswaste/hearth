@@ -184,3 +184,25 @@ calm note when it happened, and a Restart button only when restarting Hearth is 
 - The shader node editor's preview and the OBS output page recover too. Type `/graphics` to see whether Hearth is
   using your graphics card.
 - Caveat: a scene that builds things up over time (trails, a simulation) starts that part again after a reset.
+
+## Round 51: no drawing context at all
+Found by the `a11y` check failing under load with "THREE.WebGLRenderer: A WebGL context could not be created. Reason:
+Web page caused context loss and was blocked" and "THREE.WebGLProgram: Shader Error 0 - VALIDATE_STATUS false" with
+every log empty. The audit itself was at 0; it opens the Lab for its controls (sliders, knobs, pickers), not its
+picture. On this machine the software GPU process crashes under load, and after **two** GPU process restarts Chromium
+refused WebGL to the Lab's pages for good (a per-site block meant for websites): glrecover then had nothing to come
+back to, the preview stayed black with raw errors in the console and the scene's "error" in the Lab. That is a real
+app bug (a Mac's GPU reset twice in a session does the same), not only test noise.
+- `main.js`: `app.disableDomainBlockingFor3DAPIs()` before 'ready'. Reproduced with `Browser.crashGpuProcess`: before,
+  the second crash left the page with no context; now contexts come back after each restart. Chromium's own fallback
+  when the GPU keeps crashing (WebGL off for the app after the third or fourth restart) still applies.
+- `tools/three-sandbox.html`: a context asked for and none given → `glrNone()`: the Lab is told once (`gpu-lost`,
+  `none`), the layer whose renderer couldn't be made isn't reported as the scene's error, three.js' lines for it (and a
+  program link "failing" with every log empty, which is the GPU going mid-link; a real shader mistake always has a log)
+  become one calm console line per page instead of a `console.error` per renderer.
+- `tools/three.js`: three pages in a row without any context → no more new pages on their own (each failed the same
+  way, every 4 s, forever); the calm banner "The graphics card isn't drawing the preview right now." stays, with
+  ⟲ Restart. A page that draws with a context resets it.
+- Checked with the GPU crashed until WebGL is off, then a scene run: before (84431ac) 8 console errors, a black
+  preview, no banner; now no console error, 3 new pages, the banner, sliders kept. `dev/checks/a11y.js` is unchanged
+  (nothing filtered).

@@ -111,9 +111,31 @@
   // (seqsolid) a call from a layer module that no layer runs any more (a sequence clip scrubbed past while it loaded,
   // a re-run that replaced it): what it logs or throws isn't the scene's, it's dropped
   window.__isStale = () => false;
+  // (round 51) three.js' lines for a graphics card that's away are not the scene's errors: no drawing context at all
+  // ("A WebGL context could not be created" / "Error creating WebGL context": the GPU process restarting, or Chromium
+  // refusing WebGL for now), or a program whose link "failed" with no log anywhere (the GPU process went in the middle
+  // of it: a real shader mistake always says what's wrong). The glrecover path deals with them (glrNone below: the Lab
+  // makes the page again, then a calm banner if even that can't draw); the console gets one calm line per page instead
+  // of an error per renderer / material.
+  const gpuAway = (text) => /WebGL context could not be created|Error creating WebGL context/.test(text)
+    || (/WebGLProgram: Shader Error 0 - VALIDATE_STATUS false/.test(text) && /Program Info Log: *\n/.test(text) && !/ERROR|WARNING|error|warning/.test(text.replace(/^[^\n]*\n/, '')));
+  let gpuAwaySaid = false;
   for (const level of ['log', 'info', 'warn', 'error']) {
     const orig = console[level].bind(console);
-    console[level] = (...args) => { const st = new Error().stack; if (window.__isStale(st)) return; post({ type: 'console', level, text: args.map(fmt).join(' '), layer: window.__layerOfStack(st) }); orig(...args); };
+    const warnRaw = level === 'error' ? console.warn.bind(console) : orig;
+    console[level] = (...args) => {
+      const st = new Error().stack; if (window.__isStale(st)) return;
+      const text = args.map(fmt).join(' ');
+      if (level === 'error' && gpuAway(text)) {
+        if (/could not be created|Error creating/.test(text)) globalThis.__glrNone?.();
+        if (gpuAwaySaid) return;
+        gpuAwaySaid = true;
+        const calm = 'The graphics card isn\u2019t giving the preview a drawing surface right now (it was reset or is busy). Hearth brings the preview back by itself.';
+        post({ type: 'console', level: 'warn', text: calm, layer: window.__layerOfStack(st) }); warnRaw(`Lab preview: ${calm}`);
+        return;
+      }
+      post({ type: 'console', level, text, layer: window.__layerOfStack(st) }); orig(...args);
+    };
   }
   // Line numbers for errors raised inside the sketch module (a blob: URL).
   // blob URLs look like blob:null/<uuid>:LINE:COL — take the first number pair after the URL.
@@ -616,6 +638,7 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   if (gl3d && mode === 'sketch' && !this.__ctxMade && !helperNow() && typeof staleStack === 'function' && staleStack(new Error().stack)) { perfNote.staleRefused = (perfNote.staleRefused || 0) + 1; return null; }
   if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
   const ctx = realGetContext.call(this, type, opts);
+  if (gl3d && !ctx) globalThis.__glrNone?.(); // (round 51) no context at all: the GPU is away (glrecover below)
   if (gl3d && ctx) this.__ctxMade = true;
   if (gl3d && ctx && !ctx.__counted) {
     ctx.__counted = true; glRefs.push(new WeakRef(ctx)); if (glRefs.length > 64) glAlive();
@@ -1356,6 +1379,17 @@ function glrWatch(cv, ctx) {
   cv.addEventListener('webglcontextrestored', glrRestored);
 }
 globalThis.__glrWatch = glrWatch;
+// (round 51) a WebGL context asked for and none given (the GPU process restarting, or the browser refusing WebGL to the
+// page for now): the same as every context lost with none coming back. The Lab is told once ('gpu-lost', none) and,
+// after its few seconds, makes the page again for the same scene; a page that still can't draw gets its calm banner.
+// The layer whose renderer couldn't be made isn't reported as the scene's error meanwhile (runLayer).
+function glrNone() {
+  GLR.none = (GLR.none || 0) + 1;
+  if (GLR.lost) return;
+  GLR.lost = realNow(); GLR.epoch += 1;
+  post({ type: 'gpu-lost', epoch: GLR.epoch, mode, layers: [...layers.keys()].length, none: true });
+}
+globalThis.__glrNone = glrNone;
 function glrLost(e) {
   const cv = e.target;
   if (cv.__letGo) return;
@@ -11087,6 +11121,8 @@ async function runLayer(spec, hot = false) {
     // never read keeps every object of its frames (a stopped run's WebGLRenderer, its canvas): reading it lets them go
     try { void err?.stack; } catch { /* not an Error */ }
     if (L.gen !== g || layers.get(L.id) !== L) return; // (seqsolid) a run replaced meanwhile (a scrub, a re-run): its failure isn't the layer's
+    // (round 51) no WebGL context for its renderer: the GPU is away, not the code (glrNone: the page is made again)
+    if (GLR.none && /Error creating WebGL context/.test(String(err?.message))) { layerDrew(L); return; }
     post({ type: 'error', layer: pcTop(L.id), message: `${L.props.pcOf ? `[◫ ${L.props.name || L.id}] ` : ''}${err.name}: ${err.message}`, line: Number(/blob:[^\s)]*?:(\d+):\d+/.exec(err.stack || '')?.[1]) || null });
     if (L.gen === g) layerDrew(L);
   }
@@ -11094,7 +11130,7 @@ async function runLayer(spec, hot = false) {
 // All layers, bottom first (a fresh page). A layer that already runs is torn down first (a run sent twice).
 function runLayers(specs) {
   for (const id of [...layers.keys()]) if (!specs.some((s) => s.id === id)) removeLayer(id);
-  waitStack(specs.map((s) => s.id), () => post({ type: 'stack-drawn' }));
+  waitStack(specs.map((s) => s.id), () => post({ type: 'stack-drawn', ...(GLR.none ? { noGl: true } : {}) }));
   specs.forEach((s, z) => runLayer({ z, ...s }));
 }
 // A whole new stack in this same page (another sketch, ▶ Run, a jam round): a picture of the old stack lies on top
@@ -11132,7 +11168,7 @@ function swapLayers(specs, fx = 'xfade') {
   }
   lastRenderer = null;
   resetPage();
-  waitStack(specs.map((s) => s.id), () => { if (cover) fadeAway(cover, stageSwapMs ?? 420); post({ type: 'stack-drawn' }); memSwitched(); });
+  waitStack(specs.map((s) => s.id), () => { if (cover) fadeAway(cover, stageSwapMs ?? 420); post({ type: 'stack-drawn', ...(GLR.none ? { noGl: true } : {}) }); memSwitched(); });
   specs.forEach((s, z) => runLayer({ z, ...s, swap: true }));
 }
 
@@ -12018,7 +12054,7 @@ function sqSet(plan) {
   sqApply(SQ.T);
   sqState(true);
   // the hub's cover (a page that just reloaded) goes once the program has drawn
-  if (first) Promise.all(ready).then(() => realRAF(() => realRAF(() => post({ type: 'stack-drawn' }))));
+  if (first) Promise.all(ready).then(() => realRAF(() => realRAF(() => post({ type: 'stack-drawn', ...(GLR.none ? { noGl: true } : {}) }))));
 }
 // another scene's sequence comes in: a picture of the old program on top fades away (on the compositor)
 function sqFadeOut() {

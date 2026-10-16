@@ -11,6 +11,11 @@ require('./winmac').fixProcessPath();
 // rest loads; when main-process files changed, Hearth starts once more right away (no window yet). Usually: one stat.
 if (require('./updatesafe-core').startSwap(app, { log: console.log })) return;
 const store = require('./store');
+// (round 51) Chromium's per-site WebGL block after GPU resets ("Web page caused context loss and was blocked": two GPU
+// process restarts were enough) is a guard for websites; here it left the Lab's own pages without any drawing context
+// until Hearth restarted, so glrecover had nothing to come back to. Off (before 'ready'); Chromium's own fallback when
+// the GPU keeps crashing still applies (glrecovermain's note).
+try { app.disableDomainBlockingFor3DAPIs(); } catch (err) { console.warn('glrecover: domain blocking', err.message); }
 // (round 19, splash) modules the first screen doesn't need are required on their first use instead of before the window
 // opens (Electron's 'ready' waits for everything main.js does at load): the same object to every caller, made on demand
 function later(file, onLoad) {

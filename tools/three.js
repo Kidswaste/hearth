@@ -89,6 +89,9 @@ const ThreeLab = (() => {
       if (!gl.lost) return;
       gl.stuck += 1; live.gl('stuck', name);
       onMessage({ source: 'three-sandbox', type: 'gpu-stuck', epoch: gl.epoch, count: gl.stuck, ...(gl.crashNow ? { crashed: true } : {}) }); gl.crashNow = false;
+      // (round 51) pages that couldn't get a WebGL context at all ('gpu-lost' with none), three in a row: no more new
+      // pages on their own (each would fail the same way); the Lab's calm banner stays, with ⟲ Restart
+      if (gl.noneRow >= 3) return;
       if (gpuStuck !== 'owner' && (target === 'stage' || frame.isConnected)) { gl.again = true; load(true); }
     };
     // (round 50, crashsafe) the page's own process died (a crash, killed by the system): the main process says which
@@ -135,9 +138,9 @@ const ThreeLab = (() => {
     // a GPU that was back). A rebuild that never ends still gets a new page.
     const GL_REBUILD_MS = 20000;
     const glTrack = (data) => {
-      if (data.type === 'gpu-lost') { gl.epoch = data.epoch || gl.epoch + 1; if (!gl.lost) { gl.lost = true; gl.at = Date.now(); live.gl('lost', name); } clearTimeout(gl.timer); gl.timer = setTimeout(glStuck, glWaitMs()); }
+      if (data.type === 'gpu-lost') { gl.noneRow = data.none ? (gl.noneRow || 0) + 1 : 0; gl.epoch = data.epoch || gl.epoch + 1; if (!gl.lost) { gl.lost = true; gl.at = Date.now(); live.gl('lost', name); } clearTimeout(gl.timer); gl.timer = setTimeout(glStuck, glWaitMs()); }
       if (data.type === 'gpu-restoring' && gl.lost) { clearTimeout(gl.timer); gl.timer = setTimeout(glStuck, Math.max(GL_REBUILD_MS, glWaitMs())); }
-      if (data.type === 'gpu-restored') { clearTimeout(gl.timer); gl.timer = 0; if (gl.lost) { gl.lost = false; gl.restored += 1; live.gl('restored', name); } }
+      if (data.type === 'gpu-restored') { gl.noneRow = 0; clearTimeout(gl.timer); gl.timer = 0; if (gl.lost) { gl.lost = false; gl.restored += 1; live.gl('restored', name); } }
     };
     const handle = (data) => {
       if (data?.source !== 'three-sandbox') return;
@@ -161,6 +164,7 @@ const ThreeLab = (() => {
         for (const m of queue) deliver(m);
         queue = [];
       }
+      if (data.type === 'stack-drawn' && !data.noGl) gl.noneRow = 0; // (round 51) a page that drew with a context: the GPU is there
       if (data.type === 'stack-drawn' && ready && !cover.classList.contains('out')) requestAnimationFrame(uncover);
       onMessage(data);
     };
