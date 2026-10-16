@@ -405,7 +405,13 @@ const Lazy = (() => {
     const typing = (t) => /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName || '') || t?.isContentEditable;
     document.addEventListener('keydown', (e) => {
       if (g.state !== 'stub' || e.defaultPrevented || e.altKey) return; // (a press is a use: held groups load too)
-      const k = g.keys.find((x) => (e.key.toLowerCase() === x.key.toLowerCase() || e.code === x.code) && Boolean(x.mod) === (e.ctrlKey || e.metaKey)
+      // (round 54, fixes54) the Mac's mod is ⌘ only (a real Control press is the text field's own: ⌃P moves the caret up),
+      // and a key by the letter printed on it (AZERTY's M sits on QWERTY's ";": WinMac.layoutCode)
+      const mac = /Mac/.test(navigator.platform || '');
+      const modOn = mac ? e.metaKey : (e.ctrlKey || e.metaKey);
+      if (mac && e.ctrlKey && !e.metaKey) return;
+      let code = e.code; try { if (typeof WinMac !== 'undefined' && WinMac.layoutCode) code = WinMac.layoutCode(e, null, { mac }); } catch { /* as pressed */ }
+      const k = g.keys.find((x) => (e.key.toLowerCase() === x.key.toLowerCase() || code === x.code) && Boolean(x.mod) === modOn
         && (x.shift == null || Boolean(x.shift) === e.shiftKey) && !(x.typing === false && typing(e.target)));
       if (!k) return;
       e.preventDefault(); e.stopPropagation();

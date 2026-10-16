@@ -135,7 +135,7 @@ async function buildScene(spec) {
   const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r) => [r.key, r.path, stamp(r.path), ready()?.swapFor?.(r.path) || '', ready()?.texFor?.(r.path)?.out || '']), song: spec.song?.path ? [spec.song.path, stamp(spec.song.path)] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: stamp(sandbox), me: stamp(__filename) })).digest('hex').slice(0, 16);
   const metaFile = path.join(dir, 'hearth-play.json');
   try { const m = JSON.parse(fs.readFileSync(metaFile, 'utf8')); if (m.key === key && fs.existsSync(path.join(dir, 'play.html'))) return { dir, version, cached: true, notes: m.notes || [] }; } catch { /* a new build */ }
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 4, retryDelay: 150 }); // (Windows: a virus scanner / the last window can hold a file a moment)
   fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
   const notes = [];
   // (round 52, gameready) a 🧊 model layer's runtime (lab3d) imports its loaders / decoders on demand (GLTFLoader,
@@ -148,9 +148,14 @@ async function buildScene(spec) {
   if (v.missing.length) notes.push(`Not found for three.js ${version}: ${v.missing.join(', ')}`);
   if (ktx) { try { await ready().vendorKtx(path.join(dir, 'three'), version); } catch (err) { notes.push(`Compressed textures: ${err.message} (the originals are used)`); } }
   const refs = [];
+  const songFile = spec.song?.path ? `assets/song${path.extname(spec.song.path).toLowerCase() || '.mp3'}` : null;
+  const taken = new Set(songFile ? [songFile] : []); // (round 54, fixes54) "Logo" and "logo" are one file on a Mac / Windows disk (and a picture called "song" isn't the song): the second gets its own name
   for (const r of spec.refs || []) {
     if (!r.path || !fs.existsSync(r.path)) { notes.push(`Picture / file "${r.key}" is missing`); continue; }
-    const file = `assets/${String(r.key || path.basename(r.path)).replace(/[^\w.-]+/g, '_')}${path.extname(r.path)}`;
+    const stem = `assets/${String(r.key || path.basename(r.path)).replace(/[^\w.-]+/g, '_')}`;
+    let file = `${stem}${path.extname(r.path)}`;
+    for (let i = 2; taken.has(file.toLowerCase()); i += 1) file = `${stem}-${i}${path.extname(r.path)}`;
+    taken.add(file.toLowerCase());
     fs.copyFileSync(ready()?.swapFor?.(r.path) || r.path, path.join(dir, file)); // (round 52, gameready: its optimized copy when there's one)
     // (round 53, gametex) a picture's compressed copy next to it (the original stays: the fallback)
     const tx = r.kind === 'image' && fs.existsSync(path.join(dir, 'three', 'examples', 'jsm', 'libs', 'basis', 'basis_transcoder.wasm')) ? ready()?.texFor?.(r.path) : null;
@@ -159,7 +164,7 @@ async function buildScene(spec) {
   }
   let song = null;
   if (spec.song?.path && fs.existsSync(spec.song.path)) {
-    const file = `assets/song${path.extname(spec.song.path).toLowerCase() || '.mp3'}`;
+    const file = songFile;
     fs.copyFileSync(spec.song.path, path.join(dir, file));
     song = { file, mime: C.mimeOf(spec.song.path), name: path.basename(spec.song.path) };
   }
@@ -203,7 +208,7 @@ async function play(_e, req = {}) {
   const source = C.source(req.source);
   if (!source) throw new Error('Nothing to play: pick a Lab scene or an HTML game.');
   if (G) leave('another game');
-  for (let i = 0; i < 40 && G; i += 1) await new Promise((r) => setTimeout(r, 25));
+  for (let i = 0; i < 72 && G; i += 1) await new Promise((r) => setTimeout(r, 25)); // (round 54: past leave()'s 1.5 s, so a stuck game has ended first)
   const { BrowserWindow } = require('electron');
   const list = displays();
   const d = C.pickDisplay(list, req.display ?? null);
@@ -247,7 +252,7 @@ async function play(_e, req = {}) {
   wc.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
     if (GI.key(e, input)) return;
-    const k = String(input.key || '').toLowerCase();
+    const k = loop()?.letter ? loop().letter(input) : String(input.key || '').toLowerCase(); // (round 54: by the key's letter on any layout)
     if (loop()?.key?.(input)) { e.preventDefault(); return; } // (round 53, playloop) Ctrl/⌘+P: back to editing, the game kept (after gameinput's keys)
     if ((mac && input.meta && (k === 'q' || k === 'w')) || (!mac && input.control && k === 'w') || (!mac && input.alt && k === 'f4')) { e.preventDefault(); leave('key'); return; }
     if (mac && input.meta) e.preventDefault();

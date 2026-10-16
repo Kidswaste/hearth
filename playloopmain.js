@@ -85,12 +85,14 @@ function blip(text, clear = false) {
   return state();
 }
 
+// (round 54, fixes54) the letter a key press means: its own letter, or (a Russian / Greek layout) the one on its place
+const letter = (input) => { const k = String(input.key || '').toLowerCase(); return /^[a-z]$/.test(k) || !/^Key[A-Z]$/.test(String(input.code || '')) ? k : input.code.slice(3).toLowerCase(); };
 // the keys in the game window (gamemodemain's before-input-event asks first): Ctrl/⌘+P back to editing,
 // Ctrl/⌘+Shift+P "Play from here" (the hub does it)
 function key(input) {
   if (input.type !== 'keyDown' || input.alt) return false;
   const mod = mac ? input.meta : input.control;
-  if (!mod || String(input.key || '').toLowerCase() !== 'p') return false;
+  if (!mod || letter(input) !== 'p') return false;
   if (input.shift) tell({ type: 'key', what: 'here' }); else rest('key');
   return true;
 }
@@ -115,4 +117,4 @@ function fix(e, d = {}) {
 }
 // gamemodemain: a game ended (resting or not), or a new one started
 function ended() { clearTimeout(S.timer); S.resting = false; }
-module.exports = { register, op, fix, key, ended, state, rest, wake, side, blip };
+module.exports = { letter, register, op, fix, key, ended, state, rest, wake, side, blip };
