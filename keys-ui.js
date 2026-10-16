@@ -591,7 +591,7 @@ const KeysUI = (() => {
       { area: 'Right-click', keys: 'Right-click a tool call', what: 'In the dock’s list of tool calls: copy the line, clear the list', sel: '.dd-list .dd-row' },
       { area: 'Right-click', keys: 'Right-click a tab bar', what: 'Every tab of the tool (long bars keep five on screen)', sel: '.surface.active .tabbar' },
       { area: 'Right-click', keys: 'Right-click Settings', what: 'Appearance, Go to › a section, More settings, back up, your usage', sel: 'dialog.settings-dialog' },
-      { area: 'Right-click', keys: 'Right-click the token dashboard', what: 'Range ›, Show ›, copy a summary, Export ›', sel: 'dialog.meter-dlg' },
+      { area: 'Right-click', keys: 'Right-click the Usage window', what: 'Range ›, Show ›, copy a summary, Export ›', sel: 'dialog.meter-dlg' },
       { area: 'Right-click', keys: 'Right-click the command bar', what: 'Recent ›, Pinned ›, every command', sel: '.cmdbar' },
       { area: 'Right-click', keys: 'Right-click a console line', what: 'Copy it, go to its line in the code, select its layer, ask the director about an error', sel: '.surface.active .console-row' },
       { area: 'Right-click', keys: 'Right-click an effect', what: 'In the effects picker (X): add it, use it on the selected layer, ★, copy its name', sel: '.fx-picker .fx-row' },

@@ -127,7 +127,8 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
       prev.restart(timeout);
       return prev;
     }
-    while (toastBox.childElementCount >= 5) ([...toastBox.children].find((t) => !t.hasAction) || toastBox.firstElementChild).remove(); // an Undo stays longest
+    // (round 49, appcalm) at most 3 at once (was 5): the older plain ones go first and stay in Ctrl/⌘+K › Recent notifications
+    while (toastBox.childElementCount >= 3) ([...toastBox.children].find((t) => !t.hasAction) || toastBox.firstElementChild).remove(); // an Undo stays longest
     const node = el('div', { class: `toast ${type}` }, el('span', { text: macText(message) }));
     node.toastKey = `${type}\n${message}`; node.hasAction = Boolean(action);
     if (action) node.append(el('button', { text: action.label, on: { click: () => { action.fn(); node.remove(); } } }));
