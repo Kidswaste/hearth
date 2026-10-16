@@ -100,7 +100,9 @@ ops), `director-cmds.js` + `options.js` (auto picture on by default, new words).
 - `node --check` on every touched file.
 - Unit: directorfrugal-test, directorlean-test, director-mcp-test, promptdiet-test, cache-test, tokens-test,
   tokenaudit-test, concise-test, toolslim-test, director-cost: pass.
-- Smoke: `dev/checks/directorfrugal.js` 8/8; `sh dev/run-checks.sh directorfrugal` (see the report below).
+- Smoke: `sh dev/run-checks.sh directorfrugal` **14/14 passed** on the first run (directorfrugal 8/8 steps,
+  directorfrugal-test, directorlean, director-tools, labdirector, directorlean-test, director-mcp-test, promptdiet-test,
+  tokenaudit-test, tokenaudit, cachewise, cache-test, lazy, boot-test).
 
 ## Not done (on purpose) / risks
 - **The scripts are scripted**: no real model ran here. The after scripts are what the director *can* do with the new
