@@ -122,7 +122,7 @@ function schedule(ms, why) {
   clearTimeout(timer);
   // (round 20, jankwatch) a pass due while the owner types / drags / scrolls waits for the gesture to end (≤ 30 s)
   let tries = 0;
-  timer = setTimeout(function go() { if (tries < 20 && hold()) { tries += 1; timer = setTimeout(go, 1500); return; } firstAt = 0; run({ why }); }, wait);
+  timer = setTimeout(function go() { const h = hold(); if (h === 'quiet' || (tries < 20 && h)) { tries += 1; timer = setTimeout(go, h === 'quiet' ? 5000 : 1500); return; } firstAt = 0; run({ why }); }, wait); // ('quiet': the Lab presents, round 52: no limit, it waits the show out)
 }
 async function run(o = {}) {
   if (!engine) return publicStatus();

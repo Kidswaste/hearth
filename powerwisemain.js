@@ -140,6 +140,11 @@ function download(item) {
   } catch { /* not a download item */ }
 }
 
+// (round 52, presentready) while the Lab presents: the main process' background timers wait (backups, config watching);
+// sync asks quietNow() before a pass (main.js setHold); off again: they come back one at a time
+let quietOn = false;
+function quiet(on) { on = Boolean(on); if (on === quietOn) return false; quietOn = on; sched.hush(on, []); return true; }
+
 // ---------- IPC ----------
 function register(ipcMain, o = {}) {
   getWin = o.getWin || getWin;
@@ -158,6 +163,7 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('power:hold', (e, reason, opts = {}) => { watchOwner(e.sender); return blocker.hold(String(reason || 'render'), { label: opts?.label, display: opts?.display, ttl: opts?.ttl, owner: e.sender.id }); });
   ipcMain.handle('power:release', (_e, token) => blocker.release(Number(token)));
   ipcMain.handle('power:allow', () => blocker.allow());
+  ipcMain.handle('power:quiet', (_e, on) => quiet(on)); // (round 52, presentready) the Lab presents: background work waits
   ipcMain.handle('power:test', (_e, t = {}) => testHook(t));
   try {
     const { powerMonitor } = require('electron');
@@ -240,5 +246,5 @@ function metrics() {
   return { at: Date.now(), mainCpu: process.cpuUsage(), procs, pages, threads };
 }
 
-module.exports = { register, hold, during, turn, download, every: (id, ms, fn, o) => sched.every(id, ms, fn, o), stop: (id) => sched.stop(id), state: snapshot, policy: () => Core.policy(st),
+module.exports = { register, hold, during, turn, download, quiet, quietNow: () => quietOn, every: (id, ms, fn, o) => sched.every(id, ms, fn, o), stop: (id) => sched.stop(id), state: snapshot, policy: () => Core.policy(st),
   onState: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, wokeAt: () => st.wokeAt, WAKE: Core.WAKE, _test: { blocker, sched, testHook, probe } };

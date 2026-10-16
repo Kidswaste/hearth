@@ -286,7 +286,7 @@ const LabExport = (() => {
         const parts = SEQ().audioPlan(e, (T0 * F + N) / F, T0);
         return C.audio(parts, { fx: typeof SeqCut !== 'undefined' ? SeqCut : null, duck: SEQ().duckOf?.(e) || null, from: T0 });
       };
-      const argsOf = async (input) => C.args({ format: f.id, F, n: N, input, w: o.w, h: o.h, quality: o.quality, audio: soundOf(), loop: f.loop ? loop : null, encoders: await encodersOf(), alpha: o.alpha, gifFps: F, gifLong: o.gifLong || 0 });
+      const argsOf = async (input) => C.args({ format: f.id, F, n: N, input, w: o.w, h: o.h, quality: o.quality, audio: soundOf(), loop: f.loop ? loop : null, encoders: await encodersOf(), alpha: o.alpha, gifFps: F, gifLong: o.gifLong || 0, hw: Boolean(o.hw) }); // (o.hw: round 52, presentready)
       // (round 41, renderfast) a video's frames go straight into ffmpeg while the next ones draw (renderfastmain.js):
       // no temporary pictures, and the encode is done when the last frame is. The old way (a folder of frames, then
       // ffmpeg) stays for a loop searched in the frames, an ffmpeg that can't be reached this way, and `legacy`.

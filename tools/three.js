@@ -669,7 +669,7 @@ const ThreeLab = (() => {
     // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
     const presentBtn = btn('▣ Present', 'Shows the preview full screen with nothing else, for showing it off (P · Esc leaves)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
-    presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)]]); });
+    presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Bake for a perfect show', 'Renders it to a video first, then plays it: not live (the mic, camera and sliders won\'t react)', () => togglePresent('bake')], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)]]); });
     previewHost.addEventListener('dblclick', (e) => { if (e.target === previewHost) togglePresent(); }); // double-click beside the picture
     presentBtn.dataset.key = 'P';
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · B blackout · I info · PgUp / PgDn other sketches · 1–9 cues' });
@@ -967,7 +967,7 @@ const ThreeLab = (() => {
     let parkedNow = false;
     let stallArm = null; // (round 39, powerwise) the stall / park safety timer's pace follows the park (set below)
     function syncPark(force = false) {
-      const on = !box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }));
+      const on = (!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || previewHost.classList.contains('pr-baked'); // (round 52: a baked show plays a video; the live preview rests behind it)
       if (on === parkedNow && !force) return;
       parkedNow = on;
       stallArm?.(on);
@@ -1152,10 +1152,19 @@ const ThreeLab = (() => {
         popup(r.left, r.bottom + 4, ['Objects in the scene', ...msg.tree.slice(0, 200).map((n) => [`${'  '.repeat(n.depth)}${n.name || n.type}${ov[n.path] ? ' ●' : ''}${n.v ? '' : ' (hidden)'}`, n.name ? n.type : '', () => box.send({ type: 'edit', cmd: 'select', path: n.path }), editSel?.path === n.path])]);
       }
     }
-    function togglePresent() {
+    // (round 52, presentready) ▣ Present gets the scene ready on the big screen first (tools/three-ready.js, lazy group
+    // "presentready"): everything loaded and compiled, frames warmed across the timeline, then 100 % quality held, or a
+    // baked video when this computer can't hold it live. mode: null (it decides) · 'bake' · 'live'
+    function togglePresent(mode = null) {
       if (document.fullscreenElement) { document.exitFullscreen(); return; }
       pane.focus();
-      previewHost.requestFullscreen().catch((err) => toast(`Couldn't go fullscreen: ${err.message}`, { type: 'error' }));
+      previewHost.requestFullscreen().then(() => getReady(mode)).catch((err) => toast(`Couldn't go fullscreen: ${err.message}`, { type: 'error' }));
+    }
+    async function getReady(mode) {
+      try {
+        if (typeof PresentReady === 'undefined' && typeof Lazy !== 'undefined') await Lazy.load('presentready');
+        if (document.fullscreenElement === previewHost && typeof PresentReady !== 'undefined') PresentReady.start(api.present, { mode });
+      } catch (err) { console.warn('Present: getting ready', err); }
     }
     // keys that only mean something while presenting: I info, PgUp / PgDn sketches, F / \\ freeze
     function presentKeys(e) {
@@ -2024,9 +2033,15 @@ const ThreeLab = (() => {
     document.body.append(exitFocus);
     api.sketchList = () => [...sketches].sort((a, b) => b.updatedAt - a.updatedAt).map((s) => ({ id: s.id, name: s.name }));
     api.openSketchById = (id) => { if (sketches.some((s) => s.id === id) && id !== current?.id) openSketch(id); };
+    // (round 52, presentready) what getting ready for a show needs from the Lab (tools/three-ready.js)
+    api.present = {
+      host: previewHost, get player() { return player; }, send: (m) => box.send(m), syncPark: () => syncPark(),
+      frame: () => (stage?.size?.id && stage.size.id !== 'fit' ? { w: stage.size.width, h: stage.size.height } : null),
+      scene: () => (current ? { id: current.id, name: current.name } : null),
+    };
     api.lab = {
       sheet: () => showSheet(),
-      present: () => togglePresent(), focus: () => setFocus(!focusOn), consoleMode: (m) => setConsoleMode(m),
+      present: (mode) => togglePresent(mode), focus: () => setFocus(!focusOn), consoleMode: (m) => setConsoleMode(m),
       speed: (r) => player.setRate(r), cue: () => player.addCue(player.time),
       // what a controller would send (also used by tests): midiMessage([0xB0, 21, 64])
       midiMessage: (bytes) => onMidi({ data: bytes }), midiLearn: (o) => { midiLearn = o; }, write: (on) => setWrite(on),
@@ -2702,7 +2717,7 @@ const ThreeLab = (() => {
       freeze: (on) => { setFreeze(on ?? !frozenNow); return frozenNow; }, step: () => { if (!frozenNow) setFreeze(true); box.send({ type: 'step' }); },
       compare: (mode) => (mode === 'pin' ? pinFrame() : setCompare(mode)),
       still: (o) => still(o || {}), safe: (on, plat) => stage.setSafe(on, plat), guides: () => { cycleGuides(); return guides || 'off'; },
-      present: () => togglePresent(), focus: () => setFocus(!focusOn), stage: () => setStage(!box.onStage),
+      present: (mode) => togglePresent(typeof mode === 'string' ? mode : null), focus: () => setFocus(!focusOn), stage: () => setStage(!box.onStage),
       fps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); return v; },
       // round 16 "labperf": the numbers (/lab perf), the HUD, Light mode
       // (kept out of lastStats: the director's reports stay as short as they were)
@@ -2893,6 +2908,7 @@ const ThreeLab = (() => {
     function onMessage(msg) {
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
       if (/^gpu-(lost|restored|stuck)$/.test(msg.type)) { glPreview(msg); return; } // (round 43, glrecover)
+      if (/^ready-/.test(msg.type)) { window.PresentReady?.onBox?.(msg); return; } // (round 52, presentready)
       if (msg.type === 'stack-drawn' && glp.phase === 'remaking') glBack('new page');
       if (msg.type === 'obs-frame') { window.InteropObs?.frame(msg); return; } // (round 25, interop) a frame for OBS's Browser Source
       if (msg.type === 'shader-info') { window.LabShader?.onBox?.(msg); return; } // (round 23) ◇ shader layers' compile state
@@ -3395,6 +3411,7 @@ const ThreeLab = (() => {
     const idleCheck = () => {
       syncPark();
       if (!lastStatsAt || !stall.hidden) return;
+      if (parkedNow) { lastStatsAt = Math.max(lastStatsAt, Date.now() - 2000); return; } // (parked, e.g. behind a baked show: nothing to watch; round 52)
       const visible = document.visibilityState === 'visible' && (box.onStage || previewHost.offsetParent);
       if (!visible) { lastStatsAt = Math.max(lastStatsAt, Date.now() - 2000); return; } // hidden views draw nothing
       if (Date.now() - lastStatsAt > 8000) showStall('The preview stopped responding.');
