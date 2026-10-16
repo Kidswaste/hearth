@@ -1,7 +1,7 @@
 const CreativePlayground = (() => {
   const C = CreativeCore, KEY = 'creative-playground', SR = 22050;
   let host, stage, nav, feedback, state, source, context, analyser, meterFrame, preview, clip, rendered, generation = 0;
-  let feature = 'poster', ready = false, canSave = false, saving = Promise.resolve(), timer = null, timerEnd = 0;
+  let feature = 'quests', ready = false, canSave = false, saving = Promise.resolve(), timer = null, timerEnd = 0;
   const defaults = () => ({ v: 1, seed: 'hearth-01', bpm: 110, swing: .12, root: 60, scale: 'minor', style: 'orbit', sound: 'pickup', pitch: 1, difficulty: 1, mazeSize: 23, fx: { drive: .15, cutoff: 7000, echo: .2, crush: 0 }, pattern: C.drums('hearth-01'), done: {}, journal: {}, recipes: [], medium: 'visual' });
   const notice = text => { if (feedback) feedback.textContent = text; };
   const para = text => el('p', { class: 'cp-hint', text });
@@ -146,14 +146,16 @@ const CreativePlayground = (() => {
     Native.setDraft(a.id, `${previous ? previous + '\n\n' : ''}${text}\n\nHelp me develop this creative study. Ask before changing existing projects.`); activate(a.id); notice('Prepared an Astra draft. Nothing was sent.');
   }
   function daily() {
-    const day = C.localDay(), quests = C.quests(day), doneDays = Object.keys(state.done).filter(d => state.done[d]?.length);
-    stage.append(para(`${day} · ${C.streak(doneDays, day)} day creative streak · completing any quest counts`));
+    stage.append(el('article', { class: 'cp-card cp-brief' }, el('h3', { text: 'Your next chapter starts small.' }), para('A proper quest journal: creative campaigns, personal goals, XP, a skill tree, rewards you choose, and a collection of things you finished.'), button('Open quest journal →', async () => { await Lazy.load('questjournal'); activate('tool:quests'); }), para('One main quest. Up to three side quests. No lost progress for missing a day.')));
+    const archive = el('details', { class: 'cp-notebook' }, el('summary', { text: 'Original daily prompts & notebook' })), oldStage = el('div'); archive.append(oldStage); stage.append(archive);
+    const day = C.localDay(), quests = C.quests(day);
+    oldStage.append(para(`${day} · earlier Playground prompts. Your notebook is kept separately from the quest journal.`));
     for (const q of quests) {
       const complete = (state.done[day] || []).includes(q.id), card = el('article', { class: 'cp-card' }, el('h3', { text: q.title }), para(`${q.medium} · ${q.minutes} minutes`), para(q.text));
-      card.append(bar(button(complete ? '✓ Completed · undo' : 'Mark complete', () => { const s = new Set(state.done[day] || []); complete ? s.delete(q.id) : s.add(q.id); state.done[day] = [...s]; persist(); openFeature('quests'); }), button('Focus timer', () => focus(q.minutes)), button('Explore in Astra', () => draft(q.text)))); stage.append(card);
+      card.append(bar(button(complete ? '✓ Completed · undo' : 'Mark complete', () => { const s = new Set(state.done[day] || []); complete ? s.delete(q.id) : s.add(q.id); state.done[day] = [...s]; persist(); openFeature('quests'); }), button('Focus timer', () => focus(q.minutes)), button('Explore in Astra', () => draft(q.text)))); oldStage.append(card);
     }
     const note = el('textarea', { value: state.journal[day] || '', attrs: { placeholder: 'What did you make or discover?', rows: 3, maxlength: 3000, 'aria-label': 'Daily reflection' } });
-    note.addEventListener('change', () => { state.journal[day] = note.value; persist(); }); stage.append(el('label', { class: 'cp-field' }, el('span', { text: 'Today’s reflection' }), note));
+    note.addEventListener('change', () => { state.journal[day] = note.value; persist(); }); oldStage.append(el('label', { class: 'cp-field' }, el('span', { text: 'Today’s reflection' }), note));
   }
   function focus(minutes) {
     clearInterval(timer); timerEnd = Date.now() + minutes * 60000;
@@ -195,7 +197,7 @@ const CreativePlayground = (() => {
     const focusBtn = button('Focus', () => { clearInterval(timer); timer = null; timerEnd = 0; focusBtn.hidden = true; }, { class: 'cp-focus', hidden: true });
     const top = bar(el('label', { class: 'cp-field' }, el('span', { text: 'Seed' }), seed), button('Shuffle', () => { state.seed = 'spark-' + Math.random().toString(36).slice(2, 8); seed.value = state.seed; state.pattern = C.drums(state.seed); persist(); openFeature(feature); }), range('BPM', state.bpm, 40, 220, 1, v => { state.bpm = v; }), button('Apply tempo', () => openFeature(feature)), button('Stop audio', stopAudio), focusBtn);
     const saved = el('details', { class: 'cp-notebook' }, el('summary', { text: 'My recipes' }), bar(button('Save current recipe', () => { const r = recipe(); state.recipes.unshift({ ...r, id: Date.now().toString(36), name: `${C.FEATURES.find(f => f.id === feature).name} · ${state.seed}` }); state.recipes = state.recipes.slice(0, 50); persist(); savedRecipes(recipes); }), button('Export current recipe JSON', () => saveFile(filename('json'), JSON.stringify(recipe(), null, 2), 'json'))), recipes);
-    host.prepend(el('header', { class: 'cp-heading' }, el('h1', { text: 'Creative Playground' }), para('Fifteen small doors into your next idea. Make, play, export, repeat.')), top);
+    host.prepend(el('header', { class: 'cp-heading' }, el('h1', { text: 'Creative Playground' }), para('Make something worth keeping, one small quest at a time.'), button('✦ Quest journal', async () => { await Lazy.load('questjournal'); activate('tool:quests'); })), top);
     host.append(el('div', { class: 'cp-layout' }, nav, stage), saved); savedRecipes(recipes); ready = true; if (canSave) notice('Ready · everything here works locally.'); openFeature(feature);
     document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
     // A rail change may not hide the whole document. Stop audio and animation when this surface disappears.
