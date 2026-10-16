@@ -196,7 +196,7 @@ const LabEasy = (() => {
   };
   function kindItems(L) {
     // (◫ Comp's "another scene as a layer" stays in the preview's right-click and Alt+C: here only a precomp's own row)
-    const mods = [typeof ThreeComp !== 'undefined' && ThreeComp.isComp?.(L) ? ThreeComp : null,typeof LabShader !== 'undefined' ? LabShader : null, typeof LabParticles !== 'undefined' ? LabParticles : null, typeof LabType !== 'undefined' ? LabType : null, typeof LabPhysics !== 'undefined' ? LabPhysics : null];
+    const mods = [typeof ThreeComp !== 'undefined' && ThreeComp.isComp?.(L) ? ThreeComp : null,typeof LabShader !== 'undefined' ? LabShader : null, typeof LabParticles !== 'undefined' ? LabParticles : null, typeof LabType !== 'undefined' ? LabType : null, typeof LabPhysics !== 'undefined' ? LabPhysics : null, typeof LabVisHook !== 'undefined' ? LabVisHook : null];
     const out = [];
     for (const M of mods) { try { out.push(...(M?.layerMenu?.(L) || []).map(fromRow).filter(Boolean)); } catch (err) { console.warn('layer menu', err); } }
     return out;
