@@ -842,12 +842,15 @@ const Board = (() => {
     const wx = (pinch.cx - r.left - v.x) / v.z; const wy = (pinch.cy - r.top - v.y) / v.z;
     S.view = { z, x: cx - r.left - wx * z, y: cy - r.top - wy * z }; applyView();
   }
+  const IS_MAC_WHEEL = /Mac/.test(navigator.platform);
   function onWheel(e) {
     if (e.target.closest('.bd-hud, .bd-search, .bd-md-edit, textarea')) return;
     e.preventDefault();
     const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; const dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX;
     // pinch on a trackpad and Ctrl+wheel zoom; a mouse wheel zooms too (Settings: wheel pans), two fingers pan
-    const mouseWheel = e.deltaMode === 1 || (dx === 0 && Math.abs(dy) >= 50 && Number.isInteger(dy));
+    // (round 49) a mouse notch is 120 in wheelDeltaY at any Windows scale / Size of everything (150 % made deltaY 66.67: read as a trackpad)
+    // (not on a Mac: a trackpad's 40 px step is 120 there too)
+    const mouseWheel = e.deltaMode === 1 || (dx === 0 && ((!IS_MAC_WHEEL && e.wheelDeltaY && e.wheelDeltaY % 120 === 0) || (Math.abs(dy) >= 50 && Number.isInteger(dy))));
     if (e.ctrlKey || e.metaKey) { zoomAt(e.clientX, e.clientY, Math.exp(-Math.max(-60, Math.min(60, dy)) * 0.012), false); return; }
     if (mouseWheel && prefs().wheel !== 'pan' && !e.shiftKey) { zoomAt(e.clientX, e.clientY, Math.exp(-Math.max(-240, Math.min(240, dy)) * 0.0022), true); return; }
     if (e.shiftKey && !dx) panBy(-dy, 0); else panBy(-dx, -dy);

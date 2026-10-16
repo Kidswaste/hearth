@@ -13,11 +13,17 @@ const KeysUI = (() => {
 
   // ---------- Mac symbols ----------
   const MAC_SYM = [[/\bCtrl\+/g, '⌘'], [/\bCtrl\b/g, '⌘'], [/\bAlt\+/g, '⌥'], [/\bAlt\b/g, '⌥'], [/\bShift\+/g, '⇧'], [/\bShift\b/g, '⇧'], [/\bEnter\b/g, '↩'], [/\bBackspace\b/g, '⌫'], [/\bTab\b/g, '⇥']];
-  const keyText = (k) => (MAC ? MAC_SYM.reduce((s, [re, to]) => s.replace(re, to), String(k)) : String(k));
+  // one key of a line ("Ctrl", "Shift", "K") for its own <kbd>; real: the Mac's Control key (⌃), for the keys macOS takes
+  // with ⌘ (⌘Tab, ⌘Space, ⌥⌘D…: WinMac.MAC_REAL_CTRL)
+  const tokText = (k, real = false) => (MAC ? MAC_SYM.reduce((s, [re, to]) => s.replace(re, to), real ? String(k).replace(/^Ctrl$/, '⌃') : String(k)) : String(k));
+  // (round 49, winmac49) a whole line ("Ctrl+Shift+U", "Ctrl/⌘+Z") as this computer says it: ⇧⌘U / Ctrl+Shift+U
+  const LABEL = typeof WinMac !== 'undefined' && WinMac.keyLabel;
+  const keyText = (k) => (LABEL ? WinMac.keyLabel(String(k), { mac: MAC }) : tokText(k));
+  const realCtrl = (part) => MAC && LABEL && WinMac.keyLabel(part, { mac: true }).includes('⌃');
   // the descriptions name keys too ("⌘ Command palette (Ctrl+K)"): on a Mac they read ⌘ / ⌥ there as well
   // ("Ctrl+click" stays: on a Mac that is the right-click)
   // (capturefix2) "Ctrl/⌘+Z" (both, written for either computer: the chats panel, layer groups) reads ⌘Z on a Mac
-  const whatText = (t) => (MAC ? String(t).replace(/\bCtrl\/⌘\+?/g, '⌘').replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥') : String(t));
+  const whatText = (t) => (LABEL ? WinMac.keyLabel(String(t), { mac: MAC }) : MAC ? String(t).replace(/\bCtrl\/⌘\+?/g, '⌘').replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥') : String(t));
   // "Ctrl+Shift+U / Alt+1…9" → <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>U</kbd> / <kbd>Alt</kbd><kbd>1…9</kbd>
   function kbds(keys) {
     const out = [];
@@ -25,11 +31,12 @@ const KeysUI = (() => {
       if (i % 2) { out.push(el('span', { class: 'ks-sep', text: part.trim() === '/' ? '/' : ` ${part.trim()} ` })); return; }
       const lead = part.match(/^(Right-click|Double-click|Hold|Point at|Type)\s+(.+)$/);
       // "Right-click a slider" → [Right-click] a slider · "Hold Alt" → hold [Alt]
-      if (lead && /^(Hold|Type)$/.test(lead[1])) { const [k, ...rest] = lead[2].split(' '); out.push(el('span', { class: 'ks-word', text: lead[1].toLowerCase() }), ...k.split(/\+(?=.)/).map((t) => el('kbd', { text: keyText(t) })), rest.length ? el('span', { class: 'ks-word', text: rest.join(' ') }) : ''); return; }
+      if (lead && /^(Hold|Type)$/.test(lead[1])) { const [k, ...rest] = lead[2].split(' '); out.push(el('span', { class: 'ks-word', text: lead[1].toLowerCase() }), ...k.split(/\+(?=.)/).map((t) => el('kbd', { text: tokText(t, realCtrl(k)) })), rest.length ? el('span', { class: 'ks-word', text: rest.join(' ') }) : ''); return; }
       if (lead && lead[1] === 'Point at') { out.push(el('span', { class: 'ks-word', text: `point at ${lead[2]}` })); return; }
-      if (lead) { out.push(el('kbd', { text: lead[1] }), el('span', { class: 'ks-word', text: keyText(lead[2]) })); return; }
+      if (lead) { out.push(el('kbd', { text: lead[1] }), el('span', { class: 'ks-word', text: tokText(lead[2]) })); return; }
       const toks = part.length > 1 ? part.split(/\+(?=.)/) : [part];
-      toks.forEach((t) => { if (t) out.push(/\s/.test(t) ? el('span', { class: 'ks-word', text: keyText(t) }) : el('kbd', { text: keyText(t) })); });
+      const real = realCtrl(part);
+      toks.forEach((t) => { if (t) out.push(/\s/.test(t) ? el('span', { class: 'ks-word', text: tokText(t, real) }) : el('kbd', { text: tokText(t, real) })); });
     });
     return out;
   }
@@ -99,7 +106,7 @@ const KeysUI = (() => {
       if (seen.has(spot)) continue;
       seen.add(spot);
       // short on the badge: Shift is ⇧ (the sizes sit close together)
-      const text = keyText(k).replace(/Shift\+/g, '⇧');
+      const text = keyText(k).replace(/Shift\+/g, MAC ? '⇧' : 'Shift+');
       const half = text.length * 3.3 + 6;
       const badge = el('kbd', { class: 'key-hint', text });
       badge.style.left = `${Math.round(Math.max(half + 2, Math.min(innerWidth - half - 2, r.left + r.width / 2)))}px`;
@@ -584,7 +591,7 @@ const KeysUI = (() => {
       { area: 'Right-click', keys: 'Right-click a tool call', what: 'In the dock’s list of tool calls: copy the line, clear the list', sel: '.dd-list .dd-row' },
       { area: 'Right-click', keys: 'Right-click a tab bar', what: 'Every tab of the tool (long bars keep five on screen)', sel: '.surface.active .tabbar' },
       { area: 'Right-click', keys: 'Right-click Settings', what: 'Appearance, Go to › a section, More settings, back up, your usage', sel: 'dialog.settings-dialog' },
-      { area: 'Right-click', keys: 'Right-click the token dashboard', what: 'Range ›, Show ›, copy a summary, Export ›', sel: 'dialog.meter-dlg' },
+      { area: 'Right-click', keys: 'Right-click the Usage window', what: 'Range ›, Show ›, copy a summary, Export ›', sel: 'dialog.meter-dlg' },
       { area: 'Right-click', keys: 'Right-click the command bar', what: 'Recent ›, Pinned ›, every command', sel: '.cmdbar' },
       { area: 'Right-click', keys: 'Right-click a console line', what: 'Copy it, go to its line in the code, select its layer, ask the director about an error', sel: '.surface.active .console-row' },
       { area: 'Right-click', keys: 'Right-click an effect', what: 'In the effects picker (X): add it, use it on the selected layer, ★, copy its name', sel: '.fx-picker .fx-row' },

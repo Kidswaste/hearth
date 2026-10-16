@@ -90,7 +90,6 @@ const LabDirect = (() => {
   }
 
   // ---------- discoverable: one tip the first time, the keys sheet, the help ----------
-  const mac = () => /Mac/.test(navigator.platform);
   const HINT = 'three.directHint';
   function hint() {
     if (store.get(HINT, false)) return;
@@ -101,10 +100,10 @@ const LabDirect = (() => {
     ['Click', 'Pick a layer on the picture (the Layers list follows) · on nothing: let go'],
     ['Drag', 'Move it (Shift: snap to the centre, thirds, edges and the other layers)'],
     ['Corners · ◯', 'Scale it · turn it (Shift: 5 % / 15° steps)'],
-    [`${mac() ? 'Option' : 'Alt'} + scroll`, 'Scale it'],
+    ['Alt+scroll', 'Scale it'], // (round 49: the <kbd> says ⌥-scroll on the Mac)
     ['Arrows', 'Nudge it 1 px (Shift: 10 px)'],
     ['Double-click', 'Open its sliders'],
-    [`${mac() ? '⌘' : 'Ctrl'}+Z · Esc`, 'Undo the last move · let go'],
+    ['Ctrl+Z · Esc', 'Undo the last move · let go'], // (⌘Z on the Mac)
   ];
   function help() {
     const d = el('dialog', { class: 'lab-keys' }, el('h2', { text: 'Working on the picture' }),
@@ -120,7 +119,7 @@ const LabDirect = (() => {
   try {
     Keys.add(
       { area: 'Lab', keys: 'Click · Drag on the picture', what: 'Pick a layer and move it (Shift: snap · corners scale · ◯ turns · arrows nudge · double-click: its sliders · Esc lets go)', when: inLab, run: () => help() },
-      { area: 'Lab', keys: `${mac() ? 'Option' : 'Alt'}+scroll on the picture`, what: 'Scale the picked layer', when: inLab, run: () => help() },
+      { area: 'Lab', keys: 'Alt+scroll on the picture', what: 'Scale the picked layer', when: inLab, run: () => help() },
     );
   } catch { /* keys list optional */ }
 
