@@ -13,6 +13,31 @@ const close = async () => { scope().close(); await wait(30); };
 check(QuestCore.xp(QuestJournal.snapshot()) === 0, 'fresh journal starts at zero');
 check(Commands.list().some(c => c.name === 'quests'), '/quests registered');
 check(getComputedStyle(root().querySelector('.qj-traveller .qj-mini-path')).getPropertyValue('--path').trim() === '#b8a0fa', 'skill path colors use actual CSS variables');
+const studioNav = root().querySelector('.qj-nav');
+check(studioNav.querySelectorAll('button svg').length === 5 && !studioNav.querySelector('parsererror'), 'five original SVG destinations render');
+for (const [page, selector] of [['campaigns', '.qj-campaign'], ['skills', '.qj-branch'], ['rewards', '.qj-reward'], ['collection', '.qj-empty'], ['adventure', '.qj-hero']]) {
+  const b = studioNav.querySelector(`[data-page="${page}"]`); b.click(); await until(() => !b.disabled);
+  check(b.getAttribute('aria-current') === 'page' && Boolean(root().querySelector(selector)), 'illustrated destination works: ' + page);
+}
+check(QuestCore.xp(QuestJournal.snapshot()) === 0, 'exploring the studio never awards XP');
+const notebook = studioNav.querySelector('[data-page="adventure"]'); notebook.focus();
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 } });
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 } });
+check(document.activeElement.dataset.page === 'campaigns' && root().querySelector('.qj-bench-caption').textContent.startsWith('Project crate'), 'Tab reaches the next object and shows its hint');
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' } });
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 } });
+await until(() => root().querySelector('.qj-campaign'));
+check(document.activeElement.dataset.page === 'campaigns', 'keyboard activation retains focus on the menu');
+const machine = studioNav.querySelector('[data-page="rewards"]'), rect = machine.getBoundingClientRect();
+await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: rect.x + rect.width / 2, y: rect.y + 40 } });
+await wait(280);
+check(root().querySelector('.qj-bench-caption').textContent.startsWith('Treat machine') && getComputedStyle(machine.querySelector('svg')).transform !== 'none', 'pointer inspection lifts the object and shows its hint');
+await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] } });
+await wait(80);
+check(getComputedStyle(machine.querySelector('svg')).transform === 'none' && getComputedStyle(machine.querySelector('svg')).transitionDuration === '0s', 'reduced motion removes object movement');
+await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [] } });
+await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: 1, y: 1 } });
+QuestJournal.navigate('adventure');
 await Lazy.load('creative'); activate('tool:creative'); await until(() => document.querySelector('.cp-stage h2'));
 CreativePlayground.openFeature('quests'); await press('Open quest journal →', document.querySelector('.cp-stage'));
 check(H.activeId === 'tool:quests', 'Playground opens the dedicated quest journal');
@@ -55,6 +80,7 @@ await press('Redeem reward'); await press('Confirm redemption');
 check(QuestCore.xp(QuestJournal.snapshot()) === xpBefore && QuestCore.balance(QuestJournal.snapshot()) === 12, 'reward spends only sparks');
 await press('Return reward'); check(QuestCore.balance(QuestJournal.snapshot()) === 32, 'refund credits exactly once');
 await press('+ Add a reward'); input('Reward', 'A quiet studio evening'); input('Sparks', '5'); await press('Save reward');
+await smoke({ shot: window.SMOKE_SAVES + '/quest-rewards.png' });
 check(QuestJournal.snapshot().rewards.some(r => r.name === 'A quiet studio evening'), 'personal reward persists');
 QuestJournal.navigate('campaigns'); await press('+ Your own campaign');
 input('Campaign name', 'Finish my <small> project'); input('Why this matters to me', 'Make something I can keep.');
@@ -90,6 +116,7 @@ check((await hub.kvGet('quest-journal-before-restore')).campaigns.some(c => c.ti
 // Narrow layout and keyboard escape.
 await smoke({ cdp: 'Emulation.setDeviceMetricsOverride', params: { width: 760, height: 900, deviceScaleFactor: 1, mobile: false } }); await wait(150);
 check(root().scrollWidth <= root().clientWidth + 2, 'journal has no horizontal overflow at narrow width');
+check([...root().querySelectorAll('.qj-object')].every(b => { const r = b.getBoundingClientRect(); return r.width >= 44 && r.left >= root().getBoundingClientRect().left && r.right <= root().getBoundingClientRect().right; }), 'all five SVG destinations remain visible touch targets at narrow width');
 QuestJournal.navigate('skills'); await wait(100); check(root().scrollWidth <= root().clientWidth + 2, 'skill tree fits narrow width');
 await smoke({ shot: window.SMOKE_SAVES + '/quest-narrow.png' });
 await smoke({ cdp: 'Emulation.clearDeviceMetricsOverride' });
