@@ -104,7 +104,8 @@ const at = new Set(Lazy.namesAtReady() || []);
 return '[CMDONLY]' + JSON.stringify(Commands.list().map((d) => ({ n: d.name, al: d.aliases || [], a: d.args || '', d: d.desc || '', ar: d.area, h: Boolean(d.hidden), r: at.has(d.name) })));`);
   let text = '';
   try { text = execFileSync(process.execPath, [path.join(__dirname, 'smoke.js'), '--script', script, '--wait', '4000'], { encoding: 'utf8', maxBuffer: 64 << 20 }); } catch (err) { text = String(err.stdout || ''); }
-  const line = (text.split('[CMDONLY]')[1] || '').split('\n')[0];
+  const at = text.lastIndexOf('[CMDONLY][');
+  const line = at < 0 ? '' : text.slice(at + 9).split('\n')[0];
   if (!line) throw new Error('no command list in the smoke output');
   const meta = lazyMeta();
   const rows = JSON.parse(line).map((c) => ({ name: c.n, ...(c.al.length ? { aliases: c.al } : {}), args: c.a, desc: c.d.slice(0, 120), area: c.ar, ...(meta.has(c.n) ? { group: meta.get(c.n).group } : {}), ...(c.h ? { hidden: true } : {}), ...(c.r ? {} : { late: true }) }));
