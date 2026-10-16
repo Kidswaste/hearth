@@ -75,7 +75,8 @@ the start was a native call and goes away there too.
 ### For the next streams (dev, not counted)
 - **Budgets**: `node dev/boot-test.js` (unit:boot-test) now fails when the first screen grows past 72 scripts /
   2,350 KB of JS / 29 stylesheets / 450 KB of CSS: put a new file in a lazy group (lazy-data.js), or merge it into one
-  that's already there. `dev/checks/fastboot.js` adds a stall guard: the first screen up within 3 s (medians here are
+  that's already there. (Round 51, labshapes: 2,352 KB. The JS budget had been reached by lazy-data.js alone, 2,349.9 KB
+  at 1d31b0c: every new lazy group's line and command manifest are first-screen bytes, ≈ 0.6–0.9 KB each.) `dev/checks/fastboot.js` adds a stall guard: the first screen up within 3 s (medians here are
   0.4–1.1 s; a wall-clock budget tighter than that isn't stable on this shared machine).
 - `dev/perf-report.js` reports the work in front of the first screen: `busyToReadyMs`, `scriptToReadyMs`,
   `longToReady` / `longToReadyMs` (CPU time from navigation to 'hearth:ready', steadier than the wall clock).

@@ -405,10 +405,10 @@ shapeLayer(P, { preset: ${q(p.id)}${opts} });
     if (typeof Commands === 'undefined' || Commands.get('shape')) return;
     Commands.register({
       name: 'shape', area: 'Three.js Lab', aliases: ['shapes', 'draw-shape'],
-      args: '[<shape> | draw <in|out|inout|loop|beat|bar|kick|snare|off> | width <px> | dash <px> | round <0-1> | dur <s> | ease <name> | reverse | filled | outline | color <#hex> | fill <#hex> | place <middle|bottom|top|left|right> | size <x> | own | undo | list]',
-      desc: '◆ Shapes that draw themselves: 21 shapes (rectangle, circle, ring, star, line, arrow, underline swoosh, bracket frame, checkmark, wave, spiral… or draw your own) whose line writes on, off, in a loop or on each beat / kick, crisp at any size, 0 tokens',
-      examples: ['/shape', '/shape circle', '/shape arrow', '/shape draw kick', '/shape width 24', '/shape dash 20', '/shape own', '/shape undo'],
-      keywords: 'shape shapes shape layer draw on write on trim path stroke line rectangle circle ring star arrow underline swoosh bracket frame checkmark tick wave spiral heart burst after effects motion graphics',
+      args: '[<shape> | draw <mode> | width | dash | own | undo | list]',
+      desc: '◆ Shapes that draw themselves: circle, arrow, underline, frame, checkmark… or draw your own; on, off, looped or on each kick',
+      examples: ['/shape arrow', '/shape draw kick', '/shape own'],
+      keywords: 'draw on write on trim path stroke underline',
       complete: (a) => {
         const w = a.trim().toLowerCase();
         if (/^draw\b/.test(w)) return C.MODES.map((x) => ({ value: `draw ${x}`, hint: C.MODE_NAMES[x] })).filter((x) => x.value.startsWith(w));
@@ -442,8 +442,8 @@ shapeLayer(P, { preset: ${q(p.id)}${opts} });
   }
   registerCommands();
   if (typeof AppUI !== 'undefined' && AppUI.addAction) {
-    AppUI.addAction('Lab: ◆ Shape that draws itself (circle, arrow, underline, star, frame, checkmark…)…', () => open().catch((e) => toast(e.message, { type: 'error' })));
-    AppUI.addAction('Lab: ✎ Draw your own shape…', () => open({ draw: true }).catch((e) => toast(e.message, { type: 'error' })));
+    AppUI.addAction('Lab: ◆ Shape that draws itself…', () => open().catch((e) => toast(e.message, { type: 'error' })));
+    AppUI.addAction('Lab: ✎ Draw a shape…', () => open({ draw: true }).catch((e) => toast(e.message, { type: 'error' })));
   }
 
   return { open, apply, setOn, place, undo, codeFor, presetOf, setValue, getValue, values, drawCard, drawPath, PRESETS, get undoDepth() { return undoStack.length; }, get picker() { return open0; } };
