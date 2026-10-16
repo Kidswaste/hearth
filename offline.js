@@ -197,6 +197,7 @@ const Offline = (() => {
       // (round 36) a message sent with a mission goes again as that mission (split: helpers on, review: checked after…)
       if (it.kind === 'retry' && before.mission && typeof Missions !== 'undefined' && Missions.ownSend?.(it.agentId, before.mission)) Missions.arm(it.agentId, before.mission, chat);
       if (it.kind === 'retry') await Native.send(it.agentId, before.text, { fromHistory: true, chatId: chat.id }); // same session: nothing re-sent that the engine has
+      else if (popped.net?.crashed) await Native.send(it.agentId, C.continuePrompt(before.crashsafe === 'empty' ? '' : before.text, chat.messages.slice(0, -1).findLast((x) => x.role === 'user')?.text || ''), { chatId: chat.id }); // (round 50, crashsafe) Hearth closed mid-reply: the question goes along
       else await Native.send(it.agentId, C.continuePrompt(before.text), { chatId: chat.id });
       popped = null;
       await done();
@@ -368,7 +369,7 @@ const Offline = (() => {
     const it = live ? itemFor(chatId, m) : null;
     const other = otherOf(agent);
     const kind = net.kind;
-    const o = { who: whoOf(agent, chat), other: kind === 'busy' || kind === 'limit' ? other?.name || '' : '', resetAt: net.resetAt, now: now(), queued: Boolean(it), cancelled: !it, gaveUp: net.gaveUp || !it, slept: net.slept };
+    const o = { who: whoOf(agent, chat), other: kind === 'busy' || kind === 'limit' ? other?.name || '' : '', resetAt: net.resetAt, now: now(), queued: Boolean(it), cancelled: !it, gaveUp: net.gaveUp || !it, slept: net.slept, crashed: net.crashed };
     if (kind === 'busy' && it) o.inS = Math.max(0, Math.ceil((it.notBefore - now()) / 1000));
     node.classList.add('net-note', `net-${kind}`);
     node.title = C.reasonOf(m.text).slice(0, 600);

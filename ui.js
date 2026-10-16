@@ -308,6 +308,7 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
   // (a save can start another one a moment later, e.g. the Lab sequence → its store: a few microtask rounds catch those)
   const flushSaves = (rounds) => { for (const s of [...waitingSaves]) { try { s.flush(); } catch (err) { console.warn('save on leave', err); } } if (rounds > 0) queueMicrotask(() => flushSaves(rounds - 1)); };
   addEventListener('pagehide', () => flushSaves(8));
+  addEventListener('hearth:flush', () => flushSaves(8)); // (round 50, crashsafe) the computer is going down: written now
   async function copyText(text, what = 'Copied') {
     await navigator.clipboard.writeText(text);
     toast(`${what} to clipboard`, { timeout: 1800 });

@@ -40,6 +40,7 @@ function open(job, overrides) {
   child.stderr.on('data', (d) => { j.err = (j.err + d).slice(-4000); });
   child.stdin.on('error', () => { /* EPIPE: ffmpeg stopped; its own error says why (end / write answer it) */ });
   jobs.set(job.id, j);
+  if (fresh) j.cs = cs()?.begin('export', [job.output], path.basename(job.output)); // (round 50, crashsafe) a crash mid-way: the half file goes to the Trash at the next start
   return { ok: true };
 }
 const tail = (j) => j.err.trim().split('\n').slice(-3).join('\n') || `ffmpeg ended with ${j.code}`;
@@ -57,11 +58,12 @@ async function end(id) {
   try { j.child.stdin.end(); } catch { /* closed */ }
   const code = await j.done;
   jobs.delete(id);
-  if (code !== 0) drop(j);
+  if (code !== 0) drop(j); else cs()?.end(j.cs);
   return { ok: code === 0, code, encoded: j.encoded, ms: Date.now() - j.t0, error: code === 0 ? null : tail(j) };
 }
 // a video that won't be finished: its partial file goes (only one this job started: never a file that was there)
-function drop(j) { if (j.fresh) fs.rm(j.output, { force: true, maxRetries: 6, retryDelay: 250 }, () => {}); } // (Windows: an antivirus may still hold it a moment)
+function drop(j) { if (j.fresh) fs.rm(j.output, { force: true, maxRetries: 6, retryDelay: 250 }, () => { cs()?.end(j.cs); }); }
+const cs = () => { try { return require('./crashsafemain'); } catch { return null; } }; // (Windows: an antivirus may still hold it a moment)
 function cancel(id) {
   const j = jobs.get(id);
   if (!j) return false;

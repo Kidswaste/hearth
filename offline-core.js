@@ -156,6 +156,7 @@ const OfflineCore = (() => {
       case 'signedout': return 'Signed out —';
       case 'proxy': return `Can't reach ${who} from this network — a VPN or proxy may be blocking it`;
       case 'cutoff': {
+        if (o.crashed) return o.queued ? 'Reply cut off (Hearth closed while it was being written) — will continue' : 'Reply cut off — Hearth closed while it was being written'; // (round 50, crashsafe)
         const why = o.slept ? 'while the computer slept' : 'the connection dropped';
         return o.queued ? `Reply cut off (${why}) — will continue when you're back` : `Reply cut off — ${why}`;
       }
@@ -195,9 +196,11 @@ const OfflineCore = (() => {
   }
   // ~50 tokens: the session is resumed (the engine already has the conversation); the last words say where it was.
   const TAIL = 200;
-  function continuePrompt(written) {
+  // (round 50, crashsafe) ask: the question, when Hearth itself closed mid-reply (the engine's session may not have it)
+  function continuePrompt(written, ask = '') {
     const tail = String(written || '').replace(/\s+$/, '').slice(-TAIL);
-    return `Your last reply was cut off (the connection dropped). Continue exactly where it stopped, without repeating anything already written.${tail ? ` It ended with:\n"""\n${tail}\n"""` : ''}`;
+    const q = String(ask || '').trim().slice(0, 4000);
+    return `Your last reply was cut off (the connection dropped). Continue exactly where it stopped, without repeating anything already written.${tail ? ` It ended with:\n"""\n${tail}\n"""` : ''}${q ? `\nMy message was:\n"""\n${q}\n"""` : ''}`;
   }
   const isContinue = (text) => /^Your last reply was cut off \(the connection dropped\)\. Continue exactly where it stopped/.test(String(text || ''));
 

@@ -80,6 +80,7 @@ if (!app.requestSingleInstanceLock()) {
 // (round 43, datasafe) through datasafemain.js: a held / damaged config.json is read again, then the last good version or
 // its newest automatic copy (data/.history/config) is used, and it is never saved over until it reads again
 const datasafe = require('./datasafemain');
+const crashsafe = require('./crashsafemain'); // (round 50) nothing lost when Hearth or the computer stops suddenly
 const cfgStore = datasafe.config({ configPath: CONFIG_PATH, dataDir: store.DATA_DIR, onRecovered: () => send('config:changed', loadAll()), onDoubt: () => send('data:doubt', { what: 'config' }) });
 function readConfig() { return cfgStore.read(); }
 function settings() {
@@ -300,7 +301,9 @@ ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) 
   const agent = readConfig().agents.find((a) => a.id === agentId);
   if (!agent || agent.mode !== 'native') throw new Error(`${agentId} is not a native agent`);
   const turn = powerwise.turn(chatId); // (round 39) a long turn keeps the computer awake until it ends
+  crashsafe.reply(chatId, agentId, { type: 'start' }); // (round 50, crashsafe) the reply journaled as it streams
   engines.send({ agent, chatId, session: session || {}, text, options: options || {} }, (event) => {
+    crashsafe.reply(chatId, agentId, event);
     if (event.type === 'done' || event.type === 'error' || event.type === 'stopped') turn.end();
     send('engine:event', { chatId, ...event });
   }, (event) => send('engine:live', { chatId, ...event })); // (round 21) steps, subagents, pulses: native.js / chat-live.js
@@ -614,6 +617,7 @@ function registerAfterWindow() {
   require('./notifymain').register(ipcMain, { getWin: () => win, app, shell, appshell, Notification: require('electron').Notification, send }); // (round 44, notify) desktop notifications: Electron's own (Hearth's name / icon, Focus / Do Not Disturb), one per chat, a burst summed up, a click opens the chat / card / file
   require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
   require('./safetynetmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 29) Hearth never loses work: the session marker, the page reloading after a crash, the work journal
+  crashsafe.register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 50, crashsafe) replies being written, renders cut off, temp files killed writes left, Windows update restarts
   require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
   lazyIpc('assetsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 24) the asset library: folder scans + hashes off-thread, thumbnails cache, Poly Haven / ambientCG downloads (round 29: on first use)
   require('./connectionsmain').register(ipcMain, { readConfig }); // (round 26) the owner's own MCP servers: Test, and what engines.js hands each AI
