@@ -1,0 +1,29 @@
+/* ◆ Shapes that draw themselves (round 51, labshapes): the picker of live previews, its controls and the draw pad */
+.shp-shade { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: #0008; }
+.shp-dlg { display: flex; flex-direction: column; gap: 8px; width: min(820px, 94vw); max-height: 86vh; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel, #15181b); color: var(--text, #eae0d5); box-shadow: 0 18px 50px #000a; }
+.shp-head { display: flex; align-items: center; gap: 8px; }
+.shp-head .shp-where { flex: 1; opacity: 0.65; font-size: 12px; }
+.shp-search { width: 100%; box-sizing: border-box; }
+.shp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; overflow: auto; min-height: 180px; padding: 2px; }
+.shp-grid[hidden], .shp-search[hidden], .shp-pad[hidden] { display: none; }
+.shp-card { display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 5px; border: 1px solid transparent; border-radius: 9px; background: color-mix(in srgb, var(--text, #eae0d5) 4%, transparent); color: inherit; text-align: left; cursor: pointer; }
+.shp-card:hover, .shp-card.on { border-color: color-mix(in srgb, var(--fh-gold, #ffd75e) 55%, transparent); }
+.shp-card.cur { box-shadow: inset 0 0 0 1px var(--fh-gold, #ffd75e); }
+.shp-card b { font-size: 12px; }
+.shp-cv { width: 100%; height: 72px; border-radius: 6px; background: #07080b; display: block; }
+.shp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.shp-lab { opacity: 0.65; }
+.shp-chip { padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: inherit; font-size: 12px; cursor: pointer; }
+.shp-chip.on { border-color: var(--fh-gold, #ffd75e); background: color-mix(in srgb, var(--fh-gold, #ffd75e) 16%, transparent); }
+.shp-sel { font-size: 12px; }
+.shp-range { display: inline-flex; align-items: center; gap: 4px; }
+.shp-range input { width: 76px; }
+.shp-val { min-width: 2.4em; opacity: 0.7; font-variant-numeric: tabular-nums; }
+.shp-sw { width: 18px; height: 18px; padding: 0; border: 1px solid #fff4; border-radius: 50%; cursor: pointer; }
+.shp-sw.on { box-shadow: 0 0 0 2px var(--fh-gold, #ffd75e); }
+.shp-foot { display: flex; align-items: center; gap: 10px; }
+.shp-foot .hint { flex: 1; text-align: right; opacity: 0.6; font-size: 11.5px; }
+.shp-pad { display: flex; flex: none; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+.shp-padbar { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12px; }
+.shp-padbar .shp-lab { flex: 1; }
+.shp-padcv { flex: none; border-radius: 6px; background: #07080b; cursor: crosshair; box-shadow: inset 0 0 0 1px #ffffff1a; }

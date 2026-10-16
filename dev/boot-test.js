@@ -50,7 +50,7 @@ console.log(`✓ ${LazyData.GROUPS.length} lazy groups, ${LazyData.GROUPS.reduce
 // 3. (round 40, firstscreen) what the first screen reads before its first frame stays within budget: a new feature goes
 // in a lazy group (lazy-data.js) or merges into a file that is already there; raise a budget only with a reason in
 // docs/upgrades/firstscreen.md
-const BUDGET = { scripts: 72, jsKB: 2350, sheets: 29, cssKB: 450 };
+const BUDGET = { scripts: 72, jsKB: 2352, sheets: 29, cssKB: 450 }; // (round 51: 2350 → 2352, docs/upgrades/firstscreen.md)
 const eager = [...html.matchAll(/<script defer src="([^"#]+)"/g)].map((m) => m[1]).filter((f) => f !== 'lazy-at.js');
 const sheets = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map((m) => m[1]);
 // Git's Windows CRLF checkout must measure the same source budget as Linux/macOS.

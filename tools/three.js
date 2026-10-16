@@ -39,7 +39,7 @@ const ThreeLab = (() => {
   // into the new page once its layers have drawn their first frame (never a black flash; see "live" below).
   // (round 25, diet) the preview page's motion-design kit / 3D-model runtime (tools/sandbox-*.js): loaded here when a page
   // asks (a sandboxed page can't read files) and sent as source; nothing of them runs in the hub
-  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js', beatlink: 'tools/three-beatlink-core.js', camcore: 'tools/three-camera-core.js', kinetic: 'tools/three-kinetic-core.js', matcore: 'tools/three-materials-core.js', viscore: 'tools/three-vis-core.js' }; // (round 38, beatlink: ♪ Move with the music's math; round 45, kinetictype: text that moves on the hits)
+  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js', beatlink: 'tools/three-beatlink-core.js', camcore: 'tools/three-camera-core.js', kinetic: 'tools/three-kinetic-core.js', matcore: 'tools/three-materials-core.js', viscore: 'tools/three-vis-core.js', shapecore: 'tools/three-shape-core.js' }; // (round 38, beatlink: ♪ Move with the music's math; round 45, kinetictype: text that moves on the hits)
   const libFiles = {};
   function sandboxLib(name, deliver) {
     if (!LIB_FILES[name]) return;
@@ -2196,6 +2196,7 @@ const ThreeLab = (() => {
         ...(typeof LabType !== 'undefined' ? LabType.layerMenu(L) : []), // (round 25) 🅰 Type › (tools/three-type.js)
         ...(typeof LabPhysics !== 'undefined' ? LabPhysics.layerMenu(L) : []), // (round 25) ⚛ Physics › (tools/three-physics.js)
         ...(typeof LabVisHook !== 'undefined' ? LabVisHook.layerMenu(L) : []), // (round 50) 🎵 Visualizer › (tools/three-vis-hook.js)
+        ...(typeof LabShapesHook !== 'undefined' ? LabShapesHook.layerMenu(L) : []), // (round 51) ◆ Shape › (tools/three-shapes-hook.js)
         'Opacity',
         ...[1, 0.75, 0.5, 0.25].map((o) => [`${Math.round(o * 100)}%`, '', () => editLayer(L.id, { opacity: o }), Math.abs((L.opacity ?? 1) - o) < 0.01]),
         'Blend',
@@ -3101,6 +3102,7 @@ const ThreeLab = (() => {
         ...(typeof LabType !== 'undefined' ? [LabType.previewItem()] : []), // (round 25) 🅰 kinetic type, lyrics (tools/three-type.js)
         ...(typeof LabKineticHook !== 'undefined' ? [LabKineticHook.addItem()] : []), // (round 45) 🅰 Text that moves… (tools/three-kinetic-hook.js)
         ...(typeof LabVisHook !== 'undefined' ? [LabVisHook.addItem()] : []), // (round 50) 🎵 Music visualizer… (tools/three-vis-hook.js)
+        ...(typeof LabShapesHook !== 'undefined' ? [LabShapesHook.addItem()] : []), // (round 51) ◆ Shape… (tools/three-shapes-hook.js)
         ...(typeof LabPhysics !== 'undefined' ? [LabPhysics.previewItem()] : []), // (round 25) ⚛ light physics (tools/three-physics.js)
         ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
         ...(window.AssetsHooks ? [AssetsHooks.previewItem()] : []), // (round 24) 🗂 the asset library (assets-cmds.js)
