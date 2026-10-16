@@ -70,13 +70,14 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
     watch();
     return JSON.parse(base.text);
   }
+  const flushed = (p, text) => { const fd = fs.openSync(p, 'w'); try { fs.writeSync(fd, text); try { fs.fsyncSync(fd); } catch { /* can't */ } } finally { fs.closeSync(fd); } };
   function writeText(text) {
     const tmp = `${configPath}.tmp`;
-    fs.writeFileSync(tmp, text);
+    flushed(tmp, text); // (round 50, crashsafe) on the disk before the rename: after a power cut, the old settings or the new, never half
     for (let i = 0; ; i++) {
       try { fs.renameSync(tmp, configPath); return; } catch (e) {
         if (i < 4 && DS.BUSY.has(e.code)) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60 * (i + 1)); continue; }
-        fs.writeFileSync(configPath, text); fs.rmSync(tmp, { force: true }); return; // (Windows: as before)
+        flushed(configPath, text); fs.rmSync(tmp, { force: true }); return; // (Windows: as before; flushed at once)
       }
     }
   }

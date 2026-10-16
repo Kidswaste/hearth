@@ -88,9 +88,21 @@ const ThreeLab = (() => {
       gl.timer = 0;
       if (!gl.lost) return;
       gl.stuck += 1; live.gl('stuck', name);
-      onMessage({ source: 'three-sandbox', type: 'gpu-stuck', epoch: gl.epoch, count: gl.stuck });
+      onMessage({ source: 'three-sandbox', type: 'gpu-stuck', epoch: gl.epoch, count: gl.stuck, ...(gl.crashNow ? { crashed: true } : {}) }); gl.crashNow = false;
       if (gpuStuck !== 'owner' && (target === 'stage' || frame.isConnected)) { gl.again = true; load(true); }
     };
+    // (round 50, crashsafe) the page's own process died (a crash, killed by the system): the main process says which
+    // pages are still up (crashsafemain.js); this one isn't → the same as a GPU that didn't come back: a new page for
+    // the same content, the scene run again quietly with its sliders and song (the export page handles it itself)
+    const crashCheck = (alive) => {
+      if (target !== 'frame') return;
+      if (!frame.isConnected) { window.__labFrames?.delete(crashCheck); return; }
+      if (!ready || !nonce || (alive || []).some((u) => String(u).includes(`n=${nonce}`))) return;
+      if (gl.lost && gl.timer) return; // already on its way back
+      console.warn(`Lab ${mode} preview page crashed: making it again`);
+      gl.lost = true; gl.crashed = (gl.crashed || 0) + 1; gl.crashNow = true; clearTimeout(gl.timer); glStuck();
+    };
+    (window.__labFrames ||= new Set()).add(crashCheck);
     const glTrack = (data) => {
       if (data.type === 'gpu-lost') { gl.epoch = data.epoch || gl.epoch + 1; if (!gl.lost) { gl.lost = true; gl.at = Date.now(); live.gl('lost', name); } clearTimeout(gl.timer); gl.timer = setTimeout(glStuck, glWaitMs()); }
       if (data.type === 'gpu-restored') { clearTimeout(gl.timer); gl.timer = 0; if (gl.lost) { gl.lost = false; gl.restored += 1; live.gl('restored', name); } }
@@ -3337,7 +3349,7 @@ const ThreeLab = (() => {
         if (msg.reload) return; // (not a sketch page: it loads again by itself)
         glBack('in place');
       } else if (msg.type === 'gpu-stuck') {
-        glp.stuck += 1;
+        if (!msg.crashed) glp.stuck += 1; else glp.at = Date.now(); // (round 50, crashsafe) the page's process crashed: not the GPU
         glp.phase = 'remaking';
         glEvent('remaking');
         if (player.recording || glp.stuck > 1) showStall('The graphics card isn\u2019t drawing the preview right now.');

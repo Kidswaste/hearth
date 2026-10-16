@@ -123,6 +123,12 @@ function ask(msg) {
   const id = ++jobSeq;
   return new Promise((resolve, reject) => { jobs.set(id, { resolve, reject }); w.postMessage({ ...msg, id }); });
 }
+// (round 50, crashsafe) a temp file written and flushed to the disk (fsync): after a power cut the rename that follows
+// leaves the old file or the whole new one, never an empty / half one
+function writeFlushed(p, text) {
+  const fd = fs.openSync(p, 'w');
+  try { fs.writeSync(fd, text); try { fs.fsyncSync(fd); } catch { /* a disk that can't */ } } finally { fs.closeSync(fd); }
+}
 function writeSync(file, value, prev, g = null) {
   let keepPrev = true; let restored = null; let kept = 0;
   if (!SS.guardedName(file) && (g?.doubt || g?.blind || DS.storeOf(file))) { // (round 43, datasafe) throws EHELD: nothing written
@@ -136,7 +142,7 @@ function writeSync(file, value, prev, g = null) {
   }
   if (prev && keepPrev && fs.existsSync(file)) fs.copyFileSync(file, prev);
   const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
+  writeFlushed(tmp, JSON.stringify(value, null, 2)); // (round 50, crashsafe) on the disk before the rename, as the store thread does
   fs.renameSync(tmp, file);
   if (SS.guardedName(file)) SS.afterWrite(ssEnv, file, value);
   seen.add(file); held.delete(file);
@@ -394,7 +400,7 @@ function statInto(stats, agentId, usage, meta, at = Date.now()) {
     if (meta.model) c.model = meta.model;
   }
 }
-const writeStats = (stats) => { const tmp = `${STATS_PATH}.tmp`; fs.writeFileSync(tmp, JSON.stringify(stats)); fs.renameSync(tmp, STATS_PATH); };
+const writeStats = (stats) => { const tmp = `${STATS_PATH}.tmp`; writeFlushed(tmp, JSON.stringify(stats)); fs.renameSync(tmp, STATS_PATH); };
 function addTokenStat(agentId, usage, meta) {
   const stats = readJson(STATS_PATH, null);
   if (!stats?.backfilledAt) return; // the first read builds everything from the chats (this reply included)

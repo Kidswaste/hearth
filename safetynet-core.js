@@ -121,7 +121,7 @@ const SafetyNetCore = (() => {
   const empty = () => ({ v: V, at: 0, entries: {} });
   function valid(j) { return Boolean(j && typeof j === 'object' && j.entries && typeof j.entries === 'object'); }
   // the entries in the order they come back on the card: Lab, drafts, boards, text boxes; newest first in each
-  const ORDER = { lab: 0, draft: 1, board: 2, field: 3 };
+  const ORDER = { lab: 0, draft: 1, board: 2, field: 3, reply: 1, render: 4 }; // (round 50, crashsafe) reply / render: crashsafe.js
   function entries(j) {
     if (!valid(j)) return [];
     return Object.entries(j.entries).map(([key, e]) => ({ key, ...e })).filter((e) => e.k in ORDER)

@@ -200,7 +200,7 @@ const SafetyNet = (() => {
       await Board.open(o.id);
     } else if (o.k === 'note') {
       await Notes.show(o.id);
-    }
+    } else window.CrashSafe?.open?.(o);
   }
   const rowsOf = (items) => items.map((it) => ({ id: `sn-${it.k}`, icon: it.icon, label: it.label, hint: it.hint, run: () => open(it.open) }));
   function showCard(report) {
@@ -214,11 +214,14 @@ const SafetyNet = (() => {
   let recovering = null;
   async function recover() {
     const st = await window.hub.safetynet?.status?.().catch(() => null);
-    if (!st?.unclean) return null;
+    // (round 50, crashsafe) replies cut off mid-way, renders cut off: crashsafe.js's entries, restored the same way
+    const cs = window.CrashSafe ? await CrashSafe.entries().catch(() => []) : [];
+    if (!st?.unclean) { if (window.CrashSafe) await CrashSafe.quietly(cs).catch((err) => console.warn('crashsafe', err)); return null; }
     const items = [];
-    for (const e of C.entries(st.journal)) {
-      try { const it = await RESTORE[e.k]?.(e); if (it) items.push(it); } catch (err) { console.warn('safetynet: restore', e.k, err); }
+    for (const e of [...C.entries(st.journal), ...cs]) {
+      try { const it = await (RESTORE[e.k] || window.CrashSafe?.restore?.[e.k])?.(e); if (it) items.push(it); } catch (err) { console.warn('safetynet: restore', e.k, err); }
     }
+    await window.CrashSafe?.done?.();
     const report = { at: Date.now(), kind: st.unclean.kind, when: st.unclean.at || null, items };
     try { store.set(LAST, report); } catch { /* the card still shows */ }
     await window.hub.safetynet.done().catch(() => {});

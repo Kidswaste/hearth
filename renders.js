@@ -35,7 +35,8 @@ const Renders = (() => {
 
   // ---------- saving ----------
   const saveSoon = debounce(() => {
-    const pending = jobs.filter((j) => live(j) && j.again && !j.external).map((j) => ({ id: j.id, title: j.title, again: j.again, make: j.make, created: j.created }));
+    // (round 50, crashsafe) a Lab render running when Hearth closed is offered again too (its half file went to the Trash)
+    const pending = jobs.filter((j) => live(j) && j.again && (!j.external || j.again.type !== 'cmd')).map((j) => ({ id: j.id, title: j.title, again: j.again, make: j.make, created: j.created, ...(j.status === 'running' ? { cut: true } : {}) }));
     window.hub.kvSet(KV, { history, pending });
   }, 800);
   const ready = (async () => {
@@ -651,7 +652,8 @@ const Renders = (() => {
     await ready;
     const p = pendingBoot.filter((x) => x.again && x.again.type !== 'cmd'); pendingBoot = [];
     if (!p.length) return;
-    noteNode(`${p.length} render${p.length === 1 ? ' was' : 's were'} waiting when Hearth closed`, 'rq-done', [{ label: 'Render them', fn: () => p.forEach((x) => retry0(x)) }, { label: 'Forget', fn: () => saveSoon() }]);
+    const cut = p.filter((x) => x.cut).length;
+    noteNode(cut ? `${p.length} render${p.length === 1 ? ' was' : 's were'} cut off or waiting when Hearth closed — they start again from the top` : `${p.length} render${p.length === 1 ? ' was' : 's were'} waiting when Hearth closed`, 'rq-done', [{ label: 'Render them', fn: () => p.forEach((x) => retry0(x)) }, { label: 'Forget', fn: () => saveSoon() }]);
   }
   function retry0(x) { history = R.remember(history, { ...x, status: 'cancelled', ended: now() }); return retry(x.id).catch((err) => toast(err.message, { type: 'error' })); }
 

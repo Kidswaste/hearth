@@ -55,9 +55,7 @@ function save() {
   try {
     fs.mkdirSync(path.dirname(f), { recursive: true });
     try { fs.copyFileSync(f, f.replace(/\.json$/, '.prev.json')); } catch { /* the first one */ }
-    const t = `${f}.${process.pid}.tmp`;
-    fs.writeFileSync(t, JSON.stringify(state, null, 1));
-    fs.renameSync(t, f);
+    require('./crashsafe-core').writeAtomicSync(fs, f, JSON.stringify(state, null, 1)); // (round 50, crashsafe) flushed, then renamed
     return true;
   } catch { return false; }
 }
@@ -288,13 +286,15 @@ async function doRun(reason) {
     if (fs.existsSync(path.join(target, name))) name = name.replace(/\.zip$/, `-${Date.now().toString(36).slice(-3)}.zip`);
     const part = path.join(partDir, name);
     try { fs.rmSync(part, { force: true }); } catch { /* none */ }
-    await zipDir(stage, part);
+    const inflight = require('./crashsafemain').begin('backup', [part], name); // (round 50, crashsafe) cut off mid-zip: the half zip goes at the next start
+    try { await zipDir(stage, part); } catch (err) { require('./crashsafemain').end(inflight); throw err; }
     if (test.corruptNext) { test.corruptNext = false; corrupt(part); }
     step('checking');
     const v = await verify(part, { base: target });
-    if (!v.ok) { try { fs.rmSync(part, { force: true }); } catch { /* left in .hearth/partial */ } throw Object.assign(new Error('verify'), { verify: v.problems }); }
+    if (!v.ok) { try { fs.rmSync(part, { force: true }); } catch { /* left in .hearth/partial */ } require('./crashsafemain').end(inflight); throw Object.assign(new Error('verify'), { verify: v.problems }); }
     const final = path.join(target, name);
     fs.renameSync(part, final);
+    require('./crashsafemain').end(inflight);
     const size = fs.statSync(final).size;
     writeCard(final, { ...manifest, ok: true, problems: [], checkedAt: v.at, size, ms: Date.now() - t0 });
     s.lastOk = at; s.failures = 0;

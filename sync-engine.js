@@ -305,11 +305,14 @@ function createEngine(o) {
   }
 
   // ---------- files ----------
+  // (round 50, crashsafe) a temp file flushed to the disk before its rename: a power cut leaves the old file or the
+  // whole new one (never an empty one that then syncs to the other computer)
+  async function flushed(p) { let h = null; try { h = await fsp.open(p, 'r+'); await h.sync(); } catch { /* a disk / file that can't */ } finally { await h?.close().catch(() => {}); } }
   async function atomicWrite(file, data) {
     await fsp.mkdir(path.dirname(file), { recursive: true });
     const tmp = path.join(path.dirname(file), `.hearth-tmp-${rand()}-${path.basename(file)}`);
     await fsp.writeFile(tmp, data);
-    try { await renameRetry(tmp, file); } catch (err) { await fsp.rm(tmp, { force: true }); throw err; }
+    await flushed(tmp); try { await renameRetry(tmp, file); } catch (err) { await fsp.rm(tmp, { force: true }); throw err; }
   }
   // the check right before a rename: the file is still the one this pass looked at (or still absent)
   const same = (file, ent) => {
@@ -323,7 +326,7 @@ function createEngine(o) {
     await fsp.writeFile(tmp, data);
     o.fault?.(fault, file);
     let ok = false;
-    try { ok = await renameRetry(tmp, file, () => same(file, ent)); } finally { if (!ok) await fsp.rm(tmp, { force: true }).catch(() => {}); }
+    try { await flushed(tmp); ok = await renameRetry(tmp, file, () => same(file, ent)); } finally { if (!ok) await fsp.rm(tmp, { force: true }).catch(() => {}); }
     return ok;
   }
   // big files: copied in chunks into "<name>.hearth-part" next to the target; a copy cut short (quit, crash, the
@@ -920,7 +923,7 @@ function createEngine(o) {
         const tmp = path.join(path.dirname(file), `.hearth-tmp-${rand()}-${path.basename(file)}`);
         await fsp.mkdir(path.dirname(file), { recursive: true });
         await fsp.copyFile(copy, tmp);
-        await renameRetry(tmp, file);
+        await flushed(tmp); await renameRetry(tmp, file);
       }
       notePulled(rec.rel, kindOf(rec.rel));
     } else if (keep === 'both') {
@@ -940,7 +943,7 @@ function createEngine(o) {
         const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
         await fsp.mkdir(path.dirname(dst), { recursive: true });
         await fsp.copyFile(copy, tmp);
-        await renameRetry(tmp, dst);
+        await flushed(tmp); await renameRetry(tmp, dst);
       }
       notePulled(made, kindOf(made));
     }
@@ -1029,7 +1032,7 @@ function createEngine(o) {
     await fsp.mkdir(path.dirname(dst), { recursive: true });
     const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
     if (S.isJsonRel(rel)) { const v = JSON.parse(await fsp.readFile(src, 'utf8')); await fsp.writeFile(tmp, localForm(S.fromCloud(v, ctx), true)); } else await fsp.copyFile(src, tmp);
-    await renameRetry(tmp, dst);
+    await flushed(tmp); await renameRetry(tmp, dst);
     await fsp.rm(src, { force: true });
     o.onPulled?.([{ rel, kind: kindOf(rel), from: 'trash' }]);
     return { ok: true, rel };

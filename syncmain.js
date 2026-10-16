@@ -29,9 +29,7 @@ function readSettings() {
 function saveSettings() {
   if (settingsHeld) { const again = readSettings(); if (settingsHeld) return; settings = { ...again, ...settings }; }
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
-  const tmp = `${settingsFile()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(settings, null, 2));
-  fs.renameSync(tmp, settingsFile());
+  require('./crashsafe-core').writeAtomicSync(fs, settingsFile(), JSON.stringify(settings, null, 2)); // (round 50, crashsafe) flushed, then renamed
 }
 const send = (ch, data) => { const w = getWin(); if (w && !w.isDestroyed()) w.webContents.send(ch, data); };
 

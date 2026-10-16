@@ -103,4 +103,7 @@ function register(ipcMain, { dataDir, getWin } = {}) {
   });
 }
 
-module.exports = { register, openSession, markClean, keep, pageGone, _state: () => ({ unclean, journal, atCrash, dir }), _flush: () => writing || Promise.resolve() };
+// (round 50, crashsafe) the computer is going down (an update restart, a shutdown): the journal written now, in one go
+function flushSync() { if (!started) return; try { writeSync(file('journal.json'), journal); } catch (err) { console.warn('safetynet: journal', err.message); } }
+
+module.exports = { register, openSession, markClean, keep, pageGone, flushSync, _state: () => ({ unclean, journal, atCrash, dir }), _flush: () => writing || Promise.resolve() };

@@ -37,7 +37,8 @@ function write(file, content, { base64 = false } = {}) {
   ownWrite(p);
   const tmp = `${p}.hubtmp`;
   const bytes = content instanceof Uint8Array ? content : content instanceof ArrayBuffer ? new Uint8Array(content) : null;
-  fs.writeFileSync(tmp, bytes || (base64 ? Buffer.from(content, 'base64') : content));
+  const fd = fs.openSync(tmp, 'w'); // (round 50, crashsafe) flushed to the disk before the rename (a power cut: old or whole)
+  try { fs.writeSync(fd, bytes || (base64 ? Buffer.from(content, 'base64') : content)); try { fs.fsyncSync(fd); } catch { /* can't */ } } finally { fs.closeSync(fd); }
   fs.renameSync(tmp, p);
   return true;
 }
