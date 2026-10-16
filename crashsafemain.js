@@ -31,7 +31,11 @@ const report = { tmp: [] }; // what the leftovers sweep did
 // ---------- the Trash (tests: a folder in the throwaway data, so a check can look) ----------
 async function trash(p) {
   if (TEST) { const to = path.join(dir, 'test-trash', `${Date.now().toString(36)}-${path.basename(p)}`); fs.mkdirSync(path.dirname(to), { recursive: true }); fs.renameSync(p, to); return to; }
-  await require('electron').shell.trashItem(p);
+  // (a network share, or a USB stick on Windows, has no Trash: there the file stays, so nothing is deleted for good)
+  const binCheck = process.platform === 'win32' ? require('./winpolish').trashCheck(p, { platform: 'win32' })
+    : process.platform === 'darwin' ? require('./macpolish').trashCheck(p, { platform: 'darwin' }) : { ok: true };
+  if (!binCheck.ok) throw new Error(binCheck.why || binCheck.error || 'no Trash on that drive: left where it is');
+  await require('electron').shell.trashItem(binCheck.path || p); // (binCheck passed)
   return 'trash';
 }
 
