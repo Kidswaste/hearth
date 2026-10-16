@@ -1206,3 +1206,6 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ⚡ Lab preview: less GPU work per frame for 240 Hz (round 50, lab240gpu, 3 upgrades: docs/upgrades/lab240gpu.md)
 - ✓ Layers under an opaque filter (bloom, grade, lens…) or a covering scene are no longer blended / presented (FX stack: 3 → 1 full-screen layers per frame); shadow maps kept while only the camera moves (model: 3 → 2 draws, no shadow pass); labadapt's opacity look reads without stalling the GPU (15–18 → 0 waits/s). Pictures identical (diff 0).
 - ○ `sh dev/run-checks.sh lab240gpu` (dev/checks/lab240gpu.js: per-frame counts at 720p / 1440p / fit, budgets, pictures on vs off; 4K with `L240_SIZES`).
+## 🅰 Lighter text layers, sharp model bloom (round 51, labtype240, 3 upgrades: docs/upgrades/labtype240.md)
+- ✓ In the preview a 🅰 text layer's canvas is only the box its letters cover, placed where it shows, drawn with the frame's camera cut to it (same pixels: difference 0); a held title stops redrawing (3 titles at 4K: 33 → 10 M px a frame). 🧊 Model bloom / depth of field at the canvas's own pixels from the first frame (sharp at pixel ratio 2).
+- ○ `sh dev/run-checks.sh labtype240` (dev/checks/labtype240.js: counts with the saving off / on, pictures, the model's composer size; also in `lab`, `smooth`).
