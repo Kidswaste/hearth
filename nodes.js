@@ -861,9 +861,9 @@ const NodeView = (() => {
       }
       // background: box select (double-click opens the node picker)
       if (e.detail === 2 && !ro) { openPicker({ cx: e.clientX, cy: e.clientY }); return; }
-      if (!e.shiftKey && !e.ctrlKey) { sel.clear(); selWire = null; selFrame = null; paintSelection(); drawWires(); renderFrames(); }
+      if (!e.shiftKey && !e.ctrlKey && !e.metaKey) { sel.clear(); selWire = null; selFrame = null; paintSelection(); drawWires(); renderFrames(); }
       const p = toGraph(e.clientX, e.clientY);
-      drag = { kind: 'box', p0: p, add: e.shiftKey || e.ctrlKey, base: new Set(sel) };
+      drag = { kind: 'box', p0: p, add: e.shiftKey || e.ctrlKey || e.metaKey, base: new Set(sel) };
       capture(root, e);
     });
     root.addEventListener('contextmenu', (e) => {
@@ -955,7 +955,7 @@ const NodeView = (() => {
     function startNodeDrag(id, e) {
       selWire = null;
       let clickSelect = null;
-      if (e.shiftKey || e.ctrlKey) { if (sel.has(id)) sel.delete(id); else sel.add(id); } else if (!sel.has(id)) { sel.clear(); sel.add(id); } else clickSelect = id;
+      if (e.shiftKey || e.ctrlKey || e.metaKey) { if (sel.has(id)) sel.delete(id); else sel.add(id); } else if (!sel.has(id)) { sel.clear(); sel.add(id); } else clickSelect = id;
       paintSelection();
       if (e.detail === 2 && !e.target.closest('.nv-widget')) { if (ro) onOpen?.(id); else renameNode(id); return; }
       startMove(e, [...sel]);

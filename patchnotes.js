@@ -13,6 +13,8 @@ const PatchNotes = (() => {
   // a note's text as a calm block (markdown when the app's renderer is there, plain text otherwise)
   function block(text) {
     const box = el('div', { class: 'pn-body' });
+    // (round 49) "Ctrl/⌘+K" (written for both computers) reads ⌘K on the Mac, Ctrl+K on Windows; keys named for one system stay
+    if (typeof WinMac !== 'undefined' && WinMac.keyLabel) text = WinMac.keyLabel(String(text), { mac: /Mac/.test(navigator.platform), both: true });
     const h = md(text);
     if (h != null) box.innerHTML = h; else box.textContent = text;
     return box;

@@ -2,6 +2,32 @@
 if (/Mac/.test(navigator.platform)) {
   addEventListener('keydown', (e) => { if (e.metaKey && !e.ctrlKey) Object.defineProperty(e, 'ctrlKey', { get: () => true }); }, true);
 }
+// (round 49, winmac49) before any handler sees a real key: a key that types a character is typing, not a shortcut
+// (AltGr on Windows arrives as Ctrl+Alt: AZERTY's @ # { [ | \, QWERTZ's @ € { [ ] } µ; the Mac's ⌥ @ [ ] { } | in a text
+// field), and a letter is the letter printed on the key (AZERTY's A / Z / Q / W / M, QWERTZ's Y / Z) — WinMac.typesChar
+// / layoutCode. Nothing else changes; synthetic events (the keys sheet, tours) are left alone.
+if (typeof WinMac !== 'undefined' && WinMac.typesChar) {
+  const mac = /Mac/.test(navigator.platform);
+  let altRight = false;
+  let layout = null;
+  const readLayout = () => { try { navigator.keyboard?.getLayoutMap?.().then((m) => { layout = m; }, () => {}); } catch { /* no layout map */ } };
+  readLayout();
+  addEventListener('focus', readLayout); // the keyboard layout may have been switched in another app
+  addEventListener('blur', () => { altRight = false; });
+  const fix = (e) => {
+    if (!e.isTrusted) return;
+    if (e.code === 'AltRight') altRight = e.type === 'keydown';
+    const t = e.target;
+    if (WinMac.typesChar(e, { mac, altRight, editable: Boolean(t && (t.isContentEditable || /^(?:INPUT|TEXTAREA)$/.test(t.tagName))) })) {
+      Object.defineProperty(e, 'altKey', { get: () => false });
+      if (!mac) Object.defineProperty(e, 'ctrlKey', { get: () => false });
+    }
+    const code = WinMac.layoutCode(e, layout, { mac });
+    if (code !== e.code) Object.defineProperty(e, 'code', { get: () => code });
+  };
+  addEventListener('keydown', fix, true);
+  addEventListener('keyup', fix, true);
+}
 // A video whose file doesn't store its length (a WebM straight from a recorder) reports an endless duration, and every
 // loop that walks a timeline up to the end ran forever (opening one in Video Review froze the whole app).
 // realDuration(v) seeks far past the end once so the browser measures it, then goes back; videos on the page get it on
@@ -44,7 +70,12 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
 
   const MAC_TIPS = /Mac/.test(navigator.platform);
   // (round 31, winmac) on a Mac, "Ctrl+K" in placeholders, hints (class …hint…) and toasts reads "⌘K" too (winmac.js)
-  const macText = (v) => (MAC_TIPS && typeof v === 'string' && typeof WinMac !== 'undefined' ? WinMac.macKeys(v, { mac: true }) : v);
+  // (round 49, winmac49) on both computers (WinMac.keyLabel): ⇧⌘K on the Mac, Ctrl+Shift+K on Windows; tooltips and <kbd>
+  // too; any other text only has its "Ctrl/⌘+K" (written for both) said this computer's way
+  const KEYISH = /Ctrl|Alt\+|Shift\+|Cmd|[⌃⌥⇧⌘]/;
+  const keyOk = typeof WinMac !== 'undefined' && WinMac.keyLabel;
+  const macText = (v) => (keyOk && typeof v === 'string' && KEYISH.test(v) ? WinMac.keyLabel(v, { mac: MAC_TIPS }) : v);
+  const bothText = (v) => (keyOk && typeof v === 'string' && /Ctrl\/⌘|⌘\/Ctrl/.test(v) ? WinMac.keyLabel(v, { mac: MAC_TIPS, both: true }) : v);
   globalThis.macText = macText;
   // el('div', { class: 'x', on: { click }, attrs: {}, style: {}, dataset: {} }, ...children)
   function el(tag, props = {}, ...children) {
@@ -52,15 +83,15 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
     for (const [key, value] of Object.entries(props || {})) {
       if (value == null || value === false) continue;
       if (key === 'class') node.className = value;
-      else if (key === 'text') node.textContent = MAC_TIPS && /\bhint\b/.test(props.class || '') ? macText(value) : value;
-      else if (key === 'placeholder' && MAC_TIPS) node.placeholder = macText(value);
+      else if (key === 'text') node.textContent = tag === 'kbd' || /\bhint\b/.test(props.class || '') ? macText(value) : bothText(value);
+      else if (key === 'placeholder') node.placeholder = macText(value);
       else if (key === 'html') node.innerHTML = value;
       else if (key === 'on') for (const [ev, fn] of Object.entries(value)) node.addEventListener(ev, fn);
       else if (key === 'style') Object.assign(node.style, value);
       else if (key === 'dataset') Object.assign(node.dataset, value);
       else if (key === 'attrs') for (const [a, v] of Object.entries(value)) node.setAttribute(a, v);
-      // on a Mac the tooltips name ⌘ / ⌥ ("Undo (Ctrl+Z)" read Ctrl on every button; "Ctrl+click" stays: a right-click there)
-      else if (key === 'title' && MAC_TIPS) node.title = String(value).replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥').replace(/⌘\/⌘/g, '⌘').replace(/([⌘⌥])\+/g, '$1');
+      // tooltips name this computer's keys ("Undo (Ctrl+Z)" reads ⌘Z on a Mac; "Ctrl+click" stays: a right-click there)
+      else if (key === 'title') node.title = macText(String(value));
       else node[key] = value;
     }
     for (const child of children.flat()) {

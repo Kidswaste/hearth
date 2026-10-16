@@ -79,7 +79,7 @@ const DirectorDock = (() => {
       sum.title = 'This reply: tool calls, code edits, and about how many tokens the director read from the tool results (text + pictures)';
       strip.classList.toggle('busy', log.some((e) => e.running) || Boolean(Native.pendingFor?.(agent.id)));
       rail.classList.toggle('busy', strip.classList.contains('busy'));
-      rail.title = `Show the ${agent.name} chat${strip.classList.contains('busy') ? ' (working…)' : ''}${rail.classList.contains('unread') ? ' · a new reply' : ''} · Alt+Shift+D`;
+      rail.title = (globalThis.macText || String)(`Show the ${agent.name} chat${strip.classList.contains('busy') ? ' (working…)' : ''}${rail.classList.contains('unread') ? ' · a new reply' : ''} · Alt+Shift+D`);
       const img = HubBridge.lastImage();
       thumb.hidden = !img || !prefixes.some((p) => img.tool.startsWith(p));
       if (!thumb.hidden && thumb.firstChild.src !== img.url) thumb.firstChild.src = img.url;

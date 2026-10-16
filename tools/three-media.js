@@ -2390,10 +2390,10 @@ const ThreeMedia = (() => {
       if (!D() || e.button !== 0) return;
       const hit = hitTest(e);
       const tt = timeAt(e);
-      if (typeof Usage !== 'undefined') Usage.track(`Timeline › canvas: ${hit.zone}${e.ctrlKey ? ' (draw)' : e.shiftKey ? ' (select)' : ''}`, { area: 'Timeline' });
+      if (typeof Usage !== 'undefined') Usage.track(`Timeline › canvas: ${hit.zone}${e.ctrlKey || e.metaKey ? ' (draw)' : e.shiftKey ? ' (select)' : ''}`, { area: 'Timeline' });
       canvas.setPointerCapture(e.pointerId);
       // footage: a cut line under the pointer drags (tools/three-frames.js decides; it commits once on release)
-      const hd = (hit.zone === 'wave' || hit.zone === 'ruler') && !e.shiftKey && !e.altKey && !e.ctrlKey && !locked ? hooks.pointerDown?.(e, tt, { xOf }) || xhook('pointerDown', e, tt, { xOf }) : null;
+      const hd = (hit.zone === 'wave' || hit.zone === 'ruler') && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !locked ? hooks.pointerDown?.(e, tt, { xOf }) || xhook('pointerDown', e, tt, { xOf }) : null;
       if (hd) {
         dragging = { kind: 'hook' };
         const mv = (ev) => { hd.move(Math.max(0, Math.min(D(), timeAt(ev)))); draw(); };
@@ -2983,7 +2983,7 @@ const ThreeMedia = (() => {
       if (dragging) { if (!hoverEl.hidden) hoverEl.hidden = true; return; }
       const hit = hitTest(e);
       const tt = timeAt(e);
-      canvas.style.cursor = hit.zone === 'mute' || hit.zone === 'solo' ? 'pointer' : hit.zone === 'cue' ? 'grab' : hit.zone === 'auto' ? (e.ctrlKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'ghost' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
+      canvas.style.cursor = hit.zone === 'mute' || hit.zone === 'solo' ? 'pointer' : hit.zone === 'cue' ? 'grab' : hit.zone === 'auto' ? (e.ctrlKey || e.metaKey ? 'crosshair' : hit.point >= 0 ? 'move' : hit.handle >= 0 ? 'ns-resize' : 'crosshair') : hit.zone === 'gutter' ? 'default' : hit.zone === 'chip' || hit.zone === 'note' || hit.zone === 'ghost' || hit.zone === 'laneHead' || hit.zone === 'laneClose' ? 'pointer' : hit.zone === 'track' ? (hit.key ? 'move' : hit.edge ? 'ew-resize' : hit.inside ? 'grab' : 'default') : hit.zone === 'lane' ? (hit.mark != null ? 'ew-resize' : 'cell') : locked ? 'pointer' : hit.zone === 'ruler' ? (hit.edge ? 'ew-resize' : 'copy') : 'pointer';
       const tips = {
         ruler: locked ? 'Locked: click to jump' : 'Drag along this strip to draw a loop; drag its edges to adjust · C drops a cue at the playhead',
         wave: 'Click to jump · double-click to loop this part · wheel to zoom · Shift+wheel to scroll',

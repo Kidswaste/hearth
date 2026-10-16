@@ -221,6 +221,7 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('before-input-event', (event, input) => {
     if (appsmain.isAppGuest(contents)) return; // an app window's page keeps its keys (appsmain.js handles them)
     if (input.type !== 'keyDown' || !(input.control || (process.platform === 'darwin' && input.meta))) return;
+    if (input.alt) return; // (round 49) no hub key uses Alt; on Windows AltGr is Ctrl+Alt (AZERTY's AltGr+8 types \, not Ctrl+\)
     const key = input.key.toLowerCase();
     // Ctrl/⌘+Shift+M: the board drawer, from a website agent too
     if (HUB_KEYS.has(key) || (input.shift && (key === ' ' || key === 'm'))) {
