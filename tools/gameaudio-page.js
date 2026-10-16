@@ -146,7 +146,7 @@
       const p = f0(url).then((r) => (r.ok ? rab.call(r) : null)).then((ab) => {
         if (!ab) return null;
         if (filesKept + ab.byteLength <= FILES_CAP) { files.set(new URL(url, location.href).href, ab.slice(0)); filesKept += ab.byteLength; }
-        return predecode(ab, rel.split('/').pop());
+        return predecode(ab, rel.split('/').pop()); // winmac-ok: rel is a URL path (always /)
       }).catch(() => { S.pre.failed += 1; });
       pend.add(p); p.finally(() => pend.delete(p));
     }
