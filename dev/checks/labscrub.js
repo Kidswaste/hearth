@@ -2,8 +2,8 @@
 // scene of 8 layers (a base, 6 small three.js layers, one 🅰 kinetic type layer), 4 of them keyframed with their lanes
 // open. With real input (CDP mouse / wheel, as the owner's mouse and trackpad send them), per stretch:
 //   scrub   drag the playhead across the whole song and back (paused)
+//   pan     a two-finger sideways trackpad scroll along the zoomed waveform (the waveform scrolling)
 //   zoom    trackpad pinch (Ctrl+wheel) in and out over the waveform
-//   pan     Shift+wheel along the zoomed waveform (the waveform scrolling)
 //   clip    drag a layer's bar along its track
 //   sound   the scrub again with the scrub sound on: the grains it plays and what they cost
 // What is counted: the Lab window's main-thread work per move (the input's handlers + the frames it caused: rAF →
@@ -30,11 +30,13 @@ const mouse = (type, x, y, extra = {}) => cdp('Input.dispatchMouseEvent', { type
 const move = (x, y, modifiers = 0) => cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x), y: Math.round(y), button: 'left', buttons: 1, modifiers });
 // a burst of inputs ~4 ms apart, as a 240 Hz mouse / trackpad sends them (each awaited, the next isn't held for it)
 const burst = async (sends, gap = 4) => { const ps = []; for (const f of sends) { ps.push(f()); await wait(gap); } await Promise.all(ps); };
-const wheel = (x, y, dy, modifiers = 0) => cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(x), y: Math.round(y), deltaX: 0, deltaY: dy, modifiers });
+const wheel = (x, y, dy, modifiers = 0, dx = 0) => cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(x), y: Math.round(y), deltaX: dx, deltaY: dy, modifiers });
+// the view stops changing (wheel events still on their way are handled)
+const viewRests = async () => { let last = ''; let same = 0; for (let i = 0; i < 60 && same < 4; i++) { const v = JSON.stringify(c.player.view); same = v === last ? same + 1 : 0; last = v; await wait(100); } };
 // budgets: main-thread ms per move (handlers + the frames they caused, p95), frames over 8.3 ms of work (dropped at
 // 120 Hz here; the frame gaps themselves are this machine's software GL, reported as gapsDropped), seeks the
 // preview got in one of its frames (max) and per move, waveform rebuilds while panning at one zoom
-const BUDGET = window.LS_BUDGET || { scrubMsP95: 12, zoomMsP95: 16, panMsP95: 12, clipMsP95: 12, dropped: 12, seeksPerFrameMax: 1, seeksPerMove: 1.05, panRebuilds: 3, clipMsgsPerMove: 1.05, finalExact: 0.002, soundMsP95: 14 };
+const BUDGET = window.LS_BUDGET || { scrubMsP95: 12, zoomMsP95: 16, panMsP95: 12, clipMsP95: 12, dropped: 12, seeksPerFrameMax: 1, seeksPerMove: 1.05, panRebuilds: 2, zoomRebuilds: 8, clipMsgsPerMove: 1.05, finalExact: 0.002, soundMsP95: 14 };
 out.budgets = BUDGET;
 
 // ---------- the song: 4 minutes at 120 BPM (kicks on the beat, hats between), 22.05 kHz mono ----------
@@ -67,7 +69,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: false }); renderer.setPixe
 const scene = new THREE.Scene(); scene.background = new THREE.Color('#0b0d12');
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); camera.position.z = 6;
 const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1.2, 0.35, 64, 8), new THREE.MeshNormalMaterial()); scene.add(knot);
-renderer.setAnimationLoop(() => { knot.rotation.y = audio.time * 0.7; knot.scale.setScalar(0.6 + P.glow * 0.6); renderer.render(scene, camera); const L = window.__lsDrawn; if (L && L.on) L.at.push([document.timeline.currentTime, audio.time]); });`;
+renderer.setAnimationLoop(() => { knot.rotation.y = audio.time * 0.7; knot.scale.setScalar(0.6 + P.glow * 0.6); renderer.render(scene, camera); const L = window.__lsDrawn; if (L && L.on) L.at.push([document.timeline.currentTime, audio.time]); window.__lsFrame?.(); });`;
 await D.newSketch('labscrub scene', BASE, 2);
 try { c.customSize(320, 180); c.size('custom'); } catch { /* the frame size stays */ }
 const r0 = await c.loadSong(SONG);
@@ -113,8 +115,8 @@ const sbxJson = (r) => { try { return typeof r === 'string' ? JSON.parse(r) : {}
 await sbx(`if (!window.__lsProbe) { const P = window.__lsProbe = { on: false, frames: 0, seeks: 0, layerMsgs: 0, perFrame: [], cur: 0 };
   window.__lsDrawn = { on: false, at: [] };
   addEventListener('message', (e) => { if (!P.on) return; const d = e.data; if (d?.type === 'media' && d.cmd === 'seek') { P.seeks++; P.cur++; } if (d?.type === 'layer-props') P.layerMsgs++; });
-  const raf = typeof realRAF === 'function' ? realRAF : requestAnimationFrame; P.real = typeof realRAF === 'function'; // the page's own frames (a sketch's are paced)
-  const f = () => { if (P.on) { P.frames++; P.perFrame.push(P.cur); P.cur = 0; } raf(f); }; raf(f);
+  // per frame the preview drew (the base layer's frame, see BASE): the seeks that came in since the one before
+  window.__lsFrame = () => { if (P.on) { P.frames++; P.perFrame.push(P.cur); P.cur = 0; } };
 } return 1`);
 // the Lab window: main-thread work per move (handlers + the frame rendering after them), frame gaps
 const probe = { on: false, ev: [], frames: [], gaps: [], last: 0 };
@@ -141,14 +143,25 @@ async function stretch(name, fn) {
   performance.mark(`hz240:${name}`);
   await sbx('const P = window.__lsProbe; Object.assign(P, { on: true, frames: 0, seeks: 0, layerMsgs: 0, perFrame: [], cur: 0 }); window.__lsDrawn.at = []; window.__lsDrawn.on = true; return 1');
   const s0 = wc0();
+  const prof = window.LS_PROFILE === name;
+  if (prof) { await cdp('Profiler.enable', {}); await cdp('Profiler.setSamplingInterval', { interval: 200 }); await cdp('Profiler.start', {}); }
   probe.ev = []; probe.frames = []; probe.gaps = []; probe.last = 0; probe.on = true; requestAnimationFrame(tick);
   const t0 = performance.now();
   let moves = 0;
   try { moves = await fn(); } catch (err) { out.problems.push(`${name}: ${String(err.message || err).slice(0, 200)}`); }
   await settle(); await wait(150);
   probe.on = false;
+  if (prof) {
+    const p = (await cdp('Profiler.stop', {}))?.profile;
+    if (p) {
+      const self = {}; const dt = {}; const byId = new Map(p.nodes.map((n) => [n.id, n]));
+      for (let i = 0; i < p.samples.length; i++) dt[p.samples[i]] = (dt[p.samples[i]] || 0) + (p.timeDeltas[i] || 0);
+      for (const [id, us] of Object.entries(dt)) { const n = byId.get(Number(id)); const cf = n.callFrame; const k = `${cf.functionName || '(anon)'} ${cf.url.split('/').pop()}:${cf.lineNumber + 1}`; self[k] = (self[k] || 0) + us / 1000; }
+      out.profile = Object.entries(self).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([k, v]) => `${r1(v)}ms ${k}`);
+    }
+  }
   const ms = performance.now() - t0;
-  const pv = sbxJson(await sbx('const P = window.__lsProbe; P.on = false; window.__lsDrawn.on = false; return JSON.stringify({ real: P.real, frames: P.frames, seeks: P.seeks, layerMsgs: P.layerMsgs, maxPerFrame: Math.max(0, ...P.perFrame), drawn: window.__lsDrawn.at.slice(-3), draws: window.__lsDrawn.at.length })'));
+  const pv = sbxJson(await sbx('const P = window.__lsProbe; P.on = false; window.__lsDrawn.on = false; return JSON.stringify({ frames: P.frames, seeks: P.seeks, layerMsgs: P.layerMsgs, maxPerFrame: Math.max(0, ...P.perFrame), drawn: window.__lsDrawn.at.slice(-3), draws: window.__lsDrawn.at.length })'));
   const s1 = wc0();
   const handlers = probe.ev.reduce((a, x) => a + (x.end - x.start), 0);
   const frameWork = probe.frames.reduce((a, x) => a + x, 0);
@@ -159,7 +172,7 @@ async function stretch(name, fn) {
     cpuPerMoveMs: moves ? r1((handlers + frameWork) / moves) : null, // the Lab window's main thread, per move
     handlerP95: pct(perMove, 0.95), frameWorkP95: pct(probe.frames, 0.95), moveMsP95: pct(perMove.map((h, i) => h + (probe.frames[i] || 0)), 0.95),
     frames: probe.gaps.length, framesOver4: probe.frames.filter((x) => x > 4.2).length, framesOver8: probe.frames.filter((x) => x > 8.3).length, gapsDropped: dropped, worstGap: r1(Math.max(0, ...probe.gaps)),
-    preview: { realFrames: pv.real, frames: pv.frames, draws: pv.draws, seeks: pv.seeks, seeksPerMove: moves ? r3(pv.seeks / moves) : 0, seeksMaxPerFrame: pv.maxPerFrame, layerMsgs: pv.layerMsgs, lastDrawn: pv.drawn },
+    preview: { frames: pv.frames, draws: pv.draws, seeks: pv.seeks, seeksPerMove: moves ? r3(pv.seeks / moves) : 0, seeksMaxPerFrame: pv.maxPerFrame, layerMsgs: pv.layerMsgs, lastDrawn: pv.drawn },
     ...(s0 && s1 ? { waveRebuilds: s1.waveBuilds - s0.waveBuilds, gridRebuilds: s1.gridBuilds - s0.gridBuilds, canvasDraws: s1.draws - s0.draws, ...(s1.grains != null ? { grains: s1.grains - s0.grains } : {}) } : {}),
   };
   out[name] = r;
@@ -199,15 +212,26 @@ if (want('scrub')) {
   out.final.drawnAfter = r3(lastT);
   if (!(Math.abs(lastT - t) <= BUDGET.finalExact)) out.problems.push(`scrub: the preview's last frame shows ${r3(lastT)} s, the playhead ${r3(t)} s`);
 }
-await stretch('zoom', async () => {
-  const r = rect(); const y = waveY(); const x = r.left + r.width * 0.4;
-  await mouse('mouseMoved', x, y, { button: 'none', buttons: 0 });
-  await burst(Array.from({ length: 80 }, (_, i) => () => wheel(x, y, i < 60 ? -12 : 12, 2)));
-  return 80;
-});
+// the waveform scrolled at one zoom (10 s in view): a two-finger sideways trackpad scroll, 60 steps, ~a third of a view
+c.player.zoomTo(100, 110);
+await settle(); await wait(300);
 await stretch('pan', async () => {
   const r = rect(); const y = waveY(); const x = r.left + r.width * 0.4;
-  await burst(Array.from({ length: 60 }, (_, i) => () => wheel(x, y, i < 40 ? 8 : -8, 8)));
+  const v0 = c.player.view;
+  await mouse('mouseMoved', x, y, { button: 'none', buttons: 0 });
+  await burst(Array.from({ length: 60 }, (_, i) => () => wheel(x, y, 0, 0, i < 40 ? 4 : -4)), 8);
+  await viewRests();
+  out.panView = { from: v0, to: c.player.view };
+  if (!(c.player.view?.start > v0.start + 0.05)) out.problems.push(`pan: the view didn't move (${JSON.stringify(out.panView)})`);
+  return 60;
+});
+// a pinch (Ctrl+wheel): in 40 steps, out 20
+await stretch('zoom', async () => {
+  const r = rect(); const y = waveY(); const x = r.left + r.width * 0.4;
+  const v0 = c.player.view;
+  await burst(Array.from({ length: 60 }, (_, i) => () => wheel(x, y, i < 40 ? -6 : 6, 2)), 8);
+  await viewRests(); await wait(300); // the pinch rests: drawn crisp
+  out.zoomView = { from: v0, to: c.player.view };
   return 60;
 });
 c.player.zoomTo?.(null);
@@ -256,6 +280,7 @@ if (out.scrub) {
   over('scrub: seeks per move', out.scrub.preview.seeksPerMove, BUDGET.seeksPerMove);
 }
 if (out.pan && out.pan.waveRebuilds != null) over('pan: waveform rebuilds at one zoom', out.pan.waveRebuilds, BUDGET.panRebuilds);
+if (out.zoom && out.zoom.waveRebuilds != null) over('zoom: waveform rebuilds over a pinch in and out', out.zoom.waveRebuilds, BUDGET.zoomRebuilds);
 if (out.clip) over('clip: layer messages per move', r3(out.clip.preview.layerMsgs / Math.max(1, out.clip.moves)), BUDGET.clipMsgsPerMove);
 if (out.sound && !(out.sound.grains > 0)) out.problems.push('sound: no scrub grains played');
 const errs = D.report?.().errors || [];

@@ -1957,7 +1957,7 @@ const ThreeMedia = (() => {
         const X = (tt) => ((tt - s0) / sp) * w;
         scrubStats.waveBuilds += 1;
         const wc = waveCache.canvas;
-        wc.width = Math.round(w * dpr); wc.height = Math.round((top + H) * dpr);
+        if (wc.width !== Math.round(w * dpr) || wc.height !== Math.round((top + H) * dpr)) { wc.width = Math.round(w * dpr); wc.height = Math.round((top + H) * dpr); } // (a new backing store only for a new size)
         const wg = wc.getContext('2d');
         wg.setTransform(dpr, 0, 0, dpr, 0, 0);
         wg.clearRect(0, 0, w, top + H);
@@ -2055,7 +2055,7 @@ const ThreeMedia = (() => {
         const X = (tt) => ((tt - s0) / sp) * w;
         scrubStats.gridBuilds += 1;
         const gc = gridCache.canvas;
-        gc.width = Math.round(w * dpr); gc.height = Math.round((top + H) * dpr);
+        if (gc.width !== Math.round(w * dpr) || gc.height !== Math.round((top + H) * dpr)) { gc.width = Math.round(w * dpr); gc.height = Math.round((top + H) * dpr); } // (a new backing store only for a new size)
         const gg = gc.getContext('2d');
         gg.setTransform(dpr, 0, 0, dpr, 0, 0);
         gg.clearRect(0, 0, w, top + H);
@@ -3065,13 +3065,14 @@ const ThreeMedia = (() => {
       // (round 49, labscrub) the view changes at once and is drawn once in the coming frame (a trackpad sends several
       // wheel events a frame: each one drew the whole timeline); a zoom stretches the cached waveform until it rests
       if (e.shiftKey || e.altKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        const d = ((e.shiftKey || e.altKey ? e.deltaY : e.deltaX) || 0) * px / tw() * span() * 1.5;
+        // (Chromium on Windows / Linux, and macOS, turn Shift+wheel into a sideways wheel: deltaX, deltaY 0)
+        const d = ((e.shiftKey || e.altKey ? e.deltaY || e.deltaX : e.deltaX) || 0) * px / tw() * span() * 1.5;
         setView({ start: v0() + d, end: v0() + d + span() }, { soon: true });
       } else {
         // smooth: a mouse notch ≈ 1.25×, a trackpad pinch (ctrl + wheel) or two-finger scroll zooms gradually
         const f = Math.max(0.5, Math.min(2, Math.exp(e.deltaY * px * (e.ctrlKey ? 0.012 : 0.0022))));
         zoomingUntil = performance.now() + ZOOM_REST;
-        clearTimeout(zoomRest); zoomRest = setTimeout(() => { lastFrameKey = ''; paintSoon(); }, ZOOM_REST + 10);
+        clearTimeout(zoomRest); zoomRest = setTimeout(() => { waveCache.key = ''; gridCache.key = ''; lastFrameKey = ''; paintSoon(); }, ZOOM_REST + 10);
         zoomBy(f, timeAt(e), { soon: true });
       }
     }, { passive: false });
