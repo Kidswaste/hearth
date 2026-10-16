@@ -146,6 +146,14 @@ const F = require('./fake-common');
     pc?.close();
     mcpReport += `\n\nAccess calls:\n${lines.map((l) => `- ${l}`).join('\n')}`;
   }
+  // (round 51, routinelean) "varied" / "edits:N:tag": a Keep going round's own words and its file edit
+  const rl = F.roundlean(F.userPartOf(prompt));
+  if (rl.edit) {
+    const id = `toolu_${F.uuid().slice(0, 8)}`;
+    F.out({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Edit', input: { file_path: require('path').join(require('os').tmpdir(), 'hearth-routinelean', rl.edit), old_string: 'a', new_string: 'b' } }] }, session_id: sessionId });
+    F.out({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] }, session_id: sessionId });
+  }
+  text += rl.text;
   const toolCalls = p.tools3 ? ['mcp__three__three_screenshot', 'mcp__three__three_eval', 'mcp__three__three_edit_code'] : p.tool ? ['mcp__claude_ai_Gmail__search_threads'] : [];
   for (const name of toolCalls) {
     const id = `toolu_${F.uuid().slice(0, 8)}`;

@@ -513,4 +513,22 @@ function logRun(engine, { system = '', prompt = '', prior = 0, text = '', thinki
   } catch { /* the log is optional */ }
 }
 
-module.exports = { logRun, userPartOf: userPart, readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older, runTool, within, limitText };
+// (round 51, routinelean) a 🔁 Keep going round, in the message's own words: "varied" gives each reply new words (rounds
+// that aren't repeats); "edits:N:tag" edits a file in the first N such replies (counted per tag), none after (rounds
+// that stop changing anything) → { text (added to the reply), edit (a file name) | null }
+const RL_WORDS = 'palette glow bloom grain orbit spline mesh shader timing slider camera kick snare frame scene light layer beat ember tide drift pulse ring trail fog depth lens focus blur noise wave curve rhythm accent tempo'.split(' ');
+function roundlean(msg) {
+  const v = /\bvaried\b/i.test(msg); const e = String(msg).match(/\bedits:(\d+):(\w+)/i);
+  if (!v && !e) return { text: '', edit: null };
+  let text = ''; let edit = null;
+  if (v) {
+    const st = loadState('roundlean-varied'); st.n = (st.n || 0) + 1; saveState('roundlean-varied', st);
+    let x = st.n * 7919; const w = [];
+    for (let i = 0; i < 48; i++) { x = (x * 1103515245 + 12345) % 2147483648; w.push(RL_WORDS[x % RL_WORDS.length]); }
+    text = `\n\nRound notes ${st.n}: ${w.join(' ')}.`;
+  }
+  if (e) { const id = `roundlean-edits-${e[2]}`; const st = loadState(id); st.n = (st.n || 0) + 1; saveState(id, st); if (st.n <= Number(e[1])) edit = `part-${st.n}.js`; }
+  return { text, edit };
+}
+
+module.exports = { roundlean, logRun, userPartOf: userPart, readStdin, sleep, out, uuid, loadState, saveState, plan, pieces, delayMs, mcpClient, serverFor, switches, setSwitch, trip, older, runTool, within, limitText };

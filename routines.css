@@ -29,3 +29,8 @@
 .rt-more[open] { display: flex; flex-direction: column; gap: 8px; }
 .rt-check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .rt-setup-row .ghost.small { padding: 1px 6px; }
+/* (round 51, routinelean) the Usage window: what Keep going spent and did */
+.rt-usage { margin-top: 12px; display: flex; flex-direction: column; gap: 2px; }
+.rt-usage h4 { margin: 0 2px 2px; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.rt-usage p { margin: 0 2px; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.rt-usage p.hint { white-space: pre-line; color: var(--muted); }

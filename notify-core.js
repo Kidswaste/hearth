@@ -104,7 +104,7 @@ const NotifyCore = (() => {
         const title = ev.phase === 'round' ? `🔁 ${who}: round ${ev.n || ''}${ev.of ? ` of ${ev.of}` : ''} done`.replace(/ {2}/g, ' ')
           : ev.phase === 'pause' ? `🔁 Keep going paused in ${where || 'a chat'}`
             : `🔁 Keep going ${ev.phase === 'done' ? 'finished' : 'stopped'} in ${where || 'a chat'}`;
-        const body = ev.phase === 'round' ? [where, ev.cost].filter(Boolean).join(' · ') : [ev.why ? `${ev.why[0].toUpperCase()}${ev.why.slice(1)}` : '', ev.cost].filter(Boolean).join(' · ');
+        const body = ev.phase === 'round' ? [ev.summary || where, ev.cost].filter(Boolean).join(' · ') /* (round 51, routinelean) its one-line summary, never the answer */ : [ev.why ? `${ev.why[0].toUpperCase()}${ev.why.slice(1)}` : '', ev.cost].filter(Boolean).join(' · ');
         n = { title, body: clip(body, 160), actions: [openChat] };
         break;
       }
