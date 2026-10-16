@@ -42,7 +42,7 @@
   wrap('Commands', G('Commands'), 'register', (r, [def]) => { const d = { ...pick(def, CMD_KEYS) }; if (def.when) d.when = true; if (R.dcl) d.dcl = true; r.commands.push(d); });
   wrap('Keys', G('Keys'), 'add', (r, entries) => { for (const e of entries.flat()) if (e?.keys) r.keys.push({ area: e.area || 'General', keys: e.keys, what: e.what, ...(e.sel ? { sel: e.sel } : {}) }); });
   wrap('HubBridge', G('HubBridge'), 'register', (r, [prefixes]) => r.bridge.push(...(prefixes || [])));
-  wrap('Tools', G('Tools'), 'define', (r, [t]) => r.tools.push({ id: t.id, name: t.name, icon: t.icon, color: t.color, description: t.description || '', commands: (t.commands || []).map((c) => ({ label: c.label })) }));
+  wrap('Tools', G('Tools'), 'define', (r, [t]) => r.tools.push({ id: t.id, name: t.name, icon: t.icon, color: t.color, description: t.description || '', ...(t.offRail ? { offRail: true } : {}), commands: (t.commands || []).map((c) => ({ label: c.label })) }));
   wrap('AppUI', G('AppUI'), 'addAction', (r, [label, , keys]) => r.actions.push(keys ? { label, keys } : label));
   wrap('Apps', G('Apps'), 'register', (r, [def]) => r.apps.push(pick(def, APP_KEYS)));
   if (!R.stop) { R.stop = true; addEventListener('hearth:ready', () => { R.on = false; }, { once: true }); }

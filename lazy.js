@@ -309,7 +309,7 @@ const Lazy = (() => {
       if (app) app.fallback = true;
       return app;
     });
-    if (typeof Tools !== 'undefined') swap(Tools, 'define', (orig) => (tool) => { if (tool && !tool.__lazy) rep.tools.push({ id: tool.id, name: tool.name, icon: tool.icon, color: tool.color, description: tool.description || '', commands: (tool.commands || []).map((c) => ({ label: c.label })) }); return orig(tool); });
+    if (typeof Tools !== 'undefined') swap(Tools, 'define', (orig) => (tool) => { if (tool && !tool.__lazy) rep.tools.push({ id: tool.id, name: tool.name, icon: tool.icon, color: tool.color, description: tool.description || '', ...(tool.offRail ? { offRail: true } : {}), commands: (tool.commands || []).map((c) => ({ label: c.label })) }); return orig(tool); });
     return { ready, restore: () => { for (const u of undo.reverse()) u(); } };
   }
   const CMD_KEYS = ['name', 'aliases', 'args', 'desc', 'area', 'hidden', 'keys', 'examples', 'keywords', 'undo', 'whenLabel', 'fallback'];

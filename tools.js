@@ -7,9 +7,19 @@ const Tools = (() => {
 
   function define(tool) { registry.set(tool.id, tool); }
 
-  // config.tools: { order: [...ids], hidden: [...ids] }
+  // config.tools: { order: [...ids], hidden: [...ids], placed: [...ids] }
+  // (round 53, appcalm) a tool defined with `offRail: true` (the Creative Playground) starts in the rail's ⋯ "Not in
+  // the rail", once: `placed` remembers it, so ticking it back in (⋯ › Put tools back, Settings) keeps it in the rail
+  function placeNew(t) {
+    const fresh = [...registry.values()].filter((x) => x.offRail && !(t.placed || []).includes(x.id));
+    if (!fresh.length || !H.config) return t;
+    const ids = fresh.map((x) => x.id);
+    H.config.tools = { ...t, placed: [...(t.placed || []), ...ids], hidden: [...new Set([...(t.hidden || []), ...ids])] };
+    saveConfig();
+    return H.config.tools;
+  }
   function settings() {
-    const t = H.config?.tools || {};
+    const t = placeNew(H.config?.tools || {});
     return { order: t.order || DEFAULT_ORDER, hidden: t.hidden || [] };
   }
   function all() {
@@ -22,7 +32,7 @@ const Tools = (() => {
     return all().filter((t) => !hidden.includes(t.id));
   }
   function save(next) {
-    H.config.tools = { ...settings(), ...next };
+    H.config.tools = { ...(H.config.tools || {}), ...settings(), ...next };
     saveConfig();
   }
   function move(id, delta) {

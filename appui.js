@@ -372,7 +372,7 @@ const AppUI = (() => {
   function paletteItems() {
     const items = [];
     for (const a of H.agents()) items.push({ kind: 'Agent', label: a.name, keys: H.railKey?.(a.id) || '', run: () => activate(a.id) });
-    for (const t of Tools.enabled()) {
+    for (const t of Tools.all()) { // (round 53) the tools off the rail too: Ctrl/⌘+K still opens them
       items.push({ kind: 'Tool', label: t.name, keys: H.railKey?.(`tool:${t.id}`) || '', run: () => activate(`tool:${t.id}`) });
       for (const c of t.commands || []) items.push({ kind: t.name, label: c.label, run: () => { activate(`tool:${t.id}`); setTimeout(c.run, 50); } });
     }

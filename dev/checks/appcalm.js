@@ -133,6 +133,8 @@ step('no "Command palette" in the rail', !/Command palette/i.test(onScreen) && !
 const railTools = [...document.querySelectorAll('#agent-buttons .agent-btn')].filter(vis);
 const noIcon = railTools.filter((b) => !b.querySelector('svg')).map((b) => b.title || b.textContent.trim());
 step('every agent and tool in the rail has a drawn icon', !noIcon.length, noIcon);
+// (round 53) the Creative Playground waits in the rail ⋯ too (Ctrl/⌘+K and /playground open it; ⋯ › Put tools back keeps it in)
+step('the rail ⋯ lists the Creative Playground under Not in the rail', moreRows.some((t) => /Creative Playground/.test(t)), moreRows);
 step('the full-screen and board-drawer buttons wait in the rail ⋯', !vis(document.getElementById('full-btn') || document.createElement('i')) && !vis(document.querySelector('.bd-rail-peek') || document.createElement('i')));
 step('the meter says what it opens in one sentence', /what's left/i.test(document.querySelector('.meter-pill')?.title || ''), document.querySelector('.meter-pill')?.title);
 
@@ -160,7 +162,7 @@ dl?.close(); await wait(200);
 AppUI.palette();
 await until(() => document.querySelector('.palette-input'), 4000); await wait(300);
 const find = async (q) => { const i = document.querySelector('.palette-input'); i.value = q; i.dispatchEvent(new Event('input')); await wait(450); return [...document.querySelectorAll('.palette .palette-item')].slice(0, 8).map((r) => `${r.querySelector('.p-label')?.textContent} · ${r.querySelector('.p-detail')?.textContent || ''}`).filter((t) => !/^Ask (Claude|Astra)/.test(t)); }; // not the "Ask Claude: …" fallback
-for (const [q, re] of [['full screen', /Full screen/i], ['board drawer', /Board drawer/i], ['usage', /^Usage/i], ['token tools', /tools/i], ['features used', /Features/i], ['export token usage', /Export token usage/i], ['copy usage summary', /usage summary/i], ['recent notifications', /Recent notifications/i], ['find anything', /Find anything/i]]) {
+for (const [q, re] of [['playground', /Creative Playground/i], ['full screen', /Full screen/i], ['board drawer', /Board drawer/i], ['usage', /^Usage/i], ['token tools', /tools/i], ['features used', /Features/i], ['export token usage', /Export token usage/i], ['copy usage summary', /usage summary/i], ['recent notifications', /Recent notifications/i], ['find anything', /Find anything/i]]) {
   const got = await find(q);
   out.lists[`find "${q}"`] = got.slice(0, 3).join(' | ');
   step(`Ctrl/⌘+K finds "${q}"`, got.some((t) => re.test(t)), got.slice(0, 4));

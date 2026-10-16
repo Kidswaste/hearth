@@ -201,7 +201,7 @@ const CreativePlayground = (() => {
     // A rail change may not hide the whole document. Stop audio and animation when this surface disappears.
     const surface = body.closest('.surface'); if (surface) new MutationObserver(() => { if (H.activeId !== 'tool:creative') pause(); }).observe(surface, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
   }
-  Tools.define({ id: 'creative', name: 'Creative Playground', icon: '✺', color: '#8de0c7', description: 'Visuals, beats, games and daily creative quests', mount: body => { mount(body).catch(e => { body.textContent = `Playground could not open: ${calmError(e)}`; }); } });
+  Tools.define({ id: 'creative', offRail: true, name: 'Creative Playground', icon: '✺', color: '#8de0c7', description: 'Visuals, beats, games and daily creative quests', mount: body => { mount(body).catch(e => { body.textContent = `Playground could not open: ${calmError(e)}`; }); } });
   Commands.register({ name: 'playground', area: 'Create', desc: 'Open visuals, music, games and daily creative quests', run: () => { activate('tool:creative'); } });
   return { openFeature, pause, flush: () => saving, snapshot: () => ({ feature, state: JSON.parse(JSON.stringify(state)), playing: Boolean(source), clip: clip ? { name: clip.name, seconds: clip.samples.length / clip.sr } : null }), renderAudio: () => rendered };
 })();
