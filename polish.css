@@ -896,3 +896,19 @@ dialog.settings-dialog :is(.button-row, .sc-row, .settings-ai) > button { paddin
 /* the empty chat's ✦ What can I do here? reads like the app's other links in every look (Light showed a browser-blue underline) */
 .messages .empty .hint a { color: var(--agent, var(--accent)); text-decoration: none; }
 .messages .empty .hint a:hover { text-decoration: underline; }
+
+/* (round 51, glass240) Floating glass at 240 Hz, like scroll240's dialogs: menus and their flyouts, Ctrl/⌘+K, tooltips,
+   the slash / find / notes panels, the Lab's menus and pops, the command bar and the node editor's pickers no longer
+   blur what's behind them. A backdrop blur is worked out again on every frame anything under it or in it changes: a
+   row lit as you point down a menu, a letter typed in Ctrl/⌘+K over a streaming reply, the Lab's live picture under its
+   right-click menu (measured: dev/checks/glass240.js). They keep their tint, edge light and shadow, a little more solid
+   (84–92 % → 94–97 %), so what's behind reads the same: a shade through, never smeared. Ctrl/⌘+K's dimmed page is a
+   shade darker instead of blurred. */
+:is(#menu, #menu-fly, #menu-fly2, .slash-menu, .find-bar, .notes-panel, .lab-pop, .mb-menu, .palette, .palette-card, .cmdbar-row, .cmdbar-out, .juice-tip, .nv-picker, .nv-menu, .tn-empty-card) { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html[data-skin~="forge"] .palette { background: #000000c8; }
+:root[data-look~=v2] .palette { background: radial-gradient(ellipse at 50% 20%, color-mix(in srgb, var(--fh-heat) calc(6% * var(--glow)), #0009), #000d); }
+:root[data-look~=v2] .palette-card { background: var(--tx-noise), linear-gradient(180deg, color-mix(in srgb, var(--fh-iron-1) 94%, transparent), color-mix(in srgb, var(--fh-iron-3) 97%, transparent)); }
+:root[data-look~=v2] :is(#menu, #menu-fly, #menu-fly2, .slash-menu, .find-bar, .notes-panel, .lab-pop, .mb-menu, .toast) { background: var(--tx-noise), linear-gradient(180deg, color-mix(in srgb, var(--fh-pop) 94%, transparent), color-mix(in srgb, var(--fh-pop) 97%, transparent)); }
+:root[data-look~=v2] .toast.error { background: var(--tx-noise), color-mix(in srgb, var(--fh-stop) 10%, color-mix(in srgb, var(--fh-pop) 95%, transparent)); }
+:root[data-look~=v2] :is(.cmdbar-row, .cmdbar-out) { background: var(--tx-noise, none), linear-gradient(180deg, color-mix(in srgb, var(--fh-iron-1, var(--sidebar)) 94%, transparent), color-mix(in srgb, var(--fh-iron-3, var(--sidebar)) 97%, transparent)); }
+.juice-tip { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop, var(--sidebar)) 97%, transparent); }
