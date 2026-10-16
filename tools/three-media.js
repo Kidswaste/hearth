@@ -318,7 +318,7 @@ const ThreeMedia = (() => {
     const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
     playBtn.dataset.feature = 'Play / pause';
     playBtn.dataset.key = 'Space';
-    playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); menuAt(playBtn, [['Play from the start', 'Home, then Space', () => { seek(0); toggle(true); }], region ? ['Play the loop', '', () => { seek(region.a); toggle(true); }] : false, ...RATES.map((r) => [`${st.rate === r ? '● ' : ''}${r === 1 ? 'Normal speed' : `${r}× speed`}`, '', () => setRate(r)])].filter((x) => x !== false)); });
+    playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); menuAt(playBtn, [['Play from the start', 'Home, then Space', () => { seek(0); toggle(true); }], region ? ['Play the loop', '', () => { seek(region.a); toggle(true); }] : false, ...RATES.map((r) => [`${st.rate === r ? '● ' : ''}${r === 1 ? 'Normal speed' : `${r}× speed`}`, '', () => setRate(r)]), null, [`${scrubOn ? '● ' : ''}Sound while dragging the playhead`, 'Hear the song under the playhead as you scrub', () => setScrubSound(!scrubOn)]].filter((x) => x !== false)); });
     const timeEl = el('span', { class: 'mb-time', text: '0:00', title: 'Click to jump to a time (m:ss.mmm or seconds)' });
     timeEl.addEventListener('click', async () => { if (!D()) return; const v = await Modal.prompt('Jump to', { value: fmtMs(now()), placeholder: 'm:ss.mmm or seconds' }); const t = parseTime(v ?? ''); if (Number.isFinite(t)) seek(t); });
     // Slow motion for precise edits (the sketch sees the slowed music too). Recording always runs at 1×.
@@ -771,6 +771,7 @@ const ThreeMedia = (() => {
     let wish = null;
     function attach({ playing = wish && performance.now() - wish.at < 10000 ? wish.play : st.playing } = {}) {
       if (!st.bytes) return;
+      clearTimeout(seekQ.timer); Object.assign(seekQ, { busy: 0, want: null, timer: 0 }); // (labscrub) the load carries the time
       send({ type: 'media-load', buffer: st.bytes.slice(0), mime: st.mime, video: st.video, name: st.name, startAt: hooks.startAt?.(st.time) ?? st.time, playing, loop: st.loop, volume: st.volume, analysis: st.analysis, region, rate: st.rate, trim: map.trim });
       sendMap();
       emit('attach', { path: st.path });
@@ -778,6 +779,7 @@ const ThreeMedia = (() => {
     function toggle(force) {
       if (!st.bytes) { pick(); return; }
       const play = force ?? !st.playing;
+      seekFlush(); // (labscrub) a seek still waiting goes first
       wish = { play, at: performance.now() };
       send({ type: 'media', cmd: play ? 'play' : 'pause', ...(play ? {} : hooks.pauseMsg?.() || {}) });
     }
@@ -793,7 +795,7 @@ const ThreeMedia = (() => {
         if (fx.target != null) send({ type: 'media', cmd: 'seek', value: fx.target, ...(fx.msg || {}) });
       } else {
         if (st.clock) st.time = Math.min(clockSnap(st.time), D()); // the scene's own timeline: on a frame start
-        send({ type: 'media', cmd: 'seek', value: st.time });
+        sendSeek(st.time);
       }
       // A jump outside the zoomed view brings the view along (unless it's locked).
       if (view && !locked && !dragging && (st.time < view.start || st.time > view.end)) setView({ start: st.time - span() / 2, end: st.time + span() / 2 });
@@ -802,8 +804,55 @@ const ThreeMedia = (() => {
       // draw styled the page first (≈ 2–5 ms per move here)
       if (dragging?.kind === 'seek') paintSoon(); else paint();
     }
-    function paintSoon() { if (!paintRaf) paintRaf = requestAnimationFrame(() => { paintRaf = 0; paint(); }); }
+    // (round 49, labscrub) while the playhead is dragged only the timeline's picture, the time and the playheads change:
+    // the control row isn't walked each frame
+    function paintSoon() { if (!paintRaf) paintRaf = requestAnimationFrame(() => { paintRaf = 0; if (dragging?.kind === 'seek') { draw(); placePlayheads(); } else paint(); }); }
+    // (round 49, labscrub) one seek in flight: the preview answers once it has drawn it (seekAck, in its next frame),
+    // and meanwhile only the newest time waits, so a fast scrub never queues seeks the preview can't draw (it got up to
+    // four per frame) and the last one is always the time where the playhead stopped. No answer in a second (a preview
+    // reloading or hidden): the newest goes anyway.
+    const seekQ = { busy: 0, want: null, timer: 0 };
+    function sendSeek(t) {
+      const wait = seekQ.busy ? 1000 - (performance.now() - seekQ.busy) : 0;
+      if (wait > 0) { seekQ.want = t; if (!seekQ.timer) seekQ.timer = setTimeout(seekAcked, wait); return; }
+      clearTimeout(seekQ.timer); seekQ.timer = 0; seekQ.want = null; seekQ.busy = performance.now();
+      send({ type: 'media', cmd: 'seek', value: t, ack: true });
+    }
+    function seekAcked() { seekQ.busy = 0; clearTimeout(seekQ.timer); seekQ.timer = 0; if (seekQ.want != null) sendSeek(seekQ.want); }
+    const seekFlush = () => { if (seekQ.want != null) { seekQ.busy = 0; sendSeek(seekQ.want); } };
+    // (round 49, labscrub) the scrub sound: dragging the playhead plays short grains of the song where it is (like a
+    // DJ's jog wheel), from the analysis' 22 kHz copy in the Lab window, at the Lab's volume: ≤ 1 grain per 45 ms,
+    // its own small audio context made on the first scrub and put to sleep 1.5 s after the last one. Off: the play
+    // button's right-click menu (three.scrubSound).
+    let scrubOn = store.get('three.scrubSound', true);
+    const scrub = { ctx: null, last: 0, lastT: -1, sleep: 0, n: 0 };
+    function setScrubSound(on) { scrubOn = Boolean(on); store.set('three.scrubSound', scrubOn); if (!scrubOn) scrub.ctx?.suspend().catch(() => {}); return scrubOn; }
+    function scrubGrain(t) {
+      if (!scrubOn || st.playing || !st.samples || st.clock || !(st.volume > 0)) return;
+      const nowMs = performance.now();
+      if (nowMs - scrub.last < 45 || Math.abs(t - scrub.lastT) < 0.004) return;
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        if (!scrub.ctx) scrub.ctx = new AC({ latencyHint: 'interactive' });
+        const ac = scrub.ctx;
+        if (ac.state === 'suspended') ac.resume().catch(() => {});
+        const SR = 22050; const len = Math.round(SR * 0.06); const i0 = Math.max(0, Math.round(t * SR));
+        const src = st.samples; if (i0 >= src.length) return;
+        const buf = ac.createBuffer(1, len, SR); const ch = buf.getChannelData(0);
+        const fade = Math.round(SR * 0.008); const gain = Math.min(1, st.volume) * 0.8;
+        for (let i = 0; i < len && i0 + i < src.length; i += 1) ch[i] = src[i0 + i] * gain * Math.min(1, i / fade, (len - 1 - i) / fade);
+        const node = ac.createBufferSource(); node.buffer = buf; node.connect(ac.destination); node.start();
+        scrub.last = nowMs; scrub.lastT = t; scrub.n += 1; scrubStats.grains += 1;
+        clearTimeout(scrub.sleep); scrub.sleep = setTimeout(() => { scrub.ctx?.suspend().catch(() => {}); }, 1500);
+      } catch { /* no sound: the scrub still works */ }
+    }
     function onMessage(msg) {
+      // (round 49, labscrub) the preview drew a seek: the next waiting one goes; paused, the playhead stays where the
+      // pointer has it (the answer is for an older spot while a scrub runs on)
+      // (a paused report while a seek is still on its way is an older spot too)
+      if (msg.type === 'media-state' && (msg.seekAck || seekQ.busy) && !msg.playing && !st.playing && !msg.ended) msg = { ...msg, time: st.time };
+      if (msg.type === 'media-state' && msg.seekAck) seekAcked();
       if (hooks.message?.(msg)) return;
       if (msg.type === 'media-state') {
         // the sandbox sends this a few times a second while it plays: only a real change (play / pause / end / a new
@@ -1504,20 +1553,22 @@ const ThreeMedia = (() => {
     // ---------- zoom ----------
     const span = () => (view ? view.end - view.start : D() || 1);
     const v0 = () => (view ? view.start : 0);
-    function setView(v) {
+    function setView(v, { soon = false } = {}) {
       if (locked) return;
-      if (!v || !D() || v.end - v.start >= D() * 0.999) { view = null; paint(); return; }
+      const done = soon ? paintSoon : paint;
+      if (!v || !D() || v.end - v.start >= D() * 0.999) { view = null; done(); return; }
       const len = Math.max(0.02, Math.min(D(), v.end - v.start));
       const start = Math.max(0, Math.min(D() - len, v.start));
       view = { start, end: start + len };
-      paint();
+      done();
     }
-    function zoomBy(f, at) {
+    let zoomingUntil = 0; let zoomRest = 0; const ZOOM_REST = 160; // (labscrub) a pinch in progress, then crisp
+    function zoomBy(f, at, o) {
       if (!D() || locked) return;
       const c = at ?? (now() >= v0() && now() <= v0() + span() ? now() : v0() + span() / 2);
       const len = span() * f;
       const k = (c - v0()) / span();
-      setView({ start: c - len * k, end: c - len * k + len });
+      setView({ start: c - len * k, end: c - len * k + len }, o);
     }
     function fitLoop() { if (region && !locked) setView(padded(region)); }
 
@@ -1621,15 +1672,15 @@ const ThreeMedia = (() => {
     const waveCache = { key: '', canvas: document.createElement('canvas') };
     const gridCache = { key: '', canvas: document.createElement('canvas') };
     // what the main canvas shows, as one string: draw() skips the canvas when it's unchanged
-    let lastFrameKey = ''; let anaVer = 0;
+    let lastFrameKey = ''; let lastGutterKey = ''; let anaVer = 0;
+    const scrubStats = { waveBuilds: 0, gridBuilds: 0, draws: 0, grains: 0 }; // (round 49, labscrub) for dev/checks/labscrub.js
     const sumOf = (list) => { let x = 0; for (const t of list) x += t; return `${list.length}:${x.toFixed(4)}`; };
     function frameKey(W, h) {
-      const lanesMoving = tracks.some((tr) => lanesOf(tr).length); // the header column shows lane values at the playhead
       // (while the strip scrolls this canvas only shows the header column: the view moving changes nothing on it)
       return [W, h, devicePixelRatio, scroll.on ? 'strip' : `${v0()}|${span()}`, D(), anaVer, st.path, waveRGB, scroll.on, JSON.stringify(gridView), snapMode, bpmNow(), G()?.anchor, bpbNow(), dIdx(),
         LANES.map((l) => sumOf(map.marks[l.id])).join(), map.cues.map((c) => `${c.t}${c.name}${c.looks?.length || 0}`).join(), region ? `${region.a}|${region.b}|${locked}|${st.loop}` : '', map.trim ? `${map.trim.a}|${map.trim.b}` : '',
         selected ? JSON.stringify(selected) : '', notes.map((n) => `${n.t}${n.done}`).join(), JSON.stringify(tracks), autoSel ? `${autoSel.id}|${autoSel.prop}|${[...autoSel.idx].join(',')}` : '',
-        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', keySel ? JSON.stringify(keySelObj()) : '', lanesMoving ? Math.round(now() * 20) : '', hooks.frameKey?.() || '', ...xhooks.map((x) => x.frameKey?.() || '')].join('~');
+        activeLane ? `${activeLane.id}|${activeLane.prop}` : '', keySel ? JSON.stringify(keySelObj()) : '', hooks.frameKey?.() || '', ...xhooks.map((x) => x.frameKey?.() || '')].join('~');
     }
     let lastMiniKey = '';
     let lastFull = 0;
@@ -1815,6 +1866,32 @@ const ThreeMedia = (() => {
       placePlayheads();
       if (st.playing || recording) raf = requestAnimationFrame(tick);
     }
+    // (round 49, labscrub) the waveform / beat grid pictures: c = { key, c0 (s), pps (px per s), w (px) }. A picture
+    // fits a view when it was drawn for the same things at the same zoom and covers it, or, while a pinch zooms
+    // (zoomingUntil), at a zoom up to 4× away (stretched for those frames)
+    const MAX_CACHE_PX = 12288; // device px across: about 3 views of a wide window at 2× (≈ 5 MB a picture)
+    function cacheFits(c, key, s0, sp, w) {
+      if (c.key !== key || !c.pps) return false;
+      const pps = w / sp; const end = c.c0 + c.w / c.pps;
+      if (s0 < c.c0 - 1e-6 || s0 + sp > end + 1e-6) return false;
+      const k = pps / c.pps;
+      return Math.abs(k - 1) < 1e-9 || (performance.now() < zoomingUntil && k > 0.25 && k < 4);
+    }
+    // the part of the song a new picture covers: the view and (margin) one more view each side, within the song (no
+    // margin mid-pinch: the picture is replaced at rest anyway)
+    function cacheSpan(c, key, s0, sp, w, dpr, margin) {
+      const pps = w / sp;
+      const m = margin ? Math.max(0, Math.min(sp, (MAX_CACHE_PX / dpr - w) / 2 / pps)) : 0;
+      const a0 = Math.max(0, s0 - m); const b0 = Math.max(s0 + sp, Math.min(D(), s0 + sp + m));
+      const cw = Math.max(w, Math.ceil((b0 - a0) * pps));
+      Object.assign(c, { key, c0: a0, pps, w: cw });
+      return [a0, cw / pps, cw];
+    }
+    function blit(g, c, s0, sp, w, hh, dpr) {
+      const sx = (s0 - c.c0) * c.pps * dpr; const sw = sp * c.pps * dpr;
+      if (Math.abs(sw - w * dpr) < 0.5) g.drawImage(c.canvas, Math.round(sx), 0, Math.round(w * dpr), Math.round(hh * dpr), 0, 0, w, hh);
+      else g.drawImage(c.canvas, sx, 0, sw, Math.round(hh * dpr), 0, 0, w, hh);
+    }
     // ov: draw the time area into another canvas with its own view (the scrolling strip, see scroll below)
     // (round 32, smooth32) the canvases first, the time texts after: a canvas font needs the page's style, and the
     // time written just before (it changes on every draw while a song plays) made each draw style the page first
@@ -1834,7 +1911,15 @@ const ThreeMedia = (() => {
       if (!W || !h) return;
       // Nothing on the canvas changed since the last draw (a song playing in a still view: only the playhead, an
       // element of its own, moves): keep the pixels, no repaint. Dragging always draws.
-      if (!ov) { const fk = dragging ? '' : frameKey(W, h); if (fk && fk === lastFrameKey) return; lastFrameKey = fk; }
+      // (round 49, labscrub) dragging the playhead changes nothing on the canvas but the lane values in the header
+      // column: those alone are drawn again (the whole canvas was redrawn per move: ≈ 4.6 ms a frame with 8 layers)
+      const gk = !ov && tracks.some((tr) => lanesOf(tr).length) ? t : ''; // the header column shows lane values at the playhead
+      if (!ov) {
+        const fk = dragging && dragging.kind !== 'seek' ? '' : frameKey(W, h);
+        if (fk && fk === lastFrameKey) { if (gk !== lastGutterKey) { lastGutterKey = gk; const g = cv.getContext('2d'); g.setTransform(devicePixelRatio || 1, 0, 0, devicePixelRatio || 1, 0, 0); drawGutter(g, tw(), W, h, t); } return; }
+        lastFrameKey = fk; lastGutterKey = gk;
+      }
+      scrubStats.draws += 1;
       // the time area; the header column (GUT px) on the right holds the ▾ choosers and lane names
       const w = ov ? ov.w : tw();
       const dpr = devicePixelRatio || 1;
@@ -1865,14 +1950,18 @@ const ThreeMedia = (() => {
       }
       // The waveform is the heavy part (a color per pixel column): drawn once into an offscreen canvas and
       // reused until the view, size or song changes, so playback only repaints the light overlays.
-      const wkey = `${s0}|${sp}|${w}|${h}|${top}|${H}|${waveRGB}|${dpr}|${st.path}|${Boolean(a)}|${Boolean(st.samples)}|${Boolean(st.wave)}|${gridView.sections}`;
-      if (waveCache.key !== wkey) {
-        waveCache.key = wkey;
+      // (round 49, labscrub) …drawn a view either side of the one shown (panning only picks another part of it) and,
+      // while a pinch zooms, stretched until the fingers rest (then drawn crisp): see cacheFits / cacheSpan / blit
+      const wmode = sp < 3 && st.samples ? 's' : waveRGB && st.wave ? 'b' : sp < 25 && a?.peaks ? 'p' : 'f'; // the view's own span decides how
+      const wkey = `${top}|${H}|${waveRGB}|${dpr}|${st.path}|${Boolean(a)}|${Boolean(st.samples)}|${Boolean(st.wave)}|${gridView.sections}|${D()}|${wmode}|${anaVer}`;
+      if (!cacheFits(waveCache, wkey, s0, sp, w)) ((s0, sp, w) => {
+        const X = (tt) => ((tt - s0) / sp) * w;
+        scrubStats.waveBuilds += 1;
         const wc = waveCache.canvas;
-        wc.width = Math.round(w * dpr); wc.height = Math.round(h * dpr);
+        if (wc.width !== Math.round(w * dpr) || wc.height !== Math.round((top + H) * dpr)) { wc.width = Math.round(w * dpr); wc.height = Math.round((top + H) * dpr); } // (a new backing store only for a new size)
         const wg = wc.getContext('2d');
         wg.setTransform(dpr, 0, 0, dpr, 0, 0);
-        wg.clearRect(0, 0, w, h);
+        wg.clearRect(0, 0, w, top + H);
         // the detected sections as soft bands in their colors (Drop red, Build orange, Intro / Outro blue, Break violet),
         // named at the bottom (a "?" when the analysis isn't sure); older analyses only shade the loud parts
         if (a && gridView.sections) {
@@ -1887,7 +1976,7 @@ const ThreeMedia = (() => {
         }
         // waveform: raw samples when very close, peaks when close, energy curves when far
         const mid = top + H / 2;
-        if (sp < 3 && st.samples) {
+        if (wmode === 's') {
           const SR = 22050; const smp = st.samples;
           wg.fillStyle = '#ffd75ec0';
           for (let x = 0; x < w; x += 1) {
@@ -1911,7 +2000,7 @@ const ThreeMedia = (() => {
             wg.fill();
           };
           band(wv.low, '#ff6a4dd0', 1); band(wv.mid, '#ffd75ed0', 0.82); band(wv.high, '#8fe6ffe0', 0.62);
-        } else if (sp < 25 && a?.peaks) {
+        } else if (wmode === 'p') {
           wg.fillStyle = '#ffd75e90';
           for (let x = 0; x < w; x += 1) {
             const tx = s0 + (x / w) * sp;
@@ -1943,33 +2032,34 @@ const ThreeMedia = (() => {
           line(a.mid, '#48ddffaa', false);
           line(a.treble, '#bd8bffaa', false);
         }
-        // section names last, over the waveform: a colored strip along the bottom and the name on a dark tab
-        if (a && gridView.sections) {
-          for (const sc of a.sections) {
-            if (!sc.label) continue;
-            const xa = X(sc.start); const xb = X(sc.end);
-            if (xb < 0 || xa > w) continue;
-            const col = SECTION_COLORS[sc.label.toLowerCase()] || '#ffd75e';
-            wg.fillStyle = `${col}a0`; wg.fillRect(xa, top + H - 2, xb - xa, 2);
-            const name = `${sc.label}${sc.conf < 0.45 ? ' ?' : ''}`; const nw = wg.measureText(name).width;
-            if (xb - xa > nw + 12) { const nx = Math.max(2, xa + 2); wg.fillStyle = '#0d1013c0'; wg.fillRect(nx, top + H - 14, nw + 6, 12); wg.fillStyle = col; wg.fillText(name, nx + 3, top + H - 5); }
-          }
+      })(...cacheSpan(waveCache, wkey, s0, sp, w, dpr, !ov && performance.now() >= zoomingUntil));
+      hooks.drawUnder?.(g, { X, s0, sp, w, h, top, H, LT });
+      blit(g, waveCache, s0, sp, w, top + H, dpr);
+      // section names last, over the waveform (out of the cached picture: a name stays at the view's left edge): a colored strip along the bottom and the name on a dark tab
+      if (a && gridView.sections) {
+        for (const sc of a.sections) {
+          if (!sc.label) continue;
+          const xa = X(sc.start); const xb = X(sc.end);
+          if (xb < 0 || xa > w) continue;
+          const col = SECTION_COLORS[sc.label.toLowerCase()] || '#ffd75e';
+          g.fillStyle = `${col}a0`; g.fillRect(xa, top + H - 2, xb - xa, 2);
+          const name = `${sc.label}${sc.conf < 0.45 ? ' ?' : ''}`; const nw = g.measureText(name).width;
+          if (xb - xa > nw + 12) { const nx = Math.max(2, xa + 2); g.fillStyle = '#0d1013c0'; g.fillRect(nx, top + H - 14, nw + 6, 12); g.fillStyle = col; g.fillText(name, nx + 3, top + H - 5); }
         }
       }
-      hooks.drawUnder?.(g, { X, s0, sp, w, h, top, H, LT });
-      g.drawImage(waveCache.canvas, 0, 0, w, h);
       // beat grid (drawn into its own cached canvas, redrawn only when the view or the grid changes): downbeats red
       // with bar numbers like rekordbox, beats white, subdivisions faint; zoomed out, every 2nd / 4th / 8th… bar so
       // the lines never melt into a smear, numbered every few bars
       const bs = beats(); const bpb = bpbNow(); const bpm = bpmNow() || 120; const gr = G();
-      const gkey = `${s0}|${sp}|${w}|${h}|${top}|${H}|${dpr}|${bs.length}|${bs[0]}|${bpm}|${gr?.anchor}|${bpb}|${dIdx()}|${gridView.lines}|${gridView.numbers}|${gridView.subs}|${gridView.dim}|${snapMode}`;
-      if (gridCache.key !== gkey) {
-        gridCache.key = gkey;
+      const gkey = `${top}|${H}|${dpr}|${bs.length}|${bs[0]}|${bs.at(-1)}|${bpm}|${gr?.anchor}|${bpb}|${dIdx()}|${gridView.lines}|${gridView.numbers}|${gridView.subs}|${gridView.dim}|${snapMode}|${anaVer}`;
+      if (!cacheFits(gridCache, gkey, s0, sp, w)) ((s0, sp, w) => {
+        const X = (tt) => ((tt - s0) / sp) * w;
+        scrubStats.gridBuilds += 1;
         const gc = gridCache.canvas;
-        gc.width = Math.round(w * dpr); gc.height = Math.round(h * dpr);
+        if (gc.width !== Math.round(w * dpr) || gc.height !== Math.round((top + H) * dpr)) { gc.width = Math.round(w * dpr); gc.height = Math.round((top + H) * dpr); } // (a new backing store only for a new size)
         const gg = gc.getContext('2d');
         gg.setTransform(dpr, 0, 0, dpr, 0, 0);
-        gg.clearRect(0, 0, w, h);
+        gg.clearRect(0, 0, w, top + H);
         gg.font = '10px Consolas, monospace';
         const pxPerBeat = (60 / bpm / sp) * w; const pxBar = pxPerBeat * bpb;
         const steps = [1, 2, 4, 8, 16, 32, 64, 128];
@@ -2004,8 +2094,8 @@ const ThreeMedia = (() => {
           }
           gg.globalAlpha = 1;
         }
-      }
-      g.drawImage(gridCache.canvas, 0, 0, w, h);
+      })(...cacheSpan(gridCache, gkey, s0, sp, w, dpr, !ov && performance.now() >= zoomingUntil));
+      blit(g, gridCache, s0, sp, w, top + H, dpr);
       if (a && gridView.drops) { g.fillStyle = '#ff6a6a'; for (const d of a.drops) { const x = X(d); g.beginPath(); g.moveTo(x - 4, top); g.lineTo(x + 4, top); g.lineTo(x, top + 7); g.fill(); } }
       // hit lanes
       shownLanes().forEach((ln, li) => {
@@ -2140,9 +2230,9 @@ const ThreeMedia = (() => {
         g.fillStyle = '#0b0e10'; g.fillText(label, x + 6, 11);
       });
       if (ov) { g.restore(); return; }
-      placePlayheads();
       g.restore();
       drawGutter(g, w, W, h, t);
+      placePlayheads(); // (labscrub) after the canvas: its style writes made the gutter's font restyle the page first
     }
     // The header column right of the timeline: Ableton's track headers. Each layer gets its ▾ chooser,
     // each lane its name, the value at the playhead, its range and a ✕.
@@ -2331,7 +2421,11 @@ const ThreeMedia = (() => {
 
     // ---------- timeline mouse ----------
     function tw() { return Math.max(40, cW() - GUT); }
-    const timeAt = (e) => { const r = canvas.getBoundingClientRect(); return v0() + ((e.clientX - r.left) / tw()) * span(); };
+    // (round 49, labscrub) the canvas' place is read once per drag / wheel burst: read per move it restyled the page
+    // each time something had written to it in between
+    const rectC = { r: null, at: 0 };
+    const cRect = () => { const t = performance.now(); if (!rectC.r || (!dragging && t - rectC.at > 250)) rectC.r = canvas.getBoundingClientRect(); rectC.at = t; return rectC.r; };
+    const timeAt = (e) => { const r = dragging || e.type === 'wheel' ? cRect() : canvas.getBoundingClientRect(); return v0() + ((e.clientX - r.left) / tw()) * span(); };
     const pxToT = (px) => (px / tw()) * span();
     const xOf = (tt) => ((tt - v0()) / span()) * tw();
     function hitTest(e) {
@@ -2388,6 +2482,7 @@ const ThreeMedia = (() => {
     }
     canvas.addEventListener('pointerdown', (e) => {
       if (!D() || e.button !== 0) return;
+      rectC.r = null;
       const hit = hitTest(e);
       const tt = timeAt(e);
       if (typeof Usage !== 'undefined') Usage.track(`Timeline › canvas: ${hit.zone}${e.ctrlKey || e.metaKey ? ' (draw)' : e.shiftKey ? ' (select)' : ''}`, { area: 'Timeline' });
@@ -2505,7 +2600,7 @@ const ThreeMedia = (() => {
       draw();
       const move = (ev) => {
         const t2 = Math.max(0, Math.min(D(), timeAt(ev)));
-        if (dragging.kind === 'seek') seek(t2);
+        if (dragging.kind === 'seek') { seek(t2); scrubGrain(st.time); } // (labscrub) a sound only once it moves: a click to jump stays silent
         else if (dragging.kind === 'edge') {
           const r2 = { ...region, [dragging.edge]: snapT(t2) };
           if (r2.b < r2.a) { [r2.a, r2.b] = [r2.b, r2.a]; dragging.edge = dragging.edge === 'a' ? 'b' : 'a'; selected = { type: 'edge', edge: dragging.edge }; }
@@ -2968,13 +3063,18 @@ const ThreeMedia = (() => {
       e.preventDefault();
       if (locked) return;
       const px = e.deltaMode === 1 ? 16 : 1; // lines → pixels
+      // (round 49, labscrub) the view changes at once and is drawn once in the coming frame (a trackpad sends several
+      // wheel events a frame: each one drew the whole timeline); a zoom stretches the cached waveform until it rests
       if (e.shiftKey || e.altKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-        const d = ((e.shiftKey || e.altKey ? e.deltaY : e.deltaX) || 0) * px / tw() * span() * 1.5;
-        setView({ start: v0() + d, end: v0() + d + span() });
+        // (Chromium on Windows / Linux, and macOS, turn Shift+wheel into a sideways wheel: deltaX, deltaY 0)
+        const d = ((e.shiftKey || e.altKey ? e.deltaY || e.deltaX : e.deltaX) || 0) * px / tw() * span() * 1.5;
+        setView({ start: v0() + d, end: v0() + d + span() }, { soon: true });
       } else {
         // smooth: a mouse notch ≈ 1.25×, a trackpad pinch (ctrl + wheel) or two-finger scroll zooms gradually
         const f = Math.max(0.5, Math.min(2, Math.exp(e.deltaY * px * (e.ctrlKey ? 0.012 : 0.0022))));
-        zoomBy(f, timeAt(e));
+        zoomingUntil = performance.now() + ZOOM_REST;
+        clearTimeout(zoomRest); zoomRest = setTimeout(() => { waveCache.key = ''; gridCache.key = ''; lastFrameKey = ''; paintSoon(); }, ZOOM_REST + 10);
+        zoomBy(f, timeAt(e), { soon: true });
       }
     }, { passive: false });
     canvas.addEventListener('mousemove', (e) => {
@@ -3081,6 +3181,8 @@ const ThreeMedia = (() => {
           picked: keySelObj(), points: autoSel ? autoSel.idx.size : 0, undoDepth: mapUndo.length };
       },
       redraw: () => draw(), paintAll: () => paint(),
+      _scrubStats: () => ({ ...scrubStats }),
+      scrubSound: (on) => (on == null ? scrubOn : setScrubSound(on)), // (round 49, labscrub) the scrub sound on / off
       pushUndo(entry) { mapUndo.push({ hook: entry }); if (mapUndo.length > 80) mapUndo.shift(); paint(); },
       // J / L shuttle speeds (2×, 4×, 8×) outside the speed menu; 1 goes back to normal
       shuttleRate(r) { const t = now(); st.rate = r > 0 ? r : 1; st.time = t; st.stampAt = performance.now(); send({ type: 'media', cmd: 'rate', value: st.rate }); rateSel.classList.toggle('on', st.rate !== 1); paint(); },
