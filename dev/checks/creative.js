@@ -1,0 +1,51 @@
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const until = async fn => { for (let i = 0; i < 100; i++) { if (fn()) return; await wait(80); } throw Error('Creative UI timed out'); };
+const check = (v, text) => { if (!v) throw Error(text); console.log('✓ ' + text); };
+await Lazy.load('creative'); activate('tool:creative'); await until(() => document.querySelector('.cp-stage h2'));
+const root = () => document.querySelector('.cp-workspace');
+const press = async text => { const b = [...root().querySelectorAll('button')].find(b => b.textContent === text); check(Boolean(b), text + ' available'); b.click(); await until(() => !b.disabled); await wait(80); };
+check(root().querySelectorAll('[data-feature-id]').length === 15, '15 visible feature entries');
+for (const f of CreativeCore.FEATURES) { CreativePlayground.openFeature(f.id); await wait(50); check(root().querySelector('.cp-stage h2').textContent === f.name, f.id + ' opens'); }
+CreativePlayground.openFeature('slice');
+const transfer = new DataTransfer(); transfer.items.add(new File([CreativeCore.wav(CreativeCore.synth('jump', .5))], 'local-test.wav', { type: 'audio/wav' }));
+const upload = root().querySelector('input[type=file]'); upload.files = transfer.files; upload.dispatchEvent(new Event('change'));
+await until(() => CreativePlayground.snapshot().clip?.name === 'local-test.wav'); check(true, 'real WAV file decoded locally');
+await press('Render slice with short fades');
+CreativePlayground.openFeature('poster'); await press('Export SVG'); await press('Export PNG');
+CreativePlayground.openFeature('drums');
+const step = root().querySelector('[aria-label="Kick step 1"]'), was = step.getAttribute('aria-pressed'); step.click(); await wait(50); check(step.getAttribute('aria-pressed') !== was, 'drum step toggles');
+await press('Render current beat'); await press('Export WAV');
+await press('Play'); await until(() => CreativePlayground.snapshot().playing); CreativePlayground.openFeature('melody'); check(!CreativePlayground.snapshot().playing, 'navigation stops audio');
+await press('Export MIDI to your DAW');
+await press('Use in effects'); await press('Render processed sound'); check(Boolean(CreativePlayground.renderAudio()), 'effects render');
+await press('Open sample cutter'); await press('Render slice with short fades'); check(Boolean(CreativePlayground.renderAudio()), 'sample slicing');
+for (const id of ['arena', 'maze', 'rhythm']) {
+  CreativePlayground.openFeature(id); check(root().querySelector('iframe').sandbox.value === 'allow-scripts', id + ' isolated preview'); await wait(500);
+  const played = await smoke({ target: 'creative-preview.html', cdp: 'Runtime.evaluate', params: { expression: "document.querySelector('#start').click(); new Promise(r => setTimeout(() => r(document.querySelector('#status').textContent), 300))", returnByValue: true, awaitPromise: true } });
+  check(!played.exceptionDetails && /stars|moves|points/.test(played.result?.value || ''), id + ' plays in Chromium: ' + JSON.stringify(played));
+  await press('Export playable HTML');
+}
+CreativePlayground.openFeature('maze'); await press('Export level JSON');
+CreativePlayground.openFeature('quests'); await press('Mark complete'); const day = CreativeCore.localDay(); check(CreativePlayground.snapshot().state.done[day].length === 1, 'quest completion saved');
+await press('✓ Completed · undo'); check(CreativePlayground.snapshot().state.done[day].length === 0, 'quest completion undo');
+const note = root().querySelector('textarea'); note.value = 'A small experiment'; note.dispatchEvent(new Event('change'));
+CreativePlayground.openFeature('inspire'); root().querySelector('.cp-notebook').open = true; await press('Save current recipe'); check(CreativePlayground.snapshot().state.recipes.length === 1, 'recipe saved'); await press('Export current recipe JSON');
+const savedFx = CreativePlayground.snapshot().state.recipes[0].settings.fx.drive;
+CreativePlayground.openFeature('rack'); const drive = root().querySelector('[aria-label="Drive"]'); drive.value = .85; drive.dispatchEvent(new Event('input')); drive.dispatchEvent(new Event('change'));
+check(CreativePlayground.snapshot().state.recipes[0].settings.fx.drive === savedFx, 'saved recipe is an independent snapshot');
+const astra = H.agents().find(a => a.mode === 'native' && a.engine === 'codex' && !a.dock);
+activate(astra.id); Native.setDraft(astra.id, 'Keep this earlier draft.'); activate('tool:creative'); CreativePlayground.openFeature('inspire');
+await press('Prepare Astra draft'); check(Native.view(astra.id).input.value.includes('Keep this earlier draft.') && Native.view(astra.id).input.value.includes('creative study'), 'Astra handoff preserves draft');
+check(!Native.isBusy(Native.chatOf(astra.id)?.id), 'Astra handoff does not send a model turn'); activate('tool:creative');
+await CreativePlayground.flush(); const saved = await hub.kvGet('creative-playground'); check(saved.journal[day] === 'A small experiment' && saved.recipes.length === 1, 'notebook persisted through actual IPC');
+const files = await hub.fs.list(window.SMOKE_SAVES); console.log('EXPORTS ' + JSON.stringify(files));
+CreativePlayground.openFeature('poster');
+return 'Creative Playground: all 15 features opened, binary/text exports, audio cleanup, effects, slicing, quests and persistence passed.';
+//@@ reload
+await Lazy.load('creative'); activate('tool:creative');
+for (let i = 0; i < 100 && !document.querySelector('.cp-stage h2'); i++) await new Promise(r => setTimeout(r, 80));
+const restored = CreativePlayground.snapshot();
+if (restored.state.recipes.length !== 1 || restored.state.journal[CreativeCore.localDay()] !== 'A small experiment') throw Error('Notebook did not survive reload');
+if (restored.clip || restored.playing) throw Error('Reload resumed audio or retained an imported sample unexpectedly');
+CreativePlayground.openFeature('quests');
+return 'Creative notebook survives reload; no audio autoplay.';
