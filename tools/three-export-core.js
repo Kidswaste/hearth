@@ -128,7 +128,14 @@ const LabExportCore = (() => {
     if (chain.length) a.push('-filter_complex', chain.join(';'));
     a.push('-map', v === '[0:v]' ? '0:v' : v); // (a filter graph for the sound alone leaves the pictures as they are)
     if (ain.length) a.push('-map', '[aout]');
-    if (f.id === 'mp4' || f.id === 'loop') {
+    // (round 52, presentready) o.hw: a baked show may use the computer's hardware H.264 encoder (the Mac's VideoToolbox,
+    // Windows' Media Foundation) at a high bit rate; only when ffmpeg lists it (the caller falls back to x264 on a failure)
+    const hw = (f.id === 'mp4' || f.id === 'loop') && o.hw && enc ? ['h264_videotoolbox', 'h264_mf'].find((x) => enc.includes(x)) : null;
+    if (hw) {
+      const mbps = Math.round(Math.min(160, Math.max(12, (o.w * o.h * F * 0.14) / 1e6)));
+      a.push('-c:v', hw, '-b:v', `${mbps}M`, '-maxrate', `${Math.round(mbps * 1.5)}M`, '-bufsize', `${mbps * 2}M`, '-pix_fmt', 'nv12', '-movflags', '+faststart');
+      note = `H.264 with the computer's hardware encoder (${mbps} Mbit/s)`;
+    } else if (f.id === 'mp4' || f.id === 'loop') {
       if (!has(enc, 'libx264')) throw new Error('This ffmpeg has no H.264 encoder (libx264): install a full ffmpeg (/ffmpeg install).');
       a.push('-c:v', 'libx264', '-preset', q.preset, '-crf', String(q.x264), '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-movflags', '+faststart');
     } else if (f.id === 'hevc') {

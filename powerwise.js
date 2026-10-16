@@ -159,10 +159,12 @@
   function createScheduler({ state = () => ({}), now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, onWake } = {}) {
     const timers = new Map();
     let slots = 0; let wokeAt = 0;
+    let hushed = null; // (round 52) only these ids run
     const st = () => ({ ...state(), wokeAt: Math.max(wokeAt, state().wokeAt || 0) });
     function arm(T) {
       if (T.t) { clearTimer(T.t); T.t = null; }
       if (T.stopped) return;
+      if (hushed && !hushed.has(T.id)) { T.next = null; return; }
       const s = st();
       const d = delay(T.base, s, T.o);
       T.next = null;
@@ -221,7 +223,14 @@
     }
     function list() { return [...timers.values()].map((T) => ({ id: T.id, base: T.base, every: delay(T.base, st(), T.o), next: T.next ? T.next - now() : null, runs: T.runs, last: T.last, slot: T.slot })); }
     function runNow(id) { const T = timers.get(id); if (!T) return false; T.last = now(); T.runs += 1; try { T.fn(); } catch { /* the timer's own */ } arm(T); return true; }
-    return { every, stop, setState, wakeUp, list, runNow, get wokeAt() { return wokeAt; } };
+    function hush(on, keep = []) {
+      const was = Boolean(hushed); hushed = on ? new Set(keep) : null;
+      if (was === Boolean(on)) return false;
+      if (!on) { slots = 0; for (const T of [...timers.values()].sort((a, b) => (a.last || a.created) - (b.last || b.created))) T.slot = slots++; }
+      for (const T of timers.values()) arm(T);
+      return true;
+    }
+    return { every, stop, setState, wakeUp, list, runNow, hush, get hushed() { return hushed ? [...hushed] : null; }, get wokeAt() { return wokeAt; } };
   }
 
   return { REASONS, ORDER, AGENT_AFTER_MS, BIG_DOWNLOAD, DOWNLOAD_AFTER_MS, WAKE, LATE_MS, describe, createBlocker, mode, policy, parseMacLowPower, parseWinSaver, WIN_SAVER_PS, delay, wakeWait, createScheduler };
@@ -387,7 +396,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && !(typeof
     if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 
     return {
-      every, stop: (id) => sched.stop(id), hold, set, state: () => ({ ...stateNow(), mode: pol().mode, awake: { ...awake } }), policy: pol,
+      every, stop: (id) => sched.stop(id), hold, set, hush: (on, keep) => sched.hush(on, keep), quietNow: () => Boolean(sched.hushed), state: () => ({ ...stateNow(), mode: pol().mode, awake: { ...awake } }), policy: pol,
       lite: () => pol().lite, warm: () => pol().warm, scale: () => pol().pollScale, onMode: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
       status, timers: () => sched.list(), allow,
       _test: { onState, sched, mine: () => [...mine.keys()], kindOf },

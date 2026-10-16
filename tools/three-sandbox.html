@@ -450,6 +450,29 @@ const realClearTimeout = clearTimeout.bind(window);
 const realSetInterval = setInterval.bind(window);
 const realRAF = requestAnimationFrame.bind(window);
 const realNow = performance.now.bind(performance); // (a sequence gives each scene its own clock: see "the sequence")
+// ---------- ▣ Present, got ready (round 52, presentready) ----------
+// Before a show (tools/three-ready.js) the scene is made ready here: every picture, video and model in, every shader it
+// draws compiled (KHR_parallel_shader_compile through compileAsync), every texture uploaded, frames drawn across its
+// timeline; then, while presenting, 100 % quality is held (RDY.lock: no adaptive steps, no doze, no Light mode, no fps
+// cap). RDY.gl counts what the GPU compiles / uploads (from the prototypes, under the program cache: a cached program
+// counts nothing), so a check can count them in the first seconds of a show.
+const RDY = { lock: false, rec: null, pend: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0 } };
+for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRenderingContext?.prototype]) {
+  if (!P) continue;
+  const wrap = (m, fn) => { const f = P[m]; if (typeof f === 'function') P[m] = fn(f); };
+  wrap('compileShader', (f) => function (sh) { RDY.gl.compiles += 1; return f.call(this, sh); });
+  wrap('linkProgram', (f) => function (pr) { RDY.gl.links += 1; return f.call(this, pr); });
+  wrap('activeTexture', (f) => function (u) { this.__rdyU = u; return f.call(this, u); });
+  wrap('bindTexture', (f) => function (tg, tx) { (this.__rdyT ||= {})[this.__rdyU || 0] = tx; return f.call(this, tg, tx); });
+  // a texture's first upload (a picture / model texture arriving) vs the same texture again (a video's next frame)
+  const up = (f) => function (...a) { const tx = this.__rdyT?.[this.__rdyU || 0]; if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; } else RDY.gl.reuploads += 1; return f.apply(this, a); };
+  for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'texSubImage2D', 'texSubImage3D', 'compressedTexSubImage2D']) wrap(m, up);
+}
+// models (and textures) loading through three.js's default manager: how many are still on their way
+try {
+  const M = THREE.DefaultLoadingManager;
+  for (const [k, d] of [['itemStart', 1], ['itemEnd', -1], ['itemError', 0]]) { const f = M[k]; if (typeof f === 'function') M[k] = function (...a) { RDY.pend = Math.max(0, RDY.pend + d); return f.apply(this, a); }; }
+} catch { /* an older three.js: the other waits still hold */ }
 
 // ---------- performance stats for whatever renderer the sketch makes ----------
 let frames = 0;
@@ -466,6 +489,7 @@ function applyCap() {
   let c = capWant.auto ? (!capWant.focused ? 30 : autoCap) : capWant.value;
   if (lightMode) c = c ? Math.min(c, 30) : 30;
   if (capWant.auto && PACE.battery) c = c ? Math.min(c, 60) : 60; // (round 33 "labpace": on battery, Auto holds 60 at most)
+  if (RDY.lock) c = 0; // (round 52, presentready) a show draws at the screen's own rate
   if (c !== fpsCap) { fpsCap = c; capT = -1; }
 }
 // parked: the Lab isn't on screen (another tool, a hidden window): layers' frames wait in a queue, nothing draws
@@ -498,6 +522,7 @@ const renderers = new Set(); // every renderer the current sketch made, so a re-
 // the share of the sketch's own pixel ratio a renderer draws at now: adaptive resolution, a precomp's resolution, a
 // slow drag, Light mode (at most 1 device pixel per CSS pixel: a Retina screen draws a quarter of the pixels)
 function prQ(r, EL) {
+  if (RDY.lock && !r.__helper && !SQ.off) return EL?.props.pcOf ? pcRes(EL) : 1; // (round 52, presentready: a show holds the scene's own resolution)
   let q = fullRes() || r.__helper ? 1 : SQ.off ? 1 : +(quality * (EL?.props.pcOf ? pcRes(EL) : 1) * (r.__lowRes || 1) * paceDragK()).toFixed(2);
   if (lightMode && !fullRes() && !r.__helper && !SQ.off && typeof r.getPixelRatio === 'function') q = Math.min(q, +(1 / Math.max(1, r.__basePR ?? r.getPixelRatio())).toFixed(2));
   return q;
@@ -985,7 +1010,7 @@ const AD_BIG_PX = 6e6;
 const adBigPx = () => { let px = 0; for (const r of renderers) { const c = r.domElement; if (c && !r.__stale && adShows(r.__layer)) px += (c.width || 0) * (c.height || 0); } return px > AD_BIG_PX; };
 const AD = { on: !XP_PAGE, core: adaptCore({ useful: (k) => Boolean(AD_USE[k]?.()), quick: adBigPx }), cull: 0 };
 // full quality right now: a still / screenshot / recording, an offline render step, the export page, adapting off
-const adFull = () => !AD.on || fullRes() || SQ.off || XP_PAGE;
+const adFull = () => !AD.on || fullRes() || SQ.off || XP_PAGE || RDY.lock; // (RDY.lock: a show, round 52)
 const adStep = () => (adFull() ? AD.core.STEPS[0] : AD.core.step);
 let quality = 1; // (the internal resolution's share: AD's step's scale)
 let shotFull = 0; // (> 0: a merged still: the layers draw a frame at full quality first, see requestShot)
@@ -998,7 +1023,7 @@ const fullRes = () => shotPending || shotFull > 0 || recorder != null || recUnti
 // instead of 45 frames.
 let dispMs = 16.7; let capSince = 0; let capBack = 20000;
 function adaptQuality(gap) {
-  if (document.hidden || parked || !AD.on) return;
+  if (document.hidden || parked || !AD.on || RDY.lock) return; // (RDY.lock: a show holds full quality, round 52)
   const target = AD.target || Math.max(dispMs, fpsCap ? 1000 / fpsCap : 0);
   const now = performance.now();
   AD.gap = gap;
@@ -1241,6 +1266,7 @@ function dozeWake(by = '') {
 // once per displayed frame (tickFrames): may the page doze, and how deeply? (the frame that just ended is `prev`)
 // (what keeps it awake right now, for checks: __labPace.state().doze.why)
 function dozeWhy(prev) {
+  if (RDY.lock) return 'presenting'; // (round 52, presentready)
   if (!PACE.on) return 'pacing off';
   if (mode !== 'sketch' || XP_PAGE) return 'not the preview';
   if (parked) return 'parked';
@@ -1329,6 +1355,7 @@ window.__labPace = {
 };
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
 const tickFrames = (t) => {
+  if (RDY.rec && lastFrameAt) { RDY.rec.g.push(t - lastFrameAt); RDY.rec.w.push(frameSeen === frameTick ? frameWork : 0); } // (round 52, presentready: frame pacing)
   if (frameSeen === frameTick) { workRing.push(frameWork); if (workRing.length > 120) workRing.shift(); lastCalls = frameCalls; }
   frameWork = 0; frameCalls = 0;
   frameTick += 1;
@@ -1346,6 +1373,92 @@ const tickFrames = (t) => {
   paceNext(tickFrames, sleep);
 };
 realRAF(tickFrames);
+// ---------- ▣ Present, got ready: the messages (round 52, presentready; RDY above) ----------
+//   ready-lock { on }        hold 100 % quality (answers with the state)
+//   ready-prep { id }        pictures, videos, models in; shaders compiled; textures uploaded (ready-progress along the way)
+//   ready-warm { id, n }     n frames drawn at the timeline point the Lab just sought, anything new compiled; their work
+//   ready-rec { on }         frame gaps + work per frame from now (on) / until now (off: answered with them)
+//   ready-count {}           what the GPU compiled / uploaded so far (RDY.gl)
+const rdyLive = () => [...renderers].filter((r) => !r.__stale && !r.__gutted && !r.__helper && r.__lastScene);
+function rdyFrames(n) { return new Promise((res) => { let k = 0; const go = () => { if (++k >= n) res(); else realRAF(go); }; realRAF(go); }); }
+async function rdyAssets(id) {
+  const t0 = realNow();
+  const left = () => {
+    const imgs = [...document.images].filter((im) => !im.complete).length;
+    const vids = [...document.querySelectorAll('video'), ...(mediaEl instanceof HTMLVideoElement ? [mediaEl] : [])].filter((v) => v.src || v.srcObject).filter((v) => v.readyState < 2 && !v.error).length;
+    return { imgs, vids, models: RDY.pend, layers: stackWait ? 1 : 0 };
+  };
+  let l = left(); const total = Math.max(1, l.imgs + l.vids + l.models + l.layers);
+  while (realNow() - t0 < 15000) {
+    l = left();
+    const n = l.imgs + l.vids + l.models + l.layers;
+    post({ type: 'ready-progress', id, stage: 'assets', done: Math.max(0, total - n), total });
+    if (!n) break;
+    await new Promise((r) => realSetTimeout(r, 60));
+  }
+  // a video's first frame decoded (requestVideoFrameCallback when it has one), so its texture has a picture to upload
+  for (const v of document.querySelectorAll('video')) if (v.readyState >= 2 && typeof v.requestVideoFrameCallback === 'function' && v.paused) { try { await Promise.race([new Promise((r) => { v.requestVideoFrameCallback(() => r()); v.currentTime = v.currentTime; }), new Promise((r) => realSetTimeout(r, 400))]); } catch { /* fine */ } }
+  return { ms: Math.round(realNow() - t0), left: l };
+}
+// every texture a scene's materials, background and environment use, uploaded now (not on the frame that first shows it)
+function rdyTextures(r, sc) {
+  if (typeof r.initTexture !== 'function') return 0;
+  const seen = new Set(); let n = 0;
+  const take = (t) => {
+    if (!t?.isTexture || seen.has(t) || t.isRenderTargetTexture || t.isDepthTexture) return;
+    seen.add(t);
+    const im = t.image;
+    if (!im || (im instanceof HTMLImageElement && !im.complete) || (im instanceof HTMLVideoElement && im.readyState < 2)) return;
+    try { r.initTexture(t); n += 1; } catch { /* not ready */ }
+  };
+  take(sc.background); take(sc.environment);
+  sc.traverse?.((o) => {
+    for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) {
+      for (const v of Object.values(m)) take(v);
+      if (m.uniforms) for (const u of Object.values(m.uniforms)) take(u?.value);
+    }
+  });
+  return n;
+}
+// every program the scenes on the layers' renderers need (the scenes each renderer drew lately, not only the last one)
+async function rdyCompile(id) {
+  const list = rdyLive(); let done = 0; let tex = 0;
+  for (const r of list) {
+    for (const sc of new Set([...(r.__seen || []), r.__lastScene])) {
+      if (!sc?.isObject3D) continue;
+      try { if (typeof r.compileAsync === 'function') await Promise.race([r.compileAsync(sc, r.__lastCamera), new Promise((res) => realSetTimeout(res, 8000))]); else r.compile?.(sc, r.__lastCamera); } catch { /* a scene its next frame draws anyway */ }
+      try { tex += rdyTextures(r, sc); } catch { /* fine */ }
+    }
+    done += 1;
+    if (id) post({ type: 'ready-progress', id, stage: 'shaders', done, total: list.length });
+  }
+  return { renderers: list.length, textures: tex };
+}
+async function rdyMessage(msg) {
+  if (msg.type === 'ready-lock') {
+    RDY.lock = Boolean(msg.on);
+    if (RDY.lock) dozeWake('presenting');
+    applyCap();
+    post({ type: 'ready-lock', on: RDY.lock, cap: fpsCap, quality, level: AD.core.level, doze: DOZE.on });
+  } else if (msg.type === 'ready-prep') {
+    const t0 = realNow(); const gl0 = { ...RDY.gl };
+    const assets = await rdyAssets(msg.id);
+    const comp = await rdyCompile(msg.id);
+    await rdyFrames(2);
+    post({ type: 'ready-prepped', id: msg.id, ms: Math.round(realNow() - t0), assets, ...comp, gl: rdyDelta(gl0) });
+  } else if (msg.type === 'ready-warm') {
+    const gl0 = { ...RDY.gl }; const n = Math.max(1, msg.n || 3);
+    await rdyFrames(n + 1);
+    const w = workRing.slice(-n);
+    await rdyCompile(null);
+    post({ type: 'ready-warmed', id: msg.id, work: +Math.max(0, ...w).toFixed(2), gl: rdyDelta(gl0) });
+  } else if (msg.type === 'ready-rec') {
+    if (msg.on) { RDY.rec = { g: [], w: [] }; return; }
+    const r = RDY.rec || { g: [], w: [] }; RDY.rec = null;
+    post({ type: 'ready-rec', id: msg.id, gaps: r.g.map((x) => Math.round(x * 100) / 100), work: r.w.map((x) => Math.round(x * 100) / 100) });
+  } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, ...RDY.gl, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
+}
+const rdyDelta = (a) => Object.fromEntries(Object.entries(RDY.gl).map(([k, v]) => [k, v - (a[k] || 0)]));
 // ---------- the graphics card coming back (round 43, glrecover) ----------
 // The GPU can take every WebGL context of the page away: a driver reset or update (Windows' TDR), sleep / wake, a
 // monitor plugged in, too much GPU memory, another app; Chromium then restarts its GPU process and, when the page
@@ -12687,6 +12800,7 @@ addEventListener('message', async (e) => {
   // lifeLine): kept for the page's life, nothing is ever sent on it
   if (msg.type === 'life' && e.ports?.[0]) { window.__lifePort = e.ports[0]; e.ports[0].start(); return; }
   if (typeof msg.type === 'string' && msg.type.startsWith('seq-')) { sqMessage(msg); return; }
+  if (typeof msg.type === 'string' && msg.type.startsWith('ready-')) { rdyMessage(msg); return; } // (round 52, presentready)
   if (msg.type === 'stage-mask') { stageMask(msg); return; }
   if (typeof msg.type === 'string' && msg.type.startsWith('xp-')) { xpMessage(msg); return; } // (round 22 "labexport")
   if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; BL.cache.clear(); if (Object.values(mods).some((m) => m?.how)) blReady(); pcValues(); }

@@ -60,6 +60,7 @@ const Freshen = (() => {
   async function tick() {
     timer = 0;
     if (document.hidden) return; // parked: visibilitychange starts it again
+    if (window.Power?.quietNow?.()) { arm(); return; } // (round 52, presentready) not during a Lab show
     await read();
     const up = performance.now() - t0;
     const grew = over();
