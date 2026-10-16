@@ -146,6 +146,60 @@ function unzipSomeTool(zip, members, dir) {
 let lastScan = null; // { at, tmp, keys: Map(key → { kind, file?, value? }) } — what Recover may bring back, by key
 const dropScan = () => { if (lastScan?.tmp) fs.rm(lastScan.tmp, { recursive: true, force: true }, () => {}); lastScan = null; };
 
+// (round 52, chatkeep) the conversations Claude Code and Codex keep themselves (their own session files, never
+// changed here), for the last 60 days, from Hearth's own working folder; the ones no chat of yours has become chats
+const ENGINE_DAYS = 60;
+async function jsonlFiles(dir, depth, since, out = []) {
+  let ents = []; try { ents = await fsp.readdir(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of ents) {
+    const f = path.join(dir, e.name);
+    if (e.isDirectory() && depth > 0) await jsonlFiles(f, depth - 1, since, out);
+    else if (e.isFile() && e.name.endsWith('.jsonl')) { try { const st = await fsp.stat(f); if (st.mtimeMs >= since && st.size < 64 * 1048576) out.push({ f, at: st.mtimeMs }); } catch { /* gone */ } }
+  }
+  return out;
+}
+async function engineChats(curChats, agents) {
+  const home = o.home || os.homedir();
+  const ws = o.workspace || path.join(o.dataDir, 'workspace');
+  const since = Date.now() - ENGINE_DAYS * 864e5;
+  const enc = (p) => String(p).replace(/[^a-zA-Z0-9]/g, '-');
+  const files = [];
+  // Claude Code: ~/.claude/projects/<the working folder, every other character a dash>/<session>.jsonl
+  const cp = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), 'projects');
+  let real = ws; try { real = fs.realpathSync(ws); } catch { /* not made yet */ }
+  for (const d of new Set([enc(ws), enc(real)])) {
+    for (const x of await jsonlFiles(path.join(cp, d), 0, since)) if (!files.some((y) => y.f === x.f)) files.push({ ...x, engine: 'claude' });
+  }
+  // Codex: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl (the folder it ran in is inside: cwd)
+  const xp = path.join(process.env.CODEX_HOME || path.join(home, '.codex'), 'sessions');
+  for (const x of await jsonlFiles(xp, 3, since)) files.push({ ...x, engine: 'codex' });
+  if (!files.length) return [];
+  // what your chats already hold: their engine sessions and what you asked in them (only chats of that period are read)
+  const sessions = new Set(); const asks = new Set();
+  for (const c of curChats) {
+    if ((c.updatedAt || 0) < since - 864e5) continue;
+    let chat = null; try { chat = o.store.getChat(c.id); } catch { chat = null; }
+    if (!chat) continue;
+    if (chat.session?.id) sessions.add(chat.session.id);
+    for (const sid of [chat.session?.codexThread, chat.session?.thread, ...(Array.isArray(chat.sessions) ? chat.sessions : [])]) if (typeof sid === 'string') sessions.add(sid);
+    for (const m of chat.messages || []) if (m.role === 'user') { asks.add(DS.textKey(m.text)); if (m.sent) asks.add(DS.textKey(m.sent)); }
+  }
+  const out = [];
+  for (const x of files.sort((a, b) => b.at - a.at).slice(0, 400)) {
+    let text; try { text = await fsp.readFile(x.f, 'utf8'); } catch { continue; }
+    const sc = DS.sessionChat(text, { engine: x.engine });
+    if (!sc) continue;
+    if (x.engine === 'codex' && sc.cwd && path.resolve(sc.cwd) !== path.resolve(ws) && !String(sc.cwd).startsWith(o.dataDir)) continue; // another project's Codex
+    if (DS.sessionKnown(sc, { sessions, asks })) continue;
+    const agentId = DS.homeFor({ agentId: null }, agents, { three: sc.three, engine: x.engine });
+    if (!agentId) continue;
+    const chat = DS.chatFromSession(sc, agentId);
+    out.push({ id: chat.id, title: chat.title, agentId, updatedAt: chat.updatedAt, messages: chat.messages.length, from: `${x.engine === 'codex' ? 'Codex' : 'Claude Code'}'s own record of the conversation`, fromAll: [x.f], deleted: false, state: 'missing', chat });
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+
 async function scan({ quick = false } = {}) {
   const t0 = Date.now();
   dropScan();
@@ -169,6 +223,7 @@ async function scan({ quick = false } = {}) {
   };
   // this computer: Recently deleted, kept before a restore, kept aside by sync
   await chatsIn(path.join(D, 'trash'), 'Recently deleted', 'trash');
+  await chatsIn(path.join(D, '.held', 'chats'), 'A save that couldn\'t reach its file', 'copy'); // (round 52, chatkeep: store.js keeps a save it gave up on)
   for (const d of (await ls(path.join(D, 'trash'))).filter((x) => /^restored-/.test(x))) await chatsIn(path.join(D, 'trash', d), `Kept before a restore (${d.slice(9)})`, 'copy');
   const strash = path.join(D, 'sync', 'trash');
   const days = (await ls(strash)).filter((x) => /^\d{4}-\d\d-\d\d$/.test(x)).sort().reverse().slice(0, 30);
@@ -218,6 +273,23 @@ async function scan({ quick = false } = {}) {
   const inSources = new Set(chatSrc.flatMap((s) => s.list.map((c) => c.id)));
   const curRows = curChats.map((c) => { let n; if (!c.unreadable && inSources.has(c.id)) { try { n = o.store.getChat(c.id)?.messages?.length; } catch { n = undefined; } msgs.set(c.id, n); } return { ...c, messages: n }; });
   const chats = DS.collectChats(curRows, chatSrc).slice(0, 400).map((c) => ({ key: keep({ kind: 'chat', file: c.file, cloud: c.cloud, id: c.id }), id: c.id, title: c.title, agentId: c.agentId, updatedAt: c.updatedAt, messages: c.messages, from: c.from, fromAll: c.fromAll, deleted: c.deleted, state: c.state, yours: msgs.get(c.id) ?? null }));
+  // (round 52, chatkeep) every other place a chat can be: chats on disk the list doesn't show (their AI was removed or
+  // turned off: a docked director's chats vanish with it), and the engines' own records of conversations no chat of
+  // yours has (a chat that never reached its file, or whose file is gone with no copy anywhere)
+  let curCfg0 = null; try { curCfg0 = o.cfg?.read?.() || null; } catch { curCfg0 = null; }
+  const agents0 = Array.isArray(curCfg0?.agents) ? curCfg0.agents : null;
+  if (agents0) {
+    for (const c of DS.hiddenChats(curChats, agents0, ['ae'])) {
+      const home = DS.homeFor(c, agents0);
+      if (!home) continue;
+      let n = 0; try { n = o.store.getChat(c.id)?.messages?.length || 0; } catch { n = 0; }
+      chats.push({ key: keep({ kind: 'hidden', id: c.id, home }), id: c.id, title: c.title || 'Chat', agentId: home, updatedAt: c.updatedAt, messages: n, from: `Your chats folder (not shown: ${agents0.some((a) => a?.id === c.agentId) ? 'its AI is turned off' : 'its AI was removed'})`, fromAll: ['Your chats folder'], deleted: false, state: 'hidden' });
+    }
+    if (!quick) {
+      try { for (const e of await engineChats(curChats, agents0)) chats.push({ ...e, key: keep({ kind: 'engine', chat: e.chat }) }); } catch (err) { sources.push({ label: `The engines' own records (couldn't be read: ${err.message})`, what: 'chats', n: 0 }); }
+    }
+  }
+  for (const c of chats) delete c.chat;
   const curMem = o.store.getMemory();
   const memSeen = new Set(); const memory = [];
   for (const s of memSrc) for (const a of DS.mergeMemory(curMem, s.value).added) {
@@ -262,6 +334,21 @@ async function recover(picks = []) {
     if (!chat?.id || !Array.isArray(chat.messages)) continue;
     if (r.cloud) { try { const ctx = o.syncmain?.pathCtx?.(); if (ctx) chat = require('./sync-merge').fromCloud(chat, ctx); } catch { /* as it is */ } }
     if (curIds.has(chat.id) || fs.existsSync(path.join(o.dataDir, 'chats', `${chat.id}.json`))) chat = { ...chat, id: `${chat.id}-r${Date.now().toString(36).slice(-4)}${done.chats.length}`.slice(0, 80), title: `${chat.title || 'Chat'} (recovered)` };
+    await o.store.saveChat(chat);
+    curIds.add(chat.id); done.chats.push(chat.id);
+  }
+  // (round 52, chatkeep) a chat the list didn't show: back with an AI you have (the file stays where it is)
+  for (const r of recs.filter((x) => x.kind === 'hidden')) {
+    const chat = o.store.getChat(r.id);
+    if (!chat?.id) continue;
+    await o.store.saveChat({ ...chat, agentId: r.home, ...(chat.agentId !== r.home ? { agentWas: chat.agentId } : {}) });
+    done.chats.push(chat.id);
+  }
+  // a conversation from an engine's own record: a new chat (its session goes with it: you can go on in it)
+  for (const r of recs.filter((x) => x.kind === 'engine')) {
+    let chat = r.chat;
+    if (!chat?.id) continue;
+    if (curIds.has(chat.id) || fs.existsSync(path.join(o.dataDir, 'chats', `${chat.id}.json`))) chat = { ...chat, id: `${chat.id}${done.chats.length}`.slice(0, 80) };
     await o.store.saveChat(chat);
     curIds.add(chat.id); done.chats.push(chat.id);
   }

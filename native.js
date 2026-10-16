@@ -1112,6 +1112,9 @@ const Native = (() => {
     // (round 45, chatswitch) a chat in memory draws right away (no turn waited: the click's own frame shows it)
     const chat = chatId ? (chats.has(chatId) ? touchChat(chatId) : await loadChat(chatId)) : null;
     if (chatId && !chat) H.activeChat[agentId] = null;
+    // (round 52, chatkeep) a chat whose AI was removed or turned off, opened here (the list shows it under this AI): it
+    // goes on with this one (its scene, its tools); the file only changes its AI
+    if (chat && chat.agentId !== agentId && !H.agents().some((a) => a.id === chat.agentId && a.mode === 'native')) { chat.agentWas = chat.agentId; chat.agentId = agentId; remember(chat); }
     // a fresh draw of a chat with many replies to make shows its end first (below): it waits for the worker only for
     // what it makes after that
     const w = chat && window.Md ? warmReplies(v, chat) : null;

@@ -229,5 +229,90 @@
     } });
   }
 
-  return { load, union, mergeLines, mergeMemory, count, shrinks, guardConfig, rebaseConfig, chatStub, collectChats, IMPORTANT, LABELS, labelOf, storeOf, guardWrite, copiesOf, faults, readRetry: SS.readRetry, readStatus: SS.readStatus, BUSY: SS.BUSY };
+  // ---------- (round 52, chatkeep) chats Recover finds that aren't copies of a chat file ----------
+  // An engine's own record of a conversation (Claude Code: ~/.claude/projects/<cwd>/<session>.jsonl; Codex:
+  // ~/.codex/sessions/…/rollout-*.jsonl): the words each side wrote, as a Hearth chat's messages. A chat that never
+  // reached its file (or whose file is gone with no copy) still has this. text: the .jsonl → null when it holds no
+  // exchange. { sessionId, cwd, startedAt, updatedAt, messages, tools, three }
+  const NOISE = /^\s*<(environment_context|user_instructions|permissions|turn_aborted|command-name|local-command|system-reminder)\b/;
+  function sessionChat(text, { engine = 'claude' } = {}) {
+    const out = { engine, sessionId: null, cwd: null, startedAt: 0, updatedAt: 0, messages: [], tools: [] };
+    const tools = new Set();
+    let last = null;
+    const put = (role, t, at) => {
+      t = String(t || '').trim();
+      if (!t || NOISE.test(t)) return;
+      if (last && last.role === role && role === 'assistant') { last.text += `\n\n${t}`; last.at = at || last.at; return; }
+      last = { role, text: t.slice(0, 200000), at: at || 0 };
+      out.messages.push(last);
+    };
+    const textOf = (c, types) => (typeof c === 'string' ? c : Array.isArray(c) ? c.filter((x) => x && types.includes(x.type) && typeof x.text === 'string').map((x) => x.text).join('\n') : '');
+    for (const line of String(text || '').split('\n')) {
+      if (!line.trim()) continue;
+      let j; try { j = JSON.parse(line); } catch { continue; }
+      const at = Date.parse(j.timestamp || j.payload?.timestamp || '') || 0;
+      if (at) { out.startedAt ||= at; out.updatedAt = Math.max(out.updatedAt, at); }
+      if (engine === 'claude') {
+        out.sessionId ||= j.sessionId || j.session_id || null; out.cwd ||= j.cwd || null;
+        if (j.isMeta || j.isSidechain) continue;
+        const m = j.message;
+        if (j.type === 'user' && m) { put('user', textOf(m.content, ['text']), at); continue; }
+        if (j.type === 'assistant' && m) {
+          for (const c of Array.isArray(m.content) ? m.content : []) if (c?.type === 'tool_use' && c.name) tools.add(c.name);
+          put('assistant', textOf(m.content, ['text']), at);
+        }
+      } else {
+        const p = j.payload || {};
+        if (j.type === 'session_meta') { out.sessionId ||= p.id || null; out.cwd ||= p.cwd || null; continue; }
+        if (j.type !== 'response_item') continue;
+        if (p.type === 'function_call' || p.type === 'custom_tool_call' || p.type === 'mcp_tool_call') { if (p.name) tools.add(p.name); continue; }
+        if (p.type === 'message' && (p.role === 'user' || p.role === 'assistant')) put(p.role, textOf(p.content, ['input_text', 'output_text', 'text']), at);
+      }
+    }
+    out.tools = [...tools];
+    out.three = out.tools.some((t) => /three_|hub-three|hearth-three/i.test(t));
+    if (!out.messages.some((m) => m.role === 'user') || !out.messages.some((m) => m.role === 'assistant')) return null;
+    return out;
+  }
+  const textKey = (t) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 160).toLowerCase();
+  // already one of your chats: its session id, or most of what you asked in it is in one of yours
+  function sessionKnown(sc, { sessions, asks }) {
+    if (sc.sessionId && sessions.has(sc.sessionId)) return true;
+    const mine = sc.messages.filter((m) => m.role === 'user').map((m) => textKey(m.text)).filter(Boolean);
+    if (!mine.length) return true;
+    let hit = 0;
+    for (const k of mine) { if (asks.has(k)) { hit += 1; continue; } for (const a of asks) if (a && a.length >= 12 && (a.includes(k) || k.includes(a))) { hit += 1; break; } }
+    return hit * 2 >= mine.length;
+  }
+  // a chat made from an engine's record (a new id: never one of yours)
+  function chatFromSession(sc, agentId, now = Date.now()) {
+    const first = sc.messages.find((m) => m.role === 'user')?.text || 'Recovered chat';
+    const line = first.split('\n').find((l) => l.trim())?.trim() || 'Recovered chat';
+    return {
+      id: `${String(agentId || 'chat').replace(/[^\w-]/g, '').slice(0, 40)}-rec${(sc.startedAt || now).toString(36)}`.slice(0, 80),
+      agentId, title: `${line.length > 44 ? `${line.slice(0, 43)}…` : line} (recovered)`, createdAt: sc.startedAt || now, updatedAt: sc.updatedAt || now,
+      session: sc.sessionId ? { id: sc.sessionId } : {}, ...(sc.engine === 'codex' ? { engine: 'codex' } : {}),
+      messages: sc.messages.map((m) => ({ role: m.role, text: m.text, at: m.at || sc.startedAt || now })), recoveredFrom: `${sc.engine === 'codex' ? 'Codex' : 'Claude Code'}'s own record`,
+    };
+  }
+  // chats on disk the list doesn't show: their AI is gone from the settings, turned off, or not a native chat AI
+  function hiddenChats(rows, agents, goneDocks = []) {
+    const gone = new Set(goneDocks);
+    const on = new Set((agents || []).filter((a) => a && a.enabled !== false && a.mode === 'native' && !gone.has(a.dock)).map((a) => a.id));
+    return (rows || []).filter((c) => c && c.id && !c.unreadable && !on.has(c.agentId));
+  }
+  // the AI a chat comes back to: its own when it's there, else one of the same kind (a docked director's chat → the
+  // director docked in the same place, an Astra chat → Astra, the rest → Claude)
+  function homeFor(chat, agents, { three = false, engine = null } = {}) {
+    const list = (agents || []).filter((a) => a && a.enabled !== false && a.mode === 'native');
+    const own = list.find((a) => a.id === chat?.agentId);
+    if (own) return own.id;
+    const was = (agents || []).find((a) => a?.id === chat?.agentId);
+    const dock = was?.dock || (three || /^threedirector/.test(String(chat?.agentId || chat?.id || '')) ? 'three' : null);
+    if (dock) { const d = list.find((a) => a.dock === dock); if (d) return d.id; }
+    const eng = engine || chat?.engine || was?.engine;
+    return (eng === 'codex' ? list.find((a) => a.engine === 'codex' && !a.dock) : null)?.id || list.find((a) => a.engine === 'claude' && !a.dock)?.id || list[0]?.id || null;
+  }
+
+  return { load, union, mergeLines, mergeMemory, count, shrinks, guardConfig, rebaseConfig, chatStub, collectChats, sessionChat, sessionKnown, chatFromSession, hiddenChats, homeFor, textKey, IMPORTANT, LABELS, labelOf, storeOf, guardWrite, copiesOf, faults, readRetry: SS.readRetry, readStatus: SS.readStatus, BUSY: SS.BUSY };
 }));

@@ -90,7 +90,10 @@ const DevReportHooks = (() => {
         const c = crashes[crashes.length - 1];
         const it = note('crash', `Crash: ${c.what}`, '', { at: c.t, crashes });
         const auto = store.get('devreport.auto', false) === true;
-        if (auto) { await Lazy.load('devreport'); DevReport.autoCrash(it); } else {
+        // (round 52, chatkeep) the window's own crash a moment ago: the "Hearth's window crashed … your chat and scene are
+        // back" line says it (safetynet's card); the crash stays in /report's list and in data/devreport-crashes.json
+        const justNow = c.kind === 'page' && Date.now() - (c.t || 0) < 5 * 60000;
+        if (auto) { await Lazy.load('devreport'); DevReport.autoCrash(it); } else if (!justNow) {
           toast(`Hearth crashed last time (${c.kind === 'gpu' ? 'the graphics process' : 'the window'}: ${c.what.split(': ').pop()}).`, { type: 'error', timeout: 12000, devreport: false, action: { label: 'Report to the developer', fn: () => report({ kind: 'crash', item: it }) } });
         }
       }

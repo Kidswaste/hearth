@@ -86,7 +86,12 @@ function hold(file, value, o) {
   const h = held.get(file) || { tries: 0 };
   clearTimeout(h.t);
   h.value = value; h.o = o; h.tries += 1;
-  if (h.tries > 25) { held.delete(file); console.error('store: gave up saving', path.basename(file), '(it never read again)'); return { held: true, gaveUp: true }; }
+  if (h.tries > 25) {
+    held.delete(file); console.error('store: gave up saving', path.basename(file), '(it never read again)');
+    // (round 52, chatkeep) a chat's save that never reached its file isn't dropped: kept beside, 🛟 Recover… finds it
+    if (path.dirname(file) === CHATS_DIR && value && typeof value === 'object') { try { const d = path.join(DATA_DIR, '.held', 'chats'); fs.mkdirSync(d, { recursive: true }); writeFlushed(path.join(d, `${path.basename(file, '.json')}.json`), JSON.stringify(value)); } catch { /* the window still has it */ } }
+    return { held: true, gaveUp: true };
+  }
   h.t = setTimeout(() => { if (held.get(file) === h) writeJson(file, h.value, { ...h.o, off: true }); }, Math.min(120000, 1000 * 2 ** Math.min(h.tries - 1, 7)));
   h.t.unref?.();
   held.set(file, h);

@@ -3989,8 +3989,9 @@ ${code}
         if (id !== current?.id) { persist(); openSketch(id, { by: 'scene' }); }
         return true;
       },
-      create({ name, code, layers = null, open = false, frame = null, timeline = null }) {
-        const x = { id: `s${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
+      // id: (round 52, chatkeep) a scene that never reached the disk comes back under its own id (its chat still links it)
+      create({ name, code, layers = null, open = false, frame = null, timeline = null, id = null }) {
+        const x = { id: id && /^[\w-]{1,80}$/.test(id) && !sketches.some((y) => y.id === id) ? id : `s${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
         sketches.push(x);
         if (frame) { (extras[x.id] ||= {}).frame = frame; saveExtras(); }
         if (timeline) { (extras[x.id] ||= {}).timeline = { len: timeline.len || 10, fps: timeline.fps || 30 }; saveExtras(); } // its own timeline (the orb)

@@ -414,7 +414,7 @@ const ThreeHistory = (() => {
 
   return {
     changed, director, as, capture, flush, list, stateOf, resolve, changesBetween, thumbs, turns, back,
-    preview, endScrub, restore, pick, branch, fmtWhen, keepVersion,
+    preview, endScrub, restore, pick, branch, fmtWhen, keepVersion, apply, // (round 52, chatkeep: apply puts work kept by safetynet back on screen)
     get scrubbing() { return scrub ? { id: scrub.id, version: scrub.at } : null; },
     // dev checks: sizes and counts
     stats: () => ({ ...stats, cached: docs.size }),
