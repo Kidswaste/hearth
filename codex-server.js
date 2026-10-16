@@ -96,11 +96,11 @@ class Pool {
     Object.assign(this, { spawn, kill, log, idleMs, activeIdleMs, requestMs });
     this.connections = new Map(); this.active = new Map();
   }
-  run({ chatId, bin, args, cwd, env, session, thread, turn, servers, parser, fallbackText, text, showThinking = true }, emit, live) {
+  run({ chatId, bin, runtimeKey, args, cwd, env, session, thread, turn, servers, parser, fallbackText, text, showThinking = true }, emit, live) {
     if (this.active.has(chatId) || this.maintenance?.has(chatId)) { emit({ type: 'error', message: 'This Hearth chat already has a running Codex operation.' }); return; }
     const start = performance.now(); const elapsed = () => Math.round(performance.now() - start);
     const timing = { engine: 'codex', transport: 'app-server', connectionReused: false, setupMs: null, firstEventMs: null, firstTextMs: null, totalMs: null };
-    const key = crypto.createHash('sha256').update(JSON.stringify({ bin, args, cwd })).digest('hex');
+    const key = crypto.createHash('sha256').update(JSON.stringify({ bin, runtimeKey, args, cwd })).digest('hex');
     let conn = this.connections.get(chatId);
     if (conn && (conn.closed || conn.key !== key)) { conn.close(); this.connections.delete(chatId); conn = null; }
     timing.connectionReused = Boolean(conn);

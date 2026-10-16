@@ -62,15 +62,17 @@ async function codexCapabilities({ kind, chatId, appId, refresh } = {}) {
   const cap = require('./codex-capabilities');
   if (['connections', 'appTools', 'installed'].includes(kind)) return cap.inspect(codexServers, chatId, kind, appId);
   const bin = LOCATE.codex(); if (!bin) throw new Error('Codex is not installed. Check Settings → Engines.');
-  if (codexCatalog?.options.bin !== bin) { codexCatalog?.close(); codexCatalog = null; }
-  codexCatalog ||= new cap.Catalog({ spawn: WinPolish.spawn, kill, bin, args: ['app-server', '--listen', 'stdio://', '-c', 'features.apps=true'], cwd: WORKSPACE, env: process.env });
+  const runtimeKey = Installs.binKey(bin);
+  if (codexCatalog?.options.runtimeKey !== runtimeKey) { codexCatalog?.close(); codexCatalog = null; }
+  codexCatalog ||= new cap.Catalog({ spawn: WinPolish.spawn, kill, bin, runtimeKey, args: ['app-server', '--listen', 'stdio://', '-c', 'features.apps=true'], cwd: WORKSPACE, env: process.env });
   return codexCatalog.read(kind, refresh);
 }
 function getCodexUsage() {
   const bin = LOCATE.codex();
   if (!bin) return Promise.resolve({ available: false, buckets: [], checkedAt: Date.now(), error: 'Codex is not installed. Check Settings → Engines.' });
-  if (codexAccount?.options.bin !== bin) { codexAccount?.close(); codexAccount = null; }
-  codexAccount ||= new (require('./codex-usage').AccountUsage)({ spawn: WinPolish.spawn, kill, bin,
+  const runtimeKey = Installs.binKey(bin);
+  if (codexAccount?.options.runtimeKey !== runtimeKey) { codexAccount?.close(); codexAccount = null; }
+  codexAccount ||= new (require('./codex-usage').AccountUsage)({ spawn: WinPolish.spawn, kill, bin, runtimeKey,
     args: ['app-server', '--listen', 'stdio://'], cwd: WORKSPACE, env: process.env });
   return codexAccount.read();
 }
@@ -162,8 +164,9 @@ for (const name of Object.keys(LOCATE)) {
   LOCATE[name] = () => {
     const key = `${enginePaths[name] || ''}|${Installs.data().chosen?.[name] || ''}`;
     const c = located[name];
-    if (c && c.key === key && Date.now() - c.at < 5 * 60000 && fs.existsSync(c.bin)) return c.bin;
-    const bin = find();
+    const repair = bin => name === 'codex' && IS_WIN && !enginePaths[name] && WinPolish.codexRuntime ? WinPolish.codexRuntime(bin) : bin;
+    if (c && c.key === key && Date.now() - c.at < 5 * 60000 && fs.existsSync(c.bin)) { c.bin = repair(c.bin); return c.bin; }
+    const bin = repair(find());
     if (bin) located[name] = { key, bin, at: Date.now() }; else delete located[name];
     return bin;
   };
@@ -1188,7 +1191,7 @@ function send({ agent: agent0, chatId, session, text, options = {} }, emit, live
     codexServers ||= new (require('./codex-server').Pool)({ spawn: WinPolish.spawn, kill, log });
     const plan = codexServerPlan(agent, state, options);
     let toolCount = 0;
-    codexServers.run({ chatId, bin, ...plan, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) }, session: state,
+    codexServers.run({ chatId, bin, runtimeKey: Installs.binKey(bin), ...plan, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) }, session: state,
       parser: codexParser(state, agent), fallbackText: options.fallbackText, text, showThinking: agent.showThinking !== false }, (event) => {
       if (event.type === 'tool') { toolCount += 1; if (Wake) Wake.noteTool(agent.id, event.name); }
       if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message, { bin }));
@@ -1535,9 +1538,10 @@ async function checkEngine(engine, { fresh = false, login = true } = {}) {
   const copies = [];
   for (const file of files.slice(0, 12)) {
     const v = await Installs.version(file, { cwd: WORKSPACE, fresh });
-    copies.push({ path: file, kind: file === pinned ? 'settings' : Installs.kindOf(engine, file), via: IS_MAC ? MacPolish.whereOf?.(file) || '' : '', version: v.text, semver: v.semver });
+    copies.push({ path: file, kind: file === pinned ? 'settings' : Installs.kindOf(engine, file), via: IS_MAC ? MacPolish.whereOf?.(file) || '' : '', version: v.text, semver: v.semver,
+      runtime: engine === 'codex' && IS_WIN ? WinPolish.codexRuntimeStatus?.(file) : null });
   }
-  const working = copies.filter((c) => c.version);
+  const working = copies.filter((c) => c.version && c.runtime?.complete !== false);
   const newest = working.reduce((best, c) => (!best || Installs.cmp(c.semver, best.semver) > 0 ? c : best), null);
   const pick = pinned ? copies.find((c) => c.path === pinned) : newest || copies[0] || null;
   const d = Installs.data();
@@ -1547,7 +1551,8 @@ async function checkEngine(engine, { fresh = false, login = true } = {}) {
   const r = { engine, label: ENGINES[engine].label, found: Boolean(pick), chosen: pick?.path || null, from: pick ? (pinned ? 'settings' : pick.kind) : null, via: pick?.via || '',
     version: pick?.version || null, semver: pick?.semver || null, min: Installs.minFor(engine), copies };
   r.tooOld = pick ? Installs.meetsMin(engine, pick.semver) === false : false;
-  r.broken = Boolean(pick && !pick.version);
+  r.runtime = pick?.runtime || null;
+  r.broken = Boolean(pick && (!pick.version || pick.runtime?.complete === false));
   // Settings → Engines names an older copy than one Hearth found
   if (pinned && newest && newest.path !== pinned && Installs.cmp(newest.semver, pick?.semver) > 0) r.newer = { path: newest.path, version: newest.version };
   r.plan = Installs.updatePlan(engine, pick?.path || null);

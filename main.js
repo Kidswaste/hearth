@@ -25,6 +25,8 @@ function later(file, onLoad) {
 }
 // the install check's results go to the window once the engines module is in (its first use registers this)
 const engines = later('./engines', (m) => { m.onInstalls((report, info) => send('engine:installs', { ...report, fixed: info })); });
+let engineWatch;
+const engineChecks = () => engineWatch ||= require('./engine-watch').create({ engines, getConfig: readConfig, emit: report => send('engine:installs', report) });
 const importer = later('./importer');
 const appshell = require('./appshell');
 // (round 29, fastboot) these are set up right after the window is made (registerAfterWindow, same tick: before the page
@@ -391,7 +393,7 @@ ipcMain.handle('engine:stopAll', () => engines.stopAll());
 ipcMain.handle('engine:login', (_e, engine) => { engines.setEnginePaths(settings().enginePaths); return engines.login(engine); });
 // Every Claude Code / Codex copy, the one in use, too old? signed in? (engine-health.js at startup, /doctor), and the
 // update / install / sign-in run in a visible window; the check after it comes back as 'engine:installs'.
-ipcMain.handle('engine:installs', (_e, opts) => { engines.setEnginePaths(settings().enginePaths); return engines.checkInstalls(opts || {}); });
+ipcMain.handle('engine:installs', (_e, opts) => { engines.setEnginePaths(settings().enginePaths); return opts?.engines ? engines.checkInstalls(opts) : engineChecks().check(opts || {}); });
 // ffmpeg (sharp MP4 recordings, exact frames, renders): found or not, and a one-click install in a visible
 // Terminal / PowerShell window (Homebrew on a Mac, winget on Windows); a status call after it forgets the old miss.
 ipcMain.handle('tools:ffmpeg', (_e, o = {}) => {
@@ -587,6 +589,8 @@ function registerAfterWindow() {
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
   bigscreen.register(ipcMain, { getWin: () => win, screen: require('electron').screen }); // (round 38) ⛶ full screen, size of everything
   powerwise.register(ipcMain, { bgmain, getWin: () => win }); // (round 39) staying awake while it matters, battery / saver, wake
+  const stopEngineChecks = engineChecks().start({ power: powerwise, monitor: require('electron').powerMonitor, window: win });
+  app.once('will-quit', stopEngineChecks);
   fsapi.registerIpc(ipcMain, () => win);
   gamebridge.start(() => win);
   aemain.registerIpc(ipcMain, () => win, () => settings().aePath);

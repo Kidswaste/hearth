@@ -89,6 +89,14 @@ function ok(text) { console.log(`✓ ${text}`); checks++; }
   pool.stopAll(); assert.equal(pool.connections.size, 0); assert.equal(pool.active.size, 0);
   ok('tool/config changes restart safely; one-off calls and early Stop clean up their processes');
 
+  const runtime1 = await turn('runtime-update', 'hello', {}, { runtimeKey: 'same-path:build1' });
+  const runtime2 = await turn('runtime-update', 'hello', runtime1.end.session, { runtimeKey: 'same-path:build2' });
+  assert.equal(runtime2.end.type, 'done'); assert(!runtime2.end.timing.connectionReused);
+  const runtime3 = await turn('runtime-update', 'hello', runtime2.end.session, { runtimeKey: 'same-path:build2' });
+  assert(runtime3.end.timing.connectionReused);
+  pool.stopAll();
+  ok('an executable replaced at the same path reconnects on the next reply, then stays warm');
+
   // Exercise the real engines.send boundary in a temp copy, including batching and usage writes.
   const copy = path.join(dir, 'app'); fs.mkdirSync(copy);
   for (const f of ['engines.js', 'codex-server.js', 'codex-workspace.js', 'codex-usage.js', 'codex-capabilities.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'connectionsmain.js']) fs.copyFileSync(path.join(root, f), path.join(copy, f));

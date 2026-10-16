@@ -36,6 +36,22 @@ function fakeFs(files) {
 }
 const HOME = 'C:\\Users\\Quentin';
 const ENV = { APPDATA: `${HOME}\\AppData\\Roaming`, LOCALAPPDATA: `${HOME}\\AppData\\Local`, USERPROFILE: HOME, ProgramFiles: 'C:\\Program Files', ProgramData: 'C:\\ProgramData', SystemRoot: 'C:\\Windows', ComSpec: 'C:\\Windows\\system32\\cmd.exe', SystemDrive: 'C:', PATH: 'C:\\Windows\\system32;C:\\Windows' };
+
+// A desktop update removes old companions but leaves the old executable in use.
+{
+  const root = W.join(ENV.LOCALAPPDATA, 'OpenAI', 'Codex', 'bin');
+  const old = W.join(root, 'old', 'codex.exe'); const next = W.join(root, 'next', 'codex.exe');
+  const files = { [old]: { text: '', mtime: 99 }, [next]: { text: '', mtime: 1 } };
+  for (const n of ['codex-code-mode-host.exe', 'codex-command-runner.exe', 'codex-windows-sandbox-setup.exe']) files[W.join(root, 'next', n)] = '';
+  const disk = fakeFs(files);
+  eq(P.codexRuntime(old, { fs: disk }), next, 'incomplete cached desktop copy uses a complete bundle, even when old exe has newer mtime');
+  eq(P.codexRuntime(next, { fs: disk }), next, 'complete bundle stays selected');
+  eq(P.codexRuntime(old, { fs: fakeFs({ [old]: '' }) }), old, 'legacy installs with no complete alternative are preserved');
+  eq(P.codexRuntime('C:\\custom\\codex.exe', { fs: disk }), 'C:\\custom\\codex.exe', 'standalone explicit paths never redirected');
+  eq(P.candidates('codex', { env: ENV, home: HOME, fs: disk }), [next], 'candidate discovery deduplicates repaired copies');
+  const partial = { ...files }; delete partial[W.join(root, 'next', 'codex-command-runner.exe')];
+  eq(P.codexRuntime(old, { fs: fakeFs(partial) }), old, 'partially extracted new bundle is not selected');
+}
 // npm's cmd-shim, today's form and an older one; pnpm's; Yarn's (a .cmd that calls another .cmd)
 const NPM_SHIM = (rel) => `@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n) ELSE (\r\n  SET "_prog=node"\r\n  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\${rel}" %*\r\n`;
 const OLD_SHIM = (rel) => `@IF EXIST "%~dp0\\node.exe" (\r\n  "%~dp0\\node.exe"  "%~dp0\\${rel}" %*\r\n) ELSE (\r\n  @SETLOCAL\r\n  @SET PATHEXT=%PATHEXT:;.JS;=;%\r\n  node  "%~dp0\\${rel}" %*\r\n)`;
