@@ -98,6 +98,70 @@ const WinMac = (() => {
     return mac ? macKeys(text, { mac: true }) : text.replace(/\bCtrl\/⌘\+?|⌘\/Ctrl\+?/g, 'Ctrl+');
   }
 
+  // (round 49, winmac49) any shortcut as this computer says it, wherever it is written: "Ctrl+Shift+K", "Ctrl/⌘+K",
+  // "⇧⌘K", "Cmd+K". The Mac: symbols in Apple's order (⌃⌥⇧⌘), no "+", "⌘-click" for the mouse ("Ctrl+click" stays: the
+  // Mac's right-click); keys macOS itself takes with ⌘ (⌘Tab, ⌘Space, ⌥⌘D Dock, ⌥⌘H) are the real Control there (⌃),
+  // which Hearth's handlers take too. Windows: "Ctrl+Alt+Shift+K" words. { both: true }: only the "Ctrl/⌘" spellings
+  // (text that may name one system's keys on purpose: patch notes). Idempotent.
+  const MODS = String.raw`(?:Ctrl\/⌘\+?|⌘\/Ctrl\+?|(?:Ctrl|Control|Cmd|Command|Alt|Option|Shift)\+)`;
+  const KEY = String.raw`(?:F\d{1,2}(?!\d)|Enter|Return|Tab|Space|Esc(?:ape)?|Backspace|Delete|Del|Home|End|PgUp|PgDn|PageUp|PageDown|Insert|right-click|double-click|click|drag|wheel|scroll|drop|[A-Za-z0-9](?![A-Za-z0-9])|[↑↓←→↩⇥⌫,.;:'/\\=\-+\`\[\]{}|?<>*])`;
+  const WORD_CHAIN = new RegExp(`(?<![A-Za-z/])((?:${MODS})+)(${KEY})`, 'g');
+  const SYM_CHAIN = new RegExp(`((?:[⌃⌥⇧⌘]\\+?){1,4})(${KEY})`, 'g');
+  const MOUSE = /^(?:right-click|double-click|click|drag|wheel|scroll|drop)$/;
+  const MAC_ORDER = ['ctrl', 'alt', 'shift', 'cmd'];
+  const MAC_SYM = { ctrl: '⌃', alt: '⌥', shift: '⇧', cmd: '⌘' };
+  const WIN_WORD = { ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', cmd: 'Ctrl' };
+  // Hearth's Ctrl shortcuts macOS keeps for itself with ⌘: shown (and pressed) with the real Control key on a Mac
+  const MAC_REAL_CTRL = new Set(['ctrl+tab', 'ctrl+shift+tab', 'ctrl+space', 'ctrl+alt+space', 'ctrl+alt+h', 'ctrl+alt+d', 'ctrl+alt+esc']);
+  const modOf = (m) => (/^⌘\/|\/⌘|^cmd|^command|^⌘/i.test(m) ? 'cmd' : /^(?:control|⌃)/i.test(m) ? 'ctrl' : /^ctrl/i.test(m) ? 'ctrl?' : /^(?:alt|option|⌥)/i.test(m) ? 'alt' : 'shift');
+  function sayChain(mods, key, mac) {
+    const k = key.length === 1 ? key.toUpperCase() : key;
+    const plain = mods.filter((m) => m !== 'cmd').map((m) => m.replace('?', '')).concat(k.toLowerCase()).join('+');
+    const realCtrl = mac && mods.every((m) => m !== 'cmd') && MAC_REAL_CTRL.has(plain);
+    const set = new Set(mods.map((m) => (m === 'ctrl?' ? (mac && !realCtrl ? 'cmd' : 'ctrl') : m)));
+    if (mac) return `${MAC_ORDER.filter((m) => set.has(m)).map((m) => MAC_SYM[m]).join('')}${MOUSE.test(k) ? '-' : ''}${k}`;
+    const words = new Set(mods.map((m) => WIN_WORD[m.replace('?', '')]));
+    return [...['Ctrl', 'Alt', 'Shift'].filter((w) => words.has(w)), k].join('+'); // Windows' own order
+  }
+  function keyLabel(text, { mac = onMac(), both = false } = {}) {
+    if (text == null || typeof text !== 'string' || !/Ctrl|Control|Cmd|Command|Alt|Option|Shift|[⌃⌥⇧⌘]/.test(text)) return text;
+    // a text that names both systems' keys on purpose ("⌘V / Ctrl+V") keeps them; only "Ctrl/⌘" is made this one's
+    const rest = text.replace(/Ctrl\/⌘|⌘\/Ctrl/g, '');
+    if (!both && /(?<![A-Za-z/])(?:Ctrl|Alt|Cmd)\+/.test(rest) && /[⌃⌥⇧⌘]/.test(rest)) both = true;
+    let t = text.replace(WORD_CHAIN, (all, chain, key) => {
+      if (both && !/⌘/.test(chain)) return all;
+      if (mac && /^Ctrl\+$/.test(chain) && key === 'click') return all; // the Mac's right-click, said as such
+      return sayChain(chain.match(/Ctrl\/⌘|⌘\/Ctrl|[A-Za-z]+/g).map(modOf), key, mac);
+    });
+    // (⌃ names the Mac's own Control key — "F11 / ⌃⌘F": Windows leaves it as written)
+    if (!both) t = t.replace(SYM_CHAIN, (all, chain, key) => (!mac && chain.includes('⌃') ? all : sayChain([...chain.replace(/\+/g, '')].map(modOf), key, mac)));
+    return t.replace(/Ctrl\/⌘|⌘\/Ctrl/g, mac ? '⌘' : 'Ctrl');
+  }
+
+  // (round 49) a key that TYPES a character is not a shortcut. Windows: AltGr arrives as Ctrl+Alt (AZERTY's @ # { [ | \ ~,
+  // QWERTZ's @ € { [ ] } \ µ, Polish ą ć ę…), told apart from the left Ctrl+Alt by the right Alt key being down. The Mac:
+  // ⌥ types @ [ ] { } | \ ~ on most European layouts (in a text field: typing wins; a dead key — ⌥N, ⌥E on every Mac —
+  // stays the shortcut: Alt+N is code ⇄ nodes).
+  function typesChar(e, { mac = onMac(), altRight = false, editable = false } = {}) {
+    const k = e && e.key;
+    if (typeof k !== 'string' || !(k === 'Dead' || ([...k].length === 1 && k > ' '))) return false;
+    if (!mac) return Boolean(altRight && e.ctrlKey && e.altKey && !e.metaKey);
+    return Boolean(editable && e.altKey && !e.ctrlKey && !e.metaKey && /^[@[\]{}|\\~^`#€<>]$/.test(k));
+  }
+  // (round 49) letters by the letter printed on the key, not its place: on AZERTY A sits where QWERTY has Q and M where
+  // ";" is, on QWERTZ Y and Z swap; handlers that read e.code (so ⌥ / AltGr letters still match) get the key that says
+  // the letter. `map` is navigator.keyboard's layout map when the window has it.
+  const PUNCT = { ',': 'Comma', '.': 'Period', ';': 'Semicolon', '/': 'Slash', "'": 'Quote', '[': 'BracketLeft', ']': 'BracketRight', '-': 'Minus', '=': 'Equal', '`': 'Backquote', '\\': 'Backslash' };
+  function layoutCode(e, map = null, { mac = onMac() } = {}) {
+    const code = (e && e.code) || '';
+    if (!/^(?:Key[A-Z]|Semicolon|Quote|Comma|Period|Slash|BracketLeft|BracketRight|Backquote|Minus|Equal|Backslash|IntlBackslash)$/.test(code)) return code;
+    const typed = typeof e.key === 'string' && e.key.length === 1 && !(mac && e.altKey) ? e.key : null; // (⌥ changes the Mac's letters)
+    const mapped = map && typeof map.get === 'function' ? map.get(code) : null;
+    const ch = (typed && /^[a-z]$/i.test(typed) ? typed : mapped && /^[a-z]$/i.test(mapped) ? mapped : typed || mapped || '').toLowerCase();
+    if (/^[a-z]$/.test(ch)) return `Key${ch.toUpperCase()}`;
+    return /^Key[A-Z]$/.test(code) && PUNCT[ch] ? PUNCT[ch] : code;
+  }
+
   // ---------- programs a Dock launch can't find ----------
   // An app started from the Mac's Dock / Finder gets PATH=/usr/bin:/bin:/usr/sbin:/sbin: no Homebrew, npm, volta, bun
   // or nvm folders, so `claude` (a Node script: "env: node: No such file"), `codex`, `ffmpeg`, `git` from Homebrew and
@@ -129,6 +193,6 @@ const WinMac = (() => {
     return process.env.PATH === before ? null : process.env.PATH.slice(before.length).replace(/^:/, '');
   }
 
-  return { fileUrl, fromFileUrl, parts, baseName, dirName, join, extOf, samePath, sameFile, macKeys, keyWords, withToolDirs, fixProcessPath };
+  return { fileUrl, fromFileUrl, parts, baseName, dirName, join, extOf, samePath, sameFile, macKeys, keyWords, keyLabel, typesChar, layoutCode, MAC_REAL_CTRL, withToolDirs, fixProcessPath };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = WinMac;

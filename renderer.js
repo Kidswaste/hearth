@@ -227,7 +227,8 @@ function menuButton(it, onPick) {
   const sub = Boolean(it.items);
   // on a Mac the keys at the right of a menu read ⌘ ⌥ ⇧ (every stream's menus wrote "Ctrl+D", "Ctrl+Shift+S"…)
   const key0 = sub ? '›' : it.key || inlineKey;
-  const key = key0 && !sub && /Mac/.test(navigator.platform) ? String(key0).replace(/\bCtrl\+(?!click)/g, '⌘').replace(/\bAlt\+/g, '⌥').replace(/\bShift\+/g, '⇧').replace(/([⌘⌥⇧])\+/g, '$1') : key0;
+  // (round 49) both computers through WinMac.keyLabel (macText): ⇧⌘S here, Ctrl+Shift+S (never "Ctrl/⌘") on Windows
+  const key = key0 && !sub ? (typeof macText === 'function' ? macText(String(key0)) : key0) : key0;
   if (key) b.append(el('span', { class: `menu-key${sub ? ' menu-sub' : ''}`, text: key }));
   if (sub) { b.classList.add('has-sub'); b.setAttribute('aria-haspopup', 'menu'); }
   if (it.checked) b.classList.add('checked');

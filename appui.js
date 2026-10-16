@@ -550,7 +550,8 @@ const AppUI = (() => {
     const dlg = document.querySelector('dialog.ui-modal:last-of-type');
     const mac = /Mac/.test(navigator.platform);
     // (round 31, winmac) the global hotkey is the Control key on a Mac (⌃⌥H), not ⌘
-    const keyText = (k) => (mac && k === 'Ctrl+Alt+H' ? '⌃⌥H' : mac ? k.replace(/Ctrl\+/g, '⌘').replace(/Ctrl /g, '⌘ ').replace(/Alt\+/g, '⌥') : k);
+    // (round 49) through WinMac.keyLabel: ⇧⌘U / Ctrl+Shift+U, ⌃Tab on the Mac (⌘Tab is the system's)
+    const keyText = (k) => (typeof WinMac !== 'undefined' && WinMac.keyLabel ? WinMac.keyLabel(k, { mac }) : mac && k === 'Ctrl+Alt+H' ? '⌃⌥H' : mac ? k.replace(/Ctrl\+/g, '⌘').replace(/Ctrl /g, '⌘ ').replace(/Alt\+/g, '⌥') : k);
     const rows = (list) => list.map(([k, d]) => el('tr', {}, el('td', {}, el('kbd', { text: keyText(k) })), el('td', { text: d })));
     dlg.querySelector('.modal-text').replaceWith(el('div', { class: 'shortcut-cols' },
       el('div', {}, el('h4', { text: 'Everywhere' }), el('table', { class: 'shortcut-table' }, rows(SHORTCUTS))),
