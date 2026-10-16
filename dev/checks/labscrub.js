@@ -1,0 +1,265 @@
+// Scrubbing and zooming the Lab timeline (round 49, labscrub): a 4-minute fixture song (120 BPM, kicks + hats) under a
+// scene of 8 layers (a base, 6 small three.js layers, one 🅰 kinetic type layer), 4 of them keyframed with their lanes
+// open. With real input (CDP mouse / wheel, as the owner's mouse and trackpad send them), per stretch:
+//   scrub   drag the playhead across the whole song and back (paused)
+//   zoom    trackpad pinch (Ctrl+wheel) in and out over the waveform
+//   pan     Shift+wheel along the zoomed waveform (the waveform scrolling)
+//   clip    drag a layer's bar along its track
+//   sound   the scrub again with the scrub sound on: the grains it plays and what they cost
+// What is counted: the Lab window's main-thread work per move (the input's handlers + the frames it caused: rAF →
+// rendering done), frames dropped (frame gaps over 1.5 vsyncs), waveform rebuilds (whole-song columns computed),
+// seeks the preview page got per preview frame and per move, layer messages per move, and after letting go: the
+// preview's last drawn frame is the exact time the playhead shows (and the preview's media clock is there).
+// Fails above the budgets (BUDGET below; window.LS_REPORT = 1 reports without failing; window.LS_ONLY = 'scrub,zoom';
+// window.LS_TRACE = 1 adds the timeline trace: forced layouts with the line that asked, style / layout per stretch).
+// Xvfb is a 60 Hz display with software GL on shared CPUs: absolute ms are several times a real Mac's; the counts
+// (seeks per frame, rebuilds, messages) are exact. The preview is kept small (320 × 180) so software GL doesn't starve the
+// window's own frames.
+//   node dev/smoke.js --check-timeout 600000 --script dev/checks/labscrub.js --shot /tmp/labscrub.png
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(60); } return false; };
+const out = { budgets: {}, problems: [] };
+const only = String(window.LS_ONLY || '').split(',').filter(Boolean);
+const want = (k) => !only.length || only.includes(k);
+const TRACE = Boolean(window.LS_TRACE);
+const r1 = (x) => Math.round(x * 10) / 10;
+const r3 = (x) => Math.round(x * 1000) / 1000;
+const pct = (a, p) => { const s = a.slice().sort((x, y) => x - y); return s.length ? r1(s[Math.min(s.length - 1, Math.floor(s.length * p))]) : null; };
+const cdp = (method, params) => Promise.race([smoke({ cdp: method, params }), wait(4000)]);
+const mouse = (type, x, y, extra = {}) => cdp('Input.dispatchMouseEvent', { type, x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1, ...extra });
+const move = (x, y, modifiers = 0) => cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x), y: Math.round(y), button: 'left', buttons: 1, modifiers });
+// a burst of inputs ~4 ms apart, as a 240 Hz mouse / trackpad sends them (each awaited, the next isn't held for it)
+const burst = async (sends, gap = 4) => { const ps = []; for (const f of sends) { ps.push(f()); await wait(gap); } await Promise.all(ps); };
+const wheel = (x, y, dy, modifiers = 0) => cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(x), y: Math.round(y), deltaX: 0, deltaY: dy, modifiers });
+// budgets: main-thread ms per move (handlers + the frames they caused, p95), frames over 8.3 ms of work (dropped at
+// 120 Hz here; the frame gaps themselves are this machine's software GL, reported as gapsDropped), seeks the
+// preview got in one of its frames (max) and per move, waveform rebuilds while panning at one zoom
+const BUDGET = window.LS_BUDGET || { scrubMsP95: 12, zoomMsP95: 16, panMsP95: 12, clipMsP95: 12, dropped: 12, seeksPerFrameMax: 1, seeksPerMove: 1.05, panRebuilds: 3, clipMsgsPerMove: 1.05, finalExact: 0.002, soundMsP95: 14 };
+out.budgets = BUDGET;
+
+// ---------- the song: 4 minutes at 120 BPM (kicks on the beat, hats between), 22.05 kHz mono ----------
+const SONG = '/tmp/hearth-labscrub-song.wav';
+{
+  const sr = 22050; const secs = 240; const n = secs * sr; const x = new Int16Array(n);
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 1073741823.5 - 1; };
+  for (let b = 0; b < secs * 2; b++) {
+    const a = Math.round((b * 0.5) * sr); let ph = 0;
+    for (let i = 0; i < 0.2 * sr && a + i < n; i++) { const s = i / sr; ph += (2 * Math.PI * (50 + 110 * Math.exp(-s * 35))) / sr; x[a + i] += Math.round(26000 * Math.sin(ph) * Math.exp(-s * 14)); }
+    const h = Math.round((b * 0.5 + 0.25) * sr);
+    for (let i = 0; i < 0.03 * sr && h + i < n; i++) x[h + i] += Math.round(3000 * rnd() * Math.exp(-i / (0.008 * sr)));
+  }
+  const data = new DataView(new ArrayBuffer(44 + n * 2)); const w = (o, s) => [...s].forEach((ch, i) => data.setUint8(o + i, ch.charCodeAt(0)));
+  w(0, 'RIFF'); data.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); data.setUint32(16, 16, true); data.setUint16(20, 1, true); data.setUint16(22, 1, true);
+  data.setUint32(24, sr, true); data.setUint32(28, sr * 2, true); data.setUint16(32, 2, true); data.setUint16(34, 16, true); w(36, 'data'); data.setUint32(40, n * 2, true);
+  new Int16Array(data.buffer, 44).set(x);
+  await window.hub.fs.write(SONG, new Uint8Array(data.buffer));
+}
+
+// ---------- the Lab: 8 layers, 4 keyframed with lanes open, a 🅰 layer ----------
+activate('tool:three');
+await until(() => typeof ThreeLab !== 'undefined' && typeof LabKineticHook !== 'undefined', 30000);
+const c = await ThreeLab.cmd();
+const D = ThreeLab.director;
+await wait(800);
+const BASE = `import * as THREE from 'three';
+const P = tweak({ glow: { value: 0.5, min: 0, max: 1, step: 0.001, label: 'Glow' } });
+const renderer = new THREE.WebGLRenderer({ antialias: false }); renderer.setPixelRatio(1); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#0b0d12');
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); camera.position.z = 6;
+const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1.2, 0.35, 64, 8), new THREE.MeshNormalMaterial()); scene.add(knot);
+renderer.setAnimationLoop(() => { knot.rotation.y = audio.time * 0.7; knot.scale.setScalar(0.6 + P.glow * 0.6); renderer.render(scene, camera); const L = window.__lsDrawn; if (L && L.on) L.at.push([document.timeline.currentTime, audio.time]); });`;
+await D.newSketch('labscrub scene', BASE, 2);
+try { c.customSize(320, 180); c.size('custom'); } catch { /* the frame size stays */ }
+const r0 = await c.loadSong(SONG);
+if (!r0?.ok) out.problems.push(`the song didn't load: ${JSON.stringify(r0)}`);
+await until(() => c.player.loaded && c.player.duration > 200, 30000);
+await until(() => c.player.analysis, 60000);
+const layer = (i, color) => `import * as THREE from 'three';
+const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true }); renderer.setPixelRatio(1); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);
+const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); camera.position.z = 8;
+const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 1), new THREE.MeshBasicMaterial({ color: '${color}', wireframe: true })); m.position.x = ${i - 3} * 1.1; scene.add(m);
+renderer.setAnimationLoop(() => { m.rotation.x = audio.time * ${0.3 + i * 0.1}; renderer.render(scene, camera); });`;
+const COLORS = ['#ff6a4d', '#ffd75e', '#8fe6ff', '#bd8bff', '#6aff9a', '#ff8fd1'];
+for (let i = 0; i < 6; i++) { try { await D.addLayer({ name: `Part ${i + 1}`, code: layer(i, COLORS[i]) }, 0.6); } catch (err) { out.problems.push(`layer ${i + 1}: ${err.message}`); } }
+try { await LabKineticHook.lib(() => 1); await LabKinetic.apply('typewriter', { text: 'SCRUB AT TWO FORTY' }); } catch (err) { out.problems.push(`🅰 layer: ${err.message}`); }
+await wait(1500);
+const names = D.layers().layers.map((x) => x.name);
+out.layers = names.length;
+// keyframes across the song on four layers (opacity / x / scale and the base's Glow slider), every lane open
+const keyed = names.slice(0, 4);
+const keysFor = (k) => Array.from({ length: 24 }, (_, i) => ({ time: i * 10, value: k === 'glow' ? (i % 2 ? 0.9 : 0.1) : k === 'opacity' ? (i % 2 ? 1 : 0.3) : k === 'scale' ? (i % 2 ? 1.2 : 0.8) : (i % 2 ? 0.2 : -0.2) }));
+const props = ['glow', 'opacity', 'x', 'scale'];
+for (let i = 0; i < keyed.length; i++) {
+  try {
+    D.setKeyframes(keyed[i], props[i], keysFor(props[i]));
+    if (i === 0) D.setKeyframes(keyed[i], 'opacity', keysFor('opacity'));
+    D.timelineEdit({ lane: { layer: keyed[i], property: 'all' } });
+  } catch (err) { out.problems.push(`keys on ${keyed[i]}: ${err.message}`); }
+}
+// one layer as a clip (8 s → 40 s) to drag along its track
+const clipName = names[names.length - 2] || names[1];
+try { await D.updateLayer(clipName, { in: 8, out: 40 }, 0.3); } catch (err) { out.problems.push(`clip: ${err.message}`); }
+await wait(1200);
+
+const L = H.surfaces.get('tool:three')?.el;
+const canvas = [...(L?.querySelectorAll('canvas.mb-timeline') || [])].find((x) => x.getBoundingClientRect().width > 40);
+if (!canvas) throw new Error('labscrub: no timeline canvas');
+canvas.scrollIntoView({ block: 'nearest' });
+await wait(400);
+const sbx1 = (code) => D.evalInSketch(code).then((r) => (r?.ok ? r.value : { error: r?.error }));
+const sbx = async (code) => { let r; for (let i = 0; i < 6; i++) { r = await sbx1(code); if (!r?.error) return r; await wait(500); } return r; };
+const sbxJson = (r) => { try { return typeof r === 'string' ? JSON.parse(r) : {}; } catch { return {}; } };
+// the preview page: seeks and layer messages per preview frame, what each frame drew (media.time)
+await sbx(`if (!window.__lsProbe) { const P = window.__lsProbe = { on: false, frames: 0, seeks: 0, layerMsgs: 0, perFrame: [], cur: 0 };
+  window.__lsDrawn = { on: false, at: [] };
+  addEventListener('message', (e) => { if (!P.on) return; const d = e.data; if (d?.type === 'media' && d.cmd === 'seek') { P.seeks++; P.cur++; } if (d?.type === 'layer-props') P.layerMsgs++; });
+  const raf = typeof realRAF === 'function' ? realRAF : requestAnimationFrame; P.real = typeof realRAF === 'function'; // the page's own frames (a sketch's are paced)
+  const f = () => { if (P.on) { P.frames++; P.perFrame.push(P.cur); P.cur = 0; } raf(f); }; raf(f);
+} return 1`);
+// the Lab window: main-thread work per move (handlers + the frame rendering after them), frame gaps
+const probe = { on: false, ev: [], frames: [], gaps: [], last: 0 };
+const cur = new Map();
+const endCh = new MessageChannel();
+endCh.port1.onmessage = (m) => { for (const [e, x] of cur) if (x.id === m.data) { x.end = performance.now(); probe.ev.push(x); cur.delete(e); } };
+let evId = 0;
+for (const t of ['pointermove', 'pointerdown', 'pointerup', 'wheel']) {
+  addEventListener(t, (e) => { if (!probe.on || !e.isTrusted || cur.has(e)) return; const x = { id: ++evId, type: t, start: performance.now() }; cur.set(e, x); endCh.port2.postMessage(x.id); }, { capture: true, passive: true });
+  addEventListener(t, (e) => { const x = cur.get(e); if (x) { cur.delete(e); x.end = performance.now(); probe.ev.push(x); } }, { passive: true });
+}
+const fch = new MessageChannel();
+let fStart = 0;
+fch.port1.onmessage = () => { probe.frames.push(performance.now() - fStart); };
+const tick = (t) => { if (!probe.on) return; if (probe.last) probe.gaps.push(t - probe.last); probe.last = t; fStart = performance.now(); fch.port2.postMessage(0); requestAnimationFrame(tick); };
+// waveform rebuilds: whole columns computed for the cached picture (counted through the canvas' getContext calls on the cache)
+const wc0 = () => c.player._scrubStats?.() || null;
+const settle = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 40))));
+const vsync = await new Promise((res) => { const a = []; const f = (t) => { a.push(t); if (a.length < 30) requestAnimationFrame(f); else { const g = a.slice(1).map((x, i) => x - a[i]).sort((p, q) => p - q); res(g[Math.floor(g.length / 2)]); } }; requestAnimationFrame(f); });
+out.vsyncMs = r1(vsync);
+async function stretch(name, fn) {
+  if (!want(name)) return null;
+  await settle();
+  performance.mark(`hz240:${name}`);
+  await sbx('const P = window.__lsProbe; Object.assign(P, { on: true, frames: 0, seeks: 0, layerMsgs: 0, perFrame: [], cur: 0 }); window.__lsDrawn.at = []; window.__lsDrawn.on = true; return 1');
+  const s0 = wc0();
+  probe.ev = []; probe.frames = []; probe.gaps = []; probe.last = 0; probe.on = true; requestAnimationFrame(tick);
+  const t0 = performance.now();
+  let moves = 0;
+  try { moves = await fn(); } catch (err) { out.problems.push(`${name}: ${String(err.message || err).slice(0, 200)}`); }
+  await settle(); await wait(150);
+  probe.on = false;
+  const ms = performance.now() - t0;
+  const pv = sbxJson(await sbx('const P = window.__lsProbe; P.on = false; window.__lsDrawn.on = false; return JSON.stringify({ real: P.real, frames: P.frames, seeks: P.seeks, layerMsgs: P.layerMsgs, maxPerFrame: Math.max(0, ...P.perFrame), drawn: window.__lsDrawn.at.slice(-3), draws: window.__lsDrawn.at.length })'));
+  const s1 = wc0();
+  const handlers = probe.ev.reduce((a, x) => a + (x.end - x.start), 0);
+  const frameWork = probe.frames.reduce((a, x) => a + x, 0);
+  const perMove = probe.ev.filter((x) => x.type === 'pointermove' || x.type === 'wheel').map((x) => x.end - x.start);
+  const dropped = probe.gaps.filter((g) => g > vsync * 1.5).reduce((a, g) => a + Math.round(g / vsync) - 1, 0);
+  const r = {
+    moves, ms: Math.round(ms),
+    cpuPerMoveMs: moves ? r1((handlers + frameWork) / moves) : null, // the Lab window's main thread, per move
+    handlerP95: pct(perMove, 0.95), frameWorkP95: pct(probe.frames, 0.95), moveMsP95: pct(perMove.map((h, i) => h + (probe.frames[i] || 0)), 0.95),
+    frames: probe.gaps.length, framesOver4: probe.frames.filter((x) => x > 4.2).length, framesOver8: probe.frames.filter((x) => x > 8.3).length, gapsDropped: dropped, worstGap: r1(Math.max(0, ...probe.gaps)),
+    preview: { realFrames: pv.real, frames: pv.frames, draws: pv.draws, seeks: pv.seeks, seeksPerMove: moves ? r3(pv.seeks / moves) : 0, seeksMaxPerFrame: pv.maxPerFrame, layerMsgs: pv.layerMsgs, lastDrawn: pv.drawn },
+    ...(s0 && s1 ? { waveRebuilds: s1.waveBuilds - s0.waveBuilds, gridRebuilds: s1.gridBuilds - s0.gridBuilds, canvasDraws: s1.draws - s0.draws, ...(s1.grains != null ? { grains: s1.grains - s0.grains } : {}) } : {}),
+  };
+  out[name] = r;
+  return r;
+}
+const rect = () => canvas.getBoundingClientRect();
+const waveY = () => rect().top + 30; // the waveform's top part (below the ruler)
+
+if (TRACE) await smoke({ trace: 'start', detail: true });
+c.player.zoomTo?.(null);
+await c.player.seek?.(0);
+store.set('three.scrubSound', false);
+c.player.scrubSound?.(false);
+await stretch('scrub', async () => {
+  const r = rect(); const y = waveY(); const N = 120;
+  await mouse('mouseMoved', r.left + 4, y, { button: 'none' });
+  await mouse('mousePressed', r.left + 4, y, { buttons: 1 });
+  const xs = []; for (let k = 0; k < 2; k++) for (let i = 1; i <= N; i++) { const f = k ? 1 - i / N : i / N; xs.push(r.left + 4 + f * (r.width - 140)); }
+  xs.push(r.left + 4 + 0.37 * (r.width - 140)); // let go on a spot that isn't on a frame boundary
+  await burst(xs.map((x) => () => move(x, y)));
+  await mouse('mouseReleased', r.left + 4 + 0.37 * (r.width - 140), y, { buttons: 0 });
+  return N * 2 + 1;
+});
+// the exact frame where the playhead was let go: the preview's media clock and the frame it drew last
+if (want('scrub')) {
+  await wait(400);
+  const t = c.player.time;
+  const pv = sbxJson(await sbx('return JSON.stringify({ t: audio.time, last: (window.__lsDrawn.at.at(-1) || [0, -1])[1] })'));
+  out.final = { playhead: r3(t), previewClock: r3(pv.t), lastDrawn: r3(pv.last) };
+  if (!(Math.abs(pv.t - t) <= BUDGET.finalExact)) out.problems.push(`scrub: the preview's clock is at ${r3(pv.t)} s, the playhead at ${r3(t)} s`);
+  // the preview may doze after drawing it; what counts is that its last drawn frame is the playhead's time
+  const drawnNow = sbxJson(await sbx('window.__lsDrawn.on = true; window.__lsDrawn.at = []; return JSON.stringify(1)'));
+  void drawnNow;
+  await wait(1300); // the once-a-second refresh draws the same time if it dozed
+  const again = sbxJson(await sbx('window.__lsDrawn.on = false; return JSON.stringify((window.__lsDrawn.at.at(-1) || [0, -1])[1])'));
+  const lastT = typeof again === 'number' && again >= 0 ? again : pv.last;
+  out.final.drawnAfter = r3(lastT);
+  if (!(Math.abs(lastT - t) <= BUDGET.finalExact)) out.problems.push(`scrub: the preview's last frame shows ${r3(lastT)} s, the playhead ${r3(t)} s`);
+}
+await stretch('zoom', async () => {
+  const r = rect(); const y = waveY(); const x = r.left + r.width * 0.4;
+  await mouse('mouseMoved', x, y, { button: 'none', buttons: 0 });
+  await burst(Array.from({ length: 80 }, (_, i) => () => wheel(x, y, i < 60 ? -12 : 12, 2)));
+  return 80;
+});
+await stretch('pan', async () => {
+  const r = rect(); const y = waveY(); const x = r.left + r.width * 0.4;
+  await burst(Array.from({ length: 60 }, (_, i) => () => wheel(x, y, i < 40 ? 8 : -8, 8)));
+  return 60;
+});
+c.player.zoomTo?.(null);
+await settle();
+await stretch('clip', async () => {
+  const g = c.player._keysGeo(); const lay = D.layers().layers.find((x) => x.name === clipName);
+  const id = lay?.id || ThreeLab.scenes.layersOf(ThreeLab.scenes.get(ThreeLab.scenes.currentId())).find((x) => x.name === clipName)?.id;
+  const ty = g.trackY(id); if (ty == null) throw new Error(`no track row for ${clipName}`);
+  const r = rect(); const y = r.top + ty; const x0 = r.left + g.X(24);
+  await mouse('mouseMoved', x0, y, { button: 'none' });
+  await mouse('mousePressed', x0, y, { buttons: 1 });
+  await burst(Array.from({ length: 80 }, (_, i) => () => move(x0 + Math.sin((i + 1) / 12) * 160, y)));
+  await mouse('mouseReleased', x0, y, { buttons: 0 });
+  return 80;
+});
+// the scrub sound: grains that follow the playhead while you drag (if this build has it)
+if (want('sound') && c.player.scrubSound) {
+  c.player.scrubSound(true);
+  await stretch('sound', async () => {
+    const r = rect(); const y = waveY(); const N = 80;
+    await mouse('mouseMoved', r.left + 4, y, { button: 'none' });
+    await mouse('mousePressed', r.left + 4, y, { buttons: 1 });
+    await burst(Array.from({ length: N }, (_, i) => () => move(r.left + 4 + ((i + 1) / N) * (r.width - 140), y)));
+    await mouse('mouseReleased', r.left + r.width - 136, y, { buttons: 0 });
+    return N;
+  });
+  c.player.scrubSound(true);
+}
+performance.mark('hz240:end');
+await settle();
+if (TRACE) {
+  const tr = await smoke({ trace: 'stop', detail: true });
+  for (const [n, s] of Object.entries(tr.detail?.segments || {})) if (out[n]) out[n].trace = { cpuPerMoveMs: r1(s.cpuMs / Math.max(1, out[n].moves)), busyMs: s.busyMs, cpuMs: s.cpuMs, work95: s.work?.p95, frames: s.frames, forced: s.forced?.n, forcedMs: s.forced?.ms, forcedTop: (s.forced?.top || []).slice(0, 3), style: s.style, layout: s.layout, phases: s.phases, scripts: (s.scripts || []).slice(0, 4), files: s.filesCpu };
+}
+await smoke({ shot: window.LS_SHOT || '/tmp/labscrub.png' });
+
+// ---------- budgets ----------
+const over = (what, v, b) => { if (v != null && b != null && v > b) out.problems.push(`${what}: ${v} > ${b}`); };
+for (const [n, k] of [['scrub', 'scrubMsP95'], ['zoom', 'zoomMsP95'], ['pan', 'panMsP95'], ['clip', 'clipMsP95'], ['sound', 'soundMsP95']]) {
+  const s = out[n]; if (!s) continue;
+  over(`${n}: main-thread ms per move, p95`, s.moveMsP95, BUDGET[k]);
+  over(`${n}: frames whose main-thread work went over 8.3 ms (a 120 Hz frame; ≈ 4.2 ms on a real machine)`, s.framesOver8, Math.max(BUDGET.dropped, Math.round(s.frames * 0.1)));
+}
+if (out.scrub) {
+  over('scrub: seeks the preview got in one of its frames', out.scrub.preview.seeksMaxPerFrame, BUDGET.seeksPerFrameMax);
+  over('scrub: seeks per move', out.scrub.preview.seeksPerMove, BUDGET.seeksPerMove);
+}
+if (out.pan && out.pan.waveRebuilds != null) over('pan: waveform rebuilds at one zoom', out.pan.waveRebuilds, BUDGET.panRebuilds);
+if (out.clip) over('clip: layer messages per move', r3(out.clip.preview.layerMsgs / Math.max(1, out.clip.moves)), BUDGET.clipMsgsPerMove);
+if (out.sound && !(out.sound.grains > 0)) out.problems.push('sound: no scrub grains played');
+const errs = D.report?.().errors || [];
+if (errs.length) out.problems.push(`scene errors: ${errs.slice(0, 2).map((e) => e.message || e).join(' · ')}`);
+if (window.LS_REPORT) { out.reportOnly = out.problems; out.problems = []; }
+out.pass = out.problems.length === 0;
+return JSON.stringify(out, null, 1);
