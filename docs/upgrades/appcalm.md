@@ -105,9 +105,12 @@ Found and kept on purpose (said here so nobody "fixes" them later):
   More with Tools / Features / Export / the copy, More › Tools opens it, the note one line; Ctrl/⌘+K finds full screen,
   board drawer, usage, token tools, features used, export token usage, copy usage summary, recent notifications,
   find anything. Base commit: 17 failures; after: PASS.
-- Targeted runs: see the final report of this round (the `appcalm` group: appcalm, chatcalm, settingscalm, menucalm,
-  hintcalm, appsearch, usagelimits, sendpreview, localanswers, a11y, qa-keys, smooth46, bigscreen, lazy,
-  `unit:boot-test`).
+- Targeted runs (`sh dev/run-checks.sh appcalm`, while four other streams loaded the machine): appcalm, settingscalm,
+  menucalm, hintcalm, appsearch, sendpreview, localanswers, qa-keys, bigscreen, lazy, `unit:boot-test` pass.
+  chatcalm (its chat-box right-click read empty once) and usagelimits (hung 540 s in the group) passed when run again
+  alone. a11y's audit passed; it only logged WebGL "context could not be created" under load (as in labcalm's run).
+  smooth46 (updated: 3 notes) now shows 3 of 10; it still fails "notes placed for a burst: 2 (budget 1)" and "docked-chat
+  searches: 2" — the base commit 40a5550 fails the same two steps (and the 🅰 layer step) in the same run conditions.
 
 ## Risks
 - A check or habit that expects ⛶ or the board drawer always in the rail: they show only while on (or with Alt).
