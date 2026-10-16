@@ -1910,8 +1910,7 @@ const ThreeLab = (() => {
       for (const id of [...refBytes.keys()]) if (!mine.has(id)) refBytes.delete(id);
       // (round 48, labstartfast) read at once, not one after the other
       await Promise.all(refsOf().filter((r) => !refBytes.has(r.id)).map(async (r) => {
-        // (round 52, gameready: ▶ Play reads a model's optimized copy from Hearth's cache)
-        try { const u8 = await window.hub.fs.read(window.__gameReadyHook?.pathFor?.(r) || r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ }
+        try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ }
       }));
       sendRefs();
       return added;
@@ -2083,16 +2082,6 @@ const ThreeLab = (() => {
       host: previewHost, get player() { return player; }, send: (m) => box.send(m), syncPark: () => syncPark(),
       frame: () => (stage?.size?.id && stage.size.id !== 'fit' ? { w: stage.size.width, h: stage.size.height } : null),
       scene: () => (current ? { id: current.id, name: current.name } : null),
-    };
-    // (round 52, gameready) what getting a scene ready for ▶ Play needs: its references, its code, and its references read
-    // again (an optimized copy swapped in or out: GameReady.pathFor) with one run
-    api.game = {
-      refs: () => refsOf().map((r) => ({ id: r.id, key: r.key, kind: r.kind, name: r.name, path: r.path, size: r.size })),
-      code: () => (current ? layersOf().map((L) => L.code || '') : []),
-      scene: () => (current ? { id: current.id, name: current.name } : null),
-      open: (id) => { if (id && id !== current?.id && sketches.some((s) => s.id === id)) openSketch(id); },
-      reread: async (ids) => { for (const id of ids || []) refBytes.delete(id); refsSig = null; await loadRefBytes(); run({ sync: true }); },
-      send: (m) => box.send(m), host: previewHost,
     };
     api.lab = {
       sheet: () => showSheet(),
@@ -2964,7 +2953,7 @@ const ThreeLab = (() => {
     function onMessage(msg) {
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
       if (/^gpu-(lost|restored|stuck)$/.test(msg.type)) { glPreview(msg); return; } // (round 43, glrecover)
-      if (/^ready-/.test(msg.type)) { window.PresentReady?.onBox?.(msg); window.__gameReadyHook?.onBox?.(msg); return; } // (round 52, presentready · gameready: a plain hook, not the lazy global: reading that would load the group)
+      if (/^ready-/.test(msg.type)) { window.PresentReady?.onBox?.(msg); return; } // (round 52, presentready)
       if (msg.type === 'stack-drawn' && glp.phase === 'remaking') glBack('new page');
       if (msg.type === 'obs-frame') { window.InteropObs?.frame(msg); return; } // (round 25, interop) a frame for OBS's Browser Source
       if (msg.type === 'shader-info') { window.LabShader?.onBox?.(msg); return; } // (round 23) ◇ shader layers' compile state
@@ -5005,7 +4994,6 @@ ${frag}\`,
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
     get groupsHost() { return api.groupsHost || null; }, // (round 44) layer groups (tools/three-groups.js)
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
-    get game() { return api.game || null; }, // (round 52, gameready) ▶ Play getting a scene ready (tools/gameready.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
     idle: () => (inflight ? new Promise((r) => idleWaiters.push(r)) : Promise.resolve()),
     _sandbox: (parent, onMessage, params, o = {}) => sandboxFrame(parent, 'sketch', onMessage, params, { lazy: true, name: 'backstage', ...o }), // tools/three-backstage.js · (round 43) o.gpuStuck: 'owner' (the export page)

@@ -269,6 +269,6 @@ contextBridge.exposeInMainWorld('hub', {
   glr: { state: call('glrecover:state'), shown: call('glrecover:shown'), sim: call('glrecover:sim'), onNote: on('glrecover:note') }, // (round 43, glrecover) the graphics card restarted / drawing without it (glrecovermain.js)
   gpu52: { info: call('gpu52:info'), shown: call('gpu52:shown'), reset: call('gpu52:reset'), sim: call('gpu52:sim'), onNote: on('gpu52:note') }, // (round 52, gpu52) the graphics path: Settings › Advanced › Graphics, /graphics (gpu52main.js)
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
-  // (round 52, gameready) ▶ Play gets a game ready: file hashes, Hearth's optimized cache, the encoder, an HTML game's window (gamereadymain.js)
-  gameReady: { hash: call('gameready:hash'), plan: call('gameready:plan'), scan: call('gameready:scan'), tool: call('gameready:tool'), install: call('gameready:install'), optimize: call('gameready:optimize'), openHtml: call('gameready:open-html'), closeHtml: call('gameready:close-html'), served: call('gameready:served'), to: (msg) => ipcRenderer.send('gameready:to', msg), onFrom: on('gameready:from'), onProgress: on('gameready:progress') },
+  // (round 52, gameready) ▶ Play gets a game ready: file hashes, Hearth's optimized cache, the encoder, arming ▶ Play's window (gamereadymain.js)
+  gameReady: { hash: call('gameready:hash'), plan: call('gameready:plan'), scan: call('gameready:scan'), tool: call('gameready:tool'), install: call('gameready:install'), optimize: call('gameready:optimize'), arm: call('gameready:arm'), served: call('gameready:served'), onProgress: on('gameready:progress') },
 });

@@ -5,7 +5,7 @@
 //   Sources: a Lab scene (built here as a standalone page: the Lab's own player with three.js next to it, the scene's
 //   layers, pictures and song, like ⇪ Publish; the layers that can merge share ONE canvas / WebGL context) or an
 //   HTML / folder game build, loaded as it is from its folder. Both through hearth-game://<token>/…, a protocol of a
-//   private, in-memory session: read-only (GET only, nothing outside the folder), no access to Hearth's pages (another
+//   private session (persist:hearth-game since gameready: compiled shaders persist; what a game stores is wiped when it ends): read-only (GET only, nothing outside the folder), no access to Hearth's pages (another
 //   origin), no Node, only pointer lock / full screen / gamepads allowed, and nothing sent out (only GETs leave it).
 //   Leaving: Esc shows "Back to Hearth" (Esc again leaves), ⌘Q / ⌘W (Mac) and Alt+F4 / Ctrl+W leave at once; ⌘
 //   shortcuts never reach Hearth's menu while playing.
@@ -17,7 +17,15 @@ const crypto = require('crypto');
 const C = require('./gamemode-core');
 
 const SCHEME = 'hearth-game';
-const PARTITION = 'hearth-game'; // (no "persist:": nothing a game stores outlives the session)
+// (round 52, gameready) a persistent partition so Chromium keeps the game's compiled shaders on disk (a second launch
+// skips its compiles); everything a game itself stores (cookies, local storage, IndexedDB, service workers, cache
+// storage…) is still wiped when it ends (forget()), so nothing a game stores outlives its session
+const PARTITION = 'persist:hearth-game';
+const WIPE = ['cookies', 'filesystem', 'indexdb', 'localstorage', 'websql', 'serviceworkers', 'cachestorage'];
+function forget() { try { ses?.clearStorageData({ storages: WIPE }).catch(() => {}); } catch { /* fine */ } }
+// (round 52, gameready) GameReady's part of this window, when it's in: optimized copies served for their originals'
+// addresses and its preparing script first in the game's pages (gamereadymain.js; nothing when it isn't armed)
+const ready = () => { try { return require('./gamereadymain'); } catch { return null; } };
 let ctx = null; // { getWin, powerwise, dataDir }
 let G = null; // the game playing: { win, source, root, token, display, hz, route, how, started, release, priority, pid }
 const roots = new Map(); // token → folder
@@ -34,12 +42,19 @@ function gameSession() {
     let u; try { u = new URL(req.url); } catch { return new Response('bad address', { status: 400 }); }
     const root = roots.get(u.hostname);
     if (!root) return new Response('this game has ended', { status: 404 });
+    const R = ready();
+    if (R?.armed?.() && R.isPage(u.pathname)) return new Response(await fs.promises.readFile(R.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     let file = C.safePath(root, u.pathname, path.sep);
     if (!file) return new Response('outside the game', { status: 403 });
     try {
       let st = await fs.promises.stat(file);
       if (st.isDirectory()) { file = path.join(file, 'index.html'); st = await fs.promises.stat(file); }
-      const body = req.method === 'HEAD' ? null : await fs.promises.readFile(file);
+      const swap = R?.swapFor?.(file) || null; // (an optimized copy in Hearth's cache, same address)
+      if (swap) st = await fs.promises.stat(swap);
+      R?.noteServed?.(path.relative(root, file).split(path.sep).join('/'), Boolean(swap));
+      let body = req.method === 'HEAD' ? null : await fs.promises.readFile(swap || file);
+      const tag = body && /\.html?$/i.test(file) ? R?.pageTag?.() : '';
+      if (tag) { let h = body.toString('utf8'); h = /<head[^>]*>/i.test(h) ? h.replace(/<head[^>]*>/i, (m) => `${m}${tag}`) : `${tag}${h}`; body = Buffer.from(h); st = { size: body.length }; }
       return new Response(body, { status: 200, headers: { 'content-type': C.mimeOf(file), 'content-length': String(st.size), 'cache-control': 'no-cache', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'credentialless' } });
     } catch { return new Response('not found', { status: 404 }); }
   });
@@ -112,19 +127,22 @@ async function buildScene(spec) {
   const version = String(spec.version || '0.186.1');
   const sandbox = path.join(__dirname, 'tools', 'three-sandbox.html');
   const stamp = (p) => { try { const s = fs.statSync(p); return `${s.size}:${s.mtimeMs}`; } catch { return '-'; } };
-  const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r) => [r.key, r.path, stamp(r.path)]), song: spec.song?.path ? [spec.song.path, stamp(spec.song.path)] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: stamp(sandbox), me: stamp(__filename) })).digest('hex').slice(0, 16);
+  const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r) => [r.key, r.path, stamp(r.path), ready()?.swapFor?.(r.path) || '']), song: spec.song?.path ? [spec.song.path, stamp(spec.song.path)] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: stamp(sandbox), me: stamp(__filename) })).digest('hex').slice(0, 16);
   const metaFile = path.join(dir, 'hearth-play.json');
   try { const m = JSON.parse(fs.readFileSync(metaFile, 'utf8')); if (m.key === key && fs.existsSync(path.join(dir, 'play.html'))) return { dir, version, cached: true, notes: m.notes || [] }; } catch { /* a new build */ }
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
   const notes = [];
-  const v = await deploy.vendorThree(version, layers.map((L) => L.code), path.join(dir, 'three'), {});
+  // (round 52, gameready) a 🧊 model layer's runtime (lab3d) imports its loaders / decoders on demand (GLTFLoader,
+  // meshopt, KTX2, Draco…): they're vendored with the page too, or the model never loads in the game window
+  const libCodes = layers.some((L) => /\blab3d\.model\s*\(/.test(L.code)) ? [fs.readFileSync(path.join(__dirname, 'tools', 'sandbox-lab3d.js'), 'utf8')] : [];
+  const v = await deploy.vendorThree(version, [...layers.map((L) => L.code), ...libCodes], path.join(dir, 'three'), {});
   if (v.missing.length) notes.push(`Not found for three.js ${version}: ${v.missing.join(', ')}`);
   const refs = [];
   for (const r of spec.refs || []) {
     if (!r.path || !fs.existsSync(r.path)) { notes.push(`Picture / file "${r.key}" is missing`); continue; }
     const file = `assets/${String(r.key || path.basename(r.path)).replace(/[^\w.-]+/g, '_')}${path.extname(r.path)}`;
-    fs.copyFileSync(r.path, path.join(dir, file));
+    fs.copyFileSync(ready()?.swapFor?.(r.path) || r.path, path.join(dir, file)); // (round 52, gameready: its optimized copy when there's one)
     refs.push({ key: r.key, kind: r.kind, mime: C.mimeOf(r.path), file });
   }
   let song = null;
@@ -154,6 +172,7 @@ function ended(g) {
   if (G !== g) return;
   G = null;
   roots.delete(g.token);
+  forget();
   try { g.release?.(); } catch { /* fine */ }
   try { ctx.powerwise.quiet(false); } catch { /* fine */ }
   const hub = ctx.getWin();

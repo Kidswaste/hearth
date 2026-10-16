@@ -35,7 +35,7 @@ fidelity: { level: 'max', pixelRatio, antialias, msaa, powerPreference, cap: 0, 
 separate, started, notes, fullscreen, url }`. `how` is the line the stats chip shows ("one canvas (3 of 3 layers) ·
 page (ready)", "HTML build", "live from the Lab (…)").
 
-The window: `hearth-game://<token>/…` (a privileged standard + secure scheme, its own in-memory session `hearth-game`):
+The window: `hearth-game://<token>/…` (a privileged standard + secure scheme, its own session `persist:hearth-game`, whose game-stored data is wiped when a game ends; only compiled shaders persist):
 read-only (GET / HEAD), never outside the game's folder (`GameCore.safePath`), no Node, contextIsolation + sandbox,
 only `pointerLock` / `fullscreen` / `keyboardLock` permissions, non-GET requests to the web refused, downloads refused.
 `backgroundThrottling: false`, process priority above normal (where the system allows), powerwise `hold('present')` +
@@ -61,9 +61,35 @@ opacity 1, not moved / scaled / turned, no keyframes, shown the whole time, no c
 EffectComposer / render targets / its own GL calls, not a precomp. The merged layers are the bottom run of those;
 `why[id]` says why the others keep their own canvas.
 
-## GameReady (gameready stream)
-`GameReady.prepare(source, onProgress) → Promise` — called by `GameMode.play` before the window opens, when present.
-`onProgress(p)` with `p` a 0–1 number or `{ done: 0–1, stage }`. A rejection is logged and the game plays anyway.
+## GameReady (gameready stream: tools/gameready.js, lazy group "gameready"; main: gamereadymain.js)
+`GameReady.prepare(source, onProgress) → Promise<{ ok, plan, models, … }>` — called by `GameMode.play` (after
+`Lazy.load('gameready')`) before the window opens. `onProgress(p)` with `p` a 0–1 number or `{ done: 0–1, stage, text }`.
+A rejection is logged and the game plays anyway. What it does before the window: the scan (a Lab scene's model
+references; an HTML build's files from its last launch), the models hashed, Hearth's optimized copies looked up, then
+`gameready:arm { kind, title, map, noPrep, opt }`: the next game window is armed.
+
+In the game window (one window: gamemode's), when armed:
+- gamemodemain's `hearth-game:` handler asks `gamereadymain.swapFor(file)` (an optimized copy in `data/game-cache`
+  served for the original's address; for a Lab scene, copied into `data/game/<scene>/assets` instead of the reference)
+  and puts `gamereadymain.pageTag()` — `<script src="/__gameready-page.js?t=…&k=lab|html">` — first in every HTML page
+  it serves (the script itself, `tools/gameready-page.js`, is served on the game's own address). It notes what it
+  served (`gameready:served`: the next launch's scan).
+- `tools/gameready-page.js` shows the card (`<gameready-card>`, open shadow root) before the first frame, then prepares:
+  a Lab scene through the Lab player's own messages (`ready-scan`, `ready-prep`, `ready-warm`, `ready-count`, posted
+  with `target: 'three-sandbox'`, answered with `source: 'three-sandbox'`), an HTML build through three's devtools hook
+  (its renderers / scenes), `compileAsync`, `initTexture` and held frames. Then the card goes and the first 5 s of play
+  are counted.
+- `window.__gameReady.pub()` → JSON `{ mode, phase: 'ready' | 'playing', pct, text, cardAt, firstFrameAt, result: { ms,
+  steps, inventory, gl, total }, first5: { compiles, links, uploads, … }, want, wantN, errors, card }`; GameReady reads
+  it through `game:eval` from `GameMode.on('start')` until `first5`, and answers the card's Optimize / Install with
+  `window.__gameReady.answer({ kind: 'install', command, why } | { kind: 'done', text })`.
+- `GameReady.state()` → `{ kind, title, phase, readyMs, page, result, findings: [{ kind, text, n, bytes }], first5,
+  plan: { fresh, stale, missing, swapped }, models, decoders, loaded }`. `GameReady.optimize(source?)` →
+  `{ ok, made, skipped, failed }` or `{ needTool: true, plan: { command } }` (never installs by itself).
+
+The window's session is `persist:hearth-game`: Chromium keeps the compiled shaders on disk (a second launch skips the
+compiles; `gpu-program-cache-size-kb` 32768 in main.js); what a game stores itself (cookies, local storage, IndexedDB,
+service workers, cache storage) is wiped when it ends.
 
 ## GamePerf (gameperf stream)
 `GamePerf.attach(handle)` (hub side) with `handle = { source, info, leave, state }`, called once the game window is up;

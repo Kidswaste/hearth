@@ -6,18 +6,16 @@
 //   gameready:install   runs the shown install command in a visible Terminal / PowerShell window (only after a click)
 //   gameready:optimize  { files, kind, ctx } → optimized copies written into Hearth's cache only, stale ones to the Trash,
 //                       the cache kept under its cap (4 GB / 200 copies, least recently used first)
-//   gameready:open-html { path, title, map } → a game window for an HTML build (when ▶ Play's own window isn't there):
-//                       hearth-game://game/<file> serves the build's folder read-only, with the optimized copies swapped
-//                       in by URL (the rewrite map) and gameready-page.js put in front of the game's own scripts
-//   gameready:to / gameready:from   messages between the hub and that page (tools/gameready-page.js)
+//   gameready:arm       { kind, title, map, noPrep, opt } | null → the next ▶ Play window (gamemodemain.js) serves the
+//                       optimized copies for their originals' addresses (the rewrite map) and runs tools/gameready-page.js
+//                       first in the game's page (it prepares inside that window, behind its card)
+//   gameready:served    what that window was served (its files: the next launch's scan)
 // The owner's files are only ever read. Everything written goes in <data>/game-cache.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const C = require('./tools/gameready-core');
 
-const SCHEME = 'hearth-game';
-const PARTITION = 'persist:hearth-game'; // persistent: Chromium keeps this window's compiled shaders on disk between launches
 
 let dataDir = null; let getWin = () => null; let appDir = __dirname;
 const cacheDir = () => path.join(dataDir, 'game-cache');
@@ -147,56 +145,26 @@ async function optimize({ files = [], kind = 'lab', ctx = {}, toolPath = null } 
   return { ok: true, made, skipped, failed, stale, capped, textures: T.textures !== false, tool: T, ...(await plan(files)) };
 }
 
-// ---------- the HTML game window ----------
-const games = new Map(); // webContents id → { root, map }
-let gameWin = null;
-function contentType(p) {
-  const e = C.extOf(p);
-  return ({ html: 'text/html', htm: 'text/html', js: 'text/javascript', mjs: 'text/javascript', css: 'text/css', json: 'application/json', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', ktx2: 'image/ktx2', glb: 'model/gltf-binary', gltf: 'model/gltf+json', bin: 'application/octet-stream', wasm: 'application/wasm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', mp4: 'video/mp4', webm: 'video/webm', hdr: 'application/octet-stream', exr: 'application/octet-stream' })[e] || 'application/octet-stream';
-}
+// ---------- ▶ Play's window (gamemodemain.js serves it; GameReady arms it for one game) ----------
+// armed = { kind, title, map, noPrep, opt, served: [] }: gamemodemain's hearth-game: handler asks swapFor(file) (an
+// optimized copy is served for the original's address / copied into a Lab scene's page) and pageTag(file) (the
+// preparing script, first in every HTML page of the game); what it served is noted for the next launch's scan
+let armed = null;
 const PAGE = '__gameready-page.js';
-let served = false;
-function serve(ses) {
-  if (served) return; served = true;
-  ses.protocol.handle(SCHEME, async (req) => {
-    const u = new URL(req.url);
-    const g = [...games.values()].find((x) => x.host === u.host);
-    if (u.pathname === `/${PAGE}`) return new Response(fs.readFileSync(path.join(appDir, 'tools', 'gameready-page.js')), { headers: { 'content-type': 'text/javascript' } });
-    if (!g) return new Response('no game', { status: 404 });
-    let rel; try { rel = decodeURIComponent(u.pathname).replace(/^\/+/, ''); } catch { return new Response('bad path', { status: 400 }); }
-    const file = path.resolve(g.root, rel || 'index.html');
-    if (!file.startsWith(path.resolve(g.root) + path.sep) && file !== path.resolve(g.root)) return new Response('outside the game', { status: 403 });
-    const swap = C.rewrite(g.map, file, process.platform);
-    const real = swap && fs.existsSync(swap) ? swap : file;
-    g.served.push({ rel, swapped: Boolean(swap && real === swap) });
-    if (g.served.length > 2000) g.served.shift();
-    let buf; try { buf = fs.readFileSync(real); } catch { return new Response('not found', { status: 404 }); }
-    if (/\.html?$/i.test(file)) {
-      // the preparing page goes first, before the game's own scripts (a classic script: it runs before any module)
-      let s = buf.toString('utf8'); const tag = `<script src="/${PAGE}"></script>`;
-      s = /<head[^>]*>/i.test(s) ? s.replace(/<head[^>]*>/i, (m) => `${m}${tag}`) : `${tag}${s}`;
-      return new Response(s, { headers: { 'content-type': 'text/html; charset=utf-8' } });
-    }
-    return new Response(buf, { headers: { 'content-type': contentType(real) } });
-  });
+function swapFor(file) {
+  if (!armed) return null;
+  const swap = C.rewrite(armed.map, file, process.platform);
+  return swap && fs.existsSync(swap) ? swap : null;
 }
-function openHtml({ path: file, title = 'Game', map = {}, width = 1280, height = 720, show = true } = {}) {
-  const { BrowserWindow, session } = require('electron');
-  const root = fs.statSync(file).isDirectory() ? file : path.dirname(file);
-  const entry = fs.statSync(file).isDirectory() ? 'index.html' : path.basename(file);
-  const ses = session.fromPartition(PARTITION);
-  serve(ses);
-  if (gameWin && !gameWin.isDestroyed()) gameWin.destroy();
-  const w = gameWin = new BrowserWindow({ width, height, useContentSize: true, title, backgroundColor: '#000000', autoHideMenuBar: true, show,
-    webPreferences: { partition: PARTITION, preload: path.join(appDir, 'gameready-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
-  const host = `g${w.webContents.id}`;
-  games.set(w.webContents.id, { host, root, map: map || {}, served: [] });
-  const wcId = w.webContents.id;
-  w.on('closed', () => { games.delete(wcId); if (gameWin === w) gameWin = null; send('gameready:from', { type: 'game-closed', id: wcId }); });
-  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  w.loadURL(`${SCHEME}://${host}/${entry.split('/').map(encodeURIComponent).join('/')}`);
-  return { ok: true, id: w.webContents.id, url: `${SCHEME}://${host}/${entry}`, root, host };
+function noteServed(rel, swapped) { if (!armed) return; armed.served.push({ rel, swapped: Boolean(swapped) }); if (armed.served.length > 2000) armed.served.shift(); }
+function pageTag() {
+  if (!armed) return '';
+  const q = new URLSearchParams({ t: String(armed.title || '').slice(0, 60), k: armed.kind === 'lab' ? 'lab' : 'html', ...(armed.noPrep ? { np: '1' } : {}), ...(armed.opt ? { opt: String(armed.opt) } : {}) });
+  return `<script src="/${PAGE}?${q}"></script>`;
 }
+// the script itself (asked for by the tag above, on the game's own address: nothing of the game is changed on disk)
+const pageFile = () => path.join(appDir, 'tools', 'gameready-page.js');
+const isPage = (pathname) => pathname === `/${PAGE}`;
 const send = (ch, msg) => { const w = getWin(); if (w && !w.isDestroyed()) w.webContents.send(ch, msg); };
 
 function register(ipcMain, o = {}) {
@@ -216,11 +184,8 @@ function register(ipcMain, o = {}) {
     if (files) { I.scans[k] = { files: files.slice(0, 2000), decoders: decoders || [], at: Date.now() }; const ks = Object.keys(I.scans); if (ks.length > 50) delete I.scans[ks[0]]; saveIndex(); }
     return I.scans[k] || null;
   });
-  ipcMain.handle('gameready:open-html', async (_e, args) => openHtml(args || {}));
-  ipcMain.handle('gameready:close-html', async () => { if (gameWin && !gameWin.isDestroyed()) gameWin.close(); return true; });
-  ipcMain.handle('gameready:served', async () => (gameWin && !gameWin.isDestroyed() ? games.get(gameWin.webContents.id)?.served || [] : []));
-  ipcMain.on('gameready:to', (_e, msg) => { if (gameWin && !gameWin.isDestroyed()) gameWin.webContents.send('gameready:to', msg); });
-  ipcMain.on('gameready:from', (_e, msg) => send('gameready:from', msg));
+  ipcMain.handle('gameready:arm', async (_e, o) => { armed = o ? { kind: o.kind === 'html' ? 'html' : 'lab', title: String(o.title || ''), map: o.map || {}, noPrep: Boolean(o.noPrep), opt: Number(o.opt) || 0, served: [] } : null; return Boolean(armed); });
+  ipcMain.handle('gameready:served', async () => armed?.served || []);
 }
 
-module.exports = { register, SCHEME, PARTITION, _test: { plan, optimize, readIndex, hashFile, findTool, setDir: (d) => { dataDir = d; index = null; indexBad = false; } } };
+module.exports = { register, swapFor, pageTag, isPage, pageFile, noteServed, armed: () => armed, _test: { plan, optimize, readIndex, hashFile, findTool, setDir: (d) => { dataDir = d; index = null; indexBad = false; } } };

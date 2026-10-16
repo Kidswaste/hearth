@@ -74,7 +74,9 @@ const GameMode = (() => {
         plan = C.mergePlan(spec.layers);
         spec.plan = { merge: plan.merge, why: plan.why };
       }
-      // gameready (another stream): assets prepared / cached first, with progress
+      // gameready (another stream): assets prepared / cached first, with progress (its group loaded first: a lazy global
+      // reads as undefined until it's in) · it arms the window: the getting ready itself runs inside it, behind its card
+      if (typeof Lazy !== 'undefined') await Lazy.load('gameready').catch(() => {});
       if (Ready()?.prepare) {
         say(`Getting ${s.title} ready…`);
         await Ready().prepare(s, (p) => say(`Getting ${s.title} ready… ${Math.round((Number(p?.done ?? p) || 0) * 100)} %`)).catch((err) => console.warn('GameReady:', err?.message || err));

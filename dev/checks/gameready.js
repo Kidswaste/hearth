@@ -1,19 +1,20 @@
-// ▶ Play, got ready (round 52, gameready): GameReady.prepare on a game-like Lab scene (the main path) and an HTML build.
+// ▶ Play, got ready (round 52, gameready): ▶ Play (GameMode.play: its one game window) on a game-like Lab scene (the
+// main path) and an HTML build. GameReady arms the window before it opens; the getting ready runs inside it.
 //   setup    a throwaway "Clink" Lab scene: a ground with a 4096×2048 picture and a 1024² detail picture, a 🧊 ship
 //            model (GLB with its own texture), five kinds of material, four lights (two casting shadows), and a pickup
 //            that only shows 2 s into play (its shaders never drew before)
-//   before   play without getting ready: the scene started again, what the GPU compiles / uploads in the first 5 s
-//   after    GameReady.prepare: the card (Getting … ready, textures n/m, %), then 0 compiles and 0 new uploads in the first
-//            5 s of play; textures at the best anisotropy; quality held; what it found ("1 texture is 4K — …")
-//   optimize Optimize for play without an encoder: the install command shown, nothing run; with gltfpack (a throwaway
-//            copy, if run-checks could install one): the model's optimized copy in Hearth's cache, used by the next
-//            prepare (the Lab reads the copy), the model still drawn, 0 compiles / uploads in play again
-//   html     an HTML build (index.html + three.js + GLTFLoader + meshopt, a picture, the ship): played without and with
-//            getting ready in its own window (hearth-game://), its warm run's files kept; optimized → the window serves
-//            the copy for ship.glb by URL rewrite
+//   launch   the first ▶ Play of this launch (cold): its page's whole wait on shader work is kept in
+//            /tmp/hearth-gameready/launch1.json for dev/checks/gameready-relaunch.js (same profile: the shader disk cache)
+//   before   ▶ Play without getting ready: what the GPU compiles / uploads in the first 5 s of play
+//   after    ▶ Play: the card in the game window before the scene's first frame ("Getting Clink ready… textures n/m"),
+//            then 0 compiles and 0 new uploads in the first 5 s; textures at the best anisotropy; quality held; what it
+//            found ("1 texture is 4K — …"); one window (hearth-game:)
+//   optimize the card's Optimize for play without an encoder: the install command shown, nothing run; with gltfpack (a
+//            throwaway copy, if run-checks could install one): the model's optimized copy in Hearth's cache, used by the
+//            next ▶ Play (the window's page has the copy), the model drawn, 0 compiles / uploads in play again
+//   html     an HTML build (index.html + three.js + GLTFLoader + meshopt, a picture, the ship): ▶ Play without and with
+//            getting ready, its files kept; optimized → the window serves the copy for models/ship.glb by URL rewrite
 //   files    every original file hashed before and after: unchanged
-//   launch   'createAndReadyMs' / 'compileMs' of the first preparation are kept in /tmp/hearth-gameready/launch1.json for
-//            dev/checks/gameready-relaunch.js (the same profile: Chromium's GPU shader disk cache from this launch)
 //   node dev/smoke.js --check-timeout 1500000 --profile /tmp/hearth-gameready-profile --profile-fresh --script dev/checks/gameready.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return false; };
@@ -26,7 +27,6 @@ const BASE = "import * as THREE from 'three';\nconst renderer = new THREE.WebGLR
 const TOOL = '/tmp/hearth-gameready-tools/node_modules/.bin/gltfpack';
 const THREE_DIR = '/opt/cdn-cache/three@0.186.1/package';
 const setTest = (o) => (o ? localStorage.setItem('gameready.test', JSON.stringify(o)) : localStorage.removeItem('gameready.test'));
-const GRS = () => (typeof GameReady !== 'undefined' ? GameReady.state() : null);
 await until(() => window.hub && performance.getEntriesByName('hearth:ready').length);
 
 // ---------- fixtures (throwaway files: the "owner's game") ----------
@@ -121,156 +121,149 @@ await safe('fixtures', async () => {
   step('fixtures: a 4096×2048 picture, a detail picture, a GLB ship with its texture, an HTML build', out.hashBefore.every((h) => h.hash), out.hashBefore.map((h) => [h.path.split('/').slice(-2).join('/'), h.size]));
 });
 
-// ---------- the Lab scene ----------
-activate('tool:three');
-await until(() => typeof ThreeLab !== 'undefined' && ThreeLab.director && ThreeLab.scenes, 30000);
-const D = ThreeLab.director; const c = await ThreeLab.cmd();
-const say = async (line) => { let text = ''; await Commands.tryRun(line, H.claudeAgent().id, null, { say: (t) => { text = String(t); }, note: (t) => { text = String(t); }, error: (e) => { text = `ERR ${e}`; } }); return text; };
-const sbx = async (code) => { for (let i = 0; i < 5; i++) { const r = await D.evalInSketch(code); if (r?.ok) return r.value; await wait(600); } return null; };
-if (typeof GameReady === 'undefined' && window.Lazy) await Lazy.load('gameready');
-step('the gameready group loads on use', typeof GameReady !== 'undefined' && typeof GameReadyCore !== 'undefined');
-
-// one preparation (or none: noPrep) of the open scene, right after it starts again; then 5 s of play counted
-async function playOnce(label, test, { restart = true } = {}) {
+// ---------- the Lab scene, played with ▶ Play (GameMode: its own window; GameReady prepares inside it) ----------
+await Lazy.load('gamemode'); await Lazy.load('gameready');
+step('the gamemode and gameready groups load on use', typeof GameMode !== 'undefined' && typeof GameReady !== 'undefined' && typeof GameReadyCore !== 'undefined');
+const GW = () => window.hub.game;
+const ev = async (code) => (await GW().eval(code))?.value;
+const playingNow = async () => (await GW().state())?.playing;
+let lab = null;
+// one ▶ Play: the window opens, gets ready behind its card (or not: noPrep), plays 5 s counted; then it's left
+async function playGame(label, source, test, { during } = {}) {
   setTest(test);
-  if (restart) { ThreeLab.act('restart'); await wait(300); }
-  const sc = ThreeLab.game.scene();
   const t0 = performance.now();
-  let maxPct = 0; let lines = new Set(); let sawCard = false;
-  const prog = (p) => { maxPct = Math.max(maxPct, p.pct || 0); if (lines.size < 40) lines.add(p.text); };
-  const poll = setInterval(() => { const b = document.querySelector('.gr-ready'); if (b) sawCard = true; }, 50);
-  const res = await GameReady.prepare({ kind: 'lab', id: sc.id, title: 'Clink' }, prog);
-  const readyMs = Math.round(performance.now() - t0);
-  const st = await until(() => GRS()?.first5 && GRS(), 15000);
-  clearInterval(poll);
-  out.measure[label] = { readyMs, sawCard, maxPct, lines: [...lines].slice(0, 6).concat([...lines].slice(-2)), first5: st?.first5, ms: res.ms, prep: res.steps?.prep ? { compileMs: res.steps.prep.compileMs, gl: res.steps.prep.gl, textures: res.steps.prep.textures, ms: res.steps.prep.ms } : null, inventory: res.inventory, findings: res.findings?.map((f) => f.text), plan: res.plan, error: res.error };
-  return { res, st, sawCard, maxPct, lines };
+  let sawCard = null; let maxPct = 0; const lines = new Set();
+  const p = GameMode.play(source);
+  // the card in the window, sampled while it gets ready
+  const watch = (async () => { const t = Date.now(); while (Date.now() - t < 150000) { const v = await ev('window.__gameReady ? window.__gameReady.pub() : null').catch(() => null); if (v) { const o = JSON.parse(v); if (o.card) sawCard ??= Math.round(performance.now() - t0); maxPct = Math.max(maxPct, o.pct || 0); if (o.text && lines.size < 40) lines.add(o.text); if (o.phase === 'playing') return; } await wait(150); } })();
+  if (during) await during();
+  await p; await watch;
+  const st = await until(() => GameReady.state()?.first5 && GameReady.state(), 30000);
+  out.measure[label] = { openToReadyMs: st?.readyMs, sawCardAtMs: sawCard, maxPct, lines: [...lines].slice(0, 5).concat([...lines].slice(-2)), page: st?.page, first5: st?.first5, result: st?.result ? { ms: st.result.ms, steps: st.result.steps, prep: st.result.prep, gl: st.result.gl, total: st.result.total, inventory: st.result.inventory && { ...st.result.inventory, textures: st.result.inventory.textures?.length } } : null, findings: st?.findings?.map((f) => f.text), plan: st?.plan, loaded: st?.loaded, decoders: st?.decoders };
+  return { st, sawCard, maxPct, lines };
+}
+async function leaveGame() { await GameMode.leave(); await until(async () => !(await playingNow()), 10000); await wait(800); }
+
+// the launch measure: a scene written straight to the store and played BEFORE the Lab opens, so no preview of it compiled
+// its shaders in this run (the GPU process would keep them in memory): what ▶ Play pays cold vs with the disk cache
+const LAUNCH_ID = 'grlaunch';
+async function storeScene() {
+  const sk = (await window.hub.kvGet('three-sketches', [])) || [];
+  if (!sk.some((x) => x.id === LAUNCH_ID)) { sk.push({ id: LAUNCH_ID, name: 'Clink', layers: [{ id: 'game', name: 'Game', code: GAME }], createdAt: Date.now(), updatedAt: Date.now() }); await window.hub.kvSet('three-sketches', sk); }
+  const refs = (await window.hub.kvGet('three-refs', {})) || {};
+  refs[LAUNCH_ID] = [{ id: 'g1', key: 'ground', kind: 'image', name: 'ground.jpg', path: `${DIR}/ground.jpg` }, { id: 'g2', key: 'detail', kind: 'image', name: 'detail.png', path: `${DIR}/detail.png` }];
+  await window.hub.kvSet('three-refs', refs);
+  return { kind: 'lab', id: LAUNCH_ID, title: 'Clink' };
 }
 
+// the first ▶ Play of this launch, got ready (cold: no compiled shader of it anywhere yet); its page's whole shader wait
+// is what the next launch compares with (dev/checks/gameready-relaunch.js)
+await window.hub.fs.write(`${DIR}/game-scene.js`, GAME);
+await safe('launch', async () => {
+  const r = await playGame('launch', await storeScene(), {});
+  out.measure.launchCompare = { shaderWaitMs: r.st?.result?.total?.waitMs, firstFrameMs: Math.round(r.st?.page?.firstFrameAt || 0), links: r.st?.result?.total?.links, readyMs: r.st?.result?.ms, effectsMs: r.st?.result?.steps?.effects };
+  await window.hub.fs.write(`${DIR}/launch1.json`, JSON.stringify(out.measure.launchCompare));
+  step('the first ▶ Play of the launch got ready and played', Boolean(r.st?.first5 && r.st?.result), out.measure.launchCompare);
+  await leaveGame();
+});
+
+activate('tool:three');
+await until(() => typeof ThreeLab !== 'undefined' && ThreeLab.director && ThreeLab.scenes, 30000);
+const D = ThreeLab.director;
+const say = async (line) => { let text = ''; await Commands.tryRun(line, H.claudeAgent().id, null, { say: (t) => { text = String(t); }, note: (t) => { text = String(t); }, error: (e) => { text = `ERR ${e}`; } }); return text; };
+
 await safe('setup', async () => {
-  try { c.customSize(640, 360); c.size('custom'); } catch (err) { out.sizeError = err.message; }
-  await wait(800);
-  const t0 = performance.now();
   // (the references first, then the game's layer: a layer run before its references throws "No reference")
-  await D.newSketch('Clink fixture', BASE, 1);
+  await D.newSketch('Clink', BASE, 1);
   await D.refs.add(`${DIR}/ground.jpg`, 'ground');
   await D.refs.add(`${DIR}/detail.png`, 'detail');
   await D.addLayer({ name: 'Game', code: GAME }, 2);
   out.model = await say(`/model add ${DIR}/ship.glb`);
-  // the first preparation of this launch, right away (its time is compared with the next launch's: GPU shader disk cache)
-  setTest({ hold: 0 });
-  const sc = ThreeLab.game.scene();
-  const r = await GameReady.prepare({ kind: 'lab', id: sc.id, title: 'Clink' });
-  const createAndReadyMs = Math.round(performance.now() - t0);
-  // the page's whole wait on shader work since it opened (the scene's first frames + getting ready): what the disk cache saves
-  const gl = await sbx('return __rdyGl()');
-  out.measure.launch = { createAndReadyMs, shaderWaitMs: gl?.waitMs, links: gl?.links, compileMs: r.steps?.prep?.compileMs, readyMs: r.readyMs, prepGl: r.steps?.prep?.gl, effectsMs: r.ms?.effects };
-  await window.hub.fs.write(`${DIR}/launch1.json`, JSON.stringify(out.measure.launch));
-  await window.hub.fs.write(`${DIR}/game-scene.js`, GAME);
-  GameReady.stop();
-  out.refs = ThreeLab.game.refs().map((x) => `${x.kind}:${x.name}`);
-  out.layers = ThreeLab.scenes.get(ThreeLab.scenes.currentId())?.layers?.map((L) => L.name);
-  step('a game-like Lab scene: two pictures, a model, five materials, four lights', out.refs.length >= 3 && out.refs.some((x) => /^model:/.test(x)) && out.layers?.length >= 2, { refs: out.refs, layers: out.layers, model: String(out.model).slice(0, 100) });
+  await wait(2500); // (the references and layers on disk: ▶ Play reads the saved scene)
+  const sk = ThreeLab.scenes.get(ThreeLab.scenes.currentId());
+  lab = { kind: 'lab', id: sk.id, title: 'Clink' };
+  out.layers = sk?.layers?.map((L) => L.name);
+  const refs = ((await window.hub.kvGet('three-refs', {})) || {})[sk.id] || [];
+  out.refs = refs.map((x) => `${x.kind}:${x.name}`);
+  step('a game-like Lab scene: two pictures, a model, five materials, four lights', refs.length >= 3 && refs.some((x) => x.kind === 'model') && out.layers?.length >= 2, { refs: out.refs, layers: out.layers, model: String(out.model).slice(0, 100) });
 });
 
+
 await safe('before', async () => {
-  const r = await playOnce('before', { noPrep: true });
-  step('before: played without getting ready; the first 5 s counted', Boolean(r.st?.first5), r.st?.first5);
-  step('before: the GPU compiled shaders and uploaded textures during play', (r.st?.first5?.compiles || 0) + (r.st?.first5?.uploads || 0) > 0, r.st?.first5);
-  GameReady.stop();
-  await wait(500);
+  const r = await playGame('before', lab, { noPrep: true });
+  step('before: ▶ Play without getting ready; the first 5 s counted', Boolean(r.st?.first5), r.st?.first5);
+  step('before: the GPU compiled shaders or uploaded textures while playing', (r.st?.first5?.compiles || 0) + (r.st?.first5?.uploads || 0) > 0, r.st?.first5);
+  await leaveGame();
 });
 
 await safe('after', async () => {
-  const r = await playOnce('after', { hold: 1200 });
-  const f5 = r.st?.first5;
-  step('after: the card showed, with progress to 100 %', r.sawCard && r.maxPct === 100, { sawCard: r.sawCard, maxPct: r.maxPct });
-  step('after: its words: "Getting Clink ready… textures n/m"', [...r.lines].some((t) => /^Getting Clink ready… /.test(t)) && [...r.lines].some((t) => /textures \d+\/\d+/.test(t)), [...r.lines].slice(0, 8));
+  const r = await playGame('after', lab, {});
+  const f5 = r.st?.first5; const pg = r.st?.page;
+  step('after: the card shows in ▶ Play\'s window before the scene\'s first frame', pg?.cardAt != null && pg?.firstFrameAt != null && pg.cardAt < pg.firstFrameAt, { cardAt: pg?.cardAt, firstFrameAt: pg?.firstFrameAt, sawCardAtMs: r.sawCard });
+  step('after: progress to 100 % with its words ("Getting Clink ready… textures n/m")', r.maxPct === 100 && [...r.lines].some((t) => /^Getting Clink ready… /.test(t)) && [...r.lines].some((t) => /textures \d+\/\d+/.test(t)), [...r.lines].slice(0, 8));
   step('after: 0 shaders compiled and 0 textures uploaded in the first 5 s of play (the pickup shows at 2 s)', f5 && f5.compiles === 0 && f5.links === 0 && f5.uploads === 0, f5);
-  step('after: quality held (locked, every layer at its own resolution)', f5?.lock === true && f5?.level === 0, f5);
-  step('after: every texture found (ground, detail, the ship\'s own)', (r.res.inventory?.textures || 0) >= 3, { textures: r.res.inventory?.textures, prepTextures: r.res.steps?.prep?.textures });
-  const aniso = await sbx(`return (() => { let lo = 99, hi = 0, n = 0; for (const r of __rdyLive()) { const max = r.capabilities.getMaxAnisotropy(); for (const sc of new Set([...(r.__seen || []), r.__lastScene])) sc?.traverse?.((o) => { const m = o.material; for (const mm of Array.isArray(m) ? m : m ? [m] : []) for (const v of Object.values(mm)) if (v?.isTexture && !v.isVideoTexture && !v.isRenderTargetTexture) { n++; lo = Math.min(lo, v.anisotropy / max); hi = Math.max(hi, v.anisotropy); } }); } return { n, lo, hi }; })()`);
+  step('after: quality held (locked, full resolution)', f5?.lock === true && f5?.level === 0, f5);
+  step('after: every texture found (ground, detail, the ship\'s own)', (r.st?.result?.inventory?.textures?.length || 0) >= 3, { textures: r.st?.result?.inventory?.textures?.length });
+  const aniso = await ev(`(() => { let lo = 99, hi = 0, n = 0; for (const r of __rdyLive()) { const max = r.capabilities.getMaxAnisotropy(); for (const sc of new Set([...(r.__seen || []), r.__lastScene])) sc?.traverse?.((o) => { const m = o.material; for (const mm of Array.isArray(m) ? m : m ? [m] : []) for (const v of Object.values(mm)) if (v?.isTexture && !v.isVideoTexture && !v.isRenderTargetTexture) { n++; lo = Math.min(lo, v.anisotropy / max); hi = Math.max(hi, v.anisotropy); } }); } return { n, lo, hi }; })()`);
   step('after: textures at the graphics card\'s best anisotropy', aniso && aniso.n >= 3 && aniso.lo === 1, aniso);
-  step('after: what it found (the 4K picture and what it costs, the shaders)', r.res.findings?.some((f) => f.kind === 'big-textures' && /1 texture is 4K — it costs \d+ MB of video memory/.test(f.text)) && r.res.findings?.some((f) => f.kind === 'shaders'), r.res.findings?.map((f) => f.text));
-  GameReady.stop();
-  await wait(500);
+  step('after: what it found (the 4K picture and what it costs, the shaders)', r.st?.findings?.some((f) => f.kind === 'big-textures' && /1 texture is 4K — it costs \d+ MB of video memory/.test(f.text)) && r.st?.findings?.some((f) => f.kind === 'shaders'), r.st?.findings?.map((f) => f.text));
+  const one = JSON.parse((await ev('JSON.stringify({ url: location.href.split("?")[0], card: Boolean(document.querySelector("gameready-card")) })')) || '{}');
+  step('one window, the game\'s own (hearth-game:): the card gone while playing', /^hearth-game:\/\/[0-9a-f]+\/play\.html$/.test(one.url || '') && one.card === false, one);
+  await leaveGame();
 });
 
 // ---------- Optimize for play ----------
 await safe('optimize: no encoder', async () => {
-  setTest({ tool: '/nonexistent/gltfpack', hold: 0 });
-  ThreeLab.act('restart'); await wait(300);
-  const sc = ThreeLab.game.scene();
-  const p = GameReady.prepare({ kind: 'lab', id: sc.id, title: 'Clink' });
-  const btn = await until(() => [...document.querySelectorAll('.gr-ready .gr-btn')].find((b) => b.textContent === 'Optimize for play' && !b.hidden), 20000);
-  step('optimize: the card offers Optimize for play (a model without a copy)', Boolean(btn));
-  btn?.click();
-  const cmd = await until(() => { const e = document.querySelector('.gr-ready .gr-cmd'); return e && !e.hidden && e.textContent; }, 8000);
-  const main = document.querySelector('.gr-ready .gr-main')?.textContent;
-  step('optimize: no encoder → the install command is shown with Install, nothing run yet', /npm install -g gltfpack/.test(cmd || '') && main === 'Install' && !GameReady.lastInstall?.(), { cmd, main });
-  [...document.querySelectorAll('.gr-ready .gr-btn')].find((b) => b.textContent === 'Not now')?.click();
-  await wait(200);
-  GameReady.stop();
-  await Promise.race([p, wait(5000)]);
-  step('optimize: Esc / leaving takes the card away', !document.querySelector('.gr-ready:not(.out)'));
+  let cmd = null; let main = null; let offered = false;
+  await playGame('noEncoder', lab, { tool: '/nonexistent/gltfpack' }, { during: async () => {
+    offered = await until(() => ev('(() => { const r = document.querySelector("gameready-card")?.shadowRoot; const o = r?.querySelector(".o"); if (!o || o.hidden) return false; o.click(); return true; })()'), 60000);
+    cmd = await until(() => ev('(() => { const r = document.querySelector("gameready-card")?.shadowRoot; const k = r?.querySelector(".k"); return k && !k.hidden ? k.textContent : null; })()'), 20000);
+    main = await ev('document.querySelector("gameready-card")?.shadowRoot?.querySelector(".m")?.textContent');
+    await ev('document.querySelector("gameready-card")?.shadowRoot?.querySelector(".o")?.click()'); // Not now
+  } });
+  step('optimize: the card in ▶ Play\'s window offers Optimize for play (a model without a copy)', offered);
+  step('optimize: no encoder → the install command shown with Install, nothing run', /npm install -g gltfpack/.test(cmd || '') && main === 'Install' && !GameReady.lastInstall(), { cmd, main });
+  await leaveGame();
 });
 
 const haveTool = Boolean(await window.hub.fs.stat(TOOL).catch(() => null));
 out.haveTool = haveTool;
 if (haveTool) await safe('optimize: with gltfpack', async () => {
-  setTest({ tool: TOOL, hold: 0 });
-  const sc = ThreeLab.game.scene();
-  // a preparation knows the scene's models; optimizing is one call (the card's button does the same)
-  await GameReady.prepare({ kind: 'lab', id: sc.id, title: 'Clink' }, null, { play: false });
-  const res = await GameReady.optimize();
+  setTest({ tool: TOOL });
+  const res = await GameReady.optimize(lab);
   out.optimize = { ok: res.ok, made: res.made, skipped: res.skipped, failed: res.failed, textures: res.textures, fresh: res.fresh?.length };
   step('optimize: the model\'s optimized copy made in Hearth\'s cache (smaller)', res.ok && res.made?.length === 1 && res.made[0].bytes < res.made[0].srcBytes && /game-cache/.test(res.made[0].out), out.optimize);
-  GameReady.stop(); await wait(400);
-  const r = await playOnce('optimized', { tool: TOOL, hold: 0 });
-  const map = GameReady._map();
-  step('optimize: the next preparation uses the copy (the rewrite map)', r.res.plan?.swapped === 1 && Object.values(map)[0]?.includes('game-cache'), { plan: r.res.plan, map });
-  const shipRef = ThreeLab.game.refs().find((x) => x.kind === 'model');
-  const bytes = await sbx(`fetch(refs.${shipRef.key}).then((r) => r.arrayBuffer()).then((b) => b.byteLength)`);
-  step('optimize: the Lab reads the copy (the sketch\'s model reference is the optimized size)', bytes === res.made?.[0]?.bytes, { bytes, made: res.made?.[0]?.bytes });
-  const errs = D.report?.()?.errors || [];
-  const drawn = await sbx(`return (() => { let n = 0; for (const r of __rdyLive()) { r.__lastScene?.traverse?.((o) => { if (o.isMesh && o.geometry?.attributes?.position?.count === 2401) n++; }); } return n; })()`);
-  step('optimize: the optimized ship is in the scene (meshopt decoded, same vertex count)', drawn >= 1, { drawn, errs });
+  const r = await playGame('optimized', lab, { tool: TOOL });
+  step('optimize: the next ▶ Play uses the copy (the rewrite map)', r.st?.plan?.swapped === 1, r.st?.plan);
+  const bytes = await ev('fetch("assets/ship.glb").then((r) => r.arrayBuffer()).then((b) => b.byteLength)');
+  step('optimize: the window\'s page has the copy (its ship is the optimized size)', bytes === res.made?.[0]?.bytes, { bytes, made: res.made?.[0]?.bytes });
+  const drawn = await ev('(() => { let n = 0; for (const r of __rdyLive()) r.__lastScene?.traverse?.((o) => { if (o.isMesh && o.geometry?.attributes?.position?.count === 2401) n++; }); return n; })()');
+  step('optimize: the optimized ship is in the scene (meshopt decoded, same vertex count)', drawn >= 1, { drawn });
   step('optimize: 0 compiles / uploads in the first 5 s of play on the optimized copy', r.st?.first5?.compiles === 0 && r.st?.first5?.uploads === 0, r.st?.first5);
-  GameReady.stop(); await wait(400);
-  step('optimize: leaving the game reads the original again', Object.keys(GameReady._map()).length === 0);
+  await leaveGame();
 });
 
-// ---------- an HTML build ----------
-async function playHtml(label, test) {
-  setTest(test);
-  const t0 = performance.now(); let maxPct = 0; const lines = new Set();
-  const res = await GameReady.prepare({ kind: 'html', path: `${DIR}/html-game/index.html`, title: 'Clink' }, (p) => { maxPct = Math.max(maxPct, p.pct || 0); if (lines.size < 30) lines.add(p.text); });
-  const st = await until(() => GRS()?.first5 && GRS(), 20000);
-  out.measure[label] = { readyMs: Math.round(performance.now() - t0), maxPct, lines: [...lines].slice(0, 5), first5: st?.first5, steps: res.steps?.page, inventory: res.inventory, findings: res.findings?.map((f) => f.text), plan: res.plan, loaded: res.loaded, error: res.error };
-  return { res, st, maxPct };
-}
+// ---------- an HTML build, played with ▶ Play ----------
+const html = { kind: 'html', path: `${DIR}/html-game/index.html`, title: 'Clink' };
 await safe('html', async () => {
-  const b = await playHtml('htmlBefore', { noPrep: true });
-  step('html: played without getting ready in its own window; the GPU compiled / uploaded during play', ((b.st?.first5?.compiles || 0) + (b.st?.first5?.uploads || 0)) > 0, b.st?.first5);
-  GameReady.stop(); await wait(800);
-  const a = await playHtml('htmlAfter', {});
-  step('html: got ready (progress to 100 %), then 0 compiles and 0 uploads in the first 5 s of play', a.maxPct === 100 && a.st?.first5?.compiles === 0 && a.st?.first5?.uploads === 0, { maxPct: a.maxPct, first5: a.st?.first5, error: a.res.error });
-  step('html: the warm run listed what the game loaded (picture, model, decoder)', (a.res.loaded || 0) >= 3 && (a.res.inventory?.decoders || []).includes('meshopt'), { loaded: a.res.loaded, decoders: a.res.inventory?.decoders });
-  GameReady.stop(); await wait(800);
+  const b = await playGame('htmlBefore', html, { noPrep: true });
+  step('html: ▶ Play without getting ready; the GPU compiled / uploaded during play', ((b.st?.first5?.compiles || 0) + (b.st?.first5?.uploads || 0)) > 0, b.st?.first5);
+  await leaveGame();
+  const a = await playGame('htmlAfter', html, {});
+  const pg = a.st?.page;
+  step('html: the card in the window before the game\'s first frame; progress to 100 %; 0 compiles and 0 uploads in its first 5 s', a.maxPct === 100 && pg?.cardAt != null && (pg.firstFrameAt == null || pg.cardAt < pg.firstFrameAt) && a.st?.first5?.compiles === 0 && a.st?.first5?.uploads === 0, { maxPct: a.maxPct, cardAt: pg?.cardAt, firstFrameAt: pg?.firstFrameAt, first5: a.st?.first5, errors: pg?.errors });
+  step('html: what the game loaded kept for the next launch (picture, model, decoder)', (a.st?.loaded || 0) >= 3 && (a.st?.decoders || []).includes('meshopt'), { loaded: a.st?.loaded, decoders: a.st?.decoders });
+  await leaveGame();
   if (haveTool) {
     setTest({ tool: TOOL });
-    const p = GameReady.prepare({ kind: 'html', path: `${DIR}/html-game/index.html`, title: 'Clink' });
-    await until(() => GameReady.current()?.models >= 1, 20000);
-    const o = await GameReady.optimize();
-    await p; GameReady.stop(); await wait(800);
-    const c3 = await playHtml('htmlOptimized', { tool: TOOL });
+    const o = await GameReady.optimize(html);
+    const c3 = await playGame('htmlOptimized', html, { tool: TOOL });
     const served = await window.hub.gameReady.served();
     const ship = served.filter((x) => /ship\.glb$/.test(x.rel));
     // (the same bytes as the Lab's ship: the copy made for the Lab is found by its hash, nothing made twice)
-    step('html: optimized → the window serves the copy for models/ship.glb (URL rewrite; the Lab\'s copy of the same bytes reused)', o.ok && (o.made?.length || 0) + (o.fresh?.length || 0) >= 1 && ship.length && ship.every((x) => x.swapped), { made: o.made?.length, fresh: o.fresh?.length, ship, plan: c3.res.plan });
-    const loaded = await until(async () => (await window.hub.gameReady.served()).length && c3.st?.first5, 3000);
-    step('html: the game still plays on the copy: 0 compiles / uploads in its first 5 s', c3.st?.first5?.compiles === 0 && c3.st?.first5?.uploads === 0 && Boolean(loaded), c3.st?.first5);
-    GameReady.stop(); await wait(500);
+    step('html: optimized → the window serves the copy for models/ship.glb (URL rewrite; the Lab\'s copy of the same bytes reused)', o.ok && (o.made?.length || 0) + (o.fresh?.length || 0) >= 1 && ship.length && ship.every((x) => x.swapped), { made: o.made?.length, fresh: o.fresh?.length, ship, plan: c3.st?.plan });
+    step('html: the game plays on the copy: 0 compiles / uploads in its first 5 s', c3.st?.first5?.compiles === 0 && c3.st?.first5?.uploads === 0, c3.st?.first5);
+    await leaveGame();
   }
 });
 
