@@ -94,3 +94,14 @@ service workers, cache storage) is wiped when it ends.
 ## GamePerf (gameperf stream)
 `GamePerf.attach(handle)` (hub side) with `handle = { source, info, leave, state }`, called once the game window is up;
 `GameMode.on` tells start / end. The window's own numbers: `game:eval` + `window.__gameInfo()`, or the main-side attach.
+
+## Play-test (round 53, directorgame: tools/directorgame*.js, directorgamemain.js; preload `window.hub.gameTest`)
+| Channel | From | What |
+|---|---|---|
+| `game:script` `{ ops: [{ at, do: down \| up \| move \| click \| mark, key, dx, dy, x, y, i }] }` → `{ ok, why, ms }` | hub | input timed on the main side, sent only to the ▶ Play window (its hearth-game origin); keys held are let go at the end; Esc / ⌘ never sent |
+| `game:script-stop` · `game:shot { width }` → `{ data, mime, w, h }` | hub | stop a run · one small JPEG of the game window |
+
+The page side is `window.__dgPlay` (injected through `game:eval`): `begin(n)`, `mark(i)`, `result()` → JSON, `frames()`.
+A game can help it judge moves by exposing `window.game = { x, y, z, score, … }` (or `window.hearthState()`); a Lab
+scene's `__scenes` gives the camera. The director: `three_do play {game, script, secs, perf, shot, op}` (`three_play` on
+the hub); the owner: `/playtest`.
