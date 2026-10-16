@@ -174,7 +174,7 @@ async function vendorThree(version, codes, dest, opts = {}) {
 // the Lab's player with three.js read from ./three/ instead of the CDN
 function sandboxLibs() {
   const w = {};
-  for (const f of ['sandbox-motion.js', 'sandbox-lab3d.js']) new Function('window', fs.readFileSync(path.join(__dirname, 'tools', f), 'utf8'))(w); // eslint-disable-line no-new-func
+  for (const f of ['sandbox-motion.js', 'sandbox-lab3d.js', 'three-materials-core.js']) new Function('window', fs.readFileSync(path.join(__dirname, 'tools', f), 'utf8'))(w); // eslint-disable-line no-new-func
   return Object.values(w.__sbxLibFn).map((fn) => `<script type="module">\nimport * as THREE from 'three';\n(${fn})();\n</script>\n`).join('');
 }
 function labPage() {

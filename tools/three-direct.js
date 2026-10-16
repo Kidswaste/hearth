@@ -37,6 +37,7 @@ const LabDirect = (() => {
     if (msg.op === 'select' && L) { stats.picks += 1; view(); if (h.sel()?.id !== L.id) h.select(L.id); hint(); return true; }
     if (msg.op === 'open' && L) { stats.opens += 1; h.openSliders(L.id); return true; }
     if (msg.op === '3d' && L) { three(L, msg.path); return true; }
+    if (msg.op === 'look' && L) { window.LabMatHook?.open({ layer: L.id, path: msg.path || null }); return true; } // (round 50, labmaterials) ◉ Look › on the outline
     if ((msg.op === 'live' || msg.op === 'end') && L && msg.patch) {
       if (!open.has(msg.tok)) { open.set(msg.tok, { lid: L.id, before: h.snapshot(L) }); if (open.size > 20) open.delete(open.keys().next().value); }
       h.edit(L.id, msg.patch, { live: msg.op === 'live' });
@@ -73,7 +74,7 @@ const LabDirect = (() => {
     U.pop();
     const L = h.layerById(u.lid);
     if (!L) return false;
-    h.restore(L, u.before);
+    if (u.fn) u.fn(L); else h.restore(L, u.before);
     stats.undos += 1;
     toast(`↶ ${u.label} undone`, { timeout: 1400 });
     return true;
@@ -87,6 +88,17 @@ const LabDirect = (() => {
       h.setEdit(true);
       if (path) setTimeout(() => h.send({ type: 'edit', cmd: 'select', path }), 400);
     } catch (err) { toast(window.calmError ? calmError(err) : err.message, { type: 'error', timeout: 5000 }); }
+  }
+
+  // (round 50, labmaterials) another change on the picture (a ◉ look) takes its turn in the same Ctrl/⌘+Z: fn(L) puts it back
+  function push(lid, label, fn) {
+    if (!h) return false;
+    const timeline = Boolean(h.player?.loaded && h.player?.pushUndo);
+    const n = ++tokN;
+    U.push({ n, sid: h.sketchId(), lid, label, timeline, fn }); if (U.length > 60) U.shift();
+    if (timeline) h.player.pushUndo({ direct: n });
+    window.LabAB?.note?.('layer', { label });
+    return true;
   }
 
   // ---------- discoverable: one tip the first time, the keys sheet, the help ----------
@@ -124,6 +136,6 @@ const LabDirect = (() => {
     );
   } catch { /* keys list optional */ }
 
-  return { attach, onBox, undo, help, stats, get steps() { return U.map((u) => ({ label: u.label, timeline: u.timeline })); } };
+  return { attach, onBox, undo, push, help, stats, get steps() { return U.map((u) => ({ label: u.label, timeline: u.timeline })); } };
 })();
 window.LabDirect = LabDirect;

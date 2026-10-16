@@ -1,0 +1,25 @@
+/* ◉ Looks for 3D things (round 50, labmaterials: tools/three-materials.js): the picker card */
+.lm-pick { position: fixed; z-index: 990; width: 300px; padding: 10px 12px; border-radius: 12px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line-hi, #443e35); background: var(--fh-pop, #0f1214); color: var(--text, #e8e2d6); box-shadow: 0 10px 30px #000a; font-size: 12.5px; }
+.lm-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.lm-head b { color: var(--ui-cyan, #48ddff); white-space: nowrap; }
+.lm-what { opacity: .7; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lm-x { margin-left: auto; }
+.lm-scope { display: flex; gap: 4px; }
+.lm-chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line, #2c2a26); background: transparent; color: inherit; cursor: pointer; }
+.lm-chip.on { border-color: var(--ui-cyan, #48ddff); color: var(--ui-cyan, #48ddff); }
+.lm-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.lm-ball { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px 3px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: inherit; cursor: pointer; min-width: 0; }
+.lm-ball:hover, .lm-ball:focus-visible { border-color: var(--line-hi, #443e35); background: #ffffff0a; }
+.lm-ball.on { border-color: var(--ui-cyan, #48ddff); }
+.lm-pic { width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #555 0, #222 70%); background-repeat: no-repeat; }
+.lm-ball span { font-size: 10.5px; line-height: 1.15; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; opacity: .85; }
+.lm-row { display: flex; align-items: center; gap: 8px; }
+.lm-lab { width: 38px; flex: none; font-size: 11px; opacity: .7; }
+.lm-sws { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.lm-sw { width: 18px; height: 18px; border-radius: 50%; border: 1px solid #fff3; padding: 0; cursor: pointer; background: conic-gradient(#ff6b6b, #ffd75e, #6bff9a, #48ddff, #bd8bff, #ff6b6b); }
+.lm-sw.on { outline: 2px solid var(--ui-cyan, #48ddff); outline-offset: 1px; }
+.lm-pickc { width: 22px; height: 20px; padding: 0; border: none; background: none; cursor: pointer; }
+.lm-shine { flex: 1; min-width: 0; }
+.lm-v { width: 38px; text-align: right; font-size: 11px; opacity: .75; font-variant-numeric: tabular-nums; }
+.lm-foot { display: flex; gap: 8px; align-items: center; }
+.lm-foot .hint { font-size: 10.5px; opacity: .6; margin-left: auto; text-align: right; }

@@ -24,6 +24,9 @@
   #lab-direct .ld-rot { left: 50%; top: calc(-22px * var(--k)); border-radius: 50%; cursor: grab; }
   #lab-direct .ld-stem { position: absolute; left: 50%; top: calc(-17px * var(--k)); height: calc(17px * var(--k)); width: calc(1px * var(--k)); background: #ffb45a; }
   #lab-direct .ld-3d { position: absolute; left: 0; bottom: 100%; margin-bottom: calc(5px * var(--k)); transform: scale(var(--k)); transform-origin: 0 100%; pointer-events: auto; cursor: pointer; font: 600 11px system-ui, sans-serif; color: #1a1206; background: #ffb45a; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+  #lab-direct .ld-look { position: absolute; left: calc(46px * var(--k)); bottom: 100%; margin-bottom: calc(5px * var(--k)); transform: scale(var(--k)); transform-origin: 0 100%; pointer-events: auto; cursor: pointer; font: 600 11px system-ui, sans-serif; color: #fff; background: #3a3a46; border-radius: 4px; padding: 2px 6px; white-space: nowrap; } /* (round 50, labmaterials) */
+  #lab-direct.ld-in .ld-3d, #lab-direct.ld-in .ld-look { bottom: auto; top: 0; margin: calc(5px * var(--k)) 0 0 calc(5px * var(--k)); transform-origin: 0 0; } /* (round 50) a thing as big as the frame: its chips inside, not cut off above */
+  #lab-direct.ld-in .ld-look { margin-left: calc(51px * var(--k)); left: 0; }
   #lab-direct .ld-gx, #lab-direct .ld-gy { position: absolute; background: #ff4fa3; box-shadow: 0 0 0 0.5px #0006; }
   #lab-direct .ld-gx { top: 0; bottom: 0; width: 1px; } #lab-direct .ld-gy { left: 0; right: 0; height: 1px; }
   html.ld-dragging, html.ld-dragging * { cursor: grabbing !important; }
@@ -506,6 +509,7 @@ function preQ(r, EL) {
 function instrument(renderFn) {
   return function render(scene, camera) {
     if (this.__stale) return; // (round 21: a gone module's renderer draws nothing, and isn't counted back in)
+    if (window.__lkInEnv) return renderFn.call(this, scene, camera); // (round 50, labmaterials: baking the built-in studio light, see "Looks")
     // the user's placements from the scene editor, then (while editing this layer) the editor camera
     const EL = this.__layer && layers.get(this.__layer);
     // (round 21 "labgpu") a new renderer whose layer is still covered by its old picture (a re-run's cross-fade, a scene
@@ -533,6 +537,7 @@ function instrument(renderFn) {
     // (round 31 "labadapt") a layer fully under an opaque one draws nothing; its code still runs (see "covered layers")
     if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; EL.dzSkip = frameTick; return; }
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
+    if (EL && (EL.lookTry || EL.lk || EL.props.overrides?.['@look'])) lookApply(this, EL, scene); // (round 50, labmaterials) ◉ looks on its meshes
     camera = editCamera(this, scene, camera);
     const cmBack = EL?.props.camMoves?.length && !this.__helper && !edit.on ? cmRender(this, scene, camera, EL) : null; // (round 40 "labcamera": its camera moves, under the view)
     const lvBack = EL && mode === 'sketch' && !this.__helper ? lvRender(this, scene, camera, EL) : null; // (round 34 "labgestures": the view you moved to)
@@ -3095,9 +3100,9 @@ function drUi() {
   if (DR.ui) return DR.ui;
   const root = document.createElement('div');
   root.id = 'lab-direct'; root.hidden = true;
-  root.innerHTML = '<div class="ld-frame"><div class="ld-box"><i class="ld-h" data-h="nw"></i><i class="ld-h" data-h="ne"></i><i class="ld-h" data-h="sw"></i><i class="ld-h" data-h="se"></i><i class="ld-stem"></i><i class="ld-rot" data-h="rot" title="Turn (Shift: 15° steps)"></i><b class="ld-3d" data-h="3d" title="Move, turn or scale it in 3D (the gizmo)">✥ 3D</b></div></div><i class="ld-gx" hidden></i><i class="ld-gy" hidden></i>';
+  root.innerHTML = '<div class="ld-frame"><div class="ld-box"><i class="ld-h" data-h="nw"></i><i class="ld-h" data-h="ne"></i><i class="ld-h" data-h="sw"></i><i class="ld-h" data-h="se"></i><i class="ld-stem"></i><i class="ld-rot" data-h="rot" title="Turn (Shift: 15° steps)"></i><b class="ld-3d" data-h="3d" title="Move, turn or scale it in 3D (the gizmo)">✥ 3D</b><b class="ld-look" data-h="look" title="Its look: chrome, glass, gold, plastic, velvet, neon… (the material)">◉ Look ›</b></div></div><i class="ld-gx" hidden></i><i class="ld-gy" hidden></i>';
   document.documentElement.append(root); // (not <body>: what's appended there goes into the running layer's box)
-  DR.ui = { root, frame: root.firstChild, box: root.querySelector('.ld-box'), gx: root.querySelector('.ld-gx'), gy: root.querySelector('.ld-gy'), d3: root.querySelector('.ld-3d') };
+  DR.ui = { root, frame: root.firstChild, box: root.querySelector('.ld-box'), gx: root.querySelector('.ld-gx'), gy: root.querySelector('.ld-gy'), d3: root.querySelector('.ld-3d'), lk: root.querySelector('.ld-look') };
   return DR.ui;
 }
 // the outline where the picked layer shows (written only when something changed)
@@ -3119,6 +3124,9 @@ function drPaint() {
   if (u.box.dataset.css !== css) { u.box.dataset.css = css; u.box.style.cssText = css; }
   const d3 = !(DR.sel.lvCam && DR.sel.lvCamGen === DR.sel.gen);
   if (u.d3.hidden !== d3) u.d3.hidden = d3;
+  if (u.lk.hidden !== d3) u.lk.hidden = d3; // (round 50, labmaterials) ◉ Look › on 3D layers too
+  const inside = b.y0 < 30; // (a thing as big as the frame: ✥ 3D and ◉ Look › go inside its top, where they can be seen)
+  if (u.root.classList.contains('ld-in') !== inside) u.root.classList.toggle('ld-in', inside);
 }
 function drGuides(gx, gy) {
   if (!DR.ui) return;
@@ -3229,6 +3237,7 @@ addEventListener('pointerdown', (e) => {
   if (h && DR.sel) {
     e.preventDefault(); e.stopPropagation();
     if (h === '3d') { const L = DR.sel; post({ type: 'direct', op: '3d', layer: L.id, path: drObjectAt(L, DR.at?.x, DR.at?.y) }); return; }
+    if (h === 'look') { const L = DR.sel; post({ type: 'direct', op: 'look', layer: L.id, path: drObjectAt(L, DR.at?.x, DR.at?.y) }); return; } // (round 50, labmaterials)
     drStart(e, h === 'rot' ? 'rot' : 'scale', DR.sel);
     return;
   }
@@ -3718,6 +3727,129 @@ function lvCommand(m) {
   return r;
 }
 
+// ---------- ◉ Looks (round 50, labmaterials: tools/three-materials-core.js, tools/three-materials*.js) ----------
+// A layer's props.overrides['@look'] = { '*': spec, '<path>': spec } (spec { k, c, s }: tools/three-materials-core.js)
+// puts a material preset on its 3D meshes: '*' every mesh of its scene, a path (as the scene editor names it: '#Model',
+// '0/2') that object and what's inside it (a path wins over '*'). Applied in the render hook like the editor's
+// placements, so it is kept with the layer and a render makes the same picture. Each spec's material is made once; a
+// frame only hands it back to a mesh whose code put its own back; the meshes are looked up again every 30 frames (code
+// that builds new ones) and when the look changes; a mesh that loses its look gets its own material back. A metal or
+// glass in a scene without an environment gets a small built-in studio light (baked once per renderer, no file).
+// The Lab's picker tries a look on hover (lookTry, never saved) and asks for its thumbnails here (one shared small
+// renderer, withThumbRenderer). Nothing runs for layers without a look.
+const LK = { want: null, envs: new WeakMap(), scans: 0, made: 0, stage: null, refreshes: 0 };
+function lkReady() {
+  if (globalThis.matcore) return true;
+  LK.want ||= loadLib('matcore').then(() => { PACE.poke += 1; paceWake(); dozeWake('look'); }).catch(() => { LK.want = null; });
+  return false;
+}
+// an export / sequence frame waits for the presets when its layers have looks
+async function lkWait() { if (!globalThis.matcore && [...layers.values()].some((L) => L.props.overrides?.['@look'])) { lkReady(); await LK.want; } }
+function lkSpecs(EL) {
+  const base = EL.props.overrides?.['@look'] || null; const t = EL.lookTry;
+  if (!t) return base;
+  if (EL.lkMix?.base !== base || EL.lkMix.t !== t) { const o = { ...(base || {}) }; o[t.path || '*'] = t.spec || null; EL.lkMix = { base, t, o }; } // (the same object each frame while it's tried)
+  return EL.lkMix.o;
+}
+// the built-in studio light for this renderer (baked through the page's render wrapper without its hooks)
+function lkEnv(r) {
+  let t = LK.envs.get(r);
+  if (t) return t;
+  const M = globalThis.matcore; const sc = M.envScene(THREE);
+  const pm = new THREE.PMREMGenerator(r);
+  window.__lkInEnv = true;
+  try { t = pm.fromScene(sc, 0.04).texture; } finally { window.__lkInEnv = false; pm.dispose(); M.disposeScene(sc); }
+  LK.envs.set(r, t);
+  return t;
+}
+const lkKey = (s) => `${s.k}|${s.c || ''}|${s.s ?? ''}`;
+function lookApply(r, EL, scene) {
+  if (!scene?.isScene || (EL.lvScene && EL.lvCamGen === EL.gen && scene !== EL.lvScene)) return; // (its main scene only: not a minimap, a pass, a reflection)
+  const specs = lkSpecs(EL);
+  const st = EL.lk ||= { src: undefined, scene: null, tick: -1e9, list: [], mats: new Map(), env: null };
+  if (!lkReady()) return;
+  if (st.src !== specs || st.scene !== scene || frameTick - st.tick > 30) lkScan(r, EL, scene, specs, st);
+  else for (const [m, mat] of st.list) if (m.material !== mat) { if (!m.material?.userData?.__lk) m.userData.__lkOrig = m.material; m.material = mat; }
+}
+function lkScan(r, EL, scene, specs, st) {
+  const M = globalThis.matcore;
+  st.tick = frameTick; LK.scans += 1;
+  const want = new Map(); // mesh → spec
+  const walk = (o, s) => {
+    if (!o || o === edit.helper || o.isLight || o.isCamera) return;
+    if (o.isMesh && !o.material?.isShadowMaterial) want.set(o, s); // (skinned and instanced meshes too; a shadow catcher keeps its own)
+    for (const c of o.children) walk(c, s);
+  };
+  if (specs) {
+    if (specs['*']) walk(scene, specs['*']);
+    for (const [p, s] of Object.entries(specs)) if (p !== '*' && s) { const o = objectAt(scene, null, p); if (o && o !== scene) walk(o, s); }
+  }
+  const keep = new Set(); const list = [];
+  for (const [o, s] of want) {
+    if (!s || !M.has(s.k)) continue;
+    const k = lkKey(s);
+    let mat = st.mats.get(k);
+    if (!mat) { mat = M.make(THREE, s); mat.userData.__lk = true; st.mats.set(k, mat); LK.made += 1; }
+    keep.add(k);
+    if (o.material !== mat) { if (!o.material?.userData?.__lk) o.userData.__lkOrig = o.material; o.material = mat; }
+    list.push([o, mat]);
+  }
+  for (const [o] of st.list) if (!want.has(o) || !want.get(o)) { if (o.material?.userData?.__lk && o.userData.__lkOrig) o.material = o.userData.__lkOrig; delete o.userData.__lkOrig; }
+  for (const [k, mat] of st.mats) if (!keep.has(k)) { mat.dispose(); st.mats.delete(k); }
+  const needEnv = list.length && [...want.values()].some((s) => s && M.needsEnv(s));
+  if (needEnv && !scene.environment) { scene.environment = lkEnv(r); st.env = scene.environment; }
+  else if (!needEnv && st.env && scene.environment === st.env) { scene.environment = null; st.env = null; }
+  st.list = list; st.src = specs; st.scene = scene;
+  if (!list.length && !st.env && !specs) EL.lk = null; // (nothing left: the hook stops looking)
+}
+// a look changed: a still scene (it drew once and waits) draws again with it; a moving one shows it on its next frame
+function lkRefresh(L) {
+  PACE.poke += 1; paceWake(); dozeWake('look');
+  const rs = [...(L.renderers || [])].map((r) => [r, r.__renders || 0]);
+  const go = () => realSetTimeout(() => { for (const [r, n] of rs) { if ((r.__renders || 0) === n && r.__lastScene && !r.__stale) { try { LK.refreshes += 1; r.render(r.__lastScene, r.__lastCamera); } catch { /* gone */ } } } }, 120);
+  if (lkReady()) go(); else LK.want?.then(go);
+}
+// the picker's balls: one at a time on the shared small renderer (its shaders compiled off the frame where the GPU can),
+// the preview's own frames in between; one picture of them all at the end
+async function lkThumbs(msg) {
+  if (!lkReady()) await LK.want;
+  const M = globalThis.matcore; const size = Math.max(32, Math.min(160, msg.size || 72));
+  const specs = (msg.specs || []).filter((s) => M.has(s?.k)).slice(0, 32);
+  const cols = Math.min(4, specs.length) || 1; const rows = Math.ceil(specs.length / cols);
+  const out = document.createElement('canvas'); out.width = size * cols; out.height = size * rows;
+  const g = out.getContext('2d');
+  const T = (LK.stage ||= M.thumbStage(THREE));
+  const t0 = realNow();
+  const on = (r, mat, fn) => {
+    const cs = r.outputColorSpace; const tm = r.toneMapping;
+    r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+    try { T.scene.environment = lkEnv(r); T.ball.material = mat; return fn(); } finally { r.outputColorSpace = cs; r.toneMapping = tm; }
+  };
+  for (let i = 0; i < specs.length; i += 1) {
+    const mat = M.make(THREE, specs[i]);
+    try {
+      const p = withThumbRenderer(size, size, (r) => on(r, mat, () => (typeof r.compileAsync === 'function' ? r.compileAsync(T.scene, T.camera) : null)));
+      if (p?.then) await Promise.race([p.catch(() => {}), new Promise((res) => realSetTimeout(res, 4000))]);
+      withThumbRenderer(size, size, (r, canvas) => on(r, mat, () => { r.render(T.scene, T.camera); g.drawImage(canvas, (i % cols) * size, Math.floor(i / cols) * size); }));
+    } finally { mat.dispose(); }
+    await new Promise((res) => realSetTimeout(res, 0)); // (the preview draws between two balls)
+  }
+  LK.thumbMs = Math.round(realNow() - t0);
+  post({ type: 'look-thumbs', id: msg.id, url: out.toDataURL('image/png'), cols, size, n: specs.length, ms: LK.thumbMs });
+}
+function lkMessage(msg) {
+  const L = msg.layer ? layers.get(msg.layer) : null;
+  if (msg.type === 'look-try' && L) { L.lookTry = msg.off ? null : { path: msg.path || '*', spec: msg.spec || null }; lkRefresh(L); return; }
+  if (msg.type === 'look-thumbs') { lkThumbs(msg).catch((err) => post({ type: 'look-thumbs', id: msg.id, error: String(err?.message || err) })); return; }
+  if (msg.type === 'look-info') {
+    // what a pick names: is it 3D, which object, how many parts get the look
+    const sc = L?.lvScene; const o = sc && msg.path ? objectAt(sc, null, msg.path) : sc;
+    let n = 0; o?.traverse?.((x) => { if (x.isMesh && !x.material?.isShadowMaterial) n += 1; });
+    post({ type: 'look-info', id: msg.id, is3d: Boolean(sc), name: o && o !== sc ? (o.name || o.type) : null, meshes: n, model: Boolean(sc?.getObjectByName?.('Model')?.getObjectByName?.('fit')) });
+  }
+}
+// checks / the Lab: what has a look right now
+window.__labLook = { state: () => ({ lib: Boolean(globalThis.matcore), scans: LK.scans, thumbMs: LK.thumbMs ?? null, made: LK.made, refreshes: LK.refreshes, layers: [...layers.values()].filter((L) => L.lk || L.props.overrides?.['@look'] || L.lookTry).map((L) => ({ id: L.id, look: L.props.overrides?.['@look'] || null, trying: L.lookTry || null, meshes: L.lk?.list.length || 0, mats: L.lk ? [...L.lk.mats.keys()] : [], env: Boolean(L.lk?.env) })) }) };
 // ---------- 🎥 Camera moves (round 40, labcamera: tools/three-camera-core.js, tools/three-camera.js) ----------
 // A layer's props.camMoves (push in, orbit, dolly zoom, crane, shake, whip pan, drift, punch-in on the beat, from one
 // view to another) move its own 3D camera (the same one the look-around gestures move, found the same way) for each of
@@ -10279,7 +10411,9 @@ function setLayerProps(L, props) {
   // an undo) is what the picture should show: the look-around view moved on the old camera goes (it stayed on top, so
   // a zoomed-out view kept the framed subject tiny)
   if ('overrides' in rest && LV.views.has(L.id) && JSON.stringify(rest.overrides?.['@camera'] || null) !== JSON.stringify(L.props.overrides?.['@camera'] || null)) LV.views.delete(L.id);
+  const lkNew = 'overrides' in rest && JSON.stringify(rest.overrides?.['@look'] || null) !== JSON.stringify(L.props.overrides?.['@look'] || null); // (round 50, labmaterials)
   Object.assign(L.props, rest);
+  if (lkNew) lkRefresh(L);
   layerVer += 1;
   if (rest.slot != null) L.slot = rest.slot;
   styleLayer(L);
@@ -11505,6 +11639,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   sqApply(T, { full: true });
   await blWait(); // (round 38, beatlink) links on its sliders: the math is here before the first frame
   await cmWait(); // (round 40, labcamera) camera moves on its layers: the same
+  await lkWait(); // (round 50, labmaterials) ◉ looks on its layers: the same
   for (const L of layers.values()) { applySliderKeys(L); applyLinks(L); }
   // the layers draw this frame (a group that just started gets a second pass: its first callback may only set up)
   const fresh = [...SQ.mounted.values()].some((st) => st.fresh) || PC.fresh;
@@ -12023,6 +12158,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'run-layers') runLayers(msg.layers);
   if (msg.type === 'hot-layer') runLayer(msg.layer, true);
   if (msg.type === 'swap-layers') swapLayers(msg.layers, msg.fx ?? 'xfade');
+  if (typeof msg.type === 'string' && msg.type.startsWith('look-')) { lkMessage(msg); return; } // (round 50, labmaterials)
   if (msg.type === 'direct-view') { DR.view = msg.k > 0 ? msg.k : 1; drPaint(); } // (round 46, labdirect: how big the picture shows)
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, drEcho(L, msg.props)); } // (round 46, labdirect: a drag's late answers don't pull it back)
   if (msg.type === 'remove-layer') removeLayer(msg.id, { fade: Boolean(msg.fade) });
