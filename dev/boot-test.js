@@ -54,6 +54,13 @@ for (const [g, cmds] of Object.entries(LazyText)) {
   for (const n of Object.keys(cmds)) ok(stubs.has(n), `lazy-meta.js: /${n} (${g}) isn't in the manifest (node dev/lazy-manifest.js)`);
 }
 console.log(`✓ ${LazyData.GROUPS.length} lazy groups, ${LazyData.GROUPS.reduce((a, g) => a + g.files.length, 0)} files`);
+// (round 54, fixes54) the groups stay whole through merges: one loader per file, every listed global defined by the
+// group's own files, every module a lazy file uses loaded somewhere (dev/lazy-groups-test.js; a merge in round 53
+// dropped tools/gametex-core.js from 'gameready')
+const whole = require('./lazy-groups-test.js').run();
+for (const e of whole.errors) ok(false, `lazy groups: ${e}`);
+ok(true, 'lazy groups whole');
+console.log(`✓ lazy groups whole: ${whole.files} loaded files, every listed global defined in its group, every used module loaded`);
 
 // 3. (round 40, firstscreen) what the first screen reads before its first frame stays within budget: a new feature goes
 // in a lazy group (lazy-data.js) or merges into a file that is already there; raise a budget only with a reason in

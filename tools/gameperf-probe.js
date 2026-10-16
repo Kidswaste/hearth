@@ -127,9 +127,11 @@ const GamePerfProbe = function gamePerfProbe(opts) {
     try { for (const k of Object.keys(W)) { if (k.startsWith('__') || k === 'hearthPerf') continue; const v = W[k]; if (v && typeof v === 'object' && v.isWebGLRenderer) track(v); } } catch { /* fine */ }
   }
   const lonelyScenes = new Set();
+  const onObserve = (e) => { const d = e.detail; if (d?.isWebGLRenderer) track(d); else if (d?.isScene) lonelyScenes.add(d); };
   if (typeof W.__THREE_DEVTOOLS__ === 'undefined') {
-    try { const et = new EventTarget(); et.addEventListener('observe', (e) => { const d = e.detail; if (d?.isWebGLRenderer) track(d); else if (d?.isScene) lonelyScenes.add(d); }); W.__THREE_DEVTOOLS__ = et; } catch { /* fine */ }
-  }
+    try { const et = new EventTarget(); et.addEventListener('observe', onObserve); W.__THREE_DEVTOOLS__ = et; } catch { /* fine */ }
+  } else { try { W.__THREE_DEVTOOLS__.addEventListener?.('observe', onObserve); } catch { /* fine */ } } // (round 54: ▶ Play's look made it first)
+  try { for (const r of W.__gameLook?.renderers?.() || []) track(r); } catch { /* fine */ } // (round 54, gamelook: the renderers it saw from the start)
   discover();
   const discT = setInterval(() => { if (S.on) discover(); }, 1000);
 

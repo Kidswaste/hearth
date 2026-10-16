@@ -68,20 +68,30 @@ async function startPool() {
   const tr = await transcoder();
   const n = Math.max(1, Math.min(3, (os.cpus()?.length || 2) - 1));
   const list = [];
-  for (let i = 0; i < n; i += 1) list.push({ w: new Worker(path.join(o.appDir, 'tools', 'gametex-worker.js'), { workerData: { encoder: path.join(o.appDir, 'tools', 'basisu', 'basis_encoder.mjs'), transcoder: tr } }), busy: 0 });
+  for (let i = 0; i < n; i += 1) {
+    const x = { w: new Worker(path.join(o.appDir, 'tools', 'gametex-worker.js'), { workerData: { encoder: path.join(o.appDir, 'tools', 'basisu', 'basis_encoder.mjs'), transcoder: tr } }), busy: 0, dead: false, waits: new Set() };
+    // (round 54, fixes54) a thread that dies (out of memory on a huge picture) answers what it had with an error: the
+    // pictures keep their originals and Optimize for play ends, instead of waiting for it forever
+    x.w.on('error', () => {}); // (an error with no job waiting is not an uncaught one in Hearth's main process)
+    x.w.on('exit', () => { x.dead = true; for (const f of [...x.waits]) f({ ok: false, error: 'the encoder stopped (a picture too big for it?)' }); });
+    list.push(x);
+  }
   pool = { list, seq: 0 };
   return pool;
 }
 function stopPool() { if (!pool) return; for (const x of pool.list) x.w.terminate().catch(() => {}); pool = null; }
 function job(j) {
-  const P = pool; const x = P.list.reduce((a, b) => (b.busy < a.busy ? b : a));
+  const P = pool; const alive = P ? P.list.filter((w) => !w.dead) : [];
+  if (!alive.length) return Promise.resolve({ ok: false, error: 'the encoder stopped' });
+  const x = alive.reduce((a, b) => (b.busy < a.busy ? b : a));
   x.busy += 1; j.id = (P.seq += 1);
   return new Promise((res) => {
-    const done = (m) => { x.w.off('message', on); x.w.off('error', bad); x.busy -= 1; res(m); };
+    let over = false;
+    const done = (m) => { if (over) return; over = true; x.w.off('message', on); x.w.off('error', bad); x.waits.delete(done); x.busy -= 1; res(m); };
     const on = (m) => { if (m.id === j.id) done(m); };
     const bad = (e) => done({ ok: false, error: String(e?.message || e) });
-    x.w.on('message', on); x.w.once('error', bad);
-    x.w.postMessage(j, [j.px.buffer]);
+    x.w.on('message', on); x.w.once('error', bad); x.waits.add(done);
+    try { x.w.postMessage(j, [j.px.buffer]); } catch (err) { bad(err); }
   });
 }
 // one picture → the first encoding that looks the same, or why the original stays

@@ -38,7 +38,8 @@ t('screens and fidelity', () => {
   assert.strictEqual(C.pickDisplay(ds).id, 2);
   assert.strictEqual(C.pickDisplay(ds, 1).id, 1);
   assert.strictEqual(C.pickDisplay(ds, 99).id, 2);
-  assert.deepStrictEqual(C.fidelity({ scale: 2, hz: 240 }), { level: 'max', pixelRatio: 2, antialias: true, msaa: true, powerPreference: 'high-performance', cap: 0, adapt: false, hz: 240 });
+  assert.deepStrictEqual(C.fidelity({ scale: 2, hz: 240 }), { level: 'max', pixelRatio: 2, antialias: true, msaa: true, powerPreference: 'high-performance', cap: 0, adapt: false, hz: 240, look: 'best' });
+  assert.strictEqual(C.fidelity({}, 'balanced').look, 'balanced'); assert.strictEqual(C.fidelity({}, 'nonsense').look, 'best'); // (round 54, gamelook)
   assert.strictEqual(C.chipLine({ fps: 239.6, ms: 4.17, hz: 240, how: 'one canvas' }), '240 fps · 4.2 ms · 240 Hz · one canvas');
 });
 t('the protocol never leaves the folder', () => {

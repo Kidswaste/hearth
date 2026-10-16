@@ -1567,7 +1567,7 @@ function rdyScan() {
         const im = t.image; const m0 = t.mipmaps?.[0];
         const w = im?.videoWidth || im?.naturalWidth || im?.width || m0?.width || 0; const h = im?.videoHeight || im?.naturalHeight || im?.height || m0?.height || 0;
         const mips = t.generateMipmaps !== false || (t.mipmaps?.length || 0) > 1;
-        if (!t.isVideoTexture && mips && (t.anisotropy || 1) < max) { const up = r.properties?.get?.(t)?.__webglTexture; t.anisotropy = max; if (up) t.needsUpdate = true; aniso += 1; }
+        if (!t.isVideoTexture && mips && (t.anisotropy || 1) === 1 && max > 1) { /* (round 54, gamelook: a layer's own anisotropy is its choice) */ const up = r.properties?.get?.(t)?.__webglTexture; t.anisotropy = max; if (up) t.needsUpdate = true; aniso += 1; }
         tex.push({ w, h, mips, compressed: Boolean(t.isCompressedTexture), cube: Boolean(t.isCubeTexture), video: Boolean(t.isVideoTexture), aniso: t.anisotropy || 1 });
       };
       take(sc.background); take(sc.environment);

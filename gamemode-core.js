@@ -98,8 +98,12 @@
     if (hit) return hit;
     return all.slice().sort((a, b) => (b.w * b.h - a.w * a.h) || ((b.hz || 0) - (a.hz || 0)) || (b.primary - a.primary))[0];
   }
-  function fidelity(d) {
-    return { level: 'max', pixelRatio: Number(d?.scale) || 1, antialias: true, msaa: true, powerPreference: 'high-performance', cap: 0, adapt: false, hz: Number(d?.hz) || 60 };
+  // (round 54, gamelook) look: 'best' (sharp textures, true colours, shadows matched to the screen; gamelook-preload.js)
+  // or 'balanced' (sharp textures only; the rest as the game sets it); 'off' only for checks (round 53's behaviour)
+  const LOOKS = ['best', 'balanced', 'off'];
+  const look = (v) => (LOOKS.includes(v) ? v : 'best');
+  function fidelity(d, lk) {
+    return { level: 'max', pixelRatio: Number(d?.scale) || 1, antialias: true, msaa: true, powerPreference: 'high-performance', cap: 0, adapt: false, hz: Number(d?.hz) || 60, look: look(lk) };
   }
   const hzLabel = (hz) => `${Math.round(Number(hz) || 60)} Hz`;
   // ---------- the protocol's files ----------
@@ -125,5 +129,5 @@
     if (s.how) parts.push(s.how);
     return parts.join(' · ');
   }
-  return { source, sameSource, remember, mergePlan, whyNot, route, pickDisplay, fidelity, hzLabel, safePath, mimeOf, chipLine };
+  return { source, sameSource, remember, mergePlan, whyNot, route, pickDisplay, fidelity, look, hzLabel, safePath, mimeOf, chipLine };
 }));

@@ -33,6 +33,9 @@ const loop = () => { try { return require('./playloopmain'); } catch { return nu
 // right after GameReady's script (pictures decoded off the main thread, new objects held until their shaders are ready,
 // the log the F chip / doctor name a slow frame's load from). req.stream.off (a check's "before"): the log only.
 const STREAM = '/__gamestream-page.js';
+// (round 54, gameaudio) the game's sound: warmed up while loading, its sounds decoded before the first frame, paused
+// with the game (gameaudiomain.js makes the page's tag; tools/gameaudio-page.js runs in it)
+const audio = () => { try { const A = require('./gameaudiomain'); A.init({ dataDir: ctx?.dataDir }); return A; } catch { return null; } };
 let ctx = null; // { getWin, powerwise, dataDir }
 let G = null; // the game playing: { win, source, root, token, display, hz, route, how, started, release, priority, pid }
 const roots = new Map(); // token → folder
@@ -50,6 +53,8 @@ function gameSession() {
     const root = roots.get(u.hostname);
     if (!root) return new Response('this game has ended', { status: 404 });
     const R = ready();
+    const A = G?.token === u.hostname && !G.audioOff ? audio() : null;
+    if (A?.isPage(u.pathname)) return new Response(await fs.promises.readFile(A.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (u.pathname === STREAM) return new Response(await fs.promises.readFile(path.join(__dirname, 'tools', 'gamestream-page.js')), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (R?.armed?.() && R.isPage(u.pathname)) return new Response(await fs.promises.readFile(R.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     let file = C.safePath(root, u.pathname, path.sep);
@@ -59,9 +64,11 @@ function gameSession() {
       if (st.isDirectory()) { file = path.join(file, 'index.html'); st = await fs.promises.stat(file); }
       const swap = R?.swapFor?.(file) || null; // (an optimized copy in Hearth's cache, same address)
       if (swap) st = await fs.promises.stat(swap);
-      R?.noteServed?.(path.relative(root, file).split(path.sep).join('/'), Boolean(swap));
+      const rel = path.relative(root, file).split(path.sep).join('/');
+      R?.noteServed?.(rel, Boolean(swap));
+      if (G?.source?.kind === 'html') A?.served(root, rel); // (round 54, gameaudio) a sound: decoded up front next time
       let body = req.method === 'HEAD' ? null : await fs.promises.readFile(swap || file);
-      const tag = body && /\.html?$/i.test(file) ? `${R?.pageTag?.() || ''}<script src="${STREAM}?off=${G?.token === u.hostname && G.stream?.off ? 1 : 0}"></script>` : '';
+      const tag = body && /\.html?$/i.test(file) ? `${A ? A.pageTag(root, { kind: G.source?.kind }) : ''}${R?.pageTag?.() || ''}<script src="${STREAM}?off=${G?.token === u.hostname && G.stream?.off ? 1 : 0}"></script>` : ''; // (gameaudio's first: the game's AudioContext is Hearth's before any of its code runs)
       if (tag) { let h = body.toString('utf8'); h = /<head[^>]*>/i.test(h) ? h.replace(/<head[^>]*>/i, (m) => `${m}${tag}`) : `${tag}${h}`; body = Buffer.from(h); st = { size: body.length }; }
       return new Response(body, { status: 200, headers: { 'content-type': C.mimeOf(file), 'content-length': String(st.size), 'cache-control': 'no-cache', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'credentialless' } });
     } catch { return new Response('not found', { status: 404 }); }
@@ -73,6 +80,9 @@ function gameSession() {
   // nothing leaves this computer from a game: only downloads (GET) of its own libraries / files
   ses.webRequest.onBeforeRequest((d, cb) => cb({ cancel: /^https?:/i.test(d.url) && !['GET', 'HEAD', 'OPTIONS'].includes(d.method) }));
   ses.on('will-download', (e) => e.preventDefault());
+  // (round 54, gamelook) the game's look: a second preload of this session puts gameLookPage() in the game's world
+  // before its scripts (sharp textures, true colours, shadows matched to the screen; never what the game set itself)
+  try { const f = path.join(__dirname, 'gamelook-preload.js'); if (ses.registerPreloadScript) ses.registerPreloadScript({ type: 'frame', id: 'hearth-gamelook', filePath: f }); else ses.setPreloads?.([...(ses.getPreloads?.() || []), f]); } catch (err) { console.warn('gamelook:', err.message); }
   return ses;
 }
 
@@ -140,7 +150,7 @@ async function buildScene(spec) {
   const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r) => [r.key, r.path, stamp(r.path), ready()?.swapFor?.(r.path) || '', ready()?.texFor?.(r.path)?.out || '']), song: spec.song?.path ? [spec.song.path, stamp(spec.song.path)] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: stamp(sandbox), me: stamp(__filename) })).digest('hex').slice(0, 16);
   const metaFile = path.join(dir, 'hearth-play.json');
   try { const m = JSON.parse(fs.readFileSync(metaFile, 'utf8')); if (m.key === key && fs.existsSync(path.join(dir, 'play.html'))) return { dir, version, cached: true, notes: m.notes || [] }; } catch { /* a new build */ }
-  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 4, retryDelay: 150 }); // (Windows: a virus scanner / the last window can hold a file a moment)
   fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
   const notes = [];
   // (round 52, gameready) a 🧊 model layer's runtime (lab3d) imports its loaders / decoders on demand (GLTFLoader,
@@ -153,9 +163,14 @@ async function buildScene(spec) {
   if (v.missing.length) notes.push(`Not found for three.js ${version}: ${v.missing.join(', ')}`);
   if (ktx) { try { await ready().vendorKtx(path.join(dir, 'three'), version); } catch (err) { notes.push(`Compressed textures: ${err.message} (the originals are used)`); } }
   const refs = [];
+  const songFile = spec.song?.path ? `assets/song${path.extname(spec.song.path).toLowerCase() || '.mp3'}` : null;
+  const taken = new Set(songFile ? [songFile] : []); // (round 54, fixes54) "Logo" and "logo" are one file on a Mac / Windows disk (and a picture called "song" isn't the song): the second gets its own name
   for (const r of spec.refs || []) {
     if (!r.path || !fs.existsSync(r.path)) { notes.push(`Picture / file "${r.key}" is missing`); continue; }
-    const file = `assets/${String(r.key || path.basename(r.path)).replace(/[^\w.-]+/g, '_')}${path.extname(r.path)}`;
+    const stem = `assets/${String(r.key || path.basename(r.path)).replace(/[^\w.-]+/g, '_')}`;
+    let file = `${stem}${path.extname(r.path)}`;
+    for (let i = 2; taken.has(file.toLowerCase()); i += 1) file = `${stem}-${i}${path.extname(r.path)}`;
+    taken.add(file.toLowerCase());
     fs.copyFileSync(ready()?.swapFor?.(r.path) || r.path, path.join(dir, file)); // (round 52, gameready: its optimized copy when there's one)
     // (round 53, gametex) a picture's compressed copy next to it (the original stays: the fallback)
     const tx = r.kind === 'image' && fs.existsSync(path.join(dir, 'three', 'examples', 'jsm', 'libs', 'basis', 'basis_transcoder.wasm')) ? ready()?.texFor?.(r.path) : null;
@@ -164,7 +179,7 @@ async function buildScene(spec) {
   }
   let song = null;
   if (spec.song?.path && fs.existsSync(spec.song.path)) {
-    const file = `assets/song${path.extname(spec.song.path).toLowerCase() || '.mp3'}`;
+    const file = songFile;
     fs.copyFileSync(spec.song.path, path.join(dir, file));
     song = { file, mime: C.mimeOf(spec.song.path), name: path.basename(spec.song.path) };
   }
@@ -208,11 +223,11 @@ async function play(_e, req = {}) {
   const source = C.source(req.source);
   if (!source) throw new Error('Nothing to play: pick a Lab scene or an HTML game.');
   if (G) leave('another game');
-  for (let i = 0; i < 40 && G; i += 1) await new Promise((r) => setTimeout(r, 25));
+  for (let i = 0; i < 72 && G; i += 1) await new Promise((r) => setTimeout(r, 25)); // (round 54: past leave()'s 1.5 s, so a stuck game has ended first)
   const { BrowserWindow } = require('electron');
   const list = displays();
   const d = C.pickDisplay(list, req.display ?? null);
-  const fid = C.fidelity(d);
+  const fid = C.fidelity(d, req.look); // (round 54, gamelook) look: 'best' (the default) | 'balanced'
   const token = crypto.randomBytes(12).toString('hex');
   let root; let entry; let route = 'html'; let how = 'HTML build'; let notes = [];
   if (source.kind === 'lab') {
@@ -236,10 +251,10 @@ async function play(_e, req = {}) {
   const win = new BrowserWindow({
     x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, show: false, frame: false, backgroundColor: '#000000',
     title: source.title, autoHideMenuBar: true, fullscreenable: true, fullscreen: !mac, thickFrame: false, roundedCorners: false,
-    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency) }))}`] },
+    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look }))}`] },
   });
   if (!mac) win.setMenu(null);
-  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, stream: { off: Boolean(req.stream?.off) } };
+  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off), stream: { off: Boolean(req.stream?.off) } };
   g.release = ctx.powerwise.hold('present', { label: `${source.title} is playing` });
   try { ctx.powerwise.quiet(true); } catch { /* fine */ }
   const wc = win.webContents;
@@ -252,7 +267,7 @@ async function play(_e, req = {}) {
   wc.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
     if (GI.key(e, input)) return;
-    const k = String(input.key || '').toLowerCase();
+    const k = loop()?.letter ? loop().letter(input) : String(input.key || '').toLowerCase(); // (round 54: by the key's letter on any layout)
     if (loop()?.key?.(input)) { e.preventDefault(); return; } // (round 53, playloop) Ctrl/⌘+P: back to editing, the game kept (after gameinput's keys)
     if ((mac && input.meta && (k === 'q' || k === 'w')) || (!mac && input.control && k === 'w') || (!mac && input.alt && k === 'f4')) { e.preventDefault(); leave('key'); return; }
     if (mac && input.meta) e.preventDefault();

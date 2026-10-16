@@ -135,7 +135,7 @@ async function playGame(label, source, test, { during } = {}) {
   let sawCard = null; let maxPct = 0; const lines = new Set();
   const p = GameMode.play(source);
   // the card in the window, sampled while it gets ready
-  const watch = (async () => { const t = Date.now(); while (Date.now() - t < 150000) { const v = await ev('window.__gameReady ? window.__gameReady.pub() : null').catch(() => null); if (v) { const o = JSON.parse(v); if (o.card) sawCard ??= Math.round(performance.now() - t0); maxPct = Math.max(maxPct, o.pct || 0); if (o.text && lines.size < 40) lines.add(o.text); if (o.phase === 'playing') return; } await wait(150); } })();
+  const watch = (async () => { const t = Date.now(); while (Date.now() - t < 150000) { const v = await ev('window.__gameReady ? window.__gameReady.pub() : null').catch(() => null); if (v) { const o = JSON.parse(v); if (o.card) sawCard ??= Math.round(performance.now() - t0); maxPct = Math.max(maxPct, o.pct || 0); if (o.text && lines.size < 200) lines.add(o.text); for (const t of o.shown || []) if (lines.size < 200) lines.add(t); /* (round 54) every line the card showed, even between two polls */ if (o.phase === 'playing') return; } await wait(150); } })();
   if (during) await during();
   await p; await watch;
   const st = await until(() => GameReady.state()?.first5 && GameReady.state(), 30000);

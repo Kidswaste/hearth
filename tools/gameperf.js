@@ -90,6 +90,7 @@ const GamePerf = (() => {
     if (secs > 0) { await call('window.__gamePerf.start()'); await sleep(secs * 1000); }
     const raw = JSON.parse(await call('JSON.stringify(window.__gamePerf.report())'));
     raw.hz = S.t.hz;
+    try { const a = await call('window.__gameAudio ? window.__gameAudio.pub() : null'); raw.audio = a ? JSON.parse(a) : null; } catch { raw.audio = null; } // (round 54, gameaudio: ▶ Play's sound)
     const R = C().summarize(raw);
     // the game's own code, looked at for per-frame allocations (a Lab scene's layers, or an html build's source)
     const scans = [];
@@ -97,6 +98,8 @@ const GamePerf = (() => {
     if (lc) for (const L of lc.layers) scans.push(...C().scanSource(L.code, { layer: L.name }));
     else if (S.t.source) { try { S.src = String(await S.t.source() || ''); scans.push(...C().scanSource(S.src)); } catch { S.src = null; } }
     S.raw = raw; S.R = R; S.scans = scans; S.lab = lc; S.at = Date.now();
+    // (round 54, gamelook) what ▶ Play's look did in this game (gamelook-preload.js), in plain words
+    try { const lk = await call('window.__gameLook ? JSON.stringify({ text: window.__gameLook.text(), r: window.__gameLook.report() }) : ""'); S.look = lk ? JSON.parse(lk) : null; } catch { S.look = null; }
     S.findings = C().doctor(R, scans).map((f) => ({ ...f, lab: S.t.kind === 'lab' ? labFix(f.lab, f) : null, patch: S.t.kind !== 'lab' && f.lab ? htmlPatch(f.lab) : null }));
     S.fid = C().fidelity(R).map((f) => ({ ...f, lab: S.t.kind === 'lab' ? labFix(f.lab, f) : null, patch: S.t.kind !== 'lab' && f.lab ? htmlPatch(f.lab) : null }));
     return { R, findings: S.findings, fidelity: S.fid };
@@ -201,9 +204,10 @@ const GamePerf = (() => {
     const card = S.card; if (!card?.isConnected) return;
     const R = S.R;
     const by = Object.entries(R?.stutters?.by || {}).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => `${v.n} × ${C().CAUSE[k] || k}`).join(' · ');
-    card.querySelector('.gp-sum').textContent = R ? `${R.fps} fps on ${R.hz} Hz · ${R.onTime}% of frames on time · median ${R.dtMed} ms (budget ${R.budget})${R.stutters.n ? ` · stutters: ${by}` : ' · no stutters'}` : '';
+    card.querySelector('.gp-sum').textContent = R ? `${R.fps} fps on ${R.hz} Hz · ${R.onTime}% of frames on time · median ${R.dtMed} ms (budget ${R.budget})${R.stutters.n ? ` · stutters: ${by}` : ' · no stutters'}${R.audio?.latencyMs != null ? ` · sound ${Math.round(R.audio.latencyMs)} ms` : ''}` : ''; // (round 54, gameaudio: the sound's latency, base + output)
     const body = card.querySelector('.gp-body');
     const list = [...S.findings.map(row)];
+    if (S.look?.text) { const sc = S.look.r?.screen; list.unshift(el('div', { class: 'gp-none', text: `${S.look.text}${sc?.hdr ? ' · HDR screen: colours shown as made' : sc?.wide ? ' · wide-colour screen: colours shown as made' : ''}` })); }
     if (!S.findings.length) list.push(el('div', { class: 'gp-none', text: 'Nothing slowing it down was found: it runs smooth.' }));
     if (S.fid.length) list.push(el('div', { class: 'gp-head2', text: 'Max fidelity (only on your click)' }), ...S.fid.map(row));
     body.replaceChildren(...list);

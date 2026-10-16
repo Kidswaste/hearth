@@ -76,6 +76,7 @@ const GamePerfCore = (() => {
       textures: raw.textures || { n: 0, ms: 0, mb: 0, late: [] },
       long: raw.long || [], layout: raw.layout || { ms: 0, mutations: 0 },
       scene: raw.scene || null, self: raw.self || null, src: raw.src || null, stream: raw.stream || null,
+      audio: raw.audio || null, // (round 54, gameaudio) the game window's sound: tools/gameaudio-page.js pub()
     };
   }
   function r2(x) { return Math.round((x || 0) * 100) / 100; }
@@ -319,6 +320,8 @@ const GamePerfCore = (() => {
         fix: ['lower the pixel ratio', S.post ? 'fewer post-processing passes' : null, sh?.enabled ? 'smaller shadow maps' : null, S.aa ? 'antialias off (or FXAA) at a high pixel ratio' : null].filter(Boolean).join(', ') + '.' });
     }
     if ((S.programs || 0) > 40) add({ id: 'programs', kind: 'cpu', impact: 1, title: `${S.programs} shader programs: materials that differ by small settings each need their own`, fix: 'Share materials between meshes (same type and options); vary color through instance colors or vertex colors.' });
+    // (round 54, gameaudio) sound that slowed the picture or came late, in plain words
+    out.push(...soundFindings(R.audio, R));
     return out.sort((a, b) => b.impact - a.impact);
   }
   function instancingSnippet(g) {
@@ -429,18 +432,49 @@ const GamePerfCore = (() => {
     return out.join('\n');
   }
 
+  // ---------- sound (round 54, gameaudio) ----------
+  // A: tools/gameaudio-page.js pub(): slow [{ kind: 'context' | 'decode', name, bytes, ms, frameMs }] (a sound in a frame
+  // that froze), late [{ name, bytes, ms, secs }] (decoded the moment the game first played it: the sound came late)
+  function soundFindings(A, R = {}) {
+    if (!A) return [];
+    const out = [];
+    const secs = Math.max(1, R.secs || 1);
+    const size = (b) => (b >= 1048576 ? `${mb(b / 1048576)} MB` : `${n0(Math.max(1, b / 1024))} KB`);
+    const what = (x) => `${x.name || 'a sound'}${x.bytes ? ` (${size(x.bytes)})` : ''}`;
+    const dec = (A.slow || []).filter((x) => x.kind === 'decode');
+    const ctx = (A.slow || []).filter((x) => x.kind === 'context');
+    if (ctx.length) {
+      const w = ctx.reduce((m, x) => (x.frameMs > m.frameMs ? x : m), ctx[0]);
+      out.push({ id: 'sound-start', kind: 'stutter', impact: (w.frameMs / secs) * 3 + 2, title: `The game's sound started mid-play: the game froze ${n0(w.frameMs)} ms while its sound system switched on`,
+        fix: 'Make the AudioListener / AudioContext while the game loads (not on the first sound). ▶ Play starts the sound system behind its card; a game that makes its own later still pays a little.' });
+    }
+    if (dec.length) {
+      const w = dec.reduce((m, x) => (x.frameMs > m.frameMs ? x : m), dec[0]);
+      const big = (w.bytes || 0) >= 2 * 1048576;
+      out.push({ id: 'sound-decode', kind: 'stutter', impact: (dec.reduce((a, x) => a + x.frameMs, 0) / secs) * 3 + 2, title: `A sound slowed the picture: ${what(w)} was decoded while playing and one frame took ${n0(w.frameMs)} ms${dec.length > 1 ? ` (${dec.length} times)` : ''}`,
+        fix: `${big ? 'A long sound decoded whole is big: play music through an <audio> element (streamed) and keep decoded buffers for short effects. ' : ''}Load and decode sounds while loading (AudioLoader.loadAsync at the start) and reuse the buffer. ▶ Play decodes the sounds it saw before the first frame next time.` });
+    }
+    const late = (A.late || []).filter((x) => !dec.some((d) => (d.name && d.name === x.name) || (d.bytes && d.bytes === x.bytes)));
+    if (late.length) {
+      const w = late.reduce((m, x) => (x.ms > m.ms ? x : m), late[0]);
+      out.push({ id: 'sound-late', kind: 'stutter', impact: Math.min(6, w.ms / 100), title: `${late.length === 1 ? 'A sound' : `${late.length} sounds`} came late: ${what(w)} was decoded the first time it played, which held it back ${n0(w.ms)} ms`,
+        fix: 'Decode sounds while loading and keep the buffers. ▶ Play now decodes the sounds a game loaded last time before its first frame, so the next launch plays them at once.' });
+    }
+    return out;
+  }
+
   // ---------- what a director reads ----------
   function compact(R, findings, { max = 5, name = '' } = {}) {
     if (!R) return 'No play session measured yet.';
     const by = Object.entries(R.stutters?.by || {}).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => `${k} ${v.n}`).join(', ');
     const S = R.scene || {};
-    const head = `${name ? `${name}: ` : ''}${R.fps} fps on ${R.hz} Hz (${R.onTime}% on time, median ${R.dtMed} ms, budget ${R.budget}), ${R.stutters?.n || 0} stutters${by ? ` (${by})` : ''}; ${n0(S.calls || 0)} calls, ${(S.tris || 0) >= 1e6 ? `${mb(S.tris / 1e6)}M` : n0(S.tris || 0)} tris, pr ${S.pr ?? '?'}`;
+    const head = `${name ? `${name}: ` : ''}${R.fps} fps on ${R.hz} Hz (${R.onTime}% on time, median ${R.dtMed} ms, budget ${R.budget}), ${R.stutters?.n || 0} stutters${by ? ` (${by})` : ''}; ${n0(S.calls || 0)} calls, ${(S.tris || 0) >= 1e6 ? `${mb(S.tris / 1e6)}M` : n0(S.tris || 0)} tris, pr ${S.pr ?? '?'}${R.audio?.latencyMs != null ? `; sound ${Math.round(R.audio.latencyMs)} ms` : ''}`;
     const short = (t) => { const s = String(t || ''); const k = s.search(/[.;:](\s|$)/); return (k > 20 && k < 110 ? s.slice(0, k) : s.length > 110 ? `${s.slice(0, 108)}…` : s); };
     const shown = [...findings.slice(0, max), ...findings.slice(max).filter((f) => f.lab)]; // (every one-click fix, even past the top few)
     const lines = shown.map((f, i) => `${i + 1}. [${f.id}${f.lab ? ', fix' : ''}] ${f.title}${f.hits?.length ? ` @ ${f.hits.map((h) => `${h.layer ? `${h.layer} ` : ''}l${h.line}`).join(', ')}` : f.line ? ` @ l${f.line}` : ''}${i < max ? ` → ${short(f.fix)}` : ''}`);
     return [head, ...(lines.length ? lines : ['Nothing to fix: it runs smooth.']), findings.some((f) => f.lab) ? 'three_do perf {op: "fix", id} applies a [fix] (undoable).' : null].filter(Boolean).join('\n');
   }
 
-  return { attribute, CAUSE, summarize, guessHz, scanSource, frameBodies, doctor, fidelity, patch, diff, compact };
+  return { attribute, CAUSE, summarize, guessHz, scanSource, frameBodies, doctor, soundFindings, fidelity, patch, diff, compact };
 })();
 if (typeof module !== 'undefined') module.exports = GamePerfCore;

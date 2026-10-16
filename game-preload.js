@@ -54,6 +54,7 @@ function mount() {
     .hint { position: fixed; left: 16px; bottom: 14px; padding: 6px 10px; border-radius: 8px; background: #0009; opacity: 1; transition: opacity .6s; }
     .hint.out { opacity: 0; }
     .chip { position: fixed; right: 12px; top: 10px; padding: 4px 9px; border-radius: 7px; background: #000a; font: 12px/1.3 ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }
+    .look { position: fixed; right: 12px; top: 34px; padding: 3px 9px; border-radius: 7px; background: #0008; color: #c9ced8; font-size: 11.5px; white-space: nowrap; }
     .card { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; pointer-events: auto; }
     .box { min-width: 280px; padding: 22px 24px 18px; border-radius: 14px; background: #16181d; box-shadow: 0 12px 40px #000c; text-align: center; }
     .t { font-size: 16px; font-weight: 600; margin-bottom: 4px; } .s { color: #a7adb8; margin-bottom: 16px; }
@@ -67,13 +68,13 @@ function mount() {
     .err .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .err button, .box .fix { padding: 5px 11px; font-size: 12px; margin: 0; } .err .x { background: transparent; color: #a7adb8; padding: 5px 7px; }
     .fixit { background: #ff8a3d; color: #1a1206; } .box .fix { display: block; margin: 12px auto 0; }
-  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing</div><div class="chip" hidden></div><div class="blip" aria-live="polite"></div>
+  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing</div><div class="chip" hidden></div><div class="look" hidden></div><div class="blip" aria-live="polite"></div>
   <div class="err" hidden role="alert"><span class="m"></span><button class="fixit">Fix with the director</button><button class="x" aria-label="Hide">✕</button></div>
   <div class="card" hidden role="dialog" aria-label="Leave the game"><div class="box"><div class="t"></div><div class="s">Esc again or Enter goes back</div>
   <button class="back">Back to Hearth</button><button class="keep">Keep playing</button><button class="fix fixit" hidden>Fix with the director</button></div></div></div>`;
   (document.documentElement || document).appendChild(host);
   const $ = (s) => root.querySelector(s);
-  ui = { host, hint: $('.hint'), chip: $('.chip'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t'), blip: $('.blip'), err: $('.err'), errText: $('.err .m'), cardFix: $('.box .fix') };
+  ui = { host, hint: $('.hint'), chip: $('.chip'), look: $('.look'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t'), blip: $('.blip'), err: $('.err'), errText: $('.err .m'), cardFix: $('.box .fix') };
   for (const b of root.querySelectorAll('.fixit')) b.addEventListener('click', () => fixIt());
   root.querySelector('.err .x').addEventListener('click', () => { ui.err.hidden = true; });
   ui.title.textContent = I.title ? `Leave ${I.title}?` : 'Leave the game?';
@@ -105,6 +106,9 @@ document.addEventListener('pointerlockchange', () => {
 
 // ---------- the stats chip: frames counted only while it shows ----------
 let statsOn = false; let raf = 0; let gaps = []; let last = 0; let lastPaint = 0; let how = I.how || ''; let hz = I.hz || 0;
+// (round 54, gameaudio) the sound's latency on the chip ("sound 12 ms"), read from the game's page (tools/gameaudio-page.js) every 2 s while the chip shows
+let snd = ''; let sndAt = -1e9;
+const sound = () => { try { webFrame.executeJavaScript('window.__gameAudio ? window.__gameAudio.line() : ""').then((v) => { snd = typeof v === 'string' ? v : ''; }).catch(() => {}); } catch { /* fine */ } };
 function tick(t) {
   if (!statsOn) { raf = 0; return; }
   if (last) gaps.push(t - last);
@@ -112,7 +116,8 @@ function tick(t) {
   if (t - lastPaint > 500 && gaps.length) {
     lastPaint = t;
     const g = gaps.slice(-240); const avg = g.reduce((a, b) => a + b, 0) / g.length;
-    const line = `${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${how ? ` · ${how}` : ''}`;
+    if (t - sndAt > 2000) { sndAt = t; sound(); }
+    const line = `${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}`;
     if (ui.chip.textContent !== line) ui.chip.textContent = line;
     gaps = g.slice(-120);
   }
@@ -122,8 +127,11 @@ function stats(on) {
   statsOn = Boolean(on);
   const u = mount();
   u.chip.hidden = !statsOn;
+  u.look.hidden = true;
   if (statsOn) {
-    gaps = []; last = 0; lastPaint = 0; u.chip.textContent = '… fps';
+    // (round 54, gamelook) under the chip, what the look did, in plain words (gamelook-preload.js, in the game's world)
+    webFrame.executeJavaScript('window.__gameLook ? window.__gameLook.text() : ""').then((t) => { if (statsOn && t) { u.look.textContent = String(t); u.look.hidden = false; } }).catch(() => {});
+    gaps = []; last = 0; lastPaint = 0; sndAt = -1e9; u.chip.textContent = '… fps';
     ipcRenderer.invoke('game:info').then((x) => { if (x) { how = x.how || how; hz = x.hz || hz; } }).catch(() => {});
     if (!raf) raf = requestAnimationFrame(tick);
   }
