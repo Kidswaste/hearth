@@ -151,6 +151,8 @@ const Freshen = (() => {
     let x = null; let v = null;
     try { x = await window.hub.safetynet?.last?.(); } catch { x = null; }
     if (!x) return null;
+    // a reload nobody in Hearth asked for (a developer tool): your "Start on" screen wins, as at a start
+    if (x.kind === 'reload' && x.why === 'reloaded' && H.settings?.()?.startOn) return null;
     try { v = JSON.parse(localStorage.getItem(VIEW) || 'null'); } catch { v = null; }
     const age = v ? Date.now() - (v.at || 0) : Infinity;
     if (!v || age > (x.kind === 'process' ? 12 * 3600000 : 30 * 60000) || age < -60000) return null;

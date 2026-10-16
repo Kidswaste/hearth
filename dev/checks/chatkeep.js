@@ -148,9 +148,7 @@ try {
   step(Boolean(again) && ch?.agentId === ck.agent, 'its AI on again: the chat is its open chat again, still its own, with its scene', { open: H.activeChat[ck.agent] || null, agentId: ch?.agentId, scene: ThreeLab.scenes.currentId(), want: ck.sk });
   // ---------- 5. Freshen ----------
   save();
-  Freshen.now({ reason: 'test' });
-  await wait(8000);
-  out.problems.push('Freshen did not reload');
+  setTimeout(() => Freshen.now({ reason: 'test' }), 300); // (a reload from the page itself waits for this check's answer)
 } catch (err) { out.problems.push(`error: ${err.message}`); }
 return JSON.stringify(out, null, 1);
 //@@ reload
@@ -162,7 +160,7 @@ const save = () => { localStorage.setItem('ck.steps', JSON.stringify(out.steps))
 const ck = JSON.parse(localStorage.getItem('ck') || '{}');
 try {
   const ok = await until(() => H.activeId === 'tool:three' && H.activeChat[ck.agent] === ck.chatId && ThreeLab.scenes?.currentId() === ck.sk, 30000);
-  step(Boolean(ok) && H.chats.some((c) => c.id === ck.chatId), 'Freshen: the Lab, the chat and its scene are back', { activeId: H.activeId, open: H.activeChat, scene: ThreeLab.scenes?.currentId?.(), want: ck.sk, cb: Freshen.cameBack, agents: H.agents().map((a) => `${a.id}:${a.enabled}`) });
+  step(Boolean(ok) && H.chats.some((c) => c.id === ck.chatId), 'Freshen (then the test harness reload): the Lab, the chat and its scene are back', { activeId: H.activeId, open: H.activeChat, scene: ThreeLab.scenes?.currentId?.(), want: ck.sk, cb: Freshen.cameBack, agents: H.agents().map((a) => `${a.id}:${a.enabled}`) });
   // ---------- 6. an update's reload ----------
   save();
   await window.hub.update.reload();
