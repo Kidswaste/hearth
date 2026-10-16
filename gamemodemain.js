@@ -92,7 +92,8 @@ function hostScript(S) {
     send({ type: 'ready-lock', on: true }); // 100 %: no adaptive steps, no doze, no fps cap
     send({ type: 'pace', on: false }); send({ type: 'adapt', on: false }); send({ type: 'fps-cap', value: 0, auto: false, focused: true });
     send({ type: 'game-plan', merge: S.plan.merge, why: S.plan.why });
-    Promise.all(S.refs.map(function (r) { return bytes(r.file).then(function (b) { return { key: r.key, kind: r.kind, mime: r.mime, buffer: b }; }).catch(function () { return null; }); })).then(function (items) {
+    // (round 53, gametex) a picture with a compressed copy brings it along (ktx2): the player uses it when the graphics card takes it
+    Promise.all(S.refs.map(function (r) { return Promise.all([bytes(r.file), r.ktx2 ? bytes(r.ktx2).catch(function () { return null; }) : null]).then(function (b) { var it = { key: r.key, kind: r.kind, mime: r.mime, buffer: b[0] }; if (b[1]) it.ktx2 = b[1]; return it; }).catch(function () { return null; }); })).then(function (items) {
       send({ type: 'tweak-init', values: S.values || {}, keys: {}, mods: {} });
       send({ type: 'refs', items: items.filter(Boolean), palette: S.palette || [] });
       var song = S.song ? bytes(S.song.file).catch(function () { return null; }) : Promise.resolve(null);
@@ -127,7 +128,7 @@ async function buildScene(spec) {
   const version = String(spec.version || '0.186.1');
   const sandbox = path.join(__dirname, 'tools', 'three-sandbox.html');
   const stamp = (p) => { try { const s = fs.statSync(p); return `${s.size}:${s.mtimeMs}`; } catch { return '-'; } };
-  const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r) => [r.key, r.path, stamp(r.path), ready()?.swapFor?.(r.path) || '']), song: spec.song?.path ? [spec.song.path, stamp(spec.song.path)] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: stamp(sandbox), me: stamp(__filename) })).digest('hex').slice(0, 16);
+  const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r) => [r.key, r.path, stamp(r.path), ready()?.swapFor?.(r.path) || '', ready()?.texFor?.(r.path)?.out || '']), song: spec.song?.path ? [spec.song.path, stamp(spec.song.path)] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: stamp(sandbox), me: stamp(__filename) })).digest('hex').slice(0, 16);
   const metaFile = path.join(dir, 'hearth-play.json');
   try { const m = JSON.parse(fs.readFileSync(metaFile, 'utf8')); if (m.key === key && fs.existsSync(path.join(dir, 'play.html'))) return { dir, version, cached: true, notes: m.notes || [] }; } catch { /* a new build */ }
   fs.rmSync(dir, { recursive: true, force: true });
@@ -136,14 +137,21 @@ async function buildScene(spec) {
   // (round 52, gameready) a 🧊 model layer's runtime (lab3d) imports its loaders / decoders on demand (GLTFLoader,
   // meshopt, KTX2, Draco…): they're vendored with the page too, or the model never loads in the game window
   const libCodes = layers.some((L) => /\blab3d\.model\s*\(/.test(L.code)) ? [fs.readFileSync(path.join(__dirname, 'tools', 'sandbox-lab3d.js'), 'utf8')] : [];
+  // (round 53, gametex) compressed (KTX2) copies in use: three's KTX2Loader and its Basis transcoder go with the page
+  const ktx = (spec.refs || []).some((r) => r.path && (ready()?.texFor?.(r.path) || ready()?.swapFor?.(r.path)));
+  if (ktx) libCodes.push("import 'three/addons/loaders/KTX2Loader.js';");
   const v = await deploy.vendorThree(version, [...layers.map((L) => L.code), ...libCodes], path.join(dir, 'three'), {});
   if (v.missing.length) notes.push(`Not found for three.js ${version}: ${v.missing.join(', ')}`);
+  if (ktx) { try { await ready().vendorKtx(path.join(dir, 'three'), version); } catch (err) { notes.push(`Compressed textures: ${err.message} (the originals are used)`); } }
   const refs = [];
   for (const r of spec.refs || []) {
     if (!r.path || !fs.existsSync(r.path)) { notes.push(`Picture / file "${r.key}" is missing`); continue; }
     const file = `assets/${String(r.key || path.basename(r.path)).replace(/[^\w.-]+/g, '_')}${path.extname(r.path)}`;
     fs.copyFileSync(ready()?.swapFor?.(r.path) || r.path, path.join(dir, file)); // (round 52, gameready: its optimized copy when there's one)
-    refs.push({ key: r.key, kind: r.kind, mime: C.mimeOf(r.path), file });
+    // (round 53, gametex) a picture's compressed copy next to it (the original stays: the fallback)
+    const tx = r.kind === 'image' && fs.existsSync(path.join(dir, 'three', 'examples', 'jsm', 'libs', 'basis', 'basis_transcoder.wasm')) ? ready()?.texFor?.(r.path) : null;
+    let ktx2 = null; if (tx) { ktx2 = `${file}.ktx2`; fs.copyFileSync(tx.out, path.join(dir, ktx2)); }
+    refs.push({ key: r.key, kind: r.kind, mime: C.mimeOf(r.path), file, ...(ktx2 ? { ktx2 } : {}) });
   }
   let song = null;
   if (spec.song?.path && fs.existsSync(spec.song.path)) {
