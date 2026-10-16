@@ -832,7 +832,8 @@ const Meter = (() => {
   // ---------- chat commands ----------
   const R = (def) => Commands.register({ area: 'Meter', ...def });
   function registerCommands() {
-    R({ name: 'tokens', aliases: ['tok'], override: true, // replaces the chat stream's simpler /tokens args: '[today|week|month|all|chat|<agent> [range]]', desc: 'Token totals (this chat, today, week, month, all time or one agent)', complete: (a) => [...RANGE_ARGS, { value: 'chat' }, ...AGENT_ARGS(a)].filter((x) => x.value.toLowerCase().startsWith(a.toLowerCase())),
+    R({ name: 'tokens', aliases: ['tok'], override: true, // replaces the chat stream's simpler /tokens
+    args: '[today|week|month|all|chat|<agent> [range]]', desc: 'Token totals (this chat, today, week, month, all time or one agent)', complete: (a) => [...RANGE_ARGS, { value: 'chat' }, ...AGENT_ARGS(a)].filter((x) => x.value.toLowerCase().startsWith(a.toLowerCase())),
       run: async (args) => {
         await refresh();
         if (/^chat/i.test(args)) return PANE_TEXT.chat();
