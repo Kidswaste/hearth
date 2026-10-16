@@ -39,7 +39,7 @@ const ThreeLab = (() => {
   // into the new page once its layers have drawn their first frame (never a black flash; see "live" below).
   // (round 25, diet) the preview page's motion-design kit / 3D-model runtime (tools/sandbox-*.js): loaded here when a page
   // asks (a sandboxed page can't read files) and sent as source; nothing of them runs in the hub
-  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js', beatlink: 'tools/three-beatlink-core.js', camcore: 'tools/three-camera-core.js', kinetic: 'tools/three-kinetic-core.js' }; // (round 38, beatlink: ♪ Move with the music's math; round 45, kinetictype: text that moves on the hits)
+  const LIB_FILES = { motion: 'tools/sandbox-motion.js', lab3d: 'tools/sandbox-lab3d.js', beatlink: 'tools/three-beatlink-core.js', camcore: 'tools/three-camera-core.js', kinetic: 'tools/three-kinetic-core.js', matcore: 'tools/three-materials-core.js' }; // (round 38, beatlink: ♪ Move with the music's math; round 45, kinetictype: text that moves on the hits)
   const libFiles = {};
   function sandboxLib(name, deliver) {
     if (!LIB_FILES[name]) return;
@@ -1077,7 +1077,7 @@ const ThreeLab = (() => {
       box.send({ type: 'edit', cmd: on ? 'on' : 'off', layer: L?.id });
       if (on) { paintMode('translate'); editSel = null; paintEditSel(); toast(`Editing "${L.name}": drag to orbit, right-drag to pan, wheel to zoom, click an object to move it`, { timeout: 3500 }); }
     }
-    const placements = () => Object.keys(sel()?.overrides || {}).filter((k) => k !== '@camera');
+    const placements = () => Object.keys(sel()?.overrides || {}).filter((k) => k !== '@camera' && k !== '@look'); // (round 50: '@look' = ◉ looks, not a placement)
     function paintEditSel() {
       const info = editSel;
       if (!info) {
@@ -1094,6 +1094,7 @@ const ThreeLab = (() => {
           el('div', { class: 'ed-row' }, el('b', { text: info.name || info.type }), el('span', { class: 'ed-type', text: `${info.type}${info.children ? ` · ${info.children} inside` : ''}${placed ? ' · placed' : ''}` }), el('span', { class: 'spacer' }),
             info.hasParent ? btn('Parent', 'Select the group it belongs to', () => box.send({ type: 'edit', cmd: 'parent' })) : null,
             btn('Focus', 'Fly the view to it (F)', () => box.send({ type: 'edit', cmd: 'focus' })),
+            window.LabMatHook ? btn('◉ Look ›', 'Its look: chrome, glass, gold, plastic, velvet, neon… (the material)', (e) => LabMatHook.open({ layer: sel()?.id, path: info.path, anchor: e?.currentTarget })) : null, // (round 50, labmaterials)
             btn(info.v ? '👁 Hide' : '👁 Show', 'Hide or show it', () => { pushEditUndo(); box.send({ type: 'edit', cmd: 'visible' }); }),
             placed ? btn('↺ Reset', 'Back to where the code puts it', () => resetPlacement(info.path)) : null),
           (() => {
@@ -1109,7 +1110,7 @@ const ThreeLab = (() => {
         editUndo.length ? btn('↶', 'Undo the last placement', () => undoEdit()) : null,
         n || cam ? btn('Bake into code…', 'Ask the Three Director to write these placements into the code', () => bakePlacements()) : null,
         cam ? btn('Reset camera', 'The sketch\'s own camera again', () => resetPlacement('@camera')) : null,
-        n || cam ? btn('Clear all', 'Remove every placement in this layer', () => { pushEditUndo(); setOverrides(sel(), null); }) : null);
+        n || cam ? btn('Clear all', 'Remove every placement in this layer', () => { pushEditUndo(); const lk = sel()?.overrides?.['@look']; setOverrides(sel(), lk ? { '@look': lk } : null); }) : null);
     }
     function pushEditUndo() { const L = sel(); if (L) { editUndo.push({ id: L.id, ov: JSON.stringify(L.overrides || null) }); if (editUndo.length > 50) editUndo.shift(); } }
     function setOverrides(L, ov) {
@@ -2770,6 +2771,9 @@ const ThreeLab = (() => {
       openSliders: (id) => { if (selId !== id) selectLayer(id); setSlidersVisible(true); },
       snapshot: (L) => ({ x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, keys: JSON.parse(JSON.stringify(Object.fromEntries(['x', 'y', 'scale', 'rotate'].filter((p) => L.keys?.[p]?.length).map((p) => [p, L.keys[p]])))) }),
       restore: (L, b) => { Object.assign(L, { x: b.x, y: b.y, scale: b.scale, rotate: b.rotate }); L.keys ||= {}; for (const p of ['x', 'y', 'scale', 'rotate']) { if (b.keys?.[p]) L.keys[p] = JSON.parse(JSON.stringify(b.keys[p])); else delete L.keys[p]; } box.send({ type: 'layer-props', id: L.id, props: layerProps(L) }); touch(); renderLayers(); } });
+    // (round 50, labmaterials) ◉ looks on 3D things: the picker, undo, the director's op (tools/three-materials-hook.js)
+    if (window.LabMatHook) LabMatHook.attach({ send: (msg) => box.send(msg), pane, previewHost, frame: () => box.frame, layerById: (id) => layerById(id), sel: () => sel() || null, select: (id) => selectLayer(id), layers: () => layersOf(), sketchId: () => current?.id || null, palette: () => current?.palette || [],
+      setLook: (L, look) => { const ov = { ...(L.overrides || {}) }; if (look && Object.keys(look).length) ov['@look'] = look; else delete ov['@look']; L.overrides = Object.keys(ov).length ? ov : undefined; box.send({ type: 'layer-props', id: L.id, props: { overrides: L.overrides || null } }); touch(); } });
     pane.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
       const plain = !typing && !e.ctrlKey && !e.altKey && !e.metaKey;
@@ -2891,6 +2895,7 @@ const ThreeLab = (() => {
       if (msg.type === 'physics-info') { window.LabPhysics?.onBox?.(msg); return; } // (round 25) ⚛ physics layers' bodies
       if (msg.type === 'cam-info' && typeof LabCamera !== 'undefined' && LabCamera.onBox(msg)) return; // (round 40) the camera moves' answers
       if (msg.type === 'direct' && typeof LabDirect !== 'undefined' && LabDirect.onBox(msg)) return; // (round 46, labdirect) a pick / a move on the picture
+      if (/^look-/.test(msg.type)) { window.LabMatHook?.onBox?.(msg); return; } // (round 50, labmaterials) ◉ looks: thumbnails, what a pick names
       if (/^view-/.test(msg.type) && typeof ThreeGestures !== 'undefined' && ThreeGestures.onBox(msg)) return; // (round 34) Z / Shift+Z answers, the first-time hint
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
@@ -3098,6 +3103,7 @@ const ThreeLab = (() => {
       const look = [
         ...(typeof LabGrade !== 'undefined' ? [LabGrade.previewItem()] : []), // (round 24) ◐ Grade: color, LUTs, film & lens, scopes (tools/three-grade.js)
         ...(typeof LabCamera !== 'undefined' ? [LabCamera.previewItem()] : []), // (round 40) 🎥 Camera moves (tools/three-camera.js)
+        ...(window.LabMatHook ? [LabMatHook.previewItem()] : []), // (round 50) ◉ Material looks on 3D things (tools/three-materials-hook.js)
       ];
       // ⇪ Export's rows after the making ones (tools/three-export.js); its rarer formats one level down
       const ex = typeof LabExport !== 'undefined' ? (LabExport.previewItem().items?.() || []).filter((x) => typeof x === 'object' && !/All formats/.test(x.label)) : [];
@@ -4066,7 +4072,8 @@ ${code}
       id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), ...(typeof ShaderLib !== 'undefined' && ShaderLib.isShader(L.code) ? { kind: 'shader (GLSL: three_do shader)' } : {}), ...(typeof LabParticles !== 'undefined' && LabParticles.isParticles(L.code) ? { kind: 'particles (GPU: three_do particles)' } : {}), ...(typeof LabPhysics !== 'undefined' && LabPhysics.isPhysics(L.code) ? { kind: 'physics (three_do physics)' } : {}), ...(typeof LabType !== 'undefined' && LabType.isType(L.code) ? { kind: 'type (text / lyrics: three_do type)' } : {}), ...(L.precomp && typeof ThreeComp !== 'undefined' && ThreeComp.isComp(L) ? { kind: `precomp of ${ThreeComp.describe(L)} (three_do comp)` } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
       ...(L.group ? { group: L.group.name } : {}), ...(L.solo ? { solo: true } : {}), // (round 44, layergroups)
       visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal',
-      ...(L.overrides ? { placedByUser: Object.fromEntries(Object.entries(L.overrides).map(([k, o]) => [k, { position: o.p, rotationDegrees: o.rd, scale: o.s, ...(o.v === false ? { hidden: true } : {}), ...(o.fov ? { fov: o.fov } : {}) }])) } : {}),
+      ...(L.overrides?.['@look'] ? { materials: Object.fromEntries(Object.entries(L.overrides['@look']).map(([k, o]) => [k === '*' ? 'all meshes' : k, window.MatCore ? MatCore.describe(o) : o.k])) } : {}), // (round 50, labmaterials) ◉ looks
+      ...(Object.keys(L.overrides || {}).some((k) => k !== '@look') ? { placedByUser: Object.fromEntries(Object.entries(L.overrides).filter(([k]) => k !== '@look').map(([k, o]) => [k, { position: o.p, rotationDegrees: o.rd, scale: o.s, ...(o.v === false ? { hidden: true } : {}), ...(o.fov ? { fov: o.fov } : {}) }])) } : {}),
       plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
       ...(L.x || L.y || (L.scale ?? 1) !== 1 || L.rotate ? { transform: { x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0 } } : {}),
       sliders: controllers.get(L.id)?.controls().map((c) => c.label) || [],

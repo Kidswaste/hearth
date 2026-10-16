@@ -25,7 +25,7 @@ const RecipeCore = (() => {
   const FORMAT = 'hearth-recipe';
   const VERSION = 1;
   const LIMITS = { steps: 300, name: 80, code: 512 * 1024, colors: 16 };
-  const KINDS = ['fx', 'look', 'palette', 'trigger', 'frame', 'formats', 'export', 'autopolish', 'lookmatch', 'layer', 'slider', 'link', 'cam', 'groups'];
+  const KINDS = ['fx', 'look', 'palette', 'trigger', 'frame', 'formats', 'export', 'autopolish', 'lookmatch', 'layer', 'slider', 'link', 'cam', 'groups', 'mat'];
   const HEX = /^#[0-9a-f]{6}$/i;
   const clone = (x) => JSON.parse(JSON.stringify(x ?? null));
   const clip = (s, n) => String(s ?? '').slice(0, n);
@@ -157,6 +157,7 @@ const RecipeCore = (() => {
       case 'slider': return `"${s.label}" → ${fmtV(s.v)}${onText(s.on)}`;
       case 'link': return `♪ "${s.label}" ${linkText(s.link)}${onText(s.on)}`;
       case 'groups': return groupsText(s); // (round 44, layergroups)
+      case 'mat': return `◉ Look: ${s.spec ? (typeof MatCore !== 'undefined' ? MatCore.describe(s.spec) : s.spec.k) : 'original'}${s.key ? ' (one part)' : ''}${s.layer ? ` on ${s.layer}` : ''}`; // (round 50, labmaterials)
       case 'cam': return (s.moves || []).length ? `Camera moves: ${s.moves.map((m) => (typeof CamCore !== 'undefined' ? CamCore.name(m) : m.kind)).join(', ')}` : 'No camera moves';
       default: return 'Step';
     }
@@ -175,7 +176,7 @@ const RecipeCore = (() => {
       default: return 'Group step';
     }
   }
-  const ICON = { groups: '📁', fx: '✦', look: '◑', palette: '🎨', trigger: '⚡', frame: '▭', formats: '▦', export: '⇪', autopolish: '✨', lookmatch: '🎨', layer: '＋', slider: '⇆', link: '♪', cam: '🎥' };
+  const ICON = { groups: '📁', fx: '✦', look: '◑', palette: '🎨', trigger: '⚡', frame: '▭', formats: '▦', export: '⇪', autopolish: '✨', lookmatch: '🎨', layer: '＋', slider: '⇆', link: '♪', cam: '🎥', mat: '◉' };
   const icon = (s) => ICON[s?.k] || '•';
   function summary(r) {
     const steps = r?.steps || [];
@@ -296,6 +297,7 @@ const RecipeCore = (() => {
     if (o.k === 'fx' && !(o.fx?.kind && o.fx?.id != null)) return null;
     if ((o.k === 'slider' || o.k === 'link') && !o.key) return null;
     if (o.k === 'cam' && !Array.isArray(o.moves)) return null;
+    if (o.k === 'mat' && (o.spec != null && (typeof o.spec !== 'object' || typeof o.spec.k !== 'string'))) return null; // (round 50, labmaterials)
     if (o.k === 'groups' && !['group', 'ungroup', 'hide', 'show', 'rename', 'solo', 'unsolo'].includes(o.op)) return null;
     if (o.k === 'groups' && o.layers) o.layers = (Array.isArray(o.layers) ? o.layers : []).slice(0, 64).map((n) => clip(n, 120));
     if (o.k === 'palette') { o.colors = (o.colors || []).filter((c) => HEX.test(c)).slice(0, LIMITS.colors); if (!o.colors.length) return null; }
