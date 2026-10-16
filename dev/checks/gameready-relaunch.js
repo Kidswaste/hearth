@@ -1,8 +1,8 @@
 // ▶ Play, got ready (round 52, gameready): the second launch. Runs after dev/checks/gameready.js on the same Chromium
 // profile (--profile, not emptied): the same "Clink" Lab scene is made and prepared first thing, exactly as the first
 // launch did; its shaders come from Chromium's GPU shader disk cache (GPUCache), so it is ready sooner.
-//   compare  createAndReadyMs / compileMs with /tmp/hearth-gameready/launch1.json (the first launch's)
-//   cache    the profile's GPUCache folder has files (the cache persisted across the launch)
+//   compare  the page's wait on shader work (shaderWaitMs: getProgramParameter blocking until a program is compiled /
+//            linked) with /tmp/hearth-gameready/launch1.json (the first launch's); wall times reported
 // window.GR_REPORT = 1 only reports (no verdict).
 //   node dev/smoke.js --check-timeout 600000 --profile /tmp/hearth-gameready-profile --script dev/checks/gameready-relaunch.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -36,12 +36,14 @@ if (first && GAME) {
   localStorage.setItem('gameready.test', JSON.stringify({ hold: 0 }));
   const sc = ThreeLab.game.scene();
   const r = await GameReady.prepare({ kind: 'lab', id: sc.id, title: 'Clink' });
-  const second = { createAndReadyMs: Math.round(performance.now() - t0), compileMs: r.steps?.prep?.compileMs, readyMs: r.readyMs, prepGl: r.steps?.prep?.gl, effectsMs: r.ms?.effects };
+  let gl = null; for (let i = 0; i < 5 && !gl; i++) { const x = await D.evalInSketch('return __rdyGl()'); if (x?.ok) gl = x.value; else await wait(500); }
+  const second = { createAndReadyMs: Math.round(performance.now() - t0), shaderWaitMs: gl?.waitMs, links: gl?.links, compileMs: r.steps?.prep?.compileMs, readyMs: r.readyMs, prepGl: r.steps?.prep?.gl, effectsMs: r.ms?.effects };
   GameReady.stop();
   localStorage.removeItem('gameready.test');
   out.first = first; out.second = second;
-  out.faster = { createAndReady: `${first.createAndReadyMs} → ${second.createAndReadyMs} ms (${Math.round((1 - second.createAndReadyMs / first.createAndReadyMs) * 100)} % less)`, compile: `${first.compileMs} → ${second.compileMs} ms` };
-  step('second launch: the scene made and ready sooner (the shader disk cache)', second.createAndReadyMs < first.createAndReadyMs, out.faster);
+  out.faster = { shaderWait: `${first.shaderWaitMs} → ${second.shaderWaitMs} ms for ${first.links} → ${second.links} programs (${Math.round((1 - second.shaderWaitMs / first.shaderWaitMs) * 100)} % less)`, createAndReady: `${first.createAndReadyMs} → ${second.createAndReadyMs} ms (wall time: the machine's load swings it)`, effects: `${first.effectsMs} → ${second.effectsMs} ms` };
+  // the verdict: the page's wait on the GPU's shader work for the same programs (wall time is reported, not judged)
+  step('second launch: the same shaders come back sooner (Chromium\'s shader disk cache)', first.shaderWaitMs > 0 && second.shaderWaitMs < first.shaderWaitMs * 0.8, out.faster);
 }
 const bad = out.steps.filter((s) => !s.ok);
 return JSON.stringify({ pass: window.GR_REPORT ? true : bad.length === 0, failed: bad.map((s) => s.name), ...out }, null, 1);

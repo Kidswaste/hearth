@@ -50,7 +50,37 @@ Optimize for play, `/game-ready`), `tools/gameready-page.js` (runs inside an HTM
    visible Terminal / PowerShell window only after a click on Install.
 
 ## Measured
-MEASURED
+`dev/checks/gameready.js` + `gameready-relaunch.js`, SwiftShader under Xvfb (the "GPU" is the shared CPUs; counts are
+exact, times are relative). The fixture "Clink" Lab scene: a ground with a 4096×2048 picture and a 1024² detail map, a
+🧊 ship (GLB with its own texture), physical / toon / Lambert / Phong / standard materials, sun + spot (shadows) + point
++ hemisphere lights, PCF soft shadows, fog, and a pickup that only appears 2 s into play. The HTML build: index.html +
+its own three.js + GLTFLoader + meshopt decoder, the 4K picture, the ship, a pickup after 2 s.
+
+| First 5 s of play | Before (no getting ready) | After (GameReady) |
+|---|---|---|
+| Lab scene: shaders compiled / programs linked | **14 / 7** | **0 / 0** |
+| Lab scene: textures uploaded for the first time | **17** | **0** |
+| Lab scene: quality | adaptive steps (level 1–2, layers at 70–85 %) | locked: level 0, every layer at 100 % |
+| HTML build: shaders / programs / first uploads | **6 / 3 / 5** | **0 / 0 / 0** |
+| HTML build: frames drawn in those 5 s (software GL) | 2–17 | 11–29 |
+| Lab scene on the optimized ship | — | 0 / 0 / 0 |
+
+- Getting ready (Lab scene): 11–27 s on SwiftShader over four runs (most of it decoding the 4K picture and loading the
+  model; shaders ≈ 0.6–1.6 s, warm frames ≈ 2.5–5.5 s); the HTML build: 9–12 s. A real GPU is many times faster.
+- Found: "1 texture is 4K — it costs 43 MB of video memory", "3 textures in all: 49 MB of video memory", "27 shaders
+  compiled ahead". Textures at the GPU's best anisotropy (16 here; 3 of 3).
+- **Second launch** (same profile, Chromium's shader disk cache from the first): the page's wait on the GPU's shader
+  work for the scene's 28 programs **326 → 233 ms (29 % less)**; a third launch 352 → 177 ms (50 %). Wall time to
+  "ready" swings with the machine's load (15.1 vs 15.6 s in the passing run; 29.5 → 23.2 s in an earlier one), so the
+  check judges the shader wait, not the wall time. A raw probe of 40 heavy programs: 127–132 ms cold → 33 ms in the hub
+  page, 74 → 18 ms in the Lab's sandboxed page (the cache works for the Lab's preview too). The cache is written a moment
+  after programs are made: a normal quit keeps it; the test waits 8 s before the harness kills the app.
+- **Optimize for play**: the ship 112,796 → **39,892 bytes** (meshopt, exact vertices: 2,401 drawn either way); the Lab
+  read the copy (the sketch's reference is the copy's size), the model drew, play stayed at 0 / 0. npm's gltfpack can't
+  make KTX2 (no BasisU in its WebAssembly build): textures stayed as they were and the copy says so. The HTML build got
+  the same copy (same bytes → same key, nothing made twice), served for `models/ship.glb` by URL rewrite.
+- No encoder: the card showed `npm install -g gltfpack` with Install; nothing ran.
+- Every original file (pictures, GLB, the HTML build's files) hashed before and after: byte for byte the same.
 
 ## Upgrades
 ### Getting ready
@@ -102,7 +132,20 @@ MEASURED
   throwaway gltfpack fixture in /tmp).
 
 ## Risks
-RISKS
+- **▶ Play's window is GameMode's.** On this base there was no GameMode yet: a Lab scene is prepared where the Lab draws
+  it (the preview or the Stage window, through `ThreeLab.game`); a GameMode window that runs the sandbox page passes
+  its own `port` (tools/game-api.md). An HTML build opens GameReady's own window when GameMode has none.
+- While getting ready, a Lab scene keeps drawing behind the card (its game logic runs); an HTML game's frames are held
+  until the warm frames (a few frames of its logic run under the card).
+- Objects a game *creates* later in play (not just hidden) can't be compiled ahead; hidden ones are.
+- KHR_parallel_shader_compile isn't on SwiftShader: compileAsync falls back to compile there (real GPUs have it).
+- Texture compression needs a native gltfpack (meshoptimizer's releases); npm's build only compresses meshes. Pictures
+  used directly by a scene are never recompressed (full quality, and their loader couldn't read KTX2).
+- HTML games: only GLB / glTF swap, and only when the warm run saw a meshopt decoder; scan and copies are kept per
+  game folder in data/game-cache/index.json.
+- `gpu-program-cache-size-kb` 32768 lets the GPU process keep up to 32 MB of compiled programs in memory as well.
+- On SwiftShader the second-launch gain is modest (29–50 % of the shader wait, a few hundred ms); on a real GPU with a
+  big game (D3D / Metal compiles of hundreds of programs) it's where most of a cold start goes.
 
 ## For the patch notes
 - **▶ Play now gets your game ready first.** A calm card ("Getting Clink ready… textures 40/120 · 80 %") loads every

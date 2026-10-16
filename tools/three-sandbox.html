@@ -456,12 +456,15 @@ const realNow = performance.now.bind(performance); // (a sequence gives each sce
 // timeline; then, while presenting, 100 % quality is held (RDY.lock: no adaptive steps, no doze, no Light mode, no fps
 // cap). RDY.gl counts what the GPU compiles / uploads (from the prototypes, under the program cache: a cached program
 // counts nothing), so a check can count them in the first seconds of a show.
-const RDY = { lock: false, rec: null, pend: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0 } };
+const RDY = { lock: false, rec: null, pend: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0, waitMs: 0 } };
 for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRenderingContext?.prototype]) {
   if (!P) continue;
   const wrap = (m, fn) => { const f = P[m]; if (typeof f === 'function') P[m] = fn(f); };
   wrap('compileShader', (f) => function (sh) { RDY.gl.compiles += 1; return f.call(this, sh); });
   wrap('linkProgram', (f) => function (pr) { RDY.gl.links += 1; return f.call(this, pr); });
+  // (round 52, gameready) time the page waits for the GPU's shader work (a status read blocks until it's compiled /
+  // linked; programs from Chromium's shader disk cache come back sooner): ms, cumulative
+  wrap('getProgramParameter', (f) => function (pr, k) { const t = realNow(); try { return f.call(this, pr, k); } finally { RDY.gl.waitMs += realNow() - t; } });
   wrap('activeTexture', (f) => function (u) { this.__rdyU = u; return f.call(this, u); });
   wrap('bindTexture', (f) => function (tg, tx) { (this.__rdyT ||= {})[this.__rdyU || 0] = tx; return f.call(this, tg, tx); });
   // a texture's first upload (a picture / model texture arriving) vs the same texture again (a video's next frame)
@@ -1493,7 +1496,7 @@ async function rdyMessage(msg) {
     post({ type: 'ready-scanned', id: msg.id, assets, ...rdyScan() });
   } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, ...RDY.gl, renderers: rdyLive().length, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
 }
-globalThis.__rdyLive = () => rdyLive(); // (round 52, gameready: checks count the drawing renderers from a page eval)
+globalThis.__rdyLive = () => rdyLive(); globalThis.__rdyGl = () => ({ ...RDY.gl, waitMs: Math.round(RDY.gl.waitMs) }); // (round 52, gameready: checks read these from a page eval)
 const rdyDelta = (a) => Object.fromEntries(Object.entries(RDY.gl).map(([k, v]) => [k, v - (a[k] || 0)]));
 // ---------- the graphics card coming back (round 43, glrecover) ----------
 // The GPU can take every WebGL context of the page away: a driver reset or update (Windows' TDR), sleep / wake, a

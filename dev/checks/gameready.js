@@ -162,7 +162,9 @@ await safe('setup', async () => {
   const sc = ThreeLab.game.scene();
   const r = await GameReady.prepare({ kind: 'lab', id: sc.id, title: 'Clink' });
   const createAndReadyMs = Math.round(performance.now() - t0);
-  out.measure.launch = { createAndReadyMs, compileMs: r.steps?.prep?.compileMs, readyMs: r.readyMs, prepGl: r.steps?.prep?.gl, effectsMs: r.ms?.effects };
+  // the page's whole wait on shader work since it opened (the scene's first frames + getting ready): what the disk cache saves
+  const gl = await sbx('return __rdyGl()');
+  out.measure.launch = { createAndReadyMs, shaderWaitMs: gl?.waitMs, links: gl?.links, compileMs: r.steps?.prep?.compileMs, readyMs: r.readyMs, prepGl: r.steps?.prep?.gl, effectsMs: r.ms?.effects };
   await window.hub.fs.write(`${DIR}/launch1.json`, JSON.stringify(out.measure.launch));
   await window.hub.fs.write(`${DIR}/game-scene.js`, GAME);
   GameReady.stop();
@@ -279,5 +281,8 @@ await safe('files', async () => {
   step('files: every original byte for byte the same after preparing, optimizing and playing', same, after.map((h, i) => (h.hash === out.hashBefore[i].hash ? 'same' : `CHANGED ${h.path}`)));
 });
 setTest(null);
+// (Chromium writes its shader disk cache a moment after the programs are made; the harness then stops the app
+// abruptly, not like a real quit: a few quiet seconds so the next launch finds what this one compiled)
+await wait(8000);
 const bad = out.steps.filter((s) => !s.ok);
 return JSON.stringify({ pass: bad.length === 0, failed: bad.map((s) => s.name), steps: out.steps, measure: out.measure, optimize: out.optimize, haveTool }, null, 1);
