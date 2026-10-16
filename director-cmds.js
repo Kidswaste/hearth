@@ -256,9 +256,9 @@
     },
   });
   cmd({
-    name: 'director-autoshot', args: '[on | off]', desc: 'Every code edit also returns a small preview picture (≈ 150 tokens each; off: the director asks with shot: true)',
+    name: 'director-autoshot', args: '[on | off]', desc: 'A change that shows (an edit, a new layer, a slider move, the frame size) comes back with a small picture (≈ 110 tokens; none when nothing visibly changed or it errored), so the director needs no extra screenshot step. On by default (round 49); off: only when it asks with shot: true',
     complete: pick(['on', 'off']),
-    run: (args) => { const on = onOff(args); if (on === undefined) return `Auto preview after edits: **${store.get('director.autoShot', false) ? 'on' : 'off'}**.`; store.set('director.autoShot', on); return `Auto preview after edits **${on ? 'on' : 'off'}**.`; },
+    run: (args) => { const on = onOff(args); if (on === undefined) return `Auto preview after edits: **${store.get('director.autoShot', true) !== false ? 'on' : 'off'}**.`; store.set('director.autoShot', on); return `Auto preview after edits **${on ? 'on' : 'off'}**.`; },
   });
   cmd({
     name: 'director-shot-size', args: '[small | medium | large]', desc: 'Default size of the director\'s screenshots (small 512 ≈ 200 tok, the default; medium 768 ≈ 440; large 1280 ≈ 1.2k)',

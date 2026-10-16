@@ -4,7 +4,7 @@
 // really uses (eval, edit, screenshot, read, search, sliders…) are their own tools with short descriptions, and the
 // rest share one multi-command tool, three_do. HUB_TOOL_MODE=full (agent.toolMode 'full') lists every tool on its
 // own and sends the whole guide, like before. Old tool names keep working either way (the hub routes them).
-const { serve } = require('./common');
+const { serve, callHub } = require('./common');
 // the guide (and the app map it requires) loads only when a help topic is asked or the hub reads .guide (round 21)
 let G0 = null;
 const G = () => (G0 ||= require('./three-guide'));
@@ -124,7 +124,7 @@ const S = { type: 'string' }; const B = { type: 'boolean' }; const N = { type: '
 const LEAN = {
   three_add_layer: ['NEW layer per new element or effect (top; position: bottom|n), selected + run. code: complete module (alpha: true, no background) or template (help filters). settings as update_layer. Returns sliders.', { name: S, code: S, template: S, position: {}, settings: {} }],
   three_eval: ['Run JS in the live preview (expression, or statements with return; await ok). __scenes[layer] = {scene, camera, renderer}. max chars (3000); samples n every ms.', { code: S }],
-  three_edit_code: ['Change code, re-run that layer: edits [{find, replace, all?} | {lines: [from, to], replace}] (an edit may name its layer). Answers once on screen: errors, console, fps. shot: small picture; safe: undo if it breaks; diff.', { layer: {}, edits: A, shot: B }],
+  three_edit_code: ['Change code, re-run that layer: edits [{find, replace, all?} | {lines: [from, to], replace}] (an edit may name its layer). Answers once on screen: errors, console, fps, picture (shot: false = none); safe: undo if broken; diff.', { layer: {}, edits: A, shot: B }],
   three_screenshot: ['Preview picture. size small|medium|large; region [x, y, w, h] 0..1; at: s|drop|kick|cue (seeks); compare: beside the last; frames 2–8 every gap s; force: even unchanged.', { size: S, region: A, at: {} }],
   three_read_code: ['A layer\'s numbered code (1–250); from / to, or around: line; force: even if you have it.', { layer: {}, from: N, to: N, force: B }],
   three_search_code: ['Find text (regex) in all layers or one: line numbers, context (1), max (40).', { pattern: S, layer: {} }],
@@ -159,8 +159,27 @@ function help(topic) {
   if (!line) return guide;
   return /^Topics:/.test(guide) ? line : `${line}\n\n${guide}`;
 }
-// three_do help is answered here, without a trip to the hub.
-const local = { three_do: (args) => (args.cmd === 'help' ? { ok: true, value: help(args.topic) } : null), three_help: (args) => ({ ok: true, value: help(args.topic || 'app') }) };
+// (round 49, directorfrugal) A topic this chat's engine session already got is one line, not the topic again (topics are
+// 100–900 tokens and stay in the session's history): the hub keeps the chat's memory (ThreeDirector.seen: per chat
+// session, forgotten on a new chat / compact / handover / error, like the code it read), asked with a hash of the text.
+// No hub (or an older one): this run's own memory. Short answers, the topic list and force: true always come whole.
+const SAID = new Map(); // hash → true: sent in this engine run
+const hashOf = (t) => { let h = 2166136261; for (let i = 0; i < t.length; i += 1) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return `${(h >>> 0).toString(36)}.${t.length}`; };
+async function helpOnce(args = {}, ask = callHub) {
+  const topic = String(args.topic || 'app');
+  const text = help(topic);
+  if (args.force || text.length < 400 || /^Topics:/.test(text)) return text;
+  const sig = hashOf(text);
+  let ago = null;
+  try {
+    const r = await ask('three_seen', { key: `help:${sig}`, sig, ...(args.hubChatId ? { hubChatId: args.hubChatId } : {}) });
+    ago = r?.ok ? r.value?.ago || null : SAID.has(sig) ? 'earlier in this reply' : null;
+  } catch { ago = SAID.has(sig) ? 'earlier in this reply' : null; }
+  SAID.set(sig, true);
+  return ago ? `help ${topic}: same as before (you got it ${ago}; force: true sends it again).` : text;
+}
+// three_do help is answered here, without a trip to the hub (only the one-line "already have it?" question).
+const local = { three_do: async (args) => (args.cmd === 'help' ? { ok: true, value: await helpOnce(args) } : null), three_help: async (args) => ({ ok: true, value: await helpOnce(args) }) };
 
 // three_nodes (≈ 75 tokens per message) is on for Three directors unless agent.nodesTool === false (engines.js sets HUB_NODES_TOOL).
-module.exports = serve({ name: 'three-lab', instructions: '', get guide() { return CREW ? '' : FULL ? G().FULL : G().CORE; }, tools, local, all: [...CORE_TOOLS, ...MORE_TOOLS, DO_TOOL, NODES_TOOL], doCommands: DO_CMDS }, module);
+module.exports = serve({ name: 'three-lab', instructions: '', get guide() { return CREW ? '' : FULL ? G().FULL : G().CORE; }, tools, local, helpOnce, all: [...CORE_TOOLS, ...MORE_TOOLS, DO_TOOL, NODES_TOOL], doCommands: DO_CMDS }, module);

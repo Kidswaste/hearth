@@ -78,6 +78,9 @@ const HubBridge = (() => {
   window.hub.onGameCall(async ({ id, tool: asked, args: given }) => {
     // the chat whose run made the call (mcp/common.js adds it); handlers get it as ctx.chatId, not in their args
     const { hubChatId = null, ...plain } = given || {};
+    // (round 49, directorfrugal) the three-lab server asking whether this chat already has a help topic: not a tool
+    // call of the model's (no log, no usage), answered from the director's session memory
+    if (asked === 'three_seen') { window.hub.gameResult(id, typeof ThreeDirector !== 'undefined' && ThreeDirector.seen ? ThreeDirector.seen(plain, { chatId: hubChatId }) : { ok: false, error: 'not loaded' }); return; }
     const r0 = resolve(asked, plain);
     const { tool, args } = r0;
     Usage.agentTool(tool);
@@ -113,6 +116,9 @@ const HubBridge = (() => {
     if (!ops.length) return { ok: false, error: 'batch needs ops: [{ cmd, ...args }, …]' };
     if (ops.length > BATCH_MAX) return { ok: false, error: `At most ${BATCH_MAX} ops in a batch.` };
     const lines = []; const images = [];
+    // (round 49, directorfrugal) a batch that looks for itself (screenshot / play-test / contact sheet) gets no automatic
+    // pictures from its edits (tools/three-director.js autoShot)
+    const shot = ops.some((o) => /^(three_)?(screenshot|input|contact_sheet)$/.test(String(o?.cmd || o?.tool || '')));
     for (const [i, op] of ops.entries()) {
       const { cmd, tool: t0, ...a } = op || {};
       const name = `three_${String(cmd || t0 || '').replace(/^three_/, '')}`;
@@ -120,7 +126,7 @@ const HubBridge = (() => {
       if (name === 'three_' || NOT_IN_BATCH.test(name)) { lines.push(`${label}: Error: ${name === 'three_' ? 'give cmd' : 'not in a batch (call it on its own)'}`); break; }
       const h = handlerFor(name);
       let r;
-      try { r = h ? await capped(name, h.fn(name, a, ctx)) : { ok: false, error: `Nothing handles ${name}.` }; } catch (err) { r = { ok: false, error: err.message }; }
+      try { r = h ? await capped(name, h.fn(name, a, { ...ctx, batch: { shot } })) : { ok: false, error: `Nothing handles ${name}.` }; } catch (err) { r = { ok: false, error: err.message }; }
       r ||= { ok: false, error: 'no answer' };
       Usage.agentTool(name);
       for (const fn of results) { try { fn({ tool: name, via: 'three_batch', args: a, result: r, chatId: ctx.chatId || null, agentId: null }); } catch (err) { console.warn(err); } }
