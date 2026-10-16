@@ -12647,6 +12647,9 @@ window.__pcInfo = () => [...PC.list].map((P) => ({ id: P.id, name: P.props.name,
 addEventListener('message', async (e) => {
   const msg = e.data || {};
   if (msg.target !== 'three-sandbox') return;
+  // (round 51) the window's end of this port hears 'close' the moment this page's process dies (tools/three.js
+  // lifeLine): kept for the page's life, nothing is ever sent on it
+  if (msg.type === 'life' && e.ports?.[0]) { window.__lifePort = e.ports[0]; e.ports[0].start(); return; }
   if (typeof msg.type === 'string' && msg.type.startsWith('seq-')) { sqMessage(msg); return; }
   if (msg.type === 'stage-mask') { stageMask(msg); return; }
   if (typeof msg.type === 'string' && msg.type.startsWith('xp-')) { xpMessage(msg); return; } // (round 22 "labexport")

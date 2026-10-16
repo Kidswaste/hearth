@@ -43,8 +43,8 @@ Measured: a writer process saving a 300 KB store was killed at random moments 40
 5. Cut off before any words: an empty cut reply, so Continue asks again.
 6. A reply already saved never comes back twice. The journal copy goes once the reply is in its chat.
 ### The Lab
-7. **The preview page's own crash is noticed** (each preview page's process is looked at every 2 s while one
-   exists: one system call). A new page comes up with the same scene, sliders and song, with no banner.
+7. **The preview page's own crash is noticed** (round 51: the moment it happens, by an event — a MessagePort to the
+   page closes — then its process is looked at once; it was a 2 s timer). A new page comes up with the same scene, sliders and song, with no banner.
 8. A render whose page crashes is picked up by the export itself (glrecover's "owner" path); the GPU banner isn't
    shown for a crash.
 ### Renders, exports, backups
@@ -79,8 +79,9 @@ Measured: a writer process saving a 300 KB store was killed at random moments 40
     partial zip use it;
   - the start-up sweep of temp files (data folder depth 3 + the app folder; skips workspace / media / captures…);
   - the window's page gone (crash / reload): `gen` + 1, streamed exports cancelled;
-  - the preview pages' processes (`did-frame-finish-load` → `webFrameMain.osProcessId`, `process.kill(pid, 0)` every
-    2 s while there is one) → `crashsafe:frames` with the pages still up;
+  - the preview pages' processes (`did-frame-finish-load` → `webFrameMain.osProcessId`, `process.kill(pid, 0)` once
+    when the window asks: `crashsafe:check`, sent by tools/three.js `lifeLine` when the page's MessagePort closes; no
+    timer since round 51) → `crashsafe:frames` with the pages still up;
   - `query-session-end` / `session-end` / `powerMonitor` `shutdown` → `crashsafe:flush` + journal written
     (`safetynetmain.flushSync`).
 - `crashsafe.js` (window, in safetynet's lazy group): safetynet's `recover()` takes its entries
@@ -126,8 +127,8 @@ Measured: a writer process saving a 300 KB store was killed at random moments 40
 - The window's page crashing mid-reply: until the engine ends, the chat doesn't show the reply streaming (it appears
   whole). Sending another message in that chat meanwhile starts a new reply. The finished one then still lands, after
   it.
-- The preview page check is one tiny timer while a preview page exists (every 2 s, one system call). Nothing runs
-  without a preview.
+- The preview page check runs only when a preview page's port closes (round 51; it was a 2 s timer in the main
+  process for as long as a preview page existed, which the `idlecpu` check failed: 42 timers / min vs 20).
 - The Stage window (a separate window) crashing isn't covered here: it's its own window.
 - The start-up sweep reads only temp files (≤ 32 MB) at depth ≤ 3 of the data folder. It never deletes: junk goes to
   the Trash (Recycle Bin).

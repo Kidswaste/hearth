@@ -104,6 +104,32 @@ const ThreeLab = (() => {
       gl.lost = true; gl.crashed = (gl.crashed || 0) + 1; gl.crashNow = true; clearTimeout(gl.timer); glStuck();
     };
     (window.__labFrames ||= new Set()).add(crashCheck);
+    // (round 51) how a crash is noticed without polling: each ready page holds the other end of a MessagePort; its
+    // 'close' comes the moment that page's document goes (its process killed or crashed, or a normal reload / removal).
+    // Then, once, the main process looks whether that page's process is really gone (crashsafe:check) and crashCheck
+    // decides as before; a reload, a moved frame or a removed one are told apart by its load id and isConnected.
+    // (crashsafemain used to look at every preview page's process every 2 s for as long as one existed: 30 wakeups
+    // a minute in the main process at idle, the warm page included.) A zombie process can still look alive for a
+    // moment after the kill: looked at again twice.
+    let life = null;
+    const lifeLine = () => {
+      try { life?.close(); } catch { /* gone */ }
+      life = null;
+      if (target !== 'frame' || !frame.contentWindow || typeof MessageChannel !== 'function' || !window.hub?.crashsafe?.check) return;
+      const ch = new MessageChannel(); const n = nonce; life = ch.port1;
+      ch.port1.addEventListener('close', () => {
+        if (life !== ch.port1) return;
+        life = null;
+        if (n !== nonce || !frame.isConnected) return; // (a new load or the frame removed: not a crash)
+        const ask = (left) => window.hub.crashsafe.check().then((r) => {
+          if (r) crashCheck(r);
+          if (left && n === nonce && ready && !gl.lost) setTimeout(() => ask(left - 1), 700);
+        }, () => {});
+        ask(2);
+      });
+      ch.port1.start();
+      try { frame.contentWindow.postMessage({ target: 'three-sandbox', type: 'life' }, '*', [ch.port2]); } catch { life = null; }
+    };
     // (round 50) the GPU came back and the page is building its layers again ('gpu-restoring'): no longer waiting for
     // the GPU but for the rebuild, which on a busy computer can take longer than the GPU wait (a new page was made for
     // a GPU that was back). A rebuild that never ends still gets a new page.
@@ -127,6 +153,7 @@ const ThreeLab = (() => {
         // (round 43, glrecover) the page made again after the GPU didn't come back: the same as above, and quiet
         if (gl.again) { gl.again = false; data.again = true; data.gl = true; if (gl.lost) { gl.lost = false; clearTimeout(gl.timer); gl.timer = 0; } }
         ready = data; retries = 0;
+        lifeLine(); // (round 51) this page's crash heard as an event, not polled
         // a sketch page uncovers once its layers have drawn (stack-drawn); the others right away
         if (mode !== 'sketch') setTimeout(uncover, 160);
         else { clearTimeout(coverT); coverT = setTimeout(uncover, 2600); }

@@ -155,14 +155,16 @@ function pageGone(why) {
 
 // ---------- the Lab's preview pages: their own processes ----------
 // A sandboxed preview page runs in a process of its own; when that process dies (a crash, the system killing it) the
-// window isn't told (no event for a frame's process). Each preview page's process is noted when it loads, and looked at
-// every 2 s while there is one (one cheap system call each; nothing runs without a preview page). Gone → the window
-// gets the pages still up and makes the missing one again (tools/three.js crashCheck).
+// window isn't told (no event for a frame's process). Each preview page's process is noted when it loads. The window
+// hears the page go (a MessagePort's 'close', tools/three.js lifeLine) and asks here once (crashsafe:check): each
+// noted process is looked at (one cheap system call each). Gone → the window gets the pages still up and makes the
+// missing one again (tools/three.js crashCheck). (round 51, idlecpu fix) It used to be looked at every 2 s for as long
+// as a preview page existed, the warm one included: 30 main-process wakeups a minute with Hearth sitting idle.
 const watched = new Map(); // os pid → webContents
 const pidUrls = new Map(); // os pid → the preview pages it loaded (their URLs: each load has its own n=)
-let wTimer = null;
 function pageUrls(wc) { const out = []; for (const f of wc.mainFrame.framesInSubtree || []) { try { if (f !== wc.mainFrame) out.push(f.url); } catch { /* disposed */ } } return out; }
-function checkPids() {
+function checkPids(asker = null) {
+  const mine = { alive: asker && !asker.isDestroyed() ? pageUrls(asker) : [], gone: [] };
   for (const [pid, wc] of watched) {
     let alive = true;
     try { process.kill(pid, 0); } catch (err) { alive = err.code === 'EPERM'; }
@@ -171,9 +173,11 @@ function checkPids() {
     const gone = [...(pidUrls.get(pid) || [])]; pidUrls.delete(pid);
     // only pages that lived in that process and aren't up any more count as crashed (a page made again on purpose
     // has a new n=, and the old one's process ending is normal)
-    if (!wc.isDestroyed()) { try { wc.send('crashsafe:frames', { alive: pageUrls(wc), gone }); } catch { /* gone */ } }
+    const r = { alive: wc.isDestroyed() ? [] : pageUrls(wc), gone };
+    if (!wc.isDestroyed()) { try { wc.send('crashsafe:frames', r); } catch { /* gone */ } }
+    if (asker && wc === asker) { mine.alive = r.alive; mine.gone.push(...gone); }
   }
-  if (!watched.size) { clearInterval(wTimer); wTimer = null; }
+  return mine;
 }
 const seenWc = new WeakSet();
 function watchFrames(wc) {
@@ -186,7 +190,7 @@ function watchFrames(wc) {
     if (!pid) return;
     watched.set(pid, wc);
     try { const f = require('electron').webFrameMain.fromId(fpid, frid); const set = pidUrls.get(pid) || new Set(); set.add(f.url); if (set.size > 50) set.delete(set.values().next().value); pidUrls.set(pid, set); } catch { /* disposed */ }
-    if (!wTimer) { wTimer = setInterval(checkPids, 2000); wTimer.unref?.(); }
+    if (watched.size > 16) checkPids(); // (processes that ended normally, never asked about: let go)
   });
 }
 
@@ -216,6 +220,7 @@ function register(ipcMain, { dataDir: dd, getWin: gw } = {}) {
   sweep({ roots: [dd, path.join(__dirname)], before: Date.now() - 1000 }).catch(() => {});
   ipcMain.handle('crashsafe:take', async () => { await prevRun.cleaning; return { replies: prevRun.replies, leftovers: prevRun.leftovers, orphans: [...replies.values()].filter((e) => e.gen !== gen), gen }; });
   ipcMain.handle('crashsafe:done', () => done());
+  ipcMain.handle('crashsafe:check', (e) => checkPids(e.sender)); // (round 51) a preview page's port closed: is its process gone?
   ipcMain.handle('crashsafe:ack', (_e, chatId) => ack(String(chatId || '')));
   ipcMain.handle('crashsafe:test', async (_e, op, arg) => { // (tests only: dev/checks/crashsafe.js)
     if (!TEST) return null;
