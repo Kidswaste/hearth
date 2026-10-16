@@ -91,6 +91,20 @@ function stats(events, opts = {}) {
   const phases = X.filter((e) => PHASES.has(e.name));
   const phaseIn = (a, b) => { const by = {}; let open = null; for (const e of phases) { if (e.ts < a || e.ts >= b) continue; if (open && e.ts < open.ts + open.dur && (SCRIPT.has(open.name))) continue; open = e; by[e.name] = (by[e.name] || 0) + e.dur / 1000; } return Object.entries(by).sort((x, y) => y[1] - x[1]).slice(0, 6).map(([k, v]) => `${k} ${r1(v)}`).join(', '); };
   const fcalls = X.filter((e) => e.name === 'FunctionCall' && e.args?.data?.url);
+  // (round 49, scroll240) the other side of a frame: what the window's renderer painted and rasterized, what the GPU
+  // process spent drawing frames (with software GL here, a backdrop blur or a big filter shows up there, not on the
+  // main thread), the scroll / wheel listeners and IntersectionObserver passes
+  const pidMain = Number(main.split(':')[0]);
+  const gpuTid = Object.entries(names).find(([, n]) => n === 'CrGpuMain')?.[0];
+  const gpuTasks = gpuTid ? events.filter((e) => e.ph === 'X' && e.name === 'RunTask' && `${e.pid}:${e.tid}` === gpuTid) : [];
+  const draws = events.filter((e) => e.ph === 'X' && e.name === 'Display::DrawAndSwap');
+  const rasters = events.filter((e) => e.ph === 'X' && e.pid === pidMain && e.name === 'RasterTask');
+  const scrollJs = X.filter((e) => e.name === 'EventDispatch' && /^(scroll|wheel|mousewheel)$/.test(e.args?.data?.type || ''));
+  const ioPasses = X.filter((e) => e.name === 'IntersectionObserverController::computeIntersections');
+  const paintsMain = X.filter((e) => e.name === 'Paint');
+  const msIn = (a, from, to) => r1(a.filter((e) => e.ts >= from && e.ts < to).reduce((s, e) => s + (e.dur || 0), 0) / 1000);
+  const nIn = (a, from, to) => a.filter((e) => e.ts >= from && e.ts < to).length;
+  const cpuOf = (a, from, to) => r1(a.filter((e) => e.ts >= from && e.ts < to).reduce((s, e) => s + (e.tdur ?? e.dur ?? 0), 0) / 1000); // thread time: holds on a loaded machine
   out.segments = {};
   for (const s of segs) {
     const ins = [...inputs.values()].filter((i) => i.ts >= s.from && i.ts < s.to && i.commit);
@@ -132,6 +146,7 @@ function stats(events, opts = {}) {
       // (round 45) script CPU ms per file (thread time: holds on a loaded machine)
       filesCpu: (() => { const by = {}; for (const e of fcalls) { if (e.ts < s.from || e.ts >= s.to) continue; const k = e.args.data.url.split('/').pop().split('?')[0] || '?'; by[k] = (by[k] || 0) + (e.tdur ?? e.dur) / 1000; } return Object.fromEntries(Object.entries(by).map(([k, v]) => [k, r1(v)])); })(),
       forcedFiles: (() => { const by = {}; for (const e of fo) { const m = /([\w.-]+\.js):\d+/.exec(e.__by || ''); const k = m ? m[1] : '?'; by[k] = (by[k] || 0) + 1; } return by; })(),
+      render: { paints: nIn(paintsMain, s.from, s.to), paintMs: msIn(paintsMain, s.from, s.to), rasterMs: msIn(rasters, s.from, s.to), gpuFrames: nIn(draws, s.from, s.to), gpuMs: msIn(gpuTasks, s.from, s.to), gpuCpuMs: cpuOf(gpuTasks, s.from, s.to), scrollJs: { n: nIn(scrollJs, s.from, s.to), ms: msIn(scrollJs, s.from, s.to), cpuMs: cpuOf(scrollJs, s.from, s.to) }, io: { n: nIn(ioPasses, s.from, s.to), ms: msIn(ioPasses, s.from, s.to) } }, // (round 49, scroll240)
       fired: (() => { const n = { timer: 0, idle: 0, raf: 0 }; for (const e of X) { if (e.ts < s.from || e.ts >= s.to) continue; if (e.name === 'TimerFire') n.timer++; else if (e.name === 'FireIdleCallback') n.idle++; else if (e.name === 'FireAnimationFrame') n.raf++; } return n; })(),
     };
   }

@@ -676,6 +676,20 @@ html[data-skin~="swirl"] :is(#rail, .agent-btn.active, .item.active, .primary, #
 /* the chat list is sized by its flex parent, never by its messages: contained, a streaming reply lays out only the
    list, not the window around it (the docked director chat sits beside the playing Lab) */
 .messages-wrap > .messages { contain: strict; }
+/* (round 49, scroll240) Dialogs scroll at 240 Hz: their glass was two blurs (16 px through the dialog, 3 px over the
+   whole window behind it) worked out again on every frame the dialog's content scrolled (Settings, Usage, patch notes:
+   on this machine's software GPU ≈ 5–10× the cost of a scrolled frame of the chat). The dialog was 86–92 % opaque
+   over a page already darkened to ~70 %, so the blur barely showed: now a little more opaque, and the darkened page
+   behind a shade darker instead of blurred (as the capture viewer since round 8). */
+dialog, dialog::backdrop { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html[data-skin~="forge"] dialog::backdrop { background: #000b; }
+:root[data-look~=v2] dialog::backdrop { background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--fh-heat) calc(8% * var(--glow)), #0008), #000c); }
+:root[data-look~=v2] dialog {
+  background:
+    var(--hairline) top / 100% 1px no-repeat,
+    var(--tx-noise),
+    linear-gradient(180deg, color-mix(in srgb, var(--fh-iron-1) 93%, transparent), color-mix(in srgb, var(--fh-iron-3) 97%, transparent));
+}
 
 /* ---------- declutter (round 7): menus that branch, Alt / Ctrl reveal, the keys sheet ----------
    One menu look everywhere (#menu, its hover flyout #menu-fly and the Lab's two-column .lab-pop): a quiet hint after

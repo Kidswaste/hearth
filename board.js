@@ -415,17 +415,22 @@ const Board = (() => {
     moved();
   }
   let settleT = 0; let cullAt = 0;
+  // (round 49, scroll240) the board's box, read once per move: read in the move's frames it forced a style pass of the
+  // board right after the transform was written (and after .bd-moving restyled every item), a few times a second
+  let vpR = null;
+  const vpRect = () => (S.moving && vpR) || (vpR = S.ui.vp.getBoundingClientRect());
   // (round 16) the world stays its own compositor layer between pans (.bd-layer): a pan right after a pan repaints
   // nothing. Only a zoom drops the layer at the settle, so the pictures re-raster sharp at the new scale.
   let layerZ = 0;
   function moved() {
     if (!S.moving) {
+      vpR = null; vpRect(); // (the box as this move starts, before the classes below restyle the board)
       S.moving = true; S.ui.root.classList.add('bd-moving');
       if (!layerZ) { layerZ = S.view.z; S.ui.root.classList.add('bd-layer'); }
       emit('moving');
     }
     const t = performance.now();
-    if (t - cullAt > 250) { cullAt = t; cull(false); }
+    if (t - cullAt > 250) { cullAt = t; cull(false, vpRect()); }
     clearTimeout(settleT);
     const seq = ++moveSeq;
     // settled = 140 ms and two painted frames with no move: on a slow frame (a big board, a busy GPU) the next wheel
@@ -437,12 +442,13 @@ const Board = (() => {
   let invNow = '1';
   const setInv = (n) => { if (n.__inv !== invNow) { n.__inv = invNow; n.style.setProperty('--inv', invNow); } };
   function settle() {
+    const r = vpRect(); vpR = null; // (read before the classes below change: no forced style pass)
     S.moving = false;
     S.ui.root.classList.remove('bd-moving');
     if (layerZ && Math.abs(S.view.z / layerZ - 1) > 1e-4) { layerZ = 0; S.ui.root.classList.remove('bd-layer'); }
     const inv = String(1 / S.view.z);
     if (inv !== invNow) { invNow = inv; for (const it of S.cur?.items || []) if (it.type === 'frame') { const n = S.nodes.get(it.id); if (n) setInv(n); } }
-    cull(true);
+    cull(true, r);
     updateOverlay();
     if (S.cur) { S.cur.view = { ...S.view }; saveViewSoon(); }
     emit('settle');
@@ -451,7 +457,7 @@ const Board = (() => {
   // Smooth zoom: the view eases toward a target (wheel steps, buttons); pinches and trackpads apply directly.
   let anim = null;
   function zoomAt(cx, cy, factor, smooth = false) {
-    const r = S.ui.vp.getBoundingClientRect();
+    const r = vpRect();
     const px = cx - r.left; const py = cy - r.top;
     const base = anim ? anim.target : S.view;
     const z = Math.max(ZMIN, Math.min(ZMAX, base.z * factor));
@@ -496,9 +502,9 @@ const Board = (() => {
 
   // ---------- culling + picture size on screen ----------
   const lastOff = new Map();
-  function cull(lod) {
+  function cull(lod, rect) {
     if (!S.mounted || !S.cur) return;
-    const r = S.ui.vp.getBoundingClientRect();
+    const r = rect || S.ui.vp.getBoundingClientRect();
     const m = lod ? 0.5 : 1; // a screen of margin while moving (fewer reveals, no holes), half a screen at rest
     const x0 = (-S.view.x - r.width * m) / S.view.z; const y0 = (-S.view.y - r.height * m) / S.view.z;
     const x1 = (r.width * (1 + m) - S.view.x) / S.view.z; const y1 = (r.height * (1 + m) - S.view.y) / S.view.z;
@@ -837,7 +843,7 @@ const Board = (() => {
   function movePinch() {
     const [a, b] = [...pointers.values()]; if (!a || !b) return;
     const d = Math.hypot(a.x - b.x, a.y - b.y); const cx = (a.x + b.x) / 2; const cy = (a.y + b.y) / 2;
-    const r = S.ui.vp.getBoundingClientRect(); const v = pinch.view;
+    const r = vpRect(); const v = pinch.view;
     const z = Math.max(ZMIN, Math.min(ZMAX, v.z * (d / pinch.d)));
     const wx = (pinch.cx - r.left - v.x) / v.z; const wy = (pinch.cy - r.top - v.y) / v.z;
     S.view = { z, x: cx - r.left - wx * z, y: cy - r.top - wy * z }; applyView();
@@ -1205,6 +1211,6 @@ const Board = (() => {
     onChange: (fn) => { S.listeners.add(fn); return () => S.listeners.delete(fn); },
     vibeOf: (it) => V.text(it), fileUrl, isMounted: () => S.mounted, visible,
     // shared with board-*.js
-    _: { cancelAnim: () => B_cancelAnim?.(), TYPE_BUILD, SYNC, S, D, V, LY, flush, avoidOverlap, item, syncItem, renderAll, updateOverlay, toWorld, toScreen, center, emit, pushUndo, afterEdit, queueWork, startPreview, stopPreview, liveVideo, stopAllPreviews, playing, fileUrl, imgToJpeg, blobB64, applyView, writeView, animateTo, settle, renderHud, uid, newItem, key, KEYS, fmtTime, cropCss, lastOff, isMedia, fitFrame, kindOf, saveIndex, hashy, readableTitle },
+    _: { cancelAnim: () => B_cancelAnim?.(), TYPE_BUILD, SYNC, S, D, V, LY, flush, avoidOverlap, item, syncItem, renderAll, updateOverlay, toWorld, toScreen, center, emit, pushUndo, afterEdit, queueWork, startPreview, stopPreview, liveVideo, stopAllPreviews, playing, fileUrl, imgToJpeg, blobB64, applyView, writeView, animateTo, settle, vpRect, renderHud, uid, newItem, key, KEYS, fmtTime, cropCss, lastOff, isMedia, fitFrame, kindOf, saveIndex, hashy, readableTitle },
   };
 })();

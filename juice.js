@@ -210,8 +210,16 @@ const Juice = (() => {
     }
     return null;
   };
+  // (round 49, scroll240) rows passing under a resting pointer while you scroll aren't pointed at: the browser's hover
+  // updates after each scrolled frame used to arm a tip (and measure it) for every row crossed
+  let scrolledAt = -1e9;
+  const scrolling = () => performance.now() - scrolledAt < 300;
+  for (const ev of ['wheel', 'touchmove']) addEventListener(ev, () => { scrolledAt = performance.now(); }, { capture: true, passive: true });
+  // … and while the scroll a wheel started is still gliding (a scroll on its own, like a chat following its reply, isn't)
+  addEventListener('scroll', () => { const t = performance.now(); if (t - scrolledAt < 1000) scrolledAt = t; }, { capture: true, passive: true });
   addEventListener('pointerover', (e) => {
     if (!tipsOn()) return;
+    if (scrolling()) { if (tipFor) hideTip(); return; }
     const t = e.target.closest?.('[title]');
     if (!t || !t.getAttribute('title')) {
       // cut-short text: measured once the pointer rests on it (520 ms), not on every element it crosses
@@ -241,7 +249,7 @@ const Juice = (() => {
   const SWEEP = '.m-chrome, .m-gold, .m-sheen, .agent-btn, .suggest-chip, .look-tile, .tweaks .tw-shuffle:not(:disabled), .lab-tabs .lab-tools-btn, .lab-tabs .lab-back, .ghost, .dialog-actions button:not(.primary), .code-act, .find-bar button';
   let swept = null; let sweptAt = 0;
   addEventListener('pointerover', (e) => {
-    if (e.pointerType === 'touch' || !on() || root.dataset.motion === 'calm') return;
+    if (e.pointerType === 'touch' || !on() || root.dataset.motion === 'calm' || scrolling()) return; // (round 49) no glints from rows scrolling past
     const b = e.target.closest?.(SWEEP) || e.target.closest?.('.nv-node')?.querySelector(':scope > .nv-head');
     if (!b || (b === swept && performance.now() - sweptAt < 700) || b.disabled || (!v2() && !b.matches('.m-chrome, .m-gold, .m-sheen'))) return;
     if (b !== e.target && b.contains(e.relatedTarget)) return; // moving inside the same button

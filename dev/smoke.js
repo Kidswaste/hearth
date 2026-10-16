@@ -256,7 +256,7 @@ async function cdpConnect() {
         fs.writeFileSync(req.snapshot, snapChunks.join('')); result = { saved: req.snapshot, bytes: snapChunks.reduce((a, c) => a + c.length, 0) }; snapChunks = null;
       } else if (req.trace === 'start') {
         // (detail: also the top-level tasks and frame events, for dev/trace-stats.js: long tasks, forced layouts, input → paint)
-        traceEvents = []; result = (await send('Tracing.start', { categories: `devtools.timeline,disabled-by-default-devtools.timeline${req.detail ? ',toplevel,disabled-by-default-devtools.timeline.frame,disabled-by-default-devtools.timeline.stack,blink.user_timing' : ''}`, transferMode: 'ReportEvents' })).result || {};
+        traceEvents = []; result = (await send('Tracing.start', { categories: `devtools.timeline,disabled-by-default-devtools.timeline${req.detail ? ',toplevel,disabled-by-default-devtools.timeline.frame,disabled-by-default-devtools.timeline.stack,blink.user_timing' : ''}${req.cats ? `,${req.cats}` : ''}`, transferMode: 'ReportEvents' })).result || {};
       } else if (req.trace === 'stop') {
         const done = new Promise((r) => { traceDone = r; });
         await send('Tracing.end'); await done;
