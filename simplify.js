@@ -26,7 +26,7 @@ const Simplify = (() => {
   }
   // (round 18, tidy) the ⋯ flyout reads like every other menu: one icon set (icons.js) instead of mixed emoji, the key
   // on the right, and the tools hidden from the rail one click away (Settings → Tools in the rail brings them back)
-  const ICON = { 'palette-btn': 'command', 'add-btn': 'plus', 'notes-btn': 'notes', 'memory-btn': 'memory', 'grid-btn': 'grid', 'bar-btn': 'broadcast', 'import-btn': 'export', 'capture-btn': 'capture', 'apps-btn': 'web' };
+  const ICON = { 'palette-btn': 'command', 'add-btn': 'plus', 'notes-btn': 'notes', 'memory-btn': 'memory', 'grid-btn': 'grid', 'bar-btn': 'broadcast', 'import-btn': 'export', 'capture-btn': 'capture', 'apps-btn': 'web', 'full-btn': 'full', 'board-drawer-btn': 'board' }; // (round 49, appcalm) the two that left the rail
   function moreItems() {
     const rows = TUCKED.filter(([id]) => $(id)).map(([id, label]) => ({
       label: String(label).replace(/^[^\p{L}\d]+/u, '').replace(/⌘\+/g, 'Ctrl+'), icon: ICON[id], checked: $(id).classList.contains('on'), action: () => $(id).click() }));

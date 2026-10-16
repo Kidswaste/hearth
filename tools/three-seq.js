@@ -1762,7 +1762,8 @@ const ThreeSeq = (() => {
     commit(after, { slip: 'Slip', trim: 'Trim', roll: 'Rolled', slide: 'Slid' }[dr.mode] || 'Moved');
   }
   function onWheel(ev) {
-    if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); const r = refs.cv.getBoundingClientRect(); zoomBy(ev.deltaY < 0 ? 1.25 : 0.8, tOf(ev.clientX - r.left)); return; }
+    // (round 49) a mouse notch ≈ 1.25×; a trackpad pinch (Ctrl + many small wheel events) zooms gradually, not 1.25× per event
+    if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); const r = refs.cv.getBoundingClientRect(); const notch = ev.deltaMode === 1 || (!IS_MAC && ev.wheelDeltaY && ev.wheelDeltaY % 120 === 0) || (!ev.ctrlKey && Math.abs(ev.deltaY) >= 50); const dy = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY; zoomBy(Math.max(0.5, Math.min(2, Math.exp(-dy * (notch ? 0.0022 : 0.012)))), tOf(ev.clientX - r.left)); return; }
     if (S.vr && Math.abs(ev.deltaY) + Math.abs(ev.deltaX) > 0) { ev.preventDefault(); const v = span(); const d = ((ev.deltaX || ev.deltaY) / W()) * (v.t1 - v.t0); S.vr = { t0: Math.max(0, v.t0 + d), t1: Math.max(0, v.t0 + d) + (v.t1 - v.t0) }; redraw(); placeHead(); }
   }
   function onDbl(ev) {

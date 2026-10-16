@@ -2247,7 +2247,7 @@ function loopMessage(msg) {
 }
 globalThis.media = media;
 let stateTimer = 0;
-const sendState = () => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended, ...(fclock && isVideo ? { frame: fpres.frame } : {}) }); };
+const sendState = (x) => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended, ...(fclock && isVideo ? { frame: fpres.frame } : {}), ...x }); };
 // Loop points (A–B) are checked every frame here, so the loop is tight; a recording can stop exactly at B.
 let region = null;
 let trim = null; // the song's in / out (round 6, the Lab's /song-trim): plays only between them
@@ -2332,7 +2332,10 @@ function unloadMedia() {
 // Play / pause asked for while the song is still on its way here (just loaded or the preview restarting): kept
 // and applied when it arrives (a play right after loading a song used to do nothing).
 let pendingPlay = null;
-function mediaCommand({ cmd, value, req = null, frameStop = false }) {
+// (round 49, labscrub) a seek from the Lab's timeline is answered once a frame the fps cap let the layers draw has run
+// (at most 4 frames on): the Lab sends its next (newest) seek only then, so a fast scrub is one seek per drawn frame
+function ackSeek(n = 0) { realRAF((t) => { if (!fpsCap || capT === t || n >= 3) sendState({ seekAck: true }); else ackSeek(n + 1); }); }
+function mediaCommand({ cmd, value, req = null, frameStop = false, ack = false }) {
   if (!mediaEl) { if (cmd === 'play' || cmd === 'pause') pendingPlay = cmd === 'play'; return; }
   if (cmd === 'play') {
     actx.resume();
@@ -2347,7 +2350,7 @@ function mediaCommand({ cmd, value, req = null, frameStop = false }) {
   if (cmd === 'region') { region = value; applyLoop(); }
   if (cmd === 'trim') { trim = value && value.b > value.a ? value : null; applyLoop(); }
   if (cmd === 'pause') { mediaEl.pause(); if (frameStop && fclock && isVideo) stopOnFrame(req); }
-  if (cmd === 'seek') { if (fclock && isVideo) { fwant = req != null ? { req, at: performance.now() } : fwant; fholdUntil = 0; } mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - (fclock && isVideo ? 0.0005 : 0.01))); if (fparts && isVideo) fpart = partAt(value); sendState(); }
+  if (cmd === 'seek') { if (fclock && isVideo) { fwant = req != null ? { req, at: performance.now() } : fwant; fholdUntil = 0; } mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - (fclock && isVideo ? 0.0005 : 0.01))); if (fparts && isVideo) fpart = partAt(value); if (ack) ackSeek(); else sendState(); }
   if (cmd === 'loop') { loopOn = Boolean(value); applyLoop(); }
   if (cmd === 'volume') gainNode.gain.value = value;
   if (cmd === 'rate') { mediaEl.defaultPlaybackRate = value; mediaEl.playbackRate = value * (fparts?.[fpart]?.speed || 1); sendState(); }
