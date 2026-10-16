@@ -159,7 +159,7 @@ if (H.activeId !== claude.id || !H.surfaces.get(claude.id)?.el.classList.contain
   if (H0 && d0) H0.dodge = d0;
   const shown = document.querySelectorAll('#toasts > .toast').length;
   n.toasts = { notes: 10, shown, placed: places, dockSearches: docks };
-  if (shown !== 5) fail(`a burst of 10 notes shows the newest 5 (shows ${shown})`);
+  if (shown !== 3) fail(`a burst of 10 notes shows the newest 3 (shows ${shown})`); // (round 49, appcalm) 3 at once, was 5
   over('notes placed (dodge) for a burst of 10 in one go', places, BUDGET.toastPlacesPerBurst);
   over('page-wide docked-chat searches for a burst of 10 notes', docks, BUDGET.toastPlacesPerBurst);
   document.querySelectorAll('#toasts > .toast').forEach((t) => t.remove());
