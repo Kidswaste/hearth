@@ -120,12 +120,20 @@ const Native = (() => {
       const list = v.list;
       if (e.target !== list) return;
       if (!quoteSel.hidden) quoteSel.hidden = true;
-      const gap = list.scrollHeight - list.scrollTop - list.clientHeight;
-      if (gap < 4) v.follow = true; // at the very bottom (End, ↓, the jump button, or scrolled there): follow again
-      else if (performance.now() - userAt < 700) v.follow = gap < 24;
-      const near = gap < 80;
-      if (jump.hidden !== near) jump.hidden = near;
-      if (near && jump.classList.contains('has-new')) jump.classList.remove('has-new');
+      // (round 49, scroll240) measured in this frame's animation-frame step, after a streaming reply's paint (which
+      // lays the list out anyway): read here, in the scroll event, it forced a style + layout pass of the changes since
+      // the last frame and the reply's paint then needed another, every frame you scrolled while it streamed
+      if (list.scrollRaf) return;
+      list.scrollRaf = requestAnimationFrame(() => {
+        list.scrollRaf = 0;
+        if (v.list !== list) return; // (another chat since)
+        const gap = list.scrollHeight - list.scrollTop - list.clientHeight;
+        if (gap < 4) v.follow = true; // at the very bottom (End, ↓, the jump button, or scrolled there): follow again
+        else if (performance.now() - userAt < 700) v.follow = gap < 24;
+        const near = gap < 80;
+        if (jump.hidden !== near) jump.hidden = near;
+        if (near && jump.classList.contains('has-new')) jump.classList.remove('has-new');
+      });
     }, true);
 
     const chips = el('div', { class: 'attach-chips' });
