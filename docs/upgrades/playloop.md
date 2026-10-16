@@ -103,11 +103,20 @@ New files: `playloop.js` (hub, in the lazy group `gamemode`, after `gamemode.js`
     again in the page, the score handed back); a broken edit (the line, Fix → the draft in the director's box, not
     sent, the game resting); the fix while resting (the held score back); Ctrl/⌘+P in the Lab and in the game; Play
     from here; the menu rows; the change kinds.
+- Ran: playloop (4 passes in a row after the fix below), gamemode, labdirector, qa-keys, lazy, unit:boot-test all pass.
+  gameready fails one step on this machine, twice: "progress … textures n/m". That step samples a card line which
+  shows for a moment between two stages, so it is timing. The base commit (04daee0) fails other gameready steps under
+  the same load. ▶ Play's getting ready isn't touched by this stream.
+- Found and fixed while testing:
+  - "Updated" could clear the error line of the very edit that caused it, when the error came first. Now the blip
+    clears old errors before the change goes in.
+  - The `game:loop` / `game:fix` channels are registered in gamemodemain.js, so main.js finds them for its lazy load
+    (boot-test).
 
 ## Edits outside the new files
 - `tools/three-sandbox.html` (the Lab player): "live edits keep the game's state", i.e. the hooks, `window.__labHot`,
   the module's exports kept as `L.mod` in `runLayer`.
-- `gamemodemain.js`: requires playloopmain (register, the Ctrl/⌘+P line in `before-input-event`, `ended`).
+- `gamemodemain.js`: requires playloopmain (the `game:loop` / `game:fix` channels, the Ctrl/⌘+P line in `before-input-event`, `ended`).
 - `gamemode.js`: `rest(on)`, `state().resting`, `leave({ quiet })`, PlayLoop's rows first in ▶ Play's menu, its
   side-by-side screen for `play`.
 - `game-preload.js`: the blip, the error line, Fix on the Esc card, the key in the hint.

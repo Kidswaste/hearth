@@ -265,7 +265,10 @@ function register(ipcMain, c) {
   ipcMain.handle('game:displays', hub(() => displays().map(({ bounds, ...d }) => d)));
   ipcMain.handle('game:info', (e) => (mine(e) ? info() : null));
   ipcMain.on('game:back', (e) => { if (mine(e)) leave('back'); });
-  loop()?.register?.(ipcMain, { ctx: () => ctx, game: () => G, leave }); // (round 53, playloop)
+  // (round 53, playloop: playloopmain.js) rest / wake / side by side / the blip; the error line's Fix from the game window
+  loop()?.register?.({ ctx: () => ctx, game: () => G, leave });
+  ipcMain.handle('game:loop', hub((_e, req) => loop()?.op?.(req) || { playing: false }));
+  ipcMain.on('game:fix', (e, d) => loop()?.fix?.(e, d));
   // checks: run a line in the game window's page, press a key / click there (real input, through Chromium)
   ipcMain.handle('game:eval', hub(async (_e, code) => { if (!G?.win || G.win.isDestroyed()) return { error: 'not playing' }; try { return { value: await G.win.webContents.executeJavaScript(String(code), true) }; } catch (err) { return { error: err.message }; } }));
   ipcMain.handle('game:key', hub((_e, { key = 'Escape', mods = [] } = {}) => {

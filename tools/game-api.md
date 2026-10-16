@@ -107,9 +107,9 @@ service workers, cache storage) is wiped when it ends.
   the page built again (`GameMode.leave({ quiet: true })` + `GameMode.play`), states handed back. Posted through `game:eval`.
 - `GameMode.rest(on)` (the window hidden and kept: `hold(false)` / `hold(true)`), `GameMode.state().resting`,
   `GameMode.leave({ quiet })` (no "Back from" toast). `PlayLoop.display()` → the side-by-side screen for `GameMode.play`.
-- Main: `game:loop { op: 'rest' | 'wake' | 'side' (on, display) | 'blip' (text) | 'state' }` → `{ playing, resting, side }`
+- Main: `game:loop { op: 'rest' | 'wake' | 'side' (on, display) | 'blip' (text, clear) | 'state' }` → `{ playing, resting, side }`
   (hub only); events to the hub `game:loop-ev { type: 'rested' | 'woke' | 'fix' (error, source) | 'key' (what: 'here') }`;
-  from the game window `game:fix { message, line, layer, file, stack }` (its error line's button); to it `game:blip`.
+  from the game window `game:fix { message, line, layer, file, stack }` (its error line's button); to it `game:blip { text, clear }` (clear: a new version goes in, the old error line goes).
   Resting: hidden (the Mac leaves its full-screen space first), throttled, muted, a Lab page parked (`park`); closes
   after 10 minutes resting. gamemodemain's `before-input-event` asks `playloopmain.key(input)` first (Ctrl/⌘+P).
 - The game window's preload: `.blip` ("↻ Updated"), `.err` (`.m` the line, `.fixit`, `.x`), `.box .fix` on the Esc card.

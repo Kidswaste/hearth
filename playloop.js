@@ -30,7 +30,7 @@ const PlayLoop = (() => {
   const post = (msg) => ev(`void window.postMessage(${JSON.stringify({ target: 'three-sandbox', ...msg })}, '*')`);
   const save = () => ev('window.__labHot ? window.__labHot.save() : null').catch(() => null);
   const restore = (states) => ev(`window.__labHot ? window.__labHot.restore(${JSON.stringify(states || {})}) : 0`).catch(() => 0);
-  const blip = (text = 'Updated') => window.hub.game.loop({ op: 'blip', text }).catch(() => {});
+  const blip = (text = 'Updated', clear = false) => window.hub.game.loop({ op: 'blip', text, clear }).catch(() => {});
   const labGame = () => { const st = GM().state(); return st.playing && !st.live && st.source?.kind === 'lab' ? st : null; };
 
   // ---------- what changed: the scene as ▶ Play runs it (GameMode.sceneSpec) ----------
@@ -74,6 +74,8 @@ const PlayLoop = (() => {
         return d;
       }
       const t0 = performance.now();
+      // "Updated" first: it also clears the last error's line, so an error of this very change shows after it
+      if (st.resting) S.dirty = true; else await blip(d.kind === 'hot' ? 'Updated' : 'Updated · layers ran again', true);
       if (d.kind === 'hot') {
         for (const L of d.props) await post({ type: 'layer-props', id: L.id, props: L });
         for (const L of d.code) await post({ type: 'hot-layer', layer: { ...L, fx: '' } }); // (no cross-fade picture in a game: the new code draws at once)
@@ -87,7 +89,6 @@ const PlayLoop = (() => {
       }
       S.base = { id: st.source.id, spec };
       S.last.ms = Math.round(performance.now() - t0);
-      if (st.resting) S.dirty = true; else blip(d.kind === 'hot' ? 'Updated' : 'Updated · layers ran again');
       return d;
     } finally {
       S.busy = false;

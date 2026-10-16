@@ -114,11 +114,11 @@ addEventListener('DOMContentLoaded', () => mount());
 // director chat (never sent). A Lab scene's page reports its errors itself (the Lab player's 'error' messages, with
 // the layer and line); an HTML build's come from the page's error events.
 let lastErr = null; let blipT = 0;
-ipcRenderer.on('game:blip', (_e, text) => {
+ipcRenderer.on('game:blip', (_e, b = {}) => {
   const u = mount();
-  u.blip.textContent = `↻ ${text || 'Updated'}`;
+  u.blip.textContent = `↻ ${b.text || 'Updated'}`;
   u.blip.classList.add('on');
-  if (lastErr && /Updated/.test(text || 'Updated')) { lastErr = null; u.err.hidden = true; } // (a new version: the old error may be gone; a new one shows again)
+  if (lastErr && b.clear) { lastErr = null; u.err.hidden = true; } // (a new version goes in: the old error may be gone; one of the new code shows after this)
   clearTimeout(blipT); blipT = setTimeout(() => u.blip.classList.remove('on'), 1400);
 });
 function showErr(d) {

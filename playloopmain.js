@@ -78,9 +78,9 @@ function side(on, displayId = null) {
   }
   return state();
 }
-function blip(text) {
+function blip(text, clear = false) {
   const g = G();
-  if (g && !S.resting) { try { g.win.webContents.send('game:blip', String(text || 'Updated').slice(0, 80)); } catch { /* gone */ } }
+  if (g && !S.resting) { try { g.win.webContents.send('game:blip', { text: String(text || 'Updated').slice(0, 80), clear: Boolean(clear) }); } catch { /* gone */ } }
   return state();
 }
 
@@ -94,26 +94,24 @@ function key(input) {
   return true;
 }
 
-function register(ipcMain, a) {
-  api = a;
-  const fromHub = (fn) => (e, ...x) => { const w = hubWin(); if (!w || e.sender !== w.webContents) throw new Error('not from Hearth'); return fn(...x); };
-  ipcMain.handle('game:loop', fromHub((req = {}) => {
-    const op = String(req.op || 'state');
-    if (op === 'rest') return rest(req.why || 'asked');
-    if (op === 'wake') return wake();
-    if (op === 'side') return side(req.on, req.display ?? null);
-    if (op === 'blip') return blip(req.text);
-    return state();
-  }));
-  // the error line's "Fix with the director": only from the game window playing now, only on a click there
-  ipcMain.on('game:fix', (e, d = {}) => {
-    const g = G();
-    if (!g || e.sender !== g.win.webContents) return;
-    const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
-    tell({ type: 'fix', error: { message: clip(d.message, 600), line: Number(d.line) || null, layer: clip(d.layer, 80), file: clip(d.file, 300), stack: clip(d.stack, 1200) }, source: g.source });
-    if (!S.side) rest('fix'); else focusHub();
-  });
+// gamemodemain.js registers the channels (main.js finds a lazy module's channels in its own source) and hands them here
+function register(a) { api = a; }
+function op(req = {}) {
+  const o = String(req.op || 'state');
+  if (o === 'rest') return rest(req.why || 'asked');
+  if (o === 'wake') return wake();
+  if (o === 'side') return side(req.on, req.display ?? null);
+  if (o === 'blip') return blip(req.text, req.clear);
+  return state();
+}
+// the error line's "Fix with the director": only from the game window playing now, only on a click there
+function fix(e, d = {}) {
+  const g = G();
+  if (!g || e.sender !== g.win.webContents) return;
+  const clip = (v, n) => (v == null ? null : String(v).slice(0, n));
+  tell({ type: 'fix', error: { message: clip(d.message, 600), line: Number(d.line) || null, layer: clip(d.layer, 80), file: clip(d.file, 300), stack: clip(d.stack, 1200) }, source: g.source });
+  if (!S.side) rest('fix'); else focusHub();
 }
 // gamemodemain: a game ended (resting or not), or a new one started
 function ended() { clearTimeout(S.timer); S.resting = false; }
-module.exports = { register, key, ended, state, rest, wake, side, blip };
+module.exports = { register, op, fix, key, ended, state, rest, wake, side, blip };
