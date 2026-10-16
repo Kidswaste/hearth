@@ -69,13 +69,13 @@ const GamePerfCore = (() => {
       hz, budget: Math.round(budget * 100) / 100, frames, secs: Math.round(secs * 10) / 10,
       fps: Math.round(frames / secs), dtMed: r2(dtMed), p95: r2(pct(dts, 0.95)), p99: r2(pct(dts, 0.99)), workMed: r2(median(works)), renderMed: r2(median(raw.renders || [])),
       onTime: dts.length ? Math.round((dts.filter((x) => x <= budget * 1.2).length / dts.length) * 100) : 0,
-      stutters: { n: slow.length, by, list: slow.sort((a, b) => b.ms - a.ms).slice(0, 12).map((f) => ({ t: Math.round(f.t), ms: f.ms, cause: f.cause, ...(f.fn ? { fn: f.fn } : {}), ...(f.detail ? { detail: f.detail } : {}) })) },
+      stutters: { n: slow.length, by, list: slow.sort((a, b) => b.ms - a.ms).slice(0, 12).map((f) => ({ t: Math.round(f.t), ms: f.ms, cause: f.cause, ...(f.fn ? { fn: f.fn } : {}), ...(f.detail ? { detail: f.detail } : {}), ...(f.load ? { load: f.load } : {}) })) },
       gpuBound: steadyGpu || gpuShare > 0.15,
       alloc: { mbps: r2((alloc.bytes || 0) / 1048576 / secs), gcs: alloc.gcs || 0, gcPerSec: r2((alloc.gcs || 0) / secs) },
       shaders: raw.shaders || { n: 0, ms: 0, late: [] },
       textures: raw.textures || { n: 0, ms: 0, mb: 0, late: [] },
       long: raw.long || [], layout: raw.layout || { ms: 0, mutations: 0 },
-      scene: raw.scene || null, self: raw.self || null, src: raw.src || null,
+      scene: raw.scene || null, self: raw.self || null, src: raw.src || null, stream: raw.stream || null,
     };
   }
   function r2(x) { return Math.round((x || 0) * 100) / 100; }
@@ -235,13 +235,15 @@ const GamePerfCore = (() => {
         hits: hitsMath.slice(0, 4).map((x) => ({ fn: x.fn, line: x.line, what: x.what, layer: x.layer, hoist: Boolean(x.hoist) })),
         lab: hitsMath.some((x) => x.hoist) ? { kind: 'hoist', label: 'Reuse them' } : null });
     }
+    // (round 54, gamestream) the load behind a freeze, by name: the stutter at that moment carries it (▶ Play's page log)
+    const loadNear = (t) => { let f = null; for (const x of R.stutters?.list || []) if (x.load && Math.abs(x.t - t) < 250 && (!f || Math.abs(x.t - t) < Math.abs(f.t - t))) f = x; return f ? ` — from “${f.load}”` : ''; };
     // shaders compiled during play
     const shL = late(R.shaders?.late);
     if (shL.length) {
       const st = (x) => Math.max(x.ms || 0, x.stall || 0);
       const worst = shL.reduce((a, b) => (st(b) > st(a) ? b : a));
       const total = shL.reduce((a, b) => a + st(b), 0);
-      add({ id: 'shader-late', kind: 'stutter', impact: (total / Math.max(1, R.secs)) * 3 + st(worst) * 0.1, title: `${shL.length === 1 ? 'A shader compiled' : `${shL.length} shaders compiled`} mid-play: a ${n0(st(worst))} ms freeze at ${at(worst.t)} (a new material or light appeared)`,
+      add({ id: 'shader-late', kind: 'stutter', impact: (total / Math.max(1, R.secs)) * 3 + st(worst) * 0.1, title: `${shL.length === 1 ? 'A shader compiled' : `${shL.length} shaders compiled`} mid-play: a ${n0(st(worst))} ms freeze at ${at(worst.t)} (a new material or light appeared)${loadNear(worst.t)}`,
         fix: 'Compile everything while loading: add every object (visible = false if it shows later), then await renderer.compileAsync(scene, camera) before the game starts; don\'t add or remove lights during play.',
         snippet: 'await renderer.compileAsync(scene, camera); // after everything is added, before the first frame' });
     }
@@ -250,9 +252,20 @@ const GamePerfCore = (() => {
       const st = (x) => Math.max(x.ms || 0, x.stall || 0);
       const worst = txL.reduce((a, b) => (st(b) > st(a) ? b : a));
       const total = txL.reduce((a, b) => a + st(b), 0);
-      add({ id: 'texture-late', kind: 'stutter', impact: (total / Math.max(1, R.secs)) * 3 + st(worst) * 0.1, title: `${/^8/.test(String(worst.w || '')) ? 'An' : 'A'} ${worst.w && worst.h ? `${worst.w}×${worst.h} ` : ''}texture was uploaded mid-play: a ${n0(st(worst))} ms freeze at ${at(worst.t)}${txL.length > 1 ? ` (${txL.length} uploads, ${n0(total)} ms in all)` : ''}`,
+      add({ id: 'texture-late', kind: 'stutter', impact: (total / Math.max(1, R.secs)) * 3 + st(worst) * 0.1, title: `${/^8/.test(String(worst.w || '')) ? 'An' : 'A'} ${worst.w && worst.h ? `${worst.w}×${worst.h} ` : ''}texture was uploaded mid-play: a ${n0(st(worst))} ms freeze at ${at(worst.t)}${txL.length > 1 ? ` (${txL.length} uploads, ${n0(total)} ms in all)` : ''}${loadNear(worst.t)}`,
         fix: 'Upload it while loading: renderer.initTexture(texture) right after it loads; smaller (2048) or compressed (KTX2) textures upload far faster.',
         snippet: 'renderer.initTexture(texture); // as soon as it has loaded, before it is shown' });
+    }
+    // (round 54, gamestream) a file / object loaded during play behind a freeze of another kind (parsing, decoding, a busy
+    // frame): its name, when, and how to load it without one (shader / texture freezes name theirs above)
+    const lf = (R.stutters?.list || []).filter((f) => f.load && f.cause !== 'shader' && f.cause !== 'texture' && f.cause !== 'gpu');
+    if (lf.length) {
+      const worst = lf[0];
+      const model = /\.(glb|gltf|fbx|obj|drc|bin)$/i.test(worst.load);
+      add({ id: 'load-late', kind: 'stutter', impact: (lf.reduce((a, f) => a + f.ms, 0) / Math.max(1, R.secs)) * 3 + worst.ms * 0.1,
+        title: `“${worst.load}” loaded mid-game at ${at(worst.t)}: a ${n0(worst.ms)} ms freeze (${CAUSE[worst.cause] || worst.cause}${worst.fn ? ` in ${worst.fn}()` : ''})${lf.length > 1 ? `, ${lf.length} in all` : ''}`,
+        fix: model ? 'Load it while the game starts (await loader.loadAsync(…) behind your loading screen, add it hidden), or in smaller pieces; a meshopt model decodes in the background with MeshoptDecoder.useWorkers(2).' : 'Load it while the game starts (behind your loading screen), or in smaller pieces spread over a few frames.',
+        snippet: model ? 'const gltf = await loader.loadAsync(url); // during loading, then scene.add(gltf.scene) when it\'s needed' : null });
     }
     // huge textures
     const big = (S.textures || []).filter((t) => Math.max(t.w, t.h) > 4096);

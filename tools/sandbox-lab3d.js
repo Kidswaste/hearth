@@ -66,7 +66,7 @@ const lab3d = (() => {
   let gltfLoader = null; let gltfLoading = null;
   const DECODERS = {
     draco: async (l) => { const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js'); const d = new DRACOLoader(); d.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'); l.setDRACOLoader(d); },
-    meshopt: async (l) => { const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js'); l.setMeshoptDecoder(MeshoptDecoder); },
+    meshopt: async (l) => { const { MeshoptDecoder } = await import('three/addons/libs/meshopt_decoder.module.js'); if (globalThis.__gameStream && MeshoptDecoder.useWorkers) MeshoptDecoder.useWorkers(2); l.setMeshoptDecoder(MeshoptDecoder); }, // (round 54, gamestream: in ▶ Play a model loaded mid-game decodes in two background workers, not in a frame)
     ktx2: async (l) => { const { KTX2Loader } = await import('three/addons/loaders/KTX2Loader.js'); l.__ktx2 = new KTX2Loader().setTranscoderPath(globalThis.__sbxResolve('three/addons/libs/basis/')); },
   };
   const decodersHad = new Map(); // decoder → its load (one per page)

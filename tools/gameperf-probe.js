@@ -51,8 +51,10 @@ const GamePerfProbe = function gamePerfProbe(opts) {
         if (cur.links) f.links = cur.links;
         if (cur.txB >= 1048576) f.texMB = Math.round(cur.txB / 104857.6) / 10;
         if (cur.tx) f.detail = cur.txW ? `${cur.txW}×${cur.txH} texture` : `${Math.round(cur.txB / 1048576)} MB uploaded`;
+        // (round 54, gamestream) what the game loaded just before (▶ Play's page log): the file / object by its name
+        try { const nm = W.__gameStream?.near?.(ts - dt, ts, { w: cur.txW, h: cur.txH, shader: cur.links > 0 }); if (nm) f.load = nm; } catch { /* fine */ }
         if (S.slow.length < 600) S.slow.push(f); else { let k = 0; for (let j = 1; j < S.slow.length; j += 1) if (S.slow[j].dt < S.slow[k].dt) k = j; if (S.slow[k].dt < f.dt) S.slow[k] = f; }
-        if (attributeFn) { try { S.lastStutter = { ...attributeFn(f, budget), at: ts }; } catch { /* fine */ } }
+        if (attributeFn) { try { S.lastStutter = { ...attributeFn(f, budget), at: ts, load: f.load || '' }; } catch { /* fine */ } }
       }
       if (cur.shL) cur.shL.stall = r1(Math.max(cur.shL.ms, dt - 1000 / (O.hz || 60)));
       if (cur.txL) cur.txL.stall = r1(Math.max(cur.txL.ms, dt - 1000 / (O.hz || 60)));
@@ -121,6 +123,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
   // game's opt-in, and globals (a classic-script game)
   function discover() {
     try { const sc = W.__scenes; if (sc) for (const [name, v] of Object.entries(sc)) track(v.renderer, v.scene, v.camera, v.renderer?.__layer ?? name); } catch { /* fine */ }
+    try { for (const e of W.__gameStream?.renderers?.() || []) track(e.renderer, e.scene, e.camera); } catch { /* fine */ } // (round 54: a module game's renderers, from ▶ Play's page)
     try { for (const k of Object.keys(W)) { if (k.startsWith('__') || k === 'hearthPerf') continue; const v = W[k]; if (v && typeof v === 'object' && v.isWebGLRenderer) track(v); } } catch { /* fine */ }
   }
   const lonelyScenes = new Set();
@@ -254,7 +257,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
     for (let k = 0; k < R.n; k += 1) { const i = (R.i - 1 - k + N) % N; if (R.t[i] < until) break; n += 1; sum += R.dt[i]; worst = Math.max(worst, R.dt[i]); }
     const fps = n ? Math.round((n * 1000) / sum) : 0;
     const info = infoNow();
-    const st = S.lastStutter && (R.t[(R.i - 1 + N) % N] - S.lastStutter.at) < 5000 ? ` · last: ${S.lastStutter.cause} ${Math.round(S.lastStutter.ms)} ms` : '';
+    const st = S.lastStutter && (R.t[(R.i - 1 + N) % N] - S.lastStutter.at) < 5000 ? ` · last: ${S.lastStutter.cause} ${Math.round(S.lastStutter.ms)} ms${S.lastStutter.load ? ` · ${S.lastStutter.load.slice(0, 24)}` : ''}` : '';
     return [
       `${fps} fps · ${n ? (sum / n).toFixed(1) : '–'} ms (worst ${worst.toFixed(1)}) · ${O.hz || 60} Hz = ${budget.toFixed(1)} ms`,
       info ? `${fmt(info.calls)} calls · ${fmt(info.tris)} tris · ${info.programs} prog · ${info.textures} tex · ${info.geometries} geo` : 'three.js renderer not found yet',
@@ -395,6 +398,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
       shaders: { n: S.shaders.n, ms: Math.round(S.shaders.ms), late: S.shaders.late.slice(0, 30) },
       textures: { n: S.textures.n, ms: Math.round(S.textures.ms), mb: Math.round(S.textures.mb), late: S.textures.late.slice(0, 30) },
       long: S.long.slice(0, 40), layout: { ms: Math.round(S.layoutMs), mutations: S.mutations },
+      stream: (() => { try { return W.__gameStream?.report?.(S.t0) || null; } catch { return null; } })(), // (round 54, gamestream) loads during play
       scene: sc, self: { perFrameUs: Math.round(med(SELF, S.selfN) * 10000) / 10, chipUs: Math.round(med(CHIP, S.chipN || 0) * 1000), chip, inDom: Boolean(chipEl?.isConnected) },
     };
   }

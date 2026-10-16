@@ -86,7 +86,7 @@ const GameMode = (() => {
       hold(true);
       let info;
       if (r?.route === 'live') info = await playLive(s, r, opts);
-      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs() });
+      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs(), stream: streamTest() });
       now = { source: s, info, live: r?.route === 'live', at: Date.now(), plan };
       const own = plan ? Object.entries(plan.why).filter(([, w]) => w !== 'hidden') : [];
       if (own.length) {
@@ -102,6 +102,9 @@ const GameMode = (() => {
     } finally { busy = false; t?.remove?.(); }
   }
   // (round 53, gameinput) the game window's input: the low-latency canvas (off unless /game lowlatency on: it can tear)
+  // (round 54, gamestream) loads during play are smoothed in the window; a check's "before" turns it off (localStorage
+  // gamestream.test = { off: true }: not a setting)
+  const streamTest = () => { try { return { off: Boolean(JSON.parse(localStorage.getItem('gamestream.test') || 'null')?.off) }; } catch { return { off: false }; } };
   const inputPrefs = () => ({ lowLatency: store.get('gamemode.lowLatency', false) === true });
   // the Lab drives it: the Stage window, full screen on the game's screen (the Lab's own controls keep working)
   async function playLive(s, r, opts) {

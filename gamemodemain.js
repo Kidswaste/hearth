@@ -29,6 +29,10 @@ function forget() { try { ses?.clearStorageData({ storages: WIPE }).catch(() => 
 const ready = () => { try { return require('./gamereadymain'); } catch { return null; } };
 // (round 53, playloop) Ctrl/⌘+P back to editing with the game kept, side by side, the "Updated" blip, Fix with the director
 const loop = () => { try { return require('./playloopmain'); } catch { return null; } };
+// (round 54, gamestream) loads during play without hitches: tools/gamestream-page.js in every page the window serves,
+// right after GameReady's script (pictures decoded off the main thread, new objects held until their shaders are ready,
+// the log the F chip / doctor name a slow frame's load from). req.stream.off (a check's "before"): the log only.
+const STREAM = '/__gamestream-page.js';
 let ctx = null; // { getWin, powerwise, dataDir }
 let G = null; // the game playing: { win, source, root, token, display, hz, route, how, started, release, priority, pid }
 const roots = new Map(); // token → folder
@@ -46,6 +50,7 @@ function gameSession() {
     const root = roots.get(u.hostname);
     if (!root) return new Response('this game has ended', { status: 404 });
     const R = ready();
+    if (u.pathname === STREAM) return new Response(await fs.promises.readFile(path.join(__dirname, 'tools', 'gamestream-page.js')), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (R?.armed?.() && R.isPage(u.pathname)) return new Response(await fs.promises.readFile(R.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     let file = C.safePath(root, u.pathname, path.sep);
     if (!file) return new Response('outside the game', { status: 403 });
@@ -56,7 +61,7 @@ function gameSession() {
       if (swap) st = await fs.promises.stat(swap);
       R?.noteServed?.(path.relative(root, file).split(path.sep).join('/'), Boolean(swap));
       let body = req.method === 'HEAD' ? null : await fs.promises.readFile(swap || file);
-      const tag = body && /\.html?$/i.test(file) ? R?.pageTag?.() : '';
+      const tag = body && /\.html?$/i.test(file) ? `${R?.pageTag?.() || ''}<script src="${STREAM}?off=${G?.token === u.hostname && G.stream?.off ? 1 : 0}"></script>` : '';
       if (tag) { let h = body.toString('utf8'); h = /<head[^>]*>/i.test(h) ? h.replace(/<head[^>]*>/i, (m) => `${m}${tag}`) : `${tag}${h}`; body = Buffer.from(h); st = { size: body.length }; }
       return new Response(body, { status: 200, headers: { 'content-type': C.mimeOf(file), 'content-length': String(st.size), 'cache-control': 'no-cache', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'credentialless' } });
     } catch { return new Response('not found', { status: 404 }); }
@@ -234,7 +239,7 @@ async function play(_e, req = {}) {
     webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency) }))}`] },
   });
   if (!mac) win.setMenu(null);
-  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}` };
+  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, stream: { off: Boolean(req.stream?.off) } };
   g.release = ctx.powerwise.hold('present', { label: `${source.title} is playing` });
   try { ctx.powerwise.quiet(true); } catch { /* fine */ }
   const wc = win.webContents;
