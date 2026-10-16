@@ -160,6 +160,7 @@ const DirectorGameCore = (() => {
       return null;
     }
     const NOISY = /^(frames?|time|t|now|dt|delta|last\w*|ready|gl|assets|started|tick|elapsed|fps)$/i;
+    const INPUT = /^(keys?|keyboard|input|pressed|down|held|mouse|buttons)$/i; // (the input the test itself sends: not the game's state)
     const r2 = (x) => Math.round(x * 100) / 100;
     function flat(v) {
       const out = {};
@@ -167,6 +168,7 @@ const DirectorGameCore = (() => {
       let n = 0;
       const put = (k, x) => { if (n >= 24 || NOISY.test(k.split('.').pop())) return; if (typeof x === 'number' && Number.isFinite(x)) out[k] = r2(x); else if (typeof x === 'boolean') out[k] = x; else if (typeof x === 'string') out[k] = x.slice(0, 24); else if (Array.isArray(x)) out[`${k}[]`] = x.length; else return; n += 1; };
       for (const [k, x] of Object.entries(v)) {
+        if (INPUT.test(k) || NOISY.test(k)) continue;
         if (x && typeof x === 'object' && !Array.isArray(x) && !isNode(x) && !x.isObject3D) { for (const [k2, y] of Object.entries(x).slice(0, 8)) if (typeof y !== 'object') put(`${k}.${k2}`, y); } else put(k, x);
       }
       return out;
@@ -232,6 +234,7 @@ const DirectorGameCore = (() => {
         R.cur = { i, p0: p, maxY: p ? p.y : 0, lx: p ? p.x : 0, lz: p ? p.z : 0, path: 0, yaw0: yaw };
       },
       result() {
+        if (!S.src) { S.src = findPos(); S.cam = camOf(); }
         const R = S.run || { dts: S.roll.slice(), steps: [], s0: {}, t0: now() - 1000, e0: 0, k0: S.keys };
         const dts = R.dts.length ? R.dts : S.roll.slice();
         const secs = ((R.t1 || now()) - R.t0) / 1000;
@@ -254,7 +257,7 @@ const DirectorGameCore = (() => {
   // ---------- the usual fix next to an error (ThreeDirector's 13 kinds are used when the Lab is in) ----------
   const HINTS = [
     [/(\w+) is not defined/, (m) => `declare ${m[1]} (or import it) before it's used`],
-    [/reading '(\w+)'|of (undefined|null)/, (m) => `what's before .${m[1] || 'x'} is ${m[2] || 'undefined'} there: check it exists at that moment (loaded yet?)`],
+    [/of (undefined|null)(?: \(reading '([^']+)'\))?/, (m) => `what's before .${m[2] || 'x'} is ${m[1]} there: check it exists at that moment (loaded yet?)`],
     [/is not a function/, () => 'a renamed / missing function or a typo: check the name and what holds it'],
     [/is not a constructor/, () => 'an addon class isn\'t in core three: import it from three/addons/…'],
     [/failed to load|404|Failed to fetch|NetworkError/i, () => 'a file path the game can\'t reach: relative to the game\'s folder'],
@@ -294,12 +297,14 @@ const DirectorGameCore = (() => {
   }
   // run = { title, how, hz, secs asked, steps (parsed), page (probe.result() parsed), context ({ line text } of the first
   // error), hint (fn), plan (the walk-about's words) }
+  // a build folder's name says little: the page's own title then
+  const titleOf = (run, pg) => (run.title && !/^(html|index|dist|build|public|www|web|game|out)$/i.test(run.title) ? run.title : String(pg.title || run.title || 'the game').slice(0, 40));
   function summary(run) {
     const pg = run.page || {};
     const st = run.steps || [];
     const f = frames(pg.dts, run.hz);
     const lines = [];
-    const head = [`▶ ${run.title || pg.title || 'the game'}`, `${n1(pg.secs || 0)} s, ${st.length} step${st.length === 1 ? '' : 's'}${run.plan ? ` (${run.plan})` : ''}`, `fps ${f.fps}${run.hz ? ` (${run.hz} Hz)` : ''}`, `worst ${f.worst} ms`, `${f.stutters} stutter${f.stutters === 1 ? '' : 's'}`];
+    const head = [`▶ ${titleOf(run, pg)}`, `${n1(pg.secs || 0)} s, ${st.length} step${st.length === 1 ? '' : 's'}${run.plan ? ` (${run.plan})` : ''}`, `fps ${f.fps}${run.hz ? ` (${run.hz} Hz)` : ''}`, `worst ${f.worst} ms`, `${f.stutters} stutter${f.stutters === 1 ? '' : 's'}`];
     lines.push(head.join(' · '));
     const moved = pg.p0 && pg.p1 ? Math.hypot(pg.p1.x - pg.p0.x, pg.p1.z - pg.p0.z) : null;
     lines.push([pg.from ? `${pg.from === 'state' ? 'player' : pg.from} ${P3(pg.p0)} → ${P3(pg.p1)} (moved ${moved == null ? '?' : n1(moved)})` : 'player: not found', pg.objects ? `objects ${pg.objects}` : '', pg.locked ? 'mouse captured' : '', `keys seen ${pg.keys ?? '?'}`].filter(Boolean).join(' · '));
@@ -310,8 +315,10 @@ const DirectorGameCore = (() => {
     const badTxt = bad.filter((x) => { const k = x.s.label; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 4)
       .map((x) => `✗ ${x.i + 1} ${x.s.label}: ${x.s.kind === 'jump' ? 'no rise' : x.s.kind === 'look' ? 'view didn\'t turn' : 'didn\'t move'}${bad.filter((y) => y.s.label === x.s.label).length > 1 ? ` (×${bad.filter((y) => y.s.label === x.s.label).length})` : ''}`);
     lines.push(judged ? `steps ✓ ${judged - bad.length}/${judged}${badTxt.length ? ` · ${badTxt.join(' · ')}` : ''}` : `steps: ${st.length} sent (none judged: no player position)`);
-    const d = stateDiff(pg.s0, pg.s1);
-    if (Object.keys(pg.s1 || {}).length) lines.push(`state: ${d.ch.length ? d.ch.slice(0, 6).join(', ') : 'no change'}${d.ch.length > 6 ? `, +${d.ch.length - 6}` : ''}${d.same ? ` (${d.same} same)` : ''}`);
+    // (the player's position is said above: not again in the state)
+    const noPos = (o = {}) => Object.fromEntries(Object.entries(o).filter(([k]) => pg.from !== 'state' || !/(^|\.)(x|y|z)$/.test(k)));
+    const d = stateDiff(noPos(pg.s0), noPos(pg.s1));
+    if (Object.keys(noPos(pg.s1)).length) lines.push(`state: ${d.ch.length ? d.ch.slice(0, 6).join(', ') : 'no change'}${d.ch.length > 6 ? `, +${d.ch.length - 6}` : ''}${d.same ? ` (${d.same} same)` : ''}`);
     const errs = pg.errors || [];
     if (!errs.length) lines.push('errors: none');
     else {
@@ -324,7 +331,7 @@ const DirectorGameCore = (() => {
     }
     const off = [];
     if (run.hz && f.fps && f.fps < run.hz * 0.9) off.push(`fps ${f.fps} of ${run.hz}`);
-    if (f.stutters >= 3) off.push(`${f.stutters} stutters (worst ${f.worst} ms; three_do perf for causes)`);
+    if (f.stutters >= 3) off.push(`${f.stutters} stutters (worst ${f.worst} ms${run.perf ? '' : '; perf: true for causes'})`);
     for (const x of badTxt) off.push(x.replace(/^✗ \d+ /, ''));
     if (errs.length) off.push(`${errs.length} error${errs.length === 1 ? '' : 's'}`);
     if (pg.keys === 0 && st.some((s) => s.keys)) off.push('no key reached the page (does it need a click first?)');
@@ -339,7 +346,7 @@ const DirectorGameCore = (() => {
     const f = frames(pg.dts, run.hz);
     const s = Object.entries(pg.s1 || {}).slice(0, 10).map(([k, v]) => `${k} ${JSON.stringify(v)}`).join(', ');
     const errs = pg.errors || [];
-    return [`▶ ${run.title || pg.title || 'the game'} · fps ${f.fps}${run.hz ? ` (${run.hz} Hz)` : ''} · ${pg.w}×${pg.h}${pg.objects ? ` · objects ${pg.objects}` : ''}${pg.locked ? ' · mouse captured' : ''}`,
+    return [`▶ ${titleOf(run, pg)} · fps ${f.fps}${run.hz ? ` (${run.hz} Hz)` : ''} · ${pg.w}×${pg.h}${pg.objects ? ` · objects ${pg.objects}` : ''}${pg.locked ? ' · mouse captured' : ''}`,
       pg.from ? `${pg.from === 'state' ? 'player' : pg.from} ${P3(pg.p1)}` : 'player: not found',
       s ? `state: ${s}` : 'state: none exposed (window.game = { … } lets a play-test read it)',
       errs.length ? `errors: ${errs.slice(0, 3).map((e) => `${e.f || '?'}${e.l ? `:${e.l}` : ''} ${e.m}${e.n > 1 ? ` (×${e.n})` : ''}`).join(' | ')}` : 'errors: none'].join('\n');

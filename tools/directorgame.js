@@ -81,7 +81,12 @@ const DirectorGame = (() => {
   const startLine = () => `▶ ${sess.title} started (${sess.how || 'its own window'})${sess.hz ? ` · ${sess.hz} Hz` : ''} · ready in ${(sess.readyMs / 1000).toFixed(1)} s${sess.ready ? '' : ' (still loading)'}`;
 
   // ---------- what the director reads ----------
-  async function page() { await inject(); return JSON.parse(await ev('window.__dgPlay.result()')); }
+  async function page() {
+    const had = await ev('Boolean(window.__dgPlay)');
+    await inject();
+    if (!had) await sleep(600); // (a fresh probe: a few frames to count first)
+    return JSON.parse(await ev('window.__dgPlay.result()'));
+  }
   async function contextOf(e) {
     if (!e?.url || !e.l || !/^(hearth-game|blob|https?):/.test(e.url)) return '';
     const l = Number(e.l);
@@ -105,14 +110,15 @@ const DirectorGame = (() => {
     return { text: `picture ${im.w}×${im.h}`, image: { data: im.data, mime: im.mime } };
   }
 
-  async function runScript(args) {
+  // the steps of a run (checked before anything starts or is sent)
+  function stepsOf(args) {
+    if (!args.script) return { steps: C().explore(Number(args.secs) || 10), plan: 'walk-about' };
+    const p = C().parse(args.script);
+    if (p.error) throw new Error(p.error);
+    return { steps: C().fill(p.steps, Number(args.secs) || 0), plan: null };
+  }
+  async function runScript(args, { steps, plan }) {
     if (!sess.ours) throw new Error(`The owner is playing ${sess.title}: a play-test sends no input to it (state, perf and shot still work).`);
-    let steps; let plan = null;
-    if (args.script) {
-      const p = C().parse(args.script);
-      if (p.error) throw new Error(p.error);
-      steps = C().fill(p.steps, Number(args.secs) || 0);
-    } else { steps = C().explore(Number(args.secs) || 10); plan = 'walk-about'; }
     await inject();
     await ev(`window.__dgPlay.begin(${steps.length})`);
     const { ops } = C().timeline(steps);
@@ -122,7 +128,7 @@ const DirectorGame = (() => {
     const pg = await page();
     stats.runs += 1;
     const first = (pg.errors || [])[0];
-    return C().summary({ title: sess.title, hz: sess.hz, steps, page: pg, hint, context: await contextOf(first), plan });
+    return C().summary({ title: sess.title, hz: sess.hz, steps, page: pg, hint, context: await contextOf(first), plan, perf: Boolean(args.perf) });
   }
 
   // three_do play: one call does what a play-test needs
@@ -134,12 +140,13 @@ const DirectorGame = (() => {
       if (!['start', 'run', 'state', 'shot', 'perf'].includes(op)) return { ok: false, error: 'op: start | run | state | shot | perf | stop (help play)' };
       const G = await gm();
       if (!args.game && !sess && !G?.state().playing && op !== 'run' && op !== 'start') return { ok: false, error: 'No game is playing: three_do play {game: "Clink", script: "hold W 2 s, jump"} starts it.' };
+      const run = op === 'run' ? stepsOf(args) : null;
       const s0 = await start(args.game, ctx, { perf: Boolean(args.perf) || op === 'perf' });
       arm();
       const parts = [];
       if (s0.started) parts.push(startLine());
       const images = [];
-      if (op === 'run') parts.push(await runScript(args));
+      if (op === 'run') parts.push(await runScript(args, run));
       else if (op === 'state' || (op === 'start' && !args.shot)) parts.push(C().stateLine({ title: sess.title, hz: sess.hz, page: await page() }));
       if (args.perf || op === 'perf') parts.push(await perfText());
       if (args.shot || op === 'shot') { const p = await shot(); parts.push(p.text); images.push(p.image); }

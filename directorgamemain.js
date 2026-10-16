@@ -6,7 +6,7 @@
 //   game:shot { width } → { data, mime, w, h } | { error }
 // Only the hub window may ask; input only reaches the game window that gamemodemain.js opened (its hearth-game://<token>
 // page), never Hearth's own windows; the keys that leave the game (Esc, ⌘ / Win, Ctrl+W, Alt+F4) are never sent.
-const { BrowserWindow } = require('electron');
+const electron = () => require('electron'); // (on first use: node tests load this file without Electron)
 
 let ctx = null;
 let run = null; // { finish(why) }
@@ -22,7 +22,7 @@ function gameWin() {
   if (!i?.playing || !i.url) return null;
   const origin = String(i.url).split('/').slice(0, 3).join('/');
   const hub = ctx?.getWin?.();
-  return BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w !== hub && w.webContents.getURL().startsWith(`${origin}/`)) || null;
+  return electron().BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w !== hub && w.webContents.getURL().startsWith(`${origin}/`)) || null;
 }
 
 function script(_e, { ops = [] } = {}) {
