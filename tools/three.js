@@ -705,7 +705,7 @@ const ThreeLab = (() => {
     presentBtn.dataset.key = 'P';
     // (round 52, gamemode) ▶ Play: the scene as a game, in its own full-screen window at max fidelity, its layers on one
     // canvas (gamemode.js, lazy group "gamemode"); right-click: the last games, an HTML game, the screen to play on
-    const gameDo = (fn) => (window.Lazy ? window.Lazy.load('gamemode') : Promise.resolve()).then(() => fn(window.GameMode)).catch((err) => toast(calmError(err), { type: 'error', raw: err }));
+    const gameDo = (fn) => (window.Lazy ? window.Lazy.load('gamemode') : Promise.resolve()).then(() => fn(GameMode)).catch((err) => toast(calmError(err), { type: 'error', raw: err }));
     const playGame = (sk = current) => sk && gameDo((G) => G.play({ kind: 'lab', id: sk.id, title: sk.name }));
     const playBtn = btn('▶ Play', 'Play it as a game: its own full-screen window, max quality, smooth (Esc there: Back to Hearth)', () => playGame());
     playBtn.dataset.feature = 'Play';

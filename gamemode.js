@@ -24,6 +24,9 @@ const GameMode = (() => {
   const recent = () => { try { return (store.get(KEY, []) || []).filter((x) => C.source(x)); } catch { return []; } };
   const last = () => recent()[0] || null;
   const Lab = () => (typeof ThreeLab !== 'undefined' ? ThreeLab : null);
+  // the other game streams (tools/game-api.md), when they're in (a top-level const isn't on window)
+  const Ready = () => (typeof GameReady !== 'undefined' ? GameReady : window.GameReady) || null;
+  const Perf = () => (typeof GamePerf !== 'undefined' ? GamePerf : window.GamePerf) || null;
 
   // ---------- a Lab scene's data (the Lab's own list when it's loaded: the newest edits) ----------
   async function sketches() { return Lab()?.scenes?.all?.() || (await window.hub.kvGet('three-sketches', [])) || []; }
@@ -72,9 +75,9 @@ const GameMode = (() => {
         spec.plan = { merge: plan.merge, why: plan.why };
       }
       // gameready (another stream): assets prepared / cached first, with progress
-      if (window.GameReady?.prepare) {
+      if (Ready()?.prepare) {
         say(`Getting ${s.title} ready…`);
-        await window.GameReady.prepare(s, (p) => say(`Getting ${s.title} ready… ${Math.round((Number(p?.done ?? p) || 0) * 100)} %`)).catch((err) => console.warn('GameReady:', err?.message || err));
+        await Ready().prepare(s, (p) => say(`Getting ${s.title} ready… ${Math.round((Number(p?.done ?? p) || 0) * 100)} %`)).catch((err) => console.warn('GameReady:', err?.message || err));
       }
       store.set(KEY, C.remember(recent(), s));
       hold(true);
@@ -87,7 +90,7 @@ const GameMode = (() => {
         const names = Object.fromEntries((spec?.layers || []).map((L) => [L.id, L.name || L.id]));
         toast(`${plan.merge.length} layers on one canvas; ${own.map(([id, w]) => `“${names[id]}” keeps its own (${w})`).join(' · ')}`, { timeout: 7000 });
       }
-      window.GamePerf?.attach?.({ source: s, info, leave, state });
+      Perf()?.attach?.({ source: s, info, leave, state });
       emit('start', { source: s, info });
       return info;
     } catch (err) {
