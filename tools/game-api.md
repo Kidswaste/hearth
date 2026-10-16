@@ -29,10 +29,14 @@ others are in, they meet through the names below. Keep this file in sync when a 
 | `game:left` `{ source, secs, why }` (event) | → hub | the game window closed |
 | `game:eval` code → `{ value }` · `game:key` `{ key, mods }` · `game:click` `{ x, y }` | hub (checks) | real input through Chromium |
 | `game:info` → info · `game:back` | game window preload | the chip's line, "Back to Hearth" |
+| `game:lock` bool · `game:menu-on` · `game:menu-off` | game window preload | (round 53, gameinput) the mouse captured or not; the card shown by the page (Esc freed the mouse) / closed by "Keep playing" |
+| `game:menu` · `game:stats` (events) | → game window preload | (round 53) show the card (Esc) / toggle the chip (F): the keys are read main-side, see below |
 
 `info = { playing, source, title, route: 'page' | 'html' | 'live', how, display: { id, label, w, h, scale, hz }, hz,
 fidelity: { level: 'max', pixelRatio, antialias, msaa, powerPreference, cap: 0, adapt: false, hz }, pid, priority,
-separate, started, notes, fullscreen, url }`. `how` is the line the stats chip shows ("one canvas (3 of 3 layers) ·
+separate, started, notes, input, fullscreen, url }`. (round 53) `input = { focus: { ok, tries, ms }, keys: { held, esc, system },
+menu, locked, lowLatency, raw, selection }` (gameinputmain.js). `game:play` takes `input: { lowLatency }` (store
+`gamemode.lowLatency`, `/game lowlatency on|off`, off by default; a Lab scene's page gets `&lowlat=1`). `how` is the line the stats chip shows ("one canvas (3 of 3 layers) ·
 page (ready)", "HTML build", "live from the Lab (…)").
 
 The window: `hearth-game://<token>/…` (a privileged standard + secure scheme, its own session `persist:hearth-game`, whose game-stored data is wiped when a game ends; only compiled shaders persist):
@@ -43,6 +47,26 @@ only `pointerLock` / `fullscreen` / `keyboardLock` permissions, non-GET requests
 
 GamePerf, main side (optional): if `gameperfmain.js` exists, `require('./gameperfmain').attach(gameWindow, info)` runs
 right after the window is made.
+
+## The game window's input (round 53, gameinput: gameinputmain.js)
+- **Nothing of Hearth's listens to the game's input.** The keys Hearth needs are read by the window's main-side
+  `before-input-event` handler (`gameinputmain.key`): Esc → `game:menu` (the card; the game gets its Esc too), Esc
+  again or Enter while the card shows → leave (from the main side: a stuck page can still be left), F while the mouse
+  is free → `game:stats`, Alt+Space held (Windows' window menu), ⌘ shortcuts held / ⌘Q ⌘W, Alt+F4, Ctrl+W leave as
+  before. The preload only listens to `pointerlockchange` (rare). In a Lab scene's page (`?game=1`) the Lab player adds
+  no input listeners of its own (no pace / doze pokes, ✥ Direct, look-around gestures, host keys, right-click menu
+  messages) and posts no stats to itself. Keep it that way: `dev/checks/gameinput.js` counts them (budgets).
+- Pointer lock: the preload's code in the game's world makes `requestPointerLock()` ask for `unadjustedMovement: true`
+  (raw mouse) unless the game passes the option itself; `NotSupportedError` → the plain kind. `.hearthRaw` on the
+  function: 'raw' | 'fallback' | 'refused (…)'. `document.exitPointerLock()` dispatches `hearth-game-unlock` on
+  window, so the preload can tell the game letting go from Esc (Chromium keeps an Esc that frees the mouse for
+  itself; the card is shown then, and `game:menu-on` tells the main side).
+- The browser Keyboard Lock (`navigator.keyboard.lock`) is refused by Electron 44 ("lock() request could not be
+  registered", in Hearth's own window too): ⌘Tab / the Windows key / Alt+Tab stay the system's.
+- Focus on open: `win.focus()` + `webContents.focus()` (Mac: `app.focus({ steal: true })`, after the full-screen space;
+  Windows: topmost for a moment, the foreground lock), checked after 300 ms, tried once more.
+- `insertCSS`: no text selection (editable fields keep it), no drag ghosts. `disableHtmlFullscreenWindowResize`: a
+  game's own `requestFullscreen()` never resizes the window. Leaving destroys a window that hasn't closed in 1.5 s.
 
 ## The game window's page
 - Preload (`game-preload.js`) gives the game, only if it asks: `window.hearthGame = { leave(), info() → { title, hz, how, display } }`.
