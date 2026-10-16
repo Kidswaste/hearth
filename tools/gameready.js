@@ -54,7 +54,7 @@ const GameReady = (() => {
       if (m.type === 'gr-first5' && r) { r.first5 = { compiles: m.compiles, links: m.links, uploads: m.uploads, reuploads: m.reuploads, frames: m.frames }; S.last = info(r); }
       if (m.type === 'gr-cancel' && r) stop();
       if (m.type === 'gr-error' && r) { (r.pageErrors ||= []).push(String(m.text || '').slice(0, 300)); if (r.pageErrors.length > 10) r.pageErrors.shift(); }
-      if (m.type === 'game-closed' && r) { r.closed = true; if (R === r) R = null; }
+      if (m.type === 'game-closed' && r && r.win && m.id === r.win.id) { r.closed = true; if (R === r) { R = null; r.wake?.(); } }
       onBox(m);
     });
   }

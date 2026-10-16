@@ -191,7 +191,8 @@ function openHtml({ path: file, title = 'Game', map = {}, width = 1280, height =
     webPreferences: { partition: PARTITION, preload: path.join(appDir, 'gameready-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
   const host = `g${w.webContents.id}`;
   games.set(w.webContents.id, { host, root, map: map || {}, served: [] });
-  w.on('closed', () => { games.delete(w.webContents.id); if (gameWin === w) gameWin = null; send('gameready:from', { type: 'game-closed' }); });
+  const wcId = w.webContents.id;
+  w.on('closed', () => { games.delete(wcId); if (gameWin === w) gameWin = null; send('gameready:from', { type: 'game-closed', id: wcId }); });
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   w.loadURL(`${SCHEME}://${host}/${entry.split('/').map(encodeURIComponent).join('/')}`);
   return { ok: true, id: w.webContents.id, url: `${SCHEME}://${host}/${entry}`, root, host };

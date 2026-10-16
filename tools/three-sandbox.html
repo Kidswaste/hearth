@@ -1389,7 +1389,9 @@ async function rdyAssets(id) {
   const left = () => {
     const imgs = [...document.images].filter((im) => !im.complete).length;
     const vids = [...document.querySelectorAll('video'), ...(mediaEl instanceof HTMLVideoElement ? [mediaEl] : [])].filter((v) => v.src || v.srcObject).filter((v) => v.readyState < 2 && !v.error).length;
-    return { imgs, vids, models: RDY.pend, layers: stackWait ? 1 : 0 };
+    // (round 52, gameready) 🧊 model layers still loading their file (lab3d: its parse and textures are outside three's manager)
+    let m3 = 0; try { for (const S of globalThis.lab3d?.live?.values?.() || []) if (!S.loaded && !S.error && !S.gone) m3 += 1; } catch { /* no models */ }
+    return { imgs, vids, models: RDY.pend + m3, layers: stackWait ? 1 : 0 };
   };
   let l = left(); const total = Math.max(1, l.imgs + l.vids + l.models + l.layers);
   while (realNow() - t0 < 15000) {
