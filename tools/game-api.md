@@ -158,3 +158,23 @@ the hub); the owner: `/playtest`.
   Resting: hidden (the Mac leaves its full-screen space first), throttled, muted, a Lab page parked (`park`); closes
   after 10 minutes resting. gamemodemain's `before-input-event`: gameinput's `gameinputmain.key` (Esc card, Enter, F), then `playloopmain.key(input)` (Ctrl/⌘+P; resting closes an open Esc card: `game:menu-close`, the card's Fix sends `game:menu-off`); no key listener in the preload.
 - The game window's preload: `.blip` ("↻ Updated"), `.err` (`.m` the line, `.fixit`, `.x`), `.box .fix` on the Esc card.
+
+## The look (round 54, gamelook: gamelook-preload.js, a second preload of the persist:hearth-game session)
+- `game:play` takes `look: 'best' | 'balanced'` (hub store `gamemode.look`, Best by default; 'off' = round 53, checks
+  only); `info.fidelity.look`; the window's `--hearth-game` JSON carries `look`. ▶ Play's right-click: "Graphics: Best /
+  Balanced"; `/game look [best | balanced]`.
+- In the game's world, before its scripts: `gameLookPage({ look, hz })` listens on `__THREE_DEVTOOLS__` (it makes it
+  first: GameReady / GamePerf add their listeners to it) and wraps each renderer's `render` / `compile` / `compileAsync`
+  / `initTexture` to look at the scene first (then at most once a second, or when textures came in).
+  Both looks: mipmapped textures left at anisotropy 1 → the card's max (not yet on the GPU; `Texture.DEFAULT_ANISOTROPY`
+  when the game left it at 1, so later textures too). Best also: a picture in a colour slot left with no colour space
+  (`''`, 8-bit, not data / compressed; output 'srgb') → 'srgb'; a light's shadow left at 512² → the screen's size (long
+  edge, nearest power of two, 1024–4096; point lights half), then the guard (frames over 1.2 × the refresh: halve while
+  each step saves ≥ 8 %, else back). Never: tone mapping, output colour space, shadow type / radius, pixel ratio, any
+  value the game set (a later write by the game wins). GameReady's prep and the Lab's ready-scan also keep a game's own
+  anisotropy now (only 1 → max).
+- `window.__gameLook = { report() → { look, three, renderers, frames, aniso: { max, sharp, set, kept, later }, colour,
+  shadows: { lights, set, kept, from, to, now }, guard: 'waiting' | 'none' | 'measuring' | 'fits' | 'lowered' |
+  'not-shadows' | 'off', guardMs: { budget, steps: [[size, ms]] }, cost: { sweeps, ms, max }, screen: { w, h, wide, hdr } },
+  text() → "Best look: textures 16× sharp (4) · true colour on 1 picture · shadows 512 → 2048", settle() → Promise<report>,
+  renderers() }`. The F chip's second line and the performance doctor show `text()`.

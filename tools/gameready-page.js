@@ -216,7 +216,7 @@
       for (const t of list) {
         if (S.skip) return k;
         // the best filtering the graphics card has, before the first upload (mipmapped pictures; not a video's frames)
-        if (!t.isVideoTexture && t.generateMipmaps !== false && (t.anisotropy || 1) < max) { const was = r.properties?.get?.(t)?.__webglTexture; t.anisotropy = max; if (was) t.needsUpdate = true; }
+        if (!t.isVideoTexture && t.generateMipmaps !== false && (t.anisotropy || 1) === 1 && max > 1) { /* (round 54: a game's own anisotropy is its choice) */ const was = r.properties?.get?.(t)?.__webglTexture; t.anisotropy = max; if (was) t.needsUpdate = true; }
         const im = t.image;
         if (!im || (im instanceof HTMLImageElement && !im.complete) || (im instanceof HTMLVideoElement && im.readyState < 2)) continue;
         try { r.initTexture(t); k += 1; } catch { /* not ready */ }
