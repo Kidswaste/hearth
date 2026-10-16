@@ -703,6 +703,13 @@ const ThreeLab = (() => {
     presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Bake for a perfect show', 'Renders it to a video first, then plays it: not live (the mic, camera and sliders won\'t react)', () => togglePresent('bake')], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)]]); });
     previewHost.addEventListener('dblclick', (e) => { if (e.target === previewHost) togglePresent(); }); // double-click beside the picture
     presentBtn.dataset.key = 'P';
+    // (round 52, gamemode) ▶ Play: the scene as a game, in its own full-screen window at max fidelity, its layers on one
+    // canvas (gamemode.js, lazy group "gamemode"); right-click: the last games, an HTML game, the screen to play on
+    const gameDo = (fn) => (window.Lazy ? window.Lazy.load('gamemode') : Promise.resolve()).then(() => fn(window.GameMode)).catch((err) => toast(calmError(err), { type: 'error', raw: err }));
+    const playGame = (sk = current) => sk && gameDo((G) => G.play({ kind: 'lab', id: sk.id, title: sk.name }));
+    const playBtn = btn('▶ Play', 'Play it as a game: its own full-screen window, max quality, smooth (Esc there: Back to Hearth)', () => playGame());
+    playBtn.dataset.feature = 'Play';
+    playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); gameDo((G) => G.menu(e.clientX, e.clientY)); });
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · B blackout · I info · PgUp / PgDn other sketches · 1–9 cues' });
     // Present info (I): the sketch, song time, BPM and frame size in a corner, for live shows and checks
     const presentHud = el('div', { class: 'present-hud', hidden: true });
@@ -998,7 +1005,7 @@ const ThreeLab = (() => {
     let parkedNow = false;
     let stallArm = null; // (round 39, powerwise) the stall / park safety timer's pace follows the park (set below)
     function syncPark(force = false) {
-      const on = (!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || previewHost.classList.contains('pr-baked'); // (round 52: a baked show plays a video; the live preview rests behind it)
+      const on = (!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing'); // (round 52, gamemode: a game plays in its own window: the preview here rests) // (round 52: a baked show plays a video; the live preview rests behind it)
       if (on === parkedNow && !force) return;
       parkedNow = on;
       stallArm?.(on);
@@ -2612,7 +2619,7 @@ const ThreeLab = (() => {
     let stage = null;
     const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '', { lazy: true, pretty: true, name: 'preview' });
     previewHost.append(buildPill);
-    box.onStageClosed = () => { stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); run(); };
+    box.onStageClosed = () => { dispatchEvent(new Event('hearth:stage-closed')); stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); run(); };
     queueMicrotask(() => { stage?.pill?.prepend(freezeBtn, compareBtn); stage?.pill?.append(stillBtn, previewMoreBtn); });
     stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ id, reload }) => {
       // (the Lab sequence on screen: the swap is the sequence's shape, not the scene's own frame size: seqguard)
@@ -3199,6 +3206,7 @@ const ThreeLab = (() => {
         ] },
         { label: 'View', tip: 'Present, the Stage window, focus, guides, moving around', items: () => [
           { label: '▣ Present', key: 'P', action: () => togglePresent() },
+          { label: '▶ Play', hint: 'as a game, its own window', action: () => playGame() },
           { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
           { label: 'Lighten to stay smooth', hint: 'full quality in renders', checked: adaptOn, action: () => { setAdaptOn(!adaptOn); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } },
@@ -3625,6 +3633,7 @@ const ThreeLab = (() => {
         showMenu(e.clientX, e.clientY, [
           { label: 'Open', action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } },
           { label: '▣ Open and present', action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); setTimeout(() => togglePresent(), 400); } },
+          { label: '▶ Play', hint: 'as a game, full screen', action: () => { dlg.close(); playGame(sk); } },
           ...(typeof ThreeSeq !== 'undefined' ? [{ label: '▤ Add to the sequence', action: () => { dlg.close(); ThreeSeq.add({ sketch: sk.id }).then(() => ThreeSeq.enter()).catch((err) => toast(err.message, { type: 'error' })); } },
             { label: '▤ Its own sequence', hint: (() => { const x = ThreeSeq.summaryFor(sk.id); return x ? `${x.clips} clip${x.clips === 1 ? '' : 's'} · ${x.seconds.toFixed(1)} s` : 'made when you open it'; })(), action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); setTimeout(() => ThreeSeq.enter().catch((err) => toast(err.message, { type: 'error' })), 300); } }] : []),
           { label: p.has(sk.id) ? '☆ Unpin' : '★ Pin to the top', action: () => togglePin(sk.id) },
@@ -3848,7 +3857,7 @@ ${code}
       e.preventDefault();
       const pins = new Set(store.get('three.sketchPins', []));
       const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt).slice(0, 14);
-      ThreeTweaks.menu(e.clientX, e.clientY, ['Switch to', ...list.map((x) => [`${pins.has(x.id) ? '★ ' : ''}${x.name}`, `${x.layers?.length || 1} layer${(x.layers?.length || 1) === 1 ? '' : 's'}`, () => openSketch(x.id), x.id === current?.id]), ['All as pictures…', 'O', () => browseSketches()], ['＋ New sketch', '', () => templateGallery()]]);
+      ThreeTweaks.menu(e.clientX, e.clientY, ['Switch to', ...list.map((x) => [`${pins.has(x.id) ? '★ ' : ''}${x.name}`, `${x.layers?.length || 1} layer${(x.layers?.length || 1) === 1 ? '' : 's'}`, () => openSketch(x.id), x.id === current?.id]), ['All as pictures…', 'O', () => browseSketches()], ...(current ? [[`▶ Play ${current.name}`, 'as a game, full screen', () => playGame()]] : []), ['＋ New sketch', '', () => templateGallery()]]);
     });
     autoBox.addEventListener('change', () => { autoRun = autoBox.checked; store.set('three.autorun', autoRun); });
     version.addEventListener('change', () => { store.set('three.version', version.value); run(); });
@@ -3885,7 +3894,7 @@ ${code}
       toolbar.replaceChildren(
         // round 4: New, ▦ and ⟲ moved into Sketch ▾ (Ctrl+Shift+Enter still restarts)
         group('Sketch', picker, sketchMenuBtn, runBtn),
-        group('View', ...LabCalmBar([[slidersBtn, '⚡', 'Sliders'], [codeBtn, '</>', 'Code'], [consoleBtn, '›_', 'Console'], [editBtn, '✥', 'Edit'], [presentBtn, '▣', 'Present']])),
+        group('View', ...LabCalmBar([[slidersBtn, '⚡', 'Sliders'], [codeBtn, '</>', 'Code'], [consoleBtn, '›_', 'Console'], [editBtn, '✥', 'Edit'], [presentBtn, '▣', 'Present'], [playBtn, '▶', 'Play']])),
         group('Code', liveLabel),
         el('span', { class: 'spacer' }),
         group('Assets', paletteBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
@@ -4972,6 +4981,7 @@ ${frag}\`,
     get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
     get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js
+    get present() { return api.present || null; }, // (round 52, gamemode) the player (its song pauses while a game plays)
     get tm() { return api.tm || null; }, // (round 23) tools/three-history*.js
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
     get groupsHost() { return api.groupsHost || null; }, // (round 44) layer groups (tools/three-groups.js)

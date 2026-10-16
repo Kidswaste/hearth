@@ -105,6 +105,8 @@ contextBridge.exposeInMainWorld('hub', {
   stageFocus: call('stage:focus'),
   stageDisplays: call('stage:displays'), stagePlace: call('stage:place'), // (round 22) live output on a second screen
   stageSend: (msg) => ipcRenderer.send('stage:to', msg),
+  // (round 52, gamemode) ▶ Play: a game in its own full-screen window (gamemodemain.js)
+  game: { play: call('game:play'), leave: call('game:leave'), state: call('game:state'), displays: call('game:displays'), eval: call('game:eval'), key: call('game:key'), click: call('game:click'), onLeft: on('game:left') },
   onStageMessage: on('stage:from'),
   onStageClosed: on('stage:closed'),
   setZoom: (factor) => webFrame.setZoomFactor(factor),

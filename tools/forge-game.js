@@ -443,6 +443,8 @@ const ForgeGame = (() => {
   function moreMenu(e) {
     const sub = (fn) => () => fn().catch?.((err) => toast(err.message, { type: 'error' }));
     showMenu(e.clientX, e.clientY, [
+      // (round 52, gamemode) the build itself as a game: its own full-screen window, max quality, no patches, never changed
+      { label: '▶ Play full screen', hint: 'its own window, max quality', action: () => (window.Lazy ? window.Lazy.load('gamemode') : Promise.resolve()).then(() => GameMode.play({ kind: 'html', path: buildPath() })).catch((err) => toast(calmError(err), { type: 'error', raw: err })) },
       { label: '▶ Start (skip the title screen)', action: sub(() => quick('start')) },
       { label: '❤ Heal', action: sub(() => quick('heal')) },
       { label: '☠ Kill all enemies', action: sub(() => quick('kill')) },
