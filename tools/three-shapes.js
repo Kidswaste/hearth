@@ -221,33 +221,34 @@ shapeLayer(P, { preset: ${q(p.id)}${opts} });
     if (open0) open0.close();
     await ThreeLab.cmd();
     let L = null;
-    if (layer) L = await shapeLayer(layer).catch(() => null);
+    if (own) L = null; // (✎ Draw your own, asked for by itself: a new layer)
+    else if (layer) L = await shapeLayer(layer).catch(() => null);
     else { const sel = (await layers().catch(() => [])).find((x) => x.selected); if (sel && isShape(await codeOf(sel.id).catch(() => ''))) L = sel; }
     const cur = L ? presetOf(await codeOf(L.id).catch(() => '')) : null;
     const C0 = lastControls();
-    const shade = el('div', { class: 'sh-shade', on: { pointerdown: (e) => { if (e.target === shade) close(); } } });
-    const box = el('div', { class: 'sh-dlg', attrs: { role: 'dialog', 'aria-label': 'Shape' } });
+    const shade = el('div', { class: 'shp-shade', on: { pointerdown: (e) => { if (e.target === shade) close(); } } });
+    const box = el('div', { class: 'shp-dlg', attrs: { role: 'dialog', 'aria-label': 'Shape' } });
     shade.append(box);
     const close = () => { cancelAnimationFrame(raf); io?.disconnect(); shade.remove(); btnUndo.el = null; open0 = null; removeEventListener('keydown', onKey, true); };
-    const search = el('input', { type: 'search', class: 'sh-search', placeholder: `Search ${PRESETS.length} shapes (circle, arrow, underline, star…)`, attrs: { 'aria-label': 'Search the shapes' } });
-    const grid = el('div', { class: 'sh-grid', attrs: { role: 'listbox', 'aria-label': 'Shapes' } });
+    const search = el('input', { type: 'search', class: 'shp-search', placeholder: `Search ${PRESETS.length} shapes (circle, arrow, underline, star…)`, attrs: { 'aria-label': 'Search the shapes' } });
+    const grid = el('div', { class: 'shp-grid', attrs: { role: 'listbox', 'aria-label': 'Shapes' } });
     const undoB = el('button', { type: 'button', class: 'ghost small', text: '↶', attrs: { 'aria-label': 'Undo the last change' }, on: { click: () => undo().then((r) => r.undone && toast(`↶ ${r.undone}`, { timeout: 1600 })).catch((e) => toast(e.message, { type: 'error' })) } });
     btnUndo.el = undoB; paintUndo();
-    const where = el('span', { class: 'sh-where', text: L ? `changes “${L.name}”` : 'adds a layer' });
-    const pad = el('div', { class: 'sh-pad', hidden: true });
-    box.append(el('div', { class: 'sh-head' }, el('b', { text: '◆ Shape' }), where, undoB, el('button', { type: 'button', class: 'ghost small', text: '✕', attrs: { 'aria-label': 'Close' }, on: { click: () => close() } })), search, grid, pad);
+    const where = el('span', { class: 'shp-where', text: L ? `changes “${L.name}”` : 'adds a layer' });
+    const pad = el('div', { class: 'shp-pad', hidden: true });
+    box.append(el('div', { class: 'shp-head' }, el('b', { text: '◆ Shape' }), where, undoB, el('button', { type: 'button', class: 'ghost small', text: '✕', attrs: { 'aria-label': 'Close' }, on: { click: () => close() } })), search, grid, pad);
 
     // ---- the controls: how it draws on, then the look ----
     let target = L;
-    const drawRow = el('div', { class: 'sh-row', attrs: { role: 'group', 'aria-label': 'How it draws' } });
-    const lookRow = el('div', { class: 'sh-row', attrs: { role: 'group', 'aria-label': 'The look' } });
-    const chip = (label, on, fn, tip) => el('button', { type: 'button', class: `sh-chip${on ? ' on' : ''}`, text: label, title: tip || '', attrs: { 'aria-pressed': String(Boolean(on)) }, on: { click: fn } });
+    const drawRow = el('div', { class: 'shp-row', attrs: { role: 'group', 'aria-label': 'How it draws' } });
+    const lookRow = el('div', { class: 'shp-row', attrs: { role: 'group', 'aria-label': 'The look' } });
+    const chip = (label, on, fn, tip) => el('button', { type: 'button', class: `shp-chip${on ? ' on' : ''}`, text: label, title: tip || '', attrs: { 'aria-pressed': String(Boolean(on)) }, on: { click: fn } });
     const range = (label, key, min, max, step, val, tip) => {
-      const out = el('span', { class: 'sh-val', text: String(val) });
+      const out = el('span', { class: 'shp-val', text: String(val) });
       const r = el('input', { type: 'range', min, max, step, value: val, title: tip, attrs: { 'aria-label': label } });
       r.addEventListener('input', () => { C0[key] = Number(r.value); out.textContent = r.value; });
       r.addEventListener('change', () => { C0[key] = Number(r.value); changed({ [key]: Number(r.value) }); });
-      return el('label', { class: 'sh-range' }, el('span', { text: label }), r, out);
+      return el('label', { class: 'shp-range' }, el('span', { text: label }), r, out);
     };
     // a control moved: the previews follow; on a layer being changed, the layer follows too (one undo step)
     function changed(part) {
@@ -256,10 +257,10 @@ shapeLayer(P, { preset: ${q(p.id)}${opts} });
       setOn(target.id, part).then((r) => r.same || toast(`◆ ${r.set.join(' · ')}`, { timeout: 1200 })).catch((e) => toast(e.message, { type: 'error' }));
     }
     function paint() {
-      drawRow.replaceChildren(el('span', { class: 'sh-lab', text: 'Draws' }),
+      drawRow.replaceChildren(el('span', { class: 'shp-lab', text: 'Draws' }),
         ...MODE_CHIPS.map(([k, label]) => chip(label, C0.drawOn === k, () => { C0.drawOn = k; changed({ drawOn: k }); }, k === 'off' ? 'Still: the Start / End sliders draw it (keyframe them on the timeline)' : C.HIT_MODES[k] ? `Draws itself again on each ${k} of the song` : '')),
         range('Takes', 'dur', 0.1, 4, 0.05, C0.dur ?? 1.2, 'Seconds it takes to draw'),
-        el('select', { class: 'sh-sel', title: 'Easing', attrs: { 'aria-label': 'Easing' }, on: { change: (e) => { C0.ease = e.target.value; changed({ ease: C0.ease }); } } }, ...C.EASES.map((x) => el('option', { value: x, text: x, selected: (C0.ease || 'smooth') === x }))),
+        el('select', { class: 'shp-sel', title: 'Easing', attrs: { 'aria-label': 'Easing' }, on: { change: (e) => { C0.ease = e.target.value; changed({ ease: C0.ease }); } } }, ...C.EASES.map((x) => el('option', { value: x, text: x, selected: (C0.ease || 'smooth') === x }))),
         chip('⇄ Reverse', Boolean(C0.reverse), () => { C0.reverse = !C0.reverse; changed({ reverse: C0.reverse }); }, 'Draws from the other end'));
       const pal = palette();
       lookRow.replaceChildren(
@@ -267,12 +268,12 @@ shapeLayer(P, { preset: ${q(p.id)}${opts} });
         range('Dashes', 'dash', 0, 60, 1, C0.dash ?? 0, 'Dash length (0 = solid)'),
         range('Round', 'round', 0, 1, 0.01, C0.round ?? 0, 'Corner roundness'),
         chip('Filled', Boolean(C0.filled), () => { C0.filled = !C0.filled; changed({ filled: C0.filled }); }, 'Filled with a color (closed shapes)'),
-        el('span', { class: 'sh-lab', text: 'Colors' }),
+        el('span', { class: 'shp-lab', text: 'Colors' }),
         chip('Its own', !C0.stroke, () => { delete C0.stroke; delete C0.fill; paint(); }, 'The shape\'s own colors'),
-        ...(pal.length ? pal.map((hex, i) => { const b = el('button', { type: 'button', class: `sh-sw${C0.stroke === hex ? ' on' : ''}`, title: `${hex}: the line (the fill takes the next palette color)`, attrs: { 'aria-label': `Colors from ${hex}` }, on: { click: () => { C0.stroke = hex; C0.fill = pal[(i + 1) % pal.length]; changed({ stroke: hex, fill: C0.fill }); } } }); b.style.background = hex; return b; }) : [el('span', { class: 'sh-lab', text: 'no palette yet', title: 'Palette follows the cover, or the scene\'s palette' })]));
+        ...(pal.length ? pal.map((hex, i) => { const b = el('button', { type: 'button', class: `shp-sw${C0.stroke === hex ? ' on' : ''}`, title: `${hex}: the line (the fill takes the next palette color)`, attrs: { 'aria-label': `Colors from ${hex}` }, on: { click: () => { C0.stroke = hex; C0.fill = pal[(i + 1) % pal.length]; changed({ stroke: hex, fill: C0.fill }); } } }); b.style.background = hex; return b; }) : [el('span', { class: 'shp-lab', text: 'no palette yet', title: 'Palette follows the cover, or the scene\'s palette' })]));
     }
     paint();
-    const foot = el('div', { class: 'sh-foot' }, el('span', { class: 'hint', text: 'Click a shape (or Enter) · ✎ Draw your own: click points, Shift for straight lines · Ctrl/⌘+Z undoes · Esc closes' }));
+    const foot = el('div', { class: 'shp-foot' }, el('span', { class: 'hint', text: 'Click a shape (or Enter) · ✎ Draw your own: click points, Shift for straight lines · Ctrl/⌘+Z undoes · Esc closes' }));
     box.append(drawRow, lookRow, foot);
 
     // ---- the cards ----
@@ -287,8 +288,8 @@ shapeLayer(P, { preset: ${q(p.id)}${opts} });
     };
     const cardsOn = (id) => { for (const c of cards) c.btn.classList.toggle('cur', c.p.id === id); };
     for (const p of PRESETS) {
-      const canvas = el('canvas', { class: 'sh-cv', attrs: { 'aria-hidden': 'true' } });
-      const btn = el('button', { type: 'button', class: 'sh-card', title: p.desc, attrs: { role: 'option', 'aria-label': `${p.name}: ${p.desc}` }, on: { click: () => (p.id === 'custom' ? drawPad() : go(p)) } },
+      const canvas = el('canvas', { class: 'shp-cv', attrs: { 'aria-hidden': 'true' } });
+      const btn = el('button', { type: 'button', class: 'shp-card', title: p.desc, attrs: { role: 'option', 'aria-label': `${p.name}: ${p.desc}` }, on: { click: () => (p.id === 'custom' ? drawPad() : go(p)) } },
         canvas, el('b', { text: p.id === 'custom' ? `✎ ${p.name}` : p.name }));
       btn.dataset.id = p.id;
       cards.push({ p, btn, canvas, g: canvas.getContext('2d'), vis: true });
@@ -308,14 +309,19 @@ shapeLayer(P, { preset: ${q(p.id)}${opts} });
       D.on = true; D.pts = []; D.closed = false; D.hover = null;
       grid.hidden = true; search.hidden = true; pad.hidden = false;
       const asp = frameAspect();
-      const cv = el('canvas', { class: 'sh-padcv', attrs: { 'aria-label': 'Draw your own: click to add points, Shift for straight lines' } });
-      const H = Math.min(360, Math.round(Math.min(780, innerWidth * 0.86) / asp)); const W = Math.round(H * asp);
-      cv.style.width = `${W}px`; cv.style.height = `${H}px`;
-      const info = el('span', { class: 'sh-lab', text: 'Click to add points · Shift: a straight line · click the first point to close' });
+      const cv = el('canvas', { class: 'shp-padcv', attrs: { 'aria-label': 'Draw your own: click to add points, Shift for straight lines' } });
+      const room = Math.max(240, (box.clientWidth || 780) - 26); // (the pad fills the picker's width, and fits its height)
+      let W = Math.min(room, 780); let H = Math.round(W / asp);
+      const info = el('span', { class: 'shp-lab', text: 'Click to add points · Shift: a straight line · click the first point to close' });
       const addB = el('button', { type: 'button', class: 'primary small', text: 'Add it', on: { click: () => finish() } });
       const backB = el('button', { type: 'button', class: 'ghost small', text: '‹ Shapes', on: { click: () => leave() } });
       const clearB = el('button', { type: 'button', class: 'ghost small', text: 'Clear', on: { click: () => { D.pts = []; D.closed = false; paintPad(); } } });
-      pad.replaceChildren(el('div', { class: 'sh-padbar' }, backB, info, clearB, addB), cv);
+      pad.replaceChildren(el('div', { class: 'shp-padbar' }, backB, info, clearB, addB), cv);
+      // the whole picker fits on screen: what isn't the pad is measured, the pad takes the rest (no scrolling while drawing)
+      cv.style.width = `${W}px`; cv.style.height = '0px';
+      const maxH = Math.max(140, Math.floor(innerHeight * 0.86) - box.scrollHeight - 4);
+      if (H > maxH) { H = maxH; W = Math.round(H * asp); }
+      cv.style.width = `${W}px`; cv.style.height = `${H}px`;
       D.cv = cv; D.W = W; D.H = H;
       const unit = () => Math.min(W, H) / 2;
       const toU = (e) => { const r = cv.getBoundingClientRect(); return [((e.clientX - r.left) - W / 2) / unit(), -((e.clientY - r.top) - H / 2) / unit()]; };
@@ -327,7 +333,7 @@ shapeLayer(P, { preset: ${q(p.id)}${opts} });
         const f = D.pts[0]; const lst = D.pts[D.pts.length - 1];
         if (f && D.pts.length >= 3 && Math.hypot(p[0] - f[0], p[1] - f[1]) * unit() < 10) { D.closed = true; paintPad(); return; }
         if (lst && Math.hypot(p[0] - lst[0], p[1] - lst[1]) * unit() < 3) return; // (the second click of a double-click)
-        if (e.shiftKey) { p = snap(p); if (lst) lst[2] = 1; }
+        if (e.shiftKey) p = snap(p); // (a sharp point: the line into it and out of it is straight)
         D.pts.push([p[0], p[1], e.shiftKey ? 1 : 0]); D.closed = false;
         paintPad();
       });

@@ -8892,13 +8892,13 @@ const SHP = { want: null, stats: new Map() };
 const SHP_KEYS = ['w', 'h', 'sides', 'inner', 'round', 'amp', 'turns', 'taper'];
 const SHP_LOOK = ['fill', 'fillA', 'stroke', 'width', 'dash', 'gap', 'march', 'dashOff', 'drawOn', 'dur', 'delay', 'hold', 'ease', 'reverse', 'offset', 'fillIn', 'trimStart', 'trimEnd'];
 function shpReady() { if (globalThis.shapecore) return true; SHP.want ||= loadLib('shapecore').then(() => { PACE.poke += 1; paceWake(); dozeWake('shape'); }).catch(() => { SHP.want = null; }); return false; }
-// an export / sequence frame waits for the math (and ♪'s hits when a shape draws on them)
+// an export / sequence frame waits for the math and ♪'s hits (never a first frame without them)
 globalThis.__labShapeReady = async () => {
   const codes = [...layers.values()].map((L) => L.code || '').filter((c) => /\bshapeLayer\s*\(/.test(c));
   if (!codes.length) return;
   const all = [];
   if (!globalThis.shapecore) { shpReady(); all.push(SHP.want); }
-  if (!globalThis.beatlink && codes.some((c) => /drawOn\s*:\s*\{\s*value\s*:\s*'(beat|bar|kick|snare)'/.test(c))) { blReady(); all.push(BL.want); }
+  if (!globalThis.beatlink) { blReady(); all.push(BL.want); } // (its Draws slider may be on the hits: an export's code carries live values, so it isn't read from the text)
   if (all.length) await Promise.race([Promise.all(all), new Promise((r) => realSetTimeout(r, 30000))]).catch(() => {});
 };
 globalThis.shapeLayer = (P = {}, opts = {}) => {
@@ -8934,6 +8934,7 @@ globalThis.shapeLayer = (P = {}, opts = {}) => {
       segGeo = new THREE.InstancedBufferGeometry();
       segGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, -1, 1, -1, 1, 1, 0, 1]), 2)); segGeo.setIndex([0, 1, 2, 0, 2, 3]);
       for (const [k, w] of [['aA', 2], ['aB', 2], ['aS', 2], ['aR', 2], ['aW', 1]]) segGeo.setAttribute(k, new THREE.InstancedBufferAttribute(new Float32Array(cap * w), w));
+      segGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4); // (drawn whole: no culling, no bounds to work out)
       stroke.geometry = segGeo; edge.geometry = segGeo;
     }
     const A = segGeo.attributes; let j = 0;
@@ -8956,6 +8957,7 @@ globalThis.shapeLayer = (P = {}, opts = {}) => {
     }
     fillGeo.dispose(); fillGeo = new THREE.BufferGeometry();
     fillGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 2)); fillGeo.setIndex(idx);
+    fillGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
     fill.geometry = fillGeo; fill.userData.has = idx.length > 0;
     stat.builds += 1; stat.len = path.L;
   }
@@ -8979,11 +8981,12 @@ globalThis.shapeLayer = (P = {}, opts = {}) => {
     const k = Math.min(3, Math.max(1, Math.round((L.tfS || 1) * 4) / 4));
     let want = devicePixelRatio * k; const cssPx = innerWidth * innerHeight; if (cssPx * want * want > 16e6) want = Math.max(devicePixelRatio, Math.sqrt(16e6 / cssPx));
     if (Math.abs(want - ratio) > 1e-3) { ratio = want; renderer.setPixelRatio(ratio); renderer.setSize(innerWidth, innerHeight); stat.ratio = ratio; }
-    // the time: a sequence's / an export's / the song's clock (from the layer's in point); no song: since it started
+    // the time: a sequence's / an export's / the song's clock; no song: since it started
     const p = L.props; const mode = String(v.drawOn);
     let t;
-    if (p.pcOf || p.seqT0 != null || SQ.on) t = globalThis.__layerClock?.(L.id) ?? 0;
-    else if (mediaEl && !liveKind) t = mediaEl.currentTime - (p.in ?? 0);
+    const clocked = Boolean(p.pcOf || p.seqT0 != null || SQ.on);
+    if (clocked) t = globalThis.__layerClock?.(L.id) ?? 0;
+    else if (mediaEl && !liveKind) t = mediaEl.currentTime; // (the song's time, as a render's: Starts at sets where it draws on)
     else {
       const dk = `${mode}|${v.dur}|${v.delay}|${v.hold}|${v.ease}|${v.reverse}|${v.offset}`;
       if (dk !== drawKey) { drawKey = dk; t0 = realNow(); } // (no song: a changed draw-on plays again)
@@ -8991,7 +8994,7 @@ globalThis.shapeLayer = (P = {}, opts = {}) => {
     }
     let hit = null; let th = t;
     if (C.HIT_MODES[mode]) {
-      if (blReady()) { blFresh(); hit = blSrc(C.HIT_MODES[mode]).hit; if (mediaEl || liveKind) th = blTime(); }
+      if (blReady()) { blFresh(); hit = blSrc(C.HIT_MODES[mode]).hit; if (!clocked && (mediaEl || liveKind)) th = blTime(); } // (a render / sequence: the hits at the scene's own time, like text that moves)
       else hit = () => null;
     }
     C.trim(v, th, hit, tr);
