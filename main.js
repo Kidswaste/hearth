@@ -1,6 +1,9 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
+// (round 52, gameperf) exact JS heap numbers (performance.memory): ▶ Play's stats see garbage per second and each GC
+// pause instead of 20-minute-old buckets. Reading them costs nothing until a page asks.
+app.commandLine.appendSwitch('enable-precise-memory-info');
 // (round 39, powerwise) keep the computer awake only while it matters, battery / saver, calm timers after a wake (first, so
 // its test counter sees every timer the main process starts)
 const powerwise = require('./powerwisemain');
