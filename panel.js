@@ -346,7 +346,7 @@ const Panel = (() => {
         pre.push(bit(`none:${agent.id}:${text}`, () => {
           const none = el('div', 'none', text);
           // (round 18, tidy) an empty agent offers its one action: start a chat
-          if (!q && agent.mode === 'native') { const b = el('button', 'none-new', 'New chat'); b.type = 'button'; b.title = 'Ctrl+N'; b.addEventListener('click', () => { activate(agent.id); Native.newChat(agent.id); }); none.append(b); }
+          if (!q && agent.mode === 'native') { const b = el('button', 'none-new', 'New chat'); b.type = 'button'; b.title = (globalThis.macText || String)('Ctrl+N'); b.addEventListener('click', () => { activate(agent.id); Native.newChat(agent.id); }); none.append(b); }
           return none;
         }));
       }

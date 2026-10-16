@@ -337,7 +337,8 @@ const Voice = (() => {
     ].join('\n'));
     return null;
   }
-  const keyText = () => (PLATFORM === 'darwin' ? combo.text.replace(/\bAlt\+/g, '⌥').replace(/\bShift\+/g, '⇧') : combo.text);
+  // (round 49) the Mac says ⌃Space (the real Control key: ⌘Space is Spotlight), Windows Ctrl+Space
+  const keyText = () => (typeof WinMac !== 'undefined' && WinMac.keyLabel && combo.button == null ? WinMac.keyLabel(combo.text, { mac: PLATFORM === 'darwin' }) : PLATFORM === 'darwin' ? combo.text.replace(/\bAlt\+/g, '⌥').replace(/\bShift\+/g, '⇧') : combo.text);
 
   // ---------- menus ----------
   function settingsItems() {
