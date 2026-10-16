@@ -102,7 +102,9 @@ Count: 13 upgrades (12 user-facing behaviours and fixes, 1 measuring tool).
 
 ## Tests
 `sh dev/run-checks.sh --exact labscrub labpace labkeys labdirect kinetictype sequence music idlecpu inputlatency lazy
-unit:boot-test`: see the final report for the outcome. `node --check` on every file touched.
+unit:boot-test`: 10 of 11 passed first time. labscrub failed once (the playhead read back the drag's first spot
+after release at load ≈ 17); fixed (a paused report while a seek is on its way no longer moves the playhead), then
+labscrub passed alone twice. `node --check` on every file touched.
 
 ## Edits outside the lane
 - `tools/three-sandbox.html` (labgpu's file): `sendState(x)` takes extra fields; `mediaCommand` takes `ack`; a small
