@@ -450,6 +450,7 @@ function postShot(canvas, tag) {
 }
 const mode = new URLSearchParams(location.search).get('mode') || 'sketch';
 const GAME = new URLSearchParams(location.search).get('game') === '1'; // (round 52, gamemode) ▶ Play's own window: see "▶ Play"
+const GAME_LOWLAT = GAME && new URLSearchParams(location.search).get('lowlat') === '1'; // (round 53, gameinput) /game lowlatency on: the one canvas asks for the low-latency path (desynchronized)
 // Real timer functions for the sandbox's own work; sketches get wrapped ones (see "run generations").
 const realSetTimeout = setTimeout.bind(window);
 const realClearTimeout = clearTimeout.bind(window);
@@ -708,7 +709,7 @@ if (GAME) {
     if (!GM.gl) {
       const cv = document.createElement('canvas');
       cv.className = 'gm-canvas'; cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
-      const gl = cv.getContext('webgl2', { alpha: true, antialias: true, depth: true, stencil: true, premultipliedAlpha: true, powerPreference: 'high-performance' });
+      const gl = cv.getContext('webgl2', { alpha: true, antialias: true, depth: true, stencil: true, premultipliedAlpha: true, powerPreference: 'high-performance', ...(GAME_LOWLAT ? { desynchronized: true } : {}) });
       if (!gl) return null;
       GM.canvas = cv; GM.gl = gl;
     }
@@ -1400,12 +1401,16 @@ function dozeCheck(t, prev) {
   if (ms && !DOZE.on) DOZE.dozes += 1;
   DOZE.on = ms > 0; DOZE.ms = ms;
 }
-for (const ev of ['message', 'pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'resize', 'focus']) addEventListener(ev, pacePoke, { capture: true, passive: true });
+// (round 53, gameinput) ▶ Play's window: no pace, no doze, no adaptive steps (the quality is locked), so nothing of the
+// Lab's watches the game's input: its keys and mouse moves reach the game with no Lab listener in front of them
+for (const ev of GAME ? ['message', 'resize', 'focus'] : ['message', 'pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'resize', 'focus']) addEventListener(ev, pacePoke, { capture: true, passive: true });
 // orbit / drag / scrub: a held pointer (or a wheel turn) is an interaction; if frames are slow while it lasts, the
 // preview draws at 70 % of its resolution until the pointer comes up (full again on release; adapting on only)
-addEventListener('pointerdown', (e) => { if (e.button === 0 || e.button === 2) { PACE.drag = true; PACE.dragLow = false; } }, true);
-for (const ev of ['pointerup', 'pointercancel', 'blur']) addEventListener(ev, () => { if (PACE.drag || PACE.dragLow) { PACE.drag = false; PACE.dragLow = false; PACE.poke += 1; } }, true);
-addEventListener('wheel', () => { PACE.wheelUntil = realNow() + 250; }, { capture: true, passive: true });
+if (!GAME) {
+  addEventListener('pointerdown', (e) => { if (e.button === 0 || e.button === 2) { PACE.drag = true; PACE.dragLow = false; } }, true);
+  for (const ev of ['pointerup', 'pointercancel', 'blur']) addEventListener(ev, () => { if (PACE.drag || PACE.dragLow) { PACE.drag = false; PACE.dragLow = false; PACE.poke += 1; } }, true);
+  addEventListener('wheel', () => { PACE.wheelUntil = realNow() + 250; }, { capture: true, passive: true });
+}
 function paceDragK() {
   if (!AD.on || lightMode) return 1;
   const on = PACE.drag || realNow() < PACE.wheelUntil;
@@ -1730,15 +1735,16 @@ window.__glRecover = {
 // right-click for its pan); a right-drag stays the sketch's. (Round 7: menus where you point.) The menu opens when the
 // button comes up, so on a Mac / Linux, where contextmenu fires on the way down, a drag can still cancel it.
 let ctxDown = null;
-addEventListener('pointerdown', (e) => { if (e.button === 2) ctxDown = { x: e.clientX, y: e.clientY, up: false, want: false }; }, true);
+if (!GAME) addEventListener('pointerdown', (e) => { if (e.button === 2) ctxDown = { x: e.clientX, y: e.clientY, up: false, want: false }; }, true);
 addEventListener('contextmenu', (e) => {
+  if (GAME) { e.preventDefault(); return; } // (round 53, gameinput) ▶ Play: a right-click is the game's (no menu, no message)
   if (mode !== 'sketch') return;
   e.preventDefault();
   if (ctxDown && !ctxDown.up) { ctxDown.want = true; return; } // wait for the button to come up
   if (!ctxDown || Math.hypot(e.clientX - ctxDown.x, e.clientY - ctxDown.y) < 6) post({ type: 'ctx', x: e.clientX, y: e.clientY });
   ctxDown = null;
 }, true);
-addEventListener('pointerup', (e) => {
+if (!GAME) addEventListener('pointerup', (e) => {
   if (e.button !== 2 || !ctxDown) return;
   ctxDown.up = true;
   if (ctxDown.want && Math.hypot(e.clientX - ctxDown.x, e.clientY - ctxDown.y) < 6) post({ type: 'ctx', x: e.clientX, y: e.clientY });
@@ -1764,6 +1770,7 @@ let presentCursor = false; let cursorTimer = 0;
 addEventListener('mousemove', () => { if (!presentCursor) return; document.documentElement.style.cursor = ''; clearTimeout(cursorTimer); cursorTimer = realSetTimeout(() => { document.documentElement.style.cursor = 'none'; }, 2000); });
 let statsTimer = 0; let statsDozed = 0;
 function statsRun(on) {
+  if (GAME) on = false; // (round 53, gameinput) ▶ Play: no Lab reads the stats (the game's chip counts its own frames)
   if (!on) { if (statsTimer) clearInterval(statsTimer); statsTimer = 0; return; }
   if (statsTimer) return;
   frames = 0; lastTick = performance.now(); worstGap = 0;
@@ -3415,14 +3422,15 @@ function editCommand(msg) {
 // Keys pressed while the picture has focus (after a click on it) still reach the Lab's shortcuts (F freeze,
 // R shuffle, Shift+1…5 sizes, X effects, T tap, Alt+N…) unless the sketch used them (preventDefault). Synthetic
 // keys (the director's three_input) never do; neither do the scene editor's own keys.
-addEventListener('keydown', (e) => {
+// (round 53, gameinput) not in ▶ Play's window: the keys are the game's (each one started a timer and a message)
+if (!GAME) addEventListener('keydown', (e) => {
   if (!e.isTrusted || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
   if (edit.on && /^[werqf]$|^Escape$/i.test(e.key)) return;
   realSetTimeout(() => { if (!e.defaultPrevented) post({ type: 'host-key', key: e.key, code: e.code, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, repeat: e.repeat }); }, 0);
 });
 // (round 37, abcompare) B let go over the picture ends the Lab's "hold B: before" (only B: no other key needs its key-up)
-addEventListener('keyup', (e) => { if (e.isTrusted && e.code === 'KeyB') post({ type: 'host-keyup', key: e.key, code: e.code, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); });
-addEventListener('keydown', (e) => {
+if (!GAME) addEventListener('keyup', (e) => { if (e.isTrusted && e.code === 'KeyB') post({ type: 'host-keyup', key: e.key, code: e.code, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey }); });
+if (!GAME) addEventListener('keydown', (e) => {
   if (!edit.on || !edit.gizmo || /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
   const k = e.key.toLowerCase();
   if (k === 'w' || k === 'e' || k === 'r') { edit.mode = { w: 'translate', e: 'rotate', r: 'scale' }[k]; edit.gizmo.setMode(edit.mode); post({ type: 'edit-mode', mode: edit.mode }); }
@@ -3485,7 +3493,9 @@ function directCore() {
 // </direct-core>
 const DR = { core: directCore(), sel: null, bb: null, ui: null, drag: null, down: null, run: null, tok: 0, at: null, cv: null, busy: new Map(), picks: 0, reads: 0, view: 1 }; // view: how big a page pixel shows (the Lab scales exact frame sizes to fit)
 // not in an export page, the scene editor, a playing sequence, Present or a recording
-const drOk = () => mode === 'sketch' && !XP_PAGE && !SQ.on && !edit.on && !presentCursor && !compRec;
+// (round 53, gameinput) never in ▶ Play's window: a click there read the canvas back from the GPU to pick a layer,
+// outlined it over the game and then took the arrow keys to nudge it
+const drOk = () => !GAME && mode === 'sketch' && !XP_PAGE && !SQ.on && !edit.on && !presentCursor && !compRec;
 function drCanvas(w, h) { const c = DR.cv || (DR.cv = document.createElement('canvas')); if (c.width !== w) c.width = w; if (c.height !== h) c.height = h; const g = c.getContext('2d'); g.clearRect(0, 0, w, h); return g; }
 // the layers a click can pick, top first (not filters, precomps' insides, a sequence's hidden side, hidden ones)
 const drLayers = () => ordered().filter((L) => !L.pseudo && !L.isFilter && !L.props.pcOf && !L.seqHide && L.box.style.display !== 'none' && layerMix(L) > 0.02).reverse();
@@ -3659,7 +3669,8 @@ function drObjectAt(L, px, py) {
     return hit ? pathOf(hit.object, L.lvScene) : null;
   } catch { return null; }
 }
-addEventListener('pointerdown', (e) => {
+// (round 53, gameinput: "if (!GAME)") ✥ Direct's input listeners aren't added in ▶ Play's window: the input is the game's
+if (!GAME) addEventListener('pointerdown', (e) => {
   if (!e.isTrusted || e.button !== 0 || !drOk()) return;
   const h = e.target?.closest?.('#lab-direct [data-h]')?.dataset.h;
   if (h && DR.sel) {
@@ -3674,7 +3685,7 @@ addEventListener('pointerdown', (e) => {
   // (a layer with controls of its own keeps its drags: a click only picks it)
   DR.down = { x: e.clientX, y: e.clientY, id: e.pointerId, L, own: Boolean(L && L.lvOwn === L.gen) };
 }, true);
-addEventListener('pointermove', (e) => {
+if (!GAME) addEventListener('pointermove', (e) => {
   const D = DR.drag;
   if (D) { if (e.pointerId === D.id) drMove(e); return; }
   const d = DR.down;
@@ -3691,16 +3702,16 @@ const drUp = (e) => {
   DR.at = { x: d.x, y: d.y };
   if (d.L) drSelect(d.L, true); else drClear();
 };
-addEventListener('pointerup', drUp, true);
-addEventListener('pointercancel', drUp, true);
-addEventListener('blur', () => { if (DR.drag) drEnd(DR.drag); if (DR.run) drRunEnd(); });
-addEventListener('dblclick', (e) => {
+if (!GAME) addEventListener('pointerup', drUp, true);
+if (!GAME) addEventListener('pointercancel', drUp, true);
+if (!GAME) addEventListener('blur', () => { if (DR.drag) drEnd(DR.drag); if (DR.run) drRunEnd(); });
+if (!GAME) addEventListener('dblclick', (e) => {
   if (!e.isTrusted || e.button !== 0 || !drOk()) return;
   const L = DR.sel && drHits(DR.sel, e.clientX, e.clientY) ? DR.sel : drPick(e.clientX, e.clientY);
   if (L) post({ type: 'direct', op: 'open', layer: L.id });
 }, true);
 // Alt/Option+wheel scales the picked layer (or what's under the pointer) about its middle (before the look-around's wheel)
-addEventListener('wheel', (e) => {
+if (!GAME) addEventListener('wheel', (e) => {
   if (!e.isTrusted || !e.altKey || e.ctrlKey || e.metaKey || !drOk()) return;
   let L = DR.sel;
   if (!L) { L = drPick(e.clientX, e.clientY); if (!L) return; DR.at = { x: e.clientX, y: e.clientY }; drSelect(L, true); }
@@ -3712,7 +3723,7 @@ addEventListener('wheel', (e) => {
   drRun(L, DR.core.clampT(t), 350);
 }, { capture: true, passive: false });
 // arrows nudge (Shift: 10 px), Esc lets go; the Lab's own keys don't get them while something is picked
-addEventListener('keydown', (e) => {
+if (!GAME) addEventListener('keydown', (e) => {
   if (!e.isTrusted || !DR.sel || !drOk() || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); drClear(); return; }
   if (!/^Arrow(Left|Right|Up|Down)$/.test(e.key)) return;
@@ -4016,9 +4027,9 @@ function lvSelfDraw(L) {
   if (!r || r.__stale || !L.lvScene || L.lvTick >= frameTick - 1 || frameTick - (r.__pace?.multi ?? -1e9) < 120) return;
   try { r.render(L.lvScene, L.lvCam); LV.self += 1; } catch { /* gone */ }
 }
-// ---- input ----
+// ---- input ---- (round 53, gameinput: "if (!GAME)": none of these in ▶ Play's window, the mouse is the game's)
 const lvHint = (L) => { if (LV.hint || !L) return; LV.hint = true; post({ type: 'view-hint', kind: 'look' }); };
-addEventListener('wheel', (e) => {
+if (!GAME) addEventListener('wheel', (e) => {
   if (!e.isTrusted) return;
   const L = lvGestureLayer(); if (!L) return;
   e.preventDefault();
@@ -4035,14 +4046,14 @@ addEventListener('wheel', (e) => {
   V.dirty = true; lvHint(L); lvKick();
 }, { capture: true, passive: false });
 // right-drag turns (Shift: pans), middle-drag pans; it starts past 6 px, as the right-click menu stops (see above)
-addEventListener('pointerdown', (e) => {
+if (!GAME) addEventListener('pointerdown', (e) => {
   if (!e.isTrusted || (e.button !== 1 && e.button !== 2)) return;
   const L = lvGestureLayer(); if (!L) return;
   if (e.button === 1) e.preventDefault(); // (no autoscroll on Windows / Linux)
   LV.drag = { id: e.pointerId, L, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, on: false, kind: e.button === 1 || e.shiftKey ? 'pan' : 'turn', samples: [], el: e.target };
 }, true);
-addEventListener('mousedown', (e) => { if (e.isTrusted && e.button === 1 && lvGestureLayer()) e.preventDefault(); }, true);
-addEventListener('pointermove', (e) => {
+if (!GAME) addEventListener('mousedown', (e) => { if (e.isTrusted && e.button === 1 && lvGestureLayer()) e.preventDefault(); }, true);
+if (!GAME) addEventListener('pointermove', (e) => {
   const D = LV.drag;
   if (!D) { if (!LV.hint && e.isTrusted && realNow() - (LV.hintAt || -1e9) > 500) { LV.hintAt = realNow(); const L = lvGestureLayer(); if (L) lvHint(L); } return; }
   if (e.pointerId !== D.id) return;
@@ -4064,11 +4075,11 @@ const lvUp = (e) => {
   LV.core.fling(V, D.kind, vx, vy, innerHeight, lvUnits(V, D.L.lvCam).unit);
   lvHint(D.L); lvKick();
 };
-addEventListener('pointerup', lvUp, true);
-addEventListener('pointercancel', lvUp, true);
-addEventListener('blur', () => { if (LV.drag) lvUp({ type: 'blur' }); });
+if (!GAME) addEventListener('pointerup', lvUp, true);
+if (!GAME) addEventListener('pointercancel', lvUp, true);
+if (!GAME) addEventListener('blur', () => { if (LV.drag) lvUp({ type: 'blur' }); });
 // double-click: frame the subject, again: the view before (the smart zoom of a Mac trackpad, with a double-tap)
-addEventListener('dblclick', (e) => {
+if (!GAME) addEventListener('dblclick', (e) => {
   if (!e.isTrusted || e.button !== 0 || mode !== 'sketch') return;
   const L = lvKeyLayer(); if (!L || L.lvClicks === L.gen) return;
   if (L.lvOwn === L.gen && !lvOrbitOf(L)) return;

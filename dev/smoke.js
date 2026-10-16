@@ -246,6 +246,7 @@ async function cdpConnect() {
     // The `smoke()` bridge for check scripts: real input events (Input.*), screenshots and other CDP calls.
     let traceEvents = []; let traceDone = null; let snapChunks = null;
     const sheets = new Map(); // styleSheetId → header (--coverage)
+    const pageSocks = {}; // (round 53, gameinput) pageCdp: one socket per other page
     const coverage = opt('--coverage');
     const smokeCall = async (payload) => {
       let req; try { req = JSON.parse(payload); } catch { return; }
@@ -279,6 +280,24 @@ async function cdpConnect() {
         const img = await send('Page.captureScreenshot', { format: 'png' });
         if (img.result?.data) { fs.mkdirSync(path.dirname(req.shot), { recursive: true }); fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64')); }
         result = { saved: req.shot };
+      } else if (req.pageCdp) {
+        // (round 53, gameinput) a CDP call into another window's page (the ▶ Play window: real input with Input.*), the
+        // newest page whose URL matches; its socket is kept for the next call (a burst of mouse moves, one key after another)
+        const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+        const t = list.filter((x) => x.type === 'page' && new RegExp(req.pageCdp).test(x.url)).pop();
+        if (!t) result = { error: `no page ${req.pageCdp}` };
+        else {
+          const k = (pageSocks[t.id] ||= { n: 0, wait: new Map(), ws: null });
+          if (!k.ws) {
+            k.ws = new WebSocket(t.webSocketDebuggerUrl);
+            await new Promise((r, j) => { k.ws.onopen = r; k.ws.onerror = j; });
+            k.ws.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id && k.wait.has(d.id)) { k.wait.get(d.id)(d); k.wait.delete(d.id); } };
+            k.ws.onclose = () => { delete pageSocks[t.id]; };
+          }
+          const i = ++k.n;
+          const d = await new Promise((r) => { k.wait.set(i, r); k.ws.send(JSON.stringify({ id: i, method: req.cdp, params: req.params || {} })); });
+          result = d.error ? { error: d.error.message } : d.result || {};
+        }
       } else if (req.pageEval) {
         // (round 30) an expression in another window's page (an app window's chrome): the newest page whose URL matches
         const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
