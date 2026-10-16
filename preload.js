@@ -270,5 +270,6 @@ contextBridge.exposeInMainWorld('hub', {
   gpu52: { info: call('gpu52:info'), shown: call('gpu52:shown'), reset: call('gpu52:reset'), sim: call('gpu52:sim'), onNote: on('gpu52:note') }, // (round 52, gpu52) the graphics path: Settings › Advanced › Graphics, /graphics (gpu52main.js)
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
   // (round 52, gameready) ▶ Play gets a game ready: file hashes, Hearth's optimized cache, the encoder, arming ▶ Play's window (gamereadymain.js)
+  diskcalm: { measure: call('diskcalm:measure'), free: call('diskcalm:free'), tidy: call('diskcalm:tidy'), last: call('diskcalm:last'), test: call('diskcalm:test'), onTidied: on('diskcalm:tidied'), onHint: on('diskcalm:hint') }, // (round 53, diskcalm) Space Hearth uses (diskcalmmain.js)
   gameReady: { hash: call('gameready:hash'), plan: call('gameready:plan'), scan: call('gameready:scan'), tool: call('gameready:tool'), install: call('gameready:install'), optimize: call('gameready:optimize'), arm: call('gameready:arm'), served: call('gameready:served'), onProgress: on('gameready:progress') },
 });
