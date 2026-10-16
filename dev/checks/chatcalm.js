@@ -16,7 +16,10 @@ const name = (n) => (n.textContent || n.getAttribute('aria-label') || n.title ||
 const shot = async (n) => { if (window.CHATCALM_SHOTS) await smoke({ shot: `${window.CHATCALM_SHOTS}/${n}.png` }); };
 const mouse = (x, y) => smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: Math.round(x), y: Math.round(y) } });
 const away = async () => { await mouse(2, 2); await wait(300); };
-const hover = async (node) => { node.scrollIntoView({ block: 'center' }); await wait(120); const r = node.getBoundingClientRect(); await mouse(r.left + Math.min(r.width / 2, 60), r.top + Math.min(r.height / 2, 9)); await wait(350); };
+// (fixes52) under load the list may still be scrolling or the controls still fading in at 350 ms: point again (where the
+// node is now) until the state it should reach is there (ready), for up to 6 s; what's read after is unchanged
+const hover = async (node, ready) => { node.scrollIntoView({ block: 'center' }); const t = Date.now(); do { await wait(120); const r = node.getBoundingClientRect(); await mouse(r.left + Math.min(r.width / 2, 60), r.top + Math.min(r.height / 2, 9)); await wait(350); } while (ready && !ready() && Date.now() - t < 6000); };
+const menuReady = () => until(() => menuRows().length, 4000); // (fixes52) a menu read once it's up, not at a fixed 200 ms
 const menuRows = () => [...document.querySelectorAll('#menu:not([hidden]) > button')].filter(vis).map((b) => b.textContent.trim().replace(/\s+/g, ' '));
 const fails = [];
 const rows = {};
@@ -48,7 +51,7 @@ const order = [...v.form.querySelectorAll(':scope > button')].filter(vis).map((b
 if (order.join(' ') !== '◎ ＋ Send') fails.push(`the chat box's buttons: ${order.join(' ')} (want ◎ ＋ Send)`);
 await shot('empty');
 // the chat box's right-click: one Attach row (＋'s menu has Files…)
-v.form.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 400, clientY: 600 })); await wait(200);
+v.form.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 400, clientY: 600 })); await menuReady(); await wait(100);
 const boxMenu = menuRows(); rows['chat box right-click'] = boxMenu.length; lists['chat box right-click'] = boxMenu.join(' | ');
 if (boxMenu.filter((t) => /attach/i.test(t)).length !== 1) fails.push(`the chat box's right-click has ${boxMenu.filter((t) => /attach/i.test(t)).length} Attach rows: ${boxMenu.join(' | ')}`);
 if (boxMenu.length > 7) fails.push(`the chat box's right-click: ${boxMenu.length} rows`);
@@ -63,14 +66,15 @@ await away();
 const reply = [...replies()].at(-1);
 const user = [...v.list.querySelectorAll('.msg.user')].at(-1);
 const foot = (m) => m.querySelector(':scope > .msg-foot');
+const shows = (m, ...ts) => () => ts.every((t) => ctrls(foot(m)).some((b) => b.textContent.trim() === t)); // pointed at: Copy and ⋯ show
 put('reply at rest', ctrls(foot(reply))); budget('reply at rest', 1);
 put('yours at rest', ctrls(foot(user))); budget('yours at rest', 0);
-await hover(foot(reply));
+await hover(foot(reply), shows(reply, 'Copy', '⋯'));
 put('reply, pointed at', ctrls(foot(reply))); budget('reply, pointed at', 5); oneSentence('reply', ctrls(foot(reply)));
 const want = ['Copy', '⋯'].filter((t) => !ctrls(foot(reply)).some((b) => b.textContent.trim() === t));
 if (want.length) fails.push(`pointing at a reply doesn't show ${want.join(', ')}`);
 await shot('reply-hover');
-await hover(foot(user));
+await hover(foot(user), shows(user, 'Copy', '⋯'));
 put('yours, pointed at', ctrls(foot(user))); budget('yours, pointed at', 2); oneSentence('yours', ctrls(foot(user)));
 await away();
 await shot('replies');
@@ -84,7 +88,7 @@ for (const m of v.list.querySelectorAll('.msg.assistant, .msg.user')) {
 
 // ---------- the message ⋯ menu: Copy isn't said twice, every action in ≤ 2 clicks ----------
 await hover(foot(reply));
-foot(reply).querySelector('.msg-more').click(); await wait(250);
+foot(reply).querySelector('.msg-more').click(); await menuReady(); await wait(100);
 const top = menuRows(); rows['message ⋯ menu'] = top.length; lists['message ⋯ menu'] = top.join(' | ');
 if (top.length > 6) fails.push(`message ⋯ menu: ${top.length} rows`);
 if (top.some((t) => t === 'Copy')) fails.push('the message ⋯ menu says Copy next to the Copy button');
@@ -121,16 +125,18 @@ await until(() => v.list.querySelector('.msg.streaming .body')?.textContent.leng
 Native.stop(claude.id);
 await until(() => !v.list.querySelector('.msg.streaming'), 10000); await wait(800); await away();
 const stopped = [...replies()].at(-1);
+await until(shows(stopped, 'Continue'), 5000); // (fixes52) read once its line is drawn
 const cont = ctrls(foot(stopped)).find((b) => b.textContent.trim() === 'Continue');
 if (!cont) fails.push(`a stopped reply doesn't show Continue at rest: ${ctrls(foot(stopped)).map(name).join(' | ')}`);
 put('stopped reply at rest', ctrls(foot(stopped))); budget('stopped reply at rest', 1);
 await send('error please');
 await away();
-const err = [...v.list.querySelectorAll('.msg.error')].at(-1);
+const err = await until(() => [...v.list.querySelectorAll('.msg.error')].at(-1), 8000);
+await until(() => ctrls(foot(err)).some((b) => b.dataset.msgAct === 'retry'), 5000); // (fixes52)
 put('failed reply at rest', ctrls(foot(err))); budget('failed reply at rest', 2);
 if (!ctrls(foot(err)).some((b) => b.dataset.msgAct === 'retry')) fails.push('a failed reply hides Retry');
 const errMore = foot(err)?.querySelector('.err-more');
-if (errMore) { errMore.click(); await wait(200); const em = menuRows(); lists['failed reply ⋯'] = em.join(' | '); for (const w of ['Copy error', 'Check engines']) if (!em.some((t) => t.includes(w))) fails.push(`a failed reply's ⋯ lost ${w}`); hideMenu(); } else if (rows['failed reply at rest'] > 2) fails.push('a failed reply has no ⋯ for the rest');
+if (errMore) { errMore.click(); await menuReady(); await wait(100); const em = menuRows(); lists['failed reply ⋯'] = em.join(' | '); for (const w of ['Copy error', 'Check engines']) if (!em.some((t) => t.includes(w))) fails.push(`a failed reply's ⋯ lost ${w}`); hideMenu(); } else if (rows['failed reply at rest'] > 2) fails.push('a failed reply has no ⋯ for the rest');
 await shot('stopped-failed');
 
 // ---------- quiet notes: one line when several apply ----------
@@ -142,6 +148,7 @@ Native.note(claude.id, 'This chat re-reads ≈ 48k tokens with every message. Co
 Native.note(claude.id, 'Smart learned: code questions here get a deeper model.', { id: 'routerlearn' });
 Native.note(claude.id, '`/stats`: 3 messages.', { id: 'cmd-out' }); // a command's own output never folds
 await wait(300); await away();
+await until(() => vis(v.list.querySelector('.note-stack')), 4000); // (fixes52)
 const stack = v.list.querySelector('.note-stack');
 const quietShown = [...v.list.querySelectorAll('.msg.note[data-quiet]')].filter(vis).length;
 rows['quiet note lines (3 apply)'] = (stack && vis(stack) ? 1 : 0) + quietShown;
@@ -167,9 +174,9 @@ Native.clearNotes(claude.id);
 // ---------- Find anything finds the moved actions ----------
 AppUI.palette();
 await until(() => document.querySelector('.palette-input'), 4000); await wait(200);
-const find = async (q) => { const i = document.querySelector('.palette-input'); i.value = q; i.dispatchEvent(new Event('input')); await wait(500); return [...document.querySelectorAll('.palette .palette-item')].slice(0, 8).map((r) => `${r.querySelector('.p-label')?.textContent} · ${r.querySelector('.p-detail')?.textContent}`); };
+const find = async (q, re) => { const i = document.querySelector('.palette-input'); i.value = q; i.dispatchEvent(new Event('input')); await wait(500); const items = () => [...document.querySelectorAll('.palette .palette-item')].slice(0, 8).map((r) => `${r.querySelector('.p-label')?.textContent} · ${r.querySelector('.p-detail')?.textContent}`); await until(() => items().some((t) => re.test(t)), 3000); return [...document.querySelectorAll('.palette .palette-item')].slice(0, 8).map((r) => `${r.querySelector('.p-label')?.textContent} · ${r.querySelector('.p-detail')?.textContent}`); };
 for (const [q, re] of [['branch', /Branch/i], ['retry', /Retry/i], ['pin message', /Pin/i], ['read aloud', /Read aloud/i], ['notes under a reply', /notes under a reply/i], ['which model answered', /model answered/i]]) {
-  const got = await find(q);
+  const got = await find(q, re);
   lists[`find "${q}"`] = got.slice(0, 3).join(' | ');
   if (!got.some((t) => re.test(t))) fails.push(`Find anything "${q}": ${got.slice(0, 4).join(' | ') || 'nothing'}`);
 }
