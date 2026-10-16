@@ -458,7 +458,7 @@ function register(ipcMain, { restart, getWin } = {}) {
   ipcMain.handle('update:back', () => self.back()); // (round 37) Go back to the previous version
   ipcMain.handle('update:fix', (_e, id) => self.fix(String(id || ''))); // (round 37) the one fix for a failed update
   ipcMain.handle('update:restart', () => { setTimeout(restart, 150); return true; }); // after the answer reaches the window
-  ipcMain.handle('update:reload', () => { getWin?.()?.webContents.reloadIgnoringCache(); return true; });
+  ipcMain.handle('update:reload', () => { try { require('./safetynetmain').noteReload('an update'); } catch { /* tests */ } getWin?.()?.webContents.reloadIgnoringCache(); return true; });
 }
 
 module.exports = { register, create, status: self.status, apply: self.apply, back: self.back, fix: self.fix, needsRestart: (files) => needsRestartIn(__dirname, files) };

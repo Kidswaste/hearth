@@ -20,6 +20,11 @@ let journal = Core.empty(); // this run's journal (what the page sends)
 let atCrash = null; // the journal as it was when the page crashed / the last run ended
 let started = false;
 const crashTimes = [];
+// (round 52, chatkeep) why the window's page last went away in this run, kept for the whole session (status clears
+// when the window says done): { kind: 'page' | 'process' | 'reload', reason, why, at }. The page that comes back puts
+// the screen, the open chats and the Lab scene back from it (freshen.js) and says so in one line.
+let lastExit = null;
+let reloadWhy = null; // { why, at }: a reload asked on purpose (Ctrl/⌘+Shift+R, Freshen, an update), until the page goes
 
 // (round 43, datasafe) a journal / session file held for a moment (Windows) is read again before it counts as missing
 function readJson(p, fallback) { try { return JSON.parse(require('./scenesafe-core').readRetry(fs, p)); } catch { return fallback; } }
@@ -37,6 +42,7 @@ function openSession(dataDir, now = Date.now()) {
   const prev = readJson(file('session.json'), null);
   const s = Core.start(prev, now, process.pid);
   unclean = s.unclean;
+  if (unclean) lastExit = { kind: 'process', reason: null, at: unclean.at || now, started: now };
   // the last run's journal: kept aside for the window when that run ended unexpectedly (journal-prev.json, until the
   // window says done), else it's done with
   try {
@@ -77,6 +83,7 @@ function pageGone(reason, reload) {
   // the page's journal as it was: what the next page restores from
   atCrash = journal; journal = Core.empty();
   if (!unclean) unclean = Core.page(reason, now);
+  lastExit = { kind: 'page', reason: reason || 'crashed', at: now };
   if (reload && Core.shouldReload(crashTimes, now)) setTimeout(reload, 400);
 }
 
@@ -91,6 +98,22 @@ function register(ipcMain, { dataDir, getWin } = {}) {
     pageGone(d?.reason, () => { if (!win.isDestroyed()) win.webContents.reload(); });
   });
   ipcMain.handle('safetynet:status', () => (unclean ? { unclean, journal: atCrash || Core.empty() } : null));
+  ipcMain.handle('safetynet:last', () => lastExit);
+  // a reload of the main window, on purpose or after a crash: the new page is told why (did-start-navigation)
+  const win0 = getWin?.();
+  const watch = (w) => {
+    if (!w || w.__snWatch) return; w.__snWatch = true;
+    let loaded = false;
+    w.webContents.on('did-finish-load', () => { loaded = true; });
+    w.webContents.on('did-start-navigation', (d) => {
+      if (!loaded || d?.isMainFrame === false || d?.isSameDocument) return;
+      if (reloadWhy && Date.now() - reloadWhy.at < 15000) lastExit = { kind: 'reload', why: reloadWhy.why, at: Date.now() };
+      else if (!lastExit || Date.now() - lastExit.at > 15000) lastExit = { kind: 'reload', why: 'reloaded', at: Date.now() };
+      reloadWhy = null;
+    });
+  };
+  if (win0) watch(win0); else setTimeout(() => watch(getWin?.()), 0);
+  ipcMain.handle('safetynet:reloading', (_e, why) => { noteReload(why); return true; });
   ipcMain.handle('safetynet:keep', (_e, value) => keep(value));
   // the window restored what it could: the next page starts fresh (the report is the window's: localStorage)
   ipcMain.handle('safetynet:done', () => { unclean = null; atCrash = null; try { fs.rmSync(file('journal-prev.json'), { force: true }); } catch { /* gone */ } keep(journal); return true; });
@@ -103,7 +126,13 @@ function register(ipcMain, { dataDir, getWin } = {}) {
   });
 }
 
+// (round 52, chatkeep) a reload asked on purpose: the new page says why, and devreport-crashes.json keeps it
+function noteReload(why) {
+  reloadWhy = { why: String(why || 'reload').slice(0, 80), at: Date.now() };
+  try { require('./devreportmain').noteCrash('reload', reloadWhy.why); } catch { /* tests */ }
+}
+
 // (round 50, crashsafe) the computer is going down (an update restart, a shutdown): the journal written now, in one go
 function flushSync() { if (!started) return; try { writeSync(file('journal.json'), journal); } catch (err) { console.warn('safetynet: journal', err.message); } }
 
-module.exports = { register, openSession, markClean, keep, pageGone, flushSync, _state: () => ({ unclean, journal, atCrash, dir }), _flush: () => writing || Promise.resolve() };
+module.exports = { register, openSession, markClean, keep, pageGone, flushSync, noteReload, last: () => lastExit, _state: () => ({ unclean, journal, atCrash, dir }), _flush: () => writing || Promise.resolve() };

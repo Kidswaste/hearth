@@ -100,17 +100,42 @@ async function log({ from, to } = {}) {
 
 // ---------- crashes ----------
 function readCrashes() { try { const j = JSON.parse(fs.readFileSync(crashFile, 'utf8')); return Array.isArray(j) ? j : []; } catch { return []; } }
-function noteCrash(kind, what) {
-  if (!crashFile) return;
-  const list = readCrashes().slice(-19);
-  list.push({ t: Date.now(), kind, what: String(what || '').slice(0, 200), seen: false });
-  try { fs.writeFileSync(crashFile, JSON.stringify(list)); } catch { /* best effort */ }
+function writeCrashes(list) { try { require('./crashsafe-core').writeAtomicSync(fs, crashFile, JSON.stringify(list, null, 1)); } catch { /* best effort */ } }
+// (round 52, chatkeep) what the computer looked like when it happened: free / total memory and Hearth's biggest
+// processes (the window's own page is gone by then; the page that comes back adds its last reading: annotate)
+function memNow() {
+  const mb = (kb) => Math.round((kb || 0) / 1024);
+  const out = {};
+  try { const m = process.getSystemMemoryInfo(); out.freeMB = mb(m.free); out.totalMB = mb(m.total); } catch { /* not in Electron */ }
+  try {
+    const { app } = require('electron');
+    const procs = app.getAppMetrics().map((p) => ({ type: p.type, name: p.name || p.serviceName || '', mb: mb(p.memory?.workingSetSize) }));
+    out.hearthMB = procs.reduce((a, p) => a + p.mb, 0);
+    out.top = procs.sort((a, b) => b.mb - a.mb).slice(0, 5);
+  } catch { /* not in Electron */ }
+  return out;
 }
-// the crashes the window hasn't been told about (they're marked seen)
+// kind: 'page' (the window's page crashed) · 'gpu' · 'reload' (the window reloaded on purpose: why says who asked)
+function noteCrash(kind, what, extra = {}) {
+  if (!crashFile) return;
+  const list = readCrashes().slice(-39);
+  list.push({ t: Date.now(), kind, what: String(what || '').slice(0, 200), seen: kind === 'reload', ...extra, ...(kind === 'reload' ? {} : { mem: memNow() }) });
+  writeCrashes(list);
+}
+// the page that came back adds what it knew (its last memory reading, what it was showing) to the newest page crash
+function annotate(info = {}) {
+  const list = readCrashes();
+  const c = [...list].reverse().find((x) => x.kind === 'page' || x.kind === 'reload');
+  if (!c || Date.now() - c.t > 10 * 60000 || c.page) return false;
+  c.page = JSON.parse(JSON.stringify(info || {}));
+  writeCrashes(list);
+  return true;
+}
+// the crashes the window hasn't been told about (they're marked seen); reloads on purpose aren't crashes
 function takeCrashes() {
   const list = readCrashes();
-  const fresh = list.filter((c) => !c.seen);
-  if (fresh.length) { for (const c of list) c.seen = true; try { fs.writeFileSync(crashFile, JSON.stringify(list)); } catch { /* next time */ } }
+  const fresh = list.filter((c) => !c.seen && c.kind !== 'reload');
+  if (list.some((c) => !c.seen)) { for (const c of list) c.seen = true; writeCrashes(list); }
   return fresh;
 }
 
@@ -118,7 +143,7 @@ function register(ipcMain, { dataDir } = {}) {
   crashFile = dataDir ? path.join(dataDir, 'devreport-crashes.json') : '';
   try {
     const { app } = require('electron');
-    app.on('render-process-gone', (_e, wc, d) => { if (d?.reason !== 'clean-exit') noteCrash('page', `${wc?.getTitle?.() || 'a window'}: ${d?.reason || 'gone'}${d?.exitCode ? ` (code ${d.exitCode})` : ''}`); });
+    app.on('render-process-gone', (_e, wc, d) => { if (d?.reason !== 'clean-exit') noteCrash('page', `${wc?.getTitle?.() || 'a window'}: ${d?.reason || 'gone'}${d?.exitCode ? ` (code ${d.exitCode})` : ''}`, { reason: d?.reason || 'gone', code: d?.exitCode ?? null, url: String(wc?.getURL?.() || '').split(/[?#]/)[0].split(/[\\/]/).pop() }); });
     app.on('child-process-gone', (_e, d) => { if (d?.type === 'GPU' && d.reason !== 'clean-exit') noteCrash('gpu', `GPU process ${d.reason}${d.exitCode ? ` (code ${d.exitCode})` : ''}`); });
   } catch { /* not in Electron (tests) */ }
   ipcMain.handle('devreport:info', () => info());
@@ -127,6 +152,7 @@ function register(ipcMain, { dataDir } = {}) {
   ipcMain.handle('devreport:states', (_e, n) => states(n));
   ipcMain.handle('devreport:log', (_e, r) => log(r || {}));
   ipcMain.handle('devreport:crashes', () => takeCrashes());
+  ipcMain.handle('devreport:annotate', (_e, info) => annotate(info)); // (round 52, chatkeep)
 }
 
-module.exports = { register, info, gh, send, states, log, noteCrash, takeCrashes, _setGh: (p) => { GH = p || 'gh'; }, _setCrashFile: (f) => { crashFile = f; } };
+module.exports = { register, info, gh, send, states, log, noteCrash, takeCrashes, annotate, readCrashes, _setGh: (p) => { GH = p || 'gh'; }, _setCrashFile: (f) => { crashFile = f; } };

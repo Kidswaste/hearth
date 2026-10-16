@@ -116,7 +116,7 @@ try {
   // the card, its Open on the Lab line
   SafetyNet.showCard(rep);
   const card = await until(() => document.querySelector('.speed-card.safetynet-card'));
-  step(Boolean(card) && card.textContent.includes('Hearth closed unexpectedly'), 'one calm card says what came back', card?.textContent.slice(0, 160));
+  step(Boolean(card) && /Hearth closed unexpectedly|Hearth's window crashed \(out of memory\?\) and reloaded/.test(card.textContent), 'one calm card says what came back (round 52: its title says the window crashed and reloaded)', card?.textContent.slice(0, 160));
   await smoke({ shot: `${window.SMOKE_SAVES || '/tmp'}/safetynet-card.png` });
   card?.querySelector('[data-resume="sn-lab"]')?.click();
   const open = await until(() => window.ThreeHistoryUI?.isOpen() && ThreeHistoryUI.versions[ThreeHistoryUI.index]?.id === labIt.open.vid, 15000);

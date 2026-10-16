@@ -84,7 +84,7 @@ const DataSafe = (() => {
     if (busy) return null;
     busy = true;
     const dlg = el('dialog', { class: 'ui-modal ds-recover' });
-    const body = el('div', { class: 'ds-body' }, el('p', { class: 'hint', text: 'Looking in Recently deleted, automatic copies, what sync kept aside, the cloud folder and your backups…' }));
+    const body = el('div', { class: 'ds-body' }, el('p', { class: 'hint', text: 'Looking in Recently deleted, your chats folder (chats the list doesn\'t show), automatic copies, what sync kept aside, the cloud folder, your backups and Claude / Codex\'s own records of your conversations…' }));
     const go = el('button', { type: 'button', class: 'primary small', text: 'Bring back', disabled: true });
     dlg.append(el('form', { method: 'dialog' }, el('h2', { text: '🛟 Recover…' }),
       el('p', { class: 'hint', text: 'Things that aren\'t in your lists any more. Ticked ones are added next to yours: nothing of yours is replaced or deleted.' }),

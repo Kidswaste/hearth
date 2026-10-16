@@ -125,14 +125,54 @@ const SafetyNet = (() => {
   const needGroup = async (g) => { if (window.Lazy && !window.Lazy.loaded(g)) await window.Lazy.load(g); };
   const when = (at) => (at ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '');
 
+  // (round 52, chatkeep) the Lab, loaded with its scenes read (null when it can't be)
+  async function labReady({ mount = false } = {}) {
+    try {
+      await needGroup('lab');
+      if (typeof ThreeLab === 'undefined') return null;
+      if (!ThreeLab.peek?.() && mount) await ThreeLab.cmd({ show: false });
+      for (let i = 0; i < 100 && !(ThreeLab.peek?.() && ThreeLab.scenes && ThreeLab.director); i += 1) await new Promise((r) => setTimeout(r, 150));
+      return ThreeLab.peek?.() && ThreeLab.scenes ? ThreeLab.scenes : null;
+    } catch { return null; }
+  }
+  // (round 52, chatkeep) a scene that never reached the disk (made a moment before the crash: a new director chat's
+  // scene with its first edits) comes back under its own id, so its chat finds it again; a scene you deleted stays gone
+  async function reviveLab(e) {
+    const S = await labReady({ mount: true });
+    if (!S || S.get(e.id)) return null;
+    await S.refresh?.().catch(() => {}); // (the History trash read first: it says what was deleted here)
+    if (S.get(e.id) || S.wasDeleted?.(e.id)) return null;
+    const layers = e.state.layers;
+    const sk = S.create({ id: e.id, name: e.name || 'Recovered scene', code: layers[0]?.code || '', layers });
+    if (sk?.id !== e.id) return null;
+    const CS = typeof ChatScenes !== 'undefined' ? ChatScenes : null; // (global consts, not on window)
+    if (CS?.ownerOf?.(e.id)) CS.sync?.();
+    if (S.currentId() !== e.id && (typeof H === 'undefined' || H.surfaceIdFor?.(H.activeId) === 'tool:three')) {
+      const owner = CS?.ownerOf?.(e.id); const a = typeof Tools !== 'undefined' ? Tools.dockedAgent?.('three') : null;
+      if (!owner || !a || H.activeChat[a.id] === owner) S.open(e.id);
+    }
+    if (S.currentId() === e.id && e.state.vals && typeof ThreeLab !== 'undefined' && ThreeLab.tm) { try { ThreeLab.tm.show(e.state, { keep: true }); } catch { /* the code is back; sliders stay */ } }
+    return { k: 'lab', icon: '◭', label: `“${clip(e.name, 28)}” is back (it hadn't been saved yet)`, hint: 'Open', open: { k: 'lab', id: e.id } };
+  }
+
   async function restoreLab(e) {
     const all = await window.hub.kvGet('three-sketches', []);
     const saved = (Array.isArray(all) ? all : []).find((s) => s.id === e.id) || null;
     const p = C.labPlan(e, saved);
+    if (p.action === 'gone') return reviveLab(e);
     if (p.action !== 'version') return null;
     await needGroup('lab');
     if (!window.ThreeHistory?.keepVersion) return null;
     const words = C.labWords(p.what);
+    // (round 52, chatkeep) the scene is on screen again (the page that came back opened it): the work goes back on it,
+    // as it was a second before (the saved state stays one step back in the time machine, ↶ in the history)
+    const S = ThreeLab.peek?.() ? ThreeLab.scenes : null;
+    if (S?.get(e.id) && S.currentId() === e.id && ThreeHistory.apply) {
+      try {
+        await ThreeHistory.apply(e.id, e.state, { label: `Back as it was before Hearth closed (${when(e.at)})` });
+        return { k: 'lab', icon: '◭', label: `${clip(saved.name || e.name, 28)}: your unsaved ${words} are back on screen`, hint: 'Open', open: { k: 'lab', id: e.id } };
+      } catch (err) { console.warn('safetynet: lab back on screen', err); }
+    }
     const v = await ThreeHistory.keepVersion(e.id, e.state, { label: `Recovered after Hearth closed unexpectedly: your ${words} (${when(e.at)})` });
     if (!v) return null;
     return { k: 'lab', icon: '◭', label: `${clip(saved.name || e.name, 28)}: your unsaved ${words}`, hint: 'as a version · Open', open: { k: 'lab', id: e.id, vid: v.id } };
@@ -206,7 +246,7 @@ const SafetyNet = (() => {
   function showCard(report) {
     if (!report?.items?.length) return null;
     const rows = rowsOf(report.items);
-    if (typeof SpeedResume !== 'undefined') { const c = SpeedResume.show(rows, { title: C.TITLE, timeout: 0 }); c?.classList.add('safetynet-card'); return c; }
+    if (typeof SpeedResume !== 'undefined') { const c = SpeedResume.show(rows, { title: report.title || C.TITLE, timeout: 0 }); c?.classList.add('safetynet-card'); return c; }
     for (const r of rows) toast(r.label, { action: { label: 'Open', fn: r.run }, timeout: 12000 });
     return null;
   }
@@ -217,15 +257,20 @@ const SafetyNet = (() => {
     // (round 50, crashsafe) replies cut off mid-way, renders cut off: crashsafe.js's entries, restored the same way
     const cs = window.CrashSafe ? await CrashSafe.entries().catch(() => []) : [];
     if (!st?.unclean) { if (window.CrashSafe) await CrashSafe.quietly(cs).catch((err) => console.warn('crashsafe', err)); return null; }
+    // (round 52, chatkeep) the screen, the open chats and the Lab scene come back first (freshen.js): the Lab work is
+    // then put back on the scene on screen, and the card's title is the one calm line saying what happened
+    const F = typeof Freshen !== 'undefined' ? Freshen : null; // (a global const, not on window)
+    if (F?.restored) await Promise.race([F.restored, new Promise((r) => setTimeout(r, 25000))]);
+    const line = F?.cameBack?.line || null;
     const items = [];
     for (const e of [...C.entries(st.journal), ...cs]) {
       try { const it = await (RESTORE[e.k] || window.CrashSafe?.restore?.[e.k])?.(e); if (it) items.push(it); } catch (err) { console.warn('safetynet: restore', e.k, err); }
     }
     await window.CrashSafe?.done?.();
-    const report = { at: Date.now(), kind: st.unclean.kind, when: st.unclean.at || null, items };
+    const report = { at: Date.now(), kind: st.unclean.kind, when: st.unclean.at || null, items, ...(line ? { title: line } : {}) };
     try { store.set(LAST, report); } catch { /* the card still shows */ }
     await window.hub.safetynet.done().catch(() => {});
-    if (items.length) showCard(report); else toast(C.NOTHING, { timeout: 4000 });
+    if (items.length) showCard(report); else toast(line ? `${line}. Nothing was lost.` : C.NOTHING, { timeout: 6000 });
     dispatchEvent(new CustomEvent('hearth:safetynet', { detail: report }));
     return report;
   }
