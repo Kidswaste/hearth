@@ -311,12 +311,22 @@ const lab3d = (() => {
       if (S.gone || S.fxKey !== key) return;
       const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 });
       const c = new EffectComposer(renderer, rt);
+      c.setPixelRatio(1); // (sized in the canvas's own pixels by fxSize)
       c.addPass(new RenderPass(scene, camera));
       if (dof > 0) { const { BokehPass } = await import('three/addons/postprocessing/BokehPass.js'); S.bokeh = new BokehPass(scene, camera, { focus: 5, aperture: 0.002, maxblur: 0.01 }); c.addPass(S.bokeh); } else S.bokeh = null;
       if (bloom > 0) { const { UnrealBloomPass } = await import('three/addons/postprocessing/UnrealBloomPass.js'); S.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), bloom, 0.45, 0.82); c.addPass(S.bloom); } else S.bloom = null;
       c.addPass(new OutputPass());
       if (S.gone || S.fxKey !== key) { c.dispose?.(); return; }
-      S.composer = c;
+      S.composer = c; S.cw = 0; // (round 51, labtype240: sized in device pixels before its first frame, see fxSize)
+    }
+    // (round 51, labtype240) the composer's pictures at the canvas's own pixels: its first target was made at the
+    // window's CSS size (blurry at a pixel ratio of 2 until a resize), and the adaptive quality / Light mode / a heavy
+    // model change the renderer's ratio after it was made. Checked each frame (two numbers), sized only on a change.
+    function fxSize() {
+      const pr = renderer.getPixelRatio(); const w = Math.floor(innerWidth * pr); const h = Math.floor(innerHeight * pr); // (as three.js sizes the canvas)
+      if (S.cw === w && S.ch === h) return;
+      S.cw = w; S.ch = h;
+      S.composer.setSize(w, h);
     }
 
     // ---------- materials ----------
@@ -413,7 +423,6 @@ const lab3d = (() => {
 
     addEventListener('resize', () => {
       camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
-      S.composer?.setSize(innerWidth, innerHeight); S.bloom?.setSize?.(innerWidth, innerHeight);
     });
 
     const v = new THREE.Vector3(); const look = new THREE.Vector3();
@@ -492,7 +501,7 @@ const lab3d = (() => {
       if (on(P, 'faceCamera', false)) rig.lookAt(camera.position.x, rig.position.y, camera.position.z);
       if (S.bokeh) { S.bokeh.uniforms.focus.value = d; S.bokeh.uniforms.aperture.value = dof * 0.00015 / Math.max(0.2, sc); }
       if (S.bloom) S.bloom.strength = bloom;
-      if (S.composer) S.composer.render(); else renderer.render(scene, camera);
+      if (S.composer) { fxSize(); S.composer.render(); } else renderer.render(scene, camera);
       if (!S.thumbDone && S.loaded) { S.thumbDone = true; thumb(); }
     }
     // a small picture of this model alone (the Lab's model library)
@@ -528,7 +537,7 @@ const lab3d = (() => {
   }
 
   function list() {
-    return [...live.values()].map((S) => ({ layer: S.id, name: S.name, loaded: S.loaded, error: S.error, progress: +S.progress.toFixed(2), ...(S.info || {}), material: S.matKey?.split('|')[0] || null, light: S.lightKey, ground: S.groundKey, hdri: Boolean(S.hdriEnv), fx: S.composer ? S.fxKey : 'off', detail: S.detailKey }));
+    return [...live.values()].map((S) => ({ layer: S.id, name: S.name, loaded: S.loaded, error: S.error, progress: +S.progress.toFixed(2), ...(S.info || {}), material: S.matKey?.split('|')[0] || null, light: S.lightKey, ground: S.groundKey, hdri: Boolean(S.hdriEnv), fx: S.composer ? S.fxKey : 'off', fxPx: S.composer ? [S.composer.renderTarget1.width, S.composer.renderTarget1.height] : null, detail: S.detailKey }));
   }
   return { model, list, sniff, LIGHTS: Object.keys(LIGHTS), MATERIALS, live };
 })();

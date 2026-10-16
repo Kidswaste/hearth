@@ -751,6 +751,7 @@ globalThis.__labPoolTake = (p) => {
   realClearTimeout(e.timer);
   if (e.gl.isContextLost() || e.gl.__glDead) return null;
   e.gl.__pooled = false;
+  if (e.cv.__tb !== undefined) { e.cv.__tb = null; const s = e.cv.style; s.position = ''; s.left = ''; s.top = ''; } // (round 51: a type layer's tight place stays with it)
   perfNote.poolHit += 1;
   return e.cv;
 };
@@ -1724,7 +1725,7 @@ function shGate(r, scene) {
 }
 // (checks: window.__lab240.set({ off: true }) turns both savings off to compare pictures; info() says what they do)
 window.__lab240 = {
-  set: ({ off = false } = {}) => { OC.on = !off; SHG.on = !off; ADR.on = !off; if (off) occlClear(); return { on: OC.on }; },
+  set: ({ off = false } = {}) => { OC.on = !off; SHG.on = !off; ADR.on = !off; TY.tight = !off; if (off) occlClear(); return { on: OC.on }; }, // (round 51: and type layers drawn tight)
   info: () => ({ on: OC.on, by: OC.by?.id || null, hidden: [...layers.values()].filter((L) => L.occl).map((L) => L.id), shadows: { skipped: SHG.skipped, drawn: SHG.drawn }, coverReads: { async: ADR.reads, got: ADR.got } }),
 };
 
@@ -4336,7 +4337,7 @@ function needsComposite() {
   const act = ordered().filter((L) => layerMix(L) > 0);
   if (act.length !== 1) return act.length > 1;
   const L = act[0]; const p = L.props; const t = xform(L);
-  return layerMix(L) < 1 || Boolean(t.x || t.y || t.rotate) || t.scale !== 1 || (p.blend && p.blend !== 'normal') || layerCanvases(L).length > 1;
+  return layerMix(L) < 1 || Boolean(t.x || t.y || t.rotate) || t.scale !== 1 || (p.blend && p.blend !== 'normal') || layerCanvases(L).length > 1 || Boolean(layerCanvases(L)[0]?.__tb); // (round 51: a canvas drawn tight is placed in a merge)
 }
 function composite(target, k = 1, size = null, only = null, clear = false) {
   const W = size ? size.w : Math.max(1, Math.round(innerWidth * devicePixelRatio * k)); const H = size ? size.h : Math.max(1, Math.round(innerHeight * devicePixelRatio * k));
@@ -4369,8 +4370,15 @@ function drawLayer2D(g, L, W, H) {
   g.scale(scale, scale);
   g.translate(-W / 2, -H / 2);
   if (L.pc) pcDraw(g, L, W, H);
-  else for (const cv of layerCanvases(L)) if (!cv.__skip) g.drawImage(cv, 0, 0, W, H); // (__skip: a filter at 0, see FX_IDENTITY)
+  else for (const cv of layerCanvases(L)) if (!cv.__skip) cvDraw(g, cv, W, H); // (__skip: a filter at 0, see FX_IDENTITY)
   g.restore();
+}
+// (round 51, labtype240) a layer canvas into a W × H merge: a 🅰 type layer drawn tight (cv.__tb: its box in the
+// frame's pixels, see "drawn tight") goes where it shows; every other canvas fills the frame
+function cvDraw(g, cv, W, H) {
+  const b = cv.__tb;
+  if (b) g.drawImage(cv, (b.x / b.FW) * W, (b.y / b.FH) * H, (b.w / b.FW) * W, (b.h / b.FH) * H);
+  else g.drawImage(cv, 0, 0, W, H);
 }
 let compRec = null; // the merged canvas being recorded
 // Runs first in every frame (it was registered before any layer), so animated sliders are set before layers draw.
@@ -6290,7 +6298,7 @@ function filterSource(L, c, W, H, force) {
     const B = list[0];
     let only = null; let n = 0;
     for (const cv of B.box.getElementsByTagName('canvas')) { if (cv.classList.contains('lab-xfade') || cv.__skip) continue; n += 1; only = cv; }
-    if (n === 1 && only.__gl && only.width > 1 && only.height > 1) { perfNote.direct += 1; FX_SRC.image = only; FX_SRC.premul = true; return FX_SRC; }
+    if (n === 1 && only.__gl && !only.__tb && only.width > 1 && only.height > 1) { perfNote.direct += 1; FX_SRC.image = only; FX_SRC.premul = true; return FX_SRC; }
   }
   compositeBelow(L, c, W, H, list);
   FX_SRC.image = c; FX_SRC.premul = false;
@@ -7840,7 +7848,7 @@ globalThis.particles = (P = {}, opts = {}) => {
     if (!cv) return;
     const w = 160; const h = Math.max(2, Math.round((160 * innerHeight) / Math.max(1, innerWidth)));
     const c = (src.cv ||= document.createElement('canvas')); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-    const g = c.getContext('2d', { willReadFrequently: true }); g.clearRect(0, 0, w, h); g.drawImage(cv, 0, 0, w, h);
+    const g = c.getContext('2d', { willReadFrequently: true }); g.clearRect(0, 0, w, h); cvDraw(g, cv, w, h);
     const halfH = num('distance') * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)); const halfW = halfH * camera.aspect;
     reupload(ptPixels(c, w, h, HS, homeD, colD, rand, { thr: num('threshold'), world: { w: 2 * halfW, h: 2 * halfH } }));
   }
@@ -8049,7 +8057,7 @@ window.__labParticles = {
 // lyrics (opts.lyrics: [[start, end, "line", [word starts]]…]) in five looks. Time is the scene's clock (its song,
 // its own timeline, a sequence clip's time), so an export draws the same frame every time. Nothing is allocated per
 // frame (instance arrays written in place; layouts, atlases and 3D letters cached).
-const TY = { stats: new Map(), live: new Map(), drive: { kick: null, bass: null }, atlases: new Map(), geos: new Map(), pending: new Set(), fontsV: 0, google: new Set(), refFonts: new Set() };
+const TY = { stats: new Map(), live: new Map(), drive: { kick: null, bass: null }, atlases: new Map(), geos: new Map(), pending: new Set(), fontsV: 0, google: new Set(), refFonts: new Set(), tight: true };
 const TY_PX = 64; const TY_BUF = 12; const TY_RAD = 12; const TY_SPREAD = TY_RAD / TY_PX; // (em either side of the edge the field spans)
 const TY_DEF = {
   size: 0.12, tracking: 0, leading: 1.1, x: 0, y: 0, align: 'center', case: 'as typed', opacity: 1, color: '#ffffff', color2: '#ffd75e', outline: 0, outlineColor: '#000000',
@@ -8473,10 +8481,100 @@ globalThis.textLayer = (P = {}, opts = {}) => {
     mat = new THREE.ShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: TY_VERT, fragmentShader: TY_FRAG, uniforms: U, transparent: true, depthTest: false, depthWrite: false, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor });
     grow(64);
   }
-  const onResize = () => { renderer.setSize(innerWidth, innerHeight); if (mode3d) { cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); } };
+  const onResize = () => { renderer.setSize(innerWidth, innerHeight); tb.FW = 0; tb.css = ''; if (mode3d) { cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); } };
   addEventListener('resize', onResize);
   const stat = { id: L.id, mode: mode3d ? '3d' : '2d', glyphs: 0, chars: 0, lines: lyr ? lyr.length : 0, font: null, line: -1, sig: 0, alpha: 0, frames: 0, ms: 0, atlas: 0, gone: false, ok: null, fontsV: -1 };
   TY.stats.set(L.id, stat);
+  // ---- (round 51, labtype240) drawn tight ----
+  // A type layer's canvas used to be the whole frame (cleared, drawn, presented and blended by the browser at every
+  // frame: 8.3 M px at 4K) for text that covers a band of it. In the preview it is now only the box the glyphs cover,
+  // with room to move (a lease: it grows to hold what's drawn, shrinks back after 1.5 s of being 3× too big), placed
+  // where it shows (CSS left / top / size in the layer's box, so labdirect's picking and the cross-fade pictures read
+  // it as they did) and drawn with the frame's own camera cut to that box (2D: the orthographic box; 3D: a view
+  // offset), so every glyph lands on the same pixel as before. Merges (stills, recordings, a filter's picture, the
+  // sequence) place it (cvDraw). Off (the whole frame, as before) for renders / exports / stills taken at full
+  // quality, the scene editor, a camera move or a moved view on it, a format's pan / zoom, precomps.
+  const tb = { on: false, x: 0, y: 0, w: 0, h: 0, FW: 0, FH: 0, big: 0, leases: 0, css: '' };
+  const tbox = [0, 0, 0, 0]; const tv = new THREE.Vector3();
+  const tyTightOk = (Lr) => TY.tight && mode === 'sketch' && !XP_PAGE && !fullRes() && !SQ.off && !SQ.cam && !edit.on && !RF.on && !PC.list.size && !Lr?.props.pcOf && !Lr?.props.camMoves?.length && !Lr?.props.overrides && !LV.views.get(L.id);
+  // the box (frame pixels, y down) of what's drawn this frame into tbox: 1, nothing drawn: 0, can't tell: -1
+  function tyNeed(W, H) {
+    let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity; let m = 2;
+    if (!mode3d) {
+      if (!n2) return 0;
+      const A1 = attrs.iA.array; const B1 = attrs.iB.array;
+      for (let i = 0; i < n2 * 4; i += 4) {
+        const hw = Math.abs(A1[i + 2]) / 2; const hh = Math.abs(A1[i + 3]) / 2; const r = B1[i];
+        const c = Math.abs(Math.cos(r)); const sn = Math.abs(Math.sin(r));
+        const ex = hw * c + hh * sn; const ey = hw * sn + hh * c;
+        const X = A1[i] + W / 2; const Y = H / 2 - A1[i + 1];
+        if (X - ex < x0) x0 = X - ex; if (X + ex > x1) x1 = X + ex; if (Y - ey < y0) y0 = Y - ey; if (Y + ey > y1) y1 = Y + ey;
+      }
+    } else {
+      // each letter's box through the camera (a corner behind it: the whole frame)
+      if (!used3) return 0;
+      m = 3;
+      cam.updateMatrixWorld(); scene.updateMatrixWorld();
+      const vw = cam.view?.enabled ? cam.view : null; const ox = vw ? vw.offsetX : 0; const oy = vw ? vw.offsetY : 0; const sw = vw ? vw.width : W; const sh = vw ? vw.height : H;
+      for (let i = 0; i < used3; i += 1) {
+        const g = pool[i].geometry; if (!g.boundingBox) g.computeBoundingBox(); const b = g.boundingBox;
+        for (let k = 0; k < 8; k += 1) {
+          tv.set(k & 1 ? b.max.x : b.min.x, k & 2 ? b.max.y : b.min.y, k & 4 ? b.max.z : b.min.z).applyMatrix4(pool[i].matrixWorld).applyMatrix4(cam.matrixWorldInverse);
+          if (tv.z > -cam.near) return -1;
+          tv.applyMatrix4(cam.projectionMatrix);
+          const X = ox + ((tv.x + 1) / 2) * sw; const Y = oy + ((1 - tv.y) / 2) * sh;
+          if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y;
+        }
+      }
+    }
+    if (!Number.isFinite(x0 + x1 + y0 + y1)) return -1;
+    tbox[0] = Math.max(0, Math.floor(x0) - m); tbox[1] = Math.max(0, Math.floor(y0) - m); tbox[2] = Math.min(W, Math.ceil(x1) + m); tbox[3] = Math.min(H, Math.ceil(y1) + m);
+    if (tbox[2] <= tbox[0] || tbox[3] <= tbox[1]) return 0;
+    return 1;
+  }
+  function tyFull() {
+    const cv = renderer.domElement; const s = cv.style;
+    tb.on = false; tb.css = ''; cv.__tb = null;
+    s.position = ''; s.left = ''; s.top = '';
+    renderer.setSize(innerWidth, innerHeight);
+    if (mode3d && cam.view?.enabled) cam.clearViewOffset();
+  }
+  // the lease for this frame, the canvas sized and placed, the camera cut to it
+  function tyTight(W, H, Lr) {
+    const k = tyTightOk(Lr) ? tyNeed(W, H) : -1;
+    if (k < 0) { if (tb.on) tyFull(); }
+    else {
+      const fresh = !tb.on || tb.FW !== W || tb.FH !== H;
+      if (!k) { tbox[0] = 0; tbox[1] = 0; tbox[2] = 1; tbox[3] = 1; }
+      const [nx0, ny0, nx1, ny1] = tbox;
+      const inside = !fresh && nx0 >= tb.x && ny0 >= tb.y && nx1 <= tb.x + tb.w && ny1 <= tb.y + tb.h;
+      if (inside) { if (tb.w * tb.h <= 3 * (nx1 - nx0) * (ny1 - ny0) + 16384) tb.big = 0; else if (!tb.big) tb.big = realNow(); }
+      if (!inside || (tb.big && realNow() - tb.big > 1500)) {
+        let ax0 = nx0; let ay0 = ny0; let ax1 = nx1; let ay1 = ny1;
+        if (k) { const px = Math.round(24 + (ax1 - ax0) * 0.06); const py = Math.round(24 + (ay1 - ay0) * 0.3); ax0 -= px; ax1 += px; ay0 -= py; ay1 += py; } // (room to move: words bounce more than they slide)
+        if (!fresh && !inside) { ax0 = Math.min(ax0, tb.x); ay0 = Math.min(ay0, tb.y); ax1 = Math.max(ax1, tb.x + tb.w); ay1 = Math.max(ay1, tb.y + tb.h); } // (growing: what it held stays held)
+        ax0 = Math.max(0, ax0); ay0 = Math.max(0, ay0); ax1 = Math.min(W, ax1); ay1 = Math.min(H, ay1);
+        tb.x = ax0; tb.y = ay0; tb.w = ax1 - ax0; tb.h = ay1 - ay0; tb.FW = W; tb.FH = H; tb.big = 0; tb.leases += 1; tb.on = true;
+        const pr = renderer.getPixelRatio();
+        renderer.setSize((tb.w + 0.5) / pr, (tb.h + 0.5) / pr, false); // (exactly tb.w × tb.h pixels)
+        renderer.domElement.__tb = tb;
+      }
+      // its place, in the CSS pixels the whole-frame canvas stretched its pixels over
+      const sx = innerWidth / W; const sy = innerHeight / H;
+      const css = `${tb.x * sx}|${tb.y * sy}|${tb.w * sx}|${tb.h * sy}`;
+      if (tb.css !== css) { tb.css = css; const s = renderer.domElement.style; s.position = 'absolute'; s.left = `${tb.x * sx}px`; s.top = `${tb.y * sy}px`; s.width = `${tb.w * sx}px`; s.height = `${tb.h * sy}px`; }
+    }
+    if (!mode3d) {
+      const l = tb.on ? tb.x - W / 2 : -W / 2; const r = tb.on ? l + tb.w : W / 2; const t = tb.on ? H / 2 - tb.y : H / 2; const b = tb.on ? t - tb.h : -H / 2;
+      if (cam.left !== l || cam.right !== r || cam.top !== t || cam.bottom !== b) { cam.left = l; cam.right = r; cam.top = t; cam.bottom = b; cam.updateProjectionMatrix(); }
+    } else if (tb.on) {
+      const vw = cam.view;
+      if (!vw?.enabled || vw.fullWidth !== W || vw.fullHeight !== H || vw.offsetX !== tb.x || vw.offsetY !== tb.y || vw.width !== tb.w || vw.height !== tb.h) cam.setViewOffset(W, H, tb.x, tb.y, tb.w, tb.h);
+    }
+  }
+  // (round 51) the glyphs' instance numbers as last sent to the GPU: sent again only when one changed, so a title
+  // that holds still is a still picture to labpace (it stops drawing) instead of a new upload and draw every frame
+  const sent = { n: -1, cap: 0, a: null };
   // per-frame state (written in place)
   const o = { a: 1, x: 0, y: 0, z: 0, s: 1, sx: 1, sy: 1, r: 0, rx: 0, ry: 0, soft: 0, glow: 0, ch: null };
   const cc = { p: 0, h1: 0, h2: 0, h3: 0, rel: 0, side: 0, k: 1, gi: 0 };
@@ -8597,8 +8695,9 @@ globalThis.textLayer = (P = {}, opts = {}) => {
     const c0 = realNow(); frame += 1;
     const tc = globalThis.__layerClock?.(L.id) ?? c0 / 1000;
     let t = Number.isFinite(tc) ? tc : 0;
-    renderer.getDrawingBufferSize(size);
-    const W = size.x; const H = size.y;
+    // (round 51) the frame's size, not the canvas's (drawn tight, the canvas holds only the text's box)
+    let W; let H;
+    if (tb.on) { const pr = renderer.getPixelRatio(); W = Math.floor(innerWidth * pr); H = Math.floor(innerHeight * pr); } else { renderer.getDrawingBufferSize(size); W = size.x; H = size.y; }
     const fam = tyFamily(pv('font')); const weight = String(pv('weight'));
     const A = tyAtlas(fam, weight);
     stat.font = fam.split(',')[0].replace(/"/g, ''); stat.fontsV = TY.fontsV;
@@ -8611,7 +8710,6 @@ globalThis.textLayer = (P = {}, opts = {}) => {
       if (hex.o !== oc) { hex.o = oc; hexVec(oc, U.uOutC.value); }
       if (hex.g !== gc) { hex.g = gc; hexVec(gc, U.uGlowC.value); }
       U.uOutline.value = Math.min(0.45, Math.max(0, num('outline')) / (2 * TY_SPREAD)); U.uFill.value = tyC01(num('fill'));
-      if (cam.right !== W / 2 || cam.top !== H / 2) { cam.left = -W / 2; cam.right = W / 2; cam.top = H / 2; cam.bottom = -H / 2; cam.updateProjectionMatrix(); }
     } else {
       const mk = String(pv('material')); if (mk !== matKind || cHex !== matCol) { matKind = mk; matCol = cHex; pool.forEach((m, i) => { m.material.dispose(); m.material = tyMaterial(mk, cHex, i); m.material.transparent = true; }); }
       k3 = (2 * cam.position.z * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2))) / Math.max(1, H);
@@ -8732,10 +8830,19 @@ globalThis.textLayer = (P = {}, opts = {}) => {
     }
     if (!mode3d) {
       geo.instanceCount = n2;
-      for (const k of ['iA', 'iB', 'iUv', 'iC']) { attrs[k].clearUpdateRanges?.(); attrs[k].addUpdateRange?.(0, n2 * 4); attrs[k].needsUpdate = true; }
+      // (round 51) only what changed goes to the GPU (see `sent`)
+      if (sent.cap !== cap) { sent.cap = cap; sent.n = -1; sent.a = {}; for (const k of ['iA', 'iB', 'iUv', 'iC']) sent.a[k] = new Float32Array(cap * 4); }
+      let dirty = sent.n !== n2 || !TY.tight; // (the switch off: every frame, as before)
+      for (const k of ['iA', 'iB', 'iUv', 'iC']) { if (dirty) break; const x = attrs[k].array; const y = sent.a[k]; for (let i = 0; i < n2 * 4; i += 1) if (x[i] !== y[i]) { dirty = true; break; } }
+      if (dirty) {
+        sent.n = n2;
+        for (const k of ['iA', 'iB', 'iUv', 'iC']) { sent.a[k].set(attrs[k].array.subarray(0, n2 * 4)); attrs[k].clearUpdateRanges?.(); attrs[k].addUpdateRange?.(0, n2 * 4); attrs[k].needsUpdate = true; }
+      }
       if (U.uAtlas.value !== A.tex) U.uAtlas.value = A.tex;
       mesh.visible = n2 > 0;
     } else for (let i = used3; i < pool.length; i += 1) pool[i].visible = false;
+    tyTight(W, H, Lr); // (round 51, labtype240) the canvas only around the text
+    stat.tight = tb.on ? [tb.w, tb.h] : null; stat.leases = tb.leases;
     renderer.render(scene, cam);
     renderer.__lastScene = scene; renderer.__lastCamera = cam;
     stat.glyphs = mode3d ? used3 : n2; stat.sig = Math.round(sig * 1000) / 1000; stat.alpha = Math.round(asum * 100) / 100; stat.atlas = A.glyphs.size; stat.t = Math.round(t * 1000) / 1000;
@@ -8751,6 +8858,7 @@ globalThis.textLayer = (P = {}, opts = {}) => {
     renderer.setAnimationLoop(null);
     removeEventListener('resize', onResize);
     stat.gone = true;
+    if (tb.on) { const cv = renderer.domElement; cv.__tb = null; cv.style.position = ''; cv.style.left = ''; cv.style.top = ''; }
     geo?.dispose(); mat?.dispose();
     for (const m of pool) m.material.dispose();
     envTex?.dispose(); pmrem?.dispose();
@@ -8773,6 +8881,7 @@ window.__labType = {
   drive: (o = {}) => { for (const k of ['kick', 'bass']) if (k in o) TY.drive[k] = o[k] == null ? null : Number(o[k]); return { ...TY.drive }; },
   anims: () => Object.keys(TY_ANIM),
   kinetic: () => Boolean(globalThis.kinetic), // (round 45, kinetictype) the "moves with the music" math is here
+  tight: (on) => { if (on != null) TY.tight = Boolean(on); return TY.tight; }, // (round 51, labtype240) drawn tight (false: the whole frame, as before)
 };
 
 // ---------- 🎵 music visualizers (round 50, labvisualizers: the hub side is tools/three-vis*.js) ----------
