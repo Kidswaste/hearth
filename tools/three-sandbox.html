@@ -64,7 +64,12 @@
     // alpha channel and clear to transparent, so a scene with no background exports with alpha
     const XPX = params.get('xp') === '1' ? `setPixelRatio() { super.setPixelRatio(globalThis.devicePixelRatio); }${params.get('alpha') === '1' ? ' setClearColor(c, a) { super.setClearColor(c, 0); }' : ''}` : '';
     const XPP = params.get('xp') === '1' && params.get('alpha') === '1' ? '{ ...(p0 || {}), alpha: true, premultipliedAlpha: true }' : 'p0';
-    const shim = `export * from '${real}';\nimport { WebGLRenderer as R } from '${real}';\nexport class WebGLRenderer extends R { constructor(p0 = {}) { const p = ${XPP}; const c = p && !p.canvas && !p.context && globalThis.__labPoolTake ? globalThis.__labPoolTake(p) : null; super(c ? { ...p, canvas: c } : p); } ${XPX} }\n`;
+    // (round 52, gamemode) ▶ Play (?game=1, its own window): every renderer at max fidelity (antialias, the fast GPU, the
+    // screen's own pixel ratio whatever the sketch asks); the layers that can merge share ONE context (__gmTake, see "▶ Play")
+    const GMQ = params.get('game') === '1';
+    const GMX = GMQ && !XPX ? 'setPixelRatio() { super.setPixelRatio(globalThis.devicePixelRatio); }' : '';
+    const GMP = GMQ ? '{ ...(p0 || {}), antialias: true, powerPreference: "high-performance" }' : XPP;
+    const shim = `export * from '${real}';\nimport { WebGLRenderer as R } from '${real}';\nexport class WebGLRenderer extends R { constructor(p0 = {}) { const p = ${GMP}; const g = globalThis.__gmTake ? globalThis.__gmTake(p) : null; const c = !g && p && !p.canvas && !p.context && globalThis.__labPoolTake ? globalThis.__labPoolTake(p) : null; super(g ? { ...p, ...g } : c ? { ...p, canvas: c } : p); } ${XPX}${GMX} }\n`;
     if (params.get('pool') !== '0') threeUrl = URL.createObjectURL(new Blob([shim], { type: 'text/javascript' }));
   } catch { threeUrl = real; }
   const im = document.createElement('script');
@@ -444,6 +449,7 @@ function postShot(canvas, tag) {
   } catch { fall(); }
 }
 const mode = new URLSearchParams(location.search).get('mode') || 'sketch';
+const GAME = new URLSearchParams(location.search).get('game') === '1'; // (round 52, gamemode) ▶ Play's own window: see "▶ Play"
 // Real timer functions for the sandbox's own work; sketches get wrapped ones (see "run generations").
 const realSetTimeout = setTimeout.bind(window);
 const realClearTimeout = clearTimeout.bind(window);
@@ -556,6 +562,7 @@ function preQ(r, EL) {
 function instrument(renderFn) {
   return function render(scene, camera) {
     if (this.__stale) return; // (round 21: a gone module's renderer draws nothing, and isn't counted back in)
+    if (this.__gm && gmRender(this, scene, camera)) return; // (round 52, gamemode) a merged layer's frame: drawn in z order with the others
     if (window.__lkInEnv) return renderFn.call(this, scene, camera); // (round 50, labmaterials: baking the built-in studio light, see "Looks")
     // the user's placements from the scene editor, then (while editing this layer) the editor camera
     const EL = this.__layer && layers.get(this.__layer);
@@ -676,6 +683,98 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
     if (mode === 'sketch' && typeof WebGL2RenderingContext !== 'undefined' && ctx instanceof WebGL2RenderingContext) { trackGL(ctx); this.__gl = ctx; }
   }
   return ctx;
+};
+// ---------- ▶ Play: one canvas (round 52, gamemode: gamemodemain.js, gamemode.js, tools/game-api.md) ----------
+// In ▶ Play's own window (?game=1) the layers that can merge (gamemode-core.js mergePlan: the bottom run of plain layers,
+// each with its own WebGLRenderer, normal blend, full opacity, no move / timing / look / filter / render targets) share
+// ONE WebGL context and ONE canvas: each layer keeps its own three.js renderer (its own scene, camera, programs,
+// textures), all made on the same context (__gmTake in the 'three' shim). Their frames run together (gmRAF: one
+// animation frame for all of them); a screen render() is noted, then drawn bottom first at the end of that frame
+// (gmComposite): resetState() before each renderer (they share the GL state), only the bottom one clears the colour,
+// the others clear depth and draw on top, as their stacked canvases looked. A layer that only drew once is drawn again
+// from its last scene / camera each frame. Layers that can't merge keep their own canvas (the Lab's compositor), and
+// the plan says why (window.__gameInfo()).
+const GM = { merge: new Set(), why: {}, canvas: null, gl: null, q: [], rec: new Map(), drawing: false, inFlush: false, raf: 0, ids: 1e9, cancel: new Set(), made: 0, frames: 0, n: 0 };
+if (GAME) {
+  globalThis.__gmTake = (p) => {
+    if (!p || p.canvas || p.context || helperNow()) return null;
+    const id = currentLayer(); const L = id ? layers.get(id) : null;
+    if (!L || !GM.merge.has(L.id)) return null;
+    if (!GM.gl) {
+      const cv = document.createElement('canvas');
+      cv.className = 'gm-canvas'; cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
+      const gl = cv.getContext('webgl2', { alpha: true, antialias: true, depth: true, stencil: true, premultipliedAlpha: true, powerPreference: 'high-performance' });
+      if (!gl) return null;
+      GM.canvas = cv; GM.gl = gl;
+    }
+    L.gm = true; GM.made += 1;
+    return { canvas: GM.canvas, context: GM.gl };
+  };
+  const rc = window.cancelAnimationFrame.bind(window);
+  window.cancelAnimationFrame = (id) => (id > 1e9 ? GM.cancel.add(id) : rc(id));
+}
+function gmPlan(msg) { GM.merge = new Set(msg.merge || []); GM.why = msg.why || {}; }
+function gmTag(r) {
+  r.__gm = true; r.__gmN = ++GM.n; r.__noPool = true;
+  r.forceContextLoss = () => {}; // (a layer's own forceContextLoss would take every merged layer's picture)
+}
+function gmLetGo(r) {
+  GM.rec.delete(r);
+  try { r.setAnimationLoop(null); } catch { /* gone */ }
+  try { r.dispose(); } catch { /* gone */ }
+  for (const m of ['render', 'setSize', 'setPixelRatio', 'setViewport', 'clear', 'setAnimationLoop', 'setRenderTarget']) { try { r[m] = () => {}; } catch { /* read-only */ } }
+}
+function gmRAF(fn) {
+  const id = ++GM.ids;
+  GM.q.push([id, fn]);
+  if (!GM.raf) GM.raf = realRAF(gmFlush);
+  return id;
+}
+function gmFlush(t) {
+  GM.raf = 0; GM.inFlush = true;
+  const q = GM.q.splice(0);
+  try {
+    for (const [id, fn] of q) {
+      if (GM.cancel.delete(id)) continue;
+      try { fn(t); } catch (err) { realSetTimeout(() => { throw err; }, 0); } // (reported as the layer's error, as before)
+    }
+  } finally { GM.inFlush = false; }
+  gmComposite();
+}
+// true: noted for the frame's composite (a render into a render target, or one inside the composite, draws now)
+function gmRender(r, scene, camera) {
+  if (GM.drawing) return false;
+  if (r.getRenderTarget?.()) { try { r.resetState(); } catch { /* old three.js */ } return false; }
+  GM.rec.set(r, { r, s: scene, c: camera, L: r.__layer ? layers.get(r.__layer) : null, gen: r.__layer ? layers.get(r.__layer)?.gen : 0, n: r.__gmN });
+  if (!GM.inFlush && !GM.raf) GM.raf = realRAF(gmFlush); // (a sketch that draws once, or from a timer)
+  return true;
+}
+function gmComposite() {
+  if (!GM.rec.size) return;
+  const list = [...GM.rec.values()].filter((e) => !e.r.__stale && (!e.L || (layers.get(e.L.id) === e.L && e.L.gen === e.gen))).sort((a, b) => ((a.L?.props.z ?? 0) - (b.L?.props.z ?? 0)) || a.n - b.n);
+  GM.drawing = true;
+  let first = true;
+  try {
+    for (const e of list) {
+      if (e.L && (e.L.props.visible === false || layerMix(e.L) <= 0)) continue;
+      const r = e.r; const ac = r.autoClearColor;
+      try { r.resetState(); if (!first) r.autoClearColor = false; r.render(e.s, e.c); } catch (err) { realSetTimeout(() => { throw err; }, 0); } finally { r.autoClearColor = ac; }
+      first = false;
+    }
+  } finally { GM.drawing = false; }
+  GM.frames += 1;
+  const box = list[0]?.L?.box;
+  if (box && GM.canvas && GM.canvas.parentNode !== box) box.prepend(GM.canvas);
+}
+// what ▶ Play shows in its stats chip, and the checks read: the plan, the contexts alive, the fidelity in force
+window.__gameInfo = () => {
+  const gl = GM.gl; const a = gl?.getContextAttributes?.() || null;
+  return {
+    game: GAME, merged: [...GM.merge], own: GM.why, renderers: GM.n, frames: GM.frames, contexts: glAlive(), canvases: document.querySelectorAll('canvas').length,
+    antialias: a ? a.antialias : null, samples: gl ? gl.getParameter(gl.SAMPLES) : null, power: a?.powerPreference || null,
+    pixelRatio: devicePixelRatio, canvas: GM.canvas ? { w: GM.canvas.width, h: GM.canvas.height, cssW: GM.canvas.clientWidth } : null,
+    cap: fpsCap, lock: RDY.lock, quality, pace: PACE.on,
+  };
 };
 // ---------- context pool (round 21 "labgpu") ----------
 // A layer that re-ran, or a scene switched away, used to lose its WebGL context (forceContextLoss) and the new code
@@ -828,6 +927,7 @@ function gutRenderer(r) {
   }
 }
 function letGoRenderer0(r) {
+  if (r.__gm) { gmLetGo(r); return; } // (round 52, gamemode) the shared context stays for the other layers
   try { r.setAnimationLoop(null); } catch { /* gone */ }
   const cv = r.domElement; const gl = cv?.__gl;
   const ok = mode === 'sketch' && gl && gl.__objs && !gl.__glDead && !r.__stale && !r.__noPool && POOL_MAX() > 0 && !gl.isContextLost() && r.getContext?.() === gl; // (round 43: a context the GPU took back once isn't pooled)
@@ -1312,7 +1412,7 @@ function paceDragK() {
 const paceExtra = [0, 0, 0, 0];
 // true: this render of a still picture is skipped (the canvas keeps showing it)
 function paceSkip(r, scene, camera, EL) {
-  if (!PACE.on || mode !== 'sketch' || XP_PAGE || SQ.off || SQ.on || SQ.cam || fullRes() || stepping || edit.on || PC.list.size || stackWait || r.__helper) return false;
+  if (!PACE.on || r.__gm || mode !== 'sketch' || XP_PAGE || SQ.off || SQ.on || SQ.cam || fullRes() || stepping || edit.on || PC.list.size || stackWait || r.__helper) return false;
   const st = (r.__pace ||= { tick: -1, multi: -1e9 });
   // a renderer that draws more than once a frame (passes into render targets, several scenes) always draws
   if (st.tick === frameTick) { st.multi = frameTick; return false; }
@@ -3746,7 +3846,7 @@ function lvLayers() {
 // the layer gestures move: none while any visible layer has controls of its own, the edit mode is on, a sequence
 // plays or this is an export page; the one the Lab has selected when it can, else the top one
 function lvGestureLayer() {
-  if (mode !== 'sketch' || edit.on || SQ.on || XP_PAGE) return null;
+  if (mode !== 'sketch' || edit.on || SQ.on || XP_PAGE || GAME) return null; // (▶ Play: the mouse is the game's)
   for (const L of layers.values()) if (L.lvOwn === L.gen && !L.pseudo && layerMix(L) > 0) return null;
   const list = lvLayers();
   return list.find((L) => L.id === LV.pref) || list[0] || null;
@@ -3940,7 +4040,7 @@ const lvOrbitOf = (L) => [...LV.orbits].find((c) => c.__lab.layer === L.id && lv
 // the layer the keys act on: the Lab's selected one, else the top one with a camera (one with own controls only
 // through OrbitControls)
 function lvKeyLayer(pref = LV.pref) {
-  if (mode !== 'sketch' || edit.on || SQ.on || XP_PAGE) return null;
+  if (mode !== 'sketch' || edit.on || SQ.on || XP_PAGE || GAME) return null;
   const list = lvLayers();
   return list.find((L) => L.id === pref) || list[0] || null;
 }
@@ -4305,6 +4405,7 @@ function trackRenderer(r) {
   const st = new Error().stack;
   if (staleStack(st)) { dropStale(r); return; }
   renderers.add(r);
+  if (GAME && r.domElement && r.domElement === GM.canvas) gmTag(r); // (round 52, gamemode) a renderer on the shared context
   const id = layerOfStack(st) || ctxLayer;
   if (id) { layerState(id).renderers.add(r); r.__layer = id; if (mode === 'sketch') preQ(r, layers.get(id)); }
   // Transparent where nothing is drawn, so the layers below show through (a scene.background or
@@ -10818,6 +10919,7 @@ function installRunGuards() {
         if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
       };
       e = { o, run };
+      run.__L = o.L; // (round 52, gamemode: a merged layer's frames run together, see "▶ Play")
       if (o.L && !o.stale && typeof fn === 'function') rafOf.set(fn, e);
     }
     return sched(e.run);
@@ -11602,7 +11704,7 @@ const SQ = { on: false, plan: null, T: 0, T0: 0, at0: 0, playing: false, rate: 1
 const WARM = 0.35; // seconds a group runs (hidden) before its clip: its first frames are drawn when it shows
 const PRE = 1.2; // seconds ahead a group is mounted while playing
 // layer frames during an offline render wait for the next step instead of the screen
-function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } return DOZE.on ? dozeRAF(fn) : realRAF(fn); }
+function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } if (GAME && fn.__L?.gm) return gmRAF(fn); return DOZE.on ? dozeRAF(fn) : realRAF(fn); }
 // a sequence scene's own clock: performance.now inside its layers is its time (ms) since its own start, and 0 while
 // its module sets up (a start time a sketch keeps from its setup is the scene's start, wherever the clip was entered);
 // a THREE.Clock started in it counts from the scene's start too
@@ -12807,6 +12909,7 @@ addEventListener('message', async (e) => {
   if (typeof msg.type === 'string' && msg.type.startsWith('seq-')) { sqMessage(msg); return; }
   if (typeof msg.type === 'string' && msg.type.startsWith('ready-')) { rdyMessage(msg); return; } // (round 52, presentready)
   if (msg.type === 'stage-mask') { stageMask(msg); return; }
+  if (msg.type === 'game-plan') { gmPlan(msg); return; } // (round 52, gamemode) which layers share the one canvas
   if (typeof msg.type === 'string' && msg.type.startsWith('xp-')) { xpMessage(msg); return; } // (round 22 "labexport")
   if (msg.type === 'tweak-init') { TV = { ...(msg.values || {}) }; tweakKeys = msg.keys || {}; mods = msg.mods || {}; BL.cache.clear(); if (Object.values(mods).some((m) => m?.how)) blReady(); pcValues(); }
   if (msg.type === 'tweak') setTweak(msg);

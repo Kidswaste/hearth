@@ -350,6 +350,8 @@ const Projects = (() => {
       ...(['render', 'capture', 'file', 'download'].includes(x.type) ? [{ label: MediaFile.revealLabel, action: async () => MediaFile.reveal(await pathOf(x)) }, { label: MediaFile.copyLabel, action: async () => copyText(await pathOf(x), 'Path copied') }] : []),
       p ? { label: p.cover === x.id ? '✓ The cover' : 'Use as the cover', action: () => setCover(p, p.cover === x.id ? null : x.id) } : null,
       projectMenu(x.type, x.ref, x.name),
+      // (round 52, gamemode) a Lab scene or an HTML game build: ▶ Play it full screen in its own window
+      x.type === 'scene' || (['file', 'download'].includes(x.type) && /\.html?$/i.test(String(x.ref))) ? { label: '▶ Play', hint: 'as a game, full screen', action: () => (window.Lazy ? window.Lazy.load('gamemode') : Promise.resolve()).then(() => GameMode.play(x.type === 'scene' ? { kind: 'lab', id: x.ref, title: x.name } : { kind: 'html', path: x.ref })).catch((err) => toast(calmError(err), { type: 'error', raw: err })) } : null,
       p ? '-' : null,
       p ? { label: `Take out of “${p.name}”`, danger: true, action: () => remove(p, x.type, x.ref) } : null,
     ].filter(Boolean);

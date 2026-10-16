@@ -19,6 +19,10 @@ const store = require('./store');
 // until Hearth restarted, so glrecover had nothing to come back to. Off (before 'ready'); Chromium's own fallback when
 // the GPU keeps crashing still applies (glrecovermain's note).
 try { app.disableDomainBlockingFor3DAPIs(); } catch (err) { console.warn('glrecover: domain blocking', err.message); }
+// (round 52, gamemode) ▶ Play's hearth-game: protocol (a game's own folder, read-only) must be known before 'ready'
+// (a standard, secure scheme: relative paths, fetch, modules, WebGL, audio and pointer lock work as on a web server; the
+// handler itself is set on the game's own session by gamemodemain.js, on first use)
+require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'hearth-game', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } }]);
 // (round 19, splash) modules the first screen doesn't need are required on their first use instead of before the window
 // opens (Electron's 'ready' waits for everything main.js does at load): the same object to every caller, made on demand
 function later(file, onLoad) {
@@ -607,6 +611,7 @@ function registerAfterWindow() {
   lazyIpc('renderfastmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 41, renderfast) Lab exports stream their frames into ffmpeg (on first use)
   lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
   lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
+  lazyIpc('gamemodemain.js', (m, ipc) => m.register(ipc, { getWin: () => win, powerwise, dataDir: store.DATA_DIR })); // (round 52) ▶ Play: a game in its own full-screen window
   lazyIpc('voicemain.js', (m, ipc) => m.register(ipc, () => win, { settings, dataDir: store.DATA_DIR })); // (round 23) voice: local speech-to-text (whisper), system voices
   lazyIpc('remotemain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 24) phone remote: a LAN-only server for the Lab / stage, off until /remote on
   lazyIpc('interopmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) interop: OSC in / out, Ableton Link tempo, the OBS Browser Source page, obs-websocket; all off until used

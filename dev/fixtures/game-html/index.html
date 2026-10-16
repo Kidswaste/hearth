@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Coin Run (Hearth test game)</title>
+<!-- A small, deterministic three.js game for ▶ Play's checks (dev/checks/gamemode.js): relative assets (./game.js,
+     ./assets/level.json, ./assets/checker.svg, ./lib/three.module.js), pointer lock on click, keys (WASD / arrows, Space).
+     three.js goes in ./lib/ (dev/make-game-fixture.js copies it there; any three.js r160+ build works). -->
+<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #000; } canvas { display: block; }</style>
+<script type="importmap">{ "imports": { "three": "./lib/three.module.js" } }</script>
+</head>
+<body>
+<script type="module" src="./game.js"></script>
+</body>
+</html>
