@@ -27,6 +27,7 @@ const GameMode = (() => {
   // the other game streams (tools/game-api.md), when they're in (a top-level const isn't on window)
   const Ready = () => (typeof GameReady !== 'undefined' ? GameReady : window.GameReady) || null;
   const Perf = () => (typeof GamePerf !== 'undefined' ? GamePerf : window.GamePerf) || null;
+  const Loop = () => (typeof PlayLoop !== 'undefined' ? PlayLoop : null); // (round 53, playloop: same group, after this file)
 
   // ---------- a Lab scene's data (the Lab's own list when it's loaded: the newest edits) ----------
   async function sketches() { return Lab()?.scenes?.all?.() || (await window.hub.kvGet('three-sketches', [])) || []; }
@@ -85,7 +86,7 @@ const GameMode = (() => {
       hold(true);
       let info;
       if (r?.route === 'live') info = await playLive(s, r, opts);
-      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs() });
+      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs() });
       now = { source: s, info, live: r?.route === 'live', at: Date.now(), plan };
       const own = plan ? Object.entries(plan.why).filter(([, w]) => w !== 'hidden') : [];
       if (own.length) {
@@ -116,23 +117,27 @@ const GameMode = (() => {
     toast(`${s.title} plays live through the Lab (${r.why}): its Stage window is full screen. Close it to come back.`, { timeout: 6000 });
     return { playing: true, route: 'live', how: `live from the Lab (${r.why})`, title: s.title, display: shown };
   }
-  function leave() {
+  function leave({ quiet = false } = {}) {
+    if (now && quiet) now.quiet = true; // (round 53, playloop: a rebuild for new pictures plays it again at once: no "Back from")
     if (now?.live) { Lab()?.stageHooks?.setStage(false); ended({ why: 'asked' }); return true; }
     window.hub.game.leave().catch(() => {});
     return true;
   }
   function ended(d = {}) {
     if (!now) return;
-    const s = now.source; now = null;
+    const s = now.source; const quiet = Boolean(now.quiet); now = null;
     hold(false);
     emit('end', { source: s, why: d.why, secs: d.secs });
-    toast(`Back from ${s.title}`, { timeout: 5000, action: { label: '▶ Play again', fn: () => play(s).catch(fail) } });
+    if (!quiet) toast(`Back from ${s.title}`, { timeout: 5000, action: { label: '▶ Play again', fn: () => play(s).catch(fail) } });
   }
   const fail = (err) => toast(window.calmError ? calmError(err) : String(err?.message || err), { type: 'error', raw: err });
   window.hub.game?.onLeft?.((d) => ended(d || {}));
   // the live route ends when its Stage window closes
   addEventListener('hearth:stage-closed', () => { if (now?.live) ended({ why: 'closed' }); });
-  function state() { return { playing: Boolean(now), source: now?.source || null, info: now?.info || null, live: Boolean(now?.live), plan: now?.plan || null, last: last(), recent: recent() }; }
+  // (round 53, playloop) the game window rests (hidden, kept) while you edit: Hearth's background work and the Lab preview
+  // come back; waking it holds them again
+  function rest(on) { if (!now || now.live || Boolean(now.resting) === Boolean(on)) return; now.resting = Boolean(on); hold(!on); }
+  function state() { return { playing: Boolean(now), resting: Boolean(now?.resting), source: now?.source || null, info: now?.info || null, live: Boolean(now?.live), plan: now?.plan || null, last: last(), recent: recent() }; }
 
   // ---------- "Play …": what a name means ----------
   async function resolve(arg = '') {
@@ -166,7 +171,7 @@ const GameMode = (() => {
       const pick = C.pickDisplay(ds, want);
       items.push('-', { label: 'Play on', items: () => ds.map((d) => ({ label: `${d.label} · ${d.w}×${d.h} · ${C.hzLabel(d.hz)}`, checked: d.id === pick?.id, action: () => store.set('gamemode.display', d.id) })) });
     }
-    return items;
+    return [...(Loop()?.menuItems?.(ds) || []), ...items]; // (round 53, playloop: Back to the game, Play from here, Side by side)
   }
   async function menu(x, y) { showMenu(x, y, await menuItems()); }
 
@@ -216,5 +221,5 @@ const GameMode = (() => {
     for (const x of recent()) AppUI.addAction?.(`▶ Play ${x.title}`, () => play(x).catch(fail));
   } catch { /* no palette */ }
 
-  return { play, leave, state, resolve, menu, menuItems, recent, last, sceneSpec, on: (fn) => { fns.add(fn); return () => fns.delete(fn); }, get playing() { return Boolean(now); } };
+  return { play, leave, rest, state, resolve, menu, menuItems, recent, last, sceneSpec, on: (fn) => { fns.add(fn); return () => fns.delete(fn); }, get playing() { return Boolean(now); } };
 })();

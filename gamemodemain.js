@@ -27,6 +27,8 @@ function forget() { try { ses?.clearStorageData({ storages: WIPE }).catch(() => 
 // (round 52, gameready) GameReady's part of this window, when it's in: optimized copies served for their originals'
 // addresses and its preparing script first in the game's pages (gamereadymain.js; nothing when it isn't armed)
 const ready = () => { try { return require('./gamereadymain'); } catch { return null; } };
+// (round 53, playloop) Ctrl/⌘+P back to editing with the game kept, side by side, the "Updated" blip, Fix with the director
+const loop = () => { try { return require('./playloopmain'); } catch { return null; } };
 let ctx = null; // { getWin, powerwise, dataDir }
 let G = null; // the game playing: { win, source, root, token, display, hz, route, how, started, release, priority, pid }
 const roots = new Map(); // token → folder
@@ -186,6 +188,7 @@ function ended(g) {
   if (G !== g) return;
   G = null;
   roots.delete(g.token);
+  loop()?.ended?.();
   forget();
   try { g.release?.(); } catch { /* fine */ }
   try { ctx.powerwise.quiet(false); } catch { /* fine */ }
@@ -245,6 +248,7 @@ async function play(_e, req = {}) {
     if (input.type !== 'keyDown') return;
     if (GI.key(e, input)) return;
     const k = String(input.key || '').toLowerCase();
+    if (loop()?.key?.(input)) { e.preventDefault(); return; } // (round 53, playloop) Ctrl/⌘+P: back to editing, the game kept (after gameinput's keys)
     if ((mac && input.meta && (k === 'q' || k === 'w')) || (!mac && input.control && k === 'w') || (!mac && input.alt && k === 'f4')) { e.preventDefault(); leave('key'); return; }
     if (mac && input.meta) e.preventDefault();
   });
@@ -278,6 +282,10 @@ function register(ipcMain, c) {
   ipcMain.handle('game:displays', hub(() => displays().map(({ bounds, ...d }) => d)));
   ipcMain.handle('game:info', (e) => (mine(e) ? info() : null));
   ipcMain.on('game:back', (e) => { if (mine(e)) leave('back'); });
+  // (round 53, playloop: playloopmain.js) rest / wake / side by side / the blip; the error line's Fix from the game window
+  loop()?.register?.({ ctx: () => ctx, game: () => G, leave });
+  ipcMain.handle('game:loop', hub((_e, req) => loop()?.op?.(req) || { playing: false }));
+  ipcMain.on('game:fix', (e, d) => loop()?.fix?.(e, d));
   // checks: run a line in the game window's page, press a key / click there (real input, through Chromium)
   ipcMain.handle('game:eval', hub(async (_e, code) => { if (!G?.win || G.win.isDestroyed()) return { error: 'not playing' }; try { return { value: await G.win.webContents.executeJavaScript(String(code), true) }; } catch (err) { return { error: err.message }; } }));
   ipcMain.handle('game:key', hub((_e, { key = 'Escape', mods = [] } = {}) => {
