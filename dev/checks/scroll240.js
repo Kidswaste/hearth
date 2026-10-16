@@ -130,7 +130,9 @@ const dialogStretch = async (name, open, pick) => {
   if (!want(name)) return;
   await open(); await wait(900);
   const dlg = [...document.querySelectorAll('dialog[open]')].at(-1);
-  const sc = dlg && (pick ? dlg.querySelector(pick) : null) || (dlg && biggestScroller(dlg));
+  let sc = dlg && (pick ? dlg.querySelector(pick) : null) || (dlg && biggestScroller(dlg));
+  // (a dialog whose content fits (the calmer Usage window on test data) is made shorter, so its scrolling is still measured)
+  if (!sc && dlg) { dlg.style.maxHeight = `${Math.round(dlg.clientHeight * 0.55)}px`; await wait(300); sc = biggestScroller(dlg); out.numbers[`${name}Shortened`] = true; }
   if (!sc) { fail(`${name}: nothing to scroll`); dlg?.close(); return; }
   const [x, y] = mid(sc);
   await rest(x, y);
