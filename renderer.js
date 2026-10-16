@@ -670,6 +670,8 @@ function createSurface(agent) {
 function syncSurfaces() {
   const container = $('surfaces');
   const wanted = new Set([...H.railAgents().map((a) => a.id), ...Tools.enabled().map((t) => `tool:${t.id}`)]);
+  // (round 53) a tool off the rail, opened from the rail ⋯ / Ctrl/⌘+K / its command, keeps its surface (toolSurface)
+  for (const t of Tools.all()) if (H.surfaces.has(`tool:${t.id}`)) wanted.add(`tool:${t.id}`);
   for (const [id, s] of H.surfaces) {
     if (!wanted.has(id)) { s.el.remove(); H.surfaces.delete(id); }
   }
@@ -718,10 +720,20 @@ function applyLayout() {
   $('bar-btn').classList.toggle('on', !$('broadcast').classList.contains('hidden'));
 }
 
+// (round 53) a tool off the rail (the rail ⋯ › Not in the rail, Ctrl/⌘+K, /playground) gets its surface when first opened
+function toolSurface(sid) {
+  const tool = H.isTool(sid) && typeof Tools !== 'undefined' ? Tools.get(sid.slice(5)) : null;
+  if (!tool) return null;
+  const s = Tools.createSurface(tool);
+  H.surfaces.set(sid, s);
+  $('surfaces').append(s.el);
+  return s;
+}
+
 function activate(id, { focus = true } = {}) {
   // Docked agents (e.g. Three Director) show inside their tool's surface.
   const surfaceId = H.surfaceIdFor(id);
-  const s = H.surfaces.get(surfaceId);
+  const s = H.surfaces.get(surfaceId) || toolSurface(surfaceId);
   if (!s) return;
   const docked = surfaceId !== id;
   if (H.isTool(surfaceId) && H.grid) { H.grid = false; applyLayout(); }
