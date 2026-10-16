@@ -117,7 +117,12 @@ async function cdpConnect() {
 
 (async () => {
   const dir = copyApp();
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-profile-'));
+  // (round 52, gameready) --profile <dir>: this Chromium profile is used and kept (a second launch finds the first one's
+  // GPU shader cache: dev/checks/gameready*.js); --profile-fresh empties it first
+  const profileDir = opt('--profile');
+  if (profileDir && args.includes('--profile-fresh')) fs.rmSync(profileDir, { recursive: true, force: true });
+  if (profileDir) fs.mkdirSync(profileDir, { recursive: true });
+  const userData = profileDir ? path.resolve(profileDir) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-profile-'));
   const log = [];
   // Native save dialogs can't be answered here: files are saved straight into --save-dir (default <copy>/test-saves,
   // also exposed to checks as window.SMOKE_SAVES); --open "a.wav:b.png" is what open dialogs pick.
@@ -379,7 +384,7 @@ async function cdpConnect() {
     killAll();
     const mainErrors = log.join('').split('\n').filter((l) => /Error|Uncaught|TypeError|ReferenceError|SyntaxError/.test(l) && !IGNORE.some((re) => re.test(l)));
     for (const l of mainErrors.slice(0, 30)) problems.push(`main: ${l.trim()}`);
-    if (!keep) { for (const d of [dir, userData]) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a helper process still writing; tmp is cleaned later */ } } }
+    if (!keep) { for (const d of profileDir ? [dir] : [dir, userData]) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a helper process still writing; tmp is cleaned later */ } } }
     else console.log(`kept: ${dir}`);
   }
   if (problems.length) { console.log(`\n${problems.length} problem(s):\n${[...new Set(problems)].join('\n')}`); code = 1; } else console.log('\nOK: no page errors.');

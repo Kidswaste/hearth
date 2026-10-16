@@ -16,6 +16,11 @@ const store = require('./store');
 // until Hearth restarted, so glrecover had nothing to come back to. Off (before 'ready'); Chromium's own fallback when
 // the GPU keeps crashing still applies (glrecovermain's note).
 try { app.disableDomainBlockingFor3DAPIs(); } catch (err) { console.warn('glrecover: domain blocking', err.message); }
+// (round 52, gameready) ▶ Play: an HTML game's window serves its folder as hearth-game://… (gamereadymain.js; a scheme is
+// named before 'ready'); Chromium's compiled-shader cache (kept on disk, so a game's second launch skips its compiles)
+// may hold 32 MB instead of 6: a big game's programs fit
+try { require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'hearth-game', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]); } catch (err) { console.warn('gameready: scheme', err.message); }
+app.commandLine.appendSwitch('gpu-program-cache-size-kb', '32768');
 // (round 19, splash) modules the first screen doesn't need are required on their first use instead of before the window
 // opens (Electron's 'ready' waits for everything main.js does at load): the same object to every caller, made on demand
 function later(file, onLoad) {
@@ -598,6 +603,7 @@ function registerAfterWindow() {
   require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
   lazyIpc('rendersmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // the render queue: pause / resume / cancel ffmpeg jobs (round 29: on first use)
   lazyIpc('renderfastmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 41, renderfast) Lab exports stream their frames into ffmpeg (on first use)
+  lazyIpc('gamereadymain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, appDir: __dirname })); // (round 52, gameready) ▶ Play gets a game ready: hashes, Hearth's optimized cache, an HTML game's window (on first use)
   lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
   lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
   lazyIpc('voicemain.js', (m, ipc) => m.register(ipc, () => win, { settings, dataDir: store.DATA_DIR })); // (round 23) voice: local speech-to-text (whisper), system voices

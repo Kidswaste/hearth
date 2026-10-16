@@ -266,4 +266,6 @@ contextBridge.exposeInMainWorld('hub', {
   rfast: { open: call('rfast:open'), write: call('rfast:write'), end: call('rfast:end'), cancel: call('rfast:cancel') }, // (round 41, renderfast) frames streamed into ffmpeg (renderfastmain.js)
   glr: { state: call('glrecover:state'), shown: call('glrecover:shown'), sim: call('glrecover:sim'), onNote: on('glrecover:note') }, // (round 43, glrecover) the graphics card restarted / drawing without it (glrecovermain.js)
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
+  // (round 52, gameready) ▶ Play gets a game ready: file hashes, Hearth's optimized cache, the encoder, an HTML game's window (gamereadymain.js)
+  gameReady: { hash: call('gameready:hash'), plan: call('gameready:plan'), scan: call('gameready:scan'), tool: call('gameready:tool'), install: call('gameready:install'), optimize: call('gameready:optimize'), openHtml: call('gameready:open-html'), closeHtml: call('gameready:close-html'), served: call('gameready:served'), to: (msg) => ipcRenderer.send('gameready:to', msg), onFrom: on('gameready:from'), onProgress: on('gameready:progress') },
 });

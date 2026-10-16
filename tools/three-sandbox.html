@@ -473,6 +473,8 @@ try {
   const M = THREE.DefaultLoadingManager;
   for (const [k, d] of [['itemStart', 1], ['itemEnd', -1], ['itemError', 0]]) { const f = M[k]; if (typeof f === 'function') M[k] = function (...a) { RDY.pend = Math.max(0, RDY.pend + d); return f.apply(this, a); }; }
 } catch { /* an older three.js: the other waits still hold */ }
+// (round 52, gameready) sounds still decoding count as loading too (▶ Play waits for them)
+try { const AC = window.BaseAudioContext?.prototype; const f = AC?.decodeAudioData; if (f) AC.decodeAudioData = function (...a) { RDY.pend += 1; const p = f.apply(this, a); const d = () => { RDY.pend = Math.max(0, RDY.pend - 1); }; p?.then?.(d, d); return p; }; } catch { /* fine */ }
 
 // ---------- performance stats for whatever renderer the sketch makes ----------
 let frames = 0;
@@ -1379,6 +1381,7 @@ realRAF(tickFrames);
 //   ready-warm { id, n }     n frames drawn at the timeline point the Lab just sought, anything new compiled; their work
 //   ready-rec { on }         frame gaps + work per frame from now (on) / until now (off: answered with them)
 //   ready-count {}           what the GPU compiled / uploaded so far (RDY.gl)
+//   ready-scan { id }        (round 52, gameready) everything in, textures at the best anisotropy, what the scene costs
 const rdyLive = () => [...renderers].filter((r) => !r.__stale && !r.__gutted && !r.__helper && r.__lastScene);
 function rdyFrames(n) { return new Promise((res) => { let k = 0; const go = () => { if (++k >= n) res(); else realRAF(go); }; realRAF(go); }); }
 async function rdyAssets(id) {
@@ -1422,7 +1425,7 @@ function rdyTextures(r, sc) {
 }
 // every program the scenes on the layers' renderers need (the scenes each renderer drew lately, not only the last one)
 async function rdyCompile(id) {
-  const list = rdyLive(); let done = 0; let tex = 0;
+  const list = rdyLive(); let done = 0; let tex = 0; const t0 = realNow();
   for (const r of list) {
     for (const sc of new Set([...(r.__seen || []), r.__lastScene])) {
       if (!sc?.isObject3D) continue;
@@ -1432,7 +1435,34 @@ async function rdyCompile(id) {
     done += 1;
     if (id) post({ type: 'ready-progress', id, stage: 'shaders', done, total: list.length });
   }
-  return { renderers: list.length, textures: tex };
+  return { renderers: list.length, textures: tex, compileMs: Math.round(realNow() - t0) };
+}
+// (round 52, gameready) ▶ Play: every texture the scenes use at the graphics card's best anisotropy (mipmapped
+// pictures; set before their upload, or uploaded again during getting ready), and what the scene costs (the findings)
+function rdyScan() {
+  const tex = []; const seen = new Set(); let calls = 0; let triangles = 0; let programs = 0; let lights = 0; let shadows = 0; let aniso = 0;
+  for (const r of rdyLive()) {
+    const max = r.capabilities?.getMaxAnisotropy?.() || 1;
+    calls += r.info?.render?.calls || 0; triangles += r.info?.render?.triangles || 0; programs += r.info?.programs?.length || 0;
+    for (const sc of new Set([...(r.__seen || []), r.__lastScene])) {
+      if (!sc?.isObject3D) continue;
+      const take = (t) => {
+        if (!t?.isTexture || seen.has(t) || t.isRenderTargetTexture || t.isDepthTexture) return;
+        seen.add(t);
+        const im = t.image; const m0 = t.mipmaps?.[0];
+        const w = im?.videoWidth || im?.naturalWidth || im?.width || m0?.width || 0; const h = im?.videoHeight || im?.naturalHeight || im?.height || m0?.height || 0;
+        const mips = t.generateMipmaps !== false || (t.mipmaps?.length || 0) > 1;
+        if (!t.isVideoTexture && mips && (t.anisotropy || 1) < max) { const up = r.properties?.get?.(t)?.__webglTexture; t.anisotropy = max; if (up) t.needsUpdate = true; aniso += 1; }
+        tex.push({ w, h, mips, compressed: Boolean(t.isCompressedTexture), cube: Boolean(t.isCubeTexture), video: Boolean(t.isVideoTexture), aniso: t.anisotropy || 1 });
+      };
+      take(sc.background); take(sc.environment);
+      sc.traverse?.((o) => {
+        if (o.isLight) { lights += 1; if (o.castShadow) shadows += 1; }
+        for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) { for (const v of Object.values(m)) take(v); if (m.uniforms) for (const u of Object.values(m.uniforms)) take(u?.value); }
+      });
+    }
+  }
+  return { textures: tex, calls, triangles, programs, lights, shadows, aniso, renderers: rdyLive().length };
 }
 async function rdyMessage(msg) {
   if (msg.type === 'ready-lock') {
@@ -1456,6 +1486,9 @@ async function rdyMessage(msg) {
     if (msg.on) { RDY.rec = { g: [], w: [] }; return; }
     const r = RDY.rec || { g: [], w: [] }; RDY.rec = null;
     post({ type: 'ready-rec', id: msg.id, gaps: r.g.map((x) => Math.round(x * 100) / 100), work: r.w.map((x) => Math.round(x * 100) / 100) });
+  } else if (msg.type === 'ready-scan') {
+    const assets = await rdyAssets(msg.id);
+    post({ type: 'ready-scanned', id: msg.id, assets, ...rdyScan() });
   } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, ...RDY.gl, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
 }
 const rdyDelta = (a) => Object.fromEntries(Object.entries(RDY.gl).map(([k, v]) => [k, v - (a[k] || 0)]));
