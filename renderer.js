@@ -507,8 +507,26 @@ function moveAgentTo(id, to) {
   saveConfig();
 }
 
+// (round 50) the file watcher's news of an earlier save could land while a newer one was on its way: it put the older
+// settings back in the window (an AI's second folder gone for ~0.5 s, the AI setup drawn without it). While a save is
+// under way such news waits; when the saves are done the window reads the file once (an outside change still lands).
+let cfgSaving = 0;
+let cfgHeld = false;
 function saveConfig() {
-  return window.hub.saveConfig(H.config); // the file watcher re-applies it everywhere
+  cfgSaving += 1;
+  const p = window.hub.saveConfig(H.config); // the file watcher re-applies it everywhere
+  const settle = () => {
+    cfgSaving = Math.max(0, cfgSaving - 1);
+    if (cfgSaving || !cfgHeld) return;
+    cfgHeld = false;
+    window.hub.getConfig().then(configChanged).catch((err) => console.warn('config', err));
+  };
+  Promise.resolve(p).then(settle, settle);
+  return p;
+}
+function configChanged(data) {
+  if (cfgSaving) { cfgHeld = true; return; }
+  apply(data);
 }
 
 // ---------- surfaces ----------

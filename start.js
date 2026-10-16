@@ -45,7 +45,7 @@ document.addEventListener('keydown', (e) => {
 window.addEventListener('blur', hideMenu);
 
 window.hub.onShortcut(handleShortcut);
-window.hub.onConfigChanged(apply);
+window.hub.onConfigChanged(configChanged); // (round 50) news of an older save waits for the newer one (renderer.js)
 
 (async () => {
   // (round 19) the splash names what a slow start waits for (splash.js); the settings are asked for at the same time

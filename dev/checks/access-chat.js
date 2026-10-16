@@ -59,6 +59,10 @@ const calls = [
   ['Bash', { command: `cd "${dir}" && ls` }],
 ];
 const seen = [];
+// (round 50) the cards answered here get 30 s: the first one's picture alone took ~3 s on a loaded machine, and with 5 s
+// the rm card expired before the click ("Bash: denied · The user didn't answer in time"). The timer is read when a card
+// is made and the cards come one after another, so the curl card (made after git push is answered) still gets 5 s
+Access._setTimeout(30000);
 Native.send(claude.id, `access: ${JSON.stringify(calls)}`);
 await wait(400);
 const chatId = H.activeChat[claude.id];
@@ -73,7 +77,7 @@ while (Native.isBusy(chatId) && Date.now() - t0 < 120000) {
     seen.push(text.slice(0, 90));
     if (!shotDone) { shotDone = true; await smoke({ shot: '/tmp/access-card.png' }); }
     if (/rm c\.txt/.test(text)) { card.dataset.handled = '1'; await answer(card, 'Allow once'); }
-    else if (/git push/.test(text)) { card.dataset.handled = '1'; card.querySelector('.access-note').value = 'not yet, review first'; await answer(card, 'Deny'); }
+    else if (/git push/.test(text)) { card.dataset.handled = '1'; Access._setTimeout(5000); card.querySelector('.access-note').value = 'not yet, review first'; await answer(card, 'Deny'); }
     else card.dataset.handled = 'wait'; // curl: let it time out
   }
   await wait(150);

@@ -80,7 +80,7 @@ const Access = (() => {
     if (typeof Native === 'undefined') return null;
     return Native.chatOf?.(agentId) || Native.ensureChat?.(agentId) || null;
   }
-  function save(chat) { try { Native.save(chat); } catch { /* not a native chat */ } refreshBadge(chat.agentId); }
+  function save(chat) { try { Native.save(chat); } catch { /* not a native chat */ } refreshBadge(chat.agentId, chat); }
   const normLevel = (level) => (level === 'rw' || level === 'edit' || /read\s*&\s*write/i.test(level) ? 'write' : level);
   // "Allow for this chat": remembered on the chat without freezing its level (a chat that follows its AI keeps doing so)
   function addGrant(chat, grant) { chat.access = { ...(chat.access || {}), grants: [...new Set([...(chat.access?.grants || []), grant])] }; save(chat); }
@@ -548,7 +548,18 @@ const Access = (() => {
 
   // ---------- UI: badge, menu, panel, log ----------
   function badgeText(acc) { return acc.level === 'off' ? '' : `${acc.level === 'full' ? '🔓' : '📁'} ${R.LEVEL_LABEL[acc.level]}`; }
-  function refreshBadge(agentId) { try { if (typeof Native !== 'undefined') Native.refresh(agentId, { keepScroll: true }); } catch { /* not mounted */ } }
+  // The badge changes with the level at once: the chat's redraw paints it only after its list is made and a frame has
+  // passed (up to ~1 s on a busy machine, the old level showing meanwhile, or a badge after Off), so the chat on screen
+  // gets it now; the redraw's own paint then finds it as it is
+  function refreshBadge(agentId, chat = null) {
+    if (typeof Native === 'undefined') return;
+    try {
+      const v = Native.view?.(agentId);
+      const shown = Native.chatOf?.(agentId) || null;
+      if (v && (!chat || shown?.id === chat.id || H.activeChat?.[agentId] === chat.id)) paintBadge(agentId, v, chat || shown);
+    } catch (err) { console.warn(err); }
+    try { Native.refresh(agentId, { keepScroll: true }); } catch { /* not mounted */ }
+  }
   // native.js render hook: a small chip after the chat's title (only when access is on)
   function paintBadge(agentId, v, chat) {
     if (!v?.meta) return;
