@@ -8879,6 +8879,144 @@ globalThis.visualizer = (P = {}, opts = {}) => {
 // checks and three_eval: each visualizer layer's numbers now
 window.__labVis = { info: () => [...VIS.stats.values()].filter((x) => layers.has(x.id)).map((x) => ({ ...x, ms: Math.round(x.ms * 1000) / 1000 })), track: () => (VIS.track ? { n: VIS.track.n, dur: VIS.track.dur } : null), jobs: () => ({ jobs: VIS.jobs, worker: VIS.worker, err: VIS.err || null }), ready: () => Boolean(globalThis.viscore) };
 
+// ---------- ◆ shape layers (round 51, labshapes: the hub side is tools/three-shapes*.js) ----------
+// shapeLayer(P, opts) in a layer's code makes it a ◆ shape layer: a path (tools/three-shape-core.js, globalThis.shapecore,
+// sent as source on first use) drawn crisp at any pixel ratio: one small instanced quad per segment, each working out its
+// own distance (round ends and joins, the trim, the dashes, a taper) in its shader, plus the fill as triangles with a
+// one-pixel soft edge. What is drawn comes from the time alone (the song's, a sequence's or an export's clock; with no
+// song: since the layer started), so a render is the preview frame for frame; once it has drawn on, nothing changes
+// and the still check lets the page doze. The path is made again only when one of its sliders moves.
+// P: the shape's sliders (w h sides inner round amp turns taper), the look (fill fillA stroke width dash gap march
+// dashOff), drawing on (drawOn dur delay hold ease reverse offset fillIn trimStart trimEnd); opts: preset, points, closed.
+const SHP = { want: null, stats: new Map() };
+const SHP_KEYS = ['w', 'h', 'sides', 'inner', 'round', 'amp', 'turns', 'taper'];
+const SHP_LOOK = ['fill', 'fillA', 'stroke', 'width', 'dash', 'gap', 'march', 'dashOff', 'drawOn', 'dur', 'delay', 'hold', 'ease', 'reverse', 'offset', 'fillIn', 'trimStart', 'trimEnd'];
+function shpReady() { if (globalThis.shapecore) return true; SHP.want ||= loadLib('shapecore').then(() => { PACE.poke += 1; paceWake(); dozeWake('shape'); }).catch(() => { SHP.want = null; }); return false; }
+// an export / sequence frame waits for the math (and ♪'s hits when a shape draws on them)
+globalThis.__labShapeReady = async () => {
+  const codes = [...layers.values()].map((L) => L.code || '').filter((c) => /\bshapeLayer\s*\(/.test(c));
+  if (!codes.length) return;
+  const all = [];
+  if (!globalThis.shapecore) { shpReady(); all.push(SHP.want); }
+  if (!globalThis.beatlink && codes.some((c) => /drawOn\s*:\s*\{\s*value\s*:\s*'(beat|bar|kick|snare)'/.test(c))) { blReady(); all.push(BL.want); }
+  if (all.length) await Promise.race([Promise.all(all), new Promise((r) => realSetTimeout(r, 30000))]).catch(() => {});
+};
+globalThis.shapeLayer = (P = {}, opts = {}) => {
+  const L = layerState(currentLayer() || 'main');
+  P = P || {}; opts = opts || {};
+  const id = String(opts.preset || 'rect');
+  const custom = Array.isArray(opts.points) ? { points: opts.points, closed: Boolean(opts.closed) } : null;
+  const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, premultipliedAlpha: true });
+  let ratio = devicePixelRatio;
+  renderer.setPixelRatio(ratio); renderer.setSize(innerWidth, innerHeight); renderer.setClearColor(0x000000, 0);
+  document.body.append(renderer.domElement);
+  addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+  const scene = new THREE.Scene(); const camera = new THREE.Camera();
+  const stat = { id: L.id, preset: id, ok: true, frames: 0, builds: 0, t: 0, vis: 0, len: 0, segs: 0, ratio, ms: 0 };
+  SHP.stats.set(L.id, stat);
+  const blend = { transparent: true, depthTest: false, depthWrite: false, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor };
+  const view = { value: new THREE.Vector2(1, 1) }; const half = { value: 0 }; const px = { value: 0.002 };
+  const US = { uView: view, uHalf: half, uPx: px, uTrim: { value: new THREE.Vector4(0, 1, 1, 0) }, uDash: { value: new THREE.Vector3() }, uColor: { value: new THREE.Vector3(1, 1, 1) }, uAlpha: { value: 1 }, uFringe: { value: 0 } };
+  const UE = { uView: view, uHalf: half, uPx: px, uTrim: { value: new THREE.Vector4(-1e9, 1e9, 1, 0) }, uDash: { value: new THREE.Vector3() }, uColor: { value: new THREE.Vector3(1, 1, 1) }, uAlpha: { value: 1 }, uFringe: { value: 1 } };
+  const UF = { uView: view, uColor: UE.uColor, uAlpha: UE.uAlpha };
+  let segGeo = null; let cap = 0; let fillGeo = new THREE.BufferGeometry();
+  const stroke = new THREE.Mesh(new THREE.BufferGeometry()); const edge = new THREE.Mesh(new THREE.BufferGeometry()); const fill = new THREE.Mesh(fillGeo);
+  for (const [m, o] of [[fill, 0], [edge, 1], [stroke, 2]]) { m.frustumCulled = false; m.renderOrder = o; m.visible = false; scene.add(m); }
+  let path = null; let C = null; const last = new Array(SHP_KEYS.length).fill(NaN);
+  const v = {}; const tr = {}; const dash = [0, 0, 0]; const hex = {}; const size = new THREE.Vector2();
+  let t0 = realNow(); let drawKey = ''; let inited = false; let pre = null;
+  const pv = (k) => { const x = P[k]; return x === undefined || x === null || x === '' ? (opts[k] ?? pre?.v[k]) : x; };
+  // the segments (and the fill's triangles) of the path, sent to the GPU again only when the path changed
+  function upload() {
+    const n = path.subs.reduce((s, sub) => s + sub[1] - 1, 0);
+    if (n > cap || !segGeo) {
+      segGeo?.dispose(); cap = Math.max(64, n * 2);
+      segGeo = new THREE.InstancedBufferGeometry();
+      segGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, -1, 1, -1, 1, 1, 0, 1]), 2)); segGeo.setIndex([0, 1, 2, 0, 2, 3]);
+      for (const [k, w] of [['aA', 2], ['aB', 2], ['aS', 2], ['aR', 2], ['aW', 1]]) segGeo.setAttribute(k, new THREE.InstancedBufferAttribute(new Float32Array(cap * w), w));
+      stroke.geometry = segGeo; edge.geometry = segGeo;
+    }
+    const A = segGeo.attributes; let j = 0;
+    path.subs.forEach(([i0, k, closed], si) => {
+      const w = closed ? path.wind[si] : 0;
+      for (let i = i0; i < i0 + k - 1; i += 1, j += 1) {
+        A.aA.array[j * 2] = path.x[i]; A.aA.array[j * 2 + 1] = path.y[i]; A.aB.array[j * 2] = path.x[i + 1]; A.aB.array[j * 2 + 1] = path.y[i + 1];
+        A.aS.array[j * 2] = path.s[i]; A.aS.array[j * 2 + 1] = path.s[i + 1]; A.aR.array[j * 2] = path.rw[i]; A.aR.array[j * 2 + 1] = path.rw[i + 1]; A.aW.array[j] = w;
+      }
+    });
+    for (const k of ['aA', 'aB', 'aS', 'aR', 'aW']) A[k].needsUpdate = true;
+    segGeo.instanceCount = j; stat.segs = j;
+    // the fill: each closed part triangulated
+    const pos = []; const idx = [];
+    for (const [i0, k, closed] of path.subs) {
+      if (!closed || k < 4) continue;
+      const ring = []; for (let i = i0; i < i0 + k - 1; i += 1) ring.push(new THREE.Vector2(path.x[i], path.y[i]));
+      const base = pos.length / 2; for (const q of ring) pos.push(q.x, q.y);
+      for (const f of THREE.ShapeUtils.triangulateShape(ring, [])) idx.push(base + f[0], base + f[1], base + f[2]);
+    }
+    fillGeo.dispose(); fillGeo = new THREE.BufferGeometry();
+    fillGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 2)); fillGeo.setIndex(idx);
+    fill.geometry = fillGeo; fill.userData.has = idx.length > 0;
+    stat.builds += 1; stat.len = path.L;
+  }
+  renderer.setAnimationLoop(() => {
+    C = globalThis.shapecore;
+    if (!C) { shpReady(); renderer.render(scene, camera); return; }
+    const c0 = realNow();
+    if (!inited) {
+      inited = true; pre = C.PRESETS.find((q) => q.id === id) || C.PRESETS[0];
+      stroke.material = new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: C.VERT, fragmentShader: C.FRAG, uniforms: US, ...blend });
+      edge.material = new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: C.VERT, fragmentShader: C.FRAG, uniforms: UE, ...blend });
+      fill.material = new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: C.FILL_VERT, fragmentShader: C.FILL_FRAG, uniforms: UF, ...blend });
+      path = C.newPath();
+    }
+    for (const k of SHP_KEYS) v[k] = pv(k);
+    for (const k of SHP_LOOK) v[k] = pv(k);
+    let moved = false;
+    for (let i = 0; i < SHP_KEYS.length; i += 1) { const x = Number(v[SHP_KEYS[i]]); if (!Object.is(x, last[i])) { last[i] = x; moved = true; } }
+    if (moved) { C.build(id, v, custom, path); upload(); }
+    // crisp when the layer is scaled up (✥ handles, Scale): more pixels behind it, at most 3× and ≈ 16 MP
+    const k = Math.min(3, Math.max(1, Math.round((L.tfS || 1) * 4) / 4));
+    let want = devicePixelRatio * k; const cssPx = innerWidth * innerHeight; if (cssPx * want * want > 16e6) want = Math.max(devicePixelRatio, Math.sqrt(16e6 / cssPx));
+    if (Math.abs(want - ratio) > 1e-3) { ratio = want; renderer.setPixelRatio(ratio); renderer.setSize(innerWidth, innerHeight); stat.ratio = ratio; }
+    // the time: a sequence's / an export's / the song's clock (from the layer's in point); no song: since it started
+    const p = L.props; const mode = String(v.drawOn);
+    let t;
+    if (p.pcOf || p.seqT0 != null || SQ.on) t = globalThis.__layerClock?.(L.id) ?? 0;
+    else if (mediaEl && !liveKind) t = mediaEl.currentTime - (p.in ?? 0);
+    else {
+      const dk = `${mode}|${v.dur}|${v.delay}|${v.hold}|${v.ease}|${v.reverse}|${v.offset}`;
+      if (dk !== drawKey) { drawKey = dk; t0 = realNow(); } // (no song: a changed draw-on plays again)
+      t = (realNow() - t0) / 1000;
+    }
+    let hit = null; let th = t;
+    if (C.HIT_MODES[mode]) {
+      if (blReady()) { blFresh(); hit = blSrc(C.HIT_MODES[mode]).hit; if (mediaEl || liveKind) th = blTime(); }
+      else hit = () => null;
+    }
+    C.trim(v, th, hit, tr);
+    const Lp = path.L;
+    US.uTrim.value.set(tr.a0 * Lp, tr.b0 * Lp, tr.a1 * Lp, tr.b1 * Lp);
+    C.dashOf(v, t, dash); US.uDash.value.set(dash[0], dash[1], dash[2]);
+    renderer.getDrawingBufferSize(size);
+    const sh = Math.max(1, Math.min(size.x, size.y));
+    view.value.set(sh / size.x, sh / size.y); px.value = 2 / sh;
+    const wPx = Math.max(0, Number(v.width) || 0); half.value = wPx / 1080;
+    const sc = String(v.stroke); if (sc !== hex.s && sc[0] === '#') { hex.s = sc; hexVec(sc, US.uColor.value); }
+    const fc = String(v.fill); if (fc !== hex.f && fc[0] === '#') { hex.f = fc; hexVec(fc, UE.uColor.value); }
+    const fa = Math.max(0, Math.min(1, Number(v.fillA) || 0)) * tr.fillK;
+    UE.uAlpha.value = fa;
+    stroke.visible = wPx > 0 && tr.vis > 0 && stat.segs > 0;
+    fill.visible = edge.visible = fa > 0.002 && Boolean(fill.userData.has);
+    renderer.render(scene, camera);
+    if (stat.frames === 0) { const pg = renderer.properties.get(stroke.material)?.currentProgram; if (pg?.diagnostics && !pg.diagnostics.runnable) { stat.ok = false; post({ type: 'error', layer: pcTop(L.id), message: `shape: the shader did not compile (${String(pg.diagnostics.fragmentShader?.log || '').slice(0, 200)})` }); } }
+    stat.t = th; stat.vis = tr.vis; stat.trim = [tr.a0, tr.b0, tr.a1, tr.b1]; stat.frames += 1; stat.ms = stat.ms * 0.9 + (realNow() - c0) * 0.1;
+  });
+  return { renderer, scene, camera, ok: true };
+};
+// checks and three_eval: each shape layer's numbers now (len: the path's length in units, 1 unit = half the shorter side)
+window.__labShape = { info: () => [...SHP.stats.values()].filter((x) => layers.has(x.id)).map((x) => ({ ...x, ms: Math.round(x.ms * 1000) / 1000 })), ready: () => Boolean(globalThis.shapecore) };
+
 // ---------- light physics (round 25 "physics": the hub side is tools/three-physics*.js) ----------
 // <physics-core> (round 25 "physics": plain JS, no three.js; dev/physics-test.js runs this part in Node)
 // One small position-based solver (XPBD with substeps) for everything: rigid bodies are clusters of particles held by
@@ -11878,6 +12016,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   await pcEnsure(); // precomps in its scenes: theirs too (only the ones that show at T)
   await globalThis.__labTypeReady?.(); // (round 25) a type layer's font that is still loading (a Google / asset font)
   await globalThis.__labVisReady?.(); // (round 50, labvisualizers) a 🎵 visualizer's math, hits and song track
+  await globalThis.__labShapeReady?.(); // (round 51, labshapes) a ◆ shape's math (and ♪'s hits when it draws on them)
   const s = sqSong();
   if (s && sqInSong(T)) {
     const want = T - s.offset;
