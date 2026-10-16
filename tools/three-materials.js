@@ -70,7 +70,7 @@ const LabMaterials = (() => {
   function balls(color = '') {
     if (!thumbs.has(color)) {
       const specs = C.PRESETS.map((p) => (color ? { k: p.id, c: color } : { k: p.id }));
-      const p = LabMatHook.ask({ type: 'look-thumbs', specs, size: 72 }, 20000).then((m) => { if (!m?.url) { thumbs.delete(color); return null; } stats.thumbs += 1; return m; });
+      const p = LabMatHook.ask({ type: 'look-thumbs', specs, size: 72 }, 120000).then((m) => { if (!m?.url) { thumbs.delete(color); return null; } stats.thumbs += 1; return m; });
       thumbs.set(color, p);
       if (thumbs.size > 8) thumbs.delete(thumbs.keys().next().value);
     }

@@ -104,15 +104,18 @@ try {
 
   // ---------- 2. point = try (nothing saved), click = use ----------
   await mouse({ type: 'mouseMoved', ...center(tile('gold')), button: 'none' }); await wait(700);
-  let st = await LK(); let p1 = await px();
-  step('pointing at Gold tries it on the ball (yellow), nothing saved', st?.layers?.[0]?.trying?.spec?.k === 'gold' && yellow(p1[0]) && look() === 'null', { trying: st?.layers?.[0]?.trying, p: p1[0], look: look() });
+  let p1 = null; await until(async () => { p1 = await px(); return yellow(p1[0]); }, 40000); // (SwiftShader here: a new material's shaders compile on the CPU, seconds)
+  let st = await LK();
+  step('pointing at Gold tries it on the ball (yellow), nothing saved', st?.layers?.[0]?.trying?.path === '#Ball' && yellow(p1[0]) && look() === 'null', { trying: st?.layers?.[0]?.trying, p: p1[0], look: look() });
   await mouse({ type: 'mouseMoved', x: 5, y: 5, button: 'none' }); await wait(700);
-  st = await LK(); p1 = await px();
+  await until(async () => { p1 = await px(); return red(p1[0]); }, 20000);
+  st = await LK();
   step('pointing away: the ball is red again', !st?.layers?.[0]?.trying && red(p1[0]), p1[0]);
   const u0 = LabDirect.steps.length;
   await clickAt(center(tile('chrome')));
-  await until(() => look() !== 'null', 4000); await wait(600);
-  st = await LK(); p1 = await px();
+  await until(() => look() !== 'null', 4000);
+  await until(async () => { p1 = await px(); return grey(p1[0]); }, 30000);
+  st = await LK();
   step('a click on Chrome uses it on the ball only: kept with the layer, the ball is grey, the box stays blue', look() === '{"#Ball":{"k":"chrome"}}' && grey(p1[0]) && blue(p1[1]), { look: look(), p: p1 });
   step('a metal in a scene without an environment gets the built-in studio light', st?.layers?.[0]?.env === true && st.layers[0].meshes === 1, st?.layers?.[0]);
   step('one undo step', LabDirect.steps.length === u0 + 1, LabDirect.steps.slice(-1));
@@ -120,7 +123,7 @@ try {
   // ---------- 3. whole layer, undo with the real keys ----------
   [...card.pop.querySelectorAll('.lm-chip')].find((b) => /Whole/.test(b.textContent))?.click();
   await clickAt(center(tile('gold')));
-  await wait(700); p1 = await px();
+  await until(async () => { p1 = await px(); return yellow(p1[1]); }, 30000);
   step('Whole layer: Gold on every mesh (ball and box yellow), the ball keeps its own Chrome', look() === '{"#Ball":{"k":"chrome"},"*":{"k":"gold"}}' && grey(p1[0]) && yellow(p1[1]), { look: look(), p: p1 });
   LabMaterials.close(); await wait(200);
   step('Esc / ✕ closes the picker; nothing is being tried', !document.querySelector('.lm-pick') && !(await LK())?.layers?.[0]?.trying);
@@ -157,7 +160,7 @@ try {
   S.open(sk.id);
   await until(() => S.currentId() === sk.id, 8000);
   let back = null;
-  await until(async () => { back = await px(); return grey(back[0]) && green(back[1]); }, 20000);
+  await until(async () => { back = await px(); return grey(back[0]) && green(back[1]); }, 45000);
   step('saved with the scene: after switching away and back the ball is chrome, the box green', saved === look() && grey(back[0]) && green(back[1]), { saved, back });
 
   // ---------- 7. the directors ----------

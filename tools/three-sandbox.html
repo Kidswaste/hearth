@@ -25,8 +25,8 @@
   #lab-direct .ld-stem { position: absolute; left: 50%; top: calc(-17px * var(--k)); height: calc(17px * var(--k)); width: calc(1px * var(--k)); background: #ffb45a; }
   #lab-direct .ld-3d { position: absolute; left: 0; bottom: 100%; margin-bottom: calc(5px * var(--k)); transform: scale(var(--k)); transform-origin: 0 100%; pointer-events: auto; cursor: pointer; font: 600 11px system-ui, sans-serif; color: #1a1206; background: #ffb45a; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
   #lab-direct .ld-look { position: absolute; left: calc(46px * var(--k)); bottom: 100%; margin-bottom: calc(5px * var(--k)); transform: scale(var(--k)); transform-origin: 0 100%; pointer-events: auto; cursor: pointer; font: 600 11px system-ui, sans-serif; color: #fff; background: #3a3a46; border-radius: 4px; padding: 2px 6px; white-space: nowrap; } /* (round 50, labmaterials) */
-  #lab-direct.ld-in .ld-3d, #lab-direct.ld-in .ld-look { bottom: auto; top: 0; margin: calc(5px * var(--k)) 0 0 calc(5px * var(--k)); transform-origin: 0 0; } /* (round 50) a thing as big as the frame: its chips inside, not cut off above */
-  #lab-direct.ld-in .ld-look { margin-left: calc(51px * var(--k)); left: 0; }
+  #lab-direct.ld-in .ld-3d, #lab-direct.ld-in .ld-look { bottom: 0; margin: 0 0 calc(8px * var(--k)) calc(8px * var(--k)); transform-origin: 0 100%; } /* (round 50) a thing as big as the frame: its chips inside its bottom, not cut off above (nor under the Lab's pill at the top) */
+  #lab-direct.ld-in .ld-look { margin-left: calc(54px * var(--k)); left: 0; }
   #lab-direct .ld-gx, #lab-direct .ld-gy { position: absolute; background: #ff4fa3; box-shadow: 0 0 0 0.5px #0006; }
   #lab-direct .ld-gx { top: 0; bottom: 0; width: 1px; } #lab-direct .ld-gy { left: 0; right: 0; height: 1px; }
   html.ld-dragging, html.ld-dragging * { cursor: grabbing !important; }
@@ -3128,7 +3128,7 @@ function drPaint() {
   const d3 = !(DR.sel.lvCam && DR.sel.lvCamGen === DR.sel.gen);
   if (u.d3.hidden !== d3) u.d3.hidden = d3;
   if (u.lk.hidden !== d3) u.lk.hidden = d3; // (round 50, labmaterials) ◉ Look › on 3D layers too
-  const inside = b.y0 < 30; // (a thing as big as the frame: ✥ 3D and ◉ Look › go inside its top, where they can be seen)
+  const inside = b.y0 < 30; // (a thing as big as the frame: ✥ 3D and ◉ Look › go inside its bottom, where they can be seen)
   if (u.root.classList.contains('ld-in') !== inside) u.root.classList.toggle('ld-in', inside);
 }
 function drGuides(gx, gy) {
