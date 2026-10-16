@@ -64,13 +64,15 @@ buttons on screen.
   command newer than the recording is judged by the manifest's own args / hidden); a name registered in the app's
   files that neither knows (`name: '…'` / `reg('…'` with a desc or args) must get a line. `--table` prints the table
   below, `--self-test` checks the rules.
-- `declutter.js` (the chat box's right-click: Snippets ›, Remind me…, Open a code file as nodes…, all behind More…),
-  `native.js` (chat ⋯ › View › How messages look: `messageLook()`), `board-menus.js` (Palette style; the right-click
+- `chat-cmds.js` (lazy group chatcmds, in right after the first screen: `ChatCmds.boxRows()` the chat box's
+  Snippets ›, Remind me…, Open a code file as nodes…, all behind More…; `ChatCmds.messageLook()` chat ⋯ › View › How
+  messages look), one guarded line each in `declutter.js` and `native.js` (the first screen stays inside its 2,350 KB
+  budget), `board-menus.js` (Palette style; the right-click
   chain fix), `capture.js` (Recording… › Window at an exact size…). Every row runs the same code as the command (the
   reminder and the window size run the command itself; Ctrl/⌘+K finds the rows too, since it reads the menus).
 
 ## Edits outside my lane (small, additive)
-`declutter.js`, `native.js`, `board-menus.js`, `capture.js` (the rows above), `dev/run-checks.js` (`commandonly` group,
+`chat-cmds.js`, `declutter.js` / `native.js` (one guarded line each), `board-menus.js`, `capture.js` (the rows above), `dev/run-checks.js` (`commandonly` group,
 `commandonly-scan` in UNIT). No new script tags, commands, Ctrl/⌘+K actions or keys: the lazy manifest is unchanged.
 
 ## Tests

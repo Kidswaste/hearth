@@ -1414,5 +1414,39 @@ const ChatCmds = (() => {
   if (performance.getEntriesByName('hearth:ready').length) addCommandActions();
   else addEventListener('hearth:ready', addCommandActions, { once: true });
 
-  return { undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS, localTitle };
+  // (round 51, commandonly) the chat box's right-click rows (declutter.js) for what only /snippet, /remind and /code-nodes-file reached; tucked
+  // behind More… (the snippets are read once, when the menu first opens, then kept: ChatUX caches them too)
+  let snipCache = null;
+  function boxRows(agentId, v) {
+    if (typeof ChatUX !== 'undefined' && ChatUX.loadSnippets) ChatUX.loadSnippets().then((s) => { snipCache = s; }).catch(() => {});
+    const draft = () => v?.input.value.trim() || '';
+    return [
+      typeof ChatUX !== 'undefined' && ChatUX.loadSnippets ? { label: 'Snippets', more: true, tip: 'Bits of text you keep and insert in one click', items: () => [
+        ...(snipCache || []).slice(0, 20).map((s) => ({ label: s.name, hint: String(s.text).replace(/\s+/g, ' ').slice(0, 28), action: () => Native.insertDraft(agentId, s.text) })),
+        (snipCache || []).length ? '-' : null,
+        { label: 'Save this message as a snippet…', disabled: !draft(), hint: draft() ? '' : 'write it first', action: async () => { const t = draft(); const n = t && await Modal.prompt('Snippet name', { placeholder: 'e.g. polish pass' }); if (n?.trim()) { await ChatUX.saveSnippet(n.trim(), t); snipCache = await ChatUX.loadSnippets(); toast(`Snippet "${n.trim()}" saved`, { timeout: 1600 }); } } },
+        (snipCache || []).length ? { label: 'Delete a snippet', items: () => snipCache.map((s) => ({ label: s.name, danger: true, action: async () => { await ChatUX.deleteSnippet(s.name); snipCache = await ChatUX.loadSnippets(); toast(`Snippet "${s.name}" deleted`, { timeout: 1400 }); } })) } : null,
+      ].filter(Boolean) } : null,
+      { label: 'Remind me…', more: true, tip: 'A reminder at a time or after a while, with a notification', action: async () => {
+        const r = await Modal.form('Remind me', [{ name: 'when', label: 'When', value: 'in 25m', placeholder: 'in 25m · 21:30 · 9pm' }, { name: 'what', label: 'About', value: draft(), placeholder: 'take a break' }], { ok: 'Remind me' });
+        if (r?.when?.trim() && r.what?.trim()) Commands.exec(`/remind ${r.when.trim()} ${r.what.trim()}`, agentId);
+      } },
+      { label: 'Open a code file as nodes…', more: true, tip: 'JS, TS, Python or GLSL as a flow of nodes', action: async () => {
+        const [p] = (await window.hub.openDialog({ filters: [{ name: 'Code', extensions: ['js', 'mjs', 'ts', 'tsx', 'jsx', 'py', 'glsl', 'frag', 'vert'] }] })) || [];
+        if (p) Commands.exec(`/code-nodes-file ${p}`, agentId);
+      } },
+    ].filter(Boolean);
+  }
+  // (round 51, commandonly) how every chat's messages look (ChatUX prefs; was only /width /spacing /timestamps /font)
+  function messageLook() {
+    const row = (label, key, choices, names) => ({ label, hint: names[ChatUX.pref(key)] || names[choices[0]], items: () => choices.map((c) => ({ label: names[c], checked: (ChatUX.pref(key) || choices[0]) === c, action: () => ChatUX.setPref(key, c) })) });
+    const cap = (o) => Object.fromEntries(o.map((k) => [k, k[0].toUpperCase() + k.slice(1)]));
+    return { label: 'How messages look', items: () => [
+      row('Width', 'width', Object.keys(ChatUX.WIDTHS), cap(Object.keys(ChatUX.WIDTHS))),
+      row('Spacing', 'density', ['cozy', 'compact'], { cozy: 'Roomy', compact: 'Tight' }),
+      row('Times', 'timestamps', ['hover', 'always', 'never'], { hover: 'When you point', always: 'Always', never: 'Never' }),
+      row('Font', 'font', Object.keys(ChatUX.FONTS), cap(Object.keys(ChatUX.FONTS))),
+    ] };
+  }
+  return { undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS, localTitle, boxRows, messageLook };
 })();

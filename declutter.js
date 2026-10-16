@@ -308,29 +308,6 @@ const Declutter = (() => {
     Native.chatMenu(agentId, { clientX: e.clientX, clientY: e.clientY + 4 });
     return true;
   });
-  // (round 51, commandonly) the chat box's rows for what only /snippet, /remind and /code-nodes-file reached; tucked
-  // behind More… (the snippets are read once, when the menu first opens, then kept: ChatUX caches them too)
-  let snipCache = null;
-  function commandOnlyRows(agentId, v) {
-    if (typeof ChatUX !== 'undefined' && ChatUX.loadSnippets) ChatUX.loadSnippets().then((s) => { snipCache = s; }).catch(() => {});
-    const draft = () => v?.input.value.trim() || '';
-    return [
-      typeof ChatUX !== 'undefined' && ChatUX.loadSnippets ? { label: 'Snippets', more: true, tip: 'Bits of text you keep and insert in one click', items: () => [
-        ...(snipCache || []).slice(0, 20).map((s) => ({ label: s.name, hint: String(s.text).replace(/\s+/g, ' ').slice(0, 28), action: () => Native.insertDraft(agentId, s.text) })),
-        (snipCache || []).length ? '-' : null,
-        { label: 'Save this message as a snippet…', disabled: !draft(), hint: draft() ? '' : 'write it first', action: async () => { const t = draft(); const n = t && await Modal.prompt('Snippet name', { placeholder: 'e.g. polish pass' }); if (n?.trim()) { await ChatUX.saveSnippet(n.trim(), t); snipCache = await ChatUX.loadSnippets(); toast(`Snippet "${n.trim()}" saved`, { timeout: 1600 }); } } },
-        (snipCache || []).length ? { label: 'Delete a snippet', items: () => snipCache.map((s) => ({ label: s.name, danger: true, action: async () => { await ChatUX.deleteSnippet(s.name); snipCache = await ChatUX.loadSnippets(); toast(`Snippet "${s.name}" deleted`, { timeout: 1400 }); } })) } : null,
-      ].filter(Boolean) } : null,
-      { label: 'Remind me…', more: true, tip: 'A reminder at a time or after a while, with a notification', action: async () => {
-        const r = await Modal.form('Remind me', [{ name: 'when', label: 'When', value: 'in 25m', placeholder: 'in 25m · 21:30 · 9pm' }, { name: 'what', label: 'About', value: draft(), placeholder: 'take a break' }], { ok: 'Remind me' });
-        if (r?.when?.trim() && r.what?.trim()) Commands.exec(`/remind ${r.when.trim()} ${r.what.trim()}`, agentId);
-      } },
-      { label: 'Open a code file as nodes…', more: true, tip: 'JS, TS, Python or GLSL as a flow of nodes', action: async () => {
-        const [p] = (await window.hub.openDialog({ filters: [{ name: 'Code', extensions: ['js', 'mjs', 'ts', 'tsx', 'jsx', 'py', 'glsl', 'frag', 'vert'] }] })) || [];
-        if (p) Commands.exec(`/code-nodes-file ${p}`, agentId);
-      } },
-    ].filter(Boolean);
-  }
   // the composer around the text box (the text box itself keeps cut / copy / paste)
   ctx('form.composer', 'Chat', (form) => {
     const agentId = agentOf(form);
@@ -348,7 +325,7 @@ const Declutter = (() => {
       ] },
       typeof Prompts !== 'undefined' ? { label: 'Prompt library…', action: () => Prompts.manage() } : null,
       // (round 51, commandonly) things only a typed command reached: snippets, a reminder, a code file as nodes
-      ...commandOnlyRows(agentId, v),
+      ...(typeof ChatCmds !== 'undefined' && ChatCmds.boxRows ? ChatCmds.boxRows(agentId, v) : []), // (chat-cmds.js: loads right after the first screen)
       form.querySelector('.collab-chip') ? { label: '⚇ Work with Astra…', action: () => setTimeout(() => form.querySelector('.collab-chip')?.click(), 0) } : null,
       busy ? { label: '■ Stop the reply', key: 'Esc', action: () => Native.stop(agentId) } : null,
       v?.input.value ? { label: 'Clear the message', action: () => { v.input.value = ''; v.input.dispatchEvent(new Event('input')); } } : null,
