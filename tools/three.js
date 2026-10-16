@@ -2704,6 +2704,7 @@ const ThreeLab = (() => {
       nextSketch: () => stepSketch(1), prevSketch: () => stepSketch(-1), tools: () => toolsDrawer(document.querySelector('.lab-tools-btn')),
       stageTop: async () => { const on = await window.hub.stageOnTop?.(); toast(on == null ? 'Open the Stage window first' : on ? 'Stage window stays on top' : 'Stage window: normal', { timeout: 1500 }); },
     };
+    api.onScreen = () => Boolean(box.onStage || previewHost.offsetParent); // (the Lab's picture is on screen)
     api.restartVisible = () => { if (window.ThreeStage?.guard?.('restart')) return true; if (!box.onStage && !previewHost.offsetParent) return false; restartSim(); return true; };
     // (round 22, labstage) what the live / VJ stage (tools/three-stage*.js) drives: the preview, freeze, output window,
     // Light mode, frame rate, the sliders of the scene on screen
@@ -5009,6 +5010,7 @@ ${frag}\`,
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
     openShader(code) { ensureOpen('shader'); setTimeout(() => api.openShader?.(code), 60); },
     restartVisible: () => api.restartVisible?.() ?? false,
+    onScreen: () => api.onScreen?.() ?? false,
     // The chat commands' way in (tools/three-cmds.js): the Lab, loaded and shown (unless show: false), with its
     // sketch tab on top; resolves to api.cmd.
     async cmd({ show = true } = {}) {
