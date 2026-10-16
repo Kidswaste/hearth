@@ -29,8 +29,8 @@ New files: `tools/three-ready-core.js` (pure: cache key, stale / size rules, the
 3. **The show, live, at 100 %.** While presenting the preview holds full quality: no labadapt step, each layer at the
    scene's own resolution (Light mode and slow drags don't lower it), no fps cap (the screen's own rate), no doze
    (idlecpu). Background work waits (powerwise's new **quiet**): updates, cost / usage checks, idle websites in the
-   window; backups and config watching in the main process; sync passes; tips (Hints say "presenting"); the weekly
-   tidy and Freshen's offer. 🔁 Keep going, hooks, renders and the Lab's own timers go on. Esc puts it all back
+   window; backups and config watching in the main process; sync passes; tips (Hints say "presenting"); Freshen's
+   offer. 🔁 Keep going, hooks, renders and the Lab's own timers go on. Esc puts it all back
    (the background timers come back one at a time).
 4. **The bake, when live can't be perfect.** If the measure says this computer can't hold the screen's rate at full
    quality (or you pick **Bake for a perfect show**), the card says so and bakes: the scene rendered with the export's
@@ -51,9 +51,27 @@ New files: `tools/three-ready-core.js` (pure: cache key, stale / size rules, the
    "Present bakes". An unreadable index is never written over and nothing is deleted then.
 
 ## Measured (dev/checks/presentready.js, SwiftShader under Xvfb, a shared machine: counts are exact, times are relative)
-See the table filled in at the end of this round's run below.
+A heavy scene (a shader layer, a 2048² picture, a 🧊 model, bloom, and a layer that only shows from 3.5 s on the
+song), an 8 s song, a 640 × 360 frame. The scene is run again (as if just opened), the song plays from the top, P.
 
-MEASURED_TABLE
+| First 5 s of the show | Before (the old Present) | After (got ready) |
+|---|---|---|
+| Shaders compiled | **14** (+ 7 programs linked) | **0** (0 linked) |
+| Textures uploaded for the first time | **9** | **0** |
+| Frames drawn (SwiftShader) | 4 (the show stalled on compiles) | 25 (≈ 5 fps, p50 183 ms, p95 283 ms) |
+| Quality | — | locked: level 0, every layer at its own resolution (share 1), no fps cap, no doze ("presenting") |
+
+(Repeated runs: before 14–20 compiles / 7–10 links / 9–11 uploads; after always 0 / 0 / 0. A video's next frames,
+"reuploads", are counted apart: they're the video playing.)
+- Getting ready took 22–27 s on SwiftShader for this scene (≈ 9–10 s of it compiling 36 shaders / 18 programs and
+  uploading 11 textures; 8 timeline moments warmed); a real GPU is ~50× faster.
+- Background while presenting: websites, updater, backupauto's line, costcoach, usagelimits all waiting; none
+  running; all armed again after Esc. Esc: the doze allowed again, labadapt stepping again (not held), Power quiet off.
+- Bake (forced "can't hold", test rate 10 fps, half size: 740 × 416, 80 frames, with the song): 81 s on SwiftShader.
+  Its frames vs the export's still of the same moment: mean difference **4.35 / 255** at 1 s and **4.15** at 2.5 s
+  (H.264), vs **20.65** against another moment. Space / → / the 2 s mouse hide work on the video.
+- Present again, unchanged: a cache hit, the show up in **0.75 s** (no getting ready, no bake). A slider moved: a
+  new key, a new bake, the old file in the Trash, one bake left in the index for the scene.
 
 ## Upgrades
 ### Getting ready
@@ -66,7 +84,7 @@ MEASURED_TABLE
 ### The live show
 7. 100 % quality held while presenting: no lighter steps, the scene's own resolution, the screen's own frame rate.
 8. The preview never dozes while presenting.
-9. Background work waits while presenting (updates, backups, sync, usage and cost checks, tips, the weekly tidy, Freshen's offer); Keep going, hooks and renders go on.
+9. Background work waits while presenting (updates, backups, sync, usage and cost checks, tips, Freshen's offer); Keep going, hooks and renders go on.
 10. Esc puts everything back; background work returns one item at a time.
 ### The bake
 11. **Bake for a perfect show** (the card, Present's right-click, `/present bake`): the show rendered to a video first, then played full screen with the song: no lag at all.
@@ -95,10 +113,11 @@ MEASURED_TABLE
 - `tools/three-sandbox.html`: RDY (GL compile / link / upload counters on the prototypes, the loading-manager count),
   `ready-*` messages, the lock in prQ / applyCap / adFull / adaptQuality / dozeWhy, the frame-gap recorder in tickFrames.
 - `tools/three-cmds.js`: `/present [bake | live]`. `tools/three-export.js` / `-core.js`: `hw` (hardware H.264).
-- `powerwise.js` (scheduler hush, `Power.quiet`, `quietNow`), `powerwisemain.js` (`power:quiet`, `quietNow`),
-  `preload.js` (one IPC), `main.js` (sync waits a show out), `syncmain.js` (the 'quiet' hold has no 30 s limit),
-  `hints.js` (busy: 'presenting'), `habits.js` / `freshen.js` (not during a show), `lazy-data.js` (the group),
-  `dev/run-checks.js` (unit, lab line, own group).
+- `powerwise.js` (the scheduler's `hush`, `Power.hush`, `Power.quietNow`; kept tiny for the first-screen budget),
+  `powerwisemain.js` (`power:quiet`, `quietNow`), `preload.js` (one IPC), `main.js` (sync waits a show out),
+  `syncmain.js` (the 'quiet' hold has no 30 s limit), `hints.js` (busy: 'presenting'), `freshen.js` (no offer during
+  a show), `lazy-data.js` (the group), `index.html` (the group's lazy-at tag), `dev/run-checks.js` (unit, lab line,
+  own group).
 
 ## Risks
 - Present now goes full screen and then shows a card for a moment (≈ 1–4 s on a real GPU, longer on a heavy scene);

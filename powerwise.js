@@ -159,7 +159,7 @@
   function createScheduler({ state = () => ({}), now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, onWake } = {}) {
     const timers = new Map();
     let slots = 0; let wokeAt = 0;
-    let hushed = null; // (round 52, presentready) while presenting: only the timers kept (a Set of ids) run; the others wait
+    let hushed = null; // (round 52) only these ids run
     const st = () => ({ ...state(), wokeAt: Math.max(wokeAt, state().wokeAt || 0) });
     function arm(T) {
       if (T.t) { clearTimer(T.t); T.t = null; }
@@ -216,12 +216,10 @@
     }
     function list() { return [...timers.values()].map((T) => ({ id: T.id, base: T.base, every: delay(T.base, st(), T.o), next: T.next ? T.next - now() : null, runs: T.runs, last: T.last, slot: T.slot })); }
     function runNow(id) { const T = timers.get(id); if (!T) return false; T.last = now(); T.runs += 1; try { T.fn(); } catch { /* the timer's own */ } arm(T); return true; }
-    // (round 52, presentready) hush(true, keep): background timers wait (only the ids in keep run) · hush(false): they come
-    // back, the overdue ones one at a time (the same line-up as after a wake, without its settle)
     function hush(on, keep = []) {
-      if (Boolean(hushed) === Boolean(on)) { if (on) hushed = new Set(keep); return false; }
-      hushed = on ? new Set(keep) : null;
-      if (!on) { slots = 0; const due = [...timers.values()].sort((a, b) => (a.last || a.created) - (b.last || b.created)); for (const T of due) T.slot = slots++; }
+      const was = Boolean(hushed); hushed = on ? new Set(keep) : null;
+      if (was === Boolean(on)) return false;
+      if (!on) { slots = 0; for (const T of [...timers.values()].sort((a, b) => (a.last || a.created) - (b.last || b.created))) T.slot = slots++; }
       for (const T of timers.values()) arm(T);
       return true;
     }
@@ -288,22 +286,6 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && !(typeof
       const f = document.fullscreenElement;
       set('present', 'present', Boolean(f && (f.classList.contains('presenting') || f.matches?.('.lab-preview, .preview-host, [data-present]'))));
     }, 0));
-
-    // (round 52, presentready) quiet(on): while the Lab presents, background work waits — here (updates, cost and usage
-    // checks, idle websites) and in the main process (backups, sync, config watching); tips wait too (Hints.busy) and
-    // the weekly tidy / Freshen offers look at quietNow(). What you started yourself keeps going: 🔁 Keep going, hooks,
-    // the Lab's own timers, renders. Off: they come back one at a time.
-    const KEEP = ['routines', 'hooks', 'lab-media', 'lab-stall'];
-    let quietOn = false;
-    function quiet(on) {
-      on = Boolean(on);
-      if (on === quietOn) return false;
-      quietOn = on;
-      sched.hush(on, KEEP.concat([...sched.list().map((t) => t.id).filter((id) => /^chromeview/.test(id))]));
-      api()?.quiet?.(on).catch?.(() => {});
-      dispatchEvent(new CustomEvent('hearth:quiet', { detail: { on } }));
-      return true;
-    }
 
     // ---------- the ☕ in the rail's status corner (only while something is held) ----------
     let dot = null;
@@ -407,7 +389,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && !(typeof
     if (document.readyState !== 'complete') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 
     return {
-      every, stop: (id) => sched.stop(id), hold, set, quiet, quietNow: () => quietOn, state: () => ({ ...stateNow(), mode: pol().mode, awake: { ...awake } }), policy: pol,
+      every, stop: (id) => sched.stop(id), hold, set, hush: (on, keep) => sched.hush(on, keep), quietNow: () => Boolean(sched.hushed), state: () => ({ ...stateNow(), mode: pol().mode, awake: { ...awake } }), policy: pol,
       lite: () => pol().lite, warm: () => pol().warm, scale: () => pol().pollScale, onMode: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
       status, timers: () => sched.list(), allow,
       _test: { onState, sched, mine: () => [...mine.keys()], kindOf },

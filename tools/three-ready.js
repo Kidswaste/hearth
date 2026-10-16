@@ -7,7 +7,7 @@
 //   across the timeline (anything the timeline shows later compiles now);  5. a short measured run at the heaviest
 //   moments: does this computer hold the screen's rate at full quality?
 // Then the card goes and the show runs at 100 %: no adaptive steps, the scene's own resolution, no doze, no fps cap
-// (tools/three-sandbox.html RDY.lock); background work waits (Power.quiet: backups, sync, updates, tips, the weekly tidy).
+// (tools/three-sandbox.html RDY.lock); background work waits (Power.hush + main's power:quiet: backups, sync, updates, tips).
 // When the measure says it can't hold (or the owner picks "Bake for a perfect show"), the show is baked: rendered to a
 // video at the presentation's size and the screen's rate (60 fps for pieces over 30 s) with the export's streamed
 // encoder (tools/three-export.js), then played full screen with the song in it: frame-perfect, never late. Not live: the
@@ -74,11 +74,19 @@ const PresentReady = (() => {
   }
 
   // ---------- getting ready ----------
+  // background work waits during a show (powerwise's schedule here, the main process' backups / sync / config watching),
+  // except 🔁 Keep going, hooks and the Lab's own timers; tips wait too (Hints.busy reads Power.quietNow)
+  function quiet(on) {
+    const P = window.Power;
+    if (!P?.hush || Boolean(P.quietNow?.()) === Boolean(on)) return;
+    P.hush(on, ['routines', 'hooks', 'lab-media', 'lab-stall', ...(P.timers?.() || []).map((x) => x.id).filter((id) => /^chromeview/.test(id))]);
+    window.hub?.power?.quiet?.(on)?.catch?.(() => {});
+  }
   function lock(r, on) {
     if (r.locked === on) return;
     r.locked = on;
     L.send({ type: 'ready-lock', on });
-    window.Power?.quiet?.(on);
+    quiet(on);
   }
   function skip(r, toBake = false) { if (r.phase !== 'ready') return; r.skip = true; r.skipBake = toBake; r.wake?.(); }
   const race = (r, p) => Promise.race([p, r.stopped]);

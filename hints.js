@@ -62,7 +62,7 @@ const Hints = (() => {
   // why not now ('' = calm)
   function busy() {
     if (document.hidden) return 'away';
-    if (window.Power?.quietNow?.()) return 'presenting'; // (round 52, presentready: tips wait the Lab's show out)
+    if (window.Power?.quietNow?.()) return 'presenting'; // (round 52)
     if (Date.now() - lastKey < C('quiet')) return 'typing';
     if (dragging || (down && Date.now() - down > 250)) return 'dragging';
     if (window.Jank?.busy?.()) return 'busy';
