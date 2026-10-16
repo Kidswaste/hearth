@@ -2,7 +2,10 @@
 // move with the scene's clock; a kick (held through window.__labParticles.drive) bursts a kick-only preset; a model
 // layer's surface and a word's letters are the places particles are born; the same exported frame twice is the same
 // picture (the export page steps the sim on its seeded clock); /particles and three_do particles (the director).
-//   node dev/smoke.js --check-timeout 420000 --script dev/checks/particles.js --shot /tmp/hearth-particles.png
+// (round 50) slow, not stuck: 120–180 s alone, 382 s at load 12–16 on this 4-CPU software-GL machine (each of the 25
+// presets builds its shaders again: ~9 s each then), so a full run on a busier machine crossed the old 420 s limit.
+// Same on the round 48 tip and before bugbash3's 2 s restart threshold: not a regression. The limit is 900 s.
+//   node dev/smoke.js --check-timeout 900000 --script dev/checks/particles.js --shot /tmp/hearth-particles.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(150); } return false; };
 const out = { steps: [], presets: {} };
