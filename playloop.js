@@ -229,7 +229,12 @@ const PlayLoop = (() => {
   });
   addEventListener('hearth:lab-ran', (e) => { if (S.base && e.detail?.id === S.base.id) changed(); });
   document.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented || e.altKey || !(e.ctrlKey || e.metaKey) || (e.key || '').toLowerCase() !== 'p') return;
+    // (round 54, fixes54) ⌘P on the Mac (a real ⌃P is the text field's caret up, e.g. in the Lab's code), Ctrl+P elsewhere;
+    // P by the letter on the key (a Russian / Greek layout types another letter there: its code is still KeyP)
+    const mac = /Mac/.test(navigator.platform || '');
+    if (e.defaultPrevented || e.altKey || !(mac ? e.metaKey : e.ctrlKey || e.metaKey)) return;
+    const k = (e.key || '').toLowerCase();
+    if (k !== 'p' && (/^[a-z]$/.test(k) || e.code !== 'KeyP')) return;
     if (key(e.shiftKey)) { e.preventDefault(); e.stopPropagation(); }
   }, true);
   // the key (also the lazy stand-in's, before this group is in): true when it did something
