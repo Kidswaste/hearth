@@ -102,10 +102,15 @@ const WinPolish = (() => {
   // Desktop updates can leave the old codex.exe running while removing its helpers.
   // Replace only an incomplete automatic desktop choice, with a complete sibling bundle.
   // Never mix helper binaries across versions or redirect standalone/npm installations.
+  function codexRuntimeStatus(bin, { fs = realFs } = {}) {
+    if (!bin || !/\\OpenAI\\Codex\\bin\\[^\\]+\\codex\.exe$/i.test(W.normalize(bin))) return null;
+    const missing = ['codex.exe', 'codex-code-mode-host.exe', 'codex-command-runner.exe', 'codex-windows-sandbox-setup.exe'].filter(n => !fs.isFile(W.join(W.dirname(bin), n)));
+    return { complete: !missing.length, missing };
+  }
   function codexRuntime(bin, { fs = realFs } = {}) {
-    if (!bin || !/\\OpenAI\\Codex\\bin\\[^\\]+\\codex\.exe$/i.test(W.normalize(bin))) return bin;
+    if (!codexRuntimeStatus(bin, { fs })) return bin;
     const dir = W.dirname(bin);
-    const complete = d => ['codex.exe', 'codex-code-mode-host.exe', 'codex-command-runner.exe', 'codex-windows-sandbox-setup.exe'].every(n => fs.isFile(W.join(d, n)));
+    const complete = d => codexRuntimeStatus(W.join(d, 'codex.exe'), { fs })?.complete;
     if (complete(dir)) return bin;
     const root = W.dirname(dir);
     return fs.list(root).map(n => W.join(root, n)).filter(complete)
@@ -319,6 +324,6 @@ const WinPolish = (() => {
     return hit ? { text: hit[1], fix: hit[2], action: hit[3] } : null;
   }
 
-  return { envGet, binDirs, candidates, codexRuntime, lookedIn, readShim, findNode, quoteArg, cmdLine, plan, spawn, cleanPath, trashCheck, trashError, plainError, dropStack, PKG, _driveCache: driveCache };
+  return { envGet, binDirs, candidates, codexRuntime, codexRuntimeStatus, lookedIn, readShim, findNode, quoteArg, cmdLine, plan, spawn, cleanPath, trashCheck, trashError, plainError, dropStack, PKG, _driveCache: driveCache };
 })();
 module.exports = WinPolish;

@@ -11,6 +11,7 @@ const trace = () => fs.readFileSync(path.join(dir, 'trace.jsonl'), 'utf8').trim(
     const [models, apps] = await Promise.all([catalog.read('models'), catalog.read('apps')]);
     assert.equal(models.data[0].model, 'test'); assert.equal(apps.installed[0].callable, false);
     await catalog.read('models'); assert.equal(trace().filter(t => t.method === 'model/list').length, 1);
+    assert.equal(trace().find(t => t.method === 'model/list').params.includeHidden, true);
     assert(!trace().some(t => t.method === 'thread/start' || t.method === 'turn/start'));
     const seen = []; const paged = await pages(async (_, p) => { seen.push(p.cursor); return p.cursor ? { data: [2] } : { data: [1], nextCursor: 'next' }; }, 'test');
     assert.deepEqual(paged, [1, 2]); assert.deepEqual(seen, [null, 'next']);

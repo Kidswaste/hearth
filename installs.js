@@ -39,10 +39,21 @@ function persist() {
 }
 
 // ---------- versions ----------
-const semverOf = (text) => { const m = /(\d+)\.(\d+)\.(\d+)/.exec(String(text || '')); return m ? `${+m[1]}.${+m[2]}.${+m[3]}` : null; };
+const semverOf = (text) => { const m = /(\d+)\.(\d+)\.(\d+)(-[\da-zA-Z-]+(?:\.[\da-zA-Z-]+)*)?/.exec(String(text || '')); return m ? `${+m[1]}.${+m[2]}.${+m[3]}${m[4] || ''}` : null; };
 function cmp(a, b) {
-  const pa = String(a || '0.0.0').split('.').map(Number); const pb = String(b || '0.0.0').split('.').map(Number);
+  const [ca, ...ra] = String(a || '0.0.0').split('-'); const [cb, ...rb] = String(b || '0.0.0').split('-');
+  const pa = ca.split('.').map(Number); const pb = cb.split('.').map(Number);
   for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  if (!ra.length || !rb.length) return Number(!ra.length) - Number(!rb.length);
+  const aa = ra.join('-').split('.'), bb = rb.join('-').split('.');
+  for (let i = 0; i < Math.max(aa.length, bb.length); i++) {
+    if (aa[i] === bb[i]) continue;
+    if (aa[i] == null || bb[i] == null) return aa[i] == null ? -1 : 1;
+    const an = /^\d+$/.test(aa[i]), bn = /^\d+$/.test(bb[i]);
+    if (an && bn) return Number(aa[i]) - Number(bb[i]);
+    if (an !== bn) return an ? -1 : 1;
+    return aa[i] < bb[i] ? -1 : 1;
+  }
   return 0;
 }
 const minFor = (engine) => { const l = data().learnedMin[engine]; const m = MIN[engine]; return !l ? m : !m ? l : cmp(l, m) > 0 ? l : m; };
@@ -66,7 +77,7 @@ function quick(bin, args, ms = 8000, cwd = os.tmpdir()) {
 async function version(bin, { cwd, fresh = false } = {}) {
   const key = binKey(bin);
   const d = data();
-  if (!fresh && d.versions[key]) return d.versions[key];
+  if (!fresh && d.versions[key]) return { ...d.versions[key], semver: semverOf(d.versions[key].text) };
   const r = await quick(bin, ['--version'], 8000, cwd);
   const text = r.code === 0 ? (r.out.split('\n').find((l) => l.trim()) || '').trim().slice(0, 120) : null;
   const v = { text, semver: text ? semverOf(text) : null, at: Date.now() };
@@ -142,7 +153,7 @@ function candidates(engine) {
   }
   // the same program reached two ways (a symlink in PATH and Homebrew's bin) is one copy
   const seen = new Set();
-  return list.filter((f) => {
+  return list.map(f => IS_WIN && engine === 'codex' ? WinPolish.codexRuntime(f) : f).filter((f) => {
     let real;
     try { if (!fs.statSync(f).isFile()) return false; real = fs.realpathSync(f); } catch { return false; }
     if (seen.has(real)) return false;

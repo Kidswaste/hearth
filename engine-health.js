@@ -21,7 +21,7 @@ const EngineHealth = (() => {
   const winName = () => (last?.platform === 'win32' ? 'PowerShell' : 'Terminal');
 
   async function check({ fresh = false, engines } = {}) {
-    if (checking && !fresh) return checking;
+    if (checking) { await checking; if (!fresh && !engines) return last; }
     checking = window.hub.engineInstalls({ fresh, engines }).then((r) => { last = { ...(last || {}), ...r }; return last; }).finally(() => { checking = null; });
     return checking;
   }
@@ -32,13 +32,17 @@ const EngineHealth = (() => {
     const L = r.label || LABEL[r.engine];
     if (!r.found) return [{ kind: 'missing', text: `${L} isn't installed (or Hearth can't find it)`, action: 'install', label: `Install ${L}` }];
     const out = [];
-    if (r.broken) out.push({ kind: 'broken', text: `${L} at ${home(r.chosen)} didn't answer`, action: 'update', label: `Update ${L}` });
+    if (r.broken) out.push({ kind: 'broken', text: r.runtime?.missing?.length ? `${L} is missing ${r.runtime.missing.join(', ')}` : `${L} at ${home(r.chosen)} didn't answer`, action: 'update', label: `Update ${L}` });
     if (r.tooOld) out.push({ kind: 'old', text: `${L} ${r.semver} is too old (the model needs ${r.min} or newer)`, action: r.newer ? 'use-newest' : 'update', label: r.newer ? `Use ${r.newer.version}` : `Update ${L}` });
     else if (r.newer) out.push({ kind: 'newer', text: `Settings › Claude and Codex programs uses ${L} ${r.semver || '?'}; a newer one is installed (${r.newer.version})`, action: 'use-newest', label: `Use ${r.newer.version}` });
     if (r.signedIn === false) out.push({ kind: 'login', text: `${L} isn't signed in`, action: 'login', label: `Sign in to ${L}` });
     return out;
   }
-  const problems = (report = last) => ENGINES.filter(used).flatMap((e) => problemsOf(report?.[e]).map((p) => ({ ...p, engine: e })));
+  const problems = (report = last) => [
+    ...ENGINES.filter(used).flatMap((e) => problemsOf(report?.[e]).map((p) => ({ ...p, engine: e }))),
+    ...(report?.watch?.models?.selections || []).filter(s => s.status !== 'listed' || s.upgrade).map(s => ({ engine: 'codex', kind: `model:${s.model}:${s.effort}:${s.status}:${s.upgrade || ''}`,
+      text: s.status !== 'listed' ? `${s.name}: ${s.model} / ${s.effort || 'default reasoning'} needs review in /doctor` : `${s.name}: the model catalog suggests ${s.upgrade}; your choice is unchanged`, action: 'doctor', label: 'Review models' })),
+  ];
 
   // ---------- the one calm notice ----------
   const SEEN = 'engineHealth.seen';
@@ -83,6 +87,7 @@ const EngineHealth = (() => {
   // a check after a fix window finished (or gave up after 20 minutes)
   window.hub.onEngineInstalls?.((r) => {
     last = { ...(last || {}), ...r };
+    if (r.watch && !r.test && store.get('firstrun.seen', false)) notice(last);
     const engine = r.fixed?.engine;
     if (!engine || !r[engine]) return;
     const left = problemsOf(r[engine]);
@@ -147,6 +152,18 @@ const EngineHealth = (() => {
     }
     return out.join('\n');
   }
+  function watchText(r) {
+    if (!r.watch) return '';
+    const w = r.watch, m = w.models;
+    const lines = [`**Automatic checks** · ${new Date(w.checkedAt).toLocaleString()}`, 'Checks at startup, after wake and about every 30 minutes while Hearth runs (less often when saving power). Newer complete installed copies are selected automatically unless you pinned a program. Active replies finish on their current engine.',
+      'Installed copies checked; downloadable desktop updates are managed by the Codex / Claude desktop apps. This is not a check for the newest release on the internet.'];
+    if (m.status === 'checked') {
+      lines.push('**Astra model catalog** · refreshed from Codex; listing is not an account access test. Agent defaults below; individual chats may override them.');
+      for (const s of m.selections) lines.push(`- ${s.name}: **${s.model}** · ${s.effort || 'default'} reasoning · ${s.status === 'listed' ? 'listed with this reasoning depth' : s.status === 'not-listed' ? 'not in this catalog; review your model' : s.status === 'unknown' ? 'reasoning capabilities unknown' : 'reasoning depth not listed'}${s.upgrade ? ` · suggested upgrade: ${s.upgrade}` : ''}`);
+      lines.push(`Models: ${m.catalog.filter(x => !x.hidden).map(x => x.model).join(', ')}. Use /astra-models to choose. Your model and reasoning stay unchanged until you apply a choice. Checks use no inference tokens.`);
+    } else if (m.status !== 'unused') lines.push('**Astra model catalog** · could not verify now (engine, connection or sign-in unavailable). Check again when connected; this does not mean up to date.');
+    return lines.join('\n\n');
+  }
   const KIND = { homebrew: 'Homebrew', npm: 'npm', pnpm: 'pnpm', scoop: 'scoop', winget: 'winget', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings › Claude and Codex programs' };
   // (round 33) on a Mac, where it came from too: "npm · nvm", "npm · asdf", "on PATH · mise shim", "desktop app · Codex app"
   const kindText = (kind, via) => { const k = KIND[kind] || kind || ''; return via && via.toLowerCase() !== k.toLowerCase() && !(kind === 'native' && via === 'installer') ? `${k} · ${via}` : k; };
@@ -188,8 +205,8 @@ const EngineHealth = (() => {
     const r = await check({ fresh: true }).catch((err) => ({ error: err.message }));
     if (r.error) return `Couldn't check the engines: ${r.error}`;
     const list = problems(r);
-    const parts = [`**Doctor** · ${list.length ? `${list.length} thing${list.length > 1 ? 's' : ''} to fix` : 'both engines can work'}`, enginesText(r)];
-    if (list.length) parts.push(`**To fix** (buttons below run it in a ${winName()} window; Hearth never sees your password)\n${list.map((p) => `- ${p.text}`).join('\n')}`);
+    const parts = [`**Doctor** · ${list.length ? `${list.length} thing${list.length > 1 ? 's' : ''} to review` : 'no installation problems found'}`, enginesText(r), watchText(r)];
+    if (list.length) parts.push(`**To review** (installation and sign-in buttons open ${winName()}; model review opens this report)\n${list.map((p) => `- ${p.text}`).join('\n')}`);
     const ff = await window.hub.ffmpegStatus?.({ fresh: true }).catch(() => null);
     if (ff) parts.push(ff.ffmpeg ? `**ffmpeg** ✓ ${ff.ffmpeg} (sharp MP4 recordings, exact frames, renders)` : '**ffmpeg** missing: recordings stay WebM and frame reading is approximate. `/ffmpeg install` installs it in one click.');
     if (astraDoctor) { try { const t = await astraDoctor(args, ctx); if (t) parts.push(astraPart(t)); } catch (err) { parts.push(`(Astra details failed: ${err.message})`); } }

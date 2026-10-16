@@ -33,7 +33,7 @@ class Catalog {
       await this.conn.ready;
       const request = (m, p) => this.conn.request(m, p, { soft: true });
       let result;
-      if (kind === 'models') result = { data: await pages(request, 'model/list', { includeHidden: false }) };
+      if (kind === 'models') result = { data: await pages(request, 'model/list', { includeHidden: true }) };
       else {
         // The full marketplace can be slow/offline; installed runtime apps are useful immediately.
         const installed = (await request('app/installed', { forceRefresh: false })).apps || [];
