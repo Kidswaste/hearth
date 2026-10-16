@@ -91,6 +91,7 @@ const CostCoachCore = (() => {
         tools: Array.isArray(m.tools) ? m.tools.length : 0, prevO: Math.max(0, p?.usage?.output || 0), gap: p?.at ? at - p.at : 0, first,
       };
       if (u.cost) r.cost = u.cost;
+      if (user?.histLean) r.histLean = Math.max(0, (user.histLean.from || 0) - (user.histLean.to || 0)); // (round 50, historylean) a fresh start after a break
       if (h && !handed && idx > h.at) { handed = true; r.handoff = Math.max(0, (h.whole ? h.wholeTokens : h.tokens) || 0); if (!h.whole && h.wholeTokens > h.tokens) r.handoffSaved = h.wholeTokens - h.tokens; }
       out.push(r);
     });
@@ -163,6 +164,7 @@ const CostCoachCore = (() => {
       // what should have come from the cache (the fixed part + the old history) but was read at full price
       const miss = r.first ? 0 : Math.max(0, fx + reread - r.c - r.prevO);
       over.cacheMiss += miss; p.miss += miss;
+      if (r.histLean) { p.hlN = (p.hlN || 0) + 1; p.hlSaved = (p.hlSaved || 0) + r.histLean; }
       if (r.handoff) { over.handoff += r.handoff; p.handoff += r.handoff; p.handoffSaved += r.handoffSaved || 0; p.handoffN += 1; }
       const k = kindOf(r);
       kinds[k] += t; p.kinds[k] = (p.kinds[k] || 0) + t;
@@ -282,6 +284,7 @@ const CostCoachCore = (() => {
       }
       // already lean by default: attachments, handoffs
       if (p.att > 0) lean.push({ id: `attach:${p.id}`, text: `${name}: big attachments went lean (≈ ${fmt(p.att)} sent)${p.whole ? `, ≈ ${fmt(p.whole)} of them whole on your click` : ''} ✓` });
+      if (p.hlN) lean.push({ id: `histlean:${p.id}`, text: `${name}: a lighter history after breaks (${p.hlN} fresh start${p.hlN === 1 ? '' : 's'}, ≈ ${fmt(p.hlSaved)} tokens not re-read) ✓` });
       if (p.handoffN) lean.push({ id: `handoff:${p.id}`, text: `Handoffs to ${name} sent a short brief (${p.handoffN}${p.handoffSaved ? `, ≈ ${fmt(p.handoffSaved)} less than the whole chat` : ''}) ✓` });
     }
     fixes.sort((x, y) => y.saves - x.saves);

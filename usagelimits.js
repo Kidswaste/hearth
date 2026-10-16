@@ -185,7 +185,7 @@ const UsageLimits = (() => {
     });
     box.replaceChildren(el('h4', { text: 'How to save from now on' }),
       ...(rows.length ? rows : [el('p', { class: 'ul-unknown', text: res.total ? 'Nothing worth changing: your week is lean.' : 'Nothing used in the last 7 days.' })]),
-      ...res.lean.slice(0, rows.length ? 1 : 2).map((l) => el('p', { class: 'ul-lean', text: l.text })));
+      ...[...res.lean.slice(0, rows.length ? 1 : 2), ...res.lean.filter((l, i) => /^histlean:/.test(l.id) && i >= (rows.length ? 1 : 2)).slice(0, 1)].map((l) => el('p', { class: 'ul-lean', text: l.text }))); // (round 50, historylean) the lighter history's effect, always shown when it happened
   }
 
   // ---------- the section in the Usage window ----------

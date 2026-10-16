@@ -103,7 +103,7 @@ const SendPreviewCore = (() => {
     const age = i.lastAt ? (i.now ?? Date.now()) - i.lastAt : Infinity;
     let why = '';
     if (!hist.session) why = hist.tokens ? 'new' : 'none';
-    else if (age >= CACHE_TTL) why = 'expired';
+    else if (age >= (i.ttl || CACHE_TTL)) why = 'expired'; // (round 50, historylean) the engine's own cache life when known
     else if (i.pick?.changed) why = 'model';
     const cold = Boolean(why);
     const hit = clamp(i.hit ?? DEFAULT_HIT, 0, 1);
@@ -125,7 +125,7 @@ const SendPreviewCore = (() => {
       { id: 'answer', tokens: answer, fresh: answer },
       ...(m ? [{ id: 'mission', label: m.label, tokens: m.tokens, fresh: m.tokens }] : []),
     ].filter((p) => p.tokens > 0 || p.id === 'words');
-    return { tokens, fresh: Math.max(0, tokens - cachedT), cached: cachedT, raw, factor: f, parts, cold, why, age: Number.isFinite(age) ? age : null, att, answer, fixed, words, history: hist };
+    return { tokens, fresh: Math.max(0, tokens - cachedT), cached: cachedT, raw, factor: f, parts, cold, why, age: Number.isFinite(age) ? age : null, att, answer, fixed, words, history: hist, ttl: i.ttl || CACHE_TTL };
   }
 
   // ---------- when it's worth showing ----------
@@ -197,7 +197,7 @@ const SendPreviewCore = (() => {
       if (p.id === 'fixed') rows.push({ k: 'Its instructions and tools', v: p.tokens, note: o.fixedFrom === 'audit' ? 'measured in Where its tokens go' : o.fixedFrom === 'reply' ? 'from this chat\'s first reply' : 'until it\'s measured' });
       else if (p.id === 'history') {
         const h = est.history;
-        const k = h.kind === 'brief' ? 'The handoff brief' : h.kind === 'whole' ? 'The whole chat, handed over' : h.kind === 'lighter' ? 'The lighter summary + what came after' : h.kind === 'earlier' ? 'The chat so far, sent along once' : 'Re-reading this chat';
+        const k = h.kind === 'brief' ? 'The handoff brief' : h.kind === 'whole' ? 'The whole chat, handed over' : h.kind === 'lighter' ? 'The lighter summary + what came after' : h.kind === 'earlier' ? 'The chat so far, sent along once' : h.kind === 'leanbreak' ? 'The lighter history (a fresh start after the break)' : 'Re-reading this chat';
         const note = est.cold ? (est.why === 'expired' ? `the cache expired (last message ${mins(est.age)} ago): all at full price` : est.why === 'model' ? `${o.pick || 'another model'} this time: its cache is separate, so all at full price` : 'a new session: no cache yet')
           : `≈ ${fmt(p.tokens - p.fresh)} of it likely from the cache, at about a tenth of the price`;
         rows.push({ k, v: p.tokens, note });
