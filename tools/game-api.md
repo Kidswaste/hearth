@@ -94,3 +94,22 @@ service workers, cache storage) is wiped when it ends.
 ## GamePerf (gameperf stream)
 `GamePerf.attach(handle)` (hub side) with `handle = { source, info, leave, state }`, called once the game window is up;
 `GameMode.on` tells start / end. The window's own numbers: `game:eval` + `window.__gameInfo()`, or the main-side attach.
+
+## PlayLoop (round 53, playloop: playloop.js in the "gamemode" group, playloopmain.js)
+- **A layer's hooks** (Lab scenes; the Lab player, `tools/three-sandbox.html`): `export function saveState()` → a
+  cloneable value, `export function restoreState(value)`, `export function checkpoint(name)` (or `export const hot =
+  { save, restore, checkpoint }`). A hot re-run of the layer (the Lab's edits, ▶ Play's live edits) hands the old run's
+  saved value to the new run once it loaded; a broken run holds it for the next. `window.__labHot`: `save()` → `{ layer:
+  value }`, `restore(states)` → n, `checkpoint(name)` → n, `info()` → `{ swaps, kept, lost, last, hooks, checkpoints }`.
+- **Live edits** (hub): `hearth:lab-ran` for the game's scene → `GameMode.sceneSpec` compared with what the window runs:
+  code only → `hot-layer` (fx '') / `layer-props` per layer; layers added / removed / reordered or another one-canvas
+  plan → `game-plan` + `run-layers` in the same page, states handed back; pictures / song / palette / three.js version →
+  the page built again (`GameMode.leave({ quiet: true })` + `GameMode.play`), states handed back. Posted through `game:eval`.
+- `GameMode.rest(on)` (the window hidden and kept: `hold(false)` / `hold(true)`), `GameMode.state().resting`,
+  `GameMode.leave({ quiet })` (no "Back from" toast). `PlayLoop.display()` → the side-by-side screen for `GameMode.play`.
+- Main: `game:loop { op: 'rest' | 'wake' | 'side' (on, display) | 'blip' (text) | 'state' }` → `{ playing, resting, side }`
+  (hub only); events to the hub `game:loop-ev { type: 'rested' | 'woke' | 'fix' (error, source) | 'key' (what: 'here') }`;
+  from the game window `game:fix { message, line, layer, file, stack }` (its error line's button); to it `game:blip`.
+  Resting: hidden (the Mac leaves its full-screen space first), throttled, muted, a Lab page parked (`park`); closes
+  after 10 minutes resting. gamemodemain's `before-input-event` asks `playloopmain.key(input)` first (Ctrl/⌘+P).
+- The game window's preload: `.blip` ("↻ Updated"), `.err` (`.m` the line, `.fixit`, `.x`), `.box .fix` on the Esc card.
