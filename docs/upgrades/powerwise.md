@@ -193,3 +193,9 @@ changed here.
   updater no longer rush in.
 - Caveat: tested with a simulated battery, sleep and blocker. Try it for real: start a long render on the Mac with the
   lid open and watch the ☕, unplug to see the lighter mode.
+
+## Round 51 fix: no two timers together after a wake
+The `powerwise` check's "… then one at a time, a few seconds apart" failed on 84431ac too (e.g. 52,412 and 52,607 ms
+after the wake): a timer whose own time fell inside the post-wake line (Usage left's first look, a minute after the
+start, round 48) ran a moment after another one's turn. `createScheduler`'s arm now keeps such a timer a stagger (4 s)
+away from the ones already lined up. Unit test 83/83, the check passes.

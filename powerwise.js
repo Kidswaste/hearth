@@ -172,7 +172,14 @@
       if (wait <= 0) wait = T.last ? 1000 + T.slot * 250 : 0;
       // (o.wakeSettle: a longer settle for this one, e.g. the updater's minute)
       const settle = T.o.wakeSettle ?? WAKE.settle;
-      if (s.wokeAt && now() - s.wokeAt < settle + timers.size * WAKE.stagger) wait = Math.max(wait, wakeWait({ wokeAt: s.wokeAt, now: now(), slot: T.slot, settle }));
+      if (s.wokeAt && now() - s.wokeAt < settle + timers.size * WAKE.stagger) {
+        wait = Math.max(wait, wakeWait({ wokeAt: s.wokeAt, now: now(), slot: T.slot, settle }));
+        // (round 51) a timer whose own time lands inside the line (a first run a minute after the start: usagelimits)
+        // waits for a gap too, instead of running a moment after another one (the powerwise check's "one at a time")
+        let at = now() + wait;
+        for (const n of [...timers.values()].filter((x) => x !== T && x.next != null).map((x) => x.next).sort((a, b) => a - b)) if (Math.abs(at - n) < WAKE.stagger) at = n + WAKE.stagger;
+        wait = at - now();
+      }
       T.next = now() + wait;
       T.expect = T.next;
       T.t = setTimer(() => fire(T), wait);
