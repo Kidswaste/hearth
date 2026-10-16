@@ -29,6 +29,9 @@ function forget() { try { ses?.clearStorageData({ storages: WIPE }).catch(() => 
 const ready = () => { try { return require('./gamereadymain'); } catch { return null; } };
 // (round 53, playloop) Ctrl/⌘+P back to editing with the game kept, side by side, the "Updated" blip, Fix with the director
 const loop = () => { try { return require('./playloopmain'); } catch { return null; } };
+// (round 54, gameaudio) the game's sound: warmed up while loading, its sounds decoded before the first frame, paused
+// with the game (gameaudiomain.js makes the page's tag; tools/gameaudio-page.js runs in it)
+const audio = () => { try { const A = require('./gameaudiomain'); A.init({ dataDir: ctx?.dataDir }); return A; } catch { return null; } };
 let ctx = null; // { getWin, powerwise, dataDir }
 let G = null; // the game playing: { win, source, root, token, display, hz, route, how, started, release, priority, pid }
 const roots = new Map(); // token → folder
@@ -46,6 +49,8 @@ function gameSession() {
     const root = roots.get(u.hostname);
     if (!root) return new Response('this game has ended', { status: 404 });
     const R = ready();
+    const A = G?.token === u.hostname && !G.audioOff ? audio() : null;
+    if (A?.isPage(u.pathname)) return new Response(await fs.promises.readFile(A.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (R?.armed?.() && R.isPage(u.pathname)) return new Response(await fs.promises.readFile(R.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     let file = C.safePath(root, u.pathname, path.sep);
     if (!file) return new Response('outside the game', { status: 403 });
@@ -54,9 +59,11 @@ function gameSession() {
       if (st.isDirectory()) { file = path.join(file, 'index.html'); st = await fs.promises.stat(file); }
       const swap = R?.swapFor?.(file) || null; // (an optimized copy in Hearth's cache, same address)
       if (swap) st = await fs.promises.stat(swap);
-      R?.noteServed?.(path.relative(root, file).split(path.sep).join('/'), Boolean(swap));
+      const rel = path.relative(root, file).split(path.sep).join('/');
+      R?.noteServed?.(rel, Boolean(swap));
+      if (G?.source?.kind === 'html') A?.served(root, rel); // (round 54, gameaudio) a sound: decoded up front next time
       let body = req.method === 'HEAD' ? null : await fs.promises.readFile(swap || file);
-      const tag = body && /\.html?$/i.test(file) ? R?.pageTag?.() : '';
+      const tag = body && /\.html?$/i.test(file) ? `${A ? A.pageTag(root, { kind: G.source?.kind }) : ''}${R?.pageTag?.() || ''}` : ''; // (gameaudio's first: the game's AudioContext is Hearth's before any of its code runs)
       if (tag) { let h = body.toString('utf8'); h = /<head[^>]*>/i.test(h) ? h.replace(/<head[^>]*>/i, (m) => `${m}${tag}`) : `${tag}${h}`; body = Buffer.from(h); st = { size: body.length }; }
       return new Response(body, { status: 200, headers: { 'content-type': C.mimeOf(file), 'content-length': String(st.size), 'cache-control': 'no-cache', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'credentialless' } });
     } catch { return new Response('not found', { status: 404 }); }
@@ -234,7 +241,7 @@ async function play(_e, req = {}) {
     webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency) }))}`] },
   });
   if (!mac) win.setMenu(null);
-  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}` };
+  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) };
   g.release = ctx.powerwise.hold('present', { label: `${source.title} is playing` });
   try { ctx.powerwise.quiet(true); } catch { /* fine */ }
   const wc = win.webContents;

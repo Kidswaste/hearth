@@ -58,6 +58,13 @@
     S.want = null;
     ui.n.textContent = a.text || '';
   }
+  // (round 54, gameaudio) the game's sounds decoded before the card goes (tools/gameaudio-page.js; at most 20 s)
+  async function sounds() {
+    const A = window.__gameAudio; if (!A?.pending || S.skip || S.noPrep) return null;
+    const t = now();
+    while (A.pending() > 0 && !S.skip && now() - t < 20000) { const p = A.progress(); card(`sounds ${p.done}/${p.n}`, 88); await sleep(60); }
+    const p = A.progress(); return p.n ? { ...p, ms: Math.round(now() - t) } : null;
+  }
   function cardOut() { if (!ui || ui.d.dataset.out) return; ui.d.dataset.out = '1'; ui.d.style.opacity = '0'; realTimeout(() => ui?.d.remove(), 260); }
   if (!S.noPrep) card('looking at its files', 2);
   // the game's own errors, for Hearth to say why a game didn't start (never shown raw)
@@ -110,6 +117,7 @@
       const g1 = await count();
       S.result = { ms: Math.round(now() - t0), steps: ms, skipped: S.skip, prep: prep ? { compileMs: prep.compileMs, textures: prep.textures, renderers: prep.renderers, gl: prep.gl } : null, warm, gl: g0 && g1 ? { compiles: g1.compiles - g0.compiles, links: g1.links - g0.links, uploads: g1.uploads - g0.uploads, waitMs: Math.round((g1.waitMs || 0) - (g0.waitMs || 0)) } : null, total: g1 ? { compiles: g1.compiles, links: g1.links, uploads: g1.uploads, waitMs: Math.round(g1.waitMs || 0) } : null,
         inventory: inv ? { textures: (inv.textures || []).map((t) => ({ w: t.w, h: t.h, mips: t.mips, compressed: t.compressed, cube: t.cube, video: t.video, aniso: t.aniso })), calls: inv.calls, triangles: inv.triangles, programs: inv.programs, lights: inv.lights, shadows: inv.shadows, aniso: inv.aniso, renderers: inv.renderers } : null };
+      const snd = await sounds(); if (snd) S.result.sounds = snd;
       if (!S.skip) card('ready', 100);
       await answered();
       play();
@@ -241,7 +249,7 @@
     if (S.noPrep) { play(); return; }
     const t0 = now(); const g0 = { ...S.gl }; const ms = {};
     card('looking at its files', 2);
-    let a = now(); await settle(); ms.assets = Math.round(now() - a);
+    let a = now(); await settle(); const snd = await sounds(); ms.assets = Math.round(now() - a);
     if (!S.renderers.size && !S.skip) {
       // a game that makes its renderer in its first frame: let one through under the card, then go on
       release(); S.held = true; await frames(2); await settle(8000);
@@ -255,7 +263,7 @@
       S.held = false; const q = S.queue.splice(0); for (const cb of q) realRAF(cb);
       await frames(4); await compile(true); upload(); await frames(2); ms.warm = Math.round(now() - a);
     }
-    S.result = { ms: Math.round(now() - t0), steps: ms, uploaded: up, gl: Object.fromEntries(Object.entries(S.gl).map(([key, v]) => [key, v - g0[key]])), inventory: inventory(), skipped: Boolean(S.skip) };
+    S.result = { ms: Math.round(now() - t0), steps: ms, uploaded: up, gl: Object.fromEntries(Object.entries(S.gl).map(([key, v]) => [key, v - g0[key]])), inventory: inventory(), skipped: Boolean(S.skip), ...(snd ? { sounds: snd } : {}) };
     card('ready', 100);
     await answered();
     play();
