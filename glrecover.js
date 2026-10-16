@@ -55,16 +55,19 @@ const GLRecover = (() => {
     const lab = typeof ThreeLab !== 'undefined' ? ThreeLab.gl?.state?.() : null;
     if (lab?.phase) lines.push(`The Lab preview is ${lab.phase === 'lost' ? 'waiting for the graphics card' : 'being made again'} right now.`);
     if (S.lab.length) lines.push(`The Lab picked up where it was ${S.lab.length}× (last: ${S.lab.at(-1).how || 'in place'}).`);
+    const g = window.Gpu52 ? await Gpu52.info({ fps: true }).catch(() => null) : null; // (round 52, gpu52) the card, the screen's refresh, hardware video
+    if (g?.line) lines.unshift(g.line.replace(/^Graphics:/, '**Graphics**:'));
     return lines.join('\n');
   }
   function registerCommand() {
     if (typeof Commands === 'undefined' || Commands.get('graphics')) return;
     Commands.register({
-      name: 'graphics', area: 'App', args: '[status]', aliases: ['gpu'].filter((n) => !Commands.get(n)),
-      desc: 'The graphics card: is Hearth drawing with it, how often it restarted, the Lab picking up after it',
-      complete: () => [{ value: 'status', hint: 'with the graphics card or not, restarts' }],
-      examples: ['/graphics'],
-      run: () => status(),
+      name: 'graphics', area: 'App', args: '[status | power auto|high|saver | backend … | blocklist keep|ignore]', aliases: ['gpu'].filter((n) => !Commands.get(n)),
+      desc: 'The graphics card: what draws Hearth (card, screen refresh, hardware video), restarts, which card / path to use',
+      complete: (a) => (window.Gpu52 ? Gpu52.complete(a) : [{ value: 'status', hint: 'with the graphics card or not, restarts' }]),
+      examples: ['/graphics', '/graphics power high'],
+      keywords: 'gpu nvidia amd discrete integrated 240hz refresh angle d3d11 vulkan metal hardware video',
+      run: async (a, ctx) => { const r = window.Gpu52 ? await Gpu52.cmd(a, ctx) : null; return r != null ? r : status(); }, // (round 52, gpu52: the choices)
     });
     if (typeof AppUI !== 'undefined') AppUI.addAction?.('Graphics card: what Hearth draws with', () => status().then((t) => toast(t.replace(/\*\*/g, ''), { timeout: 8000 })));
   }

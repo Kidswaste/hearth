@@ -210,7 +210,7 @@ const ThreeLab = (() => {
     // A load that never says "ready" (seen when a reload lands while the page before it is still starting: black
     // preview, nothing plays, "not rendering") is retried with a fresh page, twice at most.
     let watchdog = 0; let retries = 0;
-    const queryNow = () => `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}`;
+    const queryNow = () => `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}${typeof H !== 'undefined' && H.config?.settings?.gpuPower === 'saver' ? '&gpu=low' : ''}`; // (round 52, gpu52: /graphics power saver)
     const load = (fresh = false) => {
       if (tweaks.size) flushTweaks(); // to the page they were meant for, as before
       // (round 37, labboot) the first load of a warmed preview: the page is (or is getting) up for this same query, so it
