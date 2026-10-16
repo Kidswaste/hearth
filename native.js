@@ -2276,6 +2276,7 @@ const Native = (() => {
         { label: 'Jump to the first message', action: () => { const l = views.get(agentId)?.list; if (l) l.scrollTop = 0; } },
         { label: 'Read the last reply aloud', key: 'Alt+R', action: () => speak(lastReplyText(agentId)) },
         { label: 'Chat stats', action: () => chatStats(chat) },
+        ...(typeof ChatUX !== 'undefined' && ChatUX.WIDTHS ? [messageLook()] : []), // (round 51, commandonly) /width /spacing /timestamps /font
         { label: 'Everything it can do…', action: () => Commands.exec('/help', agentId) },
       ] },
       // (round 9) the board, scene, sequence, project, captures this chat works with (chat-context.js)
@@ -2305,6 +2306,17 @@ const Native = (() => {
     return items;
   }
 
+  // (round 51, commandonly) how every chat's messages look (ChatUX prefs; was only /width /spacing /timestamps /font)
+  function messageLook() {
+    const row = (label, key, choices, names) => ({ label, hint: names[ChatUX.pref(key)] || names[choices[0]], items: () => choices.map((c) => ({ label: names[c], checked: (ChatUX.pref(key) || choices[0]) === c, action: () => ChatUX.setPref(key, c) })) });
+    const cap = (o) => Object.fromEntries(o.map((k) => [k, k[0].toUpperCase() + k.slice(1)]));
+    return { label: 'How messages look', items: () => [
+      row('Width', 'width', Object.keys(ChatUX.WIDTHS), cap(Object.keys(ChatUX.WIDTHS))),
+      row('Spacing', 'density', ['cozy', 'compact'], { cozy: 'Roomy', compact: 'Tight' }),
+      row('Times', 'timestamps', ['hover', 'always', 'never'], { hover: 'When you point', always: 'Always', never: 'Never' }),
+      row('Font', 'font', Object.keys(ChatUX.FONTS), cap(Object.keys(ChatUX.FONTS))),
+    ] };
+  }
   // The model list as a menu (docked chats hide the dropdown).
   function modelMenu(agentId, e) {
     const agent = H.agent(agentId);

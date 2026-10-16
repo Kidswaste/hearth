@@ -1217,6 +1217,8 @@ const Capture = (() => {
         { label: 'Longest take…', items: () => D.MAX_LENGTH.map((n) => setR('max', n, n ? `${n >= 60 ? `${n / 60} min` : `${n} s`}` : 'No limit')) },
         { label: `${check(P.rec.mp4)}Also make an MP4 (ffmpeg)`, action: () => setPref('rec', 'mp4', !P.rec.mp4) },
         { label: `${check(P.rec.clean)}Hide toasts while recording`, action: () => setPref('rec', 'clean', !P.rec.clean) },
+        // (round 51, commandonly) was only /window-size: the window's content at an exact size for clean recordings
+        { label: 'Window at an exact size…', items: () => [['1920x1080', '1920 × 1080 (16:9)'], ['1280x720', '1280 × 720 (16:9)'], ['1080x1350', '1080 × 1350 (4:5)'], ['1080x1080', '1080 × 1080 (1:1)'], ...(store.get('capture.windowBefore', null) ? [['reset', 'Back to its size before']] : [])].map(([v, l]) => ({ label: l, action: () => Commands.exec(`/window-size ${v}`, H.claudeAgent()?.id) })) },
       ] },
       { label: 'Timecodes…', items: () => D.TC_STYLES.map((t) => ({ label: `${check(P.tc === t.id)}${t.label}`, action: () => { P.tc = t.id; savePrefs(); } })) },
       { label: 'Captures folder…', action: () => chooseFolder() },
