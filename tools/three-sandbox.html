@@ -1662,7 +1662,7 @@ function occlPlan() {
   const z = by ? (by.props.z ?? 0) : 0;
   let n = 0;
   for (const L of layers.values()) {
-    const o = Boolean((by && L !== by && !L.props.pcOf && (L.props.z ?? 0) < z) || (L.adCovered && AD.coverBy && !L.props.pcOf));
+    const o = Boolean((by && L !== by && !L.props.pcOf && (L.props.z ?? 0) < z) || (OC.on && L.adCovered && AD.coverBy && !L.props.pcOf));
     if (o) n += 1;
     L.occl = o;
   }

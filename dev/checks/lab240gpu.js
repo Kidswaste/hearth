@@ -4,9 +4,10 @@
 // those passes and clears shade, render-target binds, shader program switches, texture uploads (and their pixels),
 // readPixels / sync points, blits, and how many canvases drew (each one is presented: a copy of its whole drawing
 // buffer while preserveDrawingBuffer is on). Four scenes (an FX stack: bloom + grade + lens + grain + vignette over a
-// 3D scene; a heavy lit model with an environment and shadows; kinetic type layers over a scene; a visualizer-like
-// many-objects scene), each at exact frame sizes 1280×720, 2560×1440, 3840×2160 (1 pixel per pixel) and "fit" (the
-// window's own devicePixelRatio: run with --dpr 1.5 / 2 for those). The adaptive quality is held at full so the
+// 3D scene; a heavy lit model with an environment and shadows, the camera going round it; kinetic type layers over a
+// scene; a visualizer-like many-objects scene; two opaque scenes stacked), each at exact frame sizes 1280×720 and
+// 2560×1440 (1 pixel per pixel) and "fit" (the window's own devicePixelRatio: run with --dpr 1.5 / 2 for those; 4K
+// with window.L240_SIZES = ['3840x2160'], one scene per run). The adaptive quality is held at full so the
 // sizes are what they say. Then budgets (BUDGET below) per scene, per frame, scaled by the frame's pixels, and a still
 // picture of each scene compared with the round-50 savings on and off (window.__lab240.set({ off: true })).
 //   node dev/smoke.js --check-timeout 600000 --script dev/checks/lab240gpu.js
@@ -34,8 +35,8 @@ const PROBE = `if (!window.__glc) {
   const area = (gl, s) => (s.fb ? s.w * s.h : Math.min(s.w, gl.drawingBufferWidth) * Math.min(s.h, gl.drawingBufferHeight));
   const srcPx = (a) => { for (const x of a) if (x && typeof x === 'object' && !ArrayBuffer.isView(x) && (x.width || x.videoWidth)) return [(x.videoWidth || x.width) * (x.videoHeight || x.height), x]; return [0, null]; };
   for (const P of [WebGLRenderingContext.prototype, WebGL2RenderingContext.prototype]) {
-    const w = (name, fn) => { const real = P[name]; if (typeof real !== 'function' || real.__glc) return; const f = function (...a) { if (S.on) { try { fn.call(this, a); } catch { /* counting only */ } } return real.apply(this, a); }; f.__glc = true; P[name] = f; };
-    w('viewport', function (a) { const s = g(this); s.w = a[2]; s.h = a[3]; });
+    const w = (name, fn, always = false) => { const real = P[name]; if (typeof real !== 'function' || real.__glc) return; const f = function (...a) { if (S.on || always) { try { fn.call(this, a); } catch { /* counting only */ } } return real.apply(this, a); }; f.__glc = true; P[name] = f; };
+    w('viewport', function (a) { const s = g(this); s.w = a[2]; s.h = a[3]; }, true); // (followed all the time: three.js sets it only when it changes)
     w('bindFramebuffer', function (a) { const s = g(this); if (a[0] === this.READ_FRAMEBUFFER) return; s.fb = a[1] || null; if (a[1]) add('rtBinds'); });
     w('useProgram', function (a) { const s = g(this); if (s.prog !== a[0]) { s.prog = a[0]; add('programSwitches'); } });
     const draw = (count, inst) => function (a) { const s = g(this); const n = count(a); const k = inst(a); frame(this, s); add('draws'); add('triangles', tri(a[0], n, k)); if (n <= 6 && k <= 1) { add('fullPasses'); add('passPx', area(this, s)); if (s.fb) add('offscreenPasses'); } };
@@ -102,7 +103,7 @@ const sun = new THREE.DirectionalLight('#ffffff', 2); sun.position.set(3, 6, 4);
 const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1, 0.32, 600, 96), new THREE.MeshPhysicalMaterial({ color: '#c0a070', metalness: 0.9, roughness: 0.25, clearcoat: 1 })); knot.position.y = 1.4; knot.castShadow = true; scene.add(knot);
 const floor = new THREE.Mesh(new THREE.CircleGeometry(8, 64), new THREE.MeshStandardMaterial({ color: '#303038', roughness: 0.8 })); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-renderer.setAnimationLoop(() => { const t = globalThis.__l240t ?? performance.now() / 1000; camera.position.x = Math.sin(t * 0.2) * 6; camera.position.z = Math.cos(t * 0.2) * 6; camera.lookAt(0, 1.2, 0); renderer.render(scene, camera); });`;
+renderer.setAnimationLoop(() => { const t = globalThis.__l240t ?? performance.now() / 1000; camera.position.x = Math.sin(t * 0.2) * 6; camera.position.z = Math.cos(t * 0.2) * 6; camera.lookAt(0, 1.2, 0); renderer.render(scene, camera); globalThis.__l240at = t; });`;
 const TYPE = (text, y, extra = '') => `textLayer({ size: 0.1, y: ${y}, wobble: 0.4, inAnim: 'wave', hold: 99, glow: 0.4${extra} }, { text: ${JSON.stringify(text)} });`;
 const VIZ = `import * as THREE from 'three';
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -132,8 +133,9 @@ const SCENES = {
 // (4K: L240_SIZES = ['3840x2160'], one scene per run: SwiftShader on a busy machine can take the GPU process down at 4K)
 const SIZES = window.L240_SIZES || ['1280x720', '2560x1440', 'fit'];
 const WANT = window.L240_SCENES || Object.keys(SCENES);
-// (at least 3 s and 4 drawn frames, at most 20 s: SwiftShader draws a 4K frame in seconds)
-const measure = async () => { await sbx(PROBE); if (window.L240_OFF) await sbx('return window.__lab240?.set({ off: true })'); await sbx('return window.__glc.start()'); const t0 = Date.now(); await wait(3000); while (Date.now() - t0 < 20000 && (await sbx('return window.__glc.frames()')) < 4) await wait(500); return sbx('return window.__glc.stop()'); };
+// (4 frames to settle first: a new size waits 3 frames before hiding what's under an opaque top; then at least 3 s and
+// 4 drawn frames, at most 20 s: SwiftShader draws a 4K frame in seconds)
+const measure0 = async () => { await sbx(PROBE); if (window.L240_OFF) await sbx('return window.__lab240?.set({ off: true })'); await sbx('return window.__glc.start()'); await until(async () => (await sbx1('return window.__glc.frames()')) >= 4, 20000); await sbx('return window.__glc.start()'); const t0 = Date.now(); await wait(3000); while (Date.now() - t0 < 20000 && (await sbx('return window.__glc.frames()')) < 4) await wait(500); return sbx('return window.__glc.stop()'); };
 // the preview as the screen shows it (a screenshot of the window, the preview's rectangle), as RGBA
 const screen = async () => {
   const f = document.querySelector('iframe[src*="three-sandbox"]'); const r = f.getBoundingClientRect(); const k = devicePixelRatio;
@@ -143,6 +145,7 @@ const screen = async () => {
   return g.getImageData(0, 0, cv.width, cv.height).data;
 };
 const diff = (a, b) => { if (!a || !b || a.length !== b.length) return { mean: 999, n: 0 }; let m = 0; let mx = 0; let n = 0; for (let i = 0; i < a.length; i += 4) for (let j = 0; j < 3; j++) { const d = Math.abs(a[i + j] - b[i + j]); m += d; if (d > mx) mx = d; n++; } let av = 0; for (let i = 0; i < a.length; i += 4) av += a[i] + a[i + 1] + a[i + 2]; return { mean: Math.round((m / n) * 1000) / 1000, max: mx, n, avg: Math.round(av / n) }; };
+const measure = async () => { const m = await measure0(); if (!m?.error) return m; await wait(4000); return measure0(); }; // (a page made again for a new pixel ratio: once more)
 const setSize = async (sz) => { if (sz === 'fit') c.size('fit'); else { const [w, h] = sz.split('x').map(Number); c.customSize(w, h); } await wait(2500); };
 const steady = async () => { await sbx('window.__labAdapt?.set({ level: 0, hold: true }); return 1'); };
 for (const name of WANT) {
@@ -155,13 +158,26 @@ for (const name of WANT) {
     await setSize('1280x720'); await steady();
     // (every layer drawn and settled: the page runs the scene again when the frame size changes its pixel ratio)
     await until(async () => { const h = await sbx1('return window.__labHealth()'); return h && h.overlays === 0 && h.layers === SCENES[name].length; }, 20000); await wait(2500);
-    c.freeze(true); await wait(1500);
-    const a = await screen();
-    await sbx('return window.__lab240.set({ off: true })'); await wait(500);
-    const b = await screen();
-    await sbx('return window.__lab240.set({ off: false })'); await wait(500);
-    const a2 = await screen(); // (the same frozen frame again: the two "on" looks must match too)
-    c.freeze(false); await wait(500);
+    if (window.L240_DIAG) { // (how the picture settles after a freeze, savings on and off: mean brightness per look)
+      const seq = async () => { const r = []; c.freeze(true); const t0 = Date.now(); for (const ms of [100, 400, 900, 1600, 3000]) { await wait(Math.max(0, ms - (Date.now() - t0))); r.push(diff(await screen(), await screen()).avg); } c.freeze(false); await wait(2500); return r; };
+      out.diagFreeze = out.diagFreeze || {}; out.diagFreeze[name] = { on: await seq(), off: await sbx('window.__lab240.set({ off: true }); return 1').then(seq) };
+      await sbx('window.__lab240.set({ off: false }); return 1'); await wait(2500);
+    }
+    // (a look while the Lab's switch cover still fades out is no sample: the frozen frame is looked at again after the
+    // off / on round; when that second "on" look differs from the first, the round is taken once more)
+    let a; let b; let a2;
+    for (let k = 0; k < 3; k++) {
+      c.freeze(true); await wait(1500);
+      a = await screen();
+      await sbx('return window.__lab240.set({ off: true })'); await wait(500);
+      b = await screen();
+      await sbx('return window.__lab240.set({ off: false })'); await wait(500);
+      a2 = await screen();
+      c.freeze(false); await wait(500);
+      if (diff(a, a2).mean <= 0.5) break;
+      (out.pictureRetries ||= {})[name] = k + 1;
+      await wait(2000);
+    }
     const dm = diff(a, b);
     out.pictures = out.pictures || {}; out.pictures[name] = dm;
     step(`${name}: the picture on screen is the same with the savings on and off (mean channel difference ≤ 0.5 of 255)`, dm.mean <= 0.5 && dm.n > 1000 && dm.avg > 3 && diff(a, a2).mean <= 0.5, { ...dm, again: diff(a, a2).mean });
@@ -169,13 +185,15 @@ for (const name of WANT) {
     // and off (the model stands still: its shadow map is the one drawn long before)
     if (name === 'model') {
       const pic = async (off) => {
-        await sbx(`window.__lab240.set({ off: ${off} }); globalThis.__l240t = 3.6; return 1`); await wait(900);
-        await sbx('globalThis.__l240t = 3; return 1'); await wait(1500);
+        // (each step waits for the frame drawn at that moment: a slow preview is seconds behind)
+        await sbx(`window.__lab240.set({ off: ${off} }); globalThis.__l240t = 3.6; return 1`); await until(async () => (await sbx1('return globalThis.__l240at')) === 3.6, 15000);
+        await sbx('globalThis.__l240t = 3; return 1'); await until(async () => (await sbx1('return globalThis.__l240at')) === 3, 15000); await wait(1000);
         c.freeze(true); await wait(1200); const p = await screen(); c.freeze(false); await wait(300); return p;
       };
       const sh0 = (await sbx('return window.__lab240.info()')).shadows;
       const on = await pic(false); const sh1 = (await sbx('return window.__lab240.info()')).shadows;
       const off = await pic(true);
+      if (window.L240_DIAG) { const off2 = await pic(true); const on2 = await pic(false); out.diag = { offOff: diff(off, off2).mean, onOn: diff(on, on2).mean, on2Off: diff(on2, off).mean }; }
       await sbx('window.__lab240.set({ off: false }); delete globalThis.__l240t; return 1');
       const ds = diff(on, off);
       out.pictures.modelShadows = ds;
@@ -184,7 +202,8 @@ for (const name of WANT) {
   }
   out.table[name] = {};
   for (const sz of SIZES) {
-    await setSize(sz); await steady(); await wait(1200);
+    await setSize(sz); await steady();
+    await until(async () => { const h = await sbx1('return window.__labHealth()'); return h && h.overlays === 0 && h.layers === SCENES[name].length; }, 20000); await wait(3000);
     const m = await measure();
     m.hidden = (await sbx('return window.__lab240?.info()'))?.hidden?.length ?? null;
     out.table[name][sz] = m;
