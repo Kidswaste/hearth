@@ -109,7 +109,9 @@ const LabAB = (() => {
     S.stillT = setTimeout(() => {
       const go = async () => {
         const b = S.base;
-        if (!b || b.still || !visible() || busy() || S.pend) return;
+        if (!b || b.still || busy() || S.pend) return;
+        // (round 54, labsmooth54) asked right after a frame (fresh style), not from the idle callback mid-stream
+        if (document.hidden || !(await new Promise((r) => requestAnimationFrame(() => setTimeout(() => r(visible()), 0)))) || S.base !== b || S.pend) return;
         const fr = hooks().frameRect;
         const url = await Lab()?.director?.shotSmall?.(C().shotSize(fr?.width, fr?.height, devicePixelRatio)).catch(() => null);
         if (url && S.base === b && !S.pend) { b.still = url; S.stills += 1; }

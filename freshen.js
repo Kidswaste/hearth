@@ -46,6 +46,10 @@ const Freshen = (() => {
     if (base.total && r.total > base.total + LIMITS.total.plus) out.push('total');
     return out;
   }
+  // (round 54, labsmooth54) the Lab's globals are stand-ins until its lazy group is in: peeking at them (typeof ThreeLab)
+  // from here counted as an early touch (the lazy manifest's miss list) and could pull the whole group in mid-start.
+  // Not loaded yet = the Lab isn't open, playing or holding a scene: nothing to read.
+  const labIn = () => (window.Lazy?.isIn ? Lazy.isIn('lab') : true) && typeof ThreeLab !== 'undefined';
   // busy: typing (input in the last 20 s), a reply streaming, a render / recording running, the Lab playing
   function busy() {
     if (performance.now() - lastInput < 20000) return true;
@@ -53,8 +57,8 @@ const Freshen = (() => {
       if ((H.chats || []).some((c) => Native.isBusy(c.id))) return true;
       if (typeof Renders !== 'undefined' && Renders.list?.().some((j) => ['running', 'queued'].includes(j.status))) return true;
       if (typeof Capture !== 'undefined' && Capture.recording) return true;
-      if (typeof ThreeLab !== 'undefined' && ThreeLab.peek?.()?.state?.playing) return true;
-      if (typeof ThreeSeq !== 'undefined' && ThreeSeq.active && ThreeSeq.status?.()?.playing) return true;
+      if (labIn() && ThreeLab.peek?.()?.state?.playing) return true;
+      if (labIn() && typeof ThreeSeq !== 'undefined' && ThreeSeq.active && ThreeSeq.status?.()?.playing) return true;
     } catch { /* a module not loaded yet is not busy */ }
     return false;
   }
@@ -90,7 +94,7 @@ const Freshen = (() => {
       if (H.activeChat[a.id] || draft) s.chats[a.id] = { chatId: H.activeChat[a.id] || null, draft, top: list ? Math.round(list.scrollTop) : 0, atEnd };
     }
     try {
-      if (typeof ThreeLab !== 'undefined' && ThreeLab.peek?.()) {
+      if (labIn() && ThreeLab.peek?.()) {
         const seqOn = typeof ThreeSeq !== 'undefined' && Boolean(ThreeSeq.active);
         s.lab = { sceneId: ThreeLab.scenes?.currentId?.() || null, seqKey: seqOn ? ThreeSeq.key : null, seqT: seqOn ? ThreeSeq.time || 0 : 0 };
       }
@@ -128,7 +132,7 @@ const Freshen = (() => {
       if (light) {
         v = { active: H.activeId, chats: {}, panelTop: 0 };
         for (const a of H.agents().filter((x) => x.mode === 'native')) if (H.activeChat[a.id]) v.chats[a.id] = { chatId: H.activeChat[a.id], top: 0, atEnd: true };
-        try { if (typeof ThreeLab !== 'undefined' && ThreeLab.peek?.()) v.lab = { sceneId: ThreeLab.scenes?.currentId?.() || null }; } catch { /* the Lab is optional */ }
+        try { if (labIn() && ThreeLab.peek?.()) v.lab = { sceneId: ThreeLab.scenes?.currentId?.() || null }; } catch { /* the Lab is optional */ }
       } else { v = capture(); for (const c of Object.values(v.chats)) delete c.draft; } // drafts have their own saves (and the work journal)
       v.at = Date.now();
       localStorage.setItem(VIEW, JSON.stringify(v));

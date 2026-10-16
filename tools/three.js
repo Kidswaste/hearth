@@ -386,12 +386,17 @@ const ThreeLab = (() => {
       this.gutterTop = null;
       hlEditors.add(this);
       this.paintTheme();
-      new ResizeObserver(() => this.draw(false)).observe(this.area);
+      // (round 54, labsmooth54) hidden (the code is folded away, as it mostly is): nothing to draw, and no layout to read.
+      // A director edit or a layer switch sets the code while it's hidden: drawing it then read the textarea's place
+      // and size, which laid out the whole Lab inside that edit (≈ 12 ms here). It's drawn when it shows again.
+      this.folded = false;
+      new ResizeObserver((es) => { const r = es.at(-1)?.contentRect; this.folded = Boolean(r) && !(r.width > 0 && r.height > 0); if (!this.folded) this.draw(false); }).observe(this.area);
       this.refresh(false);
     }
     paintTheme() { for (const [k, v] of Object.entries(hlVars || {})) this.host.style.setProperty(k, v); }
     refresh(changed) {
       if (!this.shadow) return;
+      if (this.folded) { this.vw.top = null; this.vw.a = -1; this.vw.b = -1; if (changed) this.onChange?.(this.area.value); return; } // (drawn in full on showing: see the ResizeObserver)
       this.draw(true, changed); // (a key: the scroll position from the last scroll event, no layout read in the key)
       if (changed) this.onChange?.(this.area.value);
     }
@@ -1431,6 +1436,7 @@ const ThreeLab = (() => {
       syncKeyUI();
     };
     function keyLoop() { keyQuiet = 0; if (!keyTimer) keyTimer = setInterval(keyTick, 100); }
+    function keyedNow() { const keys = current ? sel()?.keys : null; return Boolean(keys && Object.values(keys).some((k) => k?.length)); }
     keyLoop();
     addEventListener('hearth:view', keyLoop);
     for (const ev of ['pointerdown', 'keydown', 'wheel']) pane.addEventListener(ev, () => { if (!keyTimer) keyLoop(); }, { capture: true, passive: true });
@@ -2267,7 +2273,7 @@ const ThreeLab = (() => {
       if (!current) return;
       layersPanel.render(layersOf(), selId);
       paintBuilding();
-      player.setTracks(trackList(), trackHandlers);
+      player.setTracks(trackList(), trackHandlers, { soon: true }); // (round 54) the timeline draws in the coming frame (see setTracks)
       syncKeyUI(true);
     }
     function selectLayer(id) {
@@ -2984,7 +2990,7 @@ const ThreeLab = (() => {
       }
       if (/^(media-state|record-started|record-error|recording)$/.test(msg.type)) {
         player.onMessage(msg);
-        if (!keyTimer && msg.type === 'media-state') keyLoop(); // (round 44, idlecpu) playing / a seek: the knobs follow again
+        if (!keyTimer && msg.type === 'media-state' && keyedNow()) keyLoop(); // (round 44, idlecpu) playing / a seek: the knobs follow again · (round 54) only with something keyframed to follow: a scrub sends this ~60× a second, and each one made a 100 ms timer the first tick dropped again
         if (msg.type === 'media-state' && window.Power && Boolean(msg.playing) !== mediaPlaying) { if (!msg.playing) rememberMedia(); mediaArm(Boolean(msg.playing)); }
         if (msg.type === 'recording' && rebuildWaiting) { rebuildWaiting = false; run({ hot: true }); }
       }
@@ -3609,8 +3615,9 @@ const ThreeLab = (() => {
           try { await img.decode(); } catch { return; }
           const c = document.createElement('canvas'); const sc = Math.min(1, 360 / Math.max(img.width, img.height));
           c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc));
-          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-          thumbs[id] = { url: c.toDataURL('image/jpeg', 0.75), at: Date.now() };
+          c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, c.width, c.height); // (round 54) in memory, encoded off the main thread (no wait for the GPU)
+          const small2 = typeof canvasDataUrl === 'function' ? await canvasDataUrl(c, 'image/jpeg', 0.75) : c.toDataURL('image/jpeg', 0.75);
+          thumbs[id] = { url: small2, at: Date.now() };
           saveThumbs();
         };
         // (round 16: when the page is idle, and the preview makes it small and encodes it off its frames)

@@ -63,7 +63,11 @@ const SceneDoctorHook = (() => {
   async function blankCheck() {
     const id = sketchId();
     const d = ThreeLab.director; const st = ThreeLab.stageHooks;
-    if (!id || !d || !onScreen() || st?.frozen || seenSet().has(`${id}|blank`) || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
+    if (!id || !d || st?.frozen || seenSet().has(`${id}|blank`) || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
+    // (round 54, labsmooth54) the cheap answers first, and "is it on screen" asked right after a frame, when the page's
+    // style is fresh: asked from the timer while a director reply streamed, it styled the whole window first (≈ 40 ms here)
+    if (document.hidden || !(await new Promise((r) => requestAnimationFrame(() => setTimeout(() => r(onScreen()), 0))))) return;
+    if (sketchId() !== id) return;
     last.checks += 1;
     const url = await d.shotSmall(48).catch(() => null);
     if (!url || sketchId() !== id) return;

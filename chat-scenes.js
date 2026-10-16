@@ -512,8 +512,11 @@ renderer.setAnimationLoop((now) => {
     const k = Math.min(1, max / Math.max(img.width, img.height));
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.72);
+    // (round 54, labsmooth54) a canvas kept in memory (willReadFrequently: not on the GPU) and encoded off the main
+    // thread (canvasDataUrl → toBlob): a GPU canvas' toDataURL waited for the GPU to finish the Lab's frames first,
+    // up to 200 ms in a director edit here. Same JPEG, same size.
+    c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, c.width, c.height);
+    return typeof canvasDataUrl === 'function' ? canvasDataUrl(c, 'image/jpeg', 0.72) : c.toDataURL('image/jpeg', 0.72);
   }
   async function setThumb(chatId, url) {
     if (!chatId || !url || !summaryOf(chatId)) return false;

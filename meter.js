@@ -333,10 +333,19 @@ const Meter = (() => {
       _sp: sp, _ctx: ctx, _win: win, _today: today,
     };
   }
+  function pillReadings() {
+    const chatId = activeChatId();
+    const budgeted = Object.values(prefs.budgets).some((b) => b);
+    const today = sumOf([dayKey()]);
+    if (budgeted) return { _today: today, _ctx: 0, _win: 0 };
+    return { _today: today, _ctx: ctxNow(chatId, chatStat(chatId)), _win: windowFor(activeAgentId(), chatId) };
+  }
   let painted = '';
   function paint(force) {
     if (!strip) return;
-    const r = readings();
+    // (round 54, labsmooth54) the strip folded away (the default): only what the pill shows is worked out, not every
+    // cell's text and tooltip (today's sums, the week, the split, usability…) ~8 times a second while a reply streams
+    const r = strip.hidden ? pillReadings() : readings();
     // the pill: today's total, rainbow while live, budget colors
     const today = tot(r._today);
     // (only what changed is written: this runs ~8× a second while a reply streams, beside a playing Lab)
