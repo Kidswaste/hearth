@@ -1,0 +1,105 @@
+// The exported HTML uses this same self-contained runtime as the sandboxed preview.
+(function (root, factory) {
+  const api = factory(); if (typeof module === 'object' && module.exports) module.exports = api; else root.CreativeGames = api;
+})(globalThis, function () {
+  function runtime(cfg) {
+    const canvas = document.querySelector('canvas'), ctx = canvas.getContext('2d'), status = document.querySelector('#status'), start = document.querySelector('#start');
+    const motion = ['motion', 'reactive'].includes(cfg.mode), keys = new Set(), colors = cfg.colors;
+    let running = false, elapsed = 0, last = 0, frame = 0, score = 0, ended = false, level = 0, audio = null;
+    let x = 320, y = 270, mx = 1, my = 1, spawned = 0, missed = 0, rocks = [], stars = [], notes = [], seed = cfg.seed >>> 0;
+    const rng = () => { seed = Math.imul(seed, 1664525) + 1013904223 >>> 0; return seed / 4294967296; };
+    const say = s => { status.textContent = s; };
+    function tone(hz) {
+      if (!document.querySelector('#sound').checked) return;
+      try { audio ||= new AudioContext(); audio.resume(); const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = hz; g.gain.setValueAtTime(.08, audio.currentTime); g.gain.exponentialRampToValueAtTime(.001, audio.currentTime + .1); o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + .11); } catch { /* sound optional */ }
+    }
+    function reset() {
+      elapsed = score = spawned = missed = 0; ended = false; x = 320; y = 270; mx = my = 1; rocks = []; stars = []; notes = []; seed = cfg.seed >>> 0;
+      if (cfg.mode === 'rhythm') {
+        for (let i = 0; i < 48; i++) notes.push({ t: 2 + i * 60 / cfg.bpm, lane: Math.floor(rng() * 4), hit: false, missed: false });
+      }
+    }
+    function pause() { running = false; keys.clear(); cancelAnimationFrame(frame); frame = 0; audio?.suspend(); start.textContent = 'Resume'; }
+    function finish(text) { ended = true; pause(); say(text); start.textContent = 'Play again'; }
+    function hit(lane) {
+      if (!running || cfg.mode !== 'rhythm') return;
+      const n = notes.filter(n => n.lane === lane && !n.hit && !n.missed).sort((a, b) => Math.abs(a.t - elapsed) - Math.abs(b.t - elapsed))[0];
+      if (n && Math.abs(n.t - elapsed) <= .18) { n.hit = true; score += Math.abs(n.t - elapsed) < .07 ? 100 : 50; tone(330 * 2 ** (lane / 4)); }
+      else score = Math.max(0, score - 10);
+    }
+    function moveMaze(dx, dy) {
+      if (!running || cfg.mode !== 'maze') return;
+      if (cfg.maze.grid[my + dy]?.[mx + dx] === 0) { mx += dx; my += dy; score++; }
+      if (mx === cfg.maze.goal[0] && my === cfg.maze.goal[1]) { draw(); finish(`Found the exit in ${score} moves and ${elapsed.toFixed(1)} seconds.`); }
+    }
+    const dirs = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+    document.addEventListener('keydown', e => {
+      if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'BUTTON') return;
+      if (dirs[e.key] || 'asdf'.includes(e.key.toLowerCase()) || e.key === ' ') e.preventDefault();
+      if (e.key === ' ') { if (running) pause(); else start.click(); return; }
+      keys.add(e.key); if (dirs[e.key] && !e.repeat) moveMaze(...dirs[e.key]);
+      const lane = 'asdf'.indexOf(e.key.toLowerCase()); if (lane >= 0 && !e.repeat) hit(lane);
+    });
+    document.addEventListener('keyup', e => keys.delete(e.key));
+    const point = e => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * 640 / r.width, (e.clientY - r.top) * 360 / r.height]; };
+    canvas.addEventListener('pointerdown', e => { canvas.focus(); const p = point(e); if (cfg.mode === 'arena') { [x, y] = p; canvas.setPointerCapture?.(e.pointerId); } else if (cfg.mode === 'rhythm') hit(Math.min(3, Math.max(0, Math.floor(p[0] / 160)))); });
+    canvas.addEventListener('pointermove', e => { if (cfg.mode === 'arena' && e.buttons) [x, y] = point(e); });
+    document.querySelectorAll('[data-dir]').forEach(b => b.addEventListener('click', () => moveMaze(...dirs[b.dataset.dir])));
+    document.querySelector('#pad').hidden = cfg.mode !== 'maze';
+    function draw() {
+      ctx.fillStyle = colors[0]; ctx.fillRect(0, 0, 640, 360);
+      if (motion) {
+        const phase = elapsed / (240 / cfg.bpm) * Math.PI * 2, energy = cfg.mode === 'reactive' ? level : .3;
+        for (let i = 0; i < 70; i++) {
+          const a = i / 70 * Math.PI * 2 + phase, spread = 65 + i * 1.7 + energy * 60;
+          let px, py, size;
+          if (cfg.style === 'tunnel') { const z = ((i / 70 + phase / (Math.PI * 2)) % 1); px = 320; py = 180; size = 5 + z * z * 245; ctx.strokeStyle = colors[1 + i % 4]; ctx.lineWidth = 2 + energy * 3; ctx.strokeRect(px - size, py - size * .65, size * 2, size * 1.3); continue; }
+          if (cfg.style === 'ribbon') { px = i / 69 * 640; py = 180 + Math.sin(i * .16 + phase) * 80 + Math.cos(i * .09 - phase) * 35; size = 3 + energy * 15; }
+          else { px = 320 + Math.cos(a) * spread; py = 180 + Math.sin(a * 2 - phase) * spread * .6; size = 3 + i % 6 + energy * 12; }
+          ctx.fillStyle = colors[1 + i % 4]; ctx.beginPath(); ctx.arc(px, py, size, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (cfg.mode === 'maze') {
+        const grid = cfg.maze.grid, cell = Math.min(640 / grid[0].length, 360 / grid.length), ox = (640 - cell * grid[0].length) / 2;
+        grid.forEach((row, yy) => row.forEach((v, xx) => { if (v) { ctx.fillStyle = colors[1]; ctx.fillRect(ox + xx * cell, yy * cell, cell, cell); } }));
+        ctx.fillStyle = colors[3]; ctx.fillRect(ox + cfg.maze.goal[0] * cell, cfg.maze.goal[1] * cell, cell, cell);
+        ctx.fillStyle = colors[4]; ctx.beginPath(); ctx.arc(ox + (mx + .5) * cell, (my + .5) * cell, cell * .32, 0, Math.PI * 2); ctx.fill();
+      } else if (cfg.mode === 'arena') {
+        for (const [items, color, radius] of [[stars, colors[3], 8], [rocks, '#ff7272', 13]]) for (const s of items) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(s.x, s.y, radius, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = colors[4]; ctx.fillRect(x - 9, y - 9, 18, 18);
+      } else {
+        for (let i = 0; i < 4; i++) { ctx.strokeStyle = colors[1]; ctx.strokeRect(i * 160, 0, 160, 360); ctx.fillStyle = colors[4]; ctx.fillText('ASDF'[i], i * 160 + 77, 345); }
+        ctx.fillStyle = colors[3]; ctx.fillRect(0, 300, 640, 3);
+        for (const n of notes) if (!n.hit && !n.missed) { const yy = 300 - (n.t - elapsed) * 155; if (yy > -20 && yy < 330) { ctx.fillStyle = colors[2 + n.lane % 3]; ctx.fillRect(n.lane * 160 + 35, yy - 8, 90, 16); } }
+      }
+    }
+    function tick(time) {
+      if (!running) return; const dt = Math.min(.05, (time - last) / 1000); last = time; elapsed += dt;
+      if (cfg.mode === 'arena') {
+        x = Math.max(10, Math.min(630, x + ((keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0)) * dt * 250));
+        y = Math.max(10, Math.min(350, y + ((keys.has('ArrowDown') ? 1 : 0) - (keys.has('ArrowUp') ? 1 : 0)) * dt * 250));
+        if (elapsed > spawned * .45) { spawned++; (spawned % 3 ? rocks : stars).push({ x: 16 + rng() * 608, y: -20 }); }
+        for (const [items, danger] of [[rocks, true], [stars, false]]) for (let i = items.length - 1; i >= 0; i--) { const s = items[i]; s.y += dt * (80 + cfg.difficulty * 45); if (Math.hypot(s.x - x, s.y - y) < (danger ? 22 : 18)) { if (danger) { finish(`Game over · ${score} stars. Try another route!`); return; } score++; tone(660); items.splice(i, 1); } else if (s.y > 380) items.splice(i, 1); }
+        say(`${score} stars · survive ${Math.max(0, 30 - elapsed).toFixed(1)}s`); if (elapsed >= 30) { finish(`Survived! ${score} stars collected.`); return; }
+      } else if (cfg.mode === 'rhythm') {
+        for (const n of notes) if (!n.hit && !n.missed && elapsed - n.t > .18) { n.missed = true; missed++; }
+        say(`${score} points · ${missed} missed · A S D F or tap a lane`);
+        if (elapsed > notes.at(-1).t + 1) { finish(`Finished · ${score} points · ${missed} missed.`); return; }
+      } else if (cfg.mode === 'maze') say(`${score} moves · ${elapsed.toFixed(1)}s · reach the bright square`);
+      else say(`${cfg.style} · ${cfg.bpm} BPM · ${(240 / cfg.bpm).toFixed(2)}s loop${cfg.mode === 'reactive' ? ' · audio energy ' + Math.round(level * 100) + '%' : ''}`);
+      draw(); frame = requestAnimationFrame(tick);
+    }
+    start.addEventListener('click', () => {
+      if (running) { pause(); return; } if (ended) reset(); running = true; last = performance.now(); start.textContent = motion ? 'Pause loop' : 'Pause'; canvas.focus(); audio?.resume(); frame = requestAnimationFrame(tick);
+    });
+    document.querySelector('#reset').addEventListener('click', () => { pause(); reset(); draw(); say('Ready. Press Start.'); start.textContent = 'Start'; });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+    window.addEventListener('blur', () => { if (!motion) pause(); });
+    window.addEventListener('message', e => { if (e.source !== parent) return; if (e.data?.creative === 'pause') pause(); if (e.data?.creative === 'level') level = Math.max(0, Math.min(1, Number(e.data.value) || 0)); });
+    reset(); draw(); say(motion ? 'Press Start to preview the loop.' : cfg.mode === 'maze' ? 'Arrow keys or direction buttons. Reach the bright square.' : cfg.mode === 'rhythm' ? 'A S D F or tap the lanes when notes reach the line.' : 'Arrow keys or drag the player. Collect light circles; dodge red ones.');
+  }
+  function html(config) {
+    const data = JSON.stringify(config).replace(/</g, '\\u003c');
+    return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hearth creative study</title><style>body{margin:0;background:#11151a;color:#e8e9ed;font:14px system-ui;padding:12px;box-sizing:border-box}canvas{display:block;width:100%;max-width:900px;aspect-ratio:16/9;margin:auto;touch-action:none;border-radius:12px}button{padding:9px 16px;border:1px solid #57616d;border-radius:9px;background:#252e39;color:inherit;cursor:pointer}button:focus-visible,canvas:focus-visible{outline:2px solid #87eedb}nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}#status{min-height:24px}#pad{margin-top:8px}</style><canvas width="640" height="360" tabindex="0" aria-label="Interactive creative preview"></canvas><nav><button id="start">Start</button><button id="reset">Reset</button><label><input id="sound" type="checkbox"> Game sounds</label></nav><p id="status" aria-live="polite"></p><div id="pad"><button data-dir="ArrowLeft" aria-label="Left">←</button><button data-dir="ArrowUp" aria-label="Up">↑</button><button data-dir="ArrowDown" aria-label="Down">↓</button><button data-dir="ArrowRight" aria-label="Right">→</button></div><script>(${runtime.toString()})(${data});<\/script></html>`;
+  }
+  return { html, runtime };
+});
