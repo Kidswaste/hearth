@@ -162,8 +162,9 @@ for (const name of Object.keys(LOCATE)) {
   LOCATE[name] = () => {
     const key = `${enginePaths[name] || ''}|${Installs.data().chosen?.[name] || ''}`;
     const c = located[name];
-    if (c && c.key === key && Date.now() - c.at < 5 * 60000 && fs.existsSync(c.bin)) return c.bin;
-    const bin = find();
+    const repair = bin => name === 'codex' && IS_WIN && !enginePaths[name] && WinPolish.codexRuntime ? WinPolish.codexRuntime(bin) : bin;
+    if (c && c.key === key && Date.now() - c.at < 5 * 60000 && fs.existsSync(c.bin)) { c.bin = repair(c.bin); return c.bin; }
+    const bin = repair(find());
     if (bin) located[name] = { key, bin, at: Date.now() }; else delete located[name];
     return bin;
   };
