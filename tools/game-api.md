@@ -94,3 +94,13 @@ service workers, cache storage) is wiped when it ends.
 ## GamePerf (gameperf stream)
 `GamePerf.attach(handle)` (hub side) with `handle = { source, info, leave, state }`, called once the game window is up;
 `GameMode.on` tells start / end. The window's own numbers: `game:eval` + `window.__gameInfo()`, or the main-side attach.
+
+## Lighter textures (round 53, gametex: tools/gametex-core.js, gametexmain.js, tools/gametex-worker.js)
+- `GameReady.optimize` also sends the scene's pictures `pics: [{ path, hash, size, role: 'color'|'normal'|'data', flip }]`
+  and the GPU's formats `caps` (`GameTexCore.caps(extensions)`); a model file may carry `variant: 'ktx2'` (its copy's
+  pictures are KTX2: its own cache key). Result: `pictures { made, kept, keptNow }`, `tex` (the report:
+  `{ before, after, text: 'Textures: … → … of video memory' }`), `meshTool`, `meshPlan` (gltfpack's install plan).
+- `gameready:texplan { files, pics, caps }` → `{ map: { normPath → { out, mode, flip, w, h } }, report, kept, models }`.
+- `gameready:arm` takes `tex` (that map) and `tx` (the report line: the card shows it; `__gameReady.pub().tx`).
+- A Lab scene's page: a reference item may carry `ktx2` (the copy's bytes); `refTexture()` uses it when the GPU takes a
+  compressed format (`texture.userData.ktx2`), else the picture.
