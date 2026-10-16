@@ -850,7 +850,9 @@ const ThreeMedia = (() => {
     function onMessage(msg) {
       // (round 49, labscrub) the preview drew a seek: the next waiting one goes; paused, the playhead stays where the
       // pointer has it (the answer is for an older spot while a scrub runs on)
-      if (msg.type === 'media-state' && msg.seekAck) { seekAcked(); if (!msg.playing && !st.playing) msg = { ...msg, time: st.time }; }
+      // (a paused report while a seek is still on its way is an older spot too)
+      if (msg.type === 'media-state' && (msg.seekAck || seekQ.busy) && !msg.playing && !st.playing && !msg.ended) msg = { ...msg, time: st.time };
+      if (msg.type === 'media-state' && msg.seekAck) seekAcked();
       if (hooks.message?.(msg)) return;
       if (msg.type === 'media-state') {
         // the sandbox sends this a few times a second while it plays: only a real change (play / pause / end / a new

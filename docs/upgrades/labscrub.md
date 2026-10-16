@@ -36,14 +36,14 @@ exact; the ms are this machine's (several times a Mac's).
 |---|---:|---:|
 | **Scrub** (241 moves across 4 min and back): seeks sent to the preview | 126 | **5–11** (one per frame it draws) |
 | … seeks waiting per drawn preview frame | up to 139 | **≤ 1–2** |
-| … the preview on the exact frame after letting go | still 1.44 s at +0.4 s; window busy ≈ 70 s | **exact, 0.45–0.7 s** here (the next drawn frame) |
+| … the preview on the exact frame after letting go | still 1.44 s at +0.4 s; window busy ≈ 70 s | **exact, 0.45–1.4 s** here (its next drawn frame; the preview draws 2–5 fps on this loaded machine) |
 | … full timeline redraws | 129 | **0** (only the header column's lane values) |
 | … main-thread CPU per move | 5.4 ms (+ the queue after) | **1.8 ms** |
 | … total CPU for the stretch | 1,298 ms (+ ≈ 70 s busy after) | **430 ms** |
 | … forced style / layout | 317 (342 ms) | **1 (10 ms, not ours)** |
 | **Pan** (60 sideways trackpad steps at one zoom): waveform + grid rebuilds | 21 + 21 | **1 + 1** |
 | … wheel handlers p95 | 18.7 ms | 1.5–10 ms (the work moved to one frame) |
-| **Zoom** (60 pinch steps in and out): waveform + grid rebuilds | 37 + 37 | **10 + 10** |
+| **Zoom** (60 pinch steps in and out): waveform + grid rebuilds | 37 + 37 (every drawn step) | **10 + 10** (18 at load 30, when steps come > 160 ms apart) |
 | … main-thread CPU per step | 7.8 ms | **4.1 ms** |
 | … wheel handlers p95 · forced recalcs | 18.1 ms · 40 | 0.9–5.9 ms · 1 |
 | **Clip drag** (80 moves): layer messages to the preview | 53 | **12** (one per frame) |
@@ -93,7 +93,8 @@ exact; the ms are this machine's (several times a Mac's).
 ### Measuring
 13. `dev/checks/labscrub.js`: the 8-layer, 4-minute scene above; scrub, pan, zoom, clip drag and scrub sound with real
     input bursts; budgets on CPU per move, late frames, seeks per drawn frame and per move, waveform rebuilds, clip
-    messages per move, and how soon the exact frame shows after letting go. `window.LS_TRACE = 1` adds the trace
+    messages per move, and how soon the exact frame shows after letting go (zoom rebuilds are counted per timeline
+    draw, so a loaded machine spacing the pinch steps doesn't fail it). `window.LS_TRACE = 1` adds the trace
     per stretch, `window.LS_PROFILE = 'pan'` a JS profile. In the `lab` and `smooth` groups and its own `labscrub`
     group (`sh dev/run-checks.sh labscrub`).
 
