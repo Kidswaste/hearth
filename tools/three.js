@@ -370,7 +370,9 @@ const ThreeLab = (() => {
     let q = 0;
     hlWatch = new MutationObserver(() => { if (!q) q = requestAnimationFrame(() => { q = 0; hlTheme(); }); });
     hlWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-scheme', 'data-skin', 'data-look', 'data-theme'] });
-    hlTheme();
+    // (round 52) read in the next frame, not while the Lab is being built: the colours' read styled the whole page
+    // before the Lab's scenes were even asked for (≈ 10 ms of the opening); the editors get them then (paintTheme)
+    requestAnimationFrame(() => hlTheme());
   }
   class LabEditor extends CodeEditor {
     constructor(parent, opts) {
@@ -1012,6 +1014,10 @@ const ThreeLab = (() => {
       if (box.ready || !on) box.send({ type: 'park', on });
       if (paceOn) paintPace(); // (round 33 "labpace")
     }
+    // (round 52) after a page's 'ready', the look waits for the next frame: read at once (the Lab still being built on
+    // its first open), it laid the whole Lab out an extra time before its scenes were read (≈ 20–35 ms of the opening)
+    let parkRaf = 0;
+    const parkSoon = () => { if (document.visibilityState !== 'visible') { syncPark(); return; } if (!parkRaf) parkRaf = requestAnimationFrame(() => { parkRaf = 0; syncPark(); }); };
     for (const ev of ['hearth:view', 'hearth:activate']) addEventListener(ev, () => setTimeout(() => syncPark(), 0));
     document.addEventListener('visibilitychange', () => syncPark());
     // (the preview showing or going away without one of those events, e.g. another Lab tab, a panel, the first layout:
@@ -3029,7 +3035,7 @@ const ThreeLab = (() => {
       if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
       if (msg.type === 'ready') refsSig = null; // (round 39, labmemory) a fresh page has no references yet
       if (msg.type === 'ready') window.PerfectLoop?.onReady?.(); // (round 31) ∞ a fresh page gets the scene's loop clock again
-      if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); if (!adaptOn) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); parkedNow = false; syncPark(); }
+      if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); if (!adaptOn) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); parkedNow = false; parkSoon(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
