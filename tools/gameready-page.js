@@ -12,7 +12,8 @@
 // Then the card goes and the first 5 s of play are counted (shaders compiled / textures uploaded: 0 / 0 when it worked).
 // Hearth reads window.__gameReady.pub() through game:eval (tools/gameready.js) and answers the card's buttons with
 // __gameReady.answer(…). Query: t = the title, k = lab | html, np = 1 (no getting ready: a check's "before"), opt = how
-// many models could be optimized (the card offers Optimize for play).
+// many models could be optimized (the card offers Optimize for play), tx = (round 53, gametex) what the compressed
+// textures save ("Textures: 640 MB → 160 MB of video memory"), shown on the card.
 (() => {
   if (window.__gameReady) return;
   const Q = new URLSearchParams((document.currentScript?.src || '').split('?')[1] || '');
@@ -21,10 +22,10 @@
   const realRAF = window.requestAnimationFrame.bind(window);
   const realTimeout = window.setTimeout.bind(window);
   const sleep = (ms) => new Promise((r) => realTimeout(r, ms));
-  const S = { mode: LAB ? 'lab' : 'html', title: Q.get('t') || document.title || 'the game', noPrep: Q.get('np') === '1', opt: Number(Q.get('opt')) || 0, phase: 'ready', pct: 0, text: '', t0: now(), cardAt: null, firstFrameAt: null, result: null, first5: null, want: null, wantN: 0, note: '', errors: [], skip: false, held: !LAB, queue: [], renderers: new Set(), scenes: new Set(), pend: 0, last: now(), gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0 }, decoders: new Set() };
+  const S = { mode: LAB ? 'lab' : 'html', title: Q.get('t') || document.title || 'the game', noPrep: Q.get('np') === '1', opt: Number(Q.get('opt')) || 0, tx: Q.get('tx') || '', phase: 'ready', pct: 0, text: '', t0: now(), cardAt: null, firstFrameAt: null, result: null, first5: null, want: null, wantN: 0, note: '', errors: [], skip: false, held: !LAB, queue: [], renderers: new Set(), scenes: new Set(), pend: 0, last: now(), gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0 }, decoders: new Set() };
   window.__gameReady = S;
   // what Hearth reads (game:eval): plain data only
-  S.pub = () => JSON.stringify({ mode: S.mode, phase: S.phase, pct: S.pct, text: S.text, cardAt: S.cardAt, firstFrameAt: S.firstFrameAt, result: S.result, first5: S.first5, want: S.want, wantN: S.wantN, errors: S.errors.slice(-5), card: Boolean(ui && ui.d.isConnected && !ui.d.dataset.out) });
+  S.pub = () => JSON.stringify({ tx: S.tx, mode: S.mode, phase: S.phase, pct: S.pct, text: S.text, cardAt: S.cardAt, firstFrameAt: S.firstFrameAt, result: S.result, first5: S.first5, want: S.want, wantN: S.wantN, errors: S.errors.slice(-5), card: Boolean(ui && ui.d.isConnected && !ui.d.dataset.out) });
   S.answer = (a) => answerCard(a || {});
 
   // ---------- the card (over the whole window, before anything draws) ----------
@@ -40,6 +41,7 @@
       ui.t.textContent = `Getting ${S.title} ready…`;
       ui.m.onclick = () => { if (S.want === 'install-offer') { S.want = 'install'; S.wantN += 1; ui.m.textContent = 'Play now'; ui.n.textContent = 'Installing in its own window. When it says done, press ▶ Play again and Optimize.'; ui.k.hidden = true; ui.o.hidden = true; return; } S.skip = true; };
       ui.o.hidden = !S.opt;
+      if (S.tx) { ui.n.hidden = false; ui.n.textContent = `${S.tx} (compressed copies)`; } // (round 53, gametex)
       if (S.opt) ui.o.title = `Compresses ${S.opt === 1 ? 'its 3D model' : `its ${S.opt} 3D models`} into Hearth's own cache (your files stay as they are)`;
       ui.o.onclick = () => { if (S.want === 'install-offer') { S.want = null; ui.k.hidden = true; ui.n.hidden = true; ui.m.textContent = 'Play now'; ui.o.textContent = 'Optimize for play'; return; } S.want = 'optimize'; S.wantN += 1; ui.o.hidden = true; ui.n.hidden = false; ui.n.textContent = 'Optimizing into Hearth\'s own cache…'; };
       (document.documentElement || document).appendChild(d);
@@ -52,7 +54,7 @@
   function answerCard(a) {
     if (!ui) return;
     ui.n.hidden = false;
-    if (a.kind === 'install') { S.want = 'install-offer'; ui.n.textContent = `Optimizing needs ${a.why || 'gltfpack'}. Hearth runs this in a Terminal window only when you press Install:`; ui.k.hidden = false; ui.k.textContent = a.command; ui.m.textContent = 'Install'; ui.o.hidden = false; ui.o.textContent = 'Not now'; return; }
+    if (a.kind === 'install') { S.want = 'install-offer'; ui.n.textContent = a.text ? `${a.text} Lighter 3D models need ${a.why || 'gltfpack'}. Hearth runs this in a Terminal window only when you press Install:` : `Optimizing needs ${a.why || 'gltfpack'}. Hearth runs this in a Terminal window only when you press Install:`; ui.k.hidden = false; ui.k.textContent = a.command; ui.m.textContent = 'Install'; ui.o.hidden = false; ui.o.textContent = 'Not now'; return; }
     S.want = null;
     ui.n.textContent = a.text || '';
   }

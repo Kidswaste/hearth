@@ -3104,7 +3104,45 @@ function setRefs(items) {
   }, 5000);
   for (const k of Object.keys(refs)) delete refs[k];
   for (const k of Object.keys(refBlobs)) delete refBlobs[k];
-  for (const it of items || []) { const b = new Blob([it.buffer], { type: it.mime || '' }); refs[it.key] = URL.createObjectURL(b); refKinds[it.key] = it.kind; if (it.kind === 'image') refBlobs[it.key] = b; }
+  for (const k of Object.keys(refKtx)) delete refKtx[k];
+  for (const it of items || []) { const b = new Blob([it.buffer], { type: it.mime || '' }); refs[it.key] = URL.createObjectURL(b); refKinds[it.key] = it.kind; if (it.kind === 'image') refBlobs[it.key] = b; if (it.ktx2 && it.kind === 'image') refKtx[it.key] = it.ktx2; }
+}
+// (round 53, gametex) ▶ Play's page: a picture with a compressed copy (KTX2, made by Optimize for play in Hearth's cache)
+// stays compressed on the graphics card (4–8× less video memory). refTexture() gives the same texture object at once;
+// it becomes a compressed one when KTX2Loader has transcoded the copy, or gets the original picture when the graphics
+// card takes no compressed format (or the copy doesn't load). Only ▶ Play's page sends copies.
+const refKtx = {}; // key → the copy's bytes
+let ktxLoader = null; let ktxCfg = null;
+function ktxConfig() {
+  if (ktxCfg) return ktxCfg;
+  // KTX2Loader.detectSupport's own reading, from a throwaway context (a layer's renderer may not exist yet)
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    const has = (n) => Boolean(gl?.getExtension(n));
+    const c = { astcSupported: has('WEBGL_compressed_texture_astc'), astcHDRSupported: false, etc1Supported: has('WEBGL_compressed_texture_etc1'), etc2Supported: has('WEBGL_compressed_texture_etc'), dxtSupported: has('WEBGL_compressed_texture_s3tc'), bptcSupported: has('EXT_texture_compression_bptc'), pvrtcSupported: has('WEBGL_compressed_texture_pvrtc') || has('WEBKIT_WEBGL_compressed_texture_pvrtc') };
+    if (/Linux/.test(navigator.platform) && !/Android/.test(navigator.userAgent) && c.astcSupported && c.etc2Supported && c.bptcSupported && c.dxtSupported) { c.astcSupported = false; c.etc1Supported = false; c.etc2Supported = false; }
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    ktxCfg = { config: c, any: c.astcSupported || c.etc1Supported || c.etc2Supported || c.dxtSupported || c.bptcSupported };
+  } catch { ktxCfg = { config: null, any: false }; }
+  return ktxCfg;
+}
+function ktxTexture(key, tex, fallback) {
+  const cfg = ktxConfig();
+  if (!cfg.any || globalThis.__ktxOff) return false;
+  RDY.pend += 1;
+  const p = (async () => {
+    const { KTX2Loader } = await import('three/addons/loaders/KTX2Loader.js');
+    if (!ktxLoader) { ktxLoader = new KTX2Loader().setTranscoderPath(globalThis.__sbxResolve('three/addons/libs/basis/')); ktxLoader.workerConfig = cfg.config; }
+    const k = await new Promise((res, rej) => ktxLoader.parse(refKtx[key].slice(0), res, rej));
+    // the same texture object the sketch already holds: compressed from now on (nothing uploaded it yet)
+    tex.isCompressedTexture = true; tex.mipmaps = k.mipmaps; tex.image = k.image;
+    tex.format = k.format; tex.type = k.type; tex.minFilter = k.minFilter; tex.magFilter = k.magFilter;
+    tex.generateMipmaps = false; tex.flipY = false; tex.premultiplyAlpha = k.premultiplyAlpha; tex.unpackAlignment = 4;
+    tex.userData.ktx2 = true; tex.needsUpdate = true;
+    k.dispose?.();
+  })().catch(() => fallback()).finally(() => { RDY.pend = Math.max(0, RDY.pend - 1); });
+  TY.pending.add(p); p.finally(() => TY.pending.delete(p));
+  return true;
 }
 globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
   const url = refs[key];
@@ -3126,12 +3164,15 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
     const tex = new THREE.Texture();
     tex.colorSpace = THREE.SRGBColorSpace;
     let who = null; try { who = ownerUrl(); } catch { /* fine */ } // (round 39: its picture is closed with the layer that asked for it)
-    const dec = createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
-      if (who) ownNote(who, 'bmp', bmp);
-      tex.image = bmp; tex.flipY = false; tex.needsUpdate = true;
-    }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
-    // (round 42, labbatch) an exact frame (exports, a batch's logo per row) waits for the picture like for a font
-    const pend = dec.finally(() => TY.pending.delete(pend)); TY.pending.add(pend);
+    const picture = () => {
+      const dec = createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
+        if (who) ownNote(who, 'bmp', bmp);
+        tex.image = bmp; tex.flipY = false; tex.needsUpdate = true;
+      }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
+      // (round 42, labbatch) an exact frame (exports, a batch's logo per row) waits for the picture like for a font
+      const pend = dec.finally(() => TY.pending.delete(pend)); TY.pending.add(pend);
+    };
+    if (!(refKtx[key] && ktxTexture(key, tex, picture))) picture(); // (round 53: ▶ Play's compressed copy first)
     return noteTex(key, tex);
   }
   const tex = new THREE.TextureLoader().load(url);

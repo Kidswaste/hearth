@@ -10,11 +10,17 @@
 //                       optimized copies for their originals' addresses (the rewrite map) and runs tools/gameready-page.js
 //                       first in the game's page (it prepares inside that window, behind its card)
 //   gameready:served    what that window was served (its files: the next launch's scan)
+//   gameready:texplan   (round 53, gametex) { files, pics, caps } → { map, report, kept }: the compressed (KTX2) copies of a
+//                       Lab scene's pictures ▶ Play uses (none when the graphics card takes no compressed format) and the
+//                       video memory they save ("Textures: 640 MB → 160 MB of video memory"); gametexmain.js
 // The owner's files are only ever read. Everything written goes in <data>/game-cache.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const C = require('./tools/gameready-core');
+// (round 53, gametex) textures compressed to KTX2: loaded the first time a game's pictures are planned or optimized
+let texMod = null;
+const tex = () => { if (!texMod) { texMod = require('./gametexmain'); texMod.init({ dataDir, appDir, readIndex, saveIndex, trash, platform: process.platform }); } return texMod; };
 
 
 let dataDir = null; let getWin = () => null; let appDir = __dirname;
@@ -114,38 +120,67 @@ async function plan(files) {
   if (r.fresh.length) saveIndex();
   return { ...r, map: C.rewriteMap(I, files, {}, process.platform), bad: indexBad, dir: cacheDir() };
 }
-async function optimize({ files = [], kind = 'lab', ctx = {}, toolPath = null } = {}, progress = () => {}) {
+async function optimize({ files = [], pics = [], caps = {}, kind = 'lab', ctx = {}, toolPath = null } = {}, progress = () => {}) {
   const T = await tool(toolPath);
-  if (!T.found) return { ok: false, needTool: true, plan: T.plan };
   if (indexBad) return { ok: false, error: 'Hearth\'s game cache index couldn\'t be read: nothing was changed' };
+  // (round 53, gametex) textures need no tool: Hearth's own encoder compresses the pictures (and a model's pictures)
+  // even without gltfpack; only lighter meshes need it
+  const texOk = Boolean(caps.any);
+  const wantTex = (f) => texOk && f.variant === 'ktx2' && Boolean(C.canOptimize(f, { kind, ...ctx }).textures);
+  if (!T.found && !(texOk && (pics.length || files.some(wantTex)))) return { ok: false, needTool: true, plan: T.plan };
   const I = readIndex();
-  const p0 = await plan(files);
-  const stale = await drop(p0.stale); // made from an older version of the same file: to the Trash
-  const made = []; const skipped = []; const failed = [];
-  const todo = p0.missing.filter((f) => { const ok = C.canOptimize(f, { kind, ...ctx }); if (!ok.ok) skipped.push({ path: f.path, why: ok.why }); return ok.ok; });
-  fs.mkdirSync(path.join(cacheDir(), 'files'), { recursive: true });
-  for (const [i, f] of todo.entries()) {
-    progress({ done: i, total: todo.length, path: f.path });
-    const key = C.entryKey(f);
-    const out = path.join(cacheDir(), 'files', `${key}.glb`);
-    const tmp = `${out}.part.glb`;
-    const can = C.canOptimize(f, { kind, ...ctx });
-    let r = { code: 1 }; let textures = false;
-    if (can.textures && T.textures !== false) { r = await run(T.bin, C.gltfpackArgs(f.path, tmp, { textures: true })); textures = r.code === 0; if (r.code !== 0 && /BasisU|texture compression/i.test(r.out)) T.textures = false; }
-    if (r.code !== 0) r = await run(T.bin, C.gltfpackArgs(f.path, tmp, { textures: false }));
-    if (r.code !== 0 || !fs.existsSync(tmp)) { failed.push({ path: f.path, error: String(r.out || '').trim().split('\n').pop().slice(0, 200) }); try { fs.rmSync(tmp, { force: true }); } catch { /* none */ } continue; }
-    const bytes = fs.statSync(tmp).size;
-    // bigger than the original (already compressed): not kept, the original stays in use
-    if (bytes >= (f.size || Infinity)) { fs.rmSync(tmp, { force: true }); skipped.push({ path: f.path, why: 'already as small as it gets' }); continue; }
-    fs.renameSync(tmp, out);
-    I.entries[key] = { src: f.path, hash: f.hash, out, bytes, srcBytes: f.size || 0, at: Date.now(), used: Date.now(), tool: `gltfpack ${T.version}`, textures };
-    made.push({ path: f.path, out, bytes, srcBytes: f.size || 0, textures });
-    saveIndex();
-  }
-  progress({ done: todo.length, total: todo.length });
-  const keep = Object.keys(C.rewriteMap(I, files, {}, process.platform)).length ? (await plan(files)).fresh.map((e) => e.key) : [];
-  const capped = await drop(C.over(I, { keep }));
-  return { ok: true, made, skipped, failed, stale, capped, textures: T.textures !== false, tool: T, ...(await plan(files)) };
+  let pictures = null;
+  try {
+    if (texOk && pics.length) pictures = await tex().pictures(pics, { caps, progress: (p) => progress({ ...p, stage: 'textures' }) });
+    const p0 = await plan(files);
+    // a copy made before gltfpack was here (pictures only) is made again with lighter meshes
+    const redo = T.found ? p0.fresh.filter((e) => e.mesh === false) : [];
+    const stale = await drop([...p0.stale, ...redo]); // made from an older version of the same file: to the Trash
+    const p1 = redo.length ? await plan(files) : p0;
+    const made = []; const skipped = []; const failed = [];
+    const todo = p1.missing.filter((f) => { const ok = C.canOptimize(f, { kind, ...ctx }); if (!ok.ok) skipped.push({ path: f.path, why: ok.why }); return ok.ok; });
+    fs.mkdirSync(path.join(cacheDir(), 'files'), { recursive: true });
+    const rm = (p) => { try { fs.rmSync(p, { force: true }); } catch { /* none */ } };
+    for (const [i, f] of todo.entries()) {
+      progress({ done: i, total: todo.length, path: f.path });
+      const key = C.entryKey(f);
+      const out = path.join(cacheDir(), 'files', `${key}.glb`);
+      const tmp = `${out}.part.glb`; const tmp2 = `${out}.part2.glb`;
+      if (!T.found && !wantTex(f)) { skipped.push({ path: f.path, why: 'lighter meshes need gltfpack' }); continue; }
+      let src = f.path; let mesh = false;
+      if (T.found) {
+        // meshopt, the exact same vertices; the model's pictures are compressed by Hearth's encoder below (each checked)
+        const r = await run(T.bin, C.gltfpackArgs(f.path, tmp, { textures: false }));
+        if (r.code !== 0 || !fs.existsSync(tmp)) { failed.push({ path: f.path, error: String(r.out || '').trim().split('\n').pop().slice(0, 200) }); rm(tmp); continue; }
+        src = tmp; mesh = true;
+      }
+      let tx = null;
+      if (wantTex(f)) { try { tx = await tex().glb(src, tmp2, { caps }); } catch (err) { tx = { replaced: 0, error: err.message }; } if (tx.replaced) { if (src === tmp) rm(tmp); src = tmp2; } }
+      if (src === f.path) { skipped.push({ path: f.path, why: tx?.items?.some((x) => x.kept) ? 'its pictures looked different compressed: kept as they are' : 'nothing to make lighter' }); continue; }
+      const bytes = fs.statSync(src).size;
+      const lighter = tx?.report && tx.report.after < tx.report.before;
+      // bigger than the original (already compressed) with no video memory saved: not kept, the original stays in use
+      if (bytes >= (f.size || Infinity) && !lighter) { rm(src); skipped.push({ path: f.path, why: 'already as small as it gets' }); continue; }
+      fs.renameSync(src, out); rm(tmp); rm(tmp2);
+      const texInfo = tx?.report ? { before: tx.report.before, after: tx.report.after, n: tx.report.n, kept: tx.report.kept, items: (tx.items || []).slice(0, 40) } : null;
+      I.entries[key] = { src: f.path, hash: f.hash, out, bytes, srcBytes: f.size || 0, at: Date.now(), used: Date.now(), tool: T.found ? `gltfpack ${T.version}` : 'hearth', mesh, textures: Boolean(tx?.replaced), tex: texInfo };
+      made.push({ path: f.path, out, bytes, srcBytes: f.size || 0, mesh, textures: Boolean(tx?.replaced), tex: texInfo });
+      saveIndex();
+    }
+    progress({ done: todo.length, total: todo.length });
+    const keep = Object.keys(C.rewriteMap(I, files, {}, process.platform)).length ? (await plan(files)).fresh.map((e) => e.key) : [];
+    const capped = await drop(C.over(I, { keep }));
+    const tp = texplan({ files, pics, caps });
+    return { ok: true, made, skipped, failed, stale, capped, textures: texOk, tool: T, meshTool: T.found, ...(T.found ? {} : { meshPlan: T.plan }), pictures: pictures && { made: pictures.made, kept: pictures.kept, keptNow: pictures.keptNow }, tex: tp.report, texKept: tp.kept, ...(await plan(files)) };
+  } finally { texMod?.stopPool(); }
+}
+// (round 53, gametex) what ▶ Play loads compressed: the pictures' copies (gametexmain) and the models whose copy has KTX2
+// pictures, and the video memory they save on this graphics card
+function texplan({ files = [], pics = [], caps = {} } = {}) {
+  const t = pics.length ? tex().plan(pics, caps) : { map: {}, report: null, kept: [], fresh: 0, missing: 0 };
+  const glbs = caps.any ? C.check(readIndex(), files, {}, process.platform).fresh.filter((e) => e.tex).map((e) => ({ before: e.tex.before, after: e.tex.after })) : [];
+  const R = require('./tools/gametex-core').report([...(t.report ? [{ before: t.report.before, after: t.report.after }] : []), ...glbs]);
+  return { ...t, report: R && { ...R, kept: t.report?.kept || 0 }, models: glbs.length };
 }
 
 // ---------- ▶ Play's window (gamemodemain.js serves it; GameReady arms it for one game) ----------
@@ -160,9 +195,16 @@ function swapFor(file) {
   return swap && fs.existsSync(swap) ? swap : null;
 }
 function noteServed(rel, swapped) { if (!armed) return; armed.served.push({ rel, swapped: Boolean(swapped) }); if (armed.served.length > 2000) armed.served.shift(); }
+// (round 53, gametex) a Lab scene's picture → its compressed (KTX2) copy for ▶ Play's page, when armed with one
+function texFor(file) {
+  if (!armed?.tex) return null;
+  const t = armed.tex[C.norm(file, process.platform)];
+  return t?.out && fs.existsSync(t.out) ? t : null;
+}
+const vendorKtx = (threeDir, version) => tex().vendor(threeDir, version);
 function pageTag() {
   if (!armed) return '';
-  const q = new URLSearchParams({ t: String(armed.title || '').slice(0, 60), k: armed.kind === 'lab' ? 'lab' : 'html', ...(armed.noPrep ? { np: '1' } : {}), ...(armed.opt ? { opt: String(armed.opt) } : {}) });
+  const q = new URLSearchParams({ t: String(armed.title || '').slice(0, 60), k: armed.kind === 'lab' ? 'lab' : 'html', ...(armed.noPrep ? { np: '1' } : {}), ...(armed.opt ? { opt: String(armed.opt) } : {}), ...(armed.tx ? { tx: armed.tx } : {}) });
   return `<script src="/${PAGE}?${q}"></script>`;
 }
 // the script itself (asked for by the tag above, on the game's own address: nothing of the game is changed on disk)
@@ -187,10 +229,11 @@ function register(ipcMain, o = {}) {
     if (files) { I.scans[k] = { files: files.slice(0, 2000), decoders: decoders || [], at: Date.now() }; const ks = Object.keys(I.scans); if (ks.length > 50) delete I.scans[ks[0]]; saveIndex(); }
     return I.scans[k] || null;
   });
-  ipcMain.handle('gameready:arm', async (_e, o) => { armed = o ? { kind: o.kind === 'html' ? 'html' : 'lab', title: String(o.title || ''), map: o.map || {}, noPrep: Boolean(o.noPrep), opt: Number(o.opt) || 0, served: [] } : null; return Boolean(armed); });
+  ipcMain.handle('gameready:arm', async (_e, o) => { armed = o ? { kind: o.kind === 'html' ? 'html' : 'lab', title: String(o.title || ''), map: o.map || {}, tex: o.tex || {}, tx: String(o.tx || '').slice(0, 120), noPrep: Boolean(o.noPrep), opt: Number(o.opt) || 0, served: [] } : null; return Boolean(armed); });
+  ipcMain.handle('gameready:texplan', async (_e, args) => texplan(args || {}));
   ipcMain.handle('gameready:served', async () => armed?.served || []);
 }
 
 // (round 53, diskcalm) Free up moved the cache to the Trash: the index is read again (missing → a new cache)
 const forget = () => { index = null; indexBad = false; memo.clear(); return true; };
-module.exports = { register, swapFor, pageTag, isPage, pageFile, noteServed, forget, armed: () => armed, _test: { plan, optimize, readIndex, hashFile, findTool, setDir: (d) => { dataDir = d; index = null; indexBad = false; } } };
+module.exports = { register, swapFor, texFor, vendorKtx, pageTag, isPage, pageFile, noteServed, forget, armed: () => armed, _test: { plan, optimize, texplan, readIndex, hashFile, findTool, setDir: (d) => { dataDir = d; index = null; indexBad = false; texMod = null; }, setApp: (d) => { appDir = d; } } };
