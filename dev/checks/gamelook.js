@@ -1,0 +1,204 @@
+// ▶ Play's look (round 54, gamelook): a game at its best on this screen, never overriding what it chose, no cost to
+// smoothness. A throwaway HTML game (written next to the ▶ Play fixture: /tmp/hearth-gamemode/html/gamelook.html, three.js
+// in its lib/) played three times through GameMode.play, then a throwaway Lab scene:
+//   off       round 53's ▶ Play (no look): the baseline picture and frame time
+//   best      the default: the same measurements; textures the game made late at the best anisotropy, a picture the
+//             game left with no colour space shown in its real colours, the shadow map matched to the screen (closer to
+//             a 4096² reference), the game's own choices kept (a 1024 spot shadow, a linear picture, anisotropy 4),
+//             frame time not worse, the look's own CPU cost, the F chip's line, the guard's decision
+//   balanced  sharp textures only: colours and shadows as the game sets them
+//   lab       a Lab scene played as a page: the look sees its renderer (one canvas), shadows / colours / textures
+//   ui        ▶ Play's right-click: one "Graphics" choice (Best / Balanced); /game look
+//   files     the game's file byte for byte the same
+// (a 960×600 screen: the software GPU here draws the full-screen game at a few frames a second at 1600×1000)
+//   node dev/smoke.js --check-timeout 900000 --screen 960x600 --script dev/checks/gamelook.js
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(150); } return false; };
+const out = { steps: [], measure: {} };
+const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
+const safe = async (name, fn) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after 4 min`)), 240000))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
+const DIR = '/tmp/hearth-gamemode/html';
+const FILE = `${DIR}/gamelook.html`;
+const GW = () => window.hub.game;
+const ev = async (code) => { const r = await GW().eval(code); if (r?.error) throw new Error(r.error); return r?.value; };
+await until(() => window.hub && performance.getEntriesByName('hearth:ready').length);
+
+// ---------- the throwaway game ----------
+// far stripes on two long strips seen at a grazing angle (the left one there from the start, the right one made once
+// the game plays: a level streaming in, game.addLate()), a box casting a shadow from a sun whose map the game left at 512², a spot light
+// whose map the game set to 1024 itself, two red swatches (one picture with no colour space, one the game marked
+// linear) and a picture the game set to anisotropy 4. No tone mapping, three's default sRGB output.
+const GAME = `<!doctype html><html><head><meta charset="utf-8"><title>Look test (Hearth)</title>
+<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #000; } canvas { display: block; }</style>
+<script type="importmap">{ "imports": { "three": "./lib/three.module.js" } }</script></head><body>
+<script type="module">
+import * as THREE from 'three';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight); renderer.shadowMap.enabled = true;
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#203040');
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 300); camera.position.set(0, 2, 8); camera.lookAt(0, 1, 0);
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+const canvas = (n, draw) => { const c = document.createElement('canvas'); c.width = c.height = n; draw(c.getContext('2d'), n); return new THREE.CanvasTexture(c); };
+const stripes = () => { const t = canvas(512, (g, n) => { for (let i = 0; i < 16; i++) { g.fillStyle = i % 2 ? '#ffffff' : '#000000'; g.fillRect(i * n / 16, 0, n / 16, n); } }); t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 40); return t; };
+const solid = (css) => canvas(16, (g, n) => { g.fillStyle = css; g.fillRect(0, 0, n, n); });
+const strip = (t, x) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(3, 120), new THREE.MeshBasicMaterial({ map: t })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.01, -66); scene.add(m); return m; };
+const t1 = stripes(); strip(t1, -1.6);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(20, 12), new THREE.MeshStandardMaterial({ color: '#b0b0b0', roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const box = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshStandardMaterial({ color: '#8899aa' }));
+box.position.set(0.6, 0.75, 1); box.rotation.y = 0.5; box.castShadow = true; scene.add(box);
+const sun = new THREE.DirectionalLight('#ffffff', 2.5); sun.position.set(4, 8, 3); sun.castShadow = true; scene.add(sun, new THREE.AmbientLight('#ffffff', 0.5));
+const spot = new THREE.SpotLight('#ffffff', 4, 30, 0.5); spot.position.set(-6, 7, 4); spot.castShadow = true; spot.shadow.mapSize.set(1024, 1024); scene.add(spot);
+const sw = (t, x) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: t })); m.position.set(x, 2.7, 0); scene.add(m); return m; };
+const swatch = solid('#c83c28'); sw(swatch, -3.2);
+const swatchLin = solid('#c83c28'); swatchLin.colorSpace = THREE.LinearSRGBColorSpace; sw(swatchLin, -2.1);
+const aniso4 = stripes(); aniso4.anisotropy = 4; aniso4.colorSpace = THREE.SRGBColorSpace; sw(aniso4, 3.2);
+const G = window.game = { THREE, renderer, scene, camera, sun, spot, t1, t2: null, swatch, swatchLin, aniso4, cpu: [], frames: 0, late: false };
+G.addLate = () => { if (!G.late) { G.t2 = stripes(); strip(G.t2, 1.6); G.late = true; } return true; };
+renderer.setAnimationLoop(() => {
+  const a = performance.now(); renderer.render(scene, camera); G.cpu.push(performance.now() - a); if (G.cpu.length > 600) G.cpu.splice(0, 300); G.frames++;
+});
+</script></body></html>`;
+
+// the measurements, inside the game's page: one frame drawn and read back in the same task (no preserveDrawingBuffer)
+// shadowAt: the sun's map size for the picture (Best's screen-matched size, as on a machine where it fits)
+const MEASURE = (shadowAt) => `(async () => {
+  const G = window.game; const r = G.renderer; const gl = r.getContext(); const W = gl.drawingBufferWidth; const H = gl.drawingBufferHeight;
+  const read = () => { r.render(G.scene, G.camera); const px = new Uint8Array(W * H * 4); gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px); return px; };
+  const at = (x, y, z) => { const v = new G.THREE.Vector3(x, y, z).project(G.camera); return [Math.round((v.x + 1) / 2 * W), Math.round((v.y + 1) / 2 * H)]; };
+  const avg = (px, [cx, cy], rad) => { const s = [0, 0, 0]; let n = 0; for (let y = cy - rad; y <= cy + rad; y++) for (let x = cx - rad; x <= cx + rad; x++) { const i = (y * W + x) * 4; s[0] += px[i]; s[1] += px[i + 1]; s[2] += px[i + 2]; n++; } return s.map((v) => Math.round(v / n)); };
+  // the stripes' contrast across a strip, far away (z = -40): luminance spread of the middle 70 % of its width, ±2 rows
+  const contrast = (px, x0, x1) => { const [a, ya] = at(x0, 0, -40); const [b] = at(x1, 0, -40); const w = b - a; const l = []; for (let y = ya - 2; y <= ya + 2; y++) for (let x = Math.round(a + w * 0.15); x <= Math.round(b - w * 0.15); x++) { const i = (y * W + x) * 4; l.push(0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]); } const m = l.reduce((s, v) => s + v, 0) / l.length; return +Math.sqrt(l.reduce((s, v) => s + (v - m) * (v - m), 0) / l.length).toFixed(2); };
+  const sh = G.sun.shadow; const was = sh.mapSize.x;
+  const size = (s) => { sh.mapSize.set(s, s); if (sh.map) { sh.map.dispose(); sh.map = null; } };
+  const shown = ${Number(shadowAt) || 0} || was; if (shown !== was) size(shown);
+  const px = read();
+  const o = { W, H, shown, swatch: avg(px, at(-3.2, 2.7, 0), 4), swatchLin: avg(px, at(-2.1, 2.7, 0), 4), near: contrast(px, -3.0, -0.2), late: contrast(px, 0.2, 3.0),
+    tex: { t1: G.t1.anisotropy, t2: G.t2 && G.t2.anisotropy, aniso4: G.aniso4.anisotropy, swatch: G.swatch.colorSpace, swatchLin: G.swatchLin.colorSpace },
+    sun: was, spot: G.spot.shadow.mapSize.x, maxAniso: r.capabilities.getMaxAnisotropy() };
+  // the shadow against a 4096² reference of the same frame: mean difference over the ground near the box (0–255)
+  size(4096); const ref = read(); size(was); read();
+  const [xa, ya] = at(-4, 0, 4); const [xb, yb] = at(4, 0, -4);
+  let d = 0; let n = 0; let big = 0;
+  for (let y = Math.min(ya, yb); y <= Math.max(ya, yb); y += 1) for (let x = Math.min(xa, xb); x <= Math.max(xa, xb); x += 1) { const i = (y * W + x) * 4; const e = Math.abs(px[i] - ref[i]) + Math.abs(px[i + 1] - ref[i + 1]) + Math.abs(px[i + 2] - ref[i + 2]); d += e / 3; n++; if (e / 3 > 16) big++; }
+  o.shadowDiff = +(d / n).toFixed(3); o.shadowOff = +(100 * big / n).toFixed(3);
+  // frame time: three 2 s windows of the game's own frames (gaps between frames it drew; its render() call on the CPU);
+  // the calmest window counts (the software GPU here is shared with other work: a busy moment isn't the game's)
+  const q = (a, p) => { const s = a.slice().sort((x, y) => x - y); return s.length ? +s[Math.min(s.length - 1, Math.floor(s.length * p))].toFixed(2) : null; };
+  const win = async () => { const gaps = []; let last = 0; let f0 = G.frames; G.cpu.length = 0; await new Promise((res) => { const t0 = performance.now(); const f = (t) => { if (last && G.frames !== f0) gaps.push(t - last); f0 = G.frames; last = t; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); }); return { n: gaps.length, p50: q(gaps, 0.5), p95: q(gaps, 0.95), cpuP50: q(G.cpu, 0.5) }; };
+  const wins = []; for (let i = 0; i < 3; i++) wins.push(await win());
+  o.frame = { ...wins.slice().sort((x, y) => x.p50 - y.p50)[0], windows: wins.map((w) => w.p50) };
+  o.look = window.__gameLook ? window.__gameLook.report() : null;
+  o.text = window.__gameLook ? window.__gameLook.text() : null;
+  return JSON.stringify(o);
+})()`;
+
+await Lazy.load('gamemode');
+const src = { kind: 'html', path: FILE, title: 'Look test' };
+async function playOnce(look) {
+  store.set('gamemode.look', look);
+  await GameMode.play(src);
+  await until(async () => (await GW().state())?.playing, 60000);
+  await until(() => ev('Boolean(window.game && window.game.frames > 10 && (!window.__gameReady || JSON.parse(window.__gameReady.pub()).phase === "playing"))'), 120000);
+  await ev('window.game.addLate()'); await until(() => ev('window.game.frames'), 5000);
+  const settled = await ev('window.__gameLook ? window.__gameLook.settle().then((r) => JSON.stringify(r)) : "null"').catch(() => null);
+  await wait(600);
+  const st = settled ? JSON.parse(settled) : null;
+  const m = JSON.parse(await ev(MEASURE(st?.shadows?.to || 0)));
+  m.settled = st;
+  return m;
+}
+async function leaveGame() { await GameMode.leave(); await until(async () => !(await GW().state())?.playing, 10000); await wait(800); }
+
+let hashBefore = null;
+await safe('fixture', async () => {
+  await window.hub.fs.write(FILE, GAME);
+  hashBefore = await window.hub.gameReady.hash([FILE]);
+  step('fixture: a throwaway three.js game next to ▶ Play\'s test game (three.js in its lib/)', hashBefore?.[0]?.hash, hashBefore);
+});
+
+let off = null; let best = null; let bal = null;
+await safe('off', async () => {
+  off = await playOnce('off'); out.measure.off = off;
+  step('off: round 53\'s ▶ Play (no look in the page), the scene drawn and measured', !off.look && off.frame.n > 0 && off.near >= 0, { look: off.look, frame: off.frame });
+  await leaveGame();
+});
+await safe('best', async () => {
+  best = await playOnce('best'); out.measure.best = best;
+  const L = best.look || {};
+  step('best: the look saw the game\'s renderer and scene before its first frame (three.js r' + (L.three || '?') + ')', L.renderers >= 1 && L.cost?.sweeps >= 1, { renderers: L.renderers, three: L.three, cost: L.cost });
+  step('best: the texture the game made late gets the best anisotropy too (off: 1)', best.tex.t2 === best.maxAniso && best.maxAniso > 1 && off?.tex.t2 === 1, { best: best.tex, off: off?.tex, max: best.maxAniso, later: L.aniso?.later });
+  step('best: the late stripes are sharper far away (contrast across the strip higher than off)', off && best.late > off.late * 1.15, { off: off?.late, best: best.late, nearOff: off?.near, nearBest: best.near });
+  step('best: the picture the game left with no colour space is shown in its real colours (#c83c28 = 200, 60, 40)', best.tex.swatch === 'srgb' && best.swatch.every((v, i) => Math.abs(v - [200, 60, 40][i]) <= 4) && off && Math.abs(off.swatch[0] - 200) > 15, { best: best.swatch, off: off?.swatch });
+  step('best: the shadow map matched to the screen (512² → its size): the picture closer to a 4096² reference than off', best.shown > 512 && best.shown === L.shadows?.to && off && best.shadowDiff < off.shadowDiff * 0.8, { shown: best.shown, now: best.sun, screen: L.screen, diffOff: off?.shadowDiff, diffBest: best.shadowDiff, pxOffOff: off?.shadowOff, pxOffBest: best.shadowOff });
+  step('best: what the game chose itself is kept (its 1024 spot shadow, its linear picture, its anisotropy 4)', best.spot === 1024 && best.tex.swatchLin === 'srgb-linear' && best.tex.aniso4 === 4 && off && best.swatchLin.every((v, i) => Math.abs(v - off.swatchLin[i]) <= 2), { spot: best.spot, lin: best.tex.swatchLin, a4: best.tex.aniso4, swOff: off?.swatchLin, swBest: best.swatchLin });
+  const gs = L.guardMs?.steps || [];
+  step('best: the guard decided: frames fit with the bigger shadows, or they stepped down only while that helped (≥ 8 % a step)', L.guard === 'fits' || (L.guard === 'lowered' && L.shadows.now < L.shadows.to && best.sun === L.shadows.now) || (L.guard === 'not-shadows' && best.sun === L.shadows.to), { guard: L.guard, steps: gs, now: L.shadows?.now, sun: best.sun });
+  // smoothness: the game's frame time no worse than off (10 % or 2 ms of noise on a shared software GPU), the look's own work tiny
+  const worse = off ? best.frame.p50 - off.frame.p50 : null;
+  step('best: frame time not worse than off (the calmest 2 s window\'s median gap within 15 % / 2 ms: a shared software GPU)', off && worse <= Math.max(2, off.frame.p50 * 0.15), { off: off?.frame, best: best.frame });
+  step('best: the look\'s own CPU work is small (a look at the scene ≈ 0.1 ms on average, the first with the shadow maps made again under 5 ms)', L.cost && L.cost.ms / L.cost.sweeps < 0.5 && L.cost.max < 5, { ...L.cost, avg: L.cost && +(L.cost.ms / L.cost.sweeps).toFixed(3) });
+  step('best: its line in plain words (the F chip\'s second line, the doctor)', /^Best look: textures \d+× sharp \(\d+\) · true colour on \d+ pictures? · (shadows 512 → \d+|shadows as the game sets them \(bigger ones cost smoothness here\))/.test(best.text || ''), best.text);
+  // the F chip shows it
+  await GW().key({ key: 'f' }).catch(() => {});
+  const chip = await until(() => ev('(() => { const r = document.querySelector("hearth-game-ui")?.shadowRoot; const l = r?.querySelector(".look"); return l && !l.hidden ? l.textContent : null; })()'), 4000);
+  step('best: F shows the look under the stats chip', /^Best look:/.test(chip || ''), chip);
+  await GW().key({ key: 'f' }).catch(() => {});
+  out.measure.chip = chip;
+  await leaveGame();
+});
+await safe('balanced', async () => {
+  bal = await playOnce('balanced'); out.measure.balanced = { tex: bal.tex, sun: bal.sun, swatch: bal.swatch, late: bal.late, frame: bal.frame, text: bal.text, look: bal.look && { guard: bal.look.guard, aniso: bal.look.aniso, colour: bal.look.colour, shadows: bal.look.shadows } };
+  step('balanced: sharp textures (the late one too), colours and shadows as the game sets them', bal.tex.t2 === bal.maxAniso && bal.tex.swatch === '' && bal.sun === 512 && bal.look?.colour === 0 && bal.look?.shadows?.set === 0, { tex: bal.tex, sun: bal.sun, look: bal.look && bal.look.shadows });
+  step('balanced: its line says so', /^Balanced look: .*shadows and colours as the game sets them/.test(bal.text || ''), bal.text);
+  await leaveGame();
+});
+
+// ---------- a Lab scene played as a page ----------
+const LAB = `import * as THREE from 'three';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight); renderer.shadowMap.enabled = true;
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#1a2230');
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200); camera.position.set(0, 3, 7); camera.lookAt(0, 0.5, 0);
+const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#e0d0b0' : '#604830'; g.fillRect(i * 32, 0, 32, 256); }
+const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(6, 6);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ map: tex })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: '#ff8a3d' })); box.position.y = 0.5; box.castShadow = true; scene.add(box);
+const sun = new THREE.DirectionalLight('#ffffff', 2.5); sun.position.set(3, 6, 2); sun.castShadow = true; scene.add(sun, new THREE.AmbientLight('#ffffff', 0.4));
+renderer.setAnimationLoop((t) => { box.rotation.y = t / 1000; renderer.render(scene, camera); });`;
+const SCENE = 'gamelook1';
+await safe('lab', async () => {
+  const sk = ((await window.hub.kvGet('three-sketches', [])) || []).filter((x) => x.id !== SCENE);
+  sk.push({ id: SCENE, name: 'Look scene', layers: [{ id: 'game', name: 'Game', code: LAB }], createdAt: Date.now(), updatedAt: Date.now() });
+  await window.hub.kvSet('three-sketches', sk);
+  store.set('gamemode.look', 'best');
+  await GameMode.play({ kind: 'lab', id: SCENE, title: 'Look scene' });
+  await until(async () => (await GW().state())?.playing, 60000);
+  const r = await until(async () => { const v = await ev('window.__gameLook ? window.__gameLook.settle().then((r) => JSON.stringify(r)) : null'); const o = v && JSON.parse(v); return o && o.cost.sweeps > 0 && o.shadows.lights > 0 ? o : null; }, 120000);
+  const text = await ev('window.__gameLook ? window.__gameLook.text() : ""').catch(() => '');
+  out.measure.lab = { look: r, text };
+  step('lab: a Lab scene\'s page gets the look too (its renderer seen, the ground picture in real colour, sharp, the shadow matched)', r && r.renderers >= 1 && r.colour >= 1 && r.aniso.sharp >= 1 && r.shadows.set === 1 && r.shadows.now > 512, { r: r && { renderers: r.renderers, colour: r.colour, aniso: r.aniso, shadows: r.shadows, guard: r.guard, cost: r.cost }, text });
+  await leaveGame();
+});
+
+await safe('ui', async () => {
+  store.set('gamemode.look', 'best');
+  const items = await GameMode.menuItems();
+  const g = items.find((x) => x && /^Graphics: /.test(x.label || ''));
+  const sub = g ? (typeof g.items === 'function' ? g.items() : g.items) : [];
+  step('ui: ▶ Play\'s right-click has one "Graphics" choice: Best (checked by default) / Balanced', g?.label === 'Graphics: Best' && sub.length === 2 && sub[0].label === 'Best' && sub[0].checked && sub[1].label === 'Balanced' && !sub[1].checked, { label: g?.label, sub: sub.map((x) => [x.label, x.checked]) });
+  const said = await Commands.tryRun('/game look balanced', H.claudeAgent().id).catch((e) => String(e));
+  const now = store.get('gamemode.look');
+  await Commands.tryRun('/game look best', H.claudeAgent().id).catch(() => {});
+  step('ui: /game look balanced | best switches it', now === 'balanced' && store.get('gamemode.look') === 'best', { now, said: typeof said === 'string' ? said : null });
+});
+
+await safe('files', async () => {
+  const after = await window.hub.gameReady.hash([FILE]);
+  step('files: the game\'s file byte for byte the same after three plays', hashBefore && after?.[0]?.hash === hashBefore[0].hash, after);
+});
+store.set('gamemode.look', 'best');
+const bad = out.steps.filter((s) => !s.ok);
+return JSON.stringify({ pass: bad.length === 0, failed: bad.map((s) => s.name), steps: out.steps, measure: out.measure }, null, 1);

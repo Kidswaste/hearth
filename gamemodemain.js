@@ -68,6 +68,9 @@ function gameSession() {
   // nothing leaves this computer from a game: only downloads (GET) of its own libraries / files
   ses.webRequest.onBeforeRequest((d, cb) => cb({ cancel: /^https?:/i.test(d.url) && !['GET', 'HEAD', 'OPTIONS'].includes(d.method) }));
   ses.on('will-download', (e) => e.preventDefault());
+  // (round 54, gamelook) the game's look: a second preload of this session puts gameLookPage() in the game's world
+  // before its scripts (sharp textures, true colours, shadows matched to the screen; never what the game set itself)
+  try { const f = path.join(__dirname, 'gamelook-preload.js'); if (ses.registerPreloadScript) ses.registerPreloadScript({ type: 'frame', id: 'hearth-gamelook', filePath: f }); else ses.setPreloads?.([...(ses.getPreloads?.() || []), f]); } catch (err) { console.warn('gamelook:', err.message); }
   return ses;
 }
 
@@ -212,7 +215,7 @@ async function play(_e, req = {}) {
   const { BrowserWindow } = require('electron');
   const list = displays();
   const d = C.pickDisplay(list, req.display ?? null);
-  const fid = C.fidelity(d);
+  const fid = C.fidelity(d, req.look); // (round 54, gamelook) look: 'best' (the default) | 'balanced'
   const token = crypto.randomBytes(12).toString('hex');
   let root; let entry; let route = 'html'; let how = 'HTML build'; let notes = [];
   if (source.kind === 'lab') {
@@ -236,7 +239,7 @@ async function play(_e, req = {}) {
   const win = new BrowserWindow({
     x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, show: false, frame: false, backgroundColor: '#000000',
     title: source.title, autoHideMenuBar: true, fullscreenable: true, fullscreen: !mac, thickFrame: false, roundedCorners: false,
-    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency) }))}`] },
+    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look }))}`] },
   });
   if (!mac) win.setMenu(null);
   const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}` };

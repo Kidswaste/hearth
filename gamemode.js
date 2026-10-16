@@ -86,7 +86,7 @@ const GameMode = (() => {
       hold(true);
       let info;
       if (r?.route === 'live') info = await playLive(s, r, opts);
-      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs() });
+      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs(), look: lookPref() });
       now = { source: s, info, live: r?.route === 'live', at: Date.now(), plan };
       const own = plan ? Object.entries(plan.why).filter(([, w]) => w !== 'hidden') : [];
       if (own.length) {
@@ -171,9 +171,21 @@ const GameMode = (() => {
       const pick = C.pickDisplay(ds, want);
       items.push('-', { label: 'Play on', items: () => ds.map((d) => ({ label: `${d.label} · ${d.w}×${d.h} · ${C.hzLabel(d.hz)}`, checked: d.id === pick?.id, action: () => store.set('gamemode.display', d.id) })) });
     }
+    items.push({ label: `Graphics: ${LOOK[lookPref()] || 'Best'}`, items: () => [
+      { label: 'Best', hint: 'sharp textures, true colours, shadows matched to the screen', checked: lookPref() === 'best', action: () => toast(setLook('best'), { timeout: 2500 }) },
+      { label: 'Balanced', hint: 'sharp textures; the rest as the game sets it', checked: lookPref() === 'balanced', action: () => toast(setLook('balanced'), { timeout: 2500 }) },
+    ] });
     return [...(Loop()?.menuItems?.(ds) || []), ...items]; // (round 53, playloop: Back to the game, Play from here, Side by side)
   }
   async function menu(x, y) { showMenu(x, y, await menuItems()); }
+  // (round 54, gamelook) one choice: Best (the default: sharp textures, true colours, shadows matched to the screen,
+  // stepped down by itself if they'd cost smoothness) or Balanced (sharp textures; the rest as the game sets it)
+  const LOOK = { best: 'Best', balanced: 'Balanced' };
+  const lookPref = () => C.look(store.get('gamemode.look', 'best'));
+  function setLook(v) {
+    store.set('gamemode.look', C.look(v));
+    return `Graphics: ${LOOK[lookPref()] || lookPref()} from the next game${now ? ' (▶ Play again to see it now)' : ''}.`;
+  }
 
   // ---------- commands ----------
   // /play shares its name: plain /play still plays the Lab's song (and the board's clips); /play <a game> plays it
@@ -190,15 +202,22 @@ const GameMode = (() => {
     },
   });
   Commands.register({
-    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
-    examples: ['/game', '/game stop', '/game screens', '/game input'], keywords: 'play clink game mode raw mouse input latency',
-    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off'].map((v) => ({ value: v })),
+    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off | look best|balanced]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
+    examples: ['/game', '/game stop', '/game screens', '/game input', '/game look balanced'], keywords: 'play clink game mode raw mouse input latency',
+    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced'].map((v) => ({ value: v })),
     run: async (args) => {
       const a = String(args || '').trim();
       if (/^(stop|leave|quit|off)$/i.test(a)) { if (!now) return 'No game is playing.'; leave(); return null; }
       // (round 53, gameinput) the game window's input
       const m = a.match(/^low-?latency\s+(on|off)$/i);
       if (m) { const on = /on/i.test(m[1]); store.set('gamemode.lowLatency', on); return on ? 'Low-latency canvas on from the next game (a frame sooner on screen where the system supports it; it can tear: /game lowlatency off).' : 'Low-latency canvas off (the default).'; }
+      // (round 54, gamelook) the look: /game look → what it is and what the game playing got; /game look best|balanced
+      const lk = a.match(/^(?:look|graphics)(?:\s+(best|balanced))?$/i);
+      if (lk) {
+        if (lk[1]) return setLook(lk[1].toLowerCase());
+        const t = now && !now.live ? (await window.hub.game.eval('window.__gameLook ? window.__gameLook.text() : ""').catch(() => null))?.value : '';
+        return `Graphics: ${LOOK[lookPref()]} (/game look best | balanced)${t ? `\nNow: ${t}` : ''}`;
+      }
       if (/^input$/i.test(a)) {
         const p = inputPrefs(); const i = now && !now.live ? (await window.hub.game.state().catch(() => null))?.input : null;
         return [`Raw mouse: asked when the game captures it · low-latency canvas: ${p.lowLatency ? 'on' : 'off'} · keys held for the game: ${i?.keys?.held || (/Mac/i.test(navigator.platform) ? 'every ⌘ shortcut' : 'Alt+Space')}`, i?.focus ? `Focus on open: ${i.focus.ok ? 'yes' : 'not confirmed'} (${i.focus.ms} ms)` : ''].filter(Boolean).join('\n');
