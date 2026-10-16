@@ -14,6 +14,13 @@
 - Max fidelity: your screen's resolution, smooth edges (MSAA), the fast graphics card, no frame cap, pointer lock on click. Hearth's background work waits while you play.
 - Esc → Back to Hearth. F shows a small stats chip.
 
+## ⏳ Play gets your game ready first
+- Press ▶ Play and a short "Getting Clink ready…" card counts up — loading, textures, effects, warming up — while the game draws behind it. When it fades, nothing stutters the first time it appears: in our test, 0 effects prepared and 0 textures uploaded in the first 5 s of play (it was 16–28 and up to 7).
+- It holds 100 % quality while you play, and tells you what it found ("1 texture is 4K — it costs 43 MB of video memory").
+- **Optimize for play** (on the card) makes compressed copies of your 3D models in Hearth's own folder for the next Play — your files are never changed. If the compressor isn't installed, it shows the command and installs only when you click.
+- The second launch gets ready sooner: compiled effects are kept.
+- Fixed: 3D models in a Lab scene now load in the ▶ Play window.
+
 ## 📈 Why did it stutter?
 - In a game window, **F** shows fps, frame time and a 2-second graph; every slow frame says why (memory clean-up, an effect being prepared, a big texture, slow game code, or the graphics card).
 - The **performance doctor** lists fixes in plain words, biggest first. On a Lab scene the safe ones are one click with Undo; for an HTML build you get the change to copy. Nothing changes without your click.
