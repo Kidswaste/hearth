@@ -102,7 +102,9 @@ character and the left Ctrl+Alt runs the shortcut. The owner's likely ones:
   Ctrl / Alt left, the left Ctrl+Alt on AZERTY's M → KeyM, Ctrl on AZERTY's A → KeyA.
 - Also: unit:winmac-test, unit:winpolish-test, unit:macpolish-test, unit:platform46-test, unit:nativefeel-test,
   unit:bigscreen-test, unit:voice-test, unit:labkeys-test, unit:labdirect-test, unit:boot-test (first screen 72 scripts,
-  29 sheets), and the smoke checks nativefeel, qa-keys, qa-mac, bigscreen, labdirect, labkeys, lazy (see the report).
+  29 sheets), and the smoke checks qa-keys, labdirect, labkeys, lazy (pass); nativefeel and bigscreen failed once on
+  the loaded machine (the Lab preview's scale / step-down timing) and passed alone; qa-mac's expectations moved to
+  Apple's modifier order (⇧⌘S, ⌥⌘R) and it passes.
 - Not testable here: a real Mac and a real Windows PC with AZERTY / QWERTZ (Chromium's exact AltGr events, the layout
   map). Each part falls back to what was there: no right Alt seen → the key is a shortcut as before; no layout map →
   the typed letter, else the key's place.
