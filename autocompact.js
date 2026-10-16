@@ -294,7 +294,7 @@ ${transcript(parts)}
       await saveConfig();
       repaint?.();
     });
-    return el('div', { class: 'opt-row', title: 'When a chat gets long enough that a summary would clearly cost less than re-reading everything, one line under the reply offers to continue lighter. Nothing happens unless you click.' },
+    return el('div', { class: 'opt-row', title: 'When a chat gets long enough that a summary would clearly cost less than re-reading everything, one line under the reply offers to continue lighter. Nothing happens unless you click. (Round 50) After a break past the prompt cache\'s life, a long chat also goes on with a lighter history (tool results and pictures not sent again); Off keeps the whole history.' },
       el('span', { class: 'opt-label', text: 'Offer to continue lighter' }), pick);
   }
 

@@ -76,7 +76,7 @@ check(C.ttlOf('claude', {}).ms === 60 * MIN && !C.ttlOf('claude', {}).known, 'un
 check(C.warmth('claude', 4 * MIN, C.ttlOf('claude', { ttl: '5m' })) === 1 && C.warmth('claude', 7 * MIN, C.ttlOf('claude', { ttl: '5m' })) === 0, '5-minute cache: warm at 4 min, gone at 7');
 check(C.warmth('claude', 50 * MIN, C.ttlOf('claude', { ttl: '1h' })) === 1 && C.warmth('claude', 2 * 60 * MIN, C.ttlOf('claude', {})) === 0, '1-hour cache: warm at 50 min, gone at 2 h');
 check(C.warmth('codex', 3 * MIN) === 1 && C.warmth('codex', 8 * MIN) > 0.5 && C.warmth('codex', 20 * MIN) < 0.5 && C.warmth('codex', 2 * 60 * MIN) === 0, 'Codex: warm, likely, unlikely, gone');
-check(C.expiresAfter('codex') === 10 * MIN && C.expiresAfter('claude', { ttl: '5m' }) === 5 * MIN, 'when a send preview counts the cache as gone');
+check(C.expiresAfter('codex') === 10 * MIN && C.expiresAfter('claude', { ttl: '5m' }) === 5 * MIN && C.expiresAfter('claude', { ttl: '1h' }) === 60 * MIN && C.expiresAfter('claude', {}) === undefined, 'when a send preview counts the cache as gone (unknown: its own 5 minutes)');
 check(C.ctxOf({ usage: { input: 50000, contextInput: 12000 } }) === 12000, 'Codex reports the last call\'s context');
 check(C.ctxOf({ usage: { input: 50000 }, tools: ['a', 'b', 'c', 'd'] }) === 11500, 'Claude: the sum over its steps, divided (× 1.15 for growth)');
 check(C.ctxOf({ usage: { input: 9000 } }) === 9000, 'one step: its input');
@@ -90,7 +90,7 @@ const warmTask = C.decide({ ...base, gap: 2 * MIN, tools: true });
 check(!warmTask.rebase && /mid-task/.test(warmTask.why), 'warm cache, mid-task: resume (never break it)', warmTask);
 check(!C.decide({ ...base, gap: 2 * MIN, tools: false, ctx: 30000, lean: 12000, fixed: 300, steps: 1 }).rebase, 'warm cache, a small gain: resume');
 const warmBig = C.decide({ ...base, gap: 2 * MIN, tools: false, ctx: 150000, lean: 8000, fixed: 300, steps: 1 });
-check(warmBig.rebase && warmBig.gain >= 3 * warmBig.extra, 'warm cache but a huge history and no task under way: only for a ≥ 3× gain', warmBig);
+check(!warmBig.rebase && warmBig.gain > 0, 'warm cache, even a huge history with no task under way: resume (never broken by itself)', warmBig);
 check(!C.decide({ ...base, gap: 3 * 60 * MIN, ctx: 15000 }).rebase, 'a small chat never restarts');
 check(!C.decide({ ...base, gap: 3 * 60 * MIN, ctx: 30000, lean: 25000 }).rebase, 'an already lean history: resume');
 check(!C.decide({ ...base, gap: 3 * 60 * MIN, off: true }).rebase, 'off: resume');

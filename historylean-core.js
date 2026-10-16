@@ -10,7 +10,7 @@
 // lighter history it builds from the chat itself: every word the owner wrote and the AI answered, but tool results
 // and pictures as one-line stubs, earlier code versions as stubs, older long answers shortened. No cache is broken
 // (it was gone), nothing in the chat changes, and the AI can fetch any earlier message word for word (chat_do earlier).
-// A warm cache is only broken when the numbers say so by a wide margin (never mid-task).
+// A warm cache is never broken by itself (only `/history-lean now` asks for it).
 // Node-testable: dev/historylean-test.js (the builder, the decision, a simulator for 40 / 100 / 300 exchanges).
 const HistoryLeanCore = (() => {
   const KEEP = 2; // the last exchanges go word for word (what the owner just talked about)
@@ -55,7 +55,7 @@ const HistoryLeanCore = (() => {
     return t && TTL[t] ? { ms: TTL[t], known: true } : { ms: 60 * MIN, known: false };
   }
   // when a send preview should count the cache as gone (Codex: past its usual 10 minutes)
-  const expiresAfter = (engine, usage) => (engine === 'codex' ? 10 * MIN : ttlOf(engine, usage).ms);
+  const expiresAfter = (engine, usage) => (engine === 'codex' ? 10 * MIN : ttlOf(engine, usage).known ? ttlOf(engine, usage).ms : undefined); // unknown: the preview's own 5 minutes (a warning errs early)
   // the chance the cache is still warm `gap` ms after the last reply
   function warmth(engine, gap, ttl = ttlOf(engine)) {
     if (!Number.isFinite(gap)) return 0;
@@ -207,12 +207,9 @@ const HistoryLeanCore = (() => {
     const extra = Math.round(Math.max(0, nowLean - nowCont));
     Object.assign(out, { warm, gain, extra });
     if (i.force) return { ...out, rebase: true, why: 'asked' };
-    if (warm >= 0.5) {
-      // a warm cache is broken only for a big, sure gain, and never mid-task (its tool results would be gone)
-      if (i.tools) return { ...out, why: 'the cache is warm and it is mid-task' };
-      if (gain < 3 * Math.max(extra, 1)) return { ...out, why: 'the cache is warm: not worth breaking' };
-      return { ...out, rebase: true, why: 'a big history, even with the cache warm' };
-    }
+    // a warm cache is never broken by itself: the gain depends on how many messages follow (a guess), while the tool
+    // results it would drop are often what the AI needs right now; Continue lighter stays the offer for that case
+    if (warm >= 0.5) return { ...out, why: i.tools ? 'the cache is warm and it is mid-task' : 'the cache is warm' };
     if (gain <= 0) return { ...out, why: 'no gain' };
     return { ...out, rebase: true, why: warm > 0 ? 'the cache has most likely expired' : 'the cache has expired' };
   }
