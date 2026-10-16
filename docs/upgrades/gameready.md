@@ -92,20 +92,21 @@ pickup after 2 s.
 
 | ▶ Play, first 5 s of play | Before (no getting ready) | After (GameReady in the window) |
 |---|---|---|
-| Lab scene: shaders compiled / programs linked | **28 / 14** | **0 / 0** |
-| Lab scene: textures uploaded for the first time | **7** | **0** |
+| Lab scene: shaders compiled / programs linked | **16–28 / 8–14** | **0 / 0** |
+| Lab scene: textures uploaded for the first time | **2–7** | **0** |
 | HTML build: shaders / programs / first uploads | **6 / 3 / 5** | **0 / 0 / 0** |
 | Lab scene on the optimized ship | — | 0 / 0 / 0 |
 
-- **The card comes first.** It is in the window at 67–125 ms of the page's life; the scene's first frame comes at
-  0.6–1.7 s, behind the card. For the HTML build: card at 73–115 ms, first frame at 0.96–1.4 s.
-- **Getting ready, inside the window:** Lab scene 7–12 s (assets 0.1–2.6 s, shaders 1.1–1.8 s, warm frames
-  1.5–3 s); 17 s with the optimized model (its warm passes run until quiet). HTML build ≈ 1.5–2 s.
+- **The card comes first.** It is in the window at 67–135 ms of the page's life; the scene's first frame comes at
+  0.6–2.1 s, behind the card. For the HTML build: card at 58–161 ms, first frame at 0.96–1.4 s.
+- **Getting ready, inside the window:** Lab scene 7–12 s (assets 0.1–3 s, shaders 1.1–1.8 s, warm frames
+  1.5–6 s; up to 17 s once, when the warm passes ran until quiet). HTML build ≈ 1.5–2 s.
 - **Found:** "1 texture is 4K — it costs 43 MB of video memory", "3 textures in all: 49 MB of video memory", "27 shaders
   compiled ahead". All 3 textures are at the GPU's best anisotropy (16 here).
 - **Second launch** (the same profile; a scene played before the Lab opens, so nothing compiled it in that run yet):
-  the window's first frame plus its compile-ahead step went **2,394 → 1,735 ms (28 % less)**. The first frame went
-  636 → 597 ms and the effects step 1,758 → 1,138 ms. The wall time to "ready" swings with the machine's load and is
+  the window's first frame plus its compile-ahead step went **2,394 → 1,735 ms (28 % less)** in one run and
+  **1,787 → 1,088 ms (39 % less)** in the final run. The first frame went 633 → 538 ms and the effects step
+  1,154 → 550 ms. The wall time to "ready" swings with the machine's load and is
   reported, not judged. A raw probe of 40 heavy programs went 74 → 18 ms in a Lab page.
 - **Optimize for play:** the ship went 112,796 → **39,892 bytes** (meshopt). The window's page had the copy and the
   model drew with the same vertex count (2,401). The HTML build got the same copy (same bytes → same key, nothing made
