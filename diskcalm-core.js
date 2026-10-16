@@ -164,7 +164,7 @@ const DiskCalmCore = (() => {
     const list = (moved || []).filter((m) => m && m.bytes >= 0);
     if (!list.length) return '';
     const bytes = list.reduce((s, m) => s + (m.bytes || 0), 0);
-    const kinds = [...new Set(list.map((m) => (BY[m.part]?.label || 'Leftovers').replace(/^▶ /, '').toLowerCase()))];
+    const kinds = [...new Set(list.map((m) => (BY[m.part]?.label || 'Leftovers').replace(/^▶ /, '')).map((l) => (/^[A-Z][a-z]/.test(l) ? l[0].toLowerCase() + l.slice(1) : l)))];
     return `Tidied ${fmt(bytes)} Hearth no longer needed (${kinds.slice(0, 3).join(', ')}) — to the Trash`;
   }
 
