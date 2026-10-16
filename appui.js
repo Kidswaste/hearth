@@ -214,6 +214,9 @@ const AppUI = (() => {
     const chatsSec = home(section('Chats', el('span', { class: 'sf-slot' })), 'chats');
     const notifySec = section('Tell me when…', notifyRow, ...whenBoxes.map(([row]) => row));
     const boardSec = home(section('Mood board', el('span', { class: 'sf-slot' })), 'board');
+    // (round 52, gpu52) what draws Hearth: the card, the screen's refresh, hardware video (gpu52.js fills it)
+    const gpuBox = el('div', { class: 'gpu52-box' });
+    (window.Lazy?.load ? Lazy.load('glrecover') : Promise.resolve()).then(() => window.Gpu52?.mount(gpuBox)).catch(() => {});
     const adv = el('details', { class: 'settings-more sc-fold sc-adv', dataset: { fold: 'advanced' } },
       el('summary', { class: 'sc-sum', title: 'The rarer settings: chats, notifications, keys, the mood board, spelling, the rail, folders, backups and files' }, el('span', { class: 'sc-title', text: 'Advanced' }), el('span', { class: 'sc-state', text: 'Chats, notifications, keys, mood board, spelling, the rail, folders, backups' })),
       fold('chats', 'Chats', 'How the chats behave: Enter, long replies, sounds, notifications, spelling',
@@ -244,6 +247,8 @@ const AppUI = (() => {
           // (round 33, simplify3) moved from Keys: used once, when you subscribe to Meshy (Apps › Meshy › More has it too)
           el('div', { class: 'button-row', title: 'The keys of services Hearth talks to' },
             gbtn('Meshy key…', 'Paste your Meshy API key once (stored encrypted on this computer, never shown to a chat)', run('/meshy key'))), el('span', { class: 'sf-slot' })), 'hearth')),
+      fold('graphics', 'Graphics', 'The graphics card Hearth draws with, the screen\'s refresh rate and hardware video (/graphics power or /graphics backend change the card or path)',
+        () => (window.Gpu52 ? Gpu52.summary() : 'Graphics card, screen refresh, hardware video'), section('Graphics', gpuBox)),
       fold('files', 'Backup and files', 'Backups of your chats and settings, Hearth\'s shortcuts and its own files',
         () => { if (window.BackupAuto) return BackupAuto.lineText().text; const d = Number(H.settings().autoBackupDays) || 0; return d ? `Backs up by itself ${d === 1 ? 'daily' : d === 7 ? 'weekly' : d === 30 ? 'monthly' : `every ${d} days`}` : 'Backups when you ask'; },
         section('Backup and files',

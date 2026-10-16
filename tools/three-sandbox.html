@@ -649,6 +649,7 @@ for (const m of ['setClearColor', 'setClearAlpha']) {
 // WebGL canvases get an alpha channel (layers show the ones below) and keep their last frame (so all
 // layers can be merged into one picture for recordings and screenshots).
 const realGetContext = HTMLCanvasElement.prototype.getContext;
+const GPU_PREF = new URLSearchParams(location.search).get('gpu') === 'low' ? 'low-power' : 'high-performance'; // (round 52, gpu52)
 let glRefs = []; // WeakRefs to the WebGL contexts made here (__labHealth counts the ones still alive)
 const glAlive = () => { glRefs = glRefs.filter((w) => { const c = w.deref(); return c && !c.isContextLost(); }); let n = 0; for (const w of glRefs) if (!w.deref().__pooled) n += 1; return n; };
 HTMLCanvasElement.prototype.getContext = function (type, opts) {
@@ -661,10 +662,14 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   // picker's thumbnails): made through the three module's blob, their stack read as a stale module's, so they got no
   // context ("Error creating WebGL context": ⇩ Export the grade as a .cube failed since round 29)
   if (gl3d && mode === 'sketch' && !this.__ctxMade && !helperNow() && typeof staleStack === 'function' && staleStack(new Error().stack)) { perfNote.staleRefused = (perfNote.staleRefused || 0) + 1; return null; }
+  // (round 52, gpu52) the fast graphics card on a two-card laptop (a Mac switches to it while the Lab draws, and back
+  // after) unless the sketch asks for one ('default', what three.js passes, isn't asking); /graphics power saver: the
+  // small one (?gpu=low)
+  if (gl3d && (!opts?.powerPreference || opts.powerPreference === 'default')) opts = { ...(opts || {}), powerPreference: GPU_PREF };
   if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
   const ctx = realGetContext.call(this, type, opts);
   if (gl3d && !ctx) globalThis.__glrNone?.(); // (round 51) no context at all: the GPU is away (glrecover below)
-  if (gl3d && ctx) this.__ctxMade = true;
+  if (gl3d && ctx) { this.__ctxMade = true; ctx.__asked = opts?.powerPreference; } // (gpu52: what was asked; getContextAttributes says the card it got)
   if (gl3d && ctx && !ctx.__counted) {
     ctx.__counted = true; glRefs.push(new WeakRef(ctx)); if (glRefs.length > 64) glAlive();
     globalThis.__glrWatch?.(this, ctx); // (round 43, glrecover) a lost GPU: told apart from the page's own let-go, rebuilt

@@ -93,6 +93,10 @@ function readConfig() { return cfgStore.read(); }
 function settings() {
   try { return readConfig().settings || {}; } catch { return {}; }
 }
+// (round 52, gpu52) the graphics path for this start, before 'ready': the fast card on a two-card laptop, the ANGLE path
+// if you picked one (back to the default when a start never reached the card), nothing that caps the frame rate
+const gpu52 = require('./gpu52main');
+try { gpu52.early(app, { settings: settings(), dataDir: store.DATA_DIR }); } catch (err) { console.warn('gpu52: early', err.message); }
 
 function loadAll() {
   try {
@@ -660,6 +664,7 @@ function registerAfterWindow() {
   syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)
   require('./jankmain').register(ipcMain, bgmain, () => win); // (round 20) jank watch: main loop lag, GPU crashes, the owner's busy moments
   require('./glrecovermain').register(ipcMain, { getWin: () => win }); // (round 43) the graphics card restarted / drawing without it: one calm note
+  gpu52.register(ipcMain, { getWin: () => win }); // (round 52) did this start reach the card (told once if not), Windows' per-app graphics choice, Settings › Advanced › Graphics
   syncmain.setHold?.(() => (require('./powerwisemain').quietNow?.() ? 'quiet' : require('./jankmain').hold())); // a sync pass waits out a drag / typing burst · (round 52) and a Lab show (as long as it lasts)
 }
 // /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs
