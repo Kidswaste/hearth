@@ -1716,6 +1716,8 @@ const Native = (() => {
   // continued from another agent), send the earlier conversation along once.
   function withContext(chat, text) {
     if (chat.session?.id || chat.messages.length <= 1) return text;
+    // (round 50, historylean) a fresh start after a break: the lighter history (historylean.js), while it's the newest start
+    const lean = window.HistoryLean?.context(chat, text); if (lean != null) return lean;
     // (round 42, handoff) handed over from the other AI: the short brief (handoff.js) stands in for what came before,
     // then what was said since; "Send the whole chat instead" put the whole chat there instead
     const h = chat.handoff;

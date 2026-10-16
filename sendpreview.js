@@ -123,13 +123,17 @@ const SendPreview = (() => {
     const v = Native.view(agentId);
     if (!agent || agent.mode !== 'native') return null;
     const chat = 'chat' in o ? o.chat : Native.chatOf(agentId);
-    const { st, history } = chatPart(chat);
+    let { st, history } = chatPart(chat);
+    // (round 50, historylean) after a break a long chat goes on with its lighter history: count that, and the engine's own cache life
+    let hl = null; try { hl = chat && window.HistoryLean ? HistoryLean.plan(chat, { now }) : null; } catch { hl = null; }
+    if (hl?.rebase) history = { tokens: Math.max(0, hl.after - hl.input.fixed), cacheable: 0, kind: 'leanbreak', session: false };
+    const ttl = hl && window.HistoryLeanCore ? HistoryLeanCore.expiresAfter(hl.input.engine, [...(chat.messages || [])].reverse().find((m) => m.usage)?.usage) : undefined;
     const fx = fixedOf(agent, chat);
     const attachments = o.attachments || attachmentsOf(v);
     const pick = pickOf(agent, chat, text, o.attachments ? { attachments: o.attachments } : v, st);
     const mission = 'mission' in o ? o.mission : missionOf(agentId);
     const cal = calOf(agentId);
-    const est = C.estimate({ fixed: fx.tokens, history, words: C.tok(text), attachments, answer: st.out || undefined, effort: pick?.effort, baseEffort: pick?.baseEffort, pick, mission, now, lastAt: st.lastAt, hit: st.hit ?? undefined, factor: cal.f });
+    const est = C.estimate({ fixed: fx.tokens, history, words: C.tok(text), attachments, answer: st.out || undefined, effort: pick?.effort, baseEffort: pick?.baseEffort, pick, mission, now, lastAt: st.lastAt, hit: st.hit ?? undefined, factor: cal.f, ttl });
     const sh = C.should(est, st);
     return { est, st, sh, ctx: { agent, chat, v, fx, pick, mission, cal, text } };
   }
@@ -303,7 +307,7 @@ const SendPreview = (() => {
     try { w = work(agentId, text); } catch (err) { console.warn('sendpreview', err); }
     // the cache expires while you think it over: look again then
     clearTimeout(expiry.get(agentId));
-    if (w && !w.est.cold && w.st.lastAt) expiry.set(agentId, setTimeout(() => soon(agentId, 0), Math.max(1000, w.st.lastAt + C.CACHE_TTL + 1000 - Date.now())));
+    if (w && !w.est.cold && w.st.lastAt) expiry.set(agentId, setTimeout(() => soon(agentId, 0), Math.max(1000, w.st.lastAt + (w.est.ttl || C.CACHE_TTL) + 1000 - Date.now())));
     if (!w?.sh.show) { hide(agentId); return; }
     paint(agentId, w, C.cheaper(w.est, options(agentId, w)));
   }

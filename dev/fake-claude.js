@@ -204,11 +204,13 @@ const F = require('./fake-common');
   F.logRun('claude', { system: arg('--system-prompt') || '', prompt, prior: state.chars, text, thinking, model: arg('--model'), effort: arg('--effort'), session: sessionId });
   state.turns += 1;
   state.chars += prompt.length + text.length;
+  // (round 50, historylean) "toolbytes:N": the reply's tool results held N characters (they stay in the session)
+  state.chars += Number((F.userPartOf(prompt).match(/\btoolbytes:(\d+)/) || [])[1]) || 0;
   const input = p.big ? 125000 : 700 + Math.ceil(state.chars / 4);
   const output = Math.ceil((text.length + thinking.length) / 4);
   F.saveState(`claude-${sessionId}`, state);
   F.out({
     type: 'result', subtype: 'success', is_error: false, result: text, session_id: sessionId, num_turns: state.turns, duration_ms: 1234,
-    usage: { input_tokens: 12, cache_creation_input_tokens: state.turns === 1 ? input - 12 : 40, cache_read_input_tokens: state.turns === 1 ? 0 : input - 52, output_tokens: output },
+    usage: { input_tokens: 12, cache_creation_input_tokens: state.turns === 1 ? input - 12 : 40, cache_read_input_tokens: state.turns === 1 ? 0 : input - 52, output_tokens: output, cache_creation: { ephemeral_5m_input_tokens: state.turns === 1 ? input - 12 : 40, ephemeral_1h_input_tokens: 0 } }, // an API key's 5-minute cache, as the real CLI reports it
   });
 })();

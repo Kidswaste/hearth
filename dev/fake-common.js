@@ -9,6 +9,7 @@
 //   slow      streams slowly (~6 s, to test Stop)       error    the engine fails (is_error / turn.failed)
 //   login     fails with "not logged in"                crash    exits with code 3 and a stderr line
 //   big       reports a huge input usage (auto-compact) echo     replies with the exact prompt it got
+//   toolbytes:N (round 50) the reply's tool results held N characters: they stay in the session (historylean)
 //   huge      (round 35) a ≈ 100 KB reply: long Markdown, big code, tables, lists, pictures (dev/fake-huge.js)
 //   progress  hidden <progress pct="35|75" note="…"/> tags inside the reply (round 11)
 //   mcp       really calls the hub MCP servers it was given (--mcp-config / -c mcp_servers.*): the tools in a line

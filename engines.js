@@ -853,6 +853,8 @@ function claudeParser(session) {
           cached: u.cache_read_input_tokens || 0,
           cacheWrite: u.cache_creation_input_tokens || 0,
           cost: msg.total_cost_usd || 0,
+          // (round 50, historylean) how long its prompt cache lives: 1 h (a subscription) or 5 min (an API key)
+          ...(u.cache_creation?.ephemeral_1h_input_tokens ? { ttl: '1h' } : u.cache_creation?.ephemeral_5m_input_tokens ? { ttl: '5m' } : {}),
         },
       };
     }

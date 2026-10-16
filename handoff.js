@@ -120,6 +120,8 @@ const Handoff = (() => {
     const agentId = args?.agentId;
     const chat = agentId ? Native.chatOf(agentId) : null;
     const h = chat?.handoff;
+    // (round 50, historylean) a chat that went on with a lighter history: any of its messages, word for word
+    if (chat?.lean && !(h && h.at > chat.lean.at)) return { ok: true, value: C.earlier(chat.messages, { query: String(args.query || ''), last: Number(args.last) || 0 }) };
     if (!h) return { ok: false, error: 'This chat has no earlier chat handed over.' };
     const src = h.source ? await Native.loadChat(h.source) : chat;
     const msgs = (src?.messages || []).slice(0, h.source ? h.sourceAt ?? src.messages.length : h.at);

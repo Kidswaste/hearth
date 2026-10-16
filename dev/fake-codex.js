@@ -132,6 +132,7 @@ const F = require('./fake-common');
   }
   state.turns += 1;
   state.chars += prompt.length + text.length;
+  state.chars += Number((F.userPartOf(prompt).match(/\btoolbytes:(\d+)/) || [])[1]) || 0; // (round 50, historylean) tool results held in the thread
   // running totals for the whole thread (the hub shows the per-turn difference)
   state.input += p.big ? 125000 : 4200 + Math.ceil(state.chars / 4);
   state.output += Math.ceil((text.length + thinking.length) / 4);
