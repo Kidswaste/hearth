@@ -63,12 +63,14 @@ const IS_WIN = process.platform === 'win32';
 function npmBin() {
   const env = process.env;
   if (IS_WIN) return path.join(env.APPDATA || '', 'npm');
-  for (const d of [env.npm_config_prefix && path.join(env.npm_config_prefix, 'bin'), '/opt/homebrew/bin', '/usr/local/bin', path.join(require('os').homedir(), '.npm-global', 'bin')]) if (d && fs.existsSync(path.join(d, 'gltfpack'))) return d;
+  // npm's own folders; Homebrew / /usr/local come with PATH (main.js adds them on the Mac: WinMac.fixProcessPath)
+  for (const d of [env.npm_config_prefix && path.join(env.npm_config_prefix, 'bin'), path.join(require('os').homedir(), '.npm-global', 'bin')]) if (d && fs.existsSync(path.join(d, 'gltfpack'))) return d;
   return null;
 }
 function findTool(override) {
   const names = IS_WIN ? ['gltfpack.exe', 'gltfpack.cmd'] : ['gltfpack'];
-  const dirs = [...(override ? [path.dirname(override)] : []), ...String(process.env.PATH || '').split(path.delimiter), npmBin()].filter(Boolean);
+  const os = require('os'); const tools = require('./winmac').withToolDirs(process.env.PATH, { home: os.homedir(), exists: (d) => fs.existsSync(d) }); // (the Mac's Homebrew / npm folders even before main.js ran: tests, a worker)
+  const dirs = [...(override ? [path.dirname(override)] : []), ...String(tools || '').split(path.delimiter), npmBin()].filter(Boolean);
   if (override && fs.existsSync(override)) return override;
   for (const d of dirs) for (const n of names) { const f = path.join(d, n); try { if (fs.statSync(f).isFile()) return f; } catch { /* not here */ } }
   return null;

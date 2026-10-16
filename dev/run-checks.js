@@ -280,8 +280,7 @@ for (const n of wanted) {
     const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
     // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
     const env = /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }
-      : /^game(mode|ready|input)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network)
-      : /^game(mode|ready|tex)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network)
+      : /^game(mode|ready|input|tex)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network)
     r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env });
   }
   const text = `${r.stdout || ''}${r.stderr || ''}`;

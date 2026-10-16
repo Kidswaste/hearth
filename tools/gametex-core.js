@@ -24,7 +24,7 @@
   // by its name, when nothing better says it (a Lab reference's key or file name, a GLB image's name)
   function roleOf(name) {
     const s = String(name || '').toLowerCase();
-    if (/(^|[^a-z])(normal|nrm|nor|norm)([^a-z]|$)|normalmap|_n\.(png|jpe?g)$/.test(s)) return 'normal';
+    if (/(^|[^a-z])(normal|nrm|nor|norm)([^a-z]|$)|normalmap|_n\.(png|jpe?g)$/i.test(s)) return 'normal';
     if (/(rough|metal|orm|arm|occlusion|(^|[^a-z])ao([^a-z]|$)|spec|gloss|height|disp|bump|mask|opacity|alpha)/.test(s)) return 'data';
     return 'color';
   }

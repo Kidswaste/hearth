@@ -130,7 +130,7 @@ const GameReady = (() => {
     try {
       const served = await G().served();
       const root = rootOf(r.source.path);
-      const files = [...new Set(served.map((x) => `${root}/${x.rel}`))];
+      const files = [...new Set(served.map((x) => WinMac.join(root, x.rel)))]; // the folder's own slash (C:\Games\Clink\models\a.glb on Windows)
       const dec = [...new Set(served.map((x) => (/meshopt_decoder/i.test(x.rel) ? 'meshopt' : /basis_transcoder/i.test(x.rel) ? 'ktx2' : /draco_(wasm_)?decoder/i.test(x.rel) ? 'draco' : null)).filter(Boolean))];
       r.loaded = files.length; r.decoders = dec; r.served = served;
       if (files.length) await G().scan({ root, files, decoders: dec });
