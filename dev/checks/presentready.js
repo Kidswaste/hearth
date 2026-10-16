@@ -124,7 +124,7 @@ async function show(label, test) {
   let maxPct = 0; let sawCard = false;
   const live = await until(() => { const b = document.querySelector('.pr-ready .pr-bar'); if (b) { sawCard = true; maxPct = Math.max(maxPct, Number(b.getAttribute('aria-valuenow')) || 0); } const s = PR(); return s && ["live", "baked"].includes(s.phase) ? s : null; }, 400000);
   const readyMs = Math.round(performance.now() - t0);
-  const done = live?.phase === 'baked' ? true : await until(() => PR()?.first5, 15000);
+  const done = live?.phase === 'baked' ? true : await until(() => PR()?.first5, 60000); // (fixes52: a stalled show answers its counts late)
   const KEEP = ['routines', 'hooks', 'lab-media', 'lab-stall']; const ts = (window.Power?.timers?.() || []).filter((x) => !KEEP.includes(x.id) && !/^chromeview/.test(x.id));
   const quietWhile = { power: Boolean(window.Power?.quietNow?.()), hints: window.Hints?.busy?.() || '', waiting: ts.filter((x) => x.next === null).map((x) => x.id), running: ts.filter((x) => x.next !== null).map((x) => x.id) };
   const st = PR();

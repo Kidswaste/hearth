@@ -1,45 +1,70 @@
-# ▶ Play (game) — the shared contract (round 52)
+# Game mode: the shared shapes (round 52: gamemode, gameready, gameperf)
 
-Three parts share one entry point, ▶ Play: **GameMode** (the window / runtime), **GameReady** (preparation / cache),
-**GamePerf** (overlay / doctor). This file is the contract between them; each stream keeps its own section.
+One entry point: **▶ Play**. `GameMode` (gamemode stream) owns the window and the runtime, `GameReady` (gameready)
+prepares and caches what a game loads, `GamePerf` (gameperf) measures and explains. Each works on its own; when the
+others are in, they meet through the names below. Keep this file in sync when a shape changes.
 
-A game is a `source`:
-
+## Source descriptor
 ```js
-{ kind: 'lab', id: '<Lab scene id>', title: 'Clink' }      // a Lab scene (the main path: Clink is a Lab scene)
-{ kind: 'html', path: '/…/clink/index.html', title: 'Clink' } // a built game: its page (or its folder)
+{ kind: 'lab', id: 's1abc', title: 'Clink' }                      // a Lab scene (its id in three-sketches)
+{ kind: 'html', path: '/Users/me/Games/clink/index.html', title: 'clink' } // an HTML file, or a folder with index.html
 ```
+`GameCore.source(x)` makes one from a string (a path → html, anything else → a Lab scene id) or a partial object;
+`GameCore.sameSource(a, b)` compares two.
 
-## GameReady (tools/gameready.js, lazy group `gameready`; main: gamereadymain.js)
+## GameMode (window, hub side: gamemode.js, lazy group "gamemode")
+- `GameMode.play(source, { display }) → Promise<info>`: GameReady first (if present), then the game window.
+- `GameMode.leave()`, `GameMode.state() → { playing, source, info, live, plan, last, recent }`, `GameMode.playing`.
+- `GameMode.on(fn) → off`: `fn({ type: 'start', source, info })` / `fn({ type: 'end', source, why, secs })`.
+- `GameMode.recent()` / `GameMode.last()` (store `gamemode.recent`, newest first, 6), `GameMode.resolve(text)` (a name,
+  "last", a path → a source), `GameMode.sceneSpec(id)` (what a Lab scene's page is built from).
+- Settings in `store`: `gamemode.display` (a screen id), `gamemode.macFullscreen` ('native' | 'simple').
+- Commands: `/play <game | last>` (shares /play: plain /play still plays the Lab's song), `/game [stop | screens]`.
 
-```js
-await Lazy.load('gameready');
-const res = await GameReady.prepare(source, onProgress, opts);
-```
+## Main process (gamemodemain.js; preload `window.hub.game`)
+| Channel | From | What |
+|---|---|---|
+| `game:play` `{ source, scene?, display?, macFullscreen? }` → info | hub | opens the game window (scene: the Lab spec + `plan`) |
+| `game:leave` · `game:state` → info · `game:displays` → `[{ id, label, w, h, scale, hz, primary, hub }]` | hub | |
+| `game:left` `{ source, secs, why }` (event) | → hub | the game window closed |
+| `game:eval` code → `{ value }` · `game:key` `{ key, mods }` · `game:click` `{ x, y }` | hub (checks) | real input through Chromium |
+| `game:info` → info · `game:back` | game window preload | the chip's line, "Back to Hearth" |
 
-- `onProgress({ stage, pct, text })`: `text` is the card's line, e.g. `Getting Clink ready… textures 40/120 · 50 %`.
-- `opts.port` (Lab scenes): the game window to prepare, `{ send(msg), host, scene(), refs(), code(), open(id),
-  reread(refIds) }`. Default: `ThreeLab.game`, the Lab's own preview (and the Stage window when the Lab draws there).
-  A ▶ Play window that runs `tools/three-sandbox.html` passes a port whose `send` reaches that page and routes the
-  page's `ready-*` answers to `GameReady.onBox(msg)` (the Lab does it through `window.__gameReadyHook.onBox`).
-- `opts.card === false`: no card (▶ Play draws its own from `onProgress`). Default: the calm card over `port.host`
-  with **Play now**, **Optimize for play** (when a model has no optimized copy yet) and Esc.
-- `opts.play === false`: resolve when ready without starting play (call `GameReady.play()` later).
-- Result: `{ ok, readyMs, ms: { assets, effects, warm }, steps, inventory, findings: [{ kind, text, n, bytes }],
-  plan: { fresh, stale, missing, swapped }, first5 }` (`first5` arrives 5 s into play: `GameReady.state().first5` =
-  shaders compiled / textures uploaded during the first 5 s of play; 0 / 0 when getting ready worked).
-- `GameReady.play()` / `GameReady.stop()` (Esc / leaving: 100 % quality released, originals read again).
-- `GameReady.optimize(source?)` → `{ ok, made, skipped, failed }` or `{ needTool: true, plan: { command } }`: writes
-  only into `<data>/game-cache`. Never installs anything: the card shows the command and runs it after a click.
-- HTML games: `prepare({ kind: 'html', path })` opens the game window itself (`hub.gameReady.openHtml`) when ▶ Play has
-  none. A window ▶ Play makes for an HTML game should use the session partition `persist:hearth-game` and load the
-  build as `hearth-game://<host>/…` through gamereadymain's handler (so the optimized copies are served by URL and
-  `tools/gameready-page.js` runs before the game's own scripts); the page talks over `gameready:from` / `gameready:to`.
+`info = { playing, source, title, route: 'page' | 'html' | 'live', how, display: { id, label, w, h, scale, hz }, hz,
+fidelity: { level: 'max', pixelRatio, antialias, msaa, powerPreference, cap: 0, adapt: false, hz }, pid, priority,
+separate, started, notes, fullscreen, url }`. `how` is the line the stats chip shows ("one canvas (3 of 3 layers) ·
+page (ready)", "HTML build", "live from the Lab (…)").
 
-Rules for every game window (so a second launch skips its shader compiles): a **persistent** session (the default
-one or a `persist:` partition: an in-memory partition has no shader disk cache), `backgroundThrottling: false`.
-Chromium's GPU program cache is raised to 32 MB in main.js (`gpu-program-cache-size-kb`).
+The window: `hearth-game://<token>/…` (a privileged standard + secure scheme, its own in-memory session `hearth-game`):
+read-only (GET / HEAD), never outside the game's folder (`GameCore.safePath`), no Node, contextIsolation + sandbox,
+only `pointerLock` / `fullscreen` / `keyboardLock` permissions, non-GET requests to the web refused, downloads refused.
+`backgroundThrottling: false`, process priority above normal (where the system allows), powerwise `hold('present')` +
+`quiet(true)` while it plays.
 
-Lab-page messages GameReady sends (tools/three-sandbox.html): `ready-lock { on }` (100 % quality), `ready-scan { id }`
-(everything in, textures at the best anisotropy, what the scene costs → `ready-scanned`), `ready-prep { id }`
-(compile + upload → `ready-prepped` with `compileMs`), `ready-warm { id, n }`, `ready-count`.
+GamePerf, main side (optional): if `gameperfmain.js` exists, `require('./gameperfmain').attach(gameWindow, info)` runs
+right after the window is made.
+
+## The game window's page
+- Preload (`game-preload.js`) gives the game, only if it asks: `window.hearthGame = { leave(), info() → { title, hz, how, display } }`.
+- Its own UI is `<hearth-game-ui>` (an open shadow root): `.hint`, `.chip` (F), `.card` (Esc: `.back` "Back to Hearth", `.keep`).
+- A Lab scene's page (`data/game/<scene>/play.html`, built from the Lab's player like ⇪ Publish) sets
+  `window.__hearthGame = { ready, drawn, errors, started, plan }` and answers `window.__gameInfo() → { game, merged,
+  own, renderers, frames, contexts, canvases, antialias, samples, power, pixelRatio, canvas: { w, h, cssW }, cap, lock,
+  quality, pace }`.
+- Messages into the Lab player (`postMessage({ target: 'three-sandbox', … })`): `game-plan { merge: [layer ids], why:
+  { id: reason } }` (before `run-layers`), plus the existing `ready-lock { on: true }`, `pace { on: false }`,
+  `adapt { on: false }`, `fps-cap { value: 0 }`, `tweak-init`, `refs`, `media-load`, `run-layers`.
+
+## One canvas (GameCore.mergePlan)
+Bottom first: a layer merges when it draws with its own `new THREE.WebGLRenderer` straight to the screen, normal blend,
+opacity 1, not moved / scaled / turned, no keyframes, shown the whole time, no crop / mask / effects, not a filter, no
+EffectComposer / render targets / its own GL calls, not a precomp. The merged layers are the bottom run of those;
+`why[id]` says why the others keep their own canvas.
+
+## GameReady (gameready stream)
+`GameReady.prepare(source, onProgress) → Promise` — called by `GameMode.play` before the window opens, when present.
+`onProgress(p)` with `p` a 0–1 number or `{ done: 0–1, stage }`. A rejection is logged and the game plays anyway.
+
+## GamePerf (gameperf stream)
+`GamePerf.attach(handle)` (hub side) with `handle = { source, info, leave, state }`, called once the game window is up;
+`GameMode.on` tells start / end. The window's own numbers: `game:eval` + `window.__gameInfo()`, or the main-side attach.

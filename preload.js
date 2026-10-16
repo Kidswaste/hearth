@@ -105,6 +105,8 @@ contextBridge.exposeInMainWorld('hub', {
   stageFocus: call('stage:focus'),
   stageDisplays: call('stage:displays'), stagePlace: call('stage:place'), // (round 22) live output on a second screen
   stageSend: (msg) => ipcRenderer.send('stage:to', msg),
+  // (round 52, gamemode) ▶ Play: a game in its own full-screen window (gamemodemain.js)
+  game: { play: call('game:play'), leave: call('game:leave'), state: call('game:state'), displays: call('game:displays'), eval: call('game:eval'), key: call('game:key'), click: call('game:click'), onLeft: on('game:left') },
   onStageMessage: on('stage:from'),
   onStageClosed: on('stage:closed'),
   setZoom: (factor) => webFrame.setZoomFactor(factor),
@@ -177,9 +179,9 @@ contextBridge.exposeInMainWorld('hub', {
   power: { state: call('power:state'), hold: call('power:hold'), release: call('power:release'), allow: call('power:allow'), quiet: call('power:quiet'), test: call('power:test'), onState: on('power:state') }, // (round 39, powerwise) staying awake while it matters, battery / saver, wake (powerwisemain.js)
   notify: { send: call('notify:send'), seen: call('notify:seen'), onGo: on('notify:go'), test: call('notify:test') }, // (round 44, notify) desktop notifications (notifymain.js): send one, the chat was looked at, where a click goes, (checks) a recorder
   net: { probe: call('net:probe'), onPower: on('net:power') }, // (round 34, offline) is the internet there? the computer slept / woke (offlinemain.js)
-  safetynet: { status: call('safetynet:status'), keep: call('safetynet:keep'), done: call('safetynet:done'), testCrash: call('safetynet:test-crash') }, // (round 29) after an unexpected exit: what was kept (safetynetmain.js)
+  safetynet: { last: call('safetynet:last'), reloading: call('safetynet:reloading'), status: call('safetynet:status'), keep: call('safetynet:keep'), done: call('safetynet:done'), testCrash: call('safetynet:test-crash') }, // (round 29) after an unexpected exit: what was kept (safetynetmain.js)
   crashsafe: { take: call('crashsafe:take'), done: call('crashsafe:done'), ack: call('crashsafe:ack'), test: call('crashsafe:test'), check: call('crashsafe:check'), onOrphan: on('crashsafe:orphan'), onFlush: on('crashsafe:flush'), onFrames: on('crashsafe:frames') }, // (round 50) replies cut off by a crash, renders cut off, the computer going down (crashsafemain.js)
-  devreport: { info: call('devreport:info'), gh: call('devreport:gh'), send: call('devreport:send'), states: call('devreport:states'), log: call('devreport:log'), crashes: call('devreport:crashes') }, // (round 21) Report to the developer
+  devreport: { info: call('devreport:info'), gh: call('devreport:gh'), send: call('devreport:send'), states: call('devreport:states'), log: call('devreport:log'), crashes: call('devreport:crashes'), annotate: call('devreport:annotate') }, // (round 21) Report to the developer
   fetchText: call('net:text'),
   openDialog: call('dialog:open'),
   saveFile: call('dialog:saveFile'),
@@ -265,6 +267,7 @@ contextBridge.exposeInMainWorld('hub', {
   },
   rfast: { open: call('rfast:open'), write: call('rfast:write'), end: call('rfast:end'), cancel: call('rfast:cancel') }, // (round 41, renderfast) frames streamed into ffmpeg (renderfastmain.js)
   glr: { state: call('glrecover:state'), shown: call('glrecover:shown'), sim: call('glrecover:sim'), onNote: on('glrecover:note') }, // (round 43, glrecover) the graphics card restarted / drawing without it (glrecovermain.js)
+  gpu52: { info: call('gpu52:info'), shown: call('gpu52:shown'), reset: call('gpu52:reset'), sim: call('gpu52:sim'), onNote: on('gpu52:note') }, // (round 52, gpu52) the graphics path: Settings › Advanced › Graphics, /graphics (gpu52main.js)
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
   // (round 52, gameready) ▶ Play gets a game ready: file hashes, Hearth's optimized cache, the encoder, an HTML game's window (gamereadymain.js)
   gameReady: { hash: call('gameready:hash'), plan: call('gameready:plan'), scan: call('gameready:scan'), tool: call('gameready:tool'), install: call('gameready:install'), optimize: call('gameready:optimize'), openHtml: call('gameready:open-html'), closeHtml: call('gameready:close-html'), served: call('gameready:served'), to: (msg) => ipcRenderer.send('gameready:to', msg), onFrom: on('gameready:from'), onProgress: on('gameready:progress') },

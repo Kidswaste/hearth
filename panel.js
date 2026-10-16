@@ -57,14 +57,30 @@ const Panel = (() => {
   }
 
   // ---------- (round 42) the model: each AI's chats, sorted once per change of H.chats or of the sort ----------
-  let modelOf = null; let modelSort = ''; let byAgent = new Map(); let byId = new Map();
+  let modelOf = null; let modelSort = ''; let byAgent = new Map(); let byId = new Map(); let modelAgents = '';
+  // (round 52, chatkeep) a chat whose AI was removed or turned off never vanishes from the list: it shows under an AI of
+  // the same kind (a docked director's chat under the director docked there now, an Astra chat under Astra, the rest
+  // under Claude) and goes on there when opened (native.js adopts it)
+  let homes = new Map(); // agent id → the shown AI its chats go under
+  function homeOf(c) {
+    const id = c.agentId;
+    if (homes.has(id)) return homes.get(id);
+    const list = H.agents().filter((a) => a.mode === 'native');
+    const was = H.agent(id);
+    const dock = was?.dock || (/^threedirector/.test(String(id || c.id || '')) ? 'three' : null);
+    const home = (dock && list.find((a) => a.dock === dock)) || (was?.engine === 'codex' && list.find((a) => a.engine === 'codex' && !a.dock)) || H.claudeAgent?.() || list[0] || null;
+    homes.set(id, home?.id || id);
+    return home?.id || id;
+  }
   function model() {
     const sort = sortBy();
+    const ags = H.agents().map((a) => `${a.id}:${a.mode}:${a.dock || ''}`).join(',');
+    if (ags !== modelAgents) { modelAgents = ags; modelOf = null; homes = new Map(H.agents().filter((a) => a.mode === 'native').map((a) => [a.id, a.id])); }
     if (modelOf === H.chats && modelSort === sort) return byAgent;
     if (modelOf && modelSort === sort && patchModel(H.chats || [], modelOf)) { modelOf = H.chats; return byAgent; }
     modelOf = H.chats; modelSort = sort; byAgent = new Map(); byId = new Map();
     const cmp = SORTS[sort];
-    for (const c of H.chats || []) { byId.set(c.id, c); let l = byAgent.get(c.agentId); if (!l) byAgent.set(c.agentId, (l = [])); l.push(c); }
+    for (const c of H.chats || []) { byId.set(c.id, c); const a = homeOf(c); let l = byAgent.get(a); if (!l) byAgent.set(a, (l = [])); l.push(c); }
     for (const l of byAgent.values()) l.sort((a, b) => (b.pinned - a.pinned) || cmp(a, b));
     if (lower.size > (H.chats || []).length * 1.5 + 64) lower.clear();
     return byAgent;
@@ -85,9 +101,9 @@ const Panel = (() => {
     const cmp = SORTS[modelSort];
     const f = (a, b) => (b.pinned - a.pinned) || cmp(a, b);
     const out = gone || prev;
-    if (out) { const l = byAgent.get(out.agentId); const k = l ? l.indexOf(out) : -1; if (k >= 0) l.splice(k, 1); byId.delete(out.id); }
+    if (out) { const l = byAgent.get(homeOf(out)); const k = l ? l.indexOf(out) : -1; if (k >= 0) l.splice(k, 1); byId.delete(out.id); }
     if (gone) return true;
-    let l = byAgent.get(c.agentId); if (!l) byAgent.set(c.agentId, (l = []));
+    let l = byAgent.get(homeOf(c)); if (!l) byAgent.set(homeOf(c), (l = []));
     // first place where it sorts before or level with what's there (a full sort keeps H.chats' order on ties: it's first)
     let lo = 0; let hi = l.length;
     while (lo < hi) { const m = (lo + hi) >> 1; if (f(c, l[m]) <= 0) hi = m; else lo = m + 1; }

@@ -27,10 +27,26 @@ function start(getWin) {
     try { return require('./mcp/three-guide').help(topic); } catch (err) { return `Error: ${err.message}`; }
   });
 
+  // (round 52, chatkeep) the window's page going away (a crash, a reload) answers every call it was running at once:
+  // the director's reply goes on (it can call again) instead of waiting up to the call's time limit (a minute, or
+  // 45 for a render) for a page that will never answer, while the owner sees "still writing" after the crash
+  const watched = new WeakSet();
+  const dropAll = (why) => {
+    for (const [id, resolve] of pending) { clearTimeout(timers.get(id)); timers.delete(id); resolve({ ok: false, error: `The Hearth window ${why} while this ran: nothing was changed by it; call it again.` }); }
+    pending.clear();
+  };
+  const watch = (win) => {
+    const wc = win?.webContents;
+    if (!wc || watched.has(wc)) return;
+    watched.add(wc);
+    wc.on('render-process-gone', () => dropAll('crashed and reloaded'));
+    wc.on('did-start-navigation', (d) => { if (d?.isMainFrame !== false && !d?.isSameDocument && pending.size) dropAll('reloaded'); });
+  };
   // Ask the renderer (which owns the game webview) to run one tool call.
   const callRenderer = (tool, args) => new Promise((resolve) => {
     const win = getWin();
     if (!win) { resolve({ ok: false, error: 'The hub window is not open.' }); return; }
+    watch(win);
     const id = crypto.randomUUID();
     pending.set(id, resolve);
     win.webContents.send('game:call', { id, tool, args });

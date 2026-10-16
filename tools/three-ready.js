@@ -33,7 +33,7 @@ const PresentReady = (() => {
   function ask(m, test, ms = 20000) {
     return new Promise((resolve) => { const w = { test, resolve }; waits.add(w); setTimeout(() => { if (waits.delete(w)) resolve(null); }, ms); L.send(m); });
   }
-  const count = () => ask({ type: 'ready-count' }, (m) => m.type === 'ready-count', 4000);
+  const count = (ms = 4000) => ask({ type: 'ready-count' }, (m) => m.type === 'ready-count', ms);
   // the screen's refresh, from this window's own frames (a fullscreen page draws at the screen's rate)
   function hzProbe(ms = 350) {
     // (a window whose frames don't come — hidden, throttled — answers with what it has, or 60, after a moment)
@@ -174,12 +174,13 @@ const PresentReady = (() => {
     r.ui.remove();
     lock(r, true);
     // what the GPU compiles / uploads and how the frames pace in the first 5 s of the show (checks read state())
-    const c0 = await count();
+    // (fixes52: a show that stalls on compiles answers late — SwiftShader took > 4 s — so the counts wait for the answer)
+    const c0 = await count(20000);
     if (R !== r) return;
     L.send({ type: 'ready-rec', on: true });
     r.t5 = setTimeout(async () => {
       if (R !== r) return;
-      const c1 = await count();
+      const c1 = await count(20000);
       const rec = await ask({ type: 'ready-rec', on: false, id: r.id }, (m) => m.type === 'ready-rec' && m.id === r.id, 4000);
       if (c0 && c1) r.first5 = { compiles: c1.compiles - c0.compiles, links: c1.links - c0.links, uploads: c1.uploads - c0.uploads, reuploads: c1.reuploads - c0.reuploads, shares: c1.shares, cap: c1.cap, doze: c1.doze, dozeWhy: c1.dozeWhy, lock: c1.lock, level: c1.level };
       if (rec) r.pace = C.verdict(rec.gaps, r.hz);

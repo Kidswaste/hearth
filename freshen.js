@@ -10,6 +10,8 @@
 // What a reload keeps lives in sessionStorage (this window only) and is used once.
 const Freshen = (() => {
   const KEY = 'hearth.freshen'; // sessionStorage: the state to put back after the reload
+  const VIEW = 'hearth.view'; // (round 52, chatkeep) localStorage: the view, kept all the time (any reload / crash puts it back)
+  const MEM = 'hearth.mem'; // (round 52) the last memory reading (the crash record gets it from the page that comes back)
   const EVERY = 5 * 60000; // a reading every 5 minutes (one getElementsByTagName + one IPC: well under 1 ms of work)
   const BASE_AFTER = 10 * 60000; // the baseline: the first calm reading after 10 minutes (startup's caches are warm)
   const MIN_UP = 2 * 3600000; // nothing is offered before 2 hours
@@ -31,6 +33,7 @@ const Freshen = (() => {
     let total = 0;
     try { total = ((await window.hub.bgState?.())?.procs || []).reduce((a, p) => a + (p.mb || 0) * 1048576, 0); } catch { /* older main */ }
     last = { at: performance.now(), heap: Math.min(...heaps), nodes: document.getElementsByTagName('*').length, total };
+    try { localStorage.setItem(MEM, JSON.stringify({ t: Date.now(), up: Math.round((last.at - t0) / 60000), heapMB: Math.round(last.heap / 1048576), nodes: last.nodes, totalMB: Math.round(total / 1048576) })); } catch { /* a convenience */ }
     if (!base && last.at - t0 >= BASE_AFTER && !busy()) base = { ...last };
     return last;
   }
@@ -102,6 +105,7 @@ const Freshen = (() => {
   }
   async function now({ reason = 'cmd' } = {}) {
     save(reason);
+    try { await window.hub.safetynet?.reloading?.(`Freshen (${reason})`); } catch { /* an older main */ }
     await new Promise((r) => setTimeout(r, 120));
     location.reload(); // (the Lab, the board and the resume card save what they hold on beforeunload, as on a quit)
   }
@@ -109,17 +113,73 @@ const Freshen = (() => {
   async function restore() {
     let s = null;
     try { s = JSON.parse(sessionStorage.getItem(KEY) || 'null'); sessionStorage.removeItem(KEY); } catch { return; }
-    if (!s || Date.now() - s.at > 120000) return;
+    if (!s || Date.now() - s.at > 120000) return comeBack();
+    return putBack(s);
+  }
+  // (round 52, chatkeep) the window crashed and reloaded itself, was reloaded on purpose (Ctrl/⌘+Shift+R, an update,
+  // Reload) or Hearth stopped unexpectedly: the screen, each AI's open chat (the docked director's too) and the Lab
+  // scene come back as they were, and one calm line says what happened. Before this a crash landed on the first
+  // chat of the rail with the Lab closed: the director's chat "disappeared" with its scene. A normal start is as before.
+  // light: what's on screen by ids only (no layout read: it runs at once on every change of screen, chat or scene, so a
+  // crash a moment after a new chat's first message still knows that chat); the full one (scroll places) on leaving
+  function keepView(light = false) {
+    try {
+      let v;
+      if (light) {
+        v = { active: H.activeId, chats: {}, panelTop: 0 };
+        for (const a of H.agents().filter((x) => x.mode === 'native')) if (H.activeChat[a.id]) v.chats[a.id] = { chatId: H.activeChat[a.id], top: 0, atEnd: true };
+        try { if (typeof ThreeLab !== 'undefined' && ThreeLab.peek?.()) v.lab = { sceneId: ThreeLab.scenes?.currentId?.() || null }; } catch { /* the Lab is optional */ }
+      } else { v = capture(); for (const c of Object.values(v.chats)) delete c.draft; } // drafts have their own saves (and the work journal)
+      v.at = Date.now();
+      localStorage.setItem(VIEW, JSON.stringify(v));
+    } catch { /* a convenience */ }
+  }
+  let viewQ = false;
+  const viewSoon = () => { if (viewQ) return; viewQ = true; queueMicrotask(() => { viewQ = false; keepView(true); }); };
+  let lastLine = null;
+  const lineFor = (x, back) => {
+    const what = back.chat && back.scene ? 'your chat and scene are back' : back.chat ? 'your chat is back' : back.scene ? 'your scene is back' : 'everything is where you left it';
+    if (x.kind === 'page') {
+      const r = String(x.reason || '');
+      const why = /oom|memory/.test(r) ? ' (out of memory)' : r === 'killed' ? ' (the system stopped it)' : ' (out of memory?)';
+      return `Hearth's window crashed${why} and reloaded — ${what}`;
+    }
+    if (x.kind === 'reload') return `The window reloaded${x.why && x.why !== 'reloaded' ? ` (${x.why})` : ''} — ${what}`;
+    return `Hearth stopped unexpectedly last time — ${what}`;
+  };
+  async function comeBack() {
+    let x = null; let v = null;
+    try { x = await window.hub.safetynet?.last?.(); } catch { x = null; }
+    if (!x) return null;
+    // a reload nobody in Hearth asked for (a developer tool): your "Start on" screen wins, as at a start
+    if (x.kind === 'reload' && x.why === 'reloaded' && H.settings?.()?.startOn) return null;
+    try { v = JSON.parse(localStorage.getItem(VIEW) || 'null'); } catch { v = null; }
+    const age = v ? Date.now() - (v.at || 0) : Infinity;
+    if (!v || age > (x.kind === 'process' ? 12 * 3600000 : 30 * 60000) || age < -60000) return null;
+    let mem = null; try { mem = JSON.parse(localStorage.getItem(MEM) || 'null'); } catch { mem = null; }
+    const back = await putBack({ ...v, reason: 'chatkeep' });
+    lastLine = lineFor(x, back);
+    // what the page knew goes with the crash record (data/devreport-crashes.json)
+    try { await window.hub.devreport?.annotate?.({ lastMemory: mem, showing: v.active, lab: v.lab?.sceneId || null, chats: Object.keys(v.chats || {}).length }); } catch { /* an older main */ }
+    // a crash's line is the safetynet card's title (one line, not two); a reload says it here
+    if (x.kind === 'reload') toast(lastLine, { timeout: 5000 });
+    return { kind: x.kind, line: lastLine, back };
+  }
+  async function putBack(s) {
+    const back = { chat: false, scene: false };
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     for (const [agentId, c] of Object.entries(s.chats || {})) {
       if (!H.agent(agentId)) continue;
-      if (c.chatId && H.chats.some((x) => x.id === c.chatId) && H.activeChat[agentId] !== c.chatId) { try { Native.open(agentId, c.chatId); } catch { /* deleted meanwhile */ } }
+      if (c.chatId && H.chats.some((x) => x.id === c.chatId) && H.activeChat[agentId] !== c.chatId) { try { Native.open(agentId, c.chatId); back.chat = true; } catch { /* deleted meanwhile */ } }
+      else if (c.chatId && H.activeChat[agentId] === c.chatId) back.chat = true;
     }
     if (s.lab?.sceneId || s.active === 'tool:three') {
       try {
         if (window.Lazy) await Lazy.load('lab');
         if (s.active === 'tool:three') { activate('tool:three', { focus: false }); await ThreeLab.cmd(); }
+        if (s.reason === 'chatkeep' && s.active === 'tool:three') await until(() => ThreeLab.director && ThreeLab.scenes, 20000); // (its scenes read first)
         if (s.lab?.sceneId && ThreeLab.scenes?.currentId?.() !== s.lab.sceneId && ThreeLab.peek?.()) ThreeLab.scenes.open(s.lab.sceneId);
+        if (s.lab?.sceneId && ThreeLab.scenes?.currentId?.() === s.lab.sceneId) back.scene = true;
         if (s.lab?.seqKey && typeof ThreeSeq !== 'undefined' && s.active === 'tool:three') { await ThreeSeq.open(s.lab.seqKey, { show: true }); ThreeSeq.seek?.(s.lab.seqT || 0); }
       } catch (err) { console.warn('freshen: lab', err); }
     }
@@ -138,9 +198,23 @@ const Freshen = (() => {
     }
     const g = document.getElementById('chat-groups');
     if (g && s.panelTop) { g.scrollTop = s.panelTop; setTimeout(() => { g.scrollTop = s.panelTop; }, 400); }
-    if (s.reason !== 'soak') toast('Freshened: everything is where you left it', { timeout: 2500 });
+    if (s.reason !== 'soak' && s.reason !== 'chatkeep') toast('Freshened: everything is where you left it', { timeout: 2500 });
+    return back;
   }
-  const up = () => { setTimeout(() => restore().catch((err) => console.warn('freshen', err)).finally(() => restoredDone()), 0); arm(); };
+  async function until(fn, ms) { const t = Date.now(); while (Date.now() - t < ms) { try { if (fn()) return true; } catch { /* not yet */ } await new Promise((r) => setTimeout(r, 150)); } return false; }
+  let cameBack = null;
+  const up = () => {
+    setTimeout(() => restore().then((r) => { cameBack = r || null; }).catch((err) => console.warn('freshen', err)).finally(() => {
+      restoredDone();
+      // from now on the view is kept (a reload or a crash puts it back): on a change of screen / chat / scene, on leaving
+      keepView(true);
+      addEventListener('hearth:view', viewSoon);
+      addEventListener('hearth:sketch', viewSoon);
+      addEventListener('pagehide', () => keepView());
+      document.addEventListener('visibilitychange', () => { if (document.hidden) keepView(); });
+    }), 0);
+    arm();
+  };
   // (round 40, firstscreen) loaded right after the first frame (lazy group 'resume'): the first screen may be up already
   if (performance.getEntriesByName('hearth:ready').length) up(); else addEventListener('hearth:ready', up, { once: true });
 
@@ -173,5 +247,5 @@ const Freshen = (() => {
     });
   }
   AppUI.addAction?.('Freshen the window (reload, keeps everything)', () => now({ reason: 'palette' }));
-  return { now, save, restored, status, read, over, restore, capture, LIMITS };
+  return { now, save, restored, status, read, over, restore, capture, keepView, comeBack, lineFor, get cameBack() { return cameBack; }, LIMITS };
 })();

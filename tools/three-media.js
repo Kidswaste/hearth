@@ -1898,6 +1898,8 @@ const ThreeMedia = (() => {
     // ov: draw the time area into another canvas with its own view (the scrolling strip, see scroll below)
     // (round 32, smooth32) the canvases first, the time texts after: a canvas font needs the page's style, and the
     // time written just before (it changes on every draw while a song plays) made each draw style the page first
+    let drawRaf = 0;
+    const drawNext = () => { if (!drawRaf) drawRaf = requestAnimationFrame(() => { drawRaf = 0; draw(); }); }; // (round 52) one draw in the next frame
     function draw(ov = null) {
       const t = now();
       drawTime(ov, t);
@@ -3175,7 +3177,7 @@ const ThreeMedia = (() => {
       load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks, setNotes, setSize, restoreSize,
       // ---------- for the footage side (tools/three-frames.js) ----------
       hooks,
-      addHooks: (o) => { if (!xhooks.includes(o)) xhooks.push(o); draw(); }, // (round 40, labcamera)
+      addHooks: (o) => { if (!xhooks.includes(o)) xhooks.push(o); drawNext(); }, // (round 40, labcamera) · (round 52) drawn in the next frame: drawn at once, it laid the Lab out while it was being built (≈ 40 ms of its opening)
       // (round 46, labkeys) for checks: where a layer's ◆ row and a lane value are on the canvas, what's picked
       _keysGeo: () => {
         const h = canvas.getBoundingClientRect().height; const rows = trackRows(h);

@@ -89,7 +89,7 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the Nodes view). command: layer <preset> (new layer) · presets · types [word] · list · add <type> k=v [to=n.in] · link a.out b.in · unlink b.in · set <n> k=v · rm <n> · preset <p> (replace) · rebuild. help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'material', 'help'];
+const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'material', 'perf', 'help'];
 // (round 25, diet) three_do names its commands, grouped; each one's details come from three_do help <cmd> (DO_HELP,
 // MORE_TOOLS, the guide topics), answered here without a hub call. Was ≈ 370 tokens per message.
 const DO_TOOL = {
@@ -114,6 +114,7 @@ const DO_HELP = {
   autoedit: 'autoedit {op: plan {brief, fresh, format} | show | set {section: n, scene: name|new, brief, bars, trans, look, cuts, lyrics} | lyrics {text} | make | render {format: 9:16|16:9|1:1|all}}: a whole music video from the loaded song: a plan per section (scene, bars, transition on the beat, intensity, look, lyrics) the owner sees as a strip; make builds the Lab sequence (new scenes go to the crew, the owner approves the cost); render only when asked.',
   loop: 'loop {bars | secs | fade | check | render: loop|gif | off | status}: "make it loop" (Shorts): the timeline loops over N bars of the song (or N s) and the scene\'s clock wraps with it in the preview and renders (keyframes come back round); check: ≈ seamless or a visible jump (last frame vs first); fade: blend the last beat into the first; code that loops by itself: help loop.',
   shader: 'shader {op: list | add | glsl | channel | scale | info | check | help}: fragment-shader layers (GLSL, Shadertoy, ISF).',
+  perf: 'perf {op: check (default; fresh: measure again) | fix {id} | undo | fidelity}: the running game\'s smoothness measured here (no screenshot): fps vs the display, every stutter\'s cause (GC, shader compile, texture upload, long JS, layout, GPU), findings sorted by impact with the fix and line; [fix] ids apply a safe code change (the owner can undo). For "make it smoother / it stutters / fps".',
   material: 'material {op: list | set {layer, preset, color: #hex, shine: 0–1, part: object path (none: whole layer)} | off {layer, part} | info}: a material look (chrome, glass, gold, plastic, velvet, neon, toon, wireframe…) on a 3D layer or one object, without code; kept with the layer, renders follow.',
 };
 
@@ -153,7 +154,8 @@ const tools = CREW ? CORE_TOOLS.filter((t) => CREW_TOOLS.includes(t.name)).map(l
 // if any); anything else goes to the guide / app map. (round 25)
 const BY = Object.fromEntries([...CORE_TOOLS, ...MORE_TOOLS, NODES_TOOL].map((t) => [t.name.slice(6), t]));
 function help(topic) {
-  const k = String(topic || '').toLowerCase().trim().replace(/^three_/, '').replace(/[\s-]+/g, '_');
+  const k0 = String(topic || '').toLowerCase().trim().replace(/^three_/, '').replace(/[\s-]+/g, '_');
+  const k = /^(smooth|smoother|fps|stutter|stutters|lag|jank|performance|framerate)$/.test(k0) ? 'perf' : k0; // (round 52, gameperf)
   const t = BY[k];
   const line = DO_HELP[k] || (t && `${t.name}${MORE_TOOLS.includes(t) || VIA_DO.includes(t.name) ? ` (lean: three_do ${k})` : ''}: ${t.description}\nargs: ${Object.keys(t.inputSchema.properties).join(', ') || 'none'}`);
   const guide = G().help(topic || 'app');

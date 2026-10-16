@@ -449,4 +449,4 @@ function register(ipcMain, getWin, settings) {
   try { require('electron').app.on('before-quit', stopPreviews); } catch { /* tests */ }
 }
 
-module.exports = { register, status, providerStatus, login, build, preview, stopPreviews, verify, deploy, remove, rollback, findCli, runCli, _test: { setDataDir: (d) => { DATA_DIR = d; }, vendorThree, labPage, cache } };
+module.exports = { register, vendorThree, labPage, status, providerStatus, login, build, preview, stopPreviews, verify, deploy, remove, rollback, findCli, runCli, _test: { setDataDir: (d) => { DATA_DIR = d; }, vendorThree, labPage, cache } };

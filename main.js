@@ -1,6 +1,9 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
+// (round 52, gameperf) exact JS heap numbers (performance.memory): ▶ Play's stats see garbage per second and each GC
+// pause instead of 20-minute-old buckets. Reading them costs nothing until a page asks.
+app.commandLine.appendSwitch('enable-precise-memory-info');
 // (round 39, powerwise) keep the computer awake only while it matters, battery / saver, calm timers after a wake (first, so
 // its test counter sees every timer the main process starts)
 const powerwise = require('./powerwisemain');
@@ -16,10 +19,12 @@ const store = require('./store');
 // until Hearth restarted, so glrecover had nothing to come back to. Off (before 'ready'); Chromium's own fallback when
 // the GPU keeps crashing still applies (glrecovermain's note).
 try { app.disableDomainBlockingFor3DAPIs(); } catch (err) { console.warn('glrecover: domain blocking', err.message); }
-// (round 52, gameready) ▶ Play: an HTML game's window serves its folder as hearth-game://… (gamereadymain.js; a scheme is
-// named before 'ready'); Chromium's compiled-shader cache (kept on disk, so a game's second launch skips its compiles)
-// may hold 32 MB instead of 6: a big game's programs fit
-try { require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'hearth-game', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }]); } catch (err) { console.warn('gameready: scheme', err.message); }
+// (round 52, gamemode) ▶ Play's hearth-game: protocol (a game's own folder, read-only) must be known before 'ready'
+// (a standard, secure scheme: relative paths, fetch, modules, WebGL, audio and pointer lock work as on a web server; the
+// handler itself is set on the game's own session by gamemodemain.js, on first use)
+require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'hearth-game', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } }]);
+// (round 52, gameready) Chromium's compiled-shader cache (kept on disk for a persistent session: ▶ Play's window uses
+// one, so a game's second launch skips its compiles) may hold 32 MB instead of 6: a big game's programs fit
 app.commandLine.appendSwitch('gpu-program-cache-size-kb', '32768');
 // (round 19, splash) modules the first screen doesn't need are required on their first use instead of before the window
 // opens (Electron's 'ready' waits for everything main.js does at load): the same object to every caller, made on demand
@@ -98,6 +103,10 @@ function readConfig() { return cfgStore.read(); }
 function settings() {
   try { return readConfig().settings || {}; } catch { return {}; }
 }
+// (round 52, gpu52) the graphics path for this start, before 'ready': the fast card on a two-card laptop, the ANGLE path
+// if you picked one (back to the default when a start never reached the card), nothing that caps the frame rate
+const gpu52 = require('./gpu52main');
+try { gpu52.early(app, { settings: settings(), dataDir: store.DATA_DIR }); } catch (err) { console.warn('gpu52: early', err.message); }
 
 function loadAll() {
   try {
@@ -426,7 +435,7 @@ ipcMain.handle('window:show', () => { win.show(); win.focus(); });
 let nativeAttention = null;
 ipcMain.handle('window:flash', () => (nativeAttention ? nativeAttention.attention() : null));
 ipcMain.handle('window:isFocused', () => !require('./notifymain').awayForChecks() && win.isFocused() && win.isVisible()); // (round 44: a check can play "Hearth in the background")
-ipcMain.handle('window:reload', () => win.webContents.reloadIgnoringCache());
+ipcMain.handle('window:reload', (_e, why) => { require('./safetynetmain').noteReload(why || 'Ctrl/⌘+Shift+R or a Reload button'); win.webContents.reloadIgnoringCache(); }); // (round 52, chatkeep) the new page says why and puts everything back
 ipcMain.handle('find:start', (_e, text, opts) => (text ? win.webContents.findInPage(text, opts) : null));
 ipcMain.handle('find:stop', () => win.webContents.stopFindInPage('keepSelection'));
 ipcMain.handle('shortcuts:create', () => appshell.createShortcuts());
@@ -603,9 +612,10 @@ function registerAfterWindow() {
   require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
   lazyIpc('rendersmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // the render queue: pause / resume / cancel ffmpeg jobs (round 29: on first use)
   lazyIpc('renderfastmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 41, renderfast) Lab exports stream their frames into ffmpeg (on first use)
-  lazyIpc('gamereadymain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, appDir: __dirname })); // (round 52, gameready) ▶ Play gets a game ready: hashes, Hearth's optimized cache, an HTML game's window (on first use)
+  lazyIpc('gamereadymain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, appDir: __dirname })); // (round 52, gameready) ▶ Play gets a game ready: hashes, Hearth's optimized cache and its rewrite map for ▶ Play's window (on first use)
   lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
   lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
+  lazyIpc('gamemodemain.js', (m, ipc) => m.register(ipc, { getWin: () => win, powerwise, dataDir: store.DATA_DIR })); // (round 52) ▶ Play: a game in its own full-screen window
   lazyIpc('voicemain.js', (m, ipc) => m.register(ipc, () => win, { settings, dataDir: store.DATA_DIR })); // (round 23) voice: local speech-to-text (whisper), system voices
   lazyIpc('remotemain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 24) phone remote: a LAN-only server for the Lab / stage, off until /remote on
   lazyIpc('interopmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) interop: OSC in / out, Ableton Link tempo, the OBS Browser Source page, obs-websocket; all off until used
@@ -666,6 +676,7 @@ function registerAfterWindow() {
   syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)
   require('./jankmain').register(ipcMain, bgmain, () => win); // (round 20) jank watch: main loop lag, GPU crashes, the owner's busy moments
   require('./glrecovermain').register(ipcMain, { getWin: () => win }); // (round 43) the graphics card restarted / drawing without it: one calm note
+  gpu52.register(ipcMain, { getWin: () => win }); // (round 52) did this start reach the card (told once if not), Windows' per-app graphics choice, Settings › Advanced › Graphics
   syncmain.setHold?.(() => (require('./powerwisemain').quietNow?.() ? 'quiet' : require('./jankmain').hold())); // a sync pass waits out a drag / typing burst · (round 52) and a Lab show (as long as it lasts)
 }
 // /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs

@@ -124,6 +124,28 @@ What the measurements showed (the critical path since rounds 37–46):
 - `tools/three-nodes.js` (nodes): filter types on first use (two lines).
 - `dev/run-checks.js`: the check in `lab`, a `labstartfast` group.
 
+## Round 52 fix: no extra layouts before the Lab's scenes are read
+`labstartfast` started failing alone ("songOpen: the window's CPU until the Lab's scenes were read: 206.6 ms",
+"cold open used 6500 ms CPU"). A bisect over clean `git archive` copies (1d31b0c, round 51 at 594bed3, presentready
+at f8f2403, the Astra merge 36ee90f, crashsafe 269d3cc, lazymeta d2d8a84; the same HEAD check on each, two runs each)
+found **no commit that added the cost**: songOpen's number was 143.7 / 144.2 ms at 1d31b0c already (6 ms under the
+budget) and 122–194 ms at every later point, with no step; the cold open's CPU is ≈ 75 % the software GPU's and swung
+3.7–6.3 s at every point. The margin was gone, and load decided pass / fail.
+A trace of the window until `hearth:lab-ready` showed where those ms went: three **forced layouts while the Lab was
+being built**, each before the scenes were even asked for:
+- `tools/three-media.js` `addHooks()` (🎥 camera moves joining the timeline) drew the timeline at once: its width read
+  laid the whole half-built Lab out (≈ 40 ms of style + layout). Now drawn in the next frame (`drawNext`).
+- `tools/three.js` the park check after a page's 'ready' (the warm page taken on the first open) read
+  `checkVisibility` right after the toolbar was rebuilt: a second whole layout (≈ 20–35 ms). Now in the next frame
+  (`parkSoon`; at once when the window is hidden). The IntersectionObserver and the stall timer still follow it.
+- `tools/three.js` the code editor's highlight colours (`hlTheme`) were read with `getComputedStyle` while the Lab was
+  being built (≈ 10 ms of styling the page). Now in the next frame; the editors get them then (`paintTheme`).
+Nothing on screen changes (each happens in the very next frame). The window's CPU until the scenes are read, after:
+cold / song / warm **62 / 75 / 47 ms** at load 2 (round 48's 62 / 50), 64 / 109 / 55 and 85 / 80 / 38 at load 12,
+86 / 108 / 60 at load 26. Before: 103–146 / 122–194 / 72–107 in the bisect (a machine that had run for hours, load
+4–13), 66 / 97 / 49 in one run of 1d31b0c after the machine restarted (load 12): most of the failing numbers were the
+machine's state, and the fix takes the song open's ≈ 20–40 ms of forced layout out of the way on top.
+
 ## For the patch notes
 - Switching to a scene with pictures, 3D models or videos now happens in one go: no half-built picture first, and the
   right picture shows about a third sooner in our test.

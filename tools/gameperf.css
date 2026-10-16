@@ -1,0 +1,26 @@
+/* ▶ Performance doctor (tools/gameperf.js): the card over the game (the Lab preview's top left, or floating in the
+   window), built on lookmatch's card parts (.lm-head / .lm-btn / .lm-acts) like 🩺 Fix my scene. Plain and still: no
+   blur, no animation over the moving game. The stats chip is drawn inside the game page itself (gameperf-probe.js). */
+.gp-card {
+  position: absolute; top: 46px; left: 8px; z-index: 7; width: 400px; max-width: calc(100% - 16px); max-height: calc(100% - 56px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; scrollbar-width: thin;
+  background: color-mix(in srgb, var(--panel, #15181b) 96%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008; contain: layout paint;
+}
+.gp-card.gp-float { position: fixed; top: 60px; left: auto; right: 16px; max-height: calc(100vh - 80px); z-index: 60; }
+.gp-card.busy .gp-body { opacity: 0.6; }
+.gp-sum { color: var(--muted, #9a948c); line-height: 1.35; }
+.gp-body { display: flex; flex-direction: column; gap: 3px; }
+.gp-row { display: grid; grid-template-columns: auto 1fr; gap: 3px 6px; padding: 4px 6px; border-radius: 6px; background: color-mix(in srgb, var(--fh-gold, #ffd75e) 4%, transparent); }
+.gp-row.done { opacity: 0.7; }
+.gp-imp { align-self: start; font-size: 10px; padding: 0 5px; border-radius: 4px; line-height: 16px; color: #111; background: var(--fh-blue, #6db3ff); }
+.gp-imp.gp-big { background: var(--fh-red, #ff5d5d); }
+.gp-imp.gp-medium { background: var(--fh-orange, #ff9d4d); }
+.gp-imp.gp-fid { background: var(--fh-gold, #ffd75e); }
+.gp-text { line-height: 1.35; overflow-wrap: anywhere; min-width: 0; }
+.gp-fix { color: var(--muted, #9a948c); }
+.gp-patch { margin: 3px 0 0; padding: 4px 6px; max-height: 120px; overflow: auto; font-size: 11px; border-radius: 5px; background: #0006; white-space: pre; }
+.gp-acts { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.gp-ok { color: var(--fh-gold, #ffd75e); }
+.gp-head2 { margin-top: 4px; color: var(--fh-gold, #ffd75e); font-size: 11px; }
+.gp-none { padding: 4px 6px; color: var(--muted, #9a948c); }
