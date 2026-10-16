@@ -2276,6 +2276,7 @@ const Native = (() => {
         { label: 'Jump to the first message', action: () => { const l = views.get(agentId)?.list; if (l) l.scrollTop = 0; } },
         { label: 'Read the last reply aloud', key: 'Alt+R', action: () => speak(lastReplyText(agentId)) },
         { label: 'Chat stats', action: () => chatStats(chat) },
+        ...(typeof ChatCmds !== 'undefined' && ChatCmds.messageLook ? [ChatCmds.messageLook()] : []), // (round 51, commandonly) /width /spacing /timestamps /font (chat-cmds.js)
         { label: 'Everything it can do…', action: () => Commands.exec('/help', agentId) },
       ] },
       // (round 9) the board, scene, sequence, project, captures this chat works with (chat-context.js)

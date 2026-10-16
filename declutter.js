@@ -324,6 +324,8 @@ const Declutter = (() => {
         { label: 'Everything it can do…', action: cmd('/help', agentId) },
       ] },
       typeof Prompts !== 'undefined' ? { label: 'Prompt library…', action: () => Prompts.manage() } : null,
+      // (round 51, commandonly) things only a typed command reached: snippets, a reminder, a code file as nodes
+      ...(typeof ChatCmds !== 'undefined' && ChatCmds.boxRows ? ChatCmds.boxRows(agentId, v) : []), // (chat-cmds.js: loads right after the first screen)
       form.querySelector('.collab-chip') ? { label: '⚇ Work with Astra…', action: () => setTimeout(() => form.querySelector('.collab-chip')?.click(), 0) } : null,
       busy ? { label: '■ Stop the reply', key: 'Esc', action: () => Native.stop(agentId) } : null,
       v?.input.value ? { label: 'Clear the message', action: () => { v.input.value = ''; v.input.dispatchEvent(new Event('input')); } } : null,
