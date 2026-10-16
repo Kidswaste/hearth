@@ -106,6 +106,12 @@ what it waited behind under load is lighter now.
   long frame with a dialog open is "dialogs", switching chats shows the chat clicked with its box focused and its draft
   back, the search shows the 12 matches, a burst shows the newest 5 notes, the 🅰 readout carries its step. The base
   commit fails 7 budget lines.
+- (round 50) Two load races fixed in the check, budgets unchanged (a copy with the old per-note placement and the
+  old dialog search still fails both): the burst is counted once its placement frame ran (two fixed settles took
+  ~2 s at load 12+, the notes' own 1.5 s timeout ended them, and speed-fix's "This keeps happening (10×)" note was
+  counted as the one shown and a 2nd placement); dialog searches count only inside the press's handlers or the menu
+  functions (hints' tip pump and the jank watch's long-frame note ran in the same stretch: `otherSearches`).
+  A burst does show the newest 3 notes (appcalm's cap works).
 - `Jank._test.frame(entry)` feeds a fake long frame; `Jank._test.viewArea()` answers from the memo.
 - Profiling probes: a sampling profile through `smoke({ cdp: 'Profiler.start' })` / `Profiler.stop` (add
   `target: 'three-sandbox'` for the preview's page) charged by function, with natives charged to their JS caller, is

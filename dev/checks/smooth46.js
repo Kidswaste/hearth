@@ -64,10 +64,24 @@ const v = Native.view(claude.id);
 // ---------- right-clicks in the chat on screen ----------
 let views = 0;
 addEventListener('hearth:view', () => { views += 1; });
-let dlgSearches = 0;
+// (round 50) only the searches the opening makes count: inside the press's own handlers (the event being dispatched)
+// or inside the menu functions. Timers that run in the same stretch on a loaded machine (hints.js's tip pump, the jank
+// watch noting a long frame right after the press cleared its memo, as designed) are reported apart (otherSearches):
+// they made "0.25–0.5 per menu" failures that had nothing to do with menus.
+let dlgSearches = 0; let otherSearches = 0; let inMenuFn = 0;
+const PRESS = /^(pointerdown|pointerup|mousedown|mouseup|contextmenu|click|auxclick)$/;
 for (const fn of ['querySelector', 'querySelectorAll']) {
   const orig = Document.prototype[fn];
-  Document.prototype[fn] = function (sel) { if (typeof sel === 'string' && sel.includes('dialog[open]')) dlgSearches += 1; return orig.call(this, sel); };
+  Document.prototype[fn] = function (sel) {
+    if (typeof sel === 'string' && sel.includes('dialog[open]')) { const e = window.event; if (inMenuFn || (e?.isTrusted && PRESS.test(e.type))) dlgSearches += 1; else otherSearches += 1; }
+    return orig.call(this, sel);
+  };
+}
+const menuFns = {};
+for (const name of ['showMenu', 'showMenuAt', 'topLayer']) {
+  const f = window[name]; if (typeof f !== 'function') continue;
+  menuFns[name] = f;
+  window[name] = function (...a) { inMenuFn += 1; try { return f.apply(this, a); } finally { inMenuFn -= 1; } };
 }
 const optBtn = () => [...v.root.querySelectorAll('.native-head button')].find((b) => b.getAttribute('aria-label') === 'Chat options' && b.getBoundingClientRect().width);
 const hs = { mousedown: [], contextmenu: [] };
@@ -79,16 +93,17 @@ await click(...mid(optBtn()), 'right'); await settle(); await esc(); await settl
 for (const t of Object.keys(hs)) hs[t].length = 0;
 views = 0; dlgSearches = 0;
 let menus = 0;
-let inOpen = 0; // (counted from the press to the menu on screen: Esc's own handlers look for dialogs, as they should)
+let inOpen = 0; let others = 0; // (counted from the press to the menu on screen: Esc's own handlers look for dialogs, as they should)
 for (let i = 0; i < 4; i++) {
-  const d0 = dlgSearches;
+  const d0 = dlgSearches; const o0 = otherSearches;
   await click(...mid(optBtn()), 'right'); await settle();
-  inOpen += dlgSearches - d0;
+  inOpen += dlgSearches - d0; others += otherSearches - o0;
   if (document.getElementById('menu') && !document.getElementById('menu').hidden) menus += 1;
   await esc(); await settle();
 }
+for (const [name, f] of Object.entries(menuFns)) window[name] = f;
 dlgSearches = inOpen;
-n.press = { menusOpened: menus, viewRounds: views, dialogSearches: dlgSearches, mousedownMs: { p50: pct(hs.mousedown, 0.5), p95: pct(hs.mousedown, 0.95) }, contextmenuMs: { p50: pct(hs.contextmenu, 0.5), p95: pct(hs.contextmenu, 0.95) } };
+n.press = { menusOpened: menus, viewRounds: views, dialogSearches: dlgSearches, otherSearches: others, mousedownMs: { p50: pct(hs.mousedown, 0.5), p95: pct(hs.mousedown, 0.95) }, contextmenuMs: { p50: pct(hs.contextmenu, 0.5), p95: pct(hs.contextmenu, 0.95) } };
 if (menus !== 4) fail(`right-click on the chat's ⋯ should open its menu each time (${menus} of 4)`);
 over('hearth:view rounds per right-click in the chat on screen', menus ? views / 4 : null, BUDGET.viewPerPress);
 over('page-wide dialog searches per menu opened', menus ? dlgSearches / 4 : null, BUDGET.dialogSearchPerMenu);
@@ -153,13 +168,24 @@ if (H.activeId !== claude.id || !H.surfaces.get(claude.id)?.el.classList.contain
   if (H0 && d0) H0.dodge = function (...a) { places += 1; return d0.apply(this, a); };
   const q0 = Document.prototype.querySelector;
   Document.prototype.querySelector = function (sel) { if (typeof sel === 'string' && sel.includes('.tool-dock')) docks += 1; return q0.call(this, sel); };
-  for (let i = 0; i < 10; i++) toast(`smooth46 burst ${i}: ENOENT, open '/tmp/smooth46-${i}'`, { type: 'error', timeout: 1500 });
-  await settle(); await settle();
+  // (round 50) counted when the burst's placement frame has run, plus one frame (was two fixed settles: on a loaded
+  // machine they took ~2 s, the notes' own 1.5 s timeout ended them all, and speed-fix's "This keeps happening (10×)"
+  // note, due 1.2 s after the 3rd error, was counted as a 2nd placement / search and as the one note shown). The notes
+  // stay up for the whole step (timeout 60 s, removed at its end); only the burst's own notes are counted.
+  document.querySelectorAll('#toasts > .toast').forEach((t) => t.remove());
+  const t0 = performance.now();
+  for (let i = 0; i < 10; i++) toast(`smooth46 burst ${i}: ENOENT, open '/tmp/smooth46-${i}'`, { type: 'error', timeout: 60000 });
+  const box = document.getElementById('toasts');
+  const placedFrame = await until(() => places >= 1 && !box?.placeRaf, 20000);
+  await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); // a frame more: a second placement would show here
   Document.prototype.querySelector = q0;
   if (H0 && d0) H0.dodge = d0;
-  const shown = document.querySelectorAll('#toasts > .toast').length;
-  n.toasts = { notes: 10, shown, placed: places, dockSearches: docks };
-  if (shown !== 3) fail(`a burst of 10 notes shows the newest 3 (shows ${shown})`); // (round 49, appcalm) 3 at once, was 5
+  const burst = [...document.querySelectorAll('#toasts > .toast')].filter((t) => /smooth46 burst \d/.test(t.textContent));
+  const shown = burst.length;
+  const which = burst.map((t) => +t.textContent.match(/smooth46 burst (\d)/)[1]);
+  n.toasts = { notes: 10, shown, which, placed: places, dockSearches: docks, placedAfterMs: r1(performance.now() - t0) };
+  if (!placedFrame) fail('a burst of 10 notes: the placement frame never ran (20 s)');
+  if (shown !== 3 || which.join() !== '7,8,9') fail(`a burst of 10 notes shows the newest 3 (shows ${shown}: ${which.join()})`); // (round 49, appcalm) 3 at once, was 5
   over('notes placed (dodge) for a burst of 10 in one go', places, BUDGET.toastPlacesPerBurst);
   over('page-wide docked-chat searches for a burst of 10 notes', docks, BUDGET.toastPlacesPerBurst);
   document.querySelectorAll('#toasts > .toast').forEach((t) => t.remove());
