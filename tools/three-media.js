@@ -527,13 +527,17 @@ const ThreeMedia = (() => {
       if (had != null && toggle) set.delete(had); else set.add(t);
       keySel.set(id, set);
     }
-    function setTracks(list, handlers) {
+    function setTracks(list, handlers, { soon = false } = {}) {
       tracks = list || [];
       if (handlers) trackHandlers = handlers;
       // (labkeys) picked ◆ that are gone (deleted, undone, another scene) leave the selection
       if (keySel) for (const [id, set] of keySel) { const tr = tracks.find((x) => x.id === id); for (const t of [...set]) if (!tr?.keys?.some((k) => Math.abs(k.t - t) < 1e-3)) set.delete(t); if (!set.size) keySel.delete(id); }
       sizeCanvas();
-      draw();
+      // (round 54, labsmooth54) soon: drawn in the coming frame, not now. The Lab asks for it right after rebuilding the
+      // Layers list (a click on a layer, a director edit): drawing now made the canvas's font ask for the whole Lab's
+      // style and layout inside that handler (≈ 50 ms of a layer switch here), then the frame did it again. Drags
+      // (clips, keys, lanes) still draw at once, in their own frame.
+      if (soon) drawNext(); else draw();
     }
     // Notes on moments (pins on the ruler): [{ id, t, text, done }], handlers onOpen(id, x, y).
     let notes = [];
@@ -818,10 +822,10 @@ const ThreeMedia = (() => {
     function sendSeek(t) {
       const wait = seekQ.busy ? 1000 - (performance.now() - seekQ.busy) : 0;
       if (wait > 0) { seekQ.want = t; if (!seekQ.timer) seekQ.timer = setTimeout(seekAcked, wait); return; }
-      clearTimeout(seekQ.timer); seekQ.timer = 0; seekQ.want = null; seekQ.busy = performance.now();
+      if (seekQ.timer) { clearTimeout(seekQ.timer); seekQ.timer = 0; } seekQ.want = null; seekQ.busy = performance.now();
       send({ type: 'media', cmd: 'seek', value: t, ack: true });
     }
-    function seekAcked() { seekQ.busy = 0; clearTimeout(seekQ.timer); seekQ.timer = 0; if (seekQ.want != null) sendSeek(seekQ.want); }
+    function seekAcked() { seekQ.busy = 0; if (seekQ.timer) { clearTimeout(seekQ.timer); seekQ.timer = 0; } if (seekQ.want != null) sendSeek(seekQ.want); }
     const seekFlush = () => { if (seekQ.want != null) { seekQ.busy = 0; sendSeek(seekQ.want); } };
     // (round 49, labscrub) the scrub sound: dragging the playhead plays short grains of the song where it is (like a
     // DJ's jog wheel), from the analysis' 22 kHz copy in the Lab window, at the Lab's volume: ≤ 1 grain per 45 ms,
@@ -847,7 +851,8 @@ const ThreeMedia = (() => {
         for (let i = 0; i < len && i0 + i < src.length; i += 1) ch[i] = src[i0 + i] * gain * Math.min(1, i / fade, (len - 1 - i) / fade);
         const node = ac.createBufferSource(); node.buffer = buf; node.connect(ac.destination); node.start();
         scrub.last = nowMs; scrub.lastT = t; scrub.n += 1; scrubStats.grains += 1;
-        clearTimeout(scrub.sleep); scrub.sleep = setTimeout(() => { scrub.ctx?.suspend().catch(() => {}); }, 1500);
+        // (round 54) one timer that looks again when it's due, not a timer cleared and made again for every grain
+        if (!scrub.sleep) scrub.sleep = setTimeout(function nap() { const left = 1500 - (performance.now() - scrub.last); if (left > 30) { scrub.sleep = setTimeout(nap, left); return; } scrub.sleep = 0; scrub.ctx?.suspend().catch(() => {}); }, 1500);
       } catch { /* no sound: the scrub still works */ }
     }
     function onMessage(msg) {
