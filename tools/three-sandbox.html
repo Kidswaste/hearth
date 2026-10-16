@@ -11571,6 +11571,10 @@ function sqPlay(on, rate = 1) {
   sqSounds(SQ.T);
   sqState(true);
 }
+// an exact ArrayBuffer copy of song bytes, whatever they came as: an ArrayBuffer (the preview), or a byte view (the
+// hidden export page gets a Uint8Array / Buffer view, maybe a window into a bigger buffer): decodeAudioData takes only
+// an ArrayBuffer, and a view's .slice(0) is still a view (the decode failed, an export's frames heard silence)
+const abCopy = (b) => (ArrayBuffer.isView(b) ? new Uint8Array(b.buffer, b.byteOffset, b.byteLength) : new Uint8Array(b)).slice().buffer;
 // offline: the song's samples (for the spectrum the analyser would have heard at each frame)
 async function sqOffline(on) {
   SQ.off = Boolean(on);
@@ -11587,7 +11591,7 @@ async function sqOffline(on) {
   SQ.smooth = null;
   if (sqSong() && lastMediaBytes && !SQ.pcm) {
     try {
-      const buf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(lastMediaBytes.slice(0));
+      const buf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(abCopy(lastMediaBytes));
       const mono = new Float32Array(buf.length);
       for (let c = 0; c < buf.numberOfChannels; c += 1) { const d = buf.getChannelData(c); for (let i = 0; i < mono.length; i += 1) mono[i] += d[i] / buf.numberOfChannels; }
       SQ.pcm = mono; SQ.pcmRate = buf.sampleRate;

@@ -24,6 +24,9 @@ const ThreeMedia = (() => {
   const base = (p) => p.split(/[\\/]/).pop();
 
   // ---------- analysis ----------
+  // an exact ArrayBuffer copy of song bytes (an ArrayBuffer, a typed array or a Node Buffer view: its own bytes only),
+  // what decodeAudioData takes: a view's .slice(0) is still a view, and the decode rejects it
+  const abCopy = (b) => (ArrayBuffer.isView(b) ? new Uint8Array(b.buffer, b.byteOffset, b.byteLength) : new Uint8Array(b)).slice().buffer;
   // Decodes the audio at 22 kHz (the browser does that off the main thread), then hands the samples to the analysis
   // Worker (tools/three-music-core.js: the same file the page loads as MusicCore): band envelopes, spectral-flux
   // onsets, the tempo and a straight grid through the beats, where bar 1 is, kick / snare / hat hits, sections
@@ -32,7 +35,7 @@ const ThreeMedia = (() => {
   // peaks for the timeline); the player keeps both and never sends them to the sketch.
   async function analyze(bytes, { onProgress } = {}) {
     const SR = 22050;
-    const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(bytes.slice(0));
+    const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(abCopy(bytes));
     const channels = () => Array.from({ length: decoded.numberOfChannels }, (_, c) => { const a = new Float32Array(decoded.length); decoded.copyFromChannel(a, c); return a; });
     const inline = () => {
       const ch = channels(); const mono = ch[0];
@@ -3212,7 +3215,7 @@ const ThreeMedia = (() => {
         const lanes = LANES.map((l) => l.id).filter((id) => cfg[id]?.on);
         if (!lanes.length) throw new Error('Kick, snare and hit are all off');
         const SR = 48000;
-        const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(st.bytes.slice(0));
+        const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(abCopy(st.bytes));
         const range = region ? [region.a, region.b] : [0, decoded.duration];
         const ctx = new OfflineAudioContext(1, decoded.length, SR);
         const src = ctx.createBufferSource(); src.buffer = decoded;

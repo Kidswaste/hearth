@@ -70,7 +70,7 @@ const GROUPS = {
   devreport: ['devreport', 'unit:devreport-test'],
   context: ['context', 'unit:context-test'], // (round 24) @ references, relevant memory, what each message sent, fresh start
   voice: ['voice', 'unit:voice-test'], // (round 23) talk to chats: push to talk, local whisper (dev/fake-whisper.js), voice commands, read aloud
-  labexport: ['labexport', 'unit:labexport-test', 'renderfast', 'unit:renderfast-test'], // (round 41) renderfast: streamed encodes, the same files as the reference path, timing budget // (round 22) best-quality Lab exports in a hidden page // (round 21) Report to the developer: masking, gh (fake), the browser link, fixed in an update
+  labexport: ['labexport', 'unit:labexport-test', 'renderfast', 'unit:renderfast-test', 'sequence-songpcm'], // (round 41) renderfast: streamed encodes, the same files as the reference path, timing budget // (round 22) best-quality Lab exports in a hidden page // (round 21) Report to the developer: masking, gh (fake), the browser link, fixed in an update
   assets: ['assets', 'unit:assets-test'], // (round 24) the asset library: fixtures folder, thumbnails, drops, fake Poly Haven / ambientCG (smoke --fake-assets)
   connections: ['connections', 'unit:connections-test'], // (round 26) the owner's MCP servers: ＋ Add a connection, Test (dev/fake-mcp-server.js), both engines' configs
   hooks: ['hooks', 'unit:hooks-test'], // (round 26) ⚡ hooks: when something happens, an AI gets your words (⋯ AI setup)

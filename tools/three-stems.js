@@ -49,9 +49,12 @@ const LabStems = (() => {
       keys.onsuccess = () => { all.onsuccess = () => { const rows = keys.result.map((k, i) => [k, all.result[i]?.at || 0]).sort((a, b) => b[1] - a[1]); for (const [k] of rows.slice(12)) os.delete(k); }; };
     } catch { /* full or private */ }
   }
+  // an exact ArrayBuffer copy of song bytes (an ArrayBuffer, a typed array or a Node Buffer view: its own bytes only),
+  // what decodeAudioData takes: a view's .slice(0) is still a view, and the decode rejects it
+  const abCopy = (b) => (ArrayBuffer.isView(b) ? new Uint8Array(b.buffer, b.byteOffset, b.byteLength) : new Uint8Array(b)).slice().buffer;
   async function decode(bytes) {
     const RATE = C().RATE; // decoded straight at 22.05 kHz: half the work, plenty for the parts
-    const buf = await new OfflineAudioContext(1, 1, RATE).decodeAudioData(bytes.slice(0));
+    const buf = await new OfflineAudioContext(1, 1, RATE).decodeAudioData(abCopy(bytes));
     const n = buf.length; const mono = new Float32Array(n);
     for (let c = 0; c < buf.numberOfChannels; c += 1) { const ch = buf.getChannelData(c); for (let i = 0; i < n; i += 1) mono[i] += ch[i] / buf.numberOfChannels; }
     return { mono, rate: RATE };
