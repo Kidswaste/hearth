@@ -139,7 +139,10 @@ step('the meter says what it opens in one sentence', /what's left/i.test(documen
 // ---------- the Usage window's folded parts ----------
 await Meter.dashboard(); await wait(500);
 const dl = document.querySelector('dialog.meter-dlg[open]');
-const tabs = [...(dl?.querySelectorAll('.mt-tabs > button') || [])].filter(vis).map((b) => b.textContent.trim());
+const tabsNow = () => [...(dl?.querySelectorAll('.mt-tabs > button') || [])].filter(vis).map((b) => b.textContent.trim());
+// (the window fades in: its tabs count as seen once it has, on a busy machine that's after 0.5 s)
+for (let i = 0; i < 20 && !tabsNow().length; i++) await wait(250);
+const tabs = tabsNow();
 out.lists.usageTabs = tabs.join(' | ');
 step('Usage: 5 tabs + More', tabs.length <= 6 && tabs.some((t) => /More/.test(t)), tabs);
 const moreTab = [...(dl?.querySelectorAll('.mt-tabs > button') || [])].find((b) => /More/.test(b.textContent));
