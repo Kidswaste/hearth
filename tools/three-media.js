@@ -797,7 +797,6 @@ const ThreeMedia = (() => {
         if (st.clock) st.time = Math.min(clockSnap(st.time), D()); // the scene's own timeline: on a frame start
         sendSeek(st.time);
       }
-      if (dragging?.kind === 'seek') scrubGrain(st.time);
       // A jump outside the zoomed view brings the view along (unless it's locked).
       if (view && !locked && !dragging && (st.time < view.start || st.time > view.end)) setView({ start: st.time - span() / 2, end: st.time + span() / 2 });
       // (round 38, inputlatency) scrubbing: the seek goes out at once, the timeline is drawn once in the coming frame
@@ -810,11 +809,11 @@ const ThreeMedia = (() => {
     function paintSoon() { if (!paintRaf) paintRaf = requestAnimationFrame(() => { paintRaf = 0; if (dragging?.kind === 'seek') { draw(); placePlayheads(); } else paint(); }); }
     // (round 49, labscrub) one seek in flight: the preview answers once it has drawn it (seekAck, in its next frame),
     // and meanwhile only the newest time waits, so a fast scrub never queues seeks the preview can't draw (it got up to
-    // four per frame) and the last one is always the time where the playhead stopped. No answer in 250 ms (a preview
+    // four per frame) and the last one is always the time where the playhead stopped. No answer in a second (a preview
     // reloading or hidden): the newest goes anyway.
     const seekQ = { busy: 0, want: null, timer: 0 };
     function sendSeek(t) {
-      const wait = seekQ.busy ? 250 - (performance.now() - seekQ.busy) : 0;
+      const wait = seekQ.busy ? 1000 - (performance.now() - seekQ.busy) : 0;
       if (wait > 0) { seekQ.want = t; if (!seekQ.timer) seekQ.timer = setTimeout(seekAcked, wait); return; }
       clearTimeout(seekQ.timer); seekQ.timer = 0; seekQ.want = null; seekQ.busy = performance.now();
       send({ type: 'media', cmd: 'seek', value: t, ack: true });
@@ -849,11 +848,11 @@ const ThreeMedia = (() => {
       } catch { /* no sound: the scrub still works */ }
     }
     function onMessage(msg) {
+      // (round 49, labscrub) the preview drew a seek: the next waiting one goes; paused, the playhead stays where the
+      // pointer has it (the answer is for an older spot while a scrub runs on)
+      if (msg.type === 'media-state' && msg.seekAck) { seekAcked(); if (!msg.playing && !st.playing) msg = { ...msg, time: st.time }; }
       if (hooks.message?.(msg)) return;
       if (msg.type === 'media-state') {
-        // (round 49, labscrub) the preview drew a seek: the next waiting one goes; paused, the playhead stays where the
-        // pointer has it (the answer is for an older spot while a scrub runs on)
-        if (msg.seekAck) { seekAcked(); if (!msg.playing && !st.playing) msg = { ...msg, time: st.time }; }
         // the sandbox sends this a few times a second while it plays: only a real change (play / pause / end / a new
         // song length) repaints the control row; plain time updates just re-sync the clock
         const same = st.playing === msg.playing && (finiteDur(msg.duration) || st.duration) === st.duration && !msg.ended && !recording;
@@ -2599,7 +2598,7 @@ const ThreeMedia = (() => {
       draw();
       const move = (ev) => {
         const t2 = Math.max(0, Math.min(D(), timeAt(ev)));
-        if (dragging.kind === 'seek') seek(t2);
+        if (dragging.kind === 'seek') { seek(t2); scrubGrain(st.time); } // (labscrub) a sound only once it moves: a click to jump stays silent
         else if (dragging.kind === 'edge') {
           const r2 = { ...region, [dragging.edge]: snapT(t2) };
           if (r2.b < r2.a) { [r2.a, r2.b] = [r2.b, r2.a]; dragging.edge = dragging.edge === 'a' ? 'b' : 'a'; selected = { type: 'edge', edge: dragging.edge }; }

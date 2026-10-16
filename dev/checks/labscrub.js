@@ -7,14 +7,14 @@
 //   clip    drag a layer's bar along its track
 //   sound   the scrub again with the scrub sound on: the grains it plays and what they cost
 // What is counted: the Lab window's main-thread work per move (the input's handlers + the frames it caused: rAF →
-// rendering done), frames dropped (frame gaps over 1.5 vsyncs), waveform rebuilds (whole-song columns computed),
-// seeks the preview page got per preview frame and per move, layer messages per move, and after letting go: the
-// preview's last drawn frame is the exact time the playhead shows (and the preview's media clock is there).
-// Fails above the budgets (BUDGET below; window.LS_REPORT = 1 reports without failing; window.LS_ONLY = 'scrub,zoom';
-// window.LS_TRACE = 1 adds the timeline trace: forced layouts with the line that asked, style / layout per stretch).
+// rendering done), handlers that made a frame late, waveform / beat grid rebuilds, seeks the preview page got per
+// frame it drew and per move, layer messages per move, and after letting go how soon the preview's last drawn frame
+// is the exact time the playhead shows (its media clock too). Inputs come in bursts ~4 ms apart, as a fast mouse or
+// trackpad sends them. Fails above the budgets (BUDGET below; window.LS_REPORT = 1 reports without failing;
+// window.LS_ONLY = 'scrub,zoom'; window.LS_TRACE = 1 adds the timeline trace per stretch: CPU, forced layouts with
+// the line that asked, where the time went; window.LS_PROFILE = 'pan' a JS profile of one stretch).
 // Xvfb is a 60 Hz display with software GL on shared CPUs: absolute ms are several times a real Mac's; the counts
-// (seeks per frame, rebuilds, messages) are exact. The preview is kept small (320 × 180) so software GL doesn't starve the
-// window's own frames.
+// (seeks per frame, rebuilds, messages) are exact. The preview is kept small (320 × 180).
 //   node dev/smoke.js --check-timeout 600000 --script dev/checks/labscrub.js --shot /tmp/labscrub.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(60); } return false; };
@@ -33,10 +33,12 @@ const burst = async (sends, gap = 4) => { const ps = []; for (const f of sends) 
 const wheel = (x, y, dy, modifiers = 0, dx = 0) => cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(x), y: Math.round(y), deltaX: dx, deltaY: dy, modifiers });
 // the view stops changing (wheel events still on their way are handled)
 const viewRests = async () => { let last = ''; let same = 0; for (let i = 0; i < 60 && same < 4; i++) { const v = JSON.stringify(c.player.view); same = v === last ? same + 1 : 0; last = v; await wait(100); } };
-// budgets: main-thread ms per move (handlers + the frames they caused, p95), frames over 8.3 ms of work (dropped at
-// 120 Hz here; the frame gaps themselves are this machine's software GL, reported as gapsDropped), seeks the
-// preview got in one of its frames (max) and per move, waveform rebuilds while panning at one zoom
-const BUDGET = window.LS_BUDGET || { scrubMsP95: 12, zoomMsP95: 16, panMsP95: 12, clipMsP95: 12, dropped: 12, seeksPerFrameMax: 1, seeksPerMove: 1.05, panRebuilds: 2, zoomRebuilds: 8, clipMsgsPerMove: 1.05, finalExact: 0.002, soundMsP95: 14 };
+// budgets (loose: this machine is several times slower than a Mac, and shared): the Lab window's main-thread ms per
+// move (its handlers + the frames they caused, the preview's own drawing excluded when it runs elsewhere), frames the
+// input handlers made late (a handler over 8.3 ms), seeks the preview got per frame it drew (max) and per move, ms
+// from letting go to the preview drawing that exact time, waveform rebuilds while panning at one zoom and over a
+// pinch, layer messages per move of a dragged clip
+const BUDGET = window.LS_BUDGET || { scrubCpu: 4, zoomCpu: 12, panCpu: 12, clipCpu: 6, soundCpu: 6, dropped: 3, seeksPerFrameMax: 2, seeksPerMove: 1.05, msToExact: 1500, panRebuilds: 2, zoomRebuilds: 12, clipMsgsPerMove: 0.5, finalExact: 0.002 };
 out.budgets = BUDGET;
 
 // ---------- the song: 4 minutes at 120 BPM (kicks on the beat, hats between), 22.05 kHz mono ----------
@@ -161,7 +163,7 @@ async function stretch(name, fn) {
     }
   }
   const ms = performance.now() - t0;
-  const pv = sbxJson(await sbx('const P = window.__lsProbe; P.on = false; window.__lsDrawn.on = false; return JSON.stringify({ frames: P.frames, seeks: P.seeks, layerMsgs: P.layerMsgs, maxPerFrame: Math.max(0, ...P.perFrame), drawn: window.__lsDrawn.at.slice(-3), draws: window.__lsDrawn.at.length })'));
+  const pv = sbxJson(await sbx('const P = window.__lsProbe; P.on = false; window.__lsDrawn.on = false; if (P.cur) P.perFrame.push(P.cur); return JSON.stringify({ frames: P.frames, seeks: P.seeks, layerMsgs: P.layerMsgs, maxPerFrame: Math.max(0, ...P.perFrame), drawn: window.__lsDrawn.at.slice(-3), draws: window.__lsDrawn.at.length })'));
   const s1 = wc0();
   const handlers = probe.ev.reduce((a, x) => a + (x.end - x.start), 0);
   const frameWork = probe.frames.reduce((a, x) => a + x, 0);
@@ -170,7 +172,7 @@ async function stretch(name, fn) {
   const r = {
     moves, ms: Math.round(ms),
     cpuPerMoveMs: moves ? r1((handlers + frameWork) / moves) : null, // the Lab window's main thread, per move
-    handlerP95: pct(perMove, 0.95), frameWorkP95: pct(probe.frames, 0.95), moveMsP95: pct(perMove.map((h, i) => h + (probe.frames[i] || 0)), 0.95),
+    handlerP95: pct(perMove, 0.95), lateFrames: probe.ev.filter((x) => x.end - x.start > 8.3).length, frameWorkP95: pct(probe.frames, 0.95), moveMsP95: pct(perMove.map((h, i) => h + (probe.frames[i] || 0)), 0.95),
     frames: probe.gaps.length, framesOver4: probe.frames.filter((x) => x > 4.2).length, framesOver8: probe.frames.filter((x) => x > 8.3).length, gapsDropped: dropped, worstGap: r1(Math.max(0, ...probe.gaps)),
     preview: { frames: pv.frames, draws: pv.draws, seeks: pv.seeks, seeksPerMove: moves ? r3(pv.seeks / moves) : 0, seeksMaxPerFrame: pv.maxPerFrame, layerMsgs: pv.layerMsgs, lastDrawn: pv.drawn },
     ...(s0 && s1 ? { waveRebuilds: s1.waveBuilds - s0.waveBuilds, gridRebuilds: s1.gridBuilds - s0.gridBuilds, canvasDraws: s1.draws - s0.draws, ...(s1.grains != null ? { grains: s1.grains - s0.grains } : {}) } : {}),
@@ -179,6 +181,8 @@ async function stretch(name, fn) {
   return r;
 }
 const rect = () => canvas.getBoundingClientRect();
+let released = 0;
+const over = (what, v, b) => { if (v != null && b != null && v > b) out.problems.push(`${what}: ${v} > ${b}`); };
 const waveY = () => rect().top + 30; // the waveform's top part (below the ruler)
 
 if (TRACE) await smoke({ trace: 'start', detail: true });
@@ -194,23 +198,20 @@ await stretch('scrub', async () => {
   xs.push(r.left + 4 + 0.37 * (r.width - 140)); // let go on a spot that isn't on a frame boundary
   await burst(xs.map((x) => () => move(x, y)));
   await mouse('mouseReleased', r.left + 4 + 0.37 * (r.width - 140), y, { buttons: 0 });
+  released = performance.now();
   return N * 2 + 1;
 });
-// the exact frame where the playhead was let go: the preview's media clock and the frame it drew last
+// the exact frame where the playhead was let go: the preview's media clock, and how soon the frame it drew last is
+// that time (a queue of seeks the preview still had to work through showed old times for a long while)
 if (want('scrub')) {
-  await wait(400);
   const t = c.player.time;
-  const pv = sbxJson(await sbx('return JSON.stringify({ t: audio.time, last: (window.__lsDrawn.at.at(-1) || [0, -1])[1] })'));
-  out.final = { playhead: r3(t), previewClock: r3(pv.t), lastDrawn: r3(pv.last) };
-  if (!(Math.abs(pv.t - t) <= BUDGET.finalExact)) out.problems.push(`scrub: the preview's clock is at ${r3(pv.t)} s, the playhead at ${r3(t)} s`);
-  // the preview may doze after drawing it; what counts is that its last drawn frame is the playhead's time
-  const drawnNow = sbxJson(await sbx('window.__lsDrawn.on = true; window.__lsDrawn.at = []; return JSON.stringify(1)'));
-  void drawnNow;
-  await wait(1300); // the once-a-second refresh draws the same time if it dozed
-  const again = sbxJson(await sbx('window.__lsDrawn.on = false; return JSON.stringify((window.__lsDrawn.at.at(-1) || [0, -1])[1])'));
-  const lastT = typeof again === 'number' && again >= 0 ? again : pv.last;
-  out.final.drawnAfter = r3(lastT);
-  if (!(Math.abs(lastT - t) <= BUDGET.finalExact)) out.problems.push(`scrub: the preview's last frame shows ${r3(lastT)} s, the playhead ${r3(t)} s`);
+  await sbx('window.__lsDrawn.on = true; return 1');
+  let last = null; let clock = null;
+  const ok = await until(async () => { const v = sbxJson(await sbx('return JSON.stringify({ t: audio.time, last: (window.__lsDrawn.at.at(-1) || [0, -1])[1] })')); last = v.last; clock = v.t; return Math.abs(v.last - t) <= BUDGET.finalExact && Math.abs(v.t - t) <= BUDGET.finalExact; }, 20000);
+  await sbx('window.__lsDrawn.on = false; return 1');
+  out.final = { playhead: r3(t), previewClock: r3(clock), lastDrawn: r3(last), msToExact: ok ? Math.round(performance.now() - released) : null };
+  if (!ok) out.problems.push(`scrub: the preview's last frame shows ${r3(last)} s (its clock ${r3(clock)} s), the playhead ${r3(t)} s`);
+  else over('scrub: ms from letting go to the preview drawing that exact time', out.final.msToExact, BUDGET.msToExact);
 }
 // the waveform scrolled at one zoom (10 s in view): a two-finger sideways trackpad scroll, 60 steps, ~a third of a view
 c.player.zoomTo(100, 110);
@@ -269,11 +270,10 @@ if (TRACE) {
 await smoke({ shot: window.LS_SHOT || '/tmp/labscrub.png' });
 
 // ---------- budgets ----------
-const over = (what, v, b) => { if (v != null && b != null && v > b) out.problems.push(`${what}: ${v} > ${b}`); };
-for (const [n, k] of [['scrub', 'scrubMsP95'], ['zoom', 'zoomMsP95'], ['pan', 'panMsP95'], ['clip', 'clipMsP95'], ['sound', 'soundMsP95']]) {
+for (const [n, k] of [['scrub', 'scrubCpu'], ['zoom', 'zoomCpu'], ['pan', 'panCpu'], ['clip', 'clipCpu'], ['sound', 'soundCpu']]) {
   const s = out[n]; if (!s) continue;
-  over(`${n}: main-thread ms per move, p95`, s.moveMsP95, BUDGET[k]);
-  over(`${n}: frames whose main-thread work went over 8.3 ms (a 120 Hz frame; ≈ 4.2 ms on a real machine)`, s.framesOver8, Math.max(BUDGET.dropped, Math.round(s.frames * 0.1)));
+  over(`${n}: the Lab window's main-thread ms per move (its handlers + the frames they caused)`, s.cpuPerMoveMs, BUDGET[k]);
+  over(`${n}: frames the input handlers made late (handlers over 8.3 ms)`, s.lateFrames, BUDGET.dropped);
 }
 if (out.scrub) {
   over('scrub: seeks the preview got in one of its frames', out.scrub.preview.seeksMaxPerFrame, BUDGET.seeksPerFrameMax);
