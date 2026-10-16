@@ -22,10 +22,10 @@
   const realRAF = window.requestAnimationFrame.bind(window);
   const realTimeout = window.setTimeout.bind(window);
   const sleep = (ms) => new Promise((r) => realTimeout(r, ms));
-  const S = { mode: LAB ? 'lab' : 'html', title: Q.get('t') || document.title || 'the game', noPrep: Q.get('np') === '1', opt: Number(Q.get('opt')) || 0, tx: Q.get('tx') || '', phase: 'ready', pct: 0, text: '', t0: now(), cardAt: null, firstFrameAt: null, result: null, first5: null, want: null, wantN: 0, note: '', errors: [], skip: false, held: !LAB, queue: [], renderers: new Set(), scenes: new Set(), pend: 0, last: now(), gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0 }, decoders: new Set() };
+  const S = { mode: LAB ? 'lab' : 'html', title: Q.get('t') || document.title || 'the game', noPrep: Q.get('np') === '1', opt: Number(Q.get('opt')) || 0, tx: Q.get('tx') || '', phase: 'ready', pct: 0, text: '', t0: now(), cardAt: null, firstFrameAt: null, result: null, first5: null, want: null, wantN: 0, note: '', errors: [], skip: false, held: !LAB, queue: [], renderers: new Set(), scenes: new Set(), pend: 0, last: now(), gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0 }, decoders: new Set(), shown: [] }; // (round 54) shown: the card's lines so far (a stage can show for less than a reader's poll)
   window.__gameReady = S;
   // what Hearth reads (game:eval): plain data only
-  S.pub = () => JSON.stringify({ tx: S.tx, mode: S.mode, phase: S.phase, pct: S.pct, text: S.text, cardAt: S.cardAt, firstFrameAt: S.firstFrameAt, result: S.result, first5: S.first5, want: S.want, wantN: S.wantN, errors: S.errors.slice(-5), card: Boolean(ui && ui.d.isConnected && !ui.d.dataset.out) });
+  S.pub = () => JSON.stringify({ tx: S.tx, mode: S.mode, phase: S.phase, pct: S.pct, text: S.text, cardAt: S.cardAt, firstFrameAt: S.firstFrameAt, result: S.result, first5: S.first5, want: S.want, wantN: S.wantN, errors: S.errors.slice(-5), shown: S.shown, card: Boolean(ui && ui.d.isConnected && !ui.d.dataset.out) });
   S.answer = (a) => answerCard(a || {});
 
   // ---------- the card (over the whole window, before anything draws) ----------
@@ -49,7 +49,7 @@
     }
     const p = Math.max(0, Math.min(100, Math.round(pct)));
     const line = `${text} · ${p} %`;
-    if (line !== ui.last) { ui.last = line; ui.l.textContent = line; ui.i.style.transform = `scaleX(${p / 100})`; S.pct = p; S.text = `Getting ${S.title} ready… ${line}`; }
+    if (line !== ui.last) { ui.last = line; ui.l.textContent = line; ui.i.style.transform = `scaleX(${p / 100})`; S.pct = p; S.text = `Getting ${S.title} ready… ${line}`; const kind = text.replace(/\d+/g, '#'); if (kind !== ui.kind && S.shown.length < 40) { ui.kind = kind; S.shown.push(S.text); } }
   }
   function answerCard(a) {
     if (!ui) return;
