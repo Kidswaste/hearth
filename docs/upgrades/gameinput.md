@@ -109,7 +109,9 @@ reports without failing; `window.GI_LOWLAT = 1 / 0` runs with the low-latency ca
 
 ## Tests
 `node dev/gameinput-test.js` (UNIT: the main-side keys, the raw pointer lock and its fallbacks, the style). Checks run
-alone: gameinput, gamemode, gameperf, inputlatency, lazy, unit:boot-test (results in the final report).
+alone (`node dev/run-checks.js --exact gameinput gamemode gameperf inputlatency lazy boot-test gameinput-test`):
+**7 / 7 passed** first time (gameinput 114 s, gamemode 35 s, gameperf 36 s, inputlatency 130 s, lazy, boot-test,
+gameinput-test). The gameinput check also passed twice more on its own (one run with the low-latency canvas on).
 
 ## Risks
 - Raw mouse changes the feel: `movementX` is the mouse's own counts, not accelerated pixels; a game tuned on
