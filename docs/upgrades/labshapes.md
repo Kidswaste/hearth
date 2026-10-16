@@ -139,7 +139,11 @@ Count: 58 upgrades.
   - saved on disk with the scene.
 
   Passed (20/20).
-- Also run: see the final report (labdirect, labkeys, kinetictype, labvisualizers, labsearch, idlecpu, lazy, unit:boot-test).
+- Also run and passed: labdirect, labkeys, kinetictype, labvisualizers, labsearch, lazy, labpace, unit:boot-test (after the
+  budget change below), type, beatlink, labtemplates, labrecipes, layergroups, labeasy, labgestures, motionpolish,
+  renderfast, menucalm. `idlecpu` fails the same way on the untouched base commit (1d31b0c, run from an exported copy):
+  "the main process ran 42 timers/min (> 20)", main-process timers this stream doesn't touch. `inputlatency` (pulled in
+  by a group) failed once on "ai-setup: p95 handlers 28 ms > 24 ms", a screen this stream doesn't touch.
 - `node dev/lazy-manifest.js` regenerated (the new group and `/shape`); `node dev/winmac-scan.js`, `dev/errorcalm-scan.js`,
   `dev/datasafe-scan.js`: nothing new.
 
@@ -150,6 +154,9 @@ Count: 58 upgrades.
 - `tools/three-search-core.js`, `appsearch-data.js`: phrases and help answers. `mcp/hearth-map.js`: the on-demand `shape` topic.
 - `lazy-data.js`: the hook in `lab`, the `labshapes` group (+ regenerated META). `index.html`: `labshapes` in the lazy-at tag.
 - `dev/run-checks.js`: the unit test, `labshapes` in the `lab:` lines, a `labshapes` group.
+- `dev/boot-test.js` + `docs/upgrades/firstscreen.md`: the first screen's JS budget 2,350 → 2,352 KB. lazy-data.js alone
+  had reached it (2,349.9 KB at 1d31b0c), and a new lazy group's line and command manifest are first-screen bytes
+  (this one ≈ 0.6 KB after shortening its command text).
 
 ## Not done / risks
 - A line is one solid color per layer (its color has no alpha of its own); fade a shape with the layer's Opacity.
