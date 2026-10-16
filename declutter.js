@@ -640,7 +640,7 @@ const Declutter = (() => {
   if (typeof Simplify !== 'undefined' && Array.isArray(Simplify.TUCKED)) {
     Simplify.TUCKED.unshift(['palette-btn', '⌕ Find anything…  Ctrl+K'], ['add-btn', '＋ Add an agent or website']);
     Simplify.TUCKED.push(['full-btn', '⛶ Full screen'], ['board-drawer-btn', '▦ Board drawer  Ctrl+Shift+M']); // (round 49, appcalm)
-    const pb = document.getElementById('palette-btn'); if (pb) pb.title = 'Find anything: a setting, a chat, an action (Ctrl+K)'; // one name (it said Command palette)
+    const pb = document.getElementById('palette-btn'); if (pb) pb.title = WinMac.keyLabel('Find anything: a setting, a chat, an action (Ctrl/⌘+K)'); // one name (it said Command palette)
   }
 
   // the keys sheet lists what each area tucks away (hold Alt / point at it)
