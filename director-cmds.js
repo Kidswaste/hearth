@@ -1,7 +1,7 @@
 // Chat commands for the directors (agents docked in a tool, with hub tool sets): what they cost per message, undo of
 // their code edits, their live activity, the docked chat's width / collapse / chips, lean or full tool mode, and
 // which engine (Claude or Astra) backs them. /help director lists them; "/director <sub>" reaches them too.
-// Registered once every script has loaded, and only under names nobody else uses (Commands.register replaces).
+// Registered as this file runs (before the first screen), and only under names nobody else uses (Commands.register replaces).
 (() => {
   const AREA = 'Director';
   const SETS = ['threeTools', 'gameTools'];
@@ -283,6 +283,9 @@
       complete: (args, ctx) => { const s = sub(args); if (s?.def?.complete && /\s/.test(args)) return (s.def.complete(s.rest, ctx) || []).map((x) => ({ ...x, value: `${words(args)[0]} ${x.value}` })); return pick(Object.keys(SUBS))(args).concat(prev?.complete?.(args, ctx) || []); },
     });
   }
-  // after every other script (another module may have a /director of its own: it stays reachable)
-  if (document.readyState === 'complete') setTimeout(registerAll, 0); else addEventListener('load', () => setTimeout(registerAll, 0), { once: true });
+  // (fixes52) registered as this file runs (a deferred script, before start.js puts up the first screen): they're always
+  // there at the first screen, so Ctrl/⌘+K always has their rows. Waiting for the page's load raced the first screen
+  // (some starts had the rows, others not). A module that registers its own /director before this file still stays
+  // reachable through it (prev above); nothing registers one now.
+  registerAll();
 })();
