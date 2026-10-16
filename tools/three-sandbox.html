@@ -559,6 +559,7 @@ function instrument(renderFn) {
     // a Lab sequence's camera fly-through moves this scene's own camera for the frame (put back right after)
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
     const rfBack = RF.on && !this.__helper ? rfApply(camera) : null; // (round 33, multiformat) a format's pan / zoom
+    if (this.shadowMap?.enabled && scene?.isObject3D) shGate(this, scene); // (round 50 "lab240gpu": maps only when they can change)
     try { renderFn.call(this, scene, camera); } finally { rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     frameMs = realNow() - t0;
@@ -1555,6 +1556,10 @@ function adOpaque(L) {
     adProbes += 1;
     const gl = r.getContext?.();
     if (!gl || gl.isContextLost()) continue;
+    // (round 50 "lab240gpu": on WebGL2 the grid is read without waiting: into a buffer, fenced, collected at the next
+    // look once the GPU is done; the verdict is the last collected one. A sync read stalled the GPU pipeline twice a
+    // second, a dropped frame each at 240 Hz)
+    if (ADR.on && typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) { if (adOpaqueAsync(r, gl)) return true; continue; }
     let ok = true;
     try {
       const fb = gl.getParameter(gl.FRAMEBUFFER_BINDING); if (fb) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -1565,6 +1570,33 @@ function adOpaque(L) {
     if (ok) return true;
   }
   return false;
+}
+const ADR = { on: true, reads: 0, got: 0 };
+function adOpaqueAsync(r, gl) {
+  let st = r.__adRead;
+  if (st && st.gl !== gl) st = null; // (a pooled context: its buffers went with the old code)
+  if (!st) {
+    const buf = gl.createBuffer(); if (!buf) return false;
+    st = r.__adRead = { gl, buf, sync: null, px: new Uint8Array(36), ok: false, at: 0 };
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, buf); gl.bufferData(gl.PIXEL_PACK_BUFFER, 36, gl.STREAM_READ); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+  }
+  try {
+    if (st.sync) { // the last grid: done yet? (no wait)
+      if (gl.getSyncParameter(st.sync, gl.SYNC_STATUS) !== gl.SIGNALED) return st.ok;
+      gl.deleteSync(st.sync); st.sync = null;
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, st.buf); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, st.px); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      let ok = true; for (let i = 3; i < 36; i += 4) if (st.px[i] < 255) ok = false;
+      st.ok = ok; ADR.got += 1;
+    }
+    const fb = gl.getParameter(gl.FRAMEBUFFER_BINDING); if (fb) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const W = gl.drawingBufferWidth; const H = gl.drawingBufferHeight; let o = 0;
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, st.buf);
+    for (const fx of [0.02, 0.5, 0.98]) for (const fy of [0.02, 0.5, 0.98]) { gl.readPixels(Math.floor(fx * (W - 1)), Math.floor(fy * (H - 1)), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, o); o += 4; }
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    if (fb) gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    st.sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); gl.flush(); ADR.reads += 1;
+    return st.ok;
+  } catch { try { gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null); } catch { /* lost */ } st.sync = null; st.ok = false; return false; }
 }
 function adCoverClear() { if (!AD.cull && !AD.coverBy) return; for (const L of layers.values()) L.adCovered = false; AD.cull = 0; AD.coverBy = null; }
 // still covering? (every frame, cheap: no pixels read)
@@ -1594,6 +1626,103 @@ function adCoverTick() {
   }
   AD.coverBy = n ? C : null; AD.cull = n;
 }
+// ---------- hidden under an opaque top (round 50 "lab240gpu") ----------
+// The browser blends every layer's canvas into the preview at every frame: a whole frame of pixels per layer (8 million
+// at 4K), plus a copy of each canvas it presents. A layer under the top-most opaque full-frame picture can't be seen:
+// a filter shown plainly whose shader always writes alpha 1 (bloom, grade, lens, grain… all built-in ones), with the
+// filters drawn inside its pass; or a layer labadapt found covered. Its box's opacity goes to 0, so the compositor
+// neither blends nor presents it. It still runs and draws (the filter reads it as before) and still takes the pointer
+// (opacity keeps hit testing: orbit controls, picking); stills, renders and recordings merge the layers themselves
+// (composite), so nothing they give changes. Worked out at the start of every frame, before the layers are styled;
+// a filter that steps aside in its own frame shows them again at once. Off while editing a scene, in a sequence, with
+// precomps, for 3 frames after a resize (a canvas is blank until it draws at its new size) and while a layer reveals.
+const OC = { by: null, on: true, n: 0, rsz: -9 };
+addEventListener('resize', () => { OC.rsz = frameTick; });
+const fxOpaqueCache = new Map();
+// a filter's shader writes alpha 1 everywhere: every gl_FragColor is vec4(…, 1.0), nothing discarded
+function fxOpaqueDef(def) {
+  let ok = fxOpaqueCache.get(def);
+  if (ok != null) return ok;
+  const src = `${def.lib || ''}\n${def.frag || ''}`;
+  const all = src.match(/gl_FragColor\s*=[^;]*;/g) || [];
+  ok = !def.overlay && all.length > 0 && !/\bdiscard\b|gl_FragData/.test(src) && all.every((s) => /^gl_FragColor\s*=\s*vec4\(/.test(s) && /,\s*1\.0\s*\)\s*;$/.test(s) && balanced(s.replace(/^gl_FragColor\s*=\s*/, '').replace(/;$/, '')));
+  fxOpaqueCache.set(def, ok);
+  return ok;
+}
+// "vec4(a, b(c), 1.0)" is one call whose last argument is 1.0 (not "vec4(…) * vec4(…, 1.0)")
+function balanced(e) { let d = 0; for (let i = 0; i < e.length; i += 1) { if (e[i] === '(') d += 1; else if (e[i] === ')') { d -= 1; if (d === 0 && i < e.length - 1) return false; } } return d === 0; }
+function ocOpaque(L) {
+  if (!L.fx || L.fx.gen !== L.gen || L.drawnGen !== L.gen || L.adCovered || L.pics?.length || L.fxInto || fxOffNow(L) || !fxPlain(L) || (L.revealUntil || 0) > realNow()) return false;
+  if (!fxOpaqueDef(L.fx.def)) return false;
+  for (const B of L.fxChain || []) if (!B.fx || !fxOpaqueDef(B.fx.def)) return false;
+  return true;
+}
+function occlPlan() {
+  let by = null;
+  if (OC.on && mode === 'sketch' && layers.size > 1 && !edit.on && !SQ.on && !PC.list.size && frameTick - OC.rsz > 3) {
+    fxPlan(); // (this frame's merged passes: a filter drawn inside another shows nothing of its own)
+    const list = ordered();
+    for (let i = list.length - 1; i > 0; i -= 1) { const L = list[i]; if (!L.props.pcOf && layerMix(L) > 0 && ocOpaque(L)) { by = L; break; } }
+  }
+  const z = by ? (by.props.z ?? 0) : 0;
+  let n = 0;
+  for (const L of layers.values()) {
+    const o = Boolean((by && L !== by && !L.props.pcOf && (L.props.z ?? 0) < z) || (OC.on && L.adCovered && AD.coverBy && !L.props.pcOf));
+    if (o) n += 1;
+    L.occl = o;
+  }
+  OC.by = by; OC.n = n;
+}
+// the cover went in the middle of a frame (a filter stepping aside): everything under it shows in this same frame
+function occlClear() { if (!OC.n) return; OC.by = null; OC.n = 0; for (const L of layers.values()) if (L.occl) { L.occl = false; styleLayer(L); } }
+// ---------- shadow maps drawn only when they can change (round 50 "lab240gpu") ----------
+// three.js draws every shadow map again at every frame: the whole scene's casters once more per shadow light, into a
+// 1024²–4096² map. When nothing in the scene moved (only the camera: an orbit, a 🎥 camera move, a model shown from
+// all sides), the map it would draw is the one it has. Each frame a signature of the scene without the view camera
+// (labpace's: every object's place, visibility, geometry, materials, lights and their map sizes; anything it can't
+// see — a video, an onBeforeRender, a node material — counts as moving) says whether it changed; if not, the map is
+// kept (a fresh one every second anyway). A scene that keeps moving draws its maps every frame with no signature,
+// looking every 32 frames whether it stopped. The sketch's own choice is left alone: shadowMap.autoUpdate = false
+// (it updates them itself) turns this off for that renderer. Never in exports, stills, renders or the scene editor.
+const SHG = { on: true, skipped: 0, drawn: 0 };
+const shExtra = [0];
+function shGate(r, scene) {
+  const sm = r.shadowMap;
+  let g = sm.__gate;
+  if (!g) {
+    // (the sketch reads and sets autoUpdate / needsUpdate as always; while gated, three.js sees autoUpdate false and
+    // needsUpdate true only on the frames whose map can change)
+    g = sm.__gate = { on: false, need: true, au: sm.autoUpdate !== false, nu: Boolean(sm.needsUpdate), a: 0, b: 0, have: false, moving: 0, at: 0, atTick: 0, tick: -1, scene: null, chk: -9 };
+    Object.defineProperty(sm, 'autoUpdate', { configurable: true, get: () => (g.on ? false : g.au), set: (v) => { g.au = Boolean(v); } });
+    Object.defineProperty(sm, 'needsUpdate', { configurable: true, get: () => (g.on ? g.need || g.nu : g.nu), set: (v) => { g.nu = Boolean(v); if (!v) g.need = false; } });
+  }
+  if (!SHG.on || !g.au || XP_PAGE || fullRes() || SQ.off || edit.on || r.__helper) { g.on = false; g.have = false; return; }
+  if (g.tick === frameTick && g.scene === scene) return; // (a second pass of the same scene this frame: its map is current)
+  g.tick = frameTick;
+  if (g.scene !== scene) { g.scene = scene; g.have = false; }
+  shExtra[0] = sm.type;
+  const sig = () => PACE.core.signature(scene, null, null, shExtra);
+  if (g.moving >= 30) { // moving all the time: maps every frame (three.js as is), a look every 32 frames whether it stopped
+    g.on = false;
+    const k = frameTick & 31;
+    if (k === 0) { const s = sig(); g.a = s.a; g.b = s.b; g.chk = s.live ? -9 : frameTick; }
+    else if (k === 1 && g.chk === frameTick - 1) { const s = sig(); if (!s.live && s.a === g.a && s.b === g.b) { g.moving = 0; g.have = true; g.on = true; g.need = false; g.at = realNow(); g.atTick = frameTick; } }
+    if (!g.on) SHG.drawn += 1;
+    return;
+  }
+  const s = sig(); const now = realNow();
+  const changed = !g.have || s.live || s.a !== g.a || s.b !== g.b;
+  g.a = s.a; g.b = s.b; g.have = true; g.on = true;
+  if (changed) { g.need = true; g.at = now; g.atTick = frameTick; g.moving = s.live ? 30 : g.moving + 1; SHG.drawn += 1; return; }
+  g.moving = 0;
+  if (now - g.at >= 1000 && frameTick - g.atTick >= 30) { g.need = true; g.at = now; g.atTick = frameTick; SHG.drawn += 1; return; } // (a fresh map every second anyway, 30 frames apart at least)
+  g.need = false; SHG.skipped += 1;
+}
+// (checks: window.__lab240.set({ off: true }) turns both savings off to compare pictures; info() says what they do)
+window.__lab240 = {
+  set: ({ off = false } = {}) => { OC.on = !off; SHG.on = !off; ADR.on = !off; if (off) occlClear(); return { on: OC.on }; },
+  info: () => ({ on: OC.on, by: OC.by?.id || null, hidden: [...layers.values()].filter((L) => L.occl).map((L) => L.id), shadows: { skipped: SHG.skipped, drawn: SHG.drawn }, coverReads: { async: ADR.reads, got: ADR.got } }),
+};
 
 // ---------- audio / video ----------
 // The Lab sends a loaded mp3/mp4 here. Sketches read it through the `audio` and `media` globals:
@@ -4169,7 +4298,7 @@ function styleLayer(L) {
   if (s.display !== disp) s.display = disp;
   const vis = L.seqHide ? 'hidden' : '';
   if (s.visibility !== vis) s.visibility = vis;
-  const opn = Math.round(mix * 1000) / 1000;
+  const opn = L.occl ? 0 : Math.round(mix * 1000) / 1000; // (round 50: hidden under an opaque top, see occlPlan)
   if (L.opSet !== opn) { L.opSet = opn; const op = String(opn); if (s.opacity !== op) s.opacity = op; }
   const bl = BLEND_CSS[p.blend] || 'normal';
   if (s.mixBlendMode !== bl) s.mixBlendMode = bl;
@@ -4245,8 +4374,10 @@ function compositorTick() {
   paceNext(compositorTick, parked && !compRec && !SQ.off); // (labpace: parked, it sleeps instead of waking every frame)
   fxPlanGen += 1; // (a new frame: which filters draw inside which is worked out again, see "merged filter passes")
   if (parked && !compRec) return; // (nothing draws: the layers' looks wait too)
-  for (const L of layers.values()) { applySliderKeys(L); applyLinks(L); styleLayer(L); }
+  for (const L of layers.values()) { applySliderKeys(L); applyLinks(L); }
   if (AD.coverBy) adCoverFrame(); // (round 31: a cover that stops covering lets the layers under it draw this frame)
+  occlPlan(); // (round 50 "lab240gpu": what an opaque top hides isn't blended or presented, see "hidden under an opaque top")
+  for (const L of layers.values()) styleLayer(L);
   if (PC.list.size) pcManage();
   if (compRec) composite(compRec);
 }
@@ -6377,6 +6508,7 @@ globalThis.filter = (type, P = {}) => {
     const off = (idKey != null && P[idKey] === 0) || Boolean(L.fxInto);
     if (off !== Boolean(L.fxSkip)) {
       L.fxSkip = off; renderer.domElement.__skip = off; renderer.domElement.style.visibility = off ? 'hidden' : ''; force = true;
+      if (off && OC.by === L) occlClear(); // (round 50: it hid the layers under it; they show in this frame)
       if (off) renderer.setSize(1, 1, false); else fullSize();
     }
     if (off) { if (L.fxInto) perfNote.fused += 1; else perfNote.passSkipped += 1; if (L.drawnGen !== L.gen) layerDrew(L); return; }
@@ -10574,6 +10706,7 @@ function ghost(L) {
 // a new layer: wipes in from the top while it fades in (to its own opacity)
 function reveal(L) {
   const op = Number(L.box.style.opacity || 1);
+  L.revealUntil = realNow() + dur(560) + 50; // (round 50: not an opaque top while it wipes in, see occlPlan)
   L.box.animate([{ opacity: 0, clipPath: 'inset(0 0 100% 0)' }, { opacity: op, clipPath: 'inset(0 0 0% 0)' }], { duration: dur(560), easing: EASE_OUT });
 }
 // The new code drew its first frame (or had nothing to draw in time, or failed): the old picture can go.
