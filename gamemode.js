@@ -90,7 +90,7 @@ const GameMode = (() => {
         const names = Object.fromEntries((spec?.layers || []).map((L) => [L.id, L.name || L.id]));
         toast(`${plan.merge.length} layers on one canvas; ${own.map(([id, w]) => `“${names[id]}” keeps its own (${w})`).join(' · ')}`, { timeout: 7000 });
       }
-      Perf()?.attach?.({ source: s, info, leave, state });
+      Perf()?.attach?.({ exec: async (expr) => { const r = await window.hub.game.eval(expr); if (r?.error) throw new Error(r.error); return r?.value; } }, { label: s.title, kind: s.kind, source: s, hz: info?.hz })?.catch?.((err) => console.warn('GamePerf:', err?.message || err)); // (the game window's own page, measured through game:eval)
       emit('start', { source: s, info });
       return info;
     } catch (err) {

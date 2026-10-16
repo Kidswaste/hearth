@@ -176,6 +176,11 @@
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
   },
   {
+   "file": "gamemodemain.js",
+   "kind": "main",
+   "why": "▶ Play's built game page cache (data/game/<scene>/hearth-play.json + play.html): derived from the scene, not the owner's work; an unreadable cache is simply rebuilt from the scene"
+  },
+  {
    "file": "habits.js",
    "kind": "kv",
    "store": "error-log",
