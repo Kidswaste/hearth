@@ -7,6 +7,7 @@
 // The game itself may use a narrow API, only if it asks: window.hearthGame = { leave(), info() } (tools/game-api.md).
 // For an HTML build, WebGL contexts are asked for at max fidelity (antialias, the fast GPU) unless the game says otherwise.
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
+const MODP = process.platform === 'darwin' ? '⌘P' : 'Ctrl+P'; // (round 53, playloop: back to editing, the game kept)
 
 const arg = (process.argv || []).find((a) => a.startsWith('--hearth-game='));
 let I = {}; try { I = JSON.parse(decodeURIComponent(arg ? arg.slice(14) : '%7B%7D')); } catch { I = {}; }
@@ -41,12 +42,21 @@ function mount() {
     .back { background: #ff8a3d; color: #1a1206; } .keep { background: #2a2e37; color: #eef0f4; }
     button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
     [hidden] { display: none !important; }
-  </style><div class="w"><div class="hint">Esc: menu · F: stats</div><div class="chip" hidden></div>
+    .blip { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); padding: 4px 11px; border-radius: 999px; background: #000b; font-size: 12px; opacity: 0; transition: opacity .25s; }
+    .blip.on { opacity: 1; }
+    .err { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); max-width: min(760px, 92vw); display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; border-radius: 10px; background: #1b1d22ee; box-shadow: 0 6px 24px #0008; pointer-events: auto; }
+    .err .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .err button, .box .fix { padding: 5px 11px; font-size: 12px; margin: 0; } .err .x { background: transparent; color: #a7adb8; padding: 5px 7px; }
+    .fixit { background: #ff8a3d; color: #1a1206; } .box .fix { display: block; margin: 12px auto 0; }
+  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing</div><div class="chip" hidden></div><div class="blip" aria-live="polite"></div>
+  <div class="err" hidden role="alert"><span class="m"></span><button class="fixit">Fix with the director</button><button class="x" aria-label="Hide">✕</button></div>
   <div class="card" hidden role="dialog" aria-label="Leave the game"><div class="box"><div class="t"></div><div class="s">Esc again or Enter goes back</div>
-  <button class="back">Back to Hearth</button><button class="keep">Keep playing</button></div></div></div>`;
+  <button class="back">Back to Hearth</button><button class="keep">Keep playing</button><button class="fix fixit" hidden>Fix with the director</button></div></div></div>`;
   (document.documentElement || document).appendChild(host);
   const $ = (s) => root.querySelector(s);
-  ui = { host, hint: $('.hint'), chip: $('.chip'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t') };
+  ui = { host, hint: $('.hint'), chip: $('.chip'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t'), blip: $('.blip'), err: $('.err'), errText: $('.err .m'), cardFix: $('.box .fix') };
+  for (const b of root.querySelectorAll('.fixit')) b.addEventListener('click', () => fixIt());
+  root.querySelector('.err .x').addEventListener('click', () => { ui.err.hidden = true; });
   ui.title.textContent = I.title ? `Leave ${I.title}?` : 'Leave the game?';
   ui.back.addEventListener('click', () => ipcRenderer.send('game:back'));
   ui.keep.addEventListener('click', () => menu(false));
@@ -57,6 +67,7 @@ function mount() {
 function menu(on) {
   const u = mount();
   u.card.hidden = !on;
+  u.cardFix.hidden = !(on && lastErr);
   if (on) { try { document.exitPointerLock?.(); } catch { /* fine */ } setTimeout(() => u.back.focus(), 0); }
 }
 const menuOpen = () => Boolean(ui && !ui.card.hidden);
@@ -95,3 +106,39 @@ function stats(on) {
   }
 }
 addEventListener('DOMContentLoaded', () => mount());
+
+
+// ---------- the edit → play loop (round 53, playloop: playloopmain.js, playloop.js) ----------
+// "Updated" after a live edit; a runtime error as one calm line over the game ("Clink stopped: ReferenceError: … (line
+// 12) — Fix with the director"), also on the Esc card. Fix sends the error to Hearth, which drafts it in the docked
+// director chat (never sent). A Lab scene's page reports its errors itself (the Lab player's 'error' messages, with
+// the layer and line); an HTML build's come from the page's error events.
+let lastErr = null; let blipT = 0;
+ipcRenderer.on('game:blip', (_e, text) => {
+  const u = mount();
+  u.blip.textContent = `↻ ${text || 'Updated'}`;
+  u.blip.classList.add('on');
+  if (lastErr && /Updated/.test(text || 'Updated')) { lastErr = null; u.err.hidden = true; } // (a new version: the old error may be gone; a new one shows again)
+  clearTimeout(blipT); blipT = setTimeout(() => u.blip.classList.remove('on'), 1400);
+});
+function showErr(d) {
+  const msg = String(d.message || 'error').replace(/^Uncaught /, '').slice(0, 300);
+  if (lastErr && lastErr.message === msg && lastErr.line === (d.line || null)) { lastErr.n += 1; return; }
+  lastErr = { message: msg, line: Number(d.line) || null, layer: d.layer ? String(d.layer) : null, file: d.file ? String(d.file) : null, stack: d.stack ? String(d.stack).slice(0, 1200) : null, n: 1 };
+  const u = mount();
+  u.errText.textContent = `${I.title || 'The game'} stopped: ${msg}${lastErr.line ? ` (line ${lastErr.line})` : ''}`;
+  u.err.title = u.errText.textContent;
+  u.err.hidden = false;
+}
+function fixIt() {
+  if (!lastErr) return;
+  ipcRenderer.send('game:fix', lastErr);
+  if (ui) { ui.err.hidden = true; ui.card.hidden = true; }
+}
+if (I.kind === 'lab') {
+  addEventListener('message', (e) => { const d = e.data; if (d && d.source === 'three-sandbox' && d.type === 'error') showErr(d); });
+} else {
+  const rel = (f) => { try { const u = new URL(f); return decodeURIComponent(u.pathname.replace(/^\//, '')); } catch { return f || null; } };
+  addEventListener('error', (e) => { if (e.message) showErr({ message: e.message, line: e.lineno, file: rel(e.filename), stack: e.error && e.error.stack }); });
+  addEventListener('unhandledrejection', (e) => { const r = e.reason; showErr({ message: (r && (r.message ? `${r.name || 'Error'}: ${r.message}` : String(r))) || 'a promise failed', stack: r && r.stack }); });
+}

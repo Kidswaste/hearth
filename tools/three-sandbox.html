@@ -11318,6 +11318,32 @@ window.__labMem = () => {
     overlays: document.querySelectorAll('.lab-xfade, .lab-swap, .lab-ghost').length, heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null, guard: typeof MEMG === 'object' ? MEMG.info() : null };
 };
 
+// ---------- live edits keep the game's state (round 53, playloop: playloop.js, ▶ Play's live edits) ----------
+// A layer may export saveState() → a value and restoreState(value) (or `export const hot = { save, restore }`): an edit
+// of that layer (in the Lab, or live in ▶ Play's window) hands what the old run saved to the new run right after it
+// loaded, so the game goes on where it was. A layer may also export checkpoint(name): ▶ Play's "Play from here" jumps
+// there. window.__labHot: save() → { layer: value } · restore(states) → n · checkpoint(name) → n · info().
+const HOT = { swaps: 0, kept: 0, lost: 0, last: null };
+const hotFns = (m) => ({ save: m?.saveState || m?.hot?.save, restore: m?.restoreState || m?.hot?.restore, at: m?.checkpoint || m?.hot?.checkpoint });
+const hotWarn = (L, what, err) => post({ type: 'console', level: 'warn', text: `${what}: ${err?.message || err}`, layer: L.id });
+function hotSave(L) {
+  const f = hotFns(L.mod).save;
+  if (typeof f !== 'function') return undefined;
+  try { return { v: f() }; } catch (err) { hotWarn(L, 'saveState()', err); return undefined; }
+}
+function hotRestore(L, kept) {
+  const f = hotFns(L.mod).restore;
+  if (!kept) return false;
+  if (typeof f !== 'function') { HOT.lost += 1; return false; }
+  try { f(kept.v); HOT.kept += 1; HOT.last = L.id; return true; } catch (err) { hotWarn(L, 'restoreState()', err); return false; }
+}
+window.__labHot = {
+  save: () => { const out = {}; for (const [id, L] of layers) { const k = hotSave(L); if (k) out[id] = k.v; } return out; },
+  restore: (states) => { let n = 0; for (const [id, v] of Object.entries(states || {})) { const L = layers.get(id); if (L && hotRestore(L, { v })) n += 1; } return n; },
+  checkpoint: (name) => { let n = 0; for (const L of layers.values()) { const f = hotFns(L.mod).at; if (typeof f !== 'function') continue; try { f(name); n += 1; } catch (err) { hotWarn(L, 'checkpoint()', err); } } return n; },
+  info: () => ({ ...HOT, hooks: [...layers.values()].filter((L) => typeof hotFns(L.mod).save === 'function').map((L) => L.id), checkpoints: [...layers.values()].filter((L) => typeof hotFns(L.mod).at === 'function').map((L) => L.id) }),
+};
+
 // ---------- sketch mode ----------
 // spec.fx: 'xfade' (new code for this layer: cross-fade from its old picture) | 'reveal' (a new layer: wipe in)
 async function runLayer(spec, hot = false) {
@@ -11326,6 +11352,10 @@ async function runLayer(spec, hot = false) {
   if (spec.values) Object.assign(TV, spec.values);
   installRunGuards();
   const L = layerState(spec.id);
+  // (round 53, playloop) before the old run goes; a broken edit's run kept nothing: the state waits for the next one
+  const kept = hot ? (hotSave(L) || L.hotHeld || undefined) : undefined;
+  if (hot) HOT.swaps += 1;
+  L.hotHeld = kept || null; // (held until a run of it loads: a broken edit, or a newer edit while it loads, hands it on)
   L.runAt = realNow(); // (round 21: how long from here to its first frame, for /lab perf)
   L.code = spec.code; // (round 23: shader() finds its GLSL in it, for errors on the right line)
   // the picture on screen stays on top until the new code draws (rapid edits keep the first picture)
@@ -11335,6 +11365,7 @@ async function runLayer(spec, hot = false) {
     if (!pics.length) pics = layerPictures(L);
   }
   if (hot || L.url) teardownLayer(L);
+  L.mod = null;
   if (pics?.length) L.box.append(...pics);
   L.pics = pics?.length ? pics : null;
   L.reveal = spec.fx === 'reveal';
@@ -11369,8 +11400,11 @@ async function runLayer(spec, hot = false) {
   if (inPc) PC.importing += 1;
   LOOPC.importing += 1; // (round 31, perfectloop: performance.now() is 0 while a layer sets up on the loop's clock)
   try {
-    try { await import(url); } finally { if (inPc) PC.importing -= 1; LOOPC.importing -= 1; }
+    let ns = null;
+    try { ns = await import(url); } finally { if (inPc) PC.importing -= 1; LOOPC.importing -= 1; }
     if (L.gen !== g) return;
+    L.mod = ns; L.hotHeld = null; // (round 53, playloop) its exports: saveState / restoreState / checkpoint
+    if (kept) hotRestore(L, kept);
     if (!inPc) post({ type: 'ran', hot, swap: Boolean(spec.swap), layer: L.id });
     realRAF(() => realRAF(() => { if (L.gen === g) slotPast[L.slot || 0] = true; }));
     // a layer that draws without a WebGLRenderer (2D canvas, DOM) or is hidden right now: done after a moment

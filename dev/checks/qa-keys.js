@@ -230,7 +230,7 @@ if (AREAS.includes('Lab')) {
   const sigL = () => JSON.stringify({ s: lab.state, layers: lab.layers?.(), pal: lab.palette?.(), sk: ThreeLab.scenes?.currentId?.(), code: (ThreeLab.director?.codeOf?.().code || '').length });
   await runArea('Lab', {
     sig: sigL,
-    skip: /^(P|Shift\+F|Ctrl\+Shift\+Enter|Ctrl\+PgDn|Ctrl\+PgUp)$/, // fullscreen Present / Focus, a fresh page, sketch switching (journey-lab covers them)
+    skip: /^(P|Shift\+F|Ctrl\+Shift\+Enter|Ctrl\+PgDn|Ctrl\+PgUp|Ctrl\+P|Ctrl\+Shift\+P)$/, // fullscreen Present / Focus, a fresh page, sketch switching (journey-lab covers them); ▶ Play's window (playloop.js presses them)
     // (bugbash) a key seen dead gets one more try after the preview settles: keys reach the Lab through the preview's
     // page (host-key), and a key pressed while an earlier key (a frame size, a re-run) is rebuilding that page lands on
     // a page with no listener yet: W, ` or | were "dead" on some runs only. Dead twice still counts.
