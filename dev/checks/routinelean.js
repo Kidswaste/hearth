@@ -87,10 +87,10 @@ try {
 
   // ---------- 3. it stops by itself ----------
   const c1 = await fresh(claude, 'Start: edits');
-  const e1 = await R.start(claude.id, spec({ prompt: 'Keep improving: do the next 5 improvements. varied edits:3:rl${Date.now().toString(36)}' }), { chatId: c1.id });
+  const e1 = await R.start(claude.id, spec({ prompt: `Keep improving: do the next 5 improvements. varied edits:3:rl${Date.now().toString(36)}` }), { chatId: c1.id });
   await ended(e1.id);
   const x1 = R.get(e1.id);
-  out.stale = { done: x1.done, files: x1.files, why: x1.why };
+  out.stale = { done: x1.done, files: x1.files, why: x1.why, tools: (await Native.load(c1.id)).messages.filter((m) => m.role === 'assistant').map((m) => (m.tools || []).join(',') || '-').slice(0, 5) };
   step(x1.status === 'done' && x1.done === 5 && /last 2 rounds changed no file and nothing in the scene/.test(x1.why), 'after 3 rounds with edits, 2 without: it stops (round 5 of 10), saying why', out.stale);
   step(x1.files === 3 && x1.changedRounds === 3, '…and counts what it changed (3 files)', { files: x1.files, changed: x1.changedRounds });
   step([...Native.view(claude.id).list.querySelectorAll('.msg.note')].some((n) => /Keep going finished: the last 2 rounds changed no file.*3 files changed/.test(n.textContent)), 'the note says why, and what it did');

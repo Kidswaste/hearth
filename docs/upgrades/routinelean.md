@@ -110,7 +110,11 @@ case uses no tool steps; the model above has them.)
 - `node dev/routinelean-test.js`: 68/68 (prompt short and byte-stable, change from tools / aiundo, similarity, stale /
   repeat / same-error stops, limits: margin, pace, hold, reset, two windows, pause without waiting, lighter between
   rounds, summaries, stats; budgets on the model table and the stop).
-- `dev/checks/routinelean.js` (smoke, fake engines): see the "Tested" line of the final report.
+- `dev/checks/routinelean.js` (smoke, fake engines): 20 steps, passed (the tables above, byte-stable rounds, the two
+  stops, the limit hold and resume, summaries in notifications, the Usage window). Its first runs failed on check bugs
+  (an edits counter shared between runs, the director's constant scene line), fixed in the check.
+- Targeted, alone: routines, historylean, usagelimits, costcoach, notify, cachewise, lazy, unit:boot-test,
+  unit:routines-test, unit:routinelean-test: all passed.
 - Unit: routines-test 69/69, historylean-test, usagelimits-test, costcoach-test, notify-test 52/52, cache-test; scans
   datasafe / errorcalm clean.
 
