@@ -232,7 +232,8 @@ for (const [name, s] of Object.entries(S)) {
   const n = sentBy[name];
   if (n) over(`${name}: scroll/wheel listeners CPU ms per wheel`, Math.round((s.scrollJs.cpuMs / n) * 100) / 100, BUDGET.scrollJsCpuPerWheel);
   if (BUDGET.forced[name] != null) over(`${name}: forced style/layout`, Number(String(s.forced).split('/')[0]), BUDGET.forced[name]);
-  over(`${name}: tooltips measured while scrolling (forced in juice.js)`, s.forcedFiles?.['juice.js'] || 0, BUDGET.tipsWhileScrolling);
+  // (not while a reply streams: the reply growing under a resting pointer points it at new things, which is no scroll)
+  if (name !== 'chat-stream') over(`${name}: tooltips measured while scrolling (forced in juice.js)`, s.forcedFiles?.['juice.js'] || 0, BUDGET.tipsWhileScrolling);
   s.wheels = n;
 }
 const chatGpu = S['chat-pad']?.gpu.perFrame || S['chat-wheel']?.gpu.perFrame;
