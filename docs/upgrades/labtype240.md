@@ -76,8 +76,10 @@ max 0 (the screen at pixel ratio 2: max 1 on 2 pixels, the window's own composit
 - `node --check` on the sandbox page's three scripts (extracted), `tools/sandbox-lab3d.js`, the check's body,
   `dev/run-checks.js`.
 - `labtype240`: passes (720p / 1440p / fit at --dpr 1, 1.5, 2, and 4K; budgets, 8 picture comparisons, the model).
-- See the final report for lab240gpu, kinetictype, type, labdirect, lab3d-models, labmaterials, renderfast, idlecpu,
-  lazy, unit:boot-test.
+- Passed: lab240gpu, kinetictype, labdirect, labmaterials, renderfast, lazy, unit:boot-test; type and lab3d-models
+  after a re-run alone (type first showed a real interaction: a held title let the preview doze, so a kick value set
+  from outside showed late; `__labType.drive` now wakes it).
+- idlecpu fails the same way on the base commit (the main process's 42 timers/min, not the preview).
 
 ## Not done
 - One shared atlas canvas for every text layer (one canvas instead of one per layer): each layer keeps its own
