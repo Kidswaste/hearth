@@ -130,6 +130,16 @@ A game can help it judge moves by exposing `window.game = { x, y, z, score, … 
 scene's `__scenes` gives the camera. The director: `three_do play {game, script, secs, perf, shot, op}` (`three_play` on
 the hub); the owner: `/playtest`.
 
+## Lighter textures (round 53, gametex: tools/gametex-core.js, gametexmain.js, tools/gametex-worker.js)
+- `GameReady.optimize` also sends the scene's pictures `pics: [{ path, hash, size, role: 'color'|'normal'|'data', flip }]`
+  and the GPU's formats `caps` (`GameTexCore.caps(extensions)`); a model file may carry `variant: 'ktx2'` (its copy's
+  pictures are KTX2: its own cache key). Result: `pictures { made, kept, keptNow }`, `tex` (the report:
+  `{ before, after, text: 'Textures: … → … of video memory' }`), `meshTool`, `meshPlan` (gltfpack's install plan).
+- `gameready:texplan { files, pics, caps }` → `{ map: { normPath → { out, mode, flip, w, h } }, report, kept, models }`.
+- `gameready:arm` takes `tex` (that map) and `tx` (the report line: the card shows it; `__gameReady.pub().tx`).
+- A Lab scene's page: a reference item may carry `ktx2` (the copy's bytes); `refTexture()` uses it when the GPU takes a
+  compressed format (`texture.userData.ktx2`), else the picture.
+
 ## PlayLoop (round 53, playloop: playloop.js in the "gamemode" group, playloopmain.js)
 - **A layer's hooks** (Lab scenes; the Lab player, `tools/three-sandbox.html`): `export function saveState()` → a
   cloneable value, `export function restoreState(value)`, `export function checkpoint(name)` (or `export const hot =

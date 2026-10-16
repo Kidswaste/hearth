@@ -26,8 +26,10 @@
   }
   const TOOL_V = 1; // bump when the flags below change: every older copy is stale
   // (the encoder's flags are fixed per TOOL_V: a copy is found again whichever gltfpack made it)
+  // (round 53, gametex) variant 'ktx2': a copy whose pictures are KTX2 too (only for a game that loads KTX2: a Lab
+  // scene on a graphics card with compressed formats, an HTML build whose loader showed a KTX2 decoder)
   function entryKey(file) {
-    return hash(JSON.stringify(canon({ v: TOOL_V, h: String(file?.hash || ''), ext: extOf(file?.path || '') })));
+    return hash(JSON.stringify(canon({ v: TOOL_V, h: String(file?.hash || ''), ext: extOf(file?.path || ''), ...(file?.variant ? { k: String(file.variant) } : {}) })));
   }
   const extOf = (p) => (String(p).match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
   // the same file whatever the slashes, file:// prefix or (Windows / Mac) letter case
