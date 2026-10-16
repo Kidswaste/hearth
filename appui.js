@@ -185,6 +185,8 @@ const AppUI = (() => {
     pcSec.append(
       // (round 45, backupauto) "Last backup: 2 h ago ✓" with Backups… (backupauto.js; loaded right after the first screen)
       (() => { if (window.BackupAuto) return BackupAuto.line(); const slot = el('span', { class: 'sf-slot' }); window.Lazy?.load?.('backupauto').then(() => { if (window.BackupAuto) slot.replaceWith(BackupAuto.line()); }).catch(() => {}); return slot; })(),
+      // (round 53, diskcalm) "Space Hearth uses: 2.4 GB: backups 1.2 GB · game cache 600 MB · …" with Free up per cache (diskcalm.js)
+      (() => { if (window.DiskCalm) return DiskCalm.line(); const slot = el('span', { class: 'sf-slot' }); window.Lazy?.load?.('diskcalm').then(() => { if (window.DiskCalm) slot.replaceWith(DiskCalm.line()); }).catch(() => {}); return slot; })(),
       el('div', { class: 'button-row', title: 'Claude, Codex, ffmpeg, sync, folders from the other computer, permissions, updates: one list, one button each' },
         gbtn('Check this computer…', 'Is this computer ready? Each thing with its state and one button to fix it (nothing installs without your click)', () => { dialog.close(); (window.Lazy?.load ? Lazy.load('firstrun') : Promise.resolve()).then(() => FirstRun.open()); })), // (round 28, firstrun)
       fold('start', 'Starting and closing', 'What Hearth does when your computer starts, when it opens and when you close its window',

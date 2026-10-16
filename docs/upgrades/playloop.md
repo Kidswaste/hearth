@@ -119,7 +119,7 @@ New files: `playloop.js` (hub, in the lazy group `gamemode`, after `gamemode.js`
 - `gamemodemain.js`: requires playloopmain (the `game:loop` / `game:fix` channels, the Ctrl/⌘+P line in `before-input-event`, `ended`).
 - `gamemode.js`: `rest(on)`, `state().resting`, `leave({ quiet })`, PlayLoop's rows first in ▶ Play's menu, its
   side-by-side screen for `play`.
-- `game-preload.js`: the blip, the error line, Fix on the Esc card, the key in the hint.
+- `game-preload.js`: the blip, the error line, Fix on the Esc card, the key in the hint (no key listeners: Ctrl/⌘+P is read in main after gameinput's keys).
 - `preload.js` (`hub.game.loop` / `onLoop`).
 - `lazy-data.js` / `lazy-meta.js`: `playloop.js` in the gamemode group, and the Ctrl/⌘+P stand-in key that loads it.
 - `tools/three.js` (▶ Play's tooltip), `tools/game-api.md` (the PlayLoop section).

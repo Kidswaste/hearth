@@ -28,6 +28,7 @@ function rest(why = 'asked') {
   if (S.side) { focusHub(); tell({ type: 'rested', side: true, why }); return state(); }
   if (S.resting) { focusHub(); return state(); }
   S.resting = true;
+  if (g.input?.menu) { g.input.menu = false; try { g.win.webContents.send('game:menu-close'); } catch { /* gone */ } } // (gameinput's card: closed, so Esc after coming back shows it again)
   S.simple = mac && Boolean(g.win.isSimpleFullScreen?.());
   const wc = g.win.webContents;
   park(g, true);

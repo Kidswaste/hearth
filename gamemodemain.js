@@ -15,6 +15,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const C = require('./gamemode-core');
+const GI = require('./gameinputmain'); // (round 53, gameinput) focus on open, Esc / F / Enter, keys held for the game, no selection
 
 const SCHEME = 'hearth-game';
 // (round 52, gameready) a persistent partition so Chromium keeps the game's compiled shaders on disk (a second launch
@@ -111,10 +112,11 @@ function hostScript(S) {
     if (d.type === 'stack-drawn') st.drawn = true;
     if (d.type === 'error') st.errors.push(String(d.message || 'error') + (d.line ? ' (line ' + d.line + ')' : ''));
   });
-  // games want the mouse: a click captures it (raw movement where the system has it); Esc gives it back
+  // games want the mouse: a click captures it (raw movement where the system has it: game-preload.js asks for it, with
+  // the plain kind as the fallback); Esc gives it back
   addEventListener('mousedown', function () {
     if (document.pointerLockElement) return;
-    try { var p = document.body.requestPointerLock({ unadjustedMovement: true }); if (p && p.catch) p.catch(function () { try { document.body.requestPointerLock(); } catch (e) {} }); } catch (e) { try { document.body.requestPointerLock(); } catch (e2) {} }
+    try { var p = document.body.requestPointerLock(); if (p && p.catch) p.catch(function () {}); } catch (e) { /* not now */ }
   }, true);
 })();
 </script>
@@ -162,12 +164,16 @@ async function buildScene(spec) {
 // ---------- the window ----------
 function info() {
   if (!G) return { playing: false };
-  return { playing: true, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
+  return { playing: true, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
 }
 function leave(why = 'left') {
   if (!G) return false;
   const g = G;
-  if (g.win && !g.win.isDestroyed()) { g.why = why; g.win.close(); }
+  if (g.win && !g.win.isDestroyed()) {
+    g.why = why; g.win.close();
+    // (round 53, gameinput) a stuck game (or one whose beforeunload says no) never closes: gone anyway after 1.5 s
+    setTimeout(() => { if (!g.win.isDestroyed()) g.win.destroy(); }, 1500);
+  }
   return true;
 }
 function ended(g) {
@@ -204,7 +210,7 @@ async function play(_e, req = {}) {
     const n = (req.scene.layers || []).length;
     how = plan.merge.length > 1 ? `one canvas (${plan.merge.length} of ${n} layers)` : plan.merge.length ? `one canvas` : `${n} canvases`;
     how += b.cached ? ' · page (ready)' : ' · page';
-    entry = `play.html?mode=sketch&v=${encodeURIComponent(b.version)}&n=1&game=1&cap=0`;
+    entry = `play.html?mode=sketch&v=${encodeURIComponent(b.version)}&n=1&game=1&cap=0${req.input?.lowLatency ? '&lowlat=1' : ''}`;
   } else {
     let p = path.resolve(source.path);
     let st; try { st = fs.statSync(p); } catch { throw new Error(`Not found: ${source.path}`); }
@@ -217,7 +223,7 @@ async function play(_e, req = {}) {
   const win = new BrowserWindow({
     x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, show: false, frame: false, backgroundColor: '#000000',
     title: source.title, autoHideMenuBar: true, fullscreenable: true, fullscreen: !mac, thickFrame: false, roundedCorners: false,
-    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind }))}`] },
+    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency) }))}`] },
   });
   if (!mac) win.setMenu(null);
   const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}` };
@@ -226,12 +232,15 @@ async function play(_e, req = {}) {
   const wc = win.webContents;
   wc.setWindowOpenHandler(() => ({ action: 'deny' }));
   wc.on('will-navigate', (e, url) => { if (!url.startsWith(`${SCHEME}://${token}/`)) e.preventDefault(); });
-  // the keys: Esc → the "Back to Hearth" card; ⌘Q / ⌘W, Ctrl+W leave; no other ⌘ shortcut reaches Hearth's menu
+  // (round 53, gameinput) the window's input: focus on open, the keys held for the game, no selection / drag ghosts
+  g.input = GI.attach(win, { lowLatency: Boolean(req.input?.lowLatency), macFullscreen: req.macFullscreen, leave: (why) => { if (G === g) leave(why); } }).state;
+  // the keys: Esc → the "Back to Hearth" card (Esc again / Enter leave; F the stats chip: gameinputmain.key); ⌘Q / ⌘W,
+  // Ctrl+W leave; no other ⌘ shortcut reaches Hearth's menu
   wc.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
+    if (GI.key(e, input)) return;
     const k = String(input.key || '').toLowerCase();
-    if (k === 'escape' && !input.meta && !input.control && !input.alt) { wc.send('game:menu'); return; }
-    if (loop()?.key?.(input)) { e.preventDefault(); return; } // (round 53, playloop) Ctrl/⌘+P: back to editing, the game kept
+    if (loop()?.key?.(input)) { e.preventDefault(); return; } // (round 53, playloop) Ctrl/⌘+P: back to editing, the game kept (after gameinput's keys)
     if ((mac && input.meta && (k === 'q' || k === 'w')) || (!mac && input.control && k === 'w') || (!mac && input.alt && k === 'f4')) { e.preventDefault(); leave('key'); return; }
     if (mac && input.meta) e.preventDefault();
   });

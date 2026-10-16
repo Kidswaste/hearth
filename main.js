@@ -613,9 +613,14 @@ function registerAfterWindow() {
   lazyIpc('rendersmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // the render queue: pause / resume / cancel ffmpeg jobs (round 29: on first use)
   lazyIpc('renderfastmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 41, renderfast) Lab exports stream their frames into ffmpeg (on first use)
   lazyIpc('gamereadymain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, appDir: __dirname })); // (round 52, gameready) ▶ Play gets a game ready: hashes, Hearth's optimized cache and its rewrite map for ▶ Play's window (on first use)
+  // (round 53, diskcalm) Space Hearth uses (Settings › This computer & sync): measured / freed on first use; a calm tidy
+  // (caps, provable leftovers, to the Trash) every 6 h on powerwise's schedule, the first 10 min after the start (not in test runs)
+  const diskcalmIpc = lazyIpc('diskcalmmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, store, settings }));
+  if (!process.env.HEARTH_TEST_SAVE_DIR) { try { powerwise.every('diskcalm', 6 * 3600e3, () => { diskcalmIpc.load(); return require('./diskcalmmain').tick(); }, { hidden: 'run', first: 10 * 60e3 }); } catch { /* no schedule: tidies when asked */ } }
   lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
   lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
   lazyIpc('gamemodemain.js', (m, ipc) => m.register(ipc, { getWin: () => win, powerwise, dataDir: store.DATA_DIR })); // (round 52) ▶ Play: a game in its own full-screen window
+  lazyIpc('directorgamemain.js', (m, ipc) => m.register(ipc, { getWin: () => win })); // (round 53, directorgame) the director's play-test: an input script into the ▶ Play window only, one small picture
   lazyIpc('voicemain.js', (m, ipc) => m.register(ipc, () => win, { settings, dataDir: store.DATA_DIR })); // (round 23) voice: local speech-to-text (whisper), system voices
   lazyIpc('remotemain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 24) phone remote: a LAN-only server for the Lab / stage, off until /remote on
   lazyIpc('interopmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) interop: OSC in / out, Ableton Link tempo, the OBS Browser Source page, obs-websocket; all off until used

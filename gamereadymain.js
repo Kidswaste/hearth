@@ -90,7 +90,10 @@ async function tool(override) {
 
 // ---------- the cache ----------
 async function trash(file) {
-  try { await require('electron').shell.trashItem(file); return true; } catch {
+  // (round 53, diskcalm) platform46's no-bin check first: on a network share (a USB stick on Windows) the copy stays
+  const binCheck = process.platform === 'win32' ? require('./winpolish').trashCheck(file, { platform: 'win32' }) : process.platform === 'darwin' ? require('./macpolish').trashCheck(file, { platform: 'darwin' }) : { ok: true };
+  if (!binCheck.ok) return false;
+  try { await require('electron').shell.trashItem(binCheck.path || file); return true; } catch {
     // (no desktop Trash: test machines) a file Hearth made in its own cache folder only
     if (path.resolve(file).startsWith(path.resolve(cacheDir()) + path.sep)) { try { fs.rmSync(file, { force: true }); return true; } catch { /* below */ } }
     return false;
@@ -188,4 +191,6 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('gameready:served', async () => armed?.served || []);
 }
 
-module.exports = { register, swapFor, pageTag, isPage, pageFile, noteServed, armed: () => armed, _test: { plan, optimize, readIndex, hashFile, findTool, setDir: (d) => { dataDir = d; index = null; indexBad = false; } } };
+// (round 53, diskcalm) Free up moved the cache to the Trash: the index is read again (missing → a new cache)
+const forget = () => { index = null; indexBad = false; memo.clear(); return true; };
+module.exports = { register, swapFor, pageTag, isPage, pageFile, noteServed, forget, armed: () => armed, _test: { plan, optimize, readIndex, hashFile, findTool, setDir: (d) => { dataDir = d; index = null; indexBad = false; } } };

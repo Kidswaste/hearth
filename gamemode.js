@@ -86,7 +86,7 @@ const GameMode = (() => {
       hold(true);
       let info;
       if (r?.route === 'live') info = await playLive(s, r, opts);
-      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native') });
+      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs() });
       now = { source: s, info, live: r?.route === 'live', at: Date.now(), plan };
       const own = plan ? Object.entries(plan.why).filter(([, w]) => w !== 'hidden') : [];
       if (own.length) {
@@ -101,6 +101,8 @@ const GameMode = (() => {
       throw err;
     } finally { busy = false; t?.remove?.(); }
   }
+  // (round 53, gameinput) the game window's input: the low-latency canvas (off unless /game lowlatency on: it can tear)
+  const inputPrefs = () => ({ lowLatency: store.get('gamemode.lowLatency', false) === true });
   // the Lab drives it: the Stage window, full screen on the game's screen (the Lab's own controls keep working)
   async function playLive(s, r, opts) {
     const L = Lab();
@@ -188,12 +190,19 @@ const GameMode = (() => {
     },
   });
   Commands.register({
-    name: 'game', area: 'Lab', args: '[stop | screens]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
-    examples: ['/game', '/game stop', '/game screens'], keywords: 'play clink game mode',
-    complete: () => ['stop', 'screens'].map((v) => ({ value: v })),
+    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
+    examples: ['/game', '/game stop', '/game screens', '/game input'], keywords: 'play clink game mode raw mouse input latency',
+    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off'].map((v) => ({ value: v })),
     run: async (args) => {
       const a = String(args || '').trim();
       if (/^(stop|leave|quit|off)$/i.test(a)) { if (!now) return 'No game is playing.'; leave(); return null; }
+      // (round 53, gameinput) the game window's input
+      const m = a.match(/^low-?latency\s+(on|off)$/i);
+      if (m) { const on = /on/i.test(m[1]); store.set('gamemode.lowLatency', on); return on ? 'Low-latency canvas on from the next game (a frame sooner on screen where the system supports it; it can tear: /game lowlatency off).' : 'Low-latency canvas off (the default).'; }
+      if (/^input$/i.test(a)) {
+        const p = inputPrefs(); const i = now && !now.live ? (await window.hub.game.state().catch(() => null))?.input : null;
+        return [`Raw mouse: asked when the game captures it · low-latency canvas: ${p.lowLatency ? 'on' : 'off'} · keys held for the game: ${i?.keys?.held || (/Mac/i.test(navigator.platform) ? 'every ⌘ shortcut' : 'Alt+Space')}`, i?.focus ? `Focus on open: ${i.focus.ok ? 'yes' : 'not confirmed'} (${i.focus.ms} ms)` : ''].filter(Boolean).join('\n');
+      }
       if (/^screens?$/i.test(a)) {
         const ds = await window.hub.game.displays();
         const p = C.pickDisplay(ds, store.get('gamemode.display', null));
