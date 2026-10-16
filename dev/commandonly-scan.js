@@ -36,7 +36,7 @@ function appFiles(dir = ROOT, rel = '') {
   const out = [];
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) out.push(...appFiles(path.join(dir, e.name), rel ? `${rel}/${e.name}` : e.name)); continue; }
-    if (e.name.endsWith('.js') && e.name !== 'lazy-data.js') out.push(rel ? `${rel}/${e.name}` : e.name);
+    if (e.name.endsWith('.js') && e.name !== 'lazy-data.js' && e.name !== 'lazy-meta.js') out.push(rel ? `${rel}/${e.name}` : e.name);
   }
   return out;
 }

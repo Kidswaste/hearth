@@ -8,6 +8,8 @@
 // using one loads its group (in the original order, with its CSS) and hands over to the real thing.
 //   tier 'soon': loads right after the first screen, one group per idle moment (background hooks keep working)
 //   tier 'use':  loads only when one of its commands / actions / tools / globals is first used
+// (round 52) the stand-in commands' descriptions / examples / keywords come from lazy-meta.js right after the first frame
+// (Lazy.text()); lazy-data.js keeps only what registering them needs.
 // Lazy.load(name) → Promise · Lazy.when(name, fn) (fn once the group is in) · Lazy.state() · Lazy.misses() (globals touched before their group loaded: a dev aid,
 // each one also loads its group) · Lazy.report(name) (what a group registered while loading: the manifest's source).
 const Lazy = (() => {
@@ -107,7 +109,8 @@ const Lazy = (() => {
     const { when: shared, dcl, ...rest } = c;
     try {
       // the aliases as the module gave them where it used to register (it filtered them itself if it does)
-      const un = Commands.register({ ...rest, ...(shared ? { when } : {}), aliases: c.aliases || [], run, complete });
+      // (round 52) its words (lazy-meta.js) when they're in already; otherwise fillText puts them in when they come
+      const un = Commands.register({ ...(textOf(g.name, name) || {}), ...rest, ...(shared ? { when } : {}), aliases: c.aliases || [], run, complete });
       const cur = Commands.get(name);
       const obj = cur && (cur.run === run ? cur : cur.variants?.find((v) => v.run === run));
       if (!obj) { un?.(); return; }
@@ -206,6 +209,27 @@ const Lazy = (() => {
     each(g, m.keys, (k) => stubKey(g, k));
     each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys));
     each(g, m.apps, (a) => stubApp(g, a));
+  }
+  // ---------- (round 52, lazymeta) the stand-ins' words come right after the first frame ----------
+  // lazy-data.js (read before the first frame) keeps what a stand-in command is registered with: name, aliases, args,
+  // area, keys…; its description, examples, keywords and undo line are in lazy-meta.js (LazyText, written by
+  // dev/lazy-manifest.js), read once right after the first frame, before any group loads (load() waits for it), and put
+  // into the stand-ins still waiting for their group. Lazy.text() → Promise (the same one each time).
+  const TEXT_KEYS = ['desc', 'examples', 'keywords', 'undo'];
+  const textOf = (group, name) => (typeof LazyText !== 'undefined' && LazyText[group]?.[name]) || null;
+  let textP = null;
+  function fillText() {
+    let n = 0;
+    for (const [key, name] of stubCmds) {
+      const t = textOf(key.slice(0, key.indexOf('|')), name);
+      const obj = t && stubSelf.get(key);
+      if (!obj) continue;
+      for (const k of TEXT_KEYS) if (t[k] != null && (obj[k] == null || obj[k] === '')) { obj[k] = t[k]; n += 1; }
+    }
+    if (n) { try { Commands.addInfo?.({}); } catch { /* the search index rebuilds on its own */ } }
+  }
+  function text() {
+    return (textP ||= inject('lazy-meta.js').then(fillText).catch((err) => say(`words: ${err.message}`)));
   }
   // The group's own files register the real commands: each fills in its stand-in's object in the registry (takeOver),
   // so names, aliases, shared `when` variants and their order stay exactly as the stand-ins laid them out. While they
@@ -340,7 +364,7 @@ const Lazy = (() => {
     if (g.promise) return g.promise;
     g.promise = (async () => {
       for (const dep of g.after || []) await load(dep);
-      const go = chain.then(async () => {
+      const go = chain.then(text).then(async () => {
         g.state = 'loading';
         const t0 = performance.now();
         const rep = { commands: [], actions: [], keys: [], bridge: [], apps: [], tools: [] };
@@ -440,9 +464,10 @@ const Lazy = (() => {
     if (readyAt) return;
     readyAt = performance.now();
     try { namesAtReady = Commands.list().map((d) => d.name); } catch { /* no commands */ }
-    if (hold) return;
+    if (hold) { afterPaint(text); return; }
     afterPaint(() => {
       painted = true;
+      text();
       for (const n of wanted) load(n).catch(() => {});
       soon();
     });
@@ -470,7 +495,7 @@ const Lazy = (() => {
   addEventListener('DOMContentLoaded', () => setTimeout(start, 6000), { once: true });
   const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null }));
   return {
-    load, state, start, at,
+    load, state, start, at, text,
     loaded: (name) => groups.get(name)?.state === 'loaded',
     // (round 29) in yet, without asking for it: false while the group is a stand-in or loading (true for a name that
     // isn't lazy). For code that only decorates a lazy feature (`Lazy.isIn('lab') && ThreeLab…`): no miss, no load

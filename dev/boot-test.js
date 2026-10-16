@@ -45,12 +45,20 @@ const at = [...html.matchAll(/lazy-at\.js#([\w,-]+)/g)].flatMap((m) => m[1].spli
 for (const a of at) ok(names.has(a), `lazy-at.js#${a}: no such group`);
 for (const g of names) ok(at.includes(g), `${g}: no lazy-at.js tag (its stand-ins would come last)`);
 ok(html.indexOf('src="lazy.js"') > html.indexOf('src="commands.js"') && html.indexOf('src="lazy.js"') < html.indexOf('lazy-at.js'), 'lazy.js loads after commands.js, before the first lazy-at.js');
+// (round 52, lazymeta) the stand-in commands' words are read after the first frame (lazy.js Lazy.text()), never in front of it
+const LazyText = new Function(`${fs.readFileSync(path.join(ROOT, 'lazy-meta.js'), 'utf8')}; return LazyText;`)(); // eslint-disable-line no-new-func
+ok(!html.includes('src="lazy-meta.js"'), 'lazy-meta.js is a <script> in index.html (it is read after the first frame)');
+for (const [g, cmds] of Object.entries(LazyText)) {
+  ok(names.has(g), `lazy-meta.js: ${g} isn't a group (node dev/lazy-manifest.js)`);
+  const stubs = new Set((LazyData.META[g]?.commands || []).map((c) => c.name.toLowerCase()));
+  for (const n of Object.keys(cmds)) ok(stubs.has(n), `lazy-meta.js: /${n} (${g}) isn't in the manifest (node dev/lazy-manifest.js)`);
+}
 console.log(`✓ ${LazyData.GROUPS.length} lazy groups, ${LazyData.GROUPS.reduce((a, g) => a + g.files.length, 0)} files`);
 
 // 3. (round 40, firstscreen) what the first screen reads before its first frame stays within budget: a new feature goes
 // in a lazy group (lazy-data.js) or merges into a file that is already there; raise a budget only with a reason in
 // docs/upgrades/firstscreen.md
-const BUDGET = { scripts: 72, jsKB: 2352, sheets: 29, cssKB: 450 }; // (round 51: 2350 → 2352, docs/upgrades/firstscreen.md)
+const BUDGET = { scripts: 72, jsKB: 2330, sheets: 29, cssKB: 450 }; // (round 51: 2350 → 2352; round 52, lazymeta: 2352 → 2330 with the first screen at ≈ 2,267 KB: docs/upgrades/firstscreen.md)
 const eager = [...html.matchAll(/<script defer src="([^"#]+)"/g)].map((m) => m[1]).filter((f) => f !== 'lazy-at.js');
 const sheets = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map((m) => m[1]);
 // Git's Windows CRLF checkout must measure the same source budget as Linux/macOS.

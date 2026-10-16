@@ -75,8 +75,9 @@ the start was a native call and goes away there too.
 ### For the next streams (dev, not counted)
 - **Budgets**: `node dev/boot-test.js` (unit:boot-test) now fails when the first screen grows past 72 scripts /
   2,350 KB of JS / 29 stylesheets / 450 KB of CSS: put a new file in a lazy group (lazy-data.js), or merge it into one
-  that's already there. (Round 51, labshapes: 2,352 KB. The JS budget had been reached by lazy-data.js alone, 2,349.9 KB
-  at 1d31b0c: every new lazy group's line and command manifest are first-screen bytes, ≈ 0.6–0.9 KB each.) `dev/checks/fastboot.js` adds a stall guard: the first screen up within 3 s (medians here are
+  that's already there. (Round 51, labshapes: 2,352 KB; the first screen as a whole was at 2,349.9 KB at 1d31b0c, and
+  every new lazy group's line and command manifest are first-screen bytes. Round 52, lazymeta: back **down to 2,330 KB**
+  with the first screen at 2,267 KB, see below.) `dev/checks/fastboot.js` adds a stall guard: the first screen up within 3 s (medians here are
   0.4–1.1 s; a wall-clock budget tighter than that isn't stable on this shared machine).
 - `dev/perf-report.js` reports the work in front of the first screen: `busyToReadyMs`, `scriptToReadyMs`,
   `longToReady` / `longToReadyMs` (CPU time from navigation to 'hearth:ready', steadier than the wall clock).
@@ -122,3 +123,30 @@ passing on re-run: apps-meshy ("a progress bar shows"), bigscreen-hidpi (the hug
 - Background loading waits until the first picture is really on screen, so it no longer slows that picture down.
 - A new check keeps the first screen within its budget, so it doesn't creep back.
 - Nothing was removed and nothing looks different.
+
+## Round 52, lazymeta: the first screen lighter again (budget back down)
+Every new lazy group pushed the first screen over its JS budget (2,353 KB > 2,352 at 36ee90f). Measured first:
+`lazy-data.js` was the biggest first-screen file, **215 KB** (not the whole 2,350: that was the first screen's total);
+its generated manifest (META) was 188 KB, of which the commands were 144 KB: descriptions 65 KB, argument words 21,
+examples 14, keywords 14, names 13; then keys-sheet lines 17 KB, palette actions 10, app windows 10, rail tools 2.
+
+- **What moved**: the lazy commands' descriptions, examples, keywords and undo lines now live in a new generated file,
+  `lazy-meta.js` (`LazyText`, 98 KB), which is not in index.html. `lazy.js` reads it once right after the first frame
+  (`Lazy.text()`, also in the `lazy.hold` test mode) and puts the words into the stand-in commands still waiting for
+  their group, then refreshes the command search index. Every group load waits for it first (so a group's real
+  commands never combine with a stand-in that has no words yet). Ctrl/⌘+K's "/name — what it does" lines read the
+  description from the live command (the appui label getter, Codex's lazy-label fix), so they show the words as before.
+- **What stays in lazy-data.js**: what registering a stand-in needs: names, aliases, args, area, keys, hidden, when /
+  whenLabel / dcl / fallback, palette action labels, keys-sheet lines, app windows, rail tools, agent tool prefixes.
+  A command whose name is shared (a `when` variant, or one combined with another registration under its name or an
+  alias: /retry with /again, /recent with /history) keeps its words inline, since Commands.register combines the
+  variants' descriptions when they register.
+- **Numbers**: lazy-data.js 215.2 → **127.9 KB**; first-screen JS **2,353 → 2,267 KB** (−86 KB); 72 scripts and 29
+  sheets unchanged. Budget **2,352 → 2,330 KB** (63 KB free). A new lazy group's first-screen cost is now mostly its
+  names and args; its long words go to lazy-meta.js.
+- `node dev/lazy-manifest.js` writes both files (and `--check` reports either out of date); `dev/boot-test.js` also
+  checks that lazy-meta.js isn't a first-screen script and only names groups / commands the manifest has;
+  `dev/commandonly-scan.js` skips lazy-meta.js like lazy-data.js.
+- Risk: in the moment between the first frame and lazy-meta.js being read (a few ms), a still-waiting lazy command's
+  description is empty in `/help list` or the "/" rows; Ctrl/⌘+K's first opening waits for Find anything, which loads
+  after the words.
