@@ -110,7 +110,7 @@ const HubBridge = (() => {
   // ("set_frame", "looks", "screenshot", "sliders", "edit_code"…). In order; stops at the first failure. Pictures come
   // back together, the text one numbered line block per op. Each op counts and is recorded like its own call.
   const BATCH_MAX = 8;
-  const NOT_IN_BATCH = /^three_(batch|do|sequence|load_media|comp|make|motion)$/;
+  const NOT_IN_BATCH = /^three_(batch|do|sequence|load_media|comp|make|motion|play)$/; // (round 53: a play-test runs up to 90 s on its own)
   async function batch(args, ctx) {
     const ops = Array.isArray(args.ops) ? args.ops : [];
     if (!ops.length) return { ok: false, error: 'batch needs ops: [{ cmd, ...args }, …]' };

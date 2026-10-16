@@ -620,6 +620,7 @@ function registerAfterWindow() {
   lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
   lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
   lazyIpc('gamemodemain.js', (m, ipc) => m.register(ipc, { getWin: () => win, powerwise, dataDir: store.DATA_DIR })); // (round 52) ▶ Play: a game in its own full-screen window
+  lazyIpc('directorgamemain.js', (m, ipc) => m.register(ipc, { getWin: () => win })); // (round 53, directorgame) the director's play-test: an input script into the ▶ Play window only, one small picture
   lazyIpc('voicemain.js', (m, ipc) => m.register(ipc, () => win, { settings, dataDir: store.DATA_DIR })); // (round 23) voice: local speech-to-text (whisper), system voices
   lazyIpc('remotemain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 24) phone remote: a LAN-only server for the Lab / stage, off until /remote on
   lazyIpc('interopmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) interop: OSC in / out, Ableton Link tempo, the OBS Browser Source page, obs-websocket; all off until used
