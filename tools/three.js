@@ -2238,11 +2238,17 @@ const ThreeLab = (() => {
       // (round 21) a drag (live) sends only what it moves, not every prop with every keyframe ~60 times a second (the
       // preview merges them); the timeline's tracks follow once a frame
       const part = live ? livePart(L, patch, wrote || animated.length > 0) : null;
+      // (round 49, labscrub) …and once a frame: a clip or a value dragged sends its newest props in the coming frame
+      // (merged), not one message per pointer event the preview can't draw anyway
+      if (part) { livePend.set(id, { ...livePend.get(id), ...part }); if (!liveRaf) liveRaf = requestAnimationFrame(liveFlush); renderTracksSoon(); return; }
+      livePend.delete(id);
       box.send({ type: 'layer-props', id, props: part || layerProps(L) });
       if (live) { renderTracksSoon(); return; }
       touch();
       renderLayers();
     }
+    const livePend = new Map(); let liveRaf = 0;
+    function liveFlush() { liveRaf = 0; for (const [id, props] of livePend) box.send({ type: 'layer-props', id, props }); livePend.clear(); }
     function renderTracksOnly() { cancelAnimationFrame(tracksRaf); tracksRaf = 0; player.setTracks(trackList(), trackHandlers); }
     let tracksRaf = 0;
     const renderTracksSoon = () => { if (!tracksRaf) tracksRaf = requestAnimationFrame(() => { tracksRaf = 0; renderTracksOnly(); }); };

@@ -526,7 +526,8 @@ const Projects = (() => {
       recentOf('A workspace folder', () => (cache.get('workspace')?.value?.folders || []).map((f) => ({ type: 'file', ref: f.path, name: f.name }))),
       recentOf('A download', () => now('downloads').filter((d) => d.path && d.state === 'completed').slice(0, 30).map((d) => ({ type: 'download', ref: d.path, name: d.name, at: d.at }))),
       recentOf('A deploy', () => now('deploys').filter((d) => d.url).slice(0, 20).map((d) => ({ type: 'deploy', ref: d.id || d.url, name: `${d.name || d.slug || 'site'} · ${d.url}`, at: d.at }))),
-      { label: 'A file…', action: async () => { const f = await window.hub.openDialog({ properties: ['openFile', 'openDirectory', 'multiSelections'], title: `Add to “${p.name}”` }); for (const x of f || []) add(p, 'file', x, base(x)); } },
+      // (round 49) files and folders in one dialog only exist on the Mac: on Windows that pair shows a folder picker only
+      { label: 'A file…', action: async () => { const f = await window.hub.openDialog({ properties: /Mac/.test(navigator.platform) ? ['openFile', 'openDirectory', 'multiSelections'] : ['openFile', 'multiSelections'], title: `Add to “${p.name}”` }); for (const x of f || []) add(p, 'file', x, base(x)); } },
     );
     return out;
   }

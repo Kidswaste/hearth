@@ -73,10 +73,14 @@ const Icons = (() => {
     // locked (a read-only board)
     lock: S('<rect x="5" y="10.5" width="14" height="10" rx="2" fill="currentColor" fill-opacity=".14"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'),
     // recent things: a clock arrow
+    // (round 49, appcalm) Home (a house), AI setup (four small diamonds: its ❖), full screen (four corners)
+    home: S('<path d="M4 11.2L12 4.5l8 6.7"/><path d="M6.2 9.6v9.9h11.6V9.6" fill="currentColor" fill-opacity=".14"/><path d="M10 19.5v-5h4v5"/>'),
+    setup: S('<path d="M12 3.5l2.6 2.6L12 8.7 9.4 6.1zM12 15.3l2.6 2.6-2.6 2.6-2.6-2.6zM6.1 9.4l2.6 2.6-2.6 2.6L3.5 12zM17.9 9.4l2.6 2.6-2.6 2.6-2.6-2.6z" fill="currentColor" fill-opacity=".2"/>'),
+    full: S('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'),
     recent: S('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v3.2h3.2M12 8v4.3l2.8 1.7"/>'),
   };
   // agent / tool id (or engine) -> icon
-  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', jam: 'jam', board: 'board', capture: 'capture' }; // (round 18: Video Review's / the Video Director's / the editor's ids left)
+  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', jam: 'jam', board: 'board', capture: 'capture', home: 'home', options: 'setup' }; // (round 18: Video Review's / the Video Director's / the editor's ids left)
   const BY_ENGINE = { claude: 'claude', codex: 'astra' };
   const BY_BUTTON = { 'add-btn': 'plus', 'palette-btn': 'command', 'notes-btn': 'notes', 'memory-btn': 'memory', 'panel-btn': 'panel', 'grid-btn': 'grid', 'bar-btn': 'broadcast', 'config-btn': 'gear' };
 

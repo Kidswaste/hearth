@@ -374,10 +374,10 @@ const ThreeFX = (() => {
       while (i >= rows.length && pending.length) more(Math.max(20, i - rows.length + 20));
       cur = Math.max(0, Math.min(rows.length - 1, i));
       const r = rows[cur];
-      if (!r) { foot.textContent = '↑↓ move · Enter apply · Tab next tab · Ctrl+D ★ · Alt+R 🎲 · Esc close'; return; }
+      if (!r) { foot.textContent = (globalThis.macText || String)('↑↓ move · Enter apply · Tab next tab · Ctrl+D ★ · Alt+R 🎲 · Esc close'); return; }
       r.row.classList.add('on');
       if (scroll) r.row.scrollIntoView({ block: 'nearest' });
-      foot.textContent = `${hint(r.it)} · ↑↓ · Tab · Ctrl+D ★ · Alt+R 🎲 · Esc`;
+      foot.textContent = (globalThis.macText || String)(`${hint(r.it)} · ↑↓ · Tab · Ctrl+D ★ · Alt+R 🎲 · Esc`);
     }
     async function run(it, alt) {
       if (!it) return;
@@ -397,7 +397,7 @@ const ThreeFX = (() => {
       if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); run(rows[cur]?.it, e.shiftKey); return; }
       if (e.key === 'Tab') { e.preventDefault(); if (!browse) { browse = true; paintTabs(); render(); return; } const i = TABS.findIndex((t) => t[0] === tab); tab = TABS[(i + (e.shiftKey ? -1 : 1) + TABS.length) % TABS.length][0]; paintTabs(); render(); return; }
       if (e.ctrlKey && e.key.toLowerCase() === 'd') { e.preventDefault(); const r = rows[cur]; if (r) r.star.classList.toggle('on', toggleFav(r.it)); return; }
-      if (e.altKey && e.key.toLowerCase() === 'r') { e.preventDefault(); doSurprise(); }
+      if (e.altKey && (e.code === 'KeyR' || e.key.toLowerCase() === 'r')) { e.preventDefault(); doSurprise(); } // (round 49: ⌥R types ® on a Mac)
       e.stopPropagation(); // typing here never reaches the Lab's single-key shortcuts
     });
     const outside = (e) => { if (root && !root.contains(e.target)) { close(); removeEventListener('pointerdown', outside, true); } };

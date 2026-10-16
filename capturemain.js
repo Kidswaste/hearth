@@ -341,7 +341,8 @@ function register(ipcMain, getWin, getSettings = () => ({})) {
   function captureKey(event, input) {
     if (input.type !== 'keyDown') return;
     const mod = input.control || (process.platform === 'darwin' && input.meta);
-    const k = String(input.code || '').replace(/^Key/, '').toLowerCase(); // the key's place: ⌥S types ß on a Mac
+    // the letter on the key (AZERTY's A sits on QWERTY's Q), else the key's place: ⌥S types ß on a Mac (round 49)
+    const k = /^[a-z]$/i.test(String(input.key || '')) ? String(input.key).toLowerCase() : String(input.code || '').replace(/^Key/, '').toLowerCase();
     // Windows: AltGr is Ctrl+Alt, so AltGr+S / AltGr+A type ś / ą on Polish (and other) keyboards: a key that types
     // another letter than its place is typing, not the capture key
     if (process.platform === 'win32' && String(input.key || '').length === 1 && String(input.key).toLowerCase() !== k) return;

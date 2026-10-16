@@ -17,7 +17,11 @@ const Declutter = (() => {
   const REVEAL = [
     // rail (both stay in the rail's ⋯ and Ctrl+K / right-click on the rail)
     { id: 'rail-add', area: 'Rail', label: '＋ Add an agent or website', sel: '#rail #add-btn' },
-    { id: 'rail-palette', area: 'Rail', label: '⌘ Command palette (Ctrl+K)', sel: '#rail #palette-btn' },
+    { id: 'rail-palette', area: 'Rail', label: '⌕ Find anything (Ctrl+K)', sel: '#rail #palette-btn' },
+    // (round 49, appcalm) full screen and the board drawer wait in the rail's ⋯ (Ctrl/⌘+K and their keys too); each stays
+    // in the rail while it is on, so leaving it is where you'd look
+    { id: 'rail-full', area: 'Rail', label: '⛶ Full screen', sel: '#rail #full-btn', keep: '.on' },
+    { id: 'rail-drawer', area: 'Rail', label: 'Board drawer (Ctrl+Shift+M)', sel: '#rail .bd-rail-peek', keep: '.on' },
     // chats panel
     { id: 'panel-filter', area: 'Chats panel', label: '⏷ Filter chats', sel: '.panel-filter-btn', mode: 'hover', host: '#panel .panel-head', keep: '.on' },
     { id: 'panel-add', area: 'Chats panel', label: '＋ New chat in each group', sel: '.group-add', mode: 'hover', host: '#panel .group-head' },
@@ -633,7 +637,11 @@ const Declutter = (() => {
   }
 
   // the rail's ⋯ also lists the two buttons that left the rail (simplify.js builds that menu from its TUCKED list)
-  if (typeof Simplify !== 'undefined' && Array.isArray(Simplify.TUCKED)) Simplify.TUCKED.unshift(['palette-btn', '⌘ Command palette  Ctrl+K'], ['add-btn', '＋ Add an agent or website']);
+  if (typeof Simplify !== 'undefined' && Array.isArray(Simplify.TUCKED)) {
+    Simplify.TUCKED.unshift(['palette-btn', '⌕ Find anything…  Ctrl+K'], ['add-btn', '＋ Add an agent or website']);
+    Simplify.TUCKED.push(['full-btn', '⛶ Full screen'], ['board-drawer-btn', '▦ Board drawer  Ctrl+Shift+M']); // (round 49, appcalm)
+    const pb = document.getElementById('palette-btn'); if (pb) pb.title = 'Find anything: a setting, a chat, an action (Ctrl+K)'; // one name (it said Command palette)
+  }
 
   // the keys sheet lists what each area tucks away (hold Alt / point at it)
   const WHERE = { Rail: 'the rail', 'Chats panel': 'the chats list', Chat: 'a chat', 'Director dock': 'the dock', Lab: 'the Lab', 'Lab preview': 'the picture', 'Lab timeline': 'the timeline', 'Lab layers': 'a layer', 'Lab sliders': 'the sliders', 'Lab console': 'the console', Notes: 'Notes', Memory: 'Memory', Tabs: 'a tool’s header' };
