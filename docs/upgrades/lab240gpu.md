@@ -82,8 +82,13 @@ Count: 3 upgrades + 1 check.
 - `node --check` on the sandbox page's three scripts (extracted), the check's body, `dev/run-checks.js`.
 - `lab240gpu`: passes (720p / 1440p / fit, budgets + 7 picture comparisons). 4K and --dpr 1.5 / 2 measured with
   `L240_SIZES` / `--dpr` (table above).
-- Targeted: labgpu, labadapt, labpace, lab3d-models, kinetictype, labdirect, idlecpu, renderfast, lazy, unit:boot-test,
-  unit:labadapt-test, unit:labpace-test — see "Test results" below.
+- Passed: labgpu, labadapt, lab3d-models, kinetictype, labdirect, idlecpu, renderfast, lazy, unit:boot-test,
+  unit:labadapt-test.
+- Failed the same way on the base commit (machine load ~10, run twice): `labpace`'s "the sketch changes itself (a timer)
+  … draws again within a frame or two" (lag 100 ms here, 50 ms on base: both fail) and `unit:labpace-test`'s two
+  signature-cost timing lines (346 / 1422 µs here, 363 / 1496 µs on base). The pace code isn't touched.
+- Found while measuring: at 4K the software GPU process went down on the FX stack (before and after alike); the check
+  measures 4K one scene per run on request.
 
 ## Not done (next)
 - **Transparent full-frame layers** (kinetic type, overlays): each is a whole-frame canvas the browser blends and
