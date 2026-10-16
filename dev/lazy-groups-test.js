@@ -49,7 +49,7 @@ function run() {
     for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
       const rel = dir ? `${dir}/${e.name}` : e.name;
       if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) walk(rel); continue; }
-      if (e.name.endsWith('.js')) files.push(rel);
+      if (e.name.endsWith('.js') && !/(-page|preload)\.js$/.test(e.name)) files.push(rel); // (game-window page scripts and preloads run in their own page)
     }
   };
   walk('');
