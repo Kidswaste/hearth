@@ -36,6 +36,7 @@ const LabExport = (() => {
     const waits = new Set();
     const onMsg = (m) => {
       if (m.type === 'gpu-restored') page.gl.restored += 1; // (round 43, glrecover)
+      if (m.type === 'gpu-restoring') page.gl.restoring += 1; // (round 50: the GPU is back, the layers being built again)
       for (const x of [...waits]) if (x.test(m)) { waits.delete(x); x.resolve(m); }
       if (m.type === 'error' && page.errors.length < 20) page.errors.push(String(m.message || ''));
     };
@@ -47,10 +48,15 @@ const LabExport = (() => {
     box.frame.style.cssText = 'width:100%;height:100%;border:0;display:block';
     const page = { pg, box, host, errors: [], send: (m) => box.send(m), wait, close() { waits.clear(); try { box.frame.src = 'about:blank'; } catch { /* gone */ } host.remove(); },
       // (round 43, glrecover) the GPU gave the page's contexts back and its layers ran again (true), or not within ms
-      gl: { restored: 0, used: 0 },
+      gl: { restored: 0, used: 0, restoring: 0, usedRestoring: 0 },
+      // (round 50) ms is for the GPU coming back ('gpu-restoring'); the layers' rebuild then has its own 20 s (a busy
+      // computer's rebuild could pass the 5 s and a new export page was made for a GPU that was back)
       glBack(ms = 5000) {
-        if (page.gl.restored > page.gl.used) { page.gl.used = page.gl.restored; return Promise.resolve(true); }
-        return wait((m) => m.type === 'gpu-restored', ms, 'the graphics card').then(() => { page.gl.used = page.gl.restored; return true; }, () => false);
+        const done = () => { page.gl.used = page.gl.restored; page.gl.usedRestoring = page.gl.restoring; return true; };
+        if (page.gl.restored > page.gl.used) return Promise.resolve(done());
+        const rebuilt = () => (page.gl.restored > page.gl.used ? true : wait((x) => x.type === 'gpu-restored', Math.max(20000, ms), 'the graphics card'));
+        const back = page.gl.restoring > page.gl.usedRestoring ? Promise.resolve({ type: 'gpu-restoring' }) : wait((m) => m.type === 'gpu-restored' || m.type === 'gpu-restoring', ms, 'the graphics card');
+        return back.then((m) => (m.type === 'gpu-restored' ? m : rebuilt())).then(done, () => false);
       } };
     const ready = wait((m) => m.type === 'ready', 45000, 'starting');
     box.reload();

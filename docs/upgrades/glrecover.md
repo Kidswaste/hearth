@@ -108,6 +108,10 @@ calm note when it happened, and a Restart button only when restarting Hearth is 
   `{ target: 'three-sandbox', type: 'gl-sim', restore }`.
 - Messages: `gpu-lost { epoch }`, `gpu-restored { layers, ms }` (or `{ reload }` on shader / viewer pages),
   `xp-frame { n, lost }`. In the window: `gpu-stuck` from `sandboxFrame`, then `ready { again, gl }`.
+- (round 50) `gpu-restoring { epoch, layers }` when the contexts are back and the rebuild starts: the 4 s wait is
+  for the GPU only; the rebuild then has 20 s (`GL_REBUILD_MS` in tools/three.js, and the export page's `glBack`).
+  Before, a busy computer's rebuild could pass the 4 s and a new page was made (song back to the start, views gone)
+  for a GPU that had come back: `glrecover.wait` = 1500 showed it every time on the old code.
 - `ThreeLab.gl.state()` → `{ phase: null | 'lost' | 'remaking', stuck, log, box }`. `ThreeLab.gl.wait(ms)`. The window
   event `hearth:lab-gl { state, how }`. `ThreeLab.live.counts().gl` = `{ lost, restored, stuck }`.
 - `ThreeLab._sandbox(parent, onMessage, params, { gpuStuck: 'owner' })`: the owner handles a page that didn't come

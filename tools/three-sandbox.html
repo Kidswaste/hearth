@@ -1398,6 +1398,10 @@ async function glrRebuild() {
   const inHit = (L) => { for (let P = layers.get(L.props.pcOf); P; P = P.props.pcOf ? layers.get(P.props.pcOf) : null) if (hit.includes(P)) return true; return false; };
   hit = hit.filter((L) => !inHit(L)); // (a precomp running again runs its own layers)
   GLR.lost = 0; GLR.rebuilds += 1;
+  // (round 50) the GPU is back and the layers are being built again: the Lab stops waiting for the GPU (its few seconds
+  // before a new page) and gives the rebuild its own longer time. A busy computer's rebuild could pass those seconds and
+  // a whole new page was made for a GPU that had come back.
+  post({ type: 'gpu-restoring', epoch: GLR.epoch, layers: hit.length });
   pacePoke();
   // the layer runs again as it is now (its code, props, keyframes, camera moves); no `values`: the sliders' live
   // values stay what they are (a slider moved since the scene ran keeps its place)

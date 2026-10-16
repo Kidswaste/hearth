@@ -76,17 +76,21 @@ renderer.setAnimationLoop(() => { scene.background.setScalar(Math.min(1, P.glow 
 
   // ---------- 1. lost, then given back ----------
   const f0 = await files();
-  const before = await evJ('({ s: __glRecover.state(), glow: __slider("glow"), t: audio.time, playing: audio.playing })');
+  // (round 50) the song's place is compared with the page's own clock (now), read in the same breath as audio.time: the
+  // hub's clock around two round trips to a busy page drifted by more than the margin under load
+  const before = await evJ('({ s: __glRecover.state(), glow: __slider("glow"), t: audio.time, playing: audio.playing, now: performance.now() })');
   const reloads0 = ThreeLab.live.counts().reloads?.preview || 0;
   const notes0 = GLRecover.state().notes.length;
   const m0 = msgs.length; const tLose = performance.now();
   const lostN = await ev('__glRecover.lose({ restore: 600 })');
   await until(() => msgs.slice(m0).some((m) => m.type === 'gpu-lost'), 4000);
   const shotP = D.shotSmall(200); // (asked while it's away: 🎲 variations, ◧ before / after and the director ask this way)
-  const back = await until(() => msgs.slice(m0).some((m) => m.type === 'gpu-restored'), 10000);
+  // (round 50) the GPU wait (glrecover.wait) plus the rebuild's own time once it is back (tools/three.js GL_REBUILD_MS):
+  // on a loaded machine the rebuild alone took seconds
+  const back = await until(() => msgs.slice(m0).some((m) => m.type === 'gpu-restored'), 30000);
   const ms = back ? msgs.slice(m0).find((m) => m.type === 'gpu-restored').t - Math.round(tLose) : null;
-  const after = await evJ('({ s: __glRecover.state(), glow: __slider("glow"), t: audio.time, playing: audio.playing })');
-  const dt = (performance.now() - tLose) / 1000;
+  const after = await evJ('({ s: __glRecover.state(), glow: __slider("glow"), t: audio.time, playing: audio.playing, now: performance.now() })');
+  const dt = after?.now && before?.now ? (after.now - before.now) / 1000 : (performance.now() - tLose) / 1000;
   step('1. a GPU reset in the preview: every live context lost, then the scene runs again in the same page', lostN >= 1 && back && after?.s?.rebuilds >= 1 && after.s.last?.layers >= 1 && (ThreeLab.live.counts().reloads?.preview || 0) === reloads0, { lostN, ms, state: after?.s, gl: ThreeLab.gl.state().log.slice(-2) });
   step('1. the slider keeps its value (in the picture and in the Lab)', before?.glow === 1.3 && after?.glow === 1.3 && c.sliders().find((s) => s.key === 'glow')?.value === 1.3, { before: before?.glow, after: after?.glow });
   step('1. the song keeps playing from its place', before?.playing && after?.playing && after.t > before.t && Math.abs(after.t - (before.t + dt)) < 1.2, { before: before?.t, after: after?.t, dt: +dt.toFixed(2) });
@@ -110,7 +114,7 @@ renderer.setAnimationLoop(() => { scene.background.setScalar(Math.min(1, P.glow 
   const b2 = await evJ('({ t: audio.time, playing: audio.playing, glow: __slider("glow") })');
   const m2 = msgs.length; const t2 = performance.now();
   await ev('__glRecover.lose({ restore: null })');
-  const remade = await until(() => ThreeLab.gl.state().log.some((x) => x.state === 'restored' && x.how === 'new page' && x.at > Date.now() - (performance.now() - t2)), 25000);
+  const remade = await until(() => ThreeLab.gl.state().log.some((x) => x.state === 'restored' && x.how === 'new page' && x.at > Date.now() - (performance.now() - t2)), 45000); // (round 50: the 4 s GPU wait + a page start, which sandboxFrame itself allows 10 s per try)
   const msR = Math.round(performance.now() - t2);
   await until(async () => (await evJ('__glRecover.state()'))?.contexts >= 1, 10000);
   await wait(800);

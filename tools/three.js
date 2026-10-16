@@ -104,13 +104,18 @@ const ThreeLab = (() => {
       gl.lost = true; gl.crashed = (gl.crashed || 0) + 1; gl.crashNow = true; clearTimeout(gl.timer); glStuck();
     };
     (window.__labFrames ||= new Set()).add(crashCheck);
+    // (round 50) the GPU came back and the page is building its layers again ('gpu-restoring'): no longer waiting for
+    // the GPU but for the rebuild, which on a busy computer can take longer than the GPU wait (a new page was made for
+    // a GPU that was back). A rebuild that never ends still gets a new page.
+    const GL_REBUILD_MS = 20000;
     const glTrack = (data) => {
       if (data.type === 'gpu-lost') { gl.epoch = data.epoch || gl.epoch + 1; if (!gl.lost) { gl.lost = true; gl.at = Date.now(); live.gl('lost', name); } clearTimeout(gl.timer); gl.timer = setTimeout(glStuck, glWaitMs()); }
+      if (data.type === 'gpu-restoring' && gl.lost) { clearTimeout(gl.timer); gl.timer = setTimeout(glStuck, Math.max(GL_REBUILD_MS, glWaitMs())); }
       if (data.type === 'gpu-restored') { clearTimeout(gl.timer); gl.timer = 0; if (gl.lost) { gl.lost = false; gl.restored += 1; live.gl('restored', name); } }
     };
     const handle = (data) => {
       if (data?.source !== 'three-sandbox') return;
-      if (data.type === 'gpu-lost' || data.type === 'gpu-restored') glTrack(data);
+      if (data.type === 'gpu-lost' || data.type === 'gpu-restored' || data.type === 'gpu-restoring') glTrack(data);
       if (data.type === 'lib-need') { sandboxLib(data.name, deliver); return; } // (round 25, diet) motion / lab3d for the page
       if (data.type === 'shot' && data.tag === 'cover') { const fn = coverShot; coverShot = null; fn?.(data.dataUrl); return; }
       if (data.type === 'ready') {
