@@ -8504,6 +8504,110 @@ window.__labType = {
   kinetic: () => Boolean(globalThis.kinetic), // (round 45, kinetictype) the "moves with the music" math is here
 };
 
+// ---------- 🎵 music visualizers (round 50, labvisualizers: the hub side is tools/three-vis*.js) ----------
+// visualizer(P, opts) in a layer's code makes it a 🎵 visualizer layer: one full-screen shader (tools/three-vis-core.js,
+// globalThis.viscore, sent as source on first use) reading a small data texture filled each frame from the song's own
+// track (its spectrum, waveform and loudness, worked out once per song in this page, in a Worker: the preview, the
+// sequence and an export page get the same numbers from the same bytes) and ♪ Move with the music's hits (blSrc), all
+// at the song's time, so a render is the same frame every time. Live sound reads the analyser; no song: a demo loop on
+// the 120 BPM demo beat. A paused song uploads nothing (the still check lets the page doze).
+// P: listen, sens, smooth, bars, glow, size, c1, c2, c3 (live sliders); opts (read once): preset, image (a reference).
+const VIS = { want: null, key: null, track: null, job: null, stats: new Map(), jobs: 0, worker: 0 };
+function visReady() { if (globalThis.viscore) return true; VIS.want ||= loadLib('viscore').catch(() => { VIS.want = null; }); return false; }
+// the loaded song's track (null while it is being worked out: once per song, a Worker, else a few ms at a time here)
+function visTrack() {
+  if (!mediaEl || !lastMediaBytes || liveKind) return null;
+  if (VIS.key === lastMediaBytes) return VIS.track;
+  const key = lastMediaBytes; VIS.key = key; VIS.track = null; VIS.jobs += 1;
+  VIS.job = (async () => {
+    const C = globalThis.viscore;
+    const ab = ArrayBuffer.isView(key) ? key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) : key.slice(0); // (an export page gets the file's bytes as a view)
+    const buf = await new OfflineAudioContext(1, 1, 22050).decodeAudioData(ab);
+    const mono = new Float32Array(buf.length);
+    for (let c = 0; c < buf.numberOfChannels; c += 1) { const d = buf.getChannelData(c); for (let i = 0; i < mono.length; i += 1) mono[i] += d[i] / buf.numberOfChannels; }
+    let tr = null;
+    try {
+      const url = URL.createObjectURL(new Blob([`const C = (${C.factory})(); onmessage = (e) => { const t = C.analyze(e.data.mono, e.data.rate); postMessage(t, [t.spec.buffer, t.lev.buffer, t.cum.buffer, t.wave.buffer]); };`], { type: 'text/javascript' }));
+      const w = new Worker(url); URL.revokeObjectURL(url);
+      tr = await new Promise((res, rej) => { w.onmessage = (e) => { w.terminate(); res(e.data); }; w.onerror = (e) => { e.preventDefault?.(); w.terminate(); rej(new Error('worker')); }; w.postMessage({ mono, rate: buf.sampleRate }); });
+      VIS.worker += 1;
+    } catch {
+      const a = C.analyzer(mono, buf.sampleRate);
+      while (!a.step(3)) await new Promise((r) => realSetTimeout(r, 0));
+      tr = a.track;
+    }
+    if (VIS.key === key) { VIS.track = tr; paceWake(); dozeWake('visualizer track'); }
+  })().catch((err) => { VIS.err = String(err?.message || err); post({ type: 'console', level: 'warn', text: `visualizer: the song could not be read (${VIS.err})` }); });
+  return null;
+}
+// an export / sequence frame waits for the math, ♪'s hits and the song's track (never a frame drawn without them)
+globalThis.__labVisReady = async () => {
+  if (!VIS.stats.size && ![...layers.values()].some((L) => /\bvisualizer\s*\(\s*P\b/.test(L.code || ''))) return; // (a layer that hasn't drawn yet counts by its code)
+  const all = [];
+  if (!globalThis.viscore) { visReady(); all.push(VIS.want); }
+  if (!globalThis.beatlink) { blReady(); all.push(BL.want); }
+  await Promise.race([Promise.all(all), new Promise((r) => realSetTimeout(r, 30000))]).catch(() => {});
+  if (mediaEl && !liveKind) { visTrack(); if (VIS.job) await Promise.race([VIS.job, new Promise((r) => realSetTimeout(r, 30000))]); }
+};
+globalThis.visualizer = (P = {}, opts = {}) => {
+  const L = layerState(currentLayer() || 'main');
+  P = P || {}; opts = opts || {};
+  const pv = (k, d) => { const v = P[k]; return v === undefined || v === null || v === '' ? (opts[k] ?? d) : v; };
+  const id = String(opts.preset || 'bars');
+  const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, premultipliedAlpha: true });
+  renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight); renderer.setClearColor(0x000000, 0);
+  document.body.append(renderer.domElement);
+  addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
+  const scene = new THREE.Scene(); const camera = new THREE.Camera();
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2)); quad.frustumCulled = false; quad.visible = false; scene.add(quad);
+  const U = { uRes: { value: new THREE.Vector2() }, uT: { value: 0 }, uDrive: { value: 0 }, uPulse: { value: 0 }, uTravel: { value: 0 }, uGlow: { value: 0.6 }, uSize: { value: 1 }, uHitK: { value: 0 }, uNB: { value: 32 }, uRows: { value: 3 }, uAmt: { value: 1 },
+    uImgOn: { value: 0 }, uImgAsp: { value: 1 }, uAges: { value: new Float32Array(8).fill(99) }, uC1: { value: new THREE.Vector3(1, 1, 1) }, uC2: { value: new THREE.Vector3(1, 1, 1) }, uC3: { value: new THREE.Vector3(1, 1, 1) }, uData: { value: null }, uImg: { value: null } };
+  const stat = { id: L.id, preset: id, ok: true, live: false, demo: false, track: false, t: 0, drive: 0, pulse: 0, hitK: 0, uploads: 0, frames: 0, ms: 0 };
+  VIS.stats.set(L.id, stat);
+  let S = null; let tex = null; const hex = {}; const o = { listen: 'whole', sens: 1, smooth: 0.35, bars: 32 };
+  let img = null;
+  if (opts.image) { try { img = refTexture(String(opts.image)); img.colorSpace = THREE.NoColorSpace; U.uImg.value = img; } catch (err) { post({ type: 'console', level: 'warn', layer: pcTop(L.id), text: `visualizer: ${err.message}` }); } }
+  if (!U.uImg.value) { const dummy = new THREE.DataTexture(new Uint8Array(4), 1, 1); dummy.needsUpdate = true; U.uImg.value = dummy; }
+  renderer.setAnimationLoop(() => {
+    const C = globalThis.viscore;
+    if (!C) { visReady(); renderer.render(scene, camera); return; }
+    const c0 = realNow();
+    if (!S) {
+      S = C.state(id); U.uRows.value = S.rows;
+      tex = new THREE.DataTexture(S.data, C.TW, S.rows, THREE.RedFormat, THREE.UnsignedByteType);
+      tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true; U.uData.value = tex;
+      quad.material = new THREE.RawShaderMaterial({ glslVersion: THREE.GLSL3, vertexShader: C.VERT, fragmentShader: C.frag(id), uniforms: U, depthTest: false, depthWrite: false, blending: THREE.NoBlending });
+      quad.visible = true;
+    }
+    const D0 = S.p.defaults;
+    o.listen = String(pv('listen', D0.listen)); o.sens = Number(pv('sens', 1)); o.smooth = Number(pv('smooth', D0.smooth)); o.bars = Number(pv('bars', D0.bars));
+    const song = Boolean(mediaEl) && !liveKind;
+    const t = song ? blTime() : liveKind ? realNow() / 1000 : Math.max(0, globalThis.__layerClock?.(L.id) ?? realNow() / 1000);
+    let changed;
+    if (liveKind) { changed = C.frameLive(S, audio.spectrum, audio.waveform, (remoteFreq ? remoteRate : actx?.sampleRate || 48000) / 2048, o); stat.live = true; } else {
+      const tr = song ? visTrack() : C.demoTrack();
+      let hit = null; let level = null;
+      if (blReady()) { blFresh(); const L0 = C.LISTEN[o.listen] || C.LISTEN.whole; hit = blSrc(L0.hit).hit; if (L0.stem && song) level = blSrc(o.listen).level; }
+      changed = C.frame(S, tr, t, hit, level, o);
+      stat.live = false; stat.demo = !song; stat.track = Boolean(tr);
+    }
+    const u = S.u;
+    if (changed) { tex.needsUpdate = true; stat.uploads += 1; }
+    U.uT.value = t; U.uDrive.value = u.drive; U.uPulse.value = u.pulse; U.uTravel.value = u.travel; U.uHitK.value = u.hitK; U.uNB.value = u.nb; U.uAmt.value = u.amt;
+    U.uAges.value.set(u.ages);
+    U.uGlow.value = Number(pv('glow', D0.glow)); U.uSize.value = Math.max(0.05, Number(pv('size', 1)));
+    for (let k = 1; k <= 3; k += 1) { const v = String(pv(`c${k}`, S.p.colors[k - 1])); if (v !== hex[k] && v[0] === '#') { hex[k] = v; hexVec(v, U[`uC${k}`].value); } }
+    if (img?.image) { const w = img.image.width || img.image.videoWidth || 1; const h = img.image.height || img.image.videoHeight || 1; U.uImgOn.value = 1; U.uImgAsp.value = w / h; }
+    renderer.getDrawingBufferSize(U.uRes.value);
+    renderer.render(scene, camera);
+    if (stat.frames === 0) { const pr = renderer.properties.get(quad.material)?.currentProgram; if (pr?.diagnostics && !pr.diagnostics.runnable) { stat.ok = false; post({ type: 'error', layer: pcTop(L.id), message: `visualizer ${id}: the shader did not compile (${String(pr.diagnostics.fragmentShader?.log || '').slice(0, 200)})` }); } }
+    stat.t = t; stat.drive = u.drive; stat.pulse = u.pulse; stat.hitK = u.hitK; stat.frames += 1; stat.ms = stat.ms * 0.9 + (realNow() - c0) * 0.1;
+  });
+  return { renderer, scene, camera, ok: true };
+};
+// checks and three_eval: each visualizer layer's numbers now
+window.__labVis = { info: () => [...VIS.stats.values()].filter((x) => layers.has(x.id)).map((x) => ({ ...x, ms: Math.round(x.ms * 1000) / 1000 })), track: () => (VIS.track ? { n: VIS.track.n, dur: VIS.track.dur } : null), jobs: () => ({ jobs: VIS.jobs, worker: VIS.worker, err: VIS.err || null }), ready: () => Boolean(globalThis.viscore) };
+
 // ---------- light physics (round 25 "physics": the hub side is tools/three-physics*.js) ----------
 // <physics-core> (round 25 "physics": plain JS, no three.js; dev/physics-test.js runs this part in Node)
 // One small position-based solver (XPBD with substeps) for everything: rigid bodies are clusters of particles held by
@@ -11495,6 +11599,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   await Promise.all(sqManage(T, true));
   await pcEnsure(); // precomps in its scenes: theirs too (only the ones that show at T)
   await globalThis.__labTypeReady?.(); // (round 25) a type layer's font that is still loading (a Google / asset font)
+  await globalThis.__labVisReady?.(); // (round 50, labvisualizers) a 🎵 visualizer's math, hits and song track
   const s = sqSong();
   if (s && sqInSong(T)) {
     const want = T - s.offset;
