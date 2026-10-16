@@ -83,8 +83,13 @@ buttons on screen.
   Tight, Times › Always, Font › Serif each change the chat; a board palette card's right-click shows Copy hex /
   Harmonies with the Apps loaded and Palette style › Dots restyles it; Capture › Settings › Recording… › Window at an
   exact size… › 1280 × 720 sizes the window's content (then back). PASS.
-- Targeted runs: see the final report (appsearch, appcalm, labcalm, menucalm, settingscalm, qa-commands, a11y, lazy,
-  unit:boot-test).
+- Targeted runs (one at a time, other streams loading the machine): commandonly, unit:commandonly-scan, appsearch,
+  settingscalm, menucalm, qa-commands, lazy, unit:boot-test pass. labcalm failed once ("director: 50 controls, budget
+  48") and passed run again alone. a11y's audit passed (0 issues); the run is marked failed only by WebGL "context could
+  not be created" console errors under load (as in labcalm's and appcalm's own runs). appcalm fails "Usage: 5 tabs +
+  More: []" — the base commit 1d31b0c fails the same step in the same conditions (not from this pass).
+- unit:boot-test first failed (first screen 2,354 KB > 2,350): the new rows moved into chat-cmds.js (lazy, in right
+  after the first screen); passes now.
 
 ## Risks
 - A command registered after the first screen (the director's) isn't a Ctrl/⌘+K row on some starts and is on others
