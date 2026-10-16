@@ -94,10 +94,11 @@ const ThreeLab = (() => {
     // (round 50, crashsafe) the page's own process died (a crash, killed by the system): the main process says which
     // pages are still up (crashsafemain.js); this one isn't → the same as a GPU that didn't come back: a new page for
     // the same content, the scene run again quietly with its sliders and song (the export page handles it itself)
-    const crashCheck = (alive) => {
+    const crashCheck = ({ alive = [], gone = [] } = {}) => {
       if (target !== 'frame') return;
       if (!frame.isConnected) { window.__labFrames?.delete(crashCheck); return; }
-      if (!ready || !nonce || (alive || []).some((u) => String(u).includes(`n=${nonce}`))) return;
+      const mine = (u) => new RegExp(`[?&]n=${nonce}(&|$)`).test(String(u));
+      if (!ready || !nonce || !gone.some(mine) || alive.some(mine)) return;
       if (gl.lost && gl.timer) return; // already on its way back
       console.warn(`Lab ${mode} preview page crashed: making it again`);
       gl.lost = true; gl.crashed = (gl.crashed || 0) + 1; gl.crashNow = true; clearTimeout(gl.timer); glStuck();

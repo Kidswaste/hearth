@@ -159,6 +159,7 @@ function pageGone(why) {
 // every 2 s while there is one (one cheap system call each; nothing runs without a preview page). Gone → the window
 // gets the pages still up and makes the missing one again (tools/three.js crashCheck).
 const watched = new Map(); // os pid → webContents
+const pidUrls = new Map(); // os pid → the preview pages it loaded (their URLs: each load has its own n=)
 let wTimer = null;
 function pageUrls(wc) { const out = []; for (const f of wc.mainFrame.framesInSubtree || []) { try { if (f !== wc.mainFrame) out.push(f.url); } catch { /* disposed */ } } return out; }
 function checkPids() {
@@ -167,7 +168,10 @@ function checkPids() {
     try { process.kill(pid, 0); } catch (err) { alive = err.code === 'EPERM'; }
     if (alive) continue;
     watched.delete(pid);
-    if (!wc.isDestroyed()) { try { wc.send('crashsafe:frames', pageUrls(wc)); } catch { /* gone */ } }
+    const gone = [...(pidUrls.get(pid) || [])]; pidUrls.delete(pid);
+    // only pages that lived in that process and aren't up any more count as crashed (a page made again on purpose
+    // has a new n=, and the old one's process ending is normal)
+    if (!wc.isDestroyed()) { try { wc.send('crashsafe:frames', { alive: pageUrls(wc), gone }); } catch { /* gone */ } }
   }
   if (!watched.size) { clearInterval(wTimer); wTimer = null; }
 }
@@ -181,6 +185,7 @@ function watchFrames(wc) {
     try { const f = require('electron').webFrameMain.fromId(fpid, frid); if (f && /three-sandbox\.html/.test(f.url)) pid = f.osProcessId || 0; if (pid === wc.mainFrame.osProcessId) pid = 0; } catch { pid = 0; }
     if (!pid) return;
     watched.set(pid, wc);
+    try { const f = require('electron').webFrameMain.fromId(fpid, frid); const set = pidUrls.get(pid) || new Set(); set.add(f.url); if (set.size > 50) set.delete(set.values().next().value); pidUrls.set(pid, set); } catch { /* disposed */ }
     if (!wTimer) { wTimer = setInterval(checkPids, 2000); wTimer.unref?.(); }
   });
 }
