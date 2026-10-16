@@ -1206,3 +1206,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 ## ⚡ Lab preview: less GPU work per frame for 240 Hz (round 50, lab240gpu, 3 upgrades: docs/upgrades/lab240gpu.md)
 - ✓ Layers under an opaque filter (bloom, grade, lens…) or a covering scene are no longer blended / presented (FX stack: 3 → 1 full-screen layers per frame); shadow maps kept while only the camera moves (model: 3 → 2 draws, no shadow pass); labadapt's opacity look reads without stalling the GPU (15–18 → 0 waits/s). Pictures identical (diff 0).
 - ○ `sh dev/run-checks.sh lab240gpu` (dev/checks/lab240gpu.js: per-frame counts at 720p / 1440p / fit, budgets, pictures on vs off; 4K with `L240_SIZES`).
+## 🔁 Keep going, leaner (round 51, routinelean, 15 upgrades: docs/upgrades/routinelean.md)
+- ✓ Long routines start each round lighter once the chat re-reads a lot (historylean's fresh start, no extra call) or the cache has expired; short byte-stable default words with a one-line "Changed: …"; 10 rounds: ≈ 30–60 % fewer tokens per round (model and fake engines).
+- ✓ Stops by itself when rounds stop changing files / the scene (2 in a row), repeat the same answer, or hit the same error twice, saying why and what it did; pauses before a plan limit ("paused until 6 pm (limit)", margin 80 / 90 / 95 % under More) and goes on after the reset; round notifications show a one-line summary; Usage window › 🔁 Keep going: spent and achieved today / 7 days. Never answers permission cards.
+- ○ `node dev/routinelean-test.js [--table]`, `sh dev/run-checks.sh routinelean`.

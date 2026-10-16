@@ -208,7 +208,7 @@ const UsageLimits = (() => {
     const tipsBox = el('section', { class: 'ul-tips', attrs: { 'aria-label': 'How to save from now on' } }, el('h4', { text: 'How to save from now on' }), el('p', { class: 'ul-unknown', text: 'Looking at your last 7 days…' }));
     section.replaceChildren(
       el('div', { class: 'ul-title' }, el('h3', { text: 'Usage left' }), el('small', { text: 'from each AI\'s own plan · checked here, 0 tokens' })),
-      el('div', { class: 'ul-cards' }), tipsBox);
+      el('div', { class: 'ul-cards' }), (() => { try { return window.Routines?.usageBox?.() || ''; } catch { return ''; } })(), tipsBox); // (round 51, routinelean) what 🔁 Keep going spent and did
     await readStore();
     paintCards();
     clearInterval(tick);

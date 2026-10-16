@@ -118,6 +118,10 @@ const F = require('./fake-common');
     }
     text += `\n\nAccess calls:\n${lines.map((l) => `- ${l}`).join('\n')}`;
   }
+  // (round 51, routinelean) "varied" / "edits:N:tag": a Keep going round's own words and its file edit
+  const rl = F.roundlean(F.userPartOf(prompt));
+  if (rl.edit) F.out({ type: 'item.completed', item: { id: `item_${n++}`, type: 'file_change', changes: [{ path: require('path').join(require('os').tmpdir(), 'hearth-routinelean', rl.edit), kind: 'update' }], status: 'completed' } });
+  text += rl.text;
   if (p.error) { F.out({ type: 'turn.failed', error: { message: 'Fake Codex error: something went wrong' } /* (round 34) not a network drop: codexNetwork is that */ }); return; }
   // (round 28, router) "runinfo": the reply ends with the model + effort this run really got (dev/checks/router.js)
   if (/\bruninfo\b/i.test(prompt)) { const c = argv.find((x, i) => argv[i - 1] === '-c' && x.startsWith('model_reasoning_effort=')); text += `\n\nrun: model=${argv.includes('-m') ? argv[argv.indexOf('-m') + 1] : 'default'} effort=${c ? JSON.parse(c.split('=')[1]) : 'none'}`; }

@@ -59,7 +59,16 @@ const Routines = (() => {
       now, busy: Native.isBusy(r.chatId) || Boolean(window.Autocompact && r.lightening),
       draft: here && Boolean(v?.input?.value.trim()) && now - lastInput < 5 * C.MIN, // a draft left for 5 min doesn't hold it forever
       queued: offline || (here && v?.queue?.length > 0), idleMs: now - lastInput, quietMs: now - lastWrote, askFirst,
+      limits: limitsFor(r.agentId, now), when, // (round 51, routinelean) pause before a usage limit
     };
+  }
+  // (round 51, routinelean) this AI's plan windows as the Usage window knows them (usagelimits.js; 0 tokens)
+  const when = (t) => (typeof UsageLimitsCore !== 'undefined' ? UsageLimitsCore.when(t) : C.clock(t));
+  function limitsFor(agentId, now = Date.now()) {
+    const engine = H.agent(agentId)?.engine;
+    const st = window.UsageLimits?.state;
+    if (!st || !engine || typeof UsageLimitsCore === 'undefined') return [];
+    try { return UsageLimitsCore.views(st, engine, now).filter((v) => !v.reset && v.used != null).map((v) => ({ key: v.key, long: v.long, used: v.used, resetsAt: v.resetsAt })); } catch { return []; }
   }
   function later(r, ms) {
     clearTimeout(timers.get(r.id));
@@ -76,6 +85,7 @@ const Routines = (() => {
     if (!Native.isBusy(r.chatId) && lastMsg?.role === 'assistant' && lastMsg.plan === 'waiting') { pauseFor(r, 'its plan waits for your ▶ Go ahead'); return; }
     const d = C.nextStep(r, context(r));
     if (d.act === 'none') return;
+    if (d.act === 'wait' && d.hold) { holdFor(r, d); later(r, d.ms); return; }
     if (d.act === 'wait') { if (d.why && r.why !== d.why) { r.why = d.why; save(); paintAll(); } later(r, d.ms); return; }
     if (d.act === 'pause') { pauseFor(r, d.why); return; }
     if (d.act === 'stop') { end(r, d.status, d.why); return; }
@@ -85,7 +95,8 @@ const Routines = (() => {
 
   // one round: (lighter first when it clearly pays) the routine's words as a new turn in its chat
   async function round(r, chat) {
-    if (r.lighter && window.Autocompact?.offerFor && H.activeChat[r.agentId] === r.chatId) {
+    const lean = r.lighter ? await leanFirst(r, chat) : null; // (round 51) the lighter fresh start between rounds
+    if (lean == null && r.lighter && window.Autocompact?.offerFor && H.activeChat[r.agentId] === r.chatId) {
       let d = null; try { d = Autocompact.offerFor(chat); } catch { /* no decision */ }
       if (d) {
         r.lightening = true; r.why = 'continuing lighter first'; paintAll();
@@ -96,6 +107,7 @@ const Routines = (() => {
         return;
       }
     }
+    try { C.limitStep(r, limitsFor(r.agentId)); } catch { /* no numbers */ }
     const n = C.sent(r);
     r.title = C.clip(chat.title, 60) || r.title;
     const text = C.message(r);
@@ -110,6 +122,32 @@ const Routines = (() => {
       if (/gone/i.test(err.message)) { end(r, 'stopped', 'its chat is gone'); return; }
       checkSoon(r, 5000); // still answering (a message of yours went first): after it
     }
+  }
+  // (round 51, routinelean) before a round: go on in a fresh session with the lighter history (historylean.js) when the
+  // cache has expired, or when the chat re-reads a lot and more rounds follow; no extra model call (Continue lighter's
+  // summary is the fallback when historylean isn't there). → true (it will), false (no need), null (can't tell)
+  async function leanFirst(r, chat) {
+    if (!window.HistoryLean && window.Lazy?.load) { try { await Lazy.load('historylean'); } catch { /* without it */ } }
+    const HL = window.HistoryLean;
+    if (!HL?.plan || typeof HistoryLeanCore === 'undefined' || !chat.session?.id) return HL ? false : null;
+    let d = null; try { d = HL.plan(chat); } catch { return null; }
+    if (!d?.input) return false;
+    if (d.rebase) { r.leanStarts += 1; return true; } // its own rule already takes it (a cold cache)
+    const i = d.input;
+    const remaining = r.how.kind === 'rounds' ? Math.max(0, r.how.rounds - r.round - 1) : 3;
+    const b = C.leanBetween({ ...i, warm: HistoryLeanCore.warmth(i.engine, i.gap, i.ttl) }, { remaining });
+    if (!b.lean) return false;
+    chat.leanNext = true; Native.save(chat); // historylean's onSend makes the fresh start with this round's message
+    r.leanStarts += 1;
+    return true;
+  }
+  // (round 51, routinelean) a usage limit is near: held until its reset (then it goes on by itself), said once
+  function holdFor(r, d) {
+    r.resetAt = d.hold; r.limitWait = true; r.why = d.why;
+    awake(r, false); save(); paintAll();
+    say(r, `🔁 Keep going is ${d.why}: ${d.detail}. It goes on by itself after the reset.`);
+    activity(r, `Keep going ${d.why} in “${titleOf(r)}”`, '❚❚');
+    tell(r, 'pause', { why: `${d.why}: ${d.detail}` });
   }
   // the computer stays awake while a round runs, never during the pauses (powerwise.js)
   function awake(r, on) {
@@ -137,7 +175,7 @@ const Routines = (() => {
     r.status = status || 'stopped'; r.why = why; r.inFlight = false;
     awake(r, false); clearTimeout(timers.get(r.id)); timers.delete(r.id);
     saveNow(); paintAll(); syncTick();
-    const sum = `${r.done} round${r.done === 1 ? '' : 's'} · ≈ ${fmt(r.tokens)} tokens`;
+    const sum = `${r.done} round${r.done === 1 ? '' : 's'} · ≈ ${fmt(r.tokens)} tokens${r.files ? ` · ${r.files} file${r.files === 1 ? '' : 's'} changed` : ''}`;
     say(r, `🔁 Keep going ${r.status === 'done' ? 'finished' : 'stopped'}: ${why} (${sum}).`, { buttons: false });
     activity(r, `Keep going ${r.status === 'done' ? 'finished' : 'stopped'} in “${titleOf(r)}”: ${why} · ${sum}`, r.status === 'done' ? '✓' : '■');
     if (!/by you/i.test(why || '')) tell(r, r.status === 'done' ? 'done' : 'stop', { why, cost: sum });
@@ -173,7 +211,8 @@ const Routines = (() => {
     if (!r) throw new Error('Pick how long it keeps going.');
     list.push(r);
     rememberPrompt(chat.id, spec.prompt);
-    store.set(LAST, { how: spec.how?.kind === 'until' ? { kind: 'until', time: spec.how.time } : spec.how, pause: r.pause, resumeAfter: r.resumeAfter, lighter: r.lighter, waitReset: r.waitReset, afterRestart: r.afterRestart, cap: spec.capPick });
+    stat({ n: 1 });
+    store.set(LAST, { how: spec.how?.kind === 'until' ? { kind: 'until', time: spec.how.time } : spec.how, pause: r.pause, resumeAfter: r.resumeAfter, lighter: r.lighter, waitReset: r.waitReset, afterRestart: r.afterRestart, cap: spec.capPick, margin: r.margin });
     saveNow(); paintAll(); syncTick();
     activity(r, `Keep going started in “${titleOf(r)}”: ${C.describe(r).replace(/^🔁 Keep going /, '')}`);
     // (no note: the header chip says it, with ❚❚ / ■; its tooltip has the words each round sends)
@@ -233,7 +272,9 @@ const Routines = (() => {
       const writeSel = el('select', { attrs: { 'aria-label': 'When I write in this chat' } }, C.WHEN_I_WRITE.map((w) => el('option', { value: String(w.ms), text: w.label, selected: w.ms === (ex?.resumeAfter ?? last.resumeAfter ?? 0) })));
       const box = (label, on, title) => { const i = el('input', { type: 'checkbox', checked: on }); return [el('label', { class: 'rt-check', title }, i, label), i]; };
       const [lightL, lightI] = box('Continue lighter when the chat gets long', last.lighter !== false, 'Between rounds, a short summary replaces the long history for the AI when it clearly costs less (every message stays).');
-      const [resetL, resetI] = box('Wait for a usage limit to reset, then go on', last.waitReset !== false, 'Otherwise a usage limit stops it.');
+      const [resetL, resetI] = box('Wait for a usage limit to reset, then go on', last.waitReset !== false, 'Near a limit it pauses until the reset, then goes on by itself. Otherwise it pauses until you press ▶.');
+      // (round 51, routinelean) how close to a plan limit it may go (the session / weekly window, as the Usage window shows)
+      const marginSel = el('select', { attrs: { 'aria-label': 'Stop before a usage limit at' } }, C.MARGINS.map((m) => el('option', { value: String(m), text: `${m}% of a limit`, selected: m === (ex?.margin || last.margin || C.MARGIN) })));
       const [restartL, restartI] = box('Keep going after Hearth restarts', last.afterRestart === true, 'Otherwise a restart pauses it and asks.');
       const row = (label, ...kids) => el('div', { class: 'rt-row' }, el('span', { class: 'rt-label', text: label }), ...kids);
       const finish = (v) => { dlg.close(); resolve(v); };
@@ -241,7 +282,7 @@ const Routines = (() => {
         const h = howNow();
         if (h.kind === 'until' && !h.at) { toast('Pick a time for “Until…”.', { timeout: 2500 }); return; }
         const cap = capSel.value === 'default' ? def : Number(capSel.value) || 0;
-        finish({ prompt: words.value.trim() || C.DEFAULT_PROMPT, how: h, pause: pauseSel.value, resumeAfter: Number(writeSel.value) || 0, cap, capPick: capSel.value === 'default' ? 'default' : Number(capSel.value), lighter: lightI.checked, waitReset: resetI.checked, afterRestart: restartI.checked });
+        finish({ prompt: words.value.trim() || C.DEFAULT_PROMPT, how: h, pause: pauseSel.value, resumeAfter: Number(writeSel.value) || 0, cap, capPick: capSel.value === 'default' ? 'default' : Number(capSel.value), lighter: lightI.checked, waitReset: resetI.checked, afterRestart: restartI.checked, margin: Number(marginSel.value) || C.MARGIN });
       };
       const form = el('form', { method: 'dialog', on: { submit: (e) => { e.preventDefault(); go(); } } },
         el('h2', { text: '🔁 Keep going' }),
@@ -250,7 +291,7 @@ const Routines = (() => {
         el('div', { class: 'rt-field' }, el('span', { class: 'rt-label', text: 'How long' }), howRow),
         row('Pause between rounds', pauseSel),
         row('Spending cap', capSel), capHint,
-        el('details', { class: 'rt-more' }, el('summary', { text: 'More' }), row('When I write here', writeSel), lightL, resetL, restartL),
+        el('details', { class: 'rt-more' }, el('summary', { text: 'More' }), row('When I write here', writeSel), row('Pause before a usage limit at', marginSel), lightL, resetL, restartL),
         el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }),
           el('button', { type: 'button', text: 'Cancel', on: { click: () => finish(null) } }),
           el('button', { type: 'submit', class: 'primary', text: first ? 'Send and keep going' : ex ? 'Start again with these' : 'Start' })));
@@ -301,35 +342,53 @@ const Routines = (() => {
     awake(r, false); save(); paintAll();
     if (r.status === 'paused' && was === 'running') { say(r, `🔁 Keep going is paused: you wrote in this chat. ▶ Resume when you want it to go on.`); activity(r, `Keep going paused in “${titleOf(r)}”: you wrote`, '❚❚'); }
   }
-  Native.hooks.finish.push((event, chat) => {
+  Native.hooks.finish.push((event, chat, extras) => {
     if (!chat) return;
     const r = forChat(chat.id);
     if (!r) return;
     const asked = [...chat.messages].reverse().find((m) => m.role === 'user');
     if (asked?.routine?.id !== r.id) { if (r.status === 'running') checkSoon(r); return; } // your message (or a hook's) was answered
     awake(r, false);
+    // (round 51) read once every finish hook has run and the reply is in the chat: its tools, what aiundo recorded
+    queueMicrotask(() => roundOver(r, event, chat, asked, extras || {}));
+  });
+  // (round 51, routinelean) what a round changed: files / the scene, from its tools and aiundo's record of that reply
+  function changeOf(event, chat, extras) {
+    if (event.type !== 'done') return null;
+    const m = chat.messages.at(-1);
+    const tools = m?.role === 'assistant' && Array.isArray(m.tools) ? m.tools : [];
+    const turn = extras.aiChanges?.turn || m?.aiChanges?.turn;
+    let ai = [];
+    try { if (turn && window.AiUndo?.list) ai = AiUndo.list().filter((e) => e.turn === turn); } catch { /* none */ }
+    return C.changeOf(tools, ai);
+  }
+  function roundOver(r, event, chat, asked, extras) {
     const tokens = event.usage ? (event.usage.input || 0) + (event.usage.output || 0) : 0;
+    const change = changeOf(event, chat, extras);
+    const text = event.type === 'error' ? event.message : (event.text || chat.messages.at(-1)?.text || '');
+    const summary = event.type === 'done' ? C.summaryOf(text) : '';
     let kind = null; let resetAt = 0;
     if (event.type === 'error') {
       try { const c = typeof OfflineCore !== 'undefined' ? OfflineCore.classify(event.message || '') : null; kind = c?.kind || null; resetAt = c?.resetAt || 0; } catch { /* unknown */ }
       if (!kind && event.needsLogin) kind = 'signedout';
     }
     const before = r.status;
-    const out = C.roundEnded(r, { type: event.type, text: event.type === 'error' ? event.message : event.text, tokens, ms: Date.now() - (r.sentAt || Date.now()), kind, resetAt, asked: r.asked }, Date.now());
+    const out = C.roundEnded(r, { type: event.type, text, tokens, ms: Date.now() - (r.sentAt || Date.now()), kind, resetAt, asked: r.asked, change, summary }, Date.now());
     r.asked = false;
+    stat({ t: tokens, r: 1, f: change?.files || 0, c: change?.changed ? 1 : 0 });
     // the round's message says what it cost
     if (tokens) { asked.routine.tokens = (asked.routine.tokens || 0) + tokens; Native.save(chat); paintMsgChip(chat.id, asked); }
     if (out.act === 'continue' || out.act === 'wait') {
       const of = r.how.kind === 'rounds' ? ` of ${r.how.rounds}` : '';
       if (event.type === 'done') activity(r, `Keep going: round ${r.round}${of} done in “${titleOf(r)}” · ≈ ${fmt(tokens)} tokens (≈ ${fmt(r.tokens)} so far)`);
-      if (event.type === 'done') tell(r, 'round', { n: r.round, of: r.how.kind === 'rounds' ? r.how.rounds : 0, cost: `≈ ${fmt(tokens)} tokens (≈ ${fmt(r.tokens)} so far)` });
+      if (event.type === 'done') tell(r, 'round', { n: r.round, of: r.how.kind === 'rounds' ? r.how.rounds : 0, cost: `≈ ${fmt(tokens)} tokens (≈ ${fmt(r.tokens)} so far)`, summary }); // (round 51) its one-line summary, never the whole answer
       save(); paintAll();
       if (out.act === 'continue') checkSoon(r);
       return;
     }
     if (out.act === 'pause' && before === 'running') { r.status = 'running'; pauseFor(r, out.why); return; }
     if (out.act === 'stop') { const why = r.why; const st = r.status; r.status = before; end(r, st, why); }
-  });
+  }
   // a permission card or a question in a routine's chat while its round runs: the routine pauses after it (never answers)
   document.addEventListener('hearth:needs-you', (e) => {
     const d = e.detail || {};
@@ -366,7 +425,7 @@ const Routines = (() => {
     chip.rid = r.id;
     if (chip.hidden) chip.hidden = false;
     const [label, toggle] = chip.children;
-    const t = C.chipText(r);
+    const t = C.chipText(r, Date.now(), when);
     if (label.textContent !== t) label.textContent = t;
     const tip = `${C.describe(r)}\nEach round sends: “${C.clip(r.prompt, 160)}”${r.why ? `\nNow: ${r.why}` : r.inFlight ? '\nNow: a round is running' : ''}\nClick: each round's cost, change it, stop`;
     if (label.title !== tip) label.title = tip;
@@ -419,6 +478,20 @@ const Routines = (() => {
       el('p', { class: 'opt-hint', text: 'Chats that keep working by themselves now.' }), el('div', { class: 'opt-rules' }, rows));
   }
   const summary = (agentId) => { const n = list.filter((r) => r.agentId === agentId && C.live(r)); return n.length ? `${n.filter((r) => r.status === 'running').length} running${n.some((r) => r.status === 'paused') ? `, ${n.filter((r) => r.status === 'paused').length} paused` : ''}` : ''; };
+
+  // ---------- (round 51, routinelean) what Keep going spent and achieved: the Usage window ----------
+  const STATS = 'routines.stats'; // this computer, per day (15 days)
+  function stat(d) { try { store.set(STATS, C.statAdd(store.get(STATS, null), d)); } catch { /* fine */ } }
+  function usageBox() {
+    const x = C.statSum(store.get(STATS, null));
+    if (!x.week.r && !list.some((r) => C.live(r))) return null; // never used: nothing on screen
+    const live = list.filter((r) => C.live(r));
+    return el('section', { class: 'rt-usage', attrs: { 'aria-label': 'Keep going: what it spent and did' } },
+      el('h4', { text: '🔁 Keep going' }),
+      el('p', { text: `Today: ${C.statWords(x.today)}` }),
+      el('p', { text: `7 days: ${C.statWords(x.week)}`, title: 'Counted on this computer: the rounds Keep going sent by itself, their tokens, and the files or scene changes they made' }),
+      live.length ? el('p', { class: 'hint', text: live.map((r) => `“${titleOf(r)}”: ${C.chipText(r, Date.now(), when)}${r.why ? ` · ${r.why}` : ''}`).join('\n') }) : null);
+  }
 
   // ---------- the calm 30 s tick: the chip's time left, a check that nothing was missed (only while one is live) ----------
   let ticking = false;
@@ -483,14 +556,14 @@ const Routines = (() => {
         if (!how) return 'Say a number of rounds (5), a time (30m, 2h), forever, pause, resume, stop or status.';
         let spend = {}; try { if (typeof Budget !== 'undefined') spend = Budget.state(agent.id); } catch { /* not loaded */ }
         const cap = typeof last.cap === 'number' && (last.cap || !C.needsCap(how)) ? last.cap : C.defaultCap(spend);
-        const x = await start(agent.id, { prompt: promptFor(chat.id), how, pause: last.pause || 'none', resumeAfter: last.resumeAfter || 0, cap, capPick: last.cap ?? 'default', lighter: last.lighter !== false, waitReset: last.waitReset !== false, afterRestart: last.afterRestart === true }, { chatId: chat.id });
+        const x = await start(agent.id, { prompt: promptFor(chat.id), how, pause: last.pause || 'none', resumeAfter: last.resumeAfter || 0, cap, capPick: last.cap ?? 'default', lighter: last.lighter !== false, waitReset: last.waitReset !== false, afterRestart: last.afterRestart === true, margin: last.margin }, { chatId: chat.id });
         return `${C.describe(x)}.`;
       },
     });
   }
 
   return {
-    open, start, card, stop, pause, resume, section, summary, forChat, list: () => list.map((r) => ({ ...r })), get: byId,
+    open, start, card, stop, pause, resume, section, summary, forChat, usageBox, stats: () => C.statSum(store.get(STATS, null)), list: () => list.map((r) => ({ ...r })), get: byId,
     _test: { scale: (x) => { scale = x; }, check, idle: (ms) => { lastInput = Date.now() - ms; }, quiet: (ms) => { lastWrote = Date.now() - ms; }, afterStart, reload: () => { list = (store.get(KEY, []) || []).map((r) => C.normalize(r)).filter(Boolean); }, timers },
   };
 })();
