@@ -240,7 +240,7 @@ const fires = (e, code) => e.ctrlKey && e.altKey && e.code === code;
 
   // ---------- 7. the scan's round-49 rules: zero, and they catch what they're for ----------
   const hits = scan();
-  for (const rule of ['key-text-raw', 'mac-ctrl-click', 'os-clash', 'altgr-key', 'mac-alt-letter']) {
+  for (const rule of ['key-text-raw', 'mac-ctrl-click', 'os-clash', 'altgr-key', 'mac-alt-letter', 'dialog-both']) {
     const mine = hits.filter((h) => h.rule === rule);
     ok(!mine.length, `scan ${rule}: ${mine.length} hit(s)${mine.length ? `\n  ${mine.slice(0, 5).map((h) => `${h.file}:${h.line} ${h.text.slice(0, 120)}`).join('\n  ')}` : ''}`);
   }
@@ -251,9 +251,10 @@ const fires = (e, code) => e.ctrlKey && e.altKey && e.code === code;
     "{ area: 'G', keys: 'Alt+Space', what: 'x' }",
     "if ((e.ctrlKey || e.metaKey) && e.altKey && e.key === 'q') go();",
     "if (e.altKey && e.key.toLowerCase() === 'r') surprise();",
+    "hub.openDialog({ properties: ['openFile', 'openDirectory'] });",
   ].join('\n');
   const caught = scanText(planted, 'planted.js').map((h) => `${h.rule}:${h.line}`);
-  for (const want of ['key-text-raw:1', 'mac-ctrl-click:2', 'os-clash:3', 'os-clash:4', 'altgr-key:5', 'mac-alt-letter:6']) ok(caught.includes(want), `scan catches a planted ${want}`);
+  for (const want of ['key-text-raw:1', 'mac-ctrl-click:2', 'os-clash:3', 'os-clash:4', 'altgr-key:5', 'mac-alt-letter:6', 'dialog-both:7']) ok(caught.includes(want), `scan catches a planted ${want}`);
   ok(!scanText("b.title = macText('Undo (Ctrl+Z)'); if (!e.shiftKey && !e.ctrlKey && !e.metaKey) sel.clear(); { keys: 'Ctrl+Tab' } if (e.altKey && e.code === 'KeyR') x();", 'x.js').length, 'scan: the fixed forms pass');
 
   console.log(`winmac49-test: ${pass} passed, ${fail} failed`);

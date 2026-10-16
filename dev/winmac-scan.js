@@ -8,7 +8,7 @@
 //   node dev/winmac-scan.js --json           # machine-readable
 //   node dev/winmac-scan.js --count          # rule → number of hits (dev/winmac-test.js wants 0 for the path / URL rules;
 //                                            (round 46) and for zip-tool / trash-direct / case-win-only;
-//                                            (round 49) and key-text-raw / mac-ctrl-click / os-clash / altgr-key / mac-alt-letter)
+//                                            (round 49) and key-text-raw / mac-ctrl-click / os-clash / altgr-key / mac-alt-letter / dialog-both)
 //   node dev/winmac-scan.js --all            # also the hits reviewed as fine (REVIEWED below)
 'use strict';
 const fs = require('fs');
@@ -123,6 +123,12 @@ const RULES = [
     id: 'altgr-key',
     what: 'a Ctrl+Alt shortcut matched on e.key: on Windows the left Ctrl+Alt types the AltGr character there (QWERTZ Ctrl+Alt+Q is "@", AZERTY Ctrl+Alt+0 is "@") — match e.code',
     test: (l) => /altKey/.test(l) && /ctrlKey|\bmod\b/.test(l) && /\.key\s*===\s*['"][a-z0-9]['"]|\.key\.toLowerCase\(\)\s*===\s*['"][a-z0-9]['"]/i.test(l) && !/\.code\b|!e\.altKey|!ev\.altKey|!input\.alt/.test(l),
+  },
+  {
+    id: 'dialog-both',
+    what: "a file dialog asking for files AND folders: only the Mac has that; Windows shows a folder picker only (no file can be picked) — pick one, per platform",
+    test: (l) => /['"]openFile['"][^\]]*['"]openDirectory['"]|['"]openDirectory['"][^\]]*['"]openFile['"]/.test(l),
+    ok: (l) => /Mac|darwin|IS_MAC|isMac|\bmac\b/.test(l),
   },
   {
     id: 'mac-alt-letter',
