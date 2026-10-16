@@ -106,6 +106,9 @@ document.addEventListener('pointerlockchange', () => {
 
 // ---------- the stats chip: frames counted only while it shows ----------
 let statsOn = false; let raf = 0; let gaps = []; let last = 0; let lastPaint = 0; let how = I.how || ''; let hz = I.hz || 0;
+// (round 54, gameaudio) the sound's latency on the chip ("sound 12 ms"), read from the game's page (tools/gameaudio-page.js) every 2 s while the chip shows
+let snd = ''; let sndAt = -1e9;
+const sound = () => { try { webFrame.executeJavaScript('window.__gameAudio ? window.__gameAudio.line() : ""').then((v) => { snd = typeof v === 'string' ? v : ''; }).catch(() => {}); } catch { /* fine */ } };
 function tick(t) {
   if (!statsOn) { raf = 0; return; }
   if (last) gaps.push(t - last);
@@ -113,7 +116,8 @@ function tick(t) {
   if (t - lastPaint > 500 && gaps.length) {
     lastPaint = t;
     const g = gaps.slice(-240); const avg = g.reduce((a, b) => a + b, 0) / g.length;
-    const line = `${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${how ? ` · ${how}` : ''}`;
+    if (t - sndAt > 2000) { sndAt = t; sound(); }
+    const line = `${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}`;
     if (ui.chip.textContent !== line) ui.chip.textContent = line;
     gaps = g.slice(-120);
   }
@@ -127,7 +131,7 @@ function stats(on) {
   if (statsOn) {
     // (round 54, gamelook) under the chip, what the look did, in plain words (gamelook-preload.js, in the game's world)
     webFrame.executeJavaScript('window.__gameLook ? window.__gameLook.text() : ""').then((t) => { if (statsOn && t) { u.look.textContent = String(t); u.look.hidden = false; } }).catch(() => {});
-    gaps = []; last = 0; lastPaint = 0; u.chip.textContent = '… fps';
+    gaps = []; last = 0; lastPaint = 0; sndAt = -1e9; u.chip.textContent = '… fps';
     ipcRenderer.invoke('game:info').then((x) => { if (x) { how = x.how || how; hz = x.hz || hz; } }).catch(() => {});
     if (!raf) raf = requestAnimationFrame(tick);
   }
