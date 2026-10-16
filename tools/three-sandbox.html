@@ -8878,7 +8878,7 @@ globalThis.__labTypeReady = () => {
 // checks and three_eval: each type layer's numbers, the music held at a value
 window.__labType = {
   info: () => [...TY.stats.values()].map((x) => ({ ...x, kin: x.kin && { ...x.kin }, ms: Math.round(x.ms * 100) / 100 })), // (kin: a copy, its object is reused frame to frame)
-  drive: (o = {}) => { for (const k of ['kick', 'bass']) if (k in o) TY.drive[k] = o[k] == null ? null : Number(o[k]); return { ...TY.drive }; },
+  drive: (o = {}) => { for (const k of ['kick', 'bass']) if (k in o) TY.drive[k] = o[k] == null ? null : Number(o[k]); PACE.poke += 1; paceWake(); if (DOZE.on) dozeWake('type'); return { ...TY.drive }; }, // (round 51: a held title may be dozing: the new value shows at once)
   anims: () => Object.keys(TY_ANIM),
   kinetic: () => Boolean(globalThis.kinetic), // (round 45, kinetictype) the "moves with the music" math is here
   tight: (on) => { if (on != null) TY.tight = Boolean(on); return TY.tight; }, // (round 51, labtype240) drawn tight (false: the whole frame, as before)
