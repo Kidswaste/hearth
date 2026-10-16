@@ -23,6 +23,13 @@
 //   - pictures: small (512 px) by default, a later one in the same reply 384 px; the Lab's own pictures (play-test,
 //     notes, references, contact sheet) made small too (trim); play / seek answers with the transport in one line
 //   - slider moves answer with the sliders that moved; add_layer with code doesn't list the sliders it wrote
+// (round 49, directorfrugal) Fewer steps (each one re-reads the whole context; dev/directorfrugal-measure.js: six typical
+// tasks 32 → 18 steps, ≈ 54 % fewer input tokens):
+//   - a change that shows (edit, new layer, rewrite, layer settings, slider move, frame size) brings its own 384 px
+//     picture unless it errored or nothing visibly changed; code changes say "errors: none" (no console / screenshot step)
+//   - errors carry the usual fix and the ±2 lines around the first one (no read_code / help step before the fix)
+//   - get_code's outline lists each layer's colours with their lines (a palette is one edit_code over every layer)
+//   - help topics this chat's session already has are one line (seen(): asked by mcp/three-mcp.js via bridge.js)
 const ThreeDirector = (() => {
   const clip = (s, n = 160) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -397,6 +404,20 @@ const ThreeDirector = (() => {
   // shot: true always sends one, shot: false never; /director-autoshot off (the AI setup row) = only when asked.
   const AUTO_KEY = (d) => JSON.stringify([null, null, d?.route?.crew ? d.route.chatId : 0]); // = a plain screenshot's view
   async function autoShot(d, args, B, ctx, value) {
+    const images = await autoShot0(d, args, B, ctx, value);
+    // "errors: none" is said after the picture: an error that came in meanwhile (a slow module load) is reported
+    // instead, without the picture of a broken layer
+    if (value?.errors === 'none') {
+      let rep = null; try { rep = d.report(); } catch { /* backstage without a report */ }
+      if (rep?.errors?.length) {
+        delete value.errors; delete value.picture; withErrorLines(d, value, rep);
+        if (images) { B.lastSig = null; B.pics = Math.max(0, B.pics - 1); }
+        return null;
+      }
+    }
+    return images;
+  }
+  async function autoShot0(d, args, B, ctx, value) {
     if (args.shot === false || ctx?.batch?.shot) return null;
     const on = args.shot === true || store.get('director.autoShot', true) !== false;
     if (!on || (args.shot !== true && Array.isArray(value?.errors) && value.errors.length)) return null;
@@ -662,8 +683,8 @@ const ThreeDirector = (() => {
   }
   // (round 49, directorfrugal) the common three.js / JS errors and their usual fix, in a few words
   const HINTS = [
-    [/^THREE is not defined/, "add import * as THREE from 'three'"],
-    [/^(\w+) is not defined/, (m) => `declare ${m[1]} first, or import it (addons: 'three/addons/…')`],
+    [/\bTHREE is not defined/, "add import * as THREE from 'three'"],
+    [/\b(\w+) is not defined/, (m) => `declare ${m[1]} first, or import it (addons: 'three/addons/…')`],
     [/Cannot read properties of (undefined|null) \(reading '([^']+)'\)/, (m) => `what comes before .${m[2]} is ${m[1]} there: create it before use, or guard with ?.`],
     [/Cannot set properties of (undefined|null)/, (m) => `the object is ${m[1]} there: create it before use`],
     [/(\S+) is not a constructor/, (m) => `${m[1].replace(/^THREE\./, '')} isn't in core three: import it from 'three/addons/…' (or check its name)`],
