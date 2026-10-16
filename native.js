@@ -2511,7 +2511,7 @@ const Native = (() => {
     if (id) v.list.querySelector(`.msg.note[data-note-id="${id}"]`)?.remove(); // a newer note of the same kind replaces the old one
     // (round 10) …for good: a replaced note no longer comes back when the chat redraws
     if (id) for (const n of v.notes || []) if (n.box.dataset.noteId === id) n.box.dataset.gone = '1';
-    const body = el('div', { class: 'body', html: renderMarkdown(text) });
+    const body = el('div', { class: 'body', html: renderMarkdown(typeof macText === 'function' ? macText(text) : text) }); // (round 49) keys this computer's way
     const box = el('div', { class: 'msg note', dataset: { ...(id ? { noteId: id } : {}), ...((quiet ?? QUIET_NOTES.has(id)) ? { quiet: '1' } : {}) } }, body,
       actions.length ? el('div', { class: 'note-acts' }, actions.map((a) => el('button', { type: 'button', class: 'ghost small', text: a.label, title: a.title || '', on: { click: () => { a.run(box); restack(agentId); } } }))) : null,
       el('button', { type: 'button', class: 'ghost note-x', text: '×', title: 'Dismiss (Esc in an empty box clears every note)', on: { click: () => { box.dataset.gone = '1'; box.remove(); restack(agentId); } } }));

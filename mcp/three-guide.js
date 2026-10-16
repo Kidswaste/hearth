@@ -10,7 +10,7 @@ SKETCH = a stack of LAYERS (bottom first), each a complete ES module: import * a
 ONE LAYER PER EFFECT: each new element or effect is a NEW layer (three_add_layer; filters: template). Change a layer with three_edit_code; rewrite one (three_set_code, update_layer code) only when asked. Code tools work on the selected layer unless you pass layer. Timing, keyframes, looks, notes, frame: three_do.
 SLIDERS (always): near the top const P = tweak({ size: { value: 1.2, min: 0, max: 3, label: 'Size', group: 'Shape', hint: 'How big it grows' }, glow: '#ff3cac', style: { value: 'rings', options: ['rings', 'bars'], label: 'Style', group: 'Look' } }) (also [value, min, max, step?], true/false). 6–12 plain-language knobs in groups (Shape, Motion, Color, Camera, Look), ranges that all look OK. Read P.x every frame; keep unsavedSliders values.
 TIME FIRST (like After Effects): motion from time, easing, keyframes (three_do keyframes / animate), the song's cues and sections; react to music only when asked (help react, help audio).
-WORK LOOP: build → fix the errors results report (three_do undo reverts yours) → look when the ask is visual (shot: true on an edit, three_screenshot; three_do contact_sheet for the whole song) → refine. Results give the scene state and code once, then changes only.
+WORK LOOP: build, fix the errors results report (three_do undo reverts yours), refine. A change that shows comes with a small picture (more: three_screenshot; song: three_do contact_sheet). State and code come once, then changes: no extra checks; batch steps.
 Don't paste code into the chat unless asked; say what you made.
 Help: three_do {cmd: "help", topic}: any cmd or tool, or audio, sliders, layers, filters, timeline, refs, frame, footage, bigcode…`;
 
@@ -75,8 +75,14 @@ const FULL = `${CORE}\n\n${Object.values(TOPICS).join('\n\n')}`;
 // (round 46, promptdiet) how to drive three_nodes is in its own description; this says when
 const NODES_LINE = 'NODES (the owner wants them): build and edit visual layers with three_nodes so the Nodes view shows them; code layers only for what nodes can\'t do.';
 
+// (round 49, directorfrugal) "help camera" answered the motion kit (the camera as an INPUT), so a camera move cost a second
+// lookup: it now names the 🎥 camera moves first (on demand only: not in FULL, nothing added to any prompt)
+const CAMERA = `CAMERA MOVES (keyframed moves of each layer's own camera on the timeline; renders match): three_do run {command: "/camera-moves push in"} — push in, pull out, orbit left / right ¼ ½ full, dolly zoom, crane up / down, handheld shake, whip pan, slow drift, punch in on each kick / beat / bar; then [whole | loop | here | after] [2s to 8s] [cine | smooth | in | out | linear | snap] [60%]; list · undo · clear. Your own camera code: drive it from a slider and keyframe that. The webcam as an input: help webcam; the motion-design kit: help motion.`;
+const CAMERA_WORDS = new Set(['camera', 'cameras', 'cameramove', 'cameramoves', 'camerapath', 'pushin', 'pullout', 'orbit', 'dolly', 'dollyzoom', 'crane', 'whippan']);
+
 function help(topic) {
   const t = String(topic || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (CAMERA_WORDS.has(t)) return CAMERA;
   const alias = { frames: 'footage', cuts: 'footage', pacing: 'footage', timecode: 'footage', music: 'audio', sound: 'audio', slider: 'sliders', tweak: 'sliders', layer: 'layers', filter: 'filters', keys: 'keyframes', animate: 'keyframes', lanes: 'keyframes', cues: 'timeline', grid: 'timeline', markers: 'timeline', references: 'refs', palette: 'refs', note: 'notes', placements: 'scene', game: 'games', eval: 'games', input: 'games', size: 'frame', code: 'bigcode', edits: 'bigcode', edit: 'bigcode', diff: 'bigcode', look: 'looks', variations: 'looks', perfectloop: 'loop', loops: 'loop', seamless: 'loop', looping: 'loop' };
   const key = TOPICS[t] ? t : alias[t];
   if (key) return TOPICS[key];

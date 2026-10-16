@@ -350,7 +350,7 @@ const Meter = (() => {
     const budgetTotal = Object.values(prefs.budgets).reduce((s, b) => s + (b || 0), 0);
     const fill = `${Math.min(100, budgetTotal ? pct(today, budgetTotal) : pct(r._ctx, r._win))}%`;
     if (pill.style.getPropertyValue('--fill') !== fill) pill.style.setProperty('--fill', fill);
-    const pillTitle = 'Usage · Codex account limits and Hearth token traffic (Ctrl+Shift+U)';
+    const pillTitle = 'Usage: what\'s left of each AI\'s plan, and Hearth\'s token traffic (Ctrl+Shift+U)'; // (round 49, appcalm) both AIs now, one sentence
     if (pill.title !== pillTitle) pill.title = pillTitle;
     if (strip.hidden) return;
     const sig = JSON.stringify([prefs.fields, Object.entries(r).filter(([k]) => !k.startsWith('_')).map(([, v]) => v), live.size]);
@@ -526,6 +526,8 @@ const Meter = (() => {
     { id: 'tools', label: 'Tools' }, { id: 'chats', label: 'Chats' }, { id: 'features', label: 'Features' },
     { id: 'budgets', label: 'Budgets & alerts' }, { id: 'export', label: 'Export' },
   ];
+  // (round 49, appcalm) five tabs in sight, the rare ones (and the copy) behind More ▾
+  const RARE_TABS = ['tools', 'features', 'export'];
   let dlg = null;
   function accountCard(host, result) {
     host.replaceChildren(el('h3', { text: 'Codex account limits' }),
@@ -551,20 +553,32 @@ const Meter = (() => {
     let range = store.get('meter.range', 'week');
     let current = TABS.some((t) => t.id === tab) ? tab : store.get('meter.tab', 'overview');
     const rangeBar = el('div', { class: 'mt-seg' }, Object.keys(RANGES).map((r) => el('button', { type: 'button', text: { today: 'Today', week: '7 days', month: '30 days', all: 'All' }[r], dataset: { r, feature: `Range ${r}` } })));
-    const tabBar = el('div', { class: 'mt-tabs' }, TABS.map((t) => el('button', { type: 'button', text: t.label, dataset: { t: t.id, feature: `Tab ${t.label}` } })));
+    const tabBar = el('div', { class: 'mt-tabs' }, TABS.map((t) => el('button', { type: 'button', text: t.label, hidden: RARE_TABS.includes(t.id), dataset: { t: t.id, feature: `Tab ${t.label}` } })));
+    const moreTab = el('button', { type: 'button', class: 'mt-more', text: 'More ▾', title: 'Tokens per tool, features you used, export, a copy of this range', dataset: { feature: 'Tab More' } });
+    tabBar.append(moreTab);
     const kpis = el('div', { class: 'mt-kpis' });
     const account = el('section', { class: 'mt-account' }, el('h3', { text: 'Usage left' }), el('p', { class: 'hint', text: 'Checking…' }));
     const pane = el('div', { class: 'mt-pane' });
     const close = el('button', { type: 'button', class: 'ghost mt-x', text: '×', title: 'Close (Esc)' });
-    const copy = el('button', { type: 'button', class: 'ghost mt-x', text: '⧉', title: 'Copy a summary of this range (Markdown)', dataset: { feature: 'Copy summary' }, on: { click: () => copyText(report(range), 'Usage summary') } });
+    // (round 49, appcalm) the copy waits in More ▾ (and the right-click); the traffic note is one line, its words on the pointer
+    moreTab.addEventListener('click', () => {
+      const r = moreTab.getBoundingClientRect();
+      showMenu(r.left, r.bottom + 4, [...TABS.filter((t) => RARE_TABS.includes(t.id)).map((t) => ({ label: t.label, checked: current === t.id, action: () => { current = t.id; store.set('meter.tab', t.id); draw(); } })), '-',
+        { label: 'Copy a summary of this range', tip: 'A Markdown table of this range, ready to paste', action: () => copyText(report(range), 'Usage summary') }]);
+    });
+    const TRAFFIC = 'Each model call counts its input again, including cached history and tool results. Output includes reasoning and tool calls. These totals are not your subscription allowance or bill. Historical records are preserved.';
     dlg = el('dialog', { class: 'ui-modal wide meter-dlg' },
-      el('div', { class: 'mt-head' }, el('h2', { text: 'Usage' }), rangeBar, el('span', { class: 'spacer' }), copy, close),
+      el('div', { class: 'mt-head' }, el('h2', { text: 'Usage' }), rangeBar, el('span', { class: 'spacer' }), close),
       account,
-      el('p', { class: 'mt-traffic-note hint', text: 'Hearth token traffic · Each model call counts its input again, including cached history and tool results. Output includes reasoning and tool calls. These totals are not your subscription allowance or bill. Historical records are preserved.' }),
+      el('p', { class: 'mt-traffic-note hint', title: TRAFFIC, text: 'Hearth\'s token traffic below: not your plan\'s allowance or bill ⓘ' }),
       kpis, tabBar, pane);
     const draw = () => {
       for (const b of rangeBar.children) b.classList.toggle('on', b.dataset.r === range);
-      for (const b of tabBar.children) b.classList.toggle('on', b.dataset.t === current);
+      for (const b of tabBar.children) if (b.dataset.t) b.classList.toggle('on', b.dataset.t === current);
+      const rare = RARE_TABS.includes(current);
+      moreTab.classList.toggle('on', rare);
+      const mt = rare ? `${TABS.find((t) => t.id === current).label} ▾` : 'More ▾';
+      if (moreTab.textContent !== mt) moreTab.textContent = mt;
       kpis.replaceChildren(...kpiTiles(rangeDays(range)));
       pane.replaceChildren(...[].concat(PANES[current](rangeDays(range), range)));
     };
@@ -1042,7 +1056,9 @@ const Meter = (() => {
       if (e.ctrlKey && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'u') { e.preventDefault(); if (dlg) dlg.close(); else dashboard(); Usage.key?.('Ctrl+Shift+U', 'Token dashboard'); }
     });
     for (const [label, fn] of [
-      ['Token dashboard', () => dashboard()],
+      ['Usage: what\'s left, tokens, budgets', () => dashboard()], // (round 49, appcalm) one name: the window, the rail pill and this row say Usage (was Token dashboard)
+      ['Usage › Tools: tokens per tool', () => dashboard('tools')],
+      ['Copy a usage summary of the last 7 days (Markdown)', () => copyText(report('week'), 'Usage summary')],
       ['Meter: strip / rail pill', () => setMode(prefs.mode === 'strip' ? 'pill' : 'strip')],
       ['Meter: choose fields', chooseFields],
       ['Daily token budgets & alerts', () => dashboard('budgets')],
@@ -1051,7 +1067,7 @@ const Meter = (() => {
       ['Export token usage (CSV)', () => exportUsage('csv')],
       ['Export token usage (JSON)', () => exportUsage('json')],
       ['Compact this chat\'s context', () => compact()],
-    ]) AppUI.addAction?.(label, fn, label === 'Token dashboard' ? 'Ctrl+Shift+U' : '');
+    ]) AppUI.addAction?.(label, fn, /^Usage: what/.test(label) ? 'Ctrl+Shift+U' : '');
     // the context fill and "this chat" follow whichever chat is on screen
     // (start.js fires 'hearth:view' when that changes; this used to poll every 700 ms)
     let seen = '';

@@ -161,7 +161,7 @@ const BoardDrawer = (() => {
   function addRailButton() {
     const rail = document.getElementById('rail'); const before = document.getElementById('palette-btn');
     if (!rail || !before || railBtn) return;
-    railBtn = el('button', { class: 'tool-btn bd-rail-peek', title: 'Board drawer (Ctrl+Shift+M): your references; drag one into a chat for its vibe', dataset: { feature: 'Board › Drawer' }, on: { click: () => toggle() } });
+    railBtn = el('button', { class: 'tool-btn bd-rail-peek', id: 'board-drawer-btn', title: 'Board drawer (Ctrl+Shift+M): your references; drag one into a chat for its vibe', dataset: { feature: 'Board › Drawer' }, on: { click: () => toggle() } });
     railBtn.append(Icons.node?.('board') || document.createTextNode('▦'));
     railBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, [
       { label: 'Open the board', action: () => activate('tool:board') },

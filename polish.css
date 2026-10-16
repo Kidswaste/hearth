@@ -879,3 +879,20 @@ html.p8-over-media #menu-fly2 { backdrop-filter: none !important; -webkit-backdr
   .j-pop, .j-shake, .j-roll { animation: none !important; }
   :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > * { animation-delay: 0s !important; }
 }
+
+/* ---------- (round 49, appcalm) a calmer app outside the Lab ---------- */
+/* notes: × (and ⚑ Report) show while you point at a note or tab into it; notes leave by themselves anyway */
+#toasts .toast .toast-x { opacity: 0; transition: opacity var(--dur-fast, .12s) var(--ease-out, ease); }
+#toasts .toast:is(:hover, :focus-within) .toast-x, .reveal-alt #toasts .toast-x { opacity: 1; }
+@media (hover: none) { #toasts .toast .toast-x { opacity: 1; } }
+/* Settings: one button size in every row (Turn on sync…, Check this computer…, What's new… were bigger than Backups… / Look now) */
+dialog.settings-dialog :is(.button-row, .sc-row, .settings-ai) > button { padding: 3px 12px; font-size: 12px; min-height: 28px; line-height: 1.2; }
+/* 💡 Answered by Hearth: Show me reads as the card's one main action (it was a plain grey button beside a ghost one) */
+.la-card .la-show { border: 1px solid transparent; border-radius: var(--radius, 8px); padding: 2px 10px; font-size: 12px; min-height: 26px; cursor: pointer; font-weight: 600; color: #fff; background: var(--accent); }
+.la-card .la-show:hover { filter: brightness(1.08); }
+/* Usage: the traffic note is one line (its words on the pointer); More ▾ looks like the tabs beside it */
+.meter-dlg .mt-traffic-note { flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; line-height: 1.5; min-height: 1.5em; margin: 4px 2px; }
+.meter-dlg .mt-tabs .mt-more { margin-left: auto; }
+/* the empty chat's ✦ What can I do here? reads like the app's other links in every look (Light showed a browser-blue underline) */
+.messages .empty .hint a { color: var(--agent, var(--accent)); text-decoration: none; }
+.messages .empty .hint a:hover { text-decoration: underline; }

@@ -7,7 +7,8 @@
 //   node dev/winmac-scan.js --rule file-url  # one rule
 //   node dev/winmac-scan.js --json           # machine-readable
 //   node dev/winmac-scan.js --count          # rule → number of hits (dev/winmac-test.js wants 0 for the path / URL rules;
-//                                            (round 46) and for zip-tool / trash-direct / case-win-only)
+//                                            (round 46) and for zip-tool / trash-direct / case-win-only;
+//                                            (round 49) and key-text-raw / mac-ctrl-click / os-clash / altgr-key / mac-alt-letter / dialog-both)
 //   node dev/winmac-scan.js --all            # also the hits reviewed as fine (REVIEWED below)
 'use strict';
 const fs = require('fs');
@@ -16,6 +17,13 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const SKIP_DIRS = new Set(['node_modules', 'dev', 'docs', '.git', '.claude', 'vendor', 'lib', 'assets', 'mac', 'data']);
 const SKIP_FILES = /(\.min\.js|three\.module\.js|lazy-manifest\.js)$/;
+
+// (round 49) what the two systems keep for themselves (dev/keytables.js) and the Mac's real-Control keys (winmac.js)
+const KT = require('./keytables.js');
+const REAL = require('../winmac.js').MAC_REAL_CTRL;
+// the keys of a keys-sheet line ("keys: 'Ctrl+G (in the Layers list) / Alt+click'") one by one, words after a key dropped
+const keyLines = (l) => [...l.matchAll(/keys: (?:[A-Z]+ \? '[^']*' : )?'([^']+)'/g)].flatMap((m) => m[1].split(/\s+\/\s+|\s+·\s+|,\s+|\s+or\s+/))
+  .map((k) => k.replace(/^(?:Hold|Type)\s+/, '').split(/\s+/)[0]).filter(Boolean);
 
 // A path-ish expression: a name that holds a file / folder path
 const PATHY = /\b(?:p|f|fp|full|file|files?Path|filePath|path|paths|src|dir|folder|root|out|output|dest|target|abs|rel|name|base|cwd|home|DATA_DIR|WORKSPACE|[a-z]*(?:Path|Dir|Folder|File))\b/;
@@ -94,6 +102,39 @@ const RULES = [
     test: (l) => /win32['"]\s*\?[^:;]*toLowerCase\(\)\s*:/.test(l),
     ok: (l) => /darwin|NFC/.test(l),
   },
+  // (round 49, winmac49) keys said and pressed the same on both computers
+  {
+    id: 'key-text-raw',
+    what: 'a shortcut written into the page past el() / macText ("Ctrl+…", "Ctrl/⌘", "⌘K" set as textContent / innerHTML / title / placeholder): it reads Ctrl on the Mac or ⌘ on Windows — use el({ text / title }) or WinMac.keyLabel',
+    test: (l) => /\.(?:textContent|innerHTML|innerText|title|placeholder)\s*\+?=\s*[^;]*(?:\bCtrl[+/]|\bAlt\+[A-Z0-9]|[⌘⌥⇧⌃]\+?[A-Z0-9,.;/])/.test(l) || /setAttribute\(\s*['"](?:title|aria-label|placeholder)['"][^)]*(?:\bCtrl[+/]|[⌘⌥])/.test(l),
+    ok: (l) => /keyLabel|macText|keyText|keyWords|macKeys|IS_MAC|isMac|MAC\s*\?|\bmac\s*\?|mac\(\)\s*\?|darwin/.test(l),
+  },
+  {
+    id: 'mac-ctrl-click',
+    what: 'a mouse modifier read from e.ctrlKey only: on a Mac Ctrl+click is the right-click and ⌘ never sets ctrlKey on the mouse (ui.js maps keys only) — read e.ctrlKey || e.metaKey (a wheel\'s ctrlKey is the pinch: fine)',
+    test: (l) => /\b(?:e|ev|event)\.ctrlKey\b/.test(l) && !/metaKey/.test(l) && /click|pointer|mouse|drag|pick|\bsel\b|select/i.test(l) && !/key(?:down|up)|\.key\b|\.code\b|wheel|deltaY|Usage\./.test(l),
+  },
+  {
+    id: 'os-clash',
+    what: 'a key line naming a key the system takes first (⌘Q / ⌘H / ⌘M / ⌘` / ⌘Tab / ⌘Space / ⌥⌘D / ⇧⌘3–5 on a Mac; Alt+Tab / Alt+Space / Ctrl+Esc / Alt+F4 / F10 on Windows): another key, or the real Control on the Mac (WinMac.MAC_REAL_CTRL)',
+    test: (l) => keyLines(l).some((k) => (KT.clash(k, 'mac') && !REAL.has(KT.norm(k))) || KT.clash(k, 'win')),
+  },
+  {
+    id: 'altgr-key',
+    what: 'a Ctrl+Alt shortcut matched on e.key: on Windows the left Ctrl+Alt types the AltGr character there (QWERTZ Ctrl+Alt+Q is "@", AZERTY Ctrl+Alt+0 is "@") — match e.code',
+    test: (l) => /altKey/.test(l) && /ctrlKey|\bmod\b/.test(l) && /\.key\s*===\s*['"][a-z0-9]['"]|\.key\.toLowerCase\(\)\s*===\s*['"][a-z0-9]['"]/i.test(l) && !/\.code\b|!e\.altKey|!ev\.altKey|!input\.alt/.test(l),
+  },
+  {
+    id: 'dialog-both',
+    what: "a file dialog asking for files AND folders: only the Mac has that; Windows shows a folder picker only (no file can be picked) — pick one, per platform",
+    test: (l) => /['"]openFile['"][^\]]*['"]openDirectory['"]|['"]openDirectory['"][^\]]*['"]openFile['"]/.test(l),
+    ok: (l) => /Mac|darwin|IS_MAC|isMac|\bmac\b/.test(l),
+  },
+  {
+    id: 'mac-alt-letter',
+    what: 'an Alt+letter shortcut matched on e.key: on a Mac ⌥ types another character (⌥R is ®, ⌥F is ƒ), so it never fires there — match e.code (ui.js makes it the letter printed on the key)',
+    test: (l) => /(?<!!)\b(?:e|ev)\.altKey\s*&&/.test(l) && !/ctrlKey|\bmod\b/.test(l) && /\.key(?:\.toLowerCase\(\))?\s*===\s*['"][a-z]['"]/i.test(l) && !/\.code\b/.test(l),
+  },
 ];
 
 // Reviewed and fine as they are (rule, file, a piece of the line): guarded per platform a few lines up, or not a path
@@ -124,6 +165,8 @@ const REVIEWED = [
   ['zip-tool', 'fsapi.js', 'execFile('], ['zip-tool', 'datasafemain.js', 'execFile('], ['zip-tool', 'scenesafemain.js', 'execFile('],
   ['zip-tool', 'importer.js', 'execFileSync('], // claude.ai / ChatGPT exports (other programs' zips), read once at import
   ['trash-direct', 'backupautomain.js', 'trashItem(p)'], // trashable(p) the line before
+  // (round 49) the keys sheet's Window lines name the system's own keys on purpose (Alt+F4, F11 · ⌘Q, ⌘H, ⌘M)
+  ['os-clash', 'nativefeel.js', ''],
 ];
 const reviewed = (h) => REVIEWED.some(([r, f, piece]) => (r === '*' || r === h.rule) && h.file.startsWith(f) && h.text.includes(piece));
 

@@ -23,6 +23,13 @@
 //   - pictures: small (512 px) by default, a later one in the same reply 384 px; the Lab's own pictures (play-test,
 //     notes, references, contact sheet) made small too (trim); play / seek answers with the transport in one line
 //   - slider moves answer with the sliders that moved; add_layer with code doesn't list the sliders it wrote
+// (round 49, directorfrugal) Fewer steps (each one re-reads the whole context; dev/directorfrugal-measure.js: six typical
+// tasks 32 → 18 steps, ≈ 54 % fewer input tokens):
+//   - a change that shows (edit, new layer, rewrite, layer settings, slider move, frame size) brings its own 384 px
+//     picture unless it errored or nothing visibly changed; code changes say "errors: none" (no console / screenshot step)
+//   - errors carry the usual fix and the ±2 lines around the first one (no read_code / help step before the fix)
+//   - get_code's outline lists each layer's colours with their lines (a palette is one edit_code over every layer)
+//   - help topics this chat's session already has are one line (seen(): asked by mcp/three-mcp.js via bridge.js)
 const ThreeDirector = (() => {
   const clip = (s, n = 160) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -250,6 +257,17 @@ const ThreeDirector = (() => {
     if (B.session && (B.chat?.session?.id || null) !== B.session) { forgetBefore(B, B.turn); B.session = null; }
     return B;
   }
+  // (round 49, directorfrugal) Text the tool server answers by itself (a help topic) that this chat's session already
+  // has: the server asks here first (three_seen, bridge.js; key + a hash of the text) and sends one "same as before"
+  // line instead of the topic again. Same memory and rules as the code it read (per chat session, KEEP_TURNS).
+  function seen(args = {}, ctx = {}) {
+    const B = bucketOf(null, ctx);
+    const key = `said:${String(args.key || '')}`; const sig = String(args.sig ?? '');
+    const e = seenOf(B, key);
+    if (!args.force && e && e.text === sig) { savedNotes.help = (savedNotes.help || 0) + 1; return { ok: true, value: { ago: agoOf(B, e) } }; }
+    see(B, key, sig);
+    return { ok: true, value: {} };
+  }
   // The scene state is said once, then only when it changed (the director has it from the first result).
   function onlyNew(v, d = null, B = bucketOf(d)) {
     for (const k of ['sketch', 'layer', 'frame', 'music', 'layers', 'note']) {
@@ -379,6 +397,38 @@ const ThreeDirector = (() => {
     if (!url) return null;
     return jpeg(frameCanvas(await loadImg(url), { max }), 0.75);
   }
+  // (round 49, directorfrugal) A change that shows answers with its own small picture (384 px, ≈ 110 tokens), so the
+  // director doesn't spend a whole step (the fixed part re-sent + a 512 px screenshot) to look. Only when it shows:
+  // not when the result has errors, not when the picture didn't visibly change since the last one this reply had
+  // (a short note says so instead), not in a batch that takes its own screenshot (bridge.js passes ctx.batch).
+  // shot: true always sends one, shot: false never; /director-autoshot off (the AI setup row) = only when asked.
+  const AUTO_KEY = (d) => JSON.stringify([null, null, d?.route?.crew ? d.route.chatId : 0]); // = a plain screenshot's view
+  async function autoShot(d, args, B, ctx, value) {
+    const images = await autoShot0(d, args, B, ctx, value);
+    // "errors: none" is said after the picture: an error that came in meanwhile (a slow module load) is reported
+    // instead, without the picture of a broken layer
+    if (value?.errors === 'none') {
+      let rep = null; try { rep = d.report(); } catch { /* backstage without a report */ }
+      if (rep?.errors?.length) {
+        delete value.errors; delete value.picture; withErrorLines(d, value, rep);
+        if (images) { B.lastSig = null; B.pics = Math.max(0, B.pics - 1); }
+        return null;
+      }
+    }
+    return images;
+  }
+  async function autoShot0(d, args, B, ctx, value) {
+    if (args.shot === false || ctx?.batch?.shot) return null;
+    const on = args.shot === true || store.get('director.autoShot', true) !== false;
+    if (!on || (args.shot !== true && Array.isArray(value?.errors) && value.errors.length)) return null;
+    let c;
+    try { const url = await grab(d, LATER_PX); if (!url) return null; c = frameCanvas(await loadImg(url), { max: LATER_PX }); } catch { return null; }
+    const sig = signature(c); const key = AUTO_KEY(d);
+    if (args.shot !== true && B.lastSig?.key === key && sigDiff(sig, B.lastSig.sig) < 0.004) { if (value && typeof value === 'object') value.picture = 'no visible change'; savedNotes.shots += 1; return null; }
+    B.lastSig = { key, sig }; prevShot = c; B.pics += 1; savedNotes.autoShots = (savedNotes.autoShots || 0) + 1;
+    return [{ data: await jpeg(c, 0.75), mime: 'image/jpeg' }];
+  }
+  const withPic = (value, images) => ({ ok: true, value, ...(images ? { images } : {}) });
   async function screenshot(d, args, B = bucketOf(d)) {
     const asked = Boolean(args.size || args.region || args.compare || Number(args.frames) >= 2 || args.force);
     const later = !asked && B.pics > 0;
@@ -412,7 +462,7 @@ const ThreeDirector = (() => {
     const sig = signature(c);
     if (!args.force && !args.compare && B.lastSig?.key === sigKey && sigDiff(sig, B.lastSig.sig) < 0.004) {
       savedNotes.shots += 1;
-      return { ok: true, value: 'No visible change since your previous screenshot in this reply (same picture, not sent again; force: true sends it).' };
+      return { ok: true, value: 'No visible change since your previous picture in this reply (same picture, not sent again; force: true sends it).' };
     }
     B.lastSig = { key: sigKey, sig };
     let out = c; let note = '';
@@ -478,7 +528,7 @@ const ThreeDirector = (() => {
   }
   // ---------- the scene outline (get_code, select_layer, layers) ----------
   // One line per layer, bottom first: "2. Sparkles* · 70 lines · sliders: Size, Glow · plays 30–60 s · keys: opacity 0s=0, 2s=1"
-  function layerLine(L, i, { lines = null, sliders = 'names' } = {}) {
+  function layerLine(L, i, { lines = null, sliders = 'names', colors = '' } = {}) {
     const bits = [];
     if (L.kind) bits.push(L.kind);
     if (lines != null) bits.push(`${lines} lines`);
@@ -491,9 +541,24 @@ const ThreeDirector = (() => {
     if (sl.length) bits.push(sliders === 'count' ? `${sl.length} slider${sl.length === 1 ? '' : 's'}` : `sliders: ${sl.join(', ')}`);
     if (L.keyframes) bits.push(`keys: ${Object.entries(L.keyframes).map(([p, ks]) => `${p} ${ks.slice(0, 6).join(', ')}${ks.length > 6 ? ` +${ks.length - 6}` : ''}`).join('; ')}`);
     if (L.placedByUser) bits.push(`placed by the owner: ${JSON.stringify(L.placedByUser)}`);
+    if (colors) bits.push(`colors ${colors}`);
     return `${i + 1}. ${L.name}${L.selected ? '*' : ''}${bits.length ? ` · ${bits.join(' · ')}` : ''}`;
   }
-  const layerLines = (list, opts = {}, linesOf = () => null) => (Array.isArray(list) ? list.map((L, i) => layerLine(L, i, { ...opts, lines: linesOf(L) })).join('\n') : list);
+  const layerLines = (list, opts = {}, linesOf = () => null, colorsOf = () => '') => (Array.isArray(list) ? list.map((L, i) => layerLine(L, i, { ...opts, lines: linesOf(L), colors: colorsOf(L) })).join('\n') : list);
+  // (round 49, directorfrugal) the colours a layer's code sets, with their line ("#ff3cac l9"), in get_code's outline:
+  // a palette change is then one edit_code over every layer (find the colour itself), with no read of each layer first
+  function codeColors(code, max = 6) {
+    const out = []; const had = new Set();
+    String(code || '').split('\n').forEach((ln, k) => {
+      if (/^\s*\/\//.test(ln)) return;
+      for (const m of ln.matchAll(/(['"])#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\1|\b0x([0-9a-fA-F]{6})\b/g)) {
+        const c = m[2] ? `#${m[2]}` : `0x${m[3]}`;
+        if (had.has(c.toLowerCase())) continue;
+        had.add(c.toLowerCase()); out.push(`${c} l${k + 1}`);
+      }
+    });
+    return out.length > max ? `${out.slice(0, max).join(', ')} +${out.length - max}` : out.join(', ');
+  }
   // Sliders when the code that declares them is in hand: their defaults are in its tweak() block, so only what the
   // code doesn't say (music links, setup-only reads) gets a line.
   function sliderNote(list) {
@@ -507,7 +572,8 @@ const ThreeDirector = (() => {
   function sceneCode(d, r, ref, B) {
     const L = d.codeOf(ref ?? null);
     const lineCount = (x) => { try { return d.codeOf(x.id).code.split('\n').length; } catch { return null; } };
-    const value = { sketch: r.sketch, layer: L.name, layers: layerLines(r.layers, { sliders: 'count' }, lineCount), frame: frameLine(r.frame) || undefined };
+    const colorsIn = (x) => { try { return codeColors(d.codeOf(x.id).code); } catch { return ''; } };
+    const value = { sketch: r.sketch, layer: L.name, layers: layerLines(r.layers, { sliders: 'count' }, lineCount, colorsIn), frame: frameLine(r.frame) || undefined };
     const n = L.code.split('\n').length;
     const k = seenOf(B, codeKey(L));
     const dd = k && k.text !== L.code ? codeDiff(k.text, L.code) : null;
@@ -599,14 +665,54 @@ const ThreeDirector = (() => {
     for (const e of r?.errors || []) { const k = `${e.layer}|${e.line}|${e.message}`; if (seen.has(k)) seen.get(k).n += 1; else seen.set(k, { e, n: 1 }); }
     const errs = [...seen.values()];
     if (!errs.length) return value;
+    const hinted = new Set();
     value.errors = errs.slice(0, 4).map(({ e, n }) => {
       let code = '';
       if (e.line) { try { const t = d.codeOf(e.layer || null).code.split('\n')[e.line - 1]; if (t != null) code = ` → ${clip(t.trim(), 120)}`; } catch { /* layer gone */ } }
-      return `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(String(e.message || '').split('\n')[0].replace(/^Uncaught /, ''), 200)}${n > 1 ? ` (×${n})` : ''}${code}`;
+      const msg = String(e.message || '').split('\n')[0].replace(/^Uncaught /, '');
+      // (round 49, directorfrugal) the usual fix, once per kind: saves a help lookup or a guess
+      const h = errHint(msg);
+      const hint = h && !hinted.has(h) ? (hinted.add(h), ` (fix: ${h})`) : '';
+      return `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(msg, 200)}${n > 1 ? ` (×${n})` : ''}${code}${hint}`;
     });
     if (errs.length > 4) value.errors.push(`… ${errs.length - 4} more (three_console)`);
+    // (round 49) the lines around the first error, so the fix needs no read_code call first
+    const first = errs.find(({ e }) => e.line)?.e;
+    if (first) { try { const near = errorContext(d.codeOf(first.layer || null).code, first.line); if (near) value.near = near; } catch { /* layer gone */ } }
     return value;
   }
+  // (round 49, directorfrugal) the common three.js / JS errors and their usual fix, in a few words
+  const HINTS = [
+    [/\bTHREE is not defined/, "add import * as THREE from 'three'"],
+    [/\b(\w+) is not defined/, (m) => `declare ${m[1]} first, or import it (addons: 'three/addons/…')`],
+    [/Cannot read properties of (undefined|null) \(reading '([^']+)'\)/, (m) => `what comes before .${m[2]} is ${m[1]} there: create it before use, or guard with ?.`],
+    [/Cannot set properties of (undefined|null)/, (m) => `the object is ${m[1]} there: create it before use`],
+    [/(\S+) is not a constructor/, (m) => `${m[1].replace(/^THREE\./, '')} isn't in core three: import it from 'three/addons/…' (or check its name)`],
+    [/(\S+) is not a function/, (m) => `${m[1]} isn't a function here: check its name (three renames some APIs) or what it's called on (three_eval shows it)`],
+    [/has already been declared/, 'the same name is declared twice: rename or remove one'],
+    [/Assignment to constant variable/, 'a const is reassigned: make it let'],
+    [/Failed to resolve module specifier|dynamically imported module|Cannot use import statement/, "imports come from 'three' or 'three/addons/…' only"],
+    [/Unexpected (token|end of input|identifier|string)|missing \) after|Invalid or unexpected token|SyntaxError/, 'a bracket, comma or quote is off near that line'],
+    [/Maximum call stack/, 'a function calls itself without end'],
+    [/ERROR: \d+:\d+|shader|GLSL|compile/i, 'the GLSL line it names (help shader)'],
+    [/CONTEXT_LOST|out of memory|Array buffer allocation/i, 'too heavy: fewer objects, smaller textures, dispose old ones'],
+  ];
+  function errHint(msg) {
+    for (const [re, h] of HINTS) { const m = re.exec(msg); if (m) return typeof h === 'function' ? h(m) : h; }
+    return '';
+  }
+  // ±2 numbered lines around an error's line ("41>" marks it), indentation trimmed
+  function errorContext(code, line, k = 2) {
+    const lines = code.split('\n');
+    if (!(line >= 1 && line <= lines.length)) return '';
+    const a = Math.max(1, line - k); const b = Math.min(lines.length, line + k);
+    const seg = lines.slice(a - 1, b);
+    const ind = Math.min(...seg.filter((l) => l.trim()).map((l) => l.match(/^\s*/)[0].length));
+    const w = String(b).length;
+    return seg.map((ln, j) => `${pad(a + j, w)}${a + j === line ? '>' : '|'} ${clip(ln.slice(Number.isFinite(ind) ? ind : 0).replace(/\s+$/, ''), 140)}`).join('\n');
+  }
+  // a code-changing result with no errors says so in two words (no separate console call to check)
+  const clean = (value) => { if (value && typeof value === 'object' && !value.errors?.length && !value.reverted) value.errors = 'none'; return value; };
   // Lines added since `before` (the console keeps the last 30; a layer's re-run drops its old lines).
   function newLines(before, after) {
     for (let k = Math.min(before.length, after.length); k > 0; k -= 1) {
@@ -672,10 +778,9 @@ const ThreeDirector = (() => {
       const delta = plans.flatMap((p) => { const was = sliderKeysBefore.get(p.L.id) || []; const now = keysOf(p.L.id); return [...now.filter((k) => !was.includes(k)).map((k) => `+${k}`), ...was.filter((k) => !now.includes(k)).map((k) => `-${k}`)]; });
       if (delta.length) value.slidersChanged = delta.join(' ');
       delete value.sliders;
-      withErrorLines(d, value, final);
+      clean(withErrorLines(d, value, final));
       onlyNew(value, d, B);
-      const img = (args.shot ?? store.get('director.autoShot', false)) ? await thumb(d) : null; // /director-autoshot
-      return { ok: true, value, ...(img ? { images: [{ data: img, mime: 'image/jpeg' }] } : {}) };
+      return withPic(value, await autoShot(d, args, B, ctx, value)); // (round 49) a small picture when it shows
     }
     if (tool === 'three_set_code') {
       if (!String(args.code || '').trim()) return { ok: false, error: 'No code given.' };
@@ -684,20 +789,20 @@ const ThreeDirector = (() => {
       const r = await d.setCode(String(args.code), Number(args.wait) || 2.5);
       record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
       see(B, codeKey(before), String(args.code), 'wrote');
-      const value = args.report === 'full' ? r : onlyNew(namesOff(withErrorLines(d, compact(r), r)), d, B);
+      const value = args.report === 'full' ? r : onlyNew(clean(namesOff(withErrorLines(d, compact(r), r))), d, B);
       // the owner's rule: a new effect is a new layer. Rewriting a real layer (one with sliders, not a starter) gets a
       // one-line reminder, so the habit holds for the rest of the chat (≈ 30 tokens, only then).
       if (args.report !== 'full' && rewroteReal(before.code, String(args.code))) value.note = `Rewrote "${before.name}" (/undo-edit restores it). New elements or effects go in a new layer: three_add_layer.`;
       // (round 35, concise.js) a small change sent as a whole layer: one line on what edits would have cost (only then)
       else if (args.report !== 'full' && window.Concise?.rewriteNote) { const n = Concise.rewriteNote(before.code, String(args.code)); if (n) value.note = n; }
-      return { ok: true, value };
+      return args.report === 'full' ? { ok: true, value } : withPic(value, await autoShot(d, args, B, ctx, value));
     }
     if (tool === 'three_add_layer') {
       if (!args.code && !args.template) return { ok: false, error: 'Give complete code (alpha: true, no background) or a template.' };
       if (!d.backstage) toast(`Three Director added a layer${args.name ? ` "${args.name}"` : ''}`, { timeout: 1500 });
       const r = await d.addLayer({ name: args.name, code: args.code, template: args.template, position: args.position, props: args.settings || {} }, Number(args.wait) || 2.5);
       if (args.report === 'full') return { ok: true, value: r };
-      const value = withErrorLines(d, compact(r), r);
+      const value = clean(withErrorLines(d, compact(r), r));
       if (args.code) {
         namesOff(value);
         // (round 37) the director wrote this code: it has its sliders (only their names stay) and its text
@@ -706,7 +811,8 @@ const ThreeDirector = (() => {
         // a template's sliders as lines (keys, values, ranges): the next call is usually a slider move, not a read
         try { const sl = d.sliders(r.added || null, null); if (sl?.sliders?.length) value.sliders = sliderLines(sl.sliders); } catch { /* backstage: names only */ }
       }
-      return { ok: true, value: onlyNew(value, d, B) };
+      onlyNew(value, d, B);
+      return withPic(value, await autoShot(d, args, B, ctx, value));
     }
     if (tool === 'three_update_layer') {
       const patch = { ...(args.settings || {}) };
@@ -715,7 +821,10 @@ const ThreeDirector = (() => {
       if (args.order != null) patch.order = args.order;
       const r = await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5));
       if (before) { record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool }); see(B, codeKey(before), String(args.code), 'wrote'); }
-      return { ok: true, value: args.report === 'full' ? r : onlyNew(namesOff(withErrorLines(d, compact(r), r)), d, B) };
+      if (args.report === 'full') return { ok: true, value: r };
+      const value = onlyNew(namesOff(withErrorLines(d, compact(r), r)), d, B);
+      if (before) clean(value);
+      return withPic(value, await autoShot(d, args, B, ctx, value));
     }
     // the frame size: one line (it was the whole Lab report after a fixed 1.5 s). fit ⇄ an exact size reloads the
     // preview (answer at its first frame); between exact sizes it only resizes.
@@ -729,7 +838,7 @@ const ThreeDirector = (() => {
       const r = d.report();
       const value = withErrorLines(d, { frame: frameLine(r.frame) }, r);
       see(B, 'state:frame', JSON.stringify(value.frame));
-      return { ok: true, value };
+      return withPic(value, await autoShot(d, args, B, ctx, value));
     }
     // three_do undo: the director's last code change in this scene, back (no code re-sent)
     if (tool === 'three_undo') {
@@ -749,7 +858,9 @@ const ThreeDirector = (() => {
     // (round 37) the scene state once (like the other results), the selected layer's slider names left out (three_sliders)
     if (tool === 'three_console') {
       if (args.full) return { ok: true, value: d.report() };
-      const value = onlyNew(namesOff(compact(d.report(), { lines: 14 })), d, B);
+      // (round 49) errors as one line each with their code, the usual fix and the lines around the first (no read_code next)
+      const rep = d.report();
+      const value = onlyNew(namesOff(withErrorLines(d, compact(rep, { lines: 14 }), rep)), d, B);
       if (!value.console) value.console = 'no new lines since your last look';
       return { ok: true, value };
     }
@@ -793,7 +904,8 @@ const ThreeDirector = (() => {
         const moved = new Set(r.changed || []);
         const lines = (r.sliders || []).filter((c) => moved.has(c.key)).map(sliderLine);
         const missed = set.filter((k) => !(r.sliders || []).some((c) => moved.has(c.key) && (c.key === k || String(c.label || '').toLowerCase() === k.toLowerCase())));
-        return { ok: true, value: { layer: r.layer, moved: lines.length ? lines : 'nothing', ...(missed.length ? { notSet: `${missed.join(', ')} (locked, unknown or a bad value; keys: ${(r.sliders || []).map((c) => c.key).join(', ')})` } : {}), others: `${(r.sliders || []).length - lines.length} unchanged`, looks } };
+        const value = { layer: r.layer, moved: lines.length ? lines : 'nothing', ...(missed.length ? { notSet: `${missed.join(', ')} (locked, unknown or a bad value; keys: ${(r.sliders || []).map((c) => c.key).join(', ')})` } : {}), others: `${(r.sliders || []).length - lines.length} unchanged`, looks };
+        return withPic(value, lines.length ? await autoShot(d, args, B, ctx, value) : null); // (round 49) a move that shows: its small picture
       }
       // a read: the table, or one line when this session already has the same table
       const lines = sliderLines(r.sliders);
@@ -856,12 +968,12 @@ const ThreeDirector = (() => {
     history: () => history.slice(),
     canRedo: () => redoStack.length > 0,
     onHistory(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-    newTurn, saved: () => JSON.parse(JSON.stringify(savedNotes)),
+    newTurn, seen, saved: () => JSON.parse(JSON.stringify(savedNotes)),
     // (round 28, lookmatch) the small-picture path, for pictures made outside a tool call (a reference for the director)
     pictures: { frameCanvas, tile, jpeg, loadImg },
     // tools/three.js: every preview message (onBox), and its director's waits after a run (settle)
     onBox, settle,
-    _test: { diff, landed, applyEdits, compact, sliderLine, newLines, statLine, signature, sigDiff, onlyNew, codeDiff, outline, layerLine, layerLines, sliderNote, unsavedLines, mediaLine, sceneCode, bucketOf, endTurn, namesOff, OUTLINE_AT },
+    _test: { diff, landed, applyEdits, compact, sliderLine, newLines, statLine, signature, sigDiff, onlyNew, codeDiff, outline, layerLine, layerLines, sliderNote, unsavedLines, mediaLine, sceneCode, bucketOf, endTurn, namesOff, OUTLINE_AT, errHint, errorContext, codeColors },
   };
 })();
 // (round 37) loadable in Node for its unit test (dev/directorlean-test.js); the app loads it as a plain script
