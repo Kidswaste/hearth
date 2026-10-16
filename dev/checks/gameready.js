@@ -264,7 +264,8 @@ await safe('html', async () => {
     const c3 = await playHtml('htmlOptimized', { tool: TOOL });
     const served = await window.hub.gameReady.served();
     const ship = served.filter((x) => /ship\.glb$/.test(x.rel));
-    step('html: optimized → the window serves the copy for models/ship.glb (URL rewrite)', o.ok && o.made?.length === 1 && ship.length && ship.every((x) => x.swapped), { made: o.made?.length, ship, plan: c3.res.plan });
+    // (the same bytes as the Lab's ship: the copy made for the Lab is found by its hash, nothing made twice)
+    step('html: optimized → the window serves the copy for models/ship.glb (URL rewrite; the Lab\'s copy of the same bytes reused)', o.ok && (o.made?.length || 0) + (o.fresh?.length || 0) >= 1 && ship.length && ship.every((x) => x.swapped), { made: o.made?.length, fresh: o.fresh?.length, ship, plan: c3.res.plan });
     const loaded = await until(async () => (await window.hub.gameReady.served()).length && c3.st?.first5, 3000);
     step('html: the game still plays on the copy: 0 compiles / uploads in its first 5 s', c3.st?.first5?.compiles === 0 && c3.st?.first5?.uploads === 0 && Boolean(loaded), c3.st?.first5);
     GameReady.stop(); await wait(500);
