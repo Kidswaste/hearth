@@ -26,6 +26,7 @@ const GameReady = (() => {
   const T = () => { try { return JSON.parse(localStorage.getItem('gameready.test') || 'null') || {}; } catch { return {}; } };
   const plat = () => (/^Win/.test(navigator.platform) ? 'win32' : /Mac/.test(navigator.platform) ? 'darwin' : 'linux');
   const MODEL = /\.(glb|gltf)$/i;
+  const labPort = () => (typeof ThreeLab !== 'undefined' ? ThreeLab.game : null); // (a const global: not on window)
   let R = null; // the game being got ready / played
   let map = {}; // a Lab scene's model references → their optimized copies (pathFor), while it plays
   const S = { runs: 0, last: null };
@@ -52,6 +53,7 @@ const GameReady = (() => {
       if (m.type === 'gr-progress' && r) r.onProgress?.({ stage: m.text, pct: m.pct, text: `${C.title(r.title)} ${m.text} · ${m.pct} %` });
       if (m.type === 'gr-first5' && r) { r.first5 = { compiles: m.compiles, links: m.links, uploads: m.uploads, reuploads: m.reuploads, frames: m.frames }; S.last = info(r); }
       if (m.type === 'gr-cancel' && r) stop();
+      if (m.type === 'gr-error' && r) { (r.pageErrors ||= []).push(String(m.text || '').slice(0, 300)); if (r.pageErrors.length > 10) r.pageErrors.shift(); }
       if (m.type === 'game-closed' && r) { r.closed = true; if (R === r) R = null; }
       onBox(m);
     });
@@ -134,6 +136,15 @@ const GameReady = (() => {
     const id = r.id;
     r.port.send({ type: 'ready-lock', on: true }); // 100 % quality from now on (no adaptive steps, no doze, no fps cap)
     await labScan(r);
+    // the scene drawing whole first (a scene just opened / started again builds its layers one by one): the count of
+    // drawing renderers steady for 0.6 s (at most 10 s)
+    { let last = -1; let since = performance.now(); const t0 = performance.now();
+      while (!r.skip && performance.now() - t0 < 10000) {
+        const c = await ask(r, { type: 'ready-count', id }, (m) => m.type === 'ready-count', 3000);
+        const n = c?.renderers ?? 0;
+        if (n !== last) { last = n; since = performance.now(); } else if (n > 0 && performance.now() - since > 600) break;
+        await sleep(120);
+      } }
     if (r.skip) return;
     // 2–3. everything in, textures at the best anisotropy (before their upload), what the scene costs
     r.set('assets', 0);
@@ -152,13 +163,19 @@ const GameReady = (() => {
     // 4. warm frames: what the frames themselves draw (shadow maps, post passes, a layer that shows later), compiled now
     a = performance.now();
     r.steps.warm = [];
-    for (let i = 0; i < 2 && !r.skip; i += 1) {
-      r.steps.warm.push(await ask(r, { type: 'ready-warm', id, n: 4 }, (m) => m.type === 'ready-warmed' && m.id === id, 15000));
-      r.set('warm', (i + 1) / 2);
+    // until two warm passes in a row find nothing new to compile or upload (a model read again arrives a moment
+    // later: its textures are uploaded here, not in play), at most 6
+    for (let i = 0, quiet = 0; i < 6 && quiet < 2 && !r.skip; i += 1) {
+      const w = await ask(r, { type: 'ready-warm', id, n: 4 }, (m) => m.type === 'ready-warmed' && m.id === id, 15000);
+      r.steps.warm.push(w);
+      const g = w?.gl || {};
+      quiet = (g.compiles || 0) + (g.links || 0) + (g.uploads || 0) === 0 ? quiet + 1 : 0;
+      r.set('warm', Math.min(1, (i + 1) / 3));
+      if (quiet < 2) await sleep(250);
     }
     r.ms.warm = Math.round(performance.now() - a);
     const after = await ask(r, { type: 'ready-scan', id }, (m) => m.type === 'ready-scanned' && m.id === id, 15000); // (programs now compiled)
-    r.inventory = { ...(r.steps.scan || {}), programs: after?.programs ?? r.steps.scan?.programs, calls: after?.calls ?? r.steps.scan?.calls, triangles: after?.triangles ?? r.steps.scan?.triangles };
+    r.inventory = after?.textures ? after : r.steps.scan || {}; // (after: a model's own textures, in by now, and every program)
   }
 
   // ---------- an HTML game ----------
@@ -180,11 +197,15 @@ const GameReady = (() => {
     r.steps.page = m; r.ms = { ...(m.steps || {}) };
     r.inventory = m.inventory || {};
     // what the warm run loaded, kept for the next launch (its models are then known before the game asks for them)
-    const files = (m.inventory?.files || []).map((f) => { try { const u = new URL(f.url); return u.protocol === 'hearth-game:' ? `${w.root}/${decodeURIComponent(u.pathname.replace(/^\/+/, ''))}` : null; } catch { return null; } }).filter(Boolean);
+    // (what the window served: every file of the build the game asked for, module imports included)
+    const served = await G().served().catch(() => []);
+    const files = [...new Set(served.map((x) => `${w.root}/${x.rel}`))];
+    const decoders = [...new Set([...(m.inventory?.decoders || []), ...served.map((x) => (/meshopt_decoder/i.test(x.rel) ? 'meshopt' : /basis_transcoder/i.test(x.rel) ? 'ktx2' : /draco_(wasm_)?decoder/i.test(x.rel) ? 'draco' : null)).filter(Boolean)])];
     r.loaded = files;
-    if (files.length) await G().scan({ root: w.root, files, decoders: m.inventory?.decoders || [] }).catch(() => null);
+    if (files.length) await G().scan({ root: w.root, files, decoders }).catch(() => null);
     if (!r.files.length && files.some((p) => MODEL.test(p))) { r.files = await hashFiles(files.filter((p) => MODEL.test(p))); r.plan = await G().plan({ files: r.files }); }
-    r.decoders = m.inventory?.decoders || r.decoders;
+    r.decoders = decoders.length ? decoders : r.decoders;
+    if (r.inventory) r.inventory.decoders = r.decoders;
     r.phase = 'playing'; // (the page plays by itself once ready; its first 5 s arrive as gr-first5)
   }
 
@@ -192,7 +213,7 @@ const GameReady = (() => {
   async function prepare(source, onProgress, opts = {}) {
     if (R) stop();
     const kind = source?.kind === 'html' ? 'html' : 'lab';
-    const port = opts.port || (kind === 'lab' ? window.ThreeLab?.game : null);
+    const port = opts.port || (kind === 'lab' ? labPort() : null);
     if (kind === 'lab' && !port) return { ok: false, error: 'Open the Three.js Lab first' };
     if (kind === 'html' && !G()?.openHtml) return { ok: false, error: 'This Hearth can\'t open game windows' };
     let stopNow = null;
@@ -201,7 +222,8 @@ const GameReady = (() => {
     S.runs += 1;
     if (kind === 'lab') {
       if (opts.card !== false) r.ui = card(r);
-      r.set = (stage, f, counts = {}) => { const p = C.progress(stage, f); r.ui?.set(p, C.label(stage, counts)); r.onProgress?.({ stage, pct: p, text: `${C.title(r.title)} ${C.line(stage, counts, f)}` }); };
+      // (the bar never goes back: the page's own 'assets' note during compiling is left out)
+      r.set = (stage, f, counts = {}) => { const p = C.progress(stage, f); if (p < (r.pct || 0)) return; r.pct = p; r.ui?.set(p, C.label(stage, counts)); r.onProgress?.({ stage, pct: p, text: `${C.title(r.title)} ${C.line(stage, counts, f)}` }); };
     }
     try {
       if (T().noPrep) { r.noPrep = true; if (kind === 'html') await htmlPrepare(r); } // (a check's "before": no getting ready)
@@ -276,7 +298,7 @@ const GameReady = (() => {
     // again, on the optimized copies
     const src = r.source; const cb = r.onProgress; const port = r.port;
     stop();
-    return prepare(src, cb, { port: port === window.ThreeLab?.game ? undefined : port });
+    return prepare(src, cb, { port: port === labPort() ? undefined : port });
   }
   function calmText(e) { try { return window.calmError ? window.calmError(e) : String(e); } catch { return String(e); } }
   async function installNow(r) {
@@ -290,7 +312,7 @@ const GameReady = (() => {
   // a Lab reference read while its scene plays: the optimized copy when there's a fresh one (tools/three.js)
   const pathFor = (ref) => (R && R.kind === 'lab' && ref?.path ? map[C.norm(ref.path, plat())] || null : null);
   function info(r) {
-    return { kind: r.kind, title: r.title, phase: r.phase, readyMs: r.readyMs, ms: r.ms, scan: r.scan, steps: { scan: r.steps.scan ? { ...r.steps.scan, textures: r.steps.scan.textures?.length } : undefined, prep: r.steps.prep, warm: r.steps.warm, page: r.steps.page ? { ms: r.steps.page.ms, steps: r.steps.page.steps, gl: r.steps.page.gl, uploaded: r.steps.page.uploaded, skipped: r.steps.page.skipped } : undefined }, inventory: r.inventory ? { ...r.inventory, textures: r.inventory.textures?.length, files: r.inventory.files?.length } : null, findings: r.findings, plan: r.plan ? { fresh: r.plan.fresh.length, stale: r.plan.stale.length, missing: r.plan.missing.length, swapped: Object.keys(r.plan.map || {}).length } : null, models: r.files?.length || 0, first5: r.first5, noPrep: Boolean(r.noPrep), error: r.error, loaded: r.loaded?.length };
+    return { kind: r.kind, title: r.title, phase: r.phase, readyMs: r.readyMs, ms: r.ms, scan: r.scan, steps: { scan: r.steps.scan ? { ...r.steps.scan, textures: r.steps.scan.textures?.length } : undefined, prep: r.steps.prep, warm: r.steps.warm, page: r.steps.page ? { ms: r.steps.page.ms, steps: r.steps.page.steps, gl: r.steps.page.gl, uploaded: r.steps.page.uploaded, skipped: r.steps.page.skipped } : undefined }, inventory: r.inventory ? { ...r.inventory, textures: r.inventory.textures?.length, files: r.inventory.files?.length } : null, findings: r.findings, plan: r.plan ? { fresh: r.plan.fresh.length, stale: r.plan.stale.length, missing: r.plan.missing.length, swapped: Object.keys(r.plan.map || {}).length } : null, models: r.files?.length || 0, first5: r.first5, noPrep: Boolean(r.noPrep), error: r.error, pageErrors: r.pageErrors, loaded: r.loaded?.length };
   }
 
   // ---------- chat ----------
@@ -303,7 +325,7 @@ const GameReady = (() => {
         const a = String(arg || '').trim();
         if (a === 'stop') { stop(); return ctx.say('Back to the Lab as it was.'); }
         if (a === 'optimize') { const res = await optimize(R?.source); return ctx.say(res.needTool ? `Optimizing needs gltfpack: \`${res.plan.command}\` (press Optimize for play on the card to install it)` : res.ok ? `Optimized ${res.made.length} model(s) into Hearth's cache` : calmText(res.error)); }
-        const sc = window.ThreeLab?.game?.scene?.();
+        const sc = labPort()?.scene?.();
         if (!sc) return ctx.say('Open a scene in the Three.js Lab first.');
         const res = await prepare({ kind: 'lab', id: sc.id, title: sc.name });
         return ctx.say(res.ok ? `${sc.name} is ready (${Math.round((res.readyMs || 0) / 100) / 10} s).${res.findings?.length ? ` ${res.findings.filter((f) => f.kind !== 'shaders').map((f) => f.text).join('. ')}.` : ''}` : calmText(res.error || 'It couldn\'t get ready'));

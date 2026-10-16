@@ -134,8 +134,11 @@
     ui.t.textContent = `Getting ${S.title} ready…`;
     const p = Math.max(0, Math.min(100, Math.round(pct)));
     const line = `${text} · ${p} %`;
-    if (line !== ui.last) { ui.last = line; ui.l.textContent = line; ui.i.style.transform = `scaleX(${p / 100})`; post({ type: 'gr-progress', text, pct: p }); }
+    if (line !== ui.last) { ui.last = line; ui.l.textContent = line; ui.i.style.transform = `scaleX(${p / 100})`; if (text !== ui.sent || Math.abs(p - (ui.sentP || 0)) >= 5 || p === 100) { ui.sent = text; ui.sentP = p; post({ type: 'gr-progress', text, pct: p }); } }
   }
+  // the game's own errors, for Hearth to say why a game didn't start (never changes anything)
+  addEventListener('error', (e) => post({ type: 'gr-error', text: e.target && e.target !== window ? `couldn't load ${String(e.target.src || e.target.href || e.target.tagName).split('/').slice(-2).join('/')}` : `${e.message || e.error || 'error'} ${e.filename ? `(${String(e.filename).split('/').pop()}:${e.lineno})` : ''}` }), true);
+  addEventListener('unhandledrejection', (e) => post({ type: 'gr-error', text: String(e.reason?.stack || e.reason || 'rejected').slice(0, 300) }));
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.phase !== 'playing') { e.stopImmediatePropagation(); post({ type: 'gr-cancel' }); } }, true);
   // ---------- 5. play ----------
   function play() {

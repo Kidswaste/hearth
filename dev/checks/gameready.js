@@ -18,9 +18,11 @@
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return false; };
 const out = { steps: [], measure: {} };
-const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
-const safe = async (name, fn) => { try { await fn(); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
+const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); window.hub?.fs?.write('/tmp/hearth-gameready/progress.json', JSON.stringify(out, null, 1)).catch(() => {}); };
+// (each part at most 6 minutes: a stuck part is reported and the next one runs)
+const safe = async (name, fn) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after 6 min`)), 360000))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
 const DIR = '/tmp/hearth-gameready';
+const BASE = "import * as THREE from 'three';\nconst renderer = new THREE.WebGLRenderer({ alpha: true }); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);\nconst scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 10);\nrenderer.setAnimationLoop(() => renderer.render(scene, camera));";
 const TOOL = '/tmp/hearth-gameready-tools/node_modules/.bin/gltfpack';
 const THREE_DIR = '/opt/cdn-cache/three@0.186.1/package';
 const setTest = (o) => (o ? localStorage.setItem('gameready.test', JSON.stringify(o)) : localStorage.removeItem('gameready.test'));
@@ -114,7 +116,7 @@ await safe('fixtures', async () => {
   await window.hub.fs.write(`${H}/index.html`, HTML);
   await window.hub.fs.copy(`${DIR}/ground.jpg`, `${H}/textures/ground.jpg`);
   await window.hub.fs.copy(`${DIR}/ship.glb`, `${H}/models/ship.glb`);
-  for (const [a, b] of [['build/three.module.js', 'three.module.js'], ['build/three.core.js', 'three.core.js'], ['examples/jsm/loaders/GLTFLoader.js', 'jsm/loaders/GLTFLoader.js'], ['examples/jsm/utils/BufferGeometryUtils.js', 'jsm/utils/BufferGeometryUtils.js'], ['examples/jsm/libs/meshopt_decoder.module.js', 'jsm/libs/meshopt_decoder.module.js']]) await window.hub.fs.copy(`${THREE_DIR}/${a}`, `${H}/${b}`);
+  for (const [a, b] of [['build/three.module.js', 'three.module.js'], ['build/three.core.js', 'three.core.js'], ['examples/jsm/loaders/GLTFLoader.js', 'jsm/loaders/GLTFLoader.js'], ['examples/jsm/utils/BufferGeometryUtils.js', 'jsm/utils/BufferGeometryUtils.js'], ['examples/jsm/utils/SkeletonUtils.js', 'jsm/utils/SkeletonUtils.js'], ['examples/jsm/libs/meshopt_decoder.module.js', 'jsm/libs/meshopt_decoder.module.js']]) await window.hub.fs.copy(`${THREE_DIR}/${a}`, `${H}/${b}`);
   out.hashBefore = await window.hub.gameReady.hash(ORIG);
   step('fixtures: a 4096×2048 picture, a detail picture, a GLB ship with its texture, an HTML build', out.hashBefore.every((h) => h.hash), out.hashBefore.map((h) => [h.path.split('/').slice(-2).join('/'), h.size]));
 });
@@ -149,9 +151,11 @@ await safe('setup', async () => {
   try { c.customSize(640, 360); c.size('custom'); } catch (err) { out.sizeError = err.message; }
   await wait(800);
   const t0 = performance.now();
-  await D.newSketch('Clink fixture', GAME, 1);
+  // (the references first, then the game's layer: a layer run before its references throws "No reference")
+  await D.newSketch('Clink fixture', BASE, 1);
   await D.refs.add(`${DIR}/ground.jpg`, 'ground');
   await D.refs.add(`${DIR}/detail.png`, 'detail');
+  await D.addLayer({ name: 'Game', code: GAME }, 2);
   out.model = await say(`/model add ${DIR}/ship.glb`);
   // the first preparation of this launch, right away (its time is compared with the next launch's: GPU shader disk cache)
   setTest({ hold: 0 });
@@ -182,9 +186,8 @@ await safe('after', async () => {
   step('after: its words: "Getting Clink ready… textures n/m"', [...r.lines].some((t) => /^Getting Clink ready… /.test(t)) && [...r.lines].some((t) => /textures \d+\/\d+/.test(t)), [...r.lines].slice(0, 8));
   step('after: 0 shaders compiled and 0 textures uploaded in the first 5 s of play (the pickup shows at 2 s)', f5 && f5.compiles === 0 && f5.links === 0 && f5.uploads === 0, f5);
   step('after: quality held (locked, every layer at its own resolution)', f5?.lock === true && f5?.level === 0, f5);
-  const inv = r.res.steps?.scan;
-  step('after: every texture found, at the best anisotropy', (inv?.textures || 0) >= 3 && (r.res.inventory?.aniso >= 0), { textures: inv?.textures, aniso: r.res.inventory?.aniso });
-  const aniso = await sbx(`(() => { let lo = 99, hi = 0, n = 0; for (const r of renderers) { if (r.__stale || r.__gutted) continue; const max = r.capabilities.getMaxAnisotropy(); for (const sc of new Set([...(r.__seen || []), r.__lastScene])) sc?.traverse?.((o) => { const m = o.material; for (const mm of Array.isArray(m) ? m : m ? [m] : []) for (const v of Object.values(mm)) if (v?.isTexture && !v.isVideoTexture && !v.isRenderTargetTexture) { n++; lo = Math.min(lo, v.anisotropy / max); hi = Math.max(hi, v.anisotropy); } }); } return { n, lo, hi }; })()`);
+  step('after: every texture found (ground, detail, the ship\'s own)', (r.res.inventory?.textures || 0) >= 3, { textures: r.res.inventory?.textures, prepTextures: r.res.steps?.prep?.textures });
+  const aniso = await sbx(`return (() => { let lo = 99, hi = 0, n = 0; for (const r of __rdyLive()) { const max = r.capabilities.getMaxAnisotropy(); for (const sc of new Set([...(r.__seen || []), r.__lastScene])) sc?.traverse?.((o) => { const m = o.material; for (const mm of Array.isArray(m) ? m : m ? [m] : []) for (const v of Object.values(mm)) if (v?.isTexture && !v.isVideoTexture && !v.isRenderTargetTexture) { n++; lo = Math.min(lo, v.anisotropy / max); hi = Math.max(hi, v.anisotropy); } }); } return { n, lo, hi }; })()`);
   step('after: textures at the graphics card\'s best anisotropy', aniso && aniso.n >= 3 && aniso.lo === 1, aniso);
   step('after: what it found (the 4K picture and what it costs, the shaders)', r.res.findings?.some((f) => f.kind === 'big-textures' && /1 texture is 4K — it costs \d+ MB of video memory/.test(f.text)) && r.res.findings?.some((f) => f.kind === 'shaders'), r.res.findings?.map((f) => f.text));
   GameReady.stop();
@@ -227,8 +230,8 @@ if (haveTool) await safe('optimize: with gltfpack', async () => {
   const shipRef = ThreeLab.game.refs().find((x) => x.kind === 'model');
   const bytes = await sbx(`fetch(refs.${shipRef.key}).then((r) => r.arrayBuffer()).then((b) => b.byteLength)`);
   step('optimize: the Lab reads the copy (the sketch\'s model reference is the optimized size)', bytes === res.made?.[0]?.bytes, { bytes, made: res.made?.[0]?.bytes });
-  const errs = await sbx(`(window.__labErrors || []).length`);
-  const drawn = await sbx(`(() => { let n = 0; for (const r of renderers) { if (r.__stale) continue; r.__lastScene?.traverse?.((o) => { if (o.isMesh && o.geometry?.attributes?.position?.count === 2401) n++; }); } return n; })()`);
+  const errs = D.report?.()?.errors || [];
+  const drawn = await sbx(`return (() => { let n = 0; for (const r of __rdyLive()) { r.__lastScene?.traverse?.((o) => { if (o.isMesh && o.geometry?.attributes?.position?.count === 2401) n++; }); } return n; })()`);
   step('optimize: the optimized ship is in the scene (meshopt decoded, same vertex count)', drawn >= 1, { drawn, errs });
   step('optimize: 0 compiles / uploads in the first 5 s of play on the optimized copy', r.st?.first5?.compiles === 0 && r.st?.first5?.uploads === 0, r.st?.first5);
   GameReady.stop(); await wait(400);

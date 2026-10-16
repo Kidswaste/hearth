@@ -8,6 +8,7 @@
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return false; };
 const DIR = '/tmp/hearth-gameready';
+const BASE = "import * as THREE from 'three';\nconst renderer = new THREE.WebGLRenderer({ alpha: true }); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);\nconst scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 10);\nrenderer.setAnimationLoop(() => renderer.render(scene, camera));";
 const out = { steps: [] };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 await until(() => window.hub && performance.getEntriesByName('hearth:ready').length);
@@ -26,9 +27,11 @@ if (first && GAME) {
   await wait(800);
   if (typeof GameReady === 'undefined' && window.Lazy) await Lazy.load('gameready');
   const t0 = performance.now();
-  await D.newSketch('Clink fixture', GAME, 1);
+  // (the references first, then the game's layer: a layer run before its references throws "No reference")
+  await D.newSketch('Clink fixture', BASE, 1);
   await D.refs.add(`${DIR}/ground.jpg`, 'ground');
   await D.refs.add(`${DIR}/detail.png`, 'detail');
+  await D.addLayer({ name: 'Game', code: GAME }, 2);
   await Commands.tryRun(`/model add ${DIR}/ship.glb`, H.claudeAgent().id, null, { say: (t) => { text = String(t); }, note: (t) => { text = String(t); }, error: (e) => { text = `ERR ${e}`; } });
   localStorage.setItem('gameready.test', JSON.stringify({ hold: 0 }));
   const sc = ThreeLab.game.scene();
