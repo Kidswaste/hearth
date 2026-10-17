@@ -12,7 +12,9 @@
 //              graphics driver compiles in the background), and stays out of the picture until its shaders are ready
 //              (at least 2 frames and until a fence says the graphics process is done, at most 1.5 s); its textures are uploaded one per frame meanwhile (initTexture), so
 //              a model with five 2K textures costs five small frames instead of one long one. Only while drawing: the
-//              game reading obj.visible never sees a change.
+//              game reading obj.visible never sees a change. (round 54 fix) What a game adds every frame (projectiles,
+//              sparks, decals: materials of a kind already compiled, pictures already on the card) is left alone: no
+//              compile, no hold, never hidden; a canvas / data / video texture the game rewrites is never re-sent here.
 //   the log    what loaded during play (files, pictures, objects shown), with when and how it was smoothed, for the F
 //              chip ("last: shader 84 ms · ship.glb") and the doctor ("ship.glb loaded mid-game at 5.0 s…"): the gameperf
 //              probe reads window.__gameStream.report(t0) / near(a, b) / renderers().
@@ -23,7 +25,7 @@
   const Q = new URLSearchParams((document.currentScript?.src || '').split('?')[1] || '');
   const now = () => performance.now();
   const S = { on: Q.get('off') !== '1', active: false, activeAt: null, firstDraw: null, parallel: null, loads: [],
-    images: { streamed: 0, used: 0, fallback: 0, small: 0, failed: 0, decodeMs: 0 }, slices: { textures: 0, strips: 0, done: 0 }, frameMs: 16.7, holds: { n: 0, released: 0, capped: 0, maxMs: 0, frames: 0 }, uploads: 0, compiles: 0 };
+    tick: 0, images: { streamed: 0, used: 0, fallback: 0, small: 0, failed: 0, decodeMs: 0 }, slices: { textures: 0, strips: 0, done: 0 }, frameMs: 16.7, holds: { n: 0, released: 0, capped: 0, maxMs: 0, frames: 0 }, uploads: 0, compiles: 0 };
   const SMALL = 96 * 1024; // pictures under this decode fast enough where they are
   const CAP = 1500; const MIN_FRAMES = 2;
   const r1 = (x) => Math.round(x * 10) / 10;
@@ -199,15 +201,14 @@
     if (!O3 || protos.has(O3) || typeof O3.add !== 'function' || typeof O3.traverse !== 'function') return;
     protos.add(O3);
     const add0 = O3.add;
-    O3.add = function add(...objs) { const r = add0.apply(this, objs); if (S.active && S.on) for (const o of objs) if (o && o !== this && o.isObject3D && fresh.size < 4000) fresh.set(o, now()); return r; };
+    O3.add = function add() { const r = add0.apply(this, arguments); if (S.active && S.on) for (let i = 0; i < arguments.length; i += 1) { const o = arguments[i]; if (o && o !== this && o.isObject3D && fresh.size < 4000) fresh.set(o, S.tick); } return r; };
     const att0 = O3.attach;
-    if (typeof att0 === 'function') O3.attach = function attach(o) { const r = att0.call(this, o); if (S.active && S.on && o?.isObject3D && fresh.size < 4000) fresh.set(o, now()); return r; };
+    if (typeof att0 === 'function') O3.attach = function attach(o) { const r = att0.call(this, o); if (S.active && S.on && o?.isObject3D && fresh.size < 4000) fresh.set(o, S.tick); return r; };
   }
   const rootOf = (o) => { let x = o; for (let i = 0; i < 128 && x.parent; i += 1) x = x.parent; return x; };
   const isDrawn = (x) => x.isMesh || x.isPoints || x.isLine || x.isSprite;
   const matsOf = (x) => (Array.isArray(x.material) ? x.material : x.material ? [x.material] : []);
   const imgReady = (im) => im && !(im instanceof HTMLImageElement && (!im.complete || !im.naturalWidth)) && !(im instanceof HTMLVideoElement);
-  const texPending = (P, t) => t?.isTexture && !t.isRenderTargetTexture && !t.isVideoTexture && !t.isDepthTexture && t.version > 0 && imgReady(t.image) && P.get(t).__version !== t.version;
   const progReady = (p) => { try { return !p.isReady || p.isReady(); } catch { return true; } };
   // a fence after the compile / upload commands: signaled once the graphics process has done them (WebGL 2; asked
   // without waiting: getSyncParameter is answered from Chromium's cache; never isSync, a round trip that waits).
@@ -227,30 +228,93 @@
     let m = null; o.traverse((x) => { if (!m && isDrawn(x)) m = matsOf(x)[0]; });
     return m ? `a new ${String(m.type || '').replace(/^Mesh|Material$/g, '').toLowerCase() || 'plain'} ${o.isMesh ? 'mesh' : 'object'}` : `a new ${o.type || 'object'}`;
   }
+  // (round 54 fix) what three's program for a material depends on, roughly: the same kind → the same cached program.
+  // Steady per-frame work (bullets, particles, sparks, decals a game adds every frame, often with a cloned material)
+  // is a kind seen before: never compiled again, never held, never hidden. Too coarse a kind only means the game's own
+  // first draw compiles it (as without Hearth); a new kind is compiled once, and held only if that made a new program.
+  const SLOTS = ['map', 'alphaMap', 'aoMap', 'bumpMap', 'normalMap', 'displacementMap', 'emissiveMap', 'envMap', 'lightMap', 'metalnessMap', 'roughnessMap', 'specularMap', 'clearcoatMap', 'clearcoatNormalMap', 'clearcoatRoughnessMap', 'iridescenceMap', 'iridescenceThicknessMap', 'sheenColorMap', 'sheenRoughnessMap', 'specularColorMap', 'specularIntensityMap', 'transmissionMap', 'thicknessMap', 'anisotropyMap', 'gradientMap', 'matcap'];
+  const strId = new Map(); const sid = (v) => { if (!v) return 0; let i = strId.get(v); if (i === undefined) { if (strId.size > 2000) strId.clear(); i = strId.size + 1; strId.set(v, i); } return i; };
+  const bases = new WeakMap(); // a material class → three's Material.prototype (the one with the default program key)
+  function base(m) {
+    const P0 = Object.getPrototypeOf(m); if (!P0) return null;
+    let b = bases.get(P0);
+    if (b === undefined) { b = P0; while (b && !Object.prototype.hasOwnProperty.call(b, 'customProgramCacheKey')) b = Object.getPrototypeOf(b); b = b || null; bases.set(P0, b); }
+    return b;
+  }
+  function kindOfDraw(x, m) {
+    let k = `${m.type}|${m.side}|${m.vertexColors ? 1 : 0}|${m.alphaTest > 0 ? 1 : 0}|${m.alphaHash ? 1 : 0}|${m.premultipliedAlpha ? 1 : 0}|${m.flatShading ? 1 : 0}|${m.dithering ? 1 : 0}|${m.toneMapped === false ? 0 : 1}|${m.fog ? 1 : 0}|${m.transmission > 0 ? 1 : 0}|${m.clearcoat > 0 ? 1 : 0}|${m.sheen > 0 ? 1 : 0}|${m.iridescence > 0 ? 1 : 0}|${m.dispersion > 0 ? 1 : 0}|${m.anisotropy > 0 ? 1 : 0}|${m.sizeAttenuation ? 1 : 0}|${m.wireframe ? 1 : 0}`;
+    for (let i = 0; i < SLOTS.length; i += 1) { const t = m[SLOTS[i]]; if (t) k += `|${i}:${t.channel | 0}${t.isCubeTexture ? 'c' : ''}${t.isVideoTexture ? 'v' : ''}${t.mapping}`; }
+    if (m.isShaderMaterial) k += `|s${sid(m.vertexShader)}:${sid(m.fragmentShader)}`;
+    { const b = base(m); if (b && (m.customProgramCacheKey !== b.customProgramCacheKey || m.onBeforeCompile !== b.onBeforeCompile)) { try { const c = m.customProgramCacheKey(); if (c) k += `|c${sid(c)}`; } catch { /* fine */ } } } // (three's own default: the same for every material: not asked, a function's text each time)
+    if (m.defines) { for (const d in m.defines) k += `|d${d}=${m.defines[d]}`; }
+    const g = x.geometry; const at = g?.attributes;
+    if (at) k += `|g${at.color ? 'c' : ''}${at.tangent ? 't' : ''}${at.uv1 ? '1' : ''}${at.uv2 ? '2' : ''}${at.uv3 ? '3' : ''}${at.normal ? 'n' : ''}`;
+    if (g.morphAttributes) for (const a in g.morphAttributes) k += `m${a}`;
+    k += `|o${x.isSkinnedMesh ? 's' : ''}${x.isInstancedMesh ? `i${x.instanceColor ? 'c' : ''}` : ''}${x.isBatchedMesh ? 'b' : ''}${x.receiveShadow ? 'r' : ''}${x.isPoints ? 'p' : x.isLine ? 'l' : x.isSprite ? 'S' : ''}`;
+    return k;
+  }
+  const known = new WeakMap(); // renderer → Set of kinds compiled (or found cached) already
+  const BUDGET = 0.5; // ms a frame for what was added (a level dropping in is compiled at once: its kinds are new)
+  // a texture that was never on the graphics card (a picture loaded during play). A texture already there that the game
+  // updates (a canvas / data / video texture rewritten every frame) is the game's own steady work: never touched
+  const texNew = (P, t) => t?.isTexture && !t.isRenderTargetTexture && !t.isVideoTexture && !t.isDepthTexture && t.version > 0 && imgReady(t.image) && !P.get(t).__webglTexture;
+  const NONE = new Set(); const MATS = new Set(); const TEX = new Set(); const WANT = []; const L = { lights: '', P: null, kinds: null };
+  function look1(x) { // one node of an added object: its materials, and the kinds not compiled yet
+    if (x.isLight) L.lights += x.type;
+    if (!isDrawn(x)) return;
+    const ms = x.material; if (!ms) return;
+    if (Array.isArray(ms)) { for (const m of ms) if (m) mat1(x, m); } else mat1(x, ms);
+  }
+  // a geometry + material type that came 3 times in a row as a kind already compiled is steady work (a projectile the game
+  // spawns all the time): not looked at again (one that differs is compiled by the game's own first draw, as without Hearth)
+  const steady = new WeakMap(); // geometry → Map(material type → times in a row)
+  function mat1(x, m) {
+    if (MATS.has(m)) return; MATS.add(m);
+    if (L.P.get(m).currentProgram) return;
+    const g = x.geometry; let s = g ? steady.get(g) : null;
+    if (s && s.get(m.type) >= 3) return;
+    const k = kindOfDraw(x, m);
+    if (!L.kinds.has(k)) { WANT.push(k); if (s) s.set(m.type, 0); } else if (g) { if (!s) steady.set(g, s = new Map()); s.set(m.type, (s.get(m.type) || 0) + 1); }
+  }
   function take(r, scene, camera) {
     const P = r.properties; if (!P?.get) { fresh.clear(); return; }
-    let k = 0; const t = now(); const claimed = new Set();
+    const t = now(); let claimed = held.size ? new Set() : NONE;
     for (const h of held) claimed.add(h.o);
+    let kinds = known.get(r); if (!kinds) known.set(r, kinds = new Set());
+    let compiled = 0; let k8 = 0;
     for (const [o, at] of fresh) {
-      if (k++ > 2000) break;
+      if ((++k8 & 7) === 0 && now() - t > BUDGET) { fresh.clear(); break; } // (a flood: the rest is drawn as the game draws it)
+      if (!o.parent) { fresh.delete(o); continue; } // (removed again before it was drawn: a short-lived object)
       { let x = o.parent; let up = false; for (let i = 0; i < 128 && x; i += 1, x = x.parent) if (fresh.has(x)) { up = true; break; } if (up) { fresh.delete(o); continue; } } // (its parent was added too: handled with it)
       if (rootOf(o) !== scene) { if (t - at > 1000) fresh.delete(o); continue; } // (not in this scene: another renderer's, or not added yet)
       fresh.delete(o);
       if (o.visible === false) continue; // (shown later: the game's own choice; compiled when it shows)
-      { let x = o; let mine = false; for (let i = 0; i < 128 && x; i += 1, x = x.parent) if (claimed.has(x)) { mine = true; break; } if (mine) continue; } // (a part of an object already held: a model's own nodes)
-      const mats = new Set(); let lights = false;
-      o.traverse((x) => { if (x.isLight) lights = true; if (isDrawn(x)) for (const m of matsOf(x)) mats.add(m); });
-      const newMats = [...mats].filter((m) => !P.get(m).currentProgram);
-      const tex = new Set();
-      for (const m of mats) { for (const v of Object.values(m)) if (texPending(P, v)) tex.add(v); if (m.uniforms) for (const u of Object.values(m.uniforms)) if (texPending(P, u?.value)) tex.add(u.value); }
-      if (!newMats.length && !tex.size) continue;
-      if (newMats.length) { try { if (lights) r.compile(scene, camera); else r.compile(o, camera, scene); S.compiles += newMats.length; } catch { /* drawn as before */ } }
-      const progs = newMats.map((m) => P.get(m).currentProgram).filter(Boolean);
-      const rec = note('object', label(o, [...tex, ...[...mats].map((m) => m.map).filter(Boolean)])); rec.mats = newMats.length; rec.tex = tex.size;
-      const f = newMats.length ? fence(r.getContext?.()) : null;
+      if (claimed.size) { let x = o; let mine = false; for (let i = 0; i < 128 && x; i += 1, x = x.parent) if (claimed.has(x)) { mine = true; break; } if (mine) continue; } // (a part of an object already held: a model's own nodes)
+      // (no allocation for steady work: the sets are reused; a bullet with no children skips the traverse)
+      MATS.clear(); TEX.clear(); WANT.length = 0; L.lights = ''; L.P = P; L.kinds = kinds;
+      if (o.children.length) o.traverse(look1); else look1(o);
+      const mats = MATS; const want = WANT; const lights = L.lights;
+      if (lights && !kinds.has(`L${lights}`)) want.push(`L${lights}`);
+      for (const m of mats) { for (let i = 0; i < SLOTS.length; i += 1) { const v = m[SLOTS[i]]; if (texNew(P, v)) TEX.add(v); } if (m.uniforms) for (const k in m.uniforms) { const v = m.uniforms[k]?.value; if (texNew(P, v)) TEX.add(v); } }
+      if (!want.length && !TEX.size) continue; // (steady work: kinds seen before, its textures on the card already)
+      const tex = new Set(TEX);
+      let newMats = 0; let made = false;
+      if (want.length && compiled < 4) {
+        const n0 = r.info?.programs?.length ?? -1;
+        try { if (lights) r.compile(scene, camera); else r.compile(o, camera, scene); compiled += 1; } catch { /* drawn as before */ }
+        for (const k of want) kinds.add(k);
+        if (kinds.size > 4000) kinds.clear();
+        const n1 = r.info?.programs?.length ?? -1;
+        made = n0 < 0 || n1 > n0; // (no new program: three had it cached; nothing to wait for)
+        if (made) { newMats = [...mats].filter((m) => P.get(m).currentProgram).length; S.compiles += newMats; }
+      }
+      if (!made && !tex.size) continue;
+      const progs = made ? [...mats].map((m) => P.get(m).currentProgram).filter(Boolean) : [];
+      const rec = note('object', label(o, [...tex, ...[...mats].map((m) => m.map).filter(Boolean)])); rec.mats = newMats; rec.tex = tex.size;
+      const f = made ? fence(r.getContext?.()) : null;
       if (f) gpu.set(r.getContext(), { fence: fence(r.getContext()) });
       held.add({ o, r, scene, progs, tex: [...tex], t0: now(), frames: 0, rec, fence: f });
-      claimed.add(o);
+      if (claimed === NONE) claimed = new Set(); claimed.add(o);
       S.holds.n += 1;
     }
   }
@@ -269,7 +333,7 @@
       if (done && idle && !uploaded) {
         if (h.job) { const t0 = now(); try { while (h.job && !sliceStep(h.job, false) && now() - t0 < 3); if (h.job?.y >= h.job?.h) h.job = null; } catch { h.job = null; } uploaded = true; h.fence = fence(gl); if (h.fence) gpu.set(gl, { fence: fence(gl) }); } else {
           while (h.tex.length) {
-            const tx = h.tex.shift(); if (!texPending(P, tx)) continue;
+            const tx = h.tex.shift(); if (!texNew(P, tx)) continue;
             const job = { t: tx, tex: null };
             slicing = gl?.fenceSync ? { job } : null;
             try { r.initTexture(tx); S.uploads += 1; } catch { /* drawn as before */ } finally { slicing = null; }
@@ -298,11 +362,12 @@
     const r0 = r.render;
     const e0 = rends.get(r);
     r.render = function render(scene, camera) {
-      const tn = now(); if (S.firstDraw == null) S.firstDraw = tn;
+      const tn = now(); S.tick = tn; if (S.firstDraw == null) S.firstDraw = tn; // (S.tick: when an object was added, to a frame: no clock read per add)
       if (e0.at) S.frameMs += (Math.min(250, tn - e0.at) - S.frameMs) * 0.05; e0.at = tn;
       if (!scene?.isObject3D) return r0.call(this, scene, camera);
       const e = rends.get(this); if (e && e.scene !== scene) { e.scene = scene; e.camera = camera; hookAdd(scene); } else if (e) e.camera = camera;
-      if (!S.on || (!fresh.size && !held.size) || !active()) return r0.call(this, scene, camera);
+      if (!S.active && S.on) active(); // (a game that loads nothing during play: what it adds is looked at all the same)
+      if (!S.on || (!fresh.size && !held.size) || !S.active) return r0.call(this, scene, camera);
       if (fresh.size) take(this, scene, camera);
       if (!held.size) return r0.call(this, scene, camera);
       stepHeld(this, scene);
