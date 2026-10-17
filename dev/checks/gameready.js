@@ -142,7 +142,7 @@ async function playGame(label, source, test, { during } = {}) {
   if (during) await during();
   await p; await watch;
   const st = await until(() => GameReady.state()?.first5 && GameReady.state(), 30000);
-  out.measure[label] = { openToReadyMs: st?.readyMs, sawCardAtMs: sawCard, maxPct, lines: [...lines].slice(0, 5).concat([...lines].slice(-2)), page: st?.page, first5: st?.first5, result: st?.result ? { ms: st.result.ms, steps: st.result.steps, prep: st.result.prep, gl: st.result.gl, total: st.result.total, inventory: st.result.inventory && { ...st.result.inventory, textures: st.result.inventory.textures?.length } } : null, findings: st?.findings?.map((f) => f.text), plan: st?.plan, loaded: st?.loaded, decoders: st?.decoders };
+  out.measure[label] = { openToReadyMs: st?.readyMs, sawCardAtMs: sawCard, maxPct, lines: [...lines].slice(0, 5).concat([...lines].slice(-2)), page: st?.page, first5: st?.first5, result: st?.result ? { ms: st.result.ms, steps: st.result.steps, prep: st.result.prep, gl: st.result.gl, total: st.result.total, inventory: st.result.inventory && { ...st.result.inventory, textures: st.result.inventory.textures?.length } } : null, findings: st?.findings?.map((f) => f.text), plan: st?.plan, loaded: st?.loaded, decoders: st?.decoders, ab: st?.result?.ab || null, budgetOff: (await GW().budget({ source }).catch(() => null))?.off || null }; // (round 56, fixes56: the budget's A/B and what it keeps off for this game, to read a failure)
   return { st, sawCard, maxPct, lines };
 }
 async function leaveGame() { await GameMode.leave(); await until(async () => !(await playingNow()), 10000); await wait(800); }
