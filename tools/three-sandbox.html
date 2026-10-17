@@ -478,7 +478,7 @@ const realNow = performance.now.bind(performance); // (a sequence gives each sce
 // timeline; then, while presenting, 100 % quality is held (RDY.lock: no adaptive steps, no doze, no Light mode, no fps
 // cap). RDY.gl counts what the GPU compiles / uploads (from the prototypes, under the program cache: a cached program
 // counts nothing), so a check can count them in the first seconds of a show.
-const RDY = { lock: false, rec: null, pend: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0, waitMs: 0 } };
+const RDY = { lock: false, rec: null, pend: 0, reveal: 0, revealed: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0, waitMs: 0 } };
 // (round 56, readyspeed) when ▶ Play's pictures arrived, were decoded (off the page's thread) and transcoded (KTX2, in workers): page times, ms
 const RDYT = { refsAt: null, decodeFrom: null, decodeTo: null, decodeN: 0, ktxFrom: null, ktxTo: null, ktxN: 0 };
 const rdyT = (k, t0) => { const t = realNow(); if (RDYT[`${k}From`] == null || t0 < RDYT[`${k}From`]) RDYT[`${k}From`] = t0; if (RDYT[`${k}To`] == null || t > RDYT[`${k}To`]) RDYT[`${k}To`] = t; RDYT[`${k}N`] += 1; };
@@ -652,7 +652,8 @@ function instrument(renderFn) {
       this.__q = q;
       this.__inQ = true; try { this.setPixelRatio(this.__basePR * q); } finally { this.__inQ = false; }
     }
-    if (paceSkip(this, scene, camera, EL)) { lvBack?.(); cmBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
+    const rvBack = RDY.reveal && !this.__helper && scene?.isObject3D && !this.getRenderTarget?.() ? rdyReveal(scene) : null; // (round 59, readylab59) ▶ Play's prep frame: what the game hides for now drawn once under the card
+    if (paceSkip(this, scene, camera, EL)) { rvBack?.(); lvBack?.(); cmBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
     PACE.drawn += 1; PACE.lastDraw = frameTick;
     if (PACE.refreshAt !== frameTick) { PACE.drawPrev = frameTick; if (DOZE.on) dozeWake('drew'); } // (round 44, idlecpu: it moved: full rate at once)
     const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
@@ -660,7 +661,7 @@ function instrument(renderFn) {
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
     const rfBack = RF.on && !this.__helper ? rfApply(camera) : null; // (round 33, multiformat) a format's pan / zoom
     if (this.shadowMap?.enabled && scene?.isObject3D) shGate(this, scene); // (round 50 "lab240gpu": maps only when they can change)
-    try { renderFn.call(this, scene, camera); } finally { rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
+    try { renderFn.call(this, scene, camera); } finally { rvBack?.(); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
     if (this.domElement?.__lcf && !this.getRenderTarget()) { glNote(this, scene0, camera0); if (this.__adProbe) adProbeNow(this); } // (round 56, labcanvas56)
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     frameMs = realNow() - t0;
@@ -1693,6 +1694,23 @@ realRAF(tickFrames);
 //   ready-count {}           what the GPU compiled / uploaded so far (RDY.gl)
 //   ready-scan { id }        (round 52, gameready) everything in, textures at the best anisotropy, what the scene costs
 const rdyLive = () => [...renderers].filter((r) => !r.__stale && !r.__gutted && !r.__helper && r.__lastScene);
+// (round 59, readylab59) what a game hides for now and shows later (a pickup at 2 s, an effect on a hit) is drawn once in
+// getting ready's prep frame, under the card: three's compile() already makes its own program (it walks every mesh), but
+// only a drawn frame makes what showing it adds: its shadow-depth programs, a transmission target and the programs of
+// the scene drawn into it. Without this, a warm ▶ Play (its files and page ready sooner) reached the warm-up before the
+// game showed it, so the first warm-up pass always found 5 programs + 1 upload, never read clean, and a warm run did
+// 3 passes (one more than cold) and never earned the one short pass. Lights stay as they are (a hidden light would
+// change every program's light count); visibility is put back right after that one draw (the game's own state)
+function rdyReveal(scene) {
+  if (RDY.reveal === 1) { RDY.reveal = 2; realSetTimeout(() => { RDY.reveal = 0; }, 0); } // (every layer drawn in this task, then off)
+  const hid = [];
+  const lit = (o) => { let l = false; o.traverse((c) => { if (c.isLight) l = true; }); return l; };
+  scene.traverse((o) => { if (o !== scene && o.visible === false && !o.isLight && !o.isCamera && hid.length < 500 && !lit(o)) hid.push(o); });
+  if (!hid.length) return null;
+  for (const o of hid) o.visible = true;
+  RDY.revealed += hid.length;
+  return () => { for (const o of hid) o.visible = false; };
+}
 function rdyFrames(n) { return new Promise((res) => { let k = 0; const go = () => { if (++k >= n) res(); else realRAF(go); }; realRAF(go); }); }
 async function rdyAssets(id) {
   const t0 = realNow();
@@ -1806,8 +1824,10 @@ async function rdyMessage(msg) {
     const t0 = realNow(); const gl0 = { ...RDY.gl };
     const assets = await rdyAssets(msg.id);
     const comp = await rdyCompile(msg.id);
+    const rv0 = RDY.revealed; RDY.reveal = 1; // (round 59, readylab59) the first of its 2 frames draws what the game hides for now too
     await rdyFrames(2);
-    post({ type: 'ready-prepped', id: msg.id, ms: Math.round(realNow() - t0), assets, ...comp, gl: rdyDelta(gl0) });
+    RDY.reveal = 0;
+    post({ type: 'ready-prepped', id: msg.id, ms: Math.round(realNow() - t0), assets, ...comp, revealed: RDY.revealed - rv0, gl: rdyDelta(gl0) });
   } else if (msg.type === 'ready-warm') {
     const gl0 = { ...RDY.gl }; const n = Math.max(1, msg.n || 3);
     await rdyFrames(n + 1);
