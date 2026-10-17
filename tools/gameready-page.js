@@ -185,7 +185,7 @@
       const c0 = await count();
       await sleep(5000);
       const c1 = await count();
-      if (c0 && c1) S.first5 = { budgetOff: budgetOff(), compiles: c1.compiles - c0.compiles, links: c1.links - c0.links, uploads: c1.uploads - c0.uploads, reuploads: c1.reuploads - c0.reuploads, lock: c1.lock, level: c1.level, shares: c1.shares, waitMs: Math.round((c1.waitMs || 0) - (c0.waitMs || 0)) };
+      if (c0 && c1) S.first5 = { gpuLost: (c1.gpuLost || 0) - (c0.gpuLost || 0), budgetOff: budgetOff(), compiles: c1.compiles - c0.compiles, links: c1.links - c0.links, uploads: c1.uploads - c0.uploads, reuploads: c1.reuploads - c0.reuploads, lock: c1.lock, level: c1.level, shares: c1.shares, waitMs: Math.round((c1.waitMs || 0) - (c0.waitMs || 0)) };
     }
     realTimeout(() => prepareLab().catch((err) => { S.errors.push(String(err?.message || err)); play(); }), 0);
     return;
