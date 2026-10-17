@@ -9,7 +9,7 @@
 //     colour, an LDR background / environment) that the game left with no colour space is sRGB (three.js otherwise
 //     reads it as linear: washed-out colours). Only with three.js's colour management on (outputColorSpace 'srgb').
 //   - (Best) shadow maps matched to the screen: a light the game left at three.js's 512² gets the screen's size (its
-//     long edge in pixels, nearest power of two, 1024–4096; point lights half: six faces). The game's own filter and
+//     long edge in pixels, nearest power of two, 1024–2048; point lights half, at most 1024: six faces). The game's own filter and
 //     softness are kept (three.js r182+ PCF is already soft: 5 taps, the game's radius).
 //   - (Best) a smoothness guard: once the game plays, if frames miss the screen's refresh, the shadow maps step down
 //     toward the game's own size while that measurably helps (≥ 8 % per step); if it doesn't, they go back up (not the
@@ -33,7 +33,7 @@ function gameLookPage(o) {
   const R = { look: BEST ? 'best' : 'balanced', three: null, renderers: 0, frames: 0,
     aniso: { max: 0, sharp: 0, set: 0, kept: 0, later: false }, colour: 0,
     shadows: { lights: 0, set: 0, kept: 0, from: 0, to: 0, now: 0 }, guard: BEST ? 'waiting' : 'off', guardMs: null,
-    cost: { sweeps: 0, ms: 0, max: 0 },
+    cost: { sweeps: 0, ms: 0, max: 0, playMax: 0, wholes: 0 }, // (playMax: the most a frame after the first look spent here; wholes: whole-scene looks in one go)
     screen: { w: Math.round(screen.width * dpr), h: Math.round(screen.height * dpr), wide: mm('(color-gamut: p3)'), hdr: mm('(dynamic-range: high)') } };
   const rs = new Set(); const scenes = new Set();
   const state = new WeakMap(); // renderer → { at: WeakMap(scene → last look), n }
@@ -78,13 +78,17 @@ function gameLookPage(o) {
     if (u) for (const k in u) { const v = u[k] && u[k].value; if (v && v.isTexture) tex(r, v, false, max); }
   }
   // ---------- shadows ----------
+  // (round 54 fix) at most 2048² (a point light: 1024², it draws its six faces): past that the picture barely changes
+  // (three's soft PCF blurs the texels away) while every shadow-casting light redraws the scene into a map four times
+  // bigger (a 4K screen got a 4096² sun + spot and a 2048² point light: 58 M shadow texels drawn and cleared a frame)
+  const CAP = 2048; const CAP_POINT = 1024;
   function shadowSize(r) {
     let maxTex = 4096; try { maxTex = r.capabilities.maxTextureSize || 4096; } catch (e) { /* fine */ }
     const long = Math.max(R.screen.w, R.screen.h) || 1024;
-    return Math.min(4096, maxTex, Math.max(1024, 2 ** Math.round(Math.log2(long))));
+    return Math.min(CAP, maxTex, Math.max(1024, 2 ** Math.round(Math.log2(long))));
   }
   function setSize(x, s) {
-    const sh = x.sh; const v = x.point ? Math.max(512, s / 2) : s;
+    const sh = x.sh; const v = x.point ? Math.max(512, Math.min(CAP_POINT, s / 2)) : s;
     if (x.set && (sh.mapSize.x !== x.set || sh.mapSize.y !== x.set)) return; // the game changed it since: its choice
     if (sh.mapSize.x === v && sh.mapSize.y === v) return;
     sh.mapSize.set(v, v); x.set = v;
@@ -103,29 +107,72 @@ function gameLookPage(o) {
     raised.push(x); setSize(x, size);
     R.shadows.set += 1; R.shadows.from = 512; R.shadows.to = target; R.shadows.now = size;
   }
-  // ---------- a look at a scene (before its first frame, then at most once a second or when textures came in) ----------
-  function sweep(r, scene) {
+  // ---------- a look at a scene: all of it before its first frame; then what the game adds, before it's drawn; and a
+  // slow walk in the background (≤ 0.15 ms a frame; a new walk every 2 s, or when textures came in) for a picture a
+  // game puts on a material it had already. (round 54 fix: never a whole-scene sweep inside one frame while playing: at
+  // 240 Hz a sweep once a second was a hitch a second, and a sweep every frame when a game makes textures as it plays)
+  const visit = (r, ob, max) => {
+    if (ob.isLight && ob.castShadow) light(r, ob);
+    const m = ob.material;
+    if (m) { if (Array.isArray(m)) { for (const x of m) if (x) mat(r, x, max); } else mat(r, m, max); }
+  };
+  const cost = (ms) => { R.cost.sweeps += 1; R.cost.ms += ms; if (ms > R.cost.max) R.cost.max = ms; };
+  function sweep(r, root) {
     const t0 = now(); const max = maxA(r);
     try {
-      tex(r, scene.background, true, max); tex(r, scene.environment, true, max);
-      scene.traverse((ob) => {
-        if (ob.isLight && ob.castShadow) light(r, ob);
-        const m = ob.material;
-        if (m) { if (Array.isArray(m)) { for (const x of m) if (x) mat(r, x, max); } else mat(r, m, max); }
-      });
+      if (root.isScene) { R.cost.wholes += 1; tex(r, root.background, true, max); tex(r, root.environment, true, max); }
+      root.traverse((ob) => visit(r, ob, max));
     } catch (e) { /* a scene changing under us: the next look */ }
-    const ms = now() - t0; R.cost.sweeps += 1; R.cost.ms += ms; if (ms > R.cost.max) R.cost.max = ms;
+    cost(now() - t0);
+  }
+  // what the game adds (Object3D.add / attach of its own three.js, found from the first scene drawn)
+  const adds = []; const protos = new WeakSet(); const doneO = new WeakSet();
+  function hookAdd(scene) {
+    const O3 = Object.getPrototypeOf(Object.getPrototypeOf(scene));
+    if (!O3 || protos.has(O3) || typeof O3.add !== 'function') return;
+    protos.add(O3);
+    const add0 = O3.add;
+    O3.add = function add() { const res = add0.apply(this, arguments); if (adds.length < 4000) for (let i = 0; i < arguments.length; i += 1) { const o = arguments[i]; if (o && o !== this && o.isObject3D) adds.push(o); } return res; };
+    const att0 = O3.attach;
+    if (typeof att0 === 'function') O3.attach = function attach(o) { const res = att0.call(this, o); if (o && o.isObject3D && adds.length < 4000) adds.push(o); return res; };
   }
   function before(r, scene, force) {
     if (!scene || !scene.isObject3D) return;
-    let k = state.get(r); if (!k) state.set(r, k = { at: new WeakMap(), n: -1 });
+    if (!scene.isScene) { if (!doneO.has(scene)) { doneO.add(scene); sweep(r, scene); } return; } // (compile(object, camera, scene))
+    let k = state.get(r); if (!k) state.set(r, k = { at: new WeakMap(), n: -1, walk: null, f: 0 });
     const t = now(); const n = (r.info && r.info.memory && r.info.memory.textures) | 0;
     const last = k.at.get(scene);
-    if (!force && last !== undefined && t - last < 1000 && n === k.n) return;
-    k.n = n; k.at.set(scene, t);
-    sweep(r, scene);
-    if (BEST && raised.length && !guarding) guarding = guard();
-    else if (R.guard === 'waiting' && !raised.length) R.guard = 'none';
+    if (last === undefined || force) { // the first look: all of it, before anything is uploaded or compiled
+      k.n = n; k.at.set(scene, t);
+      hookAdd(scene); sweep(r, scene);
+      if (BEST && raised.length && !guarding) guarding = guard();
+      else if (R.guard === 'waiting' && !raised.length) R.guard = 'none';
+      return;
+    }
+    if (adds.length) { // what the game added since, before its first frame (a bullet: a few µs; a level: its own size)
+      const t0 = now(); const max = maxA(r);
+      try { for (let i = 0; i < adds.length; i += 1) { const o = adds[i]; if (doneO.has(o)) continue; doneO.add(o); if (o.children.length) o.traverse((ob) => visit(r, ob, max)); else visit(r, o, max); } } catch (e) { /* fine */ }
+      adds.length = 0; cost(now() - t0);
+      if (BEST && raised.length && !guarding) guarding = guard();
+    }
+    k.f += 1; // (frames as well as seconds: on a slow frame rate the walk stays a small share of the frames)
+    if (!k.walk && ((t - last >= 2000 && k.f >= 240) || (n !== k.n && t - last >= 1000 && k.f >= 120))) { k.f = 0; k.n = n; k.at.set(scene, t); k.walk = { scene, stack: [scene], bg: true }; }
+    if (k.walk && k.walk.scene === scene) walk(r, k);
+    const fd = now() - t; if (fd > R.cost.playMax) R.cost.playMax = +fd.toFixed(3);
+  }
+  function walk(r, k) {
+    const w = k.walk; const t0 = now(); const max = maxA(r);
+    try {
+      if (w.bg) { w.bg = false; tex(r, w.scene.background, true, max); tex(r, w.scene.environment, true, max); }
+      let i = 0;
+      while (w.stack.length) {
+        const ob = w.stack.pop(); visit(r, ob, max);
+        const c = ob.children; for (let j = 0; j < c.length; j += 1) w.stack.push(c[j]);
+        if ((++i & 31) === 0 && now() - t0 > 0.15) break;
+      }
+    } catch (e) { w.stack.length = 0; }
+    if (!w.stack.length) k.walk = null;
+    cost(now() - t0);
   }
   function hook(r) {
     if (!r || rs.has(r)) return;
@@ -151,26 +198,43 @@ function gameLookPage(o) {
       realRAF(f);
     });
   }
-  async function guard() {
-    R.guard = 'measuring';
-    // after GameReady's card (it holds the game's frames while it gets ready), then a second of play
-    for (let i = 0; i < 240; i += 1) { let ph = null; try { ph = window.__gameReady ? JSON.parse(window.__gameReady.pub()).phase : 'playing'; } catch (e) { ph = 'playing'; } if (ph === 'playing') break; await wait(250); }
-    await wait(1000);
-    const budget = 1000 / HZ; let size = R.shadows.now; let g = await gaps(90);
-    R.guardMs = { budget: +budget.toFixed(2), steps: [[size, g]] };
-    if (g == null || g <= budget * 1.2) { R.guard = 'fits'; return; }
+  // (round 54 fix) quicker (60 frames a measurement: a quarter second at 240 Hz), and it keeps watching: every 5 s while
+  // the shadows are above the game's own size, 60 frames; frames missing the refresh again (a heavier scene later) → a
+  // step down, kept only if it helps. A size that didn't help is never tried again (a game with its own frame cap would
+  // otherwise get its shadow maps made again every few seconds for nothing)
+  const noGain = new Set();
+  async function down(size, g, budget) {
     let verdict = 'not-shadows'; // (said once it's decided: settle() waits for it)
-    while (size / 2 >= 512) {
+    while (size / 2 >= 512 && !noGain.has(size / 2)) {
       const next = size / 2;
       for (const x of raised) setSize(x, next);
-      await wait(300);
-      const g2 = await gaps(90);
+      await wait(200);
+      const g2 = await gaps(60);
       R.guardMs.steps.push([next, g2]);
-      if (g2 == null || g2 > g * 0.92) { for (const x of raised) setSize(x, size); break; } // no real gain: the shadows weren't what's slow
+      if (g2 == null || g2 > g * 0.92) { noGain.add(next); for (const x of raised) setSize(x, size); break; } // no real gain: the shadows weren't what's slow
       size = next; g = g2; verdict = 'lowered';
       if (g <= budget * 1.2) break;
     }
-    R.shadows.now = size; R.guard = verdict;
+    return { size, verdict };
+  }
+  async function guard() {
+    R.guard = 'measuring';
+    // after GameReady's card (it holds the game's frames while it gets ready), then half a second of play
+    for (let i = 0; i < 240; i += 1) { let ph = null; try { ph = window.__gameReady ? JSON.parse(window.__gameReady.pub()).phase : 'playing'; } catch (e) { ph = 'playing'; } if (ph === 'playing') break; await wait(250); }
+    await wait(500);
+    const budget = 1000 / HZ; const g = await gaps(60);
+    R.guardMs = { budget: +budget.toFixed(2), steps: [[R.shadows.now, g]] };
+    if (g == null || g <= budget * 1.2) R.guard = 'fits';
+    else { const d = await down(R.shadows.now, g, budget); R.shadows.now = d.size; R.guard = d.verdict; }
+    while (raised.length) { // the watch
+      await wait(5000);
+      if (R.shadows.now <= 512 || noGain.has(R.shadows.now / 2)) continue;
+      const g2 = await gaps(60);
+      if (g2 == null || g2 <= budget * 1.25) continue;
+      if (R.guardMs.steps.length < 40) R.guardMs.steps.push([R.shadows.now, g2]);
+      const d = await down(R.shadows.now, g2, budget);
+      R.shadows.now = d.size; if (d.verdict === 'lowered') R.guard = 'lowered';
+    }
   }
   // ---------- what was done, in plain words ----------
   function text() {

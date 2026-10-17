@@ -26,8 +26,8 @@ are only read.
    it as linear data: washed-out colours (the test's #c83c28 red showed as 229, 133, 110; now 200, 60, 40). Only when the
    game uses three's colour management (sRGB output); data / compressed textures and anything the game marked are kept.
 3. **Shadows matched to the screen**: a light whose shadow map the game left at three's 512² gets the screen's size
-   (its long edge in pixels, nearest power of two, 1024–4096: 2048 on a 1080p / 1440p screen, 4096 on 4K / a 16" Retina;
-   point lights half, they draw six faces). The game's own filter and softness are kept: three.js r182+ already softens
+   (its long edge in pixels, nearest power of two, 1024–2048: 2048 on a 1080p / 1440p / 4K screen; point lights half, at
+   most 1024, they draw six faces. Round 54 fix: 4096² on 4K cost frames for a difference PCF blurs away). The game's own filter and softness are kept: three.js r182+ already softens
    every shadow (PCF, 5 taps); its old "PCFSoft" type no longer exists, so "soft where cheap" is already there.
 4. **The smoothness guard**: once the game plays (after GameReady's card), Hearth measures its frames against the
    screen's refresh. If they miss it, the shadow maps step down toward the game's own size while each step measurably
@@ -83,7 +83,7 @@ three plays.
 ## For the patch notes
 - **▶ Play now makes your game look its best on your screen, with nothing to set.** Textures stay sharp far away
   (also the ones your game loads later), pictures your game left without a colour space show their real colours instead
-  of washed-out ones, and shadows get a map sized for your screen (2048 on a 1440p display, 4096 on 4K or a Retina).
+  of washed-out ones, and shadows get a map sized for your screen (up to 2048, 1024 for a point light).
 - Anything your game chose itself is kept exactly as it is: its tone mapping, its colours, its own shadow sizes and
   texture settings.
 - It never costs smoothness: if bigger shadows would make the game miss your screen's refresh, Hearth steps them back

@@ -165,17 +165,20 @@ the hub); the owner: `/playtest`.
   Balanced"; `/game look [best | balanced]`.
 - In the game's world, before its scripts: `gameLookPage({ look, hz })` listens on `__THREE_DEVTOOLS__` (it makes it
   first: GameReady / GamePerf add their listeners to it) and wraps each renderer's `render` / `compile` / `compileAsync`
-  / `initTexture` to look at the scene first (then at most once a second, or when textures came in).
+  / `initTexture` to look at the scene first (round 54 fix: whole only before its first frame; then what the game adds,
+  through `Object3D.add` / `attach`, before it's drawn, and a background walk of ≤ 0.15 ms a frame every 2 s + 240 frames, or 1 s
+  after textures came in: never a whole-scene sweep inside a frame of play).
   Both looks: mipmapped textures left at anisotropy 1 → the card's max (not yet on the GPU; `Texture.DEFAULT_ANISOTROPY`
   when the game left it at 1, so later textures too). Best also: a picture in a colour slot left with no colour space
   (`''`, 8-bit, not data / compressed; output 'srgb') → 'srgb'; a light's shadow left at 512² → the screen's size (long
-  edge, nearest power of two, 1024–4096; point lights half), then the guard (frames over 1.2 × the refresh: halve while
-  each step saves ≥ 8 %, else back). Never: tone mapping, output colour space, shadow type / radius, pixel ratio, any
+  edge, nearest power of two, 1024–2048; point lights half, at most 1024: round 54 fix), then the guard (60 frames over
+  1.2 × the refresh: halve while each step saves ≥ 8 %, else back, that size never tried again; then a 60-frame look
+  every 5 s while the shadows are above the game's own size: a heavier scene later steps them down too). Never: tone mapping, output colour space, shadow type / radius, pixel ratio, any
   value the game set (a later write by the game wins). GameReady's prep and the Lab's ready-scan also keep a game's own
   anisotropy now (only 1 → max).
 - `window.__gameLook = { report() → { look, three, renderers, frames, aniso: { max, sharp, set, kept, later }, colour,
   shadows: { lights, set, kept, from, to, now }, guard: 'waiting' | 'none' | 'measuring' | 'fits' | 'lowered' |
-  'not-shadows' | 'off', guardMs: { budget, steps: [[size, ms]] }, cost: { sweeps, ms, max }, screen: { w, h, wide, hdr } },
+  'not-shadows' | 'off', guardMs: { budget, steps: [[size, ms]] }, cost: { sweeps, ms, max, playMax }, screen: { w, h, wide, hdr } },
   text() → "Best look: textures 16× sharp (4) · true colour on 1 picture · shadows 512 → 2048", settle() → Promise<report>,
   renderers() }`. The F chip's second line and the performance doctor show `text()`.
 
@@ -183,14 +186,19 @@ the hub); the owner: `/playtest`.
 - gamemodemain serves `/__gamestream-page.js` and puts `<script src="/__gamestream-page.js?off=0|1">` right after
   GameReady's tag in every HTML page of the window (Lab scene pages and HTML builds; always, armed or not). `game:play`
   takes `stream: { off }` (a check's "before": localStorage `gamestream.test = { off: true }` on the hub; not a setting).
-- Active once `__gameReady.phase === 'playing'` (or 1.5 s after the first frame without GameReady). Then:
+- Active once `__gameReady.phase === 'playing'` (or 1.5 s after the first frame without GameReady; checked at each
+  frame, not only when the game loads a file). Then:
   `img.src = …` (same origin, or CORS) is fetched + decoded to an ImageBitmap (`flipY`, no premultiply, no color
   conversion) before the real load (a blob: address; `src` / `complete` / `decode()` answer as the game set them);
   `texImage2D` / `texSubImage2D` with that `<img>` take the bitmap when the unpack state matches (flip on, premultiply
   off, conversion NONE: three r152+), else the element as before.
 - `Object3D.prototype.add` / `attach` (the game's own three.js, found from the first scene drawn) note what's added; in
-  the next `renderer.render` of that scene, an object whose materials have no program gets `renderer.compile(obj,
-  camera, scene)` (the whole scene when it brings lights) + a fence, and is drawn hidden (visible only during that
+  the next `renderer.render` of that scene, an object whose materials have no program and are of a kind not compiled
+  before on that renderer (round 54 fix: type, maps, shader, defines, geometry attributes…: a projectile with a cloned
+  material is a kind seen before), or brings a picture never sent to the card (a canvas / data / video texture the game
+  updates is never touched), gets `renderer.compile(obj, camera, scene)` (the whole scene when it brings lights; at most
+  4 a frame, 0.5 ms of looking a frame) and is held only if that made a new program (or for those pictures): a fence,
+  and it is drawn hidden (visible only during that
   render) until the fence is signaled, its programs' first use is done (getUniforms), its textures are uploaded one per
   frame (≥ 2M pixels: in strips, `UNPACK_SKIP_ROWS`, mipmaps after the last) and 2 frames passed; at most
   max(1.5 s, 45 frames) (× 2.5 while strips go in), then shown whatever is left (a strip job finishes first).
