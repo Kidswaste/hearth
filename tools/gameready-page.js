@@ -164,7 +164,7 @@
       let a = now(); const scan = S.skip ? null : await ask({ type: 'ready-scan', id: 'gr' }, 'ready-scanned', 60000); ms.assets = Math.round(now() - a); mark('scanned');
       const nTex = scan?.textures?.length || 0;
       if (!S.skip) card(`textures 0/${nTex}`, 45);
-      a = now(); const prep = S.skip ? null : await ask({ type: 'ready-prep', id: 'gr', frames: 0 }, 'ready-prepped', 90000); ms.effects = Math.round(now() - a); mark('prepped'); // (round 57, readywalk: frames 0, no 2 frames of its own: the warm-up pass right after draws them)
+      a = now(); const prep = S.skip ? null : await ask({ type: 'ready-prep', id: 'gr' }, 'ready-prepped', 90000); ms.effects = Math.round(now() - a); mark('prepped'); // (round 57, readywalk: its 2 frames kept: what a first frame makes (shadow depth programs, a transmission target) lands there, so the warm-up pass reads clean and a warm run needs only one short pass)
       if (!S.skip) card(`textures ${prep?.textures ?? nTex}/${nTex}`, 60);
       a = now(); const warm = [];
       for (let i = 0, quiet = 0; i < 6 && quiet < HN.quiet && !S.skip; i += 1) { // (round 56: one quiet pass when the last runs needed nothing more)
@@ -199,7 +199,7 @@
       const t = now(); card('the graphics card is back: getting ready again', 95);
       await until(async () => { c = await count(); return c && !c.lostNow && (c.rebuilds || 0) > (g0.rebuilds || 0); }, 30000);
       await until(async () => { const k = await count(); return (k?.renderers || 0) >= (g0.renderers || 1); }, 10000);
-      const prep = S.skip ? null : await ask({ type: 'ready-prep', id: 'gr', frames: 0 }, 'ready-prepped', 90000);
+      const prep = S.skip ? null : await ask({ type: 'ready-prep', id: 'gr' }, 'ready-prepped', 90000);
       const w = S.skip ? null : await ask({ type: 'ready-warm', id: 'gr', n: 2 }, 'ready-warmed', 15000);
       if (S.result) (S.result.gpuBack ||= []).push({ ms: Math.round(now() - t), rebuilds: (c?.rebuilds || 0) - (g0.rebuilds || 0), prep: prep?.gl || null, warm: w?.gl || null });
       return (await count()) || c;

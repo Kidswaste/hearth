@@ -27,8 +27,9 @@ skips frames that did nothing, and a GPU context lost under the card no longer s
 4. **No 2 extra frames once the renderers are counted.** A renderer only counts once it has drawn, so its scene is
    known and its shadow maps exist. With last run's count reached, getting ready moves on at the first count (it used
    to need two equal counts in a row).
-5. **No 2 frames inside "shaders + textures".** `ready-prep { frames: 0 }`: the warm-up pass right after it draws (and
-   compiles again) anyway. ▣ Present keeps its 2.
+5. **Kept on purpose: the 2 frames inside "shaders + textures".** Removing them was tried and measured. What a first
+   frame makes (shadow depth programs, a transmission target: 5 programs + 1 upload on the test scene) then landed in the
+   first warm-up pass, so that pass never read clean, and every warm run did 3 passes instead of one short one.
 
 ### First 5 s of play stay clean after a GPU loss
 6. **A graphics-card context lost while getting ready is waited out under the card.** This was the "unexplained"
@@ -51,17 +52,25 @@ skips frames that did nothing, and a GPU context lost under the card no longer s
    5 ms bound on the card look's own CPU, which read 0.5–0.6 ms. It also requires 0 whole-scene looks while playing and
    about 0.1 ms on average for the looks there.
 
-## Measured (this test machine: SwiftShader, 4 CPUs shared with other agents' checks, load 20–40: noisy, re-measure on a calm machine)
-`dev/checks/readyspeed.js`, ms from the press to the first frame of play. Base 12138e4 and this branch ran **at the
-same time**, so the load was the same for both:
+## Measured (this test machine: SwiftShader, 4 CPUs; runs one at a time under the shared run lock, load ≈ 4)
+`dev/checks/readyspeed.js`, from the press to the first frame of play: base 12138e4 against this branch, one run
+each, back to back under `flock /tmp/hearth-run.lock`:
 
 | | base (12138e4) | readywalk |
 |---|---|---|
-| Lab cold / warm / warm2 | 54.0 / 120.8 / 51.6 s | 72.3 (19.4 s of it waiting out a GPU rebuild) / 98.6 / 36.4 s |
-| Lab smooth check (A/B), warm / warm2 | 82.8 / 38.6 s (walked) | 65.9 / 18.8 s (checked: frames 4–5 s each here) |
-| Lab first 5 s, compiles / links / uploads | cold 56 / 28 / 21 | 0 / 0 / 0 on all three |
-| HTML cold / warm / warm2 | 19.9 / 9.9 / 8.2 s | 19.8 / 6.4 / 5.6 s |
-| HTML smooth check (A/B), warm / warm2 | 7.9 / 6.7 s | 1.6 / 2.1 s |
+| Lab scene ("Clink") cold / warm / warm2 | 42.4 / 29.9 / 22.2 s | 41.1 / **17.7 / 14.0 s** |
+| Lab smooth check (A/B), warm / warm2 | 21.6 / 14.2 s (the shadow sizes walked) | 10.1 / 7.6 s (the size checked: frames ≈ 0.7 s each here) |
+| Lab renderer wait ("every layer drawing"), warm / warm2 | 2.9 / 3.6 s | 1.1 / 0.1 s |
+| HTML build cold / warm / warm2 | 10.0 / 8.3 / 3.8 s | 9.6 / **3.1 / 3.1 s** |
+| HTML smooth check, warm / warm2 | 6.5 / 2.1 s | 1.3 / 1.1 s |
+| first 5 s of play, compiles / links / uploads | 0 / 0 / 0 | 0 / 0 / 0 |
+
+Leaving out the smooth check, as the check's threshold does, the Lab went from 13.3 → 8.3 / 8.0 s (base) to
+8.3 → 7.6 / 6.4 s. Warm-up passes read clean (one quiet pass after two clean runs) in both.
+
+Under heavy load (load 20–40, 7+ software-GPU processes: the two branches run side by side): base Lab 54.0 / 120.8 /
+51.6 s with 56 / 28 / 21 in the cold run's first 5 s; readywalk Lab 72.3 (19.4 s of it waiting out a GPU rebuild under
+the card) / 98.6 / 36.4 s with 0 / 0 / 0 in all three; HTML 19.9 / 9.9 / 8.2 s → 19.8 / 6.4 / 5.6 s.
 
 The shadow check in practice: shadowready's second ▶ Play went from a 6.6 s A/B to 1.5 s ("confirmed": 3 frames read
 124 ms, one more block 53 ms against 46 ms remembered, so it held). In another run, at a load of 40, the same check read
@@ -70,20 +79,19 @@ picture, four lights, a software GPU), so the frame-bound steps dominate: warm-u
 the first frame behind the card. On a real graphics card those frames take a few ms.
 
 ## Tests
-- unit: readyspeed-test (10 groups; new: the shadow memory, a check keeps the walk's time, a fresh walk replaces it,
-  a timed walk is kept, unmeasured not, `sq=` in the page tag), shadowready-test (new: `shadowHolds`), playbudget-test,
-  boot-test: pass.
-- readyspeed: pass (run B, with every change); earlier runs failed on load (GPU contexts refused to the game window,
-  "Error creating WebGL context"; a Lab cold run past the check's 180 s), and the base commit failed the same way.
-- shadowready: pass (2nd ▶ Play checked, not walked); one run under load failed its first-walk step (timed out after
-  measuring only 2048, so the remembered size was 2048), a timing failure.
-- gamelook ×2: pass (with the split cost; `card` 0.5–0.6 ms, `ask` 64–74 ms).
-- playbudget: pass. gameready: see the final report (run under `flock /tmp/hearth-run.lock`). lazy: see the report.
+- unit: readyspeed-test (10 groups; new: the shadow memory; a check keeps the walk's time; a fresh walk replaces it; a
+  timed-out walk is kept; an unmeasured one is not; `sq=` in the page tag), shadowready-test (new: `shadowHolds`),
+  playbudget-test, boot-test: pass.
+- Under the run lock (final code): readyspeed ×2 pass, shadowready ×2 pass (the second ▶ Play's size "confirmed"),
+  gameready ×2 pass, lazy pass. gamelook ×2 pass (`card` 0.5–0.6 ms, `ask` 64–74 ms). playbudget pass.
+- Earlier, unlocked runs under load 20–40 failed on the machine (GPU contexts refused to the game window: "Error
+  creating WebGL context"; a Lab cold run past the check's 180 s; a first walk cut short at 2048). The base commit
+  failed the same way at the same time.
 
 ## Edits outside the stream's own files
 `tools/playbudget-page.js` (the check), `tools/readyspeed-core.js`, `gamereadymain.js` (`sq`), `tools/gameready.js`
 (the note carries `shadow`), `tools/gameready-page.js` (hints, frames, gpuBack), `tools/three-sandbox.html` (small:
-`ready-prep.frames`, `ready-count` diagnostics, a context counter), `gamelook-preload.js` (cost split, `ask`),
+`ready-count` diagnostics, a context counter), `gamelook-preload.js` (cost split, `ask`),
 `dev/checks/{readyspeed,gamelook}.js`, `dev/{readyspeed,shadowready}-test.js`, `tools/game-api.md`.
 
 ## Risks

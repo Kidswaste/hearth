@@ -1785,9 +1785,7 @@ async function rdyMessage(msg) {
     const t0 = realNow(); const gl0 = { ...RDY.gl };
     const assets = await rdyAssets(msg.id);
     const comp = await rdyCompile(msg.id);
-    // (round 57, readywalk) frames: 0 from ▶ Play's getting ready: its warm-up pass comes right after and draws (and
-    // compiles again) anyway; ▣ Present keeps its 2
-    const nf = Number.isFinite(msg.frames) ? msg.frames : 2; if (nf > 0) await rdyFrames(nf);
+    await rdyFrames(2);
     post({ type: 'ready-prepped', id: msg.id, ms: Math.round(realNow() - t0), assets, ...comp, gl: rdyDelta(gl0) });
   } else if (msg.type === 'ready-warm') {
     const gl0 = { ...RDY.gl }; const n = Math.max(1, msg.n || 3);
