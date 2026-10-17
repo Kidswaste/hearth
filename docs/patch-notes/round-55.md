@@ -25,4 +25,4 @@
 
 ## Try it
 - Press ▶ Play on Clink, then F: the chip shows "Hearth: … ms".
-- Settings › Advanced › "Edit config.json" now opens your own copy in the data folder.
+- Settings › Backup and files › Edit config.json now opens your own copy in the data folder.
