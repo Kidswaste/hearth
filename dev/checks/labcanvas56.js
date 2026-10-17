@@ -22,7 +22,6 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(150); } return false; };
 const out = { numbers: {}, problems: [], same: {}, hashes: {} };
 const fail = (m) => out.problems.push(m);
-window.LC56_DUMP = window.LC56_DUMP || '/tmp/hearth-labcanvas56';
 const skip = new Set(String(window.LC56_SKIP || '').split(',').filter(Boolean));
 const r2 = (x) => Math.round(x * 100) / 100;
 const cdp = (method, params) => Promise.race([smoke({ cdp: method, params }), wait(10000)]);
