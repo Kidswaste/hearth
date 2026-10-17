@@ -888,11 +888,25 @@ function gmLetGo(r) {
 function gmRAF(fn) {
   const id = ++GM.ids;
   GM.q.push([id, fn]);
-  if (!GM.raf) GM.raf = realRAF(gmFlush);
+  if (!GM.raf && !GM.held) GM.raf = realRAF(gmFlush);
   return id;
 }
+// (round 58, ctxloss58) ▶ Play's budget A/B holds the game's own frames while it draws its synced frames under the card
+// (as an HTML build's are held there by getting ready): each game frame let through between its blocks queued another
+// ~1 s of work on a busy software GPU, the A/B's next synced frame waited for all of it, and one such wait of 10–16 s was
+// one GPU-process task long enough for Chromium's GPU watchdog to take the process (every context) down. Layers with
+// their own canvas wait too (sched). Held frames run on release; at most 2 minutes (a software GPU under load)
+globalThis.__gmHold = (on) => {
+  realClearTimeout(GM.holdT);
+  GM.held = Boolean(on);
+  if (GM.held) GM.holdT = realSetTimeout(() => globalThis.__gmHold(false), 120000);
+  else if (GM.q.length && !GM.raf) GM.raf = realRAF(gmFlush);
+  return GAME;
+};
 function gmFlush(t) {
-  GM.raf = 0; GM.inFlush = true;
+  GM.raf = 0;
+  if (GM.held) return; // (the queue waits for the release)
+  GM.inFlush = true;
   const q = GM.q.splice(0);
   try {
     for (const [id, fn] of q) {
@@ -907,7 +921,7 @@ function gmRender(r, scene, camera) {
   if (GM.drawing) return false;
   if (r.getRenderTarget?.()) { try { r.resetState(); } catch { /* old three.js */ } return false; }
   GM.rec.set(r, { r, s: scene, c: camera, L: r.__layer ? layers.get(r.__layer) : null, gen: r.__layer ? layers.get(r.__layer)?.gen : 0, n: r.__gmN });
-  if (!GM.inFlush && !GM.raf) GM.raf = realRAF(gmFlush); // (a sketch that draws once, or from a timer)
+  if (!GM.inFlush && !GM.raf && !GM.held) GM.raf = realRAF(gmFlush); // (a sketch that draws once, or from a timer)
   return true;
 }
 function gmComposite(count = true) {
@@ -1931,7 +1945,7 @@ window.__glRecover = {
     if (restore != null) realSetTimeout(() => { for (const x of exts) { try { x.restoreContext(); } catch { /* not lost */ } } }, Math.max(50, restore));
     return exts.length;
   },
-  state: () => ({ lost: Boolean(GLR.lost), epoch: GLR.epoch, losses: GLR.losses, restores: GLR.restores, rebuilds: GLR.rebuilds, last: GLR.last, contexts: glAlive(), layers: layers.size,
+  state: () => ({ lost: Boolean(GLR.lost), epoch: GLR.epoch, losses: GLR.losses, restores: GLR.restores, rebuilds: GLR.rebuilds, last: GLR.last, contexts: glAlive(), made: glMade, none: GLR.none || 0, layers: layers.size,
     views: Object.fromEntries([...LV.views].map(([id, V]) => [id, LV.core.KEYS.map((k) => Math.round((V.t?.[k] ?? V[k] ?? 0) * 1e4) / 1e4)])) }),
 };
 // Right-click the picture: the Lab's menu. A still right-click opens it even over OrbitControls (which takes every
@@ -12074,7 +12088,7 @@ const SQ = { on: false, plan: null, T: 0, T0: 0, at0: 0, playing: false, rate: 1
 const WARM = 0.35; // seconds a group runs (hidden) before its clip: its first frames are drawn when it shows
 const PRE = 1.2; // seconds ahead a group is mounted while playing
 // layer frames during an offline render wait for the next step instead of the screen
-function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } if (GAME && fn.__L?.gm) return gmRAF(fn); return DOZE.on ? dozeRAF(fn) : GAME ? realRAF(fn) : lqRAF(fn); }
+function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } if (GAME && (fn.__L?.gm || GM.held)) return gmRAF(fn); /* (round 58, ctxloss58: held by the budget's A/B, a layer with its own canvas waits too) */ return DOZE.on ? dozeRAF(fn) : GAME ? realRAF(fn) : lqRAF(fn); }
 // ---------- layer frames (round 56, labcanvas56) ----------
 // The layers' frame callbacks run in one frame callback of the page's, bottom layer first (the order they asked in,
 // within a layer), instead of one browser frame callback each in the order they happened to ask: a filter or a

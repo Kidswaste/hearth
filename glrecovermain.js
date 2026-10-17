@@ -18,8 +18,10 @@ function register(ipcMain, { getWin, app = require('electron').app, status = nul
   const send = (n) => { const w = getWin?.(); if (!w || w.isDestroyed?.()) return; try { w.webContents.send('glrecover:note', { ...n, text: Core.text(n.kind), labText: Core.text(n.kind, { lab: true }) }); } catch { /* window gone */ } };
   const check = (after) => { const n = Core.step(st, { type: 'check', status: read(), after }); if (n) send(n); return n; };
   let infoT = 0;
+  const gone = []; // (round 58, ctxloss58) each GPU process gone: why and when (glrecover:state `gone`, the ctxloss check)
   const onGone = (_e, d) => {
     if (!Core.isCrash(d, quitting)) return;
+    gone.push({ reason: d.reason, exitCode: d.exitCode, at: Date.now() }); if (gone.length > 20) gone.shift();
     Core.step(st, { type: 'crash' });
     later(D.crash, () => check('crash'));
     later(D.late, () => check('late')); // (a fall to software can be decided a moment later)
@@ -29,7 +31,7 @@ function register(ipcMain, { getWin, app = require('electron').app, status = nul
   app.on('child-process-gone', onGone);
   app.on('gpu-info-update', onInfo);
   app.on('before-quit', onQuit);
-  ipcMain.handle('glrecover:state', () => ({ ...Core.view(st), status: read() }));
+  ipcMain.handle('glrecover:state', () => ({ ...Core.view(st), status: read(), gone: gone.slice() }));
   ipcMain.handle('glrecover:shown', (_e, id) => { const n = st.notes.find((x) => x.id === id); if (n) n.shown = true; return Boolean(n); });
   // (dev/checks/glrecover.js: only in a test copy) o.status: the GPU status to pretend from now on (null: the real one)
   // · o.gone: a GPU process gone with that reason · o.info: a 'gpu-info-update' · o.delays: shorter waits

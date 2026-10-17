@@ -275,3 +275,11 @@ the hub); the owner: `/playtest`.
   `ab.shadow.quick = { ms, was, blocks, held }`, `ab.shadow.walked`; the chosen + fallback maps are made and sealed as before.
 - `__gameLook.report().cost.card` / `.play` / `.playWholes`: the longest single look under Getting ready's card (the first,
   whole-scene one) / while playing, and whole-scene looks while playing (0).
+- (round 58, ctxloss58) The A/B holds a Lab scene page's own frames while it draws (`globalThis.__gmHold(on)` in
+  tools/three-sandbox.html: the one-canvas loop's flush waits, released at the end, at most 2 min; layers with their own canvas too; an HTML build's frames
+  are already held by getting ready). Frames that aren't counted (the first, each block's first, a size's first, the
+  fallback's, the way back) are waited for with a WebGL2 fence polled between tasks (cap 45 s), never readPixels; counted
+  frames stay readPixels. A block's counted frames stop after 5 s (≥ 2 frames). A frame drawn on a lost context is NaN
+  (never a "fit"); lost during the first frames → `ab = { skipped, lost: true }`. `ab` also carries `syncs`,
+  `maxFrameMs`, `long: [[phase, ms]]` (frames over 1 s), `drains`, `drainMs`. `__glRecover.state()` adds `made` (WebGL
+  contexts made on the page) and `none`; main `glrecover:state` adds `gone: [{ reason, exitCode, at }]` (GPU process exits).
