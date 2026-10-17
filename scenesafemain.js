@@ -13,7 +13,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const SS = require('./scenesafe-core');
 
-let o = { dataDir: path.join(__dirname, 'data'), configPath: path.join(__dirname, 'config.json'), syncmain: null, backupDir: null };
+let o = { dataDir: path.join(__dirname, 'data'), configPath: require('./configsafe-core').ownFile(__dirname, 'config.json'), /* (round 55) data/ once moved */ syncmain: null, backupDir: null };
 const kvDir = () => path.join(o.dataDir, 'kv');
 const when = (t) => { try { return new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
 async function readJson(file) {

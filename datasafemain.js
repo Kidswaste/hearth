@@ -121,7 +121,7 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
 }
 
 // ---------- Recover… ----------
-let o = { dataDir: path.join(__dirname, 'data'), configPath: path.join(__dirname, 'config.json'), store: null, cfg: null, syncmain: null };
+let o = { dataDir: path.join(__dirname, 'data'), configPath: require('./configsafe-core').ownFile(__dirname, 'config.json'), /* (round 55) data/ once moved */ store: null, cfg: null, syncmain: null };
 const when = (t) => { try { return new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
 const readJsonF = (file) => { try { return JSON.parse(SS.readRetry(fs, file)); } catch { return undefined; } };
 const mtime = (f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
