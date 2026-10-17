@@ -25,7 +25,8 @@ const HEAVY_DIRS = new Set(['node_modules', '__pycache__', 'venv', 'bower_compon
 const LOCAL_FILES = new Set(['window.json', 'game-bridge.json', 'hearth-origin.json', 'hearth-icon.png', 'hearth-icon.ico', 'engine-installs.json',
   'connectors.json', 'claude-flags.json', 'now-playing.ps1', 'now-playing-control.ps1', 'now-playing-cover.jpg', 'kv/fake-switches.json', 'kv/downloads-log.json',
   'kv/jank-log.json', 'kv/dev-reports.json', 'devreport-crashes.json', 'kv/offline-queue.json',
-  'chrome-prefs.json', 'interop/obs.json', 'kv/media-here.json']); // (round 20) this computer's smoothness log: about this machine, never synced · (round 34) offline-queue: messages waiting to go out from THIS computer (synced, the other one would send them too) · (round 35, twocomputers) chrome-prefs: this computer's Chrome (browser, shown or not) · interop/obs.json: this computer's OBS address + keychain-sealed password · media-here: files found again on this computer
+  'chrome-prefs.json', 'interop/obs.json', 'kv/media-here.json',
+  'config.json', 'theme.css']); // (round 20) this computer's smoothness log: about this machine, never synced · (round 34) offline-queue: messages waiting to go out from THIS computer (synced, the other one would send them too) · (round 35, twocomputers) chrome-prefs: this computer's Chrome (browser, shown or not) · interop/obs.json: this computer's OBS address + keychain-sealed password · media-here: files found again on this computer · (round 55, configsafe) config.json / theme.css: the owner's settings in data/, synced as app/config.json / app/theme.css (portable part), never a second time as data files
 function localOnly(rel) {
   const r = rel.replace(/\\/g, '/');
   if (LOCAL_FILES.has(r)) return true;
@@ -295,6 +296,11 @@ function applyPortable(local, portable) {
   const l = local || {};
   for (const k of Object.keys(portable || {})) out[k] = keep(l[k], portable[k], k === 'settings');
   for (const k of Object.keys(l)) if (!(k in out) && MACHINE_TOP.has(k)) out[k] = l[k];
+  // (round 56, fixes56) defaultsSeen (configsafe: the default agents the owner has had a say on) only ever grows: both
+  // sides' together. A config from a computer still on a version before the move has none, and it used to drop this
+  // computer's: a default agent the owner had removed then came back here once
+  const seen = [...(Array.isArray(l.defaultsSeen) ? l.defaultsSeen : []), ...(Array.isArray(portable?.defaultsSeen) ? portable.defaultsSeen : [])].filter((x) => typeof x === 'string');
+  if (Array.isArray(l.defaultsSeen) || Array.isArray(portable?.defaultsSeen)) out.defaultsSeen = [...new Set(seen)];
   return out;
 }
 

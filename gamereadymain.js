@@ -204,9 +204,27 @@ function texFor(file) {
   return t?.out && fs.existsSync(t.out) ? t : null;
 }
 const vendorKtx = (threeDir, version) => tex().vendor(threeDir, version);
-function pageTag() {
+// (round 56, readyspeed) what the last runs of this game learnt (readyspeedmain.js), worked out once per window from
+// what it serves: c = ▶ Play's press (epoch ms), was = the first ▶ Play's time and sw = 1 (say "Ready in x s (was y s)"
+// once), rn = renderers to wait for, ld = loads an HTML build made last time, abs = 1 (the budget's A/B verdict still holds: same files, helpers, screen, look),
+// wq = 1 (one quiet warm-up pass is enough)
+const speed = () => { try { const S = require('./readyspeedmain'); S.init({ dataDir, appDir }); return S; } catch { return null; } };
+function speedHints(ctx = {}) {
+  if (armed.speed !== undefined) return armed.speed;
+  armed.speed = null;
+  const S = speed(); if (!S || !ctx.source) return null;
+  try {
+    const root = ctx.root || '';
+    const files = ctx.source.kind === 'html' ? (readIndex().scans?.[C.norm(root, process.platform)]?.files || []) : [];
+    armed.speed = { source: ctx.source, ...S.hints(ctx.source, { kind: ctx.source.kind, root, file: ctx.file, files, hz: ctx.hz, look: ctx.look, off: ctx.off }) };
+  } catch { armed.speed = null; }
+  return armed.speed;
+}
+function pageTag(ctx) {
   if (!armed) return '';
-  const q = new URLSearchParams({ t: String(armed.title || '').slice(0, 60), k: armed.kind === 'lab' ? 'lab' : 'html', ...(armed.noPrep ? { np: '1' } : {}), ...(armed.opt ? { opt: String(armed.opt) } : {}), ...(armed.tx ? { tx: armed.tx } : {}) });
+  const h = armed.noPrep ? null : speedHints(ctx);
+  const q = new URLSearchParams({ t: String(armed.title || '').slice(0, 60), k: armed.kind === 'lab' ? 'lab' : 'html', ...(armed.noPrep ? { np: '1' } : {}), ...(armed.opt ? { opt: String(armed.opt) } : {}), ...(armed.tx ? { tx: armed.tx } : {}),
+    ...(armed.clickAt ? { c: String(Math.round(armed.clickAt)) } : {}), ...(h?.was ? { was: String(Math.round(h.was)) } : {}), ...(h?.show ? { sw: '1' } : {}), ...(h?.renderers ? { rn: String(h.renderers) } : {}), ...(h?.loads ? { ld: String(h.loads) } : {}), ...(h?.ab ? { abs: '1' } : {}), ...(h?.quiet === 1 ? { wq: '1' } : {}) });
   return `<script src="/${PAGE}?${q}"></script>`;
 }
 // the script itself (asked for by the tag above, on the game's own address: nothing of the game is changed on disk)
@@ -231,9 +249,15 @@ function register(ipcMain, o = {}) {
     if (files) { I.scans[k] = { files: files.slice(0, 2000), decoders: decoders || [], at: Date.now() }; const ks = Object.keys(I.scans); if (ks.length > 50) delete I.scans[ks[0]]; saveIndex(); }
     return I.scans[k] || null;
   });
-  ipcMain.handle('gameready:arm', async (_e, o) => { armed = o ? { kind: o.kind === 'html' ? 'html' : 'lab', title: String(o.title || ''), map: o.map || {}, tex: o.tex || {}, tx: String(o.tx || '').slice(0, 120), noPrep: Boolean(o.noPrep), opt: Number(o.opt) || 0, served: [] } : null; return Boolean(armed); });
+  ipcMain.handle('gameready:arm', async (_e, o) => { armed = o ? { clickAt: Number(o.clickAt) || 0, kind: o.kind === 'html' ? 'html' : 'lab', title: String(o.title || ''), map: o.map || {}, tex: o.tex || {}, tx: String(o.tx || '').slice(0, 120), noPrep: Boolean(o.noPrep), opt: Number(o.opt) || 0, served: [] } : null; return Boolean(armed); });
   ipcMain.handle('gameready:texplan', async (_e, args) => texplan(args || {}));
   ipcMain.handle('gameready:served', async () => armed?.served || []);
+  // (round 56, readyspeed) a run's times noted for its game (the A/B's key: the one this window was served with) / read
+  ipcMain.handle('gameready:speed', async (_e, { op, source, run } = {}) => {
+    const S = speed(); if (!S || !source) return null;
+    if (op === 'note') return S.note(source, run || {}, armed?.speed?.abKey && armed.speed.source && (armed.speed.source.id || armed.speed.source.path) === (source.id || source.path) ? armed.speed.abKey : null);
+    return S.get(source);
+  });
 }
 
 // (round 53, diskcalm) Free up moved the cache to the Trash: the index is read again (missing → a new cache)

@@ -25,7 +25,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, typeof v === 'string' ? v : JSON.stringify(v, null, 2)); };
 const J = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return undefined; } };
 const ls = (d) => { try { return fs.readdirSync(d); } catch { return []; } };
-const STORE_FILES = ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'scenesafe-core.js', 'datasafe-core.js', 'datasafemain.js', 'recall-core.js'];
+const STORE_FILES = ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'scenesafe-core.js', 'datasafe-core.js', 'datasafemain.js', 'recall-core.js', 'configsafe-core.js', 'crashsafe-core.js'];
 // a fake fs whose reads of chosen files fail with a Windows error (n times, or always)
 function faulty(fails) {
   const left = new Map(Object.entries(fails));

@@ -106,7 +106,7 @@ contextBridge.exposeInMainWorld('hub', {
   stageDisplays: call('stage:displays'), stagePlace: call('stage:place'), // (round 22) live output on a second screen
   stageSend: (msg) => ipcRenderer.send('stage:to', msg),
   // (round 52, gamemode) ▶ Play: a game in its own full-screen window (gamemodemain.js)
-  game: { play: call('game:play'), leave: call('game:leave'), state: call('game:state'), displays: call('game:displays'), eval: call('game:eval'), key: call('game:key'), click: call('game:click'), onLeft: on('game:left'), loop: call('game:loop'), onLoop: on('game:loop-ev') }, // (round 53, playloop: playloopmain.js)
+  game: { play: call('game:play'), leave: call('game:leave'), state: call('game:state'), displays: call('game:displays'), eval: call('game:eval'), key: call('game:key'), click: call('game:click'), onLeft: on('game:left'), loop: call('game:loop'), onLoop: on('game:loop-ev'), budget: call('game:budget-get'), latency: call('game:latency') }, // (round 53, playloop: playloopmain.js) · (round 55, playbudget) budget: the helpers kept off per game · (round 56, playlatency) latency: /game latency
   gameTest: { script: call('game:script'), stop: call('game:script-stop'), shot: call('game:shot') }, // (round 53, directorgame) the director's play-test into the ▶ Play window (directorgamemain.js)
   onStageMessage: on('stage:from'),
   onStageClosed: on('stage:closed'),
@@ -173,6 +173,7 @@ contextBridge.exposeInMainWorld('hub', {
   scenesafe: { scan: call('scenes:scan') }, // (round 43, scenesafe) 🛟 Recover lost scenes (scenesafemain.js)
   backupauto: { state: call('backupauto:state'), list: call('backupauto:list'), run: call('backupauto:run'), verify: call('backupauto:verify'), inspect: call('backupauto:inspect'), places: call('backupauto:places'), setDir: call('backupauto:setDir'), setAuto: call('backupauto:setAuto'), before: call('backupauto:before'), battery: call('backupauto:battery'), reveal: call('backupauto:reveal'), test: call('backupauto:test'), onChanged: on('backupauto:changed') }, // (round 45, backupauto) automatic, checked backups (backupautomain.js)
   datasafe: { health: call('data:health'), recheck: call('data:recheck'), scan: call('data:scan'), recover: call('data:recover'), onDoubt: on('data:doubt') }, // (round 43, datasafe) what couldn't be read · 🛟 Recover… (datasafemain.js)
+  chatsafe: { bring: call('chatsafe:bring') }, // (round 55, chatsafe55) Bring back the AI a chat waits for (chatsafemain.js)
   fw: { want: call('fw:want'), own: call('fw:own'), state: call('fw:state'), test: call('fw:test'), onChanges: on('fw:changes') }, // (round 42, filewatch) files changed outside Hearth (filewatchmain.js)
   two: { info: call('two:info'), hash: call('two:hash'), relink: call('two:relink'), link: call('two:link'), exists: call('two:exists'), pickFile: call('two:pickFile') },
   firstrun: { facts: call('firstrun:facts'), folders: call('firstrun:folders'), perm: call('firstrun:perm'), run: call('firstrun:run') }, // (round 28) Check this computer (firstrunmain.js)
@@ -272,5 +273,5 @@ contextBridge.exposeInMainWorld('hub', {
   renders: { run: call('renders:run'), pause: call('renders:pause'), resume: call('renders:resume'), cancel: call('renders:cancel'), relay: call('renders:relay'), encoders: call('renders:encoders') },
   // (round 52, gameready) ▶ Play gets a game ready: file hashes, Hearth's optimized cache, the encoder, arming ▶ Play's window (gamereadymain.js)
   diskcalm: { measure: call('diskcalm:measure'), free: call('diskcalm:free'), tidy: call('diskcalm:tidy'), last: call('diskcalm:last'), test: call('diskcalm:test'), onTidied: on('diskcalm:tidied'), onHint: on('diskcalm:hint') }, // (round 53, diskcalm) Space Hearth uses (diskcalmmain.js)
-  gameReady: { hash: call('gameready:hash'), plan: call('gameready:plan'), scan: call('gameready:scan'), tool: call('gameready:tool'), install: call('gameready:install'), optimize: call('gameready:optimize'), arm: call('gameready:arm'), served: call('gameready:served'), texplan: call('gameready:texplan'), onProgress: on('gameready:progress') },
+  gameReady: { hash: call('gameready:hash'), plan: call('gameready:plan'), scan: call('gameready:scan'), tool: call('gameready:tool'), install: call('gameready:install'), optimize: call('gameready:optimize'), arm: call('gameready:arm'), served: call('gameready:served'), texplan: call('gameready:texplan'), speed: call('gameready:speed'), onProgress: on('gameready:progress') },
 });

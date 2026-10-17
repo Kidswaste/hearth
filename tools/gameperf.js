@@ -100,9 +100,21 @@ const GamePerf = (() => {
     S.raw = raw; S.R = R; S.scans = scans; S.lab = lc; S.at = Date.now();
     // (round 54, gamelook) what ▶ Play's look did in this game (gamelook-preload.js), in plain words
     try { const lk = await call('window.__gameLook ? JSON.stringify({ text: window.__gameLook.text(), r: window.__gameLook.report() }) : ""'); S.look = lk ? JSON.parse(lk) : null; } catch { S.look = null; }
+    // (round 55, playbudget) Hearth's own helpers in the game window: each one's cost a frame, the ones switched off
+    try { const b = await call('window.__hearthBudget ? window.__hearthBudget.pub() : ""'); S.budget = b ? JSON.parse(b) : null; } catch { S.budget = null; }
+    S.input = await inputFigure(); // (round 56, playlatency)
     S.findings = C().doctor(R, scans).map((f) => ({ ...f, lab: S.t.kind === 'lab' ? labFix(f.lab, f) : null, patch: S.t.kind !== 'lab' && f.lab ? htmlPatch(f.lab) : null }));
     S.fid = C().fidelity(R).map((f) => ({ ...f, lab: S.t.kind === 'lab' ? labFix(f.lab, f) : null, patch: S.t.kind !== 'lab' && f.lab ? htmlPatch(f.lab) : null }));
     return { R, findings: S.findings, fidelity: S.fid };
+  }
+  // (round 56, playlatency) ▶ Play's "Input: x ms" (input → the game's next frame): the last /game latency of this
+  // game, else a short one now (1 s of tiny input, playlatencymain.js); none for the Lab preview
+  async function inputFigure() {
+    const G = typeof GameMode !== 'undefined' ? GameMode.state?.() : null;
+    if (!G?.playing || G.live || !window.hub.game?.latency) return null;
+    let r = await window.hub.game.latency({ op: 'last' }).catch(() => null);
+    if (!r?.line || Date.now() - (r.at || 0) > 120000) r = await window.hub.game.latency({ ms: 1000 }).catch(() => null);
+    return r?.line ? { line: r.line, ok: r.ok, why: r.why || '' } : null;
   }
   // the layer a fix goes to: the main renderer's layer, else the first layer that makes a renderer
   function labLayerFor() {
@@ -204,14 +216,24 @@ const GamePerf = (() => {
     const card = S.card; if (!card?.isConnected) return;
     const R = S.R;
     const by = Object.entries(R?.stutters?.by || {}).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => `${v.n} × ${C().CAUSE[k] || k}`).join(' · ');
-    card.querySelector('.gp-sum').textContent = R ? `${R.fps} fps on ${R.hz} Hz · ${R.onTime}% of frames on time · median ${R.dtMed} ms (budget ${R.budget})${R.stutters.n ? ` · stutters: ${by}` : ' · no stutters'}${R.audio?.latencyMs != null ? ` · sound ${Math.round(R.audio.latencyMs)} ms` : ''}` : ''; // (round 54, gameaudio: the sound's latency, base + output)
+    card.querySelector('.gp-sum').textContent = R ? `${R.fps} fps on ${R.hz} Hz · ${R.onTime}% of frames on time · median ${R.dtMed} ms (budget ${R.budget})${R.stutters.n ? ` · stutters: ${by}` : ' · no stutters'}${R.audio?.latencyMs != null ? ` · sound ${Math.round(R.audio.latencyMs)} ms` : ''}${S.input?.line ? ` · ${S.input.line}${S.input.ok === false && S.input.why ? ` (${S.input.why})` : ''}` : ''}` : ''; // (round 54, gameaudio: the sound's latency, base + output) · (round 56, playlatency: input → the game's next frame)
     const body = card.querySelector('.gp-body');
     const list = [...S.findings.map(row)];
+    const hb = budgetRow(); if (hb) list.unshift(hb);
     if (S.look?.text) { const sc = S.look.r?.screen; list.unshift(el('div', { class: 'gp-none', text: `${S.look.text}${sc?.hdr ? ' · HDR screen: colours shown as made' : sc?.wide ? ' · wide-colour screen: colours shown as made' : ''}` })); }
     if (!S.findings.length) list.push(el('div', { class: 'gp-none', text: 'Nothing slowing it down was found: it runs smooth.' }));
     if (S.fid.length) list.push(el('div', { class: 'gp-head2', text: 'Max fidelity (only on your click)' }), ...S.fid.map(row));
     body.replaceChildren(...list);
     const u = card.querySelector('.gp-undo'); if (u) u.hidden = !S.undos.length;
+  }
+  // (round 55, playbudget) one line: what each of Hearth's helpers costs the game a frame (measured in its window), the
+  // plain note when one was slowing it, and "Turn them back on" (from the next ▶ Play; still watched)
+  function budgetRow() {
+    const b = S.budget; if (!b?.helpers) return null;
+    const parts = Object.values(b.helpers).map((h) => `${h.name} ${h.on ? `${Number(h.avg ?? h.ms).toFixed(3)} ms` : 'off'}`);
+    const text = `Hearth's own work in the game: ${b.line.replace(/^Hearth: /, '')} a frame (at most ${b.budgetMs} ms: 2 % of a frame at ${b.hz} Hz) · ${parts.join(' · ')}`;
+    const back = b.off?.length ? el('button', { type: 'button', class: 'lm-btn', text: 'Turn them back on', title: 'From the next ▶ Play (they stay watched: one that slows the game goes again)', on: { click: async (e) => { e.currentTarget.disabled = true; const src = (S.t?.source && typeof S.t.source === 'object' ? S.t.source : null) || (typeof GameMode !== 'undefined' ? GameMode.last() : null) || undefined; await window.hub.game?.budget?.({ op: 'reset', source: src }).catch(() => null); toast('Hearth\'s helpers are back on from the next ▶ Play', { timeout: 3000 }); } } }) : null;
+    return el('div', { class: 'gp-none gp-budget' }, el('div', { text }), b.note ? el('div', { class: 'gp-fix', text: b.note }) : null, back);
   }
   function close() { S.card?.remove(); S.card = null; }
   function showCard() {
@@ -241,11 +263,11 @@ const GamePerf = (() => {
     } finally { S.busy = false; S.card?.classList.remove('busy'); }
   }
   function state() {
-    return { label: S.t?.label || null, kind: S.t?.kind || null, hz: S.t?.hz || null, at: S.at, fps: S.R?.fps ?? null, stutters: S.R?.stutters || null,
+    return { label: S.t?.label || null, kind: S.t?.kind || null, hz: S.t?.hz || null, at: S.at, input: S.input?.line || null, hearth: S.budget ? { line: S.budget.line, budgetMs: S.budget.budgetMs, helpers: Object.fromEntries(Object.entries(S.budget.helpers || {}).map(([k, h]) => [k, h.on ? (h.avg ?? h.ms) : 'off'])), note: S.budget.note || '' } : null, fps: S.R?.fps ?? null, stutters: S.R?.stutters || null,
       findings: S.findings.map((f) => ({ id: f.id, title: f.title, impact: f.impact, fix: Boolean(f.lab?.layers?.length), patch: Boolean(f.patch) })),
       fidelity: S.fid.map((f) => ({ id: f.id, title: f.title, fix: Boolean(f.lab?.layers?.length), live: Boolean(f.live) })), fixed: [...S.fixed.keys()], undos: S.undos.map((u) => u.label) };
   }
-  const compact = () => C().compact(S.R, S.findings, { name: S.t?.label || '' });
+  const compact = () => C().compact(S.R, S.findings, { name: S.t?.label || '' }) + (S.budget?.note ? `\n${S.budget.note}` : ''); // (round 55, playbudget: one line, only when Hearth switched a helper off)
 
   // ---------- ways in: /game-perf, Ctrl/⌘+K, the director (three_do perf) ----------
   async function directorTool(_tool, a = {}) {

@@ -64,6 +64,7 @@ const GameMode = (() => {
     if (!s) throw new Error('Nothing to play: pick a Lab scene or an HTML game.');
     if (busy) return null;
     busy = true;
+    const clickAt = performance.timeOrigin + performance.now(); // (round 56, readyspeed: ▶ Play pressed, epoch ms)
     let t = null;
     const say = (text) => { if (t?.firstChild) t.firstChild.textContent = text; else t = toast(text, { timeout: 0 }) || null; };
     try {
@@ -73,14 +74,14 @@ const GameMode = (() => {
         s.title = spec.name;
         r = C.route(spec);
         plan = C.mergePlan(spec.layers);
-        spec.plan = { merge: plan.merge, why: plan.why };
+        spec.plan = { merge: plan.merge, why: plan.why, fast: plan.fast && !latTest().copy }; // (round 56, playlatency) fast: the one canvas swapped, not copied, each frame
       }
       // gameready (another stream): assets prepared / cached first, with progress (its group loaded first: a lazy global
       // reads as undefined until it's in) · it arms the window: the getting ready itself runs inside it, behind its card
       if (typeof Lazy !== 'undefined') await Lazy.load('gameready').catch(() => {});
       if (Ready()?.prepare) {
         say(`Getting ${s.title} ready…`);
-        await Ready().prepare(s, (p) => say(`Getting ${s.title} ready… ${Math.round((Number(p?.done ?? p) || 0) * 100)} %`)).catch((err) => console.warn('GameReady:', err?.message || err));
+        await Ready().prepare(s, (p) => say(`Getting ${s.title} ready… ${Math.round((Number(p?.done ?? p) || 0) * 100)} %`), { clickAt }).catch((err) => console.warn('GameReady:', err?.message || err));
       }
       store.set(KEY, C.remember(recent(), s));
       hold(true);
@@ -93,7 +94,7 @@ const GameMode = (() => {
         const names = Object.fromEntries((spec?.layers || []).map((L) => [L.id, L.name || L.id]));
         toast(`${plan.merge.length} layers on one canvas; ${own.map(([id, w]) => `“${names[id]}” keeps its own (${w})`).join(' · ')}`, { timeout: 7000 });
       }
-      Perf()?.attach?.({ exec: async (expr) => { const r = await window.hub.game.eval(expr); if (r?.error) throw new Error(r.error); return r?.value; } }, { label: s.title, kind: s.kind, source: s, hz: info?.hz })?.catch?.((err) => console.warn('GamePerf:', err?.message || err)); // (the game window's own page, measured through game:eval)
+      Perf()?.attach?.({ exec: async (expr) => { const r = await window.hub.game.eval(expr); if (r?.error) throw new Error(r.error); return r?.value; } }, { label: s.title, kind: s.kind, source: s, hz: info?.hz, key: false })?.catch?.((err) => console.warn('GamePerf:', err?.message || err)); // (the game window's own page, measured through game:eval; (round 56, playlatency) key: false — F is read main-side since round 53, so the probe adds no keydown listener to an HTML game)
       emit('start', { source: s, info });
       return info;
     } catch (err) {
@@ -106,6 +107,8 @@ const GameMode = (() => {
   // gamestream.test = { off: true }: not a setting)
   const streamTest = () => { try { return { off: Boolean(JSON.parse(localStorage.getItem('gamestream.test') || 'null')?.off) }; } catch { return { off: false }; } };
   const inputPrefs = () => ({ lowLatency: store.get('gamemode.lowLatency', false) === true });
+  // (round 56, playlatency) a check's "before": localStorage playlatency.test = { copy: true } keeps the one canvas's per-frame copy (not a setting)
+  const latTest = () => { try { return JSON.parse(localStorage.getItem('playlatency.test') || 'null') || {}; } catch { return {}; } };
   // the Lab drives it: the Stage window, full screen on the game's screen (the Lab's own controls keep working)
   async function playLive(s, r, opts) {
     const L = Lab();
@@ -182,12 +185,40 @@ const GameMode = (() => {
   }
   async function menu(x, y) { showMenu(x, y, await menuItems()); }
   // (round 54, gamelook) one choice: Best (the default: sharp textures, true colours, shadows matched to the screen,
-  // stepped down by itself if they'd cost smoothness) or Balanced (sharp textures; the rest as the game sets it)
+  // their size chosen while getting ready so they fit the refresh: round 56) or Balanced (sharp textures; the rest as the game sets it)
   const LOOK = { best: 'Best', balanced: 'Balanced' };
   const lookPref = () => C.look(store.get('gamemode.look', 'best'));
   function setLook(v) {
     store.set('gamemode.look', C.look(v));
     return `Graphics: ${LOOK[lookPref()] || lookPref()} from the next game${now ? ' (▶ Play again to see it now)' : ''}.`;
+  }
+  // (round 56, shadowready) the Best look's shadow size: chosen under Getting ready's card, remembered per game
+  // (playbudgetmain.js); /game look shadows says it, /game look shadows reset chooses again at the next ▶ Play
+  async function shadows(reset) {
+    const s = now?.source || last();
+    if (!s) return 'No game yet: ▶ Play one first.';
+    if (reset) { const r = await window.hub.game.budget({ op: 'shadow-reset', source: s }).catch(() => null); return r?.reset ? `${s.title}: the shadow size is chosen again while getting ready at the next ▶ Play.` : `${s.title}: no shadow size remembered (it's chosen while getting ready).`; }
+    const kept = await window.hub.game.budget({ source: s }).catch(() => null);
+    let line = '';
+    if (now && !now.live) { try { const v = (await window.hub.game.eval('window.__gameLook ? JSON.stringify(window.__gameLook.report().shadows) : ""'))?.value; const r = v ? JSON.parse(v) : null; const t = (await window.hub.game.eval('window.__gameLook ? window.__gameLook.text() : ""'))?.value || ''; const m = /(Shadows: [^·]+|shadows as the game sets them)/.exec(t); line = m ? `Now: ${m[1].trim()}` : (r ? 'Now: the game sets its own shadow sizes' : ''); } catch { line = ''; } }
+    const k = kept?.shadow;
+    return [line, k ? `Remembered for ${s.title}: ${k.size} at ${k.hz} Hz (chosen while getting ready) · /game look shadows reset chooses again` : `${s.title}: no shadow size remembered yet (Best chooses it while getting ready)`].filter(Boolean).join('\n');
+  }
+
+  // (round 55, playbudget) the helpers Hearth runs in the game window, as plain words (tools/playbudget-page.js measures
+  // them there; playbudgetmain.js keeps, per game, the ones that were slowing it)
+  async function helpers(on) {
+    const s = now?.source || last();
+    if (!s) return 'No game yet: ▶ Play one first.';
+    if (on) { await window.hub.game.budget({ op: 'reset', source: s }).catch(() => null); return `${s.title}: Hearth's helpers are back on from the next ▶ Play (they're still watched: one that slows it goes again).`; }
+    const kept = await window.hub.game.budget({ source: s }).catch(() => null);
+    let p = null;
+    if (now && !now.live) { try { const v = (await window.hub.game.eval('window.__hearthBudget ? window.__hearthBudget.pub() : ""'))?.value; p = v ? JSON.parse(v) : null; } catch { p = null; } }
+    const lines = [];
+    if (p) lines.push(`${p.line} a frame now (Hearth's budget: ${p.budgetMs} ms, 2 % of a frame at ${p.hz} Hz) · ${Object.values(p.helpers).map((h) => `${h.name} ${h.on ? `${(h.avg ?? h.ms).toFixed(3)} ms` : 'off'}`).join(' · ')}`);
+    if (p?.note) lines.push(p.note);
+    if (kept?.off?.length) lines.push(`${s.title} plays without: ${kept.off.map((id) => ({ look: 'the look', stream: 'loads during play', audio: 'the sound warm-up', ready: 'getting ready', perf: 'the performance probe' }[id] || id)).join(', ')} (they were slowing it) · /game helpers on tries them again`);
+    return lines.length ? lines.join('\n') : `${s.title}: Hearth's helpers are all on (each watched while it plays: 2 % of a frame at most).`;
   }
 
   // ---------- commands ----------
@@ -205,9 +236,9 @@ const GameMode = (() => {
     },
   });
   Commands.register({
-    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off | look best|balanced]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
-    examples: ['/game', '/game stop', '/game screens', '/game input', '/game look balanced'], keywords: 'play clink game mode raw mouse input latency',
-    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced'].map((v) => ({ value: v })),
+    name: 'game', area: 'Lab', args: '[stop | screens | input | latency | lowlatency on|off | look best|balanced | look shadows [reset] | helpers [on] | ready]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it; ready: how long getting ready took, step by step',
+    examples: ['/game', '/game stop', '/game screens', '/game input', '/game latency', '/game look balanced', '/game helpers', '/game ready'], keywords: 'play clink game mode raw mouse input latency lag delay responsive helpers overhead budget ready loading time',
+    complete: () => ['stop', 'screens', 'input', 'latency', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'look shadows', 'look shadows reset', 'helpers', 'helpers on', 'ready'].map((v) => ({ value: v })),
     run: async (args) => {
       const a = String(args || '').trim();
       if (/^(stop|leave|quit|off)$/i.test(a)) { if (!now) return 'No game is playing.'; leave(); return null; }
@@ -215,11 +246,26 @@ const GameMode = (() => {
       const m = a.match(/^low-?latency\s+(on|off)$/i);
       if (m) { const on = /on/i.test(m[1]); store.set('gamemode.lowLatency', on); return on ? 'Low-latency canvas on from the next game (a frame sooner on screen where the system supports it; it can tear: /game lowlatency off).' : 'Low-latency canvas off (the default).'; }
       // (round 54, gamelook) the look: /game look → what it is and what the game playing got; /game look best|balanced
+      const ls = a.match(/^(?:look|graphics)\s+shadows?(?:\s+(reset|forget|again))?$/i); // (round 56, shadowready)
+      if (ls) return shadows(Boolean(ls[1]));
       const lk = a.match(/^(?:look|graphics)(?:\s+(best|balanced))?$/i);
       if (lk) {
         if (lk[1]) return setLook(lk[1].toLowerCase());
         const t = now && !now.live ? (await window.hub.game.eval('window.__gameLook ? window.__gameLook.text() : ""').catch(() => null))?.value : '';
         return `Graphics: ${LOOK[lookPref()]} (/game look best | balanced)${t ? `\nNow: ${t}` : ''}`;
+      }
+      // (round 55, playbudget) Hearth's own work in the game window: what it costs a frame now, which helpers this game
+      // plays without (they were slowing it), and /game helpers on to try them again from the next ▶ Play
+      const hp = a.match(/^helpers(?:\s+(on|reset))?$/i);
+      if (hp) return helpers(Boolean(hp[1]));
+      // (round 56, readyspeed) how long the last game took from ▶ Play to its first frame of play, step by step
+      if (/^ready$/i.test(a)) { if (typeof Lazy !== 'undefined') await Lazy.load('gameready').catch(() => {}); return Ready()?.speedText?.() || 'Getting ready isn\'t loaded in this Hearth.'; }
+      // (round 56, playlatency) 2 s of tiny input (F24, the mouse 1 px and back) timed to the game's next frame, and
+      // Hearth's part of it (its main process, the window's key handler): playlatencymain.js
+      if (/^(latency|lag|delay)$/i.test(a)) {
+        if (!now || now.live) return 'No game is playing in ▶ Play: start one, then /game latency.';
+        const r = await window.hub.game.latency({ ms: 2000 }).catch((err) => ({ error: err?.message || String(err) }));
+        return r?.error ? `Couldn't measure: ${r.error}` : `${now.source.title} — ${r.text}`;
       }
       if (/^input$/i.test(a)) {
         const p = inputPrefs(); const i = now && !now.live ? (await window.hub.game.state().catch(() => null))?.input : null;

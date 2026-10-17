@@ -382,6 +382,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
 
   // ---------- the session ----------
   function start() {
+    if (S.off) return false; // (round 55, playbudget: switched off for this game)
     S.t0 = now(); S.frames = 0; S.sumDt = 0; S.slow = []; S.bytes = 0; S.gcs = 0; S.self = 0; S.selfN = 0; S.layoutMs = 0; S.mutations = 0; S.chipMs = 0; S.chipN = 0;
     S.shaders = { n: 0, ms: 0, late: [] }; S.textures = { n: 0, ms: 0, mb: 0, late: [] }; S.long = []; S.lastStutter = null; S.on = true;
     R.n = 0; R.i = 0; mot0 = null; heapAt = 0; S.heap = 0; return true;
@@ -411,6 +412,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
     if (W.requestAnimationFrame === wrapRAF) W.requestAnimationFrame = RAF;
     for (const [P, m, f] of glOrig) if (P[m]?.__gp === f) P[m] = f;
     for (const r of renderers) { if (r.render?.__gp) r.render = r.render.__gp; if (r.setAnimationLoop?.__gp) r.setAnimationLoop = r.setAnimationLoop.__gp; }
+    O.key = false; keyListen(); // (round 56)
     undoAll(); delete W.__gamePerf; return true;
   }
   // F toggles the chip in a ▶ Play window (not in the Lab preview, where F may be the scene's own key)
@@ -419,12 +421,32 @@ const GamePerfProbe = function gamePerfProbe(opts) {
     const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     chipOn();
   };
-  addEventListener('keydown', onKey, true);
+  // (round 56, playlatency) listened to only when asked (key: true, an HTML game outside ▶ Play): ▶ Play reads F on the
+  // main side, so the game's keys pass nothing of Hearth's there
+  let keyOn = false;
+  const keyListen = () => { const want = Boolean(O.key) && !S.off; if (want === keyOn) return; keyOn = want; if (want) addEventListener('keydown', onKey, true); else removeEventListener('keydown', onKey, true); };
+  keyListen();
 
   const api = {
     version: 1, chip: chipOn, start, report, detach, tryLive, undoLive: undoAll, use: (o = {}) => { track(o.renderer, o.scene, o.camera, o.layer); return true; },
-    setOpts: (o) => { Object.assign(O, o); if (o.attribute) { try { attributeFn = new Function(`return (${o.attribute})`)(); } catch { /* fine */ } } if (o.chip != null) chipOn(o.chip); },
-    state: () => ({ on: S.on, frames: S.frames, renderers: renderers.size, chip, hz: O.hz }),
+    setOpts: (o) => { Object.assign(O, o); keyListen(); if (o.attribute) { try { attributeFn = new Function(`return (${o.attribute})`)(); } catch { /* fine */ } } if (o.chip != null && !S.off) chipOn(o.chip); },
+    // (round 55, playbudget) ▶ Play's budget (tools/playbudget-page.js): what measuring costs (its own time, the chip's),
+    // stepped aside for the A/B, and off for this game (nothing per frame any more; the numbers so far stay readable)
+    budget: {
+      spent: () => S.self + (S.chipMs || 0),
+      pause: (on) => { if (!S.off) S.on = !on; },
+      off: (by) => {
+        if (S.off) return false;
+        S.off = String(by || 'asked'); S.on = false; alive = false; chipOn(false); keyListen(); // (round 56: off for the session: its F listener goes too)
+        clearInterval(discT); clearInterval(motT);
+        try { loaf?.disconnect(); mo?.disconnect(); } catch { /* fine */ }
+        if (W.requestAnimationFrame === wrapRAF) W.requestAnimationFrame = RAF;
+        for (const [P, m, f] of glOrig) if (P[m]?.__gp === f) P[m] = f;
+        for (const r of renderers) { if (r.render?.__gp) r.render = r.render.__gp; if (r.setAnimationLoop?.__gp) r.setAnimationLoop = r.setAnimationLoop.__gp; }
+        return true;
+      },
+    },
+    state: () => ({ off: S.off || null, on: S.on, frames: S.frames, renderers: renderers.size, chip, hz: O.hz }),
     // dev/checks/gameperf.js: what measuring costs per frame, run n times in a row (no scheduling noise: a busy test
     // computer pre-empts real frames); the session starts again afterwards
     bench: (n = 2000) => {
@@ -441,6 +463,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
     cost: () => ({ perFrameUs: med(SELF, S.selfN) * 1000, meanUs: S.selfN ? (S.self / S.selfN) * 1000 : 0, chipUs: med(CHIP, S.chipN || 0) * 1000, frames: S.frames, inDom: Boolean(chipEl?.isConnected) }),
   };
   W.__gamePerf = api;
+  try { if (W.__hearthBudget?.isOff?.('perf')) api.budget.off('remembered'); } catch { /* fine */ } // (round 55, playbudget)
   // the game's own opt-in (the ▶ Play window API): hearthPerf.use({ renderer, scene, camera })
   if (!W.hearthPerf) W.hearthPerf = { use: api.use };
   if (O.chip) chipOn(true);

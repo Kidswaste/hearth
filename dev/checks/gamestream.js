@@ -14,7 +14,8 @@
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return false; };
 const out = { steps: [], runs: [] };
-const DIR = '/tmp/hearth-gamestream';
+const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp): two runs at once never share files
+const DIR = `${TMP}/hearth-gamestream`;
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); window.hub?.fs?.write(`${DIR}/progress.json`, JSON.stringify(out, null, 1)).catch(() => {}); };
 const safe = async (name, fn) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after 5 min`)), 300000))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
 const THREE_DIR = '/opt/cdn-cache/three@0.186.1/package';

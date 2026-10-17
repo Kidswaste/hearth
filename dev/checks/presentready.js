@@ -16,7 +16,8 @@ const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now(
 const out = { steps: [], measure: {} };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 const safe = async (name, fn) => { try { await fn(); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 400) }); } };
-const DIR = '/tmp/hearth-presentready';
+const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp): two runs at once never share files
+const DIR = `${TMP}/hearth-presentready`;
 const key = async (k, code, vk, text) => {
   const p = { key: k, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: 0 };
   await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: text ? 'keyDown' : 'rawKeyDown', ...p, text, unmodifiedText: text } });

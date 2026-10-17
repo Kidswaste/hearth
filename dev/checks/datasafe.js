@@ -18,7 +18,9 @@ const raw = async (p) => { try { return JSON.parse(await window.hub.fs.read(p));
 try {
   const info = await window.hub.reach.info();
   const D = info.dataDir;
-  const CFG = D.replace(/[\\/]data[\\/]?$/, '') + (D.includes('\\') ? '\\config.json' : '/config.json');
+  const CFG0 = D.replace(/[\\/]data[\\/]?$/, '') + (D.includes('\\') ? '\\config.json' : '/config.json');
+  // (round 55, configsafe) the owner's settings live in data/config.json once moved (a held one at the start keeps the old place)
+  const CFG = (await window.hub.fs.stat(`${D}/config.json`)) ? `${D}/config.json` : CFG0;
   // ---------- 1. at the start ----------
   await until(() => typeof DataSafe !== 'undefined', 15000);
   const card = await until(() => document.querySelector('.ds-card'), 15000);

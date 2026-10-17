@@ -56,6 +56,7 @@
   // WebGLRenderer made by a layer may get a WebGL context the page already has (one a re-run or a switched-away
   // scene let go: see "context pool"), so a re-run or a scene switch doesn't wait for a new GPU context (≈ 250 ms
   // here per context with a software GPU, tens of ms on a real one). Layer code doesn't change: same classes, same API.
+  // (round 56, labcanvas56) __labRNew: the context being asked for is a WebGLRenderer's (see "the layers' canvases")
   const real = `${base}/build/three.module.js`;
   let threeUrl = real;
   try {
@@ -69,7 +70,7 @@
     const GMQ = params.get('game') === '1';
     const GMX = GMQ && !XPX ? 'setPixelRatio() { super.setPixelRatio(globalThis.devicePixelRatio); }' : '';
     const GMP = GMQ ? '{ ...(p0 || {}), antialias: true, powerPreference: "high-performance" }' : XPP;
-    const shim = `export * from '${real}';\nimport { WebGLRenderer as R } from '${real}';\nexport class WebGLRenderer extends R { constructor(p0 = {}) { const p = ${GMP}; const g = globalThis.__gmTake ? globalThis.__gmTake(p) : null; const c = !g && p && !p.canvas && !p.context && globalThis.__labPoolTake ? globalThis.__labPoolTake(p) : null; super(g ? { ...p, ...g } : c ? { ...p, canvas: c } : p); } ${XPX}${GMX} }\n`;
+    const shim = `export * from '${real}';\nimport { WebGLRenderer as R } from '${real}';\nexport class WebGLRenderer extends R { constructor(p0 = {}) { const p = ${GMP}; const g = globalThis.__gmTake ? globalThis.__gmTake(p) : null; const c = !g && p && !p.canvas && !p.context && globalThis.__labPoolTake ? globalThis.__labPoolTake(p) : null; globalThis.__labRNew = 1; try { super(g ? { ...p, ...g } : c ? { ...p, canvas: c } : p); } finally { globalThis.__labRNew = 0; } } ${XPX}${GMX} }\n`;
     if (params.get('pool') !== '0') threeUrl = URL.createObjectURL(new Blob([shim], { type: 'text/javascript' }));
   } catch { threeUrl = real; }
   const im = document.createElement('script');
@@ -455,7 +456,21 @@ const GAME_LOWLAT = GAME && new URLSearchParams(location.search).get('lowlat') =
 const realSetTimeout = setTimeout.bind(window);
 const realClearTimeout = clearTimeout.bind(window);
 const realSetInterval = setInterval.bind(window);
-const realRAF = requestAnimationFrame.bind(window);
+const nativeRAF = requestAnimationFrame.bind(window);
+// (round 56, labcanvas56) the layers' WebGL canvases no longer keep their last frame (preserveDrawingBuffer: see "the
+// layers' canvases"): a canvas's pixels can be read only until the browser shows them. FR knows when that is: E counts
+// the screen's frames (all frame callbacks of one frame get the same time), inRaf is on while one of the page's frame
+// callbacks runs (they all come through here; each one's wrapper is made once and kept with it, nothing per frame).
+const FR = { E: 0, t: -1, inRaf: false, armed: false, replay: false, replays: 0, reads: 0, fresh: 0, stacks: 0, keep: null, vp: null, sc: null, cc: null };
+const frWrap = new WeakMap();
+function realRAF(fn) {
+  let w = frWrap.get(fn);
+  if (!w) {
+    w = (t) => { if (t !== FR.t) { FR.t = t; FR.E += 1; } FR.inRaf = true; try { fn(t); } finally { FR.inRaf = false; } };
+    frWrap.set(fn, w);
+  }
+  return nativeRAF(w);
+}
 const realNow = performance.now.bind(performance); // (a sequence gives each scene its own clock: see "the sequence")
 // ---------- ▣ Present, got ready (round 52, presentready) ----------
 // Before a show (tools/three-ready.js) the scene is made ready here: every picture, video and model in, every shader it
@@ -464,6 +479,9 @@ const realNow = performance.now.bind(performance); // (a sequence gives each sce
 // cap). RDY.gl counts what the GPU compiles / uploads (from the prototypes, under the program cache: a cached program
 // counts nothing), so a check can count them in the first seconds of a show.
 const RDY = { lock: false, rec: null, pend: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0, waitMs: 0 } };
+// (round 56, readyspeed) when ▶ Play's pictures arrived, were decoded (off the page's thread) and transcoded (KTX2, in workers): page times, ms
+const RDYT = { refsAt: null, decodeFrom: null, decodeTo: null, decodeN: 0, ktxFrom: null, ktxTo: null, ktxN: 0 };
+const rdyT = (k, t0) => { const t = realNow(); if (RDYT[`${k}From`] == null || t0 < RDYT[`${k}From`]) RDYT[`${k}From`] = t0; if (RDYT[`${k}To`] == null || t > RDYT[`${k}To`]) RDYT[`${k}To`] = t; RDYT[`${k}N`] += 1; };
 for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRenderingContext?.prototype]) {
   if (!P) continue;
   const wrap = (m, fn) => { const f = P[m]; if (typeof f === 'function') P[m] = fn(f); };
@@ -472,10 +490,16 @@ for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRendering
   // (round 52, gameready) time the page waits for the GPU's shader work (a status read blocks until it's compiled /
   // linked; programs from Chromium's shader disk cache come back sooner): ms, cumulative
   wrap('getProgramParameter', (f) => function (pr, k) { const t = realNow(); try { return f.call(this, pr, k); } finally { RDY.gl.waitMs += realNow() - t; } });
-  wrap('activeTexture', (f) => function (u) { this.__rdyU = u; return f.call(this, u); });
-  wrap('bindTexture', (f) => function (tg, tx) { (this.__rdyT ||= {})[this.__rdyU || 0] = tx; return f.call(this, tg, tx); });
-  // a texture's first upload (a picture / model texture arriving) vs the same texture again (a video's next frame)
-  const up = (f) => function (...a) { const tx = this.__rdyT?.[this.__rdyU || 0]; if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; } else RDY.gl.reuploads += 1; return f.apply(this, a); };
+  // a texture's first upload (a picture / model texture arriving) vs the same texture again (a video's next frame).
+  // (round 55, labplay55) the texture is asked for at the upload (the context keeps its bindings: no GPU round trip)
+  // instead of following every activeTexture / bindTexture call: those run many times a frame in a game, uploads rarely
+  const up = (f) => function (...a) {
+    const tg = a[0]; const gl = this;
+    const k = tg === gl.TEXTURE_2D ? gl.TEXTURE_BINDING_2D : tg === gl.TEXTURE_CUBE_MAP || (tg >= 0x8515 && tg <= 0x851a) ? gl.TEXTURE_BINDING_CUBE_MAP : tg === gl.TEXTURE_3D ? gl.TEXTURE_BINDING_3D : tg === gl.TEXTURE_2D_ARRAY ? gl.TEXTURE_BINDING_2D_ARRAY : 0;
+    let tx = null; try { tx = k ? gl.getParameter(k) : null; } catch { /* counted as a re-upload */ }
+    if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; } else RDY.gl.reuploads += 1;
+    return f.apply(this, a);
+  };
   for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'texSubImage2D', 'texSubImage3D', 'compressedTexSubImage2D']) wrap(m, up);
 }
 // models (and textures) loading through three.js's default manager: how many are still on their way
@@ -565,9 +589,25 @@ function preQ(r, EL) {
     try { return spr.call(this, pr); } finally { inner = false; this.setSize = setSize; }
   };
 }
+// (round 56, labcanvas56) a draw again of a frame (glReplay): what the screen showed, nothing counted or adapted
+function replayDraw(r, renderFn, scene, camera) {
+  const EL = r.__layer && layers.get(r.__layer);
+  if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
+  if (EL && (EL.lookTry || EL.lk || EL.props.overrides?.['@look'])) lookApply(r, EL, scene);
+  camera = editCamera(r, scene, camera);
+  const cmBack = EL?.props.camMoves?.length && !r.__helper && !edit.on ? cmRender(r, scene, camera, EL) : null;
+  const lvBack = EL && mode === 'sketch' && !r.__helper ? lvRender(r, scene, camera, EL) : null;
+  const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
+  const rfBack = RF.on && !r.__helper ? rfApply(camera) : null;
+  try { renderFn.call(r, scene, camera); } finally { rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
+  r.domElement.__dE = FR.E; r.domElement.__dR = FR.inRaf;
+  if (!FR.inRaf && !FR.armed) { FR.armed = true; realRAF(frArm); }
+}
 function instrument(renderFn) {
   return function render(scene, camera) {
     if (this.__stale) return; // (round 21: a gone module's renderer draws nothing, and isn't counted back in)
+    if (FR.replay) return replayDraw(this, renderFn, scene, camera); // (round 56, labcanvas56: its last frame again, see "the layers' canvases")
+    const scene0 = scene; const camera0 = camera;
     if (this.__gm && gmRender(this, scene, camera)) return; // (round 52, gamemode) a merged layer's frame: drawn in z order with the others
     if (window.__lkInEnv) return renderFn.call(this, scene, camera); // (round 50, labmaterials: baking the built-in studio light, see "Looks")
     // the user's placements from the scene editor, then (while editing this layer) the editor camera
@@ -621,6 +661,7 @@ function instrument(renderFn) {
     const rfBack = RF.on && !this.__helper ? rfApply(camera) : null; // (round 33, multiformat) a format's pan / zoom
     if (this.shadowMap?.enabled && scene?.isObject3D) shGate(this, scene); // (round 50 "lab240gpu": maps only when they can change)
     try { renderFn.call(this, scene, camera); } finally { rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
+    if (this.domElement?.__lcf && !this.getRenderTarget()) { glNote(this, scene0, camera0); if (this.__adProbe) adProbeNow(this); } // (round 56, labcanvas56)
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     frameMs = realNow() - t0;
     frameWork += frameMs; frameCalls += this.info?.render?.calls || 0;
@@ -659,8 +700,98 @@ for (const m of ['setClearColor', 'setClearAlpha']) {
     });
   }
 }
-// WebGL canvases get an alpha channel (layers show the ones below) and keep their last frame (so all
-// layers can be merged into one picture for recordings and screenshots).
+// WebGL canvases get an alpha channel (layers show the ones below). (round 56, labcanvas56) They no longer keep their
+// last frame: see "the layers' canvases".
+// ---------- the layers' canvases (round 56, labcanvas56) ----------
+// Every layer's WebGL canvas used to keep its last frame (preserveDrawingBuffer), so stills, thumbnails, the layer
+// picking, recordings, renders and filters could read it at any time. The price: the browser copies the whole drawing
+// buffer of every shown canvas on every frame (a full frame of pixels per layer, per frame: ≈ 8 MP a layer at 4K, 240
+// times a second). Now a canvas the page can draw again doesn't keep it. Whatever reads a layer's pixels asks glFresh
+// first: a canvas drawn in this same frame (or task) is read as it is; otherwise its renderer draws its last frame again
+// right there (the same scene and camera, its view / camera moves / looks, its viewport, no shadow maps redrawn: the
+// same picture) and the read follows in the same task. The layers' frame callbacks run bottom first in one batch (see
+// "layer frames"), so a filter reads the layers under it just drawn, and a recording merges after the layers drew.
+// Kept as before: a canvas three.js didn't make through the page's 'three' (no frame to draw again), ▶ Play's window,
+// and a layer whose code draws over its last frame (autoClear off), reads its own canvas or asks for the buffer kept.
+const LC_KEEP = /preserveDrawingBuffer|autoClear(?:Color)?\s*[=:]\s*false|\.toDataURL\s*\(|\.toBlob\s*\(|captureStream\s*\(|readPixels\s*\(|transferToImageBitmap/;
+function lcFresh(opts) {
+  if (GAME || FR.keep || !globalThis.__labRNew || opts?.preserveDrawingBuffer === true) return false;
+  const id = currentLayer();
+  const L = id ? layers.get(id) : null;
+  return !(L && LC_KEEP.test(L.code || ''));
+}
+// the canvas's pixels are its current picture now (drawn in this frame's callbacks, or in this task before the frame)
+const glValid = (cv) => cv.__dE === FR.E && cv.__dR === FR.inRaf;
+// before reading a layer's canvas: its pixels as it shows them (→ the canvas)
+function glFresh(cv) {
+  if (cv?.__gmFast) { gmFresh(cv); return cv; } // (round 56, playlatency: ▶ Play's one canvas draws its stack again)
+  if (!cv?.__lcf) return cv;
+  FR.reads += 1;
+  if (glValid(cv)) { FR.fresh += 1; return cv; }
+  const r = cv.__rnd;
+  if (r && !r.__stale && !r.__gutted) glReplay(r);
+  return cv;
+}
+// its last frame again (the screen draws since its last clear: up to 8, each with the viewport, scissor and clear color
+// it had; a frame that began without a clear starts from one)
+function glReplay(r) {
+  const rp = r.__rp;
+  if (!rp?.n || r.__warm === 'pending' || typeof r.getRenderTarget !== 'function') return false;
+  const gl = r.getContext?.();
+  if (!gl || gl.isContextLost()) return false;
+  if (!FR.vp) { FR.vp = new THREE.Vector4(); FR.sc = new THREE.Vector4(); FR.cc = new THREE.Color(); }
+  const rt = r.getRenderTarget(); const ac = r.autoClear; const st = r.getScissorTest(); r.getViewport(FR.vp); r.getScissor(FR.sc); const cc0 = r.getClearColor(FR.cc); if (cc0?.isColor && cc0 !== FR.cc) FR.cc.copy(cc0); const ca = r.getClearAlpha();
+  const kc = r.__keepClear;
+  const sm = r.shadowMap; const g = sm?.__gate; const keep = g ? [g.on, g.need, g.nu] : sm ? [sm.autoUpdate, sm.needsUpdate] : null;
+  FR.replay = true; FR.replays += 1;
+  try {
+    if (rt) r.setRenderTarget(null);
+    if (g) { g.on = true; g.need = false; g.nu = false; } else if (sm) { sm.autoUpdate = false; sm.needsUpdate = false; } // (its shadow maps are the ones it drew with)
+    if (!rp.e[0].ac) { r.setClearColor(rp.e[0].cc, rp.e[0].ca); r.clear(); }
+    for (let i = 0; i < rp.n; i += 1) { const e = rp.e[i]; r.setViewport(e.vp); r.setScissor(e.sc); r.setScissorTest(e.st); r.autoClear = e.ac; r.setClearColor(e.cc, e.ca); r.render(e.s, e.c); }
+  } catch { /* a gone scene: what it has */ } finally {
+    FR.replay = false;
+    try {
+      r.autoClear = ac; r.setViewport(FR.vp); r.setScissor(FR.sc); r.setScissorTest(st); r.setClearColor(FR.cc, ca); r.__keepClear = kc; if (rt) r.setRenderTarget(rt);
+      if (g) [g.on, g.need, g.nu] = keep; else if (sm) { sm.autoUpdate = keep[0]; sm.needsUpdate = keep[1]; }
+    } catch { /* gone */ }
+  }
+  return true;
+}
+// a screen draw of a renderer whose canvas doesn't keep its frame: noted (what to draw again, and when it was drawn)
+function glNote(r, scene, camera) {
+  const cv = r.domElement;
+  const rp = r.__rp || (r.__rp = { n: 0, e: [], E: -1, R: false });
+  try { glNote1(r, rp, scene, camera); } catch { rp.n = 0; } // (a three.js without one of these getters: nothing to draw again)
+  cv.__dE = FR.E; cv.__dR = FR.inRaf;
+  // drawn outside the page's frame callbacks: the next frame shows it (and marks it shown) even if nothing else asks one
+  if (!FR.inRaf && !FR.armed) { FR.armed = true; realRAF(frArm); }
+}
+function glNote1(r, rp, scene, camera) {
+  const ac = r.autoClear && r.autoClearColor;
+  if (ac || rp.E !== FR.E || rp.R !== FR.inRaf) rp.n = 0; // (a cleared screen, or a new frame: a new list)
+  rp.E = FR.E; rp.R = FR.inRaf;
+  if (rp.n < 8) {
+    let e = rp.e[rp.n];
+    if (!e) e = rp.e[rp.n] = { s: null, c: null, vp: new THREE.Vector4(), sc: new THREE.Vector4(), st: false, ac: true, cc: new THREE.Color(), ca: 1 };
+    e.s = scene; e.c = camera; r.getViewport(e.vp); r.getScissor(e.sc); e.st = r.getScissorTest(); e.ac = ac; e.ca = r.getClearAlpha();
+    const cc = r.getClearColor(e.cc); if (cc?.isColor && cc !== e.cc) e.cc.copy(cc); // (an older three.js returns its own)
+    rp.n += 1;
+  }
+}
+function frArm() { FR.armed = false; }
+// checks (dev/checks/labcanvas56.js): window.__labCanvas.set({ keep: true }) makes the canvases made from now on keep
+// their frame as before (to compare pictures); info() counts the layers' canvases by kind and the reads / draws again
+window.__labCanvas = {
+  set: ({ keep } = {}) => { FR.keep = Boolean(keep); return { keep: FR.keep }; },
+  info: () => {
+    const cvs = []; for (const L of layers.values()) for (const cv of layerCanvases(L)) { const gl = cv.__gl || null; if (gl && !gl.isContextLost()) cvs.push({ layer: L.id, w: cv.width, h: cv.height, at: Object.values(xform(L)).map((v) => Math.round(v * 1000) / 1000).join(','), keeps: Boolean(gl.getContextAttributes()?.preserveDrawingBuffer), fresh: Boolean(cv.__lcf) }); }
+    return { keep: FR.keep, canvases: cvs, kept: cvs.filter((c) => c.keeps).length, reads: FR.reads, readAsIs: FR.fresh, replays: FR.replays, flushes: LQ.flushes, frame: FR.E, stacks: FR.stacks };
+  },
+  merge: (only) => composite(null, 1, null, only ? new Set(only) : null).toDataURL('image/png'), // (the merge of these layers, as stills make it)
+  pictures: () => ordered().flatMap((L) => layerPictures(L).map((c) => `${L.id}:${c.toDataURL('image/png')}`)), // (the pictures a re-run cross-fades from)
+  reset: () => { FR.reads = 0; FR.fresh = 0; FR.replays = 0; return 1; },
+};
 const realGetContext = HTMLCanvasElement.prototype.getContext;
 const GPU_PREF = new URLSearchParams(location.search).get('gpu') === 'low' ? 'low-power' : 'high-performance'; // (round 52, gpu52)
 let glRefs = []; // WeakRefs to the WebGL contexts made here (__labHealth counts the ones still alive)
@@ -679,8 +810,13 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   // after) unless the sketch asks for one ('default', what three.js passes, isn't asking); /graphics power saver: the
   // small one (?gpu=low)
   if (gl3d && (!opts?.powerPreference || opts.powerPreference === 'default')) opts = { ...(opts || {}), powerPreference: GPU_PREF };
-  if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
+  // (round 56, labcanvas56) only a canvas whose last frame can't be drawn again keeps it (see "the layers' canvases");
+  // (round 56, playlatency) ▶ Play's one canvas, when nothing reads it later, is swapped to the screen, not copied (gmFresh)
+  let lcf = false;
+  if (mode === 'sketch' && gl3d) { lcf = !this.__ctxMade && lcFresh(opts); opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: !(lcf || this.__gmFast) }; }
+  globalThis.__labRNew = 0;
   const ctx = realGetContext.call(this, type, opts);
+  if (gl3d && ctx && mode === 'sketch' && !this.__ctxMade) this.__lcf = lcf && !ctx.getContextAttributes?.()?.preserveDrawingBuffer;
   if (gl3d && !ctx) globalThis.__glrNone?.(); // (round 51) no context at all: the GPU is away (glrecover below)
   if (gl3d && ctx) { this.__ctxMade = true; ctx.__asked = opts?.powerPreference; } // (gpu52: what was asked; getContextAttributes says the card it got)
   if (gl3d && ctx && !ctx.__counted) {
@@ -700,18 +836,20 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
 // the others clear depth and draw on top, as their stacked canvases looked. A layer that only drew once is drawn again
 // from its last scene / camera each frame. Layers that can't merge keep their own canvas (the Lab's compositor), and
 // the plan says why (window.__gameInfo()).
-const GM = { merge: new Set(), why: {}, canvas: null, gl: null, q: [], rec: new Map(), drawing: false, inFlush: false, raf: 0, ids: 1e9, cancel: new Set(), made: 0, frames: 0, n: 0 };
+const GM = { merge: new Set(), why: {}, canvas: null, gl: null, q: [], rec: new Map(), drawing: false, inFlush: false, raf: 0, ids: 1e9, cancel: new Set(), made: 0, frames: 0, n: 0, fast: false, retire: false, old: null, fresh: false };
 if (GAME) {
   globalThis.__gmTake = (p) => {
     if (!p || p.canvas || p.context || helperNow()) return null;
     const id = currentLayer(); const L = id ? layers.get(id) : null;
     if (!L || !GM.merge.has(L.id)) return null;
-    if (!GM.gl) {
+    if (!GM.gl || GM.retire) {
       const cv = document.createElement('canvas');
       cv.className = 'gm-canvas'; cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
+      cv.__gmFast = GM.fast; // (round 56, playlatency) see gmFresh
       const gl = cv.getContext('webgl2', { alpha: true, antialias: true, depth: true, stencil: true, premultipliedAlpha: true, powerPreference: 'high-performance', ...(GAME_LOWLAT ? { desynchronized: true } : {}) });
       if (!gl) return null;
-      GM.canvas = cv; GM.gl = gl;
+      if (GM.retire && GM.canvas) GM.old = GM.canvas; // (the kept-picture canvas replaces the fast one: the old goes once the new one is placed)
+      GM.canvas = cv; GM.gl = gl; GM.retire = false;
     }
     L.gm = true; GM.made += 1;
     return { canvas: GM.canvas, context: GM.gl };
@@ -719,7 +857,22 @@ if (GAME) {
   const rc = window.cancelAnimationFrame.bind(window);
   window.cancelAnimationFrame = (id) => (id > 1e9 ? GM.cancel.add(id) : rc(id));
 }
-function gmPlan(msg) { GM.merge = new Set(msg.merge || []); GM.why = msg.why || {}; }
+// (round 56, playlatency) msg.fast (GameCore.fastCanvas): every layer merged and none reads a picture → the one canvas
+// is made without preserveDrawingBuffer (swapped to the screen each frame instead of copied). A later plan that needs
+// the kept picture (a live edit added a filter / a layer that reads one) gets a new canvas made the old way.
+function gmPlan(msg) {
+  GM.merge = new Set(msg.merge || []); GM.why = msg.why || {};
+  const fast = msg.fast === true;
+  if (GM.gl && GM.canvas?.__gmFast && !fast) GM.retire = true;
+  if (!GM.gl) GM.fast = fast; else if (!fast) GM.fast = false;
+}
+// Hearth's own rare reads of the one canvas (a swap's cover picture, a loop seam, a shot, a removed layer's ghost):
+// a fast canvas holds no picture outside its frame, so the stack is drawn again first (in this task: read right after)
+function gmFresh(cv) {
+  if (!cv?.__gmFast || cv !== GM.canvas || GM.drawing || GM.inFlush || GM.fresh) return;
+  GM.fresh = true; queueMicrotask(() => { GM.fresh = false; });
+  gmComposite(false);
+}
 function gmTag(r) {
   r.__gm = true; r.__gmN = ++GM.n; r.__noPool = true;
   r.forceContextLoss = () => {}; // (a layer's own forceContextLoss would take every merged layer's picture)
@@ -755,7 +908,7 @@ function gmRender(r, scene, camera) {
   if (!GM.inFlush && !GM.raf) GM.raf = realRAF(gmFlush); // (a sketch that draws once, or from a timer)
   return true;
 }
-function gmComposite() {
+function gmComposite(count = true) {
   if (!GM.rec.size) return;
   const list = [...GM.rec.values()].filter((e) => !e.r.__stale && (!e.L || (layers.get(e.L.id) === e.L && e.L.gen === e.gen))).sort((a, b) => ((a.L?.props.z ?? 0) - (b.L?.props.z ?? 0)) || a.n - b.n);
   GM.drawing = true;
@@ -768,10 +921,14 @@ function gmComposite() {
       first = false;
     }
   } finally { GM.drawing = false; }
-  GM.frames += 1;
+  if (count) GM.frames += 1;
   const box = list[0]?.L?.box;
   if (box && GM.canvas && GM.canvas.parentNode !== box) box.prepend(GM.canvas);
+  if (GM.old && GM.canvas?.isConnected) { const o = GM.old; GM.old = null; o.remove(); try { o.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* gone */ } }
 }
+// (round 56, fixes56) ▶ Play's budget A/B (tools/playbudget-page.js) draws frames back to back outside the frame loop: a
+// merged layer's render() is only noted, so its frames are drawn here, now, as the frame's composite draws them
+if (GAME) globalThis.__gmDrawNow = () => { if (GM.inFlush || GM.drawing || !GM.rec.size) return false; gmComposite(false); return true; }; // (not a shown frame: the stats chip's count stays the frames played)
 // what ▶ Play shows in its stats chip, and the checks read: the plan, the contexts alive, the fidelity in force
 window.__gameInfo = () => {
   const gl = GM.gl; const a = gl?.getContextAttributes?.() || null;
@@ -780,6 +937,7 @@ window.__gameInfo = () => {
     antialias: a ? a.antialias : null, samples: gl ? gl.getParameter(gl.SAMPLES) : null, power: a?.powerPreference || null,
     pixelRatio: devicePixelRatio, canvas: GM.canvas ? { w: GM.canvas.width, h: GM.canvas.height, cssW: GM.canvas.clientWidth } : null,
     cap: fpsCap, lock: RDY.lock, quality, pace: PACE.on,
+    fast: Boolean(GM.canvas?.__gmFast), preserve: a ? a.preserveDrawingBuffer : null, // (round 56, playlatency: no per-frame copy of the one canvas)
   };
 };
 // ---------- context pool (round 21 "labgpu") ----------
@@ -822,6 +980,8 @@ function progCache(ctx) {
   if (PROG_FNS.concat(['linkProgram', 'compileShader']).some((k) => typeof realOf[k] !== 'function')) return;
   const R = (p) => P.alias.get(p) || p;
   for (const k of PROG_FNS) { const fn = realOf[k]; if (typeof fn === 'function') ctx[k] = function (p, ...a) { return fn.call(ctx, R(p), ...a); }; }
+  // (round 55, labplay55) useProgram runs on every material switch of every frame: one argument, no rest / spread
+  if (typeof realOf.useProgram === 'function') { const up = realOf.useProgram; ctx.useProgram = function (p) { return up.call(ctx, P.alias.get(p) || p); }; }
   const flush = (s) => { if (P.pend.delete(s)) realOf.compileShader.call(ctx, s); };
   ctx.createShader = function (t) { const s = realOf.createShader.call(ctx, t); if (s) P.type.set(s, t); return s; };
   ctx.shaderSource = function (s, src) { P.src.set(s, String(src)); flush(s); return realOf.shaderSource.call(ctx, s, src); };
@@ -889,7 +1049,7 @@ function poolWant(p = {}) {
 }
 function poolKeyOf(gl) {
   const a = gl.getContextAttributes?.() || {};
-  return `${a.antialias ? 1 : 0}${a.depth ? 1 : 0}${a.stencil ? 1 : 0}${a.premultipliedAlpha ? 1 : 0}${a.failIfMajorPerformanceCaveat ? 1 : 0}`; // (the browser reports its own powerPreference)
+  return `${a.antialias ? 1 : 0}${a.depth ? 1 : 0}${a.stencil ? 1 : 0}${a.premultipliedAlpha ? 1 : 0}${a.failIfMajorPerformanceCaveat ? 1 : 0}${a.preserveDrawingBuffer ? 1 : 0}`; // (the browser reports its own powerPreference) · (round 56: whether it keeps its last frame)
 }
 function poolEvict(e) {
   const i = POOL.indexOf(e); if (i >= 0) POOL.splice(i, 1);
@@ -902,13 +1062,14 @@ globalThis.__labPoolTake = (p) => {
   if (mode !== 'sketch' || !POOL.length) return null;
   const st = new Error().stack;
   if (staleStack(st) || !(layerOfStack(st) || ctxLayer)) return null; // (only the layers' own renderers)
-  const want = poolWant(p);
+  const L0 = layers.get(layerOfStack(st) || ctxLayer);
+  const want = poolWant(p) + (GAME || FR.keep || p?.preserveDrawingBuffer === true || LC_KEEP.test(L0?.code || '') ? 1 : 0); // (round 56, labcanvas56: a canvas that keeps its last frame only for a layer that needs it)
   const e = POOL.find((x) => x.key === want);
   if (!e) { perfNote.poolMiss += 1; return null; }
   POOL.splice(POOL.indexOf(e), 1);
   realClearTimeout(e.timer);
   if (e.gl.isContextLost() || e.gl.__glDead) return null;
-  e.gl.__pooled = false;
+  e.gl.__pooled = false; e.cv.__dE = -1;
   if (e.cv.__tb !== undefined) { e.cv.__tb = null; const s = e.cv.style; s.position = ''; s.left = ''; s.top = ''; } // (round 51: a type layer's tight place stays with it)
   perfNote.poolHit += 1;
   return e.cv;
@@ -1286,11 +1447,24 @@ function paceCore(opt = {}) {
   // every 8th frame (it draws anyway), a still one at most every LOOK ms (its own change shows within one 60 Hz frame).
   const LOOK = opt.look ?? 15;
   // (round 44, idlecpu) refresh: the safety redraw's period (a dozing page, see "dozing", asks for a longer one)
+  // (round 55, labplay55) a scene that keeps moving (a game playing in the preview) draws every frame anyway, so:
+  //   · a poke (a pointer moving over it, a message from the Lab) no longer works its signature out again and starts
+  //     counting from scratch: it draws, and its next look compares with its last one as before. With the mouse over
+  //     a playing game that was a whole-scene walk on every frame (the 30 every-frame looks started over each move);
+  //   · once it has moved for MOVING_LONG ms (and 30 looks), it's looked at every 32nd frame instead of every 8th. A
+  //     game that stops is still caught (within 32 frames), then looked at on every frame again.
+  const MOVING_LONG = opt.movingLong ?? 2000;
   function still(st, now, poke, sigOf, refresh = REFRESH) {
     st.refreshes ||= 0; st.looks ||= 0;
-    if (poke !== st.poke) { st.poke = poke; const s = sigOf(); st.looks += 1; st.a = s.a; st.b = s.b; st.same = 0; st.moving = 0; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0; return false; }
+    if (poke !== st.poke) {
+      st.poke = poke;
+      if ((st.moving || 0) > 0) return false;
+      const s = sigOf(); st.looks += 1;
+      const moved = st.looks > 1 && !s.live && (s.a !== st.a || s.b !== st.b); // (a change since its last look: it's moving)
+      st.a = s.a; st.b = s.b; st.same = 0; st.moving = moved ? 1 : 0; if (moved) st.mv0 = now; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0; return false;
+    }
     if (st.liveFor > 0) { st.liveFor -= 1; return false; }
-    if ((st.moving || 0) >= 30) { st.k = ((st.k || 0) + 1) % 8; if (st.k) return false; }
+    if ((st.moving || 0) >= 30) { st.k = ((st.k || 0) + 1) % (now - st.mv0 >= MOVING_LONG ? 32 : 8); if (st.k) return false; }
     if ((st.same || 0) > AFTER && now - st.lookAt < LOOK) {
       if (now - st.at < refresh) return true;
       st.at = now; st.refreshes += 1; return false;
@@ -1300,7 +1474,7 @@ function paceCore(opt = {}) {
     if (s.live) { st.same = 0; st.moving = 0; st.liveFor = 60; return false; }
     const changed = s.a !== st.a || s.b !== st.b;
     st.a = s.a; st.b = s.b;
-    if (changed) { st.same = 0; st.moving = (st.moving || 0) + 1; st.at = now; return false; }
+    if (changed) { if (!st.moving) st.mv0 = now; st.same = 0; st.moving = (st.moving || 0) + 1; st.at = now; return false; }
     st.moving = 0; st.same = (st.same || 0) + 1;
     if (st.same <= AFTER) { st.at = now; return false; }
     if (now - (st.at ?? -1e9) >= refresh) { st.at = now; st.refreshes += 1; return false; }
@@ -1372,7 +1546,7 @@ function dozeWake(by = '') {
 }
 {
   const realCAF = cancelAnimationFrame.bind(window);
-  window.cancelAnimationFrame = (id) => { if (id < 0) { const i = DOZE.q.findIndex((e) => e.id === id); if (i >= 0) DOZE.q.splice(i, 1); return; } realCAF(id); };
+  window.cancelAnimationFrame = (id) => { if (id < 0) { if (id % 1) { lqCancel(id); return; } const i = DOZE.q.findIndex((e) => e.id === id); if (i >= 0) DOZE.q.splice(i, 1); return; } realCAF(id); }; // (round 56: -n.5, a layer frame: see "layer frames")
 }
 // once per displayed frame (tickFrames): may the page doze, and how deeply? (the frame that just ended is `prev`)
 // (what keeps it awake right now, for checks: __labPace.state().doze.why)
@@ -1462,11 +1636,12 @@ function pacePower(on) {
 }
 // (checks and /lab perf: window.__labPace.state() / .on(false) / .power(true) / .reset() / .hold(level))
 window.__labPace = {
-  state: () => ({ ...paceInfo(), poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level, doze: { on: DOZE.on, ms: DOZE.ms, why: DOZE.why || '', by: DOZE.by || '', log: DOZE.log.slice(-6), dozes: DOZE.dozes, wakes: DOZE.wakes, flushes: DOZE.flushes } }),
+  state: () => ({ ...paceInfo(), sigs: PACE.sigs, poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level, doze: { on: DOZE.on, ms: DOZE.ms, why: DOZE.why || '', by: DOZE.by || '', log: DOZE.log.slice(-6), dozes: DOZE.dozes, wakes: DOZE.wakes, flushes: DOZE.flushes } }),
   on: (v) => { PACE.on = v !== false; PACE.poke += 1; dozeWake('pacing switched'); return PACE.on; },
   power: (v) => { pacePower(v); return { cap: fpsCap, level: AD.core.level, quality }; },
   reset: () => { PACE.drawn = 0; PACE.skipped = 0; PACE.refreshes = 0; PACE.sigs = 0; PACE.sigMs = 0; PACE.sleeps = 0; PACE.wakes = 0; PACE.meter.reset(); return 1; },
   sleeping: () => paceSleeping.size,
+  gates: () => [...renderers].filter((r) => !r.__stale && r.__pace).map((r) => { const g = r.__pace; return { layer: r.__layer || null, moving: g.moving || 0, same: g.same || 0, liveFor: g.liveFor || 0, looks: g.looks || 0, multi: frameTick - g.multi < 120 }; }), // (round 55, labplay55: each renderer's still gate)
 };
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
 const tickFrames = (t) => {
@@ -1504,7 +1679,10 @@ async function rdyAssets(id) {
     const vids = [...document.querySelectorAll('video'), ...(mediaEl instanceof HTMLVideoElement ? [mediaEl] : [])].filter((v) => v.src || v.srcObject).filter((v) => v.readyState < 2 && !v.error).length;
     // (round 52, gameready) 🧊 model layers still loading their file (lab3d: its parse and textures are outside three's manager)
     let m3 = 0; try { for (const S of globalThis.lab3d?.live?.values?.() || []) if (!S.loaded && !S.error && !S.gone) m3 += 1; } catch { /* no models */ }
-    return { imgs, vids, models: RDY.pend + m3, layers: stackWait ? 1 : 0 };
+    // (round 56, readyspeed) refTexture()'s pictures still decoding off the thread (and fonts): their uploads belong here,
+    // not in a warm-up pass or the first frames of play
+    let pics = 0; try { pics = TY.pending.size; } catch { /* not yet */ }
+    return { imgs, vids, models: RDY.pend + m3 + pics, layers: stackWait ? 1 : 0 };
   };
   let l = left(); const total = Math.max(1, l.imgs + l.vids + l.models + l.layers);
   while (realNow() - t0 < 15000) {
@@ -1541,16 +1719,33 @@ function rdyTextures(r, sc) {
 // every program the scenes on the layers' renderers need (the scenes each renderer drew lately, not only the last one)
 async function rdyCompile(id) {
   const list = rdyLive(); let done = 0; let tex = 0; const t0 = realNow();
+  // (round 56, readyspeed) every renderer's programs handed to the driver first (KHR_parallel_shader_compile: they compile
+  // side by side on its threads), the textures uploaded while they compile, then the wait for all of them together
+  // (was: one scene's compile waited for, then its textures, then the next)
+  const waits = [];
   for (const r of list) {
+    const mine = [];
     for (const sc of new Set([...(r.__seen || []), r.__lastScene])) {
       if (!sc?.isObject3D) continue;
-      try { if (typeof r.compileAsync === 'function') await Promise.race([r.compileAsync(sc, r.__lastCamera), new Promise((res) => realSetTimeout(res, 8000))]); else r.compile?.(sc, r.__lastCamera); } catch { /* a scene its next frame draws anyway */ }
+      try { if (typeof r.compileAsync === 'function') mine.push(Promise.race([r.compileAsync(sc, r.__lastCamera), new Promise((res) => realSetTimeout(res, 8000))]).catch(() => {})); else r.compile?.(sc, r.__lastCamera); } catch { /* a scene its next frame draws anyway */ }
       try { tex += rdyTextures(r, sc); } catch { /* fine */ }
     }
-    done += 1;
-    if (id) post({ type: 'ready-progress', id, stage: 'shaders', done, total: list.length });
+    waits.push(Promise.all(mine).then(() => { done += 1; if (id) post({ type: 'ready-progress', id, stage: 'shaders', done, total: list.length }); }));
   }
-  return { renderers: list.length, textures: tex, compileMs: Math.round(realNow() - t0) };
+  await Promise.all(waits);
+  // (round 56, readyspeed) every program of every renderer reports COMPLETION_STATUS before getting ready goes on (a
+  // compileAsync cut short by its 8 s guard on a slow machine left programs compiling into the first frames of play)
+  const pending = await rdyProgramsReady(list, 20000);
+  return { renderers: list.length, textures: tex, compileMs: Math.round(realNow() - t0), pending };
+}
+async function rdyProgramsReady(list, ms) {
+  const t = realNow(); let left = 0;
+  for (;;) {
+    left = 0;
+    for (const r of list) for (const p of r.info?.programs || []) { try { if (typeof p.isReady === 'function' && !p.isReady()) left += 1; } catch { /* lost */ } }
+    if (!left || realNow() - t > ms) return left;
+    await new Promise((res) => realSetTimeout(res, 16));
+  }
 }
 // (round 52, gameready) ▶ Play: every texture the scenes use at the graphics card's best anisotropy (mipmapped
 // pictures; set before their upload, or uploaded again during getting ready), and what the scene costs (the findings)
@@ -1604,7 +1799,7 @@ async function rdyMessage(msg) {
   } else if (msg.type === 'ready-scan') {
     const assets = await rdyAssets(msg.id);
     post({ type: 'ready-scanned', id: msg.id, assets, ...rdyScan() });
-  } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, ...RDY.gl, renderers: rdyLive().length, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
+  } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, times: RDYT, gpuLost: GLR.losses + (GLR.none || 0), ...RDY.gl, renderers: rdyLive().length, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
 }
 globalThis.__rdyLive = () => rdyLive(); globalThis.__rdyGl = () => ({ ...RDY.gl, waitMs: Math.round(RDY.gl.waitMs) }); // (round 52, gameready: checks read these from a page eval)
 const rdyDelta = (a) => Object.fromEntries(Object.entries(RDY.gl).map(([k, v]) => [k, v - (a[k] || 0)]));
@@ -1796,14 +1991,14 @@ function statsTick() {
     p50: at(0.5), p95: at(0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, adapt: adaptInfo(), pace: paceInfo(), note: { ...perfNote } });
 }
 statsRun(!parked);
-// A GPU memory estimate (MB): what the page's WebGL canvases hold (color + depth, ×2 for the kept last frame every
-// layer has for merging), the filters' merged pictures and feedback buffers, plus ~1 MB per texture (a guess: three.js
+// A GPU memory estimate (MB): what the page's WebGL canvases hold (color + depth, ×2 for a kept last frame: since
+// round 56 only a canvas that keeps one), the filters' merged pictures and feedback buffers, plus ~1 MB per texture (a guess: three.js
 // doesn't tell texture sizes). An order of magnitude for /lab perf, not a measurement.
 function gpuEstimate() {
   let b = 0; let tex = 0;
   for (const r of renderers) {
     const c = r.domElement; if (!c || r.__stale || !c.isConnected) continue;
-    b += c.width * c.height * 8 * (mode === 'sketch' ? 2 : 1);
+    b += c.width * c.height * 8 * (mode === 'sketch' && !c.__lcf ? 2 : 1); // (round 56: only a canvas that keeps its frame)
     tex += r.info?.memory?.textures || 0;
     if (r.__fxBytes) b += r.__fxBytes;
   }
@@ -1816,11 +2011,11 @@ function requestShot() {
     // (round 31 "labadapt") a lighter preview (adaptive steps, covered layers, Light mode): every layer draws two frames
     // at full quality first, then the merge (a frozen picture is merged as it is: nothing draws while frozen)
     if (adLighter() && !frozen) { adFullFrame(() => postShot(composite(), shotTag)); return; }
-    realRAF(() => postShot(composite(), shotTag)); return;
+    frameSoon(() => postShot(composite(), shotTag)); return; // (round 56: once the layers drew, see "layer frames")
   }
   shotPending = true;
   // Static scenes may not render again; fall back to the current canvas.
-  realSetTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; postShot(lastRenderer.domElement, shotTag); } }, 600);
+  realSetTimeout(() => { if (shotPending && lastRenderer) { shotPending = false; postShot(glFresh(lastRenderer.domElement), shotTag); } }, 600);
 }
 
 // the preview draws lighter than a render right now (adaptive steps, covered layers, Light mode)
@@ -1859,20 +2054,35 @@ function adOpaque(L) {
     adProbes += 1;
     const gl = r.getContext?.();
     if (!gl || gl.isContextLost()) continue;
-    // (round 50 "lab240gpu": on WebGL2 the grid is read without waiting: into a buffer, fenced, collected at the next
-    // look once the GPU is done; the verdict is the last collected one. A sync read stalled the GPU pipeline twice a
-    // second, a dropped frame each at 240 Hz)
-    if (ADR.on && typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) { if (adOpaqueAsync(r, gl)) return true; continue; }
-    let ok = true;
-    try {
-      const fb = gl.getParameter(gl.FRAMEBUFFER_BINDING); if (fb) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      const W = gl.drawingBufferWidth; const H = gl.drawingBufferHeight;
-      for (const fx of [0.02, 0.5, 0.98]) for (const fy of [0.02, 0.5, 0.98]) { gl.readPixels(Math.floor(fx * (W - 1)), Math.floor(fy * (H - 1)), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, adPx); if (adPx[3] < 255) ok = false; }
-      if (fb) gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    } catch { ok = false; }
-    if (ok) return true;
+    // (round 56, labcanvas56) a canvas that doesn't keep its frame is read right after it draws: a layer drawing now
+    // has its grid read after its next frame (the verdict is the last one read); a still one draws its frame again here
+    if (cv.__lcf && !glValid(cv)) {
+      if (frameTick - (L.drewTick ?? -99) <= 2) { r.__adProbe = true; if (r.__adOk) return true; continue; }
+      glReplay(r);
+    }
+    if (adRead(r, gl)) return true;
   }
   return false;
+}
+// (round 50 "lab240gpu": on WebGL2 the grid is read without waiting: into a buffer, fenced, collected at the next
+// look once the GPU is done; the verdict is the last collected one. A sync read stalled the GPU pipeline twice a
+// second, a dropped frame each at 240 Hz)
+function adRead(r, gl) {
+  if (ADR.on && typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) return adOpaqueAsync(r, gl);
+  let ok = true;
+  try {
+    const fb = gl.getParameter(gl.FRAMEBUFFER_BINDING); if (fb) gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const W = gl.drawingBufferWidth; const H = gl.drawingBufferHeight;
+    for (const fx of [0.02, 0.5, 0.98]) for (const fy of [0.02, 0.5, 0.98]) { gl.readPixels(Math.floor(fx * (W - 1)), Math.floor(fy * (H - 1)), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, adPx); if (adPx[3] < 255) ok = false; }
+    if (fb) gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  } catch { ok = false; }
+  return ok;
+}
+// (round 56) the grid read right after the frame it asked for (from the render hook)
+function adProbeNow(r) {
+  r.__adProbe = false;
+  const gl = r.getContext?.();
+  if (gl && !gl.isContextLost()) r.__adOk = adRead(r, gl);
 }
 const ADR = { on: true, reads: 0, got: 0 };
 function adOpaqueAsync(r, gl) {
@@ -2686,9 +2896,13 @@ let trim = null; // the song's in / out (round 6, the Lab's /song-trim): plays o
 let loopOn = false;
 let recUntil = null;
 let prevT = 0;
+// (round 55, labplay55) it runs only while a song / footage plays: with none (a game scene, a paused song) it asked for
+// a frame of its own on every screen frame to do nothing; the media's 'play' starts it again (mediaKick)
+let mediaLoop = true;
+function mediaKick() { if (mediaEl) prevT = mediaEl.currentTime; if (mediaLoop) return; mediaLoop = true; realRAF(mediaTick); }
 function mediaTick() {
-  paceNext(mediaTick, parked && (!mediaEl || mediaEl.paused)); // (labpace: parked and no song playing: it sleeps)
-  if (!mediaEl || mediaEl.paused) { prevT = mediaEl?.currentTime || 0; return; }
+  if (!mediaEl || mediaEl.paused) { prevT = mediaEl?.currentTime || 0; mediaLoop = false; return; }
+  paceNext(mediaTick, false);
   const t = mediaEl.currentTime;
   if (fparts && !(region && loopOn) && recUntil == null) { partTick(t); prevT = mediaEl.currentTime; return; }
   if (recUntil != null && t >= recUntil) {
@@ -2732,6 +2946,7 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   if (recDest) srcNode.connect(recDest);
   gainNode.gain.value = volume;
   for (const ev of ['play', 'pause', 'ended', 'seeked', 'loadedmetadata']) m.addEventListener(ev, sendState);
+  m.addEventListener('play', mediaKick); // (round 55: the loop points / trim / recording end, while it plays)
   fpres.frame = -1; fpres.time = 0; fpart = -1; fwant = null;
   if (video) watchFrames(m);
   // (round 26, smooth26) the 4×/s position report runs only while it plays (a paused song woke the page for nothing)
@@ -3105,6 +3320,7 @@ function setRefs(items) {
   for (const k of Object.keys(refs)) delete refs[k];
   for (const k of Object.keys(refBlobs)) delete refBlobs[k];
   for (const k of Object.keys(refKtx)) delete refKtx[k];
+  RDYT.refsAt = realNow(); // (round 56, readyspeed)
   for (const it of items || []) { const b = new Blob([it.buffer], { type: it.mime || '' }); refs[it.key] = URL.createObjectURL(b); refKinds[it.key] = it.kind; if (it.kind === 'image') refBlobs[it.key] = b; if (it.ktx2 && it.kind === 'image') refKtx[it.key] = it.ktx2; }
 }
 // (round 53, gametex) ▶ Play's page: a picture with a compressed copy (KTX2, made by Optimize for play in Hearth's cache)
@@ -3129,7 +3345,7 @@ function ktxConfig() {
 function ktxTexture(key, tex, fallback) {
   const cfg = ktxConfig();
   if (!cfg.any || globalThis.__ktxOff) return false;
-  RDY.pend += 1;
+  RDY.pend += 1; const kt0 = realNow(); // (round 56, readyspeed: its transcode timed)
   const p = (async () => {
     const { KTX2Loader } = await import('three/addons/loaders/KTX2Loader.js');
     if (!ktxLoader) { ktxLoader = new KTX2Loader().setTranscoderPath(globalThis.__sbxResolve('three/addons/libs/basis/')); ktxLoader.workerConfig = cfg.config; }
@@ -3139,7 +3355,7 @@ function ktxTexture(key, tex, fallback) {
     tex.format = k.format; tex.type = k.type; tex.minFilter = k.minFilter; tex.magFilter = k.magFilter;
     tex.generateMipmaps = false; tex.flipY = false; tex.premultiplyAlpha = k.premultiplyAlpha; tex.unpackAlignment = 4;
     tex.userData.ktx2 = true; tex.needsUpdate = true;
-    k.dispose?.();
+    k.dispose?.(); rdyT('ktx', kt0);
   })().catch(() => fallback()).finally(() => { RDY.pend = Math.max(0, RDY.pend - 1); });
   TY.pending.add(p); p.finally(() => TY.pending.delete(p));
   return true;
@@ -3165,8 +3381,9 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
     tex.colorSpace = THREE.SRGBColorSpace;
     let who = null; try { who = ownerUrl(); } catch { /* fine */ } // (round 39: its picture is closed with the layer that asked for it)
     const picture = () => {
+      const dt0 = realNow(); // (round 56, readyspeed: its decode timed)
       const dec = createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
-        if (who) ownNote(who, 'bmp', bmp);
+        rdyT('decode', dt0); if (who) ownNote(who, 'bmp', bmp);
         tex.image = bmp; tex.flipY = false; tex.needsUpdate = true;
       }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
       // (round 42, labbatch) an exact frame (exports, a batch's logo per row) waits for the picture like for a font
@@ -3551,6 +3768,7 @@ function drHits(L, px, py) {
     const lx = qx - (cv.offsetLeft || 0); const ly = qy - (cv.offsetTop || 0);
     if (lx < 0 || ly < 0 || lx >= ow || ly >= oh) continue;
     DR.reads += 1;
+    glFresh(cv);
     try {
       const g = drCanvas(7, 7);
       g.drawImage(cv, (lx * cv.width) / ow - 3, (ly * cv.height) / oh - 3, 7, 7, 0, 0, 7, 7);
@@ -3570,6 +3788,7 @@ function drBox(L) {
   if (!cvs.length) return all;
   DR.reads += 1;
   try {
+    for (const cv of cvs) glFresh(cv);
     for (const cv of cvs) g.drawImage(cv, ((cv.offsetLeft || 0) / W) * w, ((cv.offsetTop || 0) / H) * h, ((cv.offsetWidth || W) / W) * w, ((cv.offsetHeight || H) / H) * h);
     const b = DR.core.bbox(g.getImageData(0, 0, w, h).data, w, h);
     return b ? { x0: b.x0 * W, y0: b.y0 * H, x1: b.x1 * W, y1: b.y1 * H } : all;
@@ -3722,15 +3941,19 @@ if (!GAME) addEventListener('pointerdown', (e) => {
     return;
   }
   if (e.ctrlKey || e.metaKey) return;
-  const L = drPick(e.clientX, e.clientY);
   // (a layer with controls of its own keeps its drags: a click only picks it)
-  DR.down = { x: e.clientX, y: e.clientY, id: e.pointerId, L, own: Boolean(L && L.lvOwn === L.gen) };
+  // (round 56, labcanvas56) picked right after the layers' next frame, from their pixels as they show then (a game being
+  // clicked keeps drawing: nothing is drawn again for the pick); at once when no frame is coming
+  const d = { x: e.clientX, y: e.clientY, id: e.pointerId, L: null, own: false, wait: true, pick: null };
+  d.pick = () => { if (!d.wait) return; d.wait = false; const L = drPick(d.x, d.y); d.L = L; d.own = Boolean(L && L.lvOwn === L.gen); };
+  DR.down = d;
+  if (!glSoon(d.pick)) d.pick();
 }, true);
 if (!GAME) addEventListener('pointermove', (e) => {
   const D = DR.drag;
   if (D) { if (e.pointerId === D.id) drMove(e); return; }
   const d = DR.down;
-  if (!d || e.pointerId !== d.id || !d.L || d.own || Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
+  if (!d || e.pointerId !== d.id || d.wait || !d.L || d.own || Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
   drStart({ pointerId: d.id, clientX: d.x, clientY: d.y }, 'move', d.L);
   drMove(e);
 }, true);
@@ -3739,6 +3962,7 @@ const drUp = (e) => {
   if (D) { if (e.pointerId == null || e.pointerId === D.id) drEnd(D); return; }
   const d = DR.down; DR.down = null;
   if (!d || e.type !== 'pointerup' || e.pointerId !== d.id) return;
+  if (d.wait) d.pick(); // (released before the next frame)
   // a click: pick what's under it; on nothing, let go
   DR.at = { x: d.x, y: d.y };
   if (d.L) drSelect(d.L, true); else drClear();
@@ -4496,6 +4720,7 @@ function trackRenderer(r) {
   const st = new Error().stack;
   if (staleStack(st)) { dropStale(r); return; }
   renderers.add(r);
+  if (r.domElement?.__lcf) r.domElement.__rnd = r; // (round 56, labcanvas56: who draws its last frame again)
   if (GAME && r.domElement && r.domElement === GM.canvas) gmTag(r); // (round 52, gamemode) a renderer on the shared context
   const id = layerOfStack(st) || ctxLayer;
   if (id) { layerState(id).renderers.add(r); r.__layer = id; if (mode === 'sketch') preQ(r, layers.get(id)); }
@@ -4704,6 +4929,9 @@ function composite(target, k = 1, size = null, only = null, clear = false) {
 function drawLayer2D(g, L, W, H) {
   const mix = layerMix(L);
   if (mix <= 0) return;
+  // (round 56, labcanvas56) a covered layer (labadapt) is under an opaque one drawn after it in this same merge (its
+  // readers are above its cover): not drawn here, so it isn't drawn again for a filter's merge on every frame
+  if (L.adCovered && !adFull()) return;
   const { x, y, scale, rotate } = xform(L);
   g.save();
   g.globalAlpha = mix;
@@ -4720,6 +4948,7 @@ function drawLayer2D(g, L, W, H) {
 // (round 51, labtype240) a layer canvas into a W × H merge: a 🅰 type layer drawn tight (cv.__tb: its box in the
 // frame's pixels, see "drawn tight") goes where it shows; every other canvas fills the frame
 function cvDraw(g, cv, W, H) {
+  glFresh(cv); // (round 56: its pixels as shown, see "the layers' canvases"; ▶ Play's one canvas: gmFresh)
   const b = cv.__tb;
   if (b) g.drawImage(cv, (b.x / b.FW) * W, (b.y / b.FH) * H, (b.w / b.FW) * W, (b.h / b.FH) * H);
   else g.drawImage(cv, 0, 0, W, H);
@@ -4735,7 +4964,7 @@ function compositorTick() {
   occlPlan(); // (round 50 "lab240gpu": what an opaque top hides isn't blended or presented, see "hidden under an opaque top")
   for (const L of layers.values()) styleLayer(L);
   if (PC.list.size) pcManage();
-  if (compRec) composite(compRec);
+  if (compRec) { if (LQ.raf) LQ.rec = true; else composite(compRec); } // (round 56: merged once the layers drew this frame, see "layer frames")
 }
 realRAF(compositorTick);
 // `layer` inside a layer's code: { id, name, in, out, clock (the timeline's own time), time (seconds since its start), progress (0..1), mix,
@@ -6642,7 +6871,7 @@ function filterSource(L, c, W, H, force) {
     const B = list[0];
     let only = null; let n = 0;
     for (const cv of B.box.getElementsByTagName('canvas')) { if (cv.classList.contains('lab-xfade') || cv.__skip) continue; n += 1; only = cv; }
-    if (n === 1 && only.__gl && !only.__tb && only.width > 1 && only.height > 1) { perfNote.direct += 1; FX_SRC.image = only; FX_SRC.premul = true; return FX_SRC; }
+    if (n === 1 && only.__gl && !only.__tb && only.width > 1 && only.height > 1) { perfNote.direct += 1; FX_SRC.image = glFresh(only); FX_SRC.premul = true; return FX_SRC; }
   }
   compositeBelow(L, c, W, H, list);
   FX_SRC.image = c; FX_SRC.premul = false;
@@ -7625,7 +7854,7 @@ globalThis.shader = (image, P = {}, opts = {}) => {
         let cv = null;
         if (e.L) e.L.adReadAt = realNow(); // (read by this shader: it always draws, see "covered layers")
         if (e.L) for (const x of e.L.box.getElementsByTagName('canvas')) { if (x.classList.contains('lab-xfade') || x.__skip || x.width < 2) continue; cv = x; break; }
-        if (cv) { if (e.tex.image !== cv) { e.tex.dispose(); e.tex.image = cv; } e.tex.needsUpdate = true; }
+        if (cv) { glFresh(cv); if (e.tex.image !== cv) { e.tex.dispose(); e.tex.image = cv; } e.tex.needsUpdate = true; }
       }
       return e.tex;
     }
@@ -10982,18 +11211,24 @@ function installRunGuards() {
   };
   // Timers and frames belong to the layer that asked for them; a re-run or removal silences the old ones,
   // and a hidden / off-time layer stops drawing until it shows again.
-  const owner = () => { const st = new Error().stack; const id = layerOfStack(st) || ctxLayer; const L = id ? layers.get(id) : null; return { id, L, g: L ? L.gen : gen, stale: !id && staleStack(st) }; };
+  const owner = () => { FR.stacks += 1; const st = new Error().stack; const id = layerOfStack(st) || ctxLayer; const L = id ? layers.get(id) : null; return { id, L, g: L ? L.gen : gen, stale: !id && staleStack(st) }; };
   const alive = (o) => !o.stale && (o.L ? o.L.gen === o.g && layers.get(o.id) === o.L : o.g === gen);
-  const within = (o, fn, args) => { const prev = ctxLayer; ctxLayer = o.id; try { return fn(...args); } finally { ctxLayer = prev; } };
+  // (round 56, labcanvas56) a timer's callback is its layer's too (frameOwner below): a timer or a frame asked for from
+  // inside it belongs to that layer with no stack trace read (a game's setTimeout calls read and parsed one each)
+  const within = (o, fn, args) => { const prev = ctxLayer; const pf = frameOwner; ctxLayer = o.id; frameOwner = o; try { return fn(...args); } finally { ctxLayer = prev; frameOwner = pf; } };
   // (round 21 "labgpu": a layer's frame loop asks for the same function every frame; who owns it is read from the call
   // stack the first time and kept with the function, with its frame callback, until the layer re-runs or goes. Telling
   // the owner from a fresh stack trace every frame was most of the runtime's own allocations per frame.)
   const rafOf = new WeakMap(); // fn → { o, run }
-  const within1 = (o, fn, a) => { const prev = ctxLayer; ctxLayer = o.id; try { return fn(a); } finally { ctxLayer = prev; } };
+  // (round 55, labplay55) a frame asked for from inside a layer's own frame callback belongs to that layer: a game that
+  // asks with a new function every frame (requestAnimationFrame(() => tick())) no longer has a stack trace read and
+  // parsed on every frame to find out
+  let frameOwner = null;
+  const within1 = (o, fn, a) => { const prev = ctxLayer; const pf = frameOwner; ctxLayer = o.id; frameOwner = o; try { return fn(a); } finally { ctxLayer = prev; frameOwner = pf; } };
   window.requestAnimationFrame = (fn) => {
     let e = typeof fn === 'function' ? rafOf.get(fn) : null;
     if (!e || !e.o.L || !alive(e.o)) {
-      const o = owner();
+      const o = ownerNow();
       let lt = -1; // (labpace: this callback's last frame time, for f60)
       const run = (t) => {
         if (!alive(o)) return;
@@ -11015,10 +11250,12 @@ function installRunGuards() {
     }
     return sched(e.run);
   };
-  window.setTimeout = (fn, ms, ...a) => { if (typeof fn !== 'function') return realSetTimeout(fn, ms, ...a); const o = owner(); return realSetTimeout((...b) => { if (alive(o)) within(o, fn, b); }, ms, ...a); };
+  // (the running callback's layer, when it is still that layer's code that runs: see "within")
+  const ownerNow = () => (frameOwner?.L && ctxLayer === frameOwner.id && alive(frameOwner) ? frameOwner : owner());
+  window.setTimeout = (fn, ms, ...a) => { if (typeof fn !== 'function') return realSetTimeout(fn, ms, ...a); const o = ownerNow(); return realSetTimeout((...b) => { if (alive(o)) within(o, fn, b); }, ms, ...a); };
   window.setInterval = (fn, ms, ...a) => {
     if (typeof fn !== 'function') return realSetInterval(fn, ms, ...a);
-    const o = owner();
+    const o = ownerNow();
     const id = realSetInterval((...b) => { if (alive(o)) within(o, fn, b); else { realClearInterval(id); sketchIntervals.delete(id); } }, ms, ...a);
     sketchIntervals.add(id);
     return id;
@@ -11283,7 +11520,7 @@ function layerPictures(L) {
     const k = Math.min(1, 1600 / Math.max(cv.width, cv.height));
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(cv.width * k)); c.height = Math.max(1, Math.round(cv.height * k));
-    try { c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height); } catch { continue; }
+    try { c.getContext('2d').drawImage(glFresh(cv), 0, 0, c.width, c.height); } catch { continue; }
     c.className = 'lab-xfade';
     c.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:2147483000;pointer-events:none`;
     out.push(c);
@@ -11829,7 +12066,50 @@ const SQ = { on: false, plan: null, T: 0, T0: 0, at0: 0, playing: false, rate: 1
 const WARM = 0.35; // seconds a group runs (hidden) before its clip: its first frames are drawn when it shows
 const PRE = 1.2; // seconds ahead a group is mounted while playing
 // layer frames during an offline render wait for the next step instead of the screen
-function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } if (GAME && fn.__L?.gm) return gmRAF(fn); return DOZE.on ? dozeRAF(fn) : realRAF(fn); }
+function sched(fn) { if (SQ.off) { SQ.offQ.push(fn); return 0; } if (GAME && fn.__L?.gm) return gmRAF(fn); return DOZE.on ? dozeRAF(fn) : GAME ? realRAF(fn) : lqRAF(fn); }
+// ---------- layer frames (round 56, labcanvas56) ----------
+// The layers' frame callbacks run in one frame callback of the page's, bottom layer first (the order they asked in,
+// within a layer), instead of one browser frame callback each in the order they happened to ask: a filter or a
+// shader reading a layer under it reads the frame that layer just drew (a re-run layer used to ask after the filter
+// over it, which then read its frame before), and what needs every layer drawn (a recording's merge, a sequence's
+// transition) runs right after them, in the same frame (see "the layers' canvases"). Two arrays swapped each frame:
+// nothing made per frame. Ids are negative halves (a doze's are negative whole numbers).
+const LQ = { fns: [], ids: [], run: [], runIds: [], ord: [], z: [], raf: 0, seq: 0, ranE: -1, rec: false, flushes: 0, soon: [] };
+// fn once the layers' next frame is drawn (→ true), with their pixels readable as they are; false: no frame is coming
+function glSoon(fn) { if (!LQ.raf) return false; LQ.soon.push(fn); return true; }
+// fn in the next frame: once the layers drew, when they draw (a merge of a playing game then draws nothing again)
+function frameSoon(fn) { if (!glSoon(fn)) realRAF(fn); }
+function lqRAF(fn) {
+  const id = -(++LQ.seq) - 0.5;
+  LQ.fns.push(fn); LQ.ids.push(id);
+  if (!LQ.raf) LQ.raf = realRAF(lqFlush);
+  return id;
+}
+function lqCancel(id) {
+  let i = LQ.ids.indexOf(id); if (i >= 0) { LQ.fns[i] = null; return; }
+  i = LQ.runIds.indexOf(id); if (i >= 0) LQ.run[i] = null;
+}
+// something that needs this frame's layers drawn: later in this frame (→ true) when their callbacks are still to run
+const lqLater = () => Boolean(LQ.raf) && FR.inRaf && LQ.ranE !== FR.E;
+function lqFlush(t) {
+  LQ.raf = 0; LQ.flushes += 1;
+  const fns = LQ.fns; LQ.fns = LQ.run; LQ.run = fns;
+  const ids = LQ.ids; LQ.ids = LQ.runIds; LQ.runIds = ids;
+  const n = fns.length; const ord = LQ.ord; const z = LQ.z;
+  ord.length = n; z.length = n;
+  for (let i = 0; i < n; i += 1) { const L = fns[i]?.__L; z[i] = L ? (L.props.z ?? 0) : -Infinity; ord[i] = i; }
+  for (let i = 1; i < n; i += 1) { const k = ord[i]; const zk = z[k]; let j = i - 1; while (j >= 0 && z[ord[j]] > zk) { ord[j + 1] = ord[j]; j -= 1; } ord[j + 1] = k; } // (stable)
+  for (let i = 0; i < n; i += 1) {
+    const fn = fns[ord[i]];
+    if (!fn) continue;
+    try { fn(t); } catch (err) { realSetTimeout(() => { throw err; }, 0); }
+  }
+  fns.length = 0; ids.length = 0;
+  LQ.ranE = FR.E;
+  if (LQ.rec) { LQ.rec = false; if (compRec) composite(compRec); }
+  if (SQ.transT != null) { const T = SQ.transT; SQ.transT = null; if (SQ.on && !SQ.off) sqTrans(T, false); }
+  if (LQ.soon.length) for (const f of LQ.soon.splice(0)) { try { f(); } catch { /* its own */ } }
+}
 // a sequence scene's own clock: performance.now inside its layers is its time (ms) since its own start, and 0 while
 // its module sets up (a start time a sketch keeps from its setup is the scene's start, wherever the clip was entered);
 // a THREE.Clock started in it counts from the scene's start too
@@ -12285,12 +12565,21 @@ function sqApply(T, { full = false } = {}) {
   // a camera fly-through moves the two scenes' own cameras while it runs (sqCamFx, in the render hook)
   const camT = sh.a ? SQ.libs?.EditFX?.TRANS?.[sh.type] : null;
   SQ.cam = camT?.lab === 'cam' ? { a: sh.a.id, b: sh.b.id, p: sh.p, dir: camT.cam || 1 } : null;
-  // the transition: both sides merged on black, mixed by the editor's own transition drawing
+  // the transition (sqTrans)
   const tr = layers.get('~sq-trans');
   if (tr) {
     const on = Boolean(sh.a);
     if (tr.props.visible !== on) { tr.props.visible = on; styleLayer(tr); }
-    if (on) {
+    // (round 56, labcanvas56) while playing, mixed once both scenes drew this frame (see "layer frames")
+    if (on) { if (!full && !SQ.off && lqLater()) SQ.transT = T; else sqTrans(T, full, sh); }
+  }
+  sqTitles(T);
+}
+// (round 56) the transition's picture: both sides merged on black, mixed by the editor's own transition drawing
+function sqTrans(T, full, sh = sqShowing(T)) {
+  const tr = layers.get('~sq-trans');
+  if (!tr || !sh.a) return;
+  {
       const k = full || SQ.off ? 1 : 0.5;
       const c = sqCanvas(tr, k); const W = c.width; const H = c.height;
       const ga = SQ.mounted.get(sh.a.id); const gb = SQ.mounted.get(sh.b.id);
@@ -12307,8 +12596,9 @@ function sqApply(T, { full = false } = {}) {
         else { g2.drawImage(SQ.ca, 0, 0, W, H); g2.globalAlpha = sh.p; g2.drawImage(SQ.cb, 0, 0, W, H); }
       } catch { g2.drawImage(sh.p < 0.5 ? SQ.ca : SQ.cb, 0, 0, W, H); }
       g2.setTransform(1, 0, 0, 1, 0, 0); g2.globalAlpha = 1; g2.globalCompositeOperation = 'source-over'; g2.filter = 'none';
-    }
   }
+}
+function sqTitles(T) {
   // titles over everything
   const tl = layers.get('~sq-titles');
   if (tl) {
@@ -12355,9 +12645,14 @@ function sqState(force = false) {
   SQ.lastPost = now;
   post({ type: 'seq-state', T: SQ.T, playing: SQ.playing, ended: SQ.ended, mounted: SQ.mounted.size, ack: SQ.ack || 0 });
 }
+// (round 55, labplay55) it runs only while a sequence is on the page (sqKick when one is set): without one it asked for a
+// frame of its own on every screen frame to do nothing
+let sqLoop = true;
+function sqKick() { if (sqLoop) return; sqLoop = true; realRAF(sqTick); }
 function sqTick() {
-  paceNext(sqTick, parked && !SQ.on && !SQ.off); // (labpace: parked and no sequence: it sleeps)
-  if (!SQ.on || SQ.off) return;
+  if (!SQ.on) { sqLoop = false; return; }
+  paceNext(sqTick, false);
+  if (SQ.off) return;
   let T = sqClock();
   const D = SQ.plan?.dur || 0;
   // (seqguard: ⟲ Loop with an In–Out range loops just that)
@@ -12377,14 +12672,14 @@ function sqTick() {
   sqApply(SQ.T);
   if (SQ.playing) sqState();
   if (SQ.hold) sqHoldTick();
-  if (sqWatch.on) sqWatchTick(); // (checks only)
+  if (sqWatch.on) { if (SQ.transT != null) glSoon(sqWatchTick); else sqWatchTick(); } // (checks only; round 56: after a transition's mix this frame)
 }
 realRAF(sqTick);
 // ---------- messages ----------
 function sqSet(plan) {
   const first = !SQ.on;
   SQ.plan = plan;
-  SQ.on = true;
+  SQ.on = true; sqKick();
   SQ.ended = false;
   if (first) {
     // the program takes the page: the sketch's own layers go (the hub runs them again when the sequence closes)
@@ -13111,7 +13406,7 @@ addEventListener('message', async (e) => {
 // bytes (transferred, no copy); one canvas reused (toBlob takes its copy when called)
 let obsC = null;
 function obsShot(msg) {
-  realRAF(() => {
+  frameSoon(() => {
     let c;
     try { c = composite(obsC ||= document.createElement('canvas'), Math.min(1, (msg.max || 1280) / (Math.max(innerWidth, innerHeight) * devicePixelRatio)), null, null, msg.alpha !== false); } catch { post({ type: 'obs-frame', id: msg.id, buf: null }); return; }
     c.toBlob((b) => {
@@ -13121,7 +13416,7 @@ function obsShot(msg) {
   });
 }
 function smallShot(max, tag) {
-  realRAF(() => {
+  frameSoon(() => {
     let c;
     try { c = composite(null, Math.min(1, max / (Math.max(innerWidth, innerHeight) * devicePixelRatio))); } catch { post({ type: 'shot', tag, dataUrl: null }); return; }
     c = globalThis.__camVeil?.(c, tag) || c; // (round 25, motion) thumbnails / the director's small pictures: pixelated while the camera shows

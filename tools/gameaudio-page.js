@@ -44,6 +44,9 @@
   const ours = new WeakSet(); // contexts Hearth suspended (to resume) · paused media (to play again)
   const gameSuspended = new WeakSet();
   const pend = new Set();
+  // (round 55, playbudget) the main-thread time its hooks spend (ms, a running total: tools/playbudget-page.js reads it);
+  // OFF: switched off for this game (its hooks pass straight through; Ctrl/⌘+P / hidden still pause the sound)
+  let SP = 0; let OFF = null; let loafObs = null;
   const playing = () => { const g = window.__gameReady; return g ? g.phase === 'playing' : now() - S.at0 > 3000; };
   const note = (e) => { e.at = r1(e.at ?? now()); e.playing = playing(); S.events.push(e); if (S.events.length > 60) S.events.shift(); return e; };
   const short = (u) => { try { return decodeURIComponent(new URL(u, location.href).pathname.split('/').pop()) || null; } catch { return null; } };
@@ -81,18 +84,21 @@
       const opts = o && typeof o === 'object' ? (o.latencyHint == null ? { ...o, latencyHint: 'interactive' } : o) : { latencyHint: 'interactive' };
       const t = now();
       super(opts, ...more);
-      const ms = now() - t;
-      S.made += 1; if (S.firstCtxMs == null) S.firstCtxMs = r1(ms);
-      ctxs.push(new WeakRef(this)); if (ctxs.length > 16) live();
-      note({ kind: 'context', ms: r1(ms), at: t });
-      if (S.rest.size) { if (this.state !== 'suspended') { sus.call(this).catch(() => {}); } ours.add(this); } else if (this.state === 'suspended') res.call(this).catch(() => {});
+      // (round 55, fixes55) the game's context is made whatever happens in Hearth's notes after it
+      try {
+        const ms = now() - t;
+        S.made += 1; if (S.firstCtxMs == null) S.firstCtxMs = r1(ms);
+        ctxs.push(new WeakRef(this)); if (ctxs.length > 16) live();
+        note({ kind: 'context', ms: r1(ms), at: t });
+        if (S.rest.size) { if (this.state !== 'suspended') { sus.call(this).catch(() => {}); } ours.add(this); } else if (this.state === 'suspended') res.call(this).catch(() => {});
+      } catch { /* the game's context, as it is */ }
     }
   }
   window.AudioContext = AudioContext;
   // the game suspending / resuming itself: Hearth never resumes what the game paused; a resume while the game is put
   // away waits for it to show again
-  AC0.prototype.suspend = function (...a) { gameSuspended.add(this); ours.delete(this); return sus.apply(this, a); };
-  AC0.prototype.resume = function (...a) { gameSuspended.delete(this); if (S.rest.size) { ours.add(this); return Promise.resolve(); } return res.apply(this, a); };
+  AC0.prototype.suspend = function (...a) { try { gameSuspended.add(this); ours.delete(this); } catch { /* fine */ } return sus.apply(this, a); };
+  AC0.prototype.resume = function (...a) { try { gameSuspended.delete(this); if (S.rest.size) { ours.add(this); return Promise.resolve(); } } catch { /* fine */ } return res.apply(this, a); };
 
   // ---------- decoding: once, before it's needed ----------
   // a sound's file name for plain words: the sound file the page fetched with that many bytes (Resource Timing), else
@@ -105,24 +111,36 @@
     } catch { return null; }
   }
   BAC.decodeAudioData = function (buf, ok, fail) {
-    const k = fp(buf); const key = k && `${k}@${this.sampleRate}`;
-    const e = key && cache.get(key);
+    if (OFF) return dad.call(this, buf, ok, fail);
+    const a0 = now();
+    try { return decodeNow.call(this, buf, ok, fail); } finally { SP += now() - a0; }
+  };
+  function decodeNow(buf, ok, fail) {
+    // (round 55, fixes55) Hearth's part (the fingerprint, the cache, the notes) can't stop the game's decode: any throw
+    // in it → the browser's own decodeAudioData, as without Hearth
+    let key = null; let e = null;
+    try { const k = fp(buf); key = k && `${k}@${this.sampleRate}`; e = key && cache.get(key); } catch { key = null; e = null; }
     if (e) {
       S.hits += 1;
-      return e.p.then((b) => { if (typeof ok === 'function') ok(b); return b; }, (err) => { if (typeof fail === 'function') fail(err); throw err; });
+      // (a predecode that failed: the game's own decode of its bytes says why, in its own words)
+      return e.p.then((b) => { if (typeof ok === 'function') ok(b); return b; }, () => { cache.delete(key); return dad.call(this, buf, ok, fail); });
     }
+    if (!key) return dad.call(this, buf, ok, fail);
     S.misses += 1;
-    const bytes = buf?.byteLength || 0; const name = nameFor(bytes); const t = now(); const was = playing();
+    let bytes = 0; let name = null; const t = now(); let was = false;
+    try { bytes = buf?.byteLength || 0; name = nameFor(bytes); was = playing(); } catch { /* fine */ }
     const p = dad.call(this, buf).then((b) => {
-      const ev = note({ kind: 'decode', name, bytes, ms: r1(now() - t), secs: r1(b.duration || 0) });
-      if (was && ev.ms > 45) { S.late.push({ name, bytes, ms: ev.ms, secs: ev.secs, at: r1(t) }); if (S.late.length > 20) S.late.shift(); }
-      if (key) keep(key, b);
+      try {
+        const ev = note({ kind: 'decode', name, bytes, ms: r1(now() - t), secs: r1(b.duration || 0) });
+        if (was && ev.ms > 45) { S.late.push({ name, bytes, ms: ev.ms, secs: ev.secs, at: r1(t) }); if (S.late.length > 20) S.late.shift(); }
+        keep(key, b);
+      } catch { /* fine */ }
       if (typeof ok === 'function') ok(b);
       return b;
-    }, (err) => { if (key) cache.delete(key); if (typeof fail === 'function') fail(err); throw err; });
+    }, (err) => { cache.delete(key); if (typeof fail === 'function') fail(err); throw err; });
     if (key) cache.set(key, { p, bytes, name });
     return p;
-  };
+  }
   function predecode(ab, name) {
     if (!W || !ab?.byteLength) return null;
     const k = fp(ab); if (!k) return null;
@@ -151,11 +169,14 @@
       pend.add(p); p.finally(() => pend.delete(p));
     }
     window.fetch = function (input, init) {
+      if (OFF) return f0(input, init);
+      const a0 = now();
       try {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input instanceof Request && input.method === 'GET' ? input.url : null;
         const b = url && SOUND.test(url) && (!init?.method || init.method === 'GET') ? files.get(new URL(url, location.href).href) : null;
-        if (b) { S.served = (S.served || 0) + 1; return Promise.resolve(new Response(b.slice(0), { status: 200, headers: { 'content-type': MIME[(url.match(SOUND) || [])[1]?.toLowerCase()] || 'application/octet-stream', 'content-length': String(b.byteLength) } })); }
+        if (b) { S.served = (S.served || 0) + 1; SP += now() - a0; return Promise.resolve(new Response(b.slice(0), { status: 200, headers: { 'content-type': MIME[(url.match(SOUND) || [])[1]?.toLowerCase()] || 'application/octet-stream', 'content-length': String(b.byteLength) } })); }
       } catch { /* the network's answer, as always */ }
+      SP += now() - a0;
       return f0(input, init);
     };
   }
@@ -175,7 +196,7 @@
 
   // ---------- put away: Ctrl/⌘+P (rest), the window hidden ----------
   const mp = HTMLMediaElement.prototype.play;
-  HTMLMediaElement.prototype.play = function (...a) { if (!media.some((r) => r.deref() === this)) { media.push(new WeakRef(this)); if (media.length > 64) media.splice(0, media.length - 64); } ours.delete(this); return mp.apply(this, a); };
+  HTMLMediaElement.prototype.play = function (...a) { if (OFF) return mp.apply(this, a); const a0 = now(); try { if (!media.some((r) => r.deref() === this)) { media.push(new WeakRef(this)); if (media.length > 64) media.splice(0, media.length - 64); } ours.delete(this); } catch { /* fine */ } SP += now() - a0; return mp.apply(this, a); };
   function rest(on, why = 'rest') {
     const was = S.rest.size > 0;
     if (on) S.rest.add(why); else S.rest.delete(why);
@@ -194,7 +215,7 @@
     note({ kind: want ? 'rest' : 'back', why, n });
     return n;
   }
-  document.addEventListener('visibilitychange', () => rest(document.visibilityState === 'hidden', 'hidden'));
+  document.addEventListener('visibilitychange', () => { try { rest(document.visibilityState === 'hidden', 'hidden'); } catch { /* the sound as it is */ } });
 
   // ---------- a sound in a slow frame (Long Animation Frames: ≥ 50 ms) ----------
   // A decode's result lands on the main thread (the decoded samples handed over, the game's callback): a long frame
@@ -202,7 +223,8 @@
   // ones ≥ 1.6× their median count then). The sound system starting is timed itself (its constructor), not here.
   const longs = [];
   try {
-    new PerformanceObserver((l) => {
+    loafObs = new PerformanceObserver((l) => {
+      const a0 = now();
       for (const f of l.getEntries()) {
         longs.push([f.startTime, f.duration]); while (longs.length > 40 || (longs.length && f.startTime - longs[0][0] > 3000)) longs.shift();
         const typical = longs.length >= 12 ? [...longs].map((x) => x[1]).sort((x, y) => x - y)[Math.floor(longs.length / 2)] : 0;
@@ -214,7 +236,9 @@
           S.slow.push({ kind: 'decode', name: e.name || null, bytes: e.bytes || 0, ms: e.ms, frameMs: e.slowMs, usualMs: typical ? r1(typical) : null, at: e.at }); if (S.slow.length > 20) S.slow.shift();
         }
       }
-    }).observe({ type: 'long-animation-frame', buffered: false });
+      SP += now() - a0;
+    });
+    loafObs.observe({ type: 'long-animation-frame', buffered: false });
   } catch { /* no Long Animation Frames: the sound system's own start still counts */ }
 
   function latency() {
@@ -229,5 +253,7 @@
     const ctxSlow = S.events.filter((e) => e.kind === 'context' && e.playing && e.ms >= 12 && !e.slowMs).map((e) => ({ kind: 'context', ms: e.ms, frameMs: e.ms, at: e.at }));
     return JSON.stringify({ mode: LAB ? 'lab' : 'html', warmMs: S.warmMs, rate: S.rate, hint: 'interactive', contexts: all.length, running: all.filter((c) => c.state === 'running').length, latencyMs: L?.ms ?? null, baseMs: L?.base ?? null, outputMs: L?.out ?? null, made: S.made, firstCtxMs: S.firstCtxMs, hits: S.hits, misses: S.misses, pre: S.pre, fromMemory: S.served || 0, pending: pend.size, keptMB: r1(S.kept / 1048576), rest: S.rest.size > 0, why: [...S.rest], slow: [...S.slow, ...ctxSlow].slice(-10), late: S.late.slice(-10), events: S.events.slice(-12) });
   }
-  window.__gameAudio = { pub, line, rest, ready, pending: () => pend.size, progress: () => ({ n: Math.max(S.pre.n, LAB ? 0 : LIST.length), done: S.pre.done, failed: S.pre.failed }) };
+  window.__gameAudio = { pub, line, rest, ready, pending: () => pend.size, progress: () => ({ n: Math.max(S.pre.n, LAB ? 0 : LIST.length), done: S.pre.done, failed: S.pre.failed }),
+    // (round 55, playbudget) tools/playbudget-page.js: its time, and off for this game (nothing of it runs per frame)
+    budget: { spent: () => SP, pause: () => {}, off: (by) => { if (OFF) return false; OFF = String(by || 'asked'); try { loafObs?.disconnect(); } catch { /* fine */ } return true; } } };
 })();

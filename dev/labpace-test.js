@@ -193,6 +193,18 @@ for (const n of [100, 500, 2000]) {
   let caught = -1; for (let i = 0; i < 40; i += 1) { t += 1000 / 240; if (P.still(st, t, 0, () => ({ a: k, b: 0 }))) { caught = i; break; } }
   check(caught >= 0 && caught < 8 + P.AFTER + 3, 'it stops moving: the picture stops drawing within a few frames', caught);
 }
+{
+  // (round 55, labplay55) a game: moving on every frame for seconds, the pointer moving over it (a poke a frame)
+  const st = {}; let looks = 0; let t = 0; let k = 0; let drawn = 0;
+  const sig = () => { looks += 1; return { a: (k += 1), b: 0 }; };
+  for (let i = 0; i < 240 * 3; i += 1) { t += 1000 / 240; if (!P.still(st, t, i, sig)) drawn += 1; }
+  check(drawn === 720 && looks < 720 / 8, 'a game with the pointer moving over it: drawn every frame, no signature per poke', `${looks} looks in 720 frames`);
+  for (let i = 0; i < 240; i += 1) { t += 1000 / 240; P.still(st, t, 0, sig); } // (the pointer gone: 30 looks first)
+  looks = 0; for (let i = 0; i < 240 * 2; i += 1) { t += 1000 / 240; P.still(st, t, 0, sig); }
+  check(looks <= 480 / 32 + 1, 'moving for over 2 s: the signature on ≈ 1 frame in 32', `${looks} of 480`);
+  let caught = -1; for (let i = 0; i < 60; i += 1) { t += 1000 / 240; if (P.still(st, t, 0, () => ({ a: k, b: 0 }))) { caught = i; break; } }
+  check(caught >= 0 && caught < 32 + P.AFTER + 3, 'a long-moving game that stops: the picture stops drawing within 32 frames', caught);
+}
 
 // ---------- 5. a still scene on fake displays: the GPU work and the signature's own work ----------
 for (const hz of [60, 240]) {

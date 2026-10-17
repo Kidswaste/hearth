@@ -53,8 +53,23 @@ const bgmain = require('./bgmain'); // (round 16) is anybody looking / on batter
 const nativefeel = require('./nativefeelmain');
 const bigscreen = require('./bigscreenmain'); // (round 38) full screen + size of everything per screen
 
-const CONFIG_PATH = path.join(__dirname, 'config.json');
-const THEME_PATH = path.join(__dirname, 'theme.css');
+// (round 55, configsafe) the owner's settings, agents, look and CSS live in the data folder (data/config.json,
+// data/theme.css), which updates never touch; config.json / theme.css next to main.js are the repo's defaults, read
+// and never written again (round 53 → 54: git had to stash the owner's copies and one stayed there). Moved once, here,
+// before anything reads the config; a tracked file that can't be read right now keeps the old layout for this start.
+const configsafe = require('./configsafe-core');
+const CFG = (() => {
+  try { return configsafe.migrate({ appDir: __dirname, dataDir: store.DATA_DIR, fs: require('./datasafe-core').faults(fs, store.DATA_DIR) }); } catch (err) {
+    console.warn('configsafe:', err.message);
+    return { mode: 'legacy', migrated: [], paths: configsafe.paths(__dirname, store.DATA_DIR) };
+  }
+})();
+if (CFG.migrated.length) console.log(`Hearth: your ${CFG.migrated.join(' and ')} moved into the data folder (a copy kept in data/.configsafe)`);
+const DEFAULT_CONFIG_PATH = CFG.paths.defConfig;
+const DEFAULT_THEME_PATH = CFG.paths.defTheme;
+const CONFIG_PATH = CFG.mode === 'data' ? CFG.paths.config : DEFAULT_CONFIG_PATH;
+const THEME_PATH = CFG.mode === 'data' ? CFG.paths.theme : DEFAULT_THEME_PATH;
+const themeFile = () => (fs.existsSync(THEME_PATH) ? THEME_PATH : DEFAULT_THEME_PATH); // the owner's CSS, else the default
 
 // Present as plain Chrome so sign-in pages (Google, etc.) don't reject the app. (round 30, chrome) naming this computer's
 // real system, with matching client hints for Google's sites (chromeguard.js); Google's refusal page offers Chrome.
@@ -99,7 +114,18 @@ if (!app.requestSingleInstanceLock()) {
 const datasafe = require('./datasafemain');
 const crashsafe = require('./crashsafemain'); // (round 50) nothing lost when Hearth or the computer stops suddenly
 const cfgStore = datasafe.config({ configPath: CONFIG_PATH, dataDir: store.DATA_DIR, onRecovered: () => send('config:changed', loadAll()), onDoubt: () => send('data:doubt', { what: 'config' }) });
-function readConfig() { return cfgStore.read(); }
+// (round 55, configsafe) what Hearth uses: the owner's config + what the repo's defaults have that it lacks (a new
+// default agent, a new part; agents join by id, the owner's values win, a removed one stays removed). The defaults
+// are read once per version of the file (size + modified time).
+let defCache = { key: '', value: null };
+function defaults() {
+  if (CFG.mode !== 'data') return null;
+  let key = ''; try { const st = fs.statSync(DEFAULT_CONFIG_PATH); key = `${st.size}:${st.mtimeMs}`; } catch { return null; }
+  if (key !== defCache.key) { let v = null; try { v = JSON.parse(require('./scenesafe-core').readRetry(fs, DEFAULT_CONFIG_PATH)); } catch { v = null; } defCache = { key, value: v }; }
+  return defCache.value;
+}
+function readConfig() { return configsafe.effective(cfgStore.read(), defaults()); }
+const cfgView = { ...cfgStore, read: readConfig }; // Recover / the health card see the same config as the window
 function settings() {
   try { return readConfig().settings || {}; } catch { return {}; }
 }
@@ -110,7 +136,8 @@ try { gpu52.early(app, { settings: settings(), dataDir: store.DATA_DIR }); } cat
 
 function loadAll() {
   try {
-    const themeCss = fs.existsSync(THEME_PATH) ? fs.readFileSync(THEME_PATH, 'utf8') : '';
+    const tf = themeFile();
+    const themeCss = fs.existsSync(tf) ? fs.readFileSync(tf, 'utf8') : '';
     return { config: readConfig(), themeCss };
   } catch (err) {
     return { error: `${path.basename(CONFIG_PATH)}: ${err.message}` };
@@ -293,7 +320,13 @@ ipcMain.handle('config:save', afterSync((_e, config) => {
   if (r.kept) send('config:changed', loadAll()); // the guard kept something the window dropped: the window gets it back
   return appshell.applySettings(win, (r.value || config).settings || {});
 }));
-ipcMain.handle('open-file', (_e, which) => shell.openPath(which === 'theme' ? THEME_PATH : CONFIG_PATH));
+ipcMain.handle('open-file', (_e, which) => {
+  // (round 55, configsafe) the owner's own copies (data/); a theme.css never made yet starts as the default's text
+  if (which === 'theme' && CFG.mode === 'data' && !fs.existsSync(THEME_PATH)) {
+    try { configsafe.writeAtomic(fs, THEME_PATH, fs.existsSync(DEFAULT_THEME_PATH) ? fs.readFileSync(DEFAULT_THEME_PATH, 'utf8') : '/* Your own styles */\n'); } catch (err) { console.warn('theme.css:', err.message); }
+  }
+  return shell.openPath(which === 'theme' ? themeFile() : CONFIG_PATH);
+});
 ipcMain.handle('open-external', (_e, url) => openExternal(url));
 ipcMain.handle('open-data-folder', () => shell.openPath(store.DATA_DIR));
 
@@ -657,13 +690,15 @@ function registerAfterWindow() {
   lazyIpc('updatermain.js', (m, ipc) => m.register(ipc, { restart: () => appshell.restartApp(), getWin: () => win })); // ⬆ Update: pull main from the app's git checkout, reload / restart (round 29: on first use)
   // (round 54 fix, labchats54) what an update put aside and couldn't put back (round 53 → 54: the owner's config.json,
   // so the Lab's Three Director and its chats) comes back by itself a moment after the start, once (no stash: no git run)
+  // (round 55, configsafe) into the owner's files in the data folder; then the tracked config.json / theme.css go back
+  // to the repo's own (anything they held that data lacks comes in first), so updates have nothing of the owner's to stash
   setTimeout(() => {
     const gd = require('./updatesafe-core').gitDirOf(__dirname);
     if (!gd) return;
-    require('./updatermain').bringBack().then((r) => {
-      if (!r?.brought?.length) return;
-      send('config:changed', loadAll()); // at once (the watcher would too, a moment later)
-      const what = [...new Set(r.brought.map((b) => (/^agent /.test(b) ? b.slice(6) : b === 'config.json' ? 'settings' : b.split('.')[0])))].slice(0, 6).join(', ');
+    configsafe.afterStart(require('./updatermain'), CFG).then(({ brought, settled }) => {
+      if (brought.length || settled.length) send('config:changed', loadAll()); // at once (the watcher would too, a moment later)
+      if (!brought.length) return;
+      const what = [...new Set(brought.map((b) => (/^agent /.test(b) ? b.slice(6) : b === 'config.json' ? 'settings' : b.split('.')[0])))].slice(0, 6).join(', ');
       win?.webContents.executeJavaScript(`window.toast?.(${JSON.stringify(`Brought back what the last update had put aside: ${what}. Your chats were never touched.`)}, { timeout: 12000 })`).catch(() => {});
     }).catch((err) => console.warn('update: bring back', err.message));
   }, 4000);
@@ -688,7 +723,8 @@ function registerAfterWindow() {
   lazyIpc('usagelimitsmain.js', (m, ipc) => m.register(ipc, { engines, settings, dataDir: store.DATA_DIR })); // (round 48) ⏳ Usage left: Claude Code's own local /usage (no model request, 0 tokens), when the Usage window opens
   lazyIpc('costcoachmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 43) 🧭 Cost coach: the last 7 days of replies as compact records (reads only)
   lazyIpc('scenesafemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, syncmain })); // (round 43) 🛟 Recover lost scenes: every copy of the Lab's scenes still on this computer, the cloud folder, backups (reads only)
-  datasafe.register(ipcMain, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, store, cfg: cfgStore, syncmain, onConfig: () => send('config:changed', loadAll()) }); // (round 43, datasafe) what couldn't be read (the calm card), 🛟 Recover… (chats, memory, settings, tool data)
+  datasafe.register(ipcMain, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, store, cfg: cfgView, syncmain, onConfig: () => send('config:changed', loadAll()) }); // (round 43, datasafe) what couldn't be read (the calm card), 🛟 Recover… (chats, memory, settings, tool data)
+  require('./chatsafemain').register(ipcMain, { cfg: cfgView, onConfig: () => send('config:changed', loadAll()) }); // (round 55, chatsafe55) Bring back the AI a chat waits for (a chat never moves to another AI)
   store.onDoubt(() => send('data:doubt', {}));
   require('./backupautomain').register(ipcMain, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, appDir: __dirname, syncmain, store, getWin: () => win }); // (round 45, backupauto) automatic, checked backups: once a day when idle (powerwise's schedule), before updates / restores, the rotation, Settings › Backups
   lazyIpc('dragdropmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 38) files with Finder / Explorer: native drags out, drops checked (folders, iCloud placeholders), copied files pasted
@@ -696,7 +732,8 @@ function registerAfterWindow() {
   // config.json / theme.css edited outside Hearth (an editor, sync): told to the window. (round 16) the OS tells us
   // (fs.watch, re-armed when an editor replaces the file); a calm stat every 5 s is the safety net (was a stat every
   // 400 ms per file); either way a change is sent once (size + modified time).
-  for (const file of [CONFIG_PATH, THEME_PATH]) {
+  // (round 55, configsafe) the owner's files in data/, and the repo's defaults (an update changing them is news too)
+  for (const file of [...new Set([CONFIG_PATH, THEME_PATH, DEFAULT_CONFIG_PATH, DEFAULT_THEME_PATH])]) {
     let seen = ''; let t = null; let w = null;
     const stamp = () => { try { const st = fs.statSync(file); return `${st.size}:${st.mtimeMs}`; } catch { return ''; } };
     seen = stamp();
@@ -709,7 +746,7 @@ function registerAfterWindow() {
     arm();
     // (round 39, powerwise) the safety net on the background schedule: every 10 s on screen, slower minimized / on
     // battery, none while the computer sleeps (was a stat every 5 s per file, always)
-    powerwise.every(`config-stat:${path.basename(file)}`, 10000, () => { if (!w) arm(); check(); });
+    powerwise.every(`config-stat:${path.relative(__dirname, file).replace(/\\/g, '/')}`, 10000, () => { if (!w) arm(); check(); });
   }
   bgmain.register(() => win);
   bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });

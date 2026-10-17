@@ -106,6 +106,17 @@ async function main() {
     ok(eqj(pc, { agents: [{ id: 'a', name: 'A' }], settings: { notify: true }, theme: { accent: '#f00' } }), 'config: machine paths, engines, hotkey and layout stay local');
     const back = S.applyPortable({ agents: [{ id: 'a', name: 'A', folder: '/Users/q/work' }], layout: { gridColumns: 1 }, settings: { enginePaths: { claude: '/opt/claude' }, notify: false } }, { agents: [{ id: 'a', name: 'A2' }, { id: 'b', name: 'B' }], settings: { notify: true }, theme: { accent: '#0f0' } });
     ok(back.agents[0].folder === '/Users/q/work' && back.agents[0].name === 'A2' && back.agents[1].id === 'b' && back.settings.enginePaths.claude === '/opt/claude' && back.settings.notify === true && back.layout.gridColumns === 1 && back.theme.accent === '#0f0', 'config: portable part applied, this computer\'s parts kept');
+    // (round 56, fixes56) defaultsSeen only grows: a config from a computer before the move (none) keeps ours; both → together
+    {
+      const CS = require('../configsafe-core');
+      const defaults = { agents: [{ id: 'claude' }, { id: 'astra' }, { id: 'video' }] };
+      const here = { agents: [{ id: 'claude' }, { id: 'astra' }], defaultsSeen: ['claude', 'astra', 'video'] }; // removed "video", moved already
+      const old = S.applyPortable(here, S.portableConfig({ agents: [{ id: 'claude' }, { id: 'astra', name: 'A' }] })); // the other computer, before the move
+      ok(eqj(old.defaultsSeen, ['claude', 'astra', 'video']) && !CS.effective(old, defaults).agents.some((a) => a.id === 'video'), 'config: a config with no defaultsSeen keeps ours (a removed default agent stays removed)');
+      const both = S.applyPortable({ ...here, defaultsSeen: ['claude', 'video'] }, { agents: here.agents, defaultsSeen: ['claude', 'astra', 'muse'] });
+      ok(eqj(both.defaultsSeen, ['claude', 'video', 'astra', 'muse']), 'config: defaultsSeen from both computers, together');
+      ok(!('defaultsSeen' in S.applyPortable({ agents: [] }, { agents: [] })), 'config: no defaultsSeen made up when neither has one');
+    }
 
     for (const n of ['.icloud', 'x.icloud', '~$doc.docx', 'a.tmp', 'desktop.ini', '.DS_Store', 'Doc.gdoc', 'Thumbs.db', '.hearth-tmp-1-a.json', 'x.json.hubtmp', '.hearth-part-x.mp4', 'kv.prev.json']) ok(S.ignoredName(n), `ignored: ${n}`);
     for (const r of ['sync/state.json', 'workspace/p/node_modules/x.js', 'window.json', 'engine.log', 'captures/frames/1.png', 'mcp-forgeheart.json', 'kv/a.prev.json']) ok(S.localOnly(r), `local only: ${r}`);
