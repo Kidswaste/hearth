@@ -13,9 +13,10 @@ await until(() => [...document.querySelectorAll('dialog[open] button, .modal but
 await until(() => H.agents().some((a) => a.dock === 'three'), 8000);
 const dir = H.agents().find((a) => a.dock === 'three');
 activate(dir.id); await wait(1500);
-// the preview's own pixels: a canvas exists and isn't black
+// the preview's own pixels: a canvas exists and isn't black (round 58: read through __labCanvas.fresh, as the page's
+// own readers do since labcanvas56: layer canvases keep no frame between draws)
 const pixels = async () => {
-  const r = await ThreeLab.director.evalInSketch('const c = document.querySelector("canvas"); if (!c) return { canvas: false }; const g = document.createElement("canvas"); g.width = 24; g.height = 24; const x = g.getContext("2d"); x.drawImage(c, 0, 0, 24, 24); const d = x.getImageData(0, 0, 24, 24).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; return { canvas: true, lum: Math.round(s / (24 * 24 * 3)) }').catch((e) => ({ error: String(e) }));
+  const r = await ThreeLab.director.evalInSketch('const c = document.querySelector("canvas"); if (!c) return { canvas: false }; const g = document.createElement("canvas"); g.width = 24; g.height = 24; const x = g.getContext("2d"); x.drawImage(window.__labCanvas?.fresh ? window.__labCanvas.fresh(c) : c, 0, 0, 24, 24); const d = x.getImageData(0, 0, 24, 24).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2]; return { canvas: true, lum: Math.round(s / (24 * 24 * 3)) }').catch((e) => ({ error: String(e) }));
   return r?.value || r;
 };
 const drawing = async (ms = 15000) => { let p = null; await until(async () => { p = await pixels(); return p?.canvas && p.lum > 2; }, ms); return p; };
