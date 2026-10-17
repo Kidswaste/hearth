@@ -258,7 +258,7 @@ async function play(_e, req = {}) {
   const win = new BrowserWindow({
     x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, show: false, frame: false, backgroundColor: '#000000',
     title: source.title, autoHideMenuBar: true, fullscreenable: true, fullscreen: !mac, thickFrame: false, roundedCorners: false,
-    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look }))}`] },
+    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look, ...(was.shadow && fid.look === 'best' ? { shadow: was.shadow } : {}) }))}`] }, // (round 56, shadowready) shadow: the size chosen while getting ready last time
   });
   if (!mac) win.setMenu(null);
   const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) || offs.has('audio'), stream: { off: Boolean(req.stream?.off), skip: offs.has('stream') } };
@@ -321,6 +321,7 @@ function register(ipcMain, c) {
     const B = budget(); const source = req.source ? C.source(req.source) : G?.source || null;
     if (!B || !source) return { known: false, off: [] };
     if (req.op === 'reset') return { reset: B.reset(source), off: [] };
+    if (req.op === 'shadow-reset') return { reset: Boolean(B.forgetShadow?.(source)), ...B.forGame(source) }; // (round 56, shadowready) /game look shadows reset
     return { known: true, ...B.forGame(source), now: G && C.sameSource(G.source, source) ? G.budget.last : null };
   }));
   // (round 53, playloop: playloopmain.js) rest / wake / side by side / the blip; the error line's Fix from the game window
