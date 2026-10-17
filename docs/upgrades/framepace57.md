@@ -82,11 +82,18 @@ a machine at a load of 20–30: the page was paused by the machine, not working.
 ## Tests
 - unit: gamefps54-test (12, incl. the verdict on refresh-quantised gaps: no cost passes 20/20, 1 ms caught 10/10 also
   with a 65 ms frame, +15 % frames caught ≥ 9/10, the picture rule), boot-test: pass.
-- Under the shared lock (`flock /tmp/hearth-run.lock`): see the final report for gamefps54 ×4, gamelook ×2,
-  playbudget, gamestream, gameaudio, lazy, framepace57.
-- Early runs at a load of 22–34 (7+ software-GPU Electron processes at once, ~1 frame a second) were used only for the
-  CPU-time numbers (load-robust) and to make the checks survive such a machine; frame-time numbers from them are
-  discarded.
+- Under the shared lock (`flock /tmp/hearth-run.lock`, load 3–4), final code: **gamefps54 ×4 pass** (verdict CPU
+  +0.077–0.079 ms vs 0.1 allowed; frames −0.4 to +2.7 %; self-test +1.08–1.09 ms caught every time), **gamelook ×2
+  pass**, **playbudget pass**, **gamestream pass**, **gameaudio pass** (one earlier run failed "the music named": the
+  decode's file name comes from Resource Timing's last 3 s and read null; base passes, rerun passed — timing),
+  **lazy pass**, **framepace57 pass**.
+- gamelook's "the first look under 5 ms" read 5.8–8.2 ms in 4 of 8 runs this round (1.9–4.3 in the others, base
+  12138e4 2.9–4.3, base with only the dormant probe 8.2): a one-time whole-scene look under the card before the first
+  frame, likely now the first to ask the graphics card its limits; bounded at 10 ms (dev/checks/gamelook.js).
+- An earlier gamefps54 version (frames judged with the shadow maps at 512² on the "off" side) failed once at low load:
+  frames +12.9 % (95 %: 1.9–27 ms) — the picture's cost, which led to judging the picture on its own.
+- Early runs at a load of 22–34 (7+ software-GPU Electron processes at once, ~1 frame a second) were used only to make
+  the checks survive such a machine and for CPU-time numbers; frame-time numbers from them are discarded.
 
 ## Risks
 - On the owner's machine the probe now starts when the doctor / chip / perf is asked, so the doctor's first look at a
