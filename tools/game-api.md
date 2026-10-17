@@ -283,3 +283,10 @@ the hub); the owner: `/playtest`.
   (never a "fit"); lost during the first frames → `ab = { skipped, lost: true }`. `ab` also carries `syncs`,
   `maxFrameMs`, `long: [[phase, ms]]` (frames over 1 s), `drains`, `drainMs`. `__glRecover.state()` adds `made` (WebGL
   contexts made on the page) and `none`; main `glrecover:state` adds `gone: [{ reason, exitCode, at }]` (GPU process exits).
+- (round 59, shadowlab59) While `__gmHold` holds a Lab scene page's frames, the Lab's shadow gate (tools/three-sandbox.html
+  `shGate`, round 50) steps aside: every A/B draw runs three's shadow pass (before, back-to-back draws in one frame tick
+  reused the tick's "no change", so sizes were timed without shadows and the fallback's maps were never made). The look's
+  `swap()` (gamelook-preload.js) sets `renderer.shadowMap.needsUpdate = true` on its renderers (shadows enabled) whenever a
+  size goes in, so no page that skips shadow passes draws with a missing map (three r186 then binds its RGBA stand-in to a
+  `sampler2DShadow`: GL_INVALID_OPERATION, the draw dropped) or a stale one. `ab.glErrors = { before, during, codes }`:
+  WebGL's error flags read at the A/B's start and end (under the card only); `result.ab.glErrors` in getting ready's result.
