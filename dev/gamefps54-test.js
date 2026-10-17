@@ -83,6 +83,10 @@ function page(w, h) {
     let caught = 0; for (let k = 0; k < 10; k += 1) { const j = V.judge(pairsOf(10, { slow: 15 })); if (!j.frames.ok) caught += 1; assert.ok(j.cpu.ok); }
     assert.ok(caught >= 9, `caught ${caught} of 10`);
   });
+  await t('picture: the bigger shadow maps at 5 % on the graphics card pass shadowready\'s rule; at 25 % they fail', () => {
+    const rows = (pct) => Array.from({ length: 8 }, (_, i) => { const off = 110 + Math.sin(i) * 8 + rnd() * 4; return [off * (1 + pct / 100) + (rnd() - 0.5) * 3, off]; });
+    assert.ok(V.picture(rows(5)).ok); assert.ok(!V.picture(rows(25)).ok); assert.ok(V.picture(rows(12), 2).ok, 'two halvings: 16 %');
+  });
   await t('verdict: too few pairs is never a pass', () => { assert.ok(!V.judge(pairsOf(3)).ok); });
   console.log(`${n} passed`);
   process.exit(0); // (the look's guard keeps watching: a timer)

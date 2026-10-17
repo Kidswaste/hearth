@@ -49,7 +49,20 @@
     const why = !cpu.ok ? `Hearth's work around the game's render: +${cpu.med} ms a frame (allowed ${cpu.allow})` : !frames.ok ? `frames ${frames.mean} ms slower (${frames.pct} %; 95 % interval ${frames.ci.join('…')} ms, tolerance ${frames.tol})` : '';
     return { ok: cpu.ok && frames.ok, cpu, frames, pairs: ok.length, why };
   }
-  const api = { judge, median, mean, boot };
+  // (the Best picture) rows = [[on, off], …]: a frame drawn to the end (readPixels) with the look's shadow maps at its
+  // size / at the game's own 512², ABBA. What the bigger maps cost on the graphics card, judged by shadowready's own
+  // rule (a halving is kept unless it saves ≥ 8 %): over budget only when even the low end of the 95 % interval is
+  // above 8 % a halving (steps = halvings from the look's size down to 512)
+  function picture(rows, steps = 1, o = {}) {
+    const ok = (rows || []).filter((r) => r && finite(r[0]) && finite(r[1]));
+    if (ok.length < (o.minPairs || 4)) return { ok: false, why: `only ${ok.length} picture pairs`, pairs: ok.length };
+    const d = ok.map((r) => r[0] - r[1]); const off = mean(ok.map((r) => r[1]));
+    const ci = boot(d); const share = (o.share == null ? 0.08 : o.share) * Math.max(1, steps);
+    const pct = (100 * mean(d)) / off;
+    const over = Boolean(ci && ci[0] / off > share);
+    return { ok: !over, mean: r3(mean(d)), ci: ci && ci.map(r3), offMs: r3(off), pct: r3(pct), allowPct: r3(100 * share), pairs: ok.length, why: over ? `the Best picture costs ${r3(pct)} % on the graphics card (more than ${r3(100 * share)} %)` : '' };
+  }
+  const api = { judge, picture, median, mean, boot };
   if (typeof root === 'object' && root && root.exports !== undefined) root.exports = api;
   return api;
 }(typeof module === 'object' ? module : null));

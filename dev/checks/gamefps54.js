@@ -46,8 +46,10 @@ const MEASURE = `(async () => {
 })()`;
 
 // (round 57, framepace57) Best on vs stepped aside IN THE SAME PLAY, in interleaved blocks of frames (on/off, then
-// off/on), playbudget's own switches: the look's hooks pass straight through and its shadow maps go back to the game's
-// own 512² (the picture "off" draws), loads during play and the sound part step aside. Per block (after 3 frames not
+// off/on), playbudget's own switches: the look's hooks pass straight through, loads during play and the sound part step
+// aside; the look's shadow maps stay at Best's size in both (the picture is judged on its own below: on this software
+// graphics card it costs 3–5 % a frame, which on frames near a refresh's edge (117 ms = 7 refreshes) tips some into
+// the next (133 ms): round 55–56's flaky 116 vs 133 ms). Per block (after 3 frames not
 // counted: maps swapped): the mean gap between the game's frames, the time around its render() (Hearth's hooks), its
 // frame callback. dev/framepace-verdict.js judges the pairs. A pretend helper (window.__hearthTestCost) steps aside
 // with the others: the self-test's injected 1 ms.
@@ -56,7 +58,7 @@ const AB = (pairs, capMs) => `(async () => {
   const S = window.__gameStream && window.__gameStream.budget; const A = window.__gameAudio && window.__gameAudio.budget; const T = () => window.__hearthTestCost && window.__hearthTestCost.budget;
   const tm = (a) => { const s = a.slice().sort((x, y) => x - y).slice(0, Math.max(1, Math.ceil(a.length * 0.9))); return s.length ? s.reduce((x, y) => x + y, 0) / s.length : null; };
   const frames = (n, ms) => new Promise((res) => { const f0 = G.frames; const t0 = performance.now(); const f = () => (G.frames - f0 < n && performance.now() - t0 < ms ? requestAnimationFrame(f) : res()); requestAnimationFrame(f); });
-  const set = (on) => { try { L.pause(!on); L.picture(on); } catch (e) {} try { S && S.pause(!on); } catch (e) {} try { A && A.pause(!on); } catch (e) {} try { T() && T().pause(!on); } catch (e) {} };
+  const set = (on) => { try { L.pause(!on); } catch (e) {} try { S && S.pause(!on); } catch (e) {} try { A && A.pause(!on); } catch (e) {} try { T() && T().pause(!on); } catch (e) {} };
   const block = async (on) => {
     set(on); await frames(3, 4000);
     G.cpu.length = 0; G.over.length = 0; G.gaps.length = 0;
@@ -69,12 +71,29 @@ const AB = (pairs, capMs) => `(async () => {
   } finally { set(true); }
   return JSON.stringify(out);
 })()`;
+// (round 57) the Best picture on the graphics card: the game's loop held, its scene drawn by the check and waited for to
+// the end (readPixels), the look's shadow maps at Best's size / at the game's own 512², ABBA, 3 frames each a side
+const PICTURE = `(async () => {
+  const G = window.game; const B = window.__gameLook && window.__gameLook.budget; if (!B) return 'null';
+  const r = G.renderer; const gl = r.getContext(); const px = new Uint8Array(4);
+  const one = () => { const a = performance.now(); r.render(G.scene, G.camera); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); return performance.now() - a; };
+  const med = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
+  const rows = []; G.hold = true;
+  try {
+    for (let i = 0; i < 8; i += 1) {
+      const v = {};
+      for (const on of i % 2 ? [false, true] : [true, false]) { B.picture(on); one(); v[on] = med([one(), one(), one()]); await new Promise((res) => setTimeout(res, 0)); }
+      rows.push([v.true, v.false]);
+    }
+  } finally { B.picture(true); G.hold = false; }
+  return JSON.stringify(rows);
+})()`;
 // (the verdict runs in the game window through game:eval: the hub page's CSP allows no eval)
 const VSRC = await window.hub.fs.read(`${window.SMOKE_DEV}/framepace-verdict.js`);
 const judge = async (pairs, o = {}) => JSON.parse(await ev(`(() => { const module = { exports: {} }; ${VSRC}\n; return JSON.stringify(module.exports.judge(${JSON.stringify(pairs)}, ${JSON.stringify(o)})); })()`));
 let VERDICT = null;
 const INJECT = `(() => { const r = window.game.renderer; const r0 = r.render; let P = false; r.render = function () { if (!P) { const a = performance.now(); while (performance.now() - a < 1) { /* 1 ms */ } } return r0.apply(this, arguments); }; window.__hearthTestCost = { budget: { pause: (on) => { P = Boolean(on); } } }; return 1; })()`;
-const AB_PAIRS = []; let SELF = null;
+const AB_PAIRS = []; const PIC_ROWS = []; let SELF = null; let PIC = null;
 
 await Lazy.load('gamemode');
 const FILE = `${DIR}/index.html`;
@@ -94,7 +113,8 @@ async function play(label) {
     await until(() => ev('!["waiting", "measuring", "tight", "trying"].includes(window.__gameLook.report().guard)'), 30000);
     m.abShadow = await ev('window.__gameLook.report().shadows.now');
     const ab = JSON.parse(await ev(AB(5, 150000))); if (Array.isArray(ab)) AB_PAIRS.push(...ab); m.ab = ab;
-    if (label === 'best2') { VERDICT = await judge(AB_PAIRS, { gapShare: 0.1 }); await ev(INJECT); const inj = JSON.parse(await ev(AB(4, 120000))); SELF = await judge(Array.isArray(inj) ? inj : [], { minPairs: 4, gapShare: 0.1 }); m.inj = inj; }
+    const pic = JSON.parse(await ev(PICTURE)); if (Array.isArray(pic)) PIC_ROWS.push(...pic);
+    if (label === 'best2') { VERDICT = await judge(AB_PAIRS); PIC = JSON.parse(await ev(`(() => { const module = { exports: {} }; ${VSRC}\n; return JSON.stringify(module.exports.picture(${JSON.stringify(PIC_ROWS)}, ${Math.max(1, Math.log2((m.abShadow || 512) / 512))})); })()`)); await ev(INJECT); const inj = JSON.parse(await ev(AB(4, 120000))); SELF = await judge(Array.isArray(inj) ? inj : [], { minPairs: 4 }); m.inj = inj; }
   }
   out.runs.push(m);
   await GameMode.leave(); await until(async () => !(await GW().state())?.playing, 10000); await wait(800);
@@ -136,7 +156,8 @@ await safe('judge', async () => {
   const v = VERDICT || { ok: false, why: 'not judged (the second Best play did not get there)' };
   out.verdict = v;
   const gb = avg(bests, 'gap50');
-  step('best: frames as fast as off (interleaved on / stepped aside in the same play, both Best plays: Hearth\'s work around the render within 2 % of the frame, the mean frame gap not slower beyond the noise and 10 % / 2 ms (the Best picture\'s own shadow maps may cost up to 8 % a step by shadowready\'s rule); the separate plays within 2×)', v.ok && gb <= off.gap50 * 2 + 17, { verdict: v, shadowInAB: bests.map((x) => x.abShadow), plays: { off: off.gap50, best: bests.map((x) => x.gap50) } });
+  step('best: frames as fast as off (interleaved on / stepped aside in the same play, both Best plays: Hearth\'s work around the render within 2 % of the frame, the mean frame gap not slower beyond the noise and 5 % / 2 ms; the separate plays within 2×)', v.ok && gb <= off.gap50 * 2 + 17, { verdict: v, shadowInAB: bests.map((x) => x.abShadow), plays: { off: off.gap50, best: bests.map((x) => x.gap50) } });
+  step('best: the picture\'s own cost on the graphics card (shadow maps at Best\'s size vs the game\'s 512², each frame drawn to the end) within shadowready\'s rule: ≤ 8 % a halving', PIC && PIC.ok, { picture: PIC, shadow: bests.map((x) => x.abShadow) });
   step('self-test: the same verdict on a pretend helper costing 1 ms a frame says "slower"', SELF && !SELF.ok && SELF.cpu && !SELF.cpu.ok, SELF);
 });
 await safe('files', async () => {
@@ -144,4 +165,4 @@ await safe('files', async () => {
   step('files: the game\'s file byte for byte the same after seven plays', out.hashBefore && after?.[0]?.hash === out.hashBefore[0].hash, after);
 });
 const bad = out.steps.filter((s) => !s.ok);
-return JSON.stringify({ pass: bad.length === 0, failed: bad.map((s) => s.name), steps: out.steps, compare: out.compare, verdict: out.verdict, selfTest: SELF, runs: out.runs }, null, 1);
+return JSON.stringify({ pass: bad.length === 0, failed: bad.map((s) => s.name), steps: out.steps, compare: out.compare, verdict: out.verdict, picture: PIC, selfTest: SELF, runs: out.runs }, null, 1);
