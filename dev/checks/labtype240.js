@@ -95,6 +95,12 @@ const SCENES = {
 const SIZES = window.LT_SIZES || ['1280x720', 'fit']; // (2560×1440 / 4K on request: the numbers are in docs/upgrades/labtype240.md)
 const WANT = window.LT_SCENES || Object.keys(SCENES);
 const tight = (on) => sbx(`return window.__labType.tight(${on})`);
+// (round 58) drawn tight switched on, then each frame until its first skipped one (the gate saw it still): frames drawn
+const SETTLE = `const P = window.__labPace; const g0 = (P.gates()[0] || {}); const s0 = P.state();
+const S = window.__lt58settle = { moving: g0.moving || 0, drawn: -1, frames: -1, done: false };
+window.__labType.tight(true);
+const t0 = performance.now(); const tick = () => { const s = P.state(); if (s.skipped > s0.skipped) { S.drawn = s.drawn - s0.drawn; S.frames = s.frameTick - s0.frameTick; S.done = true; return; } if (performance.now() - t0 < 15000) requestAnimationFrame(tick); else { S.drawn = s.drawn - s0.drawn; S.frames = s.frameTick - s0.frameTick; } };
+requestAnimationFrame(tick); return 1;`;
 const measure0 = async () => { await sbx(PROBE); await sbx('return window.__glc.start()'); await until(async () => (await sbx1('return window.__glc.frames()')) >= 4, 20000); await sbx('return window.__glc.start()'); const t0 = Date.now(); await wait(3000); while (Date.now() - t0 < 20000 && (await sbx('return window.__glc.frames()')) < 4) await wait(500); return sbx('return window.__glc.stop()'); };
 const measure = async () => { const m = await measure0(); if (!m?.error) return m; await wait(4000); return measure0(); };
 const setSize = async (sz) => { if (sz === 'fit') c.size('fit'); else { const [w, h] = sz.split('x').map(Number); c.customSize(w, h); } await wait(2500); };
@@ -139,7 +145,16 @@ for (const name of WANT) {
   for (const sz of SIZES) {
     await setSize(sz); await steady(); await settle(name);
     const r = {};
-    for (const on of [false, true]) { await tight(on); await wait(1500); const m = await measure(); r[on ? 'after' : 'before'] = row(m); }
+    for (const on of [false, true]) {
+      // (round 58, labtype58) the held title, drawn every frame "before" (its gate long-moving), switched to drawn tight
+      // by a message: the frames it draws until the still check sees it still, counted in frames (not time: the same
+      // on a loaded machine). Since labplay55 a poke left a long-moving gate looking every 32nd frame: 32–64 frames
+      // of the same picture (and the fps step below failed when that tail fell in its window); now ≤ 8 + 8 + AFTER.
+      if (on && name === 'still') await sbx(SETTLE);
+      else await tight(on);
+      await wait(1500); const m = await measure(); r[on ? 'after' : 'before'] = row(m);
+    }
+    if (name === 'still') r.settle = await sbx('return window.__lt58settle ? { ...window.__lt58settle, log: undefined } : null');
     const info = await sbx('return window.__labType.info().map((x) => ({ tight: x.tight, leases: x.leases, glyphs: x.glyphs }))');
     r.type = info;
     out.table[name][sz] = r;
@@ -164,6 +179,8 @@ if (!window.LT_REPORT) {
       const ls = (r.type || []).reduce((s, x) => s + (x.leases || 0), 0); // (leases since the layer began: a handful, not one a frame)
       if (ls > 40 * Math.max(1, (r.type || []).length)) over.push(`leases ${ls}`); // (a new size, a toggle, a word in: a new lease, not one a frame)
       step(`${name} ${sz}: within its budget`, !over.length, over.length ? over : undefined);
+      // (round 58, labtype58) still within 24 frames of the message that switched it (was 32–64 since labplay55)
+      if (r.settle) step(`${name} ${sz}: held after being redrawn every frame, still within 24 frames of a message (${r.settle.moving >= 30 ? 'its gate long-moving' : 'its gate not long-moving yet: a light test'})`, r.settle.done && r.settle.drawn <= 24, r.settle);
     }
   }
 }
