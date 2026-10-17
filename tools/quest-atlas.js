@@ -23,7 +23,25 @@
       dice:'m4 3 17 1-1 17-17-1ZM8 8h.1M16 8h.1M12 12h.1M8 16h.1M16 16h.1',
       info:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 10v7M12 6h.1',
       target:'M12 2v4M12 18v4M2 12h4M18 12h4M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12ZM12 11v2',
-      arrow:'M4 12h16M14 6l6 6-6 6'
+      arrow:'M4 12h16M14 6l6 6-6 6',
+      clock:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6v6l4 3',
+      bookmark:'M6 3h12v19l-6-4-6 4Z',
+      skip:'m4 5 10 7-10 7ZM19 5v14',
+      pause:'M7 4v16M17 4v16',
+      play:'m6 3 15 9-15 9Z',
+      chat:'M3 3h18v13H9l-6 5ZM7 7h10M7 11h7',
+      folder:'M2 6V3h7l3 3h10v15H2ZM2 9h20',
+      upload:'M12 17V2M6 8l6-6 6 6M3 15v7h18v-7',
+      download:'M12 2v15M6 11l6 6 6-6M3 15v7h18v-7',
+      settings:'M4 6h16M4 18h16M8 3v6M16 15v6M4 12h16M14 9v6',
+      lamp:'m8 3-5 9h18l-5-9ZM12 12v9M7 22h10',
+      motion:'M2 7h10M2 12h6M2 17h10M14 5l7 7-7 7',
+      small:'M9 3v6H3M15 21v-6h6M3 3l6 6M21 21l-6-6',
+      undo:'M8 4 2 10l6 6M2 10h13a6 6 0 0 1 0 12',
+      shield:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6Zm-5 9 3 3 7-7',
+      spark:'m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z',
+      notebook:'M5 2h16v20H5ZM2 6h6M2 12h6M2 18h6M11 7h6M11 12h6',
+      close:'M5 5l14 14M19 5 5 19'
     };
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),p=document.createElementNS(svg.namespaceURI,'path');
     svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.classList.add('qj-map-icon');

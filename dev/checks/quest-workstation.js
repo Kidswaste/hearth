@@ -3,7 +3,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async fn => { for (let i = 0; i < 160; i++) { if (await fn()) return; await wait(60); } throw Error('Workstation UI timed out'); };
 let checks = 0; const check = (ok, why) => { if (!ok) throw Error(why); checks++; };
 const root = () => document.querySelector('.qj'), scope = () => root().querySelector('dialog[open]') || root();
-const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === name); check(b, 'Button: ' + name); b.click(); await until(() => !b.disabled); await wait(80); };
+const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === name || b.getAttribute('aria-label') === name); check(b, 'Button: ' + name); b.click(); await until(() => !b.disabled); await wait(80); };
 const field = (name, value) => { const n = scope().querySelector(`[aria-label="${name}"]`); check(n, 'Field: ' + name); n.value = value; n.dispatchEvent(new Event('input', { bubbles: true })); n.dispatchEvent(new Event('change', { bubbles: true })); };
 document.querySelector('#agent-buttons [data-id="tool:quests"]').click(); await until(() => root()?.querySelector('.qj-console-name')?.textContent);
 const s = () => QuestJournal.snapshot(), C = QuestCore;
@@ -27,7 +27,7 @@ check(C.activeTitle(s()).name === 'Forge apprentice' && !root().querySelector('.
 await smoke({ shot: window.SMOKE_SAVES + '/forge-studio-title.png' }); scope().close();
 root().querySelector('.qj-celebrate')?.remove(); root().querySelector('.qj-specializations').scrollIntoView({ block: 'start' });
 await smoke({ shot: window.SMOKE_SAVES + '/forge-studio-matrix.png' });
-QuestJournal.navigate('rewards'); await press('Browse reward ideas'); check(scope().querySelectorAll('.qj-blueprint').length === 10, 'ten personal reward starting points');
+QuestJournal.navigate('rewards'); await press('Browse reward ideas'); check(scope().querySelectorAll('.qj-blueprint').length === C.rewardBlueprints.length, 'all personal reward starting points');
 await smoke({ shot: window.SMOKE_SAVES + '/forge-studio-reward-ideas.png' });
 await press('Make this mine', scope().querySelector('.qj-blueprint')); field('Reward', 'My new demo, headphones and no edits'); field('Sparks', '7'); field('Make it personal', 'Listen to the current bounce with the desk lights down.'); await press('Save reward');
 const reward = s().rewards.find(r => r.blueprint === 'first-listen'); check(reward?.cost === 7 && C.balance(s()) === 10, 'customizing a reward spends nothing');

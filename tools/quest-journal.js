@@ -49,11 +49,113 @@ const QuestJournal = (() => {
     if (root) root.dataset.motion = state?.motion !== false && !document.hidden && H.activeId === 'tool:quests' ? 'on' : 'off';
   }
   const notice = text => { if (status) status.textContent = text; const local = root?.querySelector('dialog[open] .qj-dialog-status'); if (local) local.textContent = text; };
+  // Semantic actions only: user-authored quest titles and confirmation copy stay intact.
+  const actionGroups = [
+    ['settings','#bd8bff',['Journal options','Tune desk','Set my budget']],
+    ['compass','#ff6b9d',['Paris after hours','Open the world map →']],
+    ['reset','#e7a0ff',['Life expeditions','Life expeditions →','Explore life quests →']],
+    ['dice','#ff8c42',['Pick next mission','Find my next move','Deal three more ↻','Deal again','Deal me in →']],
+    ['lamp','#ffd75e',['Lamp on','Lamp off']], ['motion','#bd8bff',['Motion on','Motion off']],
+    ['small','#bd8bff',['Make this smaller']],
+    ['skip','#ff8c42',['Skip for now →','Skip quest','Not today','Not my thing','Park this side quest']],
+    ['bookmark','#ffd75e',['Leave a starting note','Plan this next','Clear bookmark','Pin this route','Unpin route']],
+    ['star','#ffd75e',['Save ♡','Saved ♥','Equip title','Equipped ✓']],
+    ['edit','#bd8bff',['Edit idea','Edit friend','Edit plan','Edit','Add or edit keepsake']],
+    ['pause','#ff8c42',['Pause','Let plan rest','End focus']],
+    ['play','#ff6b9d',['Resume','Resume plan','Resume campaign','Resume this quest','Revisit quest']],
+    ['undo','#ffd75e',['Restore card','Back to notebook','Back to my desk','Back to your adventure →']],
+    ['chat','#ff6b9d',['Prepare Astra draft','Research in Astra','Prepare invitation','From a Hearth chat','Open source chat']],
+    ['clock','#ff8c42',['Focus for 5 minutes']],
+    ['folder','#ffd75e',['Show file','Show source file','Open proof file','Open file','View your collection','See your collection →']],
+    ['shield','#bd8bff',['Show review','Review & version history','Review quest']],
+    ['upload','#ff6b9d',['Upload a creation']],
+    ['download','#ffd75e',['Export backup','Export pre-restore recovery copy']],
+    ['plus','#bd8bff',['+ Suggest a quest','Suggest a different quest','+ Your own campaign','Create my own','+ Add a reward','+ Add a friend']],
+    ['gift','#ff6b9d',['Browse reward ideas','Your treat is ready →']],
+    ['target','#bd8bff',['Explore your skill tree ↗','Open my route →','Browse matching cards']],
+    ['notebook','#ffd75e',['View quest','Open quest','Open quest →','Browse campaigns','Find a campaign','Browse commissions →']],
+    ['close','#bfc0c8',['×','Dismiss']]
+  ];
+  const actionHints = {
+    'Make this smaller':'Try a two-minute first step. The full finish line stays intact.',
+    'Skip for now →':'Set this quest aside. Keep earlier progress; earn no completion XP.',
+    'Skip quest':'Set this quest aside and return to it later.',
+    'Not today':'Hide this suggestion without accepting it.',
+    'Not my thing':'Tuck this card away. You can restore it below.',
+    'Park this side quest':'Free a side-quest slot while keeping this quest and its progress.',
+    'Leave a starting note':'Bookmark one small action for your next session.',
+    'Plan this next':'Save this suggestion as the next session’s starting point.',
+    'Clear bookmark':'Remove the starting note. Keep the quest and its progress.',
+    'Pin this route':'Keep this specialization on your desk as a practice goal.',
+    'Unpin route':'Remove the practice goal from your desk. Keep all earned titles.',
+    'Save ♡':'Save this card for another day.', 'Saved ♥':'This card is saved. Click to remove its favorite.',
+    'Prepare Astra draft':'Prepare an editable quest-help draft in Astra. Nothing is sent.',
+    'Research in Astra':'Prepare a research draft in Astra using this plan’s dates and budget.',
+    'Prepare invitation':'Write an invitation you can edit and copy. Nothing is sent.',
+    'Focus for 5 minutes':'Start a five-minute focus timer for this quest.',
+    'Pause':'Pause without losing your progress.', 'End focus':'Stop the timer. Keep your quest ready to resume.',
+    'From a Hearth chat':'Choose an actual chat message and preview its media before keeping it.',
+    'Upload a creation':'Keep an exported image, audio, video or text file on your shelf.',
+    'Show file':'Reveal the original file in its folder.', 'Show source file':'Reveal the original media file in its folder.',
+    'Review & version history':'See submitted evidence, critique and earlier versions.',
+    'Tune desk':'Choose your callsign, accent color and workstation settings.',
+    'Motion on':'Animations are on. Click to turn them off.', 'Motion off':'Animations are off. Click to turn them on.',
+    'Lamp on':'The desk lamp is on. Click to dim it.', 'Lamp off':'The desk lamp is off. Click to light it.',
+    'Journal options':'Back up or restore your journal, and read how XP and rewards work.',
+    'Set my budget':'Set a monthly allowance for paid treats. No payment is made.',
+    'Export backup':'Save your progress and reward history as a journal backup.',
+    'Pick next mission':'Find a quest that fits your time and energy.',
+    'Deal three more ↻':'Draw three matching briefs. Unseen cards come first.'
+  };
+  function decorateAction(b,text) {
+    const found=actionGroups.find(g=>g[2].includes(text));
+    const primary=b.classList.contains('qj-primary');
+    if(!text||(!found&&!primary)||b.classList.contains('qj-field-card')||b.classList.contains('qj-field-feature'))return;
+    const [kind,color]=found||[/^(Save|Create|Accept|Add|Keep)/.test(text)?'check':/proof|review/i.test(text)?'shield':'arrow','#bd8bff'];
+    const compact=!!found&&!primary&&!['Resume campaign','Resume this quest','Revisit quest'].includes(text);
+    b.classList.add('qj-action');b.classList.toggle('qj-action-icon',compact);b.style.setProperty('--action-color',color);
+    b.setAttribute('aria-label',text==='×'?'Close dialog':text);const help=actionHints[text]||(compact?text:'');if(help&&text!=='×')b.dataset.help=help;else delete b.dataset.help;if(text==='×')b.title='Close dialog';
+    b.replaceChildren(QuestAtlas.icon(kind),E('span',{class:'qj-action-text',text}),E('span',{class:'qj-glint',attrs:{'aria-hidden':'true'}}));
+  }
+  function actionLabel(b,text) {b.textContent=text;decorateAction(b,text);if(hintTarget===b)showHint(b);}
   function button(text, fn, cls = '', key) {
-    return E('button', { type: 'button', class: `qj-button ${cls}`, text, ...(key ? { dataset: { focus: key } } : {}), on: { click: async e => { const b = e.currentTarget; b.disabled = true; try { await fn(e); } catch (err) { notice(err.message || 'That action could not be saved.'); } finally { b.disabled = false; } } } }, E('span', { class: 'qj-glint', attrs: { 'aria-hidden': 'true' } }));
+    const b=E('button', { type: 'button', class: `qj-button ${cls}`, text, ...(key ? { dataset: { focus: key } } : {}), on: { click: async e => { const b = e.currentTarget; b.disabled = true; try { await fn(e); } catch (err) { notice(err.message || 'That action could not be saved.'); } finally { b.disabled = false; } } } }, E('span', { class: 'qj-glint', attrs: { 'aria-hidden': 'true' } }));
+    decorateAction(b,text);return b;
   }
   function glaze(parent) {
     parent.querySelectorAll('.qj-button').forEach(b => { if (!b.querySelector(':scope > .qj-glint')) b.append(E('span', { class: 'qj-glint', attrs: { 'aria-hidden': 'true' } })); });
+  }
+  let hintLayer, hintTarget, hintTimer;
+  function hideHint() {
+    clearTimeout(hintTimer);if(hintLayer?.matches(':popover-open'))hintLayer.hidePopover();
+    hintTarget?.removeAttribute('aria-describedby');hintTarget=null;
+  }
+  function showHint(target) {
+    if(!target?.dataset.help||target.disabled||!target.isConnected)return;
+    clearTimeout(hintTimer);hintTarget?.removeAttribute('aria-describedby');hintTarget=target;
+    hintLayer.textContent=target.dataset.help;hintLayer.style.setProperty('--hint-color',getComputedStyle(target).getPropertyValue('--action-color')||getComputedStyle(target).getPropertyValue('--path')||'#bd8bff');
+    target.setAttribute('aria-describedby',hintLayer.id);if(!hintLayer.matches(':popover-open'))hintLayer.showPopover();
+    const r=target.getBoundingClientRect(),t=hintLayer.getBoundingClientRect(),gap=9;
+    hintLayer.style.left=Math.max(10,Math.min(window.innerWidth-t.width-10,r.left+(r.width-t.width)/2))+'px';
+    hintLayer.style.top=(r.top-t.height-gap>=10?r.top-t.height-gap:Math.min(window.innerHeight-t.height-10,r.bottom+gap))+'px';
+  }
+  function setupHints() {
+    hintLayer=E('div',{class:'qj-help-tooltip',attrs:{id:'qj-shared-help',popover:'manual',role:'tooltip'}});root.append(hintLayer);
+    const schedule=()=>{clearTimeout(hintTimer);hintTimer=setTimeout(()=>{if(!hintTarget?.matches(':hover,:focus-visible')&&!hintLayer.matches(':hover'))hideHint();},160);};
+    root.addEventListener('pointerover',e=>{const target=e.target.closest('[data-help]');if(target&&target!==hintTarget)showHint(target);});
+    root.addEventListener('focusin',e=>{const target=e.target.closest('[data-help]');if(target)showHint(target);else hideHint();});
+    root.addEventListener('pointerout',schedule);root.addEventListener('focusout',schedule);
+    root.addEventListener('keydown',e=>{if(e.key==='Escape'&&hintTarget){hideHint();e.preventDefault();e.stopPropagation();}},true);
+    root.addEventListener('click',()=>hideHint());root.addEventListener('scroll',e=>{if(e.target!==hintLayer)hideHint();},true);
+    window.addEventListener('resize',hideHint);
+  }
+  function explain(title,text) {
+    const b=button('',()=>dialog(title,body=>body.append(p(text))),'qj-explain');
+    b.append(QuestAtlas.icon('info'));b.setAttribute('aria-label','About '+title);b.dataset.help=text;return b;
+  }
+  function statChip(kind,value,meaning) {
+    const b=button('',()=>dialog(meaning,body=>body.append(p(value+' · '+meaning))),'qj-stat-chip');
+    b.append(QuestAtlas.icon(kind),E('span',{text:value}));b.setAttribute('aria-label',value+' · '+meaning);b.dataset.help=meaning;return b;
   }
   function field(title, opts = {}) {
     const input = E(opts.multiline ? 'textarea' : 'input', { ...(opts.multiline ? {} : { type: opts.type || 'text' }), value: opts.value || '', attrs: { 'aria-label': title, maxlength: opts.max || 500, ...(opts.multiline ? { rows: opts.rows || 3 } : {}), ...(opts.placeholder ? { placeholder: opts.placeholder } : {}), ...(opts.type === 'number' ? { min: 1, max: 10000 } : {}) } });
@@ -63,11 +165,11 @@ const QuestJournal = (() => {
     return E('div', { class: `qj-meter ${cls}`, attrs: { role: 'progressbar', 'aria-label': title, 'aria-valuemin': 0, 'aria-valuemax': max, 'aria-valuenow': value } }, E('i', { style: { width: `${Math.min(100, Math.max(0, value / Math.max(1, max) * 100))}%` } }));
   }
   function dialog(title, build, subtitle = '') {
-    const opener = document.activeElement;
+    hideHint();const opener = document.activeElement;
     const d = E('dialog', { class: 'qj-dialog', attrs: { 'aria-label': title } });
     const body = E('div', { class: 'qj-dialog-body' });
     d.append(E('header', { class: 'qj-dialog-head' }, E('div', {}, label(subtitle || 'QUEST JOURNAL'), E('h2', { text: title })), button('×', () => d.close(), 'qj-close')), body);
-    root.append(d); d.addEventListener('close', () => { d.remove(); if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); });
+    root.append(d); d.addEventListener('close', () => { hideHint();d.remove(); if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); });
     build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); d.showModal(); return d;
   }
   function mutate(fn, message = 'Progress saved.') {
@@ -99,6 +201,7 @@ const QuestJournal = (() => {
     setTimeout(() => card.remove(), gains.length ? 12000 : 6500);
   }
   function render() {
+    hideHint();
     if (!state || !content) return;
     root.dataset.view = page;
     root.style.setProperty('--qj-signal', C.consoleAccents.find(a => a.id === state.workstation.accent).color);
@@ -106,7 +209,7 @@ const QuestJournal = (() => {
     const title = C.activeTitle(state), consoleName = root.querySelector('.qj-console-name'), trophy = root.querySelector('.qj-desk-trophy'), lamp = root.querySelector('.qj-lamp-toggle');
     if (consoleName) consoleName.textContent = `${state.workstation.callsign} / ${title?.name || 'Independent creator'}`;
     if (trophy) { trophy.replaceChildren(...(title ? [art(title.art), label(title.name)] : [])); trophy.hidden = !title; }
-    if (lamp) { lamp.textContent = state.workstation.lamp ? 'Lamp on' : 'Lamp off'; lamp.setAttribute('aria-pressed', String(state.workstation.lamp)); }
+    if (lamp) { actionLabel(lamp,state.workstation.lamp ? 'Lamp on' : 'Lamp off'); lamp.setAttribute('aria-pressed', String(state.workstation.lamp)); }
     const focused = root.contains(document.activeElement) ? document.activeElement?.dataset.focus : null;
     const totals = C.stats(state), lv = totals.level;
     root.querySelector('.qj-profile')?.remove();
@@ -117,7 +220,7 @@ const QuestJournal = (() => {
     const rewardCount = root.querySelector('[data-page="rewards"] .qj-object-count');
     if (rewardCount) rewardCount.textContent = `${totals.sparks} sparks`;
     const motion = root.querySelector('.qj-motion');
-    if (motion) { motion.textContent = state.motion === false ? 'Motion off' : 'Motion on'; motion.setAttribute('aria-pressed', String(state.motion !== false)); }
+    if (motion) { actionLabel(motion,state.motion === false ? 'Motion off' : 'Motion on'); motion.setAttribute('aria-pressed', String(state.motion !== false)); }
     syncMotion();
     atlasView?.destroy(); atlasView = null;
     content.classList.toggle('qj-dashboard', page === 'adventure');
@@ -127,19 +230,19 @@ const QuestJournal = (() => {
     glaze(root); tick();
   }
   function sectionHeading(eyebrow, title, description, action) {
-    return E('header', { class: 'qj-section-head' }, E('div', {}, label(eyebrow), E('h2', { text: title }), description ? p(description) : null), action || null);
+    return E('header', { class: 'qj-section-head' }, E('div', {}, label(eyebrow), E('h2', { text: title }), description ? explain(title,description) : null), action || null);
   }
   function track(c) { return mutate(s => { const found = s.campaigns.find(x => x.id === c.id); found.paused = false; s.active = c.id; }, 'Main quest tracked. You only need the next step.'); }
   function adventure() {
     const campaign = state.campaigns.find(c => c.id === state.active && !c.paused), quest = C.next(state, campaign), totals = C.stats(state);
     sessionDesk();
-    content.append(E('section', { class: 'qj-life-invite' }, art('terminal'), E('div', {}, label('SIDE QUESTS / THE REAL WORLD'), E('h3', { text: 'Your life has a quest log.' }), p('Clear a landing pad. Defeat an open tab. Rescue the almost-finished. Six short expeditions, at your pace.')), button('Explore life quests →', () => navigate('life'), 'qj-primary')));
+    content.append(E('section', { class: 'qj-life-invite' }, art('terminal'), E('div', {}, label('SIDE QUESTS / THE REAL WORLD'), E('h3', { text: 'Your life has a quest log.' }), explain('Life expeditions','Clear a landing pad. Defeat an open tab. Rescue the almost-finished. Six short expeditions, at your pace.')), button('Explore life quests →', () => navigate('life'), 'qj-primary')));
     if (state.workstation.target) {
       const m = C.mastery(state, state.workstation.target);
       content.append(E('section', { class: 'qj-goal-strip qj-specialty-target', style: { '--path': pathOf(m.route.path).color } }, E('div', {}, label('PINNED SPECIALIZATION'), E('strong', { text: m.route.name }), p(m.next ? `${m.count} / ${m.next.required} reviewed finishes toward ${m.next.name}` : 'All three titles earned. The work is yours to keep.')), button('Open my route →', () => specializationDetail(m.route.id), 'qj-quiet')));
     }
-    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('THE MIXTAPE / 30 SMALL ADVENTURES'), E('h3', { text: 'Something you haven’t tried yet.' }), p('Make a demo. Bend a sound. Fix a tiny world. Find your spark in three cards.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
-    content.append(E('section', { class: 'qj-commission-invite' }, E('div', {}, label('NEW / MADE FOR YOUR KIND OF PROJECTS'), E('h3', { text: 'Demos. Loops. Visuals. Forgeheart.' }), p('Make a small thing, show the evidence, get a real critique.')), button('Browse commissions →', () => navigate('commissions'), 'qj-primary')));
+    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('THE MIXTAPE / 30 SMALL ADVENTURES'), E('h3', { text: 'Something you haven’t tried yet.' }), explain('The mixtape','Make a demo. Bend a sound. Fix a tiny world. Find your spark in three cards.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
+    content.append(E('section', { class: 'qj-commission-invite' }, E('div', {}, label('NEW / MADE FOR YOUR KIND OF PROJECTS'), E('h3', { text: 'Demos. Loops. Visuals. Forgeheart.' }), explain('Commissions','Make a small thing, show the evidence, get a real critique.')), button('Browse commissions →', () => navigate('commissions'), 'qj-primary')));
     const goal = state.rewards.find(r => r.id === state.rewardGoal);
     if (goal) content.append(E('section', { class: 'qj-goal-strip' }, E('div', {}, label('SAVING TOWARD'), E('strong', { text: goal.name }), meter(Math.min(C.balance(state), goal.cost), goal.cost, 'Reward goal')), button(C.balance(state) >= goal.cost ? 'Your treat is ready →' : `${goal.cost - C.balance(state)} sparks to go →`, () => navigate('rewards'), 'qj-quiet')));
     const grid = E('div', { class: 'qj-adventure-grid' });
@@ -147,7 +250,7 @@ const QuestJournal = (() => {
     if (quest) {
       const q = C.find(state, quest.id), path = pathOf(q.path), index = campaign.quests.findIndex(x => x.id === q.id), completed = campaign.quests.filter(x => C.done(state, x.id)).length, skipped = campaign.quests.filter(x => C.skipped(state, x.id)).length;
       hero.style.setProperty('--path', path.color);
-      hero.append(E('div', { class: 'qj-hero-copy' }, label(`MAIN QUEST · ${path.name.toUpperCase()}`), E('h2', { text: q.title }), p(campaign.why), E('div', { class: 'qj-pills' }, E('span', { text: `◷ ${q.minutes} min` }), E('span', { text: `✦ ${q.xp} XP` }), E('span', { text: `✧ ${q.xp / 5} sparks` })),
+      hero.append(E('div', { class: 'qj-hero-copy' }, label(`MAIN QUEST · ${path.name.toUpperCase()}`), E('h2', { text: q.title }), p(campaign.why), E('div', { class: 'qj-pills' }, statChip('clock',q.minutes+'m','Estimated session length'),statChip('spark',String(q.xp),'XP for completing the reviewed quest'),statChip('gift',String(q.xp/5),'Sparks earned with this quest; spend them on chosen treats')),
         row(button(C.record(state, q.id).startedAt ? 'Continue quest →' : 'Begin quest →', () => questDetail(q.id), 'qj-primary', 'current'), button('Make this smaller', () => questDetail(q.id, 'tiny'), 'qj-quiet'), button('Skip for now →', () => skipQuest(q.id), 'qj-quiet')),
         E('div', { class: 'qj-chapter-progress' }, E('span', { text: campaign.title }), E('b', { text: `${completed} / ${campaign.quests.length} done${skipped ? ` · ${skipped} set aside` : ''}` })), meter(completed, campaign.quests.length, 'Campaign progress')),
       E('div', { class: 'qj-quest-object', attrs: { 'aria-hidden': 'true' } }, art(q.path), E('span', { text: `FIELD KIT / ${String(index + 1).padStart(2, '0')}` })));
@@ -221,7 +324,7 @@ const QuestJournal = (() => {
   async function skipQuest(qid) { await mutate(s => C.skip(s, qid), 'Quest set aside. No completion XP added. You can revisit it below.'); if (!root.querySelector('dialog[open]')) root.querySelector('[data-focus="current"]')?.focus({ preventScroll: true }); }
   function ideaBox() {
     const ideas = (state.ideas || []).filter(i => !i.questId);
-    const box = E('section', { class: 'qj-idea-box' }, E('header', {}, E('div', {}, label('NEXT TIME / YOUR IDEA BOX'), E('h3', { text: ideas.length ? `${ideas.length} ${ideas.length === 1 ? 'idea' : 'ideas'} waiting for you` : 'Leave yourself a good next quest.' }), p('A sample to chop, a scene to try, something outside the studio. Save it here for when you feel like it.')), button('+ Suggest a quest', () => ideaForm(), 'qj-primary')));
+    const box = E('section', { class: 'qj-idea-box' }, E('header', {}, E('div', {}, label('NEXT TIME / YOUR IDEA BOX'), E('h3', { text: ideas.length ? `${ideas.length} ${ideas.length === 1 ? 'idea' : 'ideas'} waiting for you` : 'Leave yourself a good next quest.' }), explain('Your next ideas','A sample to chop, a scene to try, something outside the studio. Save it here for when you feel like it.')), button('+ Suggest a quest', () => ideaForm(), 'qj-primary')));
     const extra = E('details', { class: 'qj-fold' }, E('summary', { text: `See ${Math.max(0, ideas.length - 3)} more ideas` }));
     ideas.forEach((i, n) => {
       const item = E('article', { class: 'qj-idea-row', style: { '--path': pathOf(i.path).color } }, E('span', { class: 'qj-path-icon', text: pathOf(i.path).icon }), E('div', {}, E('strong', { text: i.title }), p(`${i.minutes} min · ${i.goal}`)), row(button('Make this my quest', async () => { const q = await mutate(s => C.startIdea(s, i.id), 'Your idea is now a side quest.'); questDetail(q.id); }), button('Edit idea', () => ideaForm(i), 'qj-quiet')));
@@ -396,14 +499,14 @@ const QuestJournal = (() => {
   function draftWorld(text){const agent=H.agents().find(a=>a.mode==='native'&&a.engine==='codex'&&!a.dock);if(!agent)throw Error('Add an Astra native chat to prepare a draft.');const previous=Native.view(agent.id)?.input?.value||'';Native.setDraft(agent.id,`${previous?previous+'\n\n':''}${text}`);activate(agent.id);notice('Research draft prepared in Astra. Nothing was sent.');}
   function fareForm(pid){dialog('Keep a real quote',(body,d)=>{const name=field('Operator / option',{max:120}),amount=field('Quoted price · EUR',{type:'number'}),scope=selection('Price covers',[['return','Return journey'],['one-way','One-way only']],state.world.plans.find(p=>p.id===pid).endDate?'return':'one-way'),url=field('Source URL',{max:2000,placeholder:'https://…'});amount.input.min='0';amount.input.step='.01';body.append(name.node,amount.node,scope.node,url.node,p('Use a quote you just checked for this plan’s dates. Quotes are marked for rechecking after 24 hours or whenever the trip dates or destination change.'),button('Save quote',async()=>{await mutate(s=>C.addFare(s,pid,{label:name.input.value,amount:amount.input.value,scope:scope.input.value,url:url.input.value}),'Dated quote saved; availability is not monitored.');d.close();worldPlanDetail(pid);},'qj-primary'));},'MANUAL PRICE NOTE / EUR');}
   function lifeBoard() {
-    content.append(E('section', { class: 'qj-life-invite' }, art('room'), E('div', {}, label('NEW / PARIS AFTER HOURS'), E('h3', { text: 'Your city. Places worth going.' }), p('Pin a place in Paris, meet a friend, bring back a field recording. Plan Toulouse from the same notebook.')), button('Open the world map →', () => navigate('world'), 'qj-primary')));
+    content.append(E('section', { class: 'qj-life-invite' }, art('room'), E('div', {}, label('NEW / PARIS AFTER HOURS'), E('h3', { text: 'Your city. Places worth going.' }), explain('Your Paris map','Pin a place in Paris, meet a friend, bring back a field recording. Plan Toulouse from the same notebook.')), button('Open the world map →', () => navigate('world'), 'qj-primary')));
     content.append(sectionHeading('FH / EXPEDITION TERMINAL', 'A little more life. One small mission.', 'Pick what would make today easier or more interesting. Three short checkpoints, a keepsake badge, and room to stop. No streaks. No overdue quests.', button('Back to my desk', () => navigate('adventure'), 'qj-quiet')));
     const completed = C.lifeArcs.filter(t => { const c = state.campaigns.find(c => c.id === t.id); return c && C.campaignDone(state, c); });
     content.append(E('div', { class: 'qj-life-log' }, label('EXPEDITION PASSPORT'), E('strong', { text: `${completed.length} / ${C.lifeArcs.length} keepsakes` }), p(completed.length ? completed.map(c => c.badge).join(' · ') : 'Your first badge starts with something small. A skipped checkpoint can always be revisited.')));
     const grid = E('div', { class: 'qj-life-grid' });
     C.lifeArcs.forEach((template, i) => {
       const saved = state.campaigns.find(c => c.id === template.id), c = saved || template, count = saved ? c.quests.filter(q => C.done(state, q.id)).length : 0;
-      const card = E('article', { class: `qj-life-card ${count === c.quests.length ? 'is-complete' : ''}`, style: { '--path': template.color, '--card-order': String(i) }, dataset: { expedition: c.id } }, E('header', {}, label(`${String(i + 1).padStart(2, '0')} / ${template.subtitle}`), art(template.art)), E('h3', { text: c.title }), p(c.why));
+      const card = E('article', { class: `qj-life-card ${count === c.quests.length ? 'is-complete' : ''}`, style: { '--path': template.color, '--card-order': String(i) }, dataset: { expedition: c.id } }, E('header', {}, label(`${String(i + 1).padStart(2, '0')} / ${template.subtitle}`), art(template.art)), E('h3', { text: c.title }), explain(c.title,c.why));
       const route = E('ol', { class: 'qj-life-route', attrs: { 'aria-label': `${c.title} checkpoints` } });
       c.quests.forEach((q, j) => {
         const done = saved && C.done(state, q.id), skipped = saved && C.skipped(state, q.id);
@@ -430,12 +533,12 @@ const QuestJournal = (() => {
   }
   function campaigns() {
     content.append(row(button('Life expeditions →', () => navigate('life'), 'qj-hardware')));
-    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('ONE-OFF ADVENTURES'), E('h3', { text: 'Try something from the mixtape.' }), p('Thirty small briefs, saved favorites and optional creative constraints.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
+    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('ONE-OFF ADVENTURES'), E('h3', { text: 'Try something from the mixtape.' }), explain('The mixtape','Thirty small briefs, saved favorites and optional creative constraints.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
     content.append(sectionHeading('CAMPAIGNS', 'Finish something worth keeping.', 'One tracked campaign. A clear finish line. Everything else can wait.', button('+ Your own campaign', newCampaign, 'qj-primary')));
     const grid = E('div', { class: 'qj-campaign-grid' });
     for (const c of state.campaigns) {
       const path = pathOf(c.path), count = c.quests.filter(q => C.done(state, q.id)).length, finished = C.campaignDone(state, c);
-      const card = E('article', { class: 'qj-card qj-campaign', style: { '--path': path.color } }, E('div', { class: 'qj-campaign-banner', attrs: { 'aria-hidden': 'true' } }, art(c.path)), label(c.subtitle || path.name), E('h3', { text: c.title }), p(c.why), E('div', { class: 'qj-chapter-progress' }, label(c.paused ? 'RESTING' : finished ? 'COMPLETE' : c.id === state.active ? 'TRACKED' : path.name.toUpperCase()), E('span', { text: `${count} / ${c.quests.length}` })), meter(count, c.quests.length, c.title));
+      const card = E('article', { class: 'qj-card qj-campaign', style: { '--path': path.color } }, E('div', { class: 'qj-campaign-banner', attrs: { 'aria-hidden': 'true' } }, art(c.path)), label(c.subtitle || path.name), E('h3', { text: c.title }), explain(c.title,c.why), E('div', { class: 'qj-chapter-progress' }, label(c.paused ? 'RESTING' : finished ? 'COMPLETE' : c.id === state.active ? 'TRACKED' : path.name.toUpperCase()), E('span', { text: `${count} / ${c.quests.length}` })), meter(count, c.quests.length, c.title));
       const details = E('details', { class: 'qj-milestones' }, E('summary', { text: 'The path to done' }));
       c.quests.forEach((q, i) => { const isDone = C.done(state, q.id), isSkipped = C.skipped(state, q.id), isNext = C.next(state, c)?.id === q.id; details.append(E('div', { class: `qj-milestone ${isDone ? 'done' : ''}` }, E('span', { text: isDone ? '✓' : isSkipped ? '↷' : String(i + 1) }), isDone || isSkipped || (isNext && !c.paused) ? button(`${q.title}${isSkipped ? ' · skipped' : ''}`, () => questDetail(q.id), 'qj-quiet') : E('span', { text: q.title }))); });
       card.append(details, row(finished ? button('View your collection', () => navigate('collection'), 'qj-quiet') : button(c.paused ? 'Resume campaign' : c.id === state.active ? 'Continue →' : 'Track campaign →', async () => { await track(c); navigate('adventure'); }, 'qj-primary'), !finished && !c.paused ? button('Pause', () => mutate(s => { s.campaigns.find(x => x.id === c.id).paused = true; if (s.active === c.id) s.active = null; }, 'Campaign resting. All your progress is kept.'), 'qj-quiet') : null));
@@ -451,7 +554,8 @@ const QuestJournal = (() => {
       for (const r of C.specializations.filter(r => r.path === path.id)) {
         const m = C.mastery(state, r.id), b = button('', () => specializationDetail(r.id), `qj-module ${state.workstation.target === r.id ? 'is-target' : ''}`);
         b.dataset.route = r.id; b.setAttribute('aria-label', `${r.name}: ${m.count} reviewed finishes, ${m.rank} titles earned`);
-        b.append(label(state.workstation.target === r.id ? 'PINNED ROUTE' : 'SPECIALIZATION'), E('h3', { text: r.name }), p(r.why), E('div', { class: 'qj-module-nodes', attrs: { 'aria-hidden': 'true' } }, ...m.milestones.map((n, i) => E('span', { class: n.earned ? 'is-lit' : '', text: n.earned ? '✦' : String(i + 1) }))), label(m.next ? `${m.count} / ${m.next.required} FINISHES → ${m.next.name}` : 'ALL TITLES EARNED'));
+        b.dataset.help=r.why;
+        b.append(label(state.workstation.target === r.id ? 'PINNED ROUTE' : 'SPECIALIZATION'), E('h3', { text: r.name }), E('div', { class: 'qj-module-nodes', attrs: { 'aria-hidden': 'true' } }, ...m.milestones.map((n, i) => E('span', { class: n.earned ? 'is-lit' : '', text: n.earned ? '✦' : String(i + 1) }))), label(m.next ? `${m.count} / ${m.next.required} FINISHES → ${m.next.name}` : 'ALL TITLES EARNED'));
         lane.append(b);
       }
       matrix.append(lane);
@@ -462,7 +566,7 @@ const QuestJournal = (() => {
       const branch = E('section', { class: 'qj-branch', style: { '--path': path.color } }, E('header', {}, E('span', { class: 'qj-path-icon', text: path.icon }), E('h3', { text: path.name }), p(path.description), label(`${C.xp(state, path.id)} PATH XP`)));
       for (const [i, skill] of C.skills(state, path.id).entries()) {
         const node = button('', () => dialog(skill.name, body => { body.append(p(skill.unlocked ? `You have reached this milestone in ${path.name}.` : `${Math.max(0, skill.threshold - C.xp(state, path.id))} more ${path.name} XP to reach this milestone.`), p(i === 0 ? 'Choose a small campaign and begin with curiosity.' : ['Keep a first artifact you can return to.', 'Try a variation and decide what to keep.', 'Finish a sequence of connected experiments.', 'Bring your own idea from first step to finished work.'][i - 1]), button('Find a campaign', e => { e.currentTarget.closest('dialog').close(); navigate('campaigns'); }, 'qj-primary')); }, path.name), `qj-skill ${skill.unlocked ? 'earned' : 'ahead'}`);
-        node.setAttribute('aria-label', `${skill.name}, ${skill.unlocked ? 'earned' : 'ahead'}, ${skill.threshold} path XP`);
+        node.setAttribute('aria-label', `${skill.name}, ${skill.unlocked ? 'earned' : 'ahead'}, ${skill.threshold} path XP`);node.dataset.help=node.getAttribute('aria-label');
         node.append(E('span', { class: 'qj-skill-gem', text: skill.unlocked ? (i ? '✦' : path.icon) : '◇' }), E('strong', { text: skill.name }), label(skill.unlocked ? 'EARNED' : `${skill.threshold} XP`)); branch.append(node);
       }
       grid.append(branch);
@@ -572,7 +676,7 @@ const QuestJournal = (() => {
   function collectionShelf(){
     const upload=E('input',{attrs:{type:'file',accept:'.png,.jpg,.jpeg,.webp,.gif,.wav,.mp3,.ogg,.flac,.m4a,.mp4,.webm,.mov,.txt,.md,.json,.js,.ts,.html,.css,.csv'},hidden:true});
     upload.addEventListener('change',async()=>{try{if(!upload.files?.length)return;notice('Keeping your export…');const proof=await QuestReview.file(upload.files[0]);await keepOnShelf(proof,[]);}catch(e){notice(e.message);}finally{upload.value='';}});
-    content.append(E('section',{class:'qj-shelf-toolbar'},E('div',{},label('YOUR CREATIVE WORK / ONE SHELF'),p('Chat references stay linked to their originals. Uploads are copied into Hearth.')),row(button('From a Hearth chat',shelfChat,'qj-primary'),button('Upload a creation',()=>upload.click(),'qj-quiet')),upload));
+    content.append(E('section',{class:'qj-shelf-toolbar'},E('div',{},label('YOUR CREATIVE WORK / ONE SHELF'),explain('Your creative shelf','Chat references stay linked to their originals. Uploads are copied into Hearth.')),row(button('From a Hearth chat',shelfChat,'qj-primary'),button('Upload a creation',()=>upload.click(),'qj-quiet')),upload));
     const grid=E('div',{class:'qj-collection-grid qj-personal-shelf'});
     for(const item of [...state.collection].reverse())grid.append(E('article',{class:'qj-card qj-keepsake'},label(item.proof.type==='chat'?'HEARTH CHAT / LINKED':'YOUR EXPORT'),E('h3',{text:item.title}),collectionMedia(item),item.proof.excerpt?E('details',{class:'qj-fold'},E('summary',{text:'Read saved text'}),E('pre',{class:'qj-evidence-excerpt',text:item.proof.excerpt})):null,proofSource(item.proof),button('Remove from shelf',()=>mutate(s=>{s.collection=s.collection.filter(x=>x.id!==item.id);},'Shelf entry removed. Source files and chat are kept.'),'qj-quiet')));
     content.append(grid);
@@ -646,7 +750,7 @@ const QuestJournal = (() => {
       if (state.plan?.quest === qid) body.append(E('aside', { class: 'qj-starting-note' }, label('YOUR STARTING NOTE'), p(state.plan.action)));
       if (q.variants) body.append(E('section', { class: 'qj-contract' }, label('YOUR SCOPE CONTRACT'), p('Pick scope before the first start or submission. XP rewards finishing the agreed work, never a high score.'), row(...Object.entries(q.variants).map(([tier, v]) => { const b = button(`${tier === 'sketch' ? 'Sketch' : tier === 'studio' ? 'Studio' : 'Showcase'} · ${v.minutes}m · ${v.xp} XP`, async () => { await mutate(s => C.setContract(s, qid, tier)); d.close(); questDetail(qid); }, (state.contracts?.[qid] || 'studio') === tier ? 'qj-primary' : 'qj-quiet'); b.disabled = Boolean(C.earned(state, q) || C.submissions(state, qid).length); b.setAttribute('aria-pressed', String((state.contracts?.[qid] || 'studio') === tier)); return b; }))));
       if (C.latest(state, qid)) body.append(button('Review & version history', () => { d.close(); reviewHistory(qid); }, 'qj-quiet'));
-      body.append(E('aside', { class: 'qj-proof-hint' }, label('SHOW YOUR WORK'), p(q.proofHint || 'Attach the actual result or select the work from a chat. A completion claim alone is not evidence.')));
+      body.append(E('aside', { class: 'qj-proof-hint qj-proof-summary' },QuestAtlas.icon('shield'), label('PROOF + REVIEW'),explain('Quest evidence',q.proofHint || 'Attach the actual result or select the work from a chat. A completion claim alone is not evidence.')));
       const options = E('div', { class: 'qj-mode', attrs: { role: 'group', 'aria-label': 'Quest size' } }), detail = E('div', { class: 'qj-quest-detail' });
       const paint = () => {
         options.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
@@ -846,7 +950,7 @@ const QuestJournal = (() => {
     const remaining = Math.ceil(left() / 1000);
     bar.querySelector('.qj-focus-clock').textContent = remaining ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}` : 'Take a breath';
     bar.querySelector('.qj-focus-name').textContent = C.find(state, f.quest)?.title || 'Your focus session';
-    bar.querySelector('[data-focus="pause-timer"]').textContent = !remaining ? 'Review quest' : f.end ? 'Pause' : 'Resume';
+    const control=bar.querySelector('[data-focus="pause-timer"]'),text=!remaining?'Review quest':f.end?'Pause':'Resume';if(control.textContent!==text)actionLabel(control,text);
   }
   function navigate(to) { root?.querySelectorAll('audio,video').forEach(v => v.pause()); page = to; render(); root?.scrollTo({ top: 0, behavior: 'instant' }); }
   async function exportJournal() { await saving.catch(() => {}); const r = await window.hub.saveFile({ defaultPath: `hearth-quest-journal-${C.day()}.json`, filters: [{ name: 'Quest journal', extensions: ['json'] }], content: JSON.stringify(state, null, 2) }); notice(r ? 'Journal exported, including progress and reward history. Attached files are referenced, not copied.' : 'Export cancelled.'); }
@@ -864,7 +968,7 @@ const QuestJournal = (() => {
     const nav = E('nav', { class: 'qj-nav', attrs: { 'aria-label': 'Quest journal sections' } });
     for (const [id, title, subtitle, hint] of destinations) {
       const b = E('button', { type: 'button', class: 'qj-button qj-object', dataset: { page: id, focus: `nav-${id}` }, on: { click: () => navigate(id) } });
-      b.setAttribute('aria-label', `${title}: ${subtitle}`); b.title = hint;
+      b.setAttribute('aria-label', `${title}: ${subtitle}`); b.dataset.help=subtitle+' · '+hint;b.style.setProperty('--action-color',({adventure:'#ffd75e',campaigns:'#ff8c42',skills:'#bd8bff',rewards:'#ff6b9d',collection:'#e7a0ff'})[id]);
       b.append(art(id), E('strong', { text: title }), E('span', { class: 'qj-object-count', text: subtitle }));
       b.addEventListener('pointerenter', () => menuNote(id)); b.addEventListener('pointerleave', () => menuNote(page));
       b.addEventListener('focus', () => menuNote(id)); b.addEventListener('blur', () => menuNote(page)); nav.append(b);
@@ -876,11 +980,11 @@ const QuestJournal = (() => {
     const scenery = E('div', { class: 'qj-room', attrs: { 'aria-hidden': 'true' } }, E('div', { class: 'qj-night-window' }, art('terminal')), E('div', { class: 'qj-desk-lamp' }), E('div', { class: 'qj-motes' }, ...[0, 1, 2, 3, 4].map(i => E('i', { style: { '--i': String(i) } }))));
     const bench = E('section', { class: 'qj-bench', attrs: { 'aria-label': 'The studio workbench' } }, scenery, E('div', { class: 'qj-bench-sign' }, label('PICK SOMETHING UP'), E('span', { text: 'small projects · good company' })), nav, E('p', { class: 'qj-bench-caption', text: 'One page. One next step.' }));
     const consoleBar = E('section', { class: 'qj-console-bar', attrs: { 'aria-label': 'Forgeheart workstation controls' } }, E('div', {}, label('FH / PERSONAL WORKSTATION'), E('strong', { class: 'qj-console-name' })), E('div', { class: 'qj-desk-trophy', hidden: true }), row(button('Paris after hours', () => navigate('world'), 'qj-hardware qj-map-key'), button('Life expeditions', () => navigate('life'), 'qj-hardware qj-life-key'), button('Pick next mission', sessionPicker, 'qj-hardware'), button('Tune desk', deskSettings, 'qj-hardware'), button('Lamp on', () => mutate(s => { s.workstation.lamp = !s.workstation.lamp; }, 'Desk lamp setting saved.'), 'qj-hardware qj-lamp-toggle')));
-    root.append(top, bench, consoleBar, content, status, focusBar); await load();
+    root.append(top, bench, consoleBar, content, status, focusBar);setupHints(); await load();
     try { legacy = await window.hub.kvGet('creative-playground'); } catch { /* Old notebook is never modified. */ }
     clearInterval(ticker); ticker = setInterval(() => { if (H.activeId === 'tool:quests') tick(); }, 1000);
-    const surface = body.closest('.surface'); if (surface) new MutationObserver(() => { syncMotion(); if (H.activeId !== 'tool:quests') root.querySelectorAll('audio,video').forEach(v => v.pause()); }).observe(surface, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
-    document.addEventListener('visibilitychange', () => { syncMotion(); if (document.hidden) root.querySelectorAll('audio,video').forEach(v => v.pause()); });
+    const surface = body.closest('.surface'); if (surface) new MutationObserver(() => { syncMotion(); if (H.activeId !== 'tool:quests') {hideHint();root.querySelectorAll('audio,video').forEach(v => v.pause());} }).observe(surface, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
+    document.addEventListener('visibilitychange', () => { syncMotion(); if (document.hidden) {hideHint();root.querySelectorAll('audio,video').forEach(v => v.pause());} });
   }
   Tools.define({ id: 'quests', name: 'Sidequest Studio', icon: '✦', color: '#d9b777', description: 'Your quests, next ideas and small victories', mount: body => mount(body).catch(err => { body.textContent = `Journal could not open: ${calmError(err)}`; }), onShow: () => { if (state) render(); } });
   Commands.register({ name: 'quests', area: 'Create', desc: 'Open your quest journal, campaigns, XP, skill tree and rewards', run: () => activate('tool:quests') });
