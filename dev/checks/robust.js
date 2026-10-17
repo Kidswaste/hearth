@@ -87,6 +87,8 @@ await until(() => /Doctor/.test(J.lastNote(claude.id)), 20000);
 const card = [...view(claude.id).querySelectorAll('.msg.note')].pop();
 const ctext = card?.textContent || '';
 step('/doctor: both engines, versions, where from, Codex not signed in', /Claude Code/.test(ctext) && /2\.1\.600/.test(ctext) && /Codex/.test(ctext) && /not signed in/.test(ctext) && /Astra and tools/.test(ctext), ctext.slice(0, 200));
+// (round 58, codexcare58) the fake Codex has no app-server: the model catalog line says so in plain words, at once
+step('… the model catalog it couldn\'t reach says "couldn\'t check models right now"', /couldn.t check models right now/.test(ctext), (ctext.match(/Astra model catalog[^.]*/) || [''])[0]);
 const signBtn = [...(card?.querySelectorAll('.note-acts button') || [])].find((b) => /Sign in to Codex/.test(b.textContent));
 step('… with "Sign in to Codex" and "Check again" buttons', Boolean(signBtn) && [...card.querySelectorAll('.note-acts button')].some((b) => /Check again/.test(b.textContent)));
 mark();

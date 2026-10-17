@@ -1,6 +1,6 @@
 const assert = require('assert/strict');
 const { EventEmitter } = require('events');
-const { create, modelChecks, INTERVAL } = require('../engine-watch');
+const { create, modelChecks, INTERVAL, MODELS_MS } = require('../engine-watch');
 const I = require('../installs');
 const W = require('../winpolish');
 async function main() {
@@ -47,7 +47,13 @@ async function main() {
   events.emit('resume'); events.emit('resume'); assert.equal(timers.size, 1);
   [...timers.values()][0](); await new Promise(setImmediate); assert.equal(installs, initial + 1);
   stop(); assert.equal(stopped, 'engine-health'); assert.equal(events.listenerCount('resume'), 0); assert.equal(window.listenerCount('focus'), 0);
+  // (round 58, codexcare58) a Codex that never answers the catalog: the check returns within the short wait, says "slow"
+  let late; const hung = create({ getConfig: () => cfg, modelsMs: 50, engines: { setEnginePaths() {}, checkInstalls: async () => ({ codex: { found: true } }),
+    codexCapabilities: () => new Promise((_, reject) => { late = reject; }) } });
+  const t0 = Date.now(); r = await hung.check({ fresh: true });
+  assert.equal(r.watch.models.status, 'slow'); assert(Date.now() - t0 < 2000, 'model catalog wait is short'); late(Error('closed later'));
+  await new Promise(setImmediate); assert(MODELS_MS <= 6000, 'a few seconds by default');
   const bad = create({ getConfig: () => { throw Error('unreadable config'); } }); await assert.rejects(bad.check(), /unreadable/);
-  console.log('engine-watch: versions, helpers, model metadata, pins, offline recovery, deduplication, expiry, config changes and wake scheduling passed');
+  console.log('engine-watch: versions, helpers, model metadata, pins, offline recovery, short catalog wait, deduplication, expiry, config changes and wake scheduling passed');
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });

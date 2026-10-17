@@ -4,22 +4,30 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
 const VERSION = '0.9.26';
-function discover(roots) {
+// (round 58, codexcare58) Windows and the Mac's default disks ignore case, and the Mac gives accents decomposed (NFD):
+// one key per plugin there, so a folder added twice in another spelling doesn't list it twice. Linux keeps exact names.
+const FOLD = process.platform === 'win32' || process.platform === 'darwin';
+const pathKey = (p, fold = FOLD) => fold ? p.normalize('NFC').toLowerCase() : p;
+function discover(roots, fold = FOLD) {
   const found = [], seen = new Set();
   function walk(dir, depth) {
     if (depth > 8 || found.length >= 2000) return;
     let entries; try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
       if (e.isSymbolicLink()) continue;
-      const p = path.join(dir, e.name), key = process.platform === 'win32' ? p.toLowerCase() : p;
+      const p = path.join(dir, e.name), key = pathKey(p, fold);
       if (seen.has(key)) continue; seen.add(key);
       if (/\.vst3$/i.test(e.name)) found.push({ path: p, name: e.name.replace(/\.vst3$/i, '') });
       else if (e.isDirectory()) walk(p, depth + 1);
     }
   }
-  roots.forEach(p => walk(p, 0)); return found.sort((a, b) => a.name.localeCompare(b.name));
+  // A root reached twice (a symlinked / aliased folder, the same folder in another spelling) is walked once; the paths
+  // listed stay as the root was given, so saved favorites keep matching.
+  const walked = new Set();
+  roots.forEach(p => { let real; try { real = fs.realpathSync.native(p); } catch { return; } const key = pathKey(real, fold); if (walked.has(key)) return; walked.add(key); walk(p, 0); });
+  return found.sort((a, b) => a.name.localeCompare(b.name));
 }
-function create({ dataDir, python, roots, helper = path.join(__dirname, 'creative-vst-host.py') }) {
+function create({ dataDir, python, roots, helper = path.join(__dirname, 'creative-vst-host.py'), jobMs = 90000 }) {
   const home = path.join(dataDir, 'creative-vst'), runtime = path.join(home, 'runtime');
   const bin = python || process.env.HEARTH_VST_PYTHON || path.join(runtime, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
   const standard = roots || (process.platform === 'win32' ? [path.join(process.env.CommonProgramFiles || 'C:/Program Files/Common Files', 'VST3'), path.join(process.env.LOCALAPPDATA || os.homedir(), 'Programs/Common/VST3')] : [path.join(os.homedir(), 'Library/Audio/Plug-Ins/VST3'), '/Library/Audio/Plug-Ins/VST3', '/usr/lib/vst3', path.join(os.homedir(), '.vst3')]);
@@ -43,7 +51,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       const payload = { ...request, input, output };
       if (request.audio) { if (typeof request.audio !== 'string' || request.audio.length > 16e6) throw Error('Input audio is too large (12 MB maximum).'); fs.writeFileSync(input, Buffer.from(request.audio, 'base64')); delete payload.audio; }
       const file = path.join(dir, 'job.json'); fs.writeFileSync(file, JSON.stringify(payload));
-      await run(bin, [helper, file, response], request.action === 'editor' ? 30 * 60e3 : 90000);
+      await run(bin, [helper, file, response], request.action === 'editor' ? 30 * 60e3 : jobMs);
       if (fs.statSync(response).size > 16e6) throw Error('Plugin response too large.');
       const result = JSON.parse(fs.readFileSync(response, 'utf8'));
       if (result.ok && request.action === 'render') { if (fs.statSync(output).size > 12e6) throw Error('Rendered audio too large.'); result.audio = fs.readFileSync(output).toString('base64'); }
@@ -80,4 +88,4 @@ function register(ipcMain, { dataDir, getWin, app }) {
   ipcMain.handle('creative-vst:stop', e => own(e, () => host.stop()));
   app.once('will-quit', () => host.stop()); getWin()?.webContents.once('destroyed', () => host.stop());
 }
-module.exports = { create, discover, register };
+module.exports = { create, discover, register, pathKey };
