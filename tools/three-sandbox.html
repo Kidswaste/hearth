@@ -791,6 +791,7 @@ window.__labCanvas = {
   merge: (only) => composite(null, 1, null, only ? new Set(only) : null).toDataURL('image/png'), // (the merge of these layers, as stills make it)
   pictures: () => ordered().flatMap((L) => layerPictures(L).map((c) => `${L.id}:${c.toDataURL('image/png')}`)), // (the pictures a re-run cross-fades from)
   reset: () => { FR.reads = 0; FR.fresh = 0; FR.replays = 0; return 1; },
+  fresh: (cv) => glFresh(cv), // (round 57, sweep57) a check reading a layer canvas outside a frame (labboot's swap probe)
 };
 const realGetContext = HTMLCanvasElement.prototype.getContext;
 const GPU_PREF = new URLSearchParams(location.search).get('gpu') === 'low' ? 'low-power' : 'high-performance'; // (round 52, gpu52)

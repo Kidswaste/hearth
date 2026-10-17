@@ -17,8 +17,10 @@ const SEL = 'button, select, input:not([type=hidden]), textarea, summary, a[href
 const vis = (n) => { if (!n.checkVisibility?.({ visibilityProperty: true, opacityProperty: true })) return false; const r = n.getBoundingClientRect(); return r.width > 2 && r.height > 2 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight; };
 const PARTS = { toolbar: '.three-toolbar', pill: '.stage-pill', timeline: '.media-bar', layers: '.layers', sliders: '.tweaks', head: '.tool-head', dock: '.tool-dock' };
 // the most visible controls per state at 1280 (at rest), and per part in any state
-const BUDGET = { empty: 46, layers: 46, song: 60, director: 48, model: 50 }; // before this pass: 47, 49, 68, 48, 48 (pill 10, a layer's timing 8 + a hint)
-const PART_BUDGET = { toolbar: 10, pill: 6, layers: 9 };
+// (round 57, sweep57) + ▶ Play in the toolbar (round 53, playloop: the game mode's one entry point, on purpose): empty /
+// layers 46 → 47, director 48 → 49, the toolbar 10 → 11; the one-row rule with the director docked is unchanged
+const BUDGET = { empty: 47, layers: 47, song: 60, director: 49, model: 50 }; // before this pass: 47, 49, 68, 48, 48 (pill 10, a layer's timing 8 + a hint)
+const PART_BUDGET = { toolbar: 11, pill: 6, layers: 9 };
 const lab = () => H.surfaces.get('tool:three')?.el;
 
 function collect() {

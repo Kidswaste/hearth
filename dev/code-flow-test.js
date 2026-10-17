@@ -131,7 +131,9 @@ for (const f of files) {
     const p = CF.parse(src, 'js');
     const fns = p.units.filter((u) => ['fn', 'method', 'callback', 'module'].includes(u.kind)).length;
     total += fns;
-    if (!fns && src.length > 2000) { fails += 1; console.log(`✕ no functions found in ${path.basename(f)}`); }
+    // (round 57, sweep57) a data file a dev script writes (lazy-meta.js: one object literal, "Written by `node dev/…` (don't
+    // edit)") has no functions by design: it still must parse without a throw
+    if (!fns && src.length > 2000 && !/^\/\/ Written by `node dev\//.test(src)) { fails += 1; console.log(`✕ no functions found in ${path.basename(f)}`); }
   } catch (err) { fails += 1; console.log(`✕ ${path.basename(f)} threw: ${err.stack.split('\n').slice(0, 3).join(' | ')}`); }
 }
 console.log(`  ${files.length} app files: ${total} functions in ${Date.now() - t0} ms`);

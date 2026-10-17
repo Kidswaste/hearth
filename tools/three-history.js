@@ -127,7 +127,12 @@ const ThreeHistory = (() => {
     if (!id) return;
     if (scrub && id === scrub.id) { if (!inShow) scrubTouched(); return; }
     if (tm.quiet) return;
-    window.LabAB?.note?.(kind, { id }); // (round 37, abcompare) ◧ Before / after: a change to the look is being made
+    // (round 37, abcompare) ◧ Before / after: a change to the look is being made. (round 57, sweep57) one a director call
+    // makes (its code runs before the call answers) is the director's turn from the start: noted as a plain run, it
+    // settled before the call ended on a slower machine and the chip said "Code run", not "Claude's edit"
+    const a = active.get(id);
+    if (a && a.running > 0) window.LabAB?.note?.('director', { id, by: a.by, chat: a.chat });
+    else window.LabAB?.note?.(kind, { id });
     schedule(id, kind);
   }
   const chains = new Map(); // one capture at a time per scene

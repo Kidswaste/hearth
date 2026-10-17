@@ -113,7 +113,8 @@ const PROBE = `if (!window.__lb) {
         if (cv === c || cv === cover || !cv.width || !cv.isConnected) continue;
         const cs = getComputedStyle(cv); const box = cv.closest('.lab-layer') || cv;
         if (cs.display === 'none' || cs.visibility === 'hidden' || getComputedStyle(box).display === 'none') continue;
-        g.globalAlpha = Math.min(1, Number(getComputedStyle(box).opacity)); try { g.drawImage(cv, 0, 0, 8, 8); } catch {}
+        // (round 57, sweep57) since labcanvas56 a layer canvas keeps no frame: read it as it shows (glFresh), like the page's readers
+        g.globalAlpha = Math.min(1, Number(getComputedStyle(box).opacity)); try { g.drawImage(window.__labCanvas?.fresh ? window.__labCanvas.fresh(cv) : cv, 0, 0, 8, 8); } catch {}
       }
       if (cover) { g.globalAlpha = Math.min(1, Number(getComputedStyle(cover).opacity)); try { g.drawImage(cover, 0, 0, 8, 8); } catch {} }
       const px = g.getImageData(0, 0, 8, 8).data; let s = 0; for (let i = 0; i < px.length; i += 4) s += 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];

@@ -125,6 +125,9 @@ function defaults() {
   return defCache.value;
 }
 function readConfig() { return configsafe.effective(cfgStore.read(), defaults()); }
+// (round 57, sweep57) every save lists in `_unset` the default keys the owner took away (Let Smart decide deletes the
+// agent's effort): the defaults never fill them back
+{ const save0 = cfgStore.save.bind(cfgStore); cfgStore.save = (c, ...a) => save0(configsafe.unsetMarks(c, defaults()), ...a); }
 const cfgView = { ...cfgStore, read: readConfig }; // Recover / the health card see the same config as the window
 function settings() {
   try { return readConfig().settings || {}; } catch { return {}; }
@@ -733,6 +736,7 @@ function registerAfterWindow() {
   // (fs.watch, re-armed when an editor replaces the file); a calm stat every 5 s is the safety net (was a stat every
   // 400 ms per file); either way a change is sent once (size + modified time).
   // (round 55, configsafe) the owner's files in data/, and the repo's defaults (an update changing them is news too)
+  const nets = []; // (round 57, sweep57) one safety-net timer for every file: four timers made 24 wake-ups a minute (budget 20)
   for (const file of [...new Set([CONFIG_PATH, THEME_PATH, DEFAULT_CONFIG_PATH, DEFAULT_THEME_PATH])]) {
     let seen = ''; let t = null; let w = null;
     const stamp = () => { try { const st = fs.statSync(file); return `${st.size}:${st.mtimeMs}`; } catch { return ''; } };
@@ -746,8 +750,9 @@ function registerAfterWindow() {
     arm();
     // (round 39, powerwise) the safety net on the background schedule: every 10 s on screen, slower minimized / on
     // battery, none while the computer sleeps (was a stat every 5 s per file, always)
-    powerwise.every(`config-stat:${path.relative(__dirname, file).replace(/\\/g, '/')}`, 10000, () => { if (!w) arm(); check(); });
+    nets.push(() => { if (!w) arm(); check(); });
   }
+  powerwise.every(`config-stat:files`, 10000, () => { for (const net of nets) { try { net(); } catch { /* the next file still checked */ } } });
   bgmain.register(() => win);
   bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });
   syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)

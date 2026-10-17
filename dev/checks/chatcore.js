@@ -147,8 +147,10 @@ try {
   out.strip = [...v().form.querySelectorAll('.ctx-strip .ctx-chip')].map((c) => c.dataset.k);
   ok(out.strip.includes('board') && out.strip.includes('captures'), `context strip (${out.strip})`);
   ok(getComputedStyle(v().form.querySelector('.ctx-strip')).visibility === 'hidden', 'the strip stays out of the way until you point at the chat box');
+  // (round 57, sweep57) its fade-in starts at the first style pass after the focus: under load that is the read itself
+  // (frames 280 ms apart), so the read waits for it (up to 2 s) instead of a fixed 200 ms
   ta.focus(); await wait(200);
-  ok(getComputedStyle(v().form.querySelector('.ctx-strip')).visibility === 'visible', 'the strip shows while you type');
+  ok(await until(() => getComputedStyle(v().form.querySelector('.ctx-strip')).visibility === 'visible', 2000), 'the strip shows while you type');
   window.__stripShot && await smoke({ shot: window.__stripShot });
   const useBoard = await reply('echo use the board for this');
   out.useBoardEcho = useBoard.text.slice(0, 300);
