@@ -685,7 +685,7 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   // after) unless the sketch asks for one ('default', what three.js passes, isn't asking); /graphics power saver: the
   // small one (?gpu=low)
   if (gl3d && (!opts?.powerPreference || opts.powerPreference === 'default')) opts = { ...(opts || {}), powerPreference: GPU_PREF };
-  if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: true };
+  if (mode === 'sketch' && gl3d) opts = { ...(opts || {}), alpha: true, preserveDrawingBuffer: !this.__gmFast }; // (round 56, playlatency: ▶ Play's one canvas, when nothing reads it later, is swapped to the screen, not copied: see gmFresh)
   const ctx = realGetContext.call(this, type, opts);
   if (gl3d && !ctx) globalThis.__glrNone?.(); // (round 51) no context at all: the GPU is away (glrecover below)
   if (gl3d && ctx) { this.__ctxMade = true; ctx.__asked = opts?.powerPreference; } // (gpu52: what was asked; getContextAttributes says the card it got)
@@ -706,18 +706,20 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
 // the others clear depth and draw on top, as their stacked canvases looked. A layer that only drew once is drawn again
 // from its last scene / camera each frame. Layers that can't merge keep their own canvas (the Lab's compositor), and
 // the plan says why (window.__gameInfo()).
-const GM = { merge: new Set(), why: {}, canvas: null, gl: null, q: [], rec: new Map(), drawing: false, inFlush: false, raf: 0, ids: 1e9, cancel: new Set(), made: 0, frames: 0, n: 0 };
+const GM = { merge: new Set(), why: {}, canvas: null, gl: null, q: [], rec: new Map(), drawing: false, inFlush: false, raf: 0, ids: 1e9, cancel: new Set(), made: 0, frames: 0, n: 0, fast: false, retire: false, old: null, fresh: false };
 if (GAME) {
   globalThis.__gmTake = (p) => {
     if (!p || p.canvas || p.context || helperNow()) return null;
     const id = currentLayer(); const L = id ? layers.get(id) : null;
     if (!L || !GM.merge.has(L.id)) return null;
-    if (!GM.gl) {
+    if (!GM.gl || GM.retire) {
       const cv = document.createElement('canvas');
       cv.className = 'gm-canvas'; cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
+      cv.__gmFast = GM.fast; // (round 56, playlatency) see gmFresh
       const gl = cv.getContext('webgl2', { alpha: true, antialias: true, depth: true, stencil: true, premultipliedAlpha: true, powerPreference: 'high-performance', ...(GAME_LOWLAT ? { desynchronized: true } : {}) });
       if (!gl) return null;
-      GM.canvas = cv; GM.gl = gl;
+      if (GM.retire && GM.canvas) GM.old = GM.canvas; // (the kept-picture canvas replaces the fast one: the old goes once the new one is placed)
+      GM.canvas = cv; GM.gl = gl; GM.retire = false;
     }
     L.gm = true; GM.made += 1;
     return { canvas: GM.canvas, context: GM.gl };
@@ -725,7 +727,22 @@ if (GAME) {
   const rc = window.cancelAnimationFrame.bind(window);
   window.cancelAnimationFrame = (id) => (id > 1e9 ? GM.cancel.add(id) : rc(id));
 }
-function gmPlan(msg) { GM.merge = new Set(msg.merge || []); GM.why = msg.why || {}; }
+// (round 56, playlatency) msg.fast (GameCore.fastCanvas): every layer merged and none reads a picture → the one canvas
+// is made without preserveDrawingBuffer (swapped to the screen each frame instead of copied). A later plan that needs
+// the kept picture (a live edit added a filter / a layer that reads one) gets a new canvas made the old way.
+function gmPlan(msg) {
+  GM.merge = new Set(msg.merge || []); GM.why = msg.why || {};
+  const fast = msg.fast === true;
+  if (GM.gl && GM.canvas?.__gmFast && !fast) GM.retire = true;
+  if (!GM.gl) GM.fast = fast; else if (!fast) GM.fast = false;
+}
+// Hearth's own rare reads of the one canvas (a swap's cover picture, a loop seam, a shot, a removed layer's ghost):
+// a fast canvas holds no picture outside its frame, so the stack is drawn again first (in this task: read right after)
+function gmFresh(cv) {
+  if (!cv?.__gmFast || cv !== GM.canvas || GM.drawing || GM.inFlush || GM.fresh) return;
+  GM.fresh = true; queueMicrotask(() => { GM.fresh = false; });
+  gmComposite(false);
+}
 function gmTag(r) {
   r.__gm = true; r.__gmN = ++GM.n; r.__noPool = true;
   r.forceContextLoss = () => {}; // (a layer's own forceContextLoss would take every merged layer's picture)
@@ -761,7 +778,7 @@ function gmRender(r, scene, camera) {
   if (!GM.inFlush && !GM.raf) GM.raf = realRAF(gmFlush); // (a sketch that draws once, or from a timer)
   return true;
 }
-function gmComposite() {
+function gmComposite(count = true) {
   if (!GM.rec.size) return;
   const list = [...GM.rec.values()].filter((e) => !e.r.__stale && (!e.L || (layers.get(e.L.id) === e.L && e.L.gen === e.gen))).sort((a, b) => ((a.L?.props.z ?? 0) - (b.L?.props.z ?? 0)) || a.n - b.n);
   GM.drawing = true;
@@ -774,9 +791,10 @@ function gmComposite() {
       first = false;
     }
   } finally { GM.drawing = false; }
-  GM.frames += 1;
+  if (count) GM.frames += 1;
   const box = list[0]?.L?.box;
   if (box && GM.canvas && GM.canvas.parentNode !== box) box.prepend(GM.canvas);
+  if (GM.old && GM.canvas?.isConnected) { const o = GM.old; GM.old = null; o.remove(); try { o.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* gone */ } }
 }
 // what ▶ Play shows in its stats chip, and the checks read: the plan, the contexts alive, the fidelity in force
 window.__gameInfo = () => {
@@ -786,6 +804,7 @@ window.__gameInfo = () => {
     antialias: a ? a.antialias : null, samples: gl ? gl.getParameter(gl.SAMPLES) : null, power: a?.powerPreference || null,
     pixelRatio: devicePixelRatio, canvas: GM.canvas ? { w: GM.canvas.width, h: GM.canvas.height, cssW: GM.canvas.clientWidth } : null,
     cap: fpsCap, lock: RDY.lock, quality, pace: PACE.on,
+    fast: Boolean(GM.canvas?.__gmFast), preserve: a ? a.preserveDrawingBuffer : null, // (round 56, playlatency: no per-frame copy of the one canvas)
   };
 };
 // ---------- context pool (round 21 "labgpu") ----------
@@ -4747,6 +4766,7 @@ function drawLayer2D(g, L, W, H) {
 // (round 51, labtype240) a layer canvas into a W × H merge: a 🅰 type layer drawn tight (cv.__tb: its box in the
 // frame's pixels, see "drawn tight") goes where it shows; every other canvas fills the frame
 function cvDraw(g, cv, W, H) {
+  if (cv.__gmFast) gmFresh(cv); // (round 56, playlatency)
   const b = cv.__tb;
   if (b) g.drawImage(cv, (b.x / b.FW) * W, (b.y / b.FH) * H, (b.w / b.FW) * W, (b.h / b.FH) * H);
   else g.drawImage(cv, 0, 0, W, H);
@@ -11314,6 +11334,7 @@ function layerPictures(L) {
     const k = Math.min(1, 1600 / Math.max(cv.width, cv.height));
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(cv.width * k)); c.height = Math.max(1, Math.round(cv.height * k));
+    if (cv.__gmFast) gmFresh(cv); // (round 56, playlatency)
     try { c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height); } catch { continue; }
     c.className = 'lab-xfade';
     c.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:2147483000;pointer-events:none`;
