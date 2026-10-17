@@ -104,7 +104,7 @@ async function run(label, off) {
     try { new PerformanceObserver((l) => { for (const e of l.getEntries()) r.loaf.push([e.startTime, e.duration, e.blockingDuration || 0]); }).observe({ type: 'long-animation-frame' }); } catch { /* fine */ } return 1; })()`);
   // the doctor's session from here (the getting ready's own compiles / uploads not counted)
   // (round 57, framepace57: ▶ Play hands GamePerf its window dormant; the doctor's probe put in here, before the load)
-  await GamePerf.attach({ exec: async (e) => ev(e) }, { label: src.title || 'game', kind: 'html', hz: 60 }).catch(() => {});
+  await GamePerf.attach({ exec: async (e) => ev(e) }, { label: src.title || 'game', kind: 'html', hz: 60, key: false }).catch(() => {});
   if (await until(() => ev('Boolean(window.__gamePerf)'), 15000)) await ev('window.__gamePerf.start()');
   await until(() => ev('window.__fx && window.__fx.addedAt && window.__fx.wallAt'), 30000);
   await wait(4000);

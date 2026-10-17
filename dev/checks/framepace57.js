@@ -167,7 +167,7 @@ await safe('best, interleaved', async () => {
   await ev('(() => { window.game.hold = false; window.__gameLook.budget.picture(true); return 1; })()');
   // the performance probe as it ran in every ▶ Play before round 57 (once GamePerf had loaded): put in, its own
   // accounting read after ~20 frames (its per-frame timestamps and wrappers; its rAF of its own runs even when paused)
-  await GamePerf.attach({ exec: async (e) => ev(e) }, { label: 'Frame pace test', kind: 'html', hz: 60 });
+  await GamePerf.attach({ exec: async (e) => ev(e) }, { label: 'Frame pace test', kind: 'html', hz: 60, key: false });
   await ev('window.__fp57.wait(20, 30000)');
   const probe = JSON.parse(await ev('JSON.stringify({ cost: window.__gamePerf.cost(), budget: JSON.parse(window.__hearthBudget.pub()).helpers.perf || null })'));
   await ev('window.__gamePerf.budget.off("asked")');
