@@ -73,7 +73,18 @@
       open = false;
     }
     // one layer alone: it is one canvas already (merged or not); say "merged" only when it saves something
-    return { merge, why, contexts: (merge.length ? 1 : 0) + Object.entries(why).filter(([, w]) => w !== 'hidden').length };
+    return { merge, why, contexts: (merge.length ? 1 : 0) + Object.entries(why).filter(([, w]) => w !== 'hidden').length, fast: fastCanvas(layers, merge, why) };
+  }
+  // (round 56, playlatency) the one canvas may skip the Lab's per-frame copy (preserveDrawingBuffer: the picture kept
+  // after it's shown, so filters / recordings / other layers can read it later): when every layer merged (no filter,
+  // no layer with its own canvas, none hidden that could show later) and no layer's code reads a picture (a 'layer:…'
+  // texture, toDataURL / toBlob / captureStream, drawImage of a renderer's canvas). Then the frame is swapped to the
+  // screen instead of copied: one full-screen copy less on the graphics card per frame, a frame on screen sooner where
+  // the card was the bottleneck. Hearth's own rare reads (a swap's cover, a loop seam) draw the stack again first.
+  const READS_PICTURE = /['"`]layer:|\btoDataURL\s*\(|\btoBlob\s*\(|\bcaptureStream\s*\(|drawImage\s*\([^)]*domElement|\bpreserveDrawingBuffer\b/;
+  function fastCanvas(layers, merge, why) {
+    if (!merge.length || Object.keys(why).length) return false;
+    return !(layers || []).some((L) => L && READS_PICTURE.test(String(L.code || '')));
   }
   // ---------- page or live ----------
   // The page (the scene built as a self-contained page, like ⇪ Publish, run in the game window) has the fewest moving
@@ -129,5 +140,5 @@
     if (s.how) parts.push(s.how);
     return parts.join(' · ');
   }
-  return { source, sameSource, remember, mergePlan, whyNot, route, pickDisplay, fidelity, look, hzLabel, safePath, mimeOf, chipLine };
+  return { source, sameSource, remember, mergePlan, fastCanvas, whyNot, route, pickDisplay, fidelity, look, hzLabel, safePath, mimeOf, chipLine };
 }));

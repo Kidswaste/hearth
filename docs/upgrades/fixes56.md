@@ -71,9 +71,12 @@
     drew nothing and ran no game code: on ≈ off ≈ 0.15 ms, a helper costing 6 ms a frame was never caught before play
     (only later by the watch). The sandbox now exposes `__gmDrawNow()` (the composite, drawn now) and the A/B calls it
     after each frame: on the test scene, on 11.9 vs off 8.2 ms → the look off before the first frame, then on ≈ off.
-    The Best look's picture measurement (its shadow maps made again and again, for the doctor only) is skipped on such
-    a page: with real composites it left compiles / uploads in gameready's first 5 s of play (3 runs in 5; 0 in 4 runs
-    without it).
+    (Before the merge with shadowready, round 55's picture measurement toggled the shadow maps back and forth through
+    real composites and left compiles / uploads in gameready's first 5 s of play in 3 runs of 5, so it was skipped on
+    Lab pages. shadowready replaced it with a size choice that makes only the chosen + fallback maps under the card
+    and seals them; that choice now runs on Lab pages through the same `__gmDrawNow()`, and gameready kept 0 compiles /
+    uploads in its first 5 s in both runs after the merge. `__gmDrawNow()` draws with `gmComposite(false)`: the A/B's
+    frames don't count as shown frames.)
 15. **`dev/checks/playbudget.js` gains a Lab section**: the two test games as Lab scenes (one layer each): the A/B
     switches the look off before the first frame and Getting ready reports it, the watch switches it off while the
     other plays (said in plain words), both remembered by the scene's id, the next ▶ Play starts without it.
@@ -93,6 +96,9 @@
   copy: 0 uploads" passed in every run of this round (14 of 14 runs, alone or side by side, including base and test variants). gameready-relaunch (paired by
   run-checks): pass. playbudget (with its Lab section, 24 steps): pass ×2.
 - chatsafe55, chatkeep, updater, lazy: pass.
+- After merging shadowready / playlatency / labcanvas56: gameready ×2, shadowready, playbudget, gamelook, playlatency,
+  gamefps54 (gameready-based under the lock), labcanvas56, labplay55, lazy, and unit boot-test, chatsafe-scan,
+  configsafe-test, sync-test, shadowready-test, playlatency-test, playbudget-test: all pass.
 
 ## For the patch notes
 - **Settings you removed stay removed on both computers.** A built-in AI you removed on one computer could come back
