@@ -229,7 +229,10 @@
       if (res.turnedOff.length) one(); // (what switching off changed is drawn once here, under the card)
       // the Best look's picture (its shadow maps over the game's own size) on the graphics card, for the doctor
       const lk = hooks('look');
-      if (!H.look.off && lk && lk.picture && lk.picture(true) && now() - T < CAP + 1000) {
+      // (round 56, fixes56) not on a Lab scene's page (drawNow): its shadow maps made again and again in real composites
+      // just before play left first-5-s compiles / uploads behind (gameready's optimized play, 3 runs in 5); the picture
+      // is the doctor's information only, the look's own guard decides
+      if (!drawNow && !H.look.off && lk && lk.picture && lk.picture(true) && now() - T < CAP + 1000) {
         const pic = []; const pg = [];
         for (let i = 0; i < 2; i += 1) {
           lk.picture(true); one(); const a = []; const ag = []; for (let k = 0; k < K; k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); }
