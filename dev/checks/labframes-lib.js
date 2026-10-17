@@ -22,7 +22,7 @@ renderer.setAnimationLoop(() => { const t = media.texture(); if (t && mat.map !=
   const sbx = (code) => ThreeLab.director.evalInSketch(code).then((x) => (x?.ok ? x.value : { error: x?.error }));
   // decode the frame code from the sketch's own canvas (12 bands across the top 12 %, band k bright = bit k)
   const DECODE = `const cv = document.querySelector('canvas'); const W = 240; const Hh = Math.max(8, Math.round(cv.height / cv.width * W));
-const c2 = document.createElement('canvas'); c2.width = W; c2.height = Hh; const g = c2.getContext('2d'); g.drawImage(cv, 0, 0, W, Hh);
+const c2 = document.createElement('canvas'); c2.width = W; c2.height = Hh; const g = c2.getContext('2d'); g.drawImage(window.__labCanvas?.fresh ? window.__labCanvas.fresh(cv) : cv, 0, 0, W, Hh);
 const px = g.getImageData(0, 0, W, Hh).data; const y = Math.round(Hh * 0.05); let n = 0; let ok = 0;
 for (let k = 0; k < 12; k++) { const x = Math.round(W * (k + 0.5) / 12); const i = (y * W + x) * 4; const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; if (l > 150) { n |= 1 << k; ok++; } else if (l < 70) ok++; }`;
   async function setup(file) {

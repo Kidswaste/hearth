@@ -19,7 +19,7 @@ await say('/footage go f40');
 const ids = ThreeLayers.TEMPLATES.filter((t) => t.cat === 'Footage').map((t) => t.id);
 step('21 footage layer templates in the Layers picker (category Footage)', ids.length === 21, ids);
 const bad = [];
-const litOf = (id) => sbx(`const s = __scenes[${JSON.stringify(`T ${id}`)}]; if (!s) return { missing: true }; const cv = s.renderer.domElement; const c2 = document.createElement('canvas'); c2.width = 64; c2.height = 64; const g = c2.getContext('2d'); g.drawImage(cv, 0, 0, 64, 64); const p = g.getImageData(0, 0, 64, 64).data; let n = 0; for (let i = 3; i < p.length; i += 4) if (p[i] > 8) n++; return { lit: n }`);
+const litOf = (id) => sbx(`const s = __scenes[${JSON.stringify(`T ${id}`)}]; if (!s) return { missing: true }; const cv = s.renderer.domElement; const c2 = document.createElement('canvas'); c2.width = 64; c2.height = 64; const g = c2.getContext('2d'); g.drawImage(window.__labCanvas?.fresh ? window.__labCanvas.fresh(cv) : cv, 0, 0, 64, 64); const p = g.getImageData(0, 0, 64, 64).data; let n = 0; for (let i = 3; i < p.length; i += 4) if (p[i] > 8) n++; return { lit: n }`);
 const retried = [];
 async function tryTemplate(id) {
   const r = await call('three_add_layer', { template: id, name: `T ${id}`, wait: 2 });
@@ -44,7 +44,7 @@ for (const [k, id] of ids.entries()) {
 step('every footage template compiles and draws (no shader / console errors)', !bad.length, { bad, retriedInACleanStack: retried });
 // the Footage template set to stretch shows the exact frame: decode its picture at f40, step, decode again
 await LF.fresh(); await say('/footage go f40');
-const dec = (name) => sbx(`const cv = __scenes[${JSON.stringify(name)}].renderer.domElement; const W = 240; const Hh = Math.max(8, Math.round(cv.height / cv.width * W)); const c2 = document.createElement('canvas'); c2.width = W; c2.height = Hh; const g = c2.getContext('2d'); g.drawImage(cv, 0, 0, W, Hh); const px = g.getImageData(0, 0, W, Hh).data; const y = Math.round(Hh * 0.05); let n = 0; let ok = 0; for (let k = 0; k < 12; k++) { const x = Math.round(W * (k + 0.5) / 12); const i = (y * W + x) * 4; const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; if (l > 150) { n |= 1 << k; ok++; } else if (l < 70) ok++; } return { pixels: ok === 12 ? n : null, frame: media.frame }`);
+const dec = (name) => sbx(`const cv = __scenes[${JSON.stringify(name)}].renderer.domElement; const W = 240; const Hh = Math.max(8, Math.round(cv.height / cv.width * W)); const c2 = document.createElement('canvas'); c2.width = W; c2.height = Hh; const g = c2.getContext('2d'); g.drawImage(window.__labCanvas?.fresh ? window.__labCanvas.fresh(cv) : cv, 0, 0, W, Hh); const px = g.getImageData(0, 0, W, Hh).data; const y = Math.round(Hh * 0.05); let n = 0; let ok = 0; for (let k = 0; k < 12; k++) { const x = Math.round(W * (k + 0.5) / 12); const i = (y * W + x) * 4; const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]; if (l > 150) { n |= 1 << k; ok++; } else if (l < 70) ok++; } return { pixels: ok === 12 ? n : null, frame: media.frame }`);
 await call('three_add_layer', { template: 'footage-fill', name: 'Exact', settings: {}, wait: 2 });
 await until(async () => (await sbx('return Boolean(__scenes.Exact)')) === true, 8000);
 await call('three_sliders', { layer: 'Exact', set: { fit: 'stretch' } });
