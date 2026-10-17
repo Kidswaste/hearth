@@ -325,6 +325,12 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
   .three-toolbar .tb-iconic .tb-tx { display: none; }
   .three-toolbar .tb-iconic { padding-left: 7px; padding-right: 7px; }
   .three-toolbar .tb-iconic.has-errors .tb-ic { color: var(--ui-red, #ff6a6a); }
+  /* (round 57, sweep57) ▶ Play (round 53) made the icons-only row 15 px too wide with the director docked at 1280: the
+     groups sit 4 px closer, the icon buttons and ▶ Run take less padding, the scene's name gives way past 150 px */
+  .three-toolbar { column-gap: 4px; }
+  .three-toolbar .tb-group > button.tb-iconic.small { padding-left: 5px; padding-right: 5px; }
+  .three-toolbar .tb-group > button.primary.small { padding-left: 10px; padding-right: 10px; }
+  .three-toolbar .three-sketch-select { max-width: 150px; }
 }
 /* a layer's "When it plays" fold, drawn like "Position, size, rotation", with where it stands on the right */
 .ly-plays > summary { cursor: pointer; font-size: 11.5px; color: var(--muted); padding: 2px 0; display: list-item; }
