@@ -194,7 +194,8 @@ async function fetchText(url) {
 
 // ---------- backups: one-click backups to a folder, the list of them, and a merging restore ----------
 // Paths of the hub's own files (fsapi.js sits next to main.js and config.json).
-const HUB = { data: path.join(__dirname, 'data'), config: path.join(__dirname, 'config.json'), theme: path.join(__dirname, 'theme.css') };
+// (round 55, configsafe) the owner's config.json / theme.css live in data/ (the ones next to main.js are the repo's defaults)
+const HUB = { data: path.join(__dirname, 'data'), get config() { return require('./configsafe-core').ownFile(__dirname, 'config.json'); }, get theme() { return require('./configsafe-core').ownFile(__dirname, 'theme.css'); } };
 const BACKUP_SKIP = ['workspace', 'ae', 'sync'];
 function hubSettings() { try { return JSON.parse(fs.readFileSync(HUB.config, 'utf8')).settings || {}; } catch { return {}; } }
 // (round 45, backupauto) this computer's own backup folder (data/.backup/state.json; the old synced settings.backupDir

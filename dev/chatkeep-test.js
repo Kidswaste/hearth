@@ -80,12 +80,18 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-chatkeep-'));
     getChat: (id) => readC(id), saveChat: (c) => write(path.join(D, 'chats', `${c.id}.json`), c),
     getMemory: () => ({}), saveMemory: () => {}, getKV: () => null, setKV: () => {},
   };
-  const cfg = { read: () => ({ agents, settings: { backupDir: path.join(tmp, 'no-backups') } }), save: () => ({ ok: true }) };
+  // (round 55, chatsafe55) the settings change for real here: bringing a chat back brings its AI back
+  let cfgAgents = agents.slice();
+  const cfg = { read: () => ({ agents: cfgAgents, settings: { backupDir: path.join(tmp, 'no-backups') } }), save: (v) => { cfgAgents = v.agents; return { ok: true }; } };
   const DM = require(path.join(ROOT, 'datasafemain.js'));
   DM._set({ dataDir: D, configPath: path.join(tmp, 'config.json'), store, cfg, syncmain: null, home, workspace: ws });
+  const r0 = await DM.scan({ quick: true });
+  ok(!r0.chats.some((c) => c.id === 'threedirector2-a'), 'its AI removed and no copy of it anywhere: Recover has nothing to offer (the chats list shows it under its own name with Bring back)');
+  const SS = require(path.join(ROOT, 'scenesafe-core.js'));
+  write(path.join(D, '.history', 'config', SS.copyName(t0, 4, 'before')), { agents: [...agents, { id: 'threedirector2', name: 'Three Director', mode: 'native', engine: 'claude', dock: 'three', threeTools: true }], settings: {} });
   const r = await DM.scan({});
   const by = (id) => r.chats.find((c) => c.id === id);
-  ok(by('threedirector2-a')?.state === 'hidden' && /its AI was removed/.test(by('threedirector2-a').from), 'Recover lists the chat whose AI was removed');
+  ok(by('threedirector2-a')?.state === 'hidden' && /it was removed, a copy of it is here/.test(by('threedirector2-a').from) && by('threedirector2-a').agentId === 'threedirector2', 'Recover lists the chat whose AI was removed, under its own AI, when a copy of that AI is around');
   ok(by('threedirector-held') && /couldn't reach its file/.test(by('threedirector-held').from), 'Recover lists a save the store gave up on');
   const eng = r.chats.filter((c) => /own record/.test(c.from));
   ok(eng.length === 1 && eng[0].agentId === 'threedirector' && eng[0].messages === 4, 'Recover lists the Lab conversation only Claude Code still has (not the one your chat holds)');
@@ -93,12 +99,27 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-chatkeep-'));
   ok(!quick.chats.some((c) => /own record/.test(c.from)), 'a quick look leaves the engines\' records alone');
   const r2 = await DM.scan({});
   const done = await DM.recover(r2.chats.map((c) => c.key));
-  ok(readC('threedirector2-a')?.agentId === 'threedirector' && readC('threedirector2-a').agentWas === 'threedirector2', 'brought back: the hidden chat goes to the director (its file stays, only its AI changes)');
+  ok(readC('threedirector2-a')?.agentId === 'threedirector2' && !readC('threedirector2-a').agentWas && cfgAgents.some((a) => a.id === 'threedirector2' && a.enabled !== false), 'brought back: the chat keeps its AI (never moved), its AI comes back from the copy');
   const back = files().map((f) => readC(f.slice(0, -5))).find((c) => c.session?.id === 'sess-1');
   ok(back && back.agentId === 'threedirector' && back.messages.length === 4, 'brought back: the engine\'s conversation is a chat again, with its session');
   ok(readC('threedirector-held')?.messages?.length === 1 && done.chats.length === 3, 'brought back: the held save');
   const r3 = await DM.scan({});
   ok(!r3.chats.length, 'a second look finds nothing more (nothing offered twice)');
+
+  // ---------- (round 55, chatsafe55) Bring back <its AI> (chatsafemain.bring) ----------
+  const CS = require(path.join(ROOT, 'chatsafemain.js'));
+  CS._set({ cfg: { read: () => { throw Object.assign(new Error('EBUSY'), { code: 'EBUSY' }); }, save: () => { throw new Error('must not save'); } } });
+  ok((await CS.bring('threedirector3')).how === 'unread', 'settings that can\'t be read: nothing changes (never "no agents")');
+  CS._set({ cfg });
+  cfgAgents = cfgAgents.map((a) => (a.id === 'astra' ? { ...a, enabled: false } : a));
+  const on = await CS.bring('astra');
+  ok(on.ok && on.how === 'on' && cfgAgents.find((a) => a.id === 'astra').enabled === true, 'a turned-off AI: turned back on');
+  ok((await CS.bring('threedirector2')).how === 'here', 'an AI that is there: nothing to do');
+  write(path.join(D, '.history', 'config', SS.copyName(t0 + 1000, 5, 'before')), { agents: [...cfgAgents, { id: 'threedirector9', name: 'Three Director', mode: 'native', engine: 'claude', dock: 'three' }], settings: {} });
+  const cp = await CS.bring('threedirector9');
+  ok(cp.ok && cp.how === 'copy' && cfgAgents.some((a) => a.id === 'threedirector9'), 'a removed AI with a copy around: back from the copy', cp);
+  ok((await CS.bring('nowhere-ai')).how === 'none', 'an AI with no copy anywhere: "none" (the window sets it up again under the same id)');
+  ok((await CS.bring('../x')).ok === false, 'not an id: nothing');
 
   // ---------- data/devreport-crashes.json ----------
   const DR = require(path.join(ROOT, 'devreportmain.js'));

@@ -125,3 +125,9 @@ Settings section, `/sync`; chats arriving → `Native.forget` + refresh). Tests:
 a temp cloud, fuzz with `--fuzz N --seed S`), `dev/checks/sync.js`; `sh dev/run-checks.sh sync`. Never point tests at a
 real drive. New data in `data/` syncs by default; add a path to `LOCAL_FILES` / `LOCAL_DIRS` in sync-merge.js if it is
 per-computer.
+
+configsafe (round 55, docs/upgrades/configsafe.md): the owner's config lives in `data/config.json` and their CSS in
+`data/theme.css`; the tracked `config.json` / `theme.css` are read-only defaults (Hearth never writes them; `main.js`
+`readConfig` = `configsafe-core.effective(own, defaults)`: agents by id, `defaultsSeen` keeps removed defaults removed).
+Moved once at the start (`configsafe-core.migrate`), tracked files back to HEAD after (`updatermain.settle`). Readers
+outside main.js use `configsafe-core.ownFile` / `readEffective`, never `path.join(__dirname, 'config.json')`.

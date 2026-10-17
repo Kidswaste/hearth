@@ -141,6 +141,84 @@ const fresh = (file) => { delete require.cache[require.resolve(file)]; delete re
     }
   }
 
+  // ---------- 5. (round 55, fixes55) Windows: the update finished as Hearth restarts (startSwap / swapSync) ----------
+  {
+    const Cof = (app) => fresh(path.join(app, 'updatesafe-core.js'));
+    const stage = (app) => { g(app, 'fetch', '-q', 'origin', 'main'); const C = Cof(app); C.writeState(app, 'pending', { from: g(app, 'rev-parse', 'HEAD'), to: g(app, 'rev-parse', 'origin/main'), branch: 'main', at: Date.now() }); return C; };
+    const fakeApp = () => ({ calls: [], relaunch() { this.calls.push('relaunch'); }, exit() { this.calls.push('exit'); } });
+    const marks = (f) => /^(<<<<<<<|>>>>>>>|=======)/m.test(read(f));
+    const hasSwap = (C) => typeof C.restoreSteps === 'function';
+
+    // 5a. the owner's config.json and theme.css clash with the update's: the owner's win, the update's new parts added
+    {
+      const { dev, app } = makeApp('d');
+      const NEW = { ...REPO, theme: { ...REPO.theme, accent: '#8a6cff' }, layout: { ...REPO.layout, compact: true }, quests: { on: true } };
+      write(path.join(dev, 'config.json'), text(NEW));
+      write(path.join(dev, 'theme.css'), '/* your own CSS (Settings › Look) */\n');
+      pushUpdate(dev, 54);
+      const C = stage(app);
+      const A = fakeApp();
+      let threw = null; try { C.startSwap(A, { dir: app }); } catch (err) { threw = err; }
+      ok(!threw, `startSwap never throws (${threw?.message || 'ok'})`);
+      ok(read(path.join(app, 'main.js')) === '// main 54\n' && A.calls.join() === 'relaunch,exit', 'at the restart: the update is in, Hearth starts once more');
+      let cfg = {}; try { cfg = json(path.join(app, 'config.json')); } catch { cfg = {}; }
+      ok(!marks(path.join(app, 'config.json')) && !marks(path.join(app, 'theme.css')), 'no conflict marks in config.json / theme.css');
+      ok(ids(cfg).includes('threedirector'), `restart path: the Lab's Three Director is still in config.json · agents: ${ids(cfg)}`);
+      ok(cfg.theme?.accent === '#ff7a1a' && cfg.settings?.startOn === 'tool:three' && JSON.stringify(cfg.tools?.hidden) === '["creative","board"]', `restart path: the owner's values win (${cfg.theme?.accent})`);
+      ok(cfg.layout?.compact === true && cfg.quests?.on === true, `restart path: the update's new parts are added (${JSON.stringify(cfg.layout)}, ${JSON.stringify(cfg.quests)})`);
+      ok(/--glow: gold/.test(read(path.join(app, 'theme.css'))), 'restart path: theme.css keeps the owner\'s CSS');
+      ok(stashes(app).some((m) => /your edits/.test(m)), `restart path: the owner's stash is kept (never dropped after a clash): ${stashes(app)}`);
+      const sw = C.readState(app, 'swapped');
+      ok(sw?.ok && (sw.own || []).includes('config.json') && (sw.own || []).includes('theme.css'), `the window is told plainly (${JSON.stringify(sw && { own: sw.own, kept: sw.kept })})`);
+    }
+    // 5b. no clash: the owner's edits back, their stash dropped
+    {
+      const { dev, app } = makeApp('e');
+      pushUpdate(dev, 54);
+      const C = stage(app);
+      C.startSwap(fakeApp(), { dir: app });
+      const cfg = json(path.join(app, 'config.json'));
+      ok(ids(cfg).includes('threedirector') && /--glow: gold/.test(read(path.join(app, 'theme.css'))) && read(path.join(app, 'main.js')) === '// main 54\n', 'restart path, no clash: the update in, the owner\'s config and theme back');
+      ok(!stashes(app).length, 'its stash came back whole and is dropped');
+    }
+    // 5c. something writes config.json during the restart merge (a post-merge hook): kept apart, merged, owner's win
+    {
+      const { dev, app } = makeApp('f');
+      pushUpdate(dev, 54);
+      const C = stage(app);
+      const hook = path.join(app, '.git', 'hooks', 'post-merge');
+      write(hook, `#!/bin/sh\ncat "${path.join(T, 'window.json')}" > config.json\n`); fs.chmodSync(hook, 0o755);
+      C.startSwap(fakeApp(), { dir: app });
+      fs.rmSync(hook);
+      const cfg = json(path.join(app, 'config.json'));
+      ok(hasSwap(C) && ids(cfg).includes('threedirector') && cfg.theme.accent === '#ff7a1a' && JSON.stringify(cfg.tools?.hidden) === '["creative","board"]', `restart path: a write during the merge never replaces the owner's (${JSON.stringify(cfg.tools)})`);
+      ok(stashes(app).some((m) => /written while the update ran/.test(m)) && !stashes(app).some((m) => /your edits/.test(m)), `the write is kept in its own named stash, the owner's came back: ${stashes(app)}`);
+    }
+    // 5d. the staged merge fails at the restart (history moved): the owner's edits back, no marks, nothing lost
+    {
+      const { dev, app } = makeApp('g');
+      pushUpdate(dev, 54);
+      g(app, 'fetch', '-q', 'origin', 'main');
+      // a staged commit that isn't a fast-forward of HEAD (unrelated history): the merge refuses
+      const orphan = g(app, 'commit-tree', g(app, 'rev-parse', 'origin/main^{tree}'), '-m', 'orphan');
+      const C = Cof(app);
+      const r = C.swapSync({ dir: app, pending: { from: g(app, 'rev-parse', 'HEAD'), to: orphan } });
+      const cfg = json(path.join(app, 'config.json'));
+      ok(!r.ok && ids(cfg).includes('threedirector') && /--glow: gold/.test(read(path.join(app, 'theme.css'))) && !marks(path.join(app, 'config.json')), `a failed restart merge puts the owner's files back (${r.reason})`);
+      ok(!stashes(app).length && read(path.join(app, 'main.js')) === '// main 1\n', 'its stash came back whole (dropped), the old code stays');
+    }
+    // 5e. git missing at the restart: Hearth starts as usual, the staged update waits for the next start
+    {
+      const { dev, app } = makeApp('h');
+      pushUpdate(dev, 54);
+      const C = stage(app);
+      let threw = null; let r = null;
+      try { r = C.startSwap(fakeApp(), { dir: app, gitBin: path.join(T, 'no-git-here') }); } catch (err) { threw = err; }
+      ok(!threw && r === false && C.readState(app, 'pending')?.to, `no git: no throw, the usual start, the staged update kept (${threw?.message || 'ok'})`);
+      ok(ids(json(path.join(app, 'config.json'))).includes('threedirector'), 'and nothing of the owner\'s touched');
+    }
+  }
+
   fs.rmSync(T, { recursive: true, force: true });
   console.log(fails.length ? `\n${fails.length} failed` : '\nall passed');
   process.exit(fails.length ? 1 : 0);

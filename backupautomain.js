@@ -31,7 +31,7 @@ const SKIP_NAME = /\.(hubtmp|tmp|partial|crdownload|download|icloud)$|^\.hearth-
 const DETAILS = '.hearth';
 const MAX_MS = 30 * 60000;
 
-let o = { dataDir: path.join(__dirname, 'data'), configPath: path.join(__dirname, 'config.json'), themePath: path.join(__dirname, 'theme.css'), appDir: __dirname, syncmain: null, store: null, getWin: () => null, platform: process.platform, home: os.homedir(), env: process.env };
+let o = { dataDir: path.join(__dirname, 'data'), configPath: require('./configsafe-core').ownFile(__dirname, 'config.json'), themePath: require('./configsafe-core').ownFile(__dirname, 'theme.css'), /* (round 55) data/ once moved */ appDir: __dirname, syncmain: null, store: null, getWin: () => null, platform: process.platform, home: os.homedir(), env: process.env };
 const test = { auto: false, before: false, idle: null, corruptNext: false, failNext: null, clock: 0 };
 const now = () => Date.now() + test.clock;
 

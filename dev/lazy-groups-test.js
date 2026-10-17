@@ -33,11 +33,17 @@ function run() {
   const defsOf = (src) => {
     const all = new Set();
     const modules = new Set();
-    for (const m of src.matchAll(/^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(.)/gm)) {
+    // (round 55, fixes55) a file whose code is one unindented `(() => { … })();` defines no globals by its column-0
+    // consts (tools/three-frames-templates.js's OUT): only its window.X = … count
+    let code = src; // (leading comments off, step by step: no backtracking regex)
+    for (;;) { const t = code.trimStart(); if (t.startsWith('//')) code = t.slice(t.indexOf('\n') + 1 || t.length); else if (t.startsWith('/*')) code = t.slice((t.indexOf('*/') + 2) || t.length); else { code = t; break; } }
+    const wrapped = /^[;!]?\((?:async\s*)?(?:\(\)\s*=>|function\b)/.test(code)
+      &&(src.match(/^\}\)\(\);?[ \t]*$/gm) || []).length === 1 && /\n\}\)\(\);?\s*$/.test(src);
+    if (!wrapped) for (const m of src.matchAll(/^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(.)/gm)) {
       all.add(m[1]);
       if (/^[A-Z]/.test(m[1]) && /[({]/.test(m[2])) modules.add(m[1]);
     }
-    for (const m of src.matchAll(/^(?:async\s+)?(?:function\*?|class)\s+([A-Za-z_$][\w$]*)/gm)) { all.add(m[1]); if (/^[A-Z]/.test(m[1])) modules.add(m[1]); }
+    if (!wrapped) for (const m of src.matchAll(/^(?:async\s+)?(?:function\*?|class)\s+([A-Za-z_$][\w$]*)/gm)) { all.add(m[1]); if (/^[A-Z]/.test(m[1])) modules.add(m[1]); }
     // window.X = … / UMD wrappers: `root.X = factory()` (the 'root' being window / self)
     for (const m of src.matchAll(/(?<![\w$.])(?:window|globalThis|self|root)\.([A-Za-z_$][\w$]*)\s*=(?!=)/g)) { all.add(m[1]); if (/^[A-Z]/.test(m[1])) modules.add(m[1]); }
     return { all, modules };

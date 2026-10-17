@@ -94,11 +94,24 @@ const Tools = (() => {
   function syncDock(s) {
     if (!s.mounted) return;
     const agent = dockedAgent(s.tool.id);
-    if ((agent?.id || null) === s.dockedId) return;
+    // (round 55, chatsafe55) its director missing but its chats there: the dock keeps a read-only panel of them with
+    // "Bring back …" (chatsafe.js) instead of no panel
+    const waiting = !agent && typeof Panel !== 'undefined' && Panel.waitingIn ? Panel.waitingIn(s.tool.id) : [];
+    const want = agent?.id || (waiting.length ? `waiting:${waiting.join(',')}` : null);
+    if (want === s.dockedId) { if (waiting.length && typeof ChatSafe !== 'undefined') ChatSafe.refreshDock(s); return; }
     s.dock.replaceChildren();
     s.dockBtn?.remove();
-    s.dockedId = agent?.id || null;
-    if (!agent) { if (typeof DirectorDock !== 'undefined') DirectorDock.detach(s.tool.id); setDockOpen(s, false); return; }
+    s.dockedId = want;
+    if (!agent && waiting.length) {
+      if (typeof DirectorDock !== 'undefined') DirectorDock.detach(s.tool.id);
+      const label = Panel.missing(waiting[0]).name;
+      s.dockBtn = el('button', { class: 'ghost small dock-toggle', text: `💬 ${label}`, title: `Its chats, read-only until it is back`, on: { click: () => setDockOpen(s, s.dock.hidden) } });
+      s.head.append(s.dockBtn);
+      s.dock.hidden = false; s.divider.hidden = false; s.dockBtn.classList.add('on'); // (shown, the owner's open / closed choice kept as it was)
+      Lazy.load('chatsafe').then(() => { if (s.dockedId === want) ChatSafe.mountDock(s, waiting); }).catch((err) => console.warn('chatsafe', err));
+      return;
+    }
+    if (!agent) { if (typeof DirectorDock !== 'undefined') DirectorDock.detach(s.tool.id); s.dock.hidden = true; s.divider.hidden = true; return; } // (round 55: the owner's open / closed choice isn't forgotten while no AI is docked)
     Native.mount(agent.id, s.dock);
     // activity strip, quick chips, undo, collapse (director-dock.js)
     if (typeof DirectorDock !== 'undefined') { try { DirectorDock.attach(s, agent); } catch (err) { console.warn(err); } }

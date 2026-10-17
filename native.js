@@ -1110,11 +1110,18 @@ const Native = (() => {
     const stale = () => { if (v.drawSeq === seq) return false; v.drawing = Math.max(0, v.drawing - 1); return true; };
     const chatId = H.activeChat[agentId];
     // (round 45, chatswitch) a chat in memory draws right away (no turn waited: the click's own frame shows it)
-    const chat = chatId ? (chats.has(chatId) ? touchChat(chatId) : await loadChat(chatId)) : null;
+    let chat = chatId ? (chats.has(chatId) ? touchChat(chatId) : await loadChat(chatId)) : null;
     if (chatId && !chat) H.activeChat[agentId] = null;
-    // (round 52, chatkeep) a chat whose AI was removed or turned off, opened here (the list shows it under this AI): it
-    // goes on with this one (its scene, its tools); the file only changes its AI
-    if (chat && chat.agentId !== agentId && !H.agents().some((a) => a.id === chat.agentId && a.mode === 'native')) { chat.agentWas = chat.agentId; chat.agentId = agentId; remember(chat); }
+    // (round 55, chatsafe55) a chat whose AI is missing or turned off never goes on with this one (round 52 moved it
+    // here for good): it isn't shown in this AI's view, it opens read-only until its AI is back (chatsafe.js). Only a
+    // chat that names no AI at all takes this one.
+    if (chat && !chat.agentId) { chat.agentId = agentId; remember(chat); }
+    else if (chat && chat.agentId !== agentId && !H.agents().some((a) => a.id === chat.agentId && a.mode === 'native')) {
+      if (H.activeChat[agentId] === chatId) H.activeChat[agentId] = null;
+      const id = chat.id; chat = null;
+      const quiet = !navigator.userActivation?.isActive; // (a view put back after a reload: no reader popping up; a click: the reader)
+      if (window.Lazy?.load) Lazy.load('chatsafe').then(() => ChatSafe.open(id, { quiet })).catch((err) => console.warn('chatsafe', err));
+    }
     // a fresh draw of a chat with many replies to make shows its end first (below): it waits for the worker only for
     // what it makes after that
     const w = chat && window.Md ? warmReplies(v, chat) : null;
@@ -1785,6 +1792,8 @@ const Native = (() => {
     if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);
     let chat = chatId ? await loadChat(chatId) : null;
     if (only && !chat) throw new Error('That chat is gone.');
+    // (round 55, chatsafe55) a chat waiting for its AI is read-only: nothing is sent into it by another one
+    if (chat?.agentId && chat.agentId !== agentId && !H.agents().some((a) => a.id === chat.agentId && a.mode === 'native')) throw new Error(`This chat waits for ${(typeof Panel !== 'undefined' && Panel.whoWas?.(chat.agentId)?.name) || 'its own AI'}: bring it back to go on (or Continue with Claude… in its menu)`);
     // (round 40, attachlean) pictures scaled, big texts trimmed to what the message is about, a file sent before referenced
     const lean = !fromHistory && !only && typeof AttachLean !== 'undefined' && views.get(agentId)?.attachments.length ? await AttachLean.prepare(agentId, chat, text).catch((err) => { console.warn('attachlean', err); return null; }) : null;
     if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);

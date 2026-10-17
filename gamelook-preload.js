@@ -135,9 +135,10 @@ function gameLookPage(o) {
     if (!O3 || protos.has(O3) || typeof O3.add !== 'function') return;
     protos.add(O3);
     const add0 = O3.add;
-    O3.add = function add() { const res = add0.apply(this, arguments); if (!PAUSE && !OFF && adds.length < 4000) for (let i = 0; i < arguments.length; i += 1) { const o = arguments[i]; if (o && o !== this && o.isObject3D) adds.push(o); } return res; };
+    // (round 55, fixes55) the game's own add / attach always runs and returns; what Hearth notes can never throw into it
+    O3.add = function add() { const res = add0.apply(this, arguments); try { if (!PAUSE && !OFF && adds.length < 4000) for (let i = 0; i < arguments.length; i += 1) { const o = arguments[i]; if (o && o !== this && o.isObject3D) adds.push(o); } } catch (e) { /* never in the game's way */ } return res; };
     const att0 = O3.attach;
-    if (typeof att0 === 'function') O3.attach = function attach(o) { const res = att0.call(this, o); if (!PAUSE && !OFF && o && o.isObject3D && adds.length < 4000) adds.push(o); return res; };
+    if (typeof att0 === 'function') O3.attach = function attach() { const res = att0.apply(this, arguments); try { const o = arguments[0]; if (!PAUSE && !OFF && o && o.isObject3D && adds.length < 4000) adds.push(o); } catch (e) { /* never in the game's way */ } return res; };
     undo.push([O3, 'add', O3.add, add0]); if (typeof att0 === 'function') undo.push([O3, 'attach', O3.attach, att0]);
   }
   function before(r, scene, force) {
@@ -184,16 +185,18 @@ function gameLookPage(o) {
     for (const m of ['render', 'compile', 'compileAsync']) {
       const base = r[m];
       if (typeof base !== 'function') continue;
-      const w = r[m] = function (scene) {
-        if (!PAUSE && !OFF) { const a = now(); try { before(this, scene); } catch (e) { /* never in the game's way */ } SP += now() - a; }
-        if (m === 'render') R.frames += 1;
-        return base.apply(this, arguments);
-      };
-      undo.push([r, m, w, base]);
+      try {
+        const w = r[m] = function (scene) {
+          if (!PAUSE && !OFF) { const a = now(); try { before(this, scene); } catch (e) { /* never in the game's way */ } SP += now() - a; }
+          try { if (m === 'render') R.frames += 1; } catch (e) { /* fine */ }
+          return base.apply(this, arguments);
+        };
+        undo.push([r, m, w, base]);
+      } catch (e) { /* a renderer the game froze: as it is */ }
     }
     // (GameReady sends a game's textures up before compiling: its scenes are looked at first, so colours are known)
     const it = r.initTexture;
-    if (typeof it === 'function') { const w = r.initTexture = function (t) { if (!PAUSE && !OFF) { const a = now(); try { for (const sc of scenes) before(this, sc); tex(this, t, false, maxA(this)); } catch (e) { /* fine */ } SP += now() - a; } return it.apply(this, arguments); }; undo.push([r, 'initTexture', w, it]); }
+    if (typeof it === 'function') try { const w = r.initTexture = function (t) { if (!PAUSE && !OFF) { const a = now(); try { for (const sc of scenes) before(this, sc); tex(this, t, false, maxA(this)); } catch (e) { /* fine */ } SP += now() - a; } return it.apply(this, arguments); }; undo.push([r, 'initTexture', w, it]); } catch (e) { /* as it is */ }
   }
   // ---------- the guard: smooth first ----------
   function gaps(n) { // the median gap between frames the game drew (rAF), n of them (4 s at most)
@@ -261,11 +264,15 @@ function gameLookPage(o) {
   const settle = () => new Promise((res) => { const t0 = now(); const f = () => (R.guard === 'waiting' || R.guard === 'measuring') && now() - t0 < 30000 ? realTimeout(f, 200) : res(JSON.parse(JSON.stringify(R))); f(); });
   // ---------- three.js tells us its renderers and scenes ----------
   const dev = window.__THREE_DEVTOOLS__ || (window.__THREE_DEVTOOLS__ = new EventTarget());
-  dev.addEventListener('register', (e) => { const v = e.detail && e.detail.revision; if (v) R.three = String(v); });
+  // (round 55, fixes55) three dispatches these from inside the game's own `new WebGLRenderer()` / scene: a throw here
+  // would show as the game's error (and in GameReady's "why it didn't start")
+  dev.addEventListener('register', (e) => { try { const v = e.detail && e.detail.revision; if (v) R.three = String(v); } catch (er) { /* fine */ } });
   dev.addEventListener('observe', (e) => {
-    const d = e.detail;
-    if (d && d.isWebGLRenderer) hook(d);
-    else if (d && d.isScene) { scenes.add(d); if (scenes.size > 32) scenes.delete(scenes.values().next().value); }
+    try {
+      const d = e.detail;
+      if (d && d.isWebGLRenderer) hook(d);
+      else if (d && d.isScene) { scenes.add(d); if (scenes.size > 32) scenes.delete(scenes.values().next().value); }
+    } catch (er) { /* the game plays as it is */ }
   });
   Object.defineProperty(window, '__gameLook', { configurable: true, value: Object.freeze({
     report: () => { if (!R.three && window.__THREE__) R.three = String(window.__THREE__); return JSON.parse(JSON.stringify(R)); },

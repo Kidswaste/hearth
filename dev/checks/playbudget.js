@@ -154,7 +154,7 @@ await safe('ab', async () => {
   const p = await pub();
   const look = await ev('window.__gameLook ? window.__gameLook.report().off || null : "none"');
   out.runs.ab = { ab: p.ab, ready: gr.result?.ab, off: p.off };
-  step('the A/B under Getting ready\'s card: the look's own time over the budget and the frames slower, the look off before the first frame of play', ok && p.ab && p.ab.judge?.slower && p.ab.turnedOff?.includes('look') && p.off.some((o) => o.id === 'look' && o.by === 'ab') && look === 'ab', { ab: p.ab, look });
+  step('the A/B under Getting ready\'s card: the look\'s own time over the budget and the frames slower, the look off before the first frame of play', ok && p.ab && p.ab.judge?.slower && p.ab.turnedOff?.includes('look') && p.off.some((o) => o.id === 'look' && o.by === 'ab') && look === 'ab', { ab: p.ab, look });
   step('… and after that, on ≈ off (the A/B again)', p.ab?.after && !p.ab.after.judge.slower, p.ab?.after);
   step('Getting ready reports it', gr.result?.ab?.turnedOff?.includes('look'), gr.result?.ab);
   await stop();

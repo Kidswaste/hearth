@@ -26,7 +26,8 @@ async function framesLocal(a) {
   if (!file || !path.isAbsolute(file) || !fs.existsSync(file)) return { ok: false, error: 'Hearth isn\'t running: give the video\'s full path.' };
   // the captures folder Settings chose (config.json settings.captureDir), like the hub does, else data/captures
   let root = path.join(__dirname, '..', 'data', 'captures');
-  try { const s = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8')).settings || {}; if (s.captureDir) root = s.captureDir; FR.setOverrides({ ffmpeg: s.ffmpegPath || undefined }); } catch { /* defaults */ }
+  try { const s = require('../configsafe-core').readEffective(path.join(__dirname, '..')).settings || {}; // (round 55) data/config.json + the defaults
+    if (s.captureDir) root = s.captureDir; FR.setOverrides({ ffmpeg: s.ffmpegPath || undefined }); } catch { /* defaults */ }
   const dir = path.join(root, 'frames');
   const o = { dir, width: 768, format: 'jpg' };
   const mode = String(a.mode || 'sheet');

@@ -84,18 +84,21 @@
       const opts = o && typeof o === 'object' ? (o.latencyHint == null ? { ...o, latencyHint: 'interactive' } : o) : { latencyHint: 'interactive' };
       const t = now();
       super(opts, ...more);
-      const ms = now() - t;
-      S.made += 1; if (S.firstCtxMs == null) S.firstCtxMs = r1(ms);
-      ctxs.push(new WeakRef(this)); if (ctxs.length > 16) live();
-      note({ kind: 'context', ms: r1(ms), at: t });
-      if (S.rest.size) { if (this.state !== 'suspended') { sus.call(this).catch(() => {}); } ours.add(this); } else if (this.state === 'suspended') res.call(this).catch(() => {});
+      // (round 55, fixes55) the game's context is made whatever happens in Hearth's notes after it
+      try {
+        const ms = now() - t;
+        S.made += 1; if (S.firstCtxMs == null) S.firstCtxMs = r1(ms);
+        ctxs.push(new WeakRef(this)); if (ctxs.length > 16) live();
+        note({ kind: 'context', ms: r1(ms), at: t });
+        if (S.rest.size) { if (this.state !== 'suspended') { sus.call(this).catch(() => {}); } ours.add(this); } else if (this.state === 'suspended') res.call(this).catch(() => {});
+      } catch { /* the game's context, as it is */ }
     }
   }
   window.AudioContext = AudioContext;
   // the game suspending / resuming itself: Hearth never resumes what the game paused; a resume while the game is put
   // away waits for it to show again
-  AC0.prototype.suspend = function (...a) { gameSuspended.add(this); ours.delete(this); return sus.apply(this, a); };
-  AC0.prototype.resume = function (...a) { gameSuspended.delete(this); if (S.rest.size) { ours.add(this); return Promise.resolve(); } return res.apply(this, a); };
+  AC0.prototype.suspend = function (...a) { try { gameSuspended.add(this); ours.delete(this); } catch { /* fine */ } return sus.apply(this, a); };
+  AC0.prototype.resume = function (...a) { try { gameSuspended.delete(this); if (S.rest.size) { ours.add(this); return Promise.resolve(); } } catch { /* fine */ } return res.apply(this, a); };
 
   // ---------- decoding: once, before it's needed ----------
   // a sound's file name for plain words: the sound file the page fetched with that many bytes (Resource Timing), else
@@ -113,21 +116,28 @@
     try { return decodeNow.call(this, buf, ok, fail); } finally { SP += now() - a0; }
   };
   function decodeNow(buf, ok, fail) {
-    const k = fp(buf); const key = k && `${k}@${this.sampleRate}`;
-    const e = key && cache.get(key);
+    // (round 55, fixes55) Hearth's part (the fingerprint, the cache, the notes) can't stop the game's decode: any throw
+    // in it → the browser's own decodeAudioData, as without Hearth
+    let key = null; let e = null;
+    try { const k = fp(buf); key = k && `${k}@${this.sampleRate}`; e = key && cache.get(key); } catch { key = null; e = null; }
     if (e) {
       S.hits += 1;
-      return e.p.then((b) => { if (typeof ok === 'function') ok(b); return b; }, (err) => { if (typeof fail === 'function') fail(err); throw err; });
+      // (a predecode that failed: the game's own decode of its bytes says why, in its own words)
+      return e.p.then((b) => { if (typeof ok === 'function') ok(b); return b; }, () => { cache.delete(key); return dad.call(this, buf, ok, fail); });
     }
+    if (!key) return dad.call(this, buf, ok, fail);
     S.misses += 1;
-    const bytes = buf?.byteLength || 0; const name = nameFor(bytes); const t = now(); const was = playing();
+    let bytes = 0; let name = null; const t = now(); let was = false;
+    try { bytes = buf?.byteLength || 0; name = nameFor(bytes); was = playing(); } catch { /* fine */ }
     const p = dad.call(this, buf).then((b) => {
-      const ev = note({ kind: 'decode', name, bytes, ms: r1(now() - t), secs: r1(b.duration || 0) });
-      if (was && ev.ms > 45) { S.late.push({ name, bytes, ms: ev.ms, secs: ev.secs, at: r1(t) }); if (S.late.length > 20) S.late.shift(); }
-      if (key) keep(key, b);
+      try {
+        const ev = note({ kind: 'decode', name, bytes, ms: r1(now() - t), secs: r1(b.duration || 0) });
+        if (was && ev.ms > 45) { S.late.push({ name, bytes, ms: ev.ms, secs: ev.secs, at: r1(t) }); if (S.late.length > 20) S.late.shift(); }
+        keep(key, b);
+      } catch { /* fine */ }
       if (typeof ok === 'function') ok(b);
       return b;
-    }, (err) => { if (key) cache.delete(key); if (typeof fail === 'function') fail(err); throw err; });
+    }, (err) => { cache.delete(key); if (typeof fail === 'function') fail(err); throw err; });
     if (key) cache.set(key, { p, bytes, name });
     return p;
   }
@@ -186,7 +196,7 @@
 
   // ---------- put away: Ctrl/⌘+P (rest), the window hidden ----------
   const mp = HTMLMediaElement.prototype.play;
-  HTMLMediaElement.prototype.play = function (...a) { if (OFF) return mp.apply(this, a); const a0 = now(); if (!media.some((r) => r.deref() === this)) { media.push(new WeakRef(this)); if (media.length > 64) media.splice(0, media.length - 64); } ours.delete(this); SP += now() - a0; return mp.apply(this, a); };
+  HTMLMediaElement.prototype.play = function (...a) { if (OFF) return mp.apply(this, a); const a0 = now(); try { if (!media.some((r) => r.deref() === this)) { media.push(new WeakRef(this)); if (media.length > 64) media.splice(0, media.length - 64); } ours.delete(this); } catch { /* fine */ } SP += now() - a0; return mp.apply(this, a); };
   function rest(on, why = 'rest') {
     const was = S.rest.size > 0;
     if (on) S.rest.add(why); else S.rest.delete(why);
@@ -205,7 +215,7 @@
     note({ kind: want ? 'rest' : 'back', why, n });
     return n;
   }
-  document.addEventListener('visibilitychange', () => rest(document.visibilityState === 'hidden', 'hidden'));
+  document.addEventListener('visibilitychange', () => { try { rest(document.visibilityState === 'hidden', 'hidden'); } catch { /* the sound as it is */ } });
 
   // ---------- a sound in a slow frame (Long Animation Frames: ≥ 50 ms) ----------
   // A decode's result lands on the main thread (the decoded samples handed over, the game's callback): a long frame
