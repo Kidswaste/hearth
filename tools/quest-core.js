@@ -124,10 +124,27 @@
     const c = { id: cid, title, why, path, custom: true, subtitle: 'YOUR CAMPAIGN', badge: title, quests: lines.map((line, i) => ({ id: `q-${cid}-${i}`, title: line, done: line, tiny: 'Write down the first physical action you can take in two minutes.', deep: 'Improve one detail only after this milestone is finished.', minutes: 15, xp: i === lines.length - 1 ? 60 : 35, tool: null })) };
     s.campaigns.push(c); s.active = cid; return c;
   }
-  function redeem(s, rid, at = new Date().toISOString()) { const r = s.rewards.find(r => r.id === rid); if (!r) throw Error('Reward not found.'); if (balance(s) < r.cost) throw Error(`You need ${r.cost - balance(s)} more sparks for this reward.`); const receipt = { id: id('r'), rewardId: rid, name: r.name, cost: r.cost, at, plan: r.note || '' }; s.redemptions.push(receipt); return receipt; }
+  function redeem(s, rid, at = new Date().toISOString()) { const r = s.rewards.find(r => r.id === rid); if (!r) throw Error('Reward not found.'); if (balance(s) < r.cost) throw Error(`You need ${r.cost - balance(s)} more sparks for this reward.`); const amount=r.amount||0;if(amount>rewardMoney(s,at).remaining)throw Error('This treat exceeds your remaining monthly reward budget. Adjust your plan first.'); const receipt = { id: id('r'), rewardId: rid, name: r.name, cost: r.cost, at, plan: r.note || '', amount }; s.redemptions.push(receipt); return receipt; }
+  function rewardMoney(s, now = new Date().toISOString()) {
+    const month=now.slice(0,7), committed=s.redemptions.filter(r=>!r.returnedAt&&r.at.slice(0,7)===month).reduce((n,r)=>n+(r.amount||0),0);
+    return {limit:s.rewardBudget?.monthly||0,committed:+committed.toFixed(2),remaining:+Math.max(0,(s.rewardBudget?.monthly||0)-committed).toFixed(2)};
+  }
+  function savePlace(s, values) {
+    const old=values.id&&s.atlas.places.find(p=>p.id===values.id);if(values.id&&!old)throw Error('Place not found.');
+    const p={id:old?.id||id('place'),name:text(values.name,120),lat:Number(values.lat),lon:Number(values.lon),quest:text(values.quest,500),visitedAt:old?.visitedAt||null};
+    if(!p.name||!Number.isFinite(p.lat)||!Number.isFinite(p.lon)||p.lat<48.7||p.lat>49||p.lon<2.15||p.lon>2.6)throw Error('Choose a place in the Paris map area and give it a name.');
+    if(!old&&s.atlas.places.length>=100)throw Error('Your map holds up to 100 places.');
+    if(old)Object.assign(old,p);else s.atlas.places.push(p);s.atlas.selected=p.id;return p;
+  }
+  function placeQuest(s,pid) {
+    const p=s.atlas.places.find(p=>p.id===pid);if(!p)throw Error('Place not found.');
+    let plan=s.world.plans.find(x=>x.id==='outing-'+pid);
+    if(!plan){plan=saveWorldPlan(s,{title:p.quest||('Visit '+p.name),kind:'outing',district:'quai',destination:'Paris',venue:p.name,note:p.quest});plan.id='outing-'+pid;}
+    if(plan.status==='archived')plan.status='planning';return planCampaign(s,plan.id);
+  }
   function stats(s) { const quests = allQuests(s), finished = quests.filter(q => done(s, q.id)); return { xp: xp(s), level: level(xp(s)), sparks: balance(s), finished: finished.length, campaigns: s.campaigns.filter(c => campaignDone(s, c)).length, days: new Set(finished.map(q => record(s, q.id).completedAt.slice(0, 10))).size }; }
   function upgrade(s) {
-    if (s.studio && s.deck && s.workstation && s.world) return s;
+    if (s.studio && s.deck && s.workstation && s.world && s.atlas && s.collection && s.rewardBudget) return s;
     const out = clone(s);
     if (!out.studio) {
       for (const c of D.commissions) if (out.campaigns.length < 100 && !out.campaigns.some(x => x.id === c.id)) out.campaigns.push(clone(c));
@@ -137,6 +154,16 @@
     if (!out.deck) { out.deck = { v: 1, filters: { lane: 'any', mood: 'any', minutes: 60, shelf: 'all' }, hand: [], seen: [], saved: [], hidden: [] }; deal(out); }
     if (!out.workstation) out.workstation = { v: 1, accent: 'ember', callsign: 'Quentin', target: null, title: null, lamp: true };
     if (!out.world) out.world = { v: 1, selected: 'home', friends: clone(D.friendStarters), plans: [] };
+    if (!out.atlas) out.atlas = { v: 1, selected: 'place-canal', places: [
+      ['place-canal','Canal Saint-Martin',48.8719,2.3635,'Record a field sound or take a texture photo.'],
+      ['place-luxembourg','Jardin du Luxembourg',48.8462,2.3372,'Sketch one shape, then take a short walk.'],
+      ['place-buttes','Parc des Buttes-Chaumont',48.8809,2.3828,'Find a view and capture a tiny visual study.'],
+      ['place-republique','Place de la République',48.8674,2.3639,'Meet a friend and trade one music recommendation.'],
+      ['place-villette','Parc de la Villette',48.8936,2.3908,'Explore with a friend; save one thing that inspired you.'],
+      ['place-montparnasse','Gare Montparnasse',48.8409,2.3206,'Plan a Toulouse trip with dates and a real fare.']
+    ].map(([id,name,lat,lon,quest])=>({id,name,lat,lon,quest,visitedAt:null})) };
+    if (!out.collection) out.collection = [];
+    if (!out.rewardBudget) out.rewardBudget = { monthly: 0 };
     return validate(out);
   }
   const specializations = D.specializations, rewardBlueprints = D.rewardBlueprints, consoleAccents = D.consoleAccents, lifeArcs = D.lifeArcs;
@@ -385,6 +412,10 @@
       for (const f of w.friends) { if (!obj(f)) throw Error('Invalid friend.'); unique(f.id); if (!str(f.name,80) || !f.name.trim() || !birthdayDate(f.birthday) || !str(f.interests,300)) throw Error('Invalid friend details.'); }
       for (const p of w.plans) { checkWorldPlan(w,p); unique(p.id); p.fares.forEach(f => unique(f.id)); }
     }
+    if(s.atlas!=null){if(!obj(s.atlas)||s.atlas.v!==1||!Array.isArray(s.atlas.places)||s.atlas.places.length>100||!s.atlas.places.some(p=>p.id===s.atlas.selected))throw Error('Invalid Paris map.');for(const p of s.atlas.places){unique(p.id);if(!str(p.name,120)||!p.name.trim()||!str(p.quest,500)||!Number.isFinite(p.lat)||!Number.isFinite(p.lon)||p.lat<48.7||p.lat>49||p.lon<2.15||p.lon>2.6||(p.visitedAt!==null&&!date(p.visitedAt)))throw Error('Invalid saved place.');}}
+    if(s.collection!=null){if(!Array.isArray(s.collection)||s.collection.length>100)throw Error('Invalid collection.');for(const item of s.collection){unique(item.id);if(!str(item.title,200)||!date(item.at))throw Error('Invalid collection item.');checkProof(item.proof);if(item.media!=null&&(!Array.isArray(item.media)||item.media.length>12||item.media.some(m=>!m||typeof m.path!=='string'||m.path.length>2000||!/^(?:[a-z]:[\\/]|\/)/i.test(m.path)||/^[/\\]{2}|[\x00-\x1f]/.test(m.path)||!str(m.title,200))))throw Error('Invalid collection media.');}}
+    if(s.rewardBudget!=null&&(!obj(s.rewardBudget)||!Number.isFinite(s.rewardBudget.monthly)||s.rewardBudget.monthly<0||s.rewardBudget.monthly>10000))throw Error('Invalid reward budget.');
+    for(const r of [...s.rewards,...s.redemptions])if(r.amount!=null&&(!Number.isFinite(r.amount)||r.amount<0||r.amount>10000))throw Error('Invalid reward price.');
     if (s.workstation != null) {
       const w = s.workstation;
       if (!obj(w) || w.v !== 1 || !consoleAccents.some(a => a.id === w.accent) || !str(w.callsign, 40) || !w.callsign.trim() || typeof w.lamp !== 'boolean' || (w.target !== null && !specialization(w.target)) || (w.title !== null && (!obj(w.title) || !specialization(w.title.route) || !Number.isInteger(w.title.rank) || w.title.rank < 1 || w.title.rank > 3))) throw Error('Invalid workstation loadout.');
@@ -425,5 +456,5 @@
     if (balance(s) < 0) throw Error('Reward history exceeds earned sparks.');
     return clone(s);
   }
-  return { friendStarters, friendSuggestion, districts, calendarDate, saveFriend, saveWorldPlan, occasions, addFare, fareStatus, invitation, tripResearch, planCampaign, lifeArcs, startLifeArc, paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest, deckLanes, deckMoods, deckCard, deckPool, deckHand, deal, markCard, takeCard, specializations, rewardBlueprints, consoleAccents, mastery, practicePick, startPractice, equipTitle, activeTitle, stockReward, enjoyReward, returnReward };
+  return { rewardMoney, savePlace, placeQuest, friendStarters, friendSuggestion, districts, calendarDate, saveFriend, saveWorldPlan, occasions, addFare, fareStatus, invitation, tripResearch, planCampaign, lifeArcs, startLifeArc, paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest, deckLanes, deckMoods, deckCard, deckPool, deckHand, deal, markCard, takeCard, specializations, rewardBlueprints, consoleAccents, mastery, practicePick, startPractice, equipTitle, activeTitle, stockReward, enjoyReward, returnReward };
 });

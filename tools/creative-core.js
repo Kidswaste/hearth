@@ -5,28 +5,12 @@
   else root.CreativeCore = api;
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   const FEATURES = [
-    ['studio', 'Workbenches', 'The worktable', 'Six creative stations with projects and usable exports.'],
-    ['vst', 'Workbenches', 'Plugin vault', 'Host your installed VST3 instruments and effects.'],
-    ['instrument', 'Workbenches', 'Ember sound forge', 'Oscillators, ADSR and effects for your next sample.'],
-    ['editor', 'Workbenches', 'Pocket worlds', 'Paint levels, tune rules and export playable games.'],
+    ['studio', 'Workbenches', 'The worktable', 'Your sounds, sketches and shots, connected.'],
+    ['vst', 'Workbenches', 'Serum 2 & Vital', 'Play your instruments, shape a patch and keep the sound.'],
     ['texture', 'Workbenches', 'Material foundry', 'Seamless color, normal, height and roughness maps.'],
-    ['draw', 'Workbenches', 'Sketch to asset', 'Draw sprites, masks and illustrations for your projects.'],
-    ['story', 'Workbenches', 'Storyboard table', 'Arrange shots and play a timed animatic.'],
-    ['poster', 'Visuals', 'Palette posters', 'Seeded geometric compositions and five-color palettes.'],
-    ['pattern', 'Visuals', 'Seamless tiles', 'Repeatable geometric patterns for textures and backgrounds.'],
-    ['motion', 'Visuals', 'Motion loops', 'Tempo-linked orbit, tunnel and ribbon studies.'],
-    ['sprite', 'Visuals', 'Sprite forge', 'Mirrored pixel creatures with transparent exports.'],
-    ['reactive', 'Visuals', 'Sound to light', 'Watch your generated or imported audio drive a visual.'],
-    ['drums', 'Music', 'Beat sketcher', 'Four voices, sixteen editable steps, swing and WAV export.'],
-    ['melody', 'Music', 'Melody garden', 'Seeded scale-aware phrases with MIDI and WAV export.'],
-    ['sfx', 'Music', 'Game sound lab', 'Make pickup, jump, laser and impact samples.'],
-    ['slice', 'Music', 'Sample cutter', 'Import audio, trim, reverse, normalize and fade a slice.'],
-    ['rack', 'Music', 'Pocket effects', 'Drive, low-pass, echo and lo-fi processing for your sound.'],
-    ['arena', 'Games', 'Arcade builder', 'A playable collect-and-dodge game to remix and export.'],
-    ['maze', 'Games', 'Maze builder', 'Seeded solvable mazes, playable here and as HTML.'],
-    ['rhythm', 'Games', 'Rhythm runner', 'Four-lane beat challenges with adjustable tempo.'],
-    ['quests', 'Daily', 'Daily quests', 'Three daily creative challenges, journal and focus timer.'],
-    ['inspire', 'Daily', 'Idea mixer', 'Constraint-led briefs, saved ideas and an Astra handoff.'],
+    ['draw', 'Workbenches', 'Sketch to asset', 'A sketch, your description, and a creation to build on.'],
+    ['story', 'Workbenches', 'Storyboard table', 'Arrange your creations into a timed visual sequence.'],
+    ['pattern', 'Workbenches', 'Seamless tiles', 'Repeatable patterns for textures and backgrounds.'],
   ].map(([id, group, name, description]) => ({ id, group, name, description }));
   const clamp = (x, a, b) => Math.max(a, Math.min(b, Number.isFinite(+x) ? +x : a));
   function hash(value) { let h = 2166136261; for (const c of String(value)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; }

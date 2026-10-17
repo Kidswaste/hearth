@@ -9,7 +9,7 @@
     cells[13][2] = 2; cells[2][21] = 3; cells[8][8] = 4; cells[4][17] = 4; cells[9][16] = 5;
     return { title: 'A little detour', mode: 'explore', speed: 4, gravity: 18, jump: 8, cells, accent: '#ff547d' };
   }
-  function defaults() { return { v: 1, title: 'Untitled workbench', texture: { seed: 12, scale: 5, detail: 4, contrast: 1.3, strength: 3, roughness: .6, kind: 'cloud', color: '#b78aff', size: 256 }, game: level(), drawing: { strokes: [], color: '#ff547d', width: 8, mirror: false, background: '#141319' }, storyboard: { title: 'A small world', panels: [{ title: 'An unexpected signal', notes: 'Wide shot. Let the scene breathe.', duration: 3, image: null }, { title: 'Move closer', notes: 'A detail catches the light.', duration: 2, image: null }, { title: 'The reveal', notes: 'Hold the final frame.', duration: 4, image: null }] }, synth: { wave: 'saw', attack: .02, decay: .3, sustain: .55, release: .7, detune: 7, cutoff: 4500, drive: .12, echo: .18, shimmer: .12, crush: 0, tremolo: .1, note: 60, seconds: 2 }, vst: { roots: [], favorites: [], presets: [], selected: '', patch: null }, shelf: [] }; }
+  function defaults() { return { v: 1, title: 'Untitled workbench', texture: { seed: 12, scale: 5, detail: 4, contrast: 1.3, strength: 3, roughness: .6, kind: 'cloud', color: '#b78aff', size: 256 }, game: level(), drawing: { strokes: [], color: '#ff547d', width: 8, mirror: false, background: '#141319', brush: 'pen', prompt: '', jobs: [] }, storyboard: { title: 'A small world', panels: [{ title: 'An unexpected signal', notes: 'Wide shot. Let the scene breathe.', duration: 3, image: null }, { title: 'Move closer', notes: 'A detail catches the light.', duration: 2, image: null }, { title: 'The reveal', notes: 'Hold the final frame.', duration: 4, image: null }] }, synth: { wave: 'saw', attack: .02, decay: .3, sustain: .55, release: .7, detune: 7, cutoff: 4500, drive: .12, echo: .18, shimmer: .12, crush: 0, tremolo: .1, note: 60, seconds: 2 }, vst: { roots: [], favorites: [], presets: [], selected: '', patch: null }, shelf: [] }; }
   function validate(raw) {
     if (!raw || raw.v !== 1 || JSON.stringify(raw).length > 64e6) throw Error('Not a supported workbench project (v1, up to 64 MB).');
     const d = defaults(), r = copy(raw);
@@ -25,6 +25,10 @@
     r.vst = { ...d.vst, ...r.vst }; if (!Array.isArray(r.vst.roots) || !Array.isArray(r.vst.favorites) || !Array.isArray(r.vst.presets) || r.vst.presets.length > 12) throw Error('Invalid plugin bank.');
     if (r.vst.roots.length > 12 || r.vst.roots.some(p => typeof p !== 'string') || r.vst.favorites.some(p => typeof p !== 'string') || r.vst.presets.some(p => !p || typeof p.label !== 'string' || typeof p.path !== 'string' || typeof p.name !== 'string' || typeof p.state !== 'string' || p.state.length > 12e6) || r.vst.presets.reduce((n, p) => n + p.state.length, 0) > 9e6) throw Error('Invalid or oversized preset bank.');
     r.drawing.color = /^#[\da-f]{6}$/i.test(r.drawing.color) ? r.drawing.color : d.drawing.color; r.drawing.width = clamp(r.drawing.width, 1, 80); r.drawing.mirror = r.drawing.mirror === true;
+    const brushes = ['pen', 'pencil', 'marker', 'ribbon', 'dots', 'line'];
+    r.drawing.brush = brushes.includes(r.drawing.brush) ? r.drawing.brush : 'pen'; r.drawing.prompt = String(r.drawing.prompt || '').slice(0,600);
+    r.drawing.strokes.forEach(s => { if (s.brush && !brushes.includes(s.brush)) throw Error('Invalid brush.'); });
+    r.drawing.jobs = Array.isArray(r.drawing.jobs) ? r.drawing.jobs.slice(0,12).map(j => { if (!j || typeof j.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(j.id)) throw Error('Invalid creation job.'); return {id:j.id, name:String(j.name || 'Sketch creation').slice(0,100), prompt:String(j.prompt || '').slice(0,600)}; }) : [];
     r.shelf = Array.isArray(r.shelf) ? r.shelf.slice(0, 24) : [];
     if (r.shelf.some(p => !p || typeof p.name !== 'string' || typeof p.image !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p.image))) throw Error('Invalid worktable asset.');
     r.title = String(r.title || d.title).slice(0, 100); return r;
@@ -55,7 +59,13 @@
     return maps;
   }
   function drawingSVG(d, repeat = false) {
-    const paths = d.strokes.map(s => `<path d="${s.points.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ')}${s.points.length === 1 ? 'l.1 0' : ''}" fill="none" stroke="${esc(s.color)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+    const paths = d.strokes.map(s => {
+      const points = s.brush === 'line' && s.points.length > 1 ? [s.points[0],s.points.at(-1)] : s.points;
+      const path = points.map((p,i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ') + (points.length === 1 ? 'l.1 0' : '');
+      if (s.brush === 'dots') return points.filter((_,i)=>i%2===0).map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="${s.width/2}" fill="${esc(s.color)}"/>`).join('');
+      const opacity = s.brush === 'marker' ? .34 : s.brush === 'pencil' ? .65 : 1;
+      return `<path d="${path}" fill="none" stroke="${esc(s.color)}" stroke-width="${s.width}" opacity="${opacity}" stroke-linecap="${s.brush === 'ribbon' ? 'square' : 'round'}" stroke-linejoin="round"${s.brush === 'pencil' ? ' stroke-dasharray="1 1.2"' : ''}/>`;
+    }).join('');
     return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">${repeat ? `<defs><pattern id="draw" width="128" height="128" patternUnits="userSpaceOnUse"><g transform="scale(.25)">${paths}</g></pattern></defs><rect width="512" height="512" fill="url(#draw)"/>` : paths}</svg>`;
   }
   function patch(metadata, incoming) {

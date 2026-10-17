@@ -1,7 +1,7 @@
 const assert = require('assert/strict'), vm = require('vm');
 const C = require('../tools/creative-core'), G = require('../tools/creative-games');
 let checks = 0; const ok = (v, why) => { assert(v, why); checks++; };
-ok(C.FEATURES.length === 22 && new Set(C.FEATURES.map(f => f.id)).size === 22, '22 distinct features');
+assert.deepEqual(C.FEATURES.map(f => f.id), ['studio','vst','texture','draw','story','pattern']); ok(C.FEATURES.every(f => f.group === 'Workbenches'), 'only focused workbenches are exposed');
 ok(JSON.stringify(C.palette('a')) === JSON.stringify(C.palette('a')), 'palette deterministic');
 ok(C.svg('a') !== C.svg('b'), 'seeds change composition');
 ok(!C.svg('</title><script>bad</script>').includes('<script>'), 'SVG escapes seed');
