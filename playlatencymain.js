@@ -4,7 +4,8 @@
 // animation frame that reads it (game-preload.js, listeners only for those 2 s), while this side times the main
 // process's event loop (every key and mouse move goes through it before the game's page gets it) and the window's
 // key handler. The F chip's own "Input: x ms" is the page's, from the player's real input, only while it shows.
-//   gamemodemain.js: register(ipcMain, { game: () => G, hub }), timed(fn) around its key handler, last(win) in info()
+//   gamemodemain.js: its channels call ask / result (main.js loads it on its channels' first call: they're in its source),
+//   timed(fn) around its key handler, last(win) in info()
 //   game:latency { ms } → summary (playlatency-core.js) · → window 'game:lat' { on } · ← window 'game:lat-result' json
 const Core = require('./playlatency-core');
 
@@ -58,21 +59,19 @@ async function measure(win, { ms = 2000, hz = 60 } = {}) {
   } finally { try { h.disable(); } catch { /* fine */ } M = null; }
 }
 
-function register(ipcMain, { game, hub }) {
-  // the window's preload answers with what it measured (only the game window, only while measuring)
-  ipcMain.on('game:lat-result', (e, json) => {
-    if (!M || M.win.isDestroyed() || e.sender !== M.win.webContents) return;
-    let p = null; try { p = JSON.parse(String(json || '').slice(0, 400000)); } catch { p = null; }
-    M.done(p);
-  });
-  ipcMain.handle('game:latency', hub(async (_e, req = {}) => {
-    const G = game();
-    if (!G?.win || G.win.isDestroyed()) return { error: 'No game is playing: ▶ Play one first.' };
-    if (req.op === 'last') return lastBy.get(G.win) || null;
-    try { return await measure(G.win, { ms: req.ms, hz: G.hz }); } catch (err) { return { error: err.message }; }
-  }));
+// the window's preload answers with what it measured (only the game window, only while measuring): 'game:lat-result'
+function result(e, json) {
+  if (!M || M.win.isDestroyed() || e.sender !== M.win.webContents) return;
+  let p = null; try { p = JSON.parse(String(json || '').slice(0, 400000)); } catch { p = null; }
+  M.done(p);
+}
+// 'game:latency' { ms } → a measurement · { op: 'last' } → the last one of this game window
+async function ask(G, req = {}) {
+  if (!G?.win || G.win.isDestroyed()) return { error: 'No game is playing: ▶ Play one first.' };
+  if (req.op === 'last') return lastBy.get(G.win) || null;
+  try { return await measure(G.win, { ms: req.ms, hz: G.hz }); } catch (err) { return { error: err.message }; }
 }
 const last = (win) => (win ? lastBy.get(win) || null : null);
 const brief = (s) => (s ? { line: s.line, input: s.input, frameMs: s.frameMs, fps: s.fps, verdict: s.verdict, at: s.at } : null);
 
-module.exports = { register, timed, measure, last, brief, measuring: () => Boolean(M) };
+module.exports = { ask, result, timed, measure, last, brief, measuring: () => Boolean(M) };

@@ -10,7 +10,8 @@
 //   no extra hop  the one canvas swapped, not copied (preserveDrawingBuffer off) when nothing reads it; no fps cap / pace /
 //                throttling; Chromium's frame-rate switches absent; no keydown listener of Hearth's in an HTML game
 // Thresholds are relative to the measured frame time (this machine: Xvfb at 60 Hz, SwiftShader: slow frames): input →
-// the game's frame p50 ≤ 1.25 frames + 1 ms, p95 ≤ 2 frames + 4 ms. window.PL_REPORT = 1 reports without failing.
+// the game's frame p50 ≤ 1.25 frames + 1 ms, p95 ≤ 2 frames + 4 ms (or the slowest usual frame + one).
+// window.PL_REPORT = 1 reports without failing.
 //   node dev/smoke.js --screen 1280x720 --check-timeout 900000 --script dev/checks/playlatency.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(120); } return false; };
@@ -29,12 +30,15 @@ const KC = { KeyW: 87, KeyD: 68, KeyS: 83, KeyA: 65, KeyF: 70 };
 const keyOf = (code) => ({ key: code.slice(3).toLowerCase(), code, windowsVirtualKeyCode: KC[code] || 0, nativeVirtualKeyCode: KC[code] || 0 });
 async function key(code, hold = 0) {
   const k = keyOf(code);
-  await pc('Input.dispatchKeyEvent', { type: 'keyDown', ...k, text: k.key });
+  // as a keyboard sends it (rawKeyDown + char): through the window's main-side key handler like a real key (a CDP
+  // 'keyDown' skips Electron's before-input-event)
+  await pc('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...k });
+  await pc('Input.dispatchKeyEvent', { type: 'char', ...k, text: k.key });
   if (hold) await wait(hold);
   await pc('Input.dispatchKeyEvent', { type: 'keyUp', ...k });
 }
 const mouse = (x, y) => pc('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x), y: Math.round(y), button: 'none' });
-const lim = (frame) => ({ p50: r1(frame * 1.25 + 1), p95: r1(frame * 2 + 4) });
+const lim = (frame, p95 = frame) => ({ p50: r1(frame * 1.25 + 1), p95: r1(Math.max(frame * 2 + 4, p95 + frame)) }); // (p95: two frames, or the slowest usual frame + one: a software GPU's frames vary)
 
 // the probe in the game's page (main world): per input, timestamp → handled → the next animation frame; frame gaps
 const PROBE = `(() => {
@@ -98,8 +102,8 @@ async function round(tag, copy) {
   const d = await take();
   M.real = sum(d);
   const f = M.real.frameMs || M.idle.frameMs;
-  const L = lim(f);
-  step(`${tag}: real input → the game's frame p50 ≤ ${L.p50} ms, p95 ≤ ${L.p95} ms (1.25 / 2 frames of ${f} ms)`, M.real.n >= 20 && M.real.all[0] <= L.p50 && M.real.all[1] <= L.p95, { all: M.real.all, keys: M.real.keys, mouse: M.real.mouse, frame: f });
+  const L = lim(f, M.real.frameP95 || f);
+  step(`${tag}: real input → the game's frame p50 ≤ ${L.p50} ms, p95 ≤ ${L.p95} ms (frames of ${f} ms, p95 ${M.real.frameP95} ms)`, M.real.n >= 20 && M.real.all[0] <= L.p50 && M.real.all[1] <= L.p95, { all: M.real.all, keys: M.real.keys, mouse: M.real.mouse, frame: f });
   // /game latency (the owner's measurement)
   const r = await G().latency({ ms: 2000 });
   M.cmd = r?.error ? { error: r.error } : { input: r.input, keys: r.keys?.frame, mouse: r.mouse?.frame, frameMs: r.frameMs, fps: r.fps, hz: r.hz, verdict: r.verdict, why: r.why, main: r.main, presented: r.presented, window: r.window, sent: r.sent, page: r.pageAnswered };

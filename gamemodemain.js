@@ -329,7 +329,9 @@ function register(ipcMain, c) {
   }));
   // (round 53, playloop: playloopmain.js) rest / wake / side by side / the blip; the error line's Fix from the game window
   loop()?.register?.({ ctx: () => ctx, game: () => G, leave });
-  PL.register(ipcMain, { game: () => G, hub }); // (round 56, playlatency) game:latency
+  // (round 56, playlatency) /game latency, the doctor's "Input" figure (playlatencymain.js); the window's answer
+  ipcMain.handle('game:latency', hub((_e, req) => PL.ask(G, req || {})));
+  ipcMain.on('game:lat-result', (e, json) => PL.result(e, json));
   ipcMain.handle('game:loop', hub((_e, req) => loop()?.op?.(req) || { playing: false }));
   ipcMain.on('game:fix', (e, d) => loop()?.fix?.(e, d));
   // checks: run a line in the game window's page, press a key / click there (real input, through Chromium)

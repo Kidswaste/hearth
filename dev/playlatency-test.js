@@ -50,6 +50,7 @@ t('the window\'s key handler is timed only while measuring (one check otherwise)
   assert.strictEqual(h({}, { k: 7 }), 7); assert.strictEqual(calls, 1);
   assert.strictEqual(PL.measuring(), false);
   assert.strictEqual(PL.brief(null), null);
+  assert.strictEqual(PL.result({ sender: 1 }, '{}'), undefined); // (nothing measuring: ignored)
   assert.deepStrictEqual(Object.keys(PL.brief({ line: 'Input: 2.0 ms', input: {}, frameMs: 4.2, fps: 240, verdict: 'next-frame', at: 1 })), ['line', 'input', 'frameMs', 'fps', 'verdict', 'at']);
 });
 console.log(`${n} passed`);
