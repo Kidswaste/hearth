@@ -13,7 +13,8 @@ others are in, they meet through the names below. Keep this file in sync when a 
 `GameCore.sameSource(a, b)` compares two.
 
 ## GameMode (window, hub side: gamemode.js, lazy group "gamemode")
-- `GameMode.play(source, { display }) → Promise<info>`: GameReady first (if present), then the game window.
+- `GameMode.play(source, { display, perf }) → Promise<info>`: GameReady first (if present), then the game window
+  (round 57: `perf: true` = the performance probe from the first frame; otherwise GamePerf gets the window dormant).
 - `GameMode.leave()`, `GameMode.state() → { playing, source, info, live, plan, last, recent }`, `GameMode.playing`.
 - `GameMode.on(fn) → off`: `fn({ type: 'start', source, info })` / `fn({ type: 'end', source, why, secs })`.
 - `GameMode.recent()` / `GameMode.last()` (store `gamemode.recent`, newest first, 6), `GameMode.resolve(text)` (a name,
@@ -117,6 +118,9 @@ service workers, cache storage) is wiped when it ends.
 
 ## GamePerf (gameperf stream)
 `GamePerf.attach(handle)` (hub side) with `handle = { source, info, leave, state }`, called once the game window is up;
+(round 57, framepace57) ▶ Play attaches it `dormant`: the probe is put into the window only when the doctor, the chip or
+the director's perf asks (it then measures 4 s); `GameMode.play(source, { perf: true })` (a play-test with perf) puts
+it in from the first frame.
 `GameMode.on` tells start / end. The window's own numbers: `game:eval` + `window.__gameInfo()`, or the main-side attach.
 
 ## Play-test (round 53, directorgame: tools/directorgame*.js, directorgamemain.js; preload `window.hub.gameTest`)

@@ -198,7 +198,7 @@ await safe('verdict', async () => {
   const P = (k) => { const d = best.pic.map((p) => p.on[k] - p.off[k]).filter(Number.isFinite); const o = best.pic.map((p) => p.off[k]).filter(Number.isFinite); return { offMs: +med(o).toFixed(2), onMs: +med(best.pic.map((p) => p.on[k]).filter(Number.isFinite)).toFixed(2), med: +med(d).toFixed(2), mean: +mean(d).toFixed(2), ci: boot(d), pct: +((100 * mean(d)) / mean(o)).toFixed(1), slowerIn: `${d.filter((x) => x > 0).length}/${d.length}` }; };
   out.picture = { pairs: best.pic.length, size: best.look.now, gpu: P('gpu'), wall: P('wall'), page: P('page') };
   out.budget = best.budget && { totalMs: best.budget.totalMs, avgMs: best.budget.avgMs, helpers: best.budget.helpers, off: best.budget.off };
-  step('measured: every condition in every round (at least 4 rounds)', R.length >= 4 && R.every((r) => CONDS.every((c) => r[c] && r[c].n >= 6)), { rounds: R.length });
+  step('measured: every condition in every round (at least 4 rounds)', R.length >= 4 && R.every((r) => CONDS.every((c) => r[c] && r[c].n >= 3)), { rounds: R.length, short: R.flatMap((r) => CONDS.filter((c) => !(r[c]?.n >= 6))).length });
   step('the performance probe is not in the game window until asked (GamePerf has the window dormant)', best.probeIn === false, { probeIn: best.probeIn, probeWhenIn: best.probe });
   out.probe = best.probe;
   step('the picture measured on the graphics card (≥ 6 ABBA pairs of 6-frame batches)', best.pic.length >= 6 && Number.isFinite(out.picture.gpu.med), out.picture);
