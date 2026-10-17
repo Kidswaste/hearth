@@ -181,10 +181,28 @@
       S.result = { ms: Math.round(now() - t0), steps: ms, skipped: S.skip, prep: prep ? { compileMs: prep.compileMs, textures: prep.textures, renderers: prep.renderers, gl: prep.gl } : null, warm, gl: g0 && g1 ? { compiles: g1.compiles - g0.compiles, links: g1.links - g0.links, uploads: g1.uploads - g0.uploads, waitMs: Math.round((g1.waitMs || 0) - (g0.waitMs || 0)) } : null, total: g1 ? { compiles: g1.compiles, links: g1.links, uploads: g1.uploads, waitMs: Math.round(g1.waitMs || 0) } : null,
         inventory: inv ? { textures: (inv.textures || []).map((t) => ({ w: t.w, h: t.h, mips: t.mips, compressed: t.compressed, cube: t.cube, video: t.video, aniso: t.aniso })), calls: inv.calls, triangles: inv.triangles, programs: inv.programs, lights: inv.lights, shadows: inv.shadows, aniso: inv.aniso, renderers: inv.renderers } : null, load: loadTimes(g1) };
       const snd = await sounds(); if (snd) S.result.sounds = snd; mark('sounds');
+      const gb = await gpuBack(g0);
       await budgetAB(); mark('ab');
+      await gpuBack(gb); // (the A/B's back-to-back frames are the longest GPU work of getting ready: a loss there too)
       if (!S.skip) card('ready', 100);
       await answered(); mark('answered');
       play();
+    }
+    // (round 57, readywalk) the graphics card took a context back while getting ready (a GPU process restart, a busy
+    // machine): the player rebuilds the layers (glrecover: they run again, everything compiled and uploaded again). The
+    // card waits for that rebuild and gets it ready again, so it doesn't land in the first seconds of play
+    async function gpuBack(g0) {
+      let c = await count();
+      if (!c || !g0 || S.skip) return c || g0;
+      const lost = () => c && (c.lostNow || (c.gpuLost || 0) > (g0.gpuLost || 0) || (c.rebuilds || 0) > (g0.rebuilds || 0));
+      if (!lost()) return c;
+      const t = now(); card('the graphics card is back: getting ready again', 95);
+      await until(async () => { c = await count(); return c && !c.lostNow && (c.rebuilds || 0) > (g0.rebuilds || 0); }, 30000);
+      await until(async () => { const k = await count(); return (k?.renderers || 0) >= (g0.renderers || 1); }, 10000);
+      const prep = S.skip ? null : await ask({ type: 'ready-prep', id: 'gr', frames: 0 }, 'ready-prepped', 90000);
+      const w = S.skip ? null : await ask({ type: 'ready-warm', id: 'gr', n: 2 }, 'ready-warmed', 15000);
+      if (S.result) (S.result.gpuBack ||= []).push({ ms: Math.round(now() - t), rebuilds: (c?.rebuilds || 0) - (g0.rebuilds || 0), prep: prep?.gl || null, warm: w?.gl || null });
+      return (await count()) || c;
     }
     async function play() {
       if (S.phase === 'playing') return;
@@ -193,7 +211,7 @@
       const c0 = await count();
       await sleep(5000);
       const c1 = await count();
-      if (c0 && c1) S.first5 = { gpuLost: (c1.gpuLost || 0) - (c0.gpuLost || 0), ctxMade: (c1.ctxMade || 0) - (c0.ctxMade || 0), gmMade: (c1.gmMade || 0) - (c0.gmMade || 0), /* (round 57: a context / merged renderer made in play's first 5 s: a layer run again) */ budgetOff: budgetOff(), compiles: c1.compiles - c0.compiles, links: c1.links - c0.links, uploads: c1.uploads - c0.uploads, reuploads: c1.reuploads - c0.reuploads, lock: c1.lock, level: c1.level, shares: c1.shares, waitMs: Math.round((c1.waitMs || 0) - (c0.waitMs || 0)) };
+      if (c0 && c1) S.first5 = { gpuLost: (c1.gpuLost || 0) - (c0.gpuLost || 0), ctxMade: (c1.ctxMade || 0) - (c0.ctxMade || 0), rebuilds: (c1.rebuilds || 0) - (c0.rebuilds || 0), gmMade: (c1.gmMade || 0) - (c0.gmMade || 0), /* (round 57: a context / merged renderer made in play's first 5 s: a layer run again) */ budgetOff: budgetOff(), compiles: c1.compiles - c0.compiles, links: c1.links - c0.links, uploads: c1.uploads - c0.uploads, reuploads: c1.reuploads - c0.reuploads, lock: c1.lock, level: c1.level, shares: c1.shares, waitMs: Math.round((c1.waitMs || 0) - (c0.waitMs || 0)) };
     }
     realTimeout(() => prepareLab().catch((err) => { S.errors.push(String(err?.message || err)); play(); }), 0);
     return;

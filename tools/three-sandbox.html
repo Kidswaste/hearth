@@ -1802,7 +1802,7 @@ async function rdyMessage(msg) {
   } else if (msg.type === 'ready-scan') {
     const assets = await rdyAssets(msg.id);
     post({ type: 'ready-scanned', id: msg.id, assets, ...rdyScan() });
-  } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, times: RDYT, gpuLost: GLR.losses + (GLR.none || 0), ctxMade: glMade, gmMade: GM.made, ...RDY.gl, renderers: rdyLive().length, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
+  } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, times: RDYT, gpuLost: GLR.losses + (GLR.none || 0), ctxMade: glMade, gmMade: GM.made, rebuilds: GLR.rebuilds, lostNow: Boolean(GLR.lost), ...RDY.gl, renderers: rdyLive().length, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
 }
 globalThis.__rdyLive = () => rdyLive(); globalThis.__rdyGl = () => ({ ...RDY.gl, waitMs: Math.round(RDY.gl.waitMs) }); // (round 52, gameready: checks read these from a page eval)
 const rdyDelta = (a) => Object.fromEntries(Object.entries(RDY.gl).map(([k, v]) => [k, v - (a[k] || 0)]));
