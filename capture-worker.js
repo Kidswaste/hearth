@@ -22,7 +22,8 @@ function srcRect() {
   const k = sw / (view.w || 1);
   return { x: r.x * k, y: r.y * k, w: r.width * k, h: r.height * k };
 }
-function draw(f) {
+// the part of a captured frame to film (the target's rectangle, or the social frame centered on it), in its pixels
+function cropOf(f) {
   sw = f.displayWidth; sh = f.displayHeight;
   let { x, y, w, h } = srcRect();
   if (fit) { // cover the social frame, centered on the target
@@ -30,26 +31,83 @@ function draw(f) {
     if (w / h > k) w = h * k; else h = w / k;
     x = Math.max(0, Math.min(sw - w, cx - w / 2)); y = Math.max(0, Math.min(sh - h, cy - h / 2));
   }
-  g.drawImage(f, x, y, w, h, 0, 0, canvas.width, canvas.height);
-  dirty = true;
+  return { x, y, w, h };
 }
+// (round 57, capturelab) A captured frame lives on the GPU. Drawn straight into this canvas, its pixels were read back
+// when the clock next made a VideoFrame of the canvas, and that read waits for the GPU process: behind the Lab's own
+// frames when the Lab plays (0.5–1.4 s a frame on a busy software GPU), so the clock and the reader stalled with it and
+// a moving-Lab take came out with a handful of frames (one frame for a 3 s take). Now the crop is copied to memory
+// asynchronously (copyTo: the GPU process answers when it can, this thread keeps ticking) and stays in memory: kept as
+// it is when it has the take's size, scaled through two memory canvases otherwise. Frames that come while a copy is
+// under way replace each other (the picture is always the newest). An engine that can't copy draws as before.
+let pic = false; let busy = false; let latest = null; let copyOk = typeof VideoFrame !== 'undefined' && typeof VideoFrame.prototype.copyTo === 'function';
+let px = null; let spare = null; // the newest picture's pixels at the take's size (null: read the canvas) · a free buffer
+let stage = null; let sg = null; // (the copied crop, when it must be scaled to the take's size)
+function drawNow(f) { const { x, y, w, h } = cropOf(f); g.drawImage(f, x, y, w, h, 0, 0, canvas.width, canvas.height); px = null; dirty = true; pic = true; }
+async function drawCopied(f) {
+  const c = cropOf(f);
+  // a take at the target's own pixels is its size rounded to even numbers: the crop is taken at that size, not scaled
+  for (const [k, K, o] of [['w', canvas.width, 'x'], ['h', canvas.height, 'y']]) if (c[k] !== K && Math.abs(c[k] - K) <= 2) { c[o] += (c[k] - K) / 2; c[k] = K; }
+  const v = f.visibleRect || { x: 0, y: 0, width: f.codedWidth, height: f.codedHeight }; // (copyTo's rect is in coded pixels)
+  const x = v.x + Math.max(0, Math.min(v.width - 1, Math.floor(c.x))); const y = v.y + Math.max(0, Math.min(v.height - 1, Math.floor(c.y)));
+  const rect = { x, y, width: Math.max(1, Math.min(v.x + v.width - x, Math.round(c.w))), height: Math.max(1, Math.min(v.y + v.height - y, Math.round(c.h))) };
+  const n = rect.width * rect.height * 4;
+  const b = spare?.length === n ? spare : new Uint8ClampedArray(n); spare = null;
+  await f.copyTo(b, { rect, format: 'RGBA', layout: [{ offset: 0, stride: rect.width * 4 }] });
+  if (stopped || !g) return;
+  if (rect.width === canvas.width && rect.height === canvas.height) { if (px?.length === n) spare = px; px = b; } // (as it is)
+  else {
+    if (!stage || stage.width !== rect.width || stage.height !== rect.height) { stage = new OffscreenCanvas(rect.width, rect.height); sg = stage.getContext('2d', { alpha: false, willReadFrequently: true }); }
+    sg.putImageData(new ImageData(b, rect.width, rect.height), 0, 0);
+    g.drawImage(stage, 0, 0, canvas.width, canvas.height); // (memory canvas to memory canvas: no GPU)
+    px = null; spare = b;
+  }
+  dirty = true; pic = true;
+}
+async function drawLatest() {
+  if (busy) return;
+  busy = true;
+  try {
+    while (latest && !stopped) {
+      const f = latest; latest = null;
+      try {
+        if (!paused) {
+          if (copyOk) { try { await drawCopied(f); } catch { copyOk = false; drawNow(f); } }
+          else drawNow(f);
+        }
+      } catch (err) { postMessage({ type: 'error', message: err.message }); } finally { f.close(); }
+    }
+  } finally { busy = false; }
+}
+function take(f) { latest?.close(); latest = f; drawLatest(); }
 async function pumpIn() {
   while (!stopped) {
     let r;
     try { r = await reader.read(); } catch { break; }
     if (r.done || !r.value) break;
     framesIn += 1; lastIn = performance.now();
-    try { if (!paused) draw(r.value); } catch (err) { postMessage({ type: 'error', message: err.message }); } finally { r.value.close(); }
+    if (paused) r.value.close(); else take(r.value);
   }
+  latest?.close(); latest = null;
 }
 // the frame clock: the canvas as it is now, stamped with the take's time (pauses left out). An unchanged picture is the
 // last frame again under a new time (it shares the pixels: no copy, next to no work while the screen is still). Frames
 // the recorder hasn't taken yet (a busy machine) are not piled up: the take keeps its length at a lower rate.
+// (round 57) The picture as a frame in memory: a VideoFrame made of the canvas itself becomes a GPU image, and making
+// one waits for the GPU process too (0.3–0.6 s behind a playing Lab here); pixels in memory (the copied crop, or the
+// memory canvas's) make a frame the encoder takes as it is. The canvas itself is the fallback.
+let memOk = true;
+function snapshot() {
+  if (memOk && copyOk) {
+    try { return new VideoFrame(px || g.getImageData(0, 0, canvas.width, canvas.height).data, { format: 'RGBX', codedWidth: canvas.width, codedHeight: canvas.height, timestamp: 0 }); } catch { memOk = false; }
+  }
+  return new VideoFrame(canvas, { timestamp: 0 });
+}
 function tick() {
-  if (paused || stopped || !g || !writer || pending >= 15) return;
+  if (paused || stopped || !g || !writer || !pic || pending >= 15) return; // (no picture yet: the take starts at its first one)
   let f;
   try {
-    if (dirty || !last) { last?.close(); last = new VideoFrame(canvas, { timestamp: 0 }); dirty = false; }
+    if (dirty || !last) { last?.close(); last = snapshot(); dirty = false; }
     f = new VideoFrame(last, { timestamp: Math.round((performance.now() - t0 - pausedMs) * 1000) });
   } catch { return; }
   pending += 1;
@@ -64,6 +122,7 @@ function stop() {
   writer?.close().catch(() => {}); writer = null;
   try { last?.close(); } catch { /* closed */ } last = null;
   try { held?.close(); } catch { /* closed */ }
+  try { latest?.close(); } catch { /* closed */ } latest = null;
 }
 
 onmessage = async (e) => {
@@ -82,7 +141,7 @@ onmessage = async (e) => {
       t0 = performance.now();
       g.imageSmoothingQuality = 'high';
       rect = m.rect; view = m.view; fit = Boolean(m.frame);
-      if (held) { draw(held); held.close(); held = null; }
+      if (held) { take(held); held = null; } // (the clock waits for this first picture: a take never starts black)
       pumpIn();
       setFps(m.fps);
       statsT = setInterval(() => postMessage({ type: 'stats', framesIn, framesOut, age: lastIn ? performance.now() - lastIn : 0 }), 500);
