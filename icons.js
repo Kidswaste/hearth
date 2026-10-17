@@ -26,6 +26,7 @@ const Icons = (() => {
     plus: S('<path d="M12 5v14M5 12h14"/>'),
     command: S('<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M9.5 15.5l5-7"/>'),
     notes: S('<path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14.5 3.5V8H19M9 12h7M9 15.5h7M9 9h3"/>'),
+    quests: S('<path d="M5 3h14v18H5z" fill="currentColor" fill-opacity=".12"/><path d="M8 3v18M12 6h4M11 12l2 2 4-5M12 18h4M16 3v4l-2-1-2 1V3"/>'),
     memory: S('<path d="M9.5 4.5a3 3 0 0 0-3 3 3.2 3.2 0 0 0-2 5.6A3.4 3.4 0 0 0 8 18.8a3 3 0 0 0 4 1V5.6a3 3 0 0 0-2.5-1.1zM14.5 4.5a3 3 0 0 1 3 3 3.2 3.2 0 0 1 2 5.6 3.4 3.4 0 0 1-3.5 5.7 3 3 0 0 1-4 1"/><path d="M8.5 10.5c1.2 0 2 .8 2 2M15.5 10.5c-1.2 0-2 .8-2 2" opacity=".7"/>'),
     panel: S('<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15M5.8 8.5h1.7M5.8 11.5h1.7M5.8 14.5h1.7"/>'),
     grid: S('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
@@ -80,7 +81,7 @@ const Icons = (() => {
     recent: S('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v3.2h3.2M12 8v4.3l2.8 1.7"/>'),
   };
   // agent / tool id (or engine) -> icon
-  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', jam: 'jam', board: 'board', capture: 'capture', home: 'home', options: 'setup' }; // (round 18: Video Review's / the Video Director's / the editor's ids left)
+  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', jam: 'jam', board: 'board', capture: 'capture', home: 'home', options: 'setup', quests: 'quests' }; // (round 18: Video Review's / the Video Director's / the editor's ids left)
   const BY_ENGINE = { claude: 'claude', codex: 'astra' };
   const BY_BUTTON = { 'add-btn': 'plus', 'palette-btn': 'command', 'notes-btn': 'notes', 'memory-btn': 'memory', 'panel-btn': 'panel', 'grid-btn': 'grid', 'bar-btn': 'broadcast', 'config-btn': 'gear' };
 

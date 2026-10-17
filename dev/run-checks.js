@@ -30,7 +30,7 @@ const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture
 UNIT.push('quest-test');
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
-  quests: ['unit:quest-test', 'quest-journal'],
+  quests: ['unit:quest-test', 'quest-journal', 'quest-studio'],
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy', 'fastboot'], // (round 29) fastboot: first frame before any lazy group, keys of lazy groups, first-use main modules
   board: by(/^board/),
   capture: by(/^capture/),
