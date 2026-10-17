@@ -8,6 +8,7 @@
 //                               command is shown before the click; nothing that asks for a password runs silently
 //   tooLong(dir, files, plat) → the incoming files whose full path Windows can't write (260+ characters)
 //   stashName(kind, from, to) → 'hearth-update 2026-10-14 09:12 (abc1234 → def5678): your edits'
+//   bringConfig(cur, other, head) → the owner's config.json parts / agents from a stash brought back, nothing removed
 //   stateDir(dir)             → <checkout>/.git/hearth-update (a worktree's .git file is followed)
 //   startSwap(app, opts)      → true when an update staged for the restart went in and Hearth starts once more
 // Plain Node, no Electron: dev/updatesafe-test.js runs it with real git in temp folders.
@@ -103,8 +104,53 @@ function tooLong(dir, files, plat = process.platform) {
 const stamp = (now = new Date()) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 const branchStamp = (now = new Date()) => stamp(now).replace(/[: ]/g, '-');
 function stashName(kind, from, to, now = new Date()) {
-  const what = { edits: 'your edits', files: 'your files with the same names as new ones', leftovers: 'files of an interrupted update', back: 'your edits (before going back)', move: 'your edits (before moving onto main)' }[kind] || kind;
+  const what = { edits: 'your edits', files: 'your files with the same names as new ones', leftovers: 'files of an interrupted update', back: 'your edits (before going back)', move: 'your edits (before moving onto main)', during: 'written while the update ran' }[kind] || kind;
   return `hearth-update ${stamp(now)} (${String(from || '').slice(0, 7)} → ${String(to || '').slice(0, 7)}): ${what}`;
+}
+// a stash of the owner's own edits (config.json, theme.css…: tracked files Hearth itself writes), by its message
+const OWN_EDITS = /hearth-update [^(]*\([0-9a-f]* → [0-9a-f]*\): your edits/;
+
+// (round 54 fix, labchats54) config.json is a tracked file the app writes: the owner's agents, settings, look. An update
+// puts it in a stash while git merges, so for that moment the file on disk is the repo's own (two agents, no Three
+// Director). Round 53's window saved what it then saw (Tools: the rail's new tool placed) and the stash could not come
+// back over it: the owner's config stayed in the stash, the Lab lost its docked director and its chats "disappeared".
+// bringConfig(cur, other, head) → { value, brought: [what] }: what `other` (a config.json from a stash) has that `cur`
+// lacks, or has only as the repo's own (`head`, git's config.json), brought into a copy of cur. Agents join by id
+// (cur's own version wins; the repo's two alone count as "not the owner's"); a part the repo doesn't have keeps cur's
+// values and gains the keys only other has. Nothing is ever removed. Not objects → cur unchanged.
+function bringConfig(cur, other, head = null) {
+  const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const brought = [];
+  if (!isObj(cur) || !isObj(other)) return { value: cur, brought };
+  const out = { ...cur };
+  for (const [k, v] of Object.entries(other)) {
+    if (k === 'agents') {
+      if (!Array.isArray(v)) continue;
+      const now = Array.isArray(out.agents) ? out.agents : [];
+      const repoOnly = !now.length || (isObj(head) && Array.isArray(head.agents) && same(now, head.agents));
+      if (repoOnly) {
+        // the repo's agents only: the owner's list (its order), then any the repo's list adds
+        const ids = new Set(v.map((a) => a?.id));
+        const next = [...v, ...now.filter((a) => !ids.has(a?.id))];
+        if (!same(next, now)) { out.agents = next; brought.push(...v.filter((a) => !now.some((x) => x?.id === a?.id)).map((a) => `agent ${a?.name || a?.id}`)); }
+      } else {
+        const ids = new Set(now.map((a) => a?.id));
+        const add = v.filter((a) => a?.id && !ids.has(a.id));
+        if (add.length) { out.agents = [...now, ...add]; brought.push(...add.map((a) => `agent ${a.name || a.id}`)); }
+      }
+      continue;
+    }
+    if (!(k in out) || (isObj(head) && k in head && same(out[k], head[k]))) {
+      if (!same(out[k], v)) { out[k] = v; brought.push(k); }
+      continue;
+    }
+    if (isObj(v) && isObj(out[k])) {
+      const add = Object.keys(v).filter((kk) => !(kk in out[k]));
+      if (add.length) { out[k] = { ...out[k], ...Object.fromEntries(add.map((kk) => [kk, v[kk]])) }; brought.push(...add.map((kk) => `${k}.${kk}`)); }
+    }
+  }
+  return { value: out, brought };
 }
 
 // <checkout>/.git/hearth-update: the journal, the staged swap, the last update for "Go back"
@@ -240,4 +286,4 @@ function dropStashSync(git, sha) {
 // a file the main process loads (a restart, not a reload): same rule as updatermain's needsRestart without index.html
 const mainSide = (f) => /(^|\/)(main|preload|[\w-]*main|engines|store|appshell|winmac|storework|sync-engine|sync-merge|chromeguard|updatesafe-core)\.js$|^mcp\/|^package\.json$/.test(f);
 
-module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, tooLong, stashName, stamp, branchStamp, gitDirOf, stateDir, readState, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };
+module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, tooLong, stashName, OWN_EDITS, bringConfig, stamp, branchStamp, gitDirOf, stateDir, readState, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };
