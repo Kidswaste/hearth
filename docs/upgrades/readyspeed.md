@@ -71,18 +71,20 @@ From ▶ Play to the first frame of play. Cold = a fresh Chromium profile and da
 warm = the same game again. Frames here take 0.2–1 s each, so the frame-bound steps (warm-up, the smooth check) dominate;
 on a real graphics card they are a few ms a frame and shader compiles are the bigger part of a cold start.
 
-| | Before (round 55 + timing only) | After |
+| | Before (round 55 + timing only, 1 run) | After (4 runs) |
 |---|---|---|
-| Lab scene ("Clink"), cold | 39.6 s | 25.4 s (19.5–43 s across runs: the load swings it) |
-| Lab scene, warm (2nd / 3rd) | 27.9 s / 31.3 s (29 % less than cold) | **13.3 s / 7.5 s** (70 % less) |
-| HTML build, cold | 6.6 s | 10.1 s (6.7–12.8 s across runs) |
-| HTML build, warm (2nd / 3rd) | 7.8 s / 6.6 s (1 % less) | **3.4 s / 1.4 s** (86 % less) |
-| First 5 s of play: compiles / uploads | 0 / 0 every run | 0 / 0 every run |
+| Lab scene ("Clink"), cold | 39.6 s | 25.4–49.4 s (the machine's load swings it 2×) |
+| Lab scene, warm: 2nd / 3rd ▶ Play | 27.9 s / 31.3 s (**29 % less** than cold at best) | 13.3 / 7.5 s, 20.3 / 7.0 s, 52.2 / 12.9 s, 31.8 / 39.6 s (**36–84 % less**, median ≈ 67 %) |
+| HTML build, cold | 6.6 s | 7.8–17.8 s |
+| HTML build, warm: 2nd / 3rd ▶ Play | 7.8 s / 6.6 s (**1 % less**) | 3.4 / 1.4 s, 4.2 / 4.4 s, 3.8 / 4.2 s (**72–86 % less**) |
+| First 5 s of play: compiles / links / uploads | 0 / 0 / 0 | 0 / 0 / 0 on every run but one (see Risks) |
 
 Where the warm time went (the same check's steps): the smooth check 7.2–7.6 s → 0 (Lab), 4.8–6.0 s → 0 (HTML); the
-layers' steady wait 1.8–4.1 s → 0.6 s; warm-up 15 s (2 passes) → 0.1 s (one 3-frame pass, 3rd run); an HTML build's
-loading 0.5 s → 0.18 s. The window is up 10–40 ms after the press on a warm run, the card 0.1–0.3 s.
-Before (the instrumentation commit, same check), cold → warm: Lab 39.6 → 27.9 s, HTML 6.6 → 7.8 s.
+layers' steady wait 1.8–4.1 s → 0.1–1 s when the frames come; warm-up 15 s (2 passes) → 0.1–1.5 s (one 3-frame pass,
+3rd run) when the machine isn't swamped (one swamped run: 22 s either way); an HTML build's loading 0.5–0.9 s → 0.14–0.35 s.
+The window is up 5–40 ms after the press on a warm run, the card 0.1–0.3 s. "Ready in x s (was y s)" showed once per
+game (the 2nd ▶ Play) in every run. A Lab scene's pictures decoded in 0.23–1.6 s off the page's thread (alongside the
+first frame, not added to it); its files read in 20–110 ms.
 
 ## Upgrades
 ### ▶ Play, ready sooner
@@ -134,6 +136,14 @@ Before (the instrumentation commit, same check), cold → warm: Lab 39.6 → 27.
   that finds work restores the full loop. The first 5 s are still counted every run.
 - **Times on this machine swing 2×** with the other checks running; the check judges warm against cold of the same run.
 - The "was" time is the game's first ▶ Play after this update (not a slower one before it).
+- **One unexplained cold run**: in one of the 11 Lab runs (a cold one, the A/B taking 24 s on a swamped machine) the first
+  5 s of play compiled 56 shaders / linked 28 programs / uploaded 21 textures — the whole scene again, as after a lost
+  GPU context. None of the warm-run skips were in play there (nothing was remembered yet); the page now records GPU
+  context losses in `first5.gpuLost` so the next time says which it was. 0 / 0 in every other run, the gameready check's
+  runs included.
+- **Checks under load**: gamestream failed twice in a batch with other agents' checks running (once "the same picture",
+  once the budget's watch switching loads during play off mid-run: frames at 1–2 s each); alone it passed, as does the
+  base commit alone.
 
 ## For the patch notes
 - **▶ Play gets a game ready much sooner the second time.** Hearth remembers what it learnt getting each game ready and
