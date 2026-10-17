@@ -6,7 +6,7 @@
   const paths = D.paths;
   const initial = () => ({ v: 1, campaigns: clone(D.campaigns), active: 'c-material', sideQuests: [], records: {}, tiny: {}, rewards: [
     { id: 'r-play', name: 'An hour of guilt-free gaming', cost: 20 }, { id: 'r-film', name: 'A film night, picked by me', cost: 35 },
-  ], redemptions: [], ideas: [], motion: true, focus: null, updatedAt: null });
+  ], redemptions: [], ideas: [], motion: true, plan: null, focus: null, updatedAt: null });
   const allQuests = s => [...s.campaigns.flatMap(c => c.quests.map(q => ({ ...q, campaign: c.id, path: c.path }))), ...s.sideQuests];
   const find = (s, qid) => allQuests(s).find(q => q.id === qid);
   const record = (s, qid) => s.records[qid] || {};
@@ -31,6 +31,7 @@
     if (done(s, qid) || !available(s, qid)) throw Error('Only an available, unfinished quest can be skipped.');
     s.records[qid] = { ...record(s, qid), skippedAt: at };
     if (s.focus?.quest === qid) s.focus = null;
+    if (s.plan?.quest === qid) s.plan = null;
   }
   function dismiss(s, q) {
     // Daily suggestions may be declined even when all three active slots are occupied.
@@ -62,6 +63,39 @@
     const q = { id: `q-${idea.id}`, title: idea.title, path: idea.path, done: idea.goal, minutes: idea.minutes, xp: ({ 5: 20, 15: 35, 30: 50 })[idea.minutes], tiny: 'Open what you need and take one small action toward this finish line.', deep: 'Try one variation after reaching your finish line, only if you want to.', tool: null };
     trackSide(s, q); idea.questId = q.id; return q;
   }
+  function recommend(s, { minutes = 5, energy = 'steady', path = 'any' } = {}, today = day()) {
+    if (![2, 5, 15, 30].includes(minutes) || !['low', 'steady'].includes(energy) || (path !== 'any' && !paths.some(p => p.id === path))) throw Error('Choose a time, energy level and path.');
+    const choices = allQuests(s).filter(q => !done(s, q.id) && available(s, q.id)).map(q => ({ ...q, kind: 'quest', priority: q.campaign === s.active ? 0 : q.campaign ? 3 : 1 }));
+    if (sideCount(s) < 3) {
+      choices.push(...(s.ideas || []).filter(i => !i.questId).map(i => ({ ...i, done: i.goal, tiny: 'Open what you need and take one small action toward this finish line.', kind: 'idea', priority: 2 })));
+      choices.push(...daily(today).filter(q => !s.sideQuests.some(x => x.id === q.id)).map(q => ({ ...q, kind: 'daily', priority: 4 })));
+    }
+    return choices.filter(q => path === 'any' || q.path === path).map(q => {
+      const tiny = energy === 'low' || q.minutes > minutes;
+      return { id: q.id, kind: q.kind, title: q.title, path: q.path, mode: tiny ? 'tiny' : 'normal', minutes: tiny ? 2 : q.minutes, fullMinutes: q.minutes, action: tiny ? s.tiny[q.id] || q.tiny : q.done, priority: q.priority, reason: tiny ? 'A two-minute start. The full finish line can wait.' : q.kind === 'idea' ? 'An idea you saved, sized for this session.' : q.campaign === s.active ? 'The next step in your tracked campaign.' : 'A finish line that fits the time you chose.' };
+    }).sort((a, b) => (energy === 'steady' ? Number(a.mode === 'tiny') - Number(b.mode === 'tiny') : 0) || a.priority - b.priority || a.minutes - b.minutes || a.id.localeCompare(b.id)).slice(0, 3);
+  }
+  function choose(s, pick) {
+    let q;
+    if (pick.kind === 'idea') q = startIdea(s, pick.id);
+    else if (pick.kind === 'daily') { q = daily().find(q => q.id === pick.id); if (!q) throw Error('That daily suggestion has changed. Pick again.'); trackSide(s, q); }
+    else if (pick.kind === 'quest') q = find(s, pick.id);
+    if (!q || done(s, q.id) || !available(s, q.id)) throw Error('That quest is no longer available. Pick again.');
+    if (q.campaign) s.active = q.campaign;
+    return q;
+  }
+  function planQuest(s, qid, action, minutes = 5) {
+    action = text(action, 500);
+    if (!find(s, qid) || done(s, qid) || !available(s, qid)) throw Error('Plan an available, unfinished quest.');
+    if (!action || !Number.isInteger(minutes) || minutes < 1 || minutes > 120) throw Error('Write one next action and choose a session length.');
+    s.plan = { quest: qid, action, minutes, at: new Date().toISOString() }; return s.plan;
+  }
+  function gains(before, after) {
+    const skillGains = paths.flatMap(p => { const previous = skills(before, p.id); return skills(after, p.id).filter((n, i) => n.unlocked && !previous[i].unlocked).map(n => ({ name: n.name, path: p.id })); });
+    const previousBalance = balance(before), currentBalance = balance(after);
+    const rewards = after.rewards.filter(r => previousBalance < r.cost && currentBalance >= r.cost).map(r => r.name);
+    return { xp: xp(after) - xp(before), levels: level(xp(after)).n - level(xp(before)).n, skills: skillGains, rewards };
+  }
   function startSmall(s, qid, at = new Date().toISOString()) { if (!available(s, qid)) throw Error('Start with the next available quest.'); const r = record(s, qid); if (r.startedAt || r.completedAt) return 0; s.records[qid] = { ...r, startedAt: at }; return 5; }
   function complete(s, qid, details = {}, at = new Date().toISOString()) {
     if (done(s, qid)) return 0;
@@ -69,6 +103,7 @@
     const q = find(s, qid), before = earned(s, q), r = record(s, qid);
     s.records[qid] = { ...r, completedAt: at, note: text(details.note, 2000), artifact: details.artifact ? { label: text(details.artifact.label, 160), path: text(details.artifact.path, 2000), kind: text(details.artifact.kind, 30) } : null };
     if (s.focus?.quest === qid) s.focus = null;
+    if (s.plan?.quest === qid) s.plan = null;
     return q.xp - before;
   }
   function undo(s, qid) {
@@ -103,6 +138,7 @@
     for (const c of s.campaigns) { unique(c.id); if (!str(c.title, 100) || !str(c.why, 600) || !paths.some(p => p.id === c.path) || !Array.isArray(c.quests) || !c.quests.length || c.quests.length > 12) throw Error('Invalid campaign.'); c.quests.forEach(quest); }
     for (const q of s.sideQuests) { if (!paths.some(p => p.id === q.path)) throw Error('Invalid quest path.'); quest(q); }
     const qids = new Set(allQuests(s).map(q => q.id));
+    if (s.plan != null && (!obj(s.plan) || !qids.has(s.plan.quest) || !str(s.plan.action, 500) || !s.plan.action.trim() || !Number.isInteger(s.plan.minutes) || s.plan.minutes < 1 || s.plan.minutes > 120 || !date(s.plan.at))) throw Error('Invalid next-session note.');
     if (s.motion != null && typeof s.motion !== 'boolean') throw Error('Invalid studio motion setting.');
     if (s.ideas != null && (!Array.isArray(s.ideas) || s.ideas.length > 100)) throw Error('Invalid quest idea box.');
     const ideaQuests = new Set();
@@ -117,5 +153,5 @@
     if (balance(s) < 0) throw Error('Reward history exceeds earned sparks.');
     return clone(s);
   }
-  return { paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, startSmall, complete, undo, addCampaign, redeem, stats, validate };
+  return { paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate };
 });

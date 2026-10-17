@@ -81,11 +81,11 @@ const QuestJournal = (() => {
       writable = true; render(); notice('Journal saved on this computer.');
     } catch (err) { content.replaceChildren(E('section', { class: 'qj-empty' }, label('YOUR PROGRESS IS PRESERVED'), E('h2', { text: 'Let’s reconnect your journal' }), p(`${calmError(err)} Nothing has been overwritten.`), button('Try loading again', load))); notice('Saving is disabled while the journal is unavailable.'); }
   }
-  function celebrate(title, text) {
-    lastCelebration = { title, text };
-    const card = E('div', { class: 'qj-celebrate', attrs: { role: 'status' } }, E('span', { class: 'qj-celebrate-mark', text: '✦' }), E('div', {}, E('strong', { text: title }), p(text)), button('Dismiss', () => card.remove(), 'qj-quiet'));
+  function celebrate(title, text, gains = []) {
+    lastCelebration = { title, text, gains };
+    const card = E('div', { class: 'qj-celebrate', attrs: { role: 'status' } }, E('span', { class: 'qj-celebrate-mark', text: '✦' }), E('div', {}, E('strong', { text: title }), p(text), gains.length ? E('div', { class: 'qj-gains' }, ...gains.map(text => E('span', { text }))) : null), button('Dismiss', () => card.remove(), 'qj-quiet'));
     root.querySelector('.qj-celebrate')?.remove(); root.append(card);
-    setTimeout(() => card.remove(), 6500);
+    setTimeout(() => card.remove(), gains.length ? 12000 : 6500);
   }
   function render() {
     if (!state || !content) return;
@@ -112,6 +112,7 @@ const QuestJournal = (() => {
   function track(c) { return mutate(s => { const found = s.campaigns.find(x => x.id === c.id); found.paused = false; s.active = c.id; }, 'Main quest tracked. You only need the next step.'); }
   function adventure() {
     const campaign = state.campaigns.find(c => c.id === state.active && !c.paused), quest = C.next(state, campaign), totals = C.stats(state);
+    sessionDesk();
     const grid = E('div', { class: 'qj-adventure-grid' });
     const hero = E('section', { class: 'qj-hero' });
     if (quest) {
@@ -151,6 +152,42 @@ const QuestJournal = (() => {
       for (const q of state.sideQuests.filter(q => q.parked && !C.done(state, q.id) && !C.skipped(state, q.id))) parked.append(row(p(q.title), button('Resume', () => mutate(s => { if (C.sideCount(s) >= 3) throw Error('Park, skip or finish a side quest first.'); s.sideQuests.find(x => x.id === q.id).parked = false; }))));
       content.append(parked);
     }
+  }
+  function sessionDesk() {
+    const plan = state.plan, q = plan && C.find(state, plan.quest), ready = q && C.available(state, q.id) && !C.done(state, q.id);
+    const desk = E('section', { class: `qj-session-desk ${plan ? 'has-plan' : ''}` }, E('div', { class: 'qj-session-mark', attrs: { 'aria-hidden': 'true' } }, art('music')), E('div', { class: 'qj-session-copy' }, label(plan ? 'YOUR NEXT SESSION / BOOKMARKED' : 'TUNE IN / FIND YOUR NEXT MOVE'), E('h3', { text: plan ? q.title : 'How much room have you got today?' }), p(plan ? plan.action : 'Two quiet minutes or a proper session. Pick something that fits.'), plan ? label(`${plan.minutes} MIN${ready ? ' · READY WHEN YOU ARE' : ' · QUEST PAUSED OR WAITING FOR AN EARLIER STEP'}`) : null));
+    desk.append(row(ready ? button('Pick up here →', () => questDetail(q.id, plan.minutes === 2 ? 'tiny' : 'normal'), 'qj-primary') : null, button('Find my next move', sessionPicker, ready ? 'qj-quiet' : 'qj-primary'), plan ? button('Clear bookmark', () => mutate(s => { s.plan = null; }, 'Bookmark cleared. Quest progress is unchanged.'), 'qj-quiet') : null));
+    content.append(desk);
+  }
+  function sessionPicker() {
+    dialog('Find your next move', (body, d) => {
+      const minutes = E('select', { attrs: { 'aria-label': 'Time available' } }, ...[2, 5, 15, 30].map(n => E('option', { value: String(n), text: `${n} minutes` }))); minutes.value = '5';
+      const energy = E('select', { attrs: { 'aria-label': 'Energy today' } }, E('option', { value: 'steady', text: 'Ready to make something' }), E('option', { value: 'low', text: 'Just help me start' }));
+      const path = E('select', { attrs: { 'aria-label': 'What sounds good' } }, E('option', { value: 'any', text: 'Any path' }), ...C.paths.map(p => E('option', { value: p.id, text: p.name })));
+      const results = E('div', { class: 'qj-picks', attrs: { 'aria-label': 'Suggested next moves', 'aria-live': 'polite' } });
+      const paint = () => {
+        const picks = C.recommend(state, { minutes: Number(minutes.value), energy: energy.value, path: path.value });
+        results.replaceChildren();
+        for (const pick of picks) {
+          const open = async planned => {
+            const q = await mutate(s => { const chosen = C.choose(s, pick); if (planned) C.planQuest(s, chosen.id, pick.action, pick.minutes); return chosen; }, planned ? 'Next session bookmarked. No XP added.' : 'Quest ready. No XP added.');
+            d.close(); if (planned) navigate('adventure'); else questDetail(q.id, pick.mode);
+          };
+          results.append(E('article', { class: 'qj-pick', style: { '--path': pathOf(pick.path).color } }, label(`${pathOf(pick.path).name} · ${pick.minutes} MIN${pick.mode === 'tiny' ? ' START' : ''}`), E('h3', { text: pick.title }), p(pick.action, 'qj-pick-action'), p(pick.reason), row(button('Try this now', () => open(false), 'qj-primary'), button('Plan this next', () => open(true), 'qj-quiet'))));
+        }
+        if (!picks.length) results.append(p('No available quest on this path right now. Free a side-quest slot, resume a campaign, or try another path.'), button('Browse campaigns', () => { d.close(); navigate('campaigns'); }, 'qj-quiet'));
+      };
+      for (const select of [minutes, energy, path]) select.addEventListener('change', paint);
+      body.append(E('div', { class: 'qj-picker-controls' }, E('label', { class: 'qj-field' }, label('TIME'), minutes), E('label', { class: 'qj-field' }, label('ENERGY'), energy), E('label', { class: 'qj-field' }, label('PATH'), path)), p('Picks come from your available quests, saved ideas and today’s suggestions. Choosing an idea or daily suggestion accepts it onto your side-quest board; no XP is earned just for choosing.'), results); paint();
+    }, 'ONE GOOD NEXT STEP');
+  }
+  function planNote(qid) {
+    const q = C.find(state, qid), old = state.plan?.quest === qid ? state.plan : null;
+    dialog('Leave yourself a starting note', (body, d) => {
+      const action = field('When I come back, start by…', { value: old?.action || state.tiny[qid] || q.tiny, max: 500, multiline: true });
+      const minutes = E('select', { attrs: { 'aria-label': 'Next session length' } }, ...[...new Set([2, 5, 15, 30, old?.minutes || 5])].sort((a, b) => a - b).map(n => E('option', { value: String(n), text: `${n} minutes` }))); minutes.value = String(old?.minutes || 5);
+      body.append(action.node, E('label', { class: 'qj-field' }, label('SESSION LENGTH'), minutes), p('One bookmark at a time. It replaces the previous starting note, keeps your quest progress, and waits here without a deadline.'), button('Save starting note', async () => { await mutate(s => C.planQuest(s, qid, action.input.value, Number(minutes.value)), 'Starting note saved for your next session.'); d.close(); navigate('adventure'); }, 'qj-primary'));
+    }, 'MAKE COMING BACK EASIER');
   }
   async function skipQuest(qid) { await mutate(s => C.skip(s, qid), 'Quest set aside. No completion XP added. You can revisit it below.'); if (!root.querySelector('dialog[open]')) root.querySelector('[data-focus="current"]')?.focus({ preventScroll: true }); }
   function ideaBox() {
@@ -280,6 +317,7 @@ const QuestJournal = (() => {
         body.append(label(`✓ COMPLETED · ${q.xp} XP`), p(q.done), p(r.note || 'You kept your promise to this quest.'), artifactPreview(r.artifact), row(button('Add or edit keepsake', () => { d.close(); completionForm(qid, true); }), button('Undo completion', async () => { await mutate(s => C.undo(s, qid), 'Completion undone. Your earlier small start is kept.'); d.close(); }, 'qj-quiet'))); return;
       }
       if (C.skipped(state, qid)) { body.append(label('SET ASIDE · NO COMPLETION XP'), p(q.done), p('Your earlier small-start XP is kept. Bring this back whenever it fits.'), button('Revisit quest', async () => { await mutate(s => C.revisit(s, qid), 'Quest restored.'); d.close(); navigate('adventure'); }, 'qj-primary')); return; }
+      if (state.plan?.quest === qid) body.append(E('aside', { class: 'qj-starting-note' }, label('YOUR STARTING NOTE'), p(state.plan.action)));
       const options = E('div', { class: 'qj-mode', attrs: { role: 'group', 'aria-label': 'Quest size' } }), detail = E('div', { class: 'qj-quest-detail' });
       const paint = () => {
         options.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
@@ -291,7 +329,7 @@ const QuestJournal = (() => {
       };
       for (const [value, name] of [['tiny', '2-minute start'], ['normal', 'Focused quest'], ['deep', 'Deep dive']]) { const b = button(name, () => { mode = value; paint(); }); b.dataset.mode = value; options.append(b); }
       body.append(options, detail, E('div', { class: 'qj-quest-tools' }, label('MAKE IT EASIER TO START'), row(q.tool && q.tool !== 'files' ? button(q.tool === 'lab' ? 'Open Three.js Lab ↗' : 'Open creative tool ↗', async () => { d.close(); await openTool(q.tool); }) : null, button('Focus for 5 minutes', async () => { await focus(qid, 5); d.close(); }), button('Prepare Astra draft', () => { d.close(); draftQuest(q); }, 'qj-quiet'))));
-      body.append(row(button('Skip for now →', async () => { await skipQuest(qid); d.close(); }, 'qj-quiet'), button('Suggest a different quest', () => { d.close(); ideaForm(); }, 'qj-quiet')));
+      body.append(row(button('Leave a starting note', () => { d.close(); planNote(qid); }, 'qj-quiet'), button('Skip for now →', async () => { await skipQuest(qid); d.close(); }, 'qj-quiet'), button('Suggest a different quest', () => { d.close(); ideaForm(); }, 'qj-quiet')));
       if (!q.campaign) body.append(button('Park this side quest', async () => { await mutate(s => { s.sideQuests.find(x => x.id === qid).parked = true; if (s.focus?.quest === qid) s.focus = null; }, 'Parked, with your progress kept.'); d.close(); }, 'qj-quiet'));
       paint();
     }, path.name);
@@ -306,8 +344,8 @@ const QuestJournal = (() => {
       const confirm = E('input', { type: 'checkbox', attrs: { 'aria-label': 'I reached this finish line' } }); confirm.checked = edit;
       body.append(label('DONE MEANS'), p(q.done, 'qj-objective'), note.node, E('label', { class: 'qj-field' }, label('KEEP A SOUVENIR (OPTIONAL)'), attach), fileName, button('Remove attachment', () => { artifact = null; attach.value = ''; fileName.textContent = 'No file attached.'; }, 'qj-quiet'), E('label', { class: 'qj-confirm' }, confirm, E('span', { text: 'I reached this finish line.' })), button(edit ? 'Save keepsake' : `Complete quest · +${q.xp - C.earned(state, q)} XP`, async () => {
         if (!confirm.checked) throw Error('Confirm the finish line, or return to the smaller step.');
-        const before = C.stats(state), points = await mutate(s => { if (edit) { s.records[qid] = { ...s.records[qid], note: C.text(note.input.value, 2000), artifact }; return 0; } return C.complete(s, qid, { note: note.input.value, artifact }); }, 'Quest saved. Take a moment to enjoy that.');
-        d.close(); if (!edit) { const after = C.stats(state); celebrate(after.level.n > before.level.n ? `Level ${after.level.n}. A little further.` : after.campaigns > before.campaigns ? 'Campaign complete. You finished it.' : 'Quest complete.', `+${points} XP · ${q.title}`); }
+        const beforeState = C.clone(state), before = C.stats(beforeState), points = await mutate(s => { if (edit) { s.records[qid] = { ...s.records[qid], note: C.text(note.input.value, 2000), artifact }; return 0; } return C.complete(s, qid, { note: note.input.value, artifact }); }, 'Quest saved. Take a moment to enjoy that.');
+        d.close(); if (!edit) { const after = C.stats(state), gains = C.gains(beforeState, state); celebrate(after.level.n > before.level.n ? `Level ${after.level.n}. A little further.` : after.campaigns > before.campaigns ? 'Campaign complete. You finished it.' : 'Quest complete.', `+${points} XP · ${q.title}`, [...gains.skills.map(s => `Skill reached: ${s.name}`), ...gains.rewards.map(r => `Ready to claim: ${r}`)]); }
       }, 'qj-primary'));
     }, pathOf(q.path).name);
   }
