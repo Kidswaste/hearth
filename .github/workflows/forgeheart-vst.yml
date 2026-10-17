@@ -1,0 +1,22 @@
+name: Forgeheart VST3 build
+on:
+  push:
+    branches: ['codex/creative-workbenches']
+    paths: ['plugins/forgeheart/**', '.github/workflows/forgeheart-vst.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S plugins/forgeheart -B build/forgeheart -A x64
+      - name: Build both VST3s
+        run: cmake --build build/forgeheart --config Release --parallel 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forgeheart-VST3-Windows
+          path: build/forgeheart/*_artefacts/Release/VST3/*.vst3
+          if-no-files-found: error

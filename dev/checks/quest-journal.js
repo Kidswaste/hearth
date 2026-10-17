@@ -14,7 +14,7 @@ QuestReview.run = () => ({ promise: Promise.resolve({ status: 'reviewed', score:
 const submitFixture = async () => { input('External chat link', 'https://chatgpt.com/c/journal-fixture'); input('Paste the actual result from that chat', 'Fixture output: a named tile export with violet, cream and dark green colors and a checked seam.'); await press('Use this pasted result'); await press('Submit proof & ask Astra'); };
 check(QuestCore.xp(QuestJournal.snapshot()) === 0, 'fresh journal starts at zero');
 check(Commands.list().some(c => c.name === 'quests'), '/quests registered');
-check(getComputedStyle(root().querySelector('.qj-traveller .qj-mini-path')).getPropertyValue('--path').trim() === '#b8a0fa', 'skill path colors use actual CSS variables');
+check(getComputedStyle(root().querySelector('.qj-traveller .qj-mini-path')).getPropertyValue('--path').trim() === QuestCore.paths[0].color, 'skill path colors use the current catalog palette through CSS variables');
 const studioNav = root().querySelector('.qj-nav');
 check(studioNav.querySelectorAll('button svg').length === 5 && !studioNav.querySelector('parsererror'), 'five original SVG destinations render');
 for (const [page, selector] of [['campaigns', '.qj-campaign'], ['skills', '.qj-branch'], ['rewards', '.qj-reward'], ['collection', '.qj-empty'], ['adventure', '.qj-hero']]) {
@@ -76,6 +76,7 @@ check(root().querySelectorAll('.qj-branch').length === 4 && root().querySelector
 check(root().querySelectorAll('.qj-branch')[0].querySelectorAll('.earned').length === 3, 'visual skills unlock at earned thresholds');
 root().querySelector('.qj-celebrate')?.remove(); document.querySelectorAll('.toast-x').forEach(b => b.click());
 await smoke({ shot: window.SMOKE_SAVES + '/quest-skills.png' });
+root().querySelector('.qj-path-milestones').open = true;
 await press(/Texture keeperEARNED/); check(scope().textContent.includes('reached this milestone'), 'skill detail opens'); await close();
 QuestJournal.navigate('rewards'); const xpBefore = QuestCore.xp(QuestJournal.snapshot());
 await press('Redeem reward'); await press('Confirm redemption');

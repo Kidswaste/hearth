@@ -12,18 +12,21 @@ const QuestJournal = (() => {
   // quest names, notes and imported data always go through textContent.
   function art(kind) {
     const drawings = {
-      room: `<path d="M16 16h128v100H16Z" fill="#112b3c" stroke="#658d91" stroke-width="5"/><path d="M20 91 43 63 64 83 93 48 140 88v24H20Z" fill="#244e58" stroke="none"/><path d="M20 104 56 84 80 94 116 76 140 99v13H20Z" fill="#3f6a69" stroke="none"/><circle cx="112" cy="40" r="13" fill="#e9d9ab" stroke="none"/><g class="qj-night-stars" fill="#d6dcb3" stroke="none"><circle cx="35" cy="37" r="2"/><circle cx="72" cy="30" r="1.5"/><circle cx="53" cy="52" r="1.5"/><circle cx="132" cy="67" r="2"/></g><path d="M80 18v94M18 70h124" stroke="#769b94" stroke-width="4"/><path d="M11 119h139" stroke="#bd9c70" stroke-width="7"/>`,
-      adventure: `<path d="M35 110 29 27Q29 20 38 19L113 12 125 105Z" fill="#204c50"/><g class="qj-art-lift"><path d="m33 22 77-8 8 87-78 10Z" fill="#eedfbc"/><path d="m43 22 8 87M49 42l49-5M51 49l35-3"/><path d="m59 64 15-2 2 15-15 2Z" fill="#e98e6b"/><path d="m83 63 7 5 10-15M60 91l39-4"/><path d="m88 13 2 23 7-6 7 4-2-23" fill="#d96951"/></g><path d="m117 46 8-2 10 49-7 7-5-5Z" fill="#dfb953"/><path d="m128 100 5 7 2-14" fill="#eedfbc"/>`,
-      campaigns: `<path d="m20 48 21-10 94 1 7 70-111 4Z" fill="#c38257"/><path d="m28 56 108-6M31 99l105-4M45 56l3 42M119 52l2 43"/><g class="qj-art-lift"><path d="m42 42-3-22 54-5 8 28" fill="#e5dbba"/><path d="m52 29 30-3M55 36l20-2"/><path d="m78 47 4-18 47 7-2 12" fill="#8eac9c"/><path d="m92 38 21 3"/></g><path d="m62 65 47-2 1 21-47 2Z" fill="#eedfbc"/><path d="m74 76 25-1"/><circle cx="37" cy="65" r="2" fill="#253b3a"/><circle cx="130" cy="61" r="2" fill="#253b3a"/>`,
-      skills: `<path d="m23 26 108-5 7 87-108 5Z" fill="#657d79"/><path d="m31 33 91-4 3 57-90 4Z" fill="#253f42"/><path d="m62 32 3 56M94 30l3 56" stroke="#88aaa0"/><g fill="#e4c56a"><circle cx="47" cy="47" r="7"/><circle cx="78" cy="45" r="7"/><circle cx="109" cy="44" r="7"/></g><path d="M47 42v5M78 40v5M109 39v5"/><g fill="#98b8ad"><circle cx="47" cy="72" r="4"/><circle cx="79" cy="70" r="4"/><circle cx="110" cy="69" r="4"/></g><path class="qj-art-cable" d="M47 72C22 120 102 131 79 70" fill="none" stroke="#e78e70" stroke-width="5"/><path d="m102 97 22-1" stroke="#eadcb9"/><circle class="qj-art-led" cx="118" cy="101" r="2" fill="#dce39b"/>`,
-      rewards: `<path d="M39 17h82l5 95H34Z" fill="#be6f57"/><path d="M47 26h65v55H44Z" fill="#243f42"/><g class="qj-art-lift"><path d="m51 34 18-2 2 16-19 1Z" fill="#ebce79"/><path d="m82 34 21 2-2 16-21-3Z" fill="#91b8a5"/><path d="m52 60 19-3 1 16-19 2Z" fill="#e78f71"/><path d="m82 60 20 1-1 15-20-1Z" fill="#b9adcb"/></g><path d="M43 54h69M48 91h47v13H47Z" fill="#273f3f"/><circle class="qj-art-led" cx="109" cy="96" r="6" fill="#ecd98f"/><path d="m30 112 101 1M44 116v6M117 116v6"/><path d="M64 10h31" stroke="#e9cc87" stroke-width="5"/>`,
-      collection: `<path d="m24 27 111-5 3 91-113 3Z" fill="#52726b"/><path d="m34 36 90-4 1 68-89 3Z" fill="#1d383b"/><path d="m34 70 91-3" stroke="#bb9270" stroke-width="6"/><path d="m43 61 6-16 19 1 4 16Z" fill="#b5accb"/><path d="m48 47 16 14M66 47 48 61"/><path d="m86 43 16-3 5 18-16 4Z" fill="#e8c666"/><path d="m47 83 25-2 2 15-26 1Z" fill="#d98a6d"/><path d="m85 94 4-16 18 1 2 13Z" fill="#86b5a1"/><path class="qj-art-door" d="m80 33 44-1 1 68-43 2Z" fill="#bad3c8" fill-opacity=".12"/><circle cx="88" cy="68" r="2" fill="#e6ce8e"/><path d="M31 116v5M129 115v5"/>`,
-      visual: `<path d="m25 39 74-18 39 28-75 23Z" fill="#b7a4ce"/><path d="m25 39 38 33v40L25 78Z" fill="#779d91"/><path d="m63 72 75-23-2 40-73 23Z" fill="#dbc778"/><path d="m44 35 39 31M63 30l38 30M83 25l37 29M45 56l73-23M63 72v40M83 66v40M103 60v40M122 54v39M26 59l37 33 73-23" fill="none" stroke="#304547"/><path d="m30 15 4-8 4 8 8 3-8 3-4 8-4-8-8-3Z" fill="#e5d9b7"/>`,
-      music: `<path d="m21 38 113-6 7 67-114 7Z" fill="#c99065"/><path d="m31 45 93-4 2 32-93 5Z" fill="#294548"/><g class="qj-art-reel"><circle cx="53" cy="60" r="11" fill="#e5d6ae"/><path d="m53 50 0 20M43 60h20"/></g><g class="qj-art-reel"><circle cx="103" cy="57" r="11" fill="#e5d6ae"/><path d="M103 47v20M93 57h20"/></g><path d="m61 91 9-12 23-2 11 12Z" fill="#e5d6ae"/><path d="m40 91 9-1M116 87l9-1" stroke="#294548" stroke-width="5"/>`,
-      game: `<path d="M40 43Q17 46 20 90T53 93l11-8 37-2 15 15q27 14 25-18l-8-31q-6-18-30-10l-39 2Z" fill="#8dad9e"/><path d="m40 56 11-1 1 11 11-1 1 11-12 1 1 12-11 1-1-12-11 1-1-11 12-1Z" fill="#2d4848"/><circle cx="112" cy="60" r="7" fill="#df8c6d"/><circle cx="126" cy="75" r="7" fill="#e4c56a"/><path d="M75 71h13M76 41Q70 14 98 14" fill="none"/>`,
-      life: `<path d="m42 54 56-3-4 54-41 2Z" fill="#e6cf94"/><path d="M98 60c35-10 29 33-3 26" fill="none" stroke="#e6cf94" stroke-width="8"/><path d="M60 42c-15-13 13-19 0-32M78 40c-10-11 10-14 2-24" fill="none" stroke="#92b4a9"/><path d="m29 111 88-3"/><path d="m58 69 9 8 17-15" fill="none" stroke="#527e77" stroke-width="4"/>`
+      terminal: `<path d="M19 12h123v82H19Z" fill="#212123" stroke="#49494b" stroke-width="4"/><path d="M27 21h107v60H27Z" fill="#09090b"/><path d="M36 33h28M36 41h16M36 50h44M36 66h11l6-13 9 18 10-23 9 14h42" stroke="#ff8c42" fill="none"/><path d="M62 95v12h35V95M45 113h70" stroke="#6b6b6d" stroke-width="5"/><circle class="qj-art-led" cx="129" cy="88" r="2" fill="#ffd75e"/><path d="m114 34 5 8-5 8-5-8Z" fill="#bd8bff"/>`,
+      forge: `<path d="m26 54 91-3 24 9-27 17-18 1-7 20 17 10-58 3 14-16-7-15-22-7Z" fill="#a1a1a3"/><path d="m27 54 84-3-10 16-64 3Z" fill="#cfcfd1"/><path d="m59 91 29-2M42 112l69-4"/><path d="m85 19 12 11-29 32-9-8Z" fill="#c48b5c"/><path d="m83 10 34 28-13 15-36-29Z" fill="#e4bf70"/><path d="m77 21 33 26"/><path d="m28 26 5-10 5 10 10 5-10 5-5 10-5-10-10-5Z" fill="#e9c780"/><path d="m124 15 6 10-6 13-6-13Z" fill="#b6a2d2"/><path d="m70 74 6 9 5-10" stroke="#313133"/>`,
+      deck: `<path d="m34 26 77-9 15 88-78 10Z" fill="#a7a7a9"/><path d="m24 40 90-12 10 82-90 10Z" fill="#dfaa79"/><g class="qj-art-lift"><path d="m41 34 94 8-8 75-94-8Z" fill="#eadcbc"/><path d="m49 46 73 6-3 39-73-6Z" fill="#363638"/><circle cx="65" cy="67" r="12" fill="#e9c577"/><circle cx="102" cy="70" r="12" fill="#b3a4cd"/><path d="m61 66 8 1m29 3 8 1M62 99l38 3"/><path d="m74 90 18 1 6 12-31-2Z" fill="#b77b58"/></g><path d="m17 26 5-11 5 11 11 5-11 4-5 11-5-11-11-4Z" fill="#eed59a"/>`,
+      room: `<path d="M16 16h128v100H16Z" fill="#1d1d1f" stroke="#858587" stroke-width="5"/><path d="M20 91 43 63 64 83 93 48 140 88v24H20Z" fill="#343436" stroke="none"/><path d="M20 104 56 84 80 94 116 76 140 99v13H20Z" fill="#49494b" stroke="none"/><circle cx="112" cy="40" r="13" fill="#e9d9ab" stroke="none"/><g class="qj-night-stars" fill="#d6dcb3" stroke="none"><circle cx="35" cy="37" r="2"/><circle cx="72" cy="30" r="1.5"/><circle cx="53" cy="52" r="1.5"/><circle cx="132" cy="67" r="2"/></g><path d="M80 18v94M18 70h124" stroke="#939395" stroke-width="4"/><path d="M11 119h139" stroke="#bd9c70" stroke-width="7"/>`,
+      adventure: `<path d="M35 110 29 27Q29 20 38 19L113 12 125 105Z" fill="#323234"/><g class="qj-art-lift"><path d="m33 22 77-8 8 87-78 10Z" fill="#eedfbc"/><path d="m43 22 8 87M49 42l49-5M51 49l35-3"/><path d="m59 64 15-2 2 15-15 2Z" fill="#e98e6b"/><path d="m83 63 7 5 10-15M60 91l39-4"/><path d="m88 13 2 23 7-6 7 4-2-23" fill="#d96951"/></g><path d="m117 46 8-2 10 49-7 7-5-5Z" fill="#dfb953"/><path d="m128 100 5 7 2-14" fill="#eedfbc"/>`,
+      campaigns: `<path d="m20 48 21-10 94 1 7 70-111 4Z" fill="#c38257"/><path d="m28 56 108-6M31 99l105-4M45 56l3 42M119 52l2 43"/><g class="qj-art-lift"><path d="m42 42-3-22 54-5 8 28" fill="#e5dbba"/><path d="m52 29 30-3M55 36l20-2"/><path d="m78 47 4-18 47 7-2 12" fill="#a4a4a6"/><path d="m92 38 21 3"/></g><path d="m62 65 47-2 1 21-47 2Z" fill="#eedfbc"/><path d="m74 76 25-1"/><circle cx="37" cy="65" r="2" fill="#29292b"/><circle cx="130" cy="61" r="2" fill="#29292b"/>`,
+      skills: `<path d="m23 26 108-5 7 87-108 5Z" fill="#78787a"/><path d="m31 33 91-4 3 57-90 4Z" fill="#2b2b2d"/><path d="m62 32 3 56M94 30l3 56" stroke="#a2a2a4"/><g fill="#e4c56a"><circle cx="47" cy="47" r="7"/><circle cx="78" cy="45" r="7"/><circle cx="109" cy="44" r="7"/></g><path d="M47 42v5M78 40v5M109 39v5"/><g fill="#b0b0b2"><circle cx="47" cy="72" r="4"/><circle cx="79" cy="70" r="4"/><circle cx="110" cy="69" r="4"/></g><path class="qj-art-cable" d="M47 72C22 120 102 131 79 70" fill="none" stroke="#e78e70" stroke-width="5"/><path d="m102 97 22-1" stroke="#eadcb9"/><circle class="qj-art-led" cx="118" cy="101" r="2" fill="#dce39b"/>`,
+      rewards: `<path d="M39 17h82l5 95H34Z" fill="#be6f57"/><path d="M47 26h65v55H44Z" fill="#2b2b2d"/><g class="qj-art-lift"><path d="m51 34 18-2 2 16-19 1Z" fill="#ebce79"/><path d="m82 34 21 2-2 16-21-3Z" fill="#aeaeb0"/><path d="m52 60 19-3 1 16-19 2Z" fill="#e78f71"/><path d="m82 60 20 1-1 15-20-1Z" fill="#b9adcb"/></g><path d="M43 54h69M48 91h47v13H47Z" fill="#2b2b2d"/><circle class="qj-art-led" cx="109" cy="96" r="6" fill="#ecd98f"/><path d="m30 112 101 1M44 116v6M117 116v6"/><path d="M64 10h31" stroke="#e9cc87" stroke-width="5"/>`,
+      collection: `<path d="m24 27 111-5 3 91-113 3Z" fill="#6b6b6d"/><path d="m34 36 90-4 1 68-89 3Z" fill="#262628"/><path d="m34 70 91-3" stroke="#bb9270" stroke-width="6"/><path d="m43 61 6-16 19 1 4 16Z" fill="#b5accb"/><path d="m48 47 16 14M66 47 48 61"/><path d="m86 43 16-3 5 18-16 4Z" fill="#e8c666"/><path d="m47 83 25-2 2 15-26 1Z" fill="#d98a6d"/><path d="m85 94 4-16 18 1 2 13Z" fill="#aaaaac"/><path class="qj-art-door" d="m80 33 44-1 1 68-43 2Z" fill="#cdcdcf" fill-opacity=".12"/><circle cx="88" cy="68" r="2" fill="#e6ce8e"/><path d="M31 116v5M129 115v5"/>`,
+      visual: `<path d="m25 39 74-18 39 28-75 23Z" fill="#b7a4ce"/><path d="m25 39 38 33v40L25 78Z" fill="#949496"/><path d="m63 72 75-23-2 40-73 23Z" fill="#dbc778"/><path d="m44 35 39 31M63 30l38 30M83 25l37 29M45 56l73-23M63 72v40M83 66v40M103 60v40M122 54v39M26 59l37 33 73-23" fill="none" stroke="#313133"/><path d="m30 15 4-8 4 8 8 3-8 3-4 8-4-8-8-3Z" fill="#e5d9b7"/>`,
+      music: `<path d="m21 38 113-6 7 67-114 7Z" fill="#c99065"/><path d="m31 45 93-4 2 32-93 5Z" fill="#2f2f31"/><g class="qj-art-reel"><circle cx="53" cy="60" r="11" fill="#e5d6ae"/><path d="m53 50 0 20M43 60h20"/></g><g class="qj-art-reel"><circle cx="103" cy="57" r="11" fill="#e5d6ae"/><path d="M103 47v20M93 57h20"/></g><path d="m61 91 9-12 23-2 11 12Z" fill="#e5d6ae"/><path d="m40 91 9-1M116 87l9-1" stroke="#2f2f31" stroke-width="5"/>`,
+      game: `<path d="M40 43Q17 46 20 90T53 93l11-8 37-2 15 15q27 14 25-18l-8-31q-6-18-30-10l-39 2Z" fill="#a5a5a7"/><path d="m40 56 11-1 1 11 11-1 1 11-12 1 1 12-11 1-1-12-11 1-1-11 12-1Z" fill="#323234"/><circle cx="112" cy="60" r="7" fill="#df8c6d"/><circle cx="126" cy="75" r="7" fill="#e4c56a"/><path d="M75 71h13M76 41Q70 14 98 14" fill="none"/>`,
+      life: `<path d="m42 54 56-3-4 54-41 2Z" fill="#e6cf94"/><path d="M98 60c35-10 29 33-3 26" fill="none" stroke="#e6cf94" stroke-width="8"/><path d="M60 42c-15-13 13-19 0-32M78 40c-10-11 10-14 2-24" fill="none" stroke="#acacae"/><path d="m29 111 88-3"/><path d="m58 69 9 8 17-15" fill="none" stroke="#747476" stroke-width="4"/>`
     };
-    const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 130" fill="none" stroke="#263c3d" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="80" cy="117" rx="61" ry="6" fill="#081d22" opacity=".23" stroke="none"/>${drawings[kind] || drawings.adventure}</svg>`;
+    const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 130" fill="none" stroke="#2a2a2c" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="80" cy="117" rx="61" ry="6" fill="#131315" opacity=".23" stroke="none"/>${drawings[kind] || drawings.adventure}</svg>`;
     const svg = new DOMParser().parseFromString(source, 'image/svg+xml').documentElement;
     svg.classList.add('qj-art'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
     return document.importNode(svg, true);
@@ -38,14 +41,17 @@ const QuestJournal = (() => {
   function menuNote(id) {
     const destination = destinations.find(d => d[0] === id) || destinations[0];
     const note = root?.querySelector('.qj-bench-caption');
-    if (note) note.textContent = id === 'commissions' ? 'The commission wall / Make it. Show it. Take the next step.' : `${destination[1]} / ${destination[3]}`;
+    if (note) note.textContent = id === 'world' ? 'Paris after hours / A fictional city for real adventures.' : id === 'life' ? 'Life expeditions / Your real world has side quests too.' : id === 'deck' ? 'The mixtape / Find something that makes you want to begin.' : id === 'commissions' ? 'The commission wall / Make it. Show it. Take the next step.' : `${destination[1]} / ${destination[3]}`;
   }
   function syncMotion() {
     if (root) root.dataset.motion = state?.motion !== false && !document.hidden && H.activeId === 'tool:quests' ? 'on' : 'off';
   }
   const notice = text => { if (status) status.textContent = text; const local = root?.querySelector('dialog[open] .qj-dialog-status'); if (local) local.textContent = text; };
   function button(text, fn, cls = '', key) {
-    return E('button', { type: 'button', class: `qj-button ${cls}`, text, ...(key ? { dataset: { focus: key } } : {}), on: { click: async e => { const b = e.currentTarget; b.disabled = true; try { await fn(e); } catch (err) { notice(err.message || 'That action could not be saved.'); } finally { b.disabled = false; } } } });
+    return E('button', { type: 'button', class: `qj-button ${cls}`, text, ...(key ? { dataset: { focus: key } } : {}), on: { click: async e => { const b = e.currentTarget; b.disabled = true; try { await fn(e); } catch (err) { notice(err.message || 'That action could not be saved.'); } finally { b.disabled = false; } } } }, E('span', { class: 'qj-glint', attrs: { 'aria-hidden': 'true' } }));
+  }
+  function glaze(parent) {
+    parent.querySelectorAll('.qj-button').forEach(b => { if (!b.querySelector(':scope > .qj-glint')) b.append(E('span', { class: 'qj-glint', attrs: { 'aria-hidden': 'true' } })); });
   }
   function field(title, opts = {}) {
     const input = E(opts.multiline ? 'textarea' : 'input', { ...(opts.multiline ? {} : { type: opts.type || 'text' }), value: opts.value || '', attrs: { 'aria-label': title, maxlength: opts.max || 500, ...(opts.multiline ? { rows: opts.rows || 3 } : {}), ...(opts.placeholder ? { placeholder: opts.placeholder } : {}), ...(opts.type === 'number' ? { min: 1, max: 10000 } : {}) } });
@@ -60,7 +66,7 @@ const QuestJournal = (() => {
     const body = E('div', { class: 'qj-dialog-body' });
     d.append(E('header', { class: 'qj-dialog-head' }, E('div', {}, label(subtitle || 'QUEST JOURNAL'), E('h2', { text: title })), button('×', () => d.close(), 'qj-close')), body);
     root.append(d); d.addEventListener('close', () => { d.remove(); if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); });
-    build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); d.showModal(); return d;
+    build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); d.showModal(); return d;
   }
   function mutate(fn, message = 'Progress saved.') {
     const task = saving.catch(() => {}).then(async () => {
@@ -86,18 +92,25 @@ const QuestJournal = (() => {
   function celebrate(title, text, gains = []) {
     lastCelebration = { title, text, gains };
     const card = E('div', { class: 'qj-celebrate', attrs: { role: 'status' } }, E('span', { class: 'qj-celebrate-mark', text: '✦' }), E('div', {}, E('strong', { text: title }), p(text), gains.length ? E('div', { class: 'qj-gains' }, ...gains.map(text => E('span', { text }))) : null), button('Dismiss', () => card.remove(), 'qj-quiet'));
+    if (gains.some(x => x.startsWith('Title earned:'))) card.querySelector('.qj-gains').append(button('See titles →', () => { card.remove(); navigate('skills'); }, 'qj-quiet'));
     root.querySelector('.qj-celebrate')?.remove(); root.append(card);
     setTimeout(() => card.remove(), gains.length ? 12000 : 6500);
   }
   function render() {
     if (!state || !content) return;
     root.dataset.view = page;
+    root.style.setProperty('--qj-signal', C.consoleAccents.find(a => a.id === state.workstation.accent).color);
+    root.dataset.lamp = state.workstation.lamp ? 'on' : 'off';
+    const title = C.activeTitle(state), consoleName = root.querySelector('.qj-console-name'), trophy = root.querySelector('.qj-desk-trophy'), lamp = root.querySelector('.qj-lamp-toggle');
+    if (consoleName) consoleName.textContent = `${state.workstation.callsign} / ${title?.name || 'Independent creator'}`;
+    if (trophy) { trophy.replaceChildren(...(title ? [art(title.art), label(title.name)] : [])); trophy.hidden = !title; }
+    if (lamp) { lamp.textContent = state.workstation.lamp ? 'Lamp on' : 'Lamp off'; lamp.setAttribute('aria-pressed', String(state.workstation.lamp)); }
     const focused = root.contains(document.activeElement) ? document.activeElement?.dataset.focus : null;
     const totals = C.stats(state), lv = totals.level;
     root.querySelector('.qj-profile')?.remove();
     const profile = E('div', { class: 'qj-profile' }, E('div', { class: 'qj-level', attrs: { 'aria-label': `Level ${lv.n}` }, text: String(lv.n) }), E('div', { class: 'qj-level-info' }, label(`LEVEL ${lv.n} · ${lv.n < 3 ? 'THE BEGINNING' : lv.n < 6 ? 'FINDING YOUR WAY' : 'MAKING YOUR MARK'}`), E('div', { class: 'qj-xp-line' }, E('strong', { text: `${totals.xp.toLocaleString()} XP` }), E('span', { text: `${lv.left} to level ${lv.n + 1}` })), meter(totals.xp - lv.base, lv.end - lv.base, 'Level progress')), E('div', { class: 'qj-wallet', attrs: { title: 'Earn one spark for every five XP. Redeeming rewards never spends XP.' } }, E('b', { text: `✧ ${totals.sparks}` }), label('SPARKS')));
     root.querySelector('.qj-top').append(profile);
-    root.querySelectorAll('[data-page]').forEach(b => b.setAttribute('aria-current', b.dataset.page === (page === 'commissions' ? 'campaigns' : page) ? 'page' : 'false'));
+    root.querySelectorAll('[data-page]').forEach(b => b.setAttribute('aria-current', b.dataset.page === (['commissions', 'deck', 'life', 'world'].includes(page) ? 'campaigns' : page) ? 'page' : 'false'));
     menuNote(page);
     const rewardCount = root.querySelector('[data-page="rewards"] .qj-object-count');
     if (rewardCount) rewardCount.textContent = `${totals.sparks} sparks`;
@@ -105,9 +118,9 @@ const QuestJournal = (() => {
     if (motion) { motion.textContent = state.motion === false ? 'Motion off' : 'Motion on'; motion.setAttribute('aria-pressed', String(state.motion !== false)); }
     syncMotion();
     content.replaceChildren();
-    if (page === 'adventure') adventure(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
+    if (page === 'adventure') adventure(); else if (page === 'life') lifeBoard(); else if (page === 'world') worldMap(); else if (page === 'deck') mixtape(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
     if (focused && !root.querySelector('dialog[open]')) [...root.querySelectorAll('[data-focus]')].find(b => b.dataset.focus === focused)?.focus({ preventScroll: true });
-    tick();
+    glaze(root); tick();
   }
   function sectionHeading(eyebrow, title, description, action) {
     return E('header', { class: 'qj-section-head' }, E('div', {}, label(eyebrow), E('h2', { text: title }), description ? p(description) : null), action || null);
@@ -116,6 +129,12 @@ const QuestJournal = (() => {
   function adventure() {
     const campaign = state.campaigns.find(c => c.id === state.active && !c.paused), quest = C.next(state, campaign), totals = C.stats(state);
     sessionDesk();
+    content.append(E('section', { class: 'qj-life-invite' }, art('terminal'), E('div', {}, label('SIDE QUESTS / THE REAL WORLD'), E('h3', { text: 'Your life has a quest log.' }), p('Clear a landing pad. Defeat an open tab. Rescue the almost-finished. Six short expeditions, at your pace.')), button('Explore life quests →', () => navigate('life'), 'qj-primary')));
+    if (state.workstation.target) {
+      const m = C.mastery(state, state.workstation.target);
+      content.append(E('section', { class: 'qj-goal-strip qj-specialty-target', style: { '--path': pathOf(m.route.path).color } }, E('div', {}, label('PINNED SPECIALIZATION'), E('strong', { text: m.route.name }), p(m.next ? `${m.count} / ${m.next.required} reviewed finishes toward ${m.next.name}` : 'All three titles earned. The work is yours to keep.')), button('Open my route →', () => specializationDetail(m.route.id), 'qj-quiet')));
+    }
+    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('THE MIXTAPE / 30 SMALL ADVENTURES'), E('h3', { text: 'Something you haven’t tried yet.' }), p('Make a demo. Bend a sound. Fix a tiny world. Find your spark in three cards.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
     content.append(E('section', { class: 'qj-commission-invite' }, E('div', {}, label('NEW / MADE FOR YOUR KIND OF PROJECTS'), E('h3', { text: 'Demos. Loops. Visuals. Forgeheart.' }), p('Make a small thing, show the evidence, get a real critique.')), button('Browse commissions →', () => navigate('commissions'), 'qj-primary')));
     const goal = state.rewards.find(r => r.id === state.rewardGoal);
     if (goal) content.append(E('section', { class: 'qj-goal-strip' }, E('div', {}, label('SAVING TOWARD'), E('strong', { text: goal.name }), meter(Math.min(C.balance(state), goal.cost), goal.cost, 'Reward goal')), button(C.balance(state) >= goal.cost ? 'Your treat is ready →' : `${goal.cost - C.balance(state)} sparks to go →`, () => navigate('rewards'), 'qj-quiet')));
@@ -215,7 +234,137 @@ const QuestJournal = (() => {
       if (idea) body.append(button('Remove idea', async () => { await mutate(s => { s.ideas = s.ideas.filter(i => i.id !== idea.id); }, 'Unused idea removed.'); d.close(); }, 'qj-quiet'));
     }, 'NO DEADLINE. JUST A POSSIBILITY.');
   }
+  function mapDrawing() {
+    // Authored geometry only. Names and saved notes are separate text nodes.
+    const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" fill="none" aria-hidden="true">
+      <defs><pattern id="qj-city-grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M25 0H0V25" stroke="#ffffff06"/></pattern><linearGradient id="qj-river" x2="1" y2="1"><stop stop-color="#65506e"/><stop offset="1" stop-color="#352f40"/></linearGradient></defs>
+      <rect width="1000" height="600" fill="#15171e"/><rect width="1000" height="600" fill="url(#qj-city-grid)"/>
+      <g fill="#292b34" stroke="#4a4654" stroke-width="2"><path d="M70 70 270 50 290 210 95 235Z"/><path d="m335 45 190 10-30 120-160 25Z"/><path d="m560 50 245 10-20 130-240 30Z"/><path d="m60 380 255-40 60 195-245 30Z"/><path d="m375 375 175 15 30 160-200-5Z"/><path d="m620 370 260-35 50 190-250 35Z"/></g>
+      <g stroke="#ffffff15" stroke-width="11"><path d="M40 260 290 225 560 230 960 155M300 0 310 215M540 0 515 240M50 335 315 300 600 330 950 300M340 345 350 580M605 355 630 600M900 0 840 250"/></g>
+      <path d="M-30 460C120 440 150 280 310 285S540 355 660 270 810 240 1030 170" stroke="#9a7c9d33" stroke-width="65"/><path d="M-30 460C120 440 150 280 310 285S540 355 660 270 810 240 1030 170" stroke="url(#qj-river)" stroke-width="52"/>
+      <path class="qj-map-current" d="M-30 460C120 440 150 280 310 285S540 355 660 270 810 240 1030 170" stroke="#dab8e1" stroke-opacity=".35" stroke-dasharray="3 22" stroke-width="2"/>
+      <g stroke="#a59c9a" stroke-width="14"><path d="m205 278 38 70M505 277l-8 73M738 215l18 63"/></g><g stroke="#292932" stroke-width="3"><path d="m205 278 38 70M505 277l-8 73M738 215l18 63"/></g>
+      <g fill="#4b4454" stroke="#797080"><path d="m355 245 18-69 18 69-18-10Z"/><path d="m363 208 21 0m-25 20h29"/><path d="m800 91 22-16 22 16v35h-44Z"/><path d="m80 495 30-18 30 18v27H80Z"/></g>
+      <g fill="#443e42" stroke="#7a6b6c"><circle cx="580" cy="120" r="22"/><circle cx="610" cy="102" r="17"/><circle cx="630" cy="132" r="20"/><circle cx="145" cy="86" r="16"/><circle cx="111" cy="96" r="20"/><circle cx="874" cy="472" r="23"/></g>
+      <g fill="#f4c77d"><rect x="113" y="181" width="7" height="9"/><rect x="130" y="181" width="7" height="9"/><rect x="400" y="100" width="7" height="9"/><rect x="416" y="100" width="7" height="9"/><rect x="808" y="98" width="7" height="9"/><rect x="829" y="98" width="7" height="9"/><rect x="95" y="500" width="7" height="9"/><rect x="115" y="500" width="7" height="9"/></g>
+      <g stroke="#8c7b96" stroke-width="2" stroke-dasharray="5 7"><path d="M870 250 960 320 1005 300M865 262l95 70 45-20"/></g>
+      <path d="m924 45 0 35m-9-20 9-15 9 15" stroke="#d2b6db" stroke-width="2"/><text x="924" y="99" text-anchor="middle" fill="#a895b1" font-family="monospace" font-size="12">N</text>
+      <text x="36" y="570" fill="#8a8095" font-family="monospace" font-size="11" letter-spacing="3">PARIS // REIMAGINED</text><text x="565" y="292" fill="#cbb3d0" font-family="serif" font-style="italic" font-size="17" transform="rotate(-18 565 292)">la Seine des songes</text>
+    </svg>`;
+    return document.importNode(new DOMParser().parseFromString(source, 'image/svg+xml').documentElement, true);
+  }
+  function worldMap() {
+    content.append(sectionHeading('PARIS AFTER HOURS / A FICTIONAL CITY', 'There’s a world outside the studio.', 'Imaginary neighborhoods. Real people, small adventures and a train you might actually take. Pick a place to begin.', row(button('Friends & dates', friendsBook, 'qj-quiet'), button('Plan an outing', () => worldPlanForm(), 'qj-primary'))));
+    const selected = C.districts.find(d => d.id === state.world.selected), layout = E('div', { class: 'qj-world-layout' }), map = E('section', { class: 'qj-world-map', attrs: { 'aria-label': 'Fictional Paris destinations' } }, mapDrawing());
+    for (const district of C.districts) {
+      const campaign = state.campaigns.find(c => c.id === district.route), count = campaign?.quests.filter(q => C.done(state, q.id)).length || 0;
+      const b = button('', async () => {
+        await mutate(s => { s.world.selected = district.id; }, `${district.name} selected.`);
+        // The old button is disabled during save and loses focus before render.
+        if (page === 'world' && H.activeId === 'tool:quests' && !root.querySelector('dialog[open]')) root.querySelector(`[data-focus="district-${district.id}"]`)?.focus({ preventScroll: true });
+      }, 'qj-map-pin', `district-${district.id}`);
+      b.style.setProperty('--path', district.color); b.style.left = district.x + '%'; b.style.top = district.y + '%'; b.dataset.district = district.id;
+      b.setAttribute('aria-label', `Visit ${district.name}`); b.setAttribute('aria-pressed', String(district.id === selected.id));
+      b.append(E('span', { class: 'qj-pin-mark', text: district.id === 'gare' ? '↗' : count === 3 ? '✦' : '◇', attrs: { 'aria-hidden': 'true' } }), E('strong', { text: district.name })); map.append(b);
+    }
+    const panel = E('aside', { class: 'qj-district', style: { '--path': selected.color } }, art(selected.art), label(selected.subtitle), E('h3', { text: selected.name }), p(selected.why));
+    if (selected.route) panel.append(button('Explore district quests →', () => lifeDetail(selected.route), 'qj-primary'));
+    panel.append(button(selected.id === 'gare' ? 'Plan Toulouse →' : 'Plan something here →', () => worldPlanForm({ district: selected.id, kind: selected.id === 'gare' ? 'trip' : 'outing', destination: selected.id === 'gare' ? 'Toulouse' : 'Paris', title: selected.id === 'gare' ? 'A little trip to Toulouse' : '' }), 'qj-primary'), button('All life expeditions', () => navigate('life'), 'qj-quiet'), p('These are fictional districts, not navigation directions. Choose a real venue in your plan.', 'qj-map-note'));
+    layout.append(map,panel); content.append(layout);
+    if (state.world.friends.length) {
+      content.append(sectionHeading('YOUR CO-OP CIRCLE', 'Who would make this more fun?', 'Music, games, a catch-up. Pick someone to draft a plan around the things you share.'));
+      const circle=E('div',{class:'qj-friend-picks'});
+      for(const friend of state.world.friends){const b=button('',()=>worldPlanForm({friendId:friend.id,title:C.friendSuggestion(friend),district:'cafe',destination:'Paris'}),'qj-friend-pick');b.dataset.friend=friend.id;b.append(E('strong',{text:friend.name}),E('span',{text:friend.interests||'Add a shared interest'}),label(C.friendSuggestion(friend)+' →'));circle.append(b);}
+      content.append(circle);
+    }
+    content.append(sectionHeading('DATES ON THE HORIZON', 'Good reasons to go.', 'Saved birthdays and New Year’s Eve appear here. Dates are local notes; no notifications or bookings are created.', button('+ Add a friend', () => friendForm(), 'qj-quiet')));
+    const dates = E('div', { class: 'qj-occasion-grid' });
+    for (const event of C.occasions(state).slice(0,6)) {
+      const existing = state.world.plans.find(p => p.kind === event.kind && p.friendId === event.friendId && p.date === event.date && p.status !== 'archived');
+      dates.append(E('article', { class: 'qj-occasion' }, label(event.date), E('h3', { text: event.title }), button(existing ? 'Open this plan' : 'Make a plan →', () => existing ? worldPlanDetail(existing.id) : worldPlanForm({ ...event, id: undefined, district:'quai', destination:'Paris' }), 'qj-quiet')));
+    }
+    content.append(dates,sectionHeading('YOUR OUTGOING QUEST LOG', 'Plans with somewhere to go.', 'A plan becomes three quests: make it possible, prepare the invitation, bring back a real moment.'));
+    const plans = state.world.plans.filter(p => p.status !== 'archived');
+    if (!plans.length) content.append(p('No plans yet. Start with a coffee, a shared album, a birthday idea or a Toulouse weekend.'));
+    const grid = E('div', { class: 'qj-world-plans' });
+    for (const plan of plans) { const friend = state.world.friends.find(f => f.id === plan.friendId), c = state.campaigns.find(c => c.id === `c-world-${plan.id}`); grid.append(E('article', { class: 'qj-world-plan', dataset: { plan:plan.id } }, label(`${plan.kind.toUpperCase()} / ${plan.date || 'DATE OPEN'} / ${plan.status.toUpperCase()}`), E('h3', { text:plan.title }), p([plan.destination,plan.venue,friend?.name,plan.budget !== null ? `€${plan.budget} budget` : 'Budget open'].filter(Boolean).join(' · ')), c ? p(`${c.quests.filter(q => C.done(state,q.id)).length}/3 quest checkpoints finished`) : p('Choose a first step. Planning alone spends nothing.'), button('Open plan →', () => worldPlanDetail(plan.id), 'qj-primary'))); }
+    content.append(grid);
+    const archived = state.world.plans.filter(p => p.status === 'archived');
+    if (archived.length) content.append(E('details', { class:'qj-milestones' }, E('summary', { text:`Resting plans (${archived.length})` }), ...archived.map(p => button(p.title, () => worldPlanDetail(p.id), 'qj-quiet'))));
+  }
+  function selection(title, entries, value) {
+    const input = E('select', { attrs: { 'aria-label': title } }, ...entries.map(([value,text]) => E('option', { value,text }))); input.value = value;
+    return { input,node:E('label',{class:'qj-field'},label(title),input) };
+  }
+  function friendsBook() {
+    dialog('Your co-op notebook', (body,d) => {
+      body.append(p('Nicknames, shared interests and birthdays. Stored locally in this journal; no contacts are imported or messaged.'),button('+ Add a friend', () => { d.close(); friendForm(); }, 'qj-primary'));
+      for (const f of state.world.friends) body.append(E('section',{class:'qj-life-brief'}, E('h3',{text:f.name}),p(f.interests || 'Add something you enjoy together.'),label(f.birthday ? `BIRTHDAY / ${f.birthday}` : 'BIRTHDAY UNKNOWN'),row(button('Plan together', () => { d.close(); worldPlanForm({friendId:f.id,title:C.friendSuggestion(f),district:'cafe',destination:'Paris'}); }),button('Edit friend', () => { d.close(); friendForm(f); },'qj-quiet'))));
+    },'PARIS / GOOD COMPANY');
+  }
+  function friendForm(friend) {
+    dialog(friend ? 'Edit your co-op friend' : 'Add a co-op friend', (body,d) => {
+      const name = field('Nickname',{value:friend?.name,max:80}), birthday = field('Birthday · MM-DD',{value:friend?.birthday,max:5,placeholder:'12-31 (optional)'}), interests = field('Things you enjoy together',{value:friend?.interests,max:300,multiline:true,placeholder:'Games, music, a café, exhibitions…'});
+      body.append(name.node,birthday.node,interests.node,button('Save friend',async () => { await mutate(s => C.saveFriend(s,{id:friend?.id,name:name.input.value,birthday:birthday.input.value,interests:interests.input.value}),'Friend saved in your local notebook.');d.close(); },'qj-primary'));
+    },'NO OUTREACH / JUST YOUR NOTES');
+  }
+  function worldPlanForm(seed = {}) {
+    dialog(seed.id ? 'Edit your adventure' : 'Plan a real little adventure', (body,d) => {
+      const title=field('Plan name',{value:seed.title,max:120}),kind=selection('Kind',[['outing','Small outing'],['birthday','Birthday'],['nye','New Year’s Eve'],['trip','Trip']],seed.kind||'outing'),district=selection('Map district',C.districts.map(x=>[x.id,x.name]),seed.district||state.world.selected),friend=selection('Who with',[['','Solo / decide later'],...state.world.friends.map(f=>[f.id,f.name])],seed.friendId||''),date=field('Date',{value:seed.date,type:'date'}),end=field('Return date · optional',{value:seed.endDate,type:'date'}),destination=field('City',{value:seed.destination||'Paris',max:100}),venue=field('Real place or meeting point',{value:seed.venue,max:160}),budget=field('Budget · EUR',{value:seed.budget==null?'':String(seed.budget),type:'number'}),note=field('Make the plan yours',{value:seed.note,max:500,multiline:true}); budget.input.min='0';budget.input.step='.01';
+      body.append(title.node,E('div',{class:'qj-form-pair'},kind.node,district.node),friend.node,E('div',{class:'qj-form-pair'},date.node,end.node),destination.node,venue.node,budget.node,note.node,p('Dates and budget can stay open. Accepted quest briefs keep their original scope if you edit this plan later.'),button('Save adventure',async () => { await mutate(s=>C.saveWorldPlan(s,{id:seed.id,title:title.input.value,kind:kind.input.value,district:district.input.value,friendId:friend.input.value,date:date.input.value,endDate:end.input.value,destination:destination.input.value,venue:venue.input.value,budget:budget.input.value,note:note.input.value}),'Adventure saved. No messages sent or travel booked.');d.close();navigate('world'); },'qj-primary'));
+    },'A DATE TO LOOK FORWARD TO');
+  }
+  function worldPlanDetail(pid) {
+    const plan=state.world.plans.find(p=>p.id===pid);if(!plan)return;
+    dialog(plan.title,(body,d)=>{
+      body.append(label(`${plan.date||'DATE OPEN'}${plan.endDate?' → '+plan.endDate:''} / ${plan.budget===null?'BUDGET OPEN':'€'+plan.budget+' BUDGET'}`),p([plan.destination,plan.venue].filter(Boolean).join(' / ')),p(plan.note||'Choose one small next step.'),row(button('Edit plan',()=>{d.close();worldPlanForm(plan);},'qj-quiet'),button(plan.status==='archived'?'Resume plan':'Let plan rest',async()=>{await mutate(s=>{const resting=plan.status!=='archived';s.world.plans.find(p=>p.id===pid).status=resting?'archived':'planning';const c=s.campaigns.find(c=>c.id==='c-world-'+pid);if(c){c.paused=resting;if(resting&&s.active===c.id)s.active=null;}},'Plan status saved; quest progress is kept.');d.close();},'qj-quiet')));
+      if(plan.status==='archived')return;
+      body.append(row(button('Prepare invitation',()=>{d.close();invitationDialog(pid);}),button('Make this a quest →',async()=>{const c=await mutate(s=>C.planCampaign(s,pid),'Three checkpoints ready. XP follows reviewed work, not creating a plan.');d.close();navigate('adventure');const next=C.next(state,c);if(next)questDetail(next.id);},'qj-primary')));
+      if(plan.kind==='trip'){
+        body.append(E('section',{class:'qj-life-brief'},label('FARE SCOUT / PARIS DEPARTURE'),p('Compare exact dates, journey time, luggage and transfers. A saved price is a note, not live availability. The budget below compares transport only; include accommodation and other costs in your plan.'),row(button('Research in Astra',()=>{d.close();draftWorld(C.tripResearch(plan));},'qj-primary'),button('Train options ↗',()=>window.hub.openExternal(plan.destination.toLowerCase()==='toulouse'?'https://www.sncf-connect.com/train/trajet/paris/toulouse':'https://www.sncf-connect.com/'),'qj-quiet'),button('Coach options ↗',()=>window.hub.openExternal(plan.destination.toLowerCase()==='toulouse'?'https://www.flixbus.fr/voyages-car/paris-toulouse':'https://www.flixbus.fr/'),'qj-quiet')),p('Provider pages open separately. Enter your dates there; Hearth does not prefill them or monitor prices.'),button('+ Save a fare quote',()=>{d.close();fareForm(pid);},'qj-quiet')));
+        for(const fare of plan.fares){const status=C.fareStatus(plan,fare);body.append(E('article',{class:'qj-fare'},label(status.label),E('h3',{text:`€${fare.amount} / ${fare.scope==='return'?'return':'one-way'} · ${fare.label}`}),p(`${fare.destination} · ${fare.date}${fare.endDate?' → '+fare.endDate:''} · recorded ${new Date(fare.checkedAt).toLocaleString()}`),p(status.withinBudget?'This saved transport quote fits your budget. Recheck before deciding.':'Compare the total trip cost before deciding.'),row(button('Recheck source ↗',()=>window.hub.openExternal(fare.url),'qj-quiet'),button('Remove quote',async()=>{await mutate(s=>{const p=s.world.plans.find(p=>p.id===pid);p.fares=p.fares.filter(f=>f.id!==fare.id);},'Quote removed.');d.close();worldPlanDetail(pid);},'qj-quiet'))));}
+      }
+    },'PARIS / YOUR OUTGOING LOG');
+  }
+  function invitationDialog(pid){dialog('An invitation in your own voice',(body)=>{const draft=field('Invitation draft',{value:C.invitation(state,pid),multiline:true,max:1500,rows:5});body.append(draft.node,p('Edit this, then copy it into the conversation you choose. Nothing is sent from here.'),button('Copy invitation',async()=>{await navigator.clipboard.writeText(draft.input.value);notice('Invitation copied. Send it yourself when it feels right.');},'qj-primary'));},'DRAFT / NOT SENT');}
+  function draftWorld(text){const agent=H.agents().find(a=>a.mode==='native'&&a.engine==='codex'&&!a.dock);if(!agent)throw Error('Add an Astra native chat to prepare a draft.');const previous=Native.view(agent.id)?.input?.value||'';Native.setDraft(agent.id,`${previous?previous+'\n\n':''}${text}`);activate(agent.id);notice('Research draft prepared in Astra. Nothing was sent.');}
+  function fareForm(pid){dialog('Keep a real quote',(body,d)=>{const name=field('Operator / option',{max:120}),amount=field('Quoted price · EUR',{type:'number'}),scope=selection('Price covers',[['return','Return journey'],['one-way','One-way only']],state.world.plans.find(p=>p.id===pid).endDate?'return':'one-way'),url=field('Source URL',{max:2000,placeholder:'https://…'});amount.input.min='0';amount.input.step='.01';body.append(name.node,amount.node,scope.node,url.node,p('Use a quote you just checked for this plan’s dates. Quotes are marked for rechecking after 24 hours or whenever the trip dates or destination change.'),button('Save quote',async()=>{await mutate(s=>C.addFare(s,pid,{label:name.input.value,amount:amount.input.value,scope:scope.input.value,url:url.input.value}),'Dated quote saved; availability is not monitored.');d.close();worldPlanDetail(pid);},'qj-primary'));},'MANUAL PRICE NOTE / EUR');}
+  function lifeBoard() {
+    content.append(E('section', { class: 'qj-life-invite' }, art('room'), E('div', {}, label('NEW / PARIS AFTER HOURS'), E('h3', { text: 'Your city. A little more imaginary.' }), p('Visit the canal, open the co-op café, or catch a train toward Toulouse. Real plans live behind the map.')), button('Open the world map →', () => navigate('world'), 'qj-primary')));
+    content.append(sectionHeading('FH / EXPEDITION TERMINAL', 'A little more life. One small mission.', 'Pick what would make today easier or more interesting. Three short checkpoints, a keepsake badge, and room to stop. No streaks. No overdue quests.', button('Back to my desk', () => navigate('adventure'), 'qj-quiet')));
+    const completed = C.lifeArcs.filter(t => { const c = state.campaigns.find(c => c.id === t.id); return c && C.campaignDone(state, c); });
+    content.append(E('div', { class: 'qj-life-log' }, label('EXPEDITION PASSPORT'), E('strong', { text: `${completed.length} / ${C.lifeArcs.length} keepsakes` }), p(completed.length ? completed.map(c => c.badge).join(' · ') : 'Your first badge starts with something small. A skipped checkpoint can always be revisited.')));
+    const grid = E('div', { class: 'qj-life-grid' });
+    C.lifeArcs.forEach((template, i) => {
+      const saved = state.campaigns.find(c => c.id === template.id), c = saved || template, count = saved ? c.quests.filter(q => C.done(state, q.id)).length : 0;
+      const card = E('article', { class: `qj-life-card ${count === c.quests.length ? 'is-complete' : ''}`, style: { '--path': template.color, '--card-order': String(i) }, dataset: { expedition: c.id } }, E('header', {}, label(`${String(i + 1).padStart(2, '0')} / ${template.subtitle}`), art(template.art)), E('h3', { text: c.title }), p(c.why));
+      const route = E('ol', { class: 'qj-life-route', attrs: { 'aria-label': `${c.title} checkpoints` } });
+      c.quests.forEach((q, j) => {
+        const done = saved && C.done(state, q.id), skipped = saved && C.skipped(state, q.id);
+        route.append(E('li', { class: done ? 'is-done' : skipped ? 'is-skipped' : '' }, E('span', { class: 'qj-life-node', text: done ? '✓' : skipped ? '↷' : String(j + 1), attrs: { 'aria-hidden': 'true' } }), E('div', {}, E('strong', { text: q.title }), label(`${done ? 'FINISHED' : skipped ? 'SKIPPED' : `${q.minutes} MIN`} / ${q.xp} XP`))));
+      });
+      card.append(route, E('div', { class: 'qj-life-loot' }, E('span', { text: count === c.quests.length ? '✦' : '◇', attrs: { 'aria-hidden': 'true' } }), E('div', {}, label(count === c.quests.length ? 'KEEPSAKE EARNED' : 'AT THE FINISH LINE'), E('strong', { text: c.badge }), p(`${c.quests.reduce((sum, q) => sum + q.xp, 0)} XP across the route · ${count}/${c.quests.length} finished`))), button(saved ? count === c.quests.length ? 'Open completed route' : saved.paused ? 'Open resting route' : 'Continue expedition →' : 'Preview expedition →', () => lifeDetail(template.id), 'qj-primary'));
+      grid.append(card);
+    });
+    content.append(grid, p('Proof can be a small saved note, checklist, cropped image or actual result from a chat. Choose what to share when you submit. A suggested follow-up day is just your note; it creates no reminder.', 'qj-life-footnote'));
+  }
+  function lifeDetail(cid) {
+    const template = C.lifeArcs.find(c => c.id === cid), saved = state.campaigns.find(c => c.id === cid), c = saved || template;
+    dialog(c.title, (body, d) => {
+      body.append(p(c.why));
+      const intention = field('Make this expedition yours', { value: saved?.intention || '', multiline: true, max: 300, placeholder: 'Which project, corner of the desk, or tiny open tab do you have in mind?' });
+      body.append(intention.node);
+      c.quests.forEach((q, i) => {
+        const available = saved && (C.available(state, q.id) || C.done(state, q.id) || C.skipped(state, q.id));
+        body.append(E('section', { class: 'qj-life-brief', style: { '--path': template.color } }, label(`CHECKPOINT ${i + 1} / ${q.minutes} MIN / ${q.xp} XP`), E('h3', { text: q.title }), p(q.done), p(`Start here: ${q.tiny}`), available ? button(C.done(state, q.id) ? 'View result' : C.skipped(state, q.id) ? 'View skipped checkpoint' : 'Open checkpoint →', () => { d.close(); questDetail(q.id); }, 'qj-quiet') : null));
+      });
+      body.append(p('Your note stays in your local journal. It is not included in an Astra review unless you choose to share it as proof. Every checkpoint can be skipped; the badge waits for all three finishes.'));
+      body.append(row(button(saved ? 'Save my expedition' : 'Accept expedition →', async () => { await mutate(s => C.startLifeArc(s, cid, intention.input.value), 'Expedition saved. Your note and earlier progress are kept.'); d.close(); navigate('life'); }, 'qj-primary'), saved && !C.campaignDone(state, c) && !saved.paused ? button('Let this rest', async () => { await mutate(s => { s.campaigns.find(c => c.id === cid).paused = true; if (s.active === cid) s.active = null; }, 'Expedition resting. No progress lost.'); d.close(); }, 'qj-quiet') : null));
+    }, 'THREE CHECKPOINTS / YOUR OWN PACE');
+  }
   function campaigns() {
+    content.append(row(button('Life expeditions →', () => navigate('life'), 'qj-hardware')));
+    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('ONE-OFF ADVENTURES'), E('h3', { text: 'Try something from the mixtape.' }), p('Thirty small briefs, saved favorites and optional creative constraints.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
     content.append(sectionHeading('CAMPAIGNS', 'Finish something worth keeping.', 'One tracked campaign. A clear finish line. Everything else can wait.', button('+ Your own campaign', newCampaign, 'qj-primary')));
     const grid = E('div', { class: 'qj-campaign-grid' });
     for (const c of state.campaigns) {
@@ -229,7 +378,19 @@ const QuestJournal = (() => {
     content.append(grid);
   }
   function tree() {
-    content.append(sectionHeading('THE PATCH BAY / SKILL TREE', 'See what connects.', 'Each finished quest adds signal to a path. Follow the cable to your next milestone. Your tools are always available.'));
+    content.append(sectionHeading('FORGEHEART / PERSONAL PATCH MATRIX', 'Build your own class.', 'Eight specializations for the things you actually make. Reviewed finishes light the circuit; titles and desk keepsakes follow. Progress records your work, not a test of talent.', button('Tune desk', deskSettings, 'qj-quiet')));
+    const matrix = E('div', { class: 'qj-specializations' });
+    for (const path of C.paths) {
+      const lane = E('section', { class: 'qj-skill-lane', style: { '--path': path.color } }, E('header', {}, art(path.id), label(path.name), E('strong', { text: `${C.xp(state, path.id)} XP / ${C.specializations.filter(r => r.path === path.id).reduce((n, r) => n + C.mastery(state, r.id).rank, 0)} TITLES` })));
+      for (const r of C.specializations.filter(r => r.path === path.id)) {
+        const m = C.mastery(state, r.id), b = button('', () => specializationDetail(r.id), `qj-module ${state.workstation.target === r.id ? 'is-target' : ''}`);
+        b.dataset.route = r.id; b.setAttribute('aria-label', `${r.name}: ${m.count} reviewed finishes, ${m.rank} titles earned`);
+        b.append(label(state.workstation.target === r.id ? 'PINNED ROUTE' : 'SPECIALIZATION'), E('h3', { text: r.name }), p(r.why), E('div', { class: 'qj-module-nodes', attrs: { 'aria-hidden': 'true' } }, ...m.milestones.map((n, i) => E('span', { class: n.earned ? 'is-lit' : '', text: n.earned ? '✦' : String(i + 1) }))), label(m.next ? `${m.count} / ${m.next.required} FINISHES → ${m.next.name}` : 'ALL TITLES EARNED'));
+        lane.append(b);
+      }
+      matrix.append(lane);
+    }
+    content.append(matrix);
     const grid = E('div', { class: 'qj-tree' });
     for (const path of C.paths) {
       const branch = E('section', { class: 'qj-branch', style: { '--path': path.color } }, E('header', {}, E('span', { class: 'qj-path-icon', text: path.icon }), E('h3', { text: path.name }), p(path.description), label(`${C.xp(state, path.id)} PATH XP`)));
@@ -240,26 +401,77 @@ const QuestJournal = (() => {
       }
       grid.append(branch);
     }
-    content.append(grid, E('section', { class: 'qj-finish-banner' }, E('span', { text: '✦' }), E('div', {}, label('THE SKILL THAT CONNECTS THEM ALL'), E('h3', { text: 'Finishing is a practice.' }), p(`${C.stats(state).campaigns} campaigns completed. Every finished campaign adds its badge to your collection.`)), button('See your collection →', () => navigate('collection'), 'qj-quiet')));
+    content.append(E('details', { class: 'qj-fold qj-path-milestones' }, E('summary', { text: 'Your original path XP milestones / all progress kept' }), grid), E('section', { class: 'qj-finish-banner' }, E('span', { text: '✦' }), E('div', {}, label('THE SKILL THAT CONNECTS THEM ALL'), E('h3', { text: 'Finishing is a practice.' }), p(`${C.stats(state).campaigns} campaigns completed. Every finished campaign adds its badge to your collection.`)), button('See your collection →', () => navigate('collection'), 'qj-quiet')));
+  }
+  function specializationDetail(rid) {
+    const m = C.mastery(state, rid), pick = C.practicePick(state, rid);
+    dialog(m.route.name, (body, d) => {
+      body.append(p(m.route.why), p('Titles follow 1, 3 and 5 different reviewed finishes on this route. Revisions and small starts do not inflate the count. Your existing tools stay available.'));
+      m.milestones.forEach((n, i) => {
+        const equipped = state.workstation.title?.route === rid && state.workstation.title.rank === i + 1 && n.earned;
+        body.append(E('section', { class: `qj-rank ${n.earned ? 'earned' : ''}` }, E('span', { class: 'qj-rank-number', text: `0${i + 1}` }), E('div', {}, label(`${n.required} REVIEWED FINISH${n.required === 1 ? '' : 'ES'}`), E('strong', { text: n.name }), p(i === 0 ? m.route.gift : i === 1 ? 'A new title for your workstation nameplate.' : 'The final title in this specialization.')), n.earned ? button(equipped ? 'Equipped ✓' : 'Equip title', async () => { await mutate(s => C.equipTitle(s, rid, i + 1), 'Title and desk keepsake equipped.'); d.close(); specializationDetail(rid); }, equipped ? 'qj-quiet' : 'qj-primary') : label(`${Math.max(0, n.required - m.count)} TO GO`)));
+      });
+      body.append(row(button(state.workstation.target === rid ? 'Unpin route' : 'Pin this route', async () => { await mutate(s => { s.workstation.target = s.workstation.target === rid ? null : rid; }, 'Practice route saved.'); d.close(); specializationDetail(rid); }, 'qj-quiet'), button('Browse matching cards', async () => { await mutate(s => C.deal(s, { lane: rid === 'forgeheart' ? 'forge' : m.route.path === 'life' && rid === 'finish' ? 'any' : m.route.path, mood: 'any', minutes: 60, shelf: 'all' })); d.close(); navigate('deck'); }, 'qj-quiet')));
+      if (pick) body.append(E('aside', { class: 'qj-starting-note' }, label('ONE GOOD NEXT PRACTICE'), E('strong', { text: (pick.quest || pick.card).title }), p((pick.quest || pick.card).tiny)), button('Start next practice →', async () => { const q = await mutate(s => C.startPractice(s, rid), 'Practice ready. Your chosen route is pinned.'); d.close(); questDetail(q.id); }, 'qj-primary'));
+      else body.append(p('No fresh practice available here right now. Free a side-quest slot, resume a paused campaign, or revisit work from your tracklist.'));
+      const evidence = E('details', { class: 'qj-fold' }, E('summary', { text: `Work behind this title · ${m.count} reviewed finishes` }));
+      for (const q of m.evidence) evidence.append(E('div', { class: 'qj-idea-row' }, E('strong', { text: q.title }), button('Show review', () => { d.close(); reviewHistory(q.id); }, 'qj-quiet')));
+      body.append(evidence);
+    }, 'PATCH MATRIX / EARNED THROUGH WORK');
+  }
+  function newTitles(before, after) {
+    return C.specializations.flatMap(r => C.mastery(after, r.id).milestones.slice(C.mastery(before, r.id).rank).filter(n => n.earned).map(n => `Title earned: ${n.name}`));
+  }
+  function deskSettings() {
+    dialog('Your Forgeheart workstation', (body, d) => {
+      const name = field('Callsign', { value: state.workstation.callsign, max: 40 }), accent = E('select', { attrs: { 'aria-label': 'Console accent' } }, ...C.consoleAccents.map(a => E('option', { value: a.id, text: a.name }))); accent.value = state.workstation.accent;
+      body.append(name.node, E('label', { class: 'qj-field' }, label('CONSOLE ACCENT'), accent), E('div', { class: 'qj-accent-samples', attrs: { 'aria-hidden': 'true' } }, ...C.consoleAccents.map(a => E('i', { style: { background: a.color } }))), p(`Nameplate: ${C.activeTitle(state)?.name || 'Independent creator'}. Earn titles and their desk keepsakes in the Patch matrix.`), button('Save workstation', async () => { await mutate(s => { s.workstation.callsign = C.text(name.input.value, 40); s.workstation.accent = accent.value; }, 'Workstation loadout saved.'); d.close(); }, 'qj-primary'), row(button('Open patch matrix', () => { d.close(); navigate('skills'); }, 'qj-quiet'), state.workstation.title ? button('Unequip title', async () => { await mutate(s => C.equipTitle(s, null), 'Title unequipped; your earned work is kept.'); d.close(); }, 'qj-quiet') : null));
+    }, 'LOCAL CONSOLE / YOUR DESK');
   }
   function rewards() {
-    content.append(sectionHeading('THE TREAT MACHINE', 'Work in. Good things out.', 'Stock it with things you actually want. One spark per five XP. Claiming a treat records your choice; nothing is purchased or booked.', button('+ Add a reward', () => rewardForm(), 'qj-primary')));
+    content.append(sectionHeading('FORGEHEART / REWARD BAY', 'Make the payoff yours.', 'Name the game, the plugin, the listening session. Sparks mark extra treats you choose; rest and play never need permission. Nothing is purchased or booked.', row(button('Browse reward ideas', rewardIdeas, 'qj-primary'), button('+ Add a reward', () => rewardForm(), 'qj-quiet'))));
     content.append(E('div', { class: 'qj-balance' }, E('b', { text: `✧ ${C.balance(state)}` }), p('sparks available · your XP and level stay with you')));
+    const pending = state.redemptions.filter(r => !r.returnedAt && !r.enjoyedAt);
+    if (pending.length) {
+      const queue = E('section', { class: 'qj-reward-queue' }, label('CLAIMED / READY TO ENJOY'), E('h3', { text: 'Something good is waiting.' }));
+      for (const r of [...pending].reverse()) queue.append(E('div', { class: 'qj-receipt' }, art('rewards'), E('div', {}, E('strong', { text: r.name }), p(r.plan || 'Choose a moment that feels right. No expiry.')), row(button('Enjoyed it', () => enjoyDialog(r), 'qj-primary'), button('Return reward', () => mutate(s => C.returnReward(s, r.id), 'Reward returned. Your sparks are back.'), 'qj-quiet'))));
+      content.append(queue);
+    }
     const grid = E('div', { class: 'qj-reward-grid' });
     for (const r of state.rewards) {
       const can = C.balance(state) >= r.cost;
-      grid.append(E('article', { class: `qj-card qj-reward ${state.rewardGoal === r.id ? 'qj-reward-target' : ''}` }, E('div', { class: 'qj-reward-glyph', attrs: { 'aria-hidden': 'true' } }, art('rewards')), label(r.category || 'YOUR TREAT'), E('h3', { text: r.name }), p(r.note || 'A reward you chose. Claim it when it feels right.'), label(`${r.cost} SPARKS${state.rewardGoal === r.id ? ' / YOUR NEXT TREAT' : ''}`), meter(Math.min(C.balance(state), r.cost), r.cost, `Progress toward ${r.name}`), row(button(can ? 'Redeem reward' : `${r.cost - C.balance(state)} sparks to go`, () => redeemDialog(r), can ? 'qj-primary' : 'qj-quiet'), button(state.rewardGoal === r.id ? 'Clear reward goal' : 'Save toward this', () => mutate(s => { s.rewardGoal = s.rewardGoal === r.id ? null : r.id; }), 'qj-quiet'), button('Edit', () => rewardForm(r), 'qj-quiet'))));
+      const kind = r.art || (/play|game/.test(r.id) ? 'game' : /listen|dig/.test(r.id) ? 'music' : /plugin/.test(r.id) ? 'skills' : /film|night/.test(r.id) ? 'life' : 'rewards');
+      grid.append(E('article', { class: `qj-card qj-reward ${state.rewardGoal === r.id ? 'qj-reward-target' : ''}` }, E('div', { class: 'qj-reward-glyph', attrs: { 'aria-hidden': 'true' } }, art(kind)), label(r.category || 'YOUR TREAT'), E('h3', { text: r.name }), p(r.note || 'A reward you chose. Claim it when it feels right.'), label(`${r.cost} SPARKS${state.rewardGoal === r.id ? ' / YOUR NEXT TREAT' : ''}`), meter(Math.min(C.balance(state), r.cost), r.cost, `Progress toward ${r.name}`), row(button(can ? 'Redeem reward' : `${r.cost - C.balance(state)} sparks to go`, () => redeemDialog(r), can ? 'qj-primary' : 'qj-quiet'), button(state.rewardGoal === r.id ? 'Clear reward goal' : 'Save toward this', () => mutate(s => { s.rewardGoal = s.rewardGoal === r.id ? null : r.id; }), 'qj-quiet'), button('Edit', () => rewardForm(r), 'qj-quiet'))));
     }
     content.append(grid);
-    if (state.redemptions.length) {
-      content.append(sectionHeading('YOUR REWARDS', 'Enjoy what you’ve earned.'));
-      for (const r of [...state.redemptions].reverse().slice(0, 50)) content.append(E('div', { class: 'qj-receipt' }, E('span', { text: r.returnedAt ? '↶' : '✧' }), E('div', {}, E('strong', { text: r.name }), p(`${new Date(r.at).toLocaleDateString()} · ${r.cost} sparks${r.returnedAt ? ' · returned' : ''}`)), !r.returnedAt ? button('Return reward', () => mutate(s => { s.redemptions.find(x => x.id === r.id).returnedAt = new Date().toISOString(); }, 'Reward returned. Your sparks are back.'), 'qj-quiet') : null));
+    const history = state.redemptions.filter(r => r.returnedAt || r.enjoyedAt);
+    if (history.length) {
+      content.append(sectionHeading('YOUR REWARD LOG', 'Good moments, kept.'));
+      for (const r of [...history].reverse().slice(0, 50)) content.append(E('div', { class: 'qj-receipt' }, E('span', { text: r.returnedAt ? '↶' : '✦' }), E('div', {}, E('strong', { text: r.name }), p(`${new Date(r.at).toLocaleDateString()} · ${r.cost} sparks · ${r.returnedAt ? 'returned' : 'enjoyed'}`), r.note ? p(r.note) : null), r.enjoyedAt ? button('Undo enjoyed', () => mutate(s => { const receipt = s.redemptions.find(x => x.id === r.id); delete receipt.enjoyedAt; delete receipt.note; }, 'Moved back to enjoy later. Sparks unchanged.'), 'qj-quiet') : null));
     }
   }
-  function rewardForm(reward) {
+  function rewardIdeas() {
+    dialog('Stock your reward bay', (body, d) => {
+      body.append(p('Ten starting points. Make the name, cost and ritual yours before adding one. Existing rewards are kept.'));
+      const grid = E('div', { class: 'qj-blueprints' });
+      for (const b of C.rewardBlueprints) {
+        const existing = state.rewards.find(r => r.blueprint === b.id);
+        grid.append(E('article', { class: 'qj-blueprint' }, art(b.art), label(`${b.category} / ${b.cost} SPARKS`), E('h3', { text: b.name }), p(b.note), button(existing ? 'Edit my version' : 'Make this mine', () => { d.close(); rewardForm(existing || null, b); }, 'qj-primary')));
+      }
+      body.append(grid);
+    }, 'HAND-PICKED / MUSIC · VISUALS · GAMES');
+  }
+  function enjoyDialog(receipt) {
+    dialog('A good moment, kept', (body, d) => {
+      const note = field('A note for next time', { multiline: true, max: 500, placeholder: 'What did you choose? Would you want this reward again?' });
+      body.append(E('h3', { text: receipt.name }), note.node, p('Optional note. Marking it enjoyed changes no XP or sparks.'), button('Mark enjoyed', async () => { await mutate(s => C.enjoyReward(s, receipt.id, note.input.value), 'Enjoyed moment saved.'); d.close(); }, 'qj-primary'));
+    }, 'REWARD LOG');
+  }
+  function rewardForm(reward, blueprint) {
     dialog(reward ? 'Edit your reward' : 'Something to look forward to', (body, d) => {
-      const name = field('Reward', { value: reward?.name, max: 160, placeholder: 'A night at the cinema' }), cost = field('Sparks', { value: String(reward?.cost || 20), type: 'number' });
-      body.append(name.node, cost.node, p('A typical quest earns 5–14 sparks. Choose a reward that feels fair and kind to yourself.'), button('Save reward', async () => { if (!name.input.value.trim()) throw Error('Name your reward first.'); await mutate(s => { const r = { ...reward, id: reward?.id || C.id('r'), name: C.text(name.input.value, 160), cost: Number(cost.input.value) }; if (reward) s.rewards[s.rewards.findIndex(x => x.id === reward.id)] = r; else s.rewards.push(r); }); d.close(); }, 'qj-primary'));
+      const value = reward || blueprint;
+      const name = field('Reward', { value: value?.name, max: 160, placeholder: 'A night at the cinema' }), cost = field('Sparks', { value: String(value?.cost || 20), type: 'number' }), note = field('Make it personal', { value: value?.note, multiline: true, max: 500, placeholder: 'Which game, album, plugin or treat? Add your own budget if relevant.' });
+      body.append(name.node, cost.node, note.node, p('A 35-XP quest earns 7 sparks. Choose a cost that feels inviting. These are your treats, not obligations.'), button('Save reward', async () => { if (!name.input.value.trim()) throw Error('Name your reward first.'); await mutate(s => { const values = { name: C.text(name.input.value, 160), cost: Number(cost.input.value), note: C.text(note.input.value, 500) }; if (blueprint && !reward) C.stockReward(s, blueprint.id, values); else { const r = { ...reward, ...values, id: reward?.id || C.id('r') }; if (reward) s.rewards[s.rewards.findIndex(x => x.id === reward.id)] = r; else s.rewards.push(r); } }); d.close(); }, 'qj-primary'));
     }, 'YOUR REWARD CHEST');
   }
   function redeemDialog(r) {
@@ -321,11 +533,14 @@ const QuestJournal = (() => {
     const path = pathOf(q.path), r = C.record(state, qid), completed = C.done(state, qid);
     let mode = initial;
     dialog(q.title, (body, d) => {
+      const intention = state.campaigns.find(c => c.id === q.campaign)?.intention;
+      if (intention) body.append(E('aside', { class: 'qj-starting-note' }, label('YOUR EXPEDITION / LOCAL NOTE'), p(intention)));
       if (completed) {
         if (C.submissions(state, qid).length) body.append(button('Review & version history', () => { d.close(); reviewHistory(qid); }, 'qj-primary'));
         body.append(label(`✓ COMPLETED · ${q.xp} XP`), p(q.done), p(r.note || 'You kept your promise to this quest.'), artifactPreview(r.artifact), row(button('Add or edit keepsake', () => { d.close(); completionForm(qid, true); }), button('Undo completion', async () => { await mutate(s => C.undo(s, qid), 'Completion undone. Your earlier small start is kept.'); d.close(); }, 'qj-quiet'))); return;
       }
       if (C.skipped(state, qid)) { body.append(label('SET ASIDE · NO COMPLETION XP'), p(q.done), p('Your earlier small-start XP is kept. Bring this back whenever it fits.'), button('Revisit quest', async () => { await mutate(s => C.revisit(s, qid), 'Quest restored.'); d.close(); navigate('adventure'); }, 'qj-primary')); return; }
+      if (q.parked) { body.append(label('PARKED / YOUR PROGRESS IS KEPT'), p(q.done), button('Resume this quest', async () => { await mutate(s => { if (C.sideCount(s) >= 3) throw Error('Free a side-quest slot before resuming.'); s.sideQuests.find(x => x.id === qid).parked = false; }, 'Quest back on your workbench.'); d.close(); questDetail(qid); }, 'qj-primary')); return; }
       if (state.plan?.quest === qid) body.append(E('aside', { class: 'qj-starting-note' }, label('YOUR STARTING NOTE'), p(state.plan.action)));
       if (q.variants) body.append(E('section', { class: 'qj-contract' }, label('YOUR SCOPE CONTRACT'), p('Pick scope before the first start or submission. XP rewards finishing the agreed work, never a high score.'), row(...Object.entries(q.variants).map(([tier, v]) => { const b = button(`${tier === 'sketch' ? 'Sketch' : tier === 'studio' ? 'Studio' : 'Showcase'} · ${v.minutes}m · ${v.xp} XP`, async () => { await mutate(s => C.setContract(s, qid, tier)); d.close(); questDetail(qid); }, (state.contracts?.[qid] || 'studio') === tier ? 'qj-primary' : 'qj-quiet'); b.disabled = Boolean(C.earned(state, q) || C.submissions(state, qid).length); b.setAttribute('aria-pressed', String((state.contracts?.[qid] || 'studio') === tier)); return b; }))));
       if (C.latest(state, qid)) body.append(button('Review & version history', () => { d.close(); reviewHistory(qid); }, 'qj-quiet'));
@@ -345,6 +560,60 @@ const QuestJournal = (() => {
       if (!q.campaign) body.append(button('Park this side quest', async () => { await mutate(s => { s.sideQuests.find(x => x.id === qid).parked = true; if (s.focus?.quest === qid) s.focus = null; }, 'Parked, with your progress kept.'); d.close(); }, 'qj-quiet'));
       paint();
     }, path.name);
+  }
+  const laneNames = { any: 'All worlds', music: 'Sound room', visual: 'Light studies', game: 'Game feel', forge: 'Forgeheart', life: 'Small resets' };
+  function mixtape() {
+    const d = state.deck, cards = C.deckHand(state), pool = C.deckPool(state), accepted = state.sideQuests.filter(q => q.deckCard), finished = accepted.filter(q => C.done(state, q.id));
+    content.append(E('header', { class: 'qj-deck-head' }, E('div', {}, label('SIDEQUEST SELECTS / VOL. 01'), E('h2', { text: 'The mixtape' }), p('Thirty reasons to open the studio. Take one that pulls you in; the rest can wait.'), row(button('Deal three more ↻', () => mutate(s => C.deal(s), 'New deal saved. Unseen cards come first.'), 'qj-primary', 'deck-deal'), button('Back to notebook', () => navigate('adventure'), 'qj-quiet'))), E('div', { class: 'qj-deck-machine' }, art('deck'), label(`${String(finished.length).padStart(2, '0')} / 30 FINISHED`))));
+    const filters = E('div', { class: 'qj-deck-filters' });
+    const select = (key, title, options) => {
+      const control = E('select', { attrs: { 'aria-label': title }, dataset: { focus: `deck-${key}` } }, ...options.map(([value, name]) => E('option', { value: String(value), text: name })));
+      control.value = String(d.filters[key]);
+      control.addEventListener('change', async () => { control.disabled = true; try { await mutate(s => C.deal(s, { ...s.deck.filters, [key]: key === 'minutes' ? Number(control.value) : control.value }), 'Mixtape filters and new deal saved.'); } catch (err) { control.value = String(state.deck.filters[key]); notice(err.message); } finally { control.disabled = false; } });
+      filters.append(E('label', { class: 'qj-field' }, label(title), control));
+    };
+    select('lane', 'World', C.deckLanes.map(l => [l, laneNames[l]]));
+    select('mood', 'Today I want to', [['any', 'Follow anything'], ['make', 'Make something'], ['remix', 'Remix something'], ['polish', 'Polish a detail'], ['explore', 'Explore an idea'], ['reset', 'Make starting easier']] );
+    select('minutes', 'Room to play', [[5, 'Up to 5 minutes'], [15, 'Up to 15 minutes'], [30, 'Up to 30 minutes'], [60, 'Any length']] );
+    select('shelf', 'Crate', [['all', 'The whole mixtape'], ['saved', 'My saved cards']] );
+    content.append(filters, E('div', { class: 'qj-deck-counter' }, label(`${pool.length} CARDS MATCH / ${C.sideCount(state)} OF 3 SIDE-QUEST SLOTS USED`), E('span', { text: 'No timer. No expiry. Proof earns the finish.' })));
+    const hand = E('div', { class: 'qj-deck-hand', attrs: { 'aria-label': 'Your mixtape cards' } });
+    cards.forEach((c, i) => {
+      const saved = d.saved.includes(c.id), card = E('article', { class: 'qj-deck-card', dataset: { card: c.id }, style: { '--path': pathOf(c.path).color, '--card-order': String(i) } });
+      const save = button(saved ? 'Saved ♥' : 'Save ♡', () => mutate(s => C.markCard(s, c.id, 'saved'), saved ? 'Card removed from saved.' : 'Card saved for another day.'), 'qj-quiet', `save-${c.id}`); save.setAttribute('aria-pressed', String(saved));
+      card.append(E('div', { class: 'qj-card-sleeve' }, art(c.lane), E('span', { class: 'qj-tape-label', text: laneNames[c.lane] }), E('span', { class: 'qj-tape-number', text: `SIDE ${String.fromCharCode(65 + i)}` })), E('div', { class: 'qj-card-liner' }, label(`${c.mood.toUpperCase()} / ${c.minutes} MIN / ${c.minutes <= 5 ? 20 : c.minutes <= 15 ? 35 : 50} XP`), E('h3', { text: c.title }), p(c.done), E('p', { class: 'qj-card-first', text: `First move: ${c.tiny}` }), button('Open this brief →', () => deckBrief(c.id), 'qj-primary'), row(save, button('Not my thing', () => mutate(s => C.markCard(s, c.id, 'hidden'), 'Card tucked away. Restore it below whenever you want.'), 'qj-quiet', `hide-${c.id}`))));
+      hand.append(card);
+    });
+    if (!cards.length) hand.append(E('section', { class: 'qj-deck-empty' }, art('deck'), E('h3', { text: pool.length ? 'There’s more in the crate.' : 'A quieter corner of the crate.' }), p(pool.length ? 'Deal again to see the next matching cards.' : 'Try another world, a longer session or the whole mixtape. Taken quests live in your tracklist below; tucked-away cards can be restored.'), button('Deal again', () => mutate(s => C.deal(s), 'Deal saved.'), 'qj-primary'), button('Show all worlds', () => mutate(s => C.deal(s, { lane: 'any', mood: 'any', minutes: 60, shelf: 'all' }), 'Filters reset. Your saved and hidden cards are kept.'), 'qj-quiet')));
+    content.append(hand);
+    const passport = E('section', { class: 'qj-deck-passport' }, E('div', {}, label('YOUR CREATIVE PASSPORT'), E('h3', { text: 'A little further into your worlds.' }), p('Stamps follow reviewed finishes. Explore at your pace; there is no streak to lose.')));
+    for (const lane of C.deckLanes.filter(l => l !== 'any')) {
+      const count = finished.filter(q => C.deckCard(q.deckCard).lane === lane).length;
+      passport.append(E('div', { class: `qj-deck-stamp ${count ? 'is-stamped' : ''}`, attrs: { 'aria-label': `${laneNames[lane]}: ${count} finished` } }, art(lane), E('strong', { text: laneNames[lane] }), E('span', { text: count ? `${count} FINISHED` : 'UNEXPLORED' })));
+    }
+    content.append(passport);
+    if (accepted.length) {
+      const list = E('details', { class: 'qj-fold qj-deck-tracklist' }, E('summary', { text: `Your tracklist · ${accepted.length} taken / ${finished.length} finished` }));
+      for (const q of accepted) list.append(E('div', { class: 'qj-idea-row' }, E('div', {}, E('strong', { text: q.title }), label(C.done(state, q.id) ? 'FINISHED / REVIEW KEPT' : C.skipped(state, q.id) ? 'SET ASIDE' : q.parked ? 'PARKED' : 'ON YOUR WORKBENCH')), button('Open quest', () => questDetail(q.id), 'qj-quiet')));
+      content.append(list);
+    }
+    if (d.hidden.length) {
+      const hidden = E('details', { class: 'qj-fold qj-deck-hidden' }, E('summary', { text: `Tucked away · ${d.hidden.length} cards` }));
+      d.hidden.forEach(cid => hidden.append(E('div', { class: 'qj-idea-row' }, E('strong', { text: C.deckCard(cid).title }), button('Restore card', () => mutate(s => { C.markCard(s, cid, 'hidden'); C.deal(s); }, 'Card restored to its matching pool.'), 'qj-quiet'))));
+      content.append(hidden);
+    }
+  }
+  function deckBrief(cid) {
+    const c = C.deckCard(cid); if (!c) return;
+    dialog(c.title, (body, d) => {
+      const twist = E('input', { type: 'checkbox', attrs: { 'aria-label': 'Add the creative constraint' } });
+      const objective = p(c.done, 'qj-objective');
+      twist.addEventListener('change', () => { objective.textContent = c.done + (twist.checked ? ` Creative constraint: ${c.twist}` : ''); });
+      const take = button('Take this quest →', async () => { const q = await mutate(s => C.takeCard(s, cid, twist.checked), 'Quest added to your workbench. The chosen brief is saved.'); d.close(); questDetail(q.id); }, 'qj-primary');
+      take.disabled = C.sideCount(state) >= 3;
+      body.append(label(`${laneNames[c.lane]} / ${c.minutes} MINUTES`), objective, E('aside', { class: 'qj-twist' }, E('label', {}, twist, E('strong', { text: 'Add a creative constraint' })), p(c.twist), p('Optional. Same XP either way. Your choice becomes part of the brief when you take the quest.')), E('aside', { class: 'qj-starting-note' }, label('YOUR FIRST MOVE'), p(c.tiny)), p('Show the actual result at the finish line. Astra reviews the evidence before completion; a promise or a high score alone never earns the reward.'), take);
+      if (C.sideCount(state) >= 3) body.append(p('Your three side-quest slots are full. Park, skip or finish one before taking this card.'), button('Go to my workbench', () => { d.close(); navigate('adventure'); }, 'qj-quiet'));
+    }, 'THE MIXTAPE / PICK YOUR VERSION');
   }
   function commissions() {
     content.append(sectionHeading('THE COMMISSION WALL / VOL. 01', 'Make something worth keeping.', 'Fifteen concrete milestones across music, visuals, game feel and Forgeheart. Choose a rough sketch, a focused studio pass or a showcase. Show the work; the score follows the evidence.', button('Back to notebook', () => navigate('adventure'), 'qj-quiet')));
@@ -384,7 +653,7 @@ const QuestJournal = (() => {
       if (!r && isLatest) box.append(reviewJobs.has(qid) ? button('Cancel review', () => reviewJobs.get(qid)?.cancel(), 'qj-quiet') : button('Review saved proof', () => reviewSaved(qid, item.id), 'qj-primary'));
       if (isLatest && r?.status === 'reviewed' && r.meetsBrief && !C.done(state, qid)) box.append(button(`Complete quest · +${C.find(state, qid).xp - C.earned(state, C.find(state, qid))} XP`, async () => {
         const before = C.clone(state), points = await mutate(s => C.complete(s, qid, { note: item.intent, artifact: proofArtifact(item.proof) }));
-        root.querySelector('dialog[open]')?.close(); const gains = C.gains(before, state); celebrate('You made the thing.', `+${points} XP · ${C.find(state, qid).title}`, [...gains.skills.map(n => `Skill reached: ${n.name}`), ...gains.rewards.map(name => `Ready to claim: ${name}`)]);
+        root.querySelector('dialog[open]')?.close(); const gains = C.gains(before, state); celebrate('You made the thing.', `+${points} XP · ${C.find(state, qid).title}`, [...gains.skills.map(n => `Skill reached: ${n.name}`), ...newTitles(before, state), ...gains.rewards.map(name => `Ready to claim: ${name}`)]);
       }, 'qj-primary'));
       if (isLatest) box.append(row(button(C.done(state, qid) ? 'Submit a revision' : 'Submit new proof', () => { root.querySelector('dialog[open]')?.close(); proofForm(qid); }, 'qj-quiet'), C.done(state, qid) && !C.find(state, qid).revisionOf && r?.status === 'reviewed' ? button('Turn feedback into a quest →', async () => { const q = await mutate(s => C.revisionQuest(s, qid)); root.querySelector('dialog[open]')?.close(); questDetail(q.id); }, 'qj-primary') : null));
     }
@@ -502,9 +771,10 @@ const QuestJournal = (() => {
     status = E('p', { class: 'qj-status', attrs: { role: 'status', 'aria-live': 'polite' }, text: 'Opening your journal…' }); content = E('main', { class: 'qj-content' });
     const focusBar = E('div', { class: 'qj-focus', hidden: true }, E('span', { class: 'qj-focus-clock' }), E('span', { class: 'qj-focus-name' }), button('Pause', async () => { if (!left()) return questDetail(state.focus.quest); const remaining = left(); await mutate(s => { if (s.focus.end) { s.focus.remaining = remaining; s.focus.end = 0; } else s.focus.end = Date.now() + s.focus.remaining; }); }, 'qj-quiet', 'pause-timer'), button('End focus', () => mutate(s => { s.focus = null; }, 'Focus ended. Your quest is waiting whenever you are.'), 'qj-quiet'));
     top.append(button('Motion on', () => mutate(s => { s.motion = s.motion === false; }, 'Studio motion preference saved.'), 'qj-quiet qj-motion'), menu);
-    const scenery = E('div', { class: 'qj-room', attrs: { 'aria-hidden': 'true' } }, E('div', { class: 'qj-night-window' }, art('room')), E('div', { class: 'qj-desk-lamp' }), E('div', { class: 'qj-motes' }, ...[0, 1, 2, 3, 4].map(i => E('i', { style: { '--i': String(i) } }))));
+    const scenery = E('div', { class: 'qj-room', attrs: { 'aria-hidden': 'true' } }, E('div', { class: 'qj-night-window' }, art('terminal')), E('div', { class: 'qj-desk-lamp' }), E('div', { class: 'qj-motes' }, ...[0, 1, 2, 3, 4].map(i => E('i', { style: { '--i': String(i) } }))));
     const bench = E('section', { class: 'qj-bench', attrs: { 'aria-label': 'The studio workbench' } }, scenery, E('div', { class: 'qj-bench-sign' }, label('PICK SOMETHING UP'), E('span', { text: 'small projects · good company' })), nav, E('p', { class: 'qj-bench-caption', text: 'One page. One next step.' }));
-    root.append(top, bench, content, status, focusBar); await load();
+    const consoleBar = E('section', { class: 'qj-console-bar', attrs: { 'aria-label': 'Forgeheart workstation controls' } }, E('div', {}, label('FH / PERSONAL WORKSTATION'), E('strong', { class: 'qj-console-name' })), E('div', { class: 'qj-desk-trophy', hidden: true }), row(button('Paris after hours', () => navigate('world'), 'qj-hardware qj-map-key'), button('Life expeditions', () => navigate('life'), 'qj-hardware qj-life-key'), button('Pick next mission', sessionPicker, 'qj-hardware'), button('Tune desk', deskSettings, 'qj-hardware'), button('Lamp on', () => mutate(s => { s.workstation.lamp = !s.workstation.lamp; }, 'Desk lamp setting saved.'), 'qj-hardware qj-lamp-toggle')));
+    root.append(top, bench, consoleBar, content, status, focusBar); await load();
     try { legacy = await window.hub.kvGet('creative-playground'); } catch { /* Old notebook is never modified. */ }
     clearInterval(ticker); ticker = setInterval(() => { if (H.activeId === 'tool:quests') tick(); }, 1000);
     const surface = body.closest('.surface'); if (surface) new MutationObserver(() => { syncMotion(); if (H.activeId !== 'tool:quests') root.querySelectorAll('audio,video').forEach(v => v.pause()); }).observe(surface, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });

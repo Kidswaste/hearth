@@ -65,6 +65,7 @@ const local = {
     const { op, ...rest } = a;
     // (round 42, handoff) the earlier messages a handoff brief stands in for (named in the brief, not in the tool list)
     if (String(op || '').replace(/^chat_/, '') === 'earlier') return callHub('chat_earlier', rest);
+    if (String(op || '').replace(/^chat_/, '') === 'sound') return callHub('chat_sound', rest);
     const t = REST.find((x) => opOf(x.name) === String(op || '').replace(/^chat_/, ''));
     return t ? callHub(t.name, rest) : { ok: false, error: `op: ${REST.map((x) => opOf(x.name)).join(' | ')}` };
   },
