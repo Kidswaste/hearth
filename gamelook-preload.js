@@ -37,7 +37,7 @@ function gameLookPage(o) {
   const R = { look: BEST ? 'best' : 'balanced', three: null, renderers: 0, frames: 0,
     aniso: { max: 0, sharp: 0, set: 0, kept: 0, later: false }, colour: 0,
     shadows: { lights: 0, set: 0, kept: 0, from: 0, to: 0, now: 0, chosen: null, fallback: 0, ready: false, made: [], midPlay: 0, lowered: null }, guard: BEST ? 'waiting' : 'off', guardMs: null,
-    cost: { sweeps: 0, ms: 0, max: 0, playMax: 0, wholes: 0 }, // (playMax: the most a frame after the first look spent here; wholes: whole-scene looks in one go)
+    cost: { sweeps: 0, ms: 0, max: 0, playMax: 0, wholes: 0, card: 0, play: 0, playWholes: 0, ask: 0 }, // (playMax: the most a frame after the first look spent here; wholes: whole-scene looks in one go; (round 57, readywalk) card / play: the longest single look under Getting ready's card / while playing, playWholes: whole-scene looks while playing (0); ask: the longest wait for the card's anisotropy)
     screen: { w: Math.round(screen.width * dpr), h: Math.round(screen.height * dpr), wide: mm('(color-gamut: p3)'), hdr: mm('(dynamic-range: high)') } };
   const rs = new Set(); const scenes = new Set();
   const state = new WeakMap(); // renderer → { at: WeakMap(scene → last look), n }
@@ -153,14 +153,22 @@ function gameLookPage(o) {
     const m = ob.material;
     if (m) { if (Array.isArray(m)) { for (const x of m) if (x) mat(r, x, max); } else mat(r, m, max); }
   };
-  const cost = (ms) => { R.cost.sweeps += 1; R.cost.ms += ms; if (ms > R.cost.max) R.cost.max = ms; };
+  // (round 57, readywalk) each look's time is also kept by when it ran: under Getting ready's card (the first, whole-scene
+  // look, before the first frame: the card is up, no frame of play waits on it) or while playing (only what the game
+  // adds and the background walk's ≤ 0.15 ms slices). The shadow maps are never made inside a look: three makes them in
+  // its shadow pass, and the two sizes shadowready keeps are drawn by the budget's A/B under the card
+  const cost = (ms, whole) => { const c = R.cost; c.sweeps += 1; c.ms += ms; if (ms > c.max) c.max = ms; if (inPlay()) { if (ms > c.play) c.play = +ms.toFixed(3); if (whole) c.playWholes += 1; } else if (ms > c.card) c.card = +ms.toFixed(3); };
   function sweep(r, root) {
-    const t0 = now(); const max = maxA(r);
+    // (round 57, readywalk) the card's best anisotropy is asked of the graphics card once per renderer (three caches it):
+    // a round trip to the GPU process, which on a busy machine waits behind other contexts' work (200 ms seen). Timed
+    // apart (cost.ask): a wait under the card, not the look's own CPU work
+    const a0 = now(); const max = maxA(r); const ask = now() - a0; if (ask > R.cost.ask) R.cost.ask = +ask.toFixed(3);
+    const t0 = now();
     try {
       if (root.isScene) { R.cost.wholes += 1; tex(r, root.background, true, max); tex(r, root.environment, true, max); }
       root.traverse((ob) => visit(r, ob, max));
     } catch (e) { /* a scene changing under us: the next look */ }
-    cost(now() - t0);
+    cost(now() - t0, root.isScene);
   }
   // what the game adds (Object3D.add / attach of its own three.js, found from the first scene drawn)
   const adds = []; const protos = new WeakSet(); const doneO = new WeakSet();

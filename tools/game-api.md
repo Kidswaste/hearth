@@ -262,3 +262,12 @@ the hub); the owner: `/playtest`.
   for), `ld` (an HTML build's loads), `abs` (the budget's A/B verdict reused: same game files, Hearth's helper scripts,
   refresh, look, helpers off; never for a game where a helper was ever switched off), `wq` (one short quiet warm-up pass).
 - `__gameReady.first5.budgetOff`: helpers the budget switched off during that run (not remembered ones).
+- (round 57, readywalk) `sq=size:ms:refreshMs` (the hint `shadow`): the Best look's shadow size the last walk chose under the
+  same key (game files, helpers, refresh, look; the screen size: the look's own `to`) and that size's time a frame then
+  (readyspeed.json entry `sh: { key, size, ms, ref, at }`; a run that only confirmed it keeps the walk's time). The page
+  passes it as `__hearthBudget.ab({ shadow })`: the A/B's first 3 frames (drawn at the remembered size) are the check;
+  `Rules.shadowHolds(ms, rem, hz)` (fits now; fitted then → within 1.25 × 90 % of the refresh; else ≤ max(1.5 × then,
+  then + 2 ms)); one more block of K frames only when they read clearly slower; the walk only when that fails too.
+  `ab.shadow.quick = { ms, was, blocks, held }`, `ab.shadow.walked`; the chosen + fallback maps are made and sealed as before.
+- `__gameLook.report().cost.card` / `.play` / `.playWholes`: the longest single look under Getting ready's card (the first,
+  whole-scene one) / while playing, and whole-scene looks while playing (0).

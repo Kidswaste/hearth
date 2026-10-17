@@ -32,6 +32,19 @@ const t = async (name, fn) => { await fn(); n += 1; console.log(`✓ ${name}`); 
     assert.deepStrictEqual(Rules.shadowPick([[1024, 30]], [1024, 512], 60), { next: 512 }, 'a remembered 1024: its ladder starts there');
     assert.deepStrictEqual(Rules.shadowPick([[2048, null]], L, 60), { size: 2048, why: 'not-shadows' }, 'not measurable: no guess below it');
   });
+  await t('(round 57, readywalk) a remembered size is only checked: the walk again only when that check clearly fails', () => {
+    const fitted = { size: 2048, ms: 9 }; const slow = { size: 1024, ms: 30 };
+    assert.strictEqual(Rules.shadowHolds(10, fitted, 60), true, 'still fits the refresh');
+    assert.strictEqual(Rules.shadowHolds(18, fitted, 60), true, 'a little over (a busy moment): kept');
+    assert.strictEqual(Rules.shadowHolds(19, fitted, 60), false, 'clearly over the refresh: walked again');
+    assert.strictEqual(Rules.shadowHolds(3, { size: 2048, ms: 3 }, 240), true);
+    assert.strictEqual(Rules.shadowHolds(5, { size: 2048, ms: 3 }, 240), false, '240 Hz: 3.75 ms × 1.25');
+    assert.strictEqual(Rules.shadowHolds(14, slow, 60), true, 'fits now: holds');
+    assert.strictEqual(Rules.shadowHolds(44, slow, 60), true, 'as slow as when chosen (1.5×): holds');
+    assert.strictEqual(Rules.shadowHolds(46, slow, 60), false, 'clearly slower than when chosen');
+    assert.strictEqual(Rules.shadowHolds(19.9, { size: 1024, ms: 18 }, 60), true, '2 ms of slack on a near miss');
+    assert.strictEqual(Rules.shadowHolds(NaN, slow, 60), false); assert.strictEqual(Rules.shadowHolds(10, null, 60), false); assert.strictEqual(Rules.shadowHolds(10, { size: 1024 }, 60), false, 'no time remembered: walked');
+  });
 
   // ---------- the look's maps on a fake three.js ----------
   const fake = (o, screenW = 2560) => {
