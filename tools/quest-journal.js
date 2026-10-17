@@ -75,7 +75,7 @@ const QuestJournal = (() => {
       else if (result?.state === 'ok') state = C.validate(result.value);
       else throw Error(result?.error || 'The journal could not be read.');
       writable = true; render(); notice('Journal saved on this computer.');
-    } catch (err) { content.replaceChildren(E('section', { class: 'qj-empty' }, label('YOUR PROGRESS IS PRESERVED'), E('h2', { text: 'Let’s reconnect your journal' }), p(`${err.message} Nothing has been overwritten.`), button('Try loading again', load))); notice('Saving is disabled while the journal is unavailable.'); }
+    } catch (err) { content.replaceChildren(E('section', { class: 'qj-empty' }, label('YOUR PROGRESS IS PRESERVED'), E('h2', { text: 'Let’s reconnect your journal' }), p(`${calmError(err)} Nothing has been overwritten.`), button('Try loading again', load))); notice('Saving is disabled while the journal is unavailable.'); }
   }
   function celebrate(title, text) {
     lastCelebration = { title, text };
@@ -295,7 +295,7 @@ const QuestJournal = (() => {
     dialog('Restore a quest journal', (body, d) => {
       const input = E('input', { type: 'file', attrs: { accept: '.json', 'aria-label': 'Quest journal backup' } }), info = p('Choose an exported journal. Review it before replacing this journal. Attached files must still exist at their saved locations.');
       let imported = null;
-      input.addEventListener('change', async () => { imported = null; try { const file = input.files?.[0]; if (!file) return; if (file.size > 8e6) throw Error('Choose a journal smaller than 8 MB.'); imported = C.validate(JSON.parse(await file.text())); const n = C.stats(imported); info.textContent = `${n.finished} quests · ${n.xp} XP · ${imported.campaigns.length} campaigns. A recovery copy of the current journal will be saved before replacement.`; } catch (err) { info.textContent = err.message; } });
+      input.addEventListener('change', async () => { imported = null; try { const file = input.files?.[0]; if (!file) return; if (file.size > 8e6) throw Error('Choose a journal smaller than 8 MB.'); imported = C.validate(JSON.parse(await file.text())); const n = C.stats(imported); info.textContent = `${n.finished} quests · ${n.xp} XP · ${imported.campaigns.length} campaigns. A recovery copy of the current journal will be saved before replacement.`; } catch (err) { info.textContent = calmError(err); } });
       body.append(input, info, button('Replace with this journal', async () => { if (!imported) throw Error('Choose a valid journal first.'); const chosen = C.clone(imported); await mutate(async s => { const backup = await window.hub.kvSet('quest-journal-before-restore', C.clone(s)); if (backup?.error) throw Error(backup.error); Object.keys(s).forEach(k => delete s[k]); Object.assign(s, chosen); }, 'Journal restored.'); d.close(); }, 'qj-primary'));
     }, 'YOUR PROGRESS, PORTABLE');
   }
@@ -321,7 +321,7 @@ const QuestJournal = (() => {
     const surface = body.closest('.surface'); if (surface) new MutationObserver(() => { if (H.activeId !== 'tool:quests') root.querySelectorAll('audio,video').forEach(v => v.pause()); }).observe(surface, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
     document.addEventListener('visibilitychange', () => { if (document.hidden) root.querySelectorAll('audio,video').forEach(v => v.pause()); });
   }
-  Tools.define({ id: 'quests', offRail: true, name: 'Quest journal', icon: '✦', color: '#d9b777', description: 'Creative campaigns, small steps and a life worth playing', mount: body => mount(body).catch(err => { body.textContent = `Journal could not open: ${err.message}`; }), onShow: () => { if (state) render(); } });
+  Tools.define({ id: 'quests', offRail: true, name: 'Quest journal', icon: '✦', color: '#d9b777', description: 'Creative campaigns, small steps and a life worth playing', mount: body => mount(body).catch(err => { body.textContent = `Journal could not open: ${calmError(err)}`; }), onShow: () => { if (state) render(); } });
   Commands.register({ name: 'quests', area: 'Create', desc: 'Open your quest journal, campaigns, XP, skill tree and rewards', run: () => activate('tool:quests') });
   return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, get celebration() { return lastCelebration; } };
 })();
