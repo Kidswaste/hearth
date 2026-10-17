@@ -689,6 +689,7 @@ function registerAfterWindow() {
   lazyIpc('costcoachmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 43) 🧭 Cost coach: the last 7 days of replies as compact records (reads only)
   lazyIpc('scenesafemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, syncmain })); // (round 43) 🛟 Recover lost scenes: every copy of the Lab's scenes still on this computer, the cloud folder, backups (reads only)
   datasafe.register(ipcMain, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, store, cfg: cfgStore, syncmain, onConfig: () => send('config:changed', loadAll()) }); // (round 43, datasafe) what couldn't be read (the calm card), 🛟 Recover… (chats, memory, settings, tool data)
+  require('./chatsafemain').register(ipcMain, { cfg: cfgStore, onConfig: () => send('config:changed', loadAll()) }); // (round 55, chatsafe55) Bring back the AI a chat waits for (a chat never moves to another AI)
   store.onDoubt(() => send('data:doubt', {}));
   require('./backupautomain').register(ipcMain, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, appDir: __dirname, syncmain, store, getWin: () => win }); // (round 45, backupauto) automatic, checked backups: once a day when idle (powerwise's schedule), before updates / restores, the rotation, Settings › Backups
   lazyIpc('dragdropmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 38) files with Finder / Explorer: native drags out, drops checked (folders, iCloud placeholders), copied files pasted

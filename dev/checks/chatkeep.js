@@ -10,7 +10,7 @@
 //   4. Ctrl/⌘+Shift+R (the window reloaded on purpose): everything back, the line names the key
 //   5. Freshen and 6. an update's reload: everything back
 //   7. the director's AI turned off (its chats used to vanish from the list): the chat still shows and opens, and
-//      🛟 Recover… lists it ("not shown") and brings it back to an AI you have
+//      🛟 Recover… lists it ("waiting for its AI") · (round 55) under its own AI's name, never moved to another AI
 //   node dev/smoke.js --fake-engines --wait 8000 --check-timeout 240000 --script dev/checks/chatkeep.js --shot /tmp/chatkeep.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(150); } return null; };
@@ -137,10 +137,10 @@ try {
   const a = H.agent(ck.agent);
   a.enabled = false; await saveConfig(); await wait(1200);
   const row = await until(() => document.querySelector(`#chat-groups .item[data-key="${CSS.escape(ck.chatId)}"]`), 8000);
-  step(Boolean(row) && row.closest('.group')?.dataset.id !== ck.agent, 'its AI turned off: the chat still shows in the list (under an AI you have)', row?.closest('.group')?.dataset.id);
+  step(Boolean(row) && row.closest('.group')?.dataset.id === ck.agent && /turned off/.test(row.closest('.group')?.querySelector('.group-name')?.textContent || ''), 'its AI turned off: the chat still shows in the list (under its own AI\'s name, "— turned off")', row?.closest('.group')?.querySelector('.group-name')?.textContent);
   const scan = await window.hub.datasafe.scan({ quick: true });
   const hid = (scan.chats || []).find((c) => c.id === ck.chatId);
-  step(hid?.state === 'hidden' && /not shown/.test(hid.from), '🛟 Recover… lists it as a chat the list didn\'t show', hid?.from);
+  step(hid?.state === 'hidden' && /waiting for its AI/.test(hid.from) && hid.agentId === ck.agent, '🛟 Recover… lists it as a chat waiting for its AI (still its own)', hid?.from);
   H.agent(ck.agent).enabled = true; await saveConfig(); await wait(1200); // (H.config was read again from the file meanwhile)
   activate('tool:three');
   const again = await until(() => H.activeChat[ck.agent] === ck.chatId && ThreeLab.scenes.currentId() === ck.sk, 8000);

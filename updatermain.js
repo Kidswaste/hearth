@@ -302,6 +302,21 @@ function create(opts = {}) {
       return { ok: true, brought };
     } finally { busy = false; }
   }
+  // (round 55, chatsafe55) an agent one of Hearth's update stashes still holds (newest first, brought back or not): its
+  // definition, for "Bring back …" on the chats it left. Read only, nothing dropped. → { agent, from } | null
+  async function agentAside(id) {
+    const gd = C.gitDirOf(DIR);
+    if (!gd || !id) return null;
+    let common = gd; try { common = path.resolve(gd, fs.readFileSync(path.join(gd, 'commondir'), 'utf8').trim()); } catch { /* not a worktree */ }
+    if (![gd, common].some((d) => fs.existsSync(path.join(d, 'logs', 'refs', 'stash')) || fs.existsSync(path.join(d, 'refs', 'stash')))) return null; // no stash: no git run
+    const list = lines(await git(['stash', 'list', '--format=%H%x09%gs'])).map((l) => l.split('\t')).filter(([h, m]) => h && /hearth-update /.test(m || ''));
+    for (const [h, m] of list.slice(0, 40)) {
+      const cfg = parse(await git(['show', `${h}:${CONFIG}`]));
+      const a = Array.isArray(cfg?.agents) ? cfg.agents.find((x) => x && x.id === id) : null;
+      if (a) return { agent: a, from: `an update's stash (${String(m).slice(0, 80)})` };
+    }
+    return null;
+  }
   const identity = async () => ((await git(['config', 'user.email'])).out ? [] : ['-c', 'user.name=Hearth', '-c', 'user.email=hearth@localhost']);
   const changedFiles = async (a, b) => lines(await git(['diff', '--name-only', a, b]));
 
@@ -512,7 +527,7 @@ function create(opts = {}) {
     return done(`Back to how it was before the update (${String(j.from).slice(0, 7)}).${put.kept.length ? ` Your edits to ${put.kept.join(', ')} are in the stash "${j.edits.name}".` : ''}`, { retry: false, rolledBack: true });
   }
 
-  return { status, apply, back, fix, preflight, bringBack, needsRestart: (files) => needsRestartIn(DIR, files), get git() { return bin; }, get busy() { return busy; } };
+  return { status, apply, back, fix, preflight, bringBack, agentAside, needsRestart: (files) => needsRestartIn(DIR, files), get git() { return bin; }, get busy() { return busy; } };
 }
 
 const self = create();
@@ -527,4 +542,4 @@ function register(ipcMain, { restart, getWin } = {}) {
 
 // (round 54 fix, labchats54) applying(): an update / go back / fix is moving files right now (main.js holds config.json's
 // news and the window's saves meanwhile: the owner's config.json waits in a stash, the file on disk is the repo's own)
-module.exports = { register, create, status: self.status, apply: self.apply, back: self.back, fix: self.fix, bringBack: self.bringBack, applying: () => self.busy, needsRestart: (files) => needsRestartIn(__dirname, files) };
+module.exports = { register, create, status: self.status, apply: self.apply, back: self.back, fix: self.fix, bringBack: self.bringBack, agentAside: self.agentAside, applying: () => self.busy, needsRestart: (files) => needsRestartIn(__dirname, files) };
