@@ -70,10 +70,22 @@
       if (next) return { next };
       return rows.length ? { size: rows[rows.length - 1][0], why: rows.length > 1 ? 'smallest' : 'not-shadows' } : { size: ladder[0], why: 'not-shadows' };
     }
+    // (round 57, readywalk) a remembered size still holds when this game (same files, screen, refresh, look: the readyspeed
+    // key) draws it about as fast as when it was chosen: rem = { size, ms (its time a frame then), ref (the refresh's ms) }.
+    // Fits the refresh now → holds; it fitted then → holds unless clearly over (25 %); it didn't fit then (the walk went
+    // down while each step helped) → holds unless clearly slower than then (1.5× and 2 ms: a busy moment is not a change).
+    // Only "clearly fails" walks the sizes again
+    function shadowHolds(ms, rem, hz) {
+      if (!Number.isFinite(ms) || !rem || !(Number(rem.ms) > 0)) return false;
+      const fit = (1000 / (Number(hz) > 0 ? Number(hz) : 60)) * 0.9;
+      if (ms <= fit) return true;
+      if (rem.ms <= fit) return ms <= fit * 1.25;
+      return ms <= Math.max(rem.ms * 1.5, rem.ms + 2);
+    }
     const list = (ids) => { const n = ids.map((id) => NAMES[id] || id); return n.length < 2 ? n.join('') : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`; };
     const note = (title, ids) => (ids.length ? `Hearth's helpers were slowing ${title || 'the game'} a little; turned off: ${list(ids)}` : '');
     const fmt = (ms) => (ms == null ? 'Hearth: –' : ms < 0.005 ? 'Hearth: < 0.01 ms' : `Hearth: ${ms.toFixed(2)} ms`);
-    return { ALL, ORDER, NAMES, budgetMs, pick, median, judge, note, fmt, list, shadowPick };
+    return { ALL, ORDER, NAMES, budgetMs, pick, median, judge, note, fmt, list, shadowPick, shadowHolds };
   })();
   if (typeof module === 'object' && module && module.exports) { module.exports = Rules; return; }
   if (window.__hearthBudget) return;
@@ -205,7 +217,15 @@
       let ids = o.costs === false ? [] : Rules.ORDER.filter((id) => !H[id].off && hooks(id) && hooks(id).pause);
       const lk0 = hooks('look'); const sp0 = !H.look.off && lk0 && lk0.shadow ? lk0.shadow.plan() : null;
       if (!ids.length && !sp0) return (ab = { skipped: 'no helpers on' });
-      one(); const per = Math.max(Rules.median([one(), one(), one()]), 0.05); // (the first frames after getting ready are slow ones)
+      // (round 57, readywalk) o.shadow = { size, ms, ref }: the size this game's last walk chose and its time then, handed
+      // by getting ready only while the readyspeed key holds (same game files, Hearth's helpers, refresh, look); the
+      // look started at it (plan().remembered: the same screen size too). These first frames are drawn at it: they are
+      // the short check of that size alone
+      const q0 = sp0 && o.shadow && Number(o.shadow.size) >= 512 && Number(o.shadow.size) === sp0.remembered && sp0.start === sp0.remembered ? { size: Number(o.shadow.size), ms: Number(o.shadow.ms), ref: Number(o.shadow.ref) || 0 } : null;
+      // (the first frames after getting ready are slow ones; with q0 the median of 3 already sets a slow first one aside:
+      // no frame left uncounted)
+      if (!q0) one();
+      const w3 = [one(), one(), one()]; const per = Math.max(Rules.median(w3), 0.05);
       const K = Math.max(3, Math.min(16, Math.round(60 / per)));
       const yieldNow = () => new Promise((r) => later(r, 0));
       // a block: K frames (after one not counted: what piled up between blocks), helpers on or stepped aside
@@ -263,8 +283,16 @@
           for (let i = 0; i < 2; i += 1) { const a = []; for (let k = 0; k < K; k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); } b.push(Rules.median(a)); await yieldNow(); }
           return { ms: +Math.min(...b).toFixed(3), gpu: ag.length ? +Rules.median(ag).toFixed(3) : null };
         };
-        let checked = false;
-        for (;;) {
+        let checked = false; let quick = null;
+        // (round 57, readywalk) the remembered size still valid: a short check of that size alone (the 3 frames above,
+        // drawn at it; one more block of K only when they read clearly slower), and the walk only when that clearly fails
+        if (q0 && sp.start === q0.size && !res.turnedOff.length) {
+          let ms = Rules.median(w3); const blocks = [+ms.toFixed(3)];
+          if (!Rules.shadowHolds(ms, q0, HZ)) { one(); const a = []; for (let k = 0; k < K; k += 1) a.push(one()); const m2 = Rules.median(a); blocks.push(+m2.toFixed(3)); ms = Math.min(ms, m2); }
+          quick = { ms: +ms.toFixed(3), was: q0.ms, blocks, held: Rules.shadowHolds(ms, q0, HZ) };
+          if (quick.held) { rows.push([q0.size, +ms.toFixed(3)]); d = { size: q0.size, why: 'confirmed' }; }
+        }
+        if (!d) for (;;) {
           d = Rules.shadowPick(rows, sp.ladder, HZ);
           // a step that "didn't help" once more, both sizes (the noise of a shared computer can make a smaller map
           // look slower): each keeps its calmer time
@@ -280,11 +308,13 @@
         }
         const fb = lk.shadow.commit(d.size, { by: sp.remembered ? 'remembered' : 'ready', why: d.why, rows });
         if (fb) { lk.shadow.set(fb); one(); } // (the fallback's maps made now, under the card)
-        lk.shadow.set(d.size); one();
+        // (round 57, readywalk) back to the chosen size: its maps are kept, a pointer swap (nothing made), so no frame of
+        // its own here when the size was only checked; after a walk the chosen size is drawn once more as before
+        lk.shadow.set(d.size); if (!(quick && quick.held)) one();
         const sealed = lk.shadow.seal();
         const row = (s) => { const r = rows.find((x) => x[0] === s); return r ? r[1] : null; };
         let by = 'ready'; try { by = window.__gameLook.report().shadows.chosen.by; } catch (e) { /* fine */ }
-        res.shadow = { size: d.size, why: d.why, by, start: sp.start, to: sp.to, fallback: fb, fallbackReady: sealed, rows, gpu: tq ? gr : null, refreshMs: +(1000 / HZ).toFixed(2) };
+        res.shadow = { size: d.size, why: d.why, by, start: sp.start, to: sp.to, fallback: fb, fallbackReady: sealed, rows, gpu: tq ? gr : null, refreshMs: +(1000 / HZ).toFixed(2), ...(quick ? { quick } : {}), walked: !(quick && quick.held) };
         // (round 55's picture line for the doctor: the chosen size against the game's own, where both were drawn)
         const on1 = row(d.size); const off1 = row(512);
         if (on1 != null) res.picture = { on: on1, off: off1, costMs: off1 == null ? null : +(on1 - off1).toFixed(3), refreshMs: +(1000 / HZ).toFixed(2), fits: on1 <= 1000 / HZ, size: d.size };

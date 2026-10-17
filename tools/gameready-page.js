@@ -33,7 +33,8 @@
   // (epoch ms), was = the first ▶ Play's time + sw (say it once), rn = renderers to wait for, abs = the budget's A/B
   // verdict still holds (same files, helpers, screen, look: not run again), wq = one quiet warm-up pass is enough
   // (and a shorter one), ld = the loads an HTML build made last time (all in: no quiet wait)
-  const HN = { loads: Number(Q.get('ld')) || 0, click: Number(Q.get('c')) || 0, was: Number(Q.get('was')) || 0, show: Q.get('sw') === '1', rn: Number(Q.get('rn')) || 0, abReuse: Q.get('abs') === '1', quiet: Q.get('wq') === '1' ? 1 : 2 };
+  const HN = { loads: Number(Q.get('ld')) || 0, click: Number(Q.get('c')) || 0, was: Number(Q.get('was')) || 0, show: Q.get('sw') === '1', rn: Number(Q.get('rn')) || 0, abReuse: Q.get('abs') === '1', quiet: Q.get('wq') === '1' ? 1 : 2, shadow: null };
+  { const v = (Q.get('sq') || '').split(':').map(Number); if (v[0] >= 512 && v[1] > 0) HN.shadow = { size: v[0], ms: v[1], ref: v[2] || 0 }; } // (round 57, readywalk) sq: the shadow size to check, not walk
   S.hints = HN; S.speedLine = '';
   // what Hearth reads (game:eval): plain data only
   S.pub = () => JSON.stringify({ origin: S.origin, marks: S.marks, hints: S.hints, speedLine: S.speedLine, tx: S.tx, mode: S.mode, phase: S.phase, pct: S.pct, text: S.text, cardAt: S.cardAt, firstFrameAt: S.firstFrameAt, result: S.result, first5: S.first5, want: S.want, wantN: S.wantN, errors: S.errors.slice(-5), shown: S.shown, card: Boolean(ui && ui.d.isConnected && !ui.d.dataset.out) });
@@ -56,11 +57,11 @@
     // (shadowready: the Best look's shadow size is still chosen, starting from the one remembered, and its maps made here)
     if (HN.abReuse) {
       card('checking it runs smooth', 99);
-      try { const r = await B.ab({ costs: false }); if (S.result) S.result.ab = { reused: true, turnedOff: [], ms: r?.ms, shadow: r?.shadow || null, skipped: r?.skipped || null }; } catch { if (S.result) S.result.ab = { reused: true, turnedOff: [] }; }
+      try { const r = await B.ab({ costs: false, shadow: HN.shadow }); if (S.result) S.result.ab = { reused: true, turnedOff: [], ms: r?.ms, shadow: r?.shadow || null, skipped: r?.skipped || null }; } catch { if (S.result) S.result.ab = { reused: true, turnedOff: [] }; }
       return;
     }
     card('checking it runs smooth', 99);
-    try { const r = await B.ab(); if (S.result && r) S.result.ab = { on: r.on, off: r.off, turnedOff: r.turnedOff || [], skipped: r.skipped || null, ms: r.ms, judge: r.judge ? { slower: Boolean(r.judge.slower) } : null }; } catch { /* plays as it is */ }
+    try { const r = await B.ab({ shadow: HN.shadow }); if (S.result && r) S.result.ab = { on: r.on, off: r.off, turnedOff: r.turnedOff || [], skipped: r.skipped || null, ms: r.ms, judge: r.judge ? { slower: Boolean(r.judge.slower) } : null, shadow: r.shadow || null }; } catch { /* plays as it is */ }
   }
 
   // ---------- the card (over the whole window, before anything draws) ----------
@@ -155,13 +156,15 @@
       if (S.noPrep) return play();
       card('loading', 10);
       { let last = -1; let since = now(); const t = now();
-        while (!S.skip && now() - t < 10000) { const c = await count(); const k = c?.renderers ?? 0; if (k !== last) { last = k; since = now(); } else if (k > 0 && (now() - since > 600 || (HN.rn && k >= HN.rn))) break; await sleep(HN.rn ? 40 : 120); }
-        if (HN.rn && last >= HN.rn) await new Promise((r) => { let i = 0; const go = () => (++i >= 3 ? r() : realRAF(go)); realRAF(go); }); } // (round 56: as many as last time → no steady wait, two more frames of theirs (what a first frame starts: shadow maps) and on)
+        while (!S.skip && now() - t < 10000) { const c = await count(); const k = c?.renderers ?? 0; if (HN.rn && k >= HN.rn) break; if (k !== last) { last = k; since = now(); } else if (k > 0 && now() - since > 600) break; await sleep(HN.rn ? 40 : 120); }
+      } // (round 56: as many as last time → no steady wait. (round 57, readywalk) and no two more frames of theirs either: a
+      // renderer is counted only once it drew a frame (its scene known to the compile, its shadow maps made by that frame),
+      // and the warm-up pass draws frames anyway before the card goes; 2–3 frames saved, the first 5 s still counted)
       const g0 = await count(); mark('counted');
       let a = now(); const scan = S.skip ? null : await ask({ type: 'ready-scan', id: 'gr' }, 'ready-scanned', 60000); ms.assets = Math.round(now() - a); mark('scanned');
       const nTex = scan?.textures?.length || 0;
       if (!S.skip) card(`textures 0/${nTex}`, 45);
-      a = now(); const prep = S.skip ? null : await ask({ type: 'ready-prep', id: 'gr' }, 'ready-prepped', 90000); ms.effects = Math.round(now() - a); mark('prepped');
+      a = now(); const prep = S.skip ? null : await ask({ type: 'ready-prep', id: 'gr', frames: 0 }, 'ready-prepped', 90000); ms.effects = Math.round(now() - a); mark('prepped'); // (round 57, readywalk: frames 0, no 2 frames of its own: the warm-up pass right after draws them)
       if (!S.skip) card(`textures ${prep?.textures ?? nTex}/${nTex}`, 60);
       a = now(); const warm = [];
       for (let i = 0, quiet = 0; i < 6 && quiet < HN.quiet && !S.skip; i += 1) { // (round 56: one quiet pass when the last runs needed nothing more)
@@ -190,7 +193,7 @@
       const c0 = await count();
       await sleep(5000);
       const c1 = await count();
-      if (c0 && c1) S.first5 = { gpuLost: (c1.gpuLost || 0) - (c0.gpuLost || 0), budgetOff: budgetOff(), compiles: c1.compiles - c0.compiles, links: c1.links - c0.links, uploads: c1.uploads - c0.uploads, reuploads: c1.reuploads - c0.reuploads, lock: c1.lock, level: c1.level, shares: c1.shares, waitMs: Math.round((c1.waitMs || 0) - (c0.waitMs || 0)) };
+      if (c0 && c1) S.first5 = { gpuLost: (c1.gpuLost || 0) - (c0.gpuLost || 0), ctxMade: (c1.ctxMade || 0) - (c0.ctxMade || 0), gmMade: (c1.gmMade || 0) - (c0.gmMade || 0), /* (round 57: a context / merged renderer made in play's first 5 s: a layer run again) */ budgetOff: budgetOff(), compiles: c1.compiles - c0.compiles, links: c1.links - c0.links, uploads: c1.uploads - c0.uploads, reuploads: c1.reuploads - c0.reuploads, lock: c1.lock, level: c1.level, shares: c1.shares, waitMs: Math.round((c1.waitMs || 0) - (c0.waitMs || 0)) };
     }
     realTimeout(() => prepareLab().catch((err) => { S.errors.push(String(err?.message || err)); play(); }), 0);
     return;

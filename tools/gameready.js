@@ -184,7 +184,7 @@ const GameReady = (() => {
   // what this run learnt, kept per game in Hearth's cache (data/game-cache/readyspeed.json): the next ▶ Play's hints
   async function speedNote(r) {
     const tl = timeline(r); r.speed = tl;
-    try { await G()?.speed?.({ op: 'note', source: r.source, run: { total: tl?.total, skipped: Boolean(r.result?.skipped), noPrep: !r.result, shown: Boolean(r.page?.speedLine), renderers: r.result?.inventory?.renderers || r.result?.prep?.renderers || null, loads: r.result?.loads || null, warm: r.result?.warm || null, first5: r.first5, ab: r.result?.ab === undefined || r.result?.ab?.reused ? undefined : r.result.ab || null } }); } catch { /* only a cache */ }
+    try { await G()?.speed?.({ op: 'note', source: r.source, run: { total: tl?.total, skipped: Boolean(r.result?.skipped), noPrep: !r.result, shown: Boolean(r.page?.speedLine), renderers: r.result?.inventory?.renderers || r.result?.prep?.renderers || null, loads: r.result?.loads || null, warm: r.result?.warm || null, first5: r.first5, shadow: r.result?.ab?.shadow || undefined, ab: r.result?.ab === undefined || r.result?.ab?.reused ? undefined : r.result.ab || null } }); } catch { /* only a cache */ }
     S.last = info(r);
   }
   function stop() { stopWatch(); if (Mode()?.playing) Mode().leave(); G()?.arm(null).catch(() => {}); }
