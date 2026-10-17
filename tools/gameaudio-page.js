@@ -103,11 +103,15 @@
   // ---------- decoding: once, before it's needed ----------
   // a sound's file name for plain words: the sound file the page fetched with that many bytes (Resource Timing), else
   // the one it fetched last, a moment ago (three's loader reads through a stream: the bytes don't carry their address)
+  // (round 57, sweep57) ▶ Play's hearth-game:// files leave no Resource Timing entry (a custom scheme): the doctor said "a
+  // sound" for every one. The sound files the game fetched are noted here too (name, Content-Length, when): same rule
   function nameFor(bytes) {
     try {
       const list = performance.getEntriesByType('resource').filter((e) => SOUND.test(e.name));
       const hit = list.find((e) => bytes && (e.decodedBodySize === bytes || e.encodedBodySize === bytes)) || list.filter((e) => now() - e.responseEnd < 3000).pop();
-      return hit ? short(hit.name) : null;
+      if (hit) return short(hit.name);
+      const got = asked.find((a) => bytes && a.bytes === bytes) || asked.filter((a) => now() - a.t < 3000).pop();
+      return got ? got.name : null;
     } catch { return null; }
   }
   BAC.decodeAudioData = function (buf, ok, fail) {
@@ -156,9 +160,11 @@
   // an HTML build: the sounds its folder served last time (gameaudiomain.js). Their bytes stay in memory too (96 MB cap):
   // the game's own fetch of one is answered from them at once, instead of the file read again and streamed in chunks
   // over the next frames (≈ 100 ms for a 5 MB track)
+  const asked = []; // { name, bytes, t } of the last 20 sound files the game fetched (nameFor)
+  const askedNote = (url, bytes) => { try { asked.push({ name: short(url), bytes: Number(bytes) || 0, t: now() }); if (asked.length > 20) asked.shift(); } catch { /* fine */ } };
   const files = new Map(); let filesKept = 0; const FILES_CAP = 96 * 1024 * 1024;
   const MIME = { mp3: 'audio/mpeg', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', weba: 'audio/webm' };
-  if (!LAB && f0 && LIST.length) {
+  if (!LAB && f0) {
     for (const rel of LIST) {
       const url = `/${rel.split('/').map(encodeURIComponent).join('/')}`;
       const p = f0(url).then((r) => (r.ok ? rab.call(r) : null)).then((ab) => {
@@ -173,8 +179,10 @@
       const a0 = now();
       try {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input instanceof Request && input.method === 'GET' ? input.url : null;
-        const b = url && SOUND.test(url) && (!init?.method || init.method === 'GET') ? files.get(new URL(url, location.href).href) : null;
-        if (b) { S.served = (S.served || 0) + 1; SP += now() - a0; return Promise.resolve(new Response(b.slice(0), { status: 200, headers: { 'content-type': MIME[(url.match(SOUND) || [])[1]?.toLowerCase()] || 'application/octet-stream', 'content-length': String(b.byteLength) } })); }
+        const snd = url && SOUND.test(url) && (!init?.method || init.method === 'GET');
+        const b = snd ? files.get(new URL(url, location.href).href) : null;
+        if (b) { S.served = (S.served || 0) + 1; askedNote(url, b.byteLength); SP += now() - a0; return Promise.resolve(new Response(b.slice(0), { status: 200, headers: { 'content-type': MIME[(url.match(SOUND) || [])[1]?.toLowerCase()] || 'application/octet-stream', 'content-length': String(b.byteLength) } })); }
+        if (snd) { const p = f0(input, init); p.then((r) => askedNote(url, r.headers.get('content-length')), () => {}); SP += now() - a0; return p; }
       } catch { /* the network's answer, as always */ }
       SP += now() - a0;
       return f0(input, init);
