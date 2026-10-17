@@ -412,6 +412,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
     if (W.requestAnimationFrame === wrapRAF) W.requestAnimationFrame = RAF;
     for (const [P, m, f] of glOrig) if (P[m]?.__gp === f) P[m] = f;
     for (const r of renderers) { if (r.render?.__gp) r.render = r.render.__gp; if (r.setAnimationLoop?.__gp) r.setAnimationLoop = r.setAnimationLoop.__gp; }
+    O.key = false; keyListen(); // (round 56)
     undoAll(); delete W.__gamePerf; return true;
   }
   // F toggles the chip in a ▶ Play window (not in the Lab preview, where F may be the scene's own key)
@@ -420,11 +421,15 @@ const GamePerfProbe = function gamePerfProbe(opts) {
     const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     chipOn();
   };
-  addEventListener('keydown', onKey, true);
+  // (round 56, playlatency) listened to only when asked (key: true, an HTML game outside ▶ Play): ▶ Play reads F on the
+  // main side, so the game's keys pass nothing of Hearth's there
+  let keyOn = false;
+  const keyListen = () => { const want = Boolean(O.key) && !S.off; if (want === keyOn) return; keyOn = want; if (want) addEventListener('keydown', onKey, true); else removeEventListener('keydown', onKey, true); };
+  keyListen();
 
   const api = {
     version: 1, chip: chipOn, start, report, detach, tryLive, undoLive: undoAll, use: (o = {}) => { track(o.renderer, o.scene, o.camera, o.layer); return true; },
-    setOpts: (o) => { Object.assign(O, o); if (o.attribute) { try { attributeFn = new Function(`return (${o.attribute})`)(); } catch { /* fine */ } } if (o.chip != null && !S.off) chipOn(o.chip); },
+    setOpts: (o) => { Object.assign(O, o); keyListen(); if (o.attribute) { try { attributeFn = new Function(`return (${o.attribute})`)(); } catch { /* fine */ } } if (o.chip != null && !S.off) chipOn(o.chip); },
     // (round 55, playbudget) ▶ Play's budget (tools/playbudget-page.js): what measuring costs (its own time, the chip's),
     // stepped aside for the A/B, and off for this game (nothing per frame any more; the numbers so far stay readable)
     budget: {
@@ -432,7 +437,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
       pause: (on) => { if (!S.off) S.on = !on; },
       off: (by) => {
         if (S.off) return false;
-        S.off = String(by || 'asked'); S.on = false; alive = false; chipOn(false);
+        S.off = String(by || 'asked'); S.on = false; alive = false; chipOn(false); keyListen(); // (round 56: off for the session: its F listener goes too)
         clearInterval(discT); clearInterval(motT);
         try { loaf?.disconnect(); mo?.disconnect(); } catch { /* fine */ }
         if (W.requestAnimationFrame === wrapRAF) W.requestAnimationFrame = RAF;

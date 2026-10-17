@@ -40,7 +40,7 @@ const PlayLoop = (() => {
     if (JSON.stringify([a.refs, a.song, a.version, a.palette]) !== JSON.stringify([b.refs, b.song, b.version, b.palette])) return { kind: 'rebuild' };
     const pa = GameCore.mergePlan(a.layers); const pb = GameCore.mergePlan(b.layers);
     const ids = (s) => s.layers.map((L) => L.id).join('|');
-    if (ids(a) !== ids(b) || pa.merge.join('|') !== pb.merge.join('|')) return { kind: 'restart', plan: pb };
+    if (ids(a) !== ids(b) || pa.merge.join('|') !== pb.merge.join('|') || pa.fast !== pb.fast) return { kind: 'restart', plan: pb }; // (round 56, playlatency: code that starts reading a picture needs the kept one: a new canvas)
     const code = b.layers.filter((L, i) => L.code !== a.layers[i].code);
     const props = b.layers.filter((L, i) => L.code === a.layers[i].code && propsOf(L) !== propsOf(a.layers[i]));
     return { kind: code.length || props.length ? 'hot' : 'none', code, props };
@@ -82,7 +82,7 @@ const PlayLoop = (() => {
         S.stats.hot += 1;
       } else {
         const states = await save();
-        await post({ type: 'game-plan', merge: d.plan.merge, why: d.plan.why });
+        await post({ type: 'game-plan', merge: d.plan.merge, why: d.plan.why, fast: Boolean(d.plan.fast) });
         await post({ type: 'run-layers', layers: spec.layers });
         S.stats.restart += 1;
         if (states && Object.keys(states).length) await handBack(states);

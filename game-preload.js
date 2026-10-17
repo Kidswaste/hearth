@@ -125,13 +125,15 @@ const sound = () => {
 function tick(t) {
   if (!statsOn) { raf = 0; return; }
   const a0 = performance.now();
+  latFlush(); // (round 56, playlatency) the inputs since the last frame: this is the frame that reads them
   if (last) gaps.push(t - last);
   last = t;
   if (t - lastPaint > 500 && gaps.length) {
     lastPaint = t;
     const g = gaps.slice(-240); const avg = g.reduce((a, b) => a + b, 0) / g.length;
     if (t - sndAt > 2000) { sndAt = t; sound(); }
-    const line = `${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}${hearth ? ` · ${hearth}` : ''}`;
+    const inp = latFigure();
+    const line = `${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${inp ? ` · ${inp}` : ''}${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}${hearth ? ` · ${hearth}` : ''}`;
     if (ui.chip.textContent !== line) ui.chip.textContent = line;
     gaps = g.slice(-120);
   }
@@ -140,6 +142,7 @@ function tick(t) {
 }
 function stats(on) {
   statsOn = Boolean(on);
+  latOn('chip', statsOn); // (round 56, playlatency) "Input: x ms" from your own keys / mouse, only while the chip shows
   const u = mount();
   u.chip.hidden = !statsOn;
   u.look.hidden = true; u.note.hidden = !(statsOn && note);
@@ -152,6 +155,55 @@ function stats(on) {
   }
 }
 addEventListener('DOMContentLoaded', () => mount());
+
+// ---------- input → the game's frame (round 56, playlatency) ----------
+// Measured only while the F chip shows ("Input: 3.1 ms": your own keys and mouse) or /game latency runs (2 s of tiny
+// synthetic input from the main side, playlatencymain.js); otherwise not one listener or frame callback of this exists.
+// Per input: its own timestamp (the OS's) → handled (every capture listener so far) → the start of the next animation
+// frame (where the game reads it). Passive listeners in this preload's world: nothing is held or re-sent.
+const LAT = { users: new Set(), pend: [], k: [], m: [], et: [], gaps: [], last: 0, raf: 0, obs: null };
+const LAT_TYPES = ['keydown', 'pointerdown', 'pointermove'];
+const latEv = (e) => { if (LAT.pend.length < 64) LAT.pend.push([e.type === 'pointermove' ? 1 : 0, e.timeStamp, performance.now()]); };
+function latFlush() {
+  if (!LAT.pend.length) return;
+  const now = performance.now();
+  for (const [mv, ts, h] of LAT.pend) { const a = mv ? LAT.m : LAT.k; a.push([h - ts, now - ts]); if (a.length > 600) a.shift(); }
+  LAT.pend.length = 0;
+}
+// the chip's figure: the typical input → frame of the last few seconds of play
+function latFigure() {
+  const a = [...LAT.k.slice(-120), ...LAT.m.slice(-120)].map((x) => x[1]).sort((x, y) => x - y);
+  if (a.length < 3) return '';
+  const v = a[Math.floor(a.length / 2)];
+  return `Input: ${v < 10 ? v.toFixed(1) : Math.round(v)} ms`;
+}
+function latLoop(t) {
+  if (!LAT.users.has('measure')) { LAT.raf = 0; return; }
+  if (LAT.last) { LAT.gaps.push(t - LAT.last); if (LAT.gaps.length > 2400) LAT.gaps.shift(); }
+  LAT.last = t; latFlush();
+  LAT.raf = requestAnimationFrame(latLoop);
+}
+function latOn(who, on) {
+  const had = LAT.users.size > 0;
+  if (on) LAT.users.add(who); else LAT.users.delete(who);
+  const has = LAT.users.size > 0;
+  if (has && !had) { LAT.pend.length = 0; for (const t of LAT_TYPES) addEventListener(t, latEv, { capture: true, passive: true }); }
+  if (!has && had) { for (const t of LAT_TYPES) removeEventListener(t, latEv, { capture: true }); LAT.pend.length = 0; LAT.k = []; LAT.m = []; }
+  if (who !== 'measure') return;
+  if (on) {
+    LAT.k = []; LAT.m = []; LAT.et = []; LAT.gaps = []; LAT.last = 0;
+    try { LAT.obs = new PerformanceObserver((l) => { for (const x of l.getEntries()) if (LAT.et.length < 600 && /^(keydown|pointerdown)$/.test(x.name)) LAT.et.push(x.duration); }); LAT.obs.observe({ type: 'event', durationThreshold: 16, buffered: false }); } catch { LAT.obs = null; }
+    if (!LAT.raf) LAT.raf = requestAnimationFrame(latLoop);
+  } else { try { LAT.obs?.disconnect(); } catch { /* fine */ } LAT.obs = null; }
+}
+ipcRenderer.on('game:lat', (_e, d = {}) => {
+  if (d.on) { latOn('measure', true); return; }
+  latFlush();
+  const out = JSON.stringify({ k: LAT.k, m: LAT.m, et: LAT.et, gaps: LAT.gaps });
+  latOn('measure', false);
+  if (statsOn) { LAT.k = []; LAT.m = []; } // (the chip's own figure starts again from your input)
+  ipcRenderer.send('game:lat-result', out);
+});
 // (round 55, playbudget) the page switched one of Hearth's helpers off (it was slowing the game): Hearth keeps that for
 // this game (gamemodemain.js → playbudgetmain.js). One event, only then; the numbers are read from the page once
 addEventListener('hearth-budget', () => {
