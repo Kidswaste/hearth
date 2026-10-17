@@ -127,12 +127,50 @@
   function redeem(s, rid, at = new Date().toISOString()) { const r = s.rewards.find(r => r.id === rid); if (!r) throw Error('Reward not found.'); if (balance(s) < r.cost) throw Error(`You need ${r.cost - balance(s)} more sparks for this reward.`); const receipt = { id: id('r'), rewardId: rid, name: r.name, cost: r.cost, at }; s.redemptions.push(receipt); return receipt; }
   function stats(s) { const quests = allQuests(s), finished = quests.filter(q => done(s, q.id)); return { xp: xp(s), level: level(xp(s)), sparks: balance(s), finished: finished.length, campaigns: s.campaigns.filter(c => campaignDone(s, c)).length, days: new Set(finished.map(q => record(s, q.id).completedAt.slice(0, 10))).size }; }
   function upgrade(s) {
-    if (s.studio) return s;
+    if (s.studio && s.deck) return s;
     const out = clone(s);
-    for (const c of D.commissions) if (out.campaigns.length < 100 && !out.campaigns.some(x => x.id === c.id)) out.campaigns.push(clone(c));
-    for (const r of D.treats) if (out.rewards.length < 100 && !out.rewards.some(x => x.id === r.id)) out.rewards.push(clone(r));
-    out.studio = { v: 1 }; out.submissions = {}; out.contracts = {}; out.rewardGoal = null;
+    if (!out.studio) {
+      for (const c of D.commissions) if (out.campaigns.length < 100 && !out.campaigns.some(x => x.id === c.id)) out.campaigns.push(clone(c));
+      for (const r of D.treats) if (out.rewards.length < 100 && !out.rewards.some(x => x.id === r.id)) out.rewards.push(clone(r));
+      out.studio = { v: 1 }; out.submissions = {}; out.contracts = {}; out.rewardGoal = null;
+    }
+    if (!out.deck) { out.deck = { v: 1, filters: { lane: 'any', mood: 'any', minutes: 60, shelf: 'all' }, hand: [], seen: [], saved: [], hidden: [] }; deal(out); }
     return validate(out);
+  }
+  const deckLanes = ['any', 'music', 'visual', 'game', 'forge', 'life'];
+  const deckMoods = ['any', 'make', 'remix', 'polish', 'explore', 'reset'];
+  const deckCard = cid => D.deck.find(c => c.id === cid);
+  function checkDeckFilters(f) {
+    if (!f || !deckLanes.includes(f.lane) || !deckMoods.includes(f.mood) || ![5, 15, 30, 60].includes(f.minutes) || !['all', 'saved'].includes(f.shelf)) throw Error('Choose valid mixtape filters.');
+  }
+  function deckPool(s) {
+    const d = s.deck, f = d.filters, taken = new Set(allQuests(s).map(q => q.id));
+    return D.deck.filter(c => !d.hidden.includes(c.id) && !taken.has(`q-deck-${c.id}`) && (f.lane === 'any' || c.lane === f.lane) && (f.mood === 'any' || c.mood === f.mood) && c.minutes <= f.minutes && (f.shelf === 'all' || d.saved.includes(c.id)));
+  }
+  function deckHand(s) { const ids = new Set(deckPool(s).map(c => c.id)); return s.deck.hand.filter(cid => ids.has(cid)).map(deckCard); }
+  function deal(s, filters) {
+    const d = s.deck;
+    if (filters) { checkDeckFilters(filters); d.filters = clone(filters); }
+    // Least recently shown first. New cards are exhausted before any repeats.
+    // Current cards go last among equally recent candidates; small pools remain useful.
+    const order = c => { const n = d.seen.indexOf(c.id); return n < 0 ? -1 : n; };
+    const pool = deckPool(s).sort((a, b) => order(a) - order(b));
+    d.hand = pool.slice(0, 3).map(c => c.id);
+    d.seen = [...d.seen.filter(cid => !d.hand.includes(cid)), ...d.hand];
+    return deckHand(s);
+  }
+  function markCard(s, cid, mark) {
+    if (!deckCard(cid) || !['saved', 'hidden'].includes(mark)) throw Error('Choose a card from the mixtape.');
+    const list = s.deck[mark], i = list.indexOf(cid);
+    if (i >= 0) list.splice(i, 1); else list.push(cid);
+    return i < 0;
+  }
+  function takeCard(s, cid, twist = false) {
+    const c = deckCard(cid); if (!c || typeof twist !== 'boolean') throw Error('Choose a card from the mixtape.');
+    const qid = `q-deck-${cid}`, existing = find(s, qid); if (existing) return existing;
+    if (!deckHand(s).some(c => c.id === cid)) throw Error('Deal or open this card before taking it.');
+    const q = { id: qid, path: c.path, title: c.title, done: c.done + (twist ? ` Creative constraint: ${c.twist}` : ''), tiny: c.tiny, minutes: c.minutes, xp: c.minutes <= 5 ? 20 : c.minutes <= 15 ? 35 : 50, tool: c.tool, deep: twist ? 'Reach the chosen finish line, compare once, then stop.' : c.twist, deckCard: cid, deckTwist: twist, proofHint: 'Show the actual export, test evidence or saved work described in the finish line. A chat must contain the work, not just a promise.' };
+    trackSide(s, q); s.deck.hand = s.deck.hand.filter(x => x !== cid); return q;
   }
   const submissions = (s, qid) => s.submissions?.[qid] || [];
   const latest = (s, qid) => submissions(s, qid).at(-1) || null;
@@ -193,6 +231,15 @@
     for (const c of s.campaigns) { unique(c.id); if (!str(c.title, 100) || !str(c.why, 600) || !paths.some(p => p.id === c.path) || !Array.isArray(c.quests) || !c.quests.length || c.quests.length > 12) throw Error('Invalid campaign.'); c.quests.forEach(quest); }
     for (const q of s.sideQuests) { if (!paths.some(p => p.id === q.path)) throw Error('Invalid quest path.'); quest(q); }
     const qids = new Set(allQuests(s).map(q => q.id));
+    if (s.deck != null) {
+      if (!obj(s.deck) || s.deck.v !== 1) throw Error('Unsupported mixtape version.');
+      checkDeckFilters(s.deck.filters);
+      for (const key of ['hand', 'seen', 'saved', 'hidden']) {
+        const values = s.deck[key];
+        if (!Array.isArray(values) || values.length > (key === 'hand' ? 3 : D.deck.length) || new Set(values).size !== values.length || values.some(cid => !deckCard(cid))) throw Error('Invalid mixtape card history.');
+      }
+    }
+    for (const q of s.sideQuests) if (q.deckCard != null && (!deckCard(q.deckCard) || q.id !== `q-deck-${q.deckCard}` || typeof q.deckTwist !== 'boolean')) throw Error('Invalid mixtape quest.');
     if (s.studio != null && (!obj(s.studio) || s.studio.v !== 1)) throw Error('Unsupported studio version.');
     if (s.contracts != null && (!obj(s.contracts) || Object.entries(s.contracts).some(([key, tier]) => !['sketch', 'studio', 'showcase'].includes(tier) || !find(s, key)?.variants?.[tier]))) throw Error('Invalid saved quest scope.');
     for (const q of s.sideQuests) if (q.revisionOf && (!qids.has(q.revisionOf) || q.revisionOf === q.id)) throw Error('Invalid revision source.');
@@ -219,5 +266,5 @@
     if (balance(s) < 0) throw Error('Reward history exceeds earned sparks.');
     return clone(s);
   }
-  return { paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest };
+  return { paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest, deckLanes, deckMoods, deckCard, deckPool, deckHand, deal, markCard, takeCard };
 });

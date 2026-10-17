@@ -12,6 +12,8 @@ const QuestJournal = (() => {
   // quest names, notes and imported data always go through textContent.
   function art(kind) {
     const drawings = {
+      forge: `<path d="m26 54 91-3 24 9-27 17-18 1-7 20 17 10-58 3 14-16-7-15-22-7Z" fill="#8ba8a1"/><path d="m27 54 84-3-10 16-64 3Z" fill="#c8d3bd"/><path d="m59 91 29-2M42 112l69-4"/><path d="m85 19 12 11-29 32-9-8Z" fill="#c48b5c"/><path d="m83 10 34 28-13 15-36-29Z" fill="#e4bf70"/><path d="m77 21 33 26"/><path d="m28 26 5-10 5 10 10 5-10 5-5 10-5-10-10-5Z" fill="#e9c780"/><path d="m124 15 6 10-6 13-6-13Z" fill="#b6a2d2"/><path d="m70 74 6 9 5-10" stroke="#30464a"/>`,
+      deck: `<path d="m34 26 77-9 15 88-78 10Z" fill="#8bb0a1"/><path d="m24 40 90-12 10 82-90 10Z" fill="#dfaa79"/><g class="qj-art-lift"><path d="m41 34 94 8-8 75-94-8Z" fill="#eadcbc"/><path d="m49 46 73 6-3 39-73-6Z" fill="#334d50"/><circle cx="65" cy="67" r="12" fill="#e9c577"/><circle cx="102" cy="70" r="12" fill="#b3a4cd"/><path d="m61 66 8 1m29 3 8 1M62 99l38 3"/><path d="m74 90 18 1 6 12-31-2Z" fill="#b77b58"/></g><path d="m17 26 5-11 5 11 11 5-11 4-5 11-5-11-11-4Z" fill="#eed59a"/>`,
       room: `<path d="M16 16h128v100H16Z" fill="#112b3c" stroke="#658d91" stroke-width="5"/><path d="M20 91 43 63 64 83 93 48 140 88v24H20Z" fill="#244e58" stroke="none"/><path d="M20 104 56 84 80 94 116 76 140 99v13H20Z" fill="#3f6a69" stroke="none"/><circle cx="112" cy="40" r="13" fill="#e9d9ab" stroke="none"/><g class="qj-night-stars" fill="#d6dcb3" stroke="none"><circle cx="35" cy="37" r="2"/><circle cx="72" cy="30" r="1.5"/><circle cx="53" cy="52" r="1.5"/><circle cx="132" cy="67" r="2"/></g><path d="M80 18v94M18 70h124" stroke="#769b94" stroke-width="4"/><path d="M11 119h139" stroke="#bd9c70" stroke-width="7"/>`,
       adventure: `<path d="M35 110 29 27Q29 20 38 19L113 12 125 105Z" fill="#204c50"/><g class="qj-art-lift"><path d="m33 22 77-8 8 87-78 10Z" fill="#eedfbc"/><path d="m43 22 8 87M49 42l49-5M51 49l35-3"/><path d="m59 64 15-2 2 15-15 2Z" fill="#e98e6b"/><path d="m83 63 7 5 10-15M60 91l39-4"/><path d="m88 13 2 23 7-6 7 4-2-23" fill="#d96951"/></g><path d="m117 46 8-2 10 49-7 7-5-5Z" fill="#dfb953"/><path d="m128 100 5 7 2-14" fill="#eedfbc"/>`,
       campaigns: `<path d="m20 48 21-10 94 1 7 70-111 4Z" fill="#c38257"/><path d="m28 56 108-6M31 99l105-4M45 56l3 42M119 52l2 43"/><g class="qj-art-lift"><path d="m42 42-3-22 54-5 8 28" fill="#e5dbba"/><path d="m52 29 30-3M55 36l20-2"/><path d="m78 47 4-18 47 7-2 12" fill="#8eac9c"/><path d="m92 38 21 3"/></g><path d="m62 65 47-2 1 21-47 2Z" fill="#eedfbc"/><path d="m74 76 25-1"/><circle cx="37" cy="65" r="2" fill="#253b3a"/><circle cx="130" cy="61" r="2" fill="#253b3a"/>`,
@@ -38,7 +40,7 @@ const QuestJournal = (() => {
   function menuNote(id) {
     const destination = destinations.find(d => d[0] === id) || destinations[0];
     const note = root?.querySelector('.qj-bench-caption');
-    if (note) note.textContent = id === 'commissions' ? 'The commission wall / Make it. Show it. Take the next step.' : `${destination[1]} / ${destination[3]}`;
+    if (note) note.textContent = id === 'deck' ? 'The mixtape / Find something that makes you want to begin.' : id === 'commissions' ? 'The commission wall / Make it. Show it. Take the next step.' : `${destination[1]} / ${destination[3]}`;
   }
   function syncMotion() {
     if (root) root.dataset.motion = state?.motion !== false && !document.hidden && H.activeId === 'tool:quests' ? 'on' : 'off';
@@ -97,7 +99,7 @@ const QuestJournal = (() => {
     root.querySelector('.qj-profile')?.remove();
     const profile = E('div', { class: 'qj-profile' }, E('div', { class: 'qj-level', attrs: { 'aria-label': `Level ${lv.n}` }, text: String(lv.n) }), E('div', { class: 'qj-level-info' }, label(`LEVEL ${lv.n} · ${lv.n < 3 ? 'THE BEGINNING' : lv.n < 6 ? 'FINDING YOUR WAY' : 'MAKING YOUR MARK'}`), E('div', { class: 'qj-xp-line' }, E('strong', { text: `${totals.xp.toLocaleString()} XP` }), E('span', { text: `${lv.left} to level ${lv.n + 1}` })), meter(totals.xp - lv.base, lv.end - lv.base, 'Level progress')), E('div', { class: 'qj-wallet', attrs: { title: 'Earn one spark for every five XP. Redeeming rewards never spends XP.' } }, E('b', { text: `✧ ${totals.sparks}` }), label('SPARKS')));
     root.querySelector('.qj-top').append(profile);
-    root.querySelectorAll('[data-page]').forEach(b => b.setAttribute('aria-current', b.dataset.page === (page === 'commissions' ? 'campaigns' : page) ? 'page' : 'false'));
+    root.querySelectorAll('[data-page]').forEach(b => b.setAttribute('aria-current', b.dataset.page === (['commissions', 'deck'].includes(page) ? 'campaigns' : page) ? 'page' : 'false'));
     menuNote(page);
     const rewardCount = root.querySelector('[data-page="rewards"] .qj-object-count');
     if (rewardCount) rewardCount.textContent = `${totals.sparks} sparks`;
@@ -105,7 +107,7 @@ const QuestJournal = (() => {
     if (motion) { motion.textContent = state.motion === false ? 'Motion off' : 'Motion on'; motion.setAttribute('aria-pressed', String(state.motion !== false)); }
     syncMotion();
     content.replaceChildren();
-    if (page === 'adventure') adventure(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
+    if (page === 'adventure') adventure(); else if (page === 'deck') mixtape(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
     if (focused && !root.querySelector('dialog[open]')) [...root.querySelectorAll('[data-focus]')].find(b => b.dataset.focus === focused)?.focus({ preventScroll: true });
     tick();
   }
@@ -116,6 +118,7 @@ const QuestJournal = (() => {
   function adventure() {
     const campaign = state.campaigns.find(c => c.id === state.active && !c.paused), quest = C.next(state, campaign), totals = C.stats(state);
     sessionDesk();
+    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('THE MIXTAPE / 30 SMALL ADVENTURES'), E('h3', { text: 'Something you haven’t tried yet.' }), p('Make a demo. Bend a sound. Fix a tiny world. Find your spark in three cards.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
     content.append(E('section', { class: 'qj-commission-invite' }, E('div', {}, label('NEW / MADE FOR YOUR KIND OF PROJECTS'), E('h3', { text: 'Demos. Loops. Visuals. Forgeheart.' }), p('Make a small thing, show the evidence, get a real critique.')), button('Browse commissions →', () => navigate('commissions'), 'qj-primary')));
     const goal = state.rewards.find(r => r.id === state.rewardGoal);
     if (goal) content.append(E('section', { class: 'qj-goal-strip' }, E('div', {}, label('SAVING TOWARD'), E('strong', { text: goal.name }), meter(Math.min(C.balance(state), goal.cost), goal.cost, 'Reward goal')), button(C.balance(state) >= goal.cost ? 'Your treat is ready →' : `${goal.cost - C.balance(state)} sparks to go →`, () => navigate('rewards'), 'qj-quiet')));
@@ -216,6 +219,7 @@ const QuestJournal = (() => {
     }, 'NO DEADLINE. JUST A POSSIBILITY.');
   }
   function campaigns() {
+    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('ONE-OFF ADVENTURES'), E('h3', { text: 'Try something from the mixtape.' }), p('Thirty small briefs, saved favorites and optional creative constraints.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
     content.append(sectionHeading('CAMPAIGNS', 'Finish something worth keeping.', 'One tracked campaign. A clear finish line. Everything else can wait.', button('+ Your own campaign', newCampaign, 'qj-primary')));
     const grid = E('div', { class: 'qj-campaign-grid' });
     for (const c of state.campaigns) {
@@ -326,6 +330,7 @@ const QuestJournal = (() => {
         body.append(label(`✓ COMPLETED · ${q.xp} XP`), p(q.done), p(r.note || 'You kept your promise to this quest.'), artifactPreview(r.artifact), row(button('Add or edit keepsake', () => { d.close(); completionForm(qid, true); }), button('Undo completion', async () => { await mutate(s => C.undo(s, qid), 'Completion undone. Your earlier small start is kept.'); d.close(); }, 'qj-quiet'))); return;
       }
       if (C.skipped(state, qid)) { body.append(label('SET ASIDE · NO COMPLETION XP'), p(q.done), p('Your earlier small-start XP is kept. Bring this back whenever it fits.'), button('Revisit quest', async () => { await mutate(s => C.revisit(s, qid), 'Quest restored.'); d.close(); navigate('adventure'); }, 'qj-primary')); return; }
+      if (q.parked) { body.append(label('PARKED / YOUR PROGRESS IS KEPT'), p(q.done), button('Resume this quest', async () => { await mutate(s => { if (C.sideCount(s) >= 3) throw Error('Free a side-quest slot before resuming.'); s.sideQuests.find(x => x.id === qid).parked = false; }, 'Quest back on your workbench.'); d.close(); questDetail(qid); }, 'qj-primary')); return; }
       if (state.plan?.quest === qid) body.append(E('aside', { class: 'qj-starting-note' }, label('YOUR STARTING NOTE'), p(state.plan.action)));
       if (q.variants) body.append(E('section', { class: 'qj-contract' }, label('YOUR SCOPE CONTRACT'), p('Pick scope before the first start or submission. XP rewards finishing the agreed work, never a high score.'), row(...Object.entries(q.variants).map(([tier, v]) => { const b = button(`${tier === 'sketch' ? 'Sketch' : tier === 'studio' ? 'Studio' : 'Showcase'} · ${v.minutes}m · ${v.xp} XP`, async () => { await mutate(s => C.setContract(s, qid, tier)); d.close(); questDetail(qid); }, (state.contracts?.[qid] || 'studio') === tier ? 'qj-primary' : 'qj-quiet'); b.disabled = Boolean(C.earned(state, q) || C.submissions(state, qid).length); b.setAttribute('aria-pressed', String((state.contracts?.[qid] || 'studio') === tier)); return b; }))));
       if (C.latest(state, qid)) body.append(button('Review & version history', () => { d.close(); reviewHistory(qid); }, 'qj-quiet'));
@@ -345,6 +350,60 @@ const QuestJournal = (() => {
       if (!q.campaign) body.append(button('Park this side quest', async () => { await mutate(s => { s.sideQuests.find(x => x.id === qid).parked = true; if (s.focus?.quest === qid) s.focus = null; }, 'Parked, with your progress kept.'); d.close(); }, 'qj-quiet'));
       paint();
     }, path.name);
+  }
+  const laneNames = { any: 'All worlds', music: 'Sound room', visual: 'Light studies', game: 'Game feel', forge: 'Forgeheart', life: 'Small resets' };
+  function mixtape() {
+    const d = state.deck, cards = C.deckHand(state), pool = C.deckPool(state), accepted = state.sideQuests.filter(q => q.deckCard), finished = accepted.filter(q => C.done(state, q.id));
+    content.append(E('header', { class: 'qj-deck-head' }, E('div', {}, label('SIDEQUEST SELECTS / VOL. 01'), E('h2', { text: 'The mixtape' }), p('Thirty reasons to open the studio. Take one that pulls you in; the rest can wait.'), row(button('Deal three more ↻', () => mutate(s => C.deal(s), 'New deal saved. Unseen cards come first.'), 'qj-primary', 'deck-deal'), button('Back to notebook', () => navigate('adventure'), 'qj-quiet'))), E('div', { class: 'qj-deck-machine' }, art('deck'), label(`${String(finished.length).padStart(2, '0')} / 30 FINISHED`))));
+    const filters = E('div', { class: 'qj-deck-filters' });
+    const select = (key, title, options) => {
+      const control = E('select', { attrs: { 'aria-label': title }, dataset: { focus: `deck-${key}` } }, ...options.map(([value, name]) => E('option', { value: String(value), text: name })));
+      control.value = String(d.filters[key]);
+      control.addEventListener('change', async () => { control.disabled = true; try { await mutate(s => C.deal(s, { ...s.deck.filters, [key]: key === 'minutes' ? Number(control.value) : control.value }), 'Mixtape filters and new deal saved.'); } catch (err) { control.value = String(state.deck.filters[key]); notice(err.message); } finally { control.disabled = false; } });
+      filters.append(E('label', { class: 'qj-field' }, label(title), control));
+    };
+    select('lane', 'World', C.deckLanes.map(l => [l, laneNames[l]]));
+    select('mood', 'Today I want to', [['any', 'Follow anything'], ['make', 'Make something'], ['remix', 'Remix something'], ['polish', 'Polish a detail'], ['explore', 'Explore an idea'], ['reset', 'Make starting easier']] );
+    select('minutes', 'Room to play', [[5, 'Up to 5 minutes'], [15, 'Up to 15 minutes'], [30, 'Up to 30 minutes'], [60, 'Any length']] );
+    select('shelf', 'Crate', [['all', 'The whole mixtape'], ['saved', 'My saved cards']] );
+    content.append(filters, E('div', { class: 'qj-deck-counter' }, label(`${pool.length} CARDS MATCH / ${C.sideCount(state)} OF 3 SIDE-QUEST SLOTS USED`), E('span', { text: 'No timer. No expiry. Proof earns the finish.' })));
+    const hand = E('div', { class: 'qj-deck-hand', attrs: { 'aria-label': 'Your mixtape cards' } });
+    cards.forEach((c, i) => {
+      const saved = d.saved.includes(c.id), card = E('article', { class: 'qj-deck-card', dataset: { card: c.id }, style: { '--path': pathOf(c.path).color, '--card-order': String(i) } });
+      const save = button(saved ? 'Saved ♥' : 'Save ♡', () => mutate(s => C.markCard(s, c.id, 'saved'), saved ? 'Card removed from saved.' : 'Card saved for another day.'), 'qj-quiet', `save-${c.id}`); save.setAttribute('aria-pressed', String(saved));
+      card.append(E('div', { class: 'qj-card-sleeve' }, art(c.lane), E('span', { class: 'qj-tape-label', text: laneNames[c.lane] }), E('span', { class: 'qj-tape-number', text: `SIDE ${String.fromCharCode(65 + i)}` })), E('div', { class: 'qj-card-liner' }, label(`${c.mood.toUpperCase()} / ${c.minutes} MIN / ${c.minutes <= 5 ? 20 : c.minutes <= 15 ? 35 : 50} XP`), E('h3', { text: c.title }), p(c.done), E('p', { class: 'qj-card-first', text: `First move: ${c.tiny}` }), button('Open this brief →', () => deckBrief(c.id), 'qj-primary'), row(save, button('Not my thing', () => mutate(s => C.markCard(s, c.id, 'hidden'), 'Card tucked away. Restore it below whenever you want.'), 'qj-quiet', `hide-${c.id}`))));
+      hand.append(card);
+    });
+    if (!cards.length) hand.append(E('section', { class: 'qj-deck-empty' }, art('deck'), E('h3', { text: pool.length ? 'There’s more in the crate.' : 'A quieter corner of the crate.' }), p(pool.length ? 'Deal again to see the next matching cards.' : 'Try another world, a longer session or the whole mixtape. Taken quests live in your tracklist below; tucked-away cards can be restored.'), button('Deal again', () => mutate(s => C.deal(s), 'Deal saved.'), 'qj-primary'), button('Show all worlds', () => mutate(s => C.deal(s, { lane: 'any', mood: 'any', minutes: 60, shelf: 'all' }), 'Filters reset. Your saved and hidden cards are kept.'), 'qj-quiet')));
+    content.append(hand);
+    const passport = E('section', { class: 'qj-deck-passport' }, E('div', {}, label('YOUR CREATIVE PASSPORT'), E('h3', { text: 'A little further into your worlds.' }), p('Stamps follow reviewed finishes. Explore at your pace; there is no streak to lose.')));
+    for (const lane of C.deckLanes.filter(l => l !== 'any')) {
+      const count = finished.filter(q => C.deckCard(q.deckCard).lane === lane).length;
+      passport.append(E('div', { class: `qj-deck-stamp ${count ? 'is-stamped' : ''}`, attrs: { 'aria-label': `${laneNames[lane]}: ${count} finished` } }, art(lane), E('strong', { text: laneNames[lane] }), E('span', { text: count ? `${count} FINISHED` : 'UNEXPLORED' })));
+    }
+    content.append(passport);
+    if (accepted.length) {
+      const list = E('details', { class: 'qj-fold qj-deck-tracklist' }, E('summary', { text: `Your tracklist · ${accepted.length} taken / ${finished.length} finished` }));
+      for (const q of accepted) list.append(E('div', { class: 'qj-idea-row' }, E('div', {}, E('strong', { text: q.title }), label(C.done(state, q.id) ? 'FINISHED / REVIEW KEPT' : C.skipped(state, q.id) ? 'SET ASIDE' : q.parked ? 'PARKED' : 'ON YOUR WORKBENCH')), button('Open quest', () => questDetail(q.id), 'qj-quiet')));
+      content.append(list);
+    }
+    if (d.hidden.length) {
+      const hidden = E('details', { class: 'qj-fold qj-deck-hidden' }, E('summary', { text: `Tucked away · ${d.hidden.length} cards` }));
+      d.hidden.forEach(cid => hidden.append(E('div', { class: 'qj-idea-row' }, E('strong', { text: C.deckCard(cid).title }), button('Restore card', () => mutate(s => { C.markCard(s, cid, 'hidden'); C.deal(s); }, 'Card restored to its matching pool.'), 'qj-quiet'))));
+      content.append(hidden);
+    }
+  }
+  function deckBrief(cid) {
+    const c = C.deckCard(cid); if (!c) return;
+    dialog(c.title, (body, d) => {
+      const twist = E('input', { type: 'checkbox', attrs: { 'aria-label': 'Add the creative constraint' } });
+      const objective = p(c.done, 'qj-objective');
+      twist.addEventListener('change', () => { objective.textContent = c.done + (twist.checked ? ` Creative constraint: ${c.twist}` : ''); });
+      const take = button('Take this quest →', async () => { const q = await mutate(s => C.takeCard(s, cid, twist.checked), 'Quest added to your workbench. The chosen brief is saved.'); d.close(); questDetail(q.id); }, 'qj-primary');
+      take.disabled = C.sideCount(state) >= 3;
+      body.append(label(`${laneNames[c.lane]} / ${c.minutes} MINUTES`), objective, E('aside', { class: 'qj-twist' }, E('label', {}, twist, E('strong', { text: 'Add a creative constraint' })), p(c.twist), p('Optional. Same XP either way. Your choice becomes part of the brief when you take the quest.')), E('aside', { class: 'qj-starting-note' }, label('YOUR FIRST MOVE'), p(c.tiny)), p('Show the actual result at the finish line. Astra reviews the evidence before completion; a promise or a high score alone never earns the reward.'), take);
+      if (C.sideCount(state) >= 3) body.append(p('Your three side-quest slots are full. Park, skip or finish one before taking this card.'), button('Go to my workbench', () => { d.close(); navigate('adventure'); }, 'qj-quiet'));
+    }, 'THE MIXTAPE / PICK YOUR VERSION');
   }
   function commissions() {
     content.append(sectionHeading('THE COMMISSION WALL / VOL. 01', 'Make something worth keeping.', 'Fifteen concrete milestones across music, visuals, game feel and Forgeheart. Choose a rough sketch, a focused studio pass or a showcase. Show the work; the score follows the evidence.', button('Back to notebook', () => navigate('adventure'), 'qj-quiet')));
