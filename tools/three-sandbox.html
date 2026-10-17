@@ -778,6 +778,9 @@ function gmComposite() {
   const box = list[0]?.L?.box;
   if (box && GM.canvas && GM.canvas.parentNode !== box) box.prepend(GM.canvas);
 }
+// (round 56, fixes56) ▶ Play's budget A/B (tools/playbudget-page.js) draws frames back to back outside the frame loop: a
+// merged layer's render() is only noted, so its frames are drawn here, now, as the frame's composite draws them
+if (GAME) globalThis.__gmDrawNow = () => { if (GM.inFlush || GM.drawing || !GM.rec.size) return false; gmComposite(); return true; };
 // what ▶ Play shows in its stats chip, and the checks read: the plan, the contexts alive, the fidelity in force
 window.__gameInfo = () => {
   const gl = GM.gl; const a = gl?.getContextAttributes?.() || null;

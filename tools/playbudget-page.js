@@ -159,6 +159,7 @@
       const targets = drawables();
       if (!targets.length) return (ab = { skipped: 'no three.js renderer found yet' });
       const px = new Uint8Array(4);
+      const drawNow = typeof window.__gmDrawNow === 'function' ? window.__gmDrawNow : null;
       const sync = (gl) => { try { if (gl.PIXEL_PACK_BUFFER_BINDING !== undefined && gl.getParameter(gl.PIXEL_PACK_BUFFER_BINDING)) gl.finish(); else gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); } catch (e) { /* lost */ } };
       // the graphics card's own time for the main renderer, where the browser has it
       const G0 = targets[0].gl; let tq = null;
@@ -169,6 +170,9 @@
         if (tq) { try { if (!G0.getQuery(tq.TIME_ELAPSED_EXT, G0.CURRENT_QUERY)) { q = G0.createQuery(); G0.beginQuery(tq.TIME_ELAPSED_EXT, q); } } catch (e) { q = null; } }
         const a = now();
         for (const x of targets) { try { x.r.render(x.scene, x.camera); } catch (e) { /* the game's own error */ } }
+        // (round 56, fixes56) a Lab scene's page: its merged layers' render() is only noted for the frame's composite
+        // (tools/three-sandbox.html): drawn now, as the frame would (else the A/B timed nothing: on ≈ off ≈ 0.15 ms)
+        if (drawNow) { try { drawNow(); } catch (e) { /* the game's own error */ } }
         if (q) { try { G0.endQuery(tq.TIME_ELAPSED_EXT); } catch (e) { q = null; } }
         for (const x of targets) sync(x.gl);
         const ms = now() - a;
