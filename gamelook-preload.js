@@ -37,7 +37,7 @@ function gameLookPage(o) {
   const R = { look: BEST ? 'best' : 'balanced', three: null, renderers: 0, frames: 0,
     aniso: { max: 0, sharp: 0, set: 0, kept: 0, later: false }, colour: 0,
     shadows: { lights: 0, set: 0, kept: 0, from: 0, to: 0, now: 0, chosen: null, fallback: 0, ready: false, made: [], midPlay: 0, lowered: null }, guard: BEST ? 'waiting' : 'off', guardMs: null,
-    cost: { sweeps: 0, ms: 0, max: 0, playMax: 0, wholes: 0 }, // (playMax: the most a frame after the first look spent here; wholes: whole-scene looks in one go)
+    cost: { sweeps: 0, ms: 0, max: 0, playMax: 0, playMaxN: 0, wholes: 0 }, // (playMax: the most a frame after the first look spent here, playMaxN: objects it looked at in that frame (round 57: a slow frame of 8 objects is the machine's, not the look's); wholes: whole-scene looks in one go)
     screen: { w: Math.round(screen.width * dpr), h: Math.round(screen.height * dpr), wide: mm('(color-gamut: p3)'), hdr: mm('(dynamic-range: high)') } };
   const rs = new Set(); const scenes = new Set();
   const state = new WeakMap(); // renderer → { at: WeakMap(scene → last look), n }
@@ -148,7 +148,9 @@ function gameLookPage(o) {
   // slow walk in the background (≤ 0.15 ms a frame; a new walk every 2 s, or when textures came in) for a picture a
   // game puts on a material it had already. (round 54 fix: never a whole-scene sweep inside one frame while playing: at
   // 240 Hz a sweep once a second was a hitch a second, and a sweep every frame when a game makes textures as it plays)
+  let VN = 0; // (round 57, framepace57) objects looked at so far: the work in a frame, whatever the machine's clock says
   const visit = (r, ob, max) => {
+    VN += 1;
     if (ob.isLight && ob.castShadow) light(r, ob);
     const m = ob.material;
     if (m) { if (Array.isArray(m)) { for (const x of m) if (x) mat(r, x, max); } else mat(r, m, max); }
@@ -179,7 +181,7 @@ function gameLookPage(o) {
     if (!scene || !scene.isObject3D) return;
     if (!scene.isScene) { if (!doneO.has(scene)) { doneO.add(scene); sweep(r, scene); } return; } // (compile(object, camera, scene))
     let k = state.get(r); if (!k) state.set(r, k = { at: new WeakMap(), n: -1, walk: null, f: 0 });
-    const t = now(); const n = (r.info && r.info.memory && r.info.memory.textures) | 0;
+    const t = now(); const v0 = VN; const n = (r.info && r.info.memory && r.info.memory.textures) | 0;
     const last = k.at.get(scene);
     if (last === undefined || force) { // the first look: all of it, before anything is uploaded or compiled
       k.n = n; k.at.set(scene, t);
@@ -197,7 +199,7 @@ function gameLookPage(o) {
     k.f += 1; // (frames as well as seconds: on a slow frame rate the walk stays a small share of the frames)
     if (!k.walk && ((t - last >= 2000 && k.f >= 240) || (n !== k.n && t - last >= 1000 && k.f >= 120))) { k.f = 0; k.n = n; k.at.set(scene, t); k.walk = { scene, stack: [scene], bg: true }; }
     if (k.walk && k.walk.scene === scene) walk(r, k);
-    const fd = now() - t; if (fd > R.cost.playMax) R.cost.playMax = +fd.toFixed(3);
+    const fd = now() - t; if (fd > R.cost.playMax) { R.cost.playMax = +fd.toFixed(3); R.cost.playMaxN = VN - v0; }
   }
   function walk(r, k) {
     const w = k.walk; const t0 = now(); const max = maxA(r);

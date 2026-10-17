@@ -63,6 +63,27 @@ function page(w, h) {
   await t('a texture made later gets the best anisotropy from three\'s default (no sweep needed)', () => {
     assert.strictEqual(new Texture().anisotropy, 16);
   });
+  // (round 57, framepace57) gamefps54's verdict from interleaved on / off blocks (dev/framepace-verdict.js), on frames
+  // like this machine's: a software graphics card, gaps in whole 60 Hz refreshes (83 / 100 / 117 ms), a busy machine
+  const V = require('./framepace-verdict');
+  let seed = 7; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const blockOf = (drift, o = {}) => { const g = []; for (let i = 0; i < 12; i += 1) g.push(16.67 * Math.max(1, Math.round((100 + drift + (o.slow || 0)) / 16.67 + (rnd() - 0.5) * 1.6))); return { gapMean: g.reduce((a, b) => a + b, 0) / g.length, over: 0.05 + rnd() * 0.04 + (o.over || 0), cpu: 6 + rnd() * 0.8 + (o.over || 0) }; };
+  const pairsOf = (n, on = {}) => Array.from({ length: n }, (_, i) => { const drift = Math.sin(i) * 20; return { on: blockOf(drift, on), off: blockOf(drift) }; });
+  await t('verdict: nothing of Hearth\'s per frame on a busy machine (gaps in whole refreshes, drifting ±20 ms): not slower, 20 tries', () => {
+    for (let k = 0; k < 20; k += 1) { const j = V.judge(pairsOf(10)); assert.ok(j.ok, JSON.stringify(j)); }
+  });
+  await t('verdict: a helper that costs 1 ms a frame around the render: caught by its CPU, even when frames hide it', () => {
+    for (let k = 0; k < 10; k += 1) { const j = V.judge(pairsOf(10, { over: 1 })); assert.ok(!j.ok && !j.cpu.ok && /around the game's render/.test(j.why), JSON.stringify(j)); }
+  });
+  await t('verdict: the 1 ms helper still caught when the machine is loaded to ~1 frame a second (the frame\'s CPU reads 65 ms)', () => {
+    const P = pairsOf(10, { over: 1 }).map((p) => ({ on: { ...p.on, cpu: 65 }, off: { ...p.off, cpu: 64 } }));
+    const j = V.judge(P); assert.ok(!j.ok && !j.cpu.ok && j.cpu.allow <= 0.5, JSON.stringify(j.cpu));
+  });
+  await t('verdict: frames really slower (+15 %, the picture or anything off the main thread): caught by the gaps', () => {
+    let caught = 0; for (let k = 0; k < 10; k += 1) { const j = V.judge(pairsOf(10, { slow: 15 })); if (!j.frames.ok) caught += 1; assert.ok(j.cpu.ok); }
+    assert.ok(caught >= 9, `caught ${caught} of 10`);
+  });
+  await t('verdict: too few pairs is never a pass', () => { assert.ok(!V.judge(pairsOf(3)).ok); });
   console.log(`${n} passed`);
   process.exit(0); // (the look's guard keeps watching: a timer)
 })().catch((e) => { console.error(e); process.exit(1); });

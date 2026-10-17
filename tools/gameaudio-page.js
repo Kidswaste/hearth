@@ -255,5 +255,6 @@
   }
   window.__gameAudio = { pub, line, rest, ready, pending: () => pend.size, progress: () => ({ n: Math.max(S.pre.n, LAB ? 0 : LIST.length), done: S.pre.done, failed: S.pre.failed }),
     // (round 55, playbudget) tools/playbudget-page.js: its time, and off for this game (nothing of it runs per frame)
-    budget: { spent: () => SP, pause: () => {}, off: (by) => { if (OFF) return false; OFF = String(by || 'asked'); try { loafObs?.disconnect(); } catch { /* fine */ } return true; } } };
+    // (round 57, framepace57) pause: the Long Animation Frames watch disconnected while stepped aside (an A/B's "off" blocks)
+    budget: { spent: () => SP, pause: (on) => { if (OFF || !loafObs) return; try { if (on) loafObs.disconnect(); else loafObs.observe({ type: 'long-animation-frame', buffered: false }); } catch { /* fine */ } }, off: (by) => { if (OFF) return false; OFF = String(by || 'asked'); try { loafObs?.disconnect(); } catch { /* fine */ } return true; } } };
 })();
