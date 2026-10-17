@@ -86,8 +86,8 @@ drawing inside a key. Plus a loose 1 s longest-task guard. The base fails the sp
 - `node --check` on every touched JS file; the check's body compiles.
 - `dev/checks/lab240edit.js`: 4 pairs with the base (the table: the calm pair, run under the shared run lock, and
   the loaded pairs). The base fails its splitter, scrub, drag and editor budgets; the branch passes them all.
-- `node dev/run-checks.js --exact lab240edit labplay55 labcanvas56 unit:labpace-test labpace labsmooth54 lab240gpu
-  labdirect sequence playloop labscrub lazy unit:boot-test`: see the final report.
+- Under the shared run lock, in batches: `lab240edit` ✓; `labplay55 labcanvas56 labpace labsmooth54 lab240gpu` 5/5 ✓;
+  `labdirect sequence playloop labscrub lazy` 5/5 ✓; `unit:labpace-test unit:boot-test` 2/2 ✓.
 
 ## Edits outside the lane
 `tools.js` (the dock splitter's drag, self-contained), `dev/trace-stats.js` (two counts), `dev/run-checks.js` (the
