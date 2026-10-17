@@ -64,6 +64,7 @@ const GameMode = (() => {
     if (!s) throw new Error('Nothing to play: pick a Lab scene or an HTML game.');
     if (busy) return null;
     busy = true;
+    const clickAt = performance.timeOrigin + performance.now(); // (round 56, readyspeed: ▶ Play pressed, epoch ms)
     let t = null;
     const say = (text) => { if (t?.firstChild) t.firstChild.textContent = text; else t = toast(text, { timeout: 0 }) || null; };
     try {
@@ -80,7 +81,7 @@ const GameMode = (() => {
       if (typeof Lazy !== 'undefined') await Lazy.load('gameready').catch(() => {});
       if (Ready()?.prepare) {
         say(`Getting ${s.title} ready…`);
-        await Ready().prepare(s, (p) => say(`Getting ${s.title} ready… ${Math.round((Number(p?.done ?? p) || 0) * 100)} %`)).catch((err) => console.warn('GameReady:', err?.message || err));
+        await Ready().prepare(s, (p) => say(`Getting ${s.title} ready… ${Math.round((Number(p?.done ?? p) || 0) * 100)} %`), { clickAt }).catch((err) => console.warn('GameReady:', err?.message || err));
       }
       store.set(KEY, C.remember(recent(), s));
       hold(true);
@@ -221,9 +222,9 @@ const GameMode = (() => {
     },
   });
   Commands.register({
-    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off | look best|balanced | helpers [on]]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
-    examples: ['/game', '/game stop', '/game screens', '/game input', '/game look balanced', '/game helpers'], keywords: 'play clink game mode raw mouse input latency helpers overhead budget',
-    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'helpers', 'helpers on'].map((v) => ({ value: v })),
+    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off | look best|balanced | helpers [on] | ready]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it; ready: how long getting ready took, step by step',
+    examples: ['/game', '/game stop', '/game screens', '/game input', '/game look balanced', '/game helpers', '/game ready'], keywords: 'play clink game mode raw mouse input latency helpers overhead budget ready loading time',
+    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'helpers', 'helpers on', 'ready'].map((v) => ({ value: v })),
     run: async (args) => {
       const a = String(args || '').trim();
       if (/^(stop|leave|quit|off)$/i.test(a)) { if (!now) return 'No game is playing.'; leave(); return null; }
@@ -241,6 +242,8 @@ const GameMode = (() => {
       // plays without (they were slowing it), and /game helpers on to try them again from the next ▶ Play
       const hp = a.match(/^helpers(?:\s+(on|reset))?$/i);
       if (hp) return helpers(Boolean(hp[1]));
+      // (round 56, readyspeed) how long the last game took from ▶ Play to its first frame of play, step by step
+      if (/^ready$/i.test(a)) { if (typeof Lazy !== 'undefined') await Lazy.load('gameready').catch(() => {}); return Ready()?.speedText?.() || 'Getting ready isn\'t loaded in this Hearth.'; }
       if (/^input$/i.test(a)) {
         const p = inputPrefs(); const i = now && !now.live ? (await window.hub.game.state().catch(() => null))?.input : null;
         return [`Raw mouse: asked when the game captures it · low-latency canvas: ${p.lowLatency ? 'on' : 'off'} · keys held for the game: ${i?.keys?.held || (/Mac/i.test(navigator.platform) ? 'every ⌘ shortcut' : 'Alt+Space')}`, i?.focus ? `Focus on open: ${i.focus.ok ? 'yes' : 'not confirmed'} (${i.focus.ms} ms)` : ''].filter(Boolean).join('\n');

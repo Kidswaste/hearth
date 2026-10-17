@@ -73,7 +73,7 @@ function gameSession() {
       R?.noteServed?.(rel, Boolean(swap));
       if (G?.source?.kind === 'html') A?.served(root, rel); // (round 54, gameaudio) a sound: decoded up front next time
       let body = req.method === 'HEAD' ? null : await fs.promises.readFile(swap || file);
-      const tag = body && /\.html?$/i.test(file) ? `${B ? B.pageTag(G.budget) : ''}${A ? A.pageTag(root, { kind: G.source?.kind }) : ''}${R?.pageTag?.() || ''}${G?.token === u.hostname && G.stream?.skip ? '' : `<script src="${STREAM}?off=${G?.token === u.hostname && G.stream?.off ? 1 : 0}"></script>`}` : ''; // (the budget's first: it times the others from their start; gameaudio's next: the game's AudioContext is Hearth's before any of its code runs; (round 55) loads during play left out when the budget switched it off for this game)
+      const tag = body && /\.html?$/i.test(file) ? `${B ? B.pageTag(G.budget) : ''}${A ? A.pageTag(root, { kind: G.source?.kind }) : ''}${R?.pageTag?.({ root, file, source: G?.token === u.hostname ? G.source : null, hz: G?.hz, look: G?.fidelity?.look, off: G?.budget?.off }) || ''}${G?.token === u.hostname && G.stream?.skip ? '' : `<script src="${STREAM}?off=${G?.token === u.hostname && G.stream?.off ? 1 : 0}"></script>`}` : ''; // (the budget's first: it times the others from their start; gameaudio's next: the game's AudioContext is Hearth's before any of its code runs; (round 55) loads during play left out when the budget switched it off for this game)
       if (tag) { let h = body.toString('utf8'); h = /<head[^>]*>/i.test(h) ? h.replace(/<head[^>]*>/i, (m) => `${m}${tag}`) : `${tag}${h}`; body = Buffer.from(h); st = { size: body.length }; }
       return new Response(body, { status: 200, headers: { 'content-type': C.mimeOf(file), 'content-length': String(st.size), 'cache-control': 'no-cache', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'credentialless' } });
     } catch { return new Response('not found', { status: 404 }); }
@@ -112,17 +112,19 @@ function hostScript(S) {
   var send = function (m) { m.target = 'three-sandbox'; window.postMessage(m, '*'); };
   var bytes = function (f) { return fetch(f).then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }); };
   function go() {
+    st.load = { asked: performance.now() }; // (round 56, readyspeed) the pictures / song fetched, the layers sent: page times, ms
     send({ type: 'ready-lock', on: true }); // 100 %: no adaptive steps, no doze, no fps cap
     send({ type: 'pace', on: false }); send({ type: 'adapt', on: false }); send({ type: 'fps-cap', value: 0, auto: false, focused: true });
     send({ type: 'game-plan', merge: S.plan.merge, why: S.plan.why });
     // (round 53, gametex) a picture with a compressed copy brings it along (ktx2): the player uses it when the graphics card takes it
     Promise.all(S.refs.map(function (r) { return Promise.all([bytes(r.file), r.ktx2 ? bytes(r.ktx2).catch(function () { return null; }) : null]).then(function (b) { var it = { key: r.key, kind: r.kind, mime: r.mime, buffer: b[0] }; if (b[1]) it.ktx2 = b[1]; return it; }).catch(function () { return null; }); })).then(function (items) {
+      st.load.fetched = performance.now();
       send({ type: 'tweak-init', values: S.values || {}, keys: {}, mods: {} });
       send({ type: 'refs', items: items.filter(Boolean), palette: S.palette || [] });
       var song = S.song ? bytes(S.song.file).catch(function () { return null; }) : Promise.resolve(null);
       return song.then(function (b) {
         if (b) send({ type: 'media-load', buffer: b, mime: S.song.mime, video: false, name: S.song.name, startAt: 0, playing: true, loop: true, volume: 1, analysis: S.analysis || null, region: null, rate: 1, trim: null });
-        send({ type: 'run-layers', layers: S.layers });
+        send({ type: 'run-layers', layers: S.layers }); st.load.run = performance.now();
       });
     });
   }
@@ -197,7 +199,7 @@ async function buildScene(spec) {
 // ---------- the window ----------
 function info() {
   if (!G) return { playing: false };
-  return { playing: true, budget: G.budget ? { off: G.budget.off, last: G.budget.last } : null, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
+  return { playing: true, timing: G.timing || null, budget: G.budget ? { off: G.budget.off, last: G.budget.last } : null, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
 }
 function leave(why = 'left') {
   if (!G) return false;
@@ -227,6 +229,7 @@ function ended(g) {
 async function play(_e, req = {}) {
   const source = C.source(req.source);
   if (!source) throw new Error('Nothing to play: pick a Lab scene or an HTML game.');
+  const T0 = Date.now(); // (round 56, readyspeed) asked → built → window made → page loaded (epoch ms: the hub and the page line up on it)
   if (G) leave('another game');
   for (let i = 0; i < 72 && G; i += 1) await new Promise((r) => setTimeout(r, 25)); // (round 54: past leave()'s 1.5 s, so a stuck game has ended first)
   const { BrowserWindow } = require('electron');
@@ -236,10 +239,12 @@ async function play(_e, req = {}) {
   const was = budget()?.forGame(source) || { off: [] }; const offs = new Set(was.off);
   const fid = C.fidelity(d, offs.has('look') ? 'off' : req.look); // (round 54, gamelook) look: 'best' (the default) | 'balanced'
   const token = crypto.randomBytes(12).toString('hex');
+  let built = null;
   let root; let entry; let route = 'html'; let how = 'HTML build'; let notes = [];
   if (source.kind === 'lab') {
     if (!req.scene) throw new Error('No scene data to play.');
     const b = await buildScene(req.scene);
+    built = { at: Date.now(), cached: b.cached };
     root = b.dir; notes = b.notes; route = 'page';
     const plan = req.scene.plan || { merge: [] };
     const n = (req.scene.layers || []).length;
@@ -263,6 +268,7 @@ async function play(_e, req = {}) {
   if (!mac) win.setMenu(null);
   const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) || offs.has('audio'), stream: { off: Boolean(req.stream?.off), skip: offs.has('stream') } };
   g.budget = { hz: fid.hz, title: source.title, off: [...offs], was, last: null };
+  g.timing = { asked: T0, built: built?.at || null, cached: built?.cached ?? null, window: Date.now(), loaded: null };
   g.release = ctx.powerwise.hold('present', { label: `${source.title} is playing` });
   try { ctx.powerwise.quiet(true); } catch { /* fine */ }
   const wc = win.webContents;
@@ -296,6 +302,7 @@ async function play(_e, req = {}) {
   hub?.once?.('closed', () => leave('hearth closed'));
   try { require('./gameperfmain').attach(win, info()); } catch (err) { if (err.code !== 'MODULE_NOT_FOUND') console.warn('gameperf:', err.message); }
   await win.loadURL(g.url);
+  g.timing.loaded = Date.now();
   return info();
 }
 

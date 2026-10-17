@@ -464,6 +464,9 @@ const realNow = performance.now.bind(performance); // (a sequence gives each sce
 // cap). RDY.gl counts what the GPU compiles / uploads (from the prototypes, under the program cache: a cached program
 // counts nothing), so a check can count them in the first seconds of a show.
 const RDY = { lock: false, rec: null, pend: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0, waitMs: 0 } };
+// (round 56, readyspeed) when ▶ Play's pictures arrived, were decoded (off the page's thread) and transcoded (KTX2, in workers): page times, ms
+const RDYT = { refsAt: null, decodeFrom: null, decodeTo: null, decodeN: 0, ktxFrom: null, ktxTo: null, ktxN: 0 };
+const rdyT = (k, t0) => { const t = realNow(); if (RDYT[`${k}From`] == null || t0 < RDYT[`${k}From`]) RDYT[`${k}From`] = t0; if (RDYT[`${k}To`] == null || t > RDYT[`${k}To`]) RDYT[`${k}To`] = t; RDYT[`${k}N`] += 1; };
 for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRenderingContext?.prototype]) {
   if (!P) continue;
   const wrap = (m, fn) => { const f = P[m]; if (typeof f === 'function') P[m] = fn(f); };
@@ -1626,7 +1629,7 @@ async function rdyMessage(msg) {
   } else if (msg.type === 'ready-scan') {
     const assets = await rdyAssets(msg.id);
     post({ type: 'ready-scanned', id: msg.id, assets, ...rdyScan() });
-  } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, ...RDY.gl, renderers: rdyLive().length, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
+  } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, times: RDYT, ...RDY.gl, renderers: rdyLive().length, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
 }
 globalThis.__rdyLive = () => rdyLive(); globalThis.__rdyGl = () => ({ ...RDY.gl, waitMs: Math.round(RDY.gl.waitMs) }); // (round 52, gameready: checks read these from a page eval)
 const rdyDelta = (a) => Object.fromEntries(Object.entries(RDY.gl).map(([k, v]) => [k, v - (a[k] || 0)]));
@@ -3132,6 +3135,7 @@ function setRefs(items) {
   for (const k of Object.keys(refs)) delete refs[k];
   for (const k of Object.keys(refBlobs)) delete refBlobs[k];
   for (const k of Object.keys(refKtx)) delete refKtx[k];
+  RDYT.refsAt = realNow(); // (round 56, readyspeed)
   for (const it of items || []) { const b = new Blob([it.buffer], { type: it.mime || '' }); refs[it.key] = URL.createObjectURL(b); refKinds[it.key] = it.kind; if (it.kind === 'image') refBlobs[it.key] = b; if (it.ktx2 && it.kind === 'image') refKtx[it.key] = it.ktx2; }
 }
 // (round 53, gametex) ▶ Play's page: a picture with a compressed copy (KTX2, made by Optimize for play in Hearth's cache)
@@ -3156,7 +3160,7 @@ function ktxConfig() {
 function ktxTexture(key, tex, fallback) {
   const cfg = ktxConfig();
   if (!cfg.any || globalThis.__ktxOff) return false;
-  RDY.pend += 1;
+  RDY.pend += 1; const kt0 = realNow(); // (round 56, readyspeed: its transcode timed)
   const p = (async () => {
     const { KTX2Loader } = await import('three/addons/loaders/KTX2Loader.js');
     if (!ktxLoader) { ktxLoader = new KTX2Loader().setTranscoderPath(globalThis.__sbxResolve('three/addons/libs/basis/')); ktxLoader.workerConfig = cfg.config; }
@@ -3166,7 +3170,7 @@ function ktxTexture(key, tex, fallback) {
     tex.format = k.format; tex.type = k.type; tex.minFilter = k.minFilter; tex.magFilter = k.magFilter;
     tex.generateMipmaps = false; tex.flipY = false; tex.premultiplyAlpha = k.premultiplyAlpha; tex.unpackAlignment = 4;
     tex.userData.ktx2 = true; tex.needsUpdate = true;
-    k.dispose?.();
+    k.dispose?.(); rdyT('ktx', kt0);
   })().catch(() => fallback()).finally(() => { RDY.pend = Math.max(0, RDY.pend - 1); });
   TY.pending.add(p); p.finally(() => TY.pending.delete(p));
   return true;
@@ -3192,8 +3196,9 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
     tex.colorSpace = THREE.SRGBColorSpace;
     let who = null; try { who = ownerUrl(); } catch { /* fine */ } // (round 39: its picture is closed with the layer that asked for it)
     const picture = () => {
+      const dt0 = realNow(); // (round 56, readyspeed: its decode timed)
       const dec = createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
-        if (who) ownNote(who, 'bmp', bmp);
+        rdyT('decode', dt0); if (who) ownNote(who, 'bmp', bmp);
         tex.image = bmp; tex.flipY = false; tex.needsUpdate = true;
       }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
       // (round 42, labbatch) an exact frame (exports, a batch's logo per row) waits for the picture like for a font

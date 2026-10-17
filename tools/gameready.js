@@ -80,7 +80,8 @@ const GameReady = (() => {
     const s = source && (source.kind === 'html' ? { ...source, kind: 'html' } : { ...source, kind: 'lab' });
     if (!s || !G()?.arm) return { ok: false, error: 'This Hearth can\'t get games ready' };
     stopWatch();
-    const r = R = { source: s, kind: s.kind, title: s.title || 'the game', onProgress, t0: performance.now(), files: [], pics: [], plan: null, texPlan: null, caps: null, decoders: [], page: null, result: null, findings: null, first5: null, handled: 0 };
+    const epoch = () => performance.timeOrigin + performance.now(); // (round 56, readyspeed: the press, this step, the window: epoch ms)
+    const r = R = { source: s, kind: s.kind, title: s.title || 'the game', onProgress, t0: performance.now(), clickAt: Number(opts.clickAt) || epoch(), prep: { start: epoch(), end: null }, main: null, files: [], pics: [], plan: null, texPlan: null, caps: null, decoders: [], page: null, result: null, findings: null, first5: null, handled: 0 };
     onProgress?.({ done: 0.1, stage: 'scan' });
     try {
       const m = await modelsOf(s);
@@ -91,8 +92,9 @@ const GameReady = (() => {
       if ((r.pics.length || r.files.length) && G().texplan) r.texPlan = await G().texplan({ files: r.files, pics: r.pics, caps: r.caps });
     } catch (err) { r.error = calmText(err); }
     const tx = r.texPlan?.report && r.caps?.any && (Object.keys(r.texPlan.map || {}).length || r.texPlan.models) ? r.texPlan.report.text : '';
-    await G().arm({ kind: r.kind, title: r.title, map: r.plan?.map || {}, tex: r.caps?.any ? r.texPlan?.map || {} : {}, tx, noPrep: Boolean(T().noPrep || opts.noPrep), opt: canOpt(r) });
+    await G().arm({ clickAt: r.clickAt, kind: r.kind, title: r.title, map: r.plan?.map || {}, tex: r.caps?.any ? r.texPlan?.map || {} : {}, tx, noPrep: Boolean(T().noPrep || opts.noPrep), opt: canOpt(r) });
     watchMode();
+    r.prep.end = epoch();
     onProgress?.({ done: 1, stage: 'scan' });
     S.last = info(r);
     return { ok: !r.error, ...info(r) };
@@ -104,7 +106,7 @@ const GameReady = (() => {
     if (modeOff || !Mode()?.on) return;
     modeOff = Mode().on((e) => {
       if (!R) return;
-      if (e.type === 'start') { R.started = true; poll(R); }
+      if (e.type === 'start') { R.started = true; R.main = e.info?.timing || null; poll(R); }
       if (e.type === 'end') { stopWatch(); G()?.arm(null).catch(() => {}); }
     });
   }
@@ -120,7 +122,7 @@ const GameReady = (() => {
       if (v.phase === 'ready' && v.text) r.onProgress?.({ done: v.pct / 100, stage: 'prepare', text: v.text });
       if ((v.want === 'optimize' || v.want === 'install') && v.wantN > r.handled) { r.handled = v.wantN; cardAsk(r, v.want); }
       if (v.result && !r.result) { r.result = v.result; r.findings = C.findings(v.result.inventory || {}); r.readyMs = Math.round(performance.now() - r.t0); if (r.kind === 'html') keepScan(r); }
-      if (v.first5 && !r.first5) { r.first5 = v.first5; S.last = info(r); return; } // (done: nothing more to follow)
+      if (v.first5 && !r.first5) { r.first5 = v.first5; S.last = info(r); speedNote(r); return; } // (done: nothing more to follow)
       S.last = info(r);
     }
     timer = setTimeout(() => poll(r), v?.phase === 'playing' ? 500 : 200);
@@ -172,9 +174,21 @@ const GameReady = (() => {
     return res;
   }
 
+  // ---------- (round 56, readyspeed) from ▶ Play to the first frame of play: each step's time ----------
+  const Speed = () => (typeof ReadySpeedCore !== 'undefined' ? ReadySpeedCore : null);
+  function timeline(r) {
+    if (!Speed() || !r.page?.marks) return null;
+    return Speed().timeline({ click: r.clickAt, prep: r.prep, main: r.main, page: { origin: r.page.origin, mode: r.kind, marks: r.page.marks, load: r.result?.load } });
+  }
+  // what this run learnt, kept per game in Hearth's cache (data/game-cache/readyspeed.json): the next ▶ Play's hints
+  async function speedNote(r) {
+    const tl = timeline(r); r.speed = tl;
+    try { await G()?.speed?.({ op: 'note', source: r.source, run: { total: tl?.total, skipped: Boolean(r.result?.skipped), noPrep: !r.result, shown: Boolean(r.page?.speedShown), renderers: r.result?.inventory?.renderers || r.result?.prep?.renderers || null, warm: r.result?.warm || null, first5: r.first5, ab: r.result?.ab === undefined ? undefined : r.result.ab || null, abSkipped: Boolean(r.result?.abReused) } }); } catch { /* only a cache */ }
+    S.last = info(r);
+  }
   function stop() { stopWatch(); if (Mode()?.playing) Mode().leave(); G()?.arm(null).catch(() => {}); }
   function info(r) {
-    return { kind: r.kind, title: r.title, phase: r.page?.phase || (r.started ? 'opening' : 'armed'), readyMs: r.readyMs, page: r.page ? { pct: r.page.pct, text: r.page.text, cardAt: r.page.cardAt, firstFrameAt: r.page.firstFrameAt, card: r.page.card, errors: r.page.errors } : null, result: r.result, findings: r.findings, first5: r.first5, plan: r.plan ? { fresh: r.plan.fresh.length, stale: r.plan.stale.length, missing: r.plan.missing.length, swapped: Object.keys(r.plan.map || {}).length } : null, models: r.files.length, decoders: r.decoders, loaded: r.loaded, error: r.error, tex: r.texPlan ? { swapped: Object.keys(r.texPlan.map || {}).length, fresh: r.texPlan.fresh, missing: r.texPlan.missing, kept: r.texPlan.kept, models: r.texPlan.models, report: r.texPlan.report, any: Boolean(r.caps?.any) } : null };
+    return { speed: r.speed || timeline(r), kind: r.kind, title: r.title, phase: r.page?.phase || (r.started ? 'opening' : 'armed'), readyMs: r.readyMs, page: r.page ? { pct: r.page.pct, text: r.page.text, cardAt: r.page.cardAt, firstFrameAt: r.page.firstFrameAt, card: r.page.card, errors: r.page.errors, marks: r.page.marks, origin: r.page.origin, speedLine: r.page.speedLine || '' } : null, result: r.result, findings: r.findings, first5: r.first5, plan: r.plan ? { fresh: r.plan.fresh.length, stale: r.plan.stale.length, missing: r.plan.missing.length, swapped: Object.keys(r.plan.map || {}).length } : null, models: r.files.length, decoders: r.decoders, loaded: r.loaded, error: r.error, tex: r.texPlan ? { swapped: Object.keys(r.texPlan.map || {}).length, fresh: r.texPlan.fresh, missing: r.texPlan.missing, kept: r.texPlan.kept, models: r.texPlan.models, report: r.texPlan.report, any: Boolean(r.caps?.any) } : null };
   }
 
   // ---------- chat ----------
@@ -193,5 +207,12 @@ const GameReady = (() => {
     });
   }
 
-  return { prepare, optimize, stop, state: () => S.last, current: () => (R ? info(R) : null), lastOptimize: () => S.lastOptimize, lastInstall: () => S.install };
+  // (round 56, readyspeed) /game ready: the last ▶ Play from the press to its first frame of play, each step's time
+  function speedText() {
+    const st = S.last;
+    if (!st) return '▶ Play a game first: Hearth times each step of getting it ready.';
+    if (!st.speed) return st.result ? `${st.title}: ready in ${Speed()?.secs(st.result.ms) || `${st.result.ms} ms`} inside its window (the rest wasn't timed).` : `${st.title} hasn't finished getting ready yet.`;
+    return [`${st.title}: ${Speed().lines(st.speed).join('\n')}`, st.result?.ab?.reused ? 'The smooth check was skipped: its last result for this game still holds.' : ''].filter(Boolean).join('\n');
+  }
+  return { speedText, prepare, optimize, stop, state: () => S.last, current: () => (R ? info(R) : null), lastOptimize: () => S.lastOptimize, lastInstall: () => S.install };
 })();
