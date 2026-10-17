@@ -171,8 +171,8 @@ the hub); the owner: `/playtest`.
   Both looks: mipmapped textures left at anisotropy 1 → the card's max (not yet on the GPU; `Texture.DEFAULT_ANISOTROPY`
   when the game left it at 1, so later textures too). Best also: a picture in a colour slot left with no colour space
   (`''`, 8-bit, not data / compressed; output 'srgb') → 'srgb'; a light's shadow left at 512² → the screen's size (long
-  edge, nearest power of two, 1024–2048; point lights half, at most 1024: round 54 fix), then the guard (60 frames over
-  1.2 × the refresh: halve while each step saves ≥ 8 %, else back, that size never tried again; then a 60-frame look
+  edge, nearest power of two, 1024–2048; point lights half, at most 1024: round 54 fix), then the guard (from 0.5 s after GameReady's
+  counted first 5 s of play, round 55 fix: a step makes the shadow maps again; 60 frames over 1.2 × the refresh: halve while each step saves ≥ 8 %, else back, that size never tried again; then a 60-frame look
   every 5 s while the shadows are above the game's own size: a heavier scene later steps them down too). Never: tone mapping, output colour space, shadow type / radius, pixel ratio, any
   value the game set (a later write by the game wins). GameReady's prep and the Lab's ready-scan also keep a game's own
   anisotropy now (only 1 → max).

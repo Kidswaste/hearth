@@ -233,6 +233,10 @@ function gameLookPage(o) {
     R.guard = 'measuring';
     // after GameReady's card (it holds the game's frames while it gets ready), then half a second of play
     for (let i = 0; i < 240; i += 1) { let ph = null; try { ph = window.__gameReady ? JSON.parse(window.__gameReady.pub()).phase : 'playing'; } catch (e) { ph = 'playing'; } if (ph === 'playing') break; await wait(250); }
+    // (round 55 fix) and after getting ready's first 5 s of play: a step down makes the shadow maps again (a new colour +
+    // depth texture per light), the one thing left in those 5 s that getting ready promises are free of first-time work
+    // (gamefps54's quicker start put the step at ≈ 4.5 s on a slow computer: 0.5 s + a measurement of at most 4 s)
+    for (let i = 0; i < 28; i += 1) { let f5 = true; try { f5 = window.__gameReady ? JSON.parse(window.__gameReady.pub()).first5 : true; } catch (e) { f5 = true; } if (f5) break; await wait(250); }
     await wait(500);
     const budget = 1000 / HZ; const g = await gaps(60);
     R.guardMs = { budget: +budget.toFixed(2), steps: [[R.shadows.now, g]] };
