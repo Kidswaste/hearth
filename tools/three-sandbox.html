@@ -794,6 +794,7 @@ window.__labCanvas = {
 };
 const realGetContext = HTMLCanvasElement.prototype.getContext;
 const GPU_PREF = new URLSearchParams(location.search).get('gpu') === 'low' ? 'low-power' : 'high-performance'; // (round 52, gpu52)
+let glMade = 0; // (round 57, readywalk) WebGL contexts made on this page so far (ready-count: one made during play's first 5 s explains its compiles)
 let glRefs = []; // WeakRefs to the WebGL contexts made here (__labHealth counts the ones still alive)
 const glAlive = () => { glRefs = glRefs.filter((w) => { const c = w.deref(); return c && !c.isContextLost(); }); let n = 0; for (const w of glRefs) if (!w.deref().__pooled) n += 1; return n; };
 HTMLCanvasElement.prototype.getContext = function (type, opts) {
@@ -820,7 +821,7 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
   if (gl3d && !ctx) globalThis.__glrNone?.(); // (round 51) no context at all: the GPU is away (glrecover below)
   if (gl3d && ctx) { this.__ctxMade = true; ctx.__asked = opts?.powerPreference; } // (gpu52: what was asked; getContextAttributes says the card it got)
   if (gl3d && ctx && !ctx.__counted) {
-    ctx.__counted = true; glRefs.push(new WeakRef(ctx)); if (glRefs.length > 64) glAlive();
+    ctx.__counted = true; glMade += 1; glRefs.push(new WeakRef(ctx)); if (glRefs.length > 64) glAlive();
     globalThis.__glrWatch?.(this, ctx); // (round 43, glrecover) a lost GPU: told apart from the page's own let-go, rebuilt
     if (mode === 'sketch' && typeof WebGL2RenderingContext !== 'undefined' && ctx instanceof WebGL2RenderingContext) { trackGL(ctx); this.__gl = ctx; }
   }
@@ -1799,7 +1800,7 @@ async function rdyMessage(msg) {
   } else if (msg.type === 'ready-scan') {
     const assets = await rdyAssets(msg.id);
     post({ type: 'ready-scanned', id: msg.id, assets, ...rdyScan() });
-  } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, times: RDYT, gpuLost: GLR.losses + (GLR.none || 0), ...RDY.gl, renderers: rdyLive().length, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
+  } else if (msg.type === 'ready-count') post({ type: 'ready-count', id: msg.id, times: RDYT, gpuLost: GLR.losses + (GLR.none || 0), ctxMade: glMade, gmMade: GM.made, rebuilds: GLR.rebuilds, lostNow: Boolean(GLR.lost), ...RDY.gl, renderers: rdyLive().length, lock: RDY.lock, quality, shares: [...new Set(rdyLive().map((r) => r.__q ?? 1))], cap: fpsCap, light: lightMode, doze: DOZE.on, dozeWhy: DOZE.why || '', level: adFull() ? 0 : AD.core.level });
 }
 globalThis.__rdyLive = () => rdyLive(); globalThis.__rdyGl = () => ({ ...RDY.gl, waitMs: Math.round(RDY.gl.waitMs) }); // (round 52, gameready: checks read these from a page eval)
 const rdyDelta = (a) => Object.fromEntries(Object.entries(RDY.gl).map(([k, v]) => [k, v - (a[k] || 0)]));

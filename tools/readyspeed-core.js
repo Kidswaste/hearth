@@ -7,7 +7,7 @@
 //   text(tl) / lines(tl)   the plain words: "Ready in 2.1 s · window 0.4 s · card 0.5 s · …" (/game ready)
 //   faster(now, was)       "Ready in 2.1 s (was 6.8 s)" when this one was clearly sooner, else ''
 //   note(entry, run)       a game's remembered times and what getting ready learnt (data/game-cache/readyspeed.json)
-//   hints(entry, key)      what the next ▶ Play of that game may skip or shorten: { was, show, renderers, ab, quiet }
+//   hints(entry, key)      what the next ▶ Play of that game may skip or shorten: { was, show, renderers, ab, quiet, shadow }
 //   abFits(ab)             the budget's A/B said Hearth's helpers cost this game nothing (its verdict may be reused)
 //   regression(base, now)  a check's verdict: now within its budget of base ({ ok, ratio, why })
 (function (root, factory) { const m = factory(); if (typeof module === 'object' && module.exports) module.exports = m; else root.ReadySpeedCore = m; })(typeof self !== 'undefined' ? self : this, () => {
@@ -87,6 +87,16 @@
     }
     if (run.first5) e.first5ok = (run.first5.compiles || 0) + (run.first5.links || 0) + (run.first5.uploads || 0) === 0;
     if (run.ab !== undefined) e.ab = run.ab && run.abKey ? { key: run.abKey, fits: abFits(run.ab), at: now } : null;
+    // (round 57, readywalk) the Best look's shadow size its walk chose under the card (ab.shadow) and that size's time a
+    // frame then, under the same key: the next ▶ Play only checks that size (a few frames) instead of walking again.
+    // A run that only confirmed it keeps the walk's time (a slow drift never moves the bar); a fresh walk replaces it
+    const sh = run.shadow;
+    if (sh && Number(sh.size) >= 512) {
+      const row = (sh.rows || []).find((r) => r && r[0] === sh.size);
+      const ms = num(row && row[1]);
+      if (sh.walked === false && e.sh && e.sh.key === run.abKey && e.sh.size === sh.size) e.sh = { ...e.sh, at: now };
+      else e.sh = run.abKey && ms != null ? { key: run.abKey, size: sh.size, ms, ref: num(sh.refreshMs) || 0, at: now } : null;
+    }
     // a helper switched off while it played (the budget's watch) or by the A/B: this game is one where Hearth's helpers
     // can cost frames, its A/B is never skipped again
     if (run.first5?.budgetOff > 0 || (run.ab && (run.ab.turnedOff || []).length)) { e.costly = true; e.ab = null; }
@@ -100,7 +110,7 @@
   // one quiet warm-up pass when the last two runs needed nothing more and played their first 5 s clean
   function hints(entry, key = {}) {
     const e = entry && entry.v === V ? entry : null;
-    if (!e) return { was: null, show: false, renderers: null, loads: null, ab: false, quiet: 2 };
+    if (!e) return { was: null, show: false, renderers: null, loads: null, ab: false, quiet: 2, shadow: null };
     return {
       was: e.first ?? null,
       show: !e.shown && e.first != null && e.runs >= 1,
@@ -108,6 +118,8 @@
       loads: e.loads || null,
       ab: Boolean(key.ab && !e.costly && e.ab && e.ab.fits && e.ab.key === key.ab && e.first5ok !== false),
       quiet: (e.clean || 0) >= 2 && e.first5ok !== false ? 1 : 2,
+      // (round 57, readywalk) the shadow size to check instead of walking: same key only (the screen size: the look's own)
+      shadow: key.ab && e.sh && e.sh.key === key.ab ? { size: e.sh.size, ms: e.sh.ms, ref: e.sh.ref || 0 } : null,
     };
   }
   // ---------- checks ----------

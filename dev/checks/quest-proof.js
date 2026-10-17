@@ -1,0 +1,76 @@
+// Real renderer, local file ingestion and persistence with an explicitly mocked reviewer (no account usage).
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const until = async fn => { for (let i = 0; i < 220; i++) { if (await fn()) return; await wait(60); } throw Error('Proof UI timed out'); };
+let checks = 0; const check = (value, message) => { if (!value) throw Error(message); checks++; };
+document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+await until(() => document.querySelector('.qj-hero'));
+const root = () => document.querySelector('.qj'), scope = () => root().querySelector('dialog[open]') || root();
+const press = async (text, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === text); check(b, 'Button: ' + text); b.click(); await until(() => !b.disabled); await wait(50); };
+const field = (name, value) => { const n = scope().querySelector(`[aria-label="${name}"]`); check(n, 'Field: ' + name); n.value = value; n.dispatchEvent(new Event('input', { bubbles: true })); n.dispatchEvent(new Event('change', { bubbles: true })); };
+const close = () => scope().close(), C = QuestCore, s = () => QuestJournal.snapshot();
+let calls = 0, mode = 'good'; const response = () => ({ status: 'reviewed', score: 62, dimensions: [16,14,17,15], meetsBrief: true, summary: 'The central form reads, but the background fights it. A promising rough frame.', better: 'Reduce background contrast and give the subject more space on the right.', next: 'Export one new still with a darker background and a wider right margin.', coverage: 'The submitted still image only.', limitations: 'No animation or audio was evaluated.', model: 'TEST FIXTURE' });
+QuestReview.run = (q, item) => { calls++; check(item.proof.fingerprint.length === 64 && item.brief === q.done, 'review receives saved evidence and the frozen brief'); let reject;
+  const promise = mode === 'cancel' ? new Promise((resolve, no) => { reject = no; }) : mode === 'fail' ? Promise.reject(Error('Fixture engine offline. Proof is saved.')) : Promise.resolve(mode === 'missing' ? { ...response(), status: 'needs-evidence', score: null, dimensions: [], meetsBrief: false, summary: 'The evidence needs a clearer view.' } : response());
+  return { promise, cancel: () => reject?.(Error('Review cancelled. Your proof is saved.')) };
+};
+await press('Browse commissions →');
+check(root().querySelectorAll('.qj-commission').length === 5 && s().campaigns.filter(c => c.commission).flatMap(c => c.quests).length === 15, 'five personal campaigns and fifteen milestones');
+check(root().textContent.includes('Forgeheart') && root().textContent.includes('demo') && root().textContent.includes('loop'), 'commission wall matches personal interests');
+document.querySelectorAll('.toast-x').forEach(b => b.click()); await smoke({ shot: window.SMOKE_SAVES + '/quest-commissions.png' });
+const visual = [...root().querySelectorAll('.qj-commission')].find(n => n.textContent.includes('One visual with a pulse'));
+await press('Take this commission →', visual); await press('Sketch · 10m · 30 XP');
+const qid = 'q-studio-visual-frame'; check(C.find(s(), qid).xp === 30 && C.xp(s()) === 0, 'scope contract changes promised work and reward without granting progress');
+await press('I reached the finish line →'); await press('Submit proof & ask Astra');
+check(calls === 0 && scope().textContent.includes('Upload proof'), 'missing proof cannot call model or complete');
+const canvas = new OffscreenCanvas(400, 300), ctx = canvas.getContext('2d'); ctx.fillStyle = '#0d2931'; ctx.fillRect(0,0,400,300); ctx.fillStyle = '#dfbd7c'; ctx.beginPath(); ctx.arc(180,140,75,0,Math.PI*2); ctx.fill(); ctx.fillStyle = '#c88eaa'; ctx.fillRect(230,205,100,12);
+const filePath = window.SMOKE_SAVES + '/review-frame.png'; await hub.fs.write(filePath, new Uint8Array(await (await canvas.convertToBlob()).arrayBuffer()));
+const upload = async path => { const doc = await smoke({ cdp: 'DOM.getDocument', params: {} }); const n = await smoke({ cdp: 'DOM.querySelector', params: { nodeId: doc.root.nodeId, selector: '.qj dialog[open] input[type=file]' } }); await smoke({ cdp: 'DOM.setFileInputFiles', params: { nodeId: n.nodeId, files: Array.isArray(path) ? path : [path] } }); await until(() => /actual image|Technical audio|Bundle of|Three actual sampled/.test(scope().querySelector('.qj-proof-status').textContent)); };
+await upload(filePath); check(calls === 0, 'selecting evidence does not send it'); field('What were you aiming for, and what changed?', 'A single warm subject in a quiet frame.'); mode = 'missing'; await press('Submit proof & ask Astra');
+check(C.latest(s(), qid).review.score === null && C.xp(s()) === 0 && !scope().textContent.includes('Complete quest ·'), 'insufficient evidence has no invented score or completion button');
+await press('Submit new proof'); await upload(filePath); field('What were you aiming for, and what changed?', 'A single warm subject. This is the actual exported frame, showing the full composition.'); mode = 'good'; await press('Submit proof & ask Astra');
+check(C.latest(s(), qid).proof.path !== filePath && C.latest(s(), qid).proof.images.length === 1, 'proof copy and resized model image retained independently of source');
+check(C.xp(s()) === 0 && scope().querySelector('.qj-score-dial').textContent.includes('62'), 'review is scored without automatically completing');
+await smoke({ shot: window.SMOKE_SAVES + '/quest-scorecard.png' });
+await press('Complete quest · +30 XP'); check(C.xp(s()) === 30 && C.done(s(), qid), 'reviewed rough work earns the agreed scope XP');
+QuestJournal.navigate('collection'); await press('Open review & versions →'); check(scope().textContent.includes('VERSION 2') && scope().textContent.includes('VERSION 1'), 'portfolio keeps review versions including insufficient evidence');
+await press('Turn feedback into a quest →'); const revision = s().sideQuests.find(q => q.revisionOf === qid); check(revision?.done.includes('darker background'), 'feedback becomes a concrete side quest');
+await press('I reached the finish line →'); await upload(filePath); await press('Submit proof & ask Astra'); check(scope().textContent.includes('already on this quest') && calls === 2, 'revision cannot recycle the original proof'); close();
+// A real selected Hearth message is snapshotted and can be opened as its source.
+const agent = H.agents().find(a => a.mode === 'native' && a.engine === 'codex' && !a.dock);
+await hub.saveChat({ id: 'quest-proof-source', agentId: agent.id, title: 'Forgeheart proof fixture', createdAt: Date.now(), updatedAt: Date.now(), messages: [{ id: 'm-proof', role: 'assistant', text: 'Actual fixture diff: change drone cooldown from 500 ms to 450 ms. Test: the same wave completed in 18.2 seconds; no missed drone triggers in 60 ticks.' }] });
+QuestJournal.questDetail(revision.id); await press('I reached the finish line →');
+const chatFold = [...scope().querySelectorAll('details')].find(n => n.textContent.includes('Show work from a Hearth chat')); chatFold.open = true;
+await until(() => scope().querySelector('[aria-label="Source Hearth chat"] option[value="quest-proof-source"]'));
+field('Source Hearth chat', 'quest-proof-source'); await until(() => scope().querySelector('[aria-label="Source chat message"] option[value="0"]')); field('Source chat message', '0'); await press('Use this chat message'); mode = 'fail'; await press('Submit proof & ask Astra');
+check(C.latest(s(), revision.id).proof.chatId === 'quest-proof-source' && !C.latest(s(), revision.id).review && C.xp(s()) === 30, 'engine failure retains selected chat proof without XP');
+mode = 'cancel'; const retry = [...scope().querySelectorAll('button')].find(b => b.textContent === 'Review saved proof');
+// Failed first request is retained on disk; reopening exposes the explicit retry.
+close(); QuestJournal.questDetail(revision.id); await press('Review & version history'); const retryButton = [...scope().querySelectorAll('button')].find(b => b.textContent === 'Review saved proof'); retryButton.click(); await until(() => [...scope().querySelectorAll('button')].some(b => b.textContent === 'Cancel review')); close(); QuestJournal.questDetail(revision.id); await press('Review & version history'); await press('Cancel review'); await until(() => !retryButton.disabled); await until(() => [...scope().querySelectorAll('button')].some(b => b.textContent === 'Review saved proof'));
+check(!C.latest(s(), revision.id).review && C.xp(s()) === 30, 'cancel keeps evidence and awards nothing'); mode = 'good'; await press('Review saved proof');
+await press('Show source chat ↗'); check(H.activeChat[agent.id] === 'quest-proof-source', 'source control opens the actual Hearth chat');
+root().querySelector('.qj-celebrate')?.remove();
+activate('tool:quests'); QuestJournal.navigate('collection'); check(root().querySelectorAll('.qj-portfolio-card').length === 2, 'portfolio contains completed and pending work');
+await smoke({ shot: window.SMOKE_SAVES + '/quest-portfolio.png' });
+QuestJournal.navigate('rewards'); const treat = [...root().querySelectorAll('.qj-reward')].find(n => n.textContent.includes('sample pack / plugin fund')); await press('Save toward this', treat); check(s().rewardGoal === 'r-studio-wishlist' && C.balance(s()) === 6, 'wishlist goal saves without spending sparks');
+await smoke({ shot: window.SMOKE_SAVES + '/quest-rewards-new.png' });
+QuestJournal.navigate('adventure'); check(root().querySelector('.qj-goal-strip').textContent.includes('94 sparks'), 'notebook shows remaining reward progress');
+// Decode a real WAV without playing it; never pretend the reviewer listened.
+QuestJournal.questDetail('q-studio-demo-hook'); await press('I reached the finish line →');
+const samples = 8000, bytes = new ArrayBuffer(44 + samples * 2), view = new DataView(bytes), ascii = (at, s) => [...s].forEach((c,i) => view.setUint8(at+i,c.charCodeAt(0))); ascii(0,'RIFF'); view.setUint32(4,36+samples*2,true); ascii(8,'WAVE'); ascii(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true); view.setUint32(24,8000,true); view.setUint32(28,16000,true); view.setUint16(32,2,true); view.setUint16(34,16,true); ascii(36,'data'); view.setUint32(40,samples*2,true); for(let i=0;i<samples;i++) view.setInt16(44+i*2,Math.sin(i*Math.PI*2*220/8000)*4000,true);
+const audioPath = window.SMOKE_SAVES + '/review-tone.wav'; await hub.fs.write(audioPath,new Uint8Array(bytes)); await upload(audioPath); check(scope().textContent.includes('cannot hear'), 'audio coverage is visibly limited to technical evidence');
+await upload([audioPath,filePath]); await press('Submit proof & ask Astra'); check(C.latest(s(),'q-studio-demo-hook').proof.attachments.length===2 && C.latest(s(),'q-studio-demo-hook').proof.images.length===1, 'audio and a visual reference are preserved in one proof bundle'); close();
+// Make a tiny local clip and confirm actual frame sampling without continuous playback by the model.
+const videoCanvas=document.createElement('canvas'); videoCanvas.width=160; videoCanvas.height=120; const vctx=videoCanvas.getContext('2d'), stream=videoCanvas.captureStream(8), chunks=[];
+const recorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp8'}); recorder.ondataavailable=e=>chunks.push(e.data); const stopped=new Promise(r=>recorder.onstop=r); recorder.start(); for(let i=0;i<8;i++){vctx.fillStyle=i%2?'#b785b2':'#102d36';vctx.fillRect(0,0,160,120);await wait(140);} recorder.stop(); await stopped; stream.getTracks().forEach(t=>t.stop());
+const clipPath=window.SMOKE_SAVES+'/review-clip.webm';await hub.fs.write(clipPath,new Uint8Array(await new Blob(chunks,{type:'video/webm'}).arrayBuffer()));
+QuestJournal.questDetail('q-studio-visual-motion');await press('I reached the finish line →');await upload(clipPath);await press('Submit proof & ask Astra');check(C.latest(s(),'q-studio-visual-motion').proof.images.length===3,'video proof contains three actual sampled frames');close();
+QuestJournal.navigate('commissions'); await smoke({ cdp: 'Emulation.setDeviceMetricsOverride', params: { width: 760, height: 900, deviceScaleFactor: 1, mobile: false } }); await wait(150); check(root().scrollWidth <= root().clientWidth+2, 'commission wall fits a narrow panel'); await smoke({ shot: window.SMOKE_SAVES + '/quest-commissions-narrow.png' });
+QuestJournal.navigate('collection'); await press('Open review & versions →'); check(scope().scrollWidth <= scope().clientWidth+2, 'scorecard fits narrow viewport'); await smoke({ shot: window.SMOKE_SAVES + '/quest-scorecard-narrow.png' }); close(); await smoke({ cdp: 'Emulation.clearDeviceMetricsOverride' }); await QuestJournal.flush();
+return `Proof studio: ${checks} assertions passed; real evidence ingestion, mocked review responses, gates, scope, failure/cancel, source chat, revisions, wishlist, audio limits, portfolio and responsive layouts.`;
+//@@ reload
+document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+for(let i=0;i<160&&!document.querySelector('.qj-hero');i++) await new Promise(r=>setTimeout(r,60));
+const saved=QuestJournal.snapshot();
+if(QuestCore.xp(saved)!==30||saved.rewardGoal!=='r-studio-wishlist'||QuestCore.submissions(saved,'q-studio-visual-frame').length!==2||QuestCore.latest(saved,'q-studio-visual-frame').review.score!==62) throw Error('Proof, score history, scope XP or wishlist did not survive reload');
+if(!saved.sideQuests.some(q=>q.revisionOf==='q-studio-visual-frame')) throw Error('Revision quest was not restored');
+return 'Proof studio reload preserves evidence, scores, scope, XP, revision quest and reward goal.';

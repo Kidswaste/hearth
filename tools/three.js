@@ -397,8 +397,22 @@ const ThreeLab = (() => {
     refresh(changed) {
       if (!this.shadow) return;
       if (this.folded) { this.vw.top = null; this.vw.a = -1; this.vw.b = -1; if (changed) this.onChange?.(this.area.value); return; } // (drawn in full on showing: see the ResizeObserver)
-      this.draw(true, changed); // (a key: the scroll position from the last scroll event, no layout read in the key)
+      // (round 57, lab240edit) a key: drawn at the start of the coming frame, once, before it paints (the same frame as
+      // before). Drawn inside each key, the new highlight left the page to lay out again, and the next key's own editing
+      // (Backspace, the next letter) laid it out inside that key, ≈ 3 a key here; keys faster than frames drew each time.
+      if (changed) this.drawSoon(true, true); else this.draw(true, false); // (a key: the scroll position from the last scroll event, no layout read in the key)
       if (changed) this.onChange?.(this.area.value);
+    }
+    // one draw in the coming frame for everything asked since the last one (keys, scroll events: a scroll event comes in
+    // the frame's own steps, before its animation frames, so it is still drawn in that frame)
+    drawSoon(force, cached) {
+      this.dForce = this.dForce || force; this.dFresh = this.dFresh || !cached;
+      if (this.drawRaf) return;
+      this.drawRaf = requestAnimationFrame(() => {
+        this.drawRaf = 0;
+        if (this.folded) { this.dForce = false; this.dFresh = false; this.vw.top = null; this.vw.a = -1; this.vw.b = -1; return; }
+        this.draw(false, true);
+      });
     }
     // the same error lines as before (every run sets them): nothing to redraw
     setErrorLines(lines) {
@@ -408,7 +422,7 @@ const ThreeLab = (() => {
       if (this.shadow) this.paintGutter();
     }
     renderGutter() { if (this.shadow) this.paintGutter(); }
-    syncScroll() { if (this.shadow) this.draw(false); }
+    syncScroll() { if (this.shadow) this.drawSoon(false, false); } // (round 57: read in the frame, after the key's own layout)
     // the window's line numbers: one block of text, an element only for each line with an error
     paintGutter() {
       const w = this.vw; if (w.a < 0) return;
@@ -438,6 +452,8 @@ const ThreeLab = (() => {
       return k >= 0 && sp[k * 2 + 1] > off ? [sp[k * 2], sp[k * 2 + 1]] : null;
     }
     draw(force, cached = false) {
+      if (this.drawRaf) { cancelAnimationFrame(this.drawRaf); this.drawRaf = 0; } // (a draw waiting for the frame: this one does it)
+      if (this.dForce || this.dFresh) { force = force || this.dForce; cached = cached && !this.dFresh; this.dForce = false; this.dFresh = false; }
       const w = this.vw; const ar = this.area;
       if (!w.lh) { w.lh = parseFloat(getComputedStyle(ar).lineHeight) || 19; w.pad = parseFloat(getComputedStyle(this.pre).paddingTop) || 10; cached = false; }
       if (!cached || w.top == null) { w.top = ar.scrollTop; w.left = ar.scrollLeft; w.h = ar.clientHeight || 600; }
@@ -3473,7 +3489,11 @@ const ThreeLab = (() => {
       if (typeof requestIdleCallback !== 'function') { idleCheck(); return; }
       if (idleAsked) return;
       idleAsked = true;
-      requestIdleCallback(() => { idleAsked = false; idleCheck(); }, { timeout: 1500 });
+      // (round 57, lab240edit) no idle moment for 1.5 s (a drag, a splitter, a scrub): asked right after the coming
+      // frame instead, when the page's style is fresh. On the timeout it landed mid-drag and styled the whole Lab first.
+      // (a frame that doesn't come, an occluded window: 300 ms at most)
+      const go = () => { if (!idleAsked) return; idleAsked = false; idleCheck(); };
+      requestIdleCallback((dl) => { if (dl?.didTimeout && document.visibilityState === 'visible') { requestAnimationFrame(() => setTimeout(go, 0)); setTimeout(go, 300); return; } go(); }, { timeout: 1500 });
     };
     // (round 39, powerwise) only while Hearth is on screen (a hidden window's preview draws nothing to watch), and every
     // 10 s while the Lab is parked behind a chat (then it only makes sure a park can't stick; the view events come first)

@@ -10,6 +10,8 @@ const scope = () => root().querySelector('dialog[open]') || root();
 const press = async (text, parent = scope()) => { const button = [...parent.querySelectorAll('button')].find(b => typeof text === 'string' ? b.textContent === text : text.test(b.textContent)); check(Boolean(button), 'Button available: ' + text); button.click(); await until(() => !button.disabled); await wait(40); };
 const input = (name, value) => { const f = scope().querySelector(`[aria-label="${name}"]`); check(Boolean(f), 'Field available: ' + name); f.value = value; f.dispatchEvent(new Event('input', { bubbles: true })); f.dispatchEvent(new Event('change', { bubbles: true })); return f; };
 const close = async () => { scope().close(); await wait(30); };
+QuestReview.run = () => ({ promise: Promise.resolve({ status: 'reviewed', score: 60, dimensions: [15,15,15,15], meetsBrief: true, summary: 'Test fixture review.', better: 'Refine one color.', next: 'Export one changed color.', coverage: 'Fixture evidence.', limitations: 'Mock reviewer; no artistic judgment.' }), cancel() {} });
+const submitFixture = async () => { input('External chat link', 'https://chatgpt.com/c/journal-fixture'); input('Paste the actual result from that chat', 'Fixture output: a named tile export with violet, cream and dark green colors and a checked seam.'); await press('Use this pasted result'); await press('Submit proof & ask Astra'); };
 check(QuestCore.xp(QuestJournal.snapshot()) === 0, 'fresh journal starts at zero');
 check(Commands.list().some(c => c.name === 'quests'), '/quests registered');
 check(getComputedStyle(root().querySelector('.qj-traveller .qj-mini-path')).getPropertyValue('--path').trim() === '#b8a0fa', 'skill path colors use actual CSS variables');
@@ -52,21 +54,21 @@ await press('I took the first step · +5 XP');
 check(QuestCore.xp(QuestJournal.snapshot()) === 5 && QuestCore.stats(QuestJournal.snapshot()).finished === 0, 'small start does not fake a completion');
 await press('Make this smaller'); await press('Small start already earned ✓'); check(QuestCore.xp(QuestJournal.snapshot()) === 5, 'repeated small start earns nothing extra');
 await press('Continue quest →'); await press('I reached the finish line →');
-await press('Complete quest · +20 XP'); check(Boolean(root().querySelector('dialog[open]')), 'finish line requires confirmation');
-check(scope().textContent.includes('Confirm the finish line'), 'validation is visible inside modal');
-input('What did you make or discover? (optional)', 'A tile worth keeping.');
+await press('Submit proof & ask Astra'); check(Boolean(root().querySelector('dialog[open]')), 'finish line requires proof');
+check(scope().textContent.includes('Upload proof'), 'proof validation is visible inside modal');
+input('What were you aiming for, and what changed?', 'A tile worth keeping.');
 // Attach an actual file through Chromium, without controlling a desktop file picker.
 const canvas = new OffscreenCanvas(96, 96), ctx = canvas.getContext('2d'); ctx.fillStyle = '#b8a0fa'; ctx.fillRect(0, 0, 96, 96); ctx.fillStyle = '#242b23'; ctx.fillRect(20, 20, 56, 56);
 const imagePath = window.SMOKE_SAVES + '/quest-keepsake.png';
 await hub.fs.write(imagePath, new Uint8Array(await (await canvas.convertToBlob()).arrayBuffer()));
 const doc = await smoke({ cdp: 'DOM.getDocument', params: {} });
 const node = await smoke({ cdp: 'DOM.querySelector', params: { nodeId: doc.root.nodeId, selector: '.qj dialog[open] input[type=file]' } });
-await smoke({ cdp: 'DOM.setFileInputFiles', params: { nodeId: node.nodeId, files: [imagePath] } }); await wait(200);
-scope().querySelector('input[type=checkbox]').checked = true; await press('Complete quest · +20 XP');
+await smoke({ cdp: 'DOM.setFileInputFiles', params: { nodeId: node.nodeId, files: [imagePath] } }); await until(() => scope().querySelector('.qj-proof-status')?.textContent.includes('One actual image'));
+await press('Submit proof & ask Astra'); await press('Complete quest · +20 XP');
 check(QuestCore.xp(QuestJournal.snapshot()) === 25, 'small start and completion total exactly one award');
 check(QuestJournal.snapshot().records['q-material-seed'].artifact?.path, 'actual attachment path saved');
 check(root().querySelector('.qj-hero h2').textContent === 'Give it a palette', 'next milestone becomes main quest');
-for (let i = 0; i < 3; i++) { await press('Begin quest →'); await press('I reached the finish line →'); scope().querySelector('input[type=checkbox]').checked = true; await press(/^Complete quest/); }
+for (let i = 0; i < 3; i++) { await press('Begin quest →'); await press('I reached the finish line →'); await submitFixture(); await press(/^Complete quest/); }
 check(QuestCore.stats(QuestJournal.snapshot()).campaigns === 1, 'campaign finish counted');
 check(QuestCore.level(QuestCore.xp(QuestJournal.snapshot())).n === 2, 'level 2 earned through finished work');
 QuestJournal.navigate('skills');
@@ -94,11 +96,10 @@ await press('Resume', root().querySelector('.qj-focus')); check(QuestJournal.sna
 await press('End focus'); check(!QuestJournal.snapshot().focus, 'ending timer does not finish the quest');
 const side = root().querySelector('.qj-side'); await press('Accept quest +', side); check(QuestJournal.snapshot().sideQuests.length === 1, 'side quest accepted'); await press('Park this side quest');
 check(QuestJournal.snapshot().sideQuests[0].parked, 'side quest can rest');
-QuestJournal.navigate('collection'); await until(() => root().querySelector('.qj-artifact img')?.complete);
-check(root().querySelector('.qj-artifact img').naturalWidth === 96, 'real image displays in collection');
+QuestJournal.navigate('collection'); const firstPortfolio = [...root().querySelectorAll('.qj-portfolio-card')].find(card => card.querySelector('h3').textContent === 'Find a pattern that pulls you in'); await press('Open review & versions →', firstPortfolio); const evidence = scope().querySelector('.qj-evidence-preview'); evidence.closest('details').open = true; await until(() => evidence.querySelector('img')?.complete);
+check(evidence.querySelector('img').naturalWidth === 96, 'real image displays in proof history'); await close();
 await smoke({ shot: window.SMOKE_SAVES + '/quest-collection.png' });
-const firstKeepsake = [...root().querySelectorAll('.qj-keepsake')].find(card => card.querySelector('h3').textContent === 'Find a pattern that pulls you in');
-await press('View quest', firstKeepsake); await press('Undo completion'); check(scope().textContent.includes('later quests'), 'cannot undo a dependency beneath later completed milestones'); await close();
+QuestJournal.questDetail('q-material-seed'); await press('Undo completion'); check(scope().textContent.includes('later quests'), 'cannot undo a dependency beneath later completed milestones'); await close();
 // Draft handoff is explicit and preserves a preexisting draft, without starting an engine turn.
 const astra = H.agents().find(a => a.mode === 'native' && a.engine === 'codex' && !a.dock);
 activate(astra.id); Native.setDraft(astra.id, 'Keep this earlier thought.'); activate('tool:quests'); QuestJournal.navigate('adventure');

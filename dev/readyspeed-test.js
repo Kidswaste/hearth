@@ -54,10 +54,10 @@ const LAB = { click: 1000, prep: { start: 1010, end: 1200 }, main: { asked: 1210
   });
   await t('what a run teaches the next: was said once, renderers, one quiet pass after two clean runs', () => {
     let e = null;
-    assert.deepStrictEqual(C.hints(e), { was: null, show: false, renderers: null, loads: null, ab: false, quiet: 2 });
+    assert.deepStrictEqual(C.hints(e), { was: null, show: false, renderers: null, loads: null, ab: false, quiet: 2, shadow: null });
     const clean = { compiles: 0, links: 0, uploads: 0 };
     e = C.note(e, { total: 6800, renderers: 1, warm: [{ compiles: 3, links: 2, uploads: 1 }, clean, clean], first5: clean }, 1);
-    assert.deepStrictEqual(C.hints(e), { was: 6800, show: true, renderers: 1, loads: null, ab: false, quiet: 2 });
+    assert.deepStrictEqual(C.hints(e), { was: 6800, show: true, renderers: 1, loads: null, ab: false, quiet: 2, shadow: null });
     assert.strictEqual(C.hints(C.note(e, { total: 6000, loads: 7 })).loads, 7, 'an HTML build\'s loads');
     e = C.note(e, { total: 2100, shown: true, renderers: 1, warm: [clean, clean], first5: clean }, 2);
     let h = C.hints(e);
@@ -73,7 +73,7 @@ const LAB = { click: 1000, prep: { start: 1010, end: 1200 }, main: { asked: 1210
     const e3 = C.note(e, { total: 300, skipped: true }); assert.strictEqual(e3.best, 2000); assert.strictEqual(e3.runs, 3);
     assert.strictEqual(C.note(e, { total: 300, noPrep: true }).last, 2000);
     // another version of what it remembers: dropped
-    assert.deepStrictEqual(C.hints({ ...e, v: C.V + 1 }), { was: null, show: false, renderers: null, loads: null, ab: false, quiet: 2 });
+    assert.deepStrictEqual(C.hints({ ...e, v: C.V + 1 }), { was: null, show: false, renderers: null, loads: null, ab: false, quiet: 2, shadow: null });
   });
   await t('the A/B verdict reused only with the same key, when it fit, never for a game whose helpers cost frames', () => {
     const fits = { on: 1, off: 1, judge: { slower: false }, turnedOff: [] };
@@ -93,6 +93,25 @@ const LAB = { click: 1000, prep: { start: 1010, end: 1200 }, main: { asked: 1210
     assert.strictEqual(C.abFits({ skipped: 'no helpers on' }), false);
     assert.strictEqual(C.abFits(null), false);
     assert.strictEqual(C.hints(C.note(null, { total: 1, ab: { ...fits, turnedOff: ['look'] }, abKey: 'k1' }), { ab: 'k1' }).ab, false);
+  });
+  await t('(round 57, readywalk) the shadow size its walk chose, checked next time instead of walked: same key only', () => {
+    const walk = { size: 1024, why: 'lowered', walked: true, refreshMs: 16.67, rows: [[2048, 40], [1024, 30], [512, 29]] };
+    let e = C.note(null, { total: 5000, shadow: walk, abKey: 'k1' }, 1);
+    assert.deepStrictEqual(e.sh, { key: 'k1', size: 1024, ms: 30, ref: 16.67, at: 1 });
+    assert.deepStrictEqual(C.hints(e, { ab: 'k1' }).shadow, { size: 1024, ms: 30, ref: 16.67 });
+    assert.strictEqual(C.hints(e, { ab: 'k2' }).shadow, null, 'the game\'s files / helpers / refresh / look changed: walked again');
+    assert.strictEqual(C.hints(e, {}).shadow, null);
+    // a run that only confirmed it keeps the walk's time (no drift of the bar)
+    e = C.note(e, { total: 2000, shadow: { size: 1024, why: 'confirmed', walked: false, rows: [[1024, 41]] }, abKey: 'k1' }, 2);
+    assert.strictEqual(e.sh.ms, 30); assert.strictEqual(e.sh.at, 2);
+    // a fresh walk (the check failed) replaces it
+    e = C.note(e, { total: 2000, shadow: { size: 512, why: 'smallest', walked: true, rows: [[1024, 60], [512, 20]], refreshMs: 16.67 }, abKey: 'k1' }, 3);
+    assert.strictEqual(e.sh.size, 512); assert.strictEqual(e.sh.ms, 20);
+    // a run without a shadow choice (the look off, Play now) keeps it
+    assert.strictEqual(C.note(e, { total: 2000 }).sh.size, 512);
+    assert.strictEqual(C.note(e, { total: 2000, shadow: { size: 1024, why: 'time', walked: true, rows: [[1024, 60]] }, abKey: 'k1' }).sh.ms, 60, 'a walk cut short by time: its last size measured is checked next time');
+    assert.strictEqual(C.note(e, { total: 2000, shadow: { size: 1024, why: 'not-shadows', walked: true, rows: [[1024, null]] }, abKey: 'k1' }).sh, null, 'not measured: walked next time');
+    assert.strictEqual(C.note(null, { total: 2000, shadow: walk }).sh, null, 'no key: nothing to hold it to');
   });
   await t('the check\'s threshold: within ratio × base + slack', () => {
     assert.deepStrictEqual(C.regression(6000, 4000, { ratio: 0.85, slack: 300 }), { ok: true, ratio: 0.667, limit: 5400, why: '' });
@@ -155,6 +174,11 @@ const LAB = { click: 1000, prep: { start: 1010, end: 1200 }, main: { asked: 1210
     await H['gameready:arm'](null, { kind: 'lab', title: 'Clink', clickAt: 99 });
     tag = M.pageTag({ root: '', file: 'play.html', source: src, hz: 60, look: 'best', off: [] });
     assert.ok(/was=6000/.test(tag) && /sw=1/.test(tag) && /rn=2/.test(tag) && /abs=1/.test(tag) && !/wq=/.test(tag), tag);
+    // (round 57, readywalk) the shadow size its walk chose: sq=size:ms:refresh ms with the same key
+    await H['gameready:speed'](null, { op: 'note', source: src, run: { total: 5000, shadow: { size: 1024, why: 'fits', walked: true, rows: [[1024, 9.5]], refreshMs: 16.67 } } });
+    await H['gameready:arm'](null, { kind: 'lab', title: 'Clink', clickAt: 99 });
+    tag = M.pageTag({ root: '', file: 'play.html', source: src, hz: 60, look: 'best', off: [] });
+    assert.ok(/[?&]sq=1024%3A9.5%3A16.67/.test(tag), tag);
     // another screen: the A/B runs again
     await H['gameready:arm'](null, { kind: 'lab', title: 'Clink', clickAt: 99 });
     tag = M.pageTag({ root: '', file: 'play.html', source: src, hz: 144, look: 'best', off: [] });

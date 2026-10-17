@@ -160,7 +160,11 @@ await safe('html', async () => {
   GameMode.play({ kind: 'html', path: `${DIR}/html/index.html` }).catch((err) => step('▶ Play the HTML game', false, String(err)));
   const g = await until(() => ev('window.__game && window.__game.ready && window.__game.frames > 5'), 60000);
   step('the HTML game plays', g);
-  await until(() => ev('Boolean(window.__gamePerf)'), 15000);
+  // (round 57, framepace57) ▶ Play hands GamePerf the window dormant (no probe until the doctor / perf asks; the F chip
+  // and its "Input: x ms" are the window's own): the probe put in here, so its listeners are counted too
+  if (typeof Lazy !== 'undefined') await Lazy.load('gameperf').catch(() => {});
+  if (typeof GamePerf !== 'undefined') await GamePerf.attach({ exec: ev }, { label: 'latency html', kind: 'html', hz: 60 }).catch(() => {});
+  await until(() => ev('Boolean(window.__gamePerf)'), 5000);
   await wait(800);
   let keydown = 0;
   for (const expr of ['window', 'document']) {
