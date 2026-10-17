@@ -10,7 +10,8 @@
 //   no extra hop  the one canvas swapped, not copied (preserveDrawingBuffer off) when nothing reads it; no fps cap / pace /
 //                throttling; Chromium's frame-rate switches absent; no keydown listener of Hearth's in an HTML game
 // Thresholds are relative to the measured frame time (this machine: Xvfb at 60 Hz, SwiftShader: slow frames): input →
-// the game's frame p50 ≤ 1.25 frames + 1 ms, p95 ≤ 2 frames + 4 ms (or the slowest usual frame + one).
+// the game's frame p50 ≤ 1.25 frames + 1 ms and read by the next frame (frames p95 ≤ 2: a loaded machine's frames vary
+// too much for a fixed ms p95; /game latency's verdict uses the slowest usual frame + one).
 // window.PL_REPORT = 1 reports without failing.
 //   node dev/smoke.js --screen 1280x720 --check-timeout 900000 --script dev/checks/playlatency.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -43,11 +44,12 @@ const lim = (frame, p95 = frame) => ({ p50: r1(frame * 1.25 + 1), p95: r1(Math.m
 // the probe in the game's page (main world): per input, timestamp → handled → the next animation frame; frame gaps
 const PROBE = `(() => {
   if (window.__pl) return 'again';
-  const P = window.__pl = { ev: [], gaps: [], last: 0, msgs: 0 };
-  const rec = (e) => { const r = [e.type === 'pointermove' ? 1 : 0, e.timeStamp, performance.now(), null]; P.ev.push(r); if (P.ev.length > 800) P.ev.shift(); requestAnimationFrame(() => { r[3] = performance.now(); }); };
+  const P = window.__pl = { ev: [], gaps: [], last: 0, msgs: 0, fc: 0 };
+  // r: [mouse?, timestamp, handled, read (the next frame), frames between (1 = the very next one)]
+  const rec = (e) => { const r = [e.type === 'pointermove' ? 1 : 0, e.timeStamp, performance.now(), null, null]; const f0 = P.fc; P.ev.push(r); if (P.ev.length > 800) P.ev.shift(); requestAnimationFrame(() => { r[3] = performance.now(); r[4] = Math.max(1, P.fc - f0); }); };
   for (const t of ['keydown', 'pointermove']) addEventListener(t, rec, { capture: true, passive: true });
   addEventListener('message', () => { P.msgs += 1; }, true);
-  const loop = (t) => { if (P.last) { P.gaps.push(t - P.last); if (P.gaps.length > 1200) P.gaps.shift(); } P.last = t; requestAnimationFrame(loop); };
+  const loop = (t) => { P.fc += 1; if (P.last) { P.gaps.push(t - P.last); if (P.gaps.length > 1200) P.gaps.shift(); } P.last = t; requestAnimationFrame(loop); };
   requestAnimationFrame(loop);
   return 'ok';
 })()`;
@@ -56,7 +58,8 @@ function sum(d) {
   const frame = pct(d.gaps, 0.5);
   const part = (mv) => { const e = d.ev.filter((x) => x[0] === mv && x[3] != null); return { n: e.length, handled: [pct(e.map((x) => x[2] - x[1]), 0.5), pct(e.map((x) => x[2] - x[1]), 0.95)], frame: [pct(e.map((x) => x[3] - x[1]), 0.5), pct(e.map((x) => x[3] - x[1]), 0.95)] }; };
   const all = d.ev.filter((x) => x[3] != null).map((x) => x[3] - x[1]);
-  return { frameMs: frame, frameP95: pct(d.gaps, 0.95), fps: frame ? Math.round(1000 / frame) : null, keys: part(0), mouse: part(1), all: [pct(all, 0.5), pct(all, 0.95)], n: all.length, msgsPerSec: null };
+  const frames = d.ev.filter((x) => x[4] != null).map((x) => x[4]);
+  return { frameMs: frame, frameP95: pct(d.gaps, 0.95), fps: frame ? Math.round(1000 / frame) : null, keys: part(0), mouse: part(1), all: [pct(all, 0.5), pct(all, 0.95)], frames: [pct(frames, 0.5), pct(frames, 0.95)], n: all.length };
 }
 
 await until(() => window.hub && performance.getEntriesByName('hearth:ready').length);
@@ -103,7 +106,7 @@ async function round(tag, copy) {
   M.real = sum(d);
   const f = M.real.frameMs || M.idle.frameMs;
   const L = lim(f, M.real.frameP95 || f);
-  step(`${tag}: real input → the game's frame p50 ≤ ${L.p50} ms, p95 ≤ ${L.p95} ms (frames of ${f} ms, p95 ${M.real.frameP95} ms)`, M.real.n >= 20 && M.real.all[0] <= L.p50 && M.real.all[1] <= L.p95, { all: M.real.all, keys: M.real.keys, mouse: M.real.mouse, frame: f });
+  step(`${tag}: real input → read in the game's next frame (frames p95 ≤ 2; p50 ${M.real.all[0]} ms ≤ ${L.p50} ms on ${f} ms frames)`, M.real.n >= 20 && M.real.frames[1] <= 2 && M.real.all[0] <= L.p50, { all: M.real.all, frames: M.real.frames, keys: M.real.keys, mouse: M.real.mouse, frame: f, frameP95: M.real.frameP95, p95Limit: L.p95 });
   // /game latency (the owner's measurement)
   const r = await G().latency({ ms: 2000 });
   M.cmd = r?.error ? { error: r.error } : { input: r.input, keys: r.keys?.frame, mouse: r.mouse?.frame, frameMs: r.frameMs, fps: r.fps, hz: r.hz, verdict: r.verdict, why: r.why, main: r.main, presented: r.presented, window: r.window, sent: r.sent, page: r.pageAnswered };

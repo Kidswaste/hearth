@@ -29,6 +29,8 @@ t('late input says why: Hearth\'s main process busy / frames slower than the scr
   assert.match(C.summarize({ page: late, main: { lag: { p99: 22 } }, hz: 240 }).why, /main process was busy/);
   assert.match(C.summarize({ page: { k: rows([30, 40, 45]), gaps: Array(30).fill(16.7) }, main: { lag: { p99: 2 } }, hz: 240 }).why, /slower than the screen/);
   assert.match(C.summarize({ page: late, main: { lag: { p99: 2 } }, hz: 240 }).why, /page was busy/);
+  // frames that vary (a busy / software GPU): the slowest usual frame + one is still "the next frame"
+  assert.ok(C.summarize({ page: { k: rows([10, 12, 14, 15, 16, 70]), gaps: [...Array(20).fill(16.7), ...Array(3).fill(60)] }, hz: 60 }).ok);
   // a slow machine (60 Hz, 16.7 ms frames) whose inputs still land in the next frame is fine
   assert.ok(C.summarize({ page: { k: rows([8, 14, 17, 5]), gaps: Array(30).fill(16.7) }, hz: 60 }).ok);
 });

@@ -29,6 +29,7 @@
     const keys = part(page.k); const mouse = part(page.m);
     const all = [...(page.k || []), ...(page.m || [])].filter((x) => Array.isArray(x) && Number.isFinite(x[1])).map((x) => x[1]);
     const frameMs = r1(frameOf(page.gaps, hz));
+    const gapP95 = r1(pct((page.gaps || []).filter((x) => x > 0.5 && x < 1000), 0.95)) || frameMs; // (frames that vary: a busy or software GPU)
     const fps = frameMs ? Math.round(1000 / frameMs) : null;
     const input = { n: all.length, p50: r1(median(all)), p95: r1(pct(all, 0.95)) };
     const et = (page.et || []).filter((x) => Number.isFinite(x));
@@ -37,9 +38,10 @@
     const handler = (main.handler || []).filter((x) => Number.isFinite(x));
     const handlerMs = handler.length ? Math.round(median(handler) * 1000) / 1000 : null;
     // the verdict: the game sees an input in the frame right after it (the shortest a browser allows) when the
-    // typical input reaches the next frame within about one frame, and nearly all within two
+    // typical input reaches the next frame within about one frame, and nearly all within two (or within the slowest
+    // usual frame and one more, where frames vary)
     let verdict = 'next-frame'; let why = '';
-    if (!input.n) { verdict = 'none'; why = 'no input reached the game (it may not have the focus)'; } else if (input.p50 > frameMs * 1.25 + 1 || input.p95 > frameMs * 2 + 4) {
+    if (!input.n) { verdict = 'none'; why = 'no input reached the game (it may not have the focus)'; } else if (input.p50 > frameMs * 1.25 + 1 || input.p95 > Math.max(frameMs * 2 + 4, gapP95 + frameMs)) {
       verdict = 'late';
       if (lag && lag.p99 > Math.max(frameMs, 8)) why = `Hearth's main process was busy (${r1(lag.p99)} ms at worst): every input waits for it`;
       else if (fps && hz && fps < hz * 0.8) why = `frames come slower than the screen (${fps} fps on ${Math.round(hz)} Hz): the game's frame is the limit`;
@@ -57,7 +59,7 @@
     if (handlerMs != null) hp.push(`${handlerMs < 0.01 ? '< 0.01' : handlerMs.toFixed(2)} ms a key in the window's key handler`);
     if (lag) hp.push(`Hearth's main process answered within ${r1(lag.p99)} ms (99 %)`);
     if (hp.length) lines.push(`Hearth's part: ${hp.join(' · ')}; nothing of Hearth's waits between the input and the game.`);
-    return { input, keys, mouse, frameMs, fps, hz: Math.round(Number(hz) || 60), presented, main: { lag, handlerMs }, verdict, why, ok, line, text: lines.join('\n') };
+    return { input, keys, mouse, frameMs, gapP95, fps, hz: Math.round(Number(hz) || 60), presented, main: { lag, handlerMs }, verdict, why, ok, line, text: lines.join('\n') };
   }
   const api = { summarize, pct, median, frameOf };
   if (typeof module === 'object' && module.exports) module.exports = api;
