@@ -89,8 +89,12 @@ async function play(label) {
   await wait(2500);
   const m = JSON.parse(await ev(MEASURE)); m.label = label;
   if (c.look === 'best' && c.stream) { // (round 57) the interleaved A/B, then (the second Best play) the self-test
+    // (the look's guard decides first: frames missing the refresh for 10 s, it tries the smaller maps made under the card
+    // and keeps them or not; the A/B after that, so "on" draws the shadow size Best really plays with)
+    await until(() => ev('!["waiting", "measuring", "tight", "trying"].includes(window.__gameLook.report().guard)'), 30000);
+    m.abShadow = await ev('window.__gameLook.report().shadows.now');
     const ab = JSON.parse(await ev(AB(5, 150000))); if (Array.isArray(ab)) AB_PAIRS.push(...ab); m.ab = ab;
-    if (label === 'best2') { VERDICT = await judge(AB_PAIRS); await ev(INJECT); const inj = JSON.parse(await ev(AB(4, 120000))); SELF = await judge(Array.isArray(inj) ? inj : [], { minPairs: 4 }); m.inj = inj; }
+    if (label === 'best2') { VERDICT = await judge(AB_PAIRS, { gapShare: 0.1 }); await ev(INJECT); const inj = JSON.parse(await ev(AB(4, 120000))); SELF = await judge(Array.isArray(inj) ? inj : [], { minPairs: 4, gapShare: 0.1 }); m.inj = inj; }
   }
   out.runs.push(m);
   await GameMode.leave(); await until(async () => !(await GW().state())?.playing, 10000); await wait(800);
@@ -132,7 +136,7 @@ await safe('judge', async () => {
   const v = VERDICT || { ok: false, why: 'not judged (the second Best play did not get there)' };
   out.verdict = v;
   const gb = avg(bests, 'gap50');
-  step('best: frames as fast as off (interleaved on / stepped aside in the same play, both Best plays: Hearth\'s work around the render within 2 % of the frame, the mean frame gap not slower beyond the noise and 5 % / 2 ms; the separate plays within 2×)', v.ok && gb <= off.gap50 * 2 + 17, { verdict: v, plays: { off: off.gap50, best: bests.map((x) => x.gap50) } });
+  step('best: frames as fast as off (interleaved on / stepped aside in the same play, both Best plays: Hearth\'s work around the render within 2 % of the frame, the mean frame gap not slower beyond the noise and 10 % / 2 ms (the Best picture\'s own shadow maps may cost up to 8 % a step by shadowready\'s rule); the separate plays within 2×)', v.ok && gb <= off.gap50 * 2 + 17, { verdict: v, shadowInAB: bests.map((x) => x.abShadow), plays: { off: off.gap50, best: bests.map((x) => x.gap50) } });
   step('self-test: the same verdict on a pretend helper costing 1 ms a frame says "slower"', SELF && !SELF.ok && SELF.cpu && !SELF.cpu.ok, SELF);
 });
 await safe('files', async () => {
