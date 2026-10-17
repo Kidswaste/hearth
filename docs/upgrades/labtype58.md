@@ -49,8 +49,11 @@ While held, the frames drawn are the 1-a-second safety redraw plus ~3 per messag
 
 ## Tests
 - `node --check` on the sandbox page's scripts (extracted), `dev/labpace-test.js`, the check's body.
-- See the final report / the release notes for the check runs (labtype240 ×2, labpace, unit:labpace-test, labplay55,
-  labcanvas56, lab240edit, labsmooth54, lab240gpu, lazy, unit:boot-test).
+- All passed, under the shared run lock: labtype240 ×2 (frames until still 16 / 18 and 16 / 12; the held title at
+  1.7 frames a second), labpace, unit:labpace-test, labplay55 (a moving game's looks per frame unchanged), labcanvas56,
+  lab240edit, labsmooth54, lab240gpu, lazy, unit:boot-test.
+- The new step, run against the old sandbox page: fails (49 / 54 frames). The new labpace-test lines fail there too
+  (17 / 49 frames).
 
 ## Not done
 - A scene that stops **by itself** after moving for over 2 s, with nothing from outside, is still caught within 32
