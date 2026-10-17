@@ -87,9 +87,11 @@ a machine at a load of 20–30: the page was paused by the machine, not working.
   pass**, **playbudget pass**, **gamestream pass**, **gameaudio pass** (one earlier run failed "the music named": the
   decode's file name comes from Resource Timing's last 3 s and read null; base passes, rerun passed — timing),
   **lazy pass**, **framepace57 pass**.
-- gamelook's "the first look under 5 ms" read 5.8–8.2 ms in 4 of 8 runs this round (1.9–4.3 in the others, base
-  12138e4 2.9–4.3, base with only the dormant probe 8.2): a one-time whole-scene look under the card before the first
-  frame, likely now the first to ask the graphics card its limits; bounded at 10 ms (dev/checks/gamelook.js).
+- gamelook's "the first look under 5 ms" read 5.8–8.2 ms in 4 of 8 runs this round (base 2.9–4.3). readywalk found
+  the cause: the card's best anisotropy asked of the GPU process once per renderer under the card; after the merge it
+  is timed apart (`cost.ask`) and the look's own first look keeps its 5 ms bound (this stream's 10 ms raise dropped).
+- playlatency's check puts the (now dormant) probe in itself before counting keydown listeners; the F chip's
+  "Input: x ms" is the game window's own and needs no probe.
 - An earlier gamefps54 version (frames judged with the shadow maps at 512² on the "off" side) failed once at low load:
   frames +12.9 % (95 %: 1.9–27 ms) — the picture's cost, which led to judging the picture on its own.
 - Early runs at a load of 22–34 (7+ software-GPU Electron processes at once, ~1 frame a second) were used only to make
