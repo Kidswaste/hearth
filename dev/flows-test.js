@@ -266,7 +266,7 @@ ok('the hand-written journeys are valid flows (Doctor, Make a video, Record, Lab
 });
 
 ok('Doctor like a user: the card is fine → the guess is Yes → test both → result', async () => {
-  const { F, log } = engine({ cmdInfo: (name) => ({ name, args: '' }), runCommand: async (line) => { log2.push(line); return line === '/doctor' ? '**Doctor** · both engines can work' : 'Claude OK 1.2 s · Astra OK 2.0 s'; } });
+  const { F, log } = engine({ cmdInfo: (name) => ({ name, args: '' }), runCommand: async (line) => { log2.push(line); return line === '/doctor' ? '**Doctor** · no installation problems found' : 'Claude OK 1.2 s · Astra OK 2.0 s'; } });
   const log2 = [];
   F.define(FD.JOURNEYS[0]);
   const r = await F.start('doctor');
@@ -281,7 +281,7 @@ ok('Doctor like a user: the card is fine → the guess is Yes → test both → 
 
 ok('Doctor when Codex is signed out: sign in, confirm, check again, fixed', async () => {
   let n2 = 0; const cmds = [];
-  const { F } = engine({ cmdInfo: (name) => ({ name, args: '' }), runCommand: async (line) => { cmds.push(line); if (line === '/doctor') { n2 += 1; return n2 === 1 ? 'Doctor · 1 thing to fix: Codex is signed out' : 'Doctor · both engines can work'; } return 'ok'; } });
+  const { F } = engine({ cmdInfo: (name) => ({ name, args: '' }), runCommand: async (line) => { cmds.push(line); if (line === '/doctor') { n2 += 1; return n2 === 1 ? 'Doctor · 1 thing to fix: Codex is signed out' : 'Doctor · no installation problems found'; } return 'ok'; } });
   F.define(FD.JOURNEYS[0]);
   const r = await F.start('doctor');
   assert.strictEqual(F.waiting(r).guess, 'no');

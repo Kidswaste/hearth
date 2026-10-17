@@ -27,8 +27,9 @@ const FlowsData = (() => {
     {
       id: 'doctor', name: 'Doctor', icon: '✚', area: 'Agents', desc: 'Claude Code and Codex checked, fixed in a window you can see, checked again, tested',
       nodes: [
+        // (round 57, sweep57) /doctor's all-clear now reads "no installation problems found" (it was "both engines can work")
         { id: 'check', kind: 'action', title: 'Check both engines', cmd: '/doctor', var: 'report', next: 'ok', x: 0, y: 0 },
-        { id: 'ok', kind: 'choice', title: 'Does the card say both engines can work?', var: 'ok', options: [{ label: 'Yes', value: 'yes', next: 'test' }, { label: 'No', value: 'no', next: 'which' }], guess: { var: 'report', match: 'both engines can work', value: 'yes', else: 'no' } },
+        { id: 'ok', kind: 'choice', title: 'Does the card say no problems were found?', var: 'ok', options: [{ label: 'Yes', value: 'yes', next: 'test' }, { label: 'No', value: 'no', next: 'which' }], guess: { var: 'report', match: 'no installation problems found|both engines can work', value: 'yes', else: 'no' } },
         { id: 'which', kind: 'choice', title: 'Which one has the problem?', var: 'engine', options: [{ label: 'Claude Code', value: 'claude', set: { login: '/login' } }, { label: 'Codex (Astra)', value: 'codex', set: { login: '/astra-login' } }], next: 'what' },
         { id: 'what', kind: 'choice', title: 'What does the card say?', var: 'fix', options: [
           { label: 'Too old: update it', value: 'update', next: 'update' },
@@ -42,7 +43,7 @@ const FlowsData = (() => {
         { id: 'explain', kind: 'ai', title: 'Claude explains', engine: 'claude', prompt: 'Hearth\'s engine check (/doctor) says this about {engine}:\n{report}\nIn 3 short steps, what should I do?', var: 'advice', next: 'wait' },
         { id: 'wait', kind: 'check', title: 'Done in that window?', ask: 'Finished in the Terminal / PowerShell window (or did what Claude said)?', next: 'again' },
         { id: 'again', kind: 'action', title: 'Check again', cmd: '/doctor', var: 'report', next: 'fixed' },
-        { id: 'fixed', kind: 'choice', title: 'Fixed?', var: 'fixed', options: [{ label: 'Yes', value: 'yes', next: 'test' }, { label: 'No, still broken', value: 'no', next: 'which' }], guess: { var: 'report', match: 'both engines can work', value: 'yes', else: 'no' } },
+        { id: 'fixed', kind: 'choice', title: 'Fixed?', var: 'fixed', options: [{ label: 'Yes', value: 'yes', next: 'test' }, { label: 'No, still broken', value: 'no', next: 'which' }], guess: { var: 'report', match: 'no installation problems found|both engines can work', value: 'yes', else: 'no' } },
         { id: 'test', kind: 'choice', title: 'Test both with a real reply? (a few tokens)', var: 'test', options: [{ label: 'Yes', value: 'yes', next: 'run' }, { label: 'No', value: 'no', next: 'done' }] },
         { id: 'run', kind: 'action', title: 'Test Claude and Astra', cmd: '/doctor --run', var: 'report', next: 'done' },
         { id: 'done', kind: 'result', title: 'Engines', text: '{report}' },

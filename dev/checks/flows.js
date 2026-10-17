@@ -4,7 +4,7 @@
 // hangs (a check that never comes, then Hearth "restarted": restore) picked up again, the chat line that rides along
 // only when your words are about the flow and a <flow answer="…"/> in a reply that moves it, /flow-status, /flow-step,
 // /flow-where, /principal, the editor (add a step, rewire, save as mine) and /flow-make with the fake engine.
-//   node dev/smoke.js --fake-engines --check-timeout 300000 --script dev/checks/flows.js --shot /tmp/flows.png
+//   node dev/smoke.js --fake-engines --check-timeout 600000 --script dev/checks/flows.js --shot /tmp/flows.png
 store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
 const SHOTS = window.FLOW_SHOTS || '/tmp/hearth-checks/flows';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -84,15 +84,17 @@ try {
   ok(docRow, `Doctor in Flows › (${out.rows2})`);
   mouse(docRow);
   // (round 11) Flows › starts it on the Commands page; the node view is the advanced one
-  await until(() => Flows.runs()[0]?.flowId === 'doctor' && Flows.runs()[0]?.status === 'waiting-you', 20000);
+  // (round 57, sweep57) /doctor also refreshes Astra's model catalog through Codex's app-server since Codex's engine
+  // watch; the fake Codex here has none, so each /doctor waits out that check (30–55 s): its steps get 90 s
+  await until(() => Flows.runs()[0]?.flowId === 'doctor' && Flows.runs()[0]?.status === 'waiting-you', 90000);
   ok(typeof CmdPage === 'undefined' || CmdPage.isOpen(), 'Flows › opens the run on the Commands page');
   FlowsUI.open({ runId: Flows.runs()[0].id });
   await until(() => dlg()?.open, 3000);
   const run = Flows.runs()[0];
   out.doctor1 = Flows.line(run);
   ok(run.flowId === 'doctor' && run.chatId === H.activeChat[C.id], `Doctor started in this chat (${out.doctor1})`);
-  await until(() => nodeEl('ok')?.classList.contains('run-wait'), 5000);
-  ok(nodeEl('check')?.classList.contains('run-ok') && /both engines can work/.test(nodeEl('check').querySelector('.fl-out')?.textContent || ''), 'the past step shows what it made');
+  await until(() => nodeEl('ok')?.classList.contains('run-wait'), 90000);
+  ok(nodeEl('check')?.classList.contains('run-ok') && /no installation problems found/.test(nodeEl('check').querySelector('.fl-out')?.textContent || ''), 'the past step shows what it made');
   ok(nodeEl('ok').querySelector('.fl-guess') && /Hearth thinks: Yes/.test(nodeEl('ok').textContent), 'the guess is lit on the node');
   ok(/Validate: Yes/.test(document.querySelector('.fl-primary').textContent), `Validate says what it takes (${document.querySelector('.fl-primary').textContent})`);
   await shot('doctor-1');
@@ -109,7 +111,7 @@ try {
   dlg().dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true, cancelable: true }));
   ok(document.querySelector('.fl-primary').textContent.includes('Yes'), 'key 1 picks Yes');
   dlg().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-  await until(() => run.status === 'done', 20000);
+  await until(() => run.status === 'done', 90000);
   await until(() => nodeEl('done')?.querySelector('[data-fl="again"]'), 3000);
   ok(run.status === 'done' && run.steps.some((e) => e.node === 'run' && e.status === 'done'), `Doctor done after the test (${Flows.line(run)})`);
   ok(nodeEl('done')?.querySelector('[data-fl="again"]'), 'the result offers Again / Refine on the node');
