@@ -40,6 +40,9 @@ function gameLookPage(o) {
   const doneA = new WeakSet(); const doneC = new WeakSet(); const doneL = new WeakSet();
   const raised = []; // { sh, point, set }
   let TexC = null; let target = 0; let guarding = null;
+  // (round 55, playbudget) the main-thread time its hooks spend (ms, running total: tools/playbudget-page.js reads it
+  // once a second), stepped aside for the budget's A/B (PAUSE) or switched off for this game (OFF)
+  let SP = 0; let PAUSE = false; let OFF = null; const undo = [];
 
   const maxA = (r) => { let m = 1; try { m = r.capabilities.getMaxAnisotropy() || 1; } catch (e) { /* no extension */ } if (m > R.aniso.max) R.aniso.max = m; return m; };
   const uploaded = (r, t) => { try { const p = r.properties && r.properties.get ? r.properties.get(t) : null; return Boolean(p && p.__webglTexture); } catch (e) { return false; } };
@@ -132,9 +135,10 @@ function gameLookPage(o) {
     if (!O3 || protos.has(O3) || typeof O3.add !== 'function') return;
     protos.add(O3);
     const add0 = O3.add;
-    O3.add = function add() { const res = add0.apply(this, arguments); if (adds.length < 4000) for (let i = 0; i < arguments.length; i += 1) { const o = arguments[i]; if (o && o !== this && o.isObject3D) adds.push(o); } return res; };
+    O3.add = function add() { const res = add0.apply(this, arguments); if (!PAUSE && !OFF && adds.length < 4000) for (let i = 0; i < arguments.length; i += 1) { const o = arguments[i]; if (o && o !== this && o.isObject3D) adds.push(o); } return res; };
     const att0 = O3.attach;
-    if (typeof att0 === 'function') O3.attach = function attach(o) { const res = att0.call(this, o); if (o && o.isObject3D && adds.length < 4000) adds.push(o); return res; };
+    if (typeof att0 === 'function') O3.attach = function attach(o) { const res = att0.call(this, o); if (!PAUSE && !OFF && o && o.isObject3D && adds.length < 4000) adds.push(o); return res; };
+    undo.push([O3, 'add', O3.add, add0]); if (typeof att0 === 'function') undo.push([O3, 'attach', O3.attach, att0]);
   }
   function before(r, scene, force) {
     if (!scene || !scene.isObject3D) return;
@@ -180,11 +184,16 @@ function gameLookPage(o) {
     for (const m of ['render', 'compile', 'compileAsync']) {
       const base = r[m];
       if (typeof base !== 'function') continue;
-      r[m] = function (scene) { try { before(this, scene); } catch (e) { /* never in the game's way */ } if (m === 'render') R.frames += 1; return base.apply(this, arguments); };
+      const w = r[m] = function (scene) {
+        if (!PAUSE && !OFF) { const a = now(); try { before(this, scene); } catch (e) { /* never in the game's way */ } SP += now() - a; }
+        if (m === 'render') R.frames += 1;
+        return base.apply(this, arguments);
+      };
+      undo.push([r, m, w, base]);
     }
     // (GameReady sends a game's textures up before compiling: its scenes are looked at first, so colours are known)
     const it = r.initTexture;
-    if (typeof it === 'function') r.initTexture = function (t) { try { for (const sc of scenes) before(this, sc); tex(this, t, false, maxA(this)); } catch (e) { /* fine */ } return it.apply(this, arguments); };
+    if (typeof it === 'function') { const w = r.initTexture = function (t) { if (!PAUSE && !OFF) { const a = now(); try { for (const sc of scenes) before(this, sc); tex(this, t, false, maxA(this)); } catch (e) { /* fine */ } SP += now() - a; } return it.apply(this, arguments); }; undo.push([r, 'initTexture', w, it]); }
   }
   // ---------- the guard: smooth first ----------
   function gaps(n) { // the median gap between frames the game drew (rAF), n of them (4 s at most)
@@ -238,6 +247,7 @@ function gameLookPage(o) {
   }
   // ---------- what was done, in plain words ----------
   function text() {
+    if (OFF) return `${BEST ? 'Best' : 'Balanced'} look: turned off for this game (it was costing frames)`;
     const p = [];
     if (R.aniso.sharp) p.push(`textures ${R.aniso.max}× sharp (${R.aniso.sharp})`);
     if (BEST) {
@@ -260,6 +270,21 @@ function gameLookPage(o) {
   Object.defineProperty(window, '__gameLook', { configurable: true, value: Object.freeze({
     report: () => { if (!R.three && window.__THREE__) R.three = String(window.__THREE__); return JSON.parse(JSON.stringify(R)); },
     text, settle, renderers: () => [...rs],
+    // (round 55, playbudget) tools/playbudget-page.js: its time, the A/B's step aside, the picture (shadow maps) on / at
+    // the game's own size for the A/B's graphics measure, and off for this game (hooks out of the way, shadows back)
+    budget: Object.freeze({
+      spent: () => SP,
+      pause: (on) => { PAUSE = Boolean(on); if (PAUSE) adds.length = 0; },
+      picture: (on) => { if (OFF || !raised.length || !R.shadows.now || R.shadows.now <= 512) return false; for (const x of raised) setSize(x, on ? R.shadows.now : 512); return true; },
+      off: (by) => {
+        if (OFF) return false;
+        OFF = String(by || 'asked'); R.off = OFF; adds.length = 0;
+        for (const x of raised) setSize(x, 512); // (the game's own size: the guard stops with them)
+        raised.length = 0; R.guard = 'off'; R.shadows.now = 512;
+        for (const [o, m, w, base] of undo) { try { if (o[m] === w) o[m] = base; } catch (e) { /* the game's own wrapper on top: ours steps aside */ } }
+        return true;
+      },
+    }),
   }) });
 }
 

@@ -382,6 +382,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
 
   // ---------- the session ----------
   function start() {
+    if (S.off) return false; // (round 55, playbudget: switched off for this game)
     S.t0 = now(); S.frames = 0; S.sumDt = 0; S.slow = []; S.bytes = 0; S.gcs = 0; S.self = 0; S.selfN = 0; S.layoutMs = 0; S.mutations = 0; S.chipMs = 0; S.chipN = 0;
     S.shaders = { n: 0, ms: 0, late: [] }; S.textures = { n: 0, ms: 0, mb: 0, late: [] }; S.long = []; S.lastStutter = null; S.on = true;
     R.n = 0; R.i = 0; mot0 = null; heapAt = 0; S.heap = 0; return true;
@@ -423,8 +424,24 @@ const GamePerfProbe = function gamePerfProbe(opts) {
 
   const api = {
     version: 1, chip: chipOn, start, report, detach, tryLive, undoLive: undoAll, use: (o = {}) => { track(o.renderer, o.scene, o.camera, o.layer); return true; },
-    setOpts: (o) => { Object.assign(O, o); if (o.attribute) { try { attributeFn = new Function(`return (${o.attribute})`)(); } catch { /* fine */ } } if (o.chip != null) chipOn(o.chip); },
-    state: () => ({ on: S.on, frames: S.frames, renderers: renderers.size, chip, hz: O.hz }),
+    setOpts: (o) => { Object.assign(O, o); if (o.attribute) { try { attributeFn = new Function(`return (${o.attribute})`)(); } catch { /* fine */ } } if (o.chip != null && !S.off) chipOn(o.chip); },
+    // (round 55, playbudget) ▶ Play's budget (tools/playbudget-page.js): what measuring costs (its own time, the chip's),
+    // stepped aside for the A/B, and off for this game (nothing per frame any more; the numbers so far stay readable)
+    budget: {
+      spent: () => S.self + (S.chipMs || 0),
+      pause: (on) => { if (!S.off) S.on = !on; },
+      off: (by) => {
+        if (S.off) return false;
+        S.off = String(by || 'asked'); S.on = false; alive = false; chipOn(false);
+        clearInterval(discT); clearInterval(motT);
+        try { loaf?.disconnect(); mo?.disconnect(); } catch { /* fine */ }
+        if (W.requestAnimationFrame === wrapRAF) W.requestAnimationFrame = RAF;
+        for (const [P, m, f] of glOrig) if (P[m]?.__gp === f) P[m] = f;
+        for (const r of renderers) { if (r.render?.__gp) r.render = r.render.__gp; if (r.setAnimationLoop?.__gp) r.setAnimationLoop = r.setAnimationLoop.__gp; }
+        return true;
+      },
+    },
+    state: () => ({ off: S.off || null, on: S.on, frames: S.frames, renderers: renderers.size, chip, hz: O.hz }),
     // dev/checks/gameperf.js: what measuring costs per frame, run n times in a row (no scheduling noise: a busy test
     // computer pre-empts real frames); the session starts again afterwards
     bench: (n = 2000) => {
@@ -441,6 +458,7 @@ const GamePerfProbe = function gamePerfProbe(opts) {
     cost: () => ({ perFrameUs: med(SELF, S.selfN) * 1000, meanUs: S.selfN ? (S.self / S.selfN) * 1000 : 0, chipUs: med(CHIP, S.chipN || 0) * 1000, frames: S.frames, inDom: Boolean(chipEl?.isConnected) }),
   };
   W.__gamePerf = api;
+  try { if (W.__hearthBudget?.isOff?.('perf')) api.budget.off('remembered'); } catch { /* fine */ } // (round 55, playbudget)
   // the game's own opt-in (the ▶ Play window API): hearthPerf.use({ renderer, scene, camera })
   if (!W.hearthPerf) W.hearthPerf = { use: api.use };
   if (O.chip) chipOn(true);

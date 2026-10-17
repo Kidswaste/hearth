@@ -44,6 +44,9 @@
   const ours = new WeakSet(); // contexts Hearth suspended (to resume) · paused media (to play again)
   const gameSuspended = new WeakSet();
   const pend = new Set();
+  // (round 55, playbudget) the main-thread time its hooks spend (ms, a running total: tools/playbudget-page.js reads it);
+  // OFF: switched off for this game (its hooks pass straight through; Ctrl/⌘+P / hidden still pause the sound)
+  let SP = 0; let OFF = null; let loafObs = null;
   const playing = () => { const g = window.__gameReady; return g ? g.phase === 'playing' : now() - S.at0 > 3000; };
   const note = (e) => { e.at = r1(e.at ?? now()); e.playing = playing(); S.events.push(e); if (S.events.length > 60) S.events.shift(); return e; };
   const short = (u) => { try { return decodeURIComponent(new URL(u, location.href).pathname.split('/').pop()) || null; } catch { return null; } };
@@ -105,6 +108,11 @@
     } catch { return null; }
   }
   BAC.decodeAudioData = function (buf, ok, fail) {
+    if (OFF) return dad.call(this, buf, ok, fail);
+    const a0 = now();
+    try { return decodeNow.call(this, buf, ok, fail); } finally { SP += now() - a0; }
+  };
+  function decodeNow(buf, ok, fail) {
     const k = fp(buf); const key = k && `${k}@${this.sampleRate}`;
     const e = key && cache.get(key);
     if (e) {
@@ -122,7 +130,7 @@
     }, (err) => { if (key) cache.delete(key); if (typeof fail === 'function') fail(err); throw err; });
     if (key) cache.set(key, { p, bytes, name });
     return p;
-  };
+  }
   function predecode(ab, name) {
     if (!W || !ab?.byteLength) return null;
     const k = fp(ab); if (!k) return null;
@@ -151,11 +159,14 @@
       pend.add(p); p.finally(() => pend.delete(p));
     }
     window.fetch = function (input, init) {
+      if (OFF) return f0(input, init);
+      const a0 = now();
       try {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input instanceof Request && input.method === 'GET' ? input.url : null;
         const b = url && SOUND.test(url) && (!init?.method || init.method === 'GET') ? files.get(new URL(url, location.href).href) : null;
-        if (b) { S.served = (S.served || 0) + 1; return Promise.resolve(new Response(b.slice(0), { status: 200, headers: { 'content-type': MIME[(url.match(SOUND) || [])[1]?.toLowerCase()] || 'application/octet-stream', 'content-length': String(b.byteLength) } })); }
+        if (b) { S.served = (S.served || 0) + 1; SP += now() - a0; return Promise.resolve(new Response(b.slice(0), { status: 200, headers: { 'content-type': MIME[(url.match(SOUND) || [])[1]?.toLowerCase()] || 'application/octet-stream', 'content-length': String(b.byteLength) } })); }
       } catch { /* the network's answer, as always */ }
+      SP += now() - a0;
       return f0(input, init);
     };
   }
@@ -175,7 +186,7 @@
 
   // ---------- put away: Ctrl/⌘+P (rest), the window hidden ----------
   const mp = HTMLMediaElement.prototype.play;
-  HTMLMediaElement.prototype.play = function (...a) { if (!media.some((r) => r.deref() === this)) { media.push(new WeakRef(this)); if (media.length > 64) media.splice(0, media.length - 64); } ours.delete(this); return mp.apply(this, a); };
+  HTMLMediaElement.prototype.play = function (...a) { if (OFF) return mp.apply(this, a); const a0 = now(); if (!media.some((r) => r.deref() === this)) { media.push(new WeakRef(this)); if (media.length > 64) media.splice(0, media.length - 64); } ours.delete(this); SP += now() - a0; return mp.apply(this, a); };
   function rest(on, why = 'rest') {
     const was = S.rest.size > 0;
     if (on) S.rest.add(why); else S.rest.delete(why);
@@ -202,7 +213,8 @@
   // ones ≥ 1.6× their median count then). The sound system starting is timed itself (its constructor), not here.
   const longs = [];
   try {
-    new PerformanceObserver((l) => {
+    loafObs = new PerformanceObserver((l) => {
+      const a0 = now();
       for (const f of l.getEntries()) {
         longs.push([f.startTime, f.duration]); while (longs.length > 40 || (longs.length && f.startTime - longs[0][0] > 3000)) longs.shift();
         const typical = longs.length >= 12 ? [...longs].map((x) => x[1]).sort((x, y) => x - y)[Math.floor(longs.length / 2)] : 0;
@@ -214,7 +226,9 @@
           S.slow.push({ kind: 'decode', name: e.name || null, bytes: e.bytes || 0, ms: e.ms, frameMs: e.slowMs, usualMs: typical ? r1(typical) : null, at: e.at }); if (S.slow.length > 20) S.slow.shift();
         }
       }
-    }).observe({ type: 'long-animation-frame', buffered: false });
+      SP += now() - a0;
+    });
+    loafObs.observe({ type: 'long-animation-frame', buffered: false });
   } catch { /* no Long Animation Frames: the sound system's own start still counts */ }
 
   function latency() {
@@ -229,5 +243,7 @@
     const ctxSlow = S.events.filter((e) => e.kind === 'context' && e.playing && e.ms >= 12 && !e.slowMs).map((e) => ({ kind: 'context', ms: e.ms, frameMs: e.ms, at: e.at }));
     return JSON.stringify({ mode: LAB ? 'lab' : 'html', warmMs: S.warmMs, rate: S.rate, hint: 'interactive', contexts: all.length, running: all.filter((c) => c.state === 'running').length, latencyMs: L?.ms ?? null, baseMs: L?.base ?? null, outputMs: L?.out ?? null, made: S.made, firstCtxMs: S.firstCtxMs, hits: S.hits, misses: S.misses, pre: S.pre, fromMemory: S.served || 0, pending: pend.size, keptMB: r1(S.kept / 1048576), rest: S.rest.size > 0, why: [...S.rest], slow: [...S.slow, ...ctxSlow].slice(-10), late: S.late.slice(-10), events: S.events.slice(-12) });
   }
-  window.__gameAudio = { pub, line, rest, ready, pending: () => pend.size, progress: () => ({ n: Math.max(S.pre.n, LAB ? 0 : LIST.length), done: S.pre.done, failed: S.pre.failed }) };
+  window.__gameAudio = { pub, line, rest, ready, pending: () => pend.size, progress: () => ({ n: Math.max(S.pre.n, LAB ? 0 : LIST.length), done: S.pre.done, failed: S.pre.failed }),
+    // (round 55, playbudget) tools/playbudget-page.js: its time, and off for this game (nothing of it runs per frame)
+    budget: { spent: () => SP, pause: () => {}, off: (by) => { if (OFF) return false; OFF = String(by || 'asked'); try { loafObs?.disconnect(); } catch { /* fine */ } return true; } } };
 })();

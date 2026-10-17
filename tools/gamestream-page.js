@@ -26,6 +26,10 @@
   const now = () => performance.now();
   const S = { on: Q.get('off') !== '1', active: false, activeAt: null, firstDraw: null, parallel: null, loads: [],
     tick: 0, images: { streamed: 0, used: 0, fallback: 0, small: 0, failed: 0, decodeMs: 0 }, slices: { textures: 0, strips: 0, done: 0 }, frameMs: 16.7, holds: { n: 0, released: 0, capped: 0, maxMs: 0, frames: 0 }, uploads: 0, compiles: 0 };
+  // (round 55, playbudget) the main-thread time its hooks spend (ms, a running total: tools/playbudget-page.js reads it
+  // once a second); a compile / upload it only does earlier than the game's own first draw would (MOVED) is the game's
+  // work, not counted. S.paused: stepped aside for the budget's A/B; S.dead: switched off for this game
+  let SP = 0; let MOVED = 0; const undo = [];
   const SMALL = 96 * 1024; // pictures under this decode fast enough where they are
   const CAP = 1500; const MIN_FRAMES = 2;
   const r1 = (x) => Math.round(x * 10) / 10;
@@ -48,7 +52,8 @@
   let own = false; // (this script's own fetches aren't the game's)
   const fetch0 = window.fetch;
   if (fetch0) {
-    window.fetch = function (input, init) {
+    const fw = window.fetch = function (input, init) {
+      if (S.dead) return fetch0.call(this, input, init);
       const p = fetch0.call(this, input, init);
       if (!own && active()) {
         const url = typeof input === 'string' ? input : input?.url || String(input);
@@ -58,11 +63,12 @@
       }
       return p;
     };
+    undo.push([window, 'fetch', fw, fetch0]);
   }
   const open0 = XMLHttpRequest.prototype.open; const send0 = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (m, url, ...rest) { this.__gsUrl = url; return open0.call(this, m, url, ...rest); };
   XMLHttpRequest.prototype.send = function (...a) {
-    if (active() && this.__gsUrl) { const nm = nameOf(this.__gsUrl); const rec = note(kindOf(nm), nm); this.addEventListener('loadend', () => { rec.t1 = now(); rec.bytes = Number(this.getResponseHeader?.('content-length')) || 0; }, { once: true }); }
+    if (!S.dead && active() && this.__gsUrl) { const nm = nameOf(this.__gsUrl); const rec = note(kindOf(nm), nm); this.addEventListener('loadend', () => { rec.t1 = now(); rec.bytes = Number(this.getResponseHeader?.('content-length')) || 0; }, { once: true }); }
     return send0.apply(this, a);
   };
 
@@ -116,7 +122,7 @@
       set(v) {
         const j = pend.get(this); if (j) { j.cancel = true; pend.delete(this); for (const w of j.waiters.splice(0)) w(); }
         shown.delete(this); drop(this);
-        if (v == null || v === '' || !active()) return srcD.set.call(this, v);
+        if (S.dead || v == null || v === '' || !active()) return srcD.set.call(this, v);
         if (!S.on) { const rec = note('picture', nameOf(abs(String(v)))); const done = () => { rec.t1 = now(); rec.w = this.naturalWidth; rec.h = this.naturalHeight; }; this.addEventListener('load', done, { once: true }); this.addEventListener('error', done, { once: true }); return srcD.set.call(this, v); }
         const raw = String(v); const href = abs(raw);
         let same = false; try { const u = new URL(href); same = u.origin === location.origin || u.protocol === 'blob:' || u.protocol === 'data:'; } catch { same = false; }
@@ -126,6 +132,7 @@
     });
     Object.defineProperty(IMG, 'complete', { configurable: true, enumerable: compD.enumerable, get() { return pend.has(this) ? false : compD.get.call(this); } });
     if (decode0) IMG.decode = function decode() { const j = pend.get(this); if (!j) return decode0.call(this); return new Promise((res) => j.waiters.push(res)).then(() => decode0.call(this)); };
+    // (round 55, playbudget) off: these stay (a picture the game loaded through them keeps answering with its own address), passing straight through
   }
   // the WebGL upload takes the decoded bitmap (WebGL ignores the flip / premultiply settings for a bitmap: it was made
   // with the ones in effect, so it's only used when they match)
@@ -183,7 +190,7 @@
     if (!P) continue;
     const ps = P.pixelStorei;
     P.pixelStorei = function pixelStorei(p, v) { if (p === 0x9240) st(this).flip = Boolean(v); else if (p === 0x9241) st(this).premul = Boolean(v); else if (p === 0x9243) st(this).conv = v; return ps.call(this, p, v); };
-    for (const m of ['texImage2D', 'texSubImage2D']) { const f = P[m]; if (typeof f === 'function') P[m] = function (...a) { const b = swap(this, a); if (slicing && intercept(this, m, a, b)) return undefined; return f.apply(this, a); }; }
+    for (const m of ['texImage2D', 'texSubImage2D']) { const f = P[m]; if (typeof f === 'function') { const w = P[m] = function (...a) { if (S.dead) return f.apply(this, a); const t0 = now(); const b = swap(this, a); const cut = slicing && intercept(this, m, a, b); SP += now() - t0; if (cut) return undefined; return f.apply(this, a); }; undo.push([P, m, w, f]); } }
     if (P === window.WebGL2RenderingContext?.prototype) {
       const gm = P.generateMipmap;
       P.generateMipmap = function generateMipmap(t) { if (slicing?.job.tex && t === this.TEXTURE_2D) { slicing.job.mips = true; return undefined; } return gm.call(this, t); };
@@ -201,9 +208,10 @@
     if (!O3 || protos.has(O3) || typeof O3.add !== 'function' || typeof O3.traverse !== 'function') return;
     protos.add(O3);
     const add0 = O3.add;
-    O3.add = function add() { const r = add0.apply(this, arguments); if (S.active && S.on) for (let i = 0; i < arguments.length; i += 1) { const o = arguments[i]; if (o && o !== this && o.isObject3D && fresh.size < 4000) fresh.set(o, S.tick); } return r; };
+    O3.add = function add() { const r = add0.apply(this, arguments); if (S.active && S.on && !S.paused) for (let i = 0; i < arguments.length; i += 1) { const o = arguments[i]; if (o && o !== this && o.isObject3D && fresh.size < 4000) fresh.set(o, S.tick); } return r; };
     const att0 = O3.attach;
-    if (typeof att0 === 'function') O3.attach = function attach(o) { const r = att0.call(this, o); if (S.active && S.on && o?.isObject3D && fresh.size < 4000) fresh.set(o, S.tick); return r; };
+    if (typeof att0 === 'function') O3.attach = function attach(o) { const r = att0.call(this, o); if (S.active && S.on && !S.paused && o?.isObject3D && fresh.size < 4000) fresh.set(o, S.tick); return r; };
+    undo.push([O3, 'add', O3.add, add0]); if (typeof att0 === 'function') undo.push([O3, 'attach', O3.attach, att0]);
   }
   const rootOf = (o) => { let x = o; for (let i = 0; i < 128 && x.parent; i += 1) x = x.parent; return x; };
   const isDrawn = (x) => x.isMesh || x.isPoints || x.isLine || x.isSprite;
@@ -301,7 +309,7 @@
       let newMats = 0; let made = false;
       if (want.length && compiled < 4) {
         const n0 = r.info?.programs?.length ?? -1;
-        try { if (lights) r.compile(scene, camera); else r.compile(o, camera, scene); compiled += 1; } catch { /* drawn as before */ }
+        const m0 = now(); try { if (lights) r.compile(scene, camera); else r.compile(o, camera, scene); compiled += 1; } catch { /* drawn as before */ } MOVED += now() - m0;
         for (const k of want) kinds.add(k);
         if (kinds.size > 4000) kinds.clear();
         const n1 = r.info?.programs?.length ?? -1;
@@ -331,13 +339,15 @@
       // the graphics process) now, while nothing else is queued, instead of in the frame that first draws it
       if (done && !h.warm) { h.warm = true; if (!h.progs.every(progReady)) h.warm = false; else for (const p of h.progs) { try { p.getUniforms?.(); p.getAttributes?.(); } catch { /* drawn as before */ } } }
       if (done && idle && !uploaded) {
-        if (h.job) { const t0 = now(); try { while (h.job && !sliceStep(h.job, false) && now() - t0 < 3); if (h.job?.y >= h.job?.h) h.job = null; } catch { h.job = null; } uploaded = true; h.fence = fence(gl); if (h.fence) gpu.set(gl, { fence: fence(gl) }); } else {
+        if (h.job) { const t0 = now(); try { while (h.job && !sliceStep(h.job, false) && now() - t0 < 3); if (h.job?.y >= h.job?.h) h.job = null; } catch { h.job = null; } MOVED += now() - t0; uploaded = true; h.fence = fence(gl); if (h.fence) gpu.set(gl, { fence: fence(gl) }); } else {
           while (h.tex.length) {
             const tx = h.tex.shift(); if (!texNew(P, tx)) continue;
             const job = { t: tx, tex: null };
             slicing = gl?.fenceSync ? { job } : null;
+            const m0 = now();
             try { r.initTexture(tx); S.uploads += 1; } catch { /* drawn as before */ } finally { slicing = null; }
             if (job.tex) { S.slices.textures += 1; h.job = job; h.sliced = true; job.tex = P.get(tx).__webglTexture || job.tex; try { if (sliceStep(job, false)) h.job = null; } catch { h.job = null; } }
+            MOVED += now() - m0;
             uploaded = true; h.fence = fence(gl); if (h.fence) gpu.set(gl, { fence: fence(gl) }); break;
           }
         }
@@ -361,20 +371,25 @@
     try { S.parallel ??= Boolean(r.extensions?.has?.('KHR_parallel_shader_compile')); } catch { /* fine */ }
     const r0 = r.render;
     const e0 = rends.get(r);
-    r.render = function render(scene, camera) {
+    const w = r.render = function render(scene, camera) {
+      if (S.dead || S.paused) return r0.call(this, scene, camera);
       const tn = now(); S.tick = tn; if (S.firstDraw == null) S.firstDraw = tn; // (S.tick: when an object was added, to a frame: no clock read per add)
+      MOVED = 0;
       if (e0.at) S.frameMs += (Math.min(250, tn - e0.at) - S.frameMs) * 0.05; e0.at = tn;
-      if (!scene?.isObject3D) return r0.call(this, scene, camera);
-      const e = rends.get(this); if (e && e.scene !== scene) { e.scene = scene; e.camera = camera; hookAdd(scene); } else if (e) e.camera = camera;
-      if (!S.active && S.on) active(); // (a game that loads nothing during play: what it adds is looked at all the same)
-      if (!S.on || (!fresh.size && !held.size) || !S.active) return r0.call(this, scene, camera);
-      if (fresh.size) take(this, scene, camera);
-      if (!held.size) return r0.call(this, scene, camera);
-      stepHeld(this, scene);
-      const hid = [];
-      for (const h of held) if (h.r === this && h.o.visible) { h.o.visible = false; hid.push(h.o); }
+      let hid = null;
+      if (scene?.isObject3D) {
+        const e = rends.get(this); if (e && e.scene !== scene) { e.scene = scene; e.camera = camera; hookAdd(scene); } else if (e) e.camera = camera;
+        if (!S.active && S.on) active(); // (a game that loads nothing during play: what it adds is looked at all the same)
+        if (S.on && S.active && (fresh.size || held.size)) {
+          if (fresh.size) take(this, scene, camera);
+          if (held.size) { stepHeld(this, scene); for (const h of held) if (h.r === this && h.o.visible) { h.o.visible = false; (hid || (hid = [])).push(h.o); } }
+        }
+      }
+      SP += Math.max(0, now() - tn - MOVED);
+      if (!hid) return r0.call(this, scene, camera);
       try { return r0.call(this, scene, camera); } finally { for (const o of hid) o.visible = true; }
     };
+    undo.push([r, 'render', w, r0]);
   }
   const dev = window.__THREE_DEVTOOLS__ || (window.__THREE_DEVTOOLS__ = new EventTarget());
   dev.addEventListener('observe', (e) => { const o = e.detail; if (o?.isWebGLRenderer) wrap(o); else if (o?.isScene) hookAdd(o); });
@@ -403,5 +418,19 @@
     report: (t0 = 0) => ({ on: S.on, parallel: S.parallel, activeAt: S.activeAt == null ? null : Math.round(S.activeAt - t0), images: { ...S.images, decodeMs: Math.round(S.images.decodeMs) }, slices: { ...S.slices }, holds: { ...S.holds }, uploads: S.uploads,
       loads: S.loads.map((l) => ({ kind: l.kind, name: l.name, t: Math.round(l.t0 - t0), done: l.t1 == null ? null : Math.round(l.t1 - t0), mb: l.bytes ? r1(l.bytes / 1048576) : 0, ...(l.w ? { w: l.w, h: l.h } : {}), ...(l.mats ? { mats: l.mats } : {}), ...(l.tex ? { tex: l.tex } : {}), smooth: l.smooth || '' })) }),
     pub: () => JSON.stringify(window.__gameStream.report(0)),
+    // (round 55, playbudget) tools/playbudget-page.js: its time, the A/B's step aside, and off for this game (what's held
+    // is shown at once, a picture going in strips finishes first, its hooks out of the way)
+    budget: {
+      spent: () => SP,
+      pause: (on) => { S.paused = Boolean(on); },
+      off: (by) => {
+        if (S.dead) return false;
+        S.dead = String(by || 'asked'); S.on = false; fresh.clear();
+        for (const h of held) { if (h.job) { try { sliceStep(h.job, true); } catch { /* fine */ } } if (h.fence) { try { h.r.getContext().deleteSync(h.fence); } catch { /* fine */ } } }
+        held.clear();
+        for (const [o, m, w, base] of undo) { try { if (o[m] === w) o[m] = base; } catch { /* another wrapper on top: ours steps aside */ } }
+        return true;
+      },
+    },
   };
 })();

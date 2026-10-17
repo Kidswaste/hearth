@@ -36,6 +36,9 @@ const STREAM = '/__gamestream-page.js';
 // (round 54, gameaudio) the game's sound: warmed up while loading, its sounds decoded before the first frame, paused
 // with the game (gameaudiomain.js makes the page's tag; tools/gameaudio-page.js runs in it)
 const audio = () => { try { const A = require('./gameaudiomain'); A.init({ dataDir: ctx?.dataDir }); return A; } catch { return null; } };
+// (round 55, playbudget) Hearth's own work in the game window held to 2 % of a frame: tools/playbudget-page.js first in
+// every page (measures each helper, switches off the one slowing the game), remembered per game (playbudgetmain.js)
+const budget = () => { try { const B = require('./playbudgetmain'); B.init({ dataDir: ctx?.dataDir }); return B; } catch { return null; } };
 let ctx = null; // { getWin, powerwise, dataDir }
 let G = null; // the game playing: { win, source, root, token, display, hz, route, how, started, release, priority, pid }
 const roots = new Map(); // token → folder
@@ -54,6 +57,8 @@ function gameSession() {
     if (!root) return new Response('this game has ended', { status: 404 });
     const R = ready();
     const A = G?.token === u.hostname && !G.audioOff ? audio() : null;
+    const B = G?.token === u.hostname ? budget() : null;
+    if (B?.isPage(u.pathname)) return new Response(await fs.promises.readFile(B.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (A?.isPage(u.pathname)) return new Response(await fs.promises.readFile(A.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (u.pathname === STREAM) return new Response(await fs.promises.readFile(path.join(__dirname, 'tools', 'gamestream-page.js')), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (R?.armed?.() && R.isPage(u.pathname)) return new Response(await fs.promises.readFile(R.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
@@ -68,7 +73,7 @@ function gameSession() {
       R?.noteServed?.(rel, Boolean(swap));
       if (G?.source?.kind === 'html') A?.served(root, rel); // (round 54, gameaudio) a sound: decoded up front next time
       let body = req.method === 'HEAD' ? null : await fs.promises.readFile(swap || file);
-      const tag = body && /\.html?$/i.test(file) ? `${A ? A.pageTag(root, { kind: G.source?.kind }) : ''}${R?.pageTag?.() || ''}<script src="${STREAM}?off=${G?.token === u.hostname && G.stream?.off ? 1 : 0}"></script>` : ''; // (gameaudio's first: the game's AudioContext is Hearth's before any of its code runs)
+      const tag = body && /\.html?$/i.test(file) ? `${B ? B.pageTag(G.budget) : ''}${A ? A.pageTag(root, { kind: G.source?.kind }) : ''}${R?.pageTag?.() || ''}${G?.token === u.hostname && G.stream?.skip ? '' : `<script src="${STREAM}?off=${G?.token === u.hostname && G.stream?.off ? 1 : 0}"></script>`}` : ''; // (the budget's first: it times the others from their start; gameaudio's next: the game's AudioContext is Hearth's before any of its code runs; (round 55) loads during play left out when the budget switched it off for this game)
       if (tag) { let h = body.toString('utf8'); h = /<head[^>]*>/i.test(h) ? h.replace(/<head[^>]*>/i, (m) => `${m}${tag}`) : `${tag}${h}`; body = Buffer.from(h); st = { size: body.length }; }
       return new Response(body, { status: 200, headers: { 'content-type': C.mimeOf(file), 'content-length': String(st.size), 'cache-control': 'no-cache', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'credentialless' } });
     } catch { return new Response('not found', { status: 404 }); }
@@ -192,7 +197,7 @@ async function buildScene(spec) {
 // ---------- the window ----------
 function info() {
   if (!G) return { playing: false };
-  return { playing: true, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
+  return { playing: true, budget: G.budget ? { off: G.budget.off, last: G.budget.last } : null, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
 }
 function leave(why = 'left') {
   if (!G) return false;
@@ -227,7 +232,9 @@ async function play(_e, req = {}) {
   const { BrowserWindow } = require('electron');
   const list = displays();
   const d = C.pickDisplay(list, req.display ?? null);
-  const fid = C.fidelity(d, req.look); // (round 54, gamelook) look: 'best' (the default) | 'balanced'
+  // (round 55, playbudget) the helpers that were slowing this game before stay off (the look, loads during play, the sound part…)
+  const was = budget()?.forGame(source) || { off: [] }; const offs = new Set(was.off);
+  const fid = C.fidelity(d, offs.has('look') ? 'off' : req.look); // (round 54, gamelook) look: 'best' (the default) | 'balanced'
   const token = crypto.randomBytes(12).toString('hex');
   let root; let entry; let route = 'html'; let how = 'HTML build'; let notes = [];
   if (source.kind === 'lab') {
@@ -254,7 +261,8 @@ async function play(_e, req = {}) {
     webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look }))}`] },
   });
   if (!mac) win.setMenu(null);
-  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off), stream: { off: Boolean(req.stream?.off) } };
+  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) || offs.has('audio'), stream: { off: Boolean(req.stream?.off), skip: offs.has('stream') } };
+  g.budget = { hz: fid.hz, title: source.title, off: [...offs], was, last: null };
   g.release = ctx.powerwise.hold('present', { label: `${source.title} is playing` });
   try { ctx.powerwise.quiet(true); } catch { /* fine */ }
   const wc = win.webContents;
@@ -302,6 +310,19 @@ function register(ipcMain, c) {
   ipcMain.handle('game:displays', hub(() => displays().map(({ bounds, ...d }) => d)));
   ipcMain.handle('game:info', (e) => (mine(e) ? info() : null));
   ipcMain.on('game:back', (e) => { if (mine(e)) leave('back'); });
+  // (round 55, playbudget) the page switched a helper off (game-preload.js relays window.__hearthBudget.pub()): kept
+  // for this game; the hub asks what's kept (get) or forgets it (reset: the doctor's "Turn them back on", /game helpers on)
+  ipcMain.on('game:budget', (e, json) => {
+    if (!mine(e)) return;
+    let p = null; try { p = JSON.parse(String(json || '').slice(0, 50000)); } catch { return; }
+    G.budget.last = p; budget()?.note(G.source, p);
+  });
+  ipcMain.handle('game:budget-get', hub((_e, req = {}) => {
+    const B = budget(); const source = req.source ? C.source(req.source) : G?.source || null;
+    if (!B || !source) return { known: false, off: [] };
+    if (req.op === 'reset') return { reset: B.reset(source), off: [] };
+    return { known: true, ...B.forGame(source), now: G && C.sameSource(G.source, source) ? G.budget.last : null };
+  }));
   // (round 53, playloop: playloopmain.js) rest / wake / side by side / the blip; the error line's Fix from the game window
   loop()?.register?.({ ctx: () => ctx, game: () => G, leave });
   ipcMain.handle('game:loop', hub((_e, req) => loop()?.op?.(req) || { playing: false }));

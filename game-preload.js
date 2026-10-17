@@ -55,6 +55,7 @@ function mount() {
     .hint.out { opacity: 0; }
     .chip { position: fixed; right: 12px; top: 10px; padding: 4px 9px; border-radius: 7px; background: #000a; font: 12px/1.3 ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }
     .look { position: fixed; right: 12px; top: 34px; padding: 3px 9px; border-radius: 7px; background: #0008; color: #c9ced8; font-size: 11.5px; white-space: nowrap; }
+    .note { position: fixed; right: 12px; top: 58px; max-width: min(560px, 80vw); padding: 3px 9px; border-radius: 7px; background: #0008; color: #ffcf9e; font-size: 11.5px; }
     .card { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; pointer-events: auto; }
     .box { min-width: 280px; padding: 22px 24px 18px; border-radius: 14px; background: #16181d; box-shadow: 0 12px 40px #000c; text-align: center; }
     .t { font-size: 16px; font-weight: 600; margin-bottom: 4px; } .s { color: #a7adb8; margin-bottom: 16px; }
@@ -68,13 +69,13 @@ function mount() {
     .err .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .err button, .box .fix { padding: 5px 11px; font-size: 12px; margin: 0; } .err .x { background: transparent; color: #a7adb8; padding: 5px 7px; }
     .fixit { background: #ff8a3d; color: #1a1206; } .box .fix { display: block; margin: 12px auto 0; }
-  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing</div><div class="chip" hidden></div><div class="look" hidden></div><div class="blip" aria-live="polite"></div>
+  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing</div><div class="chip" hidden></div><div class="look" hidden></div><div class="note" hidden></div><div class="blip" aria-live="polite"></div>
   <div class="err" hidden role="alert"><span class="m"></span><button class="fixit">Fix with the director</button><button class="x" aria-label="Hide">✕</button></div>
   <div class="card" hidden role="dialog" aria-label="Leave the game"><div class="box"><div class="t"></div><div class="s">Esc again or Enter goes back</div>
   <button class="back">Back to Hearth</button><button class="keep">Keep playing</button><button class="fix fixit" hidden>Fix with the director</button></div></div></div>`;
   (document.documentElement || document).appendChild(host);
   const $ = (s) => root.querySelector(s);
-  ui = { host, hint: $('.hint'), chip: $('.chip'), look: $('.look'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t'), blip: $('.blip'), err: $('.err'), errText: $('.err .m'), cardFix: $('.box .fix') };
+  ui = { host, hint: $('.hint'), chip: $('.chip'), look: $('.look'), note: $('.note'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t'), blip: $('.blip'), err: $('.err'), errText: $('.err .m'), cardFix: $('.box .fix') };
   for (const b of root.querySelectorAll('.fixit')) b.addEventListener('click', () => fixIt());
   root.querySelector('.err .x').addEventListener('click', () => { ui.err.hidden = true; });
   ui.title.textContent = I.title ? `Leave ${I.title}?` : 'Leave the game?';
@@ -108,35 +109,54 @@ document.addEventListener('pointerlockchange', () => {
 let statsOn = false; let raf = 0; let gaps = []; let last = 0; let lastPaint = 0; let how = I.how || ''; let hz = I.hz || 0;
 // (round 54, gameaudio) the sound's latency on the chip ("sound 12 ms"), read from the game's page (tools/gameaudio-page.js) every 2 s while the chip shows
 let snd = ''; let sndAt = -1e9;
-const sound = () => { try { webFrame.executeJavaScript('window.__gameAudio ? window.__gameAudio.line() : ""').then((v) => { snd = typeof v === 'string' ? v : ''; }).catch(() => {}); } catch { /* fine */ } };
+// (round 55, playbudget) and Hearth's own work in the game a frame ("Hearth: 0.03 ms", tools/playbudget-page.js), which
+// counts this chip's own time too (told with the same read); a helper it switched off for being slow: one plain line
+let hearth = ''; let note = ''; let chipMs = 0;
+const sound = () => {
+  const ms = chipMs; chipMs = 0;
+  try {
+    webFrame.executeJavaScript(`(function () { var a = window.__gameAudio, b = window.__hearthBudget; return JSON.stringify({ s: a ? a.line() : '', b: b ? b.chip(${ms.toFixed(4)}) : null }); })()`).then((v) => {
+      let o = null; try { o = JSON.parse(v); } catch { o = null; }
+      snd = o && typeof o.s === 'string' ? o.s : ''; hearth = o?.b?.line || ''; note = o?.b?.note || '';
+      if (ui) { if (ui.note.textContent !== note) ui.note.textContent = note; ui.note.hidden = !(statsOn && note); }
+    }).catch(() => {});
+  } catch { /* fine */ }
+};
 function tick(t) {
   if (!statsOn) { raf = 0; return; }
+  const a0 = performance.now();
   if (last) gaps.push(t - last);
   last = t;
   if (t - lastPaint > 500 && gaps.length) {
     lastPaint = t;
     const g = gaps.slice(-240); const avg = g.reduce((a, b) => a + b, 0) / g.length;
     if (t - sndAt > 2000) { sndAt = t; sound(); }
-    const line = `${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}`;
+    const line = `${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}${hearth ? ` · ${hearth}` : ''}`;
     if (ui.chip.textContent !== line) ui.chip.textContent = line;
     gaps = g.slice(-120);
   }
   raf = requestAnimationFrame(tick);
+  chipMs += performance.now() - a0;
 }
 function stats(on) {
   statsOn = Boolean(on);
   const u = mount();
   u.chip.hidden = !statsOn;
-  u.look.hidden = true;
+  u.look.hidden = true; u.note.hidden = !(statsOn && note);
   if (statsOn) {
     // (round 54, gamelook) under the chip, what the look did, in plain words (gamelook-preload.js, in the game's world)
     webFrame.executeJavaScript('window.__gameLook ? window.__gameLook.text() : ""').then((t) => { if (statsOn && t) { u.look.textContent = String(t); u.look.hidden = false; } }).catch(() => {});
-    gaps = []; last = 0; lastPaint = 0; sndAt = -1e9; u.chip.textContent = '… fps';
+    gaps = []; last = 0; lastPaint = 0; sndAt = -1e9; chipMs = 0; u.chip.textContent = '… fps';
     ipcRenderer.invoke('game:info').then((x) => { if (x) { how = x.how || how; hz = x.hz || hz; } }).catch(() => {});
     if (!raf) raf = requestAnimationFrame(tick);
   }
 }
 addEventListener('DOMContentLoaded', () => mount());
+// (round 55, playbudget) the page switched one of Hearth's helpers off (it was slowing the game): Hearth keeps that for
+// this game (gamemodemain.js → playbudgetmain.js). One event, only then; the numbers are read from the page once
+addEventListener('hearth-budget', () => {
+  try { webFrame.executeJavaScript('window.__hearthBudget ? window.__hearthBudget.pub() : ""').then((j) => { if (j) ipcRenderer.send('game:budget', String(j).slice(0, 50000)); if (statsOn) sound(); }).catch(() => {}); } catch { /* fine */ }
+});
 
 
 // ---------- the edit → play loop (round 53, playloop: playloopmain.js, playloop.js) ----------

@@ -27,6 +27,22 @@
   // what Hearth reads (game:eval): plain data only
   S.pub = () => JSON.stringify({ tx: S.tx, mode: S.mode, phase: S.phase, pct: S.pct, text: S.text, cardAt: S.cardAt, firstFrameAt: S.firstFrameAt, result: S.result, first5: S.first5, want: S.want, wantN: S.wantN, errors: S.errors.slice(-5), shown: S.shown, card: Boolean(ui && ui.d.isConnected && !ui.d.dataset.out) });
   S.answer = (a) => answerCard(a || {});
+  // (round 55, playbudget) its hooks' main-thread time (ms, a running total: tools/playbudget-page.js reads it); they
+  // retire 5 s into play (once the first 5 s are counted: nothing of getting ready is needed while playing), at once
+  // when the budget switches getting ready off for this game, and step aside during the budget's A/B. A game the budget
+  // kept it off for plays without getting ready (as np=1)
+  let SP = 0; let RET = false; let PAUSE = false; const undo = [];
+  function retire() { if (RET) return; RET = true; for (const [o, m, w, base] of undo) { try { if (o[m] === w) o[m] = base; } catch { /* another wrapper on top: ours passes straight through */ } } }
+  S.budget = { spent: () => SP, pause: (on) => { PAUSE = Boolean(on); }, off: () => { retire(); S.skip = true; return true; } };
+  try { if (window.__hearthBudget?.isOff?.('ready')) S.noPrep = true; } catch { /* fine */ }
+  // (round 55, playbudget) one quiet A/B under the card before play: Hearth's helpers on vs stepped aside, the one that
+  // costs frames off before the first frame (tools/playbudget-page.js)
+  async function budgetAB() {
+    const B = window.__hearthBudget;
+    if (!B?.ab || S.skip || S.noPrep) return;
+    card('checking it runs smooth', 99);
+    try { const r = await B.ab(); if (S.result && r) S.result.ab = { on: r.on, off: r.off, turnedOff: r.turnedOff || [], skipped: r.skipped || null, ms: r.ms }; } catch { /* plays as it is */ }
+  }
 
   // ---------- the card (over the whole window, before anything draws) ----------
   let ui = null;
@@ -118,6 +134,7 @@
       S.result = { ms: Math.round(now() - t0), steps: ms, skipped: S.skip, prep: prep ? { compileMs: prep.compileMs, textures: prep.textures, renderers: prep.renderers, gl: prep.gl } : null, warm, gl: g0 && g1 ? { compiles: g1.compiles - g0.compiles, links: g1.links - g0.links, uploads: g1.uploads - g0.uploads, waitMs: Math.round((g1.waitMs || 0) - (g0.waitMs || 0)) } : null, total: g1 ? { compiles: g1.compiles, links: g1.links, uploads: g1.uploads, waitMs: Math.round(g1.waitMs || 0) } : null,
         inventory: inv ? { textures: (inv.textures || []).map((t) => ({ w: t.w, h: t.h, mips: t.mips, compressed: t.compressed, cube: t.cube, video: t.video, aniso: t.aniso })), calls: inv.calls, triangles: inv.triangles, programs: inv.programs, lights: inv.lights, shadows: inv.shadows, aniso: inv.aniso, renderers: inv.renderers } : null };
       const snd = await sounds(); if (snd) S.result.sounds = snd;
+      await budgetAB();
       if (!S.skip) card('ready', 100);
       await answered();
       play();
@@ -137,7 +154,8 @@
 
   // ================= an HTML build =================
   // ---------- 1. the game's frames wait ----------
-  window.requestAnimationFrame = (cb) => { if (!S.held) return realRAF(cb); S.queue.push(cb); return -S.queue.length; };
+  const rafW = window.requestAnimationFrame = (cb) => { if (!S.held) return realRAF(cb); S.queue.push(cb); return -S.queue.length; };
+  undo.push([window, 'requestAnimationFrame', rafW, realRAF]);
   function release() { if (!S.held) return; S.held = false; const q = S.queue.splice(0); for (const cb of q) realRAF(cb); }
   // ---------- 2. three.js tells us its renderers and scenes ----------
   const dev = window.__THREE_DEVTOOLS__ || (window.__THREE_DEVTOOLS__ = new EventTarget());
@@ -146,18 +164,21 @@
     if (o?.isWebGLRenderer && !S.renderers.has(o)) {
       S.renderers.add(o);
       const r0 = o.render;
-      o.render = function (scene, camera) { if (scene?.isObject3D) { S.scenes.add(scene); o.__grCam = camera; } if (S.firstFrameAt == null) S.firstFrameAt = now(); return r0.call(this, scene, camera); };
+      const w = o.render = function (scene, camera) { if (RET || PAUSE) return r0.call(this, scene, camera); const a = now(); if (scene?.isObject3D) { S.scenes.add(scene); o.__grCam = camera; } if (S.firstFrameAt == null) S.firstFrameAt = a; SP += now() - a; return r0.call(this, scene, camera); };
+      undo.push([o, 'render', w, r0]);
     } else if (o?.isScene) S.scenes.add(o);
   });
   // ---------- GPU counters (what's compiled / uploaded, from the prototypes) ----------
   for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRenderingContext?.prototype]) {
     if (!P) continue;
-    const wrap = (m, fn) => { const f = P[m]; if (typeof f === 'function') P[m] = fn(f); };
-    wrap('compileShader', (f) => function (sh) { S.gl.compiles += 1; return f.call(this, sh); });
-    wrap('linkProgram', (f) => function (pr) { S.gl.links += 1; return f.call(this, pr); });
-    wrap('activeTexture', (f) => function (u) { this.__grU = u; return f.call(this, u); });
-    wrap('bindTexture', (f) => function (tg, tx) { (this.__grT ||= {})[this.__grU || 0] = tx; return f.call(this, tg, tx); });
-    const up = (f) => function (...a) { const tx = this.__grT?.[this.__grU || 0]; if (tx && !tx.__grUp) { tx.__grUp = 1; S.gl.uploads += 1; } else S.gl.reuploads += 1; return f.apply(this, a); };
+    const wrap = (m, fn) => { const f = P[m]; if (typeof f === 'function') { const w = P[m] = fn(f); undo.push([P, m, w, f]); } };
+    wrap('compileShader', (f) => function (sh) { if (!RET) S.gl.compiles += 1; return f.call(this, sh); });
+    wrap('linkProgram', (f) => function (pr) { if (!RET) S.gl.links += 1; return f.call(this, pr); });
+    // (round 55, playbudget) the texture an upload goes to: the context's own binding for its target (kept on the page's
+    // side, no trip to the graphics process), instead of a wrapper on every activeTexture / bindTexture (hundreds a frame)
+    const BIND = { 0x0DE1: 0x8069, 0x8513: 0x8514, 0x806F: 0x806A, 0x8C1A: 0x8C1D }; // 2D, cube, 3D, 2D array → their bindings
+    const bound = (gl, tg) => { const b = BIND[tg] || (tg >= 0x8515 && tg <= 0x851A ? 0x8514 : 0); if (!b) return null; try { return gl.getParameter(b); } catch { return null; } };
+    const up = (f) => function (...a) { if (RET) return f.apply(this, a); const t0 = now(); const tx = bound(this, a[0]); if (tx && !tx.__grUp) { tx.__grUp = 1; S.gl.uploads += 1; } else S.gl.reuploads += 1; SP += now() - t0; return f.apply(this, a); };
     for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'compressedTexImage3D']) wrap(m, up);
   }
   // ---------- 3. what the game loads ----------
@@ -243,7 +264,7 @@
     const c0 = { ...S.gl }; const t0 = now(); let k = 0;
     const tick = () => { k += 1; if (now() - t0 < 5000) realRAF(tick); };
     realRAF(tick);
-    realTimeout(() => { S.first5 = { compiles: S.gl.compiles - c0.compiles, links: S.gl.links - c0.links, uploads: S.gl.uploads - c0.uploads, reuploads: S.gl.reuploads - c0.reuploads, frames: k }; }, 5000);
+    realTimeout(() => { S.first5 = { compiles: S.gl.compiles - c0.compiles, links: S.gl.links - c0.links, uploads: S.gl.uploads - c0.uploads, reuploads: S.gl.reuploads - c0.reuploads, frames: k }; retire(); }, 5000);
   }
   async function prepareHtml() {
     if (S.noPrep) { play(); return; }
@@ -264,6 +285,7 @@
       await frames(4); await compile(true); upload(); await frames(2); ms.warm = Math.round(now() - a);
     }
     S.result = { ms: Math.round(now() - t0), steps: ms, uploaded: up, gl: Object.fromEntries(Object.entries(S.gl).map(([key, v]) => [key, v - g0[key]])), inventory: inventory(), skipped: Boolean(S.skip), ...(snd ? { sounds: snd } : {}) };
+    await budgetAB();
     card('ready', 100);
     await answered();
     play();

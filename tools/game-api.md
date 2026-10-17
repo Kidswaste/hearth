@@ -208,3 +208,28 @@ the hub); the owner: `/playtest`.
   `pub()`. The gameperf probe puts `load` on its slow frames, `stream` in its report; GamePerfCore names it in the
   shader / texture findings ("— from “crate.glb”") and adds `load-late` for the other causes; the chip's last stutter
   shows it ("last: texture 84 ms · big.jpg").
+
+## Hearth's budget in the game window (round 55, playbudget: tools/playbudget-page.js, playbudgetmain.js)
+- gamemodemain serves `/__playbudget-page.js?hz=…&t=…&off=…` and puts its tag FIRST in every HTML page of the window
+  (before the sound, getting-ready and loads-during-play tags). Hearth's helpers in the page may take at most 2 % of a
+  frame at the screen's refresh (never under 0.1 ms) on the main thread.
+- Each helper keeps a running total of its hooks' main-thread time and exposes `budget = { spent() → ms, pause(on),
+  off(by) }`: `__gameLook.budget` (+ `picture(on)`: its shadow maps raised / at the game's own size), `__gameStream.budget`,
+  `__gameAudio.budget`, `__gameReady.budget`, `__gamePerf.budget`. Work only moved earlier (a compile / upload the game's
+  first draw would do) isn't counted. `pause(true)`: stepped aside (the A/B); `off(by)`: hooks back / passing straight
+  through for the rest of the session. getting ready's hooks retire by themselves 5 s into play.
+- `window.__hearthBudget = { pub() → JSON { hz, budgetMs, playing, totalMs, avgMs, line, helpers: { id: { name, ms, avg,
+  max, on, off? } }, off: [{ id, name, by: 'watch' | 'ab' | 'remembered' | 'asked', ms, at }], note, ab, isolated },
+  line() → 'Hearth: 0.03 ms', note() → "Hearth's helpers were slowing Clink a little; turned off: loads during play",
+  chip(ms) → { line, note } (the F chip tells its own time), isOff(id), off(id, by), ab(opts) → Promise<result> }`.
+- The watch: over the budget 3 windows of ~1 s in a row while playing → the most expensive helper still on goes
+  (look, stream, perf, ready, audio; never the chip or the watch). The A/B: `gameready-page.js` calls `ab()` before the
+  card goes (both kinds): blocks of N frames, helpers on / stepped aside, each frame synced (readPixels), the graphics
+  card's time with EXT_disjoint_timer_query_webgl2 where present; slower → the most expensive off, again until on ≈ off.
+  `ab.picture`: the Best look's shadow maps on vs the game's own size (for the doctor; the look's guard decides).
+- A switch-off fires `hearth-budget` on window; game-preload.js sends `pub()` as `game:budget` (game window → main);
+  playbudgetmain keeps it per game (data/game-cache/budget.json). The next `game:play` of that game: look 'off', no
+  loads-during-play tag, sound part off, `off=` on the budget page (getting ready: as np=1; the probe: dormant).
+- Hub: `window.hub.game.budget({ op: 'get' | 'reset', source? })` → `{ known, off, by, ms, at, now }`; `info.budget`.
+  F chip: "… · Hearth: 0.03 ms" + `.note`; GamePerf's doctor: `.gp-budget` (each helper's cost, the note, "Turn them back
+  on"); `/game helpers [on]`.

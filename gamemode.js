@@ -190,6 +190,22 @@ const GameMode = (() => {
     return `Graphics: ${LOOK[lookPref()] || lookPref()} from the next game${now ? ' (▶ Play again to see it now)' : ''}.`;
   }
 
+  // (round 55, playbudget) the helpers Hearth runs in the game window, as plain words (tools/playbudget-page.js measures
+  // them there; playbudgetmain.js keeps, per game, the ones that were slowing it)
+  async function helpers(on) {
+    const s = now?.source || last();
+    if (!s) return 'No game yet: ▶ Play one first.';
+    if (on) { await window.hub.game.budget({ op: 'reset', source: s }).catch(() => null); return `${s.title}: Hearth's helpers are back on from the next ▶ Play (they're still watched: one that slows it goes again).`; }
+    const kept = await window.hub.game.budget({ source: s }).catch(() => null);
+    let p = null;
+    if (now && !now.live) { try { const v = (await window.hub.game.eval('window.__hearthBudget ? window.__hearthBudget.pub() : ""'))?.value; p = v ? JSON.parse(v) : null; } catch { p = null; } }
+    const lines = [];
+    if (p) lines.push(`${p.line} a frame now (Hearth's budget: ${p.budgetMs} ms, 2 % of a frame at ${p.hz} Hz) · ${Object.values(p.helpers).map((h) => `${h.name} ${h.on ? `${(h.avg ?? h.ms).toFixed(3)} ms` : 'off'}`).join(' · ')}`);
+    if (p?.note) lines.push(p.note);
+    if (kept?.off?.length) lines.push(`${s.title} plays without: ${kept.off.map((id) => ({ look: 'the look', stream: 'loads during play', audio: 'the sound warm-up', ready: 'getting ready', perf: 'the performance probe' }[id] || id)).join(', ')} (they were slowing it) · /game helpers on tries them again`);
+    return lines.length ? lines.join('\n') : `${s.title}: Hearth's helpers are all on (each watched while it plays: 2 % of a frame at most).`;
+  }
+
   // ---------- commands ----------
   // /play shares its name: plain /play still plays the Lab's song (and the board's clips); /play <a game> plays it
   Commands.register({
@@ -205,9 +221,9 @@ const GameMode = (() => {
     },
   });
   Commands.register({
-    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off | look best|balanced]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
-    examples: ['/game', '/game stop', '/game screens', '/game input', '/game look balanced'], keywords: 'play clink game mode raw mouse input latency',
-    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced'].map((v) => ({ value: v })),
+    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off | look best|balanced | helpers [on]]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
+    examples: ['/game', '/game stop', '/game screens', '/game input', '/game look balanced', '/game helpers'], keywords: 'play clink game mode raw mouse input latency helpers overhead budget',
+    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'helpers', 'helpers on'].map((v) => ({ value: v })),
     run: async (args) => {
       const a = String(args || '').trim();
       if (/^(stop|leave|quit|off)$/i.test(a)) { if (!now) return 'No game is playing.'; leave(); return null; }
@@ -221,6 +237,10 @@ const GameMode = (() => {
         const t = now && !now.live ? (await window.hub.game.eval('window.__gameLook ? window.__gameLook.text() : ""').catch(() => null))?.value : '';
         return `Graphics: ${LOOK[lookPref()]} (/game look best | balanced)${t ? `\nNow: ${t}` : ''}`;
       }
+      // (round 55, playbudget) Hearth's own work in the game window: what it costs a frame now, which helpers this game
+      // plays without (they were slowing it), and /game helpers on to try them again from the next ▶ Play
+      const hp = a.match(/^helpers(?:\s+(on|reset))?$/i);
+      if (hp) return helpers(Boolean(hp[1]));
       if (/^input$/i.test(a)) {
         const p = inputPrefs(); const i = now && !now.live ? (await window.hub.game.state().catch(() => null))?.input : null;
         return [`Raw mouse: asked when the game captures it · low-latency canvas: ${p.lowLatency ? 'on' : 'off'} · keys held for the game: ${i?.keys?.held || (/Mac/i.test(navigator.platform) ? 'every ⌘ shortcut' : 'Alt+Space')}`, i?.focus ? `Focus on open: ${i.focus.ok ? 'yes' : 'not confirmed'} (${i.focus.ms} ms)` : ''].filter(Boolean).join('\n');
