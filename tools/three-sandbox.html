@@ -888,11 +888,25 @@ function gmLetGo(r) {
 function gmRAF(fn) {
   const id = ++GM.ids;
   GM.q.push([id, fn]);
-  if (!GM.raf) GM.raf = realRAF(gmFlush);
+  if (!GM.raf && !GM.held) GM.raf = realRAF(gmFlush);
   return id;
 }
+// (round 58, ctxloss58) ▶ Play's budget A/B holds the game's own frames while it draws its synced frames under the card
+// (as an HTML build's are held there by getting ready): each game frame let through between its blocks queued another
+// ~1 s of work on a busy software GPU, the A/B's next synced frame waited for all of it, and one such wait of 10–16 s was
+// one GPU-process task long enough for Chromium's GPU watchdog to take the process (every context) down. Held frames
+// run on release; at most 20 s
+globalThis.__gmHold = (on) => {
+  realClearTimeout(GM.holdT);
+  GM.held = Boolean(on);
+  if (GM.held) GM.holdT = realSetTimeout(() => globalThis.__gmHold(false), 20000);
+  else if (GM.q.length && !GM.raf) GM.raf = realRAF(gmFlush);
+  return GAME;
+};
 function gmFlush(t) {
-  GM.raf = 0; GM.inFlush = true;
+  GM.raf = 0;
+  if (GM.held) return; // (the queue waits for the release)
+  GM.inFlush = true;
   const q = GM.q.splice(0);
   try {
     for (const [id, fn] of q) {
@@ -907,7 +921,7 @@ function gmRender(r, scene, camera) {
   if (GM.drawing) return false;
   if (r.getRenderTarget?.()) { try { r.resetState(); } catch { /* old three.js */ } return false; }
   GM.rec.set(r, { r, s: scene, c: camera, L: r.__layer ? layers.get(r.__layer) : null, gen: r.__layer ? layers.get(r.__layer)?.gen : 0, n: r.__gmN });
-  if (!GM.inFlush && !GM.raf) GM.raf = realRAF(gmFlush); // (a sketch that draws once, or from a timer)
+  if (!GM.inFlush && !GM.raf && !GM.held) GM.raf = realRAF(gmFlush); // (a sketch that draws once, or from a timer)
   return true;
 }
 function gmComposite(count = true) {
@@ -1925,7 +1939,7 @@ window.__glRecover = {
     if (restore != null) realSetTimeout(() => { for (const x of exts) { try { x.restoreContext(); } catch { /* not lost */ } } }, Math.max(50, restore));
     return exts.length;
   },
-  state: () => ({ lost: Boolean(GLR.lost), epoch: GLR.epoch, losses: GLR.losses, restores: GLR.restores, rebuilds: GLR.rebuilds, last: GLR.last, contexts: glAlive(), layers: layers.size,
+  state: () => ({ lost: Boolean(GLR.lost), epoch: GLR.epoch, losses: GLR.losses, restores: GLR.restores, rebuilds: GLR.rebuilds, last: GLR.last, contexts: glAlive(), made: glMade, none: GLR.none || 0, layers: layers.size,
     views: Object.fromEntries([...LV.views].map(([id, V]) => [id, LV.core.KEYS.map((k) => Math.round((V.t?.[k] ?? V[k] ?? 0) * 1e4) / 1e4)])) }),
 };
 // Right-click the picture: the Lab's menu. A still right-click opens it even over OrbitControls (which takes every

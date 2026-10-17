@@ -179,10 +179,15 @@ async function cdpConnect(dir) {
   const dprFlag = Number(opt('--dpr', 0)) > 0 ? [`--force-device-scale-factor=${Number(opt('--dpr'))}`] : [];
   const winTest = process.platform === 'win32';
   const launchArgs = [dir, '--no-sandbox', ...dprFlag, `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)];
+  // (round 58, ctxloss58) --burn N: N busy CPU processes for the whole run (a loaded computer: dev/checks/ctxloss.js),
+  // ended with the run. Only inside the shared run lock: they slow every other agent's checks too
+  const burners = [];
+  for (let i = 0; i < Math.min(8, Number(opt('--burn', 0)) || 0); i++) burners.push(spawn(process.execPath, ['-e', 'for (;;) {}'], { stdio: 'ignore', windowsHide: true }));
   const child = spawn(winTest ? ELECTRON : 'xvfb-run', winTest ? launchArgs : ['-a', '-s', `-screen 0 ${screenSize}x24`, ELECTRON, ...launchArgs], { stdio: ['ignore', 'pipe', 'pipe'], detached: !winTest, windowsHide: true, env });
   // Kill Xvfb + Electron (their own process group) however the harness ends, so no stray instances pile up.
   let killed = false;
   const killAll = () => {
+    for (const b of burners.splice(0)) { try { b.kill('SIGKILL'); } catch { /* gone */ } }
     if (killed || !child.pid) return; killed = true;
     if (winTest) { try { execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch { /* test process already gone */ } }
     else { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } }
@@ -330,7 +335,7 @@ async function cdpConnect(dir) {
       send('Runtime.evaluate', { expression: `window.__smokeReply && window.__smokeReply(${req.id}, ${JSON.stringify(JSON.stringify(result))})` });
     };
     await send('Runtime.addBinding', { name: '__smoke' });
-    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.SMOKE_SAVES = ${JSON.stringify(saveDir)}; window.SMOKE_TMP = ${JSON.stringify(runTmp)}; window.SMOKE_DEV = ${JSON.stringify(__dirname)}; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.SMOKE_SAVES = ${JSON.stringify(saveDir)}; window.SMOKE_TMP = ${JSON.stringify(runTmp)}; window.SMOKE_DEV = ${JSON.stringify(__dirname)}; window.SMOKE_BURN = ${JSON.stringify(burners.length)}; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
     // --mac: the page believes it runs on a Mac (navigator.platform), so ⌘ / ⌥ labels and the ⌘-as-Ctrl key mapping
     // (ui.js) can be checked here; the main process stays Linux
     if (args.includes('--mac')) await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel' });" });
@@ -412,6 +417,9 @@ async function cdpConnect(dir) {
     problems.push(`harness: ${err.message}`);
   } finally {
     killAll();
+    // (round 58, ctxloss58) SMOKE_STDERR=<file>: Electron's own output kept (Chromium's GPU process lines: a watchdog kill,
+    // "GPU process exited unexpectedly", "Too many active WebGL contexts")
+    if (process.env.SMOKE_STDERR) { try { fs.writeFileSync(process.env.SMOKE_STDERR, log.join('')); } catch { /* fine */ } }
     const mainErrors = log.join('').split('\n').filter((l) => /Error|Uncaught|TypeError|ReferenceError|SyntaxError/.test(l) && !IGNORE.some((re) => re.test(l)));
     for (const l of mainErrors.slice(0, 30)) problems.push(`main: ${l.trim()}`);
     if (!keep) { for (const d of [dir, ...(profileDir ? [] : [userData]), ...(tmpOpt ? [] : [runTmp])]) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a helper process still writing; tmp is cleaned later */ } } }

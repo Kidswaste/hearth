@@ -183,6 +183,10 @@
   }
   async function abTest(o = {}) {
     if (abP) return abP;
+    // (round 58, ctxloss58) a Lab scene's page: the game's own frames held while the A/B draws (tools/three-sandbox.html
+    // __gmHold; an HTML build's are already held by getting ready), let go when it's done
+    const hold = (on) => { try { if (typeof window.__gmHold === 'function') window.__gmHold(on); } catch (e) { /* fine */ } };
+    hold(true);
     abP = (async () => {
       const T = now(); const CAP = Number(o.ms) || 3500;
       const targets = drawables();
@@ -193,24 +197,30 @@
       // the graphics card's own time for the main renderer, where the browser has it
       const G0 = targets[0].gl; let tq = null;
       try { const x = G0.getExtension && G0.getExtension('EXT_disjoint_timer_query_webgl2'); if (x && G0.createQuery) tq = x; } catch (e) { tq = null; }
-      let gpu = null;
-      const one = () => {
+      let gpu = null; let syncs = 0; let maxOne = 0; const long = []; let phase = 'first'; let lostSeen = false; // (round 58, ctxloss58) the synced frames drawn and the longest
+      const draw = () => {
         let q = null;
         if (tq) { try { if (!G0.getQuery(tq.TIME_ELAPSED_EXT, G0.CURRENT_QUERY)) { q = G0.createQuery(); G0.beginQuery(tq.TIME_ELAPSED_EXT, q); } } catch (e) { q = null; } }
-        const a = now();
         for (const x of targets) { try { x.r.render(x.scene, x.camera); } catch (e) { /* the game's own error */ } }
         // (round 56, fixes56) a Lab scene's page: its merged layers' render() is only noted for the frame's composite
         // (tools/three-sandbox.html): drawn now, as the frame would (else the A/B timed nothing: on ≈ off ≈ 0.15 ms)
         if (drawNow) { try { drawNow(); } catch (e) { /* the game's own error */ } }
         if (q) { try { G0.endQuery(tq.TIME_ELAPSED_EXT); } catch (e) { q = null; } }
-        for (const x of targets) sync(x.gl);
-        const ms = now() - a;
+        return q;
+      };
+      const done = (a, q) => {
+        const ms = now() - a; syncs += 1; if (ms > maxOne) maxOne = ms; if (ms > 1000 && long.length < 40) long.push([phase, Math.round(ms)]);
+        // (round 58, ctxloss58) a context lost meanwhile: that frame measured nothing (never a 0.01 ms that "fits")
+        if (!lostSeen) for (const x of targets) { try { if (x.gl.isContextLost()) lostSeen = true; } catch (e) { lostSeen = true; } }
+        if (lostSeen) { gpu = null; return NaN; }
         if (q) {
           try { if (G0.getQueryParameter(q, G0.QUERY_RESULT_AVAILABLE) && !G0.getParameter(tq.GPU_DISJOINT_EXT)) gpu = G0.getQueryParameter(q, G0.QUERY_RESULT) / 1e6; else gpu = null; } catch (e) { gpu = null; }
           try { G0.deleteQuery(q); } catch (e) { /* fine */ }
         } else gpu = null;
         return ms;
       };
+      // a frame drawn and waited for to the end on the graphics card: readPixels (one GPU-process task that waits for it)
+      const one = () => { const a = now(); const q = draw(); for (const x of targets) sync(x.gl); return done(a, q); };
       const on = (ids, b) => { for (const id of ids) { try { const h = hooks(id); if (h && h.pause) h.pause(!b); } catch (e) { /* fine */ } } };
       // (round 56, readyspeed) costs: false — the helpers' cost verdict of this very game still holds (gameready-page.js'
       // abs hint): only the shadow size below is chosen and its maps made under the card
@@ -224,17 +234,47 @@
       const q0 = sp0 && o.shadow && Number(o.shadow.size) >= 512 && Number(o.shadow.size) === sp0.remembered && sp0.start === sp0.remembered ? { size: Number(o.shadow.size), ms: Number(o.shadow.ms), ref: Number(o.shadow.ref) || 0 } : null;
       // (the first frames after getting ready are slow ones; with q0 the median of 3 already sets a slow first one aside:
       // no frame left uncounted)
-      if (!q0) one();
-      const w3 = [one(), one(), one()]; const per = Math.max(Rules.median(w3), 0.05);
+      // (round 58, ctxloss58) what the graphics card still has queued is waited for WITHOUT holding it: a fence, polled
+      // between tasks. A synced frame (readPixels / finish) on top of a backlog was one GPU-process task of 10–15 s on a
+      // busy software GPU, and Chromium's GPU watchdog took the process down (every WebGL context lost: the scene rebuilt
+      // under the card or in play). Before each block's first frame, each shadow size's first frame, the fallback's
+      // frame (with the game's own frames held, above): so a synced frame only ever waits for its own frame
+      let drains = 0; let drainMs = 0;
+      const drain = async (cap = 45000) => {
+        const t = now();
+        for (const x of targets) {
+          const gl = x.gl; let s = null;
+          try { if (!gl.fenceSync || gl.isContextLost()) continue; s = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0); gl.flush(); } catch (e) { s = null; }
+          if (!s) continue;
+          try { while (now() - t < cap && !gl.isContextLost() && gl.getSyncParameter(s, gl.SYNC_STATUS) !== gl.SIGNALED) await new Promise((r) => later(r, 2)); } catch (e) { /* lost */ }
+          try { gl.deleteSync(s); } catch (e) { /* fine */ }
+        }
+        drains += 1; drainMs += now() - t;
+      };
+      // (round 58, ctxloss58) a frame that isn't counted (the first, each block's first, a size's first, the fallback's,
+      // the way back) is waited for with that fence instead of readPixels: the GPU process never sits in one task for
+      // the whole frame. Those were the 4–20 s frames on a busy software GPU (new state, new maps, what piled up). Counted
+      // frames stay readPixels (exact, as before: the A/B's verdicts don't move); with the game's frames held each one
+      // waits only for itself (≈ 1 s here under load, a few ms on a real card)
+      const oneAsync = async () => { const a = now(); const q = draw(); await drain(); return done(a, q); };
+      phase = 'first';
+      if (!q0) await oneAsync(); else await drain();
+      phase = 'w3'; const w3 = [one(), one(), one()];
+      if (lostSeen) return (ab = { skipped: 'the graphics card went away', lost: true, ms: Math.round(now() - T), syncs, maxFrameMs: Math.round(maxOne), long });
+      const per = Math.max(Rules.median(w3), 0.05);
       const K = Math.max(3, Math.min(16, Math.round(60 / per)));
       const yieldNow = () => new Promise((r) => later(r, 0));
+      // (round 58, ctxloss58) a block's synced frames back to back are bounded in time (≥ 2 frames): only a very slow
+      // computer (a software GPU under load: ~1 s a frame) ever reaches it; a real card's block is K × a few ms
+      const BLOCK_MS = 5000;
       // a block: K frames (after one not counted: what piled up between blocks), helpers on or stepped aside
       async function block(b, list, cost) {
-        on(list, b); one();
+        phase = b ? 'on' : 'off'; on(list, b); await oneAsync();
         const s0 = cost ? list.map((id) => spent(id) || 0) : null;
         const v = []; const g = [];
-        for (let k = 0; k < K; k += 1) { v.push(one()); if (gpu != null) g.push(gpu); }
-        if (cost) list.forEach((id, i) => { cost[id] = (cost[id] || 0) + ((spent(id) || 0) - s0[i]) / K; });
+        const b0 = now();
+        for (let k = 0; k < K && !lostSeen && (k < 2 || now() - b0 < BLOCK_MS); k += 1) { v.push(one()); if (gpu != null) g.push(gpu); }
+        if (cost) list.forEach((id, i) => { cost[id] = (cost[id] || 0) + ((spent(id) || 0) - s0[i]) / Math.max(1, v.length); });
         on(list, true);
         await yieldNow();
         return { ms: Rules.median(v), gpu: g.length ? Rules.median(g) : null };
@@ -266,7 +306,7 @@
         j = Rules.judge(run.pairs, BUDGET, own(c2) / Math.max(1, run.pairs.length));
         res.after = { on: Rules.median(run.pairs.map((q) => q[0])), off: Rules.median(run.pairs.map((q) => q[1])), judge: j };
       }
-      if (res.turnedOff.length) one(); // (what switching off changed is drawn once here, under the card)
+      if (res.turnedOff.length) await oneAsync(); // (what switching off changed is drawn once here, under the card)
       // (round 56, fixes56) on a Lab scene's page each one() draws through the composite (drawNow), so the sizes are
       // timed for real there too; the chosen + fallback maps are made here and sealed, as on an HTML build
       // (round 56, shadowready) the Best look's shadow size, chosen here under the card and never changed by making new
@@ -278,17 +318,17 @@
         const rows = []; const gr = []; let d = null;
         // a size's time: the calmer of two blocks' medians (a busy moment of the computer isn't the shadows')
         const measure = async (v) => {
-          lk.shadow.set(v); one(); // (its maps made the first time: not counted)
+          phase = `size ${v}`; lk.shadow.set(v); await oneAsync(); // (its maps made the first time: not counted)
           const b = []; const ag = [];
-          for (let i = 0; i < 2; i += 1) { const a = []; for (let k = 0; k < K; k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); } b.push(Rules.median(a)); await yieldNow(); }
-          return { ms: +Math.min(...b).toFixed(3), gpu: ag.length ? +Rules.median(ag).toFixed(3) : null };
+          for (let i = 0; i < 2 && !lostSeen; i += 1) { const a = []; const b0 = now(); for (let k = 0; k < K && !lostSeen && (k < 2 || now() - b0 < BLOCK_MS); k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); } const m = Rules.median(a); if (m != null) b.push(m); await yieldNow(); }
+          return { ms: b.length ? +Math.min(...b).toFixed(3) : NaN, gpu: ag.length ? +Rules.median(ag).toFixed(3) : null };
         };
         let checked = false; let quick = null;
         // (round 57, readywalk) the remembered size still valid: a short check of that size alone (the 3 frames above,
         // drawn at it; one more block of K only when they read clearly slower), and the walk only when that clearly fails
         if (q0 && sp.start === q0.size && !res.turnedOff.length) {
           let ms = Rules.median(w3); const blocks = [+ms.toFixed(3)];
-          if (!Rules.shadowHolds(ms, q0, HZ)) { one(); const a = []; for (let k = 0; k < K; k += 1) a.push(one()); const m2 = Rules.median(a); blocks.push(+m2.toFixed(3)); ms = Math.min(ms, m2); }
+          if (!Rules.shadowHolds(ms, q0, HZ)) { await oneAsync(); const a = []; const b0 = now(); for (let k = 0; k < K && !lostSeen && (k < 2 || now() - b0 < BLOCK_MS); k += 1) a.push(one()); const m2 = Rules.median(a); if (m2 != null) { blocks.push(+m2.toFixed(3)); ms = Math.min(ms, m2); } }
           quick = { ms: +ms.toFixed(3), was: q0.ms, blocks, held: Rules.shadowHolds(ms, q0, HZ) };
           if (quick.held) { rows.push([q0.size, +ms.toFixed(3)]); d = { size: q0.size, why: 'confirmed' }; }
         }
@@ -307,10 +347,10 @@
           rows.push([d.next, m.ms]); gr.push(m.gpu);
         }
         const fb = lk.shadow.commit(d.size, { by: sp.remembered ? 'remembered' : 'ready', why: d.why, rows });
-        if (fb) { lk.shadow.set(fb); one(); } // (the fallback's maps made now, under the card)
+        if (fb) { phase = `fallback ${fb}`; lk.shadow.set(fb); await oneAsync(); } // (the fallback's maps made now, under the card)
         // (round 57, readywalk) back to the chosen size: its maps are kept, a pointer swap (nothing made), so no frame of
         // its own here when the size was only checked; after a walk the chosen size is drawn once more as before
-        lk.shadow.set(d.size); if (!(quick && quick.held)) one();
+        phase = 'back'; lk.shadow.set(d.size); if (!(quick && quick.held)) await oneAsync();
         const sealed = lk.shadow.seal();
         const row = (s) => { const r = rows.find((x) => x[0] === s); return r ? r[1] : null; };
         let by = 'ready'; try { by = window.__gameLook.report().shadows.chosen.by; } catch (e) { /* fine */ }
@@ -320,9 +360,9 @@
         if (on1 != null) res.picture = { on: on1, off: off1, costMs: off1 == null ? null : +(on1 - off1).toFixed(3), refreshMs: +(1000 / HZ).toFixed(2), fits: on1 <= 1000 / HZ, size: d.size };
         try { dispatchEvent(new Event('hearth-budget')); } catch (e) { /* game-preload.js tells Hearth: the choice is remembered per game */ }
       }
-      res.ms = Math.round(now() - T);
+      res.ms = Math.round(now() - T); res.syncs = syncs; res.maxFrameMs = Math.round(maxOne); res.long = long; res.drains = drains; res.drainMs = Math.round(drainMs);
       return (ab = res);
-    })().catch((e) => (ab = { skipped: `error: ${String(e && e.message || e).slice(0, 120)}` }));
+    })().catch((e) => (ab = { skipped: `error: ${String(e && e.message || e).slice(0, 120)}` })).finally(() => hold(false));
     return abP;
   }
 
