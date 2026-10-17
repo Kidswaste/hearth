@@ -168,8 +168,8 @@
       if (!S.skip) card(`textures ${prep?.textures ?? nTex}/${nTex}`, 60);
       a = now(); const warm = [];
       for (let i = 0, quiet = 0; i < 6 && quiet < HN.quiet && !S.skip; i += 1) { // (round 56: one quiet pass when the last runs needed nothing more)
-        const w = await ask({ type: 'ready-warm', id: 'gr', n: HN.quiet === 1 && i === 0 ? 2 : 4 }, 'ready-warmed', 15000);
-        warm.push(w?.gl || null);
+        const tp = now(); const w = await ask({ type: 'ready-warm', id: 'gr', n: HN.quiet === 1 && i === 0 ? 2 : 4 }, 'ready-warmed', 15000);
+        warm.push(w?.gl ? { ...w.gl, ms: Math.round(now() - tp), work: w.work } : null); // (round 59, readylab59: each pass's time and its longest frame's work, for /game ready's records)
         const g = w?.gl || {};
         quiet = (g.compiles || 0) + (g.links || 0) + (g.uploads || 0) === 0 ? quiet + 1 : 0;
         card('warming up', 90 + 3 * i);
@@ -178,7 +178,7 @@
       ms.warm = Math.round(now() - a); mark('warmed');
       const inv = S.skip ? scan : (await ask({ type: 'ready-scan', id: 'gr' }, 'ready-scanned', 15000)) || scan;
       const g1 = await count(); mark('inventory');
-      S.result = { ms: Math.round(now() - t0), steps: ms, skipped: S.skip, prep: prep ? { compileMs: prep.compileMs, textures: prep.textures, renderers: prep.renderers, gl: prep.gl } : null, warm, gl: g0 && g1 ? { compiles: g1.compiles - g0.compiles, links: g1.links - g0.links, uploads: g1.uploads - g0.uploads, waitMs: Math.round((g1.waitMs || 0) - (g0.waitMs || 0)) } : null, total: g1 ? { compiles: g1.compiles, links: g1.links, uploads: g1.uploads, waitMs: Math.round(g1.waitMs || 0) } : null,
+      S.result = { ms: Math.round(now() - t0), steps: ms, skipped: S.skip, prep: prep ? { compileMs: prep.compileMs, textures: prep.textures, renderers: prep.renderers, revealed: prep.revealed || 0, gl: prep.gl } : null, warm, gl: g0 && g1 ? { compiles: g1.compiles - g0.compiles, links: g1.links - g0.links, uploads: g1.uploads - g0.uploads, waitMs: Math.round((g1.waitMs || 0) - (g0.waitMs || 0)) } : null, total: g1 ? { compiles: g1.compiles, links: g1.links, uploads: g1.uploads, waitMs: Math.round(g1.waitMs || 0) } : null,
         inventory: inv ? { textures: (inv.textures || []).map((t) => ({ w: t.w, h: t.h, mips: t.mips, compressed: t.compressed, cube: t.cube, video: t.video, aniso: t.aniso })), calls: inv.calls, triangles: inv.triangles, programs: inv.programs, lights: inv.lights, shadows: inv.shadows, aniso: inv.aniso, renderers: inv.renderers } : null, load: loadTimes(g1) };
       const snd = await sounds(); if (snd) S.result.sounds = snd; mark('sounds');
       const gb = await gpuBack(g0);

@@ -283,3 +283,8 @@ the hub); the owner: `/playtest`.
   (never a "fit"); lost during the first frames → `ab = { skipped, lost: true }`. `ab` also carries `syncs`,
   `maxFrameMs`, `long: [[phase, ms]]` (frames over 1 s), `drains`, `drainMs`. `__glRecover.state()` adds `made` (WebGL
   contexts made on the page) and `none`; main `glrecover:state` adds `gone: [{ reason, exitCode, at }]` (GPU process exits).
+- (round 59, readylab59) A Lab scene's `ready-prep` draws the first of its 2 frames with what the game hides for now shown
+  (`RDY.reveal` in tools/three-sandbox.html: every object with `visible === false` that isn't a light, a camera or a
+  group holding a light, at most 500, put back right after that one draw, never on a render target or a Hearth helper),
+  so its shadow-depth programs and a transmission target are made under the card, not in the first warm-up pass.
+  `ready-prepped.revealed` / `result.prep.revealed` = how many were shown; each `result.warm[i]` adds `ms` and `work`.
