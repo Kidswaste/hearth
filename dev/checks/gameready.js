@@ -4,7 +4,7 @@
 //            model (GLB with its own texture), five kinds of material, four lights (two casting shadows), and a pickup
 //            that only shows 2 s into play (its shaders never drew before)
 //   launch   the first ▶ Play of this launch (cold): its page's whole wait on shader work is kept in
-//            /tmp/hearth-gameready/launch1.json for dev/checks/gameready-relaunch.js (same profile: the shader disk cache)
+//            <tmp>/hearth-gameready/launch1.json for dev/checks/gameready-relaunch.js (same profile: the shader disk cache)
 //   before   ▶ Play without getting ready: what the GPU compiles / uploads in the first 5 s of play
 //   after    ▶ Play: the card in the game window before the scene's first frame ("Getting Clink ready… textures n/m"),
 //            then 0 compiles and 0 new uploads in the first 5 s; textures at the best anisotropy; quality held; what it
@@ -15,14 +15,17 @@
 //   html     an HTML build (index.html + three.js + GLTFLoader + meshopt, a picture, the ship): ▶ Play without and with
 //            getting ready, its files kept; optimized → the window serves the copy for models/ship.glb by URL rewrite
 //   files    every original file hashed before and after: unchanged
-//   node dev/smoke.js --check-timeout 1500000 --profile /tmp/hearth-gameready-profile --profile-fresh --script dev/checks/gameready.js
+//   node dev/smoke.js --check-timeout 1500000 --script dev/checks/gameready.js
+// (round 56, fixes56) a fresh Chromium profile and scratch folder per run, removed after: two runs at once are fine. For
+// gameready-relaunch.js, give both runs the same `--profile <dir> --tmp <dir>` (dev/run-checks.js does it when both run)
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return false; };
 const out = { steps: [], measure: {} };
-const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); window.hub?.fs?.write('/tmp/hearth-gameready/progress.json', JSON.stringify(out, null, 1)).catch(() => {}); };
+const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); window.hub?.fs?.write(`${DIR}/progress.json`, JSON.stringify(out, null, 1)).catch(() => {}); };
 // (each part at most 6 minutes: a stuck part is reported and the next one runs)
 const safe = async (name, fn) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after 6 min`)), 360000))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
-const DIR = '/tmp/hearth-gameready';
+const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp): two runs at once never share files
+const DIR = `${TMP}/hearth-gameready`;
 const BASE = "import * as THREE from 'three';\nconst renderer = new THREE.WebGLRenderer({ alpha: true }); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);\nconst scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 10);\nrenderer.setAnimationLoop(() => renderer.render(scene, camera));";
 const TOOL = '/tmp/hearth-gameready-tools/node_modules/.bin/gltfpack';
 const THREE_DIR = '/opt/cdn-cache/three@0.186.1/package';

@@ -28,7 +28,8 @@ const fail = (m) => out.problems.push(m);
 const only = String(window.LP55_ONLY || '').split(',').filter(Boolean);
 const want = (k) => !only.length || only.includes(k);
 const SEC = Number(window.LP55_SEC) || 6;
-const DIR = '/tmp/hearth-labplay55';
+const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp): two runs at once never share files
+const DIR = `${TMP}/hearth-labplay55`;
 const cdp = (method, params) => Promise.race([smoke({ cdp: method, params }), wait(8000)]);
 const r1 = (x) => Math.round(x * 10) / 10;
 const r2 = (x) => Math.round(x * 100) / 100;

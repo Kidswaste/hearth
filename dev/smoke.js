@@ -38,7 +38,10 @@ const shot = opt('--shot', path.join(os.tmpdir(), 'hearth-smoke.png'));
 const waitMs = Number(opt('--wait', 5000));
 const keep = args.includes('--keep');
 const ELECTRON = process.env.ELECTRON || '/opt/hearth-electron/electron';
-const PORT = 9400 + Math.floor(Math.random() * 500);
+// (round 56, fixes56) a free port asked of the system (a random one could be another run's: two runs at once then read
+// each other's window); cdpConnect also only takes the page of this run's own copy
+let PORT = 9400 + Math.floor(Math.random() * 500);
+const freePort = () => new Promise((res) => { const srv = require('net').createServer(); srv.unref(); srv.on('error', () => res(PORT)); srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => res(p)); }); });
 
 // Errors that come from the test environment, not the app (no GPU, no engines installed, no network).
 // (Chromium warns when the page capture's frame reader is cancelled with frames still queued: a GC note, not an app error)
@@ -103,11 +106,12 @@ function copyApp() {
   return dir;
 }
 
-async function cdpConnect() {
+async function cdpConnect(dir) {
+  const own = encodeURI(`file://${dir.replace(/\\/g, '/')}`).replace(/^file:\/\/([^/])/, 'file:///$1');
   for (let i = 0; i < 60; i++) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
-      const page = list.find((t) => t.type === 'page' && /index\.html/.test(t.url));
+      const page = list.find((t) => t.type === 'page' && /index\.html/.test(t.url) && (!dir || t.url.startsWith(own)));
       if (page) return page.webSocketDebuggerUrl;
     } catch { /* not up yet */ }
     await new Promise((r) => setTimeout(r, 500));
@@ -117,12 +121,19 @@ async function cdpConnect() {
 
 (async () => {
   const dir = copyApp();
+  PORT = await freePort();
   // (round 52, gameready) --profile <dir>: this Chromium profile is used and kept (a second launch finds the first one's
   // GPU shader cache: dev/checks/gameready*.js); --profile-fresh empties it first
   const profileDir = opt('--profile');
   if (profileDir && args.includes('--profile-fresh')) fs.rmSync(profileDir, { recursive: true, force: true });
   if (profileDir) fs.mkdirSync(profileDir, { recursive: true });
   const userData = profileDir ? path.resolve(profileDir) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-profile-'));
+  // (round 56, fixes56) --tmp <dir>: the check's own scratch folder (window.SMOKE_TMP), kept; without it a fresh one per
+  // run, removed at the end, so two runs of the same check at once never share files (dev/checks/game*.js write there).
+  // Pass the same --tmp (and --profile) to a run that reads what an earlier one left (dev/checks/gameready-relaunch.js).
+  const tmpOpt = opt('--tmp');
+  const runTmp = tmpOpt ? path.resolve(tmpOpt) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-tmp-'));
+  fs.mkdirSync(runTmp, { recursive: true });
   const log = [];
   // Native save dialogs can't be answered here: files are saved straight into --save-dir (default <copy>/test-saves,
   // also exposed to checks as window.SMOKE_SAVES); --open "a.wav:b.png" is what open dialogs pick.
@@ -190,7 +201,7 @@ async function cdpConnect() {
   const deadline = Number(opt('--check-timeout', 90000)) * Math.max(1, parts) + 300000;
   setTimeout(() => { console.log(`\n1 problem(s):\nharness: still running after ${Math.round(deadline / 1000)} s (a call the page never answered)`); process.exit(1); }, deadline).unref();
   try {
-    const ws = new WebSocket(await cdpConnect());
+    const ws = new WebSocket(await cdpConnect(dir));
     await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
     let id = 0; const pending = new Map(); const attached = [];
     ws.onmessage = (m) => {
@@ -319,7 +330,7 @@ async function cdpConnect() {
       send('Runtime.evaluate', { expression: `window.__smokeReply && window.__smokeReply(${req.id}, ${JSON.stringify(JSON.stringify(result))})` });
     };
     await send('Runtime.addBinding', { name: '__smoke' });
-    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.SMOKE_SAVES = ${JSON.stringify(saveDir)}; window.SMOKE_DEV = ${JSON.stringify(__dirname)}; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.SMOKE_SAVES = ${JSON.stringify(saveDir)}; window.SMOKE_TMP = ${JSON.stringify(runTmp)}; window.SMOKE_DEV = ${JSON.stringify(__dirname)}; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
     // --mac: the page believes it runs on a Mac (navigator.platform), so ⌘ / ⌥ labels and the ⌘-as-Ctrl key mapping
     // (ui.js) can be checked here; the main process stays Linux
     if (args.includes('--mac')) await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel' });" });
@@ -403,7 +414,7 @@ async function cdpConnect() {
     killAll();
     const mainErrors = log.join('').split('\n').filter((l) => /Error|Uncaught|TypeError|ReferenceError|SyntaxError/.test(l) && !IGNORE.some((re) => re.test(l)));
     for (const l of mainErrors.slice(0, 30)) problems.push(`main: ${l.trim()}`);
-    if (!keep) { for (const d of profileDir ? [dir] : [dir, userData]) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a helper process still writing; tmp is cleaned later */ } } }
+    if (!keep) { for (const d of [dir, ...(profileDir ? [] : [userData]), ...(tmpOpt ? [] : [runTmp])]) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* a helper process still writing; tmp is cleaned later */ } } }
     else console.log(`kept: ${dir}`);
   }
   if (problems.length) { console.log(`\n${problems.length} problem(s):\n${[...new Set(problems)].join('\n')}`); code = 1; } else console.log('\nOK: no page errors.');

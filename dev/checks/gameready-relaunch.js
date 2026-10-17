@@ -1,14 +1,15 @@
 // ▶ Play, got ready (round 52, gameready): the second launch. Runs after dev/checks/gameready.js on the same Chromium
-// profile (--profile, not emptied): the same "Clink" Lab scene is made and played with ▶ Play first thing, exactly as
+// profile and scratch folder (the same --profile <dir> --tmp <dir> as that run, not emptied; dev/run-checks.js pairs them): the same "Clink" Lab scene is made and played with ▶ Play first thing, exactly as
 // the first launch did; its shaders come from Chromium's shader disk cache (▶ Play's window is persist:hearth-game).
 //   compare  the game page's whole wait on the GPU's shader work (shaderWaitMs: getProgramParameter blocking until a
-//            program is compiled / linked) with /tmp/hearth-gameready/launch1.json (the first launch's); wall times
+//            program is compiled / linked) with <tmp>/hearth-gameready/launch1.json (the first launch's); wall times
 //            are reported, not judged (the machine's load swings them)
 // window.GR_REPORT = 1 only reports (no verdict).
-//   node dev/smoke.js --check-timeout 600000 --profile /tmp/hearth-gameready-profile --script dev/checks/gameready-relaunch.js
+//   node dev/smoke.js --check-timeout 600000 --script dev/checks/gameready-relaunch.js   (+ gameready.js's --profile / --tmp)
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return false; };
-const DIR = '/tmp/hearth-gameready';
+const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp): two runs at once never share files
+const DIR = `${TMP}/hearth-gameready`; // (gameready.js's, through the same --tmp)
 const out = { steps: [] };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 await until(() => window.hub && performance.getEntriesByName('hearth:ready').length);

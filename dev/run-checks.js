@@ -226,10 +226,25 @@ const FIX = [
 const srcOf = (n) => (n.startsWith('unit:') ? fs.readFileSync(path.join(DEV, `${n.slice(5)}.js`), 'utf8') : fs.readFileSync(path.join(CHECKS, `${n}.js`), 'utf8'));
 const exists = (p) => { try { return fs.statSync(p).isFile() || fs.readdirSync(p).length > 0; } catch { return false; } };
 const needed = FIX.filter((f) => wanted.some((n) => f.re.test(srcOf(n)) || /^journey-/.test(n.replace('unit:', ''))));
+// (round 56, fixes56) two runs at once make a missing fixture once: the other waits for it (a lock folder next to it;
+// one left by a run that died is taken after 15 minutes)
+const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 for (const f of needed) {
   if (exists(f.path)) continue;
-  process.stdout.write(`fixtures: ${f.path} … `);
-  try { f.make(); console.log('made'); } catch (e) { console.log(`failed (${e.message.split('\n')[0]}): checks that need it will fail`); }
+  const lock = `${f.path.replace(/\/$/, '')}.making`;
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  let owned = false;
+  for (let i = 0; i < 3600; i++) {
+    try { fs.mkdirSync(lock); owned = true; break; } catch (e) { if (e.code !== 'EEXIST') break; /* else another run makes it */ }
+    try { if (Date.now() - fs.statSync(lock).mtimeMs > 15 * 60000) { fs.rmSync(lock, { recursive: true, force: true }); continue; } } catch { /* just released */ }
+    if (i === 0) console.log(`fixtures: ${f.path} is being made by another run, waiting`);
+    sleepMs(1000);
+  }
+  try {
+    if (exists(f.path)) continue;
+    process.stdout.write(`fixtures: ${f.path} … `);
+    try { f.make(); console.log('made'); } catch (e) { console.log(`failed (${e.message.split('\n')[0]}): checks that need it will fail`); }
+  } finally { if (owned) fs.rmSync(lock, { recursive: true, force: true }); }
 }
 if (argv.includes('--fixtures-only')) process.exit(0);
 
@@ -278,6 +293,18 @@ function verdictOf(text) {
 }
 const results = [];
 const t0 = Date.now();
+// (round 56, fixes56) every smoke run has its own profile and scratch folder (dev/smoke.js), so two runs at once never
+// share files; a check that reads what an earlier one left (the shader disk cache) gets that run's two folders passed:
+// PAIRS[later] = earlier, both in this run → one throwaway pair of folders for both, removed after the later one
+const PAIRS = { 'gameready-relaunch': 'gameready' };
+const pairDirs = {};
+for (const [later, first] of Object.entries(PAIRS)) {
+  if (!wanted.includes(later) || !wanted.includes(first) || wanted.indexOf(first) > wanted.indexOf(later)) continue;
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), `hearth-${first}-pair-`));
+  pairDirs[first] = pairDirs[later] = { d, flags: ['--profile', path.join(d, 'profile'), '--tmp', path.join(d, 'tmp')], last: later };
+}
+const dropPair = (n) => { const p = pairDirs[n]; if (p && p.last === n) { try { fs.rmSync(p.d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* tmp is cleaned later */ } } };
+process.on('exit', () => { for (const p of Object.values(pairDirs)) { try { fs.rmSync(p.d, { recursive: true, force: true }); } catch { /* fine */ } } });
 for (const n of wanted) {
   const started = Date.now();
   const log = path.join(OUT, `${n.replace('unit:', 'unit-')}.log`);
@@ -291,12 +318,13 @@ for (const n of wanted) {
   } else {
     const shots = path.join(OUT, n);
     // step pictures only when asked (--shots): a 1080×1080 screenshot mid-journey can starve a recording on a busy machine
-    const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
+    const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(pairDirs[n]?.flags || []), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
     // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
     const env = /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }
       : /^(game(mode|ready|input|tex|look|audio|stream)|playloop)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network)
     r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env });
   }
+  dropPair(n);
   const text = `${r.stdout || ''}${r.stderr || ''}`;
   fs.writeFileSync(log, text);
   // failed: a non-zero exit, a result with a top-level "ok": false or "pass": false (round 39: appsearch reports "pass"; round 43: a non-empty top-level "errors" list, as the capture checks report) (not one nested in what a check reports), a ✖ step,

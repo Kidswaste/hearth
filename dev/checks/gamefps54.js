@@ -17,7 +17,8 @@ const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now(
 const out = { steps: [], runs: [] };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 const safe = async (name, fn) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after 6 min`)), 360000))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
-const DIR = '/tmp/hearth-gamefps54';
+const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp): two runs at once never share files
+const DIR = `${TMP}/hearth-gamefps54`;
 const THREE_DIR = '/opt/cdn-cache/three@0.186.1/package';
 const GW = () => window.hub.game;
 const ev = async (code) => { const r = await GW().eval(code); if (r?.error) throw new Error(r.error); return r?.value; };

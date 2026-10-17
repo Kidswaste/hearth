@@ -19,7 +19,8 @@ const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now(
 const out = { steps: [], measure: {} };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 const safe = async (name, fn) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after 4 min`)), 240000))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
-const DIR = '/tmp/hearth-gameaudio';
+const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp): two runs at once never share files
+const DIR = `${TMP}/hearth-gameaudio`;
 const GAME = `${DIR}/game`;
 const EXT = 'wav'; // (16-bit PCM, made here)
 const G = () => window.hub.game;
