@@ -9,13 +9,14 @@
 //   verdict  warm ≤ 0.85 × cold + 0.3 s for each kind (the regression threshold), the card's "Ready in x s (was y s)"
 //            shown once (the first warm run) and not again, /game ready lists the steps, the game's files untouched
 // window.RS_REPORT = 1 only reports (no verdict on times).
-//   node dev/smoke.js --check-timeout 1500000 --profile /tmp/hearth-readyspeed-profile --profile-fresh --script dev/checks/readyspeed.js
+//   node dev/smoke.js --check-timeout 1500000 --script dev/checks/readyspeed.js   (a fresh profile and scratch folder per run: cold, then warm in the same run)
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return false; };
 const out = { steps: [], runs: {} };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); window.hub?.fs?.write(`${DIR}/progress.json`, JSON.stringify(out, null, 1)).catch(() => {}); };
 const safe = async (name, fn) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after 8 min`)), 480000))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
-const DIR = '/tmp/hearth-readyspeed';
+const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp)
+const DIR = `${TMP}/hearth-readyspeed`;
 const THREE_DIR = '/opt/cdn-cache/three@0.186.1/package';
 await until(() => window.hub && performance.getEntriesByName('hearth:ready').length);
 

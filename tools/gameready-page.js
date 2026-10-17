@@ -53,7 +53,12 @@
     if (!B?.ab || S.skip || S.noPrep) return;
     // (round 56, readyspeed) the last A/B of this very game (same files, Hearth's helpers, screen, look) found them costing
     // it nothing, and nothing was switched off while it played: its verdict holds, not measured again (1–3.5 s saved)
-    if (HN.abReuse) { if (S.result) S.result.ab = { reused: true, turnedOff: [] }; return; }
+    // (shadowready: the Best look's shadow size is still chosen, starting from the one remembered, and its maps made here)
+    if (HN.abReuse) {
+      card('checking it runs smooth', 99);
+      try { const r = await B.ab({ costs: false }); if (S.result) S.result.ab = { reused: true, turnedOff: [], ms: r?.ms, shadow: r?.shadow || null, skipped: r?.skipped || null }; } catch { if (S.result) S.result.ab = { reused: true, turnedOff: [] }; }
+      return;
+    }
     card('checking it runs smooth', 99);
     try { const r = await B.ab(); if (S.result && r) S.result.ab = { on: r.on, off: r.off, turnedOff: r.turnedOff || [], skipped: r.skipped || null, ms: r.ms, judge: r.judge ? { slower: Boolean(r.judge.slower) } : null }; } catch { /* plays as it is */ }
   }
@@ -282,6 +287,11 @@
     }
     const r = during ? during() : undefined;
     await Promise.all(waits);
+    // (round 56, readyspeed) then every program reports COMPLETION_STATUS (KHR_parallel_shader_compile) before going on
+    for (const t0 = now(); now() - t0 < 20000 && !S.skip;) {
+      let left = 0; for (const x of list) for (const p of x.info?.programs || []) { try { if (typeof p.isReady === 'function' && !p.isReady()) left += 1; } catch { /* lost */ } }
+      if (!left) break; await sleep(16);
+    }
     return r;
   }
   function upload() {

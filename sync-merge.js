@@ -296,6 +296,11 @@ function applyPortable(local, portable) {
   const l = local || {};
   for (const k of Object.keys(portable || {})) out[k] = keep(l[k], portable[k], k === 'settings');
   for (const k of Object.keys(l)) if (!(k in out) && MACHINE_TOP.has(k)) out[k] = l[k];
+  // (round 56, fixes56) defaultsSeen (configsafe: the default agents the owner has had a say on) only ever grows: both
+  // sides' together. A config from a computer still on a version before the move has none, and it used to drop this
+  // computer's: a default agent the owner had removed then came back here once
+  const seen = [...(Array.isArray(l.defaultsSeen) ? l.defaultsSeen : []), ...(Array.isArray(portable?.defaultsSeen) ? portable.defaultsSeen : [])].filter((x) => typeof x === 'string');
+  if (Array.isArray(l.defaultsSeen) || Array.isArray(portable?.defaultsSeen)) out.defaultsSeen = [...new Set(seen)];
   return out;
 }
 

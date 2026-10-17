@@ -171,16 +171,26 @@ the hub); the owner: `/playtest`.
   Both looks: mipmapped textures left at anisotropy 1 → the card's max (not yet on the GPU; `Texture.DEFAULT_ANISOTROPY`
   when the game left it at 1, so later textures too). Best also: a picture in a colour slot left with no colour space
   (`''`, 8-bit, not data / compressed; output 'srgb') → 'srgb'; a light's shadow left at 512² → the screen's size (long
-  edge, nearest power of two, 1024–2048; point lights half, at most 1024: round 54 fix), then the guard (from 0.5 s after GameReady's
-  counted first 5 s of play, round 55 fix: a step makes the shadow maps again; 60 frames over 1.2 × the refresh: halve while each step saves ≥ 8 %, else back, that size never tried again; then a 60-frame look
-  every 5 s while the shadows are above the game's own size: a heavier scene later steps them down too). Never: tone mapping, output colour space, shadow type / radius, pixel ratio, any
+  edge, nearest power of two, 1024–2048; point lights half, at most 1024: round 54 fix; or, round 56, the size remembered
+  for this game when the refresh and that screen size match: `--hearth-game` carries `shadow: { size, to, hz }`).
+  (round 56, shadowready) **The size is chosen under Getting ready's card, never by making maps while playing**: the
+  budget's A/B draws the scene at each size down the ladder (`__gameLook.budget.shadow`: `plan()` → `{ ladder, start, to,
+  hz, remembered }`, `set(size)`, `commit(size, { by, why, rows })` → the fallback size (half, 0 under 512), `seal()` →
+  fallback ready); each light keeps its maps per size, so a size made before is a pointer swap (no texture made). The
+  guard, from 0.5 s after GameReady's counted first 5 s: a 30-frame look every 2 s; frames over 1.25 × the refresh in
+  every look for 10 s (≥ 3 looks) → the fallback made under the card swapped in, kept if it saves ≥ 8 % ('lowered'),
+  else swapped back ('not-shadows'); no fallback made → 'held' (`guardWhy`: 'not-chosen' | 'smallest' | 'not-made').
+  Never: tone mapping, output colour space, shadow type / radius, pixel ratio, any
   value the game set (a later write by the game wins). GameReady's prep and the Lab's ready-scan also keep a game's own
   anisotropy now (only 1 → max).
 - `window.__gameLook = { report() → { look, three, renderers, frames, aniso: { max, sharp, set, kept, later }, colour,
-  shadows: { lights, set, kept, from, to, now }, guard: 'waiting' | 'none' | 'measuring' | 'fits' | 'lowered' |
-  'not-shadows' | 'off', guardMs: { budget, steps: [[size, ms]] }, cost: { sweeps, ms, max, playMax }, screen: { w, h, wide, hdr } },
-  text() → "Best look: textures 16× sharp (4) · true colour on 1 picture · shadows 512 → 2048", settle() → Promise<report>,
-  renderers() }`. The F chip's second line and the performance doctor show `text()`.
+  shadows: { lights, set, kept, from, to, now, chosen: { size, by: 'ready' | 'remembered', why, rows, hz, to } | null,
+  fallback, ready, made: [sizes made], midPlay (maps made while playing: 0), lowered }, guard: 'waiting' | 'none' |
+  'measuring' | 'fits' | 'tight' | 'trying' | 'lowered' | 'not-shadows' | 'held' | 'off', guardWhy, guardMs: { budget, steps: [[size, ms]] },
+  cost: { sweeps, ms, max, playMax }, screen: { w, h, wide, hdr } },
+  text() → "Best look: textures 16× sharp (4) · true colour on 1 picture · Shadows: 2048 (chosen while getting ready)",
+  settle() → Promise<report>, renderers() }`. The F chip's second line and the performance doctor show `text()`.
+  `/game look shadows [reset]`: the size now / remembered; forget it (chosen again next ▶ Play).
 
 ## Loads during play (round 54, gamestream: tools/gamestream-page.js)
 - gamemodemain serves `/__gamestream-page.js` and puts `<script src="/__gamestream-page.js?off=0|1">` right after
@@ -226,11 +236,14 @@ the hub); the owner: `/playtest`.
   (look, stream, perf, ready, audio; never the chip or the watch). The A/B: `gameready-page.js` calls `ab()` before the
   card goes (both kinds): blocks of N frames, helpers on / stepped aside, each frame synced (readPixels), the graphics
   card's time with EXT_disjoint_timer_query_webgl2 where present; slower → the most expensive off, again until on ≈ off.
-  `ab.picture`: the Best look's shadow maps on vs the game's own size (for the doctor; the look's guard decides).
+  `ab.shadow` (round 56): `{ size, why, by, start, to, fallback, fallbackReady, rows: [[size, ms]], refreshMs }`, the
+  Best look's shadow size chosen there (`Rules.shadowPick`: the biggest that fits 90 % of the refresh, else down while a
+  step saves ≥ 8 %); `ab.picture`: that size vs the game's 512 where both were drawn. `pub().shadow` = `{ size, by, to,
+  hz, why }` (a `hearth-budget` event after the choice: kept per game in budget.json as `shadow`).
 - A switch-off fires `hearth-budget` on window; game-preload.js sends `pub()` as `game:budget` (game window → main);
   playbudgetmain keeps it per game (data/game-cache/budget.json). The next `game:play` of that game: look 'off', no
   loads-during-play tag, sound part off, `off=` on the budget page (getting ready: as np=1; the probe: dormant).
-- Hub: `window.hub.game.budget({ op: 'get' | 'reset', source? })` → `{ known, off, by, ms, at, now }`; `info.budget`.
+- Hub: `window.hub.game.budget({ op: 'get' | 'reset' | 'shadow-reset', source? })` → `{ known, off, by, ms, at, now, shadow? }`; `info.budget`.
   F chip: "… · Hearth: 0.03 ms" + `.note`; GamePerf's doctor: `.gp-budget` (each helper's cost, the note, "Turn them back
   on"); `/game helpers [on]`.
 

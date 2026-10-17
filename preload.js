@@ -106,7 +106,7 @@ contextBridge.exposeInMainWorld('hub', {
   stageDisplays: call('stage:displays'), stagePlace: call('stage:place'), // (round 22) live output on a second screen
   stageSend: (msg) => ipcRenderer.send('stage:to', msg),
   // (round 52, gamemode) ▶ Play: a game in its own full-screen window (gamemodemain.js)
-  game: { play: call('game:play'), leave: call('game:leave'), state: call('game:state'), displays: call('game:displays'), eval: call('game:eval'), key: call('game:key'), click: call('game:click'), onLeft: on('game:left'), loop: call('game:loop'), onLoop: on('game:loop-ev'), budget: call('game:budget-get') }, // (round 53, playloop: playloopmain.js) · (round 55, playbudget) budget: the helpers kept off per game
+  game: { play: call('game:play'), leave: call('game:leave'), state: call('game:state'), displays: call('game:displays'), eval: call('game:eval'), key: call('game:key'), click: call('game:click'), onLeft: on('game:left'), loop: call('game:loop'), onLoop: on('game:loop-ev'), budget: call('game:budget-get'), latency: call('game:latency') }, // (round 53, playloop: playloopmain.js) · (round 55, playbudget) budget: the helpers kept off per game · (round 56, playlatency) latency: /game latency
   gameTest: { script: call('game:script'), stop: call('game:script-stop'), shot: call('game:shot') }, // (round 53, directorgame) the director's play-test into the ▶ Play window (directorgamemain.js)
   onStageMessage: on('stage:from'),
   onStageClosed: on('stage:closed'),

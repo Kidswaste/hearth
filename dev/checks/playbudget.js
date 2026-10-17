@@ -9,6 +9,8 @@
 //   ab.html     adds it from scene.onBeforeRender (inside every render): the A/B under Getting ready's card must find
 //               the helpers slower beyond the noise and switch the look off before the first frame of play
 //   off         the baseline: heavy.html played as round 53 (no look, loads during play log-only, no sound part)
+//   lab         (round 56) the same two games as Lab scenes (Hearth's play.html page): the A/B and the watch, remembered
+//               by the scene's id
 // Also: the F chip shows "Hearth: x ms", the doctor lists each helper's cost, the game's files byte for byte the same.
 //   node dev/smoke.js --check-timeout 900000 --screen 960x600 --script dev/checks/playbudget.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -16,17 +18,15 @@ const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now(
 const out = { steps: [], runs: {} };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 const safe = async (name, fn) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after 4 min`)), 240000))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
-const DIR = '/tmp/hearth-playbudget';
+const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp): two runs at once never share files
+const DIR = `${TMP}/hearth-playbudget`;
 const THREE_DIR = '/opt/cdn-cache/three@0.186.1/package';
 const GW = () => window.hub.game;
 const ev = async (code) => { const r = await GW().eval(code); if (r?.error) throw new Error(r.error); return r?.value; };
 await until(() => window.hub && performance.getEntriesByName('hearth:ready').length);
 
-const game = (title, where, n) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
-<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #000; } canvas { display: block; }</style>
-<script type="importmap">{ "imports": { "three": "./lib/three.module.js" } }</script></head><body>
-<script type="module">
-import * as THREE from 'three';
+// (round 56, fixes56) the game's code on its own: an HTML build's module script, or a Lab scene's one layer
+const code = (where, n) => `import * as THREE from 'three';
 const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setPixelRatio(1); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);
 const scene = new THREE.Scene(); scene.background = new THREE.Color('#202838');
@@ -51,7 +51,12 @@ renderer.setAnimationLoop((t) => {
   const r0 = performance.now(); inMs = 0; renderer.render(scene, camera); G.over.push(performance.now() - r0 - inMs); if (G.over.length > 4000) G.over.splice(0, 2000);
   G.cpu.push(performance.now() - a); if (G.cpu.length > 4000) G.cpu.splice(0, 2000);
   G.frames++;
-});
+});`;
+const game = (title, where, n) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
+<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #000; } canvas { display: block; }</style>
+<script type="importmap">{ "imports": { "three": "./lib/three.module.js" } }</script></head><body>
+<script type="module">
+${code(where, n)}
 </script></body></html>`;
 
 // the work around the game's render a frame (what wraps renderer.render), the main thread's frame, n ms of play
@@ -162,6 +167,49 @@ await safe('ab', async () => {
   step('remembered for that game too (by the A/B)', kept.off.includes('look') && kept.by.look === 'ab', kept);
   await GW().budget({ op: 'reset', source: AB });
 });
+
+// ---------- (round 56, fixes56) the same on a Lab scene's ▶ Play (round 55 tried it on HTML builds only) ----------
+// The two games as Lab scenes (one layer each: Hearth builds their page, play.html): the A/B under Getting ready's card
+// switches the look off before the first frame, the watch while playing, both remembered by the scene's id, the next
+// ▶ Play of the scene starts without it.
+const LAB_AB = { kind: 'lab', id: 'playbudgetLabAB', title: 'Lab AB test' };
+const LAB_HEAVY = { kind: 'lab', id: 'playbudgetLabHeavy', title: 'Lab heavy test' };
+const ours = (x) => x && [LAB_AB.id, LAB_HEAVY.id].includes(x.id);
+await safe('lab-ab', async () => {
+  const sk = ((await window.hub.kvGet('three-sketches', [])) || []).filter((x) => !ours(x));
+  for (const [S, where, n] of [[LAB_AB, 'render', 8000], [LAB_HEAVY, 'loop', 3000]]) sk.push({ id: S.id, name: S.title, layers: [{ id: 'game', name: 'Game', code: code(where, n) }], createdAt: Date.now(), updatedAt: Date.now() });
+  await window.hub.kvSet('three-sketches', sk);
+  for (const S of [LAB_AB, LAB_HEAVY]) await GW().budget({ op: 'reset', source: S });
+  const ok = await start(LAB_AB, 'best');
+  const st = await GW().state();
+  const gr = JSON.parse(await ev('window.__gameReady ? window.__gameReady.pub() : "null"'));
+  const p = await pub();
+  const look = await ev('window.__gameLook ? window.__gameLook.report().off || null : "none"');
+  out.runs.labAb = { route: st?.route, how: st?.how, ab: p?.ab, ready: gr?.result?.ab, off: p?.off, helpers: p?.helpers };
+  step('lab: a Lab scene\'s ▶ Play page (Hearth\'s play.html) has the budget watch, each helper measured', ok && st?.route === 'page' && p && p.helpers?.watch && p.budgetMs >= 0.1, { route: st?.route, how: st?.how, helpers: p?.helpers, budgetMs: p?.budgetMs });
+  step('lab: the A/B under Getting ready\'s card finds the look slower and switches it off before the first frame of play', p?.ab?.judge?.slower && p.ab.turnedOff?.includes('look') && p.off.some((o) => o.id === 'look' && o.by === 'ab') && look === 'ab', { ab: p?.ab, look });
+  step('lab: … then on ≈ off (the A/B again), Getting ready reports it', p?.ab?.after && !p.ab.after.judge.slower && gr?.result?.ab?.turnedOff?.includes('look'), { after: p?.ab?.after, ready: gr?.result?.ab });
+  await stop();
+  const kept = await GW().budget({ source: LAB_AB });
+  step('lab: remembered for the scene (by its id)', kept.off.includes('look') && kept.by.look === 'ab', kept);
+});
+await safe('lab-watch', async () => {
+  const ok = await start(LAB_HEAVY, 'best');
+  await wait(1000);
+  const gone = await until(() => ev('Boolean(window.__hearthBudget && window.__hearthBudget.isOff("look"))'), 25000);
+  const p = await pub();
+  out.runs.labWatch = { off: p?.off, helpers: p?.helpers, note: p?.note };
+  step('lab: the watch switches the look off while the scene plays, said in plain words', ok && gone && p.off[0]?.id === 'look' && p.off[0].by === 'watch' && /turned off: the look/.test(p.note || ''), { off: p?.off, note: p?.note });
+  await stop();
+  const ok2 = await start(LAB_HEAVY, 'best');
+  await wait(1000);
+  const look = await ev('typeof window.__gameLook');
+  const p2 = await pub();
+  step('lab: the next ▶ Play of the scene starts without it (remembered)', ok2 && look === 'undefined' && p2.off.some((o) => o.id === 'look' && o.by === 'remembered'), { look, off: p2?.off });
+  await stop();
+});
+for (const S of [LAB_AB, LAB_HEAVY]) await GW().budget({ op: 'reset', source: S }).catch(() => {});
+await window.hub.kvSet('three-sketches', ((await window.hub.kvGet('three-sketches', [])) || []).filter((x) => !ours(x))).catch(() => {});
 
 store.set('gamemode.look', 'best'); localStorage.removeItem('gamestream.test'); store.set('gameaudio.off', false);
 await safe('files', async () => {

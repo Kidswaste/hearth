@@ -1115,8 +1115,15 @@ const Native = (() => {
     // (round 55, chatsafe55) a chat whose AI is missing or turned off never goes on with this one (round 52 moved it
     // here for good): it isn't shown in this AI's view, it opens read-only until its AI is back (chatsafe.js). Only a
     // chat that names no AI at all takes this one.
-    if (chat && !chat.agentId) { chat.agentId = agentId; remember(chat); }
-    else if (chat && chat.agentId !== agentId && !H.agents().some((a) => a.id === chat.agentId && a.mode === 'native')) {
+    // (round 56, fixes56) …only in Claude's view, where the chats list shows such a chat (panel.js homeOf): opened under
+    // another AI (a view put back, a notification) it isn't taken there; it opens in Claude's view instead
+    const home = H.claudeAgent?.()?.id;
+    if (chat && !chat.agentId && (agentId === home || !home)) { chat.agentId = agentId; remember(chat); } // (no Claude set up at all: as before)
+    else if (chat && !chat.agentId) {
+      if (H.activeChat[agentId] === chatId) H.activeChat[agentId] = null;
+      const id = chat.id; chat = null;
+      if (home && navigator.userActivation?.isActive) setTimeout(() => open(home, id), 0);
+    } else if (chat && chat.agentId !== agentId && !H.agents().some((a) => a.id === chat.agentId && a.mode === 'native')) {
       if (H.activeChat[agentId] === chatId) H.activeChat[agentId] = null;
       const id = chat.id; chat = null;
       const quiet = !navigator.userActivation?.isActive; // (a view put back after a reload: no reader popping up; a click: the reader)

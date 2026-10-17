@@ -16,6 +16,7 @@ const path = require('path');
 const crypto = require('crypto');
 const C = require('./gamemode-core');
 const GI = require('./gameinputmain'); // (round 53, gameinput) focus on open, Esc / F / Enter, keys held for the game, no selection
+const PL = require('./playlatencymain'); // (round 56, playlatency) /game latency: input → the game's frame, Hearth's part of it
 
 const SCHEME = 'hearth-game';
 // (round 52, gameready) a persistent partition so Chromium keeps the game's compiled shaders on disk (a second launch
@@ -120,7 +121,7 @@ function hostScript(S) {
   function go() {
     send({ type: 'ready-lock', on: true }); // 100 %: no adaptive steps, no doze, no fps cap
     send({ type: 'pace', on: false }); send({ type: 'adapt', on: false }); send({ type: 'fps-cap', value: 0, auto: false, focused: true });
-    send({ type: 'game-plan', merge: S.plan.merge, why: S.plan.why });
+    send({ type: 'game-plan', merge: S.plan.merge, why: S.plan.why, fast: Boolean(S.plan.fast) }); // (round 56, playlatency: fast = the one canvas swapped to the screen, not copied, each frame)
     // (round 53, gametex) a picture with a compressed copy brings it along (ktx2): the player uses it when the graphics card takes it
     Promise.all(S.refs.map(function (r) { return Promise.all([bytes(r.file), r.ktx2 ? bytes(r.ktx2).catch(function () { return null; }) : null]).then(function (b) { var it = { key: r.key, kind: r.kind, mime: r.mime, buffer: b[0] }; if (b[1]) it.ktx2 = b[1]; return it; }).catch(function () { return null; }); })).then(function (items) {
       st.load.fetched = performance.now();
@@ -208,7 +209,7 @@ async function buildScene(spec) {
 // ---------- the window ----------
 function info() {
   if (!G) return { playing: false };
-  return { playing: true, timing: G.timing || null, budget: G.budget ? { off: G.budget.off, last: G.budget.last } : null, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
+  return { playing: true, timing: G.timing || null, budget: G.budget ? { off: G.budget.off, last: G.budget.last } : null, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, latency: PL.brief(PL.last(G.win)), fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
 }
 function leave(why = 'left') {
   if (!G) return false;
@@ -272,7 +273,7 @@ async function play(_e, req = {}) {
   const win = new BrowserWindow({
     x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, show: false, frame: false, backgroundColor: '#000000',
     title: source.title, autoHideMenuBar: true, fullscreenable: true, fullscreen: !mac, thickFrame: false, roundedCorners: false,
-    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look }))}`] },
+    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look, ...(was.shadow && fid.look === 'best' ? { shadow: was.shadow } : {}) }))}`] }, // (round 56, shadowready) shadow: the size chosen while getting ready last time
   });
   if (!mac) win.setMenu(null);
   const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) || offs.has('audio'), stream: { off: Boolean(req.stream?.off), skip: offs.has('stream') } };
@@ -287,14 +288,17 @@ async function play(_e, req = {}) {
   g.input = GI.attach(win, { lowLatency: Boolean(req.input?.lowLatency), macFullscreen: req.macFullscreen, leave: (why) => { if (G === g) leave(why); } }).state;
   // the keys: Esc → the "Back to Hearth" card (Esc again / Enter leave; F the stats chip: gameinputmain.key); ⌘Q / ⌘W,
   // Ctrl+W leave; no other ⌘ shortcut reaches Hearth's menu
-  wc.on('before-input-event', (e, input) => {
+  // (round 56, playlatency) every key of the game passes here (the main process) before its page gets it: kept to a few
+  // compares (measured by /game latency: PL.timed times it only while measuring)
+  wc.on('before-input-event', PL.timed((e, input) => {
     if (input.type !== 'keyDown') return;
     if (GI.key(e, input)) return;
-    const k = loop()?.letter ? loop().letter(input) : String(input.key || '').toLowerCase(); // (round 54: by the key's letter on any layout)
-    if (loop()?.key?.(input)) { e.preventDefault(); return; } // (round 53, playloop) Ctrl/⌘+P: back to editing, the game kept (after gameinput's keys)
+    const L = loop();
+    const k = L?.letter ? L.letter(input) : String(input.key || '').toLowerCase(); // (round 54: by the key's letter on any layout)
+    if (L?.key?.(input)) { e.preventDefault(); return; } // (round 53, playloop) Ctrl/⌘+P: back to editing, the game kept (after gameinput's keys)
     if ((mac && input.meta && (k === 'q' || k === 'w')) || (!mac && input.control && k === 'w') || (!mac && input.alt && k === 'f4')) { e.preventDefault(); leave('key'); return; }
     if (mac && input.meta) e.preventDefault();
-  });
+  }));
   win.on('closed', () => ended(g));
   wc.on('render-process-gone', () => { if (!win.isDestroyed()) win.close(); });
   wc.once('did-finish-load', () => {
@@ -337,10 +341,14 @@ function register(ipcMain, c) {
     const B = budget(); const source = req.source ? C.source(req.source) : G?.source || null;
     if (!B || !source) return { known: false, off: [] };
     if (req.op === 'reset') return { reset: B.reset(source), off: [] };
+    if (req.op === 'shadow-reset') return { reset: Boolean(B.forgetShadow?.(source)), ...B.forGame(source) }; // (round 56, shadowready) /game look shadows reset
     return { known: true, ...B.forGame(source), now: G && C.sameSource(G.source, source) ? G.budget.last : null };
   }));
   // (round 53, playloop: playloopmain.js) rest / wake / side by side / the blip; the error line's Fix from the game window
   loop()?.register?.({ ctx: () => ctx, game: () => G, leave });
+  // (round 56, playlatency) /game latency, the doctor's "Input" figure (playlatencymain.js); the window's answer
+  ipcMain.handle('game:latency', hub((_e, req) => PL.ask(G, req || {})));
+  ipcMain.on('game:lat-result', (e, json) => PL.result(e, json));
   ipcMain.handle('game:loop', hub((_e, req) => loop()?.op?.(req) || { playing: false }));
   ipcMain.on('game:fix', (e, d) => loop()?.fix?.(e, d));
   // checks: run a line in the game window's page, press a key / click there (real input, through Chromium)
