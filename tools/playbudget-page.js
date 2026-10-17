@@ -192,6 +192,11 @@
       const targets = drawables();
       if (!targets.length) return (ab = { skipped: 'no three.js renderer found yet' });
       const px = new Uint8Array(4);
+      // (round 59, shadowlab59) WebGL's error flags, read under the card only (one read per flag, a few calls at the A/B's
+      // start and end, never while playing): any GL error means a draw was dropped or wrong (a flicker / black frame on a
+      // real card). The flags read at the start were raised before the A/B; the ones at the end, by its frames
+      const glErr = () => { const c = []; for (const x of targets) { for (let i = 0; i < 8; i += 1) { let e = 0; try { e = x.gl.isContextLost() ? 0 : x.gl.getError(); } catch (er) { e = 0; } if (!e) break; c.push(e); } } return c; };
+      const glBefore = glErr();
       const drawNow = typeof window.__gmDrawNow === 'function' ? window.__gmDrawNow : null;
       const sync = (gl) => { try { if (gl.PIXEL_PACK_BUFFER_BINDING !== undefined && gl.getParameter(gl.PIXEL_PACK_BUFFER_BINDING)) gl.finish(); else gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); } catch (e) { /* lost */ } };
       // the graphics card's own time for the main renderer, where the browser has it
@@ -360,6 +365,7 @@
         if (on1 != null) res.picture = { on: on1, off: off1, costMs: off1 == null ? null : +(on1 - off1).toFixed(3), refreshMs: +(1000 / HZ).toFixed(2), fits: on1 <= 1000 / HZ, size: d.size };
         try { dispatchEvent(new Event('hearth-budget')); } catch (e) { /* game-preload.js tells Hearth: the choice is remembered per game */ }
       }
+      { const during = glErr(); res.glErrors = { before: glBefore.length, during: during.length, codes: glBefore.concat(during).slice(0, 8) }; }
       res.ms = Math.round(now() - T); res.syncs = syncs; res.maxFrameMs = Math.round(maxOne); res.long = long; res.drains = drains; res.drainMs = Math.round(drainMs);
       return (ab = res);
     })().catch((e) => (ab = { skipped: `error: ${String(e && e.message || e).slice(0, 120)}` })).finally(() => hold(false));

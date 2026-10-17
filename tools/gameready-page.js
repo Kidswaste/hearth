@@ -57,11 +57,11 @@
     // (shadowready: the Best look's shadow size is still chosen, starting from the one remembered, and its maps made here)
     if (HN.abReuse) {
       card('checking it runs smooth', 99);
-      try { const r = await B.ab({ costs: false, shadow: HN.shadow }); if (S.result) S.result.ab = { reused: true, turnedOff: [], ms: r?.ms, syncs: r?.syncs, maxFrameMs: r?.maxFrameMs, long: r?.long, drainMs: r?.drainMs, frames: r?.frames, perMs: r?.perMs, shadow: r?.shadow || null, skipped: r?.skipped || null }; } catch { if (S.result) S.result.ab = { reused: true, turnedOff: [] }; }
+      try { const r = await B.ab({ costs: false, shadow: HN.shadow }); if (S.result) S.result.ab = { reused: true, turnedOff: [], ms: r?.ms, syncs: r?.syncs, maxFrameMs: r?.maxFrameMs, long: r?.long, drainMs: r?.drainMs, frames: r?.frames, perMs: r?.perMs, shadow: r?.shadow || null, glErrors: r?.glErrors || null, skipped: r?.skipped || null }; /* (round 59, shadowlab59) glErrors */ } catch { if (S.result) S.result.ab = { reused: true, turnedOff: [] }; }
       return;
     }
     card('checking it runs smooth', 99);
-    try { const r = await B.ab({ shadow: HN.shadow }); if (S.result && r) S.result.ab = { on: r.on, off: r.off, turnedOff: r.turnedOff || [], skipped: r.skipped || null, ms: r.ms, syncs: r.syncs, maxFrameMs: r.maxFrameMs, long: r.long, drainMs: r.drainMs, frames: r.frames, perMs: r.perMs, judge: r.judge ? { slower: Boolean(r.judge.slower) } : null, shadow: r.shadow || null }; } catch { /* plays as it is */ }
+    try { const r = await B.ab({ shadow: HN.shadow }); if (S.result && r) S.result.ab = { on: r.on, off: r.off, turnedOff: r.turnedOff || [], skipped: r.skipped || null, ms: r.ms, syncs: r.syncs, maxFrameMs: r.maxFrameMs, long: r.long, drainMs: r.drainMs, frames: r.frames, perMs: r.perMs, judge: r.judge ? { slower: Boolean(r.judge.slower) } : null, shadow: r.shadow || null, glErrors: r.glErrors || null }; } catch { /* plays as it is */ }
   }
 
   // ---------- the card (over the whole window, before anything draws) ----------
