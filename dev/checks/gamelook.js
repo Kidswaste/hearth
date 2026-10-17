@@ -134,12 +134,14 @@ await safe('best', async () => {
   step('best: the shadow map matched to the screen (512² → its size): the picture closer to a 4096² reference than off', best.shown > 512 && best.shown === L.shadows?.to && off && best.shadowDiff < off.shadowDiff * 0.8, { shown: best.shown, now: best.sun, screen: L.screen, diffOff: off?.shadowDiff, diffBest: best.shadowDiff, pxOffOff: off?.shadowOff, pxOffBest: best.shadowOff });
   step('best: what the game chose itself is kept (its 1024 spot shadow, its linear picture, its anisotropy 4)', best.spot === 1024 && best.tex.swatchLin === 'srgb-linear' && best.tex.aniso4 === 4 && off && best.swatchLin.every((v, i) => Math.abs(v - off.swatchLin[i]) <= 2), { spot: best.spot, lin: best.tex.swatchLin, a4: best.tex.aniso4, swOff: off?.swatchLin, swBest: best.swatchLin });
   const gs = L.guardMs?.steps || [];
-  step('best: the guard decided: frames fit with the bigger shadows, or they stepped down only while that helped (≥ 8 % a step)', L.guard === 'fits' || (L.guard === 'lowered' && L.shadows.now < L.shadows.to && best.sun === L.shadows.now) || (L.guard === 'not-shadows' && best.sun === L.shadows.to), { guard: L.guard, steps: gs, now: L.shadows?.now, sun: best.sun });
+  // (round 56, shadowready) the size is chosen under Getting ready's card; while playing the guard only watches (and at
+  // most swaps in the smaller maps made there): nothing made while playing
+  step('best: the shadow size chosen while getting ready (the A/B), the guard watching without making anything', L.shadows?.chosen?.by === 'ready' && L.shadows.chosen.size <= L.shadows.to && L.shadows.midPlay === 0 && ['fits', 'tight', 'lowered', 'not-shadows', 'held'].includes(L.guard) && (L.guard === 'lowered' ? best.sun === L.shadows.fallback : best.sun === L.shadows.chosen.size), { guard: L.guard, steps: gs, chosen: L.shadows?.chosen, now: L.shadows?.now, sun: best.sun, made: L.shadows?.made, midPlay: L.shadows?.midPlay });
   // smoothness: the game's frame time no worse than off (10 % or 2 ms of noise on a shared software GPU), the look's own work tiny
   const worse = off ? best.frame.p50 - off.frame.p50 : null;
   step('best: frame time not worse than off (the calmest 2 s window\'s median gap within 15 % / 2 ms: a shared software GPU)', off && worse <= Math.max(2, off.frame.p50 * 0.15), { off: off?.frame, best: best.frame });
   step('best: the look\'s own CPU work is small (a look at the scene ≈ 0.1 ms on average, the first with the shadow maps made again under 5 ms)', L.cost && L.cost.ms / L.cost.sweeps < 0.5 && L.cost.max < 5, { ...L.cost, avg: L.cost && +(L.cost.ms / L.cost.sweeps).toFixed(3) });
-  step('best: its line in plain words (the F chip\'s second line, the doctor)', /^Best look: textures \d+× sharp \(\d+\) · true colour on \d+ pictures? · (shadows 512 → \d+|shadows as the game sets them \(bigger ones cost smoothness here\))/.test(best.text || ''), best.text);
+  step('best: its line in plain words (the F chip\'s second line, the doctor)', /^Best look: textures \d+× sharp \(\d+\) · true colour on \d+ pictures? · (Shadows: \d+ \((chosen while getting ready|lowered from \d+)|Shadows: 512, the game's own)/.test(best.text || ''), best.text);
   // the F chip shows it
   await GW().key({ key: 'f' }).catch(() => {});
   const chip = await until(() => ev('(() => { const r = document.querySelector("hearth-game-ui")?.shadowRoot; const l = r?.querySelector(".look"); return l && !l.hidden ? l.textContent : null; })()'), 4000);
@@ -179,7 +181,7 @@ await safe('lab', async () => {
   const r = await until(async () => { const v = await ev('window.__gameLook ? window.__gameLook.settle().then((r) => JSON.stringify(r)) : null'); const o = v && JSON.parse(v); return o && o.cost.sweeps > 0 && o.shadows.lights > 0 ? o : null; }, 120000);
   const text = await ev('window.__gameLook ? window.__gameLook.text() : ""').catch(() => '');
   out.measure.lab = { look: r, text };
-  step('lab: a Lab scene\'s page gets the look too (its renderer seen, the ground picture in real colour, sharp, the shadow matched)', r && r.renderers >= 1 && r.colour >= 1 && r.aniso.sharp >= 1 && r.shadows.set === 1 && r.shadows.now > 512, { r: r && { renderers: r.renderers, colour: r.colour, aniso: r.aniso, shadows: r.shadows, guard: r.guard, cost: r.cost }, text });
+  step('lab: a Lab scene\'s page gets the look too (its renderer seen, the ground picture in real colour, sharp, the shadow size chosen while getting ready)', r && r.renderers >= 1 && r.colour >= 1 && r.aniso.sharp >= 1 && r.shadows.set === 1 && r.shadows.to > 512 && r.shadows.chosen && r.shadows.midPlay === 0, { r: r && { renderers: r.renderers, colour: r.colour, aniso: r.aniso, shadows: r.shadows, guard: r.guard, cost: r.cost }, text });
   await leaveGame();
 });
 

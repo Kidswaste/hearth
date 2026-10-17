@@ -18,9 +18,11 @@
 //             with Hearth's helpers on, then stepped aside, alternating (each frame waited for to the end on the
 //             graphics card, so the screen's refresh doesn't hide a difference), plus the graphics card's own time
 //             (EXT_disjoint_timer_query_webgl2) where it's there. On slower beyond the noise and the budget → the
-//             most expensive helper is off before the first frame of play, and the A/B again, until on ≈ off. The
-//             Best look's picture (its shadow maps) is measured the same way for the doctor; whether the picture fits
-//             the screen's refresh stays the look's own guard's decision (its frame gaps, gamelook-preload.js).
+//             most expensive helper is off before the first frame of play, and the A/B again, until on ≈ off. Then
+//             (round 56, shadowready) the Best look's shadow size is chosen the same way: the scene drawn at each size
+//             from the screen's down until one fits the refresh (Rules.shadowPick); that size and the one below it
+//             made here, under the card; remembered per game (pub().shadow → budget.json). While playing the look's
+//             guard never makes new maps (gamelook-preload.js).
 // Never switched off: the stats chip (you asked for it: F hides it) and this watch (≈ 1 µs a frame).
 // Query: hz (the screen's refresh), t (the game's title), off (helpers remembered off for this game).
 // window.__hearthBudget = { pub() → JSON, line() → 'Hearth: 0.03 ms', note() → plain words, chip(ms) → { line, note },
@@ -53,10 +55,25 @@
       const slower = own > budget && worse >= ok.length - 1 && delta > budget;
       return { slower, delta: +delta.toFixed(4), noise: +noise.toFixed(4), own: +Number(own).toFixed(4), pairs: ok.length, worse };
     }
+    // (round 56, shadowready) the Best look's shadow size, chosen under the card: rows = [[size, ms a frame], …] measured
+    // so far down the ladder (biggest first: the screen's size, or the size remembered for this game, down to the
+    // game's 512). The biggest that fits the refresh (with 10 % for the game's own work) is kept; none fits → down while
+    // each step saves ≥ 8 % (past that the shadows aren't what's slow: the bigger one is kept). → { next } (measure that
+    // one) or { size, why: 'fits' | 'lowered' | 'not-shadows' | 'smallest' }
+    function shadowPick(rows, ladder, hz) {
+      const fit = (1000 / (Number(hz) > 0 ? Number(hz) : 60)) * 0.9;
+      const ok = rows.filter((r) => Number.isFinite(r[1]));
+      for (const r of ok) if (r[1] <= fit) return { size: r[0], why: 'fits' };
+      if (ok.length < rows.length) return { size: (ok[ok.length - 1] || rows[0] || [ladder[0]])[0], why: 'not-shadows' }; // (a size that couldn't be measured: no guess below it)
+      const next = ladder[rows.length];
+      if (rows.length >= 2) { const a = ok[ok.length - 2][1]; const b = ok[ok.length - 1][1]; if (b > a * 0.92) return { size: ok[ok.length - 2][0], why: ok.length > 2 ? 'lowered' : 'not-shadows' }; }
+      if (next) return { next };
+      return rows.length ? { size: rows[rows.length - 1][0], why: rows.length > 1 ? 'smallest' : 'not-shadows' } : { size: ladder[0], why: 'not-shadows' };
+    }
     const list = (ids) => { const n = ids.map((id) => NAMES[id] || id); return n.length < 2 ? n.join('') : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`; };
     const note = (title, ids) => (ids.length ? `Hearth's helpers were slowing ${title || 'the game'} a little; turned off: ${list(ids)}` : '');
     const fmt = (ms) => (ms == null ? 'Hearth: –' : ms < 0.005 ? 'Hearth: < 0.01 ms' : `Hearth: ${ms.toFixed(2)} ms`);
-    return { ALL, ORDER, NAMES, budgetMs, pick, median, judge, note, fmt, list };
+    return { ALL, ORDER, NAMES, budgetMs, pick, median, judge, note, fmt, list, shadowPick };
   })();
   if (typeof module === 'object' && module && module.exports) { module.exports = Rules; return; }
   if (window.__hearthBudget) return;
@@ -180,7 +197,8 @@
       };
       const on = (ids, b) => { for (const id of ids) { try { const h = hooks(id); if (h && h.pause) h.pause(!b); } catch (e) { /* fine */ } } };
       let ids = Rules.ORDER.filter((id) => !H[id].off && hooks(id) && hooks(id).pause);
-      if (!ids.length) return (ab = { skipped: 'no helpers on' });
+      const lk0 = hooks('look'); const sp0 = !H.look.off && lk0 && lk0.shadow ? lk0.shadow.plan() : null;
+      if (!ids.length && !sp0) return (ab = { skipped: 'no helpers on' });
       one(); const per = Math.max(Rules.median([one(), one(), one()]), 0.05); // (the first frames after getting ready are slow ones)
       const K = Math.max(3, Math.min(16, Math.round(60 / per)));
       const yieldNow = () => new Promise((r) => later(r, 0));
@@ -206,7 +224,7 @@
         return { pairs: out, gpu: gp };
       }
       const cost = {};
-      let run = await pairs(4, ids, cost);
+      let run = ids.length ? await pairs(4, ids, cost) : { pairs: [], gpu: [] }; // (none on: only the shadow size below)
       for (const id of ids) cost[id] = +((cost[id] || 0) / Math.max(1, run.pairs.length)).toFixed(4);
       const own = (c) => Object.values(c).reduce((a, b) => a + b, 0);
       let j = Rules.judge(run.pairs, BUDGET, own(cost));
@@ -223,19 +241,33 @@
         res.after = { on: Rules.median(run.pairs.map((q) => q[0])), off: Rules.median(run.pairs.map((q) => q[1])), judge: j };
       }
       if (res.turnedOff.length) one(); // (what switching off changed is drawn once here, under the card)
-      // the Best look's picture (its shadow maps over the game's own size) on the graphics card, for the doctor
-      const lk = hooks('look');
-      if (!H.look.off && lk && lk.picture && lk.picture(true) && now() - T < CAP + 1000) {
-        const pic = []; const pg = [];
-        for (let i = 0; i < 2; i += 1) {
-          lk.picture(true); one(); const a = []; const ag = []; for (let k = 0; k < K; k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); }
-          lk.picture(false); one(); const b = []; const bg = []; for (let k = 0; k < K; k += 1) { b.push(one()); if (gpu != null) bg.push(gpu); }
-          pic.push([Rules.median(a), Rules.median(b)]); pg.push([ag.length ? Rules.median(ag) : null, bg.length ? Rules.median(bg) : null]);
-          await yieldNow();
+      // (round 56, shadowready) the Best look's shadow size, chosen here under the card and never changed by making new
+      // maps while playing: the game's scene drawn at each size down the ladder (the screen's size, or the one
+      // remembered for this game, down to the game's own 512) until one fits the refresh (Rules.shadowPick). The chosen
+      // size and the one below it (the guard's fallback while playing) are both made here, the rest let go
+      const lk = hooks('look'); const sp = !H.look.off && lk && lk.shadow ? lk.shadow.plan() : null;
+      if (sp && sp.ladder.length) {
+        const rows = []; const gr = []; let d = null;
+        for (;;) {
+          d = Rules.shadowPick(rows, sp.ladder, HZ);
+          if (d.size != null) break;
+          if (rows.length && now() - T > CAP + 2500) { d = { size: rows[rows.length - 1][0], why: 'time' }; break; }
+          lk.shadow.set(d.next); one(); // (its maps made: not counted)
+          const a = []; const ag = [];
+          for (let i = 0; i < 2; i += 1) { for (let k = 0; k < K; k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); } await yieldNow(); }
+          rows.push([d.next, +Rules.median(a).toFixed(3)]); gr.push(ag.length ? +Rules.median(ag).toFixed(3) : null);
         }
-        lk.picture(true); one(); // (its shadow maps made again here, under the card, not in the first frame of play)
-        const on1 = Rules.median(pic.map((p) => p[0])); const off1 = Rules.median(pic.map((p) => p[1]));
-        res.picture = { on: +on1.toFixed(3), off: +off1.toFixed(3), costMs: +(on1 - off1).toFixed(3), gpu: tq ? { on: Rules.median(pg.map((p) => p[0])), off: Rules.median(pg.map((p) => p[1])) } : null, refreshMs: +(1000 / HZ).toFixed(2), fits: on1 <= 1000 / HZ };
+        const fb = lk.shadow.commit(d.size, { by: sp.remembered ? 'remembered' : 'ready', why: d.why, rows });
+        if (fb) { lk.shadow.set(fb); one(); } // (the fallback's maps made now, under the card)
+        lk.shadow.set(d.size); one();
+        const sealed = lk.shadow.seal();
+        const row = (s) => { const r = rows.find((x) => x[0] === s); return r ? r[1] : null; };
+        let by = 'ready'; try { by = window.__gameLook.report().shadows.chosen.by; } catch (e) { /* fine */ }
+        res.shadow = { size: d.size, why: d.why, by, start: sp.start, to: sp.to, fallback: fb, fallbackReady: sealed, rows, gpu: tq ? gr : null, refreshMs: +(1000 / HZ).toFixed(2) };
+        // (round 55's picture line for the doctor: the chosen size against the game's own, where both were drawn)
+        const on1 = row(d.size); const off1 = row(512);
+        if (on1 != null) res.picture = { on: on1, off: off1, costMs: off1 == null ? null : +(on1 - off1).toFixed(3), refreshMs: +(1000 / HZ).toFixed(2), fits: on1 <= 1000 / HZ, size: d.size };
+        try { dispatchEvent(new Event('hearth-budget')); } catch (e) { /* game-preload.js tells Hearth: the choice is remembered per game */ }
       }
       res.ms = Math.round(now() - T);
       return (ab = res);
@@ -251,7 +283,10 @@
       if (!has && !h.off) continue;
       helpers[id] = { name: Rules.NAMES[id], ms: +h.win.toFixed(4), avg: h.frames ? +(h.total / h.frames).toFixed(4) : null, max: +h.max.toFixed(4), on: !h.off, ...(h.off ? { off: h.off } : {}) };
     }
-    return JSON.stringify({ hz: HZ, budgetMs: +BUDGET.toFixed(3), playing: playing(), windows, totalMs: last == null ? null : +last.toFixed(4), avgMs: ema == null ? null : +ema.toFixed(4), line: line(), helpers, off: decided().map((id) => ({ id, name: Rules.NAMES[id], ...H[id].off })), note: note(), ab, isolated: Boolean(window.crossOriginIsolated), title: TITLE });
+    // (round 56, shadowready) the Best look's shadow size chosen under the card (kept per game by playbudgetmain.js)
+    let shadow = null;
+    try { const c = window.__gameLook && !H.look.off ? window.__gameLook.report().shadows.chosen : null; if (c) shadow = { size: c.size, by: c.by, to: c.to, hz: c.hz, why: c.why }; } catch (e) { shadow = null; }
+    return JSON.stringify({ hz: HZ, budgetMs: +BUDGET.toFixed(3), playing: playing(), windows, totalMs: last == null ? null : +last.toFixed(4), avgMs: ema == null ? null : +ema.toFixed(4), line: line(), helpers, off: decided().map((id) => ({ id, name: Rules.NAMES[id], ...H[id].off })), note: note(), ab, shadow, isolated: Boolean(window.crossOriginIsolated), title: TITLE });
   }
   Object.defineProperty(window, '__hearthBudget', { configurable: true, value: Object.freeze({
     pub, line, note, isOff, off: (id, by) => off(id, by || 'asked'), ab: abTest,

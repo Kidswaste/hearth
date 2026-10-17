@@ -182,12 +182,24 @@ const GameMode = (() => {
   }
   async function menu(x, y) { showMenu(x, y, await menuItems()); }
   // (round 54, gamelook) one choice: Best (the default: sharp textures, true colours, shadows matched to the screen,
-  // stepped down by itself if they'd cost smoothness) or Balanced (sharp textures; the rest as the game sets it)
+  // their size chosen while getting ready so they fit the refresh: round 56) or Balanced (sharp textures; the rest as the game sets it)
   const LOOK = { best: 'Best', balanced: 'Balanced' };
   const lookPref = () => C.look(store.get('gamemode.look', 'best'));
   function setLook(v) {
     store.set('gamemode.look', C.look(v));
     return `Graphics: ${LOOK[lookPref()] || lookPref()} from the next game${now ? ' (▶ Play again to see it now)' : ''}.`;
+  }
+  // (round 56, shadowready) the Best look's shadow size: chosen under Getting ready's card, remembered per game
+  // (playbudgetmain.js); /game look shadows says it, /game look shadows reset chooses again at the next ▶ Play
+  async function shadows(reset) {
+    const s = now?.source || last();
+    if (!s) return 'No game yet: ▶ Play one first.';
+    if (reset) { const r = await window.hub.game.budget({ op: 'shadow-reset', source: s }).catch(() => null); return r?.reset ? `${s.title}: the shadow size is chosen again while getting ready at the next ▶ Play.` : `${s.title}: no shadow size remembered (it's chosen while getting ready).`; }
+    const kept = await window.hub.game.budget({ source: s }).catch(() => null);
+    let line = '';
+    if (now && !now.live) { try { const v = (await window.hub.game.eval('window.__gameLook ? JSON.stringify(window.__gameLook.report().shadows) : ""'))?.value; const r = v ? JSON.parse(v) : null; const t = (await window.hub.game.eval('window.__gameLook ? window.__gameLook.text() : ""'))?.value || ''; const m = /(Shadows: [^·]+|shadows as the game sets them)/.exec(t); line = m ? `Now: ${m[1].trim()}` : (r ? 'Now: the game sets its own shadow sizes' : ''); } catch { line = ''; } }
+    const k = kept?.shadow;
+    return [line, k ? `Remembered for ${s.title}: ${k.size} at ${k.hz} Hz (chosen while getting ready) · /game look shadows reset chooses again` : `${s.title}: no shadow size remembered yet (Best chooses it while getting ready)`].filter(Boolean).join('\n');
   }
 
   // (round 55, playbudget) the helpers Hearth runs in the game window, as plain words (tools/playbudget-page.js measures
@@ -221,9 +233,9 @@ const GameMode = (() => {
     },
   });
   Commands.register({
-    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off | look best|balanced | helpers [on]]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
+    name: 'game', area: 'Lab', args: '[stop | screens | input | lowlatency on|off | look best|balanced | look shadows [reset] | helpers [on]]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it',
     examples: ['/game', '/game stop', '/game screens', '/game input', '/game look balanced', '/game helpers'], keywords: 'play clink game mode raw mouse input latency helpers overhead budget',
-    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'helpers', 'helpers on'].map((v) => ({ value: v })),
+    complete: () => ['stop', 'screens', 'input', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'look shadows', 'look shadows reset', 'helpers', 'helpers on'].map((v) => ({ value: v })),
     run: async (args) => {
       const a = String(args || '').trim();
       if (/^(stop|leave|quit|off)$/i.test(a)) { if (!now) return 'No game is playing.'; leave(); return null; }
@@ -231,6 +243,8 @@ const GameMode = (() => {
       const m = a.match(/^low-?latency\s+(on|off)$/i);
       if (m) { const on = /on/i.test(m[1]); store.set('gamemode.lowLatency', on); return on ? 'Low-latency canvas on from the next game (a frame sooner on screen where the system supports it; it can tear: /game lowlatency off).' : 'Low-latency canvas off (the default).'; }
       // (round 54, gamelook) the look: /game look → what it is and what the game playing got; /game look best|balanced
+      const ls = a.match(/^(?:look|graphics)\s+shadows?(?:\s+(reset|forget|again))?$/i); // (round 56, shadowready)
+      if (ls) return shadows(Boolean(ls[1]));
       const lk = a.match(/^(?:look|graphics)(?:\s+(best|balanced))?$/i);
       if (lk) {
         if (lk[1]) return setLook(lk[1].toLowerCase());
