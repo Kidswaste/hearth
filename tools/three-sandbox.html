@@ -4880,6 +4880,9 @@ function composite(target, k = 1, size = null, only = null, clear = false) {
 function drawLayer2D(g, L, W, H) {
   const mix = layerMix(L);
   if (mix <= 0) return;
+  // (round 56, labcanvas56) a covered layer (labadapt) is under an opaque one drawn after it in this same merge (its
+  // readers are above its cover): not drawn here, so it isn't drawn again for a filter's merge on every frame
+  if (L.adCovered && !adFull()) return;
   const { x, y, scale, rotate } = xform(L);
   g.save();
   g.globalAlpha = mix;
@@ -12620,7 +12623,7 @@ function sqTick() {
   sqApply(SQ.T);
   if (SQ.playing) sqState();
   if (SQ.hold) sqHoldTick();
-  if (sqWatch.on) sqWatchTick(); // (checks only)
+  if (sqWatch.on) { if (SQ.transT != null) glSoon(sqWatchTick); else sqWatchTick(); } // (checks only; round 56: after a transition's mix this frame)
 }
 realRAF(sqTick);
 // ---------- messages ----------
