@@ -82,11 +82,14 @@ try {
   out.rows2 = [...(sm()?.querySelectorAll('.slash-item b') || [])].map((b) => b.textContent).slice(0, 6);
   const docRow = [...sm().querySelectorAll('.slash-item')].find((x) => /✚ Doctor/.test(x.textContent));
   ok(docRow, `Doctor in Flows › (${out.rows2})`);
-  mouse(docRow);
+  const doc0 = Date.now(); mouse(docRow);
   // (round 11) Flows › starts it on the Commands page; the node view is the advanced one
   // (round 57, sweep57) /doctor also refreshes Astra's model catalog through Codex's app-server since Codex's engine
-  // watch; the fake Codex here has none, so each /doctor waits out that check (30–55 s): its steps get 90 s
+  // watch; the fake Codex here has none, so each /doctor waited out that check (30–55 s): its steps get 90 s
   await until(() => Flows.runs()[0]?.flowId === 'doctor' && Flows.runs()[0]?.status === 'waiting-you', 90000);
+  // (round 58, codexcare58) the catalog now gets a few seconds ("couldn't check models right now"): Doctor is quick offline
+  out.doctorMs = Date.now() - doc0;
+  ok(out.doctorMs < 25000, `Doctor's first step answers quickly with no model catalog (${out.doctorMs} ms)`);
   ok(typeof CmdPage === 'undefined' || CmdPage.isOpen(), 'Flows › opens the run on the Commands page');
   FlowsUI.open({ runId: Flows.runs()[0].id });
   await until(() => dlg()?.open, 3000);

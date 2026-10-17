@@ -161,7 +161,8 @@ const EngineHealth = (() => {
       lines.push('**Astra model catalog** · refreshed from Codex; listing is not an account access test. Agent defaults below; individual chats may override them.');
       for (const s of m.selections) lines.push(`- ${s.name}: **${s.model}** · ${s.effort || 'default'} reasoning · ${s.status === 'listed' ? 'listed with this reasoning depth' : s.status === 'not-listed' ? 'not in this catalog; review your model' : s.status === 'unknown' ? 'reasoning capabilities unknown' : 'reasoning depth not listed'}${s.upgrade ? ` · suggested upgrade: ${s.upgrade}` : ''}`);
       lines.push(`Models: ${m.catalog.filter(x => !x.hidden).map(x => x.model).join(', ')}. Use /astra-models to choose. Your model and reasoning stay unchanged until you apply a choice. Checks use no inference tokens.`);
-    } else if (m.status !== 'unused') lines.push('**Astra model catalog** · could not verify now (engine, connection or sign-in unavailable). Check again when connected; this does not mean up to date.');
+    } else if (m.status === 'slow') lines.push('**Astra model catalog** · couldn\'t check models right now (Codex didn\'t answer within a few seconds). Your models stay as they are; Check again later.');
+    else if (m.status !== 'unused') lines.push('**Astra model catalog** · couldn\'t check models right now (Codex, the connection or sign-in unavailable). Check again when connected; this does not mean up to date.');
     return lines.join('\n\n');
   }
   const KIND = { homebrew: 'Homebrew', npm: 'npm', pnpm: 'pnpm', scoop: 'scoop', winget: 'winget', bun: 'Bun', desktop: 'desktop app', native: 'installer', other: 'on PATH', settings: 'Settings › Claude and Codex programs' };

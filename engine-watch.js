@@ -1,5 +1,13 @@
 // Metadata only: no inference turns, installs, configuration writes or active-chat reconnects.
 const INTERVAL = 30 * 60000;
+// (round 58, codexcare58) the model catalog gets a few seconds: an offline / unanswering Codex app-server waited out its
+// 30 s handshake inside every /doctor. The read keeps going behind (and warms the connection for the next check).
+const MODELS_MS = 5000;
+function within(promise, ms) {
+  let timer;
+  const late = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('Model catalog check took too long'), { slow: true })), ms); });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
 function modelChecks(data, agents) {
   return agents.filter(a => a.mode === 'native' && a.engine === 'codex').map(a => {
     const model = a.model || null, effort = a.effort || null;
@@ -10,7 +18,7 @@ function modelChecks(data, agents) {
       upgrade: typeof m?.upgrade === 'string' && m.upgrade !== m.model ? m.upgrade : null };
   });
 }
-function create({ engines, getConfig, emit = () => {}, now = Date.now }) {
+function create({ engines, getConfig, emit = () => {}, now = Date.now, modelsMs = MODELS_MS }) {
   let last = null, pending = null, configKey = '';
   function check({ fresh = false } = {}) {
     if (pending) return pending;
@@ -26,11 +34,11 @@ function create({ engines, getConfig, emit = () => {}, now = Date.now }) {
         if (!report.codex?.found || report.codex.broken) watch.models.status = 'runtime-unavailable';
         else {
           try {
-            const result = await engines.codexCapabilities({ kind: 'models', refresh: true });
+            const result = await within(engines.codexCapabilities({ kind: 'models', refresh: true }), modelsMs);
             if (!Array.isArray(result.data) || !result.data.length) throw new Error('Empty model catalog');
             watch.models = { status: 'checked', selections: modelChecks(result.data, cfg.agents),
               catalog: result.data.map(m => ({ model: m.model, name: m.displayName, hidden: Boolean(m.hidden) })) };
-          } catch { watch.models.status = 'unavailable'; }
+          } catch (err) { watch.models.status = err?.slow ? 'slow' : 'unavailable'; }
         }
       }
       watch.checkedAt = now();
@@ -50,4 +58,4 @@ function create({ engines, getConfig, emit = () => {}, now = Date.now }) {
   }
   return { check, start };
 }
-module.exports = { create, modelChecks, INTERVAL };
+module.exports = { create, modelChecks, INTERVAL, MODELS_MS };
