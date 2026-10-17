@@ -180,8 +180,8 @@
     }
     async function play() {
       if (S.phase === 'playing') return;
-      S.phase = 'playing'; mark('play'); realRAF(() => mark('frame1'));
-      cardOut(); readyLine();
+      S.phase = 'playing'; mark('play'); realRAF(() => { mark('frame1'); readyLine(); }); // (the line once the first frame of play is out)
+      cardOut();
       const c0 = await count();
       await sleep(5000);
       const c1 = await count();
@@ -304,9 +304,9 @@
   // ---------- 5. play ----------
   function play() {
     if (S.phase === 'playing') return;
-    S.phase = 'playing'; S.skip = true; mark('play'); realRAF(() => mark('frame1'));
+    S.phase = 'playing'; S.skip = true; mark('play'); realRAF(() => { mark('frame1'); readyLine(); }); // (the line once the first frame of play is out)
     release();
-    cardOut(); readyLine();
+    cardOut();
     const c0 = { ...S.gl }; const t0 = now(); let k = 0;
     const tick = () => { k += 1; if (now() - t0 < 5000) realRAF(tick); };
     realRAF(tick);
