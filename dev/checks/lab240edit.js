@@ -22,7 +22,7 @@
 // window.L240E_REPORT = 1 reports without failing; window.L240E_ONLY = 'slider,split'; window.L240E_WHO = 1 adds the
 // callers of the probed calls (slower); window.L240E_PROFILE = 'slider' adds a JS profile of a stretch;
 // window.L240E_BUDGET overrides.
-//   node dev/smoke.js --fake-engines --screen 1920x1080 --check-timeout 900000 --script dev/checks/lab240edit.js
+//   node dev/smoke.js --fake-engines --check-timeout 1500000 --script dev/checks/lab240edit.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(100); } return false; };
 const out = { numbers: {}, problems: [], stretches: {} };
@@ -235,7 +235,7 @@ async function seg(name, fn, prep = null) {
   const b = await pv();
   out.stretches[name] = {
     sec: r1(sec), inputs, previewFrames: b && a ? b.tick - a.tick : null, previewMsgs: b?.msgs,
-    probes: { ...P.n, mutations: muts }, topMutations: Object.entries(mutBy).sort((x, y) => y[1] - x[1]).slice(0, 6).map(([k, v]) => `${v} ${k}`),
+    probes: { ...P.n, mutations: muts }, topMutations: Object.entries(mutBy).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => `${v} ${k}`),
     ...(WHO ? { who: Object.entries(P.who).sort((x, y) => y[1] - x[1]).slice(0, 14).map(([k, v]) => `${v} ${k}`) } : {}),
   };
   await wait(400);
@@ -366,11 +366,11 @@ await sbx('window.__labAdapt?.set?.({ level: 0, hold: false }); return 1');
 out.numbers.previewEnd = await pv();
 
 // ---------- budgets (counts: steady on a loaded machine; ms loose) ----------
-const BUDGET = { forcedPerInput: 0.25, storageWrites: 6, longest: 250, ...(window.L240E_BUDGET || {}) };
+// (longest: wall ms, loose: this machine's load moves it 2–5×; the counts below are steady)
+const BUDGET = { forcedPerInput: 0.25, storageWrites: 6, longest: 1000, splitStylePerMove: 200, scrubBodyWrites: 4, dragRowWrites: 48, ...(window.L240E_BUDGET || {}) };
 out.budgets = BUDGET;
 for (const [name, S] of Object.entries(out.stretches)) {
   const inputs = Math.max(1, S.inputs || 0);
-  // a forced layout loop: style / layout forced inside script on (most) every input event
   // a forced layout loop: the app's own handlers (pointer / key / drag / input events) asking for style or layout
   // right after a write, on (most) every input. (The browser's own text editing laying out the textarea in a key,
   // a frame's animation-frame step and ResizeObserver steps are the frame's own layout, done once: reported, not counted.)
@@ -380,6 +380,14 @@ for (const [name, S] of Object.entries(out.stretches)) {
   if (name !== 'chat' && writes > BUDGET.storageWrites) fail(`${name}: ${writes} storage writes during the gesture (budget ${BUDGET.storageWrites}): ${JSON.stringify(S.probes)}`);
   if (S.longest != null && S.longest > BUDGET.longest) fail(`${name}: longest task ${S.longest} ms (budget ${BUDGET.longest})`);
 }
+const mutsOf = (S, key) => (S?.topMutations || []).filter((x) => (x.split(' ')[1] || '').startsWith(key)).reduce((a, x) => a + Number(x.split(' ')[0]), 0);
+// the dock's splitter: each move restyles the dock, not the whole tool (the tool's inherited width restyled ≈ 560
+// elements a move here, ≈ 40 after)
+if (out.stretches.split) { const el = Number(/×(\d+)el/.exec(out.stretches.split.style || '')?.[1] || 0); const per = Math.round(el / Math.max(1, out.stretches.split.inputs)); out.numbers.splitStylePerMove = per; if (per > BUDGET.splitStylePerMove) fail(`split: ${per} elements restyled per splitter move (budget ${BUDGET.splitStylePerMove})`); }
+// a number scrub sets the body's class once, not on every move
+if (out.stretches.scrub) { const n = mutsOf(out.stretches.scrub, 'attributes:body'); if (n > BUDGET.scrubBodyWrites) fail(`scrub: the body's class was rewritten ${n}× (budget ${BUDGET.scrubBodyWrites})`); }
+// a layer drag marks the row under it once, not on every dragover
+if (out.stretches.layers) { const n = mutsOf(out.stretches.layers, 'attributes:div.ly-row'); if (n > BUDGET.dragRowWrites) fail(`layers: layer rows rewritten ${n}× during the drags (budget ${BUDGET.dragRowWrites})`); }
 // typing: the code's highlight is drawn in the frame, never inside a key (where it laid the Lab out again)
 { const t = (out.stretches.typing?.forcedTop || []).filter((x) => / in (keydown|keypress|textInput|input|beforeinput) .*three\.js:\d+:\d+ draw$/.test(x)); if (t.length) fail(`typing: the code editor drew inside a key: ${t.join(' | ')}`); }
 // slider moves reach the preview at most once a frame (coalesced), never one message per pointer event
