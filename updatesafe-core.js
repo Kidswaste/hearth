@@ -142,7 +142,9 @@ function bringConfig(cur, other, head = null) {
       continue;
     }
     if (!(k in out) || (isObj(head) && k in head && same(out[k], head[k]))) {
-      if (!same(out[k], v)) { out[k] = v; brought.push(k); }
+      // (round 55, fixes55) the owner's values win; keys only the update's file has stay (nothing removed)
+      const next = isObj(v) && isObj(out[k]) ? { ...out[k], ...v } : v;
+      if (!same(out[k], next)) { out[k] = next; brought.push(k); }
       continue;
     }
     if (isObj(v) && isObj(out[k])) {
@@ -151,6 +153,94 @@ function bringConfig(cur, other, head = null) {
     }
   }
   return { value: out, brought };
+}
+
+// (round 55, fixes55) putting an update's stash back, ONE way for both places that do it: updatermain (the ⬆ Update
+// while Hearth runs, async git) and swapSync (Windows: the update finished at the restart, sync git before any window).
+// Round 54 made only the first one safe; the restart path still let one clash leave the owner's config.json (agents:
+// the Lab's Three Director) and theme.css in the stash until the next start.
+//  - a file of the stash written meanwhile goes in its own named stash first ("written while the update ran"), then
+//    the owner's edits come back and config.json gains what that write added (bringConfig: the owner's values win)
+//  - a clash: the owner's own files win (config.json = the update's file + the owner's agents / values via
+//    bringConfig; theme.css = the owner's CSS); any other clashing file keeps the update's version (conflict marks
+//    would break the app); the stash then stays, named
+//  - a stash is never dropped unless it came back whole; a config.json that can't be read is never written over
+// Written as a generator of git commands (yield [args] → { ok, out }) so both drivers share it. → { ok, kept, own }
+const OWNER_FILES = ['config.json', 'theme.css'];
+function* restoreSteps({ dir, stash, from = '', to = '' }) {
+  if (!stash?.sha) return { ok: true, kept: [], own: [] };
+  const ls = (r) => (r?.ok && r.out ? r.out.split('\n').filter(Boolean) : []);
+  if (!from && !to) [, from = '', to = ''] = /\(([0-9a-f]*) → ([0-9a-f]*)\)/.exec(stash.name || '') || [];
+  const inStash = new Set(ls(yield ['diff', '--name-only', `${stash.sha}^1`, stash.sha]));
+  const touched = inStash.size ? ls(yield ['diff', '--name-only', 'HEAD']).filter((f) => inStash.has(f)) : [];
+  let during = null;
+  if (touched.length) {
+    const name = stashName('during', from, to);
+    if ((yield ['stash', 'push', '--include-untracked', '-m', name, '--', ...touched]).ok) {
+      const s = (yield ['rev-parse', '--verify', '-q', 'stash@{0}']).out;
+      if (s && s !== stash.sha && ((yield ['log', '-1', '--format=%gs', '-g', 'stash@{0}']).out || '').includes(name)) during = { sha: s, name };
+    }
+  }
+  const headCfg = function* () { return parseJson(yield ['show', `HEAD:${CONFIG_FILE}`]); };
+  const a = yield ['stash', 'apply', stash.sha];
+  const clash = ls(yield ['diff', '--name-only', '--diff-filter=U']);
+  if (a.ok && !clash.length) {
+    yield* dropStash(stash.sha);
+    const own = during && touched.includes(CONFIG_FILE) ? mergeConfigFile(dir, parseJson(yield ['show', `${during.sha}:${CONFIG_FILE}`]), yield* headCfg()) : [];
+    return { ok: true, kept: [], own, during };
+  }
+  yield ['reset', '-q'];
+  const own = [];
+  const others = clash.filter((f) => !OWNER_FILES.includes(f));
+  if (others.length) yield ['checkout', 'HEAD', '--', ...others];
+  if (clash.includes('theme.css')) {
+    // the owner's CSS wins (the update's theme.css stays in git's history)
+    if ((yield ['checkout', stash.sha, '--', 'theme.css']).ok) { yield ['reset', '-q', '--', 'theme.css']; own.push('theme.css'); } else yield ['checkout', 'HEAD', '--', 'theme.css'];
+  }
+  if (clash.includes(CONFIG_FILE)) yield ['checkout', 'HEAD', '--', CONFIG_FILE];
+  // the stash didn't come back whole: config.json (whatever is there now) still gains the owner's agents and values
+  if (inStash.has(CONFIG_FILE)) {
+    const b = mergeConfigFile(dir, parseJson(yield ['show', `${stash.sha}:${CONFIG_FILE}`]), yield* headCfg());
+    if (b.length || clash.includes(CONFIG_FILE)) own.push(CONFIG_FILE);
+  }
+  const kept = clash.filter((f) => !own.includes(f));
+  return { ok: false, kept: kept.length || clash.length ? kept : ['(see the stash)'], own, during };
+}
+function* dropStash(sha) {
+  const r = yield ['stash', 'list', '--format=%H'];
+  const i = (r.out || '').split('\n').indexOf(sha);
+  if (i >= 0) yield ['stash', 'drop', '-q', `stash@{${i}}`];
+}
+const CONFIG_FILE = 'config.json';
+const parseJson = (r) => { try { return r?.ok ? JSON.parse(r.out) : null; } catch { return null; } };
+// config.json gains what `other` has (bringConfig, head = git's own config.json); never written over a file that can't
+// be read or parsed; atomic. → [what came back]
+function mergeConfigFile(dir, other, head) {
+  const file = path.join(dir, CONFIG_FILE);
+  let cur = null;
+  try { cur = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) { console.warn('update: config.json not read', err.code || err.message); return []; }
+  if (!other) return [];
+  const r = bringConfig(cur, other, head);
+  if (!r.brought.length) return [];
+  try {
+    const tmp = `${file}.${process.pid}.update.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify(r.value, null, 2)}\n`);
+    fs.renameSync(tmp, file);
+  } catch (err) { console.warn('update: config.json not written', err.code || err.message); return []; }
+  return r.brought;
+}
+// said once after the update, in plain words
+const ownNote = (own, stash) => `Your ${own.map((f) => (f === CONFIG_FILE ? 'settings and agents' : f === 'theme.css' ? 'theme' : f)).join(' and ')} stayed yours (the update's new parts were added around them); a copy of your edits is kept in the stash "${stash}".`;
+// the two drivers: sync (gitSync's git(...args)) and async (updatermain's git(args) → Promise)
+function runSteps(gen, git) {
+  let step = gen.next();
+  while (!step.done) step = gen.next(git(...step.value));
+  return step.value;
+}
+async function runStepsAsync(gen, git) {
+  let step = gen.next();
+  while (!step.done) step = gen.next(await git(step.value));
+  return step.value;
 }
 
 // <checkout>/.git/hearth-update: the journal, the staged swap, the last update for "Go back"
@@ -194,11 +284,27 @@ function startSwap(app, { dir = __dirname, gitBin = 'git', log = () => {} } = {}
   try { pending = JSON.parse(fs.readFileSync(path.join(d, 'pending.json'), 'utf8')); } catch { return false; }
   // a second launch while Hearth still runs (files still held): leave it for the real restart
   try { if (app?.requestSingleInstanceLock && !app.requestSingleInstanceLock()) return false; } catch { /* tests */ }
-  const r = swapSync({ dir, gitBin, pending, log });
-  writeState(dir, 'pending', null);
-  writeState(dir, 'swapped', { ...r, at: Date.now() });
-  if (r.ok && r.restart && app) { app.relaunch({ args: process.argv.slice(1).filter((a) => a !== '--restart') }); app.exit(0); return true; }
+  // (round 55, fixes55) nothing here may stop Hearth from starting (main.js's first lines): any throw → the usual start,
+  // the pending note kept for the window to explain
+  try {
+    const r = swapSync({ dir, gitBin: findGitSync(gitBin), pending, log });
+    if (r.keep) { log(`updatesafe: the staged update waits (${r.reason})`); return false; } // git didn't answer: try at the next start
+    writeState(dir, 'pending', null);
+    writeState(dir, 'swapped', { ...r, at: Date.now() });
+    if (r.ok && r.restart && app) { app.relaunch({ args: process.argv.slice(1).filter((a) => a !== '--restart') }); app.exit(0); return true; }
+  } catch (err) { log(`updatesafe: the staged update couldn't go in at start (${err.message})`); }
   return false;
+}
+// git installed after Hearth's PATH was set (Windows: Program Files\Git; a Mac started from the Dock: Homebrew)
+function findGitSync(bin) {
+  if (bin !== 'git') return bin;
+  const { execFileSync } = require('child_process');
+  try { execFileSync('git', ['--version'], { windowsHide: true, stdio: 'ignore', timeout: 15000 }); return 'git'; } catch (err) { if (err.code !== 'ENOENT') return 'git'; }
+  const e = process.env;
+  const cands = process.platform === 'win32'
+    ? [e.ProgramW6432, e.ProgramFiles, e['ProgramFiles(x86)']].filter(Boolean).map((p) => path.join(p, 'Git', 'cmd', 'git.exe')).concat(e.LOCALAPPDATA ? [path.join(e.LOCALAPPDATA, 'Programs', 'Git', 'cmd', 'git.exe')] : [])
+    : ['/opt/homebrew/bin/git', '/usr/local/bin/git', '/usr/bin/git']; // winmac-ok: the Mac's / Linux's own places (Windows above)
+  return cands.find((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } }) || 'git';
 }
 // git's environment for Hearth: never a prompt (no password / username question, no Windows "Unlink failed. Should I
 // try again? (y/n)" that would wait forever), English messages (so a French or German Windows reads the same), no
@@ -241,49 +347,51 @@ function cleanPartialSync({ dir, gitBin = 'git', from, to }) {
 }
 function swapSync({ dir, gitBin = 'git', pending, log = () => {} }) {
   const git = gitSync(dir, gitBin);
-  const head = git('rev-parse', 'HEAD').out;
   if (!pending?.to || !pending?.from) return { ok: false, reason: 'unknown' };
+  const h = git('rev-parse', 'HEAD');
+  // (round 55, fixes55) git didn't answer (not found, a lock…): nothing touched, the staged update waits (keep: true)
+  if (!h.ok) return { ok: false, keep: true, reason: classify(h.err) === 'unknown' ? 'git' : classify(h.err), detail: gitLine(h.err), from: pending.from, to: pending.to };
+  const head = h.out;
   if (head !== pending.from) return { ok: head === pending.to, reason: head === pending.to ? 'done' : 'moved', from: pending.from, to: pending.to };
   const dirty = git('status', '--porcelain', '--untracked-files=no').out;
+  // (round 55, fixes55) a stash is ours only when stash@{0} carries our name (a "No local changes to save" would have
+  // left someone else's stash on top, later applied and dropped as if it were the owner's edits)
+  const pushStash = (name, paths = null) => {
+    if (!git('stash', 'push', ...(paths ? ['--include-untracked'] : []), '-m', name, ...(paths ? ['--', ...paths] : [])).ok) return null;
+    const s = git('rev-parse', '--verify', '-q', 'stash@{0}').out;
+    return s && (git('log', '-1', '--format=%gs', '-g', 'stash@{0}').out || '').includes(name) ? { sha: s, name } : null;
+  };
   let stash = null; let files = null;
   if (dirty) {
-    const name = stashName('edits', pending.from, pending.to);
-    if (!git('stash', 'push', '-m', name).ok) return { ok: false, reason: 'local' };
-    stash = { sha: git('rev-parse', 'stash@{0}').out, name };
+    stash = pushStash(stashName('edits', pending.from, pending.to));
+    if (!stash) return { ok: false, reason: 'local', from: pending.from, to: pending.to };
   }
   // a file added by hand with the same name as a new file of the update: kept in its own named stash (said after)
   const added = git('diff', '--name-only', '--diff-filter=A', pending.from, pending.to).out.split('\n').filter(Boolean);
   const collide = added.filter((f) => !OWN.test(f) && fs.existsSync(path.join(dir, f)));
   if (collide.length) {
-    const name = stashName('files', pending.from, pending.to);
-    if (git('stash', 'push', '--include-untracked', '-m', name, '--', ...collide).ok) files = { sha: git('rev-parse', 'stash@{0}').out, name, files: collide };
+    const s = pushStash(stashName('files', pending.from, pending.to), collide);
+    if (s) files = { ...s, files: collide };
   }
+  const restore = (s) => runSteps(restoreSteps({ dir, stash: s, from: pending.from, to: pending.to }), git);
   const m = git('merge', '--ff-only', '--no-edit', pending.to);
   if (!m.ok) {
     const reason = classify(`${m.err}\n${m.out}`);
     if (git('rev-parse', 'HEAD').out === pending.from) cleanPartialSync({ dir, gitBin, from: pending.from, to: pending.to });
-    if (stash && git('stash', 'apply', stash.sha).ok) dropStashSync(git, stash.sha);
-    if (files && git('stash', 'apply', files.sha).ok) dropStashSync(git, files.sha);
+    // the same safe way back as after a good merge (no conflict marks left, the owner's files win, kept when not whole)
+    if (files) restore(files);
+    if (stash) restore(stash);
     log(`updatesafe: the staged update couldn't go in at start (${reason})`);
     return { ok: false, reason, detail: gitLine(m.err || m.out), from: pending.from, to: pending.to };
   }
-  let kept = [];
-  if (stash) {
-    const a = git('stash', 'apply', stash.sha);
-    const clash = git('diff', '--name-only', '--diff-filter=U').out;
-    if (!a.ok || clash) { kept = clash ? clash.split('\n') : []; git('reset', '-q'); if (kept.length) git('checkout', 'HEAD', '--', ...kept); } else dropStashSync(git, stash.sha);
-  }
+  const back = stash ? restore(stash) : { ok: true, kept: [], own: [] };
+  const kept = back.ok ? [] : back.kept;
   const changed = git('diff', '--name-only', pending.from, pending.to).out.split('\n').filter(Boolean);
   writeState(dir, 'last', { from: pending.from, to: pending.to, at: Date.now(), branch: pending.branch || BRANCH });
   writeState(dir, 'journal', null);
-  return { ok: true, from: pending.from, to: pending.to, files: changed.slice(0, 200), changed: changed.length, restart: changed.some(mainSide), kept, stash: kept.length ? stash : null, keptFiles: files };
-}
-function dropStashSync(git, sha) {
-  const list = git('stash', 'list', '--format=%H').out.split('\n');
-  const i = list.indexOf(sha);
-  if (i >= 0) git('stash', 'drop', '-q', `stash@{${i}}`);
+  return { ok: true, from: pending.from, to: pending.to, files: changed.slice(0, 200), changed: changed.length, restart: changed.some(mainSide), kept, own: back.own || [], stash: back.ok ? null : stash, keptFiles: files };
 }
 // a file the main process loads (a restart, not a reload): same rule as updatermain's needsRestart without index.html
 const mainSide = (f) => /(^|\/)(main|preload|[\w-]*main|engines|store|appshell|winmac|storework|sync-engine|sync-merge|chromeguard|updatesafe-core)\.js$|^mcp\/|^package\.json$/.test(f);
 
-module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, tooLong, stashName, OWN_EDITS, bringConfig, stamp, branchStamp, gitDirOf, stateDir, readState, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };
+module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, tooLong, stashName, OWN_EDITS, bringConfig, OWNER_FILES, restoreSteps, runSteps, runStepsAsync, mergeConfigFile, ownNote, stamp, branchStamp, gitDirOf, stateDir, readState, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };

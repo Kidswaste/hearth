@@ -214,15 +214,23 @@ await safe('after', async () => {
 
 // ---------- Optimize for play ----------
 await safe('optimize: no encoder', async () => {
-  let cmd = null; let main = null; let offered = false;
+  let cmd = null; let main = null; let offered = false; const diag = { evMs: [] };
   await playGame('noEncoder', lab, { tool: '/nonexistent/gltfpack' }, { during: async () => {
     offered = await until(() => ev('(() => { const r = document.querySelector("gameready-card")?.shadowRoot; const o = r?.querySelector(".o"); if (!o || o.hidden) return false; o.click(); return true; })()'), 60000);
-    cmd = await until(() => ev('(() => { const r = document.querySelector("gameready-card")?.shadowRoot; const k = r?.querySelector(".k"); return k && !k.hidden ? k.textContent : null; })()'), 20000);
+    // (round 55, fixes55) intermittent `cmd: false` with main "Install" was this wait, not the app: the card answers
+    // after Optimize did what it can without gltfpack (the 4K picture compressed first: ≈ 21 s on a loaded machine,
+    // with evals queued behind the page's own work for up to 9 s each), then shows the command and Install together.
+    // The wait now matches the card's own (an Optimize is answered within 2 minutes: gameready-page.js answered())
+    const t0 = Date.now();
+    cmd = await until(async () => { const a = Date.now(); const v = await ev('(() => { const r = document.querySelector("gameready-card")?.shadowRoot; const k = r?.querySelector(".k"); return k && !k.hidden ? k.textContent : null; })()'); if (diag.evMs.length < 60) diag.evMs.push(Date.now() - a); return v; }, 130000);
+    diag.cmdAt = Date.now() - t0;
     main = await ev('document.querySelector("gameready-card")?.shadowRoot?.querySelector(".m")?.textContent');
+    diag.after = await ev('(() => { const r = document.querySelector("gameready-card")?.shadowRoot; const k = r?.querySelector(".k"); return JSON.stringify({ k: k ? { hidden: k.hidden, text: k.textContent } : null, want: window.__gameReady?.want, phase: window.__gameReady?.phase }); })()');
+    diag.at = Date.now() - t0;
     await ev('document.querySelector("gameready-card")?.shadowRoot?.querySelector(".o")?.click()'); // Not now
   } });
   step('optimize: the card in ▶ Play\'s window offers Optimize for play (a model without a copy)', offered);
-  step('optimize: no encoder → the install command shown with Install, nothing run', /npm install -g gltfpack/.test(cmd || '') && main === 'Install' && !GameReady.lastInstall(), { cmd, main });
+  step('optimize: no encoder → the install command shown with Install, nothing run', /npm install -g gltfpack/.test(cmd || '') && main === 'Install' && !GameReady.lastInstall(), { cmd, main, diag });
   await leaveGame();
 });
 
