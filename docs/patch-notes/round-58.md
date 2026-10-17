@@ -13,7 +13,7 @@
 - The Sound desk lists each VST3 plug-in once on the Mac (the Mac ignores upper / lower case, like Windows).
 
 ## 🛠 Small fixes
-- `/material` on a layer with no 3D scene says so right away, instead of a vague "Something went wrong" a few seconds later.
+- Asking for a material look on a layer with no 3D scene says so right away, instead of a vague "Something went wrong" a few seconds later.
 
 ## Also on main from Astra (Codex)
 - Creative tools focused around live instruments, sketches and personal quests.
