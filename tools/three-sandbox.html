@@ -472,10 +472,16 @@ for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRendering
   // (round 52, gameready) time the page waits for the GPU's shader work (a status read blocks until it's compiled /
   // linked; programs from Chromium's shader disk cache come back sooner): ms, cumulative
   wrap('getProgramParameter', (f) => function (pr, k) { const t = realNow(); try { return f.call(this, pr, k); } finally { RDY.gl.waitMs += realNow() - t; } });
-  wrap('activeTexture', (f) => function (u) { this.__rdyU = u; return f.call(this, u); });
-  wrap('bindTexture', (f) => function (tg, tx) { (this.__rdyT ||= {})[this.__rdyU || 0] = tx; return f.call(this, tg, tx); });
-  // a texture's first upload (a picture / model texture arriving) vs the same texture again (a video's next frame)
-  const up = (f) => function (...a) { const tx = this.__rdyT?.[this.__rdyU || 0]; if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; } else RDY.gl.reuploads += 1; return f.apply(this, a); };
+  // a texture's first upload (a picture / model texture arriving) vs the same texture again (a video's next frame).
+  // (round 55, labplay55) the texture is asked for at the upload (the context keeps its bindings: no GPU round trip)
+  // instead of following every activeTexture / bindTexture call: those run many times a frame in a game, uploads rarely
+  const up = (f) => function (...a) {
+    const tg = a[0]; const gl = this;
+    const k = tg === gl.TEXTURE_2D ? gl.TEXTURE_BINDING_2D : tg === gl.TEXTURE_CUBE_MAP || (tg >= 0x8515 && tg <= 0x851a) ? gl.TEXTURE_BINDING_CUBE_MAP : tg === gl.TEXTURE_3D ? gl.TEXTURE_BINDING_3D : tg === gl.TEXTURE_2D_ARRAY ? gl.TEXTURE_BINDING_2D_ARRAY : 0;
+    let tx = null; try { tx = k ? gl.getParameter(k) : null; } catch { /* counted as a re-upload */ }
+    if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; } else RDY.gl.reuploads += 1;
+    return f.apply(this, a);
+  };
   for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'texSubImage2D', 'texSubImage3D', 'compressedTexSubImage2D']) wrap(m, up);
 }
 // models (and textures) loading through three.js's default manager: how many are still on their way
@@ -822,6 +828,8 @@ function progCache(ctx) {
   if (PROG_FNS.concat(['linkProgram', 'compileShader']).some((k) => typeof realOf[k] !== 'function')) return;
   const R = (p) => P.alias.get(p) || p;
   for (const k of PROG_FNS) { const fn = realOf[k]; if (typeof fn === 'function') ctx[k] = function (p, ...a) { return fn.call(ctx, R(p), ...a); }; }
+  // (round 55, labplay55) useProgram runs on every material switch of every frame: one argument, no rest / spread
+  if (typeof realOf.useProgram === 'function') { const up = realOf.useProgram; ctx.useProgram = function (p) { return up.call(ctx, P.alias.get(p) || p); }; }
   const flush = (s) => { if (P.pend.delete(s)) realOf.compileShader.call(ctx, s); };
   ctx.createShader = function (t) { const s = realOf.createShader.call(ctx, t); if (s) P.type.set(s, t); return s; };
   ctx.shaderSource = function (s, src) { P.src.set(s, String(src)); flush(s); return realOf.shaderSource.call(ctx, s, src); };
@@ -1286,11 +1294,24 @@ function paceCore(opt = {}) {
   // every 8th frame (it draws anyway), a still one at most every LOOK ms (its own change shows within one 60 Hz frame).
   const LOOK = opt.look ?? 15;
   // (round 44, idlecpu) refresh: the safety redraw's period (a dozing page, see "dozing", asks for a longer one)
+  // (round 55, labplay55) a scene that keeps moving (a game playing in the preview) draws every frame anyway, so:
+  //   · a poke (a pointer moving over it, a message from the Lab) no longer works its signature out again and starts
+  //     counting from scratch: it draws, and its next look compares with its last one as before. With the mouse over
+  //     a playing game that was a whole-scene walk on every frame (the 30 every-frame looks started over each move);
+  //   · once it has moved for MOVING_LONG ms (and 30 looks), it's looked at every 32nd frame instead of every 8th. A
+  //     game that stops is still caught (within 32 frames), then looked at on every frame again.
+  const MOVING_LONG = opt.movingLong ?? 2000;
   function still(st, now, poke, sigOf, refresh = REFRESH) {
     st.refreshes ||= 0; st.looks ||= 0;
-    if (poke !== st.poke) { st.poke = poke; const s = sigOf(); st.looks += 1; st.a = s.a; st.b = s.b; st.same = 0; st.moving = 0; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0; return false; }
+    if (poke !== st.poke) {
+      st.poke = poke;
+      if ((st.moving || 0) > 0) return false;
+      const s = sigOf(); st.looks += 1;
+      const moved = st.looks > 1 && !s.live && (s.a !== st.a || s.b !== st.b); // (a change since its last look: it's moving)
+      st.a = s.a; st.b = s.b; st.same = 0; st.moving = moved ? 1 : 0; if (moved) st.mv0 = now; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0; return false;
+    }
     if (st.liveFor > 0) { st.liveFor -= 1; return false; }
-    if ((st.moving || 0) >= 30) { st.k = ((st.k || 0) + 1) % 8; if (st.k) return false; }
+    if ((st.moving || 0) >= 30) { st.k = ((st.k || 0) + 1) % (now - st.mv0 >= MOVING_LONG ? 32 : 8); if (st.k) return false; }
     if ((st.same || 0) > AFTER && now - st.lookAt < LOOK) {
       if (now - st.at < refresh) return true;
       st.at = now; st.refreshes += 1; return false;
@@ -1300,7 +1321,7 @@ function paceCore(opt = {}) {
     if (s.live) { st.same = 0; st.moving = 0; st.liveFor = 60; return false; }
     const changed = s.a !== st.a || s.b !== st.b;
     st.a = s.a; st.b = s.b;
-    if (changed) { st.same = 0; st.moving = (st.moving || 0) + 1; st.at = now; return false; }
+    if (changed) { if (!st.moving) st.mv0 = now; st.same = 0; st.moving = (st.moving || 0) + 1; st.at = now; return false; }
     st.moving = 0; st.same = (st.same || 0) + 1;
     if (st.same <= AFTER) { st.at = now; return false; }
     if (now - (st.at ?? -1e9) >= refresh) { st.at = now; st.refreshes += 1; return false; }
@@ -1462,11 +1483,12 @@ function pacePower(on) {
 }
 // (checks and /lab perf: window.__labPace.state() / .on(false) / .power(true) / .reset() / .hold(level))
 window.__labPace = {
-  state: () => ({ ...paceInfo(), poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level, doze: { on: DOZE.on, ms: DOZE.ms, why: DOZE.why || '', by: DOZE.by || '', log: DOZE.log.slice(-6), dozes: DOZE.dozes, wakes: DOZE.wakes, flushes: DOZE.flushes } }),
+  state: () => ({ ...paceInfo(), sigs: PACE.sigs, poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level, doze: { on: DOZE.on, ms: DOZE.ms, why: DOZE.why || '', by: DOZE.by || '', log: DOZE.log.slice(-6), dozes: DOZE.dozes, wakes: DOZE.wakes, flushes: DOZE.flushes } }),
   on: (v) => { PACE.on = v !== false; PACE.poke += 1; dozeWake('pacing switched'); return PACE.on; },
   power: (v) => { pacePower(v); return { cap: fpsCap, level: AD.core.level, quality }; },
   reset: () => { PACE.drawn = 0; PACE.skipped = 0; PACE.refreshes = 0; PACE.sigs = 0; PACE.sigMs = 0; PACE.sleeps = 0; PACE.wakes = 0; PACE.meter.reset(); return 1; },
   sleeping: () => paceSleeping.size,
+  gates: () => [...renderers].filter((r) => !r.__stale && r.__pace).map((r) => { const g = r.__pace; return { layer: r.__layer || null, moving: g.moving || 0, same: g.same || 0, liveFor: g.liveFor || 0, looks: g.looks || 0, multi: frameTick - g.multi < 120 }; }), // (round 55, labplay55: each renderer's still gate)
 };
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
 const tickFrames = (t) => {
@@ -2686,9 +2708,13 @@ let trim = null; // the song's in / out (round 6, the Lab's /song-trim): plays o
 let loopOn = false;
 let recUntil = null;
 let prevT = 0;
+// (round 55, labplay55) it runs only while a song / footage plays: with none (a game scene, a paused song) it asked for
+// a frame of its own on every screen frame to do nothing; the media's 'play' starts it again (mediaKick)
+let mediaLoop = true;
+function mediaKick() { if (mediaEl) prevT = mediaEl.currentTime; if (mediaLoop) return; mediaLoop = true; realRAF(mediaTick); }
 function mediaTick() {
-  paceNext(mediaTick, parked && (!mediaEl || mediaEl.paused)); // (labpace: parked and no song playing: it sleeps)
-  if (!mediaEl || mediaEl.paused) { prevT = mediaEl?.currentTime || 0; return; }
+  if (!mediaEl || mediaEl.paused) { prevT = mediaEl?.currentTime || 0; mediaLoop = false; return; }
+  paceNext(mediaTick, false);
   const t = mediaEl.currentTime;
   if (fparts && !(region && loopOn) && recUntil == null) { partTick(t); prevT = mediaEl.currentTime; return; }
   if (recUntil != null && t >= recUntil) {
@@ -2732,6 +2758,7 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   if (recDest) srcNode.connect(recDest);
   gainNode.gain.value = volume;
   for (const ev of ['play', 'pause', 'ended', 'seeked', 'loadedmetadata']) m.addEventListener(ev, sendState);
+  m.addEventListener('play', mediaKick); // (round 55: the loop points / trim / recording end, while it plays)
   fpres.frame = -1; fpres.time = 0; fpart = -1; fwant = null;
   if (video) watchFrames(m);
   // (round 26, smooth26) the 4×/s position report runs only while it plays (a paused song woke the page for nothing)
@@ -10989,11 +11016,15 @@ function installRunGuards() {
   // stack the first time and kept with the function, with its frame callback, until the layer re-runs or goes. Telling
   // the owner from a fresh stack trace every frame was most of the runtime's own allocations per frame.)
   const rafOf = new WeakMap(); // fn → { o, run }
-  const within1 = (o, fn, a) => { const prev = ctxLayer; ctxLayer = o.id; try { return fn(a); } finally { ctxLayer = prev; } };
+  // (round 55, labplay55) a frame asked for from inside a layer's own frame callback belongs to that layer: a game that
+  // asks with a new function every frame (requestAnimationFrame(() => tick())) no longer has a stack trace read and
+  // parsed on every frame to find out
+  let frameOwner = null;
+  const within1 = (o, fn, a) => { const prev = ctxLayer; const pf = frameOwner; ctxLayer = o.id; frameOwner = o; try { return fn(a); } finally { ctxLayer = prev; frameOwner = pf; } };
   window.requestAnimationFrame = (fn) => {
     let e = typeof fn === 'function' ? rafOf.get(fn) : null;
     if (!e || !e.o.L || !alive(e.o)) {
-      const o = owner();
+      const o = frameOwner?.L && ctxLayer === frameOwner.id && alive(frameOwner) ? frameOwner : owner();
       let lt = -1; // (labpace: this callback's last frame time, for f60)
       const run = (t) => {
         if (!alive(o)) return;
@@ -12355,9 +12386,14 @@ function sqState(force = false) {
   SQ.lastPost = now;
   post({ type: 'seq-state', T: SQ.T, playing: SQ.playing, ended: SQ.ended, mounted: SQ.mounted.size, ack: SQ.ack || 0 });
 }
+// (round 55, labplay55) it runs only while a sequence is on the page (sqKick when one is set): without one it asked for a
+// frame of its own on every screen frame to do nothing
+let sqLoop = true;
+function sqKick() { if (sqLoop) return; sqLoop = true; realRAF(sqTick); }
 function sqTick() {
-  paceNext(sqTick, parked && !SQ.on && !SQ.off); // (labpace: parked and no sequence: it sleeps)
-  if (!SQ.on || SQ.off) return;
+  if (!SQ.on) { sqLoop = false; return; }
+  paceNext(sqTick, false);
+  if (SQ.off) return;
   let T = sqClock();
   const D = SQ.plan?.dur || 0;
   // (seqguard: ⟲ Loop with an In–Out range loops just that)
@@ -12384,7 +12420,7 @@ realRAF(sqTick);
 function sqSet(plan) {
   const first = !SQ.on;
   SQ.plan = plan;
-  SQ.on = true;
+  SQ.on = true; sqKick();
   SQ.ended = false;
   if (first) {
     // the program takes the page: the sketch's own layers go (the hub runs them again when the sequence closes)
