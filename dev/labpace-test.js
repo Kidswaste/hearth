@@ -204,6 +204,26 @@ for (const n of [100, 500, 2000]) {
   check(looks <= 480 / 32 + 1, 'moving for over 2 s: the signature on ≈ 1 frame in 32', `${looks} of 480`);
   let caught = -1; for (let i = 0; i < 60; i += 1) { t += 1000 / 240; if (P.still(st, t, 0, () => ({ a: k, b: 0 }))) { caught = i; break; } }
   check(caught >= 0 && caught < 32 + P.AFTER + 3, 'a long-moving game that stops: the picture stops drawing within 32 frames', caught);
+  // (round 58, labtype58) long-moving, then it stops as something happens from outside (a message after a quiet spell):
+  // caught within 8 frames + AFTER, not 32–64; and a one-off change right after it (a canvas resized) as well
+  for (const oneOff of [false, true]) {
+    const s2 = {}; let k2 = 0; let t2 = 0;
+    const mv = () => ({ a: (k2 += 1), b: 0 });
+    for (let i = 0; i < 240 * 3; i += 1) { t2 += 1000 / 240; P.still(s2, t2, 0, mv); }
+    let n = 0; let stillAt = -1; let changeLeft = oneOff ? 1 : 0;
+    for (let i = 0; i < 120; i += 1) {
+      t2 += 1000 / 240;
+      const sg = () => { if (changeLeft > 0) { changeLeft -= 1; k2 += 1; } return { a: k2, b: 0 }; };
+      if (P.still(s2, t2, 1, sg)) { stillAt = i; break; } // (the poke: one message at i = 0)
+      n += 1;
+    }
+    check(stillAt >= 0 && n <= (oneOff ? 16 : 8) + P.AFTER + 2, `a long-moving scene that stops as a message comes${oneOff ? ' (and changes once more)' : ''}: still within ${oneOff ? 16 : 8} frames + ${P.AFTER}`, `${n} frames drawn`);
+  }
+  // and pokes every 50 ms on a long-moving game (live sound, a slider dragged): one quiet poke, then every 32nd frame again
+  { const s3 = {}; let k3 = 0; let t3 = 0; let looks3 = 0; const mv = () => { looks3 += 1; return { a: (k3 += 1), b: 0 }; };
+    for (let i = 0; i < 240 * 3; i += 1) { t3 += 1000 / 240; P.still(s3, t3, 0, mv); }
+    looks3 = 0; for (let i = 0; i < 960; i += 1) { t3 += 1000 / 240; P.still(s3, t3, 1 + Math.floor(i / 12), mv); } // (4 s)
+    check(looks3 <= 480 / 8 + 480 / 32 + 2 && looks3 >= 480 / 32, 'pokes every 50 ms on a long-moving game: every 8th frame for 2 s after the first, then every 32nd again', `${looks3} of 960`); }
 }
 
 // ---------- 5. a still scene on fake displays: the GPU work and the signature's own work ----------

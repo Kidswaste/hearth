@@ -1456,11 +1456,17 @@ function paceCore(opt = {}) {
   //   · once it has moved for MOVING_LONG ms (and 30 looks), it's looked at every 32nd frame instead of every 8th. A
   //     game that stops is still caught (within 32 frames), then looked at on every frame again.
   const MOVING_LONG = opt.movingLong ?? 2000;
+  // (round 58, labtype58) a poke after a quiet spell (a message, a click, a toggle: not a pointer moving every frame)
+  // starts the long-moving count again: looks every 8th frame for the next 2 s. A scene that stopped when something
+  // happened from outside (a title held, a game paused, a setting switched) was otherwise still looked at every 32nd
+  // frame, so it drew 32–64 frames more of the same picture (≈ 1–2 s at 30 fps) before the gate saw it still.
+  const POKE_QUIET = opt.pokeQuiet ?? 250;
   function still(st, now, poke, sigOf, refresh = REFRESH) {
     st.refreshes ||= 0; st.looks ||= 0;
     if (poke !== st.poke) {
       st.poke = poke;
-      if ((st.moving || 0) > 0) return false;
+      const quiet = now - (st.pokeAt ?? -1e9) >= POKE_QUIET; st.pokeAt = now;
+      if ((st.moving || 0) > 0) { if (quiet) st.mv0 = now; return false; }
       const s = sigOf(); st.looks += 1;
       const moved = st.looks > 1 && !s.live && (s.a !== st.a || s.b !== st.b); // (a change since its last look: it's moving)
       st.a = s.a; st.b = s.b; st.same = 0; st.moving = moved ? 1 : 0; if (moved) st.mv0 = now; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0; return false;
