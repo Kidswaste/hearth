@@ -121,6 +121,59 @@
     card('tape-answer', 'music', 'make', 30, 'A melody gets an answer', 'Bounce a 30-second sketch with a call, an answering phrase and a simple ending. Add an arrangement screenshot.', 'Play a two-bar phrase and leave two bars of space.', 'rack', 'Build the answer from the call’s rhythm with different notes.'),
     card('frame-join', 'visual', 'polish', 15, 'Catch the loop seam', 'Compare the start and end of an existing animation, fix one visible discontinuity and export a revised loop with matching boundary frames.', 'Put the first and final frame side by side.', 'lab', 'Keep the duration fixed while repairing the seam.')
   ];
+  // Opt-in expeditions. Stable IDs preserve finished and paused work across releases.
+  const lifeStep = (id, title, done, tiny, minutes = 5) => ({ ...q(`life-${id}`, title, done, tiny, minutes, minutes === 5 ? 20 : 35, null, 'Stop at the finish line. Save a next idea only if you want one.'), proofHint: 'A short saved note or checklist is enough. Share only the relevant part, with names and private details removed. Review checks this small brief, not your worth or productivity.' });
+  const lifeArcs = [
+    { id: 'c-life-base', title: 'Reclaim the command desk', subtitle: 'BASE CAMP', path: 'life', color: '#bd8bff', art: 'terminal', why: 'Make one corner inviting enough to start a demo, visual or Forgeheart session. The rest of the room can wait.', badge: 'Base camp restored', quests: [
+      lifeStep('base-clear', 'Clear one landing pad', 'Choose a laptop-sized patch of your desk. Put away five things or clear that patch, whichever comes first. Save a before/after note or cropped photo.', 'Pick up the nearest thing that has a home.'),
+      lifeStep('base-ready', 'Build your instant-start setup', 'Prepare one project, headphones or controller so it is ready to use. Save a three-item ready checklist and the project name.', 'Choose what you want to make next.'),
+      lifeStep('base-use', 'Use the space you just rescued', 'Spend five minutes making one sound, frame or game observation. Save the tiny result and one sentence about what was easier.', 'Open the prepared project and change one thing.')
+    ] },
+    { id: 'c-life-admin', title: 'Defeat one open tab', subtitle: 'ADMIN MINI-BOSS', path: 'life', color: '#ff6b9d', art: 'adventure', why: 'Choose one nagging task and remove its next obstacle. One message, appointment or form section is enough.', badge: 'Tab closed', quests: [
+      lifeStep('admin-name', 'Give the boss a name', 'Write one avoided admin task, what done would look like, and the next physical action. Keep the task small enough for a short session.', 'Write: The thing taking up space in my head is...'),
+      lifeStep('admin-move', 'Take one concrete action', 'Do the next action: draft a message, find the right contact, or complete one form section. Save a redacted action log with what changed and what remains.', 'Open only the document or contact you need.', 15),
+      lifeStep('admin-close', 'Close it or leave a clean handoff', 'Save a final status: done, or waiting on a type of response. If waiting, choose your own follow-up day and next action. Remove personal identifiers.', 'Write Done or Waiting on in your note.')
+    ] },
+    { id: 'c-life-outside', title: 'Take the artist outside', subtitle: 'FIELD TRIP', path: 'life', color: '#ffd75e', art: 'room', why: 'A tiny change of scene can become a color palette, rhythm or detail for your next world. A window or doorway counts too.', badge: 'Field recorder', quests: [
+      lifeStep('outside-look', 'Find a different view', 'Spend a few minutes outdoors, by a window or in another accessible spot. Save three specific things you noticed: a color, a sound and a shape.', 'Choose a nearby spot that is easy to reach.'),
+      lifeStep('outside-pocket', 'Bring back one little treasure', 'Save a photo, short sound, drawing or written description of one detail you want to keep. Explain what caught your attention.', 'Choose one of the three things you noticed.'),
+      lifeStep('outside-remix', 'Smuggle it into your art', 'Turn that detail into one tiny palette, rhythm, texture sketch or game-world note. Show the source and your small response.', 'Pick just one medium and make a rough first mark.', 15)
+    ] },
+    { id: 'c-life-connect', title: 'Open a co-op lobby', subtitle: 'GOOD COMPANY', path: 'life', color: '#ff8c42', art: 'game', why: 'Make room for someone you enjoy. A private draft counts as the first move; another person’s reply never decides your XP.', badge: 'Co-op host', quests: [
+      lifeStep('connect-pick', 'Think of your player two', 'Choose someone and write a specific shared interest or moment you could mention. Save an anonymized two-line invitation draft.', 'Think of one person you would enjoy hearing from.'),
+      lifeStep('connect-invite', 'Make the invitation easy', 'Draft or send one low-pressure invitation to listen, play, walk or catch up. Include a simple option and an easy way to decline. Submit only your redacted draft, not their messages.', 'Start with the shared interest you chose.'),
+      lifeStep('connect-plan', 'Prepare something to share', 'Choose one track, game, image or memory to bring to that conversation. Save what you picked and why. No reply or scheduled meetup is required.', 'Pick one thing you think they might enjoy.')
+    ] },
+    { id: 'c-life-rescue', title: 'Rescue the almost-finished', subtitle: 'BACKLOG DUNGEON', path: 'life', color: '#ff6b6b', art: 'collection', why: 'Get one old demo, visual or game idea across a deliberately small finish line. A rough artifact beats another giant plan.', badge: 'Backlog escapee', quests: [
+      lifeStep('rescue-pick', 'Choose the smallest survivor', 'Open one unfinished project and save a note: what already works, what you will finish, and two things you will deliberately leave out.', 'Open the first old project that still interests you.'),
+      lifeStep('rescue-cut', 'Make the one change that matters', 'Spend one short session on the chosen finish line. Save a changed bounce, frame, diff or design note and say exactly what changed.', 'Do the smallest part of the change before improving anything else.', 15),
+      lifeStep('rescue-keep', 'Put a version on the shelf', 'Save a named keepable version and a two-sentence release note: what it is and what remains rough. Include the result or an actual working-chat excerpt.', 'Choose the filename before doing another polish pass.')
+    ] },
+    { id: 'c-life-landing', title: 'Make tomorrow easier', subtitle: 'SOFT LANDING', path: 'life', color: '#e2a8ff', art: 'life', why: 'End a session without leaving future you a puzzle. Rest stays available whether or not you finish this route.', badge: 'Tomorrow’s ally', quests: [
+      lifeStep('landing-save', 'Leave a breadcrumb', 'Save your current work and a restart note naming the project, where it lives, and the next action. A redacted note is enough.', 'Save the open file first.'),
+      lifeStep('landing-clear', 'Remove one tomorrow-obstacle', 'Prepare one small thing for your next start: a cable, a file, a bag or a clear surface. Save what you prepared and how it helps.', 'Pick the obstacle that takes less than five minutes to remove.'),
+      lifeStep('landing-return', 'Return without starting over', 'At a later session, use your breadcrumb to restart for two minutes. Save what you did and whether the note helped. No deadline.', 'Read your saved next action before opening another tab.')
+    ] }
+  ];
+  // Quentin's explicitly supplied circle. No birthdays, handles or interests are inferred.
+  const friendStarters = [
+    { id:'friend-thomas',name:'Thomas',birthday:'',interests:'Khamsin · musique / social' },
+    { id:'friend-ismael',name:'Ismaël',birthday:'',interests:'Kultur · musique / social' },
+    { id:'friend-valentin',name:'Valentin',birthday:'',interests:'Gaming · co-op games' },
+    { id:'friend-guillaume',name:'Guillaume',birthday:'',interests:'Check-in · musique / social' },
+    { id:'friend-jean',name:'Jean',birthday:'',interests:'' },
+    { id:'friend-camille',name:'Camille',birthday:'',interests:'' },
+    { id:'friend-hugo',name:'Hugo',birthday:'',interests:'' }
+  ];
+  const districts = [
+    { id: 'home', name: 'Le Perchoir', subtitle: 'YOUR SAVE POINT', x: 19, y: 29, color: '#bd8bff', art: 'terminal', route: 'c-life-base', why: 'A studio above the rooftops. Reset your base, then choose a small adventure.' },
+    { id: 'canal', name: 'Canal des Échos', subtitle: 'FIELD NOTES & FRESH AIR', x: 70, y: 24, color: '#ffd75e', art: 'room', route: 'c-life-outside', why: 'Follow the water, collect a sound, notice a color. Your real destination can be a nearby park or a window.' },
+    { id: 'cafe', name: 'Place des Copains', subtitle: 'CO-OP LOBBY', x: 46, y: 36, color: '#ff6b9d', art: 'life', route: 'c-life-connect', why: 'A fictional café for real connections. Pick a friend and prepare an invitation you actually want to send.' },
+    { id: 'atelier', name: 'Atelier des Possibles', subtitle: 'UNFINISHED TREASURES', x: 23, y: 73, color: '#ff6b6b', art: 'collection', route: 'c-life-rescue', why: 'Old demos, tiny worlds and half-made visuals. Bring one back with a deliberately small finish line.' },
+    { id: 'bureau', name: 'Bureau des Nuages', subtitle: 'ADMIN MINI-BOSSES', x: 77, y: 71, color: '#e2a8ff', art: 'adventure', route: 'c-life-admin', why: 'One open tab is the whole boss fight. Clear the next obstacle and make room for a plan.' },
+    { id: 'quai', name: 'Quai de Minuit', subtitle: 'BIRTHDAYS & BIG NIGHTS', x: 49, y: 78, color: '#ff8c42', art: 'game', route: 'c-life-landing', why: 'A place for birthdays, New Year’s Eve and nights worth remembering. Set a plan that fits your people and budget.' },
+    { id: 'gare', name: 'Gare des Lucioles', subtitle: 'NEXT STOP / TOULOUSE', x: 88, y: 39, color: '#ffd75e', art: 'deck', route: null, why: 'Turn “we should go” into a small travel plan. Compare real fares for your dates; the map never invents a bargain.' }
+  ];
   const specializations = [
     { id: 'songs', path: 'music', name: 'Demo alchemist', why: 'Turn the part you keep replaying into a short song you can actually bounce.', cards: ['tape-hook','tape-answer','tape-transition','tape-tail'], prefixes: ['q-studio-demo-'], titles: ['Hook keeper','Demo alchemist','Song finisher'], gift: 'A record sleeve for your desk', art: 'music' },
     { id: 'loops', path: 'music', name: 'Pocket engineer', why: 'Build grooves and sound families that are useful beyond the first session.', cards: ['tape-pocket','tape-found','tape-one','tape-plugin'], prefixes: ['q-studio-loop-','q-samples-'], titles: ['Sound scavenger','Pocket engineer','Loop architect'], gift: 'A patch cartridge for your desk', art: 'skills' },
@@ -147,5 +200,5 @@
     { id: 'ember', name: 'Forge ember', color: '#ff8c42' }, { id: 'mythic', name: 'Mythic violet', color: '#bd8bff' },
     { id: 'rare', name: 'Rare gold', color: '#ffd75e' }, { id: 'pulse', name: 'Signal pink', color: '#ff6b9d' }
   ];
-  return { paths, campaigns, daily, commissions, treats, deck, specializations, rewardBlueprints, consoleAccents };
+  return { paths, campaigns, daily, commissions, treats, deck, lifeArcs, districts, friendStarters, specializations, rewardBlueprints, consoleAccents };
 });
