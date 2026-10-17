@@ -196,9 +196,39 @@
     { id: 'pack-budget', name: 'A sample pack from my wishlist', cost: 65, category: 'WISHLIST', note: 'Name the exact pack and your real-money limit. Claiming this only records your choice; nothing is purchased.', art: 'music' },
     { id: 'desk-hour', name: 'A desk reset with a favorite album', cost: 8, category: 'RESET', note: 'Fresh drink, comfortable lighting, favorite record. Stop whenever the space feels good.', art: 'life' }
   ];
+  const mapKinds = [
+    { id:'music', name:'Sound hunt', color:'#ff6b9d' }, { id:'visual', name:'Visual hunt', color:'#bd8bff' },
+    { id:'social', name:'With friends', color:'#ffd75e' }, { id:'game', name:'Game ideas', color:'#ff8c42' },
+    { id:'reset', name:'Small escape', color:'#e7a0ff' }, { id:'travel', name:'Next trip', color:'#ff665e' }
+  ];
+  // Authored challenges, not claims about venue access, opening times or live events.
+  const mapMissions = [
+    ['pocket-beat','music','Pocket percussion',15,35,'Record three non-private sounds on your outing; trim and arrange them into one exported eight-bar rhythm.','Record one tap or rustle.','music'],
+    ['city-pad','music','The city is a pad',20,40,'Capture one ambient sound, turn it into a sustained texture, and export a ten-second before/after comparison.','Record ten seconds of ambience.','music'],
+    ['walking-demo','music','A chorus on the way home',25,50,'Hum or write one melody inspired by the outing, then save a rough 30-second song demo.','Save a five-second voice memo.','music'],
+    ['surface-loot','visual','Texture loot',15,35,'Photograph one interesting surface; create a seamless tile and save it beside a 2×2 repeat preview.','Find one surface with a pattern.','visual'],
+    ['light-postcard','visual','A moving postcard',20,40,'Capture a shape or light reference, then make and export a five-second visual loop inspired by it.','Save one reference photo or sketch.','visual'],
+    ['three-frames','visual','Three frames of Paris',15,35,'Draw three storyboard frames inspired by the outing and export a timed storyboard or contact sheet.','Sketch the first frame as three shapes.','visual'],
+    ['demo-trade','social','Two demos, one coffee',20,40,'Plan a listening session with Thomas or Ismaël; after it happens, save your own note with one useful observation and one next edit. No private messages needed.','Draft a low-pressure invitation.','music'],
+    ['small-hello','social','A small hello',10,25,'Have a short catch-up with someone you choose; save your own redacted note about one thing you learned or want to follow up. A draft alone is not the finish.','Choose a friend and write one opening sentence.','life'],
+    ['coop-scout','game','Co-op scout',15,35,'Sketch a tiny co-op mechanic for a real place, then test its rule on paper or in a prototype; save the rule and one change from testing.','Write what two players can do together.','game'],
+    ['forge-finds','game','Forgeheart field notes',20,40,'Find a door, machine or sign; reinterpret it as one Forgeheart prop or menu interaction and save a sketch plus its behaviour.','Photograph or sketch one shape.','game'],
+    ['tiny-detour','reset','The ten-minute detour',10,25,'Take a short walk somewhere you choose and save one sketch, photo or specific field note about something you noticed.','Choose the next corner to explore.','life'],
+    ['toulouse-window','travel','Find a Toulouse window',15,35,'Compare two possible travel dates using current sources. Save dated return-trip totals, a budget and a fallback. No booking required.','Choose two dates you could actually go.','life']
+  ].map(([id,kind,title,minutes,xp,done,tiny,path])=>({id,kind,title,minutes,xp,done,tiny,path}));
+  rewardBlueprints.push(
+    { id:'field-coffee', name:'A café stop with my new demo', cost:8, amount:6, category:'FIELD TREAT', note:'Choose your café and adjust this personal allowance to its actual price.', art:'life' },
+    { id:'field-release', name:'Support a new Bandcamp find', cost:15, amount:8, category:'MUSIC', note:'Pick one release you want to keep. This allowance is editable, not a quoted price.', art:'music' },
+    { id:'field-print', name:'Print my favorite Paris visual', cost:20, amount:10, category:'MAKE IT REAL', note:'Choose one of your own images for a small print. Check the actual cost first.', art:'visual' },
+    { id:'field-coop', name:'Co-op night with Valentin', cost:10, amount:0, category:'CO-OP', note:'Pick a game you already own and suggest a time. No invitation is sent for you.', art:'game' },
+    { id:'field-screening', name:'My own mini premiere', cost:7, amount:0, category:'SHOWTIME', note:'Play your new loop or demo full-screen with the lights down. Enjoy it without editing.', art:'room' },
+    { id:'field-samples', name:'One useful sample pack', cost:30, amount:15, category:'SOUND KIT', note:'Name a pack you will use in your next demo and check the real price before buying.', art:'music' },
+    { id:'field-toulouse', name:'€25 toward a Toulouse visit', cost:50, amount:25, category:'TRAVEL POT', note:'A personal allowance toward a visit. No money is transferred or ticket bought.', art:'adventure' },
+    { id:'field-exhibit', name:'A visual inspiration outing', cost:25, amount:15, category:'OUTSIDE', note:'Choose an exhibition or screening. Check dates, access and actual ticket price yourself.', art:'visual' }
+  );
   const consoleAccents = [
     { id: 'ember', name: 'Forge ember', color: '#ff8c42' }, { id: 'mythic', name: 'Mythic violet', color: '#bd8bff' },
     { id: 'rare', name: 'Rare gold', color: '#ffd75e' }, { id: 'pulse', name: 'Signal pink', color: '#ff6b9d' }
   ];
-  return { paths, campaigns, daily, commissions, treats, deck, lifeArcs, districts, friendStarters, specializations, rewardBlueprints, consoleAccents };
+  return { paths, campaigns, daily, commissions, treats, deck, lifeArcs, districts, friendStarters, specializations, rewardBlueprints, consoleAccents, mapKinds, mapMissions };
 });
