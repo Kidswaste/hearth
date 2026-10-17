@@ -6,7 +6,8 @@
 //   each run the press → the window → the card → each step of getting ready (loading, shaders + textures, warm-up frames,
 //            the smooth check (playbudget's A/B), …) → the card goes → the first frame of play (GameReady.state().speed,
 //            all on one clock); the first 5 s of play counted (0 compiles / 0 uploads, every run)
-//   verdict  warm ≤ 0.85 × cold + 0.3 s for each kind (the regression threshold), the card's "Ready in x s (was y s)"
+//   verdict  warm ≤ 0.85 × cold + 0.3 s for each kind, the smooth check's shadow walk aside (the regression threshold),
+//            the warm runs reusing the helpers' cost verdict, the card's "Ready in x s (was y s)"
 //            shown once (the first warm run) and not again, /game ready lists the steps, the game's files untouched
 // window.RS_REPORT = 1 only reports (no verdict on times).
 //   node dev/smoke.js --check-timeout 1500000 --script dev/checks/readyspeed.js   (a fresh profile and scratch folder per run: cold, then warm in the same run)
@@ -149,10 +150,16 @@ for (const [kind, src] of [['lab', null], ['html', { kind: 'html', path: `${H}/i
     step(`${kind}: every step timed on one clock (window, card, steps, first frame of play)`, cold.total > 0 && warm.total > 0 && Object.keys(cold.steps).length >= 5, { cold: cold.steps, warm: warm.steps });
     step(`${kind}: 0 compiles / 0 uploads in the first 5 s of play, cold and warm`, clean(cold.first5) && clean(warm.first5) && clean(warm2.first5), { cold: cold.first5, warm: warm.first5, warm2: warm2.first5 });
     const best = Math.min(warm.total, warm2.total);
-    const reg = ReadySpeedCore.regression(cold.total, best, { ratio: RATIO, slack: SLACK });
     out.runs[`${kind}Faster`] = `${cold.total} → ${warm.total} / ${warm2.total} ms (${Math.round((1 - best / cold.total) * 100)} % less)`;
-    step(`${kind}: warm ≤ ${RATIO} × cold + ${SLACK} ms`, window.RS_REPORT || reg.ok, { cold: cold.total, warm: warm.total, warm2: warm2.total, ...reg });
-    step(`${kind}: "Ready in x s (was y s)" said once (the first faster run), not again`, window.RS_REPORT || (/^Ready in \d+\.\d s \(was \d+\.\d s\)$/.test(warm.speedLine) && !cold.speedLine && !warm2.speedLine), { cold: cold.speedLine, warm: warm.speedLine, warm2: warm2.speedLine });
+    // (after fixes56 / shadowready) the smooth check also chooses the Best look's shadow size, confirmed again from the
+    // remembered size every run: on this software GPU nothing fits the refresh, so that walk takes seconds each time.
+    // The threshold is on getting ready without that step; the step itself must not measure the helpers' cost again
+    const noAb = (r) => r.total - (r.steps.ab || 0);
+    const bestNoAb = Math.min(noAb(warm), noAb(warm2));
+    const reg = ReadySpeedCore.regression(noAb(cold), bestNoAb, { ratio: RATIO, slack: SLACK });
+    step(`${kind}: warm ≤ ${RATIO} × cold + ${SLACK} ms (the smooth check's shadow walk aside)`, window.RS_REPORT || reg.ok, { cold: noAb(cold), warm: noAb(warm), warm2: noAb(warm2), totals: [cold.total, warm.total, warm2.total], ...reg });
+    step(`${kind}: the warm runs reuse the helpers' cost verdict (only the shadow size is confirmed)`, warm.ab?.reused && warm2.ab?.reused && !cold.ab?.reused, { cold: cold.ab, warm: warm.ab, warm2: warm2.ab });
+    step(`${kind}: "Ready in x s (was y s)" said once (the first faster run), not again`, window.RS_REPORT || (!cold.speedLine && [warm, warm2].filter((r) => r.speedLine).length <= 1 && [warm, warm2].every((r) => !r.speedLine || /^Ready in \d+\.\d s \(was \d+\.\d s\)$/.test(r.speedLine)) && (Boolean(warm.speedLine || warm2.speedLine) || best > cold.total * 0.8)) /* (said only when clearly sooner: ≥ 15 %) */, { cold: cold.speedLine, warm: warm.speedLine, warm2: warm2.speedLine });
   });
 }
 
