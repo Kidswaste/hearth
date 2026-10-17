@@ -68,14 +68,23 @@ const Tools = (() => {
     divider.addEventListener('pointerdown', (e) => {
       divider.setPointerCapture(e.pointerId);
       document.body.classList.add('resizing');
-      const right = host.getBoundingClientRect().right;
-      const move = (ev) => host.style.setProperty('--dock-w', `${Math.round(Math.min(host.clientWidth * 0.8, Math.max(260, right - ev.clientX)))}px`); // (round 29) the owner: "let me resize the chat windows": up to 80% of the window, down to 260 px
+      const r = host.getBoundingClientRect(); const right = r.right; const max = host.clientWidth * 0.8;
+      // (round 57, lab240edit) while dragging, the width goes on the dock itself, once a frame: --dock-w on the tool is
+      // inherited by everything in it, so each move restyled the whole tool (the Lab: ≈ 400 elements, ≈ 30 ms a move
+      // here). The tool's --dock-w gets the final width on release (what /dock-width and the dock read), as before.
+      let want = 0; let raf = 0;
+      const apply = () => { raf = 0; const w = `${want}px`; if (dock.style.flexBasis !== w) dock.style.flexBasis = w; };
+      const move = (ev) => { want = Math.round(Math.min(max, Math.max(260, right - ev.clientX))); if (!raf) raf = requestAnimationFrame(apply); }; // (round 29) the owner: "let me resize the chat windows": up to 80% of the window, down to 260 px
       divider.addEventListener('pointermove', move);
-      divider.addEventListener('pointerup', () => {
+      const up = () => {
         divider.removeEventListener('pointermove', move);
+        divider.removeEventListener('pointercancel', up); divider.removeEventListener('pointerup', up);
+        if (raf) { cancelAnimationFrame(raf); apply(); }
         document.body.classList.remove('resizing');
-        store.set(`dockWidth.${tool.id}`, parseInt(host.style.getPropertyValue('--dock-w'), 10));
-      }, { once: true });
+        if (want) { host.style.setProperty('--dock-w', `${want}px`); dock.style.flexBasis = ''; store.set(`dockWidth.${tool.id}`, want); }
+      };
+      divider.addEventListener('pointerup', up, { once: true });
+      divider.addEventListener('pointercancel', up, { once: true });
     });
     divider.addEventListener('dblclick', () => { host.style.setProperty('--dock-w', '420px'); store.set(`dockWidth.${tool.id}`, 420); }); // back to the usual width
     host.append(head, el('div', { class: 'tool-main' }, body, divider, dock));

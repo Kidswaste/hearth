@@ -423,7 +423,9 @@ filter('${type}', P);
       row.addEventListener('dragend', () => { dragId = null; row.classList.remove('dragging'); });
     };
     const dropInto = (row, target, same) => {
-      row.addEventListener('dragover', (e) => { if (dragId && !same()) { e.preventDefault(); row.classList.add('drop-target'); } });
+      // (round 57, lab240edit) dragover comes on every move and every 50 ms: the class is set once (adding it again
+      // rewrote the row's class attribute and restyled the row each time)
+      row.addEventListener('dragover', (e) => { if (dragId && !same()) { e.preventDefault(); if (!row.classList.contains('drop-target')) row.classList.add('drop-target'); } });
       row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
       row.addEventListener('drop', (e) => { e.stopPropagation(); dropOn(e, target, row); });
     };

@@ -170,7 +170,7 @@ const ThreeMedia = (() => {
       }
       const { k, left, top } = place(W, H, s);
       frame.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${s.w}px;height:${s.h}px;transform:scale(${k});transform-origin:0 0;`;
-      Object.assign(zones.style, { left: `${left}px`, top: `${top}px`, width: `${s.w * k}px`, height: `${s.h * k}px` });
+      if (safe) Object.assign(zones.style, { left: `${left}px`, top: `${top}px`, width: `${s.w * k}px`, height: `${s.h * k}px` }); // (round 57, lab240edit) placed while shown: hidden, its 4 writes per resize restyled it for nothing (turning Safe on lays out again)
       put(zones, 'hidden', !safe);
       if (safe && zones.dataset.for !== `${s.id}|${platform}`) { zones.dataset.for = `${s.id}|${platform}`; paintZones(s); }
       put(sizeLabel, 'textContent', `${s.w}×${s.h} · ${Math.round(k * 100)}%`);
@@ -3170,8 +3170,17 @@ const ThreeMedia = (() => {
     });
     // sizes as the ResizeObservers last saw them: reading clientWidth right after the time text changed forced a
     // layout of the page ten times a second while a song played
-    new ResizeObserver(() => { sizes.mw = minimap.clientWidth; sizes.mh = minimap.clientHeight; sizes.mOk = true; draw(); }).observe(minimap);
-    new ResizeObserver(() => { sizes.cw = canvas.clientWidth; sizes.ch = canvas.clientHeight; sizes.cOk = true; draw(); }).observe(canvas);
+    // (round 57, lab240edit) one observer for both: a width change (the dock's splitter, the window) resizes both at
+    // once, and each drew the timeline and the minimap, twice a frame; the second's size read then laid out the page
+    // again after the first one's draw. Both sizes are read first, then one draw.
+    const sizeRo = new ResizeObserver((es) => {
+      for (const e of es) {
+        if (e.target === minimap) { sizes.mw = minimap.clientWidth; sizes.mh = minimap.clientHeight; sizes.mOk = true; }
+        else { sizes.cw = canvas.clientWidth; sizes.ch = canvas.clientHeight; sizes.cOk = true; }
+      }
+      draw();
+    });
+    sizeRo.observe(minimap); sizeRo.observe(canvas);
     // (round 36, nativefeel) a new screen scale (another monitor, Windows' scaling) redraws the wave crisp (the sizes didn't change)
     const onDpr = () => { if (!canvas.isConnected) removeEventListener('hearth:dpr', onDpr); else draw(); };
     addEventListener('hearth:dpr', onDpr);
