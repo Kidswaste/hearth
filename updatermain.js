@@ -195,6 +195,7 @@ function create(opts = {}) {
       C.writeState(DIR, 'swapped', null);
       if (swapped.ok) {
         const n = [swapped.kept?.length ? `Your own edits to ${swapped.kept.join(', ')} clashed with the update: kept in the stash "${swapped.stash?.name}".` : '',
+          swapped.own?.length && swapped.stash ? C.ownNote(swapped.own, swapped.stash.name) : '',
           swapped.keptFiles ? `You had added ${swapped.keptFiles.files.join(', ')} by hand: the update's file is in place, yours is kept in the stash "${swapped.keptFiles.name}".` : ''].filter(Boolean).join(' ');
         swapped = { ...swapped, note: `Finished as Hearth restarted.${n ? ` ${n}` : ''}` };
       } else {
@@ -222,11 +223,6 @@ function create(opts = {}) {
     if (!s || !msg.out.includes(name)) return { error: 'the stash could not be found again' };
     return { sha: s, name, files: paths || undefined };
   }
-  async function stashDrop(s) {
-    const list = lines(await git(['stash', 'list', '--format=%H']));
-    const i = list.indexOf(s.sha);
-    if (i >= 0) await git(['stash', 'drop', '-q', `stash@{${i}}`]);
-  }
   // puts a stash back; on a clash the clashing files keep the new version (a file full of conflict marks would break
   // the app) and the stash stays, named. → { ok, kept: [files] }
   async function stashRestore(s) {
@@ -236,20 +232,9 @@ function create(opts = {}) {
     // the owner's, and the owner's agents (the Lab's Three Director, so its chats) stayed in the stash. That write goes
     // in its own named stash first, the owner's edits come back, then config.json gains what the write added (nothing
     // of the owner's is replaced: bringConfig)
-    const inStash = new Set(lines(await git(['diff', '--name-only', `${s.sha}^1`, s.sha])));
-    const touched = inStash.size ? lines(await git(['diff', '--name-only', 'HEAD'])).filter((f) => inStash.has(f)) : [];
-    const [, from = '', to = ''] = /\(([0-9a-f]*) → ([0-9a-f]*)\)/.exec(s.name || '') || [];
-    const during = touched.length ? await stashPush('during', from, to, touched) : null;
-    const a = await git(['stash', 'apply', s.sha]);
-    const clash = lines(await git(['diff', '--name-only', '--diff-filter=U']));
-    if (a.ok && !clash.length) {
-      await stashDrop(s);
-      if (during?.sha && touched.includes('config.json')) await configFrom(during.sha);
-      return { ok: true, kept: [] };
-    }
-    await git(['reset', '-q']);
-    if (clash.length) await git(['checkout', 'HEAD', '--', ...clash]);
-    return { ok: false, kept: clash.length ? clash : ['(see the stash)'] };
+    // (round 55, fixes55) the same steps as Windows' finish-at-restart (updatesafe-core restoreSteps): on a clash the
+    // owner's config.json / theme.css win too, instead of waiting in the stash for bringBack at the next start
+    return C.runStepsAsync(C.restoreSteps({ dir: DIR, stash: s }), git);
   }
   // config.json gains what the one in commit `rev` has that it lacks (or has only as the repo's own): C.bringConfig.
   // A config.json that can't be read here, or one in rev that can't, leaves the file as it is. → [what came back]
@@ -364,9 +349,10 @@ function create(opts = {}) {
     const notes = [];
     if (j.edits && back.ok) notes.push(`Your own edits (${s.dirty || 'some'} file${s.dirty === 1 ? '' : 's'}) were put aside and are back in place.`);
     if (kept.length) notes.push(`Your own edits to ${kept.join(', ')} clashed with the update: the file${kept.length === 1 ? ' has' : 's have'} the new version, and your edits are kept in the stash "${j.edits.name}" (\`git stash list\`).`);
+    if (back.own?.length && !back.ok) notes.push(C.ownNote(back.own, j.edits.name));
     if (j.files) notes.push(`You had added ${j.files.files.join(', ')} by hand, and the update brings a file with the same name: the update's file is in place, yours is kept in the stash "${j.files.name}".`);
     return { ok: true, changed: files.length, restart: needsRestartIn(DIR, files), from: j.from.slice(0, 7), to: after.slice(0, 7), files: files.slice(0, 200),
-      kept, stashes: [kept.length ? j.edits : null, j.files || null].filter(Boolean).map((x) => x.name), note: notes.join(' ') };
+      kept, own: back.own || [], stashes: [j.edits && !back.ok ? j.edits : null, j.files || null].filter(Boolean).map((x) => x.name), note: notes.join(' ') };
   }
   // an update that didn't go in: the partial files put back (only the update's own), the stashes back, journal closed
   async function undo(j) {
