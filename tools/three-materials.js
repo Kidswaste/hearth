@@ -192,7 +192,7 @@ const LabMaterials = (() => {
     return p ? { k: p.id, ...(c ? { c } : {}), ...(s != null ? { s } : {}) } : null;
   }
   function command(a) {
-    if (!a) { open({}); return null; }
+    if (!a) return open({}).then(() => null); // (round 58, sweep58) awaited: a layer with no 3D scene answers the command, not an unhandled rejection
     if (/^list$/i.test(a)) return `Looks: ${C.PRESETS.map((p) => p.name.toLowerCase()).join(', ')} (+ #hex color, shine 0–100)`;
     if (/^undo$/i.test(a)) return undo() ? 'Undone' : 'Nothing to undo';
     const t = target({});
