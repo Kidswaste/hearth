@@ -231,12 +231,76 @@ function create(opts = {}) {
   // the app) and the stash stays, named. → { ok, kept: [files] }
   async function stashRestore(s) {
     if (!s?.sha) return { ok: true, kept: [] };
+    // (round 54 fix, labchats54) a file of the stash written meanwhile stopped the WHOLE stash from coming back ("your
+    // local changes would be overwritten"): round 53's window saved the repo's config.json while git had it in place of
+    // the owner's, and the owner's agents (the Lab's Three Director, so its chats) stayed in the stash. That write goes
+    // in its own named stash first, the owner's edits come back, then config.json gains what the write added (nothing
+    // of the owner's is replaced: bringConfig)
+    const inStash = new Set(lines(await git(['diff', '--name-only', `${s.sha}^1`, s.sha])));
+    const touched = inStash.size ? lines(await git(['diff', '--name-only', 'HEAD'])).filter((f) => inStash.has(f)) : [];
+    const [, from = '', to = ''] = /\(([0-9a-f]*) → ([0-9a-f]*)\)/.exec(s.name || '') || [];
+    const during = touched.length ? await stashPush('during', from, to, touched) : null;
     const a = await git(['stash', 'apply', s.sha]);
     const clash = lines(await git(['diff', '--name-only', '--diff-filter=U']));
-    if (a.ok && !clash.length) { await stashDrop(s); return { ok: true, kept: [] }; }
+    if (a.ok && !clash.length) {
+      await stashDrop(s);
+      if (during?.sha && touched.includes('config.json')) await configFrom(during.sha);
+      return { ok: true, kept: [] };
+    }
     await git(['reset', '-q']);
     if (clash.length) await git(['checkout', 'HEAD', '--', ...clash]);
     return { ok: false, kept: clash.length ? clash : ['(see the stash)'] };
+  }
+  // config.json gains what the one in commit `rev` has that it lacks (or has only as the repo's own): C.bringConfig.
+  // A config.json that can't be read here, or one in rev that can't, leaves the file as it is. → [what came back]
+  const CONFIG = 'config.json';
+  const parse = (r) => { try { return r.ok ? JSON.parse(r.out) : null; } catch { return null; } };
+  async function configFrom(rev, head = undefined) {
+    const file = path.join(DIR, CONFIG);
+    // never written over what wasn't read: a file that can't be read or parsed is left exactly as it is
+    let raw = null; try { raw = fs.readFileSync(file, 'utf8'); } catch (err) { console.warn('update: config.json not read', err.code); }
+    const cur = raw == null ? null : parse({ ok: true, out: raw });
+    const other = parse(await git(['show', `${rev}:${CONFIG}`]));
+    if (!cur || !other) return [];
+    const r = C.bringConfig(cur, other, head === undefined ? parse(await git(['show', `HEAD:${CONFIG}`])) : head);
+    if (!r.brought.length) return [];
+    const tmp = `${file}.${process.pid}.update.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify(r.value, null, 2)}\n`);
+    fs.renameSync(tmp, file);
+    return r.brought;
+  }
+  // (round 54 fix, labchats54) at the start: an update's "your edits" stash still here is one that couldn't come back
+  // (a successful one is dropped). Round 53 → 54 left the owner's config.json in one: the Lab's Three Director gone,
+  // its chats out of the Lab. Once per stash, newest first: config.json gains the owner's agents and parts (nothing
+  // removed: bringConfig); another of its files comes back only when no update changed it since and it is untouched
+  // here. The stashes stay (nothing dropped). → { ok, brought: [what] }
+  async function bringBack() {
+    if (busy) return { ok: false, brought: [] };
+    const gd = C.gitDirOf(DIR);
+    if (!gd) return { ok: true, brought: [] };
+    let common = gd; try { common = path.resolve(gd, fs.readFileSync(path.join(gd, 'commondir'), 'utf8').trim()); } catch { /* not a worktree */ }
+    if (![gd, common].some((d) => fs.existsSync(path.join(d, 'logs', 'refs', 'stash')) || fs.existsSync(path.join(d, 'refs', 'stash')))) return { ok: true, brought: [] }; // no stash: no git run
+    const done = new Set(C.readState(DIR, 'ownback', null)?.shas || []);
+    const list = lines(await git(['stash', 'list', '--format=%H%x09%gs'])).map((l) => l.split('\t')).filter(([h, m]) => h && C.OWN_EDITS.test(m || '') && !done.has(h));
+    if (!list.length) return { ok: true, brought: [] };
+    busy = true;
+    try {
+      const head = parse(await git(['show', `HEAD:${CONFIG}`]));
+      const brought = [];
+      for (const [h] of list) {
+        for (const f of lines(await git(['diff', '--name-only', `${h}^1`, h]))) {
+          if (f === CONFIG) { brought.push(...(await configFrom(h, head))); continue; }
+          if (brought.includes(f) || C.OWN.test(f)) continue;
+          const [was, now] = [await sha(`${h}^1:${f}`), await sha(`HEAD:${f}`)];
+          if (!was || was !== now) continue; // an update changed it since: the owner's version stays in the stash
+          if (!(await git(['diff', '--quiet', 'HEAD', '--', f])).ok) continue; // changed here since: that one stays
+          if ((await git(['checkout', h, '--', f])).ok) { await git(['reset', '-q', '--', f]); brought.push(f); }
+        }
+        done.add(h);
+      }
+      C.writeState(DIR, 'ownback', { at: Date.now(), shas: [...done].slice(-40), brought });
+      return { ok: true, brought };
+    } finally { busy = false; }
   }
   const identity = async () => ((await git(['config', 'user.email'])).out ? [] : ['-c', 'user.name=Hearth', '-c', 'user.email=hearth@localhost']);
   const changedFiles = async (a, b) => lines(await git(['diff', '--name-only', a, b]));
@@ -448,7 +512,7 @@ function create(opts = {}) {
     return done(`Back to how it was before the update (${String(j.from).slice(0, 7)}).${put.kept.length ? ` Your edits to ${put.kept.join(', ')} are in the stash "${j.edits.name}".` : ''}`, { retry: false, rolledBack: true });
   }
 
-  return { status, apply, back, fix, preflight, needsRestart: (files) => needsRestartIn(DIR, files), get git() { return bin; } };
+  return { status, apply, back, fix, preflight, bringBack, needsRestart: (files) => needsRestartIn(DIR, files), get git() { return bin; }, get busy() { return busy; } };
 }
 
 const self = create();
@@ -461,4 +525,6 @@ function register(ipcMain, { restart, getWin } = {}) {
   ipcMain.handle('update:reload', () => { try { require('./safetynetmain').noteReload('an update'); } catch { /* tests */ } getWin?.()?.webContents.reloadIgnoringCache(); return true; });
 }
 
-module.exports = { register, create, status: self.status, apply: self.apply, back: self.back, fix: self.fix, needsRestart: (files) => needsRestartIn(__dirname, files) };
+// (round 54 fix, labchats54) applying(): an update / go back / fix is moving files right now (main.js holds config.json's
+// news and the window's saves meanwhile: the owner's config.json waits in a stash, the file on disk is the repo's own)
+module.exports = { register, create, status: self.status, apply: self.apply, back: self.back, fix: self.fix, bringBack: self.bringBack, applying: () => self.busy, needsRestart: (files) => needsRestartIn(__dirname, files) };

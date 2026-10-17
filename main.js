@@ -264,7 +264,27 @@ ipcMain.handle('boot:status', () => ({
   reads: [...waiting].filter(([, t]) => Date.now() - t > 300).map(([k]) => k),
 }));
 ipcMain.handle('config:get', afterSync(() => loadAll()));
+// (round 54 fix, labchats54) while an update moves files, config.json on disk is the repo's own (the owner's waits in a
+// stash: updatermain.js): its news isn't sent to the window, and a save from the window waits until the owner's is back
+// (round 53's window saved the repo's config then, and the Lab's Three Director with its chats stayed in the stash)
+const updating = () => { try { return Boolean(require.cache[require.resolve('./updatermain')]?.exports?.applying?.()); } catch { return false; } };
+let cfgHeld = null;
+function holdConfig(config) {
+  const first = !cfgHeld;
+  cfgHeld = config;
+  if (!first) return;
+  const later = () => {
+    if (updating()) { setTimeout(later, 300); return; }
+    let c = cfgHeld; cfgHeld = null;
+    // what the file has now that the held save lacks stays (agents by id, parts): the save came from a window that
+    // hadn't seen it yet
+    try { c = require('./updatesafe-core').bringConfig(c, JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))).value; } catch { /* the save as it is (the guard still checks it) */ }
+    try { const r = cfgStore.save(syncmain.guardConfig(c)); if (r.ok) send('config:changed', loadAll()); } catch (err) { console.warn('config (after the update):', err.message); }
+  };
+  setTimeout(later, 300);
+}
 ipcMain.handle('config:save', afterSync((_e, config) => {
+  if (updating()) { holdConfig(config); return { ok: true, held: true }; }
   config = syncmain.guardConfig(config); // a config that just arrived from another computer is merged, not undone
   // (round 29, safetynet) temp file + rename: a crash or a power cut mid-save can't leave half a config.json
   // (round 43, datasafe) never a config that isn't one, never over a file it couldn't read, never every agent at once
@@ -635,6 +655,18 @@ function registerAfterWindow() {
   lazyIpc('twocomputersmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, syncmain, getWin: () => win })); // (round 35) two computers: this computer's id / name, media found again after a switch, "Find this file"
   lazyIpc('filewatchmain.js', (m, ipc) => m.register(ipc, { getWin: () => win })); // (round 42) files changed outside Hearth: one watcher service (sync's folders use it too), calm reloads in the window
   lazyIpc('updatermain.js', (m, ipc) => m.register(ipc, { restart: () => appshell.restartApp(), getWin: () => win })); // ⬆ Update: pull main from the app's git checkout, reload / restart (round 29: on first use)
+  // (round 54 fix, labchats54) what an update put aside and couldn't put back (round 53 → 54: the owner's config.json,
+  // so the Lab's Three Director and its chats) comes back by itself a moment after the start, once (no stash: no git run)
+  setTimeout(() => {
+    const gd = require('./updatesafe-core').gitDirOf(__dirname);
+    if (!gd) return;
+    require('./updatermain').bringBack().then((r) => {
+      if (!r?.brought?.length) return;
+      send('config:changed', loadAll()); // at once (the watcher would too, a moment later)
+      const what = [...new Set(r.brought.map((b) => (/^agent /.test(b) ? b.slice(6) : b === 'config.json' ? 'settings' : b.split('.')[0])))].slice(0, 6).join(', ');
+      win?.webContents.executeJavaScript(`window.toast?.(${JSON.stringify(`Brought back what the last update had put aside: ${what}. Your chats were never touched.`)}, { timeout: 12000 })`).catch(() => {});
+    }).catch((err) => console.warn('update: bring back', err.message));
+  }, 4000);
   lazyIpc('chromemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 30) Hearth's Chrome: Google sign-in in the owner's real Chrome, driven over the DevTools protocol
   lazyIpc('chromeviewmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 31) Chrome views: that Chrome out of sight, its pages shown and used inside Hearth's windows
   // (round 30, chrome) Google's "Couldn't sign you in" anywhere: the app window offers Chrome, else the hub does (a website chat)
@@ -668,7 +700,10 @@ function registerAfterWindow() {
     let seen = ''; let t = null; let w = null;
     const stamp = () => { try { const st = fs.statSync(file); return `${st.size}:${st.mtimeMs}`; } catch { return ''; } };
     seen = stamp();
-    const check = () => { const now = stamp(); if (now === seen) return; seen = now; send('config:changed', loadAll()); };
+    const check = () => {
+      if (updating()) { clearTimeout(t); t = setTimeout(check, 300); return; } // (round 54 fix) the file as it is once the update is done
+      const now = stamp(); if (now === seen) return; seen = now; send('config:changed', loadAll());
+    };
     const soon = () => { clearTimeout(t); t = setTimeout(check, 60); };
     const arm = () => { try { w?.close(); w = fs.watch(file, (ev) => { soon(); if (ev === 'rename') setTimeout(arm, 100); }); w.on('error', () => { w = null; }); } catch { w = null; } };
     arm();
