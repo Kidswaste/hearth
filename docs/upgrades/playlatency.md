@@ -34,7 +34,24 @@ while it measures and says so when it is the cause.
 
 ## Numbers (this machine: Xvfb 1280 × 720 at 60 Hz, SwiftShader software GL, shared CPUs)
 
-NUMBERS
+Three runs of `dev/checks/playlatency.js` (the machine was shared with four other agents' game checks: idle frame
+times swung 50–133 ms between runs). "Before" = the same build with the one canvas copied each frame
+(`playlatency.test = { copy: true }`, i.e. up to round 55); the HTML-game listener count is round 55's probe.
+
+| Lab scene (Clink-like, 3 layers on one canvas) | Before (copied) | After (swapped) |
+|---|---|---|
+| The one canvas | `preserveDrawingBuffer: true` | **false** (`__gameInfo().fast`) |
+| Real input (CDP, trusted) → the game's frame, frames between (p50 / p95) | 1 / 1 | 1 / 1 |
+| …ms p50 / p95 (3 runs) | 8.4 / 25.9 · 17 / 59.7 · 12.6 / 78.1 | 14.3 / 37.8 · 18.6 / 75.1 · 9.3 / 29.9 |
+| `/game latency` p50 / p95 ms (3 runs) | 12.6 / 22.5 · 16.7 / 31.4 · 9.8 / 38.7 | 15.7 / 28.2 · 12.5 / 38.5 · 16.2 / 52.7 |
+| Key → handled (dispatch) p50 | 0.3–0.4 ms | 0.4 ms |
+| Hearth's key handler (main process), per key | 0.022–0.025 ms | 0.021–0.024 ms |
+| Main process loop delay during play, p99 | 3.6–3.9 ms | 4.0–4.2 ms |
+| Messages in the page while playing | 0–1.3 / s | 0–1.3 / s |
+| Window throttled / focused / full screen | no / yes / yes | no / yes / yes |
+| HTML game: Hearth's keydown listeners | **1** (the probe's F) | **0** |
+| F chip | fps · ms · Hz · … | `38 fps · 26.5 ms · 60 Hz · Input: 12 ms · one canvas (3 of 3 layers) · …` |
+
 
 Milliseconds here are dominated by the software GPU (frames of 17–67 ms that vary run to run); the verdict that matters
 is relative: each input is read in the very next frame, and Hearth's part (handler + main loop) is a few hundredths of
@@ -75,7 +92,11 @@ process that isn't the page's), so before / after frame times are within its noi
 6 upgrades.
 
 ## Tests
-TESTS
+`node dev/playlatency-test.js` (UNIT, 6 groups). Checks, each gameready-based one under
+`flock /tmp/hearth-gameready.lock sh dev/run-checks.sh --exact …`: **playlatency** (passed; two earlier runs failed only
+on fixed-ms thresholds under load, which is why the check now counts frames between input and read and the verdict
+allows for frames that vary), **gameinput**, **gamemode**, **playbudget** passed; **gamefps54** failed twice on timing only, a different step each time under a load average of 8–9 ("frames as fast as off": 158 vs 167–433 ms frames; then "the look's most in one frame under 2 ms": 2.4 ms once) — its HTML game doesn't use the changed canvas; release policy: noted, not holding; **lazy**,
+**unit:boot-test**, **unit:winmac-test**, unit:gameperf-test, unit:gamemode-test, unit:gameinput-test passed.
 
 ## Risks
 - The swapped canvas holds no picture outside its frame. Everything of Hearth's that reads it goes through `cvDraw` /
