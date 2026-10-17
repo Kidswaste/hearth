@@ -258,7 +258,11 @@ const QuestJournal = (() => {
     const selected = C.districts.find(d => d.id === state.world.selected), layout = E('div', { class: 'qj-world-layout' }), map = E('section', { class: 'qj-world-map', attrs: { 'aria-label': 'Fictional Paris destinations' } }, mapDrawing());
     for (const district of C.districts) {
       const campaign = state.campaigns.find(c => c.id === district.route), count = campaign?.quests.filter(q => C.done(state, q.id)).length || 0;
-      const b = button('', () => mutate(s => { s.world.selected = district.id; }, `${district.name} selected.`), 'qj-map-pin', `district-${district.id}`);
+      const b = button('', async () => {
+        await mutate(s => { s.world.selected = district.id; }, `${district.name} selected.`);
+        // The old button is disabled during save and loses focus before render.
+        if (page === 'world' && H.activeId === 'tool:quests' && !root.querySelector('dialog[open]')) root.querySelector(`[data-focus="district-${district.id}"]`)?.focus({ preventScroll: true });
+      }, 'qj-map-pin', `district-${district.id}`);
       b.style.setProperty('--path', district.color); b.style.left = district.x + '%'; b.style.top = district.y + '%'; b.dataset.district = district.id;
       b.setAttribute('aria-label', `Visit ${district.name}`); b.setAttribute('aria-pressed', String(district.id === selected.id));
       b.append(E('span', { class: 'qj-pin-mark', text: district.id === 'gare' ? '↗' : count === 3 ? '✦' : '◇', attrs: { 'aria-hidden': 'true' } }), E('strong', { text: district.name })); map.append(b);
