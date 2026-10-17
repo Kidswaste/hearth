@@ -231,6 +231,33 @@ const used = (app, CS) => CS.effective(json(path.join(app, 'data', 'config.json'
     ok(stashes(app).length === 1, 'the stash is kept (it didn\'t come back whole)');
   }
 
+  // ---------- 9. (round 56, fixes56) a stash that applies cleanly after the move: its content goes into data right away ----------
+  {
+    const { dev, app } = makeApp('h');
+    await start(app);
+    write(path.join(app, 'config.json'), text({ ...REPO, agents: [...REPO.agents, { id: 'stashed', name: 'From a stash' }] }));
+    write(path.join(app, 'theme.css'), OWN_CSS);
+    const NAME = 'hearth-update 2026-10-17 10:00 (764fb08 → f994ef0): your edits';
+    g(app, 'stash', 'push', '-q', '-m', NAME);
+    pushUpdate(dev, 56); g(app, 'pull', '-q', '--ff-only'); // the update leaves config.json / theme.css alone: no clash
+    const C = require(path.join(app, 'updatesafe-core.js'));
+    const sha = g(app, 'rev-parse', 'stash@{0}');
+    const sync = (...args) => { try { return { ok: true, out: g(app, ...args) }; } catch (e) { return { ok: false, out: String(e.stdout || '').trim() }; } };
+    const r = C.runSteps(C.restoreSteps({ dir: app, stash: { sha, name: NAME } }), sync);
+    ok(r.ok && !dirty(app), `clean apply: the tracked files are the repo's own at once (${dirty(app) || 'clean'})`);
+    ok(ids(json(path.join(app, 'data', 'config.json'))).includes('stashed') && read(path.join(app, 'data', 'theme.css')) === OWN_CSS, 'clean apply: the stash\'s agent and CSS are in data now (not waiting for the next start)');
+    ok(fs.readdirSync(path.join(app, 'data', '.configsafe')).some((n) => /^config.*\.json$/.test(n) && ids(json(path.join(app, 'data', '.configsafe', n))).includes('stashed')), 'clean apply: a byte-for-byte copy of what it held kept in data/.configsafe');
+    ok(stashes(app).length === 0, 'clean apply: the stash came back whole and is dropped');
+    // the owner's data copy can't be read: nothing decided, the tracked file and the stash wait
+    write(path.join(app, 'config.json'), text({ ...REPO, agents: [...REPO.agents, { id: 'second', name: 'Second' }] }));
+    g(app, 'stash', 'push', '-q', '-m', NAME);
+    const good = read(path.join(app, 'data', 'config.json'));
+    write(path.join(app, 'data', 'config.json'), '{ "agents": [ half');
+    const r2 = C.runSteps(C.restoreSteps({ dir: app, stash: { sha: g(app, 'rev-parse', 'stash@{0}'), name: NAME } }), sync);
+    ok(!r2.ok && r2.kept.includes('config.json') && /second/.test(read(path.join(app, 'config.json'))) && stashes(app).length === 1 && read(path.join(app, 'data', 'config.json')) === '{ "agents": [ half', 'clean apply, data copy unreadable: nothing written over, the tracked file and the stash kept');
+    write(path.join(app, 'data', 'config.json'), good);
+  }
+
   // ---------- 5. effective() ----------
   {
     const CS = require(path.join(ROOT, 'configsafe-core.js'));
@@ -254,9 +281,25 @@ const used = (app, CS) => CS.effective(json(path.join(app, 'data', 'config.json'
     ok(/cfg: cfgView/.test(main) && /function readConfig\(\) \{ return configsafe\.effective\(/.test(main), 'main.js: the window, the engines, Recover read the defaults + the owner\'s');
     ok(/configsafe\.afterStart\(/.test(main), 'main.js: bring back + settle a moment after the start');
     const raw = [];
-    const walk = (dir, rel = '') => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.isDirectory()) { if (!['dev', 'docs', 'data', 'electron', 'node_modules', '.git', '.claude', 'mac', 'assets'].includes(e.name)) walk(path.join(dir, e.name), `${rel}${e.name}/`); } else if (e.name.endsWith('.js')) { const t = read(path.join(dir, e.name)); if (/path\.join\(__dirname,\s*(?:'\.\.',\s*)?'(?:config\.json|theme\.css)'/.test(t)) raw.push(`${rel}${e.name}`); } } };
+    // (round 56, fixes56) wider: any path to the app folder's config.json / theme.css (path.join / resolve from __dirname,
+    // the app or root folder, a template string, a require / import, a fetch or a <link> / <script> in a page), in every
+    // .js / .mjs / .cjs / .html file Hearth ships (round 55's chatsafe / playbudget files included). configsafe-core.js
+    // (its paths(): the one place the defaults are named) is the only one allowed
+    const RAW = [
+      /path\.(?:join|resolve)\(\s*(?:__dirname|ROOT|APP(?:_DIR)?|appDir|APPDIR|app|root|DIR|HERE|process\.cwd\(\))\s*,\s*(?:'\.\.'\s*,\s*)?['"`]\.?\/?(?:config\.json|theme\.css)['"`]/,
+      /\$\{\s*(?:__dirname|ROOT|APP(?:_DIR)?|appDir|DIR|HERE)\s*\}[\\/]+(?:\.\.[\\/]+)?(?:config\.json|theme\.css)/,
+      /(?:require|import)\s*\(?\s*['"`](?:\.\.?\/)+(?:config\.json|theme\.css)['"`]/,
+      /fetch\(\s*['"`](?:\.\.?\/)*(?:config\.json|theme\.css)['"`]/,
+      /(?:href|src)\s*=\s*['"](?:\.\.?\/)*(?:config\.json|theme\.css)['"]/,
+    ];
+    const ALLOWED = new Set(['configsafe-core.js']);
+    let scanned = 0;
+    const walk = (dir, rel = '') => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.isDirectory()) { if (!['dev', 'docs', 'data', 'electron', 'electron-mac', 'node_modules', '.git', '.claude', 'mac', 'assets'].includes(e.name)) walk(path.join(dir, e.name), `${rel}${e.name}/`); } else if (/\.(?:m?js|cjs|html)$/.test(e.name) && !ALLOWED.has(`${rel}${e.name}`)) { scanned += 1; const t = read(path.join(dir, e.name)); const hit = RAW.find((re) => re.test(t)); if (hit) raw.push(`${rel}${e.name} (${t.match(hit)[0].slice(0, 60)})`); } } };
     walk(ROOT);
-    ok(raw.join() === '', `no file reads the tracked config.json / theme.css by itself (${raw})`);
+    ok(raw.join() === '' && scanned > 300, `no file reads the tracked config.json / theme.css by itself (${scanned} files: ${raw.join('; ') || 'none'})`);
+    // the scan itself still finds each kind of raw read
+    const probe = ["path.join(__dirname, 'config.json')", "path.resolve(ROOT, '..', 'theme.css')", '`${__dirname}/config.json`', "require('./config.json')", "fetch('theme.css')", '<link rel="stylesheet" href="theme.css">'];
+    ok(probe.every((t) => RAW.some((re) => re.test(t))) && !RAW.some((re) => re.test("ownFile(__dirname, 'config.json')")), 'the scan catches every kind of raw read (and not configsafe-core.ownFile)');
     ok(require(path.join(ROOT, 'sync-merge.js')).localOnly('config.json') && require(path.join(ROOT, 'sync-merge.js')).localOnly('theme.css'), 'sync: data/config.json travels once, as app/config.json (not a second time as a data file)');
   }
 
