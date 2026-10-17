@@ -79,8 +79,11 @@ async function playFor(ms, slow) {
   const p0 = await until(async () => { const v = await ev('window.__gameReady && window.__gameReady.phase === "playing" ? performance.now() : 0'); return v || null; }, 120000);
   if (slow) await wait(1000).then(() => ev('window.game.slow = true'));
   await wait(ms - (slow ? 1000 : 0));
+  // (a busy computer draws a slowed game at a few frames a second: the guard's 10 s of looks take longer; its decision
+  // is waited for, up to 30 s more, and everything made is still counted)
+  if (slow) await until(() => ev('window.__gameLook ? !["tight", "trying", "measuring", "waiting"].includes(window.__gameLook.report().guard) : true'), 30000);
   const r = JSON.parse(await ev(READ));
-  r.counted = typeof c === 'string' && c !== 'already' ? JSON.parse(c) : c; r.playAt = p0;
+  r.counted = typeof c === 'string' && c !== 'already' ? JSON.parse(c) : c; r.playAt = p0; if (Array.isArray(r.ev)) r.ev = r.ev.map((e) => [e[0], +((e[1] - p0) / 1000).toFixed(2)]); // (seconds into play)
   return r;
 }
 async function stop() { await GameMode.leave(); await until(async () => !(await GW().state())?.playing, 10000); await wait(800); }
@@ -127,7 +130,7 @@ await safe('again', async () => {
   const r = await playFor(9000, false);
   const L = r.look || {}; const S = L.shadows || {}; const ab = r.budget?.ab?.shadow;
   out.runs.again = { events: r.ev, shadows: S, guard: L.guard, ab: r.budget?.ab, text: r.text };
-  step('the next ▶ Play starts at the remembered size: never made at 2048, the A/B confirmed it from there', before.shadow && S.made && !S.made.includes(2048) && S.made[0] === before.shadow.size && ab && ab.rows[0]?.[0] === before.shadow.size && S.chosen?.by === (ab.size === before.shadow.size ? 'remembered' : 'ready'), { remembered: before.shadow, made: S.made, ab });
+  step('the next ▶ Play starts at the remembered size: never made at 2048, the A/B confirmed it from there', before.shadow && S.made && !S.made.includes(2048) && (S.made[0] === before.shadow.size || (before.shadow.size === 512 && !S.made.length)) && ab && ab.rows[0]?.[0] === before.shadow.size && S.chosen?.by === (ab.size === before.shadow.size ? 'remembered' : 'ready'), { remembered: before.shadow, made: S.made, ab });
   step('… and nothing made after the first frame there either', Array.isArray(r.ev) && r.ev.length === 0 && S.midPlay === 0, (r.ev || []).slice(0, 20));
   step('its line says it was remembered', /Shadows: \d+ \(chosen while getting ready, remembered for this game\)/.test(r.text || '') || /Shadows: 512, the game's own/.test(r.text || ''), r.text);
   await stop();

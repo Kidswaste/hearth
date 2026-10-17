@@ -273,7 +273,7 @@ function gameLookPage(o) {
       const from = R.shadows.now; const fb = R.shadows.fallback;
       if (!fb || fb >= from || !ready(fb)) { R.guard = 'held'; R.guardWhy = !R.shadows.chosen ? 'not-chosen' : from <= 512 ? 'smallest' : 'not-made'; break; }
       for (const x of raised) swap(x, fb);
-      R.shadows.now = fb;
+      R.shadows.now = fb; R.guard = 'trying'; R.shadows.lowered = { from, to: fb, before: g2, after: null, missedMs: Math.round(now() - since) };
       await wait(200);
       const g3 = await gaps(N);
       R.guardMs.steps.push([fb, g3]);
@@ -288,6 +288,7 @@ function gameLookPage(o) {
   function shadowLine() {
     const S = R.shadows; const c = S.chosen;
     const how = c ? (c.by === 'remembered' ? 'chosen while getting ready, remembered for this game' : 'chosen while getting ready') : 'matched to the screen; not measured: getting ready was skipped';
+    if (R.guard === 'trying' && S.lowered) return `Shadows: ${S.now} (trying the size made while getting ready instead of ${S.lowered.from}: frames missed the refresh for 10 s)`;
     if (R.guard === 'lowered' && S.lowered) return `Shadows: ${S.now} (lowered from ${S.lowered.from} to stay smooth: frames missed the refresh for 10 s; that size was made while getting ready, so no hitch)`;
     if (R.guard === 'not-shadows') return `Shadows: ${S.now} (${how}; frames missed the refresh for 10 s, smaller shadows didn't help: kept)`;
     if (R.guard === 'held') return `Shadows: ${S.now} (${how}; frames miss the refresh, but ${R.guardWhy === 'smallest' ? 'they are already the game\'s own size' : 'no smaller size was made while getting ready, and making one now would hitch'}: kept)`;

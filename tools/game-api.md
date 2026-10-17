@@ -186,7 +186,7 @@ the hub); the owner: `/playtest`.
 - `window.__gameLook = { report() → { look, three, renderers, frames, aniso: { max, sharp, set, kept, later }, colour,
   shadows: { lights, set, kept, from, to, now, chosen: { size, by: 'ready' | 'remembered', why, rows, hz, to } | null,
   fallback, ready, made: [sizes made], midPlay (maps made while playing: 0), lowered }, guard: 'waiting' | 'none' |
-  'measuring' | 'fits' | 'tight' | 'lowered' | 'not-shadows' | 'held' | 'off', guardWhy, guardMs: { budget, steps: [[size, ms]] },
+  'measuring' | 'fits' | 'tight' | 'trying' | 'lowered' | 'not-shadows' | 'held' | 'off', guardWhy, guardMs: { budget, steps: [[size, ms]] },
   cost: { sweeps, ms, max, playMax }, screen: { w, h, wide, hdr } },
   text() → "Best look: textures 16× sharp (4) · true colour on 1 picture · Shadows: 2048 (chosen while getting ready)",
   settle() → Promise<report>, renderers() }`. The F chip's second line and the performance doctor show `text()`.

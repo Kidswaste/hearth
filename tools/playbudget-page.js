@@ -248,14 +248,27 @@
       const lk = hooks('look'); const sp = !H.look.off && lk && lk.shadow ? lk.shadow.plan() : null;
       if (sp && sp.ladder.length) {
         const rows = []; const gr = []; let d = null;
+        // a size's time: the calmer of two blocks' medians (a busy moment of the computer isn't the shadows')
+        const measure = async (v) => {
+          lk.shadow.set(v); one(); // (its maps made the first time: not counted)
+          const b = []; const ag = [];
+          for (let i = 0; i < 2; i += 1) { const a = []; for (let k = 0; k < K; k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); } b.push(Rules.median(a)); await yieldNow(); }
+          return { ms: +Math.min(...b).toFixed(3), gpu: ag.length ? +Rules.median(ag).toFixed(3) : null };
+        };
+        let checked = false;
         for (;;) {
           d = Rules.shadowPick(rows, sp.ladder, HZ);
+          // a step that "didn't help" once more, both sizes (the noise of a shared computer can make a smaller map
+          // look slower): each keeps its calmer time
+          if (d.size != null && d.why !== 'fits' && !checked && rows.length >= 2 && now() - T < CAP + 2500) {
+            checked = true;
+            for (const i of [rows.length - 2, rows.length - 1]) { const m = await measure(rows[i][0]); if (m.ms < rows[i][1]) rows[i][1] = m.ms; }
+            continue;
+          }
           if (d.size != null) break;
           if (rows.length && now() - T > CAP + 2500) { d = { size: rows[rows.length - 1][0], why: 'time' }; break; }
-          lk.shadow.set(d.next); one(); // (its maps made: not counted)
-          const a = []; const ag = [];
-          for (let i = 0; i < 2; i += 1) { for (let k = 0; k < K; k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); } await yieldNow(); }
-          rows.push([d.next, +Rules.median(a).toFixed(3)]); gr.push(ag.length ? +Rules.median(ag).toFixed(3) : null);
+          const m = await measure(d.next);
+          rows.push([d.next, m.ms]); gr.push(m.gpu);
         }
         const fb = lk.shadow.commit(d.size, { by: sp.remembered ? 'remembered' : 'ready', why: d.why, rows });
         if (fb) { lk.shadow.set(fb); one(); } // (the fallback's maps made now, under the card)
