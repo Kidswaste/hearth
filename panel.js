@@ -58,24 +58,63 @@ const Panel = (() => {
 
   // ---------- (round 42) the model: each AI's chats, sorted once per change of H.chats or of the sort ----------
   let modelOf = null; let modelSort = ''; let byAgent = new Map(); let byId = new Map(); let modelAgents = '';
-  // (round 52, chatkeep) a chat whose AI was removed or turned off never vanishes from the list: it shows under an AI of
-  // the same kind (a docked director's chat under the director docked there now, an Astra chat under Astra, the rest
-  // under Claude) and goes on there when opened (native.js adopts it)
-  let homes = new Map(); // agent id → the shown AI its chats go under
-  function homeOf(c) {
-    const id = c.agentId;
-    if (homes.has(id)) return homes.get(id);
-    const list = H.agents().filter((a) => a.mode === 'native');
-    const was = H.agent(id);
-    const dock = was?.dock || (/^threedirector/.test(String(id || c.id || '')) ? 'three' : null);
-    const home = (dock && list.find((a) => a.dock === dock)) || (was?.engine === 'codex' && list.find((a) => a.engine === 'codex' && !a.dock)) || H.claudeAgent?.() || list[0] || null;
-    homes.set(id, home?.id || id);
-    return home?.id || id;
+  // (round 52, chatkeep) a chat whose AI was removed or turned off never vanishes from the list
+  // (round 55, chatsafe55) … and never moves to another AI: it shows under its own AI's name ("Three Director — not
+  // set up", "… — turned off") with one button to bring that AI back, and opens read-only until it is (chatsafe.js).
+  // Only a chat with no AI at all goes under Claude.
+  function homeOf(c) { return c.agentId || H.claudeAgent?.()?.id || ''; }
+  // the AIs seen, remembered (localStorage): a chat whose AI is gone from the settings still shows its name
+  const SEEN = 'hub.agentsSeen';
+  let seen = null;
+  function remember(list) {
+    seen ||= store.get(SEEN, {}) || {};
+    let changed = false;
+    for (const a of list) {
+      if (!a?.id || a.mode !== 'native') continue;
+      const v = { name: a.name || a.id, dock: a.dock || '', engine: a.engine || '', icon: a.icon || '', color: a.color || '' };
+      const w = seen[a.id];
+      if (!w || w.name !== v.name || w.dock !== v.dock || w.engine !== v.engine || w.icon !== v.icon || w.color !== v.color) { seen[a.id] = v; changed = true; }
+    }
+    if (changed) store.set(SEEN, seen);
+  }
+  // what a missing AI was: its entry in the settings (turned off / retired), what was seen of it, or its id's shape
+  function whoWas(id) {
+    const conf = (H.config?.agents || []).find((a) => a.id === id);
+    seen ||= store.get(SEEN, {}) || {};
+    const s = conf || seen[id] || null;
+    const director = /^threedirector/.test(String(id || ''));
+    const name = s?.name || (director ? 'Three Director' : String(id || 'An AI').replace(/[-_]+/g, ' ').replace(/\d+$/, '').trim().replace(/^./, (x) => x.toUpperCase()) || 'An AI');
+    const dock = s?.dock || (director ? 'three' : '');
+    const state = conf ? (conf.dock && !H.agents().includes(conf) && conf.enabled !== false ? 'retired' : 'off') : 'missing';
+    return { name, dock, engine: s?.engine || (director ? 'claude' : ''), icon: s?.icon || (director ? '◆' : ''), color: s?.color || '', state };
+  }
+  // a stand-in for a missing AI's group: its chats under its own name (never another AI's)
+  const missingCache = new Map();
+  function missing(id) {
+    const w = whoWas(id);
+    const label = w.state === 'off' ? 'turned off' : w.state === 'retired' ? 'retired' : 'not set up';
+    const sig = `${w.name}|${w.dock}|${w.state}|${w.icon}|${w.color}`;
+    const had = missingCache.get(id);
+    if (had?.sig === sig) return had.agent;
+    const agent = { id, name: `${w.name} — ${label}`, was: w.name, icon: w.icon, color: w.color, mode: 'native', engine: w.engine, dock: w.dock, missing: w.state, canBring: w.state !== 'retired' };
+    missingCache.set(id, { sig, agent });
+    return agent;
+  }
+  // a chat of a missing AI opened (a click, Enter, Open): read-only until its AI is back (chatsafe.js), never moved
+  function openMissing(agentId, chatId) { const L = window.Lazy?.load ? Lazy.load('chatsafe') : Promise.resolve(); L.then(() => ChatSafe.open(chatId, { agentId })).catch((err) => toast(calmError(err), { type: 'error' })); }
+  function bringBack(agentId) { const L = window.Lazy?.load ? Lazy.load('chatsafe') : Promise.resolve(); L.then(() => ChatSafe.bringBack(agentId)).catch((err) => toast(calmError(err), { type: 'error' })); }
+  // the missing / turned-off AIs that were docked in a tool and still have chats (tools.js: the Lab keeps a read-only
+  // chat panel for them instead of none)
+  function waitingIn(toolId) {
+    const on = new Set(H.agents().filter((a) => a.mode === 'native').map((a) => a.id));
+    const out = [];
+    for (const [id, l] of model()) if (id && l.length && !on.has(id)) { const w = whoWas(id); if (w.dock === toolId && w.state !== 'retired') out.push(id); }
+    return out;
   }
   function model() {
     const sort = sortBy();
     const ags = H.agents().map((a) => `${a.id}:${a.mode}:${a.dock || ''}`).join(',');
-    if (ags !== modelAgents) { modelAgents = ags; modelOf = null; homes = new Map(H.agents().filter((a) => a.mode === 'native').map((a) => [a.id, a.id])); }
+    if (ags !== modelAgents) { modelAgents = ags; modelOf = null; remember(H.agents()); }
     if (modelOf === H.chats && modelSort === sort) return byAgent;
     if (modelOf && modelSort === sort && patchModel(H.chats || [], modelOf)) { modelOf = H.chats; return byAgent; }
     modelOf = H.chats; modelSort = sort; byAgent = new Map(); byId = new Map();
@@ -173,6 +212,18 @@ const Panel = (() => {
 
   function itemMenu(agent, item, row, e) {
     e.preventDefault();
+    // (round 55, chatsafe55) a chat waiting for its AI: read it, bring its AI back, or (asked first) go on in a copy
+    if (agent.missing && item.chatId) {
+      const L = () => (window.Lazy?.load ? Lazy.load('chatsafe') : Promise.resolve());
+      showMenu(e.clientX, e.clientY, [
+        { label: 'Open (read-only)', action: () => openMissing(agent.id, item.chatId) },
+        agent.canBring ? { label: `Bring back ${agent.was}`, action: () => bringBack(agent.id) } : null,
+        { label: 'Continue with Claude…', action: () => L().then(() => ChatSafe.continueElsewhere(item.chatId)).catch((err) => toast(calmError(err), { type: 'error' })) },
+        { label: 'Copy as Markdown', action: async () => copyText(await Native.markdownOf(item.chatId), 'Chat copied') },
+        { label: 'Delete chat', key: 'Del', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },
+      ].filter(Boolean));
+      return;
+    }
     const openIt = () => (item.chatId ? Native.open(agent.id, item.chatId) : openWebChat(agent.id, item.url));
     // (round 7) the frequent ones first, the rest in Organise › / Copy & export › / Continue with ›
     const others = H.agents().filter((a) => a.mode === 'native' && a.id !== agent.id);
@@ -234,7 +285,7 @@ const Panel = (() => {
     const d = r && rows.get(r);
     if (!d) return;
     const { agent, item } = d;
-    const openIt = () => (item.chatId ? Native.open(agent.id, item.chatId) : openWebChat(agent.id, item.url));
+    const openIt = () => (item.chatId ? (agent.missing ? openMissing(agent.id, item.chatId) : Native.open(agent.id, item.chatId)) : openWebChat(agent.id, item.url));
     if (e.type === 'click') { openIt(); return; }
     if (e.type === 'contextmenu') { itemMenu(agent, item, r, e); return; }
     if (e.target !== r) return; // keys typed in the rename box are its own
@@ -259,7 +310,7 @@ const Panel = (() => {
   const bits = new Map(); // the chip, "No matches"-like notes, the deep-search button: by what they say
   function sigOf(agent, c) {
     const m = metaOf(c.id);
-    return `${agent.id}\u0001${c.title}\u0001${c.pinned ? 1 : 0}\u0001${(m.tags || []).join(',')}\u0001${m.folder || ''}\u0001${m.archived ? 1 : 0}\u0001${c.updatedAt}\u0001${Native.isBusy(c.id) ? 1 : H.unreadChats?.has(c.id) ? 2 : 0}`;
+    return `${agent.id}${agent.missing ? `!${agent.missing}` : ''}\u0001${c.title}\u0001${c.pinned ? 1 : 0}\u0001${(m.tags || []).join(',')}\u0001${m.folder || ''}\u0001${m.archived ? 1 : 0}\u0001${c.updatedAt}\u0001${Native.isBusy(c.id) ? 1 : H.unreadChats?.has(c.id) ? 2 : 0}`;
   }
   function rowFor(agent, e) {
     if (e.c) {
@@ -320,7 +371,7 @@ const Panel = (() => {
     const open = !collapsed.has(agent.id) || q || view;
     let unread = 0;
     if (agent.mode === 'native' && H.unreadChats?.size) { model(); for (const id of H.unreadChats) if (byId.get(id)?.agentId === agent.id) unread += 1; }
-    const kind = agent.mode === 'native' ? (agent.dock ? 'docked' : 'native') : 'web';
+    const kind = agent.missing ? 'waiting' : agent.mode === 'native' ? (agent.dock ? 'docked' : 'native') : 'web';
     const headSig = JSON.stringify([open ? '▾' : '▸', agent.name, agent.icon, agent.mode, agent.engine, agent.dock, agent.url, color, unread, kind, items.length]);
     if (g.headSig !== headSig) {
       g.headSig = headSig;
@@ -339,10 +390,23 @@ const Panel = (() => {
       add.addEventListener('click', () => {
         if (agent.mode === 'native') { activate(agent.id); Native.newChat(agent.id); } else openWebChat(agent.id, agent.url);
       });
+      if (agent.missing) add.hidden = true; // (round 55) no new chat for an AI that isn't there
       head.append(toggle, add);
       g.head = head;
     }
     const pre = [g.head];
+    // (round 55, chatsafe55) one plain button: its AI back (from a stash / copy, else made again under the same id)
+    if (agent.missing && agent.canBring && !view) {
+      pre.push(bit(`bring:${agent.id}:${agent.was}:${agent.missing}`, () => {
+        const b = el('button', 'none-new chatsafe-bring', agent.missing === 'off' ? `Turn ${agent.was} back on` : `Bring back ${agent.was}`);
+        b.type = 'button';
+        b.title = `Its chats stay as they are, with ${agent.was}; they open read-only until it is back`;
+        b.addEventListener('click', () => bringBack(agent.id));
+        const box = el('div', 'none chatsafe-row');
+        box.append(b);
+        return box;
+      }));
+    }
     if (draft) {
       pre.push(bit(`draft:${agent.id}`, () => {
         const d = el('div', 'item draft active');
@@ -561,7 +625,7 @@ const Panel = (() => {
       const r = e.target.closest?.('.item'); const d = r && rows.get(r);
       if (r === preRow) return;
       clearTimeout(preT); preRow = r;
-      if (d?.item.chatId && d.agent.mode === 'native') preT = setTimeout(() => { if (preRow === r) Native.prefetch?.(d.agent.id, d.item.chatId); }, ms);
+      if (d?.item.chatId && d.agent.mode === 'native' && !d.agent.missing) preT = setTimeout(() => { if (preRow === r) Native.prefetch?.(d.agent.id, d.item.chatId); }, ms);
     };
     root.addEventListener('pointerover', (e) => ready(e, 90), { passive: true });
     root.addEventListener('pointerleave', () => { clearTimeout(preT); preRow = null; }, { passive: true });
@@ -569,6 +633,7 @@ const Panel = (() => {
   }
 
   let listedMark = false;
+  let lastAway = '';
   function render() {
     const root = $('chat-groups');
     if (!H.config) return;
@@ -607,7 +672,22 @@ const Panel = (() => {
       want.push(groupFor(agent, items, q));
       groups += 1;
     }
-    for (const id of [...groupsUI.keys()]) if (!H.agent(id)) groupsUI.delete(id);
+    // (round 55, chatsafe55) chats whose AI is missing / turned off: under their own AI's name, after the others
+    const shownIds = new Set(H.agents().filter((a) => a.mode === 'native').map((a) => a.id));
+    const waiting = new Set();
+    const away = [...model().keys()].filter((id) => id && !shownIds.has(id)).join(',');
+    if (away !== lastAway) { lastAway = away; if (typeof Tools !== 'undefined') setTimeout(() => Tools.syncDocks?.(), 0); } // a docked AI's chats waiting: the Lab's panel follows
+    for (const id of model().keys()) {
+      if (!id || shownIds.has(id)) continue;
+      const agent = missing(id);
+      const items = listFor(agent, q);
+      lists.set(id, items);
+      if (!items.length) continue;
+      waiting.add(id);
+      want.push(groupFor(agent, items, q));
+      groups += 1;
+    }
+    for (const id of [...groupsUI.keys()]) if (!H.agent(id) && !waiting.has(id)) groupsUI.delete(id);
     inc = q ? { q, chats: H.chats, view, lists } : null;
     if (view && !groups) want.push(bit('none:view', () => el('div', 'none', 'No chat matches this filter')));
     if (q.length >= 2) {
@@ -745,5 +825,5 @@ const Panel = (() => {
   }
   setTimeout(wireKeys, 0);
 
-  return { render, soon, flush, highlight, setFilter, setView, view: () => view, SORTS, hooks, _model: () => model() }; // _model: checks compare it with a fresh sort
+  return { render, soon, flush, highlight, setFilter, setView, view: () => view, SORTS, hooks, _model: () => model(), whoWas, missing, waitingIn }; // whoWas / missing: (round 55, chatsafe55) an AI a chat waits for // _model: checks compare it with a fresh sort
 })();

@@ -280,10 +280,14 @@ async function scan({ quick = false } = {}) {
   const agents0 = Array.isArray(curCfg0?.agents) ? curCfg0.agents : null;
   if (agents0) {
     for (const c of DS.hiddenChats(curChats, agents0, ['ae'])) {
-      const home = DS.homeFor(c, agents0);
-      if (!home) continue;
+      // (round 55, chatsafe55) the chat keeps its AI: bringing it back brings its AI back (turned on again, or its
+      // definition from a copy below), never moves the chat to another one
+      if (!c.agentId) continue;
+      const off = agents0.some((a) => a?.id === c.agentId);
+      const def = off ? null : cfgSrc.map((s) => (Array.isArray(s.value?.agents) ? s.value.agents : []).find((a) => a?.id === c.agentId)).find(Boolean) || null;
+      if (!off && !def) continue; // nothing here brings its AI back: the chats list offers "Bring back …" (made again)
       let n = 0; try { n = o.store.getChat(c.id)?.messages?.length || 0; } catch { n = 0; }
-      chats.push({ key: keep({ kind: 'hidden', id: c.id, home }), id: c.id, title: c.title || 'Chat', agentId: home, updatedAt: c.updatedAt, messages: n, from: `Your chats folder (not shown: ${agents0.some((a) => a?.id === c.agentId) ? 'its AI is turned off' : 'its AI was removed'})`, fromAll: ['Your chats folder'], deleted: false, state: 'hidden' });
+      chats.push({ key: keep({ kind: 'hidden', id: c.id, agentId: c.agentId, def }), id: c.id, title: c.title || 'Chat', agentId: c.agentId, updatedAt: c.updatedAt, messages: n, from: `Your chats folder (waiting for its AI: ${off ? 'it is turned off' : def ? 'it was removed, a copy of it is here' : 'it was removed'})`, fromAll: ['Your chats folder'], deleted: false, state: 'hidden' });
     }
     if (!quick) {
       try { for (const e of await engineChats(curChats, agents0)) chats.push({ ...e, key: keep({ kind: 'engine', chat: e.chat }) }); } catch (err) { sources.push({ label: `The engines' own records (couldn't be read: ${err.message})`, what: 'chats', n: 0 }); }
@@ -302,7 +306,7 @@ async function scan({ quick = false } = {}) {
   if (curCfg) {
     const haveA = new Set((curCfg.agents || []).map((a) => a?.id)); const seenA = new Set(); const seenK = new Set();
     for (const s of cfgSrc) {
-      for (const a of Array.isArray(s.value?.agents) ? s.value.agents : []) if (a?.id && !haveA.has(a.id) && !seenA.has(a.id)) { seenA.add(a.id); settings.push({ key: keep({ kind: 'agent', value: a }), what: 'agent', name: a.name || a.id, from: s.label }); }
+      for (const a of Array.isArray(s.value?.agents) ? s.value.agents : []) if (a?.id && !haveA.has(a.id) && !seenA.has(a.id)) { seenA.add(a.id); settings.push({ key: keep({ kind: 'agent', value: a }), what: 'agent', id: a.id, name: a.name || a.id, from: s.label }); } // (round 55: id, for chatsafemain's Bring back)
       for (const [k, v] of Object.entries(isObj(s.value?.settings) ? s.value.settings : {})) if (!(k in (curCfg.settings || {})) && !seenK.has(k)) { seenK.add(k); settings.push({ key: keep({ kind: 'setting', k, value: v }), what: 'setting', name: k, from: s.label }); }
     }
   }
@@ -337,12 +341,19 @@ async function recover(picks = []) {
     await o.store.saveChat(chat);
     curIds.add(chat.id); done.chats.push(chat.id);
   }
-  // (round 52, chatkeep) a chat the list didn't show: back with an AI you have (the file stays where it is)
-  for (const r of recs.filter((x) => x.kind === 'hidden')) {
-    const chat = o.store.getChat(r.id);
-    if (!chat?.id) continue;
-    await o.store.saveChat({ ...chat, agentId: r.home, ...(chat.agentId !== r.home ? { agentWas: chat.agentId } : {}) });
-    done.chats.push(chat.id);
+  // (round 52, chatkeep) a chat waiting for its AI · (round 55, chatsafe55) it never moves to another AI: its own comes
+  // back (turned on again, or its definition from a copy); the chat file isn't written at all
+  const waiting = recs.filter((x) => x.kind === 'hidden');
+  if (waiting.length) {
+    let cur = null; try { cur = o.cfg.read(); } catch { cur = null; }
+    if (!cur || !Array.isArray(cur.agents)) throw new Error('Your settings couldn\'t be read just now: nothing was changed, try again in a moment');
+    const next = { ...cur, agents: [...cur.agents] }; let changed = 0;
+    for (const r of waiting) {
+      const i = next.agents.findIndex((a) => a?.id === r.agentId);
+      if (i >= 0 && next.agents[i].enabled === false) { next.agents[i] = { ...next.agents[i], enabled: true }; changed += 1; } else if (i < 0 && r.def) { next.agents.push({ ...r.def, enabled: true }); changed += 1; done.agents += 1; }
+      if (i >= 0 || r.def) done.chats.push(r.id);
+    }
+    if (changed) { const s = o.cfg.save(next); if (!s.ok) throw new Error(`Settings couldn't be saved just now (${s.refused || 'held'}): try again in a moment`); o.onConfig?.(); }
   }
   // a conversation from an engine's own record: a new chat (its session goes with it: you can go on in it)
   for (const r of recs.filter((x) => x.kind === 'engine')) {

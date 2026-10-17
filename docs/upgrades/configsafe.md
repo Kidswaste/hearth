@@ -47,6 +47,11 @@ else Hearth writes is under `data/` (git-ignored) or outside the app folder.
 14. Edits from outside Hearth (an editor, sync) to your copies or to the defaults (an update) reach the window as
     before.
 
+15. The Windows finish-at-restart path and the ⬆ restore (fixes55's `restoreSteps`) aim at the owner's data copies
+    once moved (the tracked files keep the update's version); before the move, the old files as before.
+16. chatsafe55's "Bring back <its AI>" reads the settings Hearth uses (data copy + defaults), the update stashes, then
+    the copy kept in `data/.configsafe/` (`updatermain.agentAside`).
+
 ### Kept as a safety net
 - labchats54's holds stay: `main.js` still holds the window's config saves and the watchers while an update moves
   files, `updatermain.stashRestore` still keeps a mid-update write in its own named stash and merges it back.

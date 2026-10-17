@@ -212,6 +212,25 @@ const used = (app, CS) => CS.effective(json(path.join(app, 'data', 'config.json'
     ok(json(path.join(app, 'data', 'config.json')).theme.accent === '#000001' && !s2.after.settled.length, 'once: later saves in data stay the owner\'s');
   }
 
+  // ---------- 8. the restart path (Windows: the update finished as Hearth restarts, fixes55's restoreSteps) after the move ----------
+  {
+    const { dev, app } = makeApp('g');
+    await start(app); // moved (fresh: the repo's own), checkout clean
+    // a stash that still holds owner edits of the tracked files (an old one), clashing with an update of both
+    write(path.join(app, 'config.json'), text({ ...REPO, agents: [...REPO.agents, { id: 'stashed', name: 'From a stash' }] }));
+    write(path.join(app, 'theme.css'), OWN_CSS);
+    g(app, 'stash', 'push', '-q', '-m', 'hearth-update 2026-10-17 09:12 (764fb08 → f994ef0): your edits');
+    pushUpdate(dev, 55, { config: { ...REPO, layout: { ...REPO.layout, compact: true } }, theme: '/* new default CSS */\n' }); g(app, 'pull', '-q', '--ff-only');
+    const C = require(path.join(app, 'updatesafe-core.js'));
+    const sha = g(app, 'rev-parse', 'stash@{0}');
+    const sync = (...args) => { try { return { ok: true, out: g(app, ...args) }; } catch (e) { return { ok: false, out: String(e.stdout || '').trim() }; } };
+    const r = C.runSteps(C.restoreSteps({ dir: app, stash: { sha, name: 'hearth-update 2026-10-17 09:12 (764fb08 → f994ef0): your edits' } }), sync);
+    ok(!dirty(app), `the tracked files keep the update's version (${dirty(app)}) · own: ${r.own}`);
+    ok(ids(json(path.join(app, 'data', 'config.json'))).includes('stashed'), 'the stash\'s agent went into data/config.json');
+    ok(read(path.join(app, 'data', 'theme.css')) === OWN_CSS, 'the stash\'s CSS went into data/theme.css (it was still the repo\'s own)');
+    ok(stashes(app).length === 1, 'the stash is kept (it didn\'t come back whole)');
+  }
+
   // ---------- 5. effective() ----------
   {
     const CS = require(path.join(ROOT, 'configsafe-core.js'));
