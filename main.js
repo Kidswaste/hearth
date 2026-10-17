@@ -200,13 +200,6 @@ function createWindow() {
     },
   });
   bootMark('window');
-  // OpenStreetMap asks desktop clients to identify themselves; scope this to its tile host only.
-  win.webContents.session.webRequest.onBeforeSendHeaders({ urls: ['https://tile.openstreetmap.org/*'] }, (details, callback) => {
-    const headers = { ...details.requestHeaders };
-    for (const key of Object.keys(headers)) if (key.toLowerCase() === 'user-agent') delete headers[key];
-    headers['User-Agent'] = 'Hearth/1.0 (+https://github.com/Kidswaste/hearth)';
-    callback({ requestHeaders: headers });
-  });
   win.loadFile(path.join(__dirname, 'index.html'));
   // on screen with its first frame (maximize() shows a hidden window, so it waits for this moment too); what the first
   // screen doesn't need (tray, downloads, the global hotkey, login item, spellcheck languages) is set up right after
