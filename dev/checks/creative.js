@@ -4,7 +4,7 @@ const check = (v, text) => { if (!v) throw Error(text); console.log('✓ ' + tex
 await Lazy.load('creative'); activate('tool:creative'); await until(() => document.querySelector('.cp-stage h2'));
 const root = () => document.querySelector('.cp-workspace');
 const press = async text => { const b = [...root().querySelectorAll('button')].find(b => b.textContent === text); check(Boolean(b), text + ' available'); b.click(); await until(() => !b.disabled); await wait(80); };
-check(root().querySelectorAll('[data-feature-id]').length === 15, '15 visible feature entries');
+check(root().querySelectorAll('[data-feature-id]').length === 22, '22 visible feature entries');
 for (const f of CreativeCore.FEATURES) { CreativePlayground.openFeature(f.id); await wait(50); check(root().querySelector('.cp-stage h2').textContent === f.name, f.id + ' opens'); }
 CreativePlayground.openFeature('slice');
 const transfer = new DataTransfer(); transfer.items.add(new File([CreativeCore.wav(CreativeCore.synth('jump', .5))], 'local-test.wav', { type: 'audio/wav' }));
@@ -40,7 +40,7 @@ check(!Native.isBusy(Native.chatOf(astra.id)?.id), 'Astra handoff does not send 
 await CreativePlayground.flush(); const saved = await hub.kvGet('creative-playground'); check(saved.journal[day] === 'A small experiment' && saved.recipes.length === 1, 'notebook persisted through actual IPC');
 const files = await hub.fs.list(window.SMOKE_SAVES); console.log('EXPORTS ' + JSON.stringify(files));
 CreativePlayground.openFeature('poster');
-return 'Creative Playground: all 15 features opened, binary/text exports, audio cleanup, effects, slicing, quests and persistence passed.';
+return 'Creative Playground: all 22 features opened, binary/text exports, audio cleanup, effects, slicing, quests and persistence passed.';
 //@@ reload
 await Lazy.load('creative'); activate('tool:creative');
 for (let i = 0; i < 100 && !document.querySelector('.cp-stage h2'); i++) await new Promise(r => setTimeout(r, 80));

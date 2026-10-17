@@ -22,7 +22,8 @@ for (const file of lazyFiles) {
   const added = new Set();
   const fake = { handle: (ch) => added.add(ch), on: (ch) => added.add(ch), removeHandler() {} };
   const m = require(path.join(ROOT, file));
-  m.register(fake, () => null, () => ({}));
+  if (file === 'creative-vstmain.js') m.register(fake, { dataDir: require('os').tmpdir(), getWin: () => null, app: { once() {} } });
+  else m.register(fake, () => null, () => ({}));
   for (const ch of added) ok(read.has(ch), `${file}: ${ch} is added by register() but not readable from the source`);
   for (const ch of read) ok(added.has(ch), `${file}: ${ch} is in the source but register() doesn't add it`);
   console.log(`✓ ${file}: ${added.size} channels`);

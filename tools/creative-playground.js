@@ -1,7 +1,7 @@
 const CreativePlayground = (() => {
   const C = CreativeCore, KEY = 'creative-playground', SR = 22050;
   let host, stage, nav, feedback, state, source, context, analyser, meterFrame, preview, clip, rendered, generation = 0;
-  let feature = 'quests', ready = false, canSave = false, saving = Promise.resolve(), timer = null, timerEnd = 0;
+  let feature = 'studio', ready = false, canSave = false, saving = Promise.resolve(), timer = null, timerEnd = 0;
   const defaults = () => ({ v: 1, seed: 'hearth-01', bpm: 110, swing: .12, root: 60, scale: 'minor', style: 'orbit', sound: 'pickup', pitch: 1, difficulty: 1, mazeSize: 23, fx: { drive: .15, cutoff: 7000, echo: .2, crush: 0 }, pattern: C.drums('hearth-01'), done: {}, journal: {}, recipes: [], medium: 'visual' });
   const notice = text => { if (feedback) feedback.textContent = text; };
   const para = text => el('p', { class: 'cp-hint', text });
@@ -13,7 +13,7 @@ const CreativePlayground = (() => {
     return saving;
   }
   function stopAudio() { generation++; try { source?.stop(); } catch { /* ended */ } source = null; cancelAnimationFrame(meterFrame); meterFrame = 0; context?.suspend(); preview?.contentWindow?.postMessage({ creative: 'level', value: 0 }, '*'); }
-  function pause() { stopAudio(); preview?.contentWindow?.postMessage({ creative: 'pause' }, '*'); }
+  function pause() { stopAudio(); WorkbenchUI.pause(); preview?.contentWindow?.postMessage({ creative: 'pause' }, '*'); }
   function audioContext() { context ||= new AudioContext(); return context; }
   async function play(samples, sr = SR) {
     stopAudio(); const ticket = generation, ctx = audioContext(); await ctx.resume(); if (ticket !== generation) return;
@@ -170,8 +170,10 @@ const CreativePlayground = (() => {
   function openFeature(id) {
     if (!ready) return;
     const f = C.FEATURES.find(f => f.id === id); if (!f) return;
+    host.classList.toggle('cp-modern', f.group === 'Workbenches');
     pause(); feature = id; preview = null; rendered = null; stage.replaceChildren(el('h2', { text: f.name }), para(f.description));
     nav.querySelectorAll('[data-feature-id]').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.featureId === id)); });
+    if (f.group === 'Workbenches') { WorkbenchUI.mount(stage, id, { notice, saveFile, openFeature, play, stopAudio }).catch(err => notice(err.message)); return; }
     if (['poster', 'pattern', 'sprite'].includes(id)) visual(); else if (['motion', 'reactive'].includes(id)) motion(); else if (id === 'drums') beats(); else if (id === 'melody') melodies(); else if (id === 'sfx') sounds(); else if (id === 'slice') cutter(); else if (id === 'rack') rack(); else if (['arena', 'maze', 'rhythm'].includes(id)) games(); else if (id === 'quests') daily(); else inspiration();
   }
   function recipe() { const { done, journal, recipes, ...settings } = state; return { v: 1, feature, settings: JSON.parse(JSON.stringify(settings)) }; }
@@ -191,7 +193,7 @@ const CreativePlayground = (() => {
       canSave = true;
     } catch (err) { notice(`Notebook unavailable: ${err.message}. Saving is disabled; exports still work.`); }
     nav = el('nav', { class: 'cp-nav', attrs: { 'aria-label': 'Creative features' } }); stage = el('main', { class: 'cp-stage' });
-    for (const group of ['Visuals', 'Music', 'Games', 'Daily']) { nav.append(el('h3', { text: group })); for (const f of C.FEATURES.filter(f => f.group === group)) nav.append(button(f.name, () => openFeature(f.id), { dataset: { featureId: f.id }, attrs: { 'aria-pressed': 'false', title: f.description } })); }
+    for (const group of ['Workbenches', 'Visuals', 'Music', 'Games', 'Daily']) { nav.append(el('h3', { text: group })); for (const f of C.FEATURES.filter(f => f.group === group)) nav.append(button(f.name, () => openFeature(f.id), { dataset: { featureId: f.id }, attrs: { 'aria-pressed': 'false', title: f.description } })); }
     const seed = el('input', { type: 'text', value: state.seed, attrs: { maxlength: 80, 'aria-label': 'Seed' } }); seed.addEventListener('change', () => { state.seed = seed.value || 'hearth'; state.pattern = C.drums(state.seed); persist(); openFeature(feature); });
     const recipes = el('div', { class: 'cp-recipes' });
     const focusBtn = button('Focus', () => { clearInterval(timer); timer = null; timerEnd = 0; focusBtn.hidden = true; }, { class: 'cp-focus', hidden: true });

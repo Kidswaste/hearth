@@ -5,6 +5,13 @@
   else root.CreativeCore = api;
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   const FEATURES = [
+    ['studio', 'Workbenches', 'The worktable', 'Six creative stations with projects and usable exports.'],
+    ['vst', 'Workbenches', 'Plugin vault', 'Host your installed VST3 instruments and effects.'],
+    ['instrument', 'Workbenches', 'Ember sound forge', 'Oscillators, ADSR and effects for your next sample.'],
+    ['editor', 'Workbenches', 'Pocket worlds', 'Paint levels, tune rules and export playable games.'],
+    ['texture', 'Workbenches', 'Material foundry', 'Seamless color, normal, height and roughness maps.'],
+    ['draw', 'Workbenches', 'Sketch to asset', 'Draw sprites, masks and illustrations for your projects.'],
+    ['story', 'Workbenches', 'Storyboard table', 'Arrange shots and play a timed animatic.'],
     ['poster', 'Visuals', 'Palette posters', 'Seeded geometric compositions and five-color palettes.'],
     ['pattern', 'Visuals', 'Seamless tiles', 'Repeatable geometric patterns for textures and backgrounds.'],
     ['motion', 'Visuals', 'Motion loops', 'Tempo-linked orbit, tunnel and ribbon studies.'],
