@@ -2251,7 +2251,12 @@ function shGate(r, scene) {
     Object.defineProperty(sm, 'autoUpdate', { configurable: true, get: () => (g.on ? false : g.au), set: (v) => { g.au = Boolean(v); } });
     Object.defineProperty(sm, 'needsUpdate', { configurable: true, get: () => (g.on ? g.need || g.nu : g.nu), set: (v) => { g.nu = Boolean(v); if (!v) g.need = false; } });
   }
-  if (!SHG.on || !g.au || XP_PAGE || fullRes() || SQ.off || edit.on || r.__helper) { g.on = false; g.have = false; return; }
+  // (round 59, shadowlab59) ▶ Play's budget A/B (GM.held, __gmHold) draws its frames back to back in one frame tick:
+  // gated, they reused the tick's "no change" and three skipped its shadow pass, so the Best look's swapped-in sizes
+  // were timed without shadows and its fallback maps were never made (fallbackReady false), and a frame drew with
+  // no map (three binds an RGBA stand-in to the shadow sampler: GL_INVALID_OPERATION, the draw dropped). Every A/B
+  // frame draws its maps, as a moving game's frame does
+  if (!SHG.on || !g.au || XP_PAGE || fullRes() || SQ.off || edit.on || r.__helper || GM.held) { g.on = false; g.have = false; return; }
   if (g.tick === frameTick && g.scene === scene) return; // (a second pass of the same scene this frame: its map is current)
   g.tick = frameTick;
   if (g.scene !== scene) { g.scene = scene; g.have = false; }

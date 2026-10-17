@@ -146,7 +146,7 @@ async function playOnce(label, source) {
     page: page && { losses: page.losses, restores: page.restores, rebuilds: page.rebuilds, none: page.none, made: page.made, alive: page.contexts, peakAlive: peak },
     gpuBack: st?.result?.gpuBack || null,
     first5: st?.first5 && { compiles: st.first5.compiles, links: st.first5.links, uploads: st.first5.uploads, gpuLost: st.first5.gpuLost || 0, ctxMade: st.first5.ctxMade, rebuilds: st.first5.rebuilds },
-    ab: ab ? { ms: ab.ms, syncs: ab.syncs, maxFrameMs: ab.maxFrameMs, long: ab.long, drainMs: ab.drainMs, frames: ab.frames, perMs: ab.perMs, reused: Boolean(ab.reused), skipped: ab.skipped, shadow: ab.shadow ? { size: ab.shadow.size, why: ab.shadow.why, walked: ab.shadow.walked, rows: ab.shadow.rows, fallback: ab.shadow.fallback, fallbackReady: ab.shadow.fallbackReady } : null } : null,
+    ab: ab ? { ms: ab.ms, syncs: ab.syncs, maxFrameMs: ab.maxFrameMs, long: ab.long, drainMs: ab.drainMs, frames: ab.frames, perMs: ab.perMs, reused: Boolean(ab.reused), skipped: ab.skipped, shadow: ab.shadow ? { size: ab.shadow.size, why: ab.shadow.why, walked: ab.shadow.walked, rows: ab.shadow.rows, fallback: ab.shadow.fallback, fallbackReady: ab.shadow.fallbackReady } : null, glErrors: ab.glErrors || null } : null,
     errors: st?.page?.errors,
   };
   await GameMode.leave(); await until(async () => !(await GW().state())?.playing, 10000); await wait(1000);
@@ -171,6 +171,10 @@ out.losses = Object.fromEntries(runs.map(([k, r]) => [k, lost(r)]));
 step(`no WebGL context lost on a loaded computer (${BURN}) (GPU process exits, page losses, rebuild waits under the card): ${total}`, window.CTX_REPORT || total === 0, out.losses);
 step('0 compiles / 0 links / 0 uploads in the first 5 s of every play', runs.length >= 1 && runs.every(([, r]) => clean(r.first5)), Object.fromEntries(runs.map(([k, r]) => [k, r.first5])));
 step('the A/B ran on every Lab play (the shadow size chosen or checked under the card)', runs.some(([k]) => k.startsWith('lab')) && runs.filter(([k]) => k.startsWith('lab')).every(([, r]) => r.ab && !r.ab.skipped && r.ab.shadow?.size), Object.fromEntries(runs.map(([k, r]) => [k, r.ab])));
+// (round 59, shadowlab59) the Lab scene's warm plays (the remembered size only checked) never made the fallback maps and
+// drew one frame with a missing map: GL_INVALID_OPERATION ("Mismatch between texture format and sampler type")
+step('every Lab play: the Best look\'s fallback shadow maps made and sealed under the card (fallbackReady)', runs.filter(([k]) => k.startsWith('lab')).every(([, r]) => r.ab?.shadow && (r.ab.shadow.size <= 512 || r.ab.shadow.fallbackReady === true)), Object.fromEntries(runs.map(([k, r]) => [k, r.ab?.shadow && { size: r.ab.shadow.size, why: r.ab.shadow.why, fallbackReady: r.ab.shadow.fallbackReady }])));
+step('no GL error in the A/B\'s frames under the card (WebGL\'s error flags read at its end)', runs.every(([, r]) => !r.ab || r.ab.skipped || (r.ab.glErrors && r.ab.glErrors.during === 0)), Object.fromEntries(runs.map(([k, r]) => [k, r.ab?.glErrors])));
 step('contexts alive in the game page stay far from Chromium\'s 16', runs.every(([, r]) => !r.page || r.page.peakAlive < 8), Object.fromEntries(runs.map(([k, r]) => [k, r.page])));
 const bad = out.steps.filter((s) => !s.ok);
 return JSON.stringify({ pass: bad.length === 0, failed: bad.map((s) => s.name), burn: BURN, losses: out.losses, runs: out.runs, steps: out.steps.map((s) => ({ name: s.name, ok: s.ok })) }, null, 1);

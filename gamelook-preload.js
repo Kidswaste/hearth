@@ -113,6 +113,11 @@ function gameLookPage(o) {
     sh.mapSize.set(v, v); x.set = v;
     sh.map = k ? k.map : null; if (sh.mapPass !== undefined) sh.mapPass = k ? k.pass : null;
     sh.needsUpdate = true; // (a game that draws its shadows on demand: the swapped-in map drawn once)
+    // (round 59, shadowlab59) and the renderer's shadow pass asked for once: a page that skips it on still frames (the
+    // Lab's shadow gate) would otherwise draw with a missing map (three then binds an RGBA stand-in to the materials'
+    // shadow samplers: GL_INVALID_OPERATION, the draw dropped) or a map drawn back when it was made. three clears it
+    // after its next pass; a page that draws its maps every frame sees no difference
+    for (const r of rs) { try { if (r.shadowMap && r.shadowMap.enabled) r.shadowMap.needsUpdate = true; } catch (e) { /* fine */ } }
     if (!k) madeAt(v);
     return Boolean(k);
   }

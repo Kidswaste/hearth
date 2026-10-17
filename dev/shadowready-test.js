@@ -67,6 +67,19 @@ const t = async (name, fn) => { await fn(); n += 1; console.log(`✓ ${name}`); 
     const sun = light(false); const point = light(true);
     return { g, r, scene, sun, point, made: () => made, disposed, B: () => g.__gameLook.budget, look: () => g.__gameLook };
   };
+  await t('(round 59, shadowlab59) a size swapped in asks the renderer for its shadow pass once (a page that skips it on still frames never draws with a missing map)', () => {
+    const f = fake({ look: 'best', hz: 60 });
+    f.r.shadowMap = { enabled: true, needsUpdate: false };
+    f.r.render(f.scene); f.r.shadowMap.needsUpdate = false; // (three clears it after its pass)
+    const S = f.B().shadow;
+    S.set(1024);
+    assert.strictEqual(f.r.shadowMap.needsUpdate, true, 'a size never made: its maps drawn at the next pass, never sampled missing');
+    f.r.render(f.scene); f.r.shadowMap.needsUpdate = false;
+    S.set(2048);
+    assert.strictEqual(f.r.shadowMap.needsUpdate, true, 'a size made before (a pointer swap): drawn again, not shown as it was then');
+    f.r.shadowMap.needsUpdate = false; f.r.shadowMap.enabled = false; S.set(1024);
+    assert.strictEqual(f.r.shadowMap.needsUpdate, false, 'shadows switched off by the game: left alone');
+  });
   await t('the look: plan from the screen\'s size, each size drawn once, the choice and its fallback kept, the rest let go', () => {
     const f = fake({ look: 'best', hz: 60 });
     f.r.render(f.scene);

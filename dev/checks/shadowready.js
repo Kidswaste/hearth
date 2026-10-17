@@ -13,12 +13,12 @@
 //   chat      /game look shadows (now + remembered), /game look shadows reset (chosen again next time)
 //   files     the game's file byte for byte the same
 // (a 1600×1000 screen at 200 %: the look's screen-matched size is 2048; the game draws at pixel ratio 1)
-//   node dev/smoke.js --check-timeout 900000 --screen 1600x1000 --dpr 2 --script dev/checks/shadowready.js
+//   node dev/smoke.js --check-timeout 1200000 --screen 1600x1000 --dpr 2 --script dev/checks/shadowready.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(150); } return false; };
 const out = { steps: [], runs: {} };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
-const safe = async (name, fn) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after 4 min`)), 240000))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
+const safe = async (name, fn, ms = 240000) => { try { await Promise.race([fn(), new Promise((_, rej) => setTimeout(() => rej(new Error(`${name}: still running after ${Math.round(ms / 60000)} min`)), ms))]); } catch (err) { step(name, false, { error: String(err?.stack || err).slice(0, 500) }); } };
 const TMP = window.SMOKE_TMP || '/tmp'; // (round 56, fixes56) this run's own scratch folder (dev/smoke.js --tmp): two runs at once never share files
 const DIR = `${TMP}/hearth-shadowready`;
 const THREE_DIR = '/opt/cdn-cache/three@0.186.1/package';
@@ -72,9 +72,14 @@ const READ = `JSON.stringify({ ev: window.__srCount ? window.__srCount.ev : null
 const SRC = { kind: 'html', path: `${DIR}/heavy.html`, title: 'Shadow test' };
 
 // one ▶ Play: counted from under the card, the game slowed (or not) once it plays, n ms of play, read back
-async function playFor(ms, slow) {
+// (round 59, shadowlab59) WebGL's error flags on the game page's contexts, read once after the play: any GL error since
+// the A/B's own read under the card (a draw dropped: e.g. a shadow sampler meeting a texture that isn't a depth map)
+const GLERR = `JSON.stringify((() => { const c = []; try { const rs = window.__gameLook ? window.__gameLook.renderers() : []; for (const r of rs) { const gl = r.getContext(); for (let i = 0; i < 8; i += 1) { const e = gl.isContextLost() ? 0 : gl.getError(); if (!e) break; c.push(e); } } } catch (e) { c.push(String(e)); } return c; })())`;
+const glClean = (r) => Boolean(r && r.budget?.ab?.glErrors && r.budget.ab.glErrors.during === 0 && Array.isArray(r.glAfter) && r.glAfter.length === 0);
+const glInfo = (r) => ({ ab: r?.budget?.ab?.glErrors, after: r?.glAfter });
+async function playFor(ms, slow, src = SRC) {
   store.set('gamemode.look', 'best'); localStorage.removeItem('gamestream.test');
-  await GameMode.play(SRC);
+  await GameMode.play(src);
   await until(async () => (await GW().state())?.playing, 60000);
   const c = await until(() => ev(`window.__gameReady ? ${COUNT} : null`), 60000);
   const p0 = await until(async () => { const v = await ev('window.__gameReady && window.__gameReady.phase === "playing" ? performance.now() : 0'); return v || null; }, 120000);
@@ -84,6 +89,7 @@ async function playFor(ms, slow) {
   // is waited for, up to 30 s more, and everything made is still counted)
   if (slow) await until(() => ev('window.__gameLook ? !["tight", "trying", "measuring", "waiting"].includes(window.__gameLook.report().guard) : true'), 30000);
   const r = JSON.parse(await ev(READ));
+  r.glAfter = JSON.parse(await ev(GLERR));
   r.counted = typeof c === 'string' && c !== 'already' ? JSON.parse(c) : c; r.playAt = p0; if (Array.isArray(r.ev)) r.ev = r.ev.map((e) => [e[0], +((e[1] - p0) / 1000).toFixed(2)]); // (seconds into play)
   return r;
 }
@@ -110,6 +116,7 @@ await safe('first', async () => {
   const made = first.ev || [];
   step('22 s of play with frames that don\'t fit: nothing made on the graphics card after the first frame (textures, render buffers, framebuffers, buffers, shaders, programs)', Array.isArray(first.ev) && made.length === 0 && S.midPlay === 0, { events: (first.ev || []).slice(0, 20), midPlay: S.midPlay, first5: first.ready?.first5 });
   step('the guard stepped in without making anything: the size made while getting ready swapped in (kept only if it helped), or it said why it kept them', (L.guard === 'lowered' && first.sun === S.fallback) || L.guard === 'not-shadows' || (L.guard === 'held' && L.guardWhy === 'smallest'), { guard: L.guard, why: L.guardWhy, lowered: S.lowered, sun: first.sun, steps: L.guardMs?.steps });
+  step('no GL error: the A/B\'s frames under the card and the 22 s of play (the shadow samplers always meet a depth map)', glClean(first), glInfo(first));
   step('first 5 s of play: 0 compiles / uploads (getting ready\'s own count)', first.ready?.first5 && first.ready.first5.compiles === 0 && first.ready.first5.uploads === 0, first.ready?.first5);
   step('the doctor / F chip line says the size and why', /Shadows: \d+ \((chosen while getting ready|lowered from \d+ to stay smooth)/.test(first.text || '') || /Shadows: 512, the game's own/.test(first.text || ''), first.text);
   // the F chip shows it
@@ -132,6 +139,7 @@ await safe('again', async () => {
   const L = r.look || {}; const S = L.shadows || {}; const ab = r.budget?.ab?.shadow;
   out.runs.again = { events: r.ev, shadows: S, guard: L.guard, ab: r.budget?.ab, text: r.text };
   step('the next ▶ Play starts at the remembered size: never made at 2048, the A/B confirmed it from there', before.shadow && S.made && !S.made.includes(2048) && (S.made[0] === before.shadow.size || (before.shadow.size === 512 && !S.made.length)) && ab && ab.rows[0]?.[0] === before.shadow.size && S.chosen?.by === (ab.size === before.shadow.size ? 'remembered' : 'ready'), { remembered: before.shadow, made: S.made, ab });
+  step('no GL error there either (under the card and in play)', glClean(r), glInfo(r));
   step('… and nothing made after the first frame there either', Array.isArray(r.ev) && r.ev.length === 0 && S.midPlay === 0, (r.ev || []).slice(0, 20));
   step('its line says it was remembered', /Shadows: \d+ \(chosen while getting ready, remembered for this game\)/.test(r.text || '') || /Shadows: 512, the game's own/.test(r.text || ''), r.text);
   await stop();
@@ -144,6 +152,55 @@ await safe('chat', async () => {
   const help = Commands.get('game');
   step('/game look shadows is in /game\'s suggestions', (help.complete?.() || []).some((x) => x.value === 'look shadows'));
 });
+
+// (round 59, shadowlab59) a Lab scene played twice (cold: the walk; warm: the remembered size checked). Its page draws
+// through the Lab's frame scheduler (one canvas, frames held by the A/B, the Lab's shadow gate): the fallback maps
+// were never made there (fallbackReady false) and a frame drew with a missing map (GL_INVALID_OPERATION: "Mismatch
+// between texture format and sampler type (shadow)"). Now both sizes are made under the card, with no GL error
+const LAB_ID = 'srlab59';
+const LAB_GAME = `import * as THREE from 'three';
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(0.5); renderer.setSize(innerWidth, innerHeight); // (a light picture: 1024² fits the refresh, 2048² doesn't)
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#0d1220');
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 100); camera.position.set(0, 3.2, 6); camera.lookAt(0, 0.5, 0);
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshStandardMaterial({ color: '#8090a0', roughness: 0.8 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+const spot = new THREE.SpotLight('#ffe8c0', 40, 25, 0.6, 0.4); spot.position.set(-3, 7, 3); spot.castShadow = true; scene.add(spot, new THREE.HemisphereLight('#a0c0ff', '#302010', 0.6));
+const mats = [new THREE.MeshPhysicalMaterial({ color: '#ff5080', clearcoat: 1, roughness: 0.25 }), new THREE.MeshToonMaterial({ color: '#50ff90' }), new THREE.MeshLambertMaterial({ color: '#5080ff' }), new THREE.MeshPhongMaterial({ color: '#ffd060' })];
+const crates = mats.map((m, i) => { const b = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), m); b.position.set((i - 1.5) * 1.6, 0.4, -1); b.castShadow = true; b.receiveShadow = true; scene.add(b); return b; });
+// the spot's shadow pass is heavy only above 1024² (2 frames at 2048²): the walk keeps a size over 512 with a fallback
+const busy = (ms) => { const t = performance.now(); while (performance.now() - t < ms) { /* the shadow pass's work */ } };
+crates[0].onBeforeShadow = () => { const s = spot.shadow.mapSize.x; if (s > 1024) busy(${(2 * FRAME).toFixed(3)} * (s / 2048) ** 2); };
+const t0 = performance.now();
+renderer.setAnimationLoop((now) => {
+  const t = (now - t0) / 1000;
+  crates.forEach((b, i) => { b.rotation.y = t * (0.5 + i * 0.2); b.position.y = 0.4 + Math.abs(Math.sin(t * 2 + i)) * 0.3; });
+  renderer.render(scene, camera);
+});`;
+const LAB = { kind: 'lab', id: LAB_ID, title: 'Shadow lab' };
+await safe('lab', async () => {
+  for (let i = 0; i < 5; i++) {
+    const sk = (await window.hub.kvGet('three-sketches', [])) || [];
+    if (sk.some((x) => x.id === LAB_ID)) break;
+    sk.push({ id: LAB_ID, name: 'Shadow lab', layers: [{ id: 'game', name: 'Game', code: LAB_GAME }], createdAt: Date.now(), updatedAt: Date.now() });
+    await window.hub.kvSet('three-sketches', sk);
+  }
+  await GW().budget({ op: 'reset', source: LAB });
+  out.runs.lab = {};
+  for (const run of ['cold', 'warm']) {
+    const r = await playFor(7000, false, LAB);
+    const L = r.look || {}; const S = L.shadows || {}; const ab = r.budget?.ab?.shadow;
+    out.runs.lab[run] = { events: r.ev, shadows: S, ab: r.budget?.ab, gl: glInfo(r), first5: r.ready?.first5 };
+    step(`Lab scene, ${run}: the chosen size and the one below it made and sealed under the card (fallbackReady), as on an HTML build`, ab && ab.size > 512 && ab.fallback === ab.size / 2 && ab.fallbackReady === true && S.ready === true && S.made.includes(ab.fallback), { size: ab?.size, why: ab?.why, walked: ab?.walked, fallback: ab?.fallback, fallbackReady: ab?.fallbackReady, made: S.made, ready: S.ready });
+    step(`Lab scene, ${run}: no GL error (under the card and in play)`, glClean(r), glInfo(r));
+    step(`Lab scene, ${run}: nothing made after the first frame, 0 compiles / uploads in the first 5 s`, Array.isArray(r.ev) && r.ev.length === 0 && S.midPlay === 0 && r.ready?.first5 && r.ready.first5.compiles === 0 && r.ready.first5.uploads === 0, { events: (r.ev || []).slice(0, 20), midPlay: S.midPlay, first5: r.ready?.first5 });
+    await stop();
+  }
+  await GW().budget({ op: 'reset', source: LAB });
+}, 480000);
 
 await safe('files', async () => {
   const after = await window.hub.gameReady.hash([SRC.path]);
