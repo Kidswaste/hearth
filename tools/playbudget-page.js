@@ -264,10 +264,7 @@
           return { ms: +Math.min(...b).toFixed(3), gpu: ag.length ? +Rules.median(ag).toFixed(3) : null };
         };
         let checked = false;
-        // (round 56, readyspeed) a warm ▶ Play whose cost verdict still holds (same game files, helpers, screen, look):
-        // the size remembered for this game is taken as it is (its two maps still made and sealed below, under the card)
-        if (o.costs === false && sp.remembered) d = { size: sp.start, why: 'remembered' };
-        if (!d) for (;;) {
+        for (;;) {
           d = Rules.shadowPick(rows, sp.ladder, HZ);
           // a step that "didn't help" once more, both sizes (the noise of a shared computer can make a smaller map
           // look slower): each keeps its calmer time
