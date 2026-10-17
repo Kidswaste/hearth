@@ -125,6 +125,9 @@ function defaults() {
   return defCache.value;
 }
 function readConfig() { return configsafe.effective(cfgStore.read(), defaults()); }
+// (round 57, sweep57) every save lists in `_unset` the default keys the owner took away (Let Smart decide deletes the
+// agent's effort): the defaults never fill them back
+{ const save0 = cfgStore.save.bind(cfgStore); cfgStore.save = (c, ...a) => save0(configsafe.unsetMarks(c, defaults()), ...a); }
 const cfgView = { ...cfgStore, read: readConfig }; // Recover / the health card see the same config as the window
 function settings() {
   try { return readConfig().settings || {}; } catch { return {}; }

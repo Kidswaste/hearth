@@ -271,6 +271,15 @@ const used = (app, CS) => CS.effective(json(path.join(app, 'data', 'config.json'
     e.layout.a = 2; ok(def.layout.a === 1, 'the defaults are never changed through the result');
     ok(e.defaultsSeen.join() === 'claude,astra,muse' && CS.effective({ ...own, defaultsSeen: e.defaultsSeen }, def).defaultsSeen === e.defaultsSeen, `defaultsSeen: each default once, unchanged when nothing is new (${e.defaultsSeen})`);
     ok(CS.effective(null, def) === null && CS.effective(own, null) === own, 'not a config: unchanged');
+    // (round 57, sweep57) a default key the owner took away (Let Smart decide deletes effort) stays away after a save
+    const saved = CS.unsetMarks({ agents: [{ id: 'claude', name: 'My Claude' }, { id: 'mine', name: 'Mine' }], theme: { accent: '#f00' }, defaultsSeen: ['claude', 'astra', 'muse'] }, def);
+    ok(JSON.stringify(saved.agents[0]._unset) === '["effort"]' && JSON.stringify(saved.theme._unset) === '["radius"]' && !('_unset' in saved.agents[1]), `a save lists the default keys taken away (${JSON.stringify(saved.agents[0])})`);
+    const e2 = CS.effective(saved, def);
+    ok(!('effort' in e2.agents[0]) && !('radius' in e2.theme) && !('_unset' in e2.agents[0]) && !('_unset' in e2.theme), 'what Hearth uses: the key stays away, no _unset shown');
+    const back = CS.unsetMarks({ ...e2, agents: [{ ...e2.agents[0], effort: 'high' }, e2.agents[1]] }, def);
+    ok(!('_unset' in back.agents[0]) && CS.effective(back, def).agents[0].effort === 'high', 'set again: the mark goes, the owner\'s value is used');
+    ok(CS.effective({ agents: [{ id: 'x', _unset: ['a'] }] }, def).agents[0]._unset === undefined, 'an agent the defaults don\'t have: no _unset shown either');
+    ok(/configsafe\.unsetMarks\(/.test(read(path.join(ROOT, 'main.js'))), 'main.js: every config save goes through unsetMarks');
   }
 
   // ---------- 6. every reader goes through the owner's file ----------

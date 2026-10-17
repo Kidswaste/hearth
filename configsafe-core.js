@@ -108,7 +108,7 @@ function effective(own, defaults) {
       const mine = Array.isArray(own.agents) ? own.agents : [];
       const seen = new Set(Array.isArray(own.defaultsSeen) ? own.defaultsSeen : []);
       const byId = new Map(dv.filter((a) => a?.id).map((a) => [a.id, a]));
-      const joined = mine.map((a) => (a?.id && byId.has(a.id) ? fill(a, byId.get(a.id)) : a));
+      const joined = mine.map((a) => (a?.id && byId.has(a.id) ? fill(a, byId.get(a.id)) : bare(a)));
       const ids = new Set(mine.map((a) => a?.id));
       const add = dv.filter((a) => a?.id && !ids.has(a.id) && !seen.has(a.id)).map(clone);
       out.agents = add.length ? [...joined, ...add] : joined;
@@ -123,9 +123,36 @@ function effective(own, defaults) {
   }
   return out;
 }
+// (round 57, sweep57) a default's key the owner took away stays away: "Let Smart decide" deletes the agent's effort, and
+// filling it back from the defaults (effort: high) put Claude on Deep again. The owner's file lists such keys in
+// `_unset` (written by unsetMarks() on every save); what Hearth uses never shows `_unset`
 function fill(mine, def) {
+  const gone = Array.isArray(mine._unset) ? new Set(mine._unset) : null;
   let out = mine;
-  for (const [k, v] of Object.entries(def)) if (!(k in mine)) { if (out === mine) out = { ...mine }; out[k] = clone(v); }
+  for (const [k, v] of Object.entries(def)) if (!(k in mine) && !gone?.has(k)) { if (out === mine) out = { ...mine }; out[k] = clone(v); }
+  if ('_unset' in out) { if (out === mine) out = { ...mine }; delete out._unset; }
+  return out;
+}
+const bare = (o) => (isObj(o) && '_unset' in o ? fill(o, {}) : o);
+// the config to write: each default agent (by id) and each part the defaults have (settings, theme…) lists in `_unset`
+// the default's keys it lacks, i.e. the ones the owner took away (the window saves the whole config it was given)
+function unsetMarks(config, defaults) {
+  if (!isObj(config) || !isObj(defaults)) return config;
+  const mark = (mine, def) => {
+    if (!isObj(mine) || !isObj(def)) return mine;
+    const gone = Object.keys(def).filter((k) => k !== '_unset' && !(k in mine)).sort();
+    const had = Array.isArray(mine._unset) ? mine._unset.join() : null;
+    if (gone.length ? had === gone.join() : had === null) return mine;
+    const out = { ...mine }; if (gone.length) out._unset = gone; else delete out._unset;
+    return out;
+  };
+  const out = { ...config };
+  for (const [k, dv] of Object.entries(defaults)) {
+    if (k === 'agents' && Array.isArray(dv) && Array.isArray(config.agents)) {
+      const byId = new Map(dv.filter((a) => a?.id).map((a) => [a.id, a]));
+      out.agents = config.agents.map((a) => (a?.id && byId.has(a.id) ? mark(a, byId.get(a.id)) : a));
+    } else if (k !== 'defaultsSeen' && isObj(dv) && isObj(config[k])) out[k] = mark(config[k], dv);
+  }
   return out;
 }
 
@@ -148,4 +175,4 @@ async function afterStart(U, cfg) {
   return { brought: [...(r?.brought || []), ...(s?.brought || [])], settled: s?.settled || [] };
 }
 
-module.exports = { afterStart, FILES, paths, migrate, effective, ownFile, readEffective, readState, writeState, keepCopy, writeAtomic };
+module.exports = { afterStart, FILES, paths, migrate, effective, unsetMarks, ownFile, readEffective, readState, writeState, keepCopy, writeAtomic };
