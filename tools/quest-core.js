@@ -7,12 +7,12 @@
   const initial = () => ({ v: 1, campaigns: clone(D.campaigns), active: 'c-material', sideQuests: [], records: {}, tiny: {}, rewards: [
     { id: 'r-play', name: 'An hour of guilt-free gaming', cost: 20 }, { id: 'r-film', name: 'A film night, picked by me', cost: 35 },
   ], redemptions: [], ideas: [], motion: true, plan: null, focus: null, updatedAt: null });
-  const allQuests = s => [...s.campaigns.flatMap(c => c.quests.map(q => ({ ...q, campaign: c.id, path: c.path }))), ...s.sideQuests];
+  const allQuests = s => [...s.campaigns.flatMap(c => c.quests.map(q => ({ ...q, campaign: c.id, path: c.path }))), ...s.sideQuests].map(q => ({ ...q, ...(q.variants?.[s.contracts?.[q.id] || 'studio'] || {}) }));
   const find = (s, qid) => allQuests(s).find(q => q.id === qid);
   const record = (s, qid) => s.records[qid] || {};
   const done = (s, qid) => Boolean(record(s, qid).completedAt);
   const skipped = (s, qid) => Boolean(record(s, qid).skippedAt);
-  const next = (s, c) => c?.quests.find(q => !done(s, q.id) && !skipped(s, q.id)) || null;
+  const next = (s, c) => { const q = c?.quests.find(q => !done(s, q.id) && !skipped(s, q.id)); return q ? find(s, q.id) : null; };
   const campaignDone = (s, c) => c.quests.every(q => done(s, q.id));
   const sideCount = s => s.sideQuests.filter(q => !done(s, q.id) && !skipped(s, q.id) && !q.parked).length;
   const earned = (s, q) => done(s, q.id) ? q.xp : record(s, q.id).startedAt ? 5 : 0;
@@ -100,6 +100,7 @@
   function complete(s, qid, details = {}, at = new Date().toISOString()) {
     if (done(s, qid)) return 0;
     if (!available(s, qid)) throw Error('Finish the earlier quest first, or resume this campaign.');
+    if (s.studio && !canFinish(s, qid)) throw Error('Submit proof and get a review that confirms the finish line first.');
     const q = find(s, qid), before = earned(s, q), r = record(s, qid);
     s.records[qid] = { ...r, completedAt: at, note: text(details.note, 2000), artifact: details.artifact ? { label: text(details.artifact.label, 160), path: text(details.artifact.path, 2000), kind: text(details.artifact.kind, 30) } : null };
     if (s.focus?.quest === qid) s.focus = null;
@@ -125,6 +126,60 @@
   }
   function redeem(s, rid, at = new Date().toISOString()) { const r = s.rewards.find(r => r.id === rid); if (!r) throw Error('Reward not found.'); if (balance(s) < r.cost) throw Error(`You need ${r.cost - balance(s)} more sparks for this reward.`); const receipt = { id: id('r'), rewardId: rid, name: r.name, cost: r.cost, at }; s.redemptions.push(receipt); return receipt; }
   function stats(s) { const quests = allQuests(s), finished = quests.filter(q => done(s, q.id)); return { xp: xp(s), level: level(xp(s)), sparks: balance(s), finished: finished.length, campaigns: s.campaigns.filter(c => campaignDone(s, c)).length, days: new Set(finished.map(q => record(s, q.id).completedAt.slice(0, 10))).size }; }
+  function upgrade(s) {
+    if (s.studio) return s;
+    const out = clone(s);
+    for (const c of D.commissions) if (out.campaigns.length < 100 && !out.campaigns.some(x => x.id === c.id)) out.campaigns.push(clone(c));
+    for (const r of D.treats) if (out.rewards.length < 100 && !out.rewards.some(x => x.id === r.id)) out.rewards.push(clone(r));
+    out.studio = { v: 1 }; out.submissions = {}; out.contracts = {}; out.rewardGoal = null;
+    return validate(out);
+  }
+  const submissions = (s, qid) => s.submissions?.[qid] || [];
+  const latest = (s, qid) => submissions(s, qid).at(-1) || null;
+  const canFinish = (s, qid) => { const r = latest(s, qid)?.review; return r?.status === 'reviewed' && r.meetsBrief === true; };
+  function setContract(s, qid, tier) {
+    const q = find(s, qid);
+    if (!q?.variants?.[tier] || !available(s, qid) || earned(s, q) || submissions(s, qid).length) throw Error('Choose scope before starting or submitting this quest.');
+    (s.contracts ||= {})[qid] = tier;
+  }
+  function checkProof(p) {
+    const str = (x, n) => typeof x === 'string' && x.length <= n;
+    const path = x => str(x, 2000) && /^(?:[a-z]:[\\/]|\/)/i.test(x) && !/^[\\/]{2}|[\x00-\x1f]/.test(x);
+    if (!p || !['file', 'chat', 'external'].includes(p.type) || !str(p.title, 200) || !p.title.trim() || !str(p.excerpt, 20000) || !str(p.analysis, 6000) || !str(p.coverage, 600) || !/^[a-f0-9]{64}$/.test(p.fingerprint || '') || !Array.isArray(p.images) || p.images.length > 4 || !p.images.every(path)) throw Error('Invalid proof. Attach a file or select actual work from a chat.');
+    if (p.type === 'file' && (!path(p.path) || !str(p.kind, 80) || !Number.isInteger(p.bytes) || p.bytes < 1 || p.bytes > 80 * 1024 * 1024)) throw Error('Invalid proof file.');
+    if (p.attachments != null && (!Array.isArray(p.attachments) || p.attachments.length > 4 || p.attachments.some(a => !a || !path(a.path) || !str(a.title, 200) || !str(a.kind, 80) || !Number.isInteger(a.bytes) || a.bytes < 1 || a.bytes > 80 * 1024 * 1024))) throw Error('Invalid proof attachments.');
+    if (p.type === 'chat' && (!str(p.chatId, 200) || !p.chatId || !str(p.agentId, 200) || !str(p.messageId, 200) || !p.excerpt.trim())) throw Error('Choose a chat message containing the work.');
+    if (p.type === 'external' && (!externalUrl(p.url) || p.excerpt.trim().length < 40)) throw Error('Include a supported chat link and paste the actual result, not just a link.');
+    return p;
+  }
+  function externalUrl(value) { try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password && ((['chatgpt.com', 'chat.openai.com'].includes(u.hostname) && /^\/(c|share)\/[\w-]+/.test(u.pathname)) || (u.hostname === 'claude.ai' && /^\/(chat|share)\/[\w-]+/.test(u.pathname))); } catch { return false; } }
+  function checkReview(r) {
+    const str = (x, n) => typeof x === 'string' && x.trim().length > 0 && x.length <= n;
+    if (!r || !['reviewed', 'needs-evidence'].includes(r.status) || typeof r.meetsBrief !== 'boolean' || !str(r.summary, 1200) || !str(r.better, 1200) || !str(r.next, 800) || !str(r.coverage, 600) || !str(r.limitations, 1000)) throw Error('Astra returned an incomplete review. Your proof is saved; retry the review.');
+    if (r.status === 'needs-evidence') { if (r.score !== null || r.meetsBrief || !Array.isArray(r.dimensions) || r.dimensions.length) throw Error('Insufficient evidence cannot have a score or complete a quest.'); }
+    else if (!Number.isInteger(r.score) || r.score < 0 || r.score > 100 || !Array.isArray(r.dimensions) || r.dimensions.length !== 4 || r.dimensions.some(x => !Number.isInteger(x) || x < 0 || x > 25) || r.dimensions.reduce((a, b) => a + b, 0) !== r.score) throw Error('Astra returned an invalid score. Your proof is saved; retry the review.');
+    return r;
+  }
+  function submit(s, qid, proof, intent = '') {
+    const q = find(s, qid); if (!q || (!done(s, qid) && !available(s, qid))) throw Error('Submit an available quest.');
+    checkProof(proof);
+    const list = (s.submissions ||= {})[qid] ||= [];
+    if (list.length >= 12) throw Error('This quest already has twelve proof versions. Export your journal before starting another quest.');
+    if (list.some(x => x.proof.fingerprint === proof.fingerprint && x.intent === text(intent, 2000)) || (q.revisionOf && submissions(s, q.revisionOf).some(x => x.proof.fingerprint === proof.fingerprint))) throw Error('That proof is already on this quest. Retry its review, or submit an actual changed version.');
+    const item = { id: id('submission'), at: new Date().toISOString(), proof: clone(proof), intent: text(intent, 2000), brief: q.done, review: null };
+    list.push(item); return item;
+  }
+  function saveReview(s, qid, sid, review) {
+    const item = submissions(s, qid).find(x => x.id === sid); if (!item) throw Error('The saved proof could not be found.');
+    if (item.review) throw Error('This version already has a review. Submit a revision for a fresh review.');
+    checkReview(review); item.review = clone(review); item.reviewedAt = new Date().toISOString();
+  }
+  function revisionQuest(s, qid) {
+    const source = find(s, qid), item = latest(s, qid); if (!source || !done(s, qid) || source.revisionOf || item?.review?.status !== 'reviewed') throw Error('Finish and review the original quest before making a revision quest.');
+    const rid = `q-revise-${item.id}`; const old = find(s, rid); if (old) return old;
+    const q = { id: rid, title: text(`Polish: ${source.title}`, 150), path: source.path, done: item.review.next, tiny: 'Open the reviewed version and change only the named detail.', deep: 'Compare the revision to the original, then stop.', minutes: 15, xp: 35, tool: source.tool, revisionOf: qid };
+    trackSide(s, q); return q;
+  }
   // Validate before accepting disk data or an import. Unknown/corrupt journals never become a new blank save.
   function validate(s) {
     const obj = x => x && typeof x === 'object' && !Array.isArray(x);
@@ -134,10 +189,21 @@
     if (!obj(s) || s.v !== 1 || !Array.isArray(s.campaigns) || s.campaigns.length > 100 || !Array.isArray(s.sideQuests) || s.sideQuests.length > 10000 || !obj(s.records) || !obj(s.tiny) || !Array.isArray(s.rewards) || s.rewards.length > 100 || !Array.isArray(s.redemptions) || s.redemptions.length > 10000) throw Error('Unsupported or damaged quest journal. Your original is preserved.');
     const ids = new Set();
     function unique(x) { if (!ident(x) || ids.has(x)) throw Error('Invalid or duplicate journal ID.'); ids.add(x); }
-    function quest(q) { unique(q.id); if (!str(q.title, 250) || !str(q.done, 1000) || !str(q.tiny, 500) || !str(q.deep, 1000) || !Number.isInteger(q.xp) || q.xp < 5 || q.xp > 100 || !Number.isFinite(q.minutes) || q.minutes < 1 || q.minutes > 120 || (q.tool != null && !['tiles', 'lab', 'sounds', 'slice', 'rack', 'files', 'arena'].includes(q.tool))) throw Error('Invalid quest details.'); }
+    function quest(q) { unique(q.id); if (!str(q.title, 250) || !str(q.done, 1000) || !str(q.tiny, 500) || !str(q.deep, 1000) || !Number.isInteger(q.xp) || q.xp < 5 || q.xp > 100 || !Number.isFinite(q.minutes) || q.minutes < 1 || q.minutes > 120 || (q.tool != null && !['tiles', 'lab', 'sounds', 'slice', 'rack', 'files', 'arena', 'forge'].includes(q.tool))) throw Error('Invalid quest details.'); if (q.variants != null) { if (!obj(q.variants) || Object.keys(q.variants).some(k => !['sketch', 'studio', 'showcase'].includes(k))) throw Error('Invalid scope contracts.'); for (const v of Object.values(q.variants)) if (!obj(v) || !str(v.done, 1000) || !v.done.trim() || !Number.isInteger(v.minutes) || v.minutes < 1 || v.minutes > 120 || !Number.isInteger(v.xp) || v.xp < 5 || v.xp > 100) throw Error('Invalid scope contract.'); } }
     for (const c of s.campaigns) { unique(c.id); if (!str(c.title, 100) || !str(c.why, 600) || !paths.some(p => p.id === c.path) || !Array.isArray(c.quests) || !c.quests.length || c.quests.length > 12) throw Error('Invalid campaign.'); c.quests.forEach(quest); }
     for (const q of s.sideQuests) { if (!paths.some(p => p.id === q.path)) throw Error('Invalid quest path.'); quest(q); }
     const qids = new Set(allQuests(s).map(q => q.id));
+    if (s.studio != null && (!obj(s.studio) || s.studio.v !== 1)) throw Error('Unsupported studio version.');
+    if (s.contracts != null && (!obj(s.contracts) || Object.entries(s.contracts).some(([key, tier]) => !['sketch', 'studio', 'showcase'].includes(tier) || !find(s, key)?.variants?.[tier]))) throw Error('Invalid saved quest scope.');
+    for (const q of s.sideQuests) if (q.revisionOf && (!qids.has(q.revisionOf) || q.revisionOf === q.id)) throw Error('Invalid revision source.');
+    if (s.rewardGoal != null && !s.rewards.some(r => r.id === s.rewardGoal)) throw Error('Invalid reward goal.');
+    if (s.submissions != null) {
+      if (!obj(s.submissions)) throw Error('Invalid proof history.');
+      for (const [qid, list] of Object.entries(s.submissions)) {
+        if (!qids.has(qid) || !Array.isArray(list) || list.length > 12) throw Error('Invalid proof history.');
+        for (const item of list) { unique(item.id); if (!date(item.at) || !str(item.intent, 2000) || !str(item.brief, 1000)) throw Error('Invalid submission.'); checkProof(item.proof); if (item.review != null) { checkReview(item.review); if (!date(item.reviewedAt)) throw Error('Invalid review date.'); } }
+      }
+    }
     if (s.plan != null && (!obj(s.plan) || !qids.has(s.plan.quest) || !str(s.plan.action, 500) || !s.plan.action.trim() || !Number.isInteger(s.plan.minutes) || s.plan.minutes < 1 || s.plan.minutes > 120 || !date(s.plan.at))) throw Error('Invalid next-session note.');
     if (s.motion != null && typeof s.motion !== 'boolean') throw Error('Invalid studio motion setting.');
     if (s.ideas != null && (!Array.isArray(s.ideas) || s.ideas.length > 100)) throw Error('Invalid quest idea box.');
@@ -153,5 +219,5 @@
     if (balance(s) < 0) throw Error('Reward history exceeds earned sparks.');
     return clone(s);
   }
-  return { paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate };
+  return { paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest };
 });

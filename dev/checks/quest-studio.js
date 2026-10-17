@@ -19,6 +19,8 @@ check(H.config.tools.hidden.includes('board') && JSON.stringify(H.config.tools.o
 Tools.setHidden('quests', true); check(!Tools.enabled().some(t => t.id === 'quests'), 'later manual hide stays respected');
 H.config.tools = toolConfig; saveConfig(); renderRail();
 const s = () => QuestJournal.snapshot(), C = QuestCore;
+// Deterministic review response in the throwaway test profile; never called in the live app.
+QuestReview.run = () => ({ promise: Promise.resolve({ status: 'reviewed', score: 60, dimensions: [15,15,15,15], meetsBrief: true, summary: 'Test fixture review.', better: 'Tighten one transition.', next: 'Export a changed transition.', coverage: 'Fixture text.', limitations: 'Mock reviewer; no artistic judgment.' }), cancel() {} });
 check(root().dataset.motion === 'on' && getComputedStyle(root().querySelector('.qj-motes i')).animationPlayState === 'running', 'ambient motion runs in the visible studio');
 await press('Motion on'); check(s().motion === false && root().dataset.motion === 'off' && getComputedStyle(root().querySelector('.qj-motes i')).animationPlayState === 'paused', 'motion control pauses ambience and saves preference');
 await press('Motion off');
@@ -40,7 +42,8 @@ check(s().ideas.length === 1 && s().ideas[0].minutes === 5 && root().querySelect
 await press('Edit idea'); field('Quest idea', 'Kitchen drums'); await press('Save for next time');
 await press('Make this my quest'); const ideaQuest = s().ideas[0].questId;
 check(ideaQuest && C.xp(s()) === 0 && scope().textContent.includes('Save one eight-bar loop'), 'accepting idea creates an uncompleted side quest');
-await press('I reached the finish line →'); scope().querySelector('input[type=checkbox]').checked = true; await press('Complete quest · +20 XP');
+await press('I reached the finish line →');
+field('External chat link', 'https://chatgpt.com/c/studio-fixture'); field('Paste the actual result from that chat', 'Fixture work: eight bars of kitchen percussion, with a kick pattern and a varied snare.'); await press('Use this pasted result'); await press('Submit proof & ask Astra'); await press('Complete quest · +20 XP');
 check(C.xp(s()) === 20 && C.done(s(), ideaQuest), 'user idea finishes through the real completion flow');
 await press('+ Suggest a quest'); field('Quest idea', 'Try a watery shader'); field('A small finish line', 'Keep one still'); field('Idea skill path', 'visual'); await press('Save for next time');
 await press('Motion on'); root().querySelector('.qj-celebrate')?.remove(); document.querySelectorAll('.toast-x').forEach(b => b.click());

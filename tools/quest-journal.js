@@ -3,6 +3,7 @@ const QuestJournal = (() => {
   const E = (tag, props = {}, ...children) => { const node = el(tag, props, ...children); for (const [key, value] of Object.entries(props.style || {})) if (key.startsWith('--')) node.style.setProperty(key, value); return node; };
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
   let daySeen = C.day(), lastCelebration = null;
+  const reviewJobs = new Map();
   const pathOf = id => C.paths.find(p => p.id === id) || C.paths[0];
   const p = (text, cls = '') => E('p', { class: `qj-copy ${cls}`, text });
   const label = text => E('span', { class: 'qj-label', text });
@@ -37,7 +38,7 @@ const QuestJournal = (() => {
   function menuNote(id) {
     const destination = destinations.find(d => d[0] === id) || destinations[0];
     const note = root?.querySelector('.qj-bench-caption');
-    if (note) note.textContent = `${destination[1]} / ${destination[3]}`;
+    if (note) note.textContent = id === 'commissions' ? 'The commission wall / Make it. Show it. Take the next step.' : `${destination[1]} / ${destination[3]}`;
   }
   function syncMotion() {
     if (root) root.dataset.motion = state?.motion !== false && !document.hidden && H.activeId === 'tool:quests' ? 'on' : 'off';
@@ -78,6 +79,7 @@ const QuestJournal = (() => {
       if (result?.state === 'missing') state = C.initial();
       else if (result?.state === 'ok') state = C.validate(result.value);
       else throw Error(result?.error || 'The journal could not be read.');
+      state = C.upgrade(state);
       writable = true; render(); notice('Journal saved on this computer.');
     } catch (err) { content.replaceChildren(E('section', { class: 'qj-empty' }, label('YOUR PROGRESS IS PRESERVED'), E('h2', { text: 'Let’s reconnect your journal' }), p(`${calmError(err)} Nothing has been overwritten.`), button('Try loading again', load))); notice('Saving is disabled while the journal is unavailable.'); }
   }
@@ -89,12 +91,13 @@ const QuestJournal = (() => {
   }
   function render() {
     if (!state || !content) return;
+    root.dataset.view = page;
     const focused = root.contains(document.activeElement) ? document.activeElement?.dataset.focus : null;
     const totals = C.stats(state), lv = totals.level;
     root.querySelector('.qj-profile')?.remove();
     const profile = E('div', { class: 'qj-profile' }, E('div', { class: 'qj-level', attrs: { 'aria-label': `Level ${lv.n}` }, text: String(lv.n) }), E('div', { class: 'qj-level-info' }, label(`LEVEL ${lv.n} · ${lv.n < 3 ? 'THE BEGINNING' : lv.n < 6 ? 'FINDING YOUR WAY' : 'MAKING YOUR MARK'}`), E('div', { class: 'qj-xp-line' }, E('strong', { text: `${totals.xp.toLocaleString()} XP` }), E('span', { text: `${lv.left} to level ${lv.n + 1}` })), meter(totals.xp - lv.base, lv.end - lv.base, 'Level progress')), E('div', { class: 'qj-wallet', attrs: { title: 'Earn one spark for every five XP. Redeeming rewards never spends XP.' } }, E('b', { text: `✧ ${totals.sparks}` }), label('SPARKS')));
     root.querySelector('.qj-top').append(profile);
-    root.querySelectorAll('[data-page]').forEach(b => b.setAttribute('aria-current', b.dataset.page === page ? 'page' : 'false'));
+    root.querySelectorAll('[data-page]').forEach(b => b.setAttribute('aria-current', b.dataset.page === (page === 'commissions' ? 'campaigns' : page) ? 'page' : 'false'));
     menuNote(page);
     const rewardCount = root.querySelector('[data-page="rewards"] .qj-object-count');
     if (rewardCount) rewardCount.textContent = `${totals.sparks} sparks`;
@@ -102,7 +105,7 @@ const QuestJournal = (() => {
     if (motion) { motion.textContent = state.motion === false ? 'Motion off' : 'Motion on'; motion.setAttribute('aria-pressed', String(state.motion !== false)); }
     syncMotion();
     content.replaceChildren();
-    if (page === 'adventure') adventure(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
+    if (page === 'adventure') adventure(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
     if (focused && !root.querySelector('dialog[open]')) [...root.querySelectorAll('[data-focus]')].find(b => b.dataset.focus === focused)?.focus({ preventScroll: true });
     tick();
   }
@@ -113,6 +116,9 @@ const QuestJournal = (() => {
   function adventure() {
     const campaign = state.campaigns.find(c => c.id === state.active && !c.paused), quest = C.next(state, campaign), totals = C.stats(state);
     sessionDesk();
+    content.append(E('section', { class: 'qj-commission-invite' }, E('div', {}, label('NEW / MADE FOR YOUR KIND OF PROJECTS'), E('h3', { text: 'Demos. Loops. Visuals. Forgeheart.' }), p('Make a small thing, show the evidence, get a real critique.')), button('Browse commissions →', () => navigate('commissions'), 'qj-primary')));
+    const goal = state.rewards.find(r => r.id === state.rewardGoal);
+    if (goal) content.append(E('section', { class: 'qj-goal-strip' }, E('div', {}, label('SAVING TOWARD'), E('strong', { text: goal.name }), meter(Math.min(C.balance(state), goal.cost), goal.cost, 'Reward goal')), button(C.balance(state) >= goal.cost ? 'Your treat is ready →' : `${goal.cost - C.balance(state)} sparks to go →`, () => navigate('rewards'), 'qj-quiet')));
     const grid = E('div', { class: 'qj-adventure-grid' });
     const hero = E('section', { class: 'qj-hero' });
     if (quest) {
@@ -242,7 +248,7 @@ const QuestJournal = (() => {
     const grid = E('div', { class: 'qj-reward-grid' });
     for (const r of state.rewards) {
       const can = C.balance(state) >= r.cost;
-      grid.append(E('article', { class: 'qj-card qj-reward' }, E('div', { class: 'qj-reward-glyph', attrs: { 'aria-hidden': 'true' } }, art('rewards')), E('h3', { text: r.name }), label(`${r.cost} SPARKS`), meter(Math.min(C.balance(state), r.cost), r.cost, `Progress toward ${r.name}`), row(button(can ? 'Redeem reward' : `${r.cost - C.balance(state)} sparks to go`, () => redeemDialog(r), can ? 'qj-primary' : 'qj-quiet'), button('Edit', () => rewardForm(r), 'qj-quiet'))));
+      grid.append(E('article', { class: `qj-card qj-reward ${state.rewardGoal === r.id ? 'qj-reward-target' : ''}` }, E('div', { class: 'qj-reward-glyph', attrs: { 'aria-hidden': 'true' } }, art('rewards')), label(r.category || 'YOUR TREAT'), E('h3', { text: r.name }), p(r.note || 'A reward you chose. Claim it when it feels right.'), label(`${r.cost} SPARKS${state.rewardGoal === r.id ? ' / YOUR NEXT TREAT' : ''}`), meter(Math.min(C.balance(state), r.cost), r.cost, `Progress toward ${r.name}`), row(button(can ? 'Redeem reward' : `${r.cost - C.balance(state)} sparks to go`, () => redeemDialog(r), can ? 'qj-primary' : 'qj-quiet'), button(state.rewardGoal === r.id ? 'Clear reward goal' : 'Save toward this', () => mutate(s => { s.rewardGoal = s.rewardGoal === r.id ? null : r.id; }), 'qj-quiet'), button('Edit', () => rewardForm(r), 'qj-quiet'))));
     }
     content.append(grid);
     if (state.redemptions.length) {
@@ -253,7 +259,7 @@ const QuestJournal = (() => {
   function rewardForm(reward) {
     dialog(reward ? 'Edit your reward' : 'Something to look forward to', (body, d) => {
       const name = field('Reward', { value: reward?.name, max: 160, placeholder: 'A night at the cinema' }), cost = field('Sparks', { value: String(reward?.cost || 20), type: 'number' });
-      body.append(name.node, cost.node, p('A typical quest earns 5–14 sparks. Choose a reward that feels fair and kind to yourself.'), button('Save reward', async () => { if (!name.input.value.trim()) throw Error('Name your reward first.'); await mutate(s => { const r = { id: reward?.id || C.id('r'), name: C.text(name.input.value, 160), cost: Number(cost.input.value) }; if (reward) s.rewards[s.rewards.findIndex(x => x.id === reward.id)] = r; else s.rewards.push(r); }); d.close(); }, 'qj-primary'));
+      body.append(name.node, cost.node, p('A typical quest earns 5–14 sparks. Choose a reward that feels fair and kind to yourself.'), button('Save reward', async () => { if (!name.input.value.trim()) throw Error('Name your reward first.'); await mutate(s => { const r = { ...reward, id: reward?.id || C.id('r'), name: C.text(name.input.value, 160), cost: Number(cost.input.value) }; if (reward) s.rewards[s.rewards.findIndex(x => x.id === reward.id)] = r; else s.rewards.push(r); }); d.close(); }, 'qj-primary'));
     }, 'YOUR REWARD CHEST');
   }
   function redeemDialog(r) {
@@ -269,13 +275,14 @@ const QuestJournal = (() => {
     return null;
   }
   function collection() {
-    content.append(sectionHeading('COLLECTION', 'Proof that you made something.', 'Your finished campaigns, small wins and the things you kept. Files stay in their original location.'));
+    content.append(sectionHeading('COLLECTION / YOUR PORTFOLIO', 'Proof that you made something.', 'Exports, critique and the versions that got you here. Uploaded proof is copied into Hearth; older keepsakes remain at their original paths.'));
+    reviewShelf();
     const badges = state.campaigns.filter(c => C.campaignDone(state, c));
     if (badges.length) content.append(E('div', { class: 'qj-badges' }, ...badges.map(c => E('div', { class: 'qj-badge', style: { '--path': pathOf(c.path).color } }, E('span', { text: '✦' }), E('strong', { text: c.badge || c.title }), label('CAMPAIGN COMPLETE')))));
     const finished = C.allQuests(state).filter(q => C.done(state, q.id)).sort((a, b) => C.record(state, b.id).completedAt.localeCompare(C.record(state, a.id).completedAt));
     if (!finished.length) content.append(E('section', { class: 'qj-empty' }, E('span', { class: 'qj-empty-star', text: '✧' }), E('h3', { text: 'Your first keepsake belongs here.' }), p('Finish a quest and add a note, image, sound or video. Small things count.'), button('Back to your adventure →', () => navigate('adventure'), 'qj-primary')));
     const grid = E('div', { class: 'qj-collection-grid' });
-    for (const q of finished) { const r = C.record(state, q.id), path = pathOf(q.path); const art = artifactPreview(r.artifact);
+    for (const q of finished.filter(q => !C.submissions(state, q.id).length)) { const r = C.record(state, q.id), path = pathOf(q.path); const art = artifactPreview(r.artifact);
       grid.append(E('article', { class: 'qj-card qj-keepsake', style: { '--path': path.color } }, art ? E('div', { class: 'qj-artifact' }, art) : E('div', { class: 'qj-keepsake-mark', text: path.icon, attrs: { 'aria-hidden': 'true' } }), label(`${path.name} · ${new Date(r.completedAt).toLocaleDateString()}`), E('h3', { text: q.title }), p(r.note || q.done), row(button('View quest', () => questDetail(q.id), 'qj-quiet'), r.artifact && safePath(r.artifact.path) ? button('Show file', () => window.hub.fs.reveal(r.artifact.path), 'qj-quiet') : null)));
     }
     content.append(grid);
@@ -295,6 +302,7 @@ const QuestJournal = (() => {
     }, 'A FINISH LINE YOU CHOOSE');
   }
   async function openTool(tool) {
+    if (tool === 'forge') { activate('tool:forgeheart'); return; }
     if (tool === 'lab') { activate('tool:three'); return; }
     if (!tool || tool === 'files') { notice('Use your own folders or favorite tools, then return here to keep your progress.'); return; }
     await Lazy.load('creative'); activate('tool:creative');
@@ -314,10 +322,14 @@ const QuestJournal = (() => {
     let mode = initial;
     dialog(q.title, (body, d) => {
       if (completed) {
+        if (C.submissions(state, qid).length) body.append(button('Review & version history', () => { d.close(); reviewHistory(qid); }, 'qj-primary'));
         body.append(label(`✓ COMPLETED · ${q.xp} XP`), p(q.done), p(r.note || 'You kept your promise to this quest.'), artifactPreview(r.artifact), row(button('Add or edit keepsake', () => { d.close(); completionForm(qid, true); }), button('Undo completion', async () => { await mutate(s => C.undo(s, qid), 'Completion undone. Your earlier small start is kept.'); d.close(); }, 'qj-quiet'))); return;
       }
       if (C.skipped(state, qid)) { body.append(label('SET ASIDE · NO COMPLETION XP'), p(q.done), p('Your earlier small-start XP is kept. Bring this back whenever it fits.'), button('Revisit quest', async () => { await mutate(s => C.revisit(s, qid), 'Quest restored.'); d.close(); navigate('adventure'); }, 'qj-primary')); return; }
       if (state.plan?.quest === qid) body.append(E('aside', { class: 'qj-starting-note' }, label('YOUR STARTING NOTE'), p(state.plan.action)));
+      if (q.variants) body.append(E('section', { class: 'qj-contract' }, label('YOUR SCOPE CONTRACT'), p('Pick scope before the first start or submission. XP rewards finishing the agreed work, never a high score.'), row(...Object.entries(q.variants).map(([tier, v]) => { const b = button(`${tier === 'sketch' ? 'Sketch' : tier === 'studio' ? 'Studio' : 'Showcase'} · ${v.minutes}m · ${v.xp} XP`, async () => { await mutate(s => C.setContract(s, qid, tier)); d.close(); questDetail(qid); }, (state.contracts?.[qid] || 'studio') === tier ? 'qj-primary' : 'qj-quiet'); b.disabled = Boolean(C.earned(state, q) || C.submissions(state, qid).length); b.setAttribute('aria-pressed', String((state.contracts?.[qid] || 'studio') === tier)); return b; }))));
+      if (C.latest(state, qid)) body.append(button('Review & version history', () => { d.close(); reviewHistory(qid); }, 'qj-quiet'));
+      body.append(E('aside', { class: 'qj-proof-hint' }, label('SHOW YOUR WORK'), p(q.proofHint || 'Attach the actual result or select the work from a chat. A completion claim alone is not evidence.')));
       const options = E('div', { class: 'qj-mode', attrs: { role: 'group', 'aria-label': 'Quest size' } }), detail = E('div', { class: 'qj-quest-detail' });
       const paint = () => {
         options.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
@@ -334,7 +346,108 @@ const QuestJournal = (() => {
       paint();
     }, path.name);
   }
+  function commissions() {
+    content.append(sectionHeading('THE COMMISSION WALL / VOL. 01', 'Make something worth keeping.', 'Fifteen concrete milestones across music, visuals, game feel and Forgeheart. Choose a rough sketch, a focused studio pass or a showcase. Show the work; the score follows the evidence.', button('Back to notebook', () => navigate('adventure'), 'qj-quiet')));
+    const grid = E('div', { class: 'qj-commissions' });
+    for (const [i, c] of state.campaigns.filter(c => c.commission).entries()) {
+      const path = pathOf(c.path), next = C.next(state, c), count = c.quests.filter(q => C.done(state, q.id)).length;
+      const card = E('article', { class: 'qj-commission', style: { '--path': path.color, '--tilt': `${i % 2 ? 1 : -1}deg` } }, E('div', { class: 'qj-commission-art' }, art(c.path), E('span', { class: 'qj-issue', text: `0${i + 1}` })), label(c.subtitle), E('h3', { text: c.title }), p(c.why), E('ol', { class: 'qj-deliverables' }, ...c.quests.map(q => E('li', { text: `${C.done(state, q.id) ? '✓ ' : ''}${q.title}` }))), label(`${count}/${c.quests.length} FINISHED / PROOF REQUIRED`), button(next ? 'Take this commission →' : 'View portfolio →', async () => { if (!next) return navigate('collection'); await track(c); questDetail(next.id); }, 'qj-primary'));
+      grid.append(card);
+    }
+    content.append(grid);
+  }
+  function scoreDial(score) {
+    const box = E('div', { class: 'qj-score-dial', attrs: { 'aria-label': score == null ? 'Awaiting sufficient evidence' : `${score} out of 100` } });
+    const value = score == null ? 0 : score;
+    const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="50" fill="none" stroke="#e7dcc02b" stroke-width="7"/><circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-dasharray="${value * 3.14159} 314.159" transform="rotate(-90 60 60)"/></svg>`;
+    box.append(document.importNode(new DOMParser().parseFromString(source, 'image/svg+xml').documentElement, true), E('strong', { text: score == null ? '—' : String(score) }), E('span', { text: score == null ? 'NO SCORE YET' : 'OUT OF 100' })); return box;
+  }
+  function proofArtifact(proof) { return proof?.path ? { path: proof.path, label: proof.title, kind: proof.kind } : null; }
+  function proofSource(proof) {
+    return row(proof.type === 'file' ? button('Show proof file ↗', () => window.hub.fs.reveal(proof.path), 'qj-quiet') : proof.type === 'chat' ? button('Show source chat ↗', async () => { const chat = await window.hub.getChat(proof.chatId); if (!chat) throw Error('This chat is unavailable; its submitted excerpt is kept below.'); root.querySelector('dialog[open]')?.close(); Native.open(chat.agentId, chat.id); }, 'qj-quiet') : button('Open source chat ↗', () => { if (!C.externalUrl(proof.url)) throw Error('Unsupported chat link.'); return window.hub.openExternal(proof.url); }, 'qj-quiet'));
+  }
+  function reviewCard(qid, item, { actions = true } = {}) {
+    const r = item.review, box = E('article', { class: 'qj-scorecard' });
+    box.append(E('header', { class: 'qj-score-head' }, scoreDial(r?.score), E('div', {}, label(r ? 'ASTRA / EVIDENCE REVIEW' : reviewJobs.has(qid) ? 'ASTRA / REVIEW IN PROGRESS' : 'PROOF SAVED / AWAITING REVIEW'), E('h3', { text: r ? r.status === 'needs-evidence' ? 'Show a little more of the work.' : r.meetsBrief ? 'The finish line is visible.' : 'One more pass on the brief.' : 'Your work is on the desk.' }), p(r?.coverage || item.proof.coverage))));
+    if (r) {
+      if (r.dimensions.length) box.append(E('div', { class: 'qj-rubric' }, ...['Intent / clarity', 'Execution / craft', 'Brief / delivery', 'Presentation / tests'].map((name, i) => E('div', {}, label(name), E('b', { text: `${r.dimensions[i]}/25` }), meter(r.dimensions[i], 25, name)))));
+      box.append(p(r.summary, 'qj-review-verdict'), E('section', { class: 'qj-review-notes' }, E('div', {}, label('THE HONEST BIT'), p(r.better)), E('div', {}, label('NEXT / ONE FINISHABLE MOVE'), p(r.next))), E('details', { class: 'qj-fold' }, E('summary', { text: 'What this score can and cannot say' }), p(r.limitations), p(`Subjective rubric score. ${r.model || 'Astra'} · ${new Date(item.reviewedAt).toLocaleString()}. Scores never add XP or spend sparks.`)));
+    }
+    const evidence = E('details', { class: 'qj-fold' }, E('summary', { text: `Evidence · ${item.proof.title}` }), p(item.proof.coverage), proofSource(item.proof));
+    if (item.proof.excerpt) evidence.append(E('pre', { class: 'qj-evidence-excerpt', text: item.proof.excerpt }));
+    if (item.proof.analysis) evidence.append(E('pre', { class: 'qj-evidence-excerpt', text: item.proof.analysis }));
+    const preview = artifactPreview(proofArtifact(item.proof)); if (preview) evidence.append(E('div', { class: 'qj-evidence-preview' }, preview));
+    for (const a of (item.proof.attachments || []).slice(1)) evidence.append(E('div', { class: 'qj-evidence-preview' }, label(a.title), artifactPreview({ path: a.path, label: a.title, kind: a.kind }), button('Show reference file ↗', () => window.hub.fs.reveal(a.path), 'qj-quiet')));
+    box.append(evidence);
+    if (actions) {
+      const isLatest = C.latest(state, qid)?.id === item.id;
+      if (!r && isLatest) box.append(reviewJobs.has(qid) ? button('Cancel review', () => reviewJobs.get(qid)?.cancel(), 'qj-quiet') : button('Review saved proof', () => reviewSaved(qid, item.id), 'qj-primary'));
+      if (isLatest && r?.status === 'reviewed' && r.meetsBrief && !C.done(state, qid)) box.append(button(`Complete quest · +${C.find(state, qid).xp - C.earned(state, C.find(state, qid))} XP`, async () => {
+        const before = C.clone(state), points = await mutate(s => C.complete(s, qid, { note: item.intent, artifact: proofArtifact(item.proof) }));
+        root.querySelector('dialog[open]')?.close(); const gains = C.gains(before, state); celebrate('You made the thing.', `+${points} XP · ${C.find(state, qid).title}`, [...gains.skills.map(n => `Skill reached: ${n.name}`), ...gains.rewards.map(name => `Ready to claim: ${name}`)]);
+      }, 'qj-primary'));
+      if (isLatest) box.append(row(button(C.done(state, qid) ? 'Submit a revision' : 'Submit new proof', () => { root.querySelector('dialog[open]')?.close(); proofForm(qid); }, 'qj-quiet'), C.done(state, qid) && !C.find(state, qid).revisionOf && r?.status === 'reviewed' ? button('Turn feedback into a quest →', async () => { const q = await mutate(s => C.revisionQuest(s, qid)); root.querySelector('dialog[open]')?.close(); questDetail(q.id); }, 'qj-primary') : null));
+    }
+    return box;
+  }
+  function reviewHistory(qid) {
+    const d = dialog(C.find(state, qid).title, body => { const list = C.submissions(state, qid); body.append(p('Versions are kept in submission order. Compare the coverage before comparing scores; a technical audio check is not a listening review.'));
+      for (const [i, item] of [...list].reverse().entries()) { body.append(label(`VERSION ${list.length - i} / ${new Date(item.at).toLocaleString()}`), reviewCard(qid, item)); }
+    }, 'THE REVIEW DESK / VERSION HISTORY');
+    d.dataset.questReview = qid;
+  }
+  async function reviewSaved(qid, sid, statusNode) {
+    if (reviewJobs.has(qid)) throw Error('This quest already has a review running.');
+    const item = C.submissions(state, qid).find(x => x.id === sid); if (!item || item.review) throw Error('Choose saved proof that has not been reviewed.');
+    const previousItem = C.submissions(state, qid).filter(x => x.id !== sid && x.review?.status === 'reviewed').at(-1) || C.latest(state, C.find(state, qid).revisionOf);
+    const prior = previousItem?.review ? { review: previousItem.review, proof: previousItem.proof } : null;
+    const d = root.querySelector('dialog[open]');
+    const job = QuestReview.run(C.find(state, qid), item, prior, text => { if (statusNode?.isConnected) statusNode.textContent = text; }); reviewJobs.set(qid, job);
+    let cancel; if (d) { cancel = button('Cancel review', () => job.cancel(), 'qj-quiet'); d.querySelector('.qj-dialog-body').append(cancel); }
+    let failure;
+    try { const review = await job.promise; await mutate(s => C.saveReview(s, qid, sid, review), 'Astra review saved.'); }
+    catch (err) { failure = err; }
+    finally { reviewJobs.delete(qid); cancel?.remove(); render(); }
+    const current = root.querySelector('dialog[open]');
+    if (d?.open || current?.dataset.questReview === qid) { (d?.open ? d : current).close(); if (C.find(state, qid)) reviewHistory(qid); }
+    if (failure) throw failure;
+  }
+  function proofForm(qid) {
+    const q = C.find(state, qid); let selected = null, preparing = false;
+    dialog(C.done(state, qid) ? 'Make the next version count.' : 'Put the finished thing on the desk.', (body, d) => {
+      body.append(label('YOUR FINISH LINE'), p(q.done, 'qj-objective'), p(q.proofHint || 'An actual export, code/diff or test result. A link or “I did it” alone does not show the work.'));
+      const intent = field('What were you aiming for, and what changed?', { multiline: true, max: 2000, placeholder: 'Mood, BPM, the change you made, what you tested. For audio, include structure notes: Astra can measure the file but cannot hear it.' });
+      const feedback = p('Choose an export or show the work from a chat.', 'qj-proof-status'); feedback.setAttribute('role', 'status');
+      const set = async fn => { if (preparing) throw Error('Wait for the selected evidence to finish loading.'); preparing = true; selected = null; feedback.textContent = 'Preparing your proof…'; try { selected = await fn(); feedback.textContent = `${selected.title} · ${selected.coverage}`; } catch (e) { feedback.textContent = e.message; throw e; } finally { preparing = false; } };
+      const upload = E('input', { type: 'file', attrs: { 'aria-label': 'Upload quest proof', multiple: '', accept: '.png,.jpg,.jpeg,.webp,.gif,.wav,.mp3,.ogg,.flac,.m4a,.mp4,.webm,.mov,.txt,.md,.json,.js,.ts,.html,.css,.csv,.diff,.patch' } });
+      upload.addEventListener('change', () => { if (upload.files[0]) { const files = Array.from(upload.files); upload.disabled = true; set(() => QuestReview.files(files)).catch(() => {}).finally(() => { upload.disabled = false; }); } });
+      const picker = E('select', { attrs: { 'aria-label': 'Source Hearth chat' } }, E('option', { value: '', text: 'Choose a Hearth chat…' }));
+      const messages = E('select', { attrs: { 'aria-label': 'Source chat message' } }, E('option', { value: '', text: 'Choose a message…' })); let selectedChat = null;
+      const excerpt = E('pre', { class: 'qj-evidence-excerpt', text: 'The selected text will appear here before you submit it.' });
+      const chatBox = E('details', { class: 'qj-fold qj-proof-source' }, E('summary', { text: 'Show work from a Hearth chat' }), picker, messages, excerpt, button('Use this chat message', () => { if (!selectedChat || messages.value === '') throw Error('Choose a chat and message first.'); return set(() => QuestReview.chat(selectedChat, Number(messages.value))); }, 'qj-quiet'));
+      let chatsLoaded = false;
+      chatBox.addEventListener('toggle', async () => { if (!chatBox.open || chatsLoaded) return; chatsLoaded = true; try { const chats = await window.hub.listChats(); for (const c of chats) picker.append(E('option', { value: c.id, text: capTitle(c.title || 'Untitled chat') })); } catch (e) { chatsLoaded = false; feedback.textContent = e.message; } });
+      picker.addEventListener('change', async () => { selectedChat = null; messages.replaceChildren(E('option', { value: '', text: 'Choose a message…' })); try { const id = picker.value, chat = id && await window.hub.getChat(id); if (picker.value !== id) return; selectedChat = chat; (chat?.messages || []).forEach((m, i) => { if (typeof (m.text || m.content) === 'string' && (m.text || m.content).trim()) messages.append(E('option', { value: String(i), text: `${m.role || 'message'} · ${capTitle(m.text || m.content)}` })); }); } catch (e) { feedback.textContent = e.message; } });
+      messages.addEventListener('change', () => { const m = selectedChat?.messages?.[Number(messages.value)]; excerpt.textContent = messages.value === '' ? 'Choose a message.' : String(m?.text || m?.content || '').slice(0, 20000); });
+      const url = field('External chat link', { max: 2000, placeholder: 'https://chatgpt.com/c/… or https://claude.ai/chat/…' }), pasted = field('Paste the actual result from that chat', { max: 20000, multiline: true, rows: 5 });
+      const external = E('details', { class: 'qj-fold qj-proof-source' }, E('summary', { text: 'Show work from ChatGPT or Claude outside Hearth' }), url.node, pasted.node, p('The link is kept so you can open the source. Astra reviews the pasted result; it does not open or verify the remote chat.'), button('Use this pasted result', () => set(() => QuestReview.external(url.input.value.trim(), pasted.input.value)), 'qj-quiet'));
+      const pending = C.latest(state, qid); if (pending && !pending.review) body.append(E('aside', { class: 'qj-starting-note' }, p(`Saved proof waiting: ${pending.proof.title}`), reviewJobs.has(qid) ? button('Cancel review', () => { reviewJobs.get(qid)?.cancel(); d.close(); reviewHistory(qid); }, 'qj-quiet') : button('Review saved proof', () => reviewSaved(qid, pending.id, feedback), 'qj-primary')));
+      body.append(E('label', { class: 'qj-proof-drop' }, art(q.path), label('UP TO FOUR FILES / 80 MB TOTAL'), upload, p('Hearth keeps a copy. Pair a bounce with an arrangement screenshot, or show before and after. Images, short audio/video, text or code. Audio is a technical review; video uses three sampled frames.')), chatBox, external, intent.node, feedback, p('Submit sends the selected proof and your notes to Astra using your configured model and reasoning depth. Nothing is sent just by choosing a file. Reviews use your normal account usage.'), button('Submit proof & ask Astra', async () => { if (preparing) throw Error('Proof is still loading.'); if (!selected) throw Error('Upload proof or select actual work from a chat first.'); if (reviewJobs.has(qid)) throw Error('A review is already running for this quest.'); const item = await mutate(s => C.submit(s, qid, selected, intent.input.value), 'Proof saved. Asking Astra to review it…'); selected = null; await reviewSaved(qid, item.id, feedback); }, 'qj-primary'));
+    }, 'NO CHECKBOX VICTORIES / SHOW THE WORK');
+  }
+  const capTitle = value => String(value).replace(/\s+/g, ' ').slice(0, 110);
+  function reviewShelf() {
+    const quests = C.allQuests(state).filter(q => C.submissions(state, q.id).length);
+    if (!quests.length) return;
+    const grid = E('div', { class: 'qj-portfolio' });
+    for (const q of quests) { const list = C.submissions(state, q.id), last = list.at(-1), rated = list.filter(x => x.review?.score != null), best = rated.length ? Math.max(...rated.map(x => x.review.score)) : null;
+      const thumbnail = last.proof.images[0] && artifactPreview({ path: last.proof.images[0], label: last.proof.title });
+      grid.append(E('article', { class: 'qj-portfolio-card', style: { '--path': pathOf(q.path).color } }, E('div', { class: 'qj-portfolio-cover' }, thumbnail || art(q.path), scoreDial(last.review?.score)), label(`${pathOf(q.path).name} / ${C.done(state, q.id) ? 'FINISHED' : 'IN PROGRESS'}`), E('h3', { text: q.title }), p(last.review?.summary || 'Proof saved. Review it when you are ready.'), label(`${list.length} VERSION${list.length === 1 ? '' : 'S'}${best == null ? '' : ` / BEST ${best}/100`}`), p(last.review?.coverage || last.proof.coverage), button('Open review & versions →', () => reviewHistory(q.id), 'qj-primary')));
+    }
+    content.append(grid);
+  }
   function completionForm(qid, edit = false) {
+    if (!edit) return proofForm(qid);
     const q = C.find(state, qid), previous = C.record(state, qid); let artifact = previous.artifact || null;
     dialog(edit ? 'Keep the story of this quest' : 'A finished thing, however small.', (body, d) => {
       const note = field('What did you make or discover? (optional)', { multiline: true, value: previous.note, max: 2000, placeholder: 'Keep one sentence for future you.' });
@@ -371,7 +484,7 @@ const QuestJournal = (() => {
       const input = E('input', { type: 'file', attrs: { accept: '.json', 'aria-label': 'Quest journal backup' } }), info = p('Choose an exported journal. Review it before replacing this journal. Attached files must still exist at their saved locations.');
       let imported = null;
       input.addEventListener('change', async () => { imported = null; try { const file = input.files?.[0]; if (!file) return; if (file.size > 8e6) throw Error('Choose a journal smaller than 8 MB.'); imported = C.validate(JSON.parse(await file.text())); const n = C.stats(imported); info.textContent = `${n.finished} quests · ${n.xp} XP · ${imported.campaigns.length} campaigns. A recovery copy of the current journal will be saved before replacement.`; } catch (err) { info.textContent = calmError(err); } });
-      body.append(input, info, button('Replace with this journal', async () => { if (!imported) throw Error('Choose a valid journal first.'); const chosen = C.clone(imported); await mutate(async s => { const backup = await window.hub.kvSet('quest-journal-before-restore', C.clone(s)); if (backup?.error) throw Error(backup.error); Object.keys(s).forEach(k => delete s[k]); Object.assign(s, chosen); }, 'Journal restored.'); d.close(); }, 'qj-primary'));
+      body.append(input, info, button('Replace with this journal', async () => { if (!imported) throw Error('Choose a valid journal first.'); const chosen = C.upgrade(C.clone(imported)); await mutate(async s => { const backup = await window.hub.kvSet('quest-journal-before-restore', C.clone(s)); if (backup?.error) throw Error(backup.error); Object.keys(s).forEach(k => delete s[k]); Object.assign(s, chosen); }, 'Journal restored.'); d.close(); }, 'qj-primary'));
     }, 'YOUR PROGRESS, PORTABLE');
   }
   async function mount(body) {
@@ -385,7 +498,7 @@ const QuestJournal = (() => {
       b.addEventListener('pointerenter', () => menuNote(id)); b.addEventListener('pointerleave', () => menuNote(page));
       b.addEventListener('focus', () => menuNote(id)); b.addEventListener('blur', () => menuNote(page)); nav.append(b);
     }
-    const menu = button('Journal options', () => dialog('Your journal', b => b.append(p('Everything here works locally. There are no model calls, deadlines, punishments for missed days or automatic reward purchases.'), row(button('Export backup', exportJournal), button('Restore backup', e => { e.currentTarget.closest('dialog').close(); importJournal(); }), button('Export pre-restore recovery copy', async () => { const previous = await window.hub.kvGet('quest-journal-before-restore'); if (!previous) throw Error('No restore has been made yet.'); C.validate(previous); const r = await window.hub.saveFile({ defaultPath: 'hearth-quest-recovery.json', filters: [{ name: 'Quest journal', extensions: ['json'] }], content: JSON.stringify(previous, null, 2) }); notice(r ? 'Recovery copy exported. Use Restore backup to recover it.' : 'Export cancelled.'); })), p('One small start awards 5 XP once; completion awards the remainder. One spark is earned per five XP. Levels never drop from inactivity. Undoing a completion deliberately reverses its award.'))), 'qj-quiet'); nav.append(menu);
+    const menu = button('Journal options', () => dialog('Your journal', b => b.append(p('Your journal is local. Explicit proof reviews use Astra and your normal account usage. No deadlines, missed-day penalties or automatic purchases.'), row(button('Export backup', exportJournal), button('Restore backup', e => { e.currentTarget.closest('dialog').close(); importJournal(); }), button('Export pre-restore recovery copy', async () => { const previous = await window.hub.kvGet('quest-journal-before-restore'); if (!previous) throw Error('No restore has been made yet.'); C.validate(previous); const r = await window.hub.saveFile({ defaultPath: 'hearth-quest-recovery.json', filters: [{ name: 'Quest journal', extensions: ['json'] }], content: JSON.stringify(previous, null, 2) }); notice(r ? 'Recovery copy exported. Use Restore backup to recover it.' : 'Export cancelled.'); })), p('One small start awards 5 XP once; completion awards the remainder. One spark is earned per five XP. Levels never drop from inactivity. Undoing a completion deliberately reverses its award.'))), 'qj-quiet'); nav.append(menu);
     status = E('p', { class: 'qj-status', attrs: { role: 'status', 'aria-live': 'polite' }, text: 'Opening your journal…' }); content = E('main', { class: 'qj-content' });
     const focusBar = E('div', { class: 'qj-focus', hidden: true }, E('span', { class: 'qj-focus-clock' }), E('span', { class: 'qj-focus-name' }), button('Pause', async () => { if (!left()) return questDetail(state.focus.quest); const remaining = left(); await mutate(s => { if (s.focus.end) { s.focus.remaining = remaining; s.focus.end = 0; } else s.focus.end = Date.now() + s.focus.remaining; }); }, 'qj-quiet', 'pause-timer'), button('End focus', () => mutate(s => { s.focus = null; }, 'Focus ended. Your quest is waiting whenever you are.'), 'qj-quiet'));
     top.append(button('Motion on', () => mutate(s => { s.motion = s.motion === false; }, 'Studio motion preference saved.'), 'qj-quiet qj-motion'), menu);

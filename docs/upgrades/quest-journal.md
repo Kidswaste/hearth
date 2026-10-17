@@ -1,5 +1,7 @@
 # Quest journal
 
+The next release adds personal commissions, required proof, Astra scorecards and revision/portfolio/reward-goal flows. See [Proof studio](quest-proof-studio.md) for the current completion and review behavior; the earlier local-only completion flow described below is superseded.
+
 **Sidequest Studio** now has its own illustrated notebook button in Hearth's main rail. The first release hid it automatically; this upgrade brings it onto the rail once for existing installs, preserving other tool settings and respecting any later choice to hide it. **Open quest journal**, the persistent **✦ Quest journal** button in the Playground, and `/quests` still work. The workspace loads only when opened.
 
 ## The experience
@@ -32,7 +34,7 @@ Writes are serialized and transactional from the renderer's perspective: state a
 
 Journal options exports portable JSON and restores a validated backup after showing its counts. Restore writes the current journal to `quest-journal-before-restore` before replacement, in the same serialized operation. Journal options can export that recovery copy. The JSON contains paths to keepsakes, not their media bytes; move the files separately when switching computers. Unsupported or unreadable journals enter a read-only recovery view and are never replaced by an empty default.
 
-No model calls, external requests, daily notifications, new packages, engine settings or background automation are added.
+The original journal/session features use no model calls. The new explicit proof-review action is described in [Proof studio](quest-proof-studio.md); it uses Astra and normal account usage. There are no daily notifications, new packages or background automations.
 
 ## Validation
 

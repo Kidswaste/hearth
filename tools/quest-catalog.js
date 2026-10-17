@@ -48,5 +48,43 @@
     ['visual', 'Finish a tiny export', 'Export one existing experiment as an image or short clip. A rough version counts.', 'Open the experiment you want to keep.', 'lab'],
     ['music', 'Rescue a forgotten sound', 'Find one old sound or sketch and save it somewhere you can find again.', 'Open your sketches folder.', 'slice'],
   ];
-  return { paths, campaigns, daily };
+  // Each commission has a small exportable finish and an optional larger contract, never a vague project.
+  const contract = (id, title, goal, tiny, tool, proof, extra) => ({ ...q(`studio-${id}`, title, goal, tiny, 25, 50, tool), proofHint: proof,
+    variants: { sketch: { minutes: 10, xp: 30, done: goal + ' Keep the first rough version; one take or still is enough.' }, studio: { minutes: 25, xp: 50, done: goal }, showcase: { minutes: 45, xp: 75, done: goal + ' ' + extra } } });
+  const commissions = [
+    { id: 'c-studio-demo', title: 'A demo worth pressing play on', subtitle: 'MUSIC / ONE SHORT SONG', path: 'music', why: 'Turn a hook into a 30–60 second demo with a beginning, a change and an ending. No full release required.', badge: 'Demo tape 01', commission: true, quests: [
+      contract('demo-hook', 'Find the part you would replay', 'Export an eight-bar hook with a clear lead idea and a simple supporting part.', 'Open a project and play one sound you want to hear again.', 'rack', 'Audio bounce plus a sentence about the intended mood; a piano-roll or arrangement screenshot helps.', 'Make a second variation and explain why the first or second wins.'),
+      contract('demo-shape', 'Give the demo a beginning and an exit', 'Export a 30–60 second demo with an opening, one audible change and a deliberate ending.', 'Duplicate the hook once and remove one element from the opening.', 'rack', 'Audio export and an arrangement screenshot with the three sections visible.', 'Refine one transition and compare it against the rough bounce.'),
+      contract('demo-bounce', 'Print the version you will keep', 'Export a named demo, check the start and tail, and write one specific thing to improve next.', 'Name the bounce before touching another plugin.', 'files', 'Final audio file with a short change log; no project screenshot alone.', 'Make a level-matched comparison to the previous bounce and describe one improvement.')
+    ] },
+    { id: 'c-studio-loop', title: 'A loop with somewhere to go', subtitle: 'MUSIC / GROOVE LAB', path: 'music', why: 'Make a satisfying loop, add one variation, then export something reusable.', badge: 'Loop keeper', commission: true, quests: [
+      contract('loop-pocket', 'Make eight bars move', 'Export an eight-bar drum and bass loop; state its BPM and what creates its groove.', 'Choose a kick and place four hits.', 'rack', 'Loop audio, BPM and a sequencer screenshot.', 'Change one timing or velocity pattern and compare the two grooves.'),
+      contract('loop-turn', 'Make bar nine worth reaching', 'Export the loop followed by one eight-bar variation that keeps its identity.', 'Mute one part for the first beat of the variation.', 'rack', 'A 16-bar bounce with the change labelled in your notes.', 'Make the last two bars lead naturally back to the start.'),
+      contract('loop-pack', 'Save a loop you can actually reuse', 'Export one named loop with BPM and key (or unpitched), and check the seam.', 'Write a useful filename.', 'slice', 'Loop file and a short seam check; include a waveform screenshot if useful.', 'Export drums and tonal parts separately with matching lengths.')
+    ] },
+    { id: 'c-studio-visual', title: 'One visual with a pulse', subtitle: 'VISUAL / PASSAGE STUDY', path: 'visual', why: 'A clear central subject, a held palette and a short movement worth looping.', badge: 'Afterimage', commission: true, quests: [
+      contract('visual-frame', 'Make one frame carry the idea', 'Export a still with one clear subject, a deliberate palette and readable separation from the background.', 'Open one scene and choose the subject you want to keep.', 'lab', 'An actual image export, not just a description of the scene.', 'Export a second crop and explain which composition reads better.'),
+      contract('visual-motion', 'Give the frame one good movement', 'Export a 6–12 second clip with one intentional movement; keep the subject and palette readable.', 'Animate only one property.', 'lab', 'A short clip; review uses sampled frames, so include notes on timing.', 'Align one visual accent to a chosen musical moment and identify its timestamp.'),
+      contract('visual-loop', 'Hide the join', 'Export a loop and show its first and last frames; explain how the movement reconnects.', 'Compare the first and final frame before changing anything else.', 'lab', 'Video or first/middle/last frames with the loop duration.', 'Fix one seam or pacing issue and show a before/after pair.')
+    ] },
+    { id: 'c-studio-game', title: 'One game idea, much better', subtitle: 'GAME / FEEL PASS', path: 'game', why: 'Polish one interaction until a player can understand and enjoy it. Avoid turning it into a whole new game.', badge: 'Feels good to play', commission: true, quests: [
+      contract('game-promise', 'Pick the ten seconds that matter', 'Show one interaction and write what the player does, what happens and why it should feel good.', 'Name the action you most want to improve.', 'arena', 'Gameplay image/clip or a real implementation excerpt with controls.', 'Identify one confusing moment using a recorded example.'),
+      contract('game-feedback', 'Make the response unmistakable', 'Change one feedback cue, timing value or control response and show the interaction before and after.', 'Choose only one cue: sound, impact, timing or movement.', 'arena', 'Before/after images or clip, with the exact change described.', 'Compare two settings and explain which one better serves the interaction.'),
+      contract('game-test', 'Fix what a fresh run reveals', 'Play one complete round, identify one concrete problem, fix it and show the same moment again.', 'Play for two minutes and write down the first friction point.', 'arena', 'Test notes plus actual before/after evidence; a claim of “fixed” is not enough.', 'Repeat the test with one edge case and document the result.')
+    ] },
+    { id: 'c-studio-forge', title: 'Forgeheart: one meaningful upgrade', subtitle: 'FORGEHEART / SMALL RELEASE', path: 'game', why: 'Move the survivor, forging and factory game forward through one bounded change and a repeatable test.', badge: 'Forged forward', commission: true, quests: [
+      contract('forge-friction', 'Find one thing that breaks the flow', 'Play a Forgeheart run and document one specific friction point in drones, forging, affixes, the lattice or rifts.', 'Open Forgeheart and choose one system to observe.', 'forge', 'Gameplay capture or a Hearth chat showing the actual test, with reproduction steps.', 'Describe the expected behavior and one measurable success condition.'),
+      contract('forge-change', 'Land one bounded improvement', 'Implement one change for that friction point and show the actual diff or changed gameplay.', 'Write the smallest change that could help.', 'forge', 'A diff/code excerpt from the working chat or before/after gameplay; include what you personally decided or tested.', 'Check one neighboring system and document that it still works.'),
+      contract('forge-proof', 'Prove the upgrade survives a run', 'Repeat the original test, report the result, and write a short player-facing patch note.', 'Run the same reproduction steps once.', 'forge', 'Test evidence from the run plus the patch note; mention remaining limitations.', 'Test a second build or edge case and identify the next small Forgeheart milestone.')
+    ] }
+  ];
+  const treats = [
+    { id: 'r-studio-listen', name: 'An album, headphones on, no multitasking', cost: 8, category: 'RESET', note: 'Pick the record before you start the quest.' },
+    { id: 'r-studio-play', name: 'A proper game session', cost: 18, category: 'PLAY', note: 'Choose a game you actually want to sink into.' },
+    { id: 'r-studio-dig', name: 'A sample-digging expedition', cost: 25, category: 'DISCOVER', note: 'Collect sounds for fun. No obligation to turn them into a track.' },
+    { id: 'r-studio-plugin', name: 'Try a plugin on a throwaway session', cost: 35, category: 'EXPLORE', note: 'A demo or something already owned. No purchase happens here.' },
+    { id: 'r-studio-night', name: 'A free-choice creative night', cost: 50, category: 'PLAY', note: 'Follow the interesting thing without a brief or score.' },
+    { id: 'r-studio-wishlist', name: 'My next sample pack / plugin fund', cost: 100, category: 'WISHLIST', note: 'Rename this and choose your own real-world budget. Sparks only record your intention.' }
+  ];
+  return { paths, campaigns, daily, commissions, treats };
 });

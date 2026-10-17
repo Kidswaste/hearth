@@ -10,6 +10,8 @@ const field = (name, value) => { const n = scope().querySelector(`[aria-label="$
 document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
 await until(() => root()?.querySelector('.qj-session-desk'));
 const s = () => QuestJournal.snapshot(), C = QuestCore;
+QuestReview.run = () => ({ promise: Promise.resolve({ status: 'reviewed', score: 60, dimensions: [15,15,15,15], meetsBrief: true, summary: 'Test fixture review.', better: 'Refine one color.', next: 'Export one changed color.', coverage: 'Fixture text.', limitations: 'Mock reviewer; no artistic judgment.' }), cancel() {} });
+const submitFixture = async () => { field('External chat link', 'https://chatgpt.com/c/session-fixture'); field('Paste the actual result from that chat', 'Fixture output: the tile has a simple geometric pattern, cream background and violet shapes.'); await press('Use this pasted result'); await press('Submit proof & ask Astra'); };
 await press('Find my next move'); field('Time available', '30'); field('Energy today', 'low'); field('What sounds good', 'music');
 check([...scope().querySelectorAll('.qj-pick')].every(n => n.textContent.includes('2 MIN START') && n.textContent.includes('Sound Explorer')), 'low energy picks are explicitly two-minute starts on the chosen path');
 await smoke({ shot: window.SMOKE_SAVES + '/studio-session-picker.png' });
@@ -23,9 +25,9 @@ await press('Clear bookmark'); check(s().plan === null && C.xp(s()) === 0, 'clea
 QuestJournal.navigate('rewards'); await press('+ Add a reward'); field('Reward', 'An album with no distractions'); field('Sparks', '10'); await press('Save reward'); QuestJournal.navigate('adventure');
 await press('Find my next move'); field('Time available', '15'); field('What sounds good', 'visual'); await press('Plan this next', scope().querySelector('.qj-pick'));
 const first = s().campaigns[0].quests[0]; check(s().plan.quest === first.id, 'tracked visual campaign is recommended when it fits');
-await press('Pick up here →'); await press('I reached the finish line →'); scope().querySelector('input[type=checkbox]').checked = true; await press('Complete quest · +25 XP');
+await press('Pick up here →'); await press('I reached the finish line →'); await submitFixture(); await press('Complete quest · +25 XP');
 check(C.xp(s()) === 25 && s().plan === null, 'completion clears matching bookmark and awards quest XP once');
-await press('Begin quest →'); await press('I reached the finish line →'); scope().querySelector('input[type=checkbox]').checked = true; await press('Complete quest · +35 XP');
+await press('Begin quest →'); await press('I reached the finish line →'); await submitFixture(); await press('Complete quest · +35 XP');
 check(root().querySelector('.qj-gains')?.textContent.includes('Skill reached: Texture keeper'), 'completion announces the newly reached skill');
 check(root().querySelector('.qj-gains')?.textContent.includes('Ready to claim: An album with no distractions') && s().redemptions.length === 0, 'newly affordable reward is announced without spending sparks');
 await smoke({ shot: window.SMOKE_SAVES + '/studio-session-gains.png' });

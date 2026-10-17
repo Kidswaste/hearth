@@ -31,7 +31,7 @@ UNIT.push('quest-test');
 UNIT.push('gamehooks55-test'); // (round 55, fixes55) ▶ Play's page scripts: a throw in Hearth's part of a hook never stops the game's own call
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
-  quests: ['unit:quest-test', 'quest-journal', 'quest-studio', 'quest-session'],
+  quests: ['unit:quest-test', 'unit:quest-review-test', 'quest-journal', 'quest-studio', 'quest-session', 'quest-proof'],
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy', 'fastboot'], // (round 29) fastboot: first frame before any lazy group, keys of lazy groups, first-use main modules
   board: by(/^board/),
   capture: by(/^capture/),
