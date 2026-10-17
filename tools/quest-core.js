@@ -124,10 +124,10 @@
     const c = { id: cid, title, why, path, custom: true, subtitle: 'YOUR CAMPAIGN', badge: title, quests: lines.map((line, i) => ({ id: `q-${cid}-${i}`, title: line, done: line, tiny: 'Write down the first physical action you can take in two minutes.', deep: 'Improve one detail only after this milestone is finished.', minutes: 15, xp: i === lines.length - 1 ? 60 : 35, tool: null })) };
     s.campaigns.push(c); s.active = cid; return c;
   }
-  function redeem(s, rid, at = new Date().toISOString()) { const r = s.rewards.find(r => r.id === rid); if (!r) throw Error('Reward not found.'); if (balance(s) < r.cost) throw Error(`You need ${r.cost - balance(s)} more sparks for this reward.`); const receipt = { id: id('r'), rewardId: rid, name: r.name, cost: r.cost, at }; s.redemptions.push(receipt); return receipt; }
+  function redeem(s, rid, at = new Date().toISOString()) { const r = s.rewards.find(r => r.id === rid); if (!r) throw Error('Reward not found.'); if (balance(s) < r.cost) throw Error(`You need ${r.cost - balance(s)} more sparks for this reward.`); const receipt = { id: id('r'), rewardId: rid, name: r.name, cost: r.cost, at, plan: r.note || '' }; s.redemptions.push(receipt); return receipt; }
   function stats(s) { const quests = allQuests(s), finished = quests.filter(q => done(s, q.id)); return { xp: xp(s), level: level(xp(s)), sparks: balance(s), finished: finished.length, campaigns: s.campaigns.filter(c => campaignDone(s, c)).length, days: new Set(finished.map(q => record(s, q.id).completedAt.slice(0, 10))).size }; }
   function upgrade(s) {
-    if (s.studio && s.deck) return s;
+    if (s.studio && s.deck && s.workstation) return s;
     const out = clone(s);
     if (!out.studio) {
       for (const c of D.commissions) if (out.campaigns.length < 100 && !out.campaigns.some(x => x.id === c.id)) out.campaigns.push(clone(c));
@@ -135,7 +135,60 @@
       out.studio = { v: 1 }; out.submissions = {}; out.contracts = {}; out.rewardGoal = null;
     }
     if (!out.deck) { out.deck = { v: 1, filters: { lane: 'any', mood: 'any', minutes: 60, shelf: 'all' }, hand: [], seen: [], saved: [], hidden: [] }; deal(out); }
+    if (!out.workstation) out.workstation = { v: 1, accent: 'ember', callsign: 'Quentin', target: null, title: null, lamp: true };
     return validate(out);
+  }
+  const specializations = D.specializations, rewardBlueprints = D.rewardBlueprints, consoleAccents = D.consoleAccents;
+  const specialization = rid => specializations.find(r => r.id === rid);
+  const routeMatches = (r, q) => !q.revisionOf && (r.scope === 'all' || (r.scope === 'life' && q.path === 'life') || r.cards.includes(q.deckCard) || r.prefixes.some(prefix => q.id.startsWith(prefix)));
+  function mastery(s, rid) {
+    const route = specialization(rid); if (!route) throw Error('Choose a specialization.');
+    const evidence = allQuests(s).filter(q => routeMatches(route, q) && done(s, q.id) && submissions(s, q.id).some(item => item.review?.status === 'reviewed' && item.review.meetsBrief));
+    const milestones = [1, 3, 5].map((required, i) => ({ required, name: route.titles[i], earned: evidence.length >= required }));
+    return { route, evidence, count: evidence.length, milestones, rank: milestones.filter(m => m.earned).length, next: milestones.find(m => !m.earned) || null };
+  }
+  function practicePick(s, rid) {
+    const r = specialization(rid); if (!r) throw Error('Choose a specialization.');
+    const ready = allQuests(s).find(q => routeMatches(r, q) && !done(s, q.id) && available(s, q.id));
+    if (ready) return { kind: 'quest', quest: ready };
+    if (sideCount(s) >= 3) return null;
+    const c = D.deck.find(c => routeMatches(r, { ...c, id: `q-deck-${c.id}`, deckCard: c.id }) && !find(s, `q-deck-${c.id}`) && !s.deck.hidden.includes(c.id));
+    return c ? { kind: 'card', card: c } : null;
+  }
+  function startPractice(s, rid) {
+    const pick = practicePick(s, rid); if (!pick) throw Error('No available practice here. Free a side-quest slot or revisit a paused quest.');
+    s.workstation.target = rid;
+    if (pick.kind === 'card') return acceptCard(s, pick.card, false);
+    if (pick.quest.campaign) s.active = pick.quest.campaign;
+    return pick.quest;
+  }
+  function equipTitle(s, rid, rank) {
+    if (rid === null) { s.workstation.title = null; return; }
+    const m = mastery(s, rid);
+    if (!Number.isInteger(rank) || rank < 1 || rank > m.rank) throw Error('Finish and review the matching work before equipping this title.');
+    s.workstation.title = { route: rid, rank };
+  }
+  function activeTitle(s) {
+    const t = s.workstation?.title;
+    return t && mastery(s, t.route).rank >= t.rank ? { name: specialization(t.route).titles[t.rank - 1], art: specialization(t.route).art } : null;
+  }
+  function stockReward(s, bid, values) {
+    const b = rewardBlueprints.find(b => b.id === bid); if (!b) throw Error('Choose a reward blueprint.');
+    const old = s.rewards.find(r => r.blueprint === bid); if (old) return old;
+    if (s.rewards.length >= 100) throw Error('The reward bay holds up to 100 rewards.');
+    const r = { ...clone(b), id: `r-blueprint-${bid}`, blueprint: bid, name: text(values?.name || b.name, 160), cost: values?.cost ?? b.cost, note: text(values?.note ?? b.note, 500) };
+    if (!r.name || !Number.isInteger(r.cost) || r.cost < 1 || r.cost > 10000) throw Error('Name the reward and choose a whole-number spark cost between 1 and 10000.');
+    s.rewards.push(r); return r;
+  }
+  function enjoyReward(s, receiptId, note = '') {
+    const r = s.redemptions.find(r => r.id === receiptId); if (!r || r.returnedAt) throw Error('Choose an unreturned reward.');
+    if (r.enjoyedAt) return;
+    r.enjoyedAt = new Date().toISOString(); r.note = text(note, 500);
+  }
+  function returnReward(s, receiptId) {
+    const r = s.redemptions.find(r => r.id === receiptId); if (!r) throw Error('Reward receipt not found.');
+    if (r.enjoyedAt) throw Error('Undo enjoyed first if you marked this reward by mistake.');
+    r.returnedAt ||= new Date().toISOString();
   }
   const deckLanes = ['any', 'music', 'visual', 'game', 'forge', 'life'];
   const deckMoods = ['any', 'make', 'remix', 'polish', 'explore', 'reset'];
@@ -169,6 +222,10 @@
     const c = deckCard(cid); if (!c || typeof twist !== 'boolean') throw Error('Choose a card from the mixtape.');
     const qid = `q-deck-${cid}`, existing = find(s, qid); if (existing) return existing;
     if (!deckHand(s).some(c => c.id === cid)) throw Error('Deal or open this card before taking it.');
+    return acceptCard(s, c, twist);
+  }
+  function acceptCard(s, c, twist) {
+    const cid = c.id, qid = `q-deck-${cid}`;
     const q = { id: qid, path: c.path, title: c.title, done: c.done + (twist ? ` Creative constraint: ${c.twist}` : ''), tiny: c.tiny, minutes: c.minutes, xp: c.minutes <= 5 ? 20 : c.minutes <= 15 ? 35 : 50, tool: c.tool, deep: twist ? 'Reach the chosen finish line, compare once, then stop.' : c.twist, deckCard: cid, deckTwist: twist, proofHint: 'Show the actual export, test evidence or saved work described in the finish line. A chat must contain the work, not just a promise.' };
     trackSide(s, q); s.deck.hand = s.deck.hand.filter(x => x !== cid); return q;
   }
@@ -231,6 +288,10 @@
     for (const c of s.campaigns) { unique(c.id); if (!str(c.title, 100) || !str(c.why, 600) || !paths.some(p => p.id === c.path) || !Array.isArray(c.quests) || !c.quests.length || c.quests.length > 12) throw Error('Invalid campaign.'); c.quests.forEach(quest); }
     for (const q of s.sideQuests) { if (!paths.some(p => p.id === q.path)) throw Error('Invalid quest path.'); quest(q); }
     const qids = new Set(allQuests(s).map(q => q.id));
+    if (s.workstation != null) {
+      const w = s.workstation;
+      if (!obj(w) || w.v !== 1 || !consoleAccents.some(a => a.id === w.accent) || !str(w.callsign, 40) || !w.callsign.trim() || typeof w.lamp !== 'boolean' || (w.target !== null && !specialization(w.target)) || (w.title !== null && (!obj(w.title) || !specialization(w.title.route) || !Number.isInteger(w.title.rank) || w.title.rank < 1 || w.title.rank > 3))) throw Error('Invalid workstation loadout.');
+    }
     if (s.deck != null) {
       if (!obj(s.deck) || s.deck.v !== 1) throw Error('Unsupported mixtape version.');
       checkDeckFilters(s.deck.filters);
@@ -259,12 +320,13 @@
     for (const r of Object.values(s.records)) if (r?.skippedAt != null && (!date(r.skippedAt) || r.completedAt)) throw Error('Invalid skipped quest history.');
     for (const [key, r] of Object.entries(s.records)) { if (!qids.has(key) || !obj(r) || (r.completedAt && !date(r.completedAt)) || (r.startedAt && !date(r.startedAt)) || (r.note != null && !str(r.note, 2000)) || (r.artifact != null && (!obj(r.artifact) || !str(r.artifact.label, 160) || !str(r.artifact.path, 2000) || !str(r.artifact.kind, 30)))) throw Error('Invalid quest history.'); }
     for (const [key, value] of Object.entries(s.tiny)) if (!qids.has(key) || !str(value, 500)) throw Error('Invalid small step.');
-    for (const r of s.rewards) { unique(r.id); if (!str(r.name, 160) || !Number.isInteger(r.cost) || r.cost < 1 || r.cost > 10000) throw Error('Invalid reward.'); }
+    for (const r of s.rewards) { unique(r.id); if (!str(r.name, 160) || !Number.isInteger(r.cost) || r.cost < 1 || r.cost > 10000 || (r.note != null && !str(r.note, 500)) || (r.blueprint != null && !rewardBlueprints.some(b => b.id === r.blueprint))) throw Error('Invalid reward.'); }
     for (const r of s.redemptions) { unique(r.id); if (!ident(r.rewardId) || !str(r.name, 160) || !Number.isInteger(r.cost) || r.cost < 1 || r.cost > 10000 || !date(r.at) || (r.returnedAt && !date(r.returnedAt))) throw Error('Invalid reward history.'); }
+    for (const r of s.redemptions) if ((r.enjoyedAt != null && (!date(r.enjoyedAt) || r.returnedAt)) || (r.note != null && !str(r.note, 500)) || (r.plan != null && !str(r.plan, 500))) throw Error('Invalid enjoyed reward.');
     if (s.active !== null && !s.campaigns.some(c => c.id === s.active)) throw Error('Invalid tracked campaign.');
     if (s.focus != null && (!obj(s.focus) || !qids.has(s.focus.quest) || !Number.isFinite(s.focus.end) || !Number.isFinite(s.focus.remaining) || s.focus.remaining < 0 || s.focus.remaining > 7200000)) throw Error('Invalid focus session.');
     if (balance(s) < 0) throw Error('Reward history exceeds earned sparks.');
     return clone(s);
   }
-  return { paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest, deckLanes, deckMoods, deckCard, deckPool, deckHand, deal, markCard, takeCard };
+  return { paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest, deckLanes, deckMoods, deckCard, deckPool, deckHand, deal, markCard, takeCard, specializations, rewardBlueprints, consoleAccents, mastery, practicePick, startPractice, equipTitle, activeTitle, stockReward, enjoyReward, returnReward };
 });

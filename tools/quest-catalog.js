@@ -1,10 +1,10 @@
 // Quest content is local and editable by release, never a generated model task.
 (function (root, make) { const value = make(); if (typeof module === 'object') module.exports = value; else root.QuestCatalog = value; })(typeof self !== 'undefined' ? self : this, () => {
   const paths = [
-    { id: 'visual', name: 'Visual Alchemist', icon: '◈', color: '#b8a0fa', description: 'Give light, texture and sound a shape.', skills: ['Curiosity', 'Texture keeper', 'Motion apprentice', 'Scene maker', 'Visual storyteller'] },
-    { id: 'music', name: 'Sound Explorer', icon: '♫', color: '#edbd79', description: 'Collect sounds. Shape them into something yours.', skills: ['Listener', 'Sample hunter', 'Sound sculptor', 'Loop architect', 'Sonic storyteller'] },
-    { id: 'game', name: 'World Builder', icon: '⬡', color: '#8ec9ab', description: 'A small world. One good interaction.', skills: ['Player', 'Rule maker', 'Interaction designer', 'World keeper', 'Game maker'] },
-    { id: 'life', name: 'Everyday Adventurer', icon: '☀', color: '#84bbd7', description: 'Make a little room for the life you want.', skills: ['Here again', 'Small steps', 'Finding rhythm', 'Making space', 'Steady adventurer'] },
+    { id: 'visual', name: 'Visual Alchemist', icon: '◈', color: '#bd8bff', description: 'Give light, texture and sound a shape.', skills: ['Curiosity', 'Texture keeper', 'Motion apprentice', 'Scene maker', 'Visual storyteller'] },
+    { id: 'music', name: 'Sound Explorer', icon: '♫', color: '#ffb14a', description: 'Collect sounds. Shape them into something yours.', skills: ['Listener', 'Sample hunter', 'Sound sculptor', 'Loop architect', 'Sonic storyteller'] },
+    { id: 'game', name: 'World Builder', icon: '⬡', color: '#ff6b6b', description: 'A small world. One good interaction.', skills: ['Player', 'Rule maker', 'Interaction designer', 'World keeper', 'Game maker'] },
+    { id: 'life', name: 'Everyday Adventurer', icon: '☀', color: '#ffd75e', description: 'Make a little room for the life you want.', skills: ['Here again', 'Small steps', 'Finding rhythm', 'Making space', 'Steady adventurer'] },
   ];
   const q = (id, title, done, tiny, minutes, xp, tool, deep) => ({ id: `q-${id}`, title, done, tiny, minutes, xp, tool, deep: deep || 'Try one variation. Keep the version you prefer; more is optional.' });
   const campaigns = [
@@ -121,5 +121,31 @@
     card('tape-answer', 'music', 'make', 30, 'A melody gets an answer', 'Bounce a 30-second sketch with a call, an answering phrase and a simple ending. Add an arrangement screenshot.', 'Play a two-bar phrase and leave two bars of space.', 'rack', 'Build the answer from the call’s rhythm with different notes.'),
     card('frame-join', 'visual', 'polish', 15, 'Catch the loop seam', 'Compare the start and end of an existing animation, fix one visible discontinuity and export a revised loop with matching boundary frames.', 'Put the first and final frame side by side.', 'lab', 'Keep the duration fixed while repairing the seam.')
   ];
-  return { paths, campaigns, daily, commissions, treats, deck };
+  const specializations = [
+    { id: 'songs', path: 'music', name: 'Demo alchemist', why: 'Turn the part you keep replaying into a short song you can actually bounce.', cards: ['tape-hook','tape-answer','tape-transition','tape-tail'], prefixes: ['q-studio-demo-'], titles: ['Hook keeper','Demo alchemist','Song finisher'], gift: 'A record sleeve for your desk', art: 'music' },
+    { id: 'loops', path: 'music', name: 'Pocket engineer', why: 'Build grooves and sound families that are useful beyond the first session.', cards: ['tape-pocket','tape-found','tape-one','tape-plugin'], prefixes: ['q-studio-loop-','q-samples-'], titles: ['Sound scavenger','Pocket engineer','Loop architect'], gift: 'A patch cartridge for your desk', art: 'skills' },
+    { id: 'passage', path: 'visual', name: 'Passage pilot', why: 'Hold a subject, give it a palette, and make one movement worth watching again.', cards: ['frame-chrome','frame-echo','frame-type','frame-ascii','frame-join'], prefixes: ['q-studio-visual-','q-passage-'], titles: ['Light catcher','Passage pilot','Afterimage author'], gift: 'A prism module for your desk', art: 'visual' },
+    { id: 'materials', path: 'visual', name: 'Surface shaper', why: 'Make textures, palettes and cover studies that give your music a visual world.', cards: ['frame-tile','frame-palette','frame-cover'], prefixes: ['q-material-'], titles: ['Pattern collector','Surface shaper','World painter'], gift: 'A material sample for your desk', art: 'visual' },
+    { id: 'gamefeel', path: 'game', name: 'Feel mechanic', why: 'Polish the few seconds that tell a player why your game is worth playing.', cards: ['feel-impact','feel-sign','feel-choice','feel-end','feel-friction'], prefixes: ['q-studio-game-','q-world-'], titles: ['Interaction scout','Feel mechanic','Tiny-world maker'], gift: 'A controller module for your desk', art: 'game' },
+    { id: 'forgeheart', path: 'game', name: 'Forgeheart smith', why: 'Land small, tested improvements to drones, the lattice, rifts and factory flow.', cards: ['forge-drone','forge-affix','forge-lattice','forge-rift','forge-factory'], prefixes: ['q-studio-forge-'], titles: ['Forge apprentice','Forgeheart smith','System keeper'], gift: 'A miniature anvil for your desk', art: 'forge' },
+    { id: 'restart', path: 'life', name: 'Return specialist', why: 'Leave a door open for future you. A clear next action is a useful piece of work.', cards: [], prefixes: [], scope: 'life', titles: ['Door opener','Return specialist','Studio caretaker'], gift: 'A warm cup for your desk', art: 'life' },
+    { id: 'finish', path: 'life', name: 'Finish-line collector', why: 'Keep the proof that you can finish. Small, rough and real is enough to count.', cards: [], prefixes: [], scope: 'all', titles: ['First artifact','Finish-line collector','Body of work'], gift: 'An evidence cabinet for your desk', art: 'collection' }
+  ];
+  const rewardBlueprints = [
+    { id: 'first-listen', name: 'My demo, headphones, lights down', cost: 6, category: 'LISTEN', note: 'Pick the bounce you want to enjoy. No fixing while it plays.', art: 'music' },
+    { id: 'sample-hunt', name: 'A 20-minute sample treasure hunt', cost: 12, category: 'DISCOVER', note: 'Choose a folder or record to explore. Save only the sounds you love; no finished track required.', art: 'skills' },
+    { id: 'plugin-date', name: 'A date with a forgotten plugin', cost: 15, category: 'PLAY', note: 'Name an owned plugin or a free demo. One throwaway patch, no obligation to use it.', art: 'skills' },
+    { id: 'game-night', name: 'Tonight’s game, picked in advance', cost: 20, category: 'PLAY', note: 'Write the game and the session you want. This is leisure, not a research assignment.', art: 'game' },
+    { id: 'passage-screen', name: 'A private Passage screening', cost: 18, category: 'CELEBRATE', note: 'Queue a few of your visuals with a track you love. Watch the work as an audience.', art: 'visual' },
+    { id: 'forge-victory', name: 'A Forgeheart victory lap', cost: 12, category: 'PLAY', note: 'Play a run to enjoy the systems you improved. Leave the bug list closed for this one.', art: 'forge' },
+    { id: 'crate-evening', name: 'An evening following the interesting thing', cost: 30, category: 'FREEDOM', note: 'Sound, game or visual: decide at the start. No deliverable and no score.', art: 'deck' },
+    { id: 'release-ritual', name: 'My tiny-release celebration', cost: 40, category: 'CELEBRATE', note: 'Choose the food, film or activity before your next export. Keep it within your own budget.', art: 'collection' },
+    { id: 'pack-budget', name: 'A sample pack from my wishlist', cost: 65, category: 'WISHLIST', note: 'Name the exact pack and your real-money limit. Claiming this only records your choice; nothing is purchased.', art: 'music' },
+    { id: 'desk-hour', name: 'A desk reset with a favorite album', cost: 8, category: 'RESET', note: 'Fresh drink, comfortable lighting, favorite record. Stop whenever the space feels good.', art: 'life' }
+  ];
+  const consoleAccents = [
+    { id: 'ember', name: 'Forge ember', color: '#ff8c42' }, { id: 'mythic', name: 'Mythic violet', color: '#bd8bff' },
+    { id: 'rare', name: 'Rare gold', color: '#ffd75e' }, { id: 'pulse', name: 'Signal pink', color: '#ff6b9d' }
+  ];
+  return { paths, campaigns, daily, commissions, treats, deck, specializations, rewardBlueprints, consoleAccents };
 });

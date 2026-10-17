@@ -12,20 +12,21 @@ const QuestJournal = (() => {
   // quest names, notes and imported data always go through textContent.
   function art(kind) {
     const drawings = {
-      forge: `<path d="m26 54 91-3 24 9-27 17-18 1-7 20 17 10-58 3 14-16-7-15-22-7Z" fill="#8ba8a1"/><path d="m27 54 84-3-10 16-64 3Z" fill="#c8d3bd"/><path d="m59 91 29-2M42 112l69-4"/><path d="m85 19 12 11-29 32-9-8Z" fill="#c48b5c"/><path d="m83 10 34 28-13 15-36-29Z" fill="#e4bf70"/><path d="m77 21 33 26"/><path d="m28 26 5-10 5 10 10 5-10 5-5 10-5-10-10-5Z" fill="#e9c780"/><path d="m124 15 6 10-6 13-6-13Z" fill="#b6a2d2"/><path d="m70 74 6 9 5-10" stroke="#30464a"/>`,
-      deck: `<path d="m34 26 77-9 15 88-78 10Z" fill="#8bb0a1"/><path d="m24 40 90-12 10 82-90 10Z" fill="#dfaa79"/><g class="qj-art-lift"><path d="m41 34 94 8-8 75-94-8Z" fill="#eadcbc"/><path d="m49 46 73 6-3 39-73-6Z" fill="#334d50"/><circle cx="65" cy="67" r="12" fill="#e9c577"/><circle cx="102" cy="70" r="12" fill="#b3a4cd"/><path d="m61 66 8 1m29 3 8 1M62 99l38 3"/><path d="m74 90 18 1 6 12-31-2Z" fill="#b77b58"/></g><path d="m17 26 5-11 5 11 11 5-11 4-5 11-5-11-11-4Z" fill="#eed59a"/>`,
-      room: `<path d="M16 16h128v100H16Z" fill="#112b3c" stroke="#658d91" stroke-width="5"/><path d="M20 91 43 63 64 83 93 48 140 88v24H20Z" fill="#244e58" stroke="none"/><path d="M20 104 56 84 80 94 116 76 140 99v13H20Z" fill="#3f6a69" stroke="none"/><circle cx="112" cy="40" r="13" fill="#e9d9ab" stroke="none"/><g class="qj-night-stars" fill="#d6dcb3" stroke="none"><circle cx="35" cy="37" r="2"/><circle cx="72" cy="30" r="1.5"/><circle cx="53" cy="52" r="1.5"/><circle cx="132" cy="67" r="2"/></g><path d="M80 18v94M18 70h124" stroke="#769b94" stroke-width="4"/><path d="M11 119h139" stroke="#bd9c70" stroke-width="7"/>`,
-      adventure: `<path d="M35 110 29 27Q29 20 38 19L113 12 125 105Z" fill="#204c50"/><g class="qj-art-lift"><path d="m33 22 77-8 8 87-78 10Z" fill="#eedfbc"/><path d="m43 22 8 87M49 42l49-5M51 49l35-3"/><path d="m59 64 15-2 2 15-15 2Z" fill="#e98e6b"/><path d="m83 63 7 5 10-15M60 91l39-4"/><path d="m88 13 2 23 7-6 7 4-2-23" fill="#d96951"/></g><path d="m117 46 8-2 10 49-7 7-5-5Z" fill="#dfb953"/><path d="m128 100 5 7 2-14" fill="#eedfbc"/>`,
-      campaigns: `<path d="m20 48 21-10 94 1 7 70-111 4Z" fill="#c38257"/><path d="m28 56 108-6M31 99l105-4M45 56l3 42M119 52l2 43"/><g class="qj-art-lift"><path d="m42 42-3-22 54-5 8 28" fill="#e5dbba"/><path d="m52 29 30-3M55 36l20-2"/><path d="m78 47 4-18 47 7-2 12" fill="#8eac9c"/><path d="m92 38 21 3"/></g><path d="m62 65 47-2 1 21-47 2Z" fill="#eedfbc"/><path d="m74 76 25-1"/><circle cx="37" cy="65" r="2" fill="#253b3a"/><circle cx="130" cy="61" r="2" fill="#253b3a"/>`,
-      skills: `<path d="m23 26 108-5 7 87-108 5Z" fill="#657d79"/><path d="m31 33 91-4 3 57-90 4Z" fill="#253f42"/><path d="m62 32 3 56M94 30l3 56" stroke="#88aaa0"/><g fill="#e4c56a"><circle cx="47" cy="47" r="7"/><circle cx="78" cy="45" r="7"/><circle cx="109" cy="44" r="7"/></g><path d="M47 42v5M78 40v5M109 39v5"/><g fill="#98b8ad"><circle cx="47" cy="72" r="4"/><circle cx="79" cy="70" r="4"/><circle cx="110" cy="69" r="4"/></g><path class="qj-art-cable" d="M47 72C22 120 102 131 79 70" fill="none" stroke="#e78e70" stroke-width="5"/><path d="m102 97 22-1" stroke="#eadcb9"/><circle class="qj-art-led" cx="118" cy="101" r="2" fill="#dce39b"/>`,
-      rewards: `<path d="M39 17h82l5 95H34Z" fill="#be6f57"/><path d="M47 26h65v55H44Z" fill="#243f42"/><g class="qj-art-lift"><path d="m51 34 18-2 2 16-19 1Z" fill="#ebce79"/><path d="m82 34 21 2-2 16-21-3Z" fill="#91b8a5"/><path d="m52 60 19-3 1 16-19 2Z" fill="#e78f71"/><path d="m82 60 20 1-1 15-20-1Z" fill="#b9adcb"/></g><path d="M43 54h69M48 91h47v13H47Z" fill="#273f3f"/><circle class="qj-art-led" cx="109" cy="96" r="6" fill="#ecd98f"/><path d="m30 112 101 1M44 116v6M117 116v6"/><path d="M64 10h31" stroke="#e9cc87" stroke-width="5"/>`,
-      collection: `<path d="m24 27 111-5 3 91-113 3Z" fill="#52726b"/><path d="m34 36 90-4 1 68-89 3Z" fill="#1d383b"/><path d="m34 70 91-3" stroke="#bb9270" stroke-width="6"/><path d="m43 61 6-16 19 1 4 16Z" fill="#b5accb"/><path d="m48 47 16 14M66 47 48 61"/><path d="m86 43 16-3 5 18-16 4Z" fill="#e8c666"/><path d="m47 83 25-2 2 15-26 1Z" fill="#d98a6d"/><path d="m85 94 4-16 18 1 2 13Z" fill="#86b5a1"/><path class="qj-art-door" d="m80 33 44-1 1 68-43 2Z" fill="#bad3c8" fill-opacity=".12"/><circle cx="88" cy="68" r="2" fill="#e6ce8e"/><path d="M31 116v5M129 115v5"/>`,
-      visual: `<path d="m25 39 74-18 39 28-75 23Z" fill="#b7a4ce"/><path d="m25 39 38 33v40L25 78Z" fill="#779d91"/><path d="m63 72 75-23-2 40-73 23Z" fill="#dbc778"/><path d="m44 35 39 31M63 30l38 30M83 25l37 29M45 56l73-23M63 72v40M83 66v40M103 60v40M122 54v39M26 59l37 33 73-23" fill="none" stroke="#304547"/><path d="m30 15 4-8 4 8 8 3-8 3-4 8-4-8-8-3Z" fill="#e5d9b7"/>`,
-      music: `<path d="m21 38 113-6 7 67-114 7Z" fill="#c99065"/><path d="m31 45 93-4 2 32-93 5Z" fill="#294548"/><g class="qj-art-reel"><circle cx="53" cy="60" r="11" fill="#e5d6ae"/><path d="m53 50 0 20M43 60h20"/></g><g class="qj-art-reel"><circle cx="103" cy="57" r="11" fill="#e5d6ae"/><path d="M103 47v20M93 57h20"/></g><path d="m61 91 9-12 23-2 11 12Z" fill="#e5d6ae"/><path d="m40 91 9-1M116 87l9-1" stroke="#294548" stroke-width="5"/>`,
-      game: `<path d="M40 43Q17 46 20 90T53 93l11-8 37-2 15 15q27 14 25-18l-8-31q-6-18-30-10l-39 2Z" fill="#8dad9e"/><path d="m40 56 11-1 1 11 11-1 1 11-12 1 1 12-11 1-1-12-11 1-1-11 12-1Z" fill="#2d4848"/><circle cx="112" cy="60" r="7" fill="#df8c6d"/><circle cx="126" cy="75" r="7" fill="#e4c56a"/><path d="M75 71h13M76 41Q70 14 98 14" fill="none"/>`,
-      life: `<path d="m42 54 56-3-4 54-41 2Z" fill="#e6cf94"/><path d="M98 60c35-10 29 33-3 26" fill="none" stroke="#e6cf94" stroke-width="8"/><path d="M60 42c-15-13 13-19 0-32M78 40c-10-11 10-14 2-24" fill="none" stroke="#92b4a9"/><path d="m29 111 88-3"/><path d="m58 69 9 8 17-15" fill="none" stroke="#527e77" stroke-width="4"/>`
+      terminal: `<path d="M19 12h123v82H19Z" fill="#212123" stroke="#49494b" stroke-width="4"/><path d="M27 21h107v60H27Z" fill="#09090b"/><path d="M36 33h28M36 41h16M36 50h44M36 66h11l6-13 9 18 10-23 9 14h42" stroke="#ff8c42" fill="none"/><path d="M62 95v12h35V95M45 113h70" stroke="#6b6b6d" stroke-width="5"/><circle class="qj-art-led" cx="129" cy="88" r="2" fill="#ffd75e"/><path d="m114 34 5 8-5 8-5-8Z" fill="#bd8bff"/>`,
+      forge: `<path d="m26 54 91-3 24 9-27 17-18 1-7 20 17 10-58 3 14-16-7-15-22-7Z" fill="#a1a1a3"/><path d="m27 54 84-3-10 16-64 3Z" fill="#cfcfd1"/><path d="m59 91 29-2M42 112l69-4"/><path d="m85 19 12 11-29 32-9-8Z" fill="#c48b5c"/><path d="m83 10 34 28-13 15-36-29Z" fill="#e4bf70"/><path d="m77 21 33 26"/><path d="m28 26 5-10 5 10 10 5-10 5-5 10-5-10-10-5Z" fill="#e9c780"/><path d="m124 15 6 10-6 13-6-13Z" fill="#b6a2d2"/><path d="m70 74 6 9 5-10" stroke="#313133"/>`,
+      deck: `<path d="m34 26 77-9 15 88-78 10Z" fill="#a7a7a9"/><path d="m24 40 90-12 10 82-90 10Z" fill="#dfaa79"/><g class="qj-art-lift"><path d="m41 34 94 8-8 75-94-8Z" fill="#eadcbc"/><path d="m49 46 73 6-3 39-73-6Z" fill="#363638"/><circle cx="65" cy="67" r="12" fill="#e9c577"/><circle cx="102" cy="70" r="12" fill="#b3a4cd"/><path d="m61 66 8 1m29 3 8 1M62 99l38 3"/><path d="m74 90 18 1 6 12-31-2Z" fill="#b77b58"/></g><path d="m17 26 5-11 5 11 11 5-11 4-5 11-5-11-11-4Z" fill="#eed59a"/>`,
+      room: `<path d="M16 16h128v100H16Z" fill="#1d1d1f" stroke="#858587" stroke-width="5"/><path d="M20 91 43 63 64 83 93 48 140 88v24H20Z" fill="#343436" stroke="none"/><path d="M20 104 56 84 80 94 116 76 140 99v13H20Z" fill="#49494b" stroke="none"/><circle cx="112" cy="40" r="13" fill="#e9d9ab" stroke="none"/><g class="qj-night-stars" fill="#d6dcb3" stroke="none"><circle cx="35" cy="37" r="2"/><circle cx="72" cy="30" r="1.5"/><circle cx="53" cy="52" r="1.5"/><circle cx="132" cy="67" r="2"/></g><path d="M80 18v94M18 70h124" stroke="#939395" stroke-width="4"/><path d="M11 119h139" stroke="#bd9c70" stroke-width="7"/>`,
+      adventure: `<path d="M35 110 29 27Q29 20 38 19L113 12 125 105Z" fill="#323234"/><g class="qj-art-lift"><path d="m33 22 77-8 8 87-78 10Z" fill="#eedfbc"/><path d="m43 22 8 87M49 42l49-5M51 49l35-3"/><path d="m59 64 15-2 2 15-15 2Z" fill="#e98e6b"/><path d="m83 63 7 5 10-15M60 91l39-4"/><path d="m88 13 2 23 7-6 7 4-2-23" fill="#d96951"/></g><path d="m117 46 8-2 10 49-7 7-5-5Z" fill="#dfb953"/><path d="m128 100 5 7 2-14" fill="#eedfbc"/>`,
+      campaigns: `<path d="m20 48 21-10 94 1 7 70-111 4Z" fill="#c38257"/><path d="m28 56 108-6M31 99l105-4M45 56l3 42M119 52l2 43"/><g class="qj-art-lift"><path d="m42 42-3-22 54-5 8 28" fill="#e5dbba"/><path d="m52 29 30-3M55 36l20-2"/><path d="m78 47 4-18 47 7-2 12" fill="#a4a4a6"/><path d="m92 38 21 3"/></g><path d="m62 65 47-2 1 21-47 2Z" fill="#eedfbc"/><path d="m74 76 25-1"/><circle cx="37" cy="65" r="2" fill="#29292b"/><circle cx="130" cy="61" r="2" fill="#29292b"/>`,
+      skills: `<path d="m23 26 108-5 7 87-108 5Z" fill="#78787a"/><path d="m31 33 91-4 3 57-90 4Z" fill="#2b2b2d"/><path d="m62 32 3 56M94 30l3 56" stroke="#a2a2a4"/><g fill="#e4c56a"><circle cx="47" cy="47" r="7"/><circle cx="78" cy="45" r="7"/><circle cx="109" cy="44" r="7"/></g><path d="M47 42v5M78 40v5M109 39v5"/><g fill="#b0b0b2"><circle cx="47" cy="72" r="4"/><circle cx="79" cy="70" r="4"/><circle cx="110" cy="69" r="4"/></g><path class="qj-art-cable" d="M47 72C22 120 102 131 79 70" fill="none" stroke="#e78e70" stroke-width="5"/><path d="m102 97 22-1" stroke="#eadcb9"/><circle class="qj-art-led" cx="118" cy="101" r="2" fill="#dce39b"/>`,
+      rewards: `<path d="M39 17h82l5 95H34Z" fill="#be6f57"/><path d="M47 26h65v55H44Z" fill="#2b2b2d"/><g class="qj-art-lift"><path d="m51 34 18-2 2 16-19 1Z" fill="#ebce79"/><path d="m82 34 21 2-2 16-21-3Z" fill="#aeaeb0"/><path d="m52 60 19-3 1 16-19 2Z" fill="#e78f71"/><path d="m82 60 20 1-1 15-20-1Z" fill="#b9adcb"/></g><path d="M43 54h69M48 91h47v13H47Z" fill="#2b2b2d"/><circle class="qj-art-led" cx="109" cy="96" r="6" fill="#ecd98f"/><path d="m30 112 101 1M44 116v6M117 116v6"/><path d="M64 10h31" stroke="#e9cc87" stroke-width="5"/>`,
+      collection: `<path d="m24 27 111-5 3 91-113 3Z" fill="#6b6b6d"/><path d="m34 36 90-4 1 68-89 3Z" fill="#262628"/><path d="m34 70 91-3" stroke="#bb9270" stroke-width="6"/><path d="m43 61 6-16 19 1 4 16Z" fill="#b5accb"/><path d="m48 47 16 14M66 47 48 61"/><path d="m86 43 16-3 5 18-16 4Z" fill="#e8c666"/><path d="m47 83 25-2 2 15-26 1Z" fill="#d98a6d"/><path d="m85 94 4-16 18 1 2 13Z" fill="#aaaaac"/><path class="qj-art-door" d="m80 33 44-1 1 68-43 2Z" fill="#cdcdcf" fill-opacity=".12"/><circle cx="88" cy="68" r="2" fill="#e6ce8e"/><path d="M31 116v5M129 115v5"/>`,
+      visual: `<path d="m25 39 74-18 39 28-75 23Z" fill="#b7a4ce"/><path d="m25 39 38 33v40L25 78Z" fill="#949496"/><path d="m63 72 75-23-2 40-73 23Z" fill="#dbc778"/><path d="m44 35 39 31M63 30l38 30M83 25l37 29M45 56l73-23M63 72v40M83 66v40M103 60v40M122 54v39M26 59l37 33 73-23" fill="none" stroke="#313133"/><path d="m30 15 4-8 4 8 8 3-8 3-4 8-4-8-8-3Z" fill="#e5d9b7"/>`,
+      music: `<path d="m21 38 113-6 7 67-114 7Z" fill="#c99065"/><path d="m31 45 93-4 2 32-93 5Z" fill="#2f2f31"/><g class="qj-art-reel"><circle cx="53" cy="60" r="11" fill="#e5d6ae"/><path d="m53 50 0 20M43 60h20"/></g><g class="qj-art-reel"><circle cx="103" cy="57" r="11" fill="#e5d6ae"/><path d="M103 47v20M93 57h20"/></g><path d="m61 91 9-12 23-2 11 12Z" fill="#e5d6ae"/><path d="m40 91 9-1M116 87l9-1" stroke="#2f2f31" stroke-width="5"/>`,
+      game: `<path d="M40 43Q17 46 20 90T53 93l11-8 37-2 15 15q27 14 25-18l-8-31q-6-18-30-10l-39 2Z" fill="#a5a5a7"/><path d="m40 56 11-1 1 11 11-1 1 11-12 1 1 12-11 1-1-12-11 1-1-11 12-1Z" fill="#323234"/><circle cx="112" cy="60" r="7" fill="#df8c6d"/><circle cx="126" cy="75" r="7" fill="#e4c56a"/><path d="M75 71h13M76 41Q70 14 98 14" fill="none"/>`,
+      life: `<path d="m42 54 56-3-4 54-41 2Z" fill="#e6cf94"/><path d="M98 60c35-10 29 33-3 26" fill="none" stroke="#e6cf94" stroke-width="8"/><path d="M60 42c-15-13 13-19 0-32M78 40c-10-11 10-14 2-24" fill="none" stroke="#acacae"/><path d="m29 111 88-3"/><path d="m58 69 9 8 17-15" fill="none" stroke="#747476" stroke-width="4"/>`
     };
-    const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 130" fill="none" stroke="#263c3d" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="80" cy="117" rx="61" ry="6" fill="#081d22" opacity=".23" stroke="none"/>${drawings[kind] || drawings.adventure}</svg>`;
+    const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 130" fill="none" stroke="#2a2a2c" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="80" cy="117" rx="61" ry="6" fill="#131315" opacity=".23" stroke="none"/>${drawings[kind] || drawings.adventure}</svg>`;
     const svg = new DOMParser().parseFromString(source, 'image/svg+xml').documentElement;
     svg.classList.add('qj-art'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
     return document.importNode(svg, true);
@@ -88,12 +89,19 @@ const QuestJournal = (() => {
   function celebrate(title, text, gains = []) {
     lastCelebration = { title, text, gains };
     const card = E('div', { class: 'qj-celebrate', attrs: { role: 'status' } }, E('span', { class: 'qj-celebrate-mark', text: '✦' }), E('div', {}, E('strong', { text: title }), p(text), gains.length ? E('div', { class: 'qj-gains' }, ...gains.map(text => E('span', { text }))) : null), button('Dismiss', () => card.remove(), 'qj-quiet'));
+    if (gains.some(x => x.startsWith('Title earned:'))) card.querySelector('.qj-gains').append(button('See titles →', () => { card.remove(); navigate('skills'); }, 'qj-quiet'));
     root.querySelector('.qj-celebrate')?.remove(); root.append(card);
     setTimeout(() => card.remove(), gains.length ? 12000 : 6500);
   }
   function render() {
     if (!state || !content) return;
     root.dataset.view = page;
+    root.style.setProperty('--qj-signal', C.consoleAccents.find(a => a.id === state.workstation.accent).color);
+    root.dataset.lamp = state.workstation.lamp ? 'on' : 'off';
+    const title = C.activeTitle(state), consoleName = root.querySelector('.qj-console-name'), trophy = root.querySelector('.qj-desk-trophy'), lamp = root.querySelector('.qj-lamp-toggle');
+    if (consoleName) consoleName.textContent = `${state.workstation.callsign} / ${title?.name || 'Independent creator'}`;
+    if (trophy) { trophy.replaceChildren(...(title ? [art(title.art), label(title.name)] : [])); trophy.hidden = !title; }
+    if (lamp) { lamp.textContent = state.workstation.lamp ? 'Lamp on' : 'Lamp off'; lamp.setAttribute('aria-pressed', String(state.workstation.lamp)); }
     const focused = root.contains(document.activeElement) ? document.activeElement?.dataset.focus : null;
     const totals = C.stats(state), lv = totals.level;
     root.querySelector('.qj-profile')?.remove();
@@ -118,6 +126,10 @@ const QuestJournal = (() => {
   function adventure() {
     const campaign = state.campaigns.find(c => c.id === state.active && !c.paused), quest = C.next(state, campaign), totals = C.stats(state);
     sessionDesk();
+    if (state.workstation.target) {
+      const m = C.mastery(state, state.workstation.target);
+      content.append(E('section', { class: 'qj-goal-strip qj-specialty-target', style: { '--path': pathOf(m.route.path).color } }, E('div', {}, label('PINNED SPECIALIZATION'), E('strong', { text: m.route.name }), p(m.next ? `${m.count} / ${m.next.required} reviewed finishes toward ${m.next.name}` : 'All three titles earned. The work is yours to keep.')), button('Open my route →', () => specializationDetail(m.route.id), 'qj-quiet')));
+    }
     content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('THE MIXTAPE / 30 SMALL ADVENTURES'), E('h3', { text: 'Something you haven’t tried yet.' }), p('Make a demo. Bend a sound. Fix a tiny world. Find your spark in three cards.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
     content.append(E('section', { class: 'qj-commission-invite' }, E('div', {}, label('NEW / MADE FOR YOUR KIND OF PROJECTS'), E('h3', { text: 'Demos. Loops. Visuals. Forgeheart.' }), p('Make a small thing, show the evidence, get a real critique.')), button('Browse commissions →', () => navigate('commissions'), 'qj-primary')));
     const goal = state.rewards.find(r => r.id === state.rewardGoal);
@@ -233,7 +245,19 @@ const QuestJournal = (() => {
     content.append(grid);
   }
   function tree() {
-    content.append(sectionHeading('THE PATCH BAY / SKILL TREE', 'See what connects.', 'Each finished quest adds signal to a path. Follow the cable to your next milestone. Your tools are always available.'));
+    content.append(sectionHeading('FORGEHEART / PERSONAL PATCH MATRIX', 'Build your own class.', 'Eight specializations for the things you actually make. Reviewed finishes light the circuit; titles and desk keepsakes follow. Progress records your work, not a test of talent.', button('Tune desk', deskSettings, 'qj-quiet')));
+    const matrix = E('div', { class: 'qj-specializations' });
+    for (const path of C.paths) {
+      const lane = E('section', { class: 'qj-skill-lane', style: { '--path': path.color } }, E('header', {}, art(path.id), label(path.name), E('strong', { text: `${C.xp(state, path.id)} XP / ${C.specializations.filter(r => r.path === path.id).reduce((n, r) => n + C.mastery(state, r.id).rank, 0)} TITLES` })));
+      for (const r of C.specializations.filter(r => r.path === path.id)) {
+        const m = C.mastery(state, r.id), b = button('', () => specializationDetail(r.id), `qj-module ${state.workstation.target === r.id ? 'is-target' : ''}`);
+        b.dataset.route = r.id; b.setAttribute('aria-label', `${r.name}: ${m.count} reviewed finishes, ${m.rank} titles earned`);
+        b.append(label(state.workstation.target === r.id ? 'PINNED ROUTE' : 'SPECIALIZATION'), E('h3', { text: r.name }), p(r.why), E('div', { class: 'qj-module-nodes', attrs: { 'aria-hidden': 'true' } }, ...m.milestones.map((n, i) => E('span', { class: n.earned ? 'is-lit' : '', text: n.earned ? '✦' : String(i + 1) }))), label(m.next ? `${m.count} / ${m.next.required} FINISHES → ${m.next.name}` : 'ALL TITLES EARNED'));
+        lane.append(b);
+      }
+      matrix.append(lane);
+    }
+    content.append(matrix);
     const grid = E('div', { class: 'qj-tree' });
     for (const path of C.paths) {
       const branch = E('section', { class: 'qj-branch', style: { '--path': path.color } }, E('header', {}, E('span', { class: 'qj-path-icon', text: path.icon }), E('h3', { text: path.name }), p(path.description), label(`${C.xp(state, path.id)} PATH XP`)));
@@ -244,26 +268,77 @@ const QuestJournal = (() => {
       }
       grid.append(branch);
     }
-    content.append(grid, E('section', { class: 'qj-finish-banner' }, E('span', { text: '✦' }), E('div', {}, label('THE SKILL THAT CONNECTS THEM ALL'), E('h3', { text: 'Finishing is a practice.' }), p(`${C.stats(state).campaigns} campaigns completed. Every finished campaign adds its badge to your collection.`)), button('See your collection →', () => navigate('collection'), 'qj-quiet')));
+    content.append(E('details', { class: 'qj-fold qj-path-milestones' }, E('summary', { text: 'Your original path XP milestones / all progress kept' }), grid), E('section', { class: 'qj-finish-banner' }, E('span', { text: '✦' }), E('div', {}, label('THE SKILL THAT CONNECTS THEM ALL'), E('h3', { text: 'Finishing is a practice.' }), p(`${C.stats(state).campaigns} campaigns completed. Every finished campaign adds its badge to your collection.`)), button('See your collection →', () => navigate('collection'), 'qj-quiet')));
+  }
+  function specializationDetail(rid) {
+    const m = C.mastery(state, rid), pick = C.practicePick(state, rid);
+    dialog(m.route.name, (body, d) => {
+      body.append(p(m.route.why), p('Titles follow 1, 3 and 5 different reviewed finishes on this route. Revisions and small starts do not inflate the count. Your existing tools stay available.'));
+      m.milestones.forEach((n, i) => {
+        const equipped = state.workstation.title?.route === rid && state.workstation.title.rank === i + 1 && n.earned;
+        body.append(E('section', { class: `qj-rank ${n.earned ? 'earned' : ''}` }, E('span', { class: 'qj-rank-number', text: `0${i + 1}` }), E('div', {}, label(`${n.required} REVIEWED FINISH${n.required === 1 ? '' : 'ES'}`), E('strong', { text: n.name }), p(i === 0 ? m.route.gift : i === 1 ? 'A new title for your workstation nameplate.' : 'The final title in this specialization.')), n.earned ? button(equipped ? 'Equipped ✓' : 'Equip title', async () => { await mutate(s => C.equipTitle(s, rid, i + 1), 'Title and desk keepsake equipped.'); d.close(); specializationDetail(rid); }, equipped ? 'qj-quiet' : 'qj-primary') : label(`${Math.max(0, n.required - m.count)} TO GO`)));
+      });
+      body.append(row(button(state.workstation.target === rid ? 'Unpin route' : 'Pin this route', async () => { await mutate(s => { s.workstation.target = s.workstation.target === rid ? null : rid; }, 'Practice route saved.'); d.close(); specializationDetail(rid); }, 'qj-quiet'), button('Browse matching cards', async () => { await mutate(s => C.deal(s, { lane: rid === 'forgeheart' ? 'forge' : m.route.path === 'life' && rid === 'finish' ? 'any' : m.route.path, mood: 'any', minutes: 60, shelf: 'all' })); d.close(); navigate('deck'); }, 'qj-quiet')));
+      if (pick) body.append(E('aside', { class: 'qj-starting-note' }, label('ONE GOOD NEXT PRACTICE'), E('strong', { text: (pick.quest || pick.card).title }), p((pick.quest || pick.card).tiny)), button('Start next practice →', async () => { const q = await mutate(s => C.startPractice(s, rid), 'Practice ready. Your chosen route is pinned.'); d.close(); questDetail(q.id); }, 'qj-primary'));
+      else body.append(p('No fresh practice available here right now. Free a side-quest slot, resume a paused campaign, or revisit work from your tracklist.'));
+      const evidence = E('details', { class: 'qj-fold' }, E('summary', { text: `Work behind this title · ${m.count} reviewed finishes` }));
+      for (const q of m.evidence) evidence.append(E('div', { class: 'qj-idea-row' }, E('strong', { text: q.title }), button('Show review', () => { d.close(); reviewHistory(q.id); }, 'qj-quiet')));
+      body.append(evidence);
+    }, 'PATCH MATRIX / EARNED THROUGH WORK');
+  }
+  function newTitles(before, after) {
+    return C.specializations.flatMap(r => C.mastery(after, r.id).milestones.slice(C.mastery(before, r.id).rank).filter(n => n.earned).map(n => `Title earned: ${n.name}`));
+  }
+  function deskSettings() {
+    dialog('Your Forgeheart workstation', (body, d) => {
+      const name = field('Callsign', { value: state.workstation.callsign, max: 40 }), accent = E('select', { attrs: { 'aria-label': 'Console accent' } }, ...C.consoleAccents.map(a => E('option', { value: a.id, text: a.name }))); accent.value = state.workstation.accent;
+      body.append(name.node, E('label', { class: 'qj-field' }, label('CONSOLE ACCENT'), accent), E('div', { class: 'qj-accent-samples', attrs: { 'aria-hidden': 'true' } }, ...C.consoleAccents.map(a => E('i', { style: { background: a.color } }))), p(`Nameplate: ${C.activeTitle(state)?.name || 'Independent creator'}. Earn titles and their desk keepsakes in the Patch matrix.`), button('Save workstation', async () => { await mutate(s => { s.workstation.callsign = C.text(name.input.value, 40); s.workstation.accent = accent.value; }, 'Workstation loadout saved.'); d.close(); }, 'qj-primary'), row(button('Open patch matrix', () => { d.close(); navigate('skills'); }, 'qj-quiet'), state.workstation.title ? button('Unequip title', async () => { await mutate(s => C.equipTitle(s, null), 'Title unequipped; your earned work is kept.'); d.close(); }, 'qj-quiet') : null));
+    }, 'LOCAL CONSOLE / YOUR DESK');
   }
   function rewards() {
-    content.append(sectionHeading('THE TREAT MACHINE', 'Work in. Good things out.', 'Stock it with things you actually want. One spark per five XP. Claiming a treat records your choice; nothing is purchased or booked.', button('+ Add a reward', () => rewardForm(), 'qj-primary')));
+    content.append(sectionHeading('FORGEHEART / REWARD BAY', 'Make the payoff yours.', 'Name the game, the plugin, the listening session. Sparks mark extra treats you choose; rest and play never need permission. Nothing is purchased or booked.', row(button('Browse reward ideas', rewardIdeas, 'qj-primary'), button('+ Add a reward', () => rewardForm(), 'qj-quiet'))));
     content.append(E('div', { class: 'qj-balance' }, E('b', { text: `✧ ${C.balance(state)}` }), p('sparks available · your XP and level stay with you')));
+    const pending = state.redemptions.filter(r => !r.returnedAt && !r.enjoyedAt);
+    if (pending.length) {
+      const queue = E('section', { class: 'qj-reward-queue' }, label('CLAIMED / READY TO ENJOY'), E('h3', { text: 'Something good is waiting.' }));
+      for (const r of [...pending].reverse()) queue.append(E('div', { class: 'qj-receipt' }, art('rewards'), E('div', {}, E('strong', { text: r.name }), p(r.plan || 'Choose a moment that feels right. No expiry.')), row(button('Enjoyed it', () => enjoyDialog(r), 'qj-primary'), button('Return reward', () => mutate(s => C.returnReward(s, r.id), 'Reward returned. Your sparks are back.'), 'qj-quiet'))));
+      content.append(queue);
+    }
     const grid = E('div', { class: 'qj-reward-grid' });
     for (const r of state.rewards) {
       const can = C.balance(state) >= r.cost;
-      grid.append(E('article', { class: `qj-card qj-reward ${state.rewardGoal === r.id ? 'qj-reward-target' : ''}` }, E('div', { class: 'qj-reward-glyph', attrs: { 'aria-hidden': 'true' } }, art('rewards')), label(r.category || 'YOUR TREAT'), E('h3', { text: r.name }), p(r.note || 'A reward you chose. Claim it when it feels right.'), label(`${r.cost} SPARKS${state.rewardGoal === r.id ? ' / YOUR NEXT TREAT' : ''}`), meter(Math.min(C.balance(state), r.cost), r.cost, `Progress toward ${r.name}`), row(button(can ? 'Redeem reward' : `${r.cost - C.balance(state)} sparks to go`, () => redeemDialog(r), can ? 'qj-primary' : 'qj-quiet'), button(state.rewardGoal === r.id ? 'Clear reward goal' : 'Save toward this', () => mutate(s => { s.rewardGoal = s.rewardGoal === r.id ? null : r.id; }), 'qj-quiet'), button('Edit', () => rewardForm(r), 'qj-quiet'))));
+      const kind = r.art || (/play|game/.test(r.id) ? 'game' : /listen|dig/.test(r.id) ? 'music' : /plugin/.test(r.id) ? 'skills' : /film|night/.test(r.id) ? 'life' : 'rewards');
+      grid.append(E('article', { class: `qj-card qj-reward ${state.rewardGoal === r.id ? 'qj-reward-target' : ''}` }, E('div', { class: 'qj-reward-glyph', attrs: { 'aria-hidden': 'true' } }, art(kind)), label(r.category || 'YOUR TREAT'), E('h3', { text: r.name }), p(r.note || 'A reward you chose. Claim it when it feels right.'), label(`${r.cost} SPARKS${state.rewardGoal === r.id ? ' / YOUR NEXT TREAT' : ''}`), meter(Math.min(C.balance(state), r.cost), r.cost, `Progress toward ${r.name}`), row(button(can ? 'Redeem reward' : `${r.cost - C.balance(state)} sparks to go`, () => redeemDialog(r), can ? 'qj-primary' : 'qj-quiet'), button(state.rewardGoal === r.id ? 'Clear reward goal' : 'Save toward this', () => mutate(s => { s.rewardGoal = s.rewardGoal === r.id ? null : r.id; }), 'qj-quiet'), button('Edit', () => rewardForm(r), 'qj-quiet'))));
     }
     content.append(grid);
-    if (state.redemptions.length) {
-      content.append(sectionHeading('YOUR REWARDS', 'Enjoy what you’ve earned.'));
-      for (const r of [...state.redemptions].reverse().slice(0, 50)) content.append(E('div', { class: 'qj-receipt' }, E('span', { text: r.returnedAt ? '↶' : '✧' }), E('div', {}, E('strong', { text: r.name }), p(`${new Date(r.at).toLocaleDateString()} · ${r.cost} sparks${r.returnedAt ? ' · returned' : ''}`)), !r.returnedAt ? button('Return reward', () => mutate(s => { s.redemptions.find(x => x.id === r.id).returnedAt = new Date().toISOString(); }, 'Reward returned. Your sparks are back.'), 'qj-quiet') : null));
+    const history = state.redemptions.filter(r => r.returnedAt || r.enjoyedAt);
+    if (history.length) {
+      content.append(sectionHeading('YOUR REWARD LOG', 'Good moments, kept.'));
+      for (const r of [...history].reverse().slice(0, 50)) content.append(E('div', { class: 'qj-receipt' }, E('span', { text: r.returnedAt ? '↶' : '✦' }), E('div', {}, E('strong', { text: r.name }), p(`${new Date(r.at).toLocaleDateString()} · ${r.cost} sparks · ${r.returnedAt ? 'returned' : 'enjoyed'}`), r.note ? p(r.note) : null), r.enjoyedAt ? button('Undo enjoyed', () => mutate(s => { const receipt = s.redemptions.find(x => x.id === r.id); delete receipt.enjoyedAt; delete receipt.note; }, 'Moved back to enjoy later. Sparks unchanged.'), 'qj-quiet') : null));
     }
   }
-  function rewardForm(reward) {
+  function rewardIdeas() {
+    dialog('Stock your reward bay', (body, d) => {
+      body.append(p('Ten starting points. Make the name, cost and ritual yours before adding one. Existing rewards are kept.'));
+      const grid = E('div', { class: 'qj-blueprints' });
+      for (const b of C.rewardBlueprints) {
+        const existing = state.rewards.find(r => r.blueprint === b.id);
+        grid.append(E('article', { class: 'qj-blueprint' }, art(b.art), label(`${b.category} / ${b.cost} SPARKS`), E('h3', { text: b.name }), p(b.note), button(existing ? 'Edit my version' : 'Make this mine', () => { d.close(); rewardForm(existing || null, b); }, 'qj-primary')));
+      }
+      body.append(grid);
+    }, 'HAND-PICKED / MUSIC · VISUALS · GAMES');
+  }
+  function enjoyDialog(receipt) {
+    dialog('A good moment, kept', (body, d) => {
+      const note = field('A note for next time', { multiline: true, max: 500, placeholder: 'What did you choose? Would you want this reward again?' });
+      body.append(E('h3', { text: receipt.name }), note.node, p('Optional note. Marking it enjoyed changes no XP or sparks.'), button('Mark enjoyed', async () => { await mutate(s => C.enjoyReward(s, receipt.id, note.input.value), 'Enjoyed moment saved.'); d.close(); }, 'qj-primary'));
+    }, 'REWARD LOG');
+  }
+  function rewardForm(reward, blueprint) {
     dialog(reward ? 'Edit your reward' : 'Something to look forward to', (body, d) => {
-      const name = field('Reward', { value: reward?.name, max: 160, placeholder: 'A night at the cinema' }), cost = field('Sparks', { value: String(reward?.cost || 20), type: 'number' });
-      body.append(name.node, cost.node, p('A typical quest earns 5–14 sparks. Choose a reward that feels fair and kind to yourself.'), button('Save reward', async () => { if (!name.input.value.trim()) throw Error('Name your reward first.'); await mutate(s => { const r = { ...reward, id: reward?.id || C.id('r'), name: C.text(name.input.value, 160), cost: Number(cost.input.value) }; if (reward) s.rewards[s.rewards.findIndex(x => x.id === reward.id)] = r; else s.rewards.push(r); }); d.close(); }, 'qj-primary'));
+      const value = reward || blueprint;
+      const name = field('Reward', { value: value?.name, max: 160, placeholder: 'A night at the cinema' }), cost = field('Sparks', { value: String(value?.cost || 20), type: 'number' }), note = field('Make it personal', { value: value?.note, multiline: true, max: 500, placeholder: 'Which game, album, plugin or treat? Add your own budget if relevant.' });
+      body.append(name.node, cost.node, note.node, p('A 35-XP quest earns 7 sparks. Choose a cost that feels inviting. These are your treats, not obligations.'), button('Save reward', async () => { if (!name.input.value.trim()) throw Error('Name your reward first.'); await mutate(s => { const values = { name: C.text(name.input.value, 160), cost: Number(cost.input.value), note: C.text(note.input.value, 500) }; if (blueprint && !reward) C.stockReward(s, blueprint.id, values); else { const r = { ...reward, ...values, id: reward?.id || C.id('r') }; if (reward) s.rewards[s.rewards.findIndex(x => x.id === reward.id)] = r; else s.rewards.push(r); } }); d.close(); }, 'qj-primary'));
     }, 'YOUR REWARD CHEST');
   }
   function redeemDialog(r) {
@@ -443,7 +518,7 @@ const QuestJournal = (() => {
       if (!r && isLatest) box.append(reviewJobs.has(qid) ? button('Cancel review', () => reviewJobs.get(qid)?.cancel(), 'qj-quiet') : button('Review saved proof', () => reviewSaved(qid, item.id), 'qj-primary'));
       if (isLatest && r?.status === 'reviewed' && r.meetsBrief && !C.done(state, qid)) box.append(button(`Complete quest · +${C.find(state, qid).xp - C.earned(state, C.find(state, qid))} XP`, async () => {
         const before = C.clone(state), points = await mutate(s => C.complete(s, qid, { note: item.intent, artifact: proofArtifact(item.proof) }));
-        root.querySelector('dialog[open]')?.close(); const gains = C.gains(before, state); celebrate('You made the thing.', `+${points} XP · ${C.find(state, qid).title}`, [...gains.skills.map(n => `Skill reached: ${n.name}`), ...gains.rewards.map(name => `Ready to claim: ${name}`)]);
+        root.querySelector('dialog[open]')?.close(); const gains = C.gains(before, state); celebrate('You made the thing.', `+${points} XP · ${C.find(state, qid).title}`, [...gains.skills.map(n => `Skill reached: ${n.name}`), ...newTitles(before, state), ...gains.rewards.map(name => `Ready to claim: ${name}`)]);
       }, 'qj-primary'));
       if (isLatest) box.append(row(button(C.done(state, qid) ? 'Submit a revision' : 'Submit new proof', () => { root.querySelector('dialog[open]')?.close(); proofForm(qid); }, 'qj-quiet'), C.done(state, qid) && !C.find(state, qid).revisionOf && r?.status === 'reviewed' ? button('Turn feedback into a quest →', async () => { const q = await mutate(s => C.revisionQuest(s, qid)); root.querySelector('dialog[open]')?.close(); questDetail(q.id); }, 'qj-primary') : null));
     }
@@ -561,9 +636,10 @@ const QuestJournal = (() => {
     status = E('p', { class: 'qj-status', attrs: { role: 'status', 'aria-live': 'polite' }, text: 'Opening your journal…' }); content = E('main', { class: 'qj-content' });
     const focusBar = E('div', { class: 'qj-focus', hidden: true }, E('span', { class: 'qj-focus-clock' }), E('span', { class: 'qj-focus-name' }), button('Pause', async () => { if (!left()) return questDetail(state.focus.quest); const remaining = left(); await mutate(s => { if (s.focus.end) { s.focus.remaining = remaining; s.focus.end = 0; } else s.focus.end = Date.now() + s.focus.remaining; }); }, 'qj-quiet', 'pause-timer'), button('End focus', () => mutate(s => { s.focus = null; }, 'Focus ended. Your quest is waiting whenever you are.'), 'qj-quiet'));
     top.append(button('Motion on', () => mutate(s => { s.motion = s.motion === false; }, 'Studio motion preference saved.'), 'qj-quiet qj-motion'), menu);
-    const scenery = E('div', { class: 'qj-room', attrs: { 'aria-hidden': 'true' } }, E('div', { class: 'qj-night-window' }, art('room')), E('div', { class: 'qj-desk-lamp' }), E('div', { class: 'qj-motes' }, ...[0, 1, 2, 3, 4].map(i => E('i', { style: { '--i': String(i) } }))));
+    const scenery = E('div', { class: 'qj-room', attrs: { 'aria-hidden': 'true' } }, E('div', { class: 'qj-night-window' }, art('terminal')), E('div', { class: 'qj-desk-lamp' }), E('div', { class: 'qj-motes' }, ...[0, 1, 2, 3, 4].map(i => E('i', { style: { '--i': String(i) } }))));
     const bench = E('section', { class: 'qj-bench', attrs: { 'aria-label': 'The studio workbench' } }, scenery, E('div', { class: 'qj-bench-sign' }, label('PICK SOMETHING UP'), E('span', { text: 'small projects · good company' })), nav, E('p', { class: 'qj-bench-caption', text: 'One page. One next step.' }));
-    root.append(top, bench, content, status, focusBar); await load();
+    const consoleBar = E('section', { class: 'qj-console-bar', attrs: { 'aria-label': 'Forgeheart workstation controls' } }, E('div', {}, label('FH / PERSONAL WORKSTATION'), E('strong', { class: 'qj-console-name' })), E('div', { class: 'qj-desk-trophy', hidden: true }), row(button('Pick next mission', sessionPicker, 'qj-hardware'), button('Tune desk', deskSettings, 'qj-hardware'), button('Lamp on', () => mutate(s => { s.workstation.lamp = !s.workstation.lamp; }, 'Desk lamp setting saved.'), 'qj-hardware qj-lamp-toggle')));
+    root.append(top, bench, consoleBar, content, status, focusBar); await load();
     try { legacy = await window.hub.kvGet('creative-playground'); } catch { /* Old notebook is never modified. */ }
     clearInterval(ticker); ticker = setInterval(() => { if (H.activeId === 'tool:quests') tick(); }, 1000);
     const surface = body.closest('.surface'); if (surface) new MutationObserver(() => { syncMotion(); if (H.activeId !== 'tool:quests') root.querySelectorAll('audio,video').forEach(v => v.pause()); }).observe(surface, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
