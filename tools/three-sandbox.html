@@ -1529,7 +1529,10 @@ async function rdyAssets(id) {
     const vids = [...document.querySelectorAll('video'), ...(mediaEl instanceof HTMLVideoElement ? [mediaEl] : [])].filter((v) => v.src || v.srcObject).filter((v) => v.readyState < 2 && !v.error).length;
     // (round 52, gameready) 🧊 model layers still loading their file (lab3d: its parse and textures are outside three's manager)
     let m3 = 0; try { for (const S of globalThis.lab3d?.live?.values?.() || []) if (!S.loaded && !S.error && !S.gone) m3 += 1; } catch { /* no models */ }
-    return { imgs, vids, models: RDY.pend + m3, layers: stackWait ? 1 : 0 };
+    // (round 56, readyspeed) refTexture()'s pictures still decoding off the thread (and fonts): their uploads belong here,
+    // not in a warm-up pass or the first frames of play
+    let pics = 0; try { pics = TY.pending.size; } catch { /* not yet */ }
+    return { imgs, vids, models: RDY.pend + m3 + pics, layers: stackWait ? 1 : 0 };
   };
   let l = left(); const total = Math.max(1, l.imgs + l.vids + l.models + l.layers);
   while (realNow() - t0 < 15000) {
@@ -1566,15 +1569,20 @@ function rdyTextures(r, sc) {
 // every program the scenes on the layers' renderers need (the scenes each renderer drew lately, not only the last one)
 async function rdyCompile(id) {
   const list = rdyLive(); let done = 0; let tex = 0; const t0 = realNow();
+  // (round 56, readyspeed) every renderer's programs handed to the driver first (KHR_parallel_shader_compile: they compile
+  // side by side on its threads), the textures uploaded while they compile, then the wait for all of them together
+  // (was: one scene's compile waited for, then its textures, then the next)
+  const waits = [];
   for (const r of list) {
+    const mine = [];
     for (const sc of new Set([...(r.__seen || []), r.__lastScene])) {
       if (!sc?.isObject3D) continue;
-      try { if (typeof r.compileAsync === 'function') await Promise.race([r.compileAsync(sc, r.__lastCamera), new Promise((res) => realSetTimeout(res, 8000))]); else r.compile?.(sc, r.__lastCamera); } catch { /* a scene its next frame draws anyway */ }
+      try { if (typeof r.compileAsync === 'function') mine.push(Promise.race([r.compileAsync(sc, r.__lastCamera), new Promise((res) => realSetTimeout(res, 8000))]).catch(() => {})); else r.compile?.(sc, r.__lastCamera); } catch { /* a scene its next frame draws anyway */ }
       try { tex += rdyTextures(r, sc); } catch { /* fine */ }
     }
-    done += 1;
-    if (id) post({ type: 'ready-progress', id, stage: 'shaders', done, total: list.length });
+    waits.push(Promise.all(mine).then(() => { done += 1; if (id) post({ type: 'ready-progress', id, stage: 'shaders', done, total: list.length }); }));
   }
+  await Promise.all(waits);
   return { renderers: list.length, textures: tex, compileMs: Math.round(realNow() - t0) };
 }
 // (round 52, gameready) ▶ Play: every texture the scenes use at the graphics card's best anisotropy (mipmapped

@@ -79,6 +79,7 @@
     }
     if (run.shown) e.shown = true;
     if (num(run.renderers) > 0) e.renderers = run.renderers;
+    if (num(run.loads) > 0) e.loads = run.loads; // (an HTML build: its loads, all in → no quiet wait)
     // warm-up: did the first pass already find nothing new to compile / upload? (2 runs in a row → one quiet pass is enough)
     if (run.warm && Array.isArray(run.warm)) {
       const firstClean = run.warm.length > 0 && run.warm[0] && (run.warm[0].compiles || 0) + (run.warm[0].links || 0) + (run.warm[0].uploads || 0) === 0;
@@ -86,6 +87,9 @@
     }
     if (run.first5) e.first5ok = (run.first5.compiles || 0) + (run.first5.links || 0) + (run.first5.uploads || 0) === 0;
     if (run.ab !== undefined) e.ab = run.ab && run.abKey ? { key: run.abKey, fits: abFits(run.ab), at: now } : null;
+    // a helper switched off while it played (the budget's watch) or by the A/B: this game is one where Hearth's helpers
+    // can cost frames, its A/B is never skipped again
+    if (run.first5?.budgetOff > 0 || (run.ab && (run.ab.turnedOff || []).length)) { e.costly = true; e.ab = null; }
     e.at = now;
     return e;
   }
@@ -96,12 +100,13 @@
   // one quiet warm-up pass when the last two runs needed nothing more and played their first 5 s clean
   function hints(entry, key = {}) {
     const e = entry && entry.v === V ? entry : null;
-    if (!e) return { was: null, show: false, renderers: null, ab: false, quiet: 2 };
+    if (!e) return { was: null, show: false, renderers: null, loads: null, ab: false, quiet: 2 };
     return {
       was: e.first ?? null,
       show: !e.shown && e.first != null && e.runs >= 1,
       renderers: e.renderers || null,
-      ab: Boolean(key.ab && e.ab && e.ab.fits && e.ab.key === key.ab && e.first5ok !== false),
+      loads: e.loads || null,
+      ab: Boolean(key.ab && !e.costly && e.ab && e.ab.fits && e.ab.key === key.ab && e.first5ok !== false),
       quiet: (e.clean || 0) >= 2 && e.first5ok !== false ? 1 : 2,
     };
   }

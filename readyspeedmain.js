@@ -46,10 +46,33 @@ function abKey(ctx = {}) {
   const h = crypto.createHash('sha1');
   h.update(String(Core.V));
   if (ctx.kind === 'lab' && ctx.root) { let k = '-'; try { k = JSON.parse(fs.readFileSync(path.join(ctx.root, 'hearth-play.json'), 'utf8')).key || '-'; } catch { /* a new build */ } h.update(`lab:${k}`); }
-  else { h.update(`html:${ctx.file || ''}:${stamp(ctx.file || '')}`); for (const f of (ctx.files || []).slice(0, 2000)) h.update(`${f}:${stamp(f)}`); }
+  else {
+    // an HTML build: every file in its folder by size + date (sorted: the order a game loads them in varies), up to
+    // 3000; a bigger folder adds the files it loaded last time
+    h.update(`html:${ctx.file || ''}:${stamp(ctx.file || '')}`);
+    const w = ctx.root ? walk(ctx.root, 3000) : { files: [], cut: true };
+    for (const f of w.files) h.update(`${f}:${stamp(path.join(ctx.root, f))}`);
+    if (w.cut) for (const f of [...(ctx.files || [])].sort().slice(0, 2000)) h.update(`${f}:${stamp(f)}`);
+  }
   for (const f of HELPERS) h.update(`${f}:${stamp(path.join(appDir, f))}`);
   h.update(JSON.stringify([Math.round(Number(ctx.hz) || 60), ctx.look || '', [...(ctx.off || [])].sort()]));
   return h.digest('hex').slice(0, 20);
+}
+// a folder's files (relative, sorted), skipping dot folders and node_modules; cut: more than max
+function walk(root, max) {
+  const files = []; let cut = false;
+  const go = (d, rel, depth) => {
+    if (cut || depth > 8) return;
+    let list = []; try { list = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of list) {
+      if (files.length >= max) { cut = true; return; }
+      if (e.name.startsWith('.') || e.name === 'node_modules') continue;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) go(path.join(d, e.name), r, depth + 1); else if (e.isFile()) files.push(r);
+    }
+  };
+  go(root, '', 0);
+  return { files: files.sort(), cut };
 }
 function hints(source, ctx = {}) {
   const k = key(source); const e = k ? read().games[k] : null;

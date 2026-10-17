@@ -122,6 +122,7 @@ const GameReady = (() => {
       if (v.phase === 'ready' && v.text) r.onProgress?.({ done: v.pct / 100, stage: 'prepare', text: v.text });
       if ((v.want === 'optimize' || v.want === 'install') && v.wantN > r.handled) { r.handled = v.wantN; cardAsk(r, v.want); }
       if (v.result && !r.result) { r.result = v.result; r.findings = C.findings(v.result.inventory || {}); r.readyMs = Math.round(performance.now() - r.t0); if (r.kind === 'html') keepScan(r); }
+      else if (v.result) r.result = v.result; // (round 56, readyspeed: the smooth check's result and the load times come after)
       if (v.first5 && !r.first5) { r.first5 = v.first5; S.last = info(r); speedNote(r); return; } // (done: nothing more to follow)
       S.last = info(r);
     }
@@ -183,12 +184,12 @@ const GameReady = (() => {
   // what this run learnt, kept per game in Hearth's cache (data/game-cache/readyspeed.json): the next ▶ Play's hints
   async function speedNote(r) {
     const tl = timeline(r); r.speed = tl;
-    try { await G()?.speed?.({ op: 'note', source: r.source, run: { total: tl?.total, skipped: Boolean(r.result?.skipped), noPrep: !r.result, shown: Boolean(r.page?.speedShown), renderers: r.result?.inventory?.renderers || r.result?.prep?.renderers || null, warm: r.result?.warm || null, first5: r.first5, ab: r.result?.ab === undefined ? undefined : r.result.ab || null, abSkipped: Boolean(r.result?.abReused) } }); } catch { /* only a cache */ }
+    try { await G()?.speed?.({ op: 'note', source: r.source, run: { total: tl?.total, skipped: Boolean(r.result?.skipped), noPrep: !r.result, shown: Boolean(r.page?.speedLine), renderers: r.result?.inventory?.renderers || r.result?.prep?.renderers || null, loads: r.result?.loads || null, warm: r.result?.warm || null, first5: r.first5, ab: r.result?.ab === undefined || r.result?.ab?.reused ? undefined : r.result.ab || null } }); } catch { /* only a cache */ }
     S.last = info(r);
   }
   function stop() { stopWatch(); if (Mode()?.playing) Mode().leave(); G()?.arm(null).catch(() => {}); }
   function info(r) {
-    return { speed: r.speed || timeline(r), kind: r.kind, title: r.title, phase: r.page?.phase || (r.started ? 'opening' : 'armed'), readyMs: r.readyMs, page: r.page ? { pct: r.page.pct, text: r.page.text, cardAt: r.page.cardAt, firstFrameAt: r.page.firstFrameAt, card: r.page.card, errors: r.page.errors, marks: r.page.marks, origin: r.page.origin, speedLine: r.page.speedLine || '' } : null, result: r.result, findings: r.findings, first5: r.first5, plan: r.plan ? { fresh: r.plan.fresh.length, stale: r.plan.stale.length, missing: r.plan.missing.length, swapped: Object.keys(r.plan.map || {}).length } : null, models: r.files.length, decoders: r.decoders, loaded: r.loaded, error: r.error, tex: r.texPlan ? { swapped: Object.keys(r.texPlan.map || {}).length, fresh: r.texPlan.fresh, missing: r.texPlan.missing, kept: r.texPlan.kept, models: r.texPlan.models, report: r.texPlan.report, any: Boolean(r.caps?.any) } : null };
+    return { speed: r.speed || timeline(r), kind: r.kind, title: r.title, phase: r.page?.phase || (r.started ? 'opening' : 'armed'), readyMs: r.readyMs, page: r.page ? { pct: r.page.pct, text: r.page.text, cardAt: r.page.cardAt, firstFrameAt: r.page.firstFrameAt, card: r.page.card, errors: r.page.errors, marks: r.page.marks, origin: r.page.origin, hints: r.page.hints || null, speedLine: r.page.speedLine || '' } : null, result: r.result, findings: r.findings, first5: r.first5, plan: r.plan ? { fresh: r.plan.fresh.length, stale: r.plan.stale.length, missing: r.plan.missing.length, swapped: Object.keys(r.plan.map || {}).length } : null, models: r.files.length, decoders: r.decoders, loaded: r.loaded, error: r.error, tex: r.texPlan ? { swapped: Object.keys(r.texPlan.map || {}).length, fresh: r.texPlan.fresh, missing: r.texPlan.missing, kept: r.texPlan.kept, models: r.texPlan.models, report: r.texPlan.report, any: Boolean(r.caps?.any) } : null };
   }
 
   // ---------- chat ----------

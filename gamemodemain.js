@@ -110,9 +110,14 @@ function hostScript(S) {
   var S = ${JSON.stringify(S).replace(/</g, '\\u003c')};
   var st = window.__hearthGame = { ready: false, drawn: false, errors: [], started: Date.now(), plan: S.plan };
   var send = function (m) { m.target = 'three-sandbox'; window.postMessage(m, '*'); };
-  var bytes = function (f) { return fetch(f).then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }); };
+  var read = function (f) { return fetch(f).then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }); };
+  // (round 56, readyspeed) the pictures and the song are read from the start, while the player gets itself ready (they
+  // were asked for only once it said 'ready'): page times, ms
+  st.load = { asked: performance.now() };
+  var early = {}; var bytes = function (f) { if (!early[f]) early[f] = read(f); return early[f]; };
+  S.refs.forEach(function (r) { bytes(r.file).catch(function () {}); if (r.ktx2) bytes(r.ktx2).catch(function () {}); });
+  if (S.song) bytes(S.song.file).catch(function () {});
   function go() {
-    st.load = { asked: performance.now() }; // (round 56, readyspeed) the pictures / song fetched, the layers sent: page times, ms
     send({ type: 'ready-lock', on: true }); // 100 %: no adaptive steps, no doze, no fps cap
     send({ type: 'pace', on: false }); send({ type: 'adapt', on: false }); send({ type: 'fps-cap', value: 0, auto: false, focused: true });
     send({ type: 'game-plan', merge: S.plan.merge, why: S.plan.why });
@@ -124,6 +129,7 @@ function hostScript(S) {
       var song = S.song ? bytes(S.song.file).catch(function () { return null; }) : Promise.resolve(null);
       return song.then(function (b) {
         if (b) send({ type: 'media-load', buffer: b, mime: S.song.mime, video: false, name: S.song.name, startAt: 0, playing: true, loop: true, volume: 1, analysis: S.analysis || null, region: null, rate: 1, trim: null });
+        early = {}; // (the page keeps no second copy of its files)
         send({ type: 'run-layers', layers: S.layers }); st.load.run = performance.now();
       });
     });
@@ -190,7 +196,10 @@ async function buildScene(spec) {
     fs.copyFileSync(spec.song.path, path.join(dir, file));
     song = { file, mime: C.mimeOf(spec.song.path), name: path.basename(spec.song.path) };
   }
-  const page = deploy.labPage().replace('</body>', () => `${hostScript({ layers, refs, song, palette: spec.palette || [], values: spec.values || {}, analysis: spec.analysis || null, plan: spec.plan || { merge: [], why: {} } })}</body>`);
+  // (round 56, readyspeed) three.js fetched and compiled while the page starts (the layers import it only once the
+  // pictures are in): the same addresses the player imports, so it's one module
+  const pre = ['three.module.js', 'three.core.js'].filter((f) => fs.existsSync(path.join(dir, 'three', 'build', f))).map((f) => `<link rel="modulepreload" href="three/build/${f}">`).join('');
+  const page = deploy.labPage().replace(/<head[^>]*>/i, (m) => `${m}${pre}`).replace('</body>', () => `${hostScript({ layers, refs, song, palette: spec.palette || [], values: spec.values || {}, analysis: spec.analysis || null, plan: spec.plan || { merge: [], why: {} } })}</body>`);
   fs.writeFileSync(path.join(dir, 'play.html'), page);
   fs.writeFileSync(metaFile, JSON.stringify({ key, name: spec.name || id, at: Date.now(), version, notes }, null, 2));
   return { dir, version, cached: false, notes };

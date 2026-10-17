@@ -29,8 +29,14 @@
   // frame1 (the first frame of play). One-offs, never per frame
   S.origin = performance.timeOrigin; S.marks = {};
   const mark = (k) => { if (S.marks[k] == null) S.marks[k] = Math.round(now()); };
+  // (round 56, readyspeed) what the last runs of this game learnt (readyspeedmain.js, in the query): c = ▶ Play's press
+  // (epoch ms), was = the first ▶ Play's time + sw (say it once), rn = renderers to wait for, abs = the budget's A/B
+  // verdict still holds (same files, helpers, screen, look: not run again), wq = one quiet warm-up pass is enough
+  // (and a shorter one), ld = the loads an HTML build made last time (all in: no quiet wait)
+  const HN = { loads: Number(Q.get('ld')) || 0, click: Number(Q.get('c')) || 0, was: Number(Q.get('was')) || 0, show: Q.get('sw') === '1', rn: Number(Q.get('rn')) || 0, abReuse: Q.get('abs') === '1', quiet: Q.get('wq') === '1' ? 1 : 2 };
+  S.hints = HN; S.speedLine = '';
   // what Hearth reads (game:eval): plain data only
-  S.pub = () => JSON.stringify({ origin: S.origin, marks: S.marks, tx: S.tx, mode: S.mode, phase: S.phase, pct: S.pct, text: S.text, cardAt: S.cardAt, firstFrameAt: S.firstFrameAt, result: S.result, first5: S.first5, want: S.want, wantN: S.wantN, errors: S.errors.slice(-5), shown: S.shown, card: Boolean(ui && ui.d.isConnected && !ui.d.dataset.out) });
+  S.pub = () => JSON.stringify({ origin: S.origin, marks: S.marks, hints: S.hints, speedLine: S.speedLine, tx: S.tx, mode: S.mode, phase: S.phase, pct: S.pct, text: S.text, cardAt: S.cardAt, firstFrameAt: S.firstFrameAt, result: S.result, first5: S.first5, want: S.want, wantN: S.wantN, errors: S.errors.slice(-5), shown: S.shown, card: Boolean(ui && ui.d.isConnected && !ui.d.dataset.out) });
   S.answer = (a) => answerCard(a || {});
   // (round 55, playbudget) its hooks' main-thread time (ms, a running total: tools/playbudget-page.js reads it); they
   // retire 5 s into play (once the first 5 s are counted: nothing of getting ready is needed while playing), at once
@@ -45,8 +51,11 @@
   async function budgetAB() {
     const B = window.__hearthBudget;
     if (!B?.ab || S.skip || S.noPrep) return;
+    // (round 56, readyspeed) the last A/B of this very game (same files, Hearth's helpers, screen, look) found them costing
+    // it nothing, and nothing was switched off while it played: its verdict holds, not measured again (1–3.5 s saved)
+    if (HN.abReuse) { if (S.result) S.result.ab = { reused: true, turnedOff: [] }; return; }
     card('checking it runs smooth', 99);
-    try { const r = await B.ab(); if (S.result && r) S.result.ab = { on: r.on, off: r.off, turnedOff: r.turnedOff || [], skipped: r.skipped || null, ms: r.ms }; } catch { /* plays as it is */ }
+    try { const r = await B.ab(); if (S.result && r) S.result.ab = { on: r.on, off: r.off, turnedOff: r.turnedOff || [], skipped: r.skipped || null, ms: r.ms, judge: r.judge ? { slower: Boolean(r.judge.slower) } : null }; } catch { /* plays as it is */ }
   }
 
   // ---------- the card (over the whole window, before anything draws) ----------
@@ -86,6 +95,26 @@
     while (A.pending() > 0 && !S.skip && now() - t < 20000) { const p = A.progress(); card(`sounds ${p.done}/${p.n}`, 88); await sleep(60); }
     const p = A.progress(); return p.n ? { ...p, ms: Math.round(now() - t) } : null;
   }
+  // (round 56, readyspeed) "Ready in 2.1 s (was 6.8 s)": once per game, the first time it got clearly ready sooner than its
+  // first ▶ Play (ReadySpeedCore.faster: ≥ 15 % and ≥ 0.3 s). A quiet line under where the card was, for 3 s, then gone
+  // (one element, a compositor fade, nothing per frame; it never takes the mouse)
+  const secs = (ms) => `${(Math.round(ms / 100) / 10).toFixed(1)} s`;
+  function readyLine() {
+    if (!HN.click || !HN.was || !HN.show || S.skip && !S.result) return;
+    const ms = S.origin + now() - HN.click;
+    if (!(ms > 0) || ms > HN.was * 0.85 || HN.was - ms < 300) return;
+    S.speedLine = `Ready in ${secs(ms)} (was ${secs(HN.was)})`;
+    try {
+      const d = document.createElement('gameready-note'); d.setAttribute('role', 'status');
+      d.style.cssText = 'position:fixed;left:50%;bottom:9vh;z-index:2147483646;transform:translateX(-50%);pointer-events:none;contain:layout paint';
+      d.attachShadow({ mode: 'open' }).innerHTML = `<style>p{margin:0;padding:7px 14px;border-radius:999px;background:#15161cdd;border:1px solid #ffffff14;color:#eae0d5;font:13px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;animation:f 3s ease forwards}@keyframes f{0%{opacity:0}10%,75%{opacity:1}100%{opacity:0}}</style><p></p>`;
+      d.shadowRoot.querySelector('p').textContent = S.speedLine;
+      (document.documentElement || document).appendChild(d);
+      realTimeout(() => d.remove(), 3100);
+    } catch { /* only a note */ }
+  }
+  // (round 56, readyspeed) Hearth's helpers switched off while it played (not remembered ones): the A/B's verdict won't be reused
+  const budgetOff = () => { try { return (JSON.parse(window.__hearthBudget.pub()).off || []).filter((o) => o.by !== 'remembered').length; } catch { return 0; } };
   function cardOut() { if (!ui || ui.d.dataset.out) return; ui.d.dataset.out = '1'; ui.d.style.opacity = '0'; realTimeout(() => ui?.d.remove(), 260); }
   if (!S.noPrep) card('looking at its files', 2);
   // the game's own errors, for Hearth to say why a game didn't start (never shown raw)
@@ -121,7 +150,8 @@
       if (S.noPrep) return play();
       card('loading', 10);
       { let last = -1; let since = now(); const t = now();
-        while (!S.skip && now() - t < 10000) { const c = await count(); const k = c?.renderers ?? 0; if (k !== last) { last = k; since = now(); } else if (k > 0 && now() - since > 600) break; await sleep(120); } }
+        while (!S.skip && now() - t < 10000) { const c = await count(); const k = c?.renderers ?? 0; if (k !== last) { last = k; since = now(); } else if (k > 0 && (now() - since > 600 || (HN.rn && k >= HN.rn))) break; await sleep(HN.rn ? 40 : 120); }
+        if (HN.rn && last >= HN.rn) await new Promise((r) => { let i = 0; const go = () => (++i >= 3 ? r() : realRAF(go)); realRAF(go); }); } // (round 56: as many as last time → no steady wait, two more frames of theirs (what a first frame starts: shadow maps) and on)
       const g0 = await count(); mark('counted');
       let a = now(); const scan = S.skip ? null : await ask({ type: 'ready-scan', id: 'gr' }, 'ready-scanned', 60000); ms.assets = Math.round(now() - a); mark('scanned');
       const nTex = scan?.textures?.length || 0;
@@ -129,34 +159,33 @@
       a = now(); const prep = S.skip ? null : await ask({ type: 'ready-prep', id: 'gr' }, 'ready-prepped', 90000); ms.effects = Math.round(now() - a); mark('prepped');
       if (!S.skip) card(`textures ${prep?.textures ?? nTex}/${nTex}`, 60);
       a = now(); const warm = [];
-      for (let i = 0, quiet = 0; i < 6 && quiet < 2 && !S.skip; i += 1) {
-        const w = await ask({ type: 'ready-warm', id: 'gr', n: 4 }, 'ready-warmed', 15000);
+      for (let i = 0, quiet = 0; i < 6 && quiet < HN.quiet && !S.skip; i += 1) { // (round 56: one quiet pass when the last runs needed nothing more)
+        const w = await ask({ type: 'ready-warm', id: 'gr', n: HN.quiet === 1 && i === 0 ? 2 : 4 }, 'ready-warmed', 15000);
         warm.push(w?.gl || null);
         const g = w?.gl || {};
         quiet = (g.compiles || 0) + (g.links || 0) + (g.uploads || 0) === 0 ? quiet + 1 : 0;
         card('warming up', 90 + 3 * i);
-        if (quiet < 2) await sleep(250);
+        if (quiet < HN.quiet) await sleep(250);
       }
       ms.warm = Math.round(now() - a); mark('warmed');
       const inv = S.skip ? scan : (await ask({ type: 'ready-scan', id: 'gr' }, 'ready-scanned', 15000)) || scan;
       const g1 = await count(); mark('inventory');
       S.result = { ms: Math.round(now() - t0), steps: ms, skipped: S.skip, prep: prep ? { compileMs: prep.compileMs, textures: prep.textures, renderers: prep.renderers, gl: prep.gl } : null, warm, gl: g0 && g1 ? { compiles: g1.compiles - g0.compiles, links: g1.links - g0.links, uploads: g1.uploads - g0.uploads, waitMs: Math.round((g1.waitMs || 0) - (g0.waitMs || 0)) } : null, total: g1 ? { compiles: g1.compiles, links: g1.links, uploads: g1.uploads, waitMs: Math.round(g1.waitMs || 0) } : null,
-        inventory: inv ? { textures: (inv.textures || []).map((t) => ({ w: t.w, h: t.h, mips: t.mips, compressed: t.compressed, cube: t.cube, video: t.video, aniso: t.aniso })), calls: inv.calls, triangles: inv.triangles, programs: inv.programs, lights: inv.lights, shadows: inv.shadows, aniso: inv.aniso, renderers: inv.renderers } : null };
+        inventory: inv ? { textures: (inv.textures || []).map((t) => ({ w: t.w, h: t.h, mips: t.mips, compressed: t.compressed, cube: t.cube, video: t.video, aniso: t.aniso })), calls: inv.calls, triangles: inv.triangles, programs: inv.programs, lights: inv.lights, shadows: inv.shadows, aniso: inv.aniso, renderers: inv.renderers } : null, load: loadTimes(g1) };
       const snd = await sounds(); if (snd) S.result.sounds = snd; mark('sounds');
       await budgetAB(); mark('ab');
       if (!S.skip) card('ready', 100);
       await answered(); mark('answered');
-      S.result.load = loadTimes(g1);
       play();
     }
     async function play() {
       if (S.phase === 'playing') return;
       S.phase = 'playing'; mark('play'); realRAF(() => mark('frame1'));
-      cardOut();
+      cardOut(); readyLine();
       const c0 = await count();
       await sleep(5000);
       const c1 = await count();
-      if (c0 && c1) S.first5 = { compiles: c1.compiles - c0.compiles, links: c1.links - c0.links, uploads: c1.uploads - c0.uploads, reuploads: c1.reuploads - c0.reuploads, lock: c1.lock, level: c1.level, shares: c1.shares, waitMs: Math.round((c1.waitMs || 0) - (c0.waitMs || 0)) };
+      if (c0 && c1) S.first5 = { budgetOff: budgetOff(), compiles: c1.compiles - c0.compiles, links: c1.links - c0.links, uploads: c1.uploads - c0.uploads, reuploads: c1.reuploads - c0.reuploads, lock: c1.lock, level: c1.level, shares: c1.shares, waitMs: Math.round((c1.waitMs || 0) - (c0.waitMs || 0)) };
     }
     realTimeout(() => prepareLab().catch((err) => { S.errors.push(String(err?.message || err)); play(); }), 0);
     return;
@@ -192,7 +221,8 @@
     for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'compressedTexImage3D']) wrap(m, up);
   }
   // ---------- 3. what the game loads ----------
-  const busy = (p) => { S.pend += 1; S.last = now(); const done = () => { S.pend = Math.max(0, S.pend - 1); S.last = now(); }; Promise.resolve(p).then(done, done); return p; };
+  S.loadsN = 0;
+  const busy = (p) => { S.pend += 1; S.loadsN += 1; S.last = now(); const done = () => { S.pend = Math.max(0, S.pend - 1); S.last = now(); }; Promise.resolve(p).then(done, done); return p; };
   const f0 = window.fetch; if (f0) window.fetch = function (...a) { const p = f0.apply(this, a); busy(p.then((r) => r.clone().arrayBuffer().catch(() => null))); return p; };
   const send0 = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function (...a) { busy(new Promise((res) => this.addEventListener('loadend', res, { once: true }))); return send0.apply(this, a); };
@@ -208,7 +238,7 @@
       const vids = videos().filter((v) => (v.src || v.srcObject) && v.readyState < 2 && !v.error).length;
       const left = S.pend + vids;
       card(`loading${left ? ` · ${left} left` : ''}`, 10 + Math.min(30, (now() - t0) / 100));
-      if (!left && S.renderers.size && now() - S.last > 350) break;
+      if (!left && S.renderers.size && (now() - S.last > 350 || (HN.loads && S.loadsN >= HN.loads))) break; // (round 56: as many loads in as last time → no quiet wait)
       if (!left && !S.renderers.size && now() - t0 > 6000) break; // no three.js here: nothing more to wait for
       await sleep(50);
     }
@@ -237,16 +267,22 @@
     const sc = [...S.scenes][0]; if (!sc) return null;
     const O3 = Object.getPrototypeOf(sc.constructor); const c = new O3(); c.layers.enableAll(); return c;
   }
-  async function compile(again) {
-    let done = 0; const list = [...S.renderers]; const total = list.length * Math.max(1, S.scenes.size);
+  // (round 56, readyspeed) every program handed to the driver at once (compileAsync: KHR_parallel_shader_compile compiles
+  // them side by side), `during` (the textures' uploads) runs while they compile, then one wait for all of them
+  async function compile(again, during) {
+    let done = 0; const list = [...S.renderers]; const total = list.length * Math.max(1, S.scenes.size); const waits = [];
     for (const r of list) {
       const cam = r.__grCam || [...S.scenes].map((s) => { let c = null; s.traverse?.((o) => { if (!c && o.isCamera) c = o; }); return c; }).find(Boolean) || fakeCamera();
       for (const sc of S.scenes) {
-        if (S.skip) return;
-        try { if (cam) await Promise.race([r.compileAsync ? r.compileAsync(sc, cam) : r.compile(sc, cam), sleep(15000)]); } catch { /* the next frame compiles it */ }
-        done += 1; card(`effects ${done}/${total}`, again ? 92 : 60 + 30 * (done / total));
+        if (S.skip) break;
+        let p = null;
+        try { if (cam) p = Promise.race([r.compileAsync ? r.compileAsync(sc, cam) : r.compile(sc, cam), sleep(15000)]); } catch { /* the next frame compiles it */ }
+        waits.push(Promise.resolve(p).catch(() => {}).then(() => { done += 1; if (!S.skip) card(`effects ${done}/${total}`, again ? 92 : 60 + 30 * (done / total)); }));
       }
     }
+    const r = during ? during() : undefined;
+    await Promise.all(waits);
+    return r;
   }
   function upload() {
     const list = textures(); let k = 0;
@@ -270,31 +306,37 @@
     if (S.phase === 'playing') return;
     S.phase = 'playing'; S.skip = true; mark('play'); realRAF(() => mark('frame1'));
     release();
-    cardOut();
+    cardOut(); readyLine();
     const c0 = { ...S.gl }; const t0 = now(); let k = 0;
     const tick = () => { k += 1; if (now() - t0 < 5000) realRAF(tick); };
     realRAF(tick);
-    realTimeout(() => { S.first5 = { compiles: S.gl.compiles - c0.compiles, links: S.gl.links - c0.links, uploads: S.gl.uploads - c0.uploads, reuploads: S.gl.reuploads - c0.reuploads, frames: k }; retire(); }, 5000);
+    realTimeout(() => { S.first5 = { budgetOff: budgetOff(), compiles: S.gl.compiles - c0.compiles, links: S.gl.links - c0.links, uploads: S.gl.uploads - c0.uploads, reuploads: S.gl.reuploads - c0.reuploads, frames: k }; retire(); }, 5000);
   }
   async function prepareHtml() {
     if (S.noPrep) { play(); return; }
-    const t0 = now(); const g0 = { ...S.gl }; const ms = {};
+    const t0 = now(); const g0 = { ...S.gl }; const ms = {}; let warmGl = null;
     card('looking at its files', 2);
     let a = now(); await settle(); const snd = await sounds(); ms.assets = Math.round(now() - a); mark('settled');
     if (!S.renderers.size && !S.skip) {
       // a game that makes its renderer in its first frame: let one through under the card, then go on
       release(); S.held = true; await frames(2); await settle(8000);
     }
-    a = now(); const up = upload(); ms.textures = Math.round(now() - a); mark('textures');
-    a = now(); await compile(); ms.effects = Math.round(now() - a); mark('effects');
+    // (round 56, readyspeed) the shaders compile while the textures upload (they were one after the other)
+    a = now(); let up = 0; await compile(false, () => { const b = now(); up = upload(); ms.textures = Math.round(now() - b); mark('textures'); }); ms.effects = Math.round(now() - a); mark('effects');
     // warm frames under the card: the game's own first frames draw (shadow maps, lights, post passes), then whatever
     // they showed that compile() didn't reach is compiled now
     if (!S.skip) {
       a = now(); card('warming up', 90);
       S.held = false; const q = S.queue.splice(0); for (const cb of q) realRAF(cb);
-      await frames(4); await compile(true); upload(); await frames(2); ms.warm = Math.round(now() - a); mark('warmed');
+      // (round 56, readyspeed) the frames that drew what compile() made are drawn only when it made something; two game
+      // frames instead of four when the last runs' warm-ups found nothing more
+      const w0 = { ...S.gl };
+      await frames(HN.quiet === 1 ? 2 : 4); await compile(true); upload();
+      warmGl = { compiles: S.gl.compiles - w0.compiles, links: S.gl.links - w0.links, uploads: S.gl.uploads - w0.uploads };
+      if (warmGl.compiles + warmGl.links + warmGl.uploads) await frames(2);
+      ms.warm = Math.round(now() - a); mark('warmed');
     }
-    S.result = { ms: Math.round(now() - t0), steps: ms, uploaded: up, gl: Object.fromEntries(Object.entries(S.gl).map(([key, v]) => [key, v - g0[key]])), inventory: inventory(), skipped: Boolean(S.skip), ...(snd ? { sounds: snd } : {}) };
+    S.result = { ms: Math.round(now() - t0), steps: ms, loads: S.loadsN, ...(warmGl ? { warm: [warmGl] } : {}), uploaded: up, gl: Object.fromEntries(Object.entries(S.gl).map(([key, v]) => [key, v - g0[key]])), inventory: inventory(), skipped: Boolean(S.skip), ...(snd ? { sounds: snd } : {}) };
     await budgetAB(); mark('ab');
     card('ready', 100);
     await answered(); mark('answered');

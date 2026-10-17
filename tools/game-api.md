@@ -233,3 +233,19 @@ the hub); the owner: `/playtest`.
 - Hub: `window.hub.game.budget({ op: 'get' | 'reset', source? })` → `{ known, off, by, ms, at, now }`; `info.budget`.
   F chip: "… · Hearth: 0.03 ms" + `.note`; GamePerf's doctor: `.gp-budget` (each helper's cost, the note, "Turn them back
   on"); `/game helpers [on]`.
+
+## Ready sooner (round 56, readyspeed: tools/readyspeed-core.js, readyspeedmain.js)
+- One clock from ▶ Play to the first frame of play (epoch ms): `GameMode.play` passes `{ clickAt }` to
+  `GameReady.prepare(source, onProgress, opts)`; `gameready:arm` takes `clickAt`; `info.timing = { asked, built, cached,
+  window, loaded }` (gamemodemain); the page's `__gameReady.pub()` adds `origin` (performance.timeOrigin), `marks` (page
+  ms: card, drawn, counted, scanned, prepped, warmed, inventory, sounds, ab, answered | settled, textures, effects, warmed,
+  ab, answered; play, frame1), `hints`, `speedLine`; a Lab page's `result.load = { asked, fetched, run, refsAt, decode: { n,
+  from, to }, ktx: { n, from, to } }` (the host script's `__hearthGame.load`, the player's `ready-count` → `times`).
+- `GameReady.state().speed = ReadySpeedCore.timeline(…)` → `{ total, toWindow, toCard, toFirstFrame, toReady, steps: [{ id,
+  label, ms }], side }`; `GameReady.speedText()` (`/game ready`).
+- What a run teaches the next (data/game-cache/readyspeed.json, per game: the budget's key): `gameready:speed { op: 'note'
+  | 'get', source, run }`. The page's query (gamereadymain `pageTag(ctx)`, ctx = `{ root, file, source, hz, look, off }`
+  from gamemodemain's handler): `c` (the press), `was` + `sw` ("Ready in x s (was y s)" once), `rn` (renderers to wait
+  for), `ld` (an HTML build's loads), `abs` (the budget's A/B verdict reused: same game files, Hearth's helper scripts,
+  refresh, look, helpers off; never for a game where a helper was ever switched off), `wq` (one short quiet warm-up pass).
+- `__gameReady.first5.budgetOff`: helpers the budget switched off during that run (not remembered ones).

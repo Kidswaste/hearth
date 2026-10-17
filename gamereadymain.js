@@ -206,7 +206,7 @@ function texFor(file) {
 const vendorKtx = (threeDir, version) => tex().vendor(threeDir, version);
 // (round 56, readyspeed) what the last runs of this game learnt (readyspeedmain.js), worked out once per window from
 // what it serves: c = ▶ Play's press (epoch ms), was = the first ▶ Play's time and sw = 1 (say "Ready in x s (was y s)"
-// once), rn = renderers to wait for, abs = 1 (the budget's A/B verdict still holds: same files, helpers, screen, look),
+// once), rn = renderers to wait for, ld = loads an HTML build made last time, abs = 1 (the budget's A/B verdict still holds: same files, helpers, screen, look),
 // wq = 1 (one quiet warm-up pass is enough)
 const speed = () => { try { const S = require('./readyspeedmain'); S.init({ dataDir, appDir }); return S; } catch { return null; } };
 function speedHints(ctx = {}) {
@@ -224,7 +224,7 @@ function pageTag(ctx) {
   if (!armed) return '';
   const h = armed.noPrep ? null : speedHints(ctx);
   const q = new URLSearchParams({ t: String(armed.title || '').slice(0, 60), k: armed.kind === 'lab' ? 'lab' : 'html', ...(armed.noPrep ? { np: '1' } : {}), ...(armed.opt ? { opt: String(armed.opt) } : {}), ...(armed.tx ? { tx: armed.tx } : {}),
-    ...(armed.clickAt ? { c: String(Math.round(armed.clickAt)) } : {}), ...(h?.was ? { was: String(Math.round(h.was)) } : {}), ...(h?.show ? { sw: '1' } : {}), ...(h?.renderers ? { rn: String(h.renderers) } : {}), ...(h?.ab ? { abs: '1' } : {}), ...(h?.quiet === 1 ? { wq: '1' } : {}) });
+    ...(armed.clickAt ? { c: String(Math.round(armed.clickAt)) } : {}), ...(h?.was ? { was: String(Math.round(h.was)) } : {}), ...(h?.show ? { sw: '1' } : {}), ...(h?.renderers ? { rn: String(h.renderers) } : {}), ...(h?.loads ? { ld: String(h.loads) } : {}), ...(h?.ab ? { abs: '1' } : {}), ...(h?.quiet === 1 ? { wq: '1' } : {}) });
   return `<script src="/${PAGE}?${q}"></script>`;
 }
 // the script itself (asked for by the tag above, on the game's own address: nothing of the game is changed on disk)
