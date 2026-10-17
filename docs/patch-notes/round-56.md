@@ -6,7 +6,7 @@
 - The F chip and doctor say "Shadows: 2048 (chosen while getting ready)". `/game look shadows` shows it; `/game look shadows reset` chooses again next ▶ Play.
 
 ## ⚡ Ready sooner, the second time especially
-- Hearth remembers what it learnt getting each game ready and skips what still holds: on the test games the second ▶ Play was about 25–85 % quicker than the first.
+- Hearth remembers what it learnt getting each game ready and skips what still holds: in the final test the second and third ▶ Play were about 15–40 % quicker than the first (more on a quiet machine).
 - Shaders compile side by side while textures upload, and a Lab scene's files load from the first moment, so the first ▶ Play waits less too.
 - Once per game, when it's clearly quicker: "Ready in 7.5 s (was 25.4 s)". `/game ready` shows each step's time.
 - Still true every time: nothing left to compile or upload in the first seconds of play, and your game files are only read.
