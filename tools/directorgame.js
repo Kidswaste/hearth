@@ -61,7 +61,7 @@ const DirectorGame = (() => {
     if (!s) throw new Error(game ? `No game called “${game}”: a Lab scene's name, “last”, or an HTML file's path.` : 'Which game? game: a Lab scene\'s name, "last", or an HTML file\'s path.');
     if (perf && typeof Lazy !== 'undefined') await Lazy.load('gameperf').catch(() => {}); // (▶ Play hands it the window: measured from the first frame)
     const t0 = Date.now();
-    const info = await G.play(s);
+    const info = await G.play(s, perf ? { perf: true } : undefined); // (round 57: the probe in from the first frame only when perf was asked)
     if (!info) throw new Error('▶ Play is busy starting a game: try again in a moment.');
     if (info.route === 'live') { G.leave(); throw new Error(`${s.title} needs the Lab while it plays (${info.how}): play-test it in the preview with three_do input.`); }
     sess = { source: s, title: s.title || info.title, hz: info.hz || null, how: info.how || '', chatId: ctx.chatId || null, ours: true, at: Date.now() };

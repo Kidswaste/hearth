@@ -3,7 +3,8 @@
 //   GamePerf.attach(win, opts)  measure a game page: the ▶ Play window (gamemode: a <webview>, an <iframe>, a Window,
 //                               anything with executeJavaScript, or { exec(expr) → Promise<value> }); opts: { label,
 //                               hz (the display's refresh), key: true (F toggles the chip there), chip, kind: 'lab' |
-//                               'html', source: async () => the build's code (for suggested patches) }
+//                               'html', source: async () => the build's code (for suggested patches), dormant: true
+//                               (round 57: the window kept, the probe put in only when the doctor / chip / perf asks) }
 //   GamePerf.attachLab()        the same on the Lab preview (a Lab scene played where it is)
 //   GamePerf.probeSource(opts)  the probe as one expression, for gamemode's preload (document start sees every shader)
 //   GamePerf.chip(on?)          the stats chip in the game (F in a ▶ Play window; off by default, ~0 cost hidden)
@@ -41,9 +42,12 @@ const GamePerf = (() => {
     if (!exec) throw new Error('GamePerf.attach: nothing to measure (a webview, iframe, window or { exec }).');
     const hz = opts.hz || await displayHz();
     const t = { exec, label: opts.label || 'the game', kind: opts.kind || 'html', hz, key: opts.key !== false && opts.kind !== 'lab', source: opts.source || null, host: opts.host || null, win };
-    await ensure(t, opts.chip);
+    // (round 57, framepace57) dormant: ▶ Play hands its window over without the probe in it (its per-frame timestamps,
+    // render / rAF / WebGL wrappers, Long Animation Frames and mutation watches are steady per-frame work in the game
+    // window); the doctor, the chip or the director's perf put it in when asked (call() / ensure()), then measure
+    if (!opts.dormant) await ensure(t, opts.chip);
     S.t = t; S.R = null; S.findings = []; S.fixed.clear();
-    return { label: t.label, hz };
+    return { label: t.label, hz, ...(opts.dormant ? { dormant: true } : {}) };
   }
   async function ensure(t, chip) {
     const opts = { hz: t.hz, key: t.key, label: t.label, attribute: C().attribute.toString(), ...(chip != null ? { chip } : {}) };

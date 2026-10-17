@@ -94,7 +94,9 @@ const GameMode = (() => {
         const names = Object.fromEntries((spec?.layers || []).map((L) => [L.id, L.name || L.id]));
         toast(`${plan.merge.length} layers on one canvas; ${own.map(([id, w]) => `“${names[id]}” keeps its own (${w})`).join(' · ')}`, { timeout: 7000 });
       }
-      Perf()?.attach?.({ exec: async (expr) => { const r = await window.hub.game.eval(expr); if (r?.error) throw new Error(r.error); return r?.value; } }, { label: s.title, kind: s.kind, source: s, hz: info?.hz, key: false })?.catch?.((err) => console.warn('GamePerf:', err?.message || err)); // (the game window's own page, measured through game:eval; (round 56, playlatency) key: false — F is read main-side since round 53, so the probe adds no keydown listener to an HTML game)
+      Perf()?.attach?.({ exec: async (expr) => { const r = await window.hub.game.eval(expr); if (r?.error) throw new Error(r.error); return r?.value; } }, { label: s.title, kind: s.kind, source: s, hz: info?.hz, key: false, dormant: !opts.perf })?.catch?.((err) => console.warn('GamePerf:', err?.message || err)); // (the game window's own page, measured through game:eval; (round 56, playlatency) key: false — F is read main-side since round 53, so the probe adds no keydown listener to an HTML game)
+      // (round 57, framepace57) the performance probe stays out of the game window until the doctor / chip / director's perf asks
+      // (no steady per-frame work of Hearth's in a game nobody is measuring); opts.perf (a play-test with perf): from the first frame
       emit('start', { source: s, info });
       return info;
     } catch (err) {
