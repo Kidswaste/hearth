@@ -303,7 +303,7 @@ function findGitSync(bin) {
   const e = process.env;
   const cands = process.platform === 'win32'
     ? [e.ProgramW6432, e.ProgramFiles, e['ProgramFiles(x86)']].filter(Boolean).map((p) => path.join(p, 'Git', 'cmd', 'git.exe')).concat(e.LOCALAPPDATA ? [path.join(e.LOCALAPPDATA, 'Programs', 'Git', 'cmd', 'git.exe')] : [])
-    : ['/opt/homebrew/bin/git', '/usr/local/bin/git', '/usr/bin/git'];
+    : ['/opt/homebrew/bin/git', '/usr/local/bin/git', '/usr/bin/git']; // winmac-ok: the Mac's / Linux's own places (Windows above)
   return cands.find((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } }) || 'git';
 }
 // git's environment for Hearth: never a prompt (no password / username question, no Windows "Unlink failed. Should I
