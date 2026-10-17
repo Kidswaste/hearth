@@ -42,6 +42,11 @@ next launch; datasafe read, atomic write, 100 games). The window's page gets the
   in its folder by size + date), Hearth's helper scripts in the window, the screen's refresh, the look, the helpers kept
   off. Never for a game where a helper was ever switched off (by the A/B or by the watch while playing): that game is
   measured every time. The watch (2 % of a frame) still runs during play as before.
+  Since shadowready (merged): only the helpers' cost pairs are skipped (`ab({ costs: false })`); the A/B still confirms
+  the Best look's shadow size from the one remembered and makes both maps under the card, every run. On this software
+  GPU that walk takes seconds (nothing fits the refresh); on a real card the remembered size fits at once.
+- **Every program reports COMPLETION_STATUS** (`KHR_parallel_shader_compile`) before getting ready goes on, Lab player
+  and HTML path (a `compileAsync` cut short by its 8 s guard could leave programs compiling into play).
 - **No steady wait for the layers** (`rn`): a Lab scene waited until its count of drawing renderers held for 0.6 s; now
   it goes on once as many as last time draw (plus 2 frames of theirs: what a first frame starts, shadow maps).
 - **No quiet wait for an HTML build's loads** (`ld`): it waited 0.35 s of quiet after the last load; now it goes on once as
@@ -104,6 +109,10 @@ first frame, not added to it); its files read in 20–110 ms.
     smooth check…, pictures decoded / transcoded alongside).
 
 11 upgrades.
+
+After the merge with shadowready / fixes56 (the A/B now draws a Lab scene for real and walks the shadow sizes, 20–50 s
+here): readyspeed passed 4 runs; Lab cold → warm 37–61 s → 17–34 s (47–73 % less), HTML 8.6–12.4 s → 2.9–9.2 s (26–66 %
+less, the shadow walk dominating). The check's threshold is judged without the smooth check's step.
 
 ## Tests
 - `node dev/readyspeed-test.js` (UNIT, 9 groups): the one clock (Lab and HTML steps, missing marks left out, the steps
