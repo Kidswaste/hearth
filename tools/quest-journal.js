@@ -2,6 +2,7 @@ const QuestJournal = (() => {
   const C = QuestCore, KEY = 'quest-journal';
   const E = (tag, props = {}, ...children) => { const node = el(tag, props, ...children); for (const [key, value] of Object.entries(props.style || {})) if (key.startsWith('--')) node.style.setProperty(key, value); return node; };
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
+  let atlasView = null;
   let daySeen = C.day(), lastCelebration = null;
   const reviewJobs = new Map();
   const pathOf = id => C.paths.find(p => p.id === id) || C.paths[0];
@@ -41,7 +42,7 @@ const QuestJournal = (() => {
   function menuNote(id) {
     const destination = destinations.find(d => d[0] === id) || destinations[0];
     const note = root?.querySelector('.qj-bench-caption');
-    if (note) note.textContent = id === 'world' ? 'Paris after hours / A fictional city for real adventures.' : id === 'life' ? 'Life expeditions / Your real world has side quests too.' : id === 'deck' ? 'The mixtape / Find something that makes you want to begin.' : id === 'commissions' ? 'The commission wall / Make it. Show it. Take the next step.' : `${destination[1]} / ${destination[3]}`;
+    if (note) note.textContent = id === 'world' ? 'Paris field map / Real streets, small adventures.' : id === 'life' ? 'Life expeditions / Your real world has side quests too.' : id === 'deck' ? 'The mixtape / Find something that makes you want to begin.' : id === 'commissions' ? 'The commission wall / Make it. Show it. Take the next step.' : `${destination[1]} / ${destination[3]}`;
   }
   function syncMotion() {
     if (root) root.dataset.motion = state?.motion !== false && !document.hidden && H.activeId === 'tool:quests' ? 'on' : 'off';
@@ -117,6 +118,8 @@ const QuestJournal = (() => {
     const motion = root.querySelector('.qj-motion');
     if (motion) { motion.textContent = state.motion === false ? 'Motion off' : 'Motion on'; motion.setAttribute('aria-pressed', String(state.motion !== false)); }
     syncMotion();
+    atlasView?.destroy(); atlasView = null;
+    content.classList.toggle('qj-dashboard', page === 'adventure');
     content.replaceChildren();
     if (page === 'adventure') adventure(); else if (page === 'life') lifeBoard(); else if (page === 'world') worldMap(); else if (page === 'deck') mixtape(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
     if (focused && !root.querySelector('dialog[open]')) [...root.querySelectorAll('[data-focus]')].find(b => b.dataset.focus === focused)?.focus({ preventScroll: true });
@@ -254,23 +257,14 @@ const QuestJournal = (() => {
     return document.importNode(new DOMParser().parseFromString(source, 'image/svg+xml').documentElement, true);
   }
   function worldMap() {
-    content.append(sectionHeading('PARIS AFTER HOURS / A FICTIONAL CITY', 'There’s a world outside the studio.', 'Imaginary neighborhoods. Real people, small adventures and a train you might actually take. Pick a place to begin.', row(button('Friends & dates', friendsBook, 'qj-quiet'), button('Plan an outing', () => worldPlanForm(), 'qj-primary'))));
-    const selected = C.districts.find(d => d.id === state.world.selected), layout = E('div', { class: 'qj-world-layout' }), map = E('section', { class: 'qj-world-map', attrs: { 'aria-label': 'Fictional Paris destinations' } }, mapDrawing());
-    for (const district of C.districts) {
-      const campaign = state.campaigns.find(c => c.id === district.route), count = campaign?.quests.filter(q => C.done(state, q.id)).length || 0;
-      const b = button('', async () => {
-        await mutate(s => { s.world.selected = district.id; }, `${district.name} selected.`);
-        // The old button is disabled during save and loses focus before render.
-        if (page === 'world' && H.activeId === 'tool:quests' && !root.querySelector('dialog[open]')) root.querySelector(`[data-focus="district-${district.id}"]`)?.focus({ preventScroll: true });
-      }, 'qj-map-pin', `district-${district.id}`);
-      b.style.setProperty('--path', district.color); b.style.left = district.x + '%'; b.style.top = district.y + '%'; b.dataset.district = district.id;
-      b.setAttribute('aria-label', `Visit ${district.name}`); b.setAttribute('aria-pressed', String(district.id === selected.id));
-      b.append(E('span', { class: 'qj-pin-mark', text: district.id === 'gare' ? '↗' : count === 3 ? '✦' : '◇', attrs: { 'aria-hidden': 'true' } }), E('strong', { text: district.name })); map.append(b);
-    }
-    const panel = E('aside', { class: 'qj-district', style: { '--path': selected.color } }, art(selected.art), label(selected.subtitle), E('h3', { text: selected.name }), p(selected.why));
-    if (selected.route) panel.append(button('Explore district quests →', () => lifeDetail(selected.route), 'qj-primary'));
-    panel.append(button(selected.id === 'gare' ? 'Plan Toulouse →' : 'Plan something here →', () => worldPlanForm({ district: selected.id, kind: selected.id === 'gare' ? 'trip' : 'outing', destination: selected.id === 'gare' ? 'Toulouse' : 'Paris', title: selected.id === 'gare' ? 'A little trip to Toulouse' : '' }), 'qj-primary'), button('All life expeditions', () => navigate('life'), 'qj-quiet'), p('These are fictional districts, not navigation directions. Choose a real venue in your plan.', 'qj-map-note'));
-    layout.append(map,panel); content.append(layout);
+    content.append(sectionHeading('PARIS / FIELD MAP', 'Your next small adventure.', 'Real streets. Your own places and missions. Double-click the map to drop a new pin.', row(button('Friends & dates', friendsBook, 'qj-quiet'), button('Plan an outing',()=>worldPlanForm(),'qj-quiet'), button('+ Add a place', () => placeForm(), 'qj-primary'))));
+    const selected=state.atlas.places.find(p=>p.id===state.atlas.selected),layout=E('div',{class:'qj-world-layout'}),map=E('section'),panel=E('aside',{class:'qj-district qj-place-panel'});
+    if(selected){panel.append(label(selected.visitedAt?'VISITED / SELF-REPORTED':'UNDISCOVERED / YOUR MAP'),E('h3',{text:selected.name}),p(selected.quest||'Add something you want to do here.'),button('Make this a quest route →',async()=>{await mutate(s=>C.placeQuest(s,selected.id),'Outing route added with three proof checkpoints.');navigate('adventure');},'qj-primary'),row(button('Edit place & mission',()=>placeForm(selected),'qj-quiet'),button(selected.visitedAt?'Undo visit stamp':'I went here · stamp visit',()=>mutate(s=>{const p=s.atlas.places.find(p=>p.id===selected.id);p.visitedAt=p.visitedAt?null:new Date().toISOString();},'Visit stamp saved. Completion XP still needs quest evidence.'),'qj-quiet')),p('Visits are your own record, not GPS verification. A stamp does not award XP.','qj-map-note'));}
+    if(selected?.id==='place-montparnasse')panel.append(button('Plan Toulouse →',()=>worldPlanForm({district:'gare',kind:'trip',destination:'Toulouse',title:'A little trip to Toulouse'}),'qj-quiet'));
+    layout.append(map,panel);content.append(layout);
+    atlasView=QuestAtlas.mount(map,{places:state.atlas.places,selected:selected?.id,onSelect:async id=>{try{await mutate(s=>{s.atlas.selected=id;});root.querySelector('[data-place="'+id+'"]')?.focus({preventScroll:true});}catch(e){notice(e.message);}},onAdd:point=>placeForm(point)});
+    const places=E('details',{class:'qj-fold qj-place-list'},E('summary',{text:'My places & missions · '+state.atlas.places.length}));
+    for(const place of state.atlas.places)places.append(E('div',{class:'qj-idea-row'},E('div',{},E('strong',{text:(place.visitedAt?'✦ ':'◇ ')+place.name}),p(place.quest)),button('Find on map',async()=>{await mutate(s=>{s.atlas.selected=place.id;});atlasView?.focus(place);},'qj-quiet')));content.append(places);
     if (state.world.friends.length) {
       content.append(sectionHeading('YOUR CO-OP CIRCLE', 'Who would make this more fun?', 'Music, games, a catch-up. Pick someone to draft a plan around the things you share.'));
       const circle=E('div',{class:'qj-friend-picks'});
@@ -291,6 +285,12 @@ const QuestJournal = (() => {
     content.append(grid);
     const archived = state.world.plans.filter(p => p.status === 'archived');
     if (archived.length) content.append(E('details', { class:'qj-milestones' }, E('summary', { text:`Resting plans (${archived.length})` }), ...archived.map(p => button(p.title, () => worldPlanDetail(p.id), 'qj-quiet'))));
+  }
+  function placeForm(value={}) {
+    dialog(value.id?'Edit map pin':'A place you want to go',(body,d)=>{
+      const name=field('Place name',{value:value.name,max:120}),lat=field('Latitude',{value:String(value.lat??48.862),type:'number'}),lon=field('Longitude',{value:String(value.lon??2.35),type:'number'}),quest=field('What do you want to do here?',{value:value.quest,max:500,multiline:true,placeholder:'Meet Thomas, listen to a demo, bring back one field recording…'});lat.input.step=lon.input.step='.000001';
+      body.append(name.node,E('div',{class:'qj-form-pair'},lat.node,lon.node),quest.node,p('Tip: double-click the street map to fill the coordinates. Pins cover Paris and its nearby surroundings.'),button('Save place',async()=>{await mutate(s=>C.savePlace(s,{id:value.id,name:name.input.value,lat:lat.input.value,lon:lon.input.value,quest:quest.input.value}),'Map pin saved.');d.close();},'qj-primary'));
+    },'FIELD NOTE / PARIS');
   }
   function selection(title, entries, value) {
     const input = E('select', { attrs: { 'aria-label': title } }, ...entries.map(([value,text]) => E('option', { value,text }))); input.value = value;
@@ -330,7 +330,7 @@ const QuestJournal = (() => {
   function draftWorld(text){const agent=H.agents().find(a=>a.mode==='native'&&a.engine==='codex'&&!a.dock);if(!agent)throw Error('Add an Astra native chat to prepare a draft.');const previous=Native.view(agent.id)?.input?.value||'';Native.setDraft(agent.id,`${previous?previous+'\n\n':''}${text}`);activate(agent.id);notice('Research draft prepared in Astra. Nothing was sent.');}
   function fareForm(pid){dialog('Keep a real quote',(body,d)=>{const name=field('Operator / option',{max:120}),amount=field('Quoted price · EUR',{type:'number'}),scope=selection('Price covers',[['return','Return journey'],['one-way','One-way only']],state.world.plans.find(p=>p.id===pid).endDate?'return':'one-way'),url=field('Source URL',{max:2000,placeholder:'https://…'});amount.input.min='0';amount.input.step='.01';body.append(name.node,amount.node,scope.node,url.node,p('Use a quote you just checked for this plan’s dates. Quotes are marked for rechecking after 24 hours or whenever the trip dates or destination change.'),button('Save quote',async()=>{await mutate(s=>C.addFare(s,pid,{label:name.input.value,amount:amount.input.value,scope:scope.input.value,url:url.input.value}),'Dated quote saved; availability is not monitored.');d.close();worldPlanDetail(pid);},'qj-primary'));},'MANUAL PRICE NOTE / EUR');}
   function lifeBoard() {
-    content.append(E('section', { class: 'qj-life-invite' }, art('room'), E('div', {}, label('NEW / PARIS AFTER HOURS'), E('h3', { text: 'Your city. A little more imaginary.' }), p('Visit the canal, open the co-op café, or catch a train toward Toulouse. Real plans live behind the map.')), button('Open the world map →', () => navigate('world'), 'qj-primary')));
+    content.append(E('section', { class: 'qj-life-invite' }, art('room'), E('div', {}, label('NEW / PARIS AFTER HOURS'), E('h3', { text: 'Your city. Places worth going.' }), p('Pin a place in Paris, meet a friend, bring back a field recording. Plan Toulouse from the same notebook.')), button('Open the world map →', () => navigate('world'), 'qj-primary')));
     content.append(sectionHeading('FH / EXPEDITION TERMINAL', 'A little more life. One small mission.', 'Pick what would make today easier or more interesting. Three short checkpoints, a keepsake badge, and room to stop. No streaks. No overdue quests.', button('Back to my desk', () => navigate('adventure'), 'qj-quiet')));
     const completed = C.lifeArcs.filter(t => { const c = state.campaigns.find(c => c.id === t.id); return c && C.campaignDone(state, c); });
     content.append(E('div', { class: 'qj-life-log' }, label('EXPEDITION PASSPORT'), E('strong', { text: `${completed.length} / ${C.lifeArcs.length} keepsakes` }), p(completed.length ? completed.map(c => c.badge).join(' · ') : 'Your first badge starts with something small. A skipped checkpoint can always be revisited.')));
@@ -430,6 +430,7 @@ const QuestJournal = (() => {
   }
   function rewards() {
     content.append(sectionHeading('FORGEHEART / REWARD BAY', 'Make the payoff yours.', 'Name the game, the plugin, the listening session. Sparks mark extra treats you choose; rest and play never need permission. Nothing is purchased or booked.', row(button('Browse reward ideas', rewardIdeas, 'qj-primary'), button('+ Add a reward', () => rewardForm(), 'qj-quiet'))));
+    rewardBudgetPanel();
     content.append(E('div', { class: 'qj-balance' }, E('b', { text: `✧ ${C.balance(state)}` }), p('sparks available · your XP and level stay with you')));
     const pending = state.redemptions.filter(r => !r.returnedAt && !r.enjoyedAt);
     if (pending.length) {
@@ -441,7 +442,7 @@ const QuestJournal = (() => {
     for (const r of state.rewards) {
       const can = C.balance(state) >= r.cost;
       const kind = r.art || (/play|game/.test(r.id) ? 'game' : /listen|dig/.test(r.id) ? 'music' : /plugin/.test(r.id) ? 'skills' : /film|night/.test(r.id) ? 'life' : 'rewards');
-      grid.append(E('article', { class: `qj-card qj-reward ${state.rewardGoal === r.id ? 'qj-reward-target' : ''}` }, E('div', { class: 'qj-reward-glyph', attrs: { 'aria-hidden': 'true' } }, art(kind)), label(r.category || 'YOUR TREAT'), E('h3', { text: r.name }), p(r.note || 'A reward you chose. Claim it when it feels right.'), label(`${r.cost} SPARKS${state.rewardGoal === r.id ? ' / YOUR NEXT TREAT' : ''}`), meter(Math.min(C.balance(state), r.cost), r.cost, `Progress toward ${r.name}`), row(button(can ? 'Redeem reward' : `${r.cost - C.balance(state)} sparks to go`, () => redeemDialog(r), can ? 'qj-primary' : 'qj-quiet'), button(state.rewardGoal === r.id ? 'Clear reward goal' : 'Save toward this', () => mutate(s => { s.rewardGoal = s.rewardGoal === r.id ? null : r.id; }), 'qj-quiet'), button('Edit', () => rewardForm(r), 'qj-quiet'))));
+      grid.append(E('article', { class: `qj-card qj-reward ${state.rewardGoal === r.id ? 'qj-reward-target' : ''}` }, E('div', { class: 'qj-reward-glyph', attrs: { 'aria-hidden': 'true' } }, art(kind)), label((r.category || 'YOUR TREAT') + (r.amount ? ' / €' + r.amount.toFixed(2) : ' / NO SPEND')), E('h3', { text: r.name }), p(r.note || 'A reward you chose. Claim it when it feels right.'), label(`${r.cost} SPARKS${state.rewardGoal === r.id ? ' / YOUR NEXT TREAT' : ''}`), meter(Math.min(C.balance(state), r.cost), r.cost, `Progress toward ${r.name}`), row(button(can ? 'Redeem reward' : `${r.cost - C.balance(state)} sparks to go`, () => redeemDialog(r), can ? 'qj-primary' : 'qj-quiet'), button(state.rewardGoal === r.id ? 'Clear reward goal' : 'Save toward this', () => mutate(s => { s.rewardGoal = s.rewardGoal === r.id ? null : r.id; }), 'qj-quiet'), button('Edit', () => rewardForm(r), 'qj-quiet'))));
     }
     content.append(grid);
     const history = state.redemptions.filter(r => r.returnedAt || r.enjoyedAt);
@@ -449,6 +450,11 @@ const QuestJournal = (() => {
       content.append(sectionHeading('YOUR REWARD LOG', 'Good moments, kept.'));
       for (const r of [...history].reverse().slice(0, 50)) content.append(E('div', { class: 'qj-receipt' }, E('span', { text: r.returnedAt ? '↶' : '✦' }), E('div', {}, E('strong', { text: r.name }), p(`${new Date(r.at).toLocaleDateString()} · ${r.cost} sparks · ${r.returnedAt ? 'returned' : 'enjoyed'}`), r.note ? p(r.note) : null), r.enjoyedAt ? button('Undo enjoyed', () => mutate(s => { const receipt = s.redemptions.find(x => x.id === r.id); delete receipt.enjoyedAt; delete receipt.note; }, 'Moved back to enjoy later. Sparks unchanged.'), 'qj-quiet') : null));
     }
+  }
+  function rewardBudgetPanel(){
+    const money=C.rewardMoney(state);
+    content.append(E('section',{class:'qj-reward-budget'},E('div',{},label('THIS MONTH / YOUR TREAT ENVELOPE'),E('strong',{text:'€'+money.remaining.toFixed(2)+' left'}),p('€'+money.committed.toFixed(2)+' planned of €'+money.limit.toFixed(2)+'. A personal budget, not a bank balance.')),meter(money.committed,Math.max(1,money.limit),'Monthly reward budget'),button('Set my budget',()=>dialog('A budget you feel good about',(body,d)=>{const budget=field('Monthly reward limit · EUR',{value:String(money.limit),type:'number'});budget.input.min='0';budget.input.step='.01';body.append(budget.node,p('Claimed priced treats reserve this amount in the month you claim them. Returning a reward restores that month’s allowance. No payments or transfers are made.'),button('Save budget',async()=>{await mutate(s=>{s.rewardBudget.monthly=Number(budget.input.value);},'Reward budget saved.');d.close();},'qj-primary'));},'YOUR MONEY / YOUR CHOICE'),'qj-quiet')));
+    const ideas=E('div',{class:'qj-tangible-ideas'});for(const [name,amount,cost,note] of [['A Bandcamp discovery',5,35,'Pick an artist release and support it. Adjust the amount to the actual price.'],['Coffee with Thomas or Ismaël',8,45,'Take a demo outside the studio and listen together.'],['Sample pack fund',15,70,'One pack with sounds you will actually use.'],['Toulouse travel pot',25,100,'Reserve a little toward a real visit. Check fares before booking.']])ideas.append(button(name+' · €'+amount,()=>rewardForm(null,{name,amount,cost,note}),'qj-quiet'));content.append(ideas);
   }
   function rewardIdeas() {
     dialog('Stock your reward bay', (body, d) => {
@@ -470,12 +476,13 @@ const QuestJournal = (() => {
   function rewardForm(reward, blueprint) {
     dialog(reward ? 'Edit your reward' : 'Something to look forward to', (body, d) => {
       const value = reward || blueprint;
-      const name = field('Reward', { value: value?.name, max: 160, placeholder: 'A night at the cinema' }), cost = field('Sparks', { value: String(value?.cost || 20), type: 'number' }), note = field('Make it personal', { value: value?.note, multiline: true, max: 500, placeholder: 'Which game, album, plugin or treat? Add your own budget if relevant.' });
-      body.append(name.node, cost.node, note.node, p('A 35-XP quest earns 7 sparks. Choose a cost that feels inviting. These are your treats, not obligations.'), button('Save reward', async () => { if (!name.input.value.trim()) throw Error('Name your reward first.'); await mutate(s => { const values = { name: C.text(name.input.value, 160), cost: Number(cost.input.value), note: C.text(note.input.value, 500) }; if (blueprint && !reward) C.stockReward(s, blueprint.id, values); else { const r = { ...reward, ...values, id: reward?.id || C.id('r') }; if (reward) s.rewards[s.rewards.findIndex(x => x.id === reward.id)] = r; else s.rewards.push(r); } }); d.close(); }, 'qj-primary'));
+      const name = field('Reward', { value: value?.name, max: 160, placeholder: 'A night at the cinema' }), cost = field('Sparks', { value: String(value?.cost || 20), type: 'number' }), amount = field('Real cost · EUR (0 for no-spend)', {value:String(value?.amount||0),type:'number'}), note = field('Make it personal', { value: value?.note, multiline: true, max: 500, placeholder: 'Which game, album, plugin or treat? Add your own budget if relevant.' });
+      amount.input.min='0';amount.input.step='.01';
+      body.append(name.node, E('div',{class:'qj-form-pair'},cost.node,amount.node), note.node, p('A 35-XP quest earns 7 sparks. Choose a cost that feels inviting. These are your treats, not obligations.'), button('Save reward', async () => { if (!name.input.value.trim()) throw Error('Name your reward first.'); await mutate(s => { const values = { name: C.text(name.input.value, 160), cost: Number(cost.input.value), note: C.text(note.input.value, 500), amount: Number(amount.input.value) }; if (blueprint?.id && !reward) Object.assign(C.stockReward(s, blueprint.id, values),{amount:values.amount}); else { const r = { ...reward, ...values, id: reward?.id || C.id('r') }; if (reward) s.rewards[s.rewards.findIndex(x => x.id === reward.id)] = r; else s.rewards.push(r); } }); d.close(); }, 'qj-primary'));
     }, 'YOUR REWARD CHEST');
   }
   function redeemDialog(r) {
-    dialog('Claim this moment', (body, d) => body.append(E('h3', { text: r.name }), p(`${r.cost} sparks · you have ${C.balance(state)}. This records your reward; you choose when to enjoy it.`), button('Confirm redemption', async () => { await mutate(s => C.redeem(s, r.id), 'Reward claimed. Enjoy it.'); d.close(); celebrate('Reward unlocked', r.name); }, 'qj-primary')), 'YOU EARNED THIS');
+    dialog('Claim this moment', (body, d) => body.append(E('h3', { text: r.name }), p(`${r.cost} sparks · €${(r.amount||0).toFixed(2)} planned. €${C.rewardMoney(state).remaining.toFixed(2)} remains in this month’s reward budget. This records a plan; no money moves.`), button('Confirm redemption', async () => { await mutate(s => C.redeem(s, r.id), 'Reward claimed. Enjoy it.'); d.close(); celebrate('Reward unlocked', r.name); }, 'qj-primary')), 'YOU EARNED THIS');
   }
   const safePath = path => typeof path === 'string' && /^(?:[a-z]:[\\/]|\\\\|\/)/i.test(path) && !/[\x00-\x1f]/.test(path);
   function artifactPreview(artifact) {
@@ -486,13 +493,42 @@ const QuestJournal = (() => {
     if (/\.(mp4|webm|mov)$/i.test(artifact.path)) return E('video', { attrs: { src: url, controls: '', preload: 'none', 'aria-label': artifact.label || 'Quest video' } });
     return null;
   }
+  function collectionMedia(item) {
+    const grid=E('div',{class:'qj-shelf-media'}),seen=new Set();
+    for(const a of [{path:item.proof.type==='file'?item.proof.path:null,title:item.title},...(item.media||[]),...(item.proof.attachments||[])]){
+      if(!a.path||seen.has(a.path)||!QuestShelf.local(a.path))continue;seen.add(a.path);
+      const preview=artifactPreview({path:a.path,label:a.title});
+      if(preview){const figure=E('figure',{},preview,E('figcaption',{text:a.title||'Chat artifact'}));preview.addEventListener('error',()=>{figure.replaceChildren(p('Preview unavailable. The original may have moved or this format needs another player.'),button('Show source file',()=>window.hub.fs.reveal(a.path),'qj-quiet'));},{once:true});grid.append(figure);}
+      else if(/\.(txt|md|json|js|ts|html|css|csv|diff|patch)$/i.test(a.path)){const details=E('details',{class:'qj-fold'},E('summary',{text:a.title||'Text artifact'})),pre=E('pre',{class:'qj-evidence-excerpt',text:'Open to read this file.'});details.append(pre);let loaded=false;details.addEventListener('toggle',async()=>{if(!details.open||loaded)return;loaded=true;try{pre.textContent=await window.hub.assets.readText(a.path,256*1024)||'File unavailable or larger than 256 KB. Open the source file to read it.';}catch(e){pre.textContent=e.message;}});grid.append(details);}
+      else grid.append(button(a.title||'Show artifact',()=>window.hub.fs.reveal(a.path),'qj-quiet'));
+    }return grid;
+  }
+  function collectionShelf(){
+    const upload=E('input',{attrs:{type:'file',accept:'.png,.jpg,.jpeg,.webp,.gif,.wav,.mp3,.ogg,.flac,.m4a,.mp4,.webm,.mov,.txt,.md,.json,.js,.ts,.html,.css,.csv'},hidden:true});
+    upload.addEventListener('change',async()=>{try{if(!upload.files?.length)return;notice('Keeping your export…');const proof=await QuestReview.file(upload.files[0]);await keepOnShelf(proof,[]);}catch(e){notice(e.message);}finally{upload.value='';}});
+    content.append(E('section',{class:'qj-shelf-toolbar'},E('div',{},label('YOUR CREATIVE WORK / ONE SHELF'),p('Chat references stay linked to their originals. Uploads are copied into Hearth.')),row(button('From a Hearth chat',shelfChat,'qj-primary'),button('Upload a creation',()=>upload.click(),'qj-quiet')),upload));
+    const grid=E('div',{class:'qj-collection-grid qj-personal-shelf'});
+    for(const item of [...state.collection].reverse())grid.append(E('article',{class:'qj-card qj-keepsake'},label(item.proof.type==='chat'?'HEARTH CHAT / LINKED':'YOUR EXPORT'),E('h3',{text:item.title}),collectionMedia(item),item.proof.excerpt?E('details',{class:'qj-fold'},E('summary',{text:'Read saved text'}),E('pre',{class:'qj-evidence-excerpt',text:item.proof.excerpt})):null,proofSource(item.proof),button('Remove from shelf',()=>mutate(s=>{s.collection=s.collection.filter(x=>x.id!==item.id);},'Shelf entry removed. Source files and chat are kept.'),'qj-quiet')));
+    content.append(grid);
+  }
+  async function keepOnShelf(proof,media){await mutate(s=>{if(s.collection.length>=100)throw Error('The shelf holds 100 creations. Remove an entry before adding another.');s.collection.push({id:C.id('keepsake'),title:proof.title,at:new Date().toISOString(),proof,media});},'Creation added to your shelf.');}
+  function shelfChat(){
+    dialog('Bring work out of a Hearth chat',(body,d)=>{
+      const chats=E('select',{attrs:{'aria-label':'Shelf source chat'}},E('option',{value:'',text:'Choose a chat…'})),messages=E('select',{attrs:{'aria-label':'Shelf source message'}},E('option',{value:'',text:'Choose a message…'})),preview=E('div',{class:'qj-shelf-chat-preview'}),feedback=p('Loading chat titles…');let chat=null,version=0;
+      body.append(chats,messages,feedback,preview,button('Keep this on my shelf',async()=>{const m=chat?.messages?.[Number(messages.value)];if(messages.value===''||!m)throw Error('Choose a message first.');const media=QuestShelf.media(m),copy={...chat,messages:chat.messages.map((x,i)=>i===Number(messages.value)?{...x,text:x.text||x.content||('Media created in '+chat.title)}:x)};const proof=await QuestReview.chat(copy,Number(messages.value));proof.coverage='Saved message text and linked media from the selected Hearth message. No automatic critique.';await keepOnShelf(proof,media);d.close();},'qj-primary'));
+      window.hub.listChats().then(items=>{for(const c of items)chats.append(E('option',{value:c.id,text:capTitle(c.title||'Untitled chat')}));feedback.textContent='Choose a message to preview its text, images, audio and video.';}).catch(e=>feedback.textContent=e.message);
+      chats.addEventListener('change',async()=>{const ticket=++version;chat=null;preview.replaceChildren();messages.replaceChildren(E('option',{value:'',text:'Choose a message…'}));try{const value=chats.value&&await window.hub.getChat(chats.value);if(ticket!==version)return;chat=value;(chat?.messages||[]).forEach((m,i)=>{if(String(m.text||m.content||'').trim()||QuestShelf.media(m).length)messages.append(E('option',{value:String(i),text:(m.role||'message')+' · '+capTitle(m.text||m.content||'Media creation')}));});}catch(e){feedback.textContent=e.message;}});
+      messages.addEventListener('change',()=>{preview.replaceChildren();const m=chat?.messages?.[Number(messages.value)];if(messages.value===''||!m)return;preview.append(collectionMedia({title:chat.title,proof:{type:'chat'},media:QuestShelf.media(m)}),E('pre',{class:'qj-evidence-excerpt',text:String(m.text||m.content||'').slice(0,20000)}));});
+    },'HEARTH / CHAT COLLECTION');
+  }
   function collection() {
-    content.append(sectionHeading('COLLECTION / YOUR PORTFOLIO', 'Proof that you made something.', 'Exports, critique and the versions that got you here. Uploaded proof is copied into Hearth; older keepsakes remain at their original paths.'));
+    content.append(sectionHeading('COLLECTION / YOUR PORTFOLIO', 'Proof that you made something.', 'Keep work from any Hearth chat or upload an export. Play your bounces, preview textures, revisit the source.'));
+    collectionShelf();
     reviewShelf();
     const badges = state.campaigns.filter(c => C.campaignDone(state, c));
     if (badges.length) content.append(E('div', { class: 'qj-badges' }, ...badges.map(c => E('div', { class: 'qj-badge', style: { '--path': pathOf(c.path).color } }, E('span', { text: '✦' }), E('strong', { text: c.badge || c.title }), label('CAMPAIGN COMPLETE')))));
     const finished = C.allQuests(state).filter(q => C.done(state, q.id)).sort((a, b) => C.record(state, b.id).completedAt.localeCompare(C.record(state, a.id).completedAt));
-    if (!finished.length) content.append(E('section', { class: 'qj-empty' }, E('span', { class: 'qj-empty-star', text: '✧' }), E('h3', { text: 'Your first keepsake belongs here.' }), p('Finish a quest and add a note, image, sound or video. Small things count.'), button('Back to your adventure →', () => navigate('adventure'), 'qj-primary')));
+    if (!finished.length && !state.collection.length) content.append(E('section', { class: 'qj-empty' }, E('span', { class: 'qj-empty-star', text: '✧' }), E('h3', { text: 'Your first keepsake belongs here.' }), p('Finish a quest and add a note, image, sound or video. Small things count.'), button('Back to your adventure →', () => navigate('adventure'), 'qj-primary')));
     const grid = E('div', { class: 'qj-collection-grid' });
     for (const q of finished.filter(q => !C.submissions(state, q.id).length)) { const r = C.record(state, q.id), path = pathOf(q.path); const art = artifactPreview(r.artifact);
       grid.append(E('article', { class: 'qj-card qj-keepsake', style: { '--path': path.color } }, art ? E('div', { class: 'qj-artifact' }, art) : E('div', { class: 'qj-keepsake-mark', text: path.icon, attrs: { 'aria-hidden': 'true' } }), label(`${path.name} · ${new Date(r.completedAt).toLocaleDateString()}`), E('h3', { text: q.title }), p(r.note || q.done), row(button('View quest', () => questDetail(q.id), 'qj-quiet'), r.artifact && safePath(r.artifact.path) ? button('Show file', () => window.hub.fs.reveal(r.artifact.path), 'qj-quiet') : null)));
@@ -519,7 +555,7 @@ const QuestJournal = (() => {
     if (!tool || tool === 'files') { notice('Use your own folders or favorite tools, then return here to keep your progress.'); return; }
     await Lazy.load('creative'); activate('tool:creative');
     for (let i = 0; i < 100 && !document.querySelector('.cp-stage'); i++) await new Promise(r => setTimeout(r, 50));
-    CreativePlayground.openFeature(({ tiles: 'pattern', sounds: 'sfx' })[tool] || tool);
+    CreativePlayground.openFeature(({ tiles: 'pattern', sounds: 'vst', slice: 'vst', rack: 'vst', arena: 'story' })[tool] || tool);
   }
   function draftQuest(q) {
     const agent = H.agents().find(a => a.mode === 'native' && a.engine === 'codex' && !a.dock);

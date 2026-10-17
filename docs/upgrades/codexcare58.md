@@ -60,6 +60,24 @@ marked `(round 58, codexcare58)` in a comment, and written in the file's own sty
      `dev/checks/flows.js` (Doctor's first step timed, must be < 25 s; the old comment about 30–55 s kept as history),
      `dev/checks/robust.js` (the /doctor card says "couldn't check models right now").
 
+## After Codex's `codex/creative-focus` (origin/main 358f63b) — what still applies
+
+Codex redesigned the vault into the **Sound desk** (Serum 2 + Vital only, one persistent native host over a local
+socket, live audio). On merge, Codex's versions of `creative-vstmain.js`, `tools/workbench-ui.js`,
+`dev/checks/workbench-vst.js` and `dev/vst-host-test.js` were taken whole, then:
+- **Kept (re-applied):** the Mac case/accent fold `pathKey()` + realpath root de-duplication in Codex's new
+  `discover()` (it still folded on win32 only); its unit tests now use Codex's allowlisted names (`Vital.vst3`).
+- **Kept (re-applied):** the honest skip in `workbench-vst`: part 1 (Sound desk opens and says "Install the local audio
+  runtime." with "Set up live audio"; a throwaway `Vital.vst3` found by name once; "Install the local audio runtime
+  first" answered at once over IPC; unscanned paths / other names refused; Stop) then Codex's real Serum/Vital flow,
+  unchanged, only when the runtime and Vital exist — otherwise `"skipped"`.
+- **Dropped:** my vault message change ("Install the local VST runtime first: press Install VST runtime above"):
+  Codex's Sound desk already shows the runtime's message with its setup button and lists no plugins without it.
+- **Dropped:** the `jobMs` option: Codex's host has no per-job process any more (a 120 s socket timeout + Reset host).
+- **Unchanged:** the 5 s model-catalog bound. It also covers sweep58's `robust` note: the startup engine report
+  (`engine:installs` → `engineChecks().check()`) goes through the same `engine-watch.js` `check()`, so the calm
+  startup notice waits at most ~5 s for Codex's catalog instead of 30 s.
+
 ## Tested
 
 See the final report of this stream for the run list (outputs under the stream's scratch folder):
@@ -73,11 +91,11 @@ workbenches, creative, flows, robust, astra-ui, astra-collab, lazy.
 - The real-Vital part of `workbench-vst` cannot run on this machine; it is unchanged and runs on the owner's PC.
 
 ## For the patch notes
-- **Plugins are listed once on the Mac.** The plugin vault could show the same VST3 twice when a folder was added
+- **Plugins are listed once on the Mac.** The Sound desk could show the same VST3 twice when a folder was added
   in another spelling (the Mac ignores upper / lower case, like Windows). Fixed.
-- **Clearer plugin vault message.** Choosing a plugin before the VST runtime is installed now says "Install the
-  local VST runtime first: press Install VST runtime above."
 - **The Doctor is quick again when Astra's model list can't be reached.** It used to wait up to a minute when
   offline; it now gives up after a few seconds and says "couldn't check models right now". Your models are unchanged.
-- **Tests say what they skipped.** The plugin vault test runs everything it can on a computer without the VST
+- **The startup engine check doesn't wait on Astra's model list either**, so a startup notice (for example
+  "Claude Code too old") shows within a few seconds even offline.
+- **Tests say what they skipped.** The Sound desk test runs everything it can on a computer without the VST
   runtime and says plainly which part it skipped.

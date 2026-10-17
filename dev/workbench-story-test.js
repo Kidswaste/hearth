@@ -1,0 +1,13 @@
+const assert = require('assert/strict');
+const C = require('../tools/workbench-core');
+const Meshy = require('../apps-meshy-api');
+const project=C.defaults();
+for(const brush of ['pen','pencil','marker','ribbon','dots','line'])project.drawing.strokes.push({brush,color:'#ff547d',width:12,points:[[10,10],[80,180],[250,15]]});
+project.drawing.prompt='Chrome and pink enamel';project.drawing.jobs=[{id:'mabc123',name:'Chrome form',prompt:project.drawing.prompt}];
+assert.deepEqual(C.validate(project),project);
+const variants=project.drawing.strokes.map(s=>C.drawingSVG({strokes:[s]}));assert.equal(new Set(variants).size,6);
+assert(variants[2].includes('opacity="0.34"'));assert(variants[4].includes('<circle'));assert(!variants[5].includes('80.0 180.0'));
+const old=C.defaults();delete old.drawing.brush;delete old.drawing.prompt;delete old.drawing.jobs;assert.equal(C.validate(old).drawing.brush,'pen');
+const bad=C.copy(project);bad.drawing.strokes[0].brush='<script>';assert.throws(()=>C.validate(bad));
+const body=Meshy.body('image',{imageUrl:'data:image/png;base64,AAAA',texturePrompt:project.drawing.prompt});assert.equal(body.image_url,'data:image/png;base64,AAAA');assert.equal(body.texture_prompt,project.drawing.prompt);
+console.log('Sketch brushes, old-project migration, invalid brush rejection, and real Meshy image + description request contract passed.');

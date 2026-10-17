@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict'),C=require('../tools/quest-core'),A=require('../tools/quest-atlas'),S=require('../tools/quest-shelf');
+const fresh=()=>C.upgrade(C.initial());
+let s=fresh();assert.equal(s.atlas.places.length,6);assert.equal(s.rewardBudget.monthly,0);assert.deepEqual(C.upgrade(s),s);
+const legacy=C.clone(s);delete legacy.atlas;delete legacy.collection;delete legacy.rewardBudget;assert.deepEqual(C.upgrade(legacy).world,s.world);
+const place=C.savePlace(s,{name:'Our music bench',lat:48.87,lon:2.36,quest:'Meet Thomas and record a texture'});const c=C.placeQuest(s,place.id);assert.equal(c.quests.length,3);assert.equal(C.xp(s),0);assert.equal(C.placeQuest(s,place.id).id,c.id);assert.equal(s.world.plans.length,1);assert.throws(()=>C.complete(s,c.quests[0].id));
+assert.throws(()=>C.savePlace(s,{name:'bad',lat:0,lon:0}));s.atlas.places[0].visitedAt=new Date().toISOString();assert.equal(C.xp(s),0);C.validate(s);
+for(const z of [11,12,17]){const p=A.project(48.862,2.35,z),q=A.unproject(...p,z);assert.ok(Math.abs(q[0]-48.862)<1e-9);assert.ok(Math.abs(q[1]-2.35)<1e-9);}
+assert.deepEqual(S.media({text:'[WAV](C:/studio/demo.wav)',things:[{path:'C:/studio/demo.wav',name:'Demo'}],images:['https://example.com/private.png','//server/private.png','C:/studio/tile.png']}),[{path:'C:/studio/demo.wav',title:'Demo'},{path:'C:/studio/tile.png',title:'tile.png'}]);
+assert.equal(S.local('C:/bad\u0000.wav'),false);assert.equal(S.local('\\\\server\\bad.wav'),false);
+for(const tool of ['read-only commands','Read tool'])assert.deepEqual(S.media({role:'user',text:'Listen to this bounce',attachments:[{kind:'file',name:'My bounce.wav'}],sent:'Listen to this bounce\n\n[Attached files, open them with your '+tool+']\nC:/studio/My bounce.wav'}),[{path:'C:/studio/My bounce.wav',title:'My bounce.wav'}]);
+assert.deepEqual(S.media({attachments:[{kind:'file',name:'bounce.wav'}],sent:'A random path C:/secret/notes.txt\nC:/studio/bounce.wav'}),[]);
+assert.deepEqual(S.media({attachments:[{kind:'file',name:'bounce.wav'}],sent:'[Attached files, open them with your Read tool]\nhttps://remote/bounce.wav'}),[]);
+assert.deepEqual(S.media({text:'[Tile](file:///C:/studio/tile%20one.png)'}),[{path:'C:/studio/tile one.png',title:'tile one.png'}]);
+s=fresh();for(const q of C.allQuests(s).slice(0,5))s.records[q.id]={completedAt:'2026-10-17T12:00:00Z'};
+s.rewardBudget.monthly=20;s.rewards.push({id:'r-price',name:'A record',cost:1,amount:12});const receipt=C.redeem(s,'r-price','2026-10-17T12:00:00Z');assert.equal(C.rewardMoney(s,'2026-10-18').remaining,8);assert.throws(()=>C.redeem(s,'r-price','2026-10-18'));s.rewards.at(-1).amount=2;assert.equal(receipt.amount,12);C.returnReward(s,receipt.id);assert.equal(C.rewardMoney(s,'2026-10-18').remaining,20);C.redeem(s,'r-price','2026-09-18');assert.equal(C.rewardMoney(s,'2026-10-18').remaining,20);
+const proof={type:'chat',title:'Demo',chatId:'chat-1',agentId:'astra',messageId:'1',excerpt:'A finished draft',analysis:'',coverage:'Text and linked media',images:[],fingerprint:'a'.repeat(64)};
+s.collection.push({id:'keepsake-one',title:'Demo',at:'2026-10-17T12:00:00Z',proof,media:[{title:'Audio',path:'C:/studio/demo.wav'}]});assert.deepEqual(C.validate(s),s);for(const bad of [{},{path:'https://remote/a.wav',title:'Bad'},{path:'C:/studio/demo.wav',title:42}]){const broken=C.clone(s);broken.collection[0].media=[bad];assert.throws(()=>C.validate(broken));}
+assert.deepEqual(C.validate(JSON.parse(JSON.stringify(s))),s);console.log('Quest focus: migration, map coordinates, proof routes, budget reservations/refunds/months, chat media and restore checks passed.');
