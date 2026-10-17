@@ -29,17 +29,18 @@ The code paths are the same on Mac and Windows.
   asked), DOM mutations by target, and the check's own probes: localStorage writes, `hub.kvSet` calls, JSON.stringify
   calls, ResizeObserver callbacks, frames asked, and the messages the preview received by type.
   `window.L240E_WHO = 1` names the callers; `window.L240E_PROFILE = 'typing'` adds a JS profile of a stretch.
-- **Before** is this round's base (12138e4), run from a copy with the same check, side by side with the branch.
-- **This machine**: 4 shared CPUs, software GL, load 25–30 from other streams. Wall times (longest task, worst frame)
-  move 2–5× between runs here; element / object / call **counts** are steady and are what the check budgets.
+- **Before** is this round's base (12138e4), run from a copy with the same check. The headline pair below ran one
+  at a time under the shared run lock (calmer); earlier pairs ran at load 25–30 (in brackets where they differ).
+- **This machine**: 4 shared CPUs, software GL. Wall times (longest task, worst frame) move 2–5× with the load;
+  element / object / call **counts** are steady and are what the check budgets.
 
-## Before → after (2 side-by-side pairs)
+## Before → after (the calm pair; [loaded pairs])
 | Gesture | What was wasted | Before → after |
 |---|---|---|
-| **Dock splitter** (164 moves) | The chat's width was a CSS variable on the whole tool: every move restyled the entire Lab (all of it inherits the variable) | elements restyled **92,822 / 49,774 → 6,735 / 3,853** (≈ 566 / 303 → 41 / 23 a move); style ms 9,375 / 4,489 → **289 / 577**; window CPU 3,768 / 2,460 → **2,080 / 1,435** ms; longest task 1,151 / 649 → 450 / 252 ms; ResizeObserver callbacks 320 → **240** |
-| **Typing in the code** (106 keys) | Each key drew the highlight inside the key; the browser then laid the page out again for the next key's own editing; a scroll event drew again | layout objects 59,100 / 59,016 → **21,230 / 17,295**; elements restyled 19,124 → 6,545; forced passes in key handlers 8 → **0**; window CPU 762 / 643 → **611 / 469** ms |
-| **Number scrub** (164 moves) | The body's class was set again on every move (each rewrite restyles) | body rewrites **160 → 0**; mutations 831 / 848 → 670 / 690; window CPU 1,464 → 1,267 ms (the other pair: within noise) |
-| **Layer drag** (2 drags, 120 dragovers) | Each dragover set the row's drop mark again | row rewrites **96 → 12**; mutations 169 / 170 → **78 / 86** |
+| **Dock splitter** (164 moves) | The chat's width was a CSS variable on the whole tool: every move restyled the entire Lab (all of it inherits the variable) | elements restyled **92,955 → 6,755** (567 → **41** a move) [92,822 / 49,774 → 6,735 / 3,853]; style ms **1,950 → 225** [9,375 / 4,489 → 289 / 577]; window CPU **3,512 → 1,892** ms [3,768 / 2,460 → 2,080 / 1,435]; worst frame 100 → 68 ms [1,154 / 653 → 504 / 337]; ResizeObserver callbacks 320 → **240** |
+| **Typing in the code** (106 keys) | Each key drew the highlight inside the key, so the next key's own editing laid the page out again inside that key; a scroll event drew again | forced passes in key handlers **8 → 0**; forced style / layout ms **114 → 44**; forced passes outside frames 338 → 228 (the rest is the browser's own text editing); window CPU 995 → 879 ms. [Loaded, keys faster than frames: layout objects 59,100 → 21,230, CPU 762 / 643 → 611 / 469] |
+| **Number scrub** (164 moves) | The body's class was set again on every move (each rewrite restyles) | body rewrites **160 → 0**; mutations 828 → 670 (CPU / style ms within this machine's noise: 821 → 917, 123 → 140 ms calm; 1,464 → 1,267 loaded) |
+| **Layer drag** (2 drags, 120 dragovers) | Each dragover set the row's drop mark again | row rewrites **96 → 12**; mutations **169 → 85**; window CPU 164 → 149 ms |
 | **Timeline when its width changes** (part of the splitter) | The timeline and its minimap each had an observer and each drew both: two draws a frame, the second after a layout read | **one draw a frame**, sizes read before it |
 | The stall / park safety check | When no idle moment came for 1.5 s (any drag), it ran on its timeout mid-drag and styled the whole Lab first (233 ms over one splitter stretch) | asked right after the coming frame, when style is fresh |
 | Safe-zone overlay | Placed on every resize even while hidden | placed only while shown |
@@ -83,8 +84,8 @@ drawing inside a key. Plus a loose 1 s longest-task guard. The base fails the sp
 
 ## Tests
 - `node --check` on every touched JS file; the check's body compiles.
-- `dev/checks/lab240edit.js`: 3 side-by-side pairs with the base (the table uses the last two, after the check could
-  reach a slider in the narrow test window).
+- `dev/checks/lab240edit.js`: 4 pairs with the base (the table: the calm pair, run under the shared run lock, and
+  the loaded pairs). The base fails its splitter, scrub, drag and editor budgets; the branch passes them all.
 - `node dev/run-checks.js --exact lab240edit labplay55 labcanvas56 unit:labpace-test labpace labsmooth54 lab240gpu
   labdirect sequence playloop labscrub lazy unit:boot-test`: see the final report.
 
