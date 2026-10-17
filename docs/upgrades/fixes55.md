@@ -49,7 +49,10 @@
 - New `node dev/gamehooks55-test.js` (`unit:gamehooks55-test`): the three page scripts in a vm, each hook meeting
   something that throws. With round 54's scripts 9 steps fail; all pass now.
 - unit: boot-test, winmac-test, datasafe-scan, errorcalm-scan, labchats54-test, updatesafe-test, updater-test,
-  lazy-groups-test all pass. Browser checks: see the report.
+  lazy-groups-test all pass. Browser checks: gameready (290 s, every step incl. no-encoder: the answer came at 39 s
+  this time), gamestream, gameaudio, lazy pass; gamelook passes alone (with three other checks at a load of 13 on 4
+  CPUs its "frame time not worse than off" step read 83 vs 100 ms at ≈ 12 fps, a timing-under-load miss). In the
+  first gameready run, "html: the game plays on the copy: 0 uploads" read 2 once; it passed in the next run.
 
 ## For the patch notes
 - **Updates finished at a restart keep your settings.** On Windows, when files were busy, an update finishes as Hearth
