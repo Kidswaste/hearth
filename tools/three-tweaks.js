@@ -1293,8 +1293,11 @@ const ThreeTweaks = (() => {
         const move = (ev) => {
           const dx = ev.clientX - x0;
           if (!moved && Math.abs(dx) < 3) return;
+          // (round 57, lab240edit) the body's class set once per scrub: adding it again on every move still rewrote the
+          // body's class attribute, and each rewrite restyled part of the window (the page's :has() rules on the body:
+          // ≈ 4 ms a move here, 4× the knob's own work)
+          if (!moved) document.body.classList.add('tw-scrubbing');
           moved = true;
-          document.body.classList.add('tw-scrubbing');
           let v = v0 + (dx / 260) * span * (ev.altKey ? 0.01 : ev.shiftKey ? 0.1 : 1);
           v = Math.max(it.range.min, Math.min(it.range.max, v));
           v = it.int ? Math.round(v) : Number(v.toPrecision(5));
