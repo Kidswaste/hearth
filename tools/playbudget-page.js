@@ -106,7 +106,7 @@
   // this watch's own time · the chip's (told by game-preload.js). (round 60, gcchurn60) Running totals live in a
   // Float64Array: a fractional number stored into a closure variable is a new heap number each time (16 bytes a frame of
   // garbage for every helper's total); a typed array's slot is written in place
-  const T = new Float64Array(2); const SELF = 0; const CHIP = 1;
+  const T = new Float64Array(4); const SELF = 0; const CHIP = 1; const PN = 2; const PMS = 3; // (round 62, playnotes62) PN / PMS: the last window's frames and length (pace(): a playtest note's frame rate)
   let frames = 0; let w0 = 0; let streak = 0; let playingAt = null; let ema = null; let last = null; let windows = 0;
   let ab = null; let abP = null;
   const hooks = (id) => {
@@ -120,7 +120,7 @@
 
   // ---------- the watch: one frame callback, a look once a second ----------
   function windowEnd(t) {
-    const n = frames; frames = 0; w0 = t;
+    const n = frames; frames = 0; T[PN] = n; T[PMS] = t - w0; w0 = t;
     const play = playing() && n >= 10 && document.visibilityState !== 'hidden';
     let total = 0;
     for (let i = 0; i < Rules.ALL.length; i += 1) {
@@ -392,5 +392,7 @@
     pub, line, note, isOff, off: (id, by) => off(id, by || 'asked'), ab: abTest,
     chip: (ms) => { if (ms > 0 && ms < 1000) T[CHIP] += ms; return { line: line(), note: note() }; },
     budget: { spent: () => T[SELF] }, rules: Rules,
+    // (round 62, playnotes62) the frame rate over the watch's last second (counted anyway: nothing more is measured)
+    pace: () => (T[PN] >= 2 && T[PMS] > 0 ? { fps: Math.round((T[PN] * 10000) / T[PMS]) / 10, ms: Math.round((T[PMS] / T[PN]) * 100) / 100, frames: T[PN], from: 'watch' } : null),
   }) });
 }());
