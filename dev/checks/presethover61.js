@@ -77,8 +77,9 @@ ok(!win.querySelector('.ph-err'), `no error (${win.querySelector('.ph-err')?.tex
 const first = applied[0], firstKeys = Object.keys(first);
 ok(firstKeys.length >= 3 && !('bogus_param' in first), `the patch set ${firstKeys.length} real controls; the unknown "bogus_param" was rejected`);
 ok(firstKeys.every(k => { const p = P.find(x => x.key === k); return first[k] >= p.min && first[k] <= p.max; }), 'every value is inside its range (the one past its max was clamped)');
-const aiLine = [...win.querySelectorAll('.ph-ai')].pop()?.textContent || '';
-ok(/skipped 1/.test(aiLine) && /kept in range/.test(aiLine) && /tokens/.test(aiLine), `the reply line says what was skipped / clamped and its tokens: "${aiLine.slice(0, 120)}"`);
+// (round 64, vstembed64) the line is just the request + "— applied"; what was skipped / clamped and the tokens are its tooltip
+const aiMsg = [...win.querySelectorAll('.ph-ai')].pop(), aiLine = aiMsg?.textContent || '', aiTip = aiMsg?.title || '';
+ok(/— applied$/.test(aiLine) && /skipped 1/.test(aiTip) && /kept in range/.test(aiTip) && /tokens/.test(aiTip), `the reply line is short ("${aiLine.slice(0, 80)}"); skipped / clamped and tokens on hover ("${aiTip.slice(0, 120)}")`);
 out.firstTokens = usage[0] ? usage[0].input + usage[0].output : null; out.firstInput = usage[0]?.input;
 ok(usage.length === 1 && out.firstInput < 3000, `one lean helper turn: ${out.firstInput} input tokens (fake engine's count)`);
 
@@ -112,7 +113,7 @@ let said = []; const ctxOpts = { say: t => said.push(t) };
 await Commands.tryRun('/preset glassy pluck with a short echo', claude.id, null, ctxOpts);
 await until(() => applied.length === 8 || said.some(t => /error|first/i.test(t)), '/preset');
 await until(() => said.length, '/preset reply');
-ok(applied.length === 8 && /control/.test(said.join(' ')), `/preset from a chat writes it: "${said.join(' ').slice(0, 140)}"`);
+ok(applied.length === 8 && /— applied on Vital/.test(said.join(' ')) && !/control/.test(said.join(' ')), /* (round 64, vstembed64) one short line, no control count */ `/preset from a chat writes it: "${said.join(' ').slice(0, 140)}"`);
 ok(document.querySelector('.wb-sound-desk .ph-win')?.checkVisibility(), '/preset opened the Sound desk with the window');
 said = []; await Commands.tryRun('/preset astra: warm detuned pad', claude.id, null, ctxOpts); await until(() => said.length, '/preset astra');
 ok(applied.length === 9 && usage.length === 4, `on Astra too (${said.join(' ').slice(0, 100)} | ${[...document.querySelectorAll('.ph-msg')].slice(-2).map(n => n.textContent).join(' / ')} | ${PresetHover._test.history().all().length})`);

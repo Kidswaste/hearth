@@ -11,7 +11,7 @@
 var PresetHover = (() => {
   const C = PresetHoverCore, POS = 'presethover.pos', ENG = 'presethover.engine', MINI = 'presethover.mini';
   // the instrument's own controls the window never sits on
-  const KEEP_CLEAR = '.wb-live-keys, .wb-live-transport, .wb-sound-picker';
+  const KEEP_CLEAR = '.wb-live-keys, .wb-live-transport, .wb-sound-picker, .vx-frame[data-mode=embedded]'; // (round 64) + the plugin's own window
   let win = null, desk = null, door = null, testHost = null, hist = C.history(), session = null, running = null, ro = null;
   const engine = () => store.get(ENG, 'claude') === 'codex' ? 'codex' : 'claude';
   const engineLabel = e => e === 'codex' ? 'Astra' : 'Claude';
@@ -58,7 +58,9 @@ var PresetHover = (() => {
     if (fresh || !session || session.instrument !== cur.name) { session = { instrument: cur.name, request, steps: [], name: '' }; hist.clear(); }
     const follow = session.steps.length > 0;
     const touched = [...new Set(hist.applied().flatMap(s => Object.keys(s.after)))];
-    const picked = C.pick(cur.parameters, follow ? `${request} ${session.request}` : request, { touched });
+    let picked = C.pick(cur.parameters, follow ? `${request} ${session.request}` : request, { touched });
+    // (round 64, vstembed64) the values the AI sees are the instrument's now (knobs turned in its own window included)
+    if (picked.count && typeof h.fresh === 'function') { try { const keys = Object.values(picked.groups).flat().map(p => p.key); const now = await h.fresh(keys); for (const p of cur.parameters) if (now?.[p.key]) p.value = now[p.key].value; picked = C.pick(cur.parameters, follow ? `${request} ${session.request}` : request, { touched }); } catch { /* the cached values then */ } }
     if (!picked.count) throw Error(`${cur.name} shows no controls this can set. Refresh it from the native editor.`);
     const text = C.prompt({ instrument: cur.name, request, groups: picked.groups, steps: follow ? session.steps : [] });
     const who = eng || engine();
@@ -67,13 +69,14 @@ var PresetHover = (() => {
     let reply; try { reply = await running.promise; } finally { running = null; paint(); }
     const r = C.parse(reply.text), v = C.validate(cur.parameters, r.set), keys = Object.keys(v.values);
     const notes = [v.rejected.length ? `skipped ${v.rejected.length} (${v.rejected.slice(0, 3).map(x => `${x.key}: ${x.why}`).join('; ')})` : '', v.clamped.length ? `${v.clamped.length} kept in range` : ''].filter(Boolean).join(' · ');
-    if (!keys.length) { log('ai', `${r.say || 'Nothing to change.'}${notes ? ` · ${notes}` : ''}`); status(''); return { changed: [], ...v }; }
+    // (round 64, vstembed64) silent: one short line, no control names or values (the plugin's window and the desk show it)
+    if (!keys.length) { log('ai', `Nothing to change for “${request.slice(0, 40)}” — try other words${v.rejected.length ? ` (${v.rejected.length} skipped)` : ''}.`, '', notes); status(''); return { changed: [], ...v }; }
     const before = C.before(cur.parameters, v.values);
     await h.apply(v.values);
     const used = reply.usage ? (reply.usage.input || 0) + (reply.usage.output || 0) : C.tokens(text) + C.tokens(reply.text);
     hist.push({ request, before, after: v.values, name: r.name, say: r.say, tokens: used });
     session.steps.push({ request }); if (r.name) session.name = r.name;
-    log('ai', `${r.say || 'Applied.'} · ${keys.length} control${keys.length === 1 ? '' : 's'}${notes ? ` · ${notes}` : ''}`, `${used} tokens`);
+    log('ai', C.summary(request), '', `${used} tokens${notes ? ` · ${notes}` : ''}`); // (round 64) details only on hover
     status(''); paint();
     return { changed: keys, name: r.name, ...v, tokens: used };
   }
@@ -120,9 +123,9 @@ var PresetHover = (() => {
     name.addEventListener('blur', () => setTimeout(() => name.isConnected && done(false), 150));
     foot.insertBefore(name, foot.querySelector('.ph-status')); name.focus(); name.select();
   }
-  function log(kind, text, meta) {
+  function log(kind, text, meta, tip) {
     const box = win?.querySelector('.ph-log'); if (!box) return;
-    box.append(el('div', { class: `ph-msg ph-${kind}` }, el('span', { text }), meta ? el('small', { text: meta }) : null));
+    box.append(el('div', { class: `ph-msg ph-${kind}`, ...(tip ? { title: tip } : {}) }, el('span', { text }), meta ? el('small', { text: meta }) : null));
     while (box.children.length > 12) box.firstChild.remove();
     box.scrollTop = box.scrollHeight;
   }
@@ -216,7 +219,7 @@ var PresetHover = (() => {
     const lead = text.match(/^(claude|astra)\s*[:,]?\s+/i); if (lead) { eng = /astra/i.test(lead[1]) ? 'codex' : 'claude'; text = text.slice(lead[0].length); }
     mini(false);
     const r = await ask(text, { fresh, engine: eng });
-    return r.changed.length ? `✦ ${current()?.name}: ${r.changed.length} control${r.changed.length === 1 ? '' : 's'} set${r.name ? ` (“${r.name}”)` : ''} · ${r.tokens} tokens. /preset tweak <words> · /preset undo · /preset save [name]` : 'The AI changed nothing this time; try other words.';
+    return r.changed.length ? `✦ ${C.summary(text)} on ${current()?.name} (↶ in the ✦ Preset window to undo).` : 'The AI changed nothing this time; try other words.'; // (round 64) no control list in the chat
   }
   // /preset itself is registered at start by astra.js (end) (it shares the name with the Lab's trigger presets)
   const complete = a => ['tweak', 'undo', 'redo', 'save', 'show', 'hide', 'engine'].filter(s => s.startsWith(String(a || '').trim().toLowerCase())).map(value => ({ value }));

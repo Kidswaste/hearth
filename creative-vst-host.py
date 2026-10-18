@@ -18,6 +18,19 @@ Audio is generated continuously in short blocks; PortAudio only copies queued PC
 'record' arms a take (bars × beats at a BPM, from now or from the first note played), the worker keeps the
 instrument's own output (before the monitor volume) and every note that reached the plugin (Hearth's keys, the
 controller, phrases) with its sample position; 'record-take' writes the WAV (16-bit) and returns the notes.
+
+(round 64, vstembed64) 48 kHz, faster, the editor inside Hearth (docs/upgrades/vstembed64.md):
+- 48 kHz first on every device (ASIO / WASAPI exclusive included); a device that refuses it plays at its own rate, said
+  in one line (stats rateNote), and a park take recorded at another rate is converted to 48 kHz once, when written;
+- pedalboard and sounddevice are imported once, on the main thread, right after the host says it's ready (warm);
+- loading no longer builds every control's Python wrapper (pedalboard samples 1,001 texts per control at load: ~2.6
+  million calls for Serum 2); controls are indexed by name, read straight from their C++ parameters, and their list
+  (types / ranges / choices) is cached on disk per plugin version (cacheDir from Hearth) or built in the background
+  while the keys already play ('controls' returns what is ready so far);
+- the editor: show_editor(close_event) so Hearth can close it; creative-vst-embed.py places its window in Hearth's
+  ('editor' {embed}, 'editor-place', 'editor-pop', 'editor-embed', 'editor-close'); with the editor open, reading
+  controls, a state snapshot / recall and a bounce run off the main thread (pedalboard >= 0.8.8 allows it) and a bounce
+  never resets the instance under its open window.
 """
 import base64
 import importlib.util
@@ -32,9 +45,78 @@ import time
 from pathlib import Path
 
 sys.dont_write_bytecode = True
+BOOT = time.perf_counter()  # (round 64, vstembed64) host start -> ready, reported as timings.bootMs
 spec = importlib.util.spec_from_file_location('offline', Path(__file__).with_name('creative-vst-offline.py'))
 offline = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(offline)
+# (round 64, vstembed64) the editor-in-Hearth layer (Win32 / Mac / test fake)
+spec = importlib.util.spec_from_file_location('embedding', Path(__file__).with_name('creative-vst-embed.py'))
+embedding = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(embedding)
+TARGET_RATE = 48000  # (round 64) the Sound desk's rate everywhere: live, renders, previews, park takes, exports
+META_FORMAT = 1  # (round 64) bump when the cached control list changes shape
+# (round 64) a CPU-bound helper thread (the first-time control list) hands the GIL back to the audio worker quickly
+sys.setswitchinterval(.0005)
+
+
+def lean_pedalboard(pb):
+    """(round 64, vstembed64) pedalboard's load_plugin() calls __set_initial_parameter_values__({}), which builds every
+    control's wrapper (1,001 text samples each) before returning. With no initial values there is nothing to set:
+    skip it, so a plugin loads in the time its own code needs; wrappers are then built one by one when used."""
+    mixin = getattr(getattr(pb, '_pedalboard', None), '_PythonExternalPluginMixin', None)
+    original = getattr(mixin, '__set_initial_parameter_values__', None)
+    if original is None or getattr(original, 'hearth_lean', False):
+        return
+
+    def lean(self, parameter_values=None):
+        if parameter_values:
+            return original(self, parameter_values)
+    lean.hearth_lean = True
+    mixin.__set_initial_parameter_values__ = lean
+
+
+def binary_signature(location):
+    """(round 64) what changes when the plugin is updated: the binary's (or the bundle's newest file's) size + mtime."""
+    location = Path(location)
+    try:
+        if location.is_file():
+            st = location.stat()
+            return '%s|%d|%d' % (location.name, st.st_size, st.st_mtime_ns)
+        newest = (0, 0, '')
+        for pattern in ('*', '*/*', '*/*/*'):
+            for f in location.glob('Contents/' + pattern):
+                if f.is_file():
+                    st = f.stat()
+                    newest = max(newest, (st.st_mtime_ns, st.st_size, f.name))
+        return '%s|%d|%d|%s' % (location.name, newest[1], newest[0], newest[2])
+    except OSError:
+        return location.name
+
+
+class LazyParams:
+    """(round 64, vstembed64) plugin.parameters without building them all: the keys come from the C++ index, a control's
+    wrapper is built (and cached by pedalboard) the first time it is used."""
+
+    def __init__(self, engine):
+        self.e = engine
+
+    def __contains__(self, key):
+        return key in (self.e.index or {})
+
+    def __getitem__(self, key):
+        return self.e.wrapper(key)
+
+    def __iter__(self):
+        return iter(list(self.e.index or {}))
+
+    def __len__(self):
+        return len(self.e.index or {})
+
+    def keys(self):
+        return list(self.e.index or {})
+
+    def items(self):
+        return ((key, self[key]) for key in self.keys())
 # (round 64, liveset64) the Live set's transport / clips / preset twin / run recorder (docs/upgrades/liveset64.md)
 spec = importlib.util.spec_from_file_location('liveset', Path(__file__).with_name('creative-vst-liveset.py'))
 liveset = importlib.util.module_from_spec(spec)
@@ -230,6 +312,25 @@ class Engine:
         self.recent_underruns = []
         self.take = None  # (round 62, parkjam62) the loop being recorded (record / capture / record-take)
         self.take_note = ''
+        # (round 64, vstembed64) fast controls, cached list, editor in Hearth, timings
+        self.pb = None
+        self.index = None  # python key -> C++ parameter (rebuilt after anything that may re-create the instance)
+        self.meta = {}  # python key -> {label, kind, min, max, step, choices}
+        self.meta_bad = set()
+        self.meta_done = False
+        self.meta_source = ''
+        self.meta_ms = 0
+        self.meta_gen = 0
+        self.digest = ''
+        self.signature = ''
+        self.cache_dir = None
+        self.rate_note = ''
+        self.editor_event = None
+        self.editor_note = ''
+        self.editor_stale = False  # the instance playing isn't the one the open editor shows (liveset64's twin switch)
+        self.embed = embedding.Embedder(*embedding.backend())
+        self.timings = {}
+        self.strip = lambda text: text
         self.liveset = liveset.LiveSet(self)  # (round 64, liveset64) idle until Hearth opens a set ('set-open')
 
     def from_controller(self, message):
@@ -242,6 +343,8 @@ class Engine:
 
     def load(self, job):
         import pedalboard as pb
+        lean_pedalboard(pb)  # (round 64) no full control read inside load_plugin()
+        self.pb = pb
         expected = identity(job['plugin'])
         if job.get('name') and job['name'] != expected:
             raise ValueError('Only the Serum 2 and Vital instruments can be loaded.')
@@ -261,10 +364,252 @@ class Engine:
         if plugin.name != expected or not plugin.is_instrument:
             raise ValueError('This file is not the supported instrument.')
         self.plugin, self.path = plugin, job['plugin']
-        self.parameters = plugin.parameters
+        self.timings['pluginMs'] = round((time.perf_counter() - began) * 1000)
+        # (round 64) controls indexed from the C++ list (no wrappers built); Codex's full dict only on an unknown pedalboard
+        self.index_controls()
+        self.parameters = LazyParams(self) if self.index is not None else plugin.parameters
         # Pedalboard prepares/reloads native processors on their owning main thread.
         plugin([], duration=512 / 48000, sample_rate=48000, num_channels=2, buffer_size=512, reset=True)
+        self.index_controls()  # a reset may re-create the instance: its C++ parameters are new
         self.loaded_ms = round((time.perf_counter() - began) * 1000)
+        self.signature = binary_signature(location) + '|pedalboard ' + str(getattr(pb, '__version__', '?'))
+        self.start_meta()
+
+    # ---------- (round 64, vstembed64) fast controls ----------
+    def index_controls(self):
+        """python key -> the plugin's C++ parameter, the way pedalboard names them; pedalboard is told the names so a
+        control's wrapper is built alone when it's first used (not all of them)."""
+        self.index = self.index_of(self.plugin)
+        if self.index is not None:
+            import hashlib
+            self.digest = hashlib.sha1('\n'.join('%s=%s' % (k, c.name) for k, c in self.index.items()).encode('utf-8', 'replace')).hexdigest()
+
+    def adopt(self, plugin, index=None):
+        """(round 64) another instance of the same instrument becomes the live one (liveset64's preset twin): its index
+        made beforehand (index_of, off the audio thread), so the switch costs nothing."""
+        self.plugin = plugin
+        if self.editor:
+            self.editor_stale = True  # the editor shows the previous instance until Hearth refreshes it ('editor-refresh')
+        self.index = index if index is not None else self.index_of(plugin)
+        self.parameters = LazyParams(self) if self.index is not None else plugin.parameters
+
+    def index_of(self, plugin):
+        pbm = getattr(self.pb, '_pedalboard', None)
+        listing = getattr(plugin, '_parameters', None) if plugin is not None else None
+        if pbm is None or listing is None or not hasattr(pbm, 'to_python_parameter_name'):
+            return None
+        ignore = getattr(pbm, 'PARAMETER_NAME_REGEXES_TO_IGNORE', ())
+        self.strip = getattr(pbm, 'strip_common_float_suffixes', lambda text: text)
+        index = {}
+        for cpp in listing:
+            if any(r.match(cpp.name) for r in ignore):
+                continue
+            key = pbm.to_python_parameter_name(cpp)
+            if key:
+                index[key] = cpp
+        try:
+            names = getattr(plugin, '__python_to_cpp_names__')
+        except AttributeError:
+            names = None
+        if not isinstance(names, dict):
+            names = {}
+            setattr(plugin, '__python_to_cpp_names__', names)
+        for key, cpp in index.items():
+            names[key] = cpp.name
+        try:
+            getattr(plugin, '__python_parameter_cache__')
+        except AttributeError:
+            setattr(plugin, '__python_parameter_cache__', {})  # pedalboard's own wrapper cache (it makes it the same way)
+        return index
+
+    def wrapper(self, key):
+        if self.index is None:
+            return self.plugin.parameters[key]
+        if key not in self.index:
+            raise KeyError(key)
+        p = self.plugin._get_parameter_by_python_name(key)
+        if p is None:
+            raise KeyError(key)
+        return p
+
+    def built_wrapper(self, key):
+        """The control's pedalboard wrapper, made straight from its C++ name when pedalboard's class is there (one name
+        scan instead of two per control: it matters across Serum 2's 2,600), else through pedalboard's own lookup."""
+        pbm = getattr(self.pb, '_pedalboard', None)
+        make = getattr(pbm, 'AudioProcessorParameter', None)
+        try:
+            cache = getattr(self.plugin, '__python_parameter_cache__')
+        except AttributeError:
+            cache = None
+        if make is None or not isinstance(cache, dict) or self.index is None or key not in self.index:
+            return self.wrapper(key)
+        name = self.index[key].name
+        if name not in cache:
+            cache[name] = make(self.plugin, name)
+        return cache[name]
+
+    def meta_of(self, key):
+        """What parameter_entry() reports about a control, minus its value: label, kind, range, choices."""
+        p = self.built_wrapper(key)
+        normalized = offline.normalized_parameter(p)
+        if normalized:
+            kind, low, high, step = 'norm', 0, 1, .001
+        else:
+            kind = 'bool' if p.type == bool else 'num' if p.type in (int, float) else 'str'
+            low, high, step = getattr(p, 'min_value', None), getattr(p, 'max_value', None), getattr(p, 'step_size', None)
+        if step is not None and not math.isfinite(step):
+            step = None
+        return {'key': key, 'label': p.name + (' (0–1)' if normalized else ''), 'kind': kind, 'min': low, 'max': high, 'step': step,
+                'choices': list(p.valid_values)[:512] if kind == 'str' else []}
+
+    def fast(self, key, m):
+        """A control's value and text straight from its C++ parameter (call with self.lock held)."""
+        cpp = self.index[key]
+        text = str(cpp.string_value)
+        kind = m['kind']
+        if kind == 'norm':
+            value = float(cpp.raw_value)
+        elif kind == 'bool':
+            value = bool(cpp.raw_value >= .5)
+        elif kind == 'num':
+            try:
+                value = float(self.strip(text))
+            except (TypeError, ValueError):
+                value = float(getattr(self.plugin, key))
+        else:
+            value = text
+        return {'value': value, 'display': text}
+
+    def cache_file(self):
+        if not self.cache_dir or not self.signature:
+            return None
+        import hashlib
+        name = hashlib.sha1(('%d|%s|%s' % (META_FORMAT, self.path, self.signature)).encode('utf-8', 'replace')).hexdigest()[:24]
+        return Path(self.cache_dir) / (name + '.json')
+
+    def load_meta(self):
+        file = self.cache_file()
+        try:
+            data = json.loads(file.read_text(encoding='utf-8')) if file and file.is_file() else None
+        except (OSError, ValueError):
+            data = None
+        if not isinstance(data, dict) or data.get('format') != META_FORMAT or data.get('digest') != self.digest or not isinstance(data.get('meta'), dict):
+            return False
+        meta = {k: m for k, m in data['meta'].items() if k in self.index and isinstance(m, dict)}
+        bad = set(k for k in data.get('bad', []) if k in self.index)
+        if len(meta) + len(bad) < len(self.index):
+            return False
+        self.meta, self.meta_bad = meta, bad
+        self.meta_done, self.meta_source = True, 'cache'
+        return True
+
+    def save_meta(self):
+        file = self.cache_file()
+        if not file:
+            return
+        try:
+            file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = file.with_suffix('.part')
+            tmp.write_text(json.dumps({'format': META_FORMAT, 'plugin': Path(self.path).name, 'signature': self.signature, 'digest': self.digest,
+                                       'meta': self.meta, 'bad': sorted(self.meta_bad)}, allow_nan=False), encoding='utf-8')
+            os.replace(tmp, file)
+        except (OSError, ValueError):
+            pass
+
+    def start_meta(self):
+        """The control list: from the disk cache when this plugin version was seen before, else built in the background
+        (one wrapper at a time, after the instrument already plays); 'controls' answers with what is ready so far."""
+        self.meta_gen += 1
+        gen, began = self.meta_gen, time.perf_counter()
+        self.meta, self.meta_bad, self.meta_done, self.meta_source = {}, set(), False, ''
+        if self.index is None:
+            self.meta_done, self.meta_source = True, 'pedalboard'
+            return
+        if self.load_meta():
+            self.meta_ms = round((time.perf_counter() - began) * 1000)
+            return
+
+        def build():
+            for n, key in enumerate(list(self.index)):
+                if gen != self.meta_gen:
+                    return
+                if key in self.meta or key in self.meta_bad:
+                    continue
+                try:
+                    self.meta[key] = self.meta_of(key)
+                except Exception:
+                    self.meta_bad.add(key)
+                if n % 8 == 7:
+                    time.sleep(0)
+            if gen == self.meta_gen:
+                self.meta_done, self.meta_source = True, 'read'
+                self.meta_ms = round((time.perf_counter() - began) * 1000)
+                self.save_meta()
+        threading.Thread(target=build, daemon=True).start()
+
+    def entry(self, key):
+        """One control as parameter_entry() shows it (+ kind), fast when its description is known."""
+        m = self.meta.get(key)
+        if m is None and self.index is not None and key in self.index and key not in self.meta_bad:
+            m = self.meta[key] = self.meta_of(key)
+        if m is None:
+            with self.lock:
+                return offline.parameter_entry(self.plugin, key, self.parameters[key])
+        with self.lock:
+            return {**m, **self.fast(key, m)}
+
+    def controls(self, job):
+        """(round 64) the desk's controls: every control described so far with its current value. ready: all of them."""
+        info = {'name': self.plugin.name, 'maker': getattr(self.plugin, 'manufacturer_name', ''), 'instrument': self.plugin.is_instrument,
+                'effect': getattr(self.plugin, 'is_effect', False), 'latency': getattr(self.plugin, 'reported_latency_samples', 0)}
+        if self.index is None:
+            out = offline.run({'action': 'inspect', 'plugin': self.path}, self.plugin, guard=self.lock)
+            out.pop('state', None)
+            return {**out, 'ready': True, 'count': len(out['parameters']), 'built': len(out['parameters']), 'source': 'pedalboard', 'metaMs': 0}
+        entries = []
+        # while the list is still being read, a page asks for a few (limit): the count is cheap, the entries aren't
+        limit = int(job.get('limit') or 0) if not self.meta_done else 0
+        for key in list(self.index):
+            m = self.meta.get(key)
+            if m is None:
+                continue
+            if limit and len(entries) >= limit:
+                break
+            with self.lock:
+                try:
+                    entries.append({**m, **self.fast(key, m)})
+                except Exception:
+                    pass
+        return {**info, 'parameters': entries, 'ready': self.meta_done, 'count': len(self.index) - len(self.meta_bad), 'built': len(self.meta),
+                'source': self.meta_source, 'metaMs': self.meta_ms}
+
+    def wait_meta(self, seconds=120):
+        end = time.monotonic() + seconds
+        while not self.meta_done and time.monotonic() < end:
+            time.sleep(.02)
+        if not self.meta_done:
+            raise ValueError('The instrument is still reading its controls.')
+
+    def state(self, job):
+        """(round 64) a state-only snapshot / recall: no control listing (the desk refreshes what it shows itself)."""
+        with self.lock:
+            if job.get('state'):
+                self.plugin.raw_state = offline.decode_state(job['state'])
+            raw = self.plugin.raw_state
+        return {'state': offline.encode_state(raw)}
+
+    def inspect(self, job):
+        """(round 64) Codex's inspect / snapshot, from the cached control list (same fields), off the main thread."""
+        with self.lock:
+            if job.get('state'):
+                self.plugin.raw_state = offline.decode_state(job['state'])
+        self.wait_meta()
+        out = self.controls(job)
+        with self.lock:
+            out['state'] = offline.encode_state(self.plugin.raw_state)
+        for key in ('ready', 'count', 'built', 'source', 'metaMs'):
+            out.pop(key, None)
+        return out
 
     def patch(self, values):
         if not isinstance(values, dict) or len(values) > 512:
@@ -298,6 +643,8 @@ class Engine:
                 for key, value in old.items():
                     self.parameters[key].raw_value = value
                 raise
+        if self.editor:
+            self.embed.repaint()  # (round 64) the plugin's own knobs show the new values at once
         return {'changed': list(values)}
 
     def values(self, keys):
@@ -308,8 +655,7 @@ class Engine:
         for key in keys:
             if key not in self.parameters:
                 raise ValueError('Unknown parameter: ' + key)
-            with self.lock:
-                entry = offline.parameter_entry(self.plugin, key, self.parameters[key])
+            entry = self.entry(key)  # (round 64) straight from the C++ parameter when the control is known
             out[key] = {'value': entry['value'], 'display': entry['display']}
         return {'values': out}
 
@@ -432,11 +778,15 @@ class Engine:
                 raise ValueError('Exclusive mode is a WASAPI option; choose the WASAPI entry of this interface.')
             extra = sd.WasapiSettings(exclusive=True)
         own = int(info.get('default_samplerate') or 48000)
-        rates = [own, 48000, 44100] if exclusive or api == 'ASIO' else [48000, own, 44100]
+        # (round 64, vstembed64) 48 kHz first everywhere (an ASIO driver may switch the interface to it); a device that
+        # refuses it plays at its own rate and the readout says so in one line.
+        rates = [TARGET_RATE, own, 44100]
         last = None
         for rate in dict.fromkeys(rates):
             try:
                 sd.check_output_settings(device=device, channels=2, dtype='float32', samplerate=rate, extra_settings=extra)
+                if self is not None:  # (audiodoctor64 calls choose() unbound, self=None, to see what the host would pick)
+                    self.rate_note = '' if rate == TARGET_RATE else '%s refused 48 kHz, so it plays at %s kHz (its own rate); loops you record are saved at 48 kHz.' % (info['name'], '%g' % (rate / 1000))
                 return info, api, extra, rate
             except Exception as error:
                 last = error
@@ -579,7 +929,10 @@ class Engine:
                 'latencyMs': round(device_ms + self.depth * block_ms, 1), 'load': round(self.load_avg * 100, 1),
                 'midi': self.midi.stats(), 'sequence': self.sequence is not None, 'editorCloses': self.editor_closes,
                 'loadedMs': self.loaded_ms, 'startedMs': self.started_ms, 'streamErrors': self.stream_errors, 'streamError': self.last_stream_error,
-                'plugin': self.path}
+                'plugin': self.path,
+                # (round 64, vstembed64) the rate asked for and why it differs, the editor in Hearth, the control list, timings
+                'targetRate': TARGET_RATE, 'rateNote': self.rate_note if self.audio else '', 'editor': {**self.embed.state(), 'note': self.editor_note or self.embed.note, 'stale': self.editor_stale},
+                'controlsReady': self.meta_done, 'controlsSource': self.meta_source, 'controlsBuilt': len(self.meta), 'timings': self.timings}
 
     # ---------- (round 62, parkjam62) the loop recorder ----------
     def record(self, job):
@@ -659,16 +1012,36 @@ class Engine:
         self.take = None
         np = self.np
         audio = np.concatenate(take['chunks'], axis=1) if take['chunks'] else np.zeros((2, 0), dtype=np.float32)
+        # (round 64, vstembed64) every file is 48 kHz: a take played at another rate (a device that refused 48 kHz) is
+        # converted here, once; at 48 kHz it is written as it was played.
+        audio, converted = self.to_target(audio, int(take['rate']), round(take['total'] * TARGET_RATE / take['rate']))
         pcm = (np.clip(audio.T, -1, 1) * 32767).astype('<i2')
         with wave.open(str(job['output']), 'wb') as w:
             w.setnchannels(2)
             w.setsampwidth(2)
-            w.setframerate(int(take['rate']))
+            w.setframerate(TARGET_RATE)
             w.writeframes(pcm.tobytes())
         notes = sorted(take['notes'], key=lambda n: (n['time'], n['note']))
-        return {'bars': take['bars'], 'beats': take['beats'], 'bpm': take['bpm'], 'sampleRate': take['rate'], 'frames': int(pcm.shape[0]),
-                'seconds': pcm.shape[0] / take['rate'], 'peak': round(take['peak'], 5), 'silent': take['peak'] < 1e-4, 'notes': notes,
-                'startedAt': take['started']}
+        return {'bars': take['bars'], 'beats': take['beats'], 'bpm': take['bpm'], 'sampleRate': TARGET_RATE, 'frames': int(pcm.shape[0]),
+                'seconds': pcm.shape[0] / TARGET_RATE, 'peak': round(take['peak'], 5), 'silent': take['peak'] < 1e-4, 'notes': notes,
+                'startedAt': take['started'], 'playedRate': int(take['rate']), 'converted': converted}
+
+    def to_target(self, audio, rate, frames):
+        """(round 64) audio (2, n) at rate -> (2, frames) at 48 kHz: pedalboard's resampler when there, else linear."""
+        np = self.np
+        if rate == TARGET_RATE:
+            return audio, False
+        try:
+            from pedalboard.io import StreamResampler
+            r = StreamResampler(rate, TARGET_RATE, 2)
+            out = np.concatenate([r.process(np.ascontiguousarray(audio, dtype=np.float32)), r.process(None)], axis=1)
+        except Exception:
+            x = np.arange(frames) * (rate / TARGET_RATE)
+            out = np.stack([np.interp(x, np.arange(audio.shape[1]), ch, right=0.0) for ch in audio]).astype(np.float32) if audio.shape[1] else np.zeros((2, frames), np.float32)
+        out = out[:, :frames]
+        if out.shape[1] < frames:
+            out = np.pad(out, ((0, 0), (0, frames - out.shape[1])))
+        return out, True
 
     def devices(self):
         """(round 61, vstlive61) every stereo output with its host API (ASIO listed when the ASIO DLL is loaded), plus
@@ -707,6 +1080,8 @@ class Engine:
             return self.take_status()
         if action == 'record-take':
             return self.record_take(job)
+        if action == 'editor-place':  # (round 64, vstembed64) the placeholder moved / scrolled / got covered (streamed)
+            return {'editor': self.embed.place(job.get('embed') if isinstance(job.get('embed'), dict) else {})}
         if not self.plugin or self.path != job.get('plugin'):
             raise ValueError('Load the selected instrument first.')
         if action in liveset.ACTIONS:  # (round 64, liveset64)
@@ -748,8 +1123,16 @@ class Engine:
             self.midi_choice = job.get('midiIn') or 'all'
             opened = self.midi.open(self.midi_choice) if self.running.is_set() else []
             return {'midiIn': self.midi_choice, 'open': opened}
+        if action == 'controls':  # (round 64, vstembed64)
+            return self.controls(job)
         if action in ('inspect', 'snapshot', 'render'):
-            if self.editor:
+            # (round 64) state-only snapshots / recalls and Codex's inspect from the cached control list: off the main
+            # thread, the editor may stay open (pedalboard runs VST3s on background threads since 0.8.8).
+            if action == 'snapshot' and job.get('stateOnly'):
+                return self.state(job)
+            if action != 'render' and self.index is not None and not job.get('parameters'):
+                return self.inspect(job)
+            if self.editor and action != 'render':
                 raise ValueError('Close the native editor before capturing, recalling or exporting a patch.')
             # (round 61) reading controls / recalling a patch keeps the audio running: the plugin lock is held per
             # native call (offline.run's guard). Only an offline bounce needs the instance to itself.
@@ -760,11 +1143,19 @@ class Engine:
             was = {'gain': self.gain, 'buffer': self.frames, 'device': self.device, 'exclusive': self.exclusive, 'midiIn': self.midi_choice}
             if was_playing:
                 self.stop()
+            keep = bool(self.editor)  # (round 64) never reset (re-create) the instance under its open editor window
             try:
                 with self.lock:
-                    output = offline.run({**job, 'action': 'render'}, self.plugin)
+                    output = offline.run({**job, 'action': 'render', 'reset': not keep, 'lean': self.index is not None}, self.plugin)
+                    self.index_controls()
                 output['audio'] = base64.b64encode(Path(job['output']).read_bytes()).decode('ascii')
-                self.plugin([], duration=512 / 48000, sample_rate=48000, num_channels=2, buffer_size=512, reset=True)
+                if not keep:
+                    self.plugin([], duration=512 / 48000, sample_rate=48000, num_channels=2, buffer_size=512, reset=True)
+                    with self.lock:
+                        self.index_controls()
+                if self.index is not None:  # (round 64) the controls as they are now (the Sound bank reads them)
+                    self.wait_meta()
+                    output['parameters'] = [{k: v for k, v in e.items() if k != 'kind'} for e in self.controls(job)['parameters']]
                 return output
             finally:
                 if was_playing:
@@ -772,16 +1163,21 @@ class Engine:
         raise ValueError('Unknown live host action.')
 
 
-STREAMED = ('midi', 'patch', 'volume', 'panic', 'sequence') + liveset.STREAMED  # (round 61) fire-and-forget on the stream connection · (round 64, liveset64) pad presses
+STREAMED = ('midi', 'patch', 'volume', 'panic', 'sequence', 'editor-place') + liveset.STREAMED  # (round 61) fire-and-forget on the stream connection · (round 64, liveset64) pad presses · (round 64, vstembed64) editor layout
 
 
 def serve(config, response):
+    embedding.dpi_aware()  # (round 64, vstembed64) before any window: the same physical pixels as Hearth's window
     engine = Engine()
+    engine.cache_dir = config.get('cacheDir')  # (round 64) the control lists, per plugin version (Hearth's data folder)
+    engine.timings['bootMs'] = round((time.perf_counter() - BOOT) * 1000)
     main_tasks = queue.Queue()
+    # (round 64) warm: the heavy imports happen once, first thing on the main thread, while Hearth already connects
+    main_tasks.put(('warm', None, None))
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('127.0.0.1', 0))
     server.listen(16)
-    response.write_text(json.dumps({'ok': True, 'port': server.getsockname()[1]}), encoding='utf-8')
+    response.write_text(json.dumps({'ok': True, 'port': server.getsockname()[1], 'bootMs': engine.timings['bootMs']}), encoding='utf-8')
 
     def on_main(action, job):
         done = queue.Queue(maxsize=1)
@@ -845,9 +1241,10 @@ def serve(config, response):
                         raise ValueError('Load the instrument first.')
                     if engine.editor_requested:
                         raise ValueError('Native editor is already open.')
-                    engine.editor_requested = True
-                    main_tasks.put(('editor', job, None))
-                    result = {'editorOpen': True}
+                    want = job.get('embed') if isinstance(job.get('embed'), dict) else None
+                    result = {'editorOpen': True, 'editor': open_editor(job, want)}
+                elif job['action'] in ('editor-embed', 'editor-pop', 'editor-close', 'editor-refresh'):
+                    result = {'editor': editor_action(job)}
                 else:
                     if job['action'] in ('inspect', 'open') and engine.path != job.get('plugin'):
                         if engine.editor_requested:
@@ -858,10 +1255,20 @@ def serve(config, response):
                         result = {'name': identity(job['plugin']), 'loadedMs': engine.loaded_ms}
                         if job.get('live'):
                             result.update(engine.command({**job, 'action': 'live-start'}))
-                    elif job['action'] in ('inspect', 'snapshot', 'render', 'preset-preload'):  # (round 64, liveset64) the twin loads on this main thread
+                    elif job['action'] in ('inspect', 'snapshot', 'render'):
+                        # (round 64, vstembed64) with the editor open (it holds the main thread) or the fast control list,
+                        # these run here, off the main thread, under the plugin lock
+                        if engine.editor_requested or (job['action'] != 'render' and engine.index is not None):
+                            result = engine.command(job)
+                        else:
+                            result = on_main('command', job)
+                    elif job['action'] == 'preset-preload':  # (round 64, liveset64) the twin loads on this main thread
+                        # (round 64, vstembed64) the editor holds that thread: it is closed for the load and opened again
+                        # where it was (hidden while the Live set is on screen), never a reason to refuse
                         if engine.editor_requested:
-                            raise ValueError('Close the native editor before capturing or exporting a patch.')
-                        result = on_main('command', job)
+                            result = reopen_editor(lambda: on_main('command', job))
+                        else:
+                            result = on_main('command', job)
                     else:
                         result = engine.command(job)
                 result = {'ok': True, **result}
@@ -871,6 +1278,56 @@ def serve(config, response):
                 conn.sendall((json.dumps(result, allow_nan=False) + '\n').encode())
             except OSError:
                 pass
+
+    def open_editor(job, want):
+        """(round 64, vstembed64) show_editor(close_event) on the main thread; placed in Hearth when want says where."""
+        engine.editor_requested = True
+        engine.editor_event, engine.editor_note, engine.editor_stale = threading.Event(), '', False
+        try:
+            known = [w['hwnd'] for w in engine.embed.b.windows(os.getpid())] if engine.embed.b else []
+        except Exception:
+            known = []
+        main_tasks.put(('editor', job, None))
+        return engine.embed.opened(want, known, stop=lambda: not engine.editor_requested)
+
+    def close_editor():
+        if engine.editor_event:
+            engine.editor_event.set()
+        end = time.monotonic() + 3
+        while engine.editor_requested and time.monotonic() < end:
+            time.sleep(.01)
+
+    def reopen_editor(between=None):
+        """Close the editor, run `between` on the freed main thread, open it again as it was (embedded at the same spot,
+        shown or hidden as it was; or floating). Used by the Live set's preset preload and 'editor-refresh' (the instance
+        changed under it: liveset64's preset twin)."""
+        em = engine.embed
+        was = {'mode': em.mode, 'parent': em.parent, 'at': em.at, 'visible': em.visible, 'clip': em.clip_rect}
+        close_editor()
+        try:
+            out = between() if between else {}
+        finally:
+            want = None
+            if was['mode'] == 'embedded' and was['parent']:
+                x, y = was['at'] or (0, 0)
+                want = {'parent': was['parent'], 'x': x, 'y': y, 'clip': was['clip'], 'visible': was['visible']}
+            if was['mode'] in ('embedded', 'floating'):
+                open_editor({'action': 'editor', 'plugin': engine.path}, want)
+        return {**(out or {}), 'editor': engine.embed.state(), 'editorReopened': was['mode'] in ('embedded', 'floating')}
+
+    def editor_action(job):
+        """(round 64, vstembed64) the editor frame's buttons: here (a floating editor goes into Hearth), pop out, close."""
+        action = job['action']
+        if action == 'editor-close':
+            close_editor()
+            return engine.embed.state()
+        if action == 'editor-refresh':  # (round 64) the instance playing changed: show that one
+            return reopen_editor()['editor'] if engine.editor_requested else engine.embed.state()
+        if not engine.editor_requested:
+            raise ValueError('Open the editor first.')
+        if action == 'editor-pop':
+            return engine.embed.pop_out()
+        return engine.embed.embed(job.get('embed') if isinstance(job.get('embed'), dict) else None)
 
     def request_thread():
         # (round 61) one thread per connection: a note or a knob move never waits behind a snapshot or a bounce.
@@ -890,13 +1347,27 @@ def serve(config, response):
             # The native editor owns this (main) thread until it closes; audio runs on the worker + PortAudio threads.
             try:
                 engine.editor = True
-                engine.plugin.show_editor()
+                try:
+                    engine.plugin.show_editor(engine.editor_event)  # (round 64) Hearth can close it (close_event)
+                except TypeError:
+                    engine.plugin.show_editor()  # a pedalboard without close_event
             except Exception as error:
-                engine.error = str(error)[:500]
+                engine.editor_note = 'The editor could not open: %s' % str(error)[:300]  # (round 64) not an audio error
             finally:
                 engine.editor = False
+                engine.embed.closed()  # (round 64) before editor_requested drops: a reopen waiting on it starts clean
                 engine.editor_requested = False
                 engine.editor_closes += 1  # (round 61) the desk re-reads the controls changed in the editor
+        elif action == 'warm':
+            # (round 64, vstembed64) import pedalboard and sounddevice once, before the first instrument is asked for
+            began = time.perf_counter()
+            try:
+                import pedalboard  # noqa: F401
+                lean_pedalboard(pedalboard)
+                offline.import_sounddevice()
+            except Exception:
+                pass  # the request that needs them reports the real error
+            engine.timings['importMs'] = round((time.perf_counter() - began) * 1000)
         elif action == 'command':
             try:
                 done.put(engine.command(job))

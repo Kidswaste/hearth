@@ -97,7 +97,8 @@ if (py.status !== 0) { out.skipped.push('host part: python3 with numpy not found
     await sleep(300); host.send({ action: 'midi', plugin: vital.path, note: 67, on: true }); await sleep(300);
     const during = await V('live-status'); assert.equal(during.editorOpen, true); assert.ok(during.blocks > before.blocks + 20, 'audio keeps running with the editor open');
     host.send({ action: 'midi', plugin: vital.path, note: 67, on: false });
-    assert.equal((await V('snapshot')).ok, false, 'a patch snapshot waits for the editor to close (Codex\'s rule)');
+    // (round 64, vstembed64) the editor now lives in the Sound desk: a snapshot runs off the main thread while it is open
+    assert.equal((await V('snapshot')).ok, true, 'a patch snapshot works with the editor open (round 64; was refused before)');
     await until(async () => (await V('live-status')).editorCloses === 1, 3000, 'editor to close');
     assert.equal((await V('values', { keys: ['macro_0'] })).values.macro_0.value, .9, 'the editor\'s knob change is visible');
     // preset recall while live, then an offline bounce (pauses, then resumes on the same device)

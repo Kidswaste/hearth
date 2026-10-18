@@ -156,7 +156,7 @@ ok(mac.includes('/Users/me/Music/Vital/User/Presets') && mac.includes('/Users/me
     const post = await live.request({ action: 'live-status', plugin: vitalPath });
     const e1 = Object.values(realBank._test.index().entries)[0];
     ok(e1.preview?.file && !e1.preview.silent && e1.preview.peak > .05, `the real host rendered a 3-s preview from the bank state (peak ${e1.preview?.peak}, ${e1.preview?.ms} ms)`);
-    const wav = realBank.previewBytes(e1.id); ok(wav.subarray(0, 4).toString() === 'RIFF' && Math.abs(wav.length - 44 - 3 * 44100 * 4) < 4096, `preview WAV: ${wav.length} bytes ≈ 3 s stereo 16-bit`);
+    const wav = realBank.previewBytes(e1.id); ok(wav.subarray(0, 4).toString() === 'RIFF' && Buffer.from(wav).readUInt32LE(24) === 48000 && Math.abs(wav.length - 44 - 3 * 48000 * 4) < 4096, `preview WAV: ${wav.length} bytes ≈ 3 s stereo 48 kHz (round 64) 16-bit`);
     ok(post.playing && post.blocks > pre.blocks && post.device === pre.device, `the live instrument kept playing in its own host while the preview rendered (${post.blocks - pre.blocks} blocks, ${post.underruns - pre.underruns} underruns)`);
     ok(fs.readdirSync(path.join(dir, 'data2', 'creative-vst')).filter(f => f.startsWith('session-')).length === 0 || await until(() => fs.readdirSync(path.join(dir, 'data2', 'creative-vst')).filter(f => f.startsWith('session-')).length === 0, 4000, 'preview host gone'), 'the preview host process stopped after the queue (zero idle cost)');
     await live.request({ action: 'live-stop', plugin: vitalPath }); live.stop();
