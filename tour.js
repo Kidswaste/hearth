@@ -11,6 +11,8 @@ const Tour = (() => {
   const setProg = (id, v) => { const all = prog(); all[id] = { ...(all[id] || {}), ...v, t: Date.now() }; store.set(KEY, all); };
   let cur = null; // { tour, steps, i }
   let card = null; let ring = null; let target = null; let findT = 0; let ro = null;
+  let clickHook = null; // (round 64, newtour64) the ringed control's click listener (one at a time)
+  const unhookClick = () => { if (clickHook) clickHook.t.removeEventListener('click', clickHook.fn); clickHook = null; };
 
   const find = (name) => { const n = String(name || '').trim().toLowerCase().replace(/^the\s+/, ''); return D.TOURS.find((t) => t.id === n || t.name.toLowerCase() === n || t.name.toLowerCase().startsWith(n)) || D.TOURS.find((t) => n.length > 2 && `${t.id} ${t.name} ${t.why}`.toLowerCase().includes(n)) || null; };
   const stepsOf = (t) => t.steps.filter((s) => !s.when || (typeof Commands !== 'undefined' && Commands.get(s.when)));
@@ -18,16 +20,23 @@ const Tour = (() => {
   function resolve(sel) {
     if (!sel) return null;
     if (sel instanceof Element) return visible(sel) ? sel : null;
-    for (const s of [].concat(sel)) { try { for (const n of document.querySelectorAll(s)) if (visible(n)) return n; } catch { /* a bad selector is skipped */ } }
+    for (const s of [].concat(sel)) { if (typeof s === 'function') { try { const n = s(); if (n && visible(n)) return n; } catch { /* not there */ } continue; } try { for (const n of document.querySelectorAll(s)) if (visible(n)) return n; } catch { /* a bad selector is skipped */ } }
     return null;
   }
 
   // ---------- the ring ----------
   function placeRing(r, n) {
     if (!r || !n) return;
-    const b = n.getBoundingClientRect(); const pad = 4;
-    const css = `left:${Math.round(b.left - pad)}px;top:${Math.round(b.top - pad)}px;width:${Math.round(b.width + pad * 2)}px;height:${Math.round(b.height + pad * 2)}px`;
+    const b = n.getBoundingClientRect(); const pad = 4; const o = origin(r);
+    const css = `left:${Math.round(b.left - pad - o.x)}px;top:${Math.round(b.top - pad - o.y)}px;width:${Math.round(b.width + pad * 2)}px;height:${Math.round(b.height + pad * 2)}px`;
     if (r.style.cssText !== css) r.style.cssText = css;
+  }
+  // (round 64, newtour64) inside a dialog with a transform, position: fixed counts from the dialog's corner, not the window's
+  function origin(node) {
+    const host = node.parentElement;
+    if (!host || host === document.body || getComputedStyle(host).transform === 'none') return { x: 0, y: 0 };
+    const h = host.getBoundingClientRect();
+    return { x: h.left + host.clientLeft - host.scrollLeft, y: h.top + host.clientTop - host.scrollTop };
   }
   // the ring on any control for a few seconds (What's new "Show me", tips); returns the element or null
   function pulse(sel, { ms = 4200, label = '' } = {}) {
@@ -41,12 +50,14 @@ const Tour = (() => {
   }
 
   // ---------- running a tour ----------
-  function stop({ done = false } = {}) {
+  function stop({ done = false, how = '' } = {}) {
     if (!cur) return false;
     setProg(cur.tour.id, done ? { step: 0, done: true } : { step: cur.i });
-    cur = null; clearTimeout(findT); ro?.disconnect(); ro = null;
+    const ended = cur; // (round 64, newtour64) a tour may want to know how it ended (Try what's new keeps its own progress)
+    cur = null; clearTimeout(findT); unhookClick(); ro?.disconnect(); ro = null;
     removeEventListener('resize', reflow); removeEventListener('keydown', onKey, true);
     card?.remove(); ring?.remove(); card = ring = target = null;
+    try { ended.tour.onEnd?.({ done, step: ended.i, total: ended.steps.length, how }); } catch (err) { console.warn('tour end', err); }
     return true;
   }
   const reflow = debounce(() => { if (cur && target) { if (!target.isConnected) { show(cur.i); return; } placeRing(ring, target); placeCard(); } }, 80);
@@ -59,18 +70,22 @@ const Tour = (() => {
     const w = card.offsetWidth || 300; const h = card.offsetHeight || 140;
     if (card.dataset.moved) return;
     let x; let y;
+    // (round 64, newtour64) inside a dialog: inside the dialog's box (it clips what goes past it)
+    const box = card.parentElement && card.parentElement !== document.body ? card.parentElement.getBoundingClientRect() : { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
     if (target) {
       const b = target.getBoundingClientRect();
       // right of it, else below, else above; always inside the window
-      if (b.right + 16 + w < innerWidth) { x = b.right + 14; y = b.top; } else if (b.bottom + 16 + h < innerHeight) { x = b.left; y = b.bottom + 14; } else { x = b.left; y = b.top - h - 14; }
+      if (b.right + 16 + w < box.right) { x = b.right + 14; y = b.top; } else if (b.bottom + 16 + h < box.bottom) { x = b.left; y = b.bottom + 14; } else { x = b.left; y = b.top - h - 14; }
     } else { x = (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w'), 10) || 64) + 10; y = innerHeight - h - 12; }
-    x = Math.max(8, Math.min(innerWidth - w - 8, x)); y = Math.max(8, Math.min(innerHeight - h - 8, y));
-    const css = `left:${Math.round(x)}px;top:${Math.round(y)}px`;
+    x = Math.max(box.left + 8, Math.min(box.right - w - 8, x)); y = Math.max(box.top + 8, Math.min(box.bottom - h - 8, y));
+    const o = origin(card);
+    const css = `left:${Math.round(x - o.x)}px;top:${Math.round(y - o.y)}px`;
     if (card.style.cssText !== css) card.style.cssText = css;
   }
   async function openFor(step) {
     const o = step.open;
     if (!o) return;
+    if (typeof o === 'function') { try { await o(); } catch (err) { console.warn('tour open', err); } return; } // (round 64, newtour64) a place opened by code
     try {
       if (o.startsWith('tool:')) { if (H.surfaceIdFor?.(H.activeId) !== o) activate(o); } else if (o.startsWith('/')) await runLine(o, { quiet: true });
     } catch (err) { console.warn('tour open', err); }
@@ -113,16 +128,19 @@ const Tour = (() => {
       !target && step.target ? el('p', { class: 'tour-hint', text: 'Not on screen right now.' }) : null,
       el('div', { class: 'tour-btns' },
         i ? btn('‹ Back', 'ghost small', () => show(i - 1)) : null,
-        step.cmd ? btn('Try it', 'ghost small tour-try', () => runLine(step.cmd), D.safeLine(step.cmd, (n) => Boolean(Commands.get(n))) ? 'Runs it' : 'Puts it in the chat box') : null,
+        // (round 64, newtour64) Skip / Later for tours that offer them (Try what's new): skip = not for me, later = paused here
+        tour.onEnd && tour.skippable ? btn('Skip', 'ghost small tour-skip', () => stop({ how: 'skip' }), 'Not for me: skip this one') : null,
+        tour.onEnd && tour.skippable ? btn('Later', 'ghost small tour-later', () => { stop({ how: 'later' }); toast(`${tour.name}: paused at step ${i + 1}`, { timeout: 2200 }); }, 'Pause here: it picks up at this step next time') : null,
+        step.cmd ? btn('Try it', 'ghost small tour-try', () => { try { tour.onTry?.(step); } catch { /* progress is a convenience */ } runLine(step.cmd); }, D.safeLine(step.cmd, (n) => Boolean(Commands.get(n))) ? 'Runs it' : 'Puts it in the chat box') : null,
         el('span', { class: 'spacer' }),
-        btn(last ? 'Done ✓' : 'Next ›', 'small primary tour-next', () => (last ? (stop({ done: true }), toast(`${tour.name}: done. Discover has the other tours.`, { timeout: 2200 })) : show(i + 1)))));
+        btn(last ? 'Done ✓' : 'Next ›', 'small primary tour-next', () => (last ? (stop({ done: true }), toast(tour.doneText || `${tour.name}: done. Discover has the other tours.`, { timeout: 2200 })) : show(i + 1)))));
     if (!card) {
       card = el('div', { class: 'tour-card speed-card', role: 'dialog', 'aria-label': `Tour: ${tour.name}`, 'data-no-usage': '' });
       // drag it out of the way by its head
       card.addEventListener('pointerdown', (e) => {
         if (!e.target.closest('.tour-head') || e.target.closest('button')) return;
         const r = card.getBoundingClientRect(); const dx = e.clientX - r.left; const dy = e.clientY - r.top;
-        const mv = (ev) => { card.dataset.moved = '1'; card.style.cssText = `left:${Math.max(0, ev.clientX - dx)}px;top:${Math.max(0, ev.clientY - dy)}px`; };
+        const mv = (ev) => { card.dataset.moved = '1'; const o = origin(card); card.style.cssText = `left:${Math.max(0, ev.clientX - dx) - o.x}px;top:${Math.max(0, ev.clientY - dy) - o.y}px`; };
         const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
         addEventListener('pointermove', mv); addEventListener('pointerup', up);
       });
@@ -130,11 +148,25 @@ const Tour = (() => {
     }
     card.replaceChildren(body);
     card.dataset.tour = tour.id; card.dataset.step = String(i);
+    // (round 64, newtour64) a control inside an open dialog: the card and the ring go into that dialog (a modal dialog sits
+    // in the top layer, above anything in the page)
+    const host = target?.closest('dialog[open]') || document.body;
+    if (card.parentElement !== host) host.append(card);
     if (target) {
-      if (!ring) { ring = el('div', { class: 'tour-ring', 'aria-hidden': 'true' }); document.body.append(ring); }
+      if (!ring) { ring = el('div', { class: 'tour-ring', 'aria-hidden': 'true' }); }
+      if (ring.parentElement !== host) host.append(ring);
       placeRing(ring, target);
       ro?.disconnect(); ro = new ResizeObserver(reflow); ro.observe(target);
-    } else { ring?.remove(); ring = null; ro?.disconnect(); }
+      setTimeout(reflow, 320); // (round 64, newtour64) a panel that slides in: the ring and card follow once it has settled
+      // (round 64, newtour64) clicking the ringed control is doing it for real (tour.onTargetClick); with step.clickNext the
+      // tour follows to the next step by itself
+      unhookClick();
+      if (step.clickNext || tour.onTargetClick) {
+        const t = target; const me = cur;
+        const fn = () => { unhookClick(); if (cur !== me || me.i !== i) return; try { tour.onTargetClick?.(step); } catch { /* progress is a convenience */ } if (!step.clickNext) return; setTimeout(() => { if (cur !== me || me.i !== i) return; if (i === me.steps.length - 1) stop({ done: true }); else show(i + 1); }, 450); };
+        t.addEventListener('click', fn); clickHook = { t, fn };
+      }
+    } else { ring?.remove(); ring = null; ro?.disconnect(); unhookClick(); }
     placeCard();
   }
   // start (or pick up) a tour: { restart } starts at step 1

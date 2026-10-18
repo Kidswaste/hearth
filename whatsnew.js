@@ -120,7 +120,13 @@ const WhatsNew = (() => {
     cardEl.addEventListener('mouseleave', arm);
     document.body.append(cardEl);
     arm();
+    tryRow(d, cardEl.querySelector('.wn-body'));
     return cardEl;
+  }
+  // (round 64, newtour64) ✦ Try what's new: a Try it per round (61–63) and "7 of 13 tried" above the lines (trynew.js, its own group)
+  function tryRow(d, before) {
+    if (!before || !(d.rounds || []).some((r) => r >= 61 && r <= 63) || !window.Lazy) return;
+    Lazy.load('trynew').then(() => { const row = window.TryNew?.whatsNewRow(d.rounds); if (row && before.isConnected) before.before(row); }).catch(() => {});
   }
   function shown(d) {
     markSeen(Math.max(d.to, d.newest || 0));
@@ -147,6 +153,7 @@ const WhatsNew = (() => {
     document.body.append(dlg);
     dlg.showModal();
     shown(d);
+    tryRow(d, dlg.querySelector('.wn-scroll'));
     return dlg;
   }
 

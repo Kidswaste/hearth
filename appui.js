@@ -205,6 +205,7 @@ const AppUI = (() => {
           { label: 'Since you were away', hint: 'the top changes of the rounds you missed, one page', action: () => { dialog.close(); Updater.sinceAway(); } }, // (round 42, whatsnew)
           { label: 'Patch notes', hint: 'every change, round by round', action: () => { dialog.close(); Updater.patchNotes(); } },
           { label: 'What\'s new for me', hint: 'what fits how you work', action: run('/whats-new') },
+          { label: 'Try what\'s new', hint: 'hands-on: rounds 61–63, 30–60 s each', action: run('/try') }, // (round 64, newtour64)
           // (round 37, updatesafe) after an update: back to the version before it, chats and data kept
           ...(Updater.status?.back ? [{ label: 'Go back to the previous version', hint: `before the last update (${Updater.status.back.from})`, action: () => { dialog.close(); Updater.goBack(); } }] : [])]); })),
       fold('updates', 'Updates and tips', 'Whether updates install by themselves, and whether tips show by themselves',

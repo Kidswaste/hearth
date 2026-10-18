@@ -83,6 +83,14 @@ Outing desk's events. The strip is still one row of four chips plus "Plan a walk
 `city-integration` fails with "bridge starts on My lineup", and fails the same way on the base commit without these
 changes. It's a pre-existing issue in Codex's check and not related to this stream.
 
+## Re-check after Codex's Paris stories (3b120eb)
+
+Codex's story suggestions added six 11e places, bringing the guide to 66. None of them duplicates an existing place.
+The closest pairs are Atelier des Lumières and Square Maurice Gardette (70 m), and Square de la Roquette and Square
+Marcel Rajman (84 m): different places, with no shared name word. `startStory` now selects `ensurePin(...).id` like
+the other starters, so a story at a place you already pinned yourself uses your pin. The chip row and Plan a walk
+still work after Codex's "Preserve Claude map filtering and zoom hooks" (mapfirst64 ✓).
+
 ## For the patch notes
 
 - **One pin per place on the Paris map.** If you pinned a venue yourself (say from the Outing desk) and the Paris guide
