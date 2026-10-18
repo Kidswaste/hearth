@@ -81,7 +81,7 @@ const Icons = (() => {
     recent: S('<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v3.2h3.2M12 8v4.3l2.8 1.7"/>'),
   };
   // agent / tool id (or engine) -> icon
-  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', jam: 'jam', board: 'board', capture: 'capture', home: 'home', options: 'setup', quests: 'quests' }; // (round 18: Video Review's / the Video Director's / the editor's ids left)
+  const BY_ID = { claude: 'claude', astra: 'astra', hearth: 'hearth', forgeheart: 'forge', forgedebug: 'forge', three: 'three', threedirector: 'director', jam: 'jam', board: 'board', capture: 'capture', home: 'home', options: 'setup', quests: 'quests', commands: 'command', creative: 'sparkle' }; // (round 18: Video Review's / the Video Director's / the editor's ids left)
   const BY_ENGINE = { claude: 'claude', codex: 'astra' };
   const BY_BUTTON = { 'add-btn': 'plus', 'palette-btn': 'command', 'notes-btn': 'notes', 'memory-btn': 'memory', 'panel-btn': 'panel', 'grid-btn': 'grid', 'bar-btn': 'broadcast', 'config-btn': 'gear' };
 

@@ -34,6 +34,7 @@ const WhatsNewCore = (() => {
       .replace(/\s*\((?:[^()]*?\s)?`?\/[a-z][\w-]*[^()]*\)/gi, '')
       .replace(/`\/[a-z][^`]*`(?:\s+(?:brings|turns|makes|gives|shows)[^.;]*)?/gi, '')
       .replace(/`([^`]*)`/g, '$1')
+      .replace(/(^|\s)\/([a-z][\w-]{2,})\b/g, '$1$2') // (round 59) a bare /command in a sentence ("when /doctor finds…"): its plain word
       .replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|\s)[*_]([^*_]+)[*_](?=\s|$|[,.;:])/g, '$1$2')
       .replace(/\s+([,.;:])/g, '$1').replace(/\s{2,}/g, ' ').replace(/^[\s,;:.—-]+/, '').trim();
   }

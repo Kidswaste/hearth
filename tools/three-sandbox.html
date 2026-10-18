@@ -12789,6 +12789,15 @@ function sqPlay(on, rate = 1) {
 // hidden export page gets a Uint8Array / Buffer view, maybe a window into a bigger buffer): decodeAudioData takes only
 // an ArrayBuffer, and a view's .slice(0) is still a view (the decode failed, an export's frames heard silence)
 const abCopy = (b) => (ArrayBuffer.isView(b) ? new Uint8Array(b.buffer, b.byteOffset, b.byteLength) : new Uint8Array(b)).slice().buffer;
+// (round 59) going offline: the layers' frame callbacks already waiting for a screen frame (the layer queue, a dozing
+// preview's queue for up to 500 ms, a parked page's) wait for the exact frames instead. Left there, an exact frame
+// asked at once drew none of them and read the canvas's last screen frame (the preview before T: a black first frame)
+function sqAdopt() {
+  const own = (fn) => typeof fn === 'function' && '__L' in fn;
+  DOZE.q = DOZE.q.filter((e) => { if (!own(e.fn)) return true; SQ.offQ.push(e.fn); return false; });
+  for (let i = 0; i < LQ.fns.length; i += 1) if (own(LQ.fns[i])) { SQ.offQ.push(LQ.fns[i]); LQ.fns[i] = null; }
+  const left = parkQ.filter((fn) => !own(fn)); for (const fn of parkQ) if (own(fn)) SQ.offQ.push(fn); parkQ.length = 0; parkQ.push(...left);
+}
 // offline: the song's samples (for the spectrum the analyser would have heard at each frame)
 async function sqOffline(on) {
   SQ.off = Boolean(on);
@@ -12803,6 +12812,7 @@ async function sqOffline(on) {
     return { ok: true };
   }
   SQ.smooth = null;
+  sqAdopt();
   if (sqSong() && lastMediaBytes && !SQ.pcm) {
     try {
       const buf = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(abCopy(lastMediaBytes));
@@ -12857,7 +12867,9 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
     const want = T - s.offset;
     if (Math.abs(mediaEl.currentTime - want) > 1e-4) await new Promise((r) => { mediaEl.addEventListener('seeked', r, { once: true }); realSetTimeout(r, 1500); mediaEl.currentTime = want; });
     if (SQ.pcm) sqSpectrum(want);
-  }
+  } else if (s && SQ.pcm) sqSpectrum(-1); // (round 59) past the song's ends: silence, not the last frame's sound
+  lastUpdate = 0; // (round 59) audio.* is read anew for this T: update() skips reads < 8 ms apart, so a frame asked
+  // right after the previous one (or after a live preview frame) drew with that frame's sound
   await Promise.all([...SQ.mounted.values()].filter((st) => st.video && T >= st.g.start - 1e-6 && T < st.g.end).map((st) => sqSeekVideo(st, T)));
   sqApply(T, { full: true });
   await blWait(); // (round 38, beatlink) links on its sliders: the math is here before the first frame
