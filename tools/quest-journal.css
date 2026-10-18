@@ -230,3 +230,14 @@
 .qj-paris-note .qj-copy{margin:4px 0;font-size:12px;line-height:1.4}.qj-paris-best{opacity:.72;font-size:11.5px}
 .qj-paris-tags{flex-wrap:wrap;gap:6px}.qj-paris-chip{font-size:11px;padding:5px 9px}
 .qj-field-footer>.qj-paris-guide+.qj-button{margin-left:0}
+
+/* Dialog visibility must never depend on a paused entrance animation (desk motion / app-away). */
+html .qj dialog.qj-dialog[open]{animation:none!important;opacity:1;visibility:visible}
+.qj-city-actions{display:grid;grid-template-columns:1fr 1.35fr .8fr;gap:10px;margin:0 0 18px}
+.qj .qj-city-action{display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;border-radius:14px;background:linear-gradient(125deg,#ffffff12,#ffffff03);border:1px solid #ffffff26;box-shadow:inset 0 1px #ffffff17;font-size:12px}
+.qj-city-action svg{width:23px;height:23px;color:#bd8bff;flex-shrink:0}.qj-city-action:nth-child(2) svg{color:#ffb14a}.qj-city-action:nth-child(3) svg{color:#ff6b9d}
+.qj .qj-city-action:hover{background:linear-gradient(125deg,#ffffff25,#ffffff07);border-color:#bd8bff88}
+.qj .qj-outings-key{color:#ffb14a}.od-load{margin-bottom:16px}
+.qj-atlas-pin:not(.selected):not(:hover):not(:focus-visible)>strong{opacity:0;pointer-events:none}
+.qj-atlas-pin:hover,.qj-atlas-pin:focus-visible{z-index:8}
+@media(max-width:700px){.qj-city-actions{grid-template-columns:1fr}.qj .qj-city-action{min-height:44px}}
