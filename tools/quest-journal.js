@@ -628,6 +628,7 @@ const QuestJournal = (() => {
     content.append(sectionHeading('FORGEHEART / REWARD BAY', 'Something to look forward to.', null, row(button('Browse reward ideas', rewardIdeas, 'qj-primary'), button('+ Add a reward', () => rewardForm(), 'qj-quiet'))));
     rewardBudgetPanel();
     content.append(E('div', { class: 'qj-balance' }, E('b', { text: `✧ ${C.balance(state)}` }), p('sparks available · your XP and level stay with you')));
+    { const shelf = typeof RewardShelf !== 'undefined' ? RewardShelf.studio({ E, label, p, button, meter, row, mutate, redeemDialog, rewardForm, dialog, field }, state) : null; if (shelf) content.append(shelf); } // (round 63, rewards63) the real-rewards shelf: next reward in XP, the savings jar, kind starters, every claim
     const pending = state.redemptions.filter(r => !r.returnedAt && !r.enjoyedAt);
     if (pending.length) {
       const queue = E('section', { class: 'qj-reward-queue' }, label('CLAIMED / READY TO ENJOY'), E('h3', { text: 'Something good is waiting.' }));
