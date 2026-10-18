@@ -36,9 +36,15 @@ const SoundBank = (() => {
   function open(query) {
     if (!win?.isConnected) build();
     if (query !== undefined && input) { input.value = query; similarOf = null; }
-    win.hidden = false; input?.focus({ preventScroll: true });
+    win.hidden = false; place(); input?.focus({ preventScroll: true });
     listenDrops(true);
     return refresh().then(() => { paint(); if (queue.running) watch(); return win; });
+  }
+  function place() { // beside the ✦ Preset window, never on it (both float at the desk's right)
+    const ph = document.querySelector('.ph-win'); win.style.top = ''; if (!ph?.checkVisibility?.()) return;
+    const a = ph.getBoundingClientRect(), b = win.getBoundingClientRect();
+    if (a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom) return;
+    win.style.top = `${Math.round(Math.min(a.bottom + 8, innerHeight - 220))}px`;
   }
   function close() { if (!win) return; stopHover(); listenDrops(false); clearInterval(poll); poll = null; win.remove(); win = null; list = null; for (const u of urls.values()) URL.revokeObjectURL(u); urls.clear(); }
   function build() {
@@ -62,7 +68,7 @@ const SoundBank = (() => {
     chips.replaceChildren(...['fav', ...top].map(t => { const b = el2('button', 'sb-chip' + (q.includes(t) ? ' on' : ''), t === 'fav' ? '★' : t); b.type = 'button'; b.title = t === 'fav' ? 'Favorites' : `Tag: ${t}`; b.onclick = () => { const w = C.tokens(input.value); input.value = (w.includes(t) ? w.filter(x => x !== t) : [...w, t]).join(' '); similarOf = null; paintChips(); paintList(); }; return b; }));
   }
   function paintStatus() {
-    if (!statusEl) return; const missing = entries.filter(x => !x.preview?.file).length; statusEl.replaceChildren();
+    if (!statusEl) return; const missing = entries.filter(x => !x.preview?.file && !x.preview?.error).length; statusEl.replaceChildren();
     if (similarOf) { const b = el2('button', 'sb-link', '‹ all'); b.type = 'button'; b.onclick = () => { similarOf = null; paintStatus(); paintList(); }; statusEl.append(b, el2('span', null, ` Similar to “${byId(similarOf)?.name || '…'}”`)); return; }
     if (queue.running) { const b = el2('button', 'sb-link', 'Stop'); b.type = 'button'; b.onclick = () => cancelPreviews().catch(err => toast(err.message, { type: 'error' })); statusEl.append(el2('span', null, `Previews ${queue.done}/${queue.total}${queue.errors ? ` · ${queue.errors} failed` : ''} · `), b); return; }
     if (!entries.length) { statusEl.append(el2('span', null, settings.pluginFolders ? 'No presets yet: save one in the Sound desk.' : 'No presets yet. Save one in the Sound desk, or include the plugins’ own folders (⋯).')); return; }
@@ -105,7 +111,7 @@ const SoundBank = (() => {
       x.file ? { label: 'Show the file', more: true, action: () => hub.fs?.reveal?.(x.file) } : null].filter(Boolean);
   }
   function menuItems() {
-    const missing = entries.filter(x => !x.preview?.file).length;
+    const missing = entries.filter(x => !x.preview?.file && !x.preview?.error).length;
     return [queue.running ? { label: 'Stop making previews', action: () => cancelPreviews() } : { label: `Make previews${missing ? ` (${missing})` : ''}`, disabled: !missing, action: () => makePreviews() },
       { label: 'Tag with AI…', items: [{ label: 'Claude', action: () => tagWithAI('claude').then(t => toast(t)).catch(err => toast(err.message, { type: 'error' })) }, { label: 'Astra', action: () => tagWithAI('codex').then(t => toast(t)).catch(err => toast(err.message, { type: 'error' })) }] },
       '-',

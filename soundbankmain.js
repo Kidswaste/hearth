@@ -130,7 +130,7 @@ function create({ dataDir, hostFactory, log = () => {} }) {
   function dropPreview(x) { if (x.preview?.file) try { fs.rmSync(path.join(previews, x.preview.file), { force: true }); } catch {} delete x.preview; }
   function status() { return { running: queue.running, current: queue.current, done: queue.done, total: queue.total, errors: queue.errors, cancelled: queue.cancelled, lastError: queue.lastError }; }
   function startPreviews({ ids = [], roots = [] } = {}) {
-    const ix = load(); const want = (ids.length ? ids : Object.keys(ix.entries)).filter(id => ix.entries[id] && !ix.entries[id].preview?.file && !queue.jobs.includes(id) && queue.current !== id);
+    const ix = load(); const want = (ids.length ? ids : Object.keys(ix.entries).filter(id => !ix.entries[id].preview?.error)).filter(id => ix.entries[id] && !ix.entries[id].preview?.file && !queue.jobs.includes(id) && queue.current !== id);
     // grouped per instrument: the preview host loads each plugin once
     want.sort((a, b) => String(ix.entries[a].instrument).localeCompare(String(ix.entries[b].instrument)));
     queue.jobs.push(...want); if (!queue.running) { queue.done = 0; queue.errors = 0; queue.total = 0; queue.cancelled = false; queue.lastError = ''; }
