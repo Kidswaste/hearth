@@ -154,4 +154,57 @@ test('priced social treats obey monthly allowance and invalid starts leave data 
   for(const args of [['missing','friend-jean','place-canal'],['check-in','missing','place-canal'],['check-in','friend-jean','pp-dizonord'],['check-in','friend-jean','place-canal',{treatId:'missing'}]]){const before=JSON.stringify(s);assert.throws(()=>P.startSocial(s,...args));assert.equal(JSON.stringify(s),before);}
   const old=s.campaigns.find(c=>c.socialMission);P.removeGuide(s);assert(s.atlas.places.some(p=>p.id===old.parisPlace));C.validate(s);
 });
+// (round 64, parisdedupe64) one real place = one pin: the guide (ours + Codex's 60), Codex's default pins and a journal
+test('no two pins within 120 m with similar names (guide, personal pins, Codex’s default pins)', () => {
+  const all = [...fresh().atlas.places.filter(p => !P.byId(p.id)), ...P.guide, ...Object.values(P.pins)];
+  const ids = all.map(p => p.id); assert.equal(new Set(ids).size, ids.length, 'duplicate ids');
+  const pairs = [];
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) if (P.metres(all[i], all[j]) < 120 && P.sameName(all[i].name, all[j].name)) pairs.push(all[i].id + '~' + all[j].id);
+  assert.deepEqual(pairs, []);
+  // names alone: the same name twice anywhere in Paris is a duplicate too
+  const fold = n => n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  const names = all.map(p => fold(p.name)); assert.equal(new Set(names).size, names.length, 'duplicate names');
+  assert(P.sameName('Point Éphémère', 'Point Ephemere') && P.sameName('Le Bataclan', 'Bataclan') && !P.sameName('La Bellevilloise', 'La Maroquinerie') && !P.sameName('Petit Palais', 'Petit Bain'));
+});
+test('a place of yours at a guide place is its pin: no second pin, the guide attaches to it', () => {
+  const s = fresh();
+  C.savePlace(s, { name: 'Point Éphémère', lat: 48.88145, lon: 2.36830, kind: 'music', quest: 'Friday gig' });
+  const mine = s.atlas.places.at(-1), before = s.atlas.places.length;
+  const r = P.addGuide(s);
+  assert.equal(r.linked, 1); assert.equal(mine.guide, 'pp-point-ephemere'); assert(!s.atlas.places.some(p => p.id === 'pp-point-ephemere'));
+  assert.equal(s.atlas.places.length, before + P.guide.filter(g => g.id.startsWith('pp-')).length - 1); assert(P.hasGuide(s));
+  assert.equal(P.of(mine).id, 'pp-point-ephemere'); assert.equal(P.pinOf(s, 'pp-point-ephemere'), mine);
+  const c = P.startPlace(s, 'pp-point-ephemere'); assert.equal(c.id, 'c-pp-point-ephemere'); assert.equal(s.atlas.selected, mine.id);
+  assert.equal(P.startPersonal(s, 'gig').parisPlace, 'pp-point-ephemere'); assert.equal(s.atlas.selected, mine.id);
+  assert.equal(mine.name, 'Point Éphémère'); assert.equal(mine.quest, 'Friday gig'); // yours wins
+  assert.equal(P.spotPin(s, { name: 'Point Ephemere', lat: 48.8812, lon: 2.3686 }), mine); // an Outing desk venue → the same pin
+  assert.equal(P.spotPin(s, { name: 'Le Trabendo', lat: 48.8926, lon: 2.3939 }).id, 'pp-trabendo');
+  assert.equal(P.spotPin(s, { name: 'Somewhere else', lat: 48.8926, lon: 2.3939 }), null); assert.equal(P.spotPin(s, { name: 'Point Éphémère', lat: NaN, lon: 2 }), null);
+  P.removeGuide(s); assert(s.atlas.places.includes(mine)); C.validate(s);
+});
+test('an existing journal with both pins is merged once and keeps every visit, star and quest', () => {
+  const s = fresh(); P.addGuide(s);
+  const pin = s.atlas.places.find(p => p.id === 'pp-bataclan'); pin.visitedAt = '2026-09-01T10:00:00.000Z'; pin.favorite = true; pin.quest = 'My own Bataclan note';
+  const placeQuest = P.startPlace(s, 'pp-bataclan'); finish(s, placeQuest.quests[0].id, 1);
+  const mission = C.mapMissions.find(m => m.kind === 'music'); const field = C.startMapMission(s, 'pp-bataclan', mission.id);
+  C.savePlace(s, { name: 'Bataclan', lat: 48.86305, lon: 2.37075, kind: 'social', quest: 'Gig night' });
+  const mine = s.atlas.places.at(-1); mine.visitedAt = '2026-10-01T10:00:00.000Z'; s.atlas.selected = 'pp-bataclan';
+  const xp = C.xp(s), n = s.atlas.places.length, campaigns = JSON.stringify(s.campaigns.map(c => c.id));
+  assert(P.needsDedupe(s)); assert.deepEqual(P.dedupe(s), ['pp-bataclan']);
+  assert.equal(s.atlas.places.length, n - 1); assert(!s.atlas.places.some(p => p.id === 'pp-bataclan'));
+  assert.equal(mine.guide, 'pp-bataclan'); assert.equal(mine.visitedAt, '2026-09-01T10:00:00.000Z'); assert.equal(mine.favorite, true);
+  assert.equal(mine.kind, 'social'); assert.match(mine.quest, /^Gig night · My own Bataclan note$/);
+  assert.equal(s.atlas.selected, mine.id); assert.equal(field.mapPlace, mine.id);
+  assert.equal(JSON.stringify(s.campaigns.map(c => c.id)), campaigns); assert.equal(C.xp(s), xp); assert(C.done(s, placeQuest.quests[0].id));
+  assert.equal(P.startPlace(s, 'pp-bataclan'), placeQuest); C.validate(s);
+  const again = JSON.stringify(s); assert(!P.needsDedupe(s)); assert.deepEqual(P.dedupe(s), []); assert.equal(JSON.stringify(s), again); // once
+  assert.equal(P.addGuide(s).added, 0); assert.equal(s.atlas.places.length, n - 1); // Explore places adds nothing back
+  assert(P.discover(s, { query: 'bataclan' }).some(g => g.id === 'pp-bataclan')); // Browse places still lists it
+});
+test('dedupe leaves both pins when Codex’s one-campaign-per-place-and-mission rule would clash', () => {
+  const s = fresh(); P.addGuide(s); const mission = C.mapMissions.find(m => m.kind === 'music');
+  C.startMapMission(s, 'pp-bataclan', mission.id);
+  C.savePlace(s, { name: 'Bataclan', lat: 48.86305, lon: 2.37075, kind: 'music', quest: 'Gig night' }); C.startMapMission(s, s.atlas.places.at(-1).id, mission.id);
+  const before = JSON.stringify(s); assert(!P.needsDedupe(s)); assert.deepEqual(P.dedupe(s), []); assert.equal(JSON.stringify(s), before); C.validate(s);
+});
 console.log(`quest-paris-test: ${checks} groups passed`);

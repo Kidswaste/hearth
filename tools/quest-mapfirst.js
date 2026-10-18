@@ -18,18 +18,19 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
   const P = () => window.QuestParis, J = () => (typeof QuestJournal !== 'undefined' ? QuestJournal : null);
   const LAYERS = [
     { id: 'places', name: 'Places', icon: 'compass', color: '#bd8bff', help: 'The Paris guide’s places worth the trip' },
-    { id: 'shows', name: 'Shows', icon: 'spark', color: '#ff6b9d', help: 'This week’s shows from Shotgun and DICE' },
+    { id: 'shows', name: 'Shows', icon: 'spark', color: '#ff6b9d', help: 'This week’s shows from Shotgun and DICE, and the Outing desk’s events' },
     { id: 'walks', name: 'My walks', icon: 'arrow', color: '#ffd75e', help: 'Your walk on the map' },
     { id: 'visited', name: 'Visited', icon: 'check', color: '#f6ca71', help: 'Places you stamped as visited (✓) and My Paris: what you actually did' }
   ];
   // map layers (QuestJournal.addMapLayer) per chip. parisjournal64's My Paris layer IS the Visited chip: its own chip(kit)
   // isn't added to the filter row (ownsChip), and Visited reads / sets My Paris's own on / off, so the two never disagree
-  const LAYER_OF = { showsync: 'shows', questwalk: 'walks', parisjournal: 'visited' };
+  // (parisdedupe64) Codex's Outing desk venue pins (tools/outing-desk.js, layer 'outing-desk') ride the Shows chip: one row, four chips
+  const LAYER_OF = { showsync: 'shows', 'outing-desk': 'shows', questwalk: 'walks', parisjournal: 'visited' };
   const PJ = () => (typeof window.ParisJournal !== 'undefined' && window.ParisJournal?.toggle ? window.ParisJournal : null);
   const read = (k, d) => { try { return store.get(k, d); } catch { return d; } };
   const write = (k, v) => { try { store.set(k, v); } catch { /* a convenience: the default (all on) still works */ } };
   let prefs = { places: true, shows: true, walks: true, visited: true, ...(read(KEY, {}) || {}) };
-  let showsTriedAt = 0, fetching = false, seeding = false;
+  let showsTriedAt = 0, fetching = false, seeding = false, merging = false;
   const on = (id) => (id === 'visited' && PJ() ? PJ().prefs.on !== false : prefs[id] !== false);
   const ownsChip = (layerId) => layerId === 'parisjournal'; // (quest-journal.js's chip row skips it: it's Visited here)
   const self = { id: 'mapfirst64' }; // a layer with nothing to draw: re-adding it re-renders the open map
@@ -56,6 +57,9 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
   // ---------- when the map opens (quest-journal.js worldMap, first line) ----------
   function open() {
     const j = J(), s = stateOf(); if (!j?.ready?.() || !s) return;
+    // (parisdedupe64) a journal with a guide pin AND your own pin of the same real place: merged once (yours stays, keeps
+    // visits / stars / quests from both; QuestParis.dedupe). Checked on each open; a no-op when there's nothing to merge.
+    if (!merging && P()?.needsDedupe?.(s)) { merging = true; setTimeout(() => { j.paris.mutate((st) => P().dedupe(st), 'One pin per place: your pins now carry the guide’s notes.').catch((err) => console.warn('[mapfirst] dedupe', err)).finally(() => { merging = false; }); }, 0); }
     // the guide's places, once per profile (the same rule as /quest paris: missing guide pins only, yours untouched)
     if (on('places') && !seeding && !read(SEEDED, false) && P() && !P().hasGuide(s)) {
       seeding = true; write(SEEDED, true);
@@ -90,8 +94,8 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
 
   // ---------- the strip on the map ----------
   function count(id, s) {
-    if (id === 'places') return P() ? s.atlas.places.filter((p) => P().guide.some((g) => g.id === p.id)).length : 0;
-    if (id === 'shows') return typeof ShowSync !== 'undefined' && ShowSync.snap ? ShowSync.week().length : 0;
+    if (id === 'places') return P() ? s.atlas.places.filter((p) => P().guide.some((g) => g.id === p.id || g.id === p.guide)).length : 0; // (parisdedupe64) + your twins of guide places
+    if (id === 'shows') return (typeof ShowSync !== 'undefined' && ShowSync.snap ? ShowSync.week().length : 0) + (typeof OutingDesk !== 'undefined' && OutingDesk.mapSummary ? OutingDesk.mapSummary().count || 0 : 0); // (parisdedupe64) + the Outing desk's events
     if (id === 'walks') return window.QuestWalk?.shown?.() ? 1 : 0;
     return (PJ() ? PJ().moments().length : 0) || s.atlas.places.filter((p) => p.visitedAt).length; // My Paris's moments when it's in, else your visit stamps
   }

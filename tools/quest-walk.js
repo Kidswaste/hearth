@@ -64,13 +64,13 @@ const QuestWalk = window.QuestWalk = (() => {
     lines: () => { const w = shown(); return w ? [{ id: w.saved ? w.campaign.id : `preview-${preview.seq}`, color: COLOR, fit: true, points: [{ id: 'walk-start', lat: w.rt.start.lat, lon: w.rt.start.lon }, ...w.rt.stops.map((p, i) => ({ id: p.id, lat: p.lat, lon: p.lon, label: i + 1 })), { id: 'walk-end', lat: w.rt.end.lat, lon: w.rt.end.lon }] }] : []; },
     pins: () => {
       const w = shown(); if (!w) return [];
-      const on = new Set((ui().state()?.atlas?.places || []).map((p) => p.id));
+      const on = new Set((ui().state()?.atlas?.places || []).flatMap((p) => [p.id, p.guide].filter(Boolean))); // (parisdedupe64) a twin of yours covers its guide stop
       const out = [{ id: 'walk-start', name: W.metroWords(w.rt.start), lat: w.rt.start.lat, lon: w.rt.start.lon, kind: 'travel', color: COLOR }];
       if (w.rt.end.kind !== 'show') out.push({ id: 'walk-end', name: W.metroWords(w.rt.end), lat: w.rt.end.lat, lon: w.rt.end.lon, kind: 'travel', color: COLOR });
       for (const p of w.rt.stops) if (!on.has(p.id)) out.push({ id: p.id, ref: 'walk-stop', name: p.name, lat: p.lat, lon: p.lon, kind: P.byId(p.id)?.kind || 'reset', color: COLOR });
       return out;
     },
-    owns: (id) => String(id).startsWith('walk-') || Boolean(shown()?.rt.stops.some((p) => p.id === id) && !ui().state()?.atlas?.places.some((x) => x.id === id)), // the Métro ends, and stops not on your map
+    owns: (id) => String(id).startsWith('walk-') || Boolean(shown()?.rt.stops.some((p) => p.id === id) && !ui().state()?.atlas?.places.some((x) => x.id === id || x.guide === id)), // the Métro ends, and stops not on your map
     select: () => dialog(),
   };
   const redraw = () => { try { J()?.addMapLayer?.(layer); } catch { /* the map isn't open */ } };
