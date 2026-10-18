@@ -325,3 +325,33 @@ the hub); the owner: `/playtest`.
   the picture attached, never sent), `.command(text)` (`/playtest notes | note <n> | fix <n> | clear | key`).
 - A game can help: an HTML build that defines `window.hearthState()` (plain data) and `window.hearthRestore(state)` gets
   notes you can jump back to; a Lab layer's `saveState()` / `restoreState()` already do it.
+
+## Hitch map (round 63, hitchmap63: hitchmap.js + hitchmap-core.js in the "gamemode" group, hitchmapmain.js, tools/hitchmap-page.js)
+- **Off by default; off = nothing in the game window.** Hub store `hitchmap.on` (`/playtest hitchmap on | off`, ▶ Play's
+  right-click "Record the hitch map", Ctrl/⌘+K). `game:play` takes `hitch: { on }`; only then gamemodemain serves
+  `/__hitchmap-page.js?hz=…` and puts its tag right after the budget's, the window's `--hearth-game` JSON carries `hitch: true`
+  (the hint says "● recording the hitch map"; game-preload.js listens to the page's `hearth-hitch` event only then).
+- **The recorder** (`window.__hearthHitch`): one frame callback (the real `requestAnimationFrame`, captured at load); per
+  frame `[t (ms since the recording started), dt, player x y z, camera x y z]` into one `Float32Array` ring (2^17 frames,
+  made once, the oldest overwritten), records only while `__gameReady.phase === 'playing'` and the page is visible. The
+  player: `window.game | __game | gameState | GAME` (`.player` Object3D / `.player.position` / `.position` / `.pos` / x y z),
+  `window.player`, an object named "player" in the scene (≤ 5 looks), else the camera; the camera: `__scenes[k].camera`,
+  `window.camera`, `__gameStream.renderers()[0].camera` — looked up once a second, positions read from `matrixWorld`. A spike
+  (≥ 4× the usual frame, ≥ 3 refreshes, ≥ 20 ms; ≤ 4 pictures a session, 2 s apart, after the first two only a new worst,
+  none in the first 1.5 s) → `hearth-hitch` event → `game:hitch-spike` → main: `playnotesmain.grab(wc)` (capturePage + READ).
+  `budget = { spent, pause, off }` (playbudget helper id `'hitch'`: first in ORDER, never remembered per game), `line()` →
+  "● Hitch map 2:31" (the F chip shows it first), `pub()`, `spike()`, `dump()` → `{ v, cols: 8, n, total, hz, t0, cost, off,
+  camKey, posFrom, shots: [[t, dt]], data: base64 }`, `stop(by)`. Turned on mid-play: the script goes in through
+  `executeJavaScript` (`window.__hearthHitchOpts = { hz }` first) and `game:hitch-on` tells the preload.
+- **After the session** (the window's close waits once ≤ 1.2 s; Ctrl/⌘+P: the hub asks `collect` on `rested`; `/playtest
+  hitchmap off`): `dump()` + GamePerf's `__gamePerf.slows()` (its kept slow frames with `at`, when the probe is attached) →
+  `HitchMapCore.build` → `data/game-cache/<game>/hitch/h<session>.json` (+ `h<session>-<k>.jpg`; 20 maps a game, the oldest
+  to the Trash) `{ v, game, session, secs, frames, hz, refresh, typical, hitch, hitches, moved, posFrom, camKey, cost,
+  stopped, grid: { w, h, axes, bounds, n, mean, max, hitches }, timeline: { k, ms, mean, max }, radius, spots: [{ i, x, y, z,
+  cam, u, v, worst, t, n, lost, typical, causes?, fn?, load?, shot?, times }], shots: [{ id, t, dt, file, pos, cams, state }] }`.
+  Event to the hub `game:hitch-ev { type: 'built', source, why, id, hitches, top, line, cost }`.
+- Hub: `window.hub.game.hitch({ op: 'state' | 'on' | 'off' | 'collect' | 'list' | 'get' (id) | 'shot' (file, width | path) |
+  'clear', source? })`; `HitchMap.open({ source, id })` (the map), `.jump(source, map, i)` (`HitchMapCore.jumpOf`: the spot's
+  picture's state + cameras through `PlayNotes.restore`, else its camera with `look` at the player), `.fix(source, map, i)`
+  (`PlayNotes.toDirector`: drafted with the picture, never sent), `.command(text)` (`/playtest hitchmap [on | off | show |
+  jump <n> | fix <n> | clear | status]`).

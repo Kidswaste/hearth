@@ -69,13 +69,18 @@ const PlayNotes = (() => {
   // ---------- jump back to a note ----------
   const camsCode = (cams) => `const cams = ${JSON.stringify(cams || {})}; let c = 0; const sc = globalThis.__scenes || {};
     for (const k of Object.keys(cams)) { const v = sc[k] || (k === 'camera' && globalThis.camera ? { camera: globalThis.camera } : null); const cam = v && v.camera; const s = cams[k];
-      if (!cam || !cam.isCamera) continue; cam.position.fromArray(s.p); if (s.q) cam.quaternion.fromArray(s.q); if (s.z && cam.zoom !== s.z) { cam.zoom = s.z; cam.updateProjectionMatrix(); } cam.updateMatrixWorld(true); c += 1; }`;
+      if (!cam || !cam.isCamera) continue; cam.position.fromArray(s.p); if (s.q) cam.quaternion.fromArray(s.q); else if (s.look) cam.lookAt(s.look[0], s.look[1], s.look[2]); if (s.z && cam.zoom !== s.z) { cam.zoom = s.z; cam.updateProjectionMatrix(); } cam.updateMatrixWorld(true); c += 1; }`;
   async function full(source, id) { const r = await N({ op: 'get', source, id }); if (!r?.ok) throw new Error('That note is gone.'); return r; }
   // a Lab scene: open it in the Lab, its layers' restoreState() with what they saved then, their cameras where they were
   async function jump(source, id) {
     const { note } = await full(source, id);
     if (!note.state && !note.cams) return { ok: false, why: note.stateBig ? 'its saved state was too big to keep' : 'the game saved nothing then (no saveState() / hearthState())' };
     S.stats.jumps += 1;
+    return restore(source, note);
+  }
+  // (round 63, hitchmap63) a moment put back from what was saved then ({ state, cams }: a note, a hitch map's spot; a
+  // camera may carry `look` [x, y, z] instead of its rotation): shared by the notes and the hitch map
+  async function restore(source, note) {
     if (source.kind === 'lab') {
       if (H.activeId !== 'tool:three') activate('tool:three');
       for (let i = 0; i < 100 && !(Lab()?.scenes && Lab()?.director); i += 1) await sleep(100);
@@ -128,6 +133,12 @@ const PlayNotes = (() => {
     const text = C.draft(note, { title: game?.title || source.title });
     if (source.kind === 'lab') await jump(source, id).catch(() => null); // (the director's preview shows that moment)
     const shot = note.shot ? await N({ op: 'shot', source, id, path: true }).catch(() => null) : null;
+    return toDirector(source, text, shot?.ok ? shot.path : null);
+  }
+  // (round 63, hitchmap63) a task in the docked Three Director's box with a picture attached, never sent (shared with
+  // the hitch map's "Fix this")
+  async function toDirector(source, text, picture) {
+    const shot = picture ? { ok: true, path: picture } : null;
     const dir = await director().catch(() => null);
     S.stats.drafts += 1;
     if (dir) {
@@ -137,7 +148,7 @@ const PlayNotes = (() => {
       for (let i = 0; i < 14 && !there(); i += 1) { Native.setDraft?.(dir.id, text); if (!there()) await sleep(150); }
       if (there()) {
         if (shot?.ok && shot.path) await Native.attachPaths?.(dir.id, [shot.path]).catch(() => {});
-        toast(`In ${dir.name}'s box with the picture, not sent: press Enter when it reads right`, { timeout: 4500 });
+        toast(`In ${dir.name}'s box${shot?.ok ? ' with the picture' : ''}, not sent: press Enter when it reads right`, { timeout: 4500 });
         S.lastDraft = text;
         return { drafted: true, text, picture: Boolean(shot?.ok) };
       }
@@ -268,5 +279,5 @@ const PlayNotes = (() => {
   try { Keys.add({ area: '▶ Play', keys: C.DEFAULT_KEY, what: 'In the game: a playtest note (picture, time, state, fps); Shift+F8 with words · /playtest key changes it' }); } catch { /* no keys sheet */ }
   try { AppUI.addAction?.('✎ Playtest log', () => open({ session: S.session }).catch(fail)); } catch { /* no palette */ }
 
-  return { prefs, setKey, open, jump, fix, command, menuItems, take: (box = false) => N({ op: 'take', box }), state: () => ({ session: S.session, n: S.n, told: S.told, source: S.source, key: keyText(), view: Boolean(S.view), stats: { ...S.stats }, last: S.last, lastDraft: S.lastDraft || null }) };
+  return { prefs, setKey, open, jump, restore, fix, toDirector, command, menuItems, take: (box = false) => N({ op: 'take', box }), state: () => ({ session: S.session, n: S.n, told: S.told, source: S.source, key: keyText(), view: Boolean(S.view), stats: { ...S.stats }, last: S.last, lastDraft: S.lastDraft || null }) };
 })();
