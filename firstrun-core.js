@@ -157,6 +157,8 @@ const FirstRunCore = (() => {
       return { ...t, state: 'fix', text: 'Git isn\'t installed, so Hearth can\'t update itself. Install it from the official page, then check again.', action: { kind: 'link', url: LINKS.git, label: 'Get Git' } };
     }
     if (u.reason === 'repo') return { ...t, state: 'note', text: 'This copy isn\'t a git checkout, so it doesn\'t update itself.' };
+    // (round 60, winfresh60) GitHub said no (401 / 403 / not found): Hearth's code is private, never "offline"
+    if (u.reason === 'auth' || u.why === 'auth') return { ...t, state: 'fix', text: 'Hearth\'s code is private on GitHub and this computer isn\'t signed in yet, so it can\'t update. Sign in once (GitHub\'s own window); Hearth never sees your password.', action: { kind: 'update', label: 'Sign in to GitHub' } };
     return { ...t, state: 'optional', text: 'Couldn\'t reach GitHub just now (offline?). Hearth looks again by itself.', action: { kind: 'update', label: 'Look again' } };
   }
 

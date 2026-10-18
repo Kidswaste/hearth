@@ -21,9 +21,14 @@ const WIN_MAX = 259; // MAX_PATH 260 with the closing NUL: 259 characters is the
 // never part of an update, never stashed, never reset: the owner's data and the local Electron
 const OWN = /^(data|electron|electron-mac)(\/|$)/;
 
+// (round 60, winfresh60) GitHub refusing to show the code (Hearth's repo is private: not signed in, or an account without
+// access) is checked before the file / network rules: an SSH "Permission denied (publickey)" read as a folder permission
+// problem, and git's "unable to access … returned error: 403" must never read as "no network"
+const AUTH = /Authentication failed|could not read (Username|Password)|terminal prompts disabled|Cannot prompt because user interactivity has been disabled|Invalid username or password|Repository not found|repository '[^']*' not found|HTTP Basic: Access denied|returned error: 40[134]\b|Permission denied \(publickey|Permission to \S+ denied/i;
 const RULES = [
   ['clt', /xcrun: error: invalid active developer path|no developer tools were found|requires the command line developer tools/i],
   ['owner', /detected dubious ownership|safe\.directory/i],
+  ['auth', AUTH],
   ['lock', /index\.lock': File exists|Unable to create '[^']*\.lock'|Another git process seems to be running/i],
   ['longpath', /Filename too long|File name too long|path too long/i],
   ['untracked', /untracked working tree files would be (overwritten|removed)/i],
@@ -34,7 +39,6 @@ const RULES = [
   ['perm', /Permission denied|insufficient permission|Operation not permitted|Read-only file system|EACCES|EPERM|unable to (create|write|open)/i],
   ['proxy', /proxy|Received HTTP code 407|CONNECT tunnel failed|Proxy CONNECT aborted/i],
   ['ssl', /SSL certificate problem|unable to get local issuer certificate|self[- ]signed certificate|server certificate verification failed|schannel/i],
-  ['auth', /Authentication failed|could not read Username|terminal prompts disabled|Repository not found|HTTP Basic: Access denied|returned error: 403/i],
   ['network', /Could not resolve host|Failed to connect|Connection timed out|Connection refused|Network is unreachable|Operation timed out|timed out|unable to access|early EOF|RPC failed|Couldn't connect|does not appear to be a git repository|Could not read from remote/i],
 ];
 function classify(text) {
@@ -50,20 +54,35 @@ function gitLine(text) {
 }
 
 const q = (p, plat) => (plat === 'win32' ? `"${p}"` : `"${String(p).replace(/(["\\$`])/g, '\\$1')}"`);
-function installGit(plat) {
+// (round 60, winfresh60) Windows: Git for Windows comes with Git Credential Manager, so right after the install the same
+// PowerShell window asks GitHub once (its own sign-in window: Hearth's code is private) and the next update just works.
+// A Windows without winget (an older Windows 10) gets Git's download page instead.
+function installGit(plat, dir = '') {
   if (plat === 'darwin') return { id: 'install-git', label: 'Install Git', command: 'xcode-select --install', note: 'Apple\'s own installer window opens (Git comes with Apple\'s command line tools).' };
-  if (plat === 'win32') return { id: 'install-git', label: 'Install Git', command: 'winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements', note: 'It runs in a PowerShell window you can watch; Windows may ask to allow the installer.' };
+  if (plat === 'win32') {
+    return { id: 'install-git', label: 'Install Git', note: 'It runs in a PowerShell window you can watch; Windows may ask to allow the installer, then GitHub asks you to sign in once.',
+      command: ['if (Get-Command winget -ErrorAction SilentlyContinue) { winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements } else { Start-Process \'https://git-scm.com/download/win\' }',
+        ...(dir ? [`$git = Join-Path $env:ProgramFiles 'Git\\cmd\\git.exe'; if (Test-Path $git) { & $git -C ${q(dir, plat)} fetch origin ${BRANCH} }   # GitHub's sign-in window (once)`] : [])].join('\n') };
+  }
   return { id: 'install-git', label: 'Install Git', command: 'sudo apt-get install -y git || sudo dnf install -y git', password: true, note: 'It runs in a terminal window; your password is typed there, never in Hearth.' };
 }
 
-// ctx: { platform, dir, detail, branch, ahead, behind, files, stash, side }
+// (round 60, winfresh60) signing in to GitHub, in a window Hearth only opens: the same fetch Hearth does, run where Git may
+// ask. Windows: Git Credential Manager (part of Git for Windows) shows GitHub's own sign-in window and remembers it. A Mac:
+// Git asks in Terminal for the GitHub user name and a token (github.com › Settings › Developer settings › Personal access
+// tokens), kept in the keychain. gitBin: the git Hearth found (off PATH when installed after Hearth started)
+function signIn(plat, dir = '', gitBin = 'git') {
+  const g = !gitBin || gitBin === 'git' ? 'git' : plat === 'win32' ? `& ${q(gitBin, plat)}` : q(gitBin, plat);
+  return { id: 'sign-in', label: 'Sign in to GitHub', command: `${g} -C ${q(dir || '.', plat)} fetch origin ${BRANCH}` };
+}
+// ctx: { platform, dir, detail, branch, ahead, behind, files, stash, side, git }
 function explain(reason, ctx = {}) {
   const plat = ctx.platform || process.platform;
   const dir = ctx.dir || '';
   const said = ctx.detail ? ` (git said: ${gitLine(ctx.detail)})` : '';
   const retry = { id: 'retry', label: 'Try again' };
   const M = {
-    git: () => ({ message: 'Git isn\'t installed on this computer, so Hearth can\'t update itself. It is a free tool from the people who make Hearth\'s update system; installing it takes a minute.', fix: installGit(plat) }),
+    git: () => ({ message: `Git isn't installed on this computer, so Hearth can't update itself (Hearth updates through Git, a free tool). Installing it takes a minute. Hearth's code is private on GitHub, so ${plat === 'win32' ? 'GitHub then asks you to sign in once, in its own window' : 'the first update afterwards asks you to sign in to GitHub once'}.`, fix: installGit(plat, dir) }),
     clt: () => ({ message: 'Git on this Mac needs Apple\'s command line tools, which aren\'t installed yet.', fix: installGit('darwin') }),
     repo: () => ({ message: 'This copy of Hearth isn\'t connected to Hearth on GitHub (it came from a zip or a copied folder), so it can\'t pull updates. Connecting keeps every file here as it is, your data included; the next update then brings in what\'s new.', fix: { id: 'connect', label: 'Connect to Hearth on GitHub', command: `git init\ngit remote add origin ${ORIGIN_URL}\ngit fetch origin ${BRANCH}\ngit reset origin/${BRANCH}   (files on disk stay as they are)\ngit branch -M ${BRANCH}` } }),
     'repo-other': () => ({ message: `Hearth's folder sits inside another git project (${ctx.top || 'a parent folder'}), not in its own checkout, so an update would pull the wrong project. Connecting gives Hearth's folder its own link to GitHub; the other project isn't touched.`, fix: { id: 'connect', label: 'Connect this folder to Hearth on GitHub', command: `git init\ngit remote add origin ${ORIGIN_URL}\ngit fetch origin ${BRANCH}\ngit reset origin/${BRANCH}   (files on disk stay as they are)` } }),
@@ -78,7 +97,9 @@ function explain(reason, ctx = {}) {
     ssl: () => (plat === 'win32'
       ? { message: `GitHub's certificate couldn't be checked${said}: a work network or an antivirus is inspecting secure connections. Git can use Windows' own certificate store, which already trusts it.`, fix: { id: 'ssl-windows', label: 'Use Windows\' certificates', command: 'git config --global http.sslBackend schannel' } }
       : { message: `GitHub's certificate couldn't be checked${said}: a work network or an antivirus is inspecting secure connections. Try another network, then try again.`, fix: retry }),
-    auth: () => ({ message: `GitHub asked for a sign-in to read Hearth's code${said}. Hearth never types passwords: if the project became private, sign in to GitHub in a terminal once (\`gh auth login\`), then try again.`, fix: retry }),
+    // (round 60, winfresh60) Hearth's repository is private: a 401 / 403 / "Repository not found" means this computer
+    // isn't signed in to GitHub (or the account it uses has no access), never "no network"
+    auth: () => ({ message: `GitHub didn't let this computer read Hearth's code${said}. Hearth's code is private, so this computer has to be signed in to GitHub with the account that has access. ${plat === 'win32' ? 'Sign in once: GitHub\'s own sign-in window opens (Git Credential Manager, part of Git for Windows) and remembers you.' : plat === 'darwin' ? 'Sign in once in Terminal: Git asks for your GitHub user name and a token (github.com › Settings › Developer settings › Personal access tokens), and the keychain remembers it.' : 'Sign in once in a terminal: Git asks for your GitHub user name and a token.'} Hearth never sees your password; then try again.`, fix: signIn(plat, dir, ctx.git) }),
     locked: () => (plat === 'win32'
       ? { message: 'Windows is holding some of Hearth\'s files open while it runs, so they can\'t be replaced right now. Nothing was changed. Hearth can finish the update as it restarts, when those files are free (its helper processes close too).', fix: { id: 'restart-swap', label: 'Restart and finish the update' } }
       : { message: `Some of Hearth's files are busy and couldn't be replaced${said}. Nothing was changed. Restarting Hearth frees them and finishes the update.`, fix: { id: 'restart-swap', label: 'Restart and finish the update' } }),
@@ -447,4 +468,4 @@ function swapSync({ dir, gitBin = 'git', pending, log = () => {} }) {
 // a file the main process loads (a restart, not a reload): same rule as updatermain's needsRestart without index.html
 const mainSide = (f) => /(^|\/)(main|preload|[\w-]*main|engines|store|appshell|winmac|storework|sync-engine|sync-merge|chromeguard|updatesafe-core)\.js$|^mcp\/|^package\.json$/.test(f);
 
-module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, tooLong, stashName, OWN_EDITS, bringConfig, OWNER_FILES, restoreSteps, runSteps, runStepsAsync, mergeConfigFile, ownNote, stamp, branchStamp, gitDirOf, stateDir, readState, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };
+module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, signIn, tooLong, stashName, OWN_EDITS, bringConfig, OWNER_FILES, restoreSteps, runSteps, runStepsAsync, mergeConfigFile, ownNote, stamp, branchStamp, gitDirOf, stateDir, readState, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };

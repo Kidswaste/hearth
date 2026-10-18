@@ -1,7 +1,7 @@
 // (round 61, showsync61) This week's Shotgun / DICE shows in the real app, from the saved sample responses in
 // dev/fixtures/showsync (shows:test swaps the main process's fetch for them: no network). Checks /shows (summary,
 // week, venue, quest), venue pins WITH their logos on Sidequest Studio's Paris map, the compact list behind the map's
-// ♪ icon, a show → a quest in one click (in Codex's quest store, so the journal and its tracker show it), and a
+// ✦ icon, a show → a quest in one click (in Codex's quest store, so the journal and its tracker show it), and a
 // breaking page keeping the last good list with one plain line.
 // OSM tiles stay offline here, as in the quest-map checks.
 const atlasImageSource = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
@@ -55,7 +55,7 @@ document.querySelector('.qj-atlas-pin[data-place^="show-venue-"]').click();
 const vd = await until(() => document.querySelector('dialog.qj-dialog[open] .ss-row'), 'venue dialog');
 if (!vd) fail('venue dialog'); document.querySelector('dialog.qj-dialog[open]').close(); await wait(100);
 
-// ---------- the compact list behind the map's ♪ icon ----------
+// ---------- the compact list behind the map's ✦ icon ----------
 const icon = await until(() => document.querySelector('[data-focus="map-shows"]'), 'shows icon');
 const iconsInRow = icon.closest('.qj-actions').querySelectorAll('button').length; out.headIcons = iconsInRow;
 icon.click();
@@ -67,6 +67,7 @@ await smoke({ shot: (window.JOURNEY_SHOTS || window.SMOKE_SAVES) + '/showsync61-
 [...rows].find((r) => /Arlo Parks/.test(r.textContent)).click();
 const make = await until(() => [...document.querySelectorAll('dialog.qj-dialog[open] button')].find((b) => /Make it a quest/.test(b.textContent)), 'make quest');
 const ticketBtn = [...document.querySelectorAll('dialog.qj-dialog[open] button')].some((b) => /Tickets on DICE/.test(b.textContent)); if (!ticketBtn) fail('ticket link');
+if (!document.querySelector('dialog.qj-dialog[open]') || ![...document.querySelectorAll('dialog.qj-dialog[open] button')].some((b) => /Keep in my lineup/.test(b.textContent))) fail('keep in my lineup (Codex outing desk)');
 make.click();
 await until(() => QuestJournal.snapshot()?.campaigns.some((c) => c.id.startsWith('c-show-') && /Arlo Parks/.test(c.title)), 'quest saved');
 const st = QuestJournal.snapshot(); const camp = st.campaigns.find((c) => c.id.startsWith('c-show-') && /Arlo Parks/.test(c.title));

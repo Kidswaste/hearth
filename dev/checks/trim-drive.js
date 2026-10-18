@@ -2,6 +2,7 @@
 // loaded, every rail tool opened, the palette and the "/" menu, right-click menus on the things you can point at, a
 // streamed reply, then every chat command with no arguments (as qa-sweep, destructive ones skipped) from a chat and
 // the Lab / board commands again from their own tool.
+// (round 60) commands that open ▶ Play / ▣ Present are checked to open and answer, then closed (see settle below).
 //   node dev/smoke.js --fake-engines --check-timeout 900000 --coverage /tmp/cov.json --script dev/checks/trim-drive.js
 //   node dev/coverage-report.js /tmp/cov.json
 store.set('commands.hidden', false); // (round 26) these drive the "/" menu, hidden by default
@@ -49,11 +50,37 @@ v.input.value = ''; v.input.dispatchEvent(new Event('input'));
 const SKIP = /^(rec|record|tour|tours|capture-folder|window-size|delete|del|restore|restore-backup|import|import-chats|backup|trash|reset|reload|relaunch|quit|unalias|forget|wipe|purge|empty|uninstall|clear|clear-all|new-window|update|sleep|restart|sync)$/;
 const SKIP_DESC = /\b(delete|remove|forget|wipe|erase|for good|restore|import|reset|quit|uninstall|reload|restart)\b/i;
 const res = { ran: 0, errors: [] };
+// (round 60, trimdrive60) a command that opens ▶ Play's window or ▣ Present is checked to open and answer, then closed
+// before the next one: left running, a Present bake (≈ 0.4 fps here) and Play windows starved the rest of the drive
+// past its time limit. ▶ Play builds its page with the local three.js copy run-checks hands it (HEARTH_THREE_DIR).
+const heavy = { play: [], present: [], fails: [] };
+const settle = async (name) => {
+  const playing = () => typeof GameMode !== 'undefined' && GameMode.playing;
+  const presenting = () => typeof PresentReady !== 'undefined' && PresentReady.active;
+  if (/^(game|present|playtest)$/.test(name)) await until(() => playing() || presenting(), 30000); // (it builds / gets ready first)
+  if (playing()) {
+    const live = GameMode.state().live; // (a scene the Lab must draw plays through its Stage window: no game window to ask)
+    const st = live ? { playing: true } : await window.hub.game.state().catch((err) => ({ error: err.message }));
+    const ans = live ? { value: 2 } : await window.hub.game.eval('1 + 1').catch((err) => ({ error: err.message }));
+    heavy.play.push(`/${name}${live ? ' (live)' : ''}`);
+    if (!st?.playing || ans?.value !== 2) heavy.fails.push(`/${name}: ▶ Play opened but didn't answer (${JSON.stringify(st?.error || ans?.error || ans).slice(0, 80)})`);
+    GameMode.leave();
+    if (!await until(() => !playing(), 10000)) heavy.fails.push(`/${name}: ▶ Play didn't close`);
+  }
+  if (presenting()) {
+    const st = PresentReady.state();
+    heavy.present.push(`/${name}`);
+    if (!st?.phase) heavy.fails.push(`/${name}: ▣ Present started but didn't answer`);
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+    if (!await until(() => !presenting(), 5000)) { PresentReady.stop(); heavy.fails.push(`/${name}: ▣ Present didn't leave with full screen`); }
+  }
+};
 const sweep = async (list, where) => {
   for (const d of list) {
     if (SKIP.test(d.name) || SKIP_DESC.test(d.desc)) continue;
     activate(where);
     try { await Promise.race([Commands.tryRun(`/${d.name}`, claude.id, v.input), wait(3000)]); } catch (err) { res.errors.push(`/${d.name}: ${err.message}`.slice(0, 160)); }
+    await settle(d.name);
     await wait(60);
     res.ran += 1;
     closeAll();
@@ -64,5 +91,10 @@ await sweep(Commands.list(), claude.id);
 await sweep(Commands.list().filter((d) => /Three|Lab|Nodes|Sequence|Frames|Models|Motion|Music/.test(d.area)), 'tool:three');
 await sweep(Commands.list().filter((d) => /Board/.test(d.area)), 'tool:board');
 out.sweep = res;
+out.heavy = { play: heavy.play, present: heavy.present };
+// ▶ Play and ▣ Present must have been reached (the Lab's scene is open) and each answered and closed
+if (!heavy.play.length) heavy.fails.push('no command opened ▶ Play');
+if (!heavy.present.length) heavy.fails.push('no command started ▣ Present');
+out.failures = heavy.fails;
 out.misses = Lazy.misses?.().length;
 return JSON.stringify(out, null, 1);

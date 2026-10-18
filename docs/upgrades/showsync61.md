@@ -6,7 +6,7 @@ shows in Paris announced weekly on Shotgun and DICE and uses Sidequest Studio (C
 **What it does.** Once a day at most (or when asked), Hearth reads this week's Paris shows from Shotgun and DICE on
 the owner's own computer, merges the two lists (the same night at the same venue is one show with both ticket links),
 puts every venue on Sidequest Studio's Paris map as a pin wearing the venue's own picture, lists the week behind one
-♪ icon in the map's existing icon row, and turns any show into a quest in one click: "Go see Arlo Parks at La Cigale
+✦ icon in the map's existing icon row, and turns any show into a quest in one click: "Go see Arlo Parks at La Cigale
 on Thursday" → Get your ticket → Go → Bring back one moment. The quest lives in Codex's quest store, so the
 journal (and questhud61's tracker) show it with no extra wiring. Nothing runs while idle: no timer; a refresh happens
 only when the Paris map or `/shows` is opened and the list is a day old.
@@ -32,7 +32,7 @@ Map
    locally at 96 px); the owner's own places stay as they were.
 9. Coordinates: the platform's own first; otherwise looked up once per address (OpenStreetMap Nominatim) and kept.
 10. A venue pin opens that venue's coming nights with their logo, address, times.
-11. "Shows this week" (♪) joins the map's existing icon row: the compact week list, grouped by day, logo + time + venue.
+11. "Shows this week" (✦) joins the map's existing icon row: the compact week list, grouped by day, logo + time + venue.
 12. A show card: lineup, price / sold out, "Tickets on Shotgun / DICE" (opens the browser), "Make it a quest".
 
 Quests
@@ -41,6 +41,8 @@ Quests
 14. The same show never makes two quests (asking again resumes it).
 15. Works with Sidequest Studio closed (same store, same validation as the journal's own saves; a journal that can't
     be read is never overwritten) and fires `hearth:quests` so trackers can refresh.
+16. "Keep in my lineup" on a show card hands it to Codex's Outing desk (its lineup, budget, invitation, .ics) through
+    its own `QuestJournal.keepOuting(event)` contract.
 
 ## How it fetches (main process, showsyncmain.js)
 - robots.txt read once a day per site and obeyed (Hearth's agent or `*`; a 5xx / unreachable robots.txt = don't
@@ -66,7 +68,7 @@ Quests
   cache never saved over, follow / unfollow / from, and the show campaign accepted by `QuestCore.validate`.
 - `dev/checks/showsync61.js` (app, fixtures through the `shows:test` IPC, no network): `/shows`, `/shows week`,
   `/shows venue`, logos cached, geocode, venue pins WITH logos on the Paris map (the owner's places still there),
-  the venue dialog, the ♪ list (4 rows, day labels), show → quest by click (journal shows it, active) and by chat,
+  the venue dialog, the ✦ list (4 rows, day labels), show → quest by click (journal shows it, active) and by chat,
   no duplicate quest, a changed page → last good list + one line, nothing fetched while idle, completions.
 - Group: `sh dev/run-checks.sh showsync61` (showsync61, unit:showsync-test, quest-world, quest-map-tiles,
   quest-field, lazy, unit:boot-test, unit:datasafe-scan, unit:winmac-test).
@@ -85,6 +87,10 @@ Touches of Codex files, all additive:
   that `validate` ignores (kept for trackers). They need proof + review like other quests.
 - `lazy-data.js`: showsync-core.js / showsync.js / showsync.css ride in the `questjournal` group (after
   quest-journal.js), so the layer is registered before the map first renders.
+- Your Paris outing desk (merged from main): a show card's "Keep in my lineup" calls `QuestJournal.keepOuting(event)`
+  with your normalized shape (id `showsync-<key>`, kind 'music', start/end ISO with Z, free false, price text, lineup
+  in note, lat/lon when inside Paris, source "Shotgun + DICE"). The show layer's icon is the `spark` glyph so it isn't
+  confused with the desk's amber music icon in the same row.
 Other shared files: main.js (one register line), preload.js (`hub.shows`), dev/run-checks.js (unit + group).
 
 ## Sources (what each platform allows, and what Hearth uses)
@@ -112,7 +118,7 @@ Other shared files: main.js (one register line), preload.js (`hub.shows`), dev/r
 ## For the patch notes
 - New: this week's Paris shows from Shotgun and DICE, right on Sidequest Studio's Paris map. Each venue is a pin with
   its own logo; click it to see its nights.
-- The ♪ icon next to the map's other icons opens the week's list (day by day, time, venue). Click a show for the
+- The ✦ (spark) icon next to the map's other icons opens the week's list (day by day, time, venue). Click a show for the
   lineup, price and ticket links.
 - "Make it a quest" turns a show into "Go see X at Y on Friday": get your ticket → go → bring back one moment. It shows
   up in your quest journal right away.

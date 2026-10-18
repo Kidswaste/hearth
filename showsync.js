@@ -1,5 +1,5 @@
 // (round 61, showsync61) This week's shows in Paris from Shotgun and DICE, in the window: venue pins with their logos on
-// Sidequest Studio's Paris map (a map layer: QuestJournal.addMapLayer), a compact list behind one ♪ icon in the map's
+// Sidequest Studio's Paris map (a map layer: QuestJournal.addMapLayer), a compact list behind one ✦ icon in the map's
 // own icon row, a show → a quest in one click ("Go see X at Y on Friday": ticket → go → proof) saved in Codex's quest
 // store, and /shows in any chat. The fetching happens in the main process (showsyncmain.js); nothing runs while idle:
 // the list refreshes only when you open the map or ask (/shows), at most once a day per page. Lazy group 'showsync'
@@ -66,9 +66,18 @@ const ShowSync = (() => {
       if (s.price || s.soldOut) body.append(kit.p(s.soldOut ? 'Sold out on every listing.' : `From ${s.price.from} ${s.price.currency === 'EUR' ? '€' : s.price.currency}`));
       const acts = kit.E('div', { class: 'qj-actions' });
       acts.append(kit.button('Make it a quest', async () => { const c = await makeQuest(s); d.close(); kit.questDetail?.(c.quests[0].id); }, 'qj-primary'));
+      // Codex's outing desk (tools/outing-desk.js): keep this show in "my lineup" (budget, friend, .ics) — its own contract
+      if (QJ()?.keepOuting) acts.append(kit.button('Keep in my lineup', async () => { d.close(); await QJ().keepOuting(outingEvent(s)); }, 'qj-quiet'));
       for (const t of s.tickets.filter((t) => t.url)) acts.append(kit.button(`Tickets on ${C.PLATFORMS[t.platform]?.name || t.platform}`, () => window.hub.openExternal(t.url), 'qj-quiet'));
       body.append(acts);
     }, 'SHOW / THIS WEEK');
+  }
+  // a show in the outing desk's normalized shape (docs/upgrades/paris-outing-desk.md › Claude integration contract)
+  function outingEvent(s) {
+    const lat = Number.isFinite(s.venue.lat) ? s.venue.lat : null, lon = Number.isFinite(s.venue.lon) ? s.venue.lon : null;
+    return { id: `showsync-${s.key}`, title: s.title.slice(0, 180), url: s.tickets.find((t) => t.url)?.url || '', venue: s.venue.name || '', address: s.venue.address || '', kind: 'music',
+      start: new Date(s.start).toISOString(), ...(s.end ? { end: new Date(s.end).toISOString() } : {}), free: false, price: s.soldOut ? 'Sold out' : s.price ? `From ${s.price.from} ${s.price.currency === 'EUR' ? '€' : s.price.currency}` : '',
+      note: s.lineup.length ? `Lineup: ${s.lineup.join(', ')}`.slice(0, 600) : '', ...(lat != null ? { lat, lon } : {}), source: C.platformsText(s), updatedAt: new Date().toISOString() };
   }
   function venueDetail(kit, v) {
     kit.dialog(v.name || 'Venue', (body) => {
@@ -118,7 +127,7 @@ const ShowSync = (() => {
   }
   const layer = {
     id: 'showsync',
-    icon: (kit) => { ensure().catch(() => {}); return kit.mapIcon('music', `Shows this week${snap?.enabled ? ` · ${week().length}` : ''}`, () => listDialog(kit), '#ff6b9d', undefined, 'map-shows'); },
+    icon: (kit) => { ensure().catch(() => {}); return kit.mapIcon('spark', `Shows this week (Shotgun + DICE)${snap?.enabled ? ` · ${week().length}` : ''}`, () => listDialog(kit), '#ff6b9d', undefined, 'map-shows'); },
     pins: () => (snap ? C.pins(C.venues(week())) : []),
     owns: (id) => typeof id === 'string' && id.startsWith('show-venue-'),
     select: (id, kit) => { const v = C.venues(upcoming()).find((x) => x.id === id); if (v) venueDetail(kit, v); }

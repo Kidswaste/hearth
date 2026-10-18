@@ -41,7 +41,8 @@
       shield:'m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6Zm-5 9 3 3 7-7',
       spark:'m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z',
       notebook:'M5 2h16v20H5ZM2 6h6M2 12h6M2 18h6M11 7h6M11 12h6',
-      close:'M5 5l14 14M19 5 5 19'
+      close:'M5 5l14 14M19 5 5 19',
+      refresh:'M20 8a9 9 0 1 0 1 8M20 2v6h-6'
     };
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),p=document.createElementNS(svg.namespaceURI,'path');
     svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.classList.add('qj-map-icon');
