@@ -76,7 +76,7 @@ function jobOf(r, name) {
   return { action: r.action, plugin: r.plugin, name, parameters: r.parameters, notes: r.notes, duration: r.duration, state: r.state, note: r.note, on: r.on, velocity: r.velocity, gain: r.gain, buffer: r.buffer, device: r.device,
     exclusive: r.exclusive === true || undefined, midiIn: r.midiIn ?? undefined, keys: r.keys, sequence: r.sequence, loop: r.loop, live: r.live === true || undefined,
     bars: r.bars, beats: r.beats, bpm: r.bpm, wait: r.wait === 'note' ? 'note' : undefined, // (round 62, parkjam62) the loop recorder's fields
-    embed: embedOf(r.embed), stateOnly: r.stateOnly === true || undefined }; // (round 64, vstembed64) the editor's placement (no parent from the page) · a state-only snapshot
+    embed: embedOf(r.embed), stateOnly: r.stateOnly === true || undefined, limit: Number.isInteger(r.limit) && r.limit > 0 && r.limit <= 5000 ? r.limit : undefined }; // (round 64, vstembed64) the editor's placement (no parent from the page) · a state-only snapshot
 }
 function create({ dataDir, python, roots, helper = path.join(__dirname, 'creative-vst-host.py'), flags = { asio: process.env.HEARTH_VST_ASIO !== '0' }, lowPriority = false }) {
   const home = path.join(dataDir, 'creative-vst'), runtime = path.join(home, 'runtime');

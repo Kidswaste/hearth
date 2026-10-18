@@ -10,6 +10,7 @@
   // Hearth UI that can sit over the desk: menus, dialogs, floating panels. The ✦ Preset window keeps clear of the frame
   // by itself (it is in its KEEP_CLEAR list), so it isn't one of these.
   const OVERLAYS = 'dialog[open], #menu:not([hidden]), #menu-fly:not([hidden]), #menu-fly2:not([hidden]), .mb-menu, .sb-win, .cmdbar, .palette, [role="dialog"]:not(.ph-win):not(.vx-frame), [role="menu"]:not([hidden]), [role="listbox"].popup';
+  const DOCKS = '.wb-storydock';
   const box = r => ({ l: r.left, t: r.top, r: r.right ?? r.left + r.width, b: r.bottom ?? r.top + r.height });
   function intersect(a, b) { const l = Math.max(a.l, b.l), t = Math.max(a.t, b.t), r = Math.min(a.r, b.r), bt = Math.min(a.b, b.b); return r > l && bt > t ? { l, t, r, b: bt } : null; }
   const hits = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
@@ -84,6 +85,8 @@
       // (fixed-position panels have no offsetParent: a non-empty box is what counts)
       const covers = shown ? [...document.querySelectorAll(OVERLAYS)].filter(n => !el.contains(n)).map(n => n.getBoundingClientRect()).filter(b => b.width && b.height) : [];
       const clips = [{ left: 0, top: 0, right: innerWidth, bottom: innerHeight }, ...scrollers.map(n => n.getBoundingClientRect())];
+      // bars stuck to the bottom of the Playground (the storyboard strip): the editor ends where they start
+      for (const n of document.querySelectorAll(DOCKS)) { const d = n.getBoundingClientRect(); if (d.height && d.top > r.top) clips.push({ left: -1e6, top: -1e6, right: 1e6, bottom: d.top }); }
       return geometry({ rect: r, clips, covers, dpr: devicePixelRatio || 1, hidden: !shown });
     }
     function send() {
@@ -93,7 +96,7 @@
     }
     const schedule = () => { if (!queued) queued = requestAnimationFrame(send); };
     const later = () => { schedule(); setTimeout(schedule, 60); setTimeout(schedule, 320); }; // menus open / animate after the click
-    let ro = null, mo = null, mq = null;
+    let ro = null, mo = null, mo2 = null, mq = null;
     const onDpr = () => { paint(); schedule(); mq?.removeEventListener('change', onDpr); mq = matchMedia(`(resolution: ${devicePixelRatio}dppx)`); mq.addEventListener('change', onDpr); drawn = ''; paint(); };
     function scrollParents() {
       const out = [];
@@ -104,13 +107,17 @@
       if (on && !ro) {
         scrollers = scrollParents();
         ro = new ResizeObserver(schedule); ro.observe(slot); ro.observe(el); scrollers.forEach(n => ro.observe(n));
+        // something above it grows / shrinks: its containers change size (up to the first scroller)
+        for (let n = el.parentElement, k = 0; n && n !== document.body && k < 8; n = n.parentElement, k++) { ro.observe(n); if (scrollers.includes(n)) break; }
+        // panels added to the page, menus / folds shown or hidden ([hidden], <details open>, <dialog open>)
         mo = new MutationObserver(later); mo.observe(document.body, { childList: true });
+        mo2 = new MutationObserver(later); mo2.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden', 'open'] });
         addEventListener('scroll', schedule, { capture: true, passive: true }); addEventListener('resize', schedule);
         addEventListener('pointerdown', later, true); addEventListener('contextmenu', later, true); addEventListener('keydown', later, true); addEventListener('keyup', later, true);
         document.addEventListener('visibilitychange', schedule); document.addEventListener('hearth:activate', later);
         onDpr();
       } else if (!on && ro) {
-        ro.disconnect(); mo.disconnect(); ro = mo = null;
+        ro.disconnect(); mo.disconnect(); mo2.disconnect(); ro = mo = mo2 = null;
         removeEventListener('scroll', schedule, { capture: true }); removeEventListener('resize', schedule);
         removeEventListener('pointerdown', later, true); removeEventListener('contextmenu', later, true); removeEventListener('keydown', later, true); removeEventListener('keyup', later, true);
         document.removeEventListener('visibilitychange', schedule); document.removeEventListener('hearth:activate', later);

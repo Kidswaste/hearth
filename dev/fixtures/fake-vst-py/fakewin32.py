@@ -83,7 +83,7 @@ class Backend:
     def adopt(self, h, parent):
         with _lock:
             w = _windows[h]
-            if not parent or int(parent) == 13:  # 13: a test's 'window that refuses children'
+            if not parent or int(parent) == 13 or w['cls'] == 'JUCE_refuse':  # a test's window / editor that refuses
                 raise OSError('SetParent failed (Windows error 1400)')
             w['parent'], w['child'] = int(parent), True
             _log('adopt', h, int(parent))
@@ -124,6 +124,5 @@ class Backend:
             w = _windows.get(h)
             if w is None:
                 return None
-            keep = ('level', 'cutoff', 'mono', 'wave', 'macro_0', 'macro_1')
-            return {**{k: v for k, v in w.items() if k != 'shown'}, 'shown': {k: w['shown'][k] for k in keep if k in w['shown']},
+            return {**{k: v for k, v in w.items() if k != 'shown'}, 'shown': dict(list(w['shown'].items())[:400]),
                     'calls': len([c for c in LOG if len(c) > 1 and c[1] == h])}

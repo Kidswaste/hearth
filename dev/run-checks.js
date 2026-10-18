@@ -41,6 +41,7 @@ UNIT.push('vst-live-host-test'); // (round 61, vstlive61) the Sound desk's live 
 UNIT.push('parkjam62-test'); // (round 62, parkjam62) Park jam: output pick, battery controls, WAV / MIDI / ambience layer, proof text, the host's loop recorder (fake laptop host)
 UNIT.push('soundbank63-test'); // (round 63, soundbank63) Sound bank: tags from controls, similarity, search, atomic index, read-only plugin folders, the preview queue (+ real host with the fake Pedalboard)
 UNIT.push('loopsong63-test'); // (round 63, loopsong63) park loops → a song: arrangement model, snapping, tempo plan, mixdown / stems / −1 dBFS, stretch, MIDI, parkList / MP3
+UNIT.push('vstembed64-test'); // (round 64, vstembed64) 48 kHz, fast load (cached control list, warm host, scan cache), the editor inside Hearth on a fake Win32 layer
 UNIT.push('winfresh-test'); // (round 60, winfresh60) the Windows zip install: a shallow checkout updating (gaps, rewrites, deeper fetch), private-repo sign-in, shortcuts / login item
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
@@ -52,6 +53,7 @@ const GROUPS = {
   soundbank: ['soundbank63', 'unit:soundbank63-test', 'vst-live', 'presethover61', 'parkjam62', 'workbench-vst', 'lazy', 'unit:boot-test', 'unit:vst-live-host-test', 'unit:winmac-test'], // (round 63) the Sound bank picker, previews, read-only plugin folders
   parkjam: ['parkjam62', 'unit:parkjam62-test'], // (round 62) Park mode + the loop recorder in the Sound desk (fake laptop host, stubbed mic)
   loopsong: ['loopsong63', 'unit:loopsong63-test', 'parkjam62', 'unit:parkjam62-test', 'vst-live', 'workbench-vst', 'quest-paris', 'lazy', 'unit:boot-test'], // (round 63) park loops → a song (Arrange in the Sound desk, /song)
+  vstembed: ['vstembed64', 'unit:vstembed64-test', 'vst-live', 'presethover61', 'parkjam62', 'soundbank63', 'loopsong63', 'workbench-vst', 'lazy', 'unit:boot-test', 'unit:vst-live-host-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) the plugin's editor in the Sound desk, 48 kHz, faster loads
   vstlive: ['vst-live', 'workbench-vst', 'unit:vst-host-test', 'unit:vst-live-host-test'], // (round 61) Serum 2 / Vital live mode (fake host; the real-plugin part of workbench-vst runs on the owner's PC)
   quests: ['unit:quest-test', 'unit:quest-review-test', 'unit:quest-deck-test', 'unit:quest-workstation-test', 'unit:quest-life-test', 'unit:quest-world-test', 'unit:quest-paris-test', 'quest-journal', 'quest-studio', 'quest-session', 'quest-proof', 'quest-deck', 'quest-workstation', 'quest-life', 'quest-world', 'quest-paris', 'unit:questhud-test', 'questhud61'],
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy', 'fastboot'], // (round 29) fastboot: first frame before any lazy group, keys of lazy groups, first-use main modules

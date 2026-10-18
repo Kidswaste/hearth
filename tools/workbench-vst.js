@@ -128,14 +128,15 @@ var WorkbenchVST = (() => {
       say(`${p.name} ready in ${timings.readyMs} ms${r.playing ? ' · live: play the keys or your controller' : ' · press a key to start live audio'}. Reading its controls…`);
       events.emit('instrument', api.current());
       // (round 64) the controls arrive from the host's cached list (or as they're read the first time: shown as they come)
-      for (let i = 0; ; i++) {
-        let info = await hub.vst.request({ action: 'controls', plugin: p.path, name: p.name });
+      for (let i = 0, all = true; ; i++) {
+        let info = await hub.vst.request({ action: 'controls', plugin: p.path, name: p.name, ...(all ? {} : { limit: 240 }) }); // while reading: the first ones only
         if (ticket !== alive || mine !== openSeq || selected?.path !== p.path) return;
         if (!info.ok) { info = await hub.vst.request({ action: 'inspect', plugin: p.path, name: p.name }); if (!info.ok) throw Error(info.error); info.ready = true; } // Codex's full read
         if (ticket !== alive || mine !== openSeq || selected?.path !== p.path) return;
-        selected = { ...info, name: p.name, path: p.path, loading: !info.ready, total: info.count ?? info.parameters.length }; paramsRefresh();
+        selected = { ...info, name: p.name, path: p.path, loading: !(info.ready && all), total: info.count ?? info.parameters.length }; paramsRefresh();
+        if (info.ready && !all) { all = true; continue; } // the list just completed: ask for all of it once
         if (info.ready) { timings.controlsMs = Math.round(performance.now() - t0); timings.controlsSource = info.source || 'read'; timings.controls = info.parameters.length; break; }
-        await new Promise(res => setTimeout(res, i < 20 ? 120 : 400));
+        all = false; await new Promise(res => setTimeout(res, i < 20 ? 120 : 400));
       }
       events.emit('instrument', api.current());
       say(`${p.name} · ${selected.parameters.length} controls ready in ${timings.controlsMs} ms${timings.controlsSource === 'cache' ? '' : ' (read once; next time from the list kept on disk)'}.`);
@@ -251,7 +252,7 @@ var WorkbenchVST = (() => {
     // (round 61, vstlive61) live audition for the chat: only when the owner already has live audio on.
     if (action === 'status') return { name: selected.name, live: playing, controls: selected.parameters.length, output: lastStats?.playing ? { device: lastStats.deviceName, driver: lastStats.api, latencyMs: lastStats.latencyMs, dspLoad: lastStats.load, underruns: lastStats.underruns } : null };
     if (action === 'play') { if (!playing) throw Error('Live audio is paused: ask the user to press a key or Start live audio.'); if (args.phrase !== undefined) { await playPhrase(args.phrase === 'off' ? null : String(args.phrase)); return { phrase: args.phrase }; } const note = Math.max(24, Math.min(96, Math.round(Number(args.note) || 60))); await api.play(note); return { played: note, message: 'Ask the user how it sounds.' }; }
-    if (action === 'inspect') { const list = selected.parameters.filter(p => `${p.key} ${p.label}`.toLowerCase().includes(String(args.query || '').toLowerCase())), offset = Math.max(0, Math.floor(args.offset || 0)); return { name: selected.name, instrument: true, count: list.length, parameters: JSON.parse(JSON.stringify(list.slice(offset, offset + 40))), canEdit, live: playing }; }
+    if (action === 'inspect') { const list = selected.parameters.filter(p => `${p.key} ${p.label}`.toLowerCase().includes(String(args.query || '').toLowerCase())), offset = Math.max(0, Math.floor(args.offset || 0)); return { name: selected.name, instrument: true, count: list.length, parameters: list.slice(offset, offset + 40).map(({ kind, ...p }) => JSON.parse(JSON.stringify(p))) /* (round 64) no extra field for the AI */, canEdit, live: playing }; }
     if (!canEdit) throw Error('Enable AI patch edits in the Sound desk first.');
     // (round 64, vstembed64) applied silently: the plugin's window and the desk's sliders show it; the AI is asked for
     // one short line, not a list of controls (same validation and undo as before, through api.set)

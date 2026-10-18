@@ -396,6 +396,10 @@ class Engine:
             setattr(self.plugin, '__python_to_cpp_names__', names)
         for key, cpp in index.items():
             names[key] = cpp.name
+        try:
+            getattr(self.plugin, '__python_parameter_cache__')
+        except AttributeError:
+            setattr(self.plugin, '__python_parameter_cache__', {})  # pedalboard's own wrapper cache (it makes it the same way)
         self.index = index
         import hashlib
         self.digest = hashlib.sha1('\n'.join('%s=%s' % (k, c.name) for k, c in index.items()).encode('utf-8', 'replace')).hexdigest()
@@ -410,9 +414,25 @@ class Engine:
             raise KeyError(key)
         return p
 
+    def built_wrapper(self, key):
+        """The control's pedalboard wrapper, made straight from its C++ name when pedalboard's class is there (one name
+        scan instead of two per control: it matters across Serum 2's 2,600), else through pedalboard's own lookup."""
+        pbm = getattr(self.pb, '_pedalboard', None)
+        make = getattr(pbm, 'AudioProcessorParameter', None)
+        try:
+            cache = getattr(self.plugin, '__python_parameter_cache__')
+        except AttributeError:
+            cache = None
+        if make is None or not isinstance(cache, dict) or self.index is None or key not in self.index:
+            return self.wrapper(key)
+        name = self.index[key].name
+        if name not in cache:
+            cache[name] = make(self.plugin, name)
+        return cache[name]
+
     def meta_of(self, key):
         """What parameter_entry() reports about a control, minus its value: label, kind, range, choices."""
-        p = self.wrapper(key)
+        p = self.built_wrapper(key)
         normalized = offline.normalized_parameter(p)
         if normalized:
             kind, low, high, step = 'norm', 0, 1, .001
@@ -529,16 +549,20 @@ class Engine:
             out.pop('state', None)
             return {**out, 'ready': True, 'count': len(out['parameters']), 'built': len(out['parameters']), 'source': 'pedalboard', 'metaMs': 0}
         entries = []
+        # while the list is still being read, a page asks for a few (limit): the count is cheap, the entries aren't
+        limit = int(job.get('limit') or 0) if not self.meta_done else 0
         for key in list(self.index):
             m = self.meta.get(key)
             if m is None:
                 continue
+            if limit and len(entries) >= limit:
+                break
             with self.lock:
                 try:
                     entries.append({**m, **self.fast(key, m)})
                 except Exception:
                     pass
-        return {**info, 'parameters': entries, 'ready': self.meta_done, 'count': len(self.index) - len(self.meta_bad), 'built': len(entries),
+        return {**info, 'parameters': entries, 'ready': self.meta_done, 'count': len(self.index) - len(self.meta_bad), 'built': len(self.meta),
                 'source': self.meta_source, 'metaMs': self.meta_ms}
 
     def wait_meta(self, seconds=120):

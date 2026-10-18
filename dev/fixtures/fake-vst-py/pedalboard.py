@@ -178,7 +178,8 @@ class FakeInstrument:
         window = None
         if os.environ.get('HEARTH_VST_FAKE_WIN32') == '1':
             import fakewin32
-            window = fakewin32.create(os.getpid(), title='Pedalboard', w=int(os.environ.get('FAKE_EDITOR_W', '880')), h=int(os.environ.get('FAKE_EDITOR_H', '560')))
+            refuse = os.environ.get('FAKE_EMBED_REFUSE') == self.name  # (a test: this instrument's editor can't be a child window)
+            window = fakewin32.create(os.getpid(), title='Pedalboard', cls='JUCE_refuse' if refuse else 'JUCE_7f3a2c10', w=int(os.environ.get('FAKE_EDITOR_W', '880')), h=int(os.environ.get('FAKE_EDITOR_H', '560')))
         closed_by_hearth = False
         try:
             while True:
