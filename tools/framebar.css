@@ -1,0 +1,33 @@
+/* ▮ The frame budget bar (round 64, framebar64): a thin bar in the Lab's stats line, the budget at 2/3 of its width;
+   its card above the stats line on hover. The fill moves by transform only (twice a second at most, when it changed). */
+.fb-bar { position: relative; display: inline-block; flex: none; align-self: center; width: 54px; height: 6px; border-radius: 3px; background: #ffffff1f; overflow: hidden; }
+.fb-bar .fb-fill { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); background: var(--ui-ok, #5ad17a); transition: transform .25s ease-out, background-color .25s; }
+.fb[data-level="amber"] .fb-fill { background: #f5b041; }
+.fb[data-level="red"] .fb-fill { background: var(--ui-red, #e5484d); }
+.fb-bar .fb-mark { position: absolute; top: 0; bottom: 0; left: 66.667%; width: 1px; background: #fffc; }
+.fb-card { position: absolute; left: 8px; bottom: 40px; z-index: 3; width: min(440px, calc(100% - 16px)); max-height: calc(100% - 56px); overflow: auto; padding: 8px 10px; border-radius: 8px; background: #0b0d12f0; color: #ddd; font: 11.5px/1.45 Consolas, monospace; box-shadow: 0 6px 24px #0008; border: 1px solid #ffffff1a; }
+.fb-card .fb-head { display: flex; align-items: baseline; gap: 2px; font-size: 13px; }
+.fb-card .fb-head b.fb-ok { color: var(--ui-ok, #5ad17a); } .fb-card .fb-head b.fb-amber { color: #f5b041; } .fb-card .fb-head b.fb-red { color: var(--ui-red, #e5484d); }
+.fb-card .fb-target { margin-left: auto; border: 0; background: none; color: inherit; font: inherit; font-size: 11px; opacity: .8; cursor: pointer; padding: 0 2px; }
+.fb-card .fb-target:hover { opacity: 1; text-decoration: underline; }
+.fb-card .fb-sub { opacity: .7; margin: 1px 0 6px; }
+.fb-card .fb-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px 46px 46px 50px 46px; gap: 4px; padding: 1px 0; }
+.fb-card .fb-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-card .fb-row > span:not(:first-child) { text-align: right; }
+.fb-card .fb-th { opacity: .55; font-size: 10.5px; }
+.fb-card .fb-top { color: #fff; font-weight: 600; }
+.fb-card .fb-say { margin-top: 6px; }
+.fb-card button.fb-why, .fb-card button.fb-draft { border: 1px solid #ffffff33; background: #ffffff12; color: inherit; font: inherit; border-radius: 4px; padding: 0 6px; cursor: pointer; }
+.fb-card button.fb-why:hover, .fb-card button.fb-draft:hover { background: #ffffff26; }
+.fb-card button:disabled { opacity: .6; cursor: progress; }
+.fb-card .fb-h { margin-top: 8px; opacity: .75; font-weight: 600; }
+.fb-card ul.fb-costs, .fb-card ol.fb-sugg { margin: 3px 0 0; padding-left: 16px; }
+.fb-card ol.fb-sugg li { margin: 2px 0; }
+.fb-card ol.fb-sugg li b { color: #fff; font-weight: 600; }
+.fb-card .fb-draft { font-size: 10.5px; }
+@media (prefers-reduced-motion: reduce) { .fb-bar .fb-fill { transition: none; } }
+.fb { display: inline-flex; align-items: center; gap: 5px; flex: none; cursor: pointer; pointer-events: auto; }
+.fb .fb-txt { font-size: 10.5px; opacity: .85; white-space: nowrap; }
+.fb[data-level="amber"] .fb-txt { color: #f5b041; } .fb[data-level="red"] .fb-txt { color: var(--ui-red, #e5484d); }
+.fb-card .fb-x { border: 0; background: none; color: inherit; font: inherit; opacity: .6; cursor: pointer; padding: 0 2px; margin-left: 6px; }
+.fb-card .fb-x:hover { opacity: 1; }
