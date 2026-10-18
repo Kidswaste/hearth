@@ -258,7 +258,7 @@
     else if (r.blocked || [401, 403, 429, 503].includes(r.status)) s.problem = 'blocked';
     else if (r.notModified) { s.problem = null; s.lastOk = now; }
     else if (!r.ok) s.problem = r.status ? 'http' : 'offline';
-    else if (!r.shows.length && old.shows.length && src.kind !== 'event') s.problem = 'changed'; // a page that used to list shows and now lists none: keep the last good
+    else if (!r.shows.length && old.shows.length && src.kind !== 'event' && !r.authoritativeEmpty) s.problem = 'changed'; // HTML can change shape; a validated complete API response can really be empty
     else { s.problem = r.partial ? 'partial' : r.shows.length || src.kind === 'event' ? null : 'empty'; s.shows = r.shows; s.via = r.via; s.lastOk = now; }
     if (r.etag !== undefined) s.etag = r.etag || null; if (r.lastModified !== undefined) s.lastModified = r.lastModified || null;
     if (s.problem) s.status = r.status || 0;
@@ -267,7 +267,7 @@
   const allShows = (cache, sources) => merge((sources || Object.values(cache.sources)).map((src) => cache.sources[src.id]?.shows || []));
   const when = (t) => (t ? new Date(t).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) : 'never');
   function problemText(s) {
-    const P = s.kind === 'programme' ? s.label : PLATFORMS[s.platform]?.name || 'The site', since = s.shows.length ? ` Showing the list from ${when(s.lastOk)}.` : '';
+    const P = ['programme','syndication'].includes(s.kind) ? s.label : PLATFORMS[s.platform]?.name || 'The site', since = s.shows.length ? ` Showing the list from ${when(s.lastOk)}.` : '';
     return { robots: `${P} asks apps not to read that page, so Hearth doesn't. Follow a venue instead, or open it in your browser.`,
       blocked: `${P} asked for a browser check, so Hearth stopped there (no workaround).${since}`,
       changed: `${P}'s page changed and Hearth couldn't read shows from it.${since}`,
@@ -331,7 +331,7 @@
     return `on ${new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
   }
   const short = (t) => `${DAYS[new Date(t).getDay()].slice(0, 3)} ${hm(t)}`;
-  const showWhen = s => s.dateOnly ? new Date(s.start).toLocaleDateString(undefined,{timeZone:'Europe/Paris',weekday:'short',day:'numeric',month:'short'})+' · time to confirm' : short(s.start);
+  const showWhen = s => new Date(s.start).toLocaleDateString(undefined,{timeZone:'Europe/Paris',weekday:'short',day:'numeric',month:'short',...(new Date(s.start).getFullYear()!==new Date().getFullYear()?{year:'numeric'}:{})})+' · '+(s.dateOnly ? 'time to confirm' : new Date(s.start).toLocaleTimeString(undefined,{timeZone:'Europe/Paris',hour:'2-digit',minute:'2-digit',hour12:false}));
   const platformsText = (s) => s.platforms.map((p) => PLATFORMS[p]?.name || p).join(' + ');
   const line = (s) => `${showWhen(s)} · ${s.title}${s.venue.name && !fold(s.title).includes(fold(s.venue.name)) ? ` — ${s.venue.name}` : ''} · ${platformsText(s)}${s.soldOut ? ' · sold out' : ''}`;
   function find(shows, q) {

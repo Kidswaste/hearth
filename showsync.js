@@ -68,9 +68,10 @@ const ShowSync = (() => {
   }
   function showDetail(kit, s) {
     kit.dialog(s.title, (body, d) => {
-      const head = kit.E('div', { class: 'ss-head' }, logoOrIcon(s.venue.logo, 'ss-logo ss-logo-big'), kit.E('div', {}, kit.label(`${C.dayWord(s.start).toUpperCase()} · ${s.dateOnly ? 'TIME TO CONFIRM' : C.hm(s.start)} · ${C.platformsText(s).toUpperCase()}`), kit.E('strong', { text: s.venue.name || 'Venue' }), kit.E('span', { text: s.venue.address || '' })));
+      const head = kit.E('div', { class: 'ss-head' }, logoOrIcon(s.venue.logo, 'ss-logo ss-logo-big'), kit.E('div', {}, kit.label(`${C.showWhen(s).toUpperCase()} · ${C.platformsText(s).toUpperCase()}`), kit.E('strong', { text: s.venue.name || 'Venue' }), kit.E('span', { text: s.venue.address || '' })));
       body.append(head);
-      if(s.programme)body.append(kit.p(`Via ${s.programme.name}’s programme · checked ${new Date(s.programme.checkedAt).toLocaleDateString()}. Check Shotgun for current price and availability.`), kit.button('Venue listing',()=>window.hub.openExternal(s.programme.url),'qj-quiet'));
+      if(s.programme?.syndicated)body.append(kit.p(`Shotgun · via OpenAgenda / Huwise · checked ${new Date(s.programme.checkedAt).toLocaleDateString()}${s.programme.updatedAt ? ' · source updated '+new Date(s.programme.updatedAt).toLocaleDateString() : ''}. Dates can change; confirm on Shotgun.`),kit.button('Published listing',()=>window.hub.openExternal(s.programme.url),'qj-quiet'));
+      else if(s.programme)body.append(kit.p(`Via ${s.programme.name}’s programme · checked ${new Date(s.programme.checkedAt).toLocaleDateString()}. Check Shotgun for current price and availability.`), kit.button('Venue listing',()=>window.hub.openExternal(s.programme.url),'qj-quiet'));
       if (s.lineup.length) body.append(kit.p(`Lineup: ${s.lineup.join(', ')}`));
       if (s.price || s.soldOut) body.append(kit.p(s.soldOut ? 'Sold out on every listing.' : `From ${s.price.from} ${s.price.currency === 'EUR' ? '€' : s.price.currency}`));
       body.append(showActions(kit, s, d));
@@ -107,12 +108,12 @@ const ShowSync = (() => {
   }
   function followDialog(kit) {
     kit.dialog('What Hearth reads', (body, d) => {
-      body.append(kit.p('Paris-wide Shotgun and DICE listings, plus Shotgun-ticketed nights published by Badaboum, Mia Mao, Glazart, La Machine and Kilomètre25. Venue programmes keep those nights available when the main catalogue cannot load. This is partial coverage, not every Paris event.'));
+      body.append(kit.p('Paris-wide Shotgun and DICE listings, plus Shotgun-ticketed nights published by Badaboum, Mia Mao, Glazart, La Machine and Kilomètre25. Rex, Phantom and Paris-area Madame Loyal dates also come from Shotgun’s public OpenAgenda feed (Licence Ouverte, distributed by Huwise). These sources keep nights available when the main catalogue cannot load. This is partial coverage, not every Paris event.'));
       const draw = () => {
         body.querySelector('.ss-follows')?.remove();
         const box = kit.E('div', { class: 'ss-follows' });
         for (const src of snap.sources) {
-          const it = kit.E('div', { class: 'qj-field-list-item ss-src' }, QuestAtlas.icon(src.kind === 'city' ? 'compass' : 'music'), kit.E('strong', { text: src.label }), kit.E('span', { text: src.problem ? '⚠' : `${src.count}` }));
+          const it = kit.E('div', { class: 'qj-field-list-item ss-src' }, QuestAtlas.icon(src.kind === 'city' ? 'compass' : 'music'), kit.E('strong', { text: src.label }), kit.E('span', { text: src.problem && src.problem!=='empty' ? '⚠' : `${src.count}` }));
           if (src.kind !== 'city' && src.kind !== 'programme' && !src.builtin) it.append(kit.button('×', async () => { await call('unfollow', src.id); await load(); draw(); redraw(); }, 'qj-quiet ss-unfollow'));
           box.append(it);
         }
@@ -137,15 +138,15 @@ const ShowSync = (() => {
             kit.button('Load this week’s shows', async () => { box.append(kit.p('Reading Shotgun and DICE…')); await refresh(true); draw(); }, 'qj-primary'));
         } else {
           if (snap.status) box.append(kit.E('p', { class: 'qj-copy ss-status', text: snap.status }));
-          const rangeButton=kit.button(range===7?'Next 7 days · show 21':'Next 21 days · show 7',()=>{range=range===7?21:7;draw();},'qj-quiet');box.append(rangeButton);
+          const rangeButton=kit.button(range===7?'Next 7 days · look ahead':'Next 6 months · show 7',()=>{range=range===7?180:7;draw();},'qj-quiet');box.append(rangeButton);
           const filter=kit.E('select',{attrs:{'aria-label':'Ticket platform'}});
           for(const [value,name] of [['all','Shotgun + DICE'],['shotgun','Shotgun'],['dice','DICE']]){const o=kit.E('option',{text:name});o.value=value;filter.append(o);}filter.value=platform;filter.addEventListener('change',()=>{platform=filter.value;draw();});box.append(filter);
           const venueFilter=kit.E('select',{attrs:{'aria-label':'Venue'}});
           for(const [value,name]of [['','All venues'],...homes().map(v=>[v.name,v.name]),['madame loyal','Madame Loyal']]){const o=kit.E('option',{text:name});o.value=value;venueFilter.append(o);}venueFilter.value=venue;venueFilter.onchange=()=>{venue=venueFilter.value;draw();};box.append(venueFilter);
           const list = (range===7?week():upcoming()).filter(s=>(platform==='all'||s.platforms.includes(platform))&&(!venue||C.fold(s.venue.name+' '+s.title).includes(C.fold(venue)))); let day = '';
           const programmeCount=list.filter(s=>s.programme).length;
-          if(programmeCount)box.append(kit.E('p',{class:'qj-copy ss-programme-note',text:`${programmeCount} Shotgun nights from venue programmes`,attrs:{title:'Badaboum, Mia Mao, Glazart, La Machine and Kilomètre25 publish these listings independently. They appear on the map when their location is known. This is a partial catalogue; ticket availability is checked on Shotgun.'}}));
-          if (!list.length) box.append(kit.p(refreshing ? 'Reading Shotgun and DICE…' : `No cached shows match the next ${range} days. Check the original programme below.`));
+          if(programmeCount)box.append(kit.E('p',{class:'qj-copy ss-programme-note',text:`${programmeCount} Shotgun nights from public listings`,attrs:{title:'Venue programmes and Shotgun’s OpenAgenda syndication supply these listings. Favourite venues look ahead up to six months; other feeds cover three weeks. They appear on the map when their location is known. This is a partial catalogue; ticket availability is checked on Shotgun.'}}));
+          if (!list.length) box.append(kit.p(refreshing ? 'Reading Shotgun and DICE…' : venue==='madame loyal' && snap?.sources?.some(s=>s.id==='shotgun-openagenda-madame-loyal' && s.lastOk && s.problem==='empty') ? 'No upcoming Paris-area Madame Loyal date is published in the connected feed. Hearth checks daily; dates in other cities stay off your map.' : `No cached shows match the next ${range} days. Check the original programme below.`));
           if(venue){const home=homes().find(v=>v.name===venue);box.append(kit.button('Open programme',()=>window.hub.openExternal(home?.url||'https://madameloyalfestival.com/'),'qj-quiet'));}
           for (const s of list) { const d = C.dayWord(s.start); if (d !== day) { day = d; box.append(kit.label(d.replace(/^on /, '').toUpperCase())); } box.append(row(kit, s, () => showDetail(kit, s))); }
           const acts = kit.E('div', { class: 'qj-actions' }, kit.button('What Hearth reads', () => followDialog(kit), 'qj-quiet'), kit.button(refreshing ? 'Refreshing…' : 'Refresh now', async () => { await refresh(true); draw(); }, 'qj-quiet'));
@@ -174,7 +175,7 @@ const ShowSync = (() => {
   const layer = {
     id: 'showsync',
     icon: (kit) => { ensure().catch(() => {}); return kit.mapIcon('spark', `Shows this week (Shotgun + DICE)${snap?.enabled ? ` · ${week().length}` : ''}`, () => listDialog(kit), '#ff6b9d', undefined, 'map-shows'); },
-    pins: (filters={}) => {if(filters.guide || (filters.kind && !['all','music'].includes(filters.kind)))return [];const venues=mapVenues().filter(v=>!filters.query || C.fold(v.name+' '+v.shows.map(s=>s.title).join(' ')).includes(C.fold(filters.query))); let p=C.pins(venues).map(p=>({...p,minZoom:venues.find(v=>v.id===p.id)?.home?11:15}));for (const x of ext) { try { if (x.pins) p = x.pins(p) || p; } catch (err) { console.warn('[showsync extension] pins', err); } } return p; },
+    pins: (filters={}) => {if(filters.guide || (filters.kind && !['all','music'].includes(filters.kind)))return [];const venues=mapVenues().filter(v=>!filters.query || C.fold(v.name+' '+v.shows.map(s=>s.title).join(' ')).includes(C.fold(filters.query))); let p=C.pins(venues).map(p=>({...p,minZoom:venues.some(v=>v.id===p.id && (v.home || v.shows.some(s=>s.programme?.syndicated)))?11:15}));for (const x of ext) { try { if (x.pins) p = x.pins(p) || p; } catch (err) { console.warn('[showsync extension] pins', err); } } return p; },
     owns: (id) => typeof id === 'string' && id.startsWith('show-venue-'),
     select: (id, kit) => { const v = mapVenues().find((x) => x.id === id); if (v) return venueDetail(kit, v); for (const x of ext) if (x.select?.(id, kit)) return; }
   };
