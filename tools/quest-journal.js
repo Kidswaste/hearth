@@ -178,10 +178,15 @@ const QuestJournal = (() => {
       const draft = C.clone(state), result = await fn(draft); draft.updatedAt = new Date().toISOString();
       const checked = C.validate(draft);
       const r = await window.hub.kvSet(KEY, checked); if (r?.error) throw Error(r.error);
-      state = checked; render(); notice(message); return result;
+      state = checked; render(); notice(message); announce('studio'); return result;
     });
     saving = task; return task;
   }
+  // (round 61, questhud61) the rail's quest tracker (questhud.js) follows the journal live: every save and load is
+  // announced as 'hearth:quests' { state, source }. A save announced by someone else (the tracker writes the journal
+  // itself only while the Studio isn't holding it) is adopted after any save in flight, so the two never overwrite.
+  function announce(source) { try { document.dispatchEvent(new CustomEvent('hearth:quests', { detail: { state: C.clone(state), source } })); } catch { /* a listener's problem never blocks a save */ } }
+  document.addEventListener('hearth:quests', e => { const next = e.detail?.state; if (!next || String(e.detail.source).startsWith('studio') || !writable) return; saving = saving.catch(() => {}).then(() => { try { state = C.validate(next); render(); } catch { /* keep ours */ } }); });
   async function load() {
     writable = false;
     try {
@@ -190,7 +195,7 @@ const QuestJournal = (() => {
       else if (result?.state === 'ok') state = C.validate(result.value);
       else throw Error(result?.error || 'The journal could not be read.');
       state = C.upgrade(state);
-      writable = true; render(); notice('Journal saved on this computer.');
+      writable = true; render(); notice('Journal saved on this computer.'); announce('studio-load');
     } catch (err) { content.replaceChildren(E('section', { class: 'qj-empty' }, label('YOUR PROGRESS IS PRESERVED'), E('h2', { text: 'Let’s reconnect your journal' }), p(`${calmError(err)} Nothing has been overwritten.`), button('Try loading again', load))); notice('Saving is disabled while the journal is unavailable.'); }
   }
   function celebrate(title, text, gains = []) {
@@ -988,5 +993,5 @@ const QuestJournal = (() => {
   }
   Tools.define({ id: 'quests', name: 'Sidequest Studio', icon: '✦', color: '#d9b777', description: 'Your quests, next ideas and small victories', mount: body => mount(body).catch(err => { body.textContent = `Journal could not open: ${calmError(err)}`; }), onShow: () => { if (state) render(); } });
   Commands.register({ name: 'quests', area: 'Create', desc: 'Open your quest journal, campaigns, XP, skill tree and rewards', run: () => activate('tool:quests') });
-  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, get celebration() { return lastCelebration; } };
+  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, get celebration() { return lastCelebration; }, mutate, ready: () => writable && Boolean(state) }; // (round 61, questhud61: mutate + ready for the rail's quest tracker)
 })();
