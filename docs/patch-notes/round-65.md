@@ -7,4 +7,7 @@
 - **Dialogs and page switches are lighter.** The Lab, Sidequest Studio and the Sound desk no longer get restyled while they're hidden (about 3× less work each time a dialog opens).
 - A second copy of Hearth checking for your real one no longer reads every chat before the window opens.
 
-More is coming: work on Windows file locks (OneDrive / antivirus) that can pause Hearth for a moment, and faster redraws in Sidequest.
+- **A file held by OneDrive or your antivirus no longer pauses Hearth.** When Windows briefly locks one of Hearth's files, Hearth used to wait for it — up to over half a second, freezing everything. It now waits at most 50 ms and carries on, finishing the save as soon as the file is free (a settings change made at that moment is never lost).
+- Token stats after each reply are saved in the background, and the Recycle Bin drive check no longer runs the first time you delete something.
+
+Still coming: faster redraws in Sidequest.
