@@ -252,3 +252,10 @@
 .eyes-fold[open] > summary { margin-bottom: 4px; }
 .eyes-fold > .eyes-card + .eyes-card { margin-top: 4px; }
 .msg .body a.eyes-ref { color: var(--bd-gold, #ffc233); text-decoration: none; }
+/* (round 65, inspodrop65) a clip dropped from the drawer: one chip with its key frames (board-drop.js) */
+.attach-chip.idrop-vchip { gap: 6px; max-width: 460px; }
+.attach-chip.idrop-frame[hidden] { display: none; }
+.attach-chip .idrop-strip { display: inline-flex; flex: 0 0 auto; gap: 2px; cursor: pointer; border-radius: 4px; overflow: hidden; }
+.attach-chip .idrop-strip img { width: 40px; height: 24px; object-fit: cover; border-radius: 0; display: block; }
+.idrop-strip:hover { outline: 1px solid var(--fh-gold, #e6b450); }
+.attach-chip.idrop-vchip > span:not(.idrop-strip):not(:first-child) { min-width: 4.5em; }

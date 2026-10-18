@@ -80,21 +80,21 @@ try {
   out.tileMenu = menuRows();
   ok(out.tileMenu.some((x) => /Show it to a chat/.test(x)) && out.tileMenu.some((x) => /Ask about it/.test(x)), 'drawer tile: show / ask');
   closeMenu();
-  const drop = async (altKey) => {
+  const drop = async (altKey, shiftKey = false) => {
     const dt = new DataTransfer();
     tile.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
     const ta = v.input; const q = ta.getBoundingClientRect();
     ta.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: q.left + 10, clientY: q.top + 10, altKey }));
-    ta.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: q.left + 10, clientY: q.top + 10, altKey }));
+    ta.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: q.left + 10, clientY: q.top + 10, altKey, shiftKey }));
   };
   v.attachments.length = 0;
   await drop(true);
   await until(() => v.attachments.length >= 2, 8000);
   ok(v.attachments.some((a) => a.kind === 'image') && v.attachments.some((a) => /board ids/.test(a.name)), 'Alt+drop: the picture itself');
   v.attachments.length = 0;
-  await drop(false);
+  await drop(false, true); // (round 65) Shift: the vibe text (a plain drop is the real media: inspodrop65.js)
   await until(() => v.attachments.length >= 1, 5000);
-  ok(v.attachments.length === 1 && /^vibe · /.test(v.attachments[0].name), 'a plain drop still attaches the vibe');
+  ok(v.attachments.length === 1 && /^vibe · /.test(v.attachments[0].name), 'a Shift drop still attaches the vibe');
   BoardDrawer.toggle(false);
   v.attachments.length = 0;
 

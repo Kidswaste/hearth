@@ -1,7 +1,9 @@
 // The board, from anywhere: a drawer over any chat or tool (Ctrl+Shift+M, the small ▦ in the rail, /board-peek)
-// with the chat's linked board (or the current one). Drag a reference — or the board's vibe — into any chat's
-// composer: the chat gets its VIBE as a short text attachment (palette, light, texture, motion, pacing, mood, your
-// notes), never the file. Also the one place that turns references into text for chats (vibeText / attach).
+// with the chat's linked board (or the current one). Drag a reference — or the board's top strip — into any chat's
+// composer: (round 65, inspodrop65) pictures and clips attach as the real media (board-drop.js: a picture, a clip's
+// key frames + its file); Shift while dropping (or right-click › Attach as vibe text) gives the VIBE as a short text
+// attachment (palette, light, texture, motion, pacing, mood, your notes), as before; notes / colors always do.
+// Also the one place that turns references into text for chats (vibeText / attach).
 const BoardDrawer = (() => {
   const B = Board; const D = BoardData; const V = BoardVibe;
   const REF_TYPE = 'application/x-hearth-ref';
@@ -78,6 +80,8 @@ const BoardDrawer = (() => {
     let ref = {}; try { ref = JSON.parse(e.dataTransfer.getData(REF_TYPE)); } catch { /* bad payload */ }
     // (round 14) Alt held: the chat sees the picture itself (board-eyes-ui.js), not only the vibe
     if (e.altKey && typeof BoardEyesUI !== 'undefined') { BoardEyesUI.altDrop(a.id, ref); return; }
+    // (round 65, inspodrop65) the real picture / clip; Shift (or a vibe payload): the vibe text as before
+    if (!e.shiftKey && !ref.vibe && typeof BoardDrop !== 'undefined') { BoardDrop.attach(a.id, { boardId: ref.boardId, itemIds: ref.itemIds || [] }).catch((err) => toast(err.message, { type: 'error' })); return; }
     attach(a.id, { boardId: ref.boardId, itemIds: ref.itemIds || [], focus: ref.focus });
   }, true);
   addEventListener('dragend', () => { hinted?.classList.remove('bdd-drop-hint'); hinted = null; }, true);
@@ -113,20 +117,27 @@ const BoardDrawer = (() => {
     const shown = words.length && Board._.haystack ? items.filter((i) => words.every((w) => Board._.haystack(i).includes(w))) : items;
     const s = V.summary(items);
     const agentName = H.agent(currentAgentId())?.name || 'the chat';
-    const vibe = el('div', { class: 'bdd-vibe', draggable: true, title: `Drag into a chat (or click) to attach the whole board's vibe`,
-      on: { dragstart: (e) => dragRef(e, b, []), click: (e) => showMenu(e.clientX, e.clientY, D.FOCUS.map((f) => ({ label: `${f.name} → ${agentName}`, action: () => attach(null, { boardId: b.id, focus: f.id }) }))) } },
+    const media = (ids) => (typeof BoardDrop !== 'undefined' ? BoardDrop.attach(null, { boardId: b.id, itemIds: ids }).catch((err) => toast(err.message, { type: 'error' })) : attach(null, { boardId: b.id, itemIds: ids }));
+    const vibe = el('div', { class: 'bdd-vibe', draggable: true, title: `Drag into a chat: the board's pictures and clips (10 at most; Shift while dropping: its vibe as text). Click: choose`,
+      on: { dragstart: (e) => dragRef(e, b, []), click: (e) => showMenu(e.clientX, e.clientY, [
+        { label: `Attach its pictures & clips → ${agentName}`, action: () => media([]) },
+        { label: 'Attach as vibe text', items: D.FOCUS.map((f) => ({ label: `${f.name} → ${agentName}`, action: () => attach(null, { boardId: b.id, focus: f.id }) })) },
+      ]) } },
     el('div', { class: 'bd-pal' }, s.palette.map((c) => el('span', { style: { background: c.hex, '--s': String(c.share) } }))),
     el('div', { text: [s.light != null ? `${V.words.keyWord(s.light)}, ${V.words.contrastWord(s.contrast)} contrast` : null, s.sat != null ? V.words.satWord(s.sat) : null, s.motion != null ? `motion ${V.words.motionWord(s.motion)}` : null, s.moods.slice(0, 3).join(', ')].filter(Boolean).join(' · ') || 'Add pictures, clips or sites: Hearth reads their vibe.' }));
     const tile = (it) => {
       const img = it.tiny || it.thumb || it.poster || (it.type === 'web' || it.type === 'image' ? it.src : null);
-      const t = el('div', { class: 'bdd-tile', draggable: true, title: `${it.title || it.type}\nDrag into a chat to attach its vibe`, on: { dragstart: (e) => dragRef(e, b, [it.id]) } },
+      const real = typeof BoardDropCore !== 'undefined' && BoardDropCore.kindOf(it);
+      const t = el('div', { class: 'bdd-tile', draggable: true, title: `${it.title || it.type}\n${real ? `Drag into a chat to attach the ${real === 'video' ? 'clip (its key frames + the file)' : 'picture itself'} · Shift while dropping: its vibe as text · right-click: more` : 'Drag into a chat to attach its vibe'}`, on: { dragstart: (e) => dragRef(e, b, [it.id]) } },
         img ? el('img', { src: B.fileUrl(img), alt: '', loading: 'lazy', draggable: false }) : null,
         it.type === 'swatch' || it.type === 'palette' ? el('div', { class: 'bdd-t', style: { background: it.type === 'swatch' ? it.color : `linear-gradient(90deg, ${(it.colors || []).join(', ')})` } }) : null,
         it.type === 'note' || it.type === 'text' ? el('div', { class: 'bdd-t', text: String(it.text || '').replace(/[*_#`>]+/g, ''), style: { background: it.type === 'note' ? (D.NOTE_STYLES.find((q) => q.id === it.style) || D.NOTE_STYLES[0]).bg : 'var(--surface)', color: it.type === 'note' ? (D.NOTE_STYLES.find((q) => q.id === it.style) || D.NOTE_STYLES[0]).fg : 'inherit' } }) : null,
         el('span', { class: 'bdd-k', text: it.stamp || V.KIND_WORD[it.type] || it.type }),
-        el('button', { class: 'bdd-send', text: '→', title: `Attach its vibe to ${agentName}`, on: { click: (e) => { e.stopPropagation(); attach(null, { boardId: b.id, itemIds: [it.id] }); } } }));
+        el('button', { class: 'bdd-send', text: '→', title: real ? `Attach it to ${agentName}'s message` : `Attach its vibe to ${agentName}`, on: { click: (e) => { e.stopPropagation(); if (real) media([it.id]); else attach(null, { boardId: b.id, itemIds: [it.id] }); } } }));
       t.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, [
-        ...D.FOCUS.slice(0, 9).map((f) => ({ label: `${f.name} → ${agentName}`, action: () => attach(null, { boardId: b.id, itemIds: [it.id], focus: f.id }) })),
+        ...(real ? [{ label: `Attach to chat → ${agentName}`, hint: real === 'video' ? 'key frames + file' : 'the picture', action: () => media([it.id]) },
+          { label: 'Attach as vibe text', items: D.FOCUS.slice(0, 9).map((f) => ({ label: `${f.name} → ${agentName}`, action: () => attach(null, { boardId: b.id, itemIds: [it.id], focus: f.id }) })) }]
+          : D.FOCUS.slice(0, 9).map((f) => ({ label: `${f.name} → ${agentName}`, action: () => attach(null, { boardId: b.id, itemIds: [it.id], focus: f.id }) }))),
         { label: 'Show on the board', action: async () => { activate('tool:board'); await B.open(b.id); setTimeout(() => { B.select(it.id); B.zoomSel(); }, 120); } },
         ...(typeof BoardEyesUI !== 'undefined' ? ['-', ...BoardEyesUI.tileItems(b, it)] : []),
       ]); });
@@ -161,7 +172,7 @@ const BoardDrawer = (() => {
   function addRailButton() {
     const rail = document.getElementById('rail'); const before = document.getElementById('palette-btn');
     if (!rail || !before || railBtn) return;
-    railBtn = el('button', { class: 'tool-btn bd-rail-peek', id: 'board-drawer-btn', title: 'Board drawer (Ctrl+Shift+M): your references; drag one into a chat for its vibe', dataset: { feature: 'Board › Drawer' }, on: { click: () => toggle() } });
+    railBtn = el('button', { class: 'tool-btn bd-rail-peek', id: 'board-drawer-btn', title: 'Board drawer (Ctrl+Shift+M): your references; drag a picture or clip into a chat to attach it', dataset: { feature: 'Board › Drawer' }, on: { click: () => toggle() } });
     railBtn.append(Icons.node?.('board') || document.createTextNode('▦'));
     railBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, [
       { label: 'Open the board', action: () => activate('tool:board') },
@@ -176,7 +187,7 @@ const BoardDrawer = (() => {
   }, true);
   try {
     Keys.add({ area: 'Board', keys: 'Ctrl+Shift+M', what: 'board drawer over any chat or tool (also the ▦ in the rail)' });
-    Keys.add({ area: 'Board', keys: 'Drag a reference into a chat', what: 'attach its vibe (not the file) to your next message' });
+    Keys.add({ area: 'Board', keys: 'Shift+drag a reference into a chat', what: 'attach its vibe (not the file) to your next message' });
     Keys.add({ area: 'Board', keys: 'Right-click a drawer tile', what: 'attach only its palette, light, motion… to the chat' });
   } catch { /* keys.js not loaded */ }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addRailButton); else addRailButton();

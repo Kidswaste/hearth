@@ -49,6 +49,7 @@ UNIT.push('vstembed64-test'); // (round 64, vstembed64) 48 kHz, fast load (cache
 UNIT.push('audiodoctor64-test'); // (round 64, audiodoctor64) /audio doctor: real creative-vst-doctor.py + fake Pedalboard / sounddevice / rtmidi (no runtime, no ASIO DLL, ASIO crash, UA absent, plugin failure, underruns, loopback)
 UNIT.push('framebar-test'); // (round 64, framebar64) the Lab's frame budget bar: target refresh, frame vs budget (CPU / late frames), each layer's share, the most expensive layer, the "why?" look's costs and suggestions
 UNIT.push('liveset64-test'); // (round 64, liveset64) Live set: set model, keys, bar quantize, preset preload timing, proof steps (+ the real host: quantized launch, twin switch with no underrun, panic, run recorder)
+UNIT.push('inspodrop-test'); // (round 65, inspodrop65) a drawer tile dropped in a chat as real media: key-frame sampling, the picture budget, media kinds, frame sizes, the clip's line
 UNIT.push('winfresh-test'); // (round 60, winfresh60) the Windows zip install: a shallow checkout updating (gaps, rewrites, deeper fetch), private-repo sign-in, shortcuts / login item
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
@@ -123,6 +124,7 @@ const GROUPS = {
   activity: ['activity'], // (round 27) ◉ Activity: what runs, what waits for you, the last 24 h, stuck replies, desktop notifications
   publishkit: ['publishkit', 'unit:publishkit-test'], // (round 27) 📮 Ready to post: platform checks, safe areas, cover, words, post folder, fixes through the queue
   router: ['router', 'unit:router-test', 'routerlearn', 'unit:routerlearn-test'], // (round 39) routerlearn: Smart learns from you (think harder 3× → that kind steps up, the line in AI setup, ✕ forgets; the rules + a 6-week simulation) · (round 28) Smart: model + effort per message, the pick on the reply, think harder (fake engines say what they got)
+  inspodrop65: ['inspodrop65', 'unit:inspodrop-test', 'board-chat', 'eyes-ui', 'journey-board', 'board', 'board-links', 'board-extra', 'board-pack', 'chat-media', 'attachlean', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 65) drag a picture / clip from the board drawer into a chat: the real picture, a clip's key frames + its file, several / a whole board, Shift = vibe text
   mainhang65: ['mainhang65', 'idlecpu', 'twocopies64', 'updater', 'chatkeep', 'datasafe', 'soundbank63', 'lazy', 'unit:boot-test', 'unit:twocopies-test', 'unit:datasafe-scan', 'unit:winmac-test', 'unit:backupauto-test'], // (round 65) the main process never hangs the app: event-loop delay on a big data folder (startup, idle, everyday actions, the backup, sync passes)
   uilag65: ['uilag65', 'lab240edit', 'menucalm', 'appcalm', 'clickfirst64', 'questhud61', 'vstembed64', 'jankwatch', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 65) the main window's lag: no automatic profiles from the jank watch, the hidden Lab / Studio / Sound desk skip style (modals, page-wide changes), scroll / hover / click / modal budgets on a big profile
   twocopies64: ['twocopies64', 'unit:twocopies-test', 'chatkeep', 'firstrun', 'datasafe', 'unit:winfresh-test', 'unit:configsafe-test', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test', 'unit:chatsafe-scan'], // (round 64) a second Hearth folder next to the real one: the card before the window, its own profile, Bring its chats here
@@ -314,7 +316,7 @@ function flagsOf(src) {
     const t = toks[i];
     if (['--script', '--shot', '--lib'].includes(t)) { i++; continue; } // set here (libs: by smoke.js)
     // (round 44) --coverage takes its file too: without it smoke.js wrote trim-drive's coverage to a file named "--script"
-    if (['--check-timeout', '--wait', '--data', '--eval', '--open', '--save-dir', '--screen', '--dpr', '--coverage', '--profile', '--burn'].includes(t)) { keep.push(t, toks[++i].replace(/^["']|["']$/g, '')); continue; }
+    if (['--check-timeout', '--wait', '--data', '--eval', '--open', '--save-dir', '--screen', '--dpr', '--coverage', '--profile', '--burn', '--serve-dir'].includes(t)) { keep.push(t, toks[++i].replace(/^["']|["']$/g, '')); continue; }
     if (t.startsWith('--')) keep.push(t);
   }
   if (!keep.includes('--check-timeout')) keep.push('--check-timeout', '600000');

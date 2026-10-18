@@ -113,10 +113,10 @@ const dt = new DataTransfer();
 tile?.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
 const ir = v.input.getBoundingClientRect();
 v.input.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: ir.left + 10, clientY: ir.top + 10 }));
-v.input.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: ir.left + 10, clientY: ir.top + 10 }));
+v.input.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: ir.left + 10, clientY: ir.top + 10, shiftKey: true })); // (round 65) Shift: the vibe (plain: the picture, inspodrop65)
 await until(() => v.attachments.length === 1, 4000);
 const att = v.attachments[0];
-step('drag a reference into the director: a vibe chip, not the file', /^vibe · /.test(att?.name || '') && att?.kind === 'text' && /#[0-9a-f]{6}/i.test(att?.content || '') && !/\.png|board[\\/]media/i.test(att?.content || ''), { name: att?.name, text: (att?.content || '').slice(0, 160) });
+step('Shift+drag a reference into the director: a vibe chip, not the file', /^vibe · /.test(att?.name || '') && att?.kind === 'text' && /#[0-9a-f]{6}/i.test(att?.content || '') && !/\.png|board[\\/]media/i.test(att?.content || ''), { name: att?.name, text: (att?.content || '').slice(0, 160) });
 const dragText = dt.getData('text/plain');
 step('the drag also carries the vibe as text (for any other text field)', /#[0-9a-f]{6}/i.test(dragText) && /vibe only/.test(dragText), dragText.slice(0, 80));
 // switching to another chat with the drawer open: it follows the chat on screen
