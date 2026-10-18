@@ -205,10 +205,7 @@ function openPlan({ fs, platform = process.platform, other, execPath = '', passA
   if (platform === 'win32') {
     const exe = P.join(other, 'electron', 'electron.exe');
     if (exists(fs, exe)) return { cmd: exe, args: [other, ...passArgs], cwd: other };
-    for (const n of ['Start Hearth.cmd', 'Agent Hub.cmd', 'Hearth.cmd']) {
-      const f = P.join(other, n);
-      if (exists(fs, f)) return { cmd: 'cmd.exe', args: ['/d', '/c', 'start', '""', `"${f}"`], cwd: other, shell: true };
-    }
+    // no Electron of its own there ("Start Hearth.cmd" starts that same electron.exe): this copy's runs that folder
     return execPath ? { cmd: execPath, args: [other, ...passArgs], cwd: other } : { folder: other };
   }
   if (platform === 'darwin') {

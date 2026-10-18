@@ -100,7 +100,7 @@ async function gate(o) {
         if (plan.folder) { try { require('electron').shell.openPath(plan.folder); } catch { /* shown in the card */ } return { ok: false, folder: plan.folder }; }
         try {
           try { app.releaseSingleInstanceLock(); } catch { /* not held */ }
-          const child = require('child_process').spawn(plan.cmd, plan.args, { cwd: plan.cwd, detached: true, stdio: 'ignore', windowsHide: false, ...(plan.shell ? { shell: true, windowsVerbatimArguments: true } : {}), env: childEnv() });
+          const child = require('child_process').spawn(plan.cmd, plan.args, { cwd: plan.cwd, detached: true, stdio: 'ignore', windowsHide: false, env: childEnv() });
           child.unref();
           noteOpened(plan);
         } catch (err) { return { ok: false, error: err.message }; }

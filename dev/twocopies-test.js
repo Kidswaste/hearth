@@ -91,9 +91,9 @@ const copyAt = (mfs, P, dir, chats = 0, extra = {}) => {
     mfs.put(`${home}\\agent-hub\\electron\\electron.exe`, 'exe');
     const op = C.openPlan({ fs: mfs, platform: 'win32', other: `${home}\\agent-hub`, execPath: `${home}\\Hearth\\electron\\electron.exe` });
     ok(op.cmd === `${home}\\agent-hub\\electron\\electron.exe` && op.args[0] === `${home}\\agent-hub` && !op.args.includes('--restart'), 'Open that one starts the other copy with its own electron.exe (a running one just comes forward)');
-    mfs.put(`${home}\\OneDrive\\Desktop\\Hearth\\Start Hearth.cmd`, '@echo off');
-    const op2 = C.openPlan({ fs: mfs, platform: 'win32', other: `${home}\\OneDrive\\Desktop\\Hearth` });
-    ok(op2.cmd === 'cmd.exe' && op2.args.join(' ').includes('Start Hearth.cmd'), 'no electron.exe there: its Start Hearth.cmd');
+    const op2 = C.openPlan({ fs: mfs, platform: 'win32', other: `${home}\\OneDrive\\Desktop\\Hearth`, execPath: `${home}\\Hearth\\electron\\electron.exe` });
+    ok(op2.cmd === `${home}\\Hearth\\electron\\electron.exe` && op2.args[0] === `${home}\\OneDrive\\Desktop\\Hearth`, 'no electron.exe there: this copy\'s Electron runs that folder');
+    ok(C.openPlan({ fs: mfs, platform: 'win32', other: 'Q:\\x' }).folder === 'Q:\\x', 'nothing to start it with: its folder is shown');
     // the login item: off in the empty copy never removes the real copy's
     ok(C.loginItemPlan({ want: false, items: [{ name: 'Hearth', path: `${home}\\agent-hub\\electron\\electron.exe`, args: [`"${home}\\agent-hub"`] }], appDir: `${home}\\Hearth` }) === 'leave', '"Start with Windows" off in the new copy leaves the real copy\'s entry');
     ok(C.loginItemPlan({ want: false, items: [{ name: 'Hearth', path: `${home}\\Hearth\\electron\\electron.exe`, args: [`"${home}\\Hearth"`] }], appDir: `${home}\\Hearth` }) === 'clear', 'off clears this copy\'s own entry');
