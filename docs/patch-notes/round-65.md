@@ -14,3 +14,8 @@
 - **✦ Try what's new no longer gets stuck** on the quest tracker, Paris map and show steps after Sidequest's new tab bar: it now says "click Map".
 - Closing a Sidequest dialog no longer pulls the cursor away from what you just clicked.
 - **No more "A JavaScript error occurred in the main process" box** when Hearth's window reloads or closes while an AI reply is still streaming.
+
+## 🖼 Drag inspiration into a chat for real
+- Drag a picture from the inspo drawer into a chat and the real image is attached (a web picture is downloaded once) — Claude or Astra can look at it.
+- Drag a clip and a few key frames go with it (4–8, evenly spread), plus the video file and a short "video, 6 s" line; the message box shows a video chip with its frames — click to play.
+- Drag the drawer's top strip (or click it › Attach its pictures & clips) for a whole board, up to 10 at once. Want the old vibe text? Hold Shift while dropping, or right-click a tile › Attach as vibe text.
