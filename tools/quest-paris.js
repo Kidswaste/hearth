@@ -228,5 +228,5 @@
   }
   const parkName = pid => ({ 'place-buttes': 'Buttes-Chaumont', 'pp-belleville-view': 'Belleville', 'place-luxembourg': 'Luxembourg', 'place-villette': 'La Villette' })[pid] || byId(pid)?.name || 'the park';
   const sketchTitle = (pid, date = new Date()) => `Park sketch · ${parkName(pid)} · ${date.getDate()} ${date.toLocaleString('en', { month: 'short' })}`;
-  return { TAGS, guide, pins, personal, parks, byId, arrLabel, matches, findPlace, findPersonal, hasGuide, ensurePin, addGuide, removeGuide, startPlace, startPersonal, progress, campaignId, parkName, sketchTitle, words };
+  return { TAGS, guide, pins, personal, parks, byId, arrLabel, matches, findPlace, findPersonal, hasGuide, ensurePin, addGuide, removeGuide, startPlace, startPersonal, progress, campaignId, parkName, sketchTitle, words, placeSteps }; // placeSteps: (round 63, questwalk63) a walk stop takes the time its place quest asks for
 });

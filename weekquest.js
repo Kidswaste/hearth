@@ -21,7 +21,7 @@ const WeekQuest = (() => {
   let panel = null, mode = 'week', week = null, props = [], weather = null, weatherWhy = '', weatherAt = 0, ideas = [], busy = '', review = null, aiNote = '';
   const _test = { shows: null, weather: undefined, ask: null }; // (checks) fixtures instead of the cached list / forecast / AI
   const J = () => QuestHud.journal();
-  const ICON = { show: '♫', place: '📍', park: '☀', personal: '◇', quest: '◆', idea: '✧' };
+  const ICON = { show: '♫', place: '📍', park: '☀', personal: '◇', quest: '◆', idea: '✧', walk: '⇢' }; // walk: (round 63, questwalk63)
   const btn = (text, run, cls = '', title = '') => el('button', { type: 'button', class: `qh-btn ${cls}`, text, title: title || null, on: { click: (e) => { e.stopPropagation(); Promise.resolve(run(e)).catch((err) => toast(calmError(err), { type: 'error' })); } } });
   const dayName = (d) => `${W.weekday(d)} ${W.parse(d).getDate()}`;
   async function ready() { await QuestHud.refresh(); const { C, S, status } = J(); if (status !== 'ok' || !C || !S) throw Error(status === 'missing' ? 'No quest journal yet. Open Sidequest Studio to start your first quest.' : 'Your quest journal could not be read just now. Nothing was changed.'); return { C, S }; }
@@ -47,13 +47,15 @@ const WeekQuest = (() => {
     const wk = W.planWeek(Date.now()); week = wk;
     const shows = await sources();
     const list = W.candidates({ C, s: S, shows, guide: QuestParis.guide, personal: QuestParis.personal, weather, anchor: anchor(S), week: wk });
-    props = W.propose([...list, ...ideas], wk, W.planOf(S, wk.week)?.items || []);
+    const walk = window.QuestWalk?.weekCandidate(S, wk, list, weather) || null; // (round 63, questwalk63) a walk on a free afternoon
+    props = W.propose([...list, ...(walk ? [walk] : []), ...ideas], wk, W.planOf(S, wk.week)?.items || []);
     return props;
   }
   const makers = () => ({
     show: (sh) => ShowSyncCore.showCampaign(sh),
     place: (s, pid, guide) => (guide ? QuestParis.startPlace(s, pid) : QuestCore.placeQuest(s, pid)),
     personal: (s, k) => QuestParis.startPersonal(s, k),
+    walk: (s, sug) => QuestWalkCore.save(s, sug.walk, { ensurePin: QuestParis.ensurePin }), // (round 63, questwalk63)
   });
   async function accept(sug, day = sug.day) {
     if (!week) await propose();

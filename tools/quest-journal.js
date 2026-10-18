@@ -4,7 +4,7 @@ const QuestJournal = (() => {
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
   let atlasView = null;
   // (round 61, showsync61) Map layers: other modules add pins and one head icon to the Paris map without editing it
-  // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit) }.
+  // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit), lines() } (lines: round 63, questwalk63: [{ id, color, points: [{ lat, lon, label? }] }]).
   const mapLayers = [];
   // (round 62, showprep62) quest detail hooks: fn({ quest, campaign, close, kit }) → a node shown under the quest's title
   // (e.g. a show quest's "Get ready" / "How was it?"); a hook that throws is skipped
@@ -406,8 +406,8 @@ const QuestJournal = (() => {
     const head=row(mapIcon('social','Friends & dates',()=>mapNotebook('friends'),'#ffd75e'),mapIcon('calendar','Outing plans',()=>mapNotebook('plans'),'#ff8c42'),mapIcon('gift','Field rewards',mapRewards,'#ff6b9d'),mapIcon('info','Map controls & progress',()=>dialog('Your Paris field kit',body=>body.append(p('Drag to explore. Use arrow keys on the map to pan, + / − to zoom. Double-click to add a pin; the + button also works without a mouse.'),p('Colored symbols are your place categories. Stars save favorites. Visit stamps are your own record and give no XP. Quests earn XP after proof and review.'),p('Open friends, plans and rewards only when you need them. Hover or focus a symbol for its name. Escape dismisses a hint.'))),'#bfc0c8'),mapIcon('plus','Add a place',()=>placeForm(atlasView?.center()||{}),'#bd8bff'));
     head.prepend(mapIcon('music','Outing desk · events & my lineup',outingDesk,'#ffb14a'));
     // (round 61, showsync61) map layers: their icon joins this row, their pins join the map
-    const layerKit={dialog,mapIcon,button,p,label,E,mutate,questDetail,navigate,notice},layerPins=[];
-    for(const layer of mapLayers){try{const icon=layer.icon?.(layerKit);if(icon)head.append(icon);layerPins.push(...(layer.pins?.()||[]));}catch(err){console.warn('[quest map layer]',layer.id,err);}}
+    const layerKit={dialog,mapIcon,button,p,label,E,mutate,questDetail,navigate,notice},layerPins=[],layerLines=[]; // layerLines: (round 63, questwalk63) a layer's lines() → polylines on the map
+    for(const layer of mapLayers){try{const icon=layer.icon?.(layerKit);if(icon)head.append(icon);layerPins.push(...(layer.pins?.()||[]));layerLines.push(...(layer.lines?.()||[]));}catch(err){console.warn('[quest map layer]',layer.id,err);}}
     content.append(sectionHeading('FH / FIELD KIT','Paris, at your pace.',null,head));
     const filters=E('div',{class:'qj-map-filters',attrs:{'aria-label':'Filter map places'}});
     for(const k of [{id:'all',name:'All places',color:'#bfc0c8'},...C.mapKinds]){
@@ -439,7 +439,7 @@ const QuestJournal = (() => {
       else panel.append(button('Pick a little reward',mapRewards,'qj-quiet'));
     }else panel.append(QuestAtlas.icon('compass'),E('h3',{text:'A quiet corner.'}),p('No places match.'),button('Show all places',()=>{mapFilter={kind:'all',saved:false,query:''};render();},'qj-primary'));
     layout.append(map,panel);content.append(layout);
-    atlasView=QuestAtlas.mount(map,{places:[...visible.map(p=>({...p,kind:C.placeKind(p),color:mapKind(p).color})),...layerPins],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point)});
+    atlasView=QuestAtlas.mount(map,{places:[...visible.map(p=>({...p,kind:C.placeKind(p),color:mapKind(p).color})),...layerPins],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines});
     const stamps=state.atlas.places.filter(p=>p.visitedAt).length;
     content.append(E('div',{class:'qj-field-footer'},E('span',{text:visible.length+' places'}),mapIcon('check',stamps+' visit stamps · your own record, no XP',()=>mapNotebook('places'),'#ffd75e'),E('span',{text:stamps+'/'+state.atlas.places.length}),window.QuestParisUI?.footer()||null,button('Quest notebook →',()=>navigate('adventure'),'qj-quiet'))); // parisquests61: the Paris guide's one footer button
   }
@@ -628,6 +628,7 @@ const QuestJournal = (() => {
     content.append(sectionHeading('FORGEHEART / REWARD BAY', 'Something to look forward to.', null, row(button('Browse reward ideas', rewardIdeas, 'qj-primary'), button('+ Add a reward', () => rewardForm(), 'qj-quiet'))));
     rewardBudgetPanel();
     content.append(E('div', { class: 'qj-balance' }, E('b', { text: `✧ ${C.balance(state)}` }), p('sparks available · your XP and level stay with you')));
+    { const shelf = typeof RewardShelf !== 'undefined' ? RewardShelf.studio({ E, label, p, button, meter, row, mutate, redeemDialog, rewardForm, dialog, field }, state) : null; if (shelf) content.append(shelf); } // (round 63, rewards63) the real-rewards shelf: next reward in XP, the savings jar, kind starters, every claim
     const pending = state.redemptions.filter(r => !r.returnedAt && !r.enjoyedAt);
     if (pending.length) {
       const queue = E('section', { class: 'qj-reward-queue' }, label('CLAIMED / READY TO ENJOY'), E('h3', { text: 'Something good is waiting.' }));
