@@ -137,11 +137,22 @@ async function fetchThree(version, rel) {
   const url = `https://cdn.jsdelivr.net/npm/three@${version}/${rel}`;
   let res;
   try { const { net } = require('electron'); res = await (net?.fetch ? net.fetch(url) : fetch(url)); } catch { res = await fetch(url).catch((e) => ({ ok: false, statusText: e.message })); }
-  if (!res?.ok) throw new Error(`Couldn't get three.js ${version} (${rel}): ${res?.status || ''} ${res?.statusText || 'offline?'}. It is downloaded once and kept; try again when online.`);
+  // (round 60, trimdrive60) one plain message, marked calm: the caller answers it as a result, not a main-process error
+  if (!res?.ok) {
+    const offline = !res?.status;
+    const err = new Error(offline
+      ? `Hearth needs three.js ${version} for this and downloads it once, but this computer seems to be offline and it isn't downloaded yet. Try again when you're online: after that it works offline too.`
+      : `Couldn't download three.js ${version} (${rel}: ${res.status} ${res.statusText || ''}). Try again in a moment.`);
+    err.calm = true; err.offline = offline;
+    throw err;
+  }
   const text = await res.text();
   const dest = path.join(ROOT(), `three@${version}`, rel);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.writeFileSync(dest, text);
+  // kept for the next time, offline too: written whole (temp + rename), so a cut-short download is never reused
+  const tmp = `${dest}.${process.pid}.part`;
+  fs.writeFileSync(tmp, text);
+  fs.renameSync(tmp, dest);
   if (!exists(path.join(ROOT(), `three@${version}`, 'package.json'))) fs.writeFileSync(path.join(ROOT(), `three@${version}`, 'package.json'), JSON.stringify({ name: 'three', version }));
   return text;
 }
