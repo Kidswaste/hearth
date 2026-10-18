@@ -147,7 +147,13 @@ The second synth (the "twin") costs the memory of one more instance of the open 
     unit:datasafe-scan ✓, unit:winmac-test ✓;
   - also unit:liveset64-test ✓, unit:parkjam62-test ✓, unit:quest-paris-test ✓, unit:loopsong63-test ✓,
     unit:winmac-scan ✓.
-- `claude/intelligent-galileo-yaiqem` and `origin/main` had nothing newer than this branch's base (9c5eccd) when merged.
+- Merged `origin/main` (c0ad4a7: Codex's Sidequest dialogs / outing events; `claude/intelligent-galileo-yaiqem` had nothing
+  newer). Afterwards liveset64, lazy, unit:quest-paris-test, unit:boot-test and unit:liveset64-test were re-run, and all
+  passed.
+- Timing note: the "no underrun across the switch" step of unit:liveset64-test failed once (0 → 4) at a load average of
+  ≈ 3.7 on this 4-CPU machine. It passed in the 2 runs right after it and in every other run. The fake host renders
+  512-sample blocks only one block ahead, so a loaded test machine can starve it. Per the release policy, this is timing
+  under load and doesn't hold a release.
 
 ## Risks
 - **The twin doubles the synth's memory while a set is open.** Serum 2 is heavy; that's the price of a gapless switch.
