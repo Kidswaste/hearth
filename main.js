@@ -256,7 +256,8 @@ function createWindow() {
 
 app.on('web-contents-created', (_event, contents) => {
   contents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    callback(ALLOWED_PERMISSIONS.has(permission));
+    // (round 61, questhud61) location only for Hearth's own page (the quest tracker's opt-in "near you"), never a website
+    callback(ALLOWED_PERMISSIONS.has(permission) || (permission === 'geolocation' && contents.getType() === 'window' && /^file:/.test(contents.getURL())));
   });
   appshell.attachContextMenu(contents, send);
 

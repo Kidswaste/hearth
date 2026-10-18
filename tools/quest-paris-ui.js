@@ -118,6 +118,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
     const pool = sub === 'add' ? P.personal.map(t => ({ value: 'add ' + t.key, label: t.title })) : sub === 'go' ? P.guide.map(g => ({ value: 'go ' + g.id.replace(/^(pp|place)-/, ''), label: g.name, hint: P.arrLabel(g.arr) })) : sub === 'park' ? ['buttes', 'belleville', 'luxembourg', 'villette'].map(k => ({ value: 'park ' + k })) : ['paris', 'places'].includes(sub) ? Object.keys(P.TAGS).map(k => ({ value: sub + ' ' + k, hint: P.TAGS[k] })) : sub === 'guide' ? ['on', 'off'].map(k => ({ value: 'guide ' + k })) : [];
     return pool.filter(x => fold(x.value.slice(sub.length + 1)).startsWith(rest) || fold(x.label || '').includes(rest)).slice(0, 40);
   }
-  Commands.register({ name: 'quest', area: 'Create', args: '<paris|places|go|add|park|list|guide> …', desc: 'Paris quests: the guide on the map, a place’s quest, personal quests (AirPods, music at the park…)', run, complete, examples: ['/quest paris', '/quest paris shows', '/quest add airpods', '/quest go canal', '/quest park buttes', '/quest list'], keywords: 'paris map places airpods apple opera park music drink gig open mic records sunrise show' });
+  // (round 61, questhud61) one /quest command: the rail's quest tracker (questhud.js) registers it and passes these
+  // words (paris, places, guide, go, add, park, list, help, a place / personal quest by name) to run() / complete() here
   return { keep, words, chip, panel, footer, guideDialog, run, complete, journal };
 })();
