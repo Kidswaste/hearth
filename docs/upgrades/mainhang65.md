@@ -41,12 +41,10 @@ reports that apart.
    other Hearth folders, statting their chats, even in a copy that has chats (where the answer can't change anything).
    Now: a count without a stat (`countChats(…, { newest: false })`), counted only when the profile choice depends on it,
    `gate()` stops at the first chat (`anyChats()`), and other folders are searched only for a copy with no chats.
-3. **Settings news the window already shows is let go** (renderer.js `configChanged`): every save of config.json comes
-   back from the file watcher as "config changed", which redraws the rail, every surface, the layout and the whole
-   chats list. A news identical to what was last drawn (same settings, same theme.css, and the window's settings
-   unchanged since) changes nothing on screen and is now skipped; any other still redraws as before (saves made from the
-   window rely on it). In this setup the redraw cost no long task (the list is virtualised), so this is a cheap guard,
-   not the hiccup.
+3. Settings saves: every save of config.json comes back from the file watcher as "config changed" and redraws the
+   rail, the surfaces, the layout and the chats list. Measured here: 4 saves, 4 redraws, no long task (the list is
+   virtualised), so it is not the hiccup. A skip for news identical to what is drawn was tried and taken back:
+   dev/checks/datasafe.js shows the held-settings recovery relies on that redraw.
 4. Sync passes: on 3,000 chats an everyday pass takes ~0.7 s, almost all of it waiting on the disk off the main thread;
    the main thread's longest stretch in a pass was 54–69 ms (path work + the state file). Not the hiccup here. On the
    owner's /smooth report, "sync pass ×1304" under "Adapted live" counts passes **held back while the owner was
@@ -72,7 +70,7 @@ reports that apart.
 - New: `mainlag-probe.js` (tests only), `dev/make-bighome-fixture.js`, `dev/checks/mainhang65.js`.
 - Changed: `backupautomain.js` (copy + verify off the main thread), `twocopies-core.js` (`countChats` options,
   `pickProfile` takes a count or a function), `twocopiesmain.js` (`anyChats`, lazy count), `appshell.js` (shortcut
-  hold), `renderer.js` (`configChanged` skips identical news), `powerwisemain.js` (loads the probe in tests),
+  hold), `powerwisemain.js` (loads the probe in tests),
   `dev/run-checks.js` (fixture, env, the `mainhang65` group). No Codex files touched.
 
 ## For the patch notes
@@ -80,4 +78,3 @@ reports that apart.
   app for a second or more; it now runs in the background without holding anything up.
 - **Hearth starts a little faster with lots of chats**: it no longer looks at every chat file twice before the window
   opens.
-- **Saving a setting no longer redraws everything when nothing changed.**
