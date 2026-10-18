@@ -250,7 +250,7 @@ function transcode(job, emit, overrides) {
 }
 
 function registerIpc(ipcMain, getWin, getOverride) {
-  const sendJob = (ev) => getWin()?.webContents.send('video:job-event', ev);
+  const sendJob = (ev) => { try { const w = getWin(); if (w && !w.isDestroyed()) w.webContents.send('video:job-event', ev); } catch { /* window gone */ } };
   ipcMain.handle('ae:status', () => status(getOverride()));
   ipcMain.handle('ae:running', () => running());
   ipcMain.handle('ae:run', (_e, code, label) => runScript(code, label, getOverride()));

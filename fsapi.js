@@ -378,7 +378,7 @@ function registerIpc(ipcMain, getWin) {
   handle('fs:diff', (fileA, fileB, opts) => diffLines(read(fileA, { maxBytes: 80 * 1048576 }), read(fileB, { maxBytes: 80 * 1048576 }), opts));
   handle('fs:reveal', (p) => shell.showItemInFolder(assertAbs(p)));
   handle('fs:open', (p) => shell.openPath(assertAbs(p)));
-  handle('fs:watch', (id, file) => watch(id, file, (p) => getWin()?.webContents.send('fs:changed', { id, path: p })));
+  handle('fs:watch', (id, file) => watch(id, file, (p) => { try { const w = getWin(); if (w && !w.isDestroyed()) w.webContents.send('fs:changed', { id, path: p }); } catch { /* window gone */ } }));
   handle('fs:unwatch', (id) => unwatch(id));
   handle('fs:copy', (from, to) => { fs.mkdirSync(path.dirname(assertAbs(to)), { recursive: true }); ownWrite(to); fs.copyFileSync(assertAbs(from), assertAbs(to)); return true; });
   handle('fs:home', () => os.homedir());

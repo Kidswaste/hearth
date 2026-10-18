@@ -447,7 +447,7 @@ async function rollback(entry, prev, emit, { paths = {} } = {}) {
 
 function register(ipcMain, getWin, settings) {
   const paths = () => settings?.()?.deployPaths || {};
-  const send = (ev) => getWin()?.webContents.send('deploy:event', ev);
+  const send = (ev) => { try { const w = getWin(); if (w && !w.isDestroyed()) w.webContents.send('deploy:event', ev); } catch { /* window gone */ } };
   ipcMain.handle('deploy:status', (_e, o = {}) => status({ check: Boolean(o.check), paths: { ...paths(), ...(o.paths || {}) } }));
   ipcMain.handle('deploy:login', (_e, id, o = {}) => login(id, { paths: { ...paths(), ...(o.paths || {}) } }));
   ipcMain.handle('deploy:build', (_e, spec, o = {}) => build(spec, o));

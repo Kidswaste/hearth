@@ -164,7 +164,9 @@ function openExternal(url) {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
 }
 
-const send = (channel, data) => win?.webContents.send(channel, data);
+// a reply can still be streaming when the window is closing or reloading: never send to a window that's gone (that threw
+// "Object has been destroyed" in the main process and showed Electron's crash box)
+const send = (channel, data) => { try { if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(channel, data); } catch { /* window going away */ } };
 
 // (round 19, splash) the window's own color before its first frame: the loading screen's (index.html #splash-css), so
 // no white or off-color frame ever shows; the window stays hidden until that first frame is drawn ('ready-to-show'),

@@ -45,7 +45,7 @@ function start(getWin) {
   // Ask the renderer (which owns the game webview) to run one tool call.
   const callRenderer = (tool, args) => new Promise((resolve) => {
     const win = getWin();
-    if (!win) { resolve({ ok: false, error: 'The hub window is not open.' }); return; }
+    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) { resolve({ ok: false, error: 'The hub window is not open.' }); return; }
     watch(win);
     const id = crypto.randomUUID();
     pending.set(id, resolve);
