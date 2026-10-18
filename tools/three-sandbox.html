@@ -549,9 +549,9 @@ const perfNote = { stale: 0, composed: 0, reused: 0, passSkipped: 0, pooled: 0, 
 // frame's work (frameWork), [2] the worst gap since the stats' last look (worstGap), [3] the last frame's time (lastFrameAt)
 const FT60 = new Float64Array(4);
 let frameCalls = 0; let lastCalls = 0;
-// (round 60, gcchurn60) the last 120 frames' work: a ring (an array pushed and shifted every frame grew its storage again
-// every few dozen frames); wr(k): the k-th oldest of the wrN kept
-const WR = new Float64Array(120); let wrN = 0; let wrI = 0;
+// (round 60, gcchurn60) the last 120 frames' work, in whole microseconds: a ring (an array pushed and shifted every frame
+// grew its storage again every few dozen frames); wr(k): the k-th oldest of the wrN kept (µs)
+const WR = new Int32Array(120); let wrN = 0; let wrI = 0;
 const wr = (k) => WR[(wrI - wrN + k + 120) % 120];
 function capOk(t) {
   if (!fpsCap || t === capT) return true;
@@ -1560,19 +1560,21 @@ function paceCore(opt = {}) {
   }
   // ---- the meter: frame gaps → "120 fps · steady" ----
   function meter(size = 240) {
-    // (round 60, gcchurn60) read() sorts into a kept copy by hand (no array of boxed numbers, no comparator calls, no copy:
-    // nothing left to collect)
-    const ring = new Float32Array(size); const g = new Float32Array(size); let i = 0; let count = 0;
+    // (round 60, gcchurn60) the gaps kept as whole microseconds in an Int32Array, read() sorting them by hand into a kept
+    // copy: no array of boxed numbers, no comparator, no sort's copy, and small integers never boxed even where this
+    // twice-a-second code runs unoptimised (a fractional typed-array value read there is a new heap number each time)
+    const ring = new Int32Array(size); const g = new Int32Array(size); let i = 0; let count = 0;
     return {
-      feed(gap) { if (!(gap > 0) || gap > 1000) return; ring[i] = gap; i = (i + 1) % size; count = Math.min(size, count + 1); },
+      feed(gap) { if (!(gap > 0) || gap > 1000) return; ring[i] = Math.round(gap * 1000); i = (i + 1) % size; count = Math.min(size, count + 1); },
       reset() { count = 0; i = 0; },
       read() {
         if (count < 12) return { fps: 0, med: 0, p95: 0, drops: 0, label: 'measuring' };
         const n = count;
-        for (let k = 0; k < n; k += 1) { const x = ring[k]; let j = k - 1; while (j >= 0 && g[j] > x) { g[j + 1] = g[j]; j -= 1; } g[j + 1] = x; } // (sorted by hand: a typed array's sort() copies)
-        let med = 0; const q0 = n >> 2; const q1 = n - q0; for (let k = q0; k < q1; k += 1) med += g[k]; med /= q1 - q0; // (the middle half's mean)
-        const p95 = g[Math.min(n - 1, Math.floor(n * 0.95))];
-        let drops = 0; for (let k = 0; k < n; k += 1) if (g[k] > med * 1.6) drops += 1;
+        for (let k = 0; k < n; k += 1) { const x = ring[k]; let j = k - 1; while (j >= 0 && g[j] > x) { g[j + 1] = g[j]; j -= 1; } g[j + 1] = x; }
+        let sum = 0; const q0 = n >> 2; const q1 = n - q0; for (let k = q0; k < q1; k += 1) sum += g[k];
+        const med = sum / (q1 - q0) / 1000; // (the middle half's mean, ms)
+        const p95 = g[Math.min(n - 1, Math.floor(n * 0.95))] / 1000;
+        const lim = med * 1600; let drops = 0; for (let k = 0; k < n; k += 1) if (g[k] > lim) drops += 1;
         const share = drops / n;
         const label = share <= 0.02 && p95 <= med * 1.5 ? 'steady' : share <= 0.08 ? 'a few drops' : 'uneven';
         return { fps: Math.round(1000 / med), med: Math.round(med * 100) / 100, p95: Math.round(p95 * 100) / 100, drops, label };
@@ -1733,7 +1735,7 @@ window.__labPace = {
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
 const tickFrames = (t) => {
   if (RDY.rec && FT60[3]) { RDY.rec.g.push(t - FT60[3]); RDY.rec.w.push(frameSeen === frameTick ? FT60[1] : 0); } // (round 52, presentready: frame pacing)
-  if (frameSeen === frameTick) { WR[wrI] = FT60[1]; wrI = (wrI + 1) % 120; if (wrN < 120) wrN += 1; lastCalls = frameCalls; }
+  if (frameSeen === frameTick) { WR[wrI] = Math.round(FT60[1] * 1000); wrI = (wrI + 1) % 120; if (wrN < 120) wrN += 1; lastCalls = frameCalls; }
   FT60[1] = 0; frameCalls = 0;
   frameTick += 1;
   const dozed = DOZE.on; // (this frame came after a doze's wait: its gap isn't a slow frame)
@@ -1897,7 +1899,7 @@ async function rdyMessage(msg) {
     await rdyFrames(n + 1);
     let mx = 0; for (let k = Math.max(0, wrN - n); k < wrN; k += 1) mx = Math.max(mx, wr(k));
     await rdyCompile(null);
-    post({ type: 'ready-warmed', id: msg.id, work: +mx.toFixed(2), gl: rdyDelta(gl0) });
+    post({ type: 'ready-warmed', id: msg.id, work: +(mx / 1000).toFixed(2), gl: rdyDelta(gl0) });
   } else if (msg.type === 'ready-rec') {
     if (msg.on) { RDY.rec = { g: [], w: [] }; return; }
     const r = RDY.rec || { g: [], w: [] }; RDY.rec = null;
@@ -2069,7 +2071,7 @@ function setGuides(kind) {
 // Present: the mouse hides after 2 s still
 let presentCursor = false; let cursorTimer = 0;
 addEventListener('mousemove', () => { if (!presentCursor) return; document.documentElement.style.cursor = ''; clearTimeout(cursorTimer); cursorTimer = realSetTimeout(() => { document.documentElement.style.cursor = 'none'; }, 2000); });
-let statsTimer = 0; let statsDozed = 0; const statsW = new Float64Array(60);
+let statsTimer = 0; let statsDozed = 0; const statsW = new Int32Array(60);
 function statsRun(on) {
   if (GAME) on = false; // (round 53, gameinput) ▶ Play: no Lab reads the stats (the game's chip counts its own frames)
   if (!on) { if (statsTimer) clearInterval(statsTimer); statsTimer = 0; return; }
@@ -2094,7 +2096,7 @@ function statsTick() {
   // (round 60, gcchurn60) the last 60 frames' work sorted by hand into a kept typed array (no copy, no boxed sort)
   const wn = Math.min(60, wrN); const w = statsW;
   for (let k = 0; k < wn; k += 1) { const x = wr(wrN - wn + k); let j = k - 1; while (j >= 0 && w[j] > x) { w[j + 1] = w[j]; j -= 1; } w[j + 1] = x; }
-  const at = (p) => (wn ? +w[Math.min(wn - 1, Math.floor(wn * p))].toFixed(2) : 0);
+  const at = (p) => (wn ? +(w[Math.min(wn - 1, Math.floor(wn * p))] / 1000).toFixed(2) : 0);
   post({ type: 'stats', fps, worst, quality, ms: FT60[0], calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0,
     p50: at(0.5), p95: at(0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, adapt: adaptInfo(), pace: paceInfo(), note: { ...perfNote } });
 }
