@@ -16,6 +16,7 @@ const fsp = fs.promises;
 const path = require('path');
 const { pathToFileURL } = require('url');
 const Core = require('./showsync-core');
+const Programmes = require('./showsync-venues');
 const DS = require('./datasafe-core');
 const CS = require('./crashsafe-core');
 
@@ -45,7 +46,7 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
   const cache = () => { const c = read('cache.json', Core.emptyCache()); c.sources ||= {}; c.robots ||= {}; c.hosts ||= {}; return c; };
   const geo = () => read('geo.json', {});
   const logos = () => read('logos.json', {});
-  const sources = () => { const s = settings(); return [...(s.from === 'followed' ? [] : Core.defaultSources()), ...s.follows].filter((x, i, a) => x && a.findIndex((y) => y.id === x.id) === i).slice(0, 16); };
+  const sources = () => { const s = settings(); return [...(s.from === 'followed' ? [] : [...Core.defaultSources(), ...Programmes.sources()]), ...s.follows].filter((x, i, a) => x && a.findIndex((y) => y.id === x.id) === i).slice(0, 19); };
 
   // ---------- one polite request ----------
   const lastHit = new Map();
@@ -53,7 +54,7 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
     const host = new URL(url).hostname, since = now() - (lastHit.get(host) || 0);
     if (since < 1500) await wait(1500 - since);
     lastHit.set(host, now());
-    const res = await fetch(url, { headers: { 'User-Agent': Core.UA, 'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8', ...(o.headers || {}) }, redirect: 'follow', signal: AbortSignal.timeout(o.timeout || 15000) });
+    const res = await fetch(url, { headers: { 'User-Agent': Core.UA, 'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8', ...(o.headers || {}) }, redirect: o.redirect || 'follow', signal: AbortSignal.timeout(o.timeout || 15000) });
     return res;
   }
   async function body(res, max) {
@@ -74,27 +75,53 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
     if (txt === null) return 'unknown';
     return Core.robotsAllows(txt, u.pathname + u.search) ? 'allow' : 'deny';
   }
-  async function fetchSource(src) {
-    const c = cache(), old = c.sources[src.id], host = new URL(src.url).hostname;
+  async function fetchSource(src, { htmlOnly = false, trustedOrigin = null, validators = null } = {}) {
+    if (!htmlOnly && Programmes.config(src)) return fetchProgramme(src);
+    const c = cache(), old = validators || c.sources[src.id], host = new URL(src.url).hostname;
     if (c.hosts[host]?.blockedUntil > now()) return { ok: false, blocked: true, status: c.hosts[host].status || 403 };
     const rb = await robots(src.url);
     if (rb === 'deny') return { ok: false, robots: true };
     if (rb === 'unknown') return { ok: false, status: 0 };
     const headers = { Accept: 'text/html,application/xhtml+xml' };
-    if (old?.etag && old.shows?.length) headers['If-None-Match'] = old.etag;
-    if (old?.lastModified && old.shows?.length) headers['If-Modified-Since'] = old.lastModified;
-    let res; try { res = await politeFetch(src.url, { headers }); } catch (err) { log('fetch', src.url, err.message); return { ok: false, status: 0 }; }
+    if (old?.etag && (old.shows?.length || old.show)) headers['If-None-Match'] = old.etag;
+    if (old?.lastModified && (old.shows?.length || old.show)) headers['If-Modified-Since'] = old.lastModified;
+    let res; try { res = await politeFetch(src.url, { headers, redirect:trustedOrigin ? 'error' : 'follow' }); } catch (err) { log('fetch', src.url, err.message); return { ok: false, status: 0 }; }
     const meta = { etag: res.headers.get('etag'), lastModified: res.headers.get('last-modified') };
     if (res.status === 304) return { ok: true, notModified: true, status: 304, ...meta };
     let finalHost = host; try { finalHost = new URL(res.url || src.url).hostname; } catch { /* keep */ }
-    if (!Core.PLATFORMS[src.platform].host.test(finalHost)) return { ok: false, status: res.status || 0 }; // redirected off the platform
+    if (trustedOrigin ? new URL(res.url || src.url).origin !== trustedOrigin : !Core.PLATFORMS[src.platform].host.test(finalHost)) return { ok: false, status: res.status || 0 }; // redirected off the reviewed source
     const challenge = /challenge/i.test(res.headers.get('cf-mitigated') || '');
     if (challenge || [401, 403, 429, 503].includes(res.status)) { c.hosts[host] = { blockedUntil: now() + BLOCK_PAUSE, status: res.status }; return { ok: false, blocked: true, status: res.status }; }
     if (!res.ok) return { ok: false, status: res.status };
     let html; try { html = (await body(res, MAX_HTML)).toString('utf8'); } catch { return { ok: false, status: res.status }; }
+    if (Core.looksBlocked(html)) { c.hosts[host] = { blockedUntil: now() + BLOCK_PAUSE, status: res.status }; return { ok: false, blocked: true, status: res.status }; }
+    if (htmlOnly) return { ok: true, status: res.status, html, ...meta };
     const parsed = Core.parsePage(html, src);
     if (parsed.blocked) { c.hosts[host] = { blockedUntil: now() + BLOCK_PAUSE, status: res.status }; return { ok: false, blocked: true, status: res.status }; }
     return { ok: true, status: res.status, shows: parsed.shows, via: parsed.via, ...meta };
+  }
+
+  async function fetchProgramme(src) {
+    const trustedOrigin = new URL(src.url).origin;
+    const page = await fetchSource(src, { htmlOnly:true, trustedOrigin, validators:{} });
+    if (!page.ok) return page;
+    const entries = read('programmes.json', {}), shows = []; let partial = false, unavailable = false;
+    for (const { url } of Programmes.listing(page.html, src, now())) {
+      const old = entries[url];
+      if(unavailable){if(old?.show)shows.push(old.show);partial=true;continue;}
+      if (old && now()-old.at < RETRY_AFTER) { if(old.show)shows.push(old.show); partial ||= !!old.failed; continue; }
+      const result = await fetchSource({ ...src, url }, { htmlOnly:true, trustedOrigin, validators:old || {} });
+      unavailable = !result.ok && (!result.status || result.blocked || result.robots || result.status>=500);
+      const show = result.notModified && old?.show ? { ...old.show, programme:{ ...old.show.programme, checkedAt:now() } } : result.ok ? Programmes.event(result.html, src, url, now()) : null;
+      const failed = !result.ok || (!show && (!!old?.show || !!Programmes.ticketUrl(result.html)));
+      // A broken page keeps its last good event; a successful page without Shotgun tickets isn't invented.
+      entries[url] = { at:now(), show:show || (failed ? old?.show : null), failed, etag:result.etag || old?.etag, lastModified:result.lastModified || old?.lastModified };
+      if(entries[url].show)shows.push(entries[url].show);
+      partial ||= failed;
+    }
+    // Bound the detail cache; only upcoming/recent events need to survive a restart.
+    for (const [url, e] of Object.entries(entries)) if(e.at < now()-30*DAY)delete entries[url];
+    return { ok:true, status:200, shows, via:'venue-programme', partial };
   }
 
   // ---------- coordinates and logos, once each ----------
@@ -137,14 +164,24 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
     running = (async () => {
       const s = settings(); if (!s.enabled) { s.enabled = true; await save('settings.json'); }
       const c = cache(); let touched = 0;
-      for (const src of sources()) {
+      // The broad city page replaces concerts-only. Keep the last good list, but not its URL validators.
+      const current = Core.defaultSources()[0], legacy = Core.sourceFromUrl('https://shotgun.live/en/concerts/paris');
+      if (!c.sources[current.id] && c.sources[legacy.id]) c.sources[current.id] = { ...c.sources[legacy.id], id:current.id, url:current.url, lastTry:0, etag:null, lastModified:null };
+      const update = async src => {
         const old = c.sources[src.id], age = now() - (old?.lastTry || 0);
-        if (age < MIN_GAP || (!force && age < RETRY_AFTER)) continue;
+        if (age < MIN_GAP || (!force && age < RETRY_AFTER)) return;
         touched++;
         Core.applyResult(c, src, await fetchSource(src), now());
-      }
+      };
+      const srcs = sources();
+      for (const src of srcs.filter(s=>!Programmes.config(s))) await update(src);
+      // Independent venue hosts can load together; each host still has one sequential, throttled reader.
+      await Promise.all(srcs.filter(s=>Programmes.config(s)).map(update));
+      await save('programmes.json');
       if (touched) { c.refreshedAt = now(); await save('cache.json'); }
       const vs = Core.venues(Core.allShows(c, sources()).filter((x) => x.start > now() - DAY));
+      // Give the three recovery venues first use of the bounded geocoding budget, so a busy city feed cannot hide them.
+      vs.sort((a,b)=>Number(b.shows.some(s=>s.programme))-Number(a.shows.some(s=>s.programme)));
       await geocode(vs);
       await fetchLogos(Core.applyGeo(vs, geo()).filter((v) => Core.inParis(v.lat, v.lon) || v.shows.some((x) => x.start < now() + 8 * DAY)));
       return snapshot();
@@ -160,9 +197,8 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
       const lg = x.venue.image && L[x.venue.image]; x.venue.logo = lg?.file ? pathToFileURL(path.join(logoDir, lg.file)).href : '';
       if (!Number.isFinite(x.venue.lat)) { x.venue.lat = null; x.venue.lon = null; }
     }
-    const last = Math.max(0, ...srcs.map((x) => c.sources[x.id]?.lastTry || 0));
     return { enabled: !!s.enabled, from: s.from, follows: s.follows, sources: srcs.map((x) => ({ ...x, problem: c.sources[x.id]?.problem || null, lastOk: c.sources[x.id]?.lastOk || null, count: c.sources[x.id]?.shows?.length || 0 })),
-      shows, status: Core.statusLine(c, srcs), refreshedAt: c.refreshedAt, stale: !last || now() - last > RETRY_AFTER, busy: !!running };
+      shows, status: Core.statusLine(c, srcs, now()), refreshedAt: c.refreshedAt, stale: srcs.some(x=>!c.sources[x.id]?.lastTry || now()-c.sources[x.id].lastTry>RETRY_AFTER), busy: !!running };
   }
   async function setSettings(patch = {}) {
     const s = settings();

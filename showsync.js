@@ -20,7 +20,7 @@ const ShowSync = (() => {
   async function ensure() { if (!snap) { await load(); redraw(); } if (snap.enabled && snap.stale && !triedStale) { triedStale = true; refresh().catch(() => {}); } return snap; }
   const shows = () => snap?.shows || [];
   const week = () => C.thisWeek(shows());
-  const upcoming = () => shows().filter((s) => !s.cancelled).sort((a, b) => a.start - b.start);
+  const upcoming = () => shows().filter((s) => !s.cancelled&&(s.end||s.start+4*3600e3)>=Date.now()).sort((a, b) => a.start - b.start);
   const venueList = () => C.venues(upcoming());
   // (round 62, showprep62) extensions: another module adds to the show card, the pins, a venue, the list, /shows
   //   extend({ card(kit, show, actions, dialog), pins(pins) → pins, select(id, kit) → handled, venue(kit, venue, body),
@@ -70,6 +70,7 @@ const ShowSync = (() => {
     kit.dialog(s.title, (body, d) => {
       const head = kit.E('div', { class: 'ss-head' }, logoOrIcon(s.venue.logo, 'ss-logo ss-logo-big'), kit.E('div', {}, kit.label(`${C.dayWord(s.start).toUpperCase()} · ${C.hm(s.start)} · ${C.platformsText(s).toUpperCase()}`), kit.E('strong', { text: s.venue.name || 'Venue' }), kit.E('span', { text: s.venue.address || '' })));
       body.append(head);
+      if(s.programme)body.append(kit.p(`Via ${s.programme.name}’s programme · checked ${new Date(s.programme.checkedAt).toLocaleDateString()}. Check Shotgun for current price and availability.`), kit.button('Venue listing',()=>window.hub.openExternal(s.programme.url),'qj-quiet'));
       if (s.lineup.length) body.append(kit.p(`Lineup: ${s.lineup.join(', ')}`));
       if (s.price || s.soldOut) body.append(kit.p(s.soldOut ? 'Sold out on every listing.' : `From ${s.price.from} ${s.price.currency === 'EUR' ? '€' : s.price.currency}`));
       body.append(showActions(kit, s, d));
@@ -104,13 +105,13 @@ const ShowSync = (() => {
   }
   function followDialog(kit) {
     kit.dialog('What Hearth reads', (body, d) => {
-      body.append(kit.p('Paris-wide lists from Shotgun and DICE, and any venue, artist or event page you follow. Hearth reads only what those public pages publish, at most once a day, and stops when a site says no.'));
+      body.append(kit.p('Paris-wide Shotgun and DICE listings, plus Shotgun-ticketed nights published by Badaboum, Mia Mao and Glazart. Venue programmes keep those nights available when the main catalogue cannot load. This is partial coverage, not every Paris event.'));
       const draw = () => {
         body.querySelector('.ss-follows')?.remove();
         const box = kit.E('div', { class: 'ss-follows' });
         for (const src of snap.sources) {
           const it = kit.E('div', { class: 'qj-field-list-item ss-src' }, QuestAtlas.icon(src.kind === 'city' ? 'compass' : 'music'), kit.E('strong', { text: src.label }), kit.E('span', { text: src.problem ? '⚠' : `${src.count}` }));
-          if (src.kind !== 'city') it.append(kit.button('×', async () => { await call('unfollow', src.id); await load(); draw(); redraw(); }, 'qj-quiet ss-unfollow'));
+          if (src.kind !== 'city' && src.kind !== 'programme') it.append(kit.button('×', async () => { await call('unfollow', src.id); await load(); draw(); redraw(); }, 'qj-quiet ss-unfollow'));
           box.append(it);
         }
         const only = snap.from === 'followed';
@@ -123,24 +124,37 @@ const ShowSync = (() => {
     }, 'SHOTGUN / DICE');
   }
   function listDialog(kit) {
-    kit.dialog('Shows this week', (body) => {
+    kit.dialog('Shows this week', (body,d) => {
+      let error='',range=7,platform='all';
       const draw = () => {
         body.querySelector('.ss-list')?.remove();
         const box = kit.E('div', { class: 'ss-list' });
+        if(error)box.append(kit.p(error));
         if (!snap?.enabled) {
           box.append(kit.p('Your Paris week from Shotgun and DICE: venues on the map with their logos, a quest in one click. Hearth reads their public pages from this computer, at most once a day.'),
             kit.button('Load this week’s shows', async () => { box.append(kit.p('Reading Shotgun and DICE…')); await refresh(true); draw(); }, 'qj-primary'));
         } else {
           if (snap.status) box.append(kit.E('p', { class: 'qj-copy ss-status', text: snap.status }));
-          const list = week(); let day = '';
+          const rangeButton=kit.button(range===7?'Next 7 days · show 21':'Next 21 days · show 7',()=>{range=range===7?21:7;draw();},'qj-quiet');box.append(rangeButton);
+          const filter=kit.E('select',{attrs:{'aria-label':'Ticket platform'}});
+          for(const [value,name] of [['all','Shotgun + DICE'],['shotgun','Shotgun'],['dice','DICE']]){const o=kit.E('option',{text:name});o.value=value;filter.append(o);}filter.value=platform;filter.addEventListener('change',()=>{platform=filter.value;draw();});box.append(filter);
+          const list = (range===7?week():upcoming()).filter(s=>platform==='all'||s.platforms.includes(platform)); let day = '';
+          const programmeCount=list.filter(s=>s.programme).length;
+          if(programmeCount)box.append(kit.E('p',{class:'qj-copy ss-programme-note',text:`${programmeCount} Shotgun nights from venue programmes`,attrs:{title:'Badaboum, Mia Mao and Glazart publish these listings independently. They appear on the map when their location is known. This is a partial catalogue; ticket availability is checked on Shotgun.'}}));
           if (!list.length) box.append(kit.p(refreshing ? 'Reading Shotgun and DICE…' : 'No shows found for the next seven days. Follow the venues you like below.'));
           for (const s of list) { const d = C.dayWord(s.start); if (d !== day) { day = d; box.append(kit.label(d.replace(/^on /, '').toUpperCase())); } box.append(row(kit, s, () => showDetail(kit, s))); }
           const acts = kit.E('div', { class: 'qj-actions' }, kit.button('What Hearth reads', () => followDialog(kit), 'qj-quiet'), kit.button(refreshing ? 'Refreshing…' : 'Refresh now', async () => { await refresh(true); draw(); }, 'qj-quiet'));
           each('list', kit, acts); box.append(acts);
         }
+        const links=kit.E('div',{class:'qj-actions ss-source-links'});
+        for(const platform of Object.values(C.PLATFORMS)){
+          const source=snap?.sources?.filter(s=>s.platform===platform.id)||[],bad=source.find(s=>s.problem);
+          const b=kit.button('Open '+platform.name,()=>window.hub.openExternal(platform.city),'qj-quiet');b.dataset.help=bad?'This source could not update. Open its public listings or follow an event link.': 'Browse the original listings, including events not in Hearth’s cache.';links.append(b);
+        }box.append(links);
         body.append(box);
       };
       draw();
+      ensure().then(()=>{if(d.open)draw();}).catch(e=>{error=e.message;if(d.open)draw();});
     }, 'SHOTGUN + DICE / PARIS');
   }
   const layer = {

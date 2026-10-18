@@ -98,7 +98,7 @@ const again = await run('/shows quest ben ufo'); await QuestJournal.flush();
 if ((await window.hub.kvGet('quest-journal', null, { status: true })).value.campaigns.filter((c) => c.id.startsWith('c-show-')).length !== 2) fail('same show twice made two quests');
 
 // ---------- a breaking page: last good kept, one plain line ----------
-await window.hub.shows.test({ dev: window.SMOKE_DEV, overrides: { 'https://shotgun.live/en/concerts/paris': { file: 'changed.html' } } });
+await window.hub.shows.test({ dev: window.SMOKE_DEV, overrides: { 'https://shotgun.live/en/cities/paris': { file: 'changed.html' } } });
 await window.hub.shows.test({ advance: 21 * 3600e3 });
 const broke = await run('/shows refresh');
 out.broken = broke.split('\n').filter((l) => /changed|Showing/.test(l));

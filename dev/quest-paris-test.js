@@ -207,4 +207,18 @@ test('dedupe leaves both pins when Codex’s one-campaign-per-place-and-mission 
   C.savePlace(s, { name: 'Bataclan', lat: 48.86305, lon: 2.37075, kind: 'music', quest: 'Gig night' }); C.startMapMission(s, s.atlas.places.at(-1).id, mission.id);
   const before = JSON.stringify(s); assert(!P.needsDedupe(s)); assert.deepEqual(P.dedupe(s), []); assert.equal(JSON.stringify(s), before); C.validate(s);
 });
+test('today gives three bounded, deterministic, unfinished stories for energy, budget and company',()=>{
+  const s=fresh();assert.equal(P.eleven.length,6);assert.equal(P.guide.length,66);assert(P.eleven.every(r=>P.byId('pp-'+r[0]).arr===11));
+  for(const energy of [1,2,3])for(const budget of [0,5,15])for(const friendId of ['',...s.world.friends.map(f=>f.id)]){
+    const opts={energy,budget,friendId},a=P.today(s,opts,'2026-10-18');assert.equal(a.length,3);assert(a.every(t=>t.energy<=energy&&t.cap<=budget));assert.deepEqual(P.today(s,opts,'2026-10-18'),a);
+  }
+  const cheap=P.today(s,{energy:1,budget:0},'2026-10-18');assert(!cheap.some(t=>t.id==='cafe-frequency'));assert.notDeepEqual(P.today(s,{energy:1,budget:0},'2026-10-18',3),cheap);
+  assert(P.today(s,{placeId:'pp-jules-verne',energy:3}).every(t=>t.places.includes('pp-jules-verne')));assert.throws(()=>P.today(s,{friendId:'missing'}));
+});
+test('story chapters pay for reviewed output, freeze choices and leave old quests untouched',()=>{
+  const s=fresh(),before=JSON.stringify(s.campaigns);let serial=0;
+  for(const t of P.stories){const c=P.startStory(s,t.id,t.places[0],{energy:3,budget:15,friendId:'friend-thomas'});assert.equal(c.quests.length,t.chapters.length);assert(c.quests.every(q=>q.deep.includes('not a countdown')));assert.equal(P.startStory(s,t.id,t.places[1],{energy:3,budget:15}),c);assert.equal(c.storyCompany,'Thomas');assert.equal(c.parisPlace,t.places[0]);assert.throws(()=>C.complete(s,c.quests[0].id));for(const q of c.quests)finish(s,q.id,++serial);assert(C.campaignDone(s,c));assert.equal(C.complete(s,c.quests.at(-1).id),0);}
+  assert.equal(JSON.stringify(s.campaigns.filter(c=>!c.cityStory)),before);assert.equal(C.xp(s),P.stories.flatMap(t=>t.chapters).reduce((n,c)=>n+c[2],0));assert.equal(P.today(s,{energy:3,budget:15}).length,0);assert.equal(s.redemptions.length,0);assert.deepEqual(C.validate(JSON.parse(JSON.stringify(s))),s);
+  const freshState=fresh(),copy=JSON.stringify(freshState);assert.throws(()=>P.startStory(freshState,'cafe-frequency','pp-gardette',{energy:1,budget:0}));assert.equal(JSON.stringify(freshState),copy);P.startStory(freshState,'heartbeat','pp-gardette',{energy:1,budget:0},true);assert.equal(freshState.rewardGoal,'r-city-social-listening');assert.equal(C.xp(freshState),0);C.validate(freshState);
+});
 console.log(`quest-paris-test: ${checks} groups passed`);
