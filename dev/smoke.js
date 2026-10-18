@@ -159,6 +159,12 @@ async function cdpConnect(dir) {
     if (!fs.existsSync('/tmp/hearth-asset-fixtures/kick_hit.wav')) FA.fixtures('/tmp/hearth-asset-fixtures');
     Object.assign(env, { HEARTH_POLYHAVEN_BASE: `${fake.base}/ph`, HEARTH_AMBIENTCG_BASE: `${fake.base}/acg` });
   }
+  // --fake-vst: (round 61, vstlive61) the Sound desk's real Python host runs with dev/fixtures/fake-vst-py standing in for
+  // Pedalboard (a sine instrument), sounddevice (a UA interface on ASIO + WASAPI) and python-rtmidi (a controller)
+  if (args.includes('--fake-vst')) {
+    const py = require('child_process').spawnSync('python3', ['-c', 'import numpy, sys; print(sys.executable)'], { encoding: 'utf8' });
+    if (py.status === 0) Object.assign(env, { HEARTH_VST_PYTHON: py.stdout.trim(), PYTHONPATH: path.join(__dirname, 'fixtures', 'fake-vst-py'), PYTHONDONTWRITEBYTECODE: '1', FAKE_MIDI_NOTE: '0' });
+  }
   // --fake-obs: (round 25) a fake OBS Studio (obs-websocket v5 with a password: dev/fake-obs.js) for dev/checks/interop.js;
   // the check reads its address, password and state through hub.interop.test (main side, tests only)
   if (args.includes('--fake-obs')) {

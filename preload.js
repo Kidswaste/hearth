@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('hub', {
   getHistory: call('history:get'),
   saveHistory: call('history:save'),
   kvGet: call('kv:get'),
-  vst: { scan: call('creative-vst:scan'), status: call('creative-vst:status'), setup: call('creative-vst:setup'), request: call('creative-vst:request'), stop: call('creative-vst:stop') },
+  vst: { scan: call('creative-vst:scan'), status: call('creative-vst:status'), setup: call('creative-vst:setup'), request: call('creative-vst:request'), stop: call('creative-vst:stop'), send: (r) => ipcRenderer.send('creative-vst:send', r) }, // (round 61, vstlive61) send: live notes / knob moves, no reply
   kvSet: call('kv:set'),
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),

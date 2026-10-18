@@ -1,0 +1,79 @@
+/* (round 61, questhud61) ✦ the quest tracker: one chip in the rail (like the Usage pill), a hover peek and a small
+   panel beside the rail. Calm: no animation loops, opacity / transform transitions only, no backdrop-filter. */
+.qh-chip {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  height: 38px; opacity: .85; color: var(--text); font: 600 10px/1 var(--mono, ui-monospace, monospace);
+}
+.qh-chip .qh-ico { font: 15px/1 var(--font); color: var(--qh-color, var(--ui-gold, #d9b777)); }
+.qh-chip .qh-num { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.qh-chip .qh-num:empty { display: none; }
+.qh-bar { display: block; width: 26px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; }
+.qh-bar i { display: block; height: 100%; width: var(--qh-fill, 0%); background: var(--qh-color, var(--ui-gold, #d9b777)); border-radius: inherit; }
+.qh-chip.qh-idle { opacity: .45; height: 30px; }
+.qh-chip.qh-idle .qh-bar { display: none; }
+.qh-chip[aria-expanded="true"] { opacity: 1; background: var(--hover); }
+
+/* the peek: what the quest is, its next step (shown a moment after the pointer rests on the chip) */
+.qh-peek {
+  position: fixed; z-index: 60; max-width: 280px; padding: 8px 10px; border-radius: 10px; pointer-events: none;
+  background: var(--sidebar, #15181e); border: 1px solid var(--line); box-shadow: 0 10px 30px #0008; font-size: 12px; line-height: 1.4;
+  opacity: 0; transform: translateX(-4px); transition: opacity .12s ease, transform .12s ease; visibility: hidden;
+}
+.qh-peek.on { opacity: 1; transform: none; visibility: visible; transition-delay: .25s; }
+.qh-peek-top { display: flex; gap: 6px; align-items: baseline; }
+.qh-peek-next { margin: 4px 0 6px; display: grid; gap: 1px; }
+.qh-peek .qh-wide { width: 100%; }
+
+/* the panel */
+.qh-panel {
+  position: fixed; z-index: 70; width: 300px; max-width: calc(100vw - 90px); max-height: min(560px, calc(100vh - 24px));
+  display: flex; flex-direction: column; border-radius: 12px; overflow: hidden;
+  background: var(--sidebar, #15181e); border: 1px solid var(--line); box-shadow: 0 18px 50px #000a; font-size: 12.5px;
+  animation: qh-in .14s ease-out;
+}
+@keyframes qh-in { from { opacity: 0; transform: translateX(-6px); } }
+@media (prefers-reduced-motion: reduce) { .qh-panel { animation: none; } .qh-peek, .qh-peek.on { transition: none; } }
+.qh-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 6px 12px; border-bottom: 1px solid var(--line); }
+.qh-lv { margin-left: 4px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qh-head .spacer { flex: 0 0 0; margin-left: auto; }
+.qh-icon { border: 0; background: none; cursor: pointer; width: 24px; height: 24px; border-radius: 6px; color: var(--muted); font-size: 15px; line-height: 1; }
+.qh-icon:hover { background: var(--hover); color: var(--text); }
+.qh-body { overflow: auto; padding: 8px 10px 4px; display: grid; gap: 4px; }
+.qh-sub { color: var(--muted); font-size: 11px; }
+.qh-k { display: block; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; }
+.qh-pi { flex: none; width: 18px; text-align: center; color: var(--qh-color, var(--ui-gold, #d9b777)); }
+.qh-empty { margin: 4px 2px; color: var(--muted); }
+.qh-sec { margin: 8px 2px 0; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; }
+
+.qh-card { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--surface); display: grid; gap: 6px; }
+.qh-card-top { display: flex; gap: 6px; align-items: flex-start; }
+.qh-card-top .qh-pi { font-size: 16px; line-height: 1.2; }
+.qh-title { display: block; font-size: 13px; line-height: 1.3; }
+.qh-wide { width: 100%; }
+.qh-step { display: flex; gap: 8px; align-items: flex-start; }
+.qh-step-text { display: block; line-height: 1.35; }
+.qh-step.done .qh-step-text { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text) 30%, transparent); }
+.qh-step.next .qh-k { color: var(--qh-color, var(--ui-gold, #d9b777)); }
+.qh-check {
+  flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 5px; cursor: pointer; padding: 0;
+  border: 1.5px solid color-mix(in srgb, var(--text) 35%, transparent); background: transparent; position: relative;
+}
+.qh-check:hover { border-color: var(--qh-color, var(--ui-gold, #d9b777)); }
+.qh-check.on { background: var(--qh-color, var(--ui-gold, #d9b777)); border-color: transparent; cursor: default; }
+.qh-check.on::after { content: ""; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px; border: solid #111; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.qh-note { font-size: 12px; }
+.qh-place { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; border: 0; background: none; padding: 2px 0; cursor: pointer; text-align: left; }
+.qh-place:hover > span:nth-child(2) { text-decoration: underline; }
+
+.qh-row { display: flex; align-items: center; gap: 6px; padding: 3px 2px; border-radius: 8px; }
+.qh-row:hover { background: var(--hover); }
+.qh-row-main { flex: 1; min-width: 0; display: grid; border: 0; background: none; padding: 2px 0; text-align: left; cursor: pointer; }
+div.qh-row-main { cursor: default; }
+.qh-row-title, .qh-row .qh-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button.qh-row { width: 100%; border: 0; background: none; cursor: pointer; text-align: left; }
+.qh-btn { border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 3px 9px; cursor: pointer; font-size: 12px; }
+.qh-btn:hover { background: var(--hover); }
+.qh-primary { background: color-mix(in srgb, var(--ui-gold, #d9b777) 20%, var(--surface)); border-color: color-mix(in srgb, var(--ui-gold, #d9b777) 40%, transparent); }
+.qh-foot .qh-btn { white-space: nowrap; }
+.qh-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.qh-key { color: var(--muted); font: 10.5px var(--mono, ui-monospace, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

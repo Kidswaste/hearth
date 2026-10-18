@@ -73,6 +73,8 @@ await until(() => QuestJournal.snapshot()?.campaigns.some((c) => c.id.startsWith
 const st = QuestJournal.snapshot(); const camp = st.campaigns.find((c) => c.id.startsWith('c-show-') && /Arlo Parks/.test(c.title));
 out.quest = { title: camp.title, steps: camp.quests.map((q) => q.title), active: st.active === camp.id };
 if (!/^Go see Arlo Parks at La Cigale /.test(camp.title) || camp.quests.length !== 3 || !out.quest.active) fail('quest: ' + JSON.stringify(out.quest));
+// questhud61's chip follows (it listens to 'hearth:quests')
+if (typeof QuestHud !== 'undefined') { await until(() => /Arlo Parks/.test(JSON.stringify(QuestHud.state().current || '')), 'quest tracker chip', 80).catch(() => fail('tracker chip: ' + JSON.stringify(QuestHud.state().current))); out.hud = QuestHud.state().current?.campaign || QuestHud.state().current?.title || null; } else out.hud = 'no tracker on this branch';
 await until(() => document.querySelector('dialog.qj-dialog[open]'), 'quest detail opens', 40).catch(() => fail('quest detail did not open'));
 await smoke({ shot: (window.JOURNEY_SHOTS || window.SMOKE_SAVES) + '/showsync61-quest.png' });
 document.querySelectorAll('dialog.qj-dialog[open]').forEach((d) => d.close());

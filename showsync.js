@@ -35,7 +35,7 @@ const ShowSync = (() => {
   async function makeQuest(show) {
     const c = C.showCampaign(show);
     let out;
-    if (QJ()?.snapshot?.()) out = await QJ().mutate((s) => addTo(s, c), 'Show quest saved. Ticket → go → bring back one moment.');
+    if (QJ()?.ready ? QJ().ready() : QJ()?.snapshot?.()) out = await QJ().mutate((s) => addTo(s, c), 'Show quest saved. Ticket → go → bring back one moment.');
     else {
       // the journal isn't open: the same store, the same checks as its own saves (a read that failed is never "empty")
       const r = await window.hub.kvGet(QKEY, null, { status: true });
@@ -44,9 +44,11 @@ const ShowSync = (() => {
       else if (r?.state === 'ok') s = QuestCore.validate(r.value);
       else throw Error('Your quest journal could not be read, so nothing was changed. Open Sidequest Studio and try again.');
       s = QuestCore.upgrade(s); out = addTo(s, c); s.updatedAt = new Date().toISOString();
-      const w = await window.hub.kvSet(QKEY, QuestCore.validate(s)); if (w?.error) throw Error(w.error);
+      const checked = QuestCore.validate(s);
+      const w = await window.hub.kvSet(QKEY, checked); if (w?.error) throw Error(w.error);
+      // questhud61's contract: a save made outside the Studio is announced on document as { state, source } (the chip repaints)
+      document.dispatchEvent(new CustomEvent('hearth:quests', { detail: { state: QuestCore.clone(checked), source: 'showsync' } }));
     }
-    window.dispatchEvent(new CustomEvent('hearth:quests', { detail: { campaign: out.id, from: 'showsync' } }));
     return out;
   }
 

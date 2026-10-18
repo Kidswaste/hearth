@@ -40,7 +40,7 @@ Quests
     on Friday" with three steps: Get your ticket → Go → Bring back one moment; the quest opens right away.
 14. The same show never makes two quests (asking again resumes it).
 15. Works with Sidequest Studio closed (same store, same validation as the journal's own saves; a journal that can't
-    be read is never overwritten) and fires `hearth:quests` so trackers can refresh.
+    be read is never overwritten) and announces `hearth:quests` { state, source: 'showsync' } on document, so questhud61's chip repaints.
 16. "Keep in my lineup" on a show card hands it to Codex's Outing desk (its lineup, budget, invitation, .ics) through
     its own `QuestJournal.keepOuting(event)` contract.
 
