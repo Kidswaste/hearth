@@ -38,12 +38,46 @@ const WorkbenchUI = (() => {
   }
   function stash(c, label) { const small = canvas(512, Math.round(512 * c.height / c.width)); small.getContext('2d').drawImage(c, 0, 0, small.width, small.height); state.shelf.unshift({ name: label, image: small.toDataURL('image/png') }); state.shelf = state.shelf.slice(0, 24); persist(); say('Added to the worktable. It can become a storyboard shot.'); }
   function textures(out) {
-    const p = state.texture, grid = e('div', null, 'wb-two'), c = canvas(p.size), preview = e('div', null, 'wb-material'), controls = e('div', null, 'wb-controls'); let maps, map = 'color', repeats = false;
-    function update() { maps = C.texture(p); c.width = c.height = p.size; c.getContext('2d').putImageData(new ImageData(maps[map], p.size, p.size), 0, 0); preview.style.backgroundImage = `url(${c.toDataURL()})`; preview.style.backgroundSize = repeats ? '33.333% 33.333%' : '100% 100%'; }
+    const p = state.texture, grid = e('div', null, 'wb-two'), c = canvas(p.size), preview = e('div', null, 'wb-material'), display = canvas(512), controls = e('div', null, 'wb-controls');
+    let maps, map = 'color', repeats = false, worker, pending = false, version = 0, completed = -1, mapSize = p.size, disposed = false, waiters = [];
+    display.style.cssText = 'width:100%;height:100%;display:block;object-fit:contain'; preview.append(display);
+    const settle = error => { const list = waiters; waiters = []; for (const w of list) error ? w.reject(error) : w.resolve(); };
+    function paint() {
+      if (!maps || disposed) return;
+      c.width = c.height = mapSize; c.getContext('2d').putImageData(new ImageData(maps[map], mapSize, mapSize), 0, 0);
+      const x = display.getContext('2d'), count = repeats ? 3 : 1, size = display.width / count;
+      x.clearRect(0, 0, display.width, display.height);
+      for (let y = 0; y < count; y++) for (let i = 0; i < count; i++) x.drawImage(c, i * size, y * size, size, size);
+    }
+    function fail(error) { pending = false; worker?.terminate(); worker = null; preview.setAttribute('aria-busy', 'false'); settle(error); if (!disposed) say(`Texture preview: ${error.message}. Adjust a control to retry.`); }
+    function generate() {
+      if (pending || disposed) return;
+      try {
+        if (!worker) {
+          worker = new Worker('tools/workbench-texture-worker.js');
+          worker.onerror = event => { event.preventDefault(); fail(Error(event.message || 'Generator could not start')); };
+          worker.onmessage = ({ data }) => {
+            pending = false; if (disposed) return;
+            // At most one generation in flight and one latest request. Never queue every slider event.
+            if (data.id !== version) { generate(); return; }
+            if (data.error) { fail(Error(data.error)); return; }
+            maps = data.maps; mapSize = p.size; completed = data.id; paint(); preview.setAttribute('aria-busy', 'false'); settle();
+          };
+        }
+        pending = true; worker.postMessage({ id: version, options: { ...p } });
+      } catch (error) { fail(error); }
+    }
+    function update() { version++; preview.setAttribute('aria-busy', 'true'); generate(); }
+    function ensure() {
+      if (disposed) return Promise.reject(Error('This material station was closed. Reopen it to export.'));
+      if (completed === version) return Promise.resolve();
+      const ready = new Promise((resolve, reject) => waiters.push({ resolve, reject })); generate(); return ready;
+    }
+    cleanup = () => { disposed = true; worker?.terminate(); worker = null; settle(Error('Material station closed')); };
     controls.append(select('Surface', p.kind, [['cloud', 'Cloud / smoke'], ['stone', 'Cut stone'], ['wood', 'Wandering grain'], ['metal', 'Brushed metal'], ['cells', 'Soft cells']], v => { p.kind = v; update(); }), field('Tint', p.color, v => { p.color = v; update(); }, 'color'), select('Resolution', p.size, [128, 256, 512], v => { p.size = +v; update(); }));
     [['Scale', 'scale', 1, 12, 1], ['Octaves', 'detail', 1, 6, 1], ['Contrast', 'contrast', .2, 3, .05], ['Normal relief', 'strength', 0, 10, .1], ['Roughness', 'roughness', 0, 1, .01]].forEach(([label, key, min, max, step]) => controls.append(range(label, p[key], min, max, step, v => { p[key] = v; update(); })));
-    controls.append(btn('New variation', () => { p.seed = Math.floor(Math.random() * 1e8); update(); persist(); }), select('Inspect map', map, ['color', 'height', 'normal', 'roughness'], v => { map = v; update(); }), check('Check 3 × 3 tiling', false, v => { repeats = v; update(); }));
-    preview.setAttribute('role', 'img'); preview.setAttribute('aria-label', 'Generated texture preview'); grid.append(preview, controls); out.append(grid, row(...['color', 'height', 'normal', 'roughness'].map(k => btn(`Export ${k} PNG`, async () => { const cc = canvas(p.size); cc.getContext('2d').putImageData(new ImageData(maps[k], p.size, p.size), 0, 0); await png(cc, 'texture-' + k); })), btn('Keep on worktable', () => stash(c, `${p.kind} · ${map}`))), note('Seamless periodic maps. Normal uses +Y (OpenGL); invert green in software expecting DirectX. Height and roughness are grayscale.')); update();
+    controls.append(btn('New variation', () => { p.seed = Math.floor(Math.random() * 1e8); update(); persist(); }), select('Inspect map', map, ['color', 'height', 'normal', 'roughness'], v => { map = v; paint(); }), check('Check 3 × 3 tiling', false, v => { repeats = v; paint(); }));
+    preview.setAttribute('role', 'img'); preview.setAttribute('aria-label', 'Generated texture preview'); grid.append(preview, controls); out.append(grid, row(...['color', 'height', 'normal', 'roughness'].map(k => btn(`Export ${k} PNG`, async () => { await ensure(); const cc = canvas(mapSize); cc.getContext('2d').putImageData(new ImageData(maps[k], mapSize, mapSize), 0, 0); await png(cc, 'texture-' + k); })), btn('Keep on worktable', async () => { await ensure(); stash(c, `${p.kind} · ${map}`); })), note('Seamless periodic maps. Normal uses +Y (OpenGL); invert green in software expecting DirectX. Height and roughness are grayscale.')); update();
   }
   function workspaceHelpers() { return { state, persist, say, e, row, note, btn, field, range, select, check, canvas, image, svgCanvas, file, save, png, stash, api, addAsset }; }
   function draw(out) { cleanup = WorkbenchStory.draw(out, workspaceHelpers()); }

@@ -54,7 +54,7 @@
       const i = y * n + x, p = i * 4, value = h[i], dx = (at(x - 1, y) - at(x + 1, y)) * o.strength * 4, dy = (at(x, y - 1) - at(x, y + 1)) * o.strength * 4, z = Math.hypot(dx, dy, 1);
       for (let c = 0; c < 3; c++) { maps.color[p + c] = rgb[c] * (.24 + value * .76); maps.height[p + c] = value * 255; maps.roughness[p + c] = clamp(o.roughness + (value - .5) * .35, 0, 1) * 255; }
       maps.normal[p] = (dx / z * .5 + .5) * 255; maps.normal[p + 1] = (dy / z * .5 + .5) * 255; maps.normal[p + 2] = (1 / z * .5 + .5) * 255;
-      Object.values(maps).forEach(m => { m[p + 3] = 255; });
+      maps.color[p + 3] = maps.height[p + 3] = maps.normal[p + 3] = maps.roughness[p + 3] = 255;
     }
     return maps;
   }
