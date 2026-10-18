@@ -122,6 +122,20 @@ and ~0.2 s. The plugin's own initialisation (Serum 2 loads wavetables) is not ch
   costs, `_parameters`, `_pedalboard`, `show_editor(close_event)`, a fake window), new `fakewin32.py`; `smoke.js`
   (`HEARTH_VST_FAKE_WIN32` with `--fake-vst`, `--fake-vst-embed`).
 
+## Tested (this machine: Linux, fake host; app checks under `flock /tmp/hearth-run.lock`, after merging
+claude/intelligent-galileo-yaiqem and origin/main)
+- `vstembed64` ✓ (28 checks; in the app: click → LIVE 82 ms, controls 860 ms the first time (300 × 2 ms), 254 ms after
+  Reset host from the disk list; the editor placed / followed / clipped / hidden under a menu and with the desk away;
+  ✦ line "Darker and slower — applied"; the plugin window and the desk slider moved; ↶; a knob turned in the plugin
+  reached the desk; the AI tool silent; Pop out / back / Close; 48 kHz bounce with the editor open; Serum 2's refusal
+  → own window + line), `vst-live` ✓, `presethover61` ✓ (updated to the short line), `parkjam62` ✓, `soundbank63` ✓,
+  `loopsong63` ✓, `liveset64` ✓, `workbench-vst` ✓ (its real-plugin part skipped: no runtime here), `lazy` ✓.
+- Units: `vstembed64-test` ✓ (55), `vst-live-host-test` ✓, `boot-test` ✓, `datasafe-scan` ✓, `winmac-test` ✓,
+  `liveset64-test` ✓, `soundbank63-test` ✓, `parkjam62-test` ✓, `presethover61-test` ✓, `vst-host-test` ✓,
+  `loopsong63-test` ✓.
+- Found and fixed on the way: the desk's 0–1 sliders were drawn on the default 0–100 scale (a 0.45 showed as 0): the
+  value is set again once min / max / step are on.
+
 ## Not tested here (Linux, no plugin, no Windows)
 - Real SetParent of pedalboard's JUCE window into Electron's window, its z-order over Chromium's child window, DPI at
   125/150 %, keyboard focus in the embedded plugin, JUCE re-positioning its own window (the watcher puts it back).
@@ -171,7 +185,11 @@ Files of yours touched (all additive, marked `(round 64, vstembed64)`):
 - `tools/workbench-vst.js`: see above; `WorkbenchVST.api` stays version 1 with additive `timings()` / `editor()`;
   the door gains `fresh(keys)`.
 - Coordination with liveset64 / audiodoctor64: all protocol changes are additive; the readout's advice line shows
-  `rateNote` first.
+  `rateNote` first. `creative-vst-liveset.py` (liveset64) got two small marked edits: the preset twin's control index is
+  made at preload (`e.index_of`, main thread) and the switch calls `e.adopt(new, index)` — the old
+  `e.parameters = new.parameters` would now build every wrapper inside the audio thread. Known interplay: a twin preset
+  switch happens under an open editor, which keeps showing the previous instance (close / reopen it); `preset-preload`
+  is still refused while the editor is open (liveset64's rule), and the editor now opens by itself on Windows.
 - Tests: `node dev/vstembed64-test.js`; `node dev/smoke.js --fake-vst --fake-vst-embed --fake-engines --script
   dev/checks/vstembed64.js`; `node dev/vstembed64-bench.js` (before → after); `sh dev/run-checks.sh vstembed`.
 
