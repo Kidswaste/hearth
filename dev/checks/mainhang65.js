@@ -88,5 +88,28 @@ await wait(2000);
 const a = await lag({ label: 'actions' });
 out.phases.actions = { did, ...brief(a) };
 step(`common actions: p99 ${a.delay.p99} ms, max ${a.delay.max} ms`, ok(a) || window.MH_REPORT, out.phases.actions.blocks.slice(0, 3));
+// 4. sync with a cloud drive (Settings › Sync; the owner's two computers): the first pass (everything copied up once),
+// then the passes that run every minute or so while Hearth is open (nothing or one chat changed)
+if (window.hub.sync?.on && !localStorage.getItem('mh.noSync')) {
+  const CLOUD = `${window.SMOKE_TMP}/mh-cloud`;
+  await window.hub.fs.write(`${CLOUD}/.keep`, '');
+  const st = () => window.hub.sync.status();
+  const r = await window.hub.sync.on({ root: CLOUD });
+  const t0 = Date.now();
+  while (Date.now() - t0 < 240000) { const x = await st(); if (x?.state === 'synced' || x?.state === 'conflict' || x?.state === 'pending') break; await wait(500); }
+  const first = await lag({ label: 'sync first pass' });
+  out.phases.syncFirst = { on: r?.ok, secs: Math.round((Date.now() - t0) / 1000), state: (await st())?.state, ...brief(first) };
+  step(`sync, first pass: p99 ${first.delay.p99} ms, max ${first.delay.max} ms`, (first.delay.p99 < BUDGET.p99 && first.delay.max < 500) || window.MH_REPORT, out.phases.syncFirst.blocks.slice(0, 3));
+  const passes = [];
+  for (let k = 0; k < 4; k++) {
+    if (k === 2 && mine[0]) { const c = await window.hub.getChat(mine[0].id); if (c) { c.messages.push({ role: 'user', text: 'one more thing', at: Date.now() }); c.updatedAt = Date.now(); await window.hub.saveChat(c); } }
+    const p0 = Date.now(); const x = await window.hub.sync.now(); passes.push(`${x?.state} ${Date.now() - p0} ms (engine ${x?.ms} ms)`);
+    await wait(1500);
+  }
+  const sp = await lag({ label: 'sync passes' });
+  out.phases.sync = { passes, ...brief(sp) };
+  step(`sync, 4 passes: p99 ${sp.delay.p99} ms, max ${sp.delay.max} ms`, ok(sp) || window.MH_REPORT, out.phases.sync.blocks.slice(0, 3));
+  await window.hub.sync.off();
+}
 out.budget = BUDGET;
 return J.done();
