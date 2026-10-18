@@ -1,10 +1,24 @@
 """Persistent, isolated Serum 2 / Vital host. Authenticated loopback control only.
 Audio is generated continuously in short blocks; PortAudio only copies queued PCM.
+
+(round 61, vstlive61) Live mode, additive to Codex's design (docs/upgrades/vstlive61.md):
+- one host process per open instrument (creative-vstmain.js pool), the instrument loaded once and kept;
+- PortAudio from sounddevice's Windows wheel, which bundles an ASIO-enabled DLL (SD_ENABLE_ASIO, set by Hearth):
+  ASIO devices (the Universal Audio driver) are listed and opened directly; WASAPI exclusive / shared as well;
+- the render-ahead queue holds ~5 ms (adaptive on underruns) instead of a fixed 2 blocks + 1;
+- the owner's MIDI controller is read in THIS process (WinMM on Windows, python-rtmidi elsewhere when installed), so
+  notes reach the plugin without passing through Hearth's window;
+- a sample-accurate phrase sequencer runs in the audio thread (Hearth only sends the pattern once);
+- each connection gets its own thread and a persistent "stream" connection carries notes / knob moves without a
+  reply, so a slow snapshot never delays a note;
+- parameter reads for the desk hold the plugin lock per control, so reading Serum 2's controls doesn't stop audio;
+- gain changes ramp per block, Stop fades out over one block, DSP load / latency / underruns are reported.
 """
 import base64
 import importlib.util
 import json
 import math
+import os
 import queue
 import socket
 import sys
@@ -17,6 +31,9 @@ spec = importlib.util.spec_from_file_location('offline', Path(__file__).with_nam
 offline = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(offline)
 
+BUFFERS = (64, 128, 256, 512, 1024)  # (round 61) 64–512 for live play; 1024 kept from Codex's first version
+AHEAD_MS = 5.0  # (round 61) audio rendered ahead of the device: enough for a Python thread's wake-up, small to feel
+
 
 def identity(path):
     name = Path(path).name.lower().replace(' ', '')
@@ -24,6 +41,132 @@ def identity(path):
     if name not in allowed:
         raise ValueError('Only Serum 2 and Vital are supported.')
     return allowed[name]
+
+
+class MidiInputs:
+    """(round 61, vstlive61) The owner's controller → the plugin, inside the host process.
+    Windows: WinMM through ctypes (no extra package; a port another program holds open is skipped with its name).
+    Elsewhere: python-rtmidi if it is installed. Channel messages only (notes, CC, pitch bend, pressure, program)."""
+
+    def __init__(self, sink):
+        self.sink = sink
+        self.handles = {}
+        self.events = 0
+        self.last = ''
+        self.failed = []
+        self.backend = None
+        self._win = None
+        if sys.platform == 'win32':
+            self.backend = 'winmm'
+        else:
+            try:
+                import rtmidi  # noqa: F401  (optional; not installed by Hearth's setup)
+                self.backend = 'rtmidi'
+            except Exception:
+                self.backend = None
+
+    def feed(self, data):
+        if not data or data[0] < 0x80 or data[0] >= 0xF0:
+            return
+        kind = data[0] & 0xF0
+        message = bytes(data[:2] if kind in (0xC0, 0xD0) else data[:3])
+        self.events += 1
+        if kind == 0x90 and len(message) == 3 and message[2]:
+            self.last = 'note %d' % message[1]
+        elif kind == 0xB0:
+            self.last = 'CC %d' % message[1]
+        self.sink(message)
+
+    def _winmm(self):
+        if self._win:
+            return self._win
+        import ctypes
+        from ctypes import wintypes
+        winmm = ctypes.WinDLL('winmm')
+
+        class CAPS(ctypes.Structure):
+            _fields_ = [('wMid', wintypes.WORD), ('wPid', wintypes.WORD), ('vDriverVersion', wintypes.UINT),
+                        ('szPname', wintypes.WCHAR * 32), ('dwSupport', wintypes.DWORD)]
+        proc_type = ctypes.WINFUNCTYPE(None, wintypes.HANDLE, wintypes.UINT, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t)
+        winmm.midiInGetNumDevs.restype = wintypes.UINT
+        winmm.midiInGetDevCapsW.argtypes = [ctypes.c_size_t, ctypes.POINTER(CAPS), wintypes.UINT]
+        winmm.midiInOpen.argtypes = [ctypes.POINTER(wintypes.HANDLE), wintypes.UINT, ctypes.c_size_t, ctypes.c_size_t, wintypes.DWORD]
+        for name in ('midiInStart', 'midiInStop', 'midiInReset', 'midiInClose'):
+            getattr(winmm, name).argtypes = [wintypes.HANDLE]
+
+        def on_message(handle, message, instance, param1, param2):
+            if message == 0x3C3:  # MIM_DATA: status | data1 << 8 | data2 << 16
+                self.feed(bytes([param1 & 0xFF, (param1 >> 8) & 0x7F, (param1 >> 16) & 0x7F]))
+        self._win = {'ctypes': ctypes, 'wintypes': wintypes, 'dll': winmm, 'caps': CAPS, 'proc': proc_type(on_message)}
+        return self._win
+
+    def ports(self):
+        try:
+            if self.backend == 'winmm':
+                w = self._winmm()
+                names = []
+                for i in range(w['dll'].midiInGetNumDevs()):
+                    caps = w['caps']()
+                    if w['dll'].midiInGetDevCapsW(i, w['ctypes'].byref(caps), w['ctypes'].sizeof(caps)) == 0:
+                        names.append(caps.szPname)
+                return names
+            if self.backend == 'rtmidi':
+                import rtmidi
+                probe = rtmidi.MidiIn()
+                try:
+                    return list(probe.get_ports())
+                finally:
+                    probe.delete() if hasattr(probe, 'delete') else None
+        except Exception:
+            return []
+        return []
+
+    def open(self, which):
+        """which: 'all' (default), 'off', or one port name. Returns the names actually opened."""
+        self.close()
+        if which == 'off' or not self.backend:
+            return []
+        for index, name in enumerate(self.ports()):
+            if which not in (None, '', 'all') and name != which:
+                continue
+            try:
+                if self.backend == 'winmm':
+                    w = self._winmm()
+                    handle = w['wintypes'].HANDLE()
+                    callback = w['ctypes'].cast(w['proc'], w['ctypes'].c_void_p).value
+                    if w['dll'].midiInOpen(w['ctypes'].byref(handle), index, callback, 0, 0x30000) != 0:  # CALLBACK_FUNCTION
+                        raise OSError('in use by another program')
+                    w['dll'].midiInStart(handle)
+                    self.handles[name] = handle
+                else:
+                    import rtmidi
+                    port = rtmidi.MidiIn()
+                    port.ignore_types(sysex=True, timing=True, active_sense=True)
+                    port.open_port(index)
+                    port.set_callback(lambda event, data=None: self.feed(event[0]))
+                    self.handles[name] = port
+            except Exception as error:
+                self.failed.append('%s (%s)' % (name, str(error)[:80]))
+        return list(self.handles)
+
+    def close(self):
+        for name, handle in list(self.handles.items()):
+            try:
+                if self.backend == 'winmm':
+                    dll = self._winmm()['dll']
+                    dll.midiInStop(handle)
+                    dll.midiInReset(handle)
+                    dll.midiInClose(handle)
+                else:
+                    handle.close_port()
+            except Exception:
+                pass
+        self.handles = {}
+        self.failed = []
+
+    def stats(self):
+        return {'backend': self.backend, 'open': list(self.handles), 'events': self.events, 'last': self.last,
+                'failed': self.failed[:4]}
 
 
 class Engine:
@@ -34,10 +177,11 @@ class Engine:
         self.parameters = {}
         self.path = None
         self.lock = threading.RLock()
+        self.control = threading.RLock()  # (round 61) start / stop from concurrent connections, one at a time
         self.audio = None
         self.worker = None
         self.running = threading.Event()
-        self.events = queue.Queue(maxsize=256)
+        self.events = queue.Queue(maxsize=1024)
         self.blocks = queue.Queue(maxsize=2)
         self.gain = .2
         self.frames = 512
@@ -53,6 +197,36 @@ class Engine:
         self.active_notes = set()
         self.process_ms = 0.0
         self.max_process_ms = 0.0
+        # (round 61, vstlive61) live mode state
+        self.exclusive = False
+        self.api = ''
+        self.device_name = ''
+        self.depth = 1
+        self.applied_gain = 0.0
+        self.fading = False
+        self.faded = threading.Event()
+        self.load_avg = 0.0
+        self.position = 0
+        self.sequence = None
+        self.seq_held = set()
+        self.seq_release = False
+        self.setup = None
+        self.midi_choice = 'all'
+        self.midi = MidiInputs(self.from_controller)
+        self.editor_closes = 0
+        self.stream_errors = 0
+        self.last_stream_error = ''
+        self.loaded_ms = 0
+        self.started_ms = 0
+        self.recent_underruns = []
+
+    def from_controller(self, message):
+        # Notes from the controller never touch active_notes: the stale-note guard is for Hearth's own keys only.
+        if self.running.is_set():
+            try:
+                self.events.put_nowait(message)
+            except queue.Full:
+                pass
 
     def load(self, job):
         import pedalboard as pb
@@ -64,6 +238,7 @@ class Engine:
         if self.editor:
             raise ValueError('Close the native editor before changing instruments.')
         self.stop()
+        began = time.perf_counter()
         location = Path(job['plugin'])
         if sys.platform == 'win32' and location.is_dir():
             binaries = list((location / 'Contents' / 'x86_64-win').glob('*.vst3'))
@@ -77,6 +252,7 @@ class Engine:
         self.parameters = plugin.parameters
         # Pedalboard prepares/reloads native processors on their owning main thread.
         plugin([], duration=512 / 48000, sample_rate=48000, num_channels=2, buffer_size=512, reset=True)
+        self.loaded_ms = round((time.perf_counter() - began) * 1000)
 
     def patch(self, values):
         if not isinstance(values, dict) or len(values) > 512:
@@ -112,6 +288,73 @@ class Engine:
                 raise
         return {'changed': list(values)}
 
+    def values(self, keys):
+        """(round 61, vstlive61) current values of a few controls (reflects knob moves made in the native editor)."""
+        if not isinstance(keys, list) or len(keys) > 512 or any(not isinstance(k, str) for k in keys):
+            raise ValueError('Ask for up to 512 parameter keys.')
+        out = {}
+        for key in keys:
+            if key not in self.parameters:
+                raise ValueError('Unknown parameter: ' + key)
+            with self.lock:
+                entry = offline.parameter_entry(self.plugin, key, self.parameters[key])
+            out[key] = {'value': entry['value'], 'display': entry['display']}
+        return {'values': out}
+
+    def schedule(self, job):
+        """(round 61, vstlive61) a phrase played sample-accurately by the audio thread. notes: [{note, time, length,
+        velocity?}] in seconds from now; loop: seconds (0 = once). An empty list stops the phrase (its notes released)."""
+        notes = job.get('sequence') or []
+        if not isinstance(notes, list) or len(notes) > 256:
+            raise ValueError('A phrase has up to 256 notes.')
+        if not notes:
+            self.sequence = None
+            self.seq_release = True
+            return {'sequence': False}
+        if not self.running.is_set():
+            raise ValueError('Start live audio first.')
+        loop = float(job.get('loop') or 0)
+        if not math.isfinite(loop) or not 0 <= loop <= 64:
+            raise ValueError('Loop length outside 0–64 seconds.')
+        events = []
+        for n in notes:
+            key = int(n['note'])
+            if not 0 <= key <= 127:
+                raise ValueError('MIDI note outside 0–127.')
+            start, length = float(n['time']), float(n['length'])
+            if not (math.isfinite(start) and math.isfinite(length)) or start < 0 or length <= 0 or start > 64 or (loop and start >= loop):
+                raise ValueError('Invalid note timing.')
+            velocity = max(1, min(127, int(n.get('velocity', 100))))
+            on, off = round(start * self.rate), round(min(start + length, loop or start + length) * self.rate) - 1
+            events.append((on, bytes([0x90, key, velocity])))
+            events.append((max(on + 1, off), bytes([0x80, key, 0])))
+        events.sort(key=lambda e: (e[0], e[1][0] == 0x90))  # offs before ons at the same sample
+        span = max(t for t, _ in events) + 1
+        self.seq_release = True  # release the previous phrase's notes
+        self.sequence = {'start': self.position + self.frames, 'loop': round(loop * self.rate), 'events': events, 'span': span}
+        return {'sequence': True, 'notes': len(notes)}
+
+    def due(self, pos, frames):
+        seq = self.sequence
+        if not seq:
+            return []
+        start, length, events, span = seq['start'], seq['loop'], seq['events'], seq['span']
+        end, out = pos + frames, []
+        if length:
+            k0, k1 = max(0, (pos - start - span) // length), max(0, (end - start) // length)
+        else:
+            k0 = k1 = 0
+        for k in range(int(k0), int(k1) + 1):
+            base = start + k * length
+            for t, message in events:
+                at = base + t
+                if pos <= at < end:
+                    out.append((message, (at - pos) / self.rate))
+                    (self.seq_held.add if message[0] == 0x90 else self.seq_held.discard)(message[1])
+        if not length and end - start >= span and self.sequence is seq:
+            self.sequence = None
+        return out
+
     def produce(self):
         np = self.np
         try:
@@ -122,9 +365,15 @@ class Engine:
                         messages.append((self.events.get_nowait(), 0.0))
                     except queue.Empty:
                         break
+                if self.seq_release:
+                    self.seq_release = False
+                    messages.extend((bytes([0x80, n, 0]), 0.0) for n in self.seq_held)
+                    self.seq_held.clear()
+                messages.extend(self.due(self.position, self.frames))
                 # A renderer crash/lost focus cannot leave notes sounding forever.
+                # (round 61) Hearth's own held keys are released one by one (CC 123 would also cut the controller's).
                 if self.active_notes and time.monotonic() - self.last_control > 5:
-                    messages.append((bytes([0xB0, 123, 0]), 0.0))
+                    messages.extend((bytes([0x80, n, 0]), 0.0) for n in list(self.active_notes))
                     self.active_notes.clear()
                 with self.lock:
                     began = time.perf_counter()
@@ -134,121 +383,216 @@ class Engine:
                     self.max_process_ms = max(self.max_process_ms, self.process_ms)
                 if block.shape != (2, self.frames) or not np.isfinite(block).all():
                     raise ValueError('Plugin returned an invalid live audio block.')
+                self.position += self.frames
+                self.load_avg = self.load_avg * .9 + .1 * self.process_ms / (self.frames / self.rate * 1000)
                 self.peak = float(np.max(np.abs(block)))
                 self.processed += 1
-                pcm = np.ascontiguousarray(np.clip(block.T * self.gain, -.98, .98), dtype=np.float32)
+                # (round 61) the gain ramps across the block (no zipper noise); a Stop fades this block to silence.
+                target = 0.0 if self.fading else self.gain
+                ramp = np.linspace(self.applied_gain, target, self.frames, dtype=np.float32)[:, None]
+                self.applied_gain = target
+                pcm = np.ascontiguousarray(np.clip(block.T * ramp, -.98, .98), dtype=np.float32)
                 while self.running.is_set():
                     try:
                         self.blocks.put(pcm, timeout=.05)
                         break
                     except queue.Full:
                         continue
+                if self.fading:
+                    self.faded.set()
         except Exception as error:
             self.error = str(error)[:500]
             self.running.clear()
 
-    def start(self, job):
-        import sounddevice as sd
-        if self.audio and self.running.is_set():
-            return self.stats()
-        self.stop()
-        self.frames = int(job.get('buffer', 512))
-        if self.frames not in (256, 512, 1024):
-            raise ValueError('Choose a 256, 512 or 1024 sample buffer.')
-        self.rate = 48000
-        gain = float(job.get('gain', .2))
-        if not math.isfinite(gain) or not 0 <= gain <= .5:
-            raise ValueError('Volume outside 0–0.5.')
-        self.gain = gain
-        self.error, self.underruns, self.processed = '', 0, 0
-        self.process_ms, self.max_process_ms = 0.0, 0.0
-        self.last_control = time.monotonic()
-        def callback(out, frames, timing, status):
-            if status:
-                self.underruns += 1
+    def choose(self, sd, device, exclusive):
+        """(round 61, vstlive61) the stream settings this device accepts: ASIO and WASAPI exclusive run at the device's
+        own rate (the UA Console's rate for an Apollo / Volt); shared streams prefer 48 kHz like Codex's first version."""
+        info = sd.query_devices(device, kind='output')
+        api = sd.query_hostapis(info['hostapi'])['name']
+        extra = None
+        if exclusive:
+            if api != 'Windows WASAPI':
+                raise ValueError('Exclusive mode is a WASAPI option; choose the WASAPI entry of this interface.')
+            extra = sd.WasapiSettings(exclusive=True)
+        own = int(info.get('default_samplerate') or 48000)
+        rates = [own, 48000, 44100] if exclusive or api == 'ASIO' else [48000, own, 44100]
+        last = None
+        for rate in dict.fromkeys(rates):
             try:
-                block = self.blocks.get_nowait()
-                if len(block) == frames:
-                    out[:] = block
-                else:
+                sd.check_output_settings(device=device, channels=2, dtype='float32', samplerate=rate, extra_settings=extra)
+                return info, api, extra, rate
+            except Exception as error:
+                last = error
+        raise ValueError('%s refused stereo float audio at %s Hz: %s' % (info['name'], '/'.join(str(r) for r in dict.fromkeys(rates)), str(last)[:200]))
+
+    def start(self, job):
+        with self.control:
+            sd = offline.import_sounddevice()
+            frames = int(job.get('buffer', 512))
+            if frames not in BUFFERS:
+                raise ValueError('Choose a 64, 128, 256, 512 or 1024 sample buffer.')
+            gain = float(job.get('gain', .2))
+            if not math.isfinite(gain) or not 0 <= gain <= .5:
+                raise ValueError('Volume outside 0–0.5.')
+            device = job.get('device')
+            if device is not None:
+                device = int(device)
+            exclusive = bool(job.get('exclusive'))
+            midi = job.get('midiIn') or self.midi_choice
+            # (round 61) the same settings while running: only the volume changes; other settings restart the stream.
+            if self.audio and self.running.is_set():
+                if self.setup == (device, exclusive, frames):
+                    self.gain = gain
+                    if midi != self.midi_choice:
+                        self.midi_choice = midi
+                        self.midi.open(midi)
+                    return self.stats()
+            self.stop()
+            began = time.perf_counter()
+            info, api, extra, rate = self.choose(sd, device, exclusive)
+            self.frames, self.rate, self.gain, self.device, self.exclusive = frames, rate, gain, device, exclusive
+            self.api, self.device_name = api, info['name']
+            self.depth = max(1, math.ceil(AHEAD_MS / (frames / rate * 1000)))
+            with self.blocks.mutex:
+                self.blocks.maxsize = self.depth
+            self.error, self.underruns, self.processed = '', 0, 0
+            self.process_ms, self.max_process_ms, self.load_avg = 0.0, 0.0, 0.0
+            self.applied_gain, self.fading, self.position, self.recent_underruns = 0.0, False, 0, []
+            self.last_control = time.monotonic()
+
+            def callback(out, frames, timing, status):
+                if status:
+                    self.underruns += 1
+                try:
+                    block = self.blocks.get_nowait()
+                    if len(block) == frames:
+                        out[:] = block
+                    else:
+                        out.fill(0)
+                        self.underruns += 1
+                except queue.Empty:
                     out.fill(0)
                     self.underruns += 1
-            except queue.Empty:
-                out.fill(0)
-                self.underruns += 1
-        device = job.get('device')
-        if device is not None:
-            device = int(device)
-        self.device = device
-        self.audio = sd.OutputStream(samplerate=self.rate, channels=2, dtype='float32',
-                                     blocksize=self.frames, device=device, latency='low', callback=callback)
-        self.running.set()
-        self.worker = threading.Thread(target=self.produce, daemon=True)
-        self.worker.start()
-        deadline = time.monotonic() + 2
-        while self.blocks.qsize() < 2 and self.running.is_set() and time.monotonic() < deadline:
-            time.sleep(.002)
-        try:
-            if not self.running.is_set():
-                raise ValueError(self.error)
-            self.audio.start()
-        except Exception:
-            self.stop()
-            raise
-        return self.stats()
+            self.audio = sd.OutputStream(samplerate=rate, channels=2, dtype='float32', blocksize=frames,
+                                         device=device, latency='low', callback=callback, extra_settings=extra)
+            self.running.set()
+            self.worker = threading.Thread(target=self.produce, daemon=True)
+            self.worker.start()
+            deadline = time.monotonic() + 2
+            while self.blocks.qsize() < self.depth and self.running.is_set() and time.monotonic() < deadline:
+                time.sleep(.002)
+            try:
+                if not self.running.is_set():
+                    raise ValueError(self.error)
+                self.audio.start()
+            except Exception:
+                self.stop()
+                raise
+            self.setup = (device, exclusive, frames)
+            self.midi_choice = midi
+            self.midi.open(midi)
+            self.started_ms = round((time.perf_counter() - began) * 1000)
+            return self.stats()
 
     def stop(self):
-        self.running.clear()
-        if self.audio:
-            self.audio.abort()
-            self.audio.close()
-            self.audio = None
-        if self.worker:
-            self.worker.join(timeout=2)
-            if self.worker.is_alive():
-                raise ValueError('Audio worker did not stop. Stop the plugin host to recover.')
-            self.worker = None
-        for q in (self.events, self.blocks):
-            while not q.empty():
-                try:
-                    q.get_nowait()
-                except queue.Empty:
-                    break
-        self.active_notes.clear()
-        if self.plugin and self.path:
-            with self.lock:
-                self.plugin([(bytes([0xB0, 123, 0]), 0.0), (bytes([0xB0, 120, 0]), 0.0)],
-                            duration=512 / 48000, sample_rate=48000, num_channels=2, buffer_size=512, reset=False)
-        return self.stats()
+        with self.control:
+            self.midi.close()
+            # (round 61) one faded block before the device stops: no click on Stop / device change.
+            if self.audio and self.running.is_set() and getattr(self.audio, 'active', False):
+                self.faded.clear()
+                self.fading = True
+                self.faded.wait(timeout=.2)
+                time.sleep(min(.12, (self.depth + 1) * self.frames / self.rate))
+            self.fading = False
+            self.running.clear()
+            if self.audio:
+                self.audio.abort()
+                self.audio.close()
+                self.audio = None
+            if self.worker:
+                self.worker.join(timeout=2)
+                if self.worker.is_alive():
+                    raise ValueError('Audio worker did not stop. Stop the plugin host to recover.')
+                self.worker = None
+            for q in (self.events, self.blocks):
+                while not q.empty():
+                    try:
+                        q.get_nowait()
+                    except queue.Empty:
+                        break
+            self.active_notes.clear()
+            self.sequence, self.seq_release = None, False
+            self.seq_held.clear()
+            self.setup = None
+            if self.plugin and self.path:
+                with self.lock:
+                    self.plugin([(bytes([0xB0, 123, 0]), 0.0), (bytes([0xB0, 120, 0]), 0.0)],
+                                duration=512 / 48000, sample_rate=48000, num_channels=2, buffer_size=512, reset=False)
+            return self.stats()
+
+    def adapt(self):
+        """(round 61, vstlive61) underruns in the last 2 s → render one more block ahead (up to ~4 blocks / 8)."""
+        now = time.monotonic()
+        self.recent_underruns = [(t, n) for t, n in self.recent_underruns if now - t < 2] + [(now, self.underruns)]
+        grew = self.recent_underruns[-1][1] - self.recent_underruns[0][1]
+        if self.running.is_set() and grew > 2 and self.depth < 8:
+            self.depth += 1
+            with self.blocks.mutex:
+                self.blocks.maxsize = self.depth
+            self.recent_underruns = [(now, self.underruns)]
 
     def stats(self):
-        return {'playing': bool(self.running.is_set() and self.audio and self.audio.active),
-                'sampleRate': self.rate, 'buffer': self.frames, 'queuedMs': 3 * self.frames / self.rate * 1000,
-                'deviceLatencyMs': float(self.audio.latency) * 1000 if self.audio else 0,
+        playing = bool(self.running.is_set() and self.audio and self.audio.active)
+        if playing:
+            self.adapt()
+        block_ms = self.frames / self.rate * 1000
+        device_ms = float(self.audio.latency) * 1000 if self.audio else 0
+        return {'playing': playing,
+                'sampleRate': self.rate, 'buffer': self.frames, 'queuedMs': self.depth * block_ms,
+                'deviceLatencyMs': device_ms,
                 'underruns': self.underruns, 'blocks': self.processed, 'peak': self.peak,
                 'processMs': self.process_ms, 'maxProcessMs': self.max_process_ms,
-                'error': self.error, 'editorOpen': self.editor, 'gain': self.gain, 'device': self.device}
+                'error': self.error, 'editorOpen': self.editor, 'gain': self.gain, 'device': self.device,
+                # (round 61, vstlive61)
+                'exclusive': self.exclusive, 'api': self.api, 'deviceName': self.device_name, 'depth': self.depth,
+                'latencyMs': round(device_ms + self.depth * block_ms, 1), 'load': round(self.load_avg * 100, 1),
+                'midi': self.midi.stats(), 'sequence': self.sequence is not None, 'editorCloses': self.editor_closes,
+                'loadedMs': self.loaded_ms, 'startedMs': self.started_ms, 'streamErrors': self.stream_errors, 'streamError': self.last_stream_error,
+                'plugin': self.path}
+
+    def devices(self):
+        """(round 61, vstlive61) every stereo output with its host API (ASIO listed when the ASIO DLL is loaded), plus
+        the controller inputs. Hearth's renderer orders them (tools/workbench-vst-live.js: ASIO / UA first)."""
+        sd = offline.import_sounddevice()
+        apis = sd.query_hostapis()
+        devices = []
+        for i, d in enumerate(sd.query_devices()):
+            if d['max_output_channels'] < 2:
+                continue
+            api = apis[d['hostapi']]
+            devices.append({'id': i, 'name': d['name'], 'api': api['name'], 'outputs': d['max_output_channels'],
+                            'rate': d.get('default_samplerate'), 'lowMs': round(float(d.get('default_low_output_latency') or 0) * 1000, 1),
+                            'default': api.get('default_output_device') == i})
+        try:
+            default_name = sd.query_devices(kind='output')['name'].strip()
+            preferred = next((d['id'] for d in devices if d['api'] == 'Windows WASAPI' and d['name'].startswith(default_name)), None)
+        except Exception:
+            preferred = None
+        return {'devices': devices, 'preferred': preferred, 'asio': any(a['name'] == 'ASIO' for a in apis),
+                'asioDll': 'SD_ENABLE_ASIO' in os.environ, 'midiInputs': self.midi.ports(), 'midiBackend': self.midi.backend}
 
     def command(self, job):
         action = job['action']
         self.last_control = time.monotonic()
         if action == 'devices':
-            import sounddevice as sd
-            devices = [{'id': i, 'name': d['name'], 'api': sd.query_hostapis(d['hostapi'])['name']}
-                       for i, d in enumerate(sd.query_devices()) if d['max_output_channels'] >= 2]
-            try:
-                default_name = sd.query_devices(kind='output')['name'].strip()
-                preferred = next((d['id'] for d in devices if d['api'] == 'Windows WASAPI' and d['name'].startswith(default_name)), None)
-            except Exception:
-                preferred = None
-            return {'devices': devices, 'preferred': preferred}
+            return self.devices()
         if action == 'live-status':
             return self.stats()
         if action == 'live-stop':
             return self.stop()
         if not self.plugin or self.path != job.get('plugin'):
             raise ValueError('Load the selected instrument first.')
-        if action == 'live-start':
+        if action in ('live-start', 'open'):
             return self.start(job)
         if action == 'midi':
             if not self.running.is_set():
@@ -265,6 +609,7 @@ class Engine:
             if self.running.is_set():
                 self.events.put_nowait(bytes([0xB0, 123, 0]))
             self.active_notes.clear()
+            self.sequence, self.seq_release = None, True
             return {'silenced': True}
         if action == 'volume':
             gain = float(job['gain'])
@@ -274,24 +619,39 @@ class Engine:
             return {'gain': self.gain}
         if action == 'patch':
             return self.patch(job.get('parameters', {}))
+        if action == 'values':
+            return self.values(job.get('keys', []))
+        if action == 'sequence':
+            return self.schedule(job)
+        if action == 'midi-in':
+            self.midi_choice = job.get('midiIn') or 'all'
+            opened = self.midi.open(self.midi_choice) if self.running.is_set() else []
+            return {'midiIn': self.midi_choice, 'open': opened}
         if action in ('inspect', 'snapshot', 'render'):
             if self.editor:
                 raise ValueError('Close the native editor before capturing, recalling or exporting a patch.')
+            # (round 61) reading controls / recalling a patch keeps the audio running: the plugin lock is held per
+            # native call (offline.run's guard). Only an offline bounce needs the instance to itself.
+            if action != 'render':
+                return offline.run({**job, 'action': 'inspect'}, self.plugin, guard=self.lock)
             # Full parameter enumeration is slow; live controls use the fast patch action instead.
             was_playing = self.running.is_set()
+            was = {'gain': self.gain, 'buffer': self.frames, 'device': self.device, 'exclusive': self.exclusive, 'midiIn': self.midi_choice}
             if was_playing:
                 self.stop()
             try:
                 with self.lock:
-                    output = offline.run({**job, 'action': 'render' if action == 'render' else 'inspect'}, self.plugin)
-                if action == 'render':
-                    output['audio'] = base64.b64encode(Path(job['output']).read_bytes()).decode('ascii')
-                    self.plugin([], duration=512 / 48000, sample_rate=48000, num_channels=2, buffer_size=512, reset=True)
+                    output = offline.run({**job, 'action': 'render'}, self.plugin)
+                output['audio'] = base64.b64encode(Path(job['output']).read_bytes()).decode('ascii')
+                self.plugin([], duration=512 / 48000, sample_rate=48000, num_channels=2, buffer_size=512, reset=True)
                 return output
             finally:
                 if was_playing:
-                    self.start({'gain': self.gain, 'buffer': self.frames, 'device': self.device})
+                    self.start(was)
         raise ValueError('Unknown live host action.')
+
+
+STREAMED = ('midi', 'patch', 'volume', 'panic', 'sequence')  # (round 61) fire-and-forget on the stream connection
 
 
 def serve(config, response):
@@ -299,67 +659,103 @@ def serve(config, response):
     main_tasks = queue.Queue()
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('127.0.0.1', 0))
-    server.listen(8)
+    server.listen(16)
     response.write_text(json.dumps({'ok': True, 'port': server.getsockname()[1]}), encoding='utf-8')
+
+    def on_main(action, job):
+        done = queue.Queue(maxsize=1)
+        main_tasks.put((action, job, done))
+        result = done.get(timeout=90)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    def stream(conn, rest):
+        """(round 61, vstlive61) one persistent connection from Hearth's main process: newline JSON jobs, no replies."""
+        conn.settimeout(None)
+        buffer = bytearray(rest)
+        while True:
+            while b'\n' in buffer:
+                line, _, remainder = bytes(buffer).partition(b'\n')
+                buffer = bytearray(remainder)
+                try:
+                    job = json.loads(line)
+                    if job.get('action') not in STREAMED:
+                        raise ValueError('Not a streamed action.')
+                    engine.command(job)
+                except Exception as error:
+                    engine.stream_errors += 1
+                    engine.last_stream_error = str(error)[:300]
+            block = conn.recv(65536)
+            if not block:
+                return
+            buffer.extend(block)
+            if len(buffer) > 4_000_000:
+                return
+
+    def handle(conn):
+        with conn:
+            try:
+                conn.settimeout(120)
+                payload = bytearray()
+                while b'\n' not in payload:
+                    block = conn.recv(65536)
+                    if not block:
+                        raise ValueError('Incomplete request.')
+                    payload.extend(block)
+                    if len(payload) > 16_000_000:
+                        raise ValueError('Request too large.')
+                first, _, rest = bytes(payload).partition(b'\n')
+                job = json.loads(first)
+                if job.pop('token', None) != config['token']:
+                    raise ValueError('Invalid host token.')
+                if job.get('action') == 'stream':
+                    return stream(conn, rest)
+                if job.get('plugin'):
+                    identity(job['plugin'])
+                    if job.get('name') not in (None, '', identity(job['plugin'])):
+                        raise ValueError('Only Serum 2 and Vital instruments are allowed.')
+                if job['action'] == 'names':
+                    result = {'names': [identity(job['plugin'])]}
+                elif job['action'] == 'status':
+                    result = offline.run({'action': 'status'})
+                elif job['action'] == 'editor':
+                    if not engine.plugin or engine.path != job['plugin']:
+                        raise ValueError('Load the instrument first.')
+                    if engine.editor_requested:
+                        raise ValueError('Native editor is already open.')
+                    engine.editor_requested = True
+                    main_tasks.put(('editor', job, None))
+                    result = {'editorOpen': True}
+                else:
+                    if job['action'] in ('inspect', 'open') and engine.path != job.get('plugin'):
+                        if engine.editor_requested:
+                            raise ValueError('Close the native editor before changing instruments.')
+                        on_main('load', job)
+                    if job['action'] == 'open':
+                        # (round 61) load (above) + live audio when asked: the first note right after opening.
+                        result = {'name': identity(job['plugin']), 'loadedMs': engine.loaded_ms}
+                        if job.get('live'):
+                            result.update(engine.command({**job, 'action': 'live-start'}))
+                    elif job['action'] in ('inspect', 'snapshot', 'render'):
+                        if engine.editor_requested:
+                            raise ValueError('Close the native editor before capturing or exporting a patch.')
+                        result = on_main('command', job)
+                    else:
+                        result = engine.command(job)
+                result = {'ok': True, **result}
+            except Exception as error:
+                result = {'ok': False, 'error': str(error)[:1600]}
+            try:
+                conn.sendall((json.dumps(result, allow_nan=False) + '\n').encode())
+            except OSError:
+                pass
+
     def request_thread():
+        # (round 61) one thread per connection: a note or a knob move never waits behind a snapshot or a bounce.
         while True:
             conn, _ = server.accept()
-            with conn:
-                try:
-                    conn.settimeout(120)
-                    payload = bytearray()
-                    while not payload.endswith(b'\n'):
-                        block = conn.recv(65536)
-                        if not block:
-                            raise ValueError('Incomplete request.')
-                        payload.extend(block)
-                        if len(payload) > 16_000_000:
-                            raise ValueError('Request too large.')
-                    job = json.loads(payload)
-                    if job.pop('token', None) != config['token']:
-                        raise ValueError('Invalid host token.')
-                    if job.get('plugin'):
-                        identity(job['plugin'])
-                        if job.get('name') not in (None, '', identity(job['plugin'])):
-                            raise ValueError('Only Serum 2 and Vital instruments are allowed.')
-                    if job['action'] == 'names':
-                        result = {'names': [identity(job['plugin'])]}
-                    elif job['action'] == 'status':
-                        result = offline.run({'action': 'status'})
-                    elif job['action'] == 'editor':
-                        if not engine.plugin or engine.path != job['plugin']:
-                            raise ValueError('Load the instrument first.')
-                        if engine.editor_requested:
-                            raise ValueError('Native editor is already open.')
-                        engine.editor_requested = True
-                        main_tasks.put(('editor', job, None))
-                        result = {'editorOpen': True}
-                    else:
-                        if job['action'] == 'inspect' and engine.path != job.get('plugin'):
-                            if engine.editor_requested:
-                                raise ValueError('Close the native editor before changing instruments.')
-                            done = queue.Queue(maxsize=1)
-                            main_tasks.put(('load', job, done))
-                            loaded = done.get(timeout=90)
-                            if isinstance(loaded, Exception):
-                                raise loaded
-                        if job['action'] in ('inspect', 'snapshot', 'render'):
-                            if engine.editor_requested:
-                                raise ValueError('Close the native editor before capturing or exporting a patch.')
-                            done = queue.Queue(maxsize=1)
-                            main_tasks.put(('command', job, done))
-                            result = done.get(timeout=90)
-                            if isinstance(result, Exception):
-                                raise result
-                        else:
-                            result = engine.command(job)
-                    result = {'ok': True, **result}
-                except Exception as error:
-                    result = {'ok': False, 'error': str(error)[:1600]}
-                try:
-                    conn.sendall((json.dumps(result, allow_nan=False) + '\n').encode())
-                except OSError:
-                    pass
+            threading.Thread(target=handle, args=(conn,), daemon=True).start()
     threading.Thread(target=request_thread, daemon=True).start()
     while True:
         action, job, done = main_tasks.get()
@@ -370,6 +766,7 @@ def serve(config, response):
             except Exception as error:
                 done.put(error)
         elif action == 'editor':
+            # The native editor owns this (main) thread until it closes; audio runs on the worker + PortAudio threads.
             try:
                 engine.editor = True
                 engine.plugin.show_editor()
@@ -378,6 +775,7 @@ def serve(config, response):
             finally:
                 engine.editor = False
                 engine.editor_requested = False
+                engine.editor_closes += 1  # (round 61) the desk re-reads the controls changed in the editor
         elif action == 'command':
             try:
                 done.put(engine.command(job))

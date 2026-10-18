@@ -12,7 +12,9 @@ const { create } = require('../creative-vstmain');
     for (const plugin of plugins) {
       const call = (action, extra = {}) => host.request({ action, plugin: plugin.path, name: plugin.name, ...extra });
       const begin = Date.now(), loaded = await call('inspect'); assert(loaded.ok, loaded.error); assert(loaded.parameters.length);
-      const devices = await call('devices'); const device = devices.devices.find(d => d.api === 'Windows WASAPI' && /Universal Audio/.test(d.name))?.id;
+      // (round 61, vstlive61) the UA interface on ASIO when its driver answered, else its WASAPI endpoint (as before)
+      const devices = await call('devices'); const device = (devices.devices.find(d => d.api === 'ASIO' && /Universal Audio|Apollo|Volt/i.test(d.name)) || devices.devices.find(d => d.api === 'Windows WASAPI' && /Universal Audio/.test(d.name)))?.id;
+      console.log(JSON.stringify({ asio: devices.asio, asioDll: devices.asioDll, device: devices.devices.find(d => d.id === device), midiInputs: devices.midiInputs }));
       let live = await call('live-start', { device, gain: 0, buffer: 512 }); assert(live.ok, live.error); assert(live.playing);
       assert((await call('midi', { note: 60, on: true })).ok); await sleep(700);
       const parameter = loaded.parameters.find(p => /vol|gain|level/i.test(p.key) && typeof p.value === 'number' && Number.isFinite(p.min) && Number.isFinite(p.max)); assert(parameter);

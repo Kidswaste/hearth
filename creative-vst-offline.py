@@ -2,12 +2,28 @@
 Requires the separately installed, pinned Pedalboard runtime; no network access here.
 """
 import base64
+import contextlib
 import json
 import math
+import os
 import sys
 import wave
 import zlib
 from pathlib import Path
+
+
+def import_sounddevice():
+    """(round 61, vstlive61) sounddevice's Windows wheel (0.5.1+) ships two PortAudio DLLs; the one with ASIO is picked
+    when SD_ENABLE_ASIO is set at import (creative-vstmain.js sets it). If that DLL is missing or won't load, the plain
+    one (WASAPI / DirectSound / MME / WDM-KS) is used instead: never a crash for want of ASIO."""
+    try:
+        import sounddevice as sd
+    except OSError:
+        if 'SD_ENABLE_ASIO' not in os.environ:
+            raise
+        os.environ.pop('SD_ENABLE_ASIO', None)
+        import sounddevice as sd
+    return sd
 
 
 def normalized_parameter(p):
@@ -18,11 +34,33 @@ def normalized_parameter(p):
     return p.type == str and len(p.valid_values) > 128
 
 
-def run(job, plugin=None):
+def parameter_entry(plugin, key, p):
+    """(round 61, vstlive61) one control as the desk / chat tools see it (was the loop body in run())."""
+    value = getattr(plugin, key)
+    if p.type == bool:
+        value = bool(value)
+    elif isinstance(value, (int, float)):
+        value = float(value)
+    else:
+        value = str(value)
+    low, high, step = getattr(p, 'min_value', None), getattr(p, 'max_value', None), getattr(p, 'step_size', None)
+    display = str(getattr(plugin, key))
+    normalized = normalized_parameter(p)
+    if normalized:
+        value, low, high, step = float(p.raw_value), 0, 1, .001
+    return {'key': key, 'label': p.name + (' (0–1)' if normalized else ''), 'value': value, 'display': display,
+            'min': low, 'max': high, 'step': step if step is None or math.isfinite(step) else None,
+            'choices': list(p.valid_values)[:512] if isinstance(value, str) else []}
+
+
+def run(job, plugin=None, guard=None):
+    # (round 61, vstlive61) guard: a lock held around each native call (the state, one parameter at a time) rather
+    # than around the whole enumeration, so the live audio thread keeps rendering while 2,600 controls are read.
+    guard = guard or contextlib.nullcontext()
     import numpy as np
     import pedalboard as pb
     if job['action'] == 'status':
-        import sounddevice as sd
+        sd = import_sounddevice()
         return {'version': pb.__version__, 'python': sys.version.split()[0], 'realtime': True, 'sounddevice': sd.__version__}
     location = Path(job['plugin'])
     # JUCE/Pedalboard on Windows expects the inner binary for directory-style bundles.
@@ -43,7 +81,8 @@ def run(job, plugin=None):
             raw = inflater.decompress(raw, 64 * 1024 * 1024 + 1)
             if len(raw) > 64 * 1024 * 1024 or not inflater.eof:
                 raise ValueError('Expanded preset exceeds 64 MB.')
-        plugin.raw_state = raw
+        with guard:
+            plugin.raw_state = raw
     for key, value in job.get('parameters', {}).items():
         if key not in plugin.parameters:
             raise ValueError('Unknown parameter: ' + key)
@@ -60,22 +99,11 @@ def run(job, plugin=None):
               'instrument': plugin.is_instrument, 'effect': plugin.is_effect,
               'latency': plugin.reported_latency_samples, 'parameters': []}
     for key, p in plugin.parameters.items():
-        value = getattr(plugin, key)
-        if p.type == bool:
-            value = bool(value)
-        elif isinstance(value, (int, float)):
-            value = float(value)
-        else:
-            value = str(value)
-        low, high, step = getattr(p, 'min_value', None), getattr(p, 'max_value', None), getattr(p, 'step_size', None)
-        display = str(getattr(plugin, key))
-        normalized = normalized_parameter(p)
-        if normalized:
-            value, low, high, step = float(p.raw_value), 0, 1, .001
-        result['parameters'].append({'key': key, 'label': p.name + (' (0–1)' if normalized else ''), 'value': value, 'display': display,
-            'min': low, 'max': high, 'step': step if step is None or math.isfinite(step) else None,
-            'choices': list(p.valid_values)[:512] if isinstance(value, str) else []})
-    state = zlib.compress(plugin.raw_state, 6)
+        with guard:
+            result['parameters'].append(parameter_entry(plugin, key, p))
+    with guard:
+        raw_state = plugin.raw_state
+    state = zlib.compress(raw_state, 6)
     if len(state) > 8 * 1024 * 1024:
         raise ValueError('Compressed plugin state exceeds the 8 MB preset limit. Choose a lighter patch.')
     result['state'] = 'z1:' + base64.b64encode(state).decode('ascii')
