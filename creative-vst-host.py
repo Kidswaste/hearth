@@ -327,6 +327,7 @@ class Engine:
         self.rate_note = ''
         self.editor_event = None
         self.editor_note = ''
+        self.editor_stale = False  # the instance playing isn't the one the open editor shows (liveset64's twin switch)
         self.embed = embedding.Embedder(*embedding.backend())
         self.timings = {}
         self.strip = lambda text: text
@@ -387,6 +388,8 @@ class Engine:
         """(round 64) another instance of the same instrument becomes the live one (liveset64's preset twin): its index
         made beforehand (index_of, off the audio thread), so the switch costs nothing."""
         self.plugin = plugin
+        if self.editor:
+            self.editor_stale = True  # the editor shows the previous instance until Hearth refreshes it ('editor-refresh')
         self.index = index if index is not None else self.index_of(plugin)
         self.parameters = LazyParams(self) if self.index is not None else plugin.parameters
 
@@ -782,7 +785,8 @@ class Engine:
         for rate in dict.fromkeys(rates):
             try:
                 sd.check_output_settings(device=device, channels=2, dtype='float32', samplerate=rate, extra_settings=extra)
-                self.rate_note = '' if rate == TARGET_RATE else '%s refused 48 kHz, so it plays at %s kHz (its own rate); loops you record are saved at 48 kHz.' % (info['name'], '%g' % (rate / 1000))
+                if self is not None:  # (audiodoctor64 calls choose() unbound, self=None, to see what the host would pick)
+                    self.rate_note = '' if rate == TARGET_RATE else '%s refused 48 kHz, so it plays at %s kHz (its own rate); loops you record are saved at 48 kHz.' % (info['name'], '%g' % (rate / 1000))
                 return info, api, extra, rate
             except Exception as error:
                 last = error
@@ -927,7 +931,7 @@ class Engine:
                 'loadedMs': self.loaded_ms, 'startedMs': self.started_ms, 'streamErrors': self.stream_errors, 'streamError': self.last_stream_error,
                 'plugin': self.path,
                 # (round 64, vstembed64) the rate asked for and why it differs, the editor in Hearth, the control list, timings
-                'targetRate': TARGET_RATE, 'rateNote': self.rate_note if self.audio else '', 'editor': {**self.embed.state(), 'note': self.editor_note or self.embed.note},
+                'targetRate': TARGET_RATE, 'rateNote': self.rate_note if self.audio else '', 'editor': {**self.embed.state(), 'note': self.editor_note or self.embed.note, 'stale': self.editor_stale},
                 'controlsReady': self.meta_done, 'controlsSource': self.meta_source, 'controlsBuilt': len(self.meta), 'timings': self.timings}
 
     # ---------- (round 62, parkjam62) the loop recorder ----------
@@ -1237,17 +1241,9 @@ def serve(config, response):
                         raise ValueError('Load the instrument first.')
                     if engine.editor_requested:
                         raise ValueError('Native editor is already open.')
-                    engine.editor_requested = True
-                    # (round 64, vstembed64) closable from Hearth; placed inside Hearth's window when job['embed'] says where
-                    engine.editor_event, engine.editor_note = threading.Event(), ''
-                    try:
-                        known = [w['hwnd'] for w in engine.embed.b.windows(os.getpid())] if engine.embed.b else []
-                    except Exception:
-                        known = []
-                    main_tasks.put(('editor', job, None))
                     want = job.get('embed') if isinstance(job.get('embed'), dict) else None
-                    result = {'editorOpen': True, 'editor': engine.embed.opened(want, known, stop=lambda: not engine.editor_requested)}
-                elif job['action'] in ('editor-embed', 'editor-pop', 'editor-close'):
+                    result = {'editorOpen': True, 'editor': open_editor(job, want)}
+                elif job['action'] in ('editor-embed', 'editor-pop', 'editor-close', 'editor-refresh'):
                     result = {'editor': editor_action(job)}
                 else:
                     if job['action'] in ('inspect', 'open') and engine.path != job.get('plugin'):
@@ -1267,9 +1263,12 @@ def serve(config, response):
                         else:
                             result = on_main('command', job)
                     elif job['action'] == 'preset-preload':  # (round 64, liveset64) the twin loads on this main thread
+                        # (round 64, vstembed64) the editor holds that thread: it is closed for the load and opened again
+                        # where it was (hidden while the Live set is on screen), never a reason to refuse
                         if engine.editor_requested:
-                            raise ValueError('Close the native editor before capturing or exporting a patch.')
-                        result = on_main('command', job)
+                            result = reopen_editor(lambda: on_main('command', job))
+                        else:
+                            result = on_main('command', job)
                     else:
                         result = engine.command(job)
                 result = {'ok': True, **result}
@@ -1280,16 +1279,50 @@ def serve(config, response):
             except OSError:
                 pass
 
+    def open_editor(job, want):
+        """(round 64, vstembed64) show_editor(close_event) on the main thread; placed in Hearth when want says where."""
+        engine.editor_requested = True
+        engine.editor_event, engine.editor_note, engine.editor_stale = threading.Event(), '', False
+        try:
+            known = [w['hwnd'] for w in engine.embed.b.windows(os.getpid())] if engine.embed.b else []
+        except Exception:
+            known = []
+        main_tasks.put(('editor', job, None))
+        return engine.embed.opened(want, known, stop=lambda: not engine.editor_requested)
+
+    def close_editor():
+        if engine.editor_event:
+            engine.editor_event.set()
+        end = time.monotonic() + 3
+        while engine.editor_requested and time.monotonic() < end:
+            time.sleep(.01)
+
+    def reopen_editor(between=None):
+        """Close the editor, run `between` on the freed main thread, open it again as it was (embedded at the same spot,
+        shown or hidden as it was; or floating). Used by the Live set's preset preload and 'editor-refresh' (the instance
+        changed under it: liveset64's preset twin)."""
+        em = engine.embed
+        was = {'mode': em.mode, 'parent': em.parent, 'at': em.at, 'visible': em.visible, 'clip': em.clip_rect}
+        close_editor()
+        try:
+            out = between() if between else {}
+        finally:
+            want = None
+            if was['mode'] == 'embedded' and was['parent']:
+                x, y = was['at'] or (0, 0)
+                want = {'parent': was['parent'], 'x': x, 'y': y, 'clip': was['clip'], 'visible': was['visible']}
+            if was['mode'] in ('embedded', 'floating'):
+                open_editor({'action': 'editor', 'plugin': engine.path}, want)
+        return {**(out or {}), 'editor': engine.embed.state(), 'editorReopened': was['mode'] in ('embedded', 'floating')}
+
     def editor_action(job):
         """(round 64, vstembed64) the editor frame's buttons: here (a floating editor goes into Hearth), pop out, close."""
         action = job['action']
         if action == 'editor-close':
-            if engine.editor_event:
-                engine.editor_event.set()
-            end = time.monotonic() + 3
-            while engine.editor_requested and time.monotonic() < end:
-                time.sleep(.01)
+            close_editor()
             return engine.embed.state()
+        if action == 'editor-refresh':  # (round 64) the instance playing changed: show that one
+            return reopen_editor()['editor'] if engine.editor_requested else engine.embed.state()
         if not engine.editor_requested:
             raise ValueError('Open the editor first.')
         if action == 'editor-pop':
@@ -1322,8 +1355,8 @@ def serve(config, response):
                 engine.editor_note = 'The editor could not open: %s' % str(error)[:300]  # (round 64) not an audio error
             finally:
                 engine.editor = False
+                engine.embed.closed()  # (round 64) before editor_requested drops: a reopen waiting on it starts clean
                 engine.editor_requested = False
-                engine.embed.closed()
                 engine.editor_closes += 1  # (round 61) the desk re-reads the controls changed in the editor
         elif action == 'warm':
             # (round 64, vstembed64) import pedalboard and sounddevice once, before the first instrument is asked for

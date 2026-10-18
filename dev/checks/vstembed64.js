@@ -53,7 +53,8 @@ if (scroller) {
   ok(true, `scrolled 120 px → the window followed (y ${(await win()).y}, region ${JSON.stringify((await win()).region)})`);
 } else out.checks.push('(the desk did not scroll at this window size: scrolling covered by the unit test)');
 // 4. a menu over it hides it; it shows again when the menu closes
-const fr = document.querySelector('.vx-slot').getBoundingClientRect(); showMenu(fr.left + 40, Math.max(10, fr.top + 20), [{ label: 'A menu over the editor', fn() {} }]);
+document.querySelector('.vx-slot').scrollIntoView({ block: 'center' }); await until(async () => { const x = await win(); return near(x.y, at().y) && !(Array.isArray(x.region) && !x.region.length); }, 5000, 'in view');
+const fr = document.querySelector('.vx-slot').getBoundingClientRect(); showMenu(fr.left + 40, Math.max(10, Math.min(innerHeight - 200, fr.top + 60)), [{ label: 'A menu over the editor', fn() {} }]);
 await until(async () => { const x = await win(); return Array.isArray(x.region) && !x.region.length; }, 5000, 'hidden under a menu'); ok(true, 'a menu over the editor → the editor hides (stays open)');
 hideMenu(); await until(async () => { const x = await win(); return !(Array.isArray(x.region) && !x.region.length); }, 5000, 'shown again'); ok(true, 'the menu closes → the editor shows again');
 spacer.remove();
@@ -94,6 +95,15 @@ ok(true, 'back to the Sound desk → the editor is there again, on its placehold
 // 9. Pop out / Open editor here
 frameBtn('Pop out').click(); await until(() => mode() === 'floating', 5000, 'floating'); ok((await win()).parent === 0 && frameBtn('Open editor here'), 'Pop out → its own window; the frame offers “Open editor here”');
 frameBtn('Open editor here').click(); await until(() => mode() === 'embedded', 5000, 'back in'); ok((await win()).child, 'Open editor here → back inside Hearth');
+// 9b. (round 64, with liveset64) the 🎤 Live set on screen parks the editor (hidden, open); it comes back when it closes
+document.documentElement.classList.add('liveset-open');
+await until(async () => { const x = await win(); return Array.isArray(x?.region) && !x.region.length; }, 5000, 'parked'); ok((await live()).editorOpen, 'the Live set parks the editor (hidden, still open)');
+document.documentElement.classList.remove('liveset-open');
+await until(async () => { const x = await win(); return x && !(Array.isArray(x.region) && !x.region.length); }, 5000, 'unparked'); ok(true, 'the Live set closes → the editor shows again');
+// 9c. (with audiodoctor64) the hosts restarted under an open editor (Reset host / the ASIO switch: stop, then reopen the
+// instrument): the editor comes back inside Hearth by itself (the owner chose "here")
+await hub.vst.stop(); await WorkbenchVST.api.open('Vital', { live: false });
+await until(async () => mode() === 'embedded' && (await win())?.child, 15000, 'editor back after a host restart'); ok(true, 'after a host restart (audio doctor’s Reset host / ASIO switch) the editor is back in the desk');
 // 10. a bounce with the editor open is 48 kHz
 const bounce = await hub.vst.request({ action: 'render', plugin: api.current().path, duration: .5, notes: [{ note: 60, time: 0, length: .3 }] });
 const rate = new DataView(Uint8Array.from(atob(bounce.audio), c => c.charCodeAt(0)).buffer).getUint32(24, true);

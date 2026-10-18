@@ -125,6 +125,8 @@ var WorkbenchVST = (() => {
       // (round 64, vstembed64) the click → playable time (host start + plugin load + live start), then controls ready
       editorAuto = true; // (round 64) this open may bring the editor into the desk (once)
       timings = { instrument: p.name, readyMs: Math.round(performance.now() - t0), hostStartMs: r.hostStartMs ?? null, loadedMs: r.loadedMs ?? null, live: !!live };
+      // (round 64) the host may have been restarted (Reset host, the audio doctor's ASIO switch): the editor as it is now
+      try { const now = await call('live-status'); if (now && now.editor) lastStats = now; } catch { /* the readout comes with the poll */ }
       await draw(); if (r.playing !== undefined) showStats(r);
       say(`${p.name} ready in ${timings.readyMs} ms${r.playing ? ' · live: play the keys or your controller' : ' · press a key to start live audio'}. Reading its controls…`);
       events.emit('instrument', api.current());
@@ -204,7 +206,7 @@ var WorkbenchVST = (() => {
       keyOff = () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
       detail.append(row(select('Octave', octave, [[2, '2 · bass'], [3, '3 · low'], [4, '4 · middle'], [5, '5 · high']], v => { silence(); octave = Number(v); keyButtons.forEach(b => b.classList.remove('held')); }), note('Hold keys A–; or press the keyboard below.')), keys);
       clearInterval(poll); poll = setInterval(() => {
-        call('live-status').then(showStats).catch(err => { say(err.message); clearInterval(poll); playing = false; });
+        call('live-status').then(showStats).catch(err => { say(err.message); clearInterval(poll); playing = false; vx?.apply({ mode: 'closed', size: null }); }); // (round 64) a host gone takes its editor with it
         // (round 64, vstembed64) with the editor in the desk, the controls on screen follow its knobs (every 2 s, only those)
         if (vx?.state.mode === 'embedded' && !(syncTick++ % 2) && controls.isConnected && !controls.contains(document.activeElement)) syncVisible([...controls.querySelectorAll('[data-key]')].map(n => n.dataset.key)).catch(() => {});
       }, 1000);

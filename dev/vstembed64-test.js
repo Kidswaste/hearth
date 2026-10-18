@@ -139,6 +139,18 @@ ok(E2.none.mode === 'floating' && /this system can not/.test(E2.none.note), 'no 
     ok((await V('live-status')).editor.mode === 'embedded' && (await V('live-status')).playing, 'after the bounce: still embedded, live again');
     r = await host.request({ action: 'editor-pop', plugin: vital.path }); ok(r.editor.mode === 'floating' && r.editor.window.parent === 0, 'Pop out → its own window');
     r = await host.request({ action: 'editor-embed', plugin: vital.path, parent: '4242', embed: { x: 0, y: 0, visible: true } }); ok(r.editor.mode === 'embedded', 'Open editor here → back inside');
+    // (round 64, coordination with liveset64) the Live set's preset preload with the editor open: not refused — the
+    // editor is closed for the load and opened again where it was; a twin switch marks it stale, 'editor-refresh' shows
+    // the instance now playing
+    host.send({ action: 'editor-place', plugin: vital.path, embed: { x: 0, y: 0, visible: false } }); await sleep(100); // parked (the Live set on screen)
+    ok((await V('set-open', { bpm: 120, beats: 4, quantize: 'bar' })).ok, 'a Live set opens with the editor open');
+    const pre = await V('preset-preload', { id: 'p1', state: snap.state });
+    ok(pre.ok && pre.editorReopened && pre.editor.mode === 'embedded' && pre.editor.window.parent === 4242 && Array.isArray(pre.editor.window.region) && !pre.editor.window.region.length, `preset preload with the editor open: done, the editor back in place and still parked (${pre.error || 'ok'})`);
+    ok((await V('preset-switch', { id: 'p1', at: 'beat' })).ok, 'the twin switch (on the beat)');
+    await until(async () => (await V('live-status')).editor.stale, 4000, 'stale after the switch'); ok(true, 'after a twin switch the editor is marked as showing the previous instance');
+    r = await host.request({ action: 'editor-refresh', plugin: vital.path }); const fresh = await V('live-status');
+    ok(r.ok && r.editor.mode === 'embedded' && !fresh.editor.stale && fresh.editorOpen, 'editor-refresh reopens it on the instance now playing, in place');
+    await V('set-close');
     t0 = Date.now(); r = await host.request({ action: 'editor-close', plugin: vital.path }); ok(r.ok && r.editor.mode === 'closed' && Date.now() - t0 < 1500, `Close editor → closed cleanly in ${Date.now() - t0} ms`);
     ok((await V('live-status')).playing && !(await V('live-status')).editorOpen, 'audio unaffected by the editor closing');
     // 3c. 48 kHz files: a park take at 48 kHz as played; a device that refuses 48 kHz → its rate, said, take converted once

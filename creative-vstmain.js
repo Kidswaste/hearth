@@ -61,7 +61,7 @@ const LIVESET_ACTIONS = ['set-open', 'set-close', 'set-status', 'set-tempo', 'cl
 // 'controls' (every control known so far + values; ready when all are), 'editor' {embed} (open it in the placeholder),
 // 'editor-place' {embed: {x, y, clip, visible}} (streamed on layout changes), 'editor-embed' (a floating editor goes in),
 // 'editor-pop' (out into its own window), 'editor-close'. Hearth's window handle is added here, never by the page.
-const EMBED_ACTIONS = ['controls', 'editor-place', 'editor-embed', 'editor-pop', 'editor-close'];
+const EMBED_ACTIONS = ['controls', 'editor-place', 'editor-embed', 'editor-pop', 'editor-close', 'editor-refresh']; // 'editor-refresh': reopen it on the instance now playing (liveset64's preset twin)
 const int = (v, lo = -1e5, hi = 1e5) => Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : undefined;
 function embedOf(e) {
   if (!e || typeof e !== 'object') return undefined;

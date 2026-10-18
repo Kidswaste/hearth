@@ -46,7 +46,14 @@
     const slot = e('div', null, 'vx-slot'), line = e('p', '', 'wb-note vx-line');
     el.setAttribute('aria-label', `${o.name} editor`); slot.setAttribute('aria-hidden', 'true');
     head.append(title, tools); el.append(head, slot, line);
-    let st = { mode: 'closed' }, sent = '', queued = 0, alive = true, scrollers = [], drawn = '';
+    let st = { mode: 'closed' }, sent = '', queued = 0, alive = true, scrollers = [], drawn = '', refreshing = false;
+    // (round 64) liveset64's 🎤 Live set on screen: the editor is parked (hidden, still open) so the set's preset pads
+    // keep the stage; when it closes, an editor left on a previous instance (a preset twin switch) is reopened on the new one
+    const parked = () => document.documentElement.classList.contains('liveset-open');
+    function freshen() {
+      if (!st.stale || refreshing || parked() || !alive || !['embedded', 'floating'].includes(st.mode)) return;
+      refreshing = true; o.call('editor-refresh').then(r => apply(r.editor || r)).catch(() => {}).finally(() => { refreshing = false; });
+    }
     const label = { here: 'Open editor here', pop: 'Pop out', close: 'Close editor' };
     const act = {
       here: () => st.mode === 'floating' ? run('editor-embed', { embed: measure() }) : open(true),
@@ -78,11 +85,11 @@
     function apply(next) {
       if (!next || typeof next !== 'object') return;
       if (!el.isConnected && alive) { requestAnimationFrame(() => { if (alive) apply(next); }); return; } // placed in the page first (its scrollers, its size)
-      const was = st.mode; st = { ...st, ...next }; paint();
+      const was = st.mode; st = { ...st, ...next }; paint(); freshen();
       if (st.mode === 'embedded') { if (was !== 'embedded') { sent = ''; watch(true); } schedule(); } else if (was === 'embedded') watch(false);
     }
     function measure() {
-      const r = slot.getBoundingClientRect(), shown = alive && el.isConnected && slot.offsetParent !== null && !document.hidden;
+      const r = slot.getBoundingClientRect(), shown = alive && el.isConnected && slot.offsetParent !== null && !document.hidden && !parked();
       // (fixed-position panels have no offsetParent: a non-empty box is what counts)
       const covers = shown ? [...document.querySelectorAll(OVERLAYS)].filter(n => !el.contains(n)).map(n => n.getBoundingClientRect()).filter(b => b.width && b.height) : [];
       const clips = [{ left: 0, top: 0, right: innerWidth, bottom: innerHeight }, ...scrollers.map(n => n.getBoundingClientRect())];
@@ -97,7 +104,7 @@
     }
     const schedule = () => { if (!queued) queued = requestAnimationFrame(send); };
     const later = () => { schedule(); setTimeout(schedule, 60); setTimeout(schedule, 320); }; // menus open / animate after the click
-    let ro = null, mo = null, mo2 = null, mq = null;
+    let ro = null, mo = null, mo2 = null, mo3 = null, mq = null;
     const onDpr = () => { paint(); schedule(); mq?.removeEventListener('change', onDpr); mq = matchMedia(`(resolution: ${devicePixelRatio}dppx)`); mq.addEventListener('change', onDpr); drawn = ''; paint(); };
     function scrollParents() {
       const out = [];
@@ -113,12 +120,13 @@
         // panels added to the page, menus / folds shown or hidden ([hidden], <details open>, <dialog open>)
         mo = new MutationObserver(later); mo.observe(document.body, { childList: true });
         mo2 = new MutationObserver(later); mo2.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden', 'open'] });
+        mo3 = new MutationObserver(() => { later(); freshen(); }); mo3.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] }); // the Live set parks it
         addEventListener('scroll', schedule, { capture: true, passive: true }); addEventListener('resize', schedule);
         addEventListener('pointerdown', later, true); addEventListener('contextmenu', later, true); addEventListener('keydown', later, true); addEventListener('keyup', later, true);
         document.addEventListener('visibilitychange', schedule); document.addEventListener('hearth:activate', later);
         onDpr();
       } else if (!on && ro) {
-        ro.disconnect(); mo.disconnect(); mo2.disconnect(); ro = mo = mo2 = null;
+        ro.disconnect(); mo.disconnect(); mo2.disconnect(); mo3.disconnect(); ro = mo = mo2 = mo3 = null;
         removeEventListener('scroll', schedule, { capture: true }); removeEventListener('resize', schedule);
         removeEventListener('pointerdown', later, true); removeEventListener('contextmenu', later, true); removeEventListener('keydown', later, true); removeEventListener('keyup', later, true);
         document.removeEventListener('visibilitychange', schedule); document.removeEventListener('hearth:activate', later);

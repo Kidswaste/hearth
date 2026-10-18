@@ -124,13 +124,16 @@ and ~0.2 s. The plugin's own initialisation (Serum 2 loads wavetables) is not ch
 
 ## Tested (this machine: Linux, fake host; app checks under `flock /tmp/hearth-run.lock`, after merging
 claude/intelligent-galileo-yaiqem and origin/main)
-- `vstembed64` ✓ (28 checks; in the app: click → LIVE 82 ms, controls 860 ms the first time (300 × 2 ms), 254 ms after
+- `vstembed64` ✓ (31 checks, incl. the Live set park and a host restart under an open editor; in the app: click → LIVE 82 ms, controls 860 ms the first time (300 × 2 ms), 254 ms after
   Reset host from the disk list; the editor placed / followed / clipped / hidden under a menu and with the desk away;
   ✦ line "Darker and slower — applied"; the plugin window and the desk slider moved; ↶; a knob turned in the plugin
   reached the desk; the AI tool silent; Pop out / back / Close; 48 kHz bounce with the editor open; Serum 2's refusal
   → own window + line), `vst-live` ✓, `presethover61` ✓ (updated to the short line), `parkjam62` ✓, `soundbank63` ✓,
   `loopsong63` ✓, `liveset64` ✓, `workbench-vst` ✓ (its real-plugin part skipped: no runtime here), `lazy` ✓.
-- Units: `vstembed64-test` ✓ (55), `vst-live-host-test` ✓, `boot-test` ✓, `datasafe-scan` ✓, `winmac-test` ✓,
+- After merging audiodoctor64 / clickfirst64 / mapfirst64: vstembed64, liveset64, audiodoctor64, vst-live,
+  presethover61, lazy ✓; clickfirst64 ✖ on "▶ Play: the game window" — the same failure on the merged base 5b70d10 without
+  this branch (not the Sound desk).
+- Units: `vstembed64-test` ✓ (60), `vst-live-host-test` ✓, `boot-test` ✓, `datasafe-scan` ✓, `winmac-test` ✓,
   `liveset64-test` ✓, `soundbank63-test` ✓, `parkjam62-test` ✓, `presethover61-test` ✓, `vst-host-test` ✓,
   `loopsong63-test` ✓.
 - Found and fixed on the way: the desk's 0–1 sliders were drawn on the default 0–100 scale (a 0.45 showed as 0): the
@@ -187,9 +190,15 @@ Files of yours touched (all additive, marked `(round 64, vstembed64)`):
 - Coordination with liveset64 / audiodoctor64: all protocol changes are additive; the readout's advice line shows
   `rateNote` first. `creative-vst-liveset.py` (liveset64) got two small marked edits: the preset twin's control index is
   made at preload (`e.index_of`, main thread) and the switch calls `e.adopt(new, index)` — the old
-  `e.parameters = new.parameters` would now build every wrapper inside the audio thread. Known interplay: a twin preset
-  switch happens under an open editor, which keeps showing the previous instance (close / reopen it); `preset-preload`
-  is still refused while the editor is open (liveset64's rule), and the editor now opens by itself on Windows.
+  `e.parameters = new.parameters` would now build every wrapper inside the audio thread. Live set + editor (fixed after the merge): while the 🎤 Live set is on screen (`html.liveset-open`) the
+  embedded editor is parked (hidden, still open); `preset-preload` with the editor open is no longer refused — the host
+  closes the editor for the twin's load on the main thread and opens it again where it was (still parked); a twin
+  switch marks the editor `stale` (live-status `editor.stale`) and the frame calls the new `editor-refresh` (close +
+  reopen on the instance now playing) as soon as the Live set closes.
+- audiodoctor64: `creative-vst-doctor.py` calls `Engine.choose(None, …)` unbound — `choose()` only writes its rate
+  note when it has an engine. Reset host / the ASIO switch (stop, then reopen the instrument): the desk reads the
+  editor's real state before drawing, so the editor comes back inside Hearth by itself; a host gone mid-poll closes the
+  frame's state.
 - Tests: `node dev/vstembed64-test.js`; `node dev/smoke.js --fake-vst --fake-vst-embed --fake-engines --script
   dev/checks/vstembed64.js`; `node dev/vstembed64-bench.js` (before → after); `sh dev/run-checks.sh vstembed`.
 
