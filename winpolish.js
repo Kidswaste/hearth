@@ -262,6 +262,21 @@ const WinPolish = (() => {
     driveCache.set(L, t);
     return t;
   }
+  // (round 65, mainhang65) the one PowerShell question above blocked the whole app (≈ 0.5–1.5 s, up to 5 s) the first
+  // time something on another drive went to the Recycle Bin. warmDrives() asks it once for every drive, in the
+  // background (main.js, a minute after the start on Windows): the sync question is then only for a drive plugged in later.
+  function warmDrives() {
+    if (process.platform !== 'win32') return Promise.resolve(0);
+    return new Promise((resolve) => {
+      try {
+        cp.execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[System.IO.DriveInfo]::GetDrives() | ForEach-Object { $_.Name.Substring(0,1) + " " + $_.DriveType }'], { windowsHide: true, timeout: 15000, encoding: 'utf8' }, (err, out) => {
+          let n = 0;
+          if (!err) for (const line of String(out || '').split(/\r?\n/)) { const m = /^([A-Za-z]) (\w+)/.exec(line.trim()); if (m && !driveCache.has(m[1].toUpperCase())) { driveCache.set(m[1].toUpperCase(), m[2].toLowerCase()); n += 1; } }
+          resolve(n);
+        });
+      } catch { resolve(0); }
+    });
+  }
   function trashCheck(p, { platform = process.platform, env = process.env, fs = realFs, driveType = driveTypeDefault } = {}) {
     if (platform !== 'win32') return { ok: true, path: p };
     let s = String(p || '').replace(/\//g, '\\');
@@ -324,6 +339,6 @@ const WinPolish = (() => {
     return hit ? { text: hit[1], fix: hit[2], action: hit[3] } : null;
   }
 
-  return { envGet, binDirs, candidates, codexRuntime, codexRuntimeStatus, lookedIn, readShim, findNode, quoteArg, cmdLine, plan, spawn, cleanPath, trashCheck, trashError, plainError, dropStack, PKG, _driveCache: driveCache };
+  return { envGet, binDirs, candidates, codexRuntime, codexRuntimeStatus, lookedIn, readShim, findNode, quoteArg, cmdLine, plan, spawn, cleanPath, trashCheck, warmDrives, trashError, plainError, dropStack, PKG, _driveCache: driveCache };
 })();
 module.exports = WinPolish;

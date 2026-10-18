@@ -213,18 +213,33 @@
   // data/.datasafe-faults.json { t0?, "<path relative to data/, or config.json>": { code: 'EBUSY', from?, ms?, dir? } }
   // (from / ms: the window in ms after t0, default the start; dir: a folder listing fails). Honoured only in a test run
   // (HEARTH_TEST_SAVE_DIR is set by dev/smoke.js and dev/datasafe-test.js), never in the owner's app.
+  // (round 65, mainhang65) a spec written while the app runs is read again (env.HEARTH_FAULTS_LIVE: looked at most every
+  // 300 ms) so a check can hold files mid-run; rename: true also fails a rename onto that file (a save over a held file)
   function faults(fs, dataDir, env = (typeof process !== 'undefined' ? process.env : {})) {
     if (!env.HEARTH_TEST_SAVE_DIR || !dataDir) return fs;
-    let spec = null;
-    try { spec = JSON.parse(fs.readFileSync(`${dataDir}/.datasafe-faults.json`, 'utf8')); } catch { return fs; }
-    const t0 = Number(spec.t0) || Date.now();
-    const rules = Object.entries(spec).filter(([k, v]) => k !== 't0' && v && v.code).map(([k, v]) => ({ end: `/${k.replace(/\\/g, '/')}`, ...v }));
-    if (!rules.length) return fs;
-    const hit = (p) => { const f = String(p).replace(/\\/g, '/').replace(/\/$/, ''); const el = Date.now() - t0; return rules.find((r) => f.endsWith(r.end) && (!r.from || el >= r.from) && (!r.ms || el < r.ms)); };
+    const file = `${dataDir}/.datasafe-faults.json`;
+    const live = Boolean(env.HEARTH_FAULTS_LIVE);
+    let rules = []; let t0 = Date.now(); let seen = ''; let lookedAt = 0;
+    const load = () => {
+      let spec = null;
+      try { spec = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { rules = []; return; }
+      t0 = Number(spec.t0) || Date.now();
+      rules = Object.entries(spec).filter(([k, v]) => k !== 't0' && v && v.code).map(([k, v]) => ({ end: `/${k.replace(/\\/g, '/')}`, ...v }));
+    };
+    load();
+    if (!rules.length && !live) return fs;
+    const fresh = () => {
+      if (!live || Date.now() - lookedAt < 300) return;
+      lookedAt = Date.now();
+      let st = ''; try { const x = fs.statSync(file); st = `${x.size}:${x.mtimeMs}`; } catch { st = ''; }
+      if (st !== seen) { seen = st; load(); }
+    };
+    const hit = (p) => { fresh(); if (!rules.length) return null; const f = String(p).replace(/\\/g, '/').replace(/\/$/, ''); const el = Date.now() - t0; return rules.find((r) => f.endsWith(r.end) && (!r.from || el >= r.from) && (!r.ms || el < r.ms)); };
     const fail = (r, p) => { const e = new Error(`${r.code}: resource busy or locked, open '${p}'`); e.code = r.code; return e; };
     return new Proxy(fs, { get(t, k) {
       if (k === 'readFileSync') return (p, ...a) => { const r = hit(p); if (r) throw fail(r, p); return t.readFileSync(p, ...a); };
       if (k === 'readdirSync') return (p, ...a) => { const r = hit(p); if (r && r.dir) throw fail(r, p); return t.readdirSync(p, ...a); };
+      if (k === 'renameSync') return (a, b) => { const r = hit(b); if (r && r.rename) throw fail(r, b); return t.renameSync(a, b); };
       const v = t[k]; return typeof v === 'function' ? v.bind(t) : v;
     } });
   }

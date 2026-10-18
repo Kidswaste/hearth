@@ -17,6 +17,8 @@ const CrashSafeCore = (() => {
   const V = 1;
   const BUSY = new Set(['EBUSY', 'EPERM', 'EACCES', 'EAGAIN', 'UNKNOWN']);
   const sleepSync = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* no wait */ } };
+  let ui = null; // Electron's main thread (not the store thread, not Node, not a page)
+  const uiThread = () => { if (ui == null) { try { ui = typeof process !== 'undefined' && process.type === 'browser' && require('worker_threads').isMainThread === true; } catch { ui = false; } } return ui; };
   let seq = 0;
   const pid = () => (typeof process !== 'undefined' && process.pid) || 0;
   const tmpOf = (file) => `${file}.${pid()}-${(seq = (seq + 1) % 1e6)}.tmp`;
@@ -30,7 +32,9 @@ const CrashSafeCore = (() => {
     try { fs.writeSync(fd, typeof data === 'string' ? data : Buffer.from(data)); try { fs.fsyncSync(fd); } catch { /* a disk that can't */ } } finally { fs.closeSync(fd); }
     for (let i = 0; ; i++) {
       try { fs.renameSync(tmp, file); break; } catch (err) {
-        if (i < tries - 1 && BUSY.has(err.code)) { wait(40 * (i + 1)); continue; }
+        // (round 65, mainhang65) on Electron's main thread: 50 ms of waiting at most in all (scenesafe-core waitFor)
+        const ms = uiThread() ? [5, 10, 15, 20][i] ?? 0 : 40 * (i + 1);
+        if (i < tries - 1 && BUSY.has(err.code) && ms) { wait(ms); continue; }
         try { fs.rmSync(tmp, { force: true }); } catch { /* gone */ }
         throw err;
       }

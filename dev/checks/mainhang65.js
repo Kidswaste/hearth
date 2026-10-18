@@ -11,9 +11,10 @@
 //      a tool or two, a message sent, the daily backup
 // Budget per phase: p99 < 50 ms and max < 200 ms (window.MH_REPORT = 1 reports without failing).
 //   4. sync with a cloud folder: the first pass (reported) and four everyday passes (budgeted)
+//   5. files held for ~15 s (settings, memory, notes, the chats folder) while saving, opening chats and sending
 // The fixture and the env are made by dev/run-checks.js (sh dev/run-checks.sh mainhang65); by hand:
 //   node dev/make-bighome-fixture.js /tmp/hearth-bighome
-//   HEARTH_LOOPLAG=prof HEARTH_SLOWFS_US=150 node dev/smoke.js --fake-engines --data /tmp/hearth-bighome --check-timeout 600000 --lib dev/checks/journey-lib.js --script dev/checks/mainhang65.js
+//   HEARTH_LOOPLAG=prof HEARTH_SLOWFS_US=150 HEARTH_FAULTS_LIVE=1 node dev/smoke.js --fake-engines --data /tmp/hearth-bighome --check-timeout 600000 --lib dev/checks/journey-lib.js --script dev/checks/mainhang65.js
 // (Linux only: Node's recursive fs.watch is a JS walk with sync readdir / stat (native on Windows and the Mac): the
 // sync's first pass and the folder watch's planning show it; reported, not budgeted.)
 const { step, wait } = J;
@@ -119,6 +120,35 @@ if (window.hub.sync?.on && !localStorage.getItem('mh.noSync')) {
   out.phases.sync = { passes, ...brief(sp) };
   step(`sync, 4 passes: p99 ${sp.delay.p99} ms, max ${sp.delay.max} ms`, ok(sp) || window.MH_REPORT, out.phases.sync.blocks.slice(0, 3));
   await window.hub.sync.off();
+}
+// 5. files held (Windows: an antivirus, OneDrive or the indexer holding a file for a while): settings, memory, notes,
+// the chats' folders and meta held for ~15 s (data/.datasafe-faults.json, read live: HEARTH_FAULTS_LIVE) while the
+// owner saves settings, opens chats, the list refreshes and a message goes out
+if (!localStorage.getItem('mh.noHeld')) {
+  const D = (await window.hub.reach.info()).dataDir;
+  const F = `${D}/.datasafe-faults.json`;
+  await window.hub.fs.write(F, JSON.stringify({ 'config.json': { code: 'EBUSY', rename: true }, 'memory.json': { code: 'EBUSY' }, 'kv/notes.json': { code: 'EBUSY' }, 'kv/chat-meta.json': { code: 'EBUSY' }, chats: { code: 'EBUSY', dir: true } }));
+  await wait(700);
+  await lag({ label: 'before held' });
+  const heldDid = [];
+  try {
+    for (let k = 0; k < 3; k++) {
+      H.config.settings = { ...(H.config.settings || {}), mhHeld: k }; await saveConfig().catch(() => {});
+      await window.hub.listChats().catch(() => {}); await window.hub.getMemory().catch(() => {}); await window.hub.kvGet('notes', []).catch(() => {});
+      for (const c of mine.slice(k * 3, k * 3 + 3)) { Native.open(claude.id, c.id); await wait(300); }
+      await wait(1500);
+    }
+    heldDid.push('saved settings 3×, listed chats, read memory / notes, opened 9 chats');
+    await J.command(claude.id, 'still here?', 2500).catch(() => {});
+    heldDid.push('sent a message');
+  } catch (err) { out.problems.push(`held: ${err.message}`); }
+  const hd = await lag({ label: 'files held' });
+  out.phases.held = { did: heldDid, ...brief(hd) };
+  step(`files held: p99 ${hd.delay.p99} ms, max ${hd.delay.max} ms`, ok(hd) || window.MH_REPORT, out.phases.held.blocks.slice(0, 3));
+  await window.hub.fs.write(F, '{}');
+  await wait(4000); // the held save lands
+  const cfg = JSON.parse(await window.hub.fs.read(`${D}/config.json`).catch(() => '{}'));
+  step('the settings saved while held landed once the file was free', cfg?.settings?.mhHeld === 2, cfg?.settings?.mhHeld);
 }
 out.budget = BUDGET;
 return J.done();
