@@ -37,6 +37,7 @@ UNIT.push('presethover61-test'); // (round 61, presethover61) ✦ Preset hover: 
 UNIT.push('gamehooks55-test'); // (round 55, fixes55) ▶ Play's page scripts: a throw in Hearth's part of a hook never stops the game's own call
 UNIT.push('vst-live-host-test'); // (round 61, vstlive61) the Sound desk's live host: real creative-vst-host.py + fake Pedalboard / sounddevice / rtmidi
 UNIT.push('parkjam62-test'); // (round 62, parkjam62) Park jam: output pick, battery controls, WAV / MIDI / ambience layer, proof text, the host's loop recorder (fake laptop host)
+UNIT.push('loopsong63-test'); // (round 63, loopsong63) park loops → a song: arrangement model, snapping, tempo plan, mixdown / stems / −1 dBFS, stretch, MIDI, parkList / MP3
 UNIT.push('winfresh-test'); // (round 60, winfresh60) the Windows zip install: a shallow checkout updating (gaps, rewrites, deeper fetch), private-repo sign-in, shortcuts / login item
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
@@ -44,6 +45,7 @@ const GROUPS = {
   weekquest62: ['weekquest62', 'unit:weekquest-test', 'unit:questhud-test', 'questhud61', 'showsync61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:winmac-test'], // (round 62) the weekly quest rhythm: /quest week, the nudge, /quest review
   showsync61: ['showsync61', 'unit:showsync-test', 'quest-world', 'quest-map-tiles', 'quest-field', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 61) this week's Shotgun / DICE shows on the Paris map, /shows, show → quest
   parkjam: ['parkjam62', 'unit:parkjam62-test'], // (round 62) Park mode + the loop recorder in the Sound desk (fake laptop host, stubbed mic)
+  loopsong: ['loopsong63', 'unit:loopsong63-test', 'parkjam62', 'unit:parkjam62-test', 'vst-live', 'workbench-vst', 'quest-paris', 'lazy', 'unit:boot-test'], // (round 63) park loops → a song (Arrange in the Sound desk, /song)
   vstlive: ['vst-live', 'workbench-vst', 'unit:vst-host-test', 'unit:vst-live-host-test'], // (round 61) Serum 2 / Vital live mode (fake host; the real-plugin part of workbench-vst runs on the owner's PC)
   quests: ['unit:quest-test', 'unit:quest-review-test', 'unit:quest-deck-test', 'unit:quest-workstation-test', 'unit:quest-life-test', 'unit:quest-world-test', 'unit:quest-paris-test', 'quest-journal', 'quest-studio', 'quest-session', 'quest-proof', 'quest-deck', 'quest-workstation', 'quest-life', 'quest-world', 'quest-paris', 'unit:questhud-test', 'questhud61'],
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy', 'fastboot'], // (round 29) fastboot: first frame before any lazy group, keys of lazy groups, first-use main modules

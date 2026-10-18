@@ -36,7 +36,7 @@ const ParkJam = (() => {
     if (park?.on) { dim(true); hush(true); } // back in the desk with Park mode on
   }
   function refreshButton() { if (!button) return; const t = park?.on ? '🌳 Park mode on' : '🌳 Park mode'; if (button.textContent !== t) button.textContent = t; button.setAttribute('aria-pressed', String(!!park?.on)); }
-  function pause() { epoch++; clearInterval(poll); poll = null; stopMic(); dim(false); hush(false); button = null; section = null; }
+  function pause() { epoch++; clearInterval(poll); poll = null; stopMic(); dim(false); hush(false); button = null; section = null; if (typeof LoopSong !== 'undefined') LoopSong.pause(); } // (round 63, loopsong63) Arrange leaves with the desk
   function dim(onOff) { document.documentElement.classList.toggle('parkjam-dim', !!onOff); }
   function hush(onOff) {
     const W = window.Power; if (!W?.hush) return; // powerwise.js: Hearth's background timers (as ▶ Play hushes them)
@@ -200,7 +200,8 @@ const ParkJam = (() => {
       check('Layer park ambience', pr.ambience, v => setPref('ambience', v))));
     const go = btn('Record loop', async () => { const t = await record(); say(`${t.bars} bars recorded (${t.notes} notes) · saved in “${t.sketch}”.`); });
     const amb = btn('Ambience · 10 s', async () => { const a = await recordAmbience(10, left => say(`Recording the park… ${Math.ceil(left)} s`)); say(`Park ambience kept (${a.seconds.toFixed(1)} s): it goes under your next loops.`); });
-    section.append(row(go, amb), e('output', ambience ? `Ambience ready · ${ambience.seconds.toFixed(1)} s` : 'Ready when you are.', 'wb-note wb-park-progress'));
+    const arrange = btn('Arrange', () => LoopSong.open(h).then(say)); arrange.title = 'Lay your park takes out as a song: lanes, bars, re-render through the synth, export mix + stems (/song)'; // (round 63, loopsong63) in the same row
+    section.append(row(go, amb, ...(typeof LoopSong !== 'undefined' ? [arrange] : [])), e('output', ambience ? `Ambience ready · ${ambience.seconds.toFixed(1)} s` : 'Ready when you are.', 'wb-note wb-park-progress'));
     section.append(note('Headphones on: the laptop mic hears its own speakers. Record the ambience before you play, or with the sound paused.'));
     const list = e('div', null, 'wb-park-takes'); section.append(list); fillTakes(list);
     return section;
@@ -234,10 +235,11 @@ const ParkJam = (() => {
     if (/^(ambience|ambiance|mic|field)$/i.test(sub)) { await desk(); const a = await recordAmbience(Number(arg) || 10); return `Park ambience kept (${a.seconds.toFixed(1)} s); it goes under your next loops.`; }
     if (/^proof$/i.test(sub)) { await desk(); return offer(); }
     if (/^week$/i.test(sub)) { await desk(); return week(); }
+    if (/^(arrange|song)$/i.test(sub)) { await Lazy.load('creative'); return LoopSong.command(arg, ctx); } // (round 63, loopsong63)
     if (/^status$/i.test(sub)) return park?.on ? `Park mode on · ${park.place}.` : 'Park mode is off. /jam park [place] turns it on.';
     await desk(); return on(/^on$/i.test(sub) ? arg : w);
   }
   const complete = () => [['', 'Park mode: laptop output, safe buffer, battery-friendly'], ['belleville', 'Park mode, remembered for this park'], ['record 4', 'record a 4-bar loop (8, 16; "96 bpm", "now")'], ['ambience', '10 s of the park from the laptop mic'], ['proof', 'offer the last loop to the park quest'], ['week', 'this week\'s park loops'], ['off', 'put the output / buffer / controls back']].map(([v, hint]) => ({ value: ('park ' + v).trim(), hint }));
   queueMicrotask(() => { if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Sound desk: Park mode (music outside, on battery)', () => run('').then(t => toast(t, { timeout: 6000 })).catch(err => toast(err.message, { type: 'error' }))); });
-  return { attach, section: sectionFor, pause, on, off, record, recordAmbience, offer, week, run, complete, state: () => (park ? { ...park } : null), _test: { takes: () => h?.state?.park?.takes || [], ambience: () => ambience } };
+  return { desk, helpers: () => h, attach, section: sectionFor, pause, on, off, record, recordAmbience, offer, week, run, complete, state: () => (park ? { ...park } : null), _test: { takes: () => h?.state?.park?.takes || [], ambience: () => ambience } };
 })();

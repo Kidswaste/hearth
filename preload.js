@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('hub', {
   kvGet: call('kv:get'),
   vst: { scan: call('creative-vst:scan'), status: call('creative-vst:status'), setup: call('creative-vst:setup'), request: call('creative-vst:request'), stop: call('creative-vst:stop'), send: (r) => ipcRenderer.send('creative-vst:send', r), parkSave: call('creative-vst:park-save') }, // (round 61, vstlive61) send: live notes / knob moves, no reply · (round 62, parkjam62) parkSave(sketch, name, bytes): a park take's file
   kvSet: call('kv:set'),
+  parkSong: { list: call('creative-vst:park-list'), mp3: call('creative-vst:park-mp3') }, // (round 63, loopsong63) every park sketch's takes · an exported mix as MP3 (ffmpeg)
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),
   attachmentsDir: call('attachments:dir'),
