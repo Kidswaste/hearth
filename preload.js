@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('hub', {
   soundbank: { list: call('soundbank:list'), similar: call('soundbank:similar'), update: call('soundbank:update'), settings: call('soundbank:settings'), previews: call('soundbank:previews'), cancel: call('soundbank:cancel'), queue: call('soundbank:queue'), preview: call('soundbank:preview'), state: call('soundbank:state') }, // (round 63, soundbank63) the Sound bank (soundbankmain.js)
   kvSet: call('kv:set'),
   parkSong: { list: call('creative-vst:park-list'), mp3: call('creative-vst:park-mp3') }, // (round 63, loopsong63) every park sketch's takes · an exported mix as MP3 (ffmpeg)
+  audioDoctor: { probe: call('audiodoctor:probe'), live: call('audiodoctor:live'), open: call('audiodoctor:open'), asio: call('creative-vst:asio') }, // (round 64, audiodoctor64) /audio doctor: the music setup checked on this PC, on demand (audiodoctormain.js)
   liveset: { save: call('creative-vst:live-save'), mp3: call('creative-vst:live-mp3') }, // (round 64, liveset64) the Live set's folder (<data>/creative-live/<set>/): prepared clips, run logs · a run as MP3
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),
