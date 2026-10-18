@@ -1,0 +1,20 @@
+/* (round 63, rewards63) 🎁 real rewards: a few rows in the ✦ tracker panel and a small shelf in Sidequest Studio ›
+   Rewards. Calm: no animation, no backdrop-filter; the tracker's and the Studio's own looks (qh-*, qj-*). */
+.rw-row .qh-row-main { gap: 3px; }
+.rw-row .qh-bar { height: 3px; }
+.rw-ready .qh-row-title { color: var(--ui-gold, #d9b777); }
+.rw-confirm { gap: 4px; }
+.rw-confirm strong { font-size: 12.5px; line-height: 1.3; }
+.rw-actions { display: flex; gap: 6px; margin-top: 2px; }
+.rw-bonus.qh-sub { margin: 2px 2px 0 26px; }
+
+/* Studio › Rewards */
+.rw-shelf { display: grid; gap: 8px; margin: 10px 0 14px; }
+.rw-shelf .rw-next { margin: 0; }
+.rw-shelf .rw-wallet, .rw-shelf .rw-bonus, .rw-shelf .rw-fine { margin: 0; }
+.rw-shelf .rw-fine { opacity: .7; font-size: .85em; }
+.rw-jar { display: grid; gap: 4px; padding: 8px 10px; border-radius: 10px; border: 1px dashed color-mix(in srgb, currentColor 22%, transparent); }
+.rw-jar-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rw-jar-row p { margin: 0; }
+.rw-history p { margin: 2px 0; }
+.rw-row .qh-row-title { white-space: normal; line-height: 1.3; }
