@@ -16,13 +16,14 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
   }
   const state = () => ui().state();
   // Map hooks (called from quest-journal.js's worldMap / mapPlaces).
-  function keep(place, word) { const g = P.byId(place.id); return word === 'mine' ? !g : g ? P.matches(g, word) : false; }
-  function words(place) { const g = P.byId(place.id); return g ? P.words(g) : ''; }
+  // (round 64, parisdedupe64) P.of(place): the guide entry a pin stands for, also when it's your own twin of it
+  function keep(place, word) { const g = P.of(place); return word === 'mine' ? !g : g ? P.matches(g, word) : false; }
+  function words(place) { const g = P.of(place); return g ? P.words(g) : ''; }
   function filterName(word) { const arr = String(word).match(/^(\d{1,2})(?:e|er|eme)?$/); return arr ? P.arrLabel(+arr[1]) : P.TAGS[word] || C.mapKinds.find(k => k.id === word)?.name || (word === 'mine' ? 'My own places' : word); }
   function chip(word, clear) { const b = ui().button('Paris guide: ' + filterName(word) + ' ×', clear, 'qj-quiet qj-paris-chip'); b.setAttribute('aria-label', 'Clear the Paris guide filter (' + filterName(word) + ')'); return b; }
   const placeCampaign = (s, pid) => s.campaigns.find(c => c.id === P.campaignId(pid));
   function panel(selected, host) {
-    const g = P.byId(selected.id); if (!g) return;
+    const g = P.of(selected); if (!g) return;
     const { E, button, label, p, questDetail, mutate } = { ...ui(), mutate: J().mutate };
     host.append(E('div', { class: 'qj-paris-note' }, p(`${P.arrLabel(g.arr)} · ${g.why}`), p('Best: ' + g.best, 'qj-paris-best')));
     if(g.url)host.append(button('Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
@@ -88,7 +89,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
     dialog(g.name,(body,d)=>{
       d.classList.add('qj-city-detail');
       body.append(p(g.why),E('div',{class:'qj-city-brief'},E('strong',{text:'Your mission'}),p(g.todo),p(g.proof)),p(g.best));
-      body.append(E('div',{class:'qj-actions'},button('Start place quest',async()=>{const c=await J().mutate(s=>P.startPlace(s,g.id),'Place quest ready.');d.close();browser.close();ui().questDetail((C.next(state(),c)||c.quests[0]).id);},'qj-primary'),button('Show on map',async()=>{await J().mutate(s=>{P.ensurePin(s,g.id);s.atlas.selected=g.id;},'Place on your map.');d.close();browser.close();J().mapFilter({});},'qj-quiet')));
+      body.append(E('div',{class:'qj-actions'},button('Start place quest',async()=>{const c=await J().mutate(s=>P.startPlace(s,g.id),'Place quest ready.');d.close();browser.close();ui().questDetail((C.next(state(),c)||c.quests[0]).id);},'qj-primary'),button('Show on map',async()=>{await J().mutate(s=>{s.atlas.selected=P.ensurePin(s,g.id).id;},'Place on your map.');d.close();browser.close();J().mapFilter({});},'qj-quiet')));
       if(g.url)body.append(button('Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
     },'FH / ONE SMALL VISIT');
   }
@@ -147,7 +148,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
       else body.append(p('Progress: '+old.quests.filter(q=>C.done(state(),q.id)).length+'/3 · '+(C.campaignDone(state(),old)?'Badge earned ✓':'Finish through proof + review.'),'qj-social-count'));
       body.append(E('div',{class:'qj-actions'},button(old?'Open my steps':'Start this outing',async()=>{
         const c=await J().mutate(s=>P.startSocial(s,t.id,friendId,place.value,{treatId:rewards.value}),'Friend outing ready.');d.close();browser.close();ui().questDetail((C.next(state(),c)||c.quests[0]).id);
-      },'qj-primary'),button('Show meeting place',async()=>{await J().mutate(s=>{P.ensurePin(s,place.value);s.atlas.selected=place.value;},'Meeting place on your map.');d.close();browser.close();J().mapFilter({});},'qj-quiet')));
+      },'qj-primary'),button('Show meeting place',async()=>{await J().mutate(s=>{s.atlas.selected=P.ensurePin(s,place.value).id;},'Meeting place on your map.');d.close();browser.close();J().mapFilter({});},'qj-quiet')));
     },'FH / ONE GOOD MOMENT');
   }
   // ---------- chat: /quest ----------

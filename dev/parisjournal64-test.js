@@ -38,7 +38,7 @@ function journal() {
 const show = (key, title, start, venue, extra = {}) => ({ id: `went-${key}`, key, show: { key, title, start, end: null, doors: null, venue: { key: '', url: '', ...venue }, lineup: ['Fixture Artist'], links: {}, tickets: [], platforms: [] }, rating: null, moment: 'fixture moment', photo: null, note: '', questId: '', at: new Date(start).toISOString(), updatedAt: new Date(start).toISOString(), ...extra });
 const shows = () => ({ v: 1, prep: {}, went: [
   show('cigale1026', 'Arlo at La Cigale', Date.parse(at(2026, 10, 4, 20)), { name: 'La Cigale', address: '120 boulevard de Rochechouart, 75018 Paris', lat: 48.8822, lon: 2.3404 }, { rating: 5, moment: 'The encore with the whole room singing', photo: { path: '/fixture/ref.jpg', jpg: '/fixture/cigale.jpg' } }),
-  show('trabendo926', 'Night at Le Trabendo', Date.parse(at(2026, 9, 20, 21)), { name: 'Le Trabendo', address: '211 avenue Jean Jaurès, 75019 Paris', lat: null, lon: null }, { rating: 3 }),
+  show('glazart926', 'Night at Glazart', Date.parse(at(2026, 9, 20, 21)), { name: 'Glazart', address: '7 avenue de la Porte de la Villette, 75019 Paris', lat: null, lon: null }, { rating: 3 }), // (parisdedupe64) was Le Trabendo: Codex's 60-place guide now has it, so it pins
   show('gone0926', 'Removed night', Date.parse(at(2026, 9, 21, 21)), { name: 'Petit Bain', address: '', lat: 48.8355, lon: 2.3762 }, { removedAt: at(2026, 9, 22) }),
 ] });
 const take = (folder, place, when, extra = {}) => ({ v: 1, id: 'take-' + Date.parse(when).toString(36), at: when, week: '2026-W41', sketch: folder, folder, place, bars: 8, beats: 4, bpm: 96, seconds: 20, notes: 14, instrument: 'Vital', loop: `/fixture/park/${folder}/${place} loop.wav`, ...extra });
@@ -72,7 +72,7 @@ test('the moment itself: photo, the owner\'s own words, rating, the loop to play
 test('arrondissements: the guide\'s own, a Paris postcode, the nearest centre inside Paris, none outside', () => {
   const { list } = all(), get = (id) => list.find((m) => m.id === id);
   assert.deepEqual(get('show-cigale1026').arrs, [18]);
-  const tr = get('show-trabendo926'); assert.deepEqual(tr.arrs, [19], 'from 75019 in the address'); assert(tr.pinless, 'no coordinates: counted, not pinned');
+  const tr = get('show-glazart926'); assert.deepEqual(tr.arrs, [19], 'from 75019 in the address'); assert(tr.pinless, 'no coordinates: counted, not pinned');
   assert.deepEqual(get('place-c-pq-airpods').arrs, [9]);
   assert.equal(K.arrOf({ address: '1 avenue Foch, 75116 Paris' }), 16);
   assert.equal(K.arrOf({ address: '5 rue X, 75020' }), 20);
@@ -89,7 +89,7 @@ test('months and pins: by month, one pin per spot, photos on pins, pinless momen
   assert.equal(new Set(ids).size, ids.length); assert(ids.every((x) => x.startsWith('mp-')));
   assert.equal(oct.length, 7, 'seven October moments at seven spots');
   const cg = oct.find((p) => p.moments.includes('show-cigale1026')); assert.equal(cg.photo, '/fixture/cigale.jpg'); assert.equal(cg.kind, 'music');
-  const sep = K.pins(list, '2026-09'); assert.equal(sep.length, 1, 'Trabendo has no coordinates: only Superfly is pinned in September');
+  const sep = K.pins(list, '2026-09'); assert.equal(sep.length, 1, 'Glazart has no coordinates: only Superfly is pinned in September');
   assert.equal(K.pins(list, '').length, 8);
   // two moments at one place share a pin
   const two = [...list, { ...list.find((m) => m.id === 'place-c-pp-bataclan'), id: 'show-x', kind: 'show', month: '2026-10' }];

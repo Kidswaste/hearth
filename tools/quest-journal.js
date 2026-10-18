@@ -400,7 +400,7 @@ const QuestJournal = (() => {
   function outingDesk(options = {}) {
     return OutingDesk.open({dialog,button,field,explain,friends:()=>state.world.friends,openQuest:questDetail,
       quest:async plan=>{const c=await mutate(s=>OutingCore.campaign(s,plan,C),'Take-home quest ready. Proof and review unlock its XP.');return c.quests[0].id;},
-      pin:async event=>{await mutate(s=>{const existing=s.atlas.places.find(p=>Math.abs(p.lat-event.lat)<.0002&&Math.abs(p.lon-event.lon)<.0002);if(existing)s.atlas.selected=existing.id;else C.savePlace(s,{name:event.venue||event.title,lat:event.lat,lon:event.lon,kind:['music','visual','game'].includes(event.kind)?event.kind:'reset',quest:'Find one detail here to bring into your next creation.'});},'Venue pinned.');mapFilter={kind:'all',saved:false,query:''};navigate('world');}
+      pin:async event=>{await mutate(s=>{const existing=s.atlas.places.find(p=>Math.abs(p.lat-event.lat)<.0002&&Math.abs(p.lon-event.lon)<.0002)||window.QuestParis?.spotPin?.(s,{name:event.venue||event.title,lat:event.lat,lon:event.lon});/* (round 64, parisdedupe64) the same venue already on the map or in the Paris guide (≤ 120 m, same name word) → that pin, not a second one */if(existing)s.atlas.selected=existing.id;else C.savePlace(s,{name:event.venue||event.title,lat:event.lat,lon:event.lon,kind:['music','visual','game'].includes(event.kind)?event.kind:'reset',quest:'Find one detail here to bring into your next creation.'});},'Venue pinned.');mapFilter={kind:'all',saved:false,query:''};navigate('world');}
     },options);
   }
   function worldMap() {

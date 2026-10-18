@@ -45,7 +45,7 @@
   // ---------- reading what already exists ----------
   // a place by id: the journal's own atlas pin first (the owner may have moved it), then the guide's
   function placeById(s, P, id) {
-    const a = (s?.atlas?.places || []).find((p) => p.id === id), g = P?.byId?.(id) || null;
+    const a = (s?.atlas?.places || []).find((p) => p.id === id) || (s?.atlas?.places || []).find((p) => p.guide === id), g = P?.byId?.(id) || null; // (parisdedupe64) or your twin of it
     if (!a && !g) return null;
     const lat = num(a?.lat ?? g?.lat), lon = num(a?.lon ?? g?.lon);
     return { id, name: a?.name || g?.name || id, lat, lon, kind: a?.kind || g?.kind || 'reset', arr: arrOf({ arr: g?.arr, lat, lon }), guide: Boolean(g && P.guide?.some((x) => x.id === id)) };
@@ -121,7 +121,7 @@
     return out.filter((m) => m.month).sort((a, b) => String(b.at).localeCompare(String(a.at)));
   }
   // the owner's own visit stamps (Codex's "Stamp my visit"): they count toward "Paris explored", not as moments
-  const stamps = (s) => (s?.atlas?.places || []).filter((p) => p.visitedAt && Number.isFinite(Date.parse(p.visitedAt))).map((p) => ({ id: p.id, at: p.visitedAt }));
+  const stamps = (s) => (s?.atlas?.places || []).filter((p) => p.visitedAt && Number.isFinite(Date.parse(p.visitedAt))).map((p) => ({ id: p.guide || p.id, at: p.visitedAt })); // (parisdedupe64) a twin's stamp counts for its guide place
 
   /** The months that have moments, newest first: [{ key, label, n }] */
   function months(list) {

@@ -213,19 +213,69 @@
     return [...guide, ...Object.values(pins)].find(p => p.id === q || fold(p.name) === q) || [...guide, ...Object.values(pins)].find(p => fold(p.name).includes(q) || p.id.includes(q.replace(/\s+/g, '-'))) || null;
   }
   const findPersonal = key => { const q = fold(key).replace(/\s+/g, '-'); return personal.find(t => t.key === q || t.id === q || t.aliases.includes(q) || fold(t.title).includes(fold(key))) || null; };
-  const hasGuide = s => guide.filter(p => p.id.startsWith('pp-')).every(p => s.atlas.places.some(x => x.id === p.id));
+  // (round 64, parisdedupe64) One real place = one pin. A place of yours that is the same real place as a guide entry
+  // (within 120 m and a shared name word: e.g. a venue pinned from the Outing desk, or your own pin) is that entry's
+  // "twin": it stays as the pin (yours wins) and carries `guide: '<guide id>'`, so the guide's notes, quest, tags and
+  // filters attach to it. Nothing is added beside it, and a journal that already has both is merged once (dedupe).
+  const TWIN_M = 120;
+  const metres = (a, b) => { const r = Math.PI / 180, x = (b.lon - a.lon) * r * Math.cos((a.lat + b.lat) / 2 * r), y = (b.lat - a.lat) * r; return 6371000 * Math.hypot(x, y); };
+  const NAME_STOP = new Set(['les', 'des', 'the', 'and', 'parc', 'jardin', 'square', 'musee', 'rue', 'place', 'paris', 'club', 'records', 'record', 'shop', 'steps', 'view', 'viewpoint', 'petit', 'petite', 'grand', 'grande', 'saint', 'sainte', 'maison', 'cafe', 'bar', 'nouveau', 'new']);
+  const plain = n => fold(n).replace(/[^a-z0-9]+/g, ' ').trim();
+  const nameWords = n => plain(n).split(' ').filter(w => w.length > 2 && !NAME_STOP.has(w));
+  function sameName(a, b) {
+    const fa = plain(a), fb = plain(b); if (!fa || !fb) return false;
+    if (Math.min(fa.length, fb.length) >= 6 && (fa.includes(fb) || fb.includes(fa))) return true;
+    const wb = new Set(nameWords(b)); return nameWords(a).some(w => wb.has(w));
+  }
+  const near = (p, spot, m = TWIN_M) => metres(p, spot) < m && sameName(p.name, spot.name);
+  // The guide entry a map place stands for: its own id, or the guide id its twin carries.
+  const of = place => (place ? byId(place.id) || byId(place.guide) : null);
+  // The journal's pin for a guide id: the guide's own pin, or the twin that carries it.
+  const pinOf = (s, gid) => s.atlas.places.find(p => p.id === gid) || s.atlas.places.find(p => p.guide === gid) || null;
+  // A place of yours (not a guide pin itself) that is the same real place as guide entry g.
+  const twinOf = (s, g) => s.atlas.places.find(p => p.id !== g.id && !byId(p.id) && (!p.guide || p.guide === g.id) && near(p, g)) || null;
+  // Any pin on your map for a spot (an Outing desk venue, a show): an existing pin first, else a matching guide place.
+  function spotPin(s, spot) {
+    if (!spot || !Number.isFinite(spot.lat) || !Number.isFinite(spot.lon)) return null;
+    const mine = s.atlas.places.find(p => near(p, spot)); if (mine) return mine;
+    const g = [...guide, ...Object.values(pins)].find(g => near(g, spot)); return g ? ensurePin(s, g.id) : null;
+  }
+  // Merges a journal that has both a guide pin and its twin (once; idempotent): the twin stays, keeping its own name,
+  // kind and mission; it gains the earlier visit stamp, the star, the guide pin's own edited mission/name (appended),
+  // and every reference to the guide pin (Codex's map missions, the selection). Place quests keep their guide id.
+  // Codex's map missions allow one campaign per place + mission: when both pins carry the same mission, both stay.
+  const clash = (s, pin, twin) => s.campaigns.some(c => c.mapPlace === pin.id && s.campaigns.some(d => d.mapPlace === twin.id && d.mapMission === c.mapMission));
+  const pairOf = (s, g) => { const pin = s.atlas.places.find(p => p.id === g.id), twin = pin && twinOf(s, g); return twin && !clash(s, pin, twin) ? { pin, twin } : null; };
+  function dedupe(s) {
+    const merged = [];
+    for (const g of [...guide, ...Object.values(pins)]) {
+      const pair = pairOf(s, g); if (!pair) continue; const { pin, twin } = pair;
+      twin.guide = g.id;
+      if (pin.visitedAt && (!twin.visitedAt || pin.visitedAt < twin.visitedAt)) twin.visitedAt = pin.visitedAt;
+      if (pin.favorite) twin.favorite = true;
+      const notes = [pin.name !== g.name && plain(pin.name) !== plain(twin.name) ? pin.name : '', pin.quest && pin.quest !== g.why.slice(0, 500) ? pin.quest : ''].filter(n => n && !String(twin.quest || '').includes(n));
+      if (notes.length) twin.quest = [twin.quest, ...notes].filter(Boolean).join(' · ').slice(0, 500);
+      for (const c of s.campaigns) if (c.mapPlace === pin.id) c.mapPlace = twin.id;
+      if (s.atlas.selected === pin.id) s.atlas.selected = twin.id;
+      s.atlas.places = s.atlas.places.filter(p => p !== pin); merged.push(g.id);
+    }
+    return merged;
+  }
+  const needsDedupe = s => [...guide, ...Object.values(pins)].some(g => pairOf(s, g));
+  const hasGuide = s => guide.filter(p => p.id.startsWith('pp-')).every(p => pinOf(s, p.id));
   // Add one pin (guide or personal) as an ordinary atlas place. Codex's default pins are reused, never duplicated.
   function ensurePin(s, pid) {
-    const old = s.atlas.places.find(p => p.id === pid); if (old) return old;
+    const old = pinOf(s, pid); if (old) return old;
     const g = byId(pid); if (!g) throw Error('Unknown Paris place.');
+    const twin = twinOf(s, g); if (twin) { twin.guide = g.id; return twin; } // (parisdedupe64) yours stays the pin
     if (s.atlas.places.length >= 100) throw Error('Your map holds up to 100 places. Remove one first.');
     const place = { id: g.id, name: g.name, lat: g.lat, lon: g.lon, quest: g.why.slice(0, 500), visitedAt: null, kind: g.kind, favorite: false };
     s.atlas.places.push(place); return place;
   }
   function addGuide(s) {
-    let added = 0, full = 0;
-    for (const g of guide) { if (s.atlas.places.some(p => p.id === g.id)) continue; if (s.atlas.places.length >= 100) { full++; continue; } ensurePin(s, g.id); added++; }
-    return { added, full };
+    let added = 0, full = 0, linked = 0; dedupe(s); // (parisdedupe64) a twin of yours carries its guide place instead of a second pin
+    for (const g of guide) { if (pinOf(s, g.id)) continue; const twin = twinOf(s, g); if (twin) { twin.guide = g.id; linked++; continue; } if (s.atlas.places.length >= 100) { full++; continue; } ensurePin(s, g.id); added++; }
+    return { added, full, linked };
   }
   // Takes the guide's untouched pins back off the map: anything visited, starred or linked to a quest stays.
   function removeGuide(s) {
@@ -240,7 +290,7 @@
   // A place's go → do → proof quest. Stable id, so accepting twice reopens the same campaign.
   function startPlace(s, pid) {
     const g = guide.find(p => p.id === pid); if (!g) throw Error('Choose a place from the Paris guide.');
-    ensurePin(s, pid); s.atlas.selected = pid;
+    s.atlas.selected = ensurePin(s, pid).id; // (parisdedupe64) the pin may be your twin of it
     const cid = campaignId(pid), old = s.campaigns.find(c => c.id === cid); if (old) return track(s, old);
     if (s.campaigns.length >= 100) throw Error('The journal holds up to 100 campaigns.');
     const c = { id: cid, parisPlace: pid, title: g.name.slice(0, 100), subtitle: 'PARIS / ' + arrLabel(g.arr).toUpperCase() + ' / PLACE QUEST', path: pathOf(g.kind), why: `${g.why} Best: ${g.best}`.slice(0, 600), badge: (g.name + ' regular').slice(0, 100), quests: placeSteps(g).map((x, i) => step(cid, i, x)) };
@@ -249,7 +299,7 @@
   function startPersonal(s, key, { park } = {}) {
     const t = findPersonal(key); if (!t) throw Error('Choose one of: ' + personal.map(t => t.key).join(', ') + '.');
     const pin = t.key === 'park' && park ? (findPlace(park)?.id || t.pin) : t.pin;
-    if (pin) { ensurePin(s, pin); s.atlas.selected = pin; }
+    if (pin) s.atlas.selected = ensurePin(s, pin).id; // (parisdedupe64)
     const old = s.campaigns.find(c => c.id === t.id); if (old) return track(s, old);
     if (s.campaigns.length >= 100) throw Error('The journal holds up to 100 campaigns.');
     const c = { id: t.id, parisPersonal: t.key, parisPlace: pin || null, title: t.title, subtitle: t.subtitle, path: t.path, why: t.why, badge: t.badge, quests: t.steps.map((x, i) => step(t.id, i, x, 'A short saved note, photo, memo or bounce is enough. Leave out names and private details; review checks this small brief only.')) };
@@ -277,7 +327,7 @@
     const t=outings.find(t=>t.id===id);if(!t||!t.places.includes(pid))throw Error('Choose a place for this mini adventure.');
     const cid='c-pq-city-'+id,old=s.campaigns.find(c=>c.id===cid);if(old)return track(s,old);
     if(s.campaigns.length>=100)throw Error('Your journal holds up to 100 campaigns.');
-    const g=byId(pid);ensurePin(s,pid);s.atlas.selected=pid;
+    const g=byId(pid);s.atlas.selected=ensurePin(s,pid).id; // (parisdedupe64) the pin may be your twin of it
     const steps=[['Make a small plan',`Choose a visit to ${g.name}. Check today’s access, route and any ticket cost on the official page. Save the time you intend to go and what you need to bring.`,t.tiny,5,15],['Find your ingredient',`At ${g.name}: ${t.brief} Keep a specific note or your own sketch/recording from the visit.`, 'Go for the smallest version of this visit; one detail is enough.',20,35],['Bring a little thing home',t.result,'Open the note, sketch or recording and work on it for five minutes.',15,40]];
     const c={id:cid,parisPersonal:'city-'+id,parisPlace:pid,title:t.title,subtitle:'PARIS / MINI ADVENTURE',path:t.path,why:g.name+' · '+t.brief,badge:t.badge,quests:steps.map((x,i)=>step(cid,i,x))};
     s.campaigns.push(c);return track(s,c);
@@ -328,10 +378,10 @@
     if(treatId&&(!socialTreats.some(t=>t.id===treatId)||(!s.rewards.some(r=>r.id==='r-city-social-'+treatId)&&s.rewards.length>=100)))throw Error('Choose an available treat or continue without one.');
     const g=byId(pid),cid=C.id('c'),hint='Your own short note, sketch, chat artifact or original audio is enough. No private messages or evidence of a friend’s reply is required. Review checks your actions and the stated solo fallback.';
     const steps=[['Make the invite easy',`Plan ${t.title.toLowerCase()} with ${f.name} at ${g.name}. Check access, route and possible cost; choose a time. Save an invitation draft or send it yourself if you want. A reply is not required.`, 'Pick one possible time. The editable invitation is ready in Friend outings.',5,15],['Take the little adventure',`${t.action} If your friend is busy: ${t.solo} Save a specific note or your own creation from doing it.`, 'Do the smallest version. Travel time is extra.',Math.max(5,t.minutes-10),35],['Keep one good thing',t.result,'Open your note or creation and give it five minutes.',5,40]];
-    ensurePin(s,pid);s.atlas.selected=pid;
+    s.atlas.selected=ensurePin(s,pid).id; // (parisdedupe64)
     const reward=treatId?stockSocialTreat(s,treatId):null;
     const c={id:cid,socialMission:id,socialFriend:friendId,socialFriendName:f.name,socialTreat:reward?.id||null,parisPlace:pid,parisPersonal:'social-'+id,title:(t.title+' · '+f.name).slice(0,100),subtitle:'PARIS / FRIEND OUTING',path:t.path,why:g.name+' · '+t.action,badge:t.badge,quests:steps.map((x,i)=>step(cid,i,x,hint))};
     s.campaigns.push(c);return track(s,c);
   }
-  return { TAGS, guide, pins, personal, parks, byId, arrLabel, matches, findPlace, findPersonal, hasGuide, ensurePin, addGuide, removeGuide, startPlace, startPersonal, progress, campaignId, parkName, sketchTitle, words, placeSteps, newPlaces, outings, discover, startOuting, socialMissions, socialTreats, socialChoices, socialCampaign, socialInvite, stockSocialTreat, startSocial };
+  return { TAGS, guide, pins, personal, parks, byId, arrLabel, matches, findPlace, findPersonal, hasGuide, ensurePin, addGuide, of, pinOf, twinOf, spotPin, sameName, metres, dedupe, needsDedupe, TWIN_M, removeGuide, startPlace, startPersonal, progress, campaignId, parkName, sketchTitle, words, placeSteps, newPlaces, outings, discover, startOuting, socialMissions, socialTreats, socialChoices, socialCampaign, socialInvite, stockSocialTreat, startSocial };
 });

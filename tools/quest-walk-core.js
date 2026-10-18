@@ -119,7 +119,7 @@
   // finished; never a station (Codex's 'travel' pins). filter: a guide word (shows, records, park, 11e… through
   // QuestParis.matches) or words of a pin's name / mission. stepMinutes(g): the time the place's own quest asks for there.
   function poolFrom({ C, s, guide = [], matches = null, filter = '', stepMinutes = () => 20 }) {
-    const places = s?.atlas?.places || [], visited = new Set(places.filter((p) => p.visitedAt).map((p) => p.id));
+    const places = s?.atlas?.places || [], visited = new Set(places.filter((p) => p.visitedAt).flatMap((p) => [p.id, p.guide].filter(Boolean))); // (parisdedupe64) a twin's stamp counts for its guide place
     const doneCamp = (pred) => (s?.campaigns || []).some((c) => pred(c) && C.campaignDone(s, c));
     const q = fold(filter), out = [];
     const clampMin = (m) => Math.max(10, Math.min(60, Number(m) || 20));
@@ -129,7 +129,7 @@
       out.push({ id: g.id, name: g.name, short: g.name.replace(/\s*\(.*\)$/, '').replace(/^(Parc|Jardin|Square|Musée) (des |du |de la |de l’|de )?/, ''), lat: g.lat, lon: g.lon, minutes: clampMin(stepMinutes(g)), todo: g.todo || '', proof: g.proof || '', guide: true });
     }
     for (const p of places) {
-      if (!ok(p) || visited.has(p.id) || out.some((x) => x.id === p.id) || guide.some((g) => g.id === p.id)) continue;
+      if (!ok(p) || visited.has(p.id) || out.some((x) => x.id === p.id) || guide.some((g) => g.id === p.id || g.id === p.guide)) continue; // (parisdedupe64) a twin walks as its guide place
       const kind = C.placeKind ? C.placeKind(p) : p.kind;
       if (kind === 'travel' || doneCamp((c) => c.mapPlace === p.id)) continue;
       if (q && !fold(`${p.name} ${p.quest || ''} ${kind}`).includes(q)) continue;

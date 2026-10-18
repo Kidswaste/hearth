@@ -22,6 +22,9 @@ const closeAll = async () => { document.querySelectorAll('dialog.qj-dialog[open]
 const shots = window.SMOKE_TMP || window.SMOKE_SAVES;
 const commands = []; const realTry = Commands.tryRun; Commands.tryRun = function (...a) { commands.push(a[0]); return realTry.apply(this, a); };
 const opened = []; window.hub.openExternal = (u) => { opened.push(u); };
+// (parisdedupe64) one real place = one pin: journal places within 120 m sharing a name word, and pins drawn twice
+const dupes = (st) => { const P = QuestParis, a = st.atlas.places, out = []; for (let i = 0; i < a.length; i++) for (let j = i + 1; j < a.length; j++) if (P.metres(a[i], a[j]) < P.TWIN_M && P.sameName(a[i].name, a[j].name)) out.push(a[i].id + '~' + a[j].id); return out; };
+const drawnTwice = () => { const ids = pinIds(); return ids.filter((id, i) => ids.indexOf(id) !== i); };
 
 try {
   const t = await window.hub.shows.test({ dev: window.SMOKE_DEV }); if (!t?.ok) throw Error('shows:test unavailable');
@@ -35,6 +38,8 @@ try {
   await until(() => pinIds('.qj-pin-guide').length >= 30, 'guide pins by default');
   const P = QuestParis, guideNew = P.guide.filter((g) => g.id.startsWith('pp-')).length;
   step('fresh: the guide’s places are on the map with no command', pinIds('.qj-pin-guide').length === guideNew && S().atlas.places.length === 6 + guideNew, { guide: pinIds('.qj-pin-guide').length, stored: S().atlas.places.length });
+  step('pin count sane, no duplicates on the map (Codex’s 60-place guide + our guide + Codex’s six pins)', S().atlas.places.length <= 100 && P.guide.length >= 60 && !dupes(S()).length && !drawnTwice().length && pinIds().filter((id) => !/^(show-venue-|od-venue-|walk-)/.test(id)).length <= S().atlas.places.length, { stored: S().atlas.places.length, dupes: dupes(S()), twice: drawnTwice() });
+  step('Codex’s Outing desk event pins ride the Shows chip (one row, no new chip)', QuestMapFirst.off('outing-desk') === false && QuestMapFirst.LAYERS.length === 4);
   step('fresh: Codex’s own six pins keep their own style', pinIds(':not(.qj-pin-guide)').filter((id) => id.startsWith('place-')).length === 6);
   step('guide pins are dots at the city zoom (not cluttering)', root().querySelector('.qj-atlas').dataset.zoom === '12' && root().querySelector('.qj-pin-guide>span').getBoundingClientRect().width <= 16, root().querySelector('.qj-pin-guide>span').getBoundingClientRect().width);
   await until(() => pinIds('[data-place^="show-venue-"]').length >= 3, 'show pins by default (the read starts when the map opens)');
@@ -78,7 +83,7 @@ try {
   chip('places').click(); await until(() => chip('places')?.getAttribute('aria-pressed') === 'false', 'places off');
   step('Places off: untouched guide pins leave, yours and started ones stay', pinIds('.qj-pin-guide').length === 0 && pinIds().includes('pp-superfly') && pinIds().includes('place-canal') && S().atlas.places.length === 6 + guideNew, { before: guideBefore, stored: S().atlas.places.length });
   chip('shows').click(); await until(() => chip('shows')?.getAttribute('aria-pressed') === 'false', 'shows off');
-  step('Shows off: no show pins', pinIds('[data-place^="show-venue-"]').length === 0);
+  step('Shows off: no show pins (nor Outing desk event pins)', pinIds('[data-place^="show-venue-"]').length === 0 && pinIds('[data-place^="od-venue-"]').length === 0 && QuestMapFirst.off('outing-desk') === true);
   const saved = JSON.parse(localStorage.getItem('hub.questmap.layers') || '{}');
   step('the choice is remembered on this computer', saved.places === false && saved.shows === false, saved);
   QuestJournal.navigate('adventure'); await wait(200); QuestJournal.navigate('world'); await until(() => chip('places'), 'map again');
@@ -146,6 +151,25 @@ try {
   step('opening again adds nothing', S().atlas.places.length === 7 + guideNew);
   document.querySelectorAll('.toast').forEach((n) => n.remove());
   await smoke({ shot: shots + '/mapfirst64-existing.png' });
+
+  // ---------- 8b. (parisdedupe64) a journal with a guide pin AND the owner's own pin of the same place: merged once ----------
+  const both = C.upgrade(C.initial()); QuestParis.addGuide(both);
+  const gp = both.atlas.places.find((p) => p.id === 'pp-bataclan'); gp.visitedAt = '2026-09-01T10:00:00.000Z';
+  const pq = QuestParis.startPlace(both, 'pp-bataclan');
+  both.atlas.places.push({ id: 'my-bataclan', name: 'Bataclan', lat: 48.86305, lon: 2.37075, quest: 'Gig night', visitedAt: null, kind: 'music', favorite: true });
+  both.atlas.selected = 'pp-bataclan';
+  QuestJournal.navigate('adventure'); await wait(150);
+  document.dispatchEvent(new CustomEvent('hearth:quests', { detail: { state: both, source: 'parisdedupe64-both' } }));
+  await until(() => S().atlas.places.some((p) => p.id === 'my-bataclan'), 'journal with both adopted');
+  QuestJournal.navigate('world');
+  await until(() => !S().atlas.places.some((p) => p.id === 'pp-bataclan'), 'merged on open');
+  const mb = S().atlas.places.find((p) => p.id === 'my-bataclan');
+  step('a journal with both pins: merged once, the owner’s pin keeps visit + star + quest', mb.guide === 'pp-bataclan' && mb.visitedAt === '2026-09-01T10:00:00.000Z' && mb.favorite && S().campaigns.some((c) => c.id === pq.id) && S().atlas.selected === 'my-bataclan' && !dupes(S()).length, { places: S().atlas.places.length, mb });
+  await until(() => /Bataclan/.test(root().querySelector('.qj-field-place-head')?.textContent || ''), 'merged pin selected');
+  step('the merged pin’s panel shows the guide’s quest (Continue)', /Continue/.test(root().querySelector('.qj-paris-quest')?.textContent || ''), root().querySelector('.qj-paris-quest')?.textContent.slice(0, 80));
+  const nb = S().atlas.places.length;
+  btn(/Explore places/, root().querySelector('.qj-city-actions')).click(); await wait(400);
+  step('Explore places still works and adds no second Bataclan', S().atlas.places.length === nb && !dupes(S()).length && !drawnTwice().length);
 
   // ---------- 9. narrow window: still one row, no sideways scroll ----------
   const host = root().closest('.surface') || root().parentElement; const w0 = host.style.width; host.style.width = '480px'; await wait(300);
