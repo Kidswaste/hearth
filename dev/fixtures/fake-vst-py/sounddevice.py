@@ -25,6 +25,20 @@ if ASIO:
     _apis.append({'name': 'ASIO', 'devices': [4], 'default_output_device': 4})
     _devices.append({'name': 'Universal Audio Thunderbolt', 'hostapi': 2, 'max_output_channels': 24, 'max_input_channels': 24, 'default_samplerate': 96000.0 if os.environ.get('FAKE_SD_ASIO_96K') else 48000.0, 'default_low_output_latency': .0027})
 _default_output = 3
+# (round 62, parkjam62) FAKE_SD_NO_UA: the laptop on its own in the park (no Universal Audio interface plugged in): its
+# speakers on MME / WASAPI, plus a Bluetooth headset on WASAPI that is NOT the default (Park mode must not pick it).
+if os.environ.get('FAKE_SD_NO_UA'):
+    _apis = [{'name': 'MME', 'devices': [0, 1], 'default_output_device': 1},
+             {'name': 'Windows WASAPI', 'devices': [2, 3], 'default_output_device': 2}]
+    _devices = [
+        {'name': 'Microsoft Sound Mapper - Output', 'hostapi': 0, 'max_output_channels': 2, 'max_input_channels': 0, 'default_samplerate': 44100.0, 'default_low_output_latency': .09},
+        {'name': 'Speakers (Realtek(R) Audio)', 'hostapi': 0, 'max_output_channels': 2, 'max_input_channels': 0, 'default_samplerate': 44100.0, 'default_low_output_latency': .09},
+        {'name': 'Speakers (Realtek(R) Audio)', 'hostapi': 1, 'max_output_channels': 2, 'max_input_channels': 0, 'default_samplerate': 48000.0, 'default_low_output_latency': .003},
+        {'name': 'Headset (WH-1000XM4 Hands-Free AG Audio)', 'hostapi': 1, 'max_output_channels': 2, 'max_input_channels': 0, 'default_samplerate': 16000.0, 'default_low_output_latency': .04},
+    ]
+    if ASIO:
+        _apis.append({'name': 'ASIO', 'devices': [], 'default_output_device': -1})
+    _default_output = 2
 
 
 class _Default:

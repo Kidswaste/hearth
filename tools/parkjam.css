@@ -1,0 +1,8 @@
+/* (round 62, parkjam62) Park jam in the Sound desk: the 🌳 Park mode button's on state, the takes, and the dimmed screen
+   (one static overlay: no filter, no animation, never in the way of a click). */
+.wb-park-toggle[aria-pressed="true"] { border-color: #6fcf8f; color: #bff0cc; }
+.wb-park .wb-park-progress { display: block; min-height: 1.4em; font-variant-numeric: tabular-nums; }
+.wb-park-takes { display: grid; gap: 6px; margin-top: 6px; }
+.wb-park-take { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(111, 207, 143, .07); }
+.wb-park-take audio { height: 28px; max-width: 100%; }
+html.parkjam-dim body::after { content: ''; position: fixed; inset: 0; background: rgba(0, 0, 0, .34); pointer-events: none; z-index: 2147482000; }

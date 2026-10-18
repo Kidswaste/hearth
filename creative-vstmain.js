@@ -31,12 +31,17 @@ function discover(roots, fold = FOLD) {
 // persistent no-reply socket (send()). jobOf() is the one whitelist of fields that reach the Python host.
 const LIVE_ACTIONS = ['open', 'values', 'sequence', 'midi-in'];
 const STREAMED = ['midi', 'patch', 'volume', 'panic', 'sequence'];
+// (round 62, parkjam62) the loop recorder (docs/upgrades/parkjam62.md): 'record' arms a take in the host's audio thread,
+// 'record-status' / 'record-cancel', 'record-take' writes the WAV in the session folder and hands its bytes back here.
+const PARK_ACTIONS = ['record', 'record-status', 'record-take', 'record-cancel'];
 function jobOf(r, name) {
   if (r.keys !== undefined && (!Array.isArray(r.keys) || r.keys.length > 512 || r.keys.some(k => typeof k !== 'string'))) throw Error('Ask for up to 512 parameter keys.');
   if (r.sequence !== undefined && (!Array.isArray(r.sequence) || r.sequence.length > 256)) throw Error('A phrase has up to 256 notes.');
   if (r.midiIn !== undefined && r.midiIn !== null && (typeof r.midiIn !== 'string' || r.midiIn.length > 200)) throw Error('Invalid MIDI input.');
+  if ([r.bars, r.beats, r.bpm].some(v => v !== undefined && !Number.isFinite(v))) throw Error('Invalid loop length.'); // (round 62, parkjam62)
   return { action: r.action, plugin: r.plugin, name, parameters: r.parameters, notes: r.notes, duration: r.duration, state: r.state, note: r.note, on: r.on, velocity: r.velocity, gain: r.gain, buffer: r.buffer, device: r.device,
-    exclusive: r.exclusive === true || undefined, midiIn: r.midiIn ?? undefined, keys: r.keys, sequence: r.sequence, loop: r.loop, live: r.live === true || undefined };
+    exclusive: r.exclusive === true || undefined, midiIn: r.midiIn ?? undefined, keys: r.keys, sequence: r.sequence, loop: r.loop, live: r.live === true || undefined,
+    bars: r.bars, beats: r.beats, bpm: r.bpm, wait: r.wait === 'note' ? 'note' : undefined }; // (round 62, parkjam62) the loop recorder's fields
 }
 function create({ dataDir, python, roots, helper = path.join(__dirname, 'creative-vst-host.py'), flags = { asio: process.env.HEARTH_VST_ASIO !== '0' } }) {
   const home = path.join(dataDir, 'creative-vst'), runtime = path.join(home, 'runtime');
@@ -126,7 +131,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       } finally { setupBusy = false; }
     }),
     request: request => safe(async () => {
-      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS];
+      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS, ...PARK_ACTIONS];
       if (!request || !actions.includes(request.action)) throw Error('Unknown instrument action.');
       if (!['devices'].includes(request.action) && (!known.has(request.plugin) || !allowedName(request.plugin))) throw Error('Scan and select Serum 2 or Vital first.');
       const name = request.plugin && allowedName(request.plugin);
@@ -135,6 +140,12 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       if (JSON.stringify(request.parameters || {}).length > 200000 || (request.notes && (!Array.isArray(request.notes) || request.notes.length > 128))) throw Error('Plugin request too large.');
       const job = jobOf(request, name);
       if (request.action === 'render') { await ensure(); job.output = path.join(jobDir, 'render.wav'); }
+      // (round 62, parkjam62) the finished loop: the host writes the WAV here, its bytes go back to the window (no base64)
+      if (request.action === 'record-take') {
+        await ensure(); const file = job.output = path.join(jobDir, `loop-${crypto.randomBytes(4).toString('hex')}.wav`);
+        const taken = await command(job); if (!taken.ok) throw Error(taken.error);
+        try { return { ...taken, wav: fs.readFileSync(file) }; } finally { fs.rmSync(file, { force: true }); }
+      }
       // (round 61, vstlive61) listing devices loads every ASIO driver: if one takes the host down, list again without ASIO.
       const result = await command(job).catch(e => ({ ok: false, error: e.message }));
       if (!result.ok && request.action === 'devices' && flags.asio && /disconnected|exited|stopped/i.test(result.error || '')) {
@@ -192,7 +203,9 @@ function pool(options) {
     setup: async () => { for (const h of hosts.values()) h.stop(); hosts.clear(); base = base || make(); return base.setup(); },
     async request(r) {
       if (r?.plugin && !hosts.has(r.plugin) && !anyAlive().knows(r.plugin)) return { ok: false, error: 'Scan and select Serum 2 or Vital first.' };
-      const h = hostFor(r?.plugin, !['devices', 'live-status', 'live-stop', 'panic'].includes(r?.action)) || (r?.action === 'devices' ? anyAlive() : null);
+      // (round 62, parkjam62) 'solo': Park mode keeps one instrument loaded (the others' hosts are stopped, battery)
+      if (r?.action === 'solo') { let n = 0; for (const [p, h] of [...hosts]) if (p !== r.plugin) { h.stop(); hosts.delete(p); n++; } return { ok: true, stopped: n }; }
+      const h = hostFor(r?.plugin, !['devices', 'live-status', 'live-stop', 'panic', 'record-status', 'record-cancel'].includes(r?.action)) || (r?.action === 'devices' ? anyAlive() : null);
       if (!h) return { ok: true, playing: false }; // status / stop / panic of an instrument that isn't open: nothing plays
       if (r.action === 'live-start' || (r.action === 'open' && r.live === true)) { last = r.plugin; await quietOthers(r.plugin); }
       return h.request(r);
@@ -210,6 +223,16 @@ function pool(options) {
     flags
   };
 }
+// (round 62, parkjam62) <data>/creative-park/<sketch>/<file>: the sketch name made safe for every disk, plain file names only
+function parkSave(dataDir, sketch, name, bytes) {
+  const folder = String(sketch || 'Park sketch').normalize('NFC').replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80) || 'Park sketch';
+  if (typeof name !== 'string' || !/^[\w .·-]{1,80}\.(wav|mid|json)$/.test(name) || name.startsWith('.')) throw Error('Invalid park file name.');
+  const data = bytes instanceof Uint8Array ? bytes : typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : null;
+  if (!data || data.length < 1 || data.length > 120e6) throw Error('Invalid park file.');
+  const dir = path.join(dataDir, 'creative-park', folder), file = path.join(dir, name);
+  fs.mkdirSync(dir, { recursive: true }); const tmp = file + '.part'; fs.writeFileSync(tmp, data); fs.renameSync(tmp, file);
+  return file;
+}
 function register(ipcMain, { dataDir, getWin, app }) {
   const host = pool({ dataDir });
   const own = (e, fn) => { if (e.sender !== getWin()?.webContents || e.senderFrame !== e.sender.mainFrame) return { ok: false, error: 'Only the Hearth workspace can use the plugin host.' }; return fn(); };
@@ -219,6 +242,8 @@ function register(ipcMain, { dataDir, getWin, app }) {
   ipcMain.handle('creative-vst:request', (e, r) => own(e, () => host.request(r)));
   ipcMain.handle('creative-vst:stop', e => own(e, () => host.stop()));
   ipcMain.on('creative-vst:send', (e, r) => { own(e, () => host.send(r)); }); // (round 61, vstlive61) no reply: notes, knob moves
+  // (round 62, parkjam62) Park jam: a take's files (loop / ambience / layered WAV, MIDI, notes) in the sketch's own folder
+  ipcMain.handle('creative-vst:park-save', (e, sketch, name, bytes) => own(e, () => { try { return { ok: true, path: parkSave(dataDir, sketch, name, bytes) }; } catch (err) { return { ok: false, error: err.message }; } }));
   app.once('will-quit', () => host.stop()); getWin()?.webContents.once('destroyed', () => host.stop());
 }
-module.exports = { create, pool, discover, register, allowedName, pathKey, jobOf };
+module.exports = { create, pool, discover, register, allowedName, pathKey, jobOf, parkSave };
