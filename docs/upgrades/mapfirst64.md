@@ -2,7 +2,7 @@
 
 The owner: "I really don't use commands at all, also it feels like the map features haven't updated at all."
 They were right. On their install, Sidequest Studio › the Paris map looked the same as before round 61:
-- the Paris guide's places (36 then, 44 with Codex's 8 new ones) only appeared after `/quest paris` or the footer's "Paris guide" button
+- the Paris guide's places (36 then; 60 now with Codex's additions) only appeared after `/quest paris` or the footer's "Paris guide" button
 - this week's shows only appeared after `/shows` or "Load this week's shows" behind the ✦ icon
 - walks only appeared after `/quest walk` or a button inside the guide dialog
 
@@ -27,7 +27,7 @@ On the map, by default
 5. **Visited places wear a ✓** on their pin (venues you went to keep showprep62's own ✓).
 
 One strip on the map (one row, in the map's own button style, bottom left)
-6. **Places · Shows · My walks · Visited**: layer chips with counts, for example "Places 44", "Shows 4" and
+6. **Places · Shows · My walks · Visited**: layer chips with counts, for example "Places 56", "Shows 4" and
    "Visited 2". Click a chip to hide that layer and click again to show it. Hiding never deletes anything: guide
    places you've started, starred or visited stay visible, and so does the selected pin.
    **Visited is My Paris** (parisjournal64): the one chip shows or hides your visit ✓ and My Paris's moments together. Its
@@ -52,7 +52,7 @@ quest, the walk dialog's Save as a walk quest, Stamp my visit, and every chip.
 ## Tests
 - New `dev/checks/mapfirst64.js` (group `mapfirst64`), 32 steps, no chat command (it fails if one is used). It uses
   the saved Shotgun / DICE responses and offline tiles. It checks:
-  - **Fresh profile:** guide pins drawn and stored once (6 + the 40 new `pp-` places), Codex's pins keep their style, guide pins are dots at
+  - **Fresh profile:** guide pins drawn and stored once (6 + every new `pp-` place), Codex's pins keep their style, guide pins are dots at
     zoom 12, shows with logos load on map open, the strip has one row in the right order and starts with every chip on
   - **A guide place:** the quest card leads to Start this quest, which saves and tracks the quest and opens it
   - **A show pin:** Make it a quest and Get ready both work
