@@ -31,7 +31,8 @@ const TryNew = (() => {
     await Lazy.load('creative');
     if (!surfaceIs('tool:creative')) activate('tool:creative');
     const there = () => document.querySelector('.surface.active .wb-park-toggle, .surface.active .ph-win, .surface.active select[aria-label="Audio output"]');
-    if (await until(there, 1500)) return;
+    // the desk is there with its ✦ Preset window (the window leaves when the desk does: entering the station again brings it)
+    if (await until(() => there() && document.querySelector('.surface.active .ph-win, .surface.active .ph-pill'), 1500)) return;
     const btn = await until(() => [...document.querySelectorAll('.surface.active button')].find((b) => vis(b) && /^Serum 2 (&|and) Vital/.test(b.textContent.trim())), 5000);
     btn?.click();
     await until(there, 5000);
@@ -56,9 +57,13 @@ const TryNew = (() => {
     try { if (keep !== 'week' && keep !== 'review' && typeof WeekQuest !== 'undefined' && WeekQuest.isOpen()) WeekQuest.close(); } catch { /* fine */ }
     try { if (keep !== 'sounds' && typeof SoundBank !== 'undefined' && document.querySelector('.sb-win:not([hidden])')) SoundBank.close(); } catch { /* fine */ }
   }
-  // 'text:<label>': a visible button whose words start so (in the window on screen first)
-  const byText = (label) => () => [...document.querySelectorAll('.surface.active button, button')].find((b) => vis(b) && b.textContent.trim().startsWith(label)) || null;
-  const target = (list) => list.map((s) => (s.startsWith('text:') ? byText(s.slice(5)) : s));
+  // a target: in an open dialog, the window on screen, then anywhere; scrolled into view (a control below the fold counts)
+  const scopes = () => [...document.querySelectorAll('dialog[open]'), document.querySelector('.surface.active'), document].filter(Boolean);
+  const shown = (n) => { if (!vis(n)) return null; n.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); return n; };
+  // 'text:<label>': a visible button whose words start so
+  const byText = (label) => () => { for (const sc of scopes()) { const b = [...sc.querySelectorAll('button')].find((x) => vis(x) && x.textContent.trim().startsWith(label)); if (b) return shown(b); } return null; };
+  const bySel = (sel) => () => { for (const sc of scopes()) { const n = [...sc.querySelectorAll(sel)].find(vis); if (n) return shown(n); } return null; };
+  const target = (list) => list.map((s) => (s.startsWith('text:') ? byText(s.slice(5)) : bySel(s)));
   const has = () => {
     const a = typeof Commands !== 'undefined' ? Commands.get('audio') : null;
     return { audiodoctor: Boolean(a && /doctor/i.test(`${a.args || ''} ${(a.examples || []).join(' ')} ${a.desc || ''}`)) };
@@ -66,11 +71,11 @@ const TryNew = (() => {
 
   // ---------- a path = a guided spotlight ----------
   function tourOf(p) {
-    const steps = C.stepsFor(p, has()).map((s) => ({ title: s.title, text: s.text, cmd: s.cmd, open: s.open ? async () => { clear(s.open); await OPEN[s.open](); } : null, target: target(s.target) }));
+    const steps = C.stepsFor(p, has()).map((s) => ({ title: s.title, text: s.text, clickNext: Boolean(s.clickNext), open: s.open ? async () => { clear(s.open); await OPEN[s.open](); } : null, target: target(s.target) }));
     return {
       id: `try-${p.id}`, name: p.name, icon: p.icon, why: p.why, steps, skippable: true,
       doneText: `${p.name}: tried ✓ · ${C.label(C.mark(prog(), p.id, 'tried'))}`,
-      onTry: () => mark(p.id, 'tried'),
+      onTargetClick: () => mark(p.id, 'tried'), // clicking the ringed control = doing it
       onEnd: ({ done, how }) => {
         if (done) mark(p.id, 'tried'); else if (how === 'skip') mark(p.id, 'skipped'); else mark(p.id, 'later');
         if (typeof Usage !== 'undefined') Usage.track?.(`Try › ${p.name}`, { area: 'Tours', label: done ? 'done' : how || 'later' });

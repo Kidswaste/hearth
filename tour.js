@@ -25,9 +25,16 @@ const Tour = (() => {
   // ---------- the ring ----------
   function placeRing(r, n) {
     if (!r || !n) return;
-    const b = n.getBoundingClientRect(); const pad = 4;
-    const css = `left:${Math.round(b.left - pad)}px;top:${Math.round(b.top - pad)}px;width:${Math.round(b.width + pad * 2)}px;height:${Math.round(b.height + pad * 2)}px`;
+    const b = n.getBoundingClientRect(); const pad = 4; const o = origin(r);
+    const css = `left:${Math.round(b.left - pad - o.x)}px;top:${Math.round(b.top - pad - o.y)}px;width:${Math.round(b.width + pad * 2)}px;height:${Math.round(b.height + pad * 2)}px`;
     if (r.style.cssText !== css) r.style.cssText = css;
+  }
+  // (round 64, newtour64) inside a dialog with a transform, position: fixed counts from the dialog's corner, not the window's
+  function origin(node) {
+    const host = node.parentElement;
+    if (!host || host === document.body || getComputedStyle(host).transform === 'none') return { x: 0, y: 0 };
+    const h = host.getBoundingClientRect();
+    return { x: h.left + host.clientLeft - host.scrollLeft, y: h.top + host.clientTop - host.scrollTop };
   }
   // the ring on any control for a few seconds (What's new "Show me", tips); returns the element or null
   function pulse(sel, { ms = 4200, label = '' } = {}) {
@@ -61,13 +68,16 @@ const Tour = (() => {
     const w = card.offsetWidth || 300; const h = card.offsetHeight || 140;
     if (card.dataset.moved) return;
     let x; let y;
+    // (round 64, newtour64) inside a dialog: inside the dialog's box (it clips what goes past it)
+    const box = card.parentElement && card.parentElement !== document.body ? card.parentElement.getBoundingClientRect() : { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
     if (target) {
       const b = target.getBoundingClientRect();
       // right of it, else below, else above; always inside the window
-      if (b.right + 16 + w < innerWidth) { x = b.right + 14; y = b.top; } else if (b.bottom + 16 + h < innerHeight) { x = b.left; y = b.bottom + 14; } else { x = b.left; y = b.top - h - 14; }
+      if (b.right + 16 + w < box.right) { x = b.right + 14; y = b.top; } else if (b.bottom + 16 + h < box.bottom) { x = b.left; y = b.bottom + 14; } else { x = b.left; y = b.top - h - 14; }
     } else { x = (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w'), 10) || 64) + 10; y = innerHeight - h - 12; }
-    x = Math.max(8, Math.min(innerWidth - w - 8, x)); y = Math.max(8, Math.min(innerHeight - h - 8, y));
-    const css = `left:${Math.round(x)}px;top:${Math.round(y)}px`;
+    x = Math.max(box.left + 8, Math.min(box.right - w - 8, x)); y = Math.max(box.top + 8, Math.min(box.bottom - h - 8, y));
+    const o = origin(card);
+    const css = `left:${Math.round(x - o.x)}px;top:${Math.round(y - o.y)}px`;
     if (card.style.cssText !== css) card.style.cssText = css;
   }
   async function openFor(step) {
@@ -128,7 +138,7 @@ const Tour = (() => {
       card.addEventListener('pointerdown', (e) => {
         if (!e.target.closest('.tour-head') || e.target.closest('button')) return;
         const r = card.getBoundingClientRect(); const dx = e.clientX - r.left; const dy = e.clientY - r.top;
-        const mv = (ev) => { card.dataset.moved = '1'; card.style.cssText = `left:${Math.max(0, ev.clientX - dx)}px;top:${Math.max(0, ev.clientY - dy)}px`; };
+        const mv = (ev) => { card.dataset.moved = '1'; const o = origin(card); card.style.cssText = `left:${Math.max(0, ev.clientX - dx) - o.x}px;top:${Math.max(0, ev.clientY - dy) - o.y}px`; };
         const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
         addEventListener('pointermove', mv); addEventListener('pointerup', up);
       });
@@ -136,10 +146,21 @@ const Tour = (() => {
     }
     card.replaceChildren(body);
     card.dataset.tour = tour.id; card.dataset.step = String(i);
+    // (round 64, newtour64) a control inside an open dialog: the card and the ring go into that dialog (a modal dialog sits
+    // in the top layer, above anything in the page)
+    const host = target?.closest('dialog[open]') || document.body;
+    if (card.parentElement !== host) host.append(card);
     if (target) {
-      if (!ring) { ring = el('div', { class: 'tour-ring', 'aria-hidden': 'true' }); document.body.append(ring); }
+      if (!ring) { ring = el('div', { class: 'tour-ring', 'aria-hidden': 'true' }); }
+      if (ring.parentElement !== host) host.append(ring);
       placeRing(ring, target);
       ro?.disconnect(); ro = new ResizeObserver(reflow); ro.observe(target);
+      // (round 64, newtour64) clicking the ringed control is doing it for real (tour.onTargetClick); with step.clickNext the
+      // tour follows to the next step by itself
+      if ((step.clickNext || tour.onTargetClick) && !target.dataset.tourClick) {
+        const t = target; const me = cur; t.dataset.tourClick = '1';
+        t.addEventListener('click', () => { delete t.dataset.tourClick; if (cur !== me || me.i !== i) return; try { tour.onTargetClick?.(step); } catch { /* progress is a convenience */ } if (!step.clickNext) return; setTimeout(() => { if (cur !== me || me.i !== i) return; if (i === me.steps.length - 1) stop({ done: true }); else show(i + 1); }, 450); }, { once: true });
+      }
     } else { ring?.remove(); ring = null; ro?.disconnect(); }
     placeCard();
   }

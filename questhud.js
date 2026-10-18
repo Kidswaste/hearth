@@ -187,6 +187,9 @@ const QuestHud = (() => {
     }
     const foot = el('div', { class: 'qh-foot' }, btn('Open Sidequest Studio', () => { close(); return openStudio(); }, 'qh-primary'), el('kbd', { class: 'qh-key', text: key(), title: 'Open or close the tracker from anywhere' }));
     foot.querySelector('button').dataset.k = 'studio';
+    // (round 64, newtour64) ✦ Try what's new: the hands-on paths through rounds 61–63 (trynew.js), until all are tried
+    const tn = Object.values(store.get('trynew.progress', {}) || {}).filter((v) => v?.state === 'tried').length;
+    if (tn < 13) foot.insertBefore(btn(`✦ Try what's new · ${tn}/13`, () => { close(); return Lazy.load('trynew').then(() => TryNew.startNext()); }, 'qh-try', 'A short hands-on path through each new thing of rounds 61–63: where to click, 30–60 s each'), foot.lastChild);
     panel.replaceChildren(head, el('div', { class: 'qh-body' }, ...body), foot);
     if (focusKey) panel.querySelector(`[data-k="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
   }

@@ -47,18 +47,22 @@ for (const p of TryNewCore.PATHS) {
 step('opening every place wrote nothing to the quest journal', (await journal()) === j0, { before: j0, after: await journal() });
 step('just looking marks paths as paused, never tried', Object.values(prog()).every((v) => v.state === 'later') && Object.keys(prog()).length === 13, prog());
 
-// ---------- 3. Try it, Skip, Later, Done ----------
+// ---------- 3. click where it rings (no command anywhere), Skip, Later, Done ----------
+step('no step suggests typing a command', TryNewCore.PATHS.every((p) => p.steps.every((x) => !x.cmd && !/(^|\s)\/[a-z]{3,}/.test(x.text))));
 store.set('trynew.progress', {});
 tidy();
 TryNew.start('tracker');
-await until(() => card()?.dataset.tour === 'try-tracker' && card().querySelector('.tour-try'), 'tracker card');
-card().querySelector('.tour-try').click();
-const ta = await until(() => [...document.querySelectorAll('.surface.active .composer textarea')].find((t) => /\/quest add airpods/.test(t.value)), 'the command in the chat box', 60).catch(() => null);
-step('Try it puts the exact command in the chat box (nothing sent)', Boolean(ta), ta?.value);
-step('Try it counts as tried', prog().tracker?.state === 'tried', prog().tracker);
-if (ta) { ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); }
-Tour.stop();
+await until(() => card()?.dataset.tour === 'try-tracker' && document.querySelector('.tour-ring:not(.tour-ring-solo)'), 'tracker card');
+step('the card has no Try it (nothing to type)', !card().querySelector('.tour-try'));
+document.querySelector('.surface.active .qj-paris-guide').click(); // the owner clicks the ringed Paris guide
+const inDlg = await until(() => card()?.dataset.step === '1' && card().closest('dialog[open]') && document.querySelector('dialog[open] .tour-ring'), 'step 2 inside the guide dialog', 100).catch(() => null);
+const air = document.querySelector('dialog[open] [data-personal="airpods"]'); const rr = document.querySelector('dialog[open] .tour-ring')?.getBoundingClientRect(); const ar = air?.getBoundingClientRect();
+step('clicking the ringed control goes on by itself; the next ring and card sit in the dialog it opened, on Get my AirPods', Boolean(inDlg && ar && rr && Math.abs(rr.left + 4 - ar.left) < 3 && Math.abs(rr.top + 4 - ar.top) < 3), { step: card()?.dataset.step, inDialog: Boolean(card()?.closest('dialog[open]')), got: Boolean(inDlg), rr: rr && [rr.left, rr.top, rr.width], ar: ar && [ar.left, ar.top, ar.width], tf: getComputedStyle(document.querySelector('dialog[open]')).transform, hint: Boolean(card()?.querySelector('.tour-hint')) });
+await smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/newtour64-dialog.png` });
+step('clicking the ringed control counts as tried', prog().tracker?.state === 'tried', prog().tracker);
+Tour.stop(); tidy();
 step('pausing a tried path keeps it tried', prog().tracker?.state === 'tried');
+step('just opening the guide wrote nothing to the journal', (await journal()) === j0);
 
 TryNew.start('paris');
 await until(() => card()?.dataset.tour === 'try-paris' && card().querySelector('.tour-skip'), 'paris card');
@@ -115,6 +119,17 @@ const pick = document.querySelector('dialog.pn-dialog .pn-pick');
 if (pick && [...pick.options].some((o) => o.value === 'round-60.md')) { pick.value = 'round-60.md'; pick.dispatchEvent(new Event('change')); await wait(400); step('…and nothing for a round without paths', !document.querySelector('dialog.pn-dialog .tn-pn')); }
 tidy();
 
+// ---------- 5b. the ✦ tracker panel's link ----------
+await Lazy.load('questhud'); await QuestHud.openStudio(null, 'world');
+await until(() => vis(document.querySelector('#rail .qh-chip')), 'the chip (the Studio holds a quest)', 100).catch(() => null);
+QuestHud.open();
+const qt = await until(() => document.querySelector('.qh-panel .qh-try'), 'the tracker\'s Try what\'s new', 60).catch(() => null);
+step('the ✦ tracker panel links Try what\'s new with the count', Boolean(qt && /2\/13/.test(qt.textContent)), qt?.textContent);
+qt?.click();
+await until(() => card()?.dataset.tour, 'a path from the tracker', 200).catch(() => null);
+step('…and clicking it starts the next untried path', /^try-/.test(card()?.dataset.tour || ''), card()?.dataset.tour);
+Tour.stop(); tidy();
+
 // ---------- 6. the one offer ----------
 Hints.config({ gap: 0, start: 0, startNotice: 0, quiet: 0 });
 store.set('trynew.test', 1);
@@ -133,7 +148,7 @@ Hints.config(null);
 await Lazy.load('creative'); await SoundBank.open();
 TryNew.start('preset');
 await until(() => card()?.dataset.tour === 'try-preset' && document.querySelector('.tour-ring:not(.tour-ring-solo)'), 'preset card').catch(() => null);
-step('another path\'s Sound bank closes: the ✦ Preset window is ringed', Boolean(document.querySelector('.tour-ring:not(.tour-ring-solo)')) && !document.querySelector('.tour-card .tour-hint') && !document.querySelector('.sb-win:not([hidden])'));
+step('another path\'s Sound bank closes: the ✦ Preset window is ringed', Boolean(document.querySelector('.tour-ring:not(.tour-ring-solo)')) && !document.querySelector('.tour-card .tour-hint') && !document.querySelector('.sb-win:not([hidden])'), { ring: Boolean(document.querySelector('.tour-ring:not(.tour-ring-solo)')), hint: Boolean(document.querySelector('.tour-card .tour-hint')), bank: Boolean(document.querySelector('.sb-win:not([hidden])')), card: card()?.dataset.tour, pill: vis(document.querySelector('.ph-pill')), win: vis(document.querySelector('.ph-win')), surf: H.surfaceIdFor?.(H.activeId), ph: [...document.querySelectorAll('.ph-win, .ph-pill')].map((n) => ({ h: n.hidden, c: n.className, r: [Math.round(n.getBoundingClientRect().x), Math.round(n.getBoundingClientRect().y), Math.round(n.getBoundingClientRect().width)], d: getComputedStyle(n).display, p: n.parentElement?.className, act: Boolean(n.closest('.surface.active')) })) });
 await smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/newtour64-preset.png` });
 Tour.stop(); tidy();
 step('the journal is still untouched at the end', (await journal()) === j0);
