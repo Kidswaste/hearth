@@ -1,0 +1,36 @@
+/* (round 61, presethover61) ✦ Preset hover: the floating preset writer over the Sound desk (tools/preset-hover.js) */
+.ph-win{position:fixed;z-index:40;width:300px;max-width:calc(100vw - 16px);color:#eee3ec;font-size:12.5px;border-radius:14px;border:1px solid #ffffff22;background:linear-gradient(150deg,#2a2230f2,#19151ef2);box-shadow:0 12px 32px #0008,inset 0 1px #ffffff1c;contain:layout paint}
+.ph-win.dragging{opacity:.92;cursor:grabbing}
+.ph-body{display:flex;flex-direction:column;gap:6px;padding:8px}
+.ph-head{display:flex;align-items:center;gap:6px;cursor:grab;user-select:none;touch-action:none}
+.ph-title{font-weight:700;color:var(--sound-accent,#e998bc)}
+.ph-inst{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.6;font-size:11px}
+.ph-btn,.ph-engine,.ph-pill{font:inherit;color:inherit;background:#ffffff0d;border:1px solid #ffffff1c;border-radius:8px;padding:2px 8px;cursor:pointer;line-height:1.5}
+.ph-btn:hover,.ph-engine:hover,.ph-pill:hover{background:#ffffff1c}
+.ph-btn:disabled{opacity:.35;cursor:default}
+.ph-engine{font-size:11px;padding:1px 7px}
+.ph-log{max-height:150px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.ph-log:empty{display:none}
+.ph-msg{padding:4px 7px;border-radius:8px;background:#ffffff08;line-height:1.35}
+.ph-msg small{display:block;opacity:.5;font-size:10px}
+.ph-you{align-self:flex-end;background:#e998bc22}
+.ph-err{color:#ffb4b4;background:#ff547d18}
+.ph-sys{opacity:.7;font-size:11px}
+.ph-row{display:flex;gap:6px;align-items:flex-end}
+.ph-input{flex:1;min-width:0;resize:none;font:inherit;color:inherit;background:#0003;border:1px solid #ffffff1c;border-radius:8px;padding:5px 7px;max-height:80px}
+.ph-input:focus{outline:none;border-color:var(--sound-accent,#e998bc)}
+.ph-foot{display:flex;align-items:center;gap:5px}
+.ph-name{width:110px;font:inherit;color:inherit;background:#0003;border:1px solid #ffffff2a;border-radius:8px;padding:2px 6px}
+.ph-status{flex:1;min-width:0;font-size:10.5px;opacity:.65;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph-win.busy .ph-title{animation:ph-pulse 1.2s ease-in-out infinite}
+@keyframes ph-pulse{50%{opacity:.45}}
+.ph-pill{display:none;font-weight:700;color:var(--sound-accent,#e998bc);padding:4px 12px;border-radius:999px;touch-action:none}
+.ph-win.mini{width:auto;border-radius:999px;background:#211b26ee}
+.ph-win.mini .ph-body{display:none}
+.ph-win.mini .ph-pill{display:block}
+@media (prefers-reduced-motion:reduce){.ph-win.busy .ph-title{animation:none}}
+/* the workbench's own big button style stays outside: small, quiet controls here */
+.ph-win button{min-height:0!important;padding:2px 8px!important;font-size:12px!important;border-radius:8px!important;box-shadow:none!important;line-height:1.5!important}
+.ph-win .ph-pill{padding:4px 12px!important;border-radius:999px!important}
+.ph-input{overflow:hidden;height:28px}
+.ph-input:focus{overflow:auto}

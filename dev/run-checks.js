@@ -28,10 +28,16 @@ const LIBS = new Set(['journey-lib', 'smooth-lib', 'journey-olddata-make', 'sequ
 const all = fs.readdirSync(CHECKS).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3)).filter((n) => !LIBS.has(n)).sort();
 const UNIT = ['board-unit-test', 'store-thread-test', 'board-mcp-test', 'capture-mcp-test', 'director-mcp-test', 'cut-test', 'capture-test', 'music-test', 'code-flow-test', 'importer-test', 'director-cost', 'astra-engine-test', 'robust-engine-test', 'test-aemain-mac', 'sequence-test', 'flows-test', 'sync-test', 'cmdpage-test', 'progress-test', 'makes-test', 'renders-test', 'updater-test', 'access-test', 'adobe-test', 'adobe-mcp-test', 'deploy-test', 'apps-unit-test', 'eyes-test', 'boot-test', 'liveness-test', 'devreport-test', 'labexport-test', 'voice-test', 'projects-test', 'timemachine-test', 'audio-test', 'remote-qr-test', 'interop-test', 'context-test', 'assets-test', 'type-test', 'motion-in-test', 'physics-test', 'connections-test', 'hooks-test', 'autoedit-test', 'publishkit-test', 'router-test', 'firstrun-test', 'lookmatch-test', 'aiundo-test', 'packs-test', 'safetynet-test', 'instantscene-test', 'chrome-test', 'budget-test', 'recall-test', 'autopolish-test', 'stems-test', 'pinboard-test', 'chromeview-test', 'tokens-test', 'cache-test', 'winmac-test', 'quickstart-test', 'perfectloop-test', 'labadapt-test', 'labvariations-test', 'winpolish-test', 'macpolish-test', 'multiformat-test', 'labpace-test', 'scenedoctor-test', 'autocompact-test', 'offline-test', 'labgestures-test', 'concise-test', 'twocomputers-test', 'labtemplates-test', 'streamrender-test', 'tokenaudit-test', 'nativefeel-test', 'labsearch-test', 'updatesafe-test', 'appsearch-test', 'directorlean-test', 'abcompare-test', 'bigscreen-test', 'memorytidy-test', 'dragdrop-test', 'beatlink-test', 'hintcalm-test', 'routerlearn-test', 'labrecipes-test', 'powerwise-test', 'attachlean-test', 'labcamera-test', 'toolslim-test', 'routines-test', 'undoall-test', 'renderfast-test', 'whatsnew-test', 'handoff-test', 'filewatch-test', 'labbatch-test', 'scenesafe-test', 'directorpreview-test', 'datasafe-test', 'datasafe-scan', 'costcoach-test', 'glrecover-test', 'localanswers-test', 'notify-test', 'backupauto-test', 'sendpreview-test', 'errorcalm-test', 'errorcalm-scan', 'kinetictype-test', 'layergroups-test', 'promptdiet-test', 'platform46-test', 'labkeys-test', 'labdirect-test', 'usagelimits-test', 'directorfrugal-test', 'winmac49-test', 'historylean-test', 'crashsafe-test', 'diskcalm-test', 'labmaterials-test', 'labvisualizers-test', 'commandonly-scan', 'routinelean-test', 'labshapes-test', 'presentready-test', 'gpu52-test', 'chatkeep-test', 'gameperf-test', 'gamemode-test', 'gameready-test', 'directorgame-test', 'gameinput-test', 'gametex-test', 'labchats54-test', 'gamefps54-test', 'playbudget-test', 'configsafe-test', 'chatsafe-scan', 'shadowready-test', 'playlatency-test', 'readyspeed-test'];
 UNIT.push('quest-test');
+UNIT.push('questhud-test'); // (round 61, questhud61) the rail's quest tracker on Codex's QuestCore
+UNIT.push('quest-paris-test'); // (round 61, parisquests61) the Paris guide's data and quest rules
+UNIT.push('presethover61-test'); // (round 61, presethover61) ✦ Preset hover: parameter picking, prompt size, patch validation, undo / redo
 UNIT.push('gamehooks55-test'); // (round 55, fixes55) ▶ Play's page scripts: a throw in Hearth's part of a hook never stops the game's own call
+UNIT.push('vst-live-host-test'); // (round 61, vstlive61) the Sound desk's live host: real creative-vst-host.py + fake Pedalboard / sounddevice / rtmidi
+UNIT.push('winfresh-test'); // (round 60, winfresh60) the Windows zip install: a shallow checkout updating (gaps, rewrites, deeper fetch), private-repo sign-in, shortcuts / login item
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
-  quests: ['unit:quest-test', 'unit:quest-review-test', 'unit:quest-deck-test', 'unit:quest-workstation-test', 'unit:quest-life-test', 'unit:quest-world-test', 'quest-journal', 'quest-studio', 'quest-session', 'quest-proof', 'quest-deck', 'quest-workstation', 'quest-life', 'quest-world'],
+  vstlive: ['vst-live', 'workbench-vst', 'unit:vst-host-test', 'unit:vst-live-host-test'], // (round 61) Serum 2 / Vital live mode (fake host; the real-plugin part of workbench-vst runs on the owner's PC)
+  quests: ['unit:quest-test', 'unit:quest-review-test', 'unit:quest-deck-test', 'unit:quest-workstation-test', 'unit:quest-life-test', 'unit:quest-world-test', 'unit:quest-paris-test', 'quest-journal', 'quest-studio', 'quest-session', 'quest-proof', 'quest-deck', 'quest-workstation', 'quest-life', 'quest-world', 'quest-paris', 'unit:questhud-test', 'questhud61'],
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy', 'fastboot'], // (round 29) fastboot: first frame before any lazy group, keys of lazy groups, first-use main modules
   board: by(/^board/),
   capture: by(/^capture/),
@@ -155,6 +161,7 @@ const GROUPS = {
   bugbash: ['bugbash', 'unit:sync-test'], // (round 29) regressions of the bug bash's app fixes: one Lab however it opens; sync's same-millisecond file
   bigscreen: ['bigscreen', 'bigscreen-hidpi', 'unit:bigscreen-test', 'unit:nativefeel-test'], // (round 38) a 4K screen at 100 % and at 200 %, an ultrawide window: Auto size of everything per screen, ⛶ full screen remembered, layouts without sideways scrolling, the Lab smooth and crisp
   nativefeel: ['nativefeel', 'unit:nativefeel-test', 'unit:winmac-test', 'unit:winpolish-test', 'unit:macpolish-test'], // (round 36) the window as each computer expects it: window memory per computer + screens (off-screen guard), the Mac's inset title bar, light / dark following the computer, menus, the badge, crisp canvases on a new screen scale
+  winfresh60: ['unit:winfresh-test', 'unit:updater-test', 'unit:updatesafe-test', 'unit:configsafe-test', 'unit:winmac-test', 'updater', 'firstrun', 'lazy', 'unit:boot-test'], // (round 60) a fresh Windows install from the zip: shallow checkout updates, first start (settings moved, shortcuts), Git missing / not signed in to GitHub
   updatesafe: ['updater', 'unit:updater-test', 'unit:updatesafe-test'], // (round 37) safe updates on real git in temp folders: no git, not a checkout, named stashes, detached / diverged, network / proxy, Windows files held open (staged, swapped at start), long paths, permissions, half-finished, Go back; the window's one-fix dialog
   datasafe: ['datasafe', 'unit:datasafe-test', 'unit:datasafe-scan', 'unit:store-thread-test', 'unit:sync-test'], // (round 43) every store: a failed read never "empty", a held file never written over (config, memory, chats, notes…), the calm card, Recover… (a chat from a backup)
   gpu52: ['gpu52', 'unit:gpu52-test', 'glrecover', 'unit:glrecover-test', 'unit:winmac-test', 'unit:winpolish-test', 'unit:macpolish-test', 'lazy', 'unit:boot-test'], // (round 52) the graphics path on each computer: the fast card on a two-card laptop, the ANGLE path (D3D11 / Metal; a picked one goes back by itself when it fails), nothing capping the frame rate, Settings › Advanced › Graphics line, a start in software told once
@@ -313,9 +320,19 @@ for (const [later, first] of Object.entries(PAIRS)) {
 }
 const dropPair = (n) => { const p = pairDirs[n]; if (p && p.last === n) { try { fs.rmSync(p.d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* tmp is cleaned later */ } } };
 process.on('exit', () => { for (const p of Object.values(pairDirs)) { try { fs.rmSync(p.d, { recursive: true, force: true }); } catch { /* fine */ } } });
+// (round 60, trimdrive60) an opt-in check (one that spends the owner's real account, hardware…) says so in its header:
+// "// opt-in: NAME". It runs only when NAME is set in the environment (QUEST_LIVE_REVIEW=1 sh dev/run-checks.sh
+// quest-review-live), and its header's flags (an --eval that opts it in) are passed then only; otherwise "skipped (opt-in)"
+const optInOf = (n) => (n.startsWith('astra-') ? '' : (srcOf(n).match(/^\/\/\s*opt-in:\s*([A-Z][A-Z0-9_]*)/m) || [])[1] || '');
 for (const n of wanted) {
   const started = Date.now();
   const log = path.join(OUT, `${n.replace('unit:', 'unit-')}.log`);
+  const optIn = optInOf(n);
+  if (optIn && !process.env[optIn]) {
+    results.push({ n, ok: true, skipped: true, s: 0, why: '' });
+    console.log(`- ${n.padEnd(22)}    0 s  skipped (opt-in: set ${optIn}=1 to run it)`);
+    continue;
+  }
   let r;
   if (n.startsWith('unit:')) {
     const u = n.slice(5);
@@ -329,7 +346,7 @@ for (const n of wanted) {
     const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(pairDirs[n]?.flags || []), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
     // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
     const env = /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }
-      : /^(game(mode|ready|input|tex|look|audio|stream|fps54)|playloop|playbudget|playlatency|shadowready|labcanvas56|readyspeed|ctxloss|gcchurn60)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network)
+      : /^(game(mode|ready|input|tex|look|audio|stream|fps54)|playloop|playbudget|playlatency|shadowready|labcanvas56|readyspeed|ctxloss|trim-drive|gcchurn60)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network; round 60: trim-drive's ▶ Play commands too)
     r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env });
   }
   dropPair(n);
@@ -347,5 +364,6 @@ for (const n of wanted) {
   if (bad && argv.includes('--stop')) break;
 }
 const failed = results.filter((x) => !x.ok);
-console.log(`\n${results.length - failed.length}/${results.length} passed in ${Math.round((Date.now() - t0) / 60000)} min · logs: ${OUT}`);
+const optedOut = results.filter((x) => x.skipped).length;
+console.log(`\n${results.length - failed.length - optedOut}/${results.length - optedOut} passed${optedOut ? ` (${optedOut} opt-in skipped)` : ''} in ${Math.round((Date.now() - t0) / 60000)} min · logs: ${OUT}`);
 process.exit(failed.length ? 1 : 0);

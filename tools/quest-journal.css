@@ -226,3 +226,7 @@
 @container(max-width:580px){.qj-dashboard{display:flex!important;flex-direction:column}.qj-dashboard>*{order:10}.qj-dashboard>.qj-adventure-grid{order:0}.qj-dashboard>.qj-session-desk{order:1}.qj-dashboard>.qj-idea-box{order:2}.qj-dashboard>.qj-goal-strip{order:3}.qj-dashboard>:is(.qj-life-invite,.qj-deck-invite,.qj-commission-invite){order:4;margin-bottom:0!important;min-height:58px}.qj-dashboard>.qj-section-head{margin-top:22px}.qj-dashboard .qj-adventure-grid{display:block}.qj-dashboard .qj-traveller{display:none}}
 
 .qj-help-tooltip{max-height:calc(100vh - 20px);overflow:auto}
+/* parisquests61: Paris guide notes in the place panel, the guide filter chip and the guide dialog's filter words */
+.qj-paris-note .qj-copy{margin:4px 0;font-size:12px;line-height:1.4}.qj-paris-best{opacity:.72;font-size:11.5px}
+.qj-paris-tags{flex-wrap:wrap;gap:6px}.qj-paris-chip{font-size:11px;padding:5px 9px}
+.qj-field-footer>.qj-paris-guide+.qj-button{margin-left:0}

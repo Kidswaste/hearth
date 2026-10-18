@@ -53,5 +53,7 @@ const WorkbenchUI = (() => {
   async function soundTool(args) { await ready(); return WorkbenchVST.soundTool(args); }
   async function addAsset(asset) { await ready(); if (!asset || typeof asset.name !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(asset.image || '') || asset.image.length > 8e6) throw Error('Use a PNG asset up to 8 MB.'); state.shelf.unshift({name:asset.name.slice(0,100),image:asset.image}); state.shelf=state.shelf.slice(0,24); await persist(); }
   if (typeof HubBridge !== 'undefined') HubBridge.register(['chat_sound'], async (_tool, args) => { try { return { ok: true, value: await soundTool(args) }; } catch (err) { return { ok: false, error: err.message }; } });
-  return { mount, pause, ready, soundTool, addAsset, snapshot: () => C.copy(state), flush: () => saving, animaticHTML };
+  // parisquests61: "Make music at the park" names the worktable after the park (only the project name changes; returns the old one).
+  async function startSketch(title) { await ready(); const before = state.title; state.title = String(title || '').trim().slice(0, 160) || before; await persist(); return before; }
+  return { mount, pause, ready, soundTool, addAsset, startSketch, snapshot: () => C.copy(state), flush: () => saving, animaticHTML };
 })();

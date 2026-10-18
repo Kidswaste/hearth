@@ -38,8 +38,10 @@ const Updater = (() => {
     return btn;
   }
   // (round 37) what blocks every update until the owner acts shows the button with "!" (a passing network hiccup doesn't)
-  const ATTN = new Set(['half', 'staged', 'detached', 'lock', 'owner', 'perm', 'repo-other']);
-  const attn = () => Boolean(last && !last.ok && ATTN.has(last.reason));
+  // (round 60, winfresh60) a fresh install with no Git, or not signed in to GitHub (Hearth's code is private), would
+  // otherwise never hear of an update: the same "!" with its one fix (Install Git / Sign in to GitHub)
+  const ATTN = new Set(['half', 'staged', 'detached', 'lock', 'owner', 'perm', 'repo-other', 'auth', 'git']);
+  const attn = () => Boolean(last && !last.ok && (ATTN.has(last.reason) || (last.reason === 'fetch' && last.why === 'auth')));
   function paint() {
     const n = last?.ok ? last.behind : 0;
     const warn = attn();

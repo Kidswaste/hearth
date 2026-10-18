@@ -1,4 +1,5 @@
 // Opt-in only: one actual Astra review of a synthetic image, using normal account usage.
+// opt-in: QUEST_LIVE_REVIEW   (dev/run-checks.js runs it only with QUEST_LIVE_REVIEW=1 set; otherwise "skipped (opt-in)")
 // node dev/smoke.js --eval "window.QUEST_LIVE_REVIEW=true" --script dev/checks/quest-review-live.js --check-timeout 330000
 if (!window.QUEST_LIVE_REVIEW) return 'Skipped: set QUEST_LIVE_REVIEW explicitly to use the configured Astra account.';
 await Lazy.load('questjournal');
