@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('hub', {
   getHistory: call('history:get'),
   saveHistory: call('history:save'),
   kvGet: call('kv:get'),
-  vst: { scan: call('creative-vst:scan'), status: call('creative-vst:status'), setup: call('creative-vst:setup'), request: call('creative-vst:request'), stop: call('creative-vst:stop'), send: (r) => ipcRenderer.send('creative-vst:send', r), parkSave: call('creative-vst:park-save') }, // (round 61, vstlive61) send: live notes / knob moves, no reply · (round 62, parkjam62) parkSave(sketch, name, bytes): a park take's file
+  vst: { scan: call('creative-vst:scan'), status: call('creative-vst:status'), setup: call('creative-vst:setup'), request: call('creative-vst:request'), stop: call('creative-vst:stop'), send: (r) => ipcRenderer.send('creative-vst:send', r), parkSave: call('creative-vst:park-save'), warmStatus: call('creative-vst:warm-status') /* (round 64, vstembed64) */ }, // (round 61, vstlive61) send: live notes / knob moves, no reply · (round 62, parkjam62) parkSave(sketch, name, bytes): a park take's file
   soundbank: { list: call('soundbank:list'), similar: call('soundbank:similar'), update: call('soundbank:update'), settings: call('soundbank:settings'), previews: call('soundbank:previews'), cancel: call('soundbank:cancel'), queue: call('soundbank:queue'), preview: call('soundbank:preview'), state: call('soundbank:state') }, // (round 63, soundbank63) the Sound bank (soundbankmain.js)
   kvSet: call('kv:set'),
   parkSong: { list: call('creative-vst:park-list'), mp3: call('creative-vst:park-mp3') }, // (round 63, loopsong63) every park sketch's takes · an exported mix as MP3 (ffmpeg)

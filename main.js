@@ -656,7 +656,9 @@ ipcMain.handle('packs:pending', () => { const p = packPending; packPending = nul
 // tick (the page can't send anything before this returns), instead of before Electron's 'ready': the window opens that
 // much sooner and the requires below run while its page process starts. Order unchanged.
 function registerAfterWindow() {
-  lazyIpc('creative-vstmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app, settings })); // (round 63, loopsong63) + settings: ffmpeg for the song's MP3
+  const vstIpc = lazyIpc('creative-vstmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app, settings })); // (round 63, loopsong63) + settings: ffmpeg for the song's MP3
+  // (round 64, vstembed64) the Sound desk's host warms up 20 s after start only if the owner used it last session
+  try { require('./creative-vstmain.js').warmLater(store.DATA_DIR, vstIpc.load); } catch { /* a cold start then */ }
   lazyIpc('soundbankmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app })); // (round 63, soundbank63) the Sound bank's index + preview queue
   const { nativeTheme, systemPreferences, nativeImage } = require('electron');
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
