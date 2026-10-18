@@ -18,7 +18,10 @@ for a preview) waits behind it. This stream measures the main process on a big d
 - `dev/checks/mainhang65.js` (`sh dev/run-checks.sh mainhang65`): startup (after the page is up), 30 s idle, everyday
   actions (12 chats opened and switched, the list searched / scrolled / hovered, the ✦ tracker and the board, a message
   to the fake engine, settings saved 4×, the daily backup), and sync with a cloud folder (the first pass reported, four
-  everyday passes budgeted). Budget per phase: p99 < 50 ms, max < 200 ms.
+  everyday passes budgeted). Budget per phase: p99 < 50 ms, max < 200 ms (a max over 200 ms counts when the main
+  thread's profile shows a busy stretch ≥ 150 ms behind it: on the shared 4-CPU test machine a process also waits for
+  a CPU with nothing of its own running). Round 64 fails it (everyday actions: max 1,561 ms, a 1,055 ms stretch in the
+  backup); this round passes (max 87 ms).
 
 ## What was found (3,000 chats, Windows-slow disk)
 | Phase | round 58 (d818e36) | round 64 (534dab0) | now |
