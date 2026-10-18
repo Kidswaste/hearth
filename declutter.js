@@ -48,7 +48,7 @@ const Declutter = (() => {
     { id: 'lab-refs', area: LAB, label: '🖼 References', sel: '[data-feature="References"]' },
     { id: 'lab-stage', area: LAB, label: '🖥 Stage window', sel: '.tb-group [data-feature="Stage window"]' },
     { id: 'lab-livecode', area: LAB, label: 'Live code checkbox', sel: '.three-toolbar > label.check' },
-    { id: 'lab-stats', area: 'Lab preview', label: 'fps / draw-call line', sel: '> .three-stats', mode: 'hover', host: '.three-preview', focus: false },
+    { id: 'lab-stats', area: 'Lab preview', label: 'fps / draw-call line', sel: '> .three-stats', mode: 'hover', host: '.three-preview', focus: false, keep: '.fb-keep' }, // (round 64, framebar64: the fps + frame budget bar stay; the rest of the line waits for hover in tools/framebar.css)
     { id: 'lab-size', area: 'Lab preview', label: 'Pixel size readout', sel: '.stage-size', mode: 'hover', host: '.stage-pill', focus: false },
     // Lab timeline
     { id: 'tl-sizes', area: 'Lab timeline', label: '▤ ▭ ▁ timeline sizes', sel: '.media-bar .mb-size:not(.on)' },

@@ -117,6 +117,10 @@ class LazyParams:
 
     def items(self):
         return ((key, self[key]) for key in self.keys())
+# (round 64, liveset64) the Live set's transport / clips / preset twin / run recorder (docs/upgrades/liveset64.md)
+spec = importlib.util.spec_from_file_location('liveset', Path(__file__).with_name('creative-vst-liveset.py'))
+liveset = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(liveset)
 
 BUFFERS = (64, 128, 256, 512, 1024)  # (round 61) 64–512 for live play; 1024 kept from Codex's first version
 AHEAD_MS = 5.0  # (round 61) audio rendered ahead of the device: enough for a Python thread's wake-up, small to feel
@@ -326,6 +330,7 @@ class Engine:
         self.embed = embedding.Embedder(*embedding.backend())
         self.timings = {}
         self.strip = lambda text: text
+        self.liveset = liveset.LiveSet(self)  # (round 64, liveset64) idle until Hearth opens a set ('set-open')
 
     def from_controller(self, message):
         # Notes from the controller never touch active_notes: the stale-note guard is for Hearth's own keys only.
@@ -373,11 +378,23 @@ class Engine:
     def index_controls(self):
         """python key -> the plugin's C++ parameter, the way pedalboard names them; pedalboard is told the names so a
         control's wrapper is built alone when it's first used (not all of them)."""
+        self.index = self.index_of(self.plugin)
+        if self.index is not None:
+            import hashlib
+            self.digest = hashlib.sha1('\n'.join('%s=%s' % (k, c.name) for k, c in self.index.items()).encode('utf-8', 'replace')).hexdigest()
+
+    def adopt(self, plugin, index=None):
+        """(round 64) another instance of the same instrument becomes the live one (liveset64's preset twin): its index
+        made beforehand (index_of, off the audio thread), so the switch costs nothing."""
+        self.plugin = plugin
+        self.index = index if index is not None else self.index_of(plugin)
+        self.parameters = LazyParams(self) if self.index is not None else plugin.parameters
+
+    def index_of(self, plugin):
         pbm = getattr(self.pb, '_pedalboard', None)
-        listing = getattr(self.plugin, '_parameters', None) if self.plugin is not None else None
+        listing = getattr(plugin, '_parameters', None) if plugin is not None else None
         if pbm is None or listing is None or not hasattr(pbm, 'to_python_parameter_name'):
-            self.index = None
-            return
+            return None
         ignore = getattr(pbm, 'PARAMETER_NAME_REGEXES_TO_IGNORE', ())
         self.strip = getattr(pbm, 'strip_common_float_suffixes', lambda text: text)
         index = {}
@@ -388,21 +405,19 @@ class Engine:
             if key:
                 index[key] = cpp
         try:
-            names = getattr(self.plugin, '__python_to_cpp_names__')
+            names = getattr(plugin, '__python_to_cpp_names__')
         except AttributeError:
             names = None
         if not isinstance(names, dict):
             names = {}
-            setattr(self.plugin, '__python_to_cpp_names__', names)
+            setattr(plugin, '__python_to_cpp_names__', names)
         for key, cpp in index.items():
             names[key] = cpp.name
         try:
-            getattr(self.plugin, '__python_parameter_cache__')
+            getattr(plugin, '__python_parameter_cache__')
         except AttributeError:
-            setattr(self.plugin, '__python_parameter_cache__', {})  # pedalboard's own wrapper cache (it makes it the same way)
-        self.index = index
-        import hashlib
-        self.digest = hashlib.sha1('\n'.join('%s=%s' % (k, c.name) for k, c in index.items()).encode('utf-8', 'replace')).hexdigest()
+            setattr(plugin, '__python_parameter_cache__', {})  # pedalboard's own wrapper cache (it makes it the same way)
+        return index
 
     def wrapper(self, key):
         if self.index is None:
@@ -717,7 +732,8 @@ class Engine:
                     self.active_notes.clear()
                 with self.lock:
                     began = time.perf_counter()
-                    block = self.plugin(messages, duration=self.frames / self.rate, sample_rate=self.rate,
+                    # (round 64, liveset64) with a set open, a preset switch is carried out at its exact sample here
+                    block = self.liveset.render(messages) if self.liveset.active else self.plugin(messages, duration=self.frames / self.rate, sample_rate=self.rate,
                                         num_channels=2, buffer_size=self.frames, reset=False)
                     self.process_ms = (time.perf_counter() - began) * 1000
                     self.max_process_ms = max(self.max_process_ms, self.process_ms)
@@ -725,6 +741,8 @@ class Engine:
                     raise ValueError('Plugin returned an invalid live audio block.')
                 if self.take is not None:
                     self.capture(block, messages)  # (round 62, parkjam62) the loop recorder keeps this block
+                if self.liveset.active:
+                    block = self.liveset.mix(block)  # (round 64, liveset64) clips, pad knobs, panic fade, the run recorder
                 self.position += self.frames
                 self.load_avg = self.load_avg * .9 + .1 * self.process_ms / (self.frames / self.rate * 1000)
                 self.peak = float(np.max(np.abs(block)))
@@ -871,6 +889,7 @@ class Engine:
                 self.take, self.take_note = None, 'Live audio stopped before the loop was finished; nothing was kept.'
             self.sequence, self.seq_release = None, False
             self.seq_held.clear()
+            self.liveset.on_stop()  # (round 64, liveset64) clips stop; a run being recorded stays open
             self.setup = None
             if self.plugin and self.path:
                 with self.lock:
@@ -1061,6 +1080,8 @@ class Engine:
             return {'editor': self.embed.place(job.get('embed') if isinstance(job.get('embed'), dict) else {})}
         if not self.plugin or self.path != job.get('plugin'):
             raise ValueError('Load the selected instrument first.')
+        if action in liveset.ACTIONS:  # (round 64, liveset64)
+            return self.liveset.command(action, job)
         if action in ('live-start', 'open'):
             return self.start(job)
         if action == 'midi':
@@ -1138,7 +1159,7 @@ class Engine:
         raise ValueError('Unknown live host action.')
 
 
-STREAMED = ('midi', 'patch', 'volume', 'panic', 'sequence', 'editor-place')  # (round 61) fire-and-forget on the stream connection; (round 64) + editor layout
+STREAMED = ('midi', 'patch', 'volume', 'panic', 'sequence', 'editor-place') + liveset.STREAMED  # (round 61) fire-and-forget on the stream connection · (round 64, liveset64) pad presses · (round 64, vstembed64) editor layout
 
 
 def serve(config, response):
@@ -1239,12 +1260,16 @@ def serve(config, response):
                         if job.get('live'):
                             result.update(engine.command({**job, 'action': 'live-start'}))
                     elif job['action'] in ('inspect', 'snapshot', 'render'):
-                        # (round 64) with the editor open (it holds the main thread) or the fast control list, these run
-                        # here, off the main thread, under the plugin lock
+                        # (round 64, vstembed64) with the editor open (it holds the main thread) or the fast control list,
+                        # these run here, off the main thread, under the plugin lock
                         if engine.editor_requested or (job['action'] != 'render' and engine.index is not None):
                             result = engine.command(job)
                         else:
                             result = on_main('command', job)
+                    elif job['action'] == 'preset-preload':  # (round 64, liveset64) the twin loads on this main thread
+                        if engine.editor_requested:
+                            raise ValueError('Close the native editor before capturing or exporting a patch.')
+                        result = on_main('command', job)
                     else:
                         result = engine.command(job)
                 result = {'ok': True, **result}

@@ -52,7 +52,11 @@ function discoverCached(roots, cacheFile, fold = FOLD) {
 // (a phrase played by the host's audio thread), 'midi-in' (which controller). STREAMED actions may also travel on the
 // persistent no-reply socket (send()). jobOf() is the one whitelist of fields that reach the Python host.
 const LIVE_ACTIONS = ['open', 'values', 'sequence', 'midi-in'];
-const STREAMED = ['midi', 'patch', 'volume', 'panic', 'sequence', 'editor-place']; // (round 64) + the editor's layout
+const STREAMED = ['midi', 'patch', 'volume', 'panic', 'sequence', 'launch', 'pad-fx', 'preset-switch', 'set-panic', 'set-tempo', 'editor-place']; // (round 64, liveset64) + pad presses · (round 64, vstembed64) + the editor's layout
+// (round 64, liveset64) the Live set (creative-vst-liveset.py, tools/liveset.js): transport, clips, the preset twin, panic,
+// the run recorder. Clip files must be WAVs under <data>/creative-live or <data>/creative-park; a run's WAV path is made
+// here (<data>/creative-live/<set>/<Rehearsal|Performance> <date>.wav), never taken from the window.
+const LIVESET_ACTIONS = ['set-open', 'set-close', 'set-status', 'set-tempo', 'clip-load', 'clip-unload', 'launch', 'pad-fx', 'preset-preload', 'preset-switch', 'set-panic', 'run-record', 'run-stop'];
 // (round 64, vstembed64) the editor inside Hearth and the fast control list (docs/upgrades/vstembed64.md):
 // 'controls' (every control known so far + values; ready when all are), 'editor' {embed} (open it in the placeholder),
 // 'editor-place' {embed: {x, y, clip, visible}} (streamed on layout changes), 'editor-embed' (a floating editor goes in),
@@ -76,7 +80,23 @@ function jobOf(r, name) {
   return { action: r.action, plugin: r.plugin, name, parameters: r.parameters, notes: r.notes, duration: r.duration, state: r.state, note: r.note, on: r.on, velocity: r.velocity, gain: r.gain, buffer: r.buffer, device: r.device,
     exclusive: r.exclusive === true || undefined, midiIn: r.midiIn ?? undefined, keys: r.keys, sequence: r.sequence, loop: r.loop, live: r.live === true || undefined,
     bars: r.bars, beats: r.beats, bpm: r.bpm, wait: r.wait === 'note' ? 'note' : undefined, // (round 62, parkjam62) the loop recorder's fields
-    embed: embedOf(r.embed), stateOnly: r.stateOnly === true || undefined, limit: Number.isInteger(r.limit) && r.limit > 0 && r.limit <= 5000 ? r.limit : undefined }; // (round 64, vstembed64) the editor's placement (no parent from the page) · a state-only snapshot
+    embed: embedOf(r.embed), stateOnly: r.stateOnly === true || undefined, limit: Number.isInteger(r.limit) && r.limit > 0 && r.limit <= 5000 ? r.limit : undefined, // (round 64, vstembed64) the editor's placement (no parent from the page) · a state-only snapshot
+    ...liveFields(r) }; // (round 64, liveset64)
+}
+function liveFields(r) { // (round 64, liveset64) the Live set's fields, checked here and again in the host
+  const str = (v, n) => v === undefined || (typeof v === 'string' && v.length <= n);
+  if (!str(r.slot, 64) || !str(r.id, 120) || [r.fx, r.gainDb, r.fade].some(v => v !== undefined && !Number.isFinite(v))) throw Error('Invalid live set pad.');
+  const out = {};
+  if (r.slot !== undefined) out.slot = r.slot;
+  if (r.id !== undefined) out.id = r.id;
+  if (r.fx !== undefined) out.fx = Math.max(-1, Math.min(1, r.fx));
+  if (r.gainDb !== undefined) out.gainDb = Math.max(-60, Math.min(12, r.gainDb));
+  if (r.fade !== undefined) out.fade = r.fade;
+  if (['toggle', 'play', 'stop'].includes(r.mode)) out.mode = r.mode;
+  if (['bar', 'beat', 'now'].includes(r.at)) out.at = r.at;
+  if (['bar', 'beat', 'now'].includes(r.quantize)) out.quantize = r.quantize;
+  if (['Rehearsal', 'Performance'].includes(r.kind)) out.kind = r.kind;
+  return out;
 }
 function create({ dataDir, python, roots, helper = path.join(__dirname, 'creative-vst-host.py'), flags = { asio: process.env.HEARTH_VST_ASIO !== '0' }, lowPriority = false }) {
   const home = path.join(dataDir, 'creative-vst'), runtime = path.join(home, 'runtime');
@@ -171,7 +191,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       } finally { setupBusy = false; }
     }),
     request: request => safe(async () => {
-      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS, ...PARK_ACTIONS, ...EMBED_ACTIONS];
+      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS, ...PARK_ACTIONS, ...LIVESET_ACTIONS, ...EMBED_ACTIONS];
       if (!request || !actions.includes(request.action)) throw Error('Unknown instrument action.');
       if (!['devices'].includes(request.action) && (!known.has(request.plugin) || !allowedName(request.plugin))) throw Error('Scan and select Serum 2 or Vital first.');
       const name = request.plugin && allowedName(request.plugin);
@@ -181,6 +201,10 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       const job = jobOf(request, name);
       if (job.embed && typeof request.parent === 'string' && /^\d{1,20}$/.test(request.parent)) job.embed.parent = request.parent; // (round 64) set by register(), never by the page
       const asked = Date.now(); // (round 64) did this request start the host? (open → first sound timings)
+      // (round 64, liveset64) a clip is a WAV Hearth made (creative-live) or a park take (creative-park); a run's file path is made here
+      if (request.action === 'clip-load') { job.file = liveClip(dataDir, request.file); job.loop = request.loop === true; }
+      if (request.action === 'run-record') job.output = liveRunPath(dataDir, request.set, job.kind || 'Rehearsal');
+      if (request.action === 'preset-preload' && typeof request.state !== 'string') throw Error('A preset pad needs its state.');
       if (request.action === 'render') { await ensure(); job.output = path.join(jobDir, 'render.wav'); }
       // (round 62, parkjam62) the finished loop: the host writes the WAV here, its bytes go back to the window (no base64)
       if (request.action === 'record-take') {
@@ -249,7 +273,7 @@ function pool(options) {
       if (r?.plugin && !hosts.has(r.plugin) && !anyAlive().knows(r.plugin)) return { ok: false, error: 'Scan and select Serum 2 or Vital first.' };
       // (round 62, parkjam62) 'solo': Park mode keeps one instrument loaded (the others' hosts are stopped, battery)
       if (r?.action === 'solo') { let n = 0; for (const [p, h] of [...hosts]) if (p !== r.plugin) { h.stop(); hosts.delete(p); n++; } return { ok: true, stopped: n }; }
-      const h = hostFor(r?.plugin, !['devices', 'live-status', 'live-stop', 'panic', 'record-status', 'record-cancel', ...EMBED_ACTIONS].includes(r?.action)) || (r?.action === 'devices' ? anyAlive() : null); // (round 64) + the editor / controls actions: only an open instrument's host
+      const h = hostFor(r?.plugin, !['devices', 'live-status', 'live-stop', 'panic', 'record-status', 'record-cancel', 'set-status', 'set-close', 'set-panic', 'run-stop', ...EMBED_ACTIONS].includes(r?.action)) || (r?.action === 'devices' ? anyAlive() : null); // (round 64) + the editor / controls actions: only an open instrument's host
       if (!h) return { ok: true, playing: false }; // status / stop / panic of an instrument that isn't open: nothing plays
       if (r.action === 'live-start' || (r.action === 'open' && r.live === true)) { last = r.plugin; await quietOthers(r.plugin); }
       return h.request(r);
@@ -353,6 +377,40 @@ function windowOf(win) {
     return id ? { parent: String(id) } : null;
   } catch { return null; }
 }
+// (round 64, liveset64) <data>/creative-live/<set>/<file>: a live set's prepared clips, its runs (Rehearse / Perform) and
+// their logs. Same folder-name rule as the park sketches; plain file names only; written atomically (.part, renamed).
+const liveFolder = (dataDir, set) => path.join(dataDir, 'creative-live', String(set || 'Live set').normalize('NFC').replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80) || 'Live set');
+function liveSave(dataDir, set, name, bytes) {
+  if (typeof name !== 'string' || !/^[\w .·-]{1,100}\.(wav|json|mid)$/i.test(name) || name.startsWith('.')) throw Error('Invalid live set file name.');
+  const data = bytes instanceof Uint8Array ? bytes : typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : null;
+  if (!data || data.length < 1 || data.length > 200e6) throw Error('Invalid live set file.');
+  const dir = liveFolder(dataDir, set), file = path.join(dir, name);
+  fs.mkdirSync(dir, { recursive: true }); const tmp = file + '.part'; fs.writeFileSync(tmp, data); fs.renameSync(tmp, file);
+  return file;
+}
+function liveClip(dataDir, file) {
+  if (typeof file !== 'string' || !path.isAbsolute(file) || !/\.wav$/i.test(file)) throw Error('A clip is a WAV file.');
+  const real = path.resolve(file), roots = ['creative-live', 'creative-park'].map(d => path.join(path.resolve(dataDir), d) + path.sep);
+  if (!roots.some(r => pathKey(real).startsWith(pathKey(r))) || real.split(path.sep).includes('..')) throw Error('Clips come from your park sketches or the live set folder.');
+  if (!fs.existsSync(real)) throw Error(`A clip's file is gone: ${path.basename(real)}`);
+  return real;
+}
+function liveRunPath(dataDir, set, kind) {
+  const d = new Date(), p = n => String(n).padStart(2, '0'), dir = liveFolder(dataDir, set);
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, `${kind === 'Performance' ? 'Performance' : 'Rehearsal'} ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}.wav`);
+}
+// a run as MP3 (for the quest proof: a 10-minute WAV is over the journal's 80 MB), next to its WAV, atomically
+function liveMp3(dataDir, set, file, ffmpeg) {
+  if (!ffmpeg) return Promise.resolve({ ok: false, error: 'ffmpeg is not installed, so the MP3 was skipped (the WAV is there).' });
+  const dir = liveFolder(dataDir, set), wav = path.join(dir, path.basename(String(file || '')));
+  if (!/\.wav$/i.test(wav) || !fs.existsSync(wav)) return Promise.resolve({ ok: false, error: 'No such recording in the live set folder.' });
+  const mp3 = wav.replace(/\.wav$/i, '.mp3'), tmp = mp3 + '.part';
+  return new Promise(resolve => require('child_process').execFile(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', wav, '-codec:a', 'libmp3lame', '-q:a', '4', '-f', 'mp3', tmp], { timeout: 600000, windowsHide: true }, err => {
+    if (err) { try { fs.unlinkSync(tmp); } catch { /* none */ } resolve({ ok: false, error: `The MP3 failed (${String(err.message).split('\n')[0].slice(0, 160)}); the WAV is there.` }); return; }
+    try { fs.renameSync(tmp, mp3); resolve({ ok: true, path: mp3 }); } catch (e) { resolve({ ok: false, error: e.message }); }
+  }));
+}
 function register(ipcMain, { dataDir, getWin, app, settings }) {
   const host = pool({ dataDir });
   registered = { host }; // (round 64, vstembed64)
@@ -376,6 +434,9 @@ function register(ipcMain, { dataDir, getWin, app, settings }) {
   // (round 63, loopsong63) the takes of every park sketch · an exported mix as MP3 (ffmpeg found the way Hearth finds it)
   ipcMain.handle('creative-vst:park-list', e => own(e, () => parkList(dataDir)));
   ipcMain.handle('creative-vst:park-mp3', (e, sketch, name) => own(e, () => parkMp3(dataDir, sketch, name, require('./aemain').ffStatus({ ffmpeg: settings?.().ffmpegPath || undefined }).ffmpeg)));
+  // (round 64, liveset64) the Live set's folder: prepared clips / run logs, and a run as MP3 for the open-mic proof
+  ipcMain.handle('creative-vst:live-save', (e, set, name, bytes) => own(e, () => { try { return { ok: true, path: liveSave(dataDir, set, name, bytes) }; } catch (err) { return { ok: false, error: err.message }; } }));
+  ipcMain.handle('creative-vst:live-mp3', (e, set, file) => own(e, () => liveMp3(dataDir, set, file, require('./aemain').ffStatus({ ffmpeg: settings?.().ffmpegPath || undefined }).ffmpeg)));
   app.once('will-quit', () => host.stop()); getWin()?.webContents.once('destroyed', () => host.stop());
   // (round 64, vstembed64) an editor inside Hearth's window closes before the window does; on the Mac it follows the window
   const win = getWin();
@@ -385,4 +446,4 @@ function register(ipcMain, { dataDir, getWin, app, settings }) {
   }
   ipcMain.handle('creative-vst:warm-status', e => own(e, () => ({ ok: true, warmed: registered?.warmed || null, hosts: host.hosts }))); // (round 64) what the idle warm did
 }
-module.exports = { create, pool, discover, discoverCached, register, allowedName, pathKey, jobOf, parkSave, parkList, parkMp3, warmLater, noteUse, warmRead, windowOf }; // (round 64) + discoverCached, warmLater, noteUse, warmRead, windowOf
+module.exports = { create, pool, discover, discoverCached, register, allowedName, pathKey, jobOf, parkSave, parkList, parkMp3, liveSave, liveClip, liveRunPath, liveMp3, liveFolder, warmLater, noteUse, warmRead, windowOf }; // (round 64, liveset64) live* · (round 64, vstembed64) discoverCached, warmLater, noteUse, warmRead, windowOf
