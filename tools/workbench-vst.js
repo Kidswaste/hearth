@@ -125,7 +125,7 @@ var WorkbenchVST = (() => {
       const restart = () => { rememberLive(); if (!playing) return; silence().then(startLive).catch(err => say(err.message)); };
       const midiChoices = devices.midiBackend ? [['all', 'All controllers'], ...(devices.midiInputs || []).map(n => [n, n]), ['off', 'Off']] : [['off', 'Controller: Windows only (or python-rtmidi)']];
       if (!midiChoices.some(([v]) => v === settings.midiIn)) settings.midiIn = midiChoices[0][0];
-      transport.append(
+      const setup = e('div', null, 'wb-live-setup'); transport.append(setup); setup.append( // (round 61) one compact row
         select('Audio output', settings.value, picked.options, v => { settings.value = v; settings.device = L.parse(v).device; restart(); }),
         select('Buffer', settings.buffer, L.BUFFERS, v => { settings.buffer = Number(v); restart(); }),
         range('Monitor volume', settings.gain, 0, .5, .01, v => { settings.gain = v; h.state.live = { ...(h.state.live || {}), gain: v }; fire('volume', { gain: v }).catch(err => say(err.message)); }),

@@ -106,6 +106,7 @@ only after the owner's own action in that feature (the hover's send / apply), an
   body), `run(…, guard)` (lock per native call). Output unchanged.
 - `creative-vstmain.js` (Codex): `pool()` (host per instrument), `SD_ENABLE_ASIO` + the listing fallback, `send()` over
   a persistent socket, `jobOf()` field whitelist, new actions, `creative-vst:send` (ipcMain.on).
+- `tools/workbench-vst.css` (Codex): one compact row for output / buffer / volume / MIDI in / phrase (appended rules).
 - `tools/workbench-vst.js` (Codex): open-and-go-live, picker / buffer / MIDI in / Phrase, streamed keys and knobs,
   editor read-back, readout, `api`, `savePreset` / `loadPreset` (the bank buttons use them), chat `status` / `play`.
 - `dev/vst-live-test.js` (Codex's opt-in real test): prefers the UA's ASIO entry, prints the device list summary.
@@ -116,8 +117,17 @@ only after the owner's own action in that feature (the hover's send / apply), an
 
 ## Tested (here: Linux, no sound card, no real plugins)
 
-See the final report for the run list. The real-plugin part of `workbench-vst` stays honest: it is skipped here
-("no local audio runtime") and runs on the owner's PC; nothing real is claimed from the fakes.
+After merging origin/main (round 60), under `flock /tmp/hearth-run.lock`:
+- `vst-live` ✓ (27 steps, fake host): open → LIVE in 82 ms, an on-screen key heard in 45 ms (incl. status polling);
+  with the window blocked 1.5 s the host kept rendering (560 blocks, 1 underrun on this loaded 4-CPU machine).
+  It caught one real bug on its first run (the first open went live on the system default before the device list
+  was read; fixed: the first open picks the UA device first).
+- `workbench-vst` ✓ with its real-plugin part **skipped** (no Pedalboard / Vital here), `workbenches` ✓, `creative` ✓, `lazy` ✓.
+- `unit:vst-live-host-test` ✓ (real host + fakes: ASIO listed, UA preselected, sample-accurate phrase = 12,000 samples
+  per 1/8 at 48 kHz, editor open while 20+ blocks render, 0 underruns reading 2,000 controls),
+  `unit:vst-host-test` ✓ (Codex's, unchanged), `unit:winmac-test` ✓, `unit:boot-test` ✓.
+Nothing real is claimed from the fakes: ASIO with the UA driver, WinMM controller input, Serum 2 / Vital timings need
+the owner's PC (steps below).
 
 ## Risks
 
