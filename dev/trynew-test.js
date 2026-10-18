@@ -5,15 +5,15 @@ const assert = require('node:assert/strict');
 const C = require('../trynew-core');
 let checks = 0;
 const test = (name, fn) => { fn(); checks++; console.log('✓ ' + name); };
-const OPENS = ['chat', 'studio:world', 'studio:rewards', 'week', 'review', 'desk', 'lab', 'sounds'];
+const OPENS = ['chat', 'studio:home', 'studio:rewards', 'week', 'review', 'desk', 'lab', 'sounds'];
 
-test('13 paths: 5 from round 61, 4 from 62, 4 from 63, unique ids, 1–3 steps each, every step rings something', () => {
+test('13 paths: 5 from round 61, 4 from 62, 4 from 63, unique ids, 1–4 steps each, every step rings something', () => {
   assert.equal(C.PATHS.length, 13);
   assert.deepEqual(C.ROUNDS, [61, 62, 63]);
   assert.deepEqual(C.ROUNDS.map((r) => C.PATHS.filter((p) => p.round === r).length), [5, 4, 4]);
   assert.equal(new Set(C.PATHS.map((p) => p.id)).size, 13);
   for (const p of C.PATHS) {
-    assert.ok(p.steps.length >= 1 && p.steps.length <= 3, p.id);
+    assert.ok(p.steps.length >= 1 && p.steps.length <= 4, p.id);
     assert.ok(p.steps[0].open && OPENS.includes(p.steps[0].open), `${p.id}: the first step opens a place`);
     for (const s of p.steps) {
       assert.ok(s.title && s.text && s.text.length < 260, `${p.id}: short words`);

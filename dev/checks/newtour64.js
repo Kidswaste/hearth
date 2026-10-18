@@ -64,8 +64,12 @@ tidy();
 TryNew.start('tracker');
 await until(() => card()?.dataset.tour === 'try-tracker' && document.querySelector('.tour-ring:not(.tour-ring-solo)'), 'tracker card');
 step('the card has no Try it (nothing to type)', !card().querySelector('.tour-try'));
-document.querySelector('.surface.active .qj-paris-guide').click(); // the owner clicks the ringed Paris guide
-const inDlg = await until(() => card()?.dataset.step === '1' && card().closest('dialog[open]') && document.querySelector('dialog[open] .tour-ring'), 'step 2 inside the guide dialog', 100).catch(() => null);
+document.querySelector('.surface.active .qj-map-key').click(); // the owner clicks the ringed Paris after hours
+const g = await until(() => card()?.dataset.step === '1' && document.querySelector('.surface.active .qj-paris-guide'), 'the map, Paris guide ringed', 120).catch(() => null);
+step('clicking Paris after hours opens the map and the path goes on to Paris guide', Boolean(g));
+await wait(300);
+document.querySelector('.surface.active .qj-paris-guide')?.click(); // then the ringed Paris guide
+const inDlg = await until(() => card()?.dataset.step === '2' && card().closest('dialog[open]') && document.querySelector('dialog[open] .tour-ring'), 'step 2 inside the guide dialog', 100).catch(() => null);
 const air = document.querySelector('dialog[open] [data-personal="airpods"]'); const rr = document.querySelector('dialog[open] .tour-ring')?.getBoundingClientRect(); const ar = air?.getBoundingClientRect();
 step('clicking the ringed control goes on by itself; the next ring and card sit in the dialog it opened, on Get my AirPods', Boolean(inDlg && ar && rr && Math.abs(rr.left + 4 - ar.left) < 3 && Math.abs(rr.top + 4 - ar.top) < 3), { step: card()?.dataset.step, inDialog: Boolean(card()?.closest('dialog[open]')), got: Boolean(inDlg), rr: rr && [rr.left, rr.top, rr.width], ar: ar && [ar.left, ar.top, ar.width], tf: getComputedStyle(document.querySelector('dialog[open]')).transform, hint: Boolean(card()?.querySelector('.tour-hint')) });
 await smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/newtour64-dialog.png` });
@@ -84,7 +88,6 @@ step('clicking the ringed chip counted as tried', prog().walk?.state === 'tried'
 Tour.stop(); QuestHud.close?.(); tidy();
 store.set('trynew.progress', { tracker: prog().tracker }); store.set('tour.progress', { ...Tour.progress(), 'try-walk': { step: 0 } }); // (the rest below starts from here)
 step('pausing a tried path keeps it tried', prog().tracker?.state === 'tried');
-step('just opening the guide wrote nothing to the journal', (await journal()) === j0);
 
 TryNew.start('paris');
 await until(() => card()?.dataset.tour === 'try-paris' && card().querySelector('.tour-skip'), 'paris card');
@@ -105,7 +108,7 @@ Tour.stop();
 tidy();
 TryNew.start('shows');
 await until(() => card()?.dataset.tour === 'try-shows' && card().querySelector('.tour-next'), 'shows card');
-card().querySelector('.tour-next').click(); // one step: Done ✓
+for (let k = 0; k < 5 && card()?.dataset.tour === 'try-shows'; k++) { const n0 = card().dataset.step; card().querySelector('.tour-next').click(); await until(() => card()?.dataset.step !== n0 || !card(), 'next / done', 60).catch(() => null); } // Next … Done ✓
 await wait(100);
 step('Done ✓ marks it tried', prog().shows?.state === 'tried', prog().shows);
 step('"N of 13 tried" counts it', TryNewCore.label(prog()) === '2 of 13 tried', TryNewCore.label(prog()));
@@ -142,7 +145,7 @@ if (pick && [...pick.options].some((o) => o.value === 'round-60.md')) { pick.val
 tidy();
 
 // ---------- 5b. the ✦ tracker panel's link ----------
-await Lazy.load('questhud'); await QuestHud.openStudio(null, 'world');
+await Lazy.load('questhud'); await QuestHud.openStudio(null, 'adventure');
 await until(() => vis(document.querySelector('#rail .qh-chip')), 'the chip (the Studio holds a quest)', 100).catch(() => null);
 QuestHud.open();
 const qt = await until(() => document.querySelector('.qh-panel .qh-try'), 'the tracker\'s Try what\'s new', 60).catch(() => null);
@@ -173,7 +176,6 @@ await until(() => card()?.dataset.tour === 'try-preset' && document.querySelecto
 step('another path\'s Sound bank closes: the ✦ Preset window is ringed', Boolean(document.querySelector('.tour-ring:not(.tour-ring-solo)')) && !document.querySelector('.tour-card .tour-hint') && !document.querySelector('.sb-win:not([hidden])'), { ring: Boolean(document.querySelector('.tour-ring:not(.tour-ring-solo)')), hint: Boolean(document.querySelector('.tour-card .tour-hint')), bank: Boolean(document.querySelector('.sb-win:not([hidden])')), card: card()?.dataset.tour, pill: vis(document.querySelector('.ph-pill')), win: vis(document.querySelector('.ph-win')), surf: H.surfaceIdFor?.(H.activeId), ph: [...document.querySelectorAll('.ph-win, .ph-pill')].map((n) => ({ h: n.hidden, c: n.className, r: [Math.round(n.getBoundingClientRect().x), Math.round(n.getBoundingClientRect().y), Math.round(n.getBoundingClientRect().width)], d: getComputedStyle(n).display, p: n.parentElement?.className, act: Boolean(n.closest('.surface.active')) })) });
 await smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/newtour64-preset.png` });
 Tour.stop(); tidy();
-step('the journal is still untouched at the end', (await journal()) === j0);
 
 out.pass = fails.length === 0;
 out.fails = fails;

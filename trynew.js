@@ -43,7 +43,9 @@ const TryNew = (() => {
   }
   const OPEN = {
     chat: async () => { chat(); await until(() => vis(document.querySelector('.surface.active .composer textarea')), 3000); },
-    'studio:world': () => studio('world'),
+    // the Studio's own first page (not the map: opening the map puts the Paris guide into the journal — mapfirst64 —
+    // so the map is always opened by the owner's click on Paris after hours)
+    'studio:home': () => studio('adventure'),
     'studio:rewards': () => studio('rewards'),
     week: async () => { await Lazy.load('weekquest'); await WeekQuest.open('week'); },
     review: async () => { await Lazy.load('weekquest'); await WeekQuest.open('review'); },

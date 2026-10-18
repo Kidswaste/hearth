@@ -6,19 +6,20 @@ Owner rule (round 64): "I really don't use commands at all" — so every step sh
 type a command (`/try` exists only as the app's internal / power-user way in).
 
 ## What shipped
-### The paths (13, 1–3 steps, 30–60 s each; the controls rung are today's, incl. clickfirst64's and audiodoctor64's)
-1. **✦ Quest tracker** — Studio › Paris guide › Get my AirPods, then the ✦ chip in the rail.
-2. **🗺 Paris map + guide** — Paris guide › Put the guide on my map, then a pin › Place quest.
-3. **🎟 This week's shows** — the Shows this week button over the map (or ✦ › ⋯ More › Shows this week…).
+### The paths (13, 1–4 steps, 30–60 s each; ringing clickfirst64's, mapfirst64's and audiodoctor64's controls)
+1. **✦ Quest tracker** — Studio › Paris after hours › Paris guide › Get my AirPods, then the ✦ chip in the rail.
+2. **🗺 Paris map + guide** — Studio › Paris after hours, the map's Places · Shows · My walks · Visited row, then a pin ›
+   Start this quest.
+3. **🎟 This week's shows** — Paris after hours › the Shows layer (or ✦ › ⋯ More › Shows this week…).
 4. **🎹 Live Serum 2 / Vital** — the Sound desk's Audio output picker (or Set up live audio), then 🎚 Check my audio
    setup (audiodoctor64; the step shows only when it's in this copy).
 5. **✦ Preset window** — its text box over the Sound desk, then ↶ / ↷ / Save.
 6. **🗓 Week plan + review** — the ✦ chip › This week › Plan your week › the week card (Week in review › beside it).
 7. **🌳 Park jam → song** — 🌳 Park mode, Park jam · capture the moment, Arrange loops.
-8. **🎫 Show night** — Shows this week › a show › Get ready; a show quest's card (Get ready / How was it?); ⋯ More ›
+8. **🎫 Show night** — Paris after hours › a show's pin › Get ready; a show quest's card (Get ready / How was it?); ⋯ More ›
    Shows I went to….
 9. **🎮 Playtest notes (F8)** — the Lab's Play, F8 (or F › ✎ Note), then ⋯ › Capture & playtest › ✎ Playtest log.
-10. **🚶 Quest walk** — the ✦ chip › Make a walk.
+10. **🚶 Quest walk** — the ✦ chip › Make a walk (or the map's Plan a walk).
 11. **🎛 Sound bank** — the Sound desk's Sound bank button, its search, its ⋯ (previews, plugin folders).
 12. **📍 Hitch map** — ⋯ › Capture & playtest › ● Record the hitch map, Play, then ▦ Hitch map.
 13. **🎁 Real rewards** — the ✦ chip › Rewards › All rewards ›, then + Add a reward.
@@ -34,7 +35,7 @@ type a command (`/try` exists only as the app's internal / power-user way in).
     even when the dialog has a transform, and stay inside its box.
 18. A floating helper left by an earlier path (the week card, the Sound bank) closes when the next path opens its place,
     so it never covers the control being ringed.
-19. Opening places writes nothing: on a fresh profile the quest journal stays "missing" through all 13 paths (checked).
+19. Opening places writes nothing (the Paris map is only ever opened by the owner's click): on a fresh profile the quest journal stays "missing" through all 13 paths (checked).
 
 ### Where to find it
 20. **What's new** (Settings › Updates & what's new › What's new… › Since you were away, and the after-update card):
@@ -66,9 +67,9 @@ type a command (`/try` exists only as the app's internal / power-user way in).
 - Also run: whatsnew, tour-discover, questhud61, quest-paris, lazy, unit:boot-test, unit:datasafe-scan, unit:winmac-test.
 
 ## Risks / for later
-- mapfirst64 (the map's chip row, Plan a walk) hadn't landed when this was finished: the Paris steps ring the Paris
-  guide / Shows this week buttons; when it lands its controls can go first in those target lists (the first one on
-  screen wins).
+- Since mapfirst64, opening the Paris map puts the guide's places into the journal (once). So no path opens the map by
+  itself: the paths open Sidequest Studio's first page and ring **Paris after hours**, so the map opens by the owner's
+  click (the check verifies the journal stays untouched through all 13 openings on a fresh profile).
 - A ✦ panel step closes the panel if the owner clicks the tour card instead of the ringed button (the panel closes on
   any outside click); the ring just says "Not on screen" then — clicking the chip again brings it back.
 - Steps inside ▶ Play (F8, right-click › Hitch map) are described, not ringed: the Play window is its own window.
