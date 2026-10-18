@@ -1,0 +1,48 @@
+/* (round 62, weekquest62) the week card and the week in review: the tracker's panel (questhud.css) with a 7-day strip,
+   proposed rows, a one-line nudge switch, review stats and moments. Calm: no loops, no backdrop-filter. */
+.wq-panel { max-height: min(620px, calc(100vh - 24px)); }
+.wq-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; margin-bottom: 2px; }
+.wq-day {
+  min-height: 74px; border: 1px solid var(--line); border-radius: 8px; padding: 3px 2px 4px; background: var(--surface);
+  display: flex; flex-direction: column; align-items: stretch; gap: 3px; min-width: 0; transition: border-color .12s ease, background-color .12s ease;
+}
+.wq-day.past { opacity: .45; }
+.wq-day.today { border-color: color-mix(in srgb, var(--ui-gold, #d9b777) 60%, transparent); }
+.wq-day.over { border-color: var(--ui-gold, #d9b777); background: color-mix(in srgb, var(--ui-gold, #d9b777) 10%, var(--surface)); }
+.wq-dname { text-align: center; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.wq-dnum { text-align: center; font: 600 11px/1 var(--mono, ui-monospace, monospace); margin-top: -2px; }
+.wq-day.today .wq-dnum { color: var(--ui-gold, #d9b777); }
+.wq-chip {
+  display: flex; flex-direction: column; align-items: center; gap: 1px; width: 100%; padding: 3px 1px; border-radius: 6px; cursor: grab;
+  border: 1px solid color-mix(in srgb, var(--ui-gold, #d9b777) 35%, transparent); background: color-mix(in srgb, var(--ui-gold, #d9b777) 12%, var(--surface));
+  font-size: 9.5px; line-height: 1.15; color: var(--text);
+}
+.wq-chip:hover { border-color: var(--ui-gold, #d9b777); }
+.wq-chip.done { opacity: .6; }
+.wq-ci { font-size: 12px; line-height: 1; }
+.wq-ct { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-align: center; word-break: break-word; max-width: 100%; }
+.wq-sec { display: flex; align-items: center; justify-content: space-between; }
+.wq-sec .qh-btn { font-size: 10.5px; padding: 1px 7px; text-transform: none; letter-spacing: 0; }
+.wq-prop { cursor: grab; }
+.wq-when { flex: none; color: var(--muted); font: 600 10px/1 var(--mono, ui-monospace, monospace); text-transform: uppercase; }
+.wq-accept { flex: none; padding: 2px 8px; }
+.wq-nudge-row { display: flex; align-items: center; gap: 6px; margin: 8px 2px 2px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.wq-nudge-row select { font-size: 11.5px; padding: 1px 2px; }
+.wq-ai { margin: 2px; }
+.wq-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 2px; }
+.wq-stat { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 6px 4px; display: grid; justify-items: center; gap: 1px; }
+.wq-stat b { font: 600 17px/1.1 var(--mono, ui-monospace, monospace); color: var(--ui-gold, #d9b777); }
+.wq-moments { display: grid; gap: 4px; }
+.wq-moment { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.wq-moment img, .wq-mi { flex: none; width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: var(--surface); display: grid; place-items: center; }
+.wq-moment > div { min-width: 0; display: grid; }
+.wq-moment strong, .wq-moment .qh-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wq-reflect { display: grid; gap: 3px; margin: 8px 2px 2px; }
+.wq-reflect .qh-k { text-transform: none; letter-spacing: 0; font-size: 11.5px; color: var(--text); }
+.wq-reflect input { width: 100%; box-sizing: border-box; }
+.wq-saved { margin: 2px; }
+/* Sidequest Studio › Collection › Week pages */
+.wq-pages { margin: 12px 0; }
+.wq-pages .wq-page { margin-top: 8px; }
+.wq-quote { margin: 6px 0 0; padding-left: 10px; border-left: 2px solid currentColor; opacity: .9; }
+@media (prefers-reduced-motion: reduce) { .wq-day { transition: none; } }
