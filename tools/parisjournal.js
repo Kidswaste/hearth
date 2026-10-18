@@ -17,7 +17,7 @@ const ParisJournal = window.ParisJournal = (() => {
   let takes = null, takesLoading = null; // parkjam62's takes, read once (and again after a new take)
   let memo = { s: null, shows: null, takes: null, list: [] };
   let lastCard = null;
-  const _test = { saved: [] };
+  const _test = { saved: [], dir: '' }; // (checks) dir: write the card in the run's own folder, never the real Pictures folder
   const savePrefs = () => store.set(PREF, { on: prefs.on, month: prefs.month });
   const fmtDay = (t) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -65,19 +65,27 @@ const ParisJournal = window.ParisJournal = (() => {
   }
   const layer = {
     id: 'parisjournal',
-    icon: (kit) => { const n = moments(studioState()).length; return kit.mapIcon('notebook', prefs.on ? `My Paris · ${n} moment${n === 1 ? '' : 's'} (hide)` : `My Paris · show what you did (${n})`, () => toggle(), K.KINDS.place.color, prefs.on, 'map-my-paris'); },
+    // (owner rule, round 64: click-first) one labelled chip "✓ My Paris · N" in the map's chip / filter row toggles the layer
+    // (quest-journal.js: a layer's chip(kit) joins that row; mapfirst64's Places · Shows · My walks · Visited row takes it too)
+    chip: (kit) => chip(kit),
     pins: () => shownPins(),
     owns: (id) => String(id).startsWith('mp-'),
     select: (id, kit) => { const pin = shownPins().find((p) => p.id === id); if (pin) openMoments(pin.moments, kit); },
-    below: (kit) => (prefs.on ? strip(kit) : null),
+    below: (kit) => strip(kit), // always there: the month filter + "My month in Paris" (or, hidden, a way back)
   };
   function redraw() { try { J()?.addMapLayer?.(layer); } catch { /* the map isn't open */ } }
   function toggle(on = !prefs.on) { prefs.on = on; savePrefs(); redraw(); }
   function setMonth(month) { prefs.month = month || ''; savePrefs(); redraw(); }
 
   // ---------- the timeline strip under the map: months, then this month's moments as dots ----------
+  function chip(kit) {
+    const n = moments(studioState()).length, b = kit.E('button', { type: 'button', class: `pj-chip${prefs.on ? ' on' : ''}`, text: `✓ My Paris · ${n}`, attrs: { 'aria-pressed': String(prefs.on), title: prefs.on ? 'Hide what you did from the map' : 'Show what you did on the map: places, shows, walks, park sessions' }, on: { click: () => toggle() } });
+    b.dataset.chip = 'visited'; return b;
+  }
+  const monthButton = (kit, month) => { const b = kit.button('My month in Paris', () => recapDialog(month, kit), 'qj-quiet pj-recap-btn'); b.dataset.help = 'Your month on the map: places, shows, walks, park sessions, the arrondissements you lit up, and an image card to share'; return b; };
   function strip(kit) {
     const s = studioState(), list = moments(s), ms = K.months(list), { E } = kit;
+    if (!prefs.on) return E('section', { class: 'pj-strip pj-off', attrs: { 'aria-label': 'My Paris' } }, kit.label('MY PARIS'), E('span', { class: 'pj-hint', text: `Hidden from the map · ${list.length} moment${list.length === 1 ? '' : 's'} kept` }), kit.button('Show my Paris', () => toggle(true), 'qj-quiet pj-show'), monthButton(kit, K.monthOf(Date.now())));
     if (prefs.month && !ms.some((m) => m.key === prefs.month)) prefs.month = '';
     const box = E('section', { class: 'pj-strip', attrs: { 'aria-label': 'My Paris timeline' } });
     const chips = E('div', { class: 'pj-months', attrs: { role: 'group', 'aria-label': 'Show one month' } });
@@ -95,9 +103,9 @@ const ParisJournal = window.ParisJournal = (() => {
         dot.style.setProperty('--x', `${(x * 100).toFixed(2)}%`); dot.style.setProperty('--c', k.color); dot.dataset.moment = m.id;
         track.append(dot);
       }
-    } else track.append(E('span', { class: 'pj-empty', text: 'Nothing yet: finish a place quest, keep a show night, walk a walk or record a park loop.' }));
-    const month = prefs.month || ms[0]?.key || K.monthOf(Date.now());
-    box.append(kit.label('MY PARIS'), chips, track, kit.button('Recap…', () => recapDialog(month, kit), 'qj-quiet pj-recap-btn'));
+    } else track.append(E('span', { class: 'pj-empty', text: prefs.month || !list.length ? 'Nothing here yet: finish a place quest, tap “How was it?” after a show, walk a walk or record a park loop.' : '' }));
+    const month = prefs.month || K.monthOf(Date.now());
+    box.append(kit.label('MY PARIS'), chips, track, monthButton(kit, month));
     return box;
   }
 
@@ -107,14 +115,14 @@ const ParisJournal = window.ParisJournal = (() => {
     const { E, p, label, button } = kit, first = list[0];
     return kit.dialog(list.length > 1 ? first.place?.name || first.title : first.title, (body, d) => {
       d.classList.add('pj-dialog');
-      for (const m of list) body.append(momentCard(m, { E, p, label, button, close: () => d.close(), kit }));
+      for (const m of list) body.append(momentCard(m, { E, p, label, button, close: () => d.close(), kit, many: list.length > 1 }));
     }, 'MY PARIS / A MOMENT');
   }
-  function momentCard(m, { E, p, label, button, close, kit }) {
+  function momentCard(m, { E, p, label, button, close, kit, many }) {
     const k = K.KINDS[m.kind], arr = m.arrs.length ? ` · ${m.arrs.map(K.arrLabel).join(', ')}` : '';
     const card = E('article', { class: `pj-moment pj-${m.kind}` }); card.dataset.moment = m.id; card.style.setProperty('--c', k.color);
     card.append(label(`${k.name.toUpperCase()} · ${fmtDay(m.at).toUpperCase()}${arr.toUpperCase()}`));
-    if (secondLine(m)) card.append(E('strong', { text: m.title }));
+    if (many && secondLine(m)) card.append(E('strong', { text: m.title }));
     if (m.photo) { const img = E('img', { class: 'pj-photo', attrs: { src: WinMac.fileUrl(m.photo), alt: `Your photo: ${m.title}`, loading: 'lazy', draggable: 'false' } }); img.addEventListener('error', () => img.remove(), { once: true }); card.append(img); }
     if (m.rating) card.append(E('span', { class: 'pj-stars', text: '★'.repeat(m.rating) + '☆'.repeat(5 - m.rating), attrs: { 'aria-label': `${m.rating} of 5 stars` } }));
     if (m.note) card.append(p(m.note));
@@ -129,7 +137,7 @@ const ParisJournal = window.ParisJournal = (() => {
     if (acts.children.length) card.append(acts);
     return card;
   }
-  const secondLine = (m) => m.title && m.title !== m.place?.name; // a second line only when it says something new
+  const secondLine = (m) => m.title && m.title !== m.place?.name; // several moments at one spot: each says what it was
 
   // ---------- the monthly recap ----------
   function grid(E, r) {
@@ -174,30 +182,30 @@ const ParisJournal = window.ParisJournal = (() => {
     g.fillStyle = '#d9b777'; g.font = F(700, 30); g.fillText('MY PARIS', 84, 120);
     g.fillStyle = '#f4efe6'; g.font = F(800, 84); g.fillText(c.month, 80, 210);
     // four tiles
-    c.tiles.forEach((t, i) => { const x = 84 + i * 232, y = 260; g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(x, y, 212, 150); g.fillStyle = t.color; g.fillRect(x, y, 212, 6); g.font = F(800, 72); g.fillText(String(t.n), x + 20, y + 92); g.fillStyle = '#c9c4ba'; g.font = F(500, 26); g.fillText(t.label, x + 20, y + 132); });
+    c.tiles.forEach((t, i) => { const x = 84 + i * 232, y = 250; g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(x, y, 212, 136); g.fillStyle = t.color; g.fillRect(x, y, 212, 6); g.font = F(800, 68); g.fillText(String(t.n), x + 20, y + 84); g.fillStyle = '#c9c4ba'; g.font = F(500, 26); g.fillText(t.label, x + 20, y + 120); });
     // the 20 arrondissements (5 × 4)
-    g.fillStyle = '#d9b777'; g.font = F(700, 26); g.fillText(`${c.arrs.filter(Boolean).length} OF 20 ARRONDISSEMENTS`, 84, 470);
+    g.fillStyle = '#d9b777'; g.font = F(700, 26); g.fillText(`${c.arrs.filter(Boolean).length} OF 20 ARRONDISSEMENTS`, 84, 434);
     const top = Math.max(1, ...c.arrs);
-    c.arrs.forEach((n, i) => { const x = 84 + (i % 5) * 184, y = 492 + Math.floor(i / 5) * 92; g.fillStyle = n ? `rgba(255,177,74,${(0.3 + 0.7 * n / top).toFixed(2)})` : 'rgba(255,255,255,.06)'; g.fillRect(x, y, 172, 80);
-      if (c.newArrs.includes(i + 1)) { g.strokeStyle = '#ff6b9d'; g.lineWidth = 4; g.strokeRect(x + 2, y + 2, 168, 76); }
-      g.fillStyle = n ? '#141416' : '#77736c'; g.font = F(800, 32); g.fillText(K.arrLabel(i + 1), x + 16, y + 52); });
+    c.arrs.forEach((n, i) => { const x = 84 + (i % 5) * 184, y = 452 + Math.floor(i / 5) * 82; g.fillStyle = n ? `rgba(255,177,74,${(0.3 + 0.7 * n / top).toFixed(2)})` : 'rgba(255,255,255,.06)'; g.fillRect(x, y, 172, 72);
+      if (c.newArrs.includes(i + 1)) { g.strokeStyle = '#ff6b9d'; g.lineWidth = 4; g.strokeRect(x + 2, y + 2, 168, 68); }
+      g.fillStyle = n ? '#141416' : '#77736c'; g.font = F(800, 30); g.fillText(K.arrLabel(i + 1), x + 16, y + 47); });
     // Paris explored
-    g.fillStyle = '#d9b777'; g.font = F(700, 26); g.fillText(`PARIS EXPLORED · ${c.explored.pct}% OF THE GUIDE${c.explored.gained ? ` (+${c.explored.gained})` : ''}`, 84, 900);
-    g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(84, 920, 912, 22); g.fillStyle = '#7ee0a8'; g.fillRect(84, 920, Math.round(912 * c.explored.pct / 100), 22);
-    let y = 1000;
-    const fit = (text, max) => { let t = text; while (g.measureText(t).width > max && t.length > 4) t = t.slice(0, -2); return t === text ? t : `${t.trimEnd()}…`; };
-    if (c.fresh.length) { g.fillStyle = '#d9b777'; g.font = F(700, 26); g.fillText('NEW THIS MONTH', 84, y); g.fillStyle = '#f4efe6'; g.font = F(500, 30); g.fillText(fit(c.fresh.join(' · '), 912), 84, y + 44); y += 96; }
-    if (c.best) { g.fillStyle = '#ffb14a'; g.font = F(700, 30); g.fillText(fit(`${'★'.repeat(c.best.rating)}  ${c.best.title}`, 912), 84, y); if (c.best.note) { g.fillStyle = '#c9c4ba'; g.font = F(400, 26); g.fillText(fit(`“${c.best.note}”`, 912), 84, y + 40); } y += 90; }
+    g.fillStyle = '#d9b777'; g.font = F(700, 26); g.fillText(`PARIS EXPLORED · ${c.explored.pct}% OF THE GUIDE${c.explored.gained ? ` (+${c.explored.gained})` : ''}`, 84, 822);
+    g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(84, 840, 912, 20); g.fillStyle = '#7ee0a8'; g.fillRect(84, 840, Math.round(912 * c.explored.pct / 100), 20);
+    let y = 900;
     // up to three of your photos, cropped square (read from disk here; the canvas never touches the network)
     const pics = (await Promise.all(c.photos.map(photoBitmap))).filter(Boolean);
-    if (pics.length && y < 1150) { const s = Math.min(150, 1260 - y); pics.forEach((bm, i) => { const k = Math.min(bm.width, bm.height), x = 84 + i * (s + 16); g.drawImage(bm, (bm.width - k) / 2, (bm.height - k) / 2, k, k, x, y - 10, s, s); bm.close?.(); }); }
+    if (pics.length) { pics.forEach((bm, i) => { const k = Math.min(bm.width, bm.height), x = 84 + i * 166; g.drawImage(bm, (bm.width - k) / 2, (bm.height - k) / 2, k, k, x, y, 150, 150); bm.close?.(); }); y += 196; } else y += 30;
+    const fit = (text, max) => { let t = text; while (g.measureText(t).width > max && t.length > 4) t = t.slice(0, -2); return t === text ? t : `${t.trimEnd()}…`; };
+    if (c.fresh.length) { g.fillStyle = '#d9b777'; g.font = F(700, 26); g.fillText('NEW THIS MONTH', 84, y); g.fillStyle = '#f4efe6'; g.font = F(500, 30); g.fillText(fit(c.fresh.join(' · '), 912), 84, y + 42); y += 92; }
+    if (c.best) { g.fillStyle = '#ffb14a'; g.font = F(700, 30); g.fillText(fit(`${'★'.repeat(c.best.rating)}  ${c.best.title}`, 912), 84, y); if (c.best.note) { g.fillStyle = '#c9c4ba'; g.font = F(400, 26); g.fillText(fit(`“${c.best.note}”`, 912), 84, y + 38); } }
     g.fillStyle = '#77736c'; g.font = F(500, 22); g.fillText('Hearth · Sidequest Studio', 84, H - 64);
     return cv;
   }
   async function saveCard(month) {
     const { s, list: all } = await everything(), r = recapOf(s, all, month), cv = await drawCard(r);
     const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png')); if (!blob) throw Error('The card could not be drawn.');
-    const home = await window.hub.fs.home(), dir = WinMac.join(home, 'Pictures', 'Hearth', 'My Paris'), file = WinMac.join(dir, K.fileName(month));
+    const dir = _test.dir || WinMac.join(await window.hub.fs.home(), 'Pictures', 'Hearth', 'My Paris'), file = WinMac.join(dir, K.fileName(month));
     const bytes = new Uint8Array(await blob.arrayBuffer());
     await window.hub.fs.write(file, bytes);
     lastCard = file; _test.saved.push({ file, bytes: bytes.length, w: cv.width, h: cv.height });
@@ -243,5 +251,6 @@ const ParisJournal = window.ParisJournal = (() => {
   // a new park take → read the park folders again next time the map draws (no timer)
   document.addEventListener('hearth:quest-week', (e) => { if (e.detail?.kind === 'park-jam') { takes = null; memo.s = null; if (prefs.on) redraw(); } });
   redraw();
-  return { run, complete, layer, recapDialog, saveCard, drawCard, openMoments, moments: () => moments(studioState()), everything, toggle, setMonth, get prefs() { return { ...prefs }; }, get lastCard() { return lastCard; }, reloadTakes: () => loadTakes(true).then(redraw), _test };
+  const openMonth = (month = K.monthOf(Date.now())) => recapDialog(month);
+  return { run, complete, layer, recapDialog, openMonth, saveCard, drawCard, openMoments, moments: () => moments(studioState()), everything, toggle, setMonth, get prefs() { return { ...prefs }; }, get lastCard() { return lastCard; }, reloadTakes: () => loadTakes(true).then(redraw), _test };
 })();

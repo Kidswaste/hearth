@@ -4,7 +4,7 @@ const QuestJournal = (() => {
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
   let atlasView = null;
   // (round 61, showsync61) Map layers: other modules add pins and one head icon to the Paris map without editing it
-  // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit), lines() } (lines: round 63, questwalk63: [{ id, color, points: [{ lat, lon, label? }] }]). (round 64, parisjournal64: below(kit) → a node shown under the map.)
+  // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit), lines() } (lines: round 63, questwalk63: [{ id, color, points: [{ lat, lon, label? }] }]). (round 64, parisjournal64: below(kit) → a node shown under the map; chip(kit) → a labelled toggle in the filter row.)
   const mapLayers = [];
   // (round 62, showprep62) quest detail hooks: fn({ quest, campaign, close, kit }) → a node shown under the quest's title
   // (e.g. a show quest's "Get ready" / "How was it?"); a hook that throws is skipped
@@ -420,6 +420,7 @@ const QuestJournal = (() => {
     const surprise=mapIcon('dice','Pick somewhere for me',async()=>{const pool=visible.filter(p=>p.id!==selected?.id&&!p.visitedAt),fallback=visible.filter(p=>p.id!==selected?.id),choices=pool.length?pool:fallback;if(choices.length)await mapPick(choices[Math.floor(Math.random()*choices.length)].id,true);},'#ff8c42');
     surprise.querySelector('button').disabled=visible.length<2;
     filters.append(search,surprise,mapIcon('list','My places',()=>mapNotebook('places'),'#bd8bff'));
+    for(const layer of mapLayers){try{const c=layer.chip?.(layerKit);if(c)filters.append(c);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's chip(kit) → one labelled toggle in this row (My Paris)
     if(mapFilter.guide&&window.QuestParisUI)filters.append(QuestParisUI.chip(mapFilter.guide,()=>{delete mapFilter.guide;render();centerMapSelection();})); // parisquests61
     content.append(filters);
     const layout=E('div',{class:'qj-world-layout qj-field-layout'}),map=E('section'),panel=E('aside',{class:'qj-place-panel qj-field-panel'});

@@ -39,3 +39,9 @@
 .pj-recap .qj-actions{flex-wrap:wrap;gap:6px}
 .pj-saved{word-break:break-all}
 @media(prefers-reduced-motion:reduce){.pj-dot{transition:none}}
+/* the labelled "✓ My Paris · N" chip in the map's filter / chip row (visible by default; one click hides it) */
+.pj-chip{flex:none;align-self:center;border:1px solid #ff6b9d80;background:#26242b;color:#f3d6e2;border-radius:999px;padding:6px 12px;font:700 12px/1.2 system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.pj-chip.on{background:#ff6b9d;border-color:#ff6b9d;color:#1b151d}
+.pj-chip:focus-visible{outline:2px solid #ffd75e;outline-offset:2px}
+.pj-strip.pj-off{grid-template-columns:auto 1fr auto auto}
+.pj-hint{font-size:11px;color:#a49eab;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
