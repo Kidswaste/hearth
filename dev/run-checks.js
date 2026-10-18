@@ -386,7 +386,7 @@ for (const n of wanted) {
     // step pictures only when asked (--shots): a 1080×1080 screenshot mid-journey can starve a recording on a busy machine
     const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(pairDirs[n]?.flags || []), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
     // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
-    const env = n === 'mainhang65' ? { ...process.env, HEARTH_LOOPLAG: 'prof', HEARTH_SLOWFS_US: process.env.HEARTH_SLOWFS_US || '150' } // (round 65) the main-process lag probe, a Windows-slow disk
+    const env = n === 'mainhang65' ? { ...process.env, HEARTH_LOOPLAG: 'prof', HEARTH_FAULTS_LIVE: '1', HEARTH_SLOWFS_US: process.env.HEARTH_SLOWFS_US || '150' } // (round 65) the main-process lag probe, a Windows-slow disk
       : /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }
       : /^(game(mode|ready|input|tex|look|audio|stream|fps54)|playloop|playbudget|playlatency|shadowready|labcanvas56|readyspeed|ctxloss|trim-drive|gcchurn60|playnotes62|hitchmap63)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network; round 60: trim-drive's ▶ Play commands too)
     r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env });

@@ -81,7 +81,7 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
     clearTimeout(late.t);
     late.t = setTimeout(() => {
       if (!late) return;
-      try { fs.renameSync(`${configPath}.tmp`, configPath); late = null; cache = null; return; } catch (e) {
+      try { dfs.renameSync(`${configPath}.tmp`, configPath); late = null; cache = null; return; } catch (e) {
         late.n += 1;
         if (late.n < 4 && DS.BUSY.has(e.code)) { renameLater(); return; }
         const { text } = late; late = null; cache = null;
@@ -95,7 +95,7 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
     flushed(tmp, text); // (round 50, crashsafe) on the disk before the rename: after a power cut, the old settings or the new, never half
     if (late) { late.text = text; return; } // a rename is already waiting: it takes this newer text
     for (let i = 0; ; i++) {
-      try { fs.renameSync(tmp, configPath); return; } catch (e) {
+      try { dfs.renameSync(tmp, configPath); return; } catch (e) {
         const ms = SS.waitFor(i, 60 * (i + 1));
         if (i < 4 && DS.BUSY.has(e.code) && ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); continue; }
         if (DS.BUSY.has(e.code) && SS.onUiThread()) { late = { text, n: 0, t: null }; renameLater(); return; }
