@@ -6,21 +6,22 @@ Owner rule (round 64): "I really don't use commands at all" — so every step sh
 type a command (`/try` exists only as the app's internal / power-user way in).
 
 ## What shipped
-### The paths (13, 1–3 steps, 30–60 s each)
+### The paths (13, 1–3 steps, 30–60 s each; the controls rung are today's, incl. clickfirst64's and audiodoctor64's)
 1. **✦ Quest tracker** — Studio › Paris guide › Get my AirPods, then the ✦ chip in the rail.
 2. **🗺 Paris map + guide** — Paris guide › Put the guide on my map, then a pin › Place quest.
-3. **🎟 This week's shows** — the Shows this week button over the map.
-4. **🎹 Live Serum 2 / Vital** — the Sound desk's Audio output picker (or Set up live audio on a computer without it);
-   a second step for the audio check appears by itself once audiodoctor64's check is in this copy.
+3. **🎟 This week's shows** — the Shows this week button over the map (or ✦ › ⋯ More › Shows this week…).
+4. **🎹 Live Serum 2 / Vital** — the Sound desk's Audio output picker (or Set up live audio), then 🎚 Check my audio
+   setup (audiodoctor64; the step shows only when it's in this copy).
 5. **✦ Preset window** — its text box over the Sound desk, then ↶ / ↷ / Save.
-6. **🗓 Week plan + review** — right-click the ✦ chip › Plan my week…, the week card (drag onto days), Week in review….
-7. **🌳 Park jam → song** — 🌳 Park mode, Park jam · capture the moment, Arrange.
-8. **🎫 Show night** — Shows this week › a show › Get ready, then How was it?.
-9. **🎮 Playtest notes (F8)** — the Lab's Play button, F8 in the game, the notes back in the Lab.
-10. **🚶 Quest walk** — Paris guide › Make a walk.
-11. **🎛 Sound bank** — its search and its ⋯ (previews, plugin folders).
-12. **📍 Hitch map** — Play, right-click in the game › Hitch map, the heat map after.
-13. **🎁 Real rewards** — Studio › Rewards › + Add a reward, then the ✦ chip's "XP to your next reward".
+6. **🗓 Week plan + review** — the ✦ chip › This week › Plan your week › the week card (Week in review › beside it).
+7. **🌳 Park jam → song** — 🌳 Park mode, Park jam · capture the moment, Arrange loops.
+8. **🎫 Show night** — Shows this week › a show › Get ready; a show quest's card (Get ready / How was it?); ⋯ More ›
+   Shows I went to….
+9. **🎮 Playtest notes (F8)** — the Lab's Play, F8 (or F › ✎ Note), then ⋯ › Capture & playtest › ✎ Playtest log.
+10. **🚶 Quest walk** — the ✦ chip › Make a walk.
+11. **🎛 Sound bank** — the Sound desk's Sound bank button, its search, its ⋯ (previews, plugin folders).
+12. **📍 Hitch map** — ⋯ › Capture & playtest › ● Record the hitch map, Play, then ▦ Hitch map.
+13. **🎁 Real rewards** — the ✦ chip › Rewards › All rewards ›, then + Add a reward.
 
 ### How a path behaves
 14. Opens the right place (Sidequest Studio's map or Rewards, the Sound desk, the Lab, the week card, the Sound bank),
@@ -28,7 +29,8 @@ type a command (`/try` exists only as the app's internal / power-user way in).
 15. **Clicking the ringed control is doing it for real**: it counts as tried, and where the click opens the next place
     (Paris guide → its dialog) the path follows by itself.
 16. **Skip** (not for me) and **Later** (paused at that step; it picks up there) on every card; × and Esc pause too.
-17. The ring and card work **inside dialogs** now (the Paris guide is a modal dialog): they move into it, placed right
+17. One click listener at a time on the ringed control; a panel that slides in gets the ring re-placed once it settles.
+    The ring and card work **inside dialogs** now (the Paris guide is a modal dialog): they move into it, placed right
     even when the dialog has a transform, and stay inside its box.
 18. A floating helper left by an earlier path (the week card, the Sound bank) closes when the next path opens its place,
     so it never covers the control being ringed.
@@ -39,7 +41,7 @@ type a command (`/try` exists only as the app's internal / power-user way in).
     a "✦ Try it, hands-on: Round 61 · 2/5 · Round 62 · 0/4 · Round 63 · 1/4 — 3 of 13 tried" row; a round's button runs
     its untried paths one after another.
 21. **Patch notes** of rounds 61–63: "✦ Try it · 2 of 5 tried" in the header.
-22. **✦ tracker panel**: "✦ Try what's new · 3/13" next to Open Sidequest Studio (until all 13 are tried).
+22. **✦ tracker panel**: "✦ New 3/13" next to Open Sidequest Studio (until all 13 are tried).
 23. Settings › What's new… › **Try what's new**; Ctrl/⌘+K "Try what's new…" (a menu by round with ✓ / paused / skipped).
 24. **One offer, ever** (through Hints, a minute after a start, calm rules): "✦ Try what's new · Show me / Not now".
     Not now (or ×) = never again by itself; it also never comes once all 13 are tried.
@@ -64,9 +66,11 @@ type a command (`/try` exists only as the app's internal / power-user way in).
 - Also run: whatsnew, tour-discover, questhud61, quest-paris, lazy, unit:boot-test, unit:datasafe-scan, unit:winmac-test.
 
 ## Risks / for later
-- mapfirst64 / clickfirst64 add visible entries for these features in parallel; the steps ring today's controls (Paris
-  guide, Shows this week, chip menus). When their chip row / Plan a walk button land, the targets list can put them
-  first (a target list takes the first one on screen).
+- mapfirst64 (the map's chip row, Plan a walk) hadn't landed when this was finished: the Paris steps ring the Paris
+  guide / Shows this week buttons; when it lands its controls can go first in those target lists (the first one on
+  screen wins).
+- A ✦ panel step closes the panel if the owner clicks the tour card instead of the ringed button (the panel closes on
+  any outside click); the ring just says "Not on screen" then — clicking the chip again brings it back.
 - Steps inside ▶ Play (F8, right-click › Hitch map) are described, not ringed: the Play window is its own window.
 
 ## For the patch notes

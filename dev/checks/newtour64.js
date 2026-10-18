@@ -71,6 +71,18 @@ step('clicking the ringed control goes on by itself; the next ring and card sit 
 await smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/newtour64-dialog.png` });
 step('clicking the ringed control counts as tried', prog().tracker?.state === 'tried', prog().tracker);
 Tour.stop(); tidy();
+// the ✦ chip → its panel (clickfirst64's buttons): click the ringed chip, the next ring is on Make a walk
+TryNew.start('walk');
+await until(() => card()?.dataset.tour === 'try-walk' && document.querySelector('.tour-ring:not(.tour-ring-solo)'), 'walk card');
+document.querySelector('#rail .qh-chip').click();
+const wk = await until(() => card()?.dataset.step === '1' && document.querySelector('.qh-panel .cf-walk') && document.querySelector('.tour-ring:not(.tour-ring-solo)'), 'Make a walk ringed', 100).catch(() => null);
+await wait(450); // the panel's entrance settles; the ring follows it (ResizeObserver / reflow)
+const wb = document.querySelector('.qh-panel .cf-walk')?.getBoundingClientRect(); const wr = document.querySelector('.tour-ring:not(.tour-ring-solo)')?.getBoundingClientRect();
+step('click the ringed ✦ chip: its panel opens and Make a walk is ringed next', Boolean(wk && wb && wr && Math.abs(wr.left + 4 - wb.left) < 3), { step: card()?.dataset.step, wb: wb && [wb.left, wb.top], wr: wr && [wr.left, wr.top] });
+await smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/newtour64-panel.png` });
+step('clicking the ringed chip counted as tried', prog().walk?.state === 'tried');
+Tour.stop(); QuestHud.close?.(); tidy();
+store.set('trynew.progress', { tracker: prog().tracker }); store.set('tour.progress', { ...Tour.progress(), 'try-walk': { step: 0 } }); // (the rest below starts from here)
 step('pausing a tried path keeps it tried', prog().tracker?.state === 'tried');
 step('just opening the guide wrote nothing to the journal', (await journal()) === j0);
 
@@ -134,7 +146,7 @@ await Lazy.load('questhud'); await QuestHud.openStudio(null, 'world');
 await until(() => vis(document.querySelector('#rail .qh-chip')), 'the chip (the Studio holds a quest)', 100).catch(() => null);
 QuestHud.open();
 const qt = await until(() => document.querySelector('.qh-panel .qh-try'), 'the tracker\'s Try what\'s new', 60).catch(() => null);
-step('the ✦ tracker panel links Try what\'s new with the count', Boolean(qt && /2\/13/.test(qt.textContent)), qt?.textContent);
+step('the ✦ tracker panel links Try what\'s new with the count', Boolean(qt && /2\/13/.test(qt.textContent) && qt.getBoundingClientRect().right <= document.querySelector('.qh-panel').getBoundingClientRect().right + 1), qt?.textContent);
 qt?.click();
 await until(() => card()?.dataset.tour, 'a path from the tracker', 200).catch(() => null);
 step('…and clicking it starts the next untried path', /^try-/.test(card()?.dataset.tour || ''), card()?.dataset.tour);

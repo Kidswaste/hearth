@@ -11,6 +11,8 @@ const Tour = (() => {
   const setProg = (id, v) => { const all = prog(); all[id] = { ...(all[id] || {}), ...v, t: Date.now() }; store.set(KEY, all); };
   let cur = null; // { tour, steps, i }
   let card = null; let ring = null; let target = null; let findT = 0; let ro = null;
+  let clickHook = null; // (round 64, newtour64) the ringed control's click listener (one at a time)
+  const unhookClick = () => { if (clickHook) clickHook.t.removeEventListener('click', clickHook.fn); clickHook = null; };
 
   const find = (name) => { const n = String(name || '').trim().toLowerCase().replace(/^the\s+/, ''); return D.TOURS.find((t) => t.id === n || t.name.toLowerCase() === n || t.name.toLowerCase().startsWith(n)) || D.TOURS.find((t) => n.length > 2 && `${t.id} ${t.name} ${t.why}`.toLowerCase().includes(n)) || null; };
   const stepsOf = (t) => t.steps.filter((s) => !s.when || (typeof Commands !== 'undefined' && Commands.get(s.when)));
@@ -52,7 +54,7 @@ const Tour = (() => {
     if (!cur) return false;
     setProg(cur.tour.id, done ? { step: 0, done: true } : { step: cur.i });
     const ended = cur; // (round 64, newtour64) a tour may want to know how it ended (Try what's new keeps its own progress)
-    cur = null; clearTimeout(findT); ro?.disconnect(); ro = null;
+    cur = null; clearTimeout(findT); unhookClick(); ro?.disconnect(); ro = null;
     removeEventListener('resize', reflow); removeEventListener('keydown', onKey, true);
     card?.remove(); ring?.remove(); card = ring = target = null;
     try { ended.tour.onEnd?.({ done, step: ended.i, total: ended.steps.length, how }); } catch (err) { console.warn('tour end', err); }
@@ -155,13 +157,16 @@ const Tour = (() => {
       if (ring.parentElement !== host) host.append(ring);
       placeRing(ring, target);
       ro?.disconnect(); ro = new ResizeObserver(reflow); ro.observe(target);
+      setTimeout(reflow, 320); // (round 64, newtour64) a panel that slides in: the ring and card follow once it has settled
       // (round 64, newtour64) clicking the ringed control is doing it for real (tour.onTargetClick); with step.clickNext the
       // tour follows to the next step by itself
-      if ((step.clickNext || tour.onTargetClick) && !target.dataset.tourClick) {
-        const t = target; const me = cur; t.dataset.tourClick = '1';
-        t.addEventListener('click', () => { delete t.dataset.tourClick; if (cur !== me || me.i !== i) return; try { tour.onTargetClick?.(step); } catch { /* progress is a convenience */ } if (!step.clickNext) return; setTimeout(() => { if (cur !== me || me.i !== i) return; if (i === me.steps.length - 1) stop({ done: true }); else show(i + 1); }, 450); }, { once: true });
+      unhookClick();
+      if (step.clickNext || tour.onTargetClick) {
+        const t = target; const me = cur;
+        const fn = () => { unhookClick(); if (cur !== me || me.i !== i) return; try { tour.onTargetClick?.(step); } catch { /* progress is a convenience */ } if (!step.clickNext) return; setTimeout(() => { if (cur !== me || me.i !== i) return; if (i === me.steps.length - 1) stop({ done: true }); else show(i + 1); }, 450); };
+        t.addEventListener('click', fn); clickHook = { t, fn };
       }
-    } else { ring?.remove(); ring = null; ro?.disconnect(); }
+    } else { ring?.remove(); ring = null; ro?.disconnect(); unhookClick(); }
     placeCard();
   }
   // start (or pick up) a tour: { restart } starts at step 1
