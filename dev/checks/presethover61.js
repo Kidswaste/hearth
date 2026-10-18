@@ -30,7 +30,13 @@ const fakeHost = {
 const val = k => P.find(p => p.key === k).value;
 
 // 1. the window opens over the Sound desk
-await Lazy.load('creative'); activate('tool:creative'); await until(() => document.querySelector('.wb-stations'), 'workbench');
+// /preset from a chat before the creative group is in: it's ours (not the Lab's trigger presets) and opens the desk
+const lazyAtStart = typeof PresetHover === 'undefined'; let firstSay = '';
+await Commands.tryRun('/preset show', H.claudeAgent().id, null, { say: t => { firstSay = t; } });
+await until(() => document.querySelector('.wb-sound-desk .ph-win') && firstSay, '/preset show');
+ok(/Preset writer|Serum 2 or Vital/.test(firstSay), `/preset from a chat loads the creative group${lazyAtStart ? ' (it wasn’t in yet)' : ''}, never the Lab's trigger preset: "${firstSay.slice(0, 80)}"`);
+ok(Commands.tryRun && (() => { const d = Commands.get('preset'); return d.variants?.length >= 2; })(), '/preset shares its name with the Lab’s trigger presets');
+await until(() => document.querySelector('.wb-stations, .wb-sound-desk'), 'workbench');
 await CreativePlayground.openFeature('vst');
 await until(() => document.querySelector('.wb-sound-desk .ph-win'), 'the ✦ Preset window');
 PresetHover._test.useHost(fakeHost);

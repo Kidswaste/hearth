@@ -4,7 +4,8 @@
 // answers with a compact JSON patch, checked against the plugin's real list and applied live. Follow-ups ("brighter",
 // "less reverb") refine it; ↶ / ↷ step through every change; Save keeps it (the plugin's own state) in the Sound
 // desk's preset bank. Drag it by its title, fold it to a pill, it remembers where; it moves off the keys, the transport
-// and the instrument picker by itself. Chat: /preset <description> (also /vst-preset), /preset tweak|undo|redo|save.
+// and the instrument picker by itself. Chat: /preset <description> (tools/preset-hover-cmd.js; also /vst-preset),
+// /preset tweak|undo|redo|save.
 // The host is reached through a thin adapter (host()): WorkbenchVST.live (a live parameter API, when there is one),
 // else WorkbenchVST's door (its validated live `patch` action), or a test host (PresetHover._test.useHost).
 var PresetHover = (() => {
@@ -193,8 +194,12 @@ var PresetHover = (() => {
   // words are one of the Lab's preset names), /vst-preset always
   async function openDesk() {
     if (typeof CreativePlayground === 'undefined') await Lazy.load('creative');
-    activate('tool:creative'); await CreativePlayground.openFeature('vst');
-    for (let i = 0; i < 50 && !win?.isConnected; i++) await new Promise(r => setTimeout(r, 60));
+    activate('tool:creative');
+    // the Playground mounts a moment after its tool shows (its openFeature does nothing until then)
+    const tick = () => new Promise(r => setTimeout(r, 60));
+    for (let i = 0; i < 80 && !document.querySelector('.cp-stage'); i++) await tick();
+    if (!win?.isConnected) CreativePlayground.openFeature('vst');
+    for (let i = 0; i < 80 && !win?.isConnected; i++) await tick();
   }
   async function command(args, ctx) {
     const a = String(args || '').trim(), [w, ...rest] = a.split(/\s+/), more = rest.join(' ');
@@ -213,14 +218,9 @@ var PresetHover = (() => {
     const r = await ask(text, { fresh, engine: eng });
     return r.changed.length ? `✦ ${current()?.name}: ${r.changed.length} control${r.changed.length === 1 ? '' : 's'} set${r.name ? ` (“${r.name}”)` : ''} · ${r.tokens} tokens. /preset tweak <words> · /preset undo · /preset save [name]` : 'The AI changed nothing this time; try other words.';
   }
-  const SUBS = ['tweak', 'undo', 'redo', 'save', 'show', 'hide', 'engine'];
-  const complete = a => SUBS.filter(s => s.startsWith(String(a || '').trim().toLowerCase())).map(value => ({ value }));
-  if (typeof Commands !== 'undefined') {
-    const lab = ['techno', 'house', 'hip-hop', 'trap', 'drum', 'drum & bass', 'rock', 'ambient'];
-    const mine = (ctx, args) => { const place = ctx?.place || ''; const s = String(args || '').trim().toLowerCase(); return place === 'creative' || (place !== 'three' && !!s && !lab.some(n => s === n || s.startsWith(`${n} /`))); };
-    Commands.register({ name: 'preset', args: '<description> | tweak <words> | undo | redo | save [name]', desc: 'Write a Serum 2 / Vital preset from words (the Sound desk’s ✦ Preset window)', area: 'Create', when: mine, whenLabel: 'for Serum 2 / Vital', run: command, complete, examples: ['/preset dark reese bass with slow movement', '/preset tweak brighter'], keywords: 'synth patch sound design vst serum vital ai' });
-    Commands.register({ name: 'vst-preset', aliases: ['sound-preset'], args: '<description> | tweak | undo | redo | save [name]', desc: 'Write a Serum 2 / Vital preset from words', area: 'Create', run: command, complete, examples: ['/vst-preset astra: glassy pluck, short echo'] });
-  }
+  // /preset itself is registered at start by tools/preset-hover-cmd.js (it shares the name with the Lab's trigger presets)
+  const complete = a => ['tweak', 'undo', 'redo', 'save', 'show', 'hide', 'engine'].filter(s => s.startsWith(String(a || '').trim().toLowerCase())).map(value => ({ value }));
+  if (typeof Commands !== 'undefined') Commands.register({ name: 'vst-preset', aliases: ['sound-preset'], args: '<description> | tweak | undo | redo | save [name]', desc: 'Write a Serum 2 / Vital preset from words', area: 'Create', run: command, complete, examples: ['/vst-preset astra: glassy pluck, short echo'] });
   if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Sound desk: write a preset with AI', () => command('show'));
   return { attach, detach, ask, step, save, command, host, get open() { return !!win?.isConnected; },
     _test: { useHost: h => { testHost = h; paint(); }, history: () => hist, session: () => session, place } };
