@@ -34,6 +34,7 @@ UNIT.push('questhud-test'); // (round 61, questhud61) the rail's quest tracker o
 UNIT.push('quest-paris-test'); // (round 61, parisquests61) the Paris guide's data and quest rules
 UNIT.push('city-integration-test', 'outing-test'); // Sidequest map, saved outings and proof-safe city actions
 UNIT.push('questwalk-test'); // (round 63, questwalk63) quest walks: order vs brute force, the time budget, Métro / show ends, the walk campaign, the week's free afternoon
+UNIT.push('parisjournal64-test'); // (round 64, parisjournal64) My Paris: moments from the journal / show log / park takes, months, arrondissements, the recap, Paris explored
 UNIT.push('rewards-test'); // (round 63, rewards63) real rewards: XP ↔ sparks, XP to go, claims never below zero, the capped streak bonus, the savings jar, history
 UNIT.push('weekquest-test'); // (round 62, weekquest62) the week plan: proposals from shows / places / open quests / forecast, days, the nudge, the week in review
 UNIT.push('presethover61-test'); // (round 61, presethover61) ✦ Preset hover: parameter picking, prompt size, patch validation, undo / redo
@@ -48,6 +49,7 @@ const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   showprep62: ['showprep62', 'unit:showprep-test', 'showsync61', 'unit:showsync-test', 'questhud61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:notify-test'], // (round 62) show night companion: Get ready, How was it?, Shows I went to, follow
   questwalk63: ['questwalk63', 'unit:questwalk-test', 'quest-paris', 'questhud61', 'weekquest62', 'lazy', 'unit:boot-test', 'unit:winmac-test'], // (round 63) quest walks: /quest walk, the line on the map, the walk quest, the week's walk
+  parisjournal64: ['parisjournal64', 'unit:parisjournal64-test', 'quest-paris', 'questwalk63', 'showprep62', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) My Paris: the map journal layer, the timeline, the monthly recap + image card
   rewards63: ['rewards63', 'unit:rewards-test', 'questhud61', 'weekquest62', 'quest-studio', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:quest-test', 'unit:questhud-test', 'unit:weekquest-test'], // (round 63) real rewards for real quests: /reward, the tracker's next reward, Studio › Rewards shelf
   weekquest62: ['weekquest62', 'unit:weekquest-test', 'unit:questhud-test', 'questhud61', 'showsync61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:winmac-test'], // (round 62) the weekly quest rhythm: /quest week, the nudge, /quest review
   showsync61: ['showsync61', 'unit:showsync-test', 'quest-world', 'quest-map-tiles', 'quest-field', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 61) this week's Shotgun / DICE shows on the Paris map, /shows, show → quest

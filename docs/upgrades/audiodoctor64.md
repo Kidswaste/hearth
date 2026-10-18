@@ -71,7 +71,7 @@ you ask (or after such a failure). Nothing runs at startup.
   then Turn ASIO back on. Copy report. The button next to Audio output. A failed live start opens the card by itself,
   with Reset host, after which it plays again. Also `/audio quick` in a chat, and /doctor's button. Nothing is loaded
   before the first click.
-- The rest of the run: see the final report.
+- Also ✓: vst-live, workbench-vst (its real-plugin part skipped here), soundbank63, lazy, unit:boot-test, unit:vst-live-host-test, unit:datasafe-scan, unit:winmac-test. errorcalm-scan flags 7 places in Codex's `tools/quest-journal.js` / `tools/outing-desk.js` (from main, not this stream).
 
 ## To test on the owner's PC
 1. Update Hearth (⬆ Update) and restart it fully (the check's main-process part is new).

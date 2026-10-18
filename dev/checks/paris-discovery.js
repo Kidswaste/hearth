@@ -1,0 +1,23 @@
+// Isolated profile; no external map images, paid calls, messages or user-data changes.
+const source=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');Object.defineProperty(HTMLImageElement.prototype,'src',{...source,set(v){if(String(v).startsWith('https://tile.openstreetmap.org/')){queueMicrotask(()=>this.dispatchEvent(new Event('error')));return;}source.set.call(this,v);}});
+const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async f=>{for(let i=0;i<160;i++){if(await f())return;await wait(50);}throw Error('Discovery timeout');};
+let checks=0;const check=(v,m)=>{if(!v)throw Error(m);checks++;};
+await Lazy.load('questjournal');activate('tool:quests');await until(()=>QuestJournal.ready());
+const root=document.querySelector('.qj'),top=()=>[...root.querySelectorAll('dialog[open]')].at(-1),press=async(name,parent=top()||root)=>{const b=[...parent.querySelectorAll('button')].find(b=>b.textContent===name||b.getAttribute('aria-label')===name);check(b,'button '+name);b.click();await until(()=>!b.disabled);await wait(60);};
+await QuestJournal.mutate(s=>{s.motion=false;});QuestJournal.navigate('world');await press('Browse places',root);
+check(getComputedStyle(top()).opacity==='1','browser visible with motion off');check(top().querySelectorAll('.qj-city-card').length===12,'twelve cards initially');
+await press('New places');check(top().querySelectorAll('.qj-city-card').length===12,'new places paged');await press('Show 12 more');check(top().querySelectorAll('.qj-city-card').length===16,'sixteen new places');
+top().querySelector('[data-kind="music"]').click();check(top().querySelectorAll('.qj-city-card').length===5,'music plus new filter');top().querySelector('[data-kind="all"]').click();
+const search=top().querySelector('[aria-label="Search Paris guide"]');search.value='poesie';search.dispatchEvent(new Event('input'));check(top().querySelectorAll('.qj-city-card').length===1,'accent-insensitive search');
+search.value='';search.dispatchEvent(new Event('input'));await smoke({shot:window.SMOKE_SAVES+'/paris-browser.png'});
+await smoke({cdp:'Emulation.setDeviceMetricsOverride',params:{width:760,height:1000,deviceScaleFactor:1,mobile:false}});check(top().scrollWidth<=top().clientWidth+2,'narrow browser fits');await smoke({shot:window.SMOKE_SAVES+'/paris-browser-narrow.png'});await smoke({cdp:'Emulation.clearDeviceMetricsOverride'});
+search.value='dizonord';search.dispatchEvent(new Event('input'));top().querySelector('.qj-city-card').click();check(top().textContent.includes('Record digging'),'place has real brief');
+await press('Show on map');check(!top(),'map action closes overlays');check(QuestJournal.snapshot().atlas.selected==='pp-dizonord','selected place saved');
+await QuestJournal.mutate(s=>{s.atlas.places.find(p=>p.id==='pp-dizonord').visitedAt=new Date().toISOString();});await press('Browse places',root);await press('Unvisited');const q=top().querySelector('input');q.value='dizonord';q.dispatchEvent(new Event('input'));check(!top().querySelector('.qj-city-card'),'visited destination hidden');top().close();await wait(70);
+await press('Mini adventures',root);check(top().querySelectorAll('[data-adventure]').length===6,'six adventures');await smoke({shot:window.SMOKE_SAVES+'/mini-adventures.png'});
+top().querySelector('[data-adventure="forgeheart-scout"]').click();check(top().textContent.includes('paper prototype'),'small concrete finish line');await press('Start at Musée Carnavalet');
+const s=QuestJournal.snapshot(),c=s.campaigns.find(c=>c.id==='c-pq-city-forgeheart-scout');check(c?.parisPlace==='pp-carnavalet','chosen venue saved');check(c.quests.length===3,'three quest steps');check(QuestCore.xp(s)===0,'planning earns no XP');check(top().textContent.includes('Make a small plan'),'first actionable step opens');top().close();await wait(70);
+await press('Mini adventures',root);top().querySelector('[data-adventure="forgeheart-scout"]').click();await press('Continue adventure');check(QuestJournal.snapshot().campaigns.filter(c=>c.id==='c-pq-city-forgeheart-scout').length===1,'reopening creates no duplicate campaign');
+await QuestJournal.flush();return `Paris discovery: ${checks} checks passed.`;
+//@@ reload
+await Lazy.load('questjournal');activate('tool:quests');for(let i=0;i<160&&!QuestJournal.ready();i++)await new Promise(r=>setTimeout(r,50));const s=QuestJournal.snapshot(),c=s.campaigns.find(c=>c.id==='c-pq-city-forgeheart-scout');if(!c||c.parisPlace!=='pp-carnavalet'||!s.atlas.places.find(p=>p.id==='pp-dizonord')?.visitedAt||QuestCore.xp(s)!==0)throw Error('Discovery progress lost');return 'Selected adventure, place and visit stamp survive actual reload.';

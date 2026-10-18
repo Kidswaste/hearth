@@ -12,8 +12,8 @@ const finish = (s, qid, n) => { const item = C.submit(s, qid, proof(n)); C.saveR
 const ARR = { 1: [48.8625, 2.3364], 2: [48.8683, 2.3428], 3: [48.8630, 2.3601], 4: [48.8543, 2.3576], 5: [48.8445, 2.3507], 6: [48.8491, 2.3328], 7: [48.8562, 2.3122], 8: [48.8727, 2.3125], 9: [48.8771, 2.3375], 10: [48.8761, 2.3607], 11: [48.8591, 2.3800], 12: [48.8396, 2.3876], 13: [48.8283, 2.3623], 14: [48.8292, 2.3266], 15: [48.8401, 2.2929], 16: [48.8604, 2.2700], 17: [48.8873, 2.3067], 18: [48.8925, 2.3484], 19: [48.8871, 2.3848], 20: [48.8634, 2.4012] };
 const km = ([a, b], [c, d]) => Math.hypot((a - c) * 111.2, (b - d) * 73.2);
 
-test('guide data: 44–60 places with every field', () => {
-  assert(P.guide.length >= 44 && P.guide.length <= 60, 'guide size ' + P.guide.length);
+test('guide data: 60–80 places with every field', () => {
+  assert(P.guide.length >= 60 && P.guide.length <= 80, 'guide size ' + P.guide.length);
   const ids = new Set();
   for (const g of [...P.guide, ...Object.values(P.pins)]) {
     assert(/^(pp|place)-[a-z0-9-]+$/.test(g.id) && !ids.has(g.id), 'id ' + g.id); ids.add(g.id);
@@ -53,7 +53,7 @@ test('guide pins join the map once, reuse default pins and validate', () => {
 test('filters: tags, plurals, kinds, arrondissements and words', () => {
   const n = q => P.guide.filter(g => P.matches(g, q)).length;
   assert.equal(n(''), P.guide.length); assert(n('show') >= 6); assert.equal(n('shows'), n('show'));
-  assert(n('records') === 3); assert(n('11e') >= 4); assert.equal(n('11'), n('11e')); assert.equal(n('1er'), n('1'));
+  assert(n('records') === 4); assert(n('11e') >= 4); assert.equal(n('11'), n('11e')); assert.equal(n('1er'), n('1'));
   assert(n('music') >= 10); assert(n('canal') >= 1); assert(n('pigalle') >= 1); assert.equal(n('zzzz'), 0);
   assert.equal(P.findPlace('bataclan').id, 'pp-bataclan'); assert.equal(P.findPlace('canal').id, 'place-canal'); assert.equal(P.findPlace('belleville').id, 'pp-belleville-view');
   assert.equal(P.findPersonal('airpods').key, 'airpods'); assert.equal(P.findPersonal('apple').key, 'airpods'); assert.equal(P.findPersonal('open-mic').key, 'openmic');
@@ -100,4 +100,24 @@ test('taking the guide off keeps visited, starred and quest pins', () => {
   assert(!s.atlas.places.some(p => p.id === 'pp-bataclan')); assert(s.atlas.places.some(p => p.id === s.atlas.selected)); C.validate(s);
 });
 
+test('discovery combines accent-insensitive search, lane, new and unvisited filters',()=>{
+  const s=fresh();assert.equal(P.newPlaces.length,16);assert.equal(P.discover(s,{newOnly:true}).length,16);
+  assert.deepEqual(P.discover(s,{query:'poesie'}).map(g=>g.id),['pp-maison-poesie']);
+  const music=P.discover(s,{newOnly:true,kind:'music'});assert(music.length>=5&&music.every(g=>g.kind==='music'));
+  P.ensurePin(s,'pp-dizonord').visitedAt='2026-10-18T12:00:00Z';assert(!P.discover(s,{newOnly:true,unvisited:true}).some(g=>g.id==='pp-dizonord'));
+  assert.equal(P.discover(s,{query:'zzzz'}).length,0);
+  for(const pid of P.newPlaces)assert(new URL(P.byId(pid).url).protocol==='https:');
+});
+test('six mini adventures freeze the chosen place, survive reload and use proof-gated XP',()=>{
+  const s=fresh();assert.equal(P.outings.length,6);
+  for(const t of P.outings){
+    const c=P.startOuting(s,t.id,t.places[0]);assert.equal(c.quests.length,3);assert.equal(c.parisPlace,t.places[0]);
+    assert.equal(P.startOuting(s,t.id,t.places[1]),c);assert.equal(c.parisPlace,t.places[0]);
+    assert.throws(()=>C.complete(s,c.quests[0].id));assert.equal(C.xp(s),0);
+  }
+  C.validate(s);assert.deepEqual(C.validate(JSON.parse(JSON.stringify(s))),s);
+  const c=s.campaigns.find(c=>c.id==='c-pq-city-tiny-reset');for(let i=0;i<3;i++)finish(s,c.quests[i].id,i+1);
+  assert.equal(C.xp(s),90);assert(C.campaignDone(s,c));assert.equal(C.complete(s,c.quests[2].id),0);assert.equal(C.xp(s),90);
+  assert.throws(()=>P.startOuting(s,'tile-safari','place-canal'));assert.throws(()=>P.startOuting(s,'missing','place-canal'));
+});
 console.log(`quest-paris-test: ${checks} groups passed`);
