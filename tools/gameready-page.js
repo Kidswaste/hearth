@@ -43,9 +43,11 @@
   // retire 5 s into play (once the first 5 s are counted: nothing of getting ready is needed while playing), at once
   // when the budget switches getting ready off for this game, and step aside during the budget's A/B. A game the budget
   // kept it off for plays without getting ready (as np=1)
-  let SP = 0; let RET = false; let PAUSE = false; const undo = [];
+  // (round 60, gcchurn60) SP[0]: a Float64Array slot, written in place (a fractional number stored into a closure variable
+  // is a new heap number every time)
+  const SP = new Float64Array(1); let RET = false; let PAUSE = false; const undo = [];
   function retire() { if (RET) return; RET = true; for (const [o, m, w, base] of undo) { try { if (o[m] === w) o[m] = base; } catch { /* another wrapper on top: ours passes straight through */ } } }
-  S.budget = { spent: () => SP, pause: (on) => { PAUSE = Boolean(on); }, off: () => { retire(); S.skip = true; return true; } };
+  S.budget = { spent: () => SP[0], pause: (on) => { PAUSE = Boolean(on); }, off: () => { retire(); S.skip = true; return true; } };
   try { if (window.__hearthBudget?.isOff?.('ready')) S.noPrep = true; } catch { /* fine */ }
   // (round 55, playbudget) one quiet A/B under the card before play: Hearth's helpers on vs stepped aside, the one that
   // costs frames off before the first frame (tools/playbudget-page.js)
@@ -229,7 +231,7 @@
     if (o?.isWebGLRenderer && !S.renderers.has(o)) {
       S.renderers.add(o);
       const r0 = o.render;
-      const w = o.render = function (scene, camera) { if (RET || PAUSE) return r0.call(this, scene, camera); const a = now(); if (scene?.isObject3D) { S.scenes.add(scene); o.__grCam = camera; } if (S.firstFrameAt == null) S.firstFrameAt = a; SP += now() - a; return r0.call(this, scene, camera); };
+      const w = o.render = function (scene, camera) { if (RET || PAUSE) return r0.call(this, scene, camera); const a = now(); if (scene?.isObject3D) { S.scenes.add(scene); o.__grCam = camera; } if (S.firstFrameAt == null) S.firstFrameAt = a; SP[0] += now() - a; return r0.call(this, scene, camera); };
       undo.push([o, 'render', w, r0]);
     } else if (o?.isScene) S.scenes.add(o);
   });
@@ -243,7 +245,9 @@
     // side, no trip to the graphics process), instead of a wrapper on every activeTexture / bindTexture (hundreds a frame)
     const BIND = { 0x0DE1: 0x8069, 0x8513: 0x8514, 0x806F: 0x806A, 0x8C1A: 0x8C1D }; // 2D, cube, 3D, 2D array → their bindings
     const bound = (gl, tg) => { const b = BIND[tg] || (tg >= 0x8515 && tg <= 0x851A ? 0x8514 : 0); if (!b) return null; try { return gl.getParameter(b); } catch { return null; } };
-    const up = (f) => function (...a) { if (RET) return f.apply(this, a); const t0 = now(); const tx = bound(this, a[0]); if (tx && !tx.__grUp) { tx.__grUp = 1; S.gl.uploads += 1; } else S.gl.reuploads += 1; SP += now() - t0; return f.apply(this, a); };
+    // (round 60, gcchurn60) retired, it can stay under a later wrapper (loads during play wraps the same uploads): the
+    // game's uploads pass with `arguments` handed on as they are (`...a` made an array on every upload, for good)
+    const up = (f) => function (target) { 'use strict'; if (RET) return f.apply(this, arguments); const t0 = now(); const tx = bound(this, target); if (tx && !tx.__grUp) { tx.__grUp = 1; S.gl.uploads += 1; } else S.gl.reuploads += 1; SP[0] += now() - t0; return f.apply(this, arguments); };
     for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'compressedTexImage3D']) wrap(m, up);
   }
   // ---------- 3. what the game loads ----------

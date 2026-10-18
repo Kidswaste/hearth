@@ -103,7 +103,10 @@
   for (const id of Rules.ALL) H[id] = { s0: null, win: 0, acc: 0, total: 0, frames: 0, max: 0, off: null };
   const offList = []; // in the order they went
   for (const id of (Q.get('off') || '').split(',')) if (Rules.ORDER.includes(id)) { H[id].off = { by: 'remembered', ms: null, at: 0 }; offList.push(id); }
-  let self = 0; let chipMs = 0; // this watch's own time · the chip's (told by game-preload.js)
+  // this watch's own time · the chip's (told by game-preload.js). (round 60, gcchurn60) Running totals live in a
+  // Float64Array: a fractional number stored into a closure variable is a new heap number each time (16 bytes a frame of
+  // garbage for every helper's total); a typed array's slot is written in place
+  const T = new Float64Array(2); const SELF = 0; const CHIP = 1;
   let frames = 0; let w0 = 0; let streak = 0; let playingAt = null; let ema = null; let last = null; let windows = 0;
   let ab = null; let abP = null;
   const hooks = (id) => {
@@ -112,7 +115,7 @@
       return (g && g.budget) || null;
     } catch (e) { return null; }
   };
-  const spent = (id) => { if (id === 'watch') return self; if (id === 'chip') return chipMs; const b = hooks(id); try { return b && b.spent ? b.spent() : null; } catch (e) { return null; } };
+  const spent = (id) => { if (id === 'watch') return T[SELF]; if (id === 'chip') return T[CHIP]; const b = hooks(id); try { return b && b.spent ? b.spent() : null; } catch (e) { return null; } };
   const playing = () => { const g = window.__gameReady; return g ? g.phase === 'playing' : now() - t0 > 3000; };
 
   // ---------- the watch: one frame callback, a look once a second ----------
@@ -146,7 +149,7 @@
     frames += 1;
     if (!w0) w0 = t; else if (t - w0 >= 1000) windowEnd(t);
     raf(tick);
-    self += now() - a;
+    T[SELF] += now() - a;
   }
   raf(tick);
 
@@ -376,7 +379,7 @@
   function pub() {
     const helpers = {};
     for (const id of Rules.ALL) {
-      const h = H[id]; const has = id === 'chip' ? chipMs > 0 : id === 'watch' ? true : spent(id) != null;
+      const h = H[id]; const has = id === 'chip' ? T[CHIP] > 0 : id === 'watch' ? true : spent(id) != null;
       if (!has && !h.off) continue;
       helpers[id] = { name: Rules.NAMES[id], ms: +h.win.toFixed(4), avg: h.frames ? +(h.total / h.frames).toFixed(4) : null, max: +h.max.toFixed(4), on: !h.off, ...(h.off ? { off: h.off } : {}) };
     }
@@ -387,7 +390,7 @@
   }
   Object.defineProperty(window, '__hearthBudget', { configurable: true, value: Object.freeze({
     pub, line, note, isOff, off: (id, by) => off(id, by || 'asked'), ab: abTest,
-    chip: (ms) => { if (ms > 0 && ms < 1000) chipMs += ms; return { line: line(), note: note() }; },
-    budget: { spent: () => self }, rules: Rules,
+    chip: (ms) => { if (ms > 0 && ms < 1000) T[CHIP] += ms; return { line: line(), note: note() }; },
+    budget: { spent: () => T[SELF] }, rules: Rules,
   }) });
 }());

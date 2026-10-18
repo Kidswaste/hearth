@@ -46,7 +46,9 @@
   const pend = new Set();
   // (round 55, playbudget) the main-thread time its hooks spend (ms, a running total: tools/playbudget-page.js reads it);
   // OFF: switched off for this game (its hooks pass straight through; Ctrl/⌘+P / hidden still pause the sound)
-  let SP = 0; let OFF = null; let loafObs = null;
+  // (round 60, gcchurn60) the running total in a Float64Array slot (a fractional number stored into a closure variable is
+  // a new heap number each time)
+  const SP = new Float64Array(1); let OFF = null; let loafObs = null;
   const playing = () => { const g = window.__gameReady; return g ? g.phase === 'playing' : now() - S.at0 > 3000; };
   const note = (e) => { e.at = r1(e.at ?? now()); e.playing = playing(); S.events.push(e); if (S.events.length > 60) S.events.shift(); return e; };
   const short = (u) => { try { return decodeURIComponent(new URL(u, location.href).pathname.split('/').pop()) || null; } catch { return null; } };
@@ -117,7 +119,7 @@
   BAC.decodeAudioData = function (buf, ok, fail) {
     if (OFF) return dad.call(this, buf, ok, fail);
     const a0 = now();
-    try { return decodeNow.call(this, buf, ok, fail); } finally { SP += now() - a0; }
+    try { return decodeNow.call(this, buf, ok, fail); } finally { SP[0] += now() - a0; }
   };
   function decodeNow(buf, ok, fail) {
     // (round 55, fixes55) Hearth's part (the fingerprint, the cache, the notes) can't stop the game's decode: any throw
@@ -181,10 +183,10 @@
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input instanceof Request && input.method === 'GET' ? input.url : null;
         const snd = url && SOUND.test(url) && (!init?.method || init.method === 'GET');
         const b = snd ? files.get(new URL(url, location.href).href) : null;
-        if (b) { S.served = (S.served || 0) + 1; askedNote(url, b.byteLength); SP += now() - a0; return Promise.resolve(new Response(b.slice(0), { status: 200, headers: { 'content-type': MIME[(url.match(SOUND) || [])[1]?.toLowerCase()] || 'application/octet-stream', 'content-length': String(b.byteLength) } })); }
-        if (snd) { const p = f0(input, init); p.then((r) => askedNote(url, r.headers.get('content-length')), () => {}); SP += now() - a0; return p; }
+        if (b) { S.served = (S.served || 0) + 1; askedNote(url, b.byteLength); SP[0] += now() - a0; return Promise.resolve(new Response(b.slice(0), { status: 200, headers: { 'content-type': MIME[(url.match(SOUND) || [])[1]?.toLowerCase()] || 'application/octet-stream', 'content-length': String(b.byteLength) } })); }
+        if (snd) { const p = f0(input, init); p.then((r) => askedNote(url, r.headers.get('content-length')), () => {}); SP[0] += now() - a0; return p; }
       } catch { /* the network's answer, as always */ }
-      SP += now() - a0;
+      SP[0] += now() - a0;
       return f0(input, init);
     };
   }
@@ -204,7 +206,7 @@
 
   // ---------- put away: Ctrl/⌘+P (rest), the window hidden ----------
   const mp = HTMLMediaElement.prototype.play;
-  HTMLMediaElement.prototype.play = function (...a) { if (OFF) return mp.apply(this, a); const a0 = now(); try { if (!media.some((r) => r.deref() === this)) { media.push(new WeakRef(this)); if (media.length > 64) media.splice(0, media.length - 64); } ours.delete(this); } catch { /* fine */ } SP += now() - a0; return mp.apply(this, a); };
+  HTMLMediaElement.prototype.play = function (...a) { if (OFF) return mp.apply(this, a); const a0 = now(); try { if (!media.some((r) => r.deref() === this)) { media.push(new WeakRef(this)); if (media.length > 64) media.splice(0, media.length - 64); } ours.delete(this); } catch { /* fine */ } SP[0] += now() - a0; return mp.apply(this, a); };
   function rest(on, why = 'rest') {
     const was = S.rest.size > 0;
     if (on) S.rest.add(why); else S.rest.delete(why);
@@ -229,13 +231,19 @@
   // A decode's result lands on the main thread (the decoded samples handed over, the game's callback): a long frame
   // around it counts when it's clearly longer than this machine's usual long frames (a slow machine has many: only the
   // ones ≥ 1.6× their median count then). The sound system starting is timed itself (its constructor), not here.
-  const longs = [];
+  // (round 60, gcchurn60) the last long frames (≤ 40, ≤ 3 s) in kept typed rings, their median from a kept sorted copy:
+  // on a computer whose every frame is long this ran every frame, and made a pair per frame plus two copies and a sort
+  const LC = 41; const lsT = new Float64Array(LC); const lsD = new Float64Array(LC); const lsS = new Float64Array(40); let lh = 0; let ln = 0;
   try {
     loafObs = new PerformanceObserver((l) => {
       const a0 = now();
-      for (const f of l.getEntries()) {
-        longs.push([f.startTime, f.duration]); while (longs.length > 40 || (longs.length && f.startTime - longs[0][0] > 3000)) longs.shift();
-        const typical = longs.length >= 12 ? [...longs].map((x) => x[1]).sort((x, y) => x - y)[Math.floor(longs.length / 2)] : 0;
+      const list = l.getEntries();
+      for (let q = 0; q < list.length; q += 1) {
+        const f = list[q];
+        const k0 = (lh + ln) % LC; lsT[k0] = f.startTime; lsD[k0] = f.duration; ln += 1;
+        while (ln > 40 || (ln && f.startTime - lsT[lh] > 3000)) { lh = (lh + 1) % LC; ln -= 1; }
+        let typical = 0;
+        if (ln >= 12) { for (let i = 0; i < ln; i += 1) { const v = lsD[(lh + i) % LC]; let j = i - 1; while (j >= 0 && lsS[j] > v) { lsS[j + 1] = lsS[j]; j -= 1; } lsS[j + 1] = v; } typical = lsS[Math.floor(ln / 2)]; } // (sorted by hand: a typed array's sort() copies)
         if (f.duration < Math.max(50, typical * 1.6)) continue;
         const a = f.startTime - 1; const b = f.startTime + f.duration + 1;
         for (const e of S.events) {
@@ -244,7 +252,7 @@
           S.slow.push({ kind: 'decode', name: e.name || null, bytes: e.bytes || 0, ms: e.ms, frameMs: e.slowMs, usualMs: typical ? r1(typical) : null, at: e.at }); if (S.slow.length > 20) S.slow.shift();
         }
       }
-      SP += now() - a0;
+      SP[0] += now() - a0;
     });
     loafObs.observe({ type: 'long-animation-frame', buffered: false });
   } catch { /* no Long Animation Frames: the sound system's own start still counts */ }
@@ -264,5 +272,5 @@
   window.__gameAudio = { pub, line, rest, ready, pending: () => pend.size, progress: () => ({ n: Math.max(S.pre.n, LAB ? 0 : LIST.length), done: S.pre.done, failed: S.pre.failed }),
     // (round 55, playbudget) tools/playbudget-page.js: its time, and off for this game (nothing of it runs per frame)
     // (round 57, framepace57) pause: the Long Animation Frames watch disconnected while stepped aside (an A/B's "off" blocks)
-    budget: { spent: () => SP, pause: (on) => { if (OFF || !loafObs) return; try { if (on) loafObs.disconnect(); else loafObs.observe({ type: 'long-animation-frame', buffered: false }); } catch { /* fine */ } }, off: (by) => { if (OFF) return false; OFF = String(by || 'asked'); try { loafObs?.disconnect(); } catch { /* fine */ } return true; } } };
+    budget: { spent: () => SP[0], pause: (on) => { if (OFF || !loafObs) return; try { if (on) loafObs.disconnect(); else loafObs.observe({ type: 'long-animation-frame', buffered: false }); } catch { /* fine */ } }, off: (by) => { if (OFF) return false; OFF = String(by || 'asked'); try { loafObs?.disconnect(); } catch { /* fine */ } return true; } } };
 })();

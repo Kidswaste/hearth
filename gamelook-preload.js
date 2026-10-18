@@ -46,7 +46,9 @@ function gameLookPage(o) {
   let TexC = null; let target = 0; let guarding = null;
   // (round 55, playbudget) the main-thread time its hooks spend (ms, running total: tools/playbudget-page.js reads it
   // once a second), stepped aside for the budget's A/B (PAUSE) or switched off for this game (OFF)
-  let SP = 0; let PAUSE = false; let OFF = null; const undo = [];
+  // (round 60, gcchurn60) the total in a Float64Array slot (a fractional number put in a closure variable is a new heap
+  // number each frame: garbage the game's next minor GC has to sweep)
+  const SP = new Float64Array(1); let PAUSE = false; let OFF = null; const undo = [];
 
   const maxA = (r) => { let m = 1; try { m = r.capabilities.getMaxAnisotropy() || 1; } catch (e) { /* no extension */ } if (m > R.aniso.max) R.aniso.max = m; return m; };
   const uploaded = (r, t) => { try { const p = r.properties && r.properties.get ? r.properties.get(t) : null; return Boolean(p && p.__webglTexture); } catch (e) { return false; } };
@@ -158,8 +160,12 @@ function gameLookPage(o) {
     VN += 1;
     if (ob.isLight && ob.castShadow) light(r, ob);
     const m = ob.material;
-    if (m) { if (Array.isArray(m)) { for (const x of m) if (x) mat(r, x, max); } else mat(r, m, max); }
+    if (m) { if (Array.isArray(m)) { for (let i = 0; i < m.length; i += 1) if (m[i]) mat(r, m[i], max); } else mat(r, m, max); }
   };
+  // (round 60, gcchurn60) one kept visitor for traverse(), told its renderer and anisotropy before each walk (a new
+  // arrow function per object the game added was garbage every frame a game spawns a group)
+  let VR = null; let VM = 1;
+  const visitV = (ob) => visit(VR, ob, VM);
   // (round 57, readywalk) each look's time is also kept by when it ran: under Getting ready's card (the first, whole-scene
   // look, before the first frame: the card is up, no frame of play waits on it) or while playing (only what the game
   // adds and the background walk's ≤ 0.15 ms slices). The shadow maps are never made inside a look: three makes them in
@@ -173,21 +179,26 @@ function gameLookPage(o) {
     const t0 = now();
     try {
       if (root.isScene) { R.cost.wholes += 1; tex(r, root.background, true, max); tex(r, root.environment, true, max); }
-      root.traverse((ob) => visit(r, ob, max));
+      VR = r; VM = max; root.traverse(visitV);
     } catch (e) { /* a scene changing under us: the next look */ }
-    cost(now() - t0, root.isScene);
+    VR = null; cost(now() - t0, root.isScene);
   }
   // what the game adds (Object3D.add / attach of its own three.js, found from the first scene drawn)
-  const adds = []; const protos = new WeakSet(); const doneO = new WeakSet();
+  // (round 60, gcchurn60) a kept list and its count (emptied by count, not `length = 0`, which let go of the list's
+  // storage and made it again for the next frame's adds)
+  const adds = []; let addsN = 0; const protos = new WeakSet(); const doneO = new WeakSet();
+  const addsClear = () => { for (let i = 0; i < addsN; i += 1) adds[i] = undefined; addsN = 0; };
   function hookAdd(scene) {
     const O3 = Object.getPrototypeOf(Object.getPrototypeOf(scene));
     if (!O3 || protos.has(O3) || typeof O3.add !== 'function') return;
     protos.add(O3);
     const add0 = O3.add;
     // (round 55, fixes55) the game's own add / attach always runs and returns; what Hearth notes can never throw into it
-    O3.add = function add() { const res = add0.apply(this, arguments); try { if (!PAUSE && !OFF && adds.length < 4000) for (let i = 0; i < arguments.length; i += 1) { const o = arguments[i]; if (o && o !== this && o.isObject3D) adds.push(o); } } catch (e) { /* never in the game's way */ } return res; };
+    // (round 60, gcchurn60) `arguments` only handed on (strict: so the optimiser passes them through without making the
+    // object); the object noted is the first one: three's add(a, b, …) adds each through this.add (this hook) again
+    O3.add = function add(o) { 'use strict'; const res = add0.apply(this, arguments); try { if (!PAUSE && !OFF && addsN < 4000 && o && o !== this && o.isObject3D) adds[addsN++] = o; } catch (e) { /* never in the game's way */ } return res; };
     const att0 = O3.attach;
-    if (typeof att0 === 'function') O3.attach = function attach() { const res = att0.apply(this, arguments); try { const o = arguments[0]; if (!PAUSE && !OFF && o && o.isObject3D && adds.length < 4000) adds.push(o); } catch (e) { /* never in the game's way */ } return res; };
+    if (typeof att0 === 'function') O3.attach = function attach(o) { 'use strict'; const res = att0.apply(this, arguments); try { if (!PAUSE && !OFF && o && o.isObject3D && addsN < 4000) adds[addsN++] = o; } catch (e) { /* never in the game's way */ } return res; };
     undo.push([O3, 'add', O3.add, add0]); if (typeof att0 === 'function') undo.push([O3, 'attach', O3.attach, att0]);
   }
   function before(r, scene, force) {
@@ -203,10 +214,10 @@ function gameLookPage(o) {
       else if (R.guard === 'waiting' && !raised.length) R.guard = 'none';
       return;
     }
-    if (adds.length) { // what the game added since, before its first frame (a bullet: a few µs; a level: its own size)
+    if (addsN) { // what the game added since, before its first frame (a bullet: a few µs; a level: its own size)
       const t0 = now(); const max = maxA(r);
-      try { for (let i = 0; i < adds.length; i += 1) { const o = adds[i]; if (doneO.has(o)) continue; doneO.add(o); if (o.children.length) o.traverse((ob) => visit(r, ob, max)); else visit(r, o, max); } } catch (e) { /* fine */ }
-      adds.length = 0; cost(now() - t0);
+      try { VR = r; VM = max; for (let i = 0; i < addsN; i += 1) { const o = adds[i]; if (doneO.has(o)) continue; doneO.add(o); if (o.children.length) o.traverse(visitV); else visit(r, o, max); } } catch (e) { /* fine */ } finally { VR = null; }
+      addsClear(); cost(now() - t0);
       if (BEST && raised.length && !guarding) guarding = guard();
     }
     k.f += 1; // (frames as well as seconds: on a slow frame rate the walk stays a small share of the frames)
@@ -235,9 +246,14 @@ function gameLookPage(o) {
       const base = r[m];
       if (typeof base !== 'function') continue;
       try {
-        const w = r[m] = function (scene) {
-          if (!PAUSE && !OFF) { const a = now(); try { before(this, scene); } catch (e) { /* never in the game's way */ } SP += now() - a; }
-          try { if (m === 'render') R.frames += 1; } catch (e) { /* fine */ }
+        // (round 60, gcchurn60) render, every frame: its two arguments passed on as they are (an `arguments` object is
+        // made for every call wherever the page's code isn't optimized yet; three's render takes (scene, camera))
+        const w = r[m] = m === 'render' ? function render(scene, camera) {
+          if (!PAUSE && !OFF) { const a = now(); try { before(this, scene); } catch (e) { /* never in the game's way */ } SP[0] += now() - a; }
+          R.frames += 1;
+          return base.call(this, scene, camera);
+        } : function (scene) {
+          if (!PAUSE && !OFF) { const a = now(); try { before(this, scene); } catch (e) { /* never in the game's way */ } SP[0] += now() - a; }
           return base.apply(this, arguments);
         };
         undo.push([r, m, w, base]);
@@ -245,7 +261,7 @@ function gameLookPage(o) {
     }
     // (GameReady sends a game's textures up before compiling: its scenes are looked at first, so colours are known)
     const it = r.initTexture;
-    if (typeof it === 'function') try { const w = r.initTexture = function (t) { if (!PAUSE && !OFF) { const a = now(); try { for (const sc of scenes) before(this, sc); tex(this, t, false, maxA(this)); } catch (e) { /* fine */ } SP += now() - a; } return it.apply(this, arguments); }; undo.push([r, 'initTexture', w, it]); } catch (e) { /* as it is */ }
+    if (typeof it === 'function') try { const w = r.initTexture = function (t) { if (!PAUSE && !OFF) { const a = now(); try { for (const sc of scenes) before(this, sc); tex(this, t, false, maxA(this)); } catch (e) { /* fine */ } SP[0] += now() - a; } return it.apply(this, arguments); }; undo.push([r, 'initTexture', w, it]); } catch (e) { /* as it is */ }
   }
   // ---------- the guard: smooth first ----------
   function gaps(n) { // the median gap between frames the game drew (rAF), n of them (4 s at most)
@@ -340,8 +356,8 @@ function gameLookPage(o) {
     // (round 55, playbudget) tools/playbudget-page.js: its time, the A/B's step aside, the picture (shadow maps) on / at
     // the game's own size for the A/B's graphics measure, and off for this game (hooks out of the way, shadows back)
     budget: Object.freeze({
-      spent: () => SP,
-      pause: (on) => { PAUSE = Boolean(on); if (PAUSE) adds.length = 0; },
+      spent: () => SP[0],
+      pause: (on) => { PAUSE = Boolean(on); if (PAUSE) addsClear(); },
       picture: (on) => { if (OFF || !raised.length || !R.shadows.now || R.shadows.now <= 512) return false; for (const x of raised) swap(x, on ? R.shadows.now : 512); return true; },
       // (round 56, shadowready) the shadow size chosen under Getting ready's card (tools/playbudget-page.js draws, this
       // keeps): plan() → the sizes to try, from the one in use (the screen's, or the remembered one) down to the game's
@@ -362,7 +378,7 @@ function gameLookPage(o) {
       }),
       off: (by) => {
         if (OFF) return false;
-        OFF = String(by || 'asked'); R.off = OFF; adds.length = 0;
+        OFF = String(by || 'asked'); R.off = OFF; addsClear();
         for (const x of raised) { swap(x, 512); drop(x, [512]); } // (the game's own size: swapped in when getting ready made it as the fallback; the guard stops with them)
         raised.length = 0; R.guard = 'off'; R.shadows.now = 512;
         for (const [o, m, w, base] of undo) { try { if (o[m] === w) o[m] = base; } catch (e) { /* the game's own wrapper on top: ours steps aside */ } }
