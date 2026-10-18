@@ -235,7 +235,8 @@ async function main() {
   ok(has(A.p('captures/recordings/huge.mp4')), 'big videos on again: they sync');
 
   // cloud clients' own files are ignored (never pulled, never deleted)
-  const junk = ['.DS_Store', 'desktop.ini', '~$notes.docx', 'x.tmp', 'Plan.gdoc', '.hearth-tmp-ab12cd34-c1.json', 'kv/.~lock.notes.json#', 'Icon\r'];
+  const junk = ['.DS_Store', 'desktop.ini', '~$notes.docx', 'x.tmp', 'Plan.gdoc', '.hearth-tmp-ab12cd34-c1.json', 'kv/.~lock.notes.json#', ...(process.platform === 'win32' ? [] : ['Icon\r'])]; // Windows cannot create the Mac Icon\r filename.
+  ok(S.ignoredName('Icon\r'), 'Mac Icon file ignored even when the host cannot create it');
   for (const j of junk) W(cloudFile(w, j), 'junk');
   await settle(A, B);
   ok(junk.every((j) => !has(A.p(j)) && !has(B.p(j))) && junk.every((j) => has(cloudFile(w, j))), 'cloud temp files ignored on both sides');

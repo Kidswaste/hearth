@@ -70,6 +70,7 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const ABSENT = Symbol('absent');
 const TIME_KEY = /(^|[a-z])(At|Time|Ts)$|^(updated|modified|lastSeen|last|mtime|seen|since)$/;
 function merge3(base, ours, theirs, opts = {}) {
+  base = compactProjects(base); ours = compactProjects(ours); theirs = compactProjects(theirs);
   const conflicts = [];
   const b = base === null || base === undefined ? ABSENT : base;
   const value = m(b, ours, theirs, [], conflicts, { counters: Boolean(opts.counters), twoWay: b === ABSENT });
@@ -231,8 +232,11 @@ function walkStrings(v, fn) {
   if (isObj(v)) { const out = {}; for (const k of Object.keys(v)) out[k] = walkStrings(v[k], fn); return out; }
   return v;
 }
-const toCloud = (v, ctx) => walkStrings(v, (s) => strToCloud(s, ctx));
-const fromCloud = (v, ctx) => walkStrings(v, (s) => strFromCloud(s, ctx));
+// Derived project item IDs contain file paths too. Rebuild them from the translated ref:
+// leaving a Windows ID beside a Mac ref makes the same capture a "new" item on every join.
+const compactProjects = v => v?.v === 1 && Array.isArray(v.list) && v.list.some(p => p?.ident && Array.isArray(p.items)) ? require('./projects-core').compact(v, { identities: true }) : v;
+const toCloud = (v, ctx) => compactProjects(walkStrings(compactProjects(v), (s) => strToCloud(s, ctx)));
+const fromCloud = (v, ctx) => compactProjects(walkStrings(compactProjects(v), (s) => strFromCloud(s, ctx)));
 // ext renders: { rel: abs } → the reverse lookup used by toCloud
 function withExt(ctx, ext) {
   const out = { ...ctx, ext: ext || {} };

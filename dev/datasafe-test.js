@@ -199,7 +199,7 @@ async function main() {
     check(r.state === 'ok' && r.value.length === 3 && !r.doubt, 'load: EPERM twice then readable → the real value', r);
     for (const code of ['EACCES', 'UNKNOWN', 'EIO']) { r = DS.load(faulty({ 'a.json': { code } }), f, [], noWait); check(r.state === 'unreadable' && !r.canSave, `load: ${code} → unreadable, never "empty"`); }
     W(f.replace('.json', '.prev.json'), [1, 2]);
-    r = DS.load(faulty({ '/a.json': { code: 'EBUSY' } }), f, [], noWait);
+    r = DS.load(faulty({ [path.sep + 'a.json']: { code: 'EBUSY' } }), f, [], noWait);
     check(r.from === 'prev' && r.value.length === 2 && r.doubt && r.canSave, 'load: held + a .prev copy → the .prev, still in doubt', r);
     W(f, '[1, 2'); r = DS.load(fs, f, []);
     check(r.from === 'prev' && r.garbled && r.doubt, 'load: cut short → its .prev', r);

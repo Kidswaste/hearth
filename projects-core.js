@@ -82,7 +82,30 @@ const ProjectsCore = (() => {
   const countText = (p, order = Object.keys(TYPES)) => { const c = counts(p); return order.filter((t) => c[t]).map((t) => plural(c[t], t)).join(' · ') || 'empty'; };
 
   // what the kv store holds, cleaned: unknown fields kept (a newer Hearth on the other computer), broken rows dropped
+  // Project items are references, not repeated occurrences. Only collapse identical records;
+  // two entries with differing metadata stay available for review/recovery.
+  function compact(d, { identities = false } = {}) {
+    if (d?.v !== 1 || !Array.isArray(d.list)) return d;
+    const canonical = x => Array.isArray(x) ? x.map(canonical) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().map(k => [k, canonical(x[k])])) : x;
+    let changed = false;
+    const list = d.list.map(p => {
+      if (!p?.ident || !Array.isArray(p.items)) return p;
+      const seen = new Set(), items = []; let altered = false;
+      for (const original of p.items) {
+        if (!original || !TYPES[original.type] || typeof original.ref !== 'string' || typeof original.id !== 'string') { items.push(original); continue; }
+        const id = identities ? itemId(original.type, original.ref) : original.id;
+        const item = id === original.id ? original : { ...original, id };
+        const signature = JSON.stringify(canonical(item));
+        if (seen.has(signature)) { altered = true; continue; }
+        seen.add(signature); items.push(item); if (item !== original) altered = true;
+      }
+      if (!altered) return p;
+      changed = true; return { ...p, items };
+    });
+    return changed ? { ...d, list } : d;
+  }
   function normalize(d) {
+    d = compact(d, { identities: true });
     const list = Array.isArray(d?.list) ? d.list.filter((p) => p && typeof p.id === 'string' && p.ident && Array.isArray(p.items)) : [];
     for (const p of list) {
       p.items = p.items.filter((x) => x && TYPES[x.type] && x.ref != null).map((x) => ({ ...x, id: itemId(x.type, x.ref) }));
@@ -215,6 +238,6 @@ const ProjectsCore = (() => {
     return out;
   }
 
-  return { TYPES, STATUS, MC, cap, itemId, plural, newId, create, addItem, removeItem, has, rename, setStatus, setNotes, setCover, setIdent, live, ofItem, counts, countText, normalize, recent, cover, latest, words, keysOf, suggest, tokens, search, snippet, sliderNames, titleCase };
+  return { TYPES, STATUS, MC, cap, itemId, plural, newId, create, addItem, removeItem, has, rename, setStatus, setNotes, setCover, setIdent, live, ofItem, counts, countText, compact, normalize, recent, cover, latest, words, keysOf, suggest, tokens, search, snippet, sliderNames, titleCase };
 })();
 if (typeof module !== 'undefined') module.exports = ProjectsCore;

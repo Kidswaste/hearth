@@ -183,6 +183,13 @@ const OPS = {
   },
   // a big store read and parsed here (the main thread only receives the result)
   read({ file, fallback, status, ds }) {
+    if (path.basename(file) === 'projects.json') {
+      const before = stat(file);
+      const r = status ? SS.readStatus(fs, file) : DS.load(dfs, file, fallback ?? null);
+      const result = before ? require('./project-index-maintenance').compactRead(fs, file, r, before) : r;
+      if (status || ds) { delete result.prev; return result; }
+      return result.value;
+    }
     if (status) return SS.readStatus(fs, file); // (round 43, scenesafe) ok / missing / unreadable, never a silent fallback
     if (ds) { const r = DS.load(dfs, file, fallback ?? null); delete r.prev; return r; } // (round 43, datasafe) + what happened
     let text;

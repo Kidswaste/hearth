@@ -29,9 +29,9 @@ const Projects = (() => {
   function save() { clearTimeout(saveT); saveT = setTimeout(() => window.hub.kvSet(KEY, data).catch(() => {}), 300); }
   const listeners = new Set();
   let paintT = 0;
-  function changed(p = null, why = 'change') {
+  function changed(p = null, why = 'change', persist = true) {
     idx = null;
-    save();
+    if (persist) save();
     const detail = { project: p, id: p?.id || null, why };
     for (const fn of listeners) { try { fn(detail); } catch (err) { console.warn(err); } }
     dispatchEvent(new CustomEvent('hearth:projects', { detail }));
@@ -83,15 +83,18 @@ const Projects = (() => {
 
   // ---------- sources (read when asked, cached briefly; nothing is copied into the projects store) ----------
   const cache = new Map(); // name → { at, value }
+  const reads = new Map();
   async function cached(name, ms, fn) {
     const c = cache.get(name);
     if (c && Date.now() - c.at < ms) return c.value;
-    let value;
-    try { value = await fn(); } catch { value = c?.value ?? null; }
-    cache.set(name, { at: Date.now(), value });
-    return value;
+    if (reads.has(name)) return reads.get(name);
+    const pending = Promise.resolve().then(fn).catch(() => c?.value ?? null).then(value => {
+      if (reads.get(name) === pending) { cache.set(name, { at: Date.now(), value }); reads.delete(name); }
+      return value;
+    });
+    reads.set(name, pending); return pending;
   }
-  const forget = (...names) => { for (const n of names) cache.delete(n); };
+  const forget = (...names) => { for (const n of names) { cache.delete(n); reads.delete(n); } };
   const liveBoard = () => (loadedLazy('board') && typeof Board !== 'undefined' && Board.boards?.().length ? Board : null);
   const Src = {
     sketches: () => cached('sketches', 20000, async () => labScenes()?.all?.() || (await window.hub.kvGet('three-sketches', [])) || []),
@@ -122,7 +125,7 @@ const Projects = (() => {
   });
   addEventListener('hearth:sketch', () => forget('sketches'));
   async function reloadFromDisk() {
-    try { const d = C.normalize(await window.hub.kvGet(KEY, null)); clearTimeout(saveT); data = d; idx = null; changed(null, 'sync'); } catch (err) { console.warn('projects from sync', err); }
+    try { const d = C.normalize(await window.hub.kvGet(KEY, null)); clearTimeout(saveT); data = d; idx = null; changed(null, 'sync', false); } catch (err) { console.warn('projects from sync', err); }
   }
 
   // names, times and pictures of items (Home's cards, continue, covers)

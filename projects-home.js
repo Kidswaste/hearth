@@ -11,7 +11,9 @@ const ProjectsHome = (() => {
   const C = ProjectsCore;
   const CHUNK = 24;
   const S = { mounted: false, root: null, body: null, open: null, stale: true, search: null, io: null };
-  const visible = () => S.mounted && S.root?.isConnected && S.root.offsetParent !== null;
+  // Inactive surfaces use visibility:hidden, so offsetParent still exists. Do not scan
+  // project assets or rebuild cards behind Chat/Life (nor force layout to find out).
+  const visible = () => S.mounted && S.root?.isConnected && !document.hidden && H.surfaceIdFor(H.activeId) === 'tool:home';
   const tint = (node, color) => { node.style.setProperty('--pj', color); return node; };
   const showMenuAt = (e, items) => { e.preventDefault(); showMenu(e.clientX, e.clientY, items); };
 
@@ -32,15 +34,20 @@ const ProjectsHome = (() => {
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input')); } });
     P.onChange(() => { S.stale = true; if (visible()) paintSoon(); });
     addEventListener('hearth:view', () => { if (visible() && S.stale) paintSoon(); });
+    document.addEventListener('hearth:activate', () => { if (!visible()) { clearTimeout(paintT); ++paintVersion; S.stale = true; S.io?.disconnect(); } else if (S.stale) paintSoon(); });
+    document.addEventListener('visibilitychange', () => { if (visible() && S.stale) paintSoon(); });
     paint();
   }
-  let paintT = 0;
+  let paintT = 0, paintVersion = 0;
   function paintSoon() { clearTimeout(paintT); paintT = setTimeout(() => paint(), 80); }
   async function paint() {
-    if (!S.mounted) return;
+    if (!visible()) { S.stale = true; return; }
+    const version = ++paintVersion;
     S.stale = false;
     await P.ready();
     await P.lookFor();
+    if (version !== paintVersion) return;
+    if (!visible()) { S.stale = true; return; }
     if (S.open && P.get(S.open)) paintProject(P.get(S.open)); else { S.open = null; paintHome(); }
   }
 
