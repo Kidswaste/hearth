@@ -57,13 +57,33 @@ reports that apart.
 5. Startup also showed `usage:stats` taking 724 ms once: the token stats are built from every chat the first time they
    are asked (once per install; the owner's are long built). Left as is.
 
-## Not reproducible here (Windows only), noted for the next round
-- Sync waits on the main thread when Windows holds a file (antivirus, OneDrive, the search indexer): `Atomics.wait`
-  retries in datasafemain (config save: up to 0.6 s), store `chatNames` (0.4 s), fsapi `read` (0.3 s), scenesafe
-  `readRetry` (0.3 s), crashsafe `writeAtomicSync` (0.4 s); `fsyncSync` on the main thread (config, token stats after
-  each reply). Each is short alone but lands on the main thread exactly where Windows is slow. Moving them to the store
-  thread / async is the next step if the owner's /smooth still shows main-process stalls.
-- `winpolish` asks PowerShell (sync, up to 5 s) for a drive's type the first time something is deleted on that drive.
+## Held files (second pass): no long sync waits on the main thread
+Windows holds files for a moment (Defender, OneDrive, the search indexer). Hearth retried each held read / rename
+with sync waits — on the main thread, the whole app froze meanwhile: 0.3 s per held read (`readRetry`, twice per kv
+read: the file, then its .prev), 0.6 s per held settings save, 0.4 s per held atomic write / chats-folder listing.
+- **On Electron's main thread a held file is retried for 50 ms at most in all** (5 + 10 + 15 + 20 ms), then reported
+  held as before, and the callers' existing held paths take over (the last good copy, retries on a timer, the calm
+  card): scenesafe-core `readRetry` (`waitFor` / `onUiThread`), crashsafe-core `writeAtomicSync`, store `chatNames`,
+  fsapi `read`, the Sound bank's index rename. The store thread and Node keep the longer waits.
+- **A held config.json rename** goes on on a timer (60…240 ms apart, as before) instead of on the spot; reads give the
+  new settings meanwhile; the last resort (written in place) is unchanged.
+- **A settings save made while config.json was held now lands before the window is told the file reads again**
+  (datasafemain `landHeld`). Before, the recovery check could tell the window first, the window saved the file's
+  settings, and the held save was dropped (dev/checks/datasafe.js failed 3 of 3 once the main thread no longer slept).
+- **Token stats after every reply**: kept in memory while written off the main thread (crashsafe's async
+  `writeAtomic`: temp file, flush, rename), one at a time, newest last; anything unwritten is written at quit. Before:
+  read + fsync + rename on the main thread after each reply.
+- **The drive-type question for the Recycle Bin check** (winpolish, a sync PowerShell call of 0.5–5 s the first time
+  something on another drive is deleted): asked once for every drive in the background a minute after start on
+  Windows (`warmDrives`); the sync call remains only for a drive plugged in later.
+- Measured (mainhang65's new phase: settings, memory, notes, chat meta and the chats folder held ~15 s while saving
+  settings 3×, listing chats, reading memory / notes, opening 9 chats, sending a message; test faults now read live,
+  `HEARTH_FAULTS_LIVE`, and `rename: true` holds a save): **before p99 39 ms, max 611 ms (two 300 ms waits back to
+  back) → after p99 31–40 ms, max 67–75 ms**; the held save lands once the file is free in both.
+- Kept: the config write's own fsync stays sync (a settings save must be on the disk before it replaces the file, and
+  its callers are sync); startup reads before the window keep the short cap too.
+
+## Not reproducible here (Windows only)
 - The owner's main-process figure (p99 7.2 s, max 34 min over a week) includes stretches the computer was asleep (the
   34 minutes) — the jank watch pauses on 'suspend', but a Modern Standby laptop doesn't always say so.
 - Linux only: Node's recursive `fs.watch` walks folders in JS with sync readdir / stat (native on Windows and the Mac):
@@ -71,6 +91,8 @@ reports that apart.
 
 ## Files
 - New: `mainlag-probe.js` (tests only), `dev/make-bighome-fixture.js`, `dev/checks/mainhang65.js`.
+- Changed (second pass): `scenesafe-core.js`, `crashsafe-core.js`, `datasafemain.js`, `datasafe-core.js` (test faults:
+  live, rename), `store.js`, `fsapi.js`, `soundbankmain.js`, `winpolish.js`, `main.js` (warmDrives).
 - Changed: `backupautomain.js` (copy + verify off the main thread), `twocopies-core.js` (`countChats` options,
   `pickProfile` takes a count or a function), `twocopiesmain.js` (`anyChats`, lazy count), `appshell.js` (shortcut
   hold), `powerwisemain.js` (loads the probe in tests),
@@ -81,3 +103,7 @@ reports that apart.
   app for a second or more; it now runs in the background without holding anything up.
 - **Hearth starts a little faster with lots of chats**: it no longer looks at every chat file twice before the window
   opens.
+- **No more freezes while Windows holds a file.** When your antivirus or OneDrive held Hearth's settings, memory or
+  chats for a moment, the whole app could freeze for up to half a second each time; now Hearth tries again in the
+  background and stays responsive. A setting you changed meanwhile is still saved once the file is free.
+- **Replies finish without a hitch**: the token counter is saved in the background.
