@@ -3,7 +3,7 @@
 // then sees it), Studio changes reach the chip, the panel expands and checks off a step through the Studio, the finish
 // line opens the proof in the Studio, Take / track / hud on|off, Ctrl/⌘+Shift+O, Ctrl/⌘+K lines, the keys sheet, tiny
 // when nothing is active, the chip in the Lab, and the panel never over the chat's column.
-//   node dev/smoke.js --script dev/checks/questhud61.js --save-dir <folder for the pictures>
+//   node dev/smoke.js --script dev/checks/questhud61.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, what, n = 160) => { for (let i = 0; i < n; i++) { try { if (await fn()) return; } catch { /* not yet */ } await wait(60); } throw Error(`timed out: ${what}`); };
 const out = { steps: [] }; const fails = [];
@@ -92,7 +92,7 @@ step('the chip stays in the rail in a chat', vis(chip()));
 chip().click(); await until(() => panel(), 'panel in chat');
 const take = [...panel().querySelectorAll('.qh-take')][0];
 step('today\'s picks are listed with Take', Boolean(take), panel().textContent.slice(0, 300));
-await smoke({ shot: `${window.SMOKE_SAVES}/questhud-panel.png` });
+await smoke({ shot: `${window.SMOKE_TMP || window.SMOKE_SAVES}/questhud-panel.png` });
 // the chat's column: its message box and its messages / notes (the surface's empty margins may sit under the panel)
 const box = document.querySelector('.surface.active form.composer textarea, .surface.active .composer textarea')?.getBoundingClientRect();
 const pr = panel().getBoundingClientRect();
@@ -154,7 +154,7 @@ if (lab) {
   QuestHud.open(); await until(() => panel(), 'panel in the Lab'); await wait(150);
   const pl = panel().getBoundingClientRect();
   step('in the Lab: the open panel sits over the chats list, not the preview', !prev || pl.right <= prev.left + 1, { panel: Math.round(pl.right), preview: prev && Math.round(prev.left) });
-  await smoke({ shot: `${window.SMOKE_SAVES}/questhud-lab.png` });
+  await smoke({ shot: `${window.SMOKE_TMP || window.SMOKE_SAVES}/questhud-lab.png` });
   QuestHud.close();
   activate(agent); await wait(200);
 }

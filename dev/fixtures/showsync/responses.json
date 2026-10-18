@@ -1,0 +1,13 @@
+{
+  "https://shotgun.live/robots.txt": { "file": "robots-shotgun.txt", "headers": { "content-type": "text/plain" } },
+  "https://dice.fm/robots.txt": { "file": "robots-dice.txt", "headers": { "content-type": "text/plain" } },
+  "https://shotgun.live/en/concerts/paris": { "file": "shotgun-paris.html", "headers": { "content-type": "text/html", "etag": "\"sg-1\"" } },
+  "https://dice.fm/browse/paris-5b23e8a0e63cc224a4c36a2d": { "file": "dice-paris.html", "headers": { "content-type": "text/html", "last-modified": "Sat, 17 Oct 2026 08:00:00 GMT" } },
+  "https://dice.fm/venue/petit-bain-2b5e": { "file": "dice-venue-petitbain.html", "headers": { "content-type": "text/html" } },
+  "https://images.shotgun.live/venues/machine.png": { "file": "machine.png", "headers": { "content-type": "image/png" } },
+  "https://images.shotgun.live/venues/trabendo.png": { "file": "trabendo.png", "headers": { "content-type": "image/png" } },
+  "https://dice-media.imgix.net/venues/bataclan.png": { "file": "bataclan.png", "headers": { "content-type": "image/png" } },
+  "https://dice-media.imgix.net/venues/cigale.png": { "file": "cigale.png", "headers": { "content-type": "image/png" } },
+  "https://dice-media.imgix.net/venues/petitbain.png": { "file": "petitbain.png", "headers": { "content-type": "image/png" } },
+  "nominatim:Trabendo": { "file": "nominatim-trabendo.json", "headers": { "content-type": "application/json" } }
+}

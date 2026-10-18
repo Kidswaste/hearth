@@ -1,0 +1,13 @@
+/* (round 61, showsync61) Shotgun / DICE venues on Sidequest Studio's Paris map, the week's list (showsync.js) */
+.qj-atlas-pin.has-logo>span{padding:0!important;overflow:hidden}
+.qj-atlas-logo{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;pointer-events:none}
+.qj .ss-row .ss-logo,.qj .ss-src>.qj-map-icon{width:26px;height:26px;border-radius:50%;object-fit:cover;flex:none}
+.qj .ss-row>strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.qj .ss-row .ss-when{opacity:.72;font-size:12px;white-space:nowrap}
+.qj .ss-list,.qj .ss-follows{display:flex;flex-direction:column;gap:6px}
+.qj .ss-list>.qj-label{margin-top:8px}
+.qj .ss-head{display:flex;gap:12px;align-items:center;margin-bottom:8px}
+.qj .ss-head>div{display:flex;flex-direction:column;gap:2px}
+.qj .ss-logo-big{width:56px;height:56px;border-radius:14px;object-fit:cover}
+.qj .ss-status{color:#ffd75e}
+.qj .ss-unfollow{margin-left:auto}
