@@ -32,6 +32,7 @@ UNIT.push('showsync-test'); // (round 61, showsync61) Shotgun / DICE weekly show
 UNIT.push('showprep-test'); // (round 62, showprep62) show night companion: .ics in Paris time (DST), Métro hints, the reminder, the show log merge, the main side's one timer
 UNIT.push('questhud-test'); // (round 61, questhud61) the rail's quest tracker on Codex's QuestCore
 UNIT.push('quest-paris-test'); // (round 61, parisquests61) the Paris guide's data and quest rules
+UNIT.push('city-integration-test', 'outing-test'); // Sidequest map, saved outings and proof-safe city actions
 UNIT.push('questwalk-test'); // (round 63, questwalk63) quest walks: order vs brute force, the time budget, Métro / show ends, the walk campaign, the week's free afternoon
 UNIT.push('rewards-test'); // (round 63, rewards63) real rewards: XP ↔ sparks, XP to go, claims never below zero, the capped streak bonus, the savings jar, history
 UNIT.push('weekquest-test'); // (round 62, weekquest62) the week plan: proposals from shows / places / open quests / forecast, days, the nudge, the week in review
