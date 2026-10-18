@@ -42,7 +42,7 @@ const audio = () => { try { const A = require('./gameaudiomain'); A.init({ dataD
 const budget = () => { try { const B = require('./playbudgetmain'); B.init({ dataDir: ctx?.dataDir }); return B; } catch { return null; } };
 // (round 62, playnotes62) playtest notes: one key (F8) drops a note (the frame's picture, the time, what the game saves,
 // the frame rate then) into data/game-cache/<game>/notes; read here with the window's other keys (playnotesmain.js)
-const notes = () => { try { const N = require('./playnotesmain'); N.init({ dataDir: ctx?.dataDir }); return N; } catch { return null; } };
+const pnotes = () => { try { const N = require('./playnotesmain'); N.init({ dataDir: ctx?.dataDir }); return N; } catch { return null; } };
 let ctx = null; // { getWin, powerwise, dataDir }
 let G = null; // the game playing: { win, source, root, token, display, hz, route, how, started, release, priority, pid }
 const roots = new Map(); // token → folder
@@ -229,7 +229,7 @@ function ended(g) {
   G = null;
   roots.delete(g.token);
   loop()?.ended?.();
-  notes()?.ended?.();
+  pnotes()?.ended?.();
   forget();
   try { g.release?.(); } catch { /* fine */ }
   try { ctx.powerwise.quiet(false); } catch { /* fine */ }
@@ -253,7 +253,7 @@ async function play(_e, req = {}) {
   const was = budget()?.forGame(source) || { off: [] }; const offs = new Set(was.off);
   const fid = C.fidelity(d, offs.has('look') ? 'off' : req.look); // (round 54, gamelook) look: 'best' (the default) | 'balanced'
   const token = crypto.randomBytes(12).toString('hex');
-  const NM = notes(); const noteKey = NM ? (NM.arm(req.notes || {}) || '') : ''; // (round 62, playnotes62) the note key's label for the hint
+  const NM = pnotes(); const noteKey = NM ? (NM.arm(req.notes || {}) || '') : ''; // (round 62, playnotes62) the note key's label for the hint
   let built = null;
   let root; let entry; let route = 'html'; let how = 'HTML build'; let notes = [];
   if (source.kind === 'lab') {
@@ -361,11 +361,11 @@ function register(ipcMain, c) {
   ipcMain.on('game:fix', (e, d) => loop()?.fix?.(e, d));
   // (round 62, playnotes62) playtest notes: the hub lists / shows / words / jumps / clears (playnotesmain.js); the game
   // window's words box sends its words, asks for the voice input, says it closed
-  notes()?.register?.({ ctx: () => ctx, game: () => G });
-  ipcMain.handle('game:notes', hub((_e, req) => notes()?.op?.(req || {}) || { ok: false, why: 'notes are not in this Hearth' }));
-  ipcMain.on('game:note-text', (e, d) => notes()?.onText?.(e, d));
-  ipcMain.on('game:note-voice', (e, d) => notes()?.onVoice?.(e, d));
-  ipcMain.on('game:note-box-off', (e) => notes()?.onBoxOff?.(e));
+  pnotes()?.register?.({ ctx: () => ctx, game: () => G });
+  ipcMain.handle('game:notes', hub((_e, req) => pnotes()?.op?.(req || {}) || { ok: false, why: 'notes are not in this Hearth' }));
+  ipcMain.on('game:note-text', (e, d) => pnotes()?.onText?.(e, d));
+  ipcMain.on('game:note-voice', (e, d) => pnotes()?.onVoice?.(e, d));
+  ipcMain.on('game:note-box-off', (e) => pnotes()?.onBoxOff?.(e));
   // checks: run a line in the game window's page, press a key / click there (real input, through Chromium)
   ipcMain.handle('game:eval', hub(async (_e, code) => { if (!G?.win || G.win.isDestroyed()) return { error: 'not playing' }; try { return { value: await G.win.webContents.executeJavaScript(String(code), true) }; } catch (err) { return { error: err.message }; } }));
   ipcMain.handle('game:key', hub((_e, { key = 'Escape', mods = [] } = {}) => {

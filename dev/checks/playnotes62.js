@@ -212,7 +212,7 @@ await safe('html', async () => {
   const full = r ? (await N({ op: 'get', source: hsrc, id: r.notes[0].id }))?.note : null;
   const shot = full ? await N({ op: 'shot', source: hsrc, id: full.id, path: true }) : null;
   const after = await window.hub.fs.read(`${DIR}/html/game.js`);
-  let inGame = true; try { await window.hub.fs.read(`${DIR}/html/notes/log.json`); } catch { inGame = false; }
+  const listed = await window.hub.fs.list(`${DIR}/html`).catch(() => null); const inGame = JSON.stringify(listed || '').includes('notes') || JSON.stringify(listed || '').includes('.jpg');
   out.measure.html = { state: full?.state ? Object.keys(full.state) : null, pos: full?.pos, perf: full?.perf, path: shot?.path };
   step('an HTML build: F8 → a note with window.__game\'s state and the player\'s position, in its own folder', full && typeof full.state?.score === 'number' && full.pos && /game-cache[\\/]html-html-[0-9a-f]{8}[\\/]notes/.test(shot?.path || ''), out.measure.html);
   step('… the game\'s files untouched (nothing written next to it)', before === after && !inGame);
