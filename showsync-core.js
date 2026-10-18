@@ -144,6 +144,9 @@
     (function walk(x, depth) {
       if (!x || typeof x !== 'object' || depth > 14 || ++seen > 30000 || out.length >= 400) return;
       if (Array.isArray(x)) { for (const y of x) walk(y, depth + 1); return; }
+      // DICE's current public browse page: nested dates, plural venues, integer minor-unit prices.
+      const diceCard=src.platform==='dice'&&typeof x.dates?.event_start_date==='string'&&Array.isArray(x.venues);
+      if(diceCard)x={...x,startDate:x.dates.event_start_date,endDate:x.dates.event_end_date,venue:x.venues[0],url:typeof x.id==='string'&&/^[a-f0-9]{24}$/i.test(x.id)?'https://dice.fm/event/'+x.id:x.url};
       const title = typeof x.name === 'string' ? x.name : typeof x.title === 'string' ? x.title : '';
       const sk = START_KEYS.find((k) => typeof x[k] === 'string' || (typeof x[k] === 'number' && x[k] > 1e9));
       const v = x.venue || x.place || (x.location && typeof x.location === 'object' ? x.location : null);
@@ -157,7 +160,8 @@
           const link = typeof x.url === 'string' ? platformLink(x.url, src.platform) : typeof x.slug === 'string' && src.platform === 'shotgun' ? `https://shotgun.live/en/events/${encodeURIComponent(x.slug)}` : typeof x.perm_name === 'string' && src.platform === 'dice' ? `https://dice.fm/event/${encodeURIComponent(x.perm_name)}` : '';
           const names = arr(x.artists || x.lineup || x.performers).map((a) => (typeof a === 'string' ? a : a?.name || ''));
           const links = artistLinks(arr(x.artists || x.lineup || x.performers).filter((a) => a && typeof a === 'object').map((a) => ({ name: a.name, url: typeof a.url === 'string' ? a.url : '', sameAs: a.sameAs })), src.platform);
-          out.push(mk({ platform: src.platform, title: str(title, 160), start, end: null, url: link, venue: { name: str(vo.name || vo.title || '', 120), address: str(addr, 200), lat, lon, image: pickImg(vo.logo || vo.image || vo.avatar || vo.coverUrl || vo.cover), url: '' }, lineup: lineupFrom(names, title), links, image: pickImg(x.image || x.cover || x.coverUrl), price: null, soldOut: false, cancelled: false }));
+          const minor=diceCard?(x.price?.amount_from??x.price?.amount):null,end=Date.parse(x.endDate||'');
+          out.push(mk({ platform: src.platform, title: str(title, 160), start, end: diceCard&&Number.isFinite(end)&&end>=start?end:null, url: link, venue: { name: str(vo.name || vo.title || '', 120), address: str(addr, 200), lat, lon, image: pickImg(vo.logo || vo.image || vo.avatar || vo.coverUrl || vo.cover), url: '' }, lineup: lineupFrom(names, title), links, image: pickImg(x.image || x.cover || x.coverUrl || (diceCard&&x.images?.square)), price:typeof minor==='number'&&Number.isFinite(minor)&&minor>=0?{from:minor/100,currency:str(x.price.currency||'EUR',3)}:null, soldOut: diceCard&&/^(sold[-_ ]?out)$/i.test(x.status||''), cancelled: diceCard&&/^cancelled$/i.test(x.status||'') }));
           return;
         }
       }

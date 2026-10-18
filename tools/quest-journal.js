@@ -127,7 +127,7 @@ const QuestJournal = (() => {
   }
   function actionLabel(b,text) {b.textContent=text;decorateAction(b,text);if(hintTarget===b)showHint(b);}
   function button(text, fn, cls = '', key) {
-    const b=E('button', { type: 'button', class: `qj-button ${cls}`, text, ...(key ? { dataset: { focus: key } } : {}), on: { click: async e => { const b = e.currentTarget; b.disabled = true; try { await fn(e); } catch (err) { notice(err.message || 'That action could not be saved.'); } finally { b.disabled = false; } } } }, E('span', { class: 'qj-glint', attrs: { 'aria-hidden': 'true' } }));
+    const b=E('button', { type: 'button', class: `qj-button ${cls}`, text, ...(key ? { dataset: { focus: key } } : {}), on: { click: async e => { const b = e.currentTarget;if(b.disabled)return;let busy;try { const result=fn(e);if(result?.then){b.disabled=true;b.setAttribute('aria-busy','true');busy=setTimeout(()=>b.dataset.working='true',200);await result;} } catch (err) { notice(err.message || 'That action could not be saved.'); } finally { clearTimeout(busy);b.disabled=false;b.removeAttribute('aria-busy');delete b.dataset.working; } } } }, E('span', { class: 'qj-glint', attrs: { 'aria-hidden': 'true' } }));
     decorateAction(b,text);return b;
   }
   function glaze(parent) {
@@ -182,13 +182,13 @@ const QuestJournal = (() => {
     root.append(d); d.addEventListener('close', () => { hideHint();d.remove(); if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); });
     build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); d.showModal(); return d;
   }
-  function mutate(fn, message = 'Progress saved.') {
+  function mutate(fn, message = 'Progress saved.', { paint = true } = {}) {
     const task = saving.catch(() => {}).then(async () => {
       if (!writable) throw Error('The journal is read-only until it can be loaded safely.');
       const draft = C.clone(state), result = await fn(draft); draft.updatedAt = new Date().toISOString();
       const checked = C.validate(draft);
       const r = await window.hub.kvSet(KEY, checked); if (r?.error) throw Error(r.error);
-      state = checked; render(); notice(message); announce('studio'); return result;
+      state = checked; if(paint)render(); if(message)notice(message); announce('studio'); return result;
     });
     saving = task; return task;
   }
@@ -387,15 +387,17 @@ const QuestJournal = (() => {
     return wrap;
   }
   const mapKind = place => C.mapKinds.find(k=>k.id===C.placeKind(place));
+  let previewPlace=null,paintActivePlace=null;
+  function paintPlace(id){hideHint();paintActivePlace?.(id);atlasView?.select(id);}
   function mapPick(id, center=false) {
-    return mutate(s=>{s.atlas.selected=id;}).then(()=>{
-      const place=state.atlas.places.find(p=>p.id===id);if(center)atlasView?.focus(place);
-      root.querySelector('.qj-atlas [data-place="'+id+'"]')?.focus({preventScroll:true});
-    });
+    const place=state.atlas.places.find(p=>p.id===id);if(!place)return Promise.reject(Error('Place not found.'));
+    previewPlace=id;paintPlace(id);if(center)atlasView?.focus(place);
+    root.querySelector('.qj-atlas [data-place="'+id+'"]')?.focus({preventScroll:true});
+    return mutate(s=>{s.atlas.selected=id;},'',{paint:false}).then(()=>{if(previewPlace===id)previewPlace=null;},err=>{if(previewPlace===id){previewPlace=null;paintPlace(state.atlas.selected);}throw err;});
   }
   // parisquests61: mapFilter.guide (a Paris guide word: tag, arrondissement…) and guide words in search come from tools/quest-paris-ui.js.
   function mapPlaces() {const query=mapFilter.query.toLocaleLowerCase(),PG=window.QuestParisUI;return state.atlas.places.filter(p=>(mapFilter.kind==='all'||C.placeKind(p)===mapFilter.kind)&&(!mapFilter.saved||p.favorite)&&(!mapFilter.guide||!PG||PG.keep(p,mapFilter.guide))&&(!query||(p.name+' '+p.quest+' '+(PG?.words(p)||'')).toLocaleLowerCase().includes(query)));}
-  function centerMapSelection() {const places=mapPlaces(),place=places.find(p=>p.id===state.atlas.selected)||places[0];if(place)atlasView?.focus(place);}
+  function centerMapSelection() {const places=mapPlaces(),place=places.find(p=>p.id===(previewPlace||state.atlas.selected))||places[0];if(place)atlasView?.focus(place);}
   function outingDesk(options = {}) {
     return OutingDesk.open({dialog,button,field,explain,friends:()=>state.world.friends,openQuest:questDetail,
       quest:async plan=>{const c=await mutate(s=>OutingCore.campaign(s,plan,C),'Take-home quest ready. Proof and review unlock its XP.');return c.quests[0].id;},
@@ -405,8 +407,8 @@ const QuestJournal = (() => {
   function worldMap() {
     OutingDesk.ensureMap().catch(err=>notice(err.message));
     const kind=mapFilter.kind,visible=mapPlaces();
-    const selected=visible.find(p=>p.id===state.atlas.selected)||visible[0];
-    const head=row(mapIcon('social','Friends & dates',()=>mapNotebook('friends'),'#ffd75e'),mapIcon('calendar','Outing plans',()=>mapNotebook('plans'),'#ff8c42'),mapIcon('gift','Field rewards',mapRewards,'#ff6b9d'),mapIcon('info','Map controls & progress',()=>dialog('Your Paris field kit',body=>body.append(p('Drag to explore. Use arrow keys on the map to pan, + / − to zoom. Double-click to add a pin; the + button also works without a mouse.'),p('Colored symbols are your place categories. Stars save favorites. Visit stamps are your own record and give no XP. Quests earn XP after proof and review.'),p('Open friends, plans and rewards only when you need them. Hover or focus a symbol for its name. Escape dismisses a hint.'))),'#bfc0c8'),mapIcon('plus','Add a place',()=>placeForm(atlasView?.center()||{}),'#bd8bff'));
+    const selected=visible.find(p=>p.id===(previewPlace||state.atlas.selected))||visible[0];
+    const head=row(mapIcon('social','Friends & dates',()=>mapNotebook('friends'),'#ffd75e'),mapIcon('calendar','Outing plans',()=>mapNotebook('plans'),'#ff8c42'),mapIcon('gift','Field rewards',mapRewards,'#ff6b9d'),mapIcon('info','Map controls & progress',()=>dialog('Your Paris field kit',body=>body.append(p('Scroll or drag to explore. Shift-scroll moves sideways; Ctrl/Command-scroll zooms. Arrow keys pan, + / − zoom. Double-click to add a pin; the + button also works without a mouse.'),p('Colored symbols are your place categories. Stars save favorites. Visit stamps are your own record and give no XP. Quests earn XP after proof and review.'),p('Open friends, plans and rewards only when you need them. Hover or focus a symbol for its name. Escape dismisses a hint.'))),'#bfc0c8'),mapIcon('plus','Add a place',()=>placeForm(atlasView?.center()||{}),'#bd8bff'));
     head.prepend(mapIcon('music','Outing desk · events & my lineup',outingDesk,'#ffb14a'));
     // (round 61, showsync61) map layers: their icon joins this row, their pins join the map
     const layerKit={dialog,mapIcon,button,p,label,E,mutate,questDetail,navigate,notice},layerPins=[],layerLines=[]; // layerLines: (round 63, questwalk63) a layer's lines() → polylines on the map
@@ -415,7 +417,7 @@ const QuestJournal = (() => {
     const events=OutingDesk.mapSummary();
     const city=E('div',{class:'qj-city-actions'},button('Explore places',async()=>{const result=await mutate(s=>QuestParis.addGuide(s),'Paris places ready.');mapFilter={kind:'all',saved:false,query:''};render();if(result.full)notice(`${result.full} places did not fit. Your own places were kept.`);},'qj-city-action'),button(events.count?`${events.count} events · plan an outing`:'Find events',()=>outingDesk(),'qj-city-action'),button('My lineup',()=>outingDesk({tab:'saved'}),'qj-city-action'));
     ['compass','calendar','bookmark'].forEach((kind,i)=>city.children[i].prepend(QuestAtlas.icon(kind)));
-    content.append(city);
+    const todayEntry=window.QuestParisUI?.todayEntry();if(todayEntry)content.append(todayEntry);content.append(city);
     const filters=E('div',{class:'qj-map-filters',attrs:{'aria-label':'Filter map places'}});
     for(const k of [{id:'all',name:'All places',color:'#bfc0c8'},...C.mapKinds]){
       const control=mapIcon(k.id==='all'?'compass':k.id,k.name,()=>{mapFilter.kind=k.id;render();centerMapSelection();},k.color,kind===k.id);
@@ -424,12 +426,13 @@ const QuestJournal = (() => {
     filters.append(mapIcon('star','Favorites only',()=>{mapFilter.saved=!mapFilter.saved;render();centerMapSelection();},'#ffd75e',mapFilter.saved,'map-favorites'));
     const search=E('input',{type:'search',value:mapFilter.query,attrs:{'aria-label':'Find a saved place',placeholder:'Find a place…',maxlength:120},dataset:{focus:'map-search'}});
     search.addEventListener('input',()=>{mapFilter.query=search.value;render();centerMapSelection();});
-    const surprise=mapIcon('dice','Pick somewhere for me',async()=>{const pool=visible.filter(p=>p.id!==selected?.id&&!p.visitedAt),fallback=visible.filter(p=>p.id!==selected?.id),choices=pool.length?pool:fallback;if(choices.length)await mapPick(choices[Math.floor(Math.random()*choices.length)].id,true);},'#ff8c42');
+    const surprise=mapIcon('dice','Pick somewhere for me',async()=>{const pool=visible.filter(p=>p.id!==(previewPlace||state.atlas.selected)&&!p.visitedAt),fallback=visible.filter(p=>p.id!==(previewPlace||state.atlas.selected)),choices=pool.length?pool:fallback;if(choices.length)await mapPick(choices[Math.floor(Math.random()*choices.length)].id,true);},'#ff8c42');
     surprise.querySelector('button').disabled=visible.length<2;
     filters.append(search,surprise,mapIcon('list','My places',()=>mapNotebook('places'),'#bd8bff'));
     if(mapFilter.guide&&window.QuestParisUI)filters.append(QuestParisUI.chip(mapFilter.guide,()=>{delete mapFilter.guide;render();centerMapSelection();})); // parisquests61
     content.append(filters);
     const layout=E('div',{class:'qj-world-layout qj-field-layout'}),map=E('section'),panel=E('aside',{class:'qj-place-panel qj-field-panel'});
+    function placePanel(selected,panel){
     if(selected){
       const k=mapKind(selected),emblem=E('div',{class:'qj-field-emblem',style:{'--icon-color':k.color}},QuestAtlas.icon(k.id));
       panel.append(E('div',{class:'qj-field-place-head'},emblem,E('div',{},label(k.name),E('h3',{text:selected.name}))),
@@ -445,6 +448,9 @@ const QuestJournal = (() => {
       if(goal)panel.append(E('div',{class:'qj-field-goal'},label('NEXT TREAT'),button(goal.name,mapRewards,'qj-quiet'),meter(Math.min(C.balance(state),goal.cost),goal.cost,'Reward progress')));
       else panel.append(button('Pick a little reward',mapRewards,'qj-quiet'));
     }else panel.append(QuestAtlas.icon('compass'),E('h3',{text:'A quiet corner.'}),p('No places match.'),button('Show all places',()=>{mapFilter={kind:'all',saved:false,query:''};render();},'qj-primary'));
+  }
+    placePanel(selected,panel);
+    paintActivePlace=id=>{const p=mapPlaces().find(p=>p.id===id);if(!p||!panel.isConnected)return;panel.replaceChildren();placePanel(p,panel);glaze(panel);};
     layout.append(map,panel);content.append(layout);
     atlasView=QuestAtlas.mount(map,{places:[...visible.map(p=>({...p,kind:C.placeKind(p),color:mapKind(p).color})),...layerPins],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines});
     const stamps=state.atlas.places.filter(p=>p.visitedAt).length;
