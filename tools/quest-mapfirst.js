@@ -93,7 +93,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     if (id === 'places') return P() ? s.atlas.places.filter((p) => P().guide.some((g) => g.id === p.id)).length : 0;
     if (id === 'shows') return typeof ShowSync !== 'undefined' && ShowSync.snap ? ShowSync.week().length : 0;
     if (id === 'walks') return window.QuestWalk?.shown?.() ? 1 : 0;
-    return PJ() ? PJ().moments().length : s.atlas.places.filter((p) => p.visitedAt).length; // My Paris's moments when it's in
+    return (PJ() ? PJ().moments().length : 0) || s.atlas.places.filter((p) => p.visitedAt).length; // My Paris's moments when it's in, else your visit stamps
   }
   async function toggle(id) {
     const next = !on(id); prefs = { ...prefs, [id]: next }; write(KEY, prefs);

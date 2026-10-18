@@ -30,6 +30,9 @@ One strip on the map (one row, in the map's own button style, bottom left)
 6. **Places · Shows · My walks · Visited**: layer chips with counts, for example "Places 44", "Shows 4" and
    "Visited 2". Click a chip to hide that layer and click again to show it. Hiding never deletes anything: guide
    places you've started, starred or visited stay visible, and so does the selected pin.
+   **Visited is My Paris** (parisjournal64): the one chip shows or hides your visit ✓ and My Paris's moments together. Its
+   count is My Paris's moments, or your visit stamps when there are none yet. There's no second My Paris chip in the
+   filter row.
 7. **The chips are remembered on this computer.** A layer you hide stays hidden the next time you open the map.
 8. **Plan a walk** button: it makes the default walk (2 h, 3–5 places you haven't visited, Métro to Métro), draws it
    on the map and opens the walk dialog (Open walking route · Save as a walk quest · 3 h instead · Another area). It
@@ -65,11 +68,14 @@ quest, the walk dialog's Save as a walk quest, Stamp my visit, and every chip.
   - `questwalk63`: Plan a walk and the My walks chip are on the map
 - Codex's map checks now count their own pins (`:not(.qj-pin-guide)`), because the guide is on the map by default:
   `quest-world`, `quest-field`, `quest-focus`.
-- Results (under `flock /tmp/hearth-run.lock`):
-  - Passed: mapfirst64, quest-paris, showsync61, questwalk63, showprep62, quest-world, quest-map-tiles, quest-field,
-    questhud61, weekquest62, lazy, unit:boot-test, unit:datasafe-scan, unit:winmac-test, unit:questwalk-test,
+- Results after merging origin/main (Codex c0ad4a7) and claude/intelligent-galileo-yaiqem (parisjournal64,
+  liveset64), all under `flock /tmp/hearth-run.lock`, ≤ 5 per hold:
+  - Passed: mapfirst64, quest-paris, showsync61, questwalk63, showprep62, parisjournal64, quest-world,
+    quest-map-tiles, quest-field, quest-focus, outing-desk, questhud61, weekquest62, lazy, unit:boot-test,
+    unit:datasafe-scan, unit:winmac-test, unit:quest-paris-test, unit:questwalk-test, unit:parisjournal64-test,
     unit:showprep-test, unit:notify-test
-  - quest-focus: failed once on its place count; the count is fixed, see the final report for the rerun
+  - city-integration (Codex's new check) fails with "bridge starts on My lineup". It fails the same way on a clean
+    origin/main export, so it isn't from this stream.
   - unit:showsync-test: one date-dependent step fails ("breaking: changed page", it expects 7 shows; Sunday's week
     holds fewer). That test drives `showsyncmain.create()` directly, which this round didn't change.
 - Screenshots (before / after, fresh and existing journal) are listed in the stream's final report.
@@ -101,6 +107,9 @@ a no-op.
 - `tools/quest-atlas.js`:
   - a place's optional `tone` (`/^[\w-]+$/` only) becomes an extra class on its pin
   - `draw()` sets `host.dataset.zoom` so CSS can follow the zoom
+- parisjournal64 (ours): `QuestMapFirst.ownsChip('parisjournal')` makes the journal's filter-row chip hook skip My
+  Paris. The strip's Visited chip reads and sets `ParisJournal.prefs.on` / `toggle()`. `dev/checks/parisjournal64.js`
+  finds the chip in `.qmf-strip` and checks that there is only one.
 - `dev/checks/quest-world.js`, `quest-field.js`, `quest-focus.js`: pin counts use `:not(.qj-pin-guide)`, and
   quest-focus finds the new place by name instead of counting places. Nothing else changed.
 - Merged with your c0ad4a7 (city actions row: Explore places · events · My lineup; outing-event venue pins; 8 more
