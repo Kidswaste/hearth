@@ -14,11 +14,11 @@
 // (showsync.js). Hooks in Codex's quest-journal.js / quest-atlas.js are optional one-liners: without this file the
 // map is exactly as before. No timers, no polling; the only network is showsync's own once-a-day read.
 const QuestMapFirst = window.QuestMapFirst = (() => {
-  const KEY = 'questmap.layers', SEEDED = 'questmap.guideSeeded', SHOW_RETRY = 6 * 3600e3;
+  const KEY = 'questmap.layers', SEEDED = 'questmap.foodSeeded', SHOW_RETRY = 6 * 3600e3;
   const P = () => window.QuestParis, J = () => (typeof QuestJournal !== 'undefined' ? QuestJournal : null);
   const LAYERS = [
-    { id: 'places', name: 'Places', icon: 'compass', color: '#bd8bff', help: 'The Paris guide’s places worth the trip' },
-    { id: 'shows', name: 'Shows', icon: 'spark', color: '#ff6b9d', help: 'This week’s shows from Shotgun and DICE, and the Outing desk’s events' },
+    { id: 'places', name: 'Food & stops', icon: 'food', color: '#ffb759', help: 'Food, record shops and a few outdoor stops; your saved places stay' },
+    { id: 'shows', name: 'Nights', icon: 'music', color: '#ff6b9d', help: 'Your clubs; zoom in for more Shotgun/DICE venues. Click a club for its nights' },
     { id: 'walks', name: 'My walks', icon: 'arrow', color: '#ffd75e', help: 'Your walk on the map' },
     { id: 'visited', name: 'Visited', icon: 'check', color: '#f6ca71', help: 'Places you stamped as visited (✓) and My Paris: what you actually did' }
   ];
@@ -42,12 +42,13 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
   function untouched(s, p) {
     const G = P(); if (!G || !s || !String(p.id).startsWith('pp-') || !G.guide.some((g) => g.id === p.id)) return false;
     if (p.visitedAt || p.favorite) return false;
-    return !s.campaigns.some((c) => c.id === G.campaignId(p.id) || c.parisPlace === p.id || c.mapPlace === p.id);
+    const g=G.byId(p.id);if(p.name!==g.name || p.lat!==g.lat || p.lon!==g.lon || p.kind!==g.kind || p.quest!==g.why.slice(0,500))return false;
+    return !s.campaigns.some((c) => c.id === G.campaignId(p.id) || c.parisPlace === p.id || c.mapPlace === p.id || c.walk?.stops?.some(x=>(typeof x==='string'?x:x.id)===p.id));
   }
   // mapPlaces() filter (quest-journal.js): the selected pin always stays
-  function keep(p, s = stateOf()) {
+  function keep(p, s = stateOf(), filters={}) {
     if (!s || p.id === s.atlas?.selected) return true;
-    if (!on('places') && untouched(s, p)) return false;
+    if (untouched(s,p) && (!on('places') || (!prefs.fullGuide && !filters.guide && !filters.query && !P().mapPicks.has(p.id)))) return false;
     if (!on('visited') && p.visitedAt) return false;
     return true;
   }
@@ -61,14 +62,14 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     // visits / stars / quests from both; QuestParis.dedupe). Checked on each open; a no-op when there's nothing to merge.
     if (!merging && P()?.needsDedupe?.(s)) { merging = true; setTimeout(() => { j.paris.mutate((st) => P().dedupe(st), 'One pin per place: your pins now carry the guide’s notes.').catch((err) => console.warn('[mapfirst] dedupe', err)).finally(() => { merging = false; }); }, 0); }
     // the guide's places, once per profile (the same rule as /quest paris: missing guide pins only, yours untouched)
-    if (on('places') && !seeding && !read(SEEDED, false) && P() && !P().hasGuide(s)) {
-      seeding = true; write(SEEDED, true);
-      setTimeout(() => { addGuide('The Paris guide’s places are on your map. Pick one for its quest.').finally(() => { seeding = false; }); }, 0);
-    } else if (!read(SEEDED, false) && P()?.hasGuide(s)) write(SEEDED, true);
+    if (on('places') && !seeding && !read(SEEDED, false) && P()) {
+      seeding = true;
+      setTimeout(() => { addGuide('Food stops ready. Click a pin to explore.').then(()=>write(SEEDED,true)).catch(err=>console.warn('[mapfirst] food stops',err.message)).finally(() => { seeding = false; }); }, 0);
+    }
     if (on('shows')) shows();
   }
   function addGuide(message) {
-    return J().paris.mutate((st) => P().addGuide(st), message).catch((err) => console.warn('[mapfirst] guide', err));
+    return J().paris.mutate((st) => P().addGuide(st,P().guide.filter(g=>prefs.fullGuide || P().mapPicks.has(g.id))), message);
   }
   // this week's shows: showsync's own once-a-day read (the main process skips pages read in the last 20 h)
   function shows() {
@@ -87,6 +88,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     if (fetching) return { text: 'Loading this week’s shows…', busy: true };
     const snap = ShowSync.snap, srcs = snap?.sources || [];
     const bad = srcs.filter((x) => x.problem && x.problem !== 'empty'); if (!bad.length) return null;
+    if(ShowSync.week().length)return {text:'Some listings unavailable',title:snap.status || 'Last good nights are kept. Open the shows list for source details.'};
     const names = [...new Set(bad.map((x) => ShowSyncCore.PLATFORMS[x.platform]?.name || x.platform))].join('/');
     const last = Math.max(0, ...bad.map((x) => x.lastOk || 0)); // the failing pages' own last good list
     return { text: `Couldn’t load ${names} — ${last ? 'last list from ' + day(last) : 'no list yet'}`, title: snap.status || '' };
@@ -94,8 +96,8 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
 
   // ---------- the strip on the map ----------
   function count(id, s) {
-    if (id === 'places') return P() ? s.atlas.places.filter((p) => P().guide.some((g) => g.id === p.id || g.id === p.guide)).length : 0; // (parisdedupe64) + your twins of guide places
-    if (id === 'shows') return (typeof ShowSync !== 'undefined' && ShowSync.snap ? ShowSync.week().length : 0) + (typeof OutingDesk !== 'undefined' && OutingDesk.mapSummary ? OutingDesk.mapSummary().count || 0 : 0); // (parisdedupe64) + the Outing desk's events
+    if (id === 'places') return 0;
+    if (id === 'shows') return 0;
     if (id === 'walks') return window.QuestWalk?.shown?.() ? 1 : 0;
     return (PJ() ? PJ().moments().length : 0) || s.atlas.places.filter((p) => p.visitedAt).length; // My Paris's moments when it's in, else your visit stamps
   }
@@ -112,6 +114,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     if (!on('walks')) { prefs = { ...prefs, walks: true }; write(KEY, prefs); }
     await QuestWalk.plan();
   }
+  async function explore(full=true){prefs={...prefs,fullGuide:full,places:true};write(KEY,prefs);if(full)await addGuide('Full guide shown. Switch back to My spots for a quieter map.');rerender();}
   // (quest-journal.js worldMap, after QuestAtlas.mount) host = the map's element; kit = the journal's layer kit
   function overlay(host, kit) {
     const s = stateOf(); if (!s || !host) return;
@@ -127,7 +130,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     const plan = button('', planWalk, 'qj-hardware qmf-plan');
     plan.setAttribute('aria-label', 'Plan a walk'); plan.title = '3–5 places you haven’t visited, in walking order, Métro to Métro';
     plan.append(QuestAtlas.icon('arrow'), E('span', { text: 'Plan a walk' }));
-    bar.append(plan);
+    const more=button('',()=>explore(!prefs.fullGuide),'qj-hardware qmf-chip');more.title=prefs.fullGuide?'Return to food stops and your saved places':'Show the full Paris guide';more.setAttribute('aria-label',more.title);more.append(QuestAtlas.icon('compass'),E('span',{text:prefs.fullGuide?'My spots':'More places'}));bar.append(more,plan);
     host.append(bar);
     const st = showStatus();
     if (st) {
@@ -136,5 +139,5 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
       host.append(line);
     }
   }
-  return { open, keep, tone, off, ownsChip, overlay, on, toggle, planWalk, showStatus, LAYERS, get prefs() { return { ...prefs }; } };
+  return { open, keep, tone, off, ownsChip, overlay, on, toggle, planWalk, explore, showStatus, LAYERS, get prefs() { return { ...prefs }; } };
 })();

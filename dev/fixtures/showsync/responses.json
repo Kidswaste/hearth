@@ -16,5 +16,47 @@
   "https://www.miamao.fr/robots.txt": {"body": "User-agent: *\nAllow: /", "headers": {"content-type": "text/plain"}},
   "https://www.miamao.fr/agenda/": {"body": "<main>No upcoming events</main>"},
   "https://www.glazart.com/robots.txt": {"body": "User-agent: *\nAllow: /", "headers": {"content-type": "text/plain"}},
-  "https://www.glazart.com/agenda-concerts/": {"body": "<main>No upcoming events</main>"}
+  "https://www.glazart.com/agenda-concerts/": {"body": "<main>No upcoming events</main>"},
+"https://www.lamachinedumoulinrouge.com/robots.txt": {
+    "body": "User-agent: *\nAllow: /",
+    "headers": {
+      "content-type": "text/plain"
+    }
+  },
+  "https://www.lamachinedumoulinrouge.com/agenda/": {
+    "body": "<main>No scheduled nights</main>",
+    "headers": {
+      "content-type": "text/html"
+    }
+  },
+  "https://www.kilometre25.fr/robots.txt": {
+    "body": "User-agent: *\nAllow: /",
+    "headers": {
+      "content-type": "text/plain"
+    }
+  },
+  "https://www.kilometre25.fr/francais/agenda": {
+    "body": "<main>No scheduled nights</main>",
+    "headers": {
+      "content-type": "text/html"
+    }
+  },
+  "https://shotgun.live/venues/rex-club": {
+    "body": "<script type=\"application/ld+json\">{\"@type\":\"ItemList\",\"itemListElement\":[]}</script>",
+    "headers": {
+      "content-type": "text/html"
+    }
+  },
+  "https://shotgun.live/venues/phantom": {
+    "body": "<script type=\"application/ld+json\">{\"@type\":\"ItemList\",\"itemListElement\":[]}</script>",
+    "headers": {
+      "content-type": "text/html"
+    }
+  },
+  "https://shotgun.live/venues/madameloyal": {
+    "body": "<script type=\"application/ld+json\">{\"@type\":\"ItemList\",\"itemListElement\":[]}</script>",
+    "headers": {
+      "content-type": "text/html"
+    }
+  }
 }

@@ -35,19 +35,19 @@ try {
   await until(() => root() && QuestJournal.ready(), 'journal');
   QuestJournal.navigate('world'); // (the map's own entry: the Studio's world page)
   await until(() => root().querySelector('.qj-atlas'), 'map');
-  await until(() => pinIds('.qj-pin-guide').length >= 30, 'guide pins by default');
-  const P = QuestParis, guideNew = P.guide.filter((g) => g.id.startsWith('pp-')).length;
+  await until(() => pinIds('.qj-pin-guide').length >= 10, 'guide pins by default');
+  const P = QuestParis, guideNew = P.guide.filter(g=>P.mapPicks.has(g.id)).length;
   step('fresh: the guide’s places are on the map with no command', pinIds('.qj-pin-guide').length === guideNew && S().atlas.places.length === 6 + guideNew, { guide: pinIds('.qj-pin-guide').length, stored: S().atlas.places.length });
   step('pin count sane, no duplicates on the map (Codex’s 60-place guide + our guide + Codex’s six pins)', S().atlas.places.length <= 100 && P.guide.length >= 60 && !dupes(S()).length && !drawnTwice().length && pinIds().filter((id) => !/^(show-venue-|od-venue-|walk-)/.test(id)).length <= S().atlas.places.length, { stored: S().atlas.places.length, dupes: dupes(S()), twice: drawnTwice() });
   step('Codex’s Outing desk event pins ride the Shows chip (one row, no new chip)', QuestMapFirst.off('outing-desk') === false && QuestMapFirst.LAYERS.length === 4);
   step('fresh: Codex’s own six pins keep their own style', pinIds(':not(.qj-pin-guide)').filter((id) => id.startsWith('place-')).length === 6);
   step('guide pins are dots at the city zoom (not cluttering)', root().querySelector('.qj-atlas').dataset.zoom === '12' && root().querySelector('.qj-pin-guide>span').getBoundingClientRect().width <= 16, root().querySelector('.qj-pin-guide>span').getBoundingClientRect().width);
   await until(() => pinIds('[data-place^="show-venue-"]').length >= 3, 'show pins by default (the read starts when the map opens)');
-  await until(() => root().querySelectorAll('.qj-atlas-pin.has-logo img.qj-atlas-logo').length >= 3, 'venue logos');
+  await until(() => root().querySelectorAll('.qj-atlas-pin.has-logo img.qj-atlas-logo').length >= 1, 'venue logos');
   step('fresh: this week’s shows are on the map with venue logos, no command', pinIds('[data-place^="show-venue-"]').length >= 3 && ShowSync.snap.enabled, pinIds('[data-place^="show-venue-"]').length);
   const strip = root().querySelector('.qmf-strip');
   const kids = [...strip.children], tops = new Set(kids.map((k) => Math.round(k.getBoundingClientRect().top)));
-  step('one strip on the map, one row: Places · Shows · My walks · Visited · Plan a walk', strip.closest('.qj-atlas') && tops.size === 1 && kids.map((k) => k.textContent.replace(/\d+/g, '').trim()).join('|') === 'Places|Shows|My walks|Visited|Plan a walk', kids.map((k) => k.textContent));
+  step('one strip on the map, one row: Places · Shows · My walks · Visited · Plan a walk', strip.closest('.qj-atlas') && tops.size === 1 && kids.map((k) => k.textContent.replace(/\d+/g, '').trim()).join('|') === 'Food & stops|Nights|My walks|Visited|More places|Plan a walk', kids.map((k) => k.textContent));
   step('every chip starts on', ['places', 'shows', 'walks', 'visited'].every((id) => chip(id).getAttribute('aria-pressed') === 'true'));
   step('no failure line while the read worked', !root().querySelector('.qmf-status'));
   document.querySelectorAll('.toast').forEach((n) => n.remove());
@@ -96,7 +96,7 @@ try {
   btn('Stamp my visit', root()).click(); await until(() => S().atlas.places.find((p) => p.id === 'place-canal').visitedAt, 'visit stamp');
   await until(() => root().querySelector('.qj-atlas-pin.visited[data-place="place-canal"]'), 'visited pin');
   step('a visited place wears a ✓', getComputedStyle(root().querySelector('.qj-atlas-pin.visited[data-place="place-canal"]'), '::after').content.includes('✓') && chip('visited').dataset.chip === 'visited', chip('visited').textContent); // (the Visited chip is My Paris's when parisjournal64 is in: its count is My Paris's moments)
-  root().querySelector('.qj-atlas-pin[data-place="pp-bataclan"]').click(); await wait(250); // select another pin (the selected one always stays)
+  root().querySelector('.qj-atlas-pin[data-place="pp-double-dragon"]').click(); await wait(250); // select another pin (the selected one always stays)
   chip('visited').click(); await until(() => chip('visited')?.getAttribute('aria-pressed') === 'false', 'visited off');
   step('Visited off hides visited places', !pinIds().includes('place-canal'));
   chip('visited').click(); await until(() => pinIds().includes('place-canal'), 'visited back');
@@ -129,14 +129,14 @@ try {
   const retry = root().querySelector('.qmf-status');
   if (retry) retry.click(); else { chip('shows').click(); await until(() => chip('shows')?.getAttribute('aria-pressed') === 'false', 'shows off'); chip('shows').click(); } // the line only shows on failure; otherwise Shows off → on asks again (a day later on the sync's clock)
   const line = await until(() => root().querySelector('.qmf-status:not(.busy)'), 'failure line');
-  step('a failed read says so on the map, keeping the last list', /^Couldn’t load DICE — last list from /.test(line.textContent) && ShowSync.snap.shows.length >= 1, { line: line.textContent, kept: ShowSync.snap.shows.length });
+  step('a failed read says so on the map, keeping the last list', /Some listings unavailable/.test(line.textContent) && ShowSync.snap.shows.length >= 1, { line: line.textContent, kept: ShowSync.snap.shows.length });
   await smoke({ shot: shots + '/mapfirst64-status.png' });
 
   // ---------- 8. an existing journal (Codex's pins + the owner's, visited, no guide) migrates on open ----------
   const C = QuestCore, old = C.upgrade(C.initial());
   old.atlas.places.push({ id: 'my-cafe', name: 'Café Charbon', lat: 48.8656, lon: 2.3779, quest: 'Sketch the room', visitedAt: new Date().toISOString(), kind: 'social', favorite: true });
   old.atlas.selected = 'my-cafe';
-  localStorage.removeItem('hub.questmap.guideSeeded'); // a profile that never opened this map since round 64
+  localStorage.removeItem('hub.questmap.foodSeeded'); // a profile that never opened this map since round 64
   QuestJournal.navigate('adventure'); await wait(150);
   document.dispatchEvent(new CustomEvent('hearth:quests', { detail: { state: old, source: 'mapfirst64-existing' } }));
   await until(() => S().atlas.places.length === 7, 'existing journal adopted');
@@ -145,8 +145,8 @@ try {
   const st = S();
   step('existing journal: the guide joins once, the owner’s pins and selection unchanged', st.atlas.selected === 'my-cafe' && st.atlas.places.find((p) => p.id === 'my-cafe').favorite && st.atlas.places.filter((p) => p.id === 'my-cafe').length === 1, st.atlas.places.length);
   btn('Paris', root().querySelector('.qj-atlas-controls')).click(); // the whole city again (the walk had framed the map closer; the map draws the pins in view)
-  await until(() => pinIds('.qj-pin-guide').length >= 20, 'guide pins drawn');
-  step('existing journal: guide pins + the owner’s visited ✓ pin on the map', !!root().querySelector('.qj-atlas-pin.visited[data-place="my-cafe"]') && pinIds('.qj-pin-guide').length >= 20, pinIds('.qj-pin-guide').length);
+  await until(() => pinIds('.qj-pin-guide').length >= 10, 'guide pins drawn');
+  step('existing journal: guide pins + the owner’s visited ✓ pin on the map', !!root().querySelector('.qj-atlas-pin.visited[data-place="my-cafe"]') && pinIds('.qj-pin-guide').length >= 10, pinIds('.qj-pin-guide').length);
   QuestJournal.navigate('adventure'); await wait(150); QuestJournal.navigate('world'); await wait(300);
   step('opening again adds nothing', S().atlas.places.length === 7 + guideNew);
   document.querySelectorAll('.toast').forEach((n) => n.remove());

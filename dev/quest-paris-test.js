@@ -208,7 +208,7 @@ test('dedupe leaves both pins when Codex’s one-campaign-per-place-and-mission 
   const before = JSON.stringify(s); assert(!P.needsDedupe(s)); assert.deepEqual(P.dedupe(s), []); assert.equal(JSON.stringify(s), before); C.validate(s);
 });
 test('today gives three bounded, deterministic, unfinished stories for energy, budget and company',()=>{
-  const s=fresh();assert.equal(P.eleven.length,6);assert.equal(P.guide.length,66);assert(P.eleven.every(r=>P.byId('pp-'+r[0]).arr===11));
+  const s=fresh();assert.equal(P.eleven.length,6);assert.equal(P.guide.length,72);assert(P.eleven.every(r=>P.byId('pp-'+r[0]).arr===11));
   for(const energy of [1,2,3])for(const budget of [0,5,15])for(const friendId of ['',...s.world.friends.map(f=>f.id)]){
     const opts={energy,budget,friendId},a=P.today(s,opts,'2026-10-18');assert.equal(a.length,3);assert(a.every(t=>t.energy<=energy&&t.cap<=budget));assert.deepEqual(P.today(s,opts,'2026-10-18'),a);
   }

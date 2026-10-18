@@ -20,7 +20,7 @@ const ShowSync = (() => {
   async function ensure() { if (!snap) { await load(); redraw(); } if (snap.enabled && snap.stale && !triedStale) { triedStale = true; refresh().catch(() => {}); } return snap; }
   const shows = () => snap?.shows || [];
   const week = () => C.thisWeek(shows());
-  const upcoming = () => shows().filter((s) => !s.cancelled&&(s.end||s.start+4*3600e3)>=Date.now()).sort((a, b) => a.start - b.start);
+  const upcoming = () => shows().filter((s) => !s.cancelled&&C.expires(s)>=Date.now()).sort((a, b) => a.start - b.start);
   const venueList = () => C.venues(upcoming());
   // (round 62, showprep62) extensions: another module adds to the show card, the pins, a venue, the list, /shows
   //   extend({ card(kit, show, actions, dialog), pins(pins) → pins, select(id, kit) → handled, venue(kit, venue, body),
@@ -60,15 +60,15 @@ const ShowSync = (() => {
 
   // ---------- the map layer ----------
   const logoOrIcon = (url, cls = 'ss-logo') => { if (!url) return QuestAtlas.icon('music'); const img = el('img', { class: cls, attrs: { alt: '', src: url, draggable: 'false' } }); img.addEventListener('error', () => img.replaceWith(QuestAtlas.icon('music')), { once: true }); return img; };
-  const when = (s) => `${C.short(s.start)}${s.soldOut ? ' · sold out' : ''}`;
+  const when = (s) => `${C.showWhen(s)}${s.soldOut ? ' · sold out' : ''}`;
   function row(kit, s, onPick) {
     const b = kit.button('', onPick, 'qj-field-list-item ss-row'); b.dataset.show = s.key; b.style.setProperty('--icon-color', '#ff6b9d');
     b.append(logoOrIcon(s.venue.logo), kit.E('strong', { text: s.title }), kit.E('span', { class: 'ss-when', text: `${when(s)} · ${s.venue.name || ''}` }));
-    b.setAttribute('aria-label', `${s.title}, ${C.short(s.start)}, ${s.venue.name || ''}`); return b;
+    b.setAttribute('aria-label', `${s.title}, ${C.showWhen(s)}, ${s.venue.name || ''}`); return b;
   }
   function showDetail(kit, s) {
     kit.dialog(s.title, (body, d) => {
-      const head = kit.E('div', { class: 'ss-head' }, logoOrIcon(s.venue.logo, 'ss-logo ss-logo-big'), kit.E('div', {}, kit.label(`${C.dayWord(s.start).toUpperCase()} · ${C.hm(s.start)} · ${C.platformsText(s).toUpperCase()}`), kit.E('strong', { text: s.venue.name || 'Venue' }), kit.E('span', { text: s.venue.address || '' })));
+      const head = kit.E('div', { class: 'ss-head' }, logoOrIcon(s.venue.logo, 'ss-logo ss-logo-big'), kit.E('div', {}, kit.label(`${C.dayWord(s.start).toUpperCase()} · ${s.dateOnly ? 'TIME TO CONFIRM' : C.hm(s.start)} · ${C.platformsText(s).toUpperCase()}`), kit.E('strong', { text: s.venue.name || 'Venue' }), kit.E('span', { text: s.venue.address || '' })));
       body.append(head);
       if(s.programme)body.append(kit.p(`Via ${s.programme.name}’s programme · checked ${new Date(s.programme.checkedAt).toLocaleDateString()}. Check Shotgun for current price and availability.`), kit.button('Venue listing',()=>window.hub.openExternal(s.programme.url),'qj-quiet'));
       if (s.lineup.length) body.append(kit.p(`Lineup: ${s.lineup.join(', ')}`));
@@ -82,7 +82,7 @@ const ShowSync = (() => {
     acts.append(kit.button('Make it a quest', async () => { const c = await makeQuest(s); d.close(); kit.questDetail?.(c.quests[0].id); }, 'qj-primary'));
     // Codex's outing desk (tools/outing-desk.js): keep this show in "my lineup" (budget, friend, .ics) — its own contract
     each('card', kit, s, acts, d); // (round 62) e.g. showprep62's "Get ready" / "How was it?"
-    if (QJ()?.keepOuting) acts.append(kit.button('Keep in my lineup', async () => { d.close(); await QJ().keepOuting(outingEvent(s)); }, 'qj-quiet'));
+    if (!s.dateOnly && QJ()?.keepOuting) acts.append(kit.button('Keep in my lineup', async () => { d.close(); await QJ().keepOuting(outingEvent(s)); }, 'qj-quiet'));
     for (const t of s.tickets.filter((t) => t.url)) acts.append(kit.button(`Tickets on ${C.PLATFORMS[t.platform]?.name || t.platform}`, () => window.hub.openExternal(t.url), 'qj-quiet'));
     return acts;
   }
@@ -96,6 +96,8 @@ const ShowSync = (() => {
   function venueDetail(kit, v) {
     kit.dialog(v.name || 'Venue', (body, d) => {
       body.append(kit.E('div', { class: 'ss-head' }, logoOrIcon(v.logo, 'ss-logo ss-logo-big'), kit.E('div', {}, kit.label(`${v.shows.length} SHOW${v.shows.length === 1 ? '' : 'S'} COMING UP`), kit.E('span', { text: v.address || '' }))));
+      if(!v.shows.length)body.append(kit.p('No upcoming nights cached here. Check the programme for the latest dates.'));
+      if(v.home)body.append(kit.button('Venue programme',()=>window.hub.openExternal(v.home.url),'qj-quiet'),kit.button('Shotgun page',()=>window.hub.openExternal('https://shotgun.live/venues/'+v.home.slug),'qj-quiet'));
       // (round 64, mapfirst64) the next show's own buttons right here (Make it a quest · Get ready · tickets), the rest as rows
       const [next, ...later] = v.shows;
       if (next) body.append(kit.E('div', { class: 'ss-next' }, row(kit, next, () => showDetail(kit, next)), showActions(kit, next, d)));
@@ -105,13 +107,13 @@ const ShowSync = (() => {
   }
   function followDialog(kit) {
     kit.dialog('What Hearth reads', (body, d) => {
-      body.append(kit.p('Paris-wide Shotgun and DICE listings, plus Shotgun-ticketed nights published by Badaboum, Mia Mao and Glazart. Venue programmes keep those nights available when the main catalogue cannot load. This is partial coverage, not every Paris event.'));
+      body.append(kit.p('Paris-wide Shotgun and DICE listings, plus Shotgun-ticketed nights published by Badaboum, Mia Mao, Glazart, La Machine and Kilomètre25. Venue programmes keep those nights available when the main catalogue cannot load. This is partial coverage, not every Paris event.'));
       const draw = () => {
         body.querySelector('.ss-follows')?.remove();
         const box = kit.E('div', { class: 'ss-follows' });
         for (const src of snap.sources) {
           const it = kit.E('div', { class: 'qj-field-list-item ss-src' }, QuestAtlas.icon(src.kind === 'city' ? 'compass' : 'music'), kit.E('strong', { text: src.label }), kit.E('span', { text: src.problem ? '⚠' : `${src.count}` }));
-          if (src.kind !== 'city' && src.kind !== 'programme') it.append(kit.button('×', async () => { await call('unfollow', src.id); await load(); draw(); redraw(); }, 'qj-quiet ss-unfollow'));
+          if (src.kind !== 'city' && src.kind !== 'programme' && !src.builtin) it.append(kit.button('×', async () => { await call('unfollow', src.id); await load(); draw(); redraw(); }, 'qj-quiet ss-unfollow'));
           box.append(it);
         }
         const only = snap.from === 'followed';
@@ -125,7 +127,7 @@ const ShowSync = (() => {
   }
   function listDialog(kit) {
     kit.dialog('Shows this week', (body,d) => {
-      let error='',range=7,platform='all';
+      let error='',range=7,platform='all',venue='';
       const draw = () => {
         body.querySelector('.ss-list')?.remove();
         const box = kit.E('div', { class: 'ss-list' });
@@ -138,10 +140,13 @@ const ShowSync = (() => {
           const rangeButton=kit.button(range===7?'Next 7 days · show 21':'Next 21 days · show 7',()=>{range=range===7?21:7;draw();},'qj-quiet');box.append(rangeButton);
           const filter=kit.E('select',{attrs:{'aria-label':'Ticket platform'}});
           for(const [value,name] of [['all','Shotgun + DICE'],['shotgun','Shotgun'],['dice','DICE']]){const o=kit.E('option',{text:name});o.value=value;filter.append(o);}filter.value=platform;filter.addEventListener('change',()=>{platform=filter.value;draw();});box.append(filter);
-          const list = (range===7?week():upcoming()).filter(s=>platform==='all'||s.platforms.includes(platform)); let day = '';
+          const venueFilter=kit.E('select',{attrs:{'aria-label':'Venue'}});
+          for(const [value,name]of [['','All venues'],...homes().map(v=>[v.name,v.name]),['madame loyal','Madame Loyal']]){const o=kit.E('option',{text:name});o.value=value;venueFilter.append(o);}venueFilter.value=venue;venueFilter.onchange=()=>{venue=venueFilter.value;draw();};box.append(venueFilter);
+          const list = (range===7?week():upcoming()).filter(s=>(platform==='all'||s.platforms.includes(platform))&&(!venue||C.fold(s.venue.name+' '+s.title).includes(C.fold(venue)))); let day = '';
           const programmeCount=list.filter(s=>s.programme).length;
-          if(programmeCount)box.append(kit.E('p',{class:'qj-copy ss-programme-note',text:`${programmeCount} Shotgun nights from venue programmes`,attrs:{title:'Badaboum, Mia Mao and Glazart publish these listings independently. They appear on the map when their location is known. This is a partial catalogue; ticket availability is checked on Shotgun.'}}));
-          if (!list.length) box.append(kit.p(refreshing ? 'Reading Shotgun and DICE…' : 'No shows found for the next seven days. Follow the venues you like below.'));
+          if(programmeCount)box.append(kit.E('p',{class:'qj-copy ss-programme-note',text:`${programmeCount} Shotgun nights from venue programmes`,attrs:{title:'Badaboum, Mia Mao, Glazart, La Machine and Kilomètre25 publish these listings independently. They appear on the map when their location is known. This is a partial catalogue; ticket availability is checked on Shotgun.'}}));
+          if (!list.length) box.append(kit.p(refreshing ? 'Reading Shotgun and DICE…' : `No cached shows match the next ${range} days. Check the original programme below.`));
+          if(venue){const home=homes().find(v=>v.name===venue);box.append(kit.button('Open programme',()=>window.hub.openExternal(home?.url||'https://madameloyalfestival.com/'),'qj-quiet'));}
           for (const s of list) { const d = C.dayWord(s.start); if (d !== day) { day = d; box.append(kit.label(d.replace(/^on /, '').toUpperCase())); } box.append(row(kit, s, () => showDetail(kit, s))); }
           const acts = kit.E('div', { class: 'qj-actions' }, kit.button('What Hearth reads', () => followDialog(kit), 'qj-quiet'), kit.button(refreshing ? 'Refreshing…' : 'Refresh now', async () => { await refresh(true); draw(); }, 'qj-quiet'));
           each('list', kit, acts); box.append(acts);
@@ -157,12 +162,21 @@ const ShowSync = (() => {
       ensure().then(()=>{if(d.open)draw();}).catch(e=>{error=e.message;if(d.open)draw();});
     }, 'SHOTGUN + DICE / PARIS');
   }
+  const homes=()=>window.QuestParis?.familiarVenues || [];
+  function mapVenues(){
+    const vs=C.venues(upcoming());
+    for(const h of homes()){
+      const key=C.venueKey(h.name),v=vs.find(v=>C.venueKey(v.name)===key || (h.slug==='kilometre-25' && /kilometre\s*25/.test(C.fold(v.name))));
+      if(v){v.home=h;v.lat=h.lat;v.lon=h.lon;}else vs.push({id:'show-venue-home-'+h.slug,key,name:h.name,address:h.address,lat:h.lat,lon:h.lon,shows:[],home:h});
+    }
+    return vs;
+  }
   const layer = {
     id: 'showsync',
     icon: (kit) => { ensure().catch(() => {}); return kit.mapIcon('spark', `Shows this week (Shotgun + DICE)${snap?.enabled ? ` · ${week().length}` : ''}`, () => listDialog(kit), '#ff6b9d', undefined, 'map-shows'); },
-    pins: () => { let p = snap ? C.pins(C.venues(week())) : []; for (const x of ext) { try { if (x.pins) p = x.pins(p) || p; } catch (err) { console.warn('[showsync extension] pins', err); } } return p; },
+    pins: (filters={}) => {if(filters.guide || (filters.kind && !['all','music'].includes(filters.kind)))return [];const venues=mapVenues().filter(v=>!filters.query || C.fold(v.name+' '+v.shows.map(s=>s.title).join(' ')).includes(C.fold(filters.query))); let p=C.pins(venues).map(p=>({...p,minZoom:venues.find(v=>v.id===p.id)?.home?11:15}));for (const x of ext) { try { if (x.pins) p = x.pins(p) || p; } catch (err) { console.warn('[showsync extension] pins', err); } } return p; },
     owns: (id) => typeof id === 'string' && id.startsWith('show-venue-'),
-    select: (id, kit) => { const v = C.venues(upcoming()).find((x) => x.id === id); if (v) return venueDetail(kit, v); for (const x of ext) if (x.select?.(id, kit)) return; }
+    select: (id, kit) => { const v = mapVenues().find((x) => x.id === id); if (v) return venueDetail(kit, v); for (const x of ext) if (x.select?.(id, kit)) return; }
   };
 
   // ---------- /shows ----------
@@ -182,7 +196,7 @@ const ShowSync = (() => {
     if (sub === 'week') {
       const list = week(); if (!list.length) return `Nothing this week yet.${status}`;
       let day = ''; const out = [];
-      for (const s of list) { const d = C.dayWord(s.start); if (d !== day) { day = d; out.push(`${d.replace(/^on /, '')[0].toUpperCase()}${d.replace(/^on /, '').slice(1)}:`); } out.push(`  ${C.hm(s.start)} ${s.title}${s.venue.name ? ` — ${s.venue.name}` : ''}${s.lineup.length ? ` (${s.lineup.slice(0, 4).join(', ')})` : ''}`); }
+      for (const s of list) { const d = C.dayWord(s.start); if (d !== day) { day = d; out.push(`${d.replace(/^on /, '')[0].toUpperCase()}${d.replace(/^on /, '').slice(1)}:`); } out.push(`  ${s.dateOnly ? 'TIME TO CONFIRM' : C.hm(s.start)} ${s.title}${s.venue.name ? ` — ${s.venue.name}` : ''}${s.lineup.length ? ` (${s.lineup.slice(0, 4).join(', ')})` : ''}`); }
       return out.join('\n') + status;
     }
     if (sub === 'venue') {
@@ -210,7 +224,7 @@ const ShowSync = (() => {
     if (!m) return ['week', 'venue ', 'quest ', ...ext.flatMap((x) => (x.subs || []).map((n) => (n === 'log' ? n : `${n} `))), 'refresh', 'follow ', 'unfollow ', 'from paris', 'from followed', 'map'].filter((x) => x.startsWith(a.toLowerCase())).map((x) => ({ value: x }));
     const q = C.fold(m[2]);
     for (const x of ext) if (x.complete && x.subs?.includes(m[1])) return x.complete(m[1], m[2]) || [];
-    if (m[1] === 'quest') return week().filter((s) => !q || C.fold(s.title + ' ' + s.lineup.join(' ')).includes(q)).slice(0, 8).map((s) => ({ value: `quest ${s.lineup[0] || s.title}`, label: s.title, hint: `${C.short(s.start)} · ${s.venue.name}` }));
+    if (m[1] === 'quest') return week().filter((s) => !q || C.fold(s.title + ' ' + s.lineup.join(' ')).includes(q)).slice(0, 8).map((s) => ({ value: `quest ${s.lineup[0] || s.title}`, label: s.title, hint: `${C.showWhen(s)} · ${s.venue.name}` }));
     if (m[1] === 'venue') return venueList().filter((v) => !q || C.fold(v.name).includes(q)).slice(0, 8).map((v) => ({ value: `venue ${v.name}`, hint: `${v.shows.length} upcoming` }));
     if (m[1] === 'unfollow') return (snap?.follows || []).map((f) => ({ value: `unfollow ${f.label}` }));
     return [];
@@ -225,5 +239,7 @@ const ShowSync = (() => {
   try { QJ()?.addMapLayer?.(layer); } catch { /* the journal registers layers when it loads */ }
   load().then(() => { if (snap.enabled && C.pins(C.venues(week())).length) redraw(); }).catch(() => {}); // the saved list only (no network): ready before the map opens
   return { load, refresh, ensure, makeQuest, layer, run, extend, redraw, week, upcoming, showDetail, listDialog, call, // (round 64, clickfirst64) listDialog: "Shows this week…" from the ✦ tracker's More and the Studio's My week ▾
+    hasVenue:name=>mapVenues().some(v=>C.venueKey(v.name)===C.venueKey(name)),
+    openVenue:(name,kit)=>{const v=mapVenues().find(v=>C.venueKey(v.name)===C.venueKey(name));if(v)venueDetail(kit,v);return !!v;},
     get snap() { return snap; }, _test: { week, upcoming, venueList } };
 })();
