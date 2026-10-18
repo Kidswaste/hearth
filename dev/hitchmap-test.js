@@ -249,7 +249,7 @@ function walk({ secs = 30, hz = 240, period = 6, hitchAt = [], oneOff = [], seed
     // 20 maps a game at most: the oldest go
     for (let i = 1; i <= 21; i += 1) { M.arm({ on: true }); g.started = 1700000000000 + i * 1000; await M.collect('end'); }
     await new Promise((res) => setTimeout(res, 300));
-    const left = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+    const left = fs.readdirSync(dir).filter((f) => /\.json$/i.test(f));
     assert.strictEqual(left.length, 20, `${left.length} maps`);
     assert.ok(!left.includes(`h${(1700000000000).toString(36)}.json`), 'the oldest went');
     assert.ok(!fs.existsSync(path.join(dir, `h${(1700000000000).toString(36)}-1.jpg`)), '… with its picture');

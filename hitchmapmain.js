@@ -109,10 +109,10 @@ async function collect(why = 'asked', g0 = null) {
 }
 // past 20 maps a game, the oldest (and its pictures) go to the Trash
 async function prune(dir) {
-  const maps = fs.readdirSync(dir).filter((f) => /^h[0-9a-z]+\.json$/.test(f)).sort((a, b) => parseInt(a.slice(1), 36) - parseInt(b.slice(1), 36));
+  const maps = fs.readdirSync(dir).filter((f) => /^h[0-9a-z]+\.json$/i.test(f)).sort((a, b) => parseInt(a.slice(1), 36) - parseInt(b.slice(1), 36));
   for (const f of maps.slice(0, Math.max(0, maps.length - MAX_MAPS))) {
     const id = f.slice(0, -5);
-    for (const x of fs.readdirSync(dir).filter((y) => y === f || (y.startsWith(`${id}-`) && y.endsWith('.jpg')))) await toBin(path.join(dir, x));
+    for (const x of fs.readdirSync(dir).filter((y) => y === f || (y.startsWith(`${id}-`) && /\.jpe?g$/i.test(y)))) await toBin(path.join(dir, x));
   }
 }
 async function toBin(p) { const N = notes(); if (N?.toBin) return N.toBin(p); try { fs.rmSync(p, { recursive: true, force: true }); return 'gone'; } catch { return null; } }
@@ -131,7 +131,7 @@ function list(source) {
   const dir = dirOf(source);
   if (!dir || !fs.existsSync(dir)) return [];
   const out = [];
-  for (const f of fs.readdirSync(dir).filter((x) => /^h[0-9a-z]+\.json$/.test(x))) {
+  for (const f of fs.readdirSync(dir).filter((x) => /^h[0-9a-z]+\.json$/i.test(x))) {
     try { const m = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); out.push({ id: m.id || f.slice(0, -5), session: m.session, at: m.at, secs: m.secs, hitches: m.hitches, spots: (m.spots || []).length, line: C.brief(m), top: m.spots?.[0] ? C.line(m.spots[0], m) : '' }); } catch { /* a broken one is skipped, never written over */ }
   }
   return out.sort((a, b) => (b.session || 0) - (a.session || 0));
@@ -176,7 +176,7 @@ async function op(req = {}) {
   }
   if (o === 'shot') {
     const f = String(req.file || '');
-    if (!/^h[0-9a-z]+-\d+\.jpg$/.test(f)) return { ok: false, why: 'no picture' };
+    if (!/^h[0-9a-z]+-\d+\.jpg$/i.test(f)) return { ok: false, why: 'no picture' };
     const file = path.join(dir, f);
     if (req.path) return { ok: fs.existsSync(file), path: file };
     try {
