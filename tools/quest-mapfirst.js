@@ -115,7 +115,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     const bar = E('div', { class: 'qmf-strip', attrs: { role: 'toolbar', 'aria-label': 'Map layers' } });
     for (const L of LAYERS) {
       const n = count(L.id, s), b = button('', () => toggle(L.id), 'qj-hardware qmf-chip');
-      b.dataset.layer = L.id; if (L.id === 'visited') b.dataset.chip = 'visited'; // (parisjournal64's chip: My Paris) b.style.setProperty('--chip', L.color); b.setAttribute('aria-pressed', String(on(L.id)));
+      b.dataset.layer = L.id; if (L.id === 'visited') b.dataset.chip = 'visited'; /* (parisjournal64's chip: My Paris) */ b.style.setProperty('--chip', L.color); b.setAttribute('aria-pressed', String(on(L.id)));
       b.setAttribute('aria-label', `${L.name}${n ? ` (${n})` : ''}: ${on(L.id) ? 'shown' : 'hidden'}`); b.title = `${L.help} · click to ${on(L.id) ? 'hide' : 'show'}`;
       b.append(QuestAtlas.icon(L.icon), E('span', { text: L.name }), ...(n ? [E('i', { class: 'qmf-n', text: String(n) })] : []));
       bar.append(b);
