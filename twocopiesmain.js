@@ -126,7 +126,7 @@ async function gate(o) {
     };
     try {
       card = new BrowserWindow({
-        width: 600, height: 470, minWidth: 420, minHeight: 380, show: false, title: 'Hearth', icon: o.icon, autoHideMenuBar: true, backgroundColor: o.background || '#16120f',
+        width: 600, height: 500, minWidth: 420, minHeight: 380, show: false, title: 'Hearth', icon: o.icon, autoHideMenuBar: true, backgroundColor: o.background || '#16120f',
         webPreferences: { preload: path.join(APP_DIR, 'twocopies-preload.js'), contextIsolation: true, sandbox: true },
       });
       card.on('close', (e) => { if (settled) return; e.preventDefault(); if (busy) return; done({}); }); // closed: this copy opens, asked again next time
