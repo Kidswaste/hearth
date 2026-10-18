@@ -291,8 +291,31 @@ function flowPlan(msg) {
   return { text: `Here is the flow:\n\n\`\`\`json\n${JSON.stringify(flow, null, 1)}\n\`\`\`` };
 }
 
+// (round 61, presethover61) the ✦ Preset window's helper turn ("PATCH FOR <instrument>" + "key=now [min..max]" lines):
+// a JSON patch like a model's. "bright…" opens the cutoff, "less reverb" lowers the reverb mix; a new sound sets the first
+// four numeric controls (a level from the words) and adds one unknown key and one value a little past its max (the hover rejects / clamps).
+function presetPlan(msg) {
+  if (!/^PATCH FOR /m.test(msg)) return null;
+  const request = (msg.match(/^Request: (.*)$/m) || [])[1] || '';
+  const params = [...msg.matchAll(/^([\w.]+)=(-?[\d.]+) \[(-?[\d.]+)\.\.(-?[\d.]+)\]/gm)].map((m) => ({ key: m[1], now: +m[2], min: +m[3], max: +m[4] }));
+  const at = (p, f) => +(p.min + (p.max - p.min) * f).toFixed(3);
+  const set = {};
+  let say = 'Shaped it.', name = '';
+  if (/bright/i.test(request)) { const p = params.find((x) => /cutoff/.test(x.key)); if (p) set[p.key] = Math.min(p.max, +(p.now + (p.max - p.min) * 0.3).toFixed(3)); say = 'Opened the filter.'; }
+  else if (/less reverb/i.test(request)) { const p = params.find((x) => /reverb/.test(x.key) && /mix|wet/.test(x.key)); if (p) set[p.key] = at(p, 0.1); say = 'Dried the reverb.'; }
+  else {
+    const f = 0.15 + (request.length % 7) * 0.1; // another sound, other values
+    params.slice(0, 4).forEach((p) => { set[p.key] = at(p, f); });
+    const last = params[4]; if (last) set[last.key] = +(last.max + (last.max - last.min) * 0.05).toFixed(3);
+    set.bogus_param = 0.5; name = 'Dark Reese'; say = 'Detuned saws, low cutoff, slow LFO.';
+  }
+  return JSON.stringify({ set, name, say });
+}
+
 function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
+  const pre = presetPlan(msg);
+  if (pre) return { p: {}, text: pre, thinking: '' };
   const fl = flowPlan(msg);
   if (fl) return { p: {}, text: fl.text, thinking: '' };
   const chk = checkPlan(msg, engine);
