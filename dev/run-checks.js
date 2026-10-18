@@ -45,6 +45,7 @@ UNIT.push('winfresh-test'); // (round 60, winfresh60) the Windows zip install: a
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   showprep62: ['showprep62', 'unit:showprep-test', 'showsync61', 'unit:showsync-test', 'questhud61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:notify-test'], // (round 62) show night companion: Get ready, How was it?, Shows I went to, follow
+  mapfirst64: ['mapfirst64', 'quest-paris', 'showsync61', 'questwalk63', 'showprep62', 'quest-world', 'quest-map-tiles', 'quest-field', 'quest-focus', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) the Paris map shows the guide, shows, walks and visits by default; one layer strip; clicks only
   questwalk63: ['questwalk63', 'unit:questwalk-test', 'quest-paris', 'questhud61', 'weekquest62', 'lazy', 'unit:boot-test', 'unit:winmac-test'], // (round 63) quest walks: /quest walk, the line on the map, the walk quest, the week's walk
   rewards63: ['rewards63', 'unit:rewards-test', 'questhud61', 'weekquest62', 'quest-studio', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:quest-test', 'unit:questhud-test', 'unit:weekquest-test'], // (round 63) real rewards for real quests: /reward, the tracker's next reward, Studio › Rewards shelf
   weekquest62: ['weekquest62', 'unit:weekquest-test', 'unit:questhud-test', 'questhud61', 'showsync61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:winmac-test'], // (round 62) the weekly quest rhythm: /quest week, the nudge, /quest review

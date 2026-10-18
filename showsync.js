@@ -72,14 +72,18 @@ const ShowSync = (() => {
       body.append(head);
       if (s.lineup.length) body.append(kit.p(`Lineup: ${s.lineup.join(', ')}`));
       if (s.price || s.soldOut) body.append(kit.p(s.soldOut ? 'Sold out on every listing.' : `From ${s.price.from} ${s.price.currency === 'EUR' ? '€' : s.price.currency}`));
-      const acts = kit.E('div', { class: 'qj-actions' });
-      acts.append(kit.button('Make it a quest', async () => { const c = await makeQuest(s); d.close(); kit.questDetail?.(c.quests[0].id); }, 'qj-primary'));
-      // Codex's outing desk (tools/outing-desk.js): keep this show in "my lineup" (budget, friend, .ics) — its own contract
-      each('card', kit, s, acts, d); // (round 62) e.g. showprep62's "Get ready" / "How was it?"
-      if (QJ()?.keepOuting) acts.append(kit.button('Keep in my lineup', async () => { d.close(); await QJ().keepOuting(outingEvent(s)); }, 'qj-quiet'));
-      for (const t of s.tickets.filter((t) => t.url)) acts.append(kit.button(`Tickets on ${C.PLATFORMS[t.platform]?.name || t.platform}`, () => window.hub.openExternal(t.url), 'qj-quiet'));
-      body.append(acts);
+      body.append(showActions(kit, s, d));
     }, 'SHOW / THIS WEEK');
+  }
+  // a show's buttons (its card, and the next show in a venue pin's dialog: round 64, mapfirst64)
+  function showActions(kit, s, d) {
+    const acts = kit.E('div', { class: 'qj-actions' });
+    acts.append(kit.button('Make it a quest', async () => { const c = await makeQuest(s); d.close(); kit.questDetail?.(c.quests[0].id); }, 'qj-primary'));
+    // Codex's outing desk (tools/outing-desk.js): keep this show in "my lineup" (budget, friend, .ics) — its own contract
+    each('card', kit, s, acts, d); // (round 62) e.g. showprep62's "Get ready" / "How was it?"
+    if (QJ()?.keepOuting) acts.append(kit.button('Keep in my lineup', async () => { d.close(); await QJ().keepOuting(outingEvent(s)); }, 'qj-quiet'));
+    for (const t of s.tickets.filter((t) => t.url)) acts.append(kit.button(`Tickets on ${C.PLATFORMS[t.platform]?.name || t.platform}`, () => window.hub.openExternal(t.url), 'qj-quiet'));
+    return acts;
   }
   // a show in the outing desk's normalized shape (docs/upgrades/paris-outing-desk.md › Claude integration contract)
   function outingEvent(s) {
@@ -89,9 +93,12 @@ const ShowSync = (() => {
       note: s.lineup.length ? `Lineup: ${s.lineup.join(', ')}`.slice(0, 600) : '', ...(lat != null ? { lat, lon } : {}), source: C.platformsText(s), updatedAt: new Date().toISOString() };
   }
   function venueDetail(kit, v) {
-    kit.dialog(v.name || 'Venue', (body) => {
+    kit.dialog(v.name || 'Venue', (body, d) => {
       body.append(kit.E('div', { class: 'ss-head' }, logoOrIcon(v.logo, 'ss-logo ss-logo-big'), kit.E('div', {}, kit.label(`${v.shows.length} SHOW${v.shows.length === 1 ? '' : 'S'} COMING UP`), kit.E('span', { text: v.address || '' }))));
-      for (const s of v.shows) body.append(row(kit, s, () => showDetail(kit, s)));
+      // (round 64, mapfirst64) the next show's own buttons right here (Make it a quest · Get ready · tickets), the rest as rows
+      const [next, ...later] = v.shows;
+      if (next) body.append(kit.E('div', { class: 'ss-next' }, row(kit, next, () => showDetail(kit, next)), showActions(kit, next, d)));
+      for (const s of later) body.append(row(kit, s, () => showDetail(kit, s)));
       each('venue', kit, v, body);
     }, 'PARIS / VENUE');
   }

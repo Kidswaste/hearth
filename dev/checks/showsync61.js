@@ -16,6 +16,14 @@ const t = await window.hub.shows.test({ dev: window.SMOKE_DEV }); if (!t?.ok) th
 const before = await window.hub.kvGet('quest-journal', null, { status: true });
 out.lazyBefore = Lazy.state?.().showsync || (window.ShowSync ? 'loaded' : 'stub');
 
+// ---------- (round 64, mapfirst64) no command: opening the Studio's Paris map starts the once-a-day read ----------
+await Lazy.load('questjournal'); activate('tool:quests');
+await until(() => document.querySelector('.qj') && QuestJournal.ready(), 'journal (map first)'); QuestJournal.navigate('world');
+await until(() => document.querySelectorAll('.qj-atlas .qj-atlas-pin[data-place^="show-venue-"]').length >= 3, 'venue pins with no command', 250);
+out.mapFirst = document.querySelectorAll('.qj-atlas .qj-atlas-pin[data-place^="show-venue-"]').length;
+if (!document.querySelector('.qmf-strip [data-layer="shows"][aria-pressed="true"]')) fail('Shows chip on by default');
+if (document.querySelector('.qmf-status')) fail('a failure line while the read worked: ' + document.querySelector('.qmf-status').textContent);
+
 // ---------- chat ----------
 const summary = await run('/shows');
 out.summary = summary.split('\n').slice(0, 4);
