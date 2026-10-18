@@ -1,8 +1,21 @@
-/* (round 64, audiodoctor64) /audio doctor's card: the mark of each row in its color, the fix button on the row */
+/* (round 64, audiodoctor64) the audio setup check: the mark of each row in its color, the fix button on the row */
+/* in a chat (/audio doctor) */
 .msg.note .ad-row { list-style: none; margin-left: -1.1em; }
 .msg.note .ad-row::marker { content: ''; }
-.msg.note .ad-bad { color: var(--text); }
 .msg.note .ad-bad::first-letter { color: var(--danger, #e5534b); font-weight: 700; }
 .msg.note .ad-warn::first-letter { color: var(--warn, #d9a43b); font-weight: 700; }
 .msg.note .ad-ok::first-letter { color: var(--ok, #46b36b); font-weight: 700; }
 .msg.note .ad-fix { margin-left: 6px; padding: 1px 8px; vertical-align: baseline; }
+/* in the Sound desk (tools/audiodoctor-desk.js opens it there) */
+.ad-card { margin: 4px 0 14px; padding: 12px 14px; border: 1px solid #ffffff1c; border-radius: 14px; background: linear-gradient(150deg, #ffffff08, #ffffff02); font-size: 12px; line-height: 1.55; }
+.ad-card .ad-head { display: flex; align-items: center; gap: 10px; }
+.ad-card .ad-headline { color: var(--wb-dim, #aaa0b4); flex: 1; }
+.ad-card .ad-close { padding: 2px 8px !important; }
+.ad-card .ad-reason { margin: 8px 0 4px; color: #e9c9a0; }
+.ad-card .ad-rows { list-style: none; margin: 8px 0 4px; padding: 0; display: grid; gap: 5px; }
+.ad-card .ad-mark { display: inline-block; width: 1.3em; font-weight: 700; }
+.ad-card .ad-ok .ad-mark { color: var(--ok, #46b36b); }
+.ad-card .ad-warn .ad-mark { color: var(--warn, #d9a43b); }
+.ad-card .ad-bad .ad-mark { color: var(--danger, #e5534b); }
+.ad-card .ad-fix, .ad-card .ad-acts button { padding: 3px 10px !important; font-size: 11px !important; margin-left: 4px; }
+.ad-card .ad-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }

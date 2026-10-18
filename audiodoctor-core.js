@@ -37,7 +37,7 @@
       else add('packages', 'Packages', 'ok', `${have}.`);
     }
     // 3. ASIO (Windows; elsewhere only when a test runtime shows it)
-    const apis = ok ? p.hostApis || [] : [], hasAsioApi = apis.includes('ASIO'), asioRow = ok && (win || hasAsioApi || p.asioFallback);
+    const apis = ok ? p.hostApis || [] : [], hasAsioApi = apis.includes('ASIO'), asioRow = ok && (win || hasAsioApi || p.asioFallback || r.asioSwitch === false);
     if (ok && !asioRow) add('asio', 'ASIO', 'ok', `Not needed here: ${list(apis.map(a => apiName(a, r.platform)))} plays directly.`);
     else if (asioRow) {
       if (r.asioSwitch === false) add('asio', 'ASIO', 'warn', 'Turned off (from here, or HEARTH_VST_ASIO=0): Serum 2 / Vital play on WASAPI.', { do: 'asio-on', label: 'Turn ASIO back on' });

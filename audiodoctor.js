@@ -1,7 +1,10 @@
-// (round 64, audiodoctor64) 🎚 /audio doctor: one card, like /doctor's engine card, that checks the owner's music setup
-// on this PC and fixes what it can, so rounds 61–63 (live Serum 2 / Vital on the UA interface, presets, park loops,
-// the Sound bank, songs) can be verified without reading docs. Only when asked: the lazy group 'audiodoctor' loads on
-// /audio, Ctrl/⌘+K "Check my music setup" or /doctor's "Music setup" button; nothing runs at startup.
+// (round 64, audiodoctor64) 🎚 Check my audio setup: one card, like /doctor's engine card, that checks the owner's music
+// setup on this PC and fixes what it can, so rounds 61–63 (live Serum 2 / Vital on the UA interface, presets, park loops,
+// the Sound bank, songs) can be verified without reading docs. Found where the owner already looks: the Sound desk's
+// "🎚 Check my audio setup" button (top row) and "🎚 Check setup" next to its Audio output picker
+// (tools/audiodoctor-desk.js), and it opens by itself, as a friendly card in the desk, when live audio fails to start.
+// Secondary: /audio doctor in a chat (the same card as a chat note), Ctrl/⌘+K, /doctor's "Music setup" button.
+// Only when asked (or after such a failure): the lazy group 'audiodoctor' loads then; nothing runs at startup.
 // Rows (audiodoctor-core.js): runtime · packages · ASIO · ASIO devices (UA first) · WASAPI · MIDI in · Serum 2 · Vital
 // (each loaded in a host of its own) · a 2-second live test (Vital or a quiet sine on the desk's device: callback
 // timing, underruns, output latency; loopback when an output is patched into an input) · preset folders · ffmpeg.
@@ -9,6 +12,7 @@
 const AudioDoctor = (() => {
   const C = AudioDoctorCore;
   let report = null, live = null, loop = null, liveRunning = false, busy = null, lastCtx = null;
+  let where = 'chat', panel = null, reason = null, hostGone = false; // where the card shows: a chat note, or the panel in the Sound desk
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const rowsNow = () => C.rows(report || {}, { live, loop, liveRunning });
 
@@ -38,13 +42,14 @@ const AudioDoctor = (() => {
 
   // ---------- the card ----------
   function show(ctx = lastCtx) {
+    if (where === 'desk') { renderPanel(); return undefined; }
     lastCtx = ctx;
     const rs = rowsNow(), text = C.cardText(rs, report);
     if (!ctx?.note) return text;
     const acts = [
       { label: 'Copy report', title: 'A short text version to paste in a chat or a message', run: () => copyReport() },
       { label: 'Loopback test', title: 'Patch output 1 into input 1 of your interface first: a click is played and timed back', run: () => liveTest({ loopback: true }) },
-      { label: 'Check again', run: () => run({ ctx }) },
+      { label: 'Check again', run: () => run({}) },
     ];
     const box = ctx.note(text, { id: 'audio-doctor', actions: acts });
     decorate(box, rs);
@@ -56,12 +61,51 @@ const AudioDoctor = (() => {
     rs.forEach((row, i) => {
       const li = items[i]; if (!li) return;
       li.classList.add('ad-row', `ad-${row.mark}`); li.dataset.adRow = row.id;
-      if (!row.fix) return;
-      li.append(' ', el('button', { type: 'button', class: 'ghost small ad-fix', text: row.fix.label, dataset: { fix: row.fix.do }, on: { click: async (e) => {
-        const b = e.currentTarget; b.disabled = true;
-        try { await fix(row.fix); } catch (err) { toast(err.message, { type: 'error', timeout: 9000 }); } finally { if (b.isConnected) b.disabled = false; }
-      } } }));
+      if (row.fix) li.append(' ', fixButton(row));
     });
+  }
+  const fixButton = row => el('button', { type: 'button', class: 'ghost small ad-fix', text: row.fix.label, dataset: { fix: row.fix.do }, on: { click: async (e) => {
+    const b = e.currentTarget; b.disabled = true;
+    try { await fix(row.fix); } catch (err) { toast(err.message, { type: 'error', timeout: 9000 }); } finally { if (b.isConnected) b.disabled = false; }
+  } } });
+  const action = (label, title, fn) => el('button', { type: 'button', class: 'ghost small', text: label, title, on: { click: async (e) => {
+    const b = e.currentTarget; b.disabled = true;
+    try { await fn(); } catch (err) { toast(err.message, { type: 'error', timeout: 9000 }); } finally { if (b.isConnected) b.disabled = false; }
+  } } });
+
+  // ---------- the card in the Sound desk (under its top row; it follows the desk when the desk is drawn again) ----------
+  function renderPanel() {
+    const d = document.querySelector('.wb-sound-desk'); if (!d) return null;
+    if (!panel) { panel = el('section', { class: 'ad-card' }); panel.setAttribute('role', 'region'); panel.setAttribute('aria-label', 'Audio setup check'); }
+    if (!panel.isConnected || panel.parentElement !== d) { const anchor = d.querySelector(':scope > .wb-row') || d.querySelector(':scope > .wb-sound-header'); if (anchor) anchor.after(panel); else d.prepend(panel); }
+    const rs = report ? rowsNow() : [];
+    const close = el('button', { type: 'button', class: 'ghost small ad-close', text: '×', title: 'Close the audio setup check', on: { click: () => { panel.remove(); where = 'chat'; } } });
+    close.setAttribute('aria-label', 'Close the audio setup check');
+    panel.replaceChildren(
+      el('div', { class: 'ad-head' }, el('strong', { text: '🎚 Audio setup check' }), el('span', { class: 'ad-headline', text: busy && !report ? 'checking…' : report ? C.headline(rs) : '' }), close),
+      reason ? el('p', { class: 'ad-reason', text: reason }) : null,
+      report ? el('ul', { class: 'ad-rows' }, rs.map(row => el('li', { class: `ad-row ad-${row.mark}`, dataset: { adRow: row.id } },
+        el('span', { class: 'ad-mark', text: C.MARK[row.mark] }), el('b', { text: row.label }), ` · ${row.text} `, row.fix ? fixButton(row) : null)))
+        : el('p', { class: 'ad-reason', text: 'Checking the audio runtime, ASIO, your devices and MIDI, Serum 2 and Vital…' }),
+      report ? el('div', { class: 'ad-acts' },
+        action('Copy report', 'A short text version to paste in a chat or a message', copyReport),
+        action('Loopback test', 'Patch output 1 into input 1 of your interface first: a click is played and timed back', () => liveTest({ loopback: true })),
+        action('Check again', 'Everything again, with a quiet 2-second test tone', () => run({ keepLive: false })),
+        hostGone ? action('Reset host', 'Restarts the Serum 2 / Vital audio processes and loads the instrument again', () => fix({ do: 'reset' }).then(() => { hostGone = false; reason = null; renderPanel(); })) : null) : null);
+    return panel;
+  }
+  /** The Sound desk's buttons and its failed live start open the card there. reason: why it opened by itself. */
+  async function inDesk({ reason: why = null, quick = false } = {}) {
+    where = 'desk';
+    const raw = why instanceof Error ? why : why ? Error(String(why)) : null;
+    // the host's own words when its process went away → plain words + "Reset host" under the card
+    hostGone = !!raw && /Load the selected instrument|host (stopped|disconnected|exited)|Reload the instrument|Host exited/i.test(raw.message);
+    reason = raw ? `Live audio didn't start: ${hostGone ? 'the instrument\'s audio process had stopped (Reset host loads it again).' : typeof calmError === 'function' ? calmError(raw) : 'the audio device refused.'} Here is what this PC looks like, with a fix on each row that needs one.` : null;
+    if (!busy) { report = null; live = null; loop = null; }
+    renderPanel()?.scrollIntoView?.({ block: 'nearest' });
+    if (busy) return busy;
+    await run({ quick, keepLive: false });
+    return panel;
   }
 
   async function copyReport() {
@@ -74,10 +118,10 @@ const AudioDoctor = (() => {
   async function fix(f) {
     switch (f.do) {
       case 'install': return installRuntime();
-      case 'rescan': return run({ ctx: lastCtx });
-      case 'ua': { const label = await useUA(); toast(`Sound desk output: ${label}`, { timeout: 6000 }); return run({ ctx: lastCtx, quick: true, keepLive: true }); }
+      case 'rescan': return run({});
+      case 'ua': { const label = await useUA(); toast(`Sound desk output: ${label}`, { timeout: 6000 }); return run({ quick: true, keepLive: true }); }
       case 'folder': { const r = await hub.audioDoctor.open(f.path); if (!r?.ok) throw Error(r?.error || 'Could not open the folder.'); return r; }
-      case 'reset': await resetHost(); toast('Serum 2 / Vital hosts restarted: open the instrument again in the Sound desk.', { timeout: 7000 }); return run({ ctx: lastCtx, keepLive: false });
+      case 'reset': { const back = await resetHost(); toast(back ? 'Serum 2 / Vital hosts restarted; the instrument is loaded again.' : 'Serum 2 / Vital hosts restarted.', { timeout: 7000 }); return run({ keepLive: false }); }
       case 'asio-off': case 'asio-on': return setAsio(f.do === 'asio-on');
       case 'live': return liveTest({ buffer: f.buffer });
       case 'ffmpeg': return window.EngineHealth?.installFfmpeg ? EngineHealth.installFfmpeg() : Commands.exec('/ffmpeg install', H.activeId);
@@ -91,15 +135,18 @@ const AudioDoctor = (() => {
     const r = await hub.vst.setup().catch(err => ({ ok: false, error: err.message }));
     window.Progress?.done('audio-runtime', { ok: !!r?.ok });
     if (!r?.ok) throw Error(r?.error || 'The setup did not finish.');
-    return run({ ctx: lastCtx });
+    return run({});
   }
-  async function resetHost() { await silenceDesk(); await hub.vst.stop(); }
+  async function resetHost() { await silenceDesk(); await hub.vst.stop(); return reopenDesk(); }
+  // the hosts were restarted: the instrument the Sound desk had open is loaded again (no sound until a key / Start)
+  async function reopenDesk() { const A = window.WorkbenchVST?.api, c = A?.current?.(); if (!c) return false; try { await A.open(c.name, { live: false }); return true; } catch { return false; } }
   async function setAsio(on) {
     const r = await hub.audioDoctor.asio(on); if (!r?.ok) throw Error(r?.error || 'Could not change ASIO.');
     H.config.settings = { ...H.settings(), vstAsio: on }; saveConfig();
-    toast(on ? 'ASIO is back on: open the instrument again in the Sound desk.' : 'ASIO is off: Serum 2 / Vital play on WASAPI until you turn it back on here.', { timeout: 7000 });
+    await reopenDesk();
+    toast(on ? 'ASIO is back on.' : 'ASIO is off: Serum 2 / Vital play on WASAPI until you turn it back on here.', { timeout: 7000 });
     await wait(300); // the setting reaches the main process
-    return run({ ctx: lastCtx, keepLive: false });
+    return run({ keepLive: false });
   }
   // The Sound desk's own picker, set to the UA interface (ASIO › WASAPI exclusive) and remembered like the owner's choice.
   async function useUA() {
@@ -144,11 +191,12 @@ const AudioDoctor = (() => {
   }
 
   async function run({ ctx, quick = false, keepLive = true } = {}) {
-    lastCtx = ctx || lastCtx;
+    if (ctx) { lastCtx = ctx; where = 'chat'; }
     if (!keepLive) { live = null; loop = null; }
     if (!window.hub?.audioDoctor) return 'The audio doctor needs Hearth\'s main process (restart Hearth after updating).';
-    if (lastCtx?.note && !report) lastCtx.note('**🎚 Audio doctor** · checking the runtime, devices, MIDI, Serum 2 and Vital…', { id: 'audio-doctor' });
-    await check({ quick });
+    if (where === 'chat' && lastCtx?.note && !report) lastCtx.note('**🎚 Audio doctor** · checking the runtime, devices, MIDI, Serum 2 and Vital…', { id: 'audio-doctor' });
+    const pending = check({ quick }); if (where === 'desk') renderPanel();
+    await pending;
     let text = show(lastCtx);
     if (!quick && !live && report.probe?.ok) { await liveTest(); text = show(lastCtx); }
     return text;
@@ -168,7 +216,7 @@ const AudioDoctor = (() => {
       complete: (x) => SUBS.filter(([v]) => v.startsWith(String(x || '').trim().toLowerCase())).map(([value, hint]) => ({ value, hint })),
       run: (args, ctx) => command(args, ctx) });
   }
-  if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Check my music setup (audio doctor)', () => Commands.exec('/audio doctor', H.activeId));
+  if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Check my audio setup (Serum 2 / Vital, ASIO, UA)', () => Commands.exec('/audio doctor', H.activeId));
 
-  return { run, check, liveTest, fix, copyReport, command, show, rows: rowsNow, report: () => report, _test: { set: (r, l, x) => { report = r; live = l ?? null; loop = x ?? null; }, useUA, desk } };
+  return { run, inDesk, panel: () => panel, check, liveTest, fix, copyReport, command, show, rows: rowsNow, report: () => report, _test: { set: (r, l, x) => { report = r; live = l ?? null; loop = x ?? null; }, useUA, desk } };
 })();
