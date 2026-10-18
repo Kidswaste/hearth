@@ -44,6 +44,7 @@ UNIT.push('vst-live-host-test'); // (round 61, vstlive61) the Sound desk's live 
 UNIT.push('parkjam62-test'); // (round 62, parkjam62) Park jam: output pick, battery controls, WAV / MIDI / ambience layer, proof text, the host's loop recorder (fake laptop host)
 UNIT.push('soundbank63-test'); // (round 63, soundbank63) Sound bank: tags from controls, similarity, search, atomic index, read-only plugin folders, the preview queue (+ real host with the fake Pedalboard)
 UNIT.push('loopsong63-test'); // (round 63, loopsong63) park loops → a song: arrangement model, snapping, tempo plan, mixdown / stems / −1 dBFS, stretch, MIDI, parkList / MP3
+UNIT.push('twocopies-test'); // (round 64, twocopies64) two Hearth folders on one computer: finding the other copies (Windows / Mac layouts), the profile each keeps, entries kept apart, Bring its chats here (copy only), the zip recipe
 UNIT.push('audiodoctor64-test'); // (round 64, audiodoctor64) /audio doctor: real creative-vst-doctor.py + fake Pedalboard / sounddevice / rtmidi (no runtime, no ASIO DLL, ASIO crash, UA absent, plugin failure, underruns, loopback)
 UNIT.push('framebar-test'); // (round 64, framebar64) the Lab's frame budget bar: target refresh, frame vs budget (CPU / late frames), each layer's share, the most expensive layer, the "why?" look's costs and suggestions
 UNIT.push('liveset64-test'); // (round 64, liveset64) Live set: set model, keys, bar quantize, preset preload timing, proof steps (+ the real host: quantized launch, twin switch with no underrun, panic, run recorder)
@@ -51,6 +52,7 @@ UNIT.push('winfresh-test'); // (round 60, winfresh60) the Windows zip install: a
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   showprep62: ['showprep62', 'unit:showprep-test', 'showsync61', 'unit:showsync-test', 'questhud61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:notify-test'], // (round 62) show night companion: Get ready, How was it?, Shows I went to, follow
+  mapfirst64: ['mapfirst64', 'quest-paris', 'showsync61', 'questwalk63', 'showprep62', 'quest-world', 'quest-map-tiles', 'quest-field', 'quest-focus', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) the Paris map shows the guide, shows, walks and visits by default; one layer strip; clicks only
   questwalk63: ['questwalk63', 'unit:questwalk-test', 'quest-paris', 'questhud61', 'weekquest62', 'lazy', 'unit:boot-test', 'unit:winmac-test'], // (round 63) quest walks: /quest walk, the line on the map, the walk quest, the week's walk
   newtour64: ['newtour64', 'unit:trynew-test', 'whatsnew', 'tour-discover', 'questhud61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) ✦ Try what's new: hands-on paths through rounds 61–63 (/try, What's new, one offer)
   clickfirst64: ['clickfirst64', 'questhud61', 'weekquest62', 'rewards63', 'parkjam62', 'loopsong63', 'soundbank63', 'playnotes62', 'hitchmap63', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) every round 61–63 feature by clicking (no command): the ✦ panel's This week / More, the Studio's My week ▾, the desk's Sound bank / Arrange loops, the Lab's ▶ Playtest, the F chip
@@ -118,6 +120,7 @@ const GROUPS = {
   activity: ['activity'], // (round 27) ◉ Activity: what runs, what waits for you, the last 24 h, stuck replies, desktop notifications
   publishkit: ['publishkit', 'unit:publishkit-test'], // (round 27) 📮 Ready to post: platform checks, safe areas, cover, words, post folder, fixes through the queue
   router: ['router', 'unit:router-test', 'routerlearn', 'unit:routerlearn-test'], // (round 39) routerlearn: Smart learns from you (think harder 3× → that kind steps up, the line in AI setup, ✕ forgets; the rules + a 6-week simulation) · (round 28) Smart: model + effort per message, the pick on the reply, think harder (fake engines say what they got)
+  twocopies64: ['twocopies64', 'unit:twocopies-test', 'chatkeep', 'firstrun', 'datasafe', 'unit:winfresh-test', 'unit:configsafe-test', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test', 'unit:chatsafe-scan'], // (round 64) a second Hearth folder next to the real one: the card before the window, its own profile, Bring its chats here
   firstrun: ['firstrun', 'unit:firstrun-test'], // (round 28) Check this computer: one list, one button each, live re-checks, the first launch
   aiundo: ['aiundo', 'unit:aiundo-test'], // (round 28) one undo for what the AIs did: Lab, board, files, settings; replies' ↶; Activity's part
   packs: ['packs', 'unit:packs-test'], // (round 28) ⇪ packs: a scene + everything it uses as one .hearthpack (round trip, preview card, zip-slip guard)
@@ -368,6 +371,9 @@ for (const n of wanted) {
     const u = n.slice(5);
     const extra = u === 'cut-test' ? [`${T}/hearth-test-videos`] : [];
     r = spawnSync('node', [path.join(DEV, `${u}.js`), ...extra], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
+  } else if (/^\/\/\s*driver:\s*node\b/m.test(srcOf(n))) {
+    // (round 64, twocopies64) a check that starts the app itself (two copies, one after the other): run as a Node script
+    r = spawnSync('node', [path.join(CHECKS, `${n}.js`), '--out', path.join(OUT, n)], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
   } else if (n.startsWith('astra-')) {
     r = spawnSync('node', [path.join(DEV, 'astra-smoke.js'), n.slice(6), '--shot', path.join(OUT, `${n}.png`)], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
   } else {

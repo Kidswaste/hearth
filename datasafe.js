@@ -100,10 +100,10 @@ const DataSafe = (() => {
     const sec = (title, rows) => (rows.length ? el('section', {}, el('h3', { text: title }), ...rows) : null);
     const agentName = (id) => H.agent?.(id)?.name || id;
     const parts = [
-      sec(`Chats (${r.chats?.length || 0})`, (r.chats || []).map((c) => tick(c.key, !c.deleted, c.title, `${plural(c.messages || 0, 'message')} · ${day(c.updatedAt)} · ${c.state === 'more' ? `yours has ${c.yours ?? '?'}, this copy more (comes in next to it)` : agentName(c.agentId)} · from ${c.from}${c.deleted ? ' (you deleted it)' : ''}`))),
-      sec(`Memory (${r.memory?.length || 0} lines)`, (r.memory || []).map((m) => tick(m.key, true, m.line, `${m.scope === 'shared' ? 'For every AI' : m.scope.startsWith('agent:') ? `For ${agentName(m.scope.slice(6))}` : m.scope} · from ${m.from}`))),
-      sec(`Settings (${r.settings?.length || 0})`, (r.settings || []).map((s) => tick(s.key, true, s.what === 'agent' ? `The AI “${s.name}”` : `The setting “${s.name}”`, `from ${s.from}`))),
-      sec(`Tool data (${r.kv?.length || 0})`, (r.kv || []).map((k) => tick(k.key, true, k.label, `a copy kept aside ${day(k.at)} held ${k.count}, now ${k.now} · joined with yours`))),
+      sec(`Chats (${r.chats?.length || 0})`, (r.chats || []).map((c) => tick(c.key, !c.deleted && !c.other, c.title, `${plural(c.messages || 0, 'message')} · ${day(c.updatedAt)} · ${c.state === 'more' ? `yours has ${c.yours ?? '?'}, this copy more (comes in next to it)` : agentName(c.agentId)} · from ${c.from}${c.deleted ? ' (you deleted it)' : ''}`))),
+      sec(`Memory (${r.memory?.length || 0} lines)`, (r.memory || []).map((m) => tick(m.key, !m.other, m.line, `${m.scope === 'shared' ? 'For every AI' : m.scope.startsWith('agent:') ? `For ${agentName(m.scope.slice(6))}` : m.scope} · from ${m.from}`))),
+      sec(`Settings (${r.settings?.length || 0})`, (r.settings || []).map((s) => tick(s.key, !s.other, s.what === 'agent' ? `The AI “${s.name}”` : `The setting “${s.name}”`, `from ${s.from}`))),
+      sec(`Tool data (${r.kv?.length || 0})`, (r.kv || []).map((k) => tick(k.key, !k.other, k.label, k.other ? `from ${k.from}: ${k.count} · joined with yours (that folder isn't changed)` : `a copy kept aside ${day(k.at)} held ${k.count}, now ${k.now} · joined with yours`))),
     ].filter(Boolean);
     if (r.error) body.replaceChildren(el('p', { class: 'hint', text: `Couldn't look: ${calmError(r.error)}` })); // (round 45, errorcalm)
     else if (!parts.length) body.replaceChildren(el('p', { class: 'hint', text: `Nothing is missing: everything in ${plural((r.sources || []).length, 'place')} Hearth looked is already in your lists.` }));

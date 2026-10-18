@@ -200,7 +200,15 @@ async function engineChats(curChats, agents) {
   return out;
 }
 
-async function scan({ quick = false } = {}) {
+// (round 64, twocopies64) another Hearth folder on this computer (a second copy unzipped next to the real one): its chats,
+// memory, AIs and the chats' own lists (folders, bookmarks, projects, their Lab scenes) can be copied here. Read only:
+// that folder is never written, moved or deleted. copies: [{ dir, label }] (the card's "Bring its chats here"); a full
+// scan (Recover…) also lists the copies with chats twocopiesmain finds.
+const COPY_KV = ['chat-meta', 'chat-bookmarks', 'projects', 'chat-scenes', 'three-sketches'];
+function otherCopies() {
+  try { return require('./twocopiesmain').others().map((x) => ({ dir: x.dir, label: `Your other Hearth folder (${x.dir})` })); } catch { return []; }
+}
+async function scan({ quick = false, copies = null } = {}) {
   const t0 = Date.now();
   dropScan();
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-datasafe-'));
@@ -231,6 +239,16 @@ async function scan({ quick = false } = {}) {
     await chatsIn(path.join(strash, d, 'chats'), `Kept aside by sync on ${d}`, 'copy');
     const m = readJsonF(path.join(strash, d, 'memory.json')); if (m) memSrc.push({ label: `Kept aside by sync on ${d}`, value: m });
     const c = readJsonF(path.join(strash, d, 'app', 'config.json')); if (c) cfgSrc.push({ label: `Kept aside by sync on ${d}`, value: c });
+  }
+  // (round 64, twocopies64) other Hearth folders on this computer: copied from, never changed
+  const fromCopies = [];
+  for (const c of copies || (quick ? [] : otherCopies())) {
+    if (!c?.dir || path.resolve(c.dir) === path.resolve(path.dirname(D))) continue;
+    const cd = path.join(c.dir, 'data');
+    await chatsIn(path.join(cd, 'chats'), c.label, 'copy');
+    const m = readJsonF(path.join(cd, 'memory.json')); if (m) memSrc.push({ label: c.label, value: m });
+    const cfg = readJsonF(path.join(cd, 'config.json')) || readJsonF(path.join(c.dir, 'config.json')); if (cfg) cfgSrc.push({ label: c.label, value: cfg });
+    fromCopies.push({ dir: cd, label: c.label });
   }
   // memory: its .prev copy and automatic copies · settings: automatic copies
   const mp = readJsonF(path.join(D, 'memory.prev.json')); if (mp) memSrc.push({ label: 'The save before the last one', value: mp });
@@ -294,20 +312,24 @@ async function scan({ quick = false } = {}) {
     }
   }
   for (const c of chats) delete c.chat;
+  // (round 64, twocopies64) what only another Hearth folder has is offered, never ticked by itself (two copies the owner
+  // keeps apart stay apart; the card's "Bring its chats here" picks them on purpose)
+  const copyLabels = new Set(fromCopies.map((c) => c.label));
+  for (const c of chats) if (copyLabels.has(c.from)) c.other = true;
   const curMem = o.store.getMemory();
   const memSeen = new Set(); const memory = [];
   for (const s of memSrc) for (const a of DS.mergeMemory(curMem, s.value).added) {
     if (a.line === '(all)' || memSeen.has(`${a.scope}\n${a.line}`)) continue;
     memSeen.add(`${a.scope}\n${a.line}`);
-    memory.push({ key: keep({ kind: 'memory', scope: a.scope, line: a.line }), scope: a.scope, line: a.line, from: s.label });
+    memory.push({ key: keep({ kind: 'memory', scope: a.scope, line: a.line }), scope: a.scope, line: a.line, from: s.label, ...(copyLabels.has(s.label) ? { other: true } : {}) });
   }
   let curCfg = null; try { curCfg = o.cfg.read(); } catch { curCfg = null; }
   const settings = [];
   if (curCfg) {
     const haveA = new Set((curCfg.agents || []).map((a) => a?.id)); const seenA = new Set(); const seenK = new Set();
     for (const s of cfgSrc) {
-      for (const a of Array.isArray(s.value?.agents) ? s.value.agents : []) if (a?.id && !haveA.has(a.id) && !seenA.has(a.id)) { seenA.add(a.id); settings.push({ key: keep({ kind: 'agent', value: a }), what: 'agent', id: a.id, name: a.name || a.id, from: s.label }); } // (round 55: id, for chatsafemain's Bring back)
-      for (const [k, v] of Object.entries(isObj(s.value?.settings) ? s.value.settings : {})) if (!(k in (curCfg.settings || {})) && !seenK.has(k)) { seenK.add(k); settings.push({ key: keep({ kind: 'setting', k, value: v }), what: 'setting', name: k, from: s.label }); }
+      for (const a of Array.isArray(s.value?.agents) ? s.value.agents : []) if (a?.id && !haveA.has(a.id) && !seenA.has(a.id)) { seenA.add(a.id); settings.push({ key: keep({ kind: 'agent', value: a }), what: 'agent', id: a.id, name: a.name || a.id, from: s.label, ...(copyLabels.has(s.label) ? { other: true } : {}) }); } // (round 55: id, for chatsafemain's Bring back)
+      for (const [k, v] of Object.entries(isObj(s.value?.settings) ? s.value.settings : {})) if (!(k in (curCfg.settings || {})) && !seenK.has(k)) { seenK.add(k); settings.push({ key: keep({ kind: 'setting', k, value: v }), what: 'setting', name: k, from: s.label, ...(copyLabels.has(s.label) ? { other: true } : {}) }); }
     }
   }
   // tool data: copies kept aside by the guard (a save after a failed read, a big shrink, a damaged file)
@@ -318,6 +340,15 @@ async function scan({ quick = false } = {}) {
       const now = DS.count(o.store.getKV(name, null));
       if (c.tag !== 'garbled' && c.count <= now) continue;
       kv.push({ key: keep({ kind: 'kv', name, file: c.file }), name, label: DS.labelOf(name), at: c.at, count: c.count, now, tag: c.tag, from: `Copy kept aside, ${when(c.at)}` });
+    }
+  }
+  // (round 64, twocopies64) the chats' own lists from another Hearth folder (joined with yours, yours wins)
+  for (const c of fromCopies) {
+    for (const name of COPY_KV) {
+      const f = path.join(c.dir, 'kv', `${name}.json`);
+      const v = readJsonF(f);
+      if (v === undefined) continue;
+      kv.push({ key: keep({ kind: 'kv', name, file: f }), name, label: DS.labelOf(name), at: mtime(f), count: DS.count(v), now: DS.count(o.store.getKV(name, null)), tag: 'copy', from: c.label, other: true });
     }
   }
   lastScan = { at: Date.now(), tmp, keys };

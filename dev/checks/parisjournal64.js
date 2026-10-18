@@ -85,8 +85,9 @@ try {
   step('one pin per spot on the map (5), drawn among the guide\'s own pins', pins().length === 5 && root().querySelectorAll('.qj-atlas-pin:not([data-place^="mp-"])').length > 20, pins().length);
   const photoPins = pins().filter((b) => b.querySelector('img.qj-atlas-logo'));
   step('moments with a photo show it on their pin (Superfly, La Cigale)', photoPins.length === 2 && photoPins.every((b) => b.querySelector('img').src.startsWith('file:')), photoPins.map((b) => b.getAttribute('aria-label')));
-  const chipOf = () => root().querySelector('.qj-map-filters .pj-chip[data-chip="visited"]');
-  step('a labelled chip in the map\'s filter row: "✓ My Paris · 5", pressed', chipOf()?.textContent === '✓ My Paris · 5' && chipOf().getAttribute('aria-pressed') === 'true', chipOf()?.textContent);
+  // (round 64, mapfirst64) My Paris is the Visited chip of the map's one chip row (Places · Shows · My walks · Visited); without that row, the filter row's own chip
+  const chipOf = () => root().querySelector('.qmf-strip [data-chip="visited"]') || root().querySelector('.qj-map-filters .pj-chip[data-chip="visited"]');
+  step('one Visited / My Paris chip, pressed, with its 5 moments (no duplicate in the filter row)', /^(✓ My Paris · 5|Visited\s*5)$/.test(chipOf()?.textContent.trim()) && chipOf().getAttribute('aria-pressed') === 'true' && root().querySelectorAll('[data-chip="visited"]').length === 1, chipOf()?.textContent);
   await smoke({ shot: `${tmp}/parisjournal-map.png` });
 
   // ---------- 3. the timeline strip under the map, the month filter (clicks) ----------
