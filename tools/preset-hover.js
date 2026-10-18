@@ -4,7 +4,7 @@
 // answers with a compact JSON patch, checked against the plugin's real list and applied live. Follow-ups ("brighter",
 // "less reverb") refine it; ↶ / ↷ step through every change; Save keeps it (the plugin's own state) in the Sound
 // desk's preset bank. Drag it by its title, fold it to a pill, it remembers where; it moves off the keys, the transport
-// and the instrument picker by itself. Chat: /preset <description> (tools/preset-hover-cmd.js; also /vst-preset),
+// and the instrument picker by itself. Chat: /preset <description> (astra.js (end); also /vst-preset),
 // /preset tweak|undo|redo|save.
 // The host is reached through a thin adapter (host()): WorkbenchVST.live (a live parameter API, when there is one),
 // else WorkbenchVST's door (its validated live `patch` action), or a test host (PresetHover._test.useHost).
@@ -218,7 +218,7 @@ var PresetHover = (() => {
     const r = await ask(text, { fresh, engine: eng });
     return r.changed.length ? `✦ ${current()?.name}: ${r.changed.length} control${r.changed.length === 1 ? '' : 's'} set${r.name ? ` (“${r.name}”)` : ''} · ${r.tokens} tokens. /preset tweak <words> · /preset undo · /preset save [name]` : 'The AI changed nothing this time; try other words.';
   }
-  // /preset itself is registered at start by tools/preset-hover-cmd.js (it shares the name with the Lab's trigger presets)
+  // /preset itself is registered at start by astra.js (end) (it shares the name with the Lab's trigger presets)
   const complete = a => ['tweak', 'undo', 'redo', 'save', 'show', 'hide', 'engine'].filter(s => s.startsWith(String(a || '').trim().toLowerCase())).map(value => ({ value }));
   if (typeof Commands !== 'undefined') Commands.register({ name: 'vst-preset', aliases: ['sound-preset'], args: '<description> | tweak | undo | redo | save [name]', desc: 'Write a Serum 2 / Vital preset from words', area: 'Create', run: command, complete, examples: ['/vst-preset astra: glassy pluck, short echo'] });
   if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Sound desk: write a preset with AI', () => command('show'));

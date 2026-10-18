@@ -41,7 +41,7 @@ The fake engine counted 1,029 input tokens for the first request in the check.
 - `tools/preset-hover.js`: the window, the helper turn (the quest-review pattern: `hub.send` with
   `{ questReview: true, lean: true, helper: true, persona }`, so engines.js gives it no tools / files / memory / web),
   the host adapter `host()` and the commands. Usage goes to `hearth:usage` with `source: 'preset-hover'`.
-- `tools/preset-hover-cmd.js` (eager, ~1 KB): registers `/preset` at start, because a lazy stand-in's `when` says no
+- A 10-line block at the end of `astra.js` (eager, beside the creative group's anchor; a new eager file would break the first-screen script budget) registers `/preset` at start, because a lazy stand-in's `when` says no
   until its group loads and the name is shared with the Lab's trigger presets.
 - Host adapter: `{ current() → { name, parameters }, apply(values), snapshot() → state, keep(label, state) }`. It uses
   `WorkbenchVST.live` first when that exists with `current` / `apply` (the live parameter API vstlive61 is building),
@@ -57,7 +57,7 @@ The fake engine counted 1,029 input tokens for the first request in the check.
   `tools/preset-hover.css`; META regenerated with `node dev/lazy-manifest.js`.
 - `dev/fake-common.js`: `presetPlan()` answers "PATCH FOR …" prompts with a JSON patch (one unknown key and one value
   past its max on purpose).
-- `index.html`: one script tag (`tools/preset-hover-cmd.js`). `dev/run-checks.js`: `presethover61-test` in UNIT.
+- `astra.js`: the additive `/preset` block at the end (above). `dev/run-checks.js`: `presethover61-test` in UNIT.
 
 ## Tests
 - `node dev/presethover61-test.js` (unit:presethover61-test): 32 checks (picking, prompt size, parsing, validation incl.
