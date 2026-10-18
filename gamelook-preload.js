@@ -246,11 +246,14 @@ function gameLookPage(o) {
       const base = r[m];
       if (typeof base !== 'function') continue;
       try {
-        // (round 60, gcchurn60: kept as it was, `apply(this, arguments)` — a (scene, camera) call version moved shadowready's
-        // warm Lab-scene shadow walk onto the GPU's slow first frames; see docs/upgrades/gcchurn60.md)
-        const w = r[m] = function (scene) {
+        // (round 60, gcchurn60) render, every frame: its two arguments passed on as they are (an `arguments` object is
+        // made for every call wherever the page's code isn't optimized yet; three's render takes (scene, camera))
+        const w = r[m] = m === 'render' ? function render(scene, camera) {
           if (!PAUSE && !OFF) { const a = now(); try { before(this, scene); } catch (e) { /* never in the game's way */ } SP[0] += now() - a; }
-          try { if (m === 'render') R.frames += 1; } catch (e) { /* fine */ }
+          R.frames += 1;
+          return base.call(this, scene, camera);
+        } : function (scene) {
+          if (!PAUSE && !OFF) { const a = now(); try { before(this, scene); } catch (e) { /* never in the game's way */ } SP[0] += now() - a; }
           return base.apply(this, arguments);
         };
         undo.push([r, m, w, base]);

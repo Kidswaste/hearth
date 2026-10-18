@@ -852,7 +852,7 @@ HTMLCanvasElement.prototype.getContext = function (type, opts) {
 // the others clear depth and draw on top, as their stacked canvases looked. A layer that only drew once is drawn again
 // from its last scene / camera each frame. Layers that can't merge keep their own canvas (the Lab's compositor), and
 // the plan says why (window.__gameInfo()).
-const GM = { merge: new Set(), why: {}, canvas: null, gl: null, q: [], rec: new Map(), drawing: false, inFlush: false, raf: 0, ids: 1e9, cancel: new Set(), made: 0, frames: 0, n: 0, fast: false, retire: false, old: null, fresh: false };
+const GM = { merge: new Set(), why: {}, canvas: null, gl: null, q: [], qi: [], qn: 0, rq: [], ri: [], rec: new Map(), drawing: false, inFlush: false, raf: 0, ids: 1e9, cancel: new Set(), made: 0, frames: 0, n: 0, fast: false, retire: false, old: null, fresh: false };
 if (GAME) {
   globalThis.__gmTake = (p) => {
     if (!p || p.canvas || p.context || helperNow()) return null;
@@ -899,9 +899,11 @@ function gmLetGo(r) {
   try { r.dispose(); } catch { /* gone */ }
   for (const m of ['render', 'setSize', 'setPixelRatio', 'setViewport', 'clear', 'setAnimationLoop', 'setRenderTarget']) { try { r[m] = () => {}; } catch { /* read-only */ } }
 }
+// (round 60, gcchurn60) the merged layers' frames: two pairs of lists swapped each frame (functions, ids), filled and
+// emptied by count (qn): nothing made per frame (a pair per frame and a copy of the queue each flush before)
 function gmRAF(fn) {
   const id = ++GM.ids;
-  GM.q.push([id, fn]);
+  GM.q[GM.qn] = fn; GM.qi[GM.qn] = id; GM.qn += 1;
   if (!GM.raf && !GM.held) GM.raf = realRAF(gmFlush);
   return id;
 }
@@ -914,20 +916,21 @@ globalThis.__gmHold = (on) => {
   realClearTimeout(GM.holdT);
   GM.held = Boolean(on);
   if (GM.held) GM.holdT = realSetTimeout(() => globalThis.__gmHold(false), 120000);
-  else if (GM.q.length && !GM.raf) GM.raf = realRAF(gmFlush);
+  else if (GM.qn && !GM.raf) GM.raf = realRAF(gmFlush);
   return GAME;
 };
 function gmFlush(t) {
   GM.raf = 0;
   if (GM.held) return; // (the queue waits for the release)
   GM.inFlush = true;
-  const q = GM.q.splice(0);
+  const q = GM.q; const qi = GM.qi; const n = GM.qn; GM.q = GM.rq; GM.qi = GM.ri; GM.rq = q; GM.ri = qi; GM.qn = 0;
   try {
-    for (const [id, fn] of q) {
-      if (GM.cancel.delete(id)) continue;
+    for (let i = 0; i < n; i += 1) {
+      const fn = q[i];
+      if (GM.cancel.size && GM.cancel.delete(qi[i])) continue;
       try { fn(t); } catch (err) { realSetTimeout(() => { throw err; }, 0); } // (reported as the layer's error, as before)
     }
-  } finally { GM.inFlush = false; }
+  } finally { GM.inFlush = false; for (let i = 0; i < n; i += 1) q[i] = null; }
   gmComposite();
 }
 // true: noted for the frame's composite (a render into a render target, or one inside the composite, draws now)
@@ -2306,6 +2309,10 @@ function occlClear() { if (!OC.n) return; OC.by = null; OC.n = 0; for (const L o
 // (it updates them itself) turns this off for that renderer. Never in exports, stills, renders or the scene editor.
 const SHG = { on: true, skipped: 0, drawn: 0 };
 const shExtra = [0];
+// (round 60, gcchurn60) the scene the gate looks at, and one kept function for its signature (a closure per renderer per
+// frame before)
+let shScene = null;
+const shSig = () => PACE.core.signature(shScene, null, null, shExtra);
 function shGate(r, scene) {
   const sm = r.shadowMap;
   let g = sm.__gate;
@@ -2325,8 +2332,8 @@ function shGate(r, scene) {
   if (g.tick === frameTick && g.scene === scene) return; // (a second pass of the same scene this frame: its map is current)
   g.tick = frameTick;
   if (g.scene !== scene) { g.scene = scene; g.have = false; }
-  shExtra[0] = sm.type;
-  const sig = () => PACE.core.signature(scene, null, null, shExtra);
+  shExtra[0] = sm.type; shScene = scene;
+  const sig = shSig;
   if (g.moving >= 30) { // moving all the time: maps every frame (three.js as is), a look every 32 frames whether it stopped
     g.on = false;
     const k = frameTick & 31;
