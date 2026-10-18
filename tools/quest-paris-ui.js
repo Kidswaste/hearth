@@ -23,17 +23,23 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
   const placeCampaign = (s, pid) => s.campaigns.find(c => c.id === P.campaignId(pid));
   function panel(selected, host) {
     const g = P.byId(selected.id); if (!g) return;
-    const { E, button, p, questDetail, mutate } = { ...ui(), mutate: J().mutate };
+    const { E, button, label, p, questDetail, mutate } = { ...ui(), mutate: J().mutate };
     host.append(E('div', { class: 'qj-paris-note' }, p(`${P.arrLabel(g.arr)} · ${g.why}`), p('Best: ' + g.best, 'qj-paris-best')));
     if(g.url)host.append(button('Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
     if(P.socialMissions.some(t=>t.places.includes(g.id)))host.append(button('Friend outings here',()=>socialOutings(g.id),'qj-quiet'));
     if (!P.guide.some(x => x.id === g.id)) return;
     const s = state(), c = placeCampaign(s, g.id), next = c && C.next(s, c);
-    if (c && C.campaignDone(s, c)) host.append(E('p', { class: 'qj-copy qj-paris-best', text: 'Place quest finished ✓' }));
-    else host.append(button(c ? 'Place quest: ' + (next?.title || 'continue') : 'Place quest: go → do → proof', async () => {
-      const camp = c || await mutate(st => P.startPlace(st, g.id), 'Place quest saved: go → do → proof.');
+    // (round 64, mapfirst64) the place's quest, right in the panel: its three steps and one clear "Start this quest"
+    const steps = c ? c.quests.map(q => [q.title, C.done(s, q.id)]) : P.placeSteps(g).map(x => [x[0], false]);
+    const xp = c ? c.quests.reduce((n, q) => n + q.xp, 0) : P.placeSteps(g).reduce((n, x) => n + x[4], 0);
+    const card = E('div', { class: 'qj-paris-quest' }, label(`THE QUEST · ${steps.length} STEPS · ${xp} XP`));
+    const list = E('ol', { class: 'qj-paris-steps' }); for (const [t, done] of steps) list.append(E('li', { class: done ? 'done' : '', text: t + (done ? ' ✓' : '') }));
+    card.append(list); host.append(card);
+    if (c && C.campaignDone(s, c)) card.append(E('p', { class: 'qj-copy qj-paris-best', text: 'Place quest finished ✓' }));
+    else card.append(button(c ? 'Continue: ' + (next?.title || 'next step') : 'Start this quest', async () => {
+      const camp = c || await mutate(st => P.startPlace(st, g.id), 'Quest started: go → do → proof. The ✦ tracker follows it.');
       const q = C.next(state(), camp) || camp.quests[0]; questDetail(q.id);
-    }, 'qj-quiet qj-paris-start'));
+    }, (c ? 'qj-quiet' : 'qj-primary') + ' qj-paris-start'));
   }
   function footer() { if (typeof QuestJournal === 'undefined' || !J()?.ready()) return null; const {E,button}=ui(),b=button('Paris guide',guideDialog,'qj-quiet qj-paris-guide');b.dataset.help=guideCount+' places to see and personal quests · /quest paris';const social=button('Friend outings',()=>socialOutings(),'qj-quiet qj-social-entry');social.prepend(QuestAtlas.icon('social'));return E('div',{class:'qj-actions'},social,button('Browse places',catalog,'qj-quiet'),button('Mini adventures',adventures,'qj-quiet'),b); }
   function guideDialog() {
