@@ -79,7 +79,8 @@ the same on Mac and Windows.
   `framebar-result` route, `ThreeLab.framebar`; the stats line gets `fb-keep`.
 - `tools/three-lab.css`: one rule (fps + bar on screen by default).
 - Outside the lane, small: `declutter.js` (`lab-stats` gets `keep: '.fb-keep'`), `lazy-data.js` / `lazy-meta.js`
-  (the group; `node dev/lazy-manifest.js`), `dev/run-checks.js` (`unit:framebar-test`, group `framebar64`).
+  (the group; `node dev/lazy-manifest.js`), `index.html` (`framebar` in a lazy-at.js tag), `dev/run-checks.js`
+  (`unit:framebar-test`, group `framebar64`).
 
 ## Tests
 - `dev/framebar-test.js` (9 tests):
@@ -103,7 +104,12 @@ the same on Mac and Windows.
   - "Ask the Three Director" puts the words in the director's box and doesn't send them;
   - with the pointer away the line folds back to fps + bar and the sums freeze;
   - the target 144 Hz is 6.9 ms; `/framebar target auto`; `/framebar` status.
-- Run under the shared lock (outputs in the stream's scratch folder): see the final report for the list and results.
+- Run under the shared lock, at most 5 per hold: framebar64 ✓, labplay55 ✓, labcanvas56 ✓, lab240edit ✓, gcchurn60 ✓, lazy ✓,
+  unit:boot-test ✓ (after adding `framebar` to index.html's lazy-at.js tag), unit:labpace-test ✓, unit:datasafe-scan ✓,
+  unit:winmac-test ✓, unit:framebar-test ✓.
+  - labpace ✖ on one step: "a still scene draws ≈ once a second", 2.7 draws a second against a budget of 2.5. The base
+    (this round's Lab files put back: tools/three.js, tools/three-sandbox.html, declutter.js, tools/three-lab.css) reads
+    the same 2.7 on this machine, so it isn't this change. All its other steps pass.
 
 ## Notes
 - On this machine (software GL), frames take ≈ 100 ms, so the bar is red and the target is the Xvfb screen's 60 Hz. The
