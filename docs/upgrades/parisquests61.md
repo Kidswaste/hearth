@@ -115,6 +115,11 @@ Codex files touched (all small, additive and commented `parisquests61`):
 - New files (ours): `tools/quest-paris.js` (UMD like quest-core; data + pure rules), `tools/quest-paris-ui.js` (map
   hooks + `/quest`), `dev/quest-paris-test.js`, `dev/checks/quest-paris.js`. `dev/run-checks.js` lists them in
   `quests`.
+- Merged with Codex's Paris outing desk (70c296f). The `questjournal` group now loads quest-paris.js, then
+  outing-core.js and outing-desk.js, then quest-journal.js, then quest-paris-ui.js. The journal's returned object keeps
+  both `paris` and `openOutings` / `keepOuting`. After the merge, quest-paris, lazy, outing-desk and quest-world pass,
+  along with the boot, quest-paris and outing unit tests. The two features complement each other: the outing desk
+  covers dated events, and this guide covers permanent places and personal quests.
 - Not touched: quest-core, quest-catalog, quest-atlas, quest-shelf, quest-review. Campaign fields `parisPlace` /
   `parisPersonal` are extra fields that `validate()` already allows.
 
