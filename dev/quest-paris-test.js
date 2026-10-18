@@ -12,8 +12,8 @@ const finish = (s, qid, n) => { const item = C.submit(s, qid, proof(n)); C.saveR
 const ARR = { 1: [48.8625, 2.3364], 2: [48.8683, 2.3428], 3: [48.8630, 2.3601], 4: [48.8543, 2.3576], 5: [48.8445, 2.3507], 6: [48.8491, 2.3328], 7: [48.8562, 2.3122], 8: [48.8727, 2.3125], 9: [48.8771, 2.3375], 10: [48.8761, 2.3607], 11: [48.8591, 2.3800], 12: [48.8396, 2.3876], 13: [48.8283, 2.3623], 14: [48.8292, 2.3266], 15: [48.8401, 2.2929], 16: [48.8604, 2.2700], 17: [48.8873, 2.3067], 18: [48.8925, 2.3484], 19: [48.8871, 2.3848], 20: [48.8634, 2.4012] };
 const km = ([a, b], [c, d]) => Math.hypot((a - c) * 111.2, (b - d) * 73.2);
 
-test('guide data: 44–60 places with every field', () => {
-  assert(P.guide.length >= 44 && P.guide.length <= 60, 'guide size ' + P.guide.length);
+test('guide data: 60–80 places with every field', () => {
+  assert(P.guide.length >= 60 && P.guide.length <= 80, 'guide size ' + P.guide.length);
   const ids = new Set();
   for (const g of [...P.guide, ...Object.values(P.pins)]) {
     assert(/^(pp|place)-[a-z0-9-]+$/.test(g.id) && !ids.has(g.id), 'id ' + g.id); ids.add(g.id);
@@ -53,7 +53,7 @@ test('guide pins join the map once, reuse default pins and validate', () => {
 test('filters: tags, plurals, kinds, arrondissements and words', () => {
   const n = q => P.guide.filter(g => P.matches(g, q)).length;
   assert.equal(n(''), P.guide.length); assert(n('show') >= 6); assert.equal(n('shows'), n('show'));
-  assert(n('records') === 3); assert(n('11e') >= 4); assert.equal(n('11'), n('11e')); assert.equal(n('1er'), n('1'));
+  assert(n('records') === 4); assert(n('11e') >= 4); assert.equal(n('11'), n('11e')); assert.equal(n('1er'), n('1'));
   assert(n('music') >= 10); assert(n('canal') >= 1); assert(n('pigalle') >= 1); assert.equal(n('zzzz'), 0);
   assert.equal(P.findPlace('bataclan').id, 'pp-bataclan'); assert.equal(P.findPlace('canal').id, 'place-canal'); assert.equal(P.findPlace('belleville').id, 'pp-belleville-view');
   assert.equal(P.findPersonal('airpods').key, 'airpods'); assert.equal(P.findPersonal('apple').key, 'airpods'); assert.equal(P.findPersonal('open-mic').key, 'openmic');
@@ -100,4 +100,58 @@ test('taking the guide off keeps visited, starred and quest pins', () => {
   assert(!s.atlas.places.some(p => p.id === 'pp-bataclan')); assert(s.atlas.places.some(p => p.id === s.atlas.selected)); C.validate(s);
 });
 
+test('discovery combines accent-insensitive search, lane, new and unvisited filters',()=>{
+  const s=fresh();assert.equal(P.newPlaces.length,16);assert.equal(P.discover(s,{newOnly:true}).length,16);
+  assert.deepEqual(P.discover(s,{query:'poesie'}).map(g=>g.id),['pp-maison-poesie']);
+  const music=P.discover(s,{newOnly:true,kind:'music'});assert(music.length>=5&&music.every(g=>g.kind==='music'));
+  P.ensurePin(s,'pp-dizonord').visitedAt='2026-10-18T12:00:00Z';assert(!P.discover(s,{newOnly:true,unvisited:true}).some(g=>g.id==='pp-dizonord'));
+  assert.equal(P.discover(s,{query:'zzzz'}).length,0);
+  for(const pid of P.newPlaces)assert(new URL(P.byId(pid).url).protocol==='https:');
+});
+test('six mini adventures freeze the chosen place, survive reload and use proof-gated XP',()=>{
+  const s=fresh();assert.equal(P.outings.length,6);
+  for(const t of P.outings){
+    const c=P.startOuting(s,t.id,t.places[0]);assert.equal(c.quests.length,3);assert.equal(c.parisPlace,t.places[0]);
+    assert.equal(P.startOuting(s,t.id,t.places[1]),c);assert.equal(c.parisPlace,t.places[0]);
+    assert.throws(()=>C.complete(s,c.quests[0].id));assert.equal(C.xp(s),0);
+  }
+  C.validate(s);assert.deepEqual(C.validate(JSON.parse(JSON.stringify(s))),s);
+  const c=s.campaigns.find(c=>c.id==='c-pq-city-tiny-reset');for(let i=0;i<3;i++)finish(s,c.quests[i].id,i+1);
+  assert.equal(C.xp(s),90);assert(C.campaignDone(s,c));assert.equal(C.complete(s,c.quests[2].id),0);assert.equal(C.xp(s),90);
+  assert.throws(()=>P.startOuting(s,'tile-safari','place-canal'));assert.throws(()=>P.startOuting(s,'missing','place-canal'));
+});
+test('friend missions cover the whole circle without inventing interests or requiring replies',()=>{
+  const s=fresh();assert.equal(P.socialMissions.length,10);assert.equal(P.socialTreats.length,8);
+  for(const f of s.world.friends)for(const t of P.socialMissions){
+    const c=P.startSocial(s,t.id,f.id,t.places[0]);assert.equal(c.quests.length,3);assert.equal(P.startSocial(s,t.id,f.id,t.places[1]),c);assert.equal(c.parisPlace,t.places[0]);
+    assert(c.quests[1].done.includes(t.solo));assert(c.quests[0].done.includes('reply is not required'));
+    assert(P.socialInvite(s,t.id,f.id,t.places[0]).includes(f.name));
+  }
+  assert.equal(s.campaigns.filter(c=>c.socialMission).length,70);assert.equal(C.xp(s),0);C.validate(s);
+  assert.equal(P.socialChoices(s,{friendId:'friend-valentin'})[0].id,'coop-scout');
+  assert.equal(P.socialChoices(s,{friendId:'friend-guillaume'})[0].id,'demo-swap');
+  assert.equal(P.socialChoices(s,{friendId:'friend-camille'})[0].id,'demo-swap');
+  assert.equal(P.socialChoices(s,{quick:true}).length,4);
+  assert(P.socialChoices(s,{quick:true}).every(t=>t.minutes<=20));
+  assert.deepEqual(C.validate(JSON.parse(JSON.stringify(s))),s);
+});
+test('social steps are proof gated, repeat safe and preserve accepted friends and reward edits',()=>{
+  const s=fresh(),c=P.startSocial(s,'check-in','friend-guillaume','place-canal',{treatId:'listening'}),reward=s.rewards.find(r=>r.id===c.socialTreat);
+  assert.equal(s.rewardGoal,reward.id);assert.equal(s.redemptions.length,0);assert.equal(C.balance(s),0);assert.throws(()=>C.complete(s,c.quests[0].id),/proof/i);
+  assert.throws(()=>C.redeem(s,reward.id),/sparks/);
+  s.world.friends.find(f=>f.id==='friend-guillaume').name='G';reward.name='My own listening ritual';reward.cost=9;
+  assert.equal(P.startSocial(s,'check-in','friend-guillaume','pp-montsouris',{treatId:'show-fund'}),c);assert.equal(c.socialFriendName,'Guillaume');assert.equal(s.rewardGoal,reward.id);
+  assert.equal(P.stockSocialTreat(s,'listening'),reward);assert.equal(reward.name,'My own listening ritual');assert.equal(reward.cost,9);
+  for(let i=0;i<3;i++)finish(s,c.quests[i].id,i+1);
+  assert.equal(C.xp(s),90);assert.equal(C.balance(s),18);assert(C.campaignDone(s,c));assert.equal(C.complete(s,c.quests[2].id),0);
+  const receipt=C.redeem(s,reward.id);assert.equal(C.balance(s),9);C.returnReward(s,receipt.id);assert.equal(C.balance(s),18);
+  C.validate(s);
+});
+test('priced social treats obey monthly allowance and invalid starts leave data alone',()=>{
+  const s=fresh(),c=P.startSocial(s,'sunset-postcard','friend-camille','place-canal',{treatId:'pastry'});
+  for(let i=0;i<3;i++)finish(s,c.quests[i].id,i+1);
+  assert.throws(()=>C.redeem(s,c.socialTreat),/budget/);s.rewardBudget.monthly=5;const r=C.redeem(s,c.socialTreat);assert.equal(r.amount,5);assert.equal(C.rewardMoney(s).remaining,0);C.returnReward(s,r.id);assert.equal(C.rewardMoney(s).remaining,5);
+  for(const args of [['missing','friend-jean','place-canal'],['check-in','missing','place-canal'],['check-in','friend-jean','pp-dizonord'],['check-in','friend-jean','place-canal',{treatId:'missing'}]]){const before=JSON.stringify(s);assert.throws(()=>P.startSocial(s,...args));assert.equal(JSON.stringify(s),before);}
+  const old=s.campaigns.find(c=>c.socialMission);P.removeGuide(s);assert(s.atlas.places.some(p=>p.id===old.parisPlace));C.validate(s);
+});
 console.log(`quest-paris-test: ${checks} groups passed`);
