@@ -31,6 +31,7 @@ var WorkbenchVST = (() => {
     if (Object.keys(pendingPatch).length && selected) flushPatch().catch(() => {});
     keyOff(); keyOff = () => {}; silence(); if (selected) call('live-stop').catch(() => {}); playing = false;
     if (rendered?.player) rendered.player.pause();
+    if (typeof PresetHover !== 'undefined') PresetHover.detach(); // (round 61, presethover61) the ✦ Preset window leaves with the desk
   }
   async function flushPatch() {
     const values = pendingPatch; pendingPatch = {}; if (!Object.keys(values).length) return;
@@ -70,6 +71,7 @@ var WorkbenchVST = (() => {
     pause(); const ticket = alive; h = helpers;
     const { state, persist, say, e, row, note, btn, field, range, select, check, save, file } = h;
     out.classList.add('wb-sound-desk');
+    if (typeof PresetHover !== 'undefined') PresetHover.attach(out, door); // (round 61, presethover61) ✦ Preset floats over the desk
     const header = e('div', null, 'wb-sound-header');
     header.innerHTML = '<svg viewBox="0 0 100 50" aria-hidden="true"><path d="M2 25h10l6-18 9 37 9-32 8 25 8-16 7 8 7-4h32" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="90" cy="9" r="3" fill="currentColor"/></svg>';
     header.append(e('h3', 'Sound desk'), note('Serum 2 + Vital · play a sound, shape it, keep the take.')); out.append(header);
@@ -238,5 +240,19 @@ var WorkbenchVST = (() => {
     aiAllowed: () => canEdit,
     on: (type, fn) => events.on(type, fn)
   };
-  return { mount, pause, soundTool, api };
+  // (round 61, presethover61) a thin door for the ✦ Preset window (tools/preset-hover.js), now over vstlive61's api:
+  // the open instrument's real parameters, a validated live patch (api.set: WorkbenchCore.patch + the host's checks, one
+  // undo step, streamed to the running instrument), its full state, and the preset bank (same limits as "Save bank preset").
+  const door = {
+    current: () => selected ? { name: selected.name, parameters: selected.loading ? [] : selected.parameters, ready: !selected.loading, live: playing } : null,
+    apply: async values => (await api.set(values, { source: 'preset-hover' })).changed,
+    snapshot: async () => (await snapshot()).state,
+    keep: async (label, state) => {
+      const bank = h?.state; if (!bank || !selected) throw Error('Open the Sound desk first.');
+      if (bank.presets.length >= 12 || bank.presets.reduce((n, p) => n + p.state.length, 0) + state.length > 9e6) throw Error('Preset bank is full. Export a patch or remove an older preset.');
+      bank.presets.unshift({ label: String(label).slice(0, 80), path: selected.path, name: selected.name, state }); await h.persist(); events.emit('preset', { action: 'save', label: String(label).slice(0, 80) }); await redraw();
+    },
+  };
+  // WorkbenchVST.live: what preset-hover.js's adapter prefers (current / apply / snapshot / keep), the same door.
+  return { mount, pause, soundTool, api, door, live: door };
 })();
