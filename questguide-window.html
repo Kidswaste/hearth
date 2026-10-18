@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:;"><title>Quest Guide · Hearth</title><link rel="stylesheet" href="questguide-window.css"></head>
+<body>
+  <header><span class="forge-mark" aria-hidden="true">✦</span><span>HEARTH <b>QUEST GUIDE</b></span><button id="hide" title="Hide helper · progress keeps watching" aria-label="Hide helper">−</button></header>
+  <main>
+    <div class="quest-line"><span id="quest">Your next small win</span><span id="count"></span></div>
+    <div id="progress" role="progressbar" aria-label="Guide progress" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+    <section class="current"><div id="step-number">01</div><div><span id="eyebrow">YOUR NEXT MOVE</span><h1 id="title">Ready when you are</h1></div></section>
+    <p id="instruction">Start a guided quest in Sidequest Studio.</p>
+    <p id="observation" class="signal" role="status"></p>
+    <div id="actions" class="actions">
+      <button id="launch" class="primary" hidden>↗ Open FL Studio</button>
+      <button id="action" class="primary" hidden>↗ Open workbench</button>
+      <button id="done" class="primary" hidden>Done · next →</button>
+      <button id="review" class="primary" hidden>Show result / review ↗</button>
+      <button id="pause" hidden>Ⅱ Pause</button>
+    </div>
+    <form id="manual-form" hidden>
+      <label for="note">What did you finish?</label>
+      <textarea id="note" rows="2" maxlength="600" placeholder="A short note to keep your progress honest…" required minlength="3"></textarea>
+      <div class="actions"><button type="submit" class="primary">Save progress →</button><button type="button" id="cancel-manual">Cancel</button></div>
+    </form>
+    <p id="error" role="alert" hidden></p>
+    <div class="footer"><button id="back" title="Undo the last guide step; pauses automatic checks" hidden>↶ Back</button><button id="manual" hidden>Confirm myself</button><button id="connect" hidden>Connect FL</button></div>
+    <section id="connection" hidden>
+      <h2>Connect FL Studio</h2>
+      <p><b>Easiest: watch your saved project.</b> Choose this quest’s .flp once. Set your tempo or add piano-roll bass notes, then press Ctrl+S in FL Studio. Hearth reads that file and checks your step. No MIDI device needed.</p>
+      <div class="actions"><button id="choose-project" class="primary">Choose this song’s .flp</button><button id="forget-project" hidden>Disconnect project</button></div><p id="project-path" class="muted"></p>
+      <h2>Or connect live</h2>
+      <p>Install Hearth’s read-only controller script, then enable <b>Hearth Quest Guide</b> for an unused MIDI input in FL Studio’s MIDI settings.</p>
+      <ol><li>Install the script below.</li><li>Open FL Studio → Options → MIDI settings. Refresh the device list if needed.</li><li>Select an unused input and enable it. Choose <b>Hearth Quest Guide (user)</b> as its controller type.</li><li>Wait for the “Connected” light here.</li></ol>
+      <p class="muted">Needs a MIDI input, physical or virtual. Keep your usual keyboard controller on its own script. No available input? Use the saved-project option above. The script observes tempo, playback and bass-channel notes/activity; it never changes your project.</p>
+      <div class="actions"><button id="install" class="primary">Install FL connection</button><button id="choose-app">Locate FL Studio</button><button id="choose-folder">Custom FL data folder</button><button id="open-folder">Show script folder</button></div>
+      <p id="setup-path" class="muted"></p><button id="close-connection">Close setup</button>
+    </section>
+  </main>
+  <script src="questguide-window.js"></script>
+</body></html>

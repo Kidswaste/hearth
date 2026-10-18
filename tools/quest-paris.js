@@ -90,7 +90,28 @@
     ['rajman','Square Marcel Rajman',48.860345,2.385216,'reset','Take a quiet pause, then describe one small detail as if it were the last frame of a film.','Keep one sketch or shot and a sentence about the ending.','https://mairie11.paris.fr/pages/square-marcel-rajman-et-salle-olympe-de-gouges-les-photos-de-la-metamorphose-35713']
   ];
   for(const [id,name,lat,lon,kind,todo,proof]of eleven)RAW.push(['pp-'+id,name,11,lat,lon,kind,['park','free','walk'],name+' · a small outdoor starting point in the 11th for your next original story.','Check the linked source and entrance hours before leaving. Record only your own sounds or permitted ambience; skip voices and faces.',todo,proof]);
+  // Official menus/addresses checked 18 October 2026; IGN address points, not surveyed entrances.
+  const foodStops=[
+    ['double-dragon','Double Dragon',11,48.862565,2.379865,'52 rue Saint-Maur','Filipino-influenced plates for dinner with Thomas or Ismaël.','https://www.doubledragonparis.com/'],
+    ['servan','Le Servan',11,48.860995,2.381370,'32 rue Saint-Maur','A sit-down lunch or dinner to celebrate finishing a demo.','https://www.leservan.fr/'],
+    ['mokonuts','Mokonuts',11,48.850822,2.381428,'5 rue Saint-Bernard','A small weekday lunch destination; reserve ahead.','https://www.mokonuts.com/fr/mokonuts'],
+    ['mokochaya','Mokochaya',11,48.851277,2.381508,'11 rue Saint-Bernard','Coffee, tea and a bento lunch; a softer start to a day out.','https://www.mokonuts.com/fr/mokochaya'],
+    ['bouillon-republique','Bouillon République',3,48.866021,2.364706,'39 boulevard du Temple','Traditional dishes and a meet-up near République.','https://bouillonlesite.com/bouillon-republique'],
+    ['bouillon-pigalle','Bouillon Pigalle',18,48.882583,2.337451,'22 boulevard de Clichy','A food stop before a night at La Machine.','https://bouillonlesite.com/bouillon-pigalle']
+  ];
+  for(const [id,name,arr,lat,lon,address,why]of foodStops)RAW.push(['pp-'+id,name,arr,lat,lon,'social',['food'],address+'. '+why,'Check today’s menu, price and booking before leaving. No spending minimum.','Pick a dish within your own budget. Solo: take a quiet break. With a friend: swap one track you have each been enjoying.','Keep a photo of your own plate or a three-line taste note, plus the track or idea you want to keep.']);
   const guide = RAW.map(([id, name, arr, lat, lon, kind, tags, why, best, todo, proof]) => ({ id, name, arr, lat, lon, kind, tags, why, best, todo, proof }));
+  for(const [id,,,,,,,url]of foodStops)guide.find(g=>g.id==='pp-'+id).url=url;
+  const familiarVenues=[
+    {name:'Rex Club',lat:48.870623,lon:2.347261,address:'5 boulevard Poissonnière, 75002 Paris',url:'https://rexclub.com/billetterie/',slug:'rex-club'},
+    {name:'La Machine du Moulin Rouge',lat:48.884123,lon:2.332181,address:'90 boulevard de Clichy, 75018 Paris',url:'https://www.lamachinedumoulinrouge.com/agenda/',slug:'la-machine-du-moulin-rouge'},
+    {name:'Mia Mao',lat:48.897293,lon:2.395190,address:'2 rue de la Clôture, 75019 Paris',url:'https://www.miamao.fr/agenda/',slug:'mia-mao'},
+    {name:'Phantom',lat:48.839223,lon:2.377770,address:'8 boulevard de Bercy, porte 28, 75012 Paris',url:'https://phantom.paris/tickets.html',slug:'phantom'},
+    {name:'Kilomètre25',lat:48.896247,lon:2.393751,address:'8 boulevard Macdonald, 75019 Paris',url:'https://www.kilometre25.fr/francais/agenda',slug:'kilometre-25'},
+    {name:'Badaboum',lat:48.853461,lon:2.375763,address:'2 rue des Taillandiers, 75011 Paris',url:'https://badaboum.paris/agenda/',slug:'badaboum'},
+    {name:'Glazart',lat:48.899283,lon:2.386610,address:'7 avenue de la Porte de la Villette, 75019 Paris',url:'https://www.glazart.com/agenda-concerts/',slug:'glazart'}
+  ];
+  const mapPicks=new Set([...foodStops.map(x=>'pp-'+x[0]),'pp-enfants-rouges','pp-ground-control','pp-gardette','pp-truillot','pp-betinos','pp-superfly']);
   for(const [id,,,,,,,url]of eleven)guide.find(g=>g.id==='pp-'+id).url=url;
   const sources={'pp-centquatre':'https://www.104.fr/infos-pratiques','pp-hasard-ludique':'https://www.lehasardludique.paris/infos-pratiques','pp-forum-images':'https://www.forumdesimages.fr/infos-pratiques','pp-fgo-barbara':'https://fgo-barbara.fr/infos-pratiques','pp-supersonic':'https://supersonic-club.fr/infos-pratiques/','pp-radio-france':'https://www.maisondelaradioetdelamusique.fr/','pp-bnf-richelieu':'https://www.bnf.fr/fr/richelieu','pp-bourdelle':'https://www.bourdelle.paris.fr/decouvrir'};
   for(const g of guide)if(sources[g.id])g.url=sources[g.id];
@@ -283,9 +304,9 @@
     const place = { id: g.id, name: g.name, lat: g.lat, lon: g.lon, quest: g.why.slice(0, 500), visitedAt: null, kind: g.kind, favorite: false };
     s.atlas.places.push(place); return place;
   }
-  function addGuide(s) {
+  function addGuide(s, selection=guide) {
     let added = 0, full = 0, linked = 0; dedupe(s); // (parisdedupe64) a twin of yours carries its guide place instead of a second pin
-    for (const g of guide) { if (pinOf(s, g.id)) continue; const twin = twinOf(s, g); if (twin) { twin.guide = g.id; linked++; continue; } if (s.atlas.places.length >= 100) { full++; continue; } ensurePin(s, g.id); added++; }
+    for (const g of selection) { if (pinOf(s, g.id)) continue; const twin = twinOf(s, g); if (twin) { twin.guide = g.id; linked++; continue; } if (s.atlas.places.length >= 100) { full++; continue; } ensurePin(s, g.id); added++; }
     return { added, full, linked };
   }
   // Takes the guide's untouched pins back off the map: anything visited, starred or linked to a quest stays.
@@ -421,5 +442,5 @@
     const c={id:cid,cityStory:id,storyCompany:friend?.name||'Solo',storyBudget:o.budget,parisPlace:pid,parisPersonal:'story-'+id,title:t.title,subtitle:'PARIS / STORY QUEST',path:t.path,why:t.hook+' Keep: '+t.loot,badge:t.badge,quests:t.chapters.map(([title,done,xp],i)=>({...step(cid,i,[title,`${byId(pid).name}. ${done} ${friend?'Company: '+friend.name+'. If they are busy, continue solo; no reply is required.':''}`, 'Make one rough note or shot. Continue another day whenever you want.',15,xp]),deep:'This is a story chapter, not a countdown. Keep the rough version and return whenever you want.',proofHint:'Show your own short video, audio, storyboard or a Hearth chat artifact. No public post is required. Use only permitted recordings. Video review samples frames; include your sound bounce if audio matters.'}))};
     if(reward)stockSocialTreat(s,treat.id);s.campaigns.push(c);return track(s,c);
   }
-  return { TAGS, guide, pins, personal, parks, byId, arrLabel, matches, findPlace, findPersonal, hasGuide, ensurePin, addGuide, of, pinOf, twinOf, spotPin, sameName, metres, dedupe, needsDedupe, TWIN_M, removeGuide, startPlace, startPersonal, progress, campaignId, parkName, sketchTitle, words, placeSteps, newPlaces, outings, discover, startOuting, socialMissions, socialTreats, socialChoices, socialCampaign, socialInvite, stockSocialTreat, startSocial, eleven, stories, todayOptions, today, startStory };
+  return { TAGS, guide, foodStops, familiarVenues, mapPicks, pins, personal, parks, byId, arrLabel, matches, findPlace, findPersonal, hasGuide, ensurePin, addGuide, of, pinOf, twinOf, spotPin, sameName, metres, dedupe, needsDedupe, TWIN_M, removeGuide, startPlace, startPersonal, progress, campaignId, parkName, sketchTitle, words, placeSteps, newPlaces, outings, discover, startOuting, socialMissions, socialTreats, socialChoices, socialCampaign, socialInvite, stockSocialTreat, startSocial, eleven, stories, todayOptions, today, startStory };
 });

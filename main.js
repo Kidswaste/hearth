@@ -733,6 +733,8 @@ function registerAfterWindow() {
   require('./notifymain').register(ipcMain, { getWin: () => win, app, shell, appshell, Notification: require('electron').Notification, send }); // (round 44, notify) desktop notifications: Electron's own (Hearth's name / icon, Focus / Do Not Disturb), one per chat, a burst summed up, a click opens the chat / card / file
   require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
   require('./showsyncmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 61, showsync61) this week's shows from Shotgun / DICE: polite fetches, nothing while idle
+  const outingGuide = require('./outing-guidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, Notification: require('electron').Notification });
+  require('./questguidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, onChanged: snapshot => outingGuide.syncGuide(snapshot) });
   require('./weekquestmain').register(ipcMain); // (round 62, weekquest62) the week plan's Paris forecast (Open-Meteo, no key), only when the week card opens
   require('./safetynetmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 29) Hearth never loses work: the session marker, the page reloading after a crash, the work journal
   crashsafe.register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 50, crashsafe) replies being written, renders cut off, temp files killed writes left, Windows update restarts

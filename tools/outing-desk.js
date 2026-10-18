@@ -15,7 +15,7 @@ const OutingDesk = (() => {
   function mapSummary(){return {count:C.filter(state?.feed||[],{days:30}).length};}
   function registerMap(){
     QuestJournal.addMapLayer({id:'outing-desk',owns:id=>id.startsWith('od-venue-'),
-      pins:filters=>C.mapGroups(state||C.initial(),filters).map(g=>({id:g.id,name:g.name+' · '+g.events.length,lat:g.lat,lon:g.lon,kind:'calendar',color:'#ffb14a'})),
+      pins:filters=>C.mapGroups(state||C.initial(),{...filters,saved:true}).map(g=>({id:g.id,name:g.name+' · '+g.events.length,lat:g.lat,lon:g.lon,kind:'calendar',color:'#ffb14a'})),
       select:(id,kit)=>QuestJournal.openOutings({venue:id}).catch(err=>kit.notice(err.message))
     });
   }
@@ -72,6 +72,7 @@ const OutingDesk = (() => {
       const values=()=>({...item,visitStart:localIso(start.input.value),visitEnd:localIso(end.input.value),status:status.input.value,buddy:buddy.input.value,ticket:C.money(ticket.input.value),transport:C.money(transport.input.value),extras:C.money(extras.input.value),prompt:prompt.input.value,note:note.input.value});
       const updateWarning=()=>{try{const v=values(),conflicts=C.overlaps(state,v);warnings.textContent=conflicts.length?'Overlaps: '+conflicts.map(p=>p.event.title).join(' · '):v.visitStart?'Visit time shown in '+Intl.DateTimeFormat().resolvedOptions().timeZone+'. Allow time to travel.':'Choose your visit time before calendar export.';}catch(err){warnings.textContent=err.message;}};start.input.oninput=end.input.oninput=updateWarning;updateWarning();
       const persist=async()=>{const v=values();await change(s=>Object.assign(s.saved.find(p=>p.event.id===id),v));};
+      if(window.OutingGuide)body.append(btn('Guide this outing · route & reminders',async()=>{await persist();const saved=state.saved.find(p=>p.event.id===id);d.close();return OutingGuide.open({event:e,start:saved.visitStart||e.start,questId:saved.questId});},'qj-primary'));
       body.append(costs,prompt.node,brief,note.node,warnings,btn('Save plan',async()=>{await persist();d.close();say('Outing plan saved.');},'qj-primary'));
       const actions=E('div',{class:'od-actions'});
       actions.append(icon('calendar','Export this visit to calendar',async()=>{await persist();await exportCalendar([state.saved.find(p=>p.event.id===id)]);}),icon('chat','Preview an invitation · nothing is sent',async()=>{await persist();api.dialog('Your invitation draft',b=>{const draft=api.field('Editable invitation',{value:C.invitation(state.saved.find(p=>p.event.id===id)),multiline:true,max:1500});b.append(draft.node,btn('Copy invitation',async()=>{await navigator.clipboard.writeText(draft.input.value);say('Invitation copied. Nothing sent.');}));});},'#ff6b9d'),icon('check','Mark source checked just now',async()=>{await persist();await change(s=>{s.saved.find(p=>p.event.id===id).checkedAt=new Date().toISOString();});d.close();detail(id);},'#ffd75e'));

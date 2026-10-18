@@ -17,6 +17,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const Core = require('./showsync-core');
 const Programmes = require('./showsync-venues');
+const Syndicated = require('./showsync-syndicated');
 const DS = require('./datasafe-core');
 const CS = require('./crashsafe-core');
 
@@ -46,7 +47,7 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
   const cache = () => { const c = read('cache.json', Core.emptyCache()); c.sources ||= {}; c.robots ||= {}; c.hosts ||= {}; return c; };
   const geo = () => read('geo.json', {});
   const logos = () => read('logos.json', {});
-  const sources = () => { const s = settings(); return [...(s.from === 'followed' ? [] : [...Core.defaultSources(), ...Programmes.sources()]), ...s.follows].filter((x, i, a) => x && a.findIndex((y) => y.id === x.id) === i).slice(0, 19); };
+  const sources = () => { const s = settings(); return [...(s.from === 'followed' ? [] : [...Core.defaultSources(), ...Programmes.sources(), ...Syndicated.sources()]), ...s.follows].filter((x, i, a) => x && a.findIndex((y) => y.id === x.id) === i).slice(0, 24); };
 
   // ---------- one polite request ----------
   const lastHit = new Map();
@@ -76,6 +77,7 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
     return Core.robotsAllows(txt, u.pathname + u.search) ? 'allow' : 'deny';
   }
   async function fetchSource(src, { htmlOnly = false, trustedOrigin = null, validators = null } = {}) {
+    if (!htmlOnly && Syndicated.config(src)) return fetchSyndicated(src);
     if (!htmlOnly && Programmes.config(src)) return fetchProgramme(src);
     const c = cache(), old = validators || c.sources[src.id], host = new URL(src.url).hostname;
     if (c.hosts[host]?.blockedUntil > now()) return { ok: false, blocked: true, status: c.hosts[host].status || 403 };
@@ -113,10 +115,10 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
       const result = await fetchSource({ ...src, url }, { htmlOnly:true, trustedOrigin, validators:old || {} });
       unavailable = !result.ok && (!result.status || result.blocked || result.robots || result.status>=500);
       const show = result.notModified && old?.show ? { ...old.show, programme:{ ...old.show.programme, checkedAt:now() } } : result.ok ? Programmes.event(result.html, src, url, now()) : null;
-      const failed = !result.ok || (!show && (!!old?.show || !!Programmes.ticketUrl(result.html)));
+      const failed = !result.ok || (!show && (!!old?.show || !!Programmes.ticketUrl(result.html,src)));
       // A broken page keeps its last good event; a successful page without Shotgun tickets isn't invented.
       entries[url] = { at:now(), show:show || (failed ? old?.show : null), failed, etag:result.etag || old?.etag, lastModified:result.lastModified || old?.lastModified };
-      if(entries[url].show)shows.push(entries[url].show);
+      if(entries[url].show && Core.expires(entries[url].show)>=now() && entries[url].show.start<now()+21*DAY)shows.push(entries[url].show);
       partial ||= failed;
     }
     // Bound the detail cache; only upcoming/recent events need to survive a restart.
@@ -157,6 +159,27 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
     if (n) await save('logos.json');
   }
 
+  // The Explore API explicitly supports public HTTP clients (not a search-engine crawl).
+  // https://developer.huwise.com/apis/explore/v2.1/index.html
+  // Read only this reviewed public dataset; HTML readers still obey their site's robots.txt.
+  async function fetchSyndicated(src) {
+    const c=cache(),host=new URL(Syndicated.ORIGIN).hostname;
+    if(c.hosts[host]?.blockedUntil>now())return {ok:false,blocked:true,status:c.hosts[host].status};
+    const shows=[];let total=0,offset=0,pages=0;
+    try {
+      do {
+        const url=Syndicated.url(src,now(),offset),res=await politeFetch(url,{headers:{Accept:'application/json'},redirect:'error'});
+        if(res.url && new URL(res.url).origin!==Syndicated.ORIGIN)return {ok:false,status:502};
+        if([401,403,429,503].includes(res.status)){c.hosts[host]={blockedUntil:now()+BLOCK_PAUSE,status:res.status};return {ok:false,blocked:true,status:res.status};}
+        if(!res.ok)return {ok:false,status:res.status};
+        const data=JSON.parse((await body(res,MAX_HTML)).toString('utf8'));
+        shows.push(...Syndicated.parse(data,src,now()));total=data.total_count;offset+=data.results.length;pages++;
+      } while(offset<total && pages<Syndicated.MAX_PAGES);
+      const partial=offset<total;
+      return {ok:true,status:200,shows:Core.merge([shows,partial?(c.sources[src.id]?.shows||[]):[]]),via:'openagenda',partial,authoritativeEmpty:!partial};
+    } catch(err) {log('syndication',src.id,err.message);return {ok:false,status:502};}
+  }
+
   // ---------- refresh ----------
   let running = null;
   function refresh({ force = false } = {}) {
@@ -188,10 +211,10 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
     })().finally(() => { running = null; });
     return running;
   }
-  // what the window shows: the merged upcoming list (3 weeks), coordinates / logos filled in, one status line
+  // Broad catalogues: 3 weeks. The three requested favourites: up to 6 months, grouped under venue pins.
   function snapshot() {
     const s = settings(), c = cache(), srcs = sources(), g = geo(), L = logos();
-    const shows = Core.allShows(c, srcs).filter((x) => (x.end || x.start + 4 * 3600e3) >= now() && x.start < now() + 21 * DAY).slice(0, 300);
+    const shows = Core.allShows(c, srcs).filter((x) => Core.expires(x) >= now() && x.start < now() + (x.programme?.syndicated ? Syndicated.DAYS : 21) * DAY).slice(0, 300);
     for (const x of shows) {
       if (!Number.isFinite(x.venue.lat)) { const hit = g[Core.geoKey(x.venue.address || `${x.venue.name} Paris`)]; if (hit && !hit.miss) { x.venue.lat = hit.lat; x.venue.lon = hit.lon; } }
       const lg = x.venue.image && L[x.venue.image]; x.venue.logo = lg?.file ? pathToFileURL(path.join(logoDir, lg.file)).href : '';

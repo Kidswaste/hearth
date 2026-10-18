@@ -44,7 +44,7 @@ const ShowPrep = (() => {
   }
 
   // ---------- which shows Hearth knows (this week's list, prepared, logged, show quests) ----------
-  const fromCampaign = (c) => (c?.show ? { key: c.show.key, title: c.show.title, start: Date.parse(c.show.start), end: null, doors: null, venue: { name: c.show.venue, address: c.show.address || '', lat: null, lon: null }, lineup: [], links: {}, tickets: c.show.url ? [{ platform: c.show.platforms?.[0] || '', url: c.show.url }] : [], platforms: c.show.platforms || [] } : null);
+  const fromCampaign = (c) => (c?.show ? { key: c.show.key, dateOnly:!!c.show.dateOnly, title: c.show.title, start: Date.parse(c.show.start), end: null, doors: null, venue: { name: c.show.venue, address: c.show.address || '', lat: null, lon: null }, lineup: [], links: {}, tickets: c.show.url ? [{ platform: c.show.platforms?.[0] || '', url: c.show.url }] : [], platforms: c.show.platforms || [] } : null);
   async function known() {
     await load();
     const m = new Map(), add = (s) => { if (s?.key && !m.has(s.key)) m.set(s.key, s); };
@@ -200,6 +200,7 @@ const ShowPrep = (() => {
   }
   async function copy(text) { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } }
   function prepDialog(kit, show) {
+    if(show.dateOnly)return kit.dialog(show.title,(body)=>{body.append(kit.p(ShowSyncCore.showWhen(show)+'. Open the ticket page to confirm the schedule before planning reminders or a calendar entry.'));for(const t of show.tickets||[])if(t.url)body.append(kit.button('Check tickets',()=>window.hub.openExternal(t.url),'qj-primary'));},'PARIS / SCHEDULE');
     load().catch(() => {});
     return kit.dialog(`Get ready · ${show.title}`, (body, d) => {
       d.classList.add('sp-dialog'); d.dataset.showprep = show.key;
@@ -318,6 +319,7 @@ const ShowPrep = (() => {
 
   // ---------- chat: /shows prep · went · log ----------
   function prepText(show) {
+    if(show.dateOnly)return `${show.title} · ${ShowSyncCore.showWhen(show)}. Confirm the schedule on your ticket before adding reminders or calendar entries. ${show.tickets?.[0]?.url||''}`;
     const v = show.venue || {}, st = P.nearest(v.lat, v.lon, 3), rl = P.routeLinks(v);
     return [`${show.title}`, `${P.dayWord(show.start)[0].toUpperCase()}${P.dayWord(show.start).slice(1)} (${P.dateWords(show.start)}) · ${show.doors ? `doors ${P.hm(show.doors)}, ` : ''}starts ${P.hm(show.start)} Paris time`,
       `${v.name || 'Venue'}${v.address ? ` · ${v.address}` : ''}`, st.length ? `Métro: ${P.metroLine(st)} (walking minutes)` : 'Métro: no hint for this address.',

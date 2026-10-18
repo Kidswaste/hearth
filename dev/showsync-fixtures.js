@@ -21,10 +21,11 @@ function responses() {
   return map;
 }
 function fakeFetch({ now = Date.now(), overrides = {}, hits = [] } = {}) {
-  const map = { ...responses(), ...(overrides.$programmes ? require('./showsync-programme-fixtures').fixtures(now).responses : {}), ...overrides };
+  const S=require('../showsync-syndicated'), empty=Object.fromEntries(S.sources().map(s=>[S.url(s,now),{body:JSON.stringify({total_count:0,results:[]})}]));
+  const map = { ...responses(), ...empty, ...(overrides.$programmes ? require('./showsync-programme-fixtures').fixtures(now).responses : {}), ...(overrides.$syndicated ? require('./showsync-syndicated-fixtures').fixtures(now).responses : {}), ...overrides };
   return async (url, opts = {}) => {
     hits.push({ url, headers: { ...(opts.headers || {}) } });
-    const f = map[url];
+    const f = map[url] || (url.startsWith(S.API+'?') ? {body:JSON.stringify({total_count:0,results:[]})} : null);
     if (!f) throw Object.assign(new Error('offline (test fixture missing)'), { code: 'ENOTFOUND' });
     let buf = f.file ? fs.readFileSync(path.join(DIR, f.file)) : Buffer.from(f.body || '');
     if (!/\.png$/.test(f.file || '')) buf = Buffer.from(fillDates(buf.toString('utf8'), now));

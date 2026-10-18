@@ -29,3 +29,13 @@
 /* a venue pin's next show with its buttons */
 .ss-next{display:grid;gap:8px;padding:10px;border:1px solid #ff6b9d40;border-radius:12px;margin:8px 0}
 @container(max-width:760px){.qmf-strip{bottom:26px;right:10px;max-width:none}.qj-atlas:has(.qmf-strip) .qj-atlas-hint{bottom:66px}.qj-atlas .qmf-status{top:50px;left:10px;right:auto}}
+
+/* City = small symbols. Street zoom (16+) = labels. Hover/focus always identifies a place. */
+.qj-atlas .qj-atlas-pin[data-details=false]>strong{display:none}
+.qj-atlas .qj-atlas-pin[data-details=false]:is(:hover,:focus-visible)>strong{display:block;opacity:1}
+.qj-atlas .qj-atlas-pin[data-details=false]>span{width:22px!important;height:22px!important;border-width:1.5px;border-radius:8px;transform:none;box-shadow:0 2px 8px #0008}
+.qj-atlas .qj-atlas-pin[data-details=false] .qj-map-icon{width:13px;height:13px}
+.qj-atlas .qj-atlas-pin[data-details=false] .qj-atlas-logo{width:18px;height:18px}
+.qj-atlas .qj-atlas-pin[data-details=true]>strong{opacity:1!important}
+.qj-atlas .qj-atlas-pin[data-details=false]:is(:hover,:focus-visible)>span{transform:translateY(-2px);box-shadow:0 0 10px color-mix(in srgb,var(--pin) 35%,transparent)}
+.qmf-strip{max-width:calc(100% - 20px);padding-bottom:3px}
