@@ -88,6 +88,7 @@ const GameMode = (() => {
       let info;
       if (r?.route === 'live') info = await playLive(s, r, opts);
       else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs(), stream: streamTest(), look: lookPref(), audio: { off: store.get('gameaudio.off', false) === true } }); // (round 54, gameaudio: gameaudio.off leaves a game's sound as it is: a check's "before")
+      if (info?.error) { const err = new Error(info.error); err.calm = true; err.offline = info.offline; throw err; } // (round 60, trimdrive60: e.g. offline before three.js was ever downloaded)
       now = { source: s, info, live: r?.route === 'live', at: Date.now(), plan };
       const own = plan ? Object.entries(plan.why).filter(([, w]) => w !== 'hidden') : [];
       if (own.length) {
