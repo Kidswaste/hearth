@@ -86,6 +86,11 @@ var WorkbenchVST = (() => {
     async function open(p, { live }) {
       const mine = ++openSeq, t0 = performance.now();
       say(`Opening ${p.name}…`); await flushPatch(); await silence();
+      // The first open of the session picks the device before it goes live (the UA on ASIO, or the remembered one).
+      if (!deviceChosen) {
+        const d = await hub.vst.request({ action: 'devices', plugin: p.path, name: p.name });
+        if (d.ok) { lastDevices = d; settings.value = L.resolve(state.live?.saved, d) ?? L.options(d).preferred; settings.device = L.parse(settings.value).device; deviceChosen = true; }
+      }
       const r = await hub.vst.request({ action: 'open', plugin: p.path, name: p.name, live, ...liveJob() });
       if (!r.ok) throw Error(r.error); if (ticket !== alive || mine !== openSeq) return;
       clearRender(); selected = { name: p.name, path: p.path, parameters: [], loading: true }; state.selected = p.path; canEdit = false; before = null; editorCloses = null; persist();
