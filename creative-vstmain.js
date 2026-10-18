@@ -334,6 +334,10 @@ function register(ipcMain, { dataDir, getWin, app, settings }) {
   // (round 63, loopsong63) the takes of every park sketch · an exported mix as MP3 (ffmpeg found the way Hearth finds it)
   ipcMain.handle('creative-vst:park-list', e => own(e, () => parkList(dataDir)));
   ipcMain.handle('creative-vst:park-mp3', (e, sketch, name) => own(e, () => parkMp3(dataDir, sketch, name, require('./aemain').ffStatus({ ffmpeg: settings?.().ffmpegPath || undefined }).ffmpeg)));
+  // (round 64, audiodoctor64) /audio doctor's "Turn off ASIO" / "Turn ASIO back on": the owner's choice is Settings
+  // vstAsio (false = off, saved by the renderer); here it applies to the pool's hosts, which restart on the next use.
+  if (settings?.().vstAsio === false) host.flags.asio = false;
+  ipcMain.handle('creative-vst:asio', (e, on) => own(e, () => { host.flags.asio = on !== false && process.env.HEARTH_VST_ASIO !== '0'; delete host.flags.asioNote; host.stop(); return { ok: true, asio: host.flags.asio }; }));
   // (round 64, liveset64) the Live set's folder: prepared clips / run logs, and a run as MP3 for the open-mic proof
   ipcMain.handle('creative-vst:live-save', (e, set, name, bytes) => own(e, () => { try { return { ok: true, path: liveSave(dataDir, set, name, bytes) }; } catch (err) { return { ok: false, error: err.message }; } }));
   ipcMain.handle('creative-vst:live-mp3', (e, set, file) => own(e, () => liveMp3(dataDir, set, file, require('./aemain').ffStatus({ ffmpeg: settings?.().ffmpegPath || undefined }).ffmpeg)));

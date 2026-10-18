@@ -172,6 +172,7 @@ const EngineHealth = (() => {
     const acts = problems(r).map((p) => ({ label: p.label, run: () => fix(p.engine, p.action) }));
     acts.push({ label: 'Test both (a few tokens)', title: 'Sends "Reply with just: OK" to one Claude and one Astra agent (lean: no tools, low effort)', run: () => testBoth(ctx) });
     acts.push({ label: 'Check again', run: () => runDoctor('', ctx) });
+    if (window.hub?.audioDoctor) acts.push({ label: 'Check my audio setup', title: 'The audio doctor: runtime, ASIO, UA interface, MIDI, Serum 2 / Vital, a 2-second live test (/audio doctor)', run: () => Commands.exec('/audio doctor', ctx?.agentId || H.activeId) }); // (round 64, audiodoctor64)
     return acts;
   }
   // The Astra report without what the engines section already says (found / version / sign-in and their fixes).
