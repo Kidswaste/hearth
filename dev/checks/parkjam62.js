@@ -89,6 +89,7 @@ ok(item.proof.type === 'file' && item.proof.kind === 'audio/wav' && /refs/.test(
 ok(/Park jam loop · Belleville · 4 bars of 4 at 200 BPM/.test(item.proof.excerpt) && /2 notes played live/.test(item.proof.excerpt) && /cannot hear/.test(item.proof.coverage) && /Made outside at Belleville/.test(item.intent), 'proof text: what was played, honest coverage, the owner\'s intent line');
 ok(!item.review && !QuestCore.done(qs, qid), 'no XP and no review by itself: reviewing stays the owner\'s choice');
 ok(ParkJam._test.takes()[0].proof?.quest === qid && weekEvents.length === 2 && weekEvents[1].proof?.quest === qid, 'the week\'s review hears the loop became proof');
+await Lazy.load('questhud'); const rv = WeekQuestCore.review(QuestCore, qs, WeekQuestCore.reviewWeek()); ok(rv.moments.some(m => m.quest === qid && m.what === item.proof.title && /Park jam loop · Belleville/.test(m.note)), 'the loop is one of this week\'s moments in the week in review (weekquest62)');
 let again = null; try { await ParkJam.offer(take.id); } catch (err) { again = err.message; } ok(/already on this quest/.test(again || ''), 'the same loop can\'t be submitted twice (Codex\'s rule)');
 // 6. back to the desk; /jam park status / off put everything back
 ok(/Park mode on · Belleville/.test(await jam.run('park status', ctx)), '/jam park status');

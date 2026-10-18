@@ -136,11 +136,11 @@ const ParkJam = (() => {
     const t = st.armed ? `Waiting for your first note · ${st.bars} bars at ${Math.round(st.bpm)} BPM` : st.done ? 'Loop recorded · saving…' : `Recording · ${Math.round(st.progress * 100)} % of ${st.bars} bars · ${st.notes} notes`;
     if (o.textContent !== t) o.textContent = t;
   }
-  // The week's review: a take counts toward this week (an event other features read; weekquest62's review, when present)
+  // The week: every take is announced (hearth:quest-week); once offered as proof it is a submission in the journal, which
+  // weekquest62's week in review (WeekQuestCore.review: submissions[qid][].at in the week) shows among the week's moments
   function announce(entry, quiet = false) {
     const detail = { kind: 'park-jam', week: entry.week, at: entry.at, title: `${entry.place}: ${entry.bars}-bar loop at ${Math.round(entry.bpm)} BPM`, path: entry.layered || entry.loop, place: entry.place, sketch: entry.sketch, notes: entry.notes, proof: entry.proof || null };
     try { document.dispatchEvent(new CustomEvent('hearth:quest-week', { detail })); } catch { /* a listener's problem never blocks a take */ }
-    try { (typeof WeekQuest !== 'undefined' ? WeekQuest : window.WeekQuest)?.note?.(detail); } catch { /* optional */ }
     if (!quiet) toast(`Loop kept in “${entry.sketch}”`, { action: { label: 'Offer as proof', fn: () => offer(entry.id).then(t => toast(t)).catch(err => toast(err.message, { type: 'error' })) }, timeout: 6000 });
   }
   // ---------- the park ambience: 10 seconds from the laptop's mic ----------
@@ -185,7 +185,7 @@ const ParkJam = (() => {
     const item = await J.mutate(st => C.submit(st, q.id, proof, intent), 'Park loop saved as proof. Ask for a review when you like.');
     take.proof = { quest: q.id, step: q.title, submission: item.id, at: item.at }; await h?.persist?.();
     J.ui().questDetail(q.id); announce({ ...take }, true);
-    return `Loop offered as proof for “${q.title}” (Make music at the park). Review it from the quest when you like; XP comes after the review, as always.`;
+    return `Loop offered as proof for “${q.title}” (Make music at the park). Review it from the quest when you like (XP comes after the review, as always); it shows in your week in review (/quest review).`;
   }
   async function notesOf(take) { try { const raw = await hub.fs.read(take.loop.replace(/\.wav$/, '.json')); return JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw)).notesPlayed || []; } catch { return []; } }
 
