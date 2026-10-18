@@ -131,7 +131,8 @@
   }
   function savePlace(s, values) {
     const old=values.id&&s.atlas.places.find(p=>p.id===values.id);if(values.id&&!old)throw Error('Place not found.');
-    const p={id:old?.id||id('place'),name:text(values.name,120),lat:Number(values.lat),lon:Number(values.lon),quest:text(values.quest,500),visitedAt:old?.visitedAt||null};
+    const p={id:old?.id||id('place'),name:text(values.name,120),lat:Number(values.lat),lon:Number(values.lon),quest:text(values.quest,500),visitedAt:old?.visitedAt||null,kind:values.kind??placeKind(old),favorite:old?.favorite||false};
+    if(!D.mapKinds.some(k=>k.id===p.kind))throw Error('Choose a map category.');
     if(!p.name||!Number.isFinite(p.lat)||!Number.isFinite(p.lon)||p.lat<48.7||p.lat>49||p.lon<2.15||p.lon>2.6)throw Error('Choose a place in the Paris map area and give it a name.');
     if(!old&&s.atlas.places.length>=100)throw Error('Your map holds up to 100 places.');
     if(old)Object.assign(old,p);else s.atlas.places.push(p);s.atlas.selected=p.id;return p;
@@ -141,6 +142,22 @@
     let plan=s.world.plans.find(x=>x.id==='outing-'+pid);
     if(!plan){plan=saveWorldPlan(s,{title:p.quest||('Visit '+p.name),kind:'outing',district:'quai',destination:'Paris',venue:p.name,note:p.quest});plan.id='outing-'+pid;}
     if(plan.status==='archived')plan.status='planning';return planCampaign(s,plan.id);
+  }
+  function placeKind(p) {
+    return p?.kind || ({'place-canal':'music','place-luxembourg':'reset','place-buttes':'visual','place-republique':'social','place-villette':'game','place-montparnasse':'travel'}[p?.id]) || 'reset';
+  }
+  function startMapMission(s, pid, mid) {
+    const place=s.atlas.places.find(p=>p.id===pid), mission=D.mapMissions.find(m=>m.id===mid);
+    if(!place||!mission)throw Error('Choose a place and a field quest.');
+    const existing=s.campaigns.find(c=>c.mapPlace===pid&&c.mapMission===mid);
+    if(existing){existing.paused=false;s.active=existing.id;return existing;}
+    if(s.campaigns.length>=100)throw Error('The journal holds up to 100 campaigns.');
+    const cid=id('c-field');
+    const c={id:cid,mapPlace:pid,mapMission:mid,title:mission.title,subtitle:'PARIS / FIELD QUEST',path:mission.path,why:text(`${place.name} · ${mission.done}`,600),badge:text(`${place.name} / ${mission.title}`,100),quests:[{
+      id:`q-${cid}`,title:mission.title,done:text(`Starting point: ${place.name}. ${mission.done}`,1000),tiny:mission.tiny,minutes:mission.minutes,xp:mission.xp,tool:null,
+      deep:'Polish one detail only after saving the first version.',proofHint:'Show the actual artifact or your own specific field note. A visit stamp or a plan alone does not finish this quest.'
+    }]};
+    s.campaigns.push(c);s.active=cid;return c;
   }
   function stats(s) { const quests = allQuests(s), finished = quests.filter(q => done(s, q.id)); return { xp: xp(s), level: level(xp(s)), sparks: balance(s), finished: finished.length, campaigns: s.campaigns.filter(c => campaignDone(s, c)).length, days: new Set(finished.map(q => record(s, q.id).completedAt.slice(0, 10))).size }; }
   function upgrade(s) {
@@ -412,7 +429,8 @@
       for (const f of w.friends) { if (!obj(f)) throw Error('Invalid friend.'); unique(f.id); if (!str(f.name,80) || !f.name.trim() || !birthdayDate(f.birthday) || !str(f.interests,300)) throw Error('Invalid friend details.'); }
       for (const p of w.plans) { checkWorldPlan(w,p); unique(p.id); p.fares.forEach(f => unique(f.id)); }
     }
-    if(s.atlas!=null){if(!obj(s.atlas)||s.atlas.v!==1||!Array.isArray(s.atlas.places)||s.atlas.places.length>100||!s.atlas.places.some(p=>p.id===s.atlas.selected))throw Error('Invalid Paris map.');for(const p of s.atlas.places){unique(p.id);if(!str(p.name,120)||!p.name.trim()||!str(p.quest,500)||!Number.isFinite(p.lat)||!Number.isFinite(p.lon)||p.lat<48.7||p.lat>49||p.lon<2.15||p.lon>2.6||(p.visitedAt!==null&&!date(p.visitedAt)))throw Error('Invalid saved place.');}}
+    if(s.atlas!=null){if(!obj(s.atlas)||s.atlas.v!==1||!Array.isArray(s.atlas.places)||s.atlas.places.length>100||!s.atlas.places.some(p=>p.id===s.atlas.selected))throw Error('Invalid Paris map.');for(const p of s.atlas.places){unique(p.id);if(!str(p.name,120)||!p.name.trim()||!str(p.quest,500)||!Number.isFinite(p.lat)||!Number.isFinite(p.lon)||p.lat<48.7||p.lat>49||p.lon<2.15||p.lon>2.6||(p.visitedAt!==null&&!date(p.visitedAt))||(p.kind!=null&&!D.mapKinds.some(k=>k.id===p.kind))||(p.favorite!=null&&typeof p.favorite!=='boolean'))throw Error('Invalid saved place.');}}
+    const fieldPairs=new Set();for(const c of s.campaigns)if(c.mapPlace!=null||c.mapMission!=null){const key=c.mapPlace+' / '+c.mapMission;if(!s.atlas?.places.some(p=>p.id===c.mapPlace)||!D.mapMissions.some(m=>m.id===c.mapMission)||fieldPairs.has(key))throw Error('Invalid field quest link.');fieldPairs.add(key);}
     if(s.collection!=null){if(!Array.isArray(s.collection)||s.collection.length>100)throw Error('Invalid collection.');for(const item of s.collection){unique(item.id);if(!str(item.title,200)||!date(item.at))throw Error('Invalid collection item.');checkProof(item.proof);if(item.media!=null&&(!Array.isArray(item.media)||item.media.length>12||item.media.some(m=>!m||typeof m.path!=='string'||m.path.length>2000||!/^(?:[a-z]:[\\/]|\/)/i.test(m.path)||/^[/\\]{2}|[\x00-\x1f]/.test(m.path)||!str(m.title,200))))throw Error('Invalid collection media.');}}
     if(s.rewardBudget!=null&&(!obj(s.rewardBudget)||!Number.isFinite(s.rewardBudget.monthly)||s.rewardBudget.monthly<0||s.rewardBudget.monthly>10000))throw Error('Invalid reward budget.');
     for(const r of [...s.rewards,...s.redemptions])if(r.amount!=null&&(!Number.isFinite(r.amount)||r.amount<0||r.amount>10000))throw Error('Invalid reward price.');
@@ -456,5 +474,5 @@
     if (balance(s) < 0) throw Error('Reward history exceeds earned sparks.');
     return clone(s);
   }
-  return { rewardMoney, savePlace, placeQuest, friendStarters, friendSuggestion, districts, calendarDate, saveFriend, saveWorldPlan, occasions, addFare, fareStatus, invitation, tripResearch, planCampaign, lifeArcs, startLifeArc, paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest, deckLanes, deckMoods, deckCard, deckPool, deckHand, deal, markCard, takeCard, specializations, rewardBlueprints, consoleAccents, mastery, practicePick, startPractice, equipTitle, activeTitle, stockReward, enjoyReward, returnReward };
+  return { mapKinds: D.mapKinds, mapMissions: D.mapMissions, placeKind, startMapMission, rewardMoney, savePlace, placeQuest, friendStarters, friendSuggestion, districts, calendarDate, saveFriend, saveWorldPlan, occasions, addFare, fareStatus, invitation, tripResearch, planCampaign, lifeArcs, startLifeArc, paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest, deckLanes, deckMoods, deckCard, deckPool, deckHand, deal, markCard, takeCard, specializations, rewardBlueprints, consoleAccents, mastery, practicePick, startPractice, equipTitle, activeTitle, stockReward, enjoyReward, returnReward };
 });

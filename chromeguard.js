@@ -14,11 +14,26 @@ const CDP = require('./chrome-cdp');
 const version = () => process.versions.chrome || '130.0.0.0';
 const userAgent = () => CDP.userAgent(version());
 const HINT_URLS = ['*://*.google.com/*', '*://accounts.google.com/*', '*://*.youtube.com/*', '*://*.gstatic.com/*', '*://labs.google/*'];
+const TILE_URLS = ['https://tile.openstreetmap.org/*'];
+const isTile = url => { try { const u = new URL(url); return u.protocol === 'https:' && u.hostname === 'tile.openstreetmap.org'; } catch { return false; } };
+function requestHeaders(d) {
+  if (!isTile(d.url)) return CDP.withHints(d.requestHeaders, version(), process.platform);
+  const headers = { ...d.requestHeaders };
+  // This native file:// app has no web Referer. Identify it honestly; retain cache validators.
+  for (const key of Object.keys(headers)) if (key.toLowerCase() === 'user-agent' || key.toLowerCase().startsWith('sec-ch-ua')) delete headers[key];
+  headers['User-Agent'] = 'Hearth/1.0 (+https://github.com/Kidswaste/hearth)';
+  return headers;
+}
 const hooked = new WeakSet();
 function hookSession(ses) {
   if (!ses || hooked.has(ses)) return;
   hooked.add(ses);
-  try { ses.webRequest.onBeforeSendHeaders({ urls: HINT_URLS }, (d, cb) => cb({ requestHeaders: CDP.withHints(d.requestHeaders, version(), process.platform) })); } catch { /* a session that can't be hooked */ }
+  // Electron retains only ONE listener per webRequest event, regardless of URL filter.
+  // Keep Google hints and the map's native-app identity in the same registration.
+  try { ses.webRequest.onBeforeSendHeaders({ urls: [...HINT_URLS, ...TILE_URLS] }, (d, cb) => cb({ requestHeaders: requestHeaders(d) })); } catch { /* a session that can't be hooked */ }
+  // A 403/429 can contain a valid PNG; <img>.onerror alone cannot distinguish it from a map.
+  // Cancel before decoding, including cached errors. Successful tiles retain Chromium caching.
+  try { ses.webRequest.onHeadersReceived({ urls: TILE_URLS }, (d, cb) => cb({ cancel: isTile(d.url) && d.statusCode >= 400 })); } catch { /* a session that can't be hooked */ }
 }
 const testHosts = () => String(process.env.HEARTH_CHROME_REJECT_HOSTS || '').split(',').map((s) => s.trim()).filter(Boolean);
 const openers = new Map(); // a popup's webContents id → the page that opened it
