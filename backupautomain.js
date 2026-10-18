@@ -189,6 +189,8 @@ async function inspect(zip) {
   } finally { fs.rm(dest, { recursive: true, force: true }, () => {}); }
 }
 
+// (round 64, twocopies64) which Hearth folder this is (twocopiesmain: its id, and whether it owns the usual profile)
+function copyNow() { try { const i = require('./twocopiesmain').info(); return { id: i.on ? i.copyId : null, primary: i.on ? i.primary !== false : true }; } catch { return { id: null, primary: true }; } }
 // ---------- the list ----------
 async function list() {
   const me = machine();
@@ -204,7 +206,11 @@ async function list() {
       const card = readCard(p);
       const parsed = C.parseName(n);
       const machineId = card?.machine?.id || null;
-      const mine = machineId ? ids.has(machineId) : Boolean(parsed) && (!parsed.computer || parsed.computer === me.slug);
+      // (round 64, twocopies64) two Hearth folders on one computer share the backups folder: a backup another folder made
+      // is never this one's to rotate away; one that says no folder (older) is rotated only by the folder that owns the
+      // usual profile (the one with the chats)
+      const cp = copyNow(); const theirCopy = card?.machine?.copy || null;
+      const mine = (theirCopy ? !cp.id || theirCopy === cp.id : cp.primary) && (machineId ? ids.has(machineId) : Boolean(parsed) && (!parsed.computer || parsed.computer === me.slug));
       items.push({ name: n, path: p, dir: d, here: d === dirs()[0], at: card?.at || parsed?.at || st.mtimeMs, size: st.size, ok: card?.ok ?? undefined, problems: card?.problems || [], counts: card?.counts || null,
         reason: card?.reason || (parsed ? 'legacy' : 'other'), computer: card?.machine?.name || parsed?.computer || '', mine, hearth: Boolean(parsed || card), checkedAt: card?.checkedAt || 0, media: (card?.media || []).length });
     }
@@ -268,7 +274,7 @@ async function doRun(reason) {
       try { if (await copyCareful(f.abs, to)) n += 1; } catch (err) { skipped.push({ rel, code: err.code || 'ERR' }); }
     }
     const counts = { ...C.countsOf({ read: readJsonIn(stage), list: listIn(stage) }), media: plan.media.length };
-    const manifest = { v: 1, app: 'Hearth', at, reason, machine: { id: me.id, name: me.name, platform: me.platform }, counts, files: n, media: plan.media.map(({ rel, key, size }) => ({ rel, key, size })), skipped };
+    const manifest = { v: 1, app: 'Hearth', at, reason, machine: { id: me.id, name: me.name, platform: me.platform, ...(copyNow().id ? { copy: copyNow().id, folder: o.appDir } : {}) }, counts, files: n, media: plan.media.map(({ rel, key, size }) => ({ rel, key, size })), skipped };
     fs.writeFileSync(path.join(stage, 'hearth-backup.json'), JSON.stringify(manifest, null, 1));
     // big media: once into the store next to the zips (skipped while unchanged)
     if (plan.copy.length) {

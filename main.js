@@ -10,6 +10,10 @@ const powerwise = require('./powerwisemain');
 // (round 31, winmac) started from the Mac's Dock, PATH lacks Homebrew / npm / nvm: claude, codex, ffmpeg, git and the
 // chats' own commands are found again (Windows / Linux: unchanged)
 require('./winmac').fixProcessPath();
+// (round 64, twocopies64) another Hearth folder on this computer used the same Electron profile (both are "agent-hub"):
+// the copy that owns it keeps it, any other copy gets its own, decided before anything reads the profile
+const twocopies = require('./twocopiesmain');
+twocopies.early({ app });
 // (round 37, updatesafe) an update Windows couldn't finish while Hearth ran (files held open) goes in now, before the
 // rest loads; when main-process files changed, Hearth starts once more right away (no window yet). Usually: one stat.
 if (require('./updatesafe-core').startSwap(app, { log: console.log })) return;
@@ -712,7 +716,7 @@ function registerAfterWindow() {
   // (round 60, winfresh60) a copy's first start on Windows: the Start menu + Desktop "Hearth" shortcuts (once; another
   // copy's shortcuts are left alone and said once)
   if (process.platform === 'win32') setTimeout(() => appshell.firstRunShortcuts({ dataDir: store.DATA_DIR }).then((r) => {
-    if (r.action === 'elsewhere') win?.webContents.executeJavaScript(`window.toast?.(${JSON.stringify(`Your Hearth shortcuts still open the copy in ${r.other}. Settings › Create Start menu & desktop shortcuts points them at this one.`)}, { timeout: 12000 })`).catch(() => {});
+    if (r.action === 'elsewhere' && !r.hold) win?.webContents.executeJavaScript(`window.toast?.(${JSON.stringify(`Your Hearth shortcuts still open the copy in ${r.other}. Settings › Create Start menu & desktop shortcuts points them at this one.`)}, { timeout: 12000 })`).catch(() => {});
     else if (r.error) console.warn('shortcuts:', r.error);
   }).catch((err) => console.warn('shortcuts:', err.message)), 6000);
   lazyIpc('chromemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 30) Hearth's Chrome: Google sign-in in the owner's real Chrome, driven over the DevTools protocol
@@ -784,7 +788,13 @@ ipcMain.handle('bg:state', () => {
 
 app.whenReady().then(async () => {
   bootMark('appReady');
-  createWindow(); // (round 29, fastboot) first: the page process starts while the rest is set up (same tick, so no IPC yet)
+  // (round 64, twocopies64) a copy with no chats that finds another Hearth folder with chats asks first (one card, before
+  // anything empty is on screen): open that one, bring its chats here (copied, never moved), or start fresh
+  const two = await twocopies.gate({ app, BrowserWindow, ipcMain, icon: appshell.ensureIcon(), background: SPLASH_BG, bring: bringFromCopy }).catch((err) => { console.warn('twocopies:', err.message); return { close() {} }; });
+  if (two.quit) return;
+  createWindow();
+  two.close();
+  if (two.note) win.webContents.once('did-finish-load', () => setTimeout(() => win?.webContents.executeJavaScript(`window.toast?.(${JSON.stringify(two.note)}, { timeout: 12000 })`).catch(() => {}), 2500)); // (round 29, fastboot) first: the page process starts while the rest is set up (same tick, so no IPC yet)
   // data moved here from another computer (or folder): point saved file locations at the new data folder
   try { const r = portable.fixMovedPaths(); if (r.moved) console.log(`Hearth: data moved from ${r.from}, fixed ${r.changed} paths in ${r.files} files`); } catch (err) { console.error('fixMovedPaths', err); }
   registerAfterWindow();
@@ -802,6 +812,18 @@ app.whenReady().then(async () => {
   const syncFrom = performance.now();
   syncGate = syncmain.ready().catch(() => {}).then(() => { syncGate = null; bootTimes.syncMs = Math.round(performance.now() - syncFrom); });
 });
+// (round 64, twocopies64) "Bring its chats here": 🛟 Recover's own scan and bring-back, from that folder only (copied;
+// that folder is never written): its chats, memory lines, the AIs this copy lacks, the chats' folders / bookmarks /
+// projects / Lab scenes
+async function bringFromCopy(dir) {
+  datasafe._set({ dataDir: store.DATA_DIR, configPath: CONFIG_PATH, store, cfg: cfgView });
+  const label = `Your other Hearth folder (${dir})`;
+  const r = await datasafe.scan({ quick: true, copies: [{ dir, label }] });
+  const mine = (x) => x.from === label || (x.fromAll || []).includes(label);
+  const picks = [...r.chats.filter((c) => mine(c) && c.state === 'missing'), ...r.memory.filter(mine), ...r.settings.filter((x) => mine(x) && x.what === 'agent'), ...r.kv.filter(mine)].map((x) => x.key);
+  const done = await datasafe.recover(picks);
+  return { chats: done.chats.length, memory: done.memory, agents: done.agents, kv: done.kv.length };
+}
 app.on('window-all-closed', () => app.quit());
 // (round 31, winmac) a Mac: clicking Hearth in the Dock (or opening it again) brings back a window that "Closing the
 // window keeps Hearth running" hid; before, only the menu-bar icon could
