@@ -13,3 +13,4 @@
 - **Sidequest clicks are quick again.** Starring a place, stamping a visit, switching map layers or opening a place's details no longer rebuilds the whole Paris map — only what changed is redrawn (about 3–4× less work per click, and opening a dialog no longer restyles the page behind it).
 - **✦ Try what's new no longer gets stuck** on the quest tracker, Paris map and show steps after Sidequest's new tab bar: it now says "click Map".
 - Closing a Sidequest dialog no longer pulls the cursor away from what you just clicked.
+- **No more "A JavaScript error occurred in the main process" box** when Hearth's window reloads or closes while an AI reply is still streaming.
