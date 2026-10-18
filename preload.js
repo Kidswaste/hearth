@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('hub', {
   saveHistory: call('history:save'),
   kvGet: call('kv:get'),
   vst: { scan: call('creative-vst:scan'), status: call('creative-vst:status'), setup: call('creative-vst:setup'), request: call('creative-vst:request'), stop: call('creative-vst:stop'), send: (r) => ipcRenderer.send('creative-vst:send', r), parkSave: call('creative-vst:park-save') }, // (round 61, vstlive61) send: live notes / knob moves, no reply · (round 62, parkjam62) parkSave(sketch, name, bytes): a park take's file
+  soundbank: { list: call('soundbank:list'), similar: call('soundbank:similar'), update: call('soundbank:update'), settings: call('soundbank:settings'), previews: call('soundbank:previews'), cancel: call('soundbank:cancel'), queue: call('soundbank:queue'), preview: call('soundbank:preview'), state: call('soundbank:state') }, // (round 63, soundbank63) the Sound bank (soundbankmain.js)
   kvSet: call('kv:set'),
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),

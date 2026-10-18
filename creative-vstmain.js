@@ -43,7 +43,7 @@ function jobOf(r, name) {
     exclusive: r.exclusive === true || undefined, midiIn: r.midiIn ?? undefined, keys: r.keys, sequence: r.sequence, loop: r.loop, live: r.live === true || undefined,
     bars: r.bars, beats: r.beats, bpm: r.bpm, wait: r.wait === 'note' ? 'note' : undefined }; // (round 62, parkjam62) the loop recorder's fields
 }
-function create({ dataDir, python, roots, helper = path.join(__dirname, 'creative-vst-host.py'), flags = { asio: process.env.HEARTH_VST_ASIO !== '0' } }) {
+function create({ dataDir, python, roots, helper = path.join(__dirname, 'creative-vst-host.py'), flags = { asio: process.env.HEARTH_VST_ASIO !== '0' }, lowPriority = false }) {
   const home = path.join(dataDir, 'creative-vst'), runtime = path.join(home, 'runtime');
   const bin = python || process.env.HEARTH_VST_PYTHON || path.join(runtime, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
   const standard = roots || (process.platform === 'win32' ? [path.join(process.env.CommonProgramFiles || 'C:/Program Files/Common Files', 'VST3'), path.join(process.env.LOCALAPPDATA || os.homedir(), 'Programs/Common/VST3')] : [path.join(os.homedir(), 'Library/Audio/Plug-Ins/VST3'), '/Library/Audio/Plug-Ins/VST3', '/usr/lib/vst3', path.join(os.homedir(), '.vst3')]);
@@ -78,6 +78,8 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       // ASIO drivers (Universal Audio's) are listed and opened directly. flags.asio turns off after an ASIO driver crashed it.
       const env = { ...process.env }; if (flags.asio) env.SD_ENABLE_ASIO = '1'; else delete env.SD_ENABLE_ASIO;
       const child = spawn(bin, [helper, file, response], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'], env }); processChild = child;
+      // (round 63, soundbank63) the Sound bank's preview host runs below normal priority: the live host keeps the CPU first
+      if (lowPriority) try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* not allowed here: normal priority */ }
       child.stderr.on('data', d => { stderr = (stderr + d).slice(-2000); });
       child.once('error', e => { failure = e.message; });
       child.once('close', code => {

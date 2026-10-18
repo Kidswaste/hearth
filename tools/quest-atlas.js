@@ -5,6 +5,7 @@
   function project(lat,lon,z){const n=256*2**z,r=clamp(lat,-85,85)*Math.PI/180;return [(lon+180)/360*n,(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n];}
   function unproject(x,y,z){const n=256*2**z;return [180/Math.PI*Math.atan(Math.sinh(Math.PI*(1-2*y/n))),x/n*360-180];}
   let view={lat:48.862,lon:2.35,z:12,enabled:true};
+  let fitted=null; // (round 63, questwalk63) the last line framed by `fit`, so a re-render never undoes the owner's own pan / zoom
   // Original Forgeheart field-kit glyphs. User content never enters SVG markup.
   function icon(kind) {
     const paths={
@@ -49,7 +50,7 @@
     for(const [k,v]of Object.entries({d:paths[kind]||paths.compass,fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round'}))p.setAttribute(k,v);
     svg.append(p);return svg;
   }
-  function mount(host,{places=[],selected,onSelect=()=>{},onAdd=()=>{}}={}) {
+  function mount(host,{places=[],selected,onSelect=()=>{},onAdd=()=>{},lines=[]}={}) { // lines: (round 63, questwalk63) [{ id, color, fit, points: [{ id?, lat, lon, label? }] }] drawn over the pins; `fit` frames a new line once; pins not on it fade
     let {lat,lon,z,enabled}=view,drag=null,disposed=false;const events=new AbortController(),listen=(type,fn)=>host.addEventListener(type,fn,{signal:events.signal});
     const make=(tag,cls,text)=>{const n=document.createElement(tag);n.className=cls||'';if(text)n.textContent=text;return n;};
     host.classList.add('qj-atlas');host.setAttribute('aria-label','Real Paris map. Arrow keys pan; plus and minus zoom. Double-click to add a place.');host.tabIndex=0;
@@ -61,13 +62,24 @@
     const locate=action('',()=>{const p=places.find(p=>p.id===selected);if(p){lat=p.lat;lon=p.lon;draw();}});locate.append(icon('target'));locate.title='Center on selected place';locate.setAttribute('aria-label',locate.title);
     if(enabled)hint.textContent='Drag to explore · double-click to add a place';
     host.append(tiles,pins,controls,credit,hint);
+    // (round 63, questwalk63) polylines in one SVG in the pins layer (it pans with the pins); labels are text nodes, never markup
+    function route(list,left,top,w,h){const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('class','qj-atlas-route');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('aria-hidden','true');
+      for(const l of list){const pts=(l.points||[]).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)).map(p=>{const [x,y]=project(p.lat,p.lon,z);return {x:x-left,y:y-top,label:p.label};});if(pts.length<2)continue;
+        const line=document.createElementNS(ns,'polyline');line.setAttribute('points',pts.map(p=>p.x.toFixed(1)+','+p.y.toFixed(1)).join(' '));line.setAttribute('data-route',l.id||'');line.style.setProperty('--route',l.color||'#ffd75e');svg.append(line);
+        for(const p of pts)if(p.label){const g=document.createElementNS(ns,'g'),c=document.createElementNS(ns,'circle'),t=document.createElementNS(ns,'text');g.setAttribute('class','qj-route-stop');c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);c.setAttribute('r',9);t.setAttribute('x',p.x);t.setAttribute('y',p.y+3.5);t.textContent=String(p.label).slice(0,3);g.append(c,t);svg.append(g);}}
+      return svg;}
+    // (round 63, questwalk63) frame a new line once: its centre, the closest zoom (12–16) that holds it with a margin
+    function fit(){const l=lines.find(l=>l.fit&&l.id&&l.id!==fitted);const w=host.clientWidth,h=host.clientHeight;if(!l||!w||!h)return;const pts=(l.points||[]).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));if(pts.length<2)return;fitted=l.id;
+      const la=pts.map(p=>p.lat),lo=pts.map(p=>p.lon);lat=(Math.min(...la)+Math.max(...la))/2;lon=(Math.min(...lo)+Math.max(...lo))/2;
+      for(z=16;z>12;z--){const xy=pts.map(p=>project(p.lat,p.lon,z)),xs=xy.map(p=>p[0]),ys=xy.map(p=>p[1]);if(Math.max(...xs)-Math.min(...xs)<=w-120&&Math.max(...ys)-Math.min(...ys)<=h-120)break;}}
     function zoom(delta){z=clamp(z+delta,11,17);draw();}
-    function draw(){if(disposed)return;lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);const w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;const [cx,cy]=project(lat,lon,z),left=cx-w/2,top=cy-h/2,keep=new Set();
+    function draw(){if(disposed)return;fit();lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);const w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;const [cx,cy]=project(lat,lon,z),left=cx-w/2,top=cy-h/2,keep=new Set();
       if(enabled)for(let x=Math.floor(left/256);x<=Math.floor((left+w-1)/256);x++)for(let y=Math.floor(top/256);y<=Math.floor((top+h-1)/256);y++){
         const key=`${z}/${x}/${y}`;keep.add(key);let img=tiles.querySelector(`[data-tile="${key}"]`);if(!img){img=make('img');img.alt='';img.draggable=false;img.dataset.tile=key;img.src=`https://tile.openstreetmap.org/${key}.png`;img.addEventListener('error',()=>{img.style.visibility='hidden';hint.textContent='Map unavailable · pins saved';hint.title='The street map is offline or blocked. Retry once; if it still fails, check for a Hearth update.';load.hidden=false;});tiles.append(img);}img.style.left=`${x*256-left}px`;img.style.top=`${y*256-top}px`;
       }
       for(const img of [...tiles.children])if(!keep.has(img.dataset.tile))img.remove();
       pins.replaceChildren();for(const p of places){const [x,y]=project(p.lat,p.lon,z),px=x-left,py=y-top;if(px<-80||py<-40||px>w+80||py>h+40)continue;const b=make('button',`qj-atlas-pin${p.id===selected?' selected':''}${p.visitedAt?' visited':''}`);b.type='button';b.dataset.place=p.id;b.style.left=px+'px';b.style.top=py+'px';b.style.setProperty('--pin',p.color||'#f279b3');b.setAttribute('aria-label',`${p.name}${p.visitedAt?' — visited (self-reported)':''}`);b.setAttribute('aria-pressed',String(p.id===selected));const symbol=make('span');if(p.logo){const logo=make('img','qj-atlas-logo');logo.alt='';logo.draggable=false;logo.decoding='async';logo.src=p.logo;logo.addEventListener('error',()=>logo.replaceWith(icon(p.kind)),{once:true});symbol.append(logo);b.classList.add('has-logo');}else symbol.append(icon(p.kind));/* (round 61, showsync61) a pin may carry a local logo picture (venues from Shotgun / DICE) */b.append(symbol,make('strong','',p.name));if(p.favorite)b.append(make('i','qj-pin-star','★'));b.addEventListener('click',e=>{e.stopPropagation();onSelect(p.id);});pins.append(b);}
+      if(lines.length){const on=new Set(lines.flatMap(l=>(l.points||[]).map(p=>p.id)).filter(Boolean));for(const b of pins.children)if(!on.has(b.dataset.place)&&b.dataset.place!==selected)b.classList.add('off-route');pins.append(route(lines,left,top,w,h));} // (round 63, questwalk63) a walk's polyline + numbered stops, over faded pins
     }
     listen('keydown',e=>{if(e.target!==host)return;const delta={ArrowLeft:[-120,0],ArrowRight:[120,0],ArrowUp:[0,-120],ArrowDown:[0,120]}[e.key];if(delta){e.preventDefault();const c=project(lat,lon,z);[lat,lon]=unproject(c[0]+delta[0],c[1]+delta[1],z);draw();}else if(['+','=','-'].includes(e.key)){e.preventDefault();zoom(e.key==='-'?-1:1);}});
     listen('pointerdown',e=>{if(e.target.closest('button,a'))return;drag={x:e.clientX,y:e.clientY,center:project(lat,lon,z)};host.setPointerCapture(e.pointerId);});

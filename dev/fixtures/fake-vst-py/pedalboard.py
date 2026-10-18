@@ -93,7 +93,24 @@ class FakeInstrument:
                 for message, offset in midi:
                     f.write(json.dumps({'call': self._calls, 'offset': round(offset * sample_rate), 'msg': list(message), 'rate': sample_rate, 'frames': frames}) + '\n')
         object.__setattr__(self, '_calls', self._calls + 1)
-        for message, _ in sorted(midi, key=lambda m: m[1]):
+        if self._cost:
+            time.sleep(self._cost)
+        # (round 63, soundbank63) messages take effect at their offset (an offline bounce has a note on AND its note
+        # off in one call: the Sound bank's preview); live blocks (offsets inside the block) sound as before.
+        out = np.zeros(frames, dtype=np.float32)
+        level = self.parameters['level'].raw_value
+        events = sorted(midi, key=lambda m: m[1])
+        start = 0
+        for i in range(len(events) + 1):
+            end = frames if i == len(events) else max(start, min(frames, int(round(events[i][1] * sample_rate))))
+            if end > start and not (i < len(events) and end == start):
+                t = np.arange(end - start) / sample_rate
+                for note, velocity in list(self._held.items()):
+                    out[start:end] += (np.sin(2 * math.pi * 440 * 2 ** ((note - 69) / 12) * (t + start / sample_rate) + self._phase) * velocity * level * .3).astype(np.float32)
+                start = end
+            if i == len(events):
+                break
+            message = events[i][0]
             kind = message[0] & 0xF0
             if kind == 0x90 and message[2]:
                 self._held[message[1]] = message[2] / 127
@@ -101,13 +118,6 @@ class FakeInstrument:
                 self._held.pop(message[1], None)
             elif kind == 0xB0 and message[1] in (120, 123):
                 self._held.clear()
-        if self._cost:
-            time.sleep(self._cost)
-        t = np.arange(frames) / sample_rate
-        out = np.zeros(frames, dtype=np.float32)
-        level = self.parameters['level'].raw_value
-        for note, velocity in list(self._held.items()):
-            out += (np.sin(2 * math.pi * 440 * 2 ** ((note - 69) / 12) * t + self._phase) * velocity * level * .3).astype(np.float32)
         object.__setattr__(self, '_phase', self._phase + 2 * math.pi * frames / sample_rate)
         return np.stack([out, out]).astype(np.float32)
 

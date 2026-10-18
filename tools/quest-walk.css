@@ -1,0 +1,10 @@
+/* (round 63, questwalk63) Quest walks: the route on the Paris map (one SVG in the pins layer) and the walk dialog */
+.qj-atlas-route{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.qj-atlas-route polyline{fill:none;stroke:var(--route,#ffd75e);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1 9;filter:drop-shadow(0 1px 2px #000a)}
+.qj-route-stop circle{fill:#ffd75e;stroke:#1c1520;stroke-width:2}
+.qj-route-stop text{fill:#1c1520;font:700 10px/1 system-ui,sans-serif;text-anchor:middle}
+.qw-stops{margin:8px 0 4px;padding-left:18px;display:grid;gap:3px;font-size:12.5px;line-height:1.4}
+.qw-stops li{list-style:none;margin-left:-18px}
+.qw-actions{flex-wrap:wrap;gap:6px}
+.qj-atlas-pin.off-route{opacity:.38}
+.qj-atlas-pin.off-route strong{display:none}

@@ -1,0 +1,30 @@
+/* (round 63, soundbank63) Sound bank: one floating picker beside the Sound desk (tools/soundbank.js) */
+.sb-win{position:fixed;z-index:41;right:16px;top:72px;width:340px;max-width:calc(100vw - 32px);max-height:calc(100vh - 110px);display:flex;flex-direction:column;gap:6px;padding:8px;color:#eee3ec;font-size:12.5px;border-radius:14px;border:1px solid #ffffff22;background:linear-gradient(150deg,#2a2230f7,#19151ef7);box-shadow:0 12px 32px #0008,inset 0 1px #ffffff1c;contain:layout paint}
+.sb-head{display:flex;align-items:center;gap:6px}
+.sb-title{font-weight:700;color:var(--sound-accent,#e998bc)}
+.sb-count{flex:1;opacity:.5;font-size:11px}
+.sb-btn,.sb-chip,.sb-link,.sb-star{font:inherit;color:inherit;background:#ffffff0d;border:1px solid #ffffff1c;border-radius:8px;padding:1px 8px;cursor:pointer;line-height:1.5}
+.sb-btn:hover,.sb-chip:hover,.sb-link:hover{background:#ffffff1c}
+.sb-search{font:inherit;color:inherit;background:#0003;border:1px solid #ffffff1c;border-radius:8px;padding:5px 8px}
+.sb-search:focus{outline:none;border-color:var(--sound-accent,#e998bc)}
+.sb-chips{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.sb-chips:empty{display:none}
+.sb-chip{font-size:11px;padding:0 7px;white-space:nowrap}
+.sb-chip.on{background:var(--sound-accent,#e998bc);color:#1b1520;border-color:transparent}
+.sb-status{font-size:11px;opacity:.75;min-height:16px}
+.sb-link{border:0;background:none;padding:0;color:var(--sound-accent,#e998bc);text-decoration:underline}
+.sb-list{overflow-y:auto;display:flex;flex-direction:column;gap:2px;min-height:60px}
+.sb-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:8px;cursor:pointer;user-select:none}
+.sb-row:hover,.sb-row:focus{background:#ffffff12;outline:none}
+.sb-row.on{box-shadow:inset 2px 0 var(--sound-accent,#e998bc)}
+.sb-star{border:0;background:none;padding:0 2px;opacity:.5}
+.sb-star.on{opacity:1;color:#ffcf6b}
+.sb-main{flex:1;min-width:0}
+.sb-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-meta{font-size:10.5px;opacity:.55;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-used{color:var(--sound-accent,#e998bc)}
+.sb-pv{width:12px;font-size:10px;opacity:.6;text-align:center}
+.sb-sim{font-size:11px;padding:0 6px;opacity:0}
+.sb-row:hover .sb-sim,.sb-row:focus .sb-sim{opacity:1}
+.sb-empty{opacity:.6;font-size:11.5px;padding:6px}
+@media (max-width:520px){.sb-win{left:16px;right:16px;width:auto}}
