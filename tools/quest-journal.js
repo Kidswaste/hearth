@@ -721,6 +721,7 @@ const QuestJournal = (() => {
     content.append(sectionHeading('COLLECTION / YOUR PORTFOLIO', 'Proof that you made something.', 'Keep work from any Hearth chat or upload an export. Play your bounces, preview textures, revisit the source.'));
     collectionShelf();
     reviewShelf();
+    { const weeks = typeof WeekNudge !== 'undefined' ? WeekNudge.pages({ E, label, p }, state) : null; if (weeks) content.append(weeks); } // (round 62, weekquest62) the saved weeks in review (s.weekly.reviews)
     const badges = state.campaigns.filter(c => C.campaignDone(state, c));
     if (badges.length) content.append(E('div', { class: 'qj-badges' }, ...badges.map(c => E('div', { class: 'qj-badge', style: { '--path': pathOf(c.path).color } }, E('span', { text: '✦' }), E('strong', { text: c.badge || c.title }), label('CAMPAIGN COMPLETE')))));
     const finished = C.allQuests(state).filter(q => C.done(state, q.id)).sort((a, b) => C.record(state, b.id).completedAt.localeCompare(C.record(state, a.id).completedAt));
