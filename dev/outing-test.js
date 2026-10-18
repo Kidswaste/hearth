@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict'),O=require('../tools/outing-core'),Q=require('../tools/quest-core');
+const now=Date.parse('2026-10-18T12:00:00Z');
+const raw={id:'11',title:'Test concert',url:'https://www.paris.fr/evenements/test-11',address_name:'Test venue',qfap_tags:'Concert',date_start:'2026-10-19T18:00:00+02:00',date_end:'2026-10-19T20:00:00+02:00',occurrences:'2026-10-19T18:00:00+02:00_2026-10-19T20:00:00+02:00',price_type:'gratuit',lat_lon:{lat:48.87,lon:2.36}};
+const e=O.feed([raw,raw],now)[0];assert.equal(e.start,'2026-10-19T16:00:00.000Z');assert.equal(e.sessions.length,1);assert(e.free);assert.equal(O.feed([raw,raw],now).length,1);
+assert.equal(O.feed([{...raw,date_end:'2025-10-19T18:00:00Z'},{...raw,lat_lon:{lat:0,lon:0}},{...raw,url:'javascript:alert(1)'},{...raw,id:undefined}],now).length,0);
+assert.equal(O.event({...e,title:'<img src=x>Plain'}).title,'Plain');assert.throws(()=>O.event({...e,url:'https://user:password@example.com'}));
+assert.equal(O.filter([e],{free:true,kind:'music'},now).length,1);assert.equal(O.filter([e],{kind:'game'},now).length,0);assert.equal(O.filter([e],{query:'venue'},now).length,1);
+assert.equal(O.filter([e],{},now+10*86400000).length,0);
+assert.equal(O.sources.length,12);for(const s of O.sources)assert(O.url(s.url));
+for(const u of O.feedUrls(now)){const url=new URL(u);assert.equal(url.hostname,'opendata.paris.fr');assert.equal(url.searchParams.get('limit'),'100');assert(url.searchParams.get('where').includes('2026-11-17'));}
+let s=O.initial();const p=O.save(s,e);assert.equal(O.save(s,e),p);assert.equal(s.saved.length,1);assert.deepEqual(O.cost(p),{known:0,unknown:2});p.status='going';p.ticket=12.5;s.ceiling=10;assert(O.budget(s).over);assert.equal(O.budget(s).unknown,2);
+assert.throws(()=>O.money(-1));assert.throws(()=>O.money('NaN'));assert.equal(O.money(''),null);assert.equal(O.money('0'),0);assert.equal(O.money('12.345'),12.35);
+p.visitStart=e.start;p.visitEnd=e.end;p.buddy='Thomas';p.note='Meet outside';
+const p2=O.save(s,{...e,id:'paris-12'});p2.status='going';p2.visitStart=e.start;p2.visitEnd=e.end;assert.equal(O.overlaps(s,p).length,1);p2.visitStart=p.visitEnd;p2.visitEnd='2026-10-19T19:00:00.000Z';assert.equal(O.overlaps(s,p).length,0);
+assert.deepEqual(O.validate(JSON.parse(JSON.stringify(s))),s);assert.throws(()=>O.validate({...s,v:2}));assert.throws(()=>O.validate({...s,saved:[p,p]}));assert.throws(()=>O.validate({...s,saved:[{...p,visitEnd:''}]}));assert.throws(()=>O.validate({...s,saved:[{...p,visitEnd:'2026-10-21T18:00:00Z'}]}));
+assert(O.invitation(p).includes('Thomas'));assert(O.invitation(p).includes('Paris time'));assert(O.invitation(p).includes('No pressure'));
+assert.throws(()=>O.calendar([]));assert.throws(()=>O.calendar([O.plan(e)]));
+p.event.url='https://example.com/event?genre=ambient,drone;live=1';p.event.title='é'.repeat(100)+'\nBEGIN:VEVENT';p.note='line1\nline2, semicolon; slash\\';const ics=O.calendar([p],'2026-10-18T12:00:00Z');
+assert(ics.includes('DTSTART:20261019T160000Z'));assert(ics.includes('STATUS:TENTATIVE'));assert(ics.includes('URL:'+p.event.url));assert(ics.replace(/\r\n /g,'').includes('\\nBEGIN:VEVENT'));assert.equal(ics.match(/\r\nBEGIN:VEVENT\r\n/g).length,1);for(const line of ics.split('\r\n'))assert(Buffer.byteLength(line)<=75);
+const journal=Q.upgrade(Q.initial()),before=Q.xp(journal);for(const prompt of O.prompts){const plan=O.plan({...e,id:'paris-'+prompt.id});plan.prompt=prompt.id;const c=O.campaign(journal,plan,Q);assert.equal(O.campaign(journal,plan,Q),c);assert.throws(()=>Q.complete(journal,c.quests[0].id));Q.validate(journal);}assert.equal(Q.xp(journal),before);assert.equal(journal.campaigns.filter(c=>c.id.startsWith('c-outing-')).length,5);
+const proof={type:'chat',title:'Fixture own field note',chatId:'fixture',agentId:'astra',messageId:'1',excerpt:'TEST: own observation',analysis:'',coverage:'Fixture',images:[],fingerprint:'a'.repeat(64)};
+const q=journal.campaigns.find(c=>c.id==='c-outing-paris-note').quests[0];const sub=Q.submit(journal,q.id,proof);Q.saveReview(journal,q.id,sub.id,{status:'reviewed',meetsBrief:true,score:60,dimensions:[15,15,15,15],summary:'Specific note.',better:'One clearer detail.',next:'Make a small demo.',coverage:'Fixture',limitations:'Fixture'});Q.complete(journal,q.id);assert.equal(Q.xp(journal),35);
+console.log('Outing core: feed validation/deduplication, date offsets, filters, unknown costs, budget, conflicts, safe ICS folding, persisted plans and five proof-gated creative quests pass.');
