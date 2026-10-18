@@ -454,6 +454,8 @@ const GamePerfProbe = function gamePerfProbe(opts) {
       for (let k = 0; k < m; k += 1) { const d = R.dt[(R.i - 1 - k + N) % N]; sum += d; if (d > worst) worst = d; }
       const ms = sum / m; return { fps: Math.round(10000 / ms) / 10, ms: Math.round(ms * 100) / 100, worst: Math.round(worst * 10) / 10, frames: m, from: 'perf' };
     },
+    // (round 63, hitchmap63) the slow frames kept, with their start on the page's clock (read once, after the session)
+    slows: () => S.slow.map((f) => ({ ...f })),
     // dev/checks/gameperf.js: what measuring costs per frame, run n times in a row (no scheduling noise: a busy test
     // computer pre-empts real frames); the session starts again afterwards
     bench: (n = 2000) => {

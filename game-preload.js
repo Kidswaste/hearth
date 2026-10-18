@@ -69,7 +69,7 @@ function mount() {
     .err .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .err button, .box .fix { padding: 5px 11px; font-size: 12px; margin: 0; } .err .x { background: transparent; color: #a7adb8; padding: 5px 7px; }
     .fixit { background: #ff8a3d; color: #1a1206; } .box .fix { display: block; margin: 12px auto 0; }
-  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing${I.notesKey ? ` · ${String(I.notesKey).replace(/[<>&]/g, '')}: note` : ''}</div><div class="chip" hidden></div><div class="look" hidden></div><div class="note" hidden></div><div class="blip" aria-live="polite"></div>
+  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing${I.notesKey ? ` · ${String(I.notesKey).replace(/[<>&]/g, '')}: note` : ''}${I.hitch ? ' · ● recording the hitch map' : ''}</div><div class="chip" hidden></div><div class="look" hidden></div><div class="note" hidden></div><div class="blip" aria-live="polite"></div>
   <div class="err" hidden role="alert"><span class="m"></span><button class="fixit">Fix with the director</button><button class="x" aria-label="Hide">✕</button></div>
   <div class="card" hidden role="dialog" aria-label="Leave the game"><div class="box"><div class="t"></div><div class="s">Esc again or Enter goes back</div>
   <button class="back">Back to Hearth</button><button class="keep">Keep playing</button><button class="fix fixit" hidden>Fix with the director</button></div></div></div>`;
@@ -112,12 +112,13 @@ let snd = ''; let sndAt = -1e9;
 // (round 55, playbudget) and Hearth's own work in the game a frame ("Hearth: 0.03 ms", tools/playbudget-page.js), which
 // counts this chip's own time too (told with the same read); a helper it switched off for being slow: one plain line
 let hearth = ''; let note = ''; let chipMs = 0;
+let hitchLine = ''; // (round 63, hitchmap63) "● Hitch map 2:31" first on the chip while it records (read with the same 2 s read)
 const sound = () => {
   const ms = chipMs; chipMs = 0;
   try {
-    webFrame.executeJavaScript(`(function () { var a = window.__gameAudio, b = window.__hearthBudget; return JSON.stringify({ s: a ? a.line() : '', b: b ? b.chip(${ms.toFixed(4)}) : null }); })()`).then((v) => {
+    webFrame.executeJavaScript(`(function () { var a = window.__gameAudio, b = window.__hearthBudget, h = window.__hearthHitch; return JSON.stringify({ s: a ? a.line() : '', b: b ? b.chip(${ms.toFixed(4)}) : null, h: h ? h.line() : '' }); })()`).then((v) => {
       let o = null; try { o = JSON.parse(v); } catch { o = null; }
-      snd = o && typeof o.s === 'string' ? o.s : ''; hearth = o?.b?.line || ''; note = o?.b?.note || '';
+      snd = o && typeof o.s === 'string' ? o.s : ''; hearth = o?.b?.line || ''; note = o?.b?.note || ''; hitchLine = typeof o?.h === 'string' ? o.h : '';
       if (ui) { if (ui.note.textContent !== note) ui.note.textContent = note; ui.note.hidden = !(statsOn && note); }
     }).catch(() => {});
   } catch { /* fine */ }
@@ -133,7 +134,7 @@ function tick(t) {
     const g = gaps.slice(-240); const avg = g.reduce((a, b) => a + b, 0) / g.length;
     if (t - sndAt > 2000) { sndAt = t; sound(); }
     const inp = latFigure();
-    const line = `${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${inp ? ` · ${inp}` : ''}${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}${hearth ? ` · ${hearth}` : ''}`;
+    const line = `${hitchLine ? `${hitchLine} · ` : ''}${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${inp ? ` · ${inp}` : ''}${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}${hearth ? ` · ${hearth}` : ''}`;
     if (ui.chip.textContent !== line) ui.chip.textContent = line;
     gaps = g.slice(-120);
   }
@@ -316,3 +317,13 @@ ipcRenderer.on('game:note-box', (_e, d = {}) => {
   if (d.status != null && NB.status) NB.status.textContent = String(d.status);
   if (d.text != null && NB.open && d.id === NB.id && NB.input) { NB.input.value = String(d.text); NB.sent = NB.input.value.trim(); NB.status.textContent = '✎ Heard: Enter saves, or keep typing'; NB.input.focus(); }
 });
+
+
+// ---------- the hitch map (round 63, hitchmap63: hitchmapmain.js, tools/hitchmap-page.js) ----------
+// Only while the owner records it (/playtest hitchmap on, ▶ Play's right-click): the page's recorder says "a spike" with
+// one event, and the main side takes that moment's picture (at most 4 a session). Off: no listener of this exists.
+let hitchOn = false;
+const onHitch = () => ipcRenderer.send('game:hitch-spike');
+function hitchListen(on) { if (on === hitchOn) return; hitchOn = on; if (on) addEventListener('hearth-hitch', onHitch); else { removeEventListener('hearth-hitch', onHitch); hitchLine = ''; } }
+if (I.hitch) hitchListen(true);
+ipcRenderer.on('game:hitch-on', (_e, d = {}) => { hitchListen(Boolean(d.on)); if (statsOn) sound(); });

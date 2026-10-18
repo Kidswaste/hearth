@@ -111,6 +111,16 @@ const READ = `(() => {
   return JSON.stringify(out);
 })()`;
 const within = (p, ms, v) => Promise.race([p, new Promise((r) => setTimeout(r, ms, v))]);
+// the picture first (the moment the key went down), the page's read beside it. (round 63, hitchmap63) also the hitch
+// map's spike pictures (hitchmapmain.js): the same capture, once per spike
+async function grab(wc) {
+  const [img, raw] = await Promise.all([
+    within(wc.capturePage().catch(() => null), 3000, null),
+    within(wc.executeJavaScript(READ, true).catch(() => null), 1500, null),
+  ]);
+  let r = {}; try { r = raw ? JSON.parse(raw) : {}; } catch { r = {}; }
+  return { img, r };
+}
 
 async function take({ box = false, by = 'key' } = {}) {
   const g = G();
@@ -121,12 +131,7 @@ async function take({ box = false, by = 'key' } = {}) {
   try {
     const wc = g.win.webContents;
     if (S.session !== g.started) { S.session = g.started; S.n = 0; }
-    // the picture first (the moment the key went down), the page's read beside it
-    const [img, raw] = await Promise.all([
-      within(wc.capturePage().catch(() => null), 3000, null),
-      within(wc.executeJavaScript(READ, true).catch(() => null), 1500, null),
-    ]);
-    let r = {}; try { r = raw ? JSON.parse(raw) : {}; } catch { r = {}; }
+    const { img, r } = await grab(wc);
     const id = `n${at.toString(36)}`;
     let shot = null; let w = null; let h = null;
     const dir = dirOf(g.source);
@@ -242,4 +247,4 @@ const onText = (e, d = {}) => { if (!fromGame(e) || !d.id) return; setText(G().s
 const onVoice = (e, d = {}) => { if (!fromGame(e) || !d.id) return; tell({ type: 'voice', source: G().source, id: String(d.id) }); };
 const onBoxOff = (e) => { if (fromGame(e)) S.box = null; };
 
-module.exports = { init, register, arm, ended, key, take, op, onText, onVoice, onBoxOff, READ, _test: { S, readLog, dirOf } };
+module.exports = { init, register, arm, ended, key, take, op, onText, onVoice, onBoxOff, READ, grab, toBin, _test: { S, readLog, dirOf } };

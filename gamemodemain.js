@@ -43,6 +43,10 @@ const budget = () => { try { const B = require('./playbudgetmain'); B.init({ dat
 // (round 62, playnotes62) playtest notes: one key (F8) drops a note (the frame's picture, the time, what the game saves,
 // the frame rate then) into data/game-cache/<game>/notes; read here with the window's other keys (playnotesmain.js)
 const pnotes = () => { try { const N = require('./playnotesmain'); N.init({ dataDir: ctx?.dataDir }); return N; } catch { return null; } };
+// (round 63, hitchmap63) the hitch map: only when the owner turned it on (hitchmap.on), tools/hitchmap-page.js right after the
+// budget's script (per frame: the frame's time and where the player / camera were, in a typed ring), a picture on a spike,
+// the map built when the session ends (hitchmapmain.js). Off: nothing of it in the window
+const hitch = () => { try { const M = require('./hitchmapmain'); M.init({ dataDir: ctx?.dataDir }); return M; } catch { return null; } };
 let ctx = null; // { getWin, powerwise, dataDir }
 let G = null; // the game playing: { win, source, root, token, display, hz, route, how, started, release, priority, pid }
 const roots = new Map(); // token → folder
@@ -63,6 +67,8 @@ function gameSession() {
     const A = G?.token === u.hostname && !G.audioOff ? audio() : null;
     const B = G?.token === u.hostname ? budget() : null;
     if (B?.isPage(u.pathname)) return new Response(await fs.promises.readFile(B.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
+    const HM = G?.token === u.hostname && G.hitch ? hitch() : null; // (round 63, hitchmap63: only while recording)
+    if (HM?.isPage(u.pathname)) return new Response(await fs.promises.readFile(HM.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (A?.isPage(u.pathname)) return new Response(await fs.promises.readFile(A.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (u.pathname === STREAM) return new Response(await fs.promises.readFile(path.join(__dirname, 'tools', 'gamestream-page.js')), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
     if (R?.armed?.() && R.isPage(u.pathname)) return new Response(await fs.promises.readFile(R.pageFile()), { headers: { 'content-type': 'text/javascript', 'cache-control': 'no-cache' } });
@@ -77,7 +83,7 @@ function gameSession() {
       R?.noteServed?.(rel, Boolean(swap));
       if (G?.source?.kind === 'html') A?.served(root, rel); // (round 54, gameaudio) a sound: decoded up front next time
       let body = req.method === 'HEAD' ? null : await fs.promises.readFile(swap || file);
-      const tag = body && /\.html?$/i.test(file) ? `${B ? B.pageTag(G.budget) : ''}${A ? A.pageTag(root, { kind: G.source?.kind }) : ''}${R?.pageTag?.({ root, file, source: G?.token === u.hostname ? G.source : null, hz: G?.hz, look: G?.fidelity?.look, off: G?.budget?.off }) || ''}${G?.token === u.hostname && G.stream?.skip ? '' : `<script src="${STREAM}?off=${G?.token === u.hostname && G.stream?.off ? 1 : 0}"></script>`}` : ''; // (the budget's first: it times the others from their start; gameaudio's next: the game's AudioContext is Hearth's before any of its code runs; (round 55) loads during play left out when the budget switched it off for this game)
+      const tag = body && /\.html?$/i.test(file) ? `${B ? B.pageTag(G.budget) : ''}${HM ? HM.pageTag(G.hz) : ''}${A ? A.pageTag(root, { kind: G.source?.kind }) : ''}${R?.pageTag?.({ root, file, source: G?.token === u.hostname ? G.source : null, hz: G?.hz, look: G?.fidelity?.look, off: G?.budget?.off }) || ''}${G?.token === u.hostname && G.stream?.skip ? '' : `<script src="${STREAM}?off=${G?.token === u.hostname && G.stream?.off ? 1 : 0}"></script>`}` : ''; // (the budget's first: it times the others from their start; gameaudio's next: the game's AudioContext is Hearth's before any of its code runs; (round 55) loads during play left out when the budget switched it off for this game)
       if (tag) { let h = body.toString('utf8'); h = /<head[^>]*>/i.test(h) ? h.replace(/<head[^>]*>/i, (m) => `${m}${tag}`) : `${tag}${h}`; body = Buffer.from(h); st = { size: body.length }; }
       return new Response(body, { status: 200, headers: { 'content-type': C.mimeOf(file), 'content-length': String(st.size), 'cache-control': 'no-cache', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'credentialless' } });
     } catch { return new Response('not found', { status: 404 }); }
@@ -230,6 +236,7 @@ function ended(g) {
   roots.delete(g.token);
   loop()?.ended?.();
   pnotes()?.ended?.();
+  if (g.hitch) hitch()?.ended?.();
   forget();
   try { g.release?.(); } catch { /* fine */ }
   try { ctx.powerwise.quiet(false); } catch { /* fine */ }
@@ -254,6 +261,7 @@ async function play(_e, req = {}) {
   const fid = C.fidelity(d, offs.has('look') ? 'off' : req.look); // (round 54, gamelook) look: 'best' (the default) | 'balanced'
   const token = crypto.randomBytes(12).toString('hex');
   const NM = pnotes(); const noteKey = NM ? (NM.arm(req.notes || {}) || '') : ''; // (round 62, playnotes62) the note key's label for the hint
+  const HMo = hitch(); const hitchOn = HMo ? HMo.arm(req.hitch || {}) : false; // (round 63, hitchmap63) recording the hitch map: only when asked
   let built = null;
   let root; let entry; let route = 'html'; let how = 'HTML build'; let notes = [];
   if (source.kind === 'lab') {
@@ -278,10 +286,10 @@ async function play(_e, req = {}) {
   const win = new BrowserWindow({
     x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, show: false, frame: false, backgroundColor: '#000000',
     title: source.title, autoHideMenuBar: true, fullscreenable: true, fullscreen: !mac, thickFrame: false, roundedCorners: false,
-    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look, ...(noteKey ? { notesKey: noteKey } : {}), ...(was.shadow && fid.look === 'best' ? { shadow: was.shadow } : {}) }))}`] }, // (round 56, shadowready) shadow: the size chosen while getting ready last time
+    webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look, ...(noteKey ? { notesKey: noteKey } : {}), ...(hitchOn ? { hitch: true } : {}), ...(was.shadow && fid.look === 'best' ? { shadow: was.shadow } : {}) }))}`] }, // (round 56, shadowready) shadow: the size chosen while getting ready last time
   });
   if (!mac) win.setMenu(null);
-  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) || offs.has('audio'), stream: { off: Boolean(req.stream?.off), skip: offs.has('stream') } };
+  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) || offs.has('audio'), stream: { off: Boolean(req.stream?.off), skip: offs.has('stream') }, hitch: hitchOn };
   g.budget = { hz: fid.hz, title: source.title, off: [...offs], was, last: null };
   g.timing = { asked: T0, built: built?.at || null, cached: built?.cached ?? null, window: Date.now(), loaded: null };
   g.release = ctx.powerwise.hold('present', { label: `${source.title} is playing` });
@@ -305,6 +313,8 @@ async function play(_e, req = {}) {
     if ((mac && input.meta && (k === 'q' || k === 'w')) || (!mac && input.control && k === 'w') || (!mac && input.alt && k === 'f4')) { e.preventDefault(); leave('key'); return; }
     if (mac && input.meta) e.preventDefault();
   }));
+  // (round 63, hitchmap63) recording the hitch map: the close waits once for the page's ring (≤ 1.2 s), then goes on
+  win.on('close', (e) => { const p = G === g ? hitch()?.closing?.(g) : null; if (p) { e.preventDefault(); p.finally(() => { if (!win.isDestroyed()) win.close(); }); } });
   win.on('closed', () => ended(g));
   wc.on('render-process-gone', () => { if (!win.isDestroyed()) win.close(); });
   wc.once('did-finish-load', () => {
@@ -366,6 +376,11 @@ function register(ipcMain, c) {
   ipcMain.on('game:note-text', (e, d) => pnotes()?.onText?.(e, d));
   ipcMain.on('game:note-voice', (e, d) => pnotes()?.onVoice?.(e, d));
   ipcMain.on('game:note-box-off', (e) => pnotes()?.onBoxOff?.(e));
+  // (round 63, hitchmap63) the hitch map: the hub turns it on / off mid-play, builds / lists / opens maps (hitchmapmain.js);
+  // the game window's page saw a spike (its picture now)
+  hitch()?.register?.({ ctx: () => ctx, game: () => G });
+  ipcMain.handle('game:hitch', hub(async (_e, req) => { const r = await (hitch()?.op?.(req || {}) || { ok: false, why: 'the hitch map is not in this Hearth' }); if (G && (req?.op === 'on' || req?.op === 'off')) G.hitch = req.op === 'on' && r?.ok !== false; return r; }));
+  ipcMain.on('game:hitch-spike', (e) => hitch()?.onSpike?.(e));
   // checks: run a line in the game window's page, press a key / click there (real input, through Chromium)
   ipcMain.handle('game:eval', hub(async (_e, code) => { if (!G?.win || G.win.isDestroyed()) return { error: 'not playing' }; try { return { value: await G.win.webContents.executeJavaScript(String(code), true) }; } catch (err) { return { error: err.message }; } }));
   ipcMain.handle('game:key', hub((_e, { key = 'Escape', mods = [] } = {}) => {

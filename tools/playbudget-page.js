@@ -30,9 +30,11 @@
 (function () {
   // ---------- the rules (pure; dev/playbudget-test.js) ----------
   const Rules = (() => {
-    const ALL = ['look', 'stream', 'audio', 'ready', 'perf', 'chip', 'watch'];
-    const ORDER = ['look', 'stream', 'perf', 'ready', 'audio']; // the ones that can be switched off (a tie: this order)
-    const NAMES = { look: 'the look', stream: 'loads during play', audio: 'the sound warm-up', ready: 'getting ready', perf: 'the performance probe', chip: 'the stats chip', watch: 'this watch' };
+    // (round 63, hitchmap63) 'hitch': the hitch map's recorder (tools/hitchmap-page.js), only in the page while the owner
+    // records one; first to go on a tie (a recording, not the game's look). Never remembered per game (playbudgetmain IDS)
+    const ALL = ['look', 'stream', 'audio', 'ready', 'perf', 'hitch', 'chip', 'watch'];
+    const ORDER = ['hitch', 'look', 'stream', 'perf', 'ready', 'audio']; // the ones that can be switched off (a tie: this order)
+    const NAMES = { hitch: 'the hitch map', look: 'the look', stream: 'loads during play', audio: 'the sound warm-up', ready: 'getting ready', perf: 'the performance probe', chip: 'the stats chip', watch: 'this watch' };
     // 2 % of a frame at the screen's refresh, never under 0.1 ms (60 Hz: 0.33 ms, 144 Hz: 0.14 ms, 240 Hz: 0.1 ms)
     const budgetMs = (hz) => Math.max(0.1, (0.02 * 1000) / (Number(hz) > 0 ? Number(hz) : 60));
     // the most expensive helper still on (costs: id → ms a frame), or null
@@ -128,7 +130,7 @@
   let ab = null; let abP = null;
   const hooks = (id) => {
     try {
-      const g = id === 'look' ? window.__gameLook : id === 'stream' ? window.__gameStream : id === 'audio' ? window.__gameAudio : id === 'ready' ? window.__gameReady : id === 'perf' ? window.__gamePerf : null;
+      const g = id === 'look' ? window.__gameLook : id === 'stream' ? window.__gameStream : id === 'audio' ? window.__gameAudio : id === 'ready' ? window.__gameReady : id === 'perf' ? window.__gamePerf : id === 'hitch' ? window.__hearthHitch : null;
       return (g && g.budget) || null;
     } catch (e) { return null; }
   };
