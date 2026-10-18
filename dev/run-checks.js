@@ -312,9 +312,19 @@ for (const [later, first] of Object.entries(PAIRS)) {
 }
 const dropPair = (n) => { const p = pairDirs[n]; if (p && p.last === n) { try { fs.rmSync(p.d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* tmp is cleaned later */ } } };
 process.on('exit', () => { for (const p of Object.values(pairDirs)) { try { fs.rmSync(p.d, { recursive: true, force: true }); } catch { /* fine */ } } });
+// (round 60, trimdrive60) an opt-in check (one that spends the owner's real account, hardware…) says so in its header:
+// "// opt-in: NAME". It runs only when NAME is set in the environment (QUEST_LIVE_REVIEW=1 sh dev/run-checks.sh
+// quest-review-live), and its header's flags (an --eval that opts it in) are passed then only; otherwise "skipped (opt-in)"
+const optInOf = (n) => (n.startsWith('astra-') ? '' : (srcOf(n).match(/^\/\/\s*opt-in:\s*([A-Z][A-Z0-9_]*)/m) || [])[1] || '');
 for (const n of wanted) {
   const started = Date.now();
   const log = path.join(OUT, `${n.replace('unit:', 'unit-')}.log`);
+  const optIn = optInOf(n);
+  if (optIn && !process.env[optIn]) {
+    results.push({ n, ok: true, skipped: true, s: 0, why: '' });
+    console.log(`- ${n.padEnd(22)}    0 s  skipped (opt-in: set ${optIn}=1 to run it)`);
+    continue;
+  }
   let r;
   if (n.startsWith('unit:')) {
     const u = n.slice(5);
@@ -328,7 +338,7 @@ for (const n of wanted) {
     const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(pairDirs[n]?.flags || []), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
     // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
     const env = /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }
-      : /^(game(mode|ready|input|tex|look|audio|stream|fps54)|playloop|playbudget|playlatency|shadowready|labcanvas56|readyspeed|ctxloss)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network)
+      : /^(game(mode|ready|input|tex|look|audio|stream|fps54)|playloop|playbudget|playlatency|shadowready|labcanvas56|readyspeed|ctxloss|trim-drive)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network; round 60: trim-drive's ▶ Play commands too)
     r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env });
   }
   dropPair(n);
@@ -346,5 +356,6 @@ for (const n of wanted) {
   if (bad && argv.includes('--stop')) break;
 }
 const failed = results.filter((x) => !x.ok);
-console.log(`\n${results.length - failed.length}/${results.length} passed in ${Math.round((Date.now() - t0) / 60000)} min · logs: ${OUT}`);
+const optedOut = results.filter((x) => x.skipped).length;
+console.log(`\n${results.length - failed.length - optedOut}/${results.length - optedOut} passed${optedOut ? ` (${optedOut} opt-in skipped)` : ''} in ${Math.round((Date.now() - t0) / 60000)} min · logs: ${OUT}`);
 process.exit(failed.length ? 1 : 0);

@@ -1,4 +1,5 @@
 // Uses only dev/smoke.js --fake-meshy's local API, no live Meshy account or credits.
+//   node dev/smoke.js --fake-meshy --script dev/checks/workbench-sketch-ai.js
 const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async fn=>{for(let i=0;i<300;i++){const r=await fn();if(r)return r;await wait(100);}throw Error('Sketch AI flow timed out');};
 const assert=(v,msg)=>{if(!v)throw Error(msg);console.log('[J] ✓ '+msg);};
 await Lazy.load('creative');await Lazy.load('apps');activate('tool:creative');await until(()=>document.querySelector('.wb-stations'));
