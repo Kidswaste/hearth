@@ -95,6 +95,19 @@ ok(mac.includes('/Users/me/Music/Vital/User/Presets') && mac.includes('/Users/me
     fs.writeFileSync(path.join(mine, 'index.json'), '{"v":1,"entr'); const sb2 = M.create({ dataDir: path.join(dir, 'data'), hostFactory: stub }); l = await sb2.list({ bank });
     ok(l.entries.length === 3 && fs.existsSync(path.join(mine, 'index.json.unreadable')), 'an unreadable index is kept aside (index.json.unreadable) and rebuilt from the bank');
     sb2.stop(); sb.stop();
+    // datasafe: a held index (EBUSY every try) is never treated as empty nor saved over; the next open reads it
+    sb2.flush(); const held = fs.readFileSync(path.join(mine, 'index.json'), 'utf8'), rf = fs.readFileSync; let busy = true;
+    fs.readFileSync = function (p, ...a) { if (busy && String(p) === path.join(mine, 'index.json')) throw Object.assign(Error('busy'), { code: 'EBUSY' }); return rf.call(this, p, ...a); };
+    const sb4 = M.create({ dataDir: path.join(dir, 'data'), hostFactory: stub }); fs.rmSync(path.join(mine, 'index.prev.json'), { force: true });
+    l = await sb4.list({ bank: bank.slice(0, 1) }); sb4.update(l.entries[0].id, { favorite: true }); sb4.flush();
+    ok(!sb4._test.canSave() && rf(path.join(mine, 'index.json'), 'utf8') === held, 'a held index.json (EBUSY): worked in memory, never saved over');
+    busy = false; l = await sb4.list({ bank }); fs.readFileSync = rf;
+    ok(sb4._test.canSave() && l.entries.length === 3, 'released: the next open reads the real index and saving resumes');
+    sb4.update(l.entries[0].id, { favorite: true }); sb4.flush();
+    ok(fs.existsSync(path.join(mine, 'index.prev.json')) && JSON.parse(fs.readFileSync(path.join(mine, 'index.prev.json'), 'utf8')).v === 1, 'the last good index kept as index.prev.json before the session\'s first write');
+    fs.writeFileSync(path.join(mine, 'index.json'), '{"v":1,"ent'); const sb5 = M.create({ dataDir: path.join(dir, 'data'), hostFactory: stub }); l = await sb5.list({});
+    ok(l.entries.length === 3 && sb5._test.canSave(), 'a damaged index.json falls back to index.prev.json (datasafe load)');
+    sb4.stop(); sb5.stop();
     // plugin folders, read-only
     const sb3 = M.create({ dataDir: path.join(dir, 'data'), hostFactory: stub });
     await sb3.list({ bank }); sb3.settings({ pluginFolders: true }); l = await sb3.list({ bank, scan: true });

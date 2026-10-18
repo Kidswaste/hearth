@@ -10,6 +10,7 @@
 // Plugin folders are only ever listed and read (readdir / stat / read): nothing here writes, renames or deletes there.
 const fs = require('fs'), path = require('path'), os = require('os'), crypto = require('crypto'), zlib = require('zlib');
 const C = require('./tools/soundbank-core.js');
+const DS = require('./datasafe-core'); // careful reads: an index that can't be read is never treated as empty, never saved over
 const EXT = { '.vital': 'Vital', '.serumpreset': 'Serum 2' };
 const MAX_FILES = 3000, MAX_PREVIEWS = 500, MAX_READ = 4e6;
 
@@ -54,16 +55,31 @@ function create({ dataDir, hostFactory, log = () => {} }) {
   const queue = { jobs: [], running: false, current: null, done: 0, total: 0, errors: 0, cancelled: false, startedAt: 0, lastError: '' };
   let host = null, hostPlugin = null, states = new Map();
 
+  // The index through datasafe-core (load / readRetry): a held file (a virus scanner, a sync client) is retried; a damaged
+  // one falls back to index.prev.json; when neither reads, the bank works in memory for now and NEVER saves over the
+  // file (canSave false; read again on the next open). Only a file that reads but is garbled with no copy is kept
+  // aside as index.json.unreadable before a new index is started.
+  const fresh = () => ({ v: 1, settings: { pluginFolders: false, folders: [] }, entries: {}, files: {} });
+  let canSave = true, prevKept = false, again = false; // again: the next open of the picker tries the read once more
   function load() {
-    if (index) return index;
-    try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); if (j?.v === 1 && j.entries && typeof j.entries === 'object') index = j; } catch (e) {
-      if (e.code !== 'ENOENT') { try { fs.copyFileSync(file, file + '.unreadable'); } catch {} log('soundbank: index unreadable, starting a new one (old copy kept)'); }
-    }
-    index ||= { v: 1, settings: { pluginFolders: false, folders: [] }, entries: {}, files: {} };
-    index.settings ||= { pluginFolders: false, folders: [] }; index.settings.folders ||= []; index.files ||= {};
+    if (index && (canSave || !again)) return index; again = false;
+    const r = DS.load(fs, file, null), good = j => j?.v === 1 && j.entries && typeof j.entries === 'object';
+    if (good(r.value)) { index = r.value; canSave = r.canSave; if (r.from === 'prev') log('soundbank: index read from its .prev copy'); }
+    else if (r.state === 'missing') { index ||= fresh(); canSave = true; }
+    else if (r.state === 'unreadable' && r.code === 'EGARBLED' || (r.state === 'ok' && !good(r.value))) {
+      try { fs.copyFileSync(file, file.replace(/\.json$/, '.json.unreadable')); index = fresh(); canSave = true; log('soundbank: index damaged, kept aside as index.json.unreadable'); }
+      catch { index ||= fresh(); canSave = false; }
+    } else { index ||= fresh(); canSave = false; log(`soundbank: index can't be read now (${r.code}); not saving over it`); }
+    index.settings ||= { pluginFolders: false, folders: [] }; index.settings.folders ||= []; index.files ||= {}; index.entries ||= {};
     return index;
   }
-  function save(now = false) { clearTimeout(saveTimer); saveTimer = null; if (now) { if (index) writeAtomic(file, JSON.stringify(index)); return; } saveTimer = setTimeout(() => { saveTimer = null; try { writeAtomic(file, JSON.stringify(index)); } catch (e) { log('soundbank: save failed ' + e.message); } }, 250); }
+  function write() {
+    if (!index || !canSave) return false;
+    // the last good index stays as index.prev.json (datasafe's fallback), once per session, before the first write
+    if (!prevKept) { try { fs.copyFileSync(file, file.replace(/\.json$/, '.prev.json')); } catch { /* none yet */ } prevKept = true; }
+    writeAtomic(file, JSON.stringify(index)); return true;
+  }
+  function save(now = false) { clearTimeout(saveTimer); saveTimer = null; if (now) { write(); return; } saveTimer = setTimeout(() => { saveTimer = null; try { write(); } catch (e) { log('soundbank: save failed ' + e.message); } }, 250); }
   function retag(x) { x.tags = C.tagsOf({ name: `${x.name} ${x.label || ''}`, folder: x.folder || '', style: x.style || '', metaTags: x.metaTags || [], features: x.features }); x.vector = C.vector(x.features || {}); return x; }
 
   // ---------- the desk's bank (the window sends its list: label, instrument name, plugin path, state, from) ----------
@@ -176,7 +192,7 @@ function create({ dataDir, hostFactory, log = () => {} }) {
   // ---------- what the window asks ----------
   const pub = x => { const { vector, ...rest } = x; return rest; };
   async function list({ bank, scan = false } = {}) {
-    load(); if (bank) syncBank(bank);
+    again = !canSave; load(); if (bank) syncBank(bank);
     let scanned = null; if (index.settings.pluginFolders) scanned = await scanFolders(scan);
     return { ok: true, entries: Object.values(index.entries).map(pub), settings: index.settings, queue: status(), folders: index.settings.pluginFolders ? folders().map(f => ({ path: f.path, instrument: f.instrument, mine: !!f.mine, exists: fs.existsSync(f.path) })) : [], scanned };
   }
@@ -205,7 +221,7 @@ function create({ dataDir, hostFactory, log = () => {} }) {
     if (x.source !== 'plugin') { const s = states.get(id); return s ? { ok: true, state: s, instrument: x.instrument, name: x.name } : { ok: false, error: 'This bank preset is loaded from the Sound desk bank.' }; }
     try { const st = fs.statSync(x.file); if (st.size > 16e6) throw Error('Preset file too large.'); const state = encodeState(fs.readFileSync(x.file)); if (state.length > 12e6) throw Error('Preset too large.'); return { ok: true, state, instrument: x.instrument, name: x.name }; } catch (e) { return { ok: false, error: e.message }; }
   }
-  return { list, similarTo, update, settings, startPreviews, cancel, status, previewBytes, stateOf, scanFolders, syncBank, flush: () => { if (saveTimer) save(true); }, stop: () => { cancel(); if (saveTimer) save(true); }, _test: { index: () => load(), file, previews } };
+  return { list, similarTo, update, settings, startPreviews, cancel, status, previewBytes, stateOf, scanFolders, syncBank, flush: () => { if (saveTimer) save(true); }, stop: () => { cancel(); if (saveTimer) save(true); }, _test: { index: () => load(), file, previews, canSave: () => canSave } };
 }
 
 function register(ipcMain, { dataDir, getWin, app }) {
