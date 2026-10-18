@@ -80,6 +80,7 @@ const ShowSync = (() => {
   // a show's buttons (its card, and the next show in a venue pin's dialog: round 64, mapfirst64)
   function showActions(kit, s, d) {
     const acts = kit.E('div', { class: 'qj-actions' });
+    if(window.OutingGuide)acts.append(kit.button('Guide my night',async()=>{await makeQuest(s);d.close();return OutingGuide.open({event:s,questId:'q-show-'+s.key+'-go'});},'qj-primary'));
     acts.append(kit.button('Make it a quest', async () => { const c = await makeQuest(s); d.close(); kit.questDetail?.(c.quests[0].id); }, 'qj-primary'));
     // Codex's outing desk (tools/outing-desk.js): keep this show in "my lineup" (budget, friend, .ics) — its own contract
     each('card', kit, s, acts, d); // (round 62) e.g. showprep62's "Get ready" / "How was it?"
