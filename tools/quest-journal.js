@@ -48,7 +48,7 @@ const QuestJournal = (() => {
   function syncMotion() {
     if (root) root.dataset.motion = state?.motion !== false && !document.hidden && H.activeId === 'tool:quests' ? 'on' : 'off';
   }
-  const notice = text => { if (status) status.textContent = text; const local = root?.querySelector('dialog[open] .qj-dialog-status'); if (local) local.textContent = text; };
+  const notice = text => { if (status) status.textContent = text; const local = [...(root?.querySelectorAll('dialog[open]')||[])].at(-1)?.querySelector('.qj-dialog-status'); if (local) local.textContent = text; };
   // Semantic actions only: user-authored quest titles and confirmation copy stay intact.
   const actionGroups = [
     ['settings','#bd8bff',['Journal options','Tune desk','Set my budget']],
@@ -380,10 +380,17 @@ const QuestJournal = (() => {
   }
   function mapPlaces() {const query=mapFilter.query.toLocaleLowerCase();return state.atlas.places.filter(p=>(mapFilter.kind==='all'||C.placeKind(p)===mapFilter.kind)&&(!mapFilter.saved||p.favorite)&&(!query||(p.name+' '+p.quest).toLocaleLowerCase().includes(query)));}
   function centerMapSelection() {const places=mapPlaces(),place=places.find(p=>p.id===state.atlas.selected)||places[0];if(place)atlasView?.focus(place);}
+  function outingDesk() {
+    return OutingDesk.open({dialog,button,field,explain,friends:()=>state.world.friends,openQuest:questDetail,
+      quest:async plan=>{const c=await mutate(s=>OutingCore.campaign(s,plan,C),'Take-home quest ready. Proof and review unlock its XP.');return c.quests[0].id;},
+      pin:async event=>{await mutate(s=>{const existing=s.atlas.places.find(p=>Math.abs(p.lat-event.lat)<.0002&&Math.abs(p.lon-event.lon)<.0002);if(existing)s.atlas.selected=existing.id;else C.savePlace(s,{name:event.venue||event.title,lat:event.lat,lon:event.lon,kind:['music','visual','game'].includes(event.kind)?event.kind:'reset',quest:'Find one detail here to bring into your next creation.'});},'Venue pinned.');mapFilter={kind:'all',saved:false,query:''};navigate('world');}
+    });
+  }
   function worldMap() {
     const kind=mapFilter.kind,visible=mapPlaces();
     const selected=visible.find(p=>p.id===state.atlas.selected)||visible[0];
     const head=row(mapIcon('social','Friends & dates',()=>mapNotebook('friends'),'#ffd75e'),mapIcon('calendar','Outing plans',()=>mapNotebook('plans'),'#ff8c42'),mapIcon('gift','Field rewards',mapRewards,'#ff6b9d'),mapIcon('info','Map controls & progress',()=>dialog('Your Paris field kit',body=>body.append(p('Drag to explore. Use arrow keys on the map to pan, + / − to zoom. Double-click to add a pin; the + button also works without a mouse.'),p('Colored symbols are your place categories. Stars save favorites. Visit stamps are your own record and give no XP. Quests earn XP after proof and review.'),p('Open friends, plans and rewards only when you need them. Hover or focus a symbol for its name. Escape dismisses a hint.'))),'#bfc0c8'),mapIcon('plus','Add a place',()=>placeForm(atlasView?.center()||{}),'#bd8bff'));
+    head.prepend(mapIcon('music','Outing desk · events & my lineup',outingDesk,'#ffb14a'));
     content.append(sectionHeading('FH / FIELD KIT','Paris, at your pace.',null,head));
     const filters=E('div',{class:'qj-map-filters',attrs:{'aria-label':'Filter map places'}});
     for(const k of [{id:'all',name:'All places',color:'#bfc0c8'},...C.mapKinds]){
@@ -988,5 +995,5 @@ const QuestJournal = (() => {
   }
   Tools.define({ id: 'quests', name: 'Sidequest Studio', icon: '✦', color: '#d9b777', description: 'Your quests, next ideas and small victories', mount: body => mount(body).catch(err => { body.textContent = `Journal could not open: ${calmError(err)}`; }), onShow: () => { if (state) render(); } });
   Commands.register({ name: 'quests', area: 'Create', desc: 'Open your quest journal, campaigns, XP, skill tree and rewards', run: () => activate('tool:quests') });
-  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, get celebration() { return lastCelebration; } };
+  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, openOutings:outingDesk, keepOuting:async event=>{await OutingDesk.keepEvent(event);return outingDesk();}, get celebration() { return lastCelebration; } };
 })();
