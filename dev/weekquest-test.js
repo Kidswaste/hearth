@@ -170,4 +170,14 @@ test('a damaged week plan is refused before any save', () => {
   assert.equal(W.checkWeekly(undefined), undefined);
 });
 
-console.log(`weekquest-test: ${checks} checks passed`);
+(async () => {
+  // the forecast (main side): Open-Meteo's daily shape, cached 3 h, unreachable → { ok: false } (the card plans without weather)
+  const M = require('../weekquestmain');
+  const days = M.shape({ daily: { time: ['2026-10-21', '2026-10-22'], temperature_2m_max: [17.2, 12], precipitation_probability_max: [10, 80] } });
+  assert.deepEqual(days, [{ date: '2026-10-21', tmax: 17.2, rain: 10 }, { date: '2026-10-22', tmax: 12, rain: 80 }]);
+  let n = 0; const fake = async () => { n++; return { ok: true, json: async () => ({ daily: { time: ['2026-10-21'], temperature_2m_max: [16], precipitation_probability_max: [5] } }) }; };
+  M._reset(); assert.ok((await M.weather({ fetch: fake, now: 0 })).ok); assert.ok((await M.weather({ fetch: fake, now: 3600e3 })).cached); assert.equal(n, 1);
+  M._reset(); const off = await M.weather({ fetch: async () => { throw Object.assign(Error('net'), { name: 'TypeError' }); } }); assert.equal(off.ok, false); assert.equal(off.why, 'offline');
+  checks++; console.log('✓ the forecast: Open-Meteo\'s shape, one ask per 3 h, offline → plan without weather');
+  console.log(`weekquest-test: ${checks} checks passed`);
+})().catch((err) => { console.error(err); process.exit(1); });

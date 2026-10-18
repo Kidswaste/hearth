@@ -219,7 +219,7 @@ const WeekQuest = (() => {
   function moment(m) {
     const img = m.images?.[0];
     return el('div', { class: 'wq-moment', title: `${m.title} · ${m.what}` },
-      img ? el('img', { attrs: { src: `file://${img.replace(/\\/g, '/').replace(/^([a-z]):/i, '/$1:')}`, alt: '', loading: 'lazy', draggable: 'false' } }) : el('span', { class: 'wq-mi', text: m.type === 'chat' ? '💬' : '✎' }),
+      img ? el('img', { attrs: { src: WinMac.fileUrl(img), alt: '', loading: 'lazy', draggable: 'false' } }) : el('span', { class: 'wq-mi', text: m.type === 'chat' ? '💬' : '✎' }),
       el('div', {}, el('strong', { text: m.what }), el('span', { class: 'qh-sub', text: m.note || m.title })));
   }
 
