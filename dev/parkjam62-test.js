@@ -48,6 +48,7 @@ ok(Math.abs(long.channels[0][30000] - .3) < 1e-6, 'a short ambience loops to fil
 const mid = P.midiFile([{ note: 60, time: 0, length: .5, velocity: 100 }, { note: 64, time: .5, length: .5, velocity: 90 }], { bpm: 120 }), mt = Buffer.from(mid);
 ok(mt.subarray(0, 4).toString() === 'MThd' && mt.subarray(14, 18).toString() === 'MTrk' && mt.readUInt16BE(12) === 480 && mt.includes(Buffer.from([0x90, 60, 100])) && mt.includes(Buffer.from([0xff, 0x51, 3, 0x07, 0xa1, 0x20])), 'MIDI file: header, 480 ppq, tempo 120, notes');
 ok(P.placeOf('Park sketch · Belleville · 18 Oct') === 'Belleville' && P.placeOf('Untitled workbench') === null && P.placeKey('Buttes-Chaumont') === 'buttes-chaumont' && P.placeKey('Jardin du Luxembourg é') === 'jardin-du-luxembourg-e', 'places');
+ok(P.placeName('buttes') === 'Buttes-Chaumont' && P.placeName('parc monceau') === 'Parc Monceau' && P.placeName('') === 'Outside', 'place names typed in chat');
 ok(P.isoWeek(new Date(2026, 9, 18)) === '2026-W42' && P.isoWeek(new Date(2027, 0, 1)) === '2026-W53', 'ISO weeks');
 const names = P.takeNames('Buttes-Chaumont', new Date(2026, 9, 18, 15, 4, 9));
 ok(names.loop === 'Buttes-Chaumont loop 2026-10-18 15.04.09.wav' && Object.values(names).every(n => /^[\w .·-]{1,80}\.(wav|mid|json)$/.test(n)), 'take file names fit parkSave');

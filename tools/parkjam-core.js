@@ -151,6 +151,9 @@
   // ---------- places, sketches, weeks ----------
   // "Park sketch · Belleville · 18 Oct" (parisquests61's QuestParis.sketchTitle) → "Belleville"
   const placeOf = title => (/^park sketch · (.+?) · /i.exec(String(title || '')) || [])[1] || null;
+  // "belleville" / "buttes" typed in chat → the park's name as parisquests61 writes it (QuestParis.parkName)
+  const PARKS = { buttes: 'Buttes-Chaumont', 'buttes-chaumont': 'Buttes-Chaumont', belleville: 'Belleville', luxembourg: 'Luxembourg', luco: 'Luxembourg', villette: 'La Villette', 'la-villette': 'La Villette' };
+  const placeName = word => PARKS[String(word || '').trim().toLowerCase().replace(/\s+/g, '-')] || String(word || '').trim().replace(/\s+/g, ' ').slice(0, 60).replace(/(^|[\s-])(\p{Ll})/gu, (m, a, b) => a + b.toUpperCase()) || 'Outside';
   const placeKey = name => String(name || 'outside').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'outside';
   function isoWeek(date = new Date()) {
     const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())), day = d.getUTCDay() || 7;
@@ -173,5 +176,5 @@
     return { excerpt, analysis: JSON.stringify({ ...analysis, notesPlayed: notes.length, bars: take.bars, bpm: take.bpm }).slice(0, 6000),
       coverage: 'Technical audio/documentation review only: the loop’s decoded duration and sampled levels, plus the notes played (from the instrument host). Astra cannot hear this audio; no claims about melody, groove, mix taste or emotional quality.'.slice(0, 600) };
   }
-  return { UA, BUILTIN, BLUETOOTH, hasUA, parkOutput, safeBuffer, batterySaver, lowestChoice, BARS, loopSeconds, loopArgs, encodeWav, decodeWav, layer, mono, resample, analyse, midiFile, placeOf, placeKey, isoWeek, stamp, takeNames, proofText };
+  return { UA, BUILTIN, BLUETOOTH, hasUA, parkOutput, safeBuffer, batterySaver, lowestChoice, BARS, loopSeconds, loopArgs, encodeWav, decodeWav, layer, mono, resample, analyse, midiFile, placeOf, placeName, placeKey, isoWeek, stamp, takeNames, proofText };
 });

@@ -13,7 +13,7 @@
 // Works offline: nothing here needs an AI. The pure parts are in tools/parkjam-core.js (dev/parkjam62-test.js).
 const ParkJam = (() => {
   const P = ParkJamCore, L = WorkbenchVSTLive;
-  let h = null, park = null, button = null, section = null, poll = null, mic = null, ambience = null, busy = null, epoch = 0;
+  let mounts = 0, h = null, park = null, button = null, section = null, poll = null, mic = null, ambience = null, busy = null, epoch = 0;
   const live = [], wait = ms => new Promise(r => setTimeout(r, ms));
   const A = () => WorkbenchVST.api;
   const store = () => { if (!h?.state) throw Error('Open Creative Playground → Sound desk first.'); const s = h.state.park ||= { places: {}, takes: [] }; s.places ||= {}; s.takes ||= []; return s; };
@@ -28,7 +28,7 @@ const ParkJam = (() => {
 
   // ---------- the desk hooks ----------
   function attach(out, row, helpers) {
-    h = helpers; epoch++;
+    h = helpers; epoch++; mounts++;
     button = h.btn(park?.on ? '🌳 Park mode on' : '🌳 Park mode', () => (park?.on ? off() : on()).then(say));
     button.classList.add('wb-park-toggle'); button.setAttribute('aria-pressed', String(!!park?.on));
     button.title = 'Music outside on the laptop: its own output, a safe buffer, battery-friendly, remembered per place (/jam park)';
@@ -39,7 +39,7 @@ const ParkJam = (() => {
   function pause() { epoch++; clearInterval(poll); poll = null; stopMic(); dim(false); hush(false); button = null; section = null; }
   function dim(onOff) { document.documentElement.classList.toggle('parkjam-dim', !!onOff); }
   function hush(onOff) {
-    const W = window.PowerWise; if (!W?.hush) return;
+    const W = window.Power; if (!W?.hush) return; // powerwise.js: Hearth's background timers (as ▶ Play hushes them)
     if (onOff && !park?.hushed && !W.quietNow?.()) { W.hush(true, []); if (park) park.hushed = true; }
     else if (!onOff && park?.hushed) { W.hush(false); park.hushed = false; }
   }
@@ -47,13 +47,19 @@ const ParkJam = (() => {
   // ---------- Park mode ----------
   async function desk() {
     if (typeof hub === 'undefined' || !hub.vst) throw Error('The Sound desk is not available here.');
-    if (!h || !document.querySelector('.wb-sound-desk')?.isConnected) { activate('tool:creative'); CreativePlayground.openFeature('vst'); }
-    for (let i = 0; i < 300 && !(h && document.querySelector('.wb-sound-desk') && (A().instruments().length || document.querySelector('.wb-sound-desk .wb-note'))); i++) await wait(50);
+    // open the Sound desk when it isn't on screen, and wait for THAT mount (its instrument cards, its live controls)
+    const before = mounts, here = () => document.querySelector('.wb-sound-desk')?.checkVisibility?.({ visibilityProperty: true });
+    if (!h || !here()) { activate('tool:creative'); CreativePlayground.openFeature('vst'); }
+    for (let i = 0; i < 300; i++) {
+      const d = document.querySelector('.wb-sound-desk'), fresh = mounts > before || here();
+      if (h && d && fresh && (d.querySelector('.wb-instrument-card') && (!A().current() || d.querySelector('.wb-live-transport')) || d.querySelector(':scope > .wb-note'))) break;
+      await wait(50);
+    }
     if (!A().instruments().length) throw Error('Set up live audio and add Serum 2 or Vital in the Sound desk first (Creative Playground → Serum 2 / Vital).');
   }
   async function on(place) {
     await desk();
-    const s = store(), name = place ? String(place).trim() : P.placeOf(sketch()) || park?.place || 'Outside', key = P.placeKey(name), mem = s.places[key] || null;
+    const s = store(), name = place ? P.placeName(place) : P.placeOf(sketch()) || park?.place || 'Outside', key = P.placeKey(name), mem = s.places[key] || null;
     const notes = [];
     // one instrument: the one open, else the one used here last time, else Vital (the lighter of the two)
     if (!A().current()) await A().open(mem?.instrument || (A().instruments().includes('Vital') ? 'Vital' : A().instruments()[0]), { live: false });
@@ -62,7 +68,7 @@ const ParkJam = (() => {
     const devices = await A().devices(), before = park?.on ? park.before : A().output();
     const remembered = mem?.output ? L.resolve(mem.output, devices) : null, pick = P.parkOutput(devices);
     const value = remembered ?? pick.value, dev = devices.devices.find(d => d.id === L.parse(value).device);
-    const battery = !(window.PowerWise?.state?.().mode === 'plugged');
+    const battery = window.Power?.state?.().mode !== 'plugged';
     const buffer = mem?.buffer || P.safeBuffer(dev?.api, { battery });
     await A().setOutput({ value, buffer, remember: false });
     park = { on: true, place: name, key, before, paramsBefore: park?.on ? park.paramsBefore : {}, hushed: park?.hushed || false };
@@ -126,16 +132,16 @@ const ParkJam = (() => {
     finally { busy = null; }
   }
   function progress(st) {
-    const o = section?.querySelector('.wb-park-progress'); if (!o) return;
+    const o = document.querySelector('.wb-sound-desk .wb-park-progress'); if (!o) return;
     const t = st.armed ? `Waiting for your first note · ${st.bars} bars at ${Math.round(st.bpm)} BPM` : st.done ? 'Loop recorded · saving…' : `Recording · ${Math.round(st.progress * 100)} % of ${st.bars} bars · ${st.notes} notes`;
     if (o.textContent !== t) o.textContent = t;
   }
   // The week's review: a take counts toward this week (an event other features read; weekquest62's review, when present)
-  function announce(entry) {
+  function announce(entry, quiet = false) {
     const detail = { kind: 'park-jam', week: entry.week, at: entry.at, title: `${entry.place}: ${entry.bars}-bar loop at ${Math.round(entry.bpm)} BPM`, path: entry.layered || entry.loop, place: entry.place, sketch: entry.sketch, notes: entry.notes, proof: entry.proof || null };
     try { document.dispatchEvent(new CustomEvent('hearth:quest-week', { detail })); } catch { /* a listener's problem never blocks a take */ }
-    try { window.WeekQuest?.note?.(detail); } catch { /* optional */ }
-    toast(`Loop kept in “${entry.sketch}”`, { action: { label: 'Offer as proof', fn: () => offer(entry.id).then(t => toast(t)).catch(err => toast(err.message, { type: 'error' })) }, timeout: 6000 });
+    try { (typeof WeekQuest !== 'undefined' ? WeekQuest : window.WeekQuest)?.note?.(detail); } catch { /* optional */ }
+    if (!quiet) toast(`Loop kept in “${entry.sketch}”`, { action: { label: 'Offer as proof', fn: () => offer(entry.id).then(t => toast(t)).catch(err => toast(err.message, { type: 'error' })) }, timeout: 6000 });
   }
   // ---------- the park ambience: 10 seconds from the laptop's mic ----------
   async function recordAmbience(seconds = 10, onTick) {
@@ -178,7 +184,7 @@ const ParkJam = (() => {
     const intent = `Made outside at ${take.place}: a ${take.bars}-bar loop at ${Math.round(take.bpm)} BPM on ${take.instrument || 'the Sound desk'}, ${take.notes} notes played live${take.layered ? ', with 10 s of park ambience layered under it' : ''}. Recorded with Park jam (laptop output: ${take.output}).`;
     const item = await J.mutate(st => C.submit(st, q.id, proof, intent), 'Park loop saved as proof. Ask for a review when you like.');
     take.proof = { quest: q.id, step: q.title, submission: item.id, at: item.at }; await h?.persist?.();
-    J.ui().questDetail(q.id); announce({ ...take });
+    J.ui().questDetail(q.id); announce({ ...take }, true);
     return `Loop offered as proof for “${q.title}” (Make music at the park). Review it from the quest when you like; XP comes after the review, as always.`;
   }
   async function notesOf(take) { try { const raw = await hub.fs.read(take.loop.replace(/\.wav$/, '.json')); return JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw)).notesPlayed || []; } catch { return []; } }
@@ -209,7 +215,7 @@ const ParkJam = (() => {
       return card;
     }));
   }
-  function renderSection() { if (!section?.isConnected || !h) return; const fresh = sectionFor(h); fresh.open = true; section.replaceWith(fresh); section = fresh; }
+  function renderSection() { const cur = document.querySelector('.wb-sound-desk .wb-park'); if (!cur || !h) return; const open = cur.open || !!park?.on, fresh = sectionFor(h); fresh.open = open; cur.replaceWith(fresh); section = fresh; }
   function week() {
     const wk = P.isoWeek(), takes = (h?.state?.park?.takes || []).filter(t => t.week === wk);
     return takes.length ? `This week outside (${wk}):\n` + takes.map(t => `• ${t.place}: ${t.bars} bars at ${Math.round(t.bpm)} BPM, ${t.notes} notes${t.layered ? ' + ambience' : ''}${t.proof ? ` · proof for “${t.proof.step}”` : ''}`).join('\n') : 'No park loops this week yet. /jam park, then Record loop.';
