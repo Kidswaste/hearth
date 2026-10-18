@@ -90,7 +90,7 @@ const LiveSet = (() => {
     try { const r = await hub.soundbank?.list?.({}); for (const x of r?.entries || []) if (x.instrument === want && x.source !== 'bank' && !out.some(o => o.label === x.name)) out.push({ label: x.name, id: x.id, from: 'soundbank', instrument: want }); } catch { /* the Sound bank isn't there: the desk's bank only */ }
     return out;
   }
-  async function addTake(t) { const s = scene(), p = C.addPad(set(), sceneIx, { kind: 'clip', label: `${t.place || 'Park'} ${t.bars} bars`, loop: true, bars: t.bars, source: { type: 'take', file: t.loop, bpm: t.bpm, sketch: t.sketch, place: t.place } }); if (!C.clips(s).some(x => x !== p)) { /* the first take sets the song's tempo */ s.bpm = t.bpm; s.beats = t.beats || 4; } await prepare(p, s); if (armed) await load(p); await save(); draw(); return p; }
+  async function addTake(t) { const s = scene(), p = C.addPad(set(), sceneIx, { kind: 'clip', label: `${t.place || 'Park'} ${t.bars} bar${t.bars === 1 ? '' : 's'}`, loop: true, bars: t.bars, source: { type: 'take', file: t.loop, bpm: t.bpm, sketch: t.sketch, place: t.place } }); if (!C.clips(s).some(x => x !== p)) { /* the first take sets the song's tempo */ s.bpm = t.bpm; s.beats = t.beats || 4; } await prepare(p, s); if (armed) await load(p); await save(); draw(); return p; }
   async function addSong() {
     const m = await songMix(); let s = scene();
     if (s.pads.length) { s = C.addScene(set(), { name: m.song.title }); sceneIx = set().scenes.length - 1; }
@@ -208,14 +208,14 @@ const LiveSet = (() => {
     await desk(); const host = document.querySelector('.wb-sound-desk'); if (!host) throw Error('Open Creative Playground → Serum 2 / Vital first.');
     if (view?.isConnected) { view.focus({ preventScroll: true }); return said || 'Live set open.'; }
     set(); home = host; view = h.e('section', null, 'lv-view'); view.tabIndex = -1; view.setAttribute('role', 'region'); view.setAttribute('aria-label', 'Live set');
-    host.append(view); window.addEventListener('keydown', onKey, true); draw(); view.focus({ preventScroll: true }); view.scrollIntoView({ block: 'start' });
+    host.append(view); document.documentElement.classList.add('liveset-open'); window.addEventListener('keydown', onKey, true); draw(); view.focus({ preventScroll: true }); view.scrollIntoView({ block: 'start' });
     const s = set(), n = s.scenes.reduce((k, x) => k + x.pads.length, 0);
     return say(n ? `“${s.name}”: ${s.scenes.length} song${s.scenes.length === 1 ? '' : 's'}, ${n} pads. Press a pad or a key to start (1–0 clips, Q–P presets).` : 'An empty set: ✎ Edit adds park takes, your arranged song and presets.');
   }
   function close() {
     if (!view) return; const v = view;
     if (running) endRun().catch(() => {}); if (stage) setStage(false);
-    stopPoll(); cursorAnim?.cancel(); cursorAnim = null; cursorKey = ''; window.removeEventListener('keydown', onKey, true);
+    stopPoll(); cursorAnim?.cancel(); cursorAnim = null; cursorKey = ''; window.removeEventListener('keydown', onKey, true); document.documentElement.classList.remove('liveset-open');
     if (armed && A().current()) req('set-close').catch(() => {}); armed = false; status = null; view = null; v.remove(); mode = 'play';
   }
   function pause() { close(); } // the desk is leaving (ParkJam.pause): live audio stops with it, a run in progress is kept
@@ -298,7 +298,7 @@ const LiveSet = (() => {
     };
     const shelf = (title, cls) => { const w = e('div', null, `lv-shelf ${cls}`), list = e('div', null, 'lv-chips'); list.append(e('span', 'Loading…', 'lv-dim')); w.append(e('strong', title), list); return [w, list]; };
     const [tw, tl] = shelf('Park takes', 'lv-takes'), [sw, sl] = shelf('Your arranged song', 'lv-songs'), [pw, pl] = shelf(`${s.instrument} presets`, 'lv-presetlib');
-    takes().then(list => { lib.take = list.slice(0, 40); tl.replaceChildren(...(lib.take.length ? lib.take.map((t, i) => chip('take', i, `${t.place || 'Park'} · ${t.bars} bars · ${Math.round(t.bpm)} BPM`, `“${t.sketch}” · ${String(t.at || '').slice(0, 10)}`)) : [e('span', 'No park takes yet: Park jam → Record loop.', 'lv-dim')])); });
+    takes().then(list => { lib.take = list.slice(0, 40); tl.replaceChildren(...(lib.take.length ? lib.take.map((t, i) => chip('take', i, `${t.place || 'Park'} · ${t.bars} bar${t.bars === 1 ? '' : 's'} · ${Math.round(t.bpm)} BPM`, `“${t.sketch}” · ${String(t.at || '').slice(0, 10)}`)) : [e('span', 'No park takes yet: Park jam → Record loop.', 'lv-dim')])); });
     const raw = h.state.song, song = raw?.v === 1 && LoopSongCore.schedule(LoopSongCore.validate(raw)).length ? LoopSongCore.validate(raw) : null; lib.song = song ? [song] : [];
     sl.replaceChildren(song ? chip('song', 0, `${song.title} · ${LoopSongCore.bars(song)} bars`, 'The arrangement from Park jam → Arrange, mixed down as one pad') : e('span', 'Nothing arranged yet: Park jam → Arrange.', 'lv-dim'));
     presetList().then(list => { lib.preset = list; pl.replaceChildren(...(list.length ? list.map((x, i) => chip('preset', i, x.label, x.from === 'soundbank' ? 'From the Sound bank' : 'From the desk’s bank')) : [e('span', `No ${s.instrument} presets yet: Keep a patch → Save bank preset.`, 'lv-dim')])); });

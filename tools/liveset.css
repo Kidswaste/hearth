@@ -66,3 +66,5 @@ html.liveset-stage .lv-bar { font-size: 18px; }
 .lv-view .lv-chip:hover { border-color: #ffbe5988; }
 .lv-plus { color: #ffbe59; font-weight: 700; }
 .wb-shell .lv-view .lv-build, .lv-view .lv-build { align-self: flex-start; padding: 14px 18px; font-size: 14px; }
+/* the ✦ Preset window floats over the desk: it steps aside while the Live set is open (never over the pads) */
+html.liveset-open .ph-win { display: none !important; }

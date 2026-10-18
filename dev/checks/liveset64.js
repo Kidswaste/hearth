@@ -47,7 +47,7 @@ ok(view.getAttribute('role') === 'region' && !document.querySelector('dialog[ope
 // 2. build by clicking and dragging
 await click('.lv-view button', /^✎ Build this song/);
 const chips = async kind => until(() => { const c = [...document.querySelectorAll(`.lv-view .lv-chip[data-kind="${kind}"]`)]; return c.length && c; }, 8000, kind + ' chips');
-let takeChips = await chips('take'); ok(takeChips.length === 2 && /Belleville · 1 bars · 120 BPM/.test(takeChips[0].textContent), 'park takes listed as chips: ' + takeChips.map(c => c.textContent).join(' | '));
+let takeChips = await chips('take'); ok(takeChips.length === 2 && /Belleville · 1 bar · 120 BPM/.test(takeChips[0].textContent), 'park takes listed as chips: ' + takeChips.map(c => c.textContent).join(' | '));
 takeChips[0].click(); await until(() => LiveSet.set().scenes[0].pads.length === 1, 8000, 'the first take added');
 const set = () => LiveSet.set(), sc0 = () => set().scenes[0];
 ok(sc0().bpm === 120 && sc0().pads[0].file === t120.loop, 'clicking ＋ adds the take as pad 1; the song takes its tempo (120 BPM), no copy needed');
@@ -118,4 +118,6 @@ document.querySelector('.lv-view .lv-close').click(); await wait(400); const n =
 ok(calls.length === n && !LiveSet._test.view() && !LiveSet._test.polling() && !LiveSet._test.armed(), 'closed: no status polling, no keys listener, the host set closed');
 // for the screenshot: the pads again
 activate('tool:creative'); await click('.wb-sound-desk button', /^🎤 Live set$/); await until(() => document.querySelectorAll('.lv-view .lv-pad').length === 4, 8000, 'the pads');
+for (const d of document.querySelectorAll('dialog[open]')) d.close(); // the quest card the proof opened (the owner closes it)
+const r = document.querySelector('.lv-view').getBoundingClientRect(); out.view = { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), dialogs: document.querySelectorAll('dialog[open]').length, scroll: document.querySelector('.lv-view').closest('[class*=wb]')?.scrollTop };
 return JSON.stringify(out, null, 1);
