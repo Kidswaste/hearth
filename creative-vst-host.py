@@ -35,6 +35,10 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('offline', Path(__file__).with_name('creative-vst-offline.py'))
 offline = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(offline)
+# (round 64, liveset64) the Live set's transport / clips / preset twin / run recorder (docs/upgrades/liveset64.md)
+spec = importlib.util.spec_from_file_location('liveset', Path(__file__).with_name('creative-vst-liveset.py'))
+liveset = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(liveset)
 
 BUFFERS = (64, 128, 256, 512, 1024)  # (round 61) 64–512 for live play; 1024 kept from Codex's first version
 AHEAD_MS = 5.0  # (round 61) audio rendered ahead of the device: enough for a Python thread's wake-up, small to feel
@@ -226,6 +230,7 @@ class Engine:
         self.recent_underruns = []
         self.take = None  # (round 62, parkjam62) the loop being recorded (record / capture / record-take)
         self.take_note = ''
+        self.liveset = liveset.LiveSet(self)  # (round 64, liveset64) idle until Hearth opens a set ('set-open')
 
     def from_controller(self, message):
         # Notes from the controller never touch active_notes: the stale-note guard is for Hearth's own keys only.
@@ -384,7 +389,8 @@ class Engine:
                     self.active_notes.clear()
                 with self.lock:
                     began = time.perf_counter()
-                    block = self.plugin(messages, duration=self.frames / self.rate, sample_rate=self.rate,
+                    # (round 64, liveset64) with a set open, a preset switch is carried out at its exact sample here
+                    block = self.liveset.render(messages) if self.liveset.active else self.plugin(messages, duration=self.frames / self.rate, sample_rate=self.rate,
                                         num_channels=2, buffer_size=self.frames, reset=False)
                     self.process_ms = (time.perf_counter() - began) * 1000
                     self.max_process_ms = max(self.max_process_ms, self.process_ms)
@@ -392,6 +398,8 @@ class Engine:
                     raise ValueError('Plugin returned an invalid live audio block.')
                 if self.take is not None:
                     self.capture(block, messages)  # (round 62, parkjam62) the loop recorder keeps this block
+                if self.liveset.active:
+                    block = self.liveset.mix(block)  # (round 64, liveset64) clips, pad knobs, panic fade, the run recorder
                 self.position += self.frames
                 self.load_avg = self.load_avg * .9 + .1 * self.process_ms / (self.frames / self.rate * 1000)
                 self.peak = float(np.max(np.abs(block)))
@@ -535,6 +543,7 @@ class Engine:
                 self.take, self.take_note = None, 'Live audio stopped before the loop was finished; nothing was kept.'
             self.sequence, self.seq_release = None, False
             self.seq_held.clear()
+            self.liveset.on_stop()  # (round 64, liveset64) clips stop; a run being recorded stays open
             self.setup = None
             if self.plugin and self.path:
                 with self.lock:
@@ -700,6 +709,8 @@ class Engine:
             return self.record_take(job)
         if not self.plugin or self.path != job.get('plugin'):
             raise ValueError('Load the selected instrument first.')
+        if action in liveset.ACTIONS:  # (round 64, liveset64)
+            return self.liveset.command(action, job)
         if action in ('live-start', 'open'):
             return self.start(job)
         if action == 'midi':
@@ -761,7 +772,7 @@ class Engine:
         raise ValueError('Unknown live host action.')
 
 
-STREAMED = ('midi', 'patch', 'volume', 'panic', 'sequence')  # (round 61) fire-and-forget on the stream connection
+STREAMED = ('midi', 'patch', 'volume', 'panic', 'sequence') + liveset.STREAMED  # (round 61) fire-and-forget on the stream connection · (round 64, liveset64) pad presses
 
 
 def serve(config, response):
@@ -847,7 +858,7 @@ def serve(config, response):
                         result = {'name': identity(job['plugin']), 'loadedMs': engine.loaded_ms}
                         if job.get('live'):
                             result.update(engine.command({**job, 'action': 'live-start'}))
-                    elif job['action'] in ('inspect', 'snapshot', 'render'):
+                    elif job['action'] in ('inspect', 'snapshot', 'render', 'preset-preload'):  # (round 64, liveset64) the twin loads on this main thread
                         if engine.editor_requested:
                             raise ValueError('Close the native editor before capturing or exporting a patch.')
                         result = on_main('command', job)
