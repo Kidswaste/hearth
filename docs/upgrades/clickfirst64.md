@@ -32,10 +32,10 @@ Screenshots are taken by `dev/checks/clickfirst64.js` on a fresh profile (in the
 | Sound bank (soundbank63) | Sound desk › **Sound bank** (top row; was only Keep a patch › Sound bank…) | `clickfirst64-soundbank.png` |
 | ✦ Preset window (presethover61) | Floats over the Sound desk (as before; "–" folds it to a ✦ Preset pill) | `clickfirst64-desk.png` |
 | Live device picker (vstlive61) | Sound desk › Audio output / Buffer / MIDI in (as before) | `clickfirst64-desk.png` |
-| Playtest log (playnotes62) | ▶ Play right-click › ✎ Playtest log (now always there) · Lab toolbar ⋯ › **▶ Playtest** › ✎ Playtest log | `clickfirst64-labmenu.png`, `clickfirst64-playlog.png` |
+| Playtest log (playnotes62) | ▶ Play right-click › ✎ Playtest log (now always there) · Lab toolbar ⋯ › **Capture & playtest** › ✎ Playtest log | `clickfirst64-labmenu.png`, `clickfirst64-playlog.png` |
 | A note while playing (playnotes62) | In the game: F › the chip's **✎ Note (F8)** | `clickfirst64-fchip.png` |
-| Record the hitch map (hitchmap63) | ▶ Play right-click · Lab ⋯ › ▶ Playtest › ● Record the hitch map · in the game: F › **● Record / ■ Stop hitch map** | `clickfirst64-playmenu.png`, `clickfirst64-fchip.png` |
-| The hitch map (hitchmap63) | ▶ Play right-click › ▦ Hitch map (now always there) · Lab ⋯ › ▶ Playtest › ▦ Hitch map | `clickfirst64-hitchmap.png` |
+| Record the hitch map (hitchmap63) | ▶ Play right-click · Lab ⋯ › Capture & playtest › ● Record the hitch map · in the game: F › **● Record / ■ Stop hitch map** | `clickfirst64-playmenu.png`, `clickfirst64-fchip.png` |
+| The hitch map (hitchmap63) | ▶ Play right-click › ▦ Hitch map (now always there) · Lab ⋯ › Capture & playtest › ▦ Hitch map | `clickfirst64-hitchmap.png` |
 
 ## What shipped
 
@@ -45,7 +45,8 @@ Screenshots are taken by `dev/checks/clickfirst64.js` on a fresh profile (in the
 2. **Week in review ›** as the part's own link.
 3. **Make a walk**: one click makes the default 2-hour walk and opens its dialog on the Paris map.
 4. **⋯ More** (in words) now lists every quest feature first: Plan my week…, Week in review…, Make a walk…,
-   My rewards…, Shows this week…, Shows I went to…, 🌳 Park mode…, Arrange park loops…, then the tracker's options.
+   My month in Paris… (parisjournal64's), My rewards…, Shows this week…, Shows I went to…, 🌳 Park mode…, Arrange park
+   loops…, then the tracker's options.
 5. The quest card gets the buttons that fit the quest: a show night → **Get ready** / **How was it?**; Make music at the
    park → **🌳 Park mode** / **Arrange loops**; Finish a track → **Arrange loops**; a walk → **See the walk**.
 6. Rewards: **All rewards ›** opens Studio › Rewards; with no reward yet, **Pick one** opens the shelf where each kind
@@ -62,7 +63,8 @@ Screenshots are taken by `dev/checks/clickfirst64.js` on a fresh profile (in the
 10. **Sound bank** and **Arrange loops** in the desk's top row, beside 🌳 Park mode.
 
 **▶ Play and the Lab**
-11. Lab toolbar ⋯ › **▶ Playtest** › ✎ Playtest log · ● Record the hitch map (ticked when on) · ▦ Hitch map.
+11. Lab toolbar ⋯ › **Capture & playtest** (was Capture) ends with ▶ Playtest: ✎ Playtest log · ● Record the hitch map
+    (ticked when on) · ▦ Hitch map. (Inside the existing row, so the menu keeps its 11 top rows.)
 12. ▶ Play's right-click always has ✎ Playtest log and ▦ Hitch map; before any game they open on the Lab scene open now,
     whose empty log / map says what to do (was a "No game yet" toast).
 13. ▶ Play's tooltip mentions its right-click.
@@ -79,7 +81,7 @@ Screenshots are taken by `dev/checks/clickfirst64.js` on a fresh profile (in the
 ## How it works
 - `clickfirst.js` + `clickfirst.css` (new, in the `questhud` lazy group): the quest menu (`questItems`), the panel's This
   week rows (`weekRows`), the card buttons (`cardActions`), the Studio's button (`studioButton`) and the Lab row
-  (`labRow`). Every action calls the feature's own function (WeekQuest.open, QuestWalk.start, ShowSync.listDialog,
+  (`labRows`). Every action calls the feature's own function (WeekQuest.open, QuestWalk.start, ShowSync.listDialog,
   ShowPrep.openCard, ParkJam.on, LoopSong.command, SoundBank.open, PlayNotes.open, HitchMap.set / open), never a
   command. No timers, no listeners of its own.
 - The F chip: `game-preload.js` adds the two words under the chip (a flex column now holds the chip, the words, the look
@@ -92,9 +94,17 @@ Screenshots are taken by `dev/checks/clickfirst64.js` on a fresh profile (in the
   Studio → My week ▾ → the ✦ chip → the panel → Plan your week (Accept all) → Week in review › → Make a walk → All
   rewards › → More › Shows this week… (Load this week's shows, from the fixtures) → Shows I went to… → the plan's show
   chip → Get ready → the Sound desk's Sound bank / Arrange loops / ✦ Preset / Audio output → the park quest's 🌳 Park
-  mode → the Lab's ⋯ › ▶ Playtest (log, record, map) → ▶ Play's right-click → ▶ Play → F → the chip's ✎ Note and
+  mode → the Lab's ⋯ › Capture & playtest (log, record, map) → ▶ Play's right-click → ▶ Play → F → the chip's ✎ Note and
   ■ Stop hitch map.
-- Results: see the final report of this round (also listed in the lead's notes).
+- Results (under `flock /tmp/hearth-run.lock`, ≤ 5 a hold, `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package` for
+  ▶ Play), after merging round 64's branch and origin/main: clickfirst64 (45 steps, 0 commands run), questhud61,
+  weekquest62, rewards63, parkjam62, loopsong63, soundbank63, playnotes62, hitchmap63, questwalk63, showprep62, gamemode,
+  menucalm, lazy, playbudget (passed on its second run; the first missed only a timing figure under load) and
+  unit:boot-test, unit:datasafe-scan, unit:winmac-test, unit:commandonly-scan, unit:questhud-test, unit:weekquest-test,
+  unit:rewards-test, unit:playnotes-test, unit:hitchmap-test all pass.
+- Not from this stream: appcalm counts 13 rail controls on the empty start (budget 12) — the same rail as before these
+  changes (the ✦ chip is hidden on a fresh profile); unit:errorcalm-scan lists the same 7 earlier lines in Codex's
+  tools/quest-journal.js / tools/outing-desk.js.
 
 ## Changes outside my files
 - `questhud.js` (questhud61): the This week rows, the card buttons and More's items come from ClickFirst; "⋯ More" in
@@ -102,7 +112,7 @@ Screenshots are taken by `dev/checks/clickfirst64.js` on a fresh profile (in the
   the empty line. `tools/quest-walk.js` (questwalk63): `start()`. `showsync.js` (showsync61): `listDialog` exported.
   `showprep.js` (showprep62): `openCard(which, key)`. `tools/parkjam.js` (parkjam62): two buttons in the row.
   `playnotes.js` / `hitchmap.js` (playnotes62 / hitchmap63): the Lab scene when no game yet, the menu rows always there,
-  the chip's hitch click. `tools/three.js` (lab): one row in the toolbar's ⋯, the ▶ Play tooltip. `game-preload.js`,
+  the chip's hitch click. `tools/three.js` (lab): the toolbar ⋯'s Capture row is "Capture & playtest" with three more rows, the ▶ Play tooltip. `game-preload.js`,
   `gamemodemain.js`, `preload.js` (`hub.game.onChip`): the F chip's words. `lazy-data.js`: clickfirst in `questhud`.
   `dev/run-checks.js`: the `clickfirst64` group. `dev/commandonly-ways.js`: the click paths.
 - `tools/quest-journal.js` (Codex): one line, see For Codex.
@@ -116,7 +126,7 @@ Screenshots are taken by `dev/checks/clickfirst64.js` on a fresh profile (in the
   finish a track → **Arrange loops**; a walk → **See the walk**.
 - Sidequest Studio has **My week ▾** at the top with the same things.
 - The Sound desk shows **Sound bank** and **Arrange loops** next to 🌳 Park mode.
-- The Lab's ⋯ has **▶ Playtest**: the playtest log, recording the hitch map, and the map.
+- The Lab's ⋯ › **Capture & playtest** has the playtest log, recording the hitch map, and the map.
 - While you play, press F: under the stats you can click **✎ Note** and **● Record hitch map**.
 - The first time, empty views say what to click instead of naming a command.
 
