@@ -39,11 +39,18 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
 
   // ---------- which pins ----------
   // a guide place you haven't touched yet (no visit, no star, no quest): drawn light, hidden when Places is off
+  // (round 65, questperf65) the journal's quest references (campaign ids, their places, walk stops), once per journal version:
+  // untouched() runs for every place on every map render (keep + tone), it scanned every campaign each time
+  const refsSeen = new WeakMap();
+  function refsOf(s) { const v = `${s.updatedAt}|${s.campaigns.length}`, m = refsSeen.get(s); if (m?.v === v) return m; const r = { v, cids: new Set(), places: new Set() };
+    for (const c of s.campaigns) { r.cids.add(c.id); if (c.parisPlace) r.places.add(c.parisPlace); if (c.mapPlace) r.places.add(c.mapPlace); for (const x of c.walk?.stops || []) r.places.add(typeof x === 'string' ? x : x?.id); }
+    refsSeen.set(s, r); return r; }
+  let guideIds = null;
   function untouched(s, p) {
-    const G = P(); if (!G || !s || !String(p.id).startsWith('pp-') || !G.guide.some((g) => g.id === p.id)) return false;
+    const G = P(); if (!G || !s || !String(p.id).startsWith('pp-') || !(guideIds ||= new Set(G.guide.map((g) => g.id))).has(p.id)) return false;
     if (p.visitedAt || p.favorite) return false;
     const g=G.byId(p.id);if(p.name!==g.name || p.lat!==g.lat || p.lon!==g.lon || p.kind!==g.kind || p.quest!==g.why.slice(0,500))return false;
-    return !s.campaigns.some((c) => c.id === G.campaignId(p.id) || c.parisPlace === p.id || c.mapPlace === p.id || c.walk?.stops?.some(x=>(typeof x==='string'?x:x.id)===p.id));
+    const r = refsOf(s); return !r.cids.has(G.campaignId(p.id)) && !r.places.has(p.id);
   }
   // mapPlaces() filter (quest-journal.js): the selected pin always stays
   function keep(p, s = stateOf(), filters={}) {

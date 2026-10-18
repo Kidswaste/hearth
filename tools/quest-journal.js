@@ -2,7 +2,7 @@ const QuestJournal = (() => {
   const C = QuestCore, KEY = 'quest-journal';
   const E = (tag, props = {}, ...children) => { const node = el(tag, props, ...children); for (const [key, value] of Object.entries(props.style || {})) if (key.startsWith('--')) node.style.setProperty(key, value); return node; };
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
-  let atlasView = null;
+  let atlasView = null, worldKeep = null; // worldKeep: (round 65, questperf65) the mounted map page's { layout, map, panel }, kept across re-renders of the map page
   // (round 61, showsync61) Map layers: other modules add pins and one head icon to the Paris map without editing it
   // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit), lines() } (lines: round 63, questwalk63: [{ id, color, points: [{ lat, lon, label? }] }]). (round 64, parisjournal64: below(kit) → a node shown under the map; chip(kit) → a labelled toggle in the filter row.)
   const mapLayers = [];
@@ -181,8 +181,16 @@ const QuestJournal = (() => {
     const d = E('dialog', { class: 'qj-dialog', attrs: { 'aria-label': title } });
     const body = E('div', { class: 'qj-dialog-body' });
     d.append(E('header', { class: 'qj-dialog-head' }, E('div', {}, label(subtitle || 'QUEST JOURNAL'), E('h2', { text: title })), button('×', () => d.close(), 'qj-close')), body);
-    root.append(d); d.addEventListener('close', () => { hideHint();d.remove(); if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); });
-    build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); d.showModal(); return d;
+    // (round 65, questperf65) a modal dialog makes the whole page inert, which restyles every element drawn behind it,
+    // twice (open and close): ≈ 1,150 elements on the Paris map, 20–35 ms of style forced inside the click here, 71–107 ms
+    // on the owner's PC. Under the near-opaque backdrop the Studio's own page isn't drawn while a dialog is up
+    // (.qj-under-dialog: content-visibility hidden, its size kept, quest-journal.css), so opening restyles only the
+    // dialog; on closing the page comes back in the next frame and focus returns after it (no forced restyle in the click).
+    root.append(d); d.addEventListener('close', () => { hideHint();d.remove();
+      const last = !root.querySelector('dialog.qj-dialog[open]'); if (last) root.classList.remove('qj-under-dialog');
+      const back = () => { if (root.querySelector('dialog.qj-dialog[open]')) return; if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); };
+      if (last) requestAnimationFrame(() => setTimeout(back)); else if (opener?.isConnected) opener.focus(); });
+    build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); root.classList.add('qj-under-dialog'); d.showModal(); return d;
   }
   function mutate(fn, message = 'Progress saved.', { paint = true } = {}) {
     const task = saving.catch(() => {}).then(async () => {
@@ -240,10 +248,14 @@ const QuestJournal = (() => {
     const motion = root.querySelector('.qj-motion');
     if (motion) { actionLabel(motion,state.motion === false ? 'Motion off' : 'Motion on'); motion.setAttribute('aria-pressed', String(state.motion !== false)); }
     syncMotion();
-    atlasView?.destroy(); atlasView = null;
+    // (round 65, questperf65) the map page re-rendered while on the map page (a save, a layer chip, a show list arriving)
+    // keeps its mounted map: everything around it is rebuilt, its pins are diffed (QuestAtlas update) instead of the
+    // whole map torn down and rebuilt, which cost a full page layout on every click (87–131 ms on the owner's PC).
+    const keepWorld = page === 'world' && atlasView && worldKeep?.layout.parentNode === content ? worldKeep : null; worldKeep = null;
+    if (keepWorld) { for (const n of [...content.childNodes]) if (n !== keepWorld.layout) n.remove(); }
+    else { atlasView?.destroy(); atlasView = null; content.replaceChildren(); }
     content.classList.toggle('qj-dashboard', page === 'adventure');
-    content.replaceChildren();
-    if (page === 'adventure') adventure(); else if (page === 'life') lifeBoard(); else if (page === 'world') worldMap(); else if (page === 'deck') mixtape(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
+    if (page === 'adventure') adventure(); else if (page === 'life') lifeBoard(); else if (page === 'world') worldMap(keepWorld); else if (page === 'deck') mixtape(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
     if (focused && !root.querySelector('dialog[open]')) [...root.querySelectorAll('[data-focus]')].find(b => b.dataset.focus === focused)?.focus({ preventScroll: true });
     glaze(root); tick();
   }
@@ -458,7 +470,7 @@ const QuestJournal = (() => {
   function mapPick(id, center=false) {
     const place=state.atlas.places.find(p=>p.id===id);if(!place)return Promise.reject(Error('Place not found.'));
     previewPlace=id;paintPlace(id);if(center)atlasView?.focus(place);
-    root.querySelector('.qj-atlas [data-place="'+id+'"]')?.focus({preventScroll:true});
+    const pinButton=root.querySelector('.qj-atlas [data-place="'+id+'"]');if(pinButton&&pinButton!==document.activeElement)pinButton.focus({preventScroll:true}); // (round 65, questperf65) a clicked pin already has focus: no second focus (it forced a style pass)
     return mutate(s=>{s.atlas.selected=id;},'',{paint:false}).then(()=>{if(previewPlace===id)previewPlace=null;},err=>{if(previewPlace===id){previewPlace=null;paintPlace(state.atlas.selected);}throw err;});
   }
   // (round 64, mapfirst64) QuestMapFirst.keep: the map's layer chips (Places off hides untouched guide pins, Visited off hides visited ones).
@@ -471,7 +483,8 @@ const QuestJournal = (() => {
       pin:async event=>{await mutate(s=>{const existing=s.atlas.places.find(p=>Math.abs(p.lat-event.lat)<.0002&&Math.abs(p.lon-event.lon)<.0002)||window.QuestParis?.spotPin?.(s,{name:event.venue||event.title,lat:event.lat,lon:event.lon});/* (round 64, parisdedupe64) the same venue already on the map or in the Paris guide (≤ 120 m, same name word) → that pin, not a second one */if(existing)s.atlas.selected=existing.id;else C.savePlace(s,{name:event.venue||event.title,lat:event.lat,lon:event.lon,kind:['music','visual','game'].includes(event.kind)?event.kind:'reset',quest:'Find one detail here to bring into your next creation.'});},'Venue pinned.');mapFilter={kind:'all',saved:false,query:''};navigate('world');}
     },options);
   }
-  function worldMap() {
+  function worldMap(keep = null) {
+    const before = n => { if (keep) content.insertBefore(n, keep.layout); else content.append(n); }; // (round 65, questperf65) above a kept map
     OutingDesk.ensureMap().catch(err=>notice(err.message));
     window.QuestMapFirst?.open(); // (round 64, mapfirst64) the guide's places + this week's shows come by default when the map opens (tools/quest-mapfirst.js)
     const kind=mapFilter.kind,visible=mapPlaces();
@@ -482,8 +495,8 @@ const QuestJournal = (() => {
     for(const layer of mapLayers){try{const icon=layer.icon?.(layerKit);if(icon)head.append(icon);if(window.QuestMapFirst?.off(layer.id))continue;/* (round 64, mapfirst64) a layer chip that's off */layerPins.push(...(layer.pins?.(mapFilter)||[]));layerLines.push(...(layer.lines?.()||[]));}catch(err){console.warn('[quest map layer]',layer.id,err);}}
     const extras=root.querySelector('.qj-command-map-extras');
     if(extras){extras.replaceChildren(...head.children);extras.querySelectorAll('button').forEach(b=>{const text=b.getAttribute('aria-label')||b.title;if(text&&!b.querySelector('.qj-command-label'))b.append(E('span',{class:'qj-command-label',text}));});}
-    content.append(sectionHeading('FH / FIELD KIT','Paris, at your pace.'));
-    const todayEntry=window.QuestParisUI?.todayEntry();if(todayEntry)content.append(todayEntry);
+    before(sectionHeading('FH / FIELD KIT','Paris, at your pace.'));
+    const todayEntry=window.QuestParisUI?.todayEntry();if(todayEntry)before(todayEntry);
     const filters=E('div',{class:'qj-map-filters qj-command-map-filters',attrs:{'aria-label':'Filter map places'}});
     const category=E('select',{attrs:{'aria-label':'Place category'},dataset:{focus:'map-category'}},...[{id:'all',name:'All places'},...C.mapKinds].map(k=>E('option',{value:k.id,text:k.name})));
     category.value=kind;category.addEventListener('change',()=>{mapFilter.kind=category.value;navigate('world');centerMapSelection();});
@@ -496,8 +509,8 @@ const QuestJournal = (() => {
     filters.append(search,surprise);
     for(const layer of mapLayers){try{if(window.QuestMapFirst?.ownsChip(layer.id))continue;/* (round 64, mapfirst64) My Paris is the map strip's Visited chip */const c=layer.chip?.(layerKit);if(c)filters.append(c);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's chip(kit) → one labelled toggle in this row (My Paris)
     if(mapFilter.guide&&window.QuestParisUI)filters.append(QuestParisUI.chip(mapFilter.guide,()=>{delete mapFilter.guide;render();centerMapSelection();})); // parisquests61
-    const mapPanel=root.querySelector('[data-group="map"]');mapPanel?.querySelector('.qj-command-map-filters')?.remove();if(mapPanel)mapPanel.append(filters);else content.append(filters);
-    const layout=E('div',{class:'qj-world-layout qj-field-layout'}),map=E('section'),panel=E('aside',{class:'qj-place-panel qj-field-panel'});
+    const mapPanel=root.querySelector('[data-group="map"]');mapPanel?.querySelector('.qj-command-map-filters')?.remove();if(mapPanel)mapPanel.append(filters);else before(filters);
+    const layout=keep?.layout||E('div',{class:'qj-world-layout qj-field-layout'}),map=keep?.map||E('section'),panel=keep?.panel||E('aside',{class:'qj-place-panel qj-field-panel'});if(keep)panel.replaceChildren(); // (round 65, questperf65) a kept map page: only its side panel is redrawn
     function placePanel(selected,panel){
     if(selected){
       const k=mapKind(selected),emblem=E('div',{class:'qj-field-emblem',style:{'--icon-color':k.color}},QuestAtlas.icon(k.id));
@@ -517,8 +530,10 @@ const QuestJournal = (() => {
   }
     placePanel(selected,panel);
     paintActivePlace=id=>{const p=mapPlaces().find(p=>p.id===id);if(!p||!panel.isConnected)return;panel.replaceChildren();placePanel(p,panel);glaze(panel);};
-    layout.append(map,panel);content.append(layout);
-    atlasView=QuestAtlas.mount(map,{places:[...visible.map(p=>({...p,kind:window.QuestParis?.of(p)?.tags.includes('food')?'food':C.placeKind(p),color:window.QuestParis?.of(p)?.tags.includes('food')?'#ffb759':mapKind(p).color,tone:window.QuestMapFirst?.tone(p,state)})),...layerPins.filter(p=>!p.show || !visible.some(v=>window.QuestParis?.of(v) && typeof ShowSyncCore!=='undefined' && QuestParis.metres(p,v)<250 && ShowSyncCore.venueKey(p.name)===ShowSyncCore.venueKey(QuestParis.of(v).name)))],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines});
+    if(!keep){layout.append(map,panel);content.append(layout);}
+    const atlasOptions={places:[...visible.map(p=>({...p,kind:window.QuestParis?.of(p)?.tags.includes('food')?'food':C.placeKind(p),color:window.QuestParis?.of(p)?.tags.includes('food')?'#ffb759':mapKind(p).color,tone:window.QuestMapFirst?.tone(p,state)})),...layerPins.filter(p=>!p.show || !visible.some(v=>window.QuestParis?.of(v) && typeof ShowSyncCore!=='undefined' && QuestParis.metres(p,v)<250 && ShowSyncCore.venueKey(p.name)===ShowSyncCore.venueKey(QuestParis.of(v).name)))],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines};
+    if(keep){atlasView.update(atlasOptions);map.querySelectorAll(':scope>.qmf-strip,:scope>.qmf-status').forEach(n=>n.remove());}else atlasView=QuestAtlas.mount(map,atlasOptions); // (round 65, questperf65) same map, pins diffed
+    worldKeep={layout,map,panel};
     window.QuestMapFirst?.overlay(map,layerKit); // (round 64, mapfirst64) one strip on the map: Places · Shows · My walks · Visited · Plan a walk (+ the shows' status line)
     for(const layer of mapLayers){try{const below=layer.below?.(layerKit);if(below)content.append(below);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's below(kit) → one node under the map (My Paris's timeline strip)
     const stamps=state.atlas.places.filter(p=>p.visitedAt).length;
@@ -1063,7 +1078,7 @@ const QuestJournal = (() => {
     bar.querySelector('.qj-focus-name').textContent = C.find(state, f.quest)?.title || 'Your focus session';
     const control=bar.querySelector('[data-focus="pause-timer"]'),text=!remaining?'Review quest':f.end?'Pause':'Resume';if(control.textContent!==text)actionLabel(control,text);
   }
-  function navigate(to) { root?.querySelectorAll('audio,video').forEach(v => v.pause()); page = to; render(); root?.scrollTo({ top: 0, behavior: 'instant' }); }
+  function navigate(to) { const moved = to !== page; root?.querySelectorAll('audio,video').forEach(v => v.pause()); page = to; render(); if (moved) root?.scrollTo({ top: 0, behavior: 'instant' }); } // (round 65, questperf65) the same page (a filter, the Map tab while on the map) keeps its scroll: no forced layout
   async function exportJournal() { await saving.catch(() => {}); const r = await window.hub.saveFile({ defaultPath: `hearth-quest-journal-${C.day()}.json`, filters: [{ name: 'Quest journal', extensions: ['json'] }], content: JSON.stringify(state, null, 2) }); notice(r ? 'Journal exported, including progress and reward history. Attached files are referenced, not copied.' : 'Export cancelled.'); }
   function importJournal() {
     dialog('Restore a quest journal', (body, d) => {

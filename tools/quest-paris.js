@@ -123,7 +123,9 @@
   const pins = {
     'pp-apple-opera': { id: 'pp-apple-opera', name: 'Apple Opéra', arr: 9, lat: 48.8722, lon: 2.3331, kind: 'reset', tags: [], why: 'Apple Store at 12 rue Halévy, by the Palais Garnier. Métro Opéra or Chaussée d’Antin–La Fayette.', best: 'Weekday morning, after booking a pickup.' }
   };
-  const byId = id => guide.find(p => p.id === id) || pins[id] || null;
+  // (round 65, questperf65) byId runs for every pin on every map render (of / twinOf / untouched): an index, not a scan
+  const guideIndex = new Map(); for (const g of guide) if (!guideIndex.has(g.id)) guideIndex.set(g.id, g);
+  const byId = id => guideIndex.get(id) || (typeof id === 'string' && Object.hasOwn(pins, id) ? pins[id] : null) || null;
   const arrLabel = n => n === 1 ? '1er' : n + 'e';
   const pathOf = kind => ({ music: 'music', visual: 'visual', game: 'game' })[kind] || 'life';
   const PROOF = 'Show the actual sound, photo, sketch or your own specific note. A visit stamp or a plan alone does not finish this step.';
@@ -293,7 +295,10 @@
     }
     return merged;
   }
-  const needsDedupe = s => [...guide, ...Object.values(pins)].some(g => pairOf(s, g));
+  // (round 65, questperf65) asked on every map render: remembered per journal version (the journal replaces its state object
+  // on each save; its updatedAt / pin count / campaign count guard an in-place change)
+  const dedupeSeen = new WeakMap();
+  const needsDedupe = s => { const v = `${s.updatedAt}|${s.atlas.places.length}|${s.campaigns.length}`, m = dedupeSeen.get(s); if (m?.v === v) return m.need; const need = [...guide, ...Object.values(pins)].some(g => pairOf(s, g)); dedupeSeen.set(s, { v, need }); return need; };
   const hasGuide = s => guide.filter(p => p.id.startsWith('pp-')).every(p => pinOf(s, p.id));
   // Add one pin (guide or personal) as an ordinary atlas place. Codex's default pins are reused, never duplicated.
   function ensurePin(s, pid) {
