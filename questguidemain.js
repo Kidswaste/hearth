@@ -163,9 +163,10 @@ function create({ dataDir, localDir = dataDir, documentsDir, now = () => Date.no
       if (p) {
         if (path.extname(p).toLowerCase() !== '.flp') throw new Error('Choose a saved .flp project.');
         const st = await fs.promises.stat(p); if (st.size > FLP.MAX_BYTES) throw new Error('This project exceeds the 64 MB observation limit.');
-        FLP.parse(await fs.promises.readFile(p));
+        const parsed = FLP.parse(await fs.promises.readFile(p));
         if (store.session?.id !== sessionId) throw new Error('The guided quest changed while choosing a project. Choose the file again for this quest.');
-        prefs.flProject = p; prefs.projectQuestId = store.session.questId; projectStamp = ''; projectError = ''; observation.project = null; savePrefs(); await poll();
+        prefs.flProject = p; prefs.projectQuestId = store.session.questId; projectStamp = `${st.size}:${st.mtimeMs}`; projectError = '';
+        observation.project = { ...parsed, savedAt: st.mtimeMs, checkedAt: now() }; savePrefs(); await poll();
       }
     } else if (op === 'forget-project') { prefs.flProject = null; prefs.projectQuestId = null; projectStamp = ''; projectError = ''; observation.project = null; savePrefs();
     } else if (op === 'setup-fl') {

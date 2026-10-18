@@ -2,7 +2,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   let snap = null, manualStep = null;
-  const error = message => { $('error').textContent = message || ''; $('error').hidden = !message; };
+  const error = message => { $('error').textContent = message || ''; $('error').hidden = !message; if (message) $('error').scrollIntoView({ block: 'nearest' }); };
   async function call(op, data = {}) {
     error('');
     try {
@@ -34,9 +34,10 @@
     $('review').textContent = outing && !s.session.reviewQuestId ? 'Open my outing ↗' : 'Show result / review ↗';
     $('back').hidden = !s.completed;
     $('connect').hidden = step?.app !== 'fl' && s.session?.kind !== 'music';
-    $('connect').textContent = s.fl?.connected ? 'FL connected' : 'Connect FL';
+    $('connect').textContent = s.fl?.connected ? 'FL connected' : s.project?.path ? 'Project connected' : 'Connect FL';
     $('setup-path').textContent = s.fl?.folder || '';
-    $('project-path').textContent = s.project?.path ? `${s.project.path} · save after each step` : 'No project connected yet';
+    $('project-path').textContent = s.project?.path ? `Connected · ${s.project.path.split(/[\\/]/).pop()}${s.project.bpm ? ` · ${s.project.bpm} BPM` : ''}. ${s.project.error || (paused ? 'Resume the guide, then save in FL Studio to check the next step.' : 'Press Ctrl+S in FL Studio after each step to check it.')}` : 'No project connected yet';
+    $('project-path').title = s.project?.path || '';
     $('forget-project').hidden = !s.project?.path;
     $('install').textContent = s.fl?.installed ? 'Reinstall FL connection' : 'Install FL connection';
     const obs = $('observation'); obs.dataset.live = String(!!s.fl?.connected && !paused);
@@ -63,7 +64,12 @@
   $('install').onclick = async () => { const value = await call('setup-fl'); if (value) { $('setup-path').textContent = `Installed. Now select Hearth Quest Guide in FL MIDI settings. ${value.fl.folder}`; } };
   $('choose-app').onclick = () => call('choose-fl');
   $('choose-folder').onclick = () => call('choose-fl-folder');
-  $('choose-project').onclick = () => call('choose-project');
+  $('choose-project').onclick = async () => {
+    const button = $('choose-project'); if (button.disabled) return;
+    button.disabled = true; button.textContent = 'Choosing / reading project…';
+    try { const value = await call('choose-project'); if (value?.project?.path) $('project-path').scrollIntoView({ block: 'nearest' }); }
+    finally { button.disabled = false; button.textContent = 'Choose this song’s .flp'; }
+  };
   $('forget-project').onclick = () => call('forget-project');
   $('open-folder').onclick = () => call('open-fl-folder');
   $('cancel-manual').onclick = () => { $('manual-form').hidden = true; manualStep = null; };
