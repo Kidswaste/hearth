@@ -36,7 +36,7 @@ check('broad city catalogue',()=>assert.equal(C.defaultSources()[0].url,'https:/
   check('new sources trigger a refresh on an existing installation',()=>assert.equal(upgrade.snapshot().stale,true));
   const upgraded=await upgrade.refresh();
   check('concerts-to-city migration preserves old shows during host cooldown',()=>{assert.ok(upgraded.shows.some(s=>s.title.includes('Ben UFO')));assert.equal(upgrade._stores['cache.json'].value.sources[C.defaultSources()[0].id].etag,null);assert.equal(upgraded.shows.filter(s=>s.programme).length,3);});
-  // Clean only the two absolute temporary directories just created by this test.
+  // Clean only the absolute temporary directories just created by this test.
   for(const d of [dir,dir2,dir3]){assert.ok(d.startsWith(path.join(os.tmpdir(),'hearth-programme-')));fs.rmSync(d,{recursive:true,force:true});}
   console.log(JSON.stringify({pass:true,checks}));
 })().catch(e=>{console.error(e.stack);process.exitCode=1;});

@@ -20,4 +20,6 @@ On 18 October 2026, a live isolated probe of the three venue sources recovered 2
 
 Focused tests cover current venue markup, explicit/unknown times, Paris DST, overnight dates, source allowlists, ticket attribution, cache restart, 304s, failures, robots refusal, migration and map pins. The isolated Electron flow checks ticket badges, venue-to-night navigation, provenance, a Shotgun ticket button, quest creation and the platform filter. Existing ShowSync and boot/lazy-loading checks remain part of validation.
 
+All checks passed, including the recovery Electron flow on a disposable clean merge with Claude's `b79de770` and the existing `showsync61` end-to-end regression. No changes were made to the live checkout or running app.
+
 Shotgun's [official widget documentation](https://support-pro.shotgun.live/hc/en-us/articles/360018503879-Embed-Shotgun-ticketing-on-your-website-with-the-widget) was reviewed. The accessible venue websites used here publish their own programme pages; this implementation does not claim a general fan catalogue API or partner access.
