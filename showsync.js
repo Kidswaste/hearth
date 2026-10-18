@@ -20,7 +20,7 @@ const ShowSync = (() => {
   async function ensure() { if (!snap) { await load(); redraw(); } if (snap.enabled && snap.stale && !triedStale) { triedStale = true; refresh().catch(() => {}); } return snap; }
   const shows = () => snap?.shows || [];
   const week = () => C.thisWeek(shows());
-  const upcoming = () => shows().filter((s) => !s.cancelled).sort((a, b) => a.start - b.start);
+  const upcoming = () => shows().filter((s) => !s.cancelled&&(s.end||s.start+4*3600e3)>=Date.now()).sort((a, b) => a.start - b.start);
   const venueList = () => C.venues(upcoming());
   // (round 62, showprep62) extensions: another module adds to the show card, the pins, a venue, the list, /shows
   //   extend({ card(kit, show, actions, dialog), pins(pins) → pins, select(id, kit) → handled, venue(kit, venue, body),
@@ -123,24 +123,33 @@ const ShowSync = (() => {
     }, 'SHOTGUN / DICE');
   }
   function listDialog(kit) {
-    kit.dialog('Shows this week', (body) => {
+    kit.dialog('Shows this week', (body,d) => {
+      let error='',range=7;
       const draw = () => {
         body.querySelector('.ss-list')?.remove();
         const box = kit.E('div', { class: 'ss-list' });
+        if(error)box.append(kit.p(error));
         if (!snap?.enabled) {
           box.append(kit.p('Your Paris week from Shotgun and DICE: venues on the map with their logos, a quest in one click. Hearth reads their public pages from this computer, at most once a day.'),
             kit.button('Load this week’s shows', async () => { box.append(kit.p('Reading Shotgun and DICE…')); await refresh(true); draw(); }, 'qj-primary'));
         } else {
           if (snap.status) box.append(kit.E('p', { class: 'qj-copy ss-status', text: snap.status }));
-          const list = week(); let day = '';
+          const rangeButton=kit.button(range===7?'Next 7 days · show 21':'Next 21 days · show 7',()=>{range=range===7?21:7;draw();},'qj-quiet');box.append(rangeButton);
+          const list = range===7?week():upcoming(); let day = '';
           if (!list.length) box.append(kit.p(refreshing ? 'Reading Shotgun and DICE…' : 'No shows found for the next seven days. Follow the venues you like below.'));
           for (const s of list) { const d = C.dayWord(s.start); if (d !== day) { day = d; box.append(kit.label(d.replace(/^on /, '').toUpperCase())); } box.append(row(kit, s, () => showDetail(kit, s))); }
           const acts = kit.E('div', { class: 'qj-actions' }, kit.button('What Hearth reads', () => followDialog(kit), 'qj-quiet'), kit.button(refreshing ? 'Refreshing…' : 'Refresh now', async () => { await refresh(true); draw(); }, 'qj-quiet'));
           each('list', kit, acts); box.append(acts);
         }
+        const links=kit.E('div',{class:'qj-actions ss-source-links'});
+        for(const platform of Object.values(C.PLATFORMS)){
+          const source=snap?.sources?.filter(s=>s.platform===platform.id)||[],bad=source.find(s=>s.problem);
+          const b=kit.button('Open '+platform.name,()=>window.hub.openExternal(platform.city),'qj-quiet');b.dataset.help=bad?'This source could not update. Open its public listings or follow an event link.': 'Browse the original listings, including events not in Hearth’s cache.';links.append(b);
+        }box.append(links);
         body.append(box);
       };
       draw();
+      ensure().then(()=>{if(d.open)draw();}).catch(e=>{error=e.message;if(d.open)draw();});
     }, 'SHOTGUN + DICE / PARIS');
   }
   const layer = {
