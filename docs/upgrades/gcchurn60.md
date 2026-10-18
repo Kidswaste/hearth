@@ -106,6 +106,21 @@ frame anyway); the stats message twice a second; numbers boxed by code this mach
 - An earlier gcchurn60 run read the Lab at 1,136 B: the pace meter's twice-a-second sort of 240 fractional gaps, run
   unoptimised, boxed every value it read; it keeps whole microseconds now (the run after: 670 B).
 
+## Kept as they were (after merging rounds 60–61)
+Three rewrites were taken back because `shadowready`'s warm Lab-scene step ("the chosen size and the one below it made
+and sealed") failed with them 6 runs out of 6 and passed without them every time. Each one does the same thing as
+the original line for line; bisecting found that any of them moved the shadow walk under Getting ready's card onto
+the GPU's slow first frames (1024² read 22–25 ms instead of ≈ 8 ms, so 512² was chosen):
+- the look's `render` wrapper passing `(scene, camera)` with `call` (back to `apply(this, arguments)`);
+- the merged-layer frame queue by count (back to `[id, fn]` pairs and `splice(0)`, ▶ Play of a Lab scene only);
+- the shadow gate's kept signature function (back to a closure per call).
+Together they were ≈ 100 B a frame; the numbers above were measured with them. Afterwards the same step failed on
+main itself (3e73cce) and on this branch with all three taken back: it measures a transient of this software GPU (the
+first warm frames at 1024² read 22–25 ms, later ones ≈ 8 ms) and passes or fails with timing. They stay out for now
+(nothing lost but ≈ 100 B a frame); worth putting back once that step is steadied.
+- `ctxloss` (3 CPU burners) lost WebGL contexts in 2 of 3 runs on this branch after the merge (passed before it); main
+  passed the one run tried. A GPU-process watchdog under load; not reproduced as a code difference.
+
 ## Edits outside the lane
 `dev/run-checks.js` (the `gcchurn60` group; the name in the list that gets `HEARTH_THREE_DIR`). The page scripts changed
 belong to earlier streams (gamestream, gamelook, gameaudio, gameready, playbudget, the Lab preview): each change is local
