@@ -123,12 +123,12 @@ const HitchMap = (() => {
     const st = GM().state();
     return (st.playing && !st.live && st.source) || S.last?.source || GM().last() || null;
   }
-  async function open({ source = null, id = null } = {}) {
+  async function open({ source = null, id = null, map = null } = {}) {
     const s = source || (await gameFor(''));
     if (!s) { toast('No game yet: turn the hitch map on (▶ Play\'s right-click) and play one'); return null; }
     S.view?.close();
-    let m = null; let maps = [];
-    try { const r = await X({ op: 'get', source: s, id }); if (r?.ok) { m = r.map; maps = r.maps || []; } } catch { m = null; }
+    let m = map; let maps = map ? [{ id: map.id, session: map.session, secs: map.secs }] : []; // (a map in hand: shown as it is)
+    if (!m) { try { const r = await X({ op: 'get', source: s, id }); if (r?.ok) { m = r.map; maps = r.maps || []; } } catch { m = null; } }
     const dialog = el('dialog', { class: 'ui-modal hm-map', attrs: { 'aria-label': 'Hitch map' } });
     const body = el('div', { class: 'hm-body' });
     const close = () => { try { dialog.close(); } catch { /* gone */ } };
@@ -137,7 +137,7 @@ const HitchMap = (() => {
     const pick = el('select', { class: 'hm-pick', attrs: { 'aria-label': 'Which session' }, on: { change: () => reload(pick.value).catch(fail) } });
     function paint() {
       pick.replaceChildren(...maps.map((x) => el('option', { value: x.id, text: `${new Date(x.session || x.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${C.clock(x.secs)}`, selected: m && x.id === m.id })));
-      pick.hidden = maps.length < 2;
+      pick.hidden = maps.length < 2; clear.hidden = !m;
       if (!m) { body.replaceChildren(el('div', { class: 'hm-empty', text: isOn() ? `Recording is on: ▶ Play ${s.title || 'the game'} and the map shows here after the session.` : `No hitch map of ${s.title || 'this game'} yet. Turn the recording on (▶ Play's right-click, or /playtest hitchmap on), play, and come back.` })); return; }
       const sub = el('div', { class: 'hm-sub', text: `${C.brief(m)}${m.cost?.perFrame != null ? ` · recording cost ${m.cost.perFrame < 0.001 ? '< 0.001' : m.cost.perFrame.toFixed(3)} ms a frame` : ''}${m.stopped ? ` · stopped at ${C.clock(m.stopped.at)} by ▶ Play's budget` : ''}${m.moved ? '' : ' · the camera / player barely moved: the timeline says more'}` });
       const mapC = drawMap(m, sel);
