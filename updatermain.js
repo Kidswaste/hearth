@@ -1,5 +1,6 @@
-// Updates from the app's own git checkout (the folder Hearth runs from: ~/Library/Application Support/Hearth on a Mac,
-// %USERPROFILE%\agent-hub on Windows): looks at origin/main, lists what's new, pulls it, then reloads the window, or
+// Updates from the app's own git checkout (the folder Hearth runs from, whatever its name: ~/Library/Application
+// Support/Hearth on a Mac, %USERPROFILE%\Hearth from the Windows zip — a shallow checkout of the last 50 versions — or an
+// older %USERPROFILE%\agent-hub): looks at origin/main, lists what's new, pulls it, then reloads the window, or
 // restarts the app when a file the main process loads changed. Used by updater.js (the ⬆ Update button, /update).
 // (round 37, updatesafe) safe on both computers, several times a day:
 //  - hand edits go into a NAMED stash ("hearth-update <date> (abc1234 → def5678): your edits") and come back after;
@@ -50,7 +51,7 @@ function create(opts = {}) {
   let proxy = null; // a proxy that worked this session: -c http.proxy=…
   let busy = false; // an update / fix is running (a lock seen meanwhile is ours)
   const done = (message, extra = {}) => ({ ok: true, retry: true, message, ...extra });
-  const ex = (reason, ctx = {}) => ({ ok: false, ...C.explain(reason, { platform: PLAT, dir: DIR, ...ctx }) });
+  const ex = (reason, ctx = {}) => ({ ok: false, ...C.explain(reason, { platform: PLAT, dir: DIR, git: bin, ...ctx }) });
 
   // Git installed after Hearth started isn't on its PATH yet (Windows), or Homebrew's isn't (a Mac started from the Dock)
   function gitCandidates() {
@@ -123,15 +124,18 @@ function create(opts = {}) {
   }
 
   // fetch main; when the network fails, once more through this computer's own proxy (Electron knows it)
-  async function fetchMain() {
-    let f = await git(['fetch', '--quiet', 'origin', BRANCH], { timeout: 90000 });
+  // (round 60, winfresh60) with the refspec written out: origin/main is updated even in a checkout whose config has no
+  // fetch line (a zip built by `git fetch <url> main`), and a main that was rewritten replaces the old one (+)
+  const REFSPEC = `+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`;
+  async function fetchMain(extra = []) {
+    let f = await git(['fetch', '--quiet', ...extra, 'origin', REFSPEC], { timeout: extra.length ? 300000 : 90000 });
     if (f.ok) return f;
     let reason = C.classify(f.err);
     if (!proxy && ['network', 'proxy', 'ssl'].includes(reason)) {
       const p = await systemProxy();
       if (p) {
         proxy = p;
-        const again = await git(['fetch', '--quiet', 'origin', BRANCH], { timeout: 90000 });
+        const again = await git(['fetch', '--quiet', ...extra, 'origin', REFSPEC], { timeout: extra.length ? 300000 : 90000 });
         if (again.ok) return again;
         proxy = null;
         f = again; reason = C.classify(again.err) === 'network' ? 'proxy' : C.classify(again.err);
@@ -148,6 +152,49 @@ function create(opts = {}) {
     } catch { return null; }
   }
 
+  // ---------- (round 60, winfresh60) a shallow checkout (the Windows zip: the last 50 versions only) ----------
+  // The shared history of this copy and main can lie below the oldest version this copy has (main rewritten, or a
+  // remote-tracking ref from before the zip was made): then git finds no merge base, counts every version here as
+  // "yours" and refuses to merge ("unrelated histories"). Asked once per look: the merge base, a deeper fetch when
+  // it's missing (100, 1000 more versions, then all), and which versions were really made on this computer.
+  const isShallow = async () => (await git(['rev-parse', '--is-shallow-repository'])).out === 'true';
+  const mergeBase = async (ref) => { const r = await git(['merge-base', 'HEAD', ref]); return r.ok ? r.out.split('\n')[0] : ''; };
+  // a merge base found in a shallow copy is the real one only when it lies above the shallow edge (a descendant of one of
+  // the edge's versions): one found below it was reached through an old merged branch (any shared old version), while
+  // the true one is hidden below the edge, and counting / merging from it would be wrong
+  async function trusted(b, gitDir) {
+    if (!b) return false;
+    let edge = [];
+    try { edge = fs.readFileSync(path.join(gitDir, 'shallow'), 'utf8').split('\n').filter((l) => /^[0-9a-f]{40,64}$/.test(l.trim())).slice(0, 20); } catch { return true; } // not shallow
+    if (!edge.length) return true;
+    for (const e of edge) if ((await git(['merge-base', '--is-ancestor', e.trim(), b])).ok) return true;
+    return false;
+  }
+  async function deepen(ref, gitDir) {
+    for (const step of [['--deepen=100'], ['--deepen=1000'], ['--unshallow']]) {
+      if (!(await isShallow())) break;
+      const f = await fetchMain(step);
+      if (!f.ok) break; // offline now: the next look tries again
+      const b = await mergeBase(ref);
+      if (b && await trusted(b, gitDir)) return b;
+    }
+    return mergeBase(ref);
+  }
+  // the versions made HERE (a commit in this copy's own log of HEAD: "commit", "commit (amend)", "commit (merge)"…) that
+  // main doesn't have; a copy without that log (none kept) → null (unknown)
+  async function madeHere(ref) {
+    const rl = await git(['log', '-g', '--format=%H%x09%gs', 'HEAD', '-n', '400']);
+    if (!rl.ok) return null;
+    const mine = [...new Set(lines(rl).filter((l) => /\tcommit\b/.test(l)).map((l) => l.split('\t')[0]))].slice(0, 120);
+    const out = [];
+    for (const h of mine) if ((await git(['merge-base', '--is-ancestor', h, 'HEAD'])).ok && !(await git(['merge-base', '--is-ancestor', h, ref])).ok) out.push(h);
+    return out;
+  }
+  // a checkout unzipped on another computer: the index's file times are the zip builder's, so every `git status` (no
+  // optional locks: it never saves what it learns) reads every file again; refreshed once per session, quietly
+  let refreshed = false;
+  async function refreshIndex() { if (refreshed || busy) return; refreshed = true; await git(['update-index', '-q', '--refresh'], { timeout: 120000 }); }
+
   // ---------- status ----------
   async function status({ fetch = true } = {}) {
     const pre = await preflight();
@@ -157,6 +204,20 @@ function create(opts = {}) {
       if (!f.ok) return { ...ex(f.reason === 'unknown' ? 'network' : f.reason, { detail: f.err }), reason: 'fetch', why: f.reason };
     }
     const remoteRef = `origin/${BRANCH}`;
+    await refreshIndex();
+    // (round 60, winfresh60) where this copy and main meet (a deeper fetch first when a shallow copy doesn't reach it)
+    let base = '';
+    let unrelated = false; let here = null; let unsure = false;
+    if (await sha(remoteRef)) {
+      base = await mergeBase(remoteRef);
+      const shallow = await isShallow();
+      if (shallow && !(await trusted(base, pre.gitDir))) {
+        if (fetch) base = await deepen(remoteRef, pre.gitDir);
+        else unsure = true;
+      }
+      unrelated = !base;
+      if (unrelated && fetch) here = await madeHere(remoteRef);
+    }
     const [head, remote, dirtyR, log, ahead, count] = await Promise.all([
       git(['rev-parse', 'HEAD']), git(['rev-parse', remoteRef]),
       git(['status', '--porcelain', '--untracked-files=no']),
@@ -165,12 +226,18 @@ function create(opts = {}) {
       git(['rev-list', '--count', `HEAD..${remoteRef}`]),
     ]);
     if (!remote.ok) return { ...ex('network', { detail: remote.err }), reason: 'fetch' };
-    const commits = log.out ? log.out.split('\n').map((l) => { const [hash, subject, t] = l.split('\t'); return { hash, subject, at: Number(t) * 1000 }; }) : [];
-    const behind = Number(count.out) || 0;
+    // (round 60) a shallow copy that doesn't reach where it meets main, and not looked at GitHub yet: the main this copy
+    // knows is an old note (the Windows zip carried one from before it was made); nothing is offered until a real look
+    const stale = unsure;
+    const commits = !stale && log.out ? log.out.split('\n').map((l) => { const [hash, subject, t] = l.split('\t'); return { hash, subject, at: Number(t) * 1000 }; }) : [];
+    const behind = stale ? 0 : Number(count.out) || 0;
+    // (round 60) without shared history only the versions made here count as this copy's own (null: unknown → all)
+    const aheadN = stale ? 0 : unrelated && here ? here.length : Number(ahead.out) || 0;
     // (round 29) the patch notes this copy doesn't have yet (docs/patch-notes/round-NN.md, newest first), read from the
     // fetched main without touching the files here
     const notes = [];
-    const nd = await git(['diff', '--name-only', `HEAD..${remoteRef}`, '--', 'docs/patch-notes/']);
+    const from = base || 'HEAD'; // (round 60) no merge base: what the update changes is the difference with main itself
+    const nd = stale ? { ok: false } : await git(['diff', '--name-only', from, remoteRef, '--', 'docs/patch-notes/']);
     const roundOf = (f) => Number((/round-(\d+)\.md$/.exec(f) || [])[1]) || 0;
     for (const f of lines(nd).filter(roundOf).sort((x, y) => roundOf(y) - roundOf(x)).slice(0, 6)) {
       const t = await git(['show', `${remoteRef}:${f}`]);
@@ -178,16 +245,19 @@ function create(opts = {}) {
     }
     // (round 37) what the update will meet: a file added by hand with a new file's name, paths Windows can't write,
     // anything inside the data folder (never)
+    // (round 60) measured from the merge base itself (HEAD...main errs without one, and the data check went blind)
     let plan = { collide: [], tooLong: [], data: [], diverged: false };
     if (behind) {
-      const incoming = lines(await git(['diff', '--name-only', `HEAD...${remoteRef}`]));
-      const added = lines(await git(['diff', '--name-only', '--diff-filter=A', `HEAD...${remoteRef}`]));
+      const incoming = lines(await git(['diff', '--name-only', from, remoteRef]));
+      const added = lines(await git(['diff', '--name-only', '--diff-filter=A', from, remoteRef]));
       const tracked = new Set(lines(await git(['ls-files', '--', ...added.slice(0, 400)])));
       plan = {
         collide: added.filter((f) => !C.OWN.test(f) && !tracked.has(f) && fs.existsSync(path.join(DIR, f))),
         tooLong: PLAT === 'win32' && (await git(['config', '--bool', 'core.longpaths'])).out !== 'true' ? C.tooLong(DIR, incoming, PLAT) : [],
         data: incoming.filter((f) => C.OWN.test(f)),
-        diverged: Number(ahead.out) > 0,
+        diverged: aheadN > 0,
+        // (round 60) no shared history and nothing made here: main is simply taken (git reset --keep, edits kept)
+        ...(unrelated ? { unrelated: true, take: aheadN === 0 } : {}),
       };
     }
     const last = C.readState(DIR, 'last');
@@ -208,7 +278,7 @@ function create(opts = {}) {
     return {
       notes, plan, swapped,
       ok: true, head: head.out.slice(0, 7), remote: remote.out.slice(0, 7), branch: pre.branch,
-      behind, ahead: Number(ahead.out) || 0, commits,
+      behind, ahead: aheadN, commits, ...(stale ? { stale: true } : {}),
       dirty: dirtyR.out ? dirtyR.out.split('\n').length : 0, dir: DIR,
       back: last && last.to === head.out ? { from: last.from.slice(0, 7), to: last.to.slice(0, 7), at: last.at } : null,
     };
@@ -411,6 +481,9 @@ function create(opts = {}) {
     if (!s.behind) return { ok: true, changed: 0, restart: false, message: 'Already up to date.' };
     if (s.plan.data.length) return ex('data');
     if (s.plan.tooLong.length) return { ...ex('longpath', { files: s.plan.tooLong }), files: s.plan.tooLong };
+    // (round 60, winfresh60) no shared history even after a deeper fetch: versions made here can't be merged; they go
+    // on a side branch instead (Keep mine aside and update), nothing lost
+    if (s.plan.unrelated && s.plan.diverged) return { ...ex('diverged', { ahead: s.ahead }), ahead: s.ahead };
     // (round 45, backupauto) a backup of your things first (skipped when a good one is under an hour old; never more
     // than 3 minutes in the way; a failed one doesn't stop the update: data/ isn't touched by it)
     try { await require('./backupautomain').before('update'); } catch { /* backups not there */ }
@@ -430,10 +503,14 @@ function create(opts = {}) {
       C.writeState(DIR, 'journal', j);
     }
     const diverged = s.plan.diverged;
+    // (round 60, winfresh60) none made here → main is taken as it is, the version before kept as a branch
+    if (s.plan.take) { const b = await git(['branch', `hearth-saved-${C.branchStamp()}`, from]); if (!b.ok) console.warn('update: version before not kept as a branch', b.err); }
     j.step = 'merge'; C.writeState(DIR, 'journal', j);
-    const m = diverged
-      ? await git([...(await identity()), 'merge', '--no-edit', `origin/${BRANCH}`], { timeout: 180000 })
-      : await git(['merge', '--ff-only', `origin/${BRANCH}`], { timeout: 180000 });
+    const m = s.plan.take
+      ? await git(['reset', '-q', '--keep', `origin/${BRANCH}`], { timeout: 180000 })
+      : diverged
+        ? await git([...(await identity()), 'merge', '--no-edit', `origin/${BRANCH}`], { timeout: 180000 })
+        : await git(['merge', '--ff-only', `origin/${BRANCH}`], { timeout: 180000 });
     if (!m.ok) {
       const reason = C.classify(`${m.err}\n${m.out}`);
       await undo(j);
@@ -514,7 +591,10 @@ function create(opts = {}) {
   }
   async function fixNow(id) {
     if (id === 'retry') return done('');
-    if (id === 'install-git') return terminal(C.installGit(PLAT), 'Install Git for Hearth updates');
+    if (id === 'install-git') return terminal(C.installGit(PLAT, DIR), 'Install Git for Hearth updates');
+    // (round 60, winfresh60) Hearth's code is private: GitHub's sign-in happens in a window of its own (Git Credential
+    // Manager on Windows, Terminal on a Mac), never in Hearth
+    if (id === 'sign-in') return terminal(C.signIn(PLAT, DIR, bin), 'Sign in to GitHub for Hearth updates');
     if (id === 'own-folder') return terminal(C.explain('perm', { platform: PLAT, dir: DIR }).fix, 'Give your account Hearth\'s folder');
     if (id === 'safe-dir') {
       const r = await git(['config', '--global', '--add', 'safe.directory', DIR.replace(/\\/g, '/')]);
