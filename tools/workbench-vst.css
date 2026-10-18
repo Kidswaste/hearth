@@ -2,3 +2,18 @@
 /* (round 61, vstlive61) live mode: output · buffer · volume · MIDI in · phrase on one row (two on narrow windows) */
 .wb-live-setup{display:grid;grid-template-columns:minmax(0,2.6fr) repeat(4,minmax(0,1fr));gap:6px 12px;align-items:end}.wb-live-setup .wb-field{margin:0;min-width:0}.wb-live-setup select{width:100%;min-width:0;text-overflow:ellipsis}.wb-live-advice{margin:4px 0 0;color:var(--sound-accent)}.wb-live-advice:empty{display:none}
 @media (max-width:900px){.wb-live-setup{grid-template-columns:repeat(2,minmax(0,1fr))}.wb-live-setup>:first-child{grid-column:1/-1}}
+/* (round 64, vstembed64) the plugin's own window in the desk: a slim header, the placeholder the host puts the editor
+   on (sized to it; scrolls sideways when the desk is narrower), one plain line when it can't be inside Hearth;
+   controls an AI just moved glow for a moment */
+.vx-frame{margin:12px 0;border:1px solid #ffffff16;border-radius:14px;background:#ffffff04;overflow-x:auto;overflow-y:hidden}
+.vx-head{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;color:#ddd2de}
+.vx-title{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vx-tools{display:flex;gap:6px}
+.vx-btn{font-size:12px!important;padding:3px 10px!important;border-radius:8px!important}
+.vx-slot{background:#0b090d;border-top:1px solid #ffffff10;max-width:none}
+.vx-frame:not([data-mode=embedded]) .vx-slot{display:none}
+.vx-frame[data-mode=opening] .vx-title{opacity:.7}
+.vx-line{margin:0;padding:4px 10px 8px}
+.wb-live-params .vx-moved{position:relative}
+.wb-live-params .vx-moved::after{content:'';position:absolute;inset:-3px;border:2px solid var(--sound-accent);border-radius:8px;opacity:0;pointer-events:none;animation:vx-glow 1.6s ease-out}
+@keyframes vx-glow{from{opacity:1}to{opacity:0}}

@@ -146,5 +146,12 @@
   const before = (parameters, values) => Object.fromEntries(Object.keys(values).map(k => [k, parameters.find(p => p.key === k)?.value]));
   // rough token count of a text (≈ 3 characters a token for key=number lines): the cost line before a send
   const tokens = text => Math.ceil(String(text).length / 3);
-  return { pick, line, prompt, parse, validate, history, before, tokens, sectionOf, usable, PERSONA, CAP, MAX_SET };
+  // (round 64, vstembed64) the one line the window shows for a change (the owner's words, never control names / values):
+  // "darker and slower" → "Darker and slower — applied"
+  function summary(request, max = 48) {
+    let t = String(request || '').replace(/\s+/g, ' ').trim().replace(/[.!?…]+$/, '');
+    if (t.length > max) t = `${t.slice(0, max).replace(/\s+\S*$/, '')}…`;
+    return (t ? t[0].toUpperCase() + t.slice(1) : 'Your sound') + ' — applied';
+  }
+  return { pick, line, prompt, parse, validate, history, before, tokens, sectionOf, usable, summary, PERSONA, CAP, MAX_SET };
 });

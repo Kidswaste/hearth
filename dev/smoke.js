@@ -165,6 +165,11 @@ async function cdpConnect(dir) {
     const py = require('child_process').spawnSync('python3', ['-c', 'import numpy, sys; print(sys.executable)'], { encoding: 'utf8' });
     if (py.status === 0) Object.assign(env, { HEARTH_VST_PYTHON: py.stdout.trim(), PYTHONPATH: path.join(__dirname, 'fixtures', 'fake-vst-py'), PYTHONDONTWRITEBYTECODE: '1', FAKE_MIDI_NOTE: '0' });
     if (args.includes('--fake-vst-no-ua')) env.FAKE_SD_NO_UA = '1'; // (round 62, parkjam62) the laptop alone in the park: no UA interface listed
+    // (round 64, vstembed64) the editor-in-Hearth path runs on a fake Win32 window layer (dev/fixtures/fake-vst-py/fakewin32.py)
+    if (py.status === 0) env.HEARTH_VST_FAKE_WIN32 = '1';
+    // --fake-vst-embed (dev/checks/vstembed64.js): the editor stays open until Hearth closes it, a Serum-like cost of
+    // reading controls the first time (300 × 2 ms), and Serum 2's editor refusing to be a child window (the fallback line)
+    if (args.includes('--fake-vst-embed')) Object.assign(env, { FAKE_EDITOR_S: 'hold', FAKE_PB_PARAMS: '300', FAKE_PB_WRAP_MS: '2', FAKE_EMBED_REFUSE: 'Serum 2' });
   }
   // --fake-obs: (round 25) a fake OBS Studio (obs-websocket v5 with a password: dev/fake-obs.js) for dev/checks/interop.js;
   // the check reads its address, password and state through hub.interop.test (main side, tests only)

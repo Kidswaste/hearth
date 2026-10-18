@@ -8,6 +8,10 @@ var WorkbenchVST = (() => {
   let lastStats = null, editorCloses = null, paramsRefresh = () => {}, redraw = async () => {}, openSeq = 0, adviceText = null;
   let streamPatch = {}, streamTimer = null, tweakBase = null, baseTimer = null;
   let openNamed = null, plugins = []; // (round 62, parkjam62) open an instrument by name from outside the desk (Park mode)
+  // (round 64, vstembed64) the plugin's own editor in the desk (tools/workbench-vst-embed.js), what was measured on the
+  // way from a click to sound / controls, the controls an AI just moved (they glow on the desk for a moment)
+  let vx = null, timings = {}, moved = new Map(), syncTick = 0, editorAuto = false;
+  const E = typeof WorkbenchVSTEmbed !== 'undefined' ? WorkbenchVSTEmbed : null;
   Object.assign(settings, { value: '', midiIn: 'all' });
   const bytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   function liveJob() { const { device, exclusive } = L.parse(settings.value); return { device, exclusive, buffer: settings.buffer, gain: settings.gain, midiIn: settings.midiIn }; }
@@ -33,6 +37,7 @@ var WorkbenchVST = (() => {
     keyOff(); keyOff = () => {}; silence(); if (selected) call('live-stop').catch(() => {}); playing = false;
     if (rendered?.player) rendered.player.pause();
     if (typeof PresetHover !== 'undefined') PresetHover.detach(); // (round 61, presethover61) the ✦ Preset window leaves with the desk
+    vx?.detach(); vx = null; // (round 64, vstembed64) the editor hides with the desk (it stays open for the way back)
     if (typeof ParkJam !== 'undefined') ParkJam.pause(); // (round 62, parkjam62) the park ambience mic / dim leave with the desk
   }
   async function flushPatch() {
@@ -57,15 +62,30 @@ var WorkbenchVST = (() => {
     const changed = Object.keys(tweakBase); before = { parameters: tweakBase }; tweakBase = null; clearRender();
     events.emit('params', { changed, source: 'desk' });
   }
-  async function snapshot(state) { await flushPatch(); if (state) clearRender(); const r = await call('snapshot', state ? { state } : {}); selected = { ...r, path: selected.path }; return r; }
+  // (round 64, vstembed64) a state-only snapshot / recall (no 2,600-control listing), then the controls' values again
+  // from the host's cached list (one fast read): the desk's sliders follow a recalled preset or the editor's knobs.
+  async function snapshot(state) { await flushPatch(); if (state) clearRender(); const r = await call('snapshot', { stateOnly: true, ...(state ? { state } : {}) }); await refreshValues().catch(() => {}); return r; }
+  async function refreshValues() {
+    if (!selected || selected.loading) return;
+    const path = selected.path, r = await call('controls'); if (selected?.path !== path || !r.ready) return;
+    selected = { ...selected, parameters: r.parameters }; paramsRefresh();
+  }
+  // (round 64) the controls on screen, read again while the editor is in the desk (its knobs → the desk's sliders)
+  async function syncVisible(keys) {
+    if (!selected || selected.loading || !keys.length) return;
+    const r = await call('values', { keys }); let changed = false;
+    for (const [k, v] of Object.entries(r.values || {})) { const x = selected.parameters.find(y => y.key === k); if (x && x.value !== v.value) { x.value = v.value; changed = true; } }
+    if (changed) paramsRefresh();
+  }
   async function undo() { clearRender(); if (!before) throw Error('No patch change to undo.'); const saved = before; before = null; if (saved.state) await snapshot(saved.state); else { await call('patch', { parameters: saved.parameters }); for (const p of selected.parameters) if (Object.hasOwn(saved.parameters, p.key)) p.value = saved.parameters[p.key]; } }
   function showStats(s) {
     playing = s.playing;
     // (round 61, vstlive61) device · driver · latency · DSP load · underruns · controller, compared before written
-    const text = L.statsText(s), tip = L.advice(s);
+    const text = L.statsText(s), tip = s.rateNote || L.advice(s); // (round 64) a device that refused 48 kHz says so first
     if (statsText && statsText.textContent !== text) statsText.textContent = text;
     if (adviceText && adviceText.textContent !== tip) adviceText.textContent = tip;
     lastStats = s; events.emit('stats', s);
+    if (s.editor) vx?.apply(s.editor); // (round 64, vstembed64) the editor frame follows the host (mode, size, a plain note)
     // The native editor closed: read back the knobs the owner turned in it (the stream keeps playing meanwhile).
     if (Number.isInteger(s.editorCloses)) { if (editorCloses !== null && s.editorCloses > editorCloses && selected?.parameters?.length) snapshot().then(() => { paramsRefresh(); events.emit('params', { changed: null, source: 'editor' }); }).catch(() => {}); editorCloses = s.editorCloses; }
   }
@@ -92,6 +112,8 @@ var WorkbenchVST = (() => {
     async function open(p, { live }) {
       const mine = ++openSeq, t0 = performance.now();
       say(`Opening ${p.name}…`); await flushPatch(); await silence();
+      // (round 64, vstembed64) the editor in the desk belongs to the instrument shown: the previous one's closes
+      if (selected && selected.path !== p.path && lastStats?.editor && lastStats.editor.mode !== 'closed') { vx?.detach(); vx = null; await hub.vst.request({ action: 'editor-close', plugin: selected.path, name: selected.name }).catch(() => {}); }
       // The first open of the session picks the device before it goes live (the UA on ASIO, or the remembered one).
       if (!deviceChosen) {
         const d = await hub.vst.request({ action: 'devices', plugin: p.path, name: p.name });
@@ -100,14 +122,27 @@ var WorkbenchVST = (() => {
       const r = await hub.vst.request({ action: 'open', plugin: p.path, name: p.name, live, ...liveJob() });
       if (!r.ok) { if (live && typeof AudioDoctorDesk !== 'undefined') AudioDoctorDesk.failed(r.error); throw Error(r.error); } if (ticket !== alive || mine !== openSeq) return; // (round 64, audiodoctor64)
       clearRender(); selected = { name: p.name, path: p.path, parameters: [], loading: true }; state.selected = p.path; canEdit = false; before = null; editorCloses = null; persist();
+      // (round 64, vstembed64) the click → playable time (host start + plugin load + live start), then controls ready
+      editorAuto = true; // (round 64) this open may bring the editor into the desk (once)
+      timings = { instrument: p.name, readyMs: Math.round(performance.now() - t0), hostStartMs: r.hostStartMs ?? null, loadedMs: r.loadedMs ?? null, live: !!live };
+      // (round 64) the host may have been restarted (Reset host, the audio doctor's ASIO switch): the editor as it is now
+      try { const now = await call('live-status'); if (now && now.editor) lastStats = now; } catch { /* the readout comes with the poll */ }
       await draw(); if (r.playing !== undefined) showStats(r);
-      say(`${p.name} ready in ${Math.round(performance.now() - t0)} ms${r.playing ? ' · live: play the keys or your controller' : ' · press a key to start live audio'}. Reading its controls…`);
+      say(`${p.name} ready in ${timings.readyMs} ms${r.playing ? ' · live: play the keys or your controller' : ' · press a key to start live audio'}. Reading its controls…`);
       events.emit('instrument', api.current());
-      const info = await hub.vst.request({ action: 'inspect', plugin: p.path, name: p.name });
-      if (ticket !== alive || mine !== openSeq || selected?.path !== p.path) return;
-      if (!info.ok) throw Error(info.error);
-      selected = { ...info, path: p.path }; paramsRefresh(); events.emit('instrument', api.current());
-      say(`${p.name} · ${info.parameters.length} controls ready.`);
+      // (round 64) the controls arrive from the host's cached list (or as they're read the first time: shown as they come)
+      for (let i = 0, all = true; ; i++) {
+        let info = await hub.vst.request({ action: 'controls', plugin: p.path, name: p.name, ...(all ? {} : { limit: 240 }) }); // while reading: the first ones only
+        if (ticket !== alive || mine !== openSeq || selected?.path !== p.path) return;
+        if (!info.ok) { info = await hub.vst.request({ action: 'inspect', plugin: p.path, name: p.name }); if (!info.ok) throw Error(info.error); info.ready = true; } // Codex's full read
+        if (ticket !== alive || mine !== openSeq || selected?.path !== p.path) return;
+        selected = { ...info, name: p.name, path: p.path, loading: !(info.ready && all), total: info.count ?? info.parameters.length }; paramsRefresh();
+        if (info.ready && !all) { all = true; continue; } // the list just completed: ask for all of it once
+        if (info.ready) { timings.controlsMs = Math.round(performance.now() - t0); timings.controlsSource = info.source || 'read'; timings.controls = info.parameters.length; break; }
+        all = false; await new Promise(res => setTimeout(res, i < 20 ? 120 : 400));
+      }
+      events.emit('instrument', api.current());
+      say(`${p.name} · ${selected.parameters.length} controls ready in ${timings.controlsMs} ms${timings.controlsSource === 'cache' ? '' : ' (read once; next time from the list kept on disk)'}.`);
     }
     plugins = scan.plugins; openNamed = (name, live) => { const p = scan.plugins.find(x => x.name === name) || scan.plugins[0]; if (!p) throw Error('Install Serum 2 or Vital, then choose its VST3 folder.'); return open(p, { live }); }; // (round 62, parkjam62)
     for (const p of scan.plugins) {
@@ -142,8 +177,21 @@ var WorkbenchVST = (() => {
       if (devices.asioNote) transport.append(note(devices.asioNote));
       else if (devices.asioDll && !devices.asio && picked.hasUA) transport.append(note('No ASIO driver answered: install / start UA Connect or UAD Console, then Reset host. WASAPI exclusive plays meanwhile.'));
       const startButton = btn(playing ? 'Live audio on' : 'Start live audio', async () => { await startLive(); rememberLive(); startButton.textContent = 'Live audio on'; });
-      transport.append(row(startButton, btn('Pause audio', async () => { await silence(); showStats(await call('live-stop')); startButton.textContent = 'Start live audio'; }), btn('All notes off', silence), btn('Open native editor', async () => { clearRender(); await call('editor'); say('Native editor is open. Live audio keeps running; play its keyboard or Hearth’s keys. Its knob changes are read back when it closes.'); })), statsText, adviceText);
+      transport.append(row(startButton, btn('Pause audio', async () => { await silence(); showStats(await call('live-stop')); startButton.textContent = 'Start live audio'; }), btn('All notes off', silence)), statsText, adviceText);
       detail.append(e('h3', `${p.name} / live instrument`), transport);
+      // (round 64, vstembed64) the plugin's own window, in the desk: "Open editor here" / "Pop out" / "Close editor".
+      // Opens here by itself on Windows (and wherever the owner chose "here" last time); live audio never waits for it.
+      vx?.detach(); vx = null;
+      if (E) {
+        const pref = h.state.editorHere || (hub.native?.os === 'win' ? 'here' : 'off');
+        const known = lastStats?.plugin === p.path ? lastStats.editor : null; // a redraw: the editor as the host last said
+        vx = E.frame({ e, name: p.name, os: hub.native?.os, say, state: known, auto: pref === 'here' && editorAuto && !(known && known.mode !== 'closed'),
+          call: async (action, data = {}) => { clearRender(); return call(action, data); },
+          fire: (action, data) => { fire(action, data); },
+          remember: v => { if (h.state.editorHere !== v) { h.state.editorHere = v; h.persist(); } } });
+        editorAuto = false; detail.append(vx.el);
+        call('live-status').then(showStats).catch(() => {}); // the editor may already be open (the desk was away)
+      }
       const keys = e('div', null, 'wb-live-keys'), keyMap = 'awsedftgyhujkolp;', labels = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B', 'C', 'C♯', 'D', 'D♯', 'E']; let octave = 4;
       const keyButtons = [];
       // (round 61, vstlive61) a key pressed while paused starts live audio first (no 'start first' detour); notes go out
@@ -157,9 +205,26 @@ var WorkbenchVST = (() => {
       keyOff(); window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', blur);
       keyOff = () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
       detail.append(row(select('Octave', octave, [[2, '2 · bass'], [3, '3 · low'], [4, '4 · middle'], [5, '5 · high']], v => { silence(); octave = Number(v); keyButtons.forEach(b => b.classList.remove('held')); }), note('Hold keys A–; or press the keyboard below.')), keys);
-      clearInterval(poll); poll = setInterval(() => call('live-status').then(showStats).catch(err => { say(err.message); clearInterval(poll); playing = false; }), 1000);
+      clearInterval(poll); poll = setInterval(() => {
+        call('live-status').then(showStats).catch(err => { say(err.message); clearInterval(poll); playing = false; vx?.apply({ mode: 'closed', size: null }); }); // (round 64) a host gone takes its editor with it
+        // (round 64, vstembed64) with the editor in the desk, the controls on screen follow its knobs (every 2 s, only those)
+        if (vx?.state.mode === 'embedded' && !(syncTick++ % 2) && controls.isConnected && !controls.contains(document.activeElement)) syncVisible([...controls.querySelectorAll('[data-key]')].map(n => n.dataset.key)).catch(() => {});
+      }, 1000);
       const controls = e('div', null, 'wb-live-params'), search = field('Find a control', '', () => {});
-      function parameters(query = '') { controls.replaceChildren(); if (selected.loading) { controls.append(note('Reading the instrument’s controls… the keys already play.')); return; } const all = selected.parameters.filter(x => `${x.label} ${x.key}`.toLowerCase().includes(query.toLowerCase())); for (const x of all.slice(0, 24)) { if (typeof x.value === 'boolean') controls.append(check(x.label, x.value, v => tweak(x.key, v))); else if (typeof x.value === 'number') controls.append(range(x.label, x.value, x.min, x.max, x.step || .001, v => tweak(x.key, v))); else controls.append(select(x.label, x.value, x.choices, v => tweak(x.key, v))); } if (all.length > 24) controls.append(note(`${all.length} controls match. Search oscillator, envelope, cutoff or an effect.`)); }
+      function parameters(query = '') {
+        controls.replaceChildren();
+        // (round 64, vstembed64) the first time a plugin version is read, its controls show as they arrive
+        if (selected.loading && !selected.parameters?.length) { controls.append(note('Reading the instrument’s controls… the keys already play.')); return; }
+        const all = selected.parameters.filter(x => `${x.label} ${x.key}`.toLowerCase().includes(query.toLowerCase())), now = Date.now();
+        for (const x of all.slice(0, 24)) {
+          const n = typeof x.value === 'boolean' ? check(x.label, x.value, v => tweak(x.key, v)) : typeof x.value === 'number' ? range(x.label, x.value, x.min, x.max, x.step || .001, v => tweak(x.key, v)) : select(x.label, x.value, x.choices, v => tweak(x.key, v));
+          n.dataset.key = x.key; if ((moved.get(x.key) || 0) > now) n.classList.add('vx-moved'); // (round 64) an AI just moved it
+          if (typeof x.value === 'number') { const input = n.querySelector('input'); if (input) input.value = x.value; } // (round 64) set again once min / max / step are on (a 0–1 value was rounded on the default 0–100 scale)
+          controls.append(n);
+        }
+        if (all.length > 24) controls.append(note(`${all.length} controls match. Search oscillator, envelope, cutoff or an effect.`));
+        if (selected.loading) controls.append(note(`${selected.parameters.length} of ${selected.total || '…'} controls read; the rest arrive in a moment.`));
+      }
       search.querySelector('input').oninput = ev => parameters(ev.target.value);
       paramsRefresh = () => { if (ticket === alive && controls.isConnected) parameters(search.querySelector('input').value); }; redraw = draw;
       const advanced = e('details', null, 'wb-sound-section'); advanced.append(e('summary', 'Shape the sound · live controls'), search, controls, note('Changes reach the running instrument immediately; reading or recalling a full patch keeps it playing.'), row(btn('Undo last tweak', async () => { await undo(); parameters(search.querySelector('input').value); }), btn('Refresh from native editor', async () => { await snapshot(); parameters(search.querySelector('input').value); say('Native controls refreshed.'); })));
@@ -192,10 +257,12 @@ var WorkbenchVST = (() => {
     // (round 61, vstlive61) live audition for the chat: only when the owner already has live audio on.
     if (action === 'status') return { name: selected.name, live: playing, controls: selected.parameters.length, output: lastStats?.playing ? { device: lastStats.deviceName, driver: lastStats.api, latencyMs: lastStats.latencyMs, dspLoad: lastStats.load, underruns: lastStats.underruns } : null };
     if (action === 'play') { if (!playing) throw Error('Live audio is paused: ask the user to press a key or Start live audio.'); if (args.phrase !== undefined) { await playPhrase(args.phrase === 'off' ? null : String(args.phrase)); return { phrase: args.phrase }; } const note = Math.max(24, Math.min(96, Math.round(Number(args.note) || 60))); await api.play(note); return { played: note, message: 'Ask the user how it sounds.' }; }
-    if (action === 'inspect') { const list = selected.parameters.filter(p => `${p.key} ${p.label}`.toLowerCase().includes(String(args.query || '').toLowerCase())), offset = Math.max(0, Math.floor(args.offset || 0)); return { name: selected.name, instrument: true, count: list.length, parameters: JSON.parse(JSON.stringify(list.slice(offset, offset + 40))), canEdit, live: playing }; }
+    if (action === 'inspect') { const list = selected.parameters.filter(p => `${p.key} ${p.label}`.toLowerCase().includes(String(args.query || '').toLowerCase())), offset = Math.max(0, Math.floor(args.offset || 0)); return { name: selected.name, instrument: true, count: list.length, parameters: list.slice(offset, offset + 40).map(({ kind, ...p }) => JSON.parse(JSON.stringify(p))) /* (round 64) no extra field for the AI */, canEdit, live: playing }; }
     if (!canEdit) throw Error('Enable AI patch edits in the Sound desk first.');
-    if (action === 'apply') { const values = WorkbenchCore.patch(selected.parameters, args.parameters); pendingPatch = { ...pendingPatch, ...values }; await flushPatch(); return { name: selected.name, changed: Object.keys(values), live: playing }; }
-    if (action === 'undo') { await undo(); return { restored: selected.name }; }
+    // (round 64, vstembed64) applied silently: the plugin's window and the desk's sliders show it; the AI is asked for
+    // one short line, not a list of controls (same validation and undo as before, through api.set)
+    if (action === 'apply') { const r = await api.set(args.parameters, { source: 'ai-chat' }); return { name: selected.name, changed: r.changed.length, live: playing, note: 'Applied; it shows in the plugin window and the desk. Tell the user in one short line; do not list controls or values.' }; }
+    if (action === 'undo') { await api.undo(); return { restored: selected.name }; }
     if (action === 'render') { await flushPatch(); const duration = Math.max(1, Math.min(12, Number(args.duration) || 4)), note = Math.max(24, Math.min(96, Math.round(Number(args.note) || 60))); const r = await call('render', { duration, notes: [{ note, time: 0, length: duration * .65 }] }); showRender(r); return { seconds: r.seconds, peak: r.peak, silent: r.silent, message: 'WAV ready in Sound desk → Export a sample. Ask the user to listen and describe the next change.' }; }
     throw Error('Unknown sound action.');
   }
@@ -233,7 +300,7 @@ var WorkbenchVST = (() => {
     parameters({ query = '', offset = 0, limit = 40 } = {}) { ready(); const q = String(query).toLowerCase(), list = selected.parameters.filter(x => `${x.key} ${x.label}`.toLowerCase().includes(q)), o = Math.max(0, Math.floor(offset) || 0), n = Math.max(1, Math.min(200, Math.floor(limit) || 40)); return { count: list.length, parameters: WorkbenchCore.copy(list.slice(o, o + n)) }; },
     get(keys = []) { ready(); const want = new Set(keys); return Object.fromEntries(selected.parameters.filter(x => want.has(x.key)).map(x => [x.key, x.value])); },
     async values(keys = []) { ready(); const r = await call('values', { keys }); for (const [k, v] of Object.entries(r.values)) { const x = selected.parameters.find(y => y.key === k); if (x) x.value = v.value; } return r.values; },
-    async set(values, { source = 'app' } = {}) { ready(); const v = WorkbenchCore.patch(selected.parameters, values); pendingPatch = { ...pendingPatch, ...v }; await flushPatch(); paramsRefresh(); events.emit('params', { changed: Object.keys(v), source }); return { changed: Object.keys(v), live: playing }; },
+    async set(values, { source = 'app' } = {}) { ready(); const v = WorkbenchCore.patch(selected.parameters, values); pendingPatch = { ...pendingPatch, ...v }; await flushPatch(); if (source !== 'desk') { const until = Date.now() + 1600; for (const k of Object.keys(v)) moved.set(k, until); } paramsRefresh(); events.emit('params', { changed: Object.keys(v), source }); return { changed: Object.keys(v), live: playing }; },
     async undo() { await undo(); paramsRefresh(); events.emit('params', { changed: null, source: 'undo' }); },
     presets: () => presetsOf().map((x, index) => ({ index, label: x.label })),
     savePreset, loadPreset,
@@ -258,7 +325,11 @@ var WorkbenchVST = (() => {
       if (remember) rememberLive(); if (playing) { await silence(); await startLive(); } await redraw(); return api.output();
     },
     aiAllowed: () => canEdit,
-    on: (type, fn) => events.on(type, fn)
+    on: (type, fn) => events.on(type, fn),
+    // (round 64, vstembed64) additive, same version: the last open's measured times { readyMs, controlsMs, controlsSource,
+    // hostStartMs, loadedMs }, and the editor frame's state { mode: closed | opening | embedded | floating, size, note }
+    timings: () => ({ ...timings }),
+    editor: () => vx ? { ...vx.state } : null
   };
   // (round 61, presethover61) a thin door for the ✦ Preset window (tools/preset-hover.js), now over vstlive61's api:
   // the open instrument's real parameters, a validated live patch (api.set: WorkbenchCore.patch + the host's checks, one
@@ -267,6 +338,7 @@ var WorkbenchVST = (() => {
     current: () => selected ? { name: selected.name, parameters: selected.loading ? [] : selected.parameters, ready: !selected.loading, live: playing } : null,
     apply: async values => (await api.set(values, { source: 'preset-hover' })).changed,
     snapshot: async () => (await snapshot()).state,
+    fresh: async keys => api.values(keys), // (round 64, vstembed64) the values now (the editor's knobs may have moved)
     keep: async (label, state) => {
       const bank = h?.state; if (!bank || !selected) throw Error('Open the Sound desk first.');
       if (bank.presets.length >= 12 || bank.presets.reduce((n, p) => n + p.state.length, 0) + state.length > 9e6) throw Error('Preset bank is full. Export a patch or remove an older preset.');

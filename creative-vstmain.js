@@ -7,11 +7,12 @@ const allowedName = file => ALLOWED.get(path.basename(file).toLowerCase().replac
 // one key per plugin there, so a folder added twice in another spelling doesn't list it twice. Linux keeps exact names.
 const FOLD = process.platform === 'win32' || process.platform === 'darwin';
 const pathKey = (p, fold = FOLD) => fold ? p.normalize('NFC').toLowerCase() : p;
-function discover(roots, fold = FOLD) {
+function discover(roots, fold = FOLD, visited = null) {
   const found = [], seen = new Set();
   function walk(dir, depth) {
     if (depth > 8 || found.length >= 32) return;
     let entries; try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    visited?.push(dir); // (round 64, vstembed64) the folders read, for the mtime cache below
     for (const e of entries) {
       if (e.isSymbolicLink()) continue;
       const p = path.join(dir, e.name), key = pathKey(p, fold);
@@ -26,15 +27,48 @@ function discover(roots, fold = FOLD) {
   roots.forEach(p => { let real; try { real = fs.realpathSync.native(p); } catch { return; } const key = pathKey(real, fold); if (walked.has(key)) return; walked.add(key); walk(p, 0); });
   return found.sort((a, b) => a.name.localeCompare(b.name));
 }
+// (round 64, vstembed64) the VST folders are walked again only when one of the folders read last time changed (a
+// folder's mtime changes when an entry is added / removed / renamed in it): a plugin installed or removed is seen, an
+// unchanged disk costs one stat per folder. Kept in memory and in <data>/creative-vst/scan-cache.json across restarts.
+const scanMemo = new Map();
+function discoverCached(roots, cacheFile, fold = FOLD) {
+  const key = JSON.stringify([roots, fold]);
+  let hit = scanMemo.get(key);
+  if (!hit && cacheFile) { const c = require('./datasafe-core').load(fs, cacheFile, null, { prev: false }).value; if (c?.key === key && Array.isArray(c.found) && c.dirs && typeof c.dirs === 'object') hit = c; }
+  if (hit) {
+    const same = Object.entries(hit.dirs).every(([dir, m]) => { try { return fs.statSync(dir).mtimeMs === m; } catch { return false; } });
+    const rootsThere = roots.every(r => { try { return fs.statSync(r).isDirectory() === (hit.rootsSeen?.[r] === true); } catch { return hit.rootsSeen?.[r] !== true; } });
+    if (same && rootsThere) { scanMemo.set(key, hit); return { plugins: hit.found.map(p => ({ ...p })), cached: true }; }
+  }
+  const visited = [], found = discover(roots, fold, visited), dirs = {}, rootsSeen = {};
+  for (const d of visited) { try { dirs[d] = fs.statSync(d).mtimeMs; } catch { /* gone meanwhile */ } }
+  for (const r of roots) { try { rootsSeen[r] = fs.statSync(r).isDirectory(); } catch { rootsSeen[r] = false; } }
+  const entry = { key, found, dirs, rootsSeen };
+  scanMemo.set(key, entry);
+  if (cacheFile) { try { fs.mkdirSync(path.dirname(cacheFile), { recursive: true }); const tmp = cacheFile + '.part'; fs.writeFileSync(tmp, JSON.stringify(entry)); fs.renameSync(tmp, cacheFile); } catch { /* the walk still worked */ } }
+  return { plugins: found.map(p => ({ ...p })), cached: false };
+}
 // (round 61, vstlive61) live mode: 'open' (load + optional live start), 'values' (a few controls, fresh), 'sequence'
 // (a phrase played by the host's audio thread), 'midi-in' (which controller). STREAMED actions may also travel on the
 // persistent no-reply socket (send()). jobOf() is the one whitelist of fields that reach the Python host.
 const LIVE_ACTIONS = ['open', 'values', 'sequence', 'midi-in'];
-const STREAMED = ['midi', 'patch', 'volume', 'panic', 'sequence', 'launch', 'pad-fx', 'preset-switch', 'set-panic', 'set-tempo']; // (round 64, liveset64) + pad presses
+const STREAMED = ['midi', 'patch', 'volume', 'panic', 'sequence', 'launch', 'pad-fx', 'preset-switch', 'set-panic', 'set-tempo', 'editor-place']; // (round 64, liveset64) + pad presses · (round 64, vstembed64) + the editor's layout
 // (round 64, liveset64) the Live set (creative-vst-liveset.py, tools/liveset.js): transport, clips, the preset twin, panic,
 // the run recorder. Clip files must be WAVs under <data>/creative-live or <data>/creative-park; a run's WAV path is made
 // here (<data>/creative-live/<set>/<Rehearsal|Performance> <date>.wav), never taken from the window.
 const LIVESET_ACTIONS = ['set-open', 'set-close', 'set-status', 'set-tempo', 'clip-load', 'clip-unload', 'launch', 'pad-fx', 'preset-preload', 'preset-switch', 'set-panic', 'run-record', 'run-stop'];
+// (round 64, vstembed64) the editor inside Hearth and the fast control list (docs/upgrades/vstembed64.md):
+// 'controls' (every control known so far + values; ready when all are), 'editor' {embed} (open it in the placeholder),
+// 'editor-place' {embed: {x, y, clip, visible}} (streamed on layout changes), 'editor-embed' (a floating editor goes in),
+// 'editor-pop' (out into its own window), 'editor-close'. Hearth's window handle is added here, never by the page.
+const EMBED_ACTIONS = ['controls', 'editor-place', 'editor-embed', 'editor-pop', 'editor-close', 'editor-refresh']; // 'editor-refresh': reopen it on the instance now playing (liveset64's preset twin)
+const int = (v, lo = -1e5, hi = 1e5) => Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : undefined;
+function embedOf(e) {
+  if (!e || typeof e !== 'object') return undefined;
+  const clip = Array.isArray(e.clip) && e.clip.length === 4 && e.clip.every(Number.isFinite) ? e.clip.map(v => int(v)) : null;
+  const origin = Array.isArray(e.origin) && e.origin.length === 2 && e.origin.every(Number.isFinite) ? e.origin.map(v => int(v)) : undefined; // the Mac: Hearth's content origin (points)
+  return { x: int(e.x), y: int(e.y), clip, visible: e.visible !== false, origin, scale: Number.isFinite(e.scale) && e.scale > 0 && e.scale < 8 ? e.scale : undefined };
+}
 // (round 62, parkjam62) the loop recorder (docs/upgrades/parkjam62.md): 'record' arms a take in the host's audio thread,
 // 'record-status' / 'record-cancel', 'record-take' writes the WAV in the session folder and hands its bytes back here.
 const PARK_ACTIONS = ['record', 'record-status', 'record-take', 'record-cancel'];
@@ -46,6 +80,7 @@ function jobOf(r, name) {
   return { action: r.action, plugin: r.plugin, name, parameters: r.parameters, notes: r.notes, duration: r.duration, state: r.state, note: r.note, on: r.on, velocity: r.velocity, gain: r.gain, buffer: r.buffer, device: r.device,
     exclusive: r.exclusive === true || undefined, midiIn: r.midiIn ?? undefined, keys: r.keys, sequence: r.sequence, loop: r.loop, live: r.live === true || undefined,
     bars: r.bars, beats: r.beats, bpm: r.bpm, wait: r.wait === 'note' ? 'note' : undefined, // (round 62, parkjam62) the loop recorder's fields
+    embed: embedOf(r.embed), stateOnly: r.stateOnly === true || undefined, limit: Number.isInteger(r.limit) && r.limit > 0 && r.limit <= 5000 ? r.limit : undefined, // (round 64, vstembed64) the editor's placement (no parent from the page) · a state-only snapshot
     ...liveFields(r) }; // (round 64, liveset64)
 }
 function liveFields(r) { // (round 64, liveset64) the Live set's fields, checked here and again in the host
@@ -69,6 +104,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
   const standard = roots || (process.platform === 'win32' ? [path.join(process.env.CommonProgramFiles || 'C:/Program Files/Common Files', 'VST3'), path.join(process.env.LOCALAPPDATA || os.homedir(), 'Programs/Common/VST3')] : [path.join(os.homedir(), 'Library/Audio/Plug-Ins/VST3'), '/Library/Audio/Plug-Ins/VST3', '/usr/lib/vst3', path.join(os.homedir(), '.vst3')]);
   let known = new Set(), processChild = null, connection = null, starting = null, jobDir = null, pending = 0, setupBusy = false;
   let stream = null; // (round 61, vstlive61) one persistent socket for notes / knob moves (no replies)
+  let lastStart = null; // (round 64, vstembed64) { ms (spawn → ready), boot (the host's own start), at }
   const sockets = new Set();
   function run(exe, args, timeout) {
     return new Promise((resolve, reject) => {
@@ -92,7 +128,8 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       if (!fs.existsSync(bin)) throw Error('Install the local audio runtime first (64-bit Python 3.10–3.14 required).');
       fs.mkdirSync(home, { recursive: true }); const dir = fs.mkdtempSync(path.join(home, 'session-')); jobDir = dir;
       const token = crypto.randomBytes(32).toString('hex'), response = path.join(dir, 'ready.json'), file = path.join(dir, 'host.json');
-      fs.writeFileSync(file, JSON.stringify({ action: 'serve', token }));
+      // (round 64, vstembed64) cacheDir: the host keeps each plugin version's control list there (types, ranges, choices)
+      const began = Date.now(); fs.writeFileSync(file, JSON.stringify({ action: 'serve', token, cacheDir: path.join(home, 'controls-cache') }));
       let failure = '', stderr = '';
       // (round 61, vstlive61) SD_ENABLE_ASIO: sounddevice's Windows wheel then loads its ASIO-enabled PortAudio DLL, so
       // ASIO drivers (Universal Audio's) are listed and opened directly. flags.asio turns off after an ASIO driver crashed it.
@@ -117,7 +154,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       let result; for (let i = 0; i < 10; i++) { try { result = JSON.parse(fs.readFileSync(response, 'utf8')); break; } catch { await new Promise(r => setTimeout(r, 10)); } }
       if (!result?.ok || !Number.isInteger(result.port)) { child.kill(); throw Error(result?.error || 'Invalid audio host startup response.'); }
       if (processChild !== child) throw Error('Audio host stopped.');
-      connection = { port: result.port, token }; return connection;
+      connection = { port: result.port, token }; lastStart = { ms: Date.now() - began, boot: result.bootMs ?? null, at: began }; return connection;
     })();
     try { return await starting; } finally { starting = null; }
   }
@@ -138,7 +175,8 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
   return {
     scan(extra = []) {
       if (!Array.isArray(extra) || extra.length > 12 || extra.some(x => typeof x !== 'string' || !path.isAbsolute(x))) return { ok: false, error: 'Choose up to 12 absolute plugin folders.' };
-      const locations = [...standard, ...extra], plugins = discover(locations); known = new Set(plugins.map(p => p.path)); return { ok: true, plugins, roots: locations };
+      // (round 64, vstembed64) unchanged folders aren't walked again (mtime cache)
+      const t0 = Date.now(), locations = [...standard, ...extra], { plugins, cached } = discoverCached(locations, path.join(home, 'scan-cache.json')); known = new Set(plugins.map(p => p.path)); return { ok: true, plugins, roots: locations, cached, scanMs: Date.now() - t0 };
     },
     status: () => safe(async () => fs.existsSync(bin) ? command({ action: 'status' }) : { ok: false, missing: true, error: 'Install the local audio runtime.' }),
     setup: () => safe(async () => {
@@ -153,7 +191,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       } finally { setupBusy = false; }
     }),
     request: request => safe(async () => {
-      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS, ...PARK_ACTIONS, ...LIVESET_ACTIONS];
+      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS, ...PARK_ACTIONS, ...LIVESET_ACTIONS, ...EMBED_ACTIONS];
       if (!request || !actions.includes(request.action)) throw Error('Unknown instrument action.');
       if (!['devices'].includes(request.action) && (!known.has(request.plugin) || !allowedName(request.plugin))) throw Error('Scan and select Serum 2 or Vital first.');
       const name = request.plugin && allowedName(request.plugin);
@@ -161,6 +199,8 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       if (typeof request.state !== 'undefined' && (typeof request.state !== 'string' || request.state.length > 12e6)) throw Error('Invalid plugin state.');
       if (JSON.stringify(request.parameters || {}).length > 200000 || (request.notes && (!Array.isArray(request.notes) || request.notes.length > 128))) throw Error('Plugin request too large.');
       const job = jobOf(request, name);
+      if (job.embed && typeof request.parent === 'string' && /^\d{1,20}$/.test(request.parent)) job.embed.parent = request.parent; // (round 64) set by register(), never by the page
+      const asked = Date.now(); // (round 64) did this request start the host? (open → first sound timings)
       // (round 64, liveset64) a clip is a WAV Hearth made (creative-live) or a park take (creative-park); a run's file path is made here
       if (request.action === 'clip-load') { job.file = liveClip(dataDir, request.file); job.loop = request.loop === true; }
       if (request.action === 'run-record') job.output = liveRunPath(dataDir, request.set, job.kind || 'Rehearsal');
@@ -179,6 +219,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
         stop(); const again = await command(job); return { ...again, asioNote: flags.asioNote };
       }
       if (!result.ok && request.action !== 'devices') throw Error(result.error);
+      if (request.action === 'open' && lastStart && lastStart.at >= asked) result.hostStartMs = lastStart.ms; // (round 64)
       return flags.asioNote && request.action === 'devices' ? { ...result, asioNote: flags.asioNote } : result;
     }),
     // (round 61, vstlive61) fire-and-forget live messages over one persistent socket. false = no host yet (the caller
@@ -194,6 +235,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       stream.write(JSON.stringify(jobOf(request, allowedName(request.plugin))) + '\n'); return true;
     },
     stop,
+    get lastStart() { return lastStart; }, // (round 64, vstembed64)
     knows: p => known.has(p) && !!allowedName(p), // (round 61) the pool asks before giving a path its own host
     get alive() { return !!connection; },
     get busy() { return pending > 0 || setupBusy; }
@@ -231,7 +273,7 @@ function pool(options) {
       if (r?.plugin && !hosts.has(r.plugin) && !anyAlive().knows(r.plugin)) return { ok: false, error: 'Scan and select Serum 2 or Vital first.' };
       // (round 62, parkjam62) 'solo': Park mode keeps one instrument loaded (the others' hosts are stopped, battery)
       if (r?.action === 'solo') { let n = 0; for (const [p, h] of [...hosts]) if (p !== r.plugin) { h.stop(); hosts.delete(p); n++; } return { ok: true, stopped: n }; }
-      const h = hostFor(r?.plugin, !['devices', 'live-status', 'live-stop', 'panic', 'record-status', 'record-cancel', 'set-status', 'set-close', 'set-panic', 'run-stop'].includes(r?.action)) || (r?.action === 'devices' ? anyAlive() : null);
+      const h = hostFor(r?.plugin, !['devices', 'live-status', 'live-stop', 'panic', 'record-status', 'record-cancel', 'set-status', 'set-close', 'set-panic', 'run-stop', ...EMBED_ACTIONS].includes(r?.action)) || (r?.action === 'devices' ? anyAlive() : null); // (round 64) + the editor / controls actions: only an open instrument's host
       if (!h) return { ok: true, playing: false }; // status / stop / panic of an instrument that isn't open: nothing plays
       if (r.action === 'live-start' || (r.action === 'open' && r.live === true)) { last = r.plugin; await quietOthers(r.plugin); }
       return h.request(r);
@@ -244,8 +286,23 @@ function pool(options) {
       return { ok: !!h };
     },
     stop() { for (const h of hosts.values()) h.stop(); base?.stop(); return { ok: true }; },
+    // (round 64, vstembed64) warm: the host process started, its imports done and `plugin` loaded (no audio device), so
+    // the first click on that instrument only starts the sound. Used at idle after startup when the owner used the
+    // Sound desk last session (register → warmLater), never otherwise.
+    async warm(plugin, roots = []) {
+      const t0 = Date.now(); this.scan(roots);
+      const h = plugin && anyAlive().knows(plugin) ? hostFor(plugin) : null;
+      if (!h) { const s = await anyAlive().status(); return { ok: !!s.ok, loaded: false, ms: Date.now() - t0, error: s.error }; }
+      const r = await h.request({ action: 'open', plugin, live: false });
+      return { ok: !!r.ok, loaded: !!r.ok, ms: Date.now() - t0, error: r.error };
+    },
+    // (round 64) every open editor closes (Hearth's window is closing: never leave a child window behind it)
+    closeEditors() { return Promise.all([...hosts].filter(([, h]) => h.alive).map(([p, h]) => h.request({ action: 'editor-close', plugin: p }).catch(() => {}))); },
+    // (round 64) the Mac: the editor is a separate window aligned over the desk, so it follows Hearth's window
+    follow(origin, scale) { for (const [p, h] of hosts) if (h.alive) h.send({ action: 'editor-place', plugin: p, embed: { origin, scale } }); return { ok: true }; },
     get busy() { return [...hosts.values()].some(h => h.busy) || !!base?.busy; },
     get hosts() { return hosts.size; },
+    get roots() { return extra; }, // (round 64) the extra plugin folders, remembered with the warm instrument
     flags
   };
 }
@@ -286,6 +343,40 @@ function parkMp3(dataDir, sketch, name, ffmpeg) {
     try { fs.renameSync(tmp, mp3); resolve({ ok: true, path: mp3 }); } catch (e) { resolve({ ok: false, error: e.message }); }
   }));
 }
+// (round 64, vstembed64) the warm host: <data>/creative-vst/warm.json counts app sessions and remembers the instrument
+// opened last and in which session. At idle after startup (main.js → warmLater) the host is started and that instrument
+// loaded only when it was used in the previous (or this) session — never for someone who hasn't used the Sound desk.
+const warmFile = dataDir => path.join(dataDir, 'creative-vst', 'warm.json');
+function warmRead(dataDir) { const r = require('./datasafe-core').load(fs, warmFile(dataDir), {}, { prev: false }); return { value: r.value && typeof r.value === 'object' ? r.value : {}, canSave: r.canSave }; }
+function warmWrite(dataDir, value) { try { const f = warmFile(dataDir); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f + '.part', JSON.stringify(value)); fs.renameSync(f + '.part', f); } catch { /* a missed note only costs one cold start */ } }
+function noteUse(dataDir, plugin, roots) {
+  const r = warmRead(dataDir); if (!r.canSave) return;
+  const v = r.value, session = v.session || 1;
+  if (v.plugin === plugin && v.usedSession === session && JSON.stringify(v.roots || []) === JSON.stringify(roots || [])) return;
+  warmWrite(dataDir, { ...v, session, plugin, roots: roots || [], usedSession: session, at: new Date().toISOString() });
+}
+let registered = null; // (round 64) the pool, for warmLater
+function warmLater(dataDir, load, delay = 20000) {
+  const r = warmRead(dataDir); if (!r.canSave || !r.value.plugin) return null; // never used: nothing written, nothing started
+  const v = { ...r.value, session: (r.value.session || 0) + 1 }; warmWrite(dataDir, v);
+  if (!v.plugin || !(v.usedSession >= v.session - 1) || process.env.HEARTH_VST_WARM === '0') return null;
+  const t = setTimeout(() => { try { load(); registered?.host.warm(v.plugin, v.roots || []).then(w => { registered.warmed = w; }).catch(() => {}); } catch { /* not this time */ } }, delay);
+  t.unref?.(); return { plugin: v.plugin, delay };
+}
+// (round 64, vstembed64) Hearth's window for the editor: Windows / Linux = the native handle (HWND / X11 id) as a decimal
+// string; the Mac = the window number (CGWindowID, from getMediaSourceId) + the content area's top-left on screen.
+function windowOf(win) {
+  if (!win || win.isDestroyed?.()) return null;
+  try {
+    if (process.platform === 'darwin') {
+      const id = /^window:(\d+):/.exec(win.getMediaSourceId() || '')?.[1]; const b = win.getContentBounds();
+      const scale = require('electron').screen.getDisplayMatching(b).scaleFactor || 1;
+      return id ? { parent: id, origin: [b.x, b.y], scale } : null;
+    }
+    const h = win.getNativeWindowHandle(); const id = h.length >= 8 ? h.readBigUInt64LE(0) : BigInt(h.readUInt32LE(0));
+    return id ? { parent: String(id) } : null;
+  } catch { return null; }
+}
 // (round 64, liveset64) <data>/creative-live/<set>/<file>: a live set's prepared clips, its runs (Rehearse / Perform) and
 // their logs. Same folder-name rule as the park sketches; plain file names only; written atomically (.part, renamed).
 const liveFolder = (dataDir, set) => path.join(dataDir, 'creative-live', String(set || 'Live set').normalize('NFC').replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80) || 'Live set');
@@ -322,11 +413,20 @@ function liveMp3(dataDir, set, file, ffmpeg) {
 }
 function register(ipcMain, { dataDir, getWin, app, settings }) {
   const host = pool({ dataDir });
+  registered = { host }; // (round 64, vstembed64)
+  // (round 64) the editor in Hearth's window: the window's handle is added here (the page never names a window)
+  const withWindow = r => {
+    if (!r || typeof r !== 'object') return r;
+    if (r.action === 'open' && typeof r.plugin === 'string') noteUse(dataDir, r.plugin, host.roots);
+    if (!['editor', 'editor-embed'].includes(r.action) || !r.embed) return r;
+    const w = windowOf(getWin()); if (!w) return { ...r, embed: undefined };
+    return { ...r, parent: w.parent, embed: { ...r.embed, ...(w.origin ? { origin: w.origin, scale: w.scale } : {}) } };
+  };
   const own = (e, fn) => { if (e.sender !== getWin()?.webContents || e.senderFrame !== e.sender.mainFrame) return { ok: false, error: 'Only the Hearth workspace can use the plugin host.' }; return fn(); };
   ipcMain.handle('creative-vst:scan', (e, roots) => own(e, () => host.scan(roots)));
   ipcMain.handle('creative-vst:status', e => own(e, () => host.status()));
   ipcMain.handle('creative-vst:setup', e => own(e, () => host.setup()));
-  ipcMain.handle('creative-vst:request', (e, r) => own(e, () => host.request(r)));
+  ipcMain.handle('creative-vst:request', (e, r) => own(e, () => host.request(withWindow(r))));
   ipcMain.handle('creative-vst:stop', e => own(e, () => host.stop()));
   ipcMain.on('creative-vst:send', (e, r) => { own(e, () => host.send(r)); }); // (round 61, vstlive61) no reply: notes, knob moves
   // (round 62, parkjam62) Park jam: a take's files (loop / ambience / layered WAV, MIDI, notes) in the sketch's own folder
@@ -342,5 +442,12 @@ function register(ipcMain, { dataDir, getWin, app, settings }) {
   ipcMain.handle('creative-vst:live-save', (e, set, name, bytes) => own(e, () => { try { return { ok: true, path: liveSave(dataDir, set, name, bytes) }; } catch (err) { return { ok: false, error: err.message }; } }));
   ipcMain.handle('creative-vst:live-mp3', (e, set, file) => own(e, () => liveMp3(dataDir, set, file, require('./aemain').ffStatus({ ffmpeg: settings?.().ffmpegPath || undefined }).ffmpeg)));
   app.once('will-quit', () => host.stop()); getWin()?.webContents.once('destroyed', () => host.stop());
+  // (round 64, vstembed64) an editor inside Hearth's window closes before the window does; on the Mac it follows the window
+  const win = getWin();
+  if (win && !win.isDestroyed()) {
+    win.once('close', () => { host.closeEditors().catch(() => {}); });
+    if (process.platform === 'darwin') { const follow = () => { const w = windowOf(win); if (w?.origin) host.follow(w.origin, w.scale); }; win.on('move', follow); win.on('resize', follow); }
+  }
+  ipcMain.handle('creative-vst:warm-status', e => own(e, () => ({ ok: true, warmed: registered?.warmed || null, hosts: host.hosts }))); // (round 64) what the idle warm did
 }
-module.exports = { create, pool, discover, register, allowedName, pathKey, jobOf, parkSave, parkList, parkMp3, liveSave, liveClip, liveRunPath, liveMp3, liveFolder }; // (round 64, liveset64) live*
+module.exports = { create, pool, discover, discoverCached, register, allowedName, pathKey, jobOf, parkSave, parkList, parkMp3, liveSave, liveClip, liveRunPath, liveMp3, liveFolder, warmLater, noteUse, warmRead, windowOf }; // (round 64, liveset64) live* · (round 64, vstembed64) discoverCached, warmLater, noteUse, warmRead, windowOf

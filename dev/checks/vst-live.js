@@ -57,7 +57,8 @@ await api.savePreset('Hover test'); ok(api.presets().some(p => p.label === 'Hove
 off();
 // 8. the native editor: audio keeps going; its knob change is read back
 const press = async label => { const b = [...document.querySelectorAll('.wb-shell button')].find(b => b.textContent === label); ok(b, 'button ' + label); b.click(); await until(() => !b.disabled, 15000, label); };
-const before = await live(); await press('Open native editor'); await until(() => /native editor open/.test(stats()), 4000, 'editor open in the readout');
+// (round 64, vstembed64) the editor's button lives on the editor frame now: "Pop out" opens it in its own window
+const before = await live(); await press('Pop out'); await until(() => /native editor open/.test(stats()), 4000, 'editor open in the readout');
 await until(() => !/native editor open/.test(stats()), 8000, 'editor closed'); const afterEd = await live(); ok(afterEd.blocks > before.blocks + 100 && afterEd.playing, 'audio kept running with the native editor open');
 await until(() => Math.abs((api.get(['macro_0']).macro_0 ?? 0) - .9) < 1e-6, 5000, 'editor change read back'); ok(true, 'the knob turned in the native editor shows in the desk afterwards');
 // 9. WASAPI exclusive on the UA endpoint, then Pause

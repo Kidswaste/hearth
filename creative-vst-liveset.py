@@ -330,6 +330,8 @@ class LiveSet:
                 for _ in range(3):
                     self.twin([], duration=frames / rate, sample_rate=rate, num_channels=2, buffer_size=frames, reset=False)
                 self.twin_id = pid
+                # (round 64, vstembed64) the twin's controls indexed here, off the audio thread, for the switch (e.adopt)
+                self.twin_index = self.e.index_of(self.twin) if hasattr(self.e, 'index_of') else None
         finally:
             self.preloading = False
         self.twin_load_ms = round((time.perf_counter() - began) * 1000)
@@ -353,7 +355,12 @@ class LiveSet:
             with self.twin_lock:
                 a = old(before, **kw)
                 b = new(carry + after, **kw)
-                e.plugin, e.parameters = new, new.parameters     # the switch: from here the twin is the instrument
+                if hasattr(e, 'adopt'):  # (round 64, vstembed64) the twin's index was made at preload: nothing built here
+                    old_index = e.index
+                    e.adopt(new, getattr(self, 'twin_index', None))
+                    self.twin_index = old_index
+                else:
+                    e.plugin, e.parameters = new, new.parameters     # the switch: from here the twin is the instrument
                 self.twin, self.twin_id = old, self.current_id
             previous, self.current_id = self.current_id, sw['id']
             if sw.get('fx') is not None:

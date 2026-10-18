@@ -162,7 +162,7 @@ const ParkJam = (() => {
       if (rec.state !== 'inactive') rec.stop(); await done;
       if (mic !== mine) throw Error('The ambience recording was stopped.');
       const bytes = await new Blob(chunks, { type: rec.mimeType || 'audio/webm' }).arrayBuffer(); if (!bytes.byteLength) throw Error('The microphone gave no sound.');
-      const ctx = new AudioContext(); let decoded; try { decoded = await ctx.decodeAudioData(bytes); } finally { ctx.close().catch(() => {}); }
+      const ctx = new AudioContext({ sampleRate: 48000 }); let decoded; try { decoded = await ctx.decodeAudioData(bytes); } finally { ctx.close().catch(() => {}); } // (round 64, vstembed64) decoded straight to 48 kHz: the ambience file and the layered loop are 48 kHz, resampled once
       const channels = Array.from({ length: Math.min(2, decoded.numberOfChannels) }, (_, i) => decoded.getChannelData(i).slice());
       const pcm = { rate: decoded.sampleRate, channels }, names = P.takeNames(placeName());
       const path = await save(names.ambience, P.encodeWav(pcm));
