@@ -23,7 +23,7 @@ var WorkbenchVST = (() => {
     if (hub.vst.send) { hub.vst.send({ action, plugin: selected.path, name: selected.name, ...data }); return Promise.resolve({ ok: true }); }
     return call(action, data);
   }
-  async function startLive() { const s = await call('live-start', liveJob()); showStats(s); return s; }
+  async function startLive() { let s; try { s = await call('live-start', liveJob()); } catch (err) { if (typeof AudioDoctorDesk !== 'undefined') AudioDoctorDesk.failed(err); throw err; } showStats(s); return s; } // (round 64, audiodoctor64) a failed start opens the audio setup check in the desk
   function clearRender() { if (rendered?.player) { rendered.player.pause(); rendered.player.parentElement?.replaceChildren(); } if (rendered?.url) URL.revokeObjectURL(rendered.url); rendered = null; }
   async function call(action, data = {}) {
     if (!selected && action !== 'devices') throw Error('Choose Serum 2 or Vital first.');
@@ -100,6 +100,7 @@ var WorkbenchVST = (() => {
     const runtime = await hub.vst.status(); if (ticket !== alive) return;
     const setup = row(btn(runtime.ok ? 'Check audio runtime' : 'Set up live audio', async () => { say('Preparing the local audio runtime…'); const r = await (runtime.ok ? hub.vst.status() : hub.vst.setup()); if (!r.ok) throw Error(r.error); h.api.openFeature('vst'); }), btn('Plugin folder', async () => { const path = await hub.pickFolder('', 'Folder containing Serum 2 or Vital'); if (path && !state.roots.includes(path)) { state.roots.push(path); persist(); h.api.openFeature('vst'); } }), btn('Reset host', async () => { pause(); await hub.vst.stop(); selected = null; canEdit = false; h.api.openFeature('vst'); }));
     out.append(setup);
+    if (typeof AudioDoctorDesk !== 'undefined') AudioDoctorDesk.attach(setup); // (round 64, audiodoctor64) 🎚 Check my audio setup
     if (typeof ParkJam !== 'undefined') ParkJam.attach(out, setup, h); // (round 62, parkjam62) one 🌳 Park mode button in this row
     if (!runtime.ok) { out.append(note(`${runtime.error} Setup installs a private Pedalboard + PortAudio runtime in Hearth. Your installed plugins remain where they are.`)); return; }
     const scan = await hub.vst.scan(state.roots); if (ticket !== alive) return; if (!scan.ok) throw Error(scan.error);
@@ -119,7 +120,7 @@ var WorkbenchVST = (() => {
         if (d.ok) { lastDevices = d; settings.value = L.resolve(state.live?.saved, d) ?? L.options(d).preferred; settings.device = L.parse(settings.value).device; deviceChosen = true; }
       }
       const r = await hub.vst.request({ action: 'open', plugin: p.path, name: p.name, live, ...liveJob() });
-      if (!r.ok) throw Error(r.error); if (ticket !== alive || mine !== openSeq) return;
+      if (!r.ok) { if (live && typeof AudioDoctorDesk !== 'undefined') AudioDoctorDesk.failed(r.error); throw Error(r.error); } if (ticket !== alive || mine !== openSeq) return; // (round 64, audiodoctor64)
       clearRender(); selected = { name: p.name, path: p.path, parameters: [], loading: true }; state.selected = p.path; canEdit = false; before = null; editorCloses = null; persist();
       // (round 64, vstembed64) the click → playable time (host start + plugin load + live start), then controls ready
       editorAuto = true; // (round 64) this open may bring the editor into the desk (once)
@@ -170,6 +171,7 @@ var WorkbenchVST = (() => {
         range('Monitor volume', settings.gain, 0, .5, .01, v => { settings.gain = v; h.state.live = { ...(h.state.live || {}), gain: v }; fire('volume', { gain: v }).catch(err => say(err.message)); }),
         select('MIDI in', settings.midiIn, midiChoices, v => { settings.midiIn = v; rememberLive(); call('midi-in', { midiIn: v }).catch(err => say(err.message)); }),
         select('Phrase', '', [['', 'Phrase · off'], ...Object.entries(L.PHRASES).map(([k, x]) => [k, x.label])], v => playPhrase(v || null).catch(err => say(err.message))));
+      if (typeof AudioDoctorDesk !== 'undefined') setup.append(AudioDoctorDesk.button(true)); // (round 64, audiodoctor64) next to Audio output · Buffer
       if (devices.asioNote) transport.append(note(devices.asioNote));
       else if (devices.asioDll && !devices.asio && picked.hasUA) transport.append(note('No ASIO driver answered: install / start UA Connect or UAD Console, then Reset host. WASAPI exclusive plays meanwhile.'));
       const startButton = btn(playing ? 'Live audio on' : 'Start live audio', async () => { await startLive(); rememberLive(); startButton.textContent = 'Live audio on'; });

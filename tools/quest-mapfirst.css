@@ -1,0 +1,31 @@
+/* (round 64, mapfirst64) the Paris map's layer strip, guide pins drawn lighter, the ✓ on visited places */
+.qmf-strip{position:absolute;left:10px;bottom:10px;z-index:6;display:flex;gap:5px;flex-wrap:nowrap;max-width:calc(100% - 190px);overflow-x:auto;scrollbar-width:none}
+.qj-atlas:has(.qmf-strip) .qj-atlas-hint{bottom:52px}
+.qmf-strip::-webkit-scrollbar{display:none}
+.qj .qj-atlas .qmf-strip .qj-button{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;min-height:30px;border-radius:9px!important;background:#201c28ed!important;font:600 11px system-ui,sans-serif;text-transform:none;letter-spacing:0;white-space:nowrap;flex:0 0 auto}
+.qj .qmf-strip .qj-hardware:before{content:none}
+.qmf-strip .qj-map-icon{width:15px;height:15px;color:var(--chip,#ffd75e)}
+.qmf-chip[aria-pressed=false]{opacity:.55}
+.qmf-chip[aria-pressed=false] .qj-map-icon{color:#9d97a8}
+.qmf-chip[aria-pressed=false]>span{text-decoration:line-through;text-decoration-color:#ffffff55}
+.qmf-chip[aria-pressed=true]{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--chip) 55%,transparent)}
+.qmf-n{font:600 10px system-ui,sans-serif;font-style:normal;color:#17151e;background:var(--chip,#ffd75e);border-radius:8px;padding:1px 5px}
+.qj .qj-atlas .qmf-strip .qmf-plan{background:#ffd75e!important;color:#1b151d!important;font-weight:600}
+.qmf-plan .qj-map-icon{color:#1b151d}
+.qj-atlas .qmf-status{position:absolute;top:10px;right:10px;z-index:6;display:flex;gap:8px;align-items:center;max-width:calc(100% - 20px);padding:5px 9px;min-height:0;border-radius:8px;background:#2a1a22f0!important;border:1px solid #ff6b9d66;color:#ffd0e0;font-size:10.5px;text-align:left}
+.qmf-status b{color:#ff9cc0;font-weight:600}
+.qmf-status.busy{border-color:#ffffff22;color:#d8d1e2;background:#1d1a24e8!important}
+/* the guide's untouched places: lighter than your own pins, dots at the city zoom (≤ 12), full at street zoom */
+.qj-atlas .qj-atlas-pin.qj-pin-guide>span{width:26px!important;height:26px!important;border-width:1.5px;border-style:dotted;background:#1d1b22e0!important;opacity:.9}
+.qj-atlas .qj-atlas-pin.qj-pin-guide .qj-map-icon{width:14px;height:14px}
+.qj-atlas:is([data-zoom="11"],[data-zoom="12"]) .qj-atlas-pin.qj-pin-guide:not(.selected,:hover,:focus-visible)>span{width:11px!important;height:11px!important;border-radius:50%;border:2px solid #17151e;background:var(--pin)!important;opacity:.8;transform:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--pin) 30%,transparent)}
+.qj-atlas:is([data-zoom="11"],[data-zoom="12"]) .qj-atlas-pin.qj-pin-guide:not(.selected,:hover,:focus-visible) .qj-map-icon{display:none}
+/* visited: a small ✓ on the pin (venues you went to have showprep62's own, top right) */
+.qj-atlas-pin.visited:not([data-place^="show-venue-"])::after{content:'✓';position:absolute;left:-5px;top:-7px;width:15px;height:15px;display:grid;place-items:center;border-radius:50%;background:#f6ca71;color:#1b151d;font:700 10px system-ui,sans-serif;box-shadow:0 2px 5px #0009;pointer-events:none}
+/* a guide place's quest in its panel */
+.qj-paris-quest{display:grid;gap:8px;padding:12px;border:1px solid #bd8bff40;border-radius:12px;background:#bd8bff0d}
+.qj-paris-steps{margin:0;padding-left:18px;display:grid;gap:3px;font-size:12px;color:#ddd6e8}
+.qj-paris-steps li.done{color:#f6ca71}
+/* a venue pin's next show with its buttons */
+.ss-next{display:grid;gap:8px;padding:10px;border:1px solid #ff6b9d40;border-radius:12px;margin:8px 0}
+@container(max-width:760px){.qmf-strip{bottom:26px;right:10px;max-width:none}.qj-atlas:has(.qmf-strip) .qj-atlas-hint{bottom:66px}.qj-atlas .qmf-status{top:50px;left:10px;right:auto}}

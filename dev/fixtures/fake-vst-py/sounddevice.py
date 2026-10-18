@@ -12,6 +12,13 @@ import numpy as np
 
 __version__ = '0.5.6-fake'
 ASIO = 'SD_ENABLE_ASIO' in os.environ
+# (round 64, audiodoctor64) FAKE_SD_NO_ASIO_DLL: the ASIO-enabled PortAudio DLL won't load (missing / blocked), as the
+# real wheel would fail at import; creative-vst-offline.import_sounddevice() then imports again without SD_ENABLE_ASIO.
+if ASIO and os.environ.get('FAKE_SD_NO_ASIO_DLL'):
+    raise OSError('PortAudio library not found (libportaudio64bit-asio.dll)')
+# FAKE_SD_ASIO_CRASH: a broken ASIO driver takes the whole process down while PortAudio enumerates it
+if ASIO and os.environ.get('FAKE_SD_ASIO_CRASH'):
+    os._exit(3)
 
 _apis = [{'name': 'MME', 'devices': [0, 1], 'default_output_device': 1},
          {'name': 'Windows WASAPI', 'devices': [2, 3], 'default_output_device': 3}]
@@ -147,3 +154,38 @@ class OutputStream:
 
     def close(self):
         self.active = False
+
+
+# (round 64, audiodoctor64) what /audio doctor's live test also uses: the PortAudio version, and a duplex Stream whose
+# input hears its own output FAKE_SD_LOOP_SAMPLES later (default 480) when FAKE_SD_LOOPBACK is set (the owner patched
+# an output into an input), else a quiet noise floor.
+def get_portaudio_version():
+    return (1246976, 'PortAudio V19.7.0-devel, revision fake' + (' (ASIO)' if ASIO else ''))
+
+
+class Stream(OutputStream):
+    def __init__(self, samplerate, blocksize, device=(None, None), channels=(1, 2), dtype='float32', latency=None, callback=None, extra_settings=None):
+        out_dev = device[1] if isinstance(device, (tuple, list)) else device
+        in_dev = device[0] if isinstance(device, (tuple, list)) else device
+        if query_devices(in_dev).get('max_input_channels', 0) < channels[0]:
+            raise PortAudioError('Invalid number of channels')
+        OutputStream.__init__(self, samplerate, channels[1], dtype, blocksize, out_dev, latency, None, extra_settings[1] if isinstance(extra_settings, (tuple, list)) else extra_settings)
+        self.duplex_callback, self.in_channels = callback, channels[0]
+        self.latency = (blocksize / samplerate + .003, blocksize / samplerate + .002)
+        self._delay = int(os.environ.get('FAKE_SD_LOOP_SAMPLES', '480'))
+        self._loop = bool(os.environ.get('FAKE_SD_LOOPBACK'))
+        self._sent = np.zeros(0, dtype=np.float32)
+        rng = np.random.default_rng(1)
+        self._noise = lambda n: (rng.standard_normal(n) * .0005).astype(np.float32)
+        self.callback = self._duplex
+
+    def _duplex(self, outdata, frames, timing, status):
+        indata = np.zeros((frames, self.in_channels), dtype=np.float32)
+        start = self.pulled * frames - self._delay
+        if self._loop and start + frames > 0:
+            lo = max(0, start)
+            got = self._sent[lo:start + frames]
+            indata[lo - start:lo - start + len(got), 0] = got
+        indata[:, 0] += self._noise(frames)
+        self.duplex_callback(indata, outdata, frames, timing, status)
+        self._sent = np.concatenate([self._sent, outdata[:, 0].copy()])

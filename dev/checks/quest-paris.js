@@ -12,8 +12,13 @@ async function cmd(line) { const said = [], errors = []; await Commands.tryRun(l
 const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === name || b.textContent.trim() === name); check(b, 'Button ' + name); b.click(); await until(() => !b.disabled, name); await wait(80); };
 const P = () => window.QuestParis, guideNew = () => P().guide.filter(g => g.id.startsWith('pp-')).length;
 
-// 1. chat drives the map: /quest paris adds the guide once and opens the map
+// 0. (round 64, mapfirst64) no command: opening the Studio's map shows the guide's places by default (stored once)
 await Lazy.load('questjournal');
+activate('tool:quests'); await until(() => root() && QuestJournal.ready(), 'journal'); QuestJournal.navigate('world');
+await until(() => root().querySelectorAll('.qj-atlas-pin.qj-pin-guide').length >= 30, 'guide pins by default');
+check(state().atlas.places.length === 6 + guideNew(), 'the guide is on the map with no command (' + state().atlas.places.length + ')');
+check(root().querySelector('.qmf-strip [data-layer="places"][aria-pressed="true"]'), 'Places chip on by default');
+// 1. chat drives the map: /quest paris adds the guide once and opens the map
 check(Commands.get('quest'), '/quest registered');
 // (round 61, questhud61) one /quest: bare /quest is the tracker's; its Paris words (help, paris, add…) pass through
 const help = await cmd('/quest help'); check(/\/quest paris/.test(help) && /\/quest add/.test(help), 'help lists the subcommands');
@@ -42,7 +47,7 @@ const list = await cmd('/quest places records'); check(list.split('\n').length =
 // 3. a pin's panel shows the guide note and starts its go → do → proof quest
 root().querySelector('.qj-atlas-pin[data-place="pp-bataclan"]').click(); await until(() => /Le Bataclan/.test(root().querySelector('.qj-field-place-head')?.textContent || ''), 'bataclan selected');
 check(root().querySelector('.qj-paris-note') && /11e/.test(root().querySelector('.qj-paris-note').textContent), 'guide note with arrondissement');
-await press('Place quest: go → do → proof', root());
+await press('Start this quest', root()); // (round 64, mapfirst64) the panel's quest card
 await until(() => state().campaigns.some(c => c.id === 'c-pp-bataclan'), 'place quest saved');
 const bat = state().campaigns.find(c => c.id === 'c-pp-bataclan'); check(bat.quests.length === 3 && state().active === bat.id, 'three steps, tracked');
 check(root().querySelector('dialog[open]'), 'the first step opens'); scope().close(); await wait(100);
@@ -54,7 +59,7 @@ await QuestJournal.paris.mutate(s => { const item = QuestCore.submit(s, qid, { t
 check(QuestCore.xp(state()) === 20, 'step one pays its XP after review');
 out = await cmd('/quest list'); check(/Le Bataclan: 1\/3 · next:/.test(out), '/quest list shows step progress: ' + out);
 QuestJournal.navigate('world'); await wait(150); root().querySelector('.qj-atlas-pin[data-place="pp-bataclan"]')?.click(); await wait(200);
-check([...root().querySelectorAll('.qj-paris-start')].some(b => /Place quest: Hear how/.test(b.textContent)), 'panel names the next step');
+check([...root().querySelectorAll('.qj-paris-start')].some(b => /Continue: Hear how/.test(b.textContent)), 'panel names the next step');
 if (root().querySelector('dialog[open]')) scope().close();
 
 // 5. personal quests from chat

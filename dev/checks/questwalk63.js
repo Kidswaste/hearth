@@ -32,6 +32,10 @@ try {
   for (const id of ['pp-denoyez', 'place-canal']) seed.atlas.places.find((p) => p.id === id).visitedAt = new Date().toISOString();
   await window.hub.kvSet('quest-journal', seed); await QuestHud.refresh();
   step('the walk code rides in the Studio\'s lazy group (nothing on the first screen)', typeof QuestWalk === 'object' && Lazy.isIn('questjournal'));
+  // (round 64, mapfirst64) no command: the map itself has "Plan a walk" and the My walks chip
+  activate('tool:quests'); await until(() => root() && QuestJournal.ready(), 'journal'); QuestJournal.navigate('world');
+  await until(() => root().querySelector('.qmf-strip .qmf-plan'), 'Plan a walk on the map');
+  step('the map shows Plan a walk and the My walks chip (on) with no command', !!root().querySelector('.qmf-chip[data-layer="walks"][aria-pressed="true"]') && /Plan a walk/.test(root().querySelector('.qmf-plan').textContent));
 
   // ---------- 2. /quest walk 11e → the walk, the line on the map, the chat answer ----------
   let said = await cmd('/quest walk 11e');

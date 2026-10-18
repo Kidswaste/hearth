@@ -49,10 +49,12 @@ const RewardShelf = (() => {
   // ---------- the ✦ tracker panel: a few rows under today's picks ----------
   function hudRows(C, S, btn) {
     if (!C || !S || !Array.isArray(S.rewards)) return [];
-    const cd = R.next(C, S), rows = [el('div', { class: 'qh-sec', text: 'Rewards' })];
+    // (round 64, clickfirst64) the section's own link, in words: "All rewards ›" opens Sidequest Studio › Rewards
+    const shelf = () => { QuestHud.close(); return QuestHud.openStudio(null, 'rewards'); };
+    const cd = R.next(C, S), rows = [el('div', { class: 'qh-sec cf-sec' }, el('span', { text: 'Rewards' }), el('button', { type: 'button', class: 'cf-link', text: 'All rewards ›', dataset: { k: 'rw-all' }, on: { click: (e) => { e.stopPropagation(); shelf().catch((err) => toast(calmError(err), { type: 'error' })); } } }))];
     if (!cd) {
       rows.push(el('div', { class: 'qh-row rw-row' }, el('span', { class: 'qh-pi', text: '🎁' }), el('div', { class: 'qh-row-main' }, el('span', { class: 'qh-row-title', text: 'Something to look forward to' }), el('span', { class: 'qh-sub', text: 'Pick a starter reward or add your own' })),
-        btn('Ideas', () => addIdeasNote(), 'qh-take', 'Kind starter rewards: a record at Superfly, a long breakfast…')));
+        btn('Pick one', () => shelf(), 'qh-take', 'Sidequest Studio › Rewards: kind starters, one click each (a record at Superfly, a long breakfast…)'))); // (round 64, clickfirst64) was "Ideas" (a toast to read): now the shelf where a starter is one click
       return rows;
     }
     if (confirming === cd.id && cd.ready) {

@@ -660,6 +660,7 @@ function registerAfterWindow() {
   // (round 64, vstembed64) the Sound desk's host warms up 20 s after start only if the owner used it last session
   try { require('./creative-vstmain.js').warmLater(store.DATA_DIR, vstIpc.load); } catch { /* a cold start then */ }
   lazyIpc('soundbankmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app })); // (round 63, soundbank63) the Sound bank's index + preview queue
+  lazyIpc('audiodoctormain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, settings })); // (round 64, audiodoctor64) /audio doctor: runtime, ASIO, devices, MIDI, Serum 2 / Vital, a 2-second live test (only when asked)
   const { nativeTheme, systemPreferences, nativeImage } = require('electron');
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
   bigscreen.register(ipcMain, { getWin: () => win, screen: require('electron').screen }); // (round 38) ⛶ full screen, size of everything
