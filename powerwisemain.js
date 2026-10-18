@@ -16,6 +16,8 @@
 const Core = require('./powerwise');
 
 const TEST = Boolean(process.env.HEARTH_TEST_SAVE_DIR);
+// (round 65, mainhang65; tests only) the main process' event-loop delay, long blocks, sync fs and IPC per channel
+const lagProbe = TEST && process.env.HEARTH_LOOPLAG ? require('./mainlag-probe') : null;
 
 // ---------- tests: count the main process's wakeups (installed before the rest of main.js loads) ----------
 const probe = TEST ? (() => {
@@ -164,7 +166,7 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('power:release', (_e, token) => blocker.release(Number(token)));
   ipcMain.handle('power:allow', () => blocker.allow());
   ipcMain.handle('power:quiet', (_e, on) => quiet(on)); // (round 52, presentready) the Lab presents: background work waits
-  ipcMain.handle('power:test', (_e, t = {}) => testHook(t));
+  ipcMain.handle('power:test', (_e, t = {}) => (t.lag && lagProbe ? lagProbe.take(t.lag) : testHook(t)));
   try {
     const { powerMonitor } = require('electron');
     const again = () => checkSaver(true);

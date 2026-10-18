@@ -122,6 +122,7 @@ const GROUPS = {
   activity: ['activity'], // (round 27) ◉ Activity: what runs, what waits for you, the last 24 h, stuck replies, desktop notifications
   publishkit: ['publishkit', 'unit:publishkit-test'], // (round 27) 📮 Ready to post: platform checks, safe areas, cover, words, post folder, fixes through the queue
   router: ['router', 'unit:router-test', 'routerlearn', 'unit:routerlearn-test'], // (round 39) routerlearn: Smart learns from you (think harder 3× → that kind steps up, the line in AI setup, ✕ forgets; the rules + a 6-week simulation) · (round 28) Smart: model + effort per message, the pick on the reply, think harder (fake engines say what they got)
+  mainhang65: ['mainhang65', 'idlecpu', 'twocopies64', 'updater', 'chatkeep', 'datasafe', 'soundbank63', 'lazy', 'unit:boot-test', 'unit:twocopies-test', 'unit:datasafe-scan', 'unit:winmac-test', 'unit:backupauto-test'], // (round 65) the main process never hangs the app: event-loop delay on a big data folder (startup, idle, everyday actions, the backup, sync passes)
   twocopies64: ['twocopies64', 'unit:twocopies-test', 'chatkeep', 'firstrun', 'datasafe', 'unit:winfresh-test', 'unit:configsafe-test', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test', 'unit:chatsafe-scan'], // (round 64) a second Hearth folder next to the real one: the card before the window, its own profile, Bring its chats here
   firstrun: ['firstrun', 'unit:firstrun-test'], // (round 28) Check this computer: one list, one button each, live re-checks, the first launch
   aiundo: ['aiundo', 'unit:aiundo-test'], // (round 28) one undo for what the AIs did: Lab, board, files, settings; replies' ↶; Activity's part
@@ -266,6 +267,8 @@ const FIX = [
   // (round 14) a local Pinterest-like search page for the Pinterest window check (dev/checks/eyes-pins.js)
   // (round 42, chatlistfast) 3,000 made-up chats with folders, tags, pins and archived ones (never real data)
   { re: /hearth-chatlist-fixture/, path: `${T}/hearth-chatlist-fixture/chats`, make: () => sh('node', ['dev/make-chatlist-fixture.js', `${T}/hearth-chatlist-fixture`, '3000']) },
+  // (round 65, mainhang65) a big data folder: 3,000 chats + .prev copies, attachments, trash, big kv / Sound bank index
+  { re: /hearth-bighome/, path: `${T}/hearth-bighome/chats`, make: () => sh('node', ['dev/make-bighome-fixture.js', `${T}/hearth-bighome`, '3000']) },
   // (round 43, datasafe) settings, memory, a chat and notes held for the first 20 s of the start, a settings copy, a backup zip
   { re: /hearth-datasafe-fixture/, path: `${T}/hearth-datasafe-fixture/config.json`, make: () => sh('node', ['dev/datasafe-test.js', '--make-fixture', `${T}/hearth-datasafe-fixture`]) },
   { re: /hearth-gamemode/, path: `${T}/hearth-gamemode/lab-scene.json`, make: () => sh('node', ['dev/make-game-fixture.js', `${T}/hearth-gamemode`]) }, // (round 52) ▶ Play's test game (with three.js in its lib/) and the game-like Lab scene
@@ -383,7 +386,8 @@ for (const n of wanted) {
     // step pictures only when asked (--shots): a 1080×1080 screenshot mid-journey can starve a recording on a busy machine
     const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(pairDirs[n]?.flags || []), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
     // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
-    const env = /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }
+    const env = n === 'mainhang65' ? { ...process.env, HEARTH_LOOPLAG: 'prof', HEARTH_SLOWFS_US: process.env.HEARTH_SLOWFS_US || '150' } // (round 65) the main-process lag probe, a Windows-slow disk
+      : /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }
       : /^(game(mode|ready|input|tex|look|audio|stream|fps54)|playloop|playbudget|playlatency|shadowready|labcanvas56|readyspeed|ctxloss|trim-drive|gcchurn60|playnotes62|hitchmap63)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network; round 60: trim-drive's ▶ Play commands too)
     r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env });
   }

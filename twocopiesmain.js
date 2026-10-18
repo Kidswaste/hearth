@@ -29,7 +29,9 @@ function enabled() {
   if (e === '1') return true;
   try { return require('./package.json').name === 'agent-hub'; } catch { return false; }
 }
-const chatsHere = () => C.countChats(fs, path, S.dataDir).chats;
+// (round 65, mainhang65) a count without a stat per chat; anyChats() stops at the first one
+const chatsHere = () => C.countChats(fs, path, S.dataDir, { newest: false }).chats;
+const anyChats = () => C.countChats(fs, path, S.dataDir, { any: true }).chats > 0;
 // Windows: where the Start menu / Desktop "Hearth.lnk" and the login item point (only once Electron is ready)
 function winLinks() {
   if (process.platform !== 'win32') return { links: [], loginItems: [] };
@@ -56,7 +58,7 @@ function early({ app, dataDir = path.join(APP_DIR, 'data') } = {}) {
   try {
     S.copyId = C.ensureId({ fs, path, dataDir, appDir: APP_DIR });
     S.defaultDir = app.getPath('userData');
-    const pick = C.pickProfile({ fs, path, defaultDir: S.defaultDir, copyId: S.copyId, dataDir, appDir: APP_DIR, chatsHere: chatsHere(), others: () => others({ withLinks: false }) });
+    const pick = C.pickProfile({ fs, path, defaultDir: S.defaultDir, copyId: S.copyId, dataDir, appDir: APP_DIR, chatsHere, others: () => others({ withLinks: false }) }); // (round 65) counted only when it matters
     S.primary = pick.primary; S.why = pick.why; S.profile = pick.dir;
     if (pick.dir && pick.dir !== S.defaultDir) { fs.mkdirSync(pick.dir, { recursive: true }); app.setPath('userData', pick.dir); }
     if (pick.claim) C.writeMarker({ fs, path, defaultDir: S.defaultDir, copyId: S.copyId, dataDir, appDir: APP_DIR });
@@ -75,7 +77,7 @@ async function gate(o) {
   if (!S.on) return none;
   let found = [];
   try {
-    if (chatsHere() > 0) return none;
+    if (anyChats()) return none; // (round 65) one chat is enough to know (was: every chat counted and stat'ed)
     const choice = C.readChoice({ fs, path, dataDir: S.dataDir });
     found = others();
     if (!C.shouldAsk({ chatsHere: 0, choice, others: found })) return none;
@@ -144,4 +146,4 @@ function passArgs() {
 function childEnv() { const e = { ...process.env }; delete e.ELECTRON_RUN_AS_NODE; return e; }
 function noteOpened(plan) { try { if (process.env.HEARTH_TWOCOPIES_NOTE) fs.writeFileSync(process.env.HEARTH_TWOCOPIES_NOTE, JSON.stringify({ at: Date.now(), plan })); } catch { /* tests only */ } }
 
-module.exports = { early, gate, info, others, enabled, chatsHere: () => (S.on ? chatsHere() : null) };
+module.exports = { early, gate, info, others, enabled, chatsHere: () => (S.on ? chatsHere() : null), anyChats: () => (S.on ? anyChats() : null) };

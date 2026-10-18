@@ -35,13 +35,17 @@ function readJson(fs, file) {
 }
 const exists = (fs, p) => { try { return Boolean(p) && fs.existsSync(p); } catch { return false; } };
 // the chats a data folder holds (chat files; .prev copies and anything else don't count)
-function countChats(fs, P, dataDir) {
+// (round 65, mainhang65) o.newest = false: the count alone (no stat per chat: thousands of them cost a second on a
+// Windows disk, before the window could show); o.any: stop at the first chat
+function countChats(fs, P, dataDir, { newest: wantNewest = true, any = false } = {}) {
   let n = 0; let newest = 0;
   let names = [];
   try { names = fs.readdirSync(P.join(dataDir, 'chats')); } catch { return { chats: 0, newest: 0 }; }
   for (const name of names) {
     if (!CHAT_FILE.test(name) || /\.prev\.json$/.test(name)) continue;
     n += 1;
+    if (any) break;
+    if (!wantNewest) continue;
     try { const t = fs.statSync(P.join(dataDir, 'chats', name)).mtimeMs; if (t > newest) newest = t; } catch { /* gone */ }
   }
   return { chats: n, newest };
@@ -90,6 +94,7 @@ function pickProfile({ fs, path: P = nodePath, defaultDir, copyId, dataDir, appD
   // no copy marked it yet (every install before this version): a profile nobody used is this copy's; a used one goes
   // to the copy with chats (the most of them on this computer), never to a new empty copy
   if (!profileUsed(fs, P, defaultDir)) return { dir: defaultDir, primary: true, claim: true, why: 'fresh profile' };
+  if (typeof chatsHere === 'function') chatsHere = chatsHere(); // (round 65) counted only when it decides
   if (chatsHere > 0) {
     let most = null;
     try { for (const o of others() || []) if (!most || o.chats > most.chats) most = o; } catch { most = null; }

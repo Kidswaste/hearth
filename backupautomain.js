@@ -158,9 +158,15 @@ async function verify(zip, { media = true, base = path.dirname(zip) } = {}) {
     files += all.length;
     for (const f of ['config.json', 'theme.css']) if (fs.existsSync(path.join(dest, f))) files += 1;
     const key = (rel) => rel === 'config.json' || rel === 'data/memory.json' || /^data\/(chats|kv)\/[^/]+\.json$/.test(rel);
+    // (round 65, mainhang65) read back without holding the main process: a few thousand chats read and parsed one
+    // after the other in sync calls froze the whole app for 1–2 s on a Windows disk; now each read waits on the disk
+    // off the main thread and the parsing gives way every ~8 ms (same files, same check)
+    let slice = Date.now();
     for (const rel of ['config.json', ...all.map((f) => f.rel)].filter(key)) {
-      if (!fs.existsSync(path.join(dest, ...rel.split('/')))) continue;
-      try { JSON.parse(fs.readFileSync(path.join(dest, ...rel.split('/')), 'utf8')); } catch { bad.push(rel); }
+      let text;
+      try { text = await fsp.readFile(path.join(dest, ...rel.split('/')), 'utf8'); } catch (err) { if (err.code === 'ENOENT') continue; bad.push(rel); continue; }
+      try { JSON.parse(text); } catch { bad.push(rel); }
+      if (Date.now() - slice > 8) { await new Promise((r) => setImmediate(r)); slice = Date.now(); }
     }
     const counts = C.countsOf({ read, list: listIn(dest) });
     if (!manifest) return { ok: !bad.length, legacy: true, problems: bad.map((r) => `${r} is damaged`), counts, files, at: now() };
@@ -267,10 +273,12 @@ async function doRun(reason) {
     stage = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-backup-'));
     const byRel = new Map(files.map((f) => [f.rel, f]));
     const skipped = []; let n = 0;
+    const made = new Set(); // (round 65, mainhang65) each folder made once, off the main thread (was a sync mkdir per file)
     for (const rel of plan.zip) {
       const f = byRel.get(rel);
       const to = path.join(stage, ...rel.split('/'));
-      fs.mkdirSync(path.dirname(to), { recursive: true });
+      const parent = path.dirname(to);
+      if (!made.has(parent)) { await fsp.mkdir(parent, { recursive: true }); made.add(parent); }
       try { if (await copyCareful(f.abs, to)) n += 1; } catch (err) { skipped.push({ rel, code: err.code || 'ERR' }); }
     }
     const counts = { ...C.countsOf({ read: readJsonIn(stage), list: listIn(stage) }), media: plan.media.length };

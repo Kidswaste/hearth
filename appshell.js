@@ -263,7 +263,8 @@ async function firstRunShortcuts({ dataDir }) {
   // computer has chats (nothing is written: asked again at the next start, when this copy may have chats of its own)
   if (plan.action !== 'keep') {
     let hold = null;
-    try { const T = require('./twocopiesmain'); hold = require('./twocopies-core').shortcutHold({ chatsHere: T.chatsHere() ?? 1, others: T.others() }); } catch { hold = null; }
+    // (round 65, mainhang65) the other folders are looked for only when this copy has no chat (a copy with chats never holds)
+    try { const T = require('./twocopiesmain'); const any = T.anyChats?.() ?? true; hold = any ? null : require('./twocopies-core').shortcutHold({ chatsHere: 0, others: T.others() }); } catch { hold = null; }
     if (hold) return hold; // (quiet: the card before the window already said where your Hearth is)
   }
   let r = {};
