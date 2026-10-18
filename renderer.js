@@ -524,10 +524,22 @@ function saveConfig() {
   Promise.resolve(p).then(settle, settle);
   return p;
 }
+// (round 65, mainhang65) the file watcher tells every save of config.json, the window's own ones too: each came back
+// as a full redraw (the rail, every surface, the layout and the whole chats list), also for a save that changed
+// nothing (the same settings saved again, a sync pass writing the same file). News identical to what was last drawn
+// (same settings, same theme.css) is let go; anything else still redraws as before (a save made from the window
+// relies on it to redraw).
+let cfgShown = ''; // JSON of [config, themeCss] as last applied
 function configChanged(data) {
   if (cfgSaving) { cfgHeld = true; return; }
+  if (data && !data.error && H.config && cfgShown) {
+    let key = ''; try { key = JSON.stringify([data.config, data.themeCss ?? '']); } catch { key = ''; }
+    // (and the window's settings still exactly those: nothing to put back either)
+    if (key && key === cfgShown && (() => { try { return JSON.stringify([H.config, cfgShownTheme]) === cfgShown; } catch { return false; } })()) return;
+  }
   apply(data);
 }
+let cfgShownTheme = '';
 
 // ---------- surfaces ----------
 
@@ -881,6 +893,7 @@ function apply({ config, themeCss, error }) {
   const first = !H.config;
   H.config = config;
   applyTheme(themeCss);
+  cfgShownTheme = themeCss ?? ''; try { cfgShown = JSON.stringify([config, cfgShownTheme]); } catch { cfgShown = ''; } // (round 65) what is on screen
   if (first) setTimeout(() => AppUI.offerSwirl(), 0);
   if (first) {
     H.grid = config.layout?.start === 'grid';
