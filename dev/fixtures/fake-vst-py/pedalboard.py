@@ -34,6 +34,9 @@ class FakeInstrument:
             'cutoff': Parameter('Filter cutoff', float, None, None, .7),  # an unbounded control (normalized 0–1)
             'mono': Parameter('Mono', bool, value=0.0),
             'wave': Parameter('Wave', str, value=0.0, choices=['sine', 'saw']),
+            # (round 62, parkjam62) what Park mode lowers on battery: voices (1–32, now 16) and oversampling (now 4x)
+            'polyphony': Parameter('Polyphony', float, 1.0, 32.0, 15 / 31),
+            'oversampling': Parameter('Oversampling', str, value=.5, choices=['1x', '2x', '4x']),
         }
         for i in range(int(os.environ.get('FAKE_PB_PARAMS', '40'))):
             params['macro_%d' % i] = Parameter('Macro %d' % i, float, 0.0, 1.0, .25)
