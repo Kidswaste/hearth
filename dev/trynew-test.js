@@ -19,13 +19,17 @@ test('13 paths: 5 from round 61, 4 from 62, 4 from 63, unique ids, 1–3 steps e
       assert.ok(s.title && s.text && s.text.length < 260, `${p.id}: short words`);
       assert.ok(Array.isArray(s.target) && s.target.length, `${p.id}: a target`);
       if (s.open) assert.ok(OPENS.includes(s.open), `${p.id}: ${s.open}`);
-      if (s.cmd) assert.match(s.cmd, /^\/[a-z]/);
     }
   }
 });
-test('the commands the owner asked for are suggested', () => {
-  const cmds = C.PATHS.flatMap((p) => p.steps.map((s) => s.cmd)).filter(Boolean);
-  for (const c of ['/quest add airpods', '/quest paris', '/quest week', '/quest review', '/shows week', '/shows prep ', '/jam park buttes', '/song', '/sounds dark', '/reward add new record at Superfly 300', '/playtest notes', '/playtest hitchmap on', '/quest walk belleville 3h', '/audio doctor']) assert.ok(cmds.includes(c), c);
+test('click-first: no step suggests typing a command; every step says where to click or what is ringed', () => {
+  for (const p of C.PATHS) for (const s of p.steps) {
+    assert.equal(s.cmd, undefined, p.id);
+    assert.doesNotMatch(s.text, /(^|\s)\/[a-z]{3,}/, `${p.id}: ${s.title}`);
+  }
+  // the ones the owner asked for are all there, by clicks
+  for (const id of ['tracker', 'paris', 'walk', 'week', 'rewards', 'shows', 'showprep', 'park', 'soundbank', 'preset', 'livevst', 'playnotes', 'hitchmap']) assert.ok(C.byId(id), id);
+  assert.ok(C.byId('tracker').steps.some((s) => s.target.includes('[data-personal="airpods"]')));
 });
 test('/audio doctor shows only when this copy has it (audiodoctor64)', () => {
   const p = C.byId('livevst');
