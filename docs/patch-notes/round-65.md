@@ -10,4 +10,4 @@
 - **A file held by OneDrive or your antivirus no longer pauses Hearth.** When Windows briefly locks one of Hearth's files, Hearth used to wait for it — up to over half a second, freezing everything. It now waits at most 50 ms and carries on, finishing the save as soon as the file is free (a settings change made at that moment is never lost).
 - Token stats after each reply are saved in the background, and the Recycle Bin drive check no longer runs the first time you delete something.
 
-Still coming: faster redraws in Sidequest.
+- **Sidequest clicks are quick again.** Starring a place, stamping a visit, switching map layers or opening a place's details no longer rebuilds the whole Paris map — only what changed is redrawn (about 3–4× less work per click, and opening a dialog no longer restyles the page behind it).
