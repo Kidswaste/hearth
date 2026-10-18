@@ -14,7 +14,7 @@
 (function (root, make) { if (typeof module === 'object' && module.exports) module.exports = make(); else root.ShowSyncCore = make(); })(typeof self !== 'undefined' ? self : this, () => {
   const UA = 'Hearth/61 (personal weekly show list; at most once a day per page)';
   const PLATFORMS = {
-    shotgun: { id: 'shotgun', name: 'Shotgun', host: /(^|\.)shotgun\.live$/i, city: 'https://shotgun.live/en/concerts/paris',
+    shotgun: { id: 'shotgun', name: 'Shotgun', host: /(^|\.)shotgun\.live$/i, city: 'https://shotgun.live/en/cities/paris',
       kinds: [['venue', /^\/(?:[a-z]{2}\/)?venues\/[\w.-]+\/?$/i], ['artist', /^\/(?:[a-z]{2}\/)?artists\/[\w.-]+\/?$/i], ['event', /^\/(?:[a-z]{2}\/)?events\/[\w.-]+\/?$/i], ['city', /^\/(?:[a-z]{2}\/)?(?:concerts|cities)\/paris(?:\/[\w./-]*)?$/i]] },
     dice: { id: 'dice', name: 'DICE', host: /(^|\.)dice\.fm$/i, city: 'https://dice.fm/browse/paris-5b23e8a0e63cc224a4c36a2d',
       kinds: [['venue', /^\/venue\/[\w.-]+\/?$/i], ['artist', /^\/artist\/[\w.-]+\/?$/i], ['event', /^\/event\/[\w.-]+\/?$/i], ['city', /^\/browse\/paris-[\w-]+(?:\/[\w/-]*)?$/i]] }
@@ -170,7 +170,7 @@
     return out;
   }
   // A protection page (Cloudflare's "Just a moment…", a captcha) is reported, never worked around.
-  const looksBlocked = (html) => /<title>\s*(Just a moment|Attention Required|Access denied|Un instant)/i.test(html) || /cf-browser-verification|challenge-platform|cf_chl_|captcha-delivery|px-captcha/i.test(String(html).slice(0, 20000));
+  const looksBlocked = (html) => /<title>\s*(Just a moment|Attention Required|Access denied|Un instant|Vercel Security Checkpoint)/i.test(html) || /cf-browser-verification|challenge-platform|cf_chl_|captcha-delivery|px-captcha/i.test(String(html).slice(0, 20000));
   function parsePage(html, src) {
     if (looksBlocked(html)) return { shows: [], via: 'none', blocked: true };
     const blocks = jsonLd(html);
@@ -203,12 +203,14 @@
     return jac >= 0.5 || lap || (fa.length > 3 && fb.includes(fa)) || (fb.length > 3 && fa.includes(fb));
   }
   function combine(a, b) {
+    // A venue programme doesn't report live ticket stock. Prefer the ticket platform when both are present.
+    if (a.programme && !b.programme) return combine(b, a);
     const pick = (x, y) => (x || y);
     const venue = { ...a.venue, name: pick(a.venue.name, b.venue.name), address: a.venue.address.length >= b.venue.address.length ? a.venue.address : b.venue.address,
       lat: Number.isFinite(a.venue.lat) ? a.venue.lat : b.venue.lat, lon: Number.isFinite(a.venue.lon) ? a.venue.lon : b.venue.lon, image: pick(a.venue.image, b.venue.image), url: pick(a.venue.url, b.venue.url) };
     return { ...a, title: a.title.length >= b.title.length ? a.title : b.title, start: Math.min(a.start, b.start), venue, lineup: [...new Set([...a.lineup, ...b.lineup])].slice(0, 20), image: pick(a.image, b.image),
       tickets: [...a.tickets, ...b.tickets.filter((t) => !a.tickets.some((x) => x.url === t.url && x.platform === t.platform))], platforms: [...new Set([...a.platforms, ...b.platforms])],
-      price: a.price && b.price ? (a.price.from <= b.price.from ? a.price : b.price) : a.price || b.price, soldOut: a.soldOut && b.soldOut, cancelled: a.cancelled && b.cancelled,
+      price: a.price && b.price ? (a.price.from <= b.price.from ? a.price : b.price) : a.price || b.price, soldOut: !a.programme && b.programme ? a.soldOut : a.soldOut && b.soldOut, cancelled: !a.programme && b.programme ? a.cancelled : a.cancelled && b.cancelled,
       links: mergeLinks(a.links, b.links), doors: a.doors && b.doors ? Math.min(a.doors, b.doors) : a.doors || b.doors || null };
   }
   function mergeLinks(a = {}, b = {}) { // (round 62, showprep62) per artist: the first page / listening link wins
@@ -242,7 +244,7 @@
     return [...m.values()];
   }
   const PIN = '#ff6b9d'; // the atlas's music colour
-  const pins = (vs) => vs.filter((v) => inParis(v.lat, v.lon)).map((v) => ({ id: v.id, name: v.name || v.address || 'Venue', lat: v.lat, lon: v.lon, kind: 'music', color: PIN, logo: v.logo || '', quest: '', visitedAt: null, show: true, count: v.shows.length }));
+  const pins = (vs) => vs.filter((v) => inParis(v.lat, v.lon)).map((v) => ({ id: v.id, name: v.name || v.address || 'Venue', lat: v.lat, lon: v.lon, kind: 'music', color: PIN, logo: v.logo || (v.shows.some(s=>s.programme) ? 'assets/shotgun-programme.svg' : ''), quest: '', visitedAt: null, show: true, count: v.shows.length }));
 
   // ---------- the cache: last good list per source ----------
   const emptyCache = () => ({ v: 1, sources: {}, refreshedAt: null });
@@ -255,7 +257,7 @@
     else if (r.notModified) { s.problem = null; s.lastOk = now; }
     else if (!r.ok) s.problem = r.status ? 'http' : 'offline';
     else if (!r.shows.length && old.shows.length && src.kind !== 'event') s.problem = 'changed'; // a page that used to list shows and now lists none: keep the last good
-    else { s.problem = r.shows.length || src.kind === 'event' ? null : 'empty'; s.shows = r.shows; s.via = r.via; s.lastOk = now; }
+    else { s.problem = r.partial ? 'partial' : r.shows.length || src.kind === 'event' ? null : 'empty'; s.shows = r.shows; s.via = r.via; s.lastOk = now; }
     if (r.etag !== undefined) s.etag = r.etag || null; if (r.lastModified !== undefined) s.lastModified = r.lastModified || null;
     if (s.problem) s.status = r.status || 0;
     cache.sources[src.id] = s; return s;
@@ -263,18 +265,23 @@
   const allShows = (cache, sources) => merge((sources || Object.values(cache.sources)).map((src) => cache.sources[src.id]?.shows || []));
   const when = (t) => (t ? new Date(t).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) : 'never');
   function problemText(s) {
-    const P = PLATFORMS[s.platform]?.name || 'The site', since = s.shows.length ? ` Showing the list from ${when(s.lastOk)}.` : '';
+    const P = s.kind === 'programme' ? s.label : PLATFORMS[s.platform]?.name || 'The site', since = s.shows.length ? ` Showing the list from ${when(s.lastOk)}.` : '';
     return { robots: `${P} asks apps not to read that page, so Hearth doesn't. Follow a venue instead, or open it in your browser.`,
       blocked: `${P} asked for a browser check, so Hearth stopped there (no workaround).${since}`,
       changed: `${P}'s page changed and Hearth couldn't read shows from it.${since}`,
       http: `${P} didn't answer properly (error ${s.status}).${since}`,
       offline: `Couldn't reach ${P}.${since}`,
+      partial: `Some ${P} details couldn't update. Their last good listings are kept.`,
       empty: `${P} lists no shows on ${s.label} right now.` }[s.problem] || '';
   }
   // one plain line for the whole list (null when everything is fine)
-  function statusLine(cache, sources) {
+  function statusLine(cache, sources, now = Date.now()) {
     const bad = (sources || Object.values(cache.sources)).map((x) => cache.sources[x.id]).filter((s) => s?.problem && s.problem !== 'empty');
     if (!bad.length) return null;
+    if (bad.length === 1 && bad[0].platform === 'shotgun' && bad[0].kind === 'city') {
+      const recovered = allShows(cache,sources).filter(s=>s.programme && !s.cancelled && (s.end || s.start+4*3600e3)>=now && s.start<now+21*86400e3).length;
+      if (recovered) return `Shotgun’s main catalogue couldn't update. ${recovered} nights are available from venue programmes; coverage is partial.`;
+    }
     if (bad.length === 1) return problemText(bad[0]);
     const kept = bad.some((s) => s.shows.length);
     return `${bad.length} pages couldn't update (${[...new Set(bad.map((s) => PLATFORMS[s.platform]?.name))].join(', ')}).${kept ? ' Showing the last good list.' : ''}`;

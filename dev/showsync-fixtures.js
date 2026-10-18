@@ -21,7 +21,7 @@ function responses() {
   return map;
 }
 function fakeFetch({ now = Date.now(), overrides = {}, hits = [] } = {}) {
-  const map = { ...responses(), ...overrides };
+  const map = { ...responses(), ...(overrides.$programmes ? require('./showsync-programme-fixtures').fixtures(now).responses : {}), ...overrides };
   return async (url, opts = {}) => {
     hits.push({ url, headers: { ...(opts.headers || {}) } });
     const f = map[url];

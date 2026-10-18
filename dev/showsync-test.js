@@ -15,7 +15,7 @@ const errors = []; const checks = {};
 const ok = (name, cond, detail) => { checks[name] = !!cond; if (!cond) errors.push(`${name}${detail ? ': ' + JSON.stringify(detail).slice(0, 400) : ''}`); };
 const NOW = Date.now();
 const page = (file) => F.fillDates(fs.readFileSync(path.join(F.DIR, file), 'utf8'), NOW);
-const SG = Core.sourceFromUrl('https://shotgun.live/en/concerts/paris'), DC = Core.sourceFromUrl('https://dice.fm/browse/paris-5b23e8a0e63cc224a4c36a2d');
+const SG = Core.sourceFromUrl('https://shotgun.live/en/cities/paris'), DC = Core.sourceFromUrl('https://dice.fm/browse/paris-5b23e8a0e63cc224a4c36a2d');
 
 (async () => {
   // ---------- links ----------
@@ -87,28 +87,28 @@ const SG = Core.sourceFromUrl('https://shotgun.live/en/concerts/paris'), DC = Co
 
   // next day: conditional requests, cached geocode / logos reused (a new instance reads the files back)
   clock += 21 * 3600e3; hits = []; shrunk = 0; S = mk();
-  overrides = { 'https://shotgun.live/en/concerts/paris': { status: 304, headers: { etag: '"sg-1"' } } };
+  overrides = { 'https://shotgun.live/en/cities/paris': { status: 304, headers: { etag: '"sg-1"' } } };
   snap = await S.refresh();
-  const sgHit = hits.find((h) => h.url === 'https://shotgun.live/en/concerts/paris');
+  const sgHit = hits.find((h) => h.url === 'https://shotgun.live/en/cities/paris');
   const dcHit = hits.find((h) => h.url === DC.url);
   ok('conditional: If-None-Match / If-Modified-Since sent; 304 keeps the list', sgHit?.headers['If-None-Match'] === '"sg-1"' && dcHit?.headers['If-Modified-Since'] === 'Sat, 17 Oct 2026 08:00:00 GMT' && snap.shows.length === 7, { sgHit, dcHit });
   ok('caches: no new geocode or logo request', has(F.NOMINATIM_TRABENDO) === 0 && shrunk === 0 && hits.every((h) => !/png$/.test(h.url)), hits.map((h) => h.url));
 
   // a breaking source: the page changes → last good kept, one plain line
   clock += 21 * 3600e3; hits = [];
-  overrides = { 'https://shotgun.live/en/concerts/paris': { file: 'changed.html' } };
+  overrides = { 'https://shotgun.live/en/cities/paris': { file: 'changed.html' } };
   snap = await S.refresh();
   ok('breaking: changed page keeps the last good unexpired list + one plain line', snap.shows.length === merged.filter(x=>(x.end||x.start+4*3600e3)>=clock).length && /Shotgun's page changed/.test(snap.status || '') && /Showing the list from/.test(snap.status), snap.status);
   // a protection page: stop, keep, don't come back today
   clock += 21 * 3600e3; hits = [];
-  overrides = { 'https://dice.fm/browse/paris-5b23e8a0e63cc224a4c36a2d': { file: 'blocked.html', status: 403, headers: { 'content-type': 'text/html', 'cf-mitigated': 'challenge' } }, 'https://shotgun.live/en/concerts/paris': { file: 'changed.html' } };
+  overrides = { 'https://dice.fm/browse/paris-5b23e8a0e63cc224a4c36a2d': { file: 'blocked.html', status: 403, headers: { 'content-type': 'text/html', 'cf-mitigated': 'challenge' } }, 'https://shotgun.live/en/cities/paris': { file: 'changed.html' } };
   snap = await S.refresh();
   ok('breaking: a browser check stops that site, keeps its shows', snap.shows.some((s) => s.title === 'Arlo Parks') && /couldn't update/.test(snap.status || ''), snap.status);
   clock += 2 * 3600e3; hits = [];
   snap = await S.refresh({ force: true });
   ok('breaking: the blocked site is left alone for a day', !hits.some((h) => h.url.startsWith('https://dice.fm/')), hits.map((h) => h.url));
   // offline: everything kept
-  clock += 25 * 3600e3; hits = []; overrides = { 'https://shotgun.live/en/concerts/paris': null, 'https://shotgun.live/robots.txt': null, 'https://dice.fm/robots.txt': null };
+  clock += 25 * 3600e3; hits = []; overrides = { 'https://shotgun.live/en/cities/paris': null, 'https://shotgun.live/robots.txt': null, 'https://dice.fm/robots.txt': null };
   snap = await S.refresh();
   ok('breaking: offline keeps every last good list', snap.shows.some((x) => x.title === 'Possession') && snap.shows.some((x) => /Floating Points/.test(x.title)) && snap.shows.every((x) => (x.end || x.start + 4 * 3600e3) >= clock) && /couldn't update|Couldn't reach/.test(snap.status || ''), snap.status);
   // robots says no: the page isn't fetched at all
