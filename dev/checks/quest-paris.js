@@ -11,12 +11,17 @@ const agent = H.claudeAgent().id;
 async function cmd(line) { const said = [], errors = []; await Commands.tryRun(line, agent, null, { say: t => said.push(String(t)), note: t => said.push(String(t)), error: t => errors.push(String(t)) }); await wait(120); if (errors.length) throw Error(line + ' → ' + errors.join(' | ')); return said.join('\n'); }
 const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === name || b.textContent.trim() === name); check(b, 'Button ' + name); b.click(); await until(() => !b.disabled, name); await wait(80); };
 const P = () => window.QuestParis, guideNew = () => P().guide.filter(g => g.id.startsWith('pp-')).length;
+// (questfix65) Codex's quieter Paris map (65b428c): the default shows its picks (food stops, record shops, a few outdoor stops: QuestParis.mapPicks)
+// plus the familiar clubs; the whole guide comes with the strip's More places or /quest paris. Its category is a select now.
+const picks = () => P().guide.filter(g => P().mapPicks.has(g.id)).length;
+const category = async v => { const n = root().querySelector('[aria-label="Place category"]'); check(n, 'Place category'); n.value = v; n.dispatchEvent(new Event('change', { bubbles: true })); await wait(150); };
 
 // 0. (round 64, mapfirst64) no command: opening the Studio's map shows the guide's places by default (stored once)
 await Lazy.load('questjournal');
 activate('tool:quests'); await until(() => root() && QuestJournal.ready(), 'journal'); QuestJournal.navigate('world');
-await until(() => root().querySelectorAll('.qj-atlas-pin.qj-pin-guide').length >= 30, 'guide pins by default');
-check(state().atlas.places.length === 6 + guideNew(), 'the guide is on the map with no command (' + state().atlas.places.length + ')');
+await until(() => root().querySelectorAll('.qj-atlas-pin.qj-pin-guide').length >= Math.min(10, picks()), 'guide pins by default');
+check(state().atlas.places.length === 6 + picks(), 'the guide’s picks are on the map with no command (' + state().atlas.places.length + ')');
+check([...root().querySelectorAll('.qj-atlas-pin.qj-pin-guide')].every(b => P().mapPicks.has(b.dataset.place)), 'the default map shows only the picks');
 check(root().querySelector('.qmf-strip [data-layer="places"][aria-pressed="true"]'), 'Places chip on by default');
 // 1. chat drives the map: /quest paris adds the guide once and opens the map
 check(Commands.get('quest'), '/quest registered');
@@ -39,7 +44,7 @@ check(root().querySelector('.qj-paris-chip'), 'filter chip shown'); check(/for �
 await cmd('/quest paris 11e'); check([...root().querySelectorAll('.qj-atlas-pin')].every(b => P().byId(b.dataset.place)?.arr === 11), 'arrondissement filter');
 root().querySelector('.qj-paris-chip').click(); await wait(150); check(!root().querySelector('.qj-paris-chip'), 'chip clears the filter');
 await until(() => pins() >= allPins - 2, 'all pins back');
-await press('Sound hunt', root()); check(pins() >= 12, 'Codex kind filter includes guide music places'); await press('All places', root());
+await category('music'); check(pins() >= 12, 'Codex kind filter includes guide music places'); await category('all');
 const search = root().querySelector('[aria-label="Find a saved place"]'); search.value = 'records'; search.dispatchEvent(new Event('input', { bubbles: true })); await wait(150);
 check(pins() === 4, 'search finds guide words (records: ' + pins() + ')'); search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true })); await wait(150);
 const list = await cmd('/quest places records'); check(list.split('\n').length === 4 && /Superfly/.test(list) && /Dizonord/.test(list), 'places lists in chat');

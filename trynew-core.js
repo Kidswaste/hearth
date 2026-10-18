@@ -17,25 +17,25 @@ const TryNewCore = (() => {
   const PLAY = ['[data-feature="Play"]'];
   const SHOWS = ['[aria-label^="Shows this week"]'];
   const GUIDE = ['.qj-paris-guide'];
-  const MAPKEY = ['.qj-map-key']; // Sidequest Studio › Paris after hours (opening the map is the owner's click: mapfirst64 puts the guide on it then)
+  const MAPKEY = ['.qj-command-tab[data-nav-group="map"]', '.qj-map-key']; // Sidequest Studio › Map (opening the map is the owner's click: mapfirst64 puts the guide on it then) · (questfix65) Codex's Quests / Map / Progress / Desk rail replaced the console's "Paris after hours" key (kept as a fallback)
   const PANEL = (sel) => [`.qh-panel ${sel}`]; // (clickfirst64) the ✦ tracker panel's own buttons
   const LABMORE = ['[data-feature="Lab more"]'];
   const PATHS = [
     // ---------- round 61 ----------
     { id: 'tracker', round: 61, icon: '✦', name: 'Quest tracker', why: 'your quest and its next step, on every screen', steps: [
-      { title: 'Open the Paris map', open: 'studio:home', target: MAPKEY, clickNext: true, text: 'In Sidequest Studio: click Paris after hours, your Paris map.' },
+      { title: 'Open the Paris map', open: 'studio:home', target: MAPKEY, clickNext: true, text: 'In Sidequest Studio: click Map, your Paris map.' },
       { title: 'Open the Paris guide', target: GUIDE, clickNext: true, text: 'Under the map: click Paris guide.' },
       { title: 'Get my AirPods', target: ['[data-personal="airpods"]'], clickNext: true, text: 'Click Get my AirPods: the quest goes into your notebook (Apple Opéra, pickup booked first).' },
       { title: 'The ✦ chip', target: CHIP, clickNext: true, text: 'This chip in the rail now shows your quest and its next step, on every screen. Click it: check a step off, take today’s picks, plan your week.' },
     ] },
     { id: 'paris', round: 61, icon: '🗺', name: 'Paris map + guide', why: '36 places worth the trip, each a small quest', steps: [
-      { title: 'Open the Paris map', open: 'studio:home', target: MAPKEY, clickNext: true, text: 'In Sidequest Studio: click Paris after hours. The guide’s places worth the trip (Philharmonie, Petit Bain, Superfly…) come onto the map.' },
-      { title: 'Places, shows, walks', target: ['.qmf-strip', ...GUIDE], text: 'This row shows or hides each layer: Places · Shows · My walks · Visited (Paris guide, under the map, filters them: shows, records, night, free…).' },
+      { title: 'Open the Paris map', open: 'studio:home', target: MAPKEY, clickNext: true, text: 'In Sidequest Studio: click Map. Food stops, record shops and your clubs come onto the map; More places (on the map) shows the whole guide.' },
+      { title: 'Places, shows, walks', target: ['.qmf-strip', ...GUIDE], text: 'This row shows or hides each layer: Food & stops · Nights · My walks · Visited, and More places for the whole guide (Paris guide, under the map, filters them: shows, records, night, free…).' },
       { title: 'A place quest', target: ['.qj-paris-start', 'text:Start this quest'], clickNext: true, text: 'Click a pin, then Start this quest: go → do one thing there → bring proof home.' },
     ] },
     { id: 'shows', round: 61, icon: '🎟', name: 'This week’s shows', why: 'Shotgun + DICE, on the map', steps: [
-      { title: 'Open the Paris map', open: 'studio:home', target: MAPKEY, clickNext: true, text: 'In Sidequest Studio: click Paris after hours.' },
-      { title: 'Shows this week', target: ['.qmf-chip[data-layer="shows"]', ...SHOWS], text: 'The Shows layer (and the Shows this week button over the map, or ✦ chip › ⋯ More › Shows this week…): Paris shows from Shotgun and DICE, venues as pins, a day-by-day list. A show’s card turns it into a quest in one click.' },
+      { title: 'Open the Paris map', open: 'studio:home', target: MAPKEY, clickNext: true, text: 'In Sidequest Studio: click Map.' },
+      { title: 'Shows this week', target: ['.qmf-chip[data-layer="shows"]', ...SHOWS], text: 'The Nights layer (and the Shows this week button in the Map row, or ✦ chip › ⋯ More › Shows this week…): Paris shows from Shotgun and DICE, venues as pins, a day-by-day list. A show’s card turns it into a quest in one click.' },
     ] },
     { id: 'livevst', round: 61, icon: '🎹', name: 'Live Serum 2 / Vital', why: 'play through your UA interface', steps: [
       { title: 'Pick your interface', open: 'desk', target: ['select[aria-label="Audio output"]', 'text:Set up live audio'], text: 'In the Sound desk: choose your UA interface in Audio output (ASIO first, WASAPI as the fallback), then Buffer 128 or 64. First time only: click Set up live audio (1–3 min, once).' },
@@ -57,7 +57,7 @@ const TryNewCore = (() => {
       { title: 'Arrange loops', open: 'desk', target: ['.cf-arrange', 'text:Arrange', '.wb-park-toggle'], text: 'Click Arrange loops: your takes on 4 lanes, snapped to bars; repeat, trim, fade; export a mix, stems and the MIDI.' },
     ] },
     { id: 'showprep', round: 62, icon: '🎫', name: 'Show night', why: 'get ready, then “how was it?”', steps: [
-      { title: 'Get ready', open: 'studio:home', target: [...MAPKEY], clickNext: true, text: 'Click Paris after hours, then a show’s pin › Get ready: doors and start in Paris time, the nearest Métro, a listen link per artist, a reminder on the day.' },
+      { title: 'Get ready', open: 'studio:home', target: [...MAPKEY], clickNext: true, text: 'Click Map, then a show’s pin › Get ready: doors and start in Paris time, the nearest Métro, a listen link per artist, a reminder on the day.' },
       { title: 'The ✦ chip', target: CHIP, clickNext: true, text: 'A show you made a quest: its card in the ✦ chip has Get ready and, after the night, How was it? (a rating, one moment, a photo). Click the chip.' },
       { title: 'Shows I went to', target: [...PANEL('.cf-more'), ...CHIP], text: '⋯ More › Shows I went to…: every night you logged; venues you’ve been to get a ✓ on the map.' },
     ] },

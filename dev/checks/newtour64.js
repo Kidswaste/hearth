@@ -64,7 +64,7 @@ tidy();
 TryNew.start('tracker');
 await until(() => card()?.dataset.tour === 'try-tracker' && document.querySelector('.tour-ring:not(.tour-ring-solo)'), 'tracker card');
 step('the card has no Try it (nothing to type)', !card().querySelector('.tour-try'));
-document.querySelector('.surface.active .qj-map-key').click(); // the owner clicks the ringed Paris after hours
+document.querySelector('.surface.active .qj-command-tab[data-nav-group="map"]').click(); // the owner clicks the ringed Map (questfix65: Codex's rail replaced Paris after hours)
 const g = await until(() => card()?.dataset.step === '1' && document.querySelector('.surface.active .qj-paris-guide'), 'the map, Paris guide ringed', 120).catch(() => null);
 step('clicking Paris after hours opens the map and the path goes on to Paris guide', Boolean(g));
 await wait(300);

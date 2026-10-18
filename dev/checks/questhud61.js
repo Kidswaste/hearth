@@ -65,7 +65,11 @@ step('the Studio is still not loaded (the chip did it alone)', !Lazy.isIn('quest
 activate('tool:quests');
 await until(() => document.querySelector('.qj-hero h2') && QuestJournal.ready(), 'Studio open');
 const studioBtn = (t) => [...document.querySelectorAll('.qj button')].find((b) => b.textContent === t);
-step('Studio → shows the first move the chat checked off', Boolean(studioBtn('Continue quest →')) && C.record(QuestJournal.snapshot(), q0.id).startedAt, document.querySelector('.qj-hero h2')?.textContent);
+// (questfix65) with Codex's guided companion (QuestGuide) the hero's primary is always "Continue with helper →"; a started quest
+// then shows in the Studio as its small-start XP in the header, so "repainted" = that header matches the saved journal
+const xpShown = () => document.querySelector('.qj .qj-xp-line strong')?.textContent === `${C.xp(QuestJournal.snapshot()).toLocaleString()} XP`;
+const continued = () => (window.QuestGuide?.open ? Boolean(studioBtn('Continue with helper →')) && xpShown() && C.xp(QuestJournal.snapshot()) > 0 : Boolean(studioBtn('Continue quest →')));
+step('Studio → shows the first move the chat checked off', continued() && C.record(QuestJournal.snapshot(), q0.id).startedAt, document.querySelector('.qj-hero h2')?.textContent);
 studioBtn('Skip for now →').click();
 await until(() => chip().getAttribute('aria-label').includes(q1.title), 'chip follows the Studio');
 step('Studio → chip: skipping in the Studio moves the chip to the next quest', chip().getAttribute('aria-label').includes(q1.title) && chip().querySelector('.qh-num').textContent === `2/${main.quests.length}`, chip().getAttribute('aria-label'));
@@ -75,8 +79,8 @@ chip().click(); await until(() => panel(), 'panel opens');
 step('click expands the panel with the quest, its steps and Open Sidequest Studio', panel().textContent.includes(q1.title) && panel().querySelectorAll('.qh-step').length === 2 && /Open Sidequest Studio/.test(panel().textContent) && chip().getAttribute('aria-expanded') === 'true');
 panel().querySelector('.qh-step .qh-check').click();
 await until(() => C.record(QuestJournal.snapshot(), q1.id).startedAt, 'start saved via Studio');
-await until(() => studioBtn('Continue quest →'), 'Studio repainted');
-step('chip → Studio: checking the first move saves through the Studio (it repaints)', Boolean(studioBtn('Continue quest →')) && panel()?.querySelector('.qh-step.done'));
+await until(() => continued(), 'Studio repainted');
+step('chip → Studio: checking the first move saves through the Studio (it repaints)', continued() && panel()?.querySelector('.qh-step.done'));
 const disk2 = await window.hub.kvGet('quest-journal');
 step('… and it is on disk once (one store)', Boolean(disk2.records?.[q1.id]?.startedAt));
 const fin = panel().querySelectorAll('.qh-step .qh-check')[1];

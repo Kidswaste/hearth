@@ -1,4 +1,5 @@
 // Studio upgrades: real cold rail entry, one-time placement, motion, skips and queued ideas.
+// (questfix65) Codex's navigation rail replaced the bench scenery (.qj-motes): the ambient motion probe is the hero's floating quest object.
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async fn => { for (let i = 0; i < 160; i++) { if (await fn()) return; await wait(60); } throw Error('Studio UI timed out'); };
 let checks = 0;
@@ -21,19 +22,19 @@ H.config.tools = toolConfig; saveConfig(); renderRail();
 const s = () => QuestJournal.snapshot(), C = QuestCore;
 // Deterministic review response in the throwaway test profile; never called in the live app.
 QuestReview.run = () => ({ promise: Promise.resolve({ status: 'reviewed', score: 60, dimensions: [15,15,15,15], meetsBrief: true, summary: 'Test fixture review.', better: 'Tighten one transition.', next: 'Export a changed transition.', coverage: 'Fixture text.', limitations: 'Mock reviewer; no artistic judgment.' }), cancel() {} });
-check(root().dataset.motion === 'on' && getComputedStyle(root().querySelector('.qj-motes i')).animationPlayState === 'running', 'ambient motion runs in the visible studio');
-await press('Motion on'); check(s().motion === false && root().dataset.motion === 'off' && getComputedStyle(root().querySelector('.qj-motes i')).animationPlayState === 'paused', 'motion control pauses ambience and saves preference');
+check(root().dataset.motion === 'on' && getComputedStyle(root().querySelector('.qj-quest-object .qj-art')).animationPlayState === 'running', 'ambient motion runs in the visible studio');
+await press('Motion on'); check(s().motion === false && root().dataset.motion === 'off' && getComputedStyle(root().querySelector('.qj-quest-object .qj-art')).animationPlayState === 'paused', 'motion control pauses ambience and saves preference');
 await press('Motion off');
 activate(H.agents().find(a => a.mode === 'native').id); await wait(120); check(root().dataset.motion === 'off', 'hidden studio pauses its animations');
 activate('tool:quests'); await wait(120); check(root().dataset.motion === 'on', 'returning to studio resumes motion');
 await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] } }); await wait(100);
-check(getComputedStyle(root().querySelector('.qj-motes i')).animationName === 'none', 'system reduced-motion disables ambience');
+check(getComputedStyle(root().querySelector('.qj-quest-object .qj-art')).animationName === 'none', 'system reduced-motion disables ambience');
 await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [] } });
 const first = s().campaigns[0].quests[0], second = s().campaigns[0].quests[1];
 await press('Skip for now →'); check(C.skipped(s(), first.id) && C.xp(s()) === 0 && root().querySelector('.qj-hero h2').textContent === second.title, 'skipping advances the next quest without XP');
 root().querySelector('.qj-skipped').open = true; await press('Revisit quest', root().querySelector('.qj-skipped'));
 check(root().querySelector('.qj-hero h2').textContent === first.title && !C.skipped(s(), first.id), 'set-aside drawer restores a quest');
-await press('Begin quest →'); await press('Focus for 5 minutes');
+await press(window.QuestGuide?.open ? 'Quest details' : 'Begin quest →'); await press('Focus for 5 minutes'); // (questfix65) with Codex's guided companion the hero's primary is "Continue with helper →" (its own window); "Quest details" opens the quest in the Studio
 await press('Skip for now →'); check(s().focus === null, 'skip also clears that quest focus timer');
 const daily = root().querySelector('.qj-side'); const title = daily.querySelector('h3').textContent;
 await press('Not today', daily); check(![...root().querySelectorAll('.qj-side h3')].some(n => n.textContent === title) && C.xp(s()) === 0, 'declined daily suggestion disappears without XP');

@@ -46,26 +46,42 @@ await Lazy.load('questjournal'); activate('tool:quests');
 await until(() => document.querySelector('.qj-hero, .qj-content'), 'journal');
 QuestJournal.navigate('world');
 const pins = await until(() => { const p = [...document.querySelectorAll('.qj-atlas .qj-atlas-pin[data-place^="show-venue-"]')]; return p.length >= 3 ? p : null; }, 'show pins');
-await until(() => document.querySelectorAll('.qj-atlas-pin.has-logo img.qj-atlas-logo').length >= 3, 'logo pins');
+// (questfix65) Codex's quieter map (65b428c): at the city zoom the familiar clubs carry the Nights layer (a club with nights this
+// week shows its logo); every other Shotgun / DICE venue appears from zoom 15. So: ≥ 1 logo pin in the Studio at the city
+// zoom, and the same atlas (QuestAtlas, with questperf65's pin diffing) draws ≥ 3 logo pins once zoomed in on the venues.
+await until(() => document.querySelectorAll('.qj-atlas-pin.has-logo img.qj-atlas-logo').length >= 1, 'logo pins');
 const logoImgs = [...document.querySelectorAll('.qj-atlas-pin.has-logo img.qj-atlas-logo')];
 await until(() => logoImgs.every((i) => !i.isConnected || i.complete), 'logos decoded');
 const shown = [...document.querySelectorAll('.qj-atlas-pin.has-logo img.qj-atlas-logo')];
 out.pins = document.querySelectorAll('.qj-atlas .qj-atlas-pin[data-place^="show-venue-"]').length;
-out.logoPins = shown.filter((i) => i.naturalWidth > 0 && i.src.startsWith('file:')).length;
-if (out.logoPins < 3) fail('pins with logos: ' + out.logoPins);
+out.cityLogoPins = shown.filter((i) => i.naturalWidth > 0 && i.src.startsWith('file:')).length;
+if (out.cityLogoPins < 1) fail('a familiar club with its logo at the city zoom: ' + out.cityLogoPins);
+{ // zoomed in: a second atlas on this week's venue pins (the Studio's own map keeps its view: it is put back before destroy)
+  const venuePins = ShowSync.layer.pins({}); out.layerLogos = venuePins.filter((p) => p.logo?.startsWith('file:')).length;
+  const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:0;top:0;width:2400px;height:1600px;z-index:-1'; document.body.append(box);
+  const a = QuestAtlas.mount(box, { places: venuePins, lines: [] }); const home = a.center(), z = box.dataset.zoom;
+  const key = (k) => box.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+  for (let i = 0; i < 6 && Number(box.dataset.zoom) < 15; i++) key('+'); // zoom 15: where every venue's pin appears (a large box holds the city's venues at that zoom)
+  const c = venuePins.filter((p) => p.logo); a.focus({ lat: c.reduce((t, p) => t + p.lat, 0) / c.length, lon: c.reduce((t, p) => t + p.lon, 0) / c.length });
+  const imgs = [...box.querySelectorAll('.qj-atlas-pin.has-logo img.qj-atlas-logo')];
+  await until(() => imgs.every((i) => i.complete), 'zoomed logos decoded');
+  out.zoom = box.dataset.zoom; out.logoPins = imgs.filter((i) => i.naturalWidth > 0 && i.src.startsWith('file:')).length;
+  while (Number(box.dataset.zoom) > Number(z)) key('-'); a.focus(home); a.destroy(); box.remove();
+}
+if (out.logoPins < 3) fail('pins with logos (zoomed in): ' + out.logoPins + ' at zoom ' + out.zoom);
 const placesStill = document.querySelectorAll('.qj-atlas .qj-atlas-pin:not([data-place^="show-venue-"])').length; out.ownPins = placesStill;
 if (!placesStill) fail('the owner\'s own places vanished from the map');
 document.querySelectorAll('.toast').forEach((n) => n.remove());
 await smoke({ shot: (window.JOURNEY_SHOTS || window.SMOKE_SAVES) + '/showsync61-map.png' });
 
 // a venue pin → its nights
-document.querySelector('.qj-atlas-pin[data-place^="show-venue-"]').click();
+document.querySelector('.qj-atlas-pin.has-logo[data-place^="show-venue-"]').click(); // (questfix65) a club with nights this week (a familiar club with none opens its programme links)
 const vd = await until(() => document.querySelector('dialog.qj-dialog[open] .ss-row'), 'venue dialog');
 if (!vd) fail('venue dialog'); document.querySelector('dialog.qj-dialog[open]').close(); await wait(100);
 
 // ---------- the compact list behind the map's ✦ icon ----------
 const icon = await until(() => document.querySelector('[data-focus="map-shows"]'), 'shows icon');
-const iconsInRow = icon.closest('.qj-actions').querySelectorAll('button').length; out.headIcons = iconsInRow;
+const iconsInRow = icon.closest('.qj-actions, .qj-command-map-extras').querySelectorAll('button').length; // (questfix65) the icon lives in Codex's Map row now out.headIcons = iconsInRow;
 icon.click();
 const rows = await until(() => { const r = document.querySelectorAll('dialog.qj-dialog[open] .ss-row'); return r.length ? r : null; }, 'list rows');
 out.listRows = rows.length; out.dayLabels = document.querySelectorAll('dialog.qj-dialog[open] .ss-list > .qj-label').length;

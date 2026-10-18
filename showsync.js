@@ -182,7 +182,7 @@ const ShowSync = (() => {
   };
 
   // ---------- /shows ----------
-  const HELP = '/shows week · /shows venue <name> · /shows quest <show> · /shows prep <show> · /shows went <show> · /shows log · /shows follow <link> · /shows refresh — the map: Sidequest Studio › Paris after hours';
+  const HELP = '/shows week · /shows venue <name> · /shows quest <show> · /shows prep <show> · /shows went <show> · /shows log · /shows follow <link> · /shows refresh — the map: Sidequest Studio › Map';
   async function run(args, ctx) {
     const [sub0, ...rest] = String(args || '').trim().split(/\s+/); const sub = (sub0 || '').toLowerCase(), arg = rest.join(' ').trim();
     await ensure();

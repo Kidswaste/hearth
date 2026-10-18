@@ -50,14 +50,18 @@ await safe('quests: fresh', async () => {
   step('Sidequest Studio is in the rail', vis(rail), rail?.title);
   rail.click();
   await until(() => typeof QuestJournal !== 'undefined' && QuestJournal.ready?.(), 20000);
-  const mw = await until(() => document.querySelector('.cf-studio-week'));
-  step('the Studio\'s top bar: "My week ▾" in words', vis(mw) && /My week/.test(mw.textContent), mw?.textContent);
-  await shot('studio', 'Sidequest Studio › My week ▾ (the quest features in one menu)', 'Rail › Sidequest Studio › My week ▾');
-  mw.click(); await wait(250);
-  const rows = [...document.querySelectorAll('#menu > button')].map((b) => b.textContent);
-  step('My week ▾ lists every quest feature', ['Quest tracker', 'Plan my week', 'Week in review', 'Make a walk', 'My rewards', 'Shows this week', 'Shows I went to', 'Park mode', 'Arrange park loops'].every((w) => rows.some((r) => r.includes(w))), rows);
+  // (questfix65) Codex's Quests / Map / Progress / Desk rail replaced the top bar's "My week ▾": clickfirst's quest features
+  // (ClickFirst.questItems) are ordinary labelled choices in its rows (Quests: week, shows, park · Map: walk · Progress: review,
+  // month, rewards, shows I went to). Hovering / focusing / clicking a tab shows its row; every feature is there in words.
+  const nav = await until(() => document.querySelector('.qj-command-nav'));
+  const tabs = [...nav.querySelectorAll('.qj-command-tab')];
+  step('the Studio\'s rail: Quests · Map · Progress · Desk in words', vis(nav) && ['Quests', 'Map', 'Progress', 'Desk'].every((w) => tabs.some((b) => b.textContent.includes(w))), tabs.map((b) => b.textContent.trim()));
+  await shot('studio', 'Sidequest Studio › Quests / Map / Progress / Desk (the quest features in their rows)', 'Rail › Sidequest Studio › hover a tab');
+  const rows = [];
+  for (const t of tabs) { t.dispatchEvent(new PointerEvent('pointerenter')); await wait(120); const panel = nav.querySelector(`.qj-command-panel[data-group="${t.dataset.navGroup}"]`); rows.push(...[...panel.querySelectorAll('button')].filter(vis).map((b) => b.textContent.trim())); }
+  nav.dispatchEvent(new PointerEvent('pointerleave'));
+  step('the rows list every quest feature in words', ['Plan my week', 'Week in review', 'Make a walk', 'My month in Paris', 'Rewards', 'Shows this week', 'Shows I went to', 'Park mode', 'Arrange park loops'].every((w) => rows.some((r) => r.includes(w))), rows);
   await shot('studio-menu');
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); hideMenu?.();
   step('the ✦ chip appears once the Studio has a journal', await until(() => vis(chip())));
 });
 

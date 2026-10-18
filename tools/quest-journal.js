@@ -188,7 +188,7 @@ const QuestJournal = (() => {
     // dialog; on closing the page comes back in the next frame and focus returns after it (no forced restyle in the click).
     root.append(d); d.addEventListener('close', () => { hideHint();d.remove();
       const last = !root.querySelector('dialog.qj-dialog[open]'); if (last) root.classList.remove('qj-under-dialog');
-      const back = () => { if (root.querySelector('dialog.qj-dialog[open]')) return; if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); };
+      const back = () => { if (root.querySelector('dialog[open]')) return; const now = document.activeElement; if (now && now !== document.body && now.isConnected) return; /* (questfix65) only when nothing has focus yet: a control focused in the meantime (or one in another dialog) keeps it */ if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); };
       if (last) requestAnimationFrame(() => setTimeout(back)); else if (opener?.isConnected) opener.focus(); });
     build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); root.classList.add('qj-under-dialog'); d.showModal(); return d;
   }

@@ -219,6 +219,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
     if (key === 'paris' || key === 'map') {
       await journal();
       const s = state(); if (!P.hasGuide(s)) { const r = await J().mutate(st => P.addGuide(st), 'Paris guide added to your map.'); if (r.full) ctx?.say?.(`${r.full} guide places did not fit (the map holds 100 places).`); }
+      if (!arg && window.QuestMapFirst?.explore) await QuestMapFirst.explore(true); // (questfix65) Codex's map is quieter by default (food stops + clubs); asking for the guide shows all of it, as the map's More places does
       J().mapFilter(arg ? { guide: fold(arg) } : {});
       const shown = arg ? P.guide.filter(g => P.matches(g, arg)).length : guideCount;
       return `Paris guide on your map: ${shown} place${shown === 1 ? '' : 's'}${arg ? ` for “${arg}”` : ''}. Pick a pin for its quest, or /quest go <place>.`;

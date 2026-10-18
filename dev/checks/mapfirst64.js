@@ -168,8 +168,12 @@ try {
   await until(() => /Bataclan/.test(root().querySelector('.qj-field-place-head')?.textContent || ''), 'merged pin selected');
   step('the merged pin’s panel shows the guide’s quest (Continue)', /Continue/.test(root().querySelector('.qj-paris-quest')?.textContent || ''), root().querySelector('.qj-paris-quest')?.textContent.slice(0, 80));
   const nb = S().atlas.places.length;
-  btn(/Explore places/, root().querySelector('.qj-city-actions')).click(); await wait(400);
-  step('Explore places still works and adds no second Bataclan', S().atlas.places.length === nb && !dupes(S()).length && !drawnTwice().length);
+  // (questfix65) Codex's quieter map: "Explore places" (the city actions row) became the strip's "More places" (the whole guide)
+  btn('Show the full Paris guide', root().querySelector('.qmf-strip')).click();
+  await until(() => btn('Return to food stops and your saved places', root().querySelector('.qmf-strip')), 'More places → My spots');
+  await wait(400); // (this journal already holds the whole guide: nothing new may join, least of all a second Bataclan)
+  step('More places still works and adds no second Bataclan', S().atlas.places.length === nb && !S().atlas.places.some((p) => p.id === 'pp-bataclan') && S().atlas.places.filter((p) => p.id === 'my-bataclan').length === 1 && !dupes(S()).length && !drawnTwice().length, { before: nb, after: S().atlas.places.length });
+  btn('Return to food stops and your saved places', root().querySelector('.qmf-strip')).click(); await wait(300);
 
   // ---------- 9. narrow window: still one row, no sideways scroll ----------
   const host = root().closest('.surface') || root().parentElement; const w0 = host.style.width; host.style.width = '480px'; await wait(300);

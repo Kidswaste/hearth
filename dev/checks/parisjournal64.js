@@ -73,9 +73,10 @@ try {
   click(document.querySelector('#rail .qh-chip'), '✦ chip');
   await until(() => document.querySelector('.qh-foot [data-k="studio"]'), 'the tracker panel');
   click(document.querySelector('.qh-foot [data-k="studio"]'), 'Open Sidequest Studio');
-  await until(() => root()?.querySelector('.qj-map-key') && QuestJournal.ready(), 'the Studio');
+  const mapKey = () => root()?.querySelector('.qj-command-tab[data-nav-group="map"]'); // (questfix65) Codex's Quests / Map / Progress / Desk rail: Map replaced Paris after hours
+  await until(() => mapKey() && QuestJournal.ready(), 'the Studio');
   ParisJournal._test.dir = `${tmp}/cards`; // (setup: the card goes in this run's folder, never the real Pictures folder)
-  click(root().querySelector('.qj-map-key'), 'Paris after hours');
+  click(mapKey(), 'Map');
   await until(() => root()?.querySelector('.qj-atlas'), 'the Paris map');
   await until(() => root()?.querySelectorAll('.qj-atlas-pin[data-place^="mp-"]').length >= 5, 'My Paris pins (visible by default)');
   const pins = () => [...root().querySelectorAll('.qj-atlas-pin[data-place^="mp-"]')];
