@@ -1,0 +1,41 @@
+/* (round 64, parisjournal64) My Paris: small ✓ / photo pins (nudged up-right so the place's own pin stays visible), the
+   timeline strip under the map, a moment, the monthly recap (tiles, the 20 arrondissements, Paris explored) */
+.qj-atlas-pin[data-place^="mp-"]{transform:translate(-50%,-50%) translate(13px,-15px)}
+.qj-atlas-pin[data-place^="mp-"]>span{width:24px!important;height:24px!important;border-radius:50%!important;border-width:2px;border-style:solid!important;transform:none;overflow:hidden}
+.qj-atlas-pin[data-place^="mp-"] .qj-map-icon{width:14px;height:14px}
+.qj-atlas-pin[data-place^="mp-"]>span::after{content:'✓';position:absolute;right:-5px;bottom:-5px;width:13px;height:13px;border-radius:50%;background:var(--pin);color:#17151e;font:800 9px/13px system-ui,sans-serif;text-align:center}
+.qj-atlas-pin[data-place^="mp-"]>span{position:relative;overflow:visible}
+.qj-atlas-pin[data-place^="mp-"] .qj-atlas-logo{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.pj-strip{display:grid;grid-template-columns:auto minmax(0,auto) minmax(120px,1fr) auto;align-items:center;gap:10px;margin:10px 0 2px;padding:8px 10px;border:1px solid #ffffff14;border-radius:12px;background:#1d1c21}
+.pj-strip>.qj-label{color:#ff6b9d;white-space:nowrap}
+.pj-months{display:flex;gap:4px;overflow-x:auto;scrollbar-width:thin;max-width:42vw}
+.pj-month{flex:none;border:1px solid #ffffff1f;background:#26242b;color:#cfc9d6;border-radius:999px;padding:3px 9px;font:600 11px/1.3 system-ui,sans-serif;cursor:pointer}
+.pj-month.on{background:#ff6b9d;border-color:#ff6b9d;color:#1b151d}
+.pj-month:focus-visible,.pj-dot:focus-visible{outline:2px solid #ffd75e;outline-offset:2px}
+.pj-track{position:relative;height:26px;min-width:0;border-radius:6px;background:linear-gradient(90deg,#ffffff06,#ffffff10);margin:0 8px}
+.pj-track::before{content:'';position:absolute;left:0;right:0;top:50%;height:1px;background:#ffffff26}
+.pj-dot{position:absolute;left:var(--x);top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;border:2px solid var(--c);background:#1d1c21;padding:0;cursor:pointer;transition:transform .15s}
+.pj-dot.has-photo{background:var(--c)}
+.pj-dot:hover{transform:scale(1.35)}
+.pj-empty{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;color:#a49eab;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pj-recap-btn{white-space:nowrap}
+@media(max-width:720px){.pj-strip{grid-template-columns:1fr auto}.pj-months{grid-column:1/-1;max-width:none}.pj-track{grid-column:1/-1;margin:0 6px}}
+.pj-dialog .pj-moment{display:grid;gap:7px;padding:10px 0;border-bottom:1px solid #ffffff12}
+.pj-dialog .pj-moment:last-of-type{border-bottom:0}
+.pj-dialog .pj-moment>.qj-label{color:var(--c)}
+.pj-photo{max-width:100%;max-height:260px;object-fit:cover;border-radius:10px;justify-self:start}
+.pj-stars{color:#ffb14a;letter-spacing:2px}
+.pj-loop{width:100%;height:34px}
+.pj-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.pj-tile{display:grid;gap:2px;padding:8px 10px;border-radius:10px;background:#ffffff08;border-top:3px solid var(--c)}
+.pj-tile b{font-size:24px;line-height:1.1}
+.pj-tile span{font-size:11px;color:#c9c4ba}
+.pj-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:6px 0 12px}
+.pj-cell{padding:7px 0;text-align:center;border-radius:6px;background:#ffffff0a;color:#77736c;font:700 12px/1 system-ui,sans-serif}
+.pj-cell.lit{background:rgba(255,177,74,var(--a));color:#17151e}
+.pj-cell.new{box-shadow:inset 0 0 0 2px #ff6b9d}
+.pj-bar{height:10px;border-radius:5px;background:#ffffff12;overflow:hidden;margin:6px 0 12px}
+.pj-bar i{display:block;height:100%;width:var(--w);background:#7ee0a8}
+.pj-recap .qj-actions{flex-wrap:wrap;gap:6px}
+.pj-saved{word-break:break-all}
+@media(prefers-reduced-motion:reduce){.pj-dot{transition:none}}

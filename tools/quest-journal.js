@@ -4,7 +4,7 @@ const QuestJournal = (() => {
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
   let atlasView = null;
   // (round 61, showsync61) Map layers: other modules add pins and one head icon to the Paris map without editing it
-  // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit), lines() } (lines: round 63, questwalk63: [{ id, color, points: [{ lat, lon, label? }] }]).
+  // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit), lines() } (lines: round 63, questwalk63: [{ id, color, points: [{ lat, lon, label? }] }]). (round 64, parisjournal64: below(kit) → a node shown under the map.)
   const mapLayers = [];
   // (round 62, showprep62) quest detail hooks: fn({ quest, campaign, close, kit }) → a node shown under the quest's title
   // (e.g. a show quest's "Get ready" / "How was it?"); a hook that throws is skipped
@@ -440,6 +440,7 @@ const QuestJournal = (() => {
     }else panel.append(QuestAtlas.icon('compass'),E('h3',{text:'A quiet corner.'}),p('No places match.'),button('Show all places',()=>{mapFilter={kind:'all',saved:false,query:''};render();},'qj-primary'));
     layout.append(map,panel);content.append(layout);
     atlasView=QuestAtlas.mount(map,{places:[...visible.map(p=>({...p,kind:C.placeKind(p),color:mapKind(p).color})),...layerPins],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines});
+    for(const layer of mapLayers){try{const below=layer.below?.(layerKit);if(below)content.append(below);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's below(kit) → one node under the map (My Paris's timeline strip)
     const stamps=state.atlas.places.filter(p=>p.visitedAt).length;
     content.append(E('div',{class:'qj-field-footer'},E('span',{text:visible.length+' places'}),mapIcon('check',stamps+' visit stamps · your own record, no XP',()=>mapNotebook('places'),'#ffd75e'),E('span',{text:stamps+'/'+state.atlas.places.length}),window.QuestParisUI?.footer()||null,button('Quest notebook →',()=>navigate('adventure'),'qj-quiet'))); // parisquests61: the Paris guide's one footer button
   }
