@@ -61,16 +61,17 @@ Measured by dev/checks/hitchmap63.js in the ▶ Play window, a Lab scene running
 |---|---|---|
 | Hearth's script in the page | none (no tag, no `window.__hearthHitch`) | `/__hitchmap-page.js` once |
 | ▶ Play budget's helpers | look, stream, audio, ready, watch (as before) | + "the hitch map" |
-| Its own time a frame | 0 | **0.019–0.020 ms** by its own count, 0.0195 ms by the budget watch (max window 0.05 ms); 0.024 ms over a whole session |
+| Its own time a frame | 0 | **0.019–0.020 ms** by its own count, 0.0195–0.0198 ms by the budget watch (its worst 1 s window 0.04–0.05 ms) |
 | Listeners on window / document | 20 | 21 (+ `visibilitychange`) |
 | Frame callbacks | the page's own | + 1 (its own, the real `requestAnimationFrame`) |
-| Garbage a frame booked to it | 0 | **≈ 70 B** (V8's sampling profiler; the budget watch beside it: ≈ 46–49 B) |
+| Garbage a frame booked to it | 0 | **≈ 27–33 B** (V8's sampling profiler; the budget watch beside it: ≈ 52 B) |
 
 The ring is one `Float64Array` pair + one `Float32Array` made once (≈ 4 MB for 2^17 frames); per frame the recorder
 stores two times and copies the player's and camera's positions with typed-array builtins (`set` / `copyWithin`), with
-nothing computed: the gaps are worked out after the session. What garbage is left is this slow machine running the frame
-callback unoptimised (its two clock reads and one compare boxed, as in the watch); a first version that computed the gap
-and the positions per frame read 250 B a frame here. On the owner's CPU the recorder is optimised within a second and
+nothing computed: the gaps are worked out after the session; its flags are booleans and each number is read once. What
+garbage is left is this slow machine running the frame callback unoptimised (its two clock reads boxed, as in the watch)
+and the rare spike's event; a first version that computed the gap and the positions per frame read 250 B a frame here,
+the second 70–150 B. On the owner's CPU the recorder is optimised within a second and
 its time a frame is a few microseconds (the clock itself is in 5 µs steps). Off, gcchurn60's budget is unchanged (it
 plays without the recorder: passed).
 
@@ -104,7 +105,7 @@ A session's map is ≈ 17–18 KB of JSON (40 × 40 cells, a 400-bucket timeline
   waits once, 20 maps a game with the oldest's picture going too, the tag only when armed).
 - `dev/checks/hitchmap63.js` (group `hitchmap63`), a Lab scene with a 450 ms stall each time the player passes x 6, z 0:
   - off: no script / global / helper / hint, no map made; on: hint, "● Hitch map 0:0x" on the F chip, the helper, one
-    listener more, its time 0.020 ms a frame (its count) / 0.0195 ms (the budget), ≈ 70 B a frame of garbage, 2 pictures;
+    listener more, its time 0.020 ms a frame (its count) / 0.0198 ms (the budget), 27–33 B a frame of garbage (watch 52 B), 2 pictures;
   - Ctrl/⌘+P → "▦ Hitch map of Clink hitch" → the map (heatmap + timeline + 8 spots): **spot 1 at x 5.9, z −1.1** (5
     hitches, worst 450 ms, 1.6 s lost; the next spots ≤ 83 ms lost), its picture saved in `game-cache/lab-<id>/hitch/`;
   - Jump there → the Lab's layer got `restoreState()` with the angle saved at the spike (cos 0.99: at x 6, z 0);
@@ -116,8 +117,12 @@ A session's map is ≈ 17–18 KB of JSON (40 × 40 cells, a 400-bucket timeline
   failed once ("the merged canvas keeps drawing": 0 frames in 1.5 s at a load of ≈ 5, with the hitch map off) and passed
   alone right after: timing. `lazy-manifest.js` regenerated (passes its own compare). Unit: hitchmap-test, playnotes-test,
   playbudget-test, gameperf-test, diskcalm-test, directorgame-test pass.
+- After the last merge (questwalk63, soundbank63): lazy-manifest regenerated, **lazy, unit:boot-test, hitchmap63 passed**.
+  One hitchmap63 run of six failed "Fix this … and the picture" (the draft was in the box, its picture not attached
+  within 6 s, under load); the next run passed. Noted, not a product failure seen otherwise.
 - Fixed on the way: the check's "leaving" step closed the map before it had opened (the map then refreshed in place
-  instead of toasting); the recorder's first version boxed every number it computed (250 B a frame here) → builtins.
+  instead of toasting); the recorder's first versions boxed every number they computed (250 B, then 70–150 B a frame
+  here) → builtins, booleans, each number read once (27–33 B).
 
 ## Risks
 - **Where the player is** comes from what the game exposes (`window.game.player`, a `player` object in the scene…); a
