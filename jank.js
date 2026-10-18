@@ -178,8 +178,13 @@ const Jank = (() => {
   // test copy); or on demand (/smooth profile). Each long stretch found becomes a culprit: the app line it spent the
   // most time under, and the handler it started from.
   const recent = []; let profiling = null; let lastProf = 0;
+  // (round 65, uilag65) no longer automatic: the owner's week-long report showed the watch itself as the top culprit
+  // (99 long frames, worst 8 s, "jank.js viewArea"): attaching the debugger and running / stopping a CPU profile on the
+  // live window freezes it for a second or more each time, and the profile then names whatever ran when it began (this
+  // file). A profile now runs only when asked (/smooth profile), or automatically after `localStorage['jank.autoprof'] = '1'`.
   function autoProfile() {
     recent.length = 0;
+    if (ls('jank.autoprof') !== '1') return;
     if (profiling || off || env.test || Date.now() - lastProf < 180e3) return;
     const day = new Date().toDateString();
     let q = {};

@@ -262,6 +262,11 @@ dialog { max-height: calc(100vh - 40px); }
    keep running hidden as before (the Lab renders for its directors in the background). */
 #surfaces:not(.grid) > .surface.agent-surface.native:not(.active):not(.capturing),
 #surfaces:not(.grid) > .surface.tool-surface:is([data-id="tool:board"], [data-id="tool:commands"]):not(.active):not(.capturing) { content-visibility: hidden; }
+/* (round 65, uilag65) the same for Sidequest Studio (its Paris map, pins, layers), the Creative Playground / Sound desk
+   and the Lab (its toolbar, panels, timeline): grown in rounds 59–64, every dialog that opens (a modal makes the rest of
+   the page inert), every page-wide change restyled them while hidden: ≈ 100 ms per Studio dialog on the owner's PC.
+   The Lab's preview already rests when it isn't on screen; a director's background work marks it .capturing. */
+#surfaces:not(.grid) > .surface.tool-surface:is([data-id="tool:quests"], [data-id="tool:creative"], [data-id="tool:three"]):not(.active):not(.capturing) { content-visibility: hidden; }
 .tool-head .tool-opts { margin-left: auto; font-size: 16px; line-height: 1; padding: 2px 8px; } /* (round 26) ⋯ Options for this window */
 
 /* (round 29) resizable chats in the grid view (grid-resize.js): the gaps are handles */
