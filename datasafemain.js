@@ -43,7 +43,7 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
     const tick = () => {
       watchT = null;
       if (!doubt) return;
-      try { const t = DS.readRetry(dfs, configPath, { tries: 2 }); JSON.parse(t); cache = null; doubt = null; onRecovered(); return; } catch { /* still */ }
+      try { const t = DS.readRetry(dfs, configPath, { tries: 2 }); JSON.parse(t); landHeld(); cache = null; doubt = null; onRecovered(); return; } catch { /* still */ }
       n += 1; watchT = setTimeout(tick, n < 30 ? 2000 : 15000); watchT.unref?.();
     };
     watchT = setTimeout(tick, 2000); watchT.unref?.();
@@ -138,7 +138,11 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
     return { ok: true, ...(keeps ? { kept: g.kept } : {}), value: keeps || value !== cfg ? value : undefined };
   }
   const pub = () => (doubt ? { why: doubt.why, code: doubt.code, from: doubt.from, at: doubt.at, copyAt: doubt.copyAt } : null);
-  function recheck() { if (!doubt) return true; try { const t = DS.readRetry(dfs, configPath); JSON.parse(t); cache = null; doubt = null; onRecovered(); return true; } catch { return false; } }
+  function recheck() { if (!doubt) return true; try { const t = DS.readRetry(dfs, configPath); JSON.parse(t); landHeld(); cache = null; doubt = null; onRecovered(); return true; } catch { return false; } }
+  // (round 65, mainhang65) the file reads again: a save made while it was held lands first (merged onto the file), then
+  // the window is told. Before, the window could get the file without it and save that first, which dropped the held
+  // save (a race between this check and the held save's own retry, seen once the main thread stopped sleeping).
+  function landHeld() { const c = heldSave; if (!c) return; heldSave = null; clearTimeout(heldT); try { save(c.cfg, c.base); } catch (err) { console.warn('config: the held save', err.message); } }
   return { read, save, doubt: pub, recheck, copiesDir: () => env.historyDir(configPath, 'config') };
 }
 
