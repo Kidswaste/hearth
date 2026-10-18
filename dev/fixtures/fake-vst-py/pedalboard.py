@@ -80,6 +80,9 @@ class FakeInstrument:
 
     @raw_state.setter
     def raw_state(self, data):
+        # (round 64, liveset64) FAKE_PB_STATE_S: a heavy preset takes this long to load (Serum 2's wavetables): the Live set
+        # must load it in its twin instance, never on the audio thread
+        time.sleep(float(os.environ.get('FAKE_PB_STATE_S', '0')))
         for k, v in json.loads(data.decode()).items():
             if k in self.parameters:
                 self.parameters[k].raw_value = v
@@ -140,3 +143,38 @@ def _name(path):
 def load_plugin(path, plugin_name=None, initialization_timeout=2):
     time.sleep(float(os.environ.get('FAKE_PB_LOAD_S', '0.05')))
     return FakeInstrument(plugin_name or _name(path))
+
+
+class _OnePole:
+    """(round 64, liveset64) Pedalboard's LowpassFilter / HighpassFilter stand-ins: a one-pole filter with its state kept
+    between calls (reset=False), so a pad's knob can be checked for what it does to a tone."""
+    high = False
+
+    def __init__(self, cutoff_frequency_hz=1000.0):
+        self.cutoff_frequency_hz = cutoff_frequency_hz
+        self._z = None
+
+    def __call__(self, audio, sample_rate, buffer_size=8192, reset=True):
+        audio = np.asarray(audio, dtype=np.float32)
+        if reset or self._z is None or len(self._z) != audio.shape[0]:
+            self._z = np.zeros(audio.shape[0], dtype=np.float64)
+        a = math.exp(-2 * math.pi * float(self.cutoff_frequency_hz) / float(sample_rate))
+        out = np.empty_like(audio)
+        for ch in range(audio.shape[0]):
+            z, x = self._z[ch], audio[ch]
+            y = out[ch]
+            for i in range(x.shape[0]):
+                z = (1 - a) * x[i] + a * z
+                y[i] = z
+            self._z[ch] = z
+        return (audio - out) if self.high else out
+
+    process = __call__
+
+
+class LowpassFilter(_OnePole):
+    pass
+
+
+class HighpassFilter(_OnePole):
+    high = True
