@@ -28,6 +28,7 @@ const GameMode = (() => {
   const Ready = () => (typeof GameReady !== 'undefined' ? GameReady : window.GameReady) || null;
   const Perf = () => (typeof GamePerf !== 'undefined' ? GamePerf : window.GamePerf) || null;
   const Loop = () => (typeof PlayLoop !== 'undefined' ? PlayLoop : null); // (round 53, playloop: same group, after this file)
+  const Notes = () => (typeof PlayNotes !== 'undefined' ? PlayNotes : null); // (round 62, playnotes62: same group, after playloop.js)
 
   // ---------- a Lab scene's data (the Lab's own list when it's loaded: the newest edits) ----------
   async function sketches() { return Lab()?.scenes?.all?.() || (await window.hub.kvGet('three-sketches', [])) || []; }
@@ -87,7 +88,7 @@ const GameMode = (() => {
       hold(true);
       let info;
       if (r?.route === 'live') info = await playLive(s, r, opts);
-      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs(), stream: streamTest(), look: lookPref(), audio: { off: store.get('gameaudio.off', false) === true } }); // (round 54, gameaudio: gameaudio.off leaves a game's sound as it is: a check's "before")
+      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs(), stream: streamTest(), look: lookPref(), audio: { off: store.get('gameaudio.off', false) === true }, notes: Notes()?.prefs?.() }); // (round 62, playnotes62) notes: the note key (F8) and its label for the hint // (round 54, gameaudio: gameaudio.off leaves a game's sound as it is: a check's "before")
       if (info?.error) { const err = new Error(info.error); err.calm = true; err.offline = info.offline; throw err; } // (round 60, trimdrive60: e.g. offline before three.js was ever downloaded)
       now = { source: s, info, live: r?.route === 'live', at: Date.now(), plan };
       const own = plan ? Object.entries(plan.why).filter(([, w]) => w !== 'hidden') : [];
@@ -184,7 +185,7 @@ const GameMode = (() => {
       { label: 'Best', hint: 'sharp textures, true colours, shadows matched to the screen', checked: lookPref() === 'best', action: () => toast(setLook('best'), { timeout: 2500 }) },
       { label: 'Balanced', hint: 'sharp textures; the rest as the game sets it', checked: lookPref() === 'balanced', action: () => toast(setLook('balanced'), { timeout: 2500 }) },
     ] });
-    return [...(Loop()?.menuItems?.(ds) || []), ...items]; // (round 53, playloop: Back to the game, Play from here, Side by side)
+    return [...(Loop()?.menuItems?.(ds) || []), ...(Notes()?.menuItems?.() || []), ...items]; // (round 53, playloop: Back to the game, Play from here, Side by side) · (round 62, playnotes62: ✎ Playtest log)
   }
   async function menu(x, y) { showMenu(x, y, await menuItems()); }
   // (round 54, gamelook) one choice: Best (the default: sharp textures, true colours, shadows matched to the screen,

@@ -157,7 +157,7 @@ async function free(id) {
   else if (id === 'optimized') {
     if (!optimizedIndex()) return { ok: false, why: 'The list of optimized models couldn\'t be read just now: nothing was moved. Try again in a moment.' };
     const gc = path.join(dd, 'game-cache');
-    await trashAll((await listDir(gc)).map((e) => e.path), id, moved, failed);
+    await trashAll((await listDir(gc)).filter((e) => !(e.dir && fs.existsSync(path.join(e.path, 'notes')))).map((e) => e.path), id, moved, failed); // (round 62, playnotes62) a game's playtest notes are the owner's, not a cache: kept
     forgetOptimized();
   } else if (id === 'bakes') {
     const idx = await bakeIndex();
