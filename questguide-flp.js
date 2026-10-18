@@ -8,6 +8,10 @@ function parse(buf) {
   const channels = new Map(), notes = new Map();
   while (offset < buf.length) {
     const id = buf[offset++]; let size = id < 64 ? 1 : id < 128 ? 2 : id < 192 ? 4 : 0;
+    // FL 25+ stores 0xAC as three bytes, despite its DWORD-range ID.
+    // Reading four consumes the next opcode and loses the real tempo event.
+    // Reference: dawhubapp/flpdiff docs/fl-format/fl25-event-format.md.
+    if (id === 172 && Number(version.split('.')[0]) >= 25) size = 3;
     if (id >= 192) {
       let shift = 0, byte;
       do { if (offset >= buf.length || shift > 28) throw new Error('The FLP event length is incomplete. Save and try again.'); byte = buf[offset++]; size += (byte & 127) * (2 ** shift); shift += 7; } while (byte & 128);

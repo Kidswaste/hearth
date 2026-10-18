@@ -25,7 +25,7 @@
     <section id="connection" hidden>
       <h2>Connect FL Studio</h2>
       <p><b>Easiest: watch your saved project.</b> Choose this quest’s .flp once. Set your tempo or add piano-roll bass notes, then press Ctrl+S in FL Studio. Hearth reads that file and checks your step. No MIDI device needed.</p>
-      <div class="actions"><button id="choose-project" class="primary">Choose this song’s .flp</button><button id="forget-project" hidden>Disconnect project</button></div><p id="project-path" class="muted"></p>
+      <div class="actions"><button id="choose-project" class="primary">Choose this song’s .flp</button><button id="forget-project" hidden>Disconnect project</button></div><p id="project-path" class="muted" role="status" aria-live="polite"></p>
       <h2>Or connect live</h2>
       <p>Install Hearth’s read-only controller script, then enable <b>Hearth Quest Guide</b> for an unused MIDI input in FL Studio’s MIDI settings.</p>
       <ol><li>Install the script below.</li><li>Open FL Studio → Options → MIDI settings. Refresh the device list if needed.</li><li>Select an unused input and enable it. Choose <b>Hearth Quest Guide (user)</b> as its controller type.</li><li>Wait for the “Connected” light here.</li></ol>
