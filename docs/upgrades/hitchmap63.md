@@ -117,7 +117,7 @@ A session's map is ≈ 17–18 KB of JSON (40 × 40 cells, a 400-bucket timeline
   failed once ("the merged canvas keeps drawing": 0 frames in 1.5 s at a load of ≈ 5, with the hitch map off) and passed
   alone right after: timing. `lazy-manifest.js` regenerated (passes its own compare). Unit: hitchmap-test, playnotes-test,
   playbudget-test, gameperf-test, diskcalm-test, directorgame-test pass.
-- After the last merge (questwalk63, soundbank63): lazy-manifest regenerated, **lazy, unit:boot-test, hitchmap63 passed**.
+- After the last merges (questwalk63, soundbank63, loopsong63): lazy-manifest regenerated, **lazy, unit:boot-test, hitchmap63 passed**.
   One hitchmap63 run of six failed "Fix this … and the picture" (the draft was in the box, its picture not attached
   within 6 s, under load); the next run passed. Noted, not a product failure seen otherwise.
 - Fixed on the way: the check's "leaving" step closed the map before it had opened (the map then refreshed in place
