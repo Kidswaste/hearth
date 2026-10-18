@@ -13,6 +13,11 @@ Audio is generated continuously in short blocks; PortAudio only copies queued PC
   reply, so a slow snapshot never delays a note;
 - parameter reads for the desk hold the plugin lock per control, so reading Serum 2's controls doesn't stop audio;
 - gain changes ramp per block, Stop fades out over one block, DSP load / latency / underruns are reported.
+
+(round 62, parkjam62) Capture the moment (docs/upgrades/parkjam62.md): a 1–16 bar loop recorder in the audio thread.
+'record' arms a take (bars × beats at a BPM, from now or from the first note played), the worker keeps the
+instrument's own output (before the monitor volume) and every note that reached the plugin (Hearth's keys, the
+controller, phrases) with its sample position; 'record-take' writes the WAV (16-bit) and returns the notes.
 """
 import base64
 import importlib.util
@@ -219,6 +224,8 @@ class Engine:
         self.loaded_ms = 0
         self.started_ms = 0
         self.recent_underruns = []
+        self.take = None  # (round 62, parkjam62) the loop being recorded (record / capture / record-take)
+        self.take_note = ''
 
     def from_controller(self, message):
         # Notes from the controller never touch active_notes: the stale-note guard is for Hearth's own keys only.
@@ -383,6 +390,8 @@ class Engine:
                     self.max_process_ms = max(self.max_process_ms, self.process_ms)
                 if block.shape != (2, self.frames) or not np.isfinite(block).all():
                     raise ValueError('Plugin returned an invalid live audio block.')
+                if self.take is not None:
+                    self.capture(block, messages)  # (round 62, parkjam62) the loop recorder keeps this block
                 self.position += self.frames
                 self.load_avg = self.load_avg * .9 + .1 * self.process_ms / (self.frames / self.rate * 1000)
                 self.peak = float(np.max(np.abs(block)))
@@ -521,6 +530,9 @@ class Engine:
                     except queue.Empty:
                         break
             self.active_notes.clear()
+            # (round 62, parkjam62) a take cut short by a stop / device change is dropped, with a reason for the desk
+            if self.take is not None and not self.take['done']:
+                self.take, self.take_note = None, 'Live audio stopped before the loop was finished; nothing was kept.'
             self.sequence, self.seq_release = None, False
             self.seq_held.clear()
             self.setup = None
@@ -560,6 +572,95 @@ class Engine:
                 'loadedMs': self.loaded_ms, 'startedMs': self.started_ms, 'streamErrors': self.stream_errors, 'streamError': self.last_stream_error,
                 'plugin': self.path}
 
+    # ---------- (round 62, parkjam62) the loop recorder ----------
+    def record(self, job):
+        """Arm a take: bars (1, 2, 4, 8, 16) × beats (2–7) at bpm (50–220), from the next block ('now') or from the
+        first note played ('note'). Up to 90 s; live audio must be on (the take is what the owner hears)."""
+        bars, beats, bpm = int(job.get('bars') or 4), int(job.get('beats') or 4), float(job.get('bpm') or 120)
+        if bars not in (1, 2, 4, 8, 16):
+            raise ValueError('Record 1, 2, 4, 8 or 16 bars.')
+        if not 2 <= beats <= 7 or not math.isfinite(bpm) or not 50 <= bpm <= 220:
+            raise ValueError('Tempo outside 50–220 BPM (2–7 beats a bar).')
+        if not self.running.is_set():
+            raise ValueError('Start live audio first.')
+        total = round(bars * beats * 60 / bpm * self.rate)
+        if total > 90 * self.rate:
+            raise ValueError('A loop is up to 90 seconds: fewer bars or a faster tempo.')
+        self.take_note = ''
+        self.take = {'bars': bars, 'beats': beats, 'bpm': bpm, 'rate': self.rate, 'total': total, 'frames': 0, 'chunks': [],
+                     'notes': [], 'held': {}, 'armed': job.get('wait') == 'note', 'done': False, 'peak': 0.0, 'started': None}
+        return self.take_status()
+
+    def capture(self, block, messages):
+        """Called by the audio worker after each block: keeps the block (from the first note when armed) and the notes."""
+        take = self.take
+        if take is None or take['done']:
+            return
+        start = 0
+        if take['armed']:
+            ons = [round(offset * self.rate) for message, offset in messages if len(message) == 3 and message[0] & 0xF0 == 0x90 and message[2]]
+            if not ons:
+                return
+            start, take['armed'] = min(ons), False
+        if take['started'] is None:
+            take['started'] = time.time()
+        base = take['frames'] - start
+        for message, offset in messages:
+            at = round(offset * self.rate)
+            if at < start or len(message) < 3:
+                continue
+            t, kind, key = base + at, message[0] & 0xF0, message[1]
+            if t >= take['total']:
+                continue
+            if kind == 0x90 and message[2]:
+                if key in take['held']:
+                    self.close_note(take, key, t)
+                take['held'][key] = (t, message[2])
+            elif (kind == 0x80 or kind == 0x90) and key in take['held']:
+                self.close_note(take, key, t)
+        part = block[:, start:start + take['total'] - take['frames']]
+        take['chunks'].append(part)
+        take['frames'] += part.shape[1]
+        take['peak'] = max(take['peak'], float(self.np.max(self.np.abs(part))) if part.size else 0.0)
+        if take['frames'] >= take['total']:
+            for key in list(take['held']):
+                self.close_note(take, key, take['total'])
+            take['done'] = True
+
+    @staticmethod
+    def close_note(take, key, end):
+        start, velocity = take['held'].pop(key)
+        if len(take['notes']) < 4096:
+            take['notes'].append({'note': key, 'time': start / take['rate'], 'length': max(1, end - start) / take['rate'], 'velocity': velocity})
+
+    def take_status(self):
+        take = self.take
+        if take is None:
+            return {'recording': False, 'done': False, 'note': self.take_note}
+        return {'recording': not take['done'], 'armed': take['armed'], 'done': take['done'], 'bars': take['bars'], 'beats': take['beats'],
+                'bpm': take['bpm'], 'seconds': take['total'] / take['rate'], 'progress': round(take['frames'] / take['total'], 4),
+                'notes': len(take['notes']) + len(take['held']), 'note': self.take_note}
+
+    def record_take(self, job):
+        """The finished take as a 16-bit stereo WAV at job['output'] (Hearth reads it), plus its notes."""
+        import wave
+        take = self.take
+        if take is None or not take['done']:
+            raise ValueError('No finished loop yet.' if take is None else 'The loop is still recording.')
+        self.take = None
+        np = self.np
+        audio = np.concatenate(take['chunks'], axis=1) if take['chunks'] else np.zeros((2, 0), dtype=np.float32)
+        pcm = (np.clip(audio.T, -1, 1) * 32767).astype('<i2')
+        with wave.open(str(job['output']), 'wb') as w:
+            w.setnchannels(2)
+            w.setsampwidth(2)
+            w.setframerate(int(take['rate']))
+            w.writeframes(pcm.tobytes())
+        notes = sorted(take['notes'], key=lambda n: (n['time'], n['note']))
+        return {'bars': take['bars'], 'beats': take['beats'], 'bpm': take['bpm'], 'sampleRate': take['rate'], 'frames': int(pcm.shape[0]),
+                'seconds': pcm.shape[0] / take['rate'], 'peak': round(take['peak'], 5), 'silent': take['peak'] < 1e-4, 'notes': notes,
+                'startedAt': take['started']}
+
     def devices(self):
         """(round 61, vstlive61) every stereo output with its host API (ASIO listed when the ASIO DLL is loaded), plus
         the controller inputs. Hearth's renderer orders them (tools/workbench-vst-live.js: ASIO / UA first)."""
@@ -590,6 +691,13 @@ class Engine:
             return self.stats()
         if action == 'live-stop':
             return self.stop()
+        if action == 'record-status':  # (round 62, parkjam62)
+            return self.take_status()
+        if action == 'record-cancel':
+            self.take, self.take_note = None, ''
+            return self.take_status()
+        if action == 'record-take':
+            return self.record_take(job)
         if not self.plugin or self.path != job.get('plugin'):
             raise ValueError('Load the selected instrument first.')
         if action in ('live-start', 'open'):
@@ -623,6 +731,8 @@ class Engine:
             return self.values(job.get('keys', []))
         if action == 'sequence':
             return self.schedule(job)
+        if action == 'record':  # (round 62, parkjam62)
+            return self.record(job)
         if action == 'midi-in':
             self.midi_choice = job.get('midiIn') or 'all'
             opened = self.midi.open(self.midi_choice) if self.running.is_set() else []
