@@ -54,7 +54,10 @@ No AI by default; nothing runs while the picker is closed.
   RMS over the controls both know + a tag term; tags decide when fewer than 3 are shared), `search`, `serumMeta` (the
   readable "XferJson" header of a `.SerumPreset`; the compressed body isn't read), `aiPrompt` / `aiParse`, `PREVIEW`.
 - `soundbankmain.js` (lazy IPC, one line in `main.js`): the index `<data>/creative-vst/soundbank/index.json` (temp file +
-  fsync + rename; an unreadable index is kept aside as `index.json.unreadable`; saves debounced 250 ms, flushed on quit),
+  fsync + rename; read through datasafe-core's `load` / `readRetry`: a held file is retried, a damaged one falls back to
+  `index.prev.json` (kept before each session's first write), and an index that can't be read is never treated as empty
+  nor saved over — the picker works in memory and reads it again on the next open; only a garbled file with no copy is
+  kept aside as `index.json.unreadable` before a new one starts; saves debounced 250 ms, flushed on quit),
   the bank sync (id = hash of the state, so favorites / used in follow the sound), the read-only folder scan (≤ 3,000
   files, depth 6, cached by mtime + size; `.vital` ≤ 4 MB parsed, Serum 2 only its first 64 KB), the preview queue
   (`creative-vstmain.create({ lowPriority: true })` → `inspect` once per instrument, then `render` with the preset's
