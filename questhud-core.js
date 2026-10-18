@@ -13,11 +13,23 @@
     const c = s.campaigns.find((x) => x.id === s.active && !x.paused);
     return c ? C.next(s, c) : null;
   }
+  // (round 62, weekquest62) Today's planned quest (s.weekly, weekquest-core.js): a campaign item follows its next step,
+  // a quest item is that quest; only one still open and available counts. Read-only, no WeekQuestCore needed.
+  function planned(C, s, date = C.day()) {
+    for (const p of s.weekly?.plans || []) for (const it of p.items || []) {
+      if (it.day !== date) continue;
+      const c = it.campaign ? s.campaigns.find((x) => x.id === it.campaign) : null;
+      const q = it.campaign ? (c && !c.paused ? C.next(s, c) : null) : C.find(s, it.quest);
+      if (open(C, s, q) && C.available(s, q.id)) return q;
+    }
+    return null;
+  }
   // The quest the chip follows: the one pinned from the tracker (if still open), else the main quest, else the quest
   // with a starting note (Studio's bookmark), else the first open side quest. null: nothing active.
   function current(C, s, pin = null) {
     if (!s) return null;
     if (pin) { const q = C.find(s, pin); if (open(C, s, q) && (q.campaign ? C.available(s, q.id) : !q.parked)) return q; }
+    const t = planned(C, s); if (t) return t; // (round 62, weekquest62) today's quest from the week plan
     const m = main(C, s); if (m) return m;
     if (s.plan?.quest) { const q = C.find(s, s.plan.quest); if (open(C, s, q) && C.available(s, q.id)) return q; }
     return sideOpen(C, s)[0] || null;
@@ -47,7 +59,8 @@
     const c = campaignOf(s, q), st = steps(C, s, q), nx = st.find((x) => !x.done) || null, path = pathOf(C, q.path);
     const note = s.plan?.quest === q.id ? s.plan.action : '';
     const focus = s.focus?.quest === q.id && s.focus.end > 0 ? s.focus.end : 0;
-    return { id: q.id, title: q.title, campaign: c ? c.title : '', campaignId: c ? c.id : null, side: !c, path: q.path, icon: path.icon, color: path.color,
+    const today = planned(C, s)?.id === q.id; // (weekquest62) on today's week plan
+    return { today, id: q.id, title: q.title, campaign: c ? c.title : '', campaignId: c ? c.id : null, side: !c, path: q.path, icon: path.icon, color: path.color,
       steps: st, next: nx, note, focus, minutes: q.minutes, xp: q.xp, progress: progress(C, s, q), place: placeOf(s, q) };
   }
   // The other quests in play: the main quest, the open side quests, the bookmarked one (no duplicates, the followed first)
@@ -63,7 +76,7 @@
   // A one-line digest the chip can compare before it writes the page (nothing repaints when nothing changed)
   function sig(cd, extra = '') {
     if (!cd) return `none|${extra}`;
-    return [cd.id, cd.title, cd.next?.id, cd.next?.text, cd.progress.text, cd.progress.frac, cd.note, cd.focus, cd.icon, extra].join('|');
+    return [cd.id, cd.today ? 'today' : '', cd.title, cd.next?.id, cd.next?.text, cd.progress.text, cd.progress.frac, cd.note, cd.focus, cd.icon, extra].join('|');
   }
 
   // ---------- /quest track <name> ----------
@@ -110,7 +123,7 @@
   }
 
   // ---------- chat words ----------
-  const SUBS = ['next', 'done', 'track', 'picks', 'near', 'open', 'studio', 'hud'];
+  const SUBS = ['next', 'done', 'track', 'picks', 'near', 'open', 'studio', 'hud', 'week', 'review']; // week / review: weekquest62's week plan and week in review
   // parisquests61's /quest words (tools/quest-paris-ui.js: QuestParisUI.run): one /quest command, these pass through
   const PARIS = ['paris', 'map', 'places', 'guide', 'go', 'start', 'place', 'add', 'park', 'list', 'progress', 'help'];
   function parse(args) {
@@ -124,5 +137,5 @@
     return { sub: 'name', rest: t }; // "/quest canal": track an open quest by that name, else a Paris place / personal quest
   }
 
-  return { PARIS, current, main, steps, nextStep, progress, card, actives, sig, trackables, match, placeOf, km, say, walk, near, parse, SUBS, norm };
+  return { PARIS, planned, current, main, steps, nextStep, progress, card, actives, sig, trackables, match, placeOf, km, say, walk, near, parse, SUBS, norm };
 });
