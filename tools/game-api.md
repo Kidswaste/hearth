@@ -295,3 +295,33 @@ the hub); the owner: `/playtest`.
   size goes in, so no page that skips shadow passes draws with a missing map (three r186 then binds its RGBA stand-in to a
   `sampler2DShadow`: GL_INVALID_OPERATION, the draw dropped) or a stale one. `ab.glErrors = { before, during, codes }`:
   WebGL's error flags read at the A/B's start and end (under the card only); `result.ab.glErrors` in getting ready's result.
+
+## Playtest notes (round 62, playnotes62: playnotes.js + playnotes-core.js in the "gamemode" group, playnotesmain.js)
+- **The key is read main-side** (gamemodemain's `before-input-event` asks `playnotesmain.key(e, input)` first, before
+  gameinput's Esc / F / Enter and playloop's Ctrl/⌘+P): F8 by default (hub store `playnotes.key`, `/playtest key F9`;
+  `game:play` takes `notes: { key, label }`; the window's `--hearth-game` JSON carries `notesKey`, the hint shows it).
+  F8 → a note; Shift+F8 → a note + the words box. The game never gets the key. Nothing of this is in the page before
+  the key is pressed (no script, listener or frame callback); the box's three window capture listeners exist only while
+  it's open (they stop its keys before the game's listeners; while it's open every key is the box's except Esc, which
+  closes it, and Ctrl/⌘+P / Q / W, which close it and go on).
+- **A note** = `capturePage()` (once; ≤ 1280 px wide, JPEG) + one `executeJavaScript` read (`playnotesmain.READ`):
+  a Lab page's `window.__labHot.save()`, an HTML build's `window.hearthState()` / `game` / `__game` / `gameState`
+  (plain data: depth 6, ≤ 6000 values; three's vectors as arrays, an Object3D as its position + quaternion), the
+  cameras of `window.__scenes` (or `window.camera`) `{ p, q, z }`, the player's position (the state's player / position
+  / x,y,z, else the camera), the frame rate: `__gamePerf.recent(60)` (the probe, when attached) else
+  `__hearthBudget.pace()` (the budget watch's last second; both counted anyway).
+- Stored per game in `data/game-cache/<lab-<scene id> | html-<name>-<hash>>/notes/`: `log.json` `{ v, game: { key, title,
+  kind }, notes: [{ id, at, session (the window's start), secs, kind, text, shot, w, h, state, cams, pos, perf, hz, readMs }] }`
+  (≤ 200 notes, a state over 64 KB kept as `stateBig`; datasafe read, atomic write, an unreadable log never written
+  over) + `<id>.jpg`. Remove / clear go to the Trash. diskcalm's "Optimized 3D models" free-up leaves them.
+- Hub: `window.hub.game.notes({ op: 'list' | 'get' | 'shot' (width | path) | 'text' (append, echo) | 'remove' | 'clear' |
+  'state' | 'key' | 'take' | 'box' (status), source?, id? })`; events `window.hub.game.onNotes(fn)`: `{ type: 'added',
+  source, session, n, note, saved }` / `{ type: 'voice', source, id }` (the box's 🎤: `Voice.start({ into })`) / `{ type:
+  'text', source, id, text }`. Game window: `game:note { text }`, `game:note-box { open, id, status, text }` in;
+  `game:note-text { id, text, close }`, `game:note-voice { id }`, `game:note-box-off` out.
+- `PlayNotes.open({ source, session })` (the Playtest log), `.jump(source, id)` (a Lab scene: opened in the Lab, the
+  layers' `restoreState()` through `__labHot.restore`, their cameras; an HTML build: in its ▶ Play window, through
+  `window.hearthRestore(state)` if the game defines it, and its camera), `.fix(source, id)` (the director's draft +
+  the picture attached, never sent), `.command(text)` (`/playtest notes | note <n> | fix <n> | clear | key`).
+- A game can help: an HTML build that defines `window.hearthState()` (plain data) and `window.hearthRestore(state)` gets
+  notes you can jump back to; a Lab layer's `saveState()` / `restoreState()` already do it.

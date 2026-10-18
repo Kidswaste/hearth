@@ -447,6 +447,13 @@ const GamePerfProbe = function gamePerfProbe(opts) {
       },
     },
     state: () => ({ off: S.off || null, on: S.on, frames: S.frames, renderers: renderers.size, chip, hz: O.hz }),
+    // (round 62, playnotes62) the last n frames as one line (a playtest note, on its key only): read from the ring kept anyway
+    recent: (n = 60) => {
+      const m = Math.min(Math.max(1, n | 0), R.n, S.frames); if (S.off || m < 2) return null;
+      let sum = 0; let worst = 0;
+      for (let k = 0; k < m; k += 1) { const d = R.dt[(R.i - 1 - k + N) % N]; sum += d; if (d > worst) worst = d; }
+      const ms = sum / m; return { fps: Math.round(10000 / ms) / 10, ms: Math.round(ms * 100) / 100, worst: Math.round(worst * 10) / 10, frames: m, from: 'perf' };
+    },
     // dev/checks/gameperf.js: what measuring costs per frame, run n times in a row (no scheduling noise: a busy test
     // computer pre-empts real frames); the session starts again afterwards
     bench: (n = 2000) => {

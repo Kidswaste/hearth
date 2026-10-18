@@ -168,12 +168,15 @@ const DirectorGame = (() => {
   // the owner's own: /playtest [game] [script | 30s] — the same run, its summary in the chat, no tokens
   if (typeof Commands !== 'undefined' && !Commands.get?.('playtest')) {
     Commands.register({
-      name: 'playtest', aliases: ['play-test'], area: 'Lab', args: '[game] [script | 30s | stop]',
-      desc: 'Play-test a game in ▶ Play with a short input script ("hold W 2 s, jump, look left"), then read the numbers: fps, stutters, where the player went, each step, state, errors with their line. No tokens.',
-      keywords: 'play test playtest clink game input script fps stutter errors director',
-      examples: ['/playtest Clink hold W 2 s, jump, look left', '/playtest Clink 30s', '/playtest stop'],
+      name: 'playtest', aliases: ['play-test'], area: 'Lab', args: '[game] [script | 30s | stop | notes | clear | note <n> | fix <n> | key <F8>]',
+      desc: 'Play-test a game in ▶ Play with a short input script ("hold W 2 s, jump, look left"), then read the numbers: fps, stutters, where the player went, each step, state, errors with their line. No tokens. notes: your F8 playtest notes (clear, note <n> jumps there, fix <n> drafts it for the director).',
+      keywords: 'play test playtest clink game input script fps stutter errors director notes log f8 screenshot bug',
+      examples: ['/playtest Clink hold W 2 s, jump, look left', '/playtest Clink 30s', '/playtest stop', '/playtest notes', '/playtest fix 2', '/playtest clear'],
+      complete: () => ['notes', 'clear', 'note 1', 'fix 1', 'key F8', 'stop', '30s'].map((v) => ({ value: v })),
       async run(argText) {
         const a = String(argText || '').trim();
+        // (round 62, playnotes62) the playtest notes (F8 in ▶ Play): the log, a jump, a draft for the director, clear, the key
+        if (/^(notes?|log|clear|fix|jump|key)\b/i.test(a) && typeof PlayNotes !== 'undefined') return PlayNotes.command(a);
         if (/^(stop|leave|off)$/i.test(a)) return stop() ? 'Play-test stopped.' : 'No play-test running.';
         let game = ''; let script = a; let secs = 0;
         if (a && !/^\d+(\.\d+)?\s*(s|secs?|seconds?)$/i.test(a) && C().parse(a).error) { const m = a.match(/^(\S+)\s*(.*)$/); game = m[1]; script = m[2]; }

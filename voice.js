@@ -50,27 +50,30 @@ const Voice = (() => {
   }
 
   // ---------- listening ----------
-  async function start({ mode = 'toggle', agentId = targetAgent() } = {}) {
+  // (round 62, playnotes62) into: a function that gets the words instead of a chat box (a playtest note's words), or
+  // null when nothing was heard / it was cancelled; voice commands aren't run for it
+  async function start({ mode = 'toggle', agentId = targetAgent(), into = null } = {}) {
     if (S.state !== 'off') { if (S.state === 'listening' && mode === 'toggle') finish(); return false; }
-    if (!agentId) { toast('Open a chat first: the words go to its box.'); return false; }
+    S.into = typeof into === 'function' ? into : null;
+    if (!agentId && !S.into) { toast('Open a chat first: the words go to its box.'); return false; }
     Native.stopSpeaking?.(); // talking over a reply stops it
     S.state = 'starting'; S.mode = mode; S.agentId = agentId; S.t0 = performance.now();
     try {
       const st = await engine();
-      if (!st.engine) { S.state = 'off'; dictation(agentId); return false; }
-      if (!st.ready) { S.state = 'off'; offerModel(); return false; }
+      if (!st.engine) { S.state = 'off'; intoDone(null); dictation(agentId); return false; }
+      if (!st.ready) { S.state = 'off'; intoDone(null); offerModel(); return false; }
       if (await window.hub.voice.mic() === 'denied') {
-        S.state = 'off';
+        S.state = 'off'; intoDone(null);
         toast(PLATFORM === 'darwin' ? 'Hearth can\'t hear you: allow it in System Settings › Privacy & Security › Microphone.' : 'The microphone is blocked for Hearth.', { type: 'error', timeout: 8000 });
         return false;
       }
       await open();
-      if (S.state !== 'starting') { close(); return false; } // let go before the mic opened
+      if (S.state !== 'starting') { close(); intoDone(null); return false; } // let go before the mic opened
       S.state = 'listening';
       showPill();
       return true;
     } catch (err) {
-      S.state = 'off'; close(); hidePill();
+      S.state = 'off'; close(); hidePill(); intoDone(null);
       toast(`No microphone: ${err.message}`, { type: 'error' });
       return false;
     }
@@ -114,12 +117,13 @@ const Voice = (() => {
   }
   // Stop listening and turn what was heard into text.
   async function finish({ send = null } = {}) {
-    if (S.state === 'starting') { S.state = 'off'; hidePill(); return null; }
+    if (S.state === 'starting') { S.state = 'off'; hidePill(); intoDone(null); return null; }
     if (S.state !== 'listening') return null;
     const c = close();
     const agentId = S.agentId;
+    const into = S.into; S.into = null;
     const vs = c.vad.state();
-    if (!vs.heard) { S.state = 'off'; hidePill(); toast('🎙 Didn\'t catch anything.'); return null; }
+    if (!vs.heard) { S.state = 'off'; hidePill(); toast('🎙 Didn\'t catch anything.'); if (into) into(null); return null; }
     S.state = 'transcribing';
     setPill('Transcribing…', 'busy');
     const all = new Float32Array(c.n); let o = 0;
@@ -127,13 +131,14 @@ const Voice = (() => {
     const cut = C.trim(all, c.rate, vs.first, vs.lastLoud);
     const pcm = C.resample(cut, c.rate, 16000);
     const id = `v${Date.now().toString(36)}`;
-    job = { id, agentId, send: send ?? (S.mode === 'hold' && get('sendOnRelease', false)) };
+    job = { id, agentId, send: send ?? (S.mode === 'hold' && get('sendOnRelease', false)), into };
     const lang = get('lang', 'auto');
     const r = await window.hub.voice.transcribe({ id, wav: C.wav(pcm), lang, model: get('model', 'base'), whisperPath: get('whisperPath', '') || undefined, modelPath: get('modelPath', '') || undefined, seconds: pcm.length / 16000, prompt: get('prompt', '') || undefined })
       .catch((err) => ({ ok: false, error: err.message }));
     const mine = job?.id === id ? job : null;
     job = null; S.state = 'off'; hidePill();
     if (!mine) return null; // cancelled meanwhile
+    if (mine.into) { const t = r.ok ? String(r.text || '').trim() : ''; if (t) { log.unshift({ text: t, at: Date.now(), ms: r.ms }); log.length = Math.min(log.length, 20); } mine.into(t || null); if (!r.ok && !r.cancelled) toast(`Speech-to-text failed: ${r.error}`, { type: 'error' }); return t ? { kind: 'into', text: t } : null; }
     if (!r.ok) { if (!r.cancelled) toast(r.error === 'no-model' ? 'No speech model yet: /voice install' : `Speech-to-text failed: ${r.error}`, { type: 'error', action: { label: 'Set up', fn: () => install() } }); return null; }
     const text = String(r.text || '').trim();
     if (!text) { toast('🎙 Didn\'t catch any words.'); return null; }
@@ -141,9 +146,10 @@ const Voice = (() => {
     return deliver(text, mine.agentId, { send: mine.send });
   }
   function cancel() {
-    if (job) { window.hub.voice.cancel(job.id); job = null; }
-    close(); S.state = 'off'; hidePill();
+    if (job) { window.hub.voice.cancel(job.id); job?.into?.(null); job = null; }
+    close(); S.state = 'off'; hidePill(); intoDone(null);
   }
+  function intoDone(v) { const f = S.into; S.into = null; if (f) f(v); }
   const toggle = (agentId) => (S.state === 'off' ? start({ mode: 'toggle', agentId }) : S.state === 'listening' ? finish() : (cancel(), false));
 
   // ---------- what the words do ----------

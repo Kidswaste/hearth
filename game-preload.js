@@ -69,7 +69,7 @@ function mount() {
     .err .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .err button, .box .fix { padding: 5px 11px; font-size: 12px; margin: 0; } .err .x { background: transparent; color: #a7adb8; padding: 5px 7px; }
     .fixit { background: #ff8a3d; color: #1a1206; } .box .fix { display: block; margin: 12px auto 0; }
-  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing</div><div class="chip" hidden></div><div class="look" hidden></div><div class="note" hidden></div><div class="blip" aria-live="polite"></div>
+  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing${I.notesKey ? ` · ${String(I.notesKey).replace(/[<>&]/g, '')}: note` : ''}</div><div class="chip" hidden></div><div class="look" hidden></div><div class="note" hidden></div><div class="blip" aria-live="polite"></div>
   <div class="err" hidden role="alert"><span class="m"></span><button class="fixit">Fix with the director</button><button class="x" aria-label="Hide">✕</button></div>
   <div class="card" hidden role="dialog" aria-label="Leave the game"><div class="box"><div class="t"></div><div class="s">Esc again or Enter goes back</div>
   <button class="back">Back to Hearth</button><button class="keep">Keep playing</button><button class="fix fixit" hidden>Fix with the director</button></div></div></div>`;
@@ -102,7 +102,7 @@ addEventListener('hearth-game-unlock', () => { gameLetGo = performance.now(); })
 document.addEventListener('pointerlockchange', () => {
   const on = Boolean(document.pointerLockElement);
   ipcRenderer.send('game:lock', on);
-  if (!on && !(ui && !ui.card.hidden) && document.hasFocus() && performance.now() - gameLetGo > 400) { menu(true); ipcRenderer.send('game:menu-on'); }
+  if (!on && !(ui && !ui.card.hidden) && !NB.open && document.hasFocus() && performance.now() - gameLetGo > 400) { menu(true); ipcRenderer.send('game:menu-on'); } // (round 62, playnotes62: the notes' words box let the mouse go, not Esc)
 });
 
 // ---------- the stats chip: frames counted only while it shows ----------
@@ -247,3 +247,72 @@ if (I.kind === 'lab') {
   addEventListener('error', (e) => { if (e.message) showErr({ message: e.message, line: e.lineno, file: rel(e.filename), stack: e.error && e.error.stack }); });
   addEventListener('unhandledrejection', (e) => { const r = e.reason; showErr({ message: (r && (r.message ? `${r.name || 'Error'}: ${r.message}` : String(r))) || 'a promise failed', stack: r && r.stack }); });
 }
+
+
+// ---------- playtest notes (round 62, playnotes62: playnotesmain.js reads the key main-side, like Esc / F) ----------
+// F8 (the key set with /playtest key) drops a note: "✎ Note 3" shows here for a moment. Shift+F8 also opens a small box
+// for words: typed here (Enter saves, Esc closes and keeps them), or said (🎤: Hearth's voice input, only when pressed).
+// Nothing of this exists in the page until the key is pressed; while the box is open its keys stay in the box (window
+// capture listeners added then, removed when it closes), so the game doesn't walk while you type.
+const NB = { open: false, id: null, el: null, input: null, status: null, sent: '', stop: null };
+function noteToast(text) {
+  const u = mount();
+  u.blip.textContent = String(text || '✎ Note');
+  u.blip.classList.add('on');
+  clearTimeout(blipT); blipT = setTimeout(() => u.blip.classList.remove('on'), 1600);
+}
+function noteBox() {
+  if (NB.el) return NB.el;
+  const u = mount();
+  const st = document.createElement('style');
+  st.textContent = `.nb { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(620px, 90vw); display: flex; gap: 8px; align-items: center; padding: 8px 8px 8px 12px; border-radius: 12px; background: #16181df2; box-shadow: 0 10px 32px #000b; pointer-events: auto; }
+    .nb input { flex: 1; min-width: 0; font: 14px system-ui, sans-serif; color: #eef0f4; background: #0e1014; border: 1px solid #2c313b; border-radius: 8px; padding: 7px 9px; outline: none; }
+    .nb input:focus { border-color: #ff8a3d; } .nb .mic { background: #2a2e37; color: #eef0f4; padding: 6px 10px; margin: 0; font-size: 14px; }
+    .nb .st { position: absolute; left: 14px; top: -20px; font-size: 11.5px; color: #c9ced8; text-shadow: 0 1px 2px #000; white-space: nowrap; }`;
+  u.host.shadowRoot.append(st);
+  const box = document.createElement('div'); box.className = 'nb'; box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Words for this note');
+  box.innerHTML = '<span class="st"></span><input maxlength="2000" placeholder="What happened here? (Enter saves · Esc closes)" aria-label="Words for this note"><button class="mic" title="Say it (Hearth\'s voice input)">🎤</button>';
+  u.host.shadowRoot.querySelector('.w').append(box);
+  NB.el = box; NB.input = box.querySelector('input'); NB.status = box.querySelector('.st');
+  box.querySelector('.mic').addEventListener('click', () => { if (NB.id) { NB.status.textContent = '🎤 Starting Hearth\'s voice input…'; ipcRenderer.send('game:note-voice', { id: NB.id }); } });
+  return box;
+}
+function sendWords(close) {
+  if (!NB.id) return;
+  const text = NB.input ? NB.input.value.trim() : '';
+  if (text !== NB.sent || close) { NB.sent = text; ipcRenderer.send('game:note-text', { id: NB.id, text, close: Boolean(close) }); }
+}
+// the box's keys stay in it: window capture listeners (first on the path the game's listeners are on), only while open
+const KEY_TYPES = ['keydown', 'keyup', 'keypress'];
+// (stopped at the window, before the game's listeners, so the box's own Enter is read here too)
+const boxKeys = (e) => {
+  if (!NB.open || !NB.el || !e.composedPath().includes(NB.el)) return;
+  e.stopImmediatePropagation();
+  if (e.type === 'keydown' && e.key === 'Enter' && !e.isComposing && e.composedPath()[0] === NB.input) { e.preventDefault(); sendWords(true); }
+};
+function openNoteBox(id) {
+  const box = noteBox();
+  if (NB.open && NB.id !== id) sendWords(false);
+  NB.open = true; NB.id = id; NB.sent = ''; NB.input.value = ''; NB.status.textContent = '✎ Words for this note';
+  if (!NB.stop) { for (const t of KEY_TYPES) addEventListener(t, boxKeys, true); NB.stop = () => { for (const t of KEY_TYPES) removeEventListener(t, boxKeys, true); NB.stop = null; }; }
+  try { document.exitPointerLock(); } catch { /* fine */ }
+  box.hidden = false;
+  setTimeout(() => { try { NB.input.focus(); } catch { /* fine */ } }, 0);
+}
+function closeNoteBox() {
+  if (!NB.open) return false;
+  sendWords(false);
+  const had = Boolean(NB.sent);
+  NB.open = false; NB.id = null;
+  if (NB.el) NB.el.hidden = true;
+  if (NB.stop) NB.stop();
+  try { NB.input.blur(); } catch { /* fine */ }
+  return had;
+}
+ipcRenderer.on('game:note', (_e, d = {}) => noteToast(d.text));
+ipcRenderer.on('game:note-box', (_e, d = {}) => {
+  if (d.open === true) openNoteBox(d.id);
+  else if (d.open === false) { if (closeNoteBox()) noteToast('✎ Words kept with the note'); }
+  if (d.status != null && NB.status) NB.status.textContent = String(d.status);
+  if (d.text != null && NB.open && d.id === NB.id && NB.input) { NB.input.value = String(d.text); NB.sent = NB.input.value.trim(); NB.status.textContent = '✎ Heard: Enter saves, or keep typing'; NB.input.focus(); }
+});
