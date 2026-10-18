@@ -83,8 +83,9 @@ frame anyway); the stats message twice a second; numbers boxed by code this mach
 
 ## The check: `dev/checks/gcchurn60.js` (group `gcchurn60`)
 - ▶ Play (the light game, Best: look + loads during play + sound) and the Lab preview (labplay55's game + HUD): Hearth's
-  own bytes a frame **≤ 256 B in ▶ Play, ≤ 1,024 B in the Lab** (after: 171–175 B and 774–1,050 B here; before: 2.8–3.6
-  KB and 18–22 KB). The browser's start-of-frame allocation is caught by an empty first-in-frame function and counted
+  own bytes a frame **≤ 256 B in ▶ Play, ≤ 1,024 B in the Lab** (after: 165–175 B and 670–775 B here; before: 2.8–3.6
+  KB and 18–22 KB). The Lab's budget is wider because the HUD layer's new-function-per-frame pattern and code this
+  machine runs unoptimised at 28 fps (a look at the scene every 32 frames) are in it. The browser's start-of-frame allocation is caught by an empty first-in-frame function and counted
   apart.
 - **Self-test** in both windows: a pretend Hearth hook around `render()` that allocates ≈ 800 B a frame (a copy of the
   arguments, a scratch list, a label, a closure kept: the kind of thing this round removed) must be seen (≥ 400 B on its
@@ -95,8 +96,15 @@ frame anyway); the stats message twice a second; numbers boxed by code this mach
 ## Tests
 - `node --check` on every changed script (the preview page's three scripts extracted), the check body compiled.
 - Unit: labpace-test, gamefps54-test, gamehooks55-test, playbudget-test, readyspeed-test, shadowready-test: pass.
-- Under the shared lock: see the final report of this stream (gcchurn60, gamefps54, playbudget, framepace57, labplay55,
-  labcanvas56, playlatency, lazy, unit:boot-test).
+- Under the shared lock (`flock /tmp/hearth-run.lock`, ≤ 5 a hold): **gcchurn60 pass** (▶ Play 165 B, Lab 670 B; both
+  self-tests caught at ≈ 810 B), **gamefps54 pass**, **playbudget pass**, **framepace57 pass**, **labplay55 pass** (×2),
+  **labcanvas56 pass** (×2), **lazy pass**, **unit:boot-test pass**, unit:labpace-test pass.
+- **playlatency** fails one step, "HTML game: /game latency → the next frame", in both runs (the HTML game drew at 20 fps
+  under the machine's load: verdict "late, the game's frame is the limit"); **the base (8c44c9c) fails the same step the
+  same way** (15 fps). Every other step passes (the Lab scene's one canvas, real input in the next frame, no keydown
+  listener of Hearth's, the chip). A timing failure under load: noted, not a regression.
+- An earlier gcchurn60 run read the Lab at 1,136 B: the pace meter's twice-a-second sort of 240 fractional gaps, run
+  unoptimised, boxed every value it read; it keeps whole microseconds now (the run after: 670 B).
 
 ## Edits outside the lane
 `dev/run-checks.js` (the `gcchurn60` group; the name in the list that gets `HEARTH_THREE_DIR`). The page scripts changed
