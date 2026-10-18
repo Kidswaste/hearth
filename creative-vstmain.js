@@ -235,7 +235,34 @@ function parkSave(dataDir, sketch, name, bytes) {
   fs.mkdirSync(dir, { recursive: true }); const tmp = file + '.part'; fs.writeFileSync(tmp, data); fs.renameSync(tmp, file);
   return file;
 }
-function register(ipcMain, { dataDir, getWin, app }) {
+// (round 63, loopsong63) From park loops to a song (tools/loopsong.js): every take of every park sketch (their notes JSON,
+// written by parkjam62), and an MP3 of an exported mix when ffmpeg is there (Hearth's own detection, aemain.ffStatus).
+// Both stay inside <data>/creative-park/; the MP3 is written next to its WAV, atomically (.part, then renamed).
+const parkFolder = (dataDir, sketch) => path.join(dataDir, 'creative-park', String(sketch || 'Park sketch').normalize('NFC').replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80) || 'Park sketch'); // parkSave's folder rule
+function parkList(dataDir) {
+  const root = path.join(dataDir, 'creative-park'), takes = [];
+  let dirs = []; try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory()); } catch { return { root, takes }; }
+  for (const d of dirs) {
+    let names = []; try { names = fs.readdirSync(path.join(root, d.name)); } catch { continue; }
+    for (const n of names) {
+      if (!/\.json$/i.test(n) || / song\.json$/i.test(n) || takes.length >= 400) continue;
+      try { const j = JSON.parse(fs.readFileSync(path.join(root, d.name, n), 'utf8')); if (j?.v === 1 && typeof j.loop === 'string' && j.bpm && j.bars) { delete j.notesPlayed; takes.push({ ...j, notesFile: path.join(root, d.name, n), folder: d.name }); } } catch { /* not a take */ }
+    }
+  }
+  takes.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  return { root, takes };
+}
+function parkMp3(dataDir, sketch, name, ffmpeg) {
+  if (!ffmpeg) return Promise.resolve({ ok: false, error: 'ffmpeg is not installed, so the MP3 was skipped (the WAV is there).' });
+  const dir = parkFolder(dataDir, sketch), wav = path.resolve(dir, String(name || ''));
+  if (path.dirname(wav) !== dir || !/\.wav$/i.test(wav) || !fs.existsSync(wav)) return Promise.resolve({ ok: false, error: 'No such mix in the sketch folder.' });
+  const mp3 = wav.replace(/\.wav$/i, '.mp3'), tmp = mp3 + '.part';
+  return new Promise(resolve => require('child_process').execFile(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', wav, '-codec:a', 'libmp3lame', '-q:a', '2', '-f', 'mp3', tmp], { timeout: 120000, windowsHide: true }, err => {
+    if (err) { try { fs.unlinkSync(tmp); } catch { /* none */ } resolve({ ok: false, error: `The MP3 failed (${String(err.message).split('\n')[0].slice(0, 160)}); the WAV is there.` }); return; }
+    try { fs.renameSync(tmp, mp3); resolve({ ok: true, path: mp3 }); } catch (e) { resolve({ ok: false, error: e.message }); }
+  }));
+}
+function register(ipcMain, { dataDir, getWin, app, settings }) {
   const host = pool({ dataDir });
   const own = (e, fn) => { if (e.sender !== getWin()?.webContents || e.senderFrame !== e.sender.mainFrame) return { ok: false, error: 'Only the Hearth workspace can use the plugin host.' }; return fn(); };
   ipcMain.handle('creative-vst:scan', (e, roots) => own(e, () => host.scan(roots)));
@@ -246,6 +273,9 @@ function register(ipcMain, { dataDir, getWin, app }) {
   ipcMain.on('creative-vst:send', (e, r) => { own(e, () => host.send(r)); }); // (round 61, vstlive61) no reply: notes, knob moves
   // (round 62, parkjam62) Park jam: a take's files (loop / ambience / layered WAV, MIDI, notes) in the sketch's own folder
   ipcMain.handle('creative-vst:park-save', (e, sketch, name, bytes) => own(e, () => { try { return { ok: true, path: parkSave(dataDir, sketch, name, bytes) }; } catch (err) { return { ok: false, error: err.message }; } }));
+  // (round 63, loopsong63) the takes of every park sketch · an exported mix as MP3 (ffmpeg found the way Hearth finds it)
+  ipcMain.handle('creative-vst:park-list', e => own(e, () => parkList(dataDir)));
+  ipcMain.handle('creative-vst:park-mp3', (e, sketch, name) => own(e, () => parkMp3(dataDir, sketch, name, require('./aemain').ffStatus({ ffmpeg: settings?.().ffmpegPath || undefined }).ffmpeg)));
   app.once('will-quit', () => host.stop()); getWin()?.webContents.once('destroyed', () => host.stop());
 }
-module.exports = { create, pool, discover, register, allowedName, pathKey, jobOf, parkSave };
+module.exports = { create, pool, discover, register, allowedName, pathKey, jobOf, parkSave, parkList, parkMp3 };

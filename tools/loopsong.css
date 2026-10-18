@@ -1,0 +1,33 @@
+/* (round 63, loopsong63) Arrange: park loops → a song, a panel over the Sound desk. Lanes over bars (one bar = --bar),
+   clips are buttons placed by left / width; the playhead moves on the compositor (el.animate on transform). No blur, no
+   animation while idle. */
+.wb-sound-desk:has(> .ls-view) { position: relative; min-height: 560px; }
+.ls-view { position: absolute; inset: 0 0 auto 0; min-height: 100%; z-index: 7; padding: 14px 16px; border: 1px solid #ffffff1c; border-radius: 16px; background: #18161c; box-shadow: 0 18px 50px #0007; }
+.ls-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ls-head strong { font-size: 15px; }
+.ls-meta { flex: 1; font: 11px ui-monospace, monospace; color: #b8aec2; font-variant-numeric: tabular-nums; }
+.ls-pick { margin: 10px 0; }
+.ls-pick .wb-field:first-child { flex: 3; }
+.ls-grid { position: relative; overflow-x: auto; padding-bottom: 6px; --name: 92px; }
+.ls-ruler { position: relative; height: 16px; margin-left: var(--name); width: calc(var(--bars) * var(--bar)); font: 9px ui-monospace, monospace; color: #8f869a; }
+.ls-ruler span { position: absolute; top: 0; padding-left: 3px; border-left: 1px solid #ffffff22; }
+.ls-lane { display: flex; height: 34px; border-top: 1px solid #ffffff10; }
+.ls-lane-name { flex: 0 0 var(--name); display: flex; align-items: center; justify-content: space-between; gap: 4px; padding-right: 6px; font-size: 11px; color: #c9bfd2; position: sticky; left: 0; background: #18161c; z-index: 2; }
+.wb-shell .ls-lane-name .ls-mute { padding: 2px 7px; font-size: 10px; border-radius: 6px; }
+.wb-shell .ls-mute[aria-pressed="true"] { border-color: #ffbe59; color: #ffbe59; background: #ffbe5914; }
+.ls-track { position: relative; flex: 0 0 auto; width: calc(var(--bars) * var(--bar)); background: repeating-linear-gradient(90deg, #ffffff0a 0 1px, transparent 1px var(--bar)), repeating-linear-gradient(90deg, #ffffff14 0 1px, transparent 1px calc(var(--bar) * 4)); }
+.ls-rerender .ls-track { background-color: #b78aff0a; }
+.wb-shell .ls-clip { position: absolute; top: 3px; bottom: 3px; padding: 0 6px; font-size: 10px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 6px; border-color: #6fcf8f66; background: linear-gradient(160deg, #6fcf8f30, #6fcf8f12); touch-action: none; cursor: grab; transition: none; }
+.wb-shell .ls-clip:after { display: none; }
+.wb-shell .ls-clip:hover { transform: none; }
+.wb-shell .ls-rerender .ls-clip { border-color: #b78aff88; background: linear-gradient(160deg, #b78aff33, #b78aff12); }
+.wb-shell .ls-clip.ls-empty { border-style: dashed; background: #ffffff05; }
+.wb-shell .ls-clip.ls-on { border-color: #ffbe59; box-shadow: 0 0 0 1px #ffbe5966; }
+.ls-playhead { position: absolute; top: 16px; bottom: 6px; left: var(--name); width: 2px; background: #ffbe59; pointer-events: none; z-index: 3; will-change: transform; }
+.ls-inspect { margin-top: 10px; padding: 10px 12px; border: 1px solid #ffffff14; border-radius: 12px; background: #ffffff04; }
+.ls-inspect .wb-row { margin: 8px 0; }
+.ls-inspect .wb-field { min-width: 84px; }
+.ls-warn { color: #ffcf8a; }
+.ls-last { align-items: center; }
+.ls-status { display: block; min-height: 1.4em; }
+@media (max-width: 650px) { .ls-grid { --name: 70px; } .ls-view { padding: 10px; } }
