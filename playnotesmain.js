@@ -220,7 +220,11 @@ async function toBin(p) {
   if (!fs.existsSync(p)) return null;
   const moveTo = async (base) => { const to = path.join(base, `${Date.now().toString(36)}-${path.basename(path.dirname(p))}-${path.basename(p)}`); fs.mkdirSync(base, { recursive: true }); fs.renameSync(p, to); return to; };
   if (process.env.HEARTH_TEST_SAVE_DIR) return moveTo(path.join(process.env.HEARTH_TEST_SAVE_DIR, 'playnotes-trash'));
-  try { await require('electron').shell.trashItem(p); return 'trash'; } catch { return moveTo(path.join(dataDir, 'trash', 'playnotes')); }
+  // (platform46) a network share / a USB stick on Windows has no Trash (it would delete for good): Hearth's own trash then
+  const check = process.platform === 'win32' ? require('./winpolish').trashCheck(p, { platform: 'win32' })
+    : process.platform === 'darwin' ? require('./macpolish').trashCheck(p, { platform: 'darwin' }) : { ok: true };
+  if (!check.ok) return moveTo(path.join(dataDir, 'trash', 'playnotes'));
+  try { await require('electron').shell.trashItem(check.path || p); return 'trash'; } catch { return moveTo(path.join(dataDir, 'trash', 'playnotes')); }
 }
 
 // ---------- wiring (gamemodemain.js) ----------
