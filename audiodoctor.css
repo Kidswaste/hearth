@@ -1,0 +1,8 @@
+/* (round 64, audiodoctor64) /audio doctor's card: the mark of each row in its color, the fix button on the row */
+.msg.note .ad-row { list-style: none; margin-left: -1.1em; }
+.msg.note .ad-row::marker { content: ''; }
+.msg.note .ad-bad { color: var(--text); }
+.msg.note .ad-bad::first-letter { color: var(--danger, #e5534b); font-weight: 700; }
+.msg.note .ad-warn::first-letter { color: var(--warn, #d9a43b); font-weight: 700; }
+.msg.note .ad-ok::first-letter { color: var(--ok, #46b36b); font-weight: 700; }
+.msg.note .ad-fix { margin-left: 6px; padding: 1px 8px; vertical-align: baseline; }
