@@ -36,8 +36,8 @@ root().querySelector('.qj-paris-chip').click(); await wait(150); check(!root().q
 await until(() => pins() >= allPins - 2, 'all pins back');
 await press('Sound hunt', root()); check(pins() >= 12, 'Codex kind filter includes guide music places'); await press('All places', root());
 const search = root().querySelector('[aria-label="Find a saved place"]'); search.value = 'records'; search.dispatchEvent(new Event('input', { bubbles: true })); await wait(150);
-check(pins() === 3, 'search finds guide words (records: ' + pins() + ')'); search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true })); await wait(150);
-const list = await cmd('/quest places records'); check(list.split('\n').length === 3 && /Superfly/.test(list), 'places lists in chat');
+check(pins() === 4, 'search finds guide words (records: ' + pins() + ')'); search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true })); await wait(150);
+const list = await cmd('/quest places records'); check(list.split('\n').length === 4 && /Superfly/.test(list) && /Dizonord/.test(list), 'places lists in chat');
 
 // 3. a pin's panel shows the guide note and starts its go → do → proof quest
 root().querySelector('.qj-atlas-pin[data-place="pp-bataclan"]').click(); await until(() => /Le Bataclan/.test(root().querySelector('.qj-field-place-head')?.textContent || ''), 'bataclan selected');

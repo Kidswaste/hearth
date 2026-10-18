@@ -34,12 +34,13 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
       const q = C.next(state(), camp) || camp.quests[0]; questDetail(q.id);
     }, 'qj-quiet qj-paris-start'));
   }
-  function footer() { if (typeof QuestJournal === 'undefined' || !J()?.ready()) return null; const b = ui().button('Paris guide', guideDialog, 'qj-quiet qj-paris-guide'); b.dataset.help = guideCount + ' places to see and personal quests · /quest paris'; return b; }
+  function footer() { if (typeof QuestJournal === 'undefined' || !J()?.ready()) return null; const {E,button}=ui(),b=button('Paris guide',guideDialog,'qj-quiet qj-paris-guide');b.dataset.help=guideCount+' places to see and personal quests · /quest paris';return E('div',{class:'qj-actions'},button('Browse places',catalog,'qj-quiet'),button('Mini adventures',adventures,'qj-quiet'),b); }
   function guideDialog() {
     const { E, button, label, p, dialog, questDetail } = ui(), mutate = J().mutate;
     dialog('Paris guide', (body, d) => {
       const s = state(), on = P.hasGuide(s);
       body.append(p(`${guideCount} places worth the trip, famous and lesser-known, each with a small quest: go, do one specific thing, bring proof home. Check opening times before you go.`));
+      body.append(E('div',{class:'qj-actions'},button('Browse places',()=>{d.close();catalog();},'qj-primary'),button('Mini adventures',()=>{d.close();adventures();},'qj-quiet')));
       const toggle = button(on ? 'Take untouched guide pins off' : 'Put the guide on my map', async () => { const n = await mutate(st => on ? P.removeGuide(st) : P.addGuide(st).added, on ? 'Untouched guide pins removed. Visited, starred and quest pins stay.' : 'Paris guide added to your map.'); d.close(); if (!on) J().mapFilter({}); return n; }, on ? 'qj-quiet' : 'qj-primary');
       body.append(window.QuestWalk ? E('div', { class: 'qj-actions' }, toggle, QuestWalk.guideButton(d)) : toggle); // (round 63, questwalk63) "Make a walk" beside it, in the same line
       body.append(label('SHOW ON THE MAP'));
@@ -55,6 +56,50 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
       }
       body.append(grid, p('In chat: /quest paris [shows · records · 11e…], /quest walk [11e · records…] [3h], /quest go <place>, /quest add <airpods · park · drink · gig · openmic · records · sunrise · solo>, /quest list.', 'qj-paris-best'));
     }, 'SIDEQUEST STUDIO / PARIS');
+  }
+  function catalog(){
+    const {E,button,p,dialog}=ui();
+    dialog('Find your next place',(body,d)=>{
+      d.classList.add('qj-city-catalog');let kind='all',unvisited=false,newOnly=false,limit=12;
+      const search=E('input',{type:'search',attrs:{'aria-label':'Search Paris guide',placeholder:'Place, arrondissement, records…',maxlength:100}}),filters=E('div',{class:'qj-city-filters'}),results=E('div',{class:'qj-city-grid'}),count=p(''),more=button('Show 12 more',()=>{limit+=12;draw();},'qj-quiet');
+      const kinds=[{id:'all',name:'All places',color:'#c7c3cf'},...C.mapKinds.filter(k=>P.guide.some(g=>g.kind===k.id))];
+      for(const k of kinds){const b=button('',()=>{kind=k.id;limit=12;draw();},'qj-city-filter');b.append(QuestAtlas.icon(k.id==='all'?'compass':k.id));b.setAttribute('aria-label',k.name);b.dataset.help=k.name;b.dataset.kind=k.id;b.style.setProperty('--city-accent',k.color);filters.append(b);}
+      const fresh=button('New places',()=>{newOnly=!newOnly;limit=12;draw();},'qj-quiet'),unseen=button('Unvisited',()=>{unvisited=!unvisited;limit=12;draw();},'qj-quiet');filters.append(fresh,unseen);
+      body.append(search,filters,count,results,more,button('Mini adventures',()=>{d.close();adventures();},'qj-quiet'));
+      search.oninput=()=>{limit=12;draw();};
+      function draw(){
+        const found=P.discover(state(),{query:search.value,kind,unvisited,newOnly});count.textContent=found.length+' places';results.replaceChildren();more.hidden=found.length<=limit;
+        for(const b of filters.querySelectorAll('[data-kind]'))b.setAttribute('aria-pressed',String(b.dataset.kind===kind));fresh.setAttribute('aria-pressed',String(newOnly));unseen.setAttribute('aria-pressed',String(unvisited));
+        if(!found.length)results.append(p('No match. Try another word or switch off a filter.'));
+        for(const g of found.slice(0,limit)){const k=C.mapKinds.find(k=>k.id===g.kind),card=button('',()=>preview(g,d),'qj-city-card');card.dataset.place=g.id;card.style.setProperty('--city-accent',k.color);card.append(QuestAtlas.icon(g.kind),E('span',{class:'qj-label',text:P.arrLabel(g.arr)+(P.newPlaces.includes(g.id)?' · NEW':'')}),E('strong',{text:g.name}),E('span',{class:'qj-city-card-hint',text:'See the mission →'}));results.append(card);}
+      }
+      draw();
+    },'FH / CITY DISCOVERY');
+  }
+  function preview(g,browser){
+    const {E,button,p,dialog}=ui();
+    dialog(g.name,(body,d)=>{
+      d.classList.add('qj-city-detail');
+      body.append(p(g.why),E('div',{class:'qj-city-brief'},E('strong',{text:'Your mission'}),p(g.todo),p(g.proof)),p(g.best));
+      body.append(E('div',{class:'qj-actions'},button('Start place quest',async()=>{const c=await J().mutate(s=>P.startPlace(s,g.id),'Place quest ready.');d.close();browser.close();ui().questDetail((C.next(state(),c)||c.quests[0]).id);},'qj-primary'),button('Show on map',async()=>{await J().mutate(s=>{P.ensurePin(s,g.id);s.atlas.selected=g.id;},'Place on your map.');d.close();browser.close();J().mapFilter({});},'qj-quiet')));
+      if(g.url)body.append(button('Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
+    },'FH / ONE SMALL VISIT');
+  }
+  function adventures(){
+    const {E,button,p,dialog}=ui();
+    dialog('Mini adventures',(body,d)=>{
+      d.classList.add('qj-city-catalog');body.append(p('One place. Three small steps. Pick the finish line that feels good today.'));
+      const grid=E('div',{class:'qj-city-grid'});body.append(grid);
+      for(const t of P.outings){const b=button('',()=>{
+        dialog(t.title,(body,detail)=>{
+          detail.classList.add('qj-city-detail');
+          body.append(p(t.brief),E('div',{class:'qj-city-brief'},E('strong',{text:'Bring home'}),p(t.result)),p('90 XP + “'+t.badge+'” badge after all three steps pass proof and review. Travel and event duration are extra.'));
+          const old=state().campaigns.find(c=>c.id==='c-pq-city-'+t.id);
+          if(old)body.append(button('Continue adventure',()=>{detail.close();d.close();ui().questDetail((C.next(state(),old)||old.quests[0]).id);},'qj-primary'));
+          else for(const pid of t.places){const g=P.byId(pid);body.append(button('Start at '+g.name,async()=>{const c=await J().mutate(s=>P.startOuting(s,t.id,pid),'Mini adventure ready.');detail.close();d.close();ui().questDetail(c.quests[0].id);},'qj-primary'));}
+        },'FH / '+t.badge.toUpperCase());
+      },'qj-city-card');b.dataset.adventure=t.id;b.style.setProperty('--city-accent',t.color);b.append(QuestAtlas.icon(t.icon),E('span',{class:'qj-label',text:'3 STEPS · 90 XP'}),E('strong',{text:t.title}),E('span',{class:'qj-city-card-hint',text:t.badge}));grid.append(b);}
+    },'FH / PICK A FINISH LINE');
   }
   // ---------- chat: /quest ----------
   const SUBS = [['paris', 'Show the Paris guide on the map (optionally filtered: shows, records, park, 11e…)'], ['places', 'List the guide’s places here in the chat'], ['go', 'Start a place’s go → do → proof quest'], ['add', 'Add a personal quest: ' + P.personal.map(t => t.key).join(', ')], ['park', 'Make music at the park: start a workbench sketch named after it'], ['list', 'Your Paris quests and their steps'], ['guide', 'guide off: take untouched guide pins off the map · guide on: put them back']];
@@ -122,5 +167,5 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
   }
   // (round 61, questhud61) one /quest command: the rail's quest tracker (questhud.js) registers it and passes these
   // words (paris, places, guide, go, add, park, list, help, a place / personal quest by name) to run() / complete() here
-  return { keep, words, chip, panel, footer, guideDialog, run, complete, journal };
+  return { keep, words, chip, panel, footer, guideDialog, catalog, adventures, run, complete, journal };
 })();

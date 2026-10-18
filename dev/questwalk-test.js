@@ -84,7 +84,7 @@ test('the places: unvisited only, finished place quests left out, filters, Codex
   assert.ok(!pool(s).some((p) => p.id === 'place-canal'), 'a visited place is not a stop');
   P.startPlace(s, 'pp-bataclan'); for (const q of s.campaigns.find((c) => c.id === 'c-pp-bataclan').quests) s.records[q.id] = { completedAt: new Date().toISOString() };
   assert.ok(!pool(s).some((p) => p.id === 'pp-bataclan'), 'a finished place quest is not a stop');
-  assert.ok(pool(s, 'records').every((p) => P.byId(p.id)?.tags.includes('records')) && pool(s, 'records').length === 3);
+  assert.ok(pool(s, 'records').every((p) => P.byId(p.id)?.tags.includes('records')) && pool(s, 'records').length === 4);
   assert.ok(pool(s, '11e').every((p) => P.byId(p.id).arr === 11));
   assert.equal(pool(s)[0].minutes, stepMinutes(P.guide[0]), 'a stop takes the time its place quest asks for');
   const from = P.findPlace('superfly'), rt = QW.plan({ pool: pool(s), at: from, first: from.id, budget: 120, stations: ST });
