@@ -85,9 +85,17 @@ into Codex's Sidequest Studio (its map, journal, proof and review gate) and can 
   airpods/drink, `/quest go canal`, completion, the guide dialog's personal cards and filter, `/quest park belleville`
   naming the workbench sketch, guide off/on keeping quest pins, no sideways scroll at a narrow width, and nothing
   opened in the browser on its own.
-- Also run: the quest unit tests (quest, field, world, life, deck, review, workstation), `unit:boot-test` (first
-  screen unchanged: 72 scripts / 29 stylesheets), `lazy`, and the existing quest-* smoke checks (results in the final
-  report).
+- Also run (after merging main): the quest unit tests (quest, field, world, life, deck, review, workstation) passed.
+  `unit:boot-test` passed, with the first screen unchanged at 72 scripts / 29 stylesheets. `lazy` passed, and
+  `node dev/lazy-manifest.js` was regenerated.
+- Smoke checks that passed: quest-paris, quest-world, quest-studio, quest-session, quest-life, quest-deck,
+  quest-workstation, quest-focus, quest-map-tiles, quest-icons and quest-shelf-native.
+- quest-field, quest-journal and quest-proof fail here with exactly the same errors on the untouched base commit
+  (8c44c9c), so this round didn't cause them:
+  - quest-field: "favorite keeps keyboard focus after saving".
+  - quest-journal: "Button available: Open quest journal →".
+  - quest-proof: "Button: Save toward this".
+  Codex may want to look at them. quest-review-live wasn't run (it needs a live engine).
 
 ## For Codex
 Codex files touched (all small, additive and commented `parisquests61`):
