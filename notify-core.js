@@ -53,6 +53,9 @@ const NotifyCore = (() => {
 
   // ---------- does it notify? ----------
   function decide(ev = {}, { settings = {}, focused = false } = {}) {
+    // (round 62, showprep62) a reminder the owner switched on for one show (off by default, its own choice): only the
+    // master switch and "Hearth is in front" (then the window shows it itself) stop it
+    if (ev.type === 'reminder') { const p = prefs(settings); return !p.on ? { show: false, why: 'off' } : focused ? { show: false, why: 'focused' } : { show: true, sw: null }; }
     const sw = switchOf(ev.type);
     if (!sw) return { show: false, why: 'unknown' };
     const p = prefs(settings);

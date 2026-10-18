@@ -205,6 +205,8 @@ function register(ipcMain, { dataDir }) {
   ipcMain.handle('shows:settings', safe((p) => api.setSettings(p || {})));
   ipcMain.handle('shows:follow', safe((u) => api.follow(u)));
   ipcMain.handle('shows:unfollow', safe((q) => api.unfollow(q)));
+  // (round 62, showprep62) the show night reminder: one timer, only while a reminder is switched on (showprepmain.js)
+  try { require('./showprepmain').register(ipcMain, { dataDir, getWin: () => require('electron').BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && /\/index\.html(?:[?#]|$)/.test(w.webContents.getURL())) }); } catch (err) { console.warn('[showprep]', err.message); }
   // tests only (dev/smoke.js): fixture responses instead of the network; a URL that has none fails like offline
   // { overrides } installs dev/fixtures/showsync (+ overrides: url → { file | body, status, headers } | null);
   // { advance: ms } moves the sync's clock on (so "tomorrow's" refresh can run); { report: true } → the URLs asked

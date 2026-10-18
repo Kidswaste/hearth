@@ -1,0 +1,21 @@
+/* (round 62, showprep62) Show night companion: Get ready / How was it? / Shows I went to (showprep.js), inside Sidequest's dialogs */
+.qj .sp-dialog .sp-venue{display:block;font-size:15px;margin-top:2px}
+.qj .sp-dialog .sp-row{flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.qj .sp-dialog .sp-metro{font-size:13px}
+.qj .sp-lineup{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+.qj .sp-lineup .sp-artist[data-kind="search"]{opacity:.8}
+.qj .sp-remind{margin:6px 0}
+.qj .sp-stars{display:flex;gap:2px;margin:6px 0 10px}
+.qj .sp-star{background:none;border:0;font-size:24px;line-height:1;color:#ffffff38;cursor:pointer;padding:2px 3px;transition:color .15s,transform .15s}
+.qj .sp-star[aria-pressed="true"]{color:#ffd75e}
+.qj .sp-star:hover,.qj .sp-star:focus-visible{transform:translateY(-1px);color:#ffe9a6}
+.qj .sp-moment{width:100%}
+.qj .sp-badges{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.qj .sp-badge{font-size:12px;padding:3px 8px;border-radius:999px;border:1px dashed #ff6b9d;color:#ffc2d6}
+.qj .sp-log{display:flex;flex-direction:column;gap:6px}
+.qj .sp-entry{flex-wrap:wrap}
+.qj .sp-entry>span{opacity:.72;font-size:12px}
+.qj .sp-entry>em{flex-basis:100%;font-size:12px;opacity:.9}
+.qj .sp-saved{color:#ffd75e}
+/* a venue you went to: a small ✓ badge on its pin (the atlas already dashes a visited pin's ring) */
+.qj-atlas-pin.visited[data-place^="show-venue-"]::after{content:'✓';position:absolute;right:-6px;top:-6px;width:15px;height:15px;border-radius:50%;background:#ffd75e;color:#1b151d;font:700 10px/15px system-ui,sans-serif;text-align:center;box-shadow:0 1px 4px #000a;pointer-events:none}

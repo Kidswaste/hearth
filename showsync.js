@@ -22,6 +22,12 @@ const ShowSync = (() => {
   const week = () => C.thisWeek(shows());
   const upcoming = () => shows().filter((s) => !s.cancelled).sort((a, b) => a.start - b.start);
   const venueList = () => C.venues(upcoming());
+  // (round 62, showprep62) extensions: another module adds to the show card, the pins, a venue, the list, /shows
+  //   extend({ card(kit, show, actions, dialog), pins(pins) → pins, select(id, kit) → handled, venue(kit, venue, body),
+  //            list(kit, actions), subs: ['prep', …], run(sub, arg, ctx), complete(sub, arg) })
+  const ext = [];
+  function extend(x) { if (x && !ext.includes(x)) ext.push(x); redraw(); }
+  const each = (k, ...a) => { for (const x of ext) { try { x[k]?.(...a); } catch (err) { console.warn('[showsync extension]', k, err); } } };
   // the map redraws when its page is on screen (a layer re-added re-renders the world page)
   function redraw() { try { if (snap?.enabled && QJ()?.page === 'world') QJ().addMapLayer(layer); } catch { /* the map isn't open */ } }
 
@@ -69,6 +75,7 @@ const ShowSync = (() => {
       const acts = kit.E('div', { class: 'qj-actions' });
       acts.append(kit.button('Make it a quest', async () => { const c = await makeQuest(s); d.close(); kit.questDetail?.(c.quests[0].id); }, 'qj-primary'));
       // Codex's outing desk (tools/outing-desk.js): keep this show in "my lineup" (budget, friend, .ics) — its own contract
+      each('card', kit, s, acts, d); // (round 62) e.g. showprep62's "Get ready" / "How was it?"
       if (QJ()?.keepOuting) acts.append(kit.button('Keep in my lineup', async () => { d.close(); await QJ().keepOuting(outingEvent(s)); }, 'qj-quiet'));
       for (const t of s.tickets.filter((t) => t.url)) acts.append(kit.button(`Tickets on ${C.PLATFORMS[t.platform]?.name || t.platform}`, () => window.hub.openExternal(t.url), 'qj-quiet'));
       body.append(acts);
@@ -85,6 +92,7 @@ const ShowSync = (() => {
     kit.dialog(v.name || 'Venue', (body) => {
       body.append(kit.E('div', { class: 'ss-head' }, logoOrIcon(v.logo, 'ss-logo ss-logo-big'), kit.E('div', {}, kit.label(`${v.shows.length} SHOW${v.shows.length === 1 ? '' : 'S'} COMING UP`), kit.E('span', { text: v.address || '' }))));
       for (const s of v.shows) body.append(row(kit, s, () => showDetail(kit, s)));
+      each('venue', kit, v, body);
     }, 'PARIS / VENUE');
   }
   function followDialog(kit) {
@@ -120,7 +128,8 @@ const ShowSync = (() => {
           const list = week(); let day = '';
           if (!list.length) box.append(kit.p(refreshing ? 'Reading Shotgun and DICE…' : 'No shows found for the next seven days. Follow the venues you like below.'));
           for (const s of list) { const d = C.dayWord(s.start); if (d !== day) { day = d; box.append(kit.label(d.replace(/^on /, '').toUpperCase())); } box.append(row(kit, s, () => showDetail(kit, s))); }
-          box.append(kit.E('div', { class: 'qj-actions' }, kit.button('What Hearth reads', () => followDialog(kit), 'qj-quiet'), kit.button(refreshing ? 'Refreshing…' : 'Refresh now', async () => { await refresh(true); draw(); }, 'qj-quiet')));
+          const acts = kit.E('div', { class: 'qj-actions' }, kit.button('What Hearth reads', () => followDialog(kit), 'qj-quiet'), kit.button(refreshing ? 'Refreshing…' : 'Refresh now', async () => { await refresh(true); draw(); }, 'qj-quiet'));
+          each('list', kit, acts); box.append(acts);
         }
         body.append(box);
       };
@@ -130,17 +139,17 @@ const ShowSync = (() => {
   const layer = {
     id: 'showsync',
     icon: (kit) => { ensure().catch(() => {}); return kit.mapIcon('spark', `Shows this week (Shotgun + DICE)${snap?.enabled ? ` · ${week().length}` : ''}`, () => listDialog(kit), '#ff6b9d', undefined, 'map-shows'); },
-    pins: () => (snap ? C.pins(C.venues(week())) : []),
+    pins: () => { let p = snap ? C.pins(C.venues(week())) : []; for (const x of ext) { try { if (x.pins) p = x.pins(p) || p; } catch (err) { console.warn('[showsync extension] pins', err); } } return p; },
     owns: (id) => typeof id === 'string' && id.startsWith('show-venue-'),
-    select: (id, kit) => { const v = C.venues(upcoming()).find((x) => x.id === id); if (v) venueDetail(kit, v); }
+    select: (id, kit) => { const v = C.venues(upcoming()).find((x) => x.id === id); if (v) return venueDetail(kit, v); for (const x of ext) if (x.select?.(id, kit)) return; }
   };
 
   // ---------- /shows ----------
-  const HELP = '/shows week · /shows venue <name> · /shows quest <show> · /shows follow <link> · /shows refresh — the map: Sidequest Studio › Paris after hours';
+  const HELP = '/shows week · /shows venue <name> · /shows quest <show> · /shows prep <show> · /shows went <show> · /shows log · /shows follow <link> · /shows refresh — the map: Sidequest Studio › Paris after hours';
   async function run(args, ctx) {
     const [sub0, ...rest] = String(args || '').trim().split(/\s+/); const sub = (sub0 || '').toLowerCase(), arg = rest.join(' ').trim();
     await ensure();
-    if (sub === 'refresh' || (!snap.enabled && ['', 'week', 'venue', 'quest'].includes(sub))) { ctx?.say?.('Reading this week’s shows from Shotgun and DICE…'); await refresh(sub === 'refresh' || !snap.enabled); }
+    if (sub === 'refresh' || (!snap.enabled && ['', 'week', 'venue', 'quest', 'prep'].includes(sub))) { ctx?.say?.('Reading this week’s shows from Shotgun and DICE…'); await refresh(sub === 'refresh' || !snap.enabled); }
     else if (refreshing) await refreshing.catch(() => {});
     const status = snap.status ? `\n${snap.status}` : '';
     if (sub === '' || sub === 'refresh') {
@@ -171,20 +180,22 @@ const ShowSync = (() => {
     if (sub === 'follow') { const src = await call('follow', arg); await load(); refresh(true).catch(() => {}); return `Following ${src.label} (${C.PLATFORMS[src.platform].name}). Its shows join the list in a moment.`; }
     if (sub === 'unfollow') { const g = await call('unfollow', arg); await load(); redraw(); return `Stopped following ${g.label}.`; }
     if (sub === 'from') { if (!/^(paris|followed)$/i.test(arg)) return 'Use /shows from paris (Paris-wide lists + what you follow) or /shows from followed (only what you follow).'; snap = await call('settings', { from: arg.toLowerCase() }); redraw(); return arg.toLowerCase() === 'paris' ? 'Paris-wide lists back on, plus what you follow.' : 'Only the pages you follow from now on.'; }
+    for (const x of ext) if (x.run && x.subs?.includes(sub)) return x.run(sub, arg, ctx); // (round 62) /shows prep · went · log (showprep62)
     if (sub === 'map') { activate('tool:quests'); await window.Lazy?.load?.('questjournal'); QJ()?.navigate?.('world'); return 'Opened the Paris map.'; }
     return HELP;
   }
   function complete(args) {
     const a = String(args || ''), m = /^(\w+)\s+(.*)$/.exec(a);
-    if (!m) return ['week', 'venue ', 'quest ', 'refresh', 'follow ', 'unfollow ', 'from paris', 'from followed', 'map'].filter((x) => x.startsWith(a.toLowerCase())).map((x) => ({ value: x }));
+    if (!m) return ['week', 'venue ', 'quest ', ...ext.flatMap((x) => (x.subs || []).map((n) => (n === 'log' ? n : `${n} `))), 'refresh', 'follow ', 'unfollow ', 'from paris', 'from followed', 'map'].filter((x) => x.startsWith(a.toLowerCase())).map((x) => ({ value: x }));
     const q = C.fold(m[2]);
+    for (const x of ext) if (x.complete && x.subs?.includes(m[1])) return x.complete(m[1], m[2]) || [];
     if (m[1] === 'quest') return week().filter((s) => !q || C.fold(s.title + ' ' + s.lineup.join(' ')).includes(q)).slice(0, 8).map((s) => ({ value: `quest ${s.lineup[0] || s.title}`, label: s.title, hint: `${C.short(s.start)} · ${s.venue.name}` }));
     if (m[1] === 'venue') return venueList().filter((v) => !q || C.fold(v.name).includes(q)).slice(0, 8).map((v) => ({ value: `venue ${v.name}`, hint: `${v.shows.length} upcoming` }));
     if (m[1] === 'unfollow') return (snap?.follows || []).map((f) => ({ value: `unfollow ${f.label}` }));
     return [];
   }
   if (!Commands.get('shows')) Commands.register({
-    name: 'shows', area: 'Create', args: '[week | venue <name> | quest <show> | follow <link> | refresh]',
+    name: 'shows', area: 'Create', args: '[week | venue <name> | quest <show> | prep <show> | went <show> | log | follow <link> | refresh]',
     desc: 'This week’s shows in Paris from Shotgun and DICE: the list, a venue’s nights, a show → a quest',
     keywords: 'concerts gigs club nights events tickets shotgun dice paris venues lineup this week',
     examples: ['/shows', '/shows week', '/shows venue bataclan', '/shows quest arlo parks'],
@@ -192,5 +203,5 @@ const ShowSync = (() => {
   });
   try { QJ()?.addMapLayer?.(layer); } catch { /* the journal registers layers when it loads */ }
   load().then(() => { if (snap.enabled && C.pins(C.venues(week())).length) redraw(); }).catch(() => {}); // the saved list only (no network): ready before the map opens
-  return { load, refresh, ensure, makeQuest, layer, run, get snap() { return snap; }, _test: { week, upcoming, venueList } };
+  return { load, refresh, ensure, makeQuest, layer, run, extend, redraw, week, upcoming, showDetail, call, get snap() { return snap; }, _test: { week, upcoming, venueList } };
 })();
