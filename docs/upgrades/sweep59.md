@@ -7,8 +7,8 @@ Round 58's sweep left 61 app checks unrun (`docs/upgrades/sweep58-todo.txt`). Si
 branch (d818e36), app checks five at a time under the shared lock (`flock /tmp/hearth-run.lock`).
 
 **What ran.** All 67 app checks and the 8 new or changed unit tests: with round 57's and 58's sweeps, every check in
-`node dev/run-checks.js --names all` has now run at least once since round 56. Two open items are left for next
-round in `docs/upgrades/sweep59-todo.txt` (trim-drive, and a seqsolid comparison).
+`node dev/run-checks.js --names all` has now run at least once since round 56. One open item is left for next
+round in `docs/upgrades/sweep59-todo.txt` (trim-drive).
 
 **Numbers.** First pass: 61 / 67 app checks passed (6 failed: sequence-songpcm, tidy, trim-drive, whatsnew,
 quest-review-live, workbench-sketch-ai). Every failure was run again alone. After the fixes: 64 / 67 pass; the 3
@@ -31,18 +31,19 @@ intended change (updated to the new behaviour and still guards the same thing) �
 | unit:vst-live-test | "Set HEARTH_VST_PYTHON to the scoped test runtime" | — (Codex) | opt-in real-hardware test (Serum 2 / Vital on a Windows audio device) | not a test for this machine; listed |
 | unit:creative-export-test | "Pass the smoke --save-dir" | — (Codex) | a helper the `creative` check calls with its save folder, not a standalone test (`creative` passes) | listed |
 
-Also seen: seqsolid passed in its batch (b3) and twice after the audio fix, but failed 2 of 3 runs after
-`sqAdopt` (two different steps: black frames while playing an auto-edit, then the ↻ Reload frame); it passed the
-third time. Not explained in the time left: it is in the todo (run it 4× with and 4× without `sqAdopt()` in `sqOffline` to
-tell a cause from flakiness). For trim-drive, next round picks one: skip the commands that open ▶ Play / Present in
+Also seen: seqsolid failed 2 of 3 runs right after `sqAdopt` landed (two different steps), on a busy machine. Settled
+after: 4 runs on this branch and 4 runs of a throwaway copy without the `sqAdopt()` call, alternating under the lock:
+4 / 4 and 4 / 4. `sqAdopt` doesn't raise its failure rate; the earlier failures were load (class c). Then
+sequence-songpcm, sequence, sequence-smooth and labexport ran once more: 4 / 4.
+For trim-drive, next round picks one: skip the commands that open ▶ Play / Present in
 the drive (as it skips new-window), or give it the local three.js copy and a longer `--check-timeout`.
 
 Edits outside this stream's lane (small): `tools/three-sandbox.html` (sequence: `sqAdopt`, 3 lines in `sqFrame`),
 `icons.js` (2 ids), `simplify.js` (one icon), `whatsnew-core.js` (one replace), `docs/patch-notes/round-58.md` (one
 line).
 
-Tested after the fixes: sequence-songpcm (5×), sequence-render, sequence, sequence-smooth, labexport, seqsolid (3×,
-see above), tidy, whatsnew, trim-drive, lazy, unit: boot-test, datasafe-scan, winmac-test, chatsafe-scan,
+Tested after the fixes: sequence-songpcm (6×), sequence-render, sequence (2×), sequence-smooth (2×), labexport (2×),
+seqsolid (7×, see above), tidy, whatsnew, trim-drive, lazy, unit: boot-test, datasafe-scan, winmac-test, chatsafe-scan,
 whatsnew-test; `node --check` on every touched JS file and on the sandbox's page script.
 
 ## For the patch notes
