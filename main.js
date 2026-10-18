@@ -657,6 +657,7 @@ ipcMain.handle('packs:pending', () => { const p = packPending; packPending = nul
 // much sooner and the requires below run while its page process starts. Order unchanged.
 function registerAfterWindow() {
   lazyIpc('creative-vstmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app }));
+  lazyIpc('soundbankmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app })); // (round 63, soundbank63) the Sound bank's index + preview queue
   const { nativeTheme, systemPreferences, nativeImage } = require('electron');
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
   bigscreen.register(ipcMain, { getWin: () => win, screen: require('electron').screen }); // (round 38) ⛶ full screen, size of everything
