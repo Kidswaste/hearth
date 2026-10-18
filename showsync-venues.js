@@ -7,8 +7,12 @@ const VENUES = [
   { slug: 'mia-mao', name: 'Mia Mao', url: 'https://www.miamao.fr/agenda/', prefix: '/show/', address: '2 Rue de la Clôture, 75019 Paris' },
   { slug: 'glazart', name: 'Glazart', url: 'https://www.glazart.com/agenda-concerts/', prefix: /^\/\d{2}-\d{2}-\d{2}-[\w-]+\/$/, address: '7 Avenue de la Porte de la Villette, 75019 Paris' }
 ];
+VENUES.push(
+  { slug:'la-machine', name:'La Machine du Moulin Rouge', url:'https://www.lamachinedumoulinrouge.com/agenda/', prefix:'/evenement/', address:'90 Boulevard de Clichy, 75018 Paris' },
+  { slug:'kilometre25', name:'Kilomètre25', url:'https://www.kilometre25.fr/francais/agenda', prefix:/^\/evenement\/[\w-]+\/?$/, address:'8 Boulevard Macdonald, 75019 Paris' }
+);
 const sources = () => VENUES.map(v => ({ id: 'shotgun-programme-' + v.slug, platform: 'shotgun', kind: 'programme', url: v.url, label: v.name + ' · venue programme' }));
-const config = src => VENUES.find(v => src.id === 'shotgun-programme-' + v.slug && src.url === v.url);
+const config = src => VENUES.find(v => src?.id === 'shotgun-programme-' + v.slug && src.url === v.url);
 const decode = s => String(s || '').replace(/&#(x[\da-f]+|\d+);/gi, (m, n) => { const c = n[0].toLowerCase() === 'x' ? parseInt(n.slice(1), 16) : +n; return c > 0 && c <= 0x10ffff ? String.fromCodePoint(c) : m; }).replace(/&(amp|nbsp|quot|apos|rsquo|lsquo|ndash|mdash|gt|lt);/g, (_, n) => ({ amp:'&', nbsp:' ', quot:'"', apos:"'", rsquo:'’', lsquo:'‘', ndash:'–', mdash:'—', gt:'>', lt:'<' }[n]));
 const clean = s => decode(String(s || '').replace(/<!--[\s\S]*?-->/g, '').replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 const field = (html, cls) => clean(new RegExp('<([a-z][\\w-]*)\\b[^>]*class=["\'][^"\']*\\b' + cls + '\\b[^"\']*["\'][^>]*>([\\s\\S]*?)<\\/\\1>', 'i').exec(html)?.[2]);
@@ -16,6 +20,10 @@ const months = ['jan', 'fev', 'mar', 'avr', 'mai', 'juin', 'juil', 'aou', 'sep',
 function dateParts(text) {
   const s = Core.fold(text), n = /\b(\d{1,2})[./](\d{1,2})[./](\d{4}|\d{2})\b/.exec(s);
   if (n) return [+n[3] < 100 ? 2000 + +n[3] : +n[3], +n[2], +n[1]];
+  const iso = /\b(20\d{2})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) return [+iso[1],+iso[2],+iso[3]];
+  const en = /\b([a-z]+) (\d{1,2}), (20\d{2})\b/.exec(s);
+  if (en) { const mon=['january','february','march','april','may','june','july','august','september','october','november','december'].indexOf(en[1]); if(mon>=0)return [+en[3],mon+1,+en[2]]; }
   const m = /\b(\d{1,2})\s+([a-z]+),?\s+(20\d{2})\b/.exec(s);
   if (!m) return null;
   const mon = months.findIndex(x => m[2].startsWith(x));
@@ -42,13 +50,17 @@ function listing(html, src, now = Date.now()) {
   const found = new Map();
   for (const a of String(html).matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
     const url = detailUrl(a[1], src); if (!url) continue;
-    const date = dateParts(clean(a[2])) || dateParts(new URL(url).pathname.replace(/-/g, '.'));
+    const date = dateParts(/<time\b[^>]*datetime=["']([^"']+)/i.exec(a[2])?.[1]) || dateParts(clean(a[2])) || dateParts(new URL(url).pathname.replace(/-/g, '.'));
     const day = parisTime(date);
-    if (Number.isFinite(day) && day >= now - DAY && day < now + 21 * DAY) found.set(url, { url, day });
+    // KM25 dates are on detail pages; inspect only the bounded programme list.
+    if (config(src)?.slug==='kilometre25' && !date) found.set(url,{url,day:now});
+    else if (Number.isFinite(day) && day >= now - DAY && day < now + 21 * DAY) found.set(url, { url, day });
   }
   return [...found.values()].sort((a,b) => a.day-b.day).slice(0, 24);
 }
-function ticketUrl(html) {
+function ticketUrl(html,src) {
+  // La Machine's footer also advertises OTHER Shotgun nights. Only its event's ticket box counts.
+  if(config(src)?.slug==='la-machine')html=/<div\b[^>]*id=["']lienheadtevt["'][^>]*>([\s\S]*?)<\/div>/i.exec(html||'')?.[1] || '';
   return [...String(html || '').matchAll(/<a\b[^>]*href=["']([^"']+)["']/gi)].map(m => Core.sourceFromUrl(decode(m[1]))).find(s => s?.platform === 'shotgun' && s.kind === 'event')?.url || '';
 }
 function event(html, src, url, now = Date.now()) {
@@ -56,18 +68,22 @@ function event(html, src, url, now = Date.now()) {
   let title, date, hours;
   if (v.slug === 'badaboum') { title = clean(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1]); date = field(html, 'date'); hours = field(html, 'heure'); }
   else if (v.slug === 'mia-mao') { title = field(html, 'c-record_title'); date = field(html, 'c-date'); hours = date; }
+  else if (v.slug === 'la-machine') { title=field(html,'entry-title'); date=/<time\b[^>]*datetime=["']([^"']+)/i.exec(html)?.[1]; hours=[...html.matchAll(/<div\b[^>]*id=["']tyevtagenda["'][^>]*>([\s\S]*?)<\/div>/gi)].map(m=>clean(m[1])).find(s=>/^\d{1,2}H/i.test(s)); }
+  else if (v.slug === 'kilometre25') { title=clean(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1]); date=field(html,'text-block-3'); hours=''; }
   else { const ps = [...html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(m => clean(m[1])); const i = ps.findIndex(p => /\d{2}\.\d{2}\.20\d{2}\s*>/.test(p)); if (i < 0) return null; date = hours = ps[i]; title = ps[i+1]; }
-  const startHours = v.slug === 'badaboum' ? hours : (hours || '').replace(/^.*?(?:>|—)\s*/, '');
+  const startHours = ['badaboum','la-machine'].includes(v.slug) ? hours : (hours || '').replace(/^.*?(?:>|—)\s*/, '');
   const time = /^(\d{1,2})[hH:](\d{2})?(?=\s|[-–—]|$)/.exec(startHours || ''), parts = dateParts(date);
-  if (!title || !time || !parts) return null; // no guessed midnight start
-  const start = parisTime(parts, [+time[1], +(time[2] || 0)]); if (!Number.isFinite(start)) return null;
-  const ticket = ticketUrl(html);
+  const dateOnly=v.slug==='kilometre25' && !time;
+  if (!title || (!time && !dateOnly) || !parts) return null;
+  // Noon is an internal date anchor. All consumers must label this date "time to confirm".
+  const start = parisTime(parts, time ? [+time[1], +(time[2] || 0)] : [12,0]); if (!Number.isFinite(start)) return null;
+  const ticket = ticketUrl(html,src);
   if (!ticket) return null; // never relabel another ticket service as Shotgun
   let end = null;
   const span = /\b(\d{1,2})[hH:](\d{2})?\s*[-–—]\s*(\d{1,2})[hH:](\d{2})?/i.exec(v.slug === 'mia-mao' ? clean(html) : hours);
   if (span) { let next = parts; if (+span[3]*60+ +(span[4]||0) <= +time[1]*60+ +(time[2]||0)) { const d = new Date(Date.UTC(parts[0],parts[1]-1,parts[2]+1)); next=[d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate()]; } const e=parisTime(next,[+span[3],+(span[4]||0)]); if(e>start && e-start<DAY)end=e; }
   const s = Core.fromEvent({ name:title, startDate:new Date(start).toISOString(), endDate:end?new Date(end).toISOString():null, url:ticket, location:{ name:v.name, address:v.address }, eventStatus:/\b(annule|cancelled|reporte)\b/i.test(Core.fold(title))?'EventCancelled':undefined }, src);
-  if (s) s.programme = { name:v.name, url, checkedAt:now };
+  if (s) { s.programme = { name:v.name, url, checkedAt:now }; if(dateOnly)s.dateOnly=true; }
   return s;
 }
 module.exports = { sources, config, detailUrl, listing, event, ticketUrl, parisTime, dateParts };

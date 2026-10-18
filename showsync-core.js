@@ -15,7 +15,7 @@
   const UA = 'Hearth/61 (personal weekly show list; at most once a day per page)';
   const PLATFORMS = {
     shotgun: { id: 'shotgun', name: 'Shotgun', host: /(^|\.)shotgun\.live$/i, city: 'https://shotgun.live/en/cities/paris',
-      kinds: [['venue', /^\/(?:[a-z]{2}\/)?venues\/[\w.-]+\/?$/i], ['artist', /^\/(?:[a-z]{2}\/)?artists\/[\w.-]+\/?$/i], ['event', /^\/(?:[a-z]{2}\/)?events\/[\w.-]+\/?$/i], ['city', /^\/(?:[a-z]{2}\/)?(?:concerts|cities)\/paris(?:\/[\w./-]*)?$/i]] },
+      kinds: [['venue', /^\/(?:[a-z]{2}\/)?venues\/[\w.-]+\/?$/i], ['artist', /^\/(?:[a-z]{2}\/)?artists\/[\w.-]+\/?$/i], ['event', /^\/(?:[a-z]{2}\/)?(?:events|festivals)\/[\w.-]+\/?$/i], ['city', /^\/(?:[a-z]{2}\/)?(?:concerts|cities)\/paris(?:\/[\w./-]*)?$/i]] },
     dice: { id: 'dice', name: 'DICE', host: /(^|\.)dice\.fm$/i, city: 'https://dice.fm/browse/paris-5b23e8a0e63cc224a4c36a2d',
       kinds: [['venue', /^\/venue\/[\w.-]+\/?$/i], ['artist', /^\/artist\/[\w.-]+\/?$/i], ['event', /^\/event\/[\w.-]+\/?$/i], ['city', /^\/browse\/paris-[\w-]+(?:\/[\w/-]*)?$/i]] }
   };
@@ -203,12 +203,13 @@
     return jac >= 0.5 || lap || (fa.length > 3 && fb.includes(fa)) || (fb.length > 3 && fa.includes(fb));
   }
   function combine(a, b) {
+    if(a.dateOnly && !b.dateOnly)return combine(b,a);
     // A venue programme doesn't report live ticket stock. Prefer the ticket platform when both are present.
-    if (a.programme && !b.programme) return combine(b, a);
+    if (a.programme && !b.programme && !b.dateOnly) return combine(b, a);
     const pick = (x, y) => (x || y);
     const venue = { ...a.venue, name: pick(a.venue.name, b.venue.name), address: a.venue.address.length >= b.venue.address.length ? a.venue.address : b.venue.address,
       lat: Number.isFinite(a.venue.lat) ? a.venue.lat : b.venue.lat, lon: Number.isFinite(a.venue.lon) ? a.venue.lon : b.venue.lon, image: pick(a.venue.image, b.venue.image), url: pick(a.venue.url, b.venue.url) };
-    return { ...a, title: a.title.length >= b.title.length ? a.title : b.title, start: Math.min(a.start, b.start), venue, lineup: [...new Set([...a.lineup, ...b.lineup])].slice(0, 20), image: pick(a.image, b.image),
+    return { ...a, dateOnly:!!a.dateOnly, title: a.title.length >= b.title.length ? a.title : b.title, start: b.dateOnly ? a.start : Math.min(a.start, b.start), venue, lineup: [...new Set([...a.lineup, ...b.lineup])].slice(0, 20), image: pick(a.image, b.image),
       tickets: [...a.tickets, ...b.tickets.filter((t) => !a.tickets.some((x) => x.url === t.url && x.platform === t.platform))], platforms: [...new Set([...a.platforms, ...b.platforms])],
       price: a.price && b.price ? (a.price.from <= b.price.from ? a.price : b.price) : a.price || b.price, soldOut: !a.programme && b.programme ? a.soldOut : a.soldOut && b.soldOut, cancelled: !a.programme && b.programme ? a.cancelled : a.cancelled && b.cancelled,
       links: mergeLinks(a.links, b.links), doors: a.doors && b.doors ? Math.min(a.doors, b.doors) : a.doors || b.doors || null };
@@ -232,7 +233,8 @@
     return out;
   }
   function weekRange(now = Date.now(), days = 7) { const d = new Date(now); d.setHours(0, 0, 0, 0); return { from: d.getTime(), to: d.getTime() + days * 86400e3 }; }
-  const thisWeek = (shows, now = Date.now()) => { const r = weekRange(now); return shows.filter((s) => (s.end || s.start + 4 * 3600e3) >= now && s.start < r.to && !s.cancelled).sort((a, b) => a.start - b.start); };
+  const expires = s => s.end || s.start + (s.dateOnly ? 18 : 4)*3600e3;
+  const thisWeek = (shows, now = Date.now()) => { const r = weekRange(now); return shows.filter((s) => expires(s) >= now && s.start < r.to && !s.cancelled).sort((a, b) => a.start - b.start); };
   function venues(shows) {
     const m = new Map();
     for (const s of shows) {
@@ -329,8 +331,9 @@
     return `on ${new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
   }
   const short = (t) => `${DAYS[new Date(t).getDay()].slice(0, 3)} ${hm(t)}`;
+  const showWhen = s => s.dateOnly ? new Date(s.start).toLocaleDateString(undefined,{timeZone:'Europe/Paris',weekday:'short',day:'numeric',month:'short'})+' · time to confirm' : short(s.start);
   const platformsText = (s) => s.platforms.map((p) => PLATFORMS[p]?.name || p).join(' + ');
-  const line = (s) => `${short(s.start)} · ${s.title}${s.venue.name && !fold(s.title).includes(fold(s.venue.name)) ? ` — ${s.venue.name}` : ''} · ${platformsText(s)}${s.soldOut ? ' · sold out' : ''}`;
+  const line = (s) => `${showWhen(s)} · ${s.title}${s.venue.name && !fold(s.title).includes(fold(s.venue.name)) ? ` — ${s.venue.name}` : ''} · ${platformsText(s)}${s.soldOut ? ' · sold out' : ''}`;
   function find(shows, q) {
     const f = fold(q).trim(); if (!f) return null;
     const scored = shows.map((s) => { const hay = fold([s.title, s.venue.name, ...s.lineup].join(' ')); const ts = tokens(q); const hit = ts.filter((t) => hay.includes(t)).length; return { s, n: s.key === q ? 99 : hay.includes(f) ? 50 + f.length : hit ? hit / Math.max(1, ts.length) * 10 : 0 }; });
@@ -345,19 +348,19 @@
     const title = `Go see ${who} at ${where} ${day}`.slice(0, 100);
     const ticket = show.tickets.find((t) => t.url)?.url || '';
     const cid = `c-show-${show.key}`;
-    const brief = `${show.title} / ${where} / ${new Date(show.start).toLocaleString(undefined, { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+    const brief = `${show.title} / ${where} / ${show.dateOnly ? showWhen(show) : new Date(show.start).toLocaleString(undefined, { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
     const q = (suffix, t, done, tiny, minutes, xp) => ({ id: `q-show-${show.key}-${suffix}`, title: t.slice(0, 250), done: done.slice(0, 1000), tiny: tiny.slice(0, 500), minutes, xp, tool: null,
       deep: 'One good night is enough. Another show is optional.', proofHint: 'Your own ticket confirmation (with the barcode hidden), a photo, a sound or a short field note. No one else’s private messages.' });
     return { id: cid, title, subtitle: 'PARIS / SHOW NIGHT', path: 'life', why: `A real night out from ${platformsText(show)}: ${brief}`.slice(0, 600), badge: `${where} / ${show.title}`.slice(0, 100),
-      show: { key: show.key, title: show.title.slice(0, 160), venue: where.slice(0, 120), address: show.venue.address.slice(0, 200), start: new Date(show.start).toISOString(), url: ticket.slice(0, 1000), platforms: show.platforms.slice(0, 2) },
+      show: { key: show.key, dateOnly:!!show.dateOnly, title: show.title.slice(0, 160), venue: where.slice(0, 120), address: show.venue.address.slice(0, 200), start: new Date(show.start).toISOString(), url: ticket.slice(0, 1000), platforms: show.platforms.slice(0, 2) },
       quests: [
         q('ticket', 'Get your ticket', `Book a ticket for ${brief}${ticket ? ` (${PLATFORMS[show.tickets.find((t) => t.url).platform]?.name || 'ticket link'})` : ''}, or decide on the door. Save the confirmation; hide the barcode in any proof.`, 'Open the ticket page and check the price.', 5, 20),
-        q('go', `Go: ${show.title}`.slice(0, 250), `Be at ${where}${show.venue.address ? ` (${show.venue.address})` : ''} ${day} at ${hm(show.start)}. Plan the way there and back; going solo or with a friend both count.`, 'Pick the time you leave home.', 120, 35),
+        q('go', `Go: ${show.title}`.slice(0, 250), `Be at ${where}${show.venue.address ? ` (${show.venue.address})` : ''} ${day}${show.dateOnly ? '; confirm the start time on your ticket first' : ' at '+hm(show.start)}. Plan the way there and back; going solo or with a friend both count.`, 'Pick the time you leave home.', 120, 35),
         q('proof', 'Bring back one moment', `After ${show.title}, save one real thing from the night: a photo, a short sound, or a field note with one detail you noticed and one track or artist you want to remember. If plans changed, skip this checkpoint.`, 'Write one line while it is fresh.', 5, 20)
       ] };
   }
 
   return { UA, PLATFORMS, BOX, inParis, hash, fold, tokens, venueKey, sourceFromUrl, defaultSources, jsonLd, eventsIn, fromEvent, nextData, walkEvents, looksBlocked, parsePage,
     nightOf, similar, merge, weekRange, thisWeek, venues, pins, emptyCache, applyResult, allShows, problemText, statusLine, robotsAllows, geoKey, geoNeeded, applyGeo, nominatimUrl, parseGeo,
-    dayWord, short, hm, line, find, platformsText, showCampaign };
+    dayWord, short, hm, showWhen, expires, line, find, platformsText, showCampaign };
 });

@@ -70,6 +70,7 @@
     return lines.join('\n');
   }
   function ics(show, { now = Date.now() } = {}) {
+    if(show?.dateOnly)throw Error('Confirm the show time on your ticket before exporting a calendar entry.');
     if (!show || !Number.isFinite(show.start)) throw Error('This show has no date.');
     const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Hearth//Show night//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', ...VTIMEZONE,
       'BEGIN:VEVENT', `UID:show-${show.key}@hearth`, `DTSTAMP:${zulu(now)}`,
@@ -81,6 +82,7 @@
   }
   const fileName = (show) => `${fold(show.title).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50) || 'show'}.ics`;
   function googleLink(show) {
+    if(show?.dateOnly)throw Error('Confirm the show time on your ticket first.');
     const q = new URLSearchParams({ action: 'TEMPLATE', text: show.title, dates: `${zulu(show.start)}/${zulu(endOf(show))}`, details: details(show), location: where(show), ctz: 'Europe/Paris' });
     return `https://calendar.google.com/calendar/render?${q}`;
   }
@@ -154,7 +156,7 @@
   function nextReminder(store, now = Date.now(), fired = {}) {
     let best = null;
     for (const [key, p] of Object.entries(store?.prep || {})) {
-      if (!p?.remind || fired[key] || !p.show || !Number.isFinite(p.show.start) || p.show.start <= now) continue;
+      if (p?.show?.dateOnly || !p?.remind || fired[key] || !p.show || !Number.isFinite(p.show.start) || p.show.start <= now) continue;
       let at = reminderAt(p.show);
       if (at < now) { if (now > p.show.start - 45 * 60e3 || QUIET(now)) continue; at = now + 30e3; }
       if (!best || at < best.at) best = { at, key, title: `${who(p.show)} ${dayWord(p.show.start, at)}`, body: reminderBody(p.show) };
@@ -175,7 +177,7 @@
     const links = {};
     for (const [k, v] of Object.entries(show.links || {}).slice(0, 20)) { const name = str(k, 80); if (name && v && typeof v === 'object') links[name] = { page: httpsUrl(v.page), listen: httpsUrl(v.listen) }; }
     const v = show.venue || {};
-    return { key: show.key, title: str(show.title, 160), start: Number(show.start), end: num(show.end), doors: num(show.doors),
+    return { key: show.key, dateOnly:!!show.dateOnly, title: str(show.title, 160), start: Number(show.start), end: num(show.end), doors: num(show.doors),
       venue: { key: str(v.key, 120), name: str(v.name, 120), address: str(v.address, 200), lat: num(v.lat), lon: num(v.lon), url: httpsUrl(v.url) },
       lineup: (show.lineup || []).map((x) => str(x, 80)).filter(Boolean).slice(0, 20), links,
       tickets: (show.tickets || []).filter((t) => httpsUrl(t?.url)).slice(0, 4).map((t) => ({ platform: str(t.platform, 20), url: httpsUrl(t.url) })),

@@ -46,7 +46,7 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
   const cache = () => { const c = read('cache.json', Core.emptyCache()); c.sources ||= {}; c.robots ||= {}; c.hosts ||= {}; return c; };
   const geo = () => read('geo.json', {});
   const logos = () => read('logos.json', {});
-  const sources = () => { const s = settings(); return [...(s.from === 'followed' ? [] : [...Core.defaultSources(), ...Programmes.sources()]), ...s.follows].filter((x, i, a) => x && a.findIndex((y) => y.id === x.id) === i).slice(0, 19); };
+  const sources = () => { const s = settings(); return [...(s.from === 'followed' ? [] : [...Core.defaultSources(), ...Programmes.sources(), ...['rex-club','phantom','madameloyal'].map(slug=>({...Core.sourceFromUrl('https://shotgun.live/venues/'+slug),builtin:true}))]), ...s.follows].filter((x, i, a) => x && a.findIndex((y) => y.id === x.id) === i).slice(0, 24); };
 
   // ---------- one polite request ----------
   const lastHit = new Map();
@@ -113,10 +113,10 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
       const result = await fetchSource({ ...src, url }, { htmlOnly:true, trustedOrigin, validators:old || {} });
       unavailable = !result.ok && (!result.status || result.blocked || result.robots || result.status>=500);
       const show = result.notModified && old?.show ? { ...old.show, programme:{ ...old.show.programme, checkedAt:now() } } : result.ok ? Programmes.event(result.html, src, url, now()) : null;
-      const failed = !result.ok || (!show && (!!old?.show || !!Programmes.ticketUrl(result.html)));
+      const failed = !result.ok || (!show && (!!old?.show || !!Programmes.ticketUrl(result.html,src)));
       // A broken page keeps its last good event; a successful page without Shotgun tickets isn't invented.
       entries[url] = { at:now(), show:show || (failed ? old?.show : null), failed, etag:result.etag || old?.etag, lastModified:result.lastModified || old?.lastModified };
-      if(entries[url].show)shows.push(entries[url].show);
+      if(entries[url].show && Core.expires(entries[url].show)>=now() && entries[url].show.start<now()+21*DAY)shows.push(entries[url].show);
       partial ||= failed;
     }
     // Bound the detail cache; only upcoming/recent events need to survive a restart.
@@ -191,7 +191,7 @@ function create({ dataDir, fetch, shrink, wait = (ms) => new Promise((r) => setT
   // what the window shows: the merged upcoming list (3 weeks), coordinates / logos filled in, one status line
   function snapshot() {
     const s = settings(), c = cache(), srcs = sources(), g = geo(), L = logos();
-    const shows = Core.allShows(c, srcs).filter((x) => (x.end || x.start + 4 * 3600e3) >= now() && x.start < now() + 21 * DAY).slice(0, 300);
+    const shows = Core.allShows(c, srcs).filter((x) => Core.expires(x) >= now() && x.start < now() + 21 * DAY).slice(0, 300);
     for (const x of shows) {
       if (!Number.isFinite(x.venue.lat)) { const hit = g[Core.geoKey(x.venue.address || `${x.venue.name} Paris`)]; if (hit && !hit.miss) { x.venue.lat = hit.lat; x.venue.lon = hit.lon; } }
       const lg = x.venue.image && L[x.venue.image]; x.venue.logo = lg?.file ? pathToFileURL(path.join(logoDir, lg.file)).href : '';

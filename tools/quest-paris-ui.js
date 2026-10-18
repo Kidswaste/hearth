@@ -26,7 +26,8 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
     const g = P.of(selected); if (!g) return;
     const { E, button, label, p, questDetail, mutate } = { ...ui(), mutate: J().mutate };
     host.append(E('div', { class: 'qj-paris-note' }, p(`${P.arrLabel(g.arr)} · ${g.why}`), p('Best: ' + g.best, 'qj-paris-best')));
-    if(g.url)host.append(button('Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
+    if(typeof ShowSync!=='undefined' && ShowSync.hasVenue(g.name))host.append(button('Upcoming nights',()=>ShowSync.openVenue(g.name,{...ui(),mutate:J().mutate}),'qj-primary'));
+    if(g.url)host.append(button(g.tags.includes('food')?'Menu & booking':'Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
     if(P.stories.some(t=>t.places.includes(g.id)))host.append(button('Story quests here',()=>todayDialog(g.id),'qj-primary'));
     if(P.socialMissions.some(t=>t.places.includes(g.id)))host.append(button('Friend outings here',()=>socialOutings(g.id),'qj-quiet'));
     if (!P.guide.some(x => x.id === g.id)) return;
@@ -91,7 +92,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
       d.classList.add('qj-city-detail');
       body.append(p(g.why),E('div',{class:'qj-city-brief'},E('strong',{text:'Your mission'}),p(g.todo),p(g.proof)),p(g.best));
       body.append(E('div',{class:'qj-actions'},button('Start place quest',async()=>{const c=await J().mutate(s=>P.startPlace(s,g.id),'Place quest ready.');d.close();browser.close();ui().questDetail((C.next(state(),c)||c.quests[0]).id);},'qj-primary'),button('Show on map',async()=>{await J().mutate(s=>{s.atlas.selected=P.ensurePin(s,g.id).id;},'Place on your map.');d.close();browser.close();J().mapFilter({});},'qj-quiet')));
-      if(g.url)body.append(button('Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
+      if(g.url)body.append(button(g.tags.includes('food')?'Menu & booking':'Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
     },'FH / ONE SMALL VISIT');
   }
   function adventures(){

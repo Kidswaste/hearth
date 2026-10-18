@@ -15,7 +15,7 @@ const OutingDesk = (() => {
   function mapSummary(){return {count:C.filter(state?.feed||[],{days:30}).length};}
   function registerMap(){
     QuestJournal.addMapLayer({id:'outing-desk',owns:id=>id.startsWith('od-venue-'),
-      pins:filters=>C.mapGroups(state||C.initial(),filters).map(g=>({id:g.id,name:g.name+' · '+g.events.length,lat:g.lat,lon:g.lon,kind:'calendar',color:'#ffb14a'})),
+      pins:filters=>C.mapGroups(state||C.initial(),{...filters,saved:true}).map(g=>({id:g.id,name:g.name+' · '+g.events.length,lat:g.lat,lon:g.lon,kind:'calendar',color:'#ffb14a'})),
       select:(id,kit)=>QuestJournal.openOutings({venue:id}).catch(err=>kit.notice(err.message))
     });
   }

@@ -397,7 +397,7 @@ const QuestJournal = (() => {
   }
   // (round 64, mapfirst64) QuestMapFirst.keep: the map's layer chips (Places off hides untouched guide pins, Visited off hides visited ones).
   // parisquests61: mapFilter.guide (a Paris guide word: tag, arrondissement…) and guide words in search come from tools/quest-paris-ui.js.
-  function mapPlaces() {const query=mapFilter.query.toLocaleLowerCase(),PG=window.QuestParisUI;return state.atlas.places.filter(p=>(mapFilter.kind==='all'||C.placeKind(p)===mapFilter.kind)&&(!mapFilter.saved||p.favorite)&&(!mapFilter.guide||!PG||PG.keep(p,mapFilter.guide))&&(!window.QuestMapFirst||QuestMapFirst.keep(p,state))&&(!query||(p.name+' '+p.quest+' '+(PG?.words(p)||'')).toLocaleLowerCase().includes(query)));}
+  function mapPlaces() {const query=mapFilter.query.toLocaleLowerCase(),PG=window.QuestParisUI;return state.atlas.places.filter(p=>(mapFilter.kind==='all'||C.placeKind(p)===mapFilter.kind)&&(!mapFilter.saved||p.favorite)&&(!mapFilter.guide||!PG||PG.keep(p,mapFilter.guide))&&(!window.QuestMapFirst||QuestMapFirst.keep(p,state,mapFilter))&&(!query||(p.name+' '+p.quest+' '+(PG?.words(p)||'')).toLocaleLowerCase().includes(query)));}
   function centerMapSelection() {const places=mapPlaces(),place=places.find(p=>p.id===state.atlas.selected)||places[0];if(place)atlasView?.focus(place);}
   function outingDesk(options = {}) {
     return OutingDesk.open({dialog,button,field,explain,friends:()=>state.world.friends,openQuest:questDetail,
@@ -417,7 +417,7 @@ const QuestJournal = (() => {
     for(const layer of mapLayers){try{const icon=layer.icon?.(layerKit);if(icon)head.append(icon);if(window.QuestMapFirst?.off(layer.id))continue;/* (round 64, mapfirst64) a layer chip that's off */layerPins.push(...(layer.pins?.(mapFilter)||[]));layerLines.push(...(layer.lines?.()||[]));}catch(err){console.warn('[quest map layer]',layer.id,err);}}
     content.append(sectionHeading('FH / FIELD KIT','Paris, at your pace.',null,head));
     const events=OutingDesk.mapSummary();
-    const city=E('div',{class:'qj-city-actions'},button('Explore places',async()=>{const result=await mutate(s=>QuestParis.addGuide(s),'Paris places ready.');mapFilter={kind:'all',saved:false,query:''};render();if(result.full)notice(`${result.full} places did not fit. Your own places were kept.`);},'qj-city-action'),button(events.count?`${events.count} events · plan an outing`:'Find events',()=>outingDesk(),'qj-city-action'),button('My lineup',()=>outingDesk({tab:'saved'}),'qj-city-action'));
+    const city=E('div',{class:'qj-city-actions'},button('Explore places',async()=>{if(window.QuestMapFirst?.explore){mapFilter={kind:'all',saved:false,query:''};await QuestMapFirst.explore(true);return;}const result=await mutate(s=>QuestParis.addGuide(s),'Paris places ready.');mapFilter={kind:'all',saved:false,query:''};render();if(result.full)notice(`${result.full} places did not fit. Your own places were kept.`);},'qj-city-action'),button(events.count?`${events.count} events · plan an outing`:'Find events',()=>outingDesk(),'qj-city-action'),button('My lineup',()=>outingDesk({tab:'saved'}),'qj-city-action'));
     ['compass','calendar','bookmark'].forEach((kind,i)=>city.children[i].prepend(QuestAtlas.icon(kind)));
     const todayEntry=window.QuestParisUI?.todayEntry();if(todayEntry)content.append(todayEntry);content.append(city);
     const filters=E('div',{class:'qj-map-filters',attrs:{'aria-label':'Filter map places'}});
@@ -455,7 +455,7 @@ const QuestJournal = (() => {
     placePanel(selected,panel);
     paintActivePlace=id=>{const p=mapPlaces().find(p=>p.id===id);if(!p||!panel.isConnected)return;panel.replaceChildren();placePanel(p,panel);glaze(panel);};
     layout.append(map,panel);content.append(layout);
-    atlasView=QuestAtlas.mount(map,{places:[...visible.map(p=>({...p,kind:C.placeKind(p),color:mapKind(p).color,tone:window.QuestMapFirst?.tone(p,state)})),...layerPins],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines});
+    atlasView=QuestAtlas.mount(map,{places:[...visible.map(p=>({...p,kind:window.QuestParis?.of(p)?.tags.includes('food')?'food':C.placeKind(p),color:window.QuestParis?.of(p)?.tags.includes('food')?'#ffb759':mapKind(p).color,tone:window.QuestMapFirst?.tone(p,state)})),...layerPins.filter(p=>!p.show || !visible.some(v=>window.QuestParis?.of(v) && typeof ShowSyncCore!=='undefined' && QuestParis.metres(p,v)<250 && ShowSyncCore.venueKey(p.name)===ShowSyncCore.venueKey(QuestParis.of(v).name)))],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines});
     window.QuestMapFirst?.overlay(map,layerKit); // (round 64, mapfirst64) one strip on the map: Places · Shows · My walks · Visited · Plan a walk (+ the shows' status line)
     for(const layer of mapLayers){try{const below=layer.below?.(layerKit);if(below)content.append(below);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's below(kit) → one node under the map (My Paris's timeline strip)
     const stamps=state.atlas.places.filter(p=>p.visitedAt).length;
