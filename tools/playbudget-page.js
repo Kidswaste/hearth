@@ -82,10 +82,27 @@
       if (rem.ms <= fit) return ms <= fit * 1.25;
       return ms <= Math.max(rem.ms * 1.5, rem.ms + 2);
     }
+    // (round 62, fixes62) a shadow size's time from its frames: the median of the calmer half. What else the graphics card
+    // does meanwhile (the card's last progress step composited, another window, a busy computer) only ever ADDS time to a
+    // frame, in bursts that last longer than a block (a warm Lab scene read 1024² at 25–33 ms for 0.4 s, then ≈ 8 ms):
+    // the calmer half is the size's own cost. A size's draw is the same work every frame, so it can't hide a real cost
+    const calm = (a) => { const s = a.filter((x) => Number.isFinite(x)).sort((x, y) => x - y); return s.length ? median(s.slice(0, Math.ceil(s.length / 2))) : null; };
+    // (round 62, fixes62) before the walk settles on a smaller size, the size above it gets one more look when it only
+    // just missed (≤ 1.25 × the refresh's 90 %) or when it is the remembered size and still holds by shadowHolds: one
+    // noisy reading never drops a sharper size (and its fallback) for good. → the row index to look at again, or -1
+    function shadowRecheck(rows, d, hz, rem, seen) {
+      if (!d || d.size == null || rows.length < 2) return -1;
+      const fit = (1000 / (Number(hz) > 0 ? Number(hz) : 60)) * 0.9;
+      const i = rows.findIndex((r) => r[0] === d.size);
+      if (i < 1) return -1;
+      const up = rows[i - 1];
+      if (!Number.isFinite(up[1]) || (seen && seen.has(up[0]))) return -1;
+      return up[1] <= fit * 1.25 || (rem && rem.size === up[0] && shadowHolds(up[1], rem, hz)) ? i - 1 : -1;
+    }
     const list = (ids) => { const n = ids.map((id) => NAMES[id] || id); return n.length < 2 ? n.join('') : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`; };
     const note = (title, ids) => (ids.length ? `Hearth's helpers were slowing ${title || 'the game'} a little; turned off: ${list(ids)}` : '');
     const fmt = (ms) => (ms == null ? 'Hearth: –' : ms < 0.005 ? 'Hearth: < 0.01 ms' : `Hearth: ${ms.toFixed(2)} ms`);
-    return { ALL, ORDER, NAMES, budgetMs, pick, median, judge, note, fmt, list, shadowPick, shadowHolds };
+    return { ALL, ORDER, NAMES, budgetMs, pick, median, judge, note, fmt, list, shadowPick, shadowHolds, calm, shadowRecheck };
   })();
   if (typeof module === 'object' && module && module.exports) { module.exports = Rules; return; }
   if (window.__hearthBudget) return;
@@ -228,7 +245,10 @@
         return ms;
       };
       // a frame drawn and waited for to the end on the graphics card: readPixels (one GPU-process task that waits for it)
-      const one = () => { const a = now(); const q = draw(); for (const x of targets) sync(x.gl); return done(a, q); };
+      // (round 62, fixes62) the shadow walk's counted frames, kept for the result (ab.shadowLog: [phase, ms since the A/B's
+      // start, ms]; 64 at most, under the card only): a slow reading can be told from a slow size afterwards
+      const SL = [];
+      const one = () => { const a = now(); const q = draw(); for (const x of targets) sync(x.gl); const ms = done(a, q); if (SL.length < 64 && (phase === 'w3' || phase.startsWith('size'))) SL.push([phase, Math.round(a - T), +ms.toFixed(2)]); return ms; };
       const on = (ids, b) => { for (const id of ids) { try { const h = hooks(id); if (h && h.pause) h.pause(!b); } catch (e) { /* fine */ } } };
       // (round 56, readyspeed) costs: false — the helpers' cost verdict of this very game still holds (gameready-page.js'
       // abs hint): only the shadow size below is chosen and its maps made under the card
@@ -265,8 +285,34 @@
       // frames stay readPixels (exact, as before: the A/B's verdicts don't move); with the game's frames held each one
       // waits only for itself (≈ 1 s here under load, a few ms on a real card)
       const oneAsync = async () => { const a = now(); const q = draw(); await drain(); return done(a, q); };
+      // (round 62, fixes62) nothing timed while the page or the graphics card is still busy with what came just before.
+      // The A/B starts the moment Getting ready's card steps its bar to 99 % (a .3 s transition over the whole window)
+      // after the warm-up's frames; on a software GPU its first ~0.5 s of synced frames each waited behind other work
+      // (+15–25 ms a frame: a warm Lab scene read 1024² at 25–33 ms, ≈ 8 ms once that passed). A warm run, with the
+      // helpers' verdict reused, timed its remembered shadow size in exactly that window and sometimes walked down to 512.
+      // So: the page's finite animations end (≤ 600 ms; a game's endless ones don't count), two frames are shown, and
+      // the graphics card answers an empty sync quickly, all under the card, before the first timed frame
+      let settleMs = 0; const probes = [];
+      const settle = async () => {
+        const t = now();
+        for (;;) {
+          let busy = false;
+          try { for (const an of document.getAnimations()) { if (an.playState !== 'running' || !an.effect || !an.effect.getComputedTiming) continue; if (Number.isFinite(an.effect.getComputedTiming().endTime)) { busy = true; break; } } } catch (e) { busy = false; }
+          if (!busy || now() - t > 600) break;
+          await new Promise((r) => later(r, 16));
+        }
+        await new Promise((r) => { later(r, 120); raf(() => raf(r)); }); // (a hidden window shows no frames: 120 ms at most)
+        // then the graphics card's process itself still: an empty sync (nothing drawn) answers in < 3 ms three times in a
+        // row (≤ 1.5 s). Right after the card's last step it took 5–28 ms here: it was still busy with other work, which
+        // the first timed frames would have waited for. ab.probes keeps them ([ms since the start, ms]); a real card
+        // answers at once, so this costs it ~50 ms under the card
+        const t1 = now();
+        for (let calmN = 0; calmN < 3 && now() - t1 < 1500;) { const p0 = now(); sync(G0); const p = now() - p0; if (probes.length < 60) probes.push([Math.round(p0 - T), +p.toFixed(2)]); calmN = p < 3 ? calmN + 1 : 0; await new Promise((r) => later(r, 16)); }
+        settleMs += now() - t;
+      };
       phase = 'first';
       if (!q0) await oneAsync(); else await drain();
+      await settle();
       phase = 'w3'; const w3 = [one(), one(), one()];
       if (lostSeen) return (ab = { skipped: 'the graphics card went away', lost: true, ms: Math.round(now() - T), syncs, maxFrameMs: Math.round(maxOne), long });
       const per = Math.max(Rules.median(w3), 0.05);
@@ -324,19 +370,22 @@
       const lk = hooks('look'); const sp = !H.look.off && lk && lk.shadow ? lk.shadow.plan() : null;
       if (sp && sp.ladder.length) {
         const rows = []; const gr = []; let d = null;
-        // a size's time: the calmer of two blocks' medians (a busy moment of the computer isn't the shadows')
+        // a size's time: two blocks of frames (a yield between), read by their calmer half (Rules.calm, round 62: a busy
+        // moment of the computer or the graphics card only adds time, and lasted longer than a block)
         const measure = async (v) => {
           phase = `size ${v}`; lk.shadow.set(v); await oneAsync(); // (its maps made the first time: not counted)
-          const b = []; const ag = [];
-          for (let i = 0; i < 2 && !lostSeen; i += 1) { const a = []; const b0 = now(); for (let k = 0; k < K && !lostSeen && (k < 2 || now() - b0 < BLOCK_MS); k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); } const m = Rules.median(a); if (m != null) b.push(m); await yieldNow(); }
-          return { ms: b.length ? +Math.min(...b).toFixed(3) : NaN, gpu: ag.length ? +Rules.median(ag).toFixed(3) : null };
+          const a = []; const ag = [];
+          for (let i = 0; i < 2 && !lostSeen; i += 1) { const b0 = now(); for (let k = 0; k < K && !lostSeen && (k < 2 || now() - b0 < BLOCK_MS); k += 1) { a.push(one()); if (gpu != null) ag.push(gpu); } await yieldNow(); }
+          const m = Rules.calm(a);
+          return { ms: m != null ? +m.toFixed(3) : NaN, gpu: ag.length ? +Rules.median(ag).toFixed(3) : null };
         };
-        let checked = false; let quick = null;
+        let checked = false; let quick = null; const rechecked = new Set();
         // (round 57, readywalk) the remembered size still valid: a short check of that size alone (the 3 frames above,
         // drawn at it; one more block of K only when they read clearly slower), and the walk only when that clearly fails
         if (q0 && sp.start === q0.size && !res.turnedOff.length) {
-          let ms = Rules.median(w3); const blocks = [+ms.toFixed(3)];
-          if (!Rules.shadowHolds(ms, q0, HZ)) { await oneAsync(); const a = []; const b0 = now(); for (let k = 0; k < K && !lostSeen && (k < 2 || now() - b0 < BLOCK_MS); k += 1) a.push(one()); const m2 = Rules.median(a); if (m2 != null) { blocks.push(+m2.toFixed(3)); ms = Math.min(ms, m2); } }
+          // (round 62, fixes62) read by the calmer half of its frames (Rules.calm), the extra block's frames added to them
+          const all = w3.slice(); let ms = Rules.calm(all); const blocks = [+Number(ms).toFixed(3)];
+          if (!Rules.shadowHolds(ms, q0, HZ)) { await oneAsync(); const b0 = now(); for (let k = 0; k < K && !lostSeen && (k < 2 || now() - b0 < BLOCK_MS); k += 1) all.push(one()); const m2 = Rules.calm(all); if (m2 != null) { blocks.push(+m2.toFixed(3)); ms = Math.min(ms, m2); } }
           quick = { ms: +ms.toFixed(3), was: q0.ms, blocks, held: Rules.shadowHolds(ms, q0, HZ) };
           if (quick.held) { rows.push([q0.size, +ms.toFixed(3)]); d = { size: q0.size, why: 'confirmed' }; }
         }
@@ -349,11 +398,23 @@
             for (const i of [rows.length - 2, rows.length - 1]) { const m = await measure(rows[i][0]); if (m.ms < rows[i][1]) rows[i][1] = m.ms; }
             continue;
           }
+          // (round 62, fixes62) about to settle below a size that only just missed, or below the remembered size that still
+          // holds (shadowHolds): that size once more, after the page is still, keeping its calmer time. Above all a
+          // warm run never drops from its remembered size to the game's own 512 (no fallback left) on one noisy reading
+          const ri = d.size != null && now() - T < CAP + 2500 ? Rules.shadowRecheck(rows, d, HZ, q0, rechecked) : -1;
+          if (ri >= 0) {
+            rechecked.add(rows[ri][0]); await settle();
+            const m = await measure(rows[ri][0]); if (m.ms < rows[ri][1]) rows[ri][1] = m.ms;
+            continue;
+          }
           if (d.size != null) break;
           if (rows.length && now() - T > CAP + 2500) { d = { size: rows[rows.length - 1][0], why: 'time' }; break; }
           const m = await measure(d.next);
           rows.push([d.next, m.ms]); gr.push(m.gpu);
         }
+        // (round 62, fixes62) the remembered size, its calmest reading still holding by readywalk's rule: kept (the walk's
+        // strict "fits" alone would have dropped it for a reading a little over the refresh)
+        if (q0 && d.size != null && d.size < q0.size) { const r0 = rows.find((r) => r[0] === q0.size); if (r0 && Rules.shadowHolds(r0[1], q0, HZ)) d = { size: q0.size, why: 'confirmed' }; }
         const fb = lk.shadow.commit(d.size, { by: sp.remembered ? 'remembered' : 'ready', why: d.why, rows });
         if (fb) { phase = `fallback ${fb}`; lk.shadow.set(fb); await oneAsync(); } // (the fallback's maps made now, under the card)
         // (round 57, readywalk) back to the chosen size: its maps are kept, a pointer swap (nothing made), so no frame of
@@ -369,7 +430,7 @@
         try { dispatchEvent(new Event('hearth-budget')); } catch (e) { /* game-preload.js tells Hearth: the choice is remembered per game */ }
       }
       { const during = glErr(); res.glErrors = { before: glBefore.length, during: during.length, codes: glBefore.concat(during).slice(0, 8) }; }
-      res.ms = Math.round(now() - T); res.syncs = syncs; res.maxFrameMs = Math.round(maxOne); res.long = long; res.drains = drains; res.drainMs = Math.round(drainMs);
+      res.ms = Math.round(now() - T); res.syncs = syncs; res.maxFrameMs = Math.round(maxOne); res.long = long; res.drains = drains; res.drainMs = Math.round(drainMs); res.settleMs = Math.round(settleMs); res.probes = probes; if (SL.length) res.shadowLog = SL;
       return (ab = res);
     })().catch((e) => (ab = { skipped: `error: ${String(e && e.message || e).slice(0, 120)}` })).finally(() => hold(false));
     return abP;

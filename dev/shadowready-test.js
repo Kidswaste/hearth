@@ -45,6 +45,19 @@ const t = async (name, fn) => { await fn(); n += 1; console.log(`✓ ${name}`); 
     assert.strictEqual(Rules.shadowHolds(19.9, { size: 1024, ms: 18 }, 60), true, '2 ms of slack on a near miss');
     assert.strictEqual(Rules.shadowHolds(NaN, slow, 60), false); assert.strictEqual(Rules.shadowHolds(10, null, 60), false); assert.strictEqual(Rules.shadowHolds(10, { size: 1024 }, 60), false, 'no time remembered: walked');
   });
+  await t('(round 62, fixes62) a size read by the calmer half of its frames; a near miss or a remembered size that holds is looked at again before stepping down', () => {
+    // the warm Lab scene's 1024² frames seen by fixes62: a burst from the card's last composite, then the size's own cost
+    assert.strictEqual(Rules.calm([32.4, 28.4, 10.0, 33.8, 15.4, 10.0]), 10, 'the burst set aside (it was 28.4 / 15.4 by block medians)');
+    assert.strictEqual(Rules.calm([46, 45.5, 47, 46.2]), 45.75, 'a size that is really slow stays slow');
+    assert.strictEqual(Rules.calm([9, 30, 8]), 8.5); assert.strictEqual(Rules.calm([NaN]), null); assert.strictEqual(Rules.calm([7]), 7);
+    const fitted = { size: 1024, ms: 9 };
+    assert.strictEqual(Rules.shadowRecheck([[1024, 16.1], [512, 6.8]], { size: 512, why: 'fits' }, 60, fitted), 0, 'the remembered 1024 a little over: once more before 512');
+    assert.strictEqual(Rules.shadowRecheck([[1024, 16.1], [512, 6.8]], { size: 512, why: 'fits' }, 60, null), 0, 'a near miss (≤ 1.25 × 15 ms) without memory too');
+    assert.strictEqual(Rules.shadowRecheck([[1024, 16.1], [512, 6.8]], { size: 512, why: 'fits' }, 60, fitted, new Set([1024])), -1, 'only once');
+    assert.strictEqual(Rules.shadowRecheck([[2048, 45], [1024, 7]], { size: 1024, why: 'fits' }, 60, null), -1, 'clearly over: no second look');
+    assert.strictEqual(Rules.shadowRecheck([[1024, 7]], { size: 1024, why: 'confirmed' }, 60, fitted), -1);
+    assert.strictEqual(Rules.shadowRecheck([[1024, 40], [512, 30]], { size: 512, why: 'smallest' }, 60, { size: 1024, ms: 30 }), 0, 'the remembered slow size, as slow as when chosen (shadowHolds): once more');
+  });
 
   // ---------- the look's maps on a fake three.js ----------
   const fake = (o, screenW = 2560) => {
