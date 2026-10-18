@@ -70,7 +70,35 @@ New files: `playnotes-core.js` (pure), `playnotes.js` + `playnotes.css` (hub, la
   dir), `tools/game-api.md` (the Playtest notes section).
 
 ## Tests
-See the final report below (filled in after the runs).
+- `dev/checks/playnotes62.js` (group `playnotes62`) covers a two-layer Lab scene (score, player and camera through
+  `saveState()` / `restoreState()`) and the HTML test game:
+  - F8 → a note: a 1280×800 picture in `game-cache/lab-<id>/notes`, score 42, the player's position, both cameras and the
+    fps. The game didn't get the F8.
+  - Shift+F8 → the box. A W typed there didn't reach the game's keydown listener. Enter kept the words, and F was the
+    chip's again afterwards.
+  - Ctrl+P → "2 notes from this playtest" → the log with 2 pictures.
+  - A click on a note → the Lab preview's score, player and camera were back.
+  - Fix this → a draft and its picture in the director's box, still unsent 1.5 s later.
+  - `/playtest notes`, `/playtest key F9` and `/playtest clear` all worked.
+  - The HTML game's note went to its own folder, and its files were untouched.
+- **Cost, measured in the game window:**
+  - playbudget's helpers were the same before and after the notes (audio, look, ready, stream, watch). The notes have no
+    helper of their own: 0 ms.
+  - The page's listeners on window / document were 21 → 21.
+  - The page's frame callbacks per frame were 2 → 2.
+  - The one read in the page took 0.33–0.38 ms, once, on the key.
+  - The note was done main-side in ≈ 100 ms (picture + JPEG + atomic write), off the game's thread except that one read.
+- `dev/playnotes-test.js` (unit, 14 tests): the key, the folder per game, a note as stored, the log (cap / words /
+  remove), the lines and the draft, and the page read on pretend pages. It also runs the store on a throwaway folder:
+  a note's picture and log written atomically, read back after a restart, Shift+F8's box keys, only the game window's
+  words taken, remove / clear to the trash with the other game untouched, an unreadable log never written over, and
+  the key changed / refused.
+- Under `flock /tmp/hearth-run.lock` (two holds of 5): playnotes62, playloop, gamemode, playbudget, gamefps54,
+  directorgame, lazy, unit:boot-test, unit:winmac-test and unit:playnotes-test **all passed**. Also run alone, all
+  passing: playbudget-test, gameperf-test, voice-test, directorgame-test, diskcalm-test.
+- Fixed on the way:
+  - `play()` in gamemodemain has a local `notes`, so the getter is `pnotes`.
+  - The Trash goes through winpolish / macpolish `trashCheck` (winmac's scan).
 
 ## Risks
 - **Typing in the box while the game runs**: the game keeps playing (it isn't paused). The box's keys are stopped at
