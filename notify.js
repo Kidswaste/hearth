@@ -131,6 +131,9 @@ const Notify = (() => {
   function boot() {
     document.addEventListener('hearth:needs-you', onNeed);
     api()?.onGo?.((m) => route(m?.go || null));
+    // (round 62, showprep62) a show's "on the day" reminder (showprepmain.js times it): a desktop notification while
+    // you're elsewhere, a toast when Hearth is in front
+    window.hub?.shows?.onRemind?.(async (r) => { if (!r?.title) return; const out = await send({ type: 'reminder', title: r.title, body: r.body || '', group: `show:${r.key}` }); if (!out.shown && out.why !== 'off' && typeof toast === 'function') toast(`${r.title}${r.body ? ` — ${r.body}` : ''}`, { timeout: 12000 }); });
     // looking at a chat clears its notification (only when one was shown)
     addEventListener('hearth:view', () => { if (!shownGroups.size || typeof H === 'undefined') return; for (const id of Object.values(H.activeChat || {})) if (id) seen(`chat:${id}`); });
     window.hub?.onWindowFocus?.((f) => { if (f && shownGroups.has('summary')) seen('summary'); });
