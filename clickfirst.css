@@ -1,0 +1,17 @@
+/* (round 64, clickfirst64) the ✦ tracker's "This week" part, its section links, the quest card's buttons and the
+   labelled More; the Studio's "My week ▾". Calm: no animation, the tracker's own variables. */
+.qh-sec.cf-sec { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cf-link { border: 0; background: none; padding: 0 2px; cursor: pointer; color: var(--muted); font-size: 11px; text-transform: none; letter-spacing: 0; white-space: nowrap; }
+.cf-link:hover, .cf-link:focus-visible { color: var(--text); text-decoration: underline; }
+.cf-row .qh-btn { flex: none; white-space: nowrap; }
+.cf-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.cf-acts .qh-btn { padding: 3px 8px; }
+.qh-icon.cf-more { width: auto; padding: 0 7px; font-size: 12px; }
+.qh-icon.cf-more { white-space: nowrap; flex: none; }
+.cf-row .qh-row-title, .cf-row .qh-sub { white-space: normal; overflow: visible; text-overflow: clip; }
+.cf-row { align-items: center; }
+.qj-button.cf-studio-week { white-space: nowrap; flex: none; }
+/* a narrow panel: the words keep their width, the button goes under them */
+.cf-row { flex-wrap: wrap; row-gap: 4px; }
+.cf-row .qh-row-main { flex: 1 1 150px; }
+.cf-row .qh-row-main + .qh-btn { margin-left: auto; }

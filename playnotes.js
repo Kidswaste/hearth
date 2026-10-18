@@ -160,11 +160,13 @@ const PlayNotes = (() => {
   }
 
   // ---------- the Playtest log ----------
+  // (round 64, clickfirst64) the scene open in the Lab, as a ▶ Play source (null when the Lab isn't up)
+  const labScene = () => { try { const id = typeof ThreeLab === 'undefined' ? null : ThreeLab.scenes?.currentId?.(); return id ? GameCore.source({ kind: 'lab', id, title: ThreeLab.scenes.get?.(id)?.name || 'this scene' }) : null; } catch { return null; } };
   async function gameFor(arg) {
     const a = String(arg || '').trim();
     if (a) return GM().resolve(a);
     const st = GM().state();
-    return (st.playing && !st.live && st.source) || S.source || GM().last() || null;
+    return (st.playing && !st.live && st.source) || S.source || GM().last() || labScene(); // (round 64, clickfirst64) no game yet: the Lab scene open now (its empty view says what to do)
   }
   async function open({ source = null, session = null } = {}) {
     const s = source || (await gameFor(''));
@@ -273,8 +275,9 @@ const PlayNotes = (() => {
 
   // ---------- menus, palette, keys ----------
   function menuItems() {
-    const s = GM().state().source || S.source || GM().last();
-    return s ? [{ label: '✎ Playtest log', hint: `${prefs().label} in ▶ Play drops a note`, action: () => open({ source: s, session: S.session }).catch(fail) }] : [];
+    const s = GM().state().source || S.source || GM().last() || labScene(); // (round 64, clickfirst64) the Lab scene when no game yet
+    // (round 64, clickfirst64) always here, so it can be found before the first game: with none yet it says what to do
+    return [{ label: '✎ Playtest log', hint: s ? `${prefs().label} in ▶ Play drops a note` : `▶ Play a game, then ${prefs().label} drops a note`, action: () => open(s ? { source: s, session: S.session } : {}).catch(fail) }];
   }
   try { Keys.add({ area: '▶ Play', keys: C.DEFAULT_KEY, what: 'In the game: a playtest note (picture, time, state, fps); Shift+F8 with words · /playtest key changes it' }); } catch { /* no keys sheet */ }
   try { AppUI.addAction?.('✎ Playtest log', () => open({ session: S.session }).catch(fail)); } catch { /* no palette */ }

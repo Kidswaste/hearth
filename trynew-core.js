@@ -17,12 +17,14 @@ const TryNewCore = (() => {
   const PLAY = ['[data-feature="Play"]'];
   const SHOWS = ['[aria-label^="Shows this week"]'];
   const GUIDE = ['.qj-paris-guide'];
+  const PANEL = (sel) => [`.qh-panel ${sel}`]; // (clickfirst64) the ✦ tracker panel's own buttons
+  const LABMORE = ['[data-feature="Lab more"]'];
   const PATHS = [
     // ---------- round 61 ----------
     { id: 'tracker', round: 61, icon: '✦', name: 'Quest tracker', why: 'your quest and its next step, on every screen', steps: [
       { title: 'Open the Paris guide', open: 'studio:world', target: GUIDE, clickNext: true, text: 'In Sidequest Studio, under the Paris map: click Paris guide.' },
       { title: 'Get my AirPods', target: ['[data-personal="airpods"]'], clickNext: true, text: 'Click Get my AirPods: the quest goes into your notebook (Apple Opéra, pickup booked first).' },
-      { title: 'The ✦ chip', target: CHIP, text: 'This chip in the rail now shows your quest and its next step, on every screen. Click it to check a step off or take today’s picks.' },
+      { title: 'The ✦ chip', target: CHIP, clickNext: true, text: 'This chip in the rail now shows your quest and its next step, on every screen. Click it: check a step off, take today’s picks, plan your week.' },
     ] },
     { id: 'paris', round: 61, icon: '🗺', name: 'Paris map + guide', why: '36 places worth the trip, each a small quest', steps: [
       { title: 'Open the Paris guide', open: 'studio:world', target: GUIDE, clickNext: true, text: 'Your Paris map in Sidequest Studio. Click Paris guide, under the map.' },
@@ -30,7 +32,7 @@ const TryNewCore = (() => {
       { title: 'A place quest', open: 'studio:world', target: ['.qj-paris-start'], clickNext: true, text: 'Click a pin on the map, then this button: go → do one thing there → bring proof home.' },
     ] },
     { id: 'shows', round: 61, icon: '🎟', name: 'This week’s shows', why: 'Shotgun + DICE, on the map', steps: [
-      { title: 'Shows this week', open: 'studio:world', target: SHOWS, text: 'Click this button over the map: Paris shows from Shotgun and DICE, venues as pins, a day-by-day list. A show’s card turns it into a quest in one click.' },
+      { title: 'Shows this week', open: 'studio:world', target: SHOWS, text: 'Click this button over the map (or ✦ chip › ⋯ More › Shows this week…): Paris shows from Shotgun and DICE, venues as pins, a day-by-day list. A show’s card turns it into a quest in one click.' },
     ] },
     { id: 'livevst', round: 61, icon: '🎹', name: 'Live Serum 2 / Vital', why: 'play through your UA interface', steps: [
       { title: 'Pick your interface', open: 'desk', target: ['select[aria-label="Audio output"]', 'text:Set up live audio'], text: 'In the Sound desk: choose your UA interface in Audio output (ASIO first, WASAPI as the fallback), then Buffer 128 or 64. First time only: click Set up live audio (1–3 min, once).' },
@@ -42,39 +44,42 @@ const TryNewCore = (() => {
     ] },
     // ---------- round 62 ----------
     { id: 'week', round: 62, icon: '🗓', name: 'Week plan + review', why: '3–5 quests on days, then how it went', steps: [
-      { title: 'Plan my week', open: 'studio:world', target: CHIP, text: 'Right-click the ✦ chip in the rail › Plan my week…' },
-      { title: 'Your week', open: 'week', target: ['.wq-panel .wq-days', '.wq-panel'], text: '3–5 quests for the coming week: shows, places near that night’s venue, a park session on the best dry day. Drag them onto days; Accept keeps them (nothing is kept before).' },
-      { title: 'Week in review', open: 'review', target: ['.wq-panel'], text: 'On Sunday: right-click the ✦ chip › Week in review…: quests done, XP, your streak, the moments you collected.' },
+      { title: 'The ✦ chip', open: 'studio:world', target: CHIP, clickNext: true, text: 'Click the ✦ chip in the rail.' },
+      { title: 'Plan your week', target: [...PANEL('.cf-plan'), ...CHIP], clickNext: true, text: 'Its This week part: click Plan your week (See the plan once you have one).' },
+      { title: 'Your week', open: 'week', target: ['.wq-panel .wq-days', '.wq-panel'], text: '3–5 quests: shows, places near that night’s venue, a park session on the best dry day. Drag them onto days; Accept keeps them. On Sunday, the chip’s Week in review › shows how it went.' },
     ] },
     { id: 'park', round: 62, icon: '🌳', name: 'Park jam → song', why: 'park mode, a loop, then arrange', steps: [
       { title: 'Park mode', open: 'desk', target: ['.wb-park-toggle'], text: 'Click 🌳 Park mode: the laptop’s own output when the UA isn’t plugged in, a safe buffer, battery-friendly settings, remembered per park. Click again: everything back.' },
       { title: 'Capture the moment', open: 'desk', target: ['.wb-park > summary', '.wb-park-toggle'], text: 'Open Park jam · capture the moment, then Record loop: 4 / 8 / 16 bars of what you play (from your first note), with 10 s of park ambience underneath.' },
-      { title: 'Arrange', open: 'desk', target: ['text:Arrange', '.wb-park > summary', '.wb-park-toggle'], text: 'Arrange (next to Record loop): your takes on 4 lanes, snapped to bars; repeat, trim, fade; export a mix, stems and the MIDI.' },
+      { title: 'Arrange loops', open: 'desk', target: ['.cf-arrange', 'text:Arrange', '.wb-park-toggle'], text: 'Click Arrange loops: your takes on 4 lanes, snapped to bars; repeat, trim, fade; export a mix, stems and the MIDI.' },
     ] },
     { id: 'showprep', round: 62, icon: '🎫', name: 'Show night', why: 'get ready, then “how was it?”', steps: [
       { title: 'Get ready', open: 'studio:world', target: SHOWS, text: 'Click Shows this week and pick a show › Get ready: doors and start in Paris time, the nearest Métro, a listen link per artist, a reminder on the day.' },
-      { title: 'How was it?', open: 'studio:world', target: SHOWS, text: 'After the night, the same show › How was it?: a rating, one moment, a photo. They go into Shows I went to and count as the show quest’s proof.' },
+      { title: 'The ✦ chip', target: CHIP, clickNext: true, text: 'A show you made a quest: its card in the ✦ chip has Get ready and, after the night, How was it? (a rating, one moment, a photo). Click the chip.' },
+      { title: 'Shows I went to', target: [...PANEL('.cf-more'), ...CHIP], text: '⋯ More › Shows I went to…: every night you logged; venues you’ve been to get a ✓ on the map.' },
     ] },
     { id: 'playnotes', round: 62, icon: '🎮', name: 'Playtest notes (F8)', why: 'a note with a picture, mid-game', steps: [
-      { title: 'Play, then F8', open: 'lab', target: PLAY, text: 'Click Play, then press F8 in the game: a picture of that moment, the time, the player position, the frame rate. Shift+F8 adds your words.' },
-      { title: 'Back in the Lab', open: 'lab', target: PLAY, text: 'Back here, “3 notes from this playtest” shows up: click one to return to that moment, or Fix this to hand it to the Three Director.' },
+      { title: 'Play, then F8', open: 'lab', target: PLAY, text: 'Click Play, then press F8 in the game (or F › ✎ Note): a picture of that moment, the time, the player position, the frame rate.' },
+      { title: 'The playtest log', open: 'lab', target: [...LABMORE, ...PLAY], text: 'Back here: ⋯ › Capture & playtest › ✎ Playtest log. Click a note to return to that moment, or Fix this to hand it to the Three Director.' },
     ] },
     // ---------- round 63 ----------
     { id: 'walk', round: 63, icon: '🚶', name: 'Quest walk', why: 'an afternoon route, Métro to Métro', steps: [
-      { title: 'Open the Paris guide', open: 'studio:world', target: GUIDE, clickNext: true, text: 'Under the Paris map: click Paris guide.' },
-      { title: 'Make a walk', target: ['text:Make a walk'], text: 'Click Make a walk, pick an area and the time you have: 3–5 places you haven’t visited, Métro to Métro, ending at tonight’s show if you have one. A preview first; Save makes it a quest the ✦ chip follows.' },
+      { title: 'The ✦ chip', open: 'studio:world', target: CHIP, clickNext: true, text: 'Click the ✦ chip in the rail.' },
+      { title: 'Make a walk', target: [...PANEL('.cf-walk'), ...CHIP], text: 'Click Make a walk: 3–5 places you haven’t visited, Métro to Métro (about 2 h), on the Paris map. A preview first; Save makes it a quest the ✦ chip follows stop by stop.' },
     ] },
     { id: 'soundbank', round: 63, icon: '🎛', name: 'Sound bank', why: 'every Serum 2 / Vital preset, searchable', steps: [
-      { title: 'Find a sound', open: 'sounds', target: ['.sb-win input', '.sb-win'], text: 'Every Serum 2 / Vital preset you have (it opens from the Sound desk › Keep a patch › Sound bank…). Type to search, hover a row to hear 3 s, click it to play it live.' },
+      { title: 'Sound bank', open: 'desk', target: ['.cf-soundbank', '.wb-park-toggle'], clickNext: true, text: 'In the Sound desk’s top row: click Sound bank.' },
+      { title: 'Find a sound', open: 'sounds', target: ['.sb-win input', '.sb-win'], text: 'Every Serum 2 / Vital preset you have: type to search, hover a row to hear 3 s, click it to play it live, ★ and ≈ similar.' },
       { title: 'Previews and folders', open: 'sounds', target: ['.sb-win [aria-label="Sound bank menu"]', '.sb-win'], text: 'Click ⋯: make previews (in the background, never touching your live sound) and include your plugins’ own folders, read-only.' },
     ] },
     { id: 'hitchmap', round: 63, icon: '📍', name: 'Hitch map', why: 'where Clink stutters', steps: [
-      { title: 'Turn it on', open: 'lab', target: PLAY, text: 'Click Play, then right-click in the game › Hitch map: it records where you were and how long each frame took (about 0.02 ms a frame).' },
-      { title: 'After playing', open: 'lab', target: PLAY, text: 'Back here: a heat map of where Clink stutters, the worst spots with pictures, Jump there and Fix this for the Three Director.' },
+      { title: 'Record the hitch map', open: 'lab', target: [...LABMORE, ...PLAY], text: 'Click ⋯ › Capture & playtest › ● Record the hitch map (or in the game: F › ● Record). It notes where you were and how long each frame took (about 0.02 ms a frame).' },
+      { title: 'Play, then look', open: 'lab', target: PLAY, text: 'Click Play and play a while. Then ⋯ › Capture & playtest › ▦ Hitch map: where Clink stutters, the worst spots with pictures, Jump there and Fix this.' },
     ] },
     { id: 'rewards', round: 63, icon: '🎁', name: 'Real rewards', why: 'treats that cost XP', steps: [
+      { title: 'The ✦ chip', open: 'studio:world', target: CHIP, clickNext: true, text: 'Click the ✦ chip in the rail.' },
+      { title: 'Rewards', target: [...PANEL('[data-k="rw-all"]'), ...CHIP], clickNext: true, text: 'Its Rewards part: click All rewards › (Pick one when you have none yet). The chip shows the XP to your next reward; claim it there with a confirm.' },
       { title: 'Set a reward', open: 'studio:rewards', target: ['text:+ Add a reward', '[data-page="rewards"]'], text: 'Click + Add a reward: a treat that costs XP (“new record at Superfly, 300 XP”, “concert fund +10 €, 500 XP”). A savings-jar note; Hearth never touches money.' },
-      { title: 'Your next reward', target: CHIP, text: 'The ✦ chip shows “120 XP to your next reward”; click it to claim with a confirm. A small weekly streak bonus comes by itself.' },
     ] },
   ];
   const ROUNDS = [...new Set(PATHS.map((p) => p.round))];

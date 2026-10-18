@@ -203,5 +203,6 @@ const ShowSync = (() => {
   });
   try { QJ()?.addMapLayer?.(layer); } catch { /* the journal registers layers when it loads */ }
   load().then(() => { if (snap.enabled && C.pins(C.venues(week())).length) redraw(); }).catch(() => {}); // the saved list only (no network): ready before the map opens
-  return { load, refresh, ensure, makeQuest, layer, run, extend, redraw, week, upcoming, showDetail, call, get snap() { return snap; }, _test: { week, upcoming, venueList } };
+  return { load, refresh, ensure, makeQuest, layer, run, extend, redraw, week, upcoming, showDetail, listDialog, call, // (round 64, clickfirst64) listDialog: "Shows this week…" from the ✦ tracker's More and the Studio's My week ▾
+    get snap() { return snap; }, _test: { week, upcoming, venueList } };
 })();

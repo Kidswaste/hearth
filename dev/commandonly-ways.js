@@ -250,11 +250,19 @@ const WAYS = {
   slot: 'Sliders: the A / B / C slots',
   snap: 'Lab timeline: the snap setting (Ctrl/⌘+K "Next snap setting")',
   snare: 'Lab timeline: Snare',
-  song: 'Lab timeline: play / pause, click the wave to seek, 🎵 Load audio/video',
+  song: 'Lab timeline: play / pause, click the wave to seek, 🎵 Load audio/video · (loopsong63) the Sound desk\'s Arrange loops (round 64)',
   'song-trim': 'Lab timeline: right-click › Song starts here / Song ends here / Untrim the song',
   stills: 'Right-click the picture › ⇪ Make & export › A folder of stills',
   'type-3d': 'Motion design kit (Alt+X, Lab ✦ More) › Motion · 3D type',
   'unlock-slider': 'Right-click a slider › 🔓 Unlock · the slider\'s lock',
+  // ---- (round 64, clickfirst64) rounds 61–63, by clicking: the owner doesn't type commands
+  quest: 'The ✦ chip in the rail › its panel (check off, Take, This week: Plan your week / Week in review › / Make a walk, ⋯ More) · Sidequest Studio › My week ▾',
+  reward: 'The ✦ panel › Rewards (Claim…, I moved it, All rewards ›) · Sidequest Studio › Treat machine (Rewards)',
+  shows: 'The ✦ panel › ⋯ More › Shows this week… / Shows I went to… · a show quest\'s card › Get ready / How was it? · the Paris map\'s ✦ Shows this week',
+  jam: 'Sound desk (Creative Playground › Serum 2 & Vital) › 🌳 Park mode, the Park jam fold (Record loop, Ambience) · the park quest\'s card › 🌳 Park mode',
+  sounds: 'Sound desk › Sound bank (beside Park mode) · Keep a patch › Sound bank…',
+  playtest: '▶ Play right-click › ✎ Playtest log / Record the hitch map / ▦ Hitch map · Lab toolbar ⋯ › ▶ Playtest · in the game, F: the chip\'s ✎ Note / ● Record hitch map',
+  'vst-preset': 'The ✦ Preset window over the Sound desk (Creative Playground › Serum 2 & Vital): type the sound, Enter; ↶ ↷, Save',
 };
 
 const DEV = {

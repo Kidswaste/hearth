@@ -40,6 +40,8 @@ const HitchMap = (() => {
     const t = d.source?.title || 'the game';
     toast(d.hitches ? `▦ Hitch map of ${t}: ${d.hitches} hitch${d.hitches === 1 ? '' : 'es'}${d.top ? ` · worst spot ${d.top.split(' · ')[0]}` : ''}` : `▦ Hitch map of ${t}: smooth, no hitches`, { timeout: 9000, action: { label: 'Open the map', fn: () => open({ source: d.source, id: d.id }).catch(fail) } });
   });
+  // (round 64, clickfirst64) the F chip's "● Record / ■ Stop hitch map", clicked in the game window
+  window.hub.game?.onChip?.((d = {}) => { if (d.what === 'hitch') set(!isOn()).catch(fail); });
   // Ctrl/⌘+P back to editing ends this part of the session: the map so far (the ring keeps going if you go back)
   window.hub.game?.onLoop?.((d = {}) => { if (d.type === 'rested' && isOn()) X({ op: 'collect', why: 'rested' }).catch(() => {}); });
 
@@ -117,11 +119,13 @@ const HitchMap = (() => {
     return c;
   }
 
+  // (round 64, clickfirst64) the scene open in the Lab, as a ▶ Play source (null when the Lab isn't up)
+  const labScene = () => { try { const id = typeof ThreeLab === 'undefined' ? null : ThreeLab.scenes?.currentId?.(); return id ? GameCore.source({ kind: 'lab', id, title: ThreeLab.scenes.get?.(id)?.name || 'this scene' }) : null; } catch { return null; } };
   async function gameFor(arg) {
     const a = String(arg || '').trim();
     if (a) return GM().resolve(a);
     const st = GM().state();
-    return (st.playing && !st.live && st.source) || S.last?.source || GM().last() || null;
+    return (st.playing && !st.live && st.source) || S.last?.source || GM().last() || labScene(); // (round 64, clickfirst64) no game yet: the Lab scene open now (its empty view says what to do)
   }
   async function open({ source = null, id = null, map = null } = {}) {
     const s = source || (await gameFor(''));
@@ -220,7 +224,7 @@ const HitchMap = (() => {
 
   // ---------- menus, palette ----------
   function menuItems() {
-    const s = GM().state().source || S.last?.source || GM().last();
+    const s = GM().state().source || S.last?.source || GM().last() || labScene(); // (round 64, clickfirst64) the Lab scene when no game yet
     return [
       { label: 'Record the hitch map', checked: isOn(), hint: 'where it stutters: frame time over the play area', action: () => set(!isOn()).then((t) => toast(t, { timeout: 3500 })).catch(fail) },
       ...(s ? [{ label: '▦ Hitch map', hint: 'the last recording of this game', action: () => open({ source: s }).catch(fail) }] : []),
