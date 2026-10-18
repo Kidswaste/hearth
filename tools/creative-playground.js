@@ -7,7 +7,8 @@ const CreativePlayground = (() => {
   function button(text, fn, attrs = {}) { return el('button', {type:'button',text,...attrs,on:{click:async e => {const b=e.currentTarget;b.disabled=true;try{await fn();}catch(err){notice(err.message);}finally{b.disabled=false;}}}}); }
   function persist() { if(!writable)return Promise.resolve(); const snapshot=JSON.parse(JSON.stringify(state)); saving=saving.catch(()=>{}).then(async()=>{const r=await hub.kvSet(KEY,snapshot);if(r?.error)throw Error(r.error);}).catch(err=>notice(`Settings could not save: ${err.message}`));return saving; }
   function stopAudio(){try{source?.stop();}catch{}source=null;context?.suspend();}
-  function pause(){stopAudio();WorkbenchUI.pause();}
+  let suspended = false;
+  function pause(){suspended=true;stopAudio();WorkbenchUI.pause();}
   async function play(samples,sr=44100){stopAudio();context ||= new AudioContext();await context.resume();const b=context.createBuffer(1,samples.length,sr);b.copyToChannel(samples,0);source=context.createBufferSource();source.buffer=b;const volume=context.createGain();volume.gain.value=.3;source.connect(volume).connect(context.destination);source.start();}
   async function saveFile(name,data,extension){const r=await hub.saveFile({defaultPath:name,content:data,filters:[{name:extension.toUpperCase(),extensions:[extension]}]});if(r?.error)throw Error(r.error);notice(r?`Exported ${name}`:'Export cancelled.');return r;}
   async function tileCanvas(svg){const im=new Image();im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);await im.decode();const c=document.createElement('canvas');c.width=c.height=512;c.getContext('2d').drawImage(im,0,0);return c;}
@@ -25,7 +26,7 @@ const CreativePlayground = (() => {
   }
   function openFeature(id){
     if(!ready)return;const f=C.FEATURES.find(f=>f.id===id)||C.FEATURES[0];
-    pause();feature=f.id;stage.replaceChildren(el('h2',{text:f.name}),para(f.description));
+    pause();suspended=false;feature=f.id;stage.replaceChildren(el('h2',{text:f.name}),para(f.description));
     nav.querySelectorAll('[data-feature-id]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.featureId===feature)));
     if(window.WorkspaceNav && ['pattern','texture'].includes(feature))stage.append(el('div',{class:'workspace-materials'},...['pattern','texture'].map(id=>button(id==='pattern'?'Seamless tiles':'Surface maps',()=>openFeature(id),{attrs:{'aria-pressed':String(feature===id)}}))));
     document.dispatchEvent(new Event('hearth:creative-feature'));
@@ -39,10 +40,10 @@ const CreativePlayground = (() => {
     stage=el('main',{class:'cp-stage'});
     host.append(el('header',{class:'cp-heading'},el('h1',{text:'Creative Playground'}),button('✦ Quest journal',async()=>{await Lazy.load('questjournal');activate('tool:quests');})),feedback,el('div',{class:'cp-layout'},nav,stage));
     ready=true;openFeature(feature);
-    document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();else if(suspended && H.activeId==='tool:creative')openFeature(feature);});
     const surface=body.closest('.surface');if(surface)new MutationObserver(()=>{if(H.activeId!=='tool:creative')pause();}).observe(surface,{attributes:true,attributeFilter:['class','hidden','style']});
   }
-  Tools.define({id:'creative',offRail:true,name:'Creative Playground',icon:'✺',color:'#ed77a8',description:'Sounds, sketches, materials and storyboards',mount:body=>{mount(body).catch(e=>{body.textContent=`Creative desk could not open: ${calmError(e)}`;});}});
+  Tools.define({id:'creative',offRail:true,name:'Creative Playground',icon:'✺',color:'#ed77a8',description:'Sounds, sketches, materials and storyboards',mount:body=>{mount(body).catch(e=>{body.textContent=`Creative desk could not open: ${calmError(e)}`;});},onShow:()=>{if(ready && suspended)openFeature(feature);}});
   Commands.register({name:'playground',area:'Create',desc:'Open your sounds, sketches, materials and storyboard',run:()=>activate('tool:creative')});
   return {openFeature,pause,ready:()=>ready,flush:()=>saving,snapshot:()=>({feature,state:JSON.parse(JSON.stringify(state)),playing:Boolean(source)})};
 })();

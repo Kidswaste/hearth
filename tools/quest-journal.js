@@ -3,6 +3,13 @@ const QuestJournal = (() => {
   const E = (tag, props = {}, ...children) => { const node = el(tag, props, ...children); for (const [key, value] of Object.entries(props.style || {})) if (key.startsWith('--')) node.style.setProperty(key, value); return node; };
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
   let atlasView = null, worldKeep = null; // worldKeep: (round 65, questperf65) the mounted map page's { layout, map, panel }, kept across re-renders of the map page
+  let needsRender = true, paintFrame = 0, searchFrame = 0;
+  const visible = () => !document.hidden && (H.surfaceIdFor?.(H.activeId) || H.activeId) === 'tool:quests';
+  function scheduleRender() { needsRender = true; if (!visible() || paintFrame) return; paintFrame = requestAnimationFrame(() => { paintFrame = 0; render(); }); }
+  function scheduleMapSearch() {
+    if (!visible()) { needsRender = true; return; }
+    if (!searchFrame) searchFrame = requestAnimationFrame(() => { searchFrame = 0; if (page !== 'world') return; if (visible() && worldKeep?.search) worldKeep.search(); else needsRender = true; });
+  }
   // (round 61, showsync61) Map layers: other modules add pins and one head icon to the Paris map without editing it
   // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit), lines() } (lines: round 63, questwalk63: [{ id, color, points: [{ lat, lon, label? }] }]). (round 64, parisjournal64: below(kit) → a node shown under the map; chip(kit) → a labelled toggle in the filter row.)
   const mapLayers = [];
@@ -10,7 +17,7 @@ const QuestJournal = (() => {
   // (e.g. a show quest's "Get ready" / "How was it?"); a hook that throws is skipped
   const detailHooks = [];
   function addDetailHook(fn) { if (typeof fn === 'function' && !detailHooks.includes(fn)) detailHooks.push(fn); }
-  function addMapLayer(layer) { const i = mapLayers.findIndex(l => l.id === layer.id); if (i >= 0) mapLayers[i] = layer; else mapLayers.push(layer); if (state && page === 'world' && root?.isConnected) render(); }
+  function addMapLayer(layer) { const i = mapLayers.findIndex(l => l.id === layer.id); if (i >= 0) mapLayers[i] = layer; else mapLayers.push(layer); if (state && page === 'world' && root?.isConnected) scheduleRender(); }
   let mapFilter = {kind:'all',saved:false,query:''}, tooltipSeq=0;
   let daySeen = C.day(), lastCelebration = null;
   const reviewJobs = new Map();
@@ -226,8 +233,11 @@ const QuestJournal = (() => {
     setTimeout(() => card.remove(), gains.length ? 12000 : 6500);
   }
   function render() {
-    hideHint();
     if (!state || !content) return;
+    needsRender = true; if (!visible()) return;
+    cancelAnimationFrame(paintFrame); paintFrame = 0; needsRender = false;
+    cancelAnimationFrame(searchFrame); searchFrame = 0;
+    hideHint();
     root.dataset.view = page;
     root.style.setProperty('--qj-signal', C.consoleAccents.find(a => a.id === state.workstation.accent).color);
     root.dataset.lamp = state.workstation.lamp ? 'on' : 'off';
@@ -512,9 +522,12 @@ const QuestJournal = (() => {
     category.value=kind;category.addEventListener('change',()=>{mapFilter.kind=category.value;navigate('world');centerMapSelection();});
     const saved=button(mapFilter.saved?'Favorites only ✓':'Favorites',()=>{mapFilter.saved=!mapFilter.saved;navigate('world');centerMapSelection();},'qj-command-link','map-favorites');saved.setAttribute('aria-pressed',String(mapFilter.saved));
     filters.append(category,saved);
-    const search=E('input',{type:'search',value:mapFilter.query,attrs:{'aria-label':'Find a saved place',placeholder:'Find a place…',maxlength:120},dataset:{focus:'map-search'}});
-    search.addEventListener('input',()=>{mapFilter.query=search.value;render();centerMapSelection();});
-    const surprise=mapIcon('dice','Pick somewhere for me',async()=>{const pool=visible.filter(p=>p.id!==(previewPlace||state.atlas.selected)&&!p.visitedAt),fallback=visible.filter(p=>p.id!==(previewPlace||state.atlas.selected)),choices=pool.length?pool:fallback;if(choices.length)await mapPick(choices[Math.floor(Math.random()*choices.length)].id,true);},'#ff8c42');
+    // Keep the actual input (focus, caret and IME composition) across filtered map updates.
+    const search=root.querySelector('[data-focus="map-search"]') || E('input',{type:'search',value:mapFilter.query,attrs:{'aria-label':'Find a saved place',placeholder:'Find a place…',maxlength:120},dataset:{focus:'map-search'}});
+    if(search.value!==mapFilter.query)search.value=mapFilter.query;
+    search.oninput=event=>{mapFilter.query=search.value;if(!event.isComposing)scheduleMapSearch();};
+    search.oncompositionend=()=>{mapFilter.query=search.value;scheduleMapSearch();};
+    const surprise=mapIcon('dice','Pick somewhere for me',async()=>{const visible=mapPlaces(),pool=visible.filter(p=>p.id!==(previewPlace||state.atlas.selected)&&!p.visitedAt),fallback=visible.filter(p=>p.id!==(previewPlace||state.atlas.selected)),choices=pool.length?pool:fallback;if(choices.length)await mapPick(choices[Math.floor(Math.random()*choices.length)].id,true);},'#ff8c42');
     surprise.querySelector('button').disabled=visible.length<2;
     filters.append(search,surprise);
     for(const layer of mapLayers){try{if(window.QuestMapFirst?.ownsChip(layer.id))continue;/* (round 64, mapfirst64) My Paris is the map strip's Visited chip */const c=layer.chip?.(layerKit);if(c)filters.append(c);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's chip(kit) → one labelled toggle in this row (My Paris)
@@ -541,9 +554,17 @@ const QuestJournal = (() => {
     placePanel(selected,panel);
     paintActivePlace=id=>{const p=mapPlaces().find(p=>p.id===id);if(!p||!panel.isConnected)return;panel.replaceChildren();placePanel(p,panel);glaze(panel);};
     if(!keep){layout.append(map,panel);content.append(layout);}
-    const atlasOptions={places:[...visible.map(p=>({...p,kind:window.QuestParis?.of(p)?.tags.includes('food')?'food':C.placeKind(p),color:window.QuestParis?.of(p)?.tags.includes('food')?'#ffb759':mapKind(p).color,tone:window.QuestMapFirst?.tone(p,state)})),...layerPins.filter(p=>!p.show || !visible.some(v=>window.QuestParis?.of(v) && typeof ShowSyncCore!=='undefined' && QuestParis.metres(p,v)<250 && ShowSyncCore.venueKey(p.name)===ShowSyncCore.venueKey(QuestParis.of(v).name)))],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines};
+    const optionsFor=(visible,selected,layerPins)=>({places:[...visible.map(p=>({...p,kind:window.QuestParis?.of(p)?.tags.includes('food')?'food':C.placeKind(p),color:window.QuestParis?.of(p)?.tags.includes('food')?'#ffb759':mapKind(p).color,tone:window.QuestMapFirst?.tone(p,state)})),...layerPins.filter(p=>!p.show || !visible.some(v=>window.QuestParis?.of(v) && typeof ShowSyncCore!=='undefined' && QuestParis.metres(p,v)<250 && ShowSyncCore.venueKey(p.name)===ShowSyncCore.venueKey(QuestParis.of(v).name)))],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines});
+    const atlasOptions=optionsFor(visible,selected,layerPins);
     if(keep){atlasView.update(atlasOptions);map.querySelectorAll(':scope>.qmf-strip,:scope>.qmf-status').forEach(n=>n.remove());}else atlasView=QuestAtlas.mount(map,atlasOptions); // (round 65, questperf65) same map, pins diffed
-    worldKeep={layout,map,panel};
+    worldKeep={layout,map,panel,search:()=>{
+      const places=mapPlaces(),selected=places.find(p=>p.id===(previewPlace||state.atlas.selected))||places[0],pins=[];
+      for(const layer of mapLayers){try{if(!window.QuestMapFirst?.off(layer.id))pins.push(...(layer.pins?.(mapFilter)||[]));}catch(err){console.warn('[quest map search]',layer.id,err);}}
+      atlasView.update({...optionsFor(places,selected,pins),center:selected});
+      panel.replaceChildren();placePanel(selected,panel);glaze(panel);
+      surprise.querySelector('button').disabled=places.length<2;
+      const count=content.querySelector('.qj-field-footer>span');if(count)count.textContent=places.length+' places';
+    }};
     window.QuestMapFirst?.overlay(map,layerKit); // (round 64, mapfirst64) one strip on the map: Places · Shows · My walks · Visited · Plan a walk (+ the shows' status line)
     for(const layer of mapLayers){try{const below=layer.below?.(layerKit);if(below)content.append(below);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's below(kit) → one node under the map (My Paris's timeline strip)
     const stamps=state.atlas.places.filter(p=>p.visitedAt).length;
@@ -1106,11 +1127,11 @@ const QuestJournal = (() => {
     const nav = navigation(menu);
     root.append(top, nav, content, status, focusBar);setupHints(); await load();
     try { legacy = await window.hub.kvGet('creative-playground'); } catch { /* Old notebook is never modified. */ }
-    clearInterval(ticker); ticker = setInterval(() => { if (H.activeId === 'tool:quests') tick(); }, 1000);
+    clearInterval(ticker); ticker = setInterval(() => { if (visible()) tick(); }, 1000);
     const surface = body.closest('.surface'); if (surface) new MutationObserver(() => { syncMotion(); if (H.activeId !== 'tool:quests') {hideHint();root.querySelectorAll('audio,video').forEach(v => v.pause());} }).observe(surface, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
-    document.addEventListener('visibilitychange', () => { syncMotion(); if (document.hidden) {hideHint();root.querySelectorAll('audio,video').forEach(v => v.pause());} });
+    document.addEventListener('visibilitychange', () => { syncMotion(); if (document.hidden) {hideHint();root.querySelectorAll('audio,video').forEach(v => v.pause());} else if(needsRender && visible())render(); });
   }
-  Tools.define({ id: 'quests', name: 'Sidequest Studio', icon: '✦', color: '#d9b777', description: 'Your quests, next ideas and small victories', mount: body => mount(body).catch(err => { body.textContent = `Journal could not open: ${calmError(err)}`; }), onShow: () => { if (state) render(); } });
+  Tools.define({ id: 'quests', name: 'Sidequest Studio', icon: '✦', color: '#d9b777', description: 'Your quests, next ideas and small victories', mount: body => mount(body).catch(err => { body.textContent = `Journal could not open: ${calmError(err)}`; }), onShow: () => { syncMotion(); if (state && needsRender) render(); else if(state){tick();if(page==='world')window.QuestMapFirst?.open();} } });
   Commands.register({ name: 'quests', area: 'Create', desc: 'Open your quest journal, campaigns, XP, skill tree and rewards', run: () => activate('tool:quests') });
   // parisquests61 (tools/quest-paris-ui.js): the same transactional mutate, a loaded flag, the map filter and the
   // journal's own UI helpers, so the Paris guide and `/quest` drive the journal instead of writing it behind its back.
