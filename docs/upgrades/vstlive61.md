@@ -198,3 +198,6 @@ With the UA interface connected and powered, Serum 2 and Vital installed (VST3, 
 12. **Pause audio**: the sound fades out cleanly; the UA driver is released (a DAW can use it again).
 13. Optional muted real-plugin test (developer): `set HEARTH_VST_PYTHON=%USERPROFILE%\Hearth\data\creative-vst\runtime\Scripts\python.exe`
     then `node dev\vst-live-test.js` — it prints the device list (`asio: true` expected) and runs both instruments muted.
+
+## Merged with presethover61 (round 61)
+The ✦ Preset window (tools/preset-hover.js) reaches the instrument through `WorkbenchVST.live` (= `WorkbenchVST.door`), which now runs over `WorkbenchVST.api`: `current()` → `{ name, parameters, ready, live }`, `apply(values)` → `api.set(values, { source: "preset-hover" })` (validated, streamed to the running instrument, one undo step, emits `params`), `snapshot()`, `keep(label, state)` (the bank, emits `preset`).
