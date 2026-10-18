@@ -49,6 +49,11 @@ const SG = Core.sourceFromUrl('https://shotgun.live/en/concerts/paris'), DC = Co
   ok('merge: the rest stay apart', merged.length === 7, merged.map((s) => s.title));
   ok('merge: stable keys', Core.merge([dc.shows, sg.shows, nx.shows]).map((s) => s.key).sort().join() === merged.map((s) => s.key).sort().join());
   const week = Core.thisWeek(merged, NOW);
+  const nested={id:'6aba229b2bc8cb00016b1b12',name:'Fixture public DICE card',status:'sold-out',dates:{event_start_date:new Date(NOW+86400000).toISOString(),event_end_date:new Date(NOW+90000000).toISOString()},venues:[{name:'Fixture venue',address:'1 rue Fixture, 75011 Paris',city:{location:{lat:48.864716,lng:2.349014}}}],price:{currency:'EUR',amount:null,amount_from:1350},images:{square:'https://dice-media.imgix.net/fixture.jpg'}};
+  const nestedPage='<script id="__NEXT_DATA__" type="application/json">'+JSON.stringify({props:{pageProps:{events:[nested]}}})+'</script>',current=Core.parsePage(nestedPage,DC).shows[0];
+  ok('DICE current public cards: dates, venues, minor units and canonical event URL',current?.price?.from===13.5&&current.url==='https://dice.fm/event/'+nested.id&&current.start===NOW+86400000&&current.end===NOW+90000000&&current.soldOut,current);
+  ok('DICE city centre is never mistaken for venue coordinates',!Number.isFinite(current.venue.lat)&&!Number.isFinite(current.venue.lon),current.venue);
+  const free=Core.walkEvents({...nested,price:{currency:'EUR',amount:0},status:'cancelled'},DC)[0];ok('DICE free and cancelled cards keep their real states',free.price.from===0&&free.cancelled&&!free.soldOut,free);
   ok('week: only the next 7 days, in order', week.length === 5 && week.every((s, i) => !i || week[i - 1].start <= s.start), week.map((s) => s.title));
   const nightA = new Date(NOW); nightA.setHours(23, 0, 0, 0); const after = new Date(nightA.getTime() + 3 * 3600e3);
   ok('merge: a 2 am start belongs to the night before', Core.nightOf(after.getTime()) === Core.nightOf(nightA.getTime()));
@@ -93,7 +98,7 @@ const SG = Core.sourceFromUrl('https://shotgun.live/en/concerts/paris'), DC = Co
   clock += 21 * 3600e3; hits = [];
   overrides = { 'https://shotgun.live/en/concerts/paris': { file: 'changed.html' } };
   snap = await S.refresh();
-  ok('breaking: changed page keeps the last good list + one plain line', snap.shows.length === 7 && /Shotgun's page changed/.test(snap.status || '') && /Showing the list from/.test(snap.status), snap.status);
+  ok('breaking: changed page keeps the last good unexpired list + one plain line', snap.shows.length === merged.filter(x=>(x.end||x.start+4*3600e3)>=clock).length && /Shotgun's page changed/.test(snap.status || '') && /Showing the list from/.test(snap.status), snap.status);
   // a protection page: stop, keep, don't come back today
   clock += 21 * 3600e3; hits = [];
   overrides = { 'https://dice.fm/browse/paris-5b23e8a0e63cc224a4c36a2d': { file: 'blocked.html', status: 403, headers: { 'content-type': 'text/html', 'cf-mitigated': 'challenge' } }, 'https://shotgun.live/en/concerts/paris': { file: 'changed.html' } };

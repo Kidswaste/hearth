@@ -26,6 +26,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
     const { E, button, p, questDetail, mutate } = { ...ui(), mutate: J().mutate };
     host.append(E('div', { class: 'qj-paris-note' }, p(`${P.arrLabel(g.arr)} · ${g.why}`), p('Best: ' + g.best, 'qj-paris-best')));
     if(g.url)host.append(button('Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
+    if(P.stories.some(t=>t.places.includes(g.id)))host.append(button('Story quests here',()=>todayDialog(g.id),'qj-primary'));
     if(P.socialMissions.some(t=>t.places.includes(g.id)))host.append(button('Friend outings here',()=>socialOutings(g.id),'qj-quiet'));
     if (!P.guide.some(x => x.id === g.id)) return;
     const s = state(), c = placeCampaign(s, g.id), next = c && C.next(s, c);
@@ -144,6 +145,37 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
       },'qj-primary'),button('Show meeting place',async()=>{await J().mutate(s=>{P.ensurePin(s,place.value);s.atlas.selected=place.value;},'Meeting place on your map.');d.close();browser.close();J().mapFilter({});},'qj-quiet')));
     },'FH / ONE GOOD MOMENT');
   }
+  let todayPrefs={energy:1,budget:0,friendId:''};
+  function showsButton(){const {button}=ui(),b=button('DICE + Shotgun',()=>{if(typeof ShowSync==='undefined')throw Error('Shows are still loading. Try again in a moment.');ShowSync.listDialog(ui());},'qj-quiet qj-social-entry');b.prepend(QuestAtlas.icon('music'));b.dataset.help='Your favourite show feeds · load, refresh, venue pins and tickets';return b;}
+  function todayEntry(){const {E,button}=ui(),start=button('What feels good today?',()=>todayDialog(),'qj-primary');return E('div',{class:'qj-today-entry'},start,showsButton());}
+  function todayDialog(placeId=''){
+    const {E,button,p,dialog}=ui();dialog('A little story today',(body,d)=>{
+      d.classList.add('qj-city-catalog');let offset=0;
+      const select=(name,items,value)=>{const input=E('select',{attrs:{'aria-label':name}},...items.map(([v,text])=>E('option',{value:String(v),text})));input.value=String(value);return input;};
+      if(todayPrefs.friendId&&!state().world.friends.some(f=>f.id===todayPrefs.friendId))todayPrefs.friendId='';
+      const energy=select('Energy',[[1,'Low · a gentle start'],[2,'Steady · make something'],[3,'Charged · go deeper']],todayPrefs.energy),budget=select('Outing budget',[[0,'€0 · use what I have'],[5,'Up to €5'],[15,'Up to €15']],todayPrefs.budget),company=select('Company',[['','Solo'],...state().world.friends.map(f=>[f.id,'With '+f.name])],todayPrefs.friendId),grid=E('div',{class:'qj-city-grid'}),status=p('','qj-social-count');
+      body.append(E('div',{class:'qj-today-controls'},E('label',{},E('span',{text:'Energy'}),energy),E('label',{},E('span',{text:'Budget'}),budget),E('label',{},E('span',{text:'Company'}),company)),status,grid,E('div',{class:'qj-actions'},button('Another three',()=>{offset+=3;draw();},'qj-quiet'),button('Explore the 11th',async()=>{await J().mutate(s=>{for(const g of P.guide.filter(g=>g.arr===11))P.ensurePin(s,g.id);},'The 11th is on your map.');d.close();J().mapFilter({guide:'11e'});},'qj-quiet'),showsButton()));
+      for(const input of [energy,budget,company])input.onchange=()=>{todayPrefs={energy:Number(energy.value),budget:Number(budget.value),friendId:company.value};offset=0;draw();};
+      function draw(){
+        const opts={...todayPrefs,placeId},list=P.today(state(),opts,undefined,offset);grid.replaceChildren();status.textContent=(placeId?P.byId(placeId).name+' · ':'11th arrondissement · ')+'Start a chapter. Finish another day. Travel costs are extra.';
+        if(!list.length)grid.append(p('No unfinished story fits here. Try more energy, another place, or browse your quest notebook.'));
+        for(const t of list){const c=state().campaigns.find(c=>c.cityStory===t.id),b=button('',()=>storyDetail(t,opts,placeId,d),'qj-city-card');b.dataset.story=t.id;b.style.setProperty('--city-accent',t.path==='music'?'#ff6b9d':t.path==='game'?'#ffb14a':'#bd8bff');b.append(QuestAtlas.icon(t.icon),E('span',{class:'qj-label',text:(c?'CONTINUE':t.cap?'UP TO €'+t.cap:'NO SPEND')+' · '+t.chapters.length+' CHAPTERS'}),E('strong',{text:t.title}),E('span',{class:'qj-city-card-hint',text:t.loot}));grid.append(b);}
+      }draw();
+    },'FH / TODAY, AT YOUR PACE');
+  }
+  function storyDetail(t,opts,placeId,browser){
+    const {E,button,p,dialog}=ui(),old=state().campaigns.find(c=>c.cityStory===t.id);
+    dialog(t.title,(body,d)=>{
+      d.classList.add('qj-city-detail');body.append(p(t.hook));
+      const place=E('select',{attrs:{'aria-label':'Story starting point'}},...t.places.map(pid=>E('option',{value:pid,text:P.byId(pid).name})));place.value=old?.parisPlace||placeId||t.places[0];place.disabled=!!old;
+      body.append(E('label',{class:'qj-social-field'},E('span',{text:old?'Your saved starting point':'Start around'}),place));
+      const chapters=E('div',{class:'qj-story-chapters'});for(const [i,[title,brief]]of t.chapters.entries())chapters.append(E('details',{class:'qj-social-fold'},E('summary',{text:(i+1)+'. '+title}),p(brief)));body.append(chapters);
+      body.append(E('div',{class:'qj-city-brief'},E('strong',{text:'You keep: '+t.loot}),p(t.badge+' · '+t.chapters.reduce((sum,x)=>sum+x[2],0)+' XP after proof + review.')),p(old?'Company saved: '+old.storyCompany+'. Your accepted story stays the same.':'Solo and friends both work. A rough short, captioned stills or a storyboard counts. No posting required.','qj-social-count'));
+      const treat=P.socialTreats.find(r=>r.id===t.treat&&r.amount<=opts.budget),goal=E('input',{type:'checkbox',attrs:{'aria-label':'Use the matching treat as my reward goal'}});
+      if(!old&&treat)body.append(E('label',{class:'qj-story-treat'},goal,E('span',{text:'Work toward: '+(state().rewards.find(r=>r.id==='r-city-social-'+treat.id)?.name||treat.name)})),p('Optional spark goal in Treats. Your creation and badge are the story reward. No automatic spending.','qj-social-count'));
+      body.append(E('div',{class:'qj-actions'},button(old?'Continue my story':'Begin the story',async()=>{const c=await J().mutate(s=>P.startStory(s,t.id,place.value,opts,goal.checked),'Story saved. One chapter at a time.');d.close();browser.close();ui().questDetail((C.next(state(),c)||c.quests[0]).id);},'qj-primary'),button('Check place & access',()=>window.hub.openExternal(P.byId(place.value).url),'qj-quiet')));
+    },'FH / '+t.chapters.length+' CHAPTERS · NO COUNTDOWN');
+  }
   // ---------- chat: /quest ----------
   const SUBS = [['paris', 'Show the Paris guide on the map (optionally filtered: shows, records, park, 11e…)'], ['places', 'List the guide’s places here in the chat'], ['go', 'Start a place’s go → do → proof quest'], ['add', 'Add a personal quest: ' + P.personal.map(t => t.key).join(', ')], ['park', 'Make music at the park: start a workbench sketch named after it'], ['list', 'Your Paris quests and their steps'], ['guide', 'guide off: take untouched guide pins off the map · guide on: put them back']];
   function help() { return 'Paris quests:\n' + SUBS.map(([k, d]) => `/quest ${k} · ${d}`).join('\n'); }
@@ -210,5 +242,5 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
   }
   // (round 61, questhud61) one /quest command: the rail's quest tracker (questhud.js) registers it and passes these
   // words (paris, places, guide, go, add, park, list, help, a place / personal quest by name) to run() / complete() here
-  return { keep, words, chip, panel, footer, guideDialog, catalog, adventures, socialOutings, run, complete, journal };
+  return { keep, words, chip, panel, footer, guideDialog, catalog, adventures, socialOutings, todayEntry, todayDialog, run, complete, journal };
 })();

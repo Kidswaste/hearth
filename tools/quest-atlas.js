@@ -51,16 +51,16 @@
     svg.append(p);return svg;
   }
   function mount(host,{places=[],selected,onSelect=()=>{},onAdd=()=>{},lines=[]}={}) { // lines: (round 63, questwalk63) [{ id, color, fit, points: [{ id?, lat, lon, label? }] }] drawn over the pins; `fit` frames a new line once; pins not on it fade
-    let {lat,lon,z,enabled}=view,drag=null,disposed=false;const events=new AbortController(),listen=(type,fn)=>host.addEventListener(type,fn,{signal:events.signal});
+    let {lat,lon,z,enabled}=view,drag=null,disposed=false,frame=0,lastWheelZoom=0;const events=new AbortController(),listen=(type,fn,options={})=>host.addEventListener(type,fn,{...options,signal:events.signal});
     const make=(tag,cls,text)=>{const n=document.createElement(tag);n.className=cls||'';if(text)n.textContent=text;return n;};
-    host.classList.add('qj-atlas');host.setAttribute('aria-label','Real Paris map. Arrow keys pan; plus and minus zoom. Double-click to add a place.');host.tabIndex=0;
+    host.classList.add('qj-atlas');host.setAttribute('aria-label','Real Paris map. Scroll or drag to pan. Ctrl plus scroll zooms. Arrow keys pan; plus and minus zoom. Double-click to add a place.');host.tabIndex=0;
     const tiles=make('div','qj-atlas-tiles'),pins=make('div','qj-atlas-pins'),controls=make('div','qj-atlas-controls'),credit=make('a','qj-atlas-credit','© OpenStreetMap contributors'),hint=make('div','qj-atlas-hint','Your places are local. Load the street map to explore Paris.');
     credit.href='https://www.openstreetmap.org/copyright';credit.addEventListener('click',e=>{e.preventDefault();window.hub.openExternal(credit.href);});
     const action=(text,fn)=>{const b=make('button','qj-button qj-hardware',text);b.type='button';b.addEventListener('click',e=>{e.stopPropagation();fn();});controls.append(b);return b;};
     const load=action('Retry street map',()=>{enabled=true;tiles.replaceChildren();load.hidden=true;hint.textContent='Drag to explore · double-click to add a place';draw();});load.hidden=true;
     action('+',()=>zoom(1)).setAttribute('aria-label','Zoom in');action('−',()=>zoom(-1)).setAttribute('aria-label','Zoom out');action('Paris',()=>{lat=48.862;lon=2.35;z=12;draw();});
     const locate=action('',()=>{const p=places.find(p=>p.id===selected);if(p){lat=p.lat;lon=p.lon;draw();}});locate.append(icon('target'));locate.title='Center on selected place';locate.setAttribute('aria-label',locate.title);
-    if(enabled)hint.textContent='Drag to explore · double-click to add a place';
+    if(enabled)hint.textContent='Scroll or drag to move · Ctrl + scroll to zoom';
     host.append(tiles,pins,controls,credit,hint);
     // (round 63, questwalk63) polylines in one SVG in the pins layer (it pans with the pins); labels are text nodes, never markup
     function route(list,left,top,w,h){const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('class','qj-atlas-route');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('aria-hidden','true');
@@ -73,7 +73,7 @@
       const la=pts.map(p=>p.lat),lo=pts.map(p=>p.lon);lat=(Math.min(...la)+Math.max(...la))/2;lon=(Math.min(...lo)+Math.max(...lo))/2;
       for(z=16;z>12;z--){const xy=pts.map(p=>project(p.lat,p.lon,z)),xs=xy.map(p=>p[0]),ys=xy.map(p=>p[1]);if(Math.max(...xs)-Math.min(...xs)<=w-120&&Math.max(...ys)-Math.min(...ys)<=h-120)break;}}
     function zoom(delta){z=clamp(z+delta,11,17);draw();}
-    function draw(){if(disposed)return;fit();lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);const w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;const [cx,cy]=project(lat,lon,z),left=cx-w/2,top=cy-h/2,keep=new Set();
+    function draw(){if(disposed)return;fit();host.dataset.zoom=z;/* (round 64, mapfirst64) the zoom, for CSS (guide pins become dots at the city zoom) */lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);const w=host.clientWidth,h=host.clientHeight;if(!w||!h)return;const [cx,cy]=project(lat,lon,z),left=cx-w/2,top=cy-h/2,keep=new Set();
       if(enabled)for(let x=Math.floor(left/256);x<=Math.floor((left+w-1)/256);x++)for(let y=Math.floor(top/256);y<=Math.floor((top+h-1)/256);y++){
         const key=`${z}/${x}/${y}`;keep.add(key);let img=tiles.querySelector(`[data-tile="${key}"]`);if(!img){img=make('img');img.alt='';img.draggable=false;img.dataset.tile=key;img.src=`https://tile.openstreetmap.org/${key}.png`;img.addEventListener('error',()=>{img.style.visibility='hidden';hint.textContent='Map unavailable · pins saved';hint.title='The street map is offline or blocked. Retry once; if it still fails, check for a Hearth update.';load.hidden=false;});tiles.append(img);}img.style.left=`${x*256-left}px`;img.style.top=`${y*256-top}px`;
       }
@@ -86,8 +86,19 @@
     listen('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;tiles.style.transform=pins.style.transform=`translate(${dx}px,${dy}px)`;});
     const end=e=>{if(!drag)return;[lat,lon]=unproject(drag.center[0]-e.clientX+drag.x,drag.center[1]-e.clientY+drag.y,z);lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);drag=null;tiles.style.transform=pins.style.transform='';draw();};listen('pointerup',end);const cancel=()=>{drag=null;tiles.style.transform=pins.style.transform='';};listen('pointercancel',cancel);listen('lostpointercapture',cancel);
     listen('dblclick',e=>{if(e.target.closest('button,a'))return;const r=host.getBoundingClientRect(),c=project(lat,lon,z),point=unproject(c[0]+e.clientX-r.left-r.width/2,c[1]+e.clientY-r.top-r.height/2,z);onAdd({lat:+point[0].toFixed(6),lon:+point[1].toFixed(6)});});
+    function scheduleDraw(){if(!frame)frame=requestAnimationFrame(()=>{frame=0;draw();});}
+    listen('wheel',e=>{
+      if(drag||e.target.closest('.qj-atlas-controls,a'))return;e.preventDefault();
+      const scale=e.deltaMode===1?16:e.deltaMode===2?host.clientHeight:1;
+      if(e.ctrlKey||e.metaKey){
+        const now=performance.now();if(now-lastWheelZoom<140||!e.deltaY)return;lastWheelZoom=now;
+        const next=clamp(z+(e.deltaY<0?1:-1),11,17);if(next===z)return;
+        const r=host.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,c=project(lat,lon,z),at=unproject(c[0]+dx,c[1]+dy,z);z=next;const p=project(...at,z);[lat,lon]=unproject(p[0]-dx,p[1]-dy,z);
+      }else{const c=project(lat,lon,z),dx=(e.shiftKey&&!e.deltaX?e.deltaY:e.deltaX)*scale,dy=(e.shiftKey&&!e.deltaX?0:e.deltaY)*scale;[lat,lon]=unproject(c[0]+dx,c[1]+dy,z);}
+      lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);scheduleDraw();
+    },{passive:false});
     const observer=new ResizeObserver(draw);observer.observe(host);draw();
-    return {destroy(){view={lat,lon,z,enabled};disposed=true;events.abort();observer.disconnect();},focus(p){lat=p.lat;lon=p.lon;draw();},center(){return {lat,lon};}};
+    return {destroy(){view={lat,lon,z,enabled};disposed=true;events.abort();observer.disconnect();cancelAnimationFrame(frame);},focus(p){if(!p)return;lat=p.lat;lon=p.lon;draw();},select(id){selected=id;for(const b of pins.querySelectorAll('[data-place]')){b.classList.toggle('selected',b.dataset.place===id);b.setAttribute('aria-pressed',String(b.dataset.place===id));}},center(){return {lat,lon};}};
   }
   return {project,unproject,mount,icon};
 });
