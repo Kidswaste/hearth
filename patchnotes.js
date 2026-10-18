@@ -26,10 +26,13 @@ const PatchNotes = (() => {
     let cur = files.includes(file) ? file : files[0];
     const body = el('div', { class: 'pn-scroll' });
     const pick = el('select', { class: 'pn-pick', attrs: { 'aria-label': 'Round' } }, files.map((f) => el('option', { value: f, text: `Round ${roundOf(f)}`, selected: f === cur })));
-    const show = async () => { body.replaceChildren(el('p', { class: 'hint', text: 'Loading…' })); try { body.replaceChildren(block(await readText(`docs/patch-notes/${cur}`))); } catch (err) { body.replaceChildren(el('p', { class: 'hint', text: calmError(err) })); } body.scrollTop = 0; };
+    // (round 64, newtour64) rounds 61–63: "✦ Try it · 2 of 5 tried" in the head (trynew.js, its own group)
+    const trySlot = el('span', { class: 'pn-try' });
+    const tryBtn = () => { trySlot.replaceChildren(); const r = roundOf(cur); if (r >= 61 && r <= 63 && window.Lazy) Lazy.load('trynew').then(() => { if (roundOf(cur) === r) trySlot.replaceChildren(window.TryNew?.patchNotesButton(r) || ''); }).catch(() => {}); };
+    const show = async () => { tryBtn(); body.replaceChildren(el('p', { class: 'hint', text: 'Loading…' })); try { body.replaceChildren(block(await readText(`docs/patch-notes/${cur}`))); } catch (err) { body.replaceChildren(el('p', { class: 'hint', text: calmError(err) })); } body.scrollTop = 0; };
     pick.addEventListener('change', () => { cur = pick.value; show(); });
     const dlg = el('dialog', { class: 'ui-modal pn-dialog' },
-      el('div', { class: 'pn-head' }, el('h2', { text: '📰 Patch notes' }), el('span', { class: 'spacer' }), pick),
+      el('div', { class: 'pn-head' }, el('h2', { text: '📰 Patch notes' }), el('span', { class: 'spacer' }), trySlot, pick),
       body,
       el('div', { class: 'modal-buttons' }, el('button', { type: 'button', class: 'primary', text: 'Done', on: { click: () => dlg.close() } })));
     dlg.addEventListener('close', () => dlg.remove());

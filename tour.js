@@ -18,7 +18,7 @@ const Tour = (() => {
   function resolve(sel) {
     if (!sel) return null;
     if (sel instanceof Element) return visible(sel) ? sel : null;
-    for (const s of [].concat(sel)) { try { for (const n of document.querySelectorAll(s)) if (visible(n)) return n; } catch { /* a bad selector is skipped */ } }
+    for (const s of [].concat(sel)) { if (typeof s === 'function') { try { const n = s(); if (n && visible(n)) return n; } catch { /* not there */ } continue; } try { for (const n of document.querySelectorAll(s)) if (visible(n)) return n; } catch { /* a bad selector is skipped */ } }
     return null;
   }
 
@@ -41,12 +41,14 @@ const Tour = (() => {
   }
 
   // ---------- running a tour ----------
-  function stop({ done = false } = {}) {
+  function stop({ done = false, how = '' } = {}) {
     if (!cur) return false;
     setProg(cur.tour.id, done ? { step: 0, done: true } : { step: cur.i });
+    const ended = cur; // (round 64, newtour64) a tour may want to know how it ended (Try what's new keeps its own progress)
     cur = null; clearTimeout(findT); ro?.disconnect(); ro = null;
     removeEventListener('resize', reflow); removeEventListener('keydown', onKey, true);
     card?.remove(); ring?.remove(); card = ring = target = null;
+    try { ended.tour.onEnd?.({ done, step: ended.i, total: ended.steps.length, how }); } catch (err) { console.warn('tour end', err); }
     return true;
   }
   const reflow = debounce(() => { if (cur && target) { if (!target.isConnected) { show(cur.i); return; } placeRing(ring, target); placeCard(); } }, 80);
@@ -71,6 +73,7 @@ const Tour = (() => {
   async function openFor(step) {
     const o = step.open;
     if (!o) return;
+    if (typeof o === 'function') { try { await o(); } catch (err) { console.warn('tour open', err); } return; } // (round 64, newtour64) a place opened by code
     try {
       if (o.startsWith('tool:')) { if (H.surfaceIdFor?.(H.activeId) !== o) activate(o); } else if (o.startsWith('/')) await runLine(o, { quiet: true });
     } catch (err) { console.warn('tour open', err); }
@@ -113,9 +116,12 @@ const Tour = (() => {
       !target && step.target ? el('p', { class: 'tour-hint', text: 'Not on screen right now.' }) : null,
       el('div', { class: 'tour-btns' },
         i ? btn('‹ Back', 'ghost small', () => show(i - 1)) : null,
-        step.cmd ? btn('Try it', 'ghost small tour-try', () => runLine(step.cmd), D.safeLine(step.cmd, (n) => Boolean(Commands.get(n))) ? 'Runs it' : 'Puts it in the chat box') : null,
+        // (round 64, newtour64) Skip / Later for tours that offer them (Try what's new): skip = not for me, later = paused here
+        tour.onEnd && tour.skippable ? btn('Skip', 'ghost small tour-skip', () => stop({ how: 'skip' }), 'Not for me: skip this one') : null,
+        tour.onEnd && tour.skippable ? btn('Later', 'ghost small tour-later', () => { stop({ how: 'later' }); toast(`${tour.name}: paused at step ${i + 1}`, { timeout: 2200 }); }, 'Pause here: it picks up at this step next time') : null,
+        step.cmd ? btn('Try it', 'ghost small tour-try', () => { try { tour.onTry?.(step); } catch { /* progress is a convenience */ } runLine(step.cmd); }, D.safeLine(step.cmd, (n) => Boolean(Commands.get(n))) ? 'Runs it' : 'Puts it in the chat box') : null,
         el('span', { class: 'spacer' }),
-        btn(last ? 'Done ✓' : 'Next ›', 'small primary tour-next', () => (last ? (stop({ done: true }), toast(`${tour.name}: done. Discover has the other tours.`, { timeout: 2200 })) : show(i + 1)))));
+        btn(last ? 'Done ✓' : 'Next ›', 'small primary tour-next', () => (last ? (stop({ done: true }), toast(tour.doneText || `${tour.name}: done. Discover has the other tours.`, { timeout: 2200 })) : show(i + 1)))));
     if (!card) {
       card = el('div', { class: 'tour-card speed-card', role: 'dialog', 'aria-label': `Tour: ${tour.name}`, 'data-no-usage': '' });
       // drag it out of the way by its head

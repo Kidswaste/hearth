@@ -263,11 +263,17 @@ const Updater = (() => {
     if (seen == null) { store.set('whatsnew.seen', top); return; } // the first start with it: from here on
     if (top > Number(seen)) loadWn().then(() => WhatsNew.atStart()).catch(() => {});
   }
+  // (round 64, newtour64) ✦ Try what's new: ONE Hints offer, ever, of the hands-on paths through rounds 61–63; the group
+  // loads only for it (not in a test copy unless a check asks: store trynew.test)
+  function tryNewAtStart() {
+    if (store.get('trynew.offer', null) || window.Hints?.seen?.('trynew:offer') || window.Hints?.off?.() || (window.SMOKE_SAVES && !store.get('trynew.test', null))) return;
+    if (typeof Lazy !== 'undefined') Lazy.load('trynew').then(() => TryNew.offer()).catch(() => {});
+  }
   // (round 29) the patch-notes reader (patchnotes.js, its own lazy group)
   const patchNotes = (file) => (typeof Lazy !== 'undefined' ? Lazy.load('patchnotes') : Promise.resolve()).then(() => PatchNotes.open(file)).catch((err) => toast(err.message, { type: 'error' }));
   function start() {
     afterUpdate();
-    const ready = () => { restoreView(); afterSwap(); setTimeout(() => sinceAwayAtStart(), 4000); };
+    const ready = () => { restoreView(); afterSwap(); setTimeout(() => sinceAwayAtStart(), 4000); setTimeout(() => tryNewAtStart(), 60000); };
     if (performance.getEntriesByName('hearth:ready').length) ready(); else addEventListener('hearth:ready', ready, { once: true });
     AppUI.addAction?.('Patch notes: what changed, round by round', () => patchNotes());
     AppUI.addAction?.('Go back to the previous Hearth version (before the last update)', () => goBack());
