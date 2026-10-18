@@ -35,14 +35,16 @@ function walk({ secs = 30, hz = 240, period = 6, hitchAt = [], oneOff = [], seed
 (async () => {
   await t('the ring: 8 numbers a frame, made once, the oldest overwritten, read back oldest first', () => {
     const r = R.ring(4);
-    assert.strictEqual(r.a.length, 32);
-    const buf = r.a;
-    for (let i = 1; i <= 6; i += 1) R.push(r, i * 10, i, i, 0, -i, 0, 1, 2);
-    assert.strictEqual(r.a, buf, 'the same array (no allocation)');
+    assert.strictEqual(r.t.length, 4); assert.strictEqual(r.p.length, 4 * 6 + 16);
+    const buf = [r.t, r.l, r.p];
+    for (let i = 1; i <= 6; i += 1) R.push(r, i * 10, i * 10 - i, i, 0, -i, 0, 1, 2);
+    assert.deepStrictEqual([r.t, r.l, r.p], buf, 'the same arrays (no allocation)');
     assert.strictEqual(r.len, 4); assert.strictEqual(r.total, 6);
     const o = R.ordered(r);
     assert.deepStrictEqual([0, 1, 2, 3].map((k) => o[k * 8]), [30, 40, 50, 60]);
+    assert.deepStrictEqual([0, 1, 2, 3].map((k) => o[k * 8 + 1]), [3, 4, 5, 6], 'the gaps worked out afterwards');
     assert.strictEqual(o[3 * 8 + 4], -6);
+    assert.strictEqual(R.ordered(r, 25)[0], 5, 'on the recording\'s clock');
     const r2 = R.ring(8); R.push(r2, 1, 2, 3, 4, 5, 6, 7, 8);
     assert.strictEqual(R.ordered(r2).length, 8, 'not wrapped: a view of what was written');
     assert.strictEqual(R.N, 131072);
@@ -117,8 +119,8 @@ function walk({ secs = 30, hz = 240, period = 6, hitchAt = [], oneOff = [], seed
 
   await t('the trace: decoded from the page\'s base64, the pauses (> 5 s) left out', () => {
     const r = R.ring(16);
-    for (let i = 0; i < 5; i += 1) R.push(r, i * 4, 4, i, 0, 0, 0, 0, 0);
-    R.push(r, 9000, 8000, 5, 0, 0, 0, 0, 0);
+    for (let i = 0; i < 5; i += 1) R.push(r, i * 4 + 4, i * 4, i, 0, 0, 0, 0, 0);
+    R.push(r, 9000, 1000, 5, 0, 0, 0, 0, 0);
     const a = R.ordered(r);
     const d = C.decode({ v: 1, cols: 8, n: r.len, hz: 240, data: Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString('base64') });
     assert.strictEqual(d.n, 6); assert.strictEqual(d.a[5 * 8 + 1], 8000);

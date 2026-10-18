@@ -20,23 +20,29 @@
 (function () {
   // ---------- the pure part (dev/hitchmap-test.js) ----------
   const Rules = (() => {
-    const COLS = 8; // t (ms since the recording started), dt (ms), the player's x y z, the camera's x y z
+    const COLS = 8; // the trace read after the session: t (ms since the recording started), dt (ms), the player's x y z, the camera's x y z
     const N = 1 << 17;
+    const POS = 6; const STAGE = 16; // the ring keeps per frame its time and the one before it (Float64) + 6 positions (Float32)
     const MAX_SHOTS = 4; const SHOT_GAP = 2000; const SHOT_AFTER = 1500; // (no picture in the first 1.5 s of play: loading)
-    function ring(n = N) { return { a: new Float32Array(n * COLS), n, i: 0, len: 0, total: 0 }; }
-    function push(r, t, dt, px, py, pz, cx, cy, cz) {
-      const a = r.a; const o = r.i * COLS;
-      a[o] = t; a[o + 1] = dt; a[o + 2] = px; a[o + 3] = py; a[o + 4] = pz; a[o + 5] = cx; a[o + 6] = cy; a[o + 7] = cz;
-      r.i = r.i + 1 === r.n ? 0 : r.i + 1;
-      if (r.len < r.n) r.len += 1;
-      r.total += 1;
+    // made once: t / l (this frame's time, the frame before's: the gap is worked out after the session, so nothing is
+    // computed per frame) and p (positions, plus a 16-number staging area at its end: a matrix's elements are copied in
+    // with set() and the position taken with copyWithin(): typed-array builtins, no number boxed on the way)
+    function ring(n = N) { return { t: new Float64Array(n), l: new Float64Array(n), p: new Float32Array(n * POS + STAGE), st: n * POS, n, i: 0, len: 0, total: 0, wn: 0 }; }
+    function advance(r) { r.i = r.i + 1 === r.n ? 0 : r.i + 1; if (r.len < r.n) r.len += 1; r.total += 1; }
+    // one frame by value (tests; the page's frame callback writes the same slots itself)
+    function push(r, t, last, px, py, pz, cx, cy, cz) {
+      const i = r.i; const o = i * POS; const p = r.p;
+      r.t[i] = t; r.l[i] = last; p[o] = px; p[o + 1] = py; p[o + 2] = pz; p[o + 3] = cx; p[o + 4] = cy; p[o + 5] = cz;
+      advance(r);
     }
-    // oldest first (a copy only once it wrapped)
-    function ordered(r) {
-      if (r.len < r.n) return r.a.subarray(0, r.len * COLS);
-      const out = new Float32Array(r.n * COLS);
-      out.set(r.a.subarray(r.i * COLS));
-      out.set(r.a.subarray(0, r.i * COLS), (r.n - r.i) * COLS);
+    // the trace, oldest first, 8 numbers a frame (once, after the session): [t − t0, t − the frame before, positions]
+    function ordered(r, t0 = 0) {
+      const out = new Float32Array(r.len * COLS); const start = r.len < r.n ? 0 : r.i;
+      for (let j = 0; j < r.len; j += 1) {
+        const i = (start + j) % r.n; const k = j * COLS; const o = i * POS;
+        out[k] = r.t[i] - t0; out[k + 1] = r.t[i] - r.l[i];
+        for (let q = 0; q < POS; q += 1) out[k + 2 + q] = r.p[o + q];
+      }
       return out;
     }
     // the frame time a spike starts at: ≥ 4× the usual frame, ≥ 3 refreshes, ≥ 20 ms
@@ -50,7 +56,7 @@
     // the usual frame: a slow average that a spike barely moves (one frame of 10× counts as 3×)
     const typical = (typ, dt) => (typ > 0 ? typ + (Math.min(dt, typ * 3) - typ) * 0.02 : dt);
     const clock = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-    return { COLS, N, MAX_SHOTS, SHOT_GAP, SHOT_AFTER, ring, push, ordered, spikeMs, shot, typical, clock };
+    return { COLS, N, POS, MAX_SHOTS, SHOT_GAP, SHOT_AFTER, ring, advance, push, ordered, spikeMs, shot, typical, clock };
   })();
   if (typeof module === 'object' && module && module.exports) { module.exports = Rules; return; }
   if (window.__hearthHitch) return;
@@ -65,8 +71,9 @@
   const R = Rules.ring(Number(O.n) > 0 ? Number(O.n) : Rules.N);
   // every number that changes per frame lives in a typed array (a fractional number in a closure variable is a new heap
   // number each time: gcchurn60)
-  const T = new Float64Array(12);
-  const SELF = 0; const LAST = 1; const TYP = 2; const T0 = 3; const RES = 4; const SHN = 5; const SHL = 6; const SHW = 7; const SPN = 8; const SPT = 9; const SPD = 10; const SKIP = 11;
+  const T = new Float64Array(16);
+  const SELF = 0; const LAST = 1; const TYP = 2; const T0 = 3; const RES = 4; const SHN = 5; const SHL = 6; const SHW = 7; const SPN = 8; const SPT = 9; const SPD = 10; const SKIP = 11; const A0 = 12; const W0 = 13; const SPK = 14;
+  const WIN = 32; // frames between two looks at the usual frame (and, ≥ 1 s apart, where the player / camera are)
   const SHOTS = new Float64Array(Rules.MAX_SHOTS * 2); // [t, dt] of each spike pictured
   let on = true; let paused = false; let offBy = null; let offAt = 0;
   let P = null; let PE = null; let C = null; let CE = null; let camKey = ''; let posFrom = 'camera'; let namedTries = 0;
@@ -103,34 +110,44 @@
   }
 
   // ---------- one frame ----------
+  // Per frame: two stores of times, two builtin copies of positions, one compare. Everything else (the usual frame, the
+  // spike line, where the player / camera are) is looked at once every 32 frames; the gaps are worked out after the session
   function frame(t) {
     if (!on) return;
     raf(frame);
-    const a = now();
-    if (paused || !playing()) { T[LAST] = 0; T[SELF] += now() - a; return; }
-    const last = T[LAST]; T[LAST] = t;
-    if (last > 0 && T[SKIP] === 0) {
-      if (T[T0] === 0) T[T0] = last;
-      if (t - T[RES] > 1000) resolve(t);
-      const dt = t - last; const rt = t - T[T0];
-      let cx = 0; let cy = 0; let cz = 0;
-      if (CE) { cx = CE[12]; cy = CE[13]; cz = CE[14]; } else if (C) { cx = C.position.x; cy = C.position.y; cz = C.position.z; }
-      let px = cx; let py = cy; let pz = cz;
-      if (PE) { px = PE[12]; py = PE[13]; pz = PE[14]; } else if (P) { px = P.x; py = typeof P.y === 'number' ? P.y : 0; pz = typeof P.z === 'number' ? P.z : 0; }
-      Rules.push(R, rt, dt, px, py, pz, cx, cy, cz);
-      const typ = T[TYP];
-      if (typ > 0 && dt >= Rules.spikeMs(typ, HZ)) {
-        T[SPN] += 1; T[SPT] = rt; T[SPD] = dt;
-        const k = T[SHN];
-        if (Rules.shot({ n: k, last: T[SHL], worst: T[SHW] }, rt, dt)) {
-          SHOTS[k * 2] = rt; SHOTS[k * 2 + 1] = dt; T[SHN] = k + 1; T[SHL] = rt; if (dt > T[SHW]) T[SHW] = dt;
-          try { dispatchEvent(new Event('hearth-hitch')); } catch (e) { /* the preload asks for the picture */ }
-        }
-      }
-      T[TYP] = Rules.typical(typ, dt);
+    T[A0] = now();
+    if (paused || !playing()) { T[LAST] = 0; T[SELF] += now() - T[A0]; return; }
+    if (T[LAST] > 0 && T[SKIP] === 0) {
+      if (T[T0] === 0) { T[T0] = T[LAST]; T[W0] = T[LAST]; resolve(t); }
+      if (R.wn >= WIN) look(t);
+      const i = R.i; const o = i * 6; const p = R.p; const st = R.st;
+      R.t[i] = t; R.l[i] = T[LAST];
+      if (CE) { p.set(CE, st); p.copyWithin(o + 3, st + 12, st + 15); } else p.fill(0, o + 3, o + 6);
+      if (PE) { p.set(PE, st); p.copyWithin(o, st + 12, st + 15); } else if (P) { p[o] = P.x; p[o + 1] = typeof P.y === 'number' ? P.y : 0; p[o + 2] = typeof P.z === 'number' ? P.z : 0; } else p.copyWithin(o, o + 3, o + 6);
+      Rules.advance(R); R.wn += 1;
+      if (T[SPK] > 0 && t - T[LAST] >= T[SPK]) spiked(t);
     }
-    T[SKIP] = 0;
-    T[SELF] += now() - a;
+    T[LAST] = t; T[SKIP] = 0;
+    T[SELF] += now() - T[A0];
+  }
+  // every 32 frames: the usual frame (their mean, at most twice the last one: a spike in them barely moves it), the line a
+  // spike starts at, and (≥ 1 s apart) where the player and the camera are
+  function look(t) {
+    const mean = (t - T[W0]) / R.wn;
+    T[TYP] = T[TYP] > 0 ? Math.min(mean, T[TYP] * 2) : mean;
+    T[SPK] = Rules.spikeMs(T[TYP], HZ);
+    T[W0] = t; R.wn = 0;
+    if (t - T[RES] > 1000) resolve(t);
+  }
+  // a spike (rare): counted, and a picture asked for when the rules say so (≤ 4 a session)
+  function spiked(t) {
+    const rt = t - T[T0]; const dt = t - T[LAST];
+    T[SPN] += 1; T[SPT] = rt; T[SPD] = dt;
+    const k = T[SHN];
+    if (Rules.shot({ n: k, last: T[SHL], worst: T[SHW] }, rt, dt)) {
+      SHOTS[k * 2] = rt; SHOTS[k * 2 + 1] = dt; T[SHN] = k + 1; T[SHL] = rt; if (dt > T[SHW]) T[SHW] = dt;
+      try { dispatchEvent(new Event('hearth-hitch')); } catch (e) { /* the preload asks for the picture */ }
+    }
   }
   // a hidden window has no frames: the gap after it is not a hitch
   const onVis = () => { T[SKIP] = 1; T[LAST] = 0; };
@@ -143,7 +160,7 @@
     removeEventListener('visibilitychange', onVis);
     return true;
   }
-  const secs = () => (R.len ? R.a[((R.i - 1 + R.n) % R.n) * Rules.COLS] : 0);
+  const secs = () => (R.len && T[T0] ? R.t[(R.i - 1 + R.n) % R.n] - T[T0] : 0);
   const line = () => (on ? `● Hitch map ${Rules.clock(secs())}` : offBy === 'watch' || offBy === 'ab' ? '○ Hitch map stopped (it cost the game frames)' : '');
   function pub() {
     const frames = R.total;
@@ -151,7 +168,7 @@
   }
   const spike = () => JSON.stringify({ t: T[SPT], dt: T[SPD], n: T[SPN], shots: T[SHN] });
   function dump() {
-    const a = Rules.ordered(R);
+    const a = Rules.ordered(R, T[T0]);
     const u8 = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
     let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
     const shots = []; for (let k = 0; k < T[SHN]; k += 1) shots.push([SHOTS[k * 2], SHOTS[k * 2 + 1]]);
