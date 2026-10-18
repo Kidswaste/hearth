@@ -226,7 +226,7 @@ function pool(options) {
 // (round 62, parkjam62) <data>/creative-park/<sketch>/<file>: the sketch name made safe for every disk, plain file names only
 function parkSave(dataDir, sketch, name, bytes) {
   const folder = String(sketch || 'Park sketch').normalize('NFC').replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80) || 'Park sketch';
-  if (typeof name !== 'string' || !/^[\w .·-]{1,80}\.(wav|mid|json)$/.test(name) || name.startsWith('.')) throw Error('Invalid park file name.');
+  if (typeof name !== 'string' || !/^[\w .·-]{1,80}\.(wav|mid|json)$/i.test(name) || name.startsWith('.')) throw Error('Invalid park file name.');
   const data = bytes instanceof Uint8Array ? bytes : typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : null;
   if (!data || data.length < 1 || data.length > 120e6) throw Error('Invalid park file.');
   const dir = path.join(dataDir, 'creative-park', folder), file = path.join(dir, name);

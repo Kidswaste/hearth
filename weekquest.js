@@ -12,7 +12,12 @@
 // All reads and writes go through the tracker (QuestHud.write: QuestJournal.mutate when the Studio is open, else the
 // Studio's own validated, atomic save) into Codex's journal (s.weekly); 'hearth:quests' keeps everything in step.
 const WeekQuest = (() => {
-  const W = WeekQuestCore, QC = QuestHudCore;
+  // (round 62, fixes62) the tracker's cores (lazy group 'questhud': weekquest-core.js, questhud-core.js) are read when
+  // used, not when this file runs: the app always loads 'questhud' first (after: ['questhud']), but a file that ran
+  // ahead of them (dev/lazy-manifest.js's old-order recording puts later groups at the same 'at' first) threw
+  // "WeekQuestCore is not defined" and left WeekQuest undefined
+  const core = (get) => new Proxy({}, { get: (_, k) => get()[k], has: (_, k) => k in get() });
+  const W = core(() => WeekQuestCore), QC = core(() => QuestHudCore);
   let panel = null, mode = 'week', week = null, props = [], weather = null, weatherWhy = '', weatherAt = 0, ideas = [], busy = '', review = null, aiNote = '';
   const _test = { shows: null, weather: undefined, ask: null }; // (checks) fixtures instead of the cached list / forecast / AI
   const J = () => QuestHud.journal();
