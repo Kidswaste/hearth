@@ -175,6 +175,7 @@
       const c = s.campaigns.find((x) => x.id === cid); c.paused = false;
     } else if (sug.kind === 'place') cid = makers.place(s, sug.place, sug.guide).id;
     else if (sug.kind === 'park' || (sug.kind === 'personal' && !s.campaigns.some((c) => c.id === cid))) cid = makers.personal(s, sug.personal || cid.replace(/^c-pq-/, '')).id;
+    else if (sug.kind === 'walk') cid = makers.walk(s, sug).id; // (round 63, questwalk63) a walk on a free afternoon: QuestWalkCore.save
     else if (sug.kind === 'idea') cid = C.addCampaign(s, { title: sug.title, why: sug.why || 'An idea for this week, from "suggest more".', path: 'life', milestones: [sug.title] }).id; // an AI idea: a one-step campaign of the owner's own
     s.active = s.campaigns.some((c) => c.id === active) ? active : s.active; // keep the main quest the owner tracks
     const id = `wk-${String(sug.id).toLowerCase().replace(/[^a-z0-9-]/g, '-')}`.slice(0, 80);

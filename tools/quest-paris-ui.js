@@ -39,7 +39,8 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
     dialog('Paris guide', (body, d) => {
       const s = state(), on = P.hasGuide(s);
       body.append(p(`${guideCount} places worth the trip, famous and lesser-known, each with a small quest: go, do one specific thing, bring proof home. Check opening times before you go.`));
-      body.append(button(on ? 'Take untouched guide pins off' : 'Put the guide on my map', async () => { const n = await mutate(st => on ? P.removeGuide(st) : P.addGuide(st).added, on ? 'Untouched guide pins removed. Visited, starred and quest pins stay.' : 'Paris guide added to your map.'); d.close(); if (!on) J().mapFilter({}); return n; }, on ? 'qj-quiet' : 'qj-primary'));
+      const toggle = button(on ? 'Take untouched guide pins off' : 'Put the guide on my map', async () => { const n = await mutate(st => on ? P.removeGuide(st) : P.addGuide(st).added, on ? 'Untouched guide pins removed. Visited, starred and quest pins stay.' : 'Paris guide added to your map.'); d.close(); if (!on) J().mapFilter({}); return n; }, on ? 'qj-quiet' : 'qj-primary');
+      body.append(window.QuestWalk ? E('div', { class: 'qj-actions' }, toggle, QuestWalk.guideButton(d)) : toggle); // (round 63, questwalk63) "Make a walk" beside it, in the same line
       body.append(label('SHOW ON THE MAP'));
       const tags = E('div', { class: 'qj-actions qj-paris-tags' });
       for (const [id, name] of Object.entries(P.TAGS)) tags.append(button(name, async () => { if (!P.hasGuide(state())) await mutate(st => P.addGuide(st), 'Paris guide added to your map.'); d.close(); J().mapFilter({ guide: id }); }, 'qj-quiet'));
@@ -51,7 +52,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
         b.dataset.personal = t.key; b.append(QuestAtlas.icon(t.path === 'music' ? 'music' : t.key === 'airpods' ? 'target' : 'social'), E('strong', { text: t.title }), E('span', { text: done ? 'Finished ✓' : c ? 'In notebook · ' + c.quests.filter(q => C.done(s, q.id)).length + '/' + c.quests.length : t.steps.length + ' steps · ' + t.steps.reduce((n, x) => n + x[4], 0) + ' XP' }));
         grid.append(b);
       }
-      body.append(grid, p('In chat: /quest paris [shows · records · 11e…], /quest go <place>, /quest add <airpods · park · drink · gig · openmic · records · sunrise · solo>, /quest list.', 'qj-paris-best'));
+      body.append(grid, p('In chat: /quest paris [shows · records · 11e…], /quest walk [11e · records…] [3h], /quest go <place>, /quest add <airpods · park · drink · gig · openmic · records · sunrise · solo>, /quest list.', 'qj-paris-best'));
     }, 'SIDEQUEST STUDIO / PARIS');
   }
   // ---------- chat: /quest ----------
