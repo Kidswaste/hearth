@@ -7,6 +7,7 @@ var WorkbenchVST = (() => {
   const L = WorkbenchVSTLive, events = L.hub();
   let lastStats = null, editorCloses = null, paramsRefresh = () => {}, redraw = async () => {}, openSeq = 0, adviceText = null;
   let streamPatch = {}, streamTimer = null, tweakBase = null, baseTimer = null;
+  let openNamed = null, plugins = []; // (round 62, parkjam62) open an instrument by name from outside the desk (Park mode)
   Object.assign(settings, { value: '', midiIn: 'all' });
   const bytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   function liveJob() { const { device, exclusive } = L.parse(settings.value); return { device, exclusive, buffer: settings.buffer, gain: settings.gain, midiIn: settings.midiIn }; }
@@ -32,6 +33,7 @@ var WorkbenchVST = (() => {
     keyOff(); keyOff = () => {}; silence(); if (selected) call('live-stop').catch(() => {}); playing = false;
     if (rendered?.player) rendered.player.pause();
     if (typeof PresetHover !== 'undefined') PresetHover.detach(); // (round 61, presethover61) the ✦ Preset window leaves with the desk
+    if (typeof ParkJam !== 'undefined') ParkJam.pause(); // (round 62, parkjam62) the park ambience mic / dim leave with the desk
   }
   async function flushPatch() {
     const values = pendingPatch; pendingPatch = {}; if (!Object.keys(values).length) return;
@@ -78,6 +80,7 @@ var WorkbenchVST = (() => {
     const runtime = await hub.vst.status(); if (ticket !== alive) return;
     const setup = row(btn(runtime.ok ? 'Check audio runtime' : 'Set up live audio', async () => { say('Preparing the local audio runtime…'); const r = await (runtime.ok ? hub.vst.status() : hub.vst.setup()); if (!r.ok) throw Error(r.error); h.api.openFeature('vst'); }), btn('Plugin folder', async () => { const path = await hub.pickFolder('', 'Folder containing Serum 2 or Vital'); if (path && !state.roots.includes(path)) { state.roots.push(path); persist(); h.api.openFeature('vst'); } }), btn('Reset host', async () => { pause(); await hub.vst.stop(); selected = null; canEdit = false; h.api.openFeature('vst'); }));
     out.append(setup);
+    if (typeof ParkJam !== 'undefined') ParkJam.attach(out, setup, h); // (round 62, parkjam62) one 🌳 Park mode button in this row
     if (!runtime.ok) { out.append(note(`${runtime.error} Setup installs a private Pedalboard + PortAudio runtime in Hearth. Your installed plugins remain where they are.`)); return; }
     const scan = await hub.vst.scan(state.roots); if (ticket !== alive) return; if (!scan.ok) throw Error(scan.error);
     const chooser = e('div', null, 'wb-sound-picker'), detail = e('div', null, 'wb-sound-detail'); out.append(chooser, detail);
@@ -105,6 +108,7 @@ var WorkbenchVST = (() => {
       selected = { ...info, path: p.path }; paramsRefresh(); events.emit('instrument', api.current());
       say(`${p.name} · ${info.parameters.length} controls ready.`);
     }
+    plugins = scan.plugins; openNamed = (name, live) => { const p = scan.plugins.find(x => x.name === name) || scan.plugins[0]; if (!p) throw Error('Install Serum 2 or Vital, then choose its VST3 folder.'); return open(p, { live }); }; // (round 62, parkjam62)
     for (const p of scan.plugins) {
       const b = btn(p.name, () => open(p, { live: true })); b.classList.add('wb-instrument-card'); b.setAttribute('aria-pressed', String(selected?.path === p.path)); chooser.append(b);
     }
@@ -170,6 +174,7 @@ var WorkbenchVST = (() => {
       }))); detail.append(ai);
       const bounce = e('details', null, 'wb-sound-section'), result = e('div', null, 'wb-sound-bounce'); let noteNumber = 60, seconds = 4;
       bounce.append(e('summary', 'Export a sample'), row(range('MIDI note', noteNumber, 24, 96, 1, v => { noteNumber = v; }), range('Seconds', seconds, 1, 12, .5, v => { seconds = v; })), row(btn('Bounce WAV', async () => { await flushPatch(); const r = await call('render', { duration: seconds, notes: [{ note: noteNumber, time: 0, length: seconds * .65 }] }); showRender(r, result); }), btn('Save WAV', async () => { if (!rendered) throw Error('Bounce a sample first.'); await save('vst-sample', bytes(rendered.audio), 'wav'); })), result); detail.append(bounce); if (rendered) showRender(rendered, result);
+      if (typeof ParkJam !== 'undefined') detail.append(ParkJam.section(h)); // (round 62, parkjam62) Park jam · capture the moment (a fold)
     }
     if (selected) await draw(); return () => { if (ticket === alive) pause(); };
   }
@@ -237,6 +242,19 @@ var WorkbenchVST = (() => {
     async stop() { need(); await silence(); const s = await call('live-stop'); showStats(s); return s; },
     status: () => lastStats,
     allowAI(v) { canEdit = !!v; events.emit('consent', canEdit); return canEdit; },
+    // (round 62, parkjam62) additive, same version: what Park mode needs from the desk. instruments() → [names] the desk
+    // found · open(name, { live }) opens one (as its card does) · devices() → the host's device list · output({ value?,
+    // buffer? }) sets the desk's picker / buffer (remembered like the owner's own choice; a live stream restarts on it)
+    instruments: () => plugins.map(p => p.name),
+    async open(name, { live = false } = {}) { if (!openNamed) throw Error('Open Creative Playground → Sound desk first.'); await openNamed(name, live); return api.current(); },
+    async devices() { const d = await call('devices'); lastDevices = d; return d; },
+    output: () => ({ value: settings.value, buffer: settings.buffer, device: lastDevices?.devices?.find(d => d.id === L.parse(settings.value).device) || null }),
+    async setOutput({ value, buffer, remember = true } = {}) { // remember: false = for this session only (Park mode keeps its own per place)
+      need(); if (buffer !== undefined && !L.BUFFERS.some(([b]) => b === buffer)) throw Error('Choose a 64–1024 sample buffer.');
+      if (value !== undefined) { settings.value = String(value); settings.device = L.parse(settings.value).device; deviceChosen = true; }
+      if (buffer !== undefined) settings.buffer = buffer;
+      if (remember) rememberLive(); if (playing) { await silence(); await startLive(); } await redraw(); return api.output();
+    },
     aiAllowed: () => canEdit,
     on: (type, fn) => events.on(type, fn)
   };

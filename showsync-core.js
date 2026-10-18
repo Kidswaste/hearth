@@ -100,15 +100,33 @@
     const prices = offers.flatMap((o) => [num(o.lowPrice), num(o.price)]).filter((n) => Number.isFinite(n) && n >= 0);
     const end = Date.parse(ev.endDate || '');
     const url = platformLink(ev.url || '', src.platform) || offers.map((o) => platformLink(o.url || '', src.platform)).find(Boolean) || (src.kind === 'event' ? src.url : '');
+    const doors = Date.parse(ev.doorTime || ''); // (round 62, showprep62) doors, when the listing says
     return mk({
       platform: src.platform, title, start, end: Number.isFinite(end) ? end : null, url, venue,
+      doors: Number.isFinite(doors) && doors <= start && start - doors < 12 * 3600e3 ? doors : null, links: artistLinks(arr(ev.performer), src.platform),
       lineup: lineupFrom(arr(ev.performer).map((p) => (typeof p === 'string' ? p : p?.name || '')), title),
       image: imageUrl(ev.image), price: prices.length ? { from: Math.min(...prices), currency: str(offers.find((o) => o.priceCurrency)?.priceCurrency || 'EUR', 3) } : null,
       soldOut: offers.length > 0 && offers.every((o) => /SoldOut/i.test(String(o.availability || ''))),
       cancelled: /Cancelled/i.test(String(ev.eventStatus || ''))
     });
   }
+  // (round 62, showprep62) the artist links a listing already carries: its own artist page (Shotgun / DICE) and one
+  // public listening page (sameAs on a known music site). Nothing is fetched from those sites.
+  const LISTEN = /(^|\.)(open\.spotify\.com|soundcloud\.com|bandcamp\.com|music\.apple\.com|deezer\.com|youtube\.com|youtu\.be|mixcloud\.com|tidal\.com|residentadvisor\.net|ra\.co)$/i;
+  const listenLink = (v) => { for (const x of arr(v)) { try { const u = new URL(typeof x === 'string' ? x : x?.url || ''); if (u.protocol === 'https:' && !u.username && LISTEN.test(u.hostname)) return u.href.slice(0, 500); } catch { /* not a link */ } } return ''; };
+  function artistLinks(performers, platform) {
+    const out = {};
+    for (const p of performers.slice(0, 20)) {
+      if (!p || typeof p !== 'object') continue;
+      const name = str(decode(p.name || ''), 80); if (!name) continue;
+      const page = [p.url, ...arr(p.sameAs)].map((u) => (typeof u === 'string' ? platformLink(u, platform) : '')).find(Boolean) || '';
+      const listen = listenLink([p.url, ...arr(p.sameAs)]);
+      if (page || listen) out[name] = { page, listen };
+    }
+    return out;
+  }
   function mk(s) {
+    s.links ||= {}; s.doors ??= null;
     s.venue.key = venueKey(s.venue.name || s.venue.address || 'venue');
     s.id = `${s.platform}:${s.url ? hash(s.url) : hash(`${s.title}|${s.start}|${s.venue.key}`)}`;
     return s;
@@ -138,7 +156,8 @@
           const lat = num(vo.lat ?? vo.latitude ?? vo.geo?.latitude ?? vo.location?.lat), lon = num(vo.lng ?? vo.lon ?? vo.longitude ?? vo.geo?.longitude ?? vo.location?.lng);
           const link = typeof x.url === 'string' ? platformLink(x.url, src.platform) : typeof x.slug === 'string' && src.platform === 'shotgun' ? `https://shotgun.live/en/events/${encodeURIComponent(x.slug)}` : typeof x.perm_name === 'string' && src.platform === 'dice' ? `https://dice.fm/event/${encodeURIComponent(x.perm_name)}` : '';
           const names = arr(x.artists || x.lineup || x.performers).map((a) => (typeof a === 'string' ? a : a?.name || ''));
-          out.push(mk({ platform: src.platform, title: str(title, 160), start, end: null, url: link, venue: { name: str(vo.name || vo.title || '', 120), address: str(addr, 200), lat, lon, image: pickImg(vo.logo || vo.image || vo.avatar || vo.coverUrl || vo.cover), url: '' }, lineup: lineupFrom(names, title), image: pickImg(x.image || x.cover || x.coverUrl), price: null, soldOut: false, cancelled: false }));
+          const links = artistLinks(arr(x.artists || x.lineup || x.performers).filter((a) => a && typeof a === 'object').map((a) => ({ name: a.name, url: typeof a.url === 'string' ? a.url : '', sameAs: a.sameAs })), src.platform);
+          out.push(mk({ platform: src.platform, title: str(title, 160), start, end: null, url: link, venue: { name: str(vo.name || vo.title || '', 120), address: str(addr, 200), lat, lon, image: pickImg(vo.logo || vo.image || vo.avatar || vo.coverUrl || vo.cover), url: '' }, lineup: lineupFrom(names, title), links, image: pickImg(x.image || x.cover || x.coverUrl), price: null, soldOut: false, cancelled: false }));
           return;
         }
       }
@@ -185,10 +204,16 @@
       lat: Number.isFinite(a.venue.lat) ? a.venue.lat : b.venue.lat, lon: Number.isFinite(a.venue.lon) ? a.venue.lon : b.venue.lon, image: pick(a.venue.image, b.venue.image), url: pick(a.venue.url, b.venue.url) };
     return { ...a, title: a.title.length >= b.title.length ? a.title : b.title, start: Math.min(a.start, b.start), venue, lineup: [...new Set([...a.lineup, ...b.lineup])].slice(0, 20), image: pick(a.image, b.image),
       tickets: [...a.tickets, ...b.tickets.filter((t) => !a.tickets.some((x) => x.url === t.url && x.platform === t.platform))], platforms: [...new Set([...a.platforms, ...b.platforms])],
-      price: a.price && b.price ? (a.price.from <= b.price.from ? a.price : b.price) : a.price || b.price, soldOut: a.soldOut && b.soldOut, cancelled: a.cancelled && b.cancelled };
+      price: a.price && b.price ? (a.price.from <= b.price.from ? a.price : b.price) : a.price || b.price, soldOut: a.soldOut && b.soldOut, cancelled: a.cancelled && b.cancelled,
+      links: mergeLinks(a.links, b.links), doors: a.doors && b.doors ? Math.min(a.doors, b.doors) : a.doors || b.doors || null };
+  }
+  function mergeLinks(a = {}, b = {}) { // (round 62, showprep62) per artist: the first page / listening link wins
+    const out = { ...a };
+    for (const [k, v] of Object.entries(b || {})) out[k] = { page: out[k]?.page || v.page || '', listen: out[k]?.listen || v.listen || '' };
+    return out;
   }
   function merge(lists) {
-    const all = lists.flat().filter(Boolean).map((s) => ({ ...s, venue: { ...s.venue }, lineup: [...(s.lineup || [])], tickets: s.tickets || [{ platform: s.platform, url: s.url, price: s.price, soldOut: s.soldOut }], platforms: s.platforms || [s.platform] }));
+    const all = lists.flat().filter(Boolean).map((s) => ({ ...s, venue: { ...s.venue }, lineup: [...(s.lineup || [])], links: { ...(s.links || {}) }, doors: s.doors ?? null, tickets: s.tickets || [{ platform: s.platform, url: s.url, price: s.price, soldOut: s.soldOut }], platforms: s.platforms || [s.platform] }));
     all.sort((a, b) => a.start - b.start || a.platform.localeCompare(b.platform) || a.id.localeCompare(b.id));
     const out = [];
     for (const s of all) {

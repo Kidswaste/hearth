@@ -1,0 +1,7 @@
+[
+  { "key": "cigale-fri", "title": "Arlo Parks", "h": 116, "venue": { "name": "La Cigale", "address": "120 Bd de Rochechouart, 75018 Paris", "lat": 48.8823, "lon": 2.3404 }, "lineup": ["Arlo Parks"], "tickets": [{ "platform": "shotgun", "url": "https://shotgun.live/en/events/arlo-parks-cigale" }], "platforms": ["shotgun"] },
+  { "key": "rex-late", "title": "Rex Club: All night", "h": 121, "venue": { "name": "Rex Club", "address": "5 Bd Poissonnière, 75002 Paris", "lat": 48.8706, "lon": 2.3474 }, "lineup": [], "tickets": [{ "platform": "dice", "url": "https://dice.fm/event/rex-all-night" }], "platforms": ["dice"] },
+  { "key": "monday-gone", "title": "Monday gig", "h": 20, "venue": { "name": "Point Éphémère", "address": "200 Quai de Valmy, 75010 Paris", "lat": 48.8814, "lon": 2.3684 }, "lineup": ["Early Act"], "tickets": [], "platforms": ["dice"] },
+  { "key": "cancelled-sat", "title": "Called off", "h": 140, "cancelled": true, "venue": { "name": "Petit Bain", "address": "7 Port de la Gare, 75013 Paris", "lat": 48.8355, "lon": 2.3768 }, "lineup": [], "tickets": [], "platforms": ["dice"] },
+  { "key": "next-week", "title": "Next week's show", "h": 188, "venue": { "name": "Le Bataclan", "address": "50 Bd Voltaire, 75011 Paris", "lat": 48.8631, "lon": 2.3708 }, "lineup": ["Later Band"], "tickets": [], "platforms": ["shotgun"] }
+]

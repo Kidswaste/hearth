@@ -6,6 +6,10 @@ const QuestJournal = (() => {
   // (round 61, showsync61) Map layers: other modules add pins and one head icon to the Paris map without editing it
   // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit) }.
   const mapLayers = [];
+  // (round 62, showprep62) quest detail hooks: fn({ quest, campaign, close, kit }) → a node shown under the quest's title
+  // (e.g. a show quest's "Get ready" / "How was it?"); a hook that throws is skipped
+  const detailHooks = [];
+  function addDetailHook(fn) { if (typeof fn === 'function' && !detailHooks.includes(fn)) detailHooks.push(fn); }
   function addMapLayer(layer) { const i = mapLayers.findIndex(l => l.id === layer.id); if (i >= 0) mapLayers[i] = layer; else mapLayers.push(layer); if (state && page === 'world' && root?.isConnected) render(); }
   let mapFilter = {kind:'all',saved:false,query:''}, tooltipSeq=0;
   let daySeen = C.day(), lastCelebration = null;
@@ -717,6 +721,7 @@ const QuestJournal = (() => {
     content.append(sectionHeading('COLLECTION / YOUR PORTFOLIO', 'Proof that you made something.', 'Keep work from any Hearth chat or upload an export. Play your bounces, preview textures, revisit the source.'));
     collectionShelf();
     reviewShelf();
+    { const weeks = typeof WeekNudge !== 'undefined' ? WeekNudge.pages({ E, label, p }, state) : null; if (weeks) content.append(weeks); } // (round 62, weekquest62) the saved weeks in review (s.weekly.reviews)
     const badges = state.campaigns.filter(c => C.campaignDone(state, c));
     if (badges.length) content.append(E('div', { class: 'qj-badges' }, ...badges.map(c => E('div', { class: 'qj-badge', style: { '--path': pathOf(c.path).color } }, E('span', { text: '✦' }), E('strong', { text: c.badge || c.title }), label('CAMPAIGN COMPLETE')))));
     const finished = C.allQuests(state).filter(q => C.done(state, q.id)).sort((a, b) => C.record(state, b.id).completedAt.localeCompare(C.record(state, a.id).completedAt));
@@ -763,6 +768,7 @@ const QuestJournal = (() => {
     dialog(q.title, (body, d) => {
       const intention = state.campaigns.find(c => c.id === q.campaign)?.intention;
       if (intention) body.append(E('aside', { class: 'qj-starting-note' }, label('YOUR EXPEDITION / LOCAL NOTE'), p(intention)));
+      for (const hook of detailHooks) { try { const node = hook({ quest: q, campaign: state.campaigns.find(c => c.id === q.campaign) || null, close: () => d.close(), kit: { dialog, mapIcon, button, p, label, E, mutate, questDetail, navigate, notice } }); if (node) body.append(node); } catch (err) { console.warn('[quest detail hook]', err); } }
       if (completed) {
         if (C.submissions(state, qid).length) body.append(button('Review & version history', () => { d.close(); reviewHistory(qid); }, 'qj-primary'));
         body.append(label(`✓ COMPLETED · ${q.xp} XP`), p(q.done), p(r.note || 'You kept your promise to this quest.'), artifactPreview(r.artifact), row(button('Add or edit keepsake', () => { d.close(); completionForm(qid, true); }), button('Undo completion', async () => { await mutate(s => C.undo(s, qid), 'Completion undone. Your earlier small start is kept.'); d.close(); }, 'qj-quiet'))); return;
@@ -1013,5 +1019,5 @@ const QuestJournal = (() => {
   // parisquests61 (tools/quest-paris-ui.js): the same transactional mutate, a loaded flag, the map filter and the
   // journal's own UI helpers, so the Paris guide and `/quest` drive the journal instead of writing it behind its back.
   const parisHooks = { mutate, ready: () => writable && !!state, mapFilter(f = {}) { mapFilter = { kind: 'all', saved: false, query: '', ...f }; if (!f.guide) delete mapFilter.guide; navigate('world'); centerMapSelection(); }, ui: () => ({ E, button, label, p, row, dialog, mapIcon, notice, navigate, questDetail, mapPick, state: () => state }) };
-  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, paris: parisHooks, openOutings:outingDesk, keepOuting:async event=>{await OutingDesk.keepEvent(event);return outingDesk();}, get celebration() { return lastCelebration; }, mutate, ready: () => writable && Boolean(state), addMapLayer, get page() { return page; } }; // (round 61, questhud61: mutate + ready for the rail's quest tracker; showsync61: addMapLayer + page for map layers)
+  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, paris: parisHooks, openOutings:outingDesk, keepOuting:async event=>{await OutingDesk.keepEvent(event);return outingDesk();}, get celebration() { return lastCelebration; }, mutate, ready: () => writable && Boolean(state), addMapLayer, addDetailHook, get page() { return page; } }; // (round 61, questhud61: mutate + ready for the rail's quest tracker; showsync61: addMapLayer + page for map layers)
 })();

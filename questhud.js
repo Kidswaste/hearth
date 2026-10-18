@@ -71,7 +71,7 @@ const QuestHud = (() => {
   function describe(cd) {
     if (!cd) return 'Quests: nothing active right now · open the tracker';
     const nx = cd.next ? ` · next: ${cd.next.label.toLowerCase()} — ${cutText(cd.next.text, 90)}` : '';
-    return `Quest: ${cd.title}${cd.campaign ? ` (${cd.campaign}, ${cd.progress.text})` : ''}${nx}`;
+    return `${cd.today ? 'Today\'s quest' : 'Quest'}: ${cd.title}${cd.campaign ? ` (${cd.campaign}, ${cd.progress.text})` : ''}${nx}`;
   }
   function build() {
     chip = el('button', { type: 'button', class: 'tool-btn qh-chip', hidden: true, dataset: { feature: 'Quest chip' }, attrs: { 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'aria-label': 'Quests' } }, // (named here: a11y.js then keeps our full name)
@@ -111,7 +111,7 @@ const QuestHud = (() => {
       peekSig = sg;
       peek.replaceChildren(...(cd ? [
         el('div', { class: 'qh-peek-top' }, el('span', { class: 'qh-pi', text: cd.icon, style: { color: cd.color } }), el('strong', { text: cd.title })),
-        cd.campaign ? el('div', { class: 'qh-sub', text: `${cd.campaign} · quest ${cd.progress.text}` }) : null,
+        cd.campaign ? el('div', { class: 'qh-sub', text: `${cd.today ? 'Today · ' : ''}${cd.campaign} · quest ${cd.progress.text}` }) : cd.today ? el('div', { class: 'qh-sub', text: 'Today, from your week plan' }) : null,
         cd.next ? el('div', { class: 'qh-peek-next' }, el('span', { class: 'qh-k', text: cd.next.label }), el('span', { text: cutText(cd.next.text, 140) })) : null,
         el('span', { class: 'qh-bar qh-wide' }, el('i', { style: { width: `${Math.round(cd.progress.frac * 100)}%` } })),
       ] : [el('strong', { text: 'No active quest' }), el('div', { class: 'qh-sub', text: 'Click for today\'s picks' })]));
@@ -343,6 +343,8 @@ const QuestHud = (() => {
         { label: `${prefs.near === 'off' ? '✓ ' : ''}Off (nothing about where you are is used)`, action: () => setNear('off') },
       ] },
       ...(prefs.pin ? [{ label: 'Follow the main quest again', action: () => pin(null) }] : []),
+      { label: 'Plan my week…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('week')).catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 62, weekquest62)
+      { label: 'Week in review…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('review')).catch((err) => toast(calmError(err), { type: 'error' })); } },
     ];
   }
 
@@ -365,6 +367,7 @@ const QuestHud = (() => {
       return;
     }
     if (sub === 'done') return checkNext();
+    if (sub === 'week' || sub === 'review') { await Lazy.load('weekquest'); return WeekQuest.run(sub, rest, ctx); } // (round 62, weekquest62) the week plan / the week in review
     // (parisquests61) one /quest: the Paris words, and a name no open quest has, go to QuestParisUI.run
     if (sub === 'paris' || (sub === 'name' && !QC.match(C, S, rest))) return paris(args, ctx);
     if (sub === 'name') return track(rest);
@@ -389,7 +392,7 @@ const QuestHud = (() => {
   function complete(args) {
     const t = String(args || '');
     if (QC.parse(t).sub === 'paris' && /\s/.test(t)) return parisUI()?.complete(t) || [];
-    if (!/\s/.test(t)) return [...QC.SUBS, ...QC.PARIS.filter((w) => !['map', 'start', 'place', 'progress'].includes(w))].filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip', paris: 'the Paris guide on your map', places: 'Paris places', guide: 'the guide pins', go: 'a Paris place\'s quest', add: 'a personal quest (airpods, park…)', park: 'music at the park', list: 'your Paris quests', help: 'every /quest word' }[s] }));
+    if (!/\s/.test(t)) return [...QC.SUBS, ...QC.PARIS.filter((w) => !['map', 'start', 'place', 'progress'].includes(w))].filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip', week: 'plan your week (3–5 quests on days)', review: 'your week in review', paris: 'the Paris guide on your map', places: 'Paris places', guide: 'the guide pins', go: 'a Paris place\'s quest', add: 'a personal quest (airpods, park…)', park: 'music at the park', list: 'your Paris quests', help: 'every /quest word' }[s] }));
     const { sub, rest } = QC.parse(t);
     if (sub === 'hud') return ['on', 'off'].map((v) => ({ value: `hud ${v}` }));
     if (sub !== 'track' || !C || !S) return [];
@@ -407,17 +410,17 @@ const QuestHud = (() => {
     build();
     document.addEventListener('hearth:quests', onQuests);
     document.addEventListener('keydown', onKey);
-    read().then(() => { nearOnStart(); paint(); });
+    read().then(() => { nearOnStart(); paint(); if (typeof WeekNudge !== 'undefined') WeekNudge.arm(); }); // (weekquest62) the week plan's one nudge is armed from the first read
   }
   if (!Commands.get('quest')) {
-    Commands.register({ name: 'quest', args: '[next | done | track <name> | picks | near | open | hud on|off | paris | go <place> | add <quest> | park | list]', area: 'Create', keys: HOTKEY,
+    Commands.register({ name: 'quest', args: '[next | done | track <name> | picks | week | review | near | open | hud on|off | paris | go <place> | add <quest> | park | list]', area: 'Create', keys: HOTKEY,
       desc: 'Your active quest and its next step; check it off, track another, today\'s picks; Paris places and personal quests', run: cmd, complete,
-      examples: ['/quest', '/quest next', '/quest done', '/quest track Paris', '/quest paris', '/quest add airpods'], keywords: 'quest tracker hud sidequest next step check off progress paris places airpods park' });
+      examples: ['/quest', '/quest next', '/quest done', '/quest week', '/quest review', '/quest track Paris', '/quest paris', '/quest add airpods'], keywords: 'quest tracker hud sidequest next step check off progress paris places airpods park week plan review nudge' });
   }
   AppUI.addAction('Quest: show my quest tracker', () => toggle(true), HOTKEY);
   AppUI.addAction('Quest: check off the next step', () => checkNext().catch((err) => toast(calmError(err), { type: 'error' })));
   AppUI.addAction('Quest: show or hide the quest chip', () => setHidden(!prefs.hidden));
   Keys.add({ area: 'Quests', keys: HOTKEY, what: 'open or close the quest tracker (from anywhere)', run: () => toggle() });
   start();
-  return { open, close, toggle, isOpen, checkOff, checkNext, track, take, pin, setHidden, setNear, openStudio, refresh: () => read().then(paint), state: () => ({ status, current: cur(), prefs: { ...prefs }, chip: Boolean(chip && !chip.hidden) }) };
+  return { open, close, toggle, isOpen, checkOff, checkNext, track, take, pin, setHidden, setNear, openStudio, refresh: () => read().then(paint), write, journal: () => ({ C, S, status }), core, state: () => ({ status, current: cur(), prefs: { ...prefs }, chip: Boolean(chip && !chip.hidden) }) };
 })();

@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('hub', {
   getHistory: call('history:get'),
   saveHistory: call('history:save'),
   kvGet: call('kv:get'),
-  vst: { scan: call('creative-vst:scan'), status: call('creative-vst:status'), setup: call('creative-vst:setup'), request: call('creative-vst:request'), stop: call('creative-vst:stop'), send: (r) => ipcRenderer.send('creative-vst:send', r) }, // (round 61, vstlive61) send: live notes / knob moves, no reply
+  vst: { scan: call('creative-vst:scan'), status: call('creative-vst:status'), setup: call('creative-vst:setup'), request: call('creative-vst:request'), stop: call('creative-vst:stop'), send: (r) => ipcRenderer.send('creative-vst:send', r), parkSave: call('creative-vst:park-save') }, // (round 61, vstlive61) send: live notes / knob moves, no reply · (round 62, parkjam62) parkSave(sketch, name, bytes): a park take's file
   kvSet: call('kv:set'),
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),
@@ -182,7 +182,8 @@ contextBridge.exposeInMainWorld('hub', {
   power: { state: call('power:state'), hold: call('power:hold'), release: call('power:release'), allow: call('power:allow'), quiet: call('power:quiet'), test: call('power:test'), onState: on('power:state') }, // (round 39, powerwise) staying awake while it matters, battery / saver, wake (powerwisemain.js)
   notify: { send: call('notify:send'), seen: call('notify:seen'), onGo: on('notify:go'), test: call('notify:test') }, // (round 44, notify) desktop notifications (notifymain.js): send one, the chat was looked at, where a click goes, (checks) a recorder
   net: { probe: call('net:probe'), onPower: on('net:power') }, // (round 34, offline) is the internet there? the computer slept / woke (offlinemain.js)
-  shows: { get: call('shows:get'), refresh: call('shows:refresh'), settings: call('shows:settings'), follow: call('shows:follow'), unfollow: call('shows:unfollow'), test: call('shows:test') }, // (round 61, showsync61) this week's shows from Shotgun / DICE (showsyncmain.js)
+  weekquest: { weather: call('weekquest:weather') }, // (round 62, weekquest62) the week plan's forecast (weekquestmain.js)
+  shows: { get: call('shows:get'), refresh: call('shows:refresh'), settings: call('shows:settings'), follow: call('shows:follow'), unfollow: call('shows:unfollow'), test: call('shows:test'), remind: call('shows:remind'), onRemind: on('shows:remind') }, // (round 61, showsync61) this week's shows from Shotgun / DICE (showsyncmain.js)
   safetynet: { last: call('safetynet:last'), reloading: call('safetynet:reloading'), status: call('safetynet:status'), keep: call('safetynet:keep'), done: call('safetynet:done'), testCrash: call('safetynet:test-crash') }, // (round 29) after an unexpected exit: what was kept (safetynetmain.js)
   crashsafe: { take: call('crashsafe:take'), done: call('crashsafe:done'), ack: call('crashsafe:ack'), test: call('crashsafe:test'), check: call('crashsafe:check'), onOrphan: on('crashsafe:orphan'), onFlush: on('crashsafe:flush'), onFrames: on('crashsafe:frames') }, // (round 50) replies cut off by a crash, renders cut off, the computer going down (crashsafemain.js)
   devreport: { info: call('devreport:info'), gh: call('devreport:gh'), send: call('devreport:send'), states: call('devreport:states'), log: call('devreport:log'), crashes: call('devreport:crashes'), annotate: call('devreport:annotate') }, // (round 21) Report to the developer
