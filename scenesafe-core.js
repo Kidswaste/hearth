@@ -16,12 +16,24 @@
   // errors that mean "the file is there but held / not ready" (Windows sharing violations, cloud placeholders, I/O)
   const BUSY = new Set(['EBUSY', 'EPERM', 'EACCES', 'EAGAIN', 'EMFILE', 'ENFILE', 'EIO', 'UNKNOWN', 'ETIMEDOUT', 'ECANCELED']);
   const sleepSync = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch { /* no wait here */ } };
+  // (round 65, mainhang65) on Electron's main thread every sync wait freezes the whole app (each IPC call of the window
+  // waits behind it): there a held file is retried for 50 ms at most in all (5 + 10 + 15 + 20), then reported held as
+  // before — the callers' held paths (the last good copy, a later retry on a timer) take it from there. The store
+  // thread and Node keep the longer waits.
+  const UI_WAITS = [5, 10, 15, 20];
+  let uiThread = null;
+  const onUiThread = () => {
+    if (uiThread == null) { try { uiThread = typeof process !== 'undefined' && process.type === 'browser' && require('worker_threads').isMainThread === true; } catch { uiThread = false; } }
+    return uiThread;
+  };
+  const waitFor = (i, ms) => (onUiThread() ? UI_WAITS[i] ?? 0 : ms);
   // read a text file, retrying a held one a few times (≈ 0.4 s in all); throws the last error
   function readRetry(fs, file, { tries = 5, wait = sleepSync } = {}) {
     for (let i = 0; ; i++) {
       try { return fs.readFileSync(file, 'utf8'); } catch (err) {
-        if (i >= tries - 1 || !BUSY.has(err.code)) throw err;
-        wait(30 * (i + 1));
+        const ms = waitFor(i, 30 * (i + 1));
+        if (i >= tries - 1 || !BUSY.has(err.code) || !ms) throw err;
+        wait(ms);
       }
     }
   }
@@ -279,5 +291,5 @@
     return { list, added };
   }
 
-  return { BUSY, readRetry, readStatus, idsOf, guardScenes, onlyStarter, copyName, parseCopy, pruneCopies, copyDue, GUARDED, guardedName, prepareWrite, afterWrite, cleanScene, fromHistory, fromTm, collect, mergeInto };
+  return { BUSY, onUiThread, waitFor, readRetry, readStatus, idsOf, guardScenes, onlyStarter, copyName, parseCopy, pruneCopies, copyDue, GUARDED, guardedName, prepareWrite, afterWrite, cleanScene, fromHistory, fromTm, collect, mergeInto };
 }));

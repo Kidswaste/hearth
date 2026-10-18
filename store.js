@@ -200,6 +200,7 @@ function flushSync() {
   const w = worker; worker = null; workerOff = true;
   try { w?.terminate(); } catch { /* gone */ }
   try { filesWorker?.terminate(); } catch { /* gone */ }
+  if (statsLive) { try { writeStats(statsLive); statsLive = null; } catch (err) { console.error('save failed', STATS_PATH, err.message); } } // (round 65) the token stats not written yet
   for (const [file, { value }] of pending) { try { writeSync(file, value, null, SS.guardedName(file) ? { sent: SS.idsOf(value) } : null); } catch (err) { console.error('save failed', file, err.message); } }
   pending.clear();
 }
@@ -227,7 +228,7 @@ function chatNames() {
     try { return dfs.readdirSync(CHATS_DIR).filter((f) => f.endsWith('.json')); } catch (err) {
       if (err.code === 'ENOENT') return [];
       if (i >= 4 || !DS.BUSY.has(err.code)) { chatsDoubt = { at: Date.now(), why: 'folder', code: err.code }; throw err; }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * (i + 1));
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, SS.waitFor(i, 40 * (i + 1))); // (round 65) ≤ 50 ms in all on the main thread
     }
   }
 }
@@ -406,11 +407,22 @@ function statInto(stats, agentId, usage, meta, at = Date.now()) {
   }
 }
 const writeStats = (stats) => { const tmp = `${STATS_PATH}.tmp`; writeFlushed(tmp, JSON.stringify(stats)); fs.renameSync(tmp, STATS_PATH); };
+// (round 65, mainhang65) after every reply the stats were read, flushed to the disk (fsync) and renamed on the main
+// thread: on a Windows disk a flush can take a long moment, with the whole app waiting. Now they are kept in memory
+// while a write is on its way and written off the main thread (temp file, flush, rename: crashsafe's writeAtomic),
+// one write at a time, the newest numbers last; whatever is still unwritten at quit is written then (flushSync).
+let statsLive = null; let statsChain = Promise.resolve(); let statsGen = 0;
+function writeStatsSoon(stats) {
+  statsLive = stats; const gen = ++statsGen;
+  statsChain = statsChain.then(() => (gen === statsGen ? require('./crashsafe-core').writeAtomic(fs.promises, STATS_PATH, JSON.stringify(stats)) : null))
+    .catch((err) => console.warn('token stats', err.code || err.message))
+    .then(() => { if (gen === statsGen) statsLive = null; });
+}
 function addTokenStat(agentId, usage, meta) {
-  const stats = readJson(STATS_PATH, null);
+  const stats = statsLive || readJson(STATS_PATH, null);
   if (!stats?.backfilledAt) return; // the first read builds everything from the chats (this reply included)
   statInto(stats, agentId, usage, meta);
-  writeStats(stats);
+  writeStatsSoon(stats);
 }
 // First run (and "rebuild"): everything the chats recorded (every reply keeps its usage), then each day
 // topped up to usage.json's per-agent counts, which also saw deleted chats and second opinions.
@@ -445,6 +457,7 @@ function buildTokenStats(agents = []) {
 }
 function getTokenStats(agents) {
   // (round 43, datasafe) a stats file that's there but can't be read is not rebuilt over (it reads next time)
+  if (statsLive) return statsLive; // (round 65) the newest, still being written
   const r = DS.load(dfs, STATS_PATH, null);
   if (r.state === 'unreadable' && !r.canSave) return { ...emptyStats(), unreadable: true };
   const stats = r.value;

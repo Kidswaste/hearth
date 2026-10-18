@@ -49,6 +49,7 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
     watchT = setTimeout(tick, 2000); watchT.unref?.();
   }
   function read() {
+    if (lateText() != null) return JSON.parse(lateText()); // (round 65) a save whose rename waits: its settings
     const key = keyOf();
     if (key && cache?.key === key) return JSON.parse(cache.text);
     if (doubt && good && Date.now() - doubt.at < 2000) return JSON.parse(good.text); // (no 0.4 s wait on every message)
@@ -71,12 +72,33 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
     return JSON.parse(base.text);
   }
   const flushed = (p, text) => { const fd = fs.openSync(p, 'w'); try { fs.writeSync(fd, text); try { fs.fsyncSync(fd); } catch { /* can't */ } } finally { fs.closeSync(fd); } };
+  // (round 65, mainhang65) a held config.json (Windows: an antivirus, OneDrive) used to be waited for here with the
+  // whole app frozen (up to 0.6 s per save). Now: 50 ms at most on the spot, then the same retries (60…240 ms apart)
+  // on a timer while the app runs; meanwhile reads give the new settings (lateText), and the last resort is as before.
+  let late = null; // { text, n, t } a rename still to do
+  const lateText = () => late?.text ?? null;
+  function renameLater() {
+    clearTimeout(late.t);
+    late.t = setTimeout(() => {
+      if (!late) return;
+      try { fs.renameSync(`${configPath}.tmp`, configPath); late = null; cache = null; return; } catch (e) {
+        late.n += 1;
+        if (late.n < 4 && DS.BUSY.has(e.code)) { renameLater(); return; }
+        const { text } = late; late = null; cache = null;
+        try { flushed(configPath, text); fs.rmSync(`${configPath}.tmp`, { force: true }); } catch (err) { console.warn('config.json could not be written', err.code || err.message); }
+      }
+    }, 60 * (late.n + 1));
+    late.t.unref?.();
+  }
   function writeText(text) {
     const tmp = `${configPath}.tmp`;
     flushed(tmp, text); // (round 50, crashsafe) on the disk before the rename: after a power cut, the old settings or the new, never half
+    if (late) { late.text = text; return; } // a rename is already waiting: it takes this newer text
     for (let i = 0; ; i++) {
       try { fs.renameSync(tmp, configPath); return; } catch (e) {
-        if (i < 4 && DS.BUSY.has(e.code)) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60 * (i + 1)); continue; }
+        const ms = SS.waitFor(i, 60 * (i + 1));
+        if (i < 4 && DS.BUSY.has(e.code) && ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); continue; }
+        if (DS.BUSY.has(e.code) && SS.onUiThread()) { late = { text, n: 0, t: null }; renameLater(); return; }
         flushed(configPath, text); fs.rmSync(tmp, { force: true }); return; // (Windows: as before; flushed at once)
       }
     }
@@ -86,7 +108,7 @@ function config({ configPath, dataDir, onRecovered = () => {}, onDoubt = () => {
   function save(cfg, baseArg = null) {
     if (!isObj(cfg) || !Array.isArray(cfg.agents)) return { ok: false, refused: 'not a settings object' };
     let disk; let text = null; let state = 'ok';
-    try { text = DS.readRetry(dfs, configPath); disk = JSON.parse(text); } catch (e) { state = e instanceof SyntaxError ? 'garbled' : e.code === 'ENOENT' ? 'missing' : 'held'; }
+    try { text = lateText() ?? DS.readRetry(dfs, configPath); disk = JSON.parse(text); } catch (e) { state = e instanceof SyntaxError ? 'garbled' : e.code === 'ENOENT' ? 'missing' : 'held'; }
     const base = baseArg || doubt?.base || null;
     if (state === 'held') { // can't read it: nothing is written; the save waits and is tried again
       if (!doubt) { doubt = { why: 'unreadable', code: 'EBUSY', from: 'memory', at: Date.now(), base: good ? JSON.parse(good.text) : null }; onDoubt(); watch(); }

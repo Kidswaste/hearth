@@ -40,7 +40,7 @@ function writeAtomic(file, data) { // a reader (or a crash) only ever sees the o
   const fd = fs.openSync(tmp, 'w');
   try { fs.writeSync(fd, data); fs.fsyncSync(fd); } catch (e) { fs.closeSync(fd); try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
   fs.closeSync(fd);
-  for (let i = 0; ; i++) { try { fs.renameSync(tmp, file); return; } catch (e) { if (i >= 4 || !['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; } const t = Date.now() + 30 * (i + 1); while (Date.now() < t) { /* a virus scanner holding the file on Windows: retry */ } } }
+  for (let i = 0; ; i++) { try { fs.renameSync(tmp, file); return; } catch (e) { if (i >= 4 || !['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; } const t = Date.now() + require('./scenesafe-core').waitFor(i, 30 * (i + 1)); while (Date.now() < t) { /* a virus scanner holding the file on Windows: retry (round 65: ≤ 50 ms in all on the main thread) */ } } }
 }
 const hash = s => crypto.createHash('sha1').update(s).digest('hex').slice(0, 16);
 function decodeState(state) { // the desk's 'z1:' + base64(zlib(raw_state)) → raw bytes (or null)

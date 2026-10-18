@@ -26,7 +26,7 @@ function read(file, { maxBytes = 20 * 1024 * 1024, encoding = 'utf8' } = {}) {
   for (let i = 0; ; i++) {
     try { return encoding === 'buffer' ? fs.readFileSync(p) : fs.readFileSync(p, encoding === 'base64' ? 'base64' : 'utf8'); } catch (err) {
       if (i >= 4 || !['EBUSY', 'EPERM', 'EACCES', 'EAGAIN', 'EIO', 'UNKNOWN'].includes(err.code)) throw err;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30 * (i + 1));
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, require('./scenesafe-core').waitFor(i, 30 * (i + 1))); // (round 65, mainhang65) ≤ 50 ms in all on the main thread
     }
   }
 }
