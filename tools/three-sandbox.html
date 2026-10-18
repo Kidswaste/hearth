@@ -1434,13 +1434,16 @@ function paceCore(opt = {}) {
     vec(x);
   };
   // (each property named: a list of names read in a loop was 3× slower; a material shared by many objects is read once)
-  let pass = 0;
+  // (round 60, gcchurn60) which ones this pass read already is kept in a WeakMap, not on the game's own materials and
+  // geometries: a property added to a material grew its property storage (a copy of ≈ 40 slots for each new one: a game
+  // making projectiles with cloned materials made ≈ 5 KB of garbage a look) and changed its shape for the game's code
+  let pass = 0; const PASS = new WeakMap();
   const mat = (m) => {
     if (!m) return;
     if (Array.isArray(m)) { for (let i = 0; i < m.length; i += 1) mat(m[i]); return; }
     v(m.id); v(m.version);
-    if (m.__pacePass === pass) return;
-    m.__pacePass = pass;
+    if (PASS.get(m) === pass) return;
+    PASS.set(m, pass);
     if (m.isNodeMaterial) live = true;
     SB[0] = m.opacity; SB[1] = m.visible; SB[2] = m.transparent; SB[3] = m.side; SB[4] = m.blending; SB[5] = m.wireframe; SB[6] = m.alphaTest; SB[7] = m.depthTest; SB[8] = m.depthWrite; SB[9] = m.colorWrite; SB[10] = m.vertexColors; SB[11] = m.toneMapped; vb(12);
     col(m.color);
@@ -1461,7 +1464,7 @@ function paceCore(opt = {}) {
     if (S) { for (const k in S) uni(S[k]); } else if (m.onBeforeCompile !== m.constructor?.prototype?.onBeforeCompile || m.onBeforeRender !== m.constructor?.prototype?.onBeforeRender) live = true; // (uniforms we can't reach)
   };
   const geo = (g) => {
-    v(g.id); if (g.__pacePass === pass) return; g.__pacePass = pass;
+    v(g.id); if (PASS.get(g) === pass) return; PASS.set(g, pass);
     const at = g.attributes; for (const k in at) { const x = at[k]; v(x.version ?? x.data?.version); }
     const mo = g.morphAttributes; if (mo) for (const k in mo) { const arr = mo[k]; if (arr) for (let i = 0; i < arr.length; i += 1) v(arr[i].version); }
     if (g.index) v(g.index.version);
