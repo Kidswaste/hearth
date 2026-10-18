@@ -608,11 +608,12 @@ const ThreeLab = (() => {
         ...easy.filter((r) => !fix.includes(r)),
         'This Lab',
         ...fix,
-        ['Capture', 'Screenshot, copy, contact sheet', [
+        [typeof ClickFirst !== 'undefined' ? 'Capture & playtest' : 'Capture', typeof ClickFirst !== 'undefined' ? 'Screenshot, contact sheet, playtest log, hitch map' : 'Screenshot, copy, contact sheet', [ // (round 64, clickfirst64) + ▶ Playtest at its end
           ['🖼 Save a screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
           ['🎞 Contact sheet', 'Frames across the song', () => showSheet()],
-          ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : [])]], // (round 8) the Lab reaches the whole capture menu
+          ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : []),
+          ...(typeof ClickFirst !== 'undefined' ? ClickFirst.labRows() : [])]], // (round 64, clickfirst64) ▶ Playtest: Playtest log · Record the hitch map · Hitch map (clickfirst.js) // (round 8) the Lab reaches the whole capture menu
         ['Code & console', `r${v.split('.')[1]}${autoRun ? ' · live' : ''} · console: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1].toLowerCase()}`, [
           ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
           [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
@@ -730,7 +731,7 @@ const ThreeLab = (() => {
     // canvas (gamemode.js, lazy group "gamemode"); right-click: the last games, an HTML game, the screen to play on
     const gameDo = (fn) => (window.Lazy ? window.Lazy.load('gamemode') : Promise.resolve()).then(() => fn(GameMode)).catch((err) => toast(calmError(err), { type: 'error', raw: err }));
     const playGame = (sk = current) => sk && gameDo((G) => G.play({ kind: 'lab', id: sk.id, title: sk.name }));
-    const playBtn = btn('▶ Play', `Play it as a game: its own full-screen window, max quality, smooth (${typeof WinMac !== 'undefined' ? WinMac.keyLabel('Ctrl+P') : 'Ctrl+P'} · Esc there: Back to Hearth)`, () => playGame()); // (round 53, playloop: Ctrl/⌘+P plays / goes back to editing)
+    const playBtn = btn('▶ Play', `Play it as a game: its own full-screen window, max quality, smooth (${typeof WinMac !== 'undefined' ? WinMac.keyLabel('Ctrl+P') : 'Ctrl+P'} · Esc there: Back to Hearth) · right-click: the playtest log, the hitch map, other games`, () => playGame()); // (round 53, playloop: Ctrl/⌘+P plays / goes back to editing)
     playBtn.dataset.feature = 'Play';
     playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); gameDo((G) => G.menu(e.clientX, e.clientY)); });
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · B blackout · I info · PgUp / PgDn other sketches · 1–9 cues' });

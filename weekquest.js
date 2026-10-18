@@ -131,9 +131,9 @@ const WeekQuest = (() => {
     panel.style.width = `${lr && lr.width > 120 ? Math.max(300, Math.min(340, Math.round(lr.right - left - 6))) : 320}px`;
     panel.style.bottom = '12px';
   }
-  function head(title, sub = '') {
+  function head(title, sub = '') { // (round 64, clickfirst64) its ⋯ says "⋯ More" in words
     return el('div', { class: 'qh-head' }, el('span', { class: 'qh-pi', text: '✦' }), el('strong', { text: title }), sub ? el('span', { class: 'qh-sub qh-lv', text: sub }) : null, el('span', { class: 'spacer' }),
-      el('button', { type: 'button', class: 'qh-icon', text: '⋯', title: 'More', attrs: { 'aria-label': 'More week options' }, on: { click: (e) => { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.right - 220, r.bottom + 4, menuItems()); } } }),
+      el('button', { type: 'button', class: 'qh-icon cf-more', text: '⋯ More', title: 'More', attrs: { 'aria-label': 'More week options' }, on: { click: (e) => { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.right - 220, r.bottom + 4, menuItems()); } } }),
       el('button', { type: 'button', class: 'qh-icon', text: '×', title: 'Close', attrs: { 'aria-label': 'Close' }, on: { click: () => close() } }));
   }
   function menuItems() {
@@ -151,7 +151,7 @@ const WeekQuest = (() => {
     if (props.length) {
       body.push(el('div', { class: 'qh-sec wq-sec' }, el('span', { text: 'Proposed for you' }), props.length > 1 ? btn('Accept all', acceptAll, 'wq-all', 'Put every proposed quest on its day') : null));
       body.push(...props.map(propRow));
-    } else body.push(el('p', { class: 'qh-empty', text: planned.length ? 'Your week is planned. Drag a quest to another day, or right-click it.' : 'Nothing to propose right now: no shows cached, places visited, personal quests done. Try “Suggest more” in ⋯.' }));
+    } else body.push(el('p', { class: 'qh-empty', text: planned.length ? 'Your week is planned. Drag a quest to another day, or right-click it.' : 'Nothing to propose right now: no shows cached, places visited, personal quests done. Click Suggest more below for three ideas.' }));
     if (aiNote) body.push(el('p', { class: 'qh-sub wq-ai', text: aiNote }));
     body.push(nudgeRow(S));
     const foot = el('div', { class: 'qh-foot' }, btn(busy === 'ai' ? 'Asking…' : 'Suggest more', suggestMore, 'wq-more', 'Three more ideas from your AI (one small question, only now)'), btn('Done', () => close(), 'qh-primary'));

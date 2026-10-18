@@ -382,5 +382,11 @@ const ShowPrep = (() => {
   try { SS()?.extend?.(extension); } catch (err) { console.warn('[showprep]', err); }
   try { QJ()?.addDetailHook?.(questAside); } catch (err) { console.warn('[showprep]', err); }
   load().then(() => SS()?.redraw?.()).catch(() => {}); // the log's badges on the map (one small read, when the Studio loads)
-  return { load, went, setRemind, prepDialog, wentDialog, logDialog, askAstra, follow, run, findShow, known, prepText, get store() { return store; }, get problem() { return problem; }, _test: { visitedPins, parseWent, attachProof, journalState } };
+  // (round 64, clickfirst64) one click from the ✦ tracker's show quest card / More menu: Get ready, How was it?, Shows I went to
+  async function openCard(which, key) {
+    if (which === 'log') return openInStudio((kit) => logDialog(kit));
+    const show = await byKey(key); if (!show) throw Error('This show is no longer listed.');
+    return openInStudio(which === 'went' ? wentDialog : prepDialog, show);
+  }
+  return { load, went, setRemind, prepDialog, wentDialog, logDialog, openCard, askAstra, follow, run, findShow, known, prepText, get store() { return store; }, get problem() { return problem; }, _test: { visitedPins, parseWent, attachProof, journalState } };
 })();
