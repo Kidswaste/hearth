@@ -20,14 +20,18 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     { id: 'places', name: 'Places', icon: 'compass', color: '#bd8bff', help: 'The Paris guide’s places worth the trip' },
     { id: 'shows', name: 'Shows', icon: 'spark', color: '#ff6b9d', help: 'This week’s shows from Shotgun and DICE' },
     { id: 'walks', name: 'My walks', icon: 'arrow', color: '#ffd75e', help: 'Your walk on the map' },
-    { id: 'visited', name: 'Visited', icon: 'check', color: '#f6ca71', help: 'Places you stamped as visited (✓)' }
+    { id: 'visited', name: 'Visited', icon: 'check', color: '#f6ca71', help: 'Places you stamped as visited (✓) and My Paris: what you actually did' }
   ];
-  const LAYER_OF = { showsync: 'shows', questwalk: 'walks' }; // map layers (QuestJournal.addMapLayer) per chip
+  // map layers (QuestJournal.addMapLayer) per chip. parisjournal64's My Paris layer IS the Visited chip: its own chip(kit)
+  // isn't added to the filter row (ownsChip), and Visited reads / sets My Paris's own on / off, so the two never disagree
+  const LAYER_OF = { showsync: 'shows', questwalk: 'walks', parisjournal: 'visited' };
+  const PJ = () => (typeof window.ParisJournal !== 'undefined' && window.ParisJournal?.toggle ? window.ParisJournal : null);
   const read = (k, d) => { try { return store.get(k, d); } catch { return d; } };
   const write = (k, v) => { try { store.set(k, v); } catch { /* a convenience: the default (all on) still works */ } };
   let prefs = { places: true, shows: true, walks: true, visited: true, ...(read(KEY, {}) || {}) };
   let showsTriedAt = 0, fetching = false, seeding = false;
-  const on = (id) => prefs[id] !== false;
+  const on = (id) => (id === 'visited' && PJ() ? PJ().prefs.on !== false : prefs[id] !== false);
+  const ownsChip = (layerId) => layerId === 'parisjournal'; // (quest-journal.js's chip row skips it: it's Visited here)
   const self = { id: 'mapfirst64' }; // a layer with nothing to draw: re-adding it re-renders the open map
   const rerender = () => { try { if (J()?.page === 'world') J().addMapLayer(self); } catch { /* the map isn't open */ } };
   const stateOf = () => { try { return J()?.paris?.ui().state() || null; } catch { return null; } };
@@ -89,10 +93,11 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     if (id === 'places') return P() ? s.atlas.places.filter((p) => P().guide.some((g) => g.id === p.id)).length : 0;
     if (id === 'shows') return typeof ShowSync !== 'undefined' && ShowSync.snap ? ShowSync.week().length : 0;
     if (id === 'walks') return window.QuestWalk?.shown?.() ? 1 : 0;
-    return s.atlas.places.filter((p) => p.visitedAt).length;
+    return PJ() ? PJ().moments().length : s.atlas.places.filter((p) => p.visitedAt).length; // My Paris's moments when it's in
   }
   async function toggle(id) {
-    prefs = { ...prefs, [id]: !on(id) }; write(KEY, prefs);
+    const next = !on(id); prefs = { ...prefs, [id]: next }; write(KEY, prefs);
+    if (id === 'visited' && PJ()) { PJ().toggle(next); return; } // My Paris redraws the map itself
     const s = stateOf();
     if (id === 'places' && on('places') && s && P() && !P().hasGuide(s)) { await addGuide('The Paris guide’s places are back on your map.'); return; }
     if (id === 'shows' && on('shows')) { showsTriedAt = 0; shows(); }
@@ -110,7 +115,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     const bar = E('div', { class: 'qmf-strip', attrs: { role: 'toolbar', 'aria-label': 'Map layers' } });
     for (const L of LAYERS) {
       const n = count(L.id, s), b = button('', () => toggle(L.id), 'qj-hardware qmf-chip');
-      b.dataset.layer = L.id; b.style.setProperty('--chip', L.color); b.setAttribute('aria-pressed', String(on(L.id)));
+      b.dataset.layer = L.id; if (L.id === 'visited') b.dataset.chip = 'visited'; // (parisjournal64's chip: My Paris) b.style.setProperty('--chip', L.color); b.setAttribute('aria-pressed', String(on(L.id)));
       b.setAttribute('aria-label', `${L.name}${n ? ` (${n})` : ''}: ${on(L.id) ? 'shown' : 'hidden'}`); b.title = `${L.help} · click to ${on(L.id) ? 'hide' : 'show'}`;
       b.append(QuestAtlas.icon(L.icon), E('span', { text: L.name }), ...(n ? [E('i', { class: 'qmf-n', text: String(n) })] : []));
       bar.append(b);
@@ -127,5 +132,5 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
       host.append(line);
     }
   }
-  return { open, keep, tone, off, overlay, on, toggle, planWalk, showStatus, LAYERS, get prefs() { return { ...prefs }; } };
+  return { open, keep, tone, off, ownsChip, overlay, on, toggle, planWalk, showStatus, LAYERS, get prefs() { return { ...prefs }; } };
 })();

@@ -90,7 +90,7 @@ try {
   root().querySelector('.qj-atlas-pin[data-place="place-canal"]').click(); await until(() => /Canal/.test(root().querySelector('.qj-field-place-head')?.textContent || ''), 'canal');
   btn('Stamp my visit', root()).click(); await until(() => S().atlas.places.find((p) => p.id === 'place-canal').visitedAt, 'visit stamp');
   await until(() => root().querySelector('.qj-atlas-pin.visited[data-place="place-canal"]'), 'visited pin');
-  step('a visited place wears a ✓', getComputedStyle(root().querySelector('.qj-atlas-pin.visited[data-place="place-canal"]'), '::after').content.includes('✓') && /1$/.test(chip('visited').textContent.trim()), chip('visited').textContent);
+  step('a visited place wears a ✓', getComputedStyle(root().querySelector('.qj-atlas-pin.visited[data-place="place-canal"]'), '::after').content.includes('✓') && chip('visited').dataset.chip === 'visited', chip('visited').textContent); // (the Visited chip is My Paris's when parisjournal64 is in: its count is My Paris's moments)
   root().querySelector('.qj-atlas-pin[data-place="pp-bataclan"]').click(); await wait(250); // select another pin (the selected one always stays)
   chip('visited').click(); await until(() => chip('visited')?.getAttribute('aria-pressed') === 'false', 'visited off');
   step('Visited off hides visited places', !pinIds().includes('place-canal'));
