@@ -73,6 +73,11 @@ Quests
 - Group: `sh dev/run-checks.sh showsync61` (showsync61, unit:showsync-test, quest-world, quest-map-tiles,
   quest-field, lazy, unit:boot-test, unit:datasafe-scan, unit:winmac-test).
 
+- Results (after merging main 70c296f): showsync61, unit:showsync-test, quest-world, quest-map-tiles, quest-icons,
+  lazy, unit:boot-test, unit:datasafe-scan, unit:winmac-test, unit:outing-test pass. quest-field fails ("favorite keeps
+  keyboard focus after saving") and fails the same way on origin/main without this branch: not caused here, left
+  for Codex.
+
 ## For Codex
 Touches of Codex files, all additive:
 - `tools/quest-journal.js`: a **map layer** registry. `QuestJournal.addMapLayer({ id, icon(kit), pins(), owns(id),
