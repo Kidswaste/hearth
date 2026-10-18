@@ -3,6 +3,10 @@ const QuestJournal = (() => {
   const E = (tag, props = {}, ...children) => { const node = el(tag, props, ...children); for (const [key, value] of Object.entries(props.style || {})) if (key.startsWith('--')) node.style.setProperty(key, value); return node; };
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
   let atlasView = null;
+  // (round 61, showsync61) Map layers: other modules add pins and one head icon to the Paris map without editing it
+  // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit) }.
+  const mapLayers = [];
+  function addMapLayer(layer) { const i = mapLayers.findIndex(l => l.id === layer.id); if (i >= 0) mapLayers[i] = layer; else mapLayers.push(layer); if (state && page === 'world' && root?.isConnected) render(); }
   let mapFilter = {kind:'all',saved:false,query:''}, tooltipSeq=0;
   let daySeen = C.day(), lastCelebration = null;
   const reviewJobs = new Map();
@@ -384,6 +388,9 @@ const QuestJournal = (() => {
     const kind=mapFilter.kind,visible=mapPlaces();
     const selected=visible.find(p=>p.id===state.atlas.selected)||visible[0];
     const head=row(mapIcon('social','Friends & dates',()=>mapNotebook('friends'),'#ffd75e'),mapIcon('calendar','Outing plans',()=>mapNotebook('plans'),'#ff8c42'),mapIcon('gift','Field rewards',mapRewards,'#ff6b9d'),mapIcon('info','Map controls & progress',()=>dialog('Your Paris field kit',body=>body.append(p('Drag to explore. Use arrow keys on the map to pan, + / − to zoom. Double-click to add a pin; the + button also works without a mouse.'),p('Colored symbols are your place categories. Stars save favorites. Visit stamps are your own record and give no XP. Quests earn XP after proof and review.'),p('Open friends, plans and rewards only when you need them. Hover or focus a symbol for its name. Escape dismisses a hint.'))),'#bfc0c8'),mapIcon('plus','Add a place',()=>placeForm(atlasView?.center()||{}),'#bd8bff'));
+    // (round 61, showsync61) map layers: their icon joins this row, their pins join the map
+    const layerKit={dialog,mapIcon,button,p,label,E,mutate,questDetail,navigate,notice},layerPins=[];
+    for(const layer of mapLayers){try{const icon=layer.icon?.(layerKit);if(icon)head.append(icon);layerPins.push(...(layer.pins?.()||[]));}catch(err){console.warn('[quest map layer]',layer.id,err);}}
     content.append(sectionHeading('FH / FIELD KIT','Paris, at your pace.',null,head));
     const filters=E('div',{class:'qj-map-filters',attrs:{'aria-label':'Filter map places'}});
     for(const k of [{id:'all',name:'All places',color:'#bfc0c8'},...C.mapKinds]){
@@ -413,7 +420,7 @@ const QuestJournal = (() => {
       else panel.append(button('Pick a little reward',mapRewards,'qj-quiet'));
     }else panel.append(QuestAtlas.icon('compass'),E('h3',{text:'A quiet corner.'}),p('No places match.'),button('Show all places',()=>{mapFilter={kind:'all',saved:false,query:''};render();},'qj-primary'));
     layout.append(map,panel);content.append(layout);
-    atlasView=QuestAtlas.mount(map,{places:visible.map(p=>({...p,kind:C.placeKind(p),color:mapKind(p).color})),selected:selected?.id,onSelect:id=>{mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point)});
+    atlasView=QuestAtlas.mount(map,{places:[...visible.map(p=>({...p,kind:C.placeKind(p),color:mapKind(p).color})),...layerPins],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point)});
     const stamps=state.atlas.places.filter(p=>p.visitedAt).length;
     content.append(E('div',{class:'qj-field-footer'},E('span',{text:visible.length+' places'}),mapIcon('check',stamps+' visit stamps · your own record, no XP',()=>mapNotebook('places'),'#ffd75e'),E('span',{text:stamps+'/'+state.atlas.places.length}),button('Quest notebook →',()=>navigate('adventure'),'qj-quiet')));
   }
@@ -988,5 +995,5 @@ const QuestJournal = (() => {
   }
   Tools.define({ id: 'quests', name: 'Sidequest Studio', icon: '✦', color: '#d9b777', description: 'Your quests, next ideas and small victories', mount: body => mount(body).catch(err => { body.textContent = `Journal could not open: ${calmError(err)}`; }), onShow: () => { if (state) render(); } });
   Commands.register({ name: 'quests', area: 'Create', desc: 'Open your quest journal, campaigns, XP, skill tree and rewards', run: () => activate('tool:quests') });
-  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, get celebration() { return lastCelebration; } };
+  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, get celebration() { return lastCelebration; }, addMapLayer, mutate: (fn, message) => mutate(fn, message), get page() { return page; } }; // (round 61, showsync61) addMapLayer / mutate / page: map layers and quests made outside the journal
 })();

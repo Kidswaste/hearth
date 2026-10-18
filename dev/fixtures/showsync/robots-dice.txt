@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /search
+Disallow: /*?q=
+
+User-agent: GPTBot
+Disallow: /
