@@ -336,3 +336,7 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
 .ly-plays > summary { cursor: pointer; font-size: 11.5px; color: var(--muted); padding: 2px 0; display: list-item; }
 .ly-plays > summary .ly-plays-state { float: right; margin-left: 8px; color: var(--muted); opacity: .8; font-variant-numeric: tabular-nums; }
 .ly-plays[open] { display: flex; flex-direction: column; gap: 5px; }
+/* (round 64, framebar64) visible by default: with the pointer away from the preview the stats line keeps only the fps
+   and the frame budget bar (declutter's 'lab-stats' keeps .fb-keep on screen; the bar: tools/framebar.css); pointing
+   at the preview shows the whole line, as before */
+.three-preview:not(:hover) > .three-stats.fb-keep > :not(:first-child):not(.fb) { display: none; }
