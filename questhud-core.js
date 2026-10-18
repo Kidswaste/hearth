@@ -88,11 +88,11 @@
 
   // ---------- near you (map pins; only with the owner's opt-in, in questhud.js) ----------
   // The Paris map place a quest belongs to: a field quest (c.mapPlace), an outing made from a pin (campaign
-  // c-world-outing-<place>), or a place named on the quest / campaign by later additions (q.place, c.place)
+  // c-world-outing-<place>), a Paris guide / personal quest (c.parisPlace, parisquests61), or q.place / c.place
   function placeOf(s, q) {
     const places = s?.atlas?.places || []; if (!q || !places.length) return null;
     const c = campaignOf(s, q);
-    const id = q.place || c?.mapPlace || c?.place || (c?.id.match(/^c-world-outing-(.+)$/) || [])[1] || null;
+    const id = q.place || c?.mapPlace || c?.parisPlace || c?.place || (c?.id.match(/^c-world-outing-(.+)$/) || [])[1] || null; // parisPlace: parisquests61's place / personal quests
     return (id && places.find((p) => p.id === id)) || null;
   }
   function km(a, b) {
@@ -111,6 +111,8 @@
 
   // ---------- chat words ----------
   const SUBS = ['next', 'done', 'track', 'picks', 'near', 'open', 'studio', 'hud'];
+  // parisquests61's /quest words (tools/quest-paris-ui.js: QuestParisUI.run): one /quest command, these pass through
+  const PARIS = ['paris', 'map', 'places', 'guide', 'go', 'start', 'place', 'add', 'park', 'list', 'progress', 'help'];
   function parse(args) {
     const t = String(args || '').trim(), m = t.match(/^(\S+)\s*([\s\S]*)$/);
     if (!m) return { sub: '', rest: '' };
@@ -118,8 +120,9 @@
     if (SUBS.includes(w)) return { sub: w, rest: m[2].trim() };
     if (['check', 'tick', 'finish'].includes(w)) return { sub: 'done', rest: m[2].trim() };
     if (['show', 'tracker', 'panel'].includes(w)) return { sub: 'open', rest: m[2].trim() };
-    return { sub: 'track', rest: t }; // "/quest canal" = track it
+    if (PARIS.includes(w)) return { sub: 'paris', rest: t };
+    return { sub: 'name', rest: t }; // "/quest canal": track an open quest by that name, else a Paris place / personal quest
   }
 
-  return { current, main, steps, nextStep, progress, card, actives, sig, trackables, match, placeOf, km, say, walk, near, parse, SUBS, norm };
+  return { PARIS, current, main, steps, nextStep, progress, card, actives, sig, trackables, match, placeOf, km, say, walk, near, parse, SUBS, norm };
 });

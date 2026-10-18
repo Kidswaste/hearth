@@ -129,6 +129,21 @@ step('nothing active: the chip goes tiny (just ✦)', vis(chip()) && chip().clas
 await QuestJournal.mutate((s) => { s.campaigns.find((c) => c.id === s.active).paused = false; }, 'resumed');
 await until(() => !chip().classList.contains('qh-idle'), 'chip back');
 
+// ---------- 8b. one /quest: parisquests61's words pass through, and its quests show in the chip ----------
+step('one /quest command (the tracker\'s), with the Paris words in its suggestions', Commands.get('quest')?.run && (Commands.get('quest').complete?.('pa') || []).some((x) => x.value === 'paris'));
+if (typeof QuestParis !== 'undefined' || Lazy.isIn('questjournal')) {
+  const air = QuestParis.personal.find((t) => t.key === 'airpods');
+  if (air) {
+    await run('/quest add airpods');
+    await until(() => chip().getAttribute('aria-label').includes(air.title), 'chip follows the Paris quest');
+    step('/quest add airpods (parisquests61) → the chip follows that quest', chip().getAttribute('aria-label').includes(air.title), chip().getAttribute('aria-label'));
+    document.querySelector('.qj dialog[open]')?.close();
+    const list = String(await Commands.tryRun('/quest list', agent) ?? '');
+    step('/quest list still answers with the Paris quests', /AirPods|Paris|•/.test(list + chatText()));
+    await run(`/quest track ${main.title}`); await wait(250);
+  }
+}
+
 // ---------- 9. the Lab: the chip is there and off the preview ----------
 const lab = Tools.enabled().find((t) => t.id === 'three');
 if (lab) {

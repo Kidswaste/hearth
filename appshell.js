@@ -188,7 +188,9 @@ function applySettings(win, settings = {}) {
     try { hotkeyOk = globalShortcut.register(hotkey, () => toggleWindow(win)); } catch { hotkeyOk = false; }
   }
   // On a Mac the setup script's Hearth.app is what you'd add to Login Items (System Settings → General).
-  if (process.platform !== 'darwin') app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtStartup), args: [app.getAppPath()] });
+  // (round 60, winfresh60) the folder quoted: Electron writes the arguments joined by spaces, unquoted, so a folder like
+  // C:\Users\Jane Doe\Hearth started nothing at login; the folder is this file's own (named anything)
+  if (process.platform !== 'darwin') app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtStartup), args: require('./winfresh-core').loginItemArgs(__dirname) });
   session.defaultSession.setSpellCheckerLanguages(settings.spellLanguages?.length ? settings.spellLanguages : ['en-US']);
   return { hotkeyOk };
 }
@@ -213,7 +215,7 @@ function restartApp() {
 function createShortcuts() {
   if (process.platform === 'darwin') return createMacLauncher();
   const target = process.execPath;
-  const appDir = app.getAppPath();
+  const appDir = __dirname; // (round 60) the Hearth folder itself, whatever its name (getAppPath is a stub in a packaged app)
   // (round 31, winmac) the Desktop where Explorer shows it (OneDrive moves it to OneDrive\Desktop), and the shortcuts
   // made by Electron itself carrying the app's id ("Hearth", main.js): Windows shows notifications for an app whose
   // Start-menu shortcut has that id, and the path can hold any character (the PowerShell line below is the fallback)
@@ -233,6 +235,29 @@ function createShortcuts() {
       resolve(err ? { error: err.message } : { created: places });
     });
   });
+}
+
+// (round 60, winfresh60) the first start of a copy on Windows ("Start Hearth.cmd" in the unzipped folder says so): the
+// Start menu + Desktop "Hearth.lnk" are made once (the Start menu one also lets Windows show Hearth's notifications);
+// shortcuts that already open this copy are kept; another copy's (an older agent-hub folder still there) are left
+// alone and said once (Settings › Create Start menu & desktop shortcuts points them here). A note in the data folder
+// keeps it to once per copy; test copies (renamed package, smoke runs) never touch the real shortcuts.
+// → Promise<{ action, created?, other?, error? }>
+async function firstRunShortcuts({ dataDir }) {
+  if (process.platform !== 'win32' || process.env.HEARTH_TEST_SAVE_DIR) return { action: 'skip' };
+  try { if (require('./package.json').name !== 'agent-hub') return { action: 'skip' }; } catch { return { action: 'skip' }; }
+  const note = path.join(dataDir, 'shortcuts.json');
+  let marker = null; try { marker = JSON.parse(fs.readFileSync(note, 'utf8')); } catch { marker = null; }
+  let existing = null;
+  try { existing = shell.readShortcutLink(path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', `${APP_NAME}.lnk`)); } catch { existing = null; }
+  const W = require('./winfresh-core');
+  const plan = W.shortcutPlan({ marker, existing, execPath: process.execPath, appDir: __dirname, exists: (d) => fs.existsSync(path.join(d, 'main.js')) });
+  if (plan.action === 'done') return plan;
+  let r = {};
+  if (plan.action === 'create') { ensureIcon(); r = await createShortcuts(); }
+  if (r.error) return { ...plan, error: r.error }; // tried again at the next start
+  try { fs.mkdirSync(dataDir, { recursive: true }); fs.writeFileSync(note, JSON.stringify({ appDir: __dirname, action: plan.action, other: plan.other || null, at: Date.now() })); } catch { /* once more next start */ }
+  return { ...plan, ...r };
 }
 
 // Mac: ~/Applications/Hearth.app, a small launcher that starts Hearth (or restarts it when it's open).
@@ -319,7 +344,7 @@ function setupDownloads(send) {
 
 module.exports = {
   ensureIcon, loadWindowState, trackWindowState, setupTray, applySettings, setupCloseToTray,
-  createShortcuts, restartApp, writeIconFiles, APP_NAME, ICON_ICO_PATH: ICON_ICO, attachContextMenu, setupDownloads, skipDownloads, toggleWindow, ICON_ICO,
+  createShortcuts, firstRunShortcuts, restartApp, writeIconFiles, APP_NAME, ICON_ICO_PATH: ICON_ICO, attachContextMenu, setupDownloads, skipDownloads, toggleWindow, ICON_ICO,
   markQuitting: () => { quitting = true; },
   pngFromRgba, trayIcon, // (round 36, nativefeel) the taskbar badge, the tray icon
 };

@@ -14,6 +14,7 @@ var WorkbenchVST = (() => {
     if (Object.keys(pendingPatch).length && selected) flushPatch().catch(() => {});
     keyOff(); keyOff = () => {}; silence(); if (selected) call('live-stop').catch(() => {}); playing = false;
     if (rendered?.player) rendered.player.pause();
+    if (typeof PresetHover !== 'undefined') PresetHover.detach(); // (round 61, presethover61) the ✦ Preset window leaves with the desk
   }
   async function flushPatch() {
     const values = pendingPatch; pendingPatch = {}; if (!Object.keys(values).length) return;
@@ -32,6 +33,7 @@ var WorkbenchVST = (() => {
     pause(); const ticket = alive; h = helpers;
     const { state, persist, say, e, row, note, btn, field, range, select, check, save, file } = h;
     out.classList.add('wb-sound-desk');
+    if (typeof PresetHover !== 'undefined') PresetHover.attach(out, door); // (round 61, presethover61) ✦ Preset floats over the desk
     const header = e('div', null, 'wb-sound-header');
     header.innerHTML = '<svg viewBox="0 0 100 50" aria-hidden="true"><path d="M2 25h10l6-18 9 37 9-32 8 25 8-16 7 8 7-4h32" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="90" cy="9" r="3" fill="currentColor"/></svg>';
     header.append(e('h3', 'Sound desk'), note('Serum 2 + Vital · play a sound, shape it, keep the take.')); out.append(header);
@@ -77,9 +79,11 @@ var WorkbenchVST = (() => {
       const controls = e('div', null, 'wb-live-params'), search = field('Find a control', '', () => {});
       function parameters(query = '') { controls.replaceChildren(); const all = selected.parameters.filter(x => `${x.label} ${x.key}`.toLowerCase().includes(query.toLowerCase())); for (const x of all.slice(0, 24)) { if (typeof x.value === 'boolean') controls.append(check(x.label, x.value, v => tweak(x.key, v))); else if (typeof x.value === 'number') controls.append(range(x.label, x.value, x.min, x.max, x.step || .001, v => tweak(x.key, v))); else controls.append(select(x.label, x.value, x.choices, v => tweak(x.key, v))); } if (all.length > 24) controls.append(note(`${all.length} controls match. Search oscillator, envelope, cutoff or an effect.`)); }
       search.querySelector('input').oninput = ev => parameters(ev.target.value);
+      refreshControls = () => parameters(search.querySelector('input').value); // (round 61) a ✦ Preset change shows on the sliders
       const advanced = e('details', null, 'wb-sound-section'); advanced.append(e('summary', 'Shape the sound · live controls'), search, controls, note('Changes reach the running instrument immediately. Opening a full patch snapshot briefly pauses audio.'), row(btn('Undo last tweak', async () => { await undo(); parameters(search.querySelector('input').value); }), btn('Refresh from native editor', async () => { await snapshot(); parameters(search.querySelector('input').value); say('Native controls refreshed.'); })));
       detail.append(advanced); parameters();
       const presets = e('details', null, 'wb-sound-section'); presets.append(e('summary', 'Keep a patch'), row(btn('Save bank preset', async () => { const r = await snapshot(); if (state.presets.length >= 12 || state.presets.reduce((n, p) => n + p.state.length, 0) + r.state.length > 9e6) throw Error('Preset bank is full. Export a patch or remove an older preset.'); state.presets.unshift({ label: `${p.name} / ${new Date().toLocaleTimeString()}`, path: p.path, name: p.name, state: r.state }); persist(); await draw(); }), btn('Export patch', async () => { const r = await snapshot(); await save('vst-patch', JSON.stringify({ v: 1, name: p.name, state: r.state }, null, 2), 'json'); })), file('Import patch', '.json', async f => { const data = JSON.parse(await f.text()); if (data.v !== 1 || data.name !== p.name || typeof data.state !== 'string' || data.state.length > 12e6) throw Error('Choose a patch for this instrument.'); before = { state: (await snapshot()).state }; await snapshot(data.state); await draw(); }));
+      redraw = draw; // (round 61) a preset kept from ✦ Preset shows in this list
       for (const preset of state.presets.filter(s => s.name === p.name)) presets.append(row(e('span', preset.label), btn('Recall', async () => { before = { state: (await snapshot()).state }; await snapshot(preset.state); await draw(); }), btn('Remove', () => { state.presets.splice(state.presets.indexOf(preset), 1); persist(); draw(); })));
       detail.append(presets);
       const ai = e('details', null, 'wb-sound-section'), brief = field('Describe the sound', 'A warm, slightly unstable pluck with a short echo', () => {}, 'textarea'), agent = select('Sound designer', 'codex', [['codex', 'Astra'], ['claude', 'Claude']], () => {});
@@ -110,5 +114,19 @@ var WorkbenchVST = (() => {
     if (action === 'render') { await flushPatch(); const duration = Math.max(1, Math.min(12, Number(args.duration) || 4)), note = Math.max(24, Math.min(96, Math.round(Number(args.note) || 60))); const r = await call('render', { duration, notes: [{ note, time: 0, length: duration * .65 }] }); showRender(r); return { seconds: r.seconds, peak: r.peak, silent: r.silent, message: 'WAV ready in Sound desk → Export a sample. Ask the user to listen and describe the next change.' }; }
     throw Error('Unknown sound action.');
   }
-  return { mount, pause, soundTool };
+  // (round 61, presethover61) a thin door for the ✦ Preset window (tools/preset-hover.js): the open instrument's real
+  // parameters, a validated live patch (the same `patch` action and checks as the AI sound tool), its full state, and
+  // the preset bank (same limits as "Save bank preset"). Nothing here runs unless the window asks.
+  let refreshControls = () => {}, redraw = () => {};
+  const door = {
+    current: () => selected ? { name: selected.name, parameters: selected.parameters } : null,
+    apply: async values => { if (!selected) throw Error('Choose Serum 2 or Vital first.'); const v = WorkbenchCore.patch(selected.parameters, values); pendingPatch = { ...pendingPatch, ...v }; await flushPatch(); refreshControls(); return Object.keys(v); },
+    snapshot: async () => (await snapshot()).state,
+    keep: async (label, state) => {
+      const bank = h?.state; if (!bank || !selected) throw Error('Open the Sound desk first.');
+      if (bank.presets.length >= 12 || bank.presets.reduce((n, p) => n + p.state.length, 0) + state.length > 9e6) throw Error('Preset bank is full. Export a patch or remove an older preset.');
+      bank.presets.unshift({ label: String(label).slice(0, 80), path: selected.path, name: selected.name, state }); await h.persist(); await redraw();
+    },
+  };
+  return { mount, pause, soundTool, door };
 })();

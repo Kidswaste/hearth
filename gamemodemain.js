@@ -324,7 +324,9 @@ function register(ipcMain, c) {
   // the hub window asks to play / leave / test; the game window's own preload only asks its info and "Back to Hearth"
   const hub = (fn) => (e, ...a) => { const w = ctx.getWin(); if (!w || w.isDestroyed() || e.sender !== w.webContents) throw new Error('not from Hearth'); return fn(e, ...a); };
   const mine = (e) => Boolean(G?.win && !G.win.isDestroyed() && e.sender === G.win.webContents);
-  ipcMain.handle('game:play', hub(play));
+  // (round 60, trimdrive60) an expected "can't" (three.js not downloaded yet and offline) comes back as a plain answer the
+  // hub shows, not a thrown handler error (Electron logs those in the main process as errors)
+  ipcMain.handle('game:play', hub(async (e, req) => { try { return await play(e, req); } catch (err) { if (err?.calm) return { playing: false, error: err.message, offline: Boolean(err.offline) }; throw err; } }));
   ipcMain.handle('game:leave', hub(() => leave('asked')));
   ipcMain.handle('game:state', hub(() => info()));
   ipcMain.handle('game:displays', hub(() => displays().map(({ bounds, ...d }) => d)));

@@ -707,6 +707,12 @@ function registerAfterWindow() {
       win?.webContents.executeJavaScript(`window.toast?.(${JSON.stringify(`Brought back what the last update had put aside: ${what}. Your chats were never touched.`)}, { timeout: 12000 })`).catch(() => {});
     }).catch((err) => console.warn('update: bring back', err.message));
   }, 4000);
+  // (round 60, winfresh60) a copy's first start on Windows: the Start menu + Desktop "Hearth" shortcuts (once; another
+  // copy's shortcuts are left alone and said once)
+  if (process.platform === 'win32') setTimeout(() => appshell.firstRunShortcuts({ dataDir: store.DATA_DIR }).then((r) => {
+    if (r.action === 'elsewhere') win?.webContents.executeJavaScript(`window.toast?.(${JSON.stringify(`Your Hearth shortcuts still open the copy in ${r.other}. Settings › Create Start menu & desktop shortcuts points them at this one.`)}, { timeout: 12000 })`).catch(() => {});
+    else if (r.error) console.warn('shortcuts:', r.error);
+  }).catch((err) => console.warn('shortcuts:', err.message)), 6000);
   lazyIpc('chromemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 30) Hearth's Chrome: Google sign-in in the owner's real Chrome, driven over the DevTools protocol
   lazyIpc('chromeviewmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 31) Chrome views: that Chrome out of sight, its pages shown and used inside Hearth's windows
   // (round 30, chrome) Google's "Couldn't sign you in" anywhere: the app window offers Chrome, else the hub does (a website chat)

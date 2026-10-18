@@ -355,7 +355,7 @@ const QuestHud = (() => {
     const { sub, rest } = QC.parse(args);
     await core(); await read();
     const say = (text, actions) => (ctx?.note ? ctx.note(text, { actions, id: 'questhud' }) : ctx?.say ? ctx.say(text) : toast(text));
-    if (status === 'missing' && !['studio', 'hud', 'open'].includes(sub)) { say('No quest journal yet. Open Sidequest Studio to start your first quest.', [{ label: 'Open Sidequest Studio', run: () => openStudio() }]); return; }
+    if (status === 'missing' && !['studio', 'hud', 'open', 'paris', 'name'].includes(sub)) { say('No quest journal yet. Open Sidequest Studio to start your first quest.', [{ label: 'Open Sidequest Studio', run: () => openStudio() }]); return; }
     const cd = cur();
     if (!sub || sub === 'next') {
       if (!cd) { const p = todaysPicks(); say(`No active quest right now.${p.length ? ` Today's picks: ${p.map((x, i) => `${i + 1}. ${x.title}`).join(' · ')}` : ''}`, p.map((x, i) => ({ label: `Take ${i + 1}`, run: () => take(x) }))); return; }
@@ -365,6 +365,9 @@ const QuestHud = (() => {
       return;
     }
     if (sub === 'done') return checkNext();
+    // (parisquests61) one /quest: the Paris words, and a name no open quest has, go to QuestParisUI.run
+    if (sub === 'paris' || (sub === 'name' && !QC.match(C, S, rest))) return paris(args, ctx);
+    if (sub === 'name') return track(rest);
     if (sub === 'track') {
       if (!rest) { const names = QC.trackables(C, S).slice(0, 12).map((t) => `${t.kind === 'side' ? '◇' : '◆'} ${t.title}`); return names.length ? `Track one of: ${names.join(' · ')} — /quest track <name>` : 'Nothing to track yet.'; }
       return track(rest);
@@ -381,9 +384,12 @@ const QuestHud = (() => {
     if (sub === 'hud') { const w = rest.toLowerCase(); const h = setHidden(w === 'off' || w === 'hide' ? true : w === 'on' || w === 'show' ? false : !prefs.hidden); return h ? 'Quest chip hidden. /quest hud on (or Ctrl/⌘+K › Quest) brings it back.' : 'Quest chip shown in the rail.'; }
     return 'Try /quest, /quest next, /quest done or /quest track <name>.';
   }
+  async function paris(args, ctx) { await Lazy.load('questjournal'); return QuestParisUI.run(args, ctx); }
+  const parisUI = () => (window.Lazy?.isIn('questjournal') && typeof QuestParisUI !== 'undefined' ? QuestParisUI : null);
   function complete(args) {
     const t = String(args || '');
-    if (!/\s/.test(t)) return QC.SUBS.filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip' }[s] }));
+    if (QC.parse(t).sub === 'paris' && /\s/.test(t)) return parisUI()?.complete(t) || [];
+    if (!/\s/.test(t)) return [...QC.SUBS, ...QC.PARIS.filter((w) => !['map', 'start', 'place', 'progress'].includes(w))].filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip', paris: 'the Paris guide on your map', places: 'Paris places', guide: 'the guide pins', go: 'a Paris place\'s quest', add: 'a personal quest (airpods, park…)', park: 'music at the park', list: 'your Paris quests', help: 'every /quest word' }[s] }));
     const { sub, rest } = QC.parse(t);
     if (sub === 'hud') return ['on', 'off'].map((v) => ({ value: `hud ${v}` }));
     if (sub !== 'track' || !C || !S) return [];
@@ -404,9 +410,9 @@ const QuestHud = (() => {
     read().then(() => { nearOnStart(); paint(); });
   }
   if (!Commands.get('quest')) {
-    Commands.register({ name: 'quest', args: '[next | done | track <name> | picks | near | open | hud on|off]', area: 'Create', keys: HOTKEY,
-      desc: 'Your active quest and its next step; check it off, track another, today\'s picks', run: cmd, complete,
-      examples: ['/quest', '/quest next', '/quest done', '/quest track Paris'], keywords: 'quest tracker hud sidequest next step check off progress' });
+    Commands.register({ name: 'quest', args: '[next | done | track <name> | picks | near | open | hud on|off | paris | go <place> | add <quest> | park | list]', area: 'Create', keys: HOTKEY,
+      desc: 'Your active quest and its next step; check it off, track another, today\'s picks; Paris places and personal quests', run: cmd, complete,
+      examples: ['/quest', '/quest next', '/quest done', '/quest track Paris', '/quest paris', '/quest add airpods'], keywords: 'quest tracker hud sidequest next step check off progress paris places airpods park' });
   }
   AppUI.addAction('Quest: show my quest tracker', () => toggle(true), HOTKEY);
   AppUI.addAction('Quest: check off the next step', () => checkNext().catch((err) => toast(calmError(err), { type: 'error' })));

@@ -48,7 +48,7 @@ const QuestJournal = (() => {
   function syncMotion() {
     if (root) root.dataset.motion = state?.motion !== false && !document.hidden && H.activeId === 'tool:quests' ? 'on' : 'off';
   }
-  const notice = text => { if (status) status.textContent = text; const local = root?.querySelector('dialog[open] .qj-dialog-status'); if (local) local.textContent = text; };
+  const notice = text => { if (status) status.textContent = text; const local = [...(root?.querySelectorAll('dialog[open]')||[])].at(-1)?.querySelector('.qj-dialog-status'); if (local) local.textContent = text; };
   // Semantic actions only: user-authored quest titles and confirmation copy stay intact.
   const actionGroups = [
     ['settings','#bd8bff',['Journal options','Tune desk','Set my budget']],
@@ -383,12 +383,20 @@ const QuestJournal = (() => {
       root.querySelector('.qj-atlas [data-place="'+id+'"]')?.focus({preventScroll:true});
     });
   }
-  function mapPlaces() {const query=mapFilter.query.toLocaleLowerCase();return state.atlas.places.filter(p=>(mapFilter.kind==='all'||C.placeKind(p)===mapFilter.kind)&&(!mapFilter.saved||p.favorite)&&(!query||(p.name+' '+p.quest).toLocaleLowerCase().includes(query)));}
+  // parisquests61: mapFilter.guide (a Paris guide word: tag, arrondissement…) and guide words in search come from tools/quest-paris-ui.js.
+  function mapPlaces() {const query=mapFilter.query.toLocaleLowerCase(),PG=window.QuestParisUI;return state.atlas.places.filter(p=>(mapFilter.kind==='all'||C.placeKind(p)===mapFilter.kind)&&(!mapFilter.saved||p.favorite)&&(!mapFilter.guide||!PG||PG.keep(p,mapFilter.guide))&&(!query||(p.name+' '+p.quest+' '+(PG?.words(p)||'')).toLocaleLowerCase().includes(query)));}
   function centerMapSelection() {const places=mapPlaces(),place=places.find(p=>p.id===state.atlas.selected)||places[0];if(place)atlasView?.focus(place);}
+  function outingDesk() {
+    return OutingDesk.open({dialog,button,field,explain,friends:()=>state.world.friends,openQuest:questDetail,
+      quest:async plan=>{const c=await mutate(s=>OutingCore.campaign(s,plan,C),'Take-home quest ready. Proof and review unlock its XP.');return c.quests[0].id;},
+      pin:async event=>{await mutate(s=>{const existing=s.atlas.places.find(p=>Math.abs(p.lat-event.lat)<.0002&&Math.abs(p.lon-event.lon)<.0002);if(existing)s.atlas.selected=existing.id;else C.savePlace(s,{name:event.venue||event.title,lat:event.lat,lon:event.lon,kind:['music','visual','game'].includes(event.kind)?event.kind:'reset',quest:'Find one detail here to bring into your next creation.'});},'Venue pinned.');mapFilter={kind:'all',saved:false,query:''};navigate('world');}
+    });
+  }
   function worldMap() {
     const kind=mapFilter.kind,visible=mapPlaces();
     const selected=visible.find(p=>p.id===state.atlas.selected)||visible[0];
     const head=row(mapIcon('social','Friends & dates',()=>mapNotebook('friends'),'#ffd75e'),mapIcon('calendar','Outing plans',()=>mapNotebook('plans'),'#ff8c42'),mapIcon('gift','Field rewards',mapRewards,'#ff6b9d'),mapIcon('info','Map controls & progress',()=>dialog('Your Paris field kit',body=>body.append(p('Drag to explore. Use arrow keys on the map to pan, + / − to zoom. Double-click to add a pin; the + button also works without a mouse.'),p('Colored symbols are your place categories. Stars save favorites. Visit stamps are your own record and give no XP. Quests earn XP after proof and review.'),p('Open friends, plans and rewards only when you need them. Hover or focus a symbol for its name. Escape dismisses a hint.'))),'#bfc0c8'),mapIcon('plus','Add a place',()=>placeForm(atlasView?.center()||{}),'#bd8bff'));
+    head.prepend(mapIcon('music','Outing desk · events & my lineup',outingDesk,'#ffb14a'));
     content.append(sectionHeading('FH / FIELD KIT','Paris, at your pace.',null,head));
     const filters=E('div',{class:'qj-map-filters',attrs:{'aria-label':'Filter map places'}});
     for(const k of [{id:'all',name:'All places',color:'#bfc0c8'},...C.mapKinds]){
@@ -401,12 +409,14 @@ const QuestJournal = (() => {
     const surprise=mapIcon('dice','Pick somewhere for me',async()=>{const pool=visible.filter(p=>p.id!==selected?.id&&!p.visitedAt),fallback=visible.filter(p=>p.id!==selected?.id),choices=pool.length?pool:fallback;if(choices.length)await mapPick(choices[Math.floor(Math.random()*choices.length)].id,true);},'#ff8c42');
     surprise.querySelector('button').disabled=visible.length<2;
     filters.append(search,surprise,mapIcon('list','My places',()=>mapNotebook('places'),'#bd8bff'));
+    if(mapFilter.guide&&window.QuestParisUI)filters.append(QuestParisUI.chip(mapFilter.guide,()=>{delete mapFilter.guide;render();centerMapSelection();})); // parisquests61
     content.append(filters);
     const layout=E('div',{class:'qj-world-layout qj-field-layout'}),map=E('section'),panel=E('aside',{class:'qj-place-panel qj-field-panel'});
     if(selected){
       const k=mapKind(selected),emblem=E('div',{class:'qj-field-emblem',style:{'--icon-color':k.color}},QuestAtlas.icon(k.id));
       panel.append(E('div',{class:'qj-field-place-head'},emblem,E('div',{},label(k.name),E('h3',{text:selected.name}))),
         E('div',{class:'qj-field-place-tools'},mapIcon('star',selected.favorite?'Remove favorite':'Save favorite',()=>mutate(s=>{const place=s.atlas.places.find(p=>p.id===selected.id);place.favorite=!place.favorite;}),'#ffd75e',!!selected.favorite,'map-favorite-place'),mapIcon('check',selected.visitedAt?'Undo visit stamp':'Stamp my visit',()=>mutate(s=>{const place=s.atlas.places.find(p=>p.id===selected.id);place.visitedAt=place.visitedAt?null:new Date().toISOString();},'Visit saved. Quest XP still needs proof.'),'#ff6b9d',!!selected.visitedAt,'map-visit-place'),mapIcon('edit','Edit place & mission',()=>placeForm(selected),'#bd8bff'),mapIcon('info','Place details',()=>dialog(selected.name,body=>body.append(p(selected.quest||'No personal mission yet.'),p(selected.visitedAt?'You stamped a visit on '+new Date(selected.visitedAt).toLocaleDateString()+'.':'No visit stamped yet.'))),'#bfc0c8')));
+      window.QuestParisUI?.panel(selected,panel); // parisquests61: Paris guide notes + its go → do → proof quest
       const accepted=state.campaigns.find(c=>c.mapPlace===selected.id&&!C.campaignDone(state,c)&&!c.paused);
       const mission=C.mapMissions.find(m=>m.kind===k.id);
       if(accepted){const q=C.next(state,accepted)||accepted.quests[0],b=button('',()=>questDetail(q.id),'qj-field-feature');b.append(label('IN YOUR NOTEBOOK'),E('strong',{text:accepted.title}),E('span',{text:q.minutes+' min · '+q.xp+' XP'}));panel.append(b);}
@@ -420,7 +430,7 @@ const QuestJournal = (() => {
     layout.append(map,panel);content.append(layout);
     atlasView=QuestAtlas.mount(map,{places:visible.map(p=>({...p,kind:C.placeKind(p),color:mapKind(p).color})),selected:selected?.id,onSelect:id=>{mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point)});
     const stamps=state.atlas.places.filter(p=>p.visitedAt).length;
-    content.append(E('div',{class:'qj-field-footer'},E('span',{text:visible.length+' places'}),mapIcon('check',stamps+' visit stamps · your own record, no XP',()=>mapNotebook('places'),'#ffd75e'),E('span',{text:stamps+'/'+state.atlas.places.length}),button('Quest notebook →',()=>navigate('adventure'),'qj-quiet')));
+    content.append(E('div',{class:'qj-field-footer'},E('span',{text:visible.length+' places'}),mapIcon('check',stamps+' visit stamps · your own record, no XP',()=>mapNotebook('places'),'#ffd75e'),E('span',{text:stamps+'/'+state.atlas.places.length}),window.QuestParisUI?.footer()||null,button('Quest notebook →',()=>navigate('adventure'),'qj-quiet'))); // parisquests61: the Paris guide's one footer button
   }
   function mapMissionDetail(place,mission) {
     dialog(mission.title,(body,d)=>{
@@ -993,5 +1003,8 @@ const QuestJournal = (() => {
   }
   Tools.define({ id: 'quests', name: 'Sidequest Studio', icon: '✦', color: '#d9b777', description: 'Your quests, next ideas and small victories', mount: body => mount(body).catch(err => { body.textContent = `Journal could not open: ${calmError(err)}`; }), onShow: () => { if (state) render(); } });
   Commands.register({ name: 'quests', area: 'Create', desc: 'Open your quest journal, campaigns, XP, skill tree and rewards', run: () => activate('tool:quests') });
-  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, get celebration() { return lastCelebration; }, mutate, ready: () => writable && Boolean(state) }; // (round 61, questhud61: mutate + ready for the rail's quest tracker)
+  // parisquests61 (tools/quest-paris-ui.js): the same transactional mutate, a loaded flag, the map filter and the
+  // journal's own UI helpers, so the Paris guide and `/quest` drive the journal instead of writing it behind its back.
+  const parisHooks = { mutate, ready: () => writable && !!state, mapFilter(f = {}) { mapFilter = { kind: 'all', saved: false, query: '', ...f }; if (!f.guide) delete mapFilter.guide; navigate('world'); centerMapSelection(); }, ui: () => ({ E, button, label, p, row, dialog, mapIcon, notice, navigate, questDetail, mapPick, state: () => state }) };
+  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, paris: parisHooks, openOutings:outingDesk, keepOuting:async event=>{await OutingDesk.keepEvent(event);return outingDesk();}, get celebration() { return lastCelebration; }, mutate, ready: () => writable && Boolean(state) }; // (round 61, questhud61: mutate + ready for the rail's quest tracker)
 })();

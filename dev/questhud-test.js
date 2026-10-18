@@ -39,13 +39,15 @@ test('the signature changes when the next step changes, and not otherwise', () =
   assert.equal(a, Q.sig(Q.card(C, s, q)));
   C.startSmall(s, q.id); assert.notEqual(a, Q.sig(Q.card(C, s, Q.current(C, s))));
 });
-test('/quest words: subcommands, synonyms, and a bare name means track', () => {
+test('/quest words: subcommands, synonyms, the Paris words, and a bare name', () => {
   assert.deepEqual(Q.parse(''), { sub: '', rest: '' });
   assert.deepEqual(Q.parse('next'), { sub: 'next', rest: '' });
   assert.deepEqual(Q.parse('done'), { sub: 'done', rest: '' });
   assert.deepEqual(Q.parse('check'), { sub: 'done', rest: '' });
   assert.deepEqual(Q.parse('track  Canal Saint-Martin '), { sub: 'track', rest: 'Canal Saint-Martin' });
-  assert.deepEqual(Q.parse('Material world'), { sub: 'track', rest: 'Material world' });
+  assert.deepEqual(Q.parse('Material world'), { sub: 'name', rest: 'Material world' });
+  assert.deepEqual(Q.parse('paris shows'), { sub: 'paris', rest: 'paris shows' }); // parisquests61's words pass through whole
+  assert.deepEqual(Q.parse('add airpods'), { sub: 'paris', rest: 'add airpods' });
   assert.deepEqual(Q.parse('hud off'), { sub: 'hud', rest: 'off' });
 });
 test('track names: exact beats prefix beats contains; accents and case don\'t matter; finished campaigns are out', () => {
