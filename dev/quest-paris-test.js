@@ -12,8 +12,8 @@ const finish = (s, qid, n) => { const item = C.submit(s, qid, proof(n)); C.saveR
 const ARR = { 1: [48.8625, 2.3364], 2: [48.8683, 2.3428], 3: [48.8630, 2.3601], 4: [48.8543, 2.3576], 5: [48.8445, 2.3507], 6: [48.8491, 2.3328], 7: [48.8562, 2.3122], 8: [48.8727, 2.3125], 9: [48.8771, 2.3375], 10: [48.8761, 2.3607], 11: [48.8591, 2.3800], 12: [48.8396, 2.3876], 13: [48.8283, 2.3623], 14: [48.8292, 2.3266], 15: [48.8401, 2.2929], 16: [48.8604, 2.2700], 17: [48.8873, 2.3067], 18: [48.8925, 2.3484], 19: [48.8871, 2.3848], 20: [48.8634, 2.4012] };
 const km = ([a, b], [c, d]) => Math.hypot((a - c) * 111.2, (b - d) * 73.2);
 
-test('guide data: 25–40 places with every field', () => {
-  assert(P.guide.length >= 25 && P.guide.length <= 40, 'guide size ' + P.guide.length);
+test('guide data: 44–60 places with every field', () => {
+  assert(P.guide.length >= 44 && P.guide.length <= 60, 'guide size ' + P.guide.length);
   const ids = new Set();
   for (const g of [...P.guide, ...Object.values(P.pins)]) {
     assert(/^(pp|place)-[a-z0-9-]+$/.test(g.id) && !ids.has(g.id), 'id ' + g.id); ids.add(g.id);

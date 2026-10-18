@@ -32,7 +32,9 @@ UNIT.push('showsync-test'); // (round 61, showsync61) Shotgun / DICE weekly show
 UNIT.push('showprep-test'); // (round 62, showprep62) show night companion: .ics in Paris time (DST), Métro hints, the reminder, the show log merge, the main side's one timer
 UNIT.push('questhud-test'); // (round 61, questhud61) the rail's quest tracker on Codex's QuestCore
 UNIT.push('quest-paris-test'); // (round 61, parisquests61) the Paris guide's data and quest rules
+UNIT.push('city-integration-test', 'outing-test'); // Sidequest map, saved outings and proof-safe city actions
 UNIT.push('questwalk-test'); // (round 63, questwalk63) quest walks: order vs brute force, the time budget, Métro / show ends, the walk campaign, the week's free afternoon
+UNIT.push('parisjournal64-test'); // (round 64, parisjournal64) My Paris: moments from the journal / show log / park takes, months, arrondissements, the recap, Paris explored
 UNIT.push('rewards-test'); // (round 63, rewards63) real rewards: XP ↔ sparks, XP to go, claims never below zero, the capped streak bonus, the savings jar, history
 UNIT.push('weekquest-test'); // (round 62, weekquest62) the week plan: proposals from shows / places / open quests / forecast, days, the nudge, the week in review
 UNIT.push('presethover61-test'); // (round 61, presethover61) ✦ Preset hover: parameter picking, prompt size, patch validation, undo / redo
@@ -41,18 +43,21 @@ UNIT.push('vst-live-host-test'); // (round 61, vstlive61) the Sound desk's live 
 UNIT.push('parkjam62-test'); // (round 62, parkjam62) Park jam: output pick, battery controls, WAV / MIDI / ambience layer, proof text, the host's loop recorder (fake laptop host)
 UNIT.push('soundbank63-test'); // (round 63, soundbank63) Sound bank: tags from controls, similarity, search, atomic index, read-only plugin folders, the preview queue (+ real host with the fake Pedalboard)
 UNIT.push('loopsong63-test'); // (round 63, loopsong63) park loops → a song: arrangement model, snapping, tempo plan, mixdown / stems / −1 dBFS, stretch, MIDI, parkList / MP3
+UNIT.push('liveset64-test'); // (round 64, liveset64) Live set: set model, keys, bar quantize, preset preload timing, proof steps (+ the real host: quantized launch, twin switch with no underrun, panic, run recorder)
 UNIT.push('winfresh-test'); // (round 60, winfresh60) the Windows zip install: a shallow checkout updating (gaps, rewrites, deeper fetch), private-repo sign-in, shortcuts / login item
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   showprep62: ['showprep62', 'unit:showprep-test', 'showsync61', 'unit:showsync-test', 'questhud61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:notify-test'], // (round 62) show night companion: Get ready, How was it?, Shows I went to, follow
   questwalk63: ['questwalk63', 'unit:questwalk-test', 'quest-paris', 'questhud61', 'weekquest62', 'lazy', 'unit:boot-test', 'unit:winmac-test'], // (round 63) quest walks: /quest walk, the line on the map, the walk quest, the week's walk
   clickfirst64: ['clickfirst64', 'questhud61', 'weekquest62', 'rewards63', 'parkjam62', 'loopsong63', 'soundbank63', 'playnotes62', 'hitchmap63', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) every round 61–63 feature by clicking (no command): the ✦ panel's This week / More, the Studio's My week ▾, the desk's Sound bank / Arrange loops, the Lab's ▶ Playtest, the F chip
+  parisjournal64: ['parisjournal64', 'unit:parisjournal64-test', 'quest-paris', 'questwalk63', 'showprep62', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) My Paris: the map journal layer, the timeline, the monthly recap + image card
   rewards63: ['rewards63', 'unit:rewards-test', 'questhud61', 'weekquest62', 'quest-studio', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:quest-test', 'unit:questhud-test', 'unit:weekquest-test'], // (round 63) real rewards for real quests: /reward, the tracker's next reward, Studio › Rewards shelf
   weekquest62: ['weekquest62', 'unit:weekquest-test', 'unit:questhud-test', 'questhud61', 'showsync61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:winmac-test'], // (round 62) the weekly quest rhythm: /quest week, the nudge, /quest review
   showsync61: ['showsync61', 'unit:showsync-test', 'quest-world', 'quest-map-tiles', 'quest-field', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 61) this week's Shotgun / DICE shows on the Paris map, /shows, show → quest
   soundbank: ['soundbank63', 'unit:soundbank63-test', 'vst-live', 'presethover61', 'parkjam62', 'workbench-vst', 'lazy', 'unit:boot-test', 'unit:vst-live-host-test', 'unit:winmac-test'], // (round 63) the Sound bank picker, previews, read-only plugin folders
   parkjam: ['parkjam62', 'unit:parkjam62-test'], // (round 62) Park mode + the loop recorder in the Sound desk (fake laptop host, stubbed mic)
   loopsong: ['loopsong63', 'unit:loopsong63-test', 'parkjam62', 'unit:parkjam62-test', 'vst-live', 'workbench-vst', 'quest-paris', 'lazy', 'unit:boot-test'], // (round 63) park loops → a song (Arrange in the Sound desk, /song)
+  liveset: ['liveset64', 'unit:liveset64-test', 'loopsong63', 'parkjam62', 'vst-live', 'soundbank63', 'lazy', 'unit:boot-test', 'unit:vst-live-host-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) Live set for an open mic (/liveset)
   vstlive: ['vst-live', 'workbench-vst', 'unit:vst-host-test', 'unit:vst-live-host-test'], // (round 61) Serum 2 / Vital live mode (fake host; the real-plugin part of workbench-vst runs on the owner's PC)
   quests: ['unit:quest-test', 'unit:quest-review-test', 'unit:quest-deck-test', 'unit:quest-workstation-test', 'unit:quest-life-test', 'unit:quest-world-test', 'unit:quest-paris-test', 'quest-journal', 'quest-studio', 'quest-session', 'quest-proof', 'quest-deck', 'quest-workstation', 'quest-life', 'quest-world', 'quest-paris', 'unit:questhud-test', 'questhud61'],
   qa: ['qa-commands', 'qa-keys', 'qa-mac', 'polish', 'lazy', 'fastboot'], // (round 29) fastboot: first frame before any lazy group, keys of lazy groups, first-use main modules

@@ -41,6 +41,7 @@ const ClickFirst = window.ClickFirst = (() => { // (on window too: the Studio as
       { label: 'Plan my week…', hint: '3–5 quests on the days that suit them', action: run(() => weekCard('week')) },
       { label: 'Week in review…', hint: 'what you did, XP, your streak', action: run(() => weekCard('review')) },
       { label: 'Make a walk…', hint: '3–5 places you haven’t been, Métro to Métro', action: run(walk) },
+      { label: 'My month in Paris…', hint: 'places, shows, walks, the park: a card to keep', action: run(async () => { close(); await Lazy.load('questjournal'); return ParisJournal.openMonth(); }) }, // (round 64, parisjournal64's)
       { label: 'My rewards…', hint: 'XP to your next reward, the jar', action: run(() => studio('rewards')) },
       { label: 'Shows this week…', hint: 'Paris, from Shotgun and DICE', action: run(showsWeek) },
       { label: 'Shows I went to…', hint: 'your nights, stars and moments', action: run(() => showCard('log')) },

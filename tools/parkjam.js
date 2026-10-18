@@ -37,10 +37,11 @@ const ParkJam = (() => {
     // bank picker (was Keep a patch › Sound bank… / /sounds) and Arrange (was in the closed Park jam fold / /song)
     if (typeof SoundBank !== 'undefined') { const sb = h.btn('Sound bank', () => SoundBank.open()); sb.classList.add('cf-soundbank'); sb.title = 'Every Serum 2 / Vital preset in one searchable picker: hover to listen, click to play (/sounds)'; row.append(sb); }
     if (typeof LoopSong !== 'undefined') { const ar = h.btn('Arrange loops', () => LoopSong.open(h).then(say)); ar.classList.add('cf-arrange'); ar.title = 'Your park takes → a song: lanes, bars, export mix + stems (/song)'; row.append(ar); }
+    if (typeof LiveSet !== 'undefined') row.append(LiveSet.button(helpers)); // (round 64, liveset64) 🎤 Live set, in the same row
     if (park?.on) { dim(true); hush(true); } // back in the desk with Park mode on
   }
   function refreshButton() { if (!button) return; const t = park?.on ? '🌳 Park mode on' : '🌳 Park mode'; if (button.textContent !== t) button.textContent = t; button.setAttribute('aria-pressed', String(!!park?.on)); }
-  function pause() { epoch++; clearInterval(poll); poll = null; stopMic(); dim(false); hush(false); button = null; section = null; if (typeof LoopSong !== 'undefined') LoopSong.pause(); } // (round 63, loopsong63) Arrange leaves with the desk
+  function pause() { epoch++; clearInterval(poll); poll = null; stopMic(); dim(false); hush(false); button = null; section = null; if (typeof LoopSong !== 'undefined') LoopSong.pause(); if (typeof LiveSet !== 'undefined') LiveSet.pause(); } // (round 63, loopsong63) Arrange leaves with the desk
   function dim(onOff) { document.documentElement.classList.toggle('parkjam-dim', !!onOff); }
   function hush(onOff) {
     const W = window.Power; if (!W?.hush) return; // powerwise.js: Hearth's background timers (as ▶ Play hushes them)

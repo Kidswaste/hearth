@@ -182,6 +182,7 @@ const QuestHud = (() => {
       if (others.length) body.push(el('div', { class: 'qh-sec', text: 'Also active' }), ...others.map((q) => otherRow(QC.card(C, S, q))));
       if (typeof ClickFirst !== 'undefined') body.push(...ClickFirst.weekRows(C, S, btn)); // (round 64, clickfirst64) This week: Plan your week / See the plan, Week in review ›, Make a walk
       if (typeof RewardShelf !== 'undefined') body.push(...RewardShelf.hudRows(C, S, btn)); // (round 63, rewards63) "120 XP to your next reward", Claim… with a confirm, the jar
+      body.push(btn('🗺 My month in Paris', () => { close(); return Lazy.load('questjournal').then(() => ParisJournal.openMonth()); }, 'qh-row pj-hud', 'This month on your Paris map: places, shows, walks, park sessions, the arrondissements you lit up, an image card to share')); // (round 64, parisjournal64) // (round 63, rewards63) "120 XP to your next reward", Claim… with a confirm, the jar
       const picks = todaysPicks();
       if (picks.length) body.push(el('div', { class: 'qh-sec', text: 'Today\'s picks' }), ...picks.map(pickRow));
       if (prefs.near !== 'off') body.push(...nearRows());
@@ -351,6 +352,7 @@ const QuestHud = (() => {
       ...(typeof ClickFirst !== 'undefined' ? [] : [ // (round 62, weekquest62 · round 63, rewards63) — (round 64) ClickFirst puts these at the top
         { label: 'Plan my week…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('week')).catch((err) => toast(calmError(err), { type: 'error' })); } },
         { label: 'My rewards…', action: () => { close(); openStudio(null, 'rewards').catch((err) => toast(calmError(err), { type: 'error' })); } },
+        { label: 'My month in Paris…', action: () => { close(); Lazy.load('questjournal').then(() => ParisJournal.openMonth()).catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 64, parisjournal64)
         { label: 'Week in review…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('review')).catch((err) => toast(calmError(err), { type: 'error' })); } }]),
     ];
   }

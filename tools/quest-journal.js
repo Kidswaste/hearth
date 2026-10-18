@@ -4,7 +4,7 @@ const QuestJournal = (() => {
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
   let atlasView = null;
   // (round 61, showsync61) Map layers: other modules add pins and one head icon to the Paris map without editing it
-  // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit), lines() } (lines: round 63, questwalk63: [{ id, color, points: [{ lat, lon, label? }] }]).
+  // (showsync.js: this week's Shotgun / DICE venues with their logos). A layer: { id, icon(kit), pins(), owns(id), select(id, kit), lines() } (lines: round 63, questwalk63: [{ id, color, points: [{ lat, lon, label? }] }]). (round 64, parisjournal64: below(kit) → a node shown under the map; chip(kit) → a labelled toggle in the filter row.)
   const mapLayers = [];
   // (round 62, showprep62) quest detail hooks: fn({ quest, campaign, close, kit }) → a node shown under the quest's title
   // (e.g. a show quest's "Get ready" / "How was it?"); a hook that throws is skipped
@@ -173,6 +173,8 @@ const QuestJournal = (() => {
     return E('div', { class: `qj-meter ${cls}`, attrs: { role: 'progressbar', 'aria-label': title, 'aria-valuemin': 0, 'aria-valuemax': max, 'aria-valuenow': value } }, E('i', { style: { width: `${Math.min(100, Math.max(0, value / Math.max(1, max) * 100))}%` } }));
   }
   function dialog(title, build, subtitle = '') {
+    // Chat/show actions may open a journal dialog while its surface is parked.
+    if (H.activeId !== 'tool:quests') activate('tool:quests');
     hideHint();const opener = document.activeElement;
     const d = E('dialog', { class: 'qj-dialog', attrs: { 'aria-label': title } });
     const body = E('div', { class: 'qj-dialog-body' });
@@ -394,21 +396,26 @@ const QuestJournal = (() => {
   // parisquests61: mapFilter.guide (a Paris guide word: tag, arrondissement…) and guide words in search come from tools/quest-paris-ui.js.
   function mapPlaces() {const query=mapFilter.query.toLocaleLowerCase(),PG=window.QuestParisUI;return state.atlas.places.filter(p=>(mapFilter.kind==='all'||C.placeKind(p)===mapFilter.kind)&&(!mapFilter.saved||p.favorite)&&(!mapFilter.guide||!PG||PG.keep(p,mapFilter.guide))&&(!query||(p.name+' '+p.quest+' '+(PG?.words(p)||'')).toLocaleLowerCase().includes(query)));}
   function centerMapSelection() {const places=mapPlaces(),place=places.find(p=>p.id===state.atlas.selected)||places[0];if(place)atlasView?.focus(place);}
-  function outingDesk() {
+  function outingDesk(options = {}) {
     return OutingDesk.open({dialog,button,field,explain,friends:()=>state.world.friends,openQuest:questDetail,
       quest:async plan=>{const c=await mutate(s=>OutingCore.campaign(s,plan,C),'Take-home quest ready. Proof and review unlock its XP.');return c.quests[0].id;},
       pin:async event=>{await mutate(s=>{const existing=s.atlas.places.find(p=>Math.abs(p.lat-event.lat)<.0002&&Math.abs(p.lon-event.lon)<.0002);if(existing)s.atlas.selected=existing.id;else C.savePlace(s,{name:event.venue||event.title,lat:event.lat,lon:event.lon,kind:['music','visual','game'].includes(event.kind)?event.kind:'reset',quest:'Find one detail here to bring into your next creation.'});},'Venue pinned.');mapFilter={kind:'all',saved:false,query:''};navigate('world');}
-    });
+    },options);
   }
   function worldMap() {
+    OutingDesk.ensureMap().catch(err=>notice(err.message));
     const kind=mapFilter.kind,visible=mapPlaces();
     const selected=visible.find(p=>p.id===state.atlas.selected)||visible[0];
     const head=row(mapIcon('social','Friends & dates',()=>mapNotebook('friends'),'#ffd75e'),mapIcon('calendar','Outing plans',()=>mapNotebook('plans'),'#ff8c42'),mapIcon('gift','Field rewards',mapRewards,'#ff6b9d'),mapIcon('info','Map controls & progress',()=>dialog('Your Paris field kit',body=>body.append(p('Drag to explore. Use arrow keys on the map to pan, + / − to zoom. Double-click to add a pin; the + button also works without a mouse.'),p('Colored symbols are your place categories. Stars save favorites. Visit stamps are your own record and give no XP. Quests earn XP after proof and review.'),p('Open friends, plans and rewards only when you need them. Hover or focus a symbol for its name. Escape dismisses a hint.'))),'#bfc0c8'),mapIcon('plus','Add a place',()=>placeForm(atlasView?.center()||{}),'#bd8bff'));
     head.prepend(mapIcon('music','Outing desk · events & my lineup',outingDesk,'#ffb14a'));
     // (round 61, showsync61) map layers: their icon joins this row, their pins join the map
     const layerKit={dialog,mapIcon,button,p,label,E,mutate,questDetail,navigate,notice},layerPins=[],layerLines=[]; // layerLines: (round 63, questwalk63) a layer's lines() → polylines on the map
-    for(const layer of mapLayers){try{const icon=layer.icon?.(layerKit);if(icon)head.append(icon);layerPins.push(...(layer.pins?.()||[]));layerLines.push(...(layer.lines?.()||[]));}catch(err){console.warn('[quest map layer]',layer.id,err);}}
+    for(const layer of mapLayers){try{const icon=layer.icon?.(layerKit);if(icon)head.append(icon);layerPins.push(...(layer.pins?.(mapFilter)||[]));layerLines.push(...(layer.lines?.()||[]));}catch(err){console.warn('[quest map layer]',layer.id,err);}}
     content.append(sectionHeading('FH / FIELD KIT','Paris, at your pace.',null,head));
+    const events=OutingDesk.mapSummary();
+    const city=E('div',{class:'qj-city-actions'},button('Explore places',async()=>{const result=await mutate(s=>QuestParis.addGuide(s),'Paris places ready.');mapFilter={kind:'all',saved:false,query:''};render();if(result.full)notice(`${result.full} places did not fit. Your own places were kept.`);},'qj-city-action'),button(events.count?`${events.count} events · plan an outing`:'Find events',()=>outingDesk(),'qj-city-action'),button('My lineup',()=>outingDesk({tab:'saved'}),'qj-city-action'));
+    ['compass','calendar','bookmark'].forEach((kind,i)=>city.children[i].prepend(QuestAtlas.icon(kind)));
+    content.append(city);
     const filters=E('div',{class:'qj-map-filters',attrs:{'aria-label':'Filter map places'}});
     for(const k of [{id:'all',name:'All places',color:'#bfc0c8'},...C.mapKinds]){
       const control=mapIcon(k.id==='all'?'compass':k.id,k.name,()=>{mapFilter.kind=k.id;render();centerMapSelection();},k.color,kind===k.id);
@@ -420,6 +427,7 @@ const QuestJournal = (() => {
     const surprise=mapIcon('dice','Pick somewhere for me',async()=>{const pool=visible.filter(p=>p.id!==selected?.id&&!p.visitedAt),fallback=visible.filter(p=>p.id!==selected?.id),choices=pool.length?pool:fallback;if(choices.length)await mapPick(choices[Math.floor(Math.random()*choices.length)].id,true);},'#ff8c42');
     surprise.querySelector('button').disabled=visible.length<2;
     filters.append(search,surprise,mapIcon('list','My places',()=>mapNotebook('places'),'#bd8bff'));
+    for(const layer of mapLayers){try{const c=layer.chip?.(layerKit);if(c)filters.append(c);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's chip(kit) → one labelled toggle in this row (My Paris)
     if(mapFilter.guide&&window.QuestParisUI)filters.append(QuestParisUI.chip(mapFilter.guide,()=>{delete mapFilter.guide;render();centerMapSelection();})); // parisquests61
     content.append(filters);
     const layout=E('div',{class:'qj-world-layout qj-field-layout'}),map=E('section'),panel=E('aside',{class:'qj-place-panel qj-field-panel'});
@@ -440,6 +448,7 @@ const QuestJournal = (() => {
     }else panel.append(QuestAtlas.icon('compass'),E('h3',{text:'A quiet corner.'}),p('No places match.'),button('Show all places',()=>{mapFilter={kind:'all',saved:false,query:''};render();},'qj-primary'));
     layout.append(map,panel);content.append(layout);
     atlasView=QuestAtlas.mount(map,{places:[...visible.map(p=>({...p,kind:C.placeKind(p),color:mapKind(p).color})),...layerPins],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines});
+    for(const layer of mapLayers){try{const below=layer.below?.(layerKit);if(below)content.append(below);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's below(kit) → one node under the map (My Paris's timeline strip)
     const stamps=state.atlas.places.filter(p=>p.visitedAt).length;
     content.append(E('div',{class:'qj-field-footer'},E('span',{text:visible.length+' places'}),mapIcon('check',stamps+' visit stamps · your own record, no XP',()=>mapNotebook('places'),'#ffd75e'),E('span',{text:stamps+'/'+state.atlas.places.length}),window.QuestParisUI?.footer()||null,button('Quest notebook →',()=>navigate('adventure'),'qj-quiet'))); // parisquests61: the Paris guide's one footer button
   }
@@ -1009,7 +1018,7 @@ const QuestJournal = (() => {
     top.append(button('Motion on', () => mutate(s => { s.motion = s.motion === false; }, 'Studio motion preference saved.'), 'qj-quiet qj-motion'), menu);
     const scenery = E('div', { class: 'qj-room', attrs: { 'aria-hidden': 'true' } }, E('div', { class: 'qj-night-window' }, art('terminal')), E('div', { class: 'qj-desk-lamp' }), E('div', { class: 'qj-motes' }, ...[0, 1, 2, 3, 4].map(i => E('i', { style: { '--i': String(i) } }))));
     const bench = E('section', { class: 'qj-bench', attrs: { 'aria-label': 'The studio workbench' } }, scenery, E('div', { class: 'qj-bench-sign' }, label('PICK SOMETHING UP'), E('span', { text: 'small projects · good company' })), nav, E('p', { class: 'qj-bench-caption', text: 'One page. One next step.' }));
-    const consoleBar = E('section', { class: 'qj-console-bar', attrs: { 'aria-label': 'Forgeheart workstation controls' } }, E('div', {}, label('FH / PERSONAL WORKSTATION'), E('strong', { class: 'qj-console-name' })), E('div', { class: 'qj-desk-trophy', hidden: true }), row(button('Paris after hours', () => navigate('world'), 'qj-hardware qj-map-key'), button('Life expeditions', () => navigate('life'), 'qj-hardware qj-life-key'), button('Pick next mission', sessionPicker, 'qj-hardware'), button('Tune desk', deskSettings, 'qj-hardware'), button('Lamp on', () => mutate(s => { s.workstation.lamp = !s.workstation.lamp; }, 'Desk lamp setting saved.'), 'qj-hardware qj-lamp-toggle')));
+    const consoleBar = E('section', { class: 'qj-console-bar', attrs: { 'aria-label': 'Forgeheart workstation controls' } }, E('div', {}, label('FH / PERSONAL WORKSTATION'), E('strong', { class: 'qj-console-name' })), E('div', { class: 'qj-desk-trophy', hidden: true }), row(button('Outing desk',()=>outingDesk(),'qj-hardware qj-outings-key'),button('Paris after hours', () => navigate('world'), 'qj-hardware qj-map-key'), button('Life expeditions', () => navigate('life'), 'qj-hardware qj-life-key'), button('Pick next mission', sessionPicker, 'qj-hardware'), button('Tune desk', deskSettings, 'qj-hardware'), button('Lamp on', () => mutate(s => { s.workstation.lamp = !s.workstation.lamp; }, 'Desk lamp setting saved.'), 'qj-hardware qj-lamp-toggle')));
     root.append(top, bench, consoleBar, content, status, focusBar);setupHints(); await load();
     try { legacy = await window.hub.kvGet('creative-playground'); } catch { /* Old notebook is never modified. */ }
     clearInterval(ticker); ticker = setInterval(() => { if (H.activeId === 'tool:quests') tick(); }, 1000);
@@ -1021,5 +1030,5 @@ const QuestJournal = (() => {
   // parisquests61 (tools/quest-paris-ui.js): the same transactional mutate, a loaded flag, the map filter and the
   // journal's own UI helpers, so the Paris guide and `/quest` drive the journal instead of writing it behind its back.
   const parisHooks = { mutate, ready: () => writable && !!state, mapFilter(f = {}) { mapFilter = { kind: 'all', saved: false, query: '', ...f }; if (!f.guide) delete mapFilter.guide; navigate('world'); centerMapSelection(); }, ui: () => ({ E, button, label, p, row, dialog, mapIcon, notice, navigate, questDetail, mapPick, state: () => state }) };
-  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, paris: parisHooks, openOutings:outingDesk, keepOuting:async event=>{await OutingDesk.keepEvent(event);return outingDesk();}, get celebration() { return lastCelebration; }, mutate, ready: () => writable && Boolean(state), addMapLayer, addDetailHook, get page() { return page; } }; // (round 61, questhud61: mutate + ready for the rail's quest tracker; showsync61: addMapLayer + page for map layers)
+  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, paris: parisHooks, openOutings:outingDesk, keepOuting:async event=>{const eventId=await OutingDesk.keepEvent(event);return outingDesk({tab:'saved',eventId});}, get celebration() { return lastCelebration; }, mutate, ready: () => writable && Boolean(state), addMapLayer, addDetailHook, get page() { return page; } }; // (round 61, questhud61: mutate + ready for the rail's quest tracker; showsync61: addMapLayer + page for map layers)
 })();
