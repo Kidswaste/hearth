@@ -25,6 +25,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
     const g = P.byId(selected.id); if (!g) return;
     const { E, button, label, p, questDetail, mutate } = { ...ui(), mutate: J().mutate };
     host.append(E('div', { class: 'qj-paris-note' }, p(`${P.arrLabel(g.arr)} · ${g.why}`), p('Best: ' + g.best, 'qj-paris-best')));
+    if(g.url)host.append(button('Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
     if (!P.guide.some(x => x.id === g.id)) return;
     const s = state(), c = placeCampaign(s, g.id), next = c && C.next(s, c);
     // (round 64, mapfirst64) the place's quest, right in the panel: its three steps and one clear "Start this quest"

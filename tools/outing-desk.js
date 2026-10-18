@@ -1,7 +1,7 @@
 /* Additive Sidequest surface. No polling, model calls or messages; only an explicit public-feed refresh. */
 const OutingDesk = (() => {
   const C=OutingCore,KEY='sidequest-outings-v1';
-  let state,loading,saving=Promise.resolve(),refreshing,api,active,paint,offset=0;
+  let state,loading,saving=Promise.resolve(),refreshing,api,active,paint,offset=0,mapReady=false;
   const E=(tag,props={},...children)=>el(tag,props,...children);
   const p=t=>E('p',{class:'qj-copy',text:t});
   const fmt=t=>t?new Date(t).toLocaleString('en-GB',{timeZone:'Europe/Paris',dateStyle:'medium',timeStyle:'short'}):'Choose your time';
@@ -11,7 +11,15 @@ const OutingDesk = (() => {
     if(state)return;if(loading)return loading;
     loading=(async()=>{const r=await window.hub.kvGet(KEY,null,{status:true});if(r?.state==='missing')state=C.initial();else if(r?.state==='ok')state=C.validate(r.value);else throw Error(r?.error||'The outing notebook could not be loaded. Nothing has been replaced.');})().finally(()=>{loading=null;});return loading;
   }
-  function change(fn){const task=saving.catch(()=>{}).then(async()=>{await load();const next=C.clone(state);await fn(next);const checked=C.validate(next),r=await window.hub.kvSet(KEY,checked);if(r?.error)throw Error(r.error);state=checked;paint?.();});saving=task;return task;}
+  function change(fn){const task=saving.catch(()=>{}).then(async()=>{await load();const next=C.clone(state);await fn(next);const checked=C.validate(next),r=await window.hub.kvSet(KEY,checked);if(r?.error)throw Error(r.error);state=checked;paint?.();if(mapReady)registerMap();});saving=task;return task;}
+  function mapSummary(){return {count:C.filter(state?.feed||[],{days:30}).length};}
+  function registerMap(){
+    QuestJournal.addMapLayer({id:'outing-desk',owns:id=>id.startsWith('od-venue-'),
+      pins:filters=>C.mapGroups(state||C.initial(),filters).map(g=>({id:g.id,name:g.name+' · '+g.events.length,lat:g.lat,lon:g.lon,kind:'calendar',color:'#ffb14a'})),
+      select:(id,kit)=>QuestJournal.openOutings({venue:id}).catch(err=>kit.notice(err.message))
+    });
+  }
+  async function ensureMap(){if(mapReady)return;await load();if(mapReady)return;mapReady=true;registerMap();}
   async function refresh(fetcher=url=>window.hub.fetchText(url)){
     await load();if(refreshing)return refreshing;
     if(state.fetchedAt&&Date.now()-Date.parse(state.fetchedAt)<15*60000){say('Already checked recently. Refresh is available every 15 minutes.');return;}
@@ -74,9 +82,9 @@ const OutingDesk = (() => {
       },'qj-primary'),btn('Remove saved outing',()=>api.dialog('Remove this saved outing?',(b,confirm)=>b.append(p('The saved plan leaves this notebook. Any accepted quest and earned progress stay in Sidequest.'),btn('Remove outing',async()=>{await change(s=>{s.saved=s.saved.filter(p=>p.event.id!==id);});confirm.close();d.close();},'qj-danger'))),'qj-quiet'));
     },'OUTING / PERSONAL PLAN');
   }
-  async function open(helpers){
-    api=helpers;if(active?.open){active.focus();return;}await load();
-    let tab='discover',filters={kind:'all',query:'',free:false,days:30},area,results,tally;
+  async function open(helpers,options={}){
+    api=helpers;if(active?.open){if(options.eventId)detail(options.eventId);else if(options.venue)venue(options.venue);else {active.close();active=null;}if(active?.open)return;}await load();
+    let tab=options.tab==='saved'?'saved':'discover',filters={kind:'all',query:'',free:false,days:30},area,results,tally;
     active=api.dialog('Outing desk',(body,d)=>{
       d.classList.add('od-dialog');
       const tabs=E('div',{class:'od-tabs',attrs:{role:'group','aria-label':'Outing desk sections'}});
@@ -113,11 +121,17 @@ const OutingDesk = (() => {
         const dateLabel=saved?.visitStart?short(saved.visitStart):e.sessions[0]?short(e.sessions[0].start):e.start&&Date.parse(e.start)<Date.now()&&Date.parse(e.end)>Date.now()?'Ongoing · until '+short(e.end):short(e.start);
         card.append(head,E('h3',{text:e.title}),p(e.venue||e.address),E('div',{class:'od-card-meta'},E('span',{text:dateLabel}),E('span',{text:e.free?'Free admission':'Price to check'})));
         const actions=E('div',{class:'od-actions'});if(saved)actions.append(btn('Plan outing',()=>detail(e.id),'qj-primary'));else actions.append(icon('bookmark','Save this outing',async()=>{await change(s=>C.save(s,e));say('Saved to My lineup.');},'#ffd75e'));if(e.url)actions.append(sourceLink(e));actions.append(api.explain(e.title,[e.note,e.price,e.dateNote].filter(Boolean).join(' · ')||'Check the official source for details.'));card.append(actions);return card;}
-      function drawResults(){const matches=C.filter(state.feed,filters),slice=matches.slice(0,offset+12);tally.textContent=`${matches.length} ideas${filters.free?' · free admission':''}${state.fetchedAt&&Date.now()-Date.parse(state.fetchedAt)>86400000?' · saved list, refresh recommended':''}`;results.replaceChildren();if(!matches.length)results.append(empty(state.feed.length?'Try another lane.':'A city full of ingredients.','Concerts, exhibitions, workshops, games and places to wander.'));
+      function drawResults(){const matches=C.filter(state.feed,filters),slice=matches.slice(0,offset+12);tally.textContent=`${matches.length} ideas${filters.free?' · free admission':''}${state.fetchedAt&&Date.now()-Date.parse(state.fetchedAt)>86400000?' · saved list, refresh recommended':''}`;results.replaceChildren();if(!matches.length)results.append(empty(state.feed.length?'Try another lane.':'A city full of ingredients.','Concerts, exhibitions, workshops, games and places to wander.'));if(!state.fetchedAt||Date.now()-Date.parse(state.fetchedAt)>86400000)results.append(btn(state.fetchedAt?'Check for new events':'Load Paris events',()=>refresh(),'qj-primary od-load'));
         const grid=E('div',{class:'od-grid'});for(const e of slice)grid.append(eventCard(e,state.saved.find(p=>p.event.id===e.id)));results.append(grid);if(matches.length>slice.length)results.append(btn('Show 12 more',()=>{offset+=12;drawResults();},'od-more'));
       }
       paint();
     },'FH / CITY FREQUENCIES');
+    if(options.eventId)detail(options.eventId);
+    else if(options.venue)venue(options.venue);
   }
-  return {open,refresh,keepEvent:async raw=>{const e=C.event(raw);await change(s=>C.save(s,e));return e.id;},snapshot:()=>state&&C.clone(state),flush:()=>saving};
+  function venue(id){const group=C.mapGroups(state).find(g=>g.id===id);if(!group)return;api.dialog(group.name,(body,d)=>{
+    body.append(p(group.events.length+' upcoming ideas · check the source before leaving.'));
+    for(const e of group.events){const card=E('article',{class:'od-card'},E('h3',{text:e.title}),p(short(e.sessions[0]?.start||e.start)+' · '+(e.free?'Free admission':'Price to check')),E('div',{class:'od-actions'},e.url?sourceLink(e):null,btn('Plan this outing',async()=>{await change(s=>C.save(s,e));d.close();detail(e.id);},'qj-primary')));card.style.setProperty('--od-color',C.kinds.find(k=>k.id===e.kind).color);body.append(card);}
+  },'FH / AT THIS PLACE');}
+  return {open,refresh,ensureMap,mapSummary,keepEvent:async raw=>{const e=C.event(raw);await change(s=>C.save(s,e));return e.id;},snapshot:()=>state&&C.clone(state),flush:()=>saving};
 })();
