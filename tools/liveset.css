@@ -1,0 +1,68 @@
+/* (round 64, liveset64) Live set: a performance view over the Sound desk, and the stage (everything else hidden).
+   Big pads; states are classes (compare-before-write in liveset.js); the only motion is the beat cursor (el.animate on
+   transform) and the queued pads' blink (opacity of a pseudo-element). No blur, nothing animates while idle. */
+.wb-sound-desk:has(> .lv-view) { position: relative; min-height: 600px; }
+.lv-view { --dot: 14px; position: absolute; inset: 0 0 auto 0; min-height: 100%; z-index: 8; display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px solid #ffffff1c; border-radius: 16px; background: #141218; box-shadow: 0 18px 50px #0007; outline: none; color: #eee7f3; }
+.lv-head { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
+.lv-name { font-weight: 600; font-size: 15px; }
+.lv-scene { display: flex; align-items: center; gap: 6px; }
+.lv-scene strong { font-size: 15px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-dim { color: #9d93a8; font-size: 11px; }
+.lv-clock { display: flex; align-items: center; gap: 10px; font: 12px ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #d9cfe2; }
+.lv-bar { min-width: 96px; font-weight: 600; color: #ffd27a; }
+.lv-beats { position: relative; display: flex; gap: 0; height: var(--dot); }
+.lv-beats i { width: var(--dot); height: var(--dot); display: grid; place-items: center; }
+.lv-beats i::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #ffffff30; }
+.lv-beats i:first-child::before { background: #ffffff60; }
+.lv-cursor { position: absolute; left: 0; top: 0; width: var(--dot); height: var(--dot); border-radius: 50%; border: 2px solid #ffbe59; box-sizing: border-box; will-change: transform; }
+.lv-rec { color: #ff6b6b; font: 600 12px ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.lv-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.wb-shell .lv-view .lv-mini { padding: 3px 9px; }
+.wb-shell .lv-view .lv-panic, .lv-view .lv-panic { border-color: #ff6b6b88; color: #ffb0b0; }
+.wb-shell .lv-view .lv-rehearse, .lv-view .lv-rehearse { border-color: #ff6b6b55; }
+.lv-grid { display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.lv-pads { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.lv-pad { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 0; border-radius: 14px; }
+.lv-view .lv-hit { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-height: 96px; padding: 10px 12px; border-radius: 14px; border: 1px solid #ffffff22; background: #ffffff08; color: inherit; text-align: left; cursor: pointer; font: inherit; overflow: hidden; }
+.lv-view .lv-hit:focus-visible { outline: 2px solid #ffbe59; outline-offset: 2px; }
+.lv-presets .lv-hit { min-height: 72px; background: #b78aff0d; border-color: #b78aff40; }
+.lv-hit kbd { font: 600 11px ui-monospace, monospace; padding: 1px 6px; border-radius: 5px; border: 1px solid #ffffff30; color: #d9cfe2; }
+.lv-label { font-size: 15px; font-weight: 600; line-height: 1.2; }
+.lv-sub { font-size: 11px; color: #9d93a8; }
+.lv-state { position: absolute; right: 10px; top: 9px; font-size: 11px; font-style: normal; color: #ffd27a; }
+.lv-pad.lv-playing .lv-hit { border-color: #6fcf8f; background: linear-gradient(160deg, #6fcf8f38, #6fcf8f10); }
+.lv-presets .lv-pad.lv-playing .lv-hit { border-color: #b78aff; background: linear-gradient(160deg, #b78aff40, #b78aff12); }
+.lv-pad.lv-ready .lv-hit { border-color: #b78aff88; }
+.lv-pad.lv-stopping .lv-hit { border-color: #ffbe59; }
+.lv-pad.lv-queued .lv-hit::after, .lv-pad.lv-loading .lv-hit::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: #ffbe5926; animation: lv-blink .5s steps(2, jump-none) infinite alternate; pointer-events: none; }
+@keyframes lv-blink { from { opacity: 0; } to { opacity: 1; } }
+.lv-pad.lv-sel .lv-hit { box-shadow: 0 0 0 2px #ffffff40 inset; }
+.lv-knob { width: 100%; margin: 0; accent-color: #ffbe59; }
+.lv-fx { font: 10px ui-monospace, monospace; color: #9d93a8; text-align: center; }
+.lv-foot { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.lv-said { color: #eee7f3; min-height: 1.3em; }
+.lv-status { color: #9d93a8; font: 11px ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.lv-run { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lv-warn { color: #ffcf8a; }
+.lv-edit { display: flex; flex-direction: column; gap: 6px; }
+.lv-padlist kbd { font: 600 11px ui-monospace, monospace; padding: 1px 6px; border-radius: 5px; border: 1px solid #ffffff30; }
+.lv-keys { font-size: 11px; }
+.lv-view.lv-panicked { box-shadow: 0 0 0 2px #ff6b6b inset, 0 18px 50px #0007; }
+/* Stage: the view is lifted onto <body> (liveset.js) and the rest of Hearth stops painting. */
+html.liveset-stage body > :not(.lv-view) { visibility: hidden !important; content-visibility: hidden; }
+html.liveset-stage .lv-view { position: fixed; inset: 0; z-index: 2147483000; min-height: 0; border-radius: 0; border: 0; padding: 18px 22px; overflow: auto; --dot: 20px; }
+html.liveset-stage .lv-pads { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+html.liveset-stage .lv-hit { min-height: 130px; }
+html.liveset-stage .lv-label { font-size: 19px; }
+html.liveset-stage .lv-bar { font-size: 18px; }
+@media (max-width: 560px) { .lv-pads { grid-template-columns: repeat(2, 1fr); } .lv-tools { margin-left: 0; } }
+@media (prefers-reduced-motion: reduce) { .lv-pad.lv-queued .lv-hit::after, .lv-pad.lv-loading .lv-hit::after { animation: none; opacity: .8; } }
+/* the set editor: chips to click (＋) or drag onto this song's pads */
+.lv-drop { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px dashed #ffffff30; border-radius: 12px; }
+.lv-drop.lv-over { border-color: #ffbe59; background: #ffbe590d; }
+.lv-shelf { display: flex; flex-direction: column; gap: 6px; }
+.lv-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.lv-view .lv-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; border: 1px solid #ffffff26; background: #ffffff08; color: inherit; font: inherit; font-size: 12px; cursor: grab; }
+.lv-view .lv-chip:hover { border-color: #ffbe5988; }
+.lv-plus { color: #ffbe59; font-weight: 700; }
+.wb-shell .lv-view .lv-build, .lv-view .lv-build { align-self: flex-start; padding: 14px 18px; font-size: 14px; }

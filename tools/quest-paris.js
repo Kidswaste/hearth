@@ -145,7 +145,9 @@
     { key: 'openmic', id: 'c-pq-openmic', title: 'Go to an open mic', subtitle: 'SHOWS / FIRST STEP', path: 'music', aliases: ['open-mic', 'mic', 'jam-session'], why: 'Watch one, then maybe play one: the shortest road from bedroom producer to stage.', badge: 'Open mic regular', steps: [
       ['Find one this week', 'Find an open mic or jam session in Paris this week (check listings and the venue’s page). Save the place, date and sign-up rule.', 'Search “open mic Paris” plus this week’s dates.', 15, 20],
       ['Go and watch the whole thing', 'Go, stay for the whole evening, and notice how people introduce themselves. Save a note on one performer you liked and why.', 'Plan to arrive at sign-up time.', 90, 40],
-      ['Decide your own next step', 'Write what you could bring next time (a loop, a beat, a song) and whether you want to sign up. Watching again is a fine answer.', 'Write: “Next time I could bring…”', 10, 25]
+      ['Decide your own next step', 'Write what you could bring next time (a loop, a beat, a song) and whether you want to sign up. Watching again is a fine answer.', 'Write: “Next time I could bring…”', 10, 25],
+      // (round 64, liveset64) a 4th step the Live set's runs prove (tools/liveset.js appends it to a journal started before it; kept equal to LiveSetCore.PLAY_STEP)
+      ['Play your set', 'Rehearse your short set all the way through in Hearth’s Live set, or play it at the open mic. The recording of the run is the proof; nerves and wrong notes are part of it.', 'Rehearse once with the stage view on.', 15, 40]
     ] },
     { key: 'records', id: 'c-pq-records', title: 'Trade a record recommendation', subtitle: 'DIGGING / CONNECTION', path: 'music', pin: 'pp-superfly', aliases: ['record', 'shop', 'digging', 'vinyl'], why: 'Record shop staff love a good question. Trade one recommendation for another.', badge: 'Crate trader', steps: [
       ['Pick a shop and your record', 'Choose a shop (Superfly, Betino’s, Balades Sonores) and one record you love that you can describe in a sentence. Save the sentence.', 'Choose the record you would bring to a desert island.', 5, 20],
