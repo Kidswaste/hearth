@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('hub', {
   soundbank: { list: call('soundbank:list'), similar: call('soundbank:similar'), update: call('soundbank:update'), settings: call('soundbank:settings'), previews: call('soundbank:previews'), cancel: call('soundbank:cancel'), queue: call('soundbank:queue'), preview: call('soundbank:preview'), state: call('soundbank:state') }, // (round 63, soundbank63) the Sound bank (soundbankmain.js)
   kvSet: call('kv:set'),
   parkSong: { list: call('creative-vst:park-list'), mp3: call('creative-vst:park-mp3') }, // (round 63, loopsong63) every park sketch's takes · an exported mix as MP3 (ffmpeg)
+  audioDoctor: { probe: call('audiodoctor:probe'), live: call('audiodoctor:live'), open: call('audiodoctor:open'), asio: call('creative-vst:asio') }, // (round 64, audiodoctor64) /audio doctor: the music setup checked on this PC, on demand (audiodoctormain.js)
+  liveset: { save: call('creative-vst:live-save'), mp3: call('creative-vst:live-mp3') }, // (round 64, liveset64) the Live set's folder (<data>/creative-live/<set>/): prepared clips, run logs · a run as MP3
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),
   attachmentsDir: call('attachments:dir'),
@@ -109,7 +111,7 @@ contextBridge.exposeInMainWorld('hub', {
   stageDisplays: call('stage:displays'), stagePlace: call('stage:place'), // (round 22) live output on a second screen
   stageSend: (msg) => ipcRenderer.send('stage:to', msg),
   // (round 52, gamemode) ▶ Play: a game in its own full-screen window (gamemodemain.js)
-  game: { play: call('game:play'), leave: call('game:leave'), state: call('game:state'), displays: call('game:displays'), eval: call('game:eval'), key: call('game:key'), click: call('game:click'), onLeft: on('game:left'), loop: call('game:loop'), onLoop: on('game:loop-ev'), budget: call('game:budget-get'), latency: call('game:latency'), notes: call('game:notes'), onNotes: on('game:notes-ev'), hitch: call('game:hitch'), onHitch: on('game:hitch-ev') }, // (round 53, playloop: playloopmain.js) · (round 55, playbudget) budget: the helpers kept off per game · (round 56, playlatency) latency: /game latency · (round 62, playnotes62) notes / onNotes: playtest notes (playnotesmain.js) · (round 63, hitchmap63) hitch / onHitch: the hitch map (hitchmapmain.js)
+  game: { play: call('game:play'), leave: call('game:leave'), state: call('game:state'), displays: call('game:displays'), eval: call('game:eval'), key: call('game:key'), click: call('game:click'), onLeft: on('game:left'), loop: call('game:loop'), onLoop: on('game:loop-ev'), budget: call('game:budget-get'), latency: call('game:latency'), notes: call('game:notes'), onNotes: on('game:notes-ev'), hitch: call('game:hitch'), onHitch: on('game:hitch-ev'), onChip: on('game:chip-ev') }, // (round 53, playloop: playloopmain.js) · (round 55, playbudget) budget: the helpers kept off per game · (round 56, playlatency) latency: /game latency · (round 62, playnotes62) notes / onNotes: playtest notes (playnotesmain.js) · (round 63, hitchmap63) hitch / onHitch: the hitch map (hitchmapmain.js) · (round 64, clickfirst64) onChip: the F chip's ● Record hitch map clicked
   gameTest: { script: call('game:script'), stop: call('game:script-stop'), shot: call('game:shot') }, // (round 53, directorgame) the director's play-test into the ▶ Play window (directorgamemain.js)
   onStageMessage: on('stage:from'),
   onStageClosed: on('stage:closed'),

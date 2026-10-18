@@ -8,11 +8,11 @@ const input=(name,value,event='change')=>{const n=scope().querySelector(`[aria-l
 const close=()=>scope().close();
 await Lazy.load('questjournal');activate('tool:quests');await until(()=>root()?.querySelector('.qj-hero'));QuestJournal.navigate('world');
 document.querySelectorAll('.toast').forEach(n=>n.remove());
-check(root().querySelectorAll('.qj-atlas-pin').length===6,'six categorized pins');
-check(new Set([...root().querySelectorAll('.qj-atlas-pin')].map(n=>n.style.getPropertyValue('--pin'))).size===6,'six distinct accents');
+check(root().querySelectorAll('.qj-atlas-pin:not(.qj-pin-guide)').length===6,'six categorized pins');/* (round 64, mapfirst64) the Paris guide's places (.qj-pin-guide) are on the map by default */
+check(new Set([...root().querySelectorAll('.qj-atlas-pin:not(.qj-pin-guide)')].map(n=>n.style.getPropertyValue('--pin'))).size===6,'six distinct accents');
 check(!root().querySelector('.qj-friend-picks,.qj-world-plans,.qj-occasion-grid'),'secondary details stay out of the main view');
 root().querySelector('[aria-label="Save favorite"]').focus();await press('Save favorite');check(document.activeElement.getAttribute('aria-label')==='Remove favorite','favorite keeps keyboard focus after saving');check(state().atlas.places[0].favorite,'favorite saved');await press('Favorites only');check(root().querySelectorAll('.qj-atlas-pin').length===1,'favorites filter');await press('Favorites only');
-await press('Visual hunt');check(root().querySelectorAll('.qj-atlas-pin').length===1,'category filter');await press('All places');
+await press('Visual hunt');check(root().querySelectorAll('.qj-atlas-pin:not(.qj-pin-guide)').length===1,'category filter');await press('All places');
 root().querySelector('[aria-label="Find a saved place"]').focus();input('Find a saved place','Luxembourg','input');check(root().querySelector('.qj-field-place-head').textContent.includes('Luxembourg'),'search updates selection');check(document.activeElement.getAttribute('aria-label')==='Find a saved place','search still available');input('Find a saved place','no-fixture-match','input');check(root().textContent.includes('No places match.'),'empty filter is recoverable');await press('Show all places');
 await press('Pick somewhere for me');check(state().atlas.selected!=='place-canal','discovery chooses another place');
 await press('Add a place');input('Place name','Field kit fixture');input('Map category','music');input('Latitude','48.87');input('Longitude','2.36');input('What do you want to do here?','Make a tiny loop.');await press('Save place');

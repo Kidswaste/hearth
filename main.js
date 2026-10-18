@@ -662,6 +662,7 @@ ipcMain.handle('packs:pending', () => { const p = packPending; packPending = nul
 function registerAfterWindow() {
   lazyIpc('creative-vstmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app, settings })); // (round 63, loopsong63) + settings: ffmpeg for the song's MP3
   lazyIpc('soundbankmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app })); // (round 63, soundbank63) the Sound bank's index + preview queue
+  lazyIpc('audiodoctormain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, settings })); // (round 64, audiodoctor64) /audio doctor: runtime, ASIO, devices, MIDI, Serum 2 / Vital, a 2-second live test (only when asked)
   const { nativeTheme, systemPreferences, nativeImage } = require('electron');
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
   bigscreen.register(ipcMain, { getWin: () => win, screen: require('electron').screen }); // (round 38) ⛶ full screen, size of everything

@@ -117,6 +117,11 @@ const QuestWalk = window.QuestWalk = (() => {
     b.dataset.help = '3–5 places you haven’t visited, in walking order, Métro to Métro · /quest walk';
     return b;
   }
+  // (round 64, clickfirst64) one click from the ✦ tracker's "Make a walk" or the Studio's "My week ▾": the default walk
+  // (2 h, from where you are) and its dialog, exactly like the guide's button (no typing)
+  async function start() { await QuestParisUI.journal(); variant = 0; await remake({ budget: 120, filter: '', from: null, show: null }); if (preview) dialog(); return preview?.rt || null; }
+  // (round 64, mapfirst64) the map's own "Plan a walk" button: the same default walk
+  const plan = start;
   async function remake(opts) {
     const rt = make(ui().state(), opts);
     if (rt.error) { ui().notice(rt.error); throw Error(rt.error); }
@@ -161,5 +166,5 @@ const QuestWalk = window.QuestWalk = (() => {
   }
 
   redraw();
-  return { run, complete, dialog, guideButton, save, weekCandidate, layer, _test, get preview() { return preview?.rt || null; }, shown };
+  return { run, complete, dialog, guideButton, start, plan, save, weekCandidate, layer, _test, get preview() { return preview?.rt || null; }, shown };
 })();

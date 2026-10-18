@@ -197,7 +197,9 @@ function electronShrink(buf) {
 let api = null;
 function register(ipcMain, { dataDir }) {
   const { net } = require('electron');
-  let fetcher = (u, o) => net.fetch(u, o);
+  // (round 64, mapfirst64) the map now starts the once-a-day read when it opens, so test runs (dev/smoke.js) are offline
+  // until a check installs the saved responses with shows:test: no check ever reads the real Shotgun / DICE
+  let fetcher = process.env.HEARTH_TEST_SAVE_DIR ? () => Promise.reject(Error('offline (test run)')) : (u, o) => net.fetch(u, o);
   api = create({ dataDir, fetch: (u, o) => fetcher(u, o), shrink: electronShrink, log: (...a) => console.warn('[showsync]', ...a) });
   const safe = (fn) => async (_e, ...a) => { try { return { ok: true, value: await fn(...a) } } catch (err) { return { ok: false, error: err.message } } };
   ipcMain.handle('shows:get', safe(() => api.snapshot()));

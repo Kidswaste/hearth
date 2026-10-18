@@ -381,6 +381,13 @@ function register(ipcMain, c) {
   hitch()?.register?.({ ctx: () => ctx, game: () => G });
   ipcMain.handle('game:hitch', hub(async (_e, req) => { const r = await (hitch()?.op?.(req || {}) || { ok: false, why: 'the hitch map is not in this Hearth' }); if (G && (req?.op === 'on' || req?.op === 'off')) G.hitch = req.op === 'on' && r?.ok !== false; return r; }));
   ipcMain.on('game:hitch-spike', (e) => hitch()?.onSpike?.(e));
+  // (round 64, clickfirst64) the F chip's words, clicked: ✎ Note is F8 (taken here, like the key); the hitch map's
+  // Record / Stop goes to the hub, which keeps the setting and turns it on / off now (hitchmap.js set)
+  ipcMain.on('game:chip', (e, what) => {
+    if (!mine(e)) return;
+    if (what === 'note') { Promise.resolve(pnotes()?.take?.({ by: 'chip' })).catch(() => {}); return; }
+    const w = ctx.getWin(); if (what === 'hitch' && w && !w.isDestroyed()) w.webContents.send('game:chip-ev', { what: 'hitch' });
+  });
   // checks: run a line in the game window's page, press a key / click there (real input, through Chromium)
   ipcMain.handle('game:eval', hub(async (_e, code) => { if (!G?.win || G.win.isDestroyed()) return { error: 'not playing' }; try { return { value: await G.win.webContents.executeJavaScript(String(code), true) }; } catch (err) { return { error: err.message }; } }));
   ipcMain.handle('game:key', hub((_e, { key = 'Escape', mods = [] } = {}) => {

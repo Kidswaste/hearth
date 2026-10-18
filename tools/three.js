@@ -514,7 +514,7 @@ const ThreeLab = (() => {
     let autoRun = store.get('three.autorun', true);
     let errors = [];
     const consoleBox = el('div', { class: 'three-console' });
-    const stats = el('div', { class: 'three-stats' });
+    const stats = el('div', { class: 'three-stats fb-keep' }); // (round 64, framebar64: the fps and the frame budget bar stay on screen; the rest shows on hover)
     const picker = el('select', { class: 'three-sketch-select', title: 'Your sketches' });
     const version = el('select', { title: 'three.js version' }, ThreeData.VERSIONS.map((v) => el('option', { value: v, text: `r${v.split('.')[1]} (${v})`, selected: v === store.get('three.version', ThreeData.VERSIONS[0]) })));
     const autoBox = el('input', { type: 'checkbox', checked: autoRun });
@@ -608,11 +608,12 @@ const ThreeLab = (() => {
         ...easy.filter((r) => !fix.includes(r)),
         'This Lab',
         ...fix,
-        ['Capture', 'Screenshot, copy, contact sheet', [
+        [typeof ClickFirst !== 'undefined' ? 'Capture & playtest' : 'Capture', typeof ClickFirst !== 'undefined' ? 'Screenshot, contact sheet, playtest log, hitch map' : 'Screenshot, copy, contact sheet', [ // (round 64, clickfirst64) + ▶ Playtest at its end
           ['🖼 Save a screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
           ['🎞 Contact sheet', 'Frames across the song', () => showSheet()],
-          ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : [])]], // (round 8) the Lab reaches the whole capture menu
+          ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : []),
+          ...(typeof ClickFirst !== 'undefined' ? ClickFirst.labRows() : [])]], // (round 64, clickfirst64) ▶ Playtest: Playtest log · Record the hitch map · Hitch map (clickfirst.js) // (round 8) the Lab reaches the whole capture menu
         ['Code & console', `r${v.split('.')[1]}${autoRun ? ' · live' : ''} · console: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1].toLowerCase()}`, [
           ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
           [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
@@ -730,7 +731,7 @@ const ThreeLab = (() => {
     // canvas (gamemode.js, lazy group "gamemode"); right-click: the last games, an HTML game, the screen to play on
     const gameDo = (fn) => (window.Lazy ? window.Lazy.load('gamemode') : Promise.resolve()).then(() => fn(GameMode)).catch((err) => toast(calmError(err), { type: 'error', raw: err }));
     const playGame = (sk = current) => sk && gameDo((G) => G.play({ kind: 'lab', id: sk.id, title: sk.name }));
-    const playBtn = btn('▶ Play', `Play it as a game: its own full-screen window, max quality, smooth (${typeof WinMac !== 'undefined' ? WinMac.keyLabel('Ctrl+P') : 'Ctrl+P'} · Esc there: Back to Hearth)`, () => playGame()); // (round 53, playloop: Ctrl/⌘+P plays / goes back to editing)
+    const playBtn = btn('▶ Play', `Play it as a game: its own full-screen window, max quality, smooth (${typeof WinMac !== 'undefined' ? WinMac.keyLabel('Ctrl+P') : 'Ctrl+P'} · Esc there: Back to Hearth) · right-click: the playtest log, the hitch map, other games`, () => playGame()); // (round 53, playloop: Ctrl/⌘+P plays / goes back to editing)
     playBtn.dataset.feature = 'Play';
     playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); gameDo((G) => G.menu(e.clientX, e.clientY)); });
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · B blackout · I info · PgUp / PgDn other sketches · 1–9 cues' });
@@ -2919,6 +2920,7 @@ const ThreeLab = (() => {
       statsSig = sig;
       stats.replaceChildren(
         el('b', { class: msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok', text: `${Math.round(msg.fps)} fps` }),
+        typeof FrameBar !== 'undefined' ? FrameBar.el() : null, // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
         msg.quality < 1 ? el('span', { class: 'warn', text: `preview ${Math.round(msg.quality * 100)}%`, title: 'Frames were dropping, so the preview draws lighter while you watch (resolution first, then filters, shadows, particles). Stills, screenshots, recordings and renders stay full quality.' }) : null,
         msg.worst ? el('span', { class: msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok', text: `worst ${Math.round(msg.worst)} ms`, title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }) : null,
         el('span', { text: `${msg.ms.toFixed(1)} ms render` }), el('span', { text: `${msg.calls} draw calls` }),
@@ -2926,6 +2928,22 @@ const ThreeLab = (() => {
         el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
     }
     previewHost.addEventListener('mouseenter', () => { if (lastStatsMsg) requestAnimationFrame(() => paintStats(lastStatsMsg)); });
+    // (round 64, framebar64) ▮ the frame budget bar lives in the stats line (the fps and the bar stay on screen, the rest
+    // of the line shows on hover: tools/framebar.css). The bar only reads the stats; the preview measures each layer
+    // only while the whole line shows (the pointer over the preview) or the bar's card is open: checked with each stats
+    // message (twice a second at most), when the pointer enters / leaves the preview and when the card opens / closes.
+    // Its code loads the first time the line shows (lazy group "framebar"); the line hidden (Customise this…): nothing.
+    let fbOn = false;
+    function fbShown(vis) {
+      if (vis && typeof FrameBar === 'undefined') { if (window.Lazy && !fbShown.asked) { fbShown.asked = true; window.Lazy.load('framebar').then(() => { statsSig = ''; if (lastStatsMsg) { paintStats(lastStatsMsg); FrameBar.paint(lastStatsMsg); } }, () => {}); } return; }
+      const on = Boolean(vis) && (previewHost.matches(':hover') || (typeof FrameBar !== 'undefined' && FrameBar.counting()));
+      if (on !== fbOn) { fbOn = on; box.send({ type: 'framebar', on }); }
+      if (!vis && typeof FrameBar !== 'undefined') FrameBar.visible(false);
+    }
+    const fbCheck = () => fbShown(stats.checkVisibility({ opacityProperty: true, visibilityProperty: true }));
+    previewHost.addEventListener('mouseenter', () => setTimeout(fbCheck, 50));
+    previewHost.addEventListener('mouseleave', () => setTimeout(fbCheck, 400));
+    api.framebar = { host: previewHost, call: (m, t) => sandboxCall(m, t), name: (id) => layerById(id)?.name || null, ids: () => layersOf().map((L) => L.id), selected: () => selId, recheck: () => fbCheck() };
     // Perf HUD (/lab perf, round 16 "labperf"): a quiet line in the preview's corner, fps · frame ms (median / worst
     // 5 %) · draw calls · GPU memory estimate, 2 updates a second at most, written only when the text changes
     let perfHudOn = Boolean(store.get('three.perfHud', false));
@@ -3047,7 +3065,7 @@ const ThreeLab = (() => {
         // (round 38, inputlatency) asked right after the coming frame, when the page's style is fresh: asked here (a
         // message between two frames, twice a second) it styled and laid out the whole Lab first whenever a drag had
         // just changed it (in the frame's rAF it did the same before the frame's own writes)
-        if (!statsRaf) statsRaf = requestAnimationFrame(() => setTimeout(() => { statsRaf = 0; if (lastStatsMsg && stats.checkVisibility({ opacityProperty: true, visibilityProperty: true })) paintStats(lastStatsMsg); }, 0));
+        if (!statsRaf) statsRaf = requestAnimationFrame(() => setTimeout(() => { statsRaf = 0; const vis = stats.checkVisibility({ opacityProperty: true, visibilityProperty: true }); fbShown(vis); if (lastStatsMsg && vis) { paintStats(lastStatsMsg); if (typeof FrameBar !== 'undefined') FrameBar.paint(lastStatsMsg); } }, 0));
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (/^audio-/.test(msg.type) && typeof ThreeAudio !== 'undefined' && ThreeAudio.onMessage(msg)) return; // (round 23, labaudio)
@@ -3056,6 +3074,7 @@ const ThreeLab = (() => {
       if (msg.type === 'ready' && msg.again && ranOnce) { console.warn(msg.gl ? 'Lab preview made again after the GPU went away: running the scene again' : 'Lab preview restarted by itself: running the sketch again'); run({ again: true, quiet: Boolean(msg.gl) }); }
       if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
       if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
+      if (msg.type === 'ready') fbOn = false; // (round 64, framebar64) a fresh page measures nothing until the stats line shows again
       if (msg.type === 'ready') refsSig = null; // (round 39, labmemory) a fresh page has no references yet
       if (msg.type === 'ready') window.PerfectLoop?.onReady?.(); // (round 31) ∞ a fresh page gets the scene's loop clock again
       if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); if (!adaptOn) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); parkedNow = false; parkSoon(); }
@@ -3065,6 +3084,7 @@ const ThreeLab = (() => {
         sendLiveGain();
         if (box.onStage) { hubLiveStop(); setTimeout(() => window.hub.liveStart(liveKind), 400); } else if (hubLive.stream) box.send({ type: 'live-remote', on: true, kind: liveKind }); else setTimeout(() => window.hub.liveStart(liveKind), 400);
       }
+      if (msg.type === 'framebar-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; } // (round 64, framebar64) "why?"
       if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
       if (msg.type === 'shot') {
         if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl, msg.small); return; }
@@ -5019,6 +5039,7 @@ ${frag}\`,
     get present() { return api.present || null; }, // (round 52, gamemode) the player (its song pauses while a game plays)
     get tm() { return api.tm || null; }, // (round 23) tools/three-history*.js
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
+    get framebar() { return api.framebar || null; }, // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
     get groupsHost() { return api.groupsHost || null; }, // (round 44) layer groups (tools/three-groups.js)
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
