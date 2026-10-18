@@ -190,7 +190,13 @@ function applySettings(win, settings = {}) {
   // On a Mac the setup script's Hearth.app is what you'd add to Login Items (System Settings → General).
   // (round 60, winfresh60) the folder quoted: Electron writes the arguments joined by spaces, unquoted, so a folder like
   // C:\Users\Jane Doe\Hearth started nothing at login; the folder is this file's own (named anything)
-  if (process.platform !== 'darwin') app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtStartup), args: require('./winfresh-core').loginItemArgs(__dirname) });
+  // (round 64, twocopies64) both copies write the same entry ("Hearth", the app id): turned off in a second copy, it used
+  // to remove the REAL copy's "Start with Windows"; off now only clears an entry that starts this folder
+  if (process.platform !== 'darwin') {
+    const args = require('./winfresh-core').loginItemArgs(__dirname);
+    let items = []; try { items = app.getLoginItemSettings({ args }).launchItems || []; } catch { items = []; }
+    if (require('./twocopies-core').loginItemPlan({ want: Boolean(settings.launchAtStartup), items, appDir: __dirname }) !== 'leave') app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtStartup), args });
+  }
   session.defaultSession.setSpellCheckerLanguages(settings.spellLanguages?.length ? settings.spellLanguages : ['en-US']);
   return { hotkeyOk };
 }
@@ -253,6 +259,13 @@ async function firstRunShortcuts({ dataDir }) {
   const W = require('./winfresh-core');
   const plan = W.shortcutPlan({ marker, existing, execPath: process.execPath, appDir: __dirname, exists: (d) => fs.existsSync(path.join(d, 'main.js')) });
   if (plan.action === 'done') return plan;
+  // (round 64, twocopies64) a copy with no chats never points the shortcuts at itself while another Hearth folder on this
+  // computer has chats (nothing is written: asked again at the next start, when this copy may have chats of its own)
+  if (plan.action !== 'keep') {
+    let hold = null;
+    try { const T = require('./twocopiesmain'); hold = require('./twocopies-core').shortcutHold({ chatsHere: T.chatsHere() ?? 1, others: T.others() }); } catch { hold = null; }
+    if (hold) return hold; // (quiet: the card before the window already said where your Hearth is)
+  }
   let r = {};
   if (plan.action === 'create') { ensureIcon(); r = await createShortcuts(); }
   if (r.error) return { ...plan, error: r.error }; // tried again at the next start

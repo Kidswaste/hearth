@@ -54,7 +54,11 @@ function fixMovedPaths() {
   return { moved: true, from: origin.platform, files, changed };
 }
 const norm = (p) => String(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-function writeOrigin(o) { try { fs.writeFileSync(ORIGIN, JSON.stringify(o, null, 2)); } catch { /* not critical */ } }
+// (round 64, twocopies64) the folder's own id (copyId: which Electron profile is this copy's) stays with the folder
+function writeOrigin(o) {
+  let copyId; try { copyId = JSON.parse(require('./scenesafe-core').readRetry(fs, ORIGIN)).copyId; } catch { copyId = undefined; }
+  try { fs.writeFileSync(ORIGIN, JSON.stringify(copyId ? { ...o, copyId } : o, null, 2)); } catch { /* not critical */ }
+}
 
 // Everything needed to run Hearth on another computer: the app's code, data/, config.json, theme.css and the
 // Mac setup script. Left out: the Windows Electron runtime, engine sessions (they can't move), logs.
