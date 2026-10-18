@@ -120,5 +120,21 @@
     const c={id:cid,title:text(p.event.title,100),subtitle:'PARIS / TAKE SOMETHING HOME',path:prompt.path,why:text(`${p.event.venue} · ${prompt.name}`,600),badge:'Outing keepsake',quests:[{id:'q-outing-'+p.event.id,title:prompt.name,done:text(`${p.event.title}: ${prompt.brief}`,1000),tiny:'Choose one detail to pay attention to. The outing and finished result can come later.',minutes:15,xp:35,tool:null,deep:'Polish one detail after saving the first version.',proofHint:'Show your own result or specific field note. Booking, saving an event or sending an invitation does not complete the quest.'}]};
     s.campaigns.push(c);s.active=cid;C.validate(s);return c;
   }
-  return {clone,text,url,iso,money,kinds,sources,prompts,initial,event,feed,feedUrls,plan,validate,save,cost,budget,overlaps,filter,invitation,calendar,campaign};
+  // One pin per venue, not one overlapping pin per event. Never consumes saved-place slots.
+  function mapGroups(s,filters={}){
+    if(filters.guide)return [];
+    const saved=new Set(s.saved.filter(p=>p.status!=='archived').map(p=>p.event.id));
+    const events=[...new Map([...s.feed,...s.saved.filter(p=>p.status!=='archived').map(p=>p.event)].map(e=>[e.id,e])).values()];
+    const groups=new Map();
+    for(const e of filter(events,{days:30,query:filters.query||''})){
+      if(e.lat===null||e.lon===null||!e.start||filters.saved&&!saved.has(e.id))continue;
+      const kind=['music','visual','game'].includes(e.kind)?e.kind:'reset';
+      if(filters.kind&&filters.kind!=='all'&&filters.kind!==kind)continue;
+      const key=e.lat.toFixed(4)+'-'+e.lon.toFixed(4),id='od-venue-'+key;
+      if(!groups.has(id))groups.set(id,{id,name:e.venue||e.title,lat:e.lat,lon:e.lon,events:[]});
+      groups.get(id).events.push(e);
+    }
+    return [...groups.values()];
+  }
+  return {clone,text,url,iso,money,kinds,sources,prompts,initial,event,feed,feedUrls,plan,validate,save,cost,budget,overlaps,filter,invitation,calendar,campaign,mapGroups};
 });
