@@ -15,7 +15,8 @@ const P = () => window.QuestParis, guideNew = () => P().guide.filter(g => g.id.s
 // 1. chat drives the map: /quest paris adds the guide once and opens the map
 await Lazy.load('questjournal');
 check(Commands.get('quest'), '/quest registered');
-const help = await cmd('/quest'); check(/\/quest paris/.test(help) && /\/quest add/.test(help), 'help lists the subcommands');
+// (round 61, questhud61) one /quest: bare /quest is the tracker's; its Paris words (help, paris, add…) pass through
+const help = await cmd('/quest help'); check(/\/quest paris/.test(help) && /\/quest add/.test(help), 'help lists the subcommands');
 let out = await cmd('/quest paris');
 await until(() => root()?.querySelector('.qj-atlas'), 'map open');
 check(/Paris guide on your map/.test(out), 'paris reply: ' + out);

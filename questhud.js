@@ -74,7 +74,7 @@ const QuestHud = (() => {
     return `Quest: ${cd.title}${cd.campaign ? ` (${cd.campaign}, ${cd.progress.text})` : ''}${nx}`;
   }
   function build() {
-    chip = el('button', { type: 'button', class: 'tool-btn qh-chip', hidden: true, dataset: { feature: 'Quest chip' }, attrs: { 'aria-haspopup': 'dialog', 'aria-expanded': 'false' } },
+    chip = el('button', { type: 'button', class: 'tool-btn qh-chip', hidden: true, dataset: { feature: 'Quest chip' }, attrs: { 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'aria-label': 'Quests' } }, // (named here: a11y.js then keeps our full name)
       el('span', { class: 'qh-ico', attrs: { 'aria-hidden': 'true' }, text: '✦' }), el('b', { class: 'qh-num' }), el('span', { class: 'qh-bar', attrs: { 'aria-hidden': 'true' } }, el('i')));
     chip.addEventListener('click', () => toggle());
     chip.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, menuItems()); });
@@ -96,7 +96,7 @@ const QuestHud = (() => {
       chip.querySelector('.qh-num').textContent = cd ? cd.progress.text : '';
       chip.style.setProperty('--qh-fill', `${Math.round((cd ? cd.progress.frac : 0) * 100)}%`);
       const words = describe(cd);
-      chip.setAttribute('aria-label', words);
+      chip.removeAttribute('data-a11y-name'); chip.setAttribute('aria-label', words);
       chip.title = `${words} · ${key()}`;
     }
     if (panel) renderPanel();
