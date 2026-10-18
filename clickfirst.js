@@ -6,7 +6,7 @@
 //     labelled "More" menu with every quest feature, and buttons on the quest card that fit the quest (a show:
 //     Get ready / How was it?; the park quest: Park mode; Finish a track: Arrange loops; a walk: See the walk)
 //   · Sidequest Studio: one "My week ▾" button in its top bar (the same menu)
-//   · the Lab toolbar's ⋯: "▶ Playtest" (Playtest log, Record the hitch map, Hitch map)
+//   · the Lab toolbar's ⋯ › Capture & playtest: "▶ Playtest" (Playtest log, Record the hitch map, Hitch map)
 // (The Sound desk's Sound bank / Arrange loops buttons sit in tools/parkjam.js beside Park mode; the game window's F
 // chip got its "✎ Note" / "● Record hitch map" in game-preload.js.) The commands all still work; nothing here types one.
 // Cost while idle: nothing (no timers, no listeners of its own; it only builds rows when the panel or a menu draws).
@@ -92,15 +92,15 @@ const ClickFirst = window.ClickFirst = (() => { // (on window too: the Studio as
     return kids.length ? el('div', { class: 'cf-acts' }, ...kids) : null;
   }
 
-  // ---------- the Lab toolbar's ⋯: ▶ Playtest (notes and the hitch map) ----------
+  // ---------- the Lab toolbar's ⋯ › Capture & playtest: ▶ Playtest (notes and the hitch map) ----------
   async function gm() { await Lazy.load('gamemode'); }
-  function labRow() {
+  function labRows() { // the end of the Lab toolbar ⋯'s Capture & playtest (its top rows stay within menucalm's budget)
     const on = store.get('hitchmap.on', false) === true;
-    return ['▶ Playtest', 'Notes (F8 while you play) and where it stutters', [
+    return ['▶ Playtest',
       ['✎ Playtest log', 'Your F8 notes with their pictures · a click jumps back there', run(async () => { await gm(); return PlayNotes.open(); })],
       ['● Record the hitch map', 'Off by default · while on, ▶ Play records where it stutters', run(async () => { await gm(); say(await HitchMap.set(!HitchMap.isOn())); }), on],
-      ['▦ Hitch map', 'The last recording of this scene', run(async () => { await gm(); return HitchMap.open(); })]]];
+      ['▦ Hitch map', 'The last recording of this scene', run(async () => { await gm(); return HitchMap.open(); })]];
   }
 
-  return { questItems, studioButton, weekRows, cardActions, labRow, walk, showsWeek, parkMode, arrange };
+  return { questItems, studioButton, weekRows, cardActions, labRows, walk, showsWeek, parkMode, arrange };
 })();

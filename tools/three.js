@@ -608,12 +608,12 @@ const ThreeLab = (() => {
         ...easy.filter((r) => !fix.includes(r)),
         'This Lab',
         ...fix,
-        ...(typeof ClickFirst !== 'undefined' ? [ClickFirst.labRow()] : []), // (round 64, clickfirst64) ▶ Playtest › Playtest log · Record the hitch map · Hitch map (clickfirst.js)
-        ['Capture', 'Screenshot, copy, contact sheet', [
+        [typeof ClickFirst !== 'undefined' ? 'Capture & playtest' : 'Capture', typeof ClickFirst !== 'undefined' ? 'Screenshot, contact sheet, playtest log, hitch map' : 'Screenshot, copy, contact sheet', [ // (round 64, clickfirst64) + ▶ Playtest at its end
           ['🖼 Save a screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
           ['🎞 Contact sheet', 'Frames across the song', () => showSheet()],
-          ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : [])]], // (round 8) the Lab reaches the whole capture menu
+          ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : []),
+          ...(typeof ClickFirst !== 'undefined' ? ClickFirst.labRows() : [])]], // (round 64, clickfirst64) ▶ Playtest: Playtest log · Record the hitch map · Hitch map (clickfirst.js) // (round 8) the Lab reaches the whole capture menu
         ['Code & console', `r${v.split('.')[1]}${autoRun ? ' · live' : ''} · console: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1].toLowerCase()}`, [
           ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
           [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],

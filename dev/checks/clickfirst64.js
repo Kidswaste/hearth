@@ -10,7 +10,7 @@
 //            → the week plan's show chip → the panel's Get ready (the prep card) → the park quest's 🌳 Park mode
 //   sound    the Sound desk (Creative Playground › Serum 2 & Vital, the fake laptop host): Park mode, Sound bank, Arrange
 //            loops, the ✦ Preset window, the Audio output picker, all as words on screen
-//   play     the Lab's ⋯ › ▶ Playtest › ✎ Playtest log / ● Record the hitch map / ▦ Hitch map; ▶ Play's right-click
+//   play     the Lab's ⋯ › Capture & playtest › ✎ Playtest log / ● Record the hitch map / ▦ Hitch map; ▶ Play's right-click
 //            (the same three); ▶ Play → F → the chip's "✎ Note (F8)" clicked → a note; "■ Stop hitch map" clicked → off
 //   node dev/smoke.js --fake-vst --fake-vst-no-ua --check-timeout 600000 --script dev/checks/clickfirst64.js
 //   (▶ Play needs a local three.js: HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package, as the other game checks)
@@ -208,20 +208,20 @@ await safe('play', async () => {
   const pop = async () => { more.click(); return until(() => document.querySelector('.mb-menu.lab-pop'), 4000); };
   const popRow = async (re) => { const b = await until(() => [...document.querySelectorAll('.mb-menu.lab-pop .menu-item')].find((x) => re.test(x.querySelector('b')?.textContent || x.textContent)), 4000); if (!b) throw Error(`no Lab menu row ${re}`); b.click(); await wait(250); };
   await pop();
-  step('the Lab toolbar\'s ⋯ has "▶ Playtest"', await until(() => [...document.querySelectorAll('.lab-pop .menu-item b')].some((b) => b.textContent === '▶ Playtest'), 3000));
-  await popRow(/^▶ Playtest$/);
+  step('the Lab toolbar\'s ⋯ has "Capture & playtest"', await until(() => [...document.querySelectorAll('.lab-pop .menu-item b')].some((b) => b.textContent === 'Capture & playtest'), 3000));
+  await popRow(/^Capture & playtest$/);
   const sub = [...document.querySelectorAll('.lab-pop .menu-item b')].map((b) => b.textContent);
-  step('▶ Playtest › Playtest log · Record the hitch map · Hitch map', ['✎ Playtest log', '● Record the hitch map', '▦ Hitch map'].every((w) => sub.includes(w)), sub);
-  await shot('labmenu', '▶ Playtest: Playtest log · Record the hitch map · Hitch map', 'Lab toolbar ⋯ › ▶ Playtest');
+  step('… › ▶ Playtest: Playtest log · Record the hitch map · Hitch map', [...document.querySelectorAll('.lab-pop .menu-head')].some((h) => h.textContent === '▶ Playtest') && ['✎ Playtest log', '● Record the hitch map', '▦ Hitch map'].every((w) => sub.includes(w)), sub);
+  await shot('labmenu', '▶ Playtest: Playtest log · Record the hitch map · Hitch map', 'Lab toolbar ⋯ › Capture & playtest › ▶ Playtest');
   await popRow(/✎ Playtest log/);
   step('✎ Playtest log → the log (says F8 drops a note)', await until(() => document.querySelector('dialog.pn-log[open]') || [...document.querySelectorAll('.toast')].some((t) => /F8/.test(t.textContent)), 10000));
-  await shot('playlog', 'Playtest log', 'Lab ⋯ › ▶ Playtest › ✎ Playtest log');
+  await shot('playlog', 'Playtest log', 'Lab ⋯ › Capture & playtest › ✎ Playtest log');
   closeDialogs();
-  await pop(); await popRow(/^▶ Playtest$/); await popRow(/Record the hitch map/);
+  await pop(); await popRow(/^Capture & playtest$/); await popRow(/Record the hitch map/);
   step('● Record the hitch map → on', await until(() => store.get('hitchmap.on', false) === true, 5000));
-  await pop(); await popRow(/^▶ Playtest$/); await popRow(/▦ Hitch map/);
+  await pop(); await popRow(/^Capture & playtest$/); await popRow(/▦ Hitch map/);
   step('▦ Hitch map → the map (first time: says recording is on, play and come back)', await until(() => document.querySelector('dialog.hm-map[open] .hm-empty'), 10000), document.querySelector('dialog.hm-map[open]')?.innerText?.slice(0, 140));
-  await shot('hitchmap', 'Hitch map (first time: what to do)', 'Lab ⋯ › ▶ Playtest › ▦ Hitch map');
+  await shot('hitchmap', 'Hitch map (first time: what to do)', 'Lab ⋯ › Capture & playtest › ▦ Hitch map');
   closeDialogs();
   // ▶ Play's right-click
   const play = document.querySelector('[data-feature="Play"]');
@@ -245,8 +245,11 @@ await safe('play', async () => {
   try { const r = await smoke({ pageCdp: '^hearth-game:', cdp: 'Page.captureScreenshot', params: { format: 'png' } }); if (r?.data) { await hub.fs.write(`${SAVES}/clickfirst64-fchip.png`, Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0))); out.shots.push(`${SAVES}/clickfirst64-fchip.png`); out.table.push({ feature: 'F chip: ✎ Note (F8) · ● Record / ■ Stop hitch map', where: '▶ Play › F', shot: 'clickfirst64-fchip.png' }); } } catch { /* the picture is a bonus */ }
   const note = btns.find((b) => /Note/.test(b.t)), hm = btns.find((b) => /hitch map/.test(b.t));
   const before = (await G.notes({ op: 'state' }))?.n || 0;
+  const noted = async () => ((await G.notes({ op: 'state' }))?.n || 0) > before;
   await G.click({ x: note.x, y: note.y });
-  step('click "✎ Note (F8)" → a playtest note', await until(async () => ((await G.notes({ op: 'state' }))?.n || 0) > before, 10000));
+  let ok = await until(noted, 6000);
+  if (!ok) { await G.click({ x: note.x, y: note.y }); ok = await until(noted, 8000); } // (a note is skipped while another picture is being taken, like F8: once more)
+  step('click "✎ Note (F8)" → a playtest note', ok, await G.notes({ op: 'state' }).catch(() => null));
   await G.click({ x: hm.x, y: hm.y });
   step('click "■ Stop hitch map" → the recording stops (the setting too)', await until(() => store.get('hitchmap.on', false) === false, 8000));
   await Promise.resolve(GameMode.leave()).catch(() => {});
