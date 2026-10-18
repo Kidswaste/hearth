@@ -11,3 +11,7 @@
 .cf-row .qh-row-title, .cf-row .qh-sub { white-space: normal; overflow: visible; text-overflow: clip; }
 .cf-row { align-items: center; }
 .qj-button.cf-studio-week { white-space: nowrap; flex: none; }
+/* a narrow panel: the words keep their width, the button goes under them */
+.cf-row { flex-wrap: wrap; row-gap: 4px; }
+.cf-row .qh-row-main { flex: 1 1 150px; }
+.cf-row .qh-row-main + .qh-btn { margin-left: auto; }

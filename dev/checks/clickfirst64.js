@@ -13,6 +13,7 @@
 //   play     the Lab's ⋯ › ▶ Playtest › ✎ Playtest log / ● Record the hitch map / ▦ Hitch map; ▶ Play's right-click
 //            (the same three); ▶ Play → F → the chip's "✎ Note (F8)" clicked → a note; "■ Stop hitch map" clicked → off
 //   node dev/smoke.js --fake-vst --fake-vst-no-ua --check-timeout 600000 --script dev/checks/clickfirst64.js
+//   (▶ Play needs a local three.js: HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package, as the other game checks)
 const tile = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
 Object.defineProperty(HTMLImageElement.prototype, 'src', { ...tile, set(v) { if (String(v).startsWith('https://tile.openstreetmap.org/')) { queueMicrotask(() => this.dispatchEvent(new Event('error'))); return; } tile.set.call(this, v); } });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -226,7 +227,7 @@ await safe('play', async () => {
   const play = document.querySelector('[data-feature="Play"]');
   step('▶ Play\'s tooltip says what its right-click has', /right-click: the playtest log, the hitch map/.test(play?.title || ''), play?.title);
   play.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 400, clientY: 120 }));
-  const rows = await until(() => { const r = [...document.querySelectorAll('#menu > button')].map((b) => b.textContent); return r.length ? r : null; }, 6000);
+  const rows = await until(() => { const m = document.getElementById('menu'); const r = m && !m.hidden ? [...m.querySelectorAll(':scope > button')].map((b) => b.textContent) : []; return r.some((x) => /Playtest log/.test(x)) ? r : null; }, 6000);
   step('▶ Play\'s right-click: Playtest log, Record the hitch map, Hitch map', rows && ['Playtest log', 'Record the hitch map', 'Hitch map'].every((w) => rows.some((r) => r.includes(w))), rows);
   await shot('playmenu', '▶ Play right-click: playtest log, hitch map', 'Lab › ▶ Play (right-click)');
   hideMenu();
@@ -248,7 +249,7 @@ await safe('play', async () => {
   step('click "✎ Note (F8)" → a playtest note', await until(async () => ((await G.notes({ op: 'state' }))?.n || 0) > before, 10000));
   await G.click({ x: hm.x, y: hm.y });
   step('click "■ Stop hitch map" → the recording stops (the setting too)', await until(() => store.get('hitchmap.on', false) === false, 8000));
-  await GameMode.leave().catch(() => {});
+  await Promise.resolve(GameMode.leave()).catch(() => {});
   await until(async () => !(await G.state())?.playing, 15000);
 });
 

@@ -70,14 +70,14 @@ const ClickFirst = window.ClickFirst = (() => { // (on window too: the Studio as
     const out = [sec(next ? 'Next week' : 'This week', 'Week in review', () => weekCard('review'), 'cf-review')];
     if (!items.length) {
       out.push(row('📅', 'No plan yet', '3–5 quests on days: shows, Paris places, the park',
-        btn('Plan your week', () => weekCard('week'), 'qh-take qh-primary cf-plan', 'Plan your week: 3–5 quests on the days that suit them'), 'cf-week'));
+        btn('Plan your week', () => weekCard('week'), 'qh-primary cf-take cf-plan', 'Plan your week: 3–5 quests on the days that suit them'), 'cf-week'));
     } else {
       const done = items.filter((it) => itemDone(C, S, it)).length;
       const ahead = items.filter((it) => !itemDone(C, S, it) && it.day >= pw.today).sort((a, b) => a.day.localeCompare(b.day))[0];
       out.push(row('📅', `${done} of ${items.length} planned done`, ahead ? `${ahead.day === pw.today ? 'Today' : W.weekday(ahead.day)} · ${ahead.title}` : done === items.length ? 'All done ✓' : 'Nothing left ahead this week',
-        btn('See the plan', () => weekCard('week'), 'qh-take cf-plan', 'Your week plan: move, add, take off'), 'cf-week'));
+        btn('See the plan', () => weekCard('week'), 'cf-take cf-plan', 'Your week plan: move, add, take off'), 'cf-week'));
     }
-    out.push(row('⇢', 'A walk', '3–5 places you haven’t been, about 2 h', btn('Make a walk', walk, 'qh-take cf-walk', 'A walk through Paris places you haven’t visited (about 2 h)'), 'cf-walkrow'));
+    out.push(row('⇢', 'A walk', '3–5 places you haven’t been, about 2 h', btn('Make a walk', walk, 'cf-take cf-walk', 'A walk through Paris places you haven’t visited (about 2 h)'), 'cf-walkrow'));
     return out;
   }
   // buttons on the quest card that fit the quest (a show night, the park, finishing a track, a walk)
