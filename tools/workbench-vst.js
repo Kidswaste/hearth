@@ -215,6 +215,7 @@ var WorkbenchVST = (() => {
         for (const x of all.slice(0, 24)) {
           const n = typeof x.value === 'boolean' ? check(x.label, x.value, v => tweak(x.key, v)) : typeof x.value === 'number' ? range(x.label, x.value, x.min, x.max, x.step || .001, v => tweak(x.key, v)) : select(x.label, x.value, x.choices, v => tweak(x.key, v));
           n.dataset.key = x.key; if ((moved.get(x.key) || 0) > now) n.classList.add('vx-moved'); // (round 64) an AI just moved it
+          if (typeof x.value === 'number') { const input = n.querySelector('input'); if (input) input.value = x.value; } // (round 64) set again once min / max / step are on (a 0–1 value was rounded on the default 0–100 scale)
           controls.append(n);
         }
         if (all.length > 24) controls.append(note(`${all.length} controls match. Search oscillator, envelope, cutoff or an effect.`));

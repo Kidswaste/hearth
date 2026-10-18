@@ -77,6 +77,7 @@
     /** The host's view of the editor ({ mode, size, note, embeddable }), from a button's reply or the 1 s readout. */
     function apply(next) {
       if (!next || typeof next !== 'object') return;
+      if (!el.isConnected && alive) { requestAnimationFrame(() => { if (alive) apply(next); }); return; } // placed in the page first (its scrollers, its size)
       const was = st.mode; st = { ...st, ...next }; paint();
       if (st.mode === 'embedded') { if (was !== 'embedded') { sent = ''; watch(true); } schedule(); } else if (was === 'embedded') watch(false);
     }
@@ -90,7 +91,7 @@
       return geometry({ rect: r, clips, covers, dpr: devicePixelRatio || 1, hidden: !shown });
     }
     function send() {
-      queued = 0; if (st.mode !== 'embedded') return;
+      queued = 0; if (st.mode !== 'embedded' || !el.isConnected) return; // a frame no longer on the page never speaks (a newer one does)
       const g = measure(), key = JSON.stringify(g); if (key === sent) return; sent = key;
       o.fire('editor-place', { embed: g });
     }

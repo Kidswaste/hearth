@@ -40,7 +40,7 @@ const slot = document.querySelector('.vx-slot'), dpr = devicePixelRatio;
 ok(Math.abs(slot.offsetWidth - 880 / dpr) <= 1 && Math.abs(slot.offsetHeight - 560 / dpr) <= 1, `the placeholder takes the editor's size (${slot.offsetWidth}×${slot.offsetHeight})`);
 let w = await until(async () => { const x = await win(); return x?.child && x.places !== 0 && x; }, 5000, 'window placed');
 const near = (a, b) => Math.abs(a - b) <= 2;
-const at = () => { const r = slot.getBoundingClientRect(); return { x: Math.round(r.left * dpr), y: Math.round(r.top * dpr) }; };
+const at = () => { const r = document.querySelector('.vx-slot').getBoundingClientRect(); return { x: Math.round(r.left * dpr), y: Math.round(r.top * dpr) }; }; // the desk redraws: always the current slot
 await until(async () => { const x = await win(); return near(x.x, at().x) && near(x.y, at().y); }, 5000, 'window on the placeholder');
 w = await win(); ok(w.parent > 0 && w.child, `the editor window is a child of Hearth's window (handle ${w.parent}) at the placeholder (${w.x}, ${w.y})`);
 ok(frameBtn('Pop out') && frameBtn('Close editor') && !frameBtn('Open editor here'), 'embedded: “Pop out” · “Close editor”');
@@ -53,7 +53,7 @@ if (scroller) {
   ok(true, `scrolled 120 px → the window followed (y ${(await win()).y}, region ${JSON.stringify((await win()).region)})`);
 } else out.checks.push('(the desk did not scroll at this window size: scrolling covered by the unit test)');
 // 4. a menu over it hides it; it shows again when the menu closes
-const fr = slot.getBoundingClientRect(); showMenu(fr.left + 40, Math.max(10, fr.top + 20), [{ label: 'A menu over the editor', fn() {} }]);
+const fr = document.querySelector('.vx-slot').getBoundingClientRect(); showMenu(fr.left + 40, Math.max(10, fr.top + 20), [{ label: 'A menu over the editor', fn() {} }]);
 await until(async () => { const x = await win(); return Array.isArray(x.region) && !x.region.length; }, 5000, 'hidden under a menu'); ok(true, 'a menu over the editor → the editor hides (stays open)');
 hideMenu(); await until(async () => { const x = await win(); return !(Array.isArray(x.region) && !x.region.length); }, 5000, 'shown again'); ok(true, 'the menu closes → the editor shows again');
 spacer.remove();
@@ -89,7 +89,7 @@ ok(ai.changed === 1 && /do not list/.test(ai.note) && Math.abs(api.get(['level']
 activate(H.claudeAgent().id); await until(async () => { const x = await win(); return Array.isArray(x?.region) && !x.region.length; }, 6000, 'hidden with the desk');
 ok((await live()).editorOpen, 'another tool on screen → the editor hides, stays open');
 activate('tool:creative'); CreativePlayground.openFeature('vst'); await until(() => mode() === 'embedded', 10000, 'embedded again');
-await until(async () => { const x = await win(); return x && !(Array.isArray(x.region) && !x.region.length) && near(x.y, at().y); }, 6000, 'shown again');
+await until(async () => { const x = await win(); return x && !(Array.isArray(x.region) && !x.region.length) && near(x.y, at().y); }, 6000, 'shown again').catch(async e => { throw Error(`${e.message}: ${JSON.stringify({ win: await win(), at: at(), frame: api.editor() })}`); });
 ok(true, 'back to the Sound desk → the editor is there again, on its placeholder');
 // 9. Pop out / Open editor here
 frameBtn('Pop out').click(); await until(() => mode() === 'floating', 5000, 'floating'); ok((await win()).parent === 0 && frameBtn('Open editor here'), 'Pop out → its own window; the frame offers “Open editor here”');
