@@ -396,8 +396,8 @@ const QuestJournal = (() => {
     return mutate(s=>{s.atlas.selected=id;},'',{paint:false}).then(()=>{if(previewPlace===id)previewPlace=null;},err=>{if(previewPlace===id){previewPlace=null;paintPlace(state.atlas.selected);}throw err;});
   }
   // parisquests61: mapFilter.guide (a Paris guide word: tag, arrondissement…) and guide words in search come from tools/quest-paris-ui.js.
-  function mapPlaces() {const query=mapFilter.query.toLocaleLowerCase(),PG=window.QuestParisUI;return state.atlas.places.filter(p=>(mapFilter.kind==='all'||C.placeKind(p)===mapFilter.kind)&&(!mapFilter.saved||p.favorite)&&(!mapFilter.guide||!PG||PG.keep(p,mapFilter.guide))&&(!query||(p.name+' '+p.quest+' '+(PG?.words(p)||'')).toLocaleLowerCase().includes(query)));}
-  function centerMapSelection() {const places=mapPlaces(),place=places.find(p=>p.id===(previewPlace||state.atlas.selected))||places[0];if(place)atlasView?.focus(place);}
+  function mapPlaces() {const query=mapFilter.query.toLocaleLowerCase(),PG=window.QuestParisUI;return state.atlas.places.filter(p=>(mapFilter.kind==='all'||C.placeKind(p)===mapFilter.kind)&&(!mapFilter.saved||p.favorite)&&(!mapFilter.guide||!PG||PG.keep(p,mapFilter.guide))&&(!window.QuestMapFirst||QuestMapFirst.keep(p,state))&&(!query||(p.name+' '+p.quest+' '+(PG?.words(p)||'')).toLocaleLowerCase().includes(query)));}
+  function centerMapSelection() {const places=mapPlaces(),place=places.find(p=>p.id===state.atlas.selected)||places[0];if(place)atlasView?.focus(place);}
   function outingDesk(options = {}) {
     return OutingDesk.open({dialog,button,field,explain,friends:()=>state.world.friends,openQuest:questDetail,
       quest:async plan=>{const c=await mutate(s=>OutingCore.campaign(s,plan,C),'Take-home quest ready. Proof and review unlock its XP.');return c.quests[0].id;},
