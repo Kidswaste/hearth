@@ -66,7 +66,8 @@ const TryNew = (() => {
   const target = (list) => list.map((s) => (s.startsWith('text:') ? byText(s.slice(5)) : bySel(s)));
   const has = () => {
     const a = typeof Commands !== 'undefined' ? Commands.get('audio') : null;
-    return { audiodoctor: Boolean(a && /doctor/i.test(`${a.args || ''} ${(a.examples || []).join(' ')} ${a.desc || ''}`)) };
+    // (audiodoctor64: its 🎚 Check my audio setup button on the Sound desk)
+    return { audiodoctor: typeof AudioDoctorDesk !== 'undefined' || Boolean(a && /doctor/i.test(`${a.args || ''} ${(a.examples || []).join(' ')} ${a.desc || ''}`)) };
   };
 
   // ---------- a path = a guided spotlight ----------

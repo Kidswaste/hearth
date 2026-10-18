@@ -34,7 +34,7 @@ const TryNewCore = (() => {
     ] },
     { id: 'livevst', round: 61, icon: '🎹', name: 'Live Serum 2 / Vital', why: 'play through your UA interface', steps: [
       { title: 'Pick your interface', open: 'desk', target: ['select[aria-label="Audio output"]', 'text:Set up live audio'], text: 'In the Sound desk: choose your UA interface in Audio output (ASIO first, WASAPI as the fallback), then Buffer 128 or 64. First time only: click Set up live audio (1–3 min, once).' },
-      { title: 'Check the audio', need: 'audiodoctor', open: 'desk', target: ['text:Audio doctor', 'text:Check my audio', '[data-feature*="udio doctor"]', 'select[aria-label="Audio output"]', 'text:Set up live audio'], text: 'No sound, crackles or no ASIO? The audio check looks at the interface, the driver and the buffer in one go.' },
+      { title: 'Check the audio', need: 'audiodoctor', open: 'desk', target: ['.ad-desk-check', 'text:🎚 Check my audio setup', 'select[aria-label="Audio output"]', 'text:Set up live audio'], text: 'No sound, crackles or no ASIO? Click 🎚 Check my audio setup: the runtime, ASIO and your UA interface, MIDI, Serum 2 / Vital and a quiet 2-second test, with a fix button on anything that needs one.' },
     ] },
     { id: 'preset', round: 61, icon: '✦', name: '✦ Preset window', why: 'describe a sound, hear it live', steps: [
       { title: 'Describe a sound', open: 'desk', target: ['.ph-win .ph-input', '.ph-pill'], text: 'In this little window over the Sound desk, type a sound (“dark reese bass with slow movement”) and press Enter: Claude or Astra sets the plugin’s real controls, live. About 1.5k tokens a request.' },

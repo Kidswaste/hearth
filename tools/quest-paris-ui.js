@@ -26,6 +26,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
     const { E, button, p, questDetail, mutate } = { ...ui(), mutate: J().mutate };
     host.append(E('div', { class: 'qj-paris-note' }, p(`${P.arrLabel(g.arr)} · ${g.why}`), p('Best: ' + g.best, 'qj-paris-best')));
     if(g.url)host.append(button('Programme & access',()=>window.hub.openExternal(g.url),'qj-quiet'));
+    if(P.socialMissions.some(t=>t.places.includes(g.id)))host.append(button('Friend outings here',()=>socialOutings(g.id),'qj-quiet'));
     if (!P.guide.some(x => x.id === g.id)) return;
     const s = state(), c = placeCampaign(s, g.id), next = c && C.next(s, c);
     if (c && C.campaignDone(s, c)) host.append(E('p', { class: 'qj-copy qj-paris-best', text: 'Place quest finished ✓' }));
@@ -34,7 +35,7 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
       const q = C.next(state(), camp) || camp.quests[0]; questDetail(q.id);
     }, 'qj-quiet qj-paris-start'));
   }
-  function footer() { if (typeof QuestJournal === 'undefined' || !J()?.ready()) return null; const {E,button}=ui(),b=button('Paris guide',guideDialog,'qj-quiet qj-paris-guide');b.dataset.help=guideCount+' places to see and personal quests · /quest paris';return E('div',{class:'qj-actions'},button('Browse places',catalog,'qj-quiet'),button('Mini adventures',adventures,'qj-quiet'),b); }
+  function footer() { if (typeof QuestJournal === 'undefined' || !J()?.ready()) return null; const {E,button}=ui(),b=button('Paris guide',guideDialog,'qj-quiet qj-paris-guide');b.dataset.help=guideCount+' places to see and personal quests · /quest paris';const social=button('Friend outings',()=>socialOutings(),'qj-quiet qj-social-entry');social.prepend(QuestAtlas.icon('social'));return E('div',{class:'qj-actions'},social,button('Browse places',catalog,'qj-quiet'),button('Mini adventures',adventures,'qj-quiet'),b); }
   function guideDialog() {
     const { E, button, label, p, dialog, questDetail } = ui(), mutate = J().mutate;
     dialog('Paris guide', (body, d) => {
@@ -100,6 +101,48 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
         },'FH / '+t.badge.toUpperCase());
       },'qj-city-card');b.dataset.adventure=t.id;b.style.setProperty('--city-accent',t.color);b.append(QuestAtlas.icon(t.icon),E('span',{class:'qj-label',text:'3 STEPS · 90 XP'}),E('strong',{text:t.title}),E('span',{class:'qj-city-card-hint',text:t.badge}));grid.append(b);}
     },'FH / PICK A FINISH LINE');
+  }
+  function socialOutings(placeId=''){
+    const {E,button,p,dialog}=ui();
+    dialog('Bring a friend',(body,d)=>{
+      d.classList.add('qj-city-catalog');
+      const friends=state().world.friends;
+      if(!friends.length){body.append(p('Add someone to your social notebook first.'),button('Open social notebook',()=>{d.close();ui().navigate('world');},'qj-primary'));return;}
+      let quick=false,limit=6;
+      const friend=E('select',{attrs:{'aria-label':'Choose a friend'}});for(const f of friends)friend.append(E('option',{value:f.id,text:f.name}));
+      const fast=button('20 min or less',()=>{quick=!quick;limit=6;draw();},'qj-quiet'),grid=E('div',{class:'qj-city-grid'}),count=p('','qj-social-count'),more=button('More ideas',()=>{limit+=6;draw();},'qj-quiet');fast.dataset.help='Activity time; add your travel time. Every mission has a solo fallback.';
+      body.append(E('div',{class:'qj-social-toolbar'},E('label',{},E('span',{text:'Who’s on your mind?'}),friend),fast),count,grid,more);
+      friend.onchange=()=>{limit=6;draw();};
+      function draw(){
+        const all=P.socialChoices(state(),{friendId:friend.value,quick}).filter(t=>!placeId||t.places.includes(placeId));grid.replaceChildren();fast.setAttribute('aria-pressed',String(quick));more.hidden=all.length<=limit;count.textContent=(placeId?P.byId(placeId).name+' · ':'')+all.length+' small adventures · nothing is sent';
+        for(const t of all.slice(0,limit)){
+          const c=P.socialCampaign(state(),t.id,friend.value),b=button('',()=>socialDetail(t,friend.value,placeId,d),'qj-city-card');b.dataset.social=t.id;b.style.setProperty('--city-accent',t.color);
+          b.append(QuestAtlas.icon(t.icon),E('span',{class:'qj-label',text:t.minutes+' MIN · '+(c?c.quests.filter(q=>C.done(state(),q.id)).length+'/3 DONE':'90 XP')}),E('strong',{text:t.title}),E('span',{class:'qj-city-card-hint',text:c?'Open your adventure →':t.badge}));grid.append(b);
+        }
+        if(!all.length)grid.append(p('No short outing here. Turn off the time filter to see more.'));
+      }
+      draw();
+    },'FH / CO-OP LOBBY');
+  }
+  function socialDetail(t,friendId,placeId,browser){
+    const {E,button,p,dialog}=ui(),old=P.socialCampaign(state(),t.id,friendId),f=state().world.friends.find(f=>f.id===friendId);
+    dialog(t.title,(body,d)=>{
+      d.classList.add('qj-city-detail','qj-social-detail');d.style.setProperty('--city-accent',t.color);
+      body.append(E('div',{class:'qj-social-banner'},QuestAtlas.icon(t.icon),E('strong',{text:(old?.socialFriendName||f.name)+' · '+t.minutes+' min'}),E('span',{text:t.badge})),p(t.action));
+      const place=E('select',{attrs:{'aria-label':'Meet around'}});for(const pid of t.places)place.append(E('option',{value:pid,text:P.byId(pid).name}));place.value=old?.parisPlace||placeId||t.places[0];place.disabled=!!old;
+      const location=E('label',{class:'qj-social-field'},E('span',{text:'Meet around'}),place);body.append(location);
+      body.append(E('details',{class:'qj-social-fold'},E('summary',{text:'Busy friend? Solo finish + proof'}),p(t.solo),p(t.result),p('Your own note or creation is enough. No private messages or friend’s reply required.')));
+      const invite=E('textarea',{attrs:{'aria-label':'Invitation draft',rows:4,maxlength:1500}});invite.value=P.socialInvite(state(),t.id,friendId,place.value);place.onchange=()=>{invite.value=P.socialInvite(state(),t.id,friendId,place.value);};
+      body.append(E('details',{class:'qj-social-fold'},E('summary',{text:'Invitation draft · edit & copy'}),invite,button('Copy invitation',async()=>{await navigator.clipboard.writeText(invite.value);ui().notice('Copied. Send it yourself whenever you want.');},'qj-quiet')));
+      const treat=id=>state().rewards.find(r=>r.id==='r-city-social-'+id)||P.socialTreats.find(r=>r.id===id);
+      const rewards=E('select',{attrs:{'aria-label':'Optional reward goal'}});rewards.append(E('option',{value:'',text:'Keep my current reward goal'}));for(const template of P.socialTreats){const r=treat(template.id);rewards.append(E('option',{value:template.id,text:r.name+' · '+r.cost+' sparks · '+(r.amount?'€'+r.amount+' allowance':'no spend')}));}
+      const note=p('90 XP + a badge after three reviewed steps. Accepting earns no XP.','qj-social-count');
+      if(!old){body.append(E('label',{class:'qj-social-field'},E('span',{text:'A treat to work toward (optional)'}),rewards),note);rewards.onchange=()=>{const r=treat(rewards.value);note.textContent=r?(r.note||r.name)+' Claim later in Treats using earned sparks'+(r.amount?' and your monthly budget. No purchase is made.':'.'): '90 XP + a badge after three reviewed steps. Accepting earns no XP.';};}
+      else body.append(p('Progress: '+old.quests.filter(q=>C.done(state(),q.id)).length+'/3 · '+(C.campaignDone(state(),old)?'Badge earned ✓':'Finish through proof + review.'),'qj-social-count'));
+      body.append(E('div',{class:'qj-actions'},button(old?'Open my steps':'Start this outing',async()=>{
+        const c=await J().mutate(s=>P.startSocial(s,t.id,friendId,place.value,{treatId:rewards.value}),'Friend outing ready.');d.close();browser.close();ui().questDetail((C.next(state(),c)||c.quests[0]).id);
+      },'qj-primary'),button('Show meeting place',async()=>{await J().mutate(s=>{P.ensurePin(s,place.value);s.atlas.selected=place.value;},'Meeting place on your map.');d.close();browser.close();J().mapFilter({});},'qj-quiet')));
+    },'FH / ONE GOOD MOMENT');
   }
   // ---------- chat: /quest ----------
   const SUBS = [['paris', 'Show the Paris guide on the map (optionally filtered: shows, records, park, 11e…)'], ['places', 'List the guide’s places here in the chat'], ['go', 'Start a place’s go → do → proof quest'], ['add', 'Add a personal quest: ' + P.personal.map(t => t.key).join(', ')], ['park', 'Make music at the park: start a workbench sketch named after it'], ['list', 'Your Paris quests and their steps'], ['guide', 'guide off: take untouched guide pins off the map · guide on: put them back']];
@@ -167,5 +210,5 @@ const QuestParisUI = window.QuestParisUI = (() => { // also on window: quest-jou
   }
   // (round 61, questhud61) one /quest command: the rail's quest tracker (questhud.js) registers it and passes these
   // words (paris, places, guide, go, add, park, list, help, a place / personal quest by name) to run() / complete() here
-  return { keep, words, chip, panel, footer, guideDialog, catalog, adventures, run, complete, journal };
+  return { keep, words, chip, panel, footer, guideDialog, catalog, adventures, socialOutings, run, complete, journal };
 })();

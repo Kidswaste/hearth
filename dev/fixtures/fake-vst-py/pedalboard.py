@@ -142,6 +142,9 @@ def _name(path):
 
 def load_plugin(path, plugin_name=None, initialization_timeout=2):
     time.sleep(float(os.environ.get('FAKE_PB_LOAD_S', '0.05')))
+    # (round 64, audiodoctor64) FAKE_PB_FAIL=<name>: that plugin refuses to load, as a broken / unlicensed install would
+    if os.environ.get('FAKE_PB_FAIL') and os.environ['FAKE_PB_FAIL'] == (plugin_name or _name(path)):
+        raise ImportError('Unable to load plugin %s: unsupported plugin format or load failure.' % path)
     return FakeInstrument(plugin_name or _name(path))
 
 

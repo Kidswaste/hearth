@@ -44,6 +44,16 @@ for (const p of TryNewCore.PATHS) {
   if (p.id === 'park') await smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/newtour64-park.png` });
   Tour.stop();
 }
+// the audio check (audiodoctor64): its 🎚 button is the live path's second step when this copy has it
+tidy(); TryNew.start('livevst');
+await until(() => card()?.dataset.tour === 'try-livevst' && card().querySelector('.tour-next'), 'livevst card').catch(() => null);
+if (card()?.querySelector('.tour-n')?.textContent === '1/2') {
+  card().querySelector('.tour-next').click();
+  await until(() => card()?.dataset.step === '1' && document.querySelector('.tour-ring:not(.tour-ring-solo)'), 'audio check step', 120).catch(() => null);
+  const ad = document.querySelector('.surface.active .ad-desk-check'); const rr = document.querySelector('.tour-ring:not(.tour-ring-solo)')?.getBoundingClientRect(); const ar = ad?.getBoundingClientRect();
+  step('live Serum 2 / Vital, step 2: rings 🎚 Check my audio setup', Boolean(ar && rr && Math.abs(rr.left + 4 - ar.left) < 3), { ad: Boolean(ad) });
+} else step('live Serum 2 / Vital: the audio check step shows when audiodoctor64 is here', typeof AudioDoctorDesk === 'undefined', card()?.querySelector('.tour-n')?.textContent);
+Tour.stop();
 step('opening every place wrote nothing to the quest journal', (await journal()) === j0, { before: j0, after: await journal() });
 step('just looking marks paths as paused, never tried', Object.values(prog()).every((v) => v.state === 'later') && Object.keys(prog()).length === 13, prog());
 
