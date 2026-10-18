@@ -30,7 +30,8 @@ const Simplify = (() => {
   function moreItems() {
     const rows = TUCKED.filter(([id]) => $(id)).map(([id, label]) => ({
       label: String(label).replace(/^[^\p{L}\d]+/u, '').replace(/⌘\+/g, 'Ctrl+'), icon: ICON[id], checked: $(id).classList.contains('on'), action: () => $(id).click() }));
-    const hidden = typeof Tools !== 'undefined' ? Tools.all().filter((t) => !Tools.enabled().includes(t)) : [];
+    const hidden = !window.WorkspaceNav && typeof Tools !== 'undefined' ? Tools.all().filter((t) => !Tools.enabled().includes(t)) : [];
+    if (window.WorkspaceNav) rows.push({ label: 'Advanced tools & commands', icon: 'command', action: () => activate('tool:commands') });
     if (hidden.length) rows.push('-', 'Not in the rail', ...hidden.map((t) => ({ label: t.name, icon: typeof Icons !== 'undefined' ? Icons.keyFor(t) : null, action: () => activate(`tool:${t.id}`) })), { label: 'Put tools back in the rail…', icon: 'gear', action: () => AppUI.openSettings('rail') });
     return rows;
   }

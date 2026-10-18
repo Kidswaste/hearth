@@ -290,3 +290,11 @@ html .qj dialog.qj-dialog[open]{animation:none!important;opacity:1;visibility:vi
 @container(max-width:680px){.qj .qj-command-map-filters select{flex:1 1 150px;max-width:none}.qj .qj-command-map-filters input{flex:1 1 180px;order:0}}
 /* (round 65, questperf65) under a Studio dialog (near-opaque backdrop) the page behind isn't drawn: opening / closing a dialog no longer restyles the whole map page; each part keeps its last size, so the scroll stays put */
 .qj>:not(dialog):not([popover]){contain-intrinsic-size:auto none}.qj.qj-under-dialog>:not(dialog):not([popover]){content-visibility:hidden}
+
+.qj-life-nav .qj-command-tabs{display:flex;align-items:center}.qj-life-nav .qj-life-settings{margin-left:auto;font-size:11px;color:var(--muted)}
+.qj-life-nav .qj-command-panel{flex-wrap:wrap}.qj-life-nav .qj-command-tab svg{width:18px;height:18px;margin-right:8px}
+.qj-catalog-filters{display:flex;gap:12px;align-items:end;margin:14px 0 22px;flex-wrap:wrap}.qj-catalog-filters input[type=search]{flex:1;min-width:160px;padding:12px;border-radius:10px;border:1px solid #ffffff20;background:#ffffff08;color:inherit;font:inherit}.qj-catalog-filters .qj-field{margin:0}
+.qj-catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}.qj-catalog-card{display:flex;gap:14px;align-items:flex-start}.qj-catalog-card h3{margin:6px 0}.qj-catalog-card .qj-copy{font-size:12px;line-height:1.6}.qj-catalog-art{width:60px;flex:none}.qj-catalog-art svg{width:100%;height:auto}.qj-catalog-card>div:last-child{min-width:0}.qj-plan-list{display:grid;gap:10px;margin-top:16px}
+.hearth-three-spaces .qj-adventure-grid{grid-template-columns:1fr}.hearth-three-spaces .qj-top .qj-profile{max-width:350px}.hearth-three-spaces .qj-life-nav{position:sticky}
+
+.qj .qj-life-nav .qj-command-tab[aria-current=page]{color:#ffb6cf;background:linear-gradient(130deg,#ff6b9d1f,#bd8bff09);border-color:#ff6b9d4d}

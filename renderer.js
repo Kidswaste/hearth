@@ -107,6 +107,7 @@ function railButton(id, item, title) {
 }
 
 function renderRail() {
+  if (window.WorkspaceNav) return WorkspaceNav.render();
   const rail = $('agent-buttons');
   rail.replaceChildren();
   H.railAgents().forEach((agent, i) => {
@@ -754,6 +755,7 @@ function activate(id, { focus = true } = {}) {
   Panel.highlight();
   if (s.tool) Tools.shown(s.tool);
   if (docked) Tools.openDock(s.tool.id);
+  window.WorkspaceNav?.sync();
   if (!focus) return;
   if (docked) Native.focus(id);
   else if (s.webview) s.webview.focus();
@@ -990,3 +992,101 @@ function popMenu(x, y, items, { width = 300 } = {}) {
   setTimeout(() => { addEventListener('pointerdown', away, true); addEventListener('keydown', keys, true); if (window.A11y?.kbd()) mark(0); });
   return m;
 }
+
+// Three destinations over existing surfaces. No chat, project or quest records are migrated.
+const WorkspaceNav = window.WorkspaceNav = (() => {
+  const sections = [['chat', 'Chat', '#bd8bff'], ['studio', 'Studio', '#ffbd70'], ['life', 'Life', '#ff6b9d']];
+  const paths = { chat: 'M4 4h16v12H9l-5 4V4Zm4 5h8M8 12h5', studio: 'm4 7 8-4 8 4v10l-8 4-8-4V7Zm0 0 8 4 8-4M12 11v10', life: 'M12 3 4 7v14l8-4 8 4V7l-8-4Zm0 0v14M8 10l2 2 5-5' };
+  let bar, lastCategory = 'chat', signature = '', routeToken = 0;
+  const last = {};
+  const category = id => {
+    const sid = H.surfaceIdFor(id);
+    return sid === 'tool:quests' ? 'life' : ['tool:options','tool:commands'].includes(sid) ? lastCategory : H.isTool(sid) ? 'studio' : 'chat';
+  };
+  function icon(kind) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    const p = document.createElementNS(svg.namespaceURI, 'path'); p.setAttribute('d', paths[kind]); svg.append(p); return svg;
+  }
+  function button(name, fn, props = {}) {
+    return el('button', { type: 'button', ...props, on: { click: async e => {
+      const b = e.currentTarget; if (b.disabled) return; b.disabled = true;
+      try { await fn(); } catch (err) { toast(calmError(err), { type: 'error' }); } finally { b.disabled = false; }
+    } } }, el('span', { text: name }));
+  }
+  function open(section) {
+    routeToken++;
+    const remembered = last[section];
+    const valid = remembered && (H.isTool(remembered) ? Tools.get(remembered.slice(5)) : H.railAgents().some(a => a.id === remembered));
+    const id = valid ? remembered : section === 'life' ? 'tool:quests' : section === 'studio' ? 'tool:home' : H.railAgents()[0]?.id;
+    if (id) activate(id); else Manager.open();
+  }
+  async function creative(feature) {
+    const token = ++routeToken;
+    await Lazy.load('creative'); if (token !== routeToken) return;
+    activate('tool:creative');
+    for (let i = 0; i < 160 && !CreativePlayground.ready(); i++) {
+      if (token !== routeToken || H.surfaceIdFor(H.activeId) !== 'tool:creative') return;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    if (token !== routeToken || H.surfaceIdFor(H.activeId) !== 'tool:creative') return;
+    if (!CreativePlayground.ready()) throw Error('The workspace is still loading. Try again in a moment.');
+    await CreativePlayground.openFeature(feature); sync();
+  }
+  function render() {
+    document.documentElement.classList.add('hearth-three-spaces');
+    const rail = $('agent-buttons'); rail.replaceChildren(); rail.setAttribute('aria-label', 'Hearth spaces');
+    for (const [id, name, color] of sections) {
+      const b = button(name, () => open(id), { class: 'space-button', dataset: { space: id }, title: name });
+      b.style.setProperty('--space-color', color); b.prepend(icon(id)); rail.append(b);
+    }
+    rail.onkeydown = e => {
+      if (!['ArrowUp','ArrowDown','Home','End'].includes(e.key) || !e.target.closest('.space-button')) return;
+      e.preventDefault(); const bs = [...rail.querySelectorAll('.space-button')], i = bs.indexOf(e.target.closest('.space-button'));
+      bs[e.key === 'Home' ? 0 : e.key === 'End' ? bs.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : bs.length - 1)) % bs.length].focus();
+    };
+    if (!bar) { bar = el('nav', { class: 'workspace-switcher', attrs: { 'aria-label': 'Workspace choices' } }); $('surfaces').before(bar); }
+    signature = ''; sync();
+  }
+  function sync() {
+    if (!bar || !H.activeId) return;
+    const space = category(H.activeId), sid = H.surfaceIdFor(H.activeId);
+    lastCategory = space;
+    if (!['tool:options','tool:commands'].includes(sid)) last[space] = sid;
+    $('app').dataset.space = space;
+    for (const b of $('agent-buttons').querySelectorAll('[data-space]')) {
+      const current = b.dataset.space === space;
+      b.classList.toggle('active', current); b.setAttribute('aria-current', current ? 'page' : 'false');
+      const unread = [...H.unread].some(id => category(id) === b.dataset.space);
+      b.classList.toggle('unread', unread); b.title = b.textContent + (unread ? ' · unread reply' : '');
+    }
+    bar.hidden = space === 'life';
+    const feature = sid === 'tool:creative' && typeof CreativePlayground !== 'undefined' ? CreativePlayground.snapshot().feature : '';
+    const sig = JSON.stringify([space, H.railAgents().map(a => [a.id,a.name,a.color]), Tools.all().map(t=>t.id)]);
+    if (sig !== signature) {
+      signature = sig; bar.replaceChildren();
+      if (space === 'chat') {
+        const agents = el('div', { class: 'workspace-choices' });
+        for (const a of H.railAgents()) {
+          const b = railButton(a.id, a, `${a.name} · right-click for chat options`);
+          b.classList.add('workspace-agent'); b.append(el('span', { text: a.name }));
+          b.addEventListener('contextmenu', e => { e.preventDefault(); showAgentMenu(a.id, e.clientX, e.clientY); }); agents.append(b);
+        }
+        bar.append(agents, button('+ Assistant', () => Manager.open(), { class: 'workspace-utility' }));
+      } else if (space === 'studio') {
+        const choices = el('div', { class: 'workspace-choices' });
+        const routes = [['Projects','home'],['Visuals','three'],['Sound','creative','vst'],['Drawing','creative','draw'],['Storyboard','creative','story'],['Materials','creative','pattern'],['References','board'],['Forgeheart','forgeheart']];
+        for (const [name,id,f] of routes) if (Tools.get(id)) choices.append(button(name, () => f ? creative(f) : (++routeToken, activate('tool:'+id)), { class:'workspace-choice', dataset:{surface:'tool:'+id, ...(f?{feature:f}:{})} }));
+        bar.append(choices, button('Assets', () => creative('studio'), { class:'workspace-utility', title:'Your worktable and saved assets' }), button('Apps', async () => { await Lazy.load('apps'); $('apps-btn')?.click(); }, { class:'workspace-utility', title:'Connected creative apps' }));
+      }
+    }
+    for (const b of bar.querySelectorAll('[data-surface], [data-id]')) {
+      const yes = (b.dataset.surface || b.dataset.id) === sid && (!b.dataset.feature || b.dataset.feature === feature || b.dataset.feature === 'pattern' && feature === 'texture');
+      b.classList.toggle('active', yes); b.setAttribute('aria-current', yes ? 'page' : 'false');
+      if (b.dataset.id) b.classList.toggle('unread', H.unread.has(b.dataset.id));
+    }
+  }
+  document.addEventListener('hearth:activate', sync);
+  document.addEventListener('hearth:creative-feature', sync);
+  return { render, sync, open, creative, category };
+})();

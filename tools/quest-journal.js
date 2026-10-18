@@ -255,7 +255,7 @@ const QuestJournal = (() => {
     if (keepWorld) { for (const n of [...content.childNodes]) if (n !== keepWorld.layout) n.remove(); }
     else { atlasView?.destroy(); atlasView = null; content.replaceChildren(); }
     content.classList.toggle('qj-dashboard', page === 'adventure');
-    if (page === 'adventure') adventure(); else if (page === 'life') lifeBoard(); else if (page === 'world') worldMap(keepWorld); else if (page === 'deck') mixtape(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
+    if (page === 'catalog') catalog(); else if (page === 'adventure') adventure(); else if (page === 'life') lifeBoard(); else if (page === 'world') worldMap(keepWorld); else if (page === 'deck') mixtape(); else if (page === 'commissions') commissions(); else if (page === 'campaigns') campaigns(); else if (page === 'skills') tree(); else if (page === 'rewards') rewards(); else collection();
     if (focused && !root.querySelector('dialog[open]')) [...root.querySelectorAll('[data-focus]')].find(b => b.dataset.focus === focused)?.focus({ preventScroll: true });
     glaze(root); tick();
   }
@@ -279,63 +279,77 @@ const QuestJournal = (() => {
   const navGroup = id => id === 'world' ? 'map' : ['skills','rewards','collection'].includes(id) ? 'progress' : 'quests';
   let refreshNavigation = () => {};
   function navigation(menu) {
-    const nav = E('nav', {class:'qj-command-nav',attrs:{'aria-label':'Sidequest sections'}});
-    const tabs = E('div',{class:'qj-command-tabs'}), panels = E('div',{class:'qj-command-panels'});
-    const groups = [
-      {id:'quests',name:'Quests',icon:'notebook',color:'#ffd75e',page:'adventure',items:[
-        ['Today','adventure'],['Campaigns','campaigns'],['Mixtape','deck'],['Commissions','commissions'],['Life quests','life'],['Find a quest',sessionPicker],['Suggest a quest',ideaForm]
-      ]},
-      {id:'map',name:'Map',icon:'compass',color:'#ff6b9d',page:'world',items:[
-        ['Explore Paris','world'],['Plan my outing',()=>window.OutingGuide?.open ? window.OutingGuide.open() : outingDesk()],['Outing desk',()=>outingDesk()],['Friends & dates',()=>mapNotebook('friends')],['Saved plans',()=>mapNotebook('plans')],['My places',()=>mapNotebook('places')],['Add a place',()=>placeForm(atlasView?.center()||{})]
-      ]},
-      {id:'progress',name:'Progress',icon:'spark',color:'#bd8bff',page:'skills',items:[
-        ['Skill tree','skills'],['Rewards','rewards'],['Collection','collection'],['Field rewards',mapRewards]
-      ]},
-      {id:'desk',name:'Desk',icon:'settings',color:'#ff8c42',items:[['Personalize',deskSettings],['Map controls',()=>dialog('Explore Paris',body=>body.append(p('Scroll or drag to explore. Shift-scroll moves sideways; Ctrl/Command-scroll zooms. Arrow keys pan, + / − zoom. Double-click to add a pin, or use Add a place in the Map row.'),p('Stars save favorites. Visit stamps are your own record; quests award XP after proof and review.')))]]}
+    const nav=E('nav',{class:'qj-command-nav qj-life-nav',attrs:{'aria-label':'Life sections'}}),tabs=E('div',{class:'qj-command-tabs'}),panels=E('div',{class:'qj-command-panels'});
+    const extra=pattern=>window.ClickFirst?.questItems?.().find(x=>x?.action&&pattern.test(x.label))?.action();
+    const recaps=()=>dialog('Your memories',body=>{for(const item of window.ClickFirst?.questItems?.()||[])if(item?.action&&/review|month|went to/i.test(item.label))body.append(button(item.label,()=>{body.closest('dialog').close();return item.action();},'qj-command-link'));});
+    const groups=[
+      {id:'quests',name:'Today',icon:'notebook',page:'adventure',items:[['Find a quest','catalog'],['Find a small step',sessionPicker],['This week',()=>extra(/Plan my week/)]]},
+      {id:'map',name:'Map',icon:'compass',page:'world',items:[['Plan an outing',()=>window.OutingGuide?.open()],['My plans',savedPlans],['Friends',()=>mapNotebook('friends')],['Places',()=>mapNotebook('places')],['Events',()=>outingDesk()],['Make a walk',()=>extra(/Make a walk/)]]},
+      {id:'progress',name:'Progress',icon:'spark',page:'collection',items:[['Collection','collection'],['Skills','skills'],['Rewards','rewards'],['Memories',recaps]]}
     ];
-    function open(id) {
-      nav.dataset.open=id;
-      tabs.querySelectorAll('[data-nav-group]').forEach(b=>b.setAttribute('aria-expanded',String(b.dataset.navGroup===id)));
-      panels.querySelectorAll('.qj-command-panel').forEach(panel=>panel.hidden=panel.dataset.group!==id);
+    for(const g of groups){
+      const tab=button(g.name,()=>navigate(g.page),'qj-command-tab');tab.dataset.navGroup=g.id;tab.prepend(QuestAtlas.icon(g.icon));tabs.append(tab);
+      const panel=E('div',{class:'qj-command-panel',dataset:{group:g.id},hidden:true});
+      for(const [name,action] of g.items){const b=button(name,typeof action==='string'?()=>navigate(action):action,'qj-command-link');if(typeof action==='string')b.dataset.page=action;panel.append(b);}
+      if(g.id==='map')panel.append(E('div',{class:'qj-command-map-extras'}));panels.append(panel);
     }
-    const add = (panel,name,action) => {
-      const b=button(name,typeof action==='string'?()=>navigate(action):action,'qj-command-link');
-      if(typeof action==='string') {b.dataset.page=action;b.dataset.focus='nav-'+action;}
-      panel.append(b);return b;
-    };
-    for (const group of groups) {
-      const panel=E('div',{class:'qj-command-panel',dataset:{group:group.id},attrs:{id:'qj-nav-'+group.id,'aria-label':group.name+' choices'},hidden:true});
-      group.items.forEach(([name,action])=>add(panel,name,action));
-      const b=E('button',{type:'button',class:'qj-button qj-command-tab'+(group.id==='map'?' qj-main-map':''),dataset:{navGroup:group.id},style:{'--action-color':group.color},attrs:{'aria-controls':'qj-nav-'+group.id,'aria-expanded':'false'},on:{click:()=>{open(group.id);if(group.page)navigate(group.page);},pointerenter:()=>open(group.id),focus:()=>open(group.id),keydown:e=>{if(e.key==='ArrowDown'){e.preventDefault();open(group.id);panel.querySelector('button')?.focus();}}}},QuestAtlas.icon(group.icon),E('strong',{text:group.name}),E('span',{class:'qj-command-chevron',text:'⌄',attrs:{'aria-hidden':'true'}}));
-      tabs.append(b);panels.append(panel);
+    tabs.append(button('Settings',()=>dialog('Life settings',body=>body.append(button('Personalize',deskSettings),button(state.workstation.lamp?'Dim lamp':'Light lamp',()=>mutate(s=>{s.workstation.lamp=!s.workstation.lamp;})),button(state.motion===false?'Enable motion':'Reduce motion',()=>mutate(s=>{s.motion=s.motion===false;})),button('Journal & backups',()=>{body.closest('dialog').close();menu.click();}))), 'qj-life-settings'));
+    refreshNavigation=()=>{const id=navGroup(page);nav.dataset.open=id;for(const tab of tabs.querySelectorAll('[data-nav-group]'))tab.setAttribute('aria-current',tab.dataset.navGroup===id?'page':'false');for(const panel of panels.children)panel.hidden=panel.dataset.group!==id;};
+    tabs.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight'].includes(e.key))return;const all=[...tabs.querySelectorAll('[data-nav-group]')],i=all.indexOf(e.target);if(i<0)return;e.preventDefault();all[(i+(e.key==='ArrowRight'?1:all.length-1))%all.length].focus();});
+    nav.append(tabs,panels);refreshNavigation();return nav;
+  }
+  async function savedPlans(){
+    dialog('My plans',async body=>{
+      body.append(button('+ Plan an outing',()=>{body.closest('dialog').close();return window.OutingGuide?.open();},'qj-primary'));
+      const list=E('div',{class:'qj-plan-list'});body.append(list);
+      const add=(title,detail,fn)=>list.append(button(title+' · '+detail,()=>{body.closest('dialog').close();return fn();},'qj-field-list-item'));
+      for(const plan of state.world.plans)add(plan.title,plan.date||'Date open',()=>worldPlanDetail(plan.id));
+      try{
+        const r=await window.hub.kvGet('sidequest-outings-v1');
+        for(const plan of r?.saved||[])add(plan.event.title,'Saved outing',()=>outingDesk({tab:'saved',eventId:plan.event.id}));
+        if(window.OutingGuide){const r=await OutingGuide.call({op:'state'});for(const plan of r.plans||[])add(plan.title,'Route & reminders',()=>OutingGuide.open({id:plan.id}));}
+        if(!list.children.length)list.append(p('Save a place or a night from the map to start planning.'));
+      }catch(err){list.append(p('Some plans could not load. '+calmError(err)));}
+    });
+  }
+  let catalogFilter={path:'all',format:'all',query:''};
+  function catalog(){
+    content.append(sectionHeading('LIFE / QUESTS','Find your next thing',null,button('+ Your own',newCampaign,'qj-primary')));
+    const filters=E('div',{class:'qj-catalog-filters'}),grid=E('div',{class:'qj-catalog-grid'});
+    const query=E('input',{type:'search',value:catalogFilter.query,placeholder:'Search quests…',attrs:{'aria-label':'Search quests'}});
+    const category=selection('Interest',[['all','All interests'],...C.paths.map(p=>[p.id,p.name])],catalogFilter.path);
+    const format=selection('Length',[['all','Any length'],['small','Single quest'],['project','Several steps']],catalogFilter.format);
+    filters.append(query,category.node,format.node);content.append(filters,grid);
+    function paint(){
+      catalogFilter={path:category.input.value,format:format.input.value,query:query.value};grid.replaceChildren();
+      const matches=(path,title,text,kind)=>(catalogFilter.path==='all'||path===catalogFilter.path)&&(catalogFilter.format==='all'||kind===catalogFilter.format)&&(title+' '+text).toLowerCase().includes(query.value.trim().toLowerCase());
+      const card=(id,title,text,path,meta,fn)=>{grid.append(E('article',{class:'qj-card qj-catalog-card',dataset:{catalogId:id},style:{'--path':pathOf(path).color}},E('div',{class:'qj-catalog-art'},art(path)),E('div',{},label(meta),E('h3',{text:title}),p(text),button('Open',fn,'qj-primary'))));};
+      for(const c of state.campaigns){if(!matches(c.path,c.title,c.why,'project'))continue;const done=c.quests.filter(q=>C.done(state,q.id)).length;
+        card(c.id,c.title,c.why,c.path,(c.paused?'Resting · ':'')+done+' / '+c.quests.length+' finished',()=>dialog(c.title,(body,d)=>{
+          const next=C.next(state,c);body.append(p(c.why),E('ol',{},...c.quests.map(q=>E('li',{},C.done(state,q.id)||C.skipped(state,q.id)?button((C.done(state,q.id)?'✓ ':'↷ ')+q.title,()=>{d.close();questDetail(q.id);},'qj-quiet'):E('span',{text:q.title})))));
+          body.append(button(next?(c.paused?'Resume':'Continue'):'View results',async()=>{d.close();if(!next)return navigate('collection');await track(c);questDetail(next.id);},'qj-primary'));
+          if(next&&!c.paused)body.append(button('Let this rest',async()=>{await mutate(s=>{s.campaigns.find(x=>x.id===c.id).paused=true;if(s.active===c.id)s.active=null;},'Progress kept.');d.close();},'qj-quiet'));
+          if(C.lifeArcs.some(x=>x.id===c.id))body.append(button('Personalize this route',()=>{d.close();lifeDetail(c.id);},'qj-quiet'));
+        }));
+      }
+      for(const c of C.lifeArcs)if(!state.campaigns.some(x=>x.id===c.id)&&matches('life',c.title,c.why,'project'))card(c.id,c.title,c.why,'life',c.quests.length+' steps',()=>lifeDetail(c.id));
+      const view={...state,deck:{...state.deck,filters:{lane:'any',mood:'any',minutes:60,shelf:'all'}}};
+      for(const c of C.deckPool(view))if(matches(c.path,c.title,c.done,'small'))card(c.id,c.title,c.done,c.path,c.minutes+' min',()=>deckBrief(c.id));
+      for(const q of C.daily())if(!C.find(state,q.id)&&matches(q.path,q.title,q.done,'small'))card(q.id,q.title,q.done,q.path,q.minutes+' min',()=>dialog(q.title,(body,d)=>body.append(p(q.done),button('Start',async()=>{await mutate(s=>C.trackSide(s,q));d.close();questDetail(q.id);},'qj-primary'))));
+      if(!grid.children.length)grid.append(p('No quests match. Try another interest or search.'));
     }
-    const desk=panels.querySelector('[data-group="desk"]');
-    desk.append(button('Lamp on',()=>mutate(s=>{s.workstation.lamp=!s.workstation.lamp;},'Desk lamp setting saved.'),'qj-command-link qj-lamp-toggle'),button('Motion on',()=>mutate(s=>{s.motion=s.motion===false;},'Studio motion preference saved.'),'qj-command-link qj-motion'),menu);
-    // Existing extension actions become ordinary labelled choices, rather than
-    // another pop-up menu tucked behind a small button.
-    for(const item of window.ClickFirst?.questItems?.()||[]) {
-      if(typeof item!=='object'||!item.action)continue;
-      const destination=/review|month|went to/i.test(item.label)?'progress':/walk/i.test(item.label)?'map':/week|park|loops/i.test(item.label)?'quests':null;
-      if(destination) add(panels.querySelector(`[data-group="${destination}"]`),item.label.replace(/[….]+$/,''),item.action);
-    }
-    panels.querySelector('[data-group="map"]').append(E('div',{class:'qj-command-map-extras'}));
-    nav.append(tabs,panels);
-    nav.addEventListener('pointerleave',()=>{if(!nav.contains(document.activeElement))open(navGroup(page));});
-    nav.addEventListener('focusout',()=>queueMicrotask(()=>{if(!nav.contains(document.activeElement)&&!nav.matches(':hover'))open(navGroup(page));}));
-    nav.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();tabs.querySelector(`[data-nav-group="${navGroup(page)}"]`)?.focus();open(navGroup(page));}else if(['ArrowLeft','ArrowRight'].includes(e.key)&&e.target.matches('.qj-command-tab')){e.preventDefault();const all=[...tabs.children],i=all.indexOf(e.target);all[(i+(e.key==='ArrowRight'?1:all.length-1))%all.length].focus();}});
-    refreshNavigation=()=>{if(!nav.contains(document.activeElement)&&!nav.matches(':hover'))open(navGroup(page));};
-    open(navGroup(page));return nav;
+    query.oninput=paint;category.input.onchange=format.input.onchange=paint;paint();
+    const kept=E('details',{class:'qj-fold qj-catalog-kept'},E('summary',{text:'Saved ideas & cards'}));
+    const before=content.children.length;ideaBox();while(content.children.length>before)kept.append(content.children[before]);
+    for(const cid of new Set([...state.deck.saved,...state.deck.hidden])){const c=C.deckCard(cid);if(!c)continue;const hidden=state.deck.hidden.includes(cid);kept.append(E('div',{class:'qj-idea-row'},E('strong',{text:c.title}),button(hidden?'Restore card':'Open saved card',()=>hidden?mutate(s=>C.markCard(s,cid,'hidden'),'Card restored.'):deckBrief(cid),'qj-quiet')));}
+    filters.before(kept);
   }
   function adventure() {
-    const campaign = state.campaigns.find(c => c.id === state.active && !c.paused), quest = C.next(state, campaign), totals = C.stats(state);
-    sessionDesk();
-    content.append(E('section', { class: 'qj-life-invite' }, art('terminal'), E('div', {}, label('SIDE QUESTS / THE REAL WORLD'), E('h3', { text: 'Your life has a quest log.' }), explain('Life expeditions','Clear a landing pad. Defeat an open tab. Rescue the almost-finished. Six short expeditions, at your pace.')), button('Explore life quests →', () => navigate('life'), 'qj-primary')));
+    const campaign = state.campaigns.find(c => c.id === state.active && !c.paused), quest = C.next(state, campaign);
     if (state.workstation.target) {
       const m = C.mastery(state, state.workstation.target);
       content.append(E('section', { class: 'qj-goal-strip qj-specialty-target', style: { '--path': pathOf(m.route.path).color } }, E('div', {}, label('PINNED SPECIALIZATION'), E('strong', { text: m.route.name }), p(m.next ? `${m.count} / ${m.next.required} reviewed finishes toward ${m.next.name}` : 'All three titles earned. The work is yours to keep.')), button('Open my route →', () => specializationDetail(m.route.id), 'qj-quiet')));
     }
-    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('THE MIXTAPE / 30 SMALL ADVENTURES'), E('h3', { text: 'Something you haven’t tried yet.' }), explain('The mixtape','Make a demo. Bend a sound. Fix a tiny world. Find your spark in three cards.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
-    content.append(E('section', { class: 'qj-commission-invite' }, E('div', {}, label('NEW / MADE FOR YOUR KIND OF PROJECTS'), E('h3', { text: 'Demos. Loops. Visuals. Forgeheart.' }), explain('Commissions','Make a small thing, show the evidence, get a real critique.')), button('Browse commissions →', () => navigate('commissions'), 'qj-primary')));
     const goal = state.rewards.find(r => r.id === state.rewardGoal);
     if (goal) content.append(E('section', { class: 'qj-goal-strip' }, E('div', {}, label('SAVING TOWARD'), E('strong', { text: goal.name }), meter(Math.min(C.balance(state), goal.cost), goal.cost, 'Reward goal')), button(C.balance(state) >= goal.cost ? 'Your treat is ready →' : `${goal.cost - C.balance(state)} sparks to go →`, () => navigate('rewards'), 'qj-quiet')));
     const grid = E('div', { class: 'qj-adventure-grid' });
@@ -351,15 +365,11 @@ const QuestJournal = (() => {
       const finished = campaign && C.campaignDone(state, campaign);
       hero.append(E('div', { class: 'qj-hero-copy' }, label(finished ? 'CAMPAIGN COMPLETE' : 'A FRESH PAGE'), E('h2', { text: finished ? 'Finished. That one is yours.' : campaign ? 'A different route is fine.' : 'What’s going on the workbench?' }), p(finished ? `${campaign.title} is yours to keep. Rest here, or choose your next adventure.` : campaign ? 'Your skipped quests are in Set aside below. Revisit one whenever it fits, or choose another campaign.' : 'Pick one project from the crate, or bring your own.'), row(button('Choose a campaign →', () => navigate('campaigns'), 'qj-primary', 'current'), button('Create my own', newCampaign))), E('div', { class: 'qj-quest-object', attrs: { 'aria-hidden': 'true' } }, art('adventure')));
     }
-    const card = E('aside', { class: 'qj-card qj-traveller' }, label('STUDIO MEMBERSHIP / NO EXPIRY'), E('h3', { text: 'A little of everything.' }), p('Sound, texture, little worlds. It all goes on the same record.'),
-      E('div', { class: 'qj-stat-pair' }, E('div', {}, E('b', { text: String(totals.finished) }), label('QUESTS FINISHED')), E('div', {}, E('b', { text: String(totals.campaigns) }), label('CAMPAIGNS COMPLETE'))));
-    for (const path of C.paths) card.append(E('div', { class: 'qj-mini-path', style: { '--path': path.color } }, E('span', { text: `${path.icon} ${path.name}` }), E('b', { text: `${C.xp(state, path.id)} XP` }), meter(Math.min(C.xp(state, path.id), 300), 300, `${path.name} mastery`)));
-    card.append(button('Explore your skill tree ↗', () => navigate('skills'), 'qj-quiet'));
-    grid.append(hero, card); content.append(grid);
-    ideaBox();
+    grid.append(hero); content.append(grid);
+    if (!quest || state.plan) sessionDesk();
     const activeSides = state.sideQuests.filter(q => !q.parked && !C.done(state, q.id) && !C.skipped(state, q.id));
-    const today = C.daily(); const candidates = today.filter(q => !state.sideQuests.some(x => x.id === q.id));
-    content.append(sectionHeading('THE NOTICEBOARD', 'While you’re here…', 'Three small detours. Take one, or stick with your main quest. Accepted quests stay until you finish or park them.'));
+    const candidates = [];
+    if(activeSides.length)content.append(sectionHeading('IN PROGRESS', 'Your other quests'));
     const sides = E('div', { class: 'qj-side-grid' });
     for (const q of [...activeSides, ...candidates].slice(0, Math.max(3, activeSides.length))) {
       const accepted = activeSides.includes(q), path = pathOf(q.path);
@@ -380,7 +390,7 @@ const QuestJournal = (() => {
   }
   function sessionDesk() {
     const plan = state.plan, q = plan && C.find(state, plan.quest), ready = q && C.available(state, q.id) && !C.done(state, q.id);
-    const desk = E('section', { class: `qj-session-desk ${plan ? 'has-plan' : ''}` }, E('div', { class: 'qj-session-mark', attrs: { 'aria-hidden': 'true' } }, art('music')), E('div', { class: 'qj-session-copy' }, label(plan ? 'YOUR NEXT SESSION / BOOKMARKED' : 'TUNE IN / FIND YOUR NEXT MOVE'), E('h3', { text: plan ? q.title : 'How much room have you got today?' }), p(plan ? plan.action : 'Two quiet minutes or a proper session. Pick something that fits.'), plan ? label(`${plan.minutes} MIN${ready ? ' · READY WHEN YOU ARE' : ' · QUEST PAUSED OR WAITING FOR AN EARLIER STEP'}`) : null));
+    const desk = E('section', { class: `qj-session-desk ${plan ? 'has-plan' : ''}` }, E('div', { class: 'qj-session-mark', attrs: { 'aria-hidden': 'true' } }, art('music')), E('div', { class: 'qj-session-copy' }, label(plan ? 'YOUR NEXT SESSION / BOOKMARKED' : 'TUNE IN / FIND YOUR NEXT MOVE'), E('h3', { text: plan ? q?.title || 'Saved session' : 'How much room have you got today?' }), p(plan ? plan.action : 'Two quiet minutes or a proper session. Pick something that fits.'), plan ? label(`${plan.minutes} MIN${ready ? ' · READY WHEN YOU ARE' : ' · QUEST PAUSED OR WAITING FOR AN EARLIER STEP'}`) : null));
     desk.append(row(ready ? button('Pick up here →', () => questDetail(q.id, plan.minutes === 2 ? 'tiny' : 'normal'), 'qj-primary') : null, button('Find my next move', sessionPicker, ready ? 'qj-quiet' : 'qj-primary'), plan ? button('Clear bookmark', () => mutate(s => { s.plan = null; }, 'Bookmark cleared. Quest progress is unchanged.'), 'qj-quiet') : null));
     content.append(desk);
   }
@@ -621,7 +631,6 @@ const QuestJournal = (() => {
   function draftWorld(text){const agent=H.agents().find(a=>a.mode==='native'&&a.engine==='codex'&&!a.dock);if(!agent)throw Error('Add an Astra native chat to prepare a draft.');const previous=Native.view(agent.id)?.input?.value||'';Native.setDraft(agent.id,`${previous?previous+'\n\n':''}${text}`);activate(agent.id);notice('Research draft prepared in Astra. Nothing was sent.');}
   function fareForm(pid){dialog('Keep a real quote',(body,d)=>{const name=field('Operator / option',{max:120}),amount=field('Quoted price · EUR',{type:'number'}),scope=selection('Price covers',[['return','Return journey'],['one-way','One-way only']],state.world.plans.find(p=>p.id===pid).endDate?'return':'one-way'),url=field('Source URL',{max:2000,placeholder:'https://…'});amount.input.min='0';amount.input.step='.01';body.append(name.node,amount.node,scope.node,url.node,p('Use a quote you just checked for this plan’s dates. Quotes are marked for rechecking after 24 hours or whenever the trip dates or destination change.'),button('Save quote',async()=>{await mutate(s=>C.addFare(s,pid,{label:name.input.value,amount:amount.input.value,scope:scope.input.value,url:url.input.value}),'Dated quote saved; availability is not monitored.');d.close();worldPlanDetail(pid);},'qj-primary'));},'MANUAL PRICE NOTE / EUR');}
   function lifeBoard() {
-    content.append(E('section', { class: 'qj-life-invite' }, art('room'), E('div', {}, label('NEW / PARIS AFTER HOURS'), E('h3', { text: 'Your city. Places worth going.' }), explain('Your Paris map','Pin a place in Paris, meet a friend, bring back a field recording. Plan Toulouse from the same notebook.')), button('Open the world map →', () => navigate('world'), 'qj-primary')));
     content.append(sectionHeading('FH / EXPEDITION TERMINAL', 'A little more life. One small mission.', 'Pick what would make today easier or more interesting. Three short checkpoints, a keepsake badge, and room to stop. No streaks. No overdue quests.', button('Back to my desk', () => navigate('adventure'), 'qj-quiet')));
     const completed = C.lifeArcs.filter(t => { const c = state.campaigns.find(c => c.id === t.id); return c && C.campaignDone(state, c); });
     content.append(E('div', { class: 'qj-life-log' }, label('EXPEDITION PASSPORT'), E('strong', { text: `${completed.length} / ${C.lifeArcs.length} keepsakes` }), p(completed.length ? completed.map(c => c.badge).join(' · ') : 'Your first badge starts with something small. A skipped checkpoint can always be revisited.')));
@@ -655,7 +664,6 @@ const QuestJournal = (() => {
   }
   function campaigns() {
     content.append(row(button('Life expeditions →', () => navigate('life'), 'qj-hardware')));
-    content.append(E('section', { class: 'qj-deck-invite' }, art('deck'), E('div', {}, label('ONE-OFF ADVENTURES'), E('h3', { text: 'Try something from the mixtape.' }), explain('The mixtape','Thirty small briefs, saved favorites and optional creative constraints.')), button('Deal me in →', () => navigate('deck'), 'qj-primary')));
     content.append(sectionHeading('CAMPAIGNS', 'Finish something worth keeping.', 'One tracked campaign. A clear finish line. Everything else can wait.', button('+ Your own campaign', newCampaign, 'qj-primary')));
     const grid = E('div', { class: 'qj-campaign-grid' });
     for (const c of state.campaigns) {
@@ -941,6 +949,7 @@ const QuestJournal = (() => {
       const twist = E('input', { type: 'checkbox', attrs: { 'aria-label': 'Add the creative constraint' } });
       const objective = p(c.done, 'qj-objective');
       twist.addEventListener('change', () => { objective.textContent = c.done + (twist.checked ? ` Creative constraint: ${c.twist}` : ''); });
+      body.append(row(button(state.deck.saved.includes(cid)?'Unsave card':'Save for later',()=>mutate(s=>C.markCard(s,cid,'saved')),'qj-quiet'),button('Not my thing',async()=>{await mutate(s=>C.markCard(s,cid,'hidden'));d.close();},'qj-quiet')));
       const take = button('Take this quest →', async () => { const q = await mutate(s => C.takeCard(s, cid, twist.checked), 'Quest added to your workbench. The chosen brief is saved.'); d.close(); questDetail(q.id); }, 'qj-primary');
       take.disabled = C.sideCount(state) >= 3;
       body.append(label(`${laneNames[c.lane]} / ${c.minutes} MINUTES`), objective, E('aside', { class: 'qj-twist' }, E('label', {}, twist, E('strong', { text: 'Add a creative constraint' })), p(c.twist), p('Optional. Same XP either way. Your choice becomes part of the brief when you take the quest.')), E('aside', { class: 'qj-starting-note' }, label('YOUR FIRST MOVE'), p(c.tiny)), p('Show the actual result at the finish line. Astra reviews the evidence before completion; a promise or a high score alone never earns the reward.'), take);
@@ -1078,7 +1087,7 @@ const QuestJournal = (() => {
     bar.querySelector('.qj-focus-name').textContent = C.find(state, f.quest)?.title || 'Your focus session';
     const control=bar.querySelector('[data-focus="pause-timer"]'),text=!remaining?'Review quest':f.end?'Pause':'Resume';if(control.textContent!==text)actionLabel(control,text);
   }
-  function navigate(to) { const moved = to !== page; root?.querySelectorAll('audio,video').forEach(v => v.pause()); page = to; render(); if (moved) root?.scrollTo({ top: 0, behavior: 'instant' }); } // (round 65, questperf65) the same page (a filter, the Map tab while on the map) keeps its scroll: no forced layout
+  function navigate(to) { if(['campaigns','deck','commissions','life'].includes(to)){catalogFilter={path:to==='life'?'life':'all',format:['campaigns','commissions'].includes(to)?'project':to==='deck'?'small':'all',query:''};to='catalog';} const moved = to !== page; root?.querySelectorAll('audio,video').forEach(v => v.pause()); page = to; render(); if (moved) root?.scrollTo({ top: 0, behavior: 'instant' }); } // (round 65, questperf65) the same page (a filter, the Map tab while on the map) keeps its scroll: no forced layout
   async function exportJournal() { await saving.catch(() => {}); const r = await window.hub.saveFile({ defaultPath: `hearth-quest-journal-${C.day()}.json`, filters: [{ name: 'Quest journal', extensions: ['json'] }], content: JSON.stringify(state, null, 2) }); notice(r ? 'Journal exported, including progress and reward history. Attached files are referenced, not copied.' : 'Export cancelled.'); }
   function importJournal() {
     dialog('Restore a quest journal', (body, d) => {
@@ -1090,7 +1099,7 @@ const QuestJournal = (() => {
   }
   async function mount(body) {
     root = E('div', { class: 'qj', attrs: { 'aria-label': 'Quest journal' } }); body.append(root);
-    const top = E('header', { class: 'qj-top' }, E('div', { class: 'qj-title' }, E('span', { class: 'qj-sigil', text: 'HQ', attrs: { 'aria-hidden': 'true' } }), E('div', {}, E('span',{class:'qj-label qj-console-name',text:'HEARTH / AFTER HOURS'}), E('h1', { text: 'The sidequest studio' }))));
+    const top = E('header', { class: 'qj-top' }, E('div', { class: 'qj-title' }, E('span', { class: 'qj-sigil', text: 'HQ', attrs: { 'aria-hidden': 'true' } }), E('div', {}, E('span',{class:'qj-label qj-console-name',text:'HEARTH / AFTER HOURS'}), E('h1', { text: 'Life' }))));
     const menu = button('Journal options', () => dialog('Your journal', b => b.append(p('Your journal is local. Explicit proof reviews use Astra and your normal account usage. No deadlines, missed-day penalties or automatic purchases.'), row(button('Export backup', exportJournal), button('Restore backup', e => { e.currentTarget.closest('dialog').close(); importJournal(); }), button('Export pre-restore recovery copy', async () => { const previous = await window.hub.kvGet('quest-journal-before-restore'); if (!previous) throw Error('No restore has been made yet.'); C.validate(previous); const r = await window.hub.saveFile({ defaultPath: 'hearth-quest-recovery.json', filters: [{ name: 'Quest journal', extensions: ['json'] }], content: JSON.stringify(previous, null, 2) }); notice(r ? 'Recovery copy exported. Use Restore backup to recover it.' : 'Export cancelled.'); })), p('One small start awards 5 XP once; completion awards the remainder. One spark is earned per five XP. Levels never drop from inactivity. Undoing a completion deliberately reverses its award.'))), 'qj-command-link');
     status = E('p', { class: 'qj-status', attrs: { role: 'status', 'aria-live': 'polite' }, text: 'Opening your journal…' }); content = E('main', { class: 'qj-content' });
     const focusBar = E('div', { class: 'qj-focus', hidden: true }, E('span', { class: 'qj-focus-clock' }), E('span', { class: 'qj-focus-name' }), button('Pause', async () => { if (!left()) return questDetail(state.focus.quest); const remaining = left(); await mutate(s => { if (s.focus.end) { s.focus.remaining = remaining; s.focus.end = 0; } else s.focus.end = Date.now() + s.focus.remaining; }); }, 'qj-quiet', 'pause-timer'), button('End focus', () => mutate(s => { s.focus = null; }, 'Focus ended. Your quest is waiting whenever you are.'), 'qj-quiet'));
