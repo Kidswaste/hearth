@@ -72,9 +72,9 @@ out.dragTypes = [...dt.types];
 const ta = v.input;
 const tr = ta.getBoundingClientRect();
 ta.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: tr.left + 10, clientY: tr.top + 10 }));
-ta.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: tr.left + 10, clientY: tr.top + 10 }));
+ta.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: tr.left + 10, clientY: tr.top + 10, shiftKey: true })); // (round 65) Shift: the vibe text (a plain drop is the real media: inspodrop65.js)
 await until(() => v.attachments.length === 1, 3000);
-ok(v.attachments.length === 1 && /^vibe · /.test(v.attachments[0].name), `drag a tile into the chat attaches its vibe (${v.attachments[0]?.name})`);
+ok(v.attachments.length === 1 && /^vibe · /.test(v.attachments[0].name), `Shift+drag a tile into the chat attaches its vibe (${v.attachments[0]?.name})`);
 out.dragAttachment = v.attachments[0]?.content;
 await smoke({ shot: '/tmp/board-shots/8-chip.png' });
 BoardDrawer.toggle(false);

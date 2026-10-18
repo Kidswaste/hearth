@@ -125,6 +125,8 @@ const F = require('./fake-common');
   if (p.error) { F.out({ type: 'turn.failed', error: { message: 'Fake Codex error: something went wrong' } /* (round 34) not a network drop: codexNetwork is that */ }); return; }
   // (round 28, router) "runinfo": the reply ends with the model + effort this run really got (dev/checks/router.js)
   if (/\bruninfo\b/i.test(prompt)) { const c = argv.find((x, i) => argv[i - 1] === '-c' && x.startsWith('model_reasoning_effort=')); text += `\n\nrun: model=${argv.includes('-m') ? argv[argv.indexOf('-m') + 1] : 'default'} effort=${c ? JSON.parse(c.split('=')[1]) : 'none'}`; }
+  // (round 65, inspodrop65) "attachinfo": the pictures this run got as -i (dev/checks/inspodrop65.js)
+  if (/\battachinfo\b/i.test(prompt)) text += `\n\nattach<<<${JSON.stringify({ chars: prompt.length, images: argv.filter((x, i) => argv[i - 1] === '-i') })}>>>`;
   // Codex sends whole messages, not deltas: wait about as long as a stream would take, then send it.
   await F.sleep(Math.min(6000, F.pieces(text).length * wait));
   F.out({ type: 'item.completed', item: { id: `item_${n++}`, type: 'agent_message', text } });
