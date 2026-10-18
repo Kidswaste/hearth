@@ -33,6 +33,10 @@ const ParkJam = (() => {
     button.classList.add('wb-park-toggle'); button.setAttribute('aria-pressed', String(!!park?.on));
     button.title = 'Music outside on the laptop: its own output, a safe buffer, battery-friendly, remembered per place (/jam park)';
     row.append(button);
+    // (round 64, clickfirst64) the two things that only had a fold or a command, in words in the same row: the Sound
+    // bank picker (was Keep a patch › Sound bank… / /sounds) and Arrange (was in the closed Park jam fold / /song)
+    if (typeof SoundBank !== 'undefined') { const sb = h.btn('Sound bank', () => SoundBank.open()); sb.classList.add('cf-soundbank'); sb.title = 'Every Serum 2 / Vital preset in one searchable picker: hover to listen, click to play (/sounds)'; row.append(sb); }
+    if (typeof LoopSong !== 'undefined') { const ar = h.btn('Arrange loops', () => LoopSong.open(h).then(say)); ar.classList.add('cf-arrange'); ar.title = 'Your park takes → a song: lanes, bars, export mix + stems (/song)'; row.append(ar); }
     if (park?.on) { dim(true); hush(true); } // back in the desk with Park mode on
   }
   function refreshButton() { if (!button) return; const t = park?.on ? '🌳 Park mode on' : '🌳 Park mode'; if (button.textContent !== t) button.textContent = t; button.setAttribute('aria-pressed', String(!!park?.on)); }

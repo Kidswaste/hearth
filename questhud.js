@@ -170,16 +170,17 @@ const QuestHud = (() => {
     const head = el('div', { class: 'qh-head' }, el('span', { class: 'qh-pi', text: '✦' }), el('strong', { text: 'Quests' }),
       C && S ? el('span', { class: 'qh-sub qh-lv', text: (() => { const t = C.stats(S); return `Level ${t.level.n} · ${t.xp} XP · ✧ ${t.sparks}`; })() }) : null,
       el('span', { class: 'spacer' }),
-      el('button', { type: 'button', class: 'qh-icon', text: '⋯', title: 'Tracker options', dataset: { k: 'more' }, attrs: { 'aria-label': 'Tracker options' }, on: { click: (e) => { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.right - 220, r.bottom + 4, menuItems()); } } }),
+      el('button', { type: 'button', class: 'qh-icon cf-more', text: '⋯ More', title: 'Plan your week, the week in review, a walk, rewards, shows, the park, and the tracker\'s options', dataset: { k: 'more' }, attrs: { 'aria-label': 'More: plan your week, review, walk, rewards, shows' }, on: { click: (e) => { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.right - 240, r.bottom + 4, menuItems()); } } }), // (round 64, clickfirst64) "⋯ More" in words
       el('button', { type: 'button', class: 'qh-icon', text: '×', title: 'Close', dataset: { k: 'close' }, attrs: { 'aria-label': 'Close the quest tracker' }, on: { click: () => close() } }));
     const body = [];
-    if (status === 'missing') body.push(el('p', { class: 'qh-empty', text: 'No quest journal yet. Sidequest Studio starts one with your first quest.' }));
+    if (status === 'missing') body.push(el('p', { class: 'qh-empty', text: 'No quest journal yet. Click Open Sidequest Studio below: it starts one with your first quest.' })); // (round 64, clickfirst64) says what to click
     else if (status !== 'ok') body.push(el('p', { class: 'qh-empty', text: status === 'unknown' ? 'Opening your journal…' : 'Your quest journal could not be read just now. Nothing was changed.' }));
     else if (!cd) body.push(el('p', { class: 'qh-empty', text: 'Nothing active right now. Take one of today\'s picks, or track a campaign in the Studio.' }));
     if (cd) body.push(questCard(cd));
     if (status === 'ok' && C && S) {
       const others = QC.actives(C, S, prefs.pin).filter((q) => q.id !== cd?.id);
       if (others.length) body.push(el('div', { class: 'qh-sec', text: 'Also active' }), ...others.map((q) => otherRow(QC.card(C, S, q))));
+      if (typeof ClickFirst !== 'undefined') body.push(...ClickFirst.weekRows(C, S, btn)); // (round 64, clickfirst64) This week: Plan your week / See the plan, Week in review ›, Make a walk
       if (typeof RewardShelf !== 'undefined') body.push(...RewardShelf.hudRows(C, S, btn)); // (round 63, rewards63) "120 XP to your next reward", Claim… with a confirm, the jar
       const picks = todaysPicks();
       if (picks.length) body.push(el('div', { class: 'qh-sec', text: 'Today\'s picks' }), ...picks.map(pickRow));
@@ -198,6 +199,8 @@ const QuestHud = (() => {
     for (const st of cd.steps) card.append(stepRow(cd, st));
     if (cd.note) card.append(el('div', { class: 'qh-note' }, el('span', { class: 'qh-k', text: 'Your note' }), el('span', { text: cd.note })));
     if (cd.focus) card.append(el('div', { class: 'qh-note' }, el('span', { class: 'qh-k', text: 'Focus' }), el('span', { text: `until ${new Date(cd.focus).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` })));
+    const acts = typeof ClickFirst !== 'undefined' ? ClickFirst.cardActions(cd, btn) : null; // (round 64, clickfirst64) a show: Get ready / How was it?; the park: Park mode…
+    if (acts) card.append(acts);
     if (cd.place) {
       const d = here ? QC.km(here, cd.place) : null;
       card.append(el('button', { type: 'button', class: 'qh-place', dataset: { k: 'place' }, title: 'Show it on your Paris map', on: { click: () => { close(); openStudio(null, 'world'); } } },
@@ -336,6 +339,7 @@ const QuestHud = (() => {
   function menuItems() {
     const places = (S?.atlas?.places || []).slice(0, 40);
     return [
+      ...(typeof ClickFirst !== 'undefined' ? [...ClickFirst.questItems(), '-'] : []), // (round 64, clickfirst64) every quest feature first, in words (Plan my week…, Week in review…, Make a walk…, My rewards…, shows, the park)
       { label: 'Open Sidequest Studio', action: () => { close(); openStudio(); } },
       { label: prefs.hidden ? 'Show the quest chip in the rail' : 'Hide the quest chip (/quest hud on brings it back)', action: () => setHidden(!prefs.hidden) },
       { label: 'Near you…', items: [
@@ -344,9 +348,10 @@ const QuestHud = (() => {
         { label: `${prefs.near === 'off' ? '✓ ' : ''}Off (nothing about where you are is used)`, action: () => setNear('off') },
       ] },
       ...(prefs.pin ? [{ label: 'Follow the main quest again', action: () => pin(null) }] : []),
-      { label: 'Plan my week…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('week')).catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 62, weekquest62)
-      { label: 'My rewards…', action: () => { close(); openStudio(null, 'rewards').catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 63, rewards63) Sidequest Studio › Rewards (its real-rewards shelf)
-      { label: 'Week in review…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('review')).catch((err) => toast(calmError(err), { type: 'error' })); } },
+      ...(typeof ClickFirst !== 'undefined' ? [] : [ // (round 62, weekquest62 · round 63, rewards63) — (round 64) ClickFirst puts these at the top
+        { label: 'Plan my week…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('week')).catch((err) => toast(calmError(err), { type: 'error' })); } },
+        { label: 'My rewards…', action: () => { close(); openStudio(null, 'rewards').catch((err) => toast(calmError(err), { type: 'error' })); } },
+        { label: 'Week in review…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('review')).catch((err) => toast(calmError(err), { type: 'error' })); } }]),
     ];
   }
 

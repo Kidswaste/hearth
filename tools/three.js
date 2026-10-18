@@ -608,6 +608,7 @@ const ThreeLab = (() => {
         ...easy.filter((r) => !fix.includes(r)),
         'This Lab',
         ...fix,
+        ...(typeof ClickFirst !== 'undefined' ? [ClickFirst.labRow()] : []), // (round 64, clickfirst64) ▶ Playtest › Playtest log · Record the hitch map · Hitch map (clickfirst.js)
         ['Capture', 'Screenshot, copy, contact sheet', [
           ['🖼 Save a screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
@@ -730,7 +731,7 @@ const ThreeLab = (() => {
     // canvas (gamemode.js, lazy group "gamemode"); right-click: the last games, an HTML game, the screen to play on
     const gameDo = (fn) => (window.Lazy ? window.Lazy.load('gamemode') : Promise.resolve()).then(() => fn(GameMode)).catch((err) => toast(calmError(err), { type: 'error', raw: err }));
     const playGame = (sk = current) => sk && gameDo((G) => G.play({ kind: 'lab', id: sk.id, title: sk.name }));
-    const playBtn = btn('▶ Play', `Play it as a game: its own full-screen window, max quality, smooth (${typeof WinMac !== 'undefined' ? WinMac.keyLabel('Ctrl+P') : 'Ctrl+P'} · Esc there: Back to Hearth)`, () => playGame()); // (round 53, playloop: Ctrl/⌘+P plays / goes back to editing)
+    const playBtn = btn('▶ Play', `Play it as a game: its own full-screen window, max quality, smooth (${typeof WinMac !== 'undefined' ? WinMac.keyLabel('Ctrl+P') : 'Ctrl+P'} · Esc there: Back to Hearth) · right-click: the playtest log, the hitch map, other games`, () => playGame()); // (round 53, playloop: Ctrl/⌘+P plays / goes back to editing)
     playBtn.dataset.feature = 'Play';
     playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); gameDo((G) => G.menu(e.clientX, e.clientY)); });
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · B blackout · I info · PgUp / PgDn other sketches · 1–9 cues' });
