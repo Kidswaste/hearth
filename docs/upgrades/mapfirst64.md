@@ -2,7 +2,7 @@
 
 The owner: "I really don't use commands at all, also it feels like the map features haven't updated at all."
 They were right. On their install, Sidequest Studio › the Paris map looked the same as before round 61:
-- the 36 Paris guide places only appeared after `/quest paris` or the footer's "Paris guide" button
+- the Paris guide's places (36 then, 44 with Codex's 8 new ones) only appeared after `/quest paris` or the footer's "Paris guide" button
 - this week's shows only appeared after `/shows` or "Load this week's shows" behind the ✦ icon
 - walks only appeared after `/quest walk` or a button inside the guide dialog
 
@@ -27,7 +27,7 @@ On the map, by default
 5. **Visited places wear a ✓** on their pin (venues you went to keep showprep62's own ✓).
 
 One strip on the map (one row, in the map's own button style, bottom left)
-6. **Places · Shows · My walks · Visited**: layer chips with counts, for example "Places 36", "Shows 4" and
+6. **Places · Shows · My walks · Visited**: layer chips with counts, for example "Places 44", "Shows 4" and
    "Visited 2". Click a chip to hide that layer and click again to show it. Hiding never deletes anything: guide
    places you've started, starred or visited stay visible, and so does the selected pin.
 7. **The chips are remembered on this computer.** A layer you hide stays hidden the next time you open the map.
@@ -49,7 +49,7 @@ quest, the walk dialog's Save as a walk quest, Stamp my visit, and every chip.
 ## Tests
 - New `dev/checks/mapfirst64.js` (group `mapfirst64`), 32 steps, no chat command (it fails if one is used). It uses
   the saved Shotgun / DICE responses and offline tiles. It checks:
-  - **Fresh profile:** guide pins drawn and stored once (6 + 32), Codex's pins keep their style, guide pins are dots at
+  - **Fresh profile:** guide pins drawn and stored once (6 + the 40 new `pp-` places), Codex's pins keep their style, guide pins are dots at
     zoom 12, shows with logos load on map open, the strip has one row in the right order and starts with every chip on
   - **A guide place:** the quest card leads to Start this quest, which saves and tracks the quest and opens it
   - **A show pin:** Make it a quest and Get ready both work
@@ -103,6 +103,10 @@ a no-op.
   - `draw()` sets `host.dataset.zoom` so CSS can follow the zoom
 - `dev/checks/quest-world.js`, `quest-field.js`, `quest-focus.js`: pin counts use `:not(.qj-pin-guide)`, and
   quest-focus finds the new place by name instead of counting places. Nothing else changed.
+- Merged with your c0ad4a7 (city actions row: Explore places · events · My lineup; outing-event venue pins; 8 more
+  guide places). Explore places still works: it adds any missing guide pins and clears the filters, but the map now
+  adds the guide on its own, so you may want to repurpose that button. Your outing-event pins aren't on a chip. To put
+  them under one, add your layer id to `LAYER_OF` in tools/quest-mapfirst.js (e.g. `outingdesk: 'shows'`).
 - Ours: `tools/quest-mapfirst.js` + `.css` (in the `questjournal` lazy group, after quest-walk). Other changes:
   - `tools/quest-paris-ui.js`: the panel's quest card and Start this quest
   - `showsync.js`: `showActions()`, used on the show card and on the venue dialog's next show
