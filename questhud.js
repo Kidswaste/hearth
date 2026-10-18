@@ -180,6 +180,7 @@ const QuestHud = (() => {
     if (status === 'ok' && C && S) {
       const others = QC.actives(C, S, prefs.pin).filter((q) => q.id !== cd?.id);
       if (others.length) body.push(el('div', { class: 'qh-sec', text: 'Also active' }), ...others.map((q) => otherRow(QC.card(C, S, q))));
+      if (typeof RewardShelf !== 'undefined') body.push(...RewardShelf.hudRows(C, S, btn)); // (round 63, rewards63) "120 XP to your next reward", Claim… with a confirm, the jar
       const picks = todaysPicks();
       if (picks.length) body.push(el('div', { class: 'qh-sec', text: 'Today\'s picks' }), ...picks.map(pickRow));
       if (prefs.near !== 'off') body.push(...nearRows());
@@ -344,6 +345,7 @@ const QuestHud = (() => {
       ] },
       ...(prefs.pin ? [{ label: 'Follow the main quest again', action: () => pin(null) }] : []),
       { label: 'Plan my week…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('week')).catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 62, weekquest62)
+      { label: 'My rewards…', action: () => { close(); openStudio(null, 'rewards').catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 63, rewards63) Sidequest Studio › Rewards (its real-rewards shelf)
       { label: 'Week in review…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('review')).catch((err) => toast(calmError(err), { type: 'error' })); } },
     ];
   }
@@ -422,5 +424,5 @@ const QuestHud = (() => {
   AppUI.addAction('Quest: show or hide the quest chip', () => setHidden(!prefs.hidden));
   Keys.add({ area: 'Quests', keys: HOTKEY, what: 'open or close the quest tracker (from anywhere)', run: () => toggle() });
   start();
-  return { open, close, toggle, isOpen, checkOff, checkNext, track, take, pin, setHidden, setNear, openStudio, refresh: () => read().then(paint), write, journal: () => ({ C, S, status }), core, state: () => ({ status, current: cur(), prefs: { ...prefs }, chip: Boolean(chip && !chip.hidden) }) };
+  return { open, close, toggle, isOpen, checkOff, checkNext, track, take, pin, setHidden, setNear, openStudio, refresh: () => read().then(paint), repaint: () => { lastSig = ''; paint(); }, write, journal: () => ({ C, S, status }), core, state: () => ({ status, current: cur(), prefs: { ...prefs }, chip: Boolean(chip && !chip.hidden) }) };
 })();
