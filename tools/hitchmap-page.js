@@ -72,7 +72,8 @@
   // every number that changes per frame lives in a typed array (a fractional number in a closure variable is a new heap
   // number each time: gcchurn60)
   const T = new Float64Array(16);
-  const SELF = 0; const LAST = 1; const TYP = 2; const T0 = 3; const RES = 4; const SHN = 5; const SHL = 6; const SHW = 7; const SPN = 8; const SPT = 9; const SPD = 10; const SKIP = 11; const A0 = 12; const W0 = 13; const SPK = 14;
+  const SELF = 0; const LAST = 1; const TYP = 2; const T0 = 3; const RES = 4; const SHN = 5; const SHL = 6; const SHW = 7; const SPN = 8; const SPT = 9; const SPD = 10; const A0 = 12; const W0 = 13; const SPK = 14;
+  T[SPK] = Infinity; // (no spike line until the first look at the usual frame)
   const WIN = 32; // frames between two looks at the usual frame (and, ≥ 1 s apart, where the player / camera are)
   const SHOTS = new Float64Array(Rules.MAX_SHOTS * 2); // [t, dt] of each spike pictured
   let on = true; let paused = false; let offBy = null; let offAt = 0;
@@ -112,23 +113,27 @@
   // ---------- one frame ----------
   // Per frame: two stores of times, two builtin copies of positions, one compare. Everything else (the usual frame, the
   // spike line, where the player / camera are) is looked at once every 32 frames; the gaps are worked out after the session
+  // (flags as booleans and each time read once: until the browser optimises this function, every fractional number it
+  // reads or computes is a small allocation)
+  let live = false; let skip = false; let started = false;
   function frame(t) {
     if (!on) return;
     raf(frame);
-    T[A0] = now();
-    if (paused || !playing()) { T[LAST] = 0; T[SELF] += now() - T[A0]; return; }
-    if (T[LAST] > 0 && T[SKIP] === 0) {
-      if (T[T0] === 0) { T[T0] = T[LAST]; T[W0] = T[LAST]; resolve(t); }
+    const a = now();
+    if (paused || !playing()) { live = false; T[SELF] += now() - a; return; }
+    if (live && !skip) {
+      const last = T[LAST];
+      if (!started) { started = true; T[T0] = last; T[W0] = last; resolve(t); }
       if (R.wn >= WIN) look(t);
       const i = R.i; const o = i * 6; const p = R.p; const st = R.st;
-      R.t[i] = t; R.l[i] = T[LAST];
+      R.t[i] = t; R.l[i] = last;
       if (CE) { p.set(CE, st); p.copyWithin(o + 3, st + 12, st + 15); } else p.fill(0, o + 3, o + 6);
       if (PE) { p.set(PE, st); p.copyWithin(o, st + 12, st + 15); } else if (P) { p[o] = P.x; p[o + 1] = typeof P.y === 'number' ? P.y : 0; p[o + 2] = typeof P.z === 'number' ? P.z : 0; } else p.copyWithin(o, o + 3, o + 6);
       Rules.advance(R); R.wn += 1;
-      if (T[SPK] > 0 && t - T[LAST] >= T[SPK]) spiked(t);
+      if (t - last >= T[SPK]) spiked(t, last);
     }
-    T[LAST] = t; T[SKIP] = 0;
-    T[SELF] += now() - T[A0];
+    T[LAST] = t; live = true; skip = false;
+    T[SELF] += now() - a;
   }
   // every 32 frames: the usual frame (their mean, at most twice the last one: a spike in them barely moves it), the line a
   // spike starts at, and (≥ 1 s apart) where the player and the camera are
@@ -140,8 +145,8 @@
     if (t - T[RES] > 1000) resolve(t);
   }
   // a spike (rare): counted, and a picture asked for when the rules say so (≤ 4 a session)
-  function spiked(t) {
-    const rt = t - T[T0]; const dt = t - T[LAST];
+  function spiked(t, last) {
+    const rt = t - T[T0]; const dt = t - last;
     T[SPN] += 1; T[SPT] = rt; T[SPD] = dt;
     const k = T[SHN];
     if (Rules.shot({ n: k, last: T[SHL], worst: T[SHW] }, rt, dt)) {
@@ -150,7 +155,7 @@
     }
   }
   // a hidden window has no frames: the gap after it is not a hitch
-  const onVis = () => { T[SKIP] = 1; T[LAST] = 0; };
+  const onVis = () => { skip = true; live = false; };
   addEventListener('visibilitychange', onVis);
   raf(frame);
 
@@ -176,7 +181,7 @@
   }
   Object.defineProperty(W, '__hearthHitch', { configurable: true, value: Object.freeze({
     // (▶ Play's budget, tools/playbudget-page.js: id 'hitch') its own time, stepped aside for the A/B, off for the session
-    budget: { spent: () => T[SELF], pause: (p) => { paused = Boolean(p); T[LAST] = 0; }, off: (by) => stop(by || 'watch') },
+    budget: { spent: () => T[SELF], pause: (p) => { paused = Boolean(p); live = false; }, off: (by) => stop(by || 'watch') },
     line, pub, spike, dump, stop, rules: Rules,
   }) });
 }());
