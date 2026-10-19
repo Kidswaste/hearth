@@ -7,10 +7,26 @@ cancelling its card does not send a prompt. The card exposes the repeating words
 rounds/time and a percentage of remaining account usage (20% by default). Timing, restart
 and compaction choices remain under advanced options.
 
+Setup offers Improve, Polish, Fix bugs and Finish prompt shortcuts (editable,
+remembered per conversation), plus 10/20/40% budget buttons and custom values.
+New percentage setups default to running until their budget or a sensible early
+stop; existing duration choices are preserved. Extra timing/token options live
+under More controls, whose label always shows the selected duration.
+
 The same button opens a run panel with pause/stop and percentage of budget used.
 Exact token counts, cache breakdown and round history are collapsed details.
 Starting a new budget is explicit; stopped runs stay
 available for inspection. Pause/stop allow the current reply to finish.
+While running, the project toolbar shows budget progress with direct pause,
+resume and stop buttons. On completion it offers Review. The run panel surfaces
+the last three pass summaries and a Review latest reply action targeting that
+project conversation. Expanded accounting history stays open across updates.
+
+The scheduler evaluates local waits (typing, queued messages, deliberate pauses,
+settling time) before spawning account readers. A per-run check lock and per-chat
+start lock prevent overlapping checks and double starts. Stopping retains the
+final in-flight reply until accounting completes, blocking replacement budgets
+until then. Restart clears stopped processes without resuming them.
 
 ## Percentage budgets
 
@@ -66,3 +82,7 @@ freshness, resets, persistence, missing token reports and carried timestamps.
 exactly 20% of a 50%-remaining window, unavailable-start blocking and stale-read
 pausing in isolated Electron. Adapter tests verify fresh reads bypass the cache
 without creating model turns.
+The Electron fixture also exercises focus/budget shortcuts, toolbar pause/resume/
+stop, preserved details expansion, zero account reads during local waits, stopped
+reply replacement blocking and duplicate-start blocking. The controls core test
+covers local gates and stopped-reply restart/accounting behavior.

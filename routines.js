@@ -27,6 +27,7 @@ const Routines = (() => {
   let list = (store.get(KEY, []) || []).map((r) => C.normalize(r)).filter(Boolean);
   const timers = new Map(); // routine id → timeout of its next check
   const holds = new Map(); // routine id → release() of the awake hold while a round runs
+  const checking=new Set(),starting=new Set();
   let tagNext = null; // { chatId, text, routine } the message being sent by a routine (marked when native.js sends it)
   let lastInput = Date.now(); // the owner's last key / pointer in Hearth (pause "until I'm idle")
   let lastWrote = Number(store.get('routines.wrote', 0)) || 0; // the owner's last message in any chat (pause "when I haven't written")
@@ -76,6 +77,8 @@ const Routines = (() => {
     timers.set(r.id, setTimeout(() => { timers.delete(r.id); check(r.id); }, Math.max(50, Math.min(ms, 5 * C.MIN) * scale)));
   }
   async function check(id) {
+    if(checking.has(id))return;checking.add(id);
+    try {
     const r = byId(id);
     if (!r || r.status !== 'running') return;
     const chat = await Native.load(r.chatId).catch(() => null);
@@ -84,13 +87,13 @@ const Routines = (() => {
     // a plan waiting for ▶ Go ahead (◎ Plan first) is yours to answer
     const lastMsg = chat.messages.at(-1);
     if (!Native.isBusy(r.chatId) && lastMsg?.role === 'assistant' && lastMsg.plan === 'waiting') { pauseFor(r, 'its plan waits for your ▶ Go ahead'); return; }
-    let quota=null;
-    if (!Native.isBusy(r.chatId) && !r.inFlight) {
+    let quota=null,d=C.readyStep(r,context(r));
+    if (!d) {
       if(r.allowance)quota=await readAllowance(r.agentId,{after:r.round ? r.lastEnd-5000 : r.allowance.createdAt-2*C.MIN});
       else await refreshLimits(r.agentId);
     }
     const lastUsage=[...chat.messages].reverse().find(m=>m.role==='assistant' && C.usageOf(m.usage))?.usage;
-    const d = C.nextStep(r, {...context(r),engine:H.agent(r.agentId)?.engine,model:chat.model||H.agent(r.agentId)?.model||'',allowanceWindows:quota?.windows,allowanceFresh:quota?.fresh,lastTokens:C.usageOf(lastUsage)?.tokens || 0});
+    d ||= C.nextStep(r, {...context(r),engine:H.agent(r.agentId)?.engine,model:chat.model||H.agent(r.agentId)?.model||'',allowanceWindows:quota?.windows,allowanceFresh:quota?.fresh,lastTokens:C.usageOf(lastUsage)?.tokens || 0});
     if(r.allowance&&quota){saveNow();paintAll();}
     if (d.act === 'none') return;
     if (d.act === 'wait' && d.hold) { holdFor(r, d); later(r, d.ms); return; }
@@ -98,6 +101,7 @@ const Routines = (() => {
     if (d.act === 'pause') { pauseFor(r, d.why); return; }
     if (d.act === 'stop') { end(r, d.status, d.why); return; }
     await round(r, chat);
+    }finally{checking.delete(id);}
   }
   const checkSoon = (r, ms = C.SETTLE) => later(r, ms);
   const refreshing=new Map(), refreshed=new Map();
@@ -223,10 +227,11 @@ const Routines = (() => {
   }
   function end(r, status, why) {
     if (!C.live(r)) return;
-    r.status = status || 'stopped'; r.why = why; r.inFlight = false;
-    if(r.allowance&&!Native.isBusy(r.chatId)&&r.allowance.windows.every(w=>w.at>=r.lastEnd))r.allowance.finishedAt=Date.now();
+    r.status = status || 'stopped'; r.why = why;
+    if(r.allowance&&!r.inFlight&&!Native.isBusy(r.chatId)&&r.allowance.windows.every(w=>w.at>=r.lastEnd))r.allowance.finishedAt=Date.now();
     awake(r, false); clearTimeout(timers.get(r.id)); timers.delete(r.id);
     saveNow(); paintAll(); syncTick();
+    if(r.allowance&&!r.inFlight)void refreshFinishedAllowance(r);
     const sum = `${r.done} round${r.done === 1 ? '' : 's'} · ${r.allowance?Math.round(C.allowanceProgress(r.allowance))+'% of budget used':'≈ '+fmt(r.tokens)+' tokens'}${r.files ? ` · ${r.files} file${r.files === 1 ? '' : 's'} changed` : ''}`;
     say(r, `🔁 Keep going ${r.status === 'done' ? 'finished' : 'stopped'}: ${why} (${sum}).`, { buttons: false });
     activity(r, `Keep going ${r.status === 'done' ? 'finished' : 'stopped'} in “${titleOf(r)}”: ${why} · ${sum}`, r.status === 'done' ? '✓' : '■');
@@ -252,6 +257,13 @@ const Routines = (() => {
   // ---------- starting one ----------
   // spec: what the card gave; first: the owner's own message to send before the routine's rounds (◎ Missions)
   async function start(agentId, spec, { chatId = null, first = null } = {}) {
+    const key=chatId||Native.chatOf(agentId)?.id||agentId;
+    if(starting.has(key))throw Error('This auto-improve run is already starting.');
+    if(list.some(r=>r.chatId===key&&(r.inFlight||r.preparing)))throw Error('Let the current auto-improve reply finish before starting a new budget.');
+    starting.add(key);
+    try{return await startNow(agentId,spec,{chatId,first});}finally{starting.delete(key);}
+  }
+  async function startNow(agentId, spec, { chatId = null, first = null } = {}) {
     const agent = H.agent(agentId);
     if (!agent || agent.mode !== 'native') throw new Error('Keep going works in a chat with Claude or Astra.');
     let quota=null;
@@ -301,8 +313,13 @@ const Routines = (() => {
       try { if (typeof Budget !== 'undefined') spend = Budget.state(agentId); } catch { /* not loaded */ }
       const dlg = el('dialog', { class: 'ui-modal rt-dlg', attrs: { 'aria-label': 'Keep going' } });
       const words = el('textarea', { class: 'rt-words', rows: 3, value: ex?.prompt || promptFor(chatId), attrs: { 'aria-label': 'What to ask each time' } });
+      const focuses=[['Improve','↻',C.DEFAULT_PROMPT],['Polish','✦','Polish the work we are making in this project. Use the latest chat goals; choose one worthwhile improvement to the existing work, implement it, and check it. Keep its features and visual quality. End with "Changed: …" and what needs my review.'],['Fix bugs','⌁','Look for a concrete bug in the current project, using the latest chat and available tools. Reproduce it, fix it, and check the result. Preserve existing features. If you cannot verify a problem, say so instead of inventing a fix. End with "Changed: …" and what needs my review.'],['Finish','✓','Move the current project toward the finished result discussed in this chat. Complete one remaining piece and verify it. Keep the scope focused; do not add unrelated features. When the result needs my taste or approval, tell me exactly what to review. End with "Changed: …".']];
+      const focusRow=el('div',{class:'rt-focuses',attrs:{'aria-label':'Improvement focus'}});
+      const paintFocus=()=>{for(const b of focusRow.children)b.setAttribute('aria-pressed',String(words.value===focuses[Number(b.dataset.index)][2]));};
+      focuses.forEach(([label,icon,prompt],i)=>focusRow.append(el('button',{type:'button',class:'rt-focus',dataset:{index:String(i)},text:icon+' '+label,title:prompt,on:{click:()=>{words.value=prompt;paintFocus();}}})));
+      words.addEventListener('input',paintFocus);paintFocus();
       // how long: one row of choices; "Until…" and "Rounds" show their one field
-      let how = last.how?.kind ? last.how : { kind: 'rounds', rounds: 5 };
+      let how = last.how?.kind ? last.how : last.budgetMode==='tokens'?{kind:'rounds',rounds:5}:{kind:'forever'};
       let howId = how.kind === 'rounds' ? 'rounds' : how.kind === 'forever' ? 'forever' : how.kind === 'until' ? 'until' : (C.HOW.find((h) => h.ms === how.ms)?.id || '1h');
       const roundsIn = el('input', { type: 'number', min: 1, max: C.MAX_ROUNDS, value: String(how.rounds || 5), class: 'rt-num', attrs: { 'aria-label': 'Extra rounds' } });
       const untilIn = el('input', { type: 'time', value: how.time || '18:00', class: 'rt-time', attrs: { 'aria-label': 'Until this time' } });
@@ -314,6 +331,7 @@ const Routines = (() => {
       budgetMode.value=last.budgetMode==='tokens'?'tokens':'remaining';
       const percent=el('input',{class:'rt-percent',type:'number',min:1,max:100,step:1,required:true,value:String(last.remainingPercent||20),attrs:{'aria-label':'Percentage of remaining usage'}});
       const percentRow=el('label',{class:'rt-share'},percent,el('span',{text:'% of what I have left'}));
+      const shares=el('div',{class:'rt-shares',attrs:{'aria-label':'Budget shortcuts'}},...[10,20,40].map(n=>el('button',{type:'button',class:'rt-share-pick',text:n+'%',dataset:{percent:String(n)},on:{click:()=>{percent.value=String(n);updateBudget();}}})));
       const quotaPreview=el('div',{class:'rt-quota-preview hint',attrs:{role:'status'},text:'Reading your remaining usage…'});
       let snapshot=null,readingBudget=false;
       const howNow = () => {
@@ -324,8 +342,9 @@ const Routines = (() => {
         return { kind: 'forever' };
       };
       const paintHow = () => {
-        howRow.replaceChildren(...C.HOW.map((h) => el('button', { type: 'button', class: `rt-opt${h.id === howId ? ' on' : ''}`, role: 'radio', attrs: { 'aria-checked': String(h.id === howId) }, text: h.id === 'rounds' ? 'Extra rounds' : h.label, on: { click: () => { howId = h.id; paintHow(); paintCap(); } } })),
+        howRow.replaceChildren(...C.HOW.map((h) => el('button', { type: 'button', class: `rt-opt${h.id === howId ? ' on' : ''}`, role: 'radio', attrs: { 'aria-checked': String(h.id === howId) }, text: h.id === 'rounds' ? 'Extra rounds' : h.id==='forever'&&budgetMode.value==='remaining'?'Until budget used':h.label, on: { click: () => { howId = h.id; paintHow(); paintCap(); } } })),
           howId === 'rounds' ? roundsIn : null, howId === 'until' ? untilIn : null);
+        timingSummary.textContent='More controls · '+(howId==='forever'&&budgetMode.value==='remaining'?'until budget used':C.howText(howNow()));
       };
       const def = C.defaultCap(spend);
       let capPick = last.cap ?? 'default';
@@ -339,7 +358,7 @@ const Routines = (() => {
         capHint.textContent = 'Checked between replies using reported input + output. The current reply can exceed this budget.';
       };
       capSel.addEventListener('change', () => { capPick = capSel.value;customCap.hidden=capPick!=='custom';if(!customCap.hidden&&!customCap.value)customCap.value=String(def); });
-      untilIn.addEventListener('change', paintCap); roundsIn.addEventListener('input', paintCap);
+      untilIn.addEventListener('change',()=>{paintCap();paintHow();}); roundsIn.addEventListener('input',()=>{paintCap();timingSummary.textContent='More controls · '+C.howText(howNow());});
       const pauseSel = el('select', { attrs: { 'aria-label': 'Pause between rounds' } }, C.PAUSES.map((p) => el('option', { value: p.id, text: p.label, selected: p.id === (ex?.pause || last.pause || 'none') })));
       const writeSel = el('select', { attrs: { 'aria-label': 'When I write in this chat' } }, C.WHEN_I_WRITE.map((w) => el('option', { value: String(w.ms), text: w.label, selected: w.ms === (ex?.resumeAfter ?? last.resumeAfter ?? 0) })));
       const box = (label, on, title) => { const i = el('input', { type: 'checkbox', checked: on }); return [el('label', { class: 'rt-check', title }, i, label), i]; };
@@ -360,8 +379,10 @@ const Routines = (() => {
         finish({ prompt: words.value.trim() || C.DEFAULT_PROMPT, how: h, pause: pauseSel.value, resumeAfter: Number(writeSel.value) || 0, cap:share?0:cap, ...(share?{remainingPercent:Number(percent.value)}:{}),capPick: capSel.value === 'default' ? 'default' : cap, lighter: lightI.checked, waitReset: share?false:resetI.checked, afterRestart: restartI.checked, margin: Number(marginSel.value) || C.MARGIN });
       };
       const tokenFields=el('div',{class:'rt-token-fields'},row('Token budget',capSel,customCap),capHint,row('Account usage ceiling',marginSel));
+      const timingSummary=el('summary');
       const updateBudget=()=>{
         const share=budgetMode.value==='remaining';percentRow.hidden=!share;quotaPreview.hidden=!share;tokenFields.hidden=share;resetL.hidden=share;
+        shares.hidden=!share;for(const b of shares.children)b.setAttribute('aria-pressed',String(Number(b.dataset.percent)===Number(percent.value)));
         percent.disabled=!share;customCap.disabled=share;
         const submit=dlg.querySelector('button[type=submit]');if(submit)submit.disabled=share&&(readingBudget||!snapshot?.fresh||!percent.checkValidity());
         if(share&&!readingBudget){quotaPreview.replaceChildren();
@@ -371,16 +392,15 @@ const Routines = (() => {
         }
       };
       const refreshBudget=async()=>{readingBudget=true;quotaPreview.textContent='Reading your remaining usage…';updateBudget();try{snapshot=await readAllowance(agentId);}catch{snapshot=null;}finally{readingBudget=false;if(dlg.isConnected)updateBudget();}};
-      budgetMode.onchange=updateBudget;percent.oninput=updateBudget;
+      budgetMode.onchange=()=>{updateBudget();paintHow();};percent.oninput=updateBudget;
       const form = el('form', { method: 'dialog', on: { submit: (e) => { e.preventDefault(); go(); } } },
         el('h2', { text: '↻ Auto-improve' }),
         el('p', { class: 'rt-intro hint', text: first ? 'Your message goes first, then Hearth repeats the prompt below.' : `Keep working in “${H.chats.find(c=>c.id===chatId)?.title || 'this chat'}”. Writing here pauses the loop.` }),
-        el('label', { class: 'rt-field' }, el('span', { class: 'rt-label', text: 'What to ask each time' }), words),
-        el('div', { class: 'rt-field' }, el('span', { class: 'rt-label', text: 'How long' }), howRow),
-        row('Budget',budgetMode),percentRow,quotaPreview,tokenFields,
+        focusRow,el('label', { class: 'rt-field' }, el('span', { class: 'rt-label', text: 'What to ask each time' }), words),
+        percentRow,shares,quotaPreview,
         el('button',{type:'button',class:'ghost small rt-refresh-usage',text:'↻ Refresh usage',on:{click:refreshBudget}}),
         el('p',{class:'hint rt-account-note',text:'Fixed when you start; it never refills automatically. Checked between replies, so a reply can overshoot. Other chats and devices count toward the same allowance.'}),
-        el('details', { class: 'rt-more' }, el('summary', { text: 'Timing & advanced' }),row('Pause between rounds', pauseSel), row('When I write here', writeSel), lightL, resetL, restartL),
+        el('details', { class: 'rt-more rt-options' },timingSummary,row('Budget type',budgetMode),tokenFields,el('div',{class:'rt-field'},el('span',{class:'rt-label',text:'Stop earlier or set a duration'}),howRow),row('Pause between rounds', pauseSel), row('When I write here', writeSel), lightL, resetL, restartL),
         el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }),
           el('button', { type: 'button', text: 'Cancel', on: { click: () => finish(null) } }),
           el('button', { type: 'submit', class: 'primary', text: first ? 'Send and keep going' : ex ? 'Start a new run & budget' : 'Start auto-improving' })));
@@ -416,26 +436,52 @@ const Routines = (() => {
     if(r)return manage(r);
     return open(chat.agentId,{chatId:chat.id});
   }
+  function projectControls(button,chat) {
+    const r=chat&&recentFor(chat.id),live=C.live(r),group=button.parentElement;
+    const value=r?.allowance?Math.round(C.allowanceProgress(r.allowance)):null;
+    const label=!r?'↻ Auto-improve':live?`↻ ${r.status==='paused'?'Paused':r.inFlight?'Working':'Auto-improve'}${value!=null?' · '+value+'%':r.done?' · '+r.done+' passes':''}`:`${r.status==='done'?'✓':'■'} Review · ${r.done} ${r.done===1?'pass':'passes'}`;
+    if(button.firstChild.textContent!==label)button.firstChild.textContent=label;
+    button.classList.toggle('running',r?.status==='running');button.classList.toggle('paused',r?.status==='paused');
+    button.style.setProperty('--run-progress',Math.min(100,value||0)+'%');
+    button.title=r?`${C.chipText(r)}${r.why?' · '+r.why:''}. Open the run summary.`:'Repeat a prompt in this project with a usage budget';
+    if(!group.classList.contains('workspace-auto-group'))return;
+    for(const [action,glyph,title] of [['toggle',r?.status==='running'?'Ⅱ':'▶',r?.status==='running'?'Pause auto-improve after this reply':'Resume auto-improve'],['stop','■','Stop auto-improve after this reply']]){
+      let b=group.querySelector('[data-run-action="'+action+'"]');
+      if(!live){b?.remove();continue;}
+      if(!b){b=el('button',{type:'button',class:'workspace-auto-control',dataset:{runAction:action},on:{click:()=>{const run=byId(b.dataset.runId);if(!C.live(run))return;action==='stop'?stop(run.id):run.status==='running'?pause(run.id):resume(run.id);}}});group.append(b);}
+      b.dataset.runId=r.id;b.textContent=glyph;b.title=title;b.setAttribute('aria-label',title);b.disabled=action==='toggle'&&r.status==='paused'&&r.usageUnknown&&!r.allowance;
+    }
+  }
+  async function reviewReply(r) {
+    const p=window.ProjectWorkspace?.current?.();
+    if(p&&(p.items||[]).some(i=>i.type==='chat'&&i.ref===r.chatId))await ProjectWorkspace.conversation(p,r.chatId);
+    else {activate(H.surfaceIdFor?H.surfaceIdFor(r.agentId):r.agentId);await Native.open(r.agentId,r.chatId);}
+    Native.view(r.agentId)?.list?.lastElementChild?.scrollIntoView({block:'end'});
+  }
   // The same run survives tab changes; viewing or cancelling this panel never starts work.
   function manage(r) {
     document.querySelector('.rt-run')?.close();
     const dlg=el('dialog',{class:'ui-modal rt-dlg rt-run',attrs:{'aria-label':'Auto-improve run'}}),content=el('div',{class:'rt-run-content'});
     const close=el('button',{type:'button',text:'Close',on:{click:()=>dlg.close()}});
     const paint=()=>{
+      const expanded=new Set([...content.querySelectorAll('details[open]')].map(e=>e.className));
       const t=r.usageTotals,u=r.usageUnknown?'At least ':'',busy=Native.isBusy(r.chatId),live=C.live(r);
       const controls=el('div',{class:'dialog-actions'});
       if(live)controls.append(el('button',{type:'button',text:r.status==='running'?'Pause after reply':'Resume',disabled:r.usageUnknown&&!r.allowance,on:{click:()=>{r.status==='running'?pause(r.id):resume(r.id);}}}),el('button',{type:'button',text:busy?'Stop after reply':'Stop run',on:{click:()=>stop(r.id)}}));
       controls.append(el('button',{type:'button',class:'primary',text:'New run & budget',disabled:busy,on:{click:()=>{dlg.close();open(r.agentId,{chatId:r.chatId});}}}));
+      if(r.rounds.length)controls.prepend(el('button',{type:'button',text:'↗ Review latest reply',on:{click:()=>{dlg.close();reviewReply(r).catch(e=>toast(e.message,{type:'error'}));}}}));
       const history=el('details',{class:'rt-more'},el('summary',{text:'Round history & exact counts'}));
       history.append(el('p',{class:'hint',text:'Input includes cache reads/writes. Output includes reasoning. Counts below are reported traffic, not a bill. Large totals include rereading history at each model call.'}));
       history.append(el('p',{text:`${u}${r.tokens.toLocaleString()} reported tokens`}),t?el('div',{class:'rt-breakdown'},...['fresh','cacheWrite','cached','output'].map(k=>el('span',{text:`${{fresh:'Fresh',cacheWrite:'Cache write',cached:'Cached',output:'Output'}[k]} ${t[k].toLocaleString()}`}))):null,
         t?.costReports?el('p',{class:'hint',text:`$${t.cost.toFixed(4)} reported API-price estimate, not a subscription charge.`}):null);
       for(const x of r.rounds.slice(-12))history.append(el('div',{class:'rt-history-row',text:`${x.n} · ${x.ok?'Completed':x.stopped?'Stopped':'Failed'} · ${x.tokens.toLocaleString()}${x.usage===null||x.usage?.partial?'+ (incomplete)':''} tokens`,title:x.sum||x.error||''}));
       const used=r.allowance?C.allowanceProgress(r.allowance):0;
-      const allocation=r.allowance?el('div',{class:'rt-allocation'},el('progress',{max:100,value:Math.min(100,used),attrs:{'aria-label':'Remaining-usage budget consumed'}}),el('p',{class:'hint',text:`Budget: ${C.pctText(r.allowance.percent)}% of what was left when you started. Stops at the first allowance to reach its allocation.`}),...r.allowance.windows.map(w=>el('div',{class:'rt-history-row',text:`${w.label} · ${C.pctText(Math.max(0,w.peak-w.start))} / ${C.pctText(w.amount)} percentage points`,title:`Started at ${C.pctText(w.start)}% account usage. Last measured ${new Date(w.at).toLocaleTimeString()}.`})),el('p',{class:'hint',text:'Other account activity is included. Readings may lag; the current reply can overshoot.'})):null;
+      const recent=el('section',{class:'rt-results',attrs:{'aria-label':'Recent results'}},el('h3',{text:'Recent passes'}),...r.rounds.slice(-3).reverse().map(x=>el('div',{class:'rt-result'},el('span',{class:'rt-pass',text:String(x.n),title:'Pass '+x.n}),el('div',{},el('p',{text:x.sum||x.error||(x.ok?'Reply completed. Open the chat to review.':x.stopped?'Reply stopped.':'Reply failed.')}),el('small',{text:(x.ok?'Completed':x.stopped?'Stopped':'Failed')+(x.files?' · '+x.files+' '+(x.files===1?'file':'files')+' touched':'')})))));
+      const allocation=r.allowance?el('div',{class:'rt-allocation'},el('progress',{max:100,value:Math.min(100,used),attrs:{'aria-label':'Remaining-usage budget consumed'}}),el('p',{class:'hint',text:`Budget: ${C.pctText(r.allowance.percent)}% of what was left when you started.`}),el('details',{class:'rt-more rt-budget-details'},el('summary',{text:'How the budget is measured'}),...r.allowance.windows.map(w=>el('div',{class:'rt-history-row',text:`${w.label} · ${C.pctText(Math.max(0,w.peak-w.start))} / ${C.pctText(w.amount)} percentage points`,title:`Started at ${C.pctText(w.start)}% account usage. Last measured ${new Date(w.at).toLocaleTimeString()}.`})),el('p',{class:'hint',text:'Stops at the first allowance to reach its allocation. Other account activity is included. Readings may lag; the current reply can overshoot.'}))):null;
       content.replaceChildren(el('h2',{text:'↻ Auto-improve'}),el('p',{class:'hint',text:`${titleOf(r)} · ${r.done} completed · ${r.status}`}),el('div',{class:'rt-spent',text:r.allowance?`${Math.round(used)}% of budget used`:`${u}${r.tokens.toLocaleString()} tokens`}),allocation,
         !r.allowance?el('p',{class:'hint',text:r.cap?`Budget ${r.cap.toLocaleString()} · ${Math.max(0,r.cap-r.tokens).toLocaleString()} left${busy?' · current reply not yet counted':''}`:'No token cap'}):null,
-        el('p',{class:'rt-run-status',text:r.why || (busy?'Working on this reply. Pause and stop take effect before the next one.':'Waiting for the next round.')}),el('p',{class:'hint',text:accountWords(r.agentId)}),controls,history);
+        el('p',{class:'rt-run-status',text:r.why || (busy?'Working on this reply. Pause and stop take effect before the next one.':'Waiting for the next round.')}),controls,r.rounds.length?recent:null,!r.allowance?el('p',{class:'hint',text:accountWords(r.agentId)}):null,history);
+      for(const d of content.querySelectorAll('details'))d.open=expanded.has(d.className);
     };
     dlg.append(content,el('div',{class:'dialog-actions'},close));
     document.addEventListener('hearth:routines',paint);
@@ -650,7 +696,7 @@ const Routines = (() => {
   function afterStart() {
     const back = [];
     for (const r of list) {
-      if (!C.live(r)) continue;
+      if (!C.live(r)) {C.restarted(r);continue;}
       const wasRunning = r.status === 'running';
       C.restarted(r);
       if (wasRunning && r.status === 'paused') back.push(r);
@@ -700,7 +746,7 @@ const Routines = (() => {
   }
 
   return {
-    open, openProject, start, card, stop, pause, resume, section, summary, forChat, usageBox, stats: () => C.statSum(store.get(STATS, null)), list: () => list.map((r) => ({ ...r })), get: byId,
+    open, openProject, projectControls, start, card, stop, pause, resume, section, summary, forChat, usageBox, stats: () => C.statSum(store.get(STATS, null)), list: () => list.map((r) => ({ ...r })), get: byId,
     _test: { scale: (x) => { scale = x; }, check, idle: (ms) => { lastInput = Date.now() - ms; }, quiet: (ms) => { lastWrote = Date.now() - ms; }, afterStart, reload: () => { list = (store.get(KEY, []) || []).map((r) => C.normalize(r)).filter(Boolean); }, timers },
   };
 })();

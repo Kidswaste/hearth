@@ -1058,13 +1058,9 @@ const WorkspaceNav = window.WorkspaceNav = (() => {
     // Always reachable across the project's tools; lazy-load the scheduler only on demand.
     let auto=bar.querySelector('.workspace-auto');
     if(p){
-      if(!auto){auto=button('↻ Auto-improve',async()=>{await Lazy.load('routines');await Routines.openProject();},{class:'workspace-auto',title:'Repeat a prompt in this project with a usage budget'});bar.append(auto);}
-      const c=window.ProjectWorkspace?.currentChat?.(),r=c&&window.Routines?.forChat(c.id);
-      const label=r ? `↻ Auto-improve · ${r.status==='paused'?'Paused':r.done+'/'+(r.how.kind==='rounds'?r.how.rounds:'∞')}` : '↻ Auto-improve';
-      if(auto.firstChild.textContent!==label)auto.firstChild.textContent=label;
-      auto.classList.toggle('running',r?.status==='running');auto.classList.toggle('paused',r?.status==='paused');
-      auto.title=r ? `${RoutinesCore.chipText(r)}${r.why?' · '+r.why:''}. Open for usage, pause and stop.` : 'Repeat a prompt in this project with a usage budget';
-    }else auto?.remove();
+      if(!auto){auto=button('↻ Auto-improve',async()=>{await Lazy.load('routines');await Routines.openProject();},{class:'workspace-auto',title:'Repeat a prompt in this project with a usage budget'});bar.append(el('div',{class:'workspace-auto-group'},auto));}
+      window.Routines?.projectControls(auto,window.ProjectWorkspace?.currentChat?.());
+    }else auto?.parentElement?.classList.contains('workspace-auto-group')?auto.parentElement.remove():auto?.remove();
     for(const b of bar.querySelectorAll('[data-surface],[data-id]')){const f=b.dataset.feature,yes=(b.dataset.surface||b.dataset.id)===sid&&(!f||f===feature||['board','studio'].includes(f)&&feature!=='vst');b.classList.toggle('active',yes);b.setAttribute('aria-current',yes?'page':'false');}
   }
   document.addEventListener('hearth:activate',sync);document.addEventListener('hearth:creative-feature',sync);

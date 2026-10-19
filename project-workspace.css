@@ -58,6 +58,7 @@
 /* One deliberate control, outside the horizontally scrolling project tabs. */
 .workspace-switcher .workspace-auto{flex:0 0 auto;margin-left:auto;padding:6px 12px;border:1px solid #e7af6255;border-radius:9px;background:linear-gradient(120deg,#e7af6222,#b28aff15);color:#ffce87;white-space:nowrap;font-size:12px;box-shadow:inset 0 1px #ffffff12}
 .workspace-switcher .workspace-auto:hover{background:linear-gradient(120deg,#e7af623a,#b28aff25);border-color:#e7af6299}
-.workspace-switcher .workspace-auto.running{border-color:#e7af62b0;box-shadow:inset 3px 0 #e7af62}
+.workspace-switcher .workspace-auto.running{border-color:#e7af62b0;background:linear-gradient(90deg,#e7af6230 var(--run-progress,0%),#19171d var(--run-progress,0%))}
 .workspace-switcher .workspace-auto.paused{color:#cfb3ee;border-color:#b28aff65}
 @media(max-width:800px){.workspace-switcher .workspace-auto{font-size:11px;padding:5px 8px}.workspace-project-name{max-width:80px}}
+.workspace-auto-group{display:flex;align-items:center;gap:4px;margin-left:auto;flex-shrink:0}.workspace-switcher .workspace-auto-group .workspace-auto{margin-left:0}.workspace-switcher .workspace-auto-control{display:grid;place-items:center;min-width:30px;min-height:30px;padding:4px;border-radius:8px;border:1px solid #d7b2ff40;color:#dec8ff;background:#d7b2ff0b}.workspace-switcher .workspace-auto-control[data-run-action=stop]{color:#ff96a6;border-color:#ff96a640}.workspace-switcher .workspace-auto-control:hover{background:#ffffff14}.workspace-auto-control:focus-visible{outline:2px solid #f5c678;outline-offset:2px}
