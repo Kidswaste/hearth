@@ -517,7 +517,7 @@ try { const AC = window.BaseAudioContext?.prototype; const f = AC?.decodeAudioDa
 let frames = 0;
 // Frame-rate cap (the Lab's Preview fps): on a 240 Hz screen, 60 does a quarter of the work. Every layer's
 // callback in an allowed frame runs; the frames in between are skipped.
-let fpsCap = Number(new URLSearchParams(location.search).get('cap')) || 0; let capT = -1; // (?cap=: a backstage page's own cap)
+let fpsCap = Number(new URLSearchParams(location.search).get('cap')) || 0; let capT = -1, capNext = -1; // (?cap=: a backstage page's own cap)
 // Round 16 "labperf": the cap the Lab asks for. Auto (the default) follows the display and the window: the screen's
 // own rate while it keeps up (60 when a fast screen's frames drop at full resolution already), 30 while the window is
 // in the background, nothing at all while the Lab isn't on screen (parked). Light mode (slower machines): 30 fps,
@@ -529,7 +529,7 @@ function applyCap() {
   if (lightMode) c = c ? Math.min(c, 30) : 30;
   if (capWant.auto && PACE.battery) c = c ? Math.min(c, 60) : 60; // (round 33 "labpace": on battery, Auto holds 60 at most)
   if (RDY.lock) c = 0; // (round 52, presentready) a show draws at the screen's own rate
-  if (c !== fpsCap) { fpsCap = c; capT = -1; }
+  if (c !== fpsCap) { fpsCap = c; capT = capNext = -1; }
 }
 // parked: the Lab isn't on screen (another tool, a hidden window): layers' frames wait in a queue, nothing draws
 let parked = false; const parkQ = [];
@@ -555,7 +555,14 @@ const WR = new Int32Array(120); let wrN = 0; let wrI = 0;
 const wr = (k) => WR[(wrI - wrN + k + 120) % 120];
 function capOk(t) {
   if (!fpsCap || t === capT) return true;
-  if (t - capT >= 1000 / fpsCap - 2) { capT = t; return true; }
+  // Carry the fractional deadline: resetting to each accepted frame turns 60 fps
+  // into 50 on a 100 Hz screen, or 48 on a 144 Hz screen.
+  const period = 1000 / fpsCap;
+  if (capNext < 0 || t >= capNext - .5) {
+    capT = t;
+    capNext = capNext < 0 || t - capNext > period * 2 ? t + period : capNext + period;
+    return true;
+  }
   return false;
 }
 // Displayed frames: one tick per real animation frame (layers each render in it, which used to multiply the fps).

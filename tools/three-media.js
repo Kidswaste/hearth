@@ -784,7 +784,8 @@ const ThreeMedia = (() => {
       emit('attach', { path: st.path });
     }
     function toggle(force) {
-      if (!st.bytes) { pick(); return; }
+      // A programmatic pause/close must never become an invitation to load media.
+      if (!st.bytes) { if (force !== false) pick(); return; }
       const play = force ?? !st.playing;
       seekFlush(); // (labscrub) a seek still waiting goes first
       wish = { play, at: performance.now() };

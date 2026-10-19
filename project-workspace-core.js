@@ -20,7 +20,11 @@
     const base=frontpage(value),num=(v,d,lo,hi)=>Number.isFinite(+v)?Math.max(lo,Math.min(hi,+v)):d;
     const color=(v,d)=>/^#[\da-f]{6}$/i.test(v||'')?v:d;
     const vector=(v,d,lo,hi)=>[0,1,2].map(i=>num(v?.[i],d[i],lo,hi));
-    return {...base,v:1,kind:'banner',title:String(value.title||name).slice(0,36),tagline:String(value.tagline||'').slice(0,65),symbol:['brushes','chunks','ship','orbit','crystal','wave'].includes(value.symbol)?value.symbol:'crystal',background:color(value.background,'#141318'),elements:(Array.isArray(value.elements)?value.elements:[]).slice(0,24).map(e=>({shape:['box','sphere','ring','crystal'].includes(e?.shape)?e.shape:'crystal',color:color(e?.color,base.accent),position:vector(e?.position,[0,0,0],-5,5),scale:vector(e?.scale,[.3,.3,.3],.05,2),rotation:vector(e?.rotation,[0,0,0],-6.3,6.3)}))};
+    const txt=value.lettering||{},symbol=['brushes','chunks','ship','orbit','crystal','wave','none'].includes(value.symbol)?value.symbol:'crystal';
+    return {...base,v:2,kind:'banner',title:String(value.title||name).slice(0,36),tagline:String(value.tagline||'').slice(0,65),symbol,background:color(value.background,'#141318'),
+      layout:['split','badge','wordmark'].includes(value.layout)?value.layout:'split',symbolScale:num(value.symbolScale,1,.25,1.8),
+      lettering:{font:['arcade','rounded','editorial','mono','heavy'].includes(txt.font)?txt.font:'heavy',style:['solid','outline','chrome','ink','neon'].includes(txt.style)?txt.style:'solid',color:color(txt.color,'#f6f1ed'),outline:color(txt.outline,base.accent),tracking:num(txt.tracking,0,-.04,.12),tilt:num(txt.tilt,0,-.18,.18),depth:num(txt.depth,0,0,20)},
+      elements:(Array.isArray(value.elements)?value.elements:[]).slice(0,24).map((e,i)=>({name:String(e?.name||`Element ${i+1}`).slice(0,32),shape:['box','sphere','ring','crystal','star','bolt'].includes(e?.shape)?e.shape:'crystal',color:color(e?.color,base.accent),position:vector(e?.position,[0,0,0],-5,5),scale:vector(e?.scale,[.3,.3,.3],.05,2),rotation:vector(e?.rotation,[0,0,0],-6.3,6.3),motion:['float','spin','pulse','still'].includes(e?.motion)?e.motion:'still'}))};
   }
   // Import links, never chat/scene contents. A repeat run is a no-op; stale links
   // and chats in the trash stay untouched. Shared scenes share a project.

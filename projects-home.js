@@ -55,6 +55,7 @@ const ProjectsHome = (() => {
   let homeN = 0;
   function paintHome() {
     S.root.classList.remove('is-project');
+    S.root.closest('.surface')?.classList.remove('pw-desk');
     const n = ++homeN;
     S.io?.disconnect();
     const list = P.live();
@@ -145,6 +146,7 @@ const ProjectsHome = (() => {
   const ORDER = ['chat', 'scene', 'seq', 'board', 'render', 'capture', 'file', 'download', 'deploy'];
   function paintProject(p) {
     S.root.classList.add('is-project');
+    S.root.closest('.surface')?.classList.add('pw-desk');
     S.io?.disconnect(); ProjectFrontpage.stop();
     const cover = P.coverOf(p);
     const name = el('h2', { class: 'pj-p-name', text: p.name, title: 'Click to rename', on: { click: () => P.renamePrompt(p) } });
@@ -161,12 +163,14 @@ const ProjectsHome = (() => {
         el('div', { class: 'pj-p-line' }, mark, name, status),
         el('div', { class: 'pj-meta', text: `${C.countText(p)} · made ${p.from === 'make' ? 'from a make' : p.from === 'suggest' ? 'from a suggestion' : 'by hand'} · ${timeAgo(p.at)}` }),
         el('div', { class: 'pj-p-actions' },
-          el('button', { type: 'button', class: 'primary small', text: '↻ Continue', title: 'Where you left off: its last chat (else scene, else render)', on: { click: () => ProjectWorkspace.go('scene') } }),
+          el('button', { type: 'button', class: 'primary small', text: '▶ Scene', title: 'Resume the scene', on: { click: () => ProjectWorkspace.go('scene') } }),
           el('button', { type: 'button', class: 'ghost small', text: '＋ Add', title: 'This chat, the scene on screen, a recent chat / scene / board / render / file…', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); P.warm?.(); showMenu(b.left, b.bottom + 4, P.addMenu(p)); } } }),
           el('button', { type: 'button', class: 'ghost small', text: '⋯', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, P.menu(p)); } } })),
         el('div', { class: 'pj-continue' }, ...continueChips(p))));
     tint(head, p.ident.color);
-    ProjectFrontpage.decorate(head.querySelector('.pj-p-cover'),p,{live:true});
+    ProjectFrontpage.decorate(head.querySelector('.pj-p-cover'),p);
+    const identity=el('button',{type:'button',class:'pw-banner-edit',text:'✦',title:'Edit the project logo',on:{click:()=>ProjectFrontpage.edit(p)}});
+    head.querySelector('.pj-p-cover').append(identity);
     const sections = [];
     for (const t of ORDER) {
       const xs = p.items.filter((x) => x.type === t).sort((a, b) => (P.timeOf(b) || b.at) - (P.timeOf(a) || a.at));
@@ -175,7 +179,18 @@ const ProjectsHome = (() => {
         el('div', { class: `pj-items pj-items-${t}` }, ...xs.map((x) => itemRow(p, x)))));
     }
     if (!sections.length) sections.push(el('p', { class: 'hint pj-none', text: 'Nothing in it yet: ＋ Add puts the chat you were in, the scene on screen or anything recent in it.' }));
-    S.body.replaceChildren(head, ProjectWorkspace.toolbar(p), el('details', {class:'pw-project-files'},el('summary',{text:'Project files & notes'}),notes,...sections));
+    const row=(label,kind,fn,hint)=>el('button',{type:'button',class:'pw-shelf-row',title:hint||label,on:{click:()=>Promise.resolve(fn()).catch(err=>toast(calmError(err),{type:'error'}))}},ProjectWorkspace.svg(kind),el('span',{text:label}),el('span',{class:'pw-shelf-arrow',text:'↗'}));
+    const block=(label,...kids)=>el('section',{class:'pw-shelf-section'},el('h3',{text:label}),...kids);
+    const source=ThreeLab.scenes?.get(p.workspace?.sceneId),layers=source?.layers||[];
+    const filter=el('input',{type:'search',class:'pw-module-search',placeholder:'Find a module…',attrs:{'aria-label':'Find scene module'}}),moduleList=el('div',{class:'pw-module-list'});
+    const paintModules=()=>{const q=filter.value.toLowerCase(),hits=layers.filter(l=>l.name.toLowerCase().includes(q));moduleList.replaceChildren(...hits.map(l=>row(l.name,'scene',async()=>{await ProjectWorkspace.go('scene');ThreeLab.search.selectLayer(l.id);},`${l.visible===false?'Off':'Active'} · Open this module’s controls`)));};
+    const modules=el('details',{class:'pw-modules'},el('summary',{text:`Modules & mods · ${layers.length}`}),filter,moduleList);modules.addEventListener('toggle',()=>{if(modules.open&&!moduleList.children.length)paintModules();});filter.oninput=paintModules;
+    const chats=p.items.filter(x=>x.type==='chat'),boards=p.items.filter(x=>x.type==='board');
+    const materials=block('On your desk',...boards.map(x=>row(P.nameOf(x),'board',()=>x.ref===p.workspace?.boardId?ProjectWorkspace.go('moodboard'):P.openItem(x))),row('Drawing & storyboard','brushes',()=>ProjectWorkspace.go('board')), ...p.items.filter(x=>['capture','render','file'].includes(x.type)).slice(-4).map(x=>itemRow(p,x)));
+    const sound=block('Instruments',...(p.workspace?.plugins||[]).map(name=>row(name,'music',()=>ProjectWorkspace.go('sound'))),row('Choose instruments','plus',()=>ProjectWorkspace.settings(p)));
+    const about=el('details',{class:'pw-about'},el('summary',{text:'Project notes & setup'}),notes,p.workspace?.description?el('p',{class:'pw-about-copy',text:p.workspace.description}):null,row('Project setup','spark',()=>ProjectWorkspace.settings(p)),row('Write description with AI','chat',()=>ProjectWorkspace.describe(p)));
+    const conversations=chats.length>1?block('Conversations',...chats.map(x=>row(P.nameOf(x),'chat',()=>ProjectWorkspace.conversation(p,x.ref)))):null;
+    S.body.replaceChildren(head,materials,modules,sound,...(conversations?[conversations]:[]),about,el('details',{class:'pw-project-files'},el('summary',{text:`All project files · ${p.items.length}`}),...sections));
   }
   function itemRow(p, x) {
     const pic = ['scene', 'seq', 'render', 'capture', 'board'].includes(x.type) ? P.thumbOf(x) : null;

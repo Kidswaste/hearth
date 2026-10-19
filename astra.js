@@ -901,15 +901,25 @@ function toggleFold(hostId, m) {
       const v = mount(agentId, root);
       const form = root.querySelector('form.composer');
       if (!form) return v;
+      // The live composer moves between project surfaces. Its listeners and observer
+      // belong to the form, not the dock that happened to host it on first mount.
+      const prior = chipEls.get(agentId);
+      if (prior?.form === form) {
+        prior.root = root;
+        syncChip(agentId);
+        return v;
+      }
+      prior?.observer?.disconnect();
       const chip = el('button', { type: 'button', class: 'ghost collab-chip', text: '⚇', dataset: { feature: 'Collab chip' } });
       chip.addEventListener('click', (e) => { e.preventDefault(); chipMenu(agentId, chip); });
       chip.addEventListener('contextmenu', (e) => { e.preventDefault(); fullMenu(agentId, chip); }); // right-click: every way to work together
       form.querySelector('.attach-btn')?.before(chip);
-      chipEls.set(agentId, { chip, root, input: v.input });
-      new MutationObserver(() => { if (MODES[getMode(agentId).mode] && !v.input.placeholder.includes(MODES[getMode(agentId).mode].label)) armPlaceholder(agentId); }).observe(v.input, { attributes: true, attributeFilter: ['placeholder'] });
+      const observer = new MutationObserver(() => { if (MODES[getMode(agentId).mode] && !v.input.placeholder.includes(MODES[getMode(agentId).mode].label)) armPlaceholder(agentId); });
+      chipEls.set(agentId, { chip, root, form, input: v.input, observer });
+      observer.observe(v.input, { attributes: true, attributeFilter: ['placeholder'] });
       v.input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !v.input.value && stopAllIn(agentId)) toast('Stopping the collaboration', { timeout: 1200 }); });
-      // capture phase on the surface: runs before the composer's own submit handler
-      root.addEventListener('submit', (e) => {
+      // capture phase on the form: runs before the composer's own submit handler
+      form.addEventListener('submit', (e) => {
         if (e.target !== form) return;
         const st = getMode(agentId);
         const text = v.input.value.trim();
