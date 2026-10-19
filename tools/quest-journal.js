@@ -843,7 +843,7 @@ const QuestJournal = (() => {
   function shelfChat(){
     dialog('Bring work out of a Hearth chat',(body,d)=>{
       const chats=E('select',{attrs:{'aria-label':'Shelf source chat'}},E('option',{value:'',text:'Choose a chat…'})),messages=E('select',{attrs:{'aria-label':'Shelf source message'}},E('option',{value:'',text:'Choose a message…'})),preview=E('div',{class:'qj-shelf-chat-preview'}),feedback=p('Loading chat titles…');let chat=null,version=0;
-      body.append(chats,messages,feedback,preview,button('Keep this on my shelf',async()=>{const m=chat?.messages?.[Number(messages.value)];if(messages.value===''||!m)throw Error('Choose a message first.');const media=QuestShelf.media(m),copy={...chat,messages:chat.messages.map((x,i)=>i===Number(messages.value)?{...x,text:x.text||x.content||('Media created in '+chat.title)}:x)};const proof=await QuestReview.chat(copy,Number(messages.value));proof.coverage='Saved message text and linked media from the selected Hearth message. No automatic critique.';await keepOnShelf(proof,media);d.close();},'qj-primary'));
+      body.append(chats,messages,feedback,preview,button('Keep this on my shelf',async()=>{const m=chat?.messages?.[Number(messages.value)];if(messages.value===''||!m)throw Error('Choose a message first.');const media=QuestShelf.media(m),copy={...chat,messages:chat.messages.map((x,i)=>i===Number(messages.value)?{...x,text:x.text||x.content||('Media created in '+chat.title)}:x)};const proof=await QuestReview.chat(copy,Number(messages.value),{includeImages:false});proof.coverage='Saved message text and linked media from the selected Hearth message. No automatic critique.';await keepOnShelf(proof,media);d.close();},'qj-primary'));
       window.hub.listChats().then(items=>{for(const c of items)chats.append(E('option',{value:c.id,text:capTitle(c.title||'Untitled chat')}));feedback.textContent='Choose a message to preview its text, images, audio and video.';}).catch(e=>feedback.textContent=e.message);
       chats.addEventListener('change',async()=>{const ticket=++version;chat=null;preview.replaceChildren();messages.replaceChildren(E('option',{value:'',text:'Choose a message…'}));try{const value=chats.value&&await window.hub.getChat(chats.value);if(ticket!==version)return;chat=value;(chat?.messages||[]).forEach((m,i)=>{if(String(m.text||m.content||'').trim()||QuestShelf.media(m).length)messages.append(E('option',{value:String(i),text:(m.role||'message')+' · '+capTitle(m.text||m.content||'Media creation')}));});}catch(e){feedback.textContent=e.message;}});
       messages.addEventListener('change',()=>{preview.replaceChildren();const m=chat?.messages?.[Number(messages.value)];if(messages.value===''||!m)return;preview.append(collectionMedia({title:chat.title,proof:{type:'chat'},media:QuestShelf.media(m)}),E('pre',{class:'qj-evidence-excerpt',text:String(m.text||m.content||'').slice(0,20000)}));});
@@ -1008,16 +1008,26 @@ const QuestJournal = (() => {
     box.append(E('header', { class: 'qj-score-head' }, scoreDial(r?.score), E('div', {}, label(r ? 'ASTRA / EVIDENCE REVIEW' : reviewJobs.has(qid) ? 'ASTRA / REVIEW IN PROGRESS' : 'PROOF SAVED / AWAITING REVIEW'), E('h3', { text: r ? r.status === 'needs-evidence' ? 'Show a little more of the work.' : r.meetsBrief ? 'The finish line is visible.' : 'One more pass on the brief.' : 'Your work is on the desk.' }), p(r?.coverage || item.proof.coverage))));
     if (r) {
       if (r.dimensions.length) box.append(E('div', { class: 'qj-rubric' }, ...['Intent / clarity', 'Execution / craft', 'Brief / delivery', 'Presentation / tests'].map((name, i) => E('div', {}, label(name), E('b', { text: `${r.dimensions[i]}/25` }), meter(r.dimensions[i], 25, name)))));
-      box.append(p(r.summary, 'qj-review-verdict'), E('section', { class: 'qj-review-notes' }, E('div', {}, label('THE HONEST BIT'), p(r.better)), E('div', {}, label('NEXT / ONE FINISHABLE MOVE'), p(r.next))), E('details', { class: 'qj-fold' }, E('summary', { text: 'What this score can and cannot say' }), p(r.limitations), p(`Subjective rubric score. ${r.model || 'Astra'} · ${new Date(item.reviewedAt).toLocaleString()}. Scores never add XP or spend sparks.`)));
+      box.append(p(r.summary, 'qj-review-verdict'), E('section', { class: 'qj-review-notes' }, E('div', {}, label(r.meetsBrief ? 'OPTIONAL POLISH' : 'WHAT WOULD HELP'), p(r.better)), E('div', {}, label(r.meetsBrief ? 'IF YOU FEEL LIKE CONTINUING' : 'THE SMALLEST NEXT STEP'), p(r.next))), E('details', { class: 'qj-fold' }, E('summary', { text: 'What this score can and cannot say' }), p(r.limitations), p(`Subjective rubric score. ${r.model || 'Astra'} · ${new Date(item.reviewedAt).toLocaleString()}. Scores never add XP or spend sparks.`)));
     }
     const evidence = E('details', { class: 'qj-fold' }, E('summary', { text: `Evidence · ${item.proof.title}` }), p(item.proof.coverage), proofSource(item.proof));
     if (item.proof.excerpt) evidence.append(E('pre', { class: 'qj-evidence-excerpt', text: item.proof.excerpt }));
     if (item.proof.analysis) evidence.append(E('pre', { class: 'qj-evidence-excerpt', text: item.proof.analysis }));
     const preview = artifactPreview(proofArtifact(item.proof)); if (preview) evidence.append(E('div', { class: 'qj-evidence-preview' }, preview));
+    if (item.proof.type !== 'file') for (const path of item.proof.images) evidence.append(E('div', { class: 'qj-evidence-preview' }, artifactPreview({ path, label: 'Still saved with this chat proof' })));
     for (const a of (item.proof.attachments || []).slice(1)) evidence.append(E('div', { class: 'qj-evidence-preview' }, label(a.title), artifactPreview({ path: a.path, label: a.title, kind: a.kind }), button('Show reference file ↗', () => window.hub.fs.reveal(a.path), 'qj-quiet')));
     box.append(evidence);
     if (actions) {
       const isLatest = C.latest(state, qid)?.id === item.id;
+      if (isLatest && r && C.submissions(state, qid).length < 12) box.append(button('Reconsider with all my proof', async () => {
+        if (reviewJobs.has(qid)) throw Error('A review is already running for this quest.');
+        const proof = await QuestReview.refreshChatProof(item.proof);
+        const fresh = await mutate(s => {
+          if (C.latest(s, qid)?.id !== item.id) throw Error('Your proof changed. Open its latest review first.');
+          return proof.fingerprint !== item.proof.fingerprint ? C.submit(s, qid, proof, item.intent) : C.reconsider(s, qid);
+        }, 'Keeping the old review. Looking at your submitted work together…');
+        await reviewSaved(qid, fresh.id);
+      }, 'qj-quiet'));
       if (!r && isLatest) box.append(reviewJobs.has(qid) ? button('Cancel review', () => reviewJobs.get(qid)?.cancel(), 'qj-quiet') : button('Review saved proof', () => reviewSaved(qid, item.id), 'qj-primary'));
       if (isLatest && r?.status === 'reviewed' && r.meetsBrief && !C.done(state, qid)) box.append(button(`Complete quest · +${C.find(state, qid).xp - C.earned(state, C.find(state, qid))} XP`, async () => {
         const before = C.clone(state), points = await mutate(s => C.complete(s, qid, { note: item.intent, artifact: proofArtifact(item.proof) }));
@@ -1036,10 +1046,11 @@ const QuestJournal = (() => {
   async function reviewSaved(qid, sid, statusNode) {
     if (reviewJobs.has(qid)) throw Error('This quest already has a review running.');
     const item = C.submissions(state, qid).find(x => x.id === sid); if (!item || item.review) throw Error('Choose saved proof that has not been reviewed.');
-    const previousItem = C.submissions(state, qid).filter(x => x.id !== sid && x.review?.status === 'reviewed').at(-1) || C.latest(state, C.find(state, qid).revisionOf);
+    const history = C.submissions(state, qid).slice(0, C.submissions(state, qid).indexOf(item));
+    const previousItem = history.filter(x => x.review?.status === 'reviewed').at(-1) || C.latest(state, C.find(state, qid).revisionOf);
     const prior = previousItem?.review ? { review: previousItem.review, proof: previousItem.proof } : null;
     const d = root.querySelector('dialog[open]');
-    const job = QuestReview.run(C.find(state, qid), item, prior, text => { if (statusNode?.isConnected) statusNode.textContent = text; }); reviewJobs.set(qid, job);
+    const job = QuestReview.run(C.find(state, qid), item, prior, text => { if (statusNode?.isConnected) statusNode.textContent = text; }, history); reviewJobs.set(qid, job);
     let cancel; if (d) { cancel = button('Cancel review', () => job.cancel(), 'qj-quiet'); d.querySelector('.qj-dialog-body').append(cancel); }
     let failure;
     try { const review = await job.promise; await mutate(s => C.saveReview(s, qid, sid, review), 'Astra review saved.'); }
@@ -1060,7 +1071,7 @@ const QuestJournal = (() => {
       upload.addEventListener('change', () => { if (upload.files[0]) { const files = Array.from(upload.files); upload.disabled = true; set(() => QuestReview.files(files)).catch(() => {}).finally(() => { upload.disabled = false; }); } });
       const picker = E('select', { attrs: { 'aria-label': 'Source Hearth chat' } }, E('option', { value: '', text: 'Choose a Hearth chat…' }));
       const messages = E('select', { attrs: { 'aria-label': 'Source chat message' } }, E('option', { value: '', text: 'Choose a message…' })); let selectedChat = null;
-      const excerpt = E('pre', { class: 'qj-evidence-excerpt', text: 'The selected text will appear here before you submit it.' });
+      const excerpt = E('pre', { class: 'qj-evidence-excerpt', text: 'The selected text will appear here. Using the message also keeps up to four linked still images.' });
       const chatBox = E('details', { class: 'qj-fold qj-proof-source' }, E('summary', { text: 'Show work from a Hearth chat' }), picker, messages, excerpt, button('Use this chat message', () => { if (!selectedChat || messages.value === '') throw Error('Choose a chat and message first.'); return set(() => QuestReview.chat(selectedChat, Number(messages.value))); }, 'qj-quiet'));
       let chatsLoaded = false;
       chatBox.addEventListener('toggle', async () => { if (!chatBox.open || chatsLoaded) return; chatsLoaded = true; try { const chats = await window.hub.listChats(); for (const c of chats) picker.append(E('option', { value: c.id, text: capTitle(c.title || 'Untitled chat') })); } catch (e) { chatsLoaded = false; feedback.textContent = e.message; } });
@@ -1069,8 +1080,8 @@ const QuestJournal = (() => {
       const url = field('External chat link', { max: 2000, placeholder: 'https://chatgpt.com/c/… or https://claude.ai/chat/…' }), pasted = field('Paste the actual result from that chat', { max: 20000, multiline: true, rows: 5 });
       const external = E('details', { class: 'qj-fold qj-proof-source' }, E('summary', { text: 'Show work from ChatGPT or Claude outside Hearth' }), url.node, pasted.node, p('The link is kept so you can open the source. Astra reviews the pasted result; it does not open or verify the remote chat.'), button('Use this pasted result', () => set(() => QuestReview.external(url.input.value.trim(), pasted.input.value)), 'qj-quiet'));
       const pending = C.latest(state, qid); if (pending && !pending.review) body.append(E('aside', { class: 'qj-starting-note' }, p(`Saved proof waiting: ${pending.proof.title}`), reviewJobs.has(qid) ? button('Cancel review', () => { reviewJobs.get(qid)?.cancel(); d.close(); reviewHistory(qid); }, 'qj-quiet') : button('Review saved proof', () => reviewSaved(qid, pending.id, feedback), 'qj-primary')));
-      body.append(E('label', { class: 'qj-proof-drop' }, art(q.path), label('UP TO FOUR FILES / 80 MB TOTAL'), upload, p('Hearth keeps a copy. Pair a bounce with an arrangement screenshot, or show before and after. Images, short audio/video, text or code. Audio is a technical review; video uses three sampled frames.')), chatBox, external, intent.node, feedback, p('Submit sends the selected proof and your notes to Astra using your configured model and reasoning depth. Nothing is sent just by choosing a file. Reviews use your normal account usage.'), button('Submit proof & ask Astra', async () => { if (preparing) throw Error('Proof is still loading.'); if (!selected) throw Error('Upload proof or select actual work from a chat first.'); if (reviewJobs.has(qid)) throw Error('A review is already running for this quest.'); const item = await mutate(s => C.submit(s, qid, selected, intent.input.value), 'Proof saved. Asking Astra to review it…'); selected = null; await reviewSaved(qid, item.id, feedback); }, 'qj-primary'));
-    }, 'NO CHECKBOX VICTORIES / SHOW THE WORK');
+      body.append(E('label', { class: 'qj-proof-drop' }, art(q.path), label('UP TO FOUR FILES / 80 MB TOTAL'), upload, p('Hearth keeps a copy. Pair a bounce with an arrangement screenshot, or show before and after. Images, short audio/video, text or code. Audio is a technical review; video uses three sampled frames.')), chatBox, external, intent.node, feedback, p('Submit sends this proof, your notes and earlier proof from this quest to Astra using your configured model and reasoning depth. Nothing is sent just by choosing a file. Reviews use your normal account usage.'), button('Submit proof & ask Astra', async () => { if (preparing) throw Error('Proof is still loading.'); if (!selected) throw Error('Upload proof or select actual work from a chat first.'); if (reviewJobs.has(qid)) throw Error('A review is already running for this quest.'); const item = await mutate(s => C.submit(s, qid, selected, intent.input.value), 'Proof saved. Asking Astra to review it…'); selected = null; await reviewSaved(qid, item.id, feedback); }, 'qj-primary'));
+    }, 'KEEP WHAT YOU MADE / SEE YOUR PROGRESS');
   }
   const capTitle = value => String(value).replace(/\s+/g, ' ').slice(0, 110);
   function reviewShelf() {
