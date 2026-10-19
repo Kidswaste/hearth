@@ -1,0 +1,21 @@
+const wait=ms=>new Promise(r=>setTimeout(r,ms)),check=(v,m)=>{if(!v)throw Error(m);},until=async(fn,m)=>{for(let i=0;i<180;i++){if(await fn())return;await wait(70);}throw Error(m);};
+const offer=()=>document.querySelector('dialog[open][data-quest-offer]'),button=t=>[...offer().querySelectorAll('button')].find(b=>b.textContent===t);
+await Lazy.load('projects');await Projects.ready();await Lazy.load('questhud');
+const p=Projects.create({name:'Clink'});await Projects.flush();await ProjectWorkspace.open(p.id,'overview',{preview:false});
+const scene=ThreeLab.scenes.get(p.workspace.sceneId);scene.layers=[{id:'fighters',name:'Fighters • Folio & Valse',code:'',visible:true},{id:'guard',name:'Combat • guard & status',code:'',visible:true},{id:'shop',name:'Shop • counter',code:'',visible:true}];ThreeLab.scenes.changed(scene.id);await until(async()=>((await hub.kvGet('three-sketches',[])).find(s=>s.id===scene.id)?.layers||[]).some(l=>l.id==='fighters'),'fixture scene saved');
+await QuestGuide.open(null,p.id);
+check(offer().textContent.includes('polish Folio'),'default offer is not project-specific');check(!offer().querySelector('select,input'),'unexpected setup choices');
+const before=JSON.stringify(QuestJournal.snapshot());button('Not now').click();await wait(100);check(JSON.stringify(QuestJournal.snapshot())===before,'decline changed log');
+await QuestGuide.open(null,p.id);await smoke({shot:window.SMOKE_SAVES+'/clink-project-quest.png'});
+const qid=offer().dataset.questOffer;button('Accept quest').click();await until(()=>QuestGuide.snapshot()?.session?.questId===qid&&H.activeId==='tool:three','accept opens quest scene');
+check(QuestGuide.snapshot().session.projectId===p.id,'wrong project');check(QuestGuide.snapshot().step.instruction.includes('Folio'),'generic guide');check(QuestHud.state().prefs.pin===qid,'tracker not pinned');
+check(QuestCore.find(QuestJournal.snapshot(),qid).projectId===p.id,'project link not saved');check(!QuestCore.record(QuestJournal.snapshot(),qid).startedAt,'acceptance XP');
+await hub.questGuide({op:'manual',stepId:'first-move',note:'Folio’s attack is hard to read just before contact.'});await until(()=>QuestGuide.snapshot().completed===1,'first step');
+await ProjectWorkspace.go('overview');await QuestGuide.open(null,p.id);check(offer().textContent.includes('NEXT STEP · 2'),'project offer lost progress');button('Not now').click();
+// Explicitly opening a saved mission from another project still names and opens its owner.
+const other=Projects.create({name:'Other project'});await Projects.flush();await ProjectWorkspace.open(other.id,'overview',{preview:false});await QuestGuide.open(qid,other.id);
+check(offer().dataset.project===p.id,'mission silently rebound to another project');button('Continue quest').click();await until(()=>ProjectWorkspace.current()?.id===p.id&&H.activeId==='tool:three','original project resumed');check(QuestGuide.snapshot().completed===1,'resuming lost progress');
+await QuestJournal.mutate(s=>QuestCore.skip(s,qid),'Set aside for this test.');await QuestGuide.open(null,p.id);check(offer().textContent.includes('test guard'),'next concrete mechanic mission missing');
+const testId=offer().dataset.questOffer;button('Accept quest').click();await until(()=>QuestGuide.snapshot()?.session?.questId===testId,'test accepted');check(QuestGuide.snapshot().session.steps.every(s=>s.check==='manual'),'playtest requires unnecessary edit');
+check(!QuestCore.done(QuestJournal.snapshot(),testId),'acceptance bypasses proof');await hub.questGuide({op:'stop'});await ProjectWorkspace.home();
+return{pass:true,grounded:true,refusal:true,sceneLaunch:true,log:true,resume:true,projectIsolation:true,testWithoutEdit:true};

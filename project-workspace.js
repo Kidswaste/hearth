@@ -134,6 +134,13 @@ window.ProjectWorkspace = (() => {
     WorkspaceNav.sync();
     loadState.lastSwitch={tab,ms:Math.round((performance.now()-started)*10)/10};
   }
+  async function openScene(id) {
+    const p=get();if(!p||!(p.workspace?.sceneId===id||p.items.some(x=>x.type==='scene'&&x.ref===id)))throw Error('This quest’s scene is no longer linked to the project. Its progress is kept.');
+    if(!ThreeLab.scenes.get(id))throw Error('This quest’s scene has not arrived on this computer yet.');
+    const linked=p.items.find(x=>x.type==='chat'&&ChatScenes.linkOf(x.ref)===id&&H.chats.some(c=>c.id===x.ref));
+    if(linked&&chatOf(p)?.id!==linked.ref)await conversation(p,linked.ref);
+    conversationScene=id;await go('scene');
+  }
   async function conversation(p,id) {
     if(!p.items.some(x=>x.type==='chat'&&x.ref===id))throw Error('This chat does not belong to the project.');
     const c=H.chats.find(c=>c.id===id);if(!c||H.agent(c.agentId)?.mode!=='native')throw Error('This chat’s AI is not available here.');
@@ -225,6 +232,6 @@ window.ProjectWorkspace = (() => {
   Tools.define({id:'projectchat',offRail:true,name:'Project chat',icon:'◇',mount:body=>body.closest('.surface')?.classList.add('pw-chat-surface')});
   document.addEventListener('hearth:activate',e=>{const sid=e.detail.surfaceId;if(!get())return;if(!surfaces.has(String(sid).replace('tool:',''))){leave().catch(err=>toast(calmError(err),{type:'error'}));return;}surface=sid.slice(5);});
   Native.hooks.options.push((_a,chat,_text,_message,options)=>{if(P.projectOfChat(chat.id)?.workspace && !options.lean)options.asDirector='three';});
-  Native.hooks.compose.push((_a,chat,text)=>{const p=P.projectOfChat(chat.id);if(!p?.workspace)return text;return `[Hearth project: ${JSON.stringify({name:p.name,scene:ChatScenes.linkOf(chat.id)||p.workspace.sceneId,moodboard:p.workspace.boardId,plugins:p.workspace.plugins})}. Work on this project's linked scene/board. Sound controls require its Sound desk open.]\n${text}`;});
-  return { current,agentFor,surfaceFor,open,go,conversation,home,leave,create,wizard,ensure,describe,frontpage,importScenes,designBanner,toolbar,settings,svg,state:()=>structuredClone(loadState) };
+  Native.hooks.compose.push((_a,chat,text)=>{const p=P.projectOfChat(chat.id);if(!p?.workspace)return text;return `[Hearth project: ${JSON.stringify({name:p.name,scene:p.id===active?sceneOf(p):ChatScenes.linkOf(chat.id)||p.workspace.sceneId,moodboard:p.workspace.boardId,plugins:p.workspace.plugins})}. Work on this project's linked scene/board. Sound controls require its Sound desk open.]\n${text}`;});
+  return { current,agentFor,surfaceFor,open,go,openScene,conversation,home,leave,create,wizard,ensure,describe,frontpage,importScenes,designBanner,toolbar,settings,svg,state:()=>structuredClone(loadState) };
 })();
