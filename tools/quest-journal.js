@@ -21,6 +21,7 @@ const QuestJournal = (() => {
   let mapFilter = {kind:'all',saved:false,query:''}, tooltipSeq=0;
   let daySeen = C.day(), lastCelebration = null;
   const reviewJobs = new Map();
+  const proofJobs = new Set();
   const pathOf = id => C.paths.find(p => p.id === id) || C.paths[0];
   const p = (text, cls = '') => E('p', { class: `qj-copy ${cls}`, text });
   const label = text => E('span', { class: 'qj-label', text });
@@ -1015,7 +1016,11 @@ const QuestJournal = (() => {
     if (item.proof.analysis) evidence.append(E('pre', { class: 'qj-evidence-excerpt', text: item.proof.analysis }));
     const preview = artifactPreview(proofArtifact(item.proof)); if (preview) evidence.append(E('div', { class: 'qj-evidence-preview' }, preview));
     if (item.proof.type !== 'file') for (const path of item.proof.images) evidence.append(E('div', { class: 'qj-evidence-preview' }, artifactPreview({ path, label: 'Still saved with this chat proof' })));
-    for (const a of (item.proof.attachments || []).slice(1)) evidence.append(E('div', { class: 'qj-evidence-preview' }, label(a.title), artifactPreview({ path: a.path, label: a.title, kind: a.kind }), button('Show reference file ↗', () => window.hub.fs.reveal(a.path), 'qj-quiet')));
+    for (const a of (item.proof.attachments || []).slice(item.proof.type === 'file' ? 1 : 0)) evidence.append(E('div', { class: 'qj-evidence-preview' }, label(a.title), artifactPreview({ path: a.path, label: a.title, kind: a.kind }), button('Show reference file ↗', () => window.hub.fs.reveal(a.path), 'qj-quiet')));
+    for (const source of item.proof.sources || []) evidence.append(button(`${source.older ? 'Earlier reference' : 'Source'} · ${source.title}`, async () => {
+      const chat = await window.hub.getChat(source.chatId); if (!chat) throw Error('This chat is unavailable here; its submitted excerpt is saved above.');
+      root.querySelector('dialog[open]')?.close(); Native.open(chat.agentId, chat.id);
+    }, 'qj-quiet'));
     box.append(evidence);
     if (actions) {
       const isLatest = C.latest(state, qid)?.id === item.id;
@@ -1060,9 +1065,49 @@ const QuestJournal = (() => {
     if (d?.open || current?.dataset.questReview === qid) { (d?.open ? d : current).close(); if (C.find(state, qid)) reviewHistory(qid); }
     if (failure) throw failure;
   }
-  function proofForm(qid) {
+  async function finishQuest(qid) {
+    const q = C.find(state, qid); if (!q) throw Error('This quest is no longer in your journal.');
+    if (C.done(state, qid) || C.canFinish(state, qid)) return reviewHistory(qid);
+    if (proofJobs.has(qid) || reviewJobs.has(qid)) return;
+    const guide = window.QuestGuide?.snapshot?.()?.session;
+    const projectId = q.projectId || (guide?.questId === qid ? guide.projectId : '');
+    if (!projectId) return proofForm(qid);
+    proofJobs.add(qid); let cancelled = false, reviewing = false;
+    const startId = C.latest(state, qid)?.id;
+    const progress = p('Finding the work in your project chat…', 'qj-proof-status'); progress.setAttribute('role', 'status');
+    const d = dialog('Gathering your quest proof', body => body.append(progress, p('Hearth gathers relevant chat results and linked exports, then asks Astra for a review. Uses your normal account usage.'), button('Choose proof myself', () => { cancelled = true; d.close(); proofForm(qid); }, 'qj-quiet')), q.title);
+    d.dataset.questAutoProof = qid;
+    d.addEventListener('close', () => { cancelled = true; if (reviewing) reviewJobs.get(qid)?.cancel(); }, { once: true });
+    try {
+      await Lazy.load('projects'); await Projects.ready(); if (cancelled) return;
+      const project = Projects.get(projectId); if (!project) throw Error('This project is unavailable on this computer. Your saved proof is safe; choose a local result below.');
+      const scoped = { ...q, projectId }, result = await QuestProof.collect(scoped, project, {
+        since: C.record(state, qid).acceptedAt || C.record(state, qid).startedAt || q.projectTask?.messageAt,
+        getChat: id => window.hub.getChat(id), busy: id => Native.isBusy(id), cancelled: () => cancelled,
+        progress: text => { if (!cancelled) progress.textContent = text; }
+      });
+      if (cancelled) return;
+      if (!result.proof) { d.close(); return proofForm(qid, result.reason); }
+      const ids = QuestProof.chatIds(scoped, Projects.get(projectId));
+      if (result.sources.some(s => !ids.includes(s.chatId)) || ids.some(id => Native.isBusy(id))) throw Error('The project chat changed while gathering. Try finishing again when it settles.');
+      if (C.latest(state, qid)?.id !== startId) throw Error('New proof arrived while gathering. Open its latest review first.');
+      const intent = 'Automatically gathered from this project’s linked chats for the accepted quest.';
+      let item = C.submissions(state, qid).find(x => x.proof.fingerprint === result.proof.fingerprint && x.intent === intent);
+      if (item?.review) { d.close(); return reviewHistory(qid); }
+      if (!item) item = await mutate(s => {
+        if (cancelled) throw Error('Collection cancelled.');
+        if (C.latest(s, qid)?.id !== startId) throw Error('New proof arrived while gathering.');
+        return C.submit(s, qid, result.proof, intent);
+      }, 'Proof gathered and saved. Asking Astra…');
+      if (cancelled) return;
+      reviewing = true; await reviewSaved(qid, item.id, progress);
+    } catch (err) { if (!cancelled && d.open) { progress.textContent = err.message; d.querySelector('.qj-dialog-body').append(button('Try gathering again', () => { d.close(); return finishQuest(qid); }, 'qj-quiet')); } }
+    finally { proofJobs.delete(qid); }
+  }
+  function proofForm(qid, hint = '') {
     const q = C.find(state, qid); let selected = null, preparing = false;
     dialog(C.done(state, qid) ? 'Make the next version count.' : 'Put the finished thing on the desk.', (body, d) => {
+      if (hint) body.append(p(hint, 'qj-proof-status'));
       body.append(label('YOUR FINISH LINE'), p(q.done, 'qj-objective'), p(q.proofHint || 'An actual export, code/diff or test result. A link or “I did it” alone does not show the work.'));
       const intent = field('What were you aiming for, and what changed?', { multiline: true, max: 2000, placeholder: 'Mood, BPM, the change you made, what you tested. For audio, include structure notes: Astra can measure the file but cannot hear it.' });
       const feedback = p('Choose an export or show the work from a chat.', 'qj-proof-status'); feedback.setAttribute('role', 'status');
@@ -1095,7 +1140,7 @@ const QuestJournal = (() => {
     content.append(grid);
   }
   function completionForm(qid, edit = false) {
-    if (!edit) return proofForm(qid);
+    if (!edit) return finishQuest(qid);
     const q = C.find(state, qid), previous = C.record(state, qid); let artifact = previous.artifact || null;
     dialog(edit ? 'Keep the story of this quest' : 'A finished thing, however small.', (body, d) => {
       const note = field('What did you make or discover? (optional)', { multiline: true, value: previous.note, max: 2000, placeholder: 'Keep one sentence for future you.' });
@@ -1153,5 +1198,5 @@ const QuestJournal = (() => {
   // parisquests61 (tools/quest-paris-ui.js): the same transactional mutate, a loaded flag, the map filter and the
   // journal's own UI helpers, so the Paris guide and `/quest` drive the journal instead of writing it behind its back.
   const parisHooks = { mutate, ready: () => writable && !!state, mapFilter(f = {}) { mapFilter = { kind: 'all', saved: false, query: '', ...f }; if (!f.guide) delete mapFilter.guide; navigate('world'); centerMapSelection(); }, ui: () => ({ E, button, label, p, row, dialog, mapIcon, notice, navigate, questDetail, mapPick, state: () => state }) };
-  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, paris: parisHooks, openOutings:outingDesk, keepOuting:async event=>{const eventId=await OutingDesk.keepEvent(event);return outingDesk({tab:'saved',eventId});}, get celebration() { return lastCelebration; }, mutate, ready: () => writable && Boolean(state), addMapLayer, addDetailHook, get page() { return page; } }; // (round 61, questhud61: mutate + ready for the rail's quest tracker; showsync61: addMapLayer + page for map layers)
+  return { snapshot: () => C.clone(state), flush: () => saving, navigate, questDetail, finishQuest, paris: parisHooks, openOutings:outingDesk, keepOuting:async event=>{const eventId=await OutingDesk.keepEvent(event);return outingDesk({tab:'saved',eventId});}, get celebration() { return lastCelebration; }, mutate, ready: () => writable && Boolean(state), addMapLayer, addDetailHook, get page() { return page; } }; // (round 61, questhud61: mutate + ready for the rail's quest tracker; showsync61: addMapLayer + page for map layers)
 })();

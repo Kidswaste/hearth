@@ -71,9 +71,9 @@ Only the JSON scorecard. attachedImages lists one-based image numbers in the act
       node.addEventListener(name, good, { once: true }); node.addEventListener('error', bad, { once: true }); try { start(); } catch (e) { finish(e); }
     });
   }
-  async function file(file) {
+  async function file(file, savedPath) {
     if (!file || file.size < 1 || file.size > 80 * 1024 * 1024) throw Error('Choose a nonempty export up to 80 MB.');
-    const path = window.hub.pathForFile(file);
+    const path = savedPath || window.hub.pathForFile(file);
     if (!/^(?:[a-z]:[\\/]|\/)/i.test(path || '') || /^[\\/]{2}|[\x00-\x1f]/.test(path)) throw Error('Choose a saved local file.');
     const ext = file.name.split('.').pop().toLowerCase(), bytes = await file.arrayBuffer(), fingerprint = await hash(bytes);
     const proof = { type: 'file', title: cap(file.name, 200), path: '', kind: cap(file.type || ext, 80), bytes: file.size, fingerprint, images: [], excerpt: '', analysis: '', coverage: '' };
@@ -103,23 +103,38 @@ Only the JSON scorecard. attachedImages lists one-based image numbers in the act
       proof.path = await window.hub.importRef(path); C.checkProof(proof); return proof;
     } finally { URL.revokeObjectURL(url); }
   }
-  function chatImages(message) {
+  function chatFiles(message) {
     const paths = [];
+    const values = ['opens', 'images', 'attachments', 'things'].flatMap(k => Array.isArray(message?.[k]) ? message[k] : []);
+    // Native chat uploads keep paths in this terminal attachment block, while the
+    // visible attachment records retain only names. Do not scan arbitrary prose.
+    const uploads = (Array.isArray(message?.attachments) ? message.attachments : []).filter(x => x?.kind === 'file');
+    if (uploads.length && uploads.length <= 12 && typeof message?.sent === 'string') {
+      const block = message.sent.slice(-32768).match(/(?:^|\r?\n\r?\n)\[Attached files, open them with your (?:read-only commands|Read tool)\]\r?\n([\s\S]*)$/);
+      const entries = block?.[1].trim().split(/\r?\n/);
+      if (entries?.length === uploads.length) values.push(...entries);
+    }
     // Structured media explicitly attached/opened by this message, never paths inferred
     // from prose or a wider project scan. Prioritize the named opened result over captures.
-    for (const value of ['opens', 'images', 'attachments', 'things'].flatMap(k => Array.isArray(message?.[k]) ? message[k] : [])) {
+    for (const value of values) {
       const path = typeof value === 'string' ? value : value?.path || value?.filePath;
-      if (typeof path === 'string' && path.length <= 2000 && /^(?:[a-z]:[\\/]|\/)/i.test(path) && !/^[\\/]{2}|[\x00-\x1f]/.test(path) && /\.(png|jpe?g|webp|gif)$/i.test(path) && !paths.includes(path)) paths.push(path);
-      if (paths.length === 4) break;
+      if (typeof path === 'string' && path.length <= 2000 && /^(?:[a-z]:[\\/]|\/)/i.test(path) && !/^[\\/]{2}|[\x00-\x1f]/.test(path) && /\.(png|jpe?g|webp|gif|wav|mp3|ogg|flac|m4a|mp4|webm|mov|txt|md|json|js|ts|html|css|csv|diff|patch)$/i.test(path) && !paths.includes(path)) paths.push(path);
+      if (paths.length === 12) break;
     }
     return paths;
   }
-  async function chat(chat, index, { includeImages = true } = {}) {
-    const m = chat?.messages?.[index], excerpt = cap(m?.text || m?.content, 20000);
+  const chatImages = message => chatFiles(message).filter(path => /\.(png|jpe?g|webp|gif)$/i.test(path)).slice(0, 4);
+  async function localFile(path, maxBytes = 20 * 1024 * 1024) {
+    if (!chatFiles({ opens: [{ path }] }).length) throw Error('This linked file is not a supported local export.');
+    const bytes = new Uint8Array(await window.hub.fs.read(path, { encoding: 'buffer', maxBytes }));
+    return file(new File([bytes], path.split(/[\\/]/).pop()), path);
+  }
+  async function chat(chat, index, { includeImages = true, maxImages = 4 } = {}) {
+    const m = chat?.messages?.[index], linked = chatFiles(m), excerpt = cap(m?.text || m?.content || (linked.length ? 'Attached result: ' + linked.map(p => p.split(/[\\/]/).pop()).join(', ') : ''), 20000);
     if (!excerpt.trim()) throw Error('Choose a message containing actual work or test output. For media, attach the export separately.');
     const proof = { type: 'chat', title: cap(chat.title || 'Hearth chat', 200), chatId: chat.id, agentId: chat.agentId, messageId: cap(String(m.id || index), 200), excerpt, analysis: '', coverage: 'The selected Hearth message text, first 20,000 characters. Attachments and other messages are not inspected. Claims of completion alone are insufficient.', images: [], fingerprint: await hash(excerpt) };
     if (includeImages) {
-      const paths = chatImages(m), fingerprints = [], inspected = [], missing = [];
+      const allPaths = chatImages(m), paths = allPaths.slice(0, Math.max(0, Math.min(4, maxImages))), fingerprints = [], inspected = [], missing = [];
       for (const path of paths) {
         try {
           const img = new Image(); await event(img, 'load', () => { img.src = WinMac.fileUrl(path); });
@@ -127,7 +142,7 @@ Only the JSON scorecard. attachedImages lists one-based image numbers in the act
         } catch { missing.push(path.split(/[\\/]/).pop()); }
       }
       if (fingerprints.length) proof.fingerprint = await hash(excerpt + '|' + fingerprints.join('|'));
-      proof.analysis = cap(JSON.stringify({ attachedStillsInOrder: inspected, unavailableStills: missing }), 6000);
+      proof.analysis = cap(JSON.stringify({ attachedStillsInOrder: inspected, unavailableStills: missing, omittedStills: allPaths.length - paths.length }), 6000);
       proof.coverage = cap(`Selected message text (first 20,000 characters) and ${proof.images.length} linked still image(s), copied at up to 1600 pixels. ${missing.length ? `${missing.length} linked image(s) unavailable. ` : ''}Other messages, audio/video and files not inspected. Tests are reported, not independently verified.`, 600);
     }
     C.checkProof(proof); return proof;
@@ -179,5 +194,5 @@ Only the JSON scorecard. attachedImages lists one-based image numbers in the act
     });
     return { promise, cancel: () => { window.hub.stop(id).catch(() => {}); finish(Error('Review cancelled. Your proof is saved.')); } };
   }
-  return { file, files, chat, external, run, parse, prompt, persona, evidencePacket, chatImages, refreshChatProof };
+  return { file, files, chat, external, run, parse, prompt, persona, evidencePacket, chatImages, chatFiles, localFile, refreshChatProof };
 });
