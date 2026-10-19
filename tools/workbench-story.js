@@ -93,7 +93,8 @@ const WorkbenchStory = (() => {
     }
     layout.append(pad,create); out.append(layout); redraw();
     if (d.jobs.length) Lazy.load('apps').then(refreshJobs).catch(err => say(err.message));
-    return () => { end(); active = false; rev++; cancelAnimationFrame(frame); clearTimeout(timer); };
+    const suspend=()=>{end();active=false;rev++;cancelAnimationFrame(frame);frame=0;clearTimeout(timer);};
+    return Object.assign(suspend,{suspend,resume:()=>{active=true;redraw();if(d.jobs.length)refreshJobs().catch(err=>say(err.message));}});
   }
   function storyboard(out, h) {
     const { state, e, row, btn, field, range, note, canvas, image, file, persist, png, save } = h, board = state.storyboard;
@@ -116,7 +117,7 @@ const WorkbenchStory = (() => {
     out.append(row(field('Storyboard title',board.title,v=>{board.title=v;}),btn('Add shot',()=>{if(board.panels.length>=24)throw Error('24 shots maximum.');board.panels.push({title:`Shot ${board.panels.length+1}`,notes:'',duration:3,image:null});persist();choose(board.panels.length-1);})),workspace);
     const shelf=e('div',null,'wb-storyassets');state.shelf.forEach(a=>{const b=btn(a.name,()=>{shot(h,a.image,a.name);choose(board.panels.length-1);});const im=e('img');im.src=a.image;im.alt='';b.prepend(im);shelf.append(b);});if(state.shelf.length)out.append(e('h3','Frames on your worktable'),shelf);
     out.append(row(btn('Export contact sheet',async()=>{const cc=canvas(1000,Math.ceil(board.panels.length/2)*360),x=cc.getContext('2d');x.fillStyle='#19171c';x.fillRect(0,0,cc.width,cc.height);for(let i=0;i<board.panels.length;i++){const p=board.panels[i],xx=i%2*500,yy=Math.floor(i/2)*360;if(p.image){const im=await image(p.image),s=Math.min(476/im.width,268/im.height);x.drawImage(im,xx+12+(476-im.width*s)/2,yy+12+(268-im.height*s)/2,im.width*s,im.height*s);}x.fillStyle='#eee';x.font='18px system-ui';x.fillText(`${i+1}. ${p.title.slice(0,35)} · ${p.duration}s`,xx+12,yy+310);x.font='12px system-ui';x.fillText(p.notes.slice(0,65),xx+12,yy+335);}await png(cc,'storyboard');}),btn('Export animatic HTML',()=>save('animatic',WorkbenchUI.animaticHTML(board),'html'))),note('Silent timing preview. Sound directions remain in your shot notes. Frames and durations are saved with this project.'));
-    choose(0);return()=>{disposed=true;revision++;stop();sizes.disconnect();};
+    choose(0);return Object.assign(()=>{disposed=true;revision++;stop();sizes.disconnect();},{suspend:stop});
   }
   return { draw, storyboard, dock, shot };
 })();

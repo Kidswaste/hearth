@@ -1042,6 +1042,7 @@ const ThreeLab = (() => {
       const on = !workspacePreparing && ((!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing'));
       if (on === parkedNow && !force) return;
       parkedNow = on;
+      api.parkTweaks?.(on);
       stallArm?.(on);
       if (box.ready || !on) box.send({ type: 'park', on });
       if (paceOn) paintPace(); // (round 33 "labpace")
@@ -2162,6 +2163,7 @@ const ThreeLab = (() => {
     };
     // Sliders: one controller per layer (tools/three-tweaks.js); the panel shows the selected layer's.
     const controllers = new Map();
+    api.parkTweaks=on=>{for(const c of controllers.values())c.setParked(on);};
     const layerMods = {};
     const mergedMods = () => Object.assign({}, ...Object.values(layerMods));
     function ctlFor(L) {
@@ -2204,6 +2206,7 @@ const ThreeLab = (() => {
         askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
       });
       c.setVisible(!column.hidden);
+      c.setParked(parkedNow);
       c.load(extrasOf(L));
       controllers.set(id, c);
       return c;
@@ -2315,7 +2318,7 @@ const ThreeLab = (() => {
         for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: { selected: x.id === id } });
         if (editOn) { editSel = null; box.send({ type: 'edit', cmd: 'on', layer: id }); paintEditSel(); }
       }
-      tweaksSlot.replaceChildren(ctlFor(L).el);
+      tweaksSlot.replaceChildren(ctlFor(L).el); ctlFor(L).showUI();
       renderLayers();
     }
     const saveSoon = debounce(() => save(), 300);
@@ -2387,7 +2390,7 @@ const ThreeLab = (() => {
       extras[current.id] = { ...(extras[current.id] || {}), selectedLayer: L.id };
       saveExtras();
       editor.setValue(L.code);
-      tweaksSlot.replaceChildren(ctlFor(L).el);
+      tweaksSlot.replaceChildren(ctlFor(L).el); ctlFor(L).showUI();
       for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: layerProps(x) });
       run({ hot: true, layer: L.id });
       renderLayers();
@@ -3804,7 +3807,7 @@ const ThreeLab = (() => {
       store.set('three.current', current.id);
       selId = layerById(ex.selectedLayer)?.id || layersOf()[layersOf().length - 1].id;
       editor.setValue(sel().code);
-      tweaksSlot.replaceChildren(ctlFor(sel()).el);
+      tweaksSlot.replaceChildren(ctlFor(sel()).el); ctlFor(sel()).showUI();
       renderPicker();
       renderLayers();
       renderNotes();
@@ -3838,7 +3841,7 @@ const ThreeLab = (() => {
       for (const [lid, c] of controllers) if (!layerById(lid)) { c.destroy?.(); controllers.delete(lid); delete layerMods[lid]; }
       selId = layerById(want)?.id || layerById(selId)?.id || layerById(extras[current.id]?.selectedLayer)?.id || layersOf()[layersOf().length - 1].id;
       editor.setValue(sel().code);
-      tweaksSlot.replaceChildren(ctlFor(sel()).el);
+      tweaksSlot.replaceChildren(ctlFor(sel()).el); ctlFor(sel()).showUI();
       renderLayers();
       run({ sync: true });
     }
@@ -4206,7 +4209,7 @@ ${code}
     // A project owns a live preview only while open. The same preparation protocol as Present warms its assets
     // and shaders; releasing the sandbox document also releases WebGL, audio, game timers and decoded textures.
     api.workspace = {
-      state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready }),
+      state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready, parked: parkedNow }),
       resume() { if(workspaceReleased && current)openSketch(current.id,{by:'workspace-resume'}); },
       async prepare(id, { signal, progress = () => {} } = {}) {
         if (player.recording) throw Error('Finish the recording before switching projects.');

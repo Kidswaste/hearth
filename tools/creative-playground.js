@@ -7,8 +7,10 @@ const CreativePlayground = (() => {
   function button(text, fn, attrs = {}) { return el('button', {type:'button',text,...attrs,on:{click:async e => {const b=e.currentTarget;b.disabled=true;try{await fn();}catch(err){notice(err.message);}finally{b.disabled=false;}}}}); }
   function persist() { if(!writable)return Promise.resolve(); const snapshot=JSON.parse(JSON.stringify(state)); saving=saving.catch(()=>{}).then(async()=>{const r=await hub.kvSet(KEY,snapshot);if(r?.error)throw Error(r.error);}).catch(err=>notice(`Settings could not save: ${err.message}`));return saving; }
   function stopAudio(){try{source?.stop();}catch{}source=null;context?.suspend();}
-  let suspended = false;
-  function pause(){suspended=true;stopAudio();WorkbenchUI.pause();}
+  let suspended = false, mountedScope=null, mounting=null, boardFeature='studio';
+  function pause(){suspended=true;mountedScope=null;stopAudio();WorkbenchUI.pause();}
+  function suspend(){if(suspended)return;suspended=true;stopAudio();WorkbenchUI.suspend();}
+  function resume(){if(!suspended)return;return openFeature(feature,{reuse:true});}
   async function play(samples,sr=44100){stopAudio();context ||= new AudioContext();await context.resume();const b=context.createBuffer(1,samples.length,sr);b.copyToChannel(samples,0);source=context.createBufferSource();source.buffer=b;const volume=context.createGain();volume.gain.value=.3;source.connect(volume).connect(context.destination);source.start();}
   async function saveFile(name,data,extension){const r=await hub.saveFile({defaultPath:name,content:data,filters:[{name:extension.toUpperCase(),extensions:[extension]}]});if(r?.error)throw Error(r.error);notice(r?`Exported ${name}`:'Export cancelled.');return r;}
   async function tileCanvas(svg){const im=new Image();im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);await im.decode();const c=document.createElement('canvas');c.width=c.height=512;c.getContext('2d').drawImage(im,0,0);return c;}
@@ -24,15 +26,20 @@ const CreativePlayground = (() => {
       button('Open storyboard ↗',()=>openFeature('story')));
     out.append(el('div',{class:'cp-tile-workbench'},preview,settings));
   }
-  function openFeature(id){
+  function openFeature(id,{reuse=false}={}){
     if(!ready)return;const f=C.FEATURES.find(f=>f.id===id)||C.FEATURES[0];
+    if(reuse && feature===f.id && mountedScope===WorkbenchUI.scope()){
+      if(mounting)return mounting;
+      if(!suspended || WorkbenchUI.resume()){suspended=false;return Promise.resolve();}
+    }
     pause();suspended=false;feature=f.id;stage.replaceChildren();
+    mountedScope=WorkbenchUI.scope();if(feature!=='vst')boardFeature=feature;
     if(feature!=='vst')stage.append(el('nav',{class:'workspace-creative-tabs',attrs:{'aria-label':'Creative board'}},...[["studio","Shelf"],["texture","Materials"],["pattern","Seamless tiles"],["draw","Drawing"],["story","Storyboard"]].map(([id,label])=>button(label,()=>openFeature(id),{attrs:{'aria-pressed':String(feature===id)}}))));
     stage.append(el('h2',{text:feature==='studio'?'Creative board':f.name}),para(f.description));
     nav.querySelectorAll('[data-feature-id]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.featureId===feature)));
 
     document.dispatchEvent(new Event('hearth:creative-feature'));
-    const target=el('div');stage.append(target);const selected=feature; return WorkbenchUI.mount(target,selected,{notice,saveFile,openFeature,play,stopAudio}).then(()=>{if(target.isConnected && selected==='pattern')tiles(target.querySelector('.wb-content'));}).catch(err=>notice(err.message));
+    const target=el('div');stage.append(target);const selected=feature; const task=WorkbenchUI.mount(target,selected,{notice,saveFile,openFeature,play,stopAudio}).then(()=>{if(target.isConnected && selected==='pattern')tiles(target.querySelector('.wb-content'));if(suspended)WorkbenchUI.suspend();}).catch(err=>{mountedScope=null;notice(err.message);}).finally(()=>{if(mounting===task)mounting=null;});mounting=task;return task;
   }
   async function mount(body){
     host=el('div',{class:'cp-workspace cp-modern'});body.append(host);feedback=el('p',{class:'cp-feedback',attrs:{role:'status','aria-live':'polite'}});
@@ -42,10 +49,10 @@ const CreativePlayground = (() => {
     stage=el('main',{class:'cp-stage'});
     host.append(el('header',{class:'cp-heading'},el('h1',{text:'Creative Playground'}),button('✦ Quest journal',async()=>{await Lazy.load('questjournal');activate('tool:quests');})),feedback,el('div',{class:'cp-layout'},nav,stage));
     ready=true;openFeature(feature);
-    document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();else if(suspended && H.activeId==='tool:creative')openFeature(feature);});
-    const surface=body.closest('.surface');if(surface)new MutationObserver(()=>{if(H.activeId!=='tool:creative')pause();}).observe(surface,{attributes:true,attributeFilter:['class','hidden','style']});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)suspend();else if(suspended && H.surfaceIdFor(H.activeId)==='tool:creative')resume();});
+    document.addEventListener('hearth:activate',()=>{if(H.surfaceIdFor(H.activeId)!=='tool:creative')suspend();});
   }
-  Tools.define({id:'creative',offRail:true,name:'Creative board',icon:'✺',color:'#ed77a8',description:'Sounds, sketches, materials and storyboards',mount:body=>{mount(body).catch(e=>{body.textContent=`Creative desk could not open: ${calmError(e)}`;});},onShow:()=>{if(ready && suspended)openFeature(feature);}});
+  Tools.define({id:'creative',offRail:true,name:'Creative board',icon:'✺',color:'#ed77a8',description:'Sounds, sketches, materials and storyboards',mount:body=>{mount(body).catch(e=>{body.textContent=`Creative desk could not open: ${calmError(e)}`;});},onShow:()=>{if(ready && suspended)resume();}});
   Commands.register({name:'playground',area:'Create',desc:'Open your sounds, sketches, materials and storyboard',run:()=>activate('tool:creative')});
-  return {openFeature,pause,ready:()=>ready,flush:()=>saving,snapshot:()=>({feature,state:JSON.parse(JSON.stringify(state)),playing:Boolean(source)})};
+  return {openFeature,pause,lastBoard:()=>boardFeature,ready:()=>ready,flush:()=>saving,snapshot:()=>({feature,state:JSON.parse(JSON.stringify(state)),playing:Boolean(source)})};
 })();

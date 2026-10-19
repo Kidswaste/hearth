@@ -1,13 +1,14 @@
 // One project across existing tools, using real chats/scenes/boards and additive metadata.
 window.ProjectWorkspace = (() => {
-  const C = ProjectWorkspaceCore, P = Projects, surfaces = new Set(['home','three','creative','board']);
-  let active = null, surface = 'home', route = 0, preparing = new Map();
+  const C = ProjectWorkspaceCore, P = Projects, surfaces = new Set(['home','three','creative','board','projectchat']);
+  let active = null, surface = 'home', route = 0, preparing = new Map(), conversationId=null, conversationScene=null;
   let lifecycle = Promise.resolve(), opening = null, loadState = { phase:'idle' };
   const serial = fn => lifecycle = lifecycle.catch(()=>{}).then(fn);
   const cancelled = signal => { if(signal?.aborted)throw new DOMException('Opening cancelled','AbortError'); };
   const describing = new Set();
   const get = () => active && P.get(active);
-  const chatOf = p => (H.chats || []).find(c => c.id === p?.workspace?.chatId);
+  const chatOf = p => (H.chats || []).find(c => c.id === (p?.id===active && conversationId || p?.workspace?.chatId));
+  const sceneOf = p => p?.id===active && conversationScene || p?.workspace?.sceneId;
   const current = () => get() || null;
   const base = path => String(path).split(/[\\/]/).pop();
   const agentFor = tool => surfaces.has(tool) && get() ? H.agent(chatOf(get())?.agentId) : null;
@@ -79,7 +80,7 @@ window.ProjectWorkspace = (() => {
     ui?.update(2,'Saving creative board and instrument…');
     if(Lazy.loaded('board')){await Board._.flush();Board._.stopAllPreviews();Board._.cancelAnim();}
     if(Lazy.loaded('creative')){await WorkbenchUI.setProject(null);CreativePlayground.pause();}
-    await P.flush();active=null;surface='home';loadState={phase:'idle',closed:p.id};WorkspaceNav.sync();
+    await P.flush();active=null;conversationId=null;conversationScene=null;surface='home';loadState={phase:'idle',closed:p.id};WorkspaceNav.sync();
   }
   function open(id, tab='overview', options={}) {
     opening?.abort();const controller=new AbortController();opening=controller;const ticket=++route;
@@ -98,6 +99,7 @@ window.ProjectWorkspace = (() => {
         await WorkbenchUI.setProject(p.id,{title:p.name,plugins:C.workspace(p.workspace).plugins});
         timings.filesMs=Math.round(performance.now()-started);cancelled(controller.signal);
         stage(1,'Building your scene…');surface='three';activate('tool:three');Tools.openDock('three');
+        await Native.refresh(c.agentId,{keepScroll:true});
         if(options.preview!==false)await ThreeLab.workspace.prepare(p.workspace.sceneId,{signal:controller.signal,progress:text=>stage(1,text)});
         else if(!ThreeLab.scenes.open(p.workspace.sceneId))throw Error('This scene is not available yet.');
         timings.sceneMs=Math.round(performance.now()-started)-timings.filesMs;cancelled(controller.signal);
@@ -116,19 +118,29 @@ window.ProjectWorkspace = (() => {
     });
   }
   async function go(tab, ticket=++route) {
-    const p=get(); if(!p)return;
-    const target={overview:'home',scene:'three',sound:'creative',board:'creative',moodboard:'board'}[tab] || 'home';
+    const p=get(); if(!p)return;const started=performance.now();
+    const target={overview:'home',chat:'projectchat',scene:'three',sound:'creative',board:'creative',moodboard:'board'}[tab] || 'home';
     if(target==='three'){await Lazy.load('lab');await ThreeLab.cmd({show:false});}
     if(target==='board')await Lazy.load('board');
     if(target==='creative'){await Lazy.load('creative');await WorkbenchUI.setProject(p.id,{title:p.name,plugins:C.workspace(p.workspace).plugins});}
     if(ticket!==route || get()!==p)return;
     surface=target; const c=chatOf(p); if(c)Native.selectChat(c.agentId,c.id);
     if(target==='home')ProjectsHome.show(p.id);
-    if(target==='three' && !ThreeLab.scenes.open(p.workspace.sceneId))throw Error('This scene has not arrived on this computer yet.');
+    if(target==='three' && !ThreeLab.scenes.open(sceneOf(p)))throw Error('This scene has not arrived on this computer yet.');
     if(target==='board' && !await Board.open(p.workspace.boardId))throw Error('This moodboard has not arrived on this computer yet.');
-    activate('tool:'+target); Tools.openDock(target); if(c)await Native.refresh(c.agentId);
-    if(target==='creative')await WorkspaceNav.creative(tab==='sound'?'vst':'studio');
+    if(target==='creative')await WorkspaceNav.creative(tab==='sound'?'vst':CreativePlayground.lastBoard());
+    else activate('tool:'+target);
+    Tools.openDock(target);
     WorkspaceNav.sync();
+    loadState.lastSwitch={tab,ms:Math.round((performance.now()-started)*10)/10};
+  }
+  async function conversation(p,id) {
+    if(!p.items.some(x=>x.type==='chat'&&x.ref===id))throw Error('This chat does not belong to the project.');
+    const c=H.chats.find(c=>c.id===id);if(!c||H.agent(c.agentId)?.mode!=='native')throw Error('This chat’s AI is not available here.');
+    if(get()!==p)await open(p.id,'chat');
+    Native.view(chatOf(p)?.agentId)?.saveDraft?.flush();await Native.load(id);
+    conversationId=id;const linked=ChatScenes.linkOf(id);conversationScene=p.items.some(x=>x.type==='scene'&&x.ref===linked)?linked:null;
+    await go('chat');await Native.refresh(c.agentId,{keepScroll:true});
   }
   function leave() {
     opening?.abort();route++;
@@ -185,18 +197,34 @@ window.ProjectWorkspace = (() => {
     const spec=C.frontpage(JSON.parse(text.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')));
     const r=await hub.kvSet('projects-frontpage',spec);if(r?.error)throw Error(r.error);store.set('projectFrontpage.enabled',true);ProjectsHome.paint();
   }
+  async function importScenes({quiet=false}={}) {
+    await P.ready();const [scenes,links]=await Promise.all([P.Src.sketches(),hub.kvGet('chat-scenes',{})]);
+    const plan=C.sceneProjects(H.chats,scenes,links,P.all()),created=[];
+    for(const group of plan){const p=group.projectId?P.get(group.projectId):P.create({name:group.name});
+      P.add(p,'scene',group.sceneId,group.name,{links:false});
+      for(const chat of group.chats)P.add(p,'chat',chat.id,chat.title,{links:false});
+      if(!p.workspace?.sceneId)P.setWorkspace(p,C.workspace({sceneId:group.sceneId,chatId:group.chats[0].id,plugins:[],importedAt:Date.now()}));
+      created.push({id:p.id,name:p.name,chats:group.chats.map(c=>c.id),scene:group.sceneId});
+    }
+    await P.flush();if(!quiet)toast(created.length?`${created.length} scene projects ready. Your original chats and scenes are kept.`:'Your linked Three.js chats already have projects.');return created;
+  }
+  async function designBanner(p,brief) {
+    const text=await ask(`Design a distinctive animated Three.js project logo/banner. Project facts: ${JSON.stringify({name:p.name,description:p.workspace?.description,brief:p.notes})}. Art direction: ${brief.slice(0,1400)}. Return JSON only: {"symbol":"brushes|chunks|ship|orbit|crystal|wave","title":"project name","tagline":"optional short line","color":"#rrggbb","accent":"#rrggbb","background":"#rrggbb","speed":0.03..0.6,"count":6..32,"elements":[{"shape":"box|sphere|ring|crystal","position":[x,y,z],"scale":[x,y,z],"rotation":[x,y,z],"color":"#rrggbb"}]}. Up to 24 optional decorative elements, position -5..5, scale .05..2, rotation in radians. Main symbol is at x=2.4, title at x=-1.8. Keep the left wordmark readable. Dark Forgeheart computer, vivid accents; give this project its own identity.`,'You are a motion identity designer. Return a bounded Three.js composition as JSON, never executable code.');
+    return C.banner(JSON.parse(text.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'')),p.name);
+  }
   function toolbar(p) {
     const w=C.workspace(p.workspace), node=el('div',{class:'pw-project-tools'});
-    for(const [tab,title,kind] of [['scene','Scene','scene'],['sound','Sound','music'],['board','Creative board','brushes'],['moodboard','Moodboard','board']]){const b=action(title,()=>go(tab),'pw-tool');b.prepend(svg(kind));node.append(b);}
-    return el('section',{class:'pw-project-intro'},el('div',{class:'pw-eyebrow',text:`PROJECT / ${C.PERSONAS[w.persona][0]}`}),el('p',{class:'pw-description',text:w.description || p.notes || 'A space for your next finished piece.'}),node,action(w.description?'✦ Refresh description':'✦ Write description with AI',()=>describe(p)),action('Project setup',()=>settings(p)));
+    for(const [tab,title,kind] of [['chat','Chat','chat'],['scene','Scene','scene'],['sound','Sound','music'],['board','Creative board','brushes'],['moodboard','Moodboard','board']]){const b=action(title,()=>go(tab),'pw-tool');b.prepend(svg(kind));node.append(b);}
+    return el('section',{class:'pw-project-intro'},el('div',{class:'pw-eyebrow',text:`PROJECT / ${C.PERSONAS[w.persona][0]}`}),el('p',{class:'pw-description',text:w.description || p.notes || 'A space for your next finished piece.'}),node,action('✦ Three.js banner / logo',()=>ProjectFrontpage.edit(p)),action(w.description?'✦ Refresh description':'✦ Write description with AI',()=>describe(p)),action('Project setup',()=>settings(p)));
   }
   async function settings(p) {
     const w=C.workspace(p.workspace),v=await Modal.form('Project setup',[{name:'persona',label:'AI personality',type:'select',value:w.persona,options:Object.entries(C.PERSONAS).map(([value,[label]])=>({value,label}))},{name:'serum',label:'Serum 2',type:'checkbox',value:w.plugins.includes('Serum 2')},{name:'vital',label:'Vital',type:'checkbox',value:w.plugins.includes('Vital')}],{ok:'Save'});if(!v)return;
     await save(p,{persona:v.persona,plugins:[...(v.serum?['Serum 2']:[]),...(v.vital?['Vital']:[])]});const c=chatOf(p);if(c){const chat=await Native.load(c.id);chat.style=C.PERSONAS[v.persona][1];Native.save(chat);if(H.activeChat[c.agentId]===c.id)Native.setStyle(c.agentId,chat.style);}
     if(Lazy.loaded('creative') && current()===p)await WorkbenchUI.setProject(p.id,{title:p.name,plugins:p.workspace.plugins});
   }
+  Tools.define({id:'projectchat',offRail:true,name:'Project chat',icon:'◇',mount:body=>body.closest('.surface')?.classList.add('pw-chat-surface')});
   document.addEventListener('hearth:activate',e=>{const sid=e.detail.surfaceId;if(!get())return;if(!surfaces.has(String(sid).replace('tool:',''))){leave().catch(err=>toast(calmError(err),{type:'error'}));return;}surface=sid.slice(5);});
-  Native.hooks.options.push((_a,chat,_text,_message,options)=>{if(P.projectOfChat(chat.id)?.workspace?.chatId===chat.id && !options.lean)options.asDirector='three';});
-  Native.hooks.compose.push((_a,chat,text)=>{const p=P.projectOfChat(chat.id);if(p?.workspace?.chatId!==chat.id)return text;return `[Hearth project: ${JSON.stringify({name:p.name,scene:p.workspace.sceneId,moodboard:p.workspace.boardId,plugins:p.workspace.plugins})}. Work on this project's linked scene/board. Sound controls require its Sound desk open.]\n${text}`;});
-  return { current,agentFor,surfaceFor,open,go,home,leave,create,wizard,ensure,describe,frontpage,toolbar,settings,svg,state:()=>structuredClone(loadState) };
+  Native.hooks.options.push((_a,chat,_text,_message,options)=>{if(P.projectOfChat(chat.id)?.workspace && !options.lean)options.asDirector='three';});
+  Native.hooks.compose.push((_a,chat,text)=>{const p=P.projectOfChat(chat.id);if(!p?.workspace)return text;return `[Hearth project: ${JSON.stringify({name:p.name,scene:ChatScenes.linkOf(chat.id)||p.workspace.sceneId,moodboard:p.workspace.boardId,plugins:p.workspace.plugins})}. Work on this project's linked scene/board. Sound controls require its Sound desk open.]\n${text}`;});
+  return { current,agentFor,surfaceFor,open,go,conversation,home,leave,create,wizard,ensure,describe,frontpage,importScenes,designBanner,toolbar,settings,svg,state:()=>structuredClone(loadState) };
 })();

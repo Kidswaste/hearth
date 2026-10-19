@@ -41,12 +41,15 @@ const WorkbenchUI = (() => {
   async function svgCanvas(svg, size = 512) { const im = await image('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)), c = canvas(size); c.getContext('2d').drawImage(im, 0, 0, size, size); return c; }
   function file(label, accept, handler, limit = 12e6) { const n = field(label, '', () => {}, 'file'), i = n.querySelector('input'); i.accept = accept; i.onchange = async () => { try { const f = i.files[0]; if (!f) return; if (f.size > limit) throw Error(`File exceeds ${Math.round(limit / 1e6)} MB.`); await handler(f); } catch (err) { say(err.message); } finally { i.value = ''; } }; return n; }
   const badge = (n, title, text) => { const a = e('article', null, 'wb-card'); a.append(e('span', n, 'wb-number'), e('h3', title), note(text)); return a; };
-  function pause() { epoch++; cleanup(); cleanup = () => {}; api?.stopAudio(); if (typeof WorkbenchVST !== 'undefined') WorkbenchVST.pause(); }
+  let mountedKey=null;
+  function pause() { epoch++; cleanup(); cleanup = () => {}; mountedKey=null; api?.stopAudio(); if (typeof WorkbenchVST !== 'undefined') WorkbenchVST.pause(); }
+  function suspend() { cleanup.suspend?.();api?.stopAudio();if(current==='vst'){pause();} }
+  function resume() { if(mountedKey!==KEY||!root?.isConnected)return false;cleanup.resume?.();return true; }
   async function mount(target, id, helpers) { pause(); const ticket = epoch; api = helpers; root = e('section', null, 'wb-shell'); target.append(root); const ownRoot = root; current = id; await scopeChanges; await ready(); if (ticket !== epoch) return;
     const top = e('div', null, 'wb-projectbar'), menu = e('details', null, 'wb-projectmenu'), summary = e('summary', `◈ ${state.title}`), body = e('div', null, 'wb-projectbody');
     body.append(...(scope?[]:[field('Worktable name', state.title, v => { state.title = v || 'Untitled workbench'; summary.textContent = `◈ ${state.title}`; })]), btn('Export project', () => save('project', JSON.stringify(state, null, 2), 'json')), file('Open project copy', '.json', async f => { const key=KEY, next = await validateAsync(await f.text()); if(key!==KEY)throw Error('The project changed while importing. Reopen the file in the intended project.'); state = next; await persist(); api.openFeature(current); }, 64e6), note('Open replaces this worktable. Export a copy first to keep another version.'));
     menu.append(summary, body); top.append(e('p', writable ? 'Saved on this computer' : 'Recovery mode · export changes', 'wb-status'), menu); root.append(top);
-    const content = e('div', null, 'wb-content'); root.append(content);
+    const content = e('div', null, 'wb-content'); root.append(content);mountedKey=KEY;
     if (id === 'studio') home(content); else if (id === 'vst') { const dispose = await bank(content); if (ticket !== epoch) { dispose?.(); return; } cleanup = dispose || (() => {}); } else if (id === 'texture') textures(content); else if (id === 'draw') draw(content); else if (id === 'story') storyboard(content);
     if (ticket === epoch && id !== 'story') WorkbenchStory.dock(ownRoot, workspaceHelpers());
   }
@@ -111,5 +114,5 @@ const WorkbenchUI = (() => {
   addEventListener('beforeunload',()=>{flush().catch(()=>{});});
   // parisquests61: "Make music at the park" names the worktable after the park (only the project name changes; returns the old one).
   async function startSketch(title) { await ready(); const before = state.title; state.title = String(title || '').trim().slice(0, 160) || before; await persist(); return before; }
-  return { mount, pause, ready, setProject, preloadSound: options => WorkbenchVST.preload({ ...workspaceHelpers(), state: state.vst },options), soundTool, addAsset, startSketch, snapshot: () => C.copy(state), flush, scope: () => scope, animaticHTML };
+  return { mount, pause, suspend, resume, ready, setProject, preloadSound: options => WorkbenchVST.preload({ ...workspaceHelpers(), state: state.vst },options), soundTool, addAsset, startSketch, snapshot: () => C.copy(state), flush, scope: () => scope, animaticHTML };
 })();
