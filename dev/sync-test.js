@@ -74,6 +74,23 @@ function snapshot(m) {
 }
 
 async function main() {
+  // Missing store files never mean deleting the surviving database. Item edits
+  // (including deliberately empty arrays) still sync in the normal three-way merge.
+  {
+    const w=world('missing-app-store'),A=computer(w,'PC'),B=computer(w,'Mac');
+    const rel='kv/scenes.json',value={list:[{id:'keep',name:'My scene'}]};
+    W(A.p(rel),JSON.stringify(value));await settle(A,B);
+    fs.unlinkSync(cloudFile(w,rel));await A.e.pass();
+    ok(has(A.p(rel))&&eqj(J(A.p(rel)),value),'cloud store disappeared: local database retained');
+    ok(has(cloudFile(w,rel)),'cloud store disappeared: database republished');
+    fs.unlinkSync(B.p(rel));await B.e.pass();
+    ok(has(B.p(rel))&&eqj(J(B.p(rel)),value),'local store disappeared: database restored from cloud');
+    W(A.p(rel),JSON.stringify({list:[]}));await settle(A,B);
+    ok(eqj(J(B.p(rel)),{list:[]}),'intentional item deletion still propagates inside a store');
+    const asset='board/media/remove.bin';W(A.p(asset),'remove me');await settle(A,B);
+    fs.unlinkSync(cloudFile(w,asset));await A.e.pass();
+    ok(!has(A.p(asset)),'ordinary asset deletions still propagate to local trash');
+  }
   // ---------- pure parts ----------
   {
     const r = S.merge3({ a: 1, b: 1, list: [{ id: 1, v: 1 }] }, { a: 2, b: 1, list: [{ id: 1, v: 1 }, { id: 2, v: 2 }] }, { a: 1, b: 3, list: [{ id: 1, v: 5 }, { id: 3, v: 3 }] });

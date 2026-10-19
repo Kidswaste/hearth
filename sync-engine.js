@@ -34,6 +34,10 @@ const sha = (buf) => crypto.createHash('sha1').update(buf).digest('hex');
 const day = (t) => new Date(t).toISOString().slice(0, 10);
 const rand = () => crypto.randomBytes(4).toString('hex');
 const nfc = (s) => s.normalize('NFC');
+// These are application databases, not user-deleted documents. Clearing an item
+// is an edit inside its store. A missing cloud/local store must not erase the
+// surviving database (including temporary cloud renames and conflict copies).
+const appStore = rel => /^kv\/[^/]+\.json$/i.test(rel);
 
 async function exists(p) { try { await fsp.stat(p); return true; } catch { return false; } }
 function statSync(p) { try { return fs.statSync(p); } catch { return null; } }
@@ -781,10 +785,10 @@ function createEngine(o) {
         else if (ch === bh) plan.push({ op: 'push', rel, L, C, h: lh });
         else plan.push({ op: S.isJsonRel(rel) && !readable(rel, C) ? 'wait' : 'merge', rel, L, C, lh, ch });
       } else if (L) {
-        if (bh && lh === bh) plan.push({ op: 'deleteHere', rel, L, h: lh });
+        if (bh && lh === bh && !appStore(rel)) plan.push({ op: 'deleteHere', rel, L, h: lh });
         else plan.push({ op: 'push', rel, L, C: null, h: lh }); // new here (or changed here while deleted there: kept)
       } else {
-        if (bh && (ch === bh || (ch === UNKNOWN && state.cloud[rel] && state.cloud[rel][1] === C.mtime))) plan.push({ op: 'deleteThere', rel, C, h: bh });
+        if (!appStore(rel) && bh && (ch === bh || (ch === UNKNOWN && state.cloud[rel] && state.cloud[rel][1] === C.mtime))) plan.push({ op: 'deleteThere', rel, C, h: bh });
         else if (ch === UNKNOWN || !readable(rel, C)) { cloudOnly.push(rel); pending += 1; }
         else plan.push({ op: 'pull', rel, L: null, C, h: ch }); // new there (or changed there while deleted here: kept)
       }
