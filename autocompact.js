@@ -243,7 +243,7 @@ ${transcript(parts)}
     return { text: fromLocal(ls, parts.previous) || parts.previous || '(earlier conversation)', by: 'local', usage: r?.usage, error: r?.ok ? 'not a summary' : r?.error };
   }
   // continue lighter now (the offer's button, 🗜 Compact, /compact, /lighter now)
-  async function run(agentId, { auto = false } = {}) {
+  async function run(agentId, { auto = false, onUsage = null } = {}) {
     const chat = Native.current(agentId);
     const agent = H.agent(agentId);
     if (!chat || !agent) throw new Error('Open a chat first.');
@@ -255,6 +255,7 @@ ${transcript(parts)}
     const wait = Native.note(agentId, `🗜 Continuing lighter… (a summary on the lightest model; ${KEEP_EXCHANGES} last exchanges kept word for word)`, { id: 'autocompact' });
     try {
       const s = await summaryFor(agent, parts, chat);
+      onUsage?.(s.usage); // a routine accounts for its summary too, even when a local fallback was needed
       // a message sent meanwhile: its reply would bring the long session back, so the switch waits for it
       for (let i = 0; i < 1200 && Native.isBusy(chat.id); i++) await new Promise((r) => setTimeout(r, 250));
       gone(wait);

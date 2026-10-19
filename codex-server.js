@@ -125,7 +125,7 @@ class Pool {
         else { conn.idleTimer = setTimeout(() => { conn.close(); if (this.connections.get(chatId) === conn) this.connections.delete(chatId); }, this.idleMs); conn.idleTimer.unref?.(); }
       }
       this.log(`codex ${chatId} ${event.type} timing=${JSON.stringify(timing)}`);
-      emit({ ...event, session: { ...session }, timing });
+      emit({ ...event, ...(usage ? { usage:{...usage,...(event.type !== 'done' ? {partial:true} : {})} } : {}), session: { ...session }, timing });
     };
     const forward = (events) => {
       for (const e of (Array.isArray(events) ? events : events ? [events] : [])) {
@@ -230,7 +230,7 @@ class Pool {
         }
         if (method === 'turn/completed') {
           if (turnId && p.turn.id !== turnId) return;
-          if (p.turn.status === 'completed') finish({ type: 'done', text: output, usage: usage || { input: 0, output: 0 } });
+          if (p.turn.status === 'completed') finish({ type: 'done', text: output });
           else if (p.turn.status === 'interrupted') finish({ type: 'stopped' });
           else finish({ type: 'error', message: p.turn.error?.message || `Codex turn ${p.turn.status}` });
         }

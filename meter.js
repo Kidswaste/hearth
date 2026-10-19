@@ -154,7 +154,7 @@ const Meter = (() => {
       tick();
       return;
     }
-    if (ev.type === 'done') {
+    if (ev.type === 'done' || (ev.usage && (ev.type === 'error' || ev.type === 'stopped'))) {
       const agentId = l?.agentId || ev.agentId || agentOfChat(ev.chatId);
       const est = l ? estimate(l) : 0;
       // learn how many characters one output token is for this engine (only from streamed text)

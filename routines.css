@@ -34,3 +34,9 @@
 .rt-usage h4 { margin: 0 2px 2px; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
 .rt-usage p { margin: 0 2px; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .rt-usage p.hint { white-space: pre-line; color: var(--muted); }
+.rt-dlg{border-color:#d6ad6355;background:linear-gradient(145deg,#26222b,#111216 65%);box-shadow:0 22px 80px #0009}
+.rt-dlg h2{color:#ffd58c;font-size:20px;letter-spacing:.02em}.rt-dlg .primary{background:#f5c678;color:#241b10;border-color:#f5c678}
+.rt-last-usage{display:block;margin-top:5px;color:#ddc6ed}.rt-custom-cap{width:120px;min-width:0}.rt-account{padding:9px 11px;border:1px solid #b699df30;background:#b699df09;border-radius:8px;font-variant-numeric:tabular-nums}.rt-account-note{font-size:11px;margin:0;line-height:1.45}
+.rt-run-content{display:flex;flex-direction:column;gap:10px}.rt-run-content p{margin:0}.rt-spent{font-size:25px;color:#ffd58c;font-variant-numeric:tabular-nums}.rt-breakdown{display:flex;flex-wrap:wrap;gap:6px}.rt-breakdown span{font-size:11px;padding:5px 7px;background:#ffffff08;border-radius:6px}.rt-run-status{font-size:13px;line-height:1.5}.rt-history-row{padding:6px 0;border-bottom:1px solid #ffffff0b;font-size:12px}.rt-run>.dialog-actions{margin-top:16px}
+.rt-dlg .rt-cap-hint{margin:0;font-size:11px;line-height:1.5}.rt-dlg .dialog-actions{flex-wrap:wrap}.rt-dlg:focus{outline:none}
+.rt-run .rt-run-content{padding:22px 24px 12px}.rt-run>.dialog-actions{padding:0 24px 20px;margin-top:0;justify-content:flex-end}.rt-run h2{margin:0}.rt-run .rt-history-row{line-height:1.4}

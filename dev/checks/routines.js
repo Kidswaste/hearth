@@ -118,14 +118,15 @@ try {
   ok(await ended(r4.id), 'forever with a cap ends');
   const x4 = R.get(r4.id);
   out.cap = { cap: capN, done: x4.done, tokens: x4.tokens, why: x4.why };
-  ok(x4.status === 'stopped' && /spending cap/.test(x4.why) && x4.tokens <= capN * 1.3 && x4.done >= 1, `stops at the cap (${JSON.stringify(out.cap)})`);
+  ok(x4.status === 'stopped' && /token budget/.test(x4.why) && x4.tokens <= capN * 1.3 && x4.done >= 1, `stops at the cap (${JSON.stringify(out.cap)})`);
   await idle(); await wait(300);
 
-  // ---------- the same error twice: stops ----------
+  // ---------- an error without usage pauses, rather than assuming a free retry ----------
   const r5 = await R.start(C.id, spec({ prompt: 'error please' }), { chatId: chat().id });
-  ok(await ended(r5.id), 'failing rounds end it');
+  ok(await until(()=>R.get(r5.id).status==='paused'), 'missing usage pauses the loop');
   const x5 = R.get(r5.id);
-  ok(x5.status === 'stopped' && /2 times in a row/.test(x5.why) && x5.round === 2, `error twice → stop (${x5.why}, ${x5.round})`);
+  ok(x5.status === 'paused' && x5.usageUnknown && x5.round === 1, `unknown usage → pause (${x5.why}, ${x5.round})`);
+  R.stop(r5.id);
   await idle(); await wait(300);
 
   // ---------- a permission card during a round: paused (never answered by the routine) ----------

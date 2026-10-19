@@ -70,9 +70,9 @@ ok('until a time: stops at that time', C.nextStep(u1, { now: T0 + HOUR + 1 }).ac
 const cap = mk({ how: { kind: 'forever' }, cap: 25000 });
 for (let i = 0; i < 2; i++) { C.sent(cap); C.roundEnded(cap, { type: 'done', text: 'ok', tokens: 10000 }, T0); }
 const cs = step(cap, { now: T0 + 5000 });
-ok('forever with a cap: stops before a round that would pass it', cs.act === 'stop' && cs.status === 'stopped' && /cap/.test(cs.why) && cap.done === 2, cs);
+ok('forever with a cap: stops before a round that would pass it', cs.act === 'stop' && cs.status === 'stopped' && /token budget/.test(cs.why) && cap.done === 2, cs);
 const cap2 = mk({ cap: 10000, round: 1, done: 1, tokens: 12000, kickoff: false });
-ok('past the cap: stops', /reached its spending cap/.test(step(cap2).why));
+ok('past the cap: stops', /reached its token budget/.test(step(cap2).why));
 
 // ---------- errors, limits, sign-in ----------
 const er = mk();
@@ -137,7 +137,7 @@ ok('writing again pushes the quiet further', (C.ownerWrote(oq, T0 + 9 * MIN), C.
 // ---------- a restart ----------
 const rs = mk({ round: 2, inFlight: true });
 C.restarted(rs);
-ok('restart: paused with a resume prompt, nothing in flight', rs.status === 'paused' && /restarted/.test(rs.why) && !rs.inFlight);
+ok('restart: paused with a resume prompt, nothing in flight', rs.status === 'paused' && /usage is unknown/.test(rs.why) && rs.usageUnknown && !rs.inFlight);
 const rs2 = mk({ round: 2, afterRestart: true });
 C.restarted(rs2);
 ok('restart with "keep going after a restart": still running', rs2.status === 'running');
@@ -152,7 +152,7 @@ ok('the chip: "🔁 3 of 5 · ≈ 42k tokens so far"', C.chipText(w) === '🔁 3
 ok('forever shows its cap', /of 300k$/.test(C.chipText(mk({ round: 1, tokens: 5000 }))));
 ok('time shows what is left', /41 min left/.test(C.chipText(mk({ how: { kind: 'time', ms: HOUR }, round: 2 }), T0 + 19 * MIN)));
 ok('paused shows ❚❚', C.chipText(Object.assign(mk(), { status: 'paused' })).startsWith('❚❚'));
-ok('describe in plain words', C.describe(mk({ how: { kind: 'rounds', rounds: 5 }, pause: '1m', cap: 100000 })) === '🔁 Keep going 5 more rounds, 1 min between rounds, at most ≈ 100k tokens', C.describe(mk({ how: { kind: 'rounds', rounds: 5 }, pause: '1m', cap: 100000 })));
+ok('describe in plain words', C.describe(mk({ how: { kind: 'rounds', rounds: 5 }, pause: '1m', cap: 100000 })) === '🔁 Keep going 5 more rounds, 1 min between rounds, token budget 100k (checked between rounds)', C.describe(mk({ how: { kind: 'rounds', rounds: 5 }, pause: '1m', cap: 100000 })));
 ok('the message is the owner\'s words, nothing added', C.message(mk({ prompt: 'Do 5 more' })) === 'Do 5 more');
 
 console.log(`\n${n - fails}/${n} passed`);
