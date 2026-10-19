@@ -22,8 +22,8 @@ const QuestGuide = (() => {
   async function ready() {await Lazy.load('questjournal');if(!studio())Tools.shown(Tools.get('quests'));for(let i=0;i<100&&!studio();i++)await new Promise(r=>setTimeout(r,40));if(!studio())throw Error('The quest journal is still loading. Try again in a moment.');return studio();}
   async function review({questId}={}) {const qj=await ready();if(questId?.startsWith('outing:')){const s=await OutingGuide.call({op:'state'}),plan=s.plans.find(p=>p.id===questId.slice(7));if(plan?.questId&&QuestCore.find(qj.snapshot(),plan.questId))qj.questDetail(plan.questId);else return OutingGuide.open({id:questId.slice(7)});}else if(questId&&QuestCore.find(qj.snapshot(),questId))qj.questDetail(questId);else{activate('tool:quests');qj.navigate('adventure');}}
   async function waitFor(check,message){for(let i=0;i<120;i++){if(check())return;await new Promise(r=>setTimeout(r,50));}throw Error(message);}
-  async function launchTool({tool,stepId,projectId,tab}={}) {
-    if(projectId){await Lazy.load('projects');await Projects.ready();await ProjectWorkspace.open(projectId,tab);return;}
+  async function launchTool({tool,stepId,projectId,tab,sceneId}={}) {
+    if(projectId){await Lazy.load('projects');await Projects.ready();await ProjectWorkspace.open(projectId,sceneId?'overview':tab);if(sceneId)await ProjectWorkspace.openScene(sceneId);return;}
     const targets={lab:'three',forge:'forgeheart',tiles:'creative',sounds:'creative',rack:'creative',arena:'three'};
     const target=targets[tool];if(!target)throw Error('This workbench is not supported. Start a fresh guided pass for this quest.');
     await Lazy.load(target==='creative'?'creative':target==='three'?'lab':'addons');
@@ -58,6 +58,7 @@ const QuestGuide = (() => {
     return steps;
   }
   function projectSteps(q) {
+    if(q.projectTask?.v===1&&q.guideSteps?.length)return structuredClone(q.guideSteps);
     if (planningQuest(q)) return [
       {id:'first-move',title:'Find your starting point',instruction:q.tiny,check:'manual',action:{type:'project',tab:'chat'}},
       {id:'keep-choice',title:q.title,instruction:q.done+' Keep your choice in this project’s chat or notes, then describe it here.',check:'manual',action:{type:'project',tab:'chat'}},
@@ -94,26 +95,33 @@ const QuestGuide = (() => {
       if(step?.action)actions.append(button('↗ Work',()=>call('action',{stepId:step.id}),`Open ${step.action.tab||'workspace'}`));
       if(step?.check?.startsWith('project-'))actions.append(button('✓ Check',()=>checkProject(false),'Check this project’s saved work'));
       actions.append(button(step?'Helper ↗':'Review ↗',()=>step?call('show'):review({questId:s.questId}),'Open the guide and evidence history'));root.append(actions);
+      if(!s.questId.startsWith('q-project-')||!step)root.append(button('Project quest',()=>open(null,p.id),'A mission from this project’s own scenes and tools'));
     };root._questPaint=paint;paint();return root;
   }
   document.addEventListener('questguide:changed',()=>document.querySelectorAll('[data-quest-project]').forEach(n=>n._questPaint?.()));
   async function open(quest,projectId) {
     const qj=await ready();state=await call('state');
+    await Lazy.load('projects');await Projects.ready();
     const journal=qj.snapshot(),eligible=q=>q&&!QuestCore.done(journal,q.id)&&!QuestCore.skipped(journal,q.id)&&!q.parked&&QuestCore.available(journal,q.id);
     const requested=typeof quest==='string'?quest:quest?.id;
     const daily=requested&&QuestCore.daily().find(q=>q.id===requested);
     let q=requested?QuestCore.find(journal,requested)||daily:null;
     if(quest&&!eligible(q)&&!(daily&&!QuestCore.find(journal,requested)))throw Error('This quest is finished, paused or waiting for an earlier step. Choose an active quest from your notebook.');
+    const context=Projects.get(projectId||ProjectWorkspace.current()?.id);
+    if(!quest&&context){
+      q=QuestProject.choose(context,QuestProject.catalog(context,await Projects.Src.sketches()),journal,QuestCore);
+      if(!q)throw Error('You’ve finished or set aside this project’s current missions. Revisit one in the quest log, or add new work to the project for fresh targets.');
+    }
     if(!q){const campaign=journal.campaigns.find(c=>c.id===journal.active&&!c.paused),planned=journal.plan?.quest&&QuestCore.find(journal,journal.plan.quest),tracked=QuestCore.next(journal,campaign);q=eligible(planned)?planned:eligible(tracked)?tracked:QuestCore.allQuests(journal).find(eligible);}
     if(!q)throw Error('Choose an unfinished quest from your notebook first.');
     const campaign=journal.campaigns.find(c=>c.id===q.campaign);
     if(campaign?.show&&window.OutingGuide){const s=campaign.show;return OutingGuide.open({id:s.key||'quest-'+q.id,title:s.title,venue:s.venue,address:s.address,start:s.start,dateOnly:s.dateOnly,questId:q.id});}
     const kit=qj.paris.ui();
-    await Lazy.load('projects');await Projects.ready();
     const saved=await call('quest',{questId:q.id}),current=saved.session;
     const keepProgress=!!current?.done.length;
     const creative=['lab','tiles','sounds','rack','arena','forge'].includes(q.tool);
-    const pid=keepProgress?current.projectId:creative?(projectId||ProjectWorkspace.current()?.id||current?.projectId||''):'';
+    const pid=q.projectTask?q.projectId:keepProgress?current.projectId:creative?(projectId||ProjectWorkspace.current()?.id||current?.projectId||''):'';
+    if(q.projectTask&&!Projects.get(pid))throw Error('This quest’s project is not available here yet. Your quest progress is kept.');
     const music=!pid&&q.path==='music'&&!['sounds','rack','slice'].includes(q.tool)&&/\b(make|build|write|record|arrange|finish|export|polish)\b/i.test(q.title)&&/song|demo|bass|loop|beat|track|sketch/i.test(q.title);
     const kind=keepProgress?current.kind:music?'music':'custom';
     const steps=keepProgress?current.steps:pid?projectSteps(q):kind==='music'?undefined:customSteps(q);
@@ -123,6 +131,7 @@ const QuestGuide = (() => {
     return kit.dialog(q.title,(body,d)=>{
       d.classList.add('qg-offer');d.dataset.questOffer=q.id;d.dataset.project=pid||'';
       body.append(kit.E('div',{class:'qg-offer-meta'},kit.E('span',{text:'◷ '+q.minutes+' min'}),kit.E('span',{text:'✦ '+q.xp+' XP'}),kit.E('span',{text:'⌖ '+location})),kit.E('p',{class:'qg-offer-goal',text:q.done}));
+      if(q.projectTask)body.append(kit.E('small',{class:'qg-offer-source',text:'From '+q.projectTask.source,title:'Based on the named scene or tool in this project. Proof review still checks the result.'}));
       body.append(kit.E('section',{class:'qg-offer-next'},kit.label(keepProgress?step?'NEXT STEP · '+(saved.completed+1)+' / '+saved.total:'READY TO REVIEW':'FIRST STEP'),kit.E('p',{text:step?.instruction||'Show your result to get feedback and collect your rewards.'})));
       const error=kit.E('p',{class:'qj-copy',attrs:{role:'status'}});
       const later=kit.button('Not now',()=>d.close(),'qj-quiet');
@@ -130,8 +139,12 @@ const QuestGuide = (() => {
         later.disabled=true;
         try{
           if(pid){await Projects.flush();if(window.WorkbenchUI?.scope?.()===pid)await WorkbenchUI.flush();}
+          if(q.projectTask?.sceneId){const p=Projects.get(pid),sid=q.projectTask.sceneId;if(!p||(p.workspace?.sceneId!==sid&&!p.items.some(x=>x.type==='scene'&&x.ref===sid))||!(await Projects.Src.sketches()).some(s=>s.id===sid))throw Error('This quest’s scene is no longer available in the project. Your progress is kept.');}
           await qj.mutate(s=>{
-            if(!QuestCore.find(s,q.id)){const fresh=QuestCore.daily().find(x=>x.id===q.id);if(!fresh)throw Error('This suggestion changed. Open your quest log and choose again.');QuestCore.trackSide(s,fresh);}
+            if(!QuestCore.find(s,q.id)){
+              if(q.projectTask)QuestProject.track(s,q,QuestCore);
+              else{const fresh=QuestCore.daily().find(x=>x.id===q.id);if(!fresh)throw Error('This suggestion changed. Open your quest log and choose again.');QuestCore.trackSide(s,fresh);}
+            }
             if(!QuestCore.available(s,q.id)||QuestCore.done(s,q.id))throw Error('This quest is no longer available.');
             const record=QuestCore.record(s,q.id);s.records[q.id]={...record,acceptedAt:record.acceptedAt||new Date().toISOString()};
             if(q.campaign)s.active=q.campaign;

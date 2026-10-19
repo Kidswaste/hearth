@@ -2,13 +2,17 @@
 
 Opening a quest shows its goal, first action, time and reward with **Accept quest** and **Not now**. Acceptance adds it to the journal and tracker and opens the first action. Hearth infers the project and tool; there are no recipe or workspace dropdowns. Existing guides offer **Continue quest**, restoring their saved progress even after switching to another quest. Declining changes nothing.
 
+**Take a quest** on a project now offers a mission from its linked scene and configured instruments, before considering any global campaign. Named fighter layers produce character polish tasks; combat and shop layers produce bounded playtests; visual layers and configured Serum 2 / Vital instruments produce focused visual or sound tasks. These suggestions use local names and links, not source execution or model calls. An empty project gets a short brief-building task instead of invented features.
+
+Accepted missions live in project chapters without consuming daily side-quest slots. They keep their project and scene identity when opened from elsewhere. Existing project missions resume before new ones are offered; completed or skipped targets move to the next available mission. Explicitly chosen global quests still work. Character polish checks a saved change to the named scene, then asks for a comparison and evidence. Playtests accept a pass/fail report without requiring an unnecessary edit; a reproduced bug is a useful result. Final rewards still require proof review.
+
 The quest helper can attach to a Hearth project. Making quests have a small starting action, a saved-work milestone, a play/listen/review prompt, and a result to keep for proof review. Planning quests such as choosing a track use their own smaller steps. A compact next-step card lives beside the project chat. Accepting alone gives no XP.
 
 Saved scene, creative-board and instrument changes are checked against a checkpoint in the selected project. New worktable images, saved presets and linked exports are recorded as kept results. A save is evidence of a change, not a quality judgment: XP completion and the review still use the existing proof flow. Manual confirmations are labelled separately from observed changes in the helper's evidence history.
 
 Checks run after successful saves or an explicit Check button. Creative guides do not poll running applications. Missing or unreadable scene data, stale steps, paused guides and metadata-only scene edits cannot silently complete a step. Opening a guide from a project leaves that project loaded.
 
-Validation: `dev/questguide-project-test.js`, `dev/questguide-test.js`, `dev/questguide-picker-ui-test.js`, `dev/checks/quest-project.js`, `dev/checks/quest-offer.js`, `dev/checks/guided-quests.js`.
+Validation: `dev/quest-project-catalog-test.js`, `dev/questguide-project-test.js`, `dev/questguide-test.js`, `dev/questguide-picker-ui-test.js`, `dev/checks/quest-project-context.js`, `dev/checks/quest-project.js`, `dev/checks/quest-offer.js`, `dev/checks/guided-quests.js`.
 
 # Windows canvas rendering
 

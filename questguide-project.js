@@ -26,7 +26,7 @@ async function snapshot(dataDir, projectId) {
   for (const a of wb?.shelf || []) outputs.push({id:'shelf:'+hash(a.image), label:a.name || 'Worktable image'});
   for (const a of wb?.vst?.presets || []) outputs.push({id:'preset:'+hash({name:a.name,state:a.state}), label:a.label || 'Saved instrument preset'});
   return { projectId, name:p.name, at:Date.now(),
-    scene:scene.length ? hash(scene) : null,
+    scene:scene.length ? hash(scene) : null, scenes:Object.fromEntries(scene.map(s=>[s.id,hash(s)])),
     board:hash({drawing:board.drawing, storyboard:board.storyboard, texture:board.texture, shelf:board.shelf}),
     sound:hash({patch:board.vst?.currentPatch || board.vst?.patch, presets:board.vst?.presets}),
     boardPresent:!!wb,
@@ -37,7 +37,9 @@ function evidence(session, step, current) {
   if (step.check === 'project-change') {
     const before = session.projectCheckpoint, target = step.target || 'scene';
     if ((target === 'board' || target === 'sound') && before?.boardPresent && !current.boardPresent) return null;
-    if (!before || !current[target] || current[target] === before[target]) return null;
+    const sceneId=target==='scene'&&step.action?.sceneId;
+    const oldValue=sceneId?before?.scenes?.[sceneId]:before?.[target],newValue=sceneId?current.scenes?.[sceneId]:current[target];
+    if (!before || !newValue || (sceneId && !oldValue) || newValue === oldValue) return null;
     return {kind:'automatic', source:'saved-project', summary:`Saved ${target === 'board' ? 'creative board' : target} changed in ${current.name}. Creative quality still needs your review.`};
   }
   if (step.check === 'project-output') {
