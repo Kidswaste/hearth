@@ -1,12 +1,14 @@
 # Project quest guide
 
-The quest helper can attach a guided pass to a Hearth project. Its four steps give a small starting action, a saved-work milestone, a play/listen/review prompt, and a result to keep for proof review. A compact next-step card lives beside the project chat.
+Opening a quest shows its goal, first action, time and reward with **Accept quest** and **Not now**. Acceptance adds it to the journal and tracker and opens the first action. Hearth infers the project and tool; there are no recipe or workspace dropdowns. Existing guides offer **Continue quest**, restoring their saved progress even after switching to another quest. Declining changes nothing.
+
+The quest helper can attach to a Hearth project. Making quests have a small starting action, a saved-work milestone, a play/listen/review prompt, and a result to keep for proof review. Planning quests such as choosing a track use their own smaller steps. A compact next-step card lives beside the project chat. Accepting alone gives no XP.
 
 Saved scene, creative-board and instrument changes are checked against a checkpoint in the selected project. New worktable images, saved presets and linked exports are recorded as kept results. A save is evidence of a change, not a quality judgment: XP completion and the review still use the existing proof flow. Manual confirmations are labelled separately from observed changes in the helper's evidence history.
 
 Checks run after successful saves or an explicit Check button. Creative guides do not poll running applications. Missing or unreadable scene data, stale steps, paused guides and metadata-only scene edits cannot silently complete a step. Opening a guide from a project leaves that project loaded.
 
-Validation: `dev/questguide-project-test.js`, `dev/questguide-test.js`, `dev/questguide-picker-ui-test.js`, `dev/checks/quest-project.js`, `dev/checks/guided-quests.js`.
+Validation: `dev/questguide-project-test.js`, `dev/questguide-test.js`, `dev/questguide-picker-ui-test.js`, `dev/checks/quest-project.js`, `dev/checks/quest-offer.js`, `dev/checks/guided-quests.js`.
 
 # Windows canvas rendering
 

@@ -115,14 +115,20 @@ function create({ dataDir, localDir = dataDir, documentsDir, now = () => Date.no
   async function call(a = {}) {
     const op = a.op || 'state';
     if (op === 'state') return state();
+    if (op === 'quest') {
+      const session = store.session?.questId === a.questId ? store.session : [...store.history].reverse().map(Core.valid).find(s => s?.questId === a.questId) || null;
+      return { session, step: Core.current(session), completed: session?.done.length || 0, total: session?.steps.length || 0 };
+    }
     if (op === 'start') {
-      const checkpoint = a.projectId ? await Project.snapshot(dataDir, a.projectId) : null;
-      if (!a.restart && store.session?.questId === a.questId && Core.current(store.session)) { store.session.paused = false; }
-      else {
-        if (store.session) store.history = [...store.history, store.session].slice(-15);
-        store.session = Core.start(a, now());
-        if (checkpoint) { store.session.projectStart = checkpoint; store.session.projectCheckpoint = checkpoint; }
-      }
+      // Returning to a quest resumes its saved steps, including a guide awaiting proof.
+      const saved = !a.restart && (store.session?.questId === a.questId ? store.session : [...store.history].reverse().map(Core.valid).find(s => s?.questId === a.questId));
+      const replan = saved && !saved.done.length && a.replanUnstarted === true;
+      const checkpoint = (!saved || replan) && a.projectId ? await Project.snapshot(dataDir, a.projectId) : null;
+      const next = replan ? {...Core.start(a,now()),id:saved.id,startedAt:saved.startedAt} : saved || Core.start(a, now());
+      if (checkpoint) { next.projectStart = checkpoint; next.projectCheckpoint = checkpoint; }
+      if (store.session && store.session.id !== next.id) store.history = [...store.history.filter(s => s?.id !== store.session.id), store.session].slice(-15);
+      store.history = store.history.filter(s => s?.id !== next.id);
+      store.session = next; store.session.paused = false;
       // Explicit imported outing progress only. Never presented as observed app activity.
       // A resumed outing can have moved ahead in its plan while the helper was hidden.
       const imported = Array.isArray(a.completedIds) && store.session.questId.startsWith('outing:') ? a.completedIds.slice(0, 30) : [];

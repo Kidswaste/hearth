@@ -45,7 +45,9 @@ const QuestGuide = (() => {
     if(!mounted())throw Error('The app changed before the workbench was ready. Open it again to check this step.');
     accept(await call('tool-opened',{stepId,tool}));
   }
+  const planningQuest=q=>/^(choose|pick|find)\b/i.test(q.title)&&/write|listen|choose|pick/i.test(q.done);
   function customSteps(q) {
+    if(planningQuest(q))return [{id:'first-move',title:'Find your starting point',instruction:q.tiny,check:'manual'},{id:'keep-choice',title:q.title,instruction:q.done+' Describe your choice here so you can pick it up next time.',check:'manual'}];
     const steps=[];
     if(q.tool==='slice')steps.push({id:'open-fl',title:'Open FL Studio for your sound',instruction:'Open FL Studio and load the sound you want to trim or reuse. Hearth checks that FL Studio is running; trimming and export remain yours to confirm.',check:'app',app:'fl'});
     else if(['lab','forge','tiles','sounds','rack','arena'].includes(q.tool))steps.push({id:'open-tool',title:q.tool==='arena'?'Open your game workspace':'Open your workbench',instruction:q.tool==='arena'?'Open Three.js Lab for your playable prototype. Use its Sketch editor and preview to build and test your interaction. Keep this helper beside it.':'Open the tool for this quest. Keep this helper beside it.',check:'tool',action:{type:'hearth-tool',tool:q.tool}});
@@ -56,6 +58,10 @@ const QuestGuide = (() => {
     return steps;
   }
   function projectSteps(q) {
+    if (planningQuest(q)) return [
+      {id:'first-move',title:'Find your starting point',instruction:q.tiny,check:'manual',action:{type:'project',tab:'chat'}},
+      {id:'keep-choice',title:q.title,instruction:q.done+' Keep your choice in this project’s chat or notes, then describe it here.',check:'manual',action:{type:'project',tab:'chat'}},
+    ];
     const target=['sounds','rack'].includes(q.tool)?'sound':['tiles'].includes(q.tool)||/draw|storyboard|material|texture/i.test(q.title)?'board':'scene';
     const action={type:'project',tab:target};
     const task=target==='sound'?'Choose Serum 2 or Vital. Change one sound into something you would use; save its preset.':target==='board'?'Use Materials, Drawing or Storyboard. Make one purposeful change and keep the result on your worktable.':'Change one visible or playable detail in your scene. Run it, fix any error, and save the version you prefer.';
@@ -82,7 +88,7 @@ const QuestGuide = (() => {
       const s=state?.session,linked=s?.projectId===p.id,step=linked&&state.step;
       const button=(text,fn,title)=>el('button',{type:'button',class:'ghost small',text,title,on:{click:async e=>{const b=e.currentTarget;b.disabled=true;try{await fn();}catch(err){toast(err.message,{type:'error'});}finally{b.disabled=false;}}}});
       root.replaceChildren(el('h3',{text:linked?`✦ NEXT MOVE · ${count(state)}/${state.total}`:'✦ A small win'}));
-      if(!linked){root.append(button('Guide a quest here',()=>open(null,p.id),'Choose a quest and follow it inside this project'));return;}
+      if(!linked){root.append(button('Take a quest',()=>open(null,p.id),'See your next quest for this project'));return;}
       root.append(el('strong',{text:step?.title||'Ready for proof review'}),el('p',{text:step?.instruction||'Show your result for feedback and rewards.'}));
       const actions=el('div',{class:'qg-project-actions'});
       if(step?.action)actions.append(button('↗ Work',()=>call('action',{stepId:step.id}),`Open ${step.action.tab||'workspace'}`));
@@ -94,42 +100,52 @@ const QuestGuide = (() => {
   async function open(quest,projectId) {
     const qj=await ready();state=await call('state');
     const journal=qj.snapshot(),eligible=q=>q&&!QuestCore.done(journal,q.id)&&!QuestCore.skipped(journal,q.id)&&!q.parked&&QuestCore.available(journal,q.id);
-    let q=quest?QuestCore.find(journal,typeof quest==='string'?quest:quest.id):null;
-    if(quest&&!eligible(q))throw Error('This quest is finished, paused or waiting for an earlier step. Choose an active quest from your notebook.');
+    const requested=typeof quest==='string'?quest:quest?.id;
+    const daily=requested&&QuestCore.daily().find(q=>q.id===requested);
+    let q=requested?QuestCore.find(journal,requested)||daily:null;
+    if(quest&&!eligible(q)&&!(daily&&!QuestCore.find(journal,requested)))throw Error('This quest is finished, paused or waiting for an earlier step. Choose an active quest from your notebook.');
     if(!q){const campaign=journal.campaigns.find(c=>c.id===journal.active&&!c.paused),planned=journal.plan?.quest&&QuestCore.find(journal,journal.plan.quest),tracked=QuestCore.next(journal,campaign);q=eligible(planned)?planned:eligible(tracked)?tracked:QuestCore.allQuests(journal).find(eligible);}
     if(!q)throw Error('Choose an unfinished quest from your notebook first.');
     const campaign=journal.campaigns.find(c=>c.id===q.campaign);
     if(campaign?.show&&window.OutingGuide){const s=campaign.show;return OutingGuide.open({id:s.key||'quest-'+q.id,title:s.title,venue:s.venue,address:s.address,start:s.start,dateOnly:s.dateOnly,questId:q.id});}
     const kit=qj.paris.ui();
     await Lazy.load('projects');await Projects.ready();
-    return kit.dialog('Guide me · '+q.title,(body,d)=>{
-      const intro=kit.E('p',{class:'qg-intro',text:'One step beside your work. Automatic checks show what Hearth observed; creative steps stay yours to confirm.'});
-      body.append(intro);
-      const current=summary(q.id);
-      if(current){body.append(kit.p(`${current.completed}/${current.total} steps saved · ${current.next||'Ready to show the result'}`),kit.button('Continue in the helper',async()=>{accept(await call('show'));d.close();},'qj-primary'));}
-      const recipe=kit.E('select',{attrs:{'aria-label':'Guided recipe'}});
-      recipe.append(kit.E('option',{value:'custom',text:'This quest, step by step'}),kit.E('option',{value:'music',text:'FL Studio · a song sketch'}));
-      recipe.value=!projectId&&!ProjectWorkspace.current()?.id&&q.tool!=='slice'&&q.path==='music'&&/song|demo|bass|loop|beat|track|sketch/i.test(q.title+' '+q.done)?'music':'custom';
-      const bpm=kit.E('input',{type:'number',value:'128',attrs:{min:'40',max:'250','aria-label':'Target tempo'}});
-      const tempo=kit.E('label',{class:'qj-field'},kit.label('TARGET BPM'),bpm);
-      const preview=kit.E('ol',{class:'qg-preview'});
-      const project=kit.E('select',{class:'qg-project-select',attrs:{'aria-label':'Quest project'}});project.append(kit.E('option',{value:'',text:'Shared workbench / outside Hearth'}),...Projects.live().map(p=>kit.E('option',{value:p.id,text:p.name})));
-      project.value=projectId||ProjectWorkspace.current()?.id||'';
-      const refresh=()=>{tempo.hidden=recipe.value!=='music';project.disabled=recipe.value==='music';preview.replaceChildren(...(recipe.value==='music'?['Open FL Studio — checked when running','Set your tempo — checked from FL','Build a bass — checked from channel/note evidence','Arrange a small idea','Save a demo, then show your result']:(project.value?projectSteps(q):customSteps(q)).map(s=>s.title)).map(t=>kit.E('li',{text:t})));};
-      project.addEventListener('change',refresh);
-      recipe.addEventListener('change',refresh);refresh();
-      body.append(kit.E('label',{class:'qj-field'},kit.label('YOUR PATH'),recipe),kit.E('label',{class:'qj-field'},kit.label('MAKE IT IN'),project),tempo,preview);
+    const saved=await call('quest',{questId:q.id}),current=saved.session;
+    const keepProgress=!!current?.done.length;
+    const creative=['lab','tiles','sounds','rack','arena','forge'].includes(q.tool);
+    const pid=keepProgress?current.projectId:creative?(projectId||ProjectWorkspace.current()?.id||current?.projectId||''):'';
+    const music=!pid&&q.path==='music'&&!['sounds','rack','slice'].includes(q.tool)&&/\b(make|build|write|record|arrange|finish|export|polish)\b/i.test(q.title)&&/song|demo|bass|loop|beat|track|sketch/i.test(q.title);
+    const kind=keepProgress?current.kind:music?'music':'custom';
+    const steps=keepProgress?current.steps:pid?projectSteps(q):kind==='music'?undefined:customSteps(q);
+    const step=keepProgress?saved.step:steps?.[0]||{instruction:'Open FL Studio and start a song project. Your guide will stay beside it.'};
+    const location=pid?(Projects.get(pid)?.name||current?.projectStart?.name||'Your project'):kind==='music'||q.tool==='slice'?'FL Studio':({tiles:'Seamless tiles',lab:'Scene studio',arena:'Scene studio',forge:'Forgeheart',sounds:'Sound desk',rack:'Sound desk'}[q.tool]||'Your quest log');
+    const continuing=!!current||!!QuestCore.record(journal,q.id).acceptedAt||!!QuestCore.record(journal,q.id).startedAt;
+    return kit.dialog(q.title,(body,d)=>{
+      d.classList.add('qg-offer');d.dataset.questOffer=q.id;d.dataset.project=pid||'';
+      body.append(kit.E('div',{class:'qg-offer-meta'},kit.E('span',{text:'◷ '+q.minutes+' min'}),kit.E('span',{text:'✦ '+q.xp+' XP'}),kit.E('span',{text:'⌖ '+location})),kit.E('p',{class:'qg-offer-goal',text:q.done}));
+      body.append(kit.E('section',{class:'qg-offer-next'},kit.label(keepProgress?step?'NEXT STEP · '+(saved.completed+1)+' / '+saved.total:'READY TO REVIEW':'FIRST STEP'),kit.E('p',{text:step?.instruction||'Show your result to get feedback and collect your rewards.'})));
       const error=kit.E('p',{class:'qj-copy',attrs:{role:'status'}});
-      body.append(kit.button(current?'Start a new guided pass':'Start guided quest',async()=>{
-        try{const value=Number(bpm.value);if(recipe.value==='music'&&(!Number.isFinite(value)||value<40||value>250))throw Error('Choose a tempo from 40 to 250 BPM.');
-          const pid=recipe.value==='custom'?project.value:'';
+      const later=kit.button('Not now',()=>d.close(),'qj-quiet');
+      const start=kit.button(current&&!step?'Review result':continuing?'Continue quest':'Accept quest',async()=>{
+        later.disabled=true;
+        try{
           if(pid){await Projects.flush();if(window.WorkbenchUI?.scope?.()===pid)await WorkbenchUI.flush();}
-          accept(await call('start',{questId:q.id,title:q.title,kind:recipe.value,bpm:value,restart:!!current,...(pid?{projectId:pid}:{}),...(recipe.value==='custom'?{steps:pid?projectSteps(q):customSteps(q)}:{})}));d.close();
-          if(recipe.value==='music'||q.tool==='slice')try{accept(await call('launch'));}catch(err){toast(err.message,{type:'error'});}
-        }catch(err){error.textContent=err.message;}
-      },'qj-primary'),error);
-      body.append(kit.p('The helper follows your work. Project steps notice saved changes and kept results. FL Studio can check a chosen .flp or the live MIDI connection. Show your finished result for a review and XP.'));
-    });
+          await qj.mutate(s=>{
+            if(!QuestCore.find(s,q.id)){const fresh=QuestCore.daily().find(x=>x.id===q.id);if(!fresh)throw Error('This suggestion changed. Open your quest log and choose again.');QuestCore.trackSide(s,fresh);}
+            if(!QuestCore.available(s,q.id)||QuestCore.done(s,q.id))throw Error('This quest is no longer available.');
+            const record=QuestCore.record(s,q.id);s.records[q.id]={...record,acceptedAt:record.acceptedAt||new Date().toISOString()};
+            if(q.campaign)s.active=q.campaign;
+            QuestCore.planQuest(s,q.id,step?.instruction?.slice(0,500)||q.done,Math.min(120,Math.max(1,Math.round(q.minutes))));
+          },'Quest added to your log.');
+          await Lazy.load('questhud');await QuestHud.refresh();QuestHud.pin(q.id);
+          const next=await call('start',{questId:q.id,title:q.title,kind,bpm:128,projectId:pid||undefined,steps,replanUnstarted:true});accept(next);d.close();
+          try{if(!next.step)await review({questId:q.id});else if(next.step.action)await launchTool({...next.step.action,stepId:next.step.id,projectId:next.session.projectId});else if(next.step.app==='fl')accept(await call('launch'));}
+          catch(err){toast('Quest saved. '+err.message,{type:'error'});}
+        }catch(err){error.textContent=err.message;start.textContent='Continue quest';}
+        finally{later.disabled=false;}
+      },'qj-primary');
+      body.append(kit.E('div',{class:'qg-offer-actions'},start,later),error);
+    },continuing?'IN YOUR QUEST LOG':'QUEST OFFER');
   }
   const report=fn=>(v)=>Promise.resolve().then(()=>fn(v)).catch(err=>toast(err.message,{type:'error'}));
   window.hub.onQuestGuide?.(accept);
