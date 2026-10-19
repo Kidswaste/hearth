@@ -35,7 +35,7 @@ const RoutinesCore = (() => {
     { ms: 10 * MIN, label: 'Continue after 10 min quiet' },
     { ms: HOUR, label: 'Continue after 1 h quiet' },
   ];
-  const CAPS = [50000, 100000, 300000, 1000000, 3000000];
+  const CAPS = [50000, 100000, 300000, 1000000, 3000000, 10000000, 30000000];
   const NO_LIMIT_CAP = 300000; // the default cap when no weekly limit is set
   const MAX_ROUNDS = 200; // a hard ceiling, whatever was chosen
   const ERR_STOP = 2; // the same failure twice in a row: stop
@@ -46,7 +46,7 @@ const RoutinesCore = (() => {
   const STALE_STOP = 2; // rounds in a row that changed no file and nothing in the scene (once a round has changed something)
   const REPEAT_STOP = 2; // answers in a row that repeat the one before (≥ SAME alike)
   const SAME = 0.9; // how alike two answers must be to count as the same (word triples shared)
-  const MARGINS = [80, 90, 95]; // pause before a usage limit at this % of a window (default 90)
+  const MARGINS = [25, 50, 75, 80, 90, 95]; // account-wide ceiling, not a per-run percentage allowance
   const MARGIN = 90;
   const LONG = 60000; // a routine's chat re-reading this much goes on lighter between rounds even with a warm cache…
   const LEAN_SHARE = 0.4; // …when the lighter history is at most this share of it
@@ -56,7 +56,25 @@ const RoutinesCore = (() => {
   const mins = (ms) => { const m = Math.max(0, Math.round(ms / MIN)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`; };
   const clock = (t) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
   const uid = () => `rt${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  // Provider-normalized input already includes cache; output already includes reasoning.
+  // Missing reports are unknown, never a free round. Interrupted reports are lower bounds.
+  function usageOf(u) {
+    if (!u || !number(u.input) || !number(u.output)) return null;
+    const cached = number(u.cached) ? Math.min(u.cached, u.input) : 0;
+    const cacheWrite = number(u.cacheWrite) ? Math.min(u.cacheWrite, u.input - cached) : 0;
+    return { input:u.input, output:u.output, cached, cacheWrite, fresh:u.input-cached-cacheWrite,
+      tokens:u.input+u.output, partial:u.partial === true, cost:number(u.cost) ? u.cost : null };
+  }
+  function tally(r, u) {
+    if (!u || u.partial) r.usageUnknown = true;
+    if (!u) return;
+    r.usageTotals ||= { input:0, output:0, cached:0, cacheWrite:0, fresh:0, cost:0, costReports:0 };
+    for (const k of ['input','output','cached','cacheWrite','fresh']) r.usageTotals[k] += u[k];
+    if (u.cost != null) { r.usageTotals.cost += u.cost; r.usageTotals.costReports++; }
+  }
 
+  function helperUsage(r, raw) { const u=usageOf(raw);tally(r,u);if(u)r.tokens+=u.tokens;return u; }
   // "18:30" → the next time it is 18:30 (today, or tomorrow when it has passed); null when it isn't a time
   function untilAt(hhmm, now = Date.now()) {
     const m = /^(\d{1,2})[:h.](\d{2})$/.exec(String(hhmm || '').trim());
@@ -93,7 +111,7 @@ const RoutinesCore = (() => {
     else how = { kind: 'forever' };
     const createdAt = Number(r.createdAt) || now;
     const pause = PAUSES.some((p) => p.id === r.pause) ? r.pause : 'none';
-    let cap = Math.max(0, Math.round(Number(r.cap) || 0));
+    let cap = number(Number(r.cap)) ? Math.round(Number(r.cap)) : 0;
     if (!cap && needsCap(how, createdAt)) cap = NO_LIMIT_CAP; // a long one is never without a cap
     return {
       id: String(r.id || uid()), agentId: String(r.agentId), chatId: String(r.chatId), title: clip(r.title || '', 60),
@@ -104,6 +122,7 @@ const RoutinesCore = (() => {
       status: ['running', 'paused', 'done', 'stopped'].includes(r.status) ? r.status : 'running', why: String(r.why || ''),
       round: Number(r.round) || 0, done: Number(r.done) || 0, tokens: Number(r.tokens) || 0,
       rounds: Array.isArray(r.rounds) ? r.rounds.slice(-MAX_ROUNDS) : [],
+      usageUnknown:r.usageUnknown === true, usageTotals:r.usageTotals ? Object.fromEntries(['input','output','cached','cacheWrite','fresh','cost','costReports'].map(k=>[k,number(r.usageTotals[k])?r.usageTotals[k]:0])) : null,
       errors: Number(r.errors) || 0, net: Number(r.net) || 0, saidDone: Number(r.saidDone) || 0, lastKind: r.lastKind || '',
       lastEnd: Number(r.lastEnd) || 0, quietUntil: Number(r.quietUntil) || 0, resetAt: Number(r.resetAt) || 0,
       inFlight: r.inFlight === true, kickoff: r.kickoff !== false && !(Number(r.round) > 0), askOk: r.askOk === true,
@@ -127,11 +146,13 @@ const RoutinesCore = (() => {
     const now = ctx.now ?? Date.now();
     if (!r || r.status !== 'running') return { act: 'none' };
     if (r.inFlight || ctx.busy) return { act: 'none' }; // its end calls again
+    if (r.usageUnknown) return { act:'pause', why:'usage was not fully reported; review this run before starting a new budget' };
     if (r.how.kind === 'rounds' && r.round >= r.how.rounds) return { act: 'stop', status: 'done', why: `all ${r.how.rounds} round${r.how.rounds === 1 ? '' : 's'} done` };
     if (r.round >= MAX_ROUNDS) return { act: 'stop', status: 'done', why: `${MAX_ROUNDS} rounds (the most a routine runs)` };
     if (r.endAt && now >= r.endAt) return { act: 'stop', status: 'done', why: r.how.kind === 'until' ? `it's ${clock(r.endAt)}` : 'the time is up' };
-    if (r.cap && r.tokens >= r.cap) return { act: 'stop', status: 'stopped', why: `it reached its spending cap (≈ ${fmt(r.cap)} tokens)` };
-    if (r.cap && r.done && r.tokens + avg(r) > r.cap) return { act: 'stop', status: 'stopped', why: `another round would pass its spending cap (≈ ${fmt(r.tokens)} of ${fmt(r.cap)} tokens used)` };
+    if (r.cap && r.tokens >= r.cap) return { act: 'stop', status: 'stopped', why: `it reached its token budget (${fmt(r.cap)} tokens)` };
+    const estimate = Math.max(avg(r), r.rounds.at(-1)?.tokens || 0, r.done ? 0 : ctx.lastTokens || 0);
+    if (r.cap && estimate && r.tokens + estimate > r.cap) return { act: 'stop', status: 'stopped', why: `another round is estimated to exceed its token budget (${fmt(r.tokens)} of ${fmt(r.cap)} used; about ${fmt(estimate)} for a round)` };
     if (r.resetAt && now < r.resetAt) return { act: 'wait', ms: r.resetAt - now, why: r.limitWait ? `paused until ${(ctx.when || clock)(r.resetAt)} (limit)` : `waiting for the usage limit to reset at ${clock(r.resetAt)}` };
     const lim = limitCheck(r, ctx.limits, now, ctx.when);
     if (lim) return lim;
@@ -293,9 +314,11 @@ const RoutinesCore = (() => {
   // limit · signedout), resetAt, asked (a permission card / question showed in this chat during the round), plan (a
   // plan waits for ▶ Go ahead) } → { act: 'continue' | 'pause' | 'stop' | 'wait', why } (r is updated)
   function roundEnded(r, ev = {}, now = Date.now()) {
+    const previous = { status:r.status, why:r.why };
     r.inFlight = false; r.lastEnd = now;
     const n = r.round;
-    const rec = (ok, extra = {}) => { r.rounds.push({ n, at: now, ms: ev.ms || 0, tokens: ev.tokens || 0, ok, ...extra }); if (r.rounds.length > MAX_ROUNDS) r.rounds.shift(); };
+    const rec = (ok, extra = {}) => { r.rounds.push({ n, at: now, ms: ev.ms || 0, tokens: ev.tokens || 0, ok, ...(ev.usage !== undefined ? {usage:ev.usage} : {}), ...extra }); if (r.rounds.length > MAX_ROUNDS) r.rounds.shift(); };
+    if (ev.usage !== undefined) tally(r, ev.usage);
     if (ev.tokens) r.tokens += ev.tokens;
     let out;
     if (ev.type === 'stopped') { rec(false, { stopped: true }); out = { act: 'pause', why: 'you stopped the reply' }; }
@@ -339,6 +362,8 @@ const RoutinesCore = (() => {
       else if (ev.plan) out = { act: 'pause', why: 'its plan waits for your ▶ Go ahead' };
       else out = { act: 'continue', why: '' };
     }
+    if (previous.status !== 'running') { r.status=previous.status; r.why=previous.why; return {act:'none',why:r.why}; }
+    if (r.usageUnknown && (out.act === 'continue' || out.act === 'wait')) out={act:'pause',why:'usage was not fully reported; review this run before starting a new budget'};
     if (out.act === 'pause') { r.status = 'paused'; r.why = out.why; }
     if (out.act === 'stop') { r.status = out.status || 'stopped'; r.why = out.why; }
     if (out.act === 'continue' || out.act === 'wait') r.why = out.why;
@@ -355,7 +380,7 @@ const RoutinesCore = (() => {
   }
   // Hearth started again: a running routine asks first (▶ Resume), unless the owner chose "keep going after a restart"
   function restarted(r) {
-    if (r.inFlight) { r.inFlight = false; r.lastEnd = Date.now(); }
+    if (r.inFlight) { r.usageUnknown = true; r.inFlight = false; r.lastEnd = Date.now(); r.status='paused'; r.why='Hearth closed during a round; its full usage is unknown'; }
     if (r.status === 'running' && !r.afterRestart) { r.status = 'paused'; r.why = 'Hearth restarted: ▶ to go on'; r.restartPaused = true; }
     return r;
   }
@@ -383,10 +408,10 @@ const RoutinesCore = (() => {
     const prog = r.how.kind === 'rounds' ? `${n} of ${r.how.rounds}` : r.endAt ? `${n} · ${mins(r.endAt - now)} left` : `${n}`;
     const held = r.status === 'running' && r.limitWait && r.resetAt > now; // (round 51) waiting out a usage limit
     const icon = r.status === 'paused' || held ? '❚❚' : r.status === 'running' ? '🔁' : r.status === 'done' ? '✓' : '■';
-    return `${icon} ${prog}${held ? ` · paused until ${when(r.resetAt)} (limit)` : ''} · ≈ ${fmt(r.tokens)} tokens so far${r.cap && r.how.kind === 'forever' ? ` of ${fmt(r.cap)}` : ''}`;
+    return `${icon} ${prog}${held ? ` · paused until ${when(r.resetAt)} (limit)` : ''} · ≈ ${fmt(r.tokens)}${r.usageUnknown ? '+' : ''} tokens so far${r.cap ? ` of ${fmt(r.cap)}` : ''}`;
   }
   function describe(r) {
-    return `🔁 Keep going ${howText(r.how)}${r.pause !== 'none' ? `, ${pauseText(r.pause)} between rounds` : ''}${r.cap ? `, at most ≈ ${fmt(r.cap)} tokens` : ''}`;
+    return `🔁 Keep going ${howText(r.how)}${r.pause !== 'none' ? `, ${pauseText(r.pause)} between rounds` : ''}${r.cap ? `, token budget ${fmt(r.cap)} (checked between rounds)` : ''}`;
   }
   // the routine's message as the AI gets it: the owner's words as written (nothing hidden, nothing added)
   const message = (r) => r.prompt;
@@ -394,6 +419,6 @@ const RoutinesCore = (() => {
   return { MIN, HOUR, SETTLE, DEFAULT_PROMPT, HOW, PAUSES, WHEN_I_WRITE, CAPS, NO_LIMIT_CAP, MAX_ROUNDS, ERR_STOP, DONE_STOP, NET_PAUSE, TRANSIENT,
     STALE_STOP, REPEAT_STOP, SAME, MARGINS, MARGIN, LONG, LEAN_SHARE, limitCheck, limitStep, changeOf, similar, summaryOf, leanBetween, dayKey, statAdd, statSum, statWords,
     untilAt, needsCap, defaultCap, normalize, live, nextStep, sent, saysDone, roundEnded, ownerWrote, restarted, resume, pause, stop,
-    howText, pauseText, chipText, describe, message, fmt, mins, clock, clip, uid };
+    howText, pauseText, chipText, describe, message, usageOf, helperUsage, fmt, mins, clock, clip, uid };
 })();
 if (typeof module !== 'undefined') module.exports = RoutinesCore;

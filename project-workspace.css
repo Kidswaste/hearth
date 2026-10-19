@@ -55,3 +55,9 @@
 @media(max-width:800px){.pw-logo-workspace{grid-template-columns:1fr}.pw-logo-controls{border:0;padding:0}.pw-logo-inspector{max-height:180px}.pw-banner-editor{padding:16px}}
 
 .pw-banner-editor .pw-logo-field{display:flex;flex-direction:row;text-align:left}.pw-banner-editor .pw-logo-field input,.pw-banner-editor .pw-logo-field select{width:auto;flex:0 1 140px}
+/* One deliberate control, outside the horizontally scrolling project tabs. */
+.workspace-switcher .workspace-auto{flex:0 0 auto;margin-left:auto;padding:6px 12px;border:1px solid #e7af6255;border-radius:9px;background:linear-gradient(120deg,#e7af6222,#b28aff15);color:#ffce87;white-space:nowrap;font-size:12px;box-shadow:inset 0 1px #ffffff12}
+.workspace-switcher .workspace-auto:hover{background:linear-gradient(120deg,#e7af623a,#b28aff25);border-color:#e7af6299}
+.workspace-switcher .workspace-auto.running{border-color:#e7af62b0;box-shadow:inset 3px 0 #e7af62}
+.workspace-switcher .workspace-auto.paused{color:#cfb3ee;border-color:#b28aff65}
+@media(max-width:800px){.workspace-switcher .workspace-auto{font-size:11px;padding:5px 8px}.workspace-project-name{max-width:80px}}

@@ -273,6 +273,8 @@ const Offline = (() => {
     }
     m.net = net;
     moveChatQueue(agentId, chat, net.kind);
+    // Auto-improve owns its budget/retry decision. Offline replay must not bypass a paused cap.
+    if(chat.messages.slice(0,idx).findLast(x=>x.role==='user')?.routine){net.gaveUp=true;return true;}
     // (round 36, capturefix) one AI's part of an Ask everyone: not re-sent here as a plain message; the whole ask runs
     // again once, from the chat it was asked in (its answers gather in a card there)
     const ask = net.kind !== 'cutoff' ? chat.messages.slice(0, idx).findLast((x) => x.role === 'user') : null;

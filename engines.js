@@ -844,21 +844,21 @@ function claudeParser(session) {
       return { type: 'thinking', text: '\n\n' };
     }
     if (msg.type === 'result') {
-      if (msg.is_error) return { type: 'error', message: msg.result || 'Claude returned an error' };
       const u = msg.usage || {};
       return {
-        type: 'done',
+        type: msg.is_error ? 'error' : 'done',
+        ...(msg.is_error ? {message:msg.result || 'Claude returned an error'} : {}),
         text: msg.result,
-        usage: {
+        ...(msg.usage && Number.isFinite(u.input_tokens) && Number.isFinite(u.output_tokens) ? { usage: {
           input: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0),
           output: u.output_tokens || 0,
           // for the meter (meter.js): cache reads / writes and Claude's own API-price estimate
           cached: u.cache_read_input_tokens || 0,
           cacheWrite: u.cache_creation_input_tokens || 0,
-          cost: msg.total_cost_usd || 0,
+          ...(Number.isFinite(msg.total_cost_usd) ? { cost:msg.total_cost_usd } : {}),
           // (round 50, historylean) how long its prompt cache lives: 1 h (a subscription) or 5 min (an API key)
           ...(u.cache_creation?.ephemeral_1h_input_tokens ? { ttl: '1h' } : u.cache_creation?.ephemeral_5m_input_tokens ? { ttl: '5m' } : {}),
-        },
+        } } : {}),
       };
     }
     return null;
@@ -981,6 +981,7 @@ function codexParser(session, agent = {}) {
       return { type: 'thinking', text: `⚠ ${item.message}\n\n` };
     }
     if (msg.type === 'turn.completed') {
+      if (!msg.usage || !Number.isFinite(msg.usage.input_tokens) || !Number.isFinite(msg.usage.output_tokens)) return {type:'done',text};
       // Codex has reported running totals for the whole thread (shown here as what this turn added); a
       // smaller number than last time means this version reports per turn, so it is used as is.
       const u = msg.usage || {};
@@ -1197,7 +1198,7 @@ function send({ agent: agent0, chatId, session, text, options = {} }, emit, live
       parser: codexParser(state, agent), fallbackText: options.fallbackText, text, showThinking: agent.showThinking !== false }, (event) => {
       if (event.type === 'tool') { toolCount += 1; if (Wake) Wake.noteTool(agent.id, event.name); }
       if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message, { bin }));
-      if (event.type === 'done') { try { addUsage(agent.id, event.usage, { chatId, model: options.model || agent.model || '', dock: agent.dock || '', ms: event.timing.totalMs, tools: toolCount }); } catch { /* best effort */ } }
+      if (event.usage && ['done','error','stopped'].includes(event.type)) { try { addUsage(agent.id, event.usage, { chatId, model: options.model || agent.model || '', dock: agent.dock || '', ms: event.timing.totalMs, tools: toolCount }); } catch { /* best effort */ } }
       emit(event);
     }, live);
     return;
@@ -1275,9 +1276,10 @@ function send({ agent: agent0, chatId, session, text, options = {} }, emit, live
       send({ agent, chatId, session, text: original, options }, emit, live);
       return;
     }
-    if (heal(event)) return;
+    // A failed result can carry billable usage. Never hide it behind an automatic replay.
+    if (!event.usage && heal(event)) return;
     if (event.type === 'error') Object.assign(event, friendlyError(engine, event.message, { bin }));
-    if (event.type === 'done') { try { addUsage(agent.id, event.usage, { chatId, model: options.model || agent.model || '', dock: agent.dock || '', ms: Date.now() - startedAt, tools: toolCount }); } catch { /* usage stats are best-effort */ } }
+    if (event.usage && ['done','error','stopped'].includes(event.type)) { try { addUsage(agent.id, event.usage, { chatId, model: options.model || agent.model || '', dock: agent.dock || '', ms: Date.now() - startedAt, tools: toolCount }); } catch { /* usage stats are best-effort */ } }
     emit({ ...event, session: state });
   };
   // Self-healing (round 9): each known failure that a second try can fix gets one, before anything was streamed.

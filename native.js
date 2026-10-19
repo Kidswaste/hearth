@@ -1934,12 +1934,12 @@ const Native = (() => {
       chat.session = event.session;
       replyText = message.text;
     } else if (event.type === 'stopped') {
-      if (p.text || extras.thinking) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, ...extras });
+      if (p.text || extras.thinking || event.usage) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, usage:event.usage, ...extras });
       if (event.session?.id) chat.session = event.session;
     } else {
       // what it wrote before failing stays (marked stopped), then the error
       if (visibleText(p.text)) chat.messages.push({ role: 'assistant', text: visibleText(p.text), at, stopped: true, ...extras });
-      chat.messages.push({ role: 'error', text: event.message, needsLogin: event.needsLogin, ...(event.fixAction ? { fixAction: event.fixAction, fixEngine: event.fixEngine } : {}), ...(extras.timing ? { timing: extras.timing } : {}), at });
+      chat.messages.push({ role: 'error', text: event.message, usage:event.usage, needsLogin: event.needsLogin, ...(event.fixAction ? { fixAction: event.fixAction, fixEngine: event.fixEngine } : {}), ...(extras.timing ? { timing: extras.timing } : {}), at });
       if (event.session?.id) chat.session = event.session;
       replyText = `Error: ${event.message}`;
     }
@@ -2014,6 +2014,7 @@ const Native = (() => {
   // After a reply that pushed the context past the limit: compact on its own (agent setting, on by default).
   function maybeAutoCompact(chat, message) {
     const agent = H.agent(chat.agentId);
+    if(window.Routines?.forChat(chat.id))return false; // the routine handles compaction within its own budget
     if (!agent || agent.autoCompact === false || !message?.usage || (message.usage.contextInput ?? message.usage.input) < AUTO_COMPACT_TOKENS) return false;
     if (window.Autocompact) return false; // (round 34) never silently: the offer to continue lighter (or the banner when it's off)
     if (H.activeChat[chat.agentId] !== chat.id || views.get(chat.agentId)?.queue?.length) return false;

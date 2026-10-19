@@ -35,6 +35,11 @@ function turn(agent, text, session = {}, options = {}, onStart) {
 }
 
 (async () => {
+  const failedUsage=T.claudeParser({})({type:'result',is_error:true,result:'Failed after edits',total_cost_usd:.42,usage:{input_tokens:100,cache_read_input_tokens:900,cache_creation_input_tokens:50,output_tokens:20}});
+  assert.equal(failedUsage.type,'error');assert.equal(failedUsage.usage.input,1050);assert.equal(failedUsage.usage.cost,.42);
+  assert.equal(T.claudeParser({})({type:'result',result:'No report'}).usage,undefined);
+  assert.equal(T.claudeParser({})({type:'result',result:'Known zero',usage:{input_tokens:0,output_tokens:0}}).usage.input,0);
+  ok('Claude error results retain usage and price; absent usage is not invented as zero');
   // ---- argument building
   const a0 = T.codexArgs({ ...astra, threeTools: true }, {}, {});
   assert(a0.some((x) => /^mcp_servers\.\w+\.default_tools_approval_mode="approve"$/.test(x)), 'Hearth tools pre-approved for codex exec');

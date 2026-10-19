@@ -63,6 +63,8 @@ rl.on('line', (line) => {
   reply(m.id, { turn: { id: turnId, status: 'inProgress' } });
   notify('turn/completed', { threadId, turn: { id: 'old-turn', status: 'completed' } });
   if (text === 'WAIT') return;
+  if(text==='NOUSAGE'){notify('turn/completed',{threadId,turn:{id:turnId,status:'completed'}});return;}
+  if(text==='PARTIALWAIT') {const n=++threads.get(threadId).n;notify('thread/tokenUsage/updated',{...meta,tokenUsage:{total:{inputTokens:n*100,outputTokens:n*20},last:{inputTokens:100}}});return;}
   if (text === 'QUESTION') {
     send({ id: 'question-1', method: 'item/tool/requestUserInput', params: { ...meta, itemId: 'q', isBlocking: true, questions: [{ id: 'color', header: 'Color', question: 'Which color?', options: [{ label: 'Blue', description: 'Blue color' }] }] } }); return;
   }

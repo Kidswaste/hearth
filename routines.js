@@ -38,6 +38,7 @@ const Routines = (() => {
   for (const ev of ['pointerdown', 'keydown', 'wheel']) addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true, capture: true });
 
   const forChat = (chatId) => list.find((r) => r.chatId === chatId && C.live(r)) || null;
+  const recentFor = chatId => forChat(chatId) || list.filter(r=>r.chatId===chatId).at(-1);
   const byId = (id) => list.find((r) => r.id === id) || null;
   const nameOf = (r) => H.agent(r.agentId)?.name || 'the AI';
   const titleOf = (r) => r.title || 'this chat';
@@ -59,7 +60,7 @@ const Routines = (() => {
       now, busy: Native.isBusy(r.chatId) || Boolean(window.Autocompact && r.lightening),
       draft: here && Boolean(v?.input?.value.trim()) && now - lastInput < 5 * C.MIN, // a draft left for 5 min doesn't hold it forever
       queued: offline || (here && v?.queue?.length > 0), idleMs: now - lastInput, quietMs: now - lastWrote, askFirst,
-      limits: limitsFor(r.agentId, now), when, // (round 51, routinelean) pause before a usage limit
+      limits: limitsFor(r.agentId, now), when,
     };
   }
   // (round 51, routinelean) this AI's plan windows as the Usage window knows them (usagelimits.js; 0 tokens)
@@ -83,7 +84,9 @@ const Routines = (() => {
     // a plan waiting for ▶ Go ahead (◎ Plan first) is yours to answer
     const lastMsg = chat.messages.at(-1);
     if (!Native.isBusy(r.chatId) && lastMsg?.role === 'assistant' && lastMsg.plan === 'waiting') { pauseFor(r, 'its plan waits for your ▶ Go ahead'); return; }
-    const d = C.nextStep(r, context(r));
+    if (!Native.isBusy(r.chatId) && !r.inFlight) await refreshLimits(r.agentId);
+    const lastUsage=[...chat.messages].reverse().find(m=>m.role==='assistant' && C.usageOf(m.usage))?.usage;
+    const d = C.nextStep(r, {...context(r),lastTokens:C.usageOf(lastUsage)?.tokens || 0});
     if (d.act === 'none') return;
     if (d.act === 'wait' && d.hold) { holdFor(r, d); later(r, d.ms); return; }
     if (d.act === 'wait') { if (d.why && r.why !== d.why) { r.why = d.why; save(); paintAll(); } later(r, d.ms); return; }
@@ -92,21 +95,35 @@ const Routines = (() => {
     await round(r, chat);
   }
   const checkSoon = (r, ms = C.SETTLE) => later(r, ms);
+  const refreshing=new Map(), refreshed=new Map();
+  async function refreshLimits(agentId) {
+    const engine=H.agent(agentId)?.engine;
+    if(!engine || Date.now()-(refreshed.get(engine)||0)<60000)return;
+    if(refreshing.has(engine))return refreshing.get(engine);
+    const job=(async()=>{try{
+      await Lazy.load('usagelimits');
+      let timer;try{await Promise.race([engine==='codex'?window.UsageLimits?.readAstra():window.UsageLimits?.readClaude(),new Promise(resolve=>{timer=setTimeout(resolve,8000);})]);}finally{clearTimeout(timer);}
+    }catch{/* unknown is displayed as unknown */}finally{refreshed.set(engine,Date.now());refreshing.delete(engine);}})();
+    refreshing.set(engine,job);return job;
+  }
 
   // one round: (lighter first when it clearly pays) the routine's words as a new turn in its chat
   async function round(r, chat) {
+    if(r.preparing)return;r.preparing=true;
+    try {
     const lean = r.lighter ? await leanFirst(r, chat) : null; // (round 51) the lighter fresh start between rounds
     if (lean == null && r.lighter && window.Autocompact?.offerFor && H.activeChat[r.agentId] === r.chatId) {
       let d = null; try { d = Autocompact.offerFor(chat); } catch { /* no decision */ }
       if (d) {
         r.lightening = true; r.why = 'continuing lighter first'; paintAll();
-        try { await Autocompact.run(r.agentId); } catch (err) { console.warn('routines: lighter', err.message); }
+        try { await Autocompact.run(r.agentId,{onUsage:raw=>{const u=C.helperUsage(r,raw);stat({t:u?.tokens||0});saveNow();paintAll();}}); } catch (err) { r.usageUnknown=true;console.warn('routines: lighter', err.message); }
         r.lightening = false;
         if (r.status !== 'running') return;
         checkSoon(r, 500);
         return;
       }
     }
+    if(r.status!=='running')return;
     try { C.limitStep(r, limitsFor(r.agentId)); } catch { /* no numbers */ }
     const n = C.sent(r);
     r.title = C.clip(chat.title, 60) || r.title;
@@ -122,6 +139,7 @@ const Routines = (() => {
       if (/gone/i.test(err.message)) { end(r, 'stopped', 'its chat is gone'); return; }
       checkSoon(r, 5000); // still answering (a message of yours went first): after it
     }
+    } finally {r.preparing=false;}
   }
   // (round 51, routinelean) before a round: go on in a fresh session with the lighter history (historylean.js) when the
   // cache has expired, or when the chat re-reads a lot and more rounds follow; no extra model call (Continue lighter's
@@ -206,6 +224,8 @@ const Routines = (() => {
     if (first) await Native.send(agentId, first);
     const chat = first ? Native.chatOf(agentId) : chatId ? await Native.load(chatId).catch(() => null) : Native.ensureChat(agentId, spec.prompt);
     if (!chat) throw new Error('That chat is gone.');
+    if (chat.agentId !== agentId) throw new Error('This chat belongs to another assistant. Reopen its project and try again.');
+    if (forChat(chat.id)?.inFlight) throw new Error('Let the current auto-improve reply finish before starting a new budget.');
     for (const old of list.filter((x) => x.chatId === chat.id && C.live(x))) end(old, 'stopped', 'a new routine replaced it');
     const r = C.normalize({ ...spec, agentId, chatId: chat.id, title: chat.title, createdAt: Date.now(), status: 'running', kickoff: true, lastEnd: Date.now() - C.SETTLE });
     if (!r) throw new Error('Pick how long it keeps going.');
@@ -245,6 +265,7 @@ const Routines = (() => {
       const untilIn = el('input', { type: 'time', value: how.time || '18:00', class: 'rt-time', attrs: { 'aria-label': 'Until this time' } });
       const howRow = el('div', { class: 'rt-how', role: 'radiogroup', attrs: { 'aria-label': 'How long' } });
       const capSel = el('select', { class: 'rt-cap', attrs: { 'aria-label': 'Spending cap' } });
+      const customCap=el('input',{type:'number',min:1,max:1e9,step:1,class:'rt-custom-cap',hidden:true,attrs:{'aria-label':'Custom token budget'}});
       const capHint = el('span', { class: 'hint rt-cap-hint' });
       const howNow = () => {
         const h = C.HOW.find((x) => x.id === howId);
@@ -261,12 +282,14 @@ const Routines = (() => {
       let capPick = last.cap ?? 'default';
       const paintCap = () => {
         const need = C.needsCap(howNow());
-        const opts = [['default', `≈ ${fmt(def)} tokens${spend.limit ? ' (from your weekly limit)' : ''}`], ...C.CAPS.filter((c) => c !== def).map((c) => [String(c), `≈ ${fmt(c)} tokens`]), ...(need ? [] : [['0', 'No cap']])];
+        const opts = [['default', `${fmt(def)} tokens${spend.limit ? ' (from your weekly traffic limit)' : ''}`], ...C.CAPS.filter((c) => c !== def).map((c) => [String(c), `${fmt(c)} tokens`]),['custom','Custom…'], ...(need ? [] : [['0', 'No cap']])];
+        if(Number(capPick)>0&&!opts.some(([v])=>v===String(capPick))) {customCap.value=String(capPick);capPick='custom';}
         if (!opts.some(([v]) => v === String(capPick))) capPick = 'default';
         capSel.replaceChildren(...opts.map(([v, t]) => el('option', { value: v, text: t, selected: v === String(capPick) })));
-        capHint.textContent = need ? 'Required for long routines: it stops politely before a round would pass it.' : 'It stops politely before a round would pass it.';
+        customCap.hidden=capPick!=='custom';
+        capHint.textContent = 'Checked between replies using reported input + output. The current reply can exceed this budget.';
       };
-      capSel.addEventListener('change', () => { capPick = capSel.value; });
+      capSel.addEventListener('change', () => { capPick = capSel.value;customCap.hidden=capPick!=='custom';if(!customCap.hidden&&!customCap.value)customCap.value=String(def); });
       untilIn.addEventListener('change', paintCap); roundsIn.addEventListener('input', paintCap);
       const pauseSel = el('select', { attrs: { 'aria-label': 'Pause between rounds' } }, C.PAUSES.map((p) => el('option', { value: p.id, text: p.label, selected: p.id === (ex?.pause || last.pause || 'none') })));
       const writeSel = el('select', { attrs: { 'aria-label': 'When I write in this chat' } }, C.WHEN_I_WRITE.map((w) => el('option', { value: String(w.ms), text: w.label, selected: w.ms === (ex?.resumeAfter ?? last.resumeAfter ?? 0) })));
@@ -281,25 +304,30 @@ const Routines = (() => {
       const go = () => {
         const h = howNow();
         if (h.kind === 'until' && !h.at) { toast('Pick a time for “Until…”.', { timeout: 2500 }); return; }
-        const cap = capSel.value === 'default' ? def : Number(capSel.value) || 0;
-        finish({ prompt: words.value.trim() || C.DEFAULT_PROMPT, how: h, pause: pauseSel.value, resumeAfter: Number(writeSel.value) || 0, cap, capPick: capSel.value === 'default' ? 'default' : Number(capSel.value), lighter: lightI.checked, waitReset: resetI.checked, afterRestart: restartI.checked, margin: Number(marginSel.value) || C.MARGIN });
+        const cap = capSel.value === 'custom' ? Number(customCap.value) : capSel.value === 'default' ? def : Number(capSel.value) || 0;
+        if(!Number.isFinite(cap)||cap<0||cap>1e9||!Number.isInteger(cap)||(capSel.value==='custom'&&cap<1)){customCap.reportValidity();toast('Enter a whole token budget from 1 to 1,000,000,000.');return;}
+        finish({ prompt: words.value.trim() || C.DEFAULT_PROMPT, how: h, pause: pauseSel.value, resumeAfter: Number(writeSel.value) || 0, cap, capPick: capSel.value === 'default' ? 'default' : cap, lighter: lightI.checked, waitReset: resetI.checked, afterRestart: restartI.checked, margin: Number(marginSel.value) || C.MARGIN });
       };
       const form = el('form', { method: 'dialog', on: { submit: (e) => { e.preventDefault(); go(); } } },
-        el('h2', { text: '🔁 Keep going' }),
-        el('p', { class: 'rt-intro hint', text: first ? 'Your message goes first. Then, each time a reply finishes here, Hearth sends these words as a new turn (marked 🔁).' : 'Each time a reply finishes here, Hearth sends these words as a new turn (marked 🔁). Writing yourself pauses it.' }),
+        el('h2', { text: '↻ Auto-improve' }),
+        el('p', { class: 'rt-intro hint', text: first ? 'Your message goes first, then Hearth repeats the prompt below.' : `Keep working in “${H.chats.find(c=>c.id===chatId)?.title || 'this chat'}”. Writing here pauses the loop.` }),
         el('label', { class: 'rt-field' }, el('span', { class: 'rt-label', text: 'What to ask each time' }), words),
         el('div', { class: 'rt-field' }, el('span', { class: 'rt-label', text: 'How long' }), howRow),
-        row('Pause between rounds', pauseSel),
-        row('Spending cap', capSel), capHint,
-        el('details', { class: 'rt-more' }, el('summary', { text: 'More' }), row('When I write here', writeSel), row('Pause before a usage limit at', marginSel), lightL, resetL, restartL),
+        row('Token budget', capSel, customCap), capHint,
+        row('Account usage ceiling', marginSel),
+        el('div',{class:'rt-account hint',text:accountWords(agentId)}),
+        el('p',{class:'hint rt-account-note',text:'Token traffic includes cached history; it is not your subscription allowance or bill. Account limits include other chats and devices, when reported.'}),
+        el('details', { class: 'rt-more' }, el('summary', { text: 'Timing & advanced' }),row('Pause between rounds', pauseSel), row('When I write here', writeSel), lightL, resetL, restartL),
         el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }),
           el('button', { type: 'button', text: 'Cancel', on: { click: () => finish(null) } }),
-          el('button', { type: 'submit', class: 'primary', text: first ? 'Send and keep going' : ex ? 'Start again with these' : 'Start' })));
+          el('button', { type: 'submit', class: 'primary', text: first ? 'Send and keep going' : ex ? 'Start a new run & budget' : 'Start auto-improving' })));
       paintHow(); paintCap();
       dlg.append(form);
       dlg.addEventListener('close', () => { setTimeout(() => dlg.remove(), 0); resolve(null); });
       document.body.append(dlg);
       dlg.showModal();
+      refreshLimits(agentId).then(()=>{if(dlg.isConnected)dlg.querySelector('.rt-account').textContent=accountWords(agentId);});
+      if(chatId)Native.load(chatId).then(chat=>{const u=C.usageOf([...chat.messages].reverse().find(m=>m.role==='assistant'&&C.usageOf(m.usage))?.usage);if(u&&dlg.isConnected)capHint.append(el('span',{class:'rt-last-usage',text:`Last reply: ${u.tokens.toLocaleString()} tokens. Next-round usage can vary.`}));}).catch(()=>{});
       words.focus(); words.setSelectionRange(words.value.length, words.value.length);
     });
   }
@@ -312,6 +340,41 @@ const Routines = (() => {
     const spec = await card(id, { chatId: cid, first });
     if (!spec) { if (first) Native.setDraft(id, first); return null; }
     try { return await start(id, spec, { chatId: cid, first }); } catch (err) { toast(err.message, { type: 'error' }); if (first) Native.setDraft(id, first); return null; }
+  }
+  function accountWords(agentId) {
+    const engine=H.agent(agentId)?.engine,st=window.UsageLimits?.state;
+    const vs=st && typeof UsageLimitsCore!=='undefined' ? UsageLimitsCore.views(st,engine).filter(v=>!v.reset&&v.used!=null) : [];
+    return vs.length ? vs.map(v=>`${v.label}: ${v.used}% used · updated ${v.ago}`).join(' / ') : 'Account usage unavailable. The token budget still applies.';
+  }
+  async function openProject() {
+    const chat=window.ProjectWorkspace?.currentChat?.();
+    if(!chat)throw Error('Open a project with an available chat first.');
+    const r=recentFor(chat.id);
+    if(r)return manage(r);
+    return open(chat.agentId,{chatId:chat.id});
+  }
+  // The same run survives tab changes; viewing or cancelling this panel never starts work.
+  function manage(r) {
+    document.querySelector('.rt-run')?.close();
+    const dlg=el('dialog',{class:'ui-modal rt-dlg rt-run',attrs:{'aria-label':'Auto-improve run'}}),content=el('div',{class:'rt-run-content'});
+    const close=el('button',{type:'button',text:'Close',on:{click:()=>dlg.close()}});
+    const paint=()=>{
+      const t=r.usageTotals,u=r.usageUnknown?'At least ':'',busy=Native.isBusy(r.chatId),live=C.live(r);
+      const controls=el('div',{class:'dialog-actions'});
+      if(live)controls.append(el('button',{type:'button',text:r.status==='running'?'Pause after reply':'Resume',disabled:r.usageUnknown,on:{click:()=>{r.status==='running'?pause(r.id):resume(r.id);}}}),el('button',{type:'button',text:busy?'Stop after reply':'Stop run',on:{click:()=>stop(r.id)}}));
+      controls.append(el('button',{type:'button',class:'primary',text:'New run & budget',disabled:busy,on:{click:()=>{dlg.close();open(r.agentId,{chatId:r.chatId});}}}));
+      const history=el('details',{class:'rt-more'},el('summary',{text:'Round history & exact counts'}));
+      history.append(el('p',{class:'hint',text:'Input includes cache reads/writes. Output includes reasoning. Counts below are reported traffic, not a bill. Large totals include rereading history at each model call.'}));
+      for(const x of r.rounds.slice(-12))history.append(el('div',{class:'rt-history-row',text:`${x.n} · ${x.ok?'Completed':x.stopped?'Stopped':'Failed'} · ${x.tokens.toLocaleString()}${x.usage===null||x.usage?.partial?'+ (incomplete)':''} tokens`,title:x.sum||x.error||''}));
+      content.replaceChildren(el('h2',{text:'↻ Auto-improve'}),el('p',{class:'hint',text:`${titleOf(r)} · ${r.done} completed · ${r.status}`}),el('div',{class:'rt-spent',text:`${u}${r.tokens.toLocaleString()} tokens`}),el('p',{class:'hint',text:r.cap?`Budget ${r.cap.toLocaleString()} · ${Math.max(0,r.cap-r.tokens).toLocaleString()} left${busy?' · current reply not yet counted':''}`:'No token cap'}),
+        t?el('div',{class:'rt-breakdown'},...['fresh','cacheWrite','cached','output'].map(k=>el('span',{text:`${{fresh:'Fresh',cacheWrite:'Cache write',cached:'Cached',output:'Output'}[k]} ${t[k].toLocaleString()}`}))):null,
+        t?.costReports?el('p',{class:'hint',text:`$${t.cost.toFixed(4)} API-price estimate reported for ${t.costReports} replies; not a subscription charge.`}):null,
+        el('p',{class:'rt-run-status',text:r.why || (busy?'Working on this reply. Pause and stop take effect before the next one.':'Waiting for the next round.')}),el('p',{class:'hint',text:accountWords(r.agentId)}),controls,history);
+    };
+    dlg.append(content,el('div',{class:'dialog-actions'},close));
+    document.addEventListener('hearth:routines',paint);
+    dlg.onclose=()=>{document.removeEventListener('hearth:routines',paint);dlg.remove();};
+    document.body.append(dlg);paint();dlg.showModal();refreshLimits(r.agentId).then(()=>{if(dlg.isConnected)paint();});
   }
   function agentNow() {
     const a = H.agent(H.activeId);
@@ -328,6 +391,8 @@ const Routines = (() => {
       tagNext = null;
       return;
     }
+    // An explicit retry of the same user turn is another charged attempt, not duplicate delivery.
+    if(m?.routine){const r=byId(m.routine.id);if(r){m.routine.accounted=false;r.inFlight=true;r.sentAt=Date.now();Native.save(chat);}return;}
     // the owner wrote (not a hook's line, not offline.js's "continue", not a compacting step, not a re-send): read once
     // every send hook has run (hooks.js marks its own message in its hook, whichever loaded first)
     queueMicrotask(() => ownerSent(chat, m));
@@ -344,9 +409,10 @@ const Routines = (() => {
   }
   Native.hooks.finish.push((event, chat, extras) => {
     if (!chat) return;
-    const r = forChat(chat.id);
-    if (!r) return;
     const asked = [...chat.messages].reverse().find((m) => m.role === 'user');
+    // A stopped loop can still have its last reply finishing. Keep that usage too.
+    const r = (asked?.routine?.id && byId(asked.routine.id)) || forChat(chat.id);
+    if (!r) return;
     if (asked?.routine?.id !== r.id) { if (r.status === 'running') checkSoon(r); return; } // your message (or a hook's) was answered
     awake(r, false);
     // (round 51) read once every finish hook has run and the reply is in the chat: its tools, what aiundo recorded
@@ -363,7 +429,9 @@ const Routines = (() => {
     return C.changeOf(tools, ai);
   }
   function roundOver(r, event, chat, asked, extras) {
-    const tokens = event.usage ? (event.usage.input || 0) + (event.usage.output || 0) : 0;
+    if(asked.routine.accounted)return;
+    asked.routine.accounted=true;
+    const usage=C.usageOf(event.usage),tokens=usage?.tokens || 0;
     const change = changeOf(event, chat, extras);
     const text = event.type === 'error' ? event.message : (event.text || chat.messages.at(-1)?.text || '');
     const summary = event.type === 'done' ? C.summaryOf(text) : '';
@@ -373,11 +441,12 @@ const Routines = (() => {
       if (!kind && event.needsLogin) kind = 'signedout';
     }
     const before = r.status;
-    const out = C.roundEnded(r, { type: event.type, text, tokens, ms: Date.now() - (r.sentAt || Date.now()), kind, resetAt, asked: r.asked, change, summary }, Date.now());
+    const out = C.roundEnded(r, { type: event.type, text, tokens, usage, ms: Date.now() - (r.sentAt || Date.now()), kind, resetAt, asked: r.asked, change, summary }, Date.now());
     r.asked = false;
     stat({ t: tokens, r: 1, f: change?.files || 0, c: change?.changed ? 1 : 0 });
     // the round's message says what it cost
-    if (tokens) { asked.routine.tokens = (asked.routine.tokens || 0) + tokens; Native.save(chat); paintMsgChip(chat.id, asked); }
+    asked.routine.tokens=(asked.routine.tokens||0)+tokens;asked.routine.usageUnknown=asked.routine.usageUnknown || !usage || usage.partial;
+    Native.save(chat);paintMsgChip(chat.id,asked);saveNow();paintAll();
     if (out.act === 'continue' || out.act === 'wait') {
       const of = r.how.kind === 'rounds' ? ` of ${r.how.rounds}` : '';
       if (event.type === 'done') activity(r, `Keep going: round ${r.round}${of} done in “${titleOf(r)}” · ≈ ${fmt(tokens)} tokens (≈ ${fmt(r.tokens)} so far)`);
@@ -402,7 +471,7 @@ const Routines = (() => {
     const foot = node.querySelector(':scope > .user-foot') || node.querySelector(':scope > .msg-foot');
     if (foot) foot.prepend(chip); else node.append(chip);
   });
-  const msgChipText = (t) => `🔁 round ${t.n}${t.of ? ` of ${t.of}` : ''}${t.tokens ? ` · ≈ ${fmt(t.tokens)} tokens` : ''}`;
+  const msgChipText = (t) => `🔁 round ${t.n}${t.of ? ` of ${t.of}` : ''}${t.usageUnknown ? ` · ${t.tokens ? fmt(t.tokens)+'+ tokens · ' : ''}usage incomplete` : t.tokens ? ` · ≈ ${fmt(t.tokens)} tokens` : ''}`;
   function paintMsgChip(chatId, m) {
     for (const n of document.querySelectorAll(`.rt-msg-chip[data-rid="${m.routine.id}"][data-n="${m.routine.n}"]`)) { const t = msgChipText(m.routine); if (n.textContent !== t) n.textContent = t; }
   }
@@ -434,7 +503,7 @@ const Routines = (() => {
     const tt = paused ? '▶' : '❚❚';
     if (toggle.textContent !== tt) { toggle.textContent = tt; toggle.title = paused ? 'Resume the routine' : 'Pause the routine'; toggle.setAttribute('aria-label', toggle.title); }
   }
-  function paintAll() { for (const a of H.agents()) if (a.mode === 'native') { const v = Native.view(a.id); if (v) paintChip(a.id, v); } }
+  function paintAll() { for (const a of H.agents()) if (a.mode === 'native') { const v = Native.view(a.id); if (v) paintChip(a.id, v); } window.WorkspaceNav?.sync();document.dispatchEvent(new Event('hearth:routines')); }
   Native.hooks.render.push((agentId, v) => paintChip(agentId, v));
   // click the chip: each round's cost, change the words / settings, stop
   function menu(id, e) {
@@ -563,7 +632,7 @@ const Routines = (() => {
   }
 
   return {
-    open, start, card, stop, pause, resume, section, summary, forChat, usageBox, stats: () => C.statSum(store.get(STATS, null)), list: () => list.map((r) => ({ ...r })), get: byId,
+    open, openProject, start, card, stop, pause, resume, section, summary, forChat, usageBox, stats: () => C.statSum(store.get(STATS, null)), list: () => list.map((r) => ({ ...r })), get: byId,
     _test: { scale: (x) => { scale = x; }, check, idle: (ms) => { lastInput = Date.now() - ms; }, quiet: (ms) => { lastWrote = Date.now() - ms; }, afterStart, reload: () => { list = (store.get(KEY, []) || []).map((r) => C.normalize(r)).filter(Boolean); }, timers },
   };
 })();

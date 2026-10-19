@@ -88,6 +88,11 @@ function ok(text) { console.log(`✓ ${text}`); checks++; }
   const early = turn('early', 'WAIT'); pool.stop('early'); assert.equal((await early).end.type, 'stopped');
   pool.stopAll(); assert.equal(pool.connections.size, 0); assert.equal(pool.active.size, 0);
   ok('tool/config changes restart safely; one-off calls and early Stop clean up their processes');
+  const noUsage=await turn('no-usage','NOUSAGE');assert.equal(noUsage.end.usage,undefined);
+  const partial=turn('partial-usage','PARTIALWAIT');await new Promise(r=>setTimeout(r,150));pool.stop('partial-usage');
+  const endedPartial=await partial;assert.equal(endedPartial.end.usage.input,100);assert(endedPartial.end.usage.partial);
+  assert.equal(failed.end.usage.input,100);assert(failed.end.usage.partial);
+  pool.stopAll();ok('absent usage stays unknown; interrupted and failed turns retain partial reported usage');
 
   const runtime1 = await turn('runtime-update', 'hello', {}, { runtimeKey: 'same-path:build1' });
   const runtime2 = await turn('runtime-update', 'hello', runtime1.end.session, { runtimeKey: 'same-path:build2' });
