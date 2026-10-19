@@ -23,9 +23,9 @@ const ProjectsHome = (() => {
     const chips = el('div', { class: 'pj-chips pj-home-chips' });
     const results = el('div', { class: 'palette-list pj-home-results' });
     const quick = el('div', { class: 'pj-quick' },
-      el('button', { type: 'button', class: 'primary small', text: '＋ New project', title: 'A new project (the chat you were in comes along)', on: { click: () => newProject() } }),
+      el('button', { type: 'button', class: 'primary small', text: '＋ New project', title: 'A dedicated chat, scene, sound desk and moodboard', on: { click: () => newProject() } }),
       el('button', { type: 'button', class: 'ghost small pj-quick-more', text: '⋯', title: 'More: a new chat, the Lab, grouping in the chats list, archived projects', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, moreMenu()); } } }));
-    const head = el('div', { class: 'pj-home-head' }, el('h2', { text: 'Home' }), input, quick);
+    const head = el('div', { class: 'pj-home-head' }, el('h2', { text: 'Projects' }), input, quick);
     S.body = el('div', { class: 'pj-home-body' });
     S.root = el('div', { class: 'pj-home' }, head, el('div', { class: 'pj-home-find', hidden: true }, chips, results), S.body);
     body.append(S.root);
@@ -34,7 +34,7 @@ const ProjectsHome = (() => {
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input')); } });
     P.onChange(() => { S.stale = true; if (visible()) paintSoon(); });
     addEventListener('hearth:view', () => { if (visible() && S.stale) paintSoon(); });
-    document.addEventListener('hearth:activate', () => { if (!visible()) { clearTimeout(paintT); ++paintVersion; S.stale = true; S.io?.disconnect(); } else if (S.stale) paintSoon(); });
+    document.addEventListener('hearth:activate', () => { if (!visible()) { ProjectFrontpage.stop(); clearTimeout(paintT); ++paintVersion; S.stale = true; S.io?.disconnect(); } else if (S.stale) paintSoon(); });
     document.addEventListener('visibilitychange', () => { if (visible() && S.stale) paintSoon(); });
     paint();
   }
@@ -54,12 +54,15 @@ const ProjectsHome = (() => {
   // ---------- the cards ----------
   let homeN = 0;
   function paintHome() {
+    S.root.classList.remove('is-project');
     const n = ++homeN;
     S.io?.disconnect();
     const list = P.live();
     const grid = el('div', { class: 'pj-grid' });
     const sugg = el('div', { class: 'pj-suggest' });
-    S.body.replaceChildren(sugg, list.length ? grid : empty());
+    window.ProjectFrontpage?.stop();
+    const hero=ProjectFrontpage.hero(list);
+    S.body.replaceChildren(hero, list.length ? grid : empty(), sugg);
     let at = 0;
     const more = () => {
       const next = list.slice(at, at + CHUNK);
@@ -84,10 +87,11 @@ const ProjectsHome = (() => {
     const c = el('div', { class: `pj-card pj-st-${p.status}`, tabIndex: 0, title: `${p.name}${p.notes ? `\n${C.cap(p.notes, 200)}` : ''}\nClick: its page · right-click: more`, dataset: { project: p.id } },
       pic,
       el('div', { class: 'pj-card-head' }, el('span', { class: 'pj-mark', text: p.ident.glyph }), el('b', { class: 'pj-name', text: p.name }), p.status !== 'active' ? el('span', { class: 'pj-pill', text: C.STATUS[p.status] }) : null),
+      el('p', { class: 'pj-card-description', text: p.workspace?.description || C.cap(p.notes || 'Open your project workspace', 110) }),
       el('div', { class: 'pj-meta', text: C.countText(p) }), cont);
     tint(c, p.ident.color);
-    c.addEventListener('click', (e) => { if (e.target.closest('.pj-go')) return; show(p.id); });
-    c.addEventListener('keydown', (e) => { if (e.key === 'Enter') show(p.id); });
+    c.addEventListener('click', (e) => { if (e.target.closest('.pj-go')) return; ProjectWorkspace.open(p.id).catch(err=>toast(calmError(err),{type:'error'})); });
+    c.addEventListener('keydown', (e) => { if (e.key === 'Enter') ProjectWorkspace.open(p.id).catch(err=>toast(calmError(err),{type:'error'})); });
     c.addEventListener('contextmenu', (e) => showMenuAt(e, P.menu(p)));
     return c;
   }
@@ -97,7 +101,7 @@ const ProjectsHome = (() => {
     for (const [types, word] of [['chat', 'chat'], [['scene', 'seq'], 'scene'], [['render', 'capture'], 'render']]) {
       const x = P.lastOf(p, types);
       if (!x) continue;
-      out.push(el('button', { type: 'button', class: 'pj-go', title: `Continue: ${P.nameOf(x)}`, on: { click: (e) => { e.stopPropagation(); P.touch(p); P.openItem(x); } } },
+      out.push(el('button', { type: 'button', class: 'pj-go', title: `Continue: ${P.nameOf(x)}`, on: { click: (e) => { e.stopPropagation(); P.touch(p); if(x.type==='chat'||x.type==='scene')ProjectWorkspace.open(p.id,x.type==='scene'?'scene':'overview').catch(err=>toast(calmError(err),{type:'error'}));else P.openItem(x); } } },
         el('span', { class: 'pj-go-icon', text: C.TYPES[x.type].icon }), el('span', { class: 'pj-go-name', text: C.cap(P.nameOf(x).replace(`${p.name} · `, ''), 28) }), el('span', { class: 'pj-go-word', text: word })));
     }
     return out;
@@ -115,6 +119,10 @@ const ProjectsHome = (() => {
   function moreMenu() {
     const a = H.claudeAgent?.();
     return [
+      { label: '✦ Generate animated Three.js frontpage…', action: () => ProjectWorkspace.frontpage() },
+      { label: `${store.get('projectFrontpage.enabled',false)?'✓ ':''}Animated frontpage`, action: () => { store.set('projectFrontpage.enabled',!store.get('projectFrontpage.enabled',false));paint(); } },
+      { label: 'Customize the left rail…', action: () => WorkspaceNav.editShortcut() },
+      { label: 'Shared tools & earlier work', items: () => [{label:'Creative board',action:()=>WorkspaceNav.creative('studio')},{label:'Sound desk',action:()=>WorkspaceNav.creative('vst')},{label:'Moodboards',action:()=>activate('tool:board')}] },
       a ? { label: 'New chat', key: 'Ctrl+N', action: () => { activate(a.id); Native.newChat(a.id); } } : null,
       { label: 'Open the Lab', action: () => activate('tool:three') },
       { label: 'Search everything…', key: 'Ctrl+Shift+K', action: () => ProjectsSearch.open() },
@@ -128,18 +136,13 @@ const ProjectsHome = (() => {
     if (!ss.length) { toast('No suggestions: nothing shares a name with enough other things yet', { timeout: 4000 }); return; }
     if (S.open) { S.open = null; paint(); }
   }
-  async function newProject() {
-    const name = await Modal.prompt('New project', { placeholder: 'Stoop Ronin', label: 'Its name (a color and a mark come with it)' });
-    if (name == null) return null;
-    const p = P.create({ name: name.trim() });
-    show(p.id);
-    return p;
-  }
+  async function newProject() { return ProjectWorkspace.wizard(); }
 
   // ---------- a project's page ----------
   const ORDER = ['chat', 'scene', 'seq', 'board', 'render', 'capture', 'file', 'download', 'deploy'];
   function paintProject(p) {
-    S.io?.disconnect();
+    S.root.classList.add('is-project');
+    S.io?.disconnect(); ProjectFrontpage.stop();
     const cover = P.coverOf(p);
     const name = el('h2', { class: 'pj-p-name', text: p.name, title: 'Click to rename', on: { click: () => P.renamePrompt(p) } });
     const mark = el('button', { type: 'button', class: 'pj-p-mark', text: p.ident.glyph, title: 'Next mark (right-click: next color)', on: { click: () => P.nextMark(p), contextmenu: (e) => { e.preventDefault(); P.nextColor(p); } } });
@@ -151,11 +154,11 @@ const ProjectsHome = (() => {
     const head = el('div', { class: 'pj-p-head' },
       el('div', { class: 'pj-p-cover' }, cover ? el('img', { src: cover, alt: '', decoding: 'async' }) : el('span', { class: 'pj-cover-mark', text: p.ident.glyph })),
       el('div', { class: 'pj-p-titles' },
-        el('button', { type: 'button', class: 'ghost small pj-back', text: '‹ Home', on: { click: () => show(null) } }),
+        el('button', { type: 'button', class: 'ghost small pj-back', text: '‹ Projects', on: { click: () => ProjectWorkspace.home() } }),
         el('div', { class: 'pj-p-line' }, mark, name, status),
         el('div', { class: 'pj-meta', text: `${C.countText(p)} · made ${p.from === 'make' ? 'from a make' : p.from === 'suggest' ? 'from a suggestion' : 'by hand'} · ${timeAgo(p.at)}` }),
         el('div', { class: 'pj-p-actions' },
-          el('button', { type: 'button', class: 'primary small', text: '↻ Continue', title: 'Where you left off: its last chat (else scene, else render)', on: { click: () => P.continueIn(p) } }),
+          el('button', { type: 'button', class: 'primary small', text: '↻ Continue', title: 'Where you left off: its last chat (else scene, else render)', on: { click: () => ProjectWorkspace.go('scene') } }),
           el('button', { type: 'button', class: 'ghost small', text: '＋ Add', title: 'This chat, the scene on screen, a recent chat / scene / board / render / file…', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); P.warm?.(); showMenu(b.left, b.bottom + 4, P.addMenu(p)); } } }),
           el('button', { type: 'button', class: 'ghost small', text: '⋯', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, P.menu(p)); } } })),
         el('div', { class: 'pj-continue' }, ...continueChips(p))));
@@ -168,7 +171,7 @@ const ProjectsHome = (() => {
         el('div', { class: `pj-items pj-items-${t}` }, ...xs.map((x) => itemRow(p, x)))));
     }
     if (!sections.length) sections.push(el('p', { class: 'hint pj-none', text: 'Nothing in it yet: ＋ Add puts the chat you were in, the scene on screen or anything recent in it.' }));
-    S.body.replaceChildren(head, notes, ...sections);
+    S.body.replaceChildren(head, ProjectWorkspace.toolbar(p), el('details', {class:'pw-project-files'},el('summary',{text:'Project files & notes'}),notes,...sections));
   }
   function itemRow(p, x) {
     const pic = ['scene', 'seq', 'render', 'capture', 'board'].includes(x.type) ? P.thumbOf(x) : null;
@@ -184,13 +187,15 @@ const ProjectsHome = (() => {
 
   // show(id): a project's page (null: the cards)
   function show(id = null) {
+    if(id && P.get(id) && ProjectWorkspace.current()?.id!==id){ProjectWorkspace.open(id).catch(err=>toast(calmError(err),{type:'error'}));return;}
+    if(!id && ProjectWorkspace.current()){ProjectWorkspace.home().catch(err=>toast(calmError(err),{type:'error'}));return;}
     S.open = id && P.get(id) ? id : null;
     if (S.open) P.touch(P.get(S.open));
     if (S.mounted) { S.root.scrollTop = 0; paint(); }
   }
 
   Tools.define({
-    id: 'home', name: 'Home', icon: '⌂', color: '#ffc23d',
+    id: 'home', name: 'Projects', icon: '⌂', color: '#ffc23d',
     description: 'Your projects: covers, continue where you left off, search everything',
     mount: (body) => mount(body),
     onShow() { if (S.mounted) paint(); },

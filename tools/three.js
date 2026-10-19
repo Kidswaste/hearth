@@ -144,6 +144,7 @@ const ThreeLab = (() => {
     };
     const handle = (data) => {
       if (data?.source !== 'three-sandbox') return;
+      if (!nonce) return; // a deliberately unloaded workspace cannot wake from an old page's messages
       if (data.type === 'gpu-lost' || data.type === 'gpu-restored' || data.type === 'gpu-restoring') glTrack(data);
       if (data.type === 'lib-need') { sandboxLib(data.name, deliver); return; } // (round 25, diet) motion / lab3d for the page
       if (data.type === 'shot' && data.tag === 'cover') { const fn = coverShot; coverShot = null; fn?.(data.dataUrl); return; }
@@ -280,6 +281,14 @@ const ThreeLab = (() => {
     if (!lazy) load();
     return {
       frame, send, reload: (fresh) => load(Boolean(fresh)), useStage,
+      release() {
+        nonce = null; ready = null; loadedWith = null; queue = []; warmRun = false;
+        clearTimeout(watchdog); clearTimeout(coverT); clearTimeout(gl.timer); gl.lost = false; gl.again = false;
+        cancelAnimationFrame(tweakRaf); clearTimeout(tweakTimer); tweaks.clear(); tweakRaf = 0;
+        const port = life; life = null; port?.close();
+        if (target === 'stage') { target = 'frame'; window.hub.stageClose(); }
+        frame.src = 'about:blank'; uncover();
+      },
       // (round 37, labboot) once: the page just taken over drew a warm run (of this sketch id): run() swaps over it
       takeWarmRun: () => { const r = warmRun; warmRun = false; return r; },
       // (round 37, labboot) the page was loaded for another ?dpr= only (fit ⇄ an exact frame size): it switches in place
@@ -1027,9 +1036,10 @@ const ThreeLab = (() => {
     // Parked: the preview draws nothing while the Lab isn't on screen (another tool or chat in front, the window
     // hidden or minimised, another Lab tab). Recordings, the Stage window and offline renders go on.
     let parkedNow = false;
+    let workspacePreparing = false, workspaceMessage = null, workspaceReleased = false, workspaceDrawn = null;
     let stallArm = null; // (round 39, powerwise) the stall / park safety timer's pace follows the park (set below)
     function syncPark(force = false) {
-      const on = (!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing'); // (round 52, gamemode: a game plays in its own window: the preview here rests) // (round 52: a baked show plays a video; the live preview rests behind it)
+      const on = !workspacePreparing && ((!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing'));
       if (on === parkedNow && !force) return;
       parkedNow = on;
       stallArm?.(on);
@@ -1926,16 +1936,16 @@ const ThreeLab = (() => {
     }
     // Bytes for every reference of the open sketch; a run that needed a missing one runs again.
     async function loadRefBytes() {
-      let added = false;
+      let added = false; const owner = current?.id;
       // (round 39, labmemory) only the open scene's references stay in memory: every scene visited kept its files' bytes
       // (a video reference is the whole video) until the Lab closed; another scene's are read again when it opens
       const mine = new Set(refsOf().map((r) => r.id));
       for (const id of [...refBytes.keys()]) if (!mine.has(id)) refBytes.delete(id);
       // (round 48, labstartfast) read at once, not one after the other
       await Promise.all(refsOf().filter((r) => !refBytes.has(r.id)).map(async (r) => {
-        try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ }
+        try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); if(current?.id!==owner||workspaceReleased)return; refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ }
       }));
-      sendRefs();
+      if(current?.id===owner&&!workspaceReleased)sendRefs();
       return added;
     }
     // (round 39, labmemory) the same references and palette as the page already has aren't copied over again (each
@@ -2521,19 +2531,20 @@ const ThreeLab = (() => {
     }
     const seqShowing = () => typeof ThreeSeq !== 'undefined' && ThreeSeq.active;
     // The Lab timeline of a scene: its song (as before), else its own timeline, else none.
+    let sceneMediaTask = Promise.resolve();
     function sceneMedia(id, { playing = true } = {}) {
       const ex = extras[id] || {};
       const want = ex.media?.path || null;
       if (want) {
-        if (want !== player.path) { player.unload({ silent: true }); player.load(want, { startAt: ex.media.time || 0, quiet: true }); } else player.seek(ex.media.time || 0);
+        if (want !== player.path) { player.unload({ silent: true }); sceneMediaTask=player.load(want, { startAt: ex.media.time || 0, quiet: true }); } else player.seek(ex.media.time || 0);
         return 'song';
       }
       const tl = timelineOf(id);
       if (tl) {
-        if (player.path !== clockPath(id) || Math.abs((player.duration || 0) - tl.len) > 1e-3) { player.unload({ silent: true }); player.loadClock({ key: id, seconds: tl.len, fps: tl.fps || 30, startAt: tl.time || 0, playing }); }
+        if (player.path !== clockPath(id) || Math.abs((player.duration || 0) - tl.len) > 1e-3) { player.unload({ silent: true }); sceneMediaTask=player.loadClock({ key: id, seconds: tl.len, fps: tl.fps || 30, startAt: tl.time || 0, playing }); }
         return 'timeline';
       }
-      if (player.loaded || player.path) player.unload({ silent: true });
+      if (player.loaded || player.path) player.unload({ silent: true });sceneMediaTask=Promise.resolve();
       return null;
     }
     function setTimeline(id, tl) {
@@ -2909,7 +2920,7 @@ const ThreeLab = (() => {
     // Per-sketch looks and music links for the sliders, song, frame size and selected layer.
     let extras = {};
     let extrasLoaded = false; // never write the empty placeholder over your saved extras (a reload while loading)
-    const saveExtras = debounce(() => { if (extrasLoaded && kvOk.has('three-lab-extras')) window.hub.kvSet('three-lab-extras', extras); }, 500);
+    const saveExtras = saver(() => { if (extrasLoaded && kvOk.has('three-lab-extras')) return window.hub.kvSet('three-lab-extras', extras); }, 500);
     let consoleLines = [];
     let lastStats = null;
     // the fps / draw-call line (on hover): rebuilt only when its text changes, and painted when it shows again
@@ -2991,6 +3002,8 @@ const ThreeLab = (() => {
       editor.syncScroll();
     }
     function onMessage(msg) {
+      if(msg.type==='stack-drawn'&&!msg.noGl)workspaceDrawn=current?.id;
+      workspaceMessage?.(msg);
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
       if (/^gpu-(lost|restored|stuck)$/.test(msg.type)) { glPreview(msg); return; } // (round 43, glrecover)
       if (/^ready-/.test(msg.type)) { window.PresentReady?.onBox?.(msg); return; } // (round 52, presentready)
@@ -3531,7 +3544,8 @@ const ThreeLab = (() => {
     // quiet (round 43, glrecover): the same scene made again after the GPU went away: no history snapshot, no time
     // machine version, no thumbnail, no "ran" event (nothing changed, nothing is saved)
     function run({ hot = false, layer = null, sync = false, reload = false, again = false, quiet = false } = {}) {
-      if (!current) return false;
+      if (!current || workspaceReleased) return false;
+      workspaceDrawn = null;
       // (round 37, labboot) only the pixel ratio changed (a fit scene ⇄ one with its own frame size): the page switches
       // in place and every layer runs again in it, over the old picture, instead of a new page
       const seqKeeps = typeof ThreeSeq !== 'undefined' && ThreeSeq.keep(current.id);
@@ -3625,7 +3639,7 @@ const ThreeLab = (() => {
       const removed = [...removedIds]; removedIds.clear();
       // the store kept scenes this save would have dropped (sync, a list out of date): they join the list on screen
       const list = window.LabTry ? LabTry.disk(sketches) : sketches; // (round 43, directorpreview) an edit tried first isn't saved until Keep
-      return window.hub.kvSet('three-sketches', list, removed.length ? { removed } : undefined).then((r) => { if (r?.restored?.length) { refreshFromDisk().catch(() => {}); window.LabSceneSafe?.kept?.(r.restored.length); } });
+      return window.hub.kvSet('three-sketches', list, removed.length ? { removed } : undefined).then((r) => { if (r?.error) throw Error(r.error); if (r?.restored?.length) { refreshFromDisk().catch(() => {}); window.LabSceneSafe?.kept?.(r.restored.length); } });
     }, 600);
     function persist() {
       if (!current) return;
@@ -3753,6 +3767,7 @@ const ThreeLab = (() => {
     }
     // opts.by: who switched ('scene' = chat-scenes.js following the chat on screen); fires 'hearth:sketch'
     function openSketch(id, opts = {}) {
+      workspaceReleased = false;
       // unsaved slider values in any layer of the sketch you leave
       const left = current;
       const pendings = left ? [...controllers.entries()].map(([lid, c]) => ({ lid, p: c.pending() })).filter((x) => x.p) : [];
@@ -4049,7 +4064,7 @@ ${code}
       // switch to a chat's sketch (the one you leave is saved first; unsaved sliders get the usual toast)
       open(id) {
         if (!sketches.some((x) => x.id === id)) return false;
-        if (id !== current?.id) { persist(); openSketch(id, { by: 'scene' }); }
+        if (id !== current?.id || workspaceReleased) { persist(); openSketch(id, { by: 'scene' }); }
         return true;
       },
       // id: (round 52, chatkeep) a scene that never reached the disk comes back under its own id (its chat still links it)
@@ -4188,6 +4203,69 @@ ${code}
 
     // What the Three Director (Claude) uses to build scenes from the user's prompts.
     // (round 21, labdirector) its waits after a run end at the preview's first new frame (tools/three-director.js settle)
+    // A project owns a live preview only while open. The same preparation protocol as Present warms its assets
+    // and shaders; releasing the sandbox document also releases WebGL, audio, game timers and decoded textures.
+    api.workspace = {
+      state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready }),
+      resume() { if(workspaceReleased && current)openSketch(current.id,{by:'workspace-resume'}); },
+      async prepare(id, { signal, progress = () => {} } = {}) {
+        if (player.recording) throw Error('Finish the recording before switching projects.');
+        if (!sketches.some(s => s.id === id)) throw Error('This scene is not available on this computer yet.');
+        workspacePreparing = true;
+        const request = 'project-' + Date.now();
+        try {
+          await new Promise((resolve, reject) => {
+            let sent = false, finished = false;
+            const finish = err => { if(finished)return;finished=true;clearTimeout(timer); signal?.removeEventListener('abort', abort); workspaceMessage = null; err ? reject(err) : resolve(); };
+            const abort = () => finish(new DOMException('Opening cancelled', 'AbortError'));
+            const timer = setTimeout(() => finish(Error('The scene is taking too long to prepare. Retry, or open the editor to inspect it.')), 90000);
+            const warm = async () => {
+              sent=true;
+              try{
+                progress('Loading scene assets');const media=await sceneMediaTask;if(media?.ok===false)throw Error(media.error||'The project song could not be loaded.');
+                await loadRefBytes();if(finished)return;
+                progress('Preparing textures and shaders');box.send({type:'ready-prep',id:request});
+              }catch(err){finish(err);}
+            };
+            workspaceMessage = msg => {
+              if (msg.type === 'stack-drawn' && !sent) {
+                if (msg.noGl) return finish(Error('The scene could not start its graphics context. Try opening it again.'));
+                warm();
+              }
+              if (msg.id !== request) return;
+              if (msg.type === 'ready-progress') progress(msg.stage === 'assets' ? 'Loading scene assets' : 'Warming shaders');
+              if (msg.type === 'ready-prepped') {
+                const left = Object.values(msg.assets?.left || {}).reduce((n,v) => n + Number(v || 0), 0);
+                if (left || msg.pending) return finish(Error('Some scene assets or shaders are still unavailable. Retry, or open the editor.'));
+                finish();
+              }
+            };
+            signal?.addEventListener('abort', abort, { once: true });
+            if (signal?.aborted) return abort();
+            if(current?.id===id&&!workspaceReleased){
+              if(box.ready&&workspaceDrawn===id)warm();
+            }else{box.release();ranOnce=false;refsSig=null;openSketch(id,{by:'project'});}
+            syncPark(true);
+          });
+        } finally { workspacePreparing = false; syncPark(true); }
+      },
+      async close() {
+        if (workspaceReleased) return;
+        if (player.recording) throw Error('Finish the recording before closing this project.');
+        await ThreeLab.idle();
+        // Save live slider edits too: closing a document must not leave its current sound/look only in memory.
+        for (const ctl of controllers.values()) if (ctl.pending?.()) ctl.save?.();
+        persist(); rememberMedia();
+        const results = await Promise.all([save.flush(), saveExtras.flush()]);
+        for (const r of results) if (r?.error) throw Error(r.error);
+        window.PresentReady?.stop();
+        await window.hub.game?.leave?.();
+        await setLive(null); stopNowPlaying();
+        player.toggle(false); player.unload({ silent: true });
+        clearTimeout(thumbTimer); refsHold = null; refBytes.clear(); refsSig = null;
+        box.release(); ranOnce = false; workspaceReleased = true; stallArm?.(true);
+      },
+    };
     const sleep = (ms) => (typeof ThreeDirector !== 'undefined' && ThreeDirector.settle ? ThreeDirector.settle(ms) : new Promise((r) => setTimeout(r, ms)));
     const layersSummary = () => layersOf().map((L, i) => ({
       id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), ...(typeof ShaderLib !== 'undefined' && ShaderLib.isShader(L.code) ? { kind: 'shader (GLSL: three_do shader)' } : {}), ...(typeof LabParticles !== 'undefined' && LabParticles.isParticles(L.code) ? { kind: 'particles (GPU: three_do particles)' } : {}), ...(typeof LabPhysics !== 'undefined' && LabPhysics.isPhysics(L.code) ? { kind: 'physics (three_do physics)' } : {}), ...(typeof LabType !== 'undefined' && LabType.isType(L.code) ? { kind: 'type (text / lyrics: three_do type)' } : {}), ...(L.precomp && typeof ThreeComp !== 'undefined' && ThreeComp.isComp(L) ? { kind: `precomp of ${ThreeComp.describe(L)} (three_do comp)` } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
@@ -4781,6 +4859,7 @@ ${frag}\`,
   Tools.define({
     id: 'three', name: 'Three.js Lab', icon: '◭', color: '#4f8cff',
     description: 'Live sketches, model viewer, shaders, textures and docs',
+    onShow() { if(window.ProjectWorkspace?.state().phase!=='opening')api.workspace?.resume(); },
     mount(body, head) {
       tabs = Tabs(body, [
         { id: 'sketch', label: 'Sketch', render: sketchTab },
@@ -5033,6 +5112,7 @@ ${frag}\`,
   return {
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
     get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
+    get workspace() { return api.workspace; },
     get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
     get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js

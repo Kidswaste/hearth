@@ -72,6 +72,8 @@ const Projects = (() => {
   const currentBoard = () => { try { return loadedLazy('board') && typeof Board !== 'undefined' ? Board.current()?.id || null : null; } catch { return null; } };
   // the project in front of you: Home's open project, the open chat's, the scene on screen's (in the Lab)
   function here() {
+    const workspace = window.ProjectWorkspace?.current?.();
+    if (workspace) return workspace;
     const h = window.ProjectsHome?.openProject?.();
     if (h && get(h)) return get(h);
     let sid = '';
@@ -206,6 +208,8 @@ const Projects = (() => {
   function nextColor(p) { C.setIdent(p, { ci: p.ident.ci + 1 }); changed(p, 'ident'); }
   function nextMark(p) { C.setIdent(p, { gi: p.ident.gi + 1 }); changed(p, 'ident'); }
   function touch(p) { if (!p) return; p.opened = Date.now(); save(); }
+  function setWorkspace(p, patch) { p.workspace = { ...p.workspace, ...patch }; p.updated = Date.now(); changed(p, 'workspace'); }
+  async function flush() { clearTimeout(saveT); const r = await window.hub.kvSet(KEY, data); if (r?.error) throw Error(r.error); }
   // deleting a project forgets the grouping only: chats, scenes and files stay where they are (Undo in the toast)
   function removeProject(p, { quiet = false } = {}) {
     const i = data.list.indexOf(p);
@@ -541,7 +545,7 @@ const Projects = (() => {
 
   return {
     ready: () => ready, isLoaded: () => loaded, all, live, get, find, ofItem, projectOfChat, here, hereChat, currentScene, currentBoard,
-    create, add, remove, rename, setStatus, setNotes, setCover, nextColor, nextMark, touch, removeProject, fromMake, syncMakes, hidesMake,
+    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, fromMake, syncMakes, hidesMake,
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
     openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt,
     grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu, sketchGroups, sketchBrowse, sketchMenu,

@@ -26,9 +26,11 @@ const CreativePlayground = (() => {
   }
   function openFeature(id){
     if(!ready)return;const f=C.FEATURES.find(f=>f.id===id)||C.FEATURES[0];
-    pause();suspended=false;feature=f.id;stage.replaceChildren(el('h2',{text:f.name}),para(f.description));
+    pause();suspended=false;feature=f.id;stage.replaceChildren();
+    if(feature!=='vst')stage.append(el('nav',{class:'workspace-creative-tabs',attrs:{'aria-label':'Creative board'}},...[["studio","Shelf"],["texture","Materials"],["pattern","Seamless tiles"],["draw","Drawing"],["story","Storyboard"]].map(([id,label])=>button(label,()=>openFeature(id),{attrs:{'aria-pressed':String(feature===id)}}))));
+    stage.append(el('h2',{text:feature==='studio'?'Creative board':f.name}),para(f.description));
     nav.querySelectorAll('[data-feature-id]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.featureId===feature)));
-    if(window.WorkspaceNav && ['pattern','texture'].includes(feature))stage.append(el('div',{class:'workspace-materials'},...['pattern','texture'].map(id=>button(id==='pattern'?'Seamless tiles':'Surface maps',()=>openFeature(id),{attrs:{'aria-pressed':String(feature===id)}}))));
+
     document.dispatchEvent(new Event('hearth:creative-feature'));
     const target=el('div');stage.append(target);const selected=feature; return WorkbenchUI.mount(target,selected,{notice,saveFile,openFeature,play,stopAudio}).then(()=>{if(target.isConnected && selected==='pattern')tiles(target.querySelector('.wb-content'));}).catch(err=>notice(err.message));
   }
@@ -43,7 +45,7 @@ const CreativePlayground = (() => {
     document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();else if(suspended && H.activeId==='tool:creative')openFeature(feature);});
     const surface=body.closest('.surface');if(surface)new MutationObserver(()=>{if(H.activeId!=='tool:creative')pause();}).observe(surface,{attributes:true,attributeFilter:['class','hidden','style']});
   }
-  Tools.define({id:'creative',offRail:true,name:'Creative Playground',icon:'✺',color:'#ed77a8',description:'Sounds, sketches, materials and storyboards',mount:body=>{mount(body).catch(e=>{body.textContent=`Creative desk could not open: ${calmError(e)}`;});},onShow:()=>{if(ready && suspended)openFeature(feature);}});
+  Tools.define({id:'creative',offRail:true,name:'Creative board',icon:'✺',color:'#ed77a8',description:'Sounds, sketches, materials and storyboards',mount:body=>{mount(body).catch(e=>{body.textContent=`Creative desk could not open: ${calmError(e)}`;});},onShow:()=>{if(ready && suspended)openFeature(feature);}});
   Commands.register({name:'playground',area:'Create',desc:'Open your sounds, sketches, materials and storyboard',run:()=>activate('tool:creative')});
   return {openFeature,pause,ready:()=>ready,flush:()=>saving,snapshot:()=>({feature,state:JSON.parse(JSON.stringify(state)),playing:Boolean(source)})};
 })();

@@ -100,7 +100,17 @@ function copyApp() {
     const cfgPath = path.join(dir, 'config.json');
     const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
     const ext = process.platform === 'win32' ? 'cmd' : 'js';
-    cfg.settings = { ...(cfg.settings || {}), enginePaths: { claude: path.join(__dirname, `fake-claude.${ext}`), codex: path.join(__dirname, `fake-codex.${ext}`) } };
+    const paths = {};
+    for (const engine of ['claude', 'codex']) {
+      paths[engine] = path.join(__dirname, `fake-${engine}.${ext}`);
+      if (ext === 'cmd') {
+        // Windows needs an executable shim. A missing fake path can fall back to a real installed CLI.
+        paths[engine] = path.join(dir, 'data', `fake-${engine}.cmd`);
+        fs.mkdirSync(path.dirname(paths[engine]), { recursive: true });
+        fs.writeFileSync(paths[engine], `@echo off\r\n"${process.execPath}" "${path.join(__dirname, `fake-${engine}.js`)}" %*\r\n`);
+      }
+    }
+    cfg.settings = { ...(cfg.settings || {}), enginePaths: paths };
     fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
   }
   return dir;
@@ -162,7 +172,7 @@ async function cdpConnect(dir) {
   // --fake-vst: (round 61, vstlive61) the Sound desk's real Python host runs with dev/fixtures/fake-vst-py standing in for
   // Pedalboard (a sine instrument), sounddevice (a UA interface on ASIO + WASAPI) and python-rtmidi (a controller)
   if (args.includes('--fake-vst')) {
-    const py = require('child_process').spawnSync('python3', ['-c', 'import numpy, sys; print(sys.executable)'], { encoding: 'utf8' });
+    const py = require('child_process').spawnSync(process.env.SMOKE_PYTHON || 'python3', ['-c', 'import numpy, sys; print(sys.executable)'], { encoding: 'utf8' });
     if (py.status === 0) Object.assign(env, { HEARTH_VST_PYTHON: py.stdout.trim(), PYTHONPATH: path.join(__dirname, 'fixtures', 'fake-vst-py'), PYTHONDONTWRITEBYTECODE: '1', FAKE_MIDI_NOTE: '0' });
     if (args.includes('--fake-vst-no-ua')) env.FAKE_SD_NO_UA = '1'; // (round 62, parkjam62) the laptop alone in the park: no UA interface listed
     // (round 64, vstembed64) the editor-in-Hearth path runs on a fake Win32 window layer (dev/fixtures/fake-vst-py/fakewin32.py)

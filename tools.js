@@ -53,7 +53,7 @@ const Tools = (() => {
     save({ hidden: [...hidden] });
   }
 
-  const dockedAgent = (toolId) => H.agents().find((a) => a.dock === toolId && a.mode === 'native');
+  const dockedAgent = (toolId) => window.ProjectWorkspace?.agentFor?.(toolId) || H.agents().find((a) => a.dock === toolId && a.mode === 'native');
 
   function createSurface(tool) {
     const host = el('section', { class: 'surface tool-surface', dataset: { id: `tool:${tool.id}` } });
@@ -106,12 +106,14 @@ const Tools = (() => {
 
   function syncDock(s) {
     if (!s.mounted) return;
+    // Shared project chats only move into the tool actually on screen.
+    if (window.ProjectWorkspace?.current?.() && H.surfaceIdFor(H.activeId) !== s.el.dataset.id) return;
     const agent = dockedAgent(s.tool.id);
     // (round 55, chatsafe55) its director missing but its chats there: the dock keeps a read-only panel of them with
     // "Bring back …" (chatsafe.js) instead of no panel
     const waiting = !agent && typeof Panel !== 'undefined' && Panel.waitingIn ? Panel.waitingIn(s.tool.id) : [];
     const want = agent?.id || (waiting.length ? `waiting:${waiting.join(',')}` : null);
-    if (want === s.dockedId) { if (waiting.length && typeof ChatSafe !== 'undefined') ChatSafe.refreshDock(s); return; }
+    if (want === s.dockedId) { if (agent) Native.mount(agent.id, s.dock); if (waiting.length && typeof ChatSafe !== 'undefined') ChatSafe.refreshDock(s); return; }
     s.dock.replaceChildren();
     s.dockBtn?.remove();
     s.dockedId = want;

@@ -67,6 +67,23 @@
     if(enabled)hint.textContent='Scroll or drag to move · Ctrl + scroll to zoom';
     host.append(tiles,pins,controls,credit,hint);
     // (round 63, questwalk63) polylines in one SVG in the pins layer (it pans with the pins); labels are text nodes, never markup
+    // Small catalogs cache projection once. Large catalogs get a spatial index in a worker;
+    // rapid pans retain one running request and only the latest desired viewport.
+    let catalog=0, indexSource=null, localIndex, spatialWorker, busy=false, desired=null, result=null, sentCatalog=-1, workerFailed=false;
+    function projectedPlaces(left,top,width,height){
+      if(indexSource!==places){indexSource=places;catalog++;localIndex=null;result=null;}
+      const view={left,top,width,height,z,selected},key=JSON.stringify([catalog,left,top,width,height,z,selected]);
+      if(places.length<500||workerFailed){localIndex ||= QuestAtlasIndex.build(places);return QuestAtlasIndex.query(localIndex,view);}
+      if(result?.key===key)return result.rows;
+      desired={key,view,catalog};requestPins();return null;
+    }
+    function requestPins(){
+      if(busy||!desired||disposed)return;
+      try{
+        if(!spatialWorker){spatialWorker=new Worker('tools/quest-atlas-worker.js');spatialWorker.onmessage=({data})=>{busy=false;if(disposed)return;if(data.error){workerFailed=true;spatialWorker.terminate();scheduleDraw();return;}result=data;if(desired?.key!==data.key)requestPins();else scheduleDraw();};spatialWorker.onerror=()=>{busy=false;workerFailed=true;spatialWorker.terminate();scheduleDraw();};}
+        busy=true;const job=desired,points=sentCatalog===job.catalog?null:places.map(p=>({id:p.id,lat:p.lat,lon:p.lon,minZoom:p.minZoom}));sentCatalog=job.catalog;spatialWorker.postMessage({key:job.key,view:job.view,...(points?{points}:{})});
+      }catch{busy=false;workerFailed=true;scheduleDraw();}
+    }
     function route(list,left,top,w,h){const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('class','qj-atlas-route');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('aria-hidden','true');
       for(const l of list){const pts=(l.points||[]).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)).map(p=>{const [x,y]=project(p.lat,p.lon,z);return {x:x-left,y:y-top,label:p.label};});if(pts.length<2)continue;
         const line=document.createElementNS(ns,'polyline');line.setAttribute('points',pts.map(p=>p.x.toFixed(1)+','+p.y.toFixed(1)).join(' '));line.setAttribute('data-route',l.id||'');line.style.setProperty('--route',l.color||'#ffd75e');svg.append(line);
@@ -85,7 +102,8 @@
       // (round 65, questperf65) pins are diffed, not rebuilt: a pin whose look is unchanged keeps its button (only its position
       // moves); new / changed ones are made; the rest leave. A click, a re-render or a pan touches only what changed.
       const want=[],look=p=>[!!p.visitedAt,p.tone||'',p.name,p.count||0,p.color||'',p.kind||'',p.logo||'',!!p.favorite].join('\u0001');
-      for(const p of places){if(z<(p.minZoom||11) && p.id!==selected)continue;const [x,y]=project(p.lat,p.lon,z),px=x-left,py=y-top;if(px<-80||py<-40||px>w+80||py>h+40)continue;
+      const visible=projectedPlaces(left,top,w,h);if(!visible)return;
+      for(const [i,x,y] of visible){const p=places[i],px=x-left,py=y-top;
         const sig=look(p);let b=pinNodes.get(p.id);
         if(!b||b.__look!==sig){b=make('button',`qj-atlas-pin${p.visitedAt?' visited':''}${/^[\w-]+$/.test(p.tone||'')?' '+p.tone:''}`);/* (round 64, mapfirst64) tone: an extra class (the guide's untouched places are drawn lighter) */b.type='button';b.dataset.place=p.id;b.title=p.name+(p.count?' · '+p.count+' upcoming nights':'');b.style.setProperty('--pin',p.color||'#f279b3');b.setAttribute('aria-label',`${p.name}${p.visitedAt?' — visited (self-reported)':''}`);const symbol=make('span');if(p.logo){const logo=make('img','qj-atlas-logo');logo.alt='';logo.draggable=false;logo.decoding='async';logo.src=p.logo;logo.addEventListener('error',()=>logo.replaceWith(icon(p.kind)),{once:true});symbol.append(logo);b.classList.add('has-logo');}else symbol.append(icon(p.kind));/* (round 61, showsync61) a pin may carry a local logo picture (venues from Shotgun / DICE) */b.append(symbol,make('strong','',p.name));if(p.favorite)b.append(make('i','qj-pin-star','★'));b.addEventListener('click',e=>{e.stopPropagation();onSelect(b.dataset.place);});b.__look=sig;}
         const on=p.id===selected,dz=String(z>=16),L=px+'px',T=py+'px';if(b.classList.contains('selected')!==on||!b.hasAttribute('aria-pressed')){b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on));}if(b.dataset.details!==dz)b.dataset.details=dz;if(b.style.left!==L)b.style.left=L;if(b.style.top!==T)b.style.top=T;want.push(b);}
@@ -116,9 +134,9 @@
       lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);scheduleDraw();
     },{passive:false});
     const observer=new ResizeObserver(entries=>{const r=entries[0].contentRect;if(W===r.width&&Ht===r.height)return;W=r.width;Ht=r.height;scheduleDraw();});observer.observe(host);draw();
-    return {destroy(){view={lat,lon,z,enabled};disposed=true;events.abort();observer.disconnect();cancelAnimationFrame(frame);},focus(p){if(!p)return;lat=p.lat;lon=p.lon;draw();},select(id){selected=id;for(const b of pins.querySelectorAll('[data-place]')){b.classList.toggle('selected',b.dataset.place===id);b.setAttribute('aria-pressed',String(b.dataset.place===id));}},center(){return {lat,lon};},
+    return {destroy(){view={lat,lon,z,enabled};disposed=true;spatialWorker?.terminate();events.abort();observer.disconnect();cancelAnimationFrame(frame);},focus(p){if(!p)return;lat=p.lat;lon=p.lon;draw();},select(id){selected=id;for(const b of pins.querySelectorAll('[data-place]')){b.classList.toggle('selected',b.dataset.place===id);b.setAttribute('aria-pressed',String(b.dataset.place===id));}},center(){return {lat,lon};},
       // (round 65, questperf65) new places / selection / lines on the SAME mounted map (the journal re-renders its page around it): pins diff, no remount
-      update(o={}){if(disposed)return;if(o.places)places=o.places;if('selected' in o)selected=o.selected;if(o.lines)lines=o.lines;if(o.onSelect)onSelect=o.onSelect;if(o.onAdd)onAdd=o.onAdd;if(o.center){lat=o.center.lat;lon=o.center.lon;}draw();},host};
+      update(o={}){if(disposed)return;if(o.places){places=o.places;indexSource=null;}if('selected' in o)selected=o.selected;if(o.lines)lines=o.lines;if(o.onSelect)onSelect=o.onSelect;if(o.onAdd)onAdd=o.onAdd;if(o.center){lat=o.center.lat;lon=o.center.lon;}draw();},host};
   }
   return {project,unproject,mount,icon};
 });
