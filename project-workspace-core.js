@@ -11,6 +11,14 @@
   const plugins = value => [...new Set((Array.isArray(value) ? value : ['Serum 2','Vital']).filter(v => ['Serum 2','Vital'].includes(v)))];
   function workspace(value = {}) { return { ...value, v: 1, persona: PERSONAS[value.persona] ? value.persona : 'partner', plugins: plugins(value.plugins), description: String(value.description || '').slice(0, 500) }; }
   const key = id => { if (!/^[\w-]{1,100}$/.test(id)) throw Error('Invalid project id'); return 'workbench-' + id; };
+  // A device-local return point. Missing cloud items fall back without changing project links.
+  function resume(p, value={}, chats=[], scenes=[]) {
+    const w=p.workspace||{},has=(type,id)=>id&&(w[type+'Id']===id||(p.items||[]).some(x=>x.type===type&&x.ref===id));
+    const chatId=has('chat',value.chatId)&&chats.some(c=>c.id===value.chatId)?value.chatId:w.chatId;
+    const sceneId=has('scene',value.sceneId)&&scenes.some(s=>s.id===value.sceneId)?value.sceneId:w.sceneId;
+    return {tab:['overview','chat','scene','board','sound','moodboard'].includes(value.tab)?value.tab:'overview',chatId,sceneId,
+      feature:['studio','texture','pattern','draw','story'].includes(value.feature)?value.feature:'studio'};
+  }
   function frontpage(value = {}) {
     const num = (v, d, lo, hi) => Number.isFinite(+v) ? Math.min(hi, Math.max(lo, +v)) : d;
     const color = (v, d) => /^#[\da-f]{6}$/i.test(v || '') ? v : d;
@@ -34,5 +42,5 @@
       let g=groups.get(id);if(!g){g={sceneId:id,name:s.name&&s.name!=='New chat'?s.name:c.title||'Creative project',chats:[],projectId:projects.find(p=>p.workspace?.sceneId===id)?.id||null};groups.set(id,g);}g.chats.push({id:c.id,title:c.title,agentId:c.agentId});
     }return [...groups.values()];
   }
-  return { PERSONAS, ICONS, plugins, workspace, key, frontpage, banner, sceneProjects };
+  return { PERSONAS, ICONS, plugins, workspace, key, resume, frontpage, banner, sceneProjects };
 });

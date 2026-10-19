@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),C=require('../project-workspace-core');
+const p={workspace:{chatId:'main-chat',sceneId:'main-scene'},items:[{type:'chat',ref:'other-chat'},{type:'scene',ref:'other-scene'}]};
+const chats=[{id:'main-chat'},{id:'other-chat'}],scenes=[{id:'main-scene'},{id:'other-scene'}];
+const point={tab:'board',chatId:'other-chat',sceneId:'other-scene',feature:'story'};
+assert.deepEqual(C.resume(p,point,chats,scenes),point);
+const original=JSON.stringify(p);
+assert.deepEqual(C.resume(p,point,[],[]),{...point,chatId:'main-chat',sceneId:'main-scene'});
+assert.deepEqual(C.resume(p,{tab:'invalid',chatId:'foreign-chat',sceneId:'foreign-scene',feature:'script'},[...chats,{id:'foreign-chat'}],[...scenes,{id:'foreign-scene'}]),{tab:'overview',chatId:'main-chat',sceneId:'main-scene',feature:'studio'});
+assert.equal(JSON.stringify(p),original,'A missing cloud item must not rewrite project links');
+console.log('Project return points: related resources restored; foreign/missing resources fall back without data mutation.');
