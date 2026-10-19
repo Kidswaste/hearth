@@ -1,0 +1,50 @@
+// Isolated renderer fixture. No model calls and no access to the real journal.
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const check = (v, m) => { if (!v) throw Error(m); };
+const until = async (fn, m) => { for (let i = 0; i < 160; i++) { if (fn()) return; await wait(60); } throw Error(m); };
+await Lazy.load('questjournal'); activate('tool:quests');
+await until(() => QuestJournal.ready(), 'Journal did not load');
+// A real local image linked through a message's opens metadata is copied into proof.
+const canvas = document.createElement('canvas'); canvas.width = 80; canvas.height = 60;
+const ctx = canvas.getContext('2d'); ctx.fillStyle = '#ffc94b'; ctx.fillRect(0, 0, 80, 60);
+const imagePath = await hub.saveAttachment('comparison.png', canvas.toDataURL('image/png').split(',')[1]);
+const source = { id: 'review-image-source', agentId: H.agents().find(a => a.mode === 'native').id, title: 'Before and after', messages: [{ role: 'assistant', text: 'Changed the attack. Tested at normal speed, clean recovery.', opens: [{ path: imagePath }] }] };
+await hub.saveChat(source);
+const textOnly = await QuestReview.chat(source, 0, { includeImages: false });
+const withImage = await QuestReview.refreshChatProof(textOnly), repeated = await QuestReview.chat(source, 0);
+check(withImage.images.length === 1 && withImage.images[0] !== imagePath, 'Chat comparison was not copied');
+check(withImage.fingerprint !== textOnly.fingerprint && withImage.fingerprint === repeated.fingerprint, 'Image proof fingerprint unstable');
+check(withImage.coverage.includes('1 linked still') && withImage.analysis.includes('comparison.png'), 'Linked evidence coverage missing');
+source.messages[0].text = 'A newer unrelated reply'; await hub.saveChat(source);
+check((await QuestReview.refreshChatProof(textOnly)).fingerprint === textOnly.fingerprint, 'Refreshed from the wrong message');
+const C = QuestCore, state = C.upgrade(C.initial()), qid = state.campaigns[0].quests[0].id;
+const proof = (fingerprint, excerpt) => ({ type: 'chat', title: 'Clinky', chatId: 'fixture-chat', agentId: 'astra', messageId: '0', excerpt, analysis: '', coverage: 'Saved chat text; tests are reported.', images: [], fingerprint: fingerprint.repeat(64) });
+const oldReview = { status: 'needs-evidence', score: null, dimensions: [], meetsBrief: false, summary: 'More documentation needed.', better: 'Show precise tests.', next: 'Write a longer report.', coverage: 'One message only.', limitations: 'No gameplay observed.' };
+const first = C.submit(state, qid, proof('a', 'Folio became Kiddy.'), 'Character renamed.'); C.saveReview(state, qid, first.id, oldReview);
+const second = C.submit(state, qid, proof('b', 'Brushstroke leans into the strike. Tested at normal speed; clean recovery.')); C.saveReview(state, qid, second.id, oldReview);
+await QuestJournal.mutate(s => { Object.keys(s).forEach(k => delete s[k]); Object.assign(s, state); });
+const oldItems = JSON.stringify(C.submissions(state, qid));
+let fail = true, calls = 0;
+QuestReview.run = (q, item, prior, onStatus, history) => {
+  calls++; check(history.length === 2 && history[0].intent === 'Character renamed.', 'Prior rejected evidence and rename were omitted');
+  check(item.reconsideredFrom === second.id, 'Not a preserved reconsideration');
+  return { promise: fail ? Promise.reject(Error('Fixture unavailable; proof kept.')) : Promise.resolve({ status: 'reviewed', score: 84, dimensions: [22,20,22,20], meetsBrief: true, summary: 'The attack has a deliberate windup and follow-through. Quest complete.', better: 'Optional: refine the trail.', next: 'Keep this result, or try a different attack another day.', coverage: 'Both saved messages; testing is reported.', limitations: 'Gameplay was not independently observed.' }), cancel() {} };
+};
+const dialog = () => document.querySelector('.qj dialog[open]');
+const press = text => { const b = [...dialog().querySelectorAll('button')].find(b => b.textContent === text); check(b, 'Missing ' + text); b.click(); };
+QuestJournal.questDetail(qid); press('Review & version history'); press('Reconsider with all my proof');
+await until(() => C.submissions(QuestJournal.snapshot(), qid).length === 3 && [...dialog().querySelectorAll('button')].some(b => b.textContent === 'Review saved proof' && !b.disabled), 'Failed reconsideration not retryable');
+check(C.xp(QuestJournal.snapshot()) === 0, 'Failure awarded XP'); fail = false; press('Review saved proof');
+await until(() => C.latest(QuestJournal.snapshot(), qid).review?.score === 84, 'Retry did not finish');
+check(calls === 2, 'Unexpected model requests'); check(JSON.stringify(C.submissions(QuestJournal.snapshot(), qid).slice(0, 2)) === oldItems, 'Old reviews changed');
+check(dialog().textContent.includes('OPTIONAL POLISH'), 'Polish is still framed as required');
+check([...dialog().querySelectorAll('button')].some(b => b.textContent.startsWith('Complete quest')), 'Completion unavailable');
+await QuestJournal.flush(); document.querySelectorAll('.toast-x').forEach(b => b.click());
+await smoke({ shot: window.SMOKE_SAVES + '/quest-fair-review.png' });
+return 'Reconsideration uses previous rejected evidence, preserves history, handles failure/retry, separates optional polish and never grants XP automatically.';
+//@@ reload
+await Lazy.load('questjournal'); activate('tool:quests');
+for (let i = 0; i < 160 && !QuestJournal.ready(); i++) await new Promise(r => setTimeout(r, 60));
+const s = QuestJournal.snapshot(), qid = s.campaigns[0].quests[0].id, items = QuestCore.submissions(s, qid);
+if (items.length !== 3 || items[0].review.status !== 'needs-evidence' || items[2].review.score !== 84 || QuestCore.xp(s) !== 0) throw Error('Review history or XP changed on reload');
+return 'Reconsidered review and originals survive reload without changing XP.';

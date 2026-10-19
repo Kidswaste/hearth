@@ -406,6 +406,14 @@
     if (item.review) throw Error('This version already has a review. Submit a revision for a fresh review.');
     checkReview(review); item.review = clone(review); item.reviewedAt = new Date().toISOString();
   }
+  function reconsider(s, qid) {
+    const list = submissions(s, qid), previous = list.at(-1);
+    if (!previous?.review) throw Error('Review the saved proof first.');
+    if (list.length >= 12) throw Error('This quest already has twelve proof versions. Export your journal before starting another quest.');
+    // Keep the old verdict as a separate version. Reconsidering never awards XP.
+    const item = { id: id('submission'), at: new Date().toISOString(), proof: clone(previous.proof), intent: previous.intent, brief: previous.brief, review: null, reconsideredFrom: previous.id };
+    list.push(item); return item;
+  }
   function revisionQuest(s, qid) {
     const source = find(s, qid), item = latest(s, qid); if (!source || !done(s, qid) || source.revisionOf || item?.review?.status !== 'reviewed') throw Error('Finish and review the original quest before making a revision quest.');
     const rid = `q-revise-${item.id}`; const old = find(s, rid); if (old) return old;
@@ -457,7 +465,9 @@
       if (!obj(s.submissions)) throw Error('Invalid proof history.');
       for (const [qid, list] of Object.entries(s.submissions)) {
         if (!qids.has(qid) || !Array.isArray(list) || list.length > 12) throw Error('Invalid proof history.');
-        for (const item of list) { unique(item.id); if (!date(item.at) || !str(item.intent, 2000) || !str(item.brief, 1000)) throw Error('Invalid submission.'); checkProof(item.proof); if (item.review != null) { checkReview(item.review); if (!date(item.reviewedAt)) throw Error('Invalid review date.'); } }
+        for (const [index, item] of list.entries()) { unique(item.id); if (!date(item.at) || !str(item.intent, 2000) || !str(item.brief, 1000)) throw Error('Invalid submission.'); checkProof(item.proof); if (item.review != null) { checkReview(item.review); if (!date(item.reviewedAt)) throw Error('Invalid review date.'); }
+          if (item.reconsideredFrom != null && !list.slice(0, index).some(x => x.id === item.reconsideredFrom && x.proof.fingerprint === item.proof.fingerprint && x.brief === item.brief && x.intent === item.intent)) throw Error('Invalid review reconsideration.');
+        }
       }
     }
     if (s.plan != null && (!obj(s.plan) || !qids.has(s.plan.quest) || !str(s.plan.action, 500) || !s.plan.action.trim() || !Number.isInteger(s.plan.minutes) || s.plan.minutes < 1 || s.plan.minutes > 120 || !date(s.plan.at))) throw Error('Invalid next-session note.');
@@ -478,5 +488,5 @@
     if (balance(s) < 0) throw Error('Reward history exceeds earned sparks.');
     return clone(s);
   }
-  return { mapKinds: D.mapKinds, mapMissions: D.mapMissions, placeKind, startMapMission, rewardMoney, savePlace, placeQuest, friendStarters, friendSuggestion, districts, calendarDate, saveFriend, saveWorldPlan, occasions, addFare, fareStatus, invitation, tripResearch, planCampaign, lifeArcs, startLifeArc, paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, bonus, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, revisionQuest, deckLanes, deckMoods, deckCard, deckPool, deckHand, deal, markCard, takeCard, specializations, rewardBlueprints, consoleAccents, mastery, practicePick, startPractice, equipTitle, activeTitle, stockReward, enjoyReward, returnReward };
+  return { mapKinds: D.mapKinds, mapMissions: D.mapMissions, placeKind, startMapMission, rewardMoney, savePlace, placeQuest, friendStarters, friendSuggestion, districts, calendarDate, saveFriend, saveWorldPlan, occasions, addFare, fareStatus, invitation, tripResearch, planCampaign, lifeArcs, startLifeArc, paths, initial, clone, day, id, text, allQuests, find, record, done, skipped, next, campaignDone, sideCount, earned, xp, bonus, balance, level, skills, available, daily, trackSide, skip, dismiss, revisit, saveIdea, startIdea, recommend, choose, planQuest, gains, startSmall, complete, undo, addCampaign, redeem, stats, validate, upgrade, submissions, latest, canFinish, setContract, checkProof, checkReview, externalUrl, submit, saveReview, reconsider, revisionQuest, deckLanes, deckMoods, deckCard, deckPool, deckHand, deal, markCard, takeCard, specializations, rewardBlueprints, consoleAccents, mastery, practicePick, startPractice, equipTitle, activeTitle, stockReward, enjoyReward, returnReward };
 });
