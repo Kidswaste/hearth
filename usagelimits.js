@@ -84,9 +84,9 @@ const UsageLimits = (() => {
     await note('claude', list);
     return r;
   }
-  async function readAstra() {
+  async function readAstra({fresh=false}={}) {
     if (!window.hub.getCodexUsage || !enginesUsed().includes('codex')) return null;
-    const r = await window.hub.getCodexUsage().catch(() => null);
+    const r = await window.hub.getCodexUsage({fresh}).catch(() => null);
     if (!r?.available) { errors.codex = r?.error || 'Astra\'s account limits are unavailable for this sign-in.'; return r; }
     delete errors.codex;
     await note('codex', C.fromCodex(r));

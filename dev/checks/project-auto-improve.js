@@ -11,6 +11,7 @@ const entry=()=>document.querySelector('.workspace-auto');
 check(entry()&&!entry().hidden,'Auto-improve absent before first run');
 entry().click();await until(()=>document.querySelector('.rt-dlg[open]'),'Setup did not open');
 let dlg=document.querySelector('.rt-dlg[open]');check(dlg.textContent.includes(second.title),'Setup targets wrong project conversation');
+dlg.querySelector('.rt-budget-mode').value='tokens';dlg.querySelector('.rt-budget-mode').dispatchEvent(new Event('change'));
 check(dlg.textContent.includes('current reply can exceed'),'Budget falsely presented as a hard cap');
 check(dlg.querySelector('[aria-label="Stop before a usage limit at"]'),'Account ceiling hidden');
 await smoke({shot:window.SMOKE_SAVES+'/auto-improve-setup.png'});
@@ -39,6 +40,7 @@ Native.send=async(agentId,text,{chatId})=>{
 Routines._test.scale(.02);
 entry().click();await until(()=>document.querySelector('.rt-dlg[open]'),'Reopen failed');dlg=document.querySelector('.rt-dlg[open]');
 if(dlg.classList.contains('rt-run')){[...dlg.querySelectorAll('button')].find(b=>b.textContent==='New run & budget').click();await until(()=>document.querySelector('.rt-words'),'New budget failed');dlg=document.querySelector('.rt-dlg:not(.rt-run)[open]');}
+dlg.querySelector('.rt-budget-mode').value='tokens';dlg.querySelector('.rt-budget-mode').dispatchEvent(new Event('change'));
 dlg.querySelector('.rt-num').value='2';const cap=dlg.querySelector('.rt-cap');cap.value='custom';cap.dispatchEvent(new Event('change'));dlg.querySelector('.rt-custom-cap').value='100000';
 dlg.querySelector('button[type=submit]').click();await until(()=>sends===2&&Routines.list().filter(r=>r.chatId===second.id).at(-1)?.status==='done','Two rounds did not finish');
 const first=Routines.list().filter(r=>r.chatId===second.id).at(-1);check(sends===2&&first.tokens===8400&&first.usageTotals.cached===6000,'Usage duplicated/cache double-counted');

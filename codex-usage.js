@@ -20,9 +20,9 @@ function normalize(result, checkedAt = Date.now()) {
 }
 class AccountUsage {
   constructor(options) { this.options = options; }
-  async read() {
+  async read({ fresh = false } = {}) {
     if (this.pending) return this.pending;
-    if (this.snapshot && Date.now() - this.snapshot.checkedAt < 60000) return this.snapshot;
+    if (!fresh && this.snapshot && Date.now() - this.snapshot.checkedAt < 60000) return this.snapshot;
     this.pending = this.fetch().finally(() => { this.pending = null; });
     return this.pending;
   }

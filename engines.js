@@ -67,14 +67,14 @@ async function codexCapabilities({ kind, chatId, appId, refresh } = {}) {
   codexCatalog ||= new cap.Catalog({ spawn: WinPolish.spawn, kill, bin, runtimeKey, args: ['app-server', '--listen', 'stdio://', '-c', 'features.apps=true'], cwd: WORKSPACE, env: process.env });
   return codexCatalog.read(kind, refresh);
 }
-function getCodexUsage() {
+function getCodexUsage(options = {}) {
   const bin = LOCATE.codex();
   if (!bin) return Promise.resolve({ available: false, buckets: [], checkedAt: Date.now(), error: 'Codex is not installed. Check Settings → Engines.' });
   const runtimeKey = Installs.binKey(bin);
   if (codexAccount?.options.runtimeKey !== runtimeKey) { codexAccount?.close(); codexAccount = null; }
   codexAccount ||= new (require('./codex-usage').AccountUsage)({ spawn: WinPolish.spawn, kill, bin, runtimeKey,
     args: ['app-server', '--listen', 'stdio://'], cwd: WORKSPACE, env: process.env });
-  return codexAccount.read();
+  return codexAccount.read({fresh:options?.fresh===true});
 }
 async function codexWorkspace(agent, chat, { kind, ...args } = {}) {
   if (agent?.engine !== 'codex' || chat?.agentId !== agent.id) throw new Error('Open an Astra / Codex chat first.');

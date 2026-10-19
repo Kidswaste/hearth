@@ -130,7 +130,7 @@ const UsageLimitsCore = (() => {
       const next = { ...ob };
       // "allowed" with no utilization in the same cycle: the number we had still holds
       let carried = false;
-      if (next.used == null && prev && sameCycle(prev, next) && prev.used != null) { next.used = prev.used; carried = true; }
+      if (next.used == null && prev && sameCycle(prev, next) && prev.used != null) { next.used = prev.used; next.usedAt=prev.usedAt ?? prev.at; carried = true; }
       if (!next.resetsAt && prev?.resetsAt && prev.resetsAt > now && next.source === 'error') next.resetsAt = prev.resetsAt;
       e.windows[ob.key] = next;
       changed = true;

@@ -10,6 +10,7 @@ const until = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now
 const fail = []; const out = {};
 const ok = (c, what) => { if (!c) fail.push(what); return Boolean(c); };
 try {
+  store.set('routines.last',{budgetMode:'tokens'}); // legacy token-budget coverage; percentage budgets have a separate fixture
   await Lazy.load('routines');
   const R = Routines;
   R._test.scale(0.02); // waits × 0.02 (the 2.5 s settle is 50 ms here)

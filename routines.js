@@ -84,9 +84,14 @@ const Routines = (() => {
     // a plan waiting for ▶ Go ahead (◎ Plan first) is yours to answer
     const lastMsg = chat.messages.at(-1);
     if (!Native.isBusy(r.chatId) && lastMsg?.role === 'assistant' && lastMsg.plan === 'waiting') { pauseFor(r, 'its plan waits for your ▶ Go ahead'); return; }
-    if (!Native.isBusy(r.chatId) && !r.inFlight) await refreshLimits(r.agentId);
+    let quota=null;
+    if (!Native.isBusy(r.chatId) && !r.inFlight) {
+      if(r.allowance)quota=await readAllowance(r.agentId,{after:r.round ? r.lastEnd-5000 : r.allowance.createdAt-2*C.MIN});
+      else await refreshLimits(r.agentId);
+    }
     const lastUsage=[...chat.messages].reverse().find(m=>m.role==='assistant' && C.usageOf(m.usage))?.usage;
-    const d = C.nextStep(r, {...context(r),lastTokens:C.usageOf(lastUsage)?.tokens || 0});
+    const d = C.nextStep(r, {...context(r),engine:H.agent(r.agentId)?.engine,model:chat.model||H.agent(r.agentId)?.model||'',allowanceWindows:quota?.windows,allowanceFresh:quota?.fresh,lastTokens:C.usageOf(lastUsage)?.tokens || 0});
+    if(r.allowance&&quota){saveNow();paintAll();}
     if (d.act === 'none') return;
     if (d.act === 'wait' && d.hold) { holdFor(r, d); later(r, d.ms); return; }
     if (d.act === 'wait') { if (d.why && r.why !== d.why) { r.why = d.why; save(); paintAll(); } later(r, d.ms); return; }
@@ -96,6 +101,34 @@ const Routines = (() => {
   }
   const checkSoon = (r, ms = C.SETTLE) => later(r, ms);
   const refreshing=new Map(), refreshed=new Map();
+  const allowanceReads=new Map();
+  async function readAllowance(agentId,{after=Date.now()-2*C.MIN}={}) {
+    const engine=H.agent(agentId)?.engine;
+    if(!['claude','codex'].includes(engine))return {windows:[],fresh:false};
+    await Lazy.load('usagelimits');
+    if(!allowanceReads.has(engine)){
+      const job=(async()=>{let timer;try{return await Promise.race([engine==='codex'?UsageLimits.readAstra({fresh:true}):UsageLimits.readClaude({fresh:true}),new Promise(resolve=>{timer=setTimeout(()=>resolve(null),30000);})]);}catch{return null;}finally{clearTimeout(timer);allowanceReads.delete(engine);}})();
+      allowanceReads.set(engine,job);
+    }
+    const result=await allowanceReads.get(engine);
+    let windows=engine==='codex'?UsageLimitsCore.fromCodex(result):result?.ok?UsageLimitsCore.fromUsageText(result.text,result.at):[];
+    // Claude may expose percentages only in its own completed-reply events. A carried
+    // value is not a new observation; preserve its original measurement timestamp.
+    if(engine==='claude'&&!windows.length)windows=Object.values(UsageLimits.state?.engines?.claude?.windows||{}).filter(w=>w.source==='event'&&w.used!=null).map(w=>({...w,at:w.usedAt??w.at}));
+    windows=windows.filter(w=>w.resetsAt>Date.now()).map(w=>({...w,label:w.label||UsageLimitsCore.view(w)?.label||w.key}));
+    return {engine,windows,fresh:result?.ordinaryUsageAllowed!==false&&windows.length>0&&windows.every(w=>w.at>=after&&w.at>=Date.now()-2*C.MIN)};
+  }
+  async function refreshFinishedAllowance(r) {
+    if(!r.allowance||r.allowance.finishedAt||r.status==='running'||r.inFlight||Native.isBusy(r.chatId))return;
+    try {
+      const snap=await readAllowance(r.agentId,{after:r.lastEnd-5000}),chat=await Native.load(r.chatId);
+      if(r.status==='running'||r.inFlight)return;
+      // Refresh the displayed consumption without resuming or replacing a manual stop.
+      C.allowanceCheck(r,{engine:H.agent(r.agentId)?.engine,model:chat?.model||H.agent(r.agentId)?.model||'',allowanceWindows:snap.windows,allowanceFresh:snap.fresh},Date.now());
+      if(snap.fresh&&['done','stopped'].includes(r.status))r.allowance.finishedAt=Date.now();
+      saveNow();paintAll();
+    }catch{/* the last measured timestamp remains visible */}
+  }
   async function refreshLimits(agentId) {
     const engine=H.agent(agentId)?.engine;
     if(!engine || Date.now()-(refreshed.get(engine)||0)<60000)return;
@@ -191,9 +224,10 @@ const Routines = (() => {
   function end(r, status, why) {
     if (!C.live(r)) return;
     r.status = status || 'stopped'; r.why = why; r.inFlight = false;
+    if(r.allowance&&!Native.isBusy(r.chatId)&&r.allowance.windows.every(w=>w.at>=r.lastEnd))r.allowance.finishedAt=Date.now();
     awake(r, false); clearTimeout(timers.get(r.id)); timers.delete(r.id);
     saveNow(); paintAll(); syncTick();
-    const sum = `${r.done} round${r.done === 1 ? '' : 's'} · ≈ ${fmt(r.tokens)} tokens${r.files ? ` · ${r.files} file${r.files === 1 ? '' : 's'} changed` : ''}`;
+    const sum = `${r.done} round${r.done === 1 ? '' : 's'} · ${r.allowance?Math.round(C.allowanceProgress(r.allowance))+'% of budget used':'≈ '+fmt(r.tokens)+' tokens'}${r.files ? ` · ${r.files} file${r.files === 1 ? '' : 's'} changed` : ''}`;
     say(r, `🔁 Keep going ${r.status === 'done' ? 'finished' : 'stopped'}: ${why} (${sum}).`, { buttons: false });
     activity(r, `Keep going ${r.status === 'done' ? 'finished' : 'stopped'} in “${titleOf(r)}”: ${why} · ${sum}`, r.status === 'done' ? '✓' : '■');
     if (!/by you/i.test(why || '')) tell(r, r.status === 'done' ? 'done' : 'stop', { why, cost: sum });
@@ -220,6 +254,15 @@ const Routines = (() => {
   async function start(agentId, spec, { chatId = null, first = null } = {}) {
     const agent = H.agent(agentId);
     if (!agent || agent.mode !== 'native') throw new Error('Keep going works in a chat with Claude or Astra.');
+    let quota=null;
+    if(spec.remainingPercent!=null){
+      const selected=chatId?await Native.load(chatId):Native.chatOf(agentId);
+      const model=selected?.model||agent.model||'',engine=agent.engine;
+      const snap=await readAllowance(agentId);
+      if(!snap.fresh)throw Error('No fresh account usage reading. Refresh usage or send a normal reply first; this percentage run has not started.');
+      if(snap.engine!==engine||H.agent(agentId)?.engine!==engine||(selected?.model||H.agent(agentId)?.model||'')!==model)throw Error('The assistant or model changed while reading usage. Open Auto-improve again.');
+      quota=C.allowance(Number(spec.remainingPercent),engine,model,snap.windows);
+    }
     // your message goes out as any message from the chat box would (its chat on screen; a new chat when there is none)
     if (first) await Native.send(agentId, first);
     const chat = first ? Native.chatOf(agentId) : chatId ? await Native.load(chatId).catch(() => null) : Native.ensureChat(agentId, spec.prompt);
@@ -227,12 +270,12 @@ const Routines = (() => {
     if (chat.agentId !== agentId) throw new Error('This chat belongs to another assistant. Reopen its project and try again.');
     if (forChat(chat.id)?.inFlight) throw new Error('Let the current auto-improve reply finish before starting a new budget.');
     for (const old of list.filter((x) => x.chatId === chat.id && C.live(x))) end(old, 'stopped', 'a new routine replaced it');
-    const r = C.normalize({ ...spec, agentId, chatId: chat.id, title: chat.title, createdAt: Date.now(), status: 'running', kickoff: true, lastEnd: Date.now() - C.SETTLE });
+    const r = C.normalize({ ...spec, ...(quota?{allowance:quota,cap:0,waitReset:false}:{}), agentId, chatId: chat.id, title: chat.title, createdAt: Date.now(), status: 'running', kickoff: true, lastEnd: Date.now() - C.SETTLE });
     if (!r) throw new Error('Pick how long it keeps going.');
     list.push(r);
     rememberPrompt(chat.id, spec.prompt);
     stat({ n: 1 });
-    store.set(LAST, { how: spec.how?.kind === 'until' ? { kind: 'until', time: spec.how.time } : spec.how, pause: r.pause, resumeAfter: r.resumeAfter, lighter: r.lighter, waitReset: r.waitReset, afterRestart: r.afterRestart, cap: spec.capPick, margin: r.margin });
+    store.set(LAST, { how: spec.how?.kind === 'until' ? { kind: 'until', time: spec.how.time } : spec.how, pause: r.pause, resumeAfter: r.resumeAfter, lighter: r.lighter, waitReset: r.waitReset, afterRestart: r.afterRestart, cap: spec.capPick, margin: r.margin, budgetMode:quota?'remaining':'tokens',remainingPercent:quota?.percent||20 });
     saveNow(); paintAll(); syncTick();
     activity(r, `Keep going started in “${titleOf(r)}”: ${C.describe(r).replace(/^🔁 Keep going /, '')}`);
     // (no note: the header chip says it, with ❚❚ / ■; its tooltip has the words each round sends)
@@ -267,6 +310,12 @@ const Routines = (() => {
       const capSel = el('select', { class: 'rt-cap', attrs: { 'aria-label': 'Spending cap' } });
       const customCap=el('input',{type:'number',min:1,max:1e9,step:1,class:'rt-custom-cap',hidden:true,attrs:{'aria-label':'Custom token budget'}});
       const capHint = el('span', { class: 'hint rt-cap-hint' });
+      const budgetMode=el('select',{class:'rt-budget-mode',attrs:{'aria-label':'Budget type'}},el('option',{value:'remaining',text:'% of remaining usage'}),el('option',{value:'tokens',text:'Token budget (advanced)'}));
+      budgetMode.value=last.budgetMode==='tokens'?'tokens':'remaining';
+      const percent=el('input',{class:'rt-percent',type:'number',min:1,max:100,step:1,required:true,value:String(last.remainingPercent||20),attrs:{'aria-label':'Percentage of remaining usage'}});
+      const percentRow=el('label',{class:'rt-share'},percent,el('span',{text:'% of what I have left'}));
+      const quotaPreview=el('div',{class:'rt-quota-preview hint',attrs:{role:'status'},text:'Reading your remaining usage…'});
+      let snapshot=null,readingBudget=false;
       const howNow = () => {
         const h = C.HOW.find((x) => x.id === howId);
         if (h.kind === 'rounds') return { kind: 'rounds', rounds: Math.max(1, Math.min(C.MAX_ROUNDS, Math.round(Number(roundsIn.value) || 5))) };
@@ -304,19 +353,33 @@ const Routines = (() => {
       const go = () => {
         const h = howNow();
         if (h.kind === 'until' && !h.at) { toast('Pick a time for “Until…”.', { timeout: 2500 }); return; }
+        const share=budgetMode.value==='remaining';
+        if(share&&(!percent.checkValidity()||!snapshot?.fresh)){percent.reportValidity();return;}
         const cap = capSel.value === 'custom' ? Number(customCap.value) : capSel.value === 'default' ? def : Number(capSel.value) || 0;
-        if(!Number.isFinite(cap)||cap<0||cap>1e9||!Number.isInteger(cap)||(capSel.value==='custom'&&cap<1)){customCap.reportValidity();toast('Enter a whole token budget from 1 to 1,000,000,000.');return;}
-        finish({ prompt: words.value.trim() || C.DEFAULT_PROMPT, how: h, pause: pauseSel.value, resumeAfter: Number(writeSel.value) || 0, cap, capPick: capSel.value === 'default' ? 'default' : cap, lighter: lightI.checked, waitReset: resetI.checked, afterRestart: restartI.checked, margin: Number(marginSel.value) || C.MARGIN });
+        if(!share&&(!Number.isFinite(cap)||cap<0||cap>1e9||!Number.isInteger(cap)||(capSel.value==='custom'&&cap<1))){customCap.reportValidity();toast('Enter a whole token budget from 1 to 1,000,000,000.');return;}
+        finish({ prompt: words.value.trim() || C.DEFAULT_PROMPT, how: h, pause: pauseSel.value, resumeAfter: Number(writeSel.value) || 0, cap:share?0:cap, ...(share?{remainingPercent:Number(percent.value)}:{}),capPick: capSel.value === 'default' ? 'default' : cap, lighter: lightI.checked, waitReset: share?false:resetI.checked, afterRestart: restartI.checked, margin: Number(marginSel.value) || C.MARGIN });
       };
+      const tokenFields=el('div',{class:'rt-token-fields'},row('Token budget',capSel,customCap),capHint,row('Account usage ceiling',marginSel));
+      const updateBudget=()=>{
+        const share=budgetMode.value==='remaining';percentRow.hidden=!share;quotaPreview.hidden=!share;tokenFields.hidden=share;resetL.hidden=share;
+        percent.disabled=!share;customCap.disabled=share;
+        const submit=dlg.querySelector('button[type=submit]');if(submit)submit.disabled=share&&(readingBudget||!snapshot?.fresh||!percent.checkValidity());
+        if(share&&!readingBudget){quotaPreview.replaceChildren();
+          if(snapshot?.fresh){
+            for(const w of snapshot.windows)quotaPreview.append(el('div',{text:`${w.label||({five_hour:'Session',seven_day:'This week'}[w.key])||w.key}: ${C.pctText(100-w.used)}% left → allow ${C.pctText((100-w.used)*Number(percent.value||0)/100)} percentage points`,title:'The run stops when any of these starting allocations is used. Other account activity counts too.'}));
+          }else quotaPreview.append(el('span',{text:'Fresh usage unavailable. Refresh, or send a normal reply first. No percentage run will start without a reading.'}));
+        }
+      };
+      const refreshBudget=async()=>{readingBudget=true;quotaPreview.textContent='Reading your remaining usage…';updateBudget();try{snapshot=await readAllowance(agentId);}catch{snapshot=null;}finally{readingBudget=false;if(dlg.isConnected)updateBudget();}};
+      budgetMode.onchange=updateBudget;percent.oninput=updateBudget;
       const form = el('form', { method: 'dialog', on: { submit: (e) => { e.preventDefault(); go(); } } },
         el('h2', { text: '↻ Auto-improve' }),
         el('p', { class: 'rt-intro hint', text: first ? 'Your message goes first, then Hearth repeats the prompt below.' : `Keep working in “${H.chats.find(c=>c.id===chatId)?.title || 'this chat'}”. Writing here pauses the loop.` }),
         el('label', { class: 'rt-field' }, el('span', { class: 'rt-label', text: 'What to ask each time' }), words),
         el('div', { class: 'rt-field' }, el('span', { class: 'rt-label', text: 'How long' }), howRow),
-        row('Token budget', capSel, customCap), capHint,
-        row('Account usage ceiling', marginSel),
-        el('div',{class:'rt-account hint',text:accountWords(agentId)}),
-        el('p',{class:'hint rt-account-note',text:'Token traffic includes cached history; it is not your subscription allowance or bill. Account limits include other chats and devices, when reported.'}),
+        row('Budget',budgetMode),percentRow,quotaPreview,tokenFields,
+        el('button',{type:'button',class:'ghost small rt-refresh-usage',text:'↻ Refresh usage',on:{click:refreshBudget}}),
+        el('p',{class:'hint rt-account-note',text:'Fixed when you start; it never refills automatically. Checked between replies, so a reply can overshoot. Other chats and devices count toward the same allowance.'}),
         el('details', { class: 'rt-more' }, el('summary', { text: 'Timing & advanced' }),row('Pause between rounds', pauseSel), row('When I write here', writeSel), lightL, resetL, restartL),
         el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }),
           el('button', { type: 'button', text: 'Cancel', on: { click: () => finish(null) } }),
@@ -326,7 +389,7 @@ const Routines = (() => {
       dlg.addEventListener('close', () => { setTimeout(() => dlg.remove(), 0); resolve(null); });
       document.body.append(dlg);
       dlg.showModal();
-      refreshLimits(agentId).then(()=>{if(dlg.isConnected)dlg.querySelector('.rt-account').textContent=accountWords(agentId);});
+      updateBudget();refreshBudget();
       if(chatId)Native.load(chatId).then(chat=>{const u=C.usageOf([...chat.messages].reverse().find(m=>m.role==='assistant'&&C.usageOf(m.usage))?.usage);if(u&&dlg.isConnected)capHint.append(el('span',{class:'rt-last-usage',text:`Last reply: ${u.tokens.toLocaleString()} tokens. Next-round usage can vary.`}));}).catch(()=>{});
       words.focus(); words.setSelectionRange(words.value.length, words.value.length);
     });
@@ -344,7 +407,7 @@ const Routines = (() => {
   function accountWords(agentId) {
     const engine=H.agent(agentId)?.engine,st=window.UsageLimits?.state;
     const vs=st && typeof UsageLimitsCore!=='undefined' ? UsageLimitsCore.views(st,engine).filter(v=>!v.reset&&v.used!=null) : [];
-    return vs.length ? vs.map(v=>`${v.label}: ${v.used}% used · updated ${v.ago}`).join(' / ') : 'Account usage unavailable. The token budget still applies.';
+    return vs.length ? vs.map(v=>`${v.label}: ${v.used}% used · updated ${v.ago}`).join(' / ') : 'Account usage unavailable.';
   }
   async function openProject() {
     const chat=window.ProjectWorkspace?.currentChat?.();
@@ -361,20 +424,23 @@ const Routines = (() => {
     const paint=()=>{
       const t=r.usageTotals,u=r.usageUnknown?'At least ':'',busy=Native.isBusy(r.chatId),live=C.live(r);
       const controls=el('div',{class:'dialog-actions'});
-      if(live)controls.append(el('button',{type:'button',text:r.status==='running'?'Pause after reply':'Resume',disabled:r.usageUnknown,on:{click:()=>{r.status==='running'?pause(r.id):resume(r.id);}}}),el('button',{type:'button',text:busy?'Stop after reply':'Stop run',on:{click:()=>stop(r.id)}}));
+      if(live)controls.append(el('button',{type:'button',text:r.status==='running'?'Pause after reply':'Resume',disabled:r.usageUnknown&&!r.allowance,on:{click:()=>{r.status==='running'?pause(r.id):resume(r.id);}}}),el('button',{type:'button',text:busy?'Stop after reply':'Stop run',on:{click:()=>stop(r.id)}}));
       controls.append(el('button',{type:'button',class:'primary',text:'New run & budget',disabled:busy,on:{click:()=>{dlg.close();open(r.agentId,{chatId:r.chatId});}}}));
       const history=el('details',{class:'rt-more'},el('summary',{text:'Round history & exact counts'}));
       history.append(el('p',{class:'hint',text:'Input includes cache reads/writes. Output includes reasoning. Counts below are reported traffic, not a bill. Large totals include rereading history at each model call.'}));
+      history.append(el('p',{text:`${u}${r.tokens.toLocaleString()} reported tokens`}),t?el('div',{class:'rt-breakdown'},...['fresh','cacheWrite','cached','output'].map(k=>el('span',{text:`${{fresh:'Fresh',cacheWrite:'Cache write',cached:'Cached',output:'Output'}[k]} ${t[k].toLocaleString()}`}))):null,
+        t?.costReports?el('p',{class:'hint',text:`$${t.cost.toFixed(4)} reported API-price estimate, not a subscription charge.`}):null);
       for(const x of r.rounds.slice(-12))history.append(el('div',{class:'rt-history-row',text:`${x.n} · ${x.ok?'Completed':x.stopped?'Stopped':'Failed'} · ${x.tokens.toLocaleString()}${x.usage===null||x.usage?.partial?'+ (incomplete)':''} tokens`,title:x.sum||x.error||''}));
-      content.replaceChildren(el('h2',{text:'↻ Auto-improve'}),el('p',{class:'hint',text:`${titleOf(r)} · ${r.done} completed · ${r.status}`}),el('div',{class:'rt-spent',text:`${u}${r.tokens.toLocaleString()} tokens`}),el('p',{class:'hint',text:r.cap?`Budget ${r.cap.toLocaleString()} · ${Math.max(0,r.cap-r.tokens).toLocaleString()} left${busy?' · current reply not yet counted':''}`:'No token cap'}),
-        t?el('div',{class:'rt-breakdown'},...['fresh','cacheWrite','cached','output'].map(k=>el('span',{text:`${{fresh:'Fresh',cacheWrite:'Cache write',cached:'Cached',output:'Output'}[k]} ${t[k].toLocaleString()}`}))):null,
-        t?.costReports?el('p',{class:'hint',text:`$${t.cost.toFixed(4)} API-price estimate reported for ${t.costReports} replies; not a subscription charge.`}):null,
+      const used=r.allowance?C.allowanceProgress(r.allowance):0;
+      const allocation=r.allowance?el('div',{class:'rt-allocation'},el('progress',{max:100,value:Math.min(100,used),attrs:{'aria-label':'Remaining-usage budget consumed'}}),el('p',{class:'hint',text:`Budget: ${C.pctText(r.allowance.percent)}% of what was left when you started. Stops at the first allowance to reach its allocation.`}),...r.allowance.windows.map(w=>el('div',{class:'rt-history-row',text:`${w.label} · ${C.pctText(Math.max(0,w.peak-w.start))} / ${C.pctText(w.amount)} percentage points`,title:`Started at ${C.pctText(w.start)}% account usage. Last measured ${new Date(w.at).toLocaleTimeString()}.`})),el('p',{class:'hint',text:'Other account activity is included. Readings may lag; the current reply can overshoot.'})):null;
+      content.replaceChildren(el('h2',{text:'↻ Auto-improve'}),el('p',{class:'hint',text:`${titleOf(r)} · ${r.done} completed · ${r.status}`}),el('div',{class:'rt-spent',text:r.allowance?`${Math.round(used)}% of budget used`:`${u}${r.tokens.toLocaleString()} tokens`}),allocation,
+        !r.allowance?el('p',{class:'hint',text:r.cap?`Budget ${r.cap.toLocaleString()} · ${Math.max(0,r.cap-r.tokens).toLocaleString()} left${busy?' · current reply not yet counted':''}`:'No token cap'}):null,
         el('p',{class:'rt-run-status',text:r.why || (busy?'Working on this reply. Pause and stop take effect before the next one.':'Waiting for the next round.')}),el('p',{class:'hint',text:accountWords(r.agentId)}),controls,history);
     };
     dlg.append(content,el('div',{class:'dialog-actions'},close));
     document.addEventListener('hearth:routines',paint);
     dlg.onclose=()=>{document.removeEventListener('hearth:routines',paint);dlg.remove();};
-    document.body.append(dlg);paint();dlg.showModal();refreshLimits(r.agentId).then(()=>{if(dlg.isConnected)paint();});
+    document.body.append(dlg);paint();dlg.showModal();(r.allowance?refreshFinishedAllowance(r):refreshLimits(r.agentId)).then(()=>{if(dlg.isConnected)paint();});
   }
   function agentNow() {
     const a = H.agent(H.activeId);
@@ -447,10 +513,12 @@ const Routines = (() => {
     // the round's message says what it cost
     asked.routine.tokens=(asked.routine.tokens||0)+tokens;asked.routine.usageUnknown=asked.routine.usageUnknown || !usage || usage.partial;
     Native.save(chat);paintMsgChip(chat.id,asked);saveNow();paintAll();
+    if(r.allowance&&r.status!=='running')void refreshFinishedAllowance(r);
     if (out.act === 'continue' || out.act === 'wait') {
       const of = r.how.kind === 'rounds' ? ` of ${r.how.rounds}` : '';
-      if (event.type === 'done') activity(r, `Keep going: round ${r.round}${of} done in “${titleOf(r)}” · ≈ ${fmt(tokens)} tokens (≈ ${fmt(r.tokens)} so far)`);
-      if (event.type === 'done') tell(r, 'round', { n: r.round, of: r.how.kind === 'rounds' ? r.how.rounds : 0, cost: `≈ ${fmt(tokens)} tokens (≈ ${fmt(r.tokens)} so far)`, summary }); // (round 51) its one-line summary, never the whole answer
+      const cost=r.allowance?'checking your remaining-usage budget':`≈ ${fmt(tokens)} tokens (≈ ${fmt(r.tokens)} so far)`;
+      if (event.type === 'done') activity(r, `Keep going: round ${r.round}${of} done in “${titleOf(r)}” · ${cost}`);
+      if (event.type === 'done') tell(r, 'round', { n: r.round, of: r.how.kind === 'rounds' ? r.how.rounds : 0, cost, summary }); // (round 51) its one-line summary, never the whole answer
       save(); paintAll();
       if (out.act === 'continue') checkSoon(r);
       return;
@@ -471,7 +539,7 @@ const Routines = (() => {
     const foot = node.querySelector(':scope > .user-foot') || node.querySelector(':scope > .msg-foot');
     if (foot) foot.prepend(chip); else node.append(chip);
   });
-  const msgChipText = (t) => `🔁 round ${t.n}${t.of ? ` of ${t.of}` : ''}${t.usageUnknown ? ` · ${t.tokens ? fmt(t.tokens)+'+ tokens · ' : ''}usage incomplete` : t.tokens ? ` · ≈ ${fmt(t.tokens)} tokens` : ''}`;
+  const msgChipText = (t) => `🔁 round ${t.n}${t.of ? ` of ${t.of}` : ''}${byId(t.id)?.allowance?'':t.usageUnknown ? ` · ${t.tokens ? fmt(t.tokens)+'+ tokens · ' : ''}usage incomplete` : t.tokens ? ` · ≈ ${fmt(t.tokens)} tokens` : ''}`;
   function paintMsgChip(chatId, m) {
     for (const n of document.querySelectorAll(`.rt-msg-chip[data-rid="${m.routine.id}"][data-n="${m.routine.n}"]`)) { const t = msgChipText(m.routine); if (n.textContent !== t) n.textContent = t; }
   }
@@ -625,7 +693,7 @@ const Routines = (() => {
         if (!how) return 'Say a number of rounds (5), a time (30m, 2h), forever, pause, resume, stop or status.';
         let spend = {}; try { if (typeof Budget !== 'undefined') spend = Budget.state(agent.id); } catch { /* not loaded */ }
         const cap = typeof last.cap === 'number' && (last.cap || !C.needsCap(how)) ? last.cap : C.defaultCap(spend);
-        const x = await start(agent.id, { prompt: promptFor(chat.id), how, pause: last.pause || 'none', resumeAfter: last.resumeAfter || 0, cap, capPick: last.cap ?? 'default', lighter: last.lighter !== false, waitReset: last.waitReset !== false, afterRestart: last.afterRestart === true, margin: last.margin }, { chatId: chat.id });
+        const x = await start(agent.id, { prompt: promptFor(chat.id), how, pause: last.pause || 'none', resumeAfter: last.resumeAfter || 0, cap, ...(last.budgetMode==='tokens'?{}:{remainingPercent:last.remainingPercent||20}),capPick: last.cap ?? 'default', lighter: last.lighter !== false, waitReset: last.waitReset !== false, afterRestart: last.afterRestart === true, margin: last.margin }, { chatId: chat.id });
         return `${C.describe(x)}.`;
       },
     });
