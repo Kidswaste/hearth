@@ -34,7 +34,7 @@ const CreativePlayground = (() => {
     }
     pause();suspended=false;feature=f.id;stage.replaceChildren();
     mountedScope=WorkbenchUI.scope();if(feature!=='vst')boardFeature=feature;
-    if(feature!=='vst')stage.append(el('nav',{class:'workspace-creative-tabs',attrs:{'aria-label':'Creative board'}},...[["studio","Shelf"],["texture","Materials"],["pattern","Seamless tiles"],["draw","Drawing"],["story","Storyboard"]].map(([id,label])=>button(label,()=>openFeature(id),{attrs:{'aria-pressed':String(feature===id)}}))));
+    if(feature!=='vst')stage.append(el('nav',{class:'workspace-creative-tabs',attrs:{'aria-label':'Creative board'}},...[["studio","Shelf"],["texture","Materials"],["pattern","Seamless tiles"],["draw","Drawing"],["story","Storyboard"]].map(([id,label])=>button(label,()=>openFeature(id,{reuse:true}),{attrs:{'aria-pressed':String(feature===id)}}))));
     stage.append(el('h2',{text:feature==='studio'?'Creative board':f.name}),para(f.description));
     nav.querySelectorAll('[data-feature-id]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.featureId===feature)));
 
