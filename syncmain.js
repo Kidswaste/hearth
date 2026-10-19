@@ -161,8 +161,8 @@ function watch() {
   };
   // (round 19) the workspace is watched too (what chats make syncs), but not its dependency folders and caches
   const own = (n) => /^(sync|mcp-runs|ae)([\\/]|$)/.test(n) || /(^|[\\/])(node_modules|__pycache__|venv|\.venv|\.git|\.cache|\.next)([\\/]|$)/.test(n) || /^(window|game-bridge|engine-installs|connectors|claude-flags)\.json$/.test(n) || /\.log$/.test(n);
-  add(opts.dataDir, DEBOUNCE_LOCAL, own);
-  if (engine && fs.existsSync(engine.cloudDir)) add(engine.cloudDir, DEBOUNCE_CLOUD, () => false);
+  add(opts.dataDir, DEBOUNCE_LOCAL, n => own(n) || S.watchIgnored(n));
+  if (engine && fs.existsSync(engine.cloudDir)) add(engine.cloudDir, DEBOUNCE_CLOUD, n => S.watchIgnored(n, true));
   for (const f of [opts.configPath, opts.themePath]) {
     try { const w = fs.watch(f, () => schedule(DEBOUNCE_LOCAL, 'config')); watchers.push(w); } catch { /* missing */ }
   }

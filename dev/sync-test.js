@@ -74,6 +74,57 @@ function snapshot(m) {
 }
 
 async function main() {
+  {
+    const w=world('switch-safety'),A=computer(w,'PC',{platform:'win32'}),B=computer(w,'Mac',{platform:'darwin'});
+    const original=chat('linked',[msg('user',1,'Keep my work')]);
+    W(A.p('chats/linked.json'),JSON.stringify(original));
+    const project={v:1,list:[{id:'p1',name:'My game',workspace:{chatId:'linked',sceneId:'s1'},items:[{type:'chat',ref:'linked'}]}]};
+    W(A.p('kv/projects.json'),JSON.stringify(project));
+    W(A.p('kv/three-sketches.json'),JSON.stringify([{id:'s1',layers:[{id:'l1',code:'original'}]}]));
+    W(A.p('kv/quest-journal.json'),JSON.stringify({progress:{q1:{steps:['start']}}}));
+    const bom='\uFEFF'+JSON.stringify({name:'My Windows export',data:'x'.repeat(270000)});
+    W(A.p('attachments/export.json'),bom);await settle(A,B);
+    ok(J(B.p('attachments/export.json')).name==='My Windows export','BOM attachment reaches the other computer');
+    ok(R(A.p('attachments/export.json'))===bom,'sync leaves original export bytes alone');
+    W(cloudFile(w,'kv/remote-export.json'),'\uFEFF'+JSON.stringify({saved:true}));await settle(B,A);
+    ok(J(A.p('kv/remote-export.json')).saved,'BOM cloud JSON is accepted too');
+    const stale=J(B.p('chats/linked.json'));
+    const pc=J(A.p('chats/linked.json'));pc.messages.push(msg('assistant',2,'PC finished a character'));W(A.p('chats/linked.json'),JSON.stringify(pc));
+    const mac=J(B.p('kv/three-sketches.json'));mac[0].layers.push({id:'l2',code:'Mac mechanic'});W(B.p('kv/three-sketches.json'),JSON.stringify(mac));
+    W(B.p('kv/quest-journal.json'),JSON.stringify({progress:{q1:{steps:['start','test']}}}));
+    await settle(A,B);
+    stale.messages.push(msg('user',3,'Typed before the UI reloaded'));W(B.p('chats/linked.json'),JSON.stringify(B.e.guardWrite(B.p('chats/linked.json'),stale)));await settle(B,A);
+    B.e.stop();B.e=B.make();await settle(B,A);
+    ok(J(B.p('chats/linked.json')).messages.length===3,'restart and stale in-memory save keep both computers messages');
+    ok(J(A.p('kv/three-sketches.json'))[0].layers.length===2 && J(B.p('kv/projects.json')).list[0].workspace.chatId==='linked' && J(A.p('kv/quest-journal.json')).progress.q1.steps.length===2,'project links, scene layers and quest steps survive a switch');
+    const prev=(await A.e.trash()).find(x=>x.recovery&&x.rel==='kv/three-sketches.json');
+    ok(Boolean(prev),'previous scene store is offered as a recoverable version');
+    const recovered=await A.e.restore(prev.id,{replace:true});
+    ok(recovered.ok && J(A.p('kv/three-sketches.json'))[0].layers.length===1,'previous version can be restored without deleting the replaced version');
+    ok((await A.e.trash()).some(x=>!x.recovery&&x.rel==='kv/three-sketches.json'),'replaced scene store is still recoverable after undo');
+    ok(!(await A.e.restore('recovery:../config.json')).ok,'recovery refuses paths outside its directory');
+    // Formerly synced caches must stay untouched, including entries in the old base.
+    const profile='workspace/komorebi-qa-profile/Default/Sessions/test';
+    W(A.p(profile),'local browser session');W(cloudFile(w,profile),'other machine session');
+    await settle(A,B);
+    ok(R(A.p(profile))==='local browser session'&&!has(B.p(profile)),'browser profiles are neither uploaded nor pulled');
+    const src='workspace/game/native/source.cpp',media='workspace/game/dist/song.wav';W(A.p(src),'source');W(A.p(media),'song');await settle(A,B);
+    ok(has(B.p(src))&&has(B.p(media)),'source code and user exports still sync');
+    const machine=A.e.machine().id,meta=path.join(w.cloud,'Hearth','.sync');
+    const originalMachine=R(path.join(meta,'machines',machine+'.json'));
+    W(path.join(meta,'machines',machine+' 2.json'),originalMachine);
+    W(path.join(meta,'journal',machine+' 2.jsonl'),JSON.stringify({t:Date.now()+60000,op:'put',rel:'chats/linked.json',h:'wrong',s:999})+'\n');
+    const res=await A.e.pass();
+    ok(res.pending===0&&A.e.status().peers.length===1,'own conflict journals do not pretend to be a remote computer or stall chats');
+    for(const name of ['.sync/journal/pc.jsonl','.sync/machines/pc.json','files/workspace/komorebi-qa-profile/Default/LOG','files/workspace/game/native/build-msvc/x.obj'])ok(S.watchIgnored(name,true),'watch ignores '+name);
+    for(const name of ['files/chats/linked.json','files/kv/projects.json','files/workspace/game/scene.js'])ok(!S.watchIgnored(name,true),'watch notices '+name);
+    W(A.p('kv/blocked-recovery.json'),JSON.stringify({value:'original'}));await settle(A,B);
+    fs.mkdirSync(path.join(A.e.stateDir,'recovery','kv','blocked-recovery.json'),{recursive:true});
+    W(B.p('kv/blocked-recovery.json'),JSON.stringify({value:'incoming'}));await B.e.pass();const blocked=await A.e.pass();
+    ok(blocked.pending>0&&J(A.p('kv/blocked-recovery.json')).value==='original','failed recovery write stops incoming replacement');
+    W(A.p('attachments/invalid.json'),'{broken');const oldTime=new Date(Date.now()-3600000);fs.utimesSync(A.p('attachments/invalid.json'),oldTime,oldTime);
+    const bad=await A.e.pass();ok(bad.state==='pending'&&bad.unreadable.includes('attachments/invalid.json'),'invalid JSON never claims sync is complete');
+  }
   // Reproduce Clink: an unchanged chat disappeared from iCloud without a Delete
   // action, and sync used to move the only current local copy into sync/trash.
   {
