@@ -55,6 +55,17 @@ const Native = (() => {
   }
 
   function mount(agentId, root) {
+    // A project's chat follows its tools. Move the same live view, preserving drafts,
+    // streaming state, attachments and listeners instead of mounting a second composer.
+    const existing = views.get(agentId);
+    if (existing) {
+      if (existing.root !== root || !root.contains(existing.form)) {
+        root.append(existing.title.closest('.native-head'), existing.wrap, existing.form);
+        existing.root = root;
+      }
+      root.classList.toggle('dock-chat', root.classList.contains('tool-dock'));
+      return existing;
+    }
     const title = el('span', { class: 'chat-title', title: 'Double-click to rename' });
     const meta = el('span', { class: 'chat-meta' });
     const modelSel = el('select', { class: 'model-select', title: 'Model for this chat' });
@@ -151,6 +162,7 @@ const Native = (() => {
     const v = { root, title, meta, ctx, modelSel, list, input, sendBtn, chips, counter, jump, attachments: [], queue: [], queueBox, styleBox, form, follow: true };
 
     const saveDraft = saver(() => store.set(draftKey(agentId), input.value || null), 400); // (round 29) kept during long typing too
+    v.saveDraft = saveDraft;
     // (round 32, smooth32) deleting can't make the box taller: at its smallest it stays (measuring it laid out the whole
     // chat twice per Backspace)
     input.addEventListener('input', (e) => { if (!(e.inputType?.startsWith('delete') && input.style.height === '84px')) autosize(input); else input.lenSeen = input.value.length; updateCounter(v); saveDraft(); });
@@ -2449,10 +2461,25 @@ const Native = (() => {
     if (typeof Handoff !== 'undefined') await Handoff.continued(copy, chat).catch((err) => console.warn('handoff', err));
   }
 
+  function selectChat(agentId, chatId) {
+    const old=H.activeChat[agentId] || null, v=views.get(agentId);
+    if(old===chatId)return;
+    if(v){
+      v.saveDraft?.flush();
+      store.set(`draft.${agentId}.${old || 'new'}`,v.input.value || null);
+      v.composerDrafts ||= new Map();
+      v.composerDrafts.set(old,{attachments:v.attachments,styleNext:v.styleNext,styleClear:v.styleClear,queue:v.queue,queueMissions:v.queueMissions});
+      const next=v.composerDrafts.get(chatId) || {};
+      v.attachments=next.attachments || [];v.styleNext=next.styleNext || '';v.styleClear=!!next.styleClear;v.queue=next.queue || [];v.queueMissions=next.queueMissions || new Map();
+      v.input.value=store.get(`draft.${agentId}.${chatId || 'new'}`,'') || '';
+    }
+    H.activeChat[agentId]=chatId;
+    if(v){renderChips(agentId);renderQueue(agentId);autosize(v.input);updateCounter(v);}
+  }
   function open(agentId, chatId) {
     if (drafts.delete(agentId)) setTimeout(() => Panel.render(), 0);
     const changed = H.activeChat[agentId] !== chatId;
-    H.activeChat[agentId] = chatId;
+    selectChat(agentId,chatId);
     activate(agentId);
     const v = views.get(agentId);
     if (changed && v) v.enterNext = true; // (round 45) slides in once its list is on screen (render)
@@ -2631,7 +2658,7 @@ const Native = (() => {
     isAgentBusy: (agentId) => Boolean(pendingFor(agentId)),
     hasView: (agentId) => views.has(agentId),
     // other files refresh after changing something messages draw from: every message is drawn again (see nodeFor)
-    mount, refresh: (agentId, opts = {}) => { gen += 1; return render(agentId, opts); }, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith, copyLastReply, foldAll,
+    mount, selectChat, refresh: (agentId, opts = {}) => { gen += 1; return render(agentId, opts); }, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith, copyLastReply, foldAll,
     attachPaths: async (agentId, paths) => { for (const p of paths) await addPath(agentId, p); },
     isBusy: (chatId) => pending.has(chatId),
     note,

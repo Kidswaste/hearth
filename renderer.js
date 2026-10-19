@@ -26,7 +26,7 @@ H.railAgents = () => H.agents().filter((a) => !a.dock);
 const RAIL_SKIP = new Set(['commands']);
 H.railOrder = () => [...H.railAgents().map((a) => a.id), ...(typeof Tools !== 'undefined' ? Tools.enabled().filter((t) => !RAIL_SKIP.has(t.id)).map((t) => `tool:${t.id}`) : [])];
 H.railKey = (id) => { const i = H.railOrder().indexOf(id); return i >= 0 && i < 9 ? `Ctrl+${i + 1}` : ''; };
-H.surfaceIdFor = (id) => { const a = H.agent(id); return a?.dock ? `tool:${a.dock}` : id; };
+H.surfaceIdFor = (id) => { const workspace = window.ProjectWorkspace?.surfaceFor?.(id); if (workspace) return workspace; const a = H.agent(id); return a?.dock ? `tool:${a.dock}` : id; };
 H.settings = () => H.config?.settings || {};
 H.isTool = (id) => typeof id === 'string' && id.startsWith('tool:');
 // The native agent that "Ask Claude" actions go to: the first Claude-engine native agent.
@@ -754,6 +754,7 @@ function activate(id, { focus = true } = {}) {
   for (const btn of $('agent-buttons').querySelectorAll('.agent-btn')) btn.classList.toggle('active', btn.dataset.id === surfaceId);
   Panel.highlight();
   if (s.tool) Tools.shown(s.tool);
+  else if (s.native) Native.mount(id, s.el.querySelector('.companion-chat') || s.el);
   if (docked) Tools.openDock(s.tool.id);
   window.WorkspaceNav?.sync();
   if (!focus) return;
@@ -889,7 +890,7 @@ function apply({ config, themeCss, error }) {
     H.panelOpen = config.layout?.chatsPanel !== false;
     // the ask-all bar starts hidden (Ctrl+B or Ctrl+Shift+Space shows it; layout.askAllBar: true keeps it)
     $('broadcast').classList.toggle('hidden', config.layout?.askAllBar !== true);
-    const startOn = H.settings().startOn;
+    const startOn = 'tool:home';
     if (startOn && (H.agent(startOn) || (H.isTool(startOn) && Tools.enabled().some((t) => `tool:${t.id}` === startOn)))) H.activeId = startOn;
   }
   renderRail();
@@ -993,100 +994,69 @@ function popMenu(x, y, items, { width = 300 } = {}) {
   return m;
 }
 
-// Three destinations over existing surfaces. No chat, project or quest records are migrated.
+// Projects first; tools belong to the open project. Chats stay one small utility away.
 const WorkspaceNav = window.WorkspaceNav = (() => {
-  const sections = [['chat', 'Chat', '#bd8bff'], ['studio', 'Studio', '#ffbd70'], ['life', 'Life', '#ff6b9d']];
-  const paths = { chat: 'M4 4h16v12H9l-5 4V4Zm4 5h8M8 12h5', studio: 'm4 7 8-4 8 4v10l-8 4-8-4V7Zm0 0 8 4 8-4M12 11v10', life: 'M12 3 4 7v14l8-4 8 4V7l-8-4Zm0 0v14M8 10l2 2 5-5' };
-  let bar, lastCategory = 'chat', signature = '', routeToken = 0;
-  const last = {};
-  const category = id => {
-    const sid = H.surfaceIdFor(id);
-    return sid === 'tool:quests' ? 'life' : ['tool:options','tool:commands'].includes(sid) ? lastCategory : H.isTool(sid) ? 'studio' : 'chat';
-  };
-  function icon(kind) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
-    const p = document.createElementNS(svg.namespaceURI, 'path'); p.setAttribute('d', paths[kind]); svg.append(p); return svg;
-  }
-  function button(name, fn, props = {}) {
-    return el('button', { type: 'button', ...props, on: { click: async e => {
-      const b = e.currentTarget; if (b.disabled) return; b.disabled = true;
-      try { await fn(); } catch (err) { toast(calmError(err), { type: 'error' }); } finally { b.disabled = false; }
-    } } }, el('span', { text: name }));
-  }
-  function open(section) {
+  const paths = { projects:'M3 5h7l2 3h9v13H3ZM3 5V3h7l2 2', chat:'M4 4h16v12H9l-5 4V4Zm4 5h8M8 12h5', life:'M12 3 4 7v14l8-4 8 4V7l-8-4Zm0 0v14M8 10l2 2 5-5', ship:'m12 2 5 10 5 6-8-2-2 6-2-6-8 2 5-6 5-10ZM10 10h4M7 19l-2 3M17 19l2 3', brushes:'m4 2 16 15-3 3L2 4Zm16 0L2 17l3 3L22 4ZM3 18l-1 4 4-1M18 18l4 4', spark:'m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z', plus:'M12 4v16M4 12h16' };
+  const defaults = [{id:'forgeheart',name:'Forgeheart',icon:'ship',type:'tool',target:'forgeheart',color:'#ff9b61'},{id:'clink',name:'Clink!',icon:'brushes',type:'name',target:'Clink',color:'#e17ac4'}];
+  const shortcuts = () => Array.isArray(H.settings().workspaceShortcuts) ? H.settings().workspaceShortcuts.slice(0,12) : defaults;
+  let bar, signature='', routeToken=0, lastChat;
+  const project = () => window.ProjectWorkspace?.current?.();
+  const category = id => { const sid=H.surfaceIdFor(id);if(sid==='tool:quests')return 'life';if(sid==='tool:forgeheart')return 'forgeheart';if(project())return 'projects';if(!H.isTool(sid))return 'chat';return 'projects'; };
+  function icon(kind) { const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),p=document.createElementNS(svg.namespaceURI,'path');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');p.setAttribute('d',paths[kind]||paths.spark);svg.append(p);return svg; }
+  function button(name,fn,props={}) { return el('button',{type:'button',...props,on:{click:async e=>{const b=e.currentTarget;if(b.disabled)return;b.disabled=true;try{await fn();}catch(err){toast(calmError(err),{type:'error'});}finally{b.disabled=false;}}}},el('span',{text:name})); }
+  async function open(section) {
     routeToken++;
-    const remembered = last[section];
-    const valid = remembered && (H.isTool(remembered) ? Tools.get(remembered.slice(5)) : H.railAgents().some(a => a.id === remembered));
-    const id = valid ? remembered : section === 'life' ? 'tool:quests' : section === 'studio' ? 'tool:home' : H.railAgents()[0]?.id;
-    if (id) activate(id); else Manager.open();
+    if(section==='projects'||section==='studio'){await Lazy.load('projects');return ProjectWorkspace.home();}
+    await window.ProjectWorkspace?.leave();
+    if(section==='life')return activate('tool:quests');
+    const id=lastChat&&H.agent(lastChat)?lastChat:H.railAgents().find(a=>a.mode==='native'&&a.engine==='codex')?.id||H.railAgents()[0]?.id;
+    if(id)activate(id);else Manager.open();
   }
   async function creative(feature) {
-    const token = ++routeToken;
-    await Lazy.load('creative'); if (token !== routeToken) return;
+    const token=++routeToken;await Lazy.load('creative');if(token!==routeToken)return;
     activate('tool:creative');
-    for (let i = 0; i < 160 && !CreativePlayground.ready(); i++) {
-      if (token !== routeToken || H.surfaceIdFor(H.activeId) !== 'tool:creative') return;
-      await new Promise(r => setTimeout(r, 50));
-    }
-    if (token !== routeToken || H.surfaceIdFor(H.activeId) !== 'tool:creative') return;
-    if (!CreativePlayground.ready()) throw Error('The workspace is still loading. Try again in a moment.');
-    await CreativePlayground.openFeature(feature); sync();
+    for(let i=0;i<160&&!CreativePlayground.ready();i++){if(token!==routeToken||H.surfaceIdFor(H.activeId)!=='tool:creative')return;await new Promise(r=>setTimeout(r,50));}
+    if(token!==routeToken||H.surfaceIdFor(H.activeId)!=='tool:creative')return;
+    if(!CreativePlayground.ready())throw Error('The workspace is still loading. Try again in a moment.');
+    await CreativePlayground.openFeature(feature);sync();
   }
+  async function shortcut(item) {
+    routeToken++;await Lazy.load('projects');
+    if(item.type==='project')return ProjectWorkspace.open(item.target);
+    if(item.type==='name') { const p=Projects.find(item.target);if(p)return ProjectWorkspace.open(p.id);const a=H.agents().find(a=>a.name.toLowerCase().includes(item.target.toLowerCase()));if(a){await ProjectWorkspace.leave();activate(a.id);return;}return ProjectWorkspace.wizard({name:item.name}); }
+    await ProjectWorkspace.leave();if(Tools.get(item.target))activate('tool:'+item.target);else throw Error('This tool is unavailable. Edit this shortcut.');
+  }
+  async function editShortcut(item=null) {
+    await Lazy.load('projects');await Projects.ready();
+    const targets=[...Projects.live().map(p=>({value:'project:'+p.id,label:'Project · '+p.name})),...Tools.all().filter(t=>!['commands','options'].includes(t.id)).map(t=>({value:'tool:'+t.id,label:'Tool · '+t.name}))];
+    if(item?.type==='name')targets.unshift({value:'name:'+item.target,label:item.name});
+    const v=await Modal.form(item?'Edit shortcut':'Add to the rail',[{name:'name',label:'Name',value:item?.name||''},{name:'target',label:'Opens',type:'select',value:item?item.type+':'+item.target:targets[0]?.value,options:targets},{name:'icon',label:'Icon',type:'select',value:item?.icon||'spark',options:[{value:'ship',label:'Spaceship'},{value:'brushes',label:'Crossed paintbrushes'},{value:'spark',label:'Spark'},{value:'projects',label:'Folder'},{value:'life',label:'Map'}]}],{ok:'Save shortcut'});if(!v)return;
+    const at=v.target.indexOf(':');if(at<0)return;const xs=shortcuts().slice(),next={id:item?.id||'pin-'+Date.now().toString(36),name:v.name.trim().slice(0,24)||'Shortcut',type:v.target.slice(0,at),target:v.target.slice(at+1),icon:v.icon,color:item?.color||'#d79bff'};if(item)xs.splice(xs.findIndex(x=>x.id===item.id),1,next);else xs.push(next);await saveShortcuts(xs);
+  }
+  async function saveShortcuts(xs){H.config.settings={...H.config.settings,workspaceShortcuts:xs};await saveConfig();render();}
   function render() {
     document.documentElement.classList.add('hearth-three-spaces');
-    const rail = $('agent-buttons'); rail.replaceChildren(); rail.setAttribute('aria-label', 'Hearth spaces');
-    for (const [id, name, color] of sections) {
-      const b = button(name, () => open(id), { class: 'space-button', dataset: { space: id }, title: name });
-      b.style.setProperty('--space-color', color); b.prepend(icon(id)); rail.append(b);
-    }
-    rail.onkeydown = e => {
-      if (!['ArrowUp','ArrowDown','Home','End'].includes(e.key) || !e.target.closest('.space-button')) return;
-      e.preventDefault(); const bs = [...rail.querySelectorAll('.space-button')], i = bs.indexOf(e.target.closest('.space-button'));
-      bs[e.key === 'Home' ? 0 : e.key === 'End' ? bs.length - 1 : (i + (e.key === 'ArrowDown' ? 1 : bs.length - 1)) % bs.length].focus();
-    };
-    if (!bar) { bar = el('nav', { class: 'workspace-switcher', attrs: { 'aria-label': 'Workspace choices' } }); $('surfaces').before(bar); }
-    signature = ''; sync();
+    const rail=$('agent-buttons');rail.replaceChildren();rail.setAttribute('aria-label','Projects, Life and your shortcuts');
+    for(const [id,name,color] of [['projects','Projects','#ffbd70'],['life','Life','#ff6b9d']]){const b=button(name,()=>open(id),{class:'space-button',dataset:{space:id},title:name});b.style.setProperty('--space-color',color);b.prepend(icon(id));rail.append(b);}
+    for(const x of shortcuts()){const b=button(x.name,()=>shortcut(x),{class:'space-button',dataset:{shortcut:x.id},title:x.name+' · right-click to customize'});b.style.setProperty('--space-color',x.color||'#d79bff');b.prepend(icon(x.icon));b.oncontextmenu=e=>{e.preventDefault();showMenu(e.clientX,e.clientY,[{label:'Edit shortcut',action:()=>editShortcut(x)},{label:'Move up',action:()=>{const xs=shortcuts().slice(),i=xs.findIndex(a=>a.id===x.id);if(i>0){[xs[i-1],xs[i]]=[xs[i],xs[i-1]];return saveShortcuts(xs);}}},{label:'Remove from rail',action:()=>saveShortcuts(shortcuts().filter(a=>a.id!==x.id))}]);};rail.append(b);}
+    const add=button('',()=>editShortcut(),{class:'space-button space-add',title:'Add a project or tool to the rail',attrs:{'aria-label':'Add shortcut'}});add.prepend(icon('plus'));rail.append(add);
+    rail.append(button('Chats',()=>open('chat'),{class:'space-button space-chats',dataset:{utility:'chat'},title:'All chats and assistants'}));
+    rail.onkeydown=e=>{if(!['ArrowUp','ArrowDown','Home','End'].includes(e.key)||!e.target.closest('.space-button'))return;e.preventDefault();const bs=[...rail.querySelectorAll('.space-button')],i=bs.indexOf(e.target.closest('.space-button'));bs[e.key==='Home'?0:e.key==='End'?bs.length-1:(i+(e.key==='ArrowDown'?1:bs.length-1))%bs.length].focus();};
+    if(!bar){bar=el('nav',{class:'workspace-switcher',attrs:{'aria-label':'Workspace choices'}});$('surfaces').before(bar);}signature='';sync();
   }
   function sync() {
-    if (!bar || !H.activeId) return;
-    const space = category(H.activeId), sid = H.surfaceIdFor(H.activeId);
-    lastCategory = space;
-    if (!['tool:options','tool:commands'].includes(sid)) last[space] = sid;
-    $('app').dataset.space = space;
-    for (const b of $('agent-buttons').querySelectorAll('[data-space]')) {
-      const current = b.dataset.space === space;
-      b.classList.toggle('active', current); b.setAttribute('aria-current', current ? 'page' : 'false');
-      const unread = [...H.unread].some(id => category(id) === b.dataset.space);
-      b.classList.toggle('unread', unread); b.title = b.textContent + (unread ? ' · unread reply' : '');
+    if(!bar||!H.activeId)return;const space=category(H.activeId),sid=H.surfaceIdFor(H.activeId),p=project();$('app').dataset.space=space;if(space==='chat')lastChat=H.activeId;
+    for(const b of $('agent-buttons').querySelectorAll('.space-button')){const x=shortcuts().find(x=>x.id===b.dataset.shortcut);const yes=b.dataset.space===space || b.dataset.utility===space || x&&(x.type==='tool'&&sid==='tool:'+x.target || x.type==='project'&&p?.id===x.target || x.type==='name'&&p?.name.toLowerCase().includes(x.target.toLowerCase()));b.classList.toggle('active',!!yes);b.setAttribute('aria-current',yes?'page':'false');if(b.dataset.utility==='chat')b.classList.toggle('unread',H.unread.size>0);}
+    bar.hidden=space==='life'||space==='forgeheart'||space==='projects'&&sid==='tool:home'&&!p;
+    const feature=sid==='tool:creative'&&Lazy.loaded('creative')?CreativePlayground.snapshot().feature:'';
+    const sig=JSON.stringify([space,p?.id,p?.name,H.railAgents().map(a=>[a.id,a.name,a.color])]);
+    if(sig!==signature){signature=sig;bar.replaceChildren();const choices=el('div',{class:'workspace-choices'});bar.append(choices);
+      if(space==='chat'){for(const a of H.railAgents()){const b=railButton(a.id,a,a.name+' · right-click for options');b.classList.add('workspace-agent');b.append(el('span',{text:a.name}));b.oncontextmenu=e=>{e.preventDefault();showAgentMenu(a.id,e.clientX,e.clientY);};choices.append(b);}bar.append(button('+ Assistant',()=>Manager.open(),{class:'workspace-utility'}));}
+      else if(p){choices.append(button('‹ Projects',()=>open('projects'),{class:'workspace-back'}),el('strong',{class:'workspace-project-name',text:p.name}));for(const [name,tab,id,f] of [['Overview','overview','home'],['Scene','scene','three'],['Sound','sound','creative','vst'],['Creative board','board','creative','board'],['Moodboard','moodboard','board']])choices.append(button(name,()=>ProjectWorkspace.go(tab),{dataset:{surface:'tool:'+id,...(f?{feature:f}:{})}}));}
+      else if(space==='projects'){for(const [name,id,f] of [['Projects','home'],['Scene','three'],['Sound','creative','vst'],['Creative board','creative','studio'],['Moodboard','board']])choices.append(button(name,()=>f?creative(f):(++routeToken,activate('tool:'+id)),{dataset:{surface:'tool:'+id,...(f?{feature:f}:{})}}));bar.append(button('Apps',async()=>{await Lazy.load('apps');$('apps-btn')?.click();},{class:'workspace-utility'}));}
     }
-    bar.hidden = space === 'life';
-    const feature = sid === 'tool:creative' && typeof CreativePlayground !== 'undefined' ? CreativePlayground.snapshot().feature : '';
-    const sig = JSON.stringify([space, H.railAgents().map(a => [a.id,a.name,a.color]), Tools.all().map(t=>t.id)]);
-    if (sig !== signature) {
-      signature = sig; bar.replaceChildren();
-      if (space === 'chat') {
-        const agents = el('div', { class: 'workspace-choices' });
-        for (const a of H.railAgents()) {
-          const b = railButton(a.id, a, `${a.name} · right-click for chat options`);
-          b.classList.add('workspace-agent'); b.append(el('span', { text: a.name }));
-          b.addEventListener('contextmenu', e => { e.preventDefault(); showAgentMenu(a.id, e.clientX, e.clientY); }); agents.append(b);
-        }
-        bar.append(agents, button('+ Assistant', () => Manager.open(), { class: 'workspace-utility' }));
-      } else if (space === 'studio') {
-        const choices = el('div', { class: 'workspace-choices' });
-        const routes = [['Projects','home'],['Visuals','three'],['Sound','creative','vst'],['Drawing','creative','draw'],['Storyboard','creative','story'],['Materials','creative','pattern'],['References','board'],['Forgeheart','forgeheart']];
-        for (const [name,id,f] of routes) if (Tools.get(id)) choices.append(button(name, () => f ? creative(f) : (++routeToken, activate('tool:'+id)), { class:'workspace-choice', dataset:{surface:'tool:'+id, ...(f?{feature:f}:{})} }));
-        bar.append(choices, button('Assets', () => creative('studio'), { class:'workspace-utility', title:'Your worktable and saved assets' }), button('Apps', async () => { await Lazy.load('apps'); $('apps-btn')?.click(); }, { class:'workspace-utility', title:'Connected creative apps' }));
-      }
-    }
-    for (const b of bar.querySelectorAll('[data-surface], [data-id]')) {
-      const yes = (b.dataset.surface || b.dataset.id) === sid && (!b.dataset.feature || b.dataset.feature === feature || b.dataset.feature === 'pattern' && feature === 'texture');
-      b.classList.toggle('active', yes); b.setAttribute('aria-current', yes ? 'page' : 'false');
-      if (b.dataset.id) b.classList.toggle('unread', H.unread.has(b.dataset.id));
-    }
+    for(const b of bar.querySelectorAll('[data-surface],[data-id]')){const f=b.dataset.feature,yes=(b.dataset.surface||b.dataset.id)===sid&&(!f||f===feature||['board','studio'].includes(f)&&feature!=='vst');b.classList.toggle('active',yes);b.setAttribute('aria-current',yes?'page':'false');}
   }
-  document.addEventListener('hearth:activate', sync);
-  document.addEventListener('hearth:creative-feature', sync);
-  return { render, sync, open, creative, category };
+  document.addEventListener('hearth:activate',sync);document.addEventListener('hearth:creative-feature',sync);
+  return {render,sync,open,creative,category,editShortcut};
 })();

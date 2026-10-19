@@ -89,6 +89,29 @@ var WorkbenchVST = (() => {
     // The native editor closed: read back the knobs the owner turned in it (the stream keeps playing meanwhile).
     if (Number.isInteger(s.editorCloses)) { if (editorCloses !== null && s.editorCloses > editorCloses && selected?.parameters?.length) snapshot().then(() => { paramsRefresh(); events.emit('params', { changed: null, source: 'editor' }); }).catch(() => {}); editorCloses = s.editorCloses; }
   }
+  let opening = null;
+  async function preload(helpers, {signal}={}) {
+    h = helpers;
+    if (!h.state.currentPatch && !h.state.selected) return;
+    const runtime = await hub.vst.status();
+    if (!runtime.ok) return 'Sound runtime needs setup; your saved preset is kept.';
+    const scan = await hub.vst.scan(h.state.roots);
+    if (!scan.ok) return scan.error || 'The instrument folder is unavailable.';
+    plugins = scan.plugins.filter(p => !Array.isArray(h.state.projectPlugins) || h.state.projectPlugins.includes(p.name));
+    const p = plugins.find(p => p.name === h.state.currentPatch?.name || p.path === h.state.selected);
+    if (!p) return 'The saved instrument is not installed here; its preset is kept.';
+    const abort=()=>hub.vst.stop().catch(()=>{}),check=()=>{if(signal?.aborted)throw new DOMException('Opening cancelled','AbortError');};
+    signal?.addEventListener('abort',abort,{once:true});
+    try{
+      check();const r = await hub.vst.request({ action: 'open', plugin: p.path, name: p.name, live: false });
+      if (!r.ok) throw Error(r.error);check();
+      if(h.state.currentPatch?.name===p.name){const restored=await hub.vst.request({action:'snapshot',plugin:p.path,name:p.name,stateOnly:true,state:h.state.currentPatch.state});if(!restored.ok)throw Error(restored.error);}
+      const end=Date.now()+60000;let controls;
+      do{check();controls=await hub.vst.request({action:'controls',plugin:p.path,name:p.name});if(!controls.ok)throw Error(controls.error);if(!controls.ready)await new Promise(r=>setTimeout(r,100));}while(!controls.ready&&Date.now()<end);
+      check();if(!controls.ready)throw Error('The instrument controls are still loading. Retry opening the project.');
+      selected = { ...p, parameters: controls.parameters, loading: false };playing=false;
+    }catch(err){await hub.vst.stop();throw err;}finally{signal?.removeEventListener('abort',abort);}
+  }
   async function mount(out, helpers) {
     pause(); const ticket = alive; h = helpers;
     const { state, persist, say, e, row, note, btn, field, range, select, check, save, file } = h;
@@ -104,12 +127,14 @@ var WorkbenchVST = (() => {
     if (typeof ParkJam !== 'undefined') ParkJam.attach(out, setup, h); // (round 62, parkjam62) one 🌳 Park mode button in this row
     if (!runtime.ok) { out.append(note(`${runtime.error} Setup installs a private Pedalboard + PortAudio runtime in Hearth. Your installed plugins remain where they are.`)); return; }
     const scan = await hub.vst.scan(state.roots); if (ticket !== alive) return; if (!scan.ok) throw Error(scan.error);
+    if(Array.isArray(state.projectPlugins))scan.plugins=scan.plugins.filter(p=>state.projectPlugins.includes(p.name));
     const chooser = e('div', null, 'wb-sound-picker'), detail = e('div', null, 'wb-sound-detail'); out.append(chooser, detail);
     // (round 61, vstlive61) the remembered audio settings (device by name: ids change between sessions)
     if (state.live && !deviceChosen) { settings.buffer = L.BUFFERS.some(([b]) => b === state.live.buffer) ? state.live.buffer : settings.buffer; settings.gain = Number.isFinite(state.live.gain) ? state.live.gain : settings.gain; settings.midiIn = typeof state.live.midiIn === 'string' ? state.live.midiIn : 'all'; }
     // (round 61, vstlive61) open = load the instrument in its own host (kept for the session) and, when chosen by the
     // owner, start live audio in the same step; the controls are read afterwards while the keys already play.
-    async function open(p, { live }) {
+    function open(p, options) { const task = openInstrument(p, options); opening = task; task.finally(() => { if (opening === task) opening = null; }).catch(() => {}); return task; }
+    async function openInstrument(p, { live }) {
       const mine = ++openSeq, t0 = performance.now();
       say(`Opening ${p.name}…`); await flushPatch(); await silence();
       // (round 64, vstembed64) the editor in the desk belongs to the instrument shown: the previous one's closes
@@ -127,6 +152,7 @@ var WorkbenchVST = (() => {
       timings = { instrument: p.name, readyMs: Math.round(performance.now() - t0), hostStartMs: r.hostStartMs ?? null, loadedMs: r.loadedMs ?? null, live: !!live };
       // (round 64) the host may have been restarted (Reset host, the audio doctor's ASIO switch): the editor as it is now
       try { const now = await call('live-status'); if (now && now.editor) lastStats = now; } catch { /* the readout comes with the poll */ }
+      if(state.currentPatch?.name===p.name && state.currentPatch.state){const restored=await hub.vst.request({action:'snapshot',plugin:p.path,name:p.name,stateOnly:true,state:state.currentPatch.state});if(!restored.ok)throw Error(restored.error);}
       await draw(); if (r.playing !== undefined) showStats(r);
       say(`${p.name} ready in ${timings.readyMs} ms${r.playing ? ' · live: play the keys or your controller' : ' · press a key to start live audio'}. Reading its controls…`);
       events.emit('instrument', api.current());
@@ -149,7 +175,7 @@ var WorkbenchVST = (() => {
       const b = btn(p.name, () => open(p, { live: true })); b.classList.add('wb-instrument-card'); b.setAttribute('aria-pressed', String(selected?.path === p.path)); chooser.append(b);
     }
     // Opening the desk again after a restart loads the last instrument straight away (no sound until a key is played).
-    const last = !selected && scan.plugins.find(p => p.path === state.selected);
+    const last = !selected && scan.plugins.find(p => p.path === state.selected || p.name === state.currentPatch?.name);
     if (last) open(last, { live: false }).catch(err => say(err.message));
     if (!scan.plugins.length) detail.append(note('Install Serum 2 or Vital, then choose its VST3 folder. This desk only loads those two instruments.'));
     async function draw() {
@@ -346,5 +372,18 @@ var WorkbenchVST = (() => {
     },
   };
   // WorkbenchVST.live: what preset-hover.js's adapter prefers (current / apply / snapshot / keep), the same door.
-  return { mount, pause, soundTool, api, door, live: door };
+  async function saveWorkspace(){
+    if(opening)await opening;
+    if(!selected||selected.loading||!h?.state)return;
+    const target=h,instrument=selected;
+    clearTimeout(streamTimer); streamTimer=null;
+    const streamed=streamPatch;streamPatch={};
+    if(Object.keys(streamed).length)await call('patch',{parameters:streamed});
+    await flushPatch();const r=await hub.vst.request({action:'snapshot',plugin:instrument.path,name:instrument.name,stateOnly:true});
+    if(!r.ok)throw Error(r.error||'The instrument could not save its current sound.');
+    if(typeof r.state!=='string'||r.state.length>12e6)throw Error('The instrument state is missing or too large to save. Export its preset before closing.');
+    target.state.currentPatch={name:instrument.name,state:r.state};await target.persist();
+  }
+  async function resetWorkspace(){pause();openSeq++;if(selected)await hub.vst.stop();clearRender();selected=null;before=null;h=null;openNamed=null;plugins=[];canEdit=false;deviceChosen=false;}
+  return { mount, pause, preload, saveWorkspace, resetWorkspace, soundTool, api, door, live: door };
 })();

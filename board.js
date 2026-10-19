@@ -71,9 +71,12 @@ const Board = (() => {
     return Promise.resolve();
   }
   // write every pending board now (closing / reloading the window)
-  function flush() {
-    for (const [id, t] of [...timers]) { clearTimeout(t); timers.delete(id); const b = S.boards.get(id); if (b) window.hub.kvSet(kvName(id), b); }
-    if (S.index) window.hub.kvSet('boards', S.index);
+  async function flush() {
+    const writes = [];
+    if(S.cur && !timers.has(S.cur.id))timers.set(S.cur.id,0);
+    for (const [id, t] of [...timers]) { clearTimeout(t); timers.delete(id); const b = S.boards.get(id); if (b) writes.push(window.hub.kvSet(kvName(id), b).then(r=>{if(r?.error){timers.set(id,0);throw Error(r.error);}return r;},err=>{timers.set(id,0);throw err;})); }
+    if (S.index) writes.push(window.hub.kvSet('boards', S.index));
+    for (const r of await Promise.all(writes)) if (r?.error) throw Error(r.error);
   }
   addEventListener('beforeunload', flush);
   async function create(name, { quiet = false, template = null, open: openIt = true } = {}) {

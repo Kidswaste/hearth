@@ -23,6 +23,8 @@
     r.game.speed = clamp(r.game.speed, 1, 8); r.game.gravity = clamp(r.game.gravity, 8, 30); r.game.jump = clamp(r.game.jump, 4, 12); r.game.mode = r.game.mode === 'platform' ? 'platform' : 'explore'; r.game.title = String(r.game.title).slice(0, 100); r.game.accent = /^#[\da-f]{6}$/i.test(r.game.accent) ? r.game.accent : d.game.accent;
     r.synth = { ...d.synth, ...r.synth }; if (!['sine', 'saw', 'triangle', 'square'].includes(r.synth.wave)) r.synth.wave = 'sine';
     r.vst = { ...d.vst, ...r.vst }; if (!Array.isArray(r.vst.roots) || !Array.isArray(r.vst.favorites) || !Array.isArray(r.vst.presets) || r.vst.presets.length > 12) throw Error('Invalid plugin bank.');
+    if(r.vst.currentPatch && (!['Serum 2','Vital'].includes(r.vst.currentPatch.name)||typeof r.vst.currentPatch.state!=='string'||r.vst.currentPatch.state.length>12e6))throw Error('Invalid saved instrument state.');
+    if(r.vst.projectPlugins && (!Array.isArray(r.vst.projectPlugins)||r.vst.projectPlugins.some(p=>!['Serum 2','Vital'].includes(p))))throw Error('Invalid project instrument selection.');
     if (r.vst.roots.length > 12 || r.vst.roots.some(p => typeof p !== 'string') || r.vst.favorites.some(p => typeof p !== 'string') || r.vst.presets.some(p => !p || typeof p.label !== 'string' || typeof p.path !== 'string' || typeof p.name !== 'string' || typeof p.state !== 'string' || p.state.length > 12e6) || r.vst.presets.reduce((n, p) => n + p.state.length, 0) > 9e6) throw Error('Invalid or oversized preset bank.');
     r.drawing.color = /^#[\da-f]{6}$/i.test(r.drawing.color) ? r.drawing.color : d.drawing.color; r.drawing.width = clamp(r.drawing.width, 1, 80); r.drawing.mirror = r.drawing.mirror === true;
     const brushes = ['pen', 'pencil', 'marker', 'ribbon', 'dots', 'line'];

@@ -292,8 +292,8 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
   // (a reload, an update, closing); s.flush() writes now, s.pending() says whether one waits. One timer, no per-call work.
   const waitingSaves = new Set();
   function saver(fn, ms = 500, max = Math.max(2000, ms * 4)) {
-    let t = 0; let first = 0;
-    const run = () => { clearTimeout(t); t = 0; first = 0; waitingSaves.delete(s); fn(); };
+    let t = 0; let first = 0; let result;
+    const run = () => { clearTimeout(t); t = 0; first = 0; waitingSaves.delete(s); return result = fn(); };
     const s = () => {
       const now = Date.now();
       if (!first) first = now;
@@ -301,7 +301,7 @@ document.addEventListener('loadedmetadata', (e) => { const v = e.target; if (v i
       t = setTimeout(run, Math.max(0, Math.min(ms, first + max - now)));
       waitingSaves.add(s);
     };
-    s.flush = () => { if (t) run(); };
+    s.flush = () => t ? run() : result;
     s.pending = () => Boolean(t);
     return s;
   }
