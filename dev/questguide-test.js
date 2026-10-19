@@ -64,6 +64,15 @@ const M = require('../questguidemain');
     await restart.call({ op: 'start', questId: 'visual:1', steps: [{ id: 'tool', title: 'Open the Lab', check: 'tool', action: { type: 'hearth-tool', tool: 'lab' } }] });
     await assert.rejects(() => restart.call({ op: 'tool-opened', stepId: 'tool', tool: 'forge' }), /does not match/);
     await restart.call({ op: 'tool-opened', stepId: 'tool', tool: 'lab' }); assert.equal(restart.state().completed, 1);
+    const finishedId=restart.state().session.id;
+    await restart.call({op:'start',questId:'visual:1'});assert.equal(restart.state().session.id,finishedId,'finished guide awaits review instead of resetting');
+    await restart.call({op:'start',questId:'fixture'});assert.equal(restart.state().step.id,'bass','switching back resumes saved progress');assert.equal(restart.state().completed,2);assert.equal(restart.state().session.paused,false);
+    const previous=await restart.call({op:'quest',questId:'visual:1'});assert.equal(previous.session.id,finishedId);assert.equal(previous.step,null,'lookup keeps finished proof gate');assert.equal(restart.state().session.questId,'fixture','lookup never changes active quest');
+    await restart.call({op:'start',questId:'visual:1'});assert.equal(restart.state().session.id,finishedId);assert.equal(restart.state().completed,1);
+    await restart.call({op:'start',questId:'offer',steps:[{id:'old',check:'manual'}]});const emptyId=restart.state().session.id;
+    await restart.call({op:'start',questId:'offer',steps:[{id:'new',check:'manual'}],replanUnstarted:true});assert.equal(restart.state().session.id,emptyId);assert.equal(restart.state().step.id,'new','unstarted guide adapts to the current quest offer');
+    await restart.call({op:'manual',stepId:'new',note:'Chose my track'});
+    await restart.call({op:'start',questId:'offer',steps:[{id:'other',check:'manual'}],replanUnstarted:true});assert.equal(restart.state().completed,1,'replanning never resets observed or confirmed progress');assert.equal(restart.state().session.steps[0].id,'new');
     restart.dispose();
   } finally { api.dispose(); }
   console.log(JSON.stringify({ pass: true, evidence: 'fresh matched FL observations, bass notes and activity, manual audit, pause/back, restart persistence, explicit setup and tool confirmation', fixture: dir }));

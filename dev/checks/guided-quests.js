@@ -7,9 +7,8 @@ const call=async(op,rest={})=>{const r=await window.hub.questGuide({op,...rest})
 await Lazy.load('questhud');await Lazy.load('questjournal');activate('tool:quests');await until(()=>QuestJournal.ready(),'journal');
 check(!!document.querySelector('[data-nav-group="map"]'),'main Map button');
 const q=QuestCore.find(QuestJournal.snapshot(),'q-material-seed');
-await QuestGuide.open(q);const start=[...top().querySelectorAll('button')].find(b=>b.textContent==='Start guided quest');check(start,'guided entry');start.click();
+await QuestGuide.open(q);const start=[...top().querySelectorAll('button')].find(b=>b.textContent==='Accept quest');check(start,'quest offer');start.click();
 await until(async()=>!!(await call('state')).session,'session persisted');
-await call('action',{stepId:(await call('state')).step.id});
 const opened=await until(async()=>{const s=await call('state');return s.completed===1?s:null;},'real workbench opens and auto-checks');
 check(H.activeId==='tool:creative'&&CreativePlayground.snapshot().feature==='pattern','correct seamless tile workbench');
 check(opened.session.done[0].kind==='automatic','automatic evidence recorded');
