@@ -309,6 +309,8 @@ const Projects = (() => {
   async function openChat(chatId) {
     const c = summary(chatId);
     if (!c) { toast('That chat is gone (Ctrl+K → Recently deleted chats)', { type: 'error' }); return false; }
+    const current=ProjectWorkspace.current(),p=current?.items.some(x=>x.type==='chat'&&x.ref===chatId)?current:projectOfChat(chatId);
+    if(p?.workspace){await ProjectWorkspace.conversation(p,chatId);return true;}
     Native.open(c.agentId, c.id);
     const a = H.agent(c.agentId);
     if (a?.dock) Tools.openDock?.(a.dock);
@@ -504,6 +506,7 @@ const Projects = (() => {
       { label: '⌂ Open its page', action: () => openHome(p.id) },
       { label: '↻ Continue where you left off', action: () => continueIn(p) },
       { label: 'Show only its chats', action: () => Panel.setView(`project:${p.id}`) },
+      { label: '✦ Three.js banner / logo…', action: () => ProjectFrontpage.edit(p) },
       { label: 'Add', items: () => addMenu(p) },
       mk ? { label: `Its make (${mk.name})`, items: () => Makes.makeMenu(mk) } : null,
       { label: 'Rename…', action: () => renamePrompt(p) },

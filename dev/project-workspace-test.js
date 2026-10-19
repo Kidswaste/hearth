@@ -13,3 +13,10 @@ const index=I.build(points),z=15,n=256*2**z,[x,y]=I.xy(48.86,2.35).map(v=>v*n),v
 const rows=I.query(index,view),brute=points.flatMap((p,i)=>{const [a,b]=I.xy(p.lat,p.lon).map(v=>v*n);return (p.minZoom<=z||p.id===view.selected)&&a>=view.left-80&&a<=view.left+680&&b>=view.top-40&&b<=view.top+440?[[i,a,b]]:[];});assert.deepEqual(rows,brute);
 assert.equal(I.query(I.build([{id:'bad',lat:NaN,lon:2}]),view).length,0);
 console.log('Project preferences round-trip, bounded AI configuration and 10,000-pin spatial index match passed.');
+const banner=C.banner({symbol:'<script>',elements:Array.from({length:100},()=>({position:[Infinity,-99,99],scale:[0,999,1],color:'url(x)'}))},'Clinky');
+assert.equal(banner.elements.length,24);assert.equal(banner.symbol,'crystal');assert.deepEqual(banner.elements[0].position,[0,-5,5]);assert.deepEqual(banner.elements[0].scale,[.05,2,1]);assert.equal(banner.title,'Clinky');
+const chats=[{id:'c1',title:'One'},{id:'c2',title:'Two'},{id:'c3',title:'Gone'}],scenes=[{id:'s1',name:'Clinky'}],links={links:{c1:{sketch:'s1'},c2:{sketch:'s1'},c3:{sketch:'missing'}}};
+const groups=C.sceneProjects(chats,scenes,links,[]);assert.equal(groups.length,1);assert.equal(groups[0].chats.length,2);
+assert.equal(C.sceneProjects(chats,scenes,links,[{id:'p1',items:[{type:'chat',ref:'c1'},{type:'chat',ref:'c2'}]}]).length,0);
+assert.equal(C.sceneProjects(chats,scenes,links,[{id:'p1',workspace:{sceneId:'s1'},items:[]}])[0].projectId,'p1');
+console.log('Banner bounds and idempotent scene/chat grouping passed.');

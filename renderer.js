@@ -1018,7 +1018,7 @@ const WorkspaceNav = window.WorkspaceNav = (() => {
     for(let i=0;i<160&&!CreativePlayground.ready();i++){if(token!==routeToken||H.surfaceIdFor(H.activeId)!=='tool:creative')return;await new Promise(r=>setTimeout(r,50));}
     if(token!==routeToken||H.surfaceIdFor(H.activeId)!=='tool:creative')return;
     if(!CreativePlayground.ready())throw Error('The workspace is still loading. Try again in a moment.');
-    await CreativePlayground.openFeature(feature);sync();
+    await CreativePlayground.openFeature(feature,{reuse:true});sync();
   }
   async function shortcut(item) {
     routeToken++;await Lazy.load('projects');
@@ -1052,7 +1052,7 @@ const WorkspaceNav = window.WorkspaceNav = (() => {
     const sig=JSON.stringify([space,p?.id,p?.name,H.railAgents().map(a=>[a.id,a.name,a.color])]);
     if(sig!==signature){signature=sig;bar.replaceChildren();const choices=el('div',{class:'workspace-choices'});bar.append(choices);
       if(space==='chat'){for(const a of H.railAgents()){const b=railButton(a.id,a,a.name+' · right-click for options');b.classList.add('workspace-agent');b.append(el('span',{text:a.name}));b.oncontextmenu=e=>{e.preventDefault();showAgentMenu(a.id,e.clientX,e.clientY);};choices.append(b);}bar.append(button('+ Assistant',()=>Manager.open(),{class:'workspace-utility'}));}
-      else if(p){choices.append(button('‹ Projects',()=>open('projects'),{class:'workspace-back'}),el('strong',{class:'workspace-project-name',text:p.name}));for(const [name,tab,id,f] of [['Overview','overview','home'],['Scene','scene','three'],['Sound','sound','creative','vst'],['Creative board','board','creative','board'],['Moodboard','moodboard','board']])choices.append(button(name,()=>ProjectWorkspace.go(tab),{dataset:{surface:'tool:'+id,...(f?{feature:f}:{})}}));}
+      else if(p){choices.append(button('‹ Projects',()=>open('projects'),{class:'workspace-back'}),el('strong',{class:'workspace-project-name',text:p.name}));for(const [name,tab,id,f] of [['Overview','overview','home'],['Chat','chat','projectchat'],['Scene','scene','three'],['Sound','sound','creative','vst'],['Creative board','board','creative','board'],['Moodboard','moodboard','board']])choices.append(button(name,()=>ProjectWorkspace.go(tab),{dataset:{surface:'tool:'+id,...(f?{feature:f}:{})}}));}
       else if(space==='projects'){for(const [name,id,f] of [['Projects','home'],['Scene','three'],['Sound','creative','vst'],['Creative board','creative','studio'],['Moodboard','board']])choices.append(button(name,()=>f?creative(f):(++routeToken,activate('tool:'+id)),{dataset:{surface:'tool:'+id,...(f?{feature:f}:{})}}));bar.append(button('Apps',async()=>{await Lazy.load('apps');$('apps-btn')?.click();},{class:'workspace-utility'}));}
     }
     for(const b of bar.querySelectorAll('[data-surface],[data-id]')){const f=b.dataset.feature,yes=(b.dataset.surface||b.dataset.id)===sid&&(!f||f===feature||['board','studio'].includes(f)&&feature!=='vst');b.classList.toggle('active',yes);b.setAttribute('aria-current',yes?'page':'false');}

@@ -16,5 +16,19 @@
     const color = (v, d) => /^#[\da-f]{6}$/i.test(v || '') ? v : d;
     return { shape: ['orbit','crystal','wave'].includes(value.shape) ? value.shape : 'orbit', color: color(value.color, '#ff9866'), accent: color(value.accent, '#db78ff'), speed: num(value.speed,.2,.03,.6), count: Math.round(num(value.count,18,6,32)), title: String(value.title || 'Ideas in orbit').slice(0,60) };
   }
-  return { PERSONAS, ICONS, plugins, workspace, key, frontpage };
+  function banner(value={},name='Project') {
+    const base=frontpage(value),num=(v,d,lo,hi)=>Number.isFinite(+v)?Math.max(lo,Math.min(hi,+v)):d;
+    const color=(v,d)=>/^#[\da-f]{6}$/i.test(v||'')?v:d;
+    const vector=(v,d,lo,hi)=>[0,1,2].map(i=>num(v?.[i],d[i],lo,hi));
+    return {...base,v:1,kind:'banner',title:String(value.title||name).slice(0,36),tagline:String(value.tagline||'').slice(0,65),symbol:['brushes','chunks','ship','orbit','crystal','wave'].includes(value.symbol)?value.symbol:'crystal',background:color(value.background,'#141318'),elements:(Array.isArray(value.elements)?value.elements:[]).slice(0,24).map(e=>({shape:['box','sphere','ring','crystal'].includes(e?.shape)?e.shape:'crystal',color:color(e?.color,base.accent),position:vector(e?.position,[0,0,0],-5,5),scale:vector(e?.scale,[.3,.3,.3],.05,2),rotation:vector(e?.rotation,[0,0,0],-6.3,6.3)}))};
+  }
+  // Import links, never chat/scene contents. A repeat run is a no-op; stale links
+  // and chats in the trash stay untouched. Shared scenes share a project.
+  function sceneProjects(chats,scenes,links,projects) {
+    const known=new Set(projects.flatMap(p=>p.items||[]).filter(x=>x.type==='chat').map(x=>x.ref)),sk=new Map(scenes.map(s=>[s.id,s])),groups=new Map();
+    for(const c of chats){const id=links?.links?.[c.id]?.sketch,s=sk.get(id);if(known.has(c.id)||c.id.includes('-project-')||!s)continue;
+      let g=groups.get(id);if(!g){g={sceneId:id,name:s.name&&s.name!=='New chat'?s.name:c.title||'Creative project',chats:[],projectId:projects.find(p=>p.workspace?.sceneId===id)?.id||null};groups.set(id,g);}g.chats.push({id:c.id,title:c.title,agentId:c.agentId});
+    }return [...groups.values()];
+  }
+  return { PERSONAS, ICONS, plugins, workspace, key, frontpage, banner, sceneProjects };
 });

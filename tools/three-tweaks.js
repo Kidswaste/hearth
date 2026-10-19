@@ -354,6 +354,7 @@ const ThreeTweaks = (() => {
     let undoStack = [];
     let committed = [];
     const rows = [];
+    let uiDirty = true, rawLimit = 60, rawFilter = '', parked = false;
     const body = el('div', { class: 'tw-body' });
     const count = el('span', { class: 'tw-count' });
     const status = el('div', { class: 'tw-status' });
@@ -1168,9 +1169,9 @@ const ThreeTweaks = (() => {
     }
     function resend(i) { const it = scanned?.items[i]; if (!it) return; const v = played?.cur?.[i] ?? values[i]; delete motionSent[i]; send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key }); }
     function syncMotion() {
-      const on = (modsCount() > 0 || autoMorph > 0) && !root.hidden && Boolean(scanned);
+      const on = !parked && (modsCount() > 0 || autoMorph > 0) && !root.hidden && Boolean(scanned);
       if (on && !motionTimer) motionTimer = setInterval(motionTick, 33);
-      if (!on && motionTimer) { clearInterval(motionTimer); motionTimer = 0; Object.keys(motionSent).forEach((i) => resend(Number(i))); }
+      if (!on && motionTimer) { clearInterval(motionTimer); motionTimer = 0; if(!parked)Object.keys(motionSent).forEach((i) => resend(Number(i))); }
     }
     const hash01 = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
     function motionTick() {
@@ -1498,7 +1499,13 @@ const ThreeTweaks = (() => {
     }
 
     function render() {
+      // Every layer needs its values and music bindings, but only the selected
+      // layer needs controls. Clink has tens of thousands of raw code values.
+      uiDirty = true;
+      if (!root.isConnected) return;
+      uiDirty = false;
       rows.length = 0;
+      rawFilter = `${filter}|${changedOnly}|${showUnused}`;
       body.replaceChildren();
       renderLooks();
       if (!scanned) return;
@@ -1513,7 +1520,12 @@ const ThreeTweaks = (() => {
       const named = all.filter(([it]) => it.key != null);
       const colors = all.filter(([it]) => it.key == null && it.kind === 'color');
       const numbers = all.filter(([it]) => it.key == null && it.kind === 'number');
-      const section = (title, list) => [el('div', { class: 'tw-group', text: title }), ...list.map(([it, i]) => row(it, i))];
+      const section = (title, list) => {
+        const matching = list.filter(([it,i]) => (!filter || `${labelOf(it)||''} ${it.hint||''} ${it.group||''} ${it.lineText}`.toLowerCase().includes(filter)) && (!changedOnly || !same(it,values[i])) && (showUnused || !reads || reads.used.has(i) || reads.live.has(i)));
+        const nodes = [el('div', { class:'tw-group', text:`${title} · ${matching.length}` }), ...matching.slice(0,rawLimit).map(([it,i])=>row(it,i))];
+        if(matching.length>rawLimit)nodes.push(btn(`Show 60 more (${matching.length-rawLimit} remaining)`, 'All values remain editable and searchable',()=>{rawLimit+=60;render();}));
+        return nodes;
+      };
       // A named group: a foldable section with knobs in a grid, then the other controls; 🎲 and ↺ act on it alone.
       const groupSection = (g, list) => {
         const idxs = list.map(([, i]) => i);
@@ -1613,6 +1625,8 @@ const ThreeTweaks = (() => {
       applyFilter();
     }
     function applyFilter() {
+      const next = `${filter}|${changedOnly}|${showUnused}`;
+      if(!uiDirty && next!==rawFilter){rawLimit=60;render();return;}
       for (const r of rows) {
         const hide = Boolean((filter && !r.text.includes(filter)) || (r.el.classList.contains('unused') && !showUnused) || (changedOnly && same(r.it, values[r.i])));
         if (r.el.hidden !== hide) r.el.hidden = hide;
@@ -1695,6 +1709,7 @@ const ThreeTweaks = (() => {
         for (const k of Object.keys(motionSent)) delete motionSent[k];
         for (const k of Object.keys(walkState)) delete walkState[k];
         render();
+        syncMotion();
       }
       return finishPrepare(code, base);
     }
@@ -1722,6 +1737,8 @@ const ThreeTweaks = (() => {
 
     return {
       el: root,
+      showUI() { if(uiDirty)render(); },
+      setParked(on) { parked=on;syncMotion(); },
       save: () => save(), saveLook: () => saveLook(),
       prepare,
       // The sandbox reports which values were read during setup and which keep being read.

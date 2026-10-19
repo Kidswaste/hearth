@@ -83,15 +83,17 @@ const ProjectsHome = (() => {
   function card(p) {
     const cover = P.coverOf(p);
     const pic = el('div', { class: 'pj-cover' }, cover ? el('img', { src: cover, alt: '', loading: 'lazy', decoding: 'async' }) : el('span', { class: 'pj-cover-mark', text: p.ident.glyph }));
+    ProjectFrontpage.decorate(pic,p);
     const cont = el('div', { class: 'pj-continue' }, ...continueChips(p));
     const c = el('div', { class: `pj-card pj-st-${p.status}`, tabIndex: 0, title: `${p.name}${p.notes ? `\n${C.cap(p.notes, 200)}` : ''}\nClick: its page · right-click: more`, dataset: { project: p.id } },
       pic,
       el('div', { class: 'pj-card-head' }, el('span', { class: 'pj-mark', text: p.ident.glyph }), el('b', { class: 'pj-name', text: p.name }), p.status !== 'active' ? el('span', { class: 'pj-pill', text: C.STATUS[p.status] }) : null),
       el('p', { class: 'pj-card-description', text: p.workspace?.description || C.cap(p.notes || 'Open your project workspace', 110) }),
       el('div', { class: 'pj-meta', text: C.countText(p) }), cont);
+    const identity=el('button',{type:'button',class:'pj-go pw-banner-edit',text:'✦',title:'Generate a Three.js banner / logo',attrs:{'aria-label':`Design ${p.name} banner`},on:{click:e=>{e.stopPropagation();ProjectFrontpage.edit(p).catch(err=>toast(calmError(err),{type:'error'}));}}});pic.append(identity);
     tint(c, p.ident.color);
     c.addEventListener('click', (e) => { if (e.target.closest('.pj-go')) return; ProjectWorkspace.open(p.id).catch(err=>toast(calmError(err),{type:'error'})); });
-    c.addEventListener('keydown', (e) => { if (e.key === 'Enter') ProjectWorkspace.open(p.id).catch(err=>toast(calmError(err),{type:'error'})); });
+    c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target===c) ProjectWorkspace.open(p.id).catch(err=>toast(calmError(err),{type:'error'})); });
     c.addEventListener('contextmenu', (e) => showMenuAt(e, P.menu(p)));
     return c;
   }
@@ -101,7 +103,7 @@ const ProjectsHome = (() => {
     for (const [types, word] of [['chat', 'chat'], [['scene', 'seq'], 'scene'], [['render', 'capture'], 'render']]) {
       const x = P.lastOf(p, types);
       if (!x) continue;
-      out.push(el('button', { type: 'button', class: 'pj-go', title: `Continue: ${P.nameOf(x)}`, on: { click: (e) => { e.stopPropagation(); P.touch(p); if(x.type==='chat'||x.type==='scene')ProjectWorkspace.open(p.id,x.type==='scene'?'scene':'overview').catch(err=>toast(calmError(err),{type:'error'}));else P.openItem(x); } } },
+      out.push(el('button', { type: 'button', class: 'pj-go', title: `Continue: ${P.nameOf(x)}`, on: { click: (e) => { e.stopPropagation(); P.touch(p); if(x.type==='chat')ProjectWorkspace.conversation(p,x.ref).catch(err=>toast(calmError(err),{type:'error'}));else if(x.type==='scene')ProjectWorkspace.open(p.id,'scene').catch(err=>toast(calmError(err),{type:'error'}));else P.openItem(x); } } },
         el('span', { class: 'pj-go-icon', text: C.TYPES[x.type].icon }), el('span', { class: 'pj-go-name', text: C.cap(P.nameOf(x).replace(`${p.name} · `, ''), 28) }), el('span', { class: 'pj-go-word', text: word })));
     }
     return out;
@@ -120,6 +122,7 @@ const ProjectsHome = (() => {
     const a = H.claudeAgent?.();
     return [
       { label: '✦ Generate animated Three.js frontpage…', action: () => ProjectWorkspace.frontpage() },
+      { label: 'Bring Three.js chats into Projects', action: () => ProjectWorkspace.importScenes() },
       { label: `${store.get('projectFrontpage.enabled',false)?'✓ ':''}Animated frontpage`, action: () => { store.set('projectFrontpage.enabled',!store.get('projectFrontpage.enabled',false));paint(); } },
       { label: 'Customize the left rail…', action: () => WorkspaceNav.editShortcut() },
       { label: 'Shared tools & earlier work', items: () => [{label:'Creative board',action:()=>WorkspaceNav.creative('studio')},{label:'Sound desk',action:()=>WorkspaceNav.creative('vst')},{label:'Moodboards',action:()=>activate('tool:board')}] },
@@ -163,6 +166,7 @@ const ProjectsHome = (() => {
           el('button', { type: 'button', class: 'ghost small', text: '⋯', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, P.menu(p)); } } })),
         el('div', { class: 'pj-continue' }, ...continueChips(p))));
     tint(head, p.ident.color);
+    ProjectFrontpage.decorate(head.querySelector('.pj-p-cover'),p,{live:true});
     const sections = [];
     for (const t of ORDER) {
       const xs = p.items.filter((x) => x.type === t).sort((a, b) => (P.timeOf(b) || b.at) - (P.timeOf(a) || a.at));
