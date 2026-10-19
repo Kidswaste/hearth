@@ -72,7 +72,7 @@
     if(C.find(s,q.id))return;
     // Project quests have their own chapter; they do not consume the three daily side slots.
     const prefix='c-project-'+key(q.projectId+'/'+q.path);
-    let c=s.campaigns.find(c=>c.id.startsWith(prefix+'-')&&!c.paused&&c.quests.length<12);
+    let c=s.campaigns.find(c=>c.id.startsWith(prefix+'-')&&!c.paused&&c.quests.length<12&&c.quests.every(q=>C.done(s,q.id)||C.skipped(s,q.id)));
     if(!c){if(s.campaigns.length>=100)throw Error('Your quest log is full. Keep an existing project quest for now.');c={id:prefix+'-'+s.campaigns.filter(c=>c.id.startsWith(prefix+'-')).length,title:cap(q.projectName,80)+' · project quests',why:'Small missions from this project’s own scenes and tools.',path:q.path,projectId:q.projectId,custom:true,subtitle:'PROJECT QUESTS',badge:q.projectName,quests:[]};s.campaigns.push(c);}
     c.quests.push(C.clone(q));s.active=c.id;
   }
