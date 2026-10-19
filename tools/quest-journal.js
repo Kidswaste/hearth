@@ -181,9 +181,14 @@ const QuestJournal = (() => {
   function meter(value, max, title, cls = '') {
     return E('div', { class: `qj-meter ${cls}`, attrs: { role: 'progressbar', 'aria-label': title, 'aria-valuemin': 0, 'aria-valuemax': max, 'aria-valuenow': value } }, E('i', { style: { width: `${Math.min(100, Math.max(0, value / Math.max(1, max) * 100))}%` } }));
   }
+  let dialogHome = null;
   function dialog(title, build, subtitle = '') {
     // Chat/show actions may open a journal dialog while its surface is parked.
-    if (H.activeId !== 'tool:quests') activate('tool:quests');
+    // Keep project helpers and proof review above the workspace. Moving the journal
+    // root keeps its scoped styles, nested dialogs and proof status handlers intact.
+    const inProject = Boolean(window.ProjectWorkspace?.current?.());
+    if (inProject && !dialogHome) { dialogHome = root.parentNode; root.classList.add('qj-portal'); document.body.append(root); }
+    if (!inProject && !dialogHome && H.activeId !== 'tool:quests') activate('tool:quests');
     hideHint();const opener = document.activeElement;
     const d = E('dialog', { class: 'qj-dialog', attrs: { 'aria-label': title } });
     const body = E('div', { class: 'qj-dialog-body' });
@@ -195,6 +200,7 @@ const QuestJournal = (() => {
     // dialog; on closing the page comes back in the next frame and focus returns after it (no forced restyle in the click).
     root.append(d); d.addEventListener('close', () => { hideHint();d.remove();
       const last = !root.querySelector('dialog.qj-dialog[open]'); if (last) root.classList.remove('qj-under-dialog');
+      if (last && dialogHome) { dialogHome.append(root); dialogHome = null; root.classList.remove('qj-portal'); }
       const back = () => { if (root.querySelector('dialog[open]')) return; const now = document.activeElement; if (now && now !== document.body && now.isConnected) return; /* (questfix65) only when nothing has focus yet: a control focused in the meantime (or one in another dialog) keeps it */ if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); };
       if (last) requestAnimationFrame(() => setTimeout(back)); else if (opener?.isConnected) opener.focus(); });
     build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); root.classList.add('qj-under-dialog'); d.showModal(); return d;
