@@ -41,6 +41,7 @@ const Gpu52 = (() => {
       if (!d.auto) bits.push(`your pick: ${i.backend}`);
       if (d.power && d.power !== 'auto') bits.push(d.power === 'high' ? 'always the fast card' : 'the power-saving card');
       if (d.ignoreBlocklist) bits.push('driver guard off');
+      if (d.canvas === 'graphite') bits.push('Graphite canvas renderer');
       if (d.fellBack) bits.push('your pick didn\'t start: back on the usual path');
       extra.textContent = `${bits.length ? `${bits.join(' · ')} — ` : ''}ask in a chat to use another card or way of drawing (from the next start)`; // (no /command on Settings: settingscalm)
       node.closest('details')?.dispatchEvent(new Event('sf-changed', { bubbles: true }));
@@ -48,7 +49,7 @@ const Gpu52 = (() => {
   }
 
   // ---------- the hidden choices (/graphics …) ----------
-  const CHOICES = { power: ['auto', 'high', 'saver'], blocklist: ['keep', 'ignore'] };
+  const CHOICES = { power: ['auto', 'high', 'saver'], blocklist: ['keep', 'ignore'], canvas: ['auto','graphite'] };
   const backends = () => ({ win32: ['auto', 'd3d11', 'vulkan', 'd3d11on12', 'gl'], darwin: ['auto', 'metal', 'gl'] }[S.info?.decision?.platform || (navigator.userAgent.includes('Mac') ? 'darwin' : /Windows/.test(navigator.userAgent) ? 'win32' : 'linux')] || ['auto', 'gl', 'vulkan']);
   const WORDS = { power: { auto: 'the fast card for the Lab and games (Windows: for all of Hearth), the small one otherwise', high: 'always the fast card', saver: 'always the power-saving card' } };
   async function set(what, value) {
@@ -56,10 +57,11 @@ const Gpu52 = (() => {
     if (what === 'power') { if (!CHOICES.power.includes(value)) return `Pick one: ${CHOICES.power.join(', ')}`; s.gpuPower = value === 'auto' ? undefined : value; }
     else if (what === 'backend') { if (!backends().includes(value)) return `Pick one: ${backends().join(', ')}`; s.gpuBackend = value === 'auto' ? undefined : value; }
     else if (what === 'blocklist') { if (!CHOICES.blocklist.includes(value)) return 'Pick one: keep, ignore'; s.gpuIgnoreBlocklist = value === 'ignore' ? true : undefined; }
+    else if (what === 'canvas') { if(!CHOICES.canvas.includes(value))return 'Pick one: auto, graphite'; if(value==='graphite'&&!/Windows/.test(navigator.userAgent))return 'Graphite is currently tested on Windows. This Mac/Linux installation keeps its usual canvas renderer.';s.gpuCanvasBackend=value==='auto'?undefined:value; }
     else return null;
     await saveConfig();
     try { await api()?.reset?.(); } catch { /* old main */ }
-    const said = what === 'power' ? WORDS.power[value] : what === 'backend' ? (value === 'auto' ? 'the usual path' : value) : value === 'ignore' ? 'without the driver guard' : 'with the driver guard';
+    const said = what === 'power' ? WORDS.power[value] : what === 'canvas' ? (value==='graphite'?'Graphite canvas drawing (full resolution and effects)':'the usual canvas renderer') : what === 'backend' ? (value === 'auto' ? 'the usual path' : value) : value === 'ignore' ? 'without the driver guard' : 'with the driver guard';
     return { text: `Graphics: ${said} from the next start. Restart Hearth to use it now${what !== 'power' && value !== 'auto' && value !== 'keep' ? ' (if it doesn\'t reach the card, Hearth goes back to the usual path by itself)' : ''}.`, restart: true };
   }
   // /graphics [status | power … | backend … | blocklist …] → text, or null (glrecover.js shows its status)
@@ -74,7 +76,7 @@ const Gpu52 = (() => {
   }
   const complete = (args = '') => {
     const [what] = String(args).trim().split(/\s+/);
-    const list = what === 'power' ? CHOICES.power : what === 'backend' ? backends() : what === 'blocklist' ? CHOICES.blocklist : null;
+    const list = what === 'power' ? CHOICES.power : what === 'backend' ? backends() : what === 'blocklist' ? CHOICES.blocklist : what === 'canvas' ? CHOICES.canvas : null;
     if (list && /\s/.test(args)) return list.map((v) => ({ value: `${what} ${v}`, hint: what === 'power' ? WORDS.power[v] : v === 'auto' ? 'the usual path' : '' }));
     return [{ value: 'status', hint: 'what draws Hearth now' }, { value: 'power ', hint: 'which card on a two-card laptop' }, { value: 'backend ', hint: 'how WebGL reaches the card (advanced)' }, { value: 'blocklist ', hint: 'the driver guard (advanced)' }];
   };

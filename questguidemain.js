@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const Core = require('./questguide-core');
 const FLP = require('./questguide-flp');
+const Project = require('./questguide-project');
 const DS = require('./datasafe-core');
 const CS = require('./crashsafe-core');
 
@@ -75,6 +76,8 @@ function create({ dataDir, localDir = dataDir, documentsDir, now = () => Date.no
     busy = true;
     const observedSession = store.session;
     try {
+      // Project guides have event-driven saved-work checks. Do not spawn tasklist/ps for them.
+      if (Core.current(store.session)?.app !== 'fl' && store.session?.kind !== 'music') return;
       if (now() - lastLease > 4000) lease(true);
       observation.running = await pollRunning(platform);
       if (store.session !== observedSession || disposed) return;
@@ -106,17 +109,19 @@ function create({ dataDir, localDir = dataDir, documentsDir, now = () => Date.no
   }
   function arm() {
     if (timer) clearInterval(timer); timer = null;
-    if (active()) { timer = setInterval(() => poll().catch(e => emit('questguide:error', { error: e.message })), 1600); timer.unref?.(); poll().catch(e => emit('questguide:error', { error: e.message })); }
+    if (active() && (Core.current(store.session)?.app === 'fl' || store.session?.kind === 'music')) { timer = setInterval(() => poll().catch(e => emit('questguide:error', { error: e.message })), 1600); timer.unref?.(); poll().catch(e => emit('questguide:error', { error: e.message })); }
     else lease(false);
   }
   async function call(a = {}) {
     const op = a.op || 'state';
     if (op === 'state') return state();
     if (op === 'start') {
+      const checkpoint = a.projectId ? await Project.snapshot(dataDir, a.projectId) : null;
       if (!a.restart && store.session?.questId === a.questId && Core.current(store.session)) { store.session.paused = false; }
       else {
         if (store.session) store.history = [...store.history, store.session].slice(-15);
         store.session = Core.start(a, now());
+        if (checkpoint) { store.session.projectStart = checkpoint; store.session.projectCheckpoint = checkpoint; }
       }
       // Explicit imported outing progress only. Never presented as observed app activity.
       // A resumed outing can have moved ahead in its plan while the helper was hidden.
@@ -130,7 +135,22 @@ function create({ dataDir, localDir = dataDir, documentsDir, now = () => Date.no
     else if (op === 'hide') { visible = false; ui.hide?.(); }
     else if (op === 'pause' || op === 'resume') { if (store.session) { store.session.paused = op === 'pause'; store.session.updatedAt = now(); save(); arm(); } }
     else if (op === 'stop') { if (store.session) store.history = [...store.history, store.session].slice(-15); store.session = null; save(); arm(); visible = false; ui.hide?.(); }
-    else if (op === 'manual') { store.session = Core.manual(store.session, a.stepId, a.note, now()); save(); arm(); }
+    else if (op === 'manual') {
+      const previous=store.session, checkpoint=previous?.projectId?await Project.snapshot(dataDir,previous.projectId):null;
+      if(store.session!==previous)throw Error('The guide changed. Try again.');
+      store.session = Core.manual(store.session, a.stepId, a.note, now());
+      if(checkpoint)store.session.projectCheckpoint=checkpoint;
+      save(); arm();
+    }
+    else if (op === 'check-project') {
+      const previous=store.session,step=Core.current(previous);
+      if(!previous?.projectId||previous.paused||step?.id!==a.stepId)throw Error('Resume the current project step before checking.');
+      const checkpoint=await Project.snapshot(dataDir,previous.projectId);
+      if(store.session!==previous)throw Error('The guide changed. Try again.');
+      const proof=Project.evidence(previous,step,checkpoint);
+      if(proof){store.session=Core.complete(previous,proof,now());store.session.projectCheckpoint=checkpoint;save();arm();}
+      else if(!a.quiet)throw Error(step.check==='project-output'?'Keep a new image on this project’s worktable, save a preset, or add an exported result to the project. Then check again.':'No new saved change in this step’s workspace yet. Save your work, then check again.');
+    }
     else if (op === 'back') {
       if (store.session?.done.length) { store.session.done.pop(); store.session.enteredAt = now() + 1; store.session.updatedAt = now(); store.session.paused = true; save(); arm(); }
     } else if (op === 'tool-opened') {
@@ -139,8 +159,10 @@ function create({ dataDir, localDir = dataDir, documentsDir, now = () => Date.no
       store.session = Core.complete(store.session, { kind: 'automatic', summary: `Opened ${a.tool} in Hearth`, source: 'hearth-tool' }, now()); save(); arm();
     } else if (op === 'action') {
       const s = Core.current(store.session);
+      if(store.session?.paused)throw Error('Resume your guide first.');
       if (s?.id !== a.stepId) throw new Error('The step changed.');
       if (s.action?.type === 'hearth-tool') emit('questguide:tool', { questId: store.session.questId, stepId: s.id, tool: s.action.tool });
+      if (s.action?.type === 'project') { ui.focusMain?.(); emit('questguide:tool',{questId:store.session.questId,stepId:s.id,projectId:store.session.projectId,tab:s.action.tab}); }
       if (s.action?.type === 'outing') emit('questguide:outing', { questId: store.session.questId, stepId: s.id, planId: s.action.planId });
     } else if (op === 'review') {
       if (store.session) {

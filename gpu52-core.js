@@ -30,10 +30,10 @@
   // settings.gpuBackend / gpuPower / gpuIgnoreBlocklist → the owner's choice on this platform
   function choice(settings = {}, platform = 'linux') {
     const s = settings || {};
-    return { backend: pick(String(s.gpuBackend || 'auto'), BACKENDS[platform] || ['auto'], 'auto'), power: pick(String(s.gpuPower || 'auto'), POWERS, 'auto'), ignoreBlocklist: s.gpuIgnoreBlocklist === true };
+    return { backend: pick(String(s.gpuBackend || 'auto'), BACKENDS[platform] || ['auto'], 'auto'), power: pick(String(s.gpuPower || 'auto'), POWERS, 'auto'), ignoreBlocklist: s.gpuIgnoreBlocklist === true, canvas: platform === 'win32' && s.gpuCanvasBackend === 'graphite' ? 'graphite' : 'auto' };
   }
   // the part of a choice that can stop the card starting: tried once, kept only when it worked
-  const riskKey = (c) => (c.backend !== 'auto' || c.ignoreBlocklist ? `${c.backend}${c.ignoreBlocklist ? '+noblock' : ''}` : '');
+  const riskKey = (c) => (c.backend !== 'auto' || c.ignoreBlocklist || c.canvas === 'graphite' ? `${c.backend}${c.ignoreBlocklist ? '+noblock' : ''}${c.canvas === 'graphite' ? '+graphite' : ''}` : '');
 
   // o: { platform, settings, marker (gpu52.json: { key, state: 'pending'|'ok'|'failed', win: { ours, user } }),
   //      argv (switches already on the command line: a test's --use-angle wins) }
@@ -50,12 +50,14 @@
       // failed: told already, stays on the default until the choice changes · pending: the last start never reached
       // the card (crashed, hung, was closed before it could tell): the default this time, and say so
       fellBack = { key, why: m.state === 'pending' ? 'never-started' : 'failed' };
-      eff = { ...c, backend: 'auto', ignoreBlocklist: false };
+      eff = { ...c, backend: 'auto', ignoreBlocklist: false, canvas: 'auto' };
     }
     const sw = [];
     const external = has('use-angle') || has('use-gl') || has('disable-gpu');
     if (eff.backend !== 'auto' && !external) sw.push(['use-angle', eff.backend]);
     if (eff.ignoreBlocklist && !has('ignore-gpu-blocklist')) sw.push(['ignore-gpu-blocklist']);
+    const disabledFeatures = argv.filter(a=>String(a).startsWith('--disable-features=')).flatMap(a=>String(a).slice(19).split(','));
+    if (eff.canvas === 'graphite' && !disabledFeatures.includes('SkiaGraphite') && !has('disable-gpu')) sw.push(['enable-features', 'SkiaGraphite']);
     const winUser = platform === 'win32' && Boolean(m.win?.user);
     if (c.power === 'high' || (c.power === 'auto' && platform === 'win32' && !winUser)) sw.push(['force_high_performance_gpu']);
     if (c.power === 'saver') sw.push(['force_low_power_gpu']);
@@ -64,7 +66,7 @@
     if (fellBack) next = { ...m, key, state: 'failed' };
     else if (effKey) next = { ...m, key: effKey, state: 'pending', at: Date.now() };
     else if (m.key) next = { ...m, key: '', state: '' }; // (back on the defaults: nothing to watch)
-    return { platform, choice: c, backend: eff.backend === 'auto' ? DEFAULT_BACKEND[platform] || 'default' : eff.backend, auto: eff.backend === 'auto', power: c.power, ignoreBlocklist: eff.ignoreBlocklist, switches: sw.filter(([n]) => !NEVER.includes(n)), fellBack, marker: next, external };
+    return { platform, choice: c, backend: eff.backend === 'auto' ? DEFAULT_BACKEND[platform] || 'default' : eff.backend, auto: eff.backend === 'auto', power: c.power, canvas: eff.canvas, ignoreBlocklist: eff.ignoreBlocklist, switches: sw.filter(([n]) => !NEVER.includes(n)), fellBack, marker: next, external };
   }
   // the start reached the card (or not): the marker to keep
   function settle(marker, kind) {

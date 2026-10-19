@@ -190,7 +190,7 @@ const ProjectsHome = (() => {
     const sound=block('Instruments',...(p.workspace?.plugins||[]).map(name=>row(name,'music',()=>ProjectWorkspace.go('sound'))),row('Choose instruments','plus',()=>ProjectWorkspace.settings(p)));
     const about=el('details',{class:'pw-about'},el('summary',{text:'Project notes & setup'}),notes,p.workspace?.description?el('p',{class:'pw-about-copy',text:p.workspace.description}):null,row('Project setup','spark',()=>ProjectWorkspace.settings(p)),row('Write description with AI','chat',()=>ProjectWorkspace.describe(p)));
     const conversations=chats.length>1?block('Conversations',...chats.map(x=>row(P.nameOf(x),'chat',()=>ProjectWorkspace.conversation(p,x.ref)))):null;
-    S.body.replaceChildren(head,materials,modules,sound,...(conversations?[conversations]:[]),about,el('details',{class:'pw-project-files'},el('summary',{text:`All project files · ${p.items.length}`}),...sections));
+    S.body.replaceChildren(head,...(window.QuestGuide?.projectCard?[QuestGuide.projectCard(p)]:[]),materials,modules,sound,...(conversations?[conversations]:[]),about,el('details',{class:'pw-project-files'},el('summary',{text:`All project files · ${p.items.length}`}),...sections));
   }
   function itemRow(p, x) {
     const pic = ['scene', 'seq', 'render', 'capture', 'board'].includes(x.type) ? P.thumbOf(x) : null;

@@ -1,0 +1,24 @@
+const wait=ms=>new Promise(r=>setTimeout(r,ms)),check=(v,m)=>{if(!v)throw Error(m);},until=async(fn,m)=>{for(let i=0;i<180;i++){if(await fn())return;await wait(70);}throw Error(m+' '+JSON.stringify({workspace:ProjectWorkspace.state(),active:H.activeId,guide:QuestGuide.snapshot()?.step,feature:CreativePlayground.snapshot()}));};
+await Lazy.load('questhud');await Lazy.load('projects');await Projects.ready();
+const p=Projects.create({name:'Quest atelier'});await Projects.flush();
+// This check exercises saved-work evidence, not WebGL warm-up on the software GPU.
+await ProjectWorkspace.open(p.id,'overview',{preview:false});
+await Lazy.load('questjournal');await QuestGuide.open('q-material-seed',p.id);
+const q=QuestCore.find(QuestJournal.snapshot(),'q-material-seed');
+check(ProjectWorkspace.current()?.id===p.id,'opening the guide closed the project');
+await until(()=>document.querySelector('dialog[open] .qg-project-select'),'guide dialog');
+const d=document.querySelector('.qg-project-select').closest('dialog');check(d.querySelector('.qg-project-select').value===p.id,'project not selected');
+[...d.querySelectorAll('button')].find(b=>b.textContent==='Start guided quest').click();await until(()=>QuestGuide.snapshot()?.session?.projectId===p.id,'project guide started');
+const call=async(op,data={})=>{const r=await hub.questGuide({op,...data});if(!r.ok)throw Error(r.error);return r.value;};
+await call('action',{stepId:'first-move'});await until(()=>H.activeId==='tool:creative'&&WorkbenchUI.scope()===p.id&&ProjectWorkspace.state().phase==='ready'&&CreativePlayground.ready(),'project board action');
+await call('manual',{stepId:'first-move',note:'One stone texture for the scene.'});
+const before=QuestGuide.snapshot().completed;
+await CreativePlayground.openFeature('texture');const tint=document.querySelector('[aria-label="Tint"]');check(tint,'material controls');tint.value='#ff5577';tint.dispatchEvent(new Event('change'));
+await until(()=>QuestGuide.snapshot()?.completed===before+1,'saved work auto-check');check(!QuestCore.done(QuestJournal.snapshot(),q.id),'guide bypassed proof gate');
+await call('manual',{stepId:'try-it',note:'The stone reads well; I would soften its edges next.'});
+const keep=[...document.querySelectorAll('button')].find(b=>b.textContent==='Keep on worktable');check(keep,'keep image');keep.click();
+await until(()=>!QuestGuide.snapshot()?.step,'new kept image observed');
+await ProjectWorkspace.go('overview');await until(()=>document.querySelector('.qg-project-card'),'desk card');
+check(document.querySelector('.qg-project-card').textContent.includes('Ready for proof review'),'desk not following guide');
+await smoke({shot:window.SMOKE_SAVES+'/quest-project-desk.png'});await call('stop');await ProjectWorkspace.home();
+return {pass:true,projectAction:true,savedChange:true,newOutput:true,proofGate:true,desk:true};

@@ -11,6 +11,7 @@
     <div id="actions" class="actions">
       <button id="launch" class="primary" hidden>↗ Open FL Studio</button>
       <button id="action" class="primary" hidden>↗ Open workbench</button>
+      <button id="check-project" hidden>✓ Check saved work</button>
       <button id="done" class="primary" hidden>Done · next →</button>
       <button id="review" class="primary" hidden>Show result / review ↗</button>
       <button id="pause" hidden>Ⅱ Pause</button>
@@ -21,6 +22,7 @@
       <div class="actions"><button type="submit" class="primary">Save progress →</button><button type="button" id="cancel-manual">Cancel</button></div>
     </form>
     <p id="error" role="alert" hidden></p>
+    <details id="evidence" hidden><summary>What Hearth checked</summary><ol id="evidence-list"></ol></details>
     <div class="footer"><button id="back" title="Undo the last guide step; pauses automatic checks" hidden>↶ Back</button><button id="manual" hidden>Confirm myself</button><button id="connect" hidden>Connect FL</button></div>
     <section id="connection" hidden>
       <h2>Connect FL Studio</h2>

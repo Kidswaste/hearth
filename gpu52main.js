@@ -28,7 +28,7 @@ function early(app, { settings = {}, dataDir, platform = process.platform, argv 
   file = path.join(dataDir, 'gpu52.json');
   marker = readMarker();
   D = Core.decide({ platform, settings, marker, argv });
-  for (const [n, v] of D.switches) { if (v == null) app.commandLine.appendSwitch(n); else app.commandLine.appendSwitch(n, v); }
+  for (const [n, v] of D.switches) { if (v == null) app.commandLine.appendSwitch(n); else if(n === 'enable-features') app.commandLine.appendSwitch(n,[...new Set([...(app.commandLine.getSwitchValue?.(n)||'').split(',').filter(Boolean),...v.split(',')])].join(',')); else app.commandLine.appendSwitch(n, v); }
   if (D.marker) writeMarker(D.marker);
   return D;
 }
@@ -60,7 +60,7 @@ function register(ipcMain, { getWin, app = require('electron').app, screen = nul
   const send = (n) => { const w = getWin?.(); if (!w || w.isDestroyed?.()) return; try { w.webContents.send('gpu52:note', n); } catch { /* gone */ } };
   const timers = new Set();
   const later = (ms, fn) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); };
-  const onGone = (_e, d) => { if (d?.type === 'GPU' && d.reason !== 'clean-exit') crashes += 1; };
+  const onGone = (_e, d) => { if (d?.type === 'GPU' && d.reason !== 'clean-exit') { crashes += 1; if(D.canvas === 'graphite' && marker.key?.includes('+graphite')) writeMarker({...marker,state:'failed'}); } };
   app.on('child-process-gone', onGone);
 
   // did this start reach the card? (settle the marker; tell once when it didn't on a computer that has one)
@@ -95,7 +95,7 @@ function register(ipcMain, { getWin, app = require('electron').app, screen = nul
       line: Core.line({ info: inf, status: st, hz, fps: Number(o.fps) || 0, decision: D }),
       name: Core.gpuName(inf), backend: r.backend || Core.label(D.backend), hz, video: /^enabled/.test(String(st.video_decode || '')),
       kind: Core.kind(st), dual: Core.dualGpu(inf), crashes,
-      decision: { backend: D.backend, auto: D.auto, power: D.power, choice: D.choice, ignoreBlocklist: D.ignoreBlocklist, switches: D.switches, fellBack: D.fellBack, external: D.external, platform: D.platform },
+      decision: { backend: D.backend, auto: D.auto, power: D.power, canvas: /^enabled/.test(String(st.skia_graphite||''))?'graphite':'auto', choice: D.choice, ignoreBlocklist: D.ignoreBlocklist, switches: D.switches, fellBack: D.fellBack, external: D.external, platform: D.platform },
       flags: flags(), note, marker: { key: marker.key || '', state: marker.state || '' }, status: st,
     };
   });
