@@ -31,3 +31,27 @@
 .pw-banner-edit:hover{background:#603d67!important;transform:translateY(-2px)}
 .pj-p-head:has(.pw-banner){flex-wrap:wrap}.pj-p-head .pj-p-cover.pw-banner{width:100%;height:220px;border-radius:16px;flex-basis:100%}
 @media(prefers-reduced-motion:reduce){.pw-banner-edit{transition:none!important}}
+/* The desk uses the existing live chat. Only the resource shelf scrolls separately. */
+.pw-desk>.tool-head{display:none}
+.pw-desk>.tool-main{display:flex;min-height:0}
+.pw-desk>.tool-main>.tool-dock{order:0;flex:1 1 0!important;width:auto!important;min-width:0;max-width:none;border:0;display:flex!important}
+.pw-desk>.tool-main>.tool-dock-divider{display:none!important}
+.pw-desk>.tool-main>.tool-body{order:1;flex:0 0 clamp(280px,24vw,360px);min-width:0;overflow:hidden;border-left:1px solid #ffffff14;background:#151419}
+.pw-desk .pj-home{height:100%;box-sizing:border-box;padding:16px;overflow:auto;background:linear-gradient(155deg,#211d2580,#121216)}
+.pw-desk .native-wrap,.pw-desk .composer,.pw-desk .native-head{width:100%;max-width:980px;box-sizing:border-box;margin-inline:auto}
+.pw-desk .pj-p-head{display:block;padding:0 0 16px;margin:0;border:0;border-bottom:1px solid #ffffff12;border-radius:0;background:none}
+.pw-desk .pj-p-cover,.pw-desk .pj-p-head .pj-p-cover.pw-banner{position:relative;width:100%;height:120px;aspect-ratio:auto;margin-bottom:12px;border-radius:12px}
+.pw-desk .pj-p-name{font-size:18px}.pw-desk .pj-p-mark{font-size:16px}.pw-desk .pj-p-status{font-size:10px;max-width:86px}
+.pw-desk .pj-p-head .pj-meta{display:none}.pw-desk .pj-p-actions{margin-top:8px}.pw-desk .pj-p-actions button{flex:1}
+.pw-shelf-section{padding:14px 0 0}.pw-shelf-section h3{font:10px/1.3 monospace;letter-spacing:.15em;text-transform:uppercase;color:#b0a0b4;margin:0 0 9px}
+.pw-shelf-row{display:flex;align-items:center;gap:10px;width:100%;min-height:38px;padding:8px 10px;text-align:left;border:1px solid #ffffff0c;background:linear-gradient(130deg,#ffffff05,transparent);border-radius:8px;color:#d8cbdc;margin:5px 0;font-size:12px;cursor:pointer}
+.pw-shelf-row:hover{border-color:#d58bc350;background:#c78cb710}.pw-shelf-row svg{flex:none;width:18px;height:18px;fill:none;stroke:#e3ac78;stroke-width:1.4}.pw-shelf-row span:not(.pw-shelf-arrow){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pw-shelf-arrow{margin-left:auto;color:#b988c4}
+.pw-shelf-section .pj-item{width:100%;margin:5px 0;min-height:42px}.pw-shelf-section .pj-item-time{display:none}
+.pw-modules,.pw-about,.pw-desk .pw-project-files{margin-top:16px;border-top:1px solid #ffffff10;padding:14px 0 0;color:#b7a7be;font-size:12px}.pw-modules summary,.pw-about summary{cursor:pointer}.pw-module-search{width:100%;box-sizing:border-box;margin:12px 0 6px}.pw-module-list{max-height:300px;overflow:auto}.pw-about-copy{font-size:11px;line-height:1.6;color:#a79aaa}.pw-about .pj-notes{margin:12px 0 0;font-size:12px}
+.pw-banner img{object-fit:contain!important;object-position:center!important}.pw-banner-canvas{display:block!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;aspect-ratio:auto!important;object-fit:contain}
+@media(max-width:900px){.pw-desk>.tool-main>.tool-body{flex-basis:260px}.pw-desk .pj-home{padding:12px}.pw-desk .pj-p-cover,.pw-desk .pj-p-head .pj-p-cover.pw-banner{height:100px}}
+.pw-banner-editor{width:min(1120px,94vw);max-height:90vh;overflow:auto;border-radius:18px}
+.pw-logo-workspace{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:20px}.pw-logo-controls{border-left:1px solid #ffffff12;padding-left:16px}.pw-logo-controls>select{width:100%}.pw-logo-actions{display:flex;gap:5px;flex-wrap:wrap;margin:10px 0}.pw-logo-actions button{font-size:11px}.pw-logo-inspector{max-height:350px;overflow:auto;padding-right:6px}.pw-logo-field{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:9px 0;font-size:11px;color:#bdafc7}.pw-logo-field input,.pw-logo-field select{max-width:140px;min-width:0}.pw-logo-field input[type=color]{width:48px;height:25px}.pw-logo-field input[type=range]{width:130px;accent-color:#df9dce}.pw-logo-field span{min-width:60px}.pw-banner-preview{cursor:crosshair}.pw-banner-editor .dialog-actions{margin-top:15px}.pw-banner-editor .pw-banner-controls{flex-wrap:wrap}.pw-banner-editor .pw-banner-controls input:not([type=color]){min-width:120px}
+@media(max-width:800px){.pw-logo-workspace{grid-template-columns:1fr}.pw-logo-controls{border:0;padding:0}.pw-logo-inspector{max-height:180px}.pw-banner-editor{padding:16px}}
+
+.pw-banner-editor .pw-logo-field{display:flex;flex-direction:row;text-align:left}.pw-banner-editor .pw-logo-field input,.pw-banner-editor .pw-logo-field select{width:auto;flex:0 1 140px}
