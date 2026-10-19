@@ -180,21 +180,16 @@ const RoutinesCore = (() => {
   // the offline queue, the chat's own queue), idleMs (no input in Hearth for), quietMs (since the owner last wrote),
   // askFirst (Spending: "ask before each message" and near / past the weekly limit) }
   // → { act: 'send' } · { act: 'wait', ms, why } · { act: 'pause', why } · { act: 'stop', status, why } · { act: 'none' }
-  function nextStep(r, ctx = {}) {
+  // Local gates need no provider process. A waiting run never polls account usage.
+  function readyStep(r, ctx = {}) {
     const now = ctx.now ?? Date.now();
     if (!r || r.status !== 'running') return { act: 'none' };
     if (r.inFlight || ctx.busy) return { act: 'none' }; // its end calls again
-    const quota=allowanceCheck(r,ctx,now);if(quota)return quota;
     if (r.usageUnknown && !r.allowance) return { act:'pause', why:'usage was not fully reported; review this run before starting a new budget' };
     if (r.how.kind === 'rounds' && r.round >= r.how.rounds) return { act: 'stop', status: 'done', why: `all ${r.how.rounds} round${r.how.rounds === 1 ? '' : 's'} done` };
     if (r.round >= MAX_ROUNDS) return { act: 'stop', status: 'done', why: `${MAX_ROUNDS} rounds (the most a routine runs)` };
     if (r.endAt && now >= r.endAt) return { act: 'stop', status: 'done', why: r.how.kind === 'until' ? `it's ${clock(r.endAt)}` : 'the time is up' };
-    if (r.cap && r.tokens >= r.cap) return { act: 'stop', status: 'stopped', why: `it reached its token budget (${fmt(r.cap)} tokens)` };
-    const estimate = Math.max(avg(r), r.rounds.at(-1)?.tokens || 0, r.done ? 0 : ctx.lastTokens || 0);
-    if (r.cap && estimate && r.tokens + estimate > r.cap) return { act: 'stop', status: 'stopped', why: `another round is estimated to exceed its token budget (${fmt(r.tokens)} of ${fmt(r.cap)} used; about ${fmt(estimate)} for a round)` };
     if (r.resetAt && now < r.resetAt) return { act: 'wait', ms: r.resetAt - now, why: r.limitWait ? `paused until ${(ctx.when || clock)(r.resetAt)} (limit)` : `waiting for the usage limit to reset at ${clock(r.resetAt)}` };
-    const lim = r.allowance ? null : limitCheck(r, ctx.limits, now, ctx.when);
-    if (lim) return lim;
     if (ctx.askFirst && !r.askOk) return { act: 'pause', why: 'your Spending setting asks before each message (near the weekly limit): ▶ to go on' };
     if (r.quietUntil && now < r.quietUntil) return { act: 'wait', ms: r.quietUntil - now, why: `you wrote: it goes on after ${mins(r.resumeAfter)} quiet` };
     if (ctx.queued) return { act: 'wait', ms: 15000, why: 'a message waits to go out first' };
@@ -207,7 +202,17 @@ const RoutinesCore = (() => {
       if (p.idle && (ctx.idleMs ?? Infinity) < p.idle) return { act: 'wait', ms: Math.max(15000, p.idle - (ctx.idleMs || 0)), why: 'next round once you\'ve been idle 10 min' };
       if (p.quiet && (ctx.quietMs ?? Infinity) < p.quiet) return { act: 'wait', ms: Math.max(15000, p.quiet - (ctx.quietMs || 0)), why: 'next round once you haven\'t written for an hour' };
     }
-    return { act: 'send' };
+    return null;
+  }
+  function nextStep(r, ctx = {}) {
+    const ready=readyStep(r,ctx);if(ready)return ready;
+    const now=ctx.now??Date.now();
+    const quota=allowanceCheck(r,ctx,now);if(quota)return quota;
+    if (r.cap && r.tokens >= r.cap) return { act: 'stop', status: 'stopped', why: `it reached its token budget (${fmt(r.cap)} tokens)` };
+    const estimate = Math.max(avg(r), r.rounds.at(-1)?.tokens || 0, r.done ? 0 : ctx.lastTokens || 0);
+    if (r.cap && estimate && r.tokens + estimate > r.cap) return { act: 'stop', status: 'stopped', why: `another round is estimated to exceed its token budget (${fmt(r.tokens)} of ${fmt(r.cap)} used; about ${fmt(estimate)} for a round)` };
+    const lim = r.allowance ? null : limitCheck(r, ctx.limits, now, ctx.when);
+    return lim || { act:'send' };
   }
   // a round goes out: its number
   function sent(r, now = Date.now()) {
@@ -419,6 +424,7 @@ const RoutinesCore = (() => {
   }
   // Hearth started again: a running routine asks first (▶ Resume), unless the owner chose "keep going after a restart"
   function restarted(r) {
+    if(!live(r)){r.inFlight=false;return r;} // an intentionally stopped final reply died with the old process
     if (r.inFlight) { r.usageUnknown = true; r.inFlight = false; r.lastEnd = Date.now(); r.status='paused'; r.why='Hearth closed during a round; its full usage is unknown'; }
     if (r.status === 'running' && !r.afterRestart) { r.status = 'paused'; r.why = 'Hearth restarted: ▶ to go on'; r.restartPaused = true; }
     return r;
@@ -431,7 +437,7 @@ const RoutinesCore = (() => {
     return r;
   }
   function pause(r, why = 'paused by you') { if (r.status === 'running') { r.status = 'paused'; r.why = why; } return r; }
-  function stop(r, why = 'stopped by you') { if (live(r)) { r.status = 'stopped'; r.why = why; r.inFlight = false; } return r; }
+  function stop(r, why = 'stopped by you') { if (live(r)) { r.status = 'stopped'; r.why = why; } return r; }
 
   // ---------- words ----------
   function howText(how) {
@@ -459,7 +465,7 @@ const RoutinesCore = (() => {
 
   return { MIN, HOUR, SETTLE, DEFAULT_PROMPT, HOW, PAUSES, WHEN_I_WRITE, CAPS, NO_LIMIT_CAP, MAX_ROUNDS, ERR_STOP, DONE_STOP, NET_PAUSE, TRANSIENT,
     STALE_STOP, REPEAT_STOP, SAME, MARGINS, MARGIN, LONG, LEAN_SHARE, limitCheck, limitStep, changeOf, similar, summaryOf, leanBetween, dayKey, statAdd, statSum, statWords,
-    untilAt, needsCap, defaultCap, normalize, live, nextStep, sent, saysDone, roundEnded, ownerWrote, restarted, resume, pause, stop,
+    untilAt, needsCap, defaultCap, normalize, live, readyStep, nextStep, sent, saysDone, roundEnded, ownerWrote, restarted, resume, pause, stop,
     howText, pauseText, chipText, describe, message, usageOf, helperUsage, allowance, allowanceCheck, allowanceProgress, pctText, fmt, mins, clock, clip, uid };
 })();
 if (typeof module !== 'undefined') module.exports = RoutinesCore;
