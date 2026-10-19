@@ -27,6 +27,10 @@ assert.equal(normalize({ ordinaryUsageAllowed: false }).ordinaryUsageAllowed, fa
     await service.read();
     const trace = fs.readFileSync(path.join(dir, 'trace.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
     assert.equal(trace.filter(x => x.method === 'account/rateLimits/read').length, 1);
+    await service.read({fresh:true});
+    const freshTrace=fs.readFileSync(path.join(dir,'trace.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+    assert.equal(freshTrace.filter(x=>x.method==='account/rateLimits/read').length,2,'Explicit fresh reads must bypass the 60-second cache');
+    assert(!freshTrace.some(x=>/^(thread|turn)\//.test(x.method||'')),'Fresh reads must not consume a model turn');
     assert(!trace.some(x => /^(thread|turn)\//.test(x.method || '')), 'Usage reads must never create a conversation or consume a model turn');
     service.close(); service.snapshot = null;
     service.options.bin = path.join(dir, 'not-installed');

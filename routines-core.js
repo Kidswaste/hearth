@@ -75,6 +75,42 @@ const RoutinesCore = (() => {
   }
 
   function helperUsage(r, raw) { const u=usageOf(raw);tally(r,u);if(u)r.tokens+=u.tokens;return u; }
+  const pctText=n=>Number(n.toFixed(2)).toLocaleString();
+  const freshWindow=(w,now)=>w && number(w.used) && w.used<=100 && number(w.at) && w.at>=now-2*MIN && w.at<=now+MIN && number(w.resetsAt) && w.resetsAt>now;
+  function allowance(percent, engine, model, windows, now=Date.now()) {
+    if(!number(percent)||percent<1||percent>100)throw Error('Choose between 1% and 100% of remaining usage.');
+    if(!windows?.length || !windows.every(w=>freshWindow(w,now)))throw Error('A fresh usage reading is unavailable. Refresh usage before starting a percentage budget.');
+    if(windows.some(w=>w.used>=100))throw Error('An account allowance is already used up. Wait for its reset.');
+    return {percent,engine,model:String(model||''),createdAt:now,windows:windows.map(w=>({key:w.key,label:w.label||w.long||w.key,start:w.used,used:w.used,peak:w.used,at:w.at,resetsAt:w.resetsAt,amount:(100-w.used)*percent/100}))};
+  }
+  function cleanAllowance(q) {
+    if(!q||typeof q!=='object')return null;
+    // Keep invalid/incomplete saved budgets visibly blocked, never reinterpret them as tokens.
+    const valid=number(q.percent)&&q.percent>=1&&q.percent<=100&&Array.isArray(q.windows)&&q.windows.length>0&&q.windows.length<=20&&q.windows.every(w=>w&&typeof w.key==='string'&&['start','used','peak','at','resetsAt','amount'].every(k=>number(w[k]))&&w.start<100&&w.used<=100&&w.peak<=100&&w.used>=w.start&&w.peak>=w.used&&Math.abs(w.amount-(100-w.start)*q.percent/100)<1e-7);
+    return {percent:number(q.percent)?q.percent:20,engine:String(q.engine||''),model:String(q.model||''),createdAt:Number(q.createdAt)||0,finishedAt:Number(q.finishedAt)||0,
+      windows:valid?q.windows.map(w=>({...w})):[]};
+  }
+  function allowanceProgress(q) {
+    return !q?.windows?.length ? 0 : Math.max(...q.windows.map(w=>Math.max(0,w.peak-w.start)/w.amount))*100;
+  }
+  function allowanceCheck(r,ctx,now) {
+    const q=r.allowance;if(!q)return null;
+    const pause=why=>({act:'pause',why});
+    if(q.engine!==ctx.engine||q.model!==String(ctx.model||''))return pause('The assistant or model changed. Start a new percentage budget.');
+    if(!q.windows.length)return pause('This budget has no valid starting reading. Start a new budget.');
+    let missing=false,reset=false;
+    for(const b of q.windows){
+      const w=ctx.allowanceWindows?.find(w=>w.key===b.key);
+      if(b.resetsAt<=now || w&&Math.abs(w.resetsAt-b.resetsAt)>60000){reset=true;continue;}
+      if(!freshWindow(w,now)||w.at<b.at){missing=true;continue;}
+      if(w.used+1e-7<b.used){reset=true;continue;}
+      b.used=w.used;b.peak=Math.max(b.peak,w.used);b.at=w.at;
+    }
+    if(reset)return pause('An allowance reset or account changed. Start a new budget; this run will not refill itself.');
+    if(allowanceProgress(q)>=100-1e-7)return {act:'stop',status:'done',why:`Your ${pctText(q.percent)}% remaining-usage budget is used. No more automatic replies.`};
+    if(missing||ctx.allowanceFresh!==true)return pause('Usage could not be refreshed. No next reply until a fresh reading is available.');
+    return null;
+  }
   // "18:30" → the next time it is 18:30 (today, or tomorrow when it has passed); null when it isn't a time
   function untilAt(hhmm, now = Date.now()) {
     const m = /^(\d{1,2})[:h.](\d{2})$/.exec(String(hhmm || '').trim());
@@ -112,11 +148,13 @@ const RoutinesCore = (() => {
     const createdAt = Number(r.createdAt) || now;
     const pause = PAUSES.some((p) => p.id === r.pause) ? r.pause : 'none';
     let cap = number(Number(r.cap)) ? Math.round(Number(r.cap)) : 0;
-    if (!cap && needsCap(how, createdAt)) cap = NO_LIMIT_CAP; // a long one is never without a cap
+    const quota=cleanAllowance(r.allowance);
+    if(quota)cap=0;
+    else if (!cap && needsCap(how, createdAt)) cap = NO_LIMIT_CAP; // a long one is never without a cap
     return {
       id: String(r.id || uid()), agentId: String(r.agentId), chatId: String(r.chatId), title: clip(r.title || '', 60),
       prompt: String(r.prompt ?? '').trim().slice(0, 4000) || DEFAULT_PROMPT,
-      how, pause, resumeAfter: [0, 10 * MIN, HOUR].includes(Number(r.resumeAfter)) ? Number(r.resumeAfter) : 0, cap,
+      how, pause, resumeAfter: [0, 10 * MIN, HOUR].includes(Number(r.resumeAfter)) ? Number(r.resumeAfter) : 0, cap, ...(quota?{allowance:quota}:{}),
       lighter: r.lighter !== false, waitReset: r.waitReset !== false, afterRestart: r.afterRestart === true,
       createdAt, endAt: how.kind === 'time' ? createdAt + how.ms : how.kind === 'until' ? how.at : 0,
       status: ['running', 'paused', 'done', 'stopped'].includes(r.status) ? r.status : 'running', why: String(r.why || ''),
@@ -146,7 +184,8 @@ const RoutinesCore = (() => {
     const now = ctx.now ?? Date.now();
     if (!r || r.status !== 'running') return { act: 'none' };
     if (r.inFlight || ctx.busy) return { act: 'none' }; // its end calls again
-    if (r.usageUnknown) return { act:'pause', why:'usage was not fully reported; review this run before starting a new budget' };
+    const quota=allowanceCheck(r,ctx,now);if(quota)return quota;
+    if (r.usageUnknown && !r.allowance) return { act:'pause', why:'usage was not fully reported; review this run before starting a new budget' };
     if (r.how.kind === 'rounds' && r.round >= r.how.rounds) return { act: 'stop', status: 'done', why: `all ${r.how.rounds} round${r.how.rounds === 1 ? '' : 's'} done` };
     if (r.round >= MAX_ROUNDS) return { act: 'stop', status: 'done', why: `${MAX_ROUNDS} rounds (the most a routine runs)` };
     if (r.endAt && now >= r.endAt) return { act: 'stop', status: 'done', why: r.how.kind === 'until' ? `it's ${clock(r.endAt)}` : 'the time is up' };
@@ -154,7 +193,7 @@ const RoutinesCore = (() => {
     const estimate = Math.max(avg(r), r.rounds.at(-1)?.tokens || 0, r.done ? 0 : ctx.lastTokens || 0);
     if (r.cap && estimate && r.tokens + estimate > r.cap) return { act: 'stop', status: 'stopped', why: `another round is estimated to exceed its token budget (${fmt(r.tokens)} of ${fmt(r.cap)} used; about ${fmt(estimate)} for a round)` };
     if (r.resetAt && now < r.resetAt) return { act: 'wait', ms: r.resetAt - now, why: r.limitWait ? `paused until ${(ctx.when || clock)(r.resetAt)} (limit)` : `waiting for the usage limit to reset at ${clock(r.resetAt)}` };
-    const lim = limitCheck(r, ctx.limits, now, ctx.when);
+    const lim = r.allowance ? null : limitCheck(r, ctx.limits, now, ctx.when);
     if (lim) return lim;
     if (ctx.askFirst && !r.askOk) return { act: 'pause', why: 'your Spending setting asks before each message (near the weekly limit): ▶ to go on' };
     if (r.quietUntil && now < r.quietUntil) return { act: 'wait', ms: r.quietUntil - now, why: `you wrote: it goes on after ${mins(r.resumeAfter)} quiet` };
@@ -363,7 +402,7 @@ const RoutinesCore = (() => {
       else out = { act: 'continue', why: '' };
     }
     if (previous.status !== 'running') { r.status=previous.status; r.why=previous.why; return {act:'none',why:r.why}; }
-    if (r.usageUnknown && (out.act === 'continue' || out.act === 'wait')) out={act:'pause',why:'usage was not fully reported; review this run before starting a new budget'};
+    if (r.usageUnknown && !r.allowance && (out.act === 'continue' || out.act === 'wait')) out={act:'pause',why:'usage was not fully reported; review this run before starting a new budget'};
     if (out.act === 'pause') { r.status = 'paused'; r.why = out.why; }
     if (out.act === 'stop') { r.status = out.status || 'stopped'; r.why = out.why; }
     if (out.act === 'continue' || out.act === 'wait') r.why = out.why;
@@ -408,9 +447,11 @@ const RoutinesCore = (() => {
     const prog = r.how.kind === 'rounds' ? `${n} of ${r.how.rounds}` : r.endAt ? `${n} · ${mins(r.endAt - now)} left` : `${n}`;
     const held = r.status === 'running' && r.limitWait && r.resetAt > now; // (round 51) waiting out a usage limit
     const icon = r.status === 'paused' || held ? '❚❚' : r.status === 'running' ? '🔁' : r.status === 'done' ? '✓' : '■';
+    if(r.allowance)return `${icon} ${prog} · ${Math.round(allowanceProgress(r.allowance))}% of budget used`;
     return `${icon} ${prog}${held ? ` · paused until ${when(r.resetAt)} (limit)` : ''} · ≈ ${fmt(r.tokens)}${r.usageUnknown ? '+' : ''} tokens so far${r.cap ? ` of ${fmt(r.cap)}` : ''}`;
   }
   function describe(r) {
+    if(r.allowance)return `🔁 Keep going ${howText(r.how)}, using ${pctText(r.allowance.percent)}% of the usage remaining at the start (checked between replies)`;
     return `🔁 Keep going ${howText(r.how)}${r.pause !== 'none' ? `, ${pauseText(r.pause)} between rounds` : ''}${r.cap ? `, token budget ${fmt(r.cap)} (checked between rounds)` : ''}`;
   }
   // the routine's message as the AI gets it: the owner's words as written (nothing hidden, nothing added)
@@ -419,6 +460,6 @@ const RoutinesCore = (() => {
   return { MIN, HOUR, SETTLE, DEFAULT_PROMPT, HOW, PAUSES, WHEN_I_WRITE, CAPS, NO_LIMIT_CAP, MAX_ROUNDS, ERR_STOP, DONE_STOP, NET_PAUSE, TRANSIENT,
     STALE_STOP, REPEAT_STOP, SAME, MARGINS, MARGIN, LONG, LEAN_SHARE, limitCheck, limitStep, changeOf, similar, summaryOf, leanBetween, dayKey, statAdd, statSum, statWords,
     untilAt, needsCap, defaultCap, normalize, live, nextStep, sent, saysDone, roundEnded, ownerWrote, restarted, resume, pause, stop,
-    howText, pauseText, chipText, describe, message, usageOf, helperUsage, fmt, mins, clock, clip, uid };
+    howText, pauseText, chipText, describe, message, usageOf, helperUsage, allowance, allowanceCheck, allowanceProgress, pctText, fmt, mins, clock, clip, uid };
 })();
 if (typeof module !== 'undefined') module.exports = RoutinesCore;

@@ -1,0 +1,37 @@
+// Provider allowance is not token traffic: fixed start, all windows, no automatic refill.
+const assert=require('node:assert/strict'),C=require('../routines-core'),U=require('../usagelimits-core');
+const now=Date.now(),win=(used=50,key='five_hour',extra={})=>({key,used,at:now,resetsAt:now+3600000,...extra});
+const make=(windows=[win()],percent=20)=>C.normalize({agentId:'a',chatId:'c',how:{kind:'forever'},allowance:C.allowance(percent,'codex','model',windows,now)},now);
+const next=(r,windows=[win()],extra={})=>C.nextStep(r,{now,engine:'codex',model:'model',allowanceWindows:windows,allowanceFresh:true,...extra});
+let r=make();assert.equal(r.cap,0);assert.equal(r.allowance.windows[0].amount,10);assert.equal(next(r).act,'send');
+assert.equal(next(r,[win(55)]).act,'send');assert.equal(C.allowanceProgress(r.allowance),50);
+assert.equal(r.allowance.windows[0].amount,10,'A new reading must not rebase the original allocation');
+assert.equal(next(r,[win(60)]).act,'stop');assert.equal(C.allowanceProgress(r.allowance),100);
+r=make([win(81)]);assert.equal(r.allowance.windows[0].amount,3.8);assert.equal(next(r,[win(84.79)]).act,'send');assert.equal(next(r,[win(84.8)]).act,'stop');
+r=make([win(20),win(90,'seven_day')]);assert.equal(next(r,[win(21),win(92,'seven_day')]).act,'stop','Weekly allowance wins even when session has plenty left');
+r=make();assert.equal(next(r,[win(65)]).act,'stop','Other account activity also consumes this fixed budget');
+assert.equal(next(make(),[win(0)]).act,'pause','Decreasing usage must not silently refill');
+assert.match(next(make(),[win(50,'five_hour',{resetsAt:now+7200000})]).why,/reset/);
+assert.match(next(make(),[win()],{now:now+3600000}).why,/reset/);
+assert.equal(next(make(),[],{}).act,'pause');assert.equal(next(make(),[win()],{allowanceFresh:false}).act,'pause');
+assert.equal(next(make(),[win(55,'five_hour',{at:now-3*C.MIN})]).act,'pause');
+assert.equal(next(make(),[win()],{engine:'claude'}).act,'pause');assert.equal(next(make(),[win()],{model:'different'}).act,'pause');
+assert.equal(next(make([win(),win(30,'seven_day')]),[win()]).act,'pause','A missing previously known window is not zero usage');
+assert.throws(()=>make([win(100)]),/used up/);assert.equal(make([win(0)]).allowance.windows[0].amount,20);
+for(const p of [0,101,NaN,-1])assert.throws(()=>make([win()],p));
+assert.throws(()=>make([win(50,'five_hour',{at:now-3*C.MIN})]),/fresh/);assert.throws(()=>make([]),/fresh/);
+r=make();next(r,[win(55)]);r=C.normalize(JSON.parse(JSON.stringify(r)),now);assert.equal(r.allowance.windows[0].start,50);assert.equal(C.allowanceProgress(r.allowance),50);assert.equal(next(r,[win(60)]).act,'stop');
+r=make();r.allowance.windows.push({...win(),start:50,peak:50,amount:NaN});r=C.normalize(r,now);assert.equal(next(r).act,'pause','One corrupt window must block the whole budget, not drop its protection');
+r=make();r.allowance.percent=0;assert.equal(next(C.normalize(r,now)).act,'pause');
+r=make();C.sent(r,now-5000);C.roundEnded(r,{type:'done',text:'Changed a character.',tokens:0,usage:null},now-3000);assert(r.usageUnknown);assert.equal(next(r).act,'send','Fresh quota, not token traffic, enforces a percentage budget');
+r.tokens=1e9;assert.equal(next(r).act,'send','Raw traffic is not converted to subscription usage');
+C.pause(r);assert.equal(next(r).act,'none');C.resume(r,now);assert.equal(r.allowance.windows[0].start,50);
+assert.equal(C.normalize({agentId:'a',chatId:'c',how:{kind:'forever'},cap:12345},now).cap,12345);
+let state=U.clean({});state=U.merge(state,'claude',[win(50)],now).state;
+// Current allowed events with no percentage must retain the old measurement time.
+state=U.merge(state,'claude',[win(null,'five_hour',{at:now+C.MIN,source:'event'})],now+C.MIN).state;
+state=U.merge(state,'claude',[win(null,'five_hour',{at:now+2*C.MIN,source:'event'})],now+2*C.MIN).state;
+assert.equal(state.engines.claude.windows.five_hour.usedAt,now);
+state=U.merge(state,'claude',[win(55,'five_hour',{at:now+3*C.MIN,source:'event'})],now+3*C.MIN).state;
+assert.equal(state.engines.claude.windows.five_hour.usedAt,undefined);
+console.log('Remaining-usage budgets: fixed fractional allocation, decimals, multiple windows, shared activity, freshness, resets, persistence, missing token reports, legacy mode and carried observations passed.');
