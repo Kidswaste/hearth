@@ -38,6 +38,7 @@ const nfc = (s) => s.normalize('NFC');
 // is an edit inside its store. A missing cloud/local store must not erase the
 // surviving database (including temporary cloud renames and conflict copies).
 const appStore = rel => /^kv\/[^/]+\.json$/i.test(rel);
+const chatTrashRel = rel => /^chats\/[^/]+\.json$/i.test(rel) ? rel.replace(/^chats\//i, 'trash/') : null;
 
 async function exists(p) { try { await fsp.stat(p); return true; } catch { return false; } }
 function statSync(p) { try { return fs.statSync(p); } catch { return null; } }
@@ -760,6 +761,18 @@ function createEngine(o) {
     const { files: cloud, copies } = await scanCloud();
     const cap = o.big === false ? (o.bigCap || BIG_CAP) : Infinity;
     const plan = []; const skippedBig = []; const cloudOnly = []; const unreadable = []; let pending = 0;
+    // A cloud client may briefly remove a single chat while replacing/hydrating it.
+    // Absence is not deletion intent. Hearth's Delete action moves the exact chat
+    // to trash/<id>.json; require that matching copy on the side that lost it.
+    // A stale trash copy must not delete a newer conversation. Ordinary files keep
+    // their existing deletion/rename behavior, and an unreadable trash copy is safe.
+    const chatRemoved = async (rel, h, files, hash) => {
+      const trashRel = chatTrashRel(rel);
+      if (!trashRel) return true;
+      const entry = files.get(trashRel);
+      if (!entry || entry.unavailable) return false;
+      try { return await hash(trashRel, entry) === h; } catch { return false; }
+    };
     const rels = new Set([...local.keys(), ...cloud.keys(), ...Object.keys(state.base)]);
     // (round 43, datasafe) a file or folder that couldn't be listed / looked at on one side is unknown there this pass:
     // never "deleted" (a held chats folder on Windows looked like every chat deleted, and the cloud copy went to trash)
@@ -785,10 +798,10 @@ function createEngine(o) {
         else if (ch === bh) plan.push({ op: 'push', rel, L, C, h: lh });
         else plan.push({ op: S.isJsonRel(rel) && !readable(rel, C) ? 'wait' : 'merge', rel, L, C, lh, ch });
       } else if (L) {
-        if (bh && lh === bh && !appStore(rel)) plan.push({ op: 'deleteHere', rel, L, h: lh });
+        if (bh && lh === bh && !appStore(rel) && await chatRemoved(rel, lh, cloud, cloudHash)) plan.push({ op: 'deleteHere', rel, L, h: lh });
         else plan.push({ op: 'push', rel, L, C: null, h: lh }); // new here (or changed here while deleted there: kept)
       } else {
-        if (!appStore(rel) && bh && (ch === bh || (ch === UNKNOWN && state.cloud[rel] && state.cloud[rel][1] === C.mtime))) plan.push({ op: 'deleteThere', rel, C, h: bh });
+        if (!appStore(rel) && bh && (ch === bh || (ch === UNKNOWN && state.cloud[rel] && state.cloud[rel][1] === C.mtime)) && await chatRemoved(rel, bh, local, localHash)) plan.push({ op: 'deleteThere', rel, C, h: bh });
         else if (ch === UNKNOWN || !readable(rel, C)) { cloudOnly.push(rel); pending += 1; }
         else plan.push({ op: 'pull', rel, L: null, C, h: ch }); // new there (or changed there while deleted here: kept)
       }

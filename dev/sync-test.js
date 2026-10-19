@@ -74,6 +74,29 @@ function snapshot(m) {
 }
 
 async function main() {
+  // Reproduce Clink: an unchanged chat disappeared from iCloud without a Delete
+  // action, and sync used to move the only current local copy into sync/trash.
+  {
+    const w=world('missing-chat'),A=computer(w,'PC',{platform:'win32'}),B=computer(w,'Mac',{platform:'darwin'});
+    const rel='chats/clink.json',trash='trash/clink.json',value=chat('clink',[msg('user',1,'Polish Kiddy'),msg('assistant',2,'Brushstroke finished')]);
+    W(A.p(rel),JSON.stringify(value));await settle(A,B);
+    fs.unlinkSync(cloudFile(w,rel));await A.e.pass();
+    ok(has(A.p(rel))&&eqj(J(A.p(rel)),value),'missing cloud chat retains all local messages');
+    ok(has(cloudFile(w,rel))&&!(await A.e.trash()).some(t=>t.rel===rel),'missing cloud chat is republished, never trashed');
+    fs.unlinkSync(B.p(rel));await settle(B,A);
+    ok(has(B.p(rel))&&eqj(J(B.p(rel)),value),'missing local chat is restored instead of deleting the cloud copy');
+    const old=chat('clink',[msg('user',1,'Polish Kiddy')]);W(cloudFile(w,trash),JSON.stringify(old));
+    fs.unlinkSync(cloudFile(w,rel));await A.e.pass();
+    ok(has(A.p(rel))&&has(cloudFile(w,rel)),'stale trash cannot delete a newer chat');
+    await settle(A,B);
+    fs.mkdirSync(path.dirname(A.p(trash)),{recursive:true});fs.renameSync(A.p(rel),A.p(trash));
+    await settle(A,B);
+    ok(!has(A.p(rel))&&!has(B.p(rel))&&!has(cloudFile(w,rel))&&has(B.p(trash)),'explicit Delete still moves a chat to trash on both computers');
+    fs.renameSync(B.p(trash),B.p(rel));await settle(B,A);
+    ok(has(A.p(rel))&&has(B.p(rel))&&eqj(J(A.p(rel)),value),'Undo Delete restores all messages on both computers');
+    fs.unlinkSync(cloudFile(w,rel));await settle(A,B);
+    ok(has(A.p(rel))&&has(B.p(rel)),'a restored chat also survives a later cloud disappearance');
+  }
   // Missing store files never mean deleting the surviving database. Item edits
   // (including deliberately empty arrays) still sync in the normal three-way merge.
   {
@@ -209,18 +232,19 @@ async function main() {
   await A.e.resolve(fc.id, 'mine');
   ok(!(await A.e.conflicts()).length, 'dismissing a conflict');
 
-  // deletes + restore
-  fs.rmSync(A.p('chats/c2.json'));
+  // Ordinary file deletions + restore; chats require the app's explicit trash move.
+  W(A.p('captures/delete-test.txt'),'recover this file');await settle(A,B);
+  fs.rmSync(A.p('captures/delete-test.txt'));
   await A.e.pass();
-  ok(!has(cloudFile(w, 'chats/c2.json')), 'a delete reaches the cloud…');
+  ok(!has(cloudFile(w, 'captures/delete-test.txt')), 'a delete reaches the cloud…');
   const tr = await A.e.trash();
-  ok(tr.some((t) => t.rel === 'chats/c2.json' && t.where === 'cloud'), '…and waits in the synced trash');
+  ok(tr.some((t) => t.rel === 'captures/delete-test.txt' && t.where === 'cloud'), '…and waits in the synced trash');
   await B.e.pass();
-  ok(!has(B.p('chats/c2.json')) && (await B.e.trash()).some((t) => t.rel === 'chats/c2.json' && t.where === 'here'), 'the other computer moves its copy to its own trash (recoverable)');
-  const item = (await B.e.trash()).find((t) => t.rel === 'chats/c2.json' && t.where === 'cloud');
+  ok(!has(B.p('captures/delete-test.txt')) && (await B.e.trash()).some((t) => t.rel === 'captures/delete-test.txt' && t.where === 'here'), 'the other computer moves its copy to its own trash (recoverable)');
+  const item = (await B.e.trash()).find((t) => t.rel === 'captures/delete-test.txt' && t.where === 'cloud');
   const rs = await B.e.restore(item.id);
   await settle(B, A);
-  ok(rs.ok && has(A.p('chats/c2.json')) && has(B.p('chats/c2.json')) && J(A.p('chats/c2.json')).messages[1].text === A.p('attachments/pic.png'), 'restore from the synced trash brings it back on both');
+  ok(rs.ok && has(A.p('captures/delete-test.txt')) && has(B.p('captures/delete-test.txt')) && R(A.p('captures/delete-test.txt'))==='recover this file', 'restore from the synced trash brings it back on both');
 
   // changed here while deleted there: kept
   fs.rmSync(A.p('kv/notes.json'));
@@ -325,17 +349,17 @@ async function main() {
   fs.renameSync(path.join(w.cloud, 'Hearth', 'files-gone'), path.join(w.cloud, 'Hearth', 'files'));
 
   // many deletions at once wait for a yes
-  for (let i = 0; i < 40; i++) W(A.p(`chats/bulk${i}.json`), JSON.stringify(chat(`bulk${i}`, [msg('user', i, 'x')])));
+  for (let i = 0; i < 40; i++) W(A.p(`captures/bulk${i}.txt`),`file ${i}`);
   await settle(A, B);
-  for (let i = 0; i < 40; i++) fs.rmSync(A.p(`chats/bulk${i}.json`));
+  for (let i = 0; i < 40; i++) fs.rmSync(A.p(`captures/bulk${i}.txt`));
   r = await A.e.pass();
-  ok(r.state === 'held' && r.held.deletes === 40 && has(cloudFile(w, 'chats/bulk1.json')), 'many deletions at once are held');
+  ok(r.state === 'held' && r.held.deletes === 40 && has(cloudFile(w, 'captures/bulk1.txt')), 'many deletions at once are held');
   r = await A.e.pass({ mass: 'keep' });
-  ok(has(A.p('chats/bulk1.json')) && has(cloudFile(w, 'chats/bulk1.json')), '"keep them" brings them back');
-  for (let i = 0; i < 40; i++) fs.rmSync(A.p(`chats/bulk${i}.json`));
+  ok(has(A.p('captures/bulk1.txt')) && has(cloudFile(w, 'captures/bulk1.txt')), '"keep them" brings them back');
+  for (let i = 0; i < 40; i++) fs.rmSync(A.p(`captures/bulk${i}.txt`));
   await A.e.pass(); r = await A.e.pass({ mass: 'apply' });
   await B.e.pass({ mass: 'apply' });
-  ok(!has(B.p('chats/bulk1.json')) && (await B.e.trash()).some((t) => t.rel === 'chats/bulk1.json'), '"delete them" deletes (to the trash) on both');
+  ok(!has(B.p('captures/bulk1.txt')) && (await B.e.trash()).some((t) => t.rel === 'captures/bulk1.txt'), '"delete them" deletes (to the trash) on both');
 
   // the write guard: the app saves an older in-memory chat after a pull; the other computer's message survives
   const g = J(A.p('chats/c1.json')); g.messages.push(msg('user', 100, 'new on mac')); W(A.p('chats/c1.json'), JSON.stringify(g, null, 2));
