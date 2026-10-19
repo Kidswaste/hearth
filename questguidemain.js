@@ -168,7 +168,7 @@ function create({ dataDir, localDir = dataDir, documentsDir, now = () => Date.no
       if(store.session?.paused)throw Error('Resume your guide first.');
       if (s?.id !== a.stepId) throw new Error('The step changed.');
       if (s.action?.type === 'hearth-tool') emit('questguide:tool', { questId: store.session.questId, stepId: s.id, tool: s.action.tool });
-      if (s.action?.type === 'project') { ui.focusMain?.(); emit('questguide:tool',{questId:store.session.questId,stepId:s.id,projectId:store.session.projectId,tab:s.action.tab,sceneId:s.action.sceneId}); }
+      if (s.action?.type === 'project') { ui.focusMain?.(); emit('questguide:tool',{questId:store.session.questId,stepId:s.id,projectId:store.session.projectId,tab:s.action.tab,sceneId:s.action.sceneId,chatId:s.action.chatId}); }
       if (s.action?.type === 'outing') emit('questguide:outing', { questId: store.session.questId, stepId: s.id, planId: s.action.planId });
     } else if (op === 'review') {
       if (store.session) {

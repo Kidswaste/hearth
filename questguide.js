@@ -22,8 +22,8 @@ const QuestGuide = (() => {
   async function ready() {await Lazy.load('questjournal');if(!studio())Tools.shown(Tools.get('quests'));for(let i=0;i<100&&!studio();i++)await new Promise(r=>setTimeout(r,40));if(!studio())throw Error('The quest journal is still loading. Try again in a moment.');return studio();}
   async function review({questId}={}) {const qj=await ready();if(questId?.startsWith('outing:')){const s=await OutingGuide.call({op:'state'}),plan=s.plans.find(p=>p.id===questId.slice(7));if(plan?.questId&&QuestCore.find(qj.snapshot(),plan.questId))qj.questDetail(plan.questId);else return OutingGuide.open({id:questId.slice(7)});}else if(questId&&QuestCore.find(qj.snapshot(),questId))qj.questDetail(questId);else{activate('tool:quests');qj.navigate('adventure');}}
   async function waitFor(check,message){for(let i=0;i<120;i++){if(check())return;await new Promise(r=>setTimeout(r,50));}throw Error(message);}
-  async function launchTool({tool,stepId,projectId,tab,sceneId}={}) {
-    if(projectId){await Lazy.load('projects');await Projects.ready();await ProjectWorkspace.open(projectId,sceneId?'overview':tab);if(sceneId)await ProjectWorkspace.openScene(sceneId);return;}
+  async function launchTool({tool,stepId,projectId,tab,sceneId,chatId}={}) {
+    if(projectId){await Lazy.load('projects');await Projects.ready();await ProjectWorkspace.open(projectId,sceneId?'overview':tab);if(sceneId)await ProjectWorkspace.openScene(sceneId);if(chatId&&tab==='chat')await ProjectWorkspace.conversation(Projects.get(projectId),chatId);return;}
     const targets={lab:'three',forge:'forgeheart',tiles:'creative',sounds:'creative',rack:'creative',arena:'three'};
     const target=targets[tool];if(!target)throw Error('This workbench is not supported. Start a fresh guided pass for this quest.');
     await Lazy.load(target==='creative'?'creative':target==='three'?'lab':'addons');
@@ -95,11 +95,12 @@ const QuestGuide = (() => {
       if(step?.action)actions.append(button('↗ Work',()=>call('action',{stepId:step.id}),`Open ${step.action.tab||'workspace'}`));
       if(step?.check?.startsWith('project-'))actions.append(button('✓ Check',()=>checkProject(false),'Check this project’s saved work'));
       actions.append(button(step?'Helper ↗':'Review ↗',()=>step?call('show'):review({questId:s.questId}),'Open the guide and evidence history'));root.append(actions);
-      if(!s.questId.startsWith('q-project-')||!step)root.append(button('Project quest',()=>open(null,p.id),'A mission from this project’s own scenes and tools'));
+      root.append(button('New from chat',()=>open(null,p.id,{fresh:true}),'Offer a new quest from recent project work. Your current quest and progress stay in the log.'));
     };root._questPaint=paint;paint();return root;
   }
   document.addEventListener('questguide:changed',()=>document.querySelectorAll('[data-quest-project]').forEach(n=>n._questPaint?.()));
-  async function open(quest,projectId) {
+  document.addEventListener('questproject:chat-changed',e=>{for(const n of document.querySelectorAll('[data-quest-project]'))if(n.dataset.questProject===e.detail.projectId){n.querySelector('.qg-chat-fresh')?.remove();n.append(el('small',{class:'qg-chat-fresh',text:'✦ Next quest follows your latest chat',title:'Your accepted quest stays as it is. New suggestions use the latest conversation when you take your next quest.'}));}});
+  async function open(quest,projectId,options={}) {
     const qj=await ready();state=await call('state');
     await Lazy.load('projects');await Projects.ready();
     const journal=qj.snapshot(),eligible=q=>q&&!QuestCore.done(journal,q.id)&&!QuestCore.skipped(journal,q.id)&&!q.parked&&QuestCore.available(journal,q.id);
@@ -109,7 +110,14 @@ const QuestGuide = (() => {
     if(quest&&!eligible(q)&&!(daily&&!QuestCore.find(journal,requested)))throw Error('This quest is finished, paused or waiting for an earlier step. Choose an active quest from your notebook.');
     const context=Projects.get(projectId||ProjectWorkspace.current()?.id);
     if(!quest&&context){
-      q=QuestProject.choose(context,QuestProject.catalog(context,await Projects.Src.sketches()),journal,QuestCore);
+      q=options.fresh?null:QuestProject.choose(context,[],journal,QuestCore);
+      if(!q){
+        const scenes=await Projects.Src.sketches(),suggestion=await QuestChat.suggest(context,scenes,qj);
+        if(suggestion===null)return;
+        const candidates=suggestion.fromChat?suggestion.quests:QuestProject.catalog(context,scenes),latest=qj.snapshot();
+        q=options.fresh?candidates.find(x=>!QuestCore.find(latest,x.id)):QuestProject.choose(context,candidates,latest,QuestCore);
+        if(!q&&suggestion.fromChat)throw Error('No new unfinished quest from your latest conversation. Keep working in the project chat; your next suggestion will follow it.');
+      }
       if(!q)throw Error('You’ve finished or set aside this project’s current missions. Revisit one in the quest log, or add new work to the project for fresh targets.');
     }
     if(!q){const campaign=journal.campaigns.find(c=>c.id===journal.active&&!c.paused),planned=journal.plan?.quest&&QuestCore.find(journal,journal.plan.quest),tracked=QuestCore.next(journal,campaign);q=eligible(planned)?planned:eligible(tracked)?tracked:QuestCore.allQuests(journal).find(eligible);}
@@ -131,7 +139,8 @@ const QuestGuide = (() => {
     return kit.dialog(q.title,(body,d)=>{
       d.classList.add('qg-offer');d.dataset.questOffer=q.id;d.dataset.project=pid||'';
       body.append(kit.E('div',{class:'qg-offer-meta'},kit.E('span',{text:'◷ '+q.minutes+' min'}),kit.E('span',{text:'✦ '+q.xp+' XP'}),kit.E('span',{text:'⌖ '+location})),kit.E('p',{class:'qg-offer-goal',text:q.done}));
-      if(q.projectTask)body.append(kit.E('small',{class:'qg-offer-source',text:'From '+q.projectTask.source,title:'Based on the named scene or tool in this project. Proof review still checks the result.'}));
+      if(q.projectTask?.quote)body.append(kit.E('details',{class:'qg-offer-source'},kit.E('summary',{text:'From your project chat'}),kit.E('blockquote',{text:q.projectTask.quote}),kit.button('↗ Open source chat',async()=>{d.close();try{await QuestChat.source(q);}catch(err){toast(err.message,{type:'error'});}},'qj-quiet')));
+      else if(q.projectTask)body.append(kit.E('small',{class:'qg-offer-source',text:'From '+q.projectTask.source,title:'Based on the named scene or tool in this project. Proof review still checks the result.'}));
       body.append(kit.E('section',{class:'qg-offer-next'},kit.label(keepProgress?step?'NEXT STEP · '+(saved.completed+1)+' / '+saved.total:'READY TO REVIEW':'FIRST STEP'),kit.E('p',{text:step?.instruction||'Show your result to get feedback and collect your rewards.'})));
       const error=kit.E('p',{class:'qj-copy',attrs:{role:'status'}});
       const later=kit.button('Not now',()=>d.close(),'qj-quiet');
@@ -139,6 +148,7 @@ const QuestGuide = (() => {
         later.disabled=true;
         try{
           if(pid){await Projects.flush();if(window.WorkbenchUI?.scope?.()===pid)await WorkbenchUI.flush();}
+          if(q.projectTask?.context&&!QuestCore.find(qj.snapshot(),q.id)){const fresh=await QuestChat.context(Projects.get(pid),await Projects.Src.sketches());if(fresh.fingerprint!==q.projectTask.context||fresh.messages.some(m=>Native.isBusy(m.chatId)))throw Error('Your project chat changed. Close this offer and take a quest again for the latest work.');}
           if(q.projectTask?.sceneId){const p=Projects.get(pid),sid=q.projectTask.sceneId;if(!p||(p.workspace?.sceneId!==sid&&!p.items.some(x=>x.type==='scene'&&x.ref===sid))||!(await Projects.Src.sketches()).some(s=>s.id===sid))throw Error('This quest’s scene is no longer available in the project. Your progress is kept.');}
           await qj.mutate(s=>{
             if(!QuestCore.find(s,q.id)){

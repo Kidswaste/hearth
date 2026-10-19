@@ -1,0 +1,28 @@
+const wait=ms=>new Promise(r=>setTimeout(r,ms)),check=(v,m)=>{if(!v)throw Error(m);},until=async(fn,m)=>{for(let i=0;i<180;i++){if(await fn())return;await wait(70);}throw Error(m);};
+const offer=()=>document.querySelector('dialog[open][data-quest-offer]'),button=t=>[...offer().querySelectorAll('button')].find(b=>b.textContent===t);
+await Lazy.load('projects');await Projects.ready();await Lazy.load('questhud');await Lazy.load('questjournal');
+const p=Projects.create({name:'Clink chat quests'});await Projects.flush();await ProjectWorkspace.open(p.id,'overview',{preview:false});
+const chat=await Native.load(p.workspace.chatId),now=Date.now();chat.messages=[{role:'user',at:now,text:'Add Mira with an aerial recovery move.'},{role:'assistant',at:now+1,text:'Mira’s aerial recovery is saved. Test from either side and under the ledge.'}];chat.updatedAt=now+1;Native.save(chat);
+const cache=async(target,mode='test')=>{
+ const c=await QuestChat.context(p,await Projects.Src.sketches()),source=c.messages.at(-1);
+ const tasks=QuestChatCore.validate({tasks:[{sourceId:source.id,quote:source.text,target,mode,tab:mode==='plan'?'chat':'scene',path:'game',title:(mode==='plan'?'plan ':'test ')+target,goal:'Check '+target+' with three concrete cases and keep the results.',first:'Open Clink and locate '+target+'.',work:'Try normal use, repeated inputs and a boundary case for '+target+'.',verify:'Write expected and actual results; keep a pass/fail verdict for each case.'}]},c);
+ await hub.kvSet('quest-chat-'+p.id,{v:1,fingerprint:c.fingerprint,tasks});return c;
+};
+await cache('Mira’s recovery');await QuestGuide.open(null,p.id);check(offer().textContent.includes('Mira’s recovery'),'new character ignored');check(offer().querySelector('details').textContent.includes('under the ledge'),'missing source excerpt');check(!offer().querySelector('select,input'),'setup menus returned');
+const before=JSON.stringify(QuestJournal.snapshot());button('Not now').click();check(JSON.stringify(QuestJournal.snapshot())===before,'decline changes log');
+await QuestGuide.open(null,p.id);await smoke({shot:window.SMOKE_SAVES+'/chat-quest-offer.png'});const firstId=offer().dataset.questOffer;button('Accept quest').click();await until(()=>QuestGuide.snapshot()?.session?.questId===firstId&&H.activeId==='tool:three','accept opens source scene');
+await hub.questGuide({op:'manual',stepId:'first-move',note:'Found Mira; recovery starts just below the ledge.'});await until(()=>QuestGuide.snapshot().completed===1,'progress');
+chat.messages.push({role:'user',at:now+2,text:'Add a parry window with a brief counter opportunity.'},{role:'assistant',at:now+3,text:'The parry window is saved. Test early, on-time and late inputs.'});chat.updatedAt=now+3;Native.save(chat);
+for(const hook of Native.hooks.event)hook({type:'done',chatId:chat.id},chat);
+await QuestGuide.open(null,p.id);check(offer().textContent.includes('Mira’s recovery')&&offer().textContent.includes('NEXT STEP · 2'),'chat update replaced accepted progress');button('Not now').click();
+await cache('parry window');await QuestGuide.open(null,p.id,{fresh:true});check(offer().textContent.includes('parry window'),'new mechanic not offered alongside accepted work');
+const nextId=offer().dataset.questOffer;
+chat.messages.push({role:'user',at:now+4,text:'Postpone the parry tests. Plan a small arena with a moving platform.'});chat.updatedAt=now+4;Native.save(chat);
+button('Accept quest').click();await until(()=>offer()?.textContent.includes('Your project chat changed'),'stale offer accepted');check(!QuestCore.find(QuestJournal.snapshot(),nextId),'stale task entered log');button('Not now').click();
+await cache('moving platform arena','plan');await QuestGuide.open(null,p.id,{fresh:true});check(offer().textContent.includes('moving platform'),'postponed task returned');
+const planId=offer().dataset.questOffer;button('Accept quest').click();await until(()=>QuestGuide.snapshot()?.session?.questId===planId&&H.activeId==='tool:projectchat','planned work opens chat');
+check(QuestGuide.snapshot().session.steps.every(s=>s.check==='manual'),'unbuilt plan requires a nonexistent scene edit');
+check(QuestCore.available(QuestJournal.snapshot(),firstId)&&QuestCore.available(QuestJournal.snapshot(),planId),'new quest locked unfinished original');
+await QuestGuide.open(planId);offer().querySelector('details').open=true;button('↗ Open source chat').click();await until(()=>!offer()&&ProjectWorkspace.current()?.id===p.id,'source chat routing');
+await QuestGuide.open(firstId);button('Continue quest').click();await until(()=>QuestGuide.snapshot()?.session?.questId===firstId,'return to prior quest');check(QuestGuide.snapshot().completed===1,'new quest lost prior guide steps');check(QuestCore.record(QuestJournal.snapshot(),firstId).startedAt,'original progress missing');await hub.questGuide({op:'stop'});await ProjectWorkspace.home();
+return{pass:true,newCharacter:true,newMechanic:true,cached:true,refusal:true,acceptedProgress:true,staleOfferBlocked:true,sourceChat:true,plannedWork:true};

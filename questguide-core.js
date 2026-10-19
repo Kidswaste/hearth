@@ -25,6 +25,7 @@
       let id = text(s.id, 80) || `step-${i + 1}`; if (ids.has(id)) id = `${id}-${i}`; ids.add(id);
       const action = s.action?.type === 'project' && ['scene','board','sound','chat','overview','moodboard'].includes(s.action.tab) ? {type:'project',tab:s.action.tab} : s.action?.type === 'hearth-tool' && tools.has(s.action.tool) ? { type: 'hearth-tool', tool: s.action.tool } : s.action?.type === 'outing' ? { type: 'outing', planId: text(s.action.planId, 120) } : null;
       if(action?.type==='project'&&action.tab==='scene'&&/^[\w-]{1,100}$/.test(s.action.sceneId||''))action.sceneId=s.action.sceneId;
+      if(action?.type==='project'&&action.tab==='chat'&&/^[\w-]{1,120}$/.test(s.action.chatId||''))action.chatId=s.action.chatId;
       return { id, title: text(s.title, 140) || `Step ${i + 1}`, instruction: text(s.instruction, 1500), check: checks.has(s.check) ? s.check : 'manual', app: s.app === 'fl' ? 'fl' : null, action, target:['scene','board','sound'].includes(s.target)?s.target:null, targetBpm: Math.max(20, Math.min(300, Number(s.targetBpm) || 120)) };
     });
   }
