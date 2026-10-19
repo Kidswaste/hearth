@@ -10,6 +10,19 @@ window.ProjectWorkspace = (() => {
   const chatOf = p => (H.chats || []).find(c => c.id === (p?.id===active && conversationId || p?.workspace?.chatId));
   const sceneOf = p => p?.id===active && conversationScene || p?.workspace?.sceneId;
   const current = () => get() || null;
+  const resumeKey='workspace.returnPoints';
+  const returnPoint=id=>store.get(resumeKey,{})?.[id]||{};
+  function remember(tab=loadState.lastSwitch?.tab) {
+    const p=get();if(!p||!tab)return;
+    const old=store.get(resumeKey,{}),point={...returnPoint(p.id),tab,chatId:chatOf(p)?.id,sceneId:sceneOf(p),at:Date.now()};
+    if(tab==='board'&&Lazy.loaded('creative'))point.feature=CreativePlayground.lastBoard();
+    old[p.id]=point;store.set(resumeKey,Object.fromEntries(Object.entries(old).sort((a,b)=>(b[1]?.at||0)-(a[1]?.at||0)).slice(0,100)));
+  }
+  document.addEventListener('hearth:creative-feature',()=>{if(get()&&surface==='creative'&&H.activeId==='tool:creative')remember(CreativePlayground.snapshot().feature==='vst'?'sound':'board');});
+  function switcher(anchor) {
+    const rect=anchor.getBoundingClientRect(),labels={overview:'Desk',chat:'Chat',scene:'Scene',board:'Creative board',sound:'Sound',moodboard:'Moodboard'};
+    showMenu(rect.left,rect.bottom+4,[...P.live().slice(0,12).map(p=>({label:`${p.ident.glyph} ${p.name}`,checked:p.id===active,hint:labels[returnPoint(p.id).tab]||'Desk',action:()=>open(p.id)})),'-',{label:'All projects',action:()=>home()},{label:'＋ New project',action:()=>wizard()}]);
+  }
   const base = path => String(path).split(/[\\/]/).pop();
   const agentFor = tool => surfaces.has(tool) && get() ? H.agent(chatOf(get())?.agentId) : null;
   const surfaceFor = id => { const c = chatOf(get()); return c && id === c.agentId && H.activeChat[id] === c.id ? 'tool:' + surface : null; };
@@ -74,6 +87,7 @@ window.ProjectWorkspace = (() => {
   }
   async function closeCurrent(ui) {
     const p=get();if(!p)return;
+    remember();
     ui?.update(0,'Saving scene and chat…');
     const c=chatOf(p);Native.view(c?.agentId)?.saveDraft?.flush();
     if(Lazy.loaded('lab'))await ThreeLab.workspace?.close();
@@ -82,11 +96,11 @@ window.ProjectWorkspace = (() => {
     if(Lazy.loaded('creative')){await WorkbenchUI.setProject(null);CreativePlayground.pause();}
     await P.flush();active=null;conversationId=null;conversationScene=null;surface='home';loadState={phase:'idle',closed:p.id};WorkspaceNav.sync();
   }
-  function open(id, tab='overview', options={}) {
+  function open(id, tab=null, options={}) {
     opening?.abort();const controller=new AbortController();opening=controller;const ticket=++route;
     return serial(async()=>{
       await P.ready();if(controller.signal.aborted)return;const p=P.get(id);if(!p)throw Error('Project not found.');
-      if(get()===p&&loadState.phase==='ready'){opening=null;await go(tab,ticket);return p;}
+      if(get()===p&&loadState.phase==='ready'){opening=null;if(tab)await go(tab,ticket);return p;}
       const ui=loading(p),started=performance.now(),timings={};
       const stage=(n,text)=>{ui.update(n,text);loadState={phase:'opening',project:id,stage:text,timings};};
       try{
@@ -95,20 +109,22 @@ window.ProjectWorkspace = (() => {
         await ensure(p);cancelled(controller.signal);
         await Promise.all([Lazy.load('lab'),Lazy.load('board'),Lazy.load('creative')]);
         await ThreeLab.cmd({show:false});cancelled(controller.signal);
-        active=id;const c=chatOf(p);await Native.load(c.id);Native.selectChat(c.agentId,c.id);P.touch(p);
+        active=id;const point=C.resume(p,{...returnPoint(id),...options,...(tab?{tab}:{})},H.chats,ThreeLab.scenes.all());
+        conversationId=point.chatId;conversationScene=point.sceneId;tab=point.tab;
+        const c=chatOf(p);await Native.load(c.id);Native.selectChat(c.agentId,c.id);P.touch(p);
         await WorkbenchUI.setProject(p.id,{title:p.name,plugins:C.workspace(p.workspace).plugins});
         timings.filesMs=Math.round(performance.now()-started);cancelled(controller.signal);
         stage(1,'Building your scene…');surface='three';activate('tool:three');Tools.openDock('three');
         await Native.refresh(c.agentId,{keepScroll:true});
-        if(options.preview!==false)await ThreeLab.workspace.prepare(p.workspace.sceneId,{signal:controller.signal,progress:text=>stage(1,text)});
-        else if(!ThreeLab.scenes.open(p.workspace.sceneId))throw Error('This scene is not available yet.');
+        if(options.preview!==false)await ThreeLab.workspace.prepare(sceneOf(p),{signal:controller.signal,progress:text=>stage(1,text)});
+        else if(!ThreeLab.scenes.open(sceneOf(p)))throw Error('This scene is not available yet.');
         timings.sceneMs=Math.round(performance.now()-started)-timings.filesMs;cancelled(controller.signal);
         stage(2,'Preparing the creative board…');
         await Board.ready();if(!await Board.load(p.workspace.boardId))throw Error('The moodboard is not available on this computer yet.');
         stage(3,'Restoring your instrument…');
         const soundAt=performance.now();const warning=await WorkbenchUI.preloadSound({signal:controller.signal});timings.soundMs=Math.round(performance.now()-soundAt);cancelled(controller.signal);
         await go(tab,ticket);cancelled(controller.signal);
-        timings.totalMs=Math.round(performance.now()-started);loadState={phase:'ready',project:id,timings};stage(4,'Ready to make something.');loadState={phase:'ready',project:id,timings};
+        timings.totalMs=Math.round(performance.now()-started);const lastSwitch=loadState.lastSwitch;stage(4,'Ready to make something.');loadState={phase:'ready',project:id,timings,lastSwitch};
         ui.close();if(warning)toast(warning,{timeout:7000});return p;
       }catch(err){
         if(err.name==='AbortError'||controller.signal.aborted){ui.close();return;}
@@ -128,23 +144,28 @@ window.ProjectWorkspace = (() => {
     if(target==='home')ProjectsHome.show(p.id);
     if(target==='three' && !ThreeLab.scenes.open(sceneOf(p)))throw Error('This scene has not arrived on this computer yet.');
     if(target==='board' && !await Board.open(p.workspace.boardId))throw Error('This moodboard has not arrived on this computer yet.');
-    if(target==='creative')await WorkspaceNav.creative(tab==='sound'?'vst':CreativePlayground.lastBoard());
+    if(ticket!==route || get()!==p)return;
+    if(target==='creative')await WorkspaceNav.creative(tab==='sound'?'vst':returnPoint(p.id).feature||'studio');
     else activate('tool:'+target);
+    if(ticket!==route || get()!==p)return;
     Tools.openDock(target);
     WorkspaceNav.sync();
     loadState.lastSwitch={tab,ms:Math.round((performance.now()-started)*10)/10};
+    remember(tab);
   }
-  async function openScene(id) {
-    const p=get();if(!p||!(p.workspace?.sceneId===id||p.items.some(x=>x.type==='scene'&&x.ref===id)))throw Error('This quest’s scene is no longer linked to the project. Its progress is kept.');
+  async function openScene(id,p=get()) {
+    if(!p||!(p.workspace?.sceneId===id||p.items.some(x=>x.type==='scene'&&x.ref===id)))throw Error('This scene is no longer linked to the project. Its saved work is kept.');
+    await Lazy.load('lab');await ThreeLab.cmd({show:false});
     if(!ThreeLab.scenes.get(id))throw Error('This quest’s scene has not arrived on this computer yet.');
     const linked=p.items.find(x=>x.type==='chat'&&ChatScenes.linkOf(x.ref)===id&&H.chats.some(c=>c.id===x.ref));
+    if(get()!==p)return open(p.id,'scene',{sceneId:id,chatId:linked?.ref||p.workspace.chatId});
     if(linked&&chatOf(p)?.id!==linked.ref)await conversation(p,linked.ref);
     conversationScene=id;await go('scene');
   }
   async function conversation(p,id) {
     if(!p.items.some(x=>x.type==='chat'&&x.ref===id))throw Error('This chat does not belong to the project.');
     const c=H.chats.find(c=>c.id===id);if(!c||H.agent(c.agentId)?.mode!=='native')throw Error('This chat’s AI is not available here.');
-    if(get()!==p)await open(p.id,'chat');
+    if(get()!==p){const linked=ChatScenes.linkOf(id);await open(p.id,'chat',{chatId:id,sceneId:linked||p.workspace.sceneId});}
     Native.view(chatOf(p)?.agentId)?.saveDraft?.flush();await Native.load(id);
     conversationId=id;const linked=ChatScenes.linkOf(id);conversationScene=p.items.some(x=>x.type==='scene'&&x.ref===linked)?linked:null;
     await go('chat');await Native.refresh(c.agentId,{keepScroll:true});
@@ -233,5 +254,5 @@ window.ProjectWorkspace = (() => {
   document.addEventListener('hearth:activate',e=>{const sid=e.detail.surfaceId;if(!get())return;if(!surfaces.has(String(sid).replace('tool:',''))){leave().catch(err=>toast(calmError(err),{type:'error'}));return;}surface=sid.slice(5);});
   Native.hooks.options.push((_a,chat,_text,_message,options)=>{if(P.projectOfChat(chat.id)?.workspace && !options.lean)options.asDirector='three';});
   Native.hooks.compose.push((_a,chat,text)=>{const p=P.projectOfChat(chat.id);if(!p?.workspace)return text;return `[Hearth project: ${JSON.stringify({name:p.name,scene:p.id===active?sceneOf(p):ChatScenes.linkOf(chat.id)||p.workspace.sceneId,moodboard:p.workspace.boardId,plugins:p.workspace.plugins})}. Work on this project's linked scene/board. Sound controls require its Sound desk open.]\n${text}`;});
-  return { current,currentChat:()=>chatOf(get()) || null,agentFor,surfaceFor,open,go,openScene,conversation,home,leave,create,wizard,ensure,describe,frontpage,importScenes,designBanner,toolbar,settings,svg,state:()=>structuredClone(loadState) };
+  return { current,currentChat:()=>chatOf(get()) || null,currentScene:()=>sceneOf(get()) || null,switcher,agentFor,surfaceFor,open,go,openScene,conversation,home,leave,create,wizard,ensure,describe,frontpage,importScenes,designBanner,toolbar,settings,svg,state:()=>structuredClone(loadState) };
 })();

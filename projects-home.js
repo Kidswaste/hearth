@@ -11,6 +11,19 @@ const ProjectsHome = (() => {
   const C = ProjectsCore;
   const CHUNK = 24;
   const S = { mounted: false, root: null, body: null, open: null, stale: true, search: null, io: null };
+  const desks=new Map();let drawn=null;
+  function keepDesk() {
+    if(!drawn||!S.body?.querySelector('.pj-p-head'))return;
+    const state=desks.get(drawn)||{};
+    state.open=[...S.body.querySelectorAll('details[open]')].map(e=>e.className);
+    state.moduleQuery=S.body.querySelector('.pw-module-search')?.value||'';
+    state.fileQuery=S.body.querySelector('.pw-file-search')?.value||'';
+    state.fileType=S.body.querySelector('.pw-file-kind')?.value||'';
+    state.scroll=S.root.scrollTop;
+    const focus=document.activeElement;
+    state.focus=focus&&S.body.contains(focus)&&focus.matches('input,textarea,select')?{className:focus.className,start:focus.selectionStart,end:focus.selectionEnd}:null;
+    desks.delete(drawn);desks.set(drawn,state);if(desks.size>100)desks.delete(desks.keys().next().value);
+  }
   // Inactive surfaces use visibility:hidden, so offsetParent still exists. Do not scan
   // project assets or rebuild cards behind Chat/Life (nor force layout to find out).
   const visible = () => S.mounted && S.root?.isConnected && !document.hidden && H.surfaceIdFor(H.activeId) === 'tool:home';
@@ -32,9 +45,9 @@ const ProjectsHome = (() => {
     S.search = ProjectsSearch.view({ input, list: results, chips, empty: '' });
     input.addEventListener('input', () => { const on = Boolean(input.value.trim()); S.root.querySelector('.pj-home-find').hidden = !on; S.body.hidden = on; });
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input')); } });
-    P.onChange(() => { S.stale = true; if (visible()) paintSoon(); });
+    P.onChange(e => { if(e.why==='notes'&&e.id===drawn&&S.body.querySelector('.pj-notes')?.value===e.project.notes)return;S.stale = true; if (visible()) paintSoon(); });
     addEventListener('hearth:view', () => { if (visible() && S.stale) paintSoon(); });
-    document.addEventListener('hearth:activate', () => { if (!visible()) { ProjectFrontpage.stop(); clearTimeout(paintT); ++paintVersion; S.stale = true; S.io?.disconnect(); } else if (S.stale) paintSoon(); });
+    document.addEventListener('hearth:activate', () => { if (!visible()) { keepDesk();ProjectFrontpage.stop(); clearTimeout(paintT); ++paintVersion; S.stale = true; S.io?.disconnect(); } else if (S.stale) paintSoon(); });
     document.addEventListener('visibilitychange', () => { if (visible() && S.stale) paintSoon(); });
     paint();
   }
@@ -48,12 +61,14 @@ const ProjectsHome = (() => {
     await P.lookFor();
     if (version !== paintVersion) return;
     if (!visible()) { S.stale = true; return; }
+    keepDesk();
     if (S.open && P.get(S.open)) paintProject(P.get(S.open)); else { S.open = null; paintHome(); }
   }
 
   // ---------- the cards ----------
   let homeN = 0;
   function paintHome() {
+    drawn=null;
     S.root.classList.remove('is-project');
     S.root.closest('.surface')?.classList.remove('pw-desk');
     const n = ++homeN;
@@ -86,7 +101,7 @@ const ProjectsHome = (() => {
     const pic = el('div', { class: 'pj-cover' }, cover ? el('img', { src: cover, alt: '', loading: 'lazy', decoding: 'async' }) : el('span', { class: 'pj-cover-mark', text: p.ident.glyph }));
     ProjectFrontpage.decorate(pic,p);
     const cont = el('div', { class: 'pj-continue' }, ...continueChips(p));
-    const c = el('div', { class: `pj-card pj-st-${p.status}`, tabIndex: 0, title: `${p.name}${p.notes ? `\n${C.cap(p.notes, 200)}` : ''}\nClick: its page · right-click: more`, dataset: { project: p.id } },
+    const c = el('div', { class: `pj-card pj-st-${p.status}`, tabIndex: 0, title: `${p.name}${p.notes ? `\n${C.cap(p.notes, 200)}` : ''}\nClick: resume this project · right-click: more`, dataset: { project: p.id } },
       pic,
       el('div', { class: 'pj-card-head' }, el('span', { class: 'pj-mark', text: p.ident.glyph }), el('b', { class: 'pj-name', text: p.name }), p.status !== 'active' ? el('span', { class: 'pj-pill', text: C.STATUS[p.status] }) : null),
       el('p', { class: 'pj-card-description', text: p.workspace?.description || C.cap(p.notes || 'Open your project workspace', 110) }),
@@ -104,7 +119,7 @@ const ProjectsHome = (() => {
     for (const [types, word] of [['chat', 'chat'], [['scene', 'seq'], 'scene'], [['render', 'capture'], 'render']]) {
       const x = P.lastOf(p, types);
       if (!x) continue;
-      out.push(el('button', { type: 'button', class: 'pj-go', title: `Continue: ${P.nameOf(x)}`, on: { click: (e) => { e.stopPropagation(); P.touch(p); if(x.type==='chat')ProjectWorkspace.conversation(p,x.ref).catch(err=>toast(calmError(err),{type:'error'}));else if(x.type==='scene')ProjectWorkspace.open(p.id,'scene').catch(err=>toast(calmError(err),{type:'error'}));else P.openItem(x); } } },
+      out.push(el('button', { type: 'button', class: 'pj-go', title: `Continue: ${P.nameOf(x)}`, on: { click: (e) => { e.stopPropagation(); P.touch(p); if(x.type==='chat')ProjectWorkspace.conversation(p,x.ref).catch(err=>toast(calmError(err),{type:'error'}));else if(x.type==='scene')ProjectWorkspace.openScene(x.ref,p).catch(err=>toast(calmError(err),{type:'error'}));else P.openItem(x); } } },
         el('span', { class: 'pj-go-icon', text: C.TYPES[x.type].icon }), el('span', { class: 'pj-go-name', text: C.cap(P.nameOf(x).replace(`${p.name} · `, ''), 28) }), el('span', { class: 'pj-go-word', text: word })));
     }
     return out;
@@ -145,6 +160,7 @@ const ProjectsHome = (() => {
   // ---------- a project's page ----------
   const ORDER = ['chat', 'scene', 'seq', 'board', 'render', 'capture', 'file', 'download', 'deploy'];
   function paintProject(p) {
+    drawn=p.id;const state=desks.get(p.id)||{};
     S.root.classList.add('is-project');
     S.root.closest('.surface')?.classList.add('pw-desk');
     S.io?.disconnect(); ProjectFrontpage.stop();
@@ -154,8 +170,9 @@ const ProjectsHome = (() => {
     const status = el('select', { class: 'pj-p-status', title: 'Status' }, ...Object.entries(C.STATUS).map(([k, l]) => el('option', { value: k, text: l, selected: p.status === k })));
     status.addEventListener('change', () => P.setStatus(p, status.value));
     const notes = el('textarea', { class: 'pj-notes', rows: 3, placeholder: 'Notes (synced with your other computer)', value: p.notes || '' });
-    const saveNotes = debounce(() => P.setNotes(p, notes.value), 600);
-    notes.addEventListener('input', saveNotes);
+    // The Projects store already debounces disk writes. Keep the model current now,
+    // so a repaint or immediate project close cannot replace an unsaved note.
+    notes.addEventListener('input',()=>P.setNotes(P.get(p.id)||p,notes.value));
     const head = el('div', { class: 'pj-p-head' },
       el('div', { class: 'pj-p-cover' }, cover ? el('img', { src: cover, alt: '', decoding: 'async' }) : el('span', { class: 'pj-cover-mark', text: p.ident.glyph })),
       el('div', { class: 'pj-p-titles' },
@@ -171,26 +188,42 @@ const ProjectsHome = (() => {
     ProjectFrontpage.decorate(head.querySelector('.pj-p-cover'),p);
     const identity=el('button',{type:'button',class:'pw-banner-edit',text:'✦',title:'Edit the project logo',on:{click:()=>ProjectFrontpage.edit(p)}});
     head.querySelector('.pj-p-cover').append(identity);
-    const sections = [];
-    for (const t of ORDER) {
-      const xs = p.items.filter((x) => x.type === t).sort((a, b) => (P.timeOf(b) || b.at) - (P.timeOf(a) || a.at));
-      if (!xs.length) continue;
-      sections.push(el('section', { class: 'pj-sec' }, el('h4', { text: `${C.TYPES[t].icon} ${C.TYPES[t].label}${xs.length > 1 ? `s · ${xs.length}` : ''}` }),
-        el('div', { class: `pj-items pj-items-${t}` }, ...xs.map((x) => itemRow(p, x)))));
-    }
-    if (!sections.length) sections.push(el('p', { class: 'hint pj-none', text: 'Nothing in it yet: ＋ Add puts the chat you were in, the scene on screen or anything recent in it.' }));
     const row=(label,kind,fn,hint)=>el('button',{type:'button',class:'pw-shelf-row',title:hint||label,on:{click:()=>Promise.resolve(fn()).catch(err=>toast(calmError(err),{type:'error'}))}},ProjectWorkspace.svg(kind),el('span',{text:label}),el('span',{class:'pw-shelf-arrow',text:'↗'}));
     const block=(label,...kids)=>el('section',{class:'pw-shelf-section'},el('h3',{text:label}),...kids);
-    const source=ThreeLab.scenes?.get(p.workspace?.sceneId),layers=source?.layers||[];
+    const source=ThreeLab.scenes?.get(ProjectWorkspace.currentScene()||p.workspace?.sceneId),layers=source?.layers||[];
     const filter=el('input',{type:'search',class:'pw-module-search',placeholder:'Find a module…',attrs:{'aria-label':'Find scene module'}}),moduleList=el('div',{class:'pw-module-list'});
-    const paintModules=()=>{const q=filter.value.toLowerCase(),hits=layers.filter(l=>l.name.toLowerCase().includes(q));moduleList.replaceChildren(...hits.map(l=>row(l.name,'scene',async()=>{await ProjectWorkspace.go('scene');ThreeLab.search.selectLayer(l.id);},`${l.visible===false?'Off':'Active'} · Open this module’s controls`)));};
+    filter.value=state.moduleQuery||'';
+    const paintModules=()=>{const q=filter.value.toLowerCase(),hits=layers.filter(l=>String(l.name||'').toLowerCase().includes(q));moduleList.replaceChildren(...hits.map(l=>row(l.name,'scene',async()=>{await ProjectWorkspace.go('scene');ThreeLab.search.selectLayer(l.id);},`${l.visible===false?'Off':'Active'} · Open this module’s controls`)),...(!hits.length?[el('p',{class:'hint',text:'No matching modules.'})]:[]));};
     const modules=el('details',{class:'pw-modules'},el('summary',{text:`Modules & mods · ${layers.length}`}),filter,moduleList);modules.addEventListener('toggle',()=>{if(modules.open&&!moduleList.children.length)paintModules();});filter.oninput=paintModules;
     const chats=p.items.filter(x=>x.type==='chat'),boards=p.items.filter(x=>x.type==='board');
     const materials=block('On your desk',...boards.map(x=>row(P.nameOf(x),'board',()=>x.ref===p.workspace?.boardId?ProjectWorkspace.go('moodboard'):P.openItem(x))),row('Drawing & storyboard','brushes',()=>ProjectWorkspace.go('board')), ...p.items.filter(x=>['capture','render','file'].includes(x.type)).slice(-4).map(x=>itemRow(p,x)));
     const sound=block('Instruments',...(p.workspace?.plugins||[]).map(name=>row(name,'music',()=>ProjectWorkspace.go('sound'))),row('Choose instruments','plus',()=>ProjectWorkspace.settings(p)));
     const about=el('details',{class:'pw-about'},el('summary',{text:'Project notes & setup'}),notes,p.workspace?.description?el('p',{class:'pw-about-copy',text:p.workspace.description}):null,row('Project setup','spark',()=>ProjectWorkspace.settings(p)),row('Write description with AI','chat',()=>ProjectWorkspace.describe(p)));
     const conversations=chats.length>1?block('Conversations',...chats.map(x=>row(P.nameOf(x),'chat',()=>ProjectWorkspace.conversation(p,x.ref)))):null;
-    S.body.replaceChildren(head,...(window.QuestGuide?.projectCard?[QuestGuide.projectCard(p)]:[]),materials,modules,sound,...(conversations?[conversations]:[]),about,el('details',{class:'pw-project-files'},el('summary',{text:`All project files · ${p.items.length}`}),...sections));
+    const files=filesShelf(p,state);
+    S.body.replaceChildren(head,...(window.QuestGuide?.projectCard?[QuestGuide.projectCard(p)]:[]),materials,modules,sound,...(conversations?[conversations]:[]),about,files);
+    for(const d of S.body.querySelectorAll('details'))d.open=(state.open||[]).includes(d.className);
+    if(modules.open)paintModules();
+    S.root.scrollTop=state.scroll||0;
+    if(state.focus){const field=[...S.body.querySelectorAll('input,textarea,select')].find(e=>e.className===state.focus.className);field?.focus({preventScroll:true});if(field?.setSelectionRange&&state.focus.start!=null)try{field.setSelectionRange(state.focus.start,state.focus.end);}catch{}}
+  }
+  function filesShelf(p,state) {
+    const query=el('input',{type:'search',class:'pw-file-search',placeholder:'Find in this project…',value:state.fileQuery||'',attrs:{'aria-label':'Find project files'}});
+    const kind=el('select',{class:'pw-file-kind',attrs:{'aria-label':'Project file type'}},el('option',{value:'',text:'All types'}),...ORDER.filter(t=>p.items.some(x=>x.type===t)).map(t=>el('option',{value:t,text:C.TYPES[t].label})));kind.value=state.fileType||'';
+    const results=el('div',{class:'pw-file-results'}),count=el('span',{class:'hint',attrs:{role:'status'}}),more=el('button',{type:'button',class:'ghost small',text:'Show more'});
+    const d=el('details',{class:'pw-project-files'},el('summary',{text:`Project files · ${p.items.length}`}),el('div',{class:'pw-file-filters'},query,kind),results,el('div',{class:'pw-file-footer'},count,more));
+    let limit=state.fileLimit||60,painted=false;
+    const paint=()=>{
+      if(!d.open)return;
+      painted=true;
+      const q=query.value.trim().toLowerCase(),hits=p.items.filter(x=>(!kind.value||x.type===kind.value)&&(!q||P.nameOf(x).toLowerCase().includes(q)||String(x.ref).toLowerCase().includes(q))).sort((a,b)=>(P.timeOf(b)||b.at)-(P.timeOf(a)||a.at)),shown=hits.slice(0,limit);
+      results.replaceChildren(...ORDER.flatMap(t=>{const xs=shown.filter(x=>x.type===t);return xs.length?[el('section',{class:'pj-sec'},el('h4',{text:C.TYPES[t].icon+' '+C.TYPES[t].label}),el('div',{class:'pj-items'},...xs.map(x=>itemRow(p,x))))]:[];}),...(!hits.length?[el('p',{class:'hint',text:q||kind.value?'No matching files.':'Add a scene, chat, or file to see it here.'})]:[]));
+      count.textContent=`${shown.length} of ${hits.length}`;more.hidden=shown.length>=hits.length;
+      const saved=desks.get(p.id)||state;saved.fileLimit=limit;desks.set(p.id,saved);
+    };
+    query.oninput=kind.onchange=()=>{limit=60;paint();};more.onclick=()=>{limit+=60;paint();};d.addEventListener('toggle',()=>{if(d.open&&!painted)paint();});
+    if((state.open||[]).includes('pw-project-files')){d.open=true;paint();}
+    return d;
   }
   function itemRow(p, x) {
     const pic = ['scene', 'seq', 'render', 'capture', 'board'].includes(x.type) ? P.thumbOf(x) : null;
@@ -206,11 +239,12 @@ const ProjectsHome = (() => {
 
   // show(id): a project's page (null: the cards)
   function show(id = null) {
+    keepDesk();
     if(id && P.get(id) && ProjectWorkspace.current()?.id!==id){ProjectWorkspace.open(id).catch(err=>toast(calmError(err),{type:'error'}));return;}
     if(!id && ProjectWorkspace.current()){ProjectWorkspace.home().catch(err=>toast(calmError(err),{type:'error'}));return;}
     S.open = id && P.get(id) ? id : null;
     if (S.open) P.touch(P.get(S.open));
-    if (S.mounted) { S.root.scrollTop = 0; paint(); }
+    if (S.mounted) { if(!S.open)S.root.scrollTop=0;paint(); }
   }
 
   Tools.define({

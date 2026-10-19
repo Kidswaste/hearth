@@ -318,6 +318,8 @@ const Projects = (() => {
     return true;
   }
   async function openScene(id, { seq = false } = {}) {
+    const current=ProjectWorkspace.current(),p=current?.items.some(x=>x.type==='scene'&&x.ref===id)?current:ofItem('scene',id).find(p=>p.workspace);
+    if(p&&!seq){await ProjectWorkspace.openScene(id,p);return true;}
     const owner = (() => { try { return ChatScenes.ownerOf(id); } catch { return null; } })();
     if (owner && summary(owner) && !seq) return openChat(owner);
     if (window.Lazy) await window.Lazy.load('lab');
