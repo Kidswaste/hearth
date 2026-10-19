@@ -5,6 +5,15 @@
   function project(lat,lon,z){const n=256*2**z,r=clamp(lat,-85,85)*Math.PI/180;return [(lon+180)/360*n,(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n];}
   function unproject(x,y,z){const n=256*2**z;return [180/Math.PI*Math.atan(Math.sinh(Math.PI*(1-2*y/n))),x/n*360-180];}
   let view={lat:48.862,lon:2.35,z:12,enabled:true};
+  const viewKey='hearth.paris.viewport';
+  try { const saved=JSON.parse(localStorage.getItem(viewKey)); if(saved && Number.isFinite(saved.lat) && Number.isFinite(saved.lon) && Number.isFinite(saved.z))view={lat:clamp(saved.lat,48.7,49),lon:clamp(saved.lon,2.15,2.6),z:clamp(Math.round(saved.z),11,17),enabled:true}; } catch {}
+  function fitBounds(points,width,height) {
+    let left=Infinity,top=Infinity,right=-Infinity,bottom=-Infinity;
+    for(const p of points){if(!Number.isFinite(p.lat)||!Number.isFinite(p.lon))continue;const [x,y]=project(p.lat,p.lon,0);left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}
+    if(!Number.isFinite(left)||width<=0||height<=0)return null;
+    const z=clamp(Math.floor(Math.log2(Math.min(Math.max(1,width-96)/Math.max(right-left,.000001),Math.max(1,height-96)/Math.max(bottom-top,.000001)))),11,16);
+    const [lat,lon]=unproject((left+right)/2,(top+bottom)/2,0);return {lat,lon,z};
+  }
   let fitted=null; // (round 63, questwalk63) the last line framed by `fit`, so a re-render never undoes the owner's own pan / zoom
   // Original Forgeheart field-kit glyphs. User content never enters SVG markup.
   function icon(kind) {
@@ -52,7 +61,8 @@
     svg.append(p);return svg;
   }
   function mount(host,{places=[],selected,onSelect=()=>{},onAdd=()=>{},lines=[]}={}) { // lines: (round 63, questwalk63) [{ id, color, fit, points: [{ id?, lat, lon, label? }] }] drawn over the pins; `fit` frames a new line once; pins not on it fade
-    let {lat,lon,z,enabled}=view,drag=null,disposed=false,frame=0,lastWheelZoom=0;
+    let {lat,lon,z,enabled}=view,drag=null,disposed=false,frame=0,lastWheelZoom=0,saveTimer=0,pinViewport=null,pinTransform='',savedView='';
+    const saveView=()=>{clearTimeout(saveTimer);view={lat,lon,z,enabled};try{localStorage.setItem(viewKey,JSON.stringify(view));}catch{}};
     // (round 65, questperf65) the host's size, kept from the ResizeObserver (read when layout is already clean), so a draw
     // from a click / a re-render never forces the whole page's layout; pinNodes: the drawn pins by id, reused while unchanged
     let W=0,Ht=0,routeNode=null,routeKey='',routeLeft=0,routeTop=0;const pinNodes=new Map(),tileNodes=new Map();const size=()=>{if(!W||!Ht){W=host.clientWidth;Ht=host.clientHeight;}return [W,Ht];};const events=new AbortController(),listen=(type,fn,options={})=>host.addEventListener(type,fn,{...options,signal:events.signal});
@@ -64,6 +74,7 @@
     const load=action('Retry street map',()=>{enabled=true;tiles.replaceChildren();tileNodes.clear();load.hidden=true;hint.textContent='Drag to explore · double-click to add a place';draw();});load.hidden=true;
     action('+',()=>zoom(1)).setAttribute('aria-label','Zoom in');action('−',()=>zoom(-1)).setAttribute('aria-label','Zoom out');action('Paris',()=>{lat=48.862;lon=2.35;z=12;draw();});
     const locate=action('',()=>{const p=places.find(p=>p.id===selected);if(p){lat=p.lat;lon=p.lon;draw();}});locate.append(icon('target'));locate.title='Center on selected place';locate.setAttribute('aria-label',locate.title);
+    const framePlaces=action('',()=>fitPlaces());framePlaces.append(icon('small'));framePlaces.title='Fit shown places';framePlaces.setAttribute('aria-label',framePlaces.title);
     if(enabled)hint.textContent='Scroll or drag to move · Ctrl + scroll to zoom';
     host.append(tiles,pins,controls,credit,hint);
     // (round 63, questwalk63) polylines in one SVG in the pins layer (it pans with the pins); labels are text nodes, never markup
@@ -94,7 +105,10 @@
       const la=pts.map(p=>p.lat),lo=pts.map(p=>p.lon);lat=(Math.min(...la)+Math.max(...la))/2;lon=(Math.min(...lo)+Math.max(...lo))/2;
       for(z=16;z>12;z--){const xy=pts.map(p=>project(p.lat,p.lon,z)),xs=xy.map(p=>p[0]),ys=xy.map(p=>p[1]);if(Math.max(...xs)-Math.min(...xs)<=w-120&&Math.max(...ys)-Math.min(...ys)<=h-120)break;}}
     function zoom(delta){z=clamp(z+delta,11,17);draw();}
-    function draw(){if(disposed)return;fit();if(host.dataset.zoom!==String(z))host.dataset.zoom=z;/* (round 64, mapfirst64) the zoom, for CSS (guide pins become dots at the city zoom) */lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);const [w,h]=size();if(!w||!h)return;const [cx,cy]=project(lat,lon,z),left=cx-w/2,top=cy-h/2,keep=new Set();
+    function fitPlaces(points=places){const bounds=fitBounds(points,...size());if(!bounds)return;({lat,lon,z}=bounds);draw();}
+    function draw(){if(disposed||drag)return;fit();if(host.dataset.zoom!==String(z))host.dataset.zoom=z;/* (round 64, mapfirst64) the zoom, for CSS (guide pins become dots at the city zoom) */lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);const [w,h]=size();if(!w||!h)return;const [cx,cy]=project(lat,lon,z),left=cx-w/2,top=cy-h/2,keep=new Set();
+      const nextView=[lat,lon,z,enabled].join();if(nextView!==savedView){savedView=nextView;clearTimeout(saveTimer);saveTimer=setTimeout(saveView,500);}
+      framePlaces.disabled=!places.length;
       if(enabled)for(let x=Math.floor(left/256);x<=Math.floor((left+w-1)/256);x++)for(let y=Math.floor(top/256);y<=Math.floor((top+h-1)/256);y++){
         const key=`${z}/${x}/${y}`;keep.add(key);let img=tileNodes.get(key);if(!img){img=make('img');img.alt='';img.draggable=false;img.dataset.tile=key;img.src=`https://tile.openstreetmap.org/${key}.png`;img.addEventListener('error',()=>{img.style.visibility='hidden';hint.textContent='Map unavailable · pins saved';hint.title='The street map is offline or blocked. Retry once; if it still fails, check for a Hearth update.';load.hidden=false;});tiles.append(img);tileNodes.set(key,img);}const position=`translate(${x*256-left}px,${y*256-top}px)`;if(img.style.transform!==position)img.style.transform=position;
       }
@@ -102,7 +116,12 @@
       // (round 65, questperf65) pins are diffed, not rebuilt: a pin whose look is unchanged keeps its button (only its position
       // moves); new / changed ones are made; the rest leave. A click, a re-render or a pan touches only what changed.
       const want=[],look=p=>[!!p.visitedAt,p.tone||'',p.name,p.count||0,p.color||'',p.kind||'',p.logo||'',!!p.favorite].join('\u0001');
-      const visible=projectedPlaces(left,top,w,h);if(!visible)return;
+      const visible=projectedPlaces(left,top,w,h);
+      // Keep existing pins geographically aligned while the worker computes this viewport.
+      const scale=pinViewport?2**(z-pinViewport.z):1;
+      pinTransform=!visible&&pinViewport?`translate(${pinViewport.left*scale-left}px,${pinViewport.top*scale-top}px) scale(${scale})`:'';
+      pins.style.transformOrigin='0 0';pins.style.transform=pinTransform;if(!visible)return;
+      pinViewport={left,top,z};
       for(const [i,x,y] of visible){const p=places[i],px=x-left,py=y-top;
         const sig=look(p);let b=pinNodes.get(p.id);
         if(!b||b.__look!==sig){b=make('button',`qj-atlas-pin${p.visitedAt?' visited':''}${/^[\w-]+$/.test(p.tone||'')?' '+p.tone:''}`);/* (round 64, mapfirst64) tone: an extra class (the guide's untouched places are drawn lighter) */b.type='button';b.dataset.place=p.id;b.title=p.name+(p.count?' · '+p.count+' upcoming nights':'');b.style.setProperty('--pin',p.color||'#f279b3');b.setAttribute('aria-label',`${p.name}${p.visitedAt?' — visited (self-reported)':''}`);const symbol=make('span');if(p.logo){const logo=make('img','qj-atlas-logo');logo.alt='';logo.draggable=false;logo.decoding='async';logo.src=p.logo;logo.addEventListener('error',()=>logo.replaceWith(icon(p.kind)),{once:true});symbol.append(logo);b.classList.add('has-logo');}else symbol.append(icon(p.kind));/* (round 61, showsync61) a pin may carry a local logo picture (venues from Shotgun / DICE) */b.append(symbol,make('strong','',p.name));if(p.favorite)b.append(make('i','qj-pin-star','★'));b.addEventListener('click',e=>{e.stopPropagation();onSelect(b.dataset.place);});b.__look=sig;}
@@ -119,8 +138,8 @@
     }
     listen('keydown',e=>{if(e.target!==host)return;const delta={ArrowLeft:[-120,0],ArrowRight:[120,0],ArrowUp:[0,-120],ArrowDown:[0,120]}[e.key];if(delta){e.preventDefault();const c=project(lat,lon,z);[lat,lon]=unproject(c[0]+delta[0],c[1]+delta[1],z);draw();}else if(['+','=','-'].includes(e.key)){e.preventDefault();zoom(e.key==='-'?-1:1);}});
     listen('pointerdown',e=>{if(e.target.closest('button,a'))return;drag={x:e.clientX,y:e.clientY,center:project(lat,lon,z)};host.setPointerCapture(e.pointerId);});
-    listen('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;tiles.style.transform=pins.style.transform=`translate(${dx}px,${dy}px)`;});
-    const end=e=>{if(!drag)return;[lat,lon]=unproject(drag.center[0]-e.clientX+drag.x,drag.center[1]-e.clientY+drag.y,z);lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);drag=null;tiles.style.transform=pins.style.transform='';draw();};listen('pointerup',end);const cancel=()=>{drag=null;tiles.style.transform=pins.style.transform='';};listen('pointercancel',cancel);listen('lostpointercapture',cancel);
+    listen('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;tiles.style.transform=`translate(${dx}px,${dy}px)`;pins.style.transform=`translate(${dx}px,${dy}px) ${pinTransform}`;});
+    const end=e=>{if(!drag)return;[lat,lon]=unproject(drag.center[0]-e.clientX+drag.x,drag.center[1]-e.clientY+drag.y,z);lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);drag=null;tiles.style.transform='';draw();};listen('pointerup',end);const cancel=()=>{if(!drag)return;drag=null;tiles.style.transform='';pins.style.transform=pinTransform;scheduleDraw();};listen('pointercancel',cancel);listen('lostpointercapture',cancel);
     listen('dblclick',e=>{if(e.target.closest('button,a'))return;const r=host.getBoundingClientRect(),c=project(lat,lon,z),point=unproject(c[0]+e.clientX-r.left-r.width/2,c[1]+e.clientY-r.top-r.height/2,z);onAdd({lat:+point[0].toFixed(6),lon:+point[1].toFixed(6)});});
     function scheduleDraw(){if(!frame)frame=requestAnimationFrame(()=>{frame=0;draw();});}
     listen('wheel',e=>{
@@ -134,9 +153,9 @@
       lat=clamp(lat,48.7,49);lon=clamp(lon,2.15,2.6);scheduleDraw();
     },{passive:false});
     const observer=new ResizeObserver(entries=>{const r=entries[0].contentRect;if(W===r.width&&Ht===r.height)return;W=r.width;Ht=r.height;scheduleDraw();});observer.observe(host);draw();
-    return {destroy(){view={lat,lon,z,enabled};disposed=true;spatialWorker?.terminate();events.abort();observer.disconnect();cancelAnimationFrame(frame);},focus(p){if(!p)return;lat=p.lat;lon=p.lon;draw();},select(id){selected=id;for(const b of pins.querySelectorAll('[data-place]')){b.classList.toggle('selected',b.dataset.place===id);b.setAttribute('aria-pressed',String(b.dataset.place===id));}},center(){return {lat,lon};},
+    return {destroy(){saveView();disposed=true;spatialWorker?.terminate();events.abort();observer.disconnect();cancelAnimationFrame(frame);},fit:fitPlaces,focus(p){if(!p)return;lat=p.lat;lon=p.lon;draw();},select(id){selected=id;for(const b of pins.querySelectorAll('[data-place]')){b.classList.toggle('selected',b.dataset.place===id);b.setAttribute('aria-pressed',String(b.dataset.place===id));}},center(){return {lat,lon};},
       // (round 65, questperf65) new places / selection / lines on the SAME mounted map (the journal re-renders its page around it): pins diff, no remount
       update(o={}){if(disposed)return;if(o.places){places=o.places;indexSource=null;}if('selected' in o)selected=o.selected;if(o.lines)lines=o.lines;if(o.onSelect)onSelect=o.onSelect;if(o.onAdd)onAdd=o.onAdd;if(o.center){lat=o.center.lat;lon=o.center.lon;}draw();},host};
   }
-  return {project,unproject,mount,icon};
+  return {project,unproject,fitBounds,mount,icon};
 });

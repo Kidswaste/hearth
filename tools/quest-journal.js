@@ -534,11 +534,15 @@ const QuestJournal = (() => {
     if(search.value!==mapFilter.query)search.value=mapFilter.query;
     search.oninput=event=>{mapFilter.query=search.value;if(!event.isComposing)scheduleMapSearch();};
     search.oncompositionend=()=>{mapFilter.query=search.value;scheduleMapSearch();};
+    const matches=E('div',{class:'qj-map-matches',attrs:{'aria-label':'Matching places'}});
+    const clearSearch=()=>{search.value='';mapFilter.query='';worldKeep?.search();search.focus({preventScroll:true});};
+    search.onkeydown=event=>{if(event.isComposing)return;if(event.key==='Escape'&&search.value){event.preventDefault();event.stopPropagation();clearSearch();}else if(['Enter','ArrowDown'].includes(event.key)&&search.value.trim()){event.preventDefault();worldKeep?.search();const first=matches.querySelector('[data-map-match]');if(event.key==='Enter')first?.click();else first?.focus();}};
     const surprise=mapIcon('dice','Pick somewhere for me',async()=>{const visible=mapPlaces(),pool=visible.filter(p=>p.id!==(previewPlace||state.atlas.selected)&&!p.visitedAt),fallback=visible.filter(p=>p.id!==(previewPlace||state.atlas.selected)),choices=pool.length?pool:fallback;if(choices.length)await mapPick(choices[Math.floor(Math.random()*choices.length)].id,true);},'#ff8c42');
     surprise.querySelector('button').disabled=visible.length<2;
     filters.append(search,surprise);
     for(const layer of mapLayers){try{if(window.QuestMapFirst?.ownsChip(layer.id))continue;/* (round 64, mapfirst64) My Paris is the map strip's Visited chip */const c=layer.chip?.(layerKit);if(c)filters.append(c);}catch(err){console.warn('[quest map layer]',layer.id,err);}} // (round 64, parisjournal64) a layer's chip(kit) → one labelled toggle in this row (My Paris)
     if(mapFilter.guide&&window.QuestParisUI)filters.append(QuestParisUI.chip(mapFilter.guide,()=>{delete mapFilter.guide;render();centerMapSelection();})); // parisquests61
+    filters.append(matches);
     const mapPanel=root.querySelector('[data-group="map"]');mapPanel?.querySelector('.qj-command-map-filters')?.remove();if(mapPanel)mapPanel.append(filters);else before(filters);
     const layout=keep?.layout||E('div',{class:'qj-world-layout qj-field-layout'}),map=keep?.map||E('section'),panel=keep?.panel||E('aside',{class:'qj-place-panel qj-field-panel'});if(keep)panel.replaceChildren(); // (round 65, questperf65) a kept map page: only its side panel is redrawn
     function placePanel(selected,panel){
@@ -563,12 +567,22 @@ const QuestJournal = (() => {
     if(!keep){layout.append(map,panel);content.append(layout);}
     const optionsFor=(visible,selected,layerPins)=>({places:[...visible.map(p=>({...p,kind:window.QuestParis?.of(p)?.tags.includes('food')?'food':C.placeKind(p),color:window.QuestParis?.of(p)?.tags.includes('food')?'#ffb759':mapKind(p).color,tone:window.QuestMapFirst?.tone(p,state)})),...layerPins.filter(p=>!p.show || !visible.some(v=>window.QuestParis?.of(v) && typeof ShowSyncCore!=='undefined' && QuestParis.metres(p,v)<250 && ShowSyncCore.venueKey(p.name)===ShowSyncCore.venueKey(QuestParis.of(v).name)))],selected:selected?.id,onSelect:id=>{const layer=mapLayers.find(l=>l.owns?.(id));if(layer)return layer.select(id,layerKit);mapPick(id).catch(e=>notice(e.message));},onAdd:point=>placeForm(point),lines:layerLines});
     const atlasOptions=optionsFor(visible,selected,layerPins);
+    function showMatches(options){
+      matches.replaceChildren();matches.hidden=!mapFilter.query.trim();if(matches.hidden)return;
+      const found=options.places;
+      matches.append(E('span',{class:'qj-map-match-count',text:found.length?`${found.length} found`:'No matches',attrs:{role:'status'}}));
+      for(const place of found.slice(0,8)){
+        const b=button(place.name,()=>{atlasView.focus(place);options.onSelect(place.id);},'qj-quiet');b.dataset.mapMatch=place.id;b.title=place.name;b.prepend(QuestAtlas.icon(place.kind));matches.append(b);
+      }
+      if(found.length)matches.append(mapIcon('small','Fit all matches',()=>atlasView.fit(found),'#ffd75e'));
+      matches.append(mapIcon('close','Clear map search',clearSearch,'#ff6b9d'));
+    }
+    showMatches(atlasOptions);
     if(keep){atlasView.update(atlasOptions);map.querySelectorAll(':scope>.qmf-strip,:scope>.qmf-status').forEach(n=>n.remove());}else atlasView=QuestAtlas.mount(map,atlasOptions); // (round 65, questperf65) same map, pins diffed
     worldKeep={layout,map,panel,search:()=>{
       const places=mapPlaces(),selected=places.find(p=>p.id===(previewPlace||state.atlas.selected))||places[0],pins=[];
       for(const layer of mapLayers){try{if(!window.QuestMapFirst?.off(layer.id))pins.push(...(layer.pins?.(mapFilter)||[]));}catch(err){console.warn('[quest map search]',layer.id,err);}}
-      atlasView.update({...optionsFor(places,selected,pins),center:selected});
-      panel.replaceChildren();placePanel(selected,panel);glaze(panel);
+      const options=optionsFor(places,selected,pins);atlasView.update(options);showMatches(options);
       surprise.querySelector('button').disabled=places.length<2;
       const count=content.querySelector('.qj-field-footer>span');if(count)count.textContent=places.length+' places';
     }};
