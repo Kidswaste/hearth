@@ -7,6 +7,8 @@
 // in the home folder "hearth-home:/…" (file:/// URLs get "hearth-data-url:" and friends). Each machine expands them
 // to its own folders when it reads the cloud copy, so a chat attachment made on the PC opens on the Mac.
 const path = require('path');
+// PowerShell and several Windows exporters prefix otherwise valid UTF-8 JSON.
+const parseJson = text => JSON.parse(String(text).replace(/^\uFEFF/, ''));
 
 // ---------- what syncs ----------
 // Cloud clients' own files and half-written files, on either side (never synced, never deleted by Hearth).
@@ -22,6 +24,7 @@ const ignoredName = (name) => IGNORE_NAME.some((re) => re.test(name));
 // rebuilt: dependency folders, Python caches and virtualenvs anywhere (hidden folders like .git never sync).
 const LOCAL_DIRS = new Set(['sync', 'mcp-runs', 'ae', 'node_modules', 'electron', 'captures/frames', 'remote', 'safetynet', 'chrome']); // (round 24) remote: this computer's paired phones' keys · (round 29) safetynet: this computer's session marker + work journal · (round 30) chrome: the Hearth Chrome's profile on this computer
 const HEAVY_DIRS = new Set(['node_modules', '__pycache__', 'venv', 'bower_components', '.venv', '.git', '.cache', '.next', '.parcel-cache', '.turbo']);
+const transientWorkspace = rel => /^workspace\//i.test(rel) && /\/(?:[^/]+[-_])?(?:qa|chrome|chromium|browser|playwright|puppeteer)[-_]profile(?:\/|$)|^workspace\/.*\/(?:build-msvc|CMakeFiles)(?:\/|$)/i.test(rel);
 const LOCAL_FILES = new Set(['window.json', 'game-bridge.json', 'hearth-origin.json', 'twocopies.json' /* (round 64) this folder's answer to "you already have Hearth" */, 'hearth-icon.png', 'hearth-icon.ico', 'engine-installs.json',
   'connectors.json', 'claude-flags.json', 'now-playing.ps1', 'now-playing-control.ps1', 'now-playing-cover.jpg', 'kv/fake-switches.json', 'kv/downloads-log.json',
   'kv/jank-log.json', 'kv/dev-reports.json', 'devreport-crashes.json', 'kv/offline-queue.json',
@@ -29,6 +32,7 @@ const LOCAL_FILES = new Set(['window.json', 'game-bridge.json', 'hearth-origin.j
   'config.json', 'theme.css']); // (round 20) this computer's smoothness log: about this machine, never synced · (round 34) offline-queue: messages waiting to go out from THIS computer (synced, the other one would send them too) · (round 35, twocomputers) chrome-prefs: this computer's Chrome (browser, shown or not) · interop/obs.json: this computer's OBS address + keychain-sealed password · media-here: files found again on this computer · (round 55, configsafe) config.json / theme.css: the owner's settings in data/, synced as app/config.json / app/theme.css (portable part), never a second time as data files
 function localOnly(rel) {
   const r = rel.replace(/\\/g, '/');
+  if (transientWorkspace(r)) return true;
   if (LOCAL_FILES.has(r)) return true;
   if (/(^|\/)\./.test(r)) return true; // hidden files / folders
   if (/\.log(\.\d+)?$/i.test(r) || /^mcp-[^/]*\.json$/i.test(r)) return true;
@@ -37,6 +41,12 @@ function localOnly(rel) {
   return parts.some(ignoredName) || /\.py[co]$/i.test(r);
 }
 const dirLocalOnly = (relDir) => { const r = relDir.replace(/\\/g, '/'); return LOCAL_DIRS.has(r) || /(^|\/)\./.test(r) || HEAVY_DIRS.has(r.split('/').pop()); };
+// Own metadata writes must not start another sync pass; files/ changes still do.
+function watchIgnored(name, cloud = false) {
+  let r=String(name||'').replace(/\\/g,'/');
+  if (cloud) { if (/^(?:\.sync|trash)(?:\/|$)/.test(r)) return true; r=r.replace(/^files\//,''); }
+  return localOnly(r) || localOnly(`${r}/x`);
+}
 // JSON stores merge field by field; everything else (media, Markdown, CSS) is a whole file. A project's own JSON in
 // the workspace (package.json, a scene file a chat wrote) is a whole file too: kept byte for byte, never reformatted.
 const isWorkspaceRel = (rel) => /^workspace\//.test(String(rel).replace(/\\/g, '/'));
@@ -358,6 +368,7 @@ function proposeCloud(list) {
 }
 
 module.exports = {
+  parseJson, watchIgnored,
   ignoredName, localOnly, dirLocalOnly, isJsonRel, isWorkspaceRel, HEAVY_DIRS, isCounterRel, MEDIA,
   eq, clone, merge3, keyOf,
   toCloud, fromCloud, strToCloud, strFromCloud, withExt, isWinPath,

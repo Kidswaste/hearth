@@ -378,7 +378,7 @@ const Sync = (() => {
       const f = q.value.trim().toLowerCase();
       const l = list.filter((t) => !f || t.rel.toLowerCase().includes(f) || nameOf(t.rel).toLowerCase().includes(f)).slice(0, 200);
       rows.replaceChildren(...(l.length ? l.map((t) => el('div', { class: 'sync-row' },
-        el('div', { class: 'sync-row-main' }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: `${t.rel} · deleted ${t.day}${t.where === 'here' ? ' (removed here because the other computer deleted it)' : ''}` })),
+        el('div', { class: 'sync-row-main' }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: t.recovery ? `${t.rel} · saved before the last incoming sync` : `${t.rel} · deleted ${t.day}${t.where === 'here' ? ' (removed here because the other computer deleted it)' : ''}` })),
         el('div', { class: 'sync-row-acts' }, el('button', { type: 'button', class: 'ghost small', text: 'Restore', on: { click: async (e) => {
           let r = await api().restore(t.id);
           // (round 19) undoing a conflict choice: the version in place goes to the trash, this one comes back
@@ -391,7 +391,7 @@ const Sync = (() => {
     };
     q.addEventListener('input', draw);
     draw();
-    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Deleted files (synced trash)' }), list.length > 10 ? q : null, rows,
+    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Deleted files & previous versions' }), list.length > 10 ? q : null, rows,
       el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'primary', text: 'Done', on: { click: () => dialog.close() } }))));
     dialog.addEventListener('close', () => setTimeout(() => dialog.remove(), 0));
     document.body.append(dialog);

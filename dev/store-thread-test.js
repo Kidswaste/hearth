@@ -93,6 +93,9 @@ const J = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
     const r = await store.runOff('syncHash', { file, rel: 'kv/paths.json', cloud: false, ctx });
     const t = JSON.stringify(S.toCloud(J(file), ctx));
     ok(r.h === require('crypto').createHash('sha1').update(t).digest('hex') && r.t === t && /captures/.test(t), `sync hash on the thread: ${r.t}`);
+    fs.writeFileSync(file,'\uFEFF'+fs.readFileSync(file,'utf8'));
+    const bom=await store.runOff('syncHash',{file,rel:'kv/paths.json',cloud:false,ctx});
+    ok(bom.h===r.h && bom.t===t,'UTF-8 BOM exports hash identically on the worker');
     fs.writeFileSync(file, '{ broken');
     ok((await store.runOff('syncHash', { file, rel: 'kv/paths.json', cloud: true, ctx: null })).bad === true, 'a half-written store is reported, not hashed');
   }

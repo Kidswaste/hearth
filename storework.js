@@ -206,7 +206,7 @@ const OPS = {
   syncHash({ file, rel, cloud, ctx }) {
     const S = require('./sync-merge');
     let v;
-    try { v = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { bad: true }; }
+    try { v = S.parseJson(fs.readFileSync(file, 'utf8')); } catch { return { bad: true }; }
     if (!cloud && rel === 'app/config.json') v = S.portableConfig(v);
     const t = JSON.stringify(cloud ? v : S.toCloud(v, ctx));
     return { h: sha(t), t: t.length < 16e6 ? t : null }; // the text too: a push / merge in this pass uses it (no second parse)
