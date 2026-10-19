@@ -1,1 +1,3 @@
 .qg-intro{font-size:15px;line-height:1.6;color:#e6e2eb}.qg-preview{display:grid;gap:12px;padding:16px 16px 16px 38px;border:1px solid #ffffff18;border-radius:14px;background:linear-gradient(130deg,#ffffff09,#00000020);color:#d8cedf}.qg-preview li::marker{color:#f6bd63;font-weight:800}.qg-preview li{padding-left:7px;line-height:1.45}
+
+.qg-project-card{border:1px solid #ff72b52b;border-radius:12px;background:linear-gradient(135deg,#ff72b510,#ffffff04);padding:13px}.qg-project-card strong{font-size:13px;color:#f3dfed}.qg-project-card p{font-size:11px;line-height:1.5;color:#b9b2bc;margin:8px 0;max-height:80px;overflow:auto}.qg-project-actions{display:flex;gap:6px;flex-wrap:wrap}.qg-project-actions button{flex:1;white-space:nowrap}

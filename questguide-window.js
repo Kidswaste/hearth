@@ -25,7 +25,9 @@
     $('instruction').textContent = done ? outing ? 'Your outing is complete. Open your plan to remember the night or set up the next one.' : 'Your guide is complete. Bring your result back to Hearth for proof and review.' : step?.instruction || 'Start a guided quest in Sidequest Studio.';
     $('launch').hidden = step?.app !== 'fl';
     $('action').hidden = !step?.action;
-    $('action').textContent = step?.action?.type === 'outing' ? '↗ Open route / plan' : '↗ Open workbench';
+    $('action').textContent = step?.action?.type === 'project' ? `↗ ${s.session.projectStart?.name || 'Project'} · ${step.action.tab}` : step?.action?.type === 'outing' ? '↗ Open route / plan' : '↗ Open workbench';
+    $('action').disabled=paused;
+    $('check-project').hidden=paused||!step?.check?.startsWith('project-');
     $('pause').hidden = !step;
     $('pause').textContent = paused ? '▶ Resume' : 'Ⅱ Pause';
     $('done').hidden = !step || step.check !== 'manual' || paused;
@@ -47,13 +49,19 @@
     else if (step?.check === 'bpm') obs.textContent = s.fl?.connected ? `Live tempo: ${s.telemetry.bpm} BPM · target ${step.targetBpm}` : s.project?.path ? s.project.error || `Saved tempo: ${s.project.bpm || '…'} BPM · press Ctrl+S to check` : 'Connect your .flp or live FL to check automatically';
     else if (step?.check === 'bass') obs.textContent = s.project?.path ? s.project.error || 'Watching your saved project · Ctrl+S checks bass notes' : s.fl?.connected ? 'Live: checks grid notes and playback. Off-grid piano-roll notes? Connect your .flp for saved-note checks.' : 'Connect your .flp or live FL to check automatically';
     else if (step?.check === 'tool') obs.textContent = 'Opening the workbench checks this step automatically.';
+    else if (step?.check === 'project-change') obs.textContent = `Watching saved ${step.target==='board'?'creative board':step.target} changes in ${s.session.projectStart?.name||'your project'}. Quality is reviewed later.`;
+    else if (step?.check === 'project-output') obs.textContent = 'Waiting for a new kept image, saved preset or linked project output.';
     else obs.textContent = step ? 'You choose when this step is done.' : '';
+    $('evidence').hidden=!s.completed;
+    const entries=s.session?.done||[],sig=JSON.stringify(entries);
+    if($('evidence-list').dataset.sig!==sig){$('evidence-list').dataset.sig=sig;$('evidence-list').replaceChildren(...entries.map(d=>{const li=document.createElement('li');li.textContent=`${d.kind==='automatic'?'Observed':'Confirmed by you'} · ${d.summary}`;return li;}));}
     if (manualStep && manualStep !== step?.id) { $('manual-form').hidden = true; $('note').value = ''; manualStep = null; }
   }
   function manual() { manualStep = snap?.step?.id; if (!manualStep) return; $('manual-form').hidden = false; $('note').focus(); }
   $('hide').onclick = () => call('hide');
   $('launch').onclick = () => call('launch');
   $('action').onclick = () => call('action', { stepId: snap?.step?.id });
+  $('check-project').onclick = async () => {const b=$('check-project');b.disabled=true;try{await call('check-project',{stepId:snap?.step?.id});}finally{b.disabled=false;}};
   $('pause').onclick = () => call(snap?.session?.paused ? 'resume' : 'pause');
   $('back').onclick = () => call('back');
   $('manual').onclick = manual;

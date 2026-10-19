@@ -3642,7 +3642,7 @@ const ThreeLab = (() => {
       const removed = [...removedIds]; removedIds.clear();
       // the store kept scenes this save would have dropped (sync, a list out of date): they join the list on screen
       const list = window.LabTry ? LabTry.disk(sketches) : sketches; // (round 43, directorpreview) an edit tried first isn't saved until Keep
-      return window.hub.kvSet('three-sketches', list, removed.length ? { removed } : undefined).then((r) => { if (r?.error) throw Error(r.error); if (r?.restored?.length) { refreshFromDisk().catch(() => {}); window.LabSceneSafe?.kept?.(r.restored.length); } });
+      return window.hub.kvSet('three-sketches', list, removed.length ? { removed } : undefined).then((r) => { if (r?.error) throw Error(r.error); if (r?.restored?.length) { refreshFromDisk().catch(() => {}); window.LabSceneSafe?.kept?.(r.restored.length); } dispatchEvent(new CustomEvent('hearth:scene-saved', { detail: { id: current?.id } })); });
     }, 600);
     function persist() {
       if (!current) return;

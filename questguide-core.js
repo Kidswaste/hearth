@@ -5,7 +5,7 @@
   else root.QuestGuideCore = api;
 }(typeof self !== 'undefined' ? self : this, () => {
   const text = (v, max = 500) => String(v || '').trim().slice(0, max);
-  const checks = new Set(['app', 'bpm', 'bass', 'playback', 'manual', 'tool']);
+  const checks = new Set(['app', 'bpm', 'bass', 'playback', 'manual', 'tool', 'project-change', 'project-output']);
   let sequence = 0;
   const tools = new Set(['lab', 'forge', 'tiles', 'sounds', 'slice', 'rack', 'arena']);
   function musicSteps(bpm = 120) {
@@ -23,12 +23,12 @@
     const ids = new Set();
     return list.slice(0, 30).map((s, i) => {
       let id = text(s.id, 80) || `step-${i + 1}`; if (ids.has(id)) id = `${id}-${i}`; ids.add(id);
-      const action = s.action?.type === 'hearth-tool' && tools.has(s.action.tool) ? { type: 'hearth-tool', tool: s.action.tool } : s.action?.type === 'outing' ? { type: 'outing', planId: text(s.action.planId, 120) } : null;
-      return { id, title: text(s.title, 140) || `Step ${i + 1}`, instruction: text(s.instruction, 1500), check: checks.has(s.check) ? s.check : 'manual', app: s.app === 'fl' ? 'fl' : null, action, targetBpm: Math.max(20, Math.min(300, Number(s.targetBpm) || 120)) };
+      const action = s.action?.type === 'project' && ['scene','board','sound','chat','overview','moodboard'].includes(s.action.tab) ? {type:'project',tab:s.action.tab} : s.action?.type === 'hearth-tool' && tools.has(s.action.tool) ? { type: 'hearth-tool', tool: s.action.tool } : s.action?.type === 'outing' ? { type: 'outing', planId: text(s.action.planId, 120) } : null;
+      return { id, title: text(s.title, 140) || `Step ${i + 1}`, instruction: text(s.instruction, 1500), check: checks.has(s.check) ? s.check : 'manual', app: s.app === 'fl' ? 'fl' : null, action, target:['scene','board','sound'].includes(s.target)?s.target:null, targetBpm: Math.max(20, Math.min(300, Number(s.targetBpm) || 120)) };
     });
   }
   function start(input, now = Date.now()) {
-    return { id: `guide-${now}-${++sequence}`, questId: text(input.questId, 120), reviewQuestId: text(input.reviewQuestId, 120), title: text(input.title, 160) || 'Your next small win', kind: input.kind === 'music' ? 'music' : 'custom', startedAt: now, updatedAt: now, enteredAt: now, paused: false, steps: normalizeSteps(input.steps?.length ? input.steps : musicSteps(input.bpm)), done: [] };
+    return { id: `guide-${now}-${++sequence}`, questId: text(input.questId, 120), reviewQuestId: text(input.reviewQuestId, 120), title: text(input.title, 160) || 'Your next small win', kind: input.kind === 'music' ? 'music' : 'custom', projectId:/^[\w-]{1,100}$/.test(input.projectId||'')?input.projectId:null, startedAt: now, updatedAt: now, enteredAt: now, paused: false, steps: normalizeSteps(input.steps?.length ? input.steps : musicSteps(input.bpm)), done: [] };
   }
   const index = s => s ? s.done.length : 0;
   const current = s => s?.steps[index(s)] || null;
