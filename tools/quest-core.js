@@ -380,6 +380,7 @@
     if (!p || !['file', 'chat', 'external'].includes(p.type) || !str(p.title, 200) || !p.title.trim() || !str(p.excerpt, 20000) || !str(p.analysis, 6000) || !str(p.coverage, 600) || !/^[a-f0-9]{64}$/.test(p.fingerprint || '') || !Array.isArray(p.images) || p.images.length > 4 || !p.images.every(path)) throw Error('Invalid proof. Attach a file or select actual work from a chat.');
     if (p.type === 'file' && (!path(p.path) || !str(p.kind, 80) || !Number.isInteger(p.bytes) || p.bytes < 1 || p.bytes > 80 * 1024 * 1024)) throw Error('Invalid proof file.');
     if (p.attachments != null && (!Array.isArray(p.attachments) || p.attachments.length > 4 || p.attachments.some(a => !a || !path(a.path) || !str(a.title, 200) || !str(a.kind, 80) || !Number.isInteger(a.bytes) || a.bytes < 1 || a.bytes > 80 * 1024 * 1024))) throw Error('Invalid proof attachments.');
+    if (p.sources != null && (!Array.isArray(p.sources) || p.sources.length > 4 || p.sources.some(s => !s || !str(s.chatId, 200) || !s.chatId || !str(s.agentId, 200) || !str(s.messageId, 200) || !str(s.title, 200) || !Number.isFinite(s.at) || typeof s.older !== 'boolean'))) throw Error('Invalid proof sources.');
     if (p.type === 'chat' && (!str(p.chatId, 200) || !p.chatId || !str(p.agentId, 200) || !str(p.messageId, 200) || !p.excerpt.trim())) throw Error('Choose a chat message containing the work.');
     if (p.type === 'external' && (!externalUrl(p.url) || p.excerpt.trim().length < 40)) throw Error('Include a supported chat link and paste the actual result, not just a link.');
     return p;

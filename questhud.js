@@ -265,6 +265,10 @@ const QuestHud = (() => {
     }
     if (S.studio && !C.canFinish(S, qid)) {
       close(); await openStudio(qid);
+      if (q.projectId && QuestJournal.ready()) {
+        document.querySelector('.qj dialog[open]')?.close(); await QuestJournal.finishQuest(qid);
+        return `${q.title}: the quest review is open. Complete an accepted result there to claim XP.`;
+      }
       return `${q.title}: the finish line needs your proof (the actual work) and a review. It's open in Sidequest Studio.`;
     }
     const item = C.latest(S, qid);
