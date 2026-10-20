@@ -12,7 +12,7 @@ const VisualFeedback = (() => {
     const chat = chatId ? await Native.load(chatId) : null;
     return { projectId: p?.id, sceneId, name: p?.name || chat?.title || '', chatId, agentId, chatTitle: chat?.title || '', messages: C.recent(chat?.messages), media: [...new Set((chat?.messages || []).slice(-20).reverse().flatMap(m => ['opens', 'images', 'attachments'].flatMap(k => (Array.isArray(m[k]) ? m[k] : []).map(x => typeof x === 'string' ? x : x?.path || x?.filePath))).concat((p?.items || []).map(i => i.ref)).filter(C.video))].slice(0, 8) };
   }
-  async function recordScene(ctx, seconds, signal, status = () => {}) {
+  async function recordScene(ctx, seconds, signal, status = () => {}, { showScene = true } = {}) {
     tasks++;
     try {
     signal.throwIfAborted();
@@ -23,7 +23,7 @@ const VisualFeedback = (() => {
     const cmd = await ThreeLab.cmd({ show: false }); signal.throwIfAborted();
     if (cmd.recording || Capture.recording || (typeof ThreeSeq !== 'undefined' && ThreeSeq.rendering)) throw Error('Finish the current recording or render first.');
     if (!sameProject()) throw Error('The project changed. Reopen Feedback in the scene you want to record.');
-    if (ctx.projectId) await ProjectWorkspace.openScene(ctx.sceneId, Projects.get(ctx.projectId));
+    if (ctx.projectId && showScene) await ProjectWorkspace.openScene(ctx.sceneId, Projects.get(ctx.projectId));
     signal.throwIfAborted();
     const sameScene = () => sameProject() && ThreeLab.scenes.currentId() === ctx.sceneId;
     if (!sameScene()) throw Error('The scene changed. Reopen Feedback to record it.');
@@ -97,14 +97,15 @@ const VisualFeedback = (() => {
     }
     signal.throwIfAborted(); return packet;
   }
-  function review(packet, ctx, direction, status, signal) {
+  function review(packet, ctx, direction, status, signal, options = {}) {
     signal.throwIfAborted();
-    const agent = H.agents().find(a => a.mode === 'native' && a.engine === 'codex' && !a.dock) || H.agents().find(a => a.mode === 'native' && a.engine === 'codex');
+    const agent = options.agentId ? H.agents().find(a => a.id === options.agentId && a.mode === 'native' && a.engine === 'codex') : H.agents().find(a => a.mode === 'native' && a.engine === 'codex' && !a.dock) || H.agents().find(a => a.mode === 'native' && a.engine === 'codex');
     if (!agent) throw Error('Add Astra in Settings before asking for a second opinion.');
     const id = 'visual-feedback-' + crypto.randomUUID();
     return new Promise((resolve, reject) => {
-      let output = '', settled = false, timer;
-      const done = (err, value) => { if (settled) return; settled = true; clearTimeout(timer); runs.delete(id); signal.removeEventListener('abort', cancel); err ? reject(err) : resolve(value); };
+      let output = '', settled = false, timer, reported = false;
+      const usage = raw => { if(reported)return null;reported=true;try{options.onUsage?.(raw);return null;}catch(e){return e;} };
+      const done = (err, value) => { if (settled) return; settled = true; clearTimeout(timer); runs.delete(id); signal.removeEventListener('abort', cancel); const accountingError=usage(null); (err||accountingError) ? reject(err||accountingError) : resolve(value); };
       const cancel = () => { hub.stop(id).catch(() => {}); done(Error('Review stopped. Your clip and frames are unchanged.')); };
       if (!listening) { hub.onEngineEvent(ev => runs.get(ev.chatId)?.(ev)); listening = true; }
       runs.set(id, ev => {
@@ -112,14 +113,21 @@ const VisualFeedback = (() => {
         if (ev.type === 'delta') { output += ev.text || ''; if (output.length > 80000) { cancel(); return; } status('Astra is writing your next directions…'); }
         else if (ev.type === 'thinking') status('Astra is examining the frames…');
         else if (ev.type === 'done') {
+          const accountingError=usage(ev.usage || null);if(accountingError){done(accountingError);return;}
           if (ev.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: agent.id, usage: ev.usage, source: 'visual-feedback' } }));
-          try { done(null, { ...C.parse(ev.text || output, packet), model: agent.model || 'Astra configured model', at: Date.now() }); } catch (e) { done(e); }
-        } else if (ev.type === 'error' || ev.type === 'stopped') done(Error(ev.message || 'Review stopped. Try again when Astra is ready.'));
+          try { done(null, { ...C.parse(ev.text || output, packet), model: options.model || agent.model || 'Astra configured model', at: Date.now() }); } catch (e) { done(e); }
+        } else if (ev.type === 'error' || ev.type === 'stopped') { usage(ev.usage || null); done(Error(ev.message || 'Review stopped. Try again when Astra is ready.')); }
       });
       timer = setTimeout(() => { hub.stop(id).catch(() => {}); done(Error('The review timed out. Your prepared frames are kept; you can retry.')); }, 8 * 60000);
       signal.addEventListener('abort', cancel, { once: true });
-      hub.send({ agentId: agent.id, chatId: id, session: {}, text: C.prompt(packet, ctx, direction), options: { visualReview: true, lean: true, helper: true, persona: C.persona, webSearch: 'disabled', images: packet.sheets } }).then(r => { if (r?.error) done(Error(r.error)); }).catch(done);
+      hub.send({ agentId: agent.id, chatId: id, session: {}, text: C.prompt(packet, ctx, direction), options: { visualReview: true, lean: true, helper: true, ...(options.model?{model:options.model}:{}), ...(options.effort?{effort:options.effort}:{}), persona: C.persona, webSearch: 'disabled', images: packet.sheets } }).then(r => { if (r?.error) done(Error(r.error)); }).catch(done);
     });
+  }
+  async function saveReview(ctx, direction, value, {id=crypto.randomUUID(),routineId=null}={}) {
+    const latest=await hub.kvGet('visual-feedback',{v:1,reviews:[]});
+    const entry={id,at:Date.now(),ctx:{...ctx,messages:[],media:[]},direction,...value,...(routineId?{routineId}:{})};
+    const reviews=[entry,...(latest.reviews||[]).filter(r=>r.id!==id)].slice(0,20);
+    await hub.kvSet('visual-feedback',{v:1,reviews});return {entry,reviews};
   }
   async function round({ file, ctx, direction, mode = 'auto', frame = 0, signal, status = () => {}, onPartial = async () => {} }, dependencies = {}) {
     const io = { info: p => FrameRead.info(p), frames: (...args) => FrameRead.frames(...args), prepare, makePacket, review, ...dependencies };
@@ -193,12 +201,12 @@ const VisualFeedback = (() => {
     store.set(`draft.${live.agentId}.${ctx.chatId}`, view.input.value);
     await Native.attachPaths(live.agentId, sheets);
   }
-  async function open(file = null) {
+  async function open(file = null, {reviewId=null}={}) {
     if (dialog?.open) { dialog.focus(); return dialog; }
     if (opening) return opening;
-    opening = build(file); try { return await opening; } finally { opening = null; }
+    opening = build(file,reviewId); try { return await opening; } finally { opening = null; }
   }
-  async function build(file) {
+  async function build(file,reviewId=null) {
     const ctx = await context();
     const history = await hub.kvGet('visual-feedback', { v: 1, reviews: [] }).catch(() => ({ reviews: [] }));
     let packet = null, result = null, selected = [], controller = null, busy = false, roundMeta = null, costBlocked = false, costId = 0;
@@ -215,14 +223,17 @@ const VisualFeedback = (() => {
     const preview = el('div', { class: 'vf-frames' }), findings = el('div', { class: 'vf-findings' }), draft = el('textarea', { class: 'vf-draft', rows: 9, attrs: { 'aria-label': 'Editable fix prompt' }, placeholder: 'Your suggested prompt will appear here.' });
     const copy = button('Copy prompt', () => copyText(draft.value)), send = button('Use in project chat →', async () => { send.disabled = true; try { await toDraft(ctx, draft.value, packet?.sheets || []); dlg.close(); toast('Prompt and frames added to your draft. Review it, then send.'); } finally { send.disabled = false; } }, 'primary');
     send.textContent = ctx.chatId ? `Use in ${ctx.name || 'chat'} →` : 'Open a project chat to use this';
-    const draftBox = el('section', { class: 'vf-prompt', hidden: true }, el('h3', { text: 'Your next prompt' }), draft, el('div', { class: 'vf-actions' }, copy, send));
+    const automate=button('↻ Auto-improve with feedback',async()=>{await Lazy.load('routines');dlg.close();await Routines.open(ctx.agentId,{chatId:ctx.chatId,feedback:{projectId:ctx.projectId,sceneId:ctx.sceneId,direction:direction.value}});});
+    automate.hidden=!ctx.projectId||!ctx.sceneId||H.agent(ctx.agentId)?.engine!=='codex';
+    automate.title='Set a budget for fresh scene recordings, visual feedback and focused edits between rounds.';
+    const draftBox = el('section', { class: 'vf-prompt', hidden: true }, el('h3', { text: 'Your next prompt' }), draft, el('div', { class: 'vf-actions' }, copy, send, automate));
     const rebuildDraft = () => { draft.value = C.fixPrompt(result, selected, packet, ctx); copy.disabled = !draft.value; send.disabled = !draft.value || !ctx.chatId; };
     draft.addEventListener('input', () => { copy.disabled = !draft.value.trim(); send.disabled = !draft.value.trim() || !ctx.chatId; });
     const invalidate = () => { packet = result = roundMeta = null; passList.replaceChildren(); passList.hidden = true; findings.replaceChildren(); preview.replaceChildren(); draftBox.hidden = true; setup.open = true; dlg.classList.remove('vf-ready'); };
     clips.onchange = () => { source = clips.value || null; invalidate(); refreshCost(); };
     mode.onchange = () => { at.hidden = mode.value !== 'detail'; invalidate(); refreshCost(); };
     at.onchange = invalidate;
-    const setBusy = yes => { busy = yes; for (const node of setup.querySelectorAll('button,input,select,textarea')) node.disabled = yes; run.disabled = yes || costBlocked; stop.hidden = !yes; recent.disabled = yes; for (const node of findings.querySelectorAll('button,input')) node.disabled = yes; draft.disabled = yes; copy.disabled = yes || !draft.value.trim(); send.disabled = yes || !draft.value.trim() || !ctx.chatId; };
+    const setBusy = yes => { busy = yes; for (const node of setup.querySelectorAll('button,input,select,textarea')) node.disabled = yes; run.disabled = yes || costBlocked; stop.hidden = !yes; recent.disabled = yes; automate.disabled=yes; for (const node of findings.querySelectorAll('button,input')) node.disabled = yes; draft.disabled = yes; copy.disabled = yes || !draft.value.trim(); send.disabled = yes || !draft.value.trim() || !ctx.chatId; };
     const inspect = async frame => { if (busy) return; mode.value = 'detail'; at.hidden = false; at.value = String(frame.time); invalidate(); refreshCost(); say('Close look selected. Review these 24 frames when ready.'); };
     function paint() {
       preview.replaceChildren(...packet.frames.map((f, i) => {
@@ -247,6 +258,7 @@ const VisualFeedback = (() => {
     }
     const run = button('✦ Ask Astra for direction', async () => {
       if (busy) return;
+      if(VisualFeedback.busy){say('Another feedback round is running. Finish or stop it first.');return;}
       if (!source) { say('Record the current scene above, or choose a saved video.'); return; }
       invalidate();
       controller = new AbortController(); const task = controller; setBusy(true); say('Preparing the clip locally…');
@@ -257,13 +269,10 @@ const VisualFeedback = (() => {
         const keep = async value => {
           packet = value.packet; result = value.result; roundMeta = value.meta; selected = result.issues.length ? [0] : [];
           if (dlg.open) { paint(); setBusy(true); }
-          const latest = await hub.kvGet('visual-feedback', { v: 1, reviews: [] });
-          const entry = { id: entryId, at: Date.now(), ctx: { ...ctx, messages: [], media: [] }, direction: chosenDirection, packet, result, meta: roundMeta };
-          const reviews = [entry, ...(latest.reviews || []).filter(r => r.id !== entryId)].slice(0, 20);
-          await hub.kvSet('visual-feedback', { v: 1, reviews }); history.reviews = reviews;
+          history.reviews=(await saveReview(ctx,chosenDirection,{packet,result,meta:roundMeta},{id:entryId})).reviews;
         };
         const final = await round({ file: source, ctx, direction: chosenDirection, mode: mode.value, frame, signal: task.signal, status: say, onPartial: keep });
-        task.signal.throwIfAborted(); await keep(final); say(`${packet.coverage} Review ready.`);
+        task.signal.throwIfAborted(); await keep(final); dlg.querySelector('.vf-evidence-drawer').open=false; say(`${packet.coverage} Review ready.`);
       } catch (e) { if (dlg.open) say((roundMeta ? `Partial review kept (${roundMeta.turns} replies). ` : '') + (task.signal.aborted ? 'Stopped; no further reviews will run.' : e.message)); }
       finally { if (controller === task) { controller = null; if (dlg.open) setBusy(false); } }
     }, 'primary');
@@ -271,6 +280,7 @@ const VisualFeedback = (() => {
     const length = el('select', { attrs: { 'aria-label': 'Scene recording length' } }, ...[6, 12, 20].map(n => el('option', { value: String(n), text: `${n} seconds` })));
     const record = button('● Record current scene', async () => {
       if (busy) return;
+      if(VisualFeedback.busy){say('Another feedback round is running. Finish or stop it first.');return;}
       controller = new AbortController(); const task = controller; setBusy(true);
       try {
         const file = await recordScene(ctx, Number(length.value), task.signal, say); task.signal.throwIfAborted();
@@ -291,7 +301,7 @@ const VisualFeedback = (() => {
       source = p; if (!sources.includes(p)) sources.unshift(p); paintSources(); invalidate(); refreshCost(); say('Clip selected. Pick a direction, or let Astra find the missing piece.');
     });
     const recent = button('Previous review', () => {
-      const saved = (history.reviews || []).find(r => r.ctx?.chatId === ctx.chatId && r.ctx?.projectId === ctx.projectId);
+      const saved = (history.reviews || []).find(r => (!reviewId||r.id===reviewId)&&r.ctx?.chatId === ctx.chatId && r.ctx?.projectId === ctx.projectId);
       if (!saved) { say('No saved review for this chat yet.'); return; }
       roundMeta = saved.meta || null; packet = saved.packet; result = C.parse(JSON.stringify(saved.result), packet); source = packet.file; if (!sources.includes(source)) sources.unshift(source); paintSources(); direction.value = saved.direction; mode.value = roundMeta?.mode || packet.mode; refreshCost(); at.hidden = mode.value !== 'detail'; at.value = String(packet.frames[Math.floor(packet.frames.length / 2)].time); selected = result.issues.length ? [0] : []; paint(); say((roundMeta?.complete === false ? 'Saved partial review · ' : 'Saved review · ') + new Date(saved.at).toLocaleString() + '. The clip may have changed since this review.');
     });
@@ -318,8 +328,8 @@ const VisualFeedback = (() => {
       setup, el('div', { class: 'vf-actions' }, run, stop, recent), cost, status,
       el('details', { class: 'vf-evidence-drawer' }, el('summary', { text: 'Evidence frames · click to inspect' }), preview), passList, el('div', { class: 'vf-results' }, findings, draftBox));
     dlg.addEventListener('close', () => { controller?.abort(); dialog = null; dlg.remove(); });
-    document.body.append(dlg); dialog = dlg; dlg.showModal(); refreshCost(); return dlg;
+    document.body.append(dlg); dialog = dlg; dlg.showModal(); refreshCost(); if(reviewId)recent.click(); return dlg;
   }
   Commands.register({ name: 'feedback-round', aliases: ['visual-feedback'], area: 'Create', args: '[video path]', desc: 'Astra reviews timestamped frames and drafts a focused improvement prompt', run: args => open(args.trim().replace(/^["']|["']$/g, '') || null) });
-  return { open, recordScene, prepare, review, round, toDraft, context, get busy() { return tasks > 0 || runs.size > 0; } };
+  return { open, recordScene, prepare, review, round, saveReview, toDraft, context, get busy() { return tasks > 0 || runs.size > 0; } };
 })();

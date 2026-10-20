@@ -10,4 +10,10 @@ r=make();C.sent(r,now);C.stop(r);assert(r.inFlight,'Stopping further rounds must
 C.roundEnded(r,{type:'done',text:'Changed: final fix.',usage:C.usageOf({input:100,output:20}),tokens:120},now+1000);
 assert.equal(r.status,'stopped');assert.equal(r.inFlight,false);assert.equal(r.tokens,120);
 r=make();C.sent(r);C.stop(r);r=C.normalize(JSON.parse(JSON.stringify(r)));C.restarted(r);assert.equal(r.status,'stopped');assert.equal(r.inFlight,false,'Restart clears a stopped process without resuming it');
-console.log('Auto-improve controls: local waits, terminal gates, final-reply accounting and stopped restart cleanup passed.');
+for(const status of ['running','stopped']){
+ r=make();r.status=status;r.feedback={projectId:'p',sceneId:'s',seconds:6,direction:'Edges'};r.feedbackActive=true;r.feedbackCalls=2;r.feedbackLastEnd=now;r.afterRestart=true;
+ r=C.normalize(JSON.parse(JSON.stringify(r)));C.restarted(r);
+ assert.equal(r.feedbackActive,false);assert.equal(r.feedbackCalls,2);assert.equal(r.feedback.seconds,6);assert(r.usageUnknown);
+ assert.equal(r.status,status==='running'?'paused':'stopped');
+}
+console.log('Auto-improve controls: local waits, terminal gates, final-reply accounting and stopped/reviewer restart cleanup passed.');
