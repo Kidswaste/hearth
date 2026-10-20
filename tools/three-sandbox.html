@@ -2348,7 +2348,7 @@ function adFullFrame(fn) {
 const adPx = new Uint8Array(4); let adProbes = 0;
 function adOpaque(L) {
   const p = L.props;
-  if (L.fx || L.pc || L.seqHide || p.seqFilter || (p.blend && p.blend !== 'normal') || layerMix(L) < 0.999 || L.drawnGen !== L.gen || L.pics?.length) return false;
+  if (p.mask || L.fx || L.pc || L.seqHide || p.seqFilter || (p.blend && p.blend !== 'normal') || layerMix(L) < 0.999 || L.drawnGen !== L.gen || L.pics?.length) return false;
   const t = xform(L);
   if (t.x || t.y || t.rotate || t.scale < 1) return false;
   for (const r of L.renderers) {
@@ -2425,7 +2425,7 @@ function adCoverFrame() {
   const C = AD.coverBy;
   if (!C) return;
   const p = C.props; const t = xform(C);
-  if (layers.get(C.id) !== C || edit.on || SQ.on || PC.list.size || adFull() || layerMix(C) < 0.999 || (p.blend && p.blend !== 'normal') || p.seqFilter || C.seqHide || C.pics?.length || t.x || t.y || t.rotate || t.scale < 1 || C.drawnGen !== C.gen) adCoverClear();
+  if (p.mask || layers.get(C.id) !== C || edit.on || SQ.on || PC.list.size || adFull() || layerMix(C) < 0.999 || (p.blend && p.blend !== 'normal') || p.seqFilter || C.seqHide || C.pics?.length || t.x || t.y || t.rotate || t.scale < 1 || C.drawnGen !== C.gen) adCoverClear();
 }
 // which layers are covered (twice a second, from the stats timer)
 function adCoverTick() {
@@ -5201,6 +5201,10 @@ const XF = { x: 0, y: 0, scale: 1, rotate: 0 };
 const xform = (L) => { XF.x = prop(L, 'x', 0); XF.y = prop(L, 'y', 0); XF.scale = prop(L, 'scale', 1); XF.rotate = prop(L, 'rotate', 0); return XF; };
 function styleLayer(L) {
   const p = L.props;
+  if (!L.pc && L.maskSet !== p.mask) {
+    L.maskSet = p.mask;
+    L.box.style.clipPath = p.mask?.points?.length ? `polygon(${p.mask.points.map(([x,y]) => `${x}% ${y}%`).join(',')})` : '';
+  }
   // while editing one layer's scene, the others fade back
   const mix = layerMix(L) * (edit.on && L.id !== edit.layerId ? 0.25 : 1);
   const s = L.box.style;
@@ -5242,7 +5246,7 @@ function needsComposite() {
   const act = ordered().filter((L) => layerMix(L) > 0);
   if (act.length !== 1) return act.length > 1;
   const L = act[0]; const p = L.props; const t = xform(L);
-  return layerMix(L) < 1 || Boolean(t.x || t.y || t.rotate) || t.scale !== 1 || (p.blend && p.blend !== 'normal') || layerCanvases(L).length > 1 || Boolean(layerCanvases(L)[0]?.__tb); // (round 51: a canvas drawn tight is placed in a merge)
+  return Boolean(p.mask) || layerMix(L) < 1 || Boolean(t.x || t.y || t.rotate) || t.scale !== 1 || (p.blend && p.blend !== 'normal') || layerCanvases(L).length > 1 || Boolean(layerCanvases(L)[0]?.__tb); // (round 51: a canvas drawn tight is placed in a merge)
 }
 function composite(target, k = 1, size = null, only = null, clear = false) {
   const W = size ? size.w : Math.max(1, Math.round(innerWidth * devicePixelRatio * k)); const H = size ? size.h : Math.max(1, Math.round(innerHeight * devicePixelRatio * k));
@@ -5277,6 +5281,11 @@ function drawLayer2D(g, L, W, H) {
   g.rotate((rotate * Math.PI) / 180);
   g.scale(scale, scale);
   g.translate(-W / 2, -H / 2);
+  if (!L.pc && L.props.mask?.points?.length) {
+    g.beginPath();
+    L.props.mask.points.forEach(([px,py], i) => g[i ? 'lineTo' : 'moveTo'](px * W / 100, py * H / 100));
+    g.closePath(); g.clip();
+  }
   if (L.pc) pcDraw(g, L, W, H);
   else for (const cv of layerCanvases(L)) if (!cv.__skip) cvDraw(g, cv, W, H); // (__skip: a filter at 0, see FX_IDENTITY)
   g.restore();
@@ -7169,7 +7178,7 @@ function belowOf(L) {
   let from = 0;
   for (let i = below.length - 1; i > 0; i -= 1) {
     const B = below[i];
-    if (!B.isFilter || B.fxSkip || layerMix(B) < 1 || (B.props.blend && B.props.blend !== 'normal')) continue;
+    if (B.props.mask || !B.isFilter || B.fxSkip || layerMix(B) < 1 || (B.props.blend && B.props.blend !== 'normal')) continue;
     const t = xform(B);
     if (!t.x && !t.y && !t.rotate && t.scale === 1) { from = i; break; }
   }
@@ -7187,7 +7196,7 @@ function belowSame(L, list, W, H) {
   for (const B of list) {
     if (!B.renderers.size || B.pc) { a.length = 0; return false; }
     const t = xform(B);
-    put(B); put(B.gen); put(B.drewTick ?? -1); put(Math.round(layerMix(B) * 1000)); put(t.x); put(t.y); put(t.scale); put(t.rotate); put(B.props.blend || ''); put(B.fxSkip ? 1 : 0); put(B.props.seqFilter || '');
+    put(B.props.mask); put(B); put(B.gen); put(B.drewTick ?? -1); put(Math.round(layerMix(B) * 1000)); put(t.x); put(t.y); put(t.scale); put(t.rotate); put(B.props.blend || ''); put(B.fxSkip ? 1 : 0); put(B.props.seqFilter || '');
   }
   if (a.length !== i) { a.length = i; same = false; }
   return same;
@@ -7322,7 +7331,7 @@ function fxPointwise(def) {
 // a layer that shows as a plain full-frame picture: fully, normal blend, not moved, no clip look, not faded by the editor
 function fxPlain(L) {
   const p = L.props;
-  if (p.visible === false || L.seqHide || p.seqFilter || (edit.on && L.id !== edit.layerId)) return false;
+  if (p.mask || p.visible === false || L.seqHide || p.seqFilter || (edit.on && L.id !== edit.layerId)) return false;
   if (layerMix(L) < 0.999 || (p.blend && p.blend !== 'normal')) return false;
   const t = xform(L);
   return !t.x && !t.y && !t.rotate && t.scale === 1;

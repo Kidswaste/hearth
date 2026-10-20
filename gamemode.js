@@ -39,7 +39,7 @@ const GameMode = (() => {
     if (!s) throw new Error('That Lab scene is gone.');
     const layers = (s.layers?.length ? s.layers : [{ id: 'main', name: 'Layer 1', code: s.code || '' }]).map((L, i) => ({
       id: L.id || `l${i}`, code: L.code || '', name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0,
-      x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, slot: L.slot ?? i, z: i, keys: L.keys || null, overrides: L.overrides || null,
+      x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, mask: L.mask || null, slot: L.slot ?? i, z: i, keys: L.keys || null, overrides: L.overrides || null,
       ...(L.precomp ? { precomp: L.precomp } : {}), ...(L.card ? { card: L.card } : {}),
       ...Object.fromEntries(['cropT', 'cropR', 'cropB', 'cropL', 'feather', 'blur', 'mask'].filter((k) => L[k]).map((k) => [k, L[k]])),
     })).filter((L) => L.code.trim() || L.precomp || L.card);

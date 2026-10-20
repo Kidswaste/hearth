@@ -349,7 +349,8 @@ filter('${type}', P);
   // onSelect(id), onChange(id, props, { live }), onAdd(templateId | 'copy' | 'ask'), onRemove(id),
   // onReorder(idsBottomFirst), now() → playhead seconds, duration() → song length, loop() → { a, b } | null.
   // keyState(id, prop) → 'none' | 'animated' | 'on'; toggleKey(id, prop, value); valueAt(L, prop) → shown value.
-  function panel({ onSelect, onChange, onAdd, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo }) {
+  let clipboard = [];
+  function panel({ onSelect, onChange, onAdd, onPaste, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo }) {
     const { fmtMs, parseTime } = ThreeMedia._test;
     let layers = [];
     let selectedId = null;
@@ -364,6 +365,21 @@ filter('${type}', P);
     const root = el('div', { class: 'layers' },
       el('div', { class: 'tw-head' }, el('b', { text: 'Layers' }), count, el('span', { class: 'spacer' }), addBtn, dupBtn, delBtn),
       list, props);
+    root.tabIndex = 0;
+    root.addEventListener('pointerdown', (e) => { if (!e.target.closest('input,textarea,select,button,[contenteditable]')) root.focus({ preventScroll: true }); });
+    root.addEventListener('keydown', (e) => {
+      if (e.target.closest('input,textarea,select,[contenteditable]') || e.altKey || e.repeat) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const ids = picked.size ? picked : new Set([selectedId]);
+      if (mod && e.key.toLowerCase() === 'c') {
+        clipboard = JSON.parse(JSON.stringify(layers.filter(L => ids.has(L.id))));
+        e.preventDefault(); e.stopPropagation(); toast(`${clipboard.length} layer(s) copied`);
+      } else if (mod && e.key.toLowerCase() === 'v' && clipboard.length && onPaste) {
+        e.preventDefault(); e.stopPropagation(); onPaste(JSON.parse(JSON.stringify(clipboard)));
+      } else if (!mod && (e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+        e.preventDefault(); e.stopPropagation(); onRemove(selectedId);
+      }
+    });
 
     function addMenu(anchor) {
       const items = [
@@ -484,6 +500,29 @@ filter('${type}', P);
       if (!L) return;
       const live = (patch) => onChange(L.id, patch, { live: true });
       const commit = (patch) => onChange(L.id, patch, { live: false });
+      const mask = el('details', { class: 'ly-mask', open: Boolean(L.mask) });
+      const preview = el('span', { class: 'ly-mask-preview', attrs: { 'aria-hidden': 'true' } });
+      const shape = el('span', { class: 'ly-mask-shape' }); preview.append(shape);
+      mask.append(el('summary', { title: 'Mask: keep only the part inside this shape' }, preview, 'Mask'));
+      const m = { kind: 'ellipse', x: 50, y: 50, width: 70, height: 70, ...L.mask };
+      const paint = () => { shape.style.clipPath = L.mask ? `polygon(${L.mask.points.map(p => `${p[0]}% ${p[1]}%`).join(',')})` : ''; shape.style.opacity = L.mask ? '1' : '.25'; };
+      paint();
+      const apply = (isLive = false) => {
+        const base = m.kind === 'rectangle' ? [[-1,-1],[1,-1],[1,1],[-1,1]] : m.kind === 'diamond' ? [[0,-1],[1,0],[0,1],[-1,0]] : Array.from({length:64},(_,i)=>[Math.cos(i*Math.PI/32),Math.sin(i*Math.PI/32)]);
+        (isLive ? live : commit)({ mask: { ...m, points: base.map(([x,y])=>[m.x+x*m.width/2,m.y+y*m.height/2]) } });
+        if (isLive) paint();
+      };
+      const choices = el('div', { class: 'ly-mask-choices' });
+      for (const [kind, icon] of [['ellipse','●'],['rectangle','■'],['diamond','◆']]) choices.append(btn(icon, `${kind} mask`, () => { m.kind = kind; apply(); }, `ghost small${L.mask?.kind === kind ? ' on' : ''}`));
+      choices.append(btn('Clear', 'Remove the mask', () => commit({ mask: null })));
+      mask.append(choices);
+      if (L.mask) for (const [key,label,min,max] of [['x','Center X',0,100],['y','Center Y',0,100],['width','Width',1,200],['height','Height',1,200]]) {
+        const input = el('input', { type:'range', min, max, step:1, value:m[key], title:`${label} (%)` });
+        input.addEventListener('change', () => { m[key] = Number(input.value); apply(); });
+        const value = el('span', { text:`${m[key]}%` });
+        input.addEventListener('input', () => { value.textContent = `${input.value}%`; m[key] = Number(input.value); apply(true); });
+        mask.append(el('label', { class:'ly-field' }, el('span',{text:label}), input, value));
+      }
       const range = (label, key, min, max, step, fmt, title) => {
         const v = valueAt ? valueAt(L, key) : L[key] ?? (key === 'scale' || key === 'opacity' ? 1 : 0);
         const out = el('span', { class: 'ly-val', text: fmt(v) });
@@ -513,8 +552,13 @@ filter('${type}', P);
       const lp = loop();
       props.append(
         el('div', { class: 'ly-sel' }, el('span', { class: 'ly-swatch', style: { background: L.color } }), el('b', { text: L.name })),
+        el('div', { class: 'ly-mask-choices' },
+          btn('Copy', 'Copy selected layers (Ctrl/⌘ C)', () => root.dispatchEvent(new KeyboardEvent('keydown', { key:'c', ctrlKey:true, bubbles:true }))),
+          btn('Paste', 'Paste copied layers (Ctrl/⌘ V)', () => { if (!clipboard.length) { toast('Copy a layer first'); return; } onPaste?.(JSON.parse(JSON.stringify(clipboard))); }),
+          btn('Delete', 'Delete this layer (Delete / Backspace)', () => onRemove(L.id))),
         range('Opacity', 'opacity', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`),
         el('label', { class: 'ly-field' }, el('span', { text: 'Blend' }), blend),
+        L.precomp ? null : mask,
         // (round 48, labcalm) when it plays, its fades and Animate ▾ fold into one row that says where it stands
         // ("whole song", "0:02.000 → 0:08.000"); it was 8 controls and a hint always open under every layer
         el('details', { class: 'ly-plays', open: store.get('three.layerPlays', false), on: { toggle: (e) => store.set('three.layerPlays', e.currentTarget.open) } },

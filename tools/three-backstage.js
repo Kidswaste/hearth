@@ -64,7 +64,7 @@ function makeBackstage(opts = {}) {
   const codeKey = (L, s) => (L.precomp ? `${L.code}|${pcSpec(L, s)?.sig || ''}` : L.code);
   const sigOf = (s) => JSON.stringify(layersOf(s).map((L) => [L.id, codeKey(L, s), L.visible, L.opacity, L.blend, L.x, L.y, L.scale, L.rotate]));
 
-  const specOf = (L, z) => ({ id: L.id, code: L.code, z, slot: L.slot ?? z, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, overrides: L.overrides || null });
+  const specOf = (L, z) => ({ id: L.id, code: L.code, z, slot: L.slot ?? z, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, mask: L.mask || null, overrides: L.overrides || null });
   // Runs the sketch: the first time (or another sketch, or forced) a fresh page with every layer bottom first; when
   // this sketch already runs here, only the layers whose code changed run again, in place (no new page: round 6 "live").
   // Returns true for a fresh page.

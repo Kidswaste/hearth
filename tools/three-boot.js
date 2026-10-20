@@ -33,7 +33,7 @@ const LabBoot = (() => {
   // the layers as the Lab sends them (tools/three-backstage.js specOf), plain code: no sliders, no music
   function specs(s) {
     const Ls = Array.isArray(s.layers) && s.layers.length ? s.layers : [{ id: 'main', name: 'Layer 1', code: s.code || '', slot: 0 }];
-    return Ls.filter((L) => !L.precomp && typeof L.code === 'string').map((L, z) => ({ id: L.id, code: L.code, z, slot: L.slot ?? z, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, overrides: L.overrides || null }));
+    return Ls.filter((L) => !L.precomp && typeof L.code === 'string').map((L, z) => ({ id: L.id, code: L.code, z, slot: L.slot ?? z, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, mask: L.mask || null, overrides: L.overrides || null }));
   }
   const post = (m) => { try { w?.frame.contentWindow?.postMessage({ target: 'three-sandbox', ...m }, '*'); } catch { /* gone */ } };
   const mark = (k) => { if (w && w.times[k] == null) w.times[k] = Math.round(performance.now() - w.t0); };
