@@ -475,6 +475,10 @@ function createEngine(o) {
   async function cloudHash(rel, C) {
     const c = state.cloud[rel];
     const j = journalLatest.get(rel);
+    // An unchanged, offloaded large file does not need downloading just to say
+    // it is synced. Reuse only an exact metadata match; changed/unknown cloud
+    // files must remain pending until their actual contents can be read.
+    if (C.downloading) return !C.cloudUnknown && c && c[0] === C.size && c[1] === C.mtime && c[2] ? c[2] : UNKNOWN;
     if (C.placeholder && !readable(rel, C)) {
       if (c && c[2] && (C.size === null || c[0] === C.size) && (!j || j.h === c[2] || j.t < (state.lastOk || 0))) return c[2];
       return j && (C.size === null || j.s === C.size) ? j.h : UNKNOWN;
@@ -842,7 +846,7 @@ function createEngine(o) {
       if (stopping) break;
       if (S.localOnly(rel)) continue; // previously mirrored caches stay untouched on either side
       const L = local.get(rel); const C = cloud.get(rel); const bh = state.base[rel];
-      if (C?.downloading && !(await cloudReady(rel, C))) { pending += 1; cloudOnly.push(rel); continue; }
+      if (C?.downloading) await cloudReady(rel, C);
       if (L?.unavailable) { pending += 0; continue; } // a render on a drive that isn't plugged in: left alone
       if ((!L && blindIn(local.blind, rel)) || (!C && blindIn(cloud.blind, rel))) { pending += 1; continue; }
       if (!L && !C) { dropBase(rel); delete state.local[rel]; delete state.cloud[rel]; continue; }
@@ -852,6 +856,7 @@ function createEngine(o) {
       let lh = null; let ch = null;
       try { lh = L ? await localHash(rel, L) : null; } catch (err) { unreadable.push(rel); pending += 1; log('hash', rel, err.message); continue; }
       try { ch = C ? await cloudHash(rel, C) : null; } catch (err) { pending += 1; log('cloud hash', rel, err.message); continue; }
+      if (C?.downloading && (C.cloudUnknown || ch === UNKNOWN || lh !== ch)) { pending += 1; cloudOnly.push(rel); continue; }
       if (lh === INFLIGHT || ch === INFLIGHT) { pending += 1; continue; }
       if (lh === BAD || ch === BAD) { unreadable.push(rel); pending += 1; continue; }
       if (L && C) {

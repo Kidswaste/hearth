@@ -106,6 +106,12 @@ async function main() {
     try {st=await A.e.pass();ok(heldOnce&&st.pending>0&&J(file).remote==='arrived during retry'&&J(A.p(rel)).local==='newer local work','rename retry rechecks the destination and preserves simultaneous incoming data');}
     finally {fs.promises.rename=ordinaryRename;}
     await settle(A);ok(J(A.p(rel)).remote==='arrived during retry'&&J(A.p(rel)).local==='newer local work','postponed rename merges both versions on the next pass');
+    const video='refs/cloud-only.mp4',videoFile=cloudFile(w,video);
+    W(A.p(video),Buffer.alloc(9*1024*1024,1));await settle(A);
+    A.e=A.make({cloudAttributes:async paths=>new Map(paths.map(p=>[p,p===videoFile?0x400000:0]))});
+    st=await A.e.pass();ok(st.pending===0,'unchanged offloaded video with exact cached metadata is synced without hydration');
+    fs.utimesSync(videoFile,new Date(Date.now()-10000),new Date(Date.now()-10000));st=await A.e.pass();
+    ok(st.pending===1&&st.cloudOnly.includes(video),'changed offloaded video never reuses the old hash or overwrites either copy');
   }
   {
     const w=world('local-habits'),A=computer(w,'PC'),B=computer(w,'Mac');
