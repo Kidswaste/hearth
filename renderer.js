@@ -995,6 +995,34 @@ function popMenu(x, y, items, { width = 300 } = {}) {
 }
 
 // Projects first; tools belong to the open project. Chats stay one small utility away.
+// One device-local playback control; recording/export levels remain in their own tools.
+(() => {
+  const b = document.createElement('button');
+  b.id = 'volume-btn'; b.className = 'tool-btn'; b.type = 'button';
+  b.setAttribute('aria-label', 'Hearth playback volume'); b.textContent = '🔊';
+  $('config-btn').before(b);
+  let value = .75, previous = .75, pop = null;
+  const paint = () => { b.textContent = value ? '🔊' : '🔇'; b.title = `Hearth volume · ${Math.round(value * 100)}%`; };
+  hub.volume.get().then(n => { value = n; if (n) previous = n; paint(); }).catch(console.warn); paint();
+  b.onclick = () => {
+    if (pop) { pop.hidePopover(); return; }
+    pop = document.createElement('div'); pop.id = 'volume-pop'; pop.setAttribute('popover', 'auto');
+    pop.style.cssText = 'position:fixed;inset:auto auto 18px 86px;margin:0;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--bg,#15151b);color:var(--text);box-shadow:0 12px 40px #0008;z-index:10000';
+    const title = document.createElement('b'), row = document.createElement('div'), slider = document.createElement('input'), mute = document.createElement('button');
+    title.textContent = 'Playback · ' + Math.round(value * 100) + '%';
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;margin-top:12px';
+    slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.step = '1'; slider.value = String(Math.round(value * 100));
+    slider.setAttribute('aria-label', 'Hearth playback volume'); slider.style.accentColor = 'var(--accent,#ffd75e)';
+    mute.textContent = value ? 'Mute' : 'Unmute'; mute.type = 'button'; mute.className = 'ghost';
+    let timer;
+    const save = () => { clearTimeout(timer); timer = setTimeout(() => hub.volume.set(value).catch(e => toast(e.message, { type: 'error' })), 50); };
+    const change = n => { value = n; if (n) previous = n; slider.value = String(Math.round(n * 100)); title.textContent = `Playback · ${slider.value}%`; mute.textContent = n ? 'Mute' : 'Unmute'; paint(); save(); };
+    slider.oninput = () => change(Number(slider.value) / 100);
+    mute.onclick = () => change(value ? 0 : previous || .75);
+    pop.addEventListener('toggle', e => { if (e.newState === 'closed') { pop?.remove(); pop = null; b.focus(); } });
+    row.append(slider, mute); pop.append(title, row); document.body.append(pop); pop.showPopover(); slider.focus();
+  };
+})();
 const WorkspaceNav = window.WorkspaceNav = (() => {
   const paths = { projects:'M3 5h7l2 3h9v13H3ZM3 5V3h7l2 2', chat:'M4 4h16v12H9l-5 4V4Zm4 5h8M8 12h5', life:'M12 3 4 7v14l8-4 8 4V7l-8-4Zm0 0v14M8 10l2 2 5-5', ship:'m12 2 5 10 5 6-8-2-2 6-2-6-8 2 5-6 5-10ZM10 10h4M7 19l-2 3M17 19l2 3', brushes:'m4 2 16 15-3 3L2 4Zm16 0L2 17l3 3L22 4ZM3 18l-1 4 4-1M18 18l4 4', spark:'m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z', plus:'M12 4v16M4 12h16' };
   const defaults = [{id:'forgeheart',name:'Forgeheart',icon:'ship',type:'tool',target:'forgeheart',color:'#ff9b61'},{id:'clink',name:'Clink!',icon:'brushes',type:'name',target:'Clink',color:'#e17ac4'}];
