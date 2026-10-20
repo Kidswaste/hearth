@@ -246,8 +246,23 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
 // instrument opened, so opening doesn't pay a second Python start. Only one instrument streams to the audio device at
 // a time (ASIO drivers are usually single-client): starting one stops the other's stream, not its process.
 function pool(options) {
+  const master = require('./volumemain'), monitor = new Map();
+  const playback = r => {
+    if (!r?.plugin || !['volume', 'live-start', 'open'].includes(r.action)) return r;
+    if (r.action === 'open' && !r.live) return r;
+    const gain = r.gain ?? monitor.get(r.plugin) ?? .2;
+    if (!Number.isFinite(gain) || gain < 0 || gain > .5) throw Error('Volume outside 0–0.5.');
+    monitor.set(r.plugin, gain);
+    return { ...r, gain: gain * master.get() };
+  };
   const flags = { asio: process.env.HEARTH_VST_ASIO !== '0' };
   let extra = [], base = null, last = null; const hosts = new Map(); // plugin path -> host
+  master.onChange(level => {
+    for (const [plugin, h] of hosts) if (h.alive && monitor.has(plugin)) {
+      const job = { action: 'volume', plugin, gain: monitor.get(plugin) * level };
+      if (!h.send(job)) h.request(job).catch(() => {});
+    }
+  });
   const make = () => { const h = create({ ...options, flags }); h.scan(extra); return h; };
   const anyAlive = () => [...hosts.values()].find(h => h.alive) || base || (base = make());
   function hostFor(plugin, adopt = true) {
@@ -276,11 +291,12 @@ function pool(options) {
       const h = hostFor(r?.plugin, !['devices', 'live-status', 'live-stop', 'panic', 'record-status', 'record-cancel', 'set-status', 'set-close', 'set-panic', 'run-stop', ...EMBED_ACTIONS].includes(r?.action)) || (r?.action === 'devices' ? anyAlive() : null); // (round 64) + the editor / controls actions: only an open instrument's host
       if (!h) return { ok: true, playing: false }; // status / stop / panic of an instrument that isn't open: nothing plays
       if (r.action === 'live-start' || (r.action === 'open' && r.live === true)) { last = r.plugin; await quietOthers(r.plugin); }
-      return h.request(r);
+      return h.request(playback(r));
     },
     send(r) {
       const h = r && STREAMED.includes(r.action) && hosts.get(r.plugin);
       if (!h) return { ok: false };
+      r = playback(r);
       if (h.send(r)) return { ok: true };
       if (h) h.request(r).catch(() => {}); // no stream yet: the same message as a normal request
       return { ok: !!h };

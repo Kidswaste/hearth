@@ -192,7 +192,7 @@ function labPage() {
   const html = fs.readFileSync(path.join(__dirname, 'tools', 'three-sandbox.html'), 'utf8');
   const re = /const base = location\.protocol === 'file:' && \/Electron\\\/[^\n]+\n\s*\? `hearth-three:\/\/library\/\$\{V\}` : `https:\/\/cdn\.jsdelivr\.net\/npm\/three@\$\{V\}`;/;
   if (!re.test(html)) throw new Error('The Lab player changed (three.js import line not found): update deploymain.js labPage().');
-  return html.replace(re, "const base = new URL('three', location.href).href; // published by Hearth: three.js next to this page")
+  return html.replace(/<script data-hearth-playback>[\s\S]*?<\/script>/, '').replace(re, "const base = new URL('three', location.href).href; // published by Hearth: three.js next to this page")
     .replace('<!-- Runs untrusted sketch code: it may load three.js and addons from CDNs, nothing from the hub. -->', '<!-- The Lab\'s player, published by Hearth: three.js comes from ./three/ -->')
     // (round 25, diet) the motion kit and the 3D-model runtime live in their own files the Lab sends on demand; a
     // published page has no hub to ask, so they go back in as modules before the page's own

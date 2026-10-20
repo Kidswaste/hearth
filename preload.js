@@ -7,6 +7,7 @@ const startZoom = Number((process.argv.find((a) => a.startsWith('--hearth-zoom='
 if (startZoom !== 1) { try { webFrame.setZoomFactor(startZoom); } catch { /* the page re-applies it */ } }
 
 contextBridge.exposeInMainWorld('hub', {
+  volume: { get: call('volume:get'), set: call('volume:set') },
   getConfig: call('config:get'),
   saveConfig: call('config:save'),
   onConfigChanged: on('config:changed'),
