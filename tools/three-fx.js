@@ -286,6 +286,9 @@ const ThreeFX = (() => {
     const decideBtn = typeof Decide !== 'undefined' ? el('button', { class: 'ghost small decide-btn', text: '✦', title: 'Let Astra pick an effect for this picture (Undo takes it back)', on: { click: () => { close(); Decide.run(tab === 'look' || tab === 'palette' ? tab : 'effect'); } } }) : null;
     root = el('div', { class: 'fx-picker', attrs: { role: 'dialog', 'aria-label': 'Effects and presets' } },
       el('div', { class: 'fx-head' }, input, favBtn, diceBtn, decideBtn, el('button', { class: 'ghost small', text: '×', title: 'Close (Esc)', on: { click: close } })),
+      el('div',{class:'fx-tabs'},
+        el('button',{class:'ghost small',text:'◇ Shape generator · 2D / 3D',on:{click:()=>{close();ThreeLab.layerStudio.generate();}}}),
+        el('button',{class:'ghost small',text:'◐ Mask layer',on:{click:()=>{close();ThreeLab.layerStudio.generate({maskSource:ThreeLab.stageHooks.layer()?.id});}}})),
       tabsEl, list, foot);
     if (anchor) {
       const r = anchor.getBoundingClientRect();

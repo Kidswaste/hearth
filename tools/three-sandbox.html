@@ -5203,7 +5203,7 @@ const xform = (L) => { XF.x = prop(L, 'x', 0); XF.y = prop(L, 'y', 0); XF.scale 
 // Two GPU textures avoid reading every pixel back to the CPU each frame.
 function matteSource(L) {
   const m=L.props.mask;
-  if(m?.kind!=='video' || m.source==='media') return null;
+  if(m?.kind!=='video' || m.source==='media' || m.source?.startsWith('ref:')) return null;
   return layers.get(m.source) || [...layers.values()].find(B=>B!==L && B.props.pcOf===L.props.pcOf && (B.props.name===m.sourceName || B.props.name?.endsWith(` · ${m.sourceName}`)));
 }
 const matteUsed={frame:-1,version:-1,ids:new Set()};
@@ -5217,8 +5217,46 @@ function matteOnly(L) {
 const rawCanvases = L => [...L.box.querySelectorAll('canvas')].filter(c=>!c.classList.contains('lab-video-mask') && !c.classList.contains('lab-xfade') && c.closest('.lab-layer')===L.box);
 function matteDispose(L) {
   const a=L.matte; if(!a)return;
+  matteAssetDispose(a);
   a.gl.deleteTexture(a.tex[0]);a.gl.deleteTexture(a.tex[1]);a.gl.deleteBuffer(a.buffer);a.gl.deleteProgram(a.program);
   a.gl.getExtension('WEBGL_lose_context')?.loseContext();a.canvas.remove();L.matte=null;L.box.classList.remove('lab-matted');
+}
+function matteAssetDispose(a) {
+  if(a.asset?.tagName==='VIDEO'){a.asset.pause();a.asset.removeAttribute('src');a.asset.load();}
+  a.asset=null;a.assetUrl=null;
+}
+function matteAsset(L,a) {
+  const m=L.props.mask, key=m.source?.startsWith('ref:')?m.source.slice(4):null, url=key&&refs[key];
+  if(a.assetUrl!==url){
+    matteAssetDispose(a);a.assetUrl=url;
+    if(url){
+      const video=refKinds[key]==='video';const e=a.asset=document.createElement(video?'video':'img');
+      if(video){e.muted=true;e.playsInline=true;e.preload='auto';refVids.add(new WeakRef(e));}
+      e.src=url;
+    }
+  }
+  const e=a.asset;if(!e)return null;
+  if(e.tagName!=='VIDEO')return e.complete&&e.naturalWidth?e:null;
+  const rate=Math.max(.1,Math.min(4,Number(m.rate)||1));
+  const t=Math.max(0,(keyTime(L)-(L.props.in||0))*rate+(Number(m.offset)||0));
+  const target=Number.isFinite(e.duration)&&e.duration>0?t%e.duration:0;
+  const playing=!(SQ.on?(!SQ.playing||SQ.off):mediaEl.paused);
+  if(e.readyState>=1 && !e.seeking && Math.abs(e.currentTime-target)>(playing?.15:.015))e.currentTime=target;
+  e.playbackRate=rate;
+  if(playing&&e.paused)e.play().catch(()=>{});else if(!playing&&!e.paused)e.pause();
+  return e.readyState>=2?e:null;
+}
+async function matteAssetsReady() {
+  await Promise.all([...layers.values()].filter(L=>L.props.mask?.source?.startsWith('ref:')).map(async L=>{
+    if(!L.matte)matteFrame(L,2,2);
+    const a=L.matte;if(!a)return;
+    matteAsset(L,a);const e=a.asset;if(!e)return;
+    const wait=event=>new Promise(resolve=>{const done=()=>{e.removeEventListener(event,done);resolve();};e.addEventListener(event,done,{once:true});realSetTimeout(done,2500);});
+    if(e.tagName==='VIDEO'){
+      if(e.readyState<2)await wait('loadeddata');
+      matteAsset(L,a);if(e.seeking)await wait('seeked');
+    }else if(!e.complete)await wait('load');
+  }));
 }
 function matteFrame(L,W,H) {
   if(L.props.mask?.kind!=='video') { matteDispose(L); return null; }
@@ -5240,7 +5278,8 @@ function matteFrame(L,W,H) {
   if(canvas.width!==W || canvas.height!==H){canvas.width=W;canvas.height=H;}
   const paint=(c,B)=>{const cvs=rawCanvases(B).filter(cv=>!cv.__skip);if(cvs.length===1 && !cvs[0].__tb)return glFresh(cvs[0]);if(c.width!==W || c.height!==H){c.width=W;c.height=H;}const g=c.getContext('2d');g.clearRect(0,0,W,H);for(const cv of cvs)cvDraw(g,cv,W,H);return c;};
   const source=matteSource(L);
-  const image=source ? paint(a.fill,source) : L.props.mask.source==='media' && isVideo && mediaEl.readyState>=2 ? mediaEl : null;
+  if(a.asset && !L.props.mask.source?.startsWith('ref:'))matteAssetDispose(a);
+  const image=source ? paint(a.fill,source) : L.props.mask.source==='media' && isVideo && mediaEl.readyState>=2 ? mediaEl : matteAsset(L,a);
   gl.viewport(0,0,W,H);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
   if(image){
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
@@ -13249,6 +13288,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   }
   for (const st of SQ.mounted.values()) st.fresh = false;
   sqApply(T, { full: true }); // transitions / titles from what the layers just drew
+  await matteAssetsReady();
   if (!ret) { post({ type: 'seq-frame', n, ok: true }); return; }
   const c = (SQ.out ||= document.createElement('canvas'));
   composite(c, 1, { w, h });

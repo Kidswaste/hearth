@@ -1909,14 +1909,17 @@ const ThreeLab = (() => {
     }
     async function addRef(src, { key } = {}) {
       if (!current) throw new Error('Open a sketch first');
+      const owner=current.id;
       const name = String(src).split(/[\\/]/).pop().replace(/^\d{10,}-/, '');
       const kind = refKindOf(name);
       if (!kind) throw new Error(`${name} isn't a file a sketch can use (images, videos, 3D models, audio, fonts, data files)`);
       const st = await window.hub.fs.stat(src);
+      if(current?.id!==owner)throw new Error('Sketch changed while importing; try again in the intended sketch');
       if (st.size > 400 * 1048576) throw new Error(`${name} is over 400 MB`);
       const existing = refsOf().find((r) => r.name === name && r.size === st.size);
       if (existing) return existing;
       const path = await window.hub.importRef(src);
+      if(current?.id!==owner)throw new Error('Sketch changed while importing; the copied asset was kept safely');
       const r = { id: `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, key: refKey(key || name), name, kind, path, size: st.size, at: Date.now(), ...(/[\\/]refs[\\/]\d{10,}-/.test(src) ? {} : { src }) }; // (round 42) src: the original, followed when you save it again
       refsOf().push(r);
       saveRefs();
@@ -1934,8 +1937,10 @@ const ThreeLab = (() => {
     function renameRef(r, to) {
       const k = refKey(to, r);
       const used = layersOf().some((L) => L.code.includes(r.key));
+      const masked=layersOf().filter(L=>L.mask?.source===`ref:${r.key}`);
       r.key = k;
       saveRefs(); sendRefs(); renderRefsBtn();
+      for(const L of masked)editLayer(L.id,{mask:{...L.mask,source:`ref:${k}`}});
       if (used) toast(`Renamed to ${k}: code that used the old name needs updating (ask the director)`, { timeout: 4000 });
       return k;
     }
@@ -2259,6 +2264,8 @@ const ThreeLab = (() => {
       onSelect: (id) => selectLayer(id),
       onChange: (id, patch, { live }) => editLayer(id, patch, { live }),
       onAdd: (kind) => addLayer(kind),
+      onMoodboard: id => layerStudio.moodboard(id),
+      onMaskTrack: id => layerStudio.generate({maskSource:id}),
       onPaste: (copies) => { for (const copy of copies) { const { id, slot, group, solo, ...props } = copy; addLayer('paste', { code: copy.code, props: { ...props, name: `${copy.name} copy` } }); } },
       onRemove: (id) => removeLayer(id),
       onReorder: (ids) => reorderLayers(ids),
@@ -2370,6 +2377,62 @@ const ThreeLab = (() => {
       return part;
     }
     const uniqueName = (name) => { const names = new Set(layersOf().map((L) => L.name)); if (!names.has(name)) return name; let i = 2; while (names.has(`${name} ${i}`)) i += 1; return `${name} ${i}`; };
+    const layerStudio = api.layerStudio = {
+      async generate({maskSource=null, settings=null}={}) {
+        const owner=current?.id;if(!owner)return;
+        const v=settings || await Modal.form(maskSource?'Add a mask layer':'Shape generator',[
+          {name:'shape',label:'Shape',type:'select',value:'circle',options:ThreeLayers.SHAPES.map(value=>({value,label:value[0].toUpperCase()+value.slice(1)}))},
+          {name:'dimension',label:'Dimension',type:'select',value:'2D',options:[{value:'2D',label:'2D · flat'},{value:'3D',label:'3D · solid'}]},
+          {name:'color',label:'Color',type:'color',value:'#ffffff'},
+          {name:'depth',label:'3D depth',type:'number',value:.4}],{ok:maskSource?'Add mask track':'Add shape'});
+        if(!v || current?.id!==owner)return;
+        const source=maskSource && layerById(maskSource);if(maskSource&&!source)return;
+        const code=ThreeLayers.shapeCode(v);
+        const L=addLayer('code',{name:`${source?'Mask · ':''}${v.dimension} ${v.shape}`,code,props:source?{mask:{kind:'video',source:source.id,sourceName:source.name,channel:'alpha'}}:{}});
+        if(source){ensureTimeline();L.in=player.time;L.out=Math.max(L.in+.1,player.duration || L.in+8);L.lanes=['x','scale'];touch();renderLayers();box.send({type:'layer-props',id:L.id,props:layerProps(L)});}
+        return L;
+      },
+      async moodboard(id) {
+        const owner=current?.id;
+        try {
+          await Lazy.load('board');await Board.ready();
+          const boards=Board.boards();if(!boards.length){toast('Add an image or video to a moodboard first');return;}
+          const project=window.ProjectWorkspace?.current?.();
+          const pick=await Modal.form('Fill from moodboard',[{name:'board',label:'Moodboard',type:'select',value:project?.workspace?.boardId || Board.current()?.id || boards[0].id,options:boards.map(b=>({value:b.id,label:b.name}))}],{ok:'Browse media'});
+          if(!pick || current?.id!==owner)return;
+          const b=await Board.load(pick.board);
+          const items=(b?.items || []).filter(it=>['image','gif','video'].includes(it.type)&&it.src);
+          if(!items.length){toast('This board has no imported images or videos');return;}
+          const item=await layerStudio.pickMedia(items);
+          if(!item || current?.id!==owner)return;
+          await layerStudio.useAsset(id,item);
+        }catch(err){toast(err.message,{type:'error'});}
+      },
+      pickMedia(items) {
+        return new Promise(resolve=>{
+          let result=null;
+          const dialog=el('dialog',{class:'ui-modal'}),grid=el('div',{});
+          grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;max-height:55vh;overflow:auto;width: min(680px,75vw)';
+          for(const item of items){
+            const preview=el(item.type==='video'?'video':'img',{src:Board.fileUrl(item.src),title:item.title||item.name||'Moodboard media'});
+            preview.style.cssText='width:100%;height:100px;object-fit:contain;border-radius:8px;background:#101014';
+            if(item.type==='video'){preview.muted=true;preview.preload='metadata';}else preview.loading='lazy';
+            grid.append(el('button',{type:'button',title:'Use this as the shape fill',on:{click:()=>{result=item;dialog.close();}}},preview,el('div',{text:`${item.type==='video'?'▶':'▧'} ${item.title||item.name||'Untitled'}`})));
+          }
+          dialog.append(el('h2',{text:'Fill from moodboard'}),grid,el('button',{type:'button',text:'Cancel',on:{click:()=>dialog.close()}}));
+          dialog.addEventListener('close',()=>{for(const v of grid.querySelectorAll('video')){v.removeAttribute('src');v.load();}dialog.remove();resolve(result);},{once:true});
+          document.body.append(dialog);dialog.showModal();
+        });
+      },
+      async useAsset(id,item) {
+        const owner=current?.id;if(!layerById(id))return;
+        const ref=await addRef(item.src);
+        if(current?.id!==owner || !layerById(id))return;
+        editLayer(id,{mask:{kind:'video',source:`ref:${ref.key}`,sourceName:item.title || ref.name,channel:'bright',offset:0,rate:1}});
+        ensureTimeline();setLanes(layerById(id),[...new Set([...(layerById(id).lanes||[]),'x','scale'])]);
+        return ref;
+      }
+    };
     function newLayer(o) {
       const Ls = layersOf();
       const slot = Math.max(-1, ...Ls.map((L) => L.slot || 0)) + 1;
@@ -5143,6 +5206,7 @@ ${frag}\`,
     get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
     get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js
+    get layerStudio() { return api.layerStudio || null; },
     get present() { return api.present || null; }, // (round 52, gamemode) the player (its song pauses while a game plays)
     get tm() { return api.tm || null; }, // (round 23) tools/three-history*.js
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer

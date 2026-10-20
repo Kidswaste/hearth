@@ -350,7 +350,28 @@ filter('${type}', P);
   // onReorder(idsBottomFirst), now() → playhead seconds, duration() → song length, loop() → { a, b } | null.
   // keyState(id, prop) → 'none' | 'animated' | 'on'; toggleKey(id, prop, value); valueAt(L, prop) → shown value.
   let clipboard = [];
-  function panel({ onSelect, onChange, onAdd, onPaste, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo }) {
+  const SHAPES = ['circle','square','triangle','star','hexagon','heart','ring'];
+  function shapeCode({shape='circle',dimension='2D',color='#ffffff',depth=.4}={}) {
+    if(!SHAPES.includes(shape))shape='circle';
+    dimension=dimension==='3D'?'3D':'2D';
+    const solid=dimension==='3D', d=Math.max(.02,Math.min(3,Number(depth)||.4));
+    const c=/^#[0-9a-f]{6}$/i.test(color)?color:'#ffffff';
+    return `import * as THREE from 'three';
+const P=tweak({ color:{value:'${c}',label:'Color'}, size:{value:1,min:.1,max:3,step:.01,label:'Size'}, spin:{value:0,min:-2,max:2,step:.01,label:'Spin'}, tilt:{value:${solid ? .35 : 0},min:-3.14,max:3.14,step:.01,label:'Tilt'} });
+const renderer=new THREE.WebGLRenderer({alpha:true,antialias:true}); renderer.setSize(innerWidth,innerHeight); document.body.append(renderer.domElement);
+const scene=new THREE.Scene(); const camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.1,100);camera.position.z=4;
+const s=new THREE.Shape(); const kind='${shape}';
+if(kind==='circle'||kind==='ring'){s.absarc(0,0,1,0,Math.PI*2,false);if(kind==='ring'){const hole=new THREE.Path();hole.absarc(0,0,.55,0,Math.PI*2,true);s.holes.push(hole);}}
+else if(kind==='heart'){s.moveTo(0,-.8);s.bezierCurveTo(-1.8,.3,-.7,1.6,0,.65);s.bezierCurveTo(.7,1.6,1.8,.3,0,-.8);}
+else {const n=kind==='star'?10:kind==='triangle'?3:kind==='hexagon'?6:4;for(let i=0;i<n;i++){const a=i*Math.PI*2/n+Math.PI/2+(kind==='square'?Math.PI/4:0),r=kind==='star'&&i%2 ? .45 : 1;const x=Math.cos(a)*r,y=Math.sin(a)*r;if(i)s.lineTo(x,y);else s.moveTo(x,y);}s.closePath();}
+const geometry=${solid?`new THREE.ExtrudeGeometry(s,{depth:${d},bevelEnabled:true,bevelSegments:3,steps:1,bevelSize:.04,bevelThickness:.04,curveSegments:64})`:'new THREE.ShapeGeometry(s,64)'};geometry.center();
+const material=new THREE.${solid?'MeshStandardMaterial':'MeshBasicMaterial'}({color:P.color,side:THREE.DoubleSide${solid?',roughness:.35,metalness:.2':''}});
+const mesh=new THREE.Mesh(geometry,material);mesh.name='${dimension} ${shape}';scene.add(mesh);
+${solid?'scene.add(new THREE.HemisphereLight(0xffffff,0x24202b,2));const light=new THREE.DirectionalLight(0xffffff,3);light.position.set(2,3,4);scene.add(light);':''}
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(P.size);mesh.rotation.x=P.tilt;mesh.rotation.y=(layer.scene??layer.time)*P.spin;renderer.render(scene,camera);});`;
+  }
+  function panel({ onSelect, onChange, onAdd, onPaste, onMoodboard, onMaskTrack, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo }) {
     const { fmtMs, parseTime } = ThreeMedia._test;
     let layers = [];
     let selectedId = null;
@@ -513,11 +534,20 @@ filter('${type}', P);
       fill.value = L.mask?.kind==='video' ? L.mask.source : '';
       fill.addEventListener('change',()=> { if(fill.value) commit({mask:{kind:'video',source:fill.value,channel:'bright',sourceName:layers.find(x=>x.id===fill.value)?.name || 'Timeline video'}}); });
       mask.append(fill);
+      mask.append(el('div',{class:'ly-mask-choices'},btn('▦ Moodboard…','Fill with an image or video from a moodboard',()=>onMoodboard?.(L.id)),btn('◐ Mask track…','Add a separate mask layer on the timeline for this layer',()=>onMaskTrack?.(L.id))));
+      if(L.mask?.source?.startsWith('ref:')) fill.prepend(el('option',{value:L.mask.source,text:L.mask.sourceName || 'Moodboard asset',selected:true}));
       if(L.mask?.kind==='video') {
         shape.style.background='linear-gradient(135deg,#fc7,#b7f,#4dd)';
-        mask.append(el('div',{class:'hint',text:`${L.name} → ${L.mask.sourceName || 'video'}. ${L.mask.source==='media'?'Load a video in the timeline below.':'The fill layer appears only through this shape.'}`}));
+        mask.append(el('div',{class:'hint',text:`${L.name} → ${L.mask.sourceName || 'video'}. ${L.mask.source==='media'?'Load a video in the timeline below.':L.mask.source?.startsWith('ref:')?'A scene copy of your moodboard media.':'The fill layer appears only through this shape.'}`}));
         const channel=el('select',{title:'Which pixels reveal the video',attrs:{'aria-label':'Mask channel'}}, ...[['bright','Bright pixels (red, white, colors)'],['red','Red channel'],['alpha','Transparency / alpha']].map(([value,text])=>el('option',{value,text})));
         channel.value=L.mask.channel || 'bright'; channel.addEventListener('change',()=>commit({mask:{...L.mask,channel:channel.value}}));mask.append(channel);
+        if(L.mask.source?.startsWith('ref:')) {
+          for(const [key,label,value,min,max] of [['offset','Video start (seconds)',L.mask.offset||0,0,86400],['rate','Video speed',L.mask.rate||1,.1,4]]) {
+            const input=el('input',{type:'number',value,min,max,step:.1,title:label,attrs:{'aria-label':label}});
+            input.addEventListener('change',()=>commit({mask:{...L.mask,[key]:Math.max(min,Math.min(max,Number(input.value)||value))}}));
+            mask.append(el('label',{class:'hint'},label,input));
+          }
+        }
       }
       const apply = (isLive = false) => {
         const base = m.kind === 'rectangle' ? [[-1,-1],[1,-1],[1,1],[-1,1]] : m.kind === 'diamond' ? [[0,-1],[1,0],[0,1],[-1,0]] : Array.from({length:64},(_,i)=>[Math.cos(i*Math.PI/32),Math.sin(i*Math.PI/32)]);
@@ -626,5 +656,5 @@ filter('${type}', P);
     b.title = state === 'on' ? 'Remove this keyframe' : state === 'animated' ? 'Add a keyframe here (it\'s animated: moving the slider also adds one)' : 'Animate: add a keyframe at the playhead';
   }
 
-  return { panel, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt, bezierAt, shiftKeysAt, copyKeysAt, pasteKeys, easeKeysAt, EASE_IDS: ['linear', 'ease', 'hold', 'curve', ...Object.keys(EASE_FN)] };
+  return { panel, shapeCode, SHAPES, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt, bezierAt, shiftKeysAt, copyKeysAt, pasteKeys, easeKeysAt, EASE_IDS: ['linear', 'ease', 'hold', 'curve', ...Object.keys(EASE_FN)] };
 })();
