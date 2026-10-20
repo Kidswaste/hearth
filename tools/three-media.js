@@ -1587,7 +1587,7 @@ const ThreeMedia = (() => {
     // ---------- menus + recording ----------
     function recordClip({ seconds = 6, signal, onProgress = () => {} } = {}) {
       signal?.throwIfAborted();
-      if (recording || startRecord.counting) return Promise.reject(Error('Finish the current scene recording first.'));
+      if (recording || startRecord.counting) throw Error('Finish the current scene recording first.');
       seconds = Math.max(2, Math.min(20, Number(seconds) || 6));
       const id = 'feedback-' + crypto.randomUUID(), take = { kind: 'feedback', startedAt: performance.now() };
       recording = take; paint();
@@ -1610,7 +1610,7 @@ const ThreeMedia = (() => {
         } };
         signal?.addEventListener('abort', cancel, { once: true });
         timer = setTimeout(() => { send({ type: 'record', cmd: 'stop', recordId: id }); done(Error('The scene recorder stopped responding. Try again after the scene has loaded.')); }, (seconds + 20) * 1000);
-        // No seek, autoplay, speed, quality or saved recording-preference changes.
+        // The host owns temporary playback; this recorder does not alter speed, quality or preferences.
         send({ type: 'record', cmd: 'start', recordId: id, maxSeconds: seconds, fps: 30, bitrate: 16e6 });
       });
     }

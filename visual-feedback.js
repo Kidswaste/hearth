@@ -206,8 +206,8 @@ const VisualFeedback = (() => {
       } catch (e) { if (dlg.open) say(task.signal.aborted ? 'Stopped. Any finished take is kept in your project.' : e.message); }
       finally { if (controller === task) { controller = null; if (dlg.open) setBusy(false); } }
     }, 'vf-record primary');
-    record.title = ctx.sceneId ? 'Capture the scene canvas at its current size, without this window. No AI usage until you ask Astra.' : 'Open a project scene to record it for feedback';
-    const recordingRow = el('div', { class: 'vf-record-row' }, record, length, el('span', { class: 'hint', text: 'Scene only · saved automatically' }));
+    record.title = ctx.sceneId ? 'Capture the scene canvas, without this window. Paused playback runs for the take, then returns to its original position. No AI usage until you ask Astra.' : 'Open a project scene to record it for feedback';
+    const recordingRow = el('div', { class: 'vf-record-row' }, record, length, el('span', { class: 'hint', text: 'Plays the scene · saves automatically' }));
     const pick = button('Choose video…', async () => {
       const r = await hub.openDialog({ title: 'Video for a feedback round', filters: [{ name: 'Video', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mkv'] }] });
       const p = Array.isArray(r) ? r[0] : r?.filePaths?.[0] || (typeof r === 'string' ? r : null); if (!p) return;

@@ -2842,8 +2842,21 @@ const ThreeLab = (() => {
       record: (kind, o) => player.record(kind, o),
       async recordClip(o) {
         if (typeof ThreeSeq !== 'undefined' && ThreeSeq.rendering) throw Error('Finish the scene render first.');
+        const scene = current?.id, resume = player.loaded && !player.playing, time = player.time, frozen = frozenNow;
         const take = player.recordClip(o); syncPark(true);
-        try { return await take; } finally { syncPark(true); }
+        try {
+          if (frozen) setFreeze(false);
+          if (resume) player.toggle(true);
+          return await take;
+        } finally {
+          // A paused music-driven animation otherwise records its empty opening frame for the whole take.
+          // Restore only this scene: switching projects must never seek or pause the new one.
+          if (current?.id === scene) {
+            if (resume) { player.toggle(false); player.seek(time); }
+            if (frozen) setFreeze(true);
+          }
+          syncPark(true);
+        }
       },
       get recording() { return player.recording; },
       trigPreset: (name) => applyTrigPreset(name), trigPresets: () => [...Object.keys(trigPresets()), ...store.get('three.trigPresets', []).map((x) => x.name)],

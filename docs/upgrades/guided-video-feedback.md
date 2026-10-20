@@ -12,8 +12,10 @@ FrameRead decoder; estimated fallback positions are labelled as such.
 
 **Record current scene** captures a 6, 12 or 20-second take directly from the
 current project's scene canvas, even when Feedback was opened from its chat.
-The dialog and Hearth UI are excluded. The current canvas size, scene quality,
-playback position/speed and manual recording preferences are preserved. The take
+The dialog and Hearth UI are excluded. A paused or frozen scene plays during the
+take, then returns to its original position and pause/freeze state. Already playing
+scenes continue normally. Canvas size, scene quality, playback speed and manual
+recording preferences are preserved. The take
 is saved to local captures and the original project's shelf, selected in Feedback,
 and its overview frames are prepared automatically. No export or file picker is
 needed, and no AI turn runs until **Ask Astra for direction** is pressed.
