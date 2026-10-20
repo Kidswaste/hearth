@@ -509,6 +509,7 @@ const Projects = (() => {
       { label: '↻ Continue where you left off', action: () => continueIn(p) },
       { label: 'Show only its chats', action: () => Panel.setView(`project:${p.id}`) },
       { label: '✦ Three.js banner / logo…', action: () => ProjectFrontpage.edit(p) },
+      { label: '⇩ Prepare for offline…', action: () => Offline.prepare(p) },
       { label: 'Add', items: () => addMenu(p) },
       mk ? { label: `Its make (${mk.name})`, items: () => Makes.makeMenu(mk) } : null,
       { label: 'Rename…', action: () => renamePrompt(p) },

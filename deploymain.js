@@ -190,7 +190,7 @@ function sandboxLibs() {
 }
 function labPage() {
   const html = fs.readFileSync(path.join(__dirname, 'tools', 'three-sandbox.html'), 'utf8');
-  const re = /const base = `https:\/\/cdn\.jsdelivr\.net\/npm\/three@\$\{V\}`;/;
+  const re = /const base = location\.protocol === 'file:' && \/Electron\\\/[^\n]+\n\s*\? `hearth-three:\/\/library\/\$\{V\}` : `https:\/\/cdn\.jsdelivr\.net\/npm\/three@\$\{V\}`;/;
   if (!re.test(html)) throw new Error('The Lab player changed (three.js import line not found): update deploymain.js labPage().');
   return html.replace(re, "const base = new URL('three', location.href).href; // published by Hearth: three.js next to this page")
     .replace('<!-- Runs untrusted sketch code: it may load three.js and addons from CDNs, nothing from the hub. -->', '<!-- The Lab\'s player, published by Hearth: three.js comes from ./three/ -->')
