@@ -50,10 +50,16 @@ even if frame preparation is cancelled. Normal manual recordings retain Save As.
 The response contains up to three concrete findings with validated evidence
 labels, a small change to try, and a way to check it. Uncertain causes are marked.
 Click evidence to inspect and step the original clip. “Look closer here” selects
-that moment for another review. Nothing sends or edits automatically: select
-findings, edit the prompt, then add it and the image sheets to the original chat's
+that moment for another review. Manual feedback does not send or edit automatically:
+select findings, edit the prompt, then add it and the image sheets to the original chat's
 draft. Existing draft text is appended to, not replaced. The last 20 reviews,
 including saved partial rounds, are retained in `data/kv/visual-feedback.json`.
+
+**Auto-improve with feedback** opens the project's existing run/budget setup with
+visual review enabled. Starting it explicitly records and reviews the scene before
+each edit, passes the strongest finding and its images to the bound conversation,
+and re-records for the next pass. The same budget covers reviews and edits. See
+[Project Auto-improve](project-auto-improve.md) for accounting and stop behavior.
 
 Each pass is a normal Astra helper turn using the configured model and reasoning
 depth, individually accounted in Usage. Completed passes are saved as one evolving

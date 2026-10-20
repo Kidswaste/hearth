@@ -1806,7 +1806,7 @@ const Native = (() => {
 
   // chatId: send into that chat of the agent even when it isn't the open one (a part dispatched by comp-dispatch.js
   // runs in the background, its own scene backstage); the composer's attachments and style stay with the open chat
-  async function send(agentId, text, { fromHistory = false, compact = false, chatId: only = null } = {}) {
+  async function send(agentId, text, { fromHistory = false, compact = false, chatId: only = null, images: providedImages = [] } = {}) {
     let chatId = only || H.activeChat[agentId];
     if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);
     let chat = chatId ? await loadChat(chatId) : null;
@@ -1818,6 +1818,11 @@ const Native = (() => {
     if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);
     const now = Date.now();
     const { full, images, meta } = fromHistory || only ? { full: text, images: [], meta: [] } : packAttachments(agentId, text);
+    // Explicit evidence for a background project round never consumes the visible composer's attachments.
+    if(only&&!fromHistory&&providedImages.length){
+      if(!Array.isArray(providedImages)||providedImages.length>24||providedImages.some(p=>typeof p!=='string'||!/^(?:[a-z]:[\\/]|\/)/i.test(p)||/^[\\/]{2}|[\x00-\x1f]/.test(p)))throw Error('Use local evidence images for this round.');
+      images.push(...new Set(providedImages));meta.push(...images.map(path=>({kind:'image',name:path.split(/[\\/]/).pop()})));
+    }
     if (!chat) {
       const v = views.get(agentId);
       chat = { id: `${agentId}-${now.toString(36)}`, agentId, title: titleFrom(text || meta[0]?.name || 'Attachment'), createdAt: now, updatedAt: now, session: {}, messages: [], model: v?.pendingModel || undefined };

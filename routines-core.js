@@ -156,6 +156,8 @@ const RoutinesCore = (() => {
       prompt: String(r.prompt ?? '').trim().slice(0, 4000) || DEFAULT_PROMPT,
       how, pause, resumeAfter: [0, 10 * MIN, HOUR].includes(Number(r.resumeAfter)) ? Number(r.resumeAfter) : 0, cap, ...(quota?{allowance:quota}:{}),
       lighter: r.lighter !== false, waitReset: r.waitReset !== false, afterRestart: r.afterRestart === true,
+      feedback:r.feedback&&typeof r.feedback==='object' ? {projectId:String(r.feedback.projectId||''),sceneId:String(r.feedback.sceneId||''),seconds:[6,12,20].includes(Number(r.feedback.seconds))?Number(r.feedback.seconds):12,direction:String(r.feedback.direction||'').slice(0,2500)} : null,
+      feedbackActive:r.feedbackActive===true, feedbackCalls:Number(r.feedbackCalls)||0, feedbackLastEnd:Number(r.feedbackLastEnd)||0, feedbackLast:r.feedbackLast&&typeof r.feedbackLast==='object'?r.feedbackLast:null,
       createdAt, endAt: how.kind === 'time' ? createdAt + how.ms : how.kind === 'until' ? how.at : 0,
       status: ['running', 'paused', 'done', 'stopped'].includes(r.status) ? r.status : 'running', why: String(r.why || ''),
       round: Number(r.round) || 0, done: Number(r.done) || 0, tokens: Number(r.tokens) || 0,
@@ -424,6 +426,7 @@ const RoutinesCore = (() => {
   }
   // Hearth started again: a running routine asks first (▶ Resume), unless the owner chose "keep going after a restart"
   function restarted(r) {
+    if(r.feedbackActive){r.feedbackActive=false;r.usageUnknown=true;if(live(r)){r.status='paused';r.why='Hearth closed during visual feedback; review usage before resuming';}}
     if(!live(r)){r.inFlight=false;return r;} // an intentionally stopped final reply died with the old process
     if (r.inFlight) { r.usageUnknown = true; r.inFlight = false; r.lastEnd = Date.now(); r.status='paused'; r.why='Hearth closed during a round; its full usage is unknown'; }
     if (r.status === 'running' && !r.afterRestart) { r.status = 'paused'; r.why = 'Hearth restarted: ▶ to go on'; r.restartPaused = true; }
