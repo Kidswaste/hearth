@@ -10,6 +10,20 @@ spread frames in two image sheets. A close look is up to 24 consecutive frames,
 centred on a chosen time, in four sheets. Both use the existing cross-platform
 FrameRead decoder; estimated fallback positions are labelled as such.
 
+**Record current scene** captures a 6, 12 or 20-second take directly from the
+current project's scene canvas, even when Feedback was opened from its chat.
+The dialog and Hearth UI are excluded. The current canvas size, scene quality,
+playback position/speed and manual recording preferences are preserved. The take
+is saved to local captures and the original project's shelf, selected in Feedback,
+and its overview frames are prepared automatically. No export or file picker is
+needed, and no AI turn runs until **Ask Astra for direction** is pressed.
+
+Closing or stopping cancels only the owned take. Existing recordings/renders and
+stale project contexts are refused. The scene recorder has request IDs, a bounded
+duration, encoder error handling and track/timer cleanup. Cancelled late results
+cannot open the manual Save As dialog. A finished saved take remains available
+even if frame preparation is cancelled. Normal manual recordings retain Save As.
+
 The response contains up to three concrete findings with validated evidence
 labels, a small change to try, and a way to check it. Uncertain causes are marked.
 Click evidence to inspect and step the original clip. “Look closer here” selects
@@ -28,3 +42,6 @@ state that coverage explicitly. They do not call this a full video playback revi
 Tests: pure frame plans/contracts, cancellation and engine events, bounded context,
 an isolated Electron flow with real frame extraction and a synthetic model reply,
 project routing/draft preservation, plus boot and existing review restrictions.
+Direct recording checks cover real animated canvas pixels, duration, automatic
+frame preparation/shelf selection, no AI call, cancel/retry, concurrent ownership,
+unchanged scene data, plus sandbox cleanup/error contracts.

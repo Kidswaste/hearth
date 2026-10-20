@@ -6,10 +6,51 @@ const VisualFeedback = (() => {
   const button = (text, fn, cls = '') => el('button', { type: 'button', class: cls, text, on: { click: () => Promise.resolve().then(fn).catch(e => toast(e.message, { type: 'error' })) } });
   async function context() {
     const p = Lazy.loaded('projects') ? ProjectWorkspace.current() : null, linked = p ? ProjectWorkspace.currentChat() : null;
+    const sceneId = p ? ProjectWorkspace.currentScene() : (Lazy.loaded('lab') && ThreeLab.scenes?.currentId()) || null;
     const agentId = linked?.agentId || (H.agent(H.activeId)?.mode === 'native' ? H.activeId : null);
     const chatId = linked?.id || (agentId && H.activeChat[agentId]);
     const chat = chatId ? await Native.load(chatId) : null;
-    return { projectId: p?.id, name: p?.name || chat?.title || '', chatId, agentId, chatTitle: chat?.title || '', messages: C.recent(chat?.messages), media: [...new Set((chat?.messages || []).slice(-20).reverse().flatMap(m => ['opens', 'images', 'attachments'].flatMap(k => (Array.isArray(m[k]) ? m[k] : []).map(x => typeof x === 'string' ? x : x?.path || x?.filePath))).concat((p?.items || []).map(i => i.ref)).filter(C.video))].slice(0, 8) };
+    return { projectId: p?.id, sceneId, name: p?.name || chat?.title || '', chatId, agentId, chatTitle: chat?.title || '', messages: C.recent(chat?.messages), media: [...new Set((chat?.messages || []).slice(-20).reverse().flatMap(m => ['opens', 'images', 'attachments'].flatMap(k => (Array.isArray(m[k]) ? m[k] : []).map(x => typeof x === 'string' ? x : x?.path || x?.filePath))).concat((p?.items || []).map(i => i.ref)).filter(C.video))].slice(0, 8) };
+  }
+  async function recordScene(ctx, seconds, signal, status = () => {}) {
+    signal.throwIfAborted();
+    if (!ctx.sceneId) throw Error('Open a project scene first, then start a feedback round.');
+    const sameProject = () => !ctx.projectId || (ProjectWorkspace.current()?.id === ctx.projectId && ProjectWorkspace.currentScene() === ctx.sceneId);
+    if (!sameProject()) throw Error('The project changed. Reopen Feedback in the scene you want to record.');
+    await Lazy.load('lab'); signal.throwIfAborted();
+    const cmd = await ThreeLab.cmd({ show: false }); signal.throwIfAborted();
+    if (cmd.recording || Capture.recording || (typeof ThreeSeq !== 'undefined' && ThreeSeq.rendering)) throw Error('Finish the current recording or render first.');
+    if (!sameProject()) throw Error('The project changed. Reopen Feedback in the scene you want to record.');
+    if (ctx.projectId) await ProjectWorkspace.openScene(ctx.sceneId, Projects.get(ctx.projectId));
+    signal.throwIfAborted();
+    const sameScene = () => sameProject() && ThreeLab.scenes.currentId() === ctx.sceneId;
+    if (!sameScene()) throw Error('The scene changed. Reopen Feedback to record it.');
+    const take = new AbortController(), cancel = () => take.abort();
+    signal.addEventListener('abort', cancel, { once: true });
+    const watch = setInterval(() => { if (!sameScene()) take.abort(); }, 250);
+    let clip;
+    try {
+      status('Starting the scene recorder…');
+      clip = await cmd.recordClip({ seconds, signal: take.signal, onProgress: (elapsed, total) => status(`● Recording scene · ${elapsed.toFixed(1)} / ${total}s`) });
+      take.signal.throwIfAborted(); signal.throwIfAborted();
+    } finally { clearInterval(watch); signal.removeEventListener('abort', cancel); }
+    if (!sameScene()) throw Error('The scene changed during the recording. Try again in the scene you want.');
+    if (!clip.buffer?.byteLength) throw Error('The scene recorder returned an empty clip. Let the scene finish loading, then retry.');
+    status('Saving the take locally…');
+    const writer = await hub.capture.recOpen({ name: `${ctx.name || 'Scene'} feedback ${Date.now()}`, ext: clip.mime?.includes('mp4') ? 'mp4' : 'webm' });
+    let file;
+    try {
+      const bytes = new Uint8Array(clip.buffer);
+      for (let offset = 0; offset < bytes.length; offset += 1048576) await hub.capture.recWrite(writer.id, bytes.subarray(offset, offset + 1048576));
+    } finally { file = await hub.capture.recClose(writer.id); }
+    if (!file) throw Error('The recording could not be saved.');
+    const finished = await hub.capture.finish({ path: file, mp4: false, ms: Math.round(clip.duration * 1000) });
+    const path = finished.mp4 || finished.webm || file;
+    Capture.remember({ kind: 'video', path, duration: finished.duration || clip.duration, w: clip.width, h: clip.height, fps: 30 });
+    // Save to the original project's shelf even if the dialog closes while the encoder finishes.
+    const p = ctx.projectId && Projects.get(ctx.projectId);
+    if (p) { Projects.add(p, 'capture', path, `${ctx.name} · feedback take`, { links: false }); await Projects.flush(); }
+    signal.throwIfAborted(); return path;
   }
   async function prepare(file, mode, frame, signal, status) {
     signal.throwIfAborted();
@@ -132,7 +173,7 @@ const VisualFeedback = (() => {
     }
     const run = button('✦ Ask Astra for direction', async () => {
       if (busy) return;
-      if (!source) { say('Choose a recording first, or use Record in the scene and return here.'); return; }
+      if (!source) { say('Record the current scene above, or choose a saved video.'); return; }
       controller = new AbortController(); const task = controller; setBusy(true); say('Preparing the clip locally…');
       try {
         if (!packet) {
@@ -151,6 +192,22 @@ const VisualFeedback = (() => {
       finally { if (controller === task) { controller = null; if (dlg.open) setBusy(false); } }
     }, 'primary');
     const stop = button('Stop', () => controller?.abort()); stop.hidden = true;
+    const length = el('select', { attrs: { 'aria-label': 'Scene recording length' } }, ...[6, 12, 20].map(n => el('option', { value: String(n), text: `${n} seconds` })));
+    const record = button('● Record current scene', async () => {
+      if (busy) return;
+      controller = new AbortController(); const task = controller; setBusy(true);
+      try {
+        const file = await recordScene(ctx, Number(length.value), task.signal, say); task.signal.throwIfAborted();
+        source = file; if (!sources.includes(file)) sources.unshift(file); paintSources(); invalidate();
+        mode.value = 'overview'; at.hidden = true;
+        packet = await prepare(file, 'overview', 0, task.signal, say); task.signal.throwIfAborted(); paint();
+        dlg.querySelector('.vf-evidence-drawer').open = true;
+        say('Scene captured. Frames are ready — choose a direction, then ask Astra.');
+      } catch (e) { if (dlg.open) say(task.signal.aborted ? 'Stopped. Any finished take is kept in your project.' : e.message); }
+      finally { if (controller === task) { controller = null; if (dlg.open) setBusy(false); } }
+    }, 'vf-record primary');
+    record.title = ctx.sceneId ? 'Capture the scene canvas at its current size, without this window. No AI usage until you ask Astra.' : 'Open a project scene to record it for feedback';
+    const recordingRow = el('div', { class: 'vf-record-row' }, record, length, el('span', { class: 'hint', text: 'Scene only · saved automatically' }));
     const pick = button('Choose video…', async () => {
       const r = await hub.openDialog({ title: 'Video for a feedback round', filters: [{ name: 'Video', extensions: ['mp4', 'webm', 'mov', 'm4v', 'mkv'] }] });
       const p = Array.isArray(r) ? r[0] : r?.filePaths?.[0] || (typeof r === 'string' ? r : null); if (!p) return;
@@ -162,7 +219,7 @@ const VisualFeedback = (() => {
       if (!saved) { say('No saved review for this chat yet.'); return; }
       packet = saved.packet; result = C.parse(JSON.stringify(saved.result), packet); source = packet.file; if (!sources.includes(source)) sources.unshift(source); paintSources(); direction.value = saved.direction; mode.value = packet.mode; at.hidden = mode.value !== 'detail'; at.value = String(packet.frames[Math.floor(packet.frames.length / 2)].time); selected = result.issues.length ? [0] : []; paint(); say('Saved review · ' + new Date(saved.at).toLocaleString() + '. The clip may have changed since this review.');
     });
-    const setup = el('details', { class: 'vf-setup', open: true }, el('summary', { text: 'Clip & direction' }), el('div', { class: 'vf-source' }, clips, pick), el('div', { class: 'vf-feelings' }, ...C.feelings.map(([, title, text]) => button(title, () => { direction.value = text; }))), direction, el('div', { class: 'vf-scope' }, mode, at, button('↻ Refresh frames', () => { invalidate(); say('The next review will read the file again.'); })));
+    const setup = el('details', { class: 'vf-setup', open: true }, el('summary', { text: 'Clip & direction' }), recordingRow, el('div', { class: 'vf-source' }, clips, pick), el('div', { class: 'vf-feelings' }, ...C.feelings.map(([, title, text]) => button(title, () => { direction.value = text; }))), direction, el('div', { class: 'vf-scope' }, mode, at, button('↻ Refresh frames', () => { invalidate(); say('The next review will read the file again.'); })));
     const dlg = el('dialog', { class: 'ui-modal vf-dialog', attrs: { 'aria-label': 'Feedback round' } },
       el('header', { class: 'vf-head' }, el('div', {}, el('span', { class: 'vf-eyebrow', text: 'SECOND PAIR OF EYES' }), el('h2', { text: 'Find the next move.' }), el('p', { class: 'hint', text: ctx.name || 'Visual feedback' })), button('✕', () => dlg.close(), 'vf-close')),
       setup, el('div', { class: 'vf-actions' }, run, stop, recent), el('p', { class: 'vf-cost', text: 'One Astra reply per review, using your configured model and reasoning. Overview sends up to 2 image sheets; close look up to 4. No project edits.' }), status,
@@ -171,5 +228,5 @@ const VisualFeedback = (() => {
     document.body.append(dlg); dialog = dlg; dlg.showModal(); return dlg;
   }
   Commands.register({ name: 'feedback-round', aliases: ['visual-feedback'], area: 'Create', args: '[video path]', desc: 'Astra reviews timestamped frames and drafts a focused improvement prompt', run: args => open(args.trim().replace(/^["']|["']$/g, '') || null) });
-  return { open, prepare, review, toDraft, context };
+  return { open, recordScene, prepare, review, toDraft, context };
 })();
