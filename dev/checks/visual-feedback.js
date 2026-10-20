@@ -13,6 +13,7 @@ check(document.querySelectorAll('.workspace-feedback').length===1,'Feedback butt
 document.querySelector('.workspace-feedback').click();
 await until(()=>document.querySelector('.vf-dialog[open]'),'Feedback did not open');
 let d=document.querySelector('.vf-dialog');
+const quick=()=>{const mode=d.querySelector('[aria-label="Review scope"]');mode.value='overview';mode.dispatchEvent(new Event('change'));};quick();
 check(d.querySelector('[aria-label="Video to review"]').value===file,'Project clip not selected');
 check(d.querySelector('.vf-direction').value.includes('unfinished'),'Direction not prefilled');
 check((await VisualFeedback.context()).messages.at(-1).text.includes('green glass flower'),'Project brief missing');
@@ -48,6 +49,6 @@ check(H.activeChat[chat.agentId]===chat.id,'Wrong chat targeted');check(v.input.
 // Reopening retains the completed review. Cancelling preparation must not send a model turn.
 d=await VisualFeedback.open(file);[...d.querySelectorAll('button')].find(b=>b.textContent==='Previous review').click();await wait(150);check(d.querySelector('.vf-finding'),'Saved review lost');d.close();
 const oldFrames=FrameRead.frames;let complete;FrameRead.frames=()=>new Promise(r=>{complete=r;});
-d=await VisualFeedback.open(file);ask().click();await until(()=>complete,'Frame preparation did not start');d.close();complete([]);FrameRead.frames=oldFrames;await wait(200);
+d=await VisualFeedback.open(file);quick();ask().click();await until(()=>complete,'Frame preparation did not start');d.close();complete([]);FrameRead.frames=oldFrames;await wait(200);
 check((await hub.kvGet('visual-feedback')).reviews.length===2,'Cancelled preparation produced a review');
 return {ok:true,overviewFrames:12,closeLookFrames:24,imageSheets:4,preservedDraft:true,noAutomaticSend:true};
