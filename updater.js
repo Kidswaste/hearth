@@ -79,6 +79,9 @@ const Updater = (() => {
   const busyRenders = () => { try { return (window.Renders?.list?.() || []).filter((j) => j.status === 'starting' || j.status === 'running').length; } catch { return 0; } };
 
   async function run({ ask = true } = {}) {
+    if (typeof VisualFeedback !== 'undefined' && VisualFeedback.busy) {
+      toast('Finish or stop the feedback round before updating. Completed passes are saved.', { timeout: 6000 }); return null;
+    }
     const busy = busyChats();
     const renders = busyRenders();
     if (ask && (busy.length || renders)) {
