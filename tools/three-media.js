@@ -277,6 +277,7 @@ const ThreeMedia = (() => {
     let snapMode = store.get('three.snapMode', '1/4');
     let view = null; // { start, end } seconds when zoomed in
     let recording = null;
+    let feedbackTake = null;
     let analyzing = false;
     let loadingMini = 0; // (round 48, labstartfast) a load under way keeps the overview's row (see load, miniShown)
     let dragging = null;
@@ -857,6 +858,8 @@ const ThreeMedia = (() => {
       } catch { /* no sound: the scrub still works */ }
     }
     function onMessage(msg) {
+      // Owned short takes never reach the manual recorder's Save As dialog, including late replies after cancel.
+      if (String(msg.recordId || '').startsWith('feedback-')) { feedbackTake?.message(msg); return; }
       // (round 49, labscrub) the preview drew a seek: the next waiting one goes; paused, the playhead stays where the
       // pointer has it (the answer is for an older spot while a scrub runs on)
       // (a paused report while a seek is still on its way is an older spot too)
@@ -1582,6 +1585,35 @@ const ThreeMedia = (() => {
     function fitLoop() { if (region && !locked) setView(padded(region)); }
 
     // ---------- menus + recording ----------
+    function recordClip({ seconds = 6, signal, onProgress = () => {} } = {}) {
+      signal?.throwIfAborted();
+      if (recording || startRecord.counting) return Promise.reject(Error('Finish the current scene recording first.'));
+      seconds = Math.max(2, Math.min(20, Number(seconds) || 6));
+      const id = 'feedback-' + crypto.randomUUID(), take = { kind: 'feedback', startedAt: performance.now() };
+      recording = take; paint();
+      return new Promise((resolve, reject) => {
+        let timer, ticker, settled = false;
+        const done = (err, value) => {
+          if (settled) return; settled = true; clearTimeout(timer); clearInterval(ticker); signal?.removeEventListener('abort', cancel);
+          if (recording === take) recording = null;
+          if (feedbackTake?.id === id) feedbackTake = null;
+          paint(); err ? reject(err) : resolve(value);
+        };
+        const cancel = () => { send({ type: 'record', cmd: 'stop', recordId: id }); done(Error('Scene recording cancelled.')); };
+        feedbackTake = { id, message(msg) {
+          if (msg.recordId !== id) return;
+          if (msg.type === 'record-started') {
+            take.startedAt = performance.now(); onProgress(0, seconds);
+            ticker = setInterval(() => onProgress(Math.min(seconds, (performance.now() - take.startedAt) / 1000), seconds), 250);
+          } else if (msg.type === 'record-error') done(Error(msg.message || 'The scene could not be recorded.'));
+          else if (msg.type === 'recording') done(null, msg);
+        } };
+        signal?.addEventListener('abort', cancel, { once: true });
+        timer = setTimeout(() => { send({ type: 'record', cmd: 'stop', recordId: id }); done(Error('The scene recorder stopped responding. Try again after the scene has loaded.')); }, (seconds + 20) * 1000);
+        // No seek, autoplay, speed, quality or saved recording-preference changes.
+        send({ type: 'record', cmd: 'start', recordId: id, maxSeconds: seconds, fps: 30, bitrate: 16e6 });
+      });
+    }
     function menuAt(anchor, items) {
       const menu = el('div', { class: 'mb-menu lab-compact' }, items.map((it) => (it ? el('button', { class: 'menu-item', on: { click: () => { menu.remove(); it[2](); } } }, el('b', { text: it[0] }), el('span', { class: 'hint', text: it[1] })) : el('div', { class: 'menu-sep' }))));
       const r = anchor.getBoundingClientRect();
@@ -3302,6 +3334,7 @@ const ThreeMedia = (() => {
       recordSpan: (o) => recordSpan(o || {}),
       record(kind = 'manual', o = {}) { if (o.fps || o.mbps || o.countdown != null) setRecOpt(o); if (kind === 'stop') { stopRecord(); return true; } if (recording) return false; if (kind === 'loop' && !region) kind = 'manual'; if (kind === 'track' && !st.bytes) kind = 'manual'; startRecord(kind); return kind; },
       recordMenu: (anchor) => recordMenu(anchor || recBtn),
+      recordClip,
       get recordOptions() { return recOpts(); },
       // N bars from the bar the playhead is in, looping on
       loopBars(n = 1) {

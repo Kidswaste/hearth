@@ -2840,6 +2840,12 @@ const ThreeLab = (() => {
       mute: () => player.toggleMute(), music: () => player.pick(),
       loadSong: async (path) => { songOnScene(path); const r = await player.load(path); if (r.ok) assignMedia(path); return r; }, zoom: (a, b) => player.setView(a, b),
       record: (kind, o) => player.record(kind, o),
+      async recordClip(o) {
+        if (typeof ThreeSeq !== 'undefined' && ThreeSeq.rendering) throw Error('Finish the scene render first.');
+        const take = player.recordClip(o); syncPark(true);
+        try { return await take; } finally { syncPark(true); }
+      },
+      get recording() { return player.recording; },
       trigPreset: (name) => applyTrigPreset(name), trigPresets: () => [...Object.keys(trigPresets()), ...store.get('three.trigPresets', []).map((x) => x.name)],
       autoBars: () => autoBars(), triggers: (on) => toggleTriggers(on ?? !trigPanel),
       // assets
@@ -3023,7 +3029,7 @@ const ThreeLab = (() => {
       if (/^view-/.test(msg.type) && typeof ThreeGestures !== 'undefined' && ThreeGestures.onBox(msg)) return; // (round 34) Z / Shift+Z answers, the first-time hint
       if (typeof ThreeDirector !== 'undefined') ThreeDirector.onBox?.(msg); // (round 21) a director call answers at the first new frame
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
-      if (typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
+      if (!String(msg.recordId || '').startsWith('feedback-') && typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
       // a key pressed while the picture had focus: the Lab's shortcuts handle it as if pressed here
       if (msg.type === 'host-key') { const { type: _t, source: _s, ...k } = msg; pane.dispatchEvent(new KeyboardEvent('keydown', { ...k, bubbles: true, cancelable: true })); return; }
       if (msg.type === 'host-keyup') { const { type: _t, source: _s, ...k } = msg; pane.dispatchEvent(new KeyboardEvent('keyup', { ...k, bubbles: true, cancelable: true })); return; } // (round 37: B held over the picture)

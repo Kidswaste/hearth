@@ -3415,14 +3415,17 @@ function partTick(t) {
 
 // ---------- recording ----------
 let recorder = null;
-function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
+function startRecording({ fps = 60, bitrate = 16e6, until = null, recordId = null, maxSeconds = 0 } = {}) {
+  if (recorder) { post({ type: 'record-error', recordId, message: 'Another scene recording is still finishing.' }); return; }
   // a Lab sequence always records its merged program (its scenes may draw on 2D canvases, and change mid-take)
   const seqRec = typeof SQ !== 'undefined' && SQ.on;
   recUntil = lastRenderer || seqRec ? until : null;
-  if (!lastRenderer && !seqRec) { post({ type: 'record-error', message: 'Nothing is rendering yet.' }); recUntil = null; return; }
+  if (!lastRenderer && !seqRec) { post({ type: 'record-error', recordId, message: 'Nothing is rendering yet.' }); recUntil = null; return; }
+  let stream, timer;
+  try {
   const merged = seqRec || needsComposite();
   const canvas = merged ? (compRec = composite(document.createElement('canvas'))) : lastRenderer.domElement;
-  const stream = canvas.captureStream(fps);
+  stream = canvas.captureStream(fps);
   // a sequence's footage with its sound on and its sound clips play through its own bus: recorded too
   const seqSound = seqRec && (SQ.plan?.sounds?.length || (SQ.plan?.groups || []).some((g) => g.kind === 'footage' && !g.mute));
   if (mediaEl || liveSrc || seqSound) {
@@ -3435,20 +3438,35 @@ function startRecording({ fps = 60, bitrate = 16e6, until = null } = {}) {
   const mime = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'].find((t) => MediaRecorder.isTypeSupported(t));
   const chunks = [];
   recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate, audioBitsPerSecond: 320000 });
+  const take = recorder, started = performance.now(); take.hearthRecordId = recordId;
+  const release = () => {
+    clearTimeout(timer);
+    for (const tr of stream.getVideoTracks()) { try { tr.stop(); } catch { /* ended */ } }
+    if (recorder === take) { recorder = null; compRec = null; recUntil = null; }
+  };
+  let failed = false;
+  recorder.onerror = e => { failed = true; release(); post({ type: 'record-error', recordId, message: e.error?.message || 'The video encoder failed.' }); };
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = async () => {
     // (round 39, labmemory) the canvas' capture track stops with the take: left running it kept copying every frame of
     // the layer's (pooled, long-lived) canvas after the recording (the song's sound tracks are shared: they stay)
-    for (const tr of stream.getVideoTracks()) { try { tr.stop(); } catch { /* ended */ } }
-    const buf = await new Blob(chunks, { type: mime }).arrayBuffer();
-    post({ type: 'recording', mime, width: canvas.width, height: canvas.height, buffer: buf }, [buf]);
-    recorder = null;
-    compRec = null;
+    const duration = (performance.now() - started) / 1000;
+    release();
+    if (failed) return;
+    try {
+      const buf = await new Blob(chunks, { type: mime }).arrayBuffer();
+      post({ type: 'recording', recordId, mime, width: canvas.width, height: canvas.height, duration, buffer: buf }, [buf]);
+    } catch (err) { post({ type: 'record-error', recordId, message: err.message }); }
   };
   recorder.start(1000);
-  post({ type: 'record-started', mime, width: canvas.width, height: canvas.height });
+  if (maxSeconds > 0) timer = setTimeout(() => stopRecording(recordId), Math.max(2, Math.min(20, maxSeconds)) * 1000);
+  post({ type: 'record-started', recordId, mime, width: canvas.width, height: canvas.height });
+  } catch (err) {
+    clearTimeout(timer); stream?.getVideoTracks().forEach(tr => tr.stop()); recorder = null; compRec = null; recUntil = null;
+    post({ type: 'record-error', recordId, message: err.message });
+  }
 }
-const stopRecording = () => { recUntil = null; if (recorder?.state === 'recording') recorder.stop(); };
+const stopRecording = (recordId = null) => { if (recordId && recorder?.hearthRecordId !== recordId) return; recUntil = null; if (recorder?.state === 'recording') recorder.stop(); };
 
 // ---------- move with the music (round 38, beatlink: tools/three-beatlink-core.js) ----------
 // A slider's music link with a "how" (pulse / follow / step / random) and a range { lo, hi }: its value comes from the
@@ -13715,7 +13733,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'media-clock') { fclock = msg.clock ? { fps: msg.clock.fps || 30, times: msg.clock.times || null, frames: msg.clock.frames || 0, exact: Boolean(msg.clock.exact) } : null; if (mediaEl && fclock) fpres.frame = fFrameAt(fpres.time || mediaEl.currentTime); }
   if (msg.type === 'media-cuts') { fparts = msg.parts?.length ? msg.parts : null; fpart = fparts && mediaEl ? partAt(mediaEl.currentTime) : -1; if (!fparts && mediaEl) { mediaEl.playbackRate = mediaEl.defaultPlaybackRate || 1; mediaEl.muted = false; fholdUntil = 0; } }
   if (msg.type === 'media-analysis' && mediaEl) analysis = { ...msg.analysis, name: analysis?.name };
-  if (msg.type === 'record') { if (msg.cmd === 'start') startRecording(msg); else stopRecording(); }
+  if (msg.type === 'record') { if (msg.cmd === 'start') startRecording(msg); else stopRecording(msg.recordId); }
   if (msg.type === 'shader') shader?.set(msg.code);
   if (msg.type === 'load') viewer?.load(msg);
   if (msg.type === 'viewer') viewer?.command(msg);
