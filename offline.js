@@ -523,14 +523,68 @@ const Offline = (() => {
     await Native.send(other.id, question.sent || question.text, { chatId: copy.id });
   }
 
+  // A per-computer check, kept inside the project's existing menu.
+  async function prepare(project) {
+    await Lazy.load('projects');
+    if (!project) {
+      project = ProjectWorkspace.current();
+    }
+    if (!project?.id) { toast('Open the project you want to take offline first.'); return; }
+    document.querySelector('.offline-prepare')?.close();
+    const dialog = el('dialog', { class: 'offline-prepare' });
+    const status = el('p', { class: 'hint', text: 'Checking this computer…', role: 'status' });
+    const body = el('div');
+    let working = false;
+    const run = async download => {
+      if (working) return;
+      working = true; button.disabled = true;
+      status.textContent = download ? 'Saving scene libraries locally… Keep Hearth open.' : 'Checking this computer…';
+      try {
+        const r = await hub.net.prepareProject({ projectId: project.id, version: store.get('three.version', '0.186.1'), download });
+        if (!dialog.isConnected) return;
+        status.textContent = `${r.ready ? '✓ Files and scene libraries are local' : 'A few things still need attention'} · ${r.computer}`;
+        const row = (ok, text) => el('p', { text: `${ok ? '✓' : '○'} ${text}` });
+        const local = r.files.filter(f => f.status === 'local').length;
+        body.replaceChildren(
+          row(!r.libraries || r.libraries.ready, r.libraries ? `Scene libraries · ${r.libraries.ready ? `${r.libraries.files} files saved` : 'download while online'}` : 'No scene libraries needed'),
+          row(local === r.files.length, `Media and files · ${local}/${r.files.length} local`),
+          row(r.chats.every(c => c.local), `Chat history · ${r.chats.filter(c => c.local).length}/${r.chats.length} local`),
+        );
+        const issues = [
+          ...r.missingScenes.map(() => 'A linked scene has not arrived. Open Two computers and let sync finish.'),
+          ...r.missingBoards.map(name => `${name} · waiting for sync`),
+          ...r.files.filter(f => f.status !== 'local').map(f => `${f.name} · ${f.status === 'cloud' ? 'download it in Finder / Explorer, then check again' : 'missing here; sync or relink it'}`),
+          ...r.external.map(u => `Online resource: ${u}`),
+          ...(r.libraries?.missing || []),
+        ];
+        if (issues.length) body.append(el('details', {}, el('summary', { text: `${issues.length} things to check` }), ...issues.map(text => el('p', { class: 'hint', text }))));
+        body.append(el('p', { class: 'hint', text: 'Last check applies to this computer only. Switch Wi-Fi off briefly and open the scene with its song before leaving.' }));
+        button.textContent = r.libraries?.ready ? 'Check again' : 'Download scene libraries';
+        button.dataset.download = r.libraries?.ready ? '' : '1';
+      } catch (err) { status.textContent = err.message || 'Could not finish the check. Reconnect and try again.'; }
+      finally { working = false; button.disabled = false; }
+    };
+    const button = el('button', { type: 'button', class: 'primary', text: 'Download scene libraries', on: { click: () => run(button.dataset.download === '1') } });
+    button.dataset.download = '1';
+    dialog.append(el('h2', { text: `Take ${project.name} offline` }), status, body,
+      el('details', {}, el('summary', { text: 'What works on the train?' }),
+        el('p', { class: 'hint', text: 'Saved scenes, local audio, drawing, storyboards and notes work offline. Astra, Claude, Auto-improve and AI feedback need a connection. Sent messages can queue and send automatically when you reconnect; keep ideas in Notes if you want to choose when to send.' }),
+        el('p', { class: 'hint', text: 'On Mac, open your DAW and Serum 2 / Vital once while online. Plug-ins, licenses and external sample libraries must be installed locally; this check does not verify them.' })),
+      el('div', { class: 'dialog-actions' }, button, el('button', { type: 'button', text: 'Close', on: { click: () => dialog.close() } })));
+    dialog.addEventListener('close', () => dialog.remove());
+    document.body.append(dialog); dialog.showModal(); void run(false);
+    return dialog;
+  }
+
   // ---------- one command (the chat's own words work too) ----------
   if (typeof Commands !== 'undefined' && !Commands.get('offline')) {
-    Commands.register({ name: 'offline', area: 'Chat', args: '[send|clear]', desc: 'What waits to be sent (no internet, a busy AI, a usage limit) and when; send = try now, clear = forget them',
+    Commands.register({ name: 'offline', area: 'Chat', args: '[prepare|send|clear]', desc: 'Prepare this project for offline work, or inspect waiting messages; send = try now, clear = forget them',
       keywords: 'internet wifi network queue waiting retry busy overloaded rate limit usage limit signed out vpn proxy sleep',
-      complete: () => [{ value: 'send', hint: 'try now' }, { value: 'clear', hint: 'forget what waits' }],
+      complete: () => [{ value: 'prepare', hint: 'check local files and download scene libraries' }, { value: 'send', hint: 'try now' }, { value: 'clear', hint: 'forget what waits' }],
       run: async (args) => {
         await ready;
         const a = String(args || '').trim().toLowerCase();
+        if (a === 'prepare') { await prepare(); return ''; }
         if (a === 'clear') { const n = items.length; drop(() => true); return n ? `Forgot ${n} waiting message${n > 1 ? 's' : ''}.` : 'Nothing was waiting.'; }
         if (a === 'send') { for (const it of items) it.notBefore = 0; await save(); tryNow(); return items.length ? 'Trying now.' : 'Nothing waits.'; }
         if (!items.length) return `${online ? '✓ Online' : '⚠ No internet'} · nothing waits to be sent.`;
@@ -542,7 +596,7 @@ const Offline = (() => {
   }
 
   return {
-    ready, items: () => items.map((it) => ({ ...it })), isOnline: () => online, pump,
+    ready, prepare, items: () => items.map((it) => ({ ...it })), isOnline: () => online, pump,
     // astra.js: a failure this module answers in the chat needs no toast of its own
     owns: (ev) => ev?.type === 'error' && KINDS.has(C.classify(ev.message)?.kind),
     _test: { net: (v) => { forced = v; try { if (v == null) localStorage.removeItem('offline.test-net'); else localStorage.setItem('offline.test-net', String(v)); } catch { /* no storage */ } }, scale: (x) => { scale = x; }, power: (state) => { if (state === 'resume') lastWake = now(); }, probeNow, attempts, set: (list) => { items = list; return save(); } },

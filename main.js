@@ -26,7 +26,7 @@ try { app.disableDomainBlockingFor3DAPIs(); } catch (err) { console.warn('glreco
 // (round 52, gamemode) ▶ Play's hearth-game: protocol (a game's own folder, read-only) must be known before 'ready'
 // (a standard, secure scheme: relative paths, fetch, modules, WebGL, audio and pointer lock work as on a web server; the
 // handler itself is set on the game's own session by gamemodemain.js, on first use)
-require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'hearth-game', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } }]);
+require('electron').protocol.registerSchemesAsPrivileged(['hearth-game', 'hearth-three'].map(scheme => ({ scheme, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } })));
 // (round 52, gameready) Chromium's compiled-shader cache (kept on disk for a persistent session: ▶ Play's window uses
 // one, so a game's second launch skips its compiles) may hold 32 MB instead of 6: a big game's programs fit
 app.commandLine.appendSwitch('gpu-program-cache-size-kb', '32768');
@@ -795,6 +795,7 @@ ipcMain.handle('bg:state', () => {
 
 app.whenReady().then(async () => {
   bootMark('appReady');
+  require('./offline-library').register({ protocol: require('electron').protocol, ipcMain, dataDir: store.DATA_DIR });
   // (round 64, twocopies64) a copy with no chats that finds another Hearth folder with chats asks first (one card, before
   // anything empty is on screen): open that one, bring its chats here (copied, never moved), or start fresh
   const two = await twocopies.gate({ app, BrowserWindow, ipcMain, icon: appshell.ensureIcon(), background: SPLASH_BG, bring: bringFromCopy }).catch((err) => { console.warn('twocopies:', err.message); return { close() {} }; });
