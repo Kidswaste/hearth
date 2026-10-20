@@ -314,6 +314,7 @@ function presetPlan(msg) {
 
 function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
+  if (msg.startsWith('Give a useful second opinion and directions for ONE small improvement round.')) return {p:{},thinking:'',text:JSON.stringify({summary:'The foreground shape needs a clearer silhouette.',keep:'Keep the existing palette and overall composition.',issues:[{title:'The main shape blends into the background',evidence:[1,2],observation:'The edge and its backdrop have similar brightness in these frames.',why:'The main subject is harder to spot.',change:'Try a restrained rim light around the main silhouette.',check:'Compare the same camera angle before and after.',confidence:'tentative'}],limits:'Synthetic test response: sampled images only; audio and smoothness were not reviewed.'})};
   const pre = presetPlan(msg);
   if (pre) return { p: {}, text: pre, thinking: '' };
   const fl = flowPlan(msg);

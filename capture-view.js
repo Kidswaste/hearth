@@ -45,6 +45,7 @@ const CaptureView = (() => {
     const read = (mode, args = {}) => tryRun(async () => { const busy = toast(`Reading ${base(p)}…`, { timeout: 0 }); try { FrameRead.show(await FrameRead.read(p, mode, args), p); } finally { busy.remove(); } });
     return [
       { label: isVid ? '▶ Play' : '🖼 Open', action: () => open(p) },
+      isVid ? { label: '✦ Feedback round with Astra', action: tryRun(async () => { await Lazy.load('visualfeedback'); await VisualFeedback.open(p); }) } : null,
       { label: isVid ? 'Open in the system player' : 'Open in the system viewer', action: tryRun(() => Capture.openFile(p)) },
       { label: MediaFile.revealLabel, action: tryRun(() => Capture.reveal(p)) },
       { label: MediaFile.copyLabel, action: () => copyText(p, 'Path copied') },
@@ -201,6 +202,7 @@ const CaptureView = (() => {
     const fwd = el('button', { type: 'button', text: '|▶', title: 'One frame on (→, Shift+→ = 10)' });
     const speed = el('button', { type: 'button', class: 'ghost', text: '1×', title: 'Speed (click: next · right-click: pick)' });
     const foot = el('div', { class: 'cap-view-foot' }, back, playBtn, fwd, tcEl, el('span', { class: 'spacer' }), speed,
+      el('button', { type: 'button', text: '✦ Feedback', title: 'Let Astra inspect the frames and suggest an editable fix prompt', on: { click: tryRun(async () => { v.pause(); await Lazy.load('visualfeedback'); await VisualFeedback.open(p); }) } }),
       el('button', { type: 'button', class: 'ghost', text: '🎞 Read', title: 'Read frames: contact sheet, scenes, motion, exact frames… (R)', on: { click: () => FrameRead.pickAndRead(p) } }),
       el('button', { type: 'button', class: 'ghost', text: '✂ Make', title: 'A GIF, a trim, a timelapse, a reframe… (I / O set the part; G makes a GIF)', on: { click: (e) => Capture.menu(e.clientX, e.clientY, makeItems(p, dlg.range)) } }));
     let inf = { fps: 30, frames: 0, duration: 0, exact: false };

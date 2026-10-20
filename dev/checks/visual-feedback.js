@@ -1,0 +1,53 @@
+// Isolated app only: real frame decoding, synthetic engine response, real project draft routing.
+const check=(v,m)=>{if(!v)throw Error(m);},wait=ms=>new Promise(r=>setTimeout(r,ms));
+const until=async(fn,m)=>{for(let i=0;i<600;i++){if(await fn())return;await wait(100);}throw Error(m);};
+await Lazy.load('projects');await Projects.ready();
+const p=await ProjectWorkspace.create({name:'WATCHDOG · feedback fixture',plugins:[]});
+const chat=ProjectWorkspace.currentChat();
+const c=await Native.load(chat.id);c.messages.push({role:'user',text:'Keep the green glass flower. Make the petals feel more dimensional.',at:Date.now()});Native.save(c);
+const file=window.FEEDBACK_FIXTURE;check(file,'Set window.FEEDBACK_FIXTURE to a test MP4');
+Projects.add(p,'capture',file,'Flower recording',{links:false});await Projects.flush();
+check(document.querySelectorAll('.workspace-feedback').length===1,'Feedback button absent or duplicated');
+for(let i=0;i<4;i++)WorkspaceNav.sync();
+check(document.querySelectorAll('.workspace-feedback').length===1,'Feedback button duplicated on navigation');
+document.querySelector('.workspace-feedback').click();
+await until(()=>document.querySelector('.vf-dialog[open]'),'Feedback did not open');
+let d=document.querySelector('.vf-dialog');
+check(d.querySelector('[aria-label="Video to review"]').value===file,'Project clip not selected');
+check(d.querySelector('.vf-direction').value.includes('unfinished'),'Direction not prefilled');
+check((await VisualFeedback.context()).messages.at(-1).text.includes('green glass flower'),'Project brief missing');
+await smoke({shot:window.SMOKE_SAVES+'/feedback-setup.png'});
+const ask=()=>[...d.querySelectorAll('button')].find(b=>b.textContent.includes('Ask Astra'));
+ask().click();ask().click();
+await until(()=>d.querySelector('.vf-finding')&&!ask().disabled,'Review did not complete: '+d.querySelector('.vf-status').textContent);
+check(d.querySelectorAll('.vf-frame').length===12,'Overview did not inspect 12 frames');
+check(d.querySelector('.vf-draft').value.includes('frame 0'),'Fix prompt omitted evidence');
+check(d.querySelector('.vf-draft').value.includes('WATCHDOG'),'Prompt lost project');
+let history=await hub.kvGet('visual-feedback');check(history.reviews.length===1,'Double click started duplicate review');
+check(history.reviews[0].packet.sheets.length===2,'Wrong image budget');
+check(history.reviews[0].packet.frames.every(x=>x.exact),'Real ffmpeg positions not marked');
+await smoke({shot:window.SMOKE_SAVES+'/feedback-results.png'});
+// The source player supports exact frame stepping without losing the review.
+d.querySelector('.vf-evidence button').click();await until(()=>document.querySelector('.cap-view[open]'),'Evidence did not open');
+check(CaptureView.viewer.player,'Not a video player');CaptureView.viewer.player.step(1);CaptureView.viewer.close();
+check(d.open,'Evidence player closed the review');
+d.querySelector('.vf-closer').click();await wait(100);check(d.querySelector('[aria-label="Review scope"]').value==='detail','Close look not selected');
+ask().click();await until(()=>d.querySelector('.vf-finding')&&!ask().disabled,'Close look review failed');
+check(d.querySelectorAll('.vf-frame').length===24,'Close look does not contain 24 frames');
+history=await hub.kvGet('visual-feedback');const frames=history.reviews[0].packet.frames;
+check(frames.every((f,i)=>!i||f.frame===frames[i-1].frame+1),'Close look skipped frames');
+check(history.reviews[0].packet.sheets.length===4,'Close look image budget wrong');
+// Turn a finding off: empty prompt cannot be sent. The textarea can also be edited freely.
+const toggle=d.querySelector('.vf-finding input');toggle.click();check(!d.querySelector('.vf-draft').value,'Unchecked issue still sent');toggle.click();
+const custom='\nPlease keep the green palette.';d.querySelector('.vf-draft').value+=custom;d.querySelector('.vf-draft').dispatchEvent(new Event('input'));
+await ProjectWorkspace.go('chat');const v=Native.view(chat.agentId);Native.setDraft(chat.agentId,'My unfinished idea');
+const before=(await Native.load(chat.id)).messages.length;
+const send=[...d.querySelectorAll('button')].find(b=>b.textContent.startsWith('Use in '));send.click();
+await until(()=>!d.isConnected,'Prompt was not staged');
+check(H.activeChat[chat.agentId]===chat.id,'Wrong chat targeted');check(v.input.value.startsWith('My unfinished idea\n\n'),'Existing draft replaced');check(v.input.value.endsWith(custom),'Edited prompt lost');check(v.attachments.length>=4,'Evidence sheets not attached');check((await Native.load(chat.id)).messages.length===before,'Staging sent an automatic reply');
+// Reopening retains the completed review. Cancelling preparation must not send a model turn.
+d=await VisualFeedback.open(file);[...d.querySelectorAll('button')].find(b=>b.textContent==='Previous review').click();await wait(150);check(d.querySelector('.vf-finding'),'Saved review lost');d.close();
+const oldFrames=FrameRead.frames;let complete;FrameRead.frames=()=>new Promise(r=>{complete=r;});
+d=await VisualFeedback.open(file);ask().click();await until(()=>complete,'Frame preparation did not start');d.close();complete([]);FrameRead.frames=oldFrames;await wait(200);
+check((await hub.kvGet('visual-feedback')).reviews.length===2,'Cancelled preparation produced a review');
+return {ok:true,overviewFrames:12,closeLookFrames:24,imageSheets:4,preservedDraft:true,noAutomaticSend:true};
