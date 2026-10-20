@@ -58,13 +58,26 @@ async function hashFile(file, shouldStop) {
   return h.digest('hex');
 }
 // Windows: a rename over a file another program holds open (a cloud client, an antivirus) fails for a moment.
+// Several engines can briefly share a destination (restart / switching sync
+// settings). Serialize each destination and recheck only after its lock is held.
+const renameQueues = new Map();
 async function renameRetry(from, to, check) {
-  for (let i = 0; ; i++) {
-    if (check && !check()) return false;
-    try { fs.renameSync(from, to); return true; } catch (err) {
-      if (i >= 5 || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
-      await new Promise((r) => setTimeout(r, 120 * (i + 1)));
+  const key = process.platform === 'win32' ? path.resolve(to).toLowerCase() : path.resolve(to);
+  const previous = renameQueues.get(key) || Promise.resolve();
+  let release; const next = new Promise(r => { release = r; }); renameQueues.set(key, next);
+  await previous;
+  try {
+    for (let i = 0; ; i++) {
+      if (check && !(await check())) return false;
+      // Cloud providers can wait on downloads or display native dialogs here.
+      // Never put that wait on Electron's main thread.
+      try { await fsp.rename(from, to); return true; } catch (err) {
+        if (i >= 5 || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+        await new Promise((r) => setTimeout(r, 120 * (i + 1)));
+      }
     }
+  } finally {
+    release(); if (renameQueues.get(key) === next) renameQueues.delete(key);
   }
 }
 
@@ -211,7 +224,7 @@ function createEngine(o) {
   const CLOUD_COPY = [
     /^(.*) \([^()]*conflicted copy[^()]*\)(\.[^./]+)?$/i, // Dropbox
   ];
-  const JSON_COPY = /^([\w-]+)(?: \d+| \(\d+\))\.json$/; // iCloud "x 2.json", Google Drive "x (1).json"
+  const JSON_COPY = /^([\w-]+)(?: \d+| ?\(\d+\))\.json$/; // iCloud "x 2.json" / "x(1).json", Google Drive "x (1).json"
   async function scanCloud() {
     const out = new Map(); const copies = [];
     out.blind = new Set();
@@ -236,9 +249,19 @@ function createEngine(o) {
       if (!orig && jm) orig = `${dir}${jm[1]}.json`;
       const od = /^([\w-]+)-([A-Za-z0-9-]{2,})\.json$/.exec(name); // OneDrive "x-COMPUTERNAME.json"
       if (!orig && od && hosts.has(od[2].toUpperCase()) && !state.base[rel]) orig = `${dir}${od[1]}.json`;
+      if (orig && S.localOnly(orig)) return;
       if (orig && orig !== rel && !state.base[rel]) { copies.push({ rel, orig, ...ent }); return; }
       out.set(rel, ent);
     }, '', out.blind);
+    if (platform === 'win32') {
+      const entries = [...out.values(), ...copies];
+      const probe = o.cloudAttributes || require('./cloud-files').attributes;
+      let attributes; try { attributes = await probe(entries.map(e => e.file)); } catch { attributes = new Map(); }
+      for (const e of entries) {
+        const a = attributes.get(e.file);
+        if (require('./cloud-files').pending(a)) { e.placeholder = true; e.downloading = true; e.cloudUnknown = !Number.isInteger(a); }
+      }
+    }
     return { files: out, copies };
   }
 
@@ -322,8 +345,9 @@ function createEngine(o) {
     await flushed(tmp); try { await renameRetry(tmp, file); } catch (err) { await fsp.rm(tmp, { force: true }); throw err; }
   }
   // the check right before a rename: the file is still the one this pass looked at (or still absent)
-  const same = (file, ent) => {
-    const st = statSync(file);
+  const same = async (file, ent) => {
+    let st;
+    try { st = await fsp.stat(file); } catch (err) { if (err.code !== 'ENOENT') throw err; }
     if (!ent) return !st;
     return Boolean(st) && st.size === (ent.size ?? st.size) && st.mtimeMs === ent.mtime;
   };
@@ -425,9 +449,28 @@ function createEngine(o) {
   // is requested from iCloud instead. Big videos are never downloaded behind your back.
   const isStub = (C) => /\.icloud$/i.test(C.file || '');
   function readable(rel, C) {
+    if (C.downloading) return false;
     if (!C.placeholder) return true;
     if (isStub(C)) { const j = journalLatest.get(rel); if (!j || (j.s ?? 0) <= SMALL || o.allowDownload?.has(rel)) o.requestDownload?.(C.file, rel); return false; }
     return (C.size ?? 0) <= SMALL || Boolean(o.allowDownload?.has(rel));
+  }
+  async function cloudReady(rel, C) {
+    if (!C.downloading && !C.placeholder) return true;
+    if (isStub(C)) { readable(rel, C); return false; } // asks the Mac provider for its stub
+    // Preserve small-file / explicit downloads, but do not move a placeholder
+    // until its read completes and the provider confirms local availability.
+    if (C.cloudUnknown || (C.size > SMALL && !o.allowDownload?.has(rel))) return false;
+    try {
+      await hashFile(C.file, () => stopping);
+      if (platform === 'win32') {
+        const attrs = await (o.cloudAttributes || require('./cloud-files').attributes)([C.file]);
+        if (require('./cloud-files').pending(attrs.get(C.file))) return false;
+      }
+      const st = await fsp.stat(C.file);
+      if (platform === 'darwin' && st.size > 0 && st.blocks === 0) return false;
+      Object.assign(C, { size: st.size, mtime: st.mtimeMs, placeholder: false, downloading: false });
+      return true;
+    } catch (err) { log('cloud download', rel, err.message); return false; }
   }
   async function cloudHash(rel, C) {
     const c = state.cloud[rel];
@@ -489,7 +532,7 @@ function createEngine(o) {
     if (st) state.local[rel] = [st.size, st.mtimeMs, h];
   }
   async function afterCloudWrite(rel, h) {
-    const st = statSync(cloudPathOf(rel));
+    const st = await fsp.stat(cloudPathOf(rel));
     if (st) state.cloud[rel] = [st.size, st.mtimeMs, h];
     journalOut.push({ t: now(), op: 'put', rel, h, s: st?.size });
   }
@@ -498,7 +541,7 @@ function createEngine(o) {
     const dst = C?.file && !/\.icloud$/.test(C.file) ? C.file : cloudPathOf(rel);
     const cent = C ? { size: C.size, mtime: C.mtime } : null;
     if (C?.placeholder && /\.icloud$/.test(C.file || '')) { // replacing an iCloud stub: move it aside first
-      await moveToCloudTrash(rel, C);
+      if (!(await moveToCloudTrash(rel, C))) return false;
     }
     const target = C?.placeholder && /\.icloud$/.test(C.file || '') ? null : cent;
     let ok;
@@ -629,8 +672,9 @@ function createEngine(o) {
     const cid = `${day(now())}-${rand()}`;
     const copy = path.join(CONFL, `${cid}-${path.basename(C.file)}`);
     await fsp.mkdir(CONFL, { recursive: true });
-    if (!same(C.file, C.placeholder ? { size: C.size ?? undefined, mtime: C.mtime } : cent)) return false;
-    await renameRetry(C.file, copy);
+    if (!(await same(C.file, C.placeholder ? { size: C.size ?? undefined, mtime: C.mtime } : cent))) return false;
+    const moved = await renameRetry(C.file, copy, () => same(C.file, C));
+    if (!moved) return false;
     delete state.cloud[rel];
     await writeConflictRecord({ id: cid, rel, kind: 'file', copy: path.basename(copy), at: now(), by: machine.name, from: nameOf(journalLatest.get(rel)?.m), ...sides(journalLatest.get(rel)?.m, L.mtime, journalLatest.get(rel)?.t || C.mtime), size: L.size, theirsSize: C.size ?? null, fields: [] });
     sum.conflicts += 1;
@@ -652,11 +696,11 @@ function createEngine(o) {
     await fsp.mkdir(dir, { recursive: true });
     let dst = path.join(dir, path.basename(C.file));
     if (await exists(dst)) dst = path.join(dir, `${rand()}-${path.basename(C.file)}`);
-    await renameRetry(C.file, dst);
+    return renameRetry(C.file, dst, () => same(C.file, C));
   }
   async function deleteThere(rel, C) { // this computer deleted it: the cloud copy goes to the synced trash
-    if (!same(C.file, { size: C.size ?? undefined, mtime: C.mtime })) return false;
-    await moveToCloudTrash(rel, C);
+    if (!(await same(C.file, { size: C.size ?? undefined, mtime: C.mtime }))) return false;
+    if (!(await moveToCloudTrash(rel, C))) return false;
     delete state.cloud[rel]; delete state.local[rel]; dropBase(rel);
     journalOut.push({ t: now(), op: 'del', rel });
     sum.deletedThere += 1;
@@ -664,25 +708,25 @@ function createEngine(o) {
   }
   async function deleteHere(rel, L) { // the other computer deleted it: ours goes to data/sync/trash (recoverable)
     if (SPECIAL[rel] || L.ext) { dropBase(rel); delete state.cloud[rel]; return true; } // config / theme / renders outside the data folder are never deleted here
-    if (!same(L.file, L)) return false;
+    if (!(await same(L.file, L))) return false;
     const dir = path.join(stateDir, 'trash', day(now()), ...rel.split('/').slice(0, -1));
     await fsp.mkdir(dir, { recursive: true });
     let dst = path.join(dir, path.basename(L.file));
     if (await exists(dst)) dst = path.join(dir, `${rand()}-${path.basename(L.file)}`);
     o.fault?.('delete-here', L.file);
-    await renameRetry(L.file, dst);
+    if (!(await renameRetry(L.file, dst, () => same(L.file, L)))) return false;
     delete state.local[rel]; delete state.cloud[rel]; dropBase(rel);
     sum.deletedHere += 1;
     notePulled(rel, `${kindOf(rel)}-deleted`);
     return true;
   }
   async function renameThere(from, to, C, h) { // a file renamed / moved here: moved in the cloud too (no re-upload)
-    if (!same(C.file, { size: C.size ?? undefined, mtime: C.mtime })) return false;
+    if (!(await same(C.file, { size: C.size ?? undefined, mtime: C.mtime }))) return false;
     const dst = cloudPathOf(to);
     if (await exists(dst)) return false;
     await fsp.mkdir(path.dirname(dst), { recursive: true });
-    await renameRetry(C.file, dst);
-    const st = statSync(dst);
+    if (!(await renameRetry(C.file, dst, async () => (await same(C.file, C)) && (await same(dst, null))))) return false;
+    const st = await fsp.stat(dst);
     state.cloud[to] = [st.size, st.mtimeMs, h]; delete state.cloud[from];
     const t = S.isJsonRel(from) ? (() => { try { return fs.readFileSync(basePath(from), 'utf8'); } catch { return undefined; } })() : undefined;
     setBase(to, h, t); dropBase(from); delete state.local[from];
@@ -692,12 +736,12 @@ function createEngine(o) {
   }
   async function renameHere(from, to, L, h) {
     if (SPECIAL[from] || SPECIAL[to] || L.ext) return false;
-    if (!same(L.file, L)) return false;
+    if (!(await same(L.file, L))) return false;
     const dst = localPathOf(to);
     if (await exists(dst)) return false;
     await fsp.mkdir(path.dirname(dst), { recursive: true });
-    await renameRetry(L.file, dst);
-    const st = statSync(dst);
+    if (!(await renameRetry(L.file, dst, async () => (await same(L.file, L)) && (await same(dst, null))))) return false;
+    const st = await fsp.stat(dst);
     state.local[to] = [st.size, st.mtimeMs, h]; delete state.local[from];
     const t = S.isJsonRel(from) ? (() => { try { return fs.readFileSync(basePath(from), 'utf8'); } catch { return undefined; } })() : undefined;
     setBase(to, h, t); dropBase(from); delete state.cloud[from];
@@ -708,6 +752,9 @@ function createEngine(o) {
 
   // a copy a cloud client made ("x (conflicted copy).json", "x 2.json"): merged into x (JSON) or kept as a conflict
   async function absorbCopy(cp, local) {
+    // Cloud duplicates can appear before their download has finished. Keep the
+    // whole copy in place until it is ready and has stopped changing.
+    if (!(await cloudReady(cp.rel, cp)) || now() - Math.floor(cp.mtime) < (o.settleMs ?? 4000)) return false;
     const L = local.get(cp.orig);
     try {
       if (S.isJsonRel(cp.orig) && !cp.placeholder && L && !L.unavailable) {
@@ -726,16 +773,18 @@ function createEngine(o) {
           notePulled(cp.orig, kindOf(cp.orig));
         }
         if (r.conflicts.length) await saveConflict(cp.orig, { text: canon(theirs), fields: r.conflicts, from: null, oursAt: L.mtime, theirsAt: cp.mtime });
-        await moveToCloudTrash(cp.rel, cp);
+        if (!(await same(cp.file, cp))) return false;
+        if (!(await moveToCloudTrash(cp.rel, cp))) return false;
         sum.merged += 1;
       } else {
         const cid = `${day(now())}-${rand()}`;
         await fsp.mkdir(CONFL, { recursive: true });
-        await renameRetry(cp.file, path.join(CONFL, `${cid}-${path.basename(cp.file)}`));
+        if (!(await renameRetry(cp.file, path.join(CONFL, `${cid}-${path.basename(cp.file)}`), () => same(cp.file, cp)))) return false;
         await writeConflictRecord({ id: cid, rel: cp.orig, kind: 'file', copy: `${cid}-${path.basename(cp.file)}`, at: now(), by: 'cloud drive', from: 'a copy your cloud drive made', fields: [] });
         sum.conflicts += 1;
       }
-    } catch (err) { sum.errors += 1; log('copy', cp.rel, err.message); }
+      return true;
+    } catch (err) { sum.errors += 1; log('copy', cp.rel, err.message); return false; }
   }
 
   // ---------- one pass ----------
@@ -793,6 +842,7 @@ function createEngine(o) {
       if (stopping) break;
       if (S.localOnly(rel)) continue; // previously mirrored caches stay untouched on either side
       const L = local.get(rel); const C = cloud.get(rel); const bh = state.base[rel];
+      if (C?.downloading && !(await cloudReady(rel, C))) { pending += 1; cloudOnly.push(rel); continue; }
       if (L?.unavailable) { pending += 0; continue; } // a render on a drive that isn't plugged in: left alone
       if ((!L && blindIn(local.blind, rel)) || (!C && blindIn(cloud.blind, rel))) { pending += 1; continue; }
       if (!L && !C) { dropBase(rel); delete state.local[rel]; delete state.cloud[rel]; continue; }
@@ -866,7 +916,7 @@ function createEngine(o) {
       }
       if (++n % 25 === 0) saveState();
     }
-    for (const cp of copies) await absorbCopy(cp, local);
+    for (const cp of copies) if (!(await absorbCopy(cp, local))) { pending += 1; cloudOnly.push(cp.rel); }
     await flushJournal().catch((err) => log('journal', err.message));
     await writeMachine(false).catch(() => {});
     if (now() - (state.purgedAt || 0) > 864e5) await purge().catch(() => {});

@@ -42,7 +42,7 @@ function computer(world, name, extra = {}) {
   fs.mkdirSync(m.data, { recursive: true }); fs.mkdirSync(m.home, { recursive: true });
   if (!has(m.config)) W(m.config, `${JSON.stringify({ agents: [{ id: 'claude', name: 'Claude', mode: 'native' }], theme: { accent: '#ff0' }, layout: { gridColumns: 2 }, settings: { notify: true, enginePaths: { claude: `${m.home}/bin/claude` } } }, null, 2)}\n`);
   if (!has(m.theme)) W(m.theme, '/* theme */\n');
-  m.make = (o = {}) => createEngine({ dataDir: m.data, configPath: m.config, themePath: m.theme, cloudRoot: world.cloud, machineName: name, home: m.home, settleMs: 0, chunk: 256 * 1024, onPulled: (l) => m.pulled.push(...l), ...extra, ...o });
+  m.make = (o = {}) => createEngine({ dataDir: m.data, configPath: m.config, themePath: m.theme, cloudRoot: world.cloud, machineName: name, home: m.home, settleMs: 0, cloudAttributes: async paths => new Map(paths.map(p => [p, 0])), chunk: 256 * 1024, onPulled: (l) => m.pulled.push(...l), ...extra, ...o });
   m.e = m.make();
   m.p = (rel) => path.join(m.data, ...rel.split('/'));
   return m;
@@ -74,6 +74,48 @@ function snapshot(m) {
 }
 
 async function main() {
+  {
+    const w=world('cloud-download'),A=computer(w,'PC',{platform:'win32'});
+    const rel='kv/example.json',file=cloudFile(w,rel),copy=cloudFile(w,'kv/example(1).json');
+    W(A.p(rel),JSON.stringify({local:'kept'}));await settle(A);
+    W(file,JSON.stringify({remote:'arriving'}));W(copy,JSON.stringify({copied:'also kept'}));
+    let downloading=true;
+    A.e=A.make({cloudAttributes:async paths=>new Map(paths.map(p=>[p,downloading?0x400000:0]))});
+    let st=await A.e.pass();
+    ok(st.pending>=2&&has(copy)&&J(file).remote==='arriving'&&J(A.p(rel)).local==='kept','Windows download defers overwrites and duplicate cleanup; both sides stay intact');
+    downloading=false;await settle(A);
+    ok(J(A.p(rel)).copied==='also kept'&&!has(copy),'hydrated no-space numbered duplicate merges and moves to recoverable trash');
+    const unavailable=A.make({cloudAttributes:async()=>{throw Error('provider unavailable');}});
+    W(A.p(rel),JSON.stringify({local:'new local work'}));st=await unavailable.pass();
+    ok(st.pending>0&&J(A.p(rel)).local==='new local work'&&J(file).local!=='new local work','failed Windows metadata probe keeps work pending without overwriting either copy');
+
+    const ordinaryRename=fs.promises.rename,ordinarySync=fs.renameSync;
+    let ticks=0,renames=0;const heartbeat=setInterval(()=>ticks++,2);
+    fs.renameSync=function(from,to){if(String(from).startsWith(w.cloud)||String(to).startsWith(w.cloud))throw Error('Cloud rename blocked the main thread');return ordinarySync.apply(this,arguments);};
+    fs.promises.rename=async function(from,to){if(String(to).startsWith(w.cloud)){renames++;await new Promise(r=>setTimeout(r,25));}return ordinaryRename.apply(this,arguments);};
+    try { st=await A.e.pass();ok(renames>0&&ticks>5&&st.last.errors===0,'slow cloud renames leave the event loop running and never call renameSync'); }
+    finally {clearInterval(heartbeat);fs.promises.rename=ordinaryRename;fs.renameSync=ordinarySync;}
+    // The cloud client changes the destination while Windows holds a rename.
+    // A retry must recheck it, not overwrite the newly arrived version.
+    let heldOnce=false;
+    W(A.p(rel),JSON.stringify({local:'newer local work'}));
+    fs.promises.rename=async function(from,to){
+      if(to===file&&!heldOnce){heldOnce=true;W(file,JSON.stringify({remote:'arrived during retry'}));throw Object.assign(Error('download busy'),{code:'EBUSY'});}
+      return ordinaryRename.apply(this,arguments);
+    };
+    try {st=await A.e.pass();ok(heldOnce&&st.pending>0&&J(file).remote==='arrived during retry'&&J(A.p(rel)).local==='newer local work','rename retry rechecks the destination and preserves simultaneous incoming data');}
+    finally {fs.promises.rename=ordinaryRename;}
+    await settle(A);ok(J(A.p(rel)).remote==='arrived during retry'&&J(A.p(rel)).local==='newer local work','postponed rename merges both versions on the next pass');
+  }
+  {
+    const w=world('local-habits'),A=computer(w,'PC'),B=computer(w,'Mac');
+    for(const name of ['speed.json','speed 2.json','speed(1).json','speed (3).json','speed (PC conflicted copy).json']){
+      const rel='kv/'+name;W(cloudFile(w,rel),'{}');
+      ok(S.localOnly(rel)&&S.watchIgnored('files/'+rel,true),'habit record and its cloud copies are local-only: '+name);
+    }
+    W(A.p('kv/speed.json'),JSON.stringify({stats:{click:9}}));await settle(A,B);
+    ok(J(A.p('kv/speed.json')).stats.click===9&&!has(B.p('kv/speed.json'))&&has(cloudFile(w,'kv/speed 2.json')),'habit history stays on its computer; old cloud copies are left intact, not repeatedly merged or deleted');
+  }
   {
     const w=world('switch-safety'),A=computer(w,'PC',{platform:'win32'}),B=computer(w,'Mac',{platform:'darwin'});
     const original=chat('linked',[msg('user',1,'Keep my work')]);

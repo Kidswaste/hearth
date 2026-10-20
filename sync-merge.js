@@ -32,6 +32,9 @@ const LOCAL_FILES = new Set(['window.json', 'game-bridge.json', 'hearth-origin.j
   'config.json', 'theme.css']); // (round 20) this computer's smoothness log: about this machine, never synced · (round 34) offline-queue: messages waiting to go out from THIS computer (synced, the other one would send them too) · (round 35, twocomputers) chrome-prefs: this computer's Chrome (browser, shown or not) · interop/obs.json: this computer's OBS address + keychain-sealed password · media-here: files found again on this computer · (round 55, configsafe) config.json / theme.css: the owner's settings in data/, synced as app/config.json / app/theme.css (portable part), never a second time as data files
 function localOnly(rel) {
   const r = rel.replace(/\\/g, '/');
+  // Recent clicks / learned shortcuts describe this computer. Repeatedly merging
+  // them across devices creates a feedback loop of iCloud conflict copies.
+  if (/^kv\/speed(?: \d+| ?\(\d+\)| \([^()]*conflicted copy[^()]*\))?\.json$/i.test(r)) return true;
   if (transientWorkspace(r)) return true;
   if (LOCAL_FILES.has(r)) return true;
   if (/(^|\/)\./.test(r)) return true; // hidden files / folders
