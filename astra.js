@@ -1000,6 +1000,19 @@ function toggleFold(hostId, m) {
     chatPatch(ctx.agentId, { [key]: value });
     return Native.chatOf(ctx.agentId) ? label : `${label} (from this new chat's first message)`;
   }
+  function reasoning(agentId) {
+    const base = H.agent(agentId), chat = Native.chatOf(agentId);
+    const engine = chat?.engine || base?.engine;
+    if (engine !== 'codex') return null;
+    const agent = engine === base?.engine ? base : H.agents().find(a => a.mode === 'native' && a.engine === engine);
+    return { model: chatValue(agentId, 'model') || agent?.model,
+      effort: chatValue(agentId, 'effort') || agent?.effort || 'default',
+      defaultEffort: agent?.effort || 'default', override: chatValue(agentId, 'effort') || null };
+  }
+  function setReasoning(agentId, effort) {
+    chatPatch(agentId, { effort });
+    Native.refresh(agentId, { keepScroll: true });
+  }
   function statusText(agentId) {
     const agent = H.agent(agentId);
     const chat = Native.chatOf(agentId);
@@ -1805,7 +1818,7 @@ function toggleFold(hostId, m) {
   });
 
   return {
-    collabEl, emptyHints, beforeSend, start, handoff, switchDirector, stop, PERSONAS, MODES, PRESETS,
+    collabEl, emptyHints, beforeSend, start, handoff, switchDirector, stop, PERSONAS, MODES, PRESETS, reasoning, setReasoning,
     _test: { parseSeat, parseLead, parseSeats, carryText, collabText, totals, live },
   };
 })();
