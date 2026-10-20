@@ -498,6 +498,31 @@ const Missions = (() => {
     const pop = el('div', { class: 'ms-pop', role: 'dialog', attrs: { 'aria-label': 'Mission for your next message' } },
       el('div', { class: 'ms-head' }, el('b', { text: 'Your next message will…' }), el('span', { class: 'hint', text: 'click: next message only · 📌 from now on' })),
       cards(agentId, { onPick: close }));
+    const info = typeof Astra !== 'undefined' && Astra.reasoning(agentId);
+    if (info) {
+      const chatId = Native.chatOf(agentId)?.id;
+      const label = el('span', { class: 'hint', text: 'Loading reasoning options…' });
+      const select = el('select', { disabled: true, attrs: { 'aria-label': 'Reasoning for this chat' } },
+        el('option', { text: info.effort }));
+      pop.prepend(el('div', { class: 'ms-head' }, el('b', { text: 'Reasoning' }), select, label));
+      const same = () => Native.chatOf(agentId)?.id === chatId && Astra.reasoning(agentId)?.model === info.model;
+      window.hub.codex.capabilities({ kind: 'models' }).then(r => {
+        if (!pop.isConnected || !same()) return;
+        const model = r.data.find(m => m.model === info.model || m.id === info.model);
+        const efforts = model?.supportedReasoningEfforts || [];
+        if (!efforts.length) throw new Error('No reasoning options');
+        select.replaceChildren(el('option', { value: '', text: `Default · ${info.defaultEffort}` }),
+          ...efforts.map(e => el('option', { value: e.reasoningEffort, text: e.reasoningEffort })));
+        select.value = info.override || '';
+        select.disabled = false;
+        label.textContent = 'This chat · next reply';
+      }).catch(() => { if (pop.isConnected) label.textContent = 'Options unavailable · try again online'; });
+      select.addEventListener('change', () => {
+        if (!same()) { close(); return; }
+        Astra.setReasoning(agentId, select.value || null); changed(agentId);
+      });
+      label.title = 'Your default stays unchanged. Swarm helpers use their own team settings. Choosing a mode does not send a message.';
+    }
     // (round 36, motionpolish) placed by its bottom-right corner above ◎, before it's in the page: its own size isn't
     // needed (measuring it forced a style + layout of the page as it opened), and opening "More" grows it upwards
     const place = () => {
@@ -518,7 +543,11 @@ const Missions = (() => {
     const paint = () => {
       const m = current(agentId);
       b.classList.toggle('on', m.id !== 'normal');
-      const t = m.id === 'normal' ? '◎' : `${m.icon} ${m.label}${isSticky(agentId) ? ' 📌' : ''}`;
+      const info = typeof Astra !== 'undefined' && Astra.reasoning(agentId);
+      const mode = m.id === 'normal' ? 'Solo' : `${m.icon} ${m.label}${isSticky(agentId) ? ' 📌' : ''}`;
+      const t = info ? `${info.effort[0].toUpperCase()}${info.effort.slice(1)} · ${mode} ▾`
+        : m.id === 'normal' ? '◎' : mode;
+      b.setAttribute('aria-label', info ? `Astra reasoning and agents: ${t}` : 'Mission for your next message');
       if (b.textContent !== t) b.textContent = t;
     };
     b.addEventListener('click', () => popover(agentId, b));
@@ -536,6 +565,7 @@ const Missions = (() => {
     Native.hooks.send.push(onSend);
     Native.hooks.compose.push(onCompose);
     Native.hooks.finish.push(onFinish);
+    Native.hooks.render.push(id => changed(id));
   }
   return { LIST, NOTE, current, set, submit, take, start, arm, ownSend, cards, button, isSticky, why, decorateCollab, resultCard, add, shown, _live: live };
 })();
