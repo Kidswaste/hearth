@@ -1165,7 +1165,7 @@ function runAgent(agent, { chatId = '', session = {}, text = '', options = {} } 
   if (woke?.sleep.length) agent = { ...agent, ...Object.fromEntries(woke.sleep.map((k) => [k, false])) };
   if (chatId && !String(chatId).startsWith('once-') && hubToolsets(agent).some((k) => k !== 'chatTools')) agent = { ...agent, hubChatId: chatId };
   // Quest evidence is submitted for critique, never for executing embedded instructions or editing projects.
-  if (options.questReview) agent = { ...agent, noHubTools: true, nodesTool: false, access: { level: 'off', folders: [] }, codexFiles: undefined, fileFolder: undefined, workspace: undefined, astraNoSandbox: false, codexFeatures: [], chatgptApps: false, connectors: undefined, webSearch: 'disabled', autoMemory: false, memoryOff: true, suggestNext: false };
+  if (options.questReview || options.visualReview) agent = { ...agent, noHubTools: true, nodesTool: false, access: { level: 'off', folders: [] }, codexFiles: undefined, fileFolder: undefined, workspace: undefined, astraNoSandbox: false, codexFeatures: [], chatgptApps: false, connectors: undefined, webSearch: 'disabled', autoMemory: false, memoryOff: true, suggestNext: false };
   return { agent, woke };
 }
 function send({ agent: agent0, chatId, session, text, options = {} }, emit, live = null) {

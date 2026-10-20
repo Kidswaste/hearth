@@ -1060,6 +1060,7 @@ const WorkspaceNav = window.WorkspaceNav = (() => {
     if(p){
       if(!auto){auto=button('↻ Auto-improve',async()=>{await Lazy.load('routines');await Routines.openProject();},{class:'workspace-auto',title:'Repeat a prompt in this project with a usage budget'});bar.append(el('div',{class:'workspace-auto-group'},auto));}
       window.Routines?.projectControls(auto,window.ProjectWorkspace?.currentChat?.());
+      if(!bar.querySelector('.workspace-feedback'))auto.parentElement.prepend(button('✦ Feedback',async()=>{await Lazy.load('visualfeedback');await VisualFeedback.open();},{class:'workspace-feedback',title:'A second pair of eyes: review a recording and draft the next improvement'}));
     }else auto?.parentElement?.classList.contains('workspace-auto-group')?auto.parentElement.remove():auto?.remove();
     for(const b of bar.querySelectorAll('[data-surface],[data-id]')){const f=b.dataset.feature,yes=(b.dataset.surface||b.dataset.id)===sid&&(!f||f===feature||['board','studio'].includes(f)&&feature!=='vst');b.classList.toggle('active',yes);b.setAttribute('aria-current',yes?'page':'false');}
   }
