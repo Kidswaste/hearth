@@ -20,6 +20,7 @@ t('source descriptors', () => {
   assert.strictEqual(C.remember(r, { kind: 'lab', id: 'a', title: 'A' }).length, 2);
 });
 t('one canvas: the plain layers merge, bottom first; the rest say why', () => {
+  assert.strictEqual(C.whyNot({ code: R(''), mask: { kind: 'ellipse' } }), 'layer mask');
   const p = C.mergePlan([{ id: 'a', code: R('') }, { id: 'b', code: R('') }, { id: 'c', code: R('') }]);
   assert.deepStrictEqual(p.merge, ['a', 'b', 'c']); assert.strictEqual(p.contexts, 1);
   const q = C.mergePlan([{ id: 'a', code: R('') }, { id: 'f', code: 'filter("bloom", P)' }, { id: 'c', code: R('') }, { id: 'h', code: R(''), visible: false }]);

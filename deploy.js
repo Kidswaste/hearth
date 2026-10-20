@@ -41,7 +41,7 @@ const Deploy = (() => {
     const live = Lab()?.scenes?.get?.(s.id) || s;
     const layers = (live.layers?.length ? live.layers : [{ id: 'main', name: 'Layer 1', code: live.code || '' }]).map((L, i) => ({
       id: L.id || `l${i}`, code: L.code || '', name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0,
-      x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, slot: L.slot ?? i, z: i, keys: L.keys || null, overrides: L.overrides || null,
+      x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, mask: L.mask || null, slot: L.slot ?? i, z: i, keys: L.keys || null, overrides: L.overrides || null,
     })).filter((L) => L.code.trim());
     const refs = (((await window.hub.kvGet('three-refs', {})) || {})[s.id] || []).map((x) => ({ key: x.key, kind: x.kind, path: x.path, name: x.name }));
     const ex = ((await window.hub.kvGet('three-lab-extras', {})) || {})[s.id] || {};

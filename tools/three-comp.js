@@ -104,7 +104,7 @@ const ThreeComp = (() => {
     return { code: base.code, values: base.values, keys, sliderKeys };
   }
   const card = (prefix, text) => [{ id: `${prefix}>card`, name: 'card', z: 0, card: { text }, opacity: 1, blend: 'normal', visible: true }];
-  const lyBase = (ly, id, j) => ({ id, name: ly.name, z: j, opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, in: ly.in ?? null, out: ly.out ?? null, fadeIn: ly.fadeIn || 0, fadeOut: ly.fadeOut || 0, visible: true, overrides: ly.overrides || null });
+  const lyBase = (ly, id, j) => ({ id, name: ly.name, z: j, opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, mask: ly.mask || null, in: ly.in ?? null, out: ly.out ?? null, fadeIn: ly.fadeIn || 0, fadeOut: ly.fadeOut || 0, visible: true, overrides: ly.overrides || null });
   function sceneSpecs(sk, prefix, path, alloc, depth) {
     return S().layersOf(sk).filter((ly) => ly.visible !== false).map((ly, j) => {
       const id = `${prefix}>${ly.id}`;

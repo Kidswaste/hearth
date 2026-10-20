@@ -1166,9 +1166,13 @@ const ThreeLab = (() => {
         selBox.replaceChildren(el('div', { class: 'ed-hint', text: 'Click an object to select it · drag to orbit · right-drag to pan · wheel to zoom · W / E / R move / rotate / scale · F focus · Alt+click picks its group · Esc deselects' }));
       } else {
         const num = (prop, axis, val) => {
-          const inp = el('input', { type: 'number', class: 'ed-num', value: val, step: prop === 'r' ? 1 : 0.05 });
-          inp.addEventListener('change', () => { pushEditUndo(); box.send({ type: 'edit', cmd: 'set', prop, axis, value: Number(inp.value) }); });
-          return inp;
+          const name = ['X', 'Y', 'Z'][axis];
+          const step = prop === 'r' ? 1 : 0.05;
+          const inp = el('input', { type: 'number', class: 'ed-num', value: val, step, title: `${name}: type an exact value or use the arrows`, attrs: { 'aria-label': `${prop === 'p' ? 'Position' : prop === 'r' ? 'Rotation' : 'Scale'} ${name}` } });
+          const set = (value) => { if (!Number.isFinite(value)) return; pushEditUndo(); box.send({ type: 'edit', cmd: 'set', prop, axis, value }); };
+          inp.addEventListener('change', () => { if (inp.value.trim()) set(Number(inp.value)); });
+          const nudge = (sign) => btn(sign < 0 ? '−' : '+', `${name}: ${sign < 0 ? 'decrease' : 'increase'} · Shift: ×10 · Alt: fine`, e => set(Number(inp.value) + sign * step * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1)));
+          return el('label', { class: `ed-axis ed-axis-${name.toLowerCase()}` }, el('span', { text: name }), nudge(-1), inp, nudge(1));
         };
         const trio = (label, prop, arr) => el('div', { class: 'ed-trio' }, el('span', { class: 'ed-lab', text: label }), ...arr.map((v, k) => num(prop, k, v)));
         const placed = Boolean(sel()?.overrides?.[info.path]);
@@ -2131,7 +2135,7 @@ const ThreeLab = (() => {
       get pane() { return pane; },
       menus: () => ({ preview: previewMenuItems(), more: labMoreItems(), sketch: sketchMenuRows() }),
       layerMenu: (id) => layersPanel.menuFor?.(id) || null,
-      layers: () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, visible: L.visible !== false, selected: L.id === selId, color: L.color, filter: ThreeLayers.isFilter(L.code || '') })),
+      layers: () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, mask: L.mask || null, visible: L.visible !== false, selected: L.id === selId, color: L.color, filter: ThreeLayers.isFilter(L.code || '') })),
       selectLayer: (id) => { if (!layerById(id)) return false; selectLayer(id); return true; },
       // the sliders of the layers whose panel exists (the selected one at least)
       sliders: () => layersOf().flatMap((L) => { const c = controllers.get(L.id); return c ? c.controls().map((x) => ({ layerId: L.id, layer: L.name, key: x.key, label: x.label, group: x.group || '' })) : []; }),
@@ -2156,7 +2160,7 @@ const ThreeLab = (() => {
     }
     addEventListener('keydown', (e) => { if (e.key === 'Escape' && focusOn) setFocus(false); });
 
-    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), overrides: L.overrides || null, camMoves: L.camMoves?.length ? L.camMoves : null, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
+    const layerProps = (L, z) => ({ keys: animKeys(L), sliderKeys: sliderKeysOf(L), overrides: L.overrides || null, camMoves: L.camMoves?.length ? L.camMoves : null, name: L.name, mask: L.mask || null, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', in: L.in ?? null, out: L.out ?? null, fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0, x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, selected: L.id === selId, slot: L.slot, z: z ?? layersOf().indexOf(L) });
     const extrasOf = (L) => {
       const ex = (extras[current.id] ||= {});
       return L.id === 'main' ? ex : ((ex.layers ||= {})[L.id] ||= {});
@@ -2255,6 +2259,7 @@ const ThreeLab = (() => {
       onSelect: (id) => selectLayer(id),
       onChange: (id, patch, { live }) => editLayer(id, patch, { live }),
       onAdd: (kind) => addLayer(kind),
+      onPaste: (copies) => { for (const copy of copies) { const { id, slot, group, solo, ...props } = copy; addLayer('paste', { code: copy.code, props: { ...props, name: `${copy.name} copy` } }); } },
       onRemove: (id) => removeLayer(id),
       onReorder: (ids) => reorderLayers(ids),
       now: () => player.time,
@@ -2817,7 +2822,7 @@ const ThreeLab = (() => {
       browse: () => browseSketches(), newSketch: (tpl) => { if (!tpl) { templateGallery(); return null; } const t = ThreeData.TEMPLATES.find((x) => x.name.toLowerCase().includes(String(tpl).toLowerCase())); if (!t) return null; create(t.name, t.code); return t.name; },
       templates: () => ThreeData.TEMPLATES.map((t) => t.name), duplicate: () => duplicate(), rename: (n) => { if (!current || !n) return null; current.name = n; save(); renderPicker(); return n; },
       // layers
-      layers: () => layersOf().map((L) => ({ name: L.name, visible: L.visible !== false, selected: L.id === selId })).reverse(),
+      layers: () => layersOf().map((L) => ({ name: L.name, mask: L.mask || null, visible: L.visible !== false, selected: L.id === selId })).reverse(),
       selectLayer: (q) => { const L = findLayer(q); if (!L) return null; selectLayer(L.id); return L.name; },
       showLayer: (q, on) => { const L = findLayer(q); if (!L) return null; editLayer(L.id, { visible: on ?? L.visible === false }); return L.name; },
       solo: (q) => { const L = q ? findLayer(q) : null; setSolo(L && soloNow() !== L.id ? L.id : null); return L?.name || null; },

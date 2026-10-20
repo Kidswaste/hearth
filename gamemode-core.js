@@ -54,6 +54,7 @@
     if (HELPERS.test(code)) return 'drawn by a Lab helper with its own canvas';
     if (!/new\s+(THREE\.)?WebGLRenderer\b/.test(code)) return 'draws without a three.js renderer of its own';
     if (OWN_GL.test(code)) return 'post-processing / its own GPU passes';
+    if (L.mask) return 'layer mask';
     if ((L.opacity ?? 1) !== 1) return 'see-through (opacity)';
     if ((L.blend || 'normal') !== 'normal') return `blend mode ${L.blend}`;
     if (L.x || L.y || (L.scale ?? 1) !== 1 || L.rotate) return 'moved, scaled or turned';

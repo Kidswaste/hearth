@@ -340,3 +340,18 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
    and the frame budget bar (declutter's 'lab-stats' keeps .fb-keep on screen; the bar: tools/framebar.css); pointing
    at the preview shows the whole line, as before */
 .three-preview:not(:hover) > .three-stats.fb-keep > :not(:first-child):not(.fb) { display: none; }
+/* Layer masks and explicit, color-coded object axes. Loaded with the Lab only. */
+.ly-mask { border: 1px solid #ffffff20; border-radius: 8px; padding: 6px; }
+.ly-mask summary { display:flex; align-items:center; gap:8px; cursor:pointer; }
+.ly-mask-preview { display:inline-block; width:40px; height:28px; background:repeating-conic-gradient(#333 0% 25%,#181818 0% 50%) 0 / 10px 10px; border-radius:4px; overflow:hidden; }
+.ly-mask-shape { display:block; width:100%; height:100%; background:#f4c978; }
+.ly-mask-choices { display:flex; gap:6px; margin:8px 0; }
+.ly-mask .ly-field { margin-top:6px; }
+.ed-trio { flex-wrap:wrap; }
+.ed-axis { display:flex; align-items:center; gap:3px; border:1px solid #ffffff20; border-radius:6px; padding:3px; }
+.ed-axis > span { font-weight:bold; padding:0 3px; }
+.ed-axis-x > span { color:#ff838c; }
+.ed-axis-y > span { color:#a9d77c; }
+.ed-axis-z > span { color:#a59bff; }
+.ed-axis .ed-num { width:65px; }
+.ed-axis button { min-width:24px; padding:2px 4px; }
