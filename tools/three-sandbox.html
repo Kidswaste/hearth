@@ -2348,7 +2348,7 @@ function adFullFrame(fn) {
 const adPx = new Uint8Array(4); let adProbes = 0;
 function adOpaque(L) {
   const p = L.props;
-  if (p.mask || L.fx || L.pc || L.seqHide || p.seqFilter || (p.blend && p.blend !== 'normal') || layerMix(L) < 0.999 || L.drawnGen !== L.gen || L.pics?.length) return false;
+  if (p.mask || matteOnly(L) || L.fx || L.pc || L.seqHide || p.seqFilter || (p.blend && p.blend !== 'normal') || layerMix(L) < 0.999 || L.drawnGen !== L.gen || L.pics?.length) return false;
   const t = xform(L);
   if (t.x || t.y || t.rotate || t.scale < 1) return false;
   for (const r of L.renderers) {
@@ -2425,7 +2425,7 @@ function adCoverFrame() {
   const C = AD.coverBy;
   if (!C) return;
   const p = C.props; const t = xform(C);
-  if (p.mask || layers.get(C.id) !== C || edit.on || SQ.on || PC.list.size || adFull() || layerMix(C) < 0.999 || (p.blend && p.blend !== 'normal') || p.seqFilter || C.seqHide || C.pics?.length || t.x || t.y || t.rotate || t.scale < 1 || C.drawnGen !== C.gen) adCoverClear();
+  if (p.mask || matteOnly(C) || layers.get(C.id) !== C || edit.on || SQ.on || PC.list.size || adFull() || layerMix(C) < 0.999 || (p.blend && p.blend !== 'normal') || p.seqFilter || C.seqHide || C.pics?.length || t.x || t.y || t.rotate || t.scale < 1 || C.drawnGen !== C.gen) adCoverClear();
 }
 // which layers are covered (twice a second, from the stats timer)
 function adCoverTick() {
@@ -5199,8 +5199,62 @@ function layerMix(L) {
 // (round 21 "labgpu": one scratch object, read at once by every caller: no object per layer per frame)
 const XF = { x: 0, y: 0, scale: 1, rotate: 0 };
 const xform = (L) => { XF.x = prop(L, 'x', 0); XF.y = prop(L, 'y', 0); XF.scale = prop(L, 'scale', 1); XF.rotate = prop(L, 'rotate', 0); return XF; };
+// A track matte: the original layer supplies coverage, another picture supplies color.
+// Two GPU textures avoid reading every pixel back to the CPU each frame.
+function matteSource(L) {
+  const m=L.props.mask;
+  if(m?.kind!=='video' || m.source==='media') return null;
+  return layers.get(m.source) || [...layers.values()].find(B=>B!==L && B.props.pcOf===L.props.pcOf && (B.props.name===m.sourceName || B.props.name?.endsWith(` · ${m.sourceName}`)));
+}
+const matteUsed={frame:-1,version:-1,ids:new Set()};
+function matteOnly(L) {
+  if(matteUsed.frame!==frameTick || matteUsed.version!==layerVer){
+    matteUsed.frame=frameTick;matteUsed.version=layerVer;matteUsed.ids.clear();
+    for(const B of layers.values())if(B.props.mask?.kind==='video' && layerMix(B)>0){const src=matteSource(B);if(src && src!==B)matteUsed.ids.add(src.id);}
+  }
+  return matteUsed.ids.has(L.id);
+}
+const rawCanvases = L => [...L.box.querySelectorAll('canvas')].filter(c=>!c.classList.contains('lab-video-mask') && !c.classList.contains('lab-xfade') && c.closest('.lab-layer')===L.box);
+function matteDispose(L) {
+  const a=L.matte; if(!a)return;
+  a.gl.deleteTexture(a.tex[0]);a.gl.deleteTexture(a.tex[1]);a.gl.deleteBuffer(a.buffer);a.gl.deleteProgram(a.program);
+  a.gl.getExtension('WEBGL_lose_context')?.loseContext();a.canvas.remove();L.matte=null;L.box.classList.remove('lab-matted');
+}
+function matteFrame(L,W,H) {
+  if(L.props.mask?.kind!=='video') { matteDispose(L); return null; }
+  let a=L.matte;
+  if(!a) {
+    const canvas=document.createElement('canvas');canvas.className='lab-video-mask';canvas.style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+    const gl=canvas.getContext('webgl',{alpha:true,premultipliedAlpha:false,preserveDrawingBuffer:true});if(!gl)return null;
+    const compile=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;};
+    const vs=compile(gl.VERTEX_SHADER,'attribute vec2 p; varying vec2 uv; void main(){uv=p*.5+.5;gl_Position=vec4(p,0.,1.);}');
+    const fs=compile(gl.FRAGMENT_SHADER,'precision mediump float; varying vec2 uv; uniform sampler2D shape; uniform sampler2D fill; uniform float channel; void main(){vec4 s=texture2D(shape,uv);vec4 f=texture2D(fill,uv);float k=channel>1.5?1.:channel>.5?s.r:max(s.r,max(s.g,s.b));gl_FragColor=vec4(f.rgb,f.a*s.a*k);}');
+    const program=gl.createProgram();gl.attachShader(program,vs);gl.attachShader(program,fs);gl.linkProgram(program);gl.deleteShader(vs);gl.deleteShader(fs);gl.useProgram(program);
+    const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+    const p=gl.getAttribLocation(program,'p');gl.enableVertexAttribArray(p);gl.vertexAttribPointer(p,2,gl.FLOAT,false,0,0);
+    const tex=[0,1].map(i=>{const t=gl.createTexture();gl.activeTexture(gl.TEXTURE0+i);gl.bindTexture(gl.TEXTURE_2D,t);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);return t;});
+    gl.uniform1i(gl.getUniformLocation(program,'shape'),0);gl.uniform1i(gl.getUniformLocation(program,'fill'),1);
+    a=L.matte={canvas,gl,program,buffer,tex,shape:document.createElement('canvas'),fill:document.createElement('canvas')};L.box.append(canvas);
+  }
+  const {gl,canvas}=a;
+  if(canvas.width!==W || canvas.height!==H){canvas.width=W;canvas.height=H;}
+  const paint=(c,B)=>{const cvs=rawCanvases(B).filter(cv=>!cv.__skip);if(cvs.length===1 && !cvs[0].__tb)return glFresh(cvs[0]);if(c.width!==W || c.height!==H){c.width=W;c.height=H;}const g=c.getContext('2d');g.clearRect(0,0,W,H);for(const cv of cvs)cvDraw(g,cv,W,H);return c;};
+  const source=matteSource(L);
+  const image=source ? paint(a.fill,source) : L.props.mask.source==='media' && isVideo && mediaEl.readyState>=2 ? mediaEl : null;
+  gl.viewport(0,0,W,H);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+  if(image){
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+    for(const [i,img] of [paint(a.shape,L),image].entries()){gl.activeTexture(gl.TEXTURE0+i);gl.bindTexture(gl.TEXTURE_2D,a.tex[i]);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);}
+    gl.uniform1f(gl.getUniformLocation(a.program,'channel'),L.props.mask.channel==='alpha'?2:L.props.mask.channel==='red'?1:0);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  }
+  L.box.classList.add('lab-matted');
+  return canvas;
+}
+const matteStyle=document.createElement('style');matteStyle.textContent='.lab-matted canvas:not(.lab-video-mask){opacity:0!important}';document.head.append(matteStyle);
 function styleLayer(L) {
   const p = L.props;
+  if(p.mask?.kind==='video' && layerMix(L)>0)matteFrame(L,Math.max(1,Math.round(innerWidth*devicePixelRatio)),Math.max(1,Math.round(innerHeight*devicePixelRatio)));
+  else if(L.matte)matteDispose(L);
   if (!L.pc && L.maskSet !== p.mask) {
     L.maskSet = p.mask;
     L.box.style.clipPath = p.mask?.points?.length ? `polygon(${p.mask.points.map(([x,y]) => `${x}% ${y}%`).join(',')})` : '';
@@ -5212,7 +5266,7 @@ function styleLayer(L) {
   if (s.display !== disp) s.display = disp;
   const vis = L.seqHide ? 'hidden' : '';
   if (s.visibility !== vis) s.visibility = vis;
-  const opn = L.occl ? 0 : Math.round(mix * 1000) / 1000; // (round 50: hidden under an opaque top, see occlPlan)
+  const opn = L.occl || matteOnly(L) ? 0 : Math.round(mix * 1000) / 1000; // sources still render, but only appear through their matte
   if (L.opSet !== opn) { L.opSet = opn; const op = String(opn); if (s.opacity !== op) s.opacity = op; }
   const bl = BLEND_CSS[p.blend] || 'normal';
   if (s.mixBlendMode !== bl) s.mixBlendMode = bl;
@@ -5239,7 +5293,7 @@ function ordered() {
 }
 // A layer's own canvases (not the picture of its previous version fading out over it, see "live edits")
 // (a precomp's box holds its layers' boxes: their canvases are theirs)
-const layerCanvases = (L) => [...L.box.querySelectorAll('canvas')].filter((cv) => !cv.classList.contains('lab-xfade') && (!PC.list.size || cv.closest('.lab-layer') === L.box));
+const layerCanvases = (L) => L.matte ? [L.matte.canvas] : [...L.box.querySelectorAll('canvas')].filter((cv) => !cv.classList.contains('lab-xfade') && (!PC.list.size || cv.closest('.lab-layer') === L.box));
 // Merging is needed for recordings / screenshots once more than one layer shows, or one is transformed.
 function needsComposite() {
   if (PC.list.size) return true; // (precomps: their crop / mask / effects are drawn in the merge)
@@ -5267,6 +5321,7 @@ function composite(target, k = 1, size = null, only = null, clear = false) {
 }
 // one layer into a 2D merge: its mix, blend and transform; a precomp draws its own layers (crop, mask, effects)
 function drawLayer2D(g, L, W, H) {
+  if(matteOnly(L)) return;
   const mix = layerMix(L);
   if (mix <= 0) return;
   // (round 56, labcanvas56) a covered layer (labadapt) is under an opaque one drawn after it in this same merge (its
@@ -5286,7 +5341,8 @@ function drawLayer2D(g, L, W, H) {
     L.props.mask.points.forEach(([px,py], i) => g[i ? 'lineTo' : 'moveTo'](px * W / 100, py * H / 100));
     g.closePath(); g.clip();
   }
-  if (L.pc) pcDraw(g, L, W, H);
+  if(L.props.mask?.kind==='video') { const c=matteFrame(L,W,H);if(c)g.drawImage(c,0,0,W,H); }
+  else if (L.pc) pcDraw(g, L, W, H);
   else for (const cv of layerCanvases(L)) if (!cv.__skip) cvDraw(g, cv, W, H); // (__skip: a filter at 0, see FX_IDENTITY)
   g.restore();
 }
@@ -11790,6 +11846,7 @@ function memAfterSwitch() {
 }
 const memSwitched = () => { if (mode !== 'sketch') return; if (MEMG.timer) realClearTimeout(MEMG.timer); MEMG.timer = realSetTimeout(memAfterSwitch, 3000); };
 function teardownLayer(L) {
+  matteDispose(L);
   if (L.url) ownRetire(L.url); // (round 39, labmemory)
   if (L.pc) pcUnmount(L);
   L.gen += 1;

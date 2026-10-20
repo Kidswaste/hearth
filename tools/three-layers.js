@@ -503,10 +503,22 @@ filter('${type}', P);
       const mask = el('details', { class: 'ly-mask', open: Boolean(L.mask) });
       const preview = el('span', { class: 'ly-mask-preview', attrs: { 'aria-hidden': 'true' } });
       const shape = el('span', { class: 'ly-mask-shape' }); preview.append(shape);
-      mask.append(el('summary', { title: 'Mask: keep only the part inside this shape' }, preview, 'Mask'));
+      mask.append(el('summary', { title: 'Use this layer as a shape that reveals video, or crop it geometrically' }, preview, 'Mask'));
       const m = { kind: 'ellipse', x: 50, y: 50, width: 70, height: 70, ...L.mask };
-      const paint = () => { shape.style.clipPath = L.mask ? `polygon(${L.mask.points.map(p => `${p[0]}% ${p[1]}%`).join(',')})` : ''; shape.style.opacity = L.mask ? '1' : '.25'; };
+      const paint = () => { shape.style.clipPath = L.mask?.points ? `polygon(${L.mask.points.map(p => `${p[0]}% ${p[1]}%`).join(',')})` : ''; shape.style.opacity = L.mask ? '1' : '.25'; };
       paint();
+      const fill = el('select', { title:'Replace this layer’s bright pixels with video or another layer', attrs:{'aria-label':'Fill this shape with'} },
+        el('option',{value:'',text:'Fill this shape with…'}), el('option',{value:'media',text:'Timeline video'}),
+        ...layers.filter(x=>x.id!==L.id && !x.precomp && x.mask?.kind!=='video').map(x=>el('option',{value:x.id,text:x.name})));
+      fill.value = L.mask?.kind==='video' ? L.mask.source : '';
+      fill.addEventListener('change',()=> { if(fill.value) commit({mask:{kind:'video',source:fill.value,channel:'bright',sourceName:layers.find(x=>x.id===fill.value)?.name || 'Timeline video'}}); });
+      mask.append(fill);
+      if(L.mask?.kind==='video') {
+        shape.style.background='linear-gradient(135deg,#fc7,#b7f,#4dd)';
+        mask.append(el('div',{class:'hint',text:`${L.name} → ${L.mask.sourceName || 'video'}. ${L.mask.source==='media'?'Load a video in the timeline below.':'The fill layer appears only through this shape.'}`}));
+        const channel=el('select',{title:'Which pixels reveal the video',attrs:{'aria-label':'Mask channel'}}, ...[['bright','Bright pixels (red, white, colors)'],['red','Red channel'],['alpha','Transparency / alpha']].map(([value,text])=>el('option',{value,text})));
+        channel.value=L.mask.channel || 'bright'; channel.addEventListener('change',()=>commit({mask:{...L.mask,channel:channel.value}}));mask.append(channel);
+      }
       const apply = (isLive = false) => {
         const base = m.kind === 'rectangle' ? [[-1,-1],[1,-1],[1,1],[-1,1]] : m.kind === 'diamond' ? [[0,-1],[1,0],[0,1],[-1,0]] : Array.from({length:64},(_,i)=>[Math.cos(i*Math.PI/32),Math.sin(i*Math.PI/32)]);
         (isLive ? live : commit)({ mask: { ...m, points: base.map(([x,y])=>[m.x+x*m.width/2,m.y+y*m.height/2]) } });
@@ -516,7 +528,7 @@ filter('${type}', P);
       for (const [kind, icon] of [['ellipse','●'],['rectangle','■'],['diamond','◆']]) choices.append(btn(icon, `${kind} mask`, () => { m.kind = kind; apply(); }, `ghost small${L.mask?.kind === kind ? ' on' : ''}`));
       choices.append(btn('Clear', 'Remove the mask', () => commit({ mask: null })));
       mask.append(choices);
-      if (L.mask) for (const [key,label,min,max] of [['x','Center X',0,100],['y','Center Y',0,100],['width','Width',1,200],['height','Height',1,200]]) {
+      if (L.mask && L.mask.kind!=='video') for (const [key,label,min,max] of [['x','Center X',0,100],['y','Center Y',0,100],['width','Width',1,200],['height','Height',1,200]]) {
         const input = el('input', { type:'range', min, max, step:1, value:m[key], title:`${label} (%)` });
         input.addEventListener('change', () => { m[key] = Number(input.value); apply(); });
         const value = el('span', { text:`${m[key]}%` });

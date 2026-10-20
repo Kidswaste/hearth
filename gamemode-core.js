@@ -65,10 +65,11 @@
   }
   function mergePlan(layers) {
     const merge = []; const why = {}; let open = true;
+    const matteSources=new Set((layers || []).filter(L=>L?.mask?.kind==='video').map(L=>L.mask.source));
     for (const L of layers || []) {
       if (!L || !L.id) continue;
       if (L.visible === false) { why[L.id] = 'hidden'; continue; }
-      const r = whyNot(L);
+      const r = matteSources.has(L.id) ? 'video fill source' : whyNot(L);
       if (open && !r) { merge.push(L.id); continue; }
       why[L.id] = r || 'above a layer that keeps its own canvas';
       open = false;
