@@ -457,25 +457,34 @@ const Native = (() => {
     }
     renderChips(agentId);
   }
+  // (report #61) a project's chat builds in the Lab every turn (project-workspace.js asDirector), so files dropped
+  // in it are handled like the Three Director's
+  const labChat = (agentId) => {
+    if (H.agent(agentId)?.threeTools) return true;
+    try { return Boolean(typeof Projects !== 'undefined' && Projects.isLoaded?.() && Projects.projectOfChat(H.activeChat[agentId])?.workspace); } catch { return false; }
+  };
   // Media dropped in the Three Director's chat (videos, models, sounds…) are added to the open sketch's
-  // references, with a note telling the director their names.
+  // references, with a note telling the director their names. Throws when the Lab can't take it.
   async function labReference(agentId, path) {
-    const agent = H.agent(agentId);
-    if (!agent?.threeTools || typeof ThreeLab === 'undefined') return false;
-    try {
-      const r = await ThreeLab.addReference(path);
-      const use = r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`;
-      views.get(agentId).attachments.push({ kind: 'text', name: `reference: ${r.key}`, content: `The user added "${r.name}" (${r.kind}) to this sketch's references as "${r.key}". In code: ${use}.` });
-      return true;
-    } catch (err) { toast(err.message, { type: 'error' }); return false; }
+    const r = await ThreeLab.addReference(path);
+    const use = r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`;
+    views.get(agentId).attachments.push({ kind: 'text', name: `reference: ${r.key}`, content: `The user added "${r.name}" (${r.kind}) to this sketch's references as "${r.key}". In code: ${use}.` });
   }
   async function addPath(agentId, path) {
     const v = views.get(agentId);
     const name = path.split(/[\\/]/).pop();
     // (round 14) a folder dropped on a chat becomes one of the folders it may use (access.js)
     if (typeof Access !== 'undefined' && await Access.maybeFolder(agentId, path).catch(() => false)) return;
-    if (H.agent(agentId)?.threeTools && typeof ThreeLab !== 'undefined' && ThreeLab.isReference(name) && !/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
-      if (await labReference(agentId, path)) { renderChips(agentId); toast(`${name} added to the sketch's references`, { timeout: 2200 }); return; }
+    const lab = labChat(agentId);
+    if (lab && typeof ThreeLab !== 'undefined' && ThreeLab.isReference(name) && !/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
+      try { await labReference(agentId, path); renderChips(agentId); toast(`${name} added to the sketch's references`, { timeout: 2200 }); return; } catch (err) {
+        // the Lab isn't open: a copy in the attachments folder, which three_references add takes later
+        try {
+          const p = await window.hub.saveAttachment(name, await window.hub.fs.read(path, { encoding: 'base64' }));
+          v.attachments.push({ kind: 'file', name, path: p });
+          renderChips(agentId); return;
+        } catch { toast(err.message, { type: 'error' }); }
+      }
     }
     // (round 9) a video (a capture, a render) attaches its contact sheet: engines read pictures, not video files
     if (/\.(mp4|webm|mov|m4v|mkv)$/i.test(name) && !H.agent(agentId)?.workspace && typeof FrameRead !== 'undefined') {
@@ -491,7 +500,7 @@ const Native = (() => {
     }
     if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(name)) {
       // The Three Director can turn attached pictures into sketch references, from the attachments folder.
-      if (H.agent(agentId)?.threeTools) { try { path = await window.hub.saveAttachment(name, await window.hub.fs.read(path, { encoding: 'base64' })); } catch { /* keep the original path */ } }
+      if (lab) { try { path = await window.hub.saveAttachment(name, await window.hub.fs.read(path, { encoding: 'base64' })); } catch { /* keep the original path */ } }
       v.attachments.push({ kind: 'image', name, path, preview: WinMac.fileUrl(path) }); // (round 31, winmac) # / % / a Mac's /Users path
     } else if (isTextName(name)) {
       try { v.attachments.push({ kind: 'text', name, src: path, content: await window.hub.fs.read(path, { maxBytes: typeof AttachLean !== 'undefined' ? AttachLean.MAX_BYTES : TEXT_ATTACH_LIMIT }) }); } catch (err) { toast(err.message, { type: 'error' }); }
