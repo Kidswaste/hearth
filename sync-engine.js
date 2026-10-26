@@ -123,19 +123,35 @@ function createEngine(o) {
   }
   // (round 16) a pass where nothing moved left state.json as it was, but wrote it anyway (every file's hashes, each
   // minute): now it's written when something in it changed, or every 10 minutes for the clocks (lastPass / lastOk)
-  let savedKey = ''; let savedAt = 0;
-  const saveState = () => {
+  // (round 70, bigprofile70) a mid-pass checkpoint (every 25 files) runs at most every 5 s, and the whole state (every
+  // file's hashes and stat caches) becomes text once when nothing changed (twice before, every time): a first pass over
+  // ~5,000 files checkpointed ~200 times, ≈ 2 s of the main process in 15–70 ms bits. A crash still resumes cleanly
+  // (files done since the last checkpoint are compared again, never overwritten blindly).
+  let savedKey = ''; let savedAt = 0; let checkedAt = 0;
+  const saveState = (checkpoint = false) => {
     if (heldStart) return; // (round 43, datasafe) the real one couldn't be read yet: never written over
-    const text = JSON.stringify(state);
+    if (checkpoint && now() - checkedAt < 5000) return;
+    checkedAt = now();
     const key = JSON.stringify({ ...state, lastPass: 0, lastOk: 0 });
     if (key === savedKey && now() - savedAt < 10 * 60000) return;
+    const text = JSON.stringify(state);
     fs.mkdirSync(path.dirname(stateFile), { recursive: true });
     const t = `${stateFile}.${rand()}.tmp`; fs.writeFileSync(t, text); fs.renameSync(t, stateFile);
     savedKey = key; savedAt = now();
   };
   const basePath = (rel) => path.join(stateDir, 'base', ...rel.split('/'));
   function readBase(rel) { try { return S.parseJson(fs.readFileSync(basePath(rel), 'utf8')); } catch { return null; } }
-  function writeBase(rel, text) { try { const f = basePath(rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(`${f}.tmp`, text); fs.renameSync(`${f}.tmp`, f); } catch (err) { log('base', rel, err.message); } }
+  // (round 70, bigprofile70) each base folder is made once per run (a first pass over ~1,800 JSON files asked the disk
+  // to make the same few folders ~1,800 times, on the main process); one that went away meanwhile is made again
+  const baseDirs = new Set();
+  function writeBase(rel, text) {
+    try {
+      const f = basePath(rel), d = path.dirname(f);
+      if (!baseDirs.has(d)) { fs.mkdirSync(d, { recursive: true }); baseDirs.add(d); }
+      try { fs.writeFileSync(`${f}.tmp`, text); } catch (err) { if (err.code !== 'ENOENT') throw err; baseDirs.delete(d); fs.mkdirSync(d, { recursive: true }); baseDirs.add(d); fs.writeFileSync(`${f}.tmp`, text); }
+      fs.renameSync(`${f}.tmp`, f);
+    } catch (err) { log('base', rel, err.message); }
+  }
   function dropBase(rel) { delete state.base[rel]; try { fs.rmSync(basePath(rel), { force: true }); } catch { /* fine */ } }
   function setBase(rel, h, text) { state.base[rel] = h; if (text !== undefined && S.isJsonRel(rel)) writeBase(rel, text); }
 
@@ -286,7 +302,7 @@ function createEngine(o) {
             machine = { ...machine, id: `${String(machine.name).replace(/[^\w-]+/g, '').slice(0, 20) || 'pc'}-${rand()}`, created: now() };
             writeJsonSync(machineFile, { id: machine.id, created: machine.created });
             state = { v: 1, cloudRoot, base: {}, local: {}, cloud: {}, ext: state.ext || {}, lastPass: 0, lastOk: 0, purgedAt: 0 };
-            try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ }
+            baseDirs.clear(); try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ }
             log('machine id was a copy: new id', machine.id);
           }
           if (j.id && j.id !== machine.id) list.push(j);
@@ -821,7 +837,7 @@ function createEngine(o) {
       await fsp.mkdir(FILES, { recursive: true });
       await atomicWrite(path.join(cloudDir, 'README.txt'), 'This folder is Hearth\'s sync copy (chats, scenes, boards, notes, settings…).\nHearth keeps working from each computer\'s own folder and copies changes here and back.\nPlease don\'t edit files here. Deleted things wait in trash/ for 30 days.\n');
     }
-    if (opts.fresh) { state.base = {}; try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ } }
+    if (opts.fresh) { state.base = {}; baseDirs.clear(); try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ } }
     status.state = 'syncing'; emit();
     await readPeers();
     const local = await scanLocal();
@@ -921,7 +937,7 @@ function createEngine(o) {
         sum.errors += 1; pending += 1; log(p.op, p.rel, err.message);
         if (!(await exists(cloudRoot))) break; // the drive went away mid-pass
       }
-      if (++n % 25 === 0) saveState();
+      if (++n % 25 === 0) saveState(true);
     }
     for (const cp of copies) if (!(await absorbCopy(cp, local))) { pending += 1; cloudOnly.push(cp.rel); }
     await flushJournal().catch((err) => log('journal', err.message));
