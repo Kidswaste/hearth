@@ -21,6 +21,7 @@ const QuestHud = (() => {
   const savePrefs = () => store.set(PREFS, prefs);
   let chip = null, peek = null, panel = null, lastSig = '', peekSig = '', here = null, hereErr = '';
   let chain = Promise.resolve();
+  let fw = null; // (round 70, follow70) the ★ New rows (kv 'show-follows', written by follow.js after a show sync), read at start and when the panel opens
   let tix = null; // (round 68, tickets68) { ready, keys, suggest } from ticketsmain.js, asked only when the panel opens
   const key = () => WinMac.keyLabel(HOTKEY);
 
@@ -97,8 +98,9 @@ const QuestHud = (() => {
       chip.querySelector('.qh-num').textContent = cd ? cd.progress.text : '';
       chip.style.setProperty('--qh-fill', `${Math.round((cd ? cd.progress.frac : 0) * 100)}%`);
       const words = describe(cd);
-      chip.removeAttribute('data-a11y-name'); chip.setAttribute('aria-label', words);
-      chip.title = `${words} · ${key()}`;
+      const star = chip.dataset.fwNew ? ` · ★ ${chip.dataset.fwNew}` : ''; // (round 70, follow70)
+      chip.removeAttribute('data-a11y-name'); chip.setAttribute('aria-label', words + star);
+      chip.title = `${words}${star} · ${key()}`;
     }
     if (panel) renderPanel();
   }
@@ -141,6 +143,7 @@ const QuestHud = (() => {
     if (window.hub?.leave) Lazy.load('leavesoon').then(() => LeaveSoon.refresh()).catch(() => {}); // (round 68, leavesoon68) the leave reminders (kept main-side) → the ⏰ rows
     lastSig = ''; paint();
     loadTickets(); // (round 68, tickets68) 🎟 Ticket ready on the show's day (one small ask, now only)
+    loadFollows(); // (round 70, follow70) ★ New: a followed artist / venue has a new show
     if (prefs.near === 'gps') locate();
     panel?.querySelector('.qh-step button, .qh-foot button')?.focus({ preventScroll: true });
   }
@@ -179,6 +182,7 @@ const QuestHud = (() => {
     if (status === 'missing') body.push(el('p', { class: 'qh-empty', text: 'No quest journal yet. Click Open Sidequest Studio below: it starts one with your first quest.' })); // (round 64, clickfirst64) says what to click
     else if (status !== 'ok') body.push(el('p', { class: 'qh-empty', text: status === 'unknown' ? 'Opening your journal…' : 'Your quest journal could not be read just now. Nothing was changed.' }));
     else if (!cd) body.push(el('p', { class: 'qh-empty', text: 'Nothing active right now. Take one of today\'s picks, or track a campaign in the Studio.' }));
+    if (fw?.length) body.push(...followRows()); // (round 70, follow70) ★ New: <artist> at <venue>, Fri 14 Nov · Make it a quest / Bring someone / Dismiss
     if (status === 'ok' && tix) body.push(...ticketRows()); // (round 68, tickets68) 🎟 Ticket ready · <show> on its day; "Is this your ticket for X?" (Downloads)
     if (cd) body.push(questCard(cd));
     // (round 66, herepin66) 📍 Near me: while an "I'm here" pin is set on the Paris map (tools/herepin*.js), one row → Close to you
@@ -275,7 +279,36 @@ const QuestHud = (() => {
     const b = btn(have ? '🎟 Open my ticket' : '🎟 Add my ticket', () => ticketUI((T) => (have ? T.view(key) : T.pick(show))), 'cf-act tk-hud-btn', have ? 'Your ticket, big and bright, for the door' : 'Pick your ticket (PDF, image, screenshot, Wallet pass): Hearth keeps a copy under this show');
     b.dataset.k = `ticket-card:${key}`; return b;
   }
-  document.addEventListener('hearth:tickets', () => { if (tix || panel) loadTickets(); }); // a ticket added / removed (only after a click: no idle cost)
+  document.addEventListener('hearth:tickets', () => { if (tix || panel) loadTickets(); });
+  // ---------- (round 70, follow70) ★ New: a show with an artist / venue you follow came in with the show sync ----------
+  // follow.js keeps them (kv 'show-follows'); this only reads that small file: at start, when the panel opens, after a change
+  async function loadFollows() {
+    let r; try { r = await window.hub.kvGet('show-follows', null, { status: true }); } catch { return; }
+    if (r?.state !== 'ok' && r?.state !== 'missing') return; // a failed read keeps what we had
+    const now = Date.now(), list = (r.state === 'ok' && Array.isArray(r.value?.news) ? r.value.news : [])
+      .filter((n) => n?.show && n.key && !n.dismissedAt && !n.questAt && Number.isFinite(n.show.start) && (Number.isFinite(n.show.end) ? n.show.end : n.show.start + 6 * 3600e3) > now)
+      .sort((a, b) => a.show.start - b.show.start);
+    if (JSON.stringify(list) === JSON.stringify(fw || [])) return;
+    fw = list; chip?.classList.toggle('qh-fw-new', list.length > 0);
+    if (chip) chip.dataset.fwNew = list.length ? `${list.length} new show${list.length === 1 ? '' : 's'} from artists / venues you follow` : '';
+    lastSig = ''; paint();
+    if (panel) renderPanel();
+  }
+  const followUI = (fn) => Lazy.load('follow').then(() => fn(Follow));
+  function followRows() {
+    const out = [];
+    for (const n of fw.slice(0, 3)) {
+      const q = btn('Make it a quest', () => { close(); return followUI((F) => F.makeQuest(n.key)); }, 'qh-take fw-hud-quest', `“Go see …”: get your ticket → go → bring back one moment`); q.dataset.k = `fw-quest:${n.key}`;
+      const b = btn('Bring someone', () => { close(); return followUI((F) => F.bring(n.key)); }, 'qh-take fw-hud-bring', 'Write a short invite for this show (never sent for you)'); b.dataset.k = `fw-bring:${n.key}`;
+      const x = btn('Dismiss', () => followUI((F) => F.dismiss(n.key)), 'qh-take fw-hud-dismiss', 'Hide this one (you still follow them)'); x.dataset.k = `fw-dismiss:${n.key}`;
+      out.push(el('div', { class: 'qh-row fw-hud', dataset: { show: n.key }, style: { flexWrap: 'wrap' } }, el('span', { class: 'qh-pi', text: '★', style: { color: '#ffd75e' } }),
+        el('div', { class: 'qh-row-main', style: { flex: '1 1 160px', minWidth: '0' } }, el('span', { class: 'qh-row-title', text: `New: ${n.text}`, style: { whiteSpace: 'normal' } }), el('span', { class: 'qh-sub', text: (n.ids || []).length && n.ids.every((i) => String(i).startsWith('v:')) ? 'At a venue you follow' : n.show.title, style: { whiteSpace: 'normal' } })),
+        el('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', flexBasis: '100%', paddingLeft: '26px' } }, q, b, x)));
+    }
+    if (fw.length > 3) { const m = btn(`★ ${fw.length - 3} more new show${fw.length - 3 === 1 ? '' : 's'} · Following…`, () => { close(); return Lazy.load('questjournal').then(() => FollowHook.openFollowing()); }, 'qh-row fw-hud-more', 'Everything new from who you follow, and who you follow'); m.dataset.k = 'fw-more'; out.push(m); }
+    return out;
+  }
+  document.addEventListener('hearth:follows', () => loadFollows()); // a follow / a sync's news / a dismiss (only after one of those: no idle cost) // a ticket added / removed (only after a click: no idle cost)
   // (round 67, errands67) the open errands (open now first) with their badge and Done ✓, then ＋ Errand (tools/errands*.js)
   const errandUI = (fn) => { close(); return Lazy.load('questjournal').then(fn); };
   function errandRows() {
@@ -506,6 +539,7 @@ const QuestHud = (() => {
     document.addEventListener('hearth:quests', onQuests);
     document.addEventListener('keydown', onKey);
     read().then(() => { nearOnStart(); paint(); if (typeof WeekNudge !== 'undefined') WeekNudge.arm(); }); // (weekquest62) the week plan's one nudge is armed from the first read
+    loadFollows(); // (round 70, follow70) one small read: the chip's ★ when a followed artist / venue has a new show
   }
   if (!Commands.get('quest')) {
     Commands.register({ name: 'quest', args: '[next | done | track <name> | picks | week | review | walk [area|from <place>] [2h|3h] | near | open | hud on|off | paris | go <place> | add <quest> | park | list]', area: 'Create', keys: HOTKEY,
