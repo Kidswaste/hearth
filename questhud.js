@@ -181,6 +181,7 @@ const QuestHud = (() => {
       const others = QC.actives(C, S, prefs.pin).filter((q) => q.id !== cd?.id);
       if (others.length) body.push(el('div', { class: 'qh-sec', text: 'Also active' }), ...others.map((q) => otherRow(QC.card(C, S, q))));
       if (typeof ClickFirst !== 'undefined') body.push(...ClickFirst.weekRows(C, S, btn)); // (round 64, clickfirst64) This week: Plan your week / See the plan, Week in review ›, Make a walk
+      if (typeof WeekendPlanCore !== 'undefined' && WeekendPlanCore.inWindow(WeekendPlanCore.now())) body.push(btn('🗓 Plan my weekend', () => { close(); return weekend(); }, 'qh-row wp-hud', 'Thursday evening to Sunday: a balanced weekend from your saved shows, the park, a place nearby and a studio session (Swap, Keep, Accept plan)')); // (round 66, weekendplan66)
       if (typeof RewardShelf !== 'undefined') body.push(...RewardShelf.hudRows(C, S, btn)); // (round 63, rewards63) "120 XP to your next reward", Claim… with a confirm, the jar
       body.push(btn('🗺 My month in Paris', () => { close(); return Lazy.load('questjournal').then(() => ParisJournal.openMonth()); }, 'qh-row pj-hud', 'This month on your Paris map: places, shows, walks, park sessions, the arrondissements you lit up, an image card to share')); // (round 64, parisjournal64) // (round 63, rewards63) "120 XP to your next reward", Claim… with a confirm, the jar
       const picks = todaysPicks();
@@ -348,6 +349,7 @@ const QuestHud = (() => {
     const places = (S?.atlas?.places || []).slice(0, 40);
     return [
       ...(typeof ClickFirst !== 'undefined' ? [...ClickFirst.questItems(), '-'] : []), // (round 64, clickfirst64) every quest feature first, in words (Plan my week…, Week in review…, Make a walk…, My rewards…, shows, the park)
+      ...(typeof WeekendPlanCore !== 'undefined' && WeekendPlanCore.inWindow(WeekendPlanCore.now()) ? [{ label: '🗓 Plan my weekend…', action: () => { close(); weekend().catch((err) => toast(calmError(err), { type: 'error' })); } }] : []), // (round 66, weekendplan66) Thu evening → Sun
       { label: 'Open Sidequest Studio', action: () => { close(); openStudio(); } },
       { label: prefs.hidden ? 'Show the quest chip in the rail' : 'Hide the quest chip (/quest hud on brings it back)', action: () => setHidden(!prefs.hidden) },
       { label: 'Near you…', items: [
@@ -384,6 +386,7 @@ const QuestHud = (() => {
     }
     if (sub === 'done') return checkNext();
     if (sub === 'week' || sub === 'review') { await Lazy.load('weekquest'); return WeekQuest.run(sub, rest, ctx); } // (round 62, weekquest62) the week plan / the week in review
+    if (sub === 'weekend') { await Lazy.load('weekendplan'); return WeekendPlan.run(rest, ctx); } // (round 66, weekendplan66) 🗓 Plan my weekend
     if (sub === 'walk') { await Lazy.load('questjournal'); return QuestWalk.run(rest, ctx); } // (round 63, questwalk63) an afternoon walk through unvisited Paris places
     // (parisquests61) one /quest: the Paris words, and a name no open quest has, go to QuestParisUI.run
     if (sub === 'paris' || (sub === 'name' && !QC.match(C, S, rest))) return paris(args, ctx);
@@ -404,12 +407,13 @@ const QuestHud = (() => {
     if (sub === 'hud') { const w = rest.toLowerCase(); const h = setHidden(w === 'off' || w === 'hide' ? true : w === 'on' || w === 'show' ? false : !prefs.hidden); return h ? 'Quest chip hidden. /quest hud on (or Ctrl/⌘+K › Quest) brings it back.' : 'Quest chip shown in the rail.'; }
     return 'Try /quest, /quest next, /quest done or /quest track <name>.';
   }
+  const weekend = () => Lazy.load('weekendplan').then(() => WeekendPlan.open()); // (round 66, weekendplan66) the 🗓 card
   async function paris(args, ctx) { await Lazy.load('questjournal'); return QuestParisUI.run(args, ctx); }
   const parisUI = () => (window.Lazy?.isIn('questjournal') && typeof QuestParisUI !== 'undefined' ? QuestParisUI : null);
   function complete(args) {
     const t = String(args || '');
     if (QC.parse(t).sub === 'paris' && /\s/.test(t)) return parisUI()?.complete(t) || [];
-    if (!/\s/.test(t)) return [...QC.SUBS, ...QC.PARIS.filter((w) => !['map', 'start', 'place', 'progress'].includes(w))].filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip', week: 'plan your week (3–5 quests on days)', review: 'your week in review', walk: 'an afternoon walk (3–5 places, Métro to Métro)', paris: 'the Paris guide on your map', places: 'Paris places', guide: 'the guide pins', go: 'a Paris place\'s quest', add: 'a personal quest (airpods, park…)', park: 'music at the park', list: 'your Paris quests', help: 'every /quest word' }[s] }));
+    if (!/\s/.test(t)) return [...QC.SUBS, ...QC.PARIS.filter((w) => !['map', 'start', 'place', 'progress'].includes(w))].filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip', week: 'plan your week (3–5 quests on days)', review: 'your week in review', weekend: 'plan my weekend (Thu evening → Sun)', walk: 'an afternoon walk (3–5 places, Métro to Métro)', paris: 'the Paris guide on your map', places: 'Paris places', guide: 'the guide pins', go: 'a Paris place\'s quest', add: 'a personal quest (airpods, park…)', park: 'music at the park', list: 'your Paris quests', help: 'every /quest word' }[s] }));
     const { sub, rest } = QC.parse(t);
     if (sub === 'hud') return ['on', 'off'].map((v) => ({ value: `hud ${v}` }));
     if (sub === 'walk') return window.QuestWalk?.complete(rest) || ['2h', '3h', 'from', 'show', 'save', 'open'].map((v) => ({ value: `walk ${v}` })); // (round 63, questwalk63)
