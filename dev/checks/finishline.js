@@ -30,7 +30,8 @@ try {
   ok(LabFinish.state(sc.id).items[0].text === 'The orb breathes', 'Enter keeps the new words');
   // Polish with lines open: three steps from them
   [...LabFinish.card.querySelectorAll('button')].find((b) => /Polish this/.test(b.textContent)).click();
-  out.steps = [...LabFinish.card.querySelectorAll('.fl-steps li b')].map((b) => b.textContent);
+  // (the card's buttons run their action a tick after the click: wait for the steps to be drawn)
+  out.steps = (await until(() => { const s = [...LabFinish.card.querySelectorAll('.fl-steps li b')].map((b) => b.textContent); return s.length ? s : null; }, 3000)) || [];
   ok(out.steps.length === 3, 'Polish this shows exactly three steps');
   // Track + guide me, into a journal in memory
   await Lazy.load('questhud'); await QuestHud.core();
