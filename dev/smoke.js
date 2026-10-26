@@ -177,6 +177,7 @@ async function cdpConnect(dir) {
     if (args.includes('--fake-vst-no-ua')) env.FAKE_SD_NO_UA = '1'; // (round 62, parkjam62) the laptop alone in the park: no UA interface listed
     // (round 64, vstembed64) the editor-in-Hearth path runs on a fake Win32 window layer (dev/fixtures/fake-vst-py/fakewin32.py)
     if (py.status === 0) env.HEARTH_VST_FAKE_WIN32 = '1';
+    if (py.status === 0) env.FAKE_MIDI_INBOX = path.join(runTmp, 'fake-midi-inbox.jsonl'); // (round 69, midilearn69) checks append controller messages here (dev/fixtures/fake-vst-py/rtmidi.py)
     // --fake-vst-embed (dev/checks/vstembed64.js): the editor stays open until Hearth closes it, a Serum-like cost of
     // reading controls the first time (300 × 2 ms), and Serum 2's editor refusing to be a child window (the fallback line)
     if (args.includes('--fake-vst-embed')) Object.assign(env, { FAKE_EDITOR_S: 'hold', FAKE_PB_PARAMS: '300', FAKE_PB_WRAP_MS: '2', FAKE_EMBED_REFUSE: 'Serum 2' });
