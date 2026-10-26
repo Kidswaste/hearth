@@ -11,6 +11,7 @@ const out = { steps: [] }; const fails = [];
 const step = (name, ok, info) => { out.steps.push(`${ok ? '✓' : '✖'} ${name}${info === undefined ? '' : `: ${typeof info === 'string' ? info : JSON.stringify(info)}`}`); if (!ok) fails.push(name); };
 const agent = H.claudeAgent().id;
 const run = (line) => Commands.tryRun(line, agent);
+activate(agent); // (sweep69) Hearth now starts on the Projects desk (lazyfix66): the chat commands' notes land in the chat, so be in it
 const panel = () => document.querySelector('.qh-panel');
 const disk = async () => (await window.hub.kvGet('quest-journal')) || {};
 const chatText = () => document.querySelector('.surface.active')?.textContent || '';
