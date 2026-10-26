@@ -73,7 +73,7 @@ function embedOf(e) {
 // 'record-status' / 'record-cancel', 'record-take' writes the WAV in the session folder and hands its bytes back here.
 const PARK_ACTIONS = ['record', 'record-status', 'record-take', 'record-cancel'];
 // (round 66, bouncelog66) "Save a sketch": the last 30 s the desk played ('sketch-save', the path made here) · 'sketch-status'
-const SKETCH_ACTIONS = ['sketch-status', 'sketch-save'];
+const SKETCH_ACTIONS = ['sketch-status', 'sketch-save', 'sketch-peek']; // (round 68, refab68) + 'sketch-peek': the same last 30 s to a scratch file, for 🎧 Reference to measure
 function jobOf(r, name) {
   if (r.keys !== undefined && (!Array.isArray(r.keys) || r.keys.length > 512 || r.keys.some(k => typeof k !== 'string'))) throw Error('Ask for up to 512 parameter keys.');
   if (r.sequence !== undefined && (!Array.isArray(r.sequence) || r.sequence.length > 256)) throw Error('A phrase has up to 256 notes.');
@@ -207,6 +207,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       if (request.action === 'clip-load') { job.file = liveClip(dataDir, request.file); job.loop = request.loop === true; }
       if (request.action === 'run-record') job.output = liveRunPath(dataDir, request.set, job.kind || 'Rehearsal');
       if (request.action === 'sketch-save') job.output = require('./bouncelogmain.js').sketchPath(dataDir, typeof request.project === 'string' ? request.project : ''); // (round 66, bouncelog66)
+      if (request.action === 'sketch-peek') job.output = require('./refabmain.js').peekPath(dataDir); // (round 68, refab68) a scratch path in the temp folder, made here
       if (request.action === 'preset-preload' && typeof request.state !== 'string') throw Error('A preset pad needs its state.');
       if (request.action === 'render') { await ensure(); job.output = path.join(jobDir, 'render.wav'); }
       // (round 62, parkjam62) the finished loop: the host writes the WAV here, its bytes go back to the window (no base64)
