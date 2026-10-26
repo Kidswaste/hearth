@@ -77,6 +77,7 @@
     const framePlaces=action('',()=>fitPlaces());framePlaces.append(icon('small'));framePlaces.title='Fit shown places';framePlaces.setAttribute('aria-label',framePlaces.title);
     if(enabled)hint.textContent='Scroll or drag to move · Ctrl + scroll to zoom';
     host.append(tiles,pins,controls,credit,hint);
+    host.qjHere={at(cx,cy){const r=host.getBoundingClientRect(),c=project(lat,lon,z),p=unproject(c[0]+cx-r.left-r.width/2,c[1]+cy-r.top-r.height/2,z);return {lat:+p[0].toFixed(6),lon:+p[1].toFixed(6)};},go(p,zz){if(!p)return;lat=p.lat;lon=p.lon;if(zz)z=clamp(zz,11,17);draw();}}; // (round 66, herepin66) "I'm here": the map point under a click (the same sum as dblclick's), and centre on a spot (tools/herepin.js)
     // (round 63, questwalk63) polylines in one SVG in the pins layer (it pans with the pins); labels are text nodes, never markup
     // Small catalogs cache projection once. Large catalogs get a spatial index in a worker;
     // rapid pans retain one running request and only the latest desired viewport.

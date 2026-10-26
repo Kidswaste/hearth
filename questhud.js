@@ -177,6 +177,8 @@ const QuestHud = (() => {
     else if (status !== 'ok') body.push(el('p', { class: 'qh-empty', text: status === 'unknown' ? 'Opening your journal…' : 'Your quest journal could not be read just now. Nothing was changed.' }));
     else if (!cd) body.push(el('p', { class: 'qh-empty', text: 'Nothing active right now. Take one of today\'s picks, or track a campaign in the Studio.' }));
     if (cd) body.push(questCard(cd));
+    // (round 66, herepin66) 📍 Near me: while an "I'm here" pin is set on the Paris map (tools/herepin*.js), one row → Close to you
+    if (status === 'ok' && C && window.HerePinCore) { const hp = HerePinCore.hud(store.get(HerePinCore.KEY, null), Date.now(), window.Lazy?.isIn('questjournal') && window.HerePin ? HerePin.count() : null); if (hp) { const r = btn(hp.text, () => { close(); return Lazy.load('questjournal').then(() => HerePin.open()); }, 'qh-row hp-hud', hp.title); r.dataset.k = 'herepin'; body.push(r); } }
     if (status === 'ok' && C && S) {
       const others = QC.actives(C, S, prefs.pin).filter((q) => q.id !== cd?.id);
       if (others.length) body.push(el('div', { class: 'qh-sec', text: 'Also active' }), ...others.map((q) => otherRow(QC.card(C, S, q))));
@@ -353,6 +355,7 @@ const QuestHud = (() => {
       { label: 'Open Sidequest Studio', action: () => { close(); openStudio(); } },
       { label: prefs.hidden ? 'Show the quest chip in the rail' : 'Hide the quest chip (/quest hud on brings it back)', action: () => setHidden(!prefs.hidden) },
       { label: 'Near you…', items: [
+        { label: '📍 I\'m here: click my spot on the Paris map…', action: () => { close(); Lazy.load('questjournal').then(() => HerePin.pick()).catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 66, herepin66) no GPS: a spot you click
         { label: `${prefs.near === 'gps' ? '✓ ' : ''}Use this computer's location`, action: () => setNear('gps') },
         ...(places.length ? [{ label: 'I\'m at…', items: places.map((p) => ({ label: `${prefs.near === p.id ? '✓ ' : ''}${p.name}`, action: () => setNear(p.id) })) }] : []),
         { label: `${prefs.near === 'off' ? '✓ ' : ''}Off (nothing about where you are is used)`, action: () => setNear('off') },
@@ -388,6 +391,7 @@ const QuestHud = (() => {
     if (sub === 'week' || sub === 'review') { await Lazy.load('weekquest'); return WeekQuest.run(sub, rest, ctx); } // (round 62, weekquest62) the week plan / the week in review
     if (sub === 'weekend') { await Lazy.load('weekendplan'); return WeekendPlan.run(rest, ctx); } // (round 66, weekendplan66) 🗓 Plan my weekend
     if (sub === 'walk') { await Lazy.load('questjournal'); return QuestWalk.run(rest, ctx); } // (round 63, questwalk63) an afternoon walk through unvisited Paris places
+    if (sub === 'here') { await Lazy.load('questjournal'); return HerePin.run(rest, ctx); } // (round 66, herepin66) the map's 📍 I'm here: pick | clear, or what's close
     // (parisquests61) one /quest: the Paris words, and a name no open quest has, go to QuestParisUI.run
     if (sub === 'paris' || (sub === 'name' && !QC.match(C, S, rest))) return paris(args, ctx);
     if (sub === 'name') return track(rest);
@@ -413,7 +417,7 @@ const QuestHud = (() => {
   function complete(args) {
     const t = String(args || '');
     if (QC.parse(t).sub === 'paris' && /\s/.test(t)) return parisUI()?.complete(t) || [];
-    if (!/\s/.test(t)) return [...QC.SUBS, ...QC.PARIS.filter((w) => !['map', 'start', 'place', 'progress'].includes(w))].filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip', week: 'plan your week (3–5 quests on days)', review: 'your week in review', weekend: 'plan my weekend (Thu evening → Sun)', walk: 'an afternoon walk (3–5 places, Métro to Métro)', paris: 'the Paris guide on your map', places: 'Paris places', guide: 'the guide pins', go: 'a Paris place\'s quest', add: 'a personal quest (airpods, park…)', park: 'music at the park', list: 'your Paris quests', help: 'every /quest word' }[s] }));
+    if (!/\s/.test(t)) return [...QC.SUBS, ...QC.PARIS.filter((w) => !['map', 'start', 'place', 'progress'].includes(w))].filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', here: 'I\'m here on the Paris map: what\'s close', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip', week: 'plan your week (3–5 quests on days)', review: 'your week in review', weekend: 'plan my weekend (Thu evening → Sun)', walk: 'an afternoon walk (3–5 places, Métro to Métro)', paris: 'the Paris guide on your map', places: 'Paris places', guide: 'the guide pins', go: 'a Paris place\'s quest', add: 'a personal quest (airpods, park…)', park: 'music at the park', list: 'your Paris quests', help: 'every /quest word' }[s] }));
     const { sub, rest } = QC.parse(t);
     if (sub === 'hud') return ['on', 'off'].map((v) => ({ value: `hud ${v}` }));
     if (sub === 'walk') return window.QuestWalk?.complete(rest) || ['2h', '3h', 'from', 'show', 'save', 'open'].map((v) => ({ value: `walk ${v}` })); // (round 63, questwalk63)
