@@ -1,0 +1,40 @@
+/* (round 67, errands67) Errands (tools/errands.js): the add / edit card, the map pins and the hint while picking a spot.
+   The badge itself (.er-badge) lives in questhud.css: the ✦ tracker shows it before this file loads. */
+.er-card { width: min(460px, calc(100vw - 32px)); }
+.er-card .er-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.er-card .er-head h2 { margin: 0; font-size: 17px; }
+.er-card .er-field { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--muted); }
+.er-card .er-shops { display: grid; gap: 4px; }
+.er-card .er-shop { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name badge" "area badge"; align-items: center; gap: 0 8px; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--border, #ffffff1f); background: none; color: var(--text); text-align: left; cursor: pointer; }
+.er-card .er-shop:hover { background: var(--hover); }
+.er-card .er-shop.on { border-color: #7ee0a1; background: #7ee0a114; }
+.er-card .er-shop-name { grid-area: name; font-size: 13px; font-weight: 600; }
+.er-card .er-shop-area { grid-area: area; font-size: 11px; color: var(--muted); }
+.er-card .er-shop .er-badge { grid-area: badge; }
+.er-card .er-spot { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
+.er-card .er-pick, .er-card .er-show { font-size: 12px; padding: 5px 10px; border-radius: 8px; border: 1px dashed var(--line, #ffffff33); background: none; color: var(--text); cursor: pointer; }
+.er-card .er-pick:hover, .er-card .er-show:hover { background: var(--hover); }
+.er-card .er-show { border-style: solid; }
+.er-card .er-pick.on { border-color: #5fd4ff; }
+.er-card .er-spot-name { flex: 1; min-width: 140px; }
+.er-card .er-usual { font-size: 11px; color: var(--muted); }
+.er-card .er-now { display: flex; align-items: center; gap: 8px; min-height: 22px; font-size: 12px; }
+.er-card .er-k, .er-detail .er-k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.er-card .er-bad, .er-card .er-err { color: #f0a0a0; font-size: 12px; margin: 0; }
+.er-card .er-err:empty { display: none; }
+.er-card .er-map-row { display: flex; }
+.er-card .er-done-btn { border-color: #7ee0a1; color: #b8f0c8; }
+/* the map: an errand pin says how open it is; closed ones are quieter */
+.qj-atlas-pin.er-open>span { box-shadow: 0 0 0 4px #7ee0a133; }
+.qj-atlas-pin.er-soon>span { box-shadow: 0 0 0 4px #ffb75933; }
+.qj-atlas-pin.er-closed, .qj-atlas-pin.er-unknown { opacity: .72; }
+.qj-atlas.er-picking, .qj-atlas.er-picking .qj-atlas-pin { cursor: crosshair; }
+.qj-atlas .er-hint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: #122128f2; border: 1px solid #7ee0a166; color: #e6fff0; font: 12px system-ui, sans-serif; white-space: nowrap; }
+.qj .qj-atlas .er-hint .qj-button { padding: 3px 8px; min-height: 0; font-size: 10.5px; text-transform: none; letter-spacing: 0; }
+/* Close to you (tools/herepin.js): an errand row's badge */
+.qj-atlas .hp-item[data-kind=errand] .hp-kind { color: #9be7b4; }
+.qj-atlas .hp-item .er-badge { margin-top: 1px; }
+/* Sidequest Studio: an errand's quest detail */
+.er-detail { display: grid; gap: 5px; margin-top: 10px; padding: 9px 10px; border-radius: 9px; border: 1px solid #7ee0a144; }
+.er-detail small { color: #b5aec2; font-size: 11px; }
+.er-detail-acts { display: flex; gap: 6px; }

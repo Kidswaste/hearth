@@ -42,18 +42,21 @@ const HerePin = window.HerePin = (() => {
   function items(pin = read()) {
     if (!pin) return [];
     const venues = venueSpots();
-    const list = K.candidates({ guide: P()?.guide || [], shows: SS()?.upcoming() || [], venueAt: (s) => (typeof ShowSyncCore !== 'undefined' ? venues.get(ShowSyncCore.venueKey(s.venue?.name || '')) : null) || null });
+    let errands = []; try { if (window.ErrandsCore) errands = ErrandsCore.list(J()?.paris?.ui().state(), { now: new Date() }); } catch { /* no journal yet */ } // (round 67, errands67) your errands, with their hours badge
+    const list = K.candidates({ guide: P()?.guide || [], shows: SS()?.upcoming() || [], errands, venueAt: (s) => (typeof ShowSyncCore !== 'undefined' ? venues.get(ShowSyncCore.venueKey(s.venue?.name || '')) : null) || null });
     return K.rank(pin, list);
   }
   const count = () => items().length;
   const timeOf = (t) => new Date(t).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   function sub(it) {
     if (it.kind === 'show') return `${timeOf(it.start)}${it.venue ? ` · ${it.venue}` : ''}`;
+    if (it.kind === 'errand') return it.venue; // (round 67, errands67) its badge has its own line
     const G = P(), arr = G && it.arr ? G.arrLabel(it.arr) : '', tag = it.tags.find((t) => t !== 'jam' && t !== 'free');
     return [arr, it.kind === 'jam' ? 'make music outside' : G?.TAGS[tag] || ''].filter(Boolean).join(' · ');
   }
   // the quest each row starts, and whether it's started already
   function questState(it) {
+    if (it.kind === 'errand') return it.badge?.text || null; // (round 67, errands67) the badge (it changes with the time): the dock's signature sees it
     const s = J()?.paris?.ui().state(); if (!s) return null;
     const id = it.kind === 'show' ? `c-show-${it.ref.key}` : it.kind === 'jam' ? 'c-pq-park' : P().campaignId(it.id);
     const c = s.campaigns.find((x) => x.id === id); if (!c) return null;
@@ -143,6 +146,7 @@ const HerePin = window.HerePin = (() => {
         b('×', () => { panelOpen = false; look = null; redraw(); }, 'hp-x', 'Hide this list (the pin stays)')));
     const ol = el('ol', { class: 'hp-list' });
     for (const it of list) {
+      if (it.kind === 'errand') { ol.append(errandRow(it)); continue; } // (round 67, errands67)
       const st = s ? questState(it) : null;
       const label = st === 'done' ? 'Done ✓' : st === 'started' ? 'Continue quest' : 'Start this quest';
       const startBtn = b(label, () => start(it), `qj-primary hp-start${st ? ' started' : ''}`, st === 'done' ? 'You finished this one' : '');
@@ -156,6 +160,17 @@ const HerePin = window.HerePin = (() => {
     if (!list.length) ol.append(el('li', { class: 'hp-empty', text: `Nothing within ${K.MAX_MIN} minutes on foot. Move your pin, or try another part of Paris.` }));
     sec.append(ol, el('footer', {}, b('Move my pin', startPick, 'qj-quiet hp-move'), b('Clear pin', clear, 'qj-quiet hp-clear', 'Forget where you are now (it fades by itself after 3 hours)')));
     return sec;
+  }
+
+  // (round 67, errands67) an errand close to you: its opening-hours badge, Done ✓ (completes it) and Show on map
+  function errandRow(it) {
+    const tone = window.ErrandsCore ? ErrandsCore.tone(it.badge?.state) : '';
+    return el('li', { class: `hp-item${look?.id === it.id ? ' looking' : ''}`, dataset: { kind: it.kind, id: it.id } },
+      el('div', { class: 'hp-top' }, el('span', { class: 'hp-kind', text: K.KINDS.errand }), el('span', { class: 'hp-walk', text: it.walk })),
+      el('strong', { class: 'hp-name', text: it.name }),
+      el('span', { class: 'hp-sub', text: it.venue }),
+      it.badge ? el('span', { class: `er-badge er-mini ${tone}`, text: it.badge.text }) : null,
+      el('div', { class: 'hp-acts' }, b('Done ✓', () => window.Errands.done(it.ref.id), 'qj-primary hp-start hp-errand-done', 'I have it: complete this errand as a quest'), b('Show on map', () => showOnMap(it), 'qj-quiet hp-show')));
   }
 
   // ---------- the map layer ----------

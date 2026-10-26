@@ -25,13 +25,13 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
   // map layers (QuestJournal.addMapLayer) per chip. parisjournal64's My Paris layer IS the Visited chip: its own chip(kit)
   // isn't added to the filter row (ownsChip), and Visited reads / sets My Paris's own on / off, so the two never disagree
   // (parisdedupe64) Codex's Outing desk venue pins (tools/outing-desk.js, layer 'outing-desk') ride the Shows chip: one row, four chips
-  const LAYER_OF = { showsync: 'shows', 'outing-desk': 'shows', questwalk: 'walks', parisjournal: 'visited' };
+  const LAYER_OF = { showsync: 'shows', 'outing-desk': 'shows', questwalk: 'walks', parisjournal: 'visited', errands: 'errands' }; // (round 67, errands67) errands: its own row in Layers
   const PJ = () => (typeof window.ParisJournal !== 'undefined' && window.ParisJournal?.toggle ? window.ParisJournal : null);
   const read = (k, d) => { try { return store.get(k, d); } catch { return d; } };
   const write = (k, v) => { try { store.set(k, v); } catch { /* a convenience: the default (all on) still works */ } };
   // (round 66, mapbuttons66) every layer id defaults ON: a profile that saved older settings (round 64 saved only these four)
   // gets each newer layer shown, and only a layer the owner switched off (a stored false) stays off
-  const DEFAULTS = { places: true, shows: true, walks: true, visited: true, jams: true, quests: true };
+  const DEFAULTS = { places: true, shows: true, walks: true, visited: true, jams: true, quests: true, errands: true }; // (round 67, errands67) + errands
   let prefs = { ...DEFAULTS, ...(read(KEY, {}) || {}) };
   let showsTriedAt = 0, fetching = false, seeding = false, merging = false;
   const on = (id) => (id === 'visited' && PJ() ? PJ().prefs.on !== false : prefs[id] !== false);
@@ -142,6 +142,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     plan.append(QuestAtlas.icon('arrow'), E('span', { text: 'Plan a walk' }));
     bar.prepend(layersButton(kit)); // (round 66, mapbuttons66) "Layers": every layer by name, a switch each
     const more=button('',()=>explore(!prefs.fullGuide),'qj-hardware qmf-chip');more.title=prefs.fullGuide?'Return to food stops and your saved places':'Show the full Paris guide';more.setAttribute('aria-label',more.title);more.append(QuestAtlas.icon('compass'),E('span',{text:prefs.fullGuide?'My spots':'More places'}));bar.append(more,plan);
+    if (window.Errands?.chip) bar.append(Errands.chip(kit)); // (round 67, errands67) ＋ Errand: what you need, a shop or a spot, its opening hours (tools/errands.js)
     host.append(bar);
     const st = showStatus();
     if (st) {
@@ -187,6 +188,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     { id: 'shows', name: 'Nights & shows', help: 'Your clubs and this week’s Shotgun / DICE shows' },
     { id: 'jams', name: 'Park jams', help: 'Parks for an outdoor music session', count: () => guideCount('jams') },
     { id: 'quests', name: 'Paris place quests', help: 'Guide places with a quest; zoom in to see them', count: () => guideCount('quests') },
+    { id: 'errands', name: 'Errands', help: 'Your errands, with an open now / closes at badge', count: () => (window.Errands ? Errands.list().length : 0) }, // (round 67, errands67)
     { id: 'walks', name: 'My walks', help: 'The walk you planned, as a line' },
     { id: 'visited', name: 'Visited · My Paris', help: 'Your ✓ visits and what you did' },
     { id: 'full', name: 'Whole guide when zoomed out', help: 'Every guide place even at the city zoom (busier)' }
@@ -205,6 +207,10 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
   function setPanel(open) { panelOpen = !!open; if (!panelOpen) { panelAbort?.abort(); panelAbort = null; } rerender(); }
   function layersPanel(kit) {
     const { E } = kit, box = E('div', { class: 'qml-panel', attrs: { role: 'group', 'aria-label': 'Map layers' } });
+    // (round 67, errands67) a real mouse press on a switch's label reached the map's drag (quest-atlas.js captures the
+    // pointer for anything but a button or a link), so the click went to the map and the switch never moved; and a wheel
+    // over the list zoomed the map. Presses and wheels inside the panel stay in the panel.
+    for (const ev of ['pointerdown', 'wheel']) box.addEventListener(ev, (e) => e.stopPropagation(), { passive: true });
     box.append(E('strong', { class: 'qml-title', text: 'Map layers' }));
     for (const r of ROWS) {
       const n = r.count?.() || 0, input = E('input', { type: 'checkbox' }); input.checked = r.id === 'full' ? !!prefs.fullGuide : on(r.id); input.dataset.layer = r.id;

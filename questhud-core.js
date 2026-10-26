@@ -123,7 +123,7 @@
   }
 
   // ---------- chat words ----------
-  const SUBS = ['next', 'done', 'track', 'picks', 'near', 'open', 'studio', 'hud', 'week', 'review', 'walk', 'weekend', 'here']; // weekend: weekendplan66's 🗓 Plan my weekend · week / review: weekquest62's week plan and week in review; walk: questwalk63's afternoon walks; here: herepin66's I'm here pin
+  const SUBS = ['next', 'done', 'track', 'picks', 'near', 'open', 'studio', 'hud', 'week', 'review', 'walk', 'weekend', 'here', 'errand']; // errand: errands67's errands with opening hours · weekend: weekendplan66's 🗓 Plan my weekend · week / review: weekquest62's week plan and week in review; walk: questwalk63's afternoon walks; here: herepin66's I'm here pin
   // parisquests61's /quest words (tools/quest-paris-ui.js: QuestParisUI.run): one /quest command, these pass through
   const PARIS = ['paris', 'map', 'places', 'guide', 'go', 'start', 'place', 'add', 'park', 'list', 'progress', 'help'];
   function parse(args) {
@@ -133,6 +133,7 @@
     if (SUBS.includes(w)) return { sub: w, rest: m[2].trim() };
     if (['check', 'tick', 'finish'].includes(w)) return { sub: 'done', rest: m[2].trim() };
     if (['show', 'tracker', 'panel'].includes(w)) return { sub: 'open', rest: m[2].trim() };
+    if (['errands', 'course', 'courses'].includes(w)) return { sub: 'errand', rest: m[2].trim() }; // (round 67, errands67)
     if (PARIS.includes(w)) return { sub: 'paris', rest: t };
     return { sub: 'name', rest: t }; // "/quest canal": track an open quest by that name, else a Paris place / personal quest
   }
