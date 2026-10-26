@@ -79,8 +79,8 @@ const Notify = (() => {
       if (go.renders) { (window.Lazy ? Lazy.load('renders') : Promise.resolve()).then(() => Renders.open()).catch(() => {}); return 'renders'; }
       if (go.sync) { Sync.conflicts(); return 'sync'; }
       if (go.update) { Updater.dialog(); return 'update'; }
-      // (round 70, leavefix70) made: an old notification never acts on a newer reminder · 'before': 🎒 Before I go
-      if (go.leave) { const k = go.leave.key, o = go.leave.op; if (o === 'snooze' || o === 'dismiss' || o === 'earlier') { window.hub.leave.op({ op: o, key: k, made: go.leave.made }).catch(() => {}); return o; } if (o === 'before') { Lazy.load('beforego').then(() => BeforeGo.openFor(k)).catch((err) => toast(calmError(err), { type: 'error' })); return 'before'; } Lazy.load('leavesoon').then(() => LeaveSoon.showOnMap(k)).catch((err) => toast(calmError(err), { type: 'error' })); return 'leave'; } // (round 68, leavesoon68) ⏰ Show on map / Snooze 10 min / Dismiss
+      // (round 70) made: an old notification never acts on a newer reminder; 'before': 🎒 Before I go
+      if (go.leave) { const k = go.leave.key, o = go.leave.op; if (o === 'snooze' || o === 'dismiss' || o === 'earlier') { window.hub.leave.op({ op: o, key: k, made: go.leave.made }).catch(() => {}); return o; } if (o === 'before') { Lazy.load('beforego').then(() => BeforeGo.openFor(k)).catch(() => {}); return o; } Lazy.load('leavesoon').then(() => LeaveSoon.showOnMap(k)).catch((err) => toast(calmError(err), { type: 'error' })); return 'leave'; } // (round 68, leavesoon68) ⏰ Show on map / Snooze 10 min / Dismiss
       if (go.activity) { (window.Lazy ? Lazy.load('activity') : Promise.resolve()).then(() => Activity.open()).catch(() => {}); return 'activity'; }
     } catch (err) { toast(err.message, { type: 'error' }); }
     return null;
@@ -141,8 +141,7 @@ const Notify = (() => {
     // reminder missed while Hearth was closed isn't rung late: it's said once here, at start.
     window.hub?.leave?.onDue?.(async (r) => {
       if (!r?.key || !r.title) return;
-      // (round 70, leavefix70) a show's: the click opens 🎒 Before I go (its list has Show on map); with Hearth in front the
-      // list opens by itself. Snooze / Dismiss carry the reminder's createdAt (an old notification can't touch a newer one)
+      // (round 70, leavefix70) a show's click opens 🎒 Before I go (by itself with Hearth in front)
       const made = r.item?.createdAt, show = /^show:/.test(r.key);
       const acts = [show ? { text: '🎒 Before I go', go: { leave: { key: r.key, op: 'before' } } } : { text: 'Show on map', go: { leave: { key: r.key, op: 'map' } } }, { text: 'Snooze 10 min', go: { leave: { key: r.key, op: 'snooze', made }, quiet: 1 } }, { text: 'Dismiss', go: { leave: { key: r.key, op: 'dismiss', made }, quiet: 1 } }];
       const out = await send({ type: 'reminder', title: r.title, body: r.body || '', group: `leave:${r.key}`, actions: acts });
