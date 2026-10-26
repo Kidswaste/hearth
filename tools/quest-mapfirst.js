@@ -29,7 +29,10 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
   const PJ = () => (typeof window.ParisJournal !== 'undefined' && window.ParisJournal?.toggle ? window.ParisJournal : null);
   const read = (k, d) => { try { return store.get(k, d); } catch { return d; } };
   const write = (k, v) => { try { store.set(k, v); } catch { /* a convenience: the default (all on) still works */ } };
-  let prefs = { places: true, shows: true, walks: true, visited: true, ...(read(KEY, {}) || {}) };
+  // (round 66, mapbuttons66) every layer id defaults ON: a profile that saved older settings (round 64 saved only these four)
+  // gets each newer layer shown, and only a layer the owner switched off (a stored false) stays off
+  const DEFAULTS = { places: true, shows: true, walks: true, visited: true, jams: true, quests: true };
+  let prefs = { ...DEFAULTS, ...(read(KEY, {}) || {}) };
   let showsTriedAt = 0, fetching = false, seeding = false, merging = false;
   const on = (id) => (id === 'visited' && PJ() ? PJ().prefs.on !== false : prefs[id] !== false);
   const ownsChip = (layerId) => layerId === 'parisjournal'; // (quest-journal.js's chip row skips it: it's Visited here)
@@ -137,6 +140,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     const plan = button('', planWalk, 'qj-hardware qmf-plan');
     plan.setAttribute('aria-label', 'Plan a walk'); plan.title = '3–5 places you haven’t visited, in walking order, Métro to Métro';
     plan.append(QuestAtlas.icon('arrow'), E('span', { text: 'Plan a walk' }));
+    bar.prepend(layersButton(kit)); // (round 66, mapbuttons66) "Layers": every layer by name, a switch each
     const more=button('',()=>explore(!prefs.fullGuide),'qj-hardware qmf-chip');more.title=prefs.fullGuide?'Return to food stops and your saved places':'Show the full Paris guide';more.setAttribute('aria-label',more.title);more.append(QuestAtlas.icon('compass'),E('span',{text:prefs.fullGuide?'My spots':'More places'}));bar.append(more,plan);
     host.append(bar);
     const st = showStatus();
@@ -145,6 +149,99 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
       line.append(E('span', { text: st.text }), ...(st.busy ? [] : [E('b', { text: 'Retry' })])); if (st.title) line.title = st.title;
       host.append(line);
     }
+    host.querySelectorAll(':scope>.qml-panel').forEach((n) => n.remove()); if (panelOpen) host.append(layersPanel(kit));
+    watchControls(host);
   }
-  return { open, keep, tone, off, ownsChip, overlay, on, toggle, planWalk, explore, showStatus, LAYERS, get prefs() { return { ...prefs }; } };
+
+  // ---------- (round 66, mapbuttons66) the rest of the guide: Park jams + Paris place quests, as map layers ----------
+  // Codex's quiet map (paris-familiar-venues) keeps only Food & stops (QuestParis.mapPicks) as journal pins; the other
+  // guide places were filtered out of sight, so the owner's map looked like it "hadn't updated". They come back as LAYER
+  // pins (not journal places: the journal doesn't grow): Park jams (the parks tagged for an outdoor session) at every
+  // zoom, the other place quests from zoom QUEST_ZOOM up, so the city zoom stays as quiet as Codex made it. Clicking one
+  // pins it in the journal (QuestParis.ensurePin, as Start this quest does) and opens its panel with its quest.
+  const QUEST_ZOOM = 14;
+  function guidePins(f = {}) {
+    const G = P(), s = stateOf(); if (!G || !s || f.saved) return [];
+    const jams = on('jams'), quests = on('quests'); if (!jams && !quests) return [];
+    const q = String(f.query || '').toLocaleLowerCase(), out = [];
+    for (const g of G.guide) {
+      if (G.mapPicks.has(g.id)) continue; // Food & stops: the journal's own pins (Codex)
+      const jam = g.tags.includes('jam'); if (jam ? !jams : !quests) continue;
+      const pin = G.pinOf(s, g.id); if (pin && (prefs.fullGuide || !untouched(s, pin) || pin.id === s.atlas.selected)) continue; // the journal draws it
+      if (f.kind && f.kind !== 'all' && g.kind !== f.kind) continue;
+      if (f.guide && !G.matches(g, f.guide)) continue;
+      if (q && !(g.name + ' ' + G.words(g)).toLocaleLowerCase().includes(q)) continue;
+      out.push({ id: 'ml-' + g.id, name: g.name, lat: g.lat, lon: g.lon, kind: g.kind, color: jam ? '#7ee0a1' : '#bd8bff', tone: 'qj-pin-guide' /* drawn like the guide's other untouched places (lighter; dots at the city zoom); data-place "ml-…" */, ...(jam ? {} : { minZoom: QUEST_ZOOM }) });
+    }
+    return out;
+  }
+  const guideLayer = { id: 'mapfirst-guide', pins: guidePins, owns: (id) => String(id).startsWith('ml-'),
+    async select(id) { const gid = String(id).slice(3); await J().paris.mutate((s) => { s.atlas.selected = P().ensurePin(s, gid).id; }, ''); } };
+  try { J()?.addMapLayer?.(guideLayer); } catch { /* the journal registers layers when it loads */ }
+  const guideCount = (id) => { const G = P(); return G ? G.guide.filter((g) => !G.mapPicks.has(g.id) && (id === 'jams') === g.tags.includes('jam')).length : 0; };
+
+  // ---------- (round 66, mapbuttons66) the Layers button and its panel: every layer by name, one switch each ----------
+  let panelOpen = false, panelAbort = null;
+  const ROWS = [
+    { id: 'places', name: 'Food & stops', help: 'Food, record shops and a few outdoor stops' },
+    { id: 'shows', name: 'Nights & shows', help: 'Your clubs and this week’s Shotgun / DICE shows' },
+    { id: 'jams', name: 'Park jams', help: 'Parks for an outdoor music session', count: () => guideCount('jams') },
+    { id: 'quests', name: 'Paris place quests', help: 'Guide places with a quest; zoom in to see them', count: () => guideCount('quests') },
+    { id: 'walks', name: 'My walks', help: 'The walk you planned, as a line' },
+    { id: 'visited', name: 'Visited · My Paris', help: 'Your ✓ visits and what you did' },
+    { id: 'full', name: 'Whole guide when zoomed out', help: 'Every guide place even at the city zoom (busier)' }
+  ];
+  const layersIcon = () => { const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), p = document.createElementNS(svg.namespaceURI, 'path');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false'); svg.classList.add('qj-map-icon');
+    for (const [k, v] of Object.entries({ d: 'm12 3 9 5-9 5-9-5ZM3 12l9 5 9-5M3 16l9 5 9-5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) p.setAttribute(k, v);
+    svg.append(p); return svg; };
+  function layersButton(kit) {
+    const b = kit.button('', () => setPanel(!panelOpen), 'qj-hardware qml-open');
+    b.setAttribute('aria-expanded', String(panelOpen)); b.setAttribute('aria-label', 'Layers: show or hide each kind of pin'); b.title = 'Show or hide each map layer';
+    const offN = ROWS.filter((r) => r.id !== 'full' && !on(r.id)).length;
+    b.append(layersIcon(), kit.E('span', { text: 'Layers' }), ...(offN ? [kit.E('i', { class: 'qml-off', text: `${offN} off` })] : []));
+    return b;
+  }
+  function setPanel(open) { panelOpen = !!open; if (!panelOpen) { panelAbort?.abort(); panelAbort = null; } rerender(); }
+  function layersPanel(kit) {
+    const { E } = kit, box = E('div', { class: 'qml-panel', attrs: { role: 'group', 'aria-label': 'Map layers' } });
+    box.append(E('strong', { class: 'qml-title', text: 'Map layers' }));
+    for (const r of ROWS) {
+      const n = r.count?.() || 0, input = E('input', { type: 'checkbox' }); input.checked = r.id === 'full' ? !!prefs.fullGuide : on(r.id); input.dataset.layer = r.id;
+      input.addEventListener('change', () => { Promise.resolve(r.id === 'full' ? explore(input.checked) : on(r.id) !== input.checked && toggle(r.id)).catch((err) => kit.notice?.(typeof calmError === 'function' ? calmError(err) : err.message)); });
+      box.append(E('label', { class: 'qml-row', attrs: { title: r.help } }, input, E('span', { class: 'qml-name', text: r.name + (n ? ` (${n})` : '') }), E('small', { text: r.help })));
+    }
+    box.append(kit.button('Done', () => setPanel(false), 'qj-quiet qml-done'));
+    // closes with Done, Esc or a click outside it (listeners only while it's open; no timers)
+    panelAbort?.abort(); panelAbort = new AbortController(); const signal = panelAbort.signal;
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && box.isConnected) { e.stopPropagation(); setPanel(false); } }, { capture: true, signal });
+    document.addEventListener('pointerdown', (e) => { if (!box.isConnected) { panelAbort?.abort(); return; } if (!box.contains(e.target) && !e.target.closest?.('.qml-open')) setPanel(false); }, { capture: true, signal });
+    return box;
+  }
+
+  // ---------- (round 66, mapbuttons66) the map's + / − stay clear of whatever bar is over the page ----------
+  // Sidequest Studio's tab bar (.qj-command-nav: Today · Map · Progress, its sub-row and the map filters) is sticky, and a
+  // project / workspace tab strip can be too: scrolled, they sat over the map's top-left corner where + / − / Paris live.
+  // On a scroll / resize (events only: nothing runs while the map is hidden or still) the corner is hit-tested where the
+  // controls belong; when something outside the map is there, the controls (and the shows' status line) slide down to
+  // just under that bar's real bottom. They stay inside the map, above its bottom strip.
+  let ctlHost = null, ctlAbort = null, ctlRaf = 0;
+  function coverBottom(n) { for (let x = n, i = 0; x && x !== document.body && i < 16; x = x.parentElement, i++) { const pos = getComputedStyle(x).position; if (pos === 'sticky' || pos === 'fixed') return x.getBoundingClientRect().bottom; } return n.getBoundingClientRect().bottom; }
+  function clearControls() {
+    ctlRaf = 0; const host = ctlHost; if (!host?.isConnected) { ctlAbort?.abort(); ctlAbort = null; ctlHost = null; return; }
+    const ctr = host.querySelector(':scope>.qj-atlas-controls'); if (!ctr) return;
+    const r = host.getBoundingClientRect(); if (!r.height) return; // the page is hidden
+    const h = ctr.offsetHeight || 32, x = r.left + 26, natural = r.top + 10; let top = natural;
+    for (let i = 0; i < 5; i++) { const y = top + h / 2; if (y < 0) { top = 0; continue; } if (y >= innerHeight) break; const hit = document.elementFromPoint(x, y); if (!hit || host.contains(hit)) break; top = Math.max(top + 1, coverBottom(hit) + 6); }
+    const off = Math.round(Math.max(0, Math.min(top - natural, r.height - h - 58))), t = off ? `translateY(${off}px)` : '';
+    for (const n of [ctr, host.querySelector(':scope>.qmf-status')]) if (n && n.style.transform !== t) n.style.transform = t;
+    if ((host.dataset.clear || '0') !== String(off)) host.dataset.clear = off; // (for checks: how far the controls moved)
+  }
+  const scheduleClear = (e) => { if (e?.type === 'scroll' && ctlHost && e.target !== document && !e.target.contains?.(ctlHost)) return; if (!ctlRaf) ctlRaf = requestAnimationFrame(clearControls); };
+  function watchControls(host) {
+    ctlHost = host;
+    if (!ctlAbort) { ctlAbort = new AbortController(); document.addEventListener('scroll', scheduleClear, { capture: true, passive: true, signal: ctlAbort.signal }); window.addEventListener('resize', scheduleClear, { passive: true, signal: ctlAbort.signal }); }
+    scheduleClear();
+  }
+  return { open, keep, tone, off, ownsChip, overlay, on, toggle, planWalk, explore, showStatus, LAYERS, ROWS, QUEST_ZOOM, guidePins, setPanel, clearControls, get panelOpen() { return panelOpen; }, get prefs() { return { ...prefs }; } };
 })();
