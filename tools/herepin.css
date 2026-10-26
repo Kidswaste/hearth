@@ -1,0 +1,40 @@
+/* (round 66, herepin66) "📍 I'm here" on the Paris map (tools/herepin.js): the button top right, the hint while picking,
+   the "Close to you" panel, the pin (lighter each hour) and the "Show on map" spot. */
+.qj-atlas .hp-dock{position:absolute;top:10px;right:10px;z-index:7;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(270px,calc(100% - 20px));pointer-events:none}
+.qj-atlas .hp-dock>*{pointer-events:auto}
+.qj .qj-atlas .hp-dock .hp-btn,.qj .qj-atlas .hp-dock .hp-reopen{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;min-height:32px;border-radius:9px!important;background:#16303aee!important;border:1px solid #5fd4ff88!important;color:#dff6ff!important;font:600 12px system-ui,sans-serif;text-transform:none;letter-spacing:0;white-space:nowrap}
+.qj .qj-atlas .hp-dock .hp-btn.on{background:#5fd4ff!important;color:#0f1d22!important}
+.qj .hp-dock .qj-hardware:before{content:none}
+.qj-atlas.hp-picking{cursor:crosshair}
+.qj-atlas.hp-picking .qj-atlas-pin{cursor:crosshair}
+.qj-atlas .hp-hint{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:8px;background:#122128f2;border:1px solid #5fd4ff55;color:#dff6ff;font-size:11px}
+.qj .qj-atlas .hp-hint .qj-button{padding:3px 8px;min-height:0;font-size:10.5px;text-transform:none;letter-spacing:0}
+.qj-atlas .hp-near{width:260px;max-width:100%;max-height:330px;display:flex;flex-direction:column;border-radius:10px;background:#18151ff4;border:1px solid #5fd4ff44;box-shadow:0 8px 24px #0008;color:#e9e4f0;font:12px system-ui,sans-serif}
+.qj-atlas .hp-near header{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;padding:8px 10px 6px;border-bottom:1px solid #ffffff14}
+.qj-atlas .hp-near header strong{font-size:12.5px;color:#dff6ff}
+.qj-atlas .hp-age{flex:1;min-width:0;font-size:10px;color:#a9a2b6}
+.qj .qj-atlas .hp-near .hp-x{padding:0 6px;min-height:0;border:0!important;background:none!important;color:#c9c2d6;font-size:15px;line-height:1}
+.qj-atlas .hp-list{list-style:none;margin:0;padding:4px 6px;overflow-y:auto;overscroll-behavior:contain;flex:1}
+.qj-atlas .hp-item{display:grid;gap:2px;padding:6px 4px;border-bottom:1px solid #ffffff0d}
+.qj-atlas .hp-item:last-child{border-bottom:0}
+.qj-atlas .hp-item.looking{background:#ffd75e14;border-radius:6px}
+.qj-atlas .hp-top{display:flex;justify-content:space-between;gap:6px;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#a9a2b6}
+.qj-atlas .hp-item[data-kind=show] .hp-kind{color:#ff9cc0}
+.qj-atlas .hp-item[data-kind=jam] .hp-kind{color:#9be7a6}
+.qj-atlas .hp-item[data-kind=place] .hp-kind{color:#ffd27e}
+.qj-atlas .hp-walk{text-transform:none;letter-spacing:0;color:#9fe3ff;font-weight:600}
+.qj-atlas .hp-name{font-size:12px;color:#f3eef8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qj-atlas .hp-sub{font-size:10.5px;color:#b5aec2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qj-atlas .hp-acts{display:flex;gap:5px;margin-top:3px}
+.qj .qj-atlas .hp-acts .qj-button{padding:3px 8px;min-height:0;font-size:10.5px;text-transform:none;letter-spacing:0}
+.qj-atlas .hp-empty{padding:10px 6px;color:#b5aec2;font-size:11px}
+.qj-atlas .hp-near footer{display:flex;gap:6px;padding:6px 8px;border-top:1px solid #ffffff14}
+.qj .qj-atlas .hp-near footer .qj-button{padding:3px 8px;min-height:0;font-size:10.5px;text-transform:none;letter-spacing:0}
+/* the pin: bright when just set, lighter each hour; gone after 3 hours */
+.qj-atlas-pin.hp-me-0>span,.qj-atlas-pin.hp-me-1>span,.qj-atlas-pin.hp-me-2>span{box-shadow:0 0 0 5px #5fd4ff33}
+.qj-atlas-pin.hp-me-1{opacity:.75}
+.qj-atlas-pin.hp-me-2{opacity:.5}
+.qj-atlas-pin.hp-look>span{box-shadow:0 0 0 6px #ffd75e44}
+/* the shows' status line (top right when a read failed) stays; the dock sits under it */
+.qj-atlas:has(.qmf-status) .hp-dock{top:46px}
+@container(max-width:760px){.qj-atlas .hp-near{max-height:250px}.qj-atlas:has(.qmf-status) .hp-dock{top:10px}}

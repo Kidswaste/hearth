@@ -123,7 +123,7 @@
   }
 
   // ---------- chat words ----------
-  const SUBS = ['next', 'done', 'track', 'picks', 'near', 'open', 'studio', 'hud', 'week', 'review', 'walk']; // week / review: weekquest62's week plan and week in review; walk: questwalk63's afternoon walks
+  const SUBS = ['next', 'done', 'track', 'picks', 'near', 'open', 'studio', 'hud', 'week', 'review', 'walk', 'here']; // week / review: weekquest62's week plan and week in review; walk: questwalk63's afternoon walks; here: herepin66's I'm here pin
   // parisquests61's /quest words (tools/quest-paris-ui.js: QuestParisUI.run): one /quest command, these pass through
   const PARIS = ['paris', 'map', 'places', 'guide', 'go', 'start', 'place', 'add', 'park', 'list', 'progress', 'help'];
   function parse(args) {
