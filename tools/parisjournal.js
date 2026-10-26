@@ -21,7 +21,10 @@ const ParisJournal = window.ParisJournal = (() => {
   let lastCard = null;
   const _test = { saved: [], dir: '' }; // (checks) dir: write the card in the run's own folder, never the real Pictures folder
   const savePrefs = () => store.set(PREF, { on: prefs.on, month: prefs.month, cardPhotos: prefs.cardPhotos });
-  const fmtDay = (t) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  // (round 70, bigprofile70) one date formatter for every dot (toLocaleDateString built one per call: 2 per dot, ≈ 130 ms
+  // per Sidequest map draw with a few hundred moments); same words
+  const DAY_FMT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const fmtDay = (t) => DAY_FMT.format(new Date(t));
 
   // ---------- what exists ----------
   const studioState = () => { try { return J()?.ready?.() ? ui().state() : null; } catch { return null; } };

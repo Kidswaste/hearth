@@ -54,7 +54,7 @@
     return { id, name: a?.name || g?.name || id, lat, lon, kind: a?.kind || g?.kind || 'reset', arr: arrOf({ arr: g?.arr, lat, lon }), guide: Boolean(g && P.guide?.some((x) => x.id === id)) };
   }
   // a spot by name (a show's venue, a park take's place): the guide's words (parks too), then the owner's own pins
-  function placeByName(s, P, name) {
+  function placeByNameOnce(s, P, name) {
     const f = fold(name); if (!f) return null;
     const g = P?.findPlace?.(name); if (g && (fold(g.name).includes(f) || f.includes(fold(g.name).split(' (')[0]) || P.parks?.[f.replace(/\s+/g, '-')])) return placeById(s, P, g.id);
     const a = (s?.atlas?.places || []).find((p) => fold(p.name) === f) || (s?.atlas?.places || []).find((p) => f.length > 3 && (fold(p.name).includes(f) || f.includes(fold(p.name))));
@@ -74,6 +74,9 @@
   /** Every moment the owner actually lived, newest first. `takes` = parkList's takes; `shows` = the show log. */
   function collect({ C, s, P, shows = null, takes = [], sessions: logged = [] } = {}) {
     const out = [];
+    // (round 70, bigprofile70) a venue / park name is looked up once per collect (a show log of 120 nights asked twice per
+    // night, each a fold of every guide place and pin: ≈ 90 ms per map draw); same answers
+    const names = new Map(), placeByName = (s2, P2, name) => { const k = String(name || ''); if (!names.has(k)) names.set(k, placeByNameOnce(s2, P2, name)); return names.get(k); };
     for (const c of s?.campaigns || []) {
       if (!Array.isArray(c.quests) || !c.quests.length) continue;
       const walk = /^c-walk-/.test(c.id) && c.walk?.v === 1;
@@ -209,5 +212,5 @@
   // where the image card goes: the owner's Pictures folder › Hearth › My Paris (never uploaded)
   const fileName = (month) => `My Paris ${month}.png`;
 
-  return { KINDS, ARR, arrOf, arrLabel, fold, collect, stamps, months, monthOf, monthName, shiftMonth, parseMonth, pins, recap, recapText, card, fileName, placeByName, placeById };
+  return { KINDS, ARR, arrOf, arrLabel, fold, collect, stamps, months, monthOf, monthName, shiftMonth, parseMonth, pins, recap, recapText, card, fileName, placeByName: placeByNameOnce, placeById };
 });

@@ -223,11 +223,27 @@
     const all = lists.flat().filter(Boolean).map((s) => ({ ...s, venue: { ...s.venue }, lineup: [...(s.lineup || [])], links: { ...(s.links || {}) }, doors: s.doors ?? null, tickets: s.tickets || [{ platform: s.platform, url: s.url, price: s.price, soldOut: s.soldOut }], platforms: s.platforms || [s.platform] }));
     all.sort((a, b) => a.start - b.start || a.platform.localeCompare(b.platform) || a.id.localeCompare(b.id));
     const out = [];
+    // (round 70, bigprofile70) the same first match as `out.find(o => same id || same night, venue and title)`, without
+    // comparing each show with every one before it: only the shows with its id or on its night can match, so only those
+    // are looked at, in list order. 600 cached shows made each shows:get (the Sidequest map, the ✦ tracker) hold the
+    // main process ≈ 130–240 ms; now a few ms.
+    const nightMemo = new Map(), night = (t) => { let n = nightMemo.get(t); if (n === undefined) { n = nightOf(t); nightMemo.set(t, n); } return n; };
+    const byId = new Map(), byNight = new Map(), pos = new Map();
+    const put = (m, k, o) => { const a = m.get(k); if (a) a.push(o); else m.set(k, [o]); };
+    const drop = (m, k, o) => { const a = m.get(k), i = a ? a.indexOf(o) : -1; if (i >= 0) a.splice(i, 1); };
+    const venueMatch = (o, s) => o.venue.key === s.venue.key || (o.venue.key.length > 3 && s.venue.key.length > 3 && (o.venue.key.includes(s.venue.key) || s.venue.key.includes(o.venue.key)));
     for (const s of all) {
-      const same = out.find((o) => o.id === s.id || (nightOf(o.start) === nightOf(s.start) && (o.venue.key === s.venue.key || (o.venue.key.length > 3 && s.venue.key.length > 3 && (o.venue.key.includes(s.venue.key) || s.venue.key.includes(o.venue.key)))) && similar(o, s)));
-      if (same) Object.assign(same, combine(same, s)); else out.push(s);
+      const ns = night(s.start); let same = null, at = Infinity;
+      for (const o of byId.get(s.id) || []) if (pos.get(o) < at) { same = o; at = pos.get(o); }
+      for (const o of byNight.get(ns) || []) if (pos.get(o) < at && venueMatch(o, s) && similar(o, s)) { same = o; at = pos.get(o); }
+      if (same) {
+        const id0 = same.id, n0 = night(same.start);
+        Object.assign(same, combine(same, s));
+        if (same.id !== id0) { drop(byId, id0, same); put(byId, same.id, same); }
+        const n1 = night(same.start); if (n1 !== n0) { drop(byNight, n0, same); put(byNight, n1, same); }
+      } else { pos.set(s, out.length); out.push(s); put(byId, s.id, s); put(byNight, ns, s); }
     }
-    for (const s of out) s.key = hash(`${nightOf(s.start)}|${s.venue.key}|${tokens(s.title).slice(0, 3).sort().join(' ') || s.title}`);
+    for (const s of out) s.key = hash(`${night(s.start)}|${s.venue.key}|${tokens(s.title).slice(0, 3).sort().join(' ') || s.title}`);
     // two different shows can't share a key: the later one gets its time added
     const seen = new Set(); for (const s of out) { if (seen.has(s.key)) s.key = hash(`${s.key}|${s.start}`); seen.add(s.key); }
     return out;
