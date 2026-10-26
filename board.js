@@ -590,7 +590,7 @@ const Board = (() => {
     let n = S.nodes.get(it.id);
     if (!n) { n = build(it); S.nodes.set(it.id, n); S.ui.world.append(n); lastOrder = ''; force = true; }
     else if (n.__type !== it.type) { stopPreview(it.id); const nn = build(it); n.replaceWith(nn); S.nodes.set(it.id, nn); lastOff.delete(it.id); n = nn; force = true; } // note ⇄ text (and its undo)
-    const key = JSON.stringify([it.x, it.y, it.w, it.h, it.rot, it.opacity, it.blend, it.filter, it.flipX, it.flipY, it.crop, it.radius, it.shadow, it.border, it.locked, it.stamp, it.title, it.text, it.style, it.textStyle, it.fs, it.color, it.colors, it.src, it.thumb, it.tiny, it.poster, it.snapError, it.snapping, it.favicon, it.duration, it.vin, it.vout, it.group, it.tags, it.note, it.align, it.shape, it.heads, it.curve, it.dash, it.width, it.glyph, it.fsz, it.hidden, it.from, it.to, it.label]);
+    const key = JSON.stringify([it.x, it.y, it.w, it.h, it.rot, it.opacity, it.blend, it.filter, it.flipX, it.flipY, it.crop, it.radius, it.shadow, it.border, it.locked, it.stamp, it.title, it.text, it.style, it.textStyle, it.fs, it.color, it.colors, it.src, it.thumb, it.tiny, it.poster, it.snapError, it.snapping, it.favicon, it.duration, it.vin, it.vout, it.group, it.tags, it.note, it.align, it.shape, it.heads, it.curve, it.dash, it.width, it.glyph, it.fsz, it.hidden, it.from, it.to, it.label, it.like]);
     if (!force && n.__key === key) return;
     n.__key = key;
     n.style.transform = `translate(${it.x}px, ${it.y}px)${it.rot ? ` rotate(${it.rot}deg)` : ''}`;
@@ -611,6 +611,12 @@ const Board = (() => {
     let stamp = n.querySelector(':scope > .bd-stamp');
     if (it.stamp) { if (!stamp) { stamp = el('span', { class: 'bd-stamp' }); n.append(stamp); } stamp.textContent = it.stamp; } else stamp?.remove();
     n.title = it.title ? `${it.title}${it.note ? ` · ${it.note}` : ''}` : '';
+    // (round 67) "What I like about this" under a picture / clip / site (click: edit; board-drawer.js)
+    let like = n.querySelector(':scope > .bd-likecap');
+    if (it.like && isMedia(it)) {
+      if (!like) { like = el('div', { class: 'bd-likecap', title: 'What I like about this (goes first when its qualities are sent). Click to edit', on: { pointerdown: (e) => e.stopPropagation(), click: (e) => { e.stopPropagation(); const x = item(n.dataset.id); if (x) Board._.askLike?.(S.cur, x); } } }); n.append(like); }
+      like.textContent = `♥ ${it.like}`;
+    } else like?.remove();
     SYNC[it.type]?.(n, it);
     if (n.__img && !lastOff.get(it.id)) pickSource(it, n);
   }
