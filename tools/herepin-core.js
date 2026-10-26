@@ -12,8 +12,8 @@
   const MAX_MIN = 45; // "close to you": at most 45 minutes on foot
   const LIMIT = 8;
   const BOUNDS = { s: 48.7, n: 49, w: 2.15, e: 2.6 }; // the map's own limits (tools/quest-atlas.js clamps to these)
-  const KINDS = { place: 'Place quest', show: 'Tonight', jam: 'Park jam' };
-  const ORDER = { show: 0, jam: 1, place: 2 }; // same distance: tonight's show first (it won't wait)
+  const KINDS = { place: 'Place quest', show: 'Tonight', jam: 'Park jam', errand: 'Errand' }; // (round 67, errands67) + your errands
+  const ORDER = { show: 0, errand: 1, jam: 2, place: 3 }; // same distance: tonight's show first (it won't wait), then an errand (shops close)
   const fin = Number.isFinite;
   const inParis = (lat, lon) => fin(lat) && fin(lon) && lat >= BOUNDS.s && lat <= BOUNDS.n && lon >= BOUNDS.w && lon <= BOUNDS.e;
 
@@ -58,8 +58,9 @@
 
   // ---------- what's close ----------
   /** The candidates: every Paris guide place (a 'jam' tag → a park-jam spot) and tonight's shows with a known spot.
-   *  venueAt(show) → { lat, lon } | null, for a show whose own venue has no coordinates (the map's venue pins). */
-  function candidates({ guide = [], shows = [], venueAt = () => null, now = Date.now() } = {}) {
+   *  venueAt(show) → { lat, lon } | null, for a show whose own venue has no coordinates (the map's venue pins).
+   *  errands: (round 67, errands67) ErrandsCore.list(journal): your open errands, with their opening-hours badge. */
+  function candidates({ guide = [], shows = [], errands = [], venueAt = () => null, now = Date.now() } = {}) {
     const out = [];
     for (const g of guide) {
       if (!g || !inParis(g.lat, g.lon)) continue;
@@ -72,6 +73,7 @@
       if (!at || !inParis(at.lat, at.lon)) continue;
       out.push({ kind: 'show', id: `show:${s.key || s.id}`, name: s.title, venue: v.name || '', start: s.start, lat: at.lat, lon: at.lon, ref: s });
     }
+    for (const e of errands) if (e?.place && inParis(e.place.lat, e.place.lon)) out.push({ kind: 'errand', id: `errand:${e.id}`, name: e.what, venue: e.place.name || '', badge: e.badge || null, lat: e.place.lat, lon: e.place.lon, ref: e });
     return out;
   }
   /** Nearest first: within maxMin minutes on foot, by distance (= walking minutes), then tonight's shows before park

@@ -179,6 +179,7 @@ const QuestHud = (() => {
     if (cd) body.push(questCard(cd));
     // (round 66, herepin66) 📍 Near me: while an "I'm here" pin is set on the Paris map (tools/herepin*.js), one row → Close to you
     if (status === 'ok' && C && window.HerePinCore) { const hp = HerePinCore.hud(store.get(HerePinCore.KEY, null), Date.now(), window.Lazy?.isIn('questjournal') && window.HerePin ? HerePin.count() : null); if (hp) { const r = btn(hp.text, () => { close(); return Lazy.load('questjournal').then(() => HerePin.open()); }, 'qh-row hp-hud', hp.title); r.dataset.k = 'herepin'; body.push(r); } }
+    if (status === 'ok' && C && S && window.ErrandsCore) body.push(...errandRows()); // (round 67, errands67) Errands: the opening-hours badge, Done ✓, ＋ Errand
     if (status === 'ok' && C && S) {
       const others = QC.actives(C, S, prefs.pin).filter((q) => q.id !== cd?.id);
       if (others.length) body.push(el('div', { class: 'qh-sec', text: 'Also active' }), ...others.map((q) => otherRow(QC.card(C, S, q))));
@@ -229,6 +230,26 @@ const QuestHud = (() => {
         el('span', { class: 'qh-row-title', text: cd.title }), cd.next ? el('span', { class: 'qh-sub', text: `${cd.next.label}: ${cutText(cd.next.text, 70)}` }) : null));
     if (cd.next && !(cd.next.id === 'finish' && cd.next.proof)) row.append(el('button', { type: 'button', class: 'qh-check', dataset: { k: `${cd.id}:${cd.next.id}` }, title: `Check off: ${cd.next.label}`, attrs: { role: 'checkbox', 'aria-checked': 'false', 'aria-label': `Check off ${cd.next.label} of ${cd.title}` }, on: { click: () => checkOff(cd.id, cd.next.id).catch((err) => toast(calmError(err), { type: 'error' })) } }));
     return row;
+  }
+  // (round 67, errands67) the open errands (open now first) with their badge and Done ✓, then ＋ Errand (tools/errands*.js)
+  const errandUI = (fn) => { close(); return Lazy.load('questjournal').then(fn); };
+  function errandRows() {
+    const list = ErrandsCore.list(S, { now: new Date() }), shown = list.slice(0, 4);
+    const add = btn('＋ Errand', () => errandUI(() => Errands.add()), 'qh-row er-hud-add', 'Add an errand: what you need (AirPods…), a shop or a spot on the map, its opening hours'); add.dataset.k = 'errand-add';
+    if (!list.length) return [add];
+    const rows = shown.map((e) => {
+      const done = btn('Done ✓', () => errandDone(e), 'qh-take er-hud-done', `I have it: complete “${e.what}” as a quest`); done.dataset.k = `errand-done:${e.id}`;
+      return el('div', { class: 'qh-row er-hud', dataset: { errand: e.id } }, el('span', { class: 'qh-pi', text: '🛍' }),
+        el('button', { type: 'button', class: 'qh-row-main', dataset: { k: `errand:${e.id}` }, title: `${e.place.name}: see or edit this errand${e.usual ? ` (${ErrandsCore.USUAL})` : ''}`, on: { click: () => errandUI(() => Errands.show(e.id)).catch((err) => toast(calmError(err), { type: 'error' })) } },
+          el('span', { class: 'qh-row-title', text: e.what }), el('span', { class: 'qh-sub', text: e.place.name }), el('span', { class: `er-badge er-mini ${ErrandsCore.tone(e.badge.state)}`, text: e.badge.text })),
+        done);
+    });
+    return [el('div', { class: 'qh-sec', text: list.length > shown.length ? `Errands · ${list.length}` : 'Errands' }), ...rows, add];
+  }
+  async function errandDone(e) {
+    const { result } = await write((s) => ErrandsCore.complete(s, e.id), `Errand done: ${e.what}.`);
+    const msg = `✓ Errand done: ${e.what}${result ? ` · +${result} XP` : ''}`;
+    toast(msg, { timeout: 3500 }); return msg;
   }
   function todaysPicks() {
     try {
@@ -360,6 +381,7 @@ const QuestHud = (() => {
         ...(places.length ? [{ label: 'I\'m at…', items: places.map((p) => ({ label: `${prefs.near === p.id ? '✓ ' : ''}${p.name}`, action: () => setNear(p.id) })) }] : []),
         { label: `${prefs.near === 'off' ? '✓ ' : ''}Off (nothing about where you are is used)`, action: () => setNear('off') },
       ] },
+      { label: '＋ Errand… (what, where, opening hours)', action: () => { errandUI(() => Errands.add()).catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 67, errands67)
       ...(prefs.pin ? [{ label: 'Follow the main quest again', action: () => pin(null) }] : []),
       ...(typeof ClickFirst !== 'undefined' ? [] : [ // (round 62, weekquest62 · round 63, rewards63) — (round 64) ClickFirst puts these at the top
         { label: 'Plan my week…', action: () => { close(); Lazy.load('weekquest').then(() => WeekQuest.open('week')).catch((err) => toast(calmError(err), { type: 'error' })); } },
@@ -391,7 +413,8 @@ const QuestHud = (() => {
     if (sub === 'week' || sub === 'review') { await Lazy.load('weekquest'); return WeekQuest.run(sub, rest, ctx); } // (round 62, weekquest62) the week plan / the week in review
     if (sub === 'weekend') { await Lazy.load('weekendplan'); return WeekendPlan.run(rest, ctx); } // (round 66, weekendplan66) 🗓 Plan my weekend
     if (sub === 'walk') { await Lazy.load('questjournal'); return QuestWalk.run(rest, ctx); } // (round 63, questwalk63) an afternoon walk through unvisited Paris places
-    if (sub === 'here') { await Lazy.load('questjournal'); return HerePin.run(rest, ctx); } // (round 66, herepin66) the map's 📍 I'm here: pick | clear, or what's close
+    if (sub === 'here') { await Lazy.load('questjournal'); return HerePin.run(rest, ctx); }
+    if (sub === 'errand') { await Lazy.load('questjournal'); return Errands.run(rest, ctx); } // (round 67, errands67) list | <what> [at <shop>] | done <what> // (round 66, herepin66) the map's 📍 I'm here: pick | clear, or what's close
     // (parisquests61) one /quest: the Paris words, and a name no open quest has, go to QuestParisUI.run
     if (sub === 'paris' || (sub === 'name' && !QC.match(C, S, rest))) return paris(args, ctx);
     if (sub === 'name') return track(rest);
@@ -417,7 +440,7 @@ const QuestHud = (() => {
   function complete(args) {
     const t = String(args || '');
     if (QC.parse(t).sub === 'paris' && /\s/.test(t)) return parisUI()?.complete(t) || [];
-    if (!/\s/.test(t)) return [...QC.SUBS, ...QC.PARIS.filter((w) => !['map', 'start', 'place', 'progress'].includes(w))].filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', here: 'I\'m here on the Paris map: what\'s close', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip', week: 'plan your week (3–5 quests on days)', review: 'your week in review', weekend: 'plan my weekend (Thu evening → Sun)', walk: 'an afternoon walk (3–5 places, Métro to Métro)', paris: 'the Paris guide on your map', places: 'Paris places', guide: 'the guide pins', go: 'a Paris place\'s quest', add: 'a personal quest (airpods, park…)', park: 'music at the park', list: 'your Paris quests', help: 'every /quest word' }[s] }));
+    if (!/\s/.test(t)) return [...QC.SUBS, ...QC.PARIS.filter((w) => !['map', 'start', 'place', 'progress'].includes(w))].filter((s) => s.startsWith(t.toLowerCase())).map((s) => ({ value: s, hint: { next: 'the next step', done: 'check it off', track: 'follow a quest or campaign', picks: 'today\'s picks', near: 'map pins near you', here: 'I\'m here on the Paris map: what\'s close', errand: 'an errand with opening hours', open: 'the tracker', studio: 'Sidequest Studio', hud: 'show / hide the chip', week: 'plan your week (3–5 quests on days)', review: 'your week in review', weekend: 'plan my weekend (Thu evening → Sun)', walk: 'an afternoon walk (3–5 places, Métro to Métro)', paris: 'the Paris guide on your map', places: 'Paris places', guide: 'the guide pins', go: 'a Paris place\'s quest', add: 'a personal quest (airpods, park…)', park: 'music at the park', list: 'your Paris quests', help: 'every /quest word' }[s] }));
     const { sub, rest } = QC.parse(t);
     if (sub === 'hud') return ['on', 'off'].map((v) => ({ value: `hud ${v}` }));
     if (sub === 'walk') return window.QuestWalk?.complete(rest) || ['2h', '3h', 'from', 'show', 'save', 'open'].map((v) => ({ value: `walk ${v}` })); // (round 63, questwalk63)

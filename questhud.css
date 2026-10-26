@@ -77,3 +77,16 @@ button.qh-row { width: 100%; border: 0; background: none; cursor: pointer; text-
 .qh-foot .qh-btn { white-space: nowrap; }
 .qh-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line); }
 .qh-key { color: var(--muted); font: 10.5px var(--mono, ui-monospace, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* (round 67, errands67) Errands in the tracker; the opening-hours badge is also used on the errand card and in Close to you */
+.er-badge { display: inline-block; justify-self: start; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap; background: #ffffff14; color: #c9c2d6; }
+.er-badge.er-mini { font-size: 10px; padding: 0 6px; }
+.er-badge.er-open { background: #7ee0a124; color: #9be7b4; }
+.er-badge.er-soon { background: #ffb75926; color: #ffc77e; }
+.er-badge.er-later { background: #ffd75e1f; color: #f3d77e; }
+.er-badge.er-closed { background: #ff7b7b1c; color: #f0a0a0; }
+.er-badge.er-done { background: #7ee0a133; color: #b8f0c8; }
+.qh-row.er-hud .qh-row-main { gap: 1px; }
+.qh-row.er-hud .er-hud-done { flex: none; }
+button.qh-row.er-hud-add { color: var(--muted); font-size: 12px; padding: 4px 6px; }
+button.qh-row.er-hud-add:hover { color: var(--text); }
