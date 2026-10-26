@@ -64,7 +64,8 @@ const LoopSong = (() => {
     const playB = btn(player ? '■ Stop' : '▶ Play', async () => { if (player) stop(); else await play(); }, 'ls-play');
     const exp = btn('Export', async () => { const x = await exportSong({ mp3: s.mp3 !== false }); say(`Exported ${x.seconds.toFixed(1)} s: mix + ${x.stems.length} stem${x.stems.length === 1 ? '' : 's'} + MIDI${x.mp3 ? ' + MP3' : ''} in “${s.sketch}”.`); draw(); });
     const closeB = btn('✕', () => close(), 'ls-close'); closeB.setAttribute('aria-label', 'Close Arrange');
-    head.append(playB, exp, closeB); view.append(head);
+    const daw = btn('📤 Send to my DAW', () => Lazy.load('dawsend').then(() => DawSend.open(h, { source: 'arrange' })).then(say), 'ls-daw'); daw.title = 'Stems per lane at bar 1, the mix, MIDI and presets for Ableton / FL / Logic, in a folder you choose'; // (round 69, stems69)
+    head.append(playB, exp, daw, closeB); view.append(head);
     // pick: a take (any park sketch) → a lane
     const pick = h.e('div', null, 'wb-row ls-pick'); let tk = 0, ln = 0;
     pick.append(select('Take', '0', takes.length ? takes.map((t, i) => [String(i), takeLabel(t, i)]) : [['0', 'No park takes yet']], v => { tk = Number(v); }),
