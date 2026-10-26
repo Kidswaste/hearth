@@ -9,8 +9,9 @@ function shape(j) {
     .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date) && Number.isFinite(x.tmax) && Number.isFinite(x.rain));
   return days.length ? days.slice(0, 8) : null;
 }
-async function weather({ fetch: f = globalThis.fetch, now = Date.now() } = {}) {
+async function weather({ fetch: f = globalThis.fetch, now = Date.now(), cachedOnly = false } = {}) {
   if (cache && now - cache.at < 3 * 3600e3) return { ok: true, days: cache.days, cached: true };
+  if (cachedOnly) return { ok: false, why: 'not cached' }; // (round 70, leavefix70) 🎒 Before I go's jacket: what's already here, never a fetch
   try {
     const res = await f(URL, { headers: { 'User-Agent': 'Hearth/62 (weekly quest plan; once per look)', Accept: 'application/json' }, signal: AbortSignal.timeout(5000) });
     if (!res.ok) return { ok: false, why: `HTTP ${res.status}` };
@@ -20,6 +21,6 @@ async function weather({ fetch: f = globalThis.fetch, now = Date.now() } = {}) {
 }
 function register(ipcMain) {
   const { net } = require('electron');
-  ipcMain.handle('weekquest:weather', () => weather({ fetch: (u, o) => net.fetch(u, o) }));
+  ipcMain.handle('weekquest:weather', (_e, a) => weather({ fetch: (u, o) => net.fetch(u, o), cachedOnly: !!a?.cached })); // { cached: true }: the cache only (leavefix70)
 }
 module.exports = { register, weather, shape, URL, _reset: () => { cache = null; } };
