@@ -138,7 +138,10 @@ var WorkbenchVST = (() => {
       const mine = ++openSeq, t0 = performance.now();
       say(`Opening ${p.name}…`); await flushPatch(); await silence();
       // (round 64, vstembed64) the editor in the desk belongs to the instrument shown: the previous one's closes
-      if (selected && selected.path !== p.path && lastStats?.editor && lastStats.editor.mode !== 'closed') { vx?.detach(); vx = null; await hub.vst.request({ action: 'editor-close', plugin: selected.path, name: selected.name }).catch(() => {}); }
+      // (vstfix70) always asked of the previous host, not only when the last 1 s readout showed the editor open: an editor
+      // that came back by itself (after a host restart / the first open) within that second was left open in Vital's
+      // host, a frozen window on the desk next to Serum 2's. Closing a closed editor is a no-op in the host.
+      if (selected && selected.path !== p.path) { vx?.detach(); vx = null; await hub.vst.request({ action: 'editor-close', plugin: selected.path, name: selected.name }).catch(() => {}); }
       // The first open of the session picks the device before it goes live (the UA on ASIO, or the remembered one).
       if (!deviceChosen) {
         const d = await hub.vst.request({ action: 'devices', plugin: p.path, name: p.name });

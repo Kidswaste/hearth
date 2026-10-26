@@ -1315,6 +1315,7 @@ def serve(config, response):
         return engine.embed.opened(want, known, stop=lambda: not engine.editor_requested)
 
     def close_editor():
+        engine.embed.let_go()  # (vstfix70) out of Hearth's window first (hidden), then the plugin's loop is asked to end
         if engine.editor_event:
             engine.editor_event.set()
         end = time.monotonic() + 3

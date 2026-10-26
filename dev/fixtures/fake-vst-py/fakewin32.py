@@ -89,15 +89,17 @@ class Backend:
             _log('adopt', h, int(parent))
             return w['w'], w['h']
 
-    def release(self, h, screen_xy=None):
+    def release(self, h, screen_xy=None, hidden=False):
         with _lock:
             w = _windows.get(h)
             if w is None:
                 return
             w['parent'], w['child'], w['region'] = 0, False, None
+            if hidden:  # (vstfix70) handed back hidden, right before the editor closes
+                w['visible'] = False
             if screen_xy:
                 w['x'], w['y'] = screen_xy
-            _log('release', h)
+            _log('release-hidden' if hidden else 'release', h)
 
     def to_screen(self, parent, x, y):
         return x + 50, y + 80  # Hearth's client area at (50, 80) on the fake screen

@@ -21,7 +21,14 @@ let child = null;
 const frame = document.createElement('iframe'); frame.setAttribute('sandbox', 'allow-scripts');
 const listener = e => { if (e.source === frame.contentWindow && e.data?.volumeTest) child = e.data; };
 addEventListener('message', listener);
-frame.src = '__VOLUME_FRAME__';
+let frameUrl = '__VOLUME_FRAME__';
+if (frameUrl.startsWith('__')) { // (vstfix70) run by dev/run-checks.js (no dev/playback-volume-smoke.js to fill it in): the same frame, made here
+  const sandbox = String(await hub.fs.read(decodeURIComponent(new URL('tools/three-sandbox.html', location.href).pathname)));
+  const file = `${window.SMOKE_TMP}/playback-volume/frame.html`;
+  await hub.fs.write(file, sandbox.match(/<script data-hearth-playback>[\s\S]*?<\/script>/)[0] + '<script>addEventListener("message",()=>parent.postMessage({volumeTest:true,level:window.__hearthVolume?.get()},"*"))</script>');
+  frameUrl = new URL('file://' + file).href;
+}
+frame.src = frameUrl;
 document.body.append(frame); await until(() => child);
 assert(child.level === .75, 'Sandboxed scene iframe inherits gain');
 await hub.volume.set(.42); await wait(100);
