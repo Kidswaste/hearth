@@ -97,7 +97,8 @@ const bootTimes = { wall0: Date.now() - performance.now() };
 const bootMark = (k) => { if (bootTimes[k] == null) bootTimes[k] = Math.round(performance.now()); };
 
 // A second launch just brings the existing window forward.
-if (!app.requestSingleInstanceLock()) {
+const firstInstance = app.requestSingleInstanceLock();
+if (!firstInstance) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
@@ -140,7 +141,9 @@ function settings() {
 // (round 52, gpu52) the graphics path for this start, before 'ready': the fast card on a two-card laptop, the ANGLE path
 // if you picked one (back to the default when a start never reached the card), nothing that caps the frame rate
 const gpu52 = require('./gpu52main');
-try { gpu52.early(app, { settings: settings(), dataDir: store.DATA_DIR }); } catch (err) { console.warn('gpu52: early', err.message); }
+// (round 67) only the Hearth that stays: a second launch (the Desktop shortcut's --restart, a double start) quits at once,
+// and its marked-but-never-settled start made the next one fall back from the graphics path the owner picked
+if (firstInstance) { try { gpu52.early(app, { settings: settings(), dataDir: store.DATA_DIR }); } catch (err) { console.warn('gpu52: early', err.message); } }
 
 function loadAll() {
   try {
