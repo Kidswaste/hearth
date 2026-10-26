@@ -136,6 +136,8 @@ const NotifyCore = (() => {
     }
     if (ev.title && ev.type !== 'reply') n.title = clip(ev.title, 90);
     if (ev.body && ev.type !== 'job') n.body = clip(ev.body, 160);
+    // (round 68, leavesoon68) a leave reminder brings its own buttons: Show on map (a click on the notification) · Snooze 10 min · Dismiss
+    if (ev.type === 'reminder' && Array.isArray(ev.actions) && ev.actions.length) n.actions = ev.actions.slice(0, 3).map((a) => ({ text: clip(a?.text || 'Open Hearth', 30), go: a?.go ?? null }));
     return { ...n, group: group || ev.type || 'hearth', sw: switchOf(ev.type), type: ev.type };
   }
   // a summary of a burst: "Hearth: 4 things" + the first titles

@@ -64,6 +64,7 @@ function run(note, i) {
   if (test.stub) test.log.push({ ran: { group: note.group, action: a?.text || null, go } });
   live.delete(note.group); groups.closed(note.group);
   if (go?.file) { if (test.stub) return go; try { deps.shell.showItemInFolder(go.file); } catch (err) { console.warn('notify: reveal', err.message); } return go; }
+  if (go?.quiet) { deps.send('notify:go', { go, group: note.group, type: note.type }); return go; } // (round 68, leavesoon68) Snooze / Dismiss: done without bringing Hearth up
   if (!bringUp()) return go;
   deps.send('notify:go', { go, group: note.group, type: note.type });
   return go;

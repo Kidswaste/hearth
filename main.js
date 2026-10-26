@@ -740,6 +740,7 @@ function registerAfterWindow() {
   } });
   require('./notifymain').register(ipcMain, { getWin: () => win, app, shell, appshell, Notification: require('electron').Notification, send }); // (round 44, notify) desktop notifications: Electron's own (Hearth's name / icon, Focus / Do Not Disturb), one per chat, a burst summed up, a click opens the chat / card / file
   require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
+  require('./leavesoonmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, powerMonitor: require('electron').powerMonitor }); // (round 68, leavesoon68) ⏰ Remind me to leave: ONE timeout to the next reminder (rings with Hearth in the tray; missed ones aren't rung late)
   require('./showsyncmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 61, showsync61) this week's shows from Shotgun / DICE: polite fetches, nothing while idle
   const outingGuide = require('./outing-guidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, Notification: require('electron').Notification });
   require('./questguidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, onChanged: snapshot => outingGuide.syncGuide(snapshot) });

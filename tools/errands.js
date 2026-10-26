@@ -147,7 +147,7 @@ const Errands = window.Errands = (() => {
       el('label', { class: 'er-field' }, el('span', { text: 'What do you need?' }), what),
       el('div', { class: 'er-field' }, el('span', { text: 'Where' }), shops, spotRow),
       el('label', { class: 'er-field' }, el('span', { text: 'Opening hours' }), hours, usual), now,
-      ...(cur ? [el('div', { class: 'er-map-row' }, el('button', { type: 'button', class: 'er-show', text: 'Show on map', on: { click: () => { dlg.close(); showOnMap(cur.id).catch((x) => toast(calmError(x), { type: 'error' })); } } }))] : []),
+      ...(cur ? [el('div', { class: 'er-map-row' }, el('button', { type: 'button', class: 'er-show', text: 'Show on map', on: { click: () => { dlg.close(); showOnMap(cur.id).catch((x) => toast(calmError(x), { type: 'error' })); } } }), !isDone ? leaveSlot(cur.id) : null)] : []), // (round 68, leavesoon68) ⏰ Remind me to leave (beat its closing time)
       err, acts);
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
@@ -168,6 +168,12 @@ const Errands = window.Errands = (() => {
     (what.value ? (place ? save : shops.querySelector('button') || what) : what).focus();
     return dlg;
   }
+  // (round 68, leavesoon68) the card's "⏰ Remind me to leave": a placeholder filled once the leavesoon group is in
+  function leaveSlot(id) {
+    const ph = el('span', { class: 'er-leave' });
+    Lazy.load('leavesoon').then(() => { const t = LeaveSoon.errandToggle(id); if (ph.isConnected || !ph.parentNode) ph.replaceWith(...(t ? [t] : [])); }).catch(() => ph.remove());
+    return ph;
+  }
   async function add(draft = {}) { await fresh(); return card(draft); }
   async function show(id) { await fresh(); return card({ id }); }
   async function showOnMap(id) {
@@ -187,6 +193,7 @@ const Errands = window.Errands = (() => {
     below: () => { if (picking) hint(); return null; }, // the map re-rendered while picking: the hint goes back on
   };
   try { J()?.addMapLayer(layer); } catch { /* the journal registers layers when it loads */ }
+  window.Lazy?.load('leavesoon').then(() => LeaveSoon.attach()).catch(() => {}); // (round 68, leavesoon68) ⏰ Remind me to leave rides in with the Paris map's code (its toggles, its map layer)
   /** "＋ Errand" in the map's chip row (tools/quest-mapfirst.js overlay) */
   function chip(kit) {
     const b = kit.button('', () => add(), 'qj-hardware qmf-chip er-add');
