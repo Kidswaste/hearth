@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('hub', {
   liveset: { save: call('creative-vst:live-save'), mp3: call('creative-vst:live-mp3') }, // (round 64, liveset64) the Live set's folder (<data>/creative-live/<set>/): prepared clips, run logs · a run as MP3
   bouncelog: { note: call('bouncelog:note'), folder: call('bouncelog:folder'), ours: call('bouncelog:ours') }, // (round 66, bouncelog66) Session log: <data>/creative-sketches/<project>/ (a session's note for a quest proof)
   sketchpads: { saveLoop: call('sketchpads:save-loop'), loops: call('sketchpads:loops'), trashList: call('sketchpads:trash-list') }, // (round 67, sketchpads67) Sessions › ✂ Trim loop: a new loop beside its sketch, the sketch's loops, a loop to the Trash
+  parisPhotos: { put: call('parisphotos:put'), dir: call('parisphotos:dir'), trash: call('parisphotos:trash'), heic: call('parisphotos:heic'), scan: call('parisphotos:scan') }, // (round 69, photos69) My Paris photos (parisphotosmain.js)
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),
   attachmentsDir: call('attachments:dir'),
