@@ -12,13 +12,17 @@ $result = @(foreach ($p in $paths) {
   @{ path = [string]$p; attributes = $a }
 })
 ConvertTo-Json -InputObject $result -Compress`;
+// (sweep67) Windows' own PowerShell by its full path (a PATH without System32\WindowsPowerShell still works), and the
+// script as -EncodedCommand (UTF-16LE base64): no cmd.exe quoting of a multi-line script, whatever the argument holds.
+const PS_EXE = () => require('path').win32.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+const ENCODED = Buffer.from(SCRIPT, 'utf16le').toString('base64');
 async function attributes(paths, { platform = process.platform, execFile = cp.execFile } = {}) {
   const unique = [...new Set(paths)];
   if (!unique.length || platform !== 'win32') return new Map(unique.map(p => [p, 0]));
   return new Promise(resolve => {
     const unknown = () => new Map(unique.map(p => [p, null]));
     try {
-      const child = execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', SCRIPT],
+      const child = execFile(PS_EXE(), ['-NoProfile', '-NonInteractive', '-EncodedCommand', ENCODED],
         { windowsHide: true, timeout: 8000, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' }, (err, out) => {
           if (err) return resolve(unknown());
           try {

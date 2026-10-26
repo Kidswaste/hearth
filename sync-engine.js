@@ -62,7 +62,9 @@ async function hashFile(file, shouldStop) {
 // settings). Serialize each destination and recheck only after its lock is held.
 const renameQueues = new Map();
 async function renameRetry(from, to, check) {
-  const key = process.platform === 'win32' ? path.resolve(to).toLowerCase() : path.resolve(to);
+  // (sweep67) Windows and the Mac both ignore case on their usual disks, and the Mac may hand names decomposed (NFD):
+  // fold both the same way so two spellings of one destination share one queue.
+  const key = process.platform === 'win32' || process.platform === 'darwin' ? nfc(path.resolve(to)).toLowerCase() : path.resolve(to);
   const previous = renameQueues.get(key) || Promise.resolve();
   let release; const next = new Promise(r => { release = r; }); renameQueues.set(key, next);
   await previous;

@@ -5,7 +5,7 @@ const {attributes,pending}=require('../cloud-files');
   for(const flag of [0,0x20,0x420,0x80420])assert(!pending(flag));
   let input='';
   const fake=(exe,args,options,done)=>{
-    assert.equal(exe,'powershell.exe');assert(options.windowsHide);assert(options.timeout>0);
+    assert(/[\\/]System32[\\/]WindowsPowerShell[\\/]v1\.0[\\/]powershell\.exe$/i.test(exe),exe);assert(Buffer.from(args[args.indexOf('-EncodedCommand')+1],'base64').toString('utf16le').includes('GetAttributes'));assert(options.windowsHide);assert(options.timeout>0);
     return {stdin:{on(){},end(text){input=text;setImmediate(()=>done(null,JSON.stringify([{path:'C:/é space/$a`b',attributes:0x400000}])));}}};
   };
   const odd='C:/é space/$a`b';const rows=await attributes([odd,odd],{platform:'win32',execFile:fake});
