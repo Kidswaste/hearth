@@ -173,7 +173,7 @@
   /** The monthly recap: counts, the 20 arrondissements (n per cell), what's new this month, Paris explored. */
   function recap(list, month, { guide = [], stamps: st = [] } = {}) {
     const mine = list.filter((m) => m.month === month), before = list.filter((m) => m.month < month);
-    const counts = { place: 0, show: 0, walk: 0, park: 0, music: 0 }; for (const m of mine) counts[m.kind]++;
+    const counts = { place: 0, show: 0, walk: 0, park: 0 }; for (const m of mine) counts[m.kind] = (counts[m.kind] || 0) + 1; // (round 66) + music, only when there are some
     const arrs = Array.from({ length: 20 }, () => 0); for (const m of mine) for (const a of m.arrs) arrs[a - 1]++;
     const seenArr = new Set(before.flatMap((m) => m.arrs));
     const newArrs = arrs.map((n, i) => (n && !seenArr.has(i + 1) ? i + 1 : 0)).filter(Boolean);

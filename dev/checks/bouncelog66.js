@@ -109,7 +109,7 @@ await QuestHud.refresh(); ok((QuestHud.journal().S.submissions[step.id] || []).l
 await click('.wb-sound-desk button', /^Sessions$/); await until(() => document.querySelectorAll('.bl-panel .bl-row').length === 2, 5000, 'two rows');
 await click('.bl-panel button', /^Remove sketch$/);
 const gone = await until(async () => !(await hub.fs.stat(sk.path).catch(() => null))?.size, 8000, 'the sketch to leave').catch(() => false);
-const after = (await hub.kvGet(K.KV, null)).sessions.find(r => r.sketches.length === 0 && r.logged?.quests?.length);
+const after = await until(async () => (await hub.kvGet(K.KV, null)).sessions.find(r => r.id === first && r.sketches.length === 0 && r.logged?.quests?.length), 8000, 'the row saved').catch(() => null); // the row is saved right after the file moves
 ok(gone && after, 'Remove sketch sends the file to the Trash; the session stays, still logged' + (gone ? '' : ` (said: ${document.querySelector('.cp-feedback')?.textContent || '?'})`));
 await click('.bl-panel button', /^✕$/);
 document.querySelector('.bl-panel')?.remove();
