@@ -113,12 +113,12 @@ const dt = new DataTransfer();
 tile?.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
 const ir = v.input.getBoundingClientRect();
 v.input.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: ir.left + 10, clientY: ir.top + 10 }));
-v.input.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: ir.left + 10, clientY: ir.top + 10, shiftKey: true })); // (round 65) Shift: the vibe (plain: the picture, inspodrop65)
+v.input.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: ir.left + 10, clientY: ir.top + 10 })); // (round 67) plain: the qualities (Shift: the picture, inspodrop65)
 await until(() => v.attachments.length === 1, 4000);
 const att = v.attachments[0];
-step('Shift+drag a reference into the director: a vibe chip, not the file', /^vibe · /.test(att?.name || '') && att?.kind === 'text' && /#[0-9a-f]{6}/i.test(att?.content || '') && !/\.png|board[\\/]media/i.test(att?.content || ''), { name: att?.name, text: (att?.content || '').slice(0, 160) });
+step('drag a reference into the director: a qualities chip, not the file', /^qualities · /.test(att?.name || '') && att?.kind === 'text' && /#[0-9a-f]{6}/i.test(att?.content || '') && !/\.png|board[\\/]media/i.test(att?.content || ''), { name: att?.name, text: (att?.content || '').slice(0, 160) });
 const dragText = dt.getData('text/plain');
-step('the drag also carries the vibe as text (for any other text field)', /#[0-9a-f]{6}/i.test(dragText) && /vibe only/.test(dragText), dragText.slice(0, 80));
+step('the drag also carries the vibe as text (for any other text field)', /#[0-9a-f]{6}/i.test(dragText) && /vibe only/i.test(dragText), dragText.slice(0, 80));
 // switching to another chat with the drawer open: it follows the chat on screen
 activate(claude.id); await wait(500);
 const linkedHere = document.querySelector('.bdd-foot button')?.textContent || '';
@@ -126,7 +126,7 @@ step('switch chats with the drawer open: it shows that chat\'s linked board', Bo
 activate('tool:three'); await wait(600);
 await key('m', { ctrl: true, shift: true }); await wait(300);
 step('Ctrl+Shift+M again closes the drawer', !BoardDrawer.isOpen());
-step('the vibe chip survived the chat switch', v.attachments.length === 1 && /^vibe · /.test(v.attachments[0]?.name || ''));
+step('the qualities chip survived the chat switch', v.attachments.length === 1 && /^qualities · /.test(v.attachments[0]?.name || ''));
 
 // 5. ask for a layer: the fake director reads the vibe and builds with its palette (real MCP calls into the Lab)
 const layers0 = c.layers().length;

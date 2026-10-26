@@ -215,6 +215,35 @@
 .bdd-foot .spacer { flex: 1; }
 .bdd-drop-hint { outline: 2px dashed var(--fh-gold, #e6b450); outline-offset: -4px; }
 #rail .bd-rail-peek { font-size: 15px; }
+/* round 67 (moodqualities67): qualities by default, the like line, distance slider, mix card */
+.bdd-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bdd-cell > .bdd-tile { flex: none; width: 100%; }
+.bdd-tile.on { outline: 2px solid var(--fh-gold, #e6b450); outline-offset: -2px; }
+.bdd-tile.on::after { content: '✓'; position: absolute; left: 4px; top: 4px; background: var(--fh-gold, #e6b450); color: #000; border-radius: 6px; font-size: 11px; padding: 0 5px; }
+.bdd-tile .bdd-acts { position: absolute; right: 4px; top: 4px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; opacity: 0; }
+.bdd-tile:hover .bdd-acts, .bdd-tile:focus-within .bdd-acts { opacity: 1; }
+.bdd-tile .bdd-acts .bdd-send { position: static; opacity: 1; }
+.bdd-tile .bdd-pic { border: 0; border-radius: 6px; background: #000b; color: #fff; font-size: 10px; padding: 1px 6px; cursor: pointer; }
+.bdd-tile .bdd-pic:hover, .bdd-tile .bdd-acts .bdd-send:hover { background: var(--fh-gold, #e6b450); color: #000; }
+.bdd-like { font-size: 10.5px; line-height: 1.25; color: var(--text); cursor: text; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; border-radius: 5px; padding: 1px 3px; }
+.bdd-like.empty { color: var(--muted); opacity: .75; }
+.bdd-like:hover { background: var(--surface); opacity: 1; }
+.bdd-like-in { width: 100%; box-sizing: border-box; font: inherit; font-size: 11px; background: var(--surface); color: var(--text); border: 1px solid var(--fh-gold, #e6b450); border-radius: 5px; padding: 1px 4px; }
+.bdd-dist { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 6px; align-items: center; margin: 0 10px 8px; font-size: 11px; color: var(--muted); }
+.bdd-dist input { width: 100%; min-width: 0; }
+.bdd-dist .bdd-band { grid-column: 1 / -1; text-align: center; font-weight: 600; color: var(--text); }
+.bdd-mix { margin: 0 10px 8px; padding: 8px; border-radius: 10px; background: var(--surface); border: 1px solid var(--fh-gold, #e6b450); font-size: 12px; display: flex; flex-direction: column; gap: 5px; }
+.bdd-mix[hidden] { display: none; }
+.bdd-mix .bd-pal { display: flex; height: 16px; border-radius: 5px; overflow: hidden; }
+.bdd-mix .bd-pal span { flex: var(--s, 1); }
+.bdd-mix-h { font-weight: 600; cursor: grab; }
+.bdd-mix-w { color: var(--muted); font-size: 11px; }
+.bdd-mix-w.warn { color: var(--fh-orange, #e8913a); }
+.bdd-mix-row { display: flex; gap: 6px; align-items: center; }
+.bdd-mix-row .spacer { flex: 1; }
+.bdd-mix-row button { border: 1px solid var(--line); background: none; border-radius: 8px; padding: 3px 8px; cursor: pointer; }
+.bdd-mix-row button.primary { background: var(--fh-gold, #e6b450); color: #000; border-color: transparent; }
+.bd-item > .bd-likecap { position: absolute; left: 0; right: 0; top: calc(100% + 4px); font-size: 12px; line-height: 1.25; color: var(--text); background: var(--sidebar); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; cursor: text; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .bdd { transition: none; } .bd-pending .bd-clip { animation: none; } }
 
 /* pack11: the board's clips on a timeline (board-pack.js) */

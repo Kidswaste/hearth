@@ -163,6 +163,14 @@
         if (!a.code) return { ok: false, error: 'script needs code (an ExtendScript function body that returns a value)' };
         const ok = await Adobe.ask({ agentId, action: `Run a script in ${D.app(app).name}`, target: `${String(a.code).split('\n').length} lines`, risk: 'high', detail: String(a.code).slice(0, 1200), ok: 'Run it' });
         if (!ok) return { ok: false, error: 'The owner said no.' };
+        // (round 67) After Effects works beside Hearth: the script runs as a job and this call returns at once
+        if (app === 'aftereffects' && Adobe.aeJob) {
+          const j = await Adobe.aeJob(a.code, String(a.name || 'agent script').slice(0, 60));
+          if (!j.ok || !j.job) return j.ok ? { ok: true, value: 'sent to After Effects (this AE gives no answer)' } : { ok: false, error: j.error };
+          const quick = await Adobe.waitJob(j.job, 2500); // a short script answers right away
+          if (quick) return quick.ok ? { ok: true, value: { job: j.job, done: true, value: quick.value } } : { ok: false, error: quick.error };
+          return { ok: true, value: { job: j.job, running: true, note: 'Running in After Effects now. Keep working in the meantime; action "job" with this job id gives its answer (wait: true waits up to 60 s).' } };
+        }
         const r = await Adobe.run(app, a.code, { label: 'agent script' });
         return r.ok ? { ok: true, value: r.value } : { ok: false, error: r.error };
       }
@@ -199,6 +207,14 @@
         if (act === 'pdf') return { ok: true, value: await Adobe.idPdf(file) };
         if (act === 'place') return { ok: true, value: await Adobe.idPlace(file) };
         if (act === 'open') return { ok: true, value: await Adobe.openIn('id', file) };
+      }
+      if (app === 'aftereffects' && act === 'job') {
+        if (!a.job) return { ok: false, error: 'job needs the job id that the script action returned' };
+        let r = Adobe.jobResult?.(String(a.job));
+        if (!r) return { ok: false, error: `No After Effects job ${a.job} in this session.` };
+        if (r.running && a.wait) { await Adobe.waitJob(String(a.job), 60000); r = Adobe.jobResult(String(a.job)); }
+        if (r.running) return { ok: true, value: { job: a.job, running: true, note: 'Still working in After Effects.' } };
+        return r.ok ? { ok: true, value: { job: a.job, done: true, value: r.value, seconds: Math.round((r.ms || 0) / 1000) } } : { ok: false, error: r.error };
       }
       if (app === 'aftereffects' && (act === 'import' || act === 'open')) { await Adobe.aeImport(file || await lastVideo()); return { ok: true, value: 'sent to After Effects' }; }
       return { ok: false, error: `${D.app(app)?.name || app}: unknown action "${act}" (see the tool description)` };

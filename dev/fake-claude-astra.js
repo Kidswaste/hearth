@@ -34,7 +34,7 @@ process.stdin.on('end', async () => {
   if (/Improve this|improve it further/i.test(prompt)) reply = 'Improved version by Claude.\n\nChanges: clearer structure.';
   if (/Critique this|Review it again/i.test(prompt)) reply = '1. Too long.\n2. Missing a caveat.';
   if (/serves the user better/.test(prompt)) reply = '2\nIt is more concrete.';
-  if (/single best|Merge/i.test(prompt)) reply = 'Merged answer (Claude): the best of both.';
+  if (/single best|Merge/i.test(prompt)) reply = /Their reviews of each other/.test(prompt) ? 'Merged answer (Claude) after reading their reviews.' : 'Merged answer (Claude): the best of both.'; // (round 67) a council chair that got the critiques
   if (/Revise your answer/i.test(prompt)) reply = 'Revised answer by Claude, shorter and with the caveat.';
   for (const piece of reply.match(/.{1,24}/gs)) {
     out({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: piece } } });

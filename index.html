@@ -183,6 +183,7 @@
 
         <label class="check" data-engine="claude"><input name="gameTools" type="checkbox"> Live Forgeheart debug game: show the game beside the chat and let this agent control it</label>
         <label class="check" data-engine="claude"><input name="chatTools" type="checkbox"> Talks back: can ask you questions (cards with choices), get a second opinion from Astra, and suggest next steps as buttons</label>
+        <label class="check" data-lab-tools><input name="threeTools" type="checkbox"> Can see and change the Lab scene (screenshots, layers, code of the scene open in the three.js Lab)</label>
         <label class="check" data-engine="claude"><input name="showThinking" type="checkbox"> Show its thinking while it works</label>
         <label class="check" data-engine="claude"><input name="selfReview" type="checkbox"> Checks its own work before answering (uses a few more tokens)</label>
         <label class="check"><input name="autoCompact" type="checkbox"> Compacts long tasks on its own (summarizes the context once a message sends over ~110k tokens)</label>
@@ -269,6 +270,7 @@
   <script defer src="lazy-at.js#chatcmds"></script>
   <script defer src="appui.js"></script>
   <script defer src="meter.js"></script>
+  <script defer src="collab-eyes.js"></script>
   <script defer src="astra.js"></script>
   <script defer src="router.js"></script>
   <script defer src="routerlearn.js"></script>

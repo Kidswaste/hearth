@@ -1,0 +1,43 @@
+/* ⚑ Finish line (tools/three-finish.js): the chip right after the Lab's scene picker, and a small card over the top
+   right of the preview, built on lookmatch's card pieces (.lm-head / .lm-btn / .lm-acts). Plain and still: no blur, no
+   animation over the moving preview. */
+.fl-chip {
+  flex: none; padding: 1px 8px; border: 1px dashed var(--line); border-radius: 999px; background: transparent; color: var(--muted, #9a948c);
+  font: inherit; font-size: 12px; line-height: 1.7; cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.fl-chip:hover, .fl-chip[aria-expanded="true"] { border-color: var(--fh-gold, #ffd75e); color: var(--text, #eae0d5); }
+.fl-chip.fl-set { border-style: solid; color: var(--text, #eae0d5); }
+.fl-chip.fl-done { border-color: var(--fh-gold, #ffd75e); color: var(--fh-gold, #ffd75e); }
+
+.fl-card {
+  position: absolute; top: 46px; right: 8px; z-index: 7; width: 300px; max-width: calc(100% - 16px); max-height: calc(100% - 56px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; scrollbar-width: thin;
+  background: color-mix(in srgb, var(--panel, #15181b) 96%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); contain: layout paint;
+}
+.fl-card .lm-head .lm-x { margin-left: auto; }
+.fl-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #9a948c); }
+.fl-label { color: var(--muted, #9a948c); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.fl-sizes { display: flex; align-items: center; gap: 4px; }
+.fl-sizes .fl-label { margin-right: 4px; }
+.fl-size.on { border-color: var(--fh-gold, #ffd75e); color: var(--fh-gold, #ffd75e); font-weight: 700; }
+.fl-hint, .fl-note { margin: 0; color: var(--muted, #9a948c); font-size: 11px; line-height: 1.4; }
+.fl-warn { color: #ffb14a; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.fl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.fl-item { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+.fl-item input[type="checkbox"] { flex: none; margin: 0; accent-color: var(--fh-gold, #ffd75e); }
+.fl-text { flex: 1; min-width: 0; cursor: text; border-radius: 4px; padding: 0 2px; }
+.fl-text:hover { background: color-mix(in srgb, var(--text, #eae0d5) 8%, transparent); }
+.fl-item.done .fl-text { color: var(--muted, #9a948c); text-decoration: line-through; }
+.fl-rm { opacity: 0; }
+.fl-item:hover .fl-rm, .fl-rm:focus-visible { opacity: 1; }
+.fl-edit { flex: 1; min-width: 0; font: inherit; padding: 1px 4px; border: 1px solid var(--fh-gold, #ffd75e); border-radius: 4px; background: var(--surface, #0f1113); color: inherit; }
+.fl-plus { width: 13px; text-align: center; color: var(--muted, #9a948c); }
+.fl-foot { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.fl-verdict { font-size: 14px; font-weight: 700; color: var(--fh-gold, #ffd75e); }
+.fl-polish { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); padding-top: 6px; }
+.fl-polish .lm-acts { align-items: center; }
+.fl-free { color: var(--muted, #9a948c); font-size: 11px; }
+.fl-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.fl-steps li b { display: block; }
+.fl-steps li span { color: var(--muted, #9a948c); font-size: 11px; line-height: 1.4; }

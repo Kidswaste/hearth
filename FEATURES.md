@@ -1264,3 +1264,25 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Live edits into the open ▶ Play window (yours or the director's): a layer's code swapped in place, layers run again in the same page for a new / moved layer, the page built again only for new pictures / song; "↻ Updated" over the game. A layer's `saveState()` / `restoreState(s)` keep the game's state through edits (and a broken edit); `checkpoint(name)` for Play from here.
 - ✓ Ctrl/⌘+P: Lab → game → Lab (the game kept, hidden, paused, muted); Ctrl/⌘+Shift+P / `/play-here`: Play from here; Side by side on a second screen (▶ Play's right-click, `/play-side`); a runtime error shows one line over the game with "Fix with the director" (a draft in the docked director chat, never sent).
 - ○ `sh dev/run-checks.sh playloop` (dev/checks/playloop.js). Shapes: tools/game-api.md (PlayLoop).
+## ✦ Direction: steer a scene without describing it (round 67, direction67: docs/upgrades/direction67.md)
+- ✓ The ✦ Direction chip (Lab toolbar, after the scene picker) opens one card: **Try 4 ways** (a crew of 4, each a really different take: colour and light · motion · form · texture; cost first), then **Keep #a with its light / colours / motion / shapes / camera / texture from #b → Ask the director**.
+- ✓ **Mark it up**: circle parts of the frozen picture as More of this (green) or Wrong (red), with words; the marked picture goes to the scene's director chat.
+- ✓ **Plain sliders**: Calmer ↔ Busier, Colder ↔ Warmer, Softer ↔ Harsher over the scene's named sliders and palette; letting go is one undo step and a version. Back to the middle.
+- ✓ **Vision card**: up to 3 frames, a few words and one "should feel like" sentence per scene; each new version gets a drift score, shown on the chip (orange when drifting). Send the vision to the director.
+- ✓ **Branches**: going back to a version in the time machine and working on starts a branch in the same scene (⑂ in the strip); the card lists each branch with Go there.
+- ○ `node dev/direction-test.js`, `dev/checks/direction67.js` passed in a test copy. Not tried with a real director reply or a real crew run.
+## 🖼 Moodboard qualities, not copies (round 67, moodqualities67: docs/upgrades/moodqualities67.md)
+- ✓ A plain drag of a tile sends its measured qualities (palette with shares, light, contrast, warmth, texture, busy / clean, composition, shapes, motion for clips), the tile's **What I like about this** line first; **Picture** sends the actual image.
+- ✓ **Close to it … Only its spirit** slider (remembered per board); click 2–3 tiles → **Mix** card → Send the mix.
+- ○ `node dev/moodqualities-test.js`, `dev/checks/moodqualities67.js` passed in a test copy. How much less a real model copies isn't measured.
+## 🤝 Astra and Swarm repair (round 67, astrafix67: docs/upgrades/astrafix67.md)
+- ✓ Collaborations and quick asks from a scene's chat give every seat a fresh frame of that scene and its layer list (👁 saw the scene); council's chair reads the members' reviews; second opinions picture the chat's own scene.
+- ✓ Blocked Hearth tools are said under Astra's reply (with Run this director on Claude); agent settings: Can see and change the Lab scene; Swarm in the Lab needs no partner; per-turn Codex helpers close at turn end.
+- ✓ After Effects scripts run as jobs beside Hearth: progress chip, done / failed note, errors as text (no AE dialog); agents get a job id and `action: "job"`.
+- ○ `node dev/round67-test.js`, `node dev/codex-server-test.js`, `node dev/astra-smoke.js collab`. Not tried with a real Codex refusal or a real After Effects job.
+## 🏷 Credits and "How it was made" (round 67, credits67: docs/upgrades/credits67.md)
+- ✓ Lab toolbar **Credits**: who did what on the scene (visual code, sound, direction; "not recorded" where Hearth didn't see it), Copy; **How it was made** makes a 9:16 or 16:9 reel of the versions, saved locally.
+- ○ `node dev/credits-test.js`, `dev/checks/credits.js` passed in a test copy. The reel hasn't been rendered from a real scene.
+## ⚑ Finish lines (round 67, finishlines67: docs/upgrades/finishlines67.md)
+- ✓ **⚑ Finish line** chip: a size (10 s / 30 s / Full), a "Done when" list to tick, Record it when done; **✦ Polish this** → exactly three small steps as a side quest (Track it / Track + guide me), 0 tokens.
+- ○ `node dev/finishline-test.js`, `dev/checks/finishline.js` passed in a test copy.

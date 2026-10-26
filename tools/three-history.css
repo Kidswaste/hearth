@@ -33,6 +33,7 @@
 .tm-who { font-weight: bold; }
 .tm-who.by-claude { color: #d97757; } .tm-who.by-codex { color: #10a37f; } .tm-who.by-crew { color: var(--fh-ai, #b07cff); } .tm-who.by-you { color: var(--fh-gold, #ffd75e); }
 .tm-flag { position: absolute; left: 2px; top: 1px; z-index: 1; color: var(--fh-ai, #b07cff); font-size: 11px; text-shadow: 0 0 3px #000; }
+.tm-fork { position: absolute; right: 3px; top: 1px; z-index: 1; color: var(--fh-gold, #ffc233); font-size: 12px; font-weight: 700; text-shadow: 0 0 3px #000; } /* (round 67) a branch starts here */
 .tm-diff { max-height: 160px; overflow: auto; padding-top: 4px; border-top: 1px solid var(--line); }
 .tm-diff[hidden] { display: none; }
 .tm-dsum { font-weight: bold; margin-bottom: 3px; }

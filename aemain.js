@@ -136,12 +136,12 @@ function macError(stderr) {
 
 // Runs a script in the running AE (or starts AE first): AfterFX.exe -r on Windows, AppleScript DoScriptFile on a Mac.
 // Resolves when AE accepted the script (or after a few seconds while AE is still starting).
-function runScript(code, label = 'script', override) {
+function runScript(code, label = 'script', override, { body = null } = {}) {
   const st = status(override);
   if (!st.found) throw new Error(st.reason);
   const file = path.join(AE_DIR, `${String(label).replace(/[^\w-]+/g, '_').slice(0, 60)}-${Date.now()}.jsx`);
   // Wrap in an undo group so one Ctrl+Z (⌘Z) in AE reverts the whole script.
-  fs.writeFileSync(file, `app.beginUndoGroup(${JSON.stringify(`Hearth: ${label}`)});\ntry {\n${code}\n} catch (e) { alert("Hearth script error: " + e.toString() + (e.line ? " (line " + e.line + ")" : "")); }\napp.endUndoGroup();\n`);
+  fs.writeFileSync(file, body || `app.beginUndoGroup(${JSON.stringify(`Hearth: ${label}`)});\ntry {\n${code}\n} catch (e) { alert("Hearth script error: " + e.toString() + (e.line ? " (line " + e.line + ")" : "")); }\napp.endUndoGroup();\n`);
   // Keep only the 30 newest generated scripts.
   try {
     const old = fs.readdirSync(AE_DIR).filter((f) => f.endsWith('.jsx')).map((f) => path.join(AE_DIR, f))
@@ -167,6 +167,50 @@ function runScript(code, label = 'script', override) {
     child.on('error', (err) => { if (!done) { done = true; resolve({ file, ok: false, error: err.message }); } });
   });
 }
+
+// ---------- (round 67) jobs: a script that answers, while Hearth goes on ----------
+// runScript() only sends: Hearth never learned how a script ended, and a failing one put an alert() in AE that held
+// AE until someone clicked it, so the owner and the agents waited on AE instead of working beside it. A job is the
+// same script wrapped by adobe-data's wrap() (errors come back as text, no dialog), in one undo group; it resolves at
+// once with its id, and its answer (from the result file it writes) arrives later as an 'ae:job-done' event. The check
+// runs only while a job is out, backing off to every 3 s, at most 30 minutes.
+const aeJobs = new Map(); // id -> { id, label, started }
+const JOB_LIMIT = 30 * 60000;
+function readJobResult(file) {
+  return fs.promises.readFile(file, 'utf8').then((text) => {
+    const s = String(text || '').trim();
+    if (!s.endsWith('}')) return null; // still being written
+    try { const r = JSON.parse(s); return r && typeof r === 'object' && 'ok' in r ? r : null; } catch { return null; }
+  }, () => null);
+}
+async function runJob(code, label = 'script', override, emit) {
+  const D = require('./adobe-data');
+  const id = `ae${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+  const result = path.join(AE_DIR, `${id}.json`);
+  const body = `app.beginUndoGroup(${JSON.stringify(`Hearth: ${label}`)});\n${D.wrap(String(code || ''), result)}app.endUndoGroup();\n`;
+  const job = { id, label: String(label).slice(0, 80), started: Date.now() };
+  let sent;
+  try { sent = await runScript(null, label, override, { body }); } catch (err) { return { ok: false, error: err.message }; }
+  if (sent.ok === false) return { ok: false, error: sent.error };
+  aeJobs.set(id, job);
+  let wait = 500;
+  const tick = async () => {
+    if (!aeJobs.has(id)) return;
+    const r = await readJobResult(result);
+    const ms = Date.now() - job.started;
+    if (r || ms > JOB_LIMIT) {
+      aeJobs.delete(id);
+      if (r) fs.promises.rm(result, { force: true }).catch(() => {});
+      emit({ id, label: job.label, ms, ...(r || { ok: false, error: 'After Effects didn\'t answer in 30 minutes (a dialog may be open in it, or it was closed).' }) });
+      return;
+    }
+    wait = Math.min(3000, Math.round(wait * 1.5));
+    setTimeout(tick, wait);
+  };
+  setTimeout(tick, wait);
+  return { ok: true, job: id, label: job.label };
+}
+const jobList = () => [...aeJobs.values()].map((j) => ({ ...j, ms: Date.now() - j.started }));
 
 // ---------- ffmpeg / ffprobe (optional) ----------
 // GUI apps on a Mac don't get the shell's PATH, so Homebrew's folders are checked by hand.
@@ -254,6 +298,8 @@ function registerIpc(ipcMain, getWin, getOverride) {
   ipcMain.handle('ae:status', () => status(getOverride()));
   ipcMain.handle('ae:running', () => running());
   ipcMain.handle('ae:run', (_e, code, label) => runScript(code, label, getOverride()));
+  ipcMain.handle('ae:job', (_e, code, label) => runJob(code, label, getOverride(), (ev) => { try { const w = getWin(); if (w && !w.isDestroyed()) w.webContents.send('ae:job-done', ev); } catch { /* window gone */ } }));
+  ipcMain.handle('ae:jobs', () => jobList());
   ipcMain.handle('video:tools', (_e, overrides) => ffStatus(overrides));
   ipcMain.handle('video:probe', (_e, file, overrides) => probe(file, overrides));
   ipcMain.handle('video:transcode', (_e, job, overrides) => transcode(job, sendJob, overrides));
@@ -267,4 +313,4 @@ function registerIpc(ipcMain, getWin, getOverride) {
 }
 
 function forgetTools() { for (const k of Object.keys(toolCache)) delete toolCache[k]; }
-module.exports = { forgetTools, registerIpc, status, running, ffStatus, probe, transcode, _jobs: jobs, _test: { locate, macError, findTool } }; // transcode / _jobs: the render queue (rendersmain.js)
+module.exports = { forgetTools, registerIpc, status, running, ffStatus, probe, transcode, runJob, _jobs: jobs, _test: { locate, macError, findTool, readJobResult } }; // transcode / _jobs: the render queue (rendersmain.js)

@@ -232,6 +232,9 @@ const Manager = (() => {
     f.autoMemory.checked = agent.autoMemory !== false;
     f.workspace.value = agent.workspace || '';
     f.gameTools.checked = Boolean(agent.gameTools);
+    // (round 67) Lab tools for any chat agent; a docked director always has them (its box is hidden)
+    f.threeTools.checked = Boolean(agent.threeTools);
+    { const row = f.threeTools.closest('label'); if (row) row.hidden = Boolean(agent.dock); }
     f.chatTools.checked = agent.engine === 'codex' ? agent.chatTools === true : agent.chatTools !== false;
     f.showThinking.checked = agent.showThinking !== false;
     f.selfReview.checked = agent.selfReview ?? Boolean(agent.dock);
@@ -289,6 +292,7 @@ const Manager = (() => {
         gameTools: f.engine.value === 'claude' && f.gameTools.checked ? true : undefined,
         companion: f.engine.value === 'claude' && f.gameTools.checked ? 'forge-game' : undefined,
         autoMemory: f.autoMemory.checked ? undefined : false,
+        threeTools: existing?.dock ? existing.threeTools : f.threeTools.checked ? true : undefined,
         // talk-back tools: on unless switched off for Claude, off unless switched on for Astra (tokens)
         chatTools: f.engine.value === 'claude' ? (f.chatTools.checked ? undefined : false) : (f.chatTools.checked ? true : undefined),
         showThinking: f.showThinking.checked ? undefined : false,
