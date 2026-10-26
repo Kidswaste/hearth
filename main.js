@@ -162,6 +162,8 @@ function isAuthUrl(url) {
 
 function openExternal(url) {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  // (round 67, invite67) 👋 Bring someone › Open in Messages (Mac only): opens Messages with the text filled in, never sends
+  else if (process.platform === 'darwin' && /^sms:&body=/i.test(url) && url.length <= 8000) shell.openExternal(url);
 }
 
 // a reply can still be streaming when the window is closing or reloading: never send to a window that's gone (that threw

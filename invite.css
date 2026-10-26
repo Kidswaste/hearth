@@ -1,0 +1,32 @@
+/* (round 67, invite67) 👋 Bring someone: one small card above whatever opened it (a show card, the weekend plan).
+   Calm: no loops, no backdrop-filter; the theme's own colours. */
+.iv-dialog { width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; padding: 12px 14px; border: 1px solid var(--line, #333); border-radius: 12px;
+  background: var(--surface, #1c1a18); color: var(--text, #eee); font: 13px/1.4 var(--font, system-ui, sans-serif); box-shadow: 0 18px 48px rgba(0, 0, 0, .45); }
+.iv-dialog::backdrop { background: rgba(0, 0, 0, .45); }
+.iv-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.iv-title { display: flex; gap: 8px; align-items: flex-start; flex: 1; min-width: 0; }
+.iv-title > div { display: flex; flex-direction: column; min-width: 0; }
+.iv-title strong { font-size: 14px; }
+.iv-pi { font-size: 18px; line-height: 1.2; }
+.iv-sub { color: var(--muted, #999); font-size: 12px; overflow-wrap: anywhere; }
+.iv-x { border: 0; background: none; color: var(--muted, #999); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.iv-x:hover { background: var(--hover, rgba(255, 255, 255, .08)); color: var(--text, #eee); }
+.iv-seg, .iv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.iv-k { font: 600 10px/1.3 var(--mono, ui-monospace, monospace); text-transform: uppercase; letter-spacing: .04em; color: var(--ui-gold, #d9b777); min-width: 64px; }
+.iv-pill, .iv-btn { border: 1px solid var(--line, #444); background: transparent; color: var(--text, #eee); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.iv-btn { border-radius: 8px; }
+.iv-pill:hover, .iv-btn:hover:not(:disabled) { background: var(--hover, rgba(255, 255, 255, .08)); }
+.iv-pill.on { border-color: color-mix(in srgb, var(--ui-gold, #d9b777) 70%, transparent); color: var(--ui-gold, #d9b777); background: color-mix(in srgb, var(--ui-gold, #d9b777) 12%, transparent); }
+.iv-btn:disabled { opacity: .55; cursor: default; }
+.iv-primary { border-color: color-mix(in srgb, var(--ui-gold, #d9b777) 70%, transparent); background: color-mix(in srgb, var(--ui-gold, #d9b777) 18%, transparent); font-weight: 600; }
+.iv-text { display: block; width: 100%; box-sizing: border-box; margin: 8px 0 4px; min-height: 110px; resize: vertical; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line, #444); background: color-mix(in srgb, var(--surface, #1c1a18) 80%, #000); color: var(--text, #eee); font: 13px/1.45 var(--font, system-ui, sans-serif); }
+.iv-text:focus-visible { outline: 2px solid color-mix(in srgb, var(--ui-gold, #d9b777) 60%, transparent); outline-offset: 1px; }
+.iv-note { margin: 4px 0; color: var(--muted, #999); font-size: 12px; }
+.iv-sent { padding-top: 6px; border-top: 1px solid var(--line, #333); }
+.iv-sentbtn { font-weight: 600; }
+.iv-quest { max-width: 100%; font: inherit; font-size: 12px; background: var(--surface, #1c1a18); color: var(--text, #eee); border: 1px solid var(--line, #444); border-radius: 6px; padding: 2px 4px; }
+.iv-hint { color: var(--muted, #999); font-size: 12px; }
+.iv-done { color: var(--ui-gold, #d9b777); }
+.iv-status { margin: 4px 0 0; min-height: 1.2em; font-size: 12px; color: var(--muted, #999); }
+.iv-status.bad { color: var(--danger, #ff8a7a); }
