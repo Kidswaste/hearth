@@ -45,21 +45,27 @@ function watchIpc(ipcMain) {
   if (!ipcMain || ipcMain.__jankTimed) return;
   ipcMain.__jankTimed = true;
   const { performance } = require('perf_hooks');
-  const timed = (ch, fn) => {
+  // (round 68, bugbutton68) a handler that throws (or, for ipcMain.handle, rejects) is handed to 🪲 Something broke
+  // (bugmain.js, required only then); Electron still answers the window with the error, as before
+  const failed = (ch, err) => { try { require('./bugmain').ipcFailed(ch, err); } catch { /* tests without it */ } };
+  const timed = (ch, fn, invoke) => {
     if (typeof fn !== 'function') return fn;
     const w = function timedIpc(...a) {
       const t0 = performance.now();
-      try { return fn.apply(this, a); } finally {
+      let r;
+      try { r = fn.apply(this, a); } catch (err) { failed(ch, err); throw err; } finally {
         const d = performance.now() - t0;
         if (d >= SLOW_IPC) keepR(R.slow, { t: Date.now() - Math.round(d), ms: Math.round(d), what: String(ch).slice(0, 80) });
       }
+      if (invoke && r && typeof r.then === 'function') r.then(null, (err) => failed(ch, err));
+      return r;
     };
     wrapped.set(fn, w);
     return w;
   };
   if (typeof ipcMain.handle !== 'function' || typeof ipcMain.on !== 'function') return;
   const handle = ipcMain.handle.bind(ipcMain); const on = ipcMain.on.bind(ipcMain);
-  ipcMain.handle = (ch, fn) => handle(ch, timed(ch, fn));
+  ipcMain.handle = (ch, fn) => handle(ch, timed(ch, fn, true));
   ipcMain.on = (ch, fn) => on(ch, timed(ch, fn));
   ipcMain.addListener = ipcMain.on;
   if (typeof ipcMain.removeListener === 'function') {

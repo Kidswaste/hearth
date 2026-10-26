@@ -68,6 +68,7 @@ const Icons = (() => {
     // present: a screen with a play mark
     present: S('<rect x="3.5" y="4.5" width="17" height="12" rx="1.8"/><path d="M10.5 8.3v4.4l3.8-2.2z" fill="currentColor" stroke-width="1"/><path d="M9 20h6M12 16.5V20"/>'),
     // timecode / frame-exact: a stopwatch
+    bug: S('<path d="M9 7.5a3 3 0 0 1 6 0M8 10h8v4.5a4 4 0 0 1-8 0zM12 10v8.5M4.5 12.5H8M16 12.5h3.5M5.5 18l2.6-1.5M18.5 18l-2.6-1.5M6 7l2 2.5M18 7l-2 2.5"/>'), // (round 68) 🪲 Something broke
     clock: S('<circle cx="12" cy="13.5" r="7"/><path d="M12 13.5V9.5M10 3.5h4M18 7.5l1.3-1.3"/>'),
     // settings of a feature: sliders
     sliders: S('<path d="M5 7h9M18 7h1M5 17h3M12 17h7M5 12h5M14 12h5"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/><circle cx="12" cy="12" r="2" opacity=".7"/>'),

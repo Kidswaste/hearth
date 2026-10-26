@@ -25,7 +25,11 @@ class Connection {
     this.child.stderr.on('data', (chunk) => { this.stderr = ((this.stderr || '') + chunk).slice(-4000); });
     this.child.stdin.on('error', (err) => this.close(err));
     this.child.on('error', (err) => this.close(err));
-    this.child.on('close', (code) => this.close(new Error(`Codex connection closed (${code ?? 'signal'}). ${this.stderr || ''}`)));
+    this.child.on('close', (code, signal) => {
+      // (round 68, bugbutton68 — Claude's addition) closed without Hearth closing it first: 🪲 Something broke lists it
+      if (!this.closed) { try { require('./bugmain').gone('Astra (its app-server)', { code, signal }); } catch { /* outside Hearth's main process */ } }
+      this.close(new Error(`Codex connection closed (${code ?? 'signal'}). ${this.stderr || ''}`));
+    });
     this.ready = this.request('initialize', { clientInfo: { name: 'hearth', title: 'Hearth', version: '0.1.0' }, capabilities: { experimentalApi: true } })
       .then(() => { this.write({ method: 'initialized' }); return this.request('config/read', { includeLayers: false }); })
       .then((r) => { this.inheritedServers = Object.keys(r.config?.mcp_servers || {}); });
