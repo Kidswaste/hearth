@@ -73,7 +73,9 @@ function embedOf(e) {
 // 'record-status' / 'record-cancel', 'record-take' writes the WAV in the session folder and hands its bytes back here.
 const PARK_ACTIONS = ['record', 'record-status', 'record-take', 'record-cancel'];
 // (round 66, bouncelog66) "Save a sketch": the last 30 s the desk played ('sketch-save', the path made here) · 'sketch-status'
-const SKETCH_ACTIONS = ['sketch-status', 'sketch-save', 'sketch-peek']; // (round 68, refab68) + 'sketch-peek': the same last 30 s to a scratch file, for 🎧 Reference to measure
+const SKETCH_ACTIONS = ['sketch-status', 'sketch-save', 'sketch-peek'];
+// (round 69, midilearn69) 🎹 Map my controller (creative-vst-midimap.py): the mappings of the open instrument, learn the next CC
+const MIDIMAP_ACTIONS = ['midimap-status', 'midimap-learn', 'midimap-set']; // (round 68, refab68) + 'sketch-peek': the same last 30 s to a scratch file, for 🎧 Reference to measure
 function jobOf(r, name) {
   if (r.keys !== undefined && (!Array.isArray(r.keys) || r.keys.length > 512 || r.keys.some(k => typeof k !== 'string'))) throw Error('Ask for up to 512 parameter keys.');
   if (r.sequence !== undefined && (!Array.isArray(r.sequence) || r.sequence.length > 256)) throw Error('A phrase has up to 256 notes.');
@@ -83,7 +85,7 @@ function jobOf(r, name) {
     exclusive: r.exclusive === true || undefined, midiIn: r.midiIn ?? undefined, keys: r.keys, sequence: r.sequence, loop: r.loop, live: r.live === true || undefined,
     bars: r.bars, beats: r.beats, bpm: r.bpm, wait: r.wait === 'note' ? 'note' : undefined, // (round 62, parkjam62) the loop recorder's fields
     embed: embedOf(r.embed), stateOnly: r.stateOnly === true || undefined, limit: Number.isInteger(r.limit) && r.limit > 0 && r.limit <= 5000 ? r.limit : undefined, // (round 64, vstembed64) the editor's placement (no parent from the page) · a state-only snapshot
-    ...liveFields(r) }; // (round 64, liveset64)
+    ...liveFields(r), ...require('./tools/midilearn-core.js').fields(r) }; // (round 64, liveset64) · (round 69, midilearn69) maps / pickup / learn
 }
 function liveFields(r) { // (round 64, liveset64) the Live set's fields, checked here and again in the host
   const str = (v, n) => v === undefined || (typeof v === 'string' && v.length <= n);
@@ -195,7 +197,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       } finally { setupBusy = false; }
     }),
     request: request => safe(async () => {
-      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS, ...PARK_ACTIONS, ...LIVESET_ACTIONS, ...EMBED_ACTIONS, ...SKETCH_ACTIONS];
+      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS, ...PARK_ACTIONS, ...LIVESET_ACTIONS, ...EMBED_ACTIONS, ...SKETCH_ACTIONS, ...MIDIMAP_ACTIONS]; // (round 69, midilearn69)
       if (!request || !actions.includes(request.action)) throw Error('Unknown instrument action.');
       if (!['devices'].includes(request.action) && (!known.has(request.plugin) || !allowedName(request.plugin))) throw Error('Scan and select Serum 2 or Vital first.');
       const name = request.plugin && allowedName(request.plugin);
@@ -294,7 +296,7 @@ function pool(options) {
       if (r?.plugin && !hosts.has(r.plugin) && !anyAlive().knows(r.plugin)) return { ok: false, error: 'Scan and select Serum 2 or Vital first.' };
       // (round 62, parkjam62) 'solo': Park mode keeps one instrument loaded (the others' hosts are stopped, battery)
       if (r?.action === 'solo') { let n = 0; for (const [p, h] of [...hosts]) if (p !== r.plugin) { h.stop(); hosts.delete(p); n++; } return { ok: true, stopped: n }; }
-      const h = hostFor(r?.plugin, !['devices', 'live-status', 'live-stop', 'panic', 'record-status', 'record-cancel', 'set-status', 'set-close', 'set-panic', 'run-stop', ...EMBED_ACTIONS].includes(r?.action)) || (r?.action === 'devices' ? anyAlive() : null); // (round 64) + the editor / controls actions: only an open instrument's host
+      const h = hostFor(r?.plugin, !['devices', 'live-status', 'live-stop', 'panic', 'record-status', 'record-cancel', 'set-status', 'set-close', 'set-panic', 'run-stop', ...EMBED_ACTIONS, ...MIDIMAP_ACTIONS].includes(r?.action)) || (r?.action === 'devices' ? anyAlive() : null); // (round 64) + the editor / controls actions: only an open instrument's host
       if (!h) return { ok: true, playing: false }; // status / stop / panic of an instrument that isn't open: nothing plays
       if (r.action === 'live-start' || (r.action === 'open' && r.live === true)) { last = r.plugin; await quietOthers(r.plugin); }
       return h.request(playback(r));

@@ -32,8 +32,13 @@ class Parameter:
         self.raw_value = value
 
 
+_INSTANCES = []  # (round 69, midilearn69) every instrument made: the fake controller's {"knob": …} lines turn their controls
+
+
 class FakeInstrument:
     def __init__(self, name):
+        _INSTANCES.append(self)
+        del _INSTANCES[:-8]
         object.__setattr__(self, 'name', name)
         object.__setattr__(self, 'manufacturer_name', 'Hearth test')
         object.__setattr__(self, 'is_instrument', True)

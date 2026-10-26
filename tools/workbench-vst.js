@@ -200,6 +200,7 @@ var WorkbenchVST = (() => {
         select('MIDI in', settings.midiIn, midiChoices, v => { settings.midiIn = v; rememberLive(); call('midi-in', { midiIn: v }).catch(err => say(err.message)); }),
         select('Phrase', '', [['', 'Phrase · off'], ...Object.entries(L.PHRASES).map(([k, x]) => [k, x.label])], v => playPhrase(v || null).catch(err => say(err.message))));
       if (typeof AudioDoctorDesk !== 'undefined') setup.append(AudioDoctorDesk.button(true)); // (round 64, audiodoctor64) next to Audio output · Buffer
+      { const ml = btn('🎹 Map my controller', () => Lazy.load('midilearn').then(() => MidiLearn.open(h)).then(say)); ml.classList.add('ml-open'); ml.title = 'Learn: turn a knob or fader on your controller, then pick the control it moves (saved for this instrument)'; setup.append(ml); } // (round 69, midilearn69) next to MIDI in; the panel loads on the first click
       if (devices.asioNote) transport.append(note(devices.asioNote));
       else if (devices.asioDll && !devices.asio && picked.hasUA) transport.append(note('No ASIO driver answered: install / start UA Connect or UAD Console, then Reset host. WASAPI exclusive plays meanwhile.'));
       const startButton = btn(playing ? 'Live audio on' : 'Start live audio', async () => { await startLive(); rememberLive(); startButton.textContent = 'Live audio on'; });
