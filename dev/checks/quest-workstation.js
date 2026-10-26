@@ -2,16 +2,16 @@
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async fn => { for (let i = 0; i < 160; i++) { if (await fn()) return; await wait(60); } throw Error('Workstation UI timed out'); };
 let checks = 0; const check = (ok, why) => { if (!ok) throw Error(why); checks++; };
-const root = () => document.querySelector('.qj'), scope = () => root().querySelector('dialog[open]') || root();
+const root = () => document.querySelector('.qj'), scope = () => [...root().querySelectorAll('dialog[open]')].pop() || root(); // (lifechecks70) the newest dialog: Personalize opens over Life › Settings
 const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === name || b.getAttribute('aria-label') === name); check(b, 'Button: ' + name); b.click(); await until(() => !b.disabled); await wait(80); };
 const field = (name, value) => { const n = scope().querySelector(`[aria-label="${name}"]`); check(n, 'Field: ' + name); n.value = value; n.dispatchEvent(new Event('input', { bubbles: true })); n.dispatchEvent(new Event('change', { bubbles: true })); };
 document.querySelector('#agent-buttons [data-space="life"]').click(); await until(() => root()?.querySelector('.qj-console-name')?.textContent);
 const s = () => QuestJournal.snapshot(), C = QuestCore;
 document.querySelectorAll('.toast').forEach(n => n.remove());
-check(getComputedStyle(root()).getPropertyValue('--qj-bg').trim() === '#101113' && root().querySelectorAll('.qj-object').length === 5, 'charcoal workstation retains desk navigation');
+check(getComputedStyle(root()).getPropertyValue('--qj-bg').trim() === '#101113' && root().querySelectorAll('.qj-life-nav .qj-command-tab[data-nav-group]').length === 3, 'charcoal workstation keeps the Life tabs'); // (lifechecks70) the desk objects became Today / Map / Progress; lamp, desk tuning and motion live in Life › Settings
 await smoke({ shot: window.SMOKE_SAVES + '/forge-studio-desk.png' });
-await press('Lamp on'); check(s().workstation.lamp === false && root().dataset.lamp === 'off', 'lamp control changes actual desk lighting');
-await press('Tune desk'); field('Callsign', 'Quentin / After hours'); field('Console accent', 'mythic'); await press('Save workstation');
+await press('Settings'); await press('Dim lamp'); scope().close(); await wait(80); check(s().workstation.lamp === false && root().dataset.lamp === 'off', 'lamp control changes actual desk lighting');
+await press('Settings'); await press('Personalize'); field('Callsign', 'Quentin / After hours'); field('Console accent', 'mythic'); await press('Save workstation'); while (root().querySelector('dialog[open]')) { scope().close(); await wait(60); }
 check(root().querySelector('.qj-console-name').textContent.includes('Quentin / After hours') && getComputedStyle(root()).getPropertyValue('--qj-signal').trim() === '#bd8bff', 'callsign and chosen rarity accent apply');
 QuestJournal.navigate('skills'); check(root().querySelectorAll('.qj-module').length === 8, 'eight personal specializations are available');
 root().querySelector('[data-route="forgeheart"]').click(); await wait(80); check(![...scope().querySelectorAll('button')].some(b => b.textContent === 'Equip title'), 'unearned titles cannot be equipped');
@@ -23,7 +23,7 @@ check(C.mastery(s(), 'forgeheart').rank === 1 && C.xp(s()) === 50, 'reviewed fin
 check(root().querySelector('.qj-celebrate')?.textContent.includes('Title earned: Forge apprentice'), 'completion celebrates new specialization titles');
 await press('See titles →'); check(root().dataset.view === 'skills', 'title celebration opens the patch matrix');
 root().querySelector('[data-route="forgeheart"]').click(); await wait(80); await press('Equip title');
-check(C.activeTitle(s()).name === 'Forge apprentice' && !root().querySelector('.qj-desk-trophy').hidden, 'earned title equips a real desk keepsake');
+check(C.activeTitle(s()).name === 'Forge apprentice' && root().querySelector('.qj-console-name').textContent.includes('Forge apprentice'), 'earned title shows beside the callsign');
 await smoke({ shot: window.SMOKE_SAVES + '/forge-studio-title.png' }); scope().close();
 root().querySelector('.qj-celebrate')?.remove(); root().querySelector('.qj-specializations').scrollIntoView({ block: 'start' });
 await smoke({ shot: window.SMOKE_SAVES + '/forge-studio-matrix.png' });
@@ -44,7 +44,7 @@ for (const page of ['adventure','skills','rewards','deck','commissions']) { Ques
 QuestJournal.navigate('skills'); root().querySelector('.qj-specializations').scrollIntoView({ block: 'start' }); await smoke({ shot: window.SMOKE_SAVES + '/forge-studio-matrix-narrow.png' });
 await smoke({ cdp: 'Emulation.clearDeviceMetricsOverride' });
 await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] } });
-check(getComputedStyle(root().querySelector('.qj-art-reel')).animationName === 'none', 'reduced motion stops decorative reels');
+check(getComputedStyle(root().querySelector('.qj-art-reel, .qj-quest-object .qj-art')).animationName === 'none', 'reduced motion stops decorative reels');
 await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [] } });
 await QuestJournal.flush(); return `Workstation: ${checks} checks passed (personal ranks, proof, titles, reward ideas, ritual receipts, console controls, narrow layouts and reduced motion).`;
 //@@ reload
