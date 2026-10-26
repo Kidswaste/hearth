@@ -21,6 +21,7 @@ const QuestHud = (() => {
   const savePrefs = () => store.set(PREFS, prefs);
   let chip = null, peek = null, panel = null, lastSig = '', peekSig = '', here = null, hereErr = '';
   let chain = Promise.resolve();
+  let tix = null; // (round 68, tickets68) { ready, keys, suggest } from ticketsmain.js, asked only when the panel opens
   const key = () => WinMac.keyLabel(HOTKEY);
 
   // ---------- reading / writing Codex's journal ----------
@@ -138,6 +139,7 @@ const QuestHud = (() => {
     renderPanel();
     await read(); // fresh from the journal (another computer's sync, another stream)
     lastSig = ''; paint();
+    loadTickets(); // (round 68, tickets68) 🎟 Ticket ready on the show's day (one small ask, now only)
     if (prefs.near === 'gps') locate();
     panel?.querySelector('.qh-step button, .qh-foot button')?.focus({ preventScroll: true });
   }
@@ -176,6 +178,7 @@ const QuestHud = (() => {
     if (status === 'missing') body.push(el('p', { class: 'qh-empty', text: 'No quest journal yet. Click Open Sidequest Studio below: it starts one with your first quest.' })); // (round 64, clickfirst64) says what to click
     else if (status !== 'ok') body.push(el('p', { class: 'qh-empty', text: status === 'unknown' ? 'Opening your journal…' : 'Your quest journal could not be read just now. Nothing was changed.' }));
     else if (!cd) body.push(el('p', { class: 'qh-empty', text: 'Nothing active right now. Take one of today\'s picks, or track a campaign in the Studio.' }));
+    if (status === 'ok' && tix) body.push(...ticketRows()); // (round 68, tickets68) 🎟 Ticket ready · <show> on its day; "Is this your ticket for X?" (Downloads)
     if (cd) body.push(questCard(cd));
     // (round 66, herepin66) 📍 Near me: while an "I'm here" pin is set on the Paris map (tools/herepin*.js), one row → Close to you
     if (status === 'ok' && C && window.HerePinCore) { const hp = HerePinCore.hud(store.get(HerePinCore.KEY, null), Date.now(), window.Lazy?.isIn('questjournal') && window.HerePin ? HerePin.count() : null); if (hp) { const r = btn(hp.text, () => { close(); return Lazy.load('questjournal').then(() => HerePin.open()); }, 'qh-row hp-hud', hp.title); r.dataset.k = 'herepin'; body.push(r); } }
@@ -209,6 +212,7 @@ const QuestHud = (() => {
     if (cd.focus) card.append(el('div', { class: 'qh-note' }, el('span', { class: 'qh-k', text: 'Focus' }), el('span', { text: `until ${new Date(cd.focus).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` })));
     const acts = typeof ClickFirst !== 'undefined' ? ClickFirst.cardActions(cd, btn) : null; // (round 64, clickfirst64) a show: Get ready / How was it?; the park: Park mode…
     if (acts) card.append(acts);
+    const tb = ticketButton(cd); if (tb) (acts || card.appendChild(el('div', { class: 'cf-acts' }))).append(tb); // (round 68, tickets68) a show quest: 🎟 Add / Open my ticket
     if (cd.place) {
       const d = here ? QC.km(here, cd.place) : null;
       card.append(el('button', { type: 'button', class: 'qh-place', dataset: { k: 'place' }, title: 'Show it on your Paris map', on: { click: () => { close(); openStudio(null, 'world'); } } },
@@ -231,6 +235,45 @@ const QuestHud = (() => {
     if (cd.next && !(cd.next.id === 'finish' && cd.next.proof)) row.append(el('button', { type: 'button', class: 'qh-check', dataset: { k: `${cd.id}:${cd.next.id}` }, title: `Check off: ${cd.next.label}`, attrs: { role: 'checkbox', 'aria-checked': 'false', 'aria-label': `Check off ${cd.next.label} of ${cd.title}` }, on: { click: () => checkOff(cd.id, cd.next.id).catch((err) => toast(calmError(err), { type: 'error' })) } }));
     return row;
   }
+  // ---------- (round 68, tickets68) 🎟 My ticket: the show's day, and a ticket file waiting in Downloads ----------
+  // show quests near now (the journal's c-show-* campaigns) → asked of ticketsmain.js with the tickets Hearth keeps
+  function showQuests() {
+    const now = Date.now();
+    const listed = window.Lazy?.isIn('questjournal') && typeof ShowSync !== 'undefined' ? ShowSync.upcoming() : []; // the lineup, when the shows list is loaded
+    return (S?.campaigns || []).filter((c) => c.id?.startsWith('c-show-') && c.show).map((c) => ({ key: c.show.key, title: c.show.title, start: Date.parse(c.show.start), dateOnly: !!c.show.dateOnly, venue: { name: c.show.venue || '', address: c.show.address || '' }, lineup: listed.find((x) => x.key === c.show.key)?.lineup || [] }))
+      .filter((s) => Number.isFinite(s.start) && s.start > now - 12 * 3600e3 && s.start < now + 14 * 24 * 3600e3);
+  }
+  async function loadTickets() {
+    if (!window.hub?.tickets || status !== 'ok') return;
+    try { const r = await window.hub.tickets.op({ op: 'hud', shows: showQuests() }); const next = r?.ok ? r.value : null; if (JSON.stringify(next) !== JSON.stringify(tix)) { tix = next; if (panel) renderPanel(); } } catch { /* a convenience */ }
+  }
+  const ticketUI = (fn) => { close(); return Lazy.load('tickets').then(() => fn(Tickets)); };
+  const hm = (ms) => new Date(ms).toLocaleTimeString([], { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
+  function ticketRows() {
+    const out = [];
+    for (const t of (tix.ready || []).slice(0, 3)) {
+      const r = btn(`🎟 Ticket ready · ${t.show.title}`, () => ticketUI((T) => T.view(t.key)), 'qh-row tk-hud', `Tonight${t.show.dateOnly ? '' : ` at ${hm(t.show.start)}`}${t.show.venue?.name ? ` · ${t.show.venue.name}` : ''}: your ticket, big and bright, for the door`);
+      r.dataset.k = `ticket:${t.key}`; out.push(r);
+    }
+    for (const g of (tix.suggest || []).slice(0, 2)) {
+      const show = showQuests().find((s) => s.key === g.key); if (!show) continue;
+      const add = btn('Add it', () => ticketUI((T) => T.addPath(show, g.path, { from: 'downloads' })), 'qh-take tk-hud-add', `Keep a copy of “${g.name}” as your ticket (the file stays in Downloads)`); add.dataset.k = `ticket-add:${g.key}`;
+      const no = btn('Not this one', () => window.hub.tickets.op({ op: 'dismiss', sig: g.sig }).then(() => loadTickets()), 'qh-take tk-hud-no', 'Don’t suggest this file again'); no.dataset.k = `ticket-no:${g.key}`;
+      // the words on their own lines (the panel is narrow), the two buttons under them
+      out.push(el('div', { class: 'qh-row tk-hud-suggest', dataset: { ticket: g.key }, style: { flexWrap: 'wrap' } }, el('span', { class: 'qh-pi', text: '🎟' }),
+        el('div', { class: 'qh-row-main', style: { flex: '1 1 160px', minWidth: '0' } }, el('span', { class: 'qh-row-title', text: `Is this your ticket for ${show.title}?`, style: { whiteSpace: 'normal' } }), el('span', { class: 'qh-sub', text: `${g.name} · in Downloads`, style: { whiteSpace: 'normal', overflowWrap: 'anywhere' } })),
+        el('div', { style: { display: 'flex', gap: '6px', flexBasis: '100%', paddingLeft: '26px' } }, add, no)));
+    }
+    return out;
+  }
+  function ticketButton(cd) {
+    const id = cd?.campaignId || ''; if (!id.startsWith('c-show-') || !tix) return null;
+    const key = id.slice(7), have = (tix.keys || []).includes(key), show = showQuests().find((s) => s.key === key);
+    if (!have && !show) return null;
+    const b = btn(have ? '🎟 Open my ticket' : '🎟 Add my ticket', () => ticketUI((T) => (have ? T.view(key) : T.pick(show))), 'cf-act tk-hud-btn', have ? 'Your ticket, big and bright, for the door' : 'Pick your ticket (PDF, image, screenshot, Wallet pass): Hearth keeps a copy under this show');
+    b.dataset.k = `ticket-card:${key}`; return b;
+  }
+  document.addEventListener('hearth:tickets', () => { if (tix || panel) loadTickets(); }); // a ticket added / removed (only after a click: no idle cost)
   // (round 67, errands67) the open errands (open now first) with their badge and Done ✓, then ＋ Errand (tools/errands*.js)
   const errandUI = (fn) => { close(); return Lazy.load('questjournal').then(fn); };
   function errandRows() {
