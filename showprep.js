@@ -15,6 +15,7 @@ const ShowPrep = (() => {
   const P = ShowPrepCore, SC = ShowSyncCore, KEY = 'show-nights', QKEY = 'quest-journal';
   const QJ = () => (typeof QuestJournal !== 'undefined' ? QuestJournal : null);
   const SS = () => (typeof ShowSync !== 'undefined' ? ShowSync : null);
+  const TH = () => (typeof TicketsHook !== 'undefined' ? TicketsHook : null); // (round 68, tickets68) a kept ticket folds into the night's memory
   let store = null, canSave = false, problem = '', loading = null, saving = Promise.resolve();
   const reviews = new Map(); // show key → a running "Ask Astra to check it"
 
@@ -252,6 +253,7 @@ const ShowPrep = (() => {
   }
   function afterView(kit, show, r, d) {
     const out = [kit.p(`Saved to Shows I went to (${r.stats.count}).`, 'sp-saved')];
+    if (TH()?.has(show.key)) out.push(kit.p('🎟 Your ticket is kept with this night (Shows I went to). Remove it from its view when you like.', 'tk-kept'), actions(kit, ...TH().logButtons(kit, show.key))); // (round 68, tickets68)
     if (r.step?.error) out.push(kit.p(`The show quest wasn’t changed: ${r.step.error}`));
     else if (r.step?.done) out.push(kit.p('Its show quest is already complete.'));
     else if (r.step) {
@@ -273,7 +275,7 @@ const ShowPrep = (() => {
       body.append(kit.E('div', { class: 'sp-badges' }, ...st.venues.slice(0, 16).map((v) => kit.E('span', { class: 'sp-badge', text: `✓ ${v.name}${v.n > 1 ? ` ×${v.n}` : ''}` }))));
       if (st.artists.length) body.append(kit.p(`Artists seen: ${st.artists.slice(0, 16).map((a) => `${a.name}${a.n > 1 ? ` ×${a.n}` : ''}`).join(', ')}`, 'sp-artists'));
       const list = kit.E('div', { class: 'sp-log' });
-      for (const e of store.went.filter((x) => !x.removedAt).slice(0, 40)) list.append(kit.E('div', { class: 'qj-field-list-item sp-entry' }, kit.E('strong', { text: e.show.title }), kit.E('span', { text: `${P.dateWords(e.show.start)} · ${e.show.venue.name}${e.rating ? ` · ${P.stars(e.rating)}` : ''}` }), kit.E('em', { text: e.moment })));
+      for (const e of store.went.filter((x) => !x.removedAt).slice(0, 40)) list.append(kit.E('div', { class: 'qj-field-list-item sp-entry' }, kit.E('strong', { text: e.show.title }), kit.E('span', { text: `${P.dateWords(e.show.start)} · ${e.show.venue.name}${e.rating ? ` · ${P.stars(e.rating)}` : ''}` }), kit.E('em', { text: e.moment }), ...(TH()?.logButtons(kit, e.key) || []))); // (round 68, tickets68) 🎟 My ticket, kept with the night
       body.append(list);
     }, 'SHOW NIGHT / MY LOG');
   }
