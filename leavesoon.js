@@ -10,6 +10,11 @@
 //   · the ✦ tracker lists them ("⏰ Leave at 20:15") with Snooze / Dismiss / turn off; the map shows a ⏰ pin per
 //     reminder and your 🏠 Home (Layers › Leave reminders, on by default)
 // No GPS, nothing sent, no AI, no polling (one timer, main side). Home: localStorage 'leavesoon.home' only.
+// (round 69, ratp69) honest about the Métro (ratp-core.js, same lazy group): after the last trains (about 00:40, Fri / Sat
+// nights about 01:40) and before about 05:30 a trip says "walk (Métro closed)" or "Noctilien / taxi — check" and the
+// leave time moves with it; a Métro trip knows its route's lines, and its line status is checked ~30 min before it rings
+// (main side, one fetch) and when you open the ✦ tracker: "⚠ Line 9: disrupted — leave 10 min earlier?" with a one-click
+// Leave earlier, or "Line status unknown" (offline / no key: Settings › Housekeeping › Paris Métro status key…).
 const LeaveSoon = window.LeaveSoon = (() => {
   const K = LeaveSoonCore;
   const HOME = 'leavesoon.home';
@@ -44,15 +49,23 @@ const LeaveSoon = window.LeaveSoon = (() => {
     return r.value;
   }
 
+  // (round 69, ratp69) the trip, honest: a Métro trip gets its route's lines, and the night check for when you'd board
+  function honest(travel, targetAt) {
+    const R = window.RatpCore; if (!R) return travel;
+    let t = travel;
+    if (t.mode === 'metro') { const lines = R.routeLines(t.from, t.to, t.line); t = { ...t, lines, how: lines.length ? R.routeWords(t.from, t.to, lines) : t.how }; }
+    return R.night(t, targetAt);
+  }
+
   // ---------- one reminder from a show, an errand, a weekend slot ----------
   // spec: { key, kind, title, place: { name, lat, lon }, target(travelMin) → { at, words } | { error }, ref }
   async function build(spec) {
     if (typeof ShowPrepCore === 'undefined') await Lazy.load('questjournal').catch(() => {}); // the Métro stations' list
     const o = origin(); if (!o) return { needHome: true };
     if (!spec.place || !K.inParis(spec.place)) throw Error('This has no spot on the Paris map, so Hearth can’t tell how long it takes to get there.');
-    const travel = K.travel(o, spec.place);
-    const t = spec.target(travel.min);
+    const t = spec.target(K.travel(o, spec.place).min);
     if (t.error) throw Error(t.error);
+    const travel = honest(K.travel(o, spec.place), t.at); // (round 69, ratp69) the Métro closes at night
     const item = { key: spec.key, kind: spec.kind, title: spec.title, place: { name: spec.place.name || '', lat: spec.place.lat, lon: spec.place.lon }, targetAt: t.at, words: t.words, travel, from: o.from, origin: o.sig, ref: spec.ref || {} };
     return { item: { ...item, ...K.plan(item, K.now()) } };
   }
@@ -84,7 +97,7 @@ const LeaveSoon = window.LeaveSoon = (() => {
       if (typeof ShowPrepCore === 'undefined') await Lazy.load('questjournal').catch(() => {});
       for (const it of stale) {
         try {
-          const travel = K.travel(o, it.place), next = { ...it, travel, from: o.from, origin: o.sig };
+          const travel = honest(K.travel(o, it.place), it.targetAt), next = { ...it, travel, from: o.from, origin: o.sig };
           const r = await api().op({ op: 'put', item: { ...next, ...K.plan(next, K.now()) } });
           if (r?.ok) { items.set(it.key, r.value); n++; }
         } catch { /* too late from there now: it keeps its time */ }
@@ -119,7 +132,7 @@ const LeaveSoon = window.LeaveSoon = (() => {
   function label(b) {
     const it = get(b.dataset.leaveKey), on = isOn(b.dataset.leaveKey);
     const text = on ? `⏰ Leave at ${K.when(it.leaveAt)} ✓` : '⏰ Remind me to leave';
-    const title = on ? `Reminder on: ${K.confirmText(it).replace(/^⏰ /, '')}${it.travel.how ? ` ${it.travel.how}.` : ''} Click to turn it off.` : b.dataset.why || 'Hearth works out the trip (from your 📍 pin, else your 🏠 Home) and tells you 10 minutes before it’s time to leave, even with Hearth in the tray.';
+    const title = on ? `Reminder on: ${K.confirmText(it).replace(/^⏰ /, '')}${it.travel.how ? ` ${it.travel.how}.` : ''}${it.status?.words ? ` ${it.status.words}.` : ''} Click to turn it off.` : b.dataset.why || 'Hearth works out the trip (from your 📍 pin, else your 🏠 Home) and tells you 10 minutes before it’s time to leave, even with Hearth in the tray.';
     if (b.textContent !== text) b.textContent = text;
     b.title = title; b.setAttribute('aria-pressed', String(on)); b.classList.toggle('on', on);
   }
@@ -162,20 +175,67 @@ const LeaveSoon = window.LeaveSoon = (() => {
         if (!(panel && missedIn.get(it.key) === panel) && (it.missedSeen || sawMissed.has(it.key))) continue;
         if (!missedIn.has(it.key)) { missedIn.set(it.key, panel); seen.push(it.key); }
       }
-      const acts = [];
+      const acts = [], st = it.status, bad = st && (st.state === 'disrupted' || st.state === 'blocked') && h.state !== 'missed';
+      if (st?.state === 'unknown' && (st.why === 'nokey' || st.why === 'badkey') && h.state !== 'missed') acts.push(btn('Add key…', () => { QuestHud.close(); keyDialog().catch((err) => toast(calmError(err), { type: 'error' })); }, 'qh-take ls-addkey', 'Line status unknown: add your free PRIM key in Settings (IDFM’s open data; stored encrypted on this computer)'));
+      if (bad && !it.earlierBy) acts.push(btn('Leave earlier', () => leaveEarlier(it.key), 'qh-take ls-earlier', `${st.title || st.words}. Moves the leave time ${st.earlier || 10} min earlier (the reminder rings 10 min before that).`)); // (round 69, ratp69)
       if (h.state === 'fired' || h.state === 'now' || h.state === 'snoozed') acts.push(btn('Snooze 10 min', () => snooze(it.key), 'qh-take ls-snooze', 'Remind me again in 10 minutes'), btn('Dismiss', () => dismiss(it.key), 'qh-take ls-dismiss', 'I’m on my way (or not going): no more reminders for this'));
       else if (h.state === 'missed') acts.push(btn('OK', () => { missedIn.set(it.key, null); paint(); }, 'qh-take ls-ok', 'Got it'));
       else acts.push(btn('×', () => turnOff(it.key), 'qh-take ls-off', 'Turn this reminder off'));
       const row = el('div', { class: `qh-row ls-hud ls-${h.state}`, dataset: { leave: it.key } }, el('span', { class: 'qh-pi', text: '⏰' }),
         el('button', { type: 'button', class: 'qh-row-main', dataset: { k: `leave:${it.key}` }, title: `${h.title} Click to see it on the map.`, on: { click: (e) => { e.stopPropagation(); QuestHud.close(); showOnMap(it.key).catch((err) => toast(calmError(err), { type: 'error' })); } } },
-          el('span', { class: 'qh-row-title', text: h.text.replace(/^⏰ /, '') }), el('span', { class: 'qh-sub', text: h.ring ? `${h.sub} · ${h.ring}` : h.sub })),
+          el('span', { class: 'qh-row-title', text: h.text.replace(/^⏰ /, '') }), el('span', { class: 'qh-sub', text: h.ring ? `${h.sub} · ${h.ring}` : h.sub }), h.state === 'missed' ? null : statusLine(it)),
         ...acts);
       rows.push(row);
       if (rows.length >= 4) break;
     }
     if (seen.length) { for (const k of seen) sawMissed.add(k); call('seen', { keys: seen }).catch(() => {}); } // a missed one is shown once
+    statusSoon(); // (round 69, ratp69) you opened the tracker: the line status of trips coming up (cached main-side)
     return rows.length ? [el('div', { class: 'qh-sec', text: 'Leaving soon' }), ...rows] : [];
   }
+  // ---------- (round 69, ratp69) the route's line status ----------
+  let hasKey = null, statusAsked = 0;
+  // "⚠ Line 9: disrupted — leave 10 min earlier?" · "Line 8: OK" · "Line status unknown" (no key: a click opens the key box)
+  function statusLine(it) {
+    const st = it.status;
+    if (!st || it.travel?.mode !== 'metro') return it.travel?.night?.closed ? el('span', { class: 'ls-status ls-st-night', text: `Métro closed then (last ${it.travel.night.last})` }) : null;
+    const words = st.state === 'unknown' ? 'Line status unknown' : it.earlierBy && st.state !== 'ok' ? `⚠ Line ${st.line}: ${st.state === 'blocked' ? 'interrupted' : 'disrupted'} — leaving ${it.earlierBy} min earlier` : st.words;
+    const title = st.state === 'unknown' ? (window.RatpCore ? RatpCore.whyText(st.why) : '') : `${st.title || st.words}${st.at ? ` (checked at ${K.hm(st.at)})` : ''}`;
+    return el('span', { class: `ls-status ls-st-${st.state}`, text: words, title });
+  }
+  // asked when you open the tracker or a reminder: only for Métro trips in the next 6 h whose status is old (main caches 10 min)
+  function statusSoon(force = false) {
+    const R = window.RatpCore; if (!R || !api()) return;
+    const at = K.now(), stale = [...items.values()].some((it) => R.routed(it) && ['on', 'fired', 'snoozed'].includes(it.state) && it.leaveAt - at <= R.SOON && it.leaveAt > at - 15 * 60e3 && (!it.status || at - (it.status.at || 0) > R.FRESH));
+    if (!stale || (!force && Date.now() - statusAsked < 60e3)) return;
+    statusAsked = Date.now();
+    call('status').then((r) => { hasKey = r.hasKey; }).catch(() => {});
+  }
+  async function leaveEarlier(key) {
+    const it = await call('earlier', { key }); items.set(key, it); paint();
+    toast(`⏰ Leave at ${K.hm(it.leaveAt)} now (${it.earlierBy} min earlier); I’ll remind you at ${K.hm(it.notifyAt)}.`, { timeout: 4000 });
+    return it;
+  }
+  // Settings › Housekeeping › Paris Métro status key…: IDFM's free PRIM key, stored like Hearth's other keys (encrypted,
+  // this computer only, never shown to a page or a chat, sent only to PRIM)
+  async function keyDialog() {
+    const keys = window.hub?.apps?.key; if (!keys) throw Error('This needs the Hearth app.');
+    const info = (await keys('prim', 'has')) || {};
+    toast('Line status for leave reminders: a free key from IDFM’s PRIM site (create an account, then My account › API key).', { timeout: 9000, action: { label: 'Open PRIM', fn: () => window.hub?.openExternal?.('https://prim.iledefrance-mobilites.fr/') } });
+    const v = await Modal.form('Paris Métro status key (PRIM)', [
+      { name: 'key', label: info.has ? 'A key is saved. Paste a new one to replace it:' : 'Your free PRIM API key (prim.iledefrance-mobilites.fr › My account › API key):', type: 'password', placeholder: info.has ? '•••••••• saved' : 'paste it here' },
+      ...(info.has ? [{ name: 'forget', label: 'Forget the saved key', type: 'checkbox', value: false }] : []),
+    ], { ok: 'Save' });
+    if (!v) return false;
+    if (v.forget) { await keys('prim', 'forget'); toast('Key forgotten. Line status uses the no-key source (it may be unknown).', { timeout: 3500 }); }
+    else if (String(v.key || '').trim()) {
+      const r = await keys('prim', 'set', String(v.key).trim());
+      if (!r?.ok) throw Error(r?.error || 'That key wasn’t saved.');
+      toast(r.stored === 'session' ? 'Key kept until Hearth quits (this computer can’t encrypt it).' : 'Key saved, encrypted on this computer. It goes only to PRIM, to ask for line status.', { timeout: 4000 });
+    } else return false;
+    await call('status', { fresh: true }).then((r) => { hasKey = r.hasKey; }).catch(() => {});
+    return true;
+  }
+
   /** at start (notify.js): the reminders missed while Hearth was closed, said once, never rung late */
   function sayMissed(list) {
     const fresh = (list || []).filter((it) => !sawMissed.has(it.key));
@@ -202,6 +262,7 @@ const LeaveSoon = window.LeaveSoon = (() => {
     if (window.QuestMapFirst && !QuestMapFirst.on('leave')) await QuestMapFirst.toggle('leave'); // shown again if the layer was off
     look = key; redraw();
     mapHost()?.qjHere?.go(it.place, 16);
+    statusSoon(); // (round 69, ratp69) you opened this reminder: its line status, when it's coming up
     return it;
   }
   // picking Home: the map opens with a hint at the top; one click there is Home (Esc / Cancel stop)
@@ -299,7 +360,7 @@ const LeaveSoon = window.LeaveSoon = (() => {
   attach();
   refresh().catch(() => {});
 
-  return { refresh, items: () => [...items.values()], get, isOn, origin, home, setHome, clearHome, pickHome, turnOn, turnOff, snooze, dismiss, recompute, showOnMap, hudRows, sayMissed,
+  return { refresh, items: () => [...items.values()], get, isOn, origin, home, setHome, clearHome, pickHome, turnOn, turnOff, snooze, dismiss, recompute, showOnMap, hudRows, sayMissed, honest, statusSoon, leaveEarlier, keyDialog,
     toggle, showToggle, errandToggle, slotToggle, showSpec, errandSpec, slotSpec, attach, layer, get picking() { return !!picking; },
     _test: { clock: async (ms) => { K.setClock(ms); const r = await api().op({ op: 'test', now: ms == null ? Date.now() : ms }); return r?.value; } } }; // (checks) one fake clock for both sides
 })();

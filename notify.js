@@ -79,7 +79,7 @@ const Notify = (() => {
       if (go.renders) { (window.Lazy ? Lazy.load('renders') : Promise.resolve()).then(() => Renders.open()).catch(() => {}); return 'renders'; }
       if (go.sync) { Sync.conflicts(); return 'sync'; }
       if (go.update) { Updater.dialog(); return 'update'; }
-      if (go.leave) { const k = go.leave.key, o = go.leave.op; if (o === 'snooze' || o === 'dismiss') { window.hub.leave.op({ op: o, key: k }).catch(() => {}); return o; } Lazy.load('leavesoon').then(() => LeaveSoon.showOnMap(k)).catch((err) => toast(calmError(err), { type: 'error' })); return 'leave'; } // (round 68, leavesoon68) ⏰ Show on map / Snooze 10 min / Dismiss
+      if (go.leave) { const k = go.leave.key, o = go.leave.op; if (o === 'snooze' || o === 'dismiss' || o === 'earlier') { window.hub.leave.op({ op: o, key: k }).catch(() => {}); return o; } Lazy.load('leavesoon').then(() => LeaveSoon.showOnMap(k)).catch((err) => toast(calmError(err), { type: 'error' })); return 'leave'; } // (round 68, leavesoon68) ⏰ Show on map / Snooze 10 min / Dismiss
       if (go.activity) { (window.Lazy ? Lazy.load('activity') : Promise.resolve()).then(() => Activity.open()).catch(() => {}); return 'activity'; }
     } catch (err) { toast(err.message, { type: 'error' }); }
     return null;
@@ -143,6 +143,14 @@ const Notify = (() => {
       const acts = [{ text: 'Show on map', go: { leave: { key: r.key, op: 'map' } } }, { text: 'Snooze 10 min', go: { leave: { key: r.key, op: 'snooze' }, quiet: 1 } }, { text: 'Dismiss', go: { leave: { key: r.key, op: 'dismiss' }, quiet: 1 } }];
       const out = await send({ type: 'reminder', title: r.title, body: r.body || '', group: `leave:${r.key}`, actions: acts });
       if (!out.shown && typeof toast === 'function') toast(`${r.title}`, { timeout: 15000, action: { label: 'Show on map', fn: () => route(acts[0].go) } });
+    });
+    // (round 69, ratp69) ~30 min before a Métro reminder, its route's line status: "⚠ Line 9: disrupted — leave 10 min earlier?"
+    // with Leave earlier (done without bringing Hearth up) · Show on map; a toast with Leave earlier when Hearth is in front
+    window.hub?.leave?.onWarn?.(async (r) => {
+      if (!r?.key || !r.title) return;
+      const acts = [{ text: 'Leave earlier', go: { leave: { key: r.key, op: 'earlier' }, quiet: 1 } }, { text: 'Show on map', go: { leave: { key: r.key, op: 'map' } } }];
+      const out = await send({ type: 'reminder', title: r.title, body: r.body || '', group: `leave:${r.key}`, actions: acts });
+      if (!out.shown && typeof toast === 'function') toast(`${r.title}${r.body ? ` ${r.body}` : ''}`, { timeout: 20000, action: { label: 'Leave earlier', fn: () => window.hub.leave.op({ op: 'earlier', key: r.key }).then((x) => { if (x?.ok) toast(`⏰ Leave at ${new Date(x.value.leaveAt).toTimeString().slice(0, 5)} now.`, { timeout: 3000 }); }).catch(() => {}) } });
     });
     setTimeout(() => window.hub?.leave?.op?.({ op: 'missed' }).then((r) => { if (r?.ok && r.value?.length) Lazy.load('leavesoon').then(() => LeaveSoon.sayMissed(r.value)).catch(() => {}); }).catch(() => {}), 4000);
     // looking at a chat clears its notification (only when one was shown)

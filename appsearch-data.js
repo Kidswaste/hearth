@@ -102,6 +102,7 @@ const AppSearchData = (() => {
     ['hotkey', 'Keys', 'Show / hide Hearth from anywhere', 'Show / hide Hearth', 'hotkey global shortcut bring up hide', 'A key combination that brings Hearth up or hides it, even from another app'],
     ['sleep-webs', 'Housekeeping', 'Unload websites I haven\'t opened', 'Unload websites', 'memory websites sleep unload free', 'Frees memory; a website loads again when you open it'],
     ['meshy-key', 'Housekeeping', 'Meshy key…', 'Meshy key', 'meshy api key 3d', 'Paste your Meshy API key once (stored encrypted)'],
+    ['prim-key', 'Housekeeping', 'Paris Métro status key…', 'Paris Métro status key', 'ratp metro métro idfm prim key line status disruption traffic leave reminder strike', 'A free PRIM key: leave reminders check the Métro lines on your way (stored encrypted)'], // (round 69, ratp69)
     ['spell-langs', 'Spell check languages', 'Spell check languages', '', 'spell spelling languages english french spanish german', 'The languages the message box checks your spelling in'],
     ['rail-tools', 'Tools in the rail', 'Tools in the rail', '', 'rail tools sidebar hide show buttons', 'Untick a tool to take it off the rail'],
     ['forge-folder', 'Folders', 'Forgeheart project folder', 'Forgeheart project', 'forgeheart folder game project', 'The game project the Forge agents work in'],

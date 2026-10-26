@@ -70,7 +70,7 @@
     const stops = Math.max(1, Math.round(metres(a, b) / STOP_M));
     const total = walkMin(a.m) + WAIT + stops * PER_STOP + (shared ? 0 : CHANGE) + walkMin(b.m);
     if (total >= walk) return walking; // the Métro wouldn't be quicker
-    return { mode: 'metro', min: total, shown: about(total), m: Math.round(m), text: `about ${about(total)} min by Métro`, how: `${a.name} → ${b.name}${shared ? ` (line ${shared})` : ' (one change)'}`, from: a.name, to: b.name, line: shared, stops };
+    return { mode: 'metro', min: total, shown: about(total), m: Math.round(m), text: `about ${about(total)} min by Métro`, how: `${a.name} → ${b.name}${shared ? ` (line ${shared})` : ' (one change)'}`, from: a.name, to: b.name, line: shared, stops, walkIn: walkMin(a.m), walkOut: walkMin(b.m) }; // (round 69, ratp69) walkIn: when you board (the night check)
   }
 
   // ---------- when you must be there ----------
@@ -136,10 +136,31 @@
     if (!it || typeof it !== 'object' || !/^(show|errand|plan):[\w:.-]{1,100}$/.test(String(it.key)) || !KINDS.has(it.kind) || !clean(it.title)) throw Error('That reminder can’t be kept.');
     if (!inParis(it.place) || ![it.targetAt, it.leaveAt, it.notifyAt].every(fin) || !it.travel || !fin(it.travel.min) || !STATES.has(it.state || 'on')) throw Error('That reminder can’t be kept.');
     const out = { key: it.key, kind: it.kind, title: clean(it.title), place: { name: clean(it.place.name, 120), lat: +it.place.lat, lon: +it.place.lon }, targetAt: +it.targetAt, words: clean(it.words, 80),
-      travel: { mode: it.travel.mode === 'metro' ? 'metro' : 'walk', min: +it.travel.min, text: clean(it.travel.text, 60), how: clean(it.travel.how, 120) }, from: clean(it.from, 40) || 'Home', origin: clean(it.origin, 60),
+      travel: travelOf(it.travel), from: clean(it.from, 40) || 'Home', origin: clean(it.origin, 60),
       leaveAt: +it.leaveAt, notifyAt: +it.notifyAt, state: it.state || 'on', ref: it.ref && typeof it.ref === 'object' ? JSON.parse(JSON.stringify(it.ref, (k, v) => (typeof v === 'string' ? v.slice(0, 200) : v))) : {}, createdAt: fin(it.createdAt) ? +it.createdAt : 0 };
-    for (const k of ['firedAt', 'snoozeUntil', 'missedAt', 'dismissedAt']) if (fin(it[k])) out[k] = +it[k];
+    for (const k of ['firedAt', 'snoozeUntil', 'missedAt', 'dismissedAt', 'checkedAt', 'earlierBy', 'warnedAt']) if (fin(it[k])) out[k] = +it[k];
+    const st = statusOf(it.status); if (st) out.status = st; // (round 69, ratp69) the route's line status, as last checked
     if (it.missedSeen) out.missedSeen = true;
+    return out;
+  }
+  // (round 69, ratp69) a trip as kept: walk, Métro (with its route's lines) or night (Métro closed: Noctilien / taxi)
+  const MODES = new Set(['metro', 'walk', 'night']);
+  function travelOf(t) {
+    const out = { mode: MODES.has(t.mode) ? t.mode : 'walk', min: +t.min, text: clean(t.text, 80), how: clean(t.how, 200) };
+    for (const k of ['walkIn', 'walkOut', 'm']) if (fin(t[k])) out[k] = +t[k];
+    if (Array.isArray(t.lines)) out.lines = t.lines.slice(0, 3).filter((o) => o && Array.isArray(o.lines)).map((o) => ({ lines: o.lines.slice(0, 3).map((l) => clean(l, 6)).filter(Boolean), via: o.via ? clean(o.via, 60) : null })).filter((o) => o.lines.length);
+    if (t.night && typeof t.night === 'object') out.night = { last: clean(t.night.last, 20), closed: !!t.night.closed, close: !!t.night.close };
+    return out;
+  }
+  const ST = new Set(['ok', 'disrupted', 'blocked', 'unknown']);
+  function statusOf(v) {
+    if (!v || typeof v !== 'object' || !ST.has(v.state)) return null;
+    const out = { state: v.state, words: clean(v.words, 100), at: fin(v.at) ? +v.at : 0 };
+    if (v.line) out.line = clean(v.line, 6);
+    if (v.why) out.why = clean(v.why, 20);
+    if (v.title) out.title = clean(v.title, 160);
+    if (v.alt) out.alt = clean(v.alt, 30);
+    if (fin(v.earlier)) out.earlier = Math.min(30, Math.max(0, +v.earlier));
     return out;
   }
   const empty = () => ({ v: 1, items: [] });
@@ -173,6 +194,7 @@
   function put(s, item, at = now()) {
     const it = check({ ...item, state: 'on', createdAt: item.createdAt || at });
     delete it.firedAt; delete it.snoozeUntil; delete it.missedAt; delete it.missedSeen;
+    if (!item.keepStatus) { delete it.checkedAt; delete it.warnedAt; delete it.earlierBy; delete it.status; } // (round 69, ratp69) a new plan: its line status is checked again
     if (it.notifyAt < at - GRACE) throw Error('That reminder’s time has already gone by.');
     s.items = s.items.filter((x) => x.key !== it.key);
     if (s.items.length >= MAX) throw Error(`Hearth keeps up to ${MAX} leave reminders. Turn one off first.`);
@@ -182,6 +204,17 @@
   function fire(s, key, at = now()) { const it = find(s, key); it.state = 'fired'; it.firedAt = at; delete it.snoozeUntil; return it; }
   function snooze(s, key, at = now()) { const it = find(s, key); it.state = 'snoozed'; it.snoozeUntil = at + SNOOZE * MIN; return it; }
   function dismiss(s, key, at = now()) { const it = find(s, key); it.state = 'dismissed'; it.dismissedAt = at; delete it.snoozeUntil; return it; }
+  /** (round 69, ratp69) "Leave earlier" (a line on the way is disrupted): the leave time moves earlier once, by the
+   *  status's minutes (10, or 15 when interrupted); the reminder rings LEAD before that (at once when that's past) */
+  function earlier(s, key, at = now(), by) {
+    const it = find(s, key);
+    if (fin(it.earlierBy) && it.earlierBy > 0) return it; // once
+    const m = Math.min(30, Math.max(5, fin(by) ? by : it.status?.earlier || 10));
+    it.leaveAt -= m * MIN; it.earlierBy = m;
+    if (it.state === 'on') it.notifyAt = Math.max(it.leaveAt - LEAD * MIN, at + 2000);
+    else if (it.state === 'snoozed' && it.snoozeUntil > it.leaveAt) it.snoozeUntil = Math.max(it.leaveAt, at + 2000);
+    return it;
+  }
   function remove(s, key) { const n = s.items.length; s.items = s.items.filter((x) => x.key !== key); return n !== s.items.length; }
   const missed = (s) => s.items.filter((it) => it.state === 'missed' && !it.missedSeen);
 
@@ -191,7 +224,8 @@
   function notice(it, at = now()) {
     const m = minsTo(it.leaveAt, at);
     const lead = m >= 1 ? `Leave in ${m} min for ${it.title}` : `Time to leave for ${it.title}`;
-    return { title: `${lead} — ${it.travel.text}`, body: [`Leave at ${hm(it.leaveAt)} from ${it.from}`, it.words, it.place.name, it.travel.mode === 'metro' ? it.travel.how : ''].filter(Boolean).join(' · ') };
+    const st = it.status && (it.status.state === 'disrupted' || it.status.state === 'blocked') ? (it.earlierBy ? `⚠ line ${it.status.line}: leaving ${it.earlierBy} min earlier` : it.status.words.replace(/ — leave .*$/, '')) : ''; // (round 69, ratp69) the route's line status
+    return { title: `${lead} — ${it.travel.text}`, body: [st, `Leave at ${hm(it.leaveAt)} from ${it.from}`, it.words, it.place.name, it.travel.mode !== 'walk' || it.travel.night ? it.travel.how : ''].filter(Boolean).join(' · ') };
   }
   /** the ✦ tracker row: { text, sub, state, title } */
   function hud(it, at = now()) {
@@ -208,5 +242,5 @@
   function confirmText(it) { return `⏰ I’ll remind you at ${hm(it.notifyAt)} to leave at ${hm(it.leaveAt)} (${it.travel.text} from ${it.from}).`; }
 
   return { WALK_MAX, KMH, LEAD, SNOOZE, ERRAND_MARGIN, GRACE, KEEP, MAX, now, setClock, inParis, metres, walkMin, stations, nearestStation, travel, about, hm, when, dayKey, localAt,
-    showTarget, slotTarget, errandTarget, plan, check, empty, validate, dueOf, settle, next, put, fire, snooze, dismiss, remove, missed, notice, hud, confirmText };
+    showTarget, slotTarget, errandTarget, plan, check, empty, validate, dueOf, settle, next, put, fire, snooze, dismiss, earlier, remove, missed, notice, hud, confirmText };
 });
