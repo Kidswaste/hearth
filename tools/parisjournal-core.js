@@ -87,7 +87,8 @@
         const spots = stops.map((p) => (p.id && placeById(s, P, p.id)) || { id: p.id, name: p.name, lat: p.lat, lon: p.lon, kind: p.kind, arr: arrOf(p) });
         if (at) {
           const first = spots[0] || null, pr = proofOf(s, c.quests);
-          out.push({ id: `walk-${c.id}`, kind: 'walk', at, title: c.title, place: first, spots, arrs: [...new Set(spots.map((p) => p.arr).filter(Boolean))], places: spots.map((p) => p.id).filter(Boolean), km: c.walk.km, ...pr, campaign: c.id });
+          const from = c.quests.map((q) => s.records?.[q.id]?.completedAt).filter(Boolean).sort()[0]; // (round 69, photos69) when the walk began (its first stop), for photo times
+          out.push({ id: `walk-${c.id}`, kind: 'walk', at, from, title: c.title, place: first, spots, arrs: [...new Set(spots.map((p) => p.arr).filter(Boolean))], places: spots.map((p) => p.id).filter(Boolean), km: c.walk.km, ...pr, campaign: c.id, parts: c.quests.map((q) => `stop-${q.id}`) });
         } else for (const p of done) {
           const sp = spots[stops.indexOf(p)], t = s.records[p.q.id].completedAt, pr = proofOf(s, [p.q]);
           out.push({ id: `stop-${p.q.id}`, kind: 'place', at: t, title: sp.name, place: sp, arrs: sp.arr ? [sp.arr] : [], places: sp.id ? [sp.id] : [], ...pr, campaign: c.id, quest: p.q.id, via: c.title });
@@ -116,7 +117,7 @@
     for (const [key, x] of sessions) {
       const list = x.takes.sort((a, b) => String(a.at).localeCompare(String(b.at))), last = list.at(-1), name = last.place || 'Outside';
       const spot = placeByName(s, P, name), arr = spot?.arr || null;
-      out.push({ id: `park-${fold(key).replace(/[^a-z0-9]+/g, '-').slice(0, 80)}`, kind: 'park', at: list[0].at, title: `Park session · ${name}`, place: spot && has(spot) ? spot : { id: null, name, lat: null, lon: null, kind: 'music', arr: null },
+      out.push({ id: `park-${fold(key).replace(/[^a-z0-9]+/g, '-').slice(0, 80)}`, kind: 'park', at: list[0].at, until: last.at, title: `Park session · ${name}`, place: spot && has(spot) ? spot : { id: null, name, lat: null, lon: null, kind: 'music', arr: null },
         arrs: arr ? [arr] : [], places: spot?.guide ? [spot.id] : [], loop: last.layered || last.loop || '', loops: list.map((t) => ({ at: t.at, path: t.layered || t.loop, bars: t.bars, bpm: t.bpm })).filter((t) => t.path),
         note: `${list.length} loop${list.length === 1 ? '' : 's'} · ${last.bars} bars at ${Math.round(last.bpm)} BPM${last.notes ? ` · ${last.notes} notes` : ''}${last.instrument ? ` · ${last.instrument}` : ''}`, sketch: last.sketch || '', photo: '' });
     }
@@ -124,7 +125,7 @@
     for (const r of logged || []) {
       if (!r?.logged || typeof r.start !== 'string' || !Number.isFinite(Date.parse(r.start))) continue;
       const spot = r.place ? placeByName(s, P, r.place) : null, arr = spot?.arr || null, sk = (r.sketches || [])[0];
-      out.push({ id: `music-${String(r.id).replace(/[^\w-]+/g, '-').slice(0, 80)}`, kind: 'music', at: r.start, title: `Music session · ${r.minutes} min`, place: spot && has(spot) ? spot : { id: null, name: r.place || 'Sound desk', lat: null, lon: null, kind: 'music', arr: null },
+      out.push({ id: `music-${String(r.id).replace(/[^\w-]+/g, '-').slice(0, 80)}`, kind: 'music', at: r.start, until: Number.isFinite(r.minutes) ? new Date(Date.parse(r.start) + r.minutes * 60000).toISOString() : undefined, title: `Music session · ${r.minutes} min`, place: spot && has(spot) ? spot : { id: null, name: r.place || 'Sound desk', lat: null, lon: null, kind: 'music', arr: null },
         arrs: arr ? [arr] : [], places: [], loop: sk?.path || '', note: [(r.instruments || []).join(' + ') || 'Sound desk', r.used?.park ? 'Park mode' : '', r.used?.liveset ? 'Live set' : '', r.used?.arrange ? 'Arrange' : ''].filter(Boolean).join(' · '),
         photo: '', campaign: r.logged.quests?.[0]?.campaign || '', quest: r.logged.quests?.[0]?.quest || undefined });
     }
@@ -164,7 +165,7 @@
       x.moments.push(m); by.set(k, x);
     }
     return [...by.values()].map((x) => {
-      const top = x.moments[0], photo = x.moments.find((m) => m.photo)?.photo || '';
+      const top = x.moments[0], withPic = x.moments.find((m) => m.photo || m.cover), photo = withPic?.photo || withPic?.cover || ''; // (round 69, photos69) cover = a photo you added
       return { id: `mp-${fold(x.key).replace(/[^a-z0-9.,]+/g, '-').slice(0, 90)}`, name: x.moments.length > 1 ? `${x.place.name} · ${x.moments.length}` : top.title, lat: x.place.lat, lon: x.place.lon,
         kind: KINDS[top.kind].icon, color: KINDS[top.kind].color, photo, moments: x.moments.map((m) => m.id) };
     });

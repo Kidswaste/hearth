@@ -680,6 +680,7 @@ function registerAfterWindow() {
   lazyIpc('audiodoctormain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, settings })); // (round 64, audiodoctor64) /audio doctor: runtime, ASIO, devices, MIDI, Serum 2 / Vital, a 2-second live test (only when asked)
   lazyIpc('bouncelogmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 66, bouncelog66) Session log: a session's note file for a quest proof (sketches are written by the instrument host)
   lazyIpc('sketchpadsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 67, sketchpads67) a loop trimmed from a sketch: a NEW WAV + its card beside the sketch (the sketch is only read)
+  lazyIpc('parisphotosmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 69, photos69) My Paris photos: resized copies in data/paris-photos, HEIC → JPEG, a folder's EXIF (originals only read)
   const { nativeTheme, systemPreferences, nativeImage } = require('electron');
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
   bigscreen.register(ipcMain, { getWin: () => win, screen: require('electron').screen }); // (round 38) ⛶ full screen, size of everything
