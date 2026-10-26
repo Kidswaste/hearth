@@ -55,8 +55,9 @@
   const shouldOffer = (st) => !!st && st.inDesk && !st.dismissed && !st.logged && st.active >= OFFER_MIN * MIN;
   const dismiss = (st) => { if (st) st.dismissed = true; return st; };
   /** What the desk is doing (seen on a tick): Park mode, the Live set, Arrange, the instrument and the park's name. */
-  function use(st, { park = false, liveset = false, arrange = false, instrument = '', place = '' } = {}) {
+  function use(st, { park = false, liveset = false, arrange = false, instrument = '', place = '', bpm = null } = {}) {
     if (!st) return st;
+    if (Number.isFinite(bpm) && bpm >= 40 && bpm <= 240) st.bpm = Math.round(bpm * 10) / 10; // (round 67, sketchpads67) the tempo the desk last played at (Live set song, Arrange, a park take): ✂ Trim loop's grid
     if (park) st.used.park = true; if (liveset) st.used.liveset = true; if (arrange) st.used.arrange = true;
     if (instrument && !st.instruments.includes(instrument) && st.instruments.length < 4) st.instruments.push(String(instrument).slice(0, 40));
     if (park && place) st.place = String(place).slice(0, 80);
@@ -113,7 +114,7 @@
   function entry(st, now = Date.now()) {
     return { id: st.id, start: new Date(st.start).toISOString(), end: new Date(Math.max(st.start, st.last, now)).toISOString(), minutes: minutes(st),
       used: { park: !!st.used.park, liveset: !!st.used.liveset, arrange: !!st.used.arrange }, instruments: st.instruments.slice(0, 4), place: st.place || '',
-      sketches: st.sketches.slice(0, 20), logged: st.logged ? (st.loggedInfo || { at: new Date(now).toISOString(), quests: [] }) : null };
+      sketches: st.sketches.slice(0, 20), logged: st.logged ? (st.loggedInfo || { at: new Date(now).toISOString(), quests: [] }) : null, ...(st.bpm ? { bpm: st.bpm } : {}) }; // (round 67) + bpm when known
   }
   const str = (x, n) => typeof x === 'string' && x.length <= n;
   const iso = (x) => str(x, 40) && Number.isFinite(Date.parse(x));

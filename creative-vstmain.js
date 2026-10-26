@@ -341,7 +341,7 @@ function parkSave(dataDir, sketch, name, bytes) {
 const parkFolder = (dataDir, sketch) => path.join(dataDir, 'creative-park', String(sketch || 'Park sketch').normalize('NFC').replace(/[\\/:*?"<>|\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 80) || 'Park sketch'); // parkSave's folder rule
 function parkList(dataDir) {
   const root = path.join(dataDir, 'creative-park'), takes = [];
-  let dirs = []; try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory()); } catch { return { root, takes }; }
+  let dirs = []; try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory()); } catch { dirs = []; } // (round 67, sketchpads67) no park folder yet: still list the sketch loops below
   for (const d of dirs) {
     let names = []; try { names = fs.readdirSync(path.join(root, d.name)); } catch { continue; }
     for (const n of names) {
@@ -349,6 +349,7 @@ function parkList(dataDir) {
       try { const j = JSON.parse(fs.readFileSync(path.join(root, d.name, n), 'utf8')); if (j?.v === 1 && typeof j.loop === 'string' && j.bpm && j.bars) { delete j.notesPlayed; takes.push({ ...j, notesFile: path.join(root, d.name, n), folder: d.name }); } } catch { /* not a take */ }
     }
   }
+  try { takes.push(...require('./sketchpadsmain.js').loopTakes(dataDir, Math.max(0, 400 - takes.length))); } catch { /* (round 67, sketchpads67) loops trimmed from session sketches join the park takes; never a reason to list none */ }
   takes.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
   return { root, takes };
 }
@@ -409,8 +410,8 @@ function liveSave(dataDir, set, name, bytes) {
 }
 function liveClip(dataDir, file) {
   if (typeof file !== 'string' || !path.isAbsolute(file) || !/\.wav$/i.test(file)) throw Error('A clip is a WAV file.');
-  const real = path.resolve(file), roots = ['creative-live', 'creative-park'].map(d => path.join(path.resolve(dataDir), d) + path.sep);
-  if (!roots.some(r => pathKey(real).startsWith(pathKey(r))) || real.split(path.sep).includes('..')) throw Error('Clips come from your park sketches or the live set folder.');
+  const real = path.resolve(file), roots = ['creative-live', 'creative-park', 'creative-sketches'].map(d => path.join(path.resolve(dataDir), d) + path.sep);
+  if (!roots.some(r => pathKey(real).startsWith(pathKey(r))) || real.split(path.sep).includes('..')) throw Error('Clips come from your park sketches or the live set folder (or your session sketches).'); // (round 67, sketchpads67) + creative-sketches: a session sketch or a loop trimmed from one, on a pad
   if (!fs.existsSync(real)) throw Error(`A clip's file is gone: ${path.basename(real)}`);
   return real;
 }

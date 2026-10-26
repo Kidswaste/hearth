@@ -54,7 +54,10 @@ const BounceLog = (() => {
     if (!visible()) { if (sess.inDesk) K.leave(sess, now()); return paint(); }
     if (!sess.inDesk) { const r = K.enter(sess, now()); if (r.ended?.offered) saveRow(r.ended).catch(() => {}); sess = r.st; }
     const c = A()?.current?.(), park = typeof ParkJam !== 'undefined' ? ParkJam.state?.() : null;
-    K.use(sess, { instrument: c?.name, park: !!park?.on, place: park?.place, liveset: document.documentElement.classList.contains('liveset-open'), arrange: !!deskEl?.querySelector('.ls-view') });
+    const ls = document.documentElement.classList.contains('liveset-open'), ar = !!deskEl?.querySelector('.ls-view');
+    // (round 67, sketchpads67) the tempo being played: the Live set's song, Arrange's song, the last park take
+    let bpm = null; try { bpm = ls && typeof LiveSet !== 'undefined' ? LiveSet._test.scene()?.bpm : ar ? h?.state?.song?.bpm : park?.on ? h?.state?.park?.takes?.[0]?.bpm : null; } catch { /* no tempo this tick */ }
+    K.use(sess, { instrument: c?.name, park: !!park?.on, place: park?.place, liveset: ls, arrange: ar, bpm });
     // sound from the host counts as activity (a jam on the controller makes no clicks in the window)
     if (c?.path) {
       try { const r = await hub.vst.request({ action: 'sketch-status', plugin: c.path, name: c.name }); if (r?.ok && r.soundAgo != null && r.soundAgo < 60) K.activity(sess, now() - r.soundAgo * 1000, now()); } catch { /* no host yet */ }
@@ -95,7 +98,7 @@ const BounceLog = (() => {
       const r = await hub.vst.request({ action: 'sketch-save', plugin: c.path, name: c.name, project: project() });
       if (!r?.ok) throw Error(r?.error || 'The sketch could not be saved.');
       if (!sess) sess = K.start(now());
-      sess.sketches.unshift({ path: r.path, at: new Date(now()).toISOString(), seconds: r.seconds });
+      sess.sketches.unshift({ path: r.path, at: new Date(now()).toISOString(), seconds: r.seconds, ...(sess.bpm ? { bpm: sess.bpm } : {}) }); // (round 67) + the session's tempo, ✂ Trim loop's grid
       await saveRow();
       return flash(`Sketch saved · ${Math.round(r.seconds)} s in “${project()}” sketches.`, 8000);
     } catch (err) { flash(calmErr(err), 8000); throw err; } finally { saving = false; }
@@ -110,7 +113,7 @@ const BounceLog = (() => {
   }
 
   // ---------- ✓ Log it ----------
-  const fromRow = (r) => ({ id: r.id, start: Date.parse(r.start), last: Date.parse(r.end), active: r.minutes * K.MIN, used: { desk: true, ...r.used }, instruments: r.instruments, place: r.place, sketches: r.sketches, logged: !!r.logged });
+  const fromRow = (r) => ({ id: r.id, start: Date.parse(r.start), last: Date.parse(r.end), active: r.minutes * K.MIN, used: { desk: true, ...r.used }, instruments: r.instruments, place: r.place, sketches: r.sketches, logged: !!r.logged, ...(r.bpm ? { bpm: r.bpm } : {}) });
   async function credit(st) {
     if (typeof QuestHud === 'undefined' && window.Lazy) await Lazy.load('questhud').catch(() => {}); // the ✦ tracker's careful journal writer
     const Hud = typeof QuestHud !== 'undefined' ? QuestHud : null; if (!Hud?.write) return { quests: [], note: '' };
@@ -155,9 +158,9 @@ const BounceLog = (() => {
     host.append(panel); drawPanel(); panel.scrollIntoView?.({ block: 'start' }); panel.querySelector('.bl-close')?.focus({ preventScroll: true });
     return `${list.sessions.length} session${list.sessions.length === 1 ? '' : 's'}.`;
   }
-  function closePanel() { player?.pause(); panel?.remove(); panel = null; }
+  function closePanel() { player?.pause(); if (window.Lazy?.loaded?.('sketchpads')) SketchPads.close(); panel?.remove(); panel = null; } // (round 67) + the trim's preview stops
   function drawPanel() {
-    if (!panel || !h) return; const { e, btn } = h; panel.replaceChildren();
+    if (!panel || !h) return; const { e, btn } = h; if (window.Lazy?.loaded?.('sketchpads')) SketchPads.close(); panel.replaceChildren();
     const head = e('div', null, 'bl-head'); const close = btn('✕', () => closePanel(), 'bl-close'); close.setAttribute('aria-label', 'Close Sessions');
     head.append(e('strong', 'Sessions'), e('span', 'Every session of 10 minutes or more, newest first.', 'bl-dim'), close); panel.append(head);
     const rows = list?.sessions || [];
@@ -177,6 +180,8 @@ const BounceLog = (() => {
       ul.append(li);
     }
     panel.append(ul);
+    // (round 67, sketchpads67) each sketch gets 🎛 Put on a pad and ✂ Trim loop (+ the loops trimmed from it): loaded on first open
+    if (rows.some((r) => r.sketches.length) && window.Lazy) Lazy.load('sketchpads').then(() => SketchPads.decorate(panel, rows, h)).catch(() => {});
   }
   async function removeSketch(r, k) {
     if (!(await hub.bouncelog.ours(k.path))) throw Error('That file is not in the sketches folder; nothing was removed.');
@@ -198,14 +203,15 @@ const BounceLog = (() => {
     const w = String(args).trim().toLowerCase();
     if (w === 'sketch' || w === 'save') return saveSketch();
     if (w === 'log') return logIt();
+    if (/^(trim|pad)\b/.test(w)) { await Lazy.load('sketchpads'); return SketchPads.run(w); } // (round 67, sketchpads67) the newest sketch: ✂ Trim loop / 🎛 Put on a pad
     if (w === 'now' || w === 'status') return sess ? `This session: ${K.clock(sess.active)} (${K.what(sess)})${sess.logged ? ' · logged' : ''}.` : 'No session yet: open the Sound desk and play.';
     if (typeof ParkJam !== 'undefined') await ParkJam.desk();
     return openPanel();
   }
   if (typeof Commands !== 'undefined' && !Commands.get('sessions')) {
-    Commands.register({ name: 'sessions', args: '[sketch | log | now]', area: 'Create', desc: 'Your music sessions in the Sound desk: the list with sketches to play, save the last 30 seconds, log this session to your music quests', run: (a, ctx) => run(a).then((t) => t && ctx?.say?.(t)),
-      complete: (a) => [['sketch', 'save the last 30 seconds'], ['log', 'log this session'], ['now', 'this session so far']].filter(([v]) => v.startsWith(String(a || '').trim().toLowerCase())).map(([value, hint]) => ({ value, hint })),
-      examples: ['/sessions', '/sessions sketch', '/sessions log'], keywords: 'session log music sketch bounce last 30 seconds serum vital sound desk journal quest' });
+    Commands.register({ name: 'sessions', args: '[sketch | log | now | trim | pad]', area: 'Create', desc: 'Your music sessions in the Sound desk: the list with sketches to play, save the last 30 seconds, log this session to your music quests, trim a loop from a sketch, put a sketch on a Live set pad', run: (a, ctx) => run(a).then((t) => t && ctx?.say?.(t)),
+      complete: (a) => [['sketch', 'save the last 30 seconds'], ['log', 'log this session'], ['now', 'this session so far'], ['trim', 'trim a loop from the newest sketch'], ['pad', 'put the newest sketch on a Live set pad']].filter(([v]) => v.startsWith(String(a || '').trim().toLowerCase())).map(([value, hint]) => ({ value, hint })),
+      examples: ['/sessions', '/sessions sketch', '/sessions log'], keywords: 'session log music sketch bounce last 30 seconds serum vital sound desk journal quest trim loop pad live set bpm' });
   }
   try { AppUI.addAction?.('Sound desk: my music sessions', () => run('').catch((err) => toast(calmErr(err), { type: 'error' }))); } catch { /* no palette */ }
 
