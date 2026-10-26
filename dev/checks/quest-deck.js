@@ -7,7 +7,7 @@ const root = () => document.querySelector('.qj');
 const scope = () => root().querySelector('dialog[open]') || root();
 const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === name); check(b, 'Button: ' + name); b.click(); await until(() => !b.disabled); await wait(90); };
 const change = async (name, value) => { const n = scope().querySelector(`[aria-label="${name}"]`); check(n, 'Field: ' + name); n.value = value; n.dispatchEvent(new Event('input', { bubbles: true })); n.dispatchEvent(new Event('change', { bubbles: true })); await QuestJournal.flush(); await wait(100); };
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+document.querySelector('#agent-buttons [data-space="life"]').click();
 await until(() => root()?.querySelector('.qj-deck-invite'));
 const s = () => QuestJournal.snapshot(), C = QuestCore;
 await press('Deal me in →');
@@ -69,7 +69,7 @@ check([...scope().querySelectorAll('button')].find(b => b.textContent === 'Take 
 scope().close(); await QuestJournal.flush();
 return `Mixtape: ${checks} UI checks passed (filters, rotation, saved/hidden cards, twist, proof, resume, passport, layout and rejected actions).`;
 //@@ reload
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+document.querySelector('#agent-buttons [data-space="life"]').click();
 for (let i = 0; i < 160 && !document.querySelector('.qj-deck-invite'); i++) await new Promise(r => setTimeout(r, 60));
 const saved = QuestJournal.snapshot();
 if (saved.deck.filters.lane !== 'visual' || !saved.deck.saved.includes('tape-hook') || saved.motion !== false || QuestCore.xp(saved) !== 35 || !saved.sideQuests.find(q => q.deckCard === 'tape-hook')?.deckTwist) throw Error('Mixtape persistence failed');

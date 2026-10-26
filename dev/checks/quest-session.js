@@ -7,7 +7,7 @@ const root = () => document.querySelector('.qj');
 const scope = () => root().querySelector('dialog[open]') || root();
 const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === name); check(b, 'Button available: ' + name); b.click(); await until(() => !b.disabled); await wait(60); };
 const field = (name, value) => { const n = scope().querySelector(`[aria-label="${name}"]`); check(n, 'Field available: ' + name); n.value = value; n.dispatchEvent(new Event('input', { bubbles: true })); n.dispatchEvent(new Event('change', { bubbles: true })); };
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+document.querySelector('#agent-buttons [data-space="life"]').click();
 await until(() => root()?.querySelector('.qj-session-desk'));
 const s = () => QuestJournal.snapshot(), C = QuestCore;
 QuestReview.run = () => ({ promise: Promise.resolve({ status: 'reviewed', score: 60, dimensions: [15,15,15,15], meetsBrief: true, summary: 'Test fixture review.', better: 'Refine one color.', next: 'Export one changed color.', coverage: 'Fixture text.', limitations: 'Mock reviewer; no artistic judgment.' }), cancel() {} });
@@ -45,7 +45,7 @@ await smoke({ shot: window.SMOKE_SAVES + '/studio-session-narrow.png' }); scope(
 await smoke({ cdp: 'Emulation.clearDeviceMetricsOverride' }); await QuestJournal.flush();
 return `Session: ${checks} checks passed (picker, saved action, completion, skips, skill gains and narrow layout).`;
 //@@ reload
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+document.querySelector('#agent-buttons [data-space="life"]').click();
 for (let i = 0; i < 150 && !document.querySelector('.qj-session-desk'); i++) await new Promise(r => setTimeout(r, 60));
 const s = QuestJournal.snapshot();
 if (s.plan?.action !== 'Open <my drum rack> and change just the snare.' || s.plan.minutes !== 15 || QuestCore.xp(s) !== 60) throw Error('Starting note or progression did not survive reload');

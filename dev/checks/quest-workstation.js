@@ -5,7 +5,7 @@ let checks = 0; const check = (ok, why) => { if (!ok) throw Error(why); checks++
 const root = () => document.querySelector('.qj'), scope = () => root().querySelector('dialog[open]') || root();
 const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === name || b.getAttribute('aria-label') === name); check(b, 'Button: ' + name); b.click(); await until(() => !b.disabled); await wait(80); };
 const field = (name, value) => { const n = scope().querySelector(`[aria-label="${name}"]`); check(n, 'Field: ' + name); n.value = value; n.dispatchEvent(new Event('input', { bubbles: true })); n.dispatchEvent(new Event('change', { bubbles: true })); };
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click(); await until(() => root()?.querySelector('.qj-console-name')?.textContent);
+document.querySelector('#agent-buttons [data-space="life"]').click(); await until(() => root()?.querySelector('.qj-console-name')?.textContent);
 const s = () => QuestJournal.snapshot(), C = QuestCore;
 document.querySelectorAll('.toast').forEach(n => n.remove());
 check(getComputedStyle(root()).getPropertyValue('--qj-bg').trim() === '#101113' && root().querySelectorAll('.qj-object').length === 5, 'charcoal workstation retains desk navigation');
@@ -48,7 +48,7 @@ check(getComputedStyle(root().querySelector('.qj-art-reel')).animationName === '
 await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [] } });
 await QuestJournal.flush(); return `Workstation: ${checks} checks passed (personal ranks, proof, titles, reward ideas, ritual receipts, console controls, narrow layouts and reduced motion).`;
 //@@ reload
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+document.querySelector('#agent-buttons [data-space="life"]').click();
 for (let i = 0; i < 160 && !document.querySelector('.qj-console-name')?.textContent; i++) await new Promise(r => setTimeout(r, 60));
 const state = QuestJournal.snapshot();
 if (state.workstation.accent !== 'mythic' || state.workstation.lamp !== false || state.workstation.callsign !== 'Quentin / After hours' || QuestCore.activeTitle(state)?.name !== 'Forge apprentice' || state.workstation.target !== 'forgeheart' || !state.redemptions[0]?.returnedAt || QuestCore.balance(state) !== 10 || !state.rewards.find(r => r.blueprint === 'first-listen')?.note.includes('desk lights')) throw Error('Workstation reload lost earned progress or preferences');

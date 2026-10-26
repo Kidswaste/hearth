@@ -77,8 +77,9 @@ await until(() => LiveSet._test.status()?.current === C.presets(sc0())[1].id, 80
 const swap = LiveSet._test.status().swaps.at(-1); ok((swap.at - LiveSet._test.status().origin) % 24000 === 0, `key W: "Loud" switched exactly on a beat line (bar ${swap.bar}, beat ${swap.beat})`);
 ok(api.current() && (await api.values(['level'])).level.value === .9, 'the live synth now plays "Loud"');
 await wait(300); ok(LiveSet._test.status().underruns === u0, `no underrun across the preset switch (${u0} → ${LiveSet._test.status().underruns})`);
-const knob = pads[0].querySelector('.lv-knob'); knob.value = '-0.6'; knob.dispatchEvent(new Event('input', { bubbles: true }));
-await until(() => Math.abs((LiveSet._test.status()?.pads?.[sc0().pads[0].id]?.fx ?? 0) + 0.6) < 1e-6, 4000, 'the knob in the host'); ok(/Low-pass/.test(pads[0].querySelector('.lv-fx').textContent), 'the pad\'s knob filters it in the host: ' + pads[0].querySelector('.lv-fx').textContent);
+const pad1 = () => document.querySelector(`.lv-view .lv-pad[data-pad="${sc0().pads[0].id}"]`); // (sweep69) the pads are drawn again once the set arms and its run recorder starts: read the pad on screen, not the one clicked before
+const knob = pad1().querySelector('.lv-knob'); knob.value = '-0.6'; knob.dispatchEvent(new Event('input', { bubbles: true }));
+await until(() => Math.abs((LiveSet._test.status()?.pads?.[sc0().pads[0].id]?.fx ?? 0) + 0.6) < 1e-6, 4000, 'the knob in the host'); ok(/Low-pass/.test(pad1().querySelector('.lv-fx').textContent), 'the pad\'s knob filters it in the host: ' + pad1().querySelector('.lv-fx').textContent);
 
 // 4. rehearse, panic, keep the run
 await click('.lv-view button', /^● Rehearse$/); await until(() => LiveSet._test.status()?.run, 5000, 'recording'); ok(!document.querySelector('.lv-rec').hidden, '● REC shows while rehearsing');

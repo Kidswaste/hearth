@@ -301,9 +301,15 @@ const FIX = [
   { re: /hearth-gameready-tools/, path: `${T}/hearth-gameready-tools/node_modules/.bin/gltfpack`, make: () => sh('npm', ['install', '--silent', '--no-audit', '--no-fund', '--prefix', `${T}/hearth-gameready-tools`, 'gltfpack@1.3.0']) },
   { re: /hearth-pins-fixture/, path: `${T}/hearth-pins-fixture/pinterest-like.html`, make: () => { fs.mkdirSync(`${T}/hearth-pins-fixture`, { recursive: true }); fs.copyFileSync(path.join(DEV, 'fixtures', 'pinterest-like.html'), `${T}/hearth-pins-fixture/pinterest-like.html`); } },
 ];
+// (round 69, sweep69) checks whose header names no smoke line (Codex's) get their flags here: the feedback checks answer
+// through the fake engines (no Codex / Claude here) and visual-feedback reviews a test MP4 it is handed
+const EXTRA_FLAGS = {
+  'routine-feedback': ['--fake-engines'],
+  'visual-feedback': ['--fake-engines', '--eval', `window.FEEDBACK_FIXTURE=${JSON.stringify(`${T}/hearth-test-videos/neon_tunnel_v1.mp4`)}`],
+};
 const srcOf = (n) => (n.startsWith('unit:') ? fs.readFileSync(path.join(DEV, `${n.slice(5)}.js`), 'utf8') : fs.readFileSync(path.join(CHECKS, `${n}.js`), 'utf8'));
 const exists = (p) => { try { return fs.statSync(p).isFile() || fs.readdirSync(p).length > 0; } catch { return false; } };
-const needed = FIX.filter((f) => wanted.some((n) => f.re.test(srcOf(n)) || /^journey-/.test(n.replace('unit:', ''))));
+const needed = FIX.filter((f) => wanted.some((n) => f.re.test(srcOf(n)) || (EXTRA_FLAGS[n] || []).some((a) => f.re.test(a)) || /^journey-/.test(n.replace('unit:', ''))));
 // (round 56, fixes56) two runs at once make a missing fixture once: the other waits for it (a lock folder next to it;
 // one left by a run that died is taken after 15 minutes)
 const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -409,7 +415,7 @@ for (const n of wanted) {
   } else {
     const shots = path.join(OUT, n);
     // step pictures only when asked (--shots): a 1080×1080 screenshot mid-journey can starve a recording on a busy machine
-    const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(pairDirs[n]?.flags || []), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
+    const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(EXTRA_FLAGS[n] || []), ...(pairDirs[n]?.flags || []), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
     // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
     const env = n === 'mainhang65' ? { ...process.env, HEARTH_LOOPLAG: 'prof', HEARTH_FAULTS_LIVE: '1', HEARTH_SLOWFS_US: process.env.HEARTH_SLOWFS_US || '150' } // (round 65) the main-process lag probe, a Windows-slow disk
       : /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }

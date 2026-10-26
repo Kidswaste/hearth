@@ -233,7 +233,9 @@ async function grabPass(file, list, o) {
   const dir = outDir(file, o);
   const pattern = path.join(dir, `pass-${Date.now().toString(36)}-%04d.${extOf(o)}`);
   const sel = `select='${list.map((n) => `eq(n\\,${n})`).join('+')}'`;
-  const args = ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', '-vf', [sel, ...scaleArgs(o)].join(','), '-fps_mode', 'passthrough', ...qualityArgs(o), '-an', '-sn', '-dn', pattern];
+  // (sweep69) setpts=N/TB: the picked frames get 0, 1, 2… seconds as times. A Lab / recorder WebM can hold two frames on the same
+  // millisecond; kept as they were, the JPEG writer stopped at the second one ("Invalid pts (37) <= last (37)")
+  const args = ['-v', 'error', '-y', '-i', file, '-map', '0:v:0', '-vf', [sel, 'setpts=N/TB', ...scaleArgs(o)].join(','), '-fps_mode', 'passthrough', ...qualityArgs(o), '-an', '-sn', '-dn', pattern];
   await run(ffmpeg, args, { timeout: 30 * 60000 });
   const sorted = [...new Set(list)].sort((a, b) => a - b);
   const paths = new Map();

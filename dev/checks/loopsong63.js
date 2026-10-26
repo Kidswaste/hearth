@@ -116,6 +116,9 @@ ok(/Exported .* mix \+ 4 stems \+ MIDI/.test(document.querySelector('.ls-status'
 // 6. proof: "Finish a track" (added to the journal; the review stays the owner's choice)
 const offerBtn = [...document.querySelectorAll('.ls-view button')].find(b => /Finish a track/.test(b.textContent)); ok(offerBtn, 'Offer as “Finish a track” proof');
 offerBtn.click(); await until(() => song().exports[0].proof, 30000, 'proof saved');
+// (sweep69) after saving the proof the offer opens the quest in Codex's Life space (its dialogs open there now): wait for it,
+// so it can't land in the middle of the /song steps below (they bring the Sound desk back)
+await until(() => H.activeId === 'tool:quests' && document.querySelector('.qj dialog[open]'), 15000, 'the quest opens in Life'); document.querySelector('.qj dialog[open]').close();
 const qs = QuestJournal.paris.ui().state(), camp = qs.campaigns.find(c => c.id === 'c-pq-track'); ok(camp && camp.title === 'Finish a track' && camp.quests.length === 3, '"Finish a track" is in the journal');
 const qid = song().exports[0].proof.quest, item = qs.submissions[qid].at(-1);
 ok(item.proof.type === 'file' && /audio\/(mpeg|wav)/.test(item.proof.kind) && /refs/.test(item.proof.path) && /Park song · Belleville song · 8 bars at 200 BPM/.test(item.proof.excerpt) && /cannot hear/.test(item.proof.coverage) && /song made from park loops/.test(item.intent), 'the song is the proof: copied into references, honest coverage, an intent line');
