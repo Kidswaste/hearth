@@ -137,6 +137,7 @@ const QuestHud = (() => {
     document.addEventListener('keydown', onEsc, true);
     renderPanel();
     await read(); // fresh from the journal (another computer's sync, another stream)
+    if (window.hub?.leave) Lazy.load('leavesoon').then(() => LeaveSoon.refresh()).catch(() => {}); // (round 68, leavesoon68) the leave reminders (kept main-side) → the ⏰ rows
     lastSig = ''; paint();
     if (prefs.near === 'gps') locate();
     panel?.querySelector('.qh-step button, .qh-foot button')?.focus({ preventScroll: true });
@@ -180,6 +181,7 @@ const QuestHud = (() => {
     // (round 66, herepin66) 📍 Near me: while an "I'm here" pin is set on the Paris map (tools/herepin*.js), one row → Close to you
     if (status === 'ok' && C && window.HerePinCore) { const hp = HerePinCore.hud(store.get(HerePinCore.KEY, null), Date.now(), window.Lazy?.isIn('questjournal') && window.HerePin ? HerePin.count() : null); if (hp) { const r = btn(hp.text, () => { close(); return Lazy.load('questjournal').then(() => HerePin.open()); }, 'qh-row hp-hud', hp.title); r.dataset.k = 'herepin'; body.push(r); } }
     if (status === 'ok' && C && S && window.ErrandsCore) body.push(...errandRows()); // (round 67, errands67) Errands: the opening-hours badge, Done ✓, ＋ Errand
+    if (window.LeaveSoon) body.push(...LeaveSoon.hudRows(btn)); // (round 68, leavesoon68) ⏰ Leaving soon: "Leave at 20:15" for each reminder, Snooze 10 min / Dismiss once it rang (leavesoon.js)
     if (status === 'ok' && C && S) {
       const others = QC.actives(C, S, prefs.pin).filter((q) => q.id !== cd?.id);
       if (others.length) body.push(el('div', { class: 'qh-sec', text: 'Also active' }), ...others.map((q) => otherRow(QC.card(C, S, q))));
@@ -380,6 +382,7 @@ const QuestHud = (() => {
         { label: `${prefs.near === 'gps' ? '✓ ' : ''}Use this computer's location`, action: () => setNear('gps') },
         ...(places.length ? [{ label: 'I\'m at…', items: places.map((p) => ({ label: `${prefs.near === p.id ? '✓ ' : ''}${p.name}`, action: () => setNear(p.id) })) }] : []),
         { label: `${prefs.near === 'off' ? '✓ ' : ''}Off (nothing about where you are is used)`, action: () => setNear('off') },
+        { label: '🏠 Home for leave reminders: click it on the Paris map…', action: () => { close(); Lazy.load('leavesoon').then(() => LeaveSoon.pickHome()).catch((err) => { if (err?.message !== 'cancelled') toast(calmError(err), { type: 'error' }); }); } }, // (round 68, leavesoon68) ⏰ the trip counts from here when no 📍 pin is set
       ] },
       { label: '＋ Errand… (what, where, opening hours)', action: () => { errandUI(() => Errands.add()).catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 67, errands67)
       ...(prefs.pin ? [{ label: 'Follow the main quest again', action: () => pin(null) }] : []),

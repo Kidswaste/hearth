@@ -134,7 +134,13 @@ const WeekendPlan = (() => {
         el('span', { class: 'qh-row-title', text: o.title }), el('span', { class: 'qh-sub', text: o.why || '' }),
         // (round 67, invite67) a show night: 👋 Bring someone opens the invite card (lazy group 'invite')
         o.kind === 'show' && o.show ? btn('👋 Bring someone', () => Lazy.load('invite').then(() => Invite.open(o.show, { from: 'weekend' })), 'wp-bring', 'Write a short invite for this show: Copy, or open WhatsApp / Messages / Instagram with it (never sent for you)') : null),
-      el('div', { class: 'wp-acts' }, swapB, keepB));
+      el('div', { class: 'wp-acts' }, swapB, keepB, o.at ? leaveSlot(o) : null)); // (round 68, leavesoon68) ⏰ Remind me to leave (a slot with a place)
+  }
+  // (round 68, leavesoon68) "⏰" on a slot with a place: Hearth tells you when to leave for it (leavesoon.js)
+  function leaveSlot(o) {
+    const ph = el('span', { class: 'wp-leave' });
+    Lazy.load('leavesoon').then(() => { const t = LeaveSoon.slotToggle(o, WP().itemId(o), 'qh-btn wp-remind'); if (t) ph.replaceWith(t); else ph.remove(); }).catch(() => ph.remove());
+    return ph;
   }
   function emptyWhy(id) {
     return { night: 'No show saved for this weekend. Shows come from the Paris map’s Shows layer (Shotgun / DICE).', outside: 'No free afternoon left this weekend.', nearby: 'Nothing unvisited close by.', studio: 'No free time left for a session.' }[id] || 'Nothing to propose.';

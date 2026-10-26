@@ -79,6 +79,7 @@ const Notify = (() => {
       if (go.renders) { (window.Lazy ? Lazy.load('renders') : Promise.resolve()).then(() => Renders.open()).catch(() => {}); return 'renders'; }
       if (go.sync) { Sync.conflicts(); return 'sync'; }
       if (go.update) { Updater.dialog(); return 'update'; }
+      if (go.leave) { const k = go.leave.key, o = go.leave.op; if (o === 'snooze' || o === 'dismiss') { window.hub.leave.op({ op: o, key: k }).catch(() => {}); return o; } Lazy.load('leavesoon').then(() => LeaveSoon.showOnMap(k)).catch((err) => toast(calmError(err), { type: 'error' })); return 'leave'; } // (round 68, leavesoon68) ⏰ Show on map / Snooze 10 min / Dismiss
       if (go.activity) { (window.Lazy ? Lazy.load('activity') : Promise.resolve()).then(() => Activity.open()).catch(() => {}); return 'activity'; }
     } catch (err) { toast(err.message, { type: 'error' }); }
     return null;
@@ -134,6 +135,16 @@ const Notify = (() => {
     // (round 62, showprep62) a show's "on the day" reminder (showprepmain.js times it): a desktop notification while
     // you're elsewhere, a toast when Hearth is in front
     window.hub?.shows?.onRemind?.(async (r) => { if (!r?.title) return; const out = await send({ type: 'reminder', title: r.title, body: r.body || '', group: `show:${r.key}` }); if (!out.shown && out.why !== 'off' && typeof toast === 'function') toast(`${r.title}${r.body ? ` — ${r.body}` : ''}`, { timeout: 12000 }); });
+    // (round 68, leavesoon68) ⏰ "Leave in 10 min for …" (leavesoonmain.js times it, even with Hearth in the tray): Show on map
+    // (a click on it) · Snooze 10 min · Dismiss (both without bringing Hearth up); a toast when Hearth is in front. A
+    // reminder missed while Hearth was closed isn't rung late: it's said once here, at start.
+    window.hub?.leave?.onDue?.(async (r) => {
+      if (!r?.key || !r.title) return;
+      const acts = [{ text: 'Show on map', go: { leave: { key: r.key, op: 'map' } } }, { text: 'Snooze 10 min', go: { leave: { key: r.key, op: 'snooze' }, quiet: 1 } }, { text: 'Dismiss', go: { leave: { key: r.key, op: 'dismiss' }, quiet: 1 } }];
+      const out = await send({ type: 'reminder', title: r.title, body: r.body || '', group: `leave:${r.key}`, actions: acts });
+      if (!out.shown && typeof toast === 'function') toast(`${r.title}`, { timeout: 15000, action: { label: 'Show on map', fn: () => route(acts[0].go) } });
+    });
+    setTimeout(() => window.hub?.leave?.op?.({ op: 'missed' }).then((r) => { if (r?.ok && r.value?.length) Lazy.load('leavesoon').then(() => LeaveSoon.sayMissed(r.value)).catch(() => {}); }).catch(() => {}), 4000);
     // looking at a chat clears its notification (only when one was shown)
     addEventListener('hearth:view', () => { if (!shownGroups.size || typeof H === 'undefined') return; for (const id of Object.values(H.activeChat || {})) if (id) seen(`chat:${id}`); });
     window.hub?.onWindowFocus?.((f) => { if (f && shownGroups.has('summary')) seen('summary'); });
