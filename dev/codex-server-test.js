@@ -135,6 +135,7 @@ function ok(text) { console.log(`✓ ${text}`); checks++; }
   result = await runEngine(result.session, 'BLOCKED'); assert.equal(result.type, 'done');
   assert(!adapterEvents.some(e => e.type === 'blocked'), 'Internal parser events must not end the UI turn');
   assert(adapterEvents.some(e => e.type === 'thinking' && /blocked by the current permissions/.test(e.text)));
+  assert(Array.isArray(result.blocked) && result.blocked.length, '(round 67) a blocked Hearth tool is named on the final event, for the notice under the reply');
   assert.equal(legacyItem({ type: 'fileChange', status: 'declined' }).status, 'failed');
   assert.equal(engines.busy(), 0); engines.stopAll();
   ok('default engines.send uses app-server; sandbox/image settings survive; warm turns work through the real adapter');

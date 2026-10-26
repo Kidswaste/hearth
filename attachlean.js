@@ -19,7 +19,16 @@ const AttachLean = (() => {
   const engineOf = (id) => (agentOf(id).engine === 'codex' ? 'codex' : 'claude');
   // Claude reads the attachments folder with its Read tool (Hearth turns it on for that message); Astra reads files
   // only with file access (its sandboxed shell)
-  const canRead = (id) => engineOf(id) === 'claude' || Boolean(agentOf(id).workspace || (typeof Access !== 'undefined' && Access.isOn?.(id)));
+  // (round 67) on Windows Codex's sandbox blocks every command, so Astra reads files only without it (at Read & write or
+  // Full, ⋯ AI setup): otherwise a trimmed attachment's "whole file at <path>" was a file it could never open
+  const canRead = (id) => {
+    if (engineOf(id) === 'claude') return true;
+    const a = agentOf(id);
+    if (!(a.workspace || (typeof Access !== 'undefined' && Access.isOn?.(id)))) return false;
+    if (window.hub?.native?.os !== 'win') return true;
+    const acc = typeof Access !== 'undefined' ? Access.effective?.(Native.chatOf?.(id), a) : null;
+    return a.astraNoSandbox === true && Boolean(acc) && !['off', 'read'].includes(acc.level);
+  };
   const sendSid = new Map(); // chatId → the engine session a message was sent into (hooks.send)
 
   // ---------- what was sent before in this chat ----------

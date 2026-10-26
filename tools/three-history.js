@@ -136,6 +136,7 @@ const ThreeHistory = (() => {
     schedule(id, kind);
   }
   const chains = new Map(); // one capture at a time per scene
+  const heads = new Map(); // (round 67, direction67) scene id → the version on screen now (new versions grow from it)
   function capture(id, extra = {}) {
     const p = timers.get(id);
     clearTimeout(p?.t); timers.delete(id);
@@ -169,10 +170,13 @@ const ThreeHistory = (() => {
       const label = extra.label || (who.by !== 'you' && who.tools?.size
         ? `${C.summary(c)}`.replace(/^./, (x) => x.toUpperCase())
         : C.label(kind, c));
-      v = C.add(e.doc, st, { kind: who.by !== 'you' && kind !== 'restore' && kind !== 'pick' ? 'director' : kind, label, by: who.by, chat: who.chat, mark: extra.mark });
+      const head = extra.from || heads.get(id);
+      const p = head && e.doc.versions.some((x) => x.id === head) ? head : C.latest(e.doc)?.id;
+      v = C.add(e.doc, st, { kind: who.by !== 'you' && kind !== 'restore' && kind !== 'pick' ? 'director' : kind, label, by: who.by, chat: who.chat, mark: extra.mark, p });
       if (who.tools) { v.tools = [...who.tools].slice(0, 6); who.tools.clear(); }
     }
     e.last = st;
+    if (v) heads.set(id, v.id);
     C.thin(e.doc);
     saveSoon(id);
     stats.captured += 1; stats.lastMs = Math.round((performance.now() - t0) * 10) / 10;
@@ -351,7 +355,7 @@ const ThreeHistory = (() => {
 
   // ---------- restore, pick, branch ----------
   // the scene becomes `st` (on screen: in place; backstage: saved), recorded as a version; undo puts back the one before
-  async function apply(id, st, { kind = 'restore', label = 'Restored', by = 'you' } = {}) {
+  async function apply(id, st, { kind = 'restore', label = 'Restored', by = 'you', from = null } = {}) {
     const sc = S();
     if (!sc?.get(id)) throw new Error('That scene is gone.');
     await flush(id);
@@ -361,7 +365,7 @@ const ThreeHistory = (() => {
     as(id, by, 3000);
     if (id === sc.currentId()) T().show(st, { keep: true });
     else { const x = sc.get(id); x.layers = C.clone(st.layers); if (st.palette) x.palette = [...st.palette]; else delete x.palette; sc.changed(id); }
-    const v = await capture(id, { kind, label, by, force: true });
+    const v = await capture(id, { kind, label, by, force: true, ...(from ? { from } : {}) }); // from: a restore grows from the version it went back to
     return { version: v, before: before?.id || null, undo: before ? () => apply(id, C.stateOf(e.doc, before), { kind: 'restore', label: `Undid: ${label}` }) : null };
   }
   // (round 29, safetynet) work that didn't reach the disk before Hearth closed unexpectedly: added as a version of its
@@ -380,7 +384,7 @@ const ThreeHistory = (() => {
     const e = await docOf(id);
     const v = e.doc.versions.find((x) => x.id === vid);
     if (!v) throw new Error('No such version.');
-    return apply(id, C.stateOf(e.doc, v), { kind: 'restore', label: label || `Restored “${v.label}” (${fmtWhen(v.at)})` });
+    return apply(id, C.stateOf(e.doc, v), { kind: 'restore', label: label || `Restored “${v.label}” (${fmtWhen(v.at)})`, from: v.id });
   }
   async function pick(vid, what, { id = S()?.currentId(), layer = null } = {}) {
     const e = await docOf(id);
@@ -419,7 +423,16 @@ const ThreeHistory = (() => {
 
   return {
     changed, director, as, capture, flush, list, stateOf, resolve, changesBetween, thumbs, turns, back,
-    preview, endScrub, restore, pick, branch, fmtWhen, keepVersion, apply, // (round 52, chatkeep: apply puts work kept by safetynet back on screen)
+    preview, endScrub, restore, pick, branch, fmtWhen, keepVersion, apply,
+    // (round 67, direction67) the scene's branches: the newest version of each line, newest first; current = the
+    // line the scene is on now
+    async branches(id = S()?.currentId()) {
+      const e = await flush(id);
+      if (!e) return [];
+      const head = heads.get(id) || C.latest(e.doc)?.id;
+      const onLine = new Set(C.lineOf(e.doc, head).map((v) => v.id));
+      return C.tips(e.doc).map((v) => ({ id: v.id, at: v.at, by: v.by, label: v.label, current: onLine.has(v.id), length: C.lineOf(e.doc, v.id).length }));
+    }, // (round 52, chatkeep: apply puts work kept by safetynet back on screen)
     get scrubbing() { return scrub ? { id: scrub.id, version: scrub.at } : null; },
     // dev checks: sizes and counts
     stats: () => ({ ...stats, cached: docs.size }),

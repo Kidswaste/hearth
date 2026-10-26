@@ -46,6 +46,13 @@ for (const [cmd, mode] of [['/relay claude→astra 2 write a haiku', 'relay'], [
   const m = await until(() => { const x = [...Native.chatOf(C.id).messages].reverse().find((y) => y.role === 'collab' && y.mode === mode); return x?.status && x.status !== 'running' && x; }, 30000);
   out[mode] = m && { status: m.status, parts: m.parts.map((p) => `${p.seat}/${p.round}/${p.kind}`).join(' '), final: m.final != null ? m.parts[m.final].text.slice(0, 50) : null, seats: m.seats.map((s) => s.label).join(' × ') };
 }
+// (round 67) a council with a review round: the chair's prompt carries the seats' critiques (they used to be dropped)
+{
+  const seat = (a) => ({ agentId: a.id, name: a.name, engine: a.engine, color: '#888', model: null, persona: null, label: a.name });
+  const m = await Astra.start(C.id, 'council', 'pick a colour', [seat(C), seat(A)], { rounds: 2 });
+  out.council2 = { status: m.status, kinds: m.parts.map((p) => p.kind).join(' '), final: m.final != null ? m.parts[m.final].text.slice(0, 60) : null };
+  out.council2ok = m.parts.filter((p) => p.kind === 'critique').length === 2 && /after reading their reviews/.test(out.council2.final || '');
+}
 // stop
 await Commands.tryRun('/duo SLOW please', C.id);
 await sleep(1200);

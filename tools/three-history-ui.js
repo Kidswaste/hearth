@@ -73,8 +73,10 @@ const ThreeHistoryUI = (() => {
   function card(v, i) {
     const pic = el('div', { class: 'tm-pic' }, tm[v.id] ? el('img', { src: tm[v.id], alt: '', loading: 'lazy', decoding: 'async' }) : el('span', { text: '◭' }));
     const who = el('span', { class: `tm-who by-${v.by}`, text: GLYPH[v.by] || '●', title: C.whoName(v.by) });
-    return el('button', { type: 'button', class: `tm-card${v.mark ? ' mark' : ''}`, dataset: { i: String(i), id: v.id }, title: `${C.whoName(v.by)} · ${TH.fmtWhen(v.at)}\n${v.label}${v.mark ? `\n⚑ ${C.whoName(v.mark.by)}'s turn began here: “${v.mark.text}”` : ''}` },
-      v.mark ? el('span', { class: 'tm-flag', text: '⚑' }) : null, pic, el('div', { class: 'tm-cap' }, who, el('span', { text: TH.fmtWhen(v.at) })));
+    // (round 67, direction67) ⑂: this version grew from an older one than the one before it (a new branch starts here)
+    const from = v.p && i > 0 && list[i - 1]?.id !== v.p ? list.find((x) => x.id === v.p) : null;
+    return el('button', { type: 'button', class: `tm-card${v.mark ? ' mark' : ''}${from ? ' fork' : ''}`, dataset: { i: String(i), id: v.id }, title: `${C.whoName(v.by)} · ${TH.fmtWhen(v.at)}\n${v.label}${v.mark ? `\n⚑ ${C.whoName(v.mark.by)}'s turn began here: “${v.mark.text}”` : ''}${from ? `\n⑂ A new branch: it grew from ${TH.fmtWhen(from.at)} (“${from.label}”)` : ''}` },
+      v.mark ? el('span', { class: 'tm-flag', text: '⚑' }) : null, from ? el('span', { class: 'tm-fork', text: '⑂', title: 'A new branch starts here' }) : null, pic, el('div', { class: 'tm-cap' }, who, el('span', { text: TH.fmtWhen(v.at) })));
   }
   function paintSel() {
     for (const c of strip.querySelectorAll('.tm-card')) { const on = Number(c.dataset.i) === idx; if (c.classList.contains('on') !== on) c.classList.toggle('on', on); }

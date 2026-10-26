@@ -92,9 +92,9 @@ try {
   await until(() => v.attachments.length >= 2, 8000);
   ok(v.attachments.some((a) => a.kind === 'image') && v.attachments.some((a) => /board ids/.test(a.name)), 'Alt+drop: the picture itself');
   v.attachments.length = 0;
-  await drop(false, true); // (round 65) Shift: the vibe text (a plain drop is the real media: inspodrop65.js)
+  await drop(false, false); // (round 67) a plain drop: the qualities text (Shift: the real media, inspodrop65.js)
   await until(() => v.attachments.length >= 1, 5000);
-  ok(v.attachments.length === 1 && /^vibe · /.test(v.attachments[0].name), 'a Shift drop still attaches the vibe');
+  ok(v.attachments.length === 1 && /^qualities · /.test(v.attachments[0].name), 'a plain drop attaches the qualities');
   BoardDrawer.toggle(false);
   v.attachments.length = 0;
 

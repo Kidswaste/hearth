@@ -1,0 +1,59 @@
+/* ✦ Direction (tools/three-direction.js): the chip after the Lab's scene picker (and ⚑ Finish line), a card over the
+   top left of the preview, and the Mark it up layer over the whole preview. Built on lookmatch's card pieces
+   (.lm-head / .lm-btn / .lm-acts). Plain and still: no blur, no animation over the moving preview. */
+.dir-chip {
+  flex: none; padding: 1px 8px; border: 1px dashed var(--line); border-radius: 999px; background: transparent; color: var(--muted, #9a948c);
+  font: inherit; font-size: 12px; line-height: 1.7; cursor: pointer; white-space: nowrap;
+}
+.dir-chip:hover, .dir-chip[aria-expanded="true"] { border-color: var(--fh-gold, #ffd75e); color: var(--text, #eae0d5); }
+.dir-chip.dir-some { border-style: solid; border-color: #ffb14a; color: #ffb14a; }
+.dir-chip.dir-far { border-style: solid; border-color: #ff7a3d; color: #ff7a3d; font-weight: 700; }
+
+.dir-card {
+  position: absolute; top: 46px; left: 8px; z-index: 7; width: 330px; max-width: calc(100% - 16px); max-height: calc(100% - 56px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; scrollbar-width: thin;
+  background: color-mix(in srgb, var(--panel, #15181b) 96%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); contain: layout paint;
+}
+.dir-card .lm-head .lm-x { margin-left: auto; }
+.dir-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #9a948c); }
+.dir-sec { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); padding-top: 6px; }
+.dir-sec-h { display: flex; flex-direction: column; gap: 1px; }
+.dir-hint { color: var(--muted, #9a948c); font-size: 11px; line-height: 1.4; }
+.dir-in { flex: 1; min-width: 0; font: inherit; padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface, #0f1113); color: inherit; }
+.dir-in:focus { border-color: var(--fh-gold, #ffd75e); outline: none; }
+.dir-sel { font: inherit; padding: 1px 2px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface, #0f1113); color: inherit; }
+.dir-combine { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.dir-row { display: grid; grid-template-columns: 52px 1fr 52px 82px; align-items: center; gap: 4px; }
+.dir-lo { text-align: right; color: var(--muted, #9a948c); }
+.dir-hi { color: var(--muted, #9a948c); }
+.dir-dv { font-size: 11px; color: var(--fh-gold, #ffd75e); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dir-range { width: 100%; accent-color: var(--fh-gold, #ffd75e); }
+.dir-frames { display: flex; gap: 4px; }
+.dir-frame { position: relative; flex: 1; max-width: 33%; }
+.dir-frame img { display: block; width: 100%; border-radius: 5px; border: 1px solid var(--line); }
+.dir-fx { position: absolute; top: 2px; right: 2px; border: 0; border-radius: 4px; padding: 0 4px; background: #000a; color: #fff; cursor: pointer; font-size: 11px; }
+.dir-drift { font-weight: 700; color: #6fdc9a; }
+.dir-drift.some { color: #ffb14a; }
+.dir-drift.far { color: #ff7a3d; }
+.dir-branches { display: flex; flex-direction: column; gap: 3px; }
+.dir-branch { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 6px; }
+.dir-branch.on .dir-bl { color: var(--fh-gold, #ffd75e); font-weight: 700; }
+.dir-bl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Mark it up: the frozen picture with the circles, over the whole preview */
+.dir-mk { position: absolute; inset: 0; z-index: 9; background: #000d; display: flex; align-items: center; justify-content: center; outline: none; }
+.dir-mk-img { max-width: 100%; max-height: calc(100% - 44px); object-fit: contain; user-select: none; pointer-events: none; }
+.dir-mk-svg { position: absolute; cursor: crosshair; touch-action: none; overflow: visible; }
+.dir-mk-c { fill: none; stroke-width: 3; stroke: #fff; stroke-dasharray: 6 4; }
+.dir-mk-c.more { stroke: #3ddc84; stroke-dasharray: none; }
+.dir-mk-c.wrong { stroke: #ff4d4d; stroke-dasharray: none; }
+.dir-mk-n { fill: #fff; font: 700 14px system-ui, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 3px; }
+.dir-mk-n.more { fill: #3ddc84; }
+.dir-mk-n.wrong { fill: #ff4d4d; }
+.dir-mk-bar { position: absolute; left: 8px; right: 8px; bottom: 6px; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; background: color-mix(in srgb, var(--panel, #15181b) 94%, transparent); border: 1px solid var(--line); color: var(--text, #eae0d5); font-size: 12px; }
+.dir-mk-bar .spacer { flex: 1; }
+.dir-mk-pop { position: absolute; z-index: 1; width: 250px; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; border-radius: 8px; background: var(--panel, #15181b); border: 1px solid var(--line); box-shadow: 0 6px 20px #0009; font-size: 12px; }
+.dir-mk-pop .dir-in { flex-basis: 100%; }
+.lm-btn.dir-more { border-color: #3ddc84; color: #3ddc84; font-weight: 700; }
+.lm-btn.dir-wrong { border-color: #ff4d4d; color: #ff4d4d; font-weight: 700; }

@@ -159,8 +159,31 @@ const TMCore = (() => {
     const v = { id: info.id || newId('v'), at: info.at || Date.now(), by: info.by || 'you', kind: info.kind || 'change', label: String(info.label || 'Changed').slice(0, 120), k, s };
     if (info.chat) v.chat = info.chat;
     if (info.mark) v.mark = info.mark;
+    if (info.p && info.p !== v.id) v.p = info.p; // (round 67, direction67) the version this one grew from
     doc.versions.push(v);
     return v;
+  }
+  // ---------- (round 67, direction67) branches ----------
+  // A version grew from its p (going back to an older version and working on from it starts a branch in the same
+  // scene); without p (older versions) it grew from the one before it in time. A p that thinning removed falls back
+  // the same way. Tips: the newest version of each branch (nothing grew from it).
+  function parentOf(doc, v, list = byTime(doc)) {
+    if (!v) return null;
+    if (v.p && doc.versions.some((x) => x.id === v.p)) return v.p;
+    const i = list.findIndex((x) => x.id === v.id);
+    return i > 0 ? list[i - 1].id : null;
+  }
+  function tips(doc) {
+    const list = byTime(doc);
+    const grown = new Set(list.map((v) => parentOf(doc, v, list)).filter(Boolean));
+    return list.filter((v) => !grown.has(v.id)).reverse(); // newest first
+  }
+  // the versions from the first one to vid, along its branch
+  function lineOf(doc, vid) {
+    const list = byTime(doc); const out = []; const seen = new Set();
+    let v = list.find((x) => x.id === vid);
+    while (v && !seen.has(v.id)) { seen.add(v.id); out.unshift(v); const p = parentOf(doc, v, list); v = p ? list.find((x) => x.id === p) : null; }
+    return out;
   }
   // keys no version uses any more go (a merged list may bring a version whose key the other computer kept: it's
   // in keys too, merged by id)
@@ -291,7 +314,7 @@ const TMCore = (() => {
   return {
     config: (o) => { if (o?.scan) scanFn = o.scan; },
     ops, diff, patch, codeDiff, plusMinus, encode, decode, same, sig,
-    blank, add, latest, byTime, stateOf, gc, heal, thin, sizeOf,
+    blank, add, latest, byTime, stateOf, gc, heal, thin, sizeOf, parentOf, tips, lineOf,
     changes, none, summary, label, whoName, sliderVals, pickLayer, pickValues, clone, newId,
   };
 })();

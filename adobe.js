@@ -49,6 +49,43 @@ const Adobe = (() => {
       return r;
     } catch (err) { window.Progress?.done(key, { ok: false }); return { ok: false, error: err.message }; }
   }
+  // (round 67) After Effects as a job beside Hearth (aemain.js runJob): resolves at once with { ok, job }; a progress
+  // chip shows it while AE works, a toast says how it ended, and jobResult(id) / waitJob(id, ms) give its answer
+  const aeJobs = new Map(); // id -> { label, at, done?: { ok, value, error, ms }, waiters: [] }
+  let aeHooked = false;
+  function hookAe() {
+    if (aeHooked || !window.hub.ae?.onJobDone) return;
+    aeHooked = true;
+    window.hub.ae.onJobDone((ev) => {
+      const j = aeJobs.get(ev.id) || { label: ev.label, at: Date.now(), waiters: [] };
+      j.done = { ok: ev.ok !== false, value: ev.value, error: ev.error || null, ms: ev.ms };
+      aeJobs.set(ev.id, j);
+      window.Progress?.done(`ae:${ev.id}`, { ok: j.done.ok });
+      toast(j.done.ok ? `After Effects finished: ${j.label}` : `After Effects: ${j.label} failed: ${j.done.error}`, { type: j.done.ok ? undefined : 'error', timeout: j.done.ok ? 3500 : 9000 });
+      for (const fn of j.waiters.splice(0)) fn(j.done);
+      document.dispatchEvent(new CustomEvent('hearth:ae-job', { detail: { id: ev.id, label: j.label, ...j.done } }));
+      while (aeJobs.size > 40) aeJobs.delete(aeJobs.keys().next().value);
+    });
+  }
+  async function aeJob(code, label = 'script') {
+    hookAe();
+    const s = await appOf('ae');
+    if (!s?.found) return { ok: false, error: s?.reason || 'After Effects isn\'t installed.', missing: true };
+    if (!window.hub.ae?.job) return run('ae', code, { label }); // an older main process: send only
+    const r = await window.hub.ae.job(code, label).catch((err) => ({ ok: false, error: err.message }));
+    if (!r?.ok) return { ok: false, error: r?.error || 'After Effects didn\'t take the script.' };
+    aeJobs.set(r.job, { label: r.label || label, at: Date.now(), waiters: [] });
+    window.Progress?.set(`ae:${r.job}`, { title: `After Effects · ${r.label || label}`, label: 'working in After Effects (Hearth stays free)', kind: 'adobe:ae', icon: 'Ae' });
+    return { ok: true, job: r.job };
+  }
+  const jobResult = (id) => { const j = aeJobs.get(id); return j ? { label: j.label, running: !j.done, ...(j.done || {}) } : null; };
+  function waitJob(id, ms = 60000) {
+    const j = aeJobs.get(id);
+    if (!j) return Promise.resolve(null);
+    if (j.done) return Promise.resolve(j.done);
+    return new Promise((resolve) => { const fn = (d) => { clearTimeout(t); resolve(d); }; const t = setTimeout(() => { j.waiters = j.waiters.filter((x) => x !== fn); resolve(null); }, ms); j.waiters.push(fn); });
+  }
+
   // Fails with the app's plain-words reason; returns the value
   async function must(appId, code, opts) {
     const r = await run(appId, code, opts);
@@ -347,6 +384,6 @@ const Adobe = (() => {
   addEventListener('DOMContentLoaded', boardHook);
   setTimeout(boardHook, 1500);
 
-  return { status, run, must, ask, link, unlink, links: () => [...links.keys()], backItems, toChat, toBoard, toLab, labStill, psOpen, labToPhotoshop, boardToPhotoshop, psActions, psAction, psSizes, psBack, psPlace, aiSvg, aiPng, editXml, sendEdit, prImport, meQueue, idPdf, idPlace, aeImport, openIn, web, items, menu, bridge, videoItems, registerApps, _test: { cameBack, links } };
+  return { status, run, aeJob, jobResult, waitJob, must, ask, link, unlink, links: () => [...links.keys()], backItems, toChat, toBoard, toLab, labStill, psOpen, labToPhotoshop, boardToPhotoshop, psActions, psAction, psSizes, psBack, psPlace, aiSvg, aiPng, editXml, sendEdit, prImport, meQueue, idPdf, idPlace, aeImport, openIn, web, items, menu, bridge, videoItems, registerApps, _test: { cameBack, links } };
 })();
 window.Adobe = Adobe;

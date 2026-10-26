@@ -131,3 +131,29 @@ configsafe (round 55, docs/upgrades/configsafe.md): the owner's config lives in 
 `readConfig` = `configsafe-core.effective(own, defaults)`: agents by id, `defaultsSeen` keeps removed defaults removed).
 Moved once at the start (`configsafe-core.migrate`), tracked files back to HEAD after (`updatermain.settle`). Readers
 outside main.js use `configsafe-core.ownFile` / `readEffective`, never `path.join(__dirname, 'config.json')`.
+
+Round 67 (direction, taste, honesty; plan + per-stream notes in docs/upgrades/round67-plan.md, patch notes round-67.md):
+- Astra / Swarm (astrafix67.md): `collab-eyes.js` gives lean collaboration seats and /ask-astra a fresh frame of the host
+  chat's own scene + its layer list (read-only HubBridge calls, nothing recorded); council's round-2 critiques reach the
+  chair (`synthesize(…, { notes })`); `codex-server.js` names blocked Hearth tools on the final event (`blocked`), shown
+  under the reply by native.js; Codex servers for `collab-` / `jam-` / `crew-` ids close at turn end; agent editor box
+  `threeTools` ("Can see and change the Lab scene"); Swarm in the Lab needs no partner (missions.js).
+- After Effects jobs (aemain.js `runJob`, IPC `ae:job` / `ae:jobs` / `ae:job-done`; adobe.js `aeJob` / `jobResult` /
+  `waitJob`, event `hearth:ae-job`): the script is wrapped by adobe-data `wrap()` (errors as text, no AE alert), returns
+  a job id at once and answers later; the result file is checked only while a job is out (backoff to 3 s, 30 min max).
+  `adobe_do { app: "aftereffects", action: "script" | "job", job, wait }`. Chat code's Run in After Effects uses it too.
+- ✦ Direction (direction67.md): `tools/three-direction(-core).js`, lazy group `labdirection`. Try 4 ways =
+  `ThreeCrew.plan(chat, { n: 4, angles: DirCore.TRY_ANGLES })`; Mark it up; plain sliders (`DirCore.plain` over named
+  sliders, `VarCore.byLayer` + `ctlOf().setMany`); vision card in Lab extras key `direction` with drift from
+  `BoardVibe.distance` on `hearth:tm-thumb`. Time machine branches: versions carry `p` (the version they grew from),
+  `heads` per scene in three-history.js, a restore grows from the version it went back to; `TMCore.parentOf / tips /
+  lineOf`, `ThreeHistory.branches(id)`; ⑂ in the strip.
+- Moodboard qualities (moodqualities67.md): `board-qualities.js`; a plain drag sends measured qualities with the tile's
+  "What I like" line first, the actual picture is opt-in (Picture / right-click); distance slider per board; Mix card.
+- Credits (credits67.md): `credits(-core).js`, kv `credit-log`, Lab toolbar Credits button, Copy, "How it was made" reel.
+- Finish lines (finishlines67.md): `tools/three-finish(-core).js`, Lab extras key `finish`, ⚑ chip, Polish this → a
+  side quest through `QuestHud.write` + `QuestCore.trackSide` and `hub.questGuide`.
+- Testing on Windows: `dev/smoke.js` works with `ELECTRON` set to `electron\electron.exe` (the copy is renamed, so it
+  never makes shortcuts; the login item is left alone). Round 67 checks: `dev/round67-test.js`, `dev/direction-test.js`,
+  `dev/credits-test.js`, `dev/finishline-test.js`, `dev/moodqualities-test.js`; in-app `dev/checks/direction67.js`,
+  `credits.js`, `finishline.js`, `moodqualities67.js`, `astra-collab.js` (via `node dev/astra-smoke.js collab`).

@@ -207,6 +207,9 @@ const Astra = (() => {
     save(L);
     Native.refresh(hostId, { keepScroll: false });
     try {
+      // (round 67) lean seats have no tools: every seat gets the same look at the host chat's scene (collab-eyes.js)
+      const eyes = window.CollabEyes ? await CollabEyes.packet(chat.id).catch(() => null) : null;
+      if (eyes) { m.eyes = eyes.name; task = `${task}\n\n${eyes.text}`; images = [...images, ...eyes.images]; L.images = images; }
       await RUNNERS[mode](L, task, images);
       m.status = L.stopped ? 'stopped' : m.parts.some((p) => p.status === 'error') && !m.final ? 'error' : 'done';
     } catch (err) {
@@ -300,14 +303,17 @@ const Astra = (() => {
     async council(L, task, images) {
       const latest = await Promise.all(L.m.seats.map((_, i) => turn(L, i, 1, 'answer', task, { images })));
       // rounds ≥ 2: each seat reads the others and notes what they got wrong or missed (short), then the chair decides
+      let notes = [];
       if (L.m.rounds >= 2 && !L.stopped) {
-        await Promise.all(latest.map((p) => {
-          if (!ok(p)) return p;
+        notes = await Promise.all(latest.map((p) => {
+          if (!ok(p)) return null;
           const others = latest.filter((x) => x !== p && ok(x)).map((x) => `${L.m.seats[x.seat].label}:\n<answer>\n${answerOf(x)}\n</answer>`).join('\n\n');
+          if (!others) return null;
           return turn(L, p.seat, 2, 'critique', `The other council members answered:\n\n${others}\n\nIn at most 5 short lines: what did they get wrong or miss, and what would you keep from them?`);
         }));
       }
-      await synthesize(L, latest, 'The council has answered (and reviewed each other).');
+      // (round 67) the chair reads the critiques too (they used to be run and then dropped)
+      await synthesize(L, latest, notes.some(ok) ? 'The council has answered and reviewed each other.' : 'The council has answered.', { notes: notes.filter(ok) });
     },
   };
   // The judge (host seat by default) writes the final answer; it already knows its own answer from its session.
@@ -339,16 +345,20 @@ const Astra = (() => {
     m.status = L.stopped ? 'stopped' : 'done';
     finishCollab(L);
   }
-  async function synthesize(L, latest, lead) {
+  async function synthesize(L, latest, lead, { notes = [] } = {}) {
     const { m } = L;
     if (L.stopped) return;
     const good = latest.filter(ok);
     if (good.length < 2) { if (good[0]) m.final = m.parts.indexOf(good[0]); return; }
     const j = judgeSeat(L);
+    const resumed = !!L.sessions[j]?.id;
     const others = good.filter((p) => p.seat !== j).map((p) => `${m.seats[p.seat].label}:\n<answer>\n${answerOf(p)}\n</answer>`).join('\n\n');
-    const prompt = L.sessions[j]?.id
-      ? `${lead} The others' latest answers:\n\n${others}\n\nWrite the single best final answer for the user: combine the strongest points, settle disagreements, drop repetition. Reply with the final answer only.`
-      : `Request from the user:\n<request>\n${m.task}\n</request>\n\n${good.map((p) => `${m.seats[p.seat].label}:\n<answer>\n${answerOf(p)}\n</answer>`).join('\n\n')}\n\nWrite the single best final answer for the user: combine the strongest points, settle disagreements, drop repetition. Reply with the final answer only.`;
+    // a resumed judge already knows its own critique from its session
+    const reviews = notes.filter((p) => !resumed || p.seat !== j).map((p) => `${m.seats[p.seat].label} on the others:\n<review>\n${answerOf(p)}\n</review>`).join('\n\n');
+    const reviewText = reviews ? `\n\nTheir reviews of each other:\n\n${reviews}` : '';
+    const prompt = resumed
+      ? `${lead} The others' latest answers:\n\n${others}${reviewText}\n\nWrite the single best final answer for the user: combine the strongest points, settle disagreements, drop repetition. Reply with the final answer only.`
+      : `Request from the user:\n<request>\n${m.task}\n</request>\n\n${good.map((p) => `${m.seats[p.seat].label}:\n<answer>\n${answerOf(p)}\n</answer>`).join('\n\n')}${reviewText}\n\nWrite the single best final answer for the user: combine the strongest points, settle disagreements, drop repetition. Reply with the final answer only.`;
     const fin = await turn(L, j, 'final', 'final', prompt);
     if (ok(fin)) m.final = m.parts.indexOf(fin);
   }
@@ -484,6 +494,7 @@ const Astra = (() => {
       el('span', { class: 'collab-mode', text: `${m.folded ? '▸' : '▾'} ${mode.icon} ${mode.label}`, title: m.folded ? 'Unfold' : 'Fold this card', on: { click: () => toggleFold(hostId, m) } }),
       el('span', { class: 'collab-task', text: cap(m.task, 90), title: m.task }),
       m.continued ? el('span', { class: 'hint', text: '↻', title: 'Both continued their earlier duo sessions in this chat' }) : null,
+      m.eyes ? el('span', { class: 'hint', text: '👁 saw the scene', title: `Every seat got a fresh picture and the layer list of "${m.eyes}"` }) : null,
       el('span', { class: 'spacer' }),
       ...m.seats.map((s, i) => el('span', { class: 'collab-seat', on: { click: () => { if (s.agentId !== hostId) activate(H.surfaceIdFor(s.agentId)); } }, attrs: { style: `--seat: ${s.color}` }, title: `${s.label}: ${t.per[i].input.toLocaleString()} in · ${t.per[i].output.toLocaleString()} out · ${t.per[i].turns} turn(s)` },
         el('i', { class: 'collab-dot' }), `${s.name} ${fmt(t.per[i].input + t.per[i].output)}`)),
@@ -1232,7 +1243,10 @@ function toggleFold(hostId, m) {
         const t = toast(`Asking ${target.name}…`, { timeout: 60000 });
         const images = Native.takeAttachments(ctx.agentId).images;
         if (shot) { const p = await window.hub.captureWindow(); if (p) images.push(p); }
-        const r = await window.hub.askOnce({ agentId: target.id, text: q, images, options: { lean: true, ...(persona ? { persona: personaText(target, persona) } : {}) } });
+        // (round 67) asked from a chat with a scene: the scene's frame + layers come along (collab-eyes.js)
+        const eyes = window.CollabEyes ? await CollabEyes.packet(chat.id, { picture: !shot }).catch(() => null) : null;
+        if (eyes) images.push(...eyes.images);
+        const r = await window.hub.askOnce({ agentId: target.id, text: eyes ? `${q}\n\n${eyes.text}` : q, images, options: { lean: true, ...(persona ? { persona: personaText(target, persona) } : {}) } });
         t.remove();
         if (!r.ok) throw new Error(r.error || 'No answer');
         if (r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: target.id, usage: r.usage, source: 'quick ask' } }));

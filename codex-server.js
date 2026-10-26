@@ -110,6 +110,7 @@ class Pool {
     timing.connectionReused = Boolean(conn);
     let done = false; let cancelled = false; let turnId = null; let output = ''; let usage = null;
     const questions = new Map();
+    const blocked = new Set(); // (round 67) Hearth tools Codex couldn't use in this turn: named on the final event
     const resolveQuestion = (token, result) => {
       const q = questions.get(token); if (!q) return false;
       questions.delete(token); clearTimeout(q.timer);
@@ -125,16 +126,18 @@ class Pool {
       this.active.delete(chatId); timing.totalMs = elapsed();
       if (conn) {
         conn.onNotification = null; conn.onClose = null; conn.onRequest = null; conn.onQuestion = null;
-        if (conn.closed || chatId.startsWith('once-')) { conn.close(); this.connections.delete(chatId); }
+        // (round 67) collaboration seats, jam turns and crew helpers use a new chat id per turn: never reused, so their
+        // servers (and MCP children) close now instead of idling 5 minutes each (a council on Astra left N of them up)
+        if (conn.closed || /^(once|collab|jam|crew)-/.test(chatId)) { conn.close(); this.connections.delete(chatId); }
         else { conn.idleTimer = setTimeout(() => { conn.close(); if (this.connections.get(chatId) === conn) this.connections.delete(chatId); }, this.idleMs); conn.idleTimer.unref?.(); }
       }
       this.log(`codex ${chatId} ${event.type} timing=${JSON.stringify(timing)}`);
-      emit({ ...event, ...(usage ? { usage:{...usage,...(event.type !== 'done' ? {partial:true} : {})} } : {}), session: { ...session }, timing });
+      emit({ ...event, ...(usage ? { usage:{...usage,...(event.type !== 'done' ? {partial:true} : {})} } : {}), ...(blocked.size ? { blocked: [...blocked].slice(0, 6) } : {}), session: { ...session }, timing });
     };
     const forward = (events) => {
       for (const e of (Array.isArray(events) ? events : events ? [events] : [])) {
         if (terminal.has(e.type)) continue;
-        if (e.type === 'blocked') { emit({ type: 'thinking', text: `${e.name}: this tool is blocked by the current permissions.\n\n` }); continue; }
+        if (e.type === 'blocked') { blocked.add(String(e.name || 'a tool')); emit({ type: 'thinking', text: `${e.name}: this tool is blocked by the current permissions.\n\n` }); continue; }
         if (['step', 'agent', 'pulse', 'status'].includes(e.type)) live?.(e); else emit(e);
       }
     };
@@ -185,7 +188,7 @@ class Pool {
         return true;
       };
       conn.onClose = (err) => finish(cancelled ? { type: 'stopped' } : { type: 'error', message: `${err.message}\nThe turn was not replayed. Check any partial work before retrying.` });
-      conn.onRequest = (method) => { if (!done) emit({ type: 'thinking', text: `Hearth could not complete the Codex request (${method}); no additional permission was granted.\n\n` }); };
+      conn.onRequest = (method) => { if (!done && /mcp|tool\/call|elicitation/i.test(method)) blocked.add(method); if (!done) emit({ type: 'thinking', text: `Hearth could not complete the Codex request (${method}); no additional permission was granted.\n\n` }); };
       conn.onNotification = (method, p) => {
         // Some versions publish the saved cumulative baseline while thread/resume resolves.
         if (!threadReady && method === 'thread/tokenUsage/updated' && p.threadId === session.id) {
