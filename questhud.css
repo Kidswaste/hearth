@@ -90,3 +90,7 @@ button.qh-row { width: 100%; border: 0; background: none; cursor: pointer; text-
 .qh-row.er-hud .er-hud-done { flex: none; }
 button.qh-row.er-hud-add { color: var(--muted); font-size: 12px; padding: 4px 6px; }
 button.qh-row.er-hud-add:hover { color: var(--text); }
+
+/* (round 70, follow70) a small ★ on the chip when a followed artist / venue has a new show (questhud.js loadFollows) */
+.qh-chip.qh-fw-new { position: relative; }
+.qh-chip.qh-fw-new::after { content: '★'; position: absolute; top: -3px; right: -3px; font: 10px/1 system-ui, sans-serif; color: #ffd75e; text-shadow: 0 1px 3px #000; pointer-events: none; }

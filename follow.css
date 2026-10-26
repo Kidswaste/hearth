@@ -1,0 +1,16 @@
+/* (round 70, follow70) ★ Follow: the card's buttons, the list's ★, the Following dialog (follow.js, follow-hook.js) */
+.qj .fw-row{gap:6px;flex-wrap:wrap;margin-top:6px}
+.qj .fw-btn{font-size:12px}
+.qj .fw-btn.fw-on{color:#ffd75e;border-color:color-mix(in srgb,#ffd75e 55%,transparent)}
+.qj .ss-row .fw-badge{color:#ffd75e;font-size:13px;margin-left:auto;flex:none;text-shadow:0 1px 4px #000}
+.qj .fw-box{display:flex;flex-direction:column;gap:6px}
+.qj .fw-box>.qj-label{margin-top:8px}
+.qj .fw-item,.qj .fw-sug,.qj .fw-news{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.qj .fw-item>strong,.qj .fw-sug>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qj .fw-news>strong{flex:1 1 100%;white-space:normal}
+.qj .fw-star{color:#ffd75e}
+.qj .fw-kind{opacity:.72;font-size:12px}
+.qj .fw-unfollow,.qj .fw-sug-follow{margin-left:auto}
+.qj .fw-next{flex-basis:100%;justify-content:flex-start;font-size:12px}
+.qj .fw-name-row{display:flex;gap:6px;flex-wrap:wrap}
+.qj .fw-name-row>input{flex:1 1 180px;min-width:0}

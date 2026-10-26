@@ -10,11 +10,11 @@ const ShowSync = (() => {
   const hub = () => window.hub?.shows;
   const QJ = () => (typeof QuestJournal !== 'undefined' ? QuestJournal : null); // a top-level const, not on window
   async function call(fn, ...a) { const h = hub(); if (!h) throw Error('Show sync needs the Hearth app (not available here).'); const r = await h[fn](...a); if (!r?.ok) throw Error(r?.error || 'Show sync could not answer.'); return r.value; }
-  async function load() { snap = await call('get'); return snap; }
+  async function load() { snap = await call('get'); each('shows', snap); return snap; } // (round 70, follow70) 'shows': an extension sees each list (★ New: no fetch of its own)
   // a refresh in the background when the list is a day old (only once the owner has asked for shows once)
   function refresh(force = false) {
     if (refreshing) return refreshing;
-    refreshing = call('refresh', { force }).then((v) => { snap = v; redraw(); return v; }).finally(() => { refreshing = null; });
+    refreshing = call('refresh', { force }).then((v) => { snap = v; each('shows', snap); redraw(); return v; }).finally(() => { refreshing = null; });
     return refreshing;
   }
   async function ensure() { if (!snap) { await load(); redraw(); } if (snap.enabled && snap.stale && !triedStale) { triedStale = true; refresh().catch(() => {}); } return snap; }
@@ -64,7 +64,7 @@ const ShowSync = (() => {
   function row(kit, s, onPick) {
     const b = kit.button('', onPick, 'qj-field-list-item ss-row'); b.dataset.show = s.key; b.style.setProperty('--icon-color', '#ff6b9d');
     b.append(logoOrIcon(s.venue.logo), kit.E('strong', { text: s.title }), kit.E('span', { class: 'ss-when', text: `${when(s)} · ${s.venue.name || ''}` }));
-    b.setAttribute('aria-label', `${s.title}, ${C.showWhen(s)}, ${s.venue.name || ''}`); return b;
+    b.setAttribute('aria-label', `${s.title}, ${C.showWhen(s)}, ${s.venue.name || ''}`); each('row', kit, s, b); return b; // (round 70, follow70) 'row': the ★ of a show with someone you follow
   }
   function showDetail(kit, s) {
     kit.dialog(s.title, (body, d) => {
@@ -182,7 +182,7 @@ const ShowSync = (() => {
   };
 
   // ---------- /shows ----------
-  const HELP = '/shows week · /shows venue <name> · /shows quest <show> · /shows prep <show> · /shows went <show> · /shows log · /shows follow <link> · /shows refresh — the map: Sidequest Studio › Map';
+  const HELP = '/shows week · /shows venue <name> · /shows quest <show> · /shows prep <show> · /shows went <show> · /shows log · /shows follow <link or name> · /shows following · /shows refresh — the map: Sidequest Studio › Map';
   async function run(args, ctx) {
     const [sub0, ...rest] = String(args || '').trim().split(/\s+/); const sub = (sub0 || '').toLowerCase(), arg = rest.join(' ').trim();
     await ensure();
@@ -214,6 +214,8 @@ const ShowSync = (() => {
       ctx?.note?.(`Quest saved: ${c.title}`, { id: 'showsync-quest', actions: [{ label: 'Open it', run: async () => { activate('tool:quests'); await QJ()?.flush?.(); QJ()?.questDetail?.(c.quests[0].id); } }] });
       return `Quest saved: ${c.title} — get your ticket → go → bring back one moment. It's in Sidequest Studio.`;
     }
+    // (round 70, follow70) a name (not a link) follows an artist / venue by name: ★ New in the ✦ tracker (follow-hook.js)
+    if ((sub === 'follow' && arg && !/^(https?:|[\w.-]+\.(live|fm)\/)/i.test(arg)) || (sub === 'unfollow' && arg && !(snap.follows || []).some((x) => x.id === arg || x.url === arg || C.fold(x.label).includes(C.fold(arg))))) { const x = ext.find((e) => e.subs?.includes('star')); if (x) return x.run(sub === 'follow' ? 'star' : 'unstar', arg, ctx); }
     if (sub === 'follow') { const src = await call('follow', arg); await load(); refresh(true).catch(() => {}); return `Following ${src.label} (${C.PLATFORMS[src.platform].name}). Its shows join the list in a moment.`; }
     if (sub === 'unfollow') { const g = await call('unfollow', arg); await load(); redraw(); return `Stopped following ${g.label}.`; }
     if (sub === 'from') { if (!/^(paris|followed)$/i.test(arg)) return 'Use /shows from paris (Paris-wide lists + what you follow) or /shows from followed (only what you follow).'; snap = await call('settings', { from: arg.toLowerCase() }); redraw(); return arg.toLowerCase() === 'paris' ? 'Paris-wide lists back on, plus what you follow.' : 'Only the pages you follow from now on.'; }
@@ -223,7 +225,7 @@ const ShowSync = (() => {
   }
   function complete(args) {
     const a = String(args || ''), m = /^(\w+)\s+(.*)$/.exec(a);
-    if (!m) return ['week', 'venue ', 'quest ', ...ext.flatMap((x) => (x.subs || []).map((n) => (n === 'log' ? n : `${n} `))), 'refresh', 'follow ', 'unfollow ', 'from paris', 'from followed', 'map'].filter((x) => x.startsWith(a.toLowerCase())).map((x) => ({ value: x }));
+    if (!m) return ['week', 'venue ', 'quest ', ...ext.flatMap((x) => (x.subs || []).filter((n) => !x.quiet?.includes(n)).map((n) => (n === 'log' || n === 'following' ? n : `${n} `))), 'refresh', 'follow ', 'unfollow ', 'from paris', 'from followed', 'map'].filter((x) => x.startsWith(a.toLowerCase())).map((x) => ({ value: x }));
     const q = C.fold(m[2]);
     for (const x of ext) if (x.complete && x.subs?.includes(m[1])) return x.complete(m[1], m[2]) || [];
     if (m[1] === 'quest') return week().filter((s) => !q || C.fold(s.title + ' ' + s.lineup.join(' ')).includes(q)).slice(0, 8).map((s) => ({ value: `quest ${s.lineup[0] || s.title}`, label: s.title, hint: `${C.showWhen(s)} · ${s.venue.name}` }));
