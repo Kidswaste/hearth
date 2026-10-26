@@ -84,7 +84,7 @@ const LeaveSoon = window.LeaveSoon = (() => {
     return it;
   }
   async function turnOff(key) { await call('remove', { key }); items.delete(key); paint(); toast('⏰ Reminder off.', { timeout: 1800 }); }
-  async function snooze(key) { const it = await call('snooze', { key }); items.set(key, it); paint(); toast(`⏰ Snoozed: I’ll remind you again at ${K.hm(it.snoozeUntil)}.`, { timeout: 2500 }); return it; }
+  async function snooze(key) { const it = await call('snooze', { key }); items.set(key, it); paint(); toast(it.state === 'snoozed' ? `⏰ Snoozed: I’ll remind you again at ${K.hm(it.snoozeUntil)}.` : '⏰ That reminder is over: nothing to snooze.', { timeout: 2500 }); return it; } // (round 70, leavefix70) a dismissed / past one isn't brought back
   async function dismiss(key) { const it = await call('dismiss', { key }); items.set(key, it); paint(); return it; }
   // Home or the 📍 pin moved: the reminders still waiting are worked out again from there (rung / snoozed ones stay)
   let recomputing = false;
@@ -178,10 +178,12 @@ const LeaveSoon = window.LeaveSoon = (() => {
       const acts = [], st = it.status, bad = st && (st.state === 'disrupted' || st.state === 'blocked') && h.state !== 'missed';
       if (st?.state === 'unknown' && (st.why === 'nokey' || st.why === 'badkey') && h.state !== 'missed') acts.push(btn('Add key…', () => { QuestHud.close(); keyDialog().catch((err) => toast(calmError(err), { type: 'error' })); }, 'qh-take ls-addkey', 'Line status unknown: add your free PRIM key in Settings (IDFM’s open data; stored encrypted on this computer)'));
       if (bad && !it.earlierBy) acts.push(btn('Leave earlier', () => leaveEarlier(it.key), 'qh-take ls-earlier', `${st.title || st.words}. Moves the leave time ${st.earlier || 10} min earlier (the reminder rings 10 min before that).`)); // (round 69, ratp69)
-      if (h.state === 'fired' || h.state === 'now' || h.state === 'snoozed') acts.push(btn('Snooze 10 min', () => snooze(it.key), 'qh-take ls-snooze', 'Remind me again in 10 minutes'), btn('Dismiss', () => dismiss(it.key), 'qh-take ls-dismiss', 'I’m on my way (or not going): no more reminders for this'));
+      const ringing = h.state === 'fired' || h.state === 'now' || h.state === 'snoozed';
+      if (ringing && it.kind === 'show') acts.push(btn('🎒 Before I go', () => { QuestHud.close(); before((B) => B.openFor(it.key)); }, 'qh-take bg-hud', 'Your show-night list: ticket, phone charged, earplugs, ID, card / cash')); // (round 70, leavefix70)
+      if (ringing) acts.push(btn('Snooze 10 min', () => snooze(it.key), 'qh-take ls-snooze', 'Remind me again in 10 minutes'), btn('Dismiss', () => dismiss(it.key), 'qh-take ls-dismiss', 'I’m on my way (or not going): no more reminders for this'));
       else if (h.state === 'missed') acts.push(btn('OK', () => { missedIn.set(it.key, null); paint(); }, 'qh-take ls-ok', 'Got it'));
       else acts.push(btn('×', () => turnOff(it.key), 'qh-take ls-off', 'Turn this reminder off'));
-      const row = el('div', { class: `qh-row ls-hud ls-${h.state}`, dataset: { leave: it.key } }, el('span', { class: 'qh-pi', text: '⏰' }),
+      const row = el('div', { class: `qh-row ls-hud ls-${h.state}${ringing && it.kind === 'show' ? ' ls-showring' : ''}`, dataset: { leave: it.key } }, el('span', { class: 'qh-pi', text: '⏰' }),
         el('button', { type: 'button', class: 'qh-row-main', dataset: { k: `leave:${it.key}` }, title: `${h.title} Click to see it on the map.`, on: { click: (e) => { e.stopPropagation(); QuestHud.close(); showOnMap(it.key).catch((err) => toast(calmError(err), { type: 'error' })); } } },
           el('span', { class: 'qh-row-title', text: h.text.replace(/^⏰ /, '') }), el('span', { class: 'qh-sub', text: h.ring ? `${h.sub} · ${h.ring}` : h.sub }), h.state === 'missed' ? null : statusLine(it)),
         ...acts);
@@ -344,7 +346,14 @@ const LeaveSoon = window.LeaveSoon = (() => {
   let attached = { journal: false, shows: false };
   function attach() {
     try { if (!attached.journal && J()) { J().addMapLayer(layer); J().addDetailHook(detail); attached.journal = true; } } catch { /* not yet */ }
-    try { if (!attached.shows && typeof ShowSync !== 'undefined' && ShowSync.extend) { ShowSync.extend({ card: (kit, s, acts) => { if (!s.dateOnly) acts.append(showToggle(s, 'qj-button qj-quiet')); } }); attached.shows = true; } } catch { /* not yet */ }
+    try { if (!attached.shows && typeof ShowSync !== 'undefined' && ShowSync.extend) { ShowSync.extend({ card: (kit, s, acts) => { if (!s.dateOnly) acts.append(showToggle(s, 'qj-button qj-quiet')); if (soonShow(s)) acts.append(beforeButton(s)); } }); attached.shows = true; } } catch { /* not yet */ }
+  }
+  // (round 70, leavefix70) 🎒 Before I go on a show's card (a show still to come, or tonight's): the tickable list
+  // (beforego.js, its own lazy group, loaded on this click)
+  const soonShow = (s) => s && !s.cancelled && Number.isFinite(s.start) && s.start > K.now() - 6 * 3600e3;
+  const before = (open) => Lazy.load('beforego').then(() => open(window.BeforeGo)).catch((err) => toast(calmError(err), { type: 'error' }));
+  function beforeButton(s) {
+    return el('button', { type: 'button', class: 'qj-button qj-quiet bg-open', text: '🎒 Before I go', title: 'A short list to tick before you head out: your ticket, phone charged, earplugs, ID, card / cash (and a jacket when the forecast says so)', on: { click: (e) => { e.stopPropagation(); before((B) => B.open(s)); } } });
   }
   // a quest's detail in the Studio: a show quest (its show still to come) or an errand still open
   function detail({ campaign }) {
@@ -361,6 +370,6 @@ const LeaveSoon = window.LeaveSoon = (() => {
   refresh().catch(() => {});
 
   return { refresh, items: () => [...items.values()], get, isOn, origin, home, setHome, clearHome, pickHome, turnOn, turnOff, snooze, dismiss, recompute, showOnMap, hudRows, sayMissed, honest, statusSoon, leaveEarlier, keyDialog,
-    toggle, showToggle, errandToggle, slotToggle, showSpec, errandSpec, slotSpec, attach, layer, get picking() { return !!picking; },
+    toggle, showToggle, errandToggle, slotToggle, showSpec, errandSpec, slotSpec, attach, layer, beforeButton, get picking() { return !!picking; },
     _test: { clock: async (ms) => { K.setClock(ms); const r = await api().op({ op: 'test', now: ms == null ? Date.now() : ms }); return r?.value; } } }; // (checks) one fake clock for both sides
 })();

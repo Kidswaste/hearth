@@ -160,7 +160,7 @@ test('the words: "Leave in 10 min for Arlo Parks — about 25 min by Métro", th
   assert.equal(K.hud(it, at(2026, 10, 29, 12)).text, '⏰ Leave at tomorrow 19:35');
   assert.equal(K.hud({ ...it, state: 'fired' }, it.leaveAt + MIN).text, '⏰ Time to leave');
   assert.equal(K.hud({ ...it, state: 'dismissed' }, now), null); assert.equal(K.hud(it, it.targetAt + MIN), null);
-  assert.equal(K.confirmText(it), '⏰ I’ll remind you at 19:25 to leave at 19:35 (about 25 min by Métro from Home).');
+  assert.equal(K.confirmText(it, now), '⏰ I’ll remind you at 19:25 to leave at 19:35 (about 25 min by Métro from Home).');
 });
 
 test('notify-core: a reminder carries Show on map (the click) · Snooze 10 min · Dismiss (quiet), only the master switch stops it', () => {

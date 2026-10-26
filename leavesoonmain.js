@@ -100,7 +100,7 @@ function create({ dataDir, now = () => Date.now(), emit = () => {}, setTimer = s
       case 'list': K.settle(s, at); return { items: s.items, now: at, state: state() };
       case 'put': { if (!ok) throw Error('Your leave reminders couldn’t be read just now, so nothing was changed.'); const it = K.put(s, a.item || {}, at); await save(); arm(); emit('leave:changed', {}); return it; }
       case 'remove': { const gone = K.remove(s, String(a.key || '')); if (gone) { await save(); arm(); emit('leave:changed', {}); } return gone; }
-      case 'snooze': case 'dismiss': { const it = K[a.op](s, String(a.key || ''), at); await save(); arm(); emit('leave:changed', {}); return it; }
+      case 'snooze': case 'dismiss': { const it = K[a.op](s, String(a.key || ''), at, Number.isFinite(a.made) ? a.made : undefined); await save(); arm(); emit('leave:changed', {}); return it; } // (round 70, leavefix70) made: the notification's reminder (an old one never acts on a newer one); a dismissed one can't be snoozed back
       case 'missed': K.settle(s, at); return K.missed(s);
       case 'status': { await check(R.SOON, false, !!a.fresh); arm(); return { items: s.items, hasKey: feed().hasKey() }; } // (round 69, ratp69) you opened the ✦ tracker / a reminder
       case 'earlier': { if (!ok) throw Error('Your leave reminders couldn’t be read just now, so nothing was changed.'); const it = K.earlier(s, String(a.key || ''), at, a.by); await save(); arm(); emit('leave:changed', {}); return it; }

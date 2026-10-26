@@ -80,7 +80,7 @@
   /** "20:15", "tomorrow 20:15" or "Sat 20:15" (this computer's clock) */
   function when(ms, ref = now()) {
     const a = new Date(dayKey(ref) + 'T12:00'), b = new Date(dayKey(ms) + 'T12:00'), diff = Math.round((b - a) / 86400e3);
-    return diff === 0 ? hm(ms) : diff === 1 ? `tomorrow ${hm(ms)}` : `${DAYS[new Date(ms).getDay()]} ${hm(ms)}`;
+    return diff === 0 ? hm(ms) : diff === 1 ? `tomorrow ${hm(ms)}` : diff === -1 ? `yesterday ${hm(ms)}` : `${DAYS[new Date(ms).getDay()]} ${hm(ms)}`; // (round 70, leavefix70) "yesterday": a missed row read "Mon 23:50" just after midnight
   }
   /** a day ("2026-10-31") and a time ("20:00") on this computer's clock → ms (a time skipped in March reads an hour on) */
   function localAt(day, time) {
@@ -111,7 +111,10 @@
         for (let k = 0; k < 8 && c % 1440 === 0; k++) { const carry = (week[(wd + c / 1440) % 7] || []).find((x) => x[0] === 0); if (!carry) break; c += carry[1]; } // open past midnight (a long weekend): the real close
         const open = minutes(ahead, o), close = minutes(ahead, c), goal = close - ERRAND_MARGIN * MIN;
         if (goal <= open) continue; // a stretch too short to shop in
-        if (goal - travelMin * MIN - LEAD * MIN > at) return { at: goal, why: 'closes', closeAt: close, words: `closes at ${hm(close)}` };
+        // (round 70, leavefix70) today's closing still counts while its LEAVE time is ahead (as plan() rounds it: down to 5
+        // min). It used to need 10 more minutes for the notification, so between ~19:05 and 19:15 a shop closing at 20:00
+        // rolled to tomorrow although you could still go; plan() rings at once when less than 10 min are left.
+        if (floor5(goal - travelMin * MIN) > at) return { at: goal, why: 'closes', closeAt: close, words: `closes at ${hm(close)}` };
       }
     }
     return { error: 'It doesn’t close again in the next week while there’s still time to get there.' };
@@ -202,8 +205,17 @@
     return it;
   }
   function fire(s, key, at = now()) { const it = find(s, key); it.state = 'fired'; it.firedAt = at; delete it.snoozeUntil; return it; }
-  function snooze(s, key, at = now()) { const it = find(s, key); it.state = 'snoozed'; it.snoozeUntil = at + SNOOZE * MIN; return it; }
-  function dismiss(s, key, at = now()) { const it = find(s, key); it.state = 'dismissed'; it.dismissedAt = at; delete it.snoozeUntil; return it; }
+  /** (round 70, leavefix70) only a reminder that rang (or is snoozed) can be snoozed, and only before its show / closing:
+   *  an old notification's Snooze 10 min, clicked after you dismissed it in the tracker (or after it started), used to
+   *  bring a dismissed reminder back to ring again. `made` (the reminder's createdAt, carried by the notification): a
+   *  notification's button never acts on a reminder turned on again since. Unchanged → returned as is. */
+  const stale = (it, made) => fin(made) && made !== it.createdAt;
+  function snooze(s, key, at = now(), made) {
+    const it = find(s, key);
+    if (stale(it, made) || !(it.state === 'fired' || it.state === 'snoozed') || it.targetAt <= at) return it;
+    it.state = 'snoozed'; it.snoozeUntil = at + SNOOZE * MIN; return it;
+  }
+  function dismiss(s, key, at = now(), made) { const it = find(s, key); if (stale(it, made)) return it; it.state = 'dismissed'; it.dismissedAt = at; delete it.snoozeUntil; return it; }
   /** (round 69, ratp69) "Leave earlier" (a line on the way is disrupted): the leave time moves earlier once, by the
    *  status's minutes (10, or 15 when interrupted); the reminder rings LEAD before that (at once when that's past) */
   function earlier(s, key, at = now(), by) {
@@ -235,11 +247,16 @@
     if (it.state === 'dismissed') return null;
     if (it.leaveAt <= at && it.targetAt > at) return { text: '⏰ Time to leave', sub, state: 'now', title: `${it.words || ''}` };
     if (it.targetAt <= at) return null;
-    const ring = it.state === 'snoozed' ? `snoozed till ${hm(it.snoozeUntil)}` : it.state === 'fired' ? `in ${minsTo(it.leaveAt, at)} min` : `reminder at ${hm(it.notifyAt)}`;
-    return { text: `⏰ ${lw}`, sub, state: it.state, ring, title: `${it.place.name}: ${it.words}. ${it.travel.how ? `${it.travel.how}. ` : ''}Hearth reminds you ${LEAD} min before (${hm(it.notifyAt)}), by a Windows / Mac notification, even with Hearth in the tray.` };
+    const ring = it.state === 'snoozed' ? `snoozed till ${hm(it.snoozeUntil)}` : it.state === 'fired' ? `in ${minsTo(it.leaveAt, at)} min` : `reminder at ${when(it.notifyAt, at)}`; // (round 70, leavefix70) "tomorrow 19:05" when it is
+    return { text: `⏰ ${lw}`, sub, state: it.state, ring, title: `${it.place.name}: ${it.words}. ${it.travel.how ? `${it.travel.how}. ` : ''}Hearth reminds you ${LEAD} min before (${when(it.notifyAt, at)}), by a Windows / Mac notification, even with Hearth in the tray.` };
   }
   /** the toast after turning one on */
-  function confirmText(it) { return `⏰ I’ll remind you at ${hm(it.notifyAt)} to leave at ${hm(it.leaveAt)} (${it.travel.text} from ${it.from}).`; }
+  // (round 70, leavefix70) the day when it isn't today: an errand too late for today's closing goes to the next one, and
+  // the note used to say "at 19:05" with no word that it meant tomorrow
+  function confirmText(it, at = now()) {
+    const nd = when(it.notifyAt, at), ld = when(it.leaveAt, at), same = nd.slice(0, -5) === ld.slice(0, -5);
+    return `⏰ I’ll remind you ${nd.length > 5 ? nd.slice(0, -5) : ''}at ${hm(it.notifyAt)} to leave at ${same ? hm(it.leaveAt) : ld} (${it.travel.text} from ${it.from}${it.kind === 'errand' && it.words ? `; it ${it.words}` : ''}).`;
+  }
 
   return { WALK_MAX, KMH, LEAD, SNOOZE, ERRAND_MARGIN, GRACE, KEEP, MAX, now, setClock, inParis, metres, walkMin, stations, nearestStation, travel, about, hm, when, dayKey, localAt,
     showTarget, slotTarget, errandTarget, plan, check, empty, validate, dueOf, settle, next, put, fire, snooze, dismiss, earlier, remove, missed, notice, hud, confirmText };
