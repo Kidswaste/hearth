@@ -113,13 +113,17 @@ class Win32:
         self.u.SetWindowPos(hw, None, 0, 0, width, height, 0x0020 | 0x0010 | 0x0040)
         return width, height
 
-    def release(self, h, screen_xy=None):
+    def release(self, h, screen_xy=None, hidden=False):
         hw = self.hwnd(h)
         style, ex = self.saved.pop(h, (None, None))
+        if hidden:  # (vstfix70) about to close: hidden first, so nothing flashes on the desktop while it is handed back
+            self.u.SetWindowPos(hw, None, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0080)  # NOSIZE | NOMOVE | NOZORDER | NOACTIVATE | HIDEWINDOW
         self.u.SetParent(hw, None)
         if style is not None:
             self.u.SetWindowLongPtrW(hw, self.GWL_STYLE, style)
             self.u.SetWindowLongPtrW(hw, self.GWL_EXSTYLE, ex)
+        if hidden:
+            return
         self.u.SetWindowRgn(hw, None, True)
         x, y = screen_xy or (120, 120)
         self.u.SetWindowPos(hw, None, x, y, 0, 0, 0x0001 | 0x0020 | 0x0040)  # SWP_NOSIZE | FRAMECHANGED | SHOWWINDOW
@@ -207,8 +211,11 @@ class Mac:
         self.parent = int(parent)
         return size
 
-    def release(self, h, screen_xy=None):
+    def release(self, h, screen_xy=None, hidden=False):
         w = self.handles[h]
+        if hidden:  # (vstfix70) about to close: just out of sight
+            self._main(lambda: (w.setAlphaValue_(0.0), w.setIgnoresMouseEvents_(True)))
+            return
         self._main(lambda: (w.setStyleMask_(1 | 2 | 4), w.setHasShadow_(True), w.setAlphaValue_(1.0), w.setIgnoresMouseEvents_(False)))
 
     def to_screen(self, parent, x, y):
@@ -432,6 +439,19 @@ class Embedder:
             self.b.release(self.hwnd, screen)
             self.mode, self.region, self.note = 'floating', None, ''
             return self.state()
+
+    def let_go(self):
+        """(vstfix70) Before the editor is asked to close: an editor inside Hearth's window is handed back to the desktop,
+        hidden. Hearth's window then never keeps a child window of a plugin that is closing, or whose host is stuck or
+        gone (on Windows a WS_CHILD of another process outlives nothing cleanly: it would stay on the desk, frozen)."""
+        with self.lock:
+            if self.mode != 'embedded' or not self.hwnd or self.b is None:
+                return
+            try:
+                self.b.release(self.hwnd, None, hidden=True)
+            except Exception:
+                pass
+            self.mode, self.region, self.parent = 'floating', None, None  # hidden; closed() follows when the plugin's loop ends
 
     def repaint(self):
         with self.lock:

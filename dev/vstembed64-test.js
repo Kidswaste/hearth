@@ -74,6 +74,7 @@ em.place({'visible': True, 'clip': None}); r['shown'] = F.snapshot()[h]['region'
 F.resize(h, 1100, 700); time.sleep(.5); s2 = em.state(); w = F.snapshot()[h]; r['resized'] = [s2['size'], w['x'], w['y']]
 r['pop'] = [em.pop_out()['mode'], F.snapshot()[h]['parent'], F.snapshot()[h]['x']]
 r['back'] = [em.embed({'parent': '777', 'x': 10, 'y': 20, 'visible': True})['mode'], F.snapshot()[h]['parent']]
+em.let_go(); w = F.snapshot()[h]; r['letgo'] = [em.state()['mode'], w['parent'], w['child'], w['visible'], [c[0] for c in F.LOG if len(c) > 1 and c[1] == h][-1]]  # (vstfix70) before a close
 F.destroy(h); time.sleep(.4); r['closed'] = em.state()['mode']
 bad = E.Embedder(layer, why); h2 = F.create(os.getpid()); r['refused'] = bad.opened({'parent': 13, 'x': 0, 'y': 0}, [w['hwnd'] for w in layer.windows(os.getpid()) if w['hwnd'] != h2])
 none = E.Embedder(None, 'this system can not'); r['none'] = none.opened({'parent': '1', 'x': 0, 'y': 0})
@@ -88,6 +89,7 @@ ok(JSON.stringify(E2.clipped) === JSON.stringify([0, 100, 660, 460]), `scrolled:
 ok(Array.isArray(E2.hidden) && E2.hidden.length === 0 && E2.shown === null, 'hidden = an empty region (the window stays open), shown again whole');
 ok(JSON.stringify(E2.resized) === JSON.stringify([[1100, 700], 40, 300]), 'the plugin resized / moved its own window → new size noted, put back on the placeholder');
 ok(E2.pop[0] === 'floating' && E2.pop[1] === 0 && E2.back[0] === 'embedded' && E2.back[1] === 777, 'Pop out gives the window back; Open editor here takes it again');
+ok(JSON.stringify(E2.letgo) === JSON.stringify(['floating', 0, false, false, 'release-hidden']), `(vstfix70) before it closes, an editor inside Hearth is handed back to the desktop, hidden: no child window left in Hearth’s window (${JSON.stringify(E2.letgo)})`);
 ok(E2.closed === 'closed', 'the window closed → the frame knows');
 ok(E2.refused.mode === 'floating' && /Couldn.t place the editor inside Hearth/.test(E2.refused.note), `SetParent refused → floating, one plain line (“${E2.refused.note}”)`);
 ok(E2.none.mode === 'floating' && /this system can not/.test(E2.none.note), 'no window layer (Linux / Mac without pyobjc) → floating, says why');
