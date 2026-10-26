@@ -89,8 +89,8 @@ const WeekendPlan = (() => {
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', onEsc, true);
   }
-  function outside(e) { if (panel && !panel.contains(e.target) && !e.target.closest?.('#menu, .qh-chip, #toasts')) close(); }
-  function onEsc(e) { if (e.key === 'Escape' && panel && !document.querySelector('#menu:not([hidden])')) { e.preventDefault(); e.stopPropagation(); close(); } }
+  function outside(e) { if (panel && !panel.contains(e.target) && !e.target.closest?.('#menu, .qh-chip, #toasts, .iv-dialog')) close(); }
+  function onEsc(e) { if (e.key === 'Escape' && panel && !document.querySelector('#menu:not([hidden]), dialog.iv-dialog[open]')) { e.preventDefault(); e.stopPropagation(); close(); } }
   function place() {
     const rail = document.getElementById('rail')?.getBoundingClientRect(), l = Math.round((rail?.right || 64) + 6);
     const list = document.getElementById('panel'), lr = list && list.offsetParent ? list.getBoundingClientRect() : null;
@@ -131,7 +131,9 @@ const WeekendPlan = (() => {
       el('span', { class: 'qh-pi', text: sl.icon }),
       el('div', { class: 'qh-row-main' },
         el('span', { class: 'qh-k wp-when', text: `${dayName(o.day)} · ${o.time} · ${sl.label}` }, isIn ? el('span', { class: 'wp-in', text: '✓ planned', title: 'Already on your week plan' }) : null),
-        el('span', { class: 'qh-row-title', text: o.title }), el('span', { class: 'qh-sub', text: o.why || '' })),
+        el('span', { class: 'qh-row-title', text: o.title }), el('span', { class: 'qh-sub', text: o.why || '' }),
+        // (round 67, invite67) a show night: 👋 Bring someone opens the invite card (lazy group 'invite')
+        o.kind === 'show' && o.show ? btn('👋 Bring someone', () => Lazy.load('invite').then(() => Invite.open(o.show, { from: 'weekend' })), 'wp-bring', 'Write a short invite for this show: Copy, or open WhatsApp / Messages / Instagram with it (never sent for you)') : null),
       el('div', { class: 'wp-acts' }, swapB, keepB));
   }
   function emptyWhy(id) {

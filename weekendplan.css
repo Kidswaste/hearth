@@ -13,3 +13,5 @@
 .wp-acts .qh-btn { padding: 2px 8px; font-size: 11px; min-width: 58px; }
 .wp-keep.on { border-color: color-mix(in srgb, var(--ui-gold, #d9b777) 55%, transparent); color: var(--ui-gold, #d9b777); }
 .wp-done { margin: 6px 2px 0; color: var(--ui-gold, #d9b777); }
+/* (round 67, invite67) the night-out slot's 👋 Bring someone (opens the invite card) */
+.wp-slot .wp-bring { justify-self: start; margin-top: 4px; padding: 1px 8px; font-size: 11px; }
