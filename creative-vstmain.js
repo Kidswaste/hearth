@@ -143,6 +143,8 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       child.once('error', e => { failure = e.message; });
       child.once('close', code => {
         failure ||= `Host exited (${code}). ${stderr.slice(-900)}`;
+        // (round 68, bugbutton68 — Claude's addition) the host stopped by itself (stop() lets go of it first): 🪲 Something broke
+        if (processChild === child) { try { require('./bugmain').gone('the plugin host (VST)', { code, what: stderr.trim().split('\n').pop()?.slice(0, 200) || '' }); } catch { /* outside Hearth's main process */ } }
         if (processChild === child) { processChild = null; connection = null; for (const s of sockets) s.destroy(Error(failure)); }
         try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* process shutdown may still hold files briefly */ }
         if (jobDir === dir) jobDir = null;

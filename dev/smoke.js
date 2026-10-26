@@ -45,7 +45,7 @@ const freePort = () => new Promise((res) => { const srv = require('net').createS
 
 // Errors that come from the test environment, not the app (no GPU, no engines installed, no network).
 // (Chromium warns when the page capture's frame reader is cancelled with frames still queued: a GC note, not an app error)
-const IGNORE = [/A VideoFrame was garbage collected without being closed/, /GPU|gpu_|viz|dri3|libva|vaInitialize|Vulkan|EGL|GLES|ANGLE/i, /net::ERR_/, /Autofill\./, /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_PROXY|ERR_TUNNEL/, /Electron Security Warning/, /favicon/i, /DevTools/, /dbus|org\.freedesktop/i, /Render frame was disposed before WebFrameMain could be accessed/, /seqsolid (boom|throws)/, /hearth-errorcalm-\d+/]; // (round 45) errors dev/checks/errorcalm.js provokes on purpose in its throwaway folder · (round 29) a message to a page that just crashed (dev/checks/safetynet.js crashes it on purpose)
+const IGNORE = [/A VideoFrame was garbage collected without being closed/, /GPU|gpu_|viz|dri3|libva|vaInitialize|Vulkan|EGL|GLES|ANGLE/i, /net::ERR_/, /Autofill\./, /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_PROXY|ERR_TUNNEL/, /Electron Security Warning/, /favicon/i, /DevTools/, /dbus|org\.freedesktop/i, /Render frame was disposed before WebFrameMain could be accessed/, /seqsolid (boom|throws)/, /hearth-errorcalm-\d+/, /bugbutton68 \(made on purpose\)/]; // (round 45) errors dev/checks/errorcalm.js provokes on purpose in its throwaway folder · (round 29) a message to a page that just crashed (dev/checks/safetynet.js crashes it on purpose)
 
 // https://cdn.jsdelivr.net/npm/three@V/<path> -> /opt/cdn-cache/three@V/package/<path> (fetched once from the npm registry).
 const CDN_CACHE = process.env.CDN_CACHE || '/opt/cdn-cache';
@@ -271,7 +271,7 @@ async function cdpConnect(dir) {
       if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params.exceptionDetails;
         const txt = `exception: ${d.exception?.description || d.text} @ ${d.url || ''}:${d.lineNumber}`;
-        if (!/seqsolid (boom|throws)|scenedoctorGlow/.test(txt)) problems.push(txt); // (seqsolid, scenedoctor: a test scene throws on purpose)
+        if (!/seqsolid (boom|throws)|scenedoctorGlow|bugbutton68 \(made on purpose\)/.test(txt)) problems.push(txt); // (seqsolid, scenedoctor: a test scene throws on purpose)
       }
       if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'log' && process.env.SMOKE_DEBUG) {
         const text = msg.params.args.map((a) => a.value ?? a.description ?? '').join(' ');

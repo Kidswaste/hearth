@@ -21,6 +21,7 @@ const DevReportHooks = (() => {
     const it = { kind, message: msg, stack: String(stack || '').slice(0, 4000), where: whereNow(), at: Date.now(), ...extra };
     recent.push(it);
     if (recent.length > MAX) recent.shift();
+    window.BugWatch?.add(it); // (round 68) 🪲 Something broke
     return it;
   }
   // open the review (loads devreport.js on first use)

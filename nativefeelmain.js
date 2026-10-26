@@ -157,7 +157,7 @@ function setupMenu({ Menu, app, getWin, send, appName }) {
   const main = () => { const w = getWin(); if (w && !w.isDestroyed()) { if (w.isMinimized()) w.restore(); w.show(); w.focus(); } return w; };
   const act = (action, arg) => () => { if (main()) send('native:menu', { action, arg }); };
   const tpl = C.menuTemplate({ platform: o.platform, appName, act: {
-    settings: act('settings'), keys: act('keys'), report: act('report'), slow: act('slow'), onTop: act('onTop'),
+    settings: act('settings'), keys: act('keys'), report: act('report'), slow: act('slow'), broke: act('broke'), onTop: act('onTop'),
     zoom: (d) => act('zoom', d)(),
     devtools: () => { const w = getWin(); if (w && !w.isDestroyed()) w.webContents.toggleDevTools(); },
     close: () => getWin()?.close(), quit: () => app.quit(),

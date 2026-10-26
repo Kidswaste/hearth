@@ -1381,6 +1381,8 @@ function send({ agent: agent0, chatId, session, text, options = {} }, emit, live
     if (args.includes('--mcp-config') && mcpFile) fs.rm(mcpFile, { force: true }, () => {});
     if (parts.length && !skipping) { const last = parts.join(''); parts = []; handleLine(last); } // the last line may come without a newline
     log(`${engine} ${chatId} exit=${code} signal=${signal} finished=${finished} stderr=${JSON.stringify(stderr.slice(-400))}`);
+    // (round 68, bugbutton68) the engine's program stopped on its own (not Stop, not the idle stop): 🪲 Something broke
+    if (!child.hubIdle && !child.hubStopped && (signal || (code != null && code !== 0))) { try { require('./bugmain').gone(engine === 'claude' ? 'Claude (the engine program)' : 'Astra (the Codex engine program)', { code, signal, what: lastErrorLine(stderr).slice(0, 200) }); } catch { /* tests without it */ } }
     if (child.hubIdle) finish({ type: 'error', message: `${ENGINES[engine].label} printed nothing for ${IDLE_MS / 60000} minutes, so Hearth stopped it. Press Retry.` });
     else if (child.hubStopped) finish({ type: 'stopped' });
     // (round 21) killed from outside (out of memory, a force quit…): it was shown as "stopped", as if you had pressed Stop
