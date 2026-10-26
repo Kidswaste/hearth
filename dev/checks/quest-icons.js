@@ -7,6 +7,7 @@ const press=async(name,parent=scope())=>{const b=[...parent.querySelectorAll('bu
 const hint=()=>root().querySelector('.qj-help-tooltip');
 const escape=async()=>{await smoke({cdp:'Input.dispatchKeyEvent',params:{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}});await smoke({cdp:'Input.dispatchKeyEvent',params:{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27,nativeVirtualKeyCode:27}});await wait(40);};
 await Lazy.load('questjournal');activate('tool:quests');await until(()=>root()?.querySelector('.qj-hero'));document.querySelectorAll('.toast').forEach(n=>n.remove());
+/* (lifechecks70) opening the map stores the Paris guide's picks once (mapfirst64): let that settle before comparing */QuestJournal.navigate('world');await until(()=>root().querySelector('.qj-atlas-pin.qj-pin-guide'));await wait(600);await QuestJournal.flush();
 const before=QuestJournal.snapshot();
 for(const page of ['adventure','catalog','skills','rewards','collection','world']){
   QuestJournal.navigate(page);await wait(70);
