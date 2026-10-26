@@ -21,7 +21,7 @@ await Lazy.load('questjournal');
 activate('tool:quests'); await until(() => root() && QuestJournal.ready(), 'journal'); QuestJournal.navigate('world');
 await until(() => root().querySelectorAll('.qj-atlas-pin.qj-pin-guide').length >= Math.min(10, picks()), 'guide pins by default');
 check(state().atlas.places.length === 6 + picks(), 'the guide’s picks are on the map with no command (' + state().atlas.places.length + ')');
-check([...root().querySelectorAll('.qj-atlas-pin.qj-pin-guide')].every(b => P().mapPicks.has(b.dataset.place)), 'the default map shows only the picks');
+check([...root().querySelectorAll('.qj-atlas-pin.qj-pin-guide:not([data-place^="ml-"])')].every(b => P().mapPicks.has(b.dataset.place)), 'the default map shows only the picks'); // (round 66, mapbuttons66) ml-… = the Park jams / place quests layer (not journal pins), on by default
 check(root().querySelector('.qmf-strip [data-layer="places"][aria-pressed="true"]'), 'Places chip on by default');
 // 1. chat drives the map: /quest paris adds the guide once and opens the map
 check(Commands.get('quest'), '/quest registered');
