@@ -10,7 +10,7 @@ const legacy={v:1,...(await (async()=>{await Lazy.load('creative');return Workbe
 const p=await ProjectWorkspace.create({name:'Watchdog',brief:'A dark, melodic loop and its reflective visual.',persona:'producer',plugins:['Vital']});
 check(p.workspace.chatId&&p.workspace.sceneId&&p.workspace.boardId,'real resources created');
 const c=H.chats.find(x=>x.id===p.workspace.chatId),view=Native.view(c.agentId),input=view.input;
-await until(()=>document.querySelector('.pw-project-tools'),'project overview');
+await until(()=>ProjectWorkspace.current()?.id===p.id&&document.querySelector('.pj-home .pj-p-head'),'project overview'); // (sweep67) the desk (projects-home.js paint) since 02895c4; the old .pw-project-tools toolbar is no longer drawn
 await smoke({shot:window.SMOKE_SAVES+'/project.png'});
 await ProjectWorkspace.go('scene');check(ThreeLab.scenes.currentId()===p.workspace.sceneId,'dedicated scene');check(Native.view(c.agentId).input===input,'same composer follows');check(view.root.closest('.surface').dataset.id==='tool:three','chat beside scene');
 await ProjectWorkspace.go('board');await CreativePlayground.openFeature('story');await until(()=>document.querySelector('.wb-story-layout'),'storyboard');

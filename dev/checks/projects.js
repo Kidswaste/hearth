@@ -80,7 +80,9 @@ const ronin = Projects.find('Stoop Ronin');
 step(ronin && ronin.from === 'suggest' && ronin.items.length >= 5, 'Make it: a project made from the suggestion', ronin && C_count(ronin));
 await until(() => document.querySelector('.pj-home .pj-p-head'), 5000);
 step(document.querySelector('.pj-home .pj-p-cover img')?.src.startsWith('data:image'), 'its page has a cover: the scene\'s picture');
-step(document.querySelectorAll('.pj-home .pj-sec').length >= 2 && document.querySelector('.pj-home .pj-notes'), 'its page lists chats and scenes, with notes');
+// (sweep67) Codex's desk (02895c4 / d6eb475): shelf sections (On your desk, Instruments, Conversations when 2+ chats), the notes
+// under "Project notes & setup", and every chat / scene in the lazy "Project files" shelf (the old .pj-sec lists are gone)
+step(document.querySelectorAll('.pj-home .pw-shelf-section').length >= 2 && [...document.querySelectorAll('.pj-home .pw-shelf-section h3')].some((h) => /Conversations/.test(h.textContent)) && /Project files · \d+/.test(document.querySelector('.pj-home .pw-project-files summary')?.textContent || '') && document.querySelector('.pj-home .pj-notes'), 'its page lists chats and scenes, with notes');
 await smoke({ shot: `${SHOTS}/2-project-page.png` });
 ProjectsHome.show(null);
 await until(() => document.querySelectorAll('.pj-home .pj-card').length >= 3, 5000);

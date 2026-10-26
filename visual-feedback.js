@@ -126,10 +126,12 @@ const VisualFeedback = (() => {
   async function saveReview(ctx, direction, value, {id=crypto.randomUUID(),routineId=null}={}) {
     // (sweep67, datasafe) a history that couldn't be read is never saved over with only this review in it.
     if(typeof DataSafe==='undefined'&&window.Lazy?.load)await Lazy.load('datasafe').catch(()=>{});
-    const loaded=await DataSafe.load('visual-feedback',{v:1,reviews:[]}),latest=loaded.value||{v:1,reviews:[]};
+    // one more read when the first failed (a file held for a moment); the list is only built on a read that worked
+    let loaded=await DataSafe.load('visual-feedback',{v:1,reviews:[]});if(!loaded.ok)loaded=await DataSafe.load('visual-feedback',{v:1,reviews:[]});
+    const latest=loaded.value||{v:1,reviews:[]};
     const entry={id,at:Date.now(),ctx:{...ctx,messages:[],media:[]},direction,...value,...(routineId?{routineId}:{})};
     const reviews=[entry,...(latest.reviews||[]).filter(r=>r.id!==id)].slice(0,20);
-    const saved=await DataSafe.save('visual-feedback',{v:1,reviews},loaded);
+    const saved=loaded.ok?await DataSafe.save('visual-feedback',{v:1,reviews},loaded):{refused:true};
     if(saved?.refused)toast('This review is shown but not added to your review history: the history could not be read just now, so nothing was changed.',{timeout:6000});
     return {entry,reviews,saved:!saved?.refused};
   }
