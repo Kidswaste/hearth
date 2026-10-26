@@ -26,7 +26,10 @@ H.railAgents = () => H.agents().filter((a) => !a.dock);
 const RAIL_SKIP = new Set(['commands']);
 H.railOrder = () => [...H.railAgents().map((a) => a.id), ...(typeof Tools !== 'undefined' ? Tools.enabled().filter((t) => !RAIL_SKIP.has(t.id)).map((t) => `tool:${t.id}`) : [])];
 H.railKey = (id) => { const i = H.railOrder().indexOf(id); return i >= 0 && i < 9 ? `Ctrl+${i + 1}` : ''; };
-H.surfaceIdFor = (id) => { const workspace = window.ProjectWorkspace?.surfaceFor?.(id); if (workspace) return workspace; const a = H.agent(id); return a?.dock ? `tool:${a.dock}` : id; };
+// (lazyfix66) Lazy.isIn: no open project before the projects group is in; peeking at the stand-in global logged a
+// miss (a stack trace per call) and pulled the group forward on every activate / sync during boot
+const projectsIn = () => !window.Lazy || Lazy.isIn('projects');
+H.surfaceIdFor = (id) => { const workspace = projectsIn() ? window.ProjectWorkspace?.surfaceFor?.(id) : null; if (workspace) return workspace; const a = H.agent(id); return a?.dock ? `tool:${a.dock}` : id; };
 H.settings = () => H.config?.settings || {};
 H.isTool = (id) => typeof id === 'string' && id.startsWith('tool:');
 // The native agent that "Ask Claude" actions go to: the first Claude-engine native agent.
@@ -890,7 +893,9 @@ function apply({ config, themeCss, error }) {
     H.panelOpen = config.layout?.chatsPanel !== false;
     // the ask-all bar starts hidden (Ctrl+B or Ctrl+Shift+Space shows it; layout.askAllBar: true keeps it)
     $('broadcast').classList.toggle('hidden', config.layout?.askAllBar !== true);
-    const startOn = 'tool:home';
+    // Projects first (Codex, 3d7723c): with no choice in Settings › Starting and closing › Open on start, Hearth opens
+    // on Projects. (lazyfix66) An explicit choice there is kept again (it was ignored: the menu still offered it).
+    const startOn = H.settings().startOn || 'tool:home';
     if (startOn && (H.agent(startOn) || (H.isTool(startOn) && Tools.enabled().some((t) => `tool:${t.id}` === startOn)))) H.activeId = startOn;
   }
   renderRail();
@@ -1028,7 +1033,7 @@ const WorkspaceNav = window.WorkspaceNav = (() => {
   const defaults = [{id:'forgeheart',name:'Forgeheart',icon:'ship',type:'tool',target:'forgeheart',color:'#ff9b61'},{id:'clink',name:'Clink!',icon:'brushes',type:'name',target:'Clink',color:'#e17ac4'}];
   const shortcuts = () => Array.isArray(H.settings().workspaceShortcuts) ? H.settings().workspaceShortcuts.slice(0,12) : defaults;
   let bar, signature='', routeToken=0, lastChat;
-  const project = () => window.ProjectWorkspace?.current?.();
+  const project = () => (projectsIn() ? window.ProjectWorkspace?.current?.() : null);
   const category = id => { const sid=H.surfaceIdFor(id);if(sid==='tool:quests')return 'life';if(sid==='tool:forgeheart')return 'forgeheart';if(project())return 'projects';if(!H.isTool(sid))return 'chat';return 'projects'; };
   function icon(kind) { const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),p=document.createElementNS(svg.namespaceURI,'path');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');p.setAttribute('d',paths[kind]||paths.spark);svg.append(p);return svg; }
   function button(name,fn,props={}) { return el('button',{type:'button',...props,on:{click:async e=>{const b=e.currentTarget;if(b.disabled)return;b.disabled=true;try{await fn();}catch(err){toast(calmError(err),{type:'error'});}finally{b.disabled=false;}}}},el('span',{text:name})); }

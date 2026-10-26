@@ -72,6 +72,8 @@ function embedOf(e) {
 // (round 62, parkjam62) the loop recorder (docs/upgrades/parkjam62.md): 'record' arms a take in the host's audio thread,
 // 'record-status' / 'record-cancel', 'record-take' writes the WAV in the session folder and hands its bytes back here.
 const PARK_ACTIONS = ['record', 'record-status', 'record-take', 'record-cancel'];
+// (round 66, bouncelog66) "Save a sketch": the last 30 s the desk played ('sketch-save', the path made here) · 'sketch-status'
+const SKETCH_ACTIONS = ['sketch-status', 'sketch-save'];
 function jobOf(r, name) {
   if (r.keys !== undefined && (!Array.isArray(r.keys) || r.keys.length > 512 || r.keys.some(k => typeof k !== 'string'))) throw Error('Ask for up to 512 parameter keys.');
   if (r.sequence !== undefined && (!Array.isArray(r.sequence) || r.sequence.length > 256)) throw Error('A phrase has up to 256 notes.');
@@ -191,7 +193,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       } finally { setupBusy = false; }
     }),
     request: request => safe(async () => {
-      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS, ...PARK_ACTIONS, ...LIVESET_ACTIONS, ...EMBED_ACTIONS];
+      const actions = ['names', 'inspect', 'snapshot', 'editor', 'render', 'devices', 'live-start', 'live-stop', 'live-status', 'midi', 'panic', 'patch', 'volume', ...LIVE_ACTIONS, ...PARK_ACTIONS, ...LIVESET_ACTIONS, ...EMBED_ACTIONS, ...SKETCH_ACTIONS];
       if (!request || !actions.includes(request.action)) throw Error('Unknown instrument action.');
       if (!['devices'].includes(request.action) && (!known.has(request.plugin) || !allowedName(request.plugin))) throw Error('Scan and select Serum 2 or Vital first.');
       const name = request.plugin && allowedName(request.plugin);
@@ -204,6 +206,7 @@ function create({ dataDir, python, roots, helper = path.join(__dirname, 'creativ
       // (round 64, liveset64) a clip is a WAV Hearth made (creative-live) or a park take (creative-park); a run's file path is made here
       if (request.action === 'clip-load') { job.file = liveClip(dataDir, request.file); job.loop = request.loop === true; }
       if (request.action === 'run-record') job.output = liveRunPath(dataDir, request.set, job.kind || 'Rehearsal');
+      if (request.action === 'sketch-save') job.output = require('./bouncelogmain.js').sketchPath(dataDir, typeof request.project === 'string' ? request.project : ''); // (round 66, bouncelog66)
       if (request.action === 'preset-preload' && typeof request.state !== 'string') throw Error('A preset pad needs its state.');
       if (request.action === 'render') { await ensure(); job.output = path.join(jobDir, 'render.wav'); }
       // (round 62, parkjam62) the finished loop: the host writes the WAV here, its bytes go back to the window (no base64)

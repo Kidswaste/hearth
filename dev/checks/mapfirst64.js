@@ -15,6 +15,7 @@ const step = (name, ok, info) => { out.steps.push(`${ok ? '✓' : '✖'} ${name}
 const root = () => document.querySelector('.qj');
 const S = () => QuestJournal.snapshot();
 const pinIds = (sel = '') => [...root().querySelectorAll('.qj-atlas .qj-atlas-pin' + sel)].map((b) => b.dataset.place);
+const GUIDE = '.qj-pin-guide:not([data-place^="ml-"])'; // (round 66, mapbuttons66) the journal's guide pins, not the Park jams / place quests layer (ml-…)
 const chip = (id) => root().querySelector(`.qmf-chip[data-layer="${id}"]`);
 const dlg = () => document.querySelector('dialog.qj-dialog[open]');
 const btn = (txt, scope = dlg() || root()) => [...scope.querySelectorAll('button')].find((b) => (typeof txt === 'string' ? b.textContent.trim() === txt || b.getAttribute('aria-label') === txt : txt.test(b.textContent)));
@@ -35,10 +36,10 @@ try {
   await until(() => root() && QuestJournal.ready(), 'journal');
   QuestJournal.navigate('world'); // (the map's own entry: the Studio's world page)
   await until(() => root().querySelector('.qj-atlas'), 'map');
-  await until(() => pinIds('.qj-pin-guide').length >= 10, 'guide pins by default');
+  await until(() => pinIds(GUIDE).length >= 10, 'guide pins by default');
   const P = QuestParis, guideNew = P.guide.filter(g=>P.mapPicks.has(g.id)).length;
-  step('fresh: the guide’s places are on the map with no command', pinIds('.qj-pin-guide').length === guideNew && S().atlas.places.length === 6 + guideNew, { guide: pinIds('.qj-pin-guide').length, stored: S().atlas.places.length });
-  step('pin count sane, no duplicates on the map (Codex’s 60-place guide + our guide + Codex’s six pins)', S().atlas.places.length <= 100 && P.guide.length >= 60 && !dupes(S()).length && !drawnTwice().length && pinIds().filter((id) => !/^(show-venue-|od-venue-|walk-)/.test(id)).length <= S().atlas.places.length, { stored: S().atlas.places.length, dupes: dupes(S()), twice: drawnTwice() });
+  step('fresh: the guide’s places are on the map with no command', pinIds(GUIDE).length === guideNew && S().atlas.places.length === 6 + guideNew, { guide: pinIds(GUIDE).length, stored: S().atlas.places.length });
+  step('pin count sane, no duplicates on the map (Codex’s 60-place guide + our guide + Codex’s six pins)', S().atlas.places.length <= 100 && P.guide.length >= 60 && !dupes(S()).length && !drawnTwice().length && pinIds().filter((id) => !/^(show-venue-|od-venue-|walk-|ml-)/.test(id)).length <= S().atlas.places.length, { stored: S().atlas.places.length, dupes: dupes(S()), twice: drawnTwice() });
   step('Codex’s Outing desk event pins ride the Shows chip (one row, no new chip)', QuestMapFirst.off('outing-desk') === false && QuestMapFirst.LAYERS.length === 4);
   step('fresh: Codex’s own six pins keep their own style', pinIds(':not(.qj-pin-guide)').filter((id) => id.startsWith('place-')).length === 6);
   step('guide pins are dots at the city zoom (not cluttering)', root().querySelector('.qj-atlas').dataset.zoom === '12' && root().querySelector('.qj-pin-guide>span').getBoundingClientRect().width <= 16, root().querySelector('.qj-pin-guide>span').getBoundingClientRect().width);
@@ -47,7 +48,7 @@ try {
   step('fresh: this week’s shows are on the map with venue logos, no command', pinIds('[data-place^="show-venue-"]').length >= 3 && ShowSync.snap.enabled, pinIds('[data-place^="show-venue-"]').length);
   const strip = root().querySelector('.qmf-strip');
   const kids = [...strip.children], tops = new Set(kids.map((k) => Math.round(k.getBoundingClientRect().top)));
-  step('one strip on the map, one row: Places · Shows · My walks · Visited · Plan a walk', strip.closest('.qj-atlas') && tops.size === 1 && kids.map((k) => k.textContent.replace(/\d+/g, '').trim()).join('|') === 'Food & stops|Nights|My walks|Visited|More places|Plan a walk', kids.map((k) => k.textContent));
+  step('one strip on the map, one row: Places · Shows · My walks · Visited · Plan a walk', strip.closest('.qj-atlas') && tops.size === 1 && kids.map((k) => k.textContent.replace(/\d+/g, '').trim()).join('|') === 'Layers|Food & stops|Nights|My walks|Visited|More places|Plan a walk', kids.map((k) => k.textContent));
   step('every chip starts on', ['places', 'shows', 'walks', 'visited'].every((id) => chip(id).getAttribute('aria-pressed') === 'true'));
   step('no failure line while the read worked', !root().querySelector('.qmf-status'));
   document.querySelectorAll('.toast').forEach((n) => n.remove());
@@ -62,7 +63,7 @@ try {
   await until(() => S().campaigns.some((c) => c.id === 'c-pp-superfly'), 'place quest saved');
   step('Start this quest saves it, tracks it and opens its first step', S().active === 'c-pp-superfly' && !!(await until(() => dlg(), 'step opens', 40)));
   await closeAll();
-  step('a started guide place is drawn as one of yours', !pinIds('.qj-pin-guide').includes('pp-superfly'));
+  step('a started guide place is drawn as one of yours', !pinIds(GUIDE).includes('pp-superfly'));
 
   // ---------- 3. a show pin → Make it a quest / Get ready ----------
   root().querySelector('.qj-atlas-pin[data-place^="show-venue-"]').click();
@@ -79,16 +80,16 @@ try {
   await closeAll();
 
   // ---------- 4. chips toggle, and are remembered ----------
-  const guideBefore = pinIds('.qj-pin-guide').length;
+  const guideBefore = pinIds(GUIDE).length;
   chip('places').click(); await until(() => chip('places')?.getAttribute('aria-pressed') === 'false', 'places off');
-  step('Places off: untouched guide pins leave, yours and started ones stay', pinIds('.qj-pin-guide').length === 0 && pinIds().includes('pp-superfly') && pinIds().includes('place-canal') && S().atlas.places.length === 6 + guideNew, { before: guideBefore, stored: S().atlas.places.length });
+  step('Places off: untouched guide pins leave, yours and started ones stay', pinIds(GUIDE).length === 0 && pinIds().includes('pp-superfly') && pinIds().includes('place-canal') && S().atlas.places.length === 6 + guideNew, { before: guideBefore, stored: S().atlas.places.length });
   chip('shows').click(); await until(() => chip('shows')?.getAttribute('aria-pressed') === 'false', 'shows off');
   step('Shows off: no show pins (nor Outing desk event pins)', pinIds('[data-place^="show-venue-"]').length === 0 && pinIds('[data-place^="od-venue-"]').length === 0 && QuestMapFirst.off('outing-desk') === true);
   const saved = JSON.parse(localStorage.getItem('hub.questmap.layers') || '{}');
   step('the choice is remembered on this computer', saved.places === false && saved.shows === false, saved);
   QuestJournal.navigate('adventure'); await wait(200); QuestJournal.navigate('world'); await until(() => chip('places'), 'map again');
-  step('…and still off when the map opens again', chip('places').getAttribute('aria-pressed') === 'false' && pinIds('.qj-pin-guide').length === 0 && pinIds('[data-place^="show-venue-"]').length === 0);
-  chip('places').click(); await until(() => pinIds('.qj-pin-guide').length === guideBefore, 'places back');
+  step('…and still off when the map opens again', chip('places').getAttribute('aria-pressed') === 'false' && pinIds(GUIDE).length === 0 && pinIds('[data-place^="show-venue-"]').length === 0);
+  chip('places').click(); await until(() => pinIds(GUIDE).length === guideBefore, 'places back');
   chip('shows').click(); await until(() => pinIds('[data-place^="show-venue-"]').length >= 3, 'shows back');
   step('back on: guide pins and shows return', true);
   // Visited: stamp one by clicking, it gets a ✓; Visited off hides it
@@ -145,8 +146,8 @@ try {
   const st = S();
   step('existing journal: the guide joins once, the owner’s pins and selection unchanged', st.atlas.selected === 'my-cafe' && st.atlas.places.find((p) => p.id === 'my-cafe').favorite && st.atlas.places.filter((p) => p.id === 'my-cafe').length === 1, st.atlas.places.length);
   btn('Paris', root().querySelector('.qj-atlas-controls')).click(); // the whole city again (the walk had framed the map closer; the map draws the pins in view)
-  await until(() => pinIds('.qj-pin-guide').length >= 10, 'guide pins drawn');
-  step('existing journal: guide pins + the owner’s visited ✓ pin on the map', !!root().querySelector('.qj-atlas-pin.visited[data-place="my-cafe"]') && pinIds('.qj-pin-guide').length >= 10, pinIds('.qj-pin-guide').length);
+  await until(() => pinIds(GUIDE).length >= 10, 'guide pins drawn');
+  step('existing journal: guide pins + the owner’s visited ✓ pin on the map', !!root().querySelector('.qj-atlas-pin.visited[data-place="my-cafe"]') && pinIds(GUIDE).length >= 10, pinIds(GUIDE).length);
   QuestJournal.navigate('adventure'); await wait(150); QuestJournal.navigate('world'); await wait(300);
   step('opening again adds nothing', S().atlas.places.length === 7 + guideNew);
   document.querySelectorAll('.toast').forEach((n) => n.remove());
