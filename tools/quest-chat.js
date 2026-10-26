@@ -33,7 +33,8 @@ const QuestChat=(()=>{
   async function prepare(p,scenes,qj){
     const c=await context(p,scenes);if(!c.focusId)return {quests:[],fromChat:false};
     if(c.messages.some(m=>Native.isBusy(m.chatId)))throw Error('Your project chat is still working. Finish or stop its reply, then take a quest from the latest result.');
-    const cacheKey='quest-chat-'+p.id,cached=await hub.kvGet(cacheKey,null);
+    // (sweep67, datasafe) a status read: a cache that could not be read is neither used nor written over (only 'ok' / 'missing' may save).
+    const cacheKey='quest-chat-'+p.id,read=await hub.kvGet(cacheKey,null,{status:true}).catch(()=>({state:'error'})),cacheOk=read?.state==='ok'||read?.state==='missing',cached=read?.state==='ok'?read.value:null;
     if(cached?.fingerprint===c.fingerprint){try{return {quests:C.quests(c,C.validate({tasks:cached.tasks},c)),fromChat:true};}catch{/* stale/invalid cache is regenerated */}}
     const kit=qj.paris.ui();let cancelled=false,finished=false,job;
     const d=kit.dialog('Following your latest work',body=>{
@@ -48,7 +49,7 @@ const QuestChat=(()=>{
       const fresh=await context(Projects.get(p.id)||p,await Projects.Src.sketches());
       if(cancelled)return null;
       if(fresh.fingerprint!==c.fingerprint||fresh.messages.some(m=>Native.isBusy(m.chatId)))throw Error('Your project chat changed while planning. Take a quest again to use the latest work.');
-      await hub.kvSet(cacheKey,{v:1,fingerprint:c.fingerprint,tasks,at:Date.now()});
+      if(cacheOk)await hub.kvSet(cacheKey,{v:1,fingerprint:c.fingerprint,tasks,at:Date.now()});
       if(cancelled)return null;return {quests:C.quests(c,tasks),fromChat:true};
     }catch(err){if(cancelled)return null;throw err;}
     finally{finished=true;if(d.open)d.close();}

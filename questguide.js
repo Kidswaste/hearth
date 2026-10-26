@@ -164,7 +164,7 @@ const QuestGuide = (() => {
           const next=await call('start',{questId:q.id,title:q.title,kind,bpm:128,projectId:pid||undefined,steps,replanUnstarted:true});accept(next);d.close();
           try{if(!next.step)await review({questId:q.id});else if(next.step.action)await launchTool({...next.step.action,stepId:next.step.id,projectId:next.session.projectId});else if(next.step.app==='fl')accept(await call('launch'));}
           catch(err){toast('Quest saved. '+err.message,{type:'error'});}
-        }catch(err){error.textContent=err.message;start.textContent='Continue quest';}
+        }catch(err){error.textContent=calmError(err);start.textContent='Continue quest';}
         finally{later.disabled=false;}
       },'qj-primary');
       body.append(kit.E('div',{class:'qg-offer-actions'},start,later),error);

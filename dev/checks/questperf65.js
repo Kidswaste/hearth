@@ -8,6 +8,10 @@
 // timers, microtasks, frame callbacks, with the style / layout they force), the frame's style / layout ms and elements
 // restyled, plus the in-page wall time from the click to the next frame. Budget: script ≤ 16 ms per click / dialog
 // (window.QP_BUDGET overrides; window.QP_REPORT = 1 reports without failing). Offline map tiles, no network, no AI.
+// (round 67, sweep67) The Outing desk now opens from Sidequest Studio › Map › Events (the Map tab's row; the map
+// page's own "Outing desk" button is gone). The check also reports what round 66's map layers cost (mapbuttons66's
+// Park jams + Paris place quests, herepin66's pin): one map re-render with them on vs off, at the city zoom and at
+// zoom 14 where the place quests appear, and the layers' own pin work per render (out.layers66; reported, no budget).
 //   node dev/smoke.js --script dev/checks/questperf65.js --check-timeout 240000
 const source = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
 Object.defineProperty(HTMLImageElement.prototype, 'src', { ...source, set(value) { if (String(value).startsWith('https://tile.openstreetmap.org/')) { this.dataset.fixture = 'offline'; queueMicrotask(() => this.dispatchEvent(new Event('error'))); return; } source.set.call(this, value); } });
@@ -94,7 +98,8 @@ try {
   await it('visit-stamp', async () => { btn(/^(Stamp my visit|Undo visit stamp)$/).click(); await wait(0); });
   await it('details-dialog', async () => { btn('Place details').click(); await until(dlg, 'details'); });
   await it('dialog-close', async () => { dlg().querySelector('.qj-close').click(); await until(() => !dlg(), 'closed'); });
-  await it('outing-desk', async () => { btn('Outing desk').click(); await until(() => dlg()?.classList.contains('od-dialog') && dlg().querySelector('.od-card'), 'outing desk'); });
+  const mapRow = () => root().querySelector('.qj-command-panel[data-group="map"]');
+  await it('outing-desk', async () => { btn('Events', mapRow()).click(); await until(() => dlg()?.classList.contains('od-dialog') && dlg().querySelector('.od-card'), 'outing desk'); });
   await it('outing-close', async () => { dlg().querySelector('.qj-close').click(); await until(() => !dlg(), 'closed'); });
   await it('chip-shows', async () => { root().querySelector('.qmf-chip[data-layer="shows"]').click(); await wait(0); });
   await it('chip-shows-back', async () => { root().querySelector('.qmf-chip[data-layer="shows"]').click(); await wait(0); });
@@ -130,6 +135,31 @@ try {
   }
   for (const [name, v] of Object.entries(out.interactions)) { v.runs = runs[name]; if (name !== 'rail-away' && v.scriptMs > BUDGET) fails.push(`${name}: ${v.scriptMs} ms script, best of 3 (budget ${BUDGET}): ${runs[name].join(' / ')}`); }
   out.budget = BUDGET;
+
+  // ---------- (round 67, sweep67) what round 66's map layers cost ----------
+  // one re-render of the map page = navigate('world') → the journal's render → the next frame; median of 15, all layers
+  // on, then Park jams + Paris place quests off (the same switches as the map's Layers panel), then back on
+  const MF = window.QuestMapFirst, median = (a) => { const b = [...a].sort((x, y) => x - y); return Math.round(b[b.length >> 1] * 10) / 10; };
+  const renders = async (n = 15) => { const ms = []; for (let i = 0; i < n; i++) { await QuestJournal.flush(); await frame(); const t0 = performance.now(); QuestJournal.navigate('world'); await QuestJournal.flush(); await frame(); ms.push(performance.now() - t0); } return median(ms); };
+  const pins = () => ({ all: root().querySelectorAll('.qj-atlas-pin').length, layer66: root().querySelectorAll('.qj-atlas-pin[data-place^="ml-"]').length });
+  const layerWork = (n = 200) => { const t0 = performance.now(); for (let i = 0; i < n; i++) MF.guidePins({}); return Math.round((performance.now() - t0) / n * 1000) / 1000; };
+  const zoomTo = async (want) => { for (let i = 0; i < 6 && Number(root().querySelector('.qj-atlas')?.dataset.zoom) !== want; i++) { root().querySelector(`.qj-atlas [aria-label="${Number(root().querySelector('.qj-atlas').dataset.zoom) < want ? 'Zoom in' : 'Zoom out'}"]`)?.click(); await wait(400); } return Number(root().querySelector('.qj-atlas')?.dataset.zoom); };
+  if (MF?.toggle && MF.guidePins) {
+    await closeAll(); activate('tool:quests'); QuestJournal.navigate('world'); await until(() => root().querySelector('.qj-atlas .qj-atlas-pin'), 'map for layers66');
+    const L = { herepinPins: root().querySelectorAll('.qj-atlas-pin[data-place^="herepin-"]').length, guidePinsPerCallMs: layerWork(), at: {} };
+    for (const want of [12, 14]) {
+      const zoom = await zoomTo(want); await wait(400);
+      const onMs = await renders(), onPins = pins();
+      for (const id of ['jams', 'quests']) if (MF.on(id)) await MF.toggle(id);
+      await wait(300); const offMs = await renders(), offPins = pins();
+      for (const id of ['jams', 'quests']) if (!MF.on(id)) await MF.toggle(id);
+      await wait(300);
+      L.at[`zoom${zoom}`] = { renderMsLayersOn: onMs, renderMsLayersOff: offMs, costMs: Math.round((onMs - offMs) * 10) / 10, pinsOn: onPins, pinsOff: offPins };
+    }
+    L.backOn = MF.on('jams') && MF.on('quests');
+    if (!L.backOn) fails.push('layers66: Park jams / Paris place quests did not switch back on');
+    out.layers66 = L;
+  } else out.layers66 = { skipped: 'QuestMapFirst.toggle / guidePins not found' };
 } catch (err) { fails.push(`error: ${err.stack || err.message || err}`); }
 await closeAll();
 if (fails.length && !window.QP_REPORT) throw Error(JSON.stringify({ fails, out }));

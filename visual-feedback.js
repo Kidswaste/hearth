@@ -124,10 +124,16 @@ const VisualFeedback = (() => {
     });
   }
   async function saveReview(ctx, direction, value, {id=crypto.randomUUID(),routineId=null}={}) {
-    const latest=await hub.kvGet('visual-feedback',{v:1,reviews:[]});
+    // (sweep67, datasafe) a history that couldn't be read is never saved over with only this review in it.
+    if(typeof DataSafe==='undefined'&&window.Lazy?.load)await Lazy.load('datasafe').catch(()=>{});
+    // one more read when the first failed (a file held for a moment); the list is only built on a read that worked
+    let loaded=await DataSafe.load('visual-feedback',{v:1,reviews:[]});if(!loaded.ok)loaded=await DataSafe.load('visual-feedback',{v:1,reviews:[]});
+    const latest=loaded.value||{v:1,reviews:[]};
     const entry={id,at:Date.now(),ctx:{...ctx,messages:[],media:[]},direction,...value,...(routineId?{routineId}:{})};
     const reviews=[entry,...(latest.reviews||[]).filter(r=>r.id!==id)].slice(0,20);
-    await hub.kvSet('visual-feedback',{v:1,reviews});return {entry,reviews};
+    const saved=loaded.ok?await DataSafe.save('visual-feedback',{v:1,reviews},loaded):{refused:true};
+    if(saved?.refused)toast('This review is shown but not added to your review history: the history could not be read just now, so nothing was changed.',{timeout:6000});
+    return {entry,reviews,saved:!saved?.refused};
   }
   async function round({ file, ctx, direction, mode = 'auto', frame = 0, signal, status = () => {}, onPartial = async () => {} }, dependencies = {}) {
     const io = { info: p => FrameRead.info(p), frames: (...args) => FrameRead.frames(...args), prepare, makePacket, review, ...dependencies };
@@ -317,7 +323,7 @@ const VisualFeedback = (() => {
             const info = await FrameRead.info(source); if (id !== costId) return;
             const batches = C.deepPlan(info); costBlocked = false;
             cost.textContent = `Deep: all ${info.frames} frames · ${batches.length} consecutive batches · up to ${batches.length + 2} Astra replies. More usage than Auto. You can stop between or during passes.`;
-          } catch (e) { if (id !== costId) return; cost.textContent = e.message; costBlocked = true; }
+          } catch (e) { if (id !== costId) return; cost.textContent = calmError(e); costBlocked = true; }
         }
       } else cost.textContent = mode.value === 'auto' ? 'Auto: 1 overview + up to 1 final reply with close-ups at two suspect moments. Up to 36 overview frames; each close-up contains up to 48 consecutive frames. No project edits.' : 'One Astra reply using your configured model and reasoning. Quick sends 12 sampled frames; Close look sends 24 consecutive frames. No project edits.';
       if (id === costId) run.disabled = busy || costBlocked;

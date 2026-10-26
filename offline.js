@@ -561,7 +561,7 @@ const Offline = (() => {
         body.append(el('p', { class: 'hint', text: 'Last check applies to this computer only. Switch Wi-Fi off briefly and open the scene with its song before leaving.' }));
         button.textContent = r.libraries?.ready ? 'Check again' : 'Download scene libraries';
         button.dataset.download = r.libraries?.ready ? '' : '1';
-      } catch (err) { status.textContent = err.message || 'Could not finish the check. Reconnect and try again.'; }
+      } catch (err) { status.textContent = calmError(err) || 'Could not finish the check. Reconnect and try again.'; }
       finally { working = false; button.disabled = false; }
     };
     const button = el('button', { type: 'button', class: 'primary', text: 'Download scene libraries', on: { click: () => run(button.dataset.download === '1') } });
