@@ -67,7 +67,7 @@ console.log(`✓ lazy groups whole: ${whole.files} loaded files, every listed gl
 // 3. (round 40, firstscreen) what the first screen reads before its first frame stays within budget: a new feature goes
 // in a lazy group (lazy-data.js) or merges into a file that is already there; raise a budget only with a reason in
 // docs/upgrades/firstscreen.md
-const BUDGET = { scripts: 72, jsKB: 2333, sheets: 29, cssKB: 450 }; // (round 51: 2350 → 2352; round 52, lazymeta: 2352 → 2330 with the first screen at ≈ 2,267 KB; round 67, slowbutton67: 2330 → 2333, the hiccup recorder must run from the start: docs/upgrades/firstscreen.md)
+const BUDGET = { scripts: 72, jsKB: 2336, sheets: 29, cssKB: 450 }; // (round 51: 2350 → 2352; round 52, lazymeta: 2352 → 2330 with the first screen at ≈ 2,267 KB; round 67, slowbutton67: 2330 → 2333, the hiccup recorder must run from the start: docs/upgrades/firstscreen.md; round 67 merge: 2333 → 2336, the five round-67 streams together add ≈ 1.5 KB of manifest and preload lines, all features themselves lazy)
 const eager = [...html.matchAll(/<script defer src="([^"#]+)"/g)].map((m) => m[1]).filter((f) => f !== 'lazy-at.js');
 const sheets = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map((m) => m[1]);
 // Git's Windows CRLF checkout must measure the same source budget as Linux/macOS.
