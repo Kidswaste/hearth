@@ -87,7 +87,7 @@ const AppUI = (() => {
       const input = el('input', { type: 'checkbox', checked: Boolean(checked) });
       return [el('label', { class: 'check', title: tip || hint || '' }, input, label, hint ? el('span', { class: 'hint inline', text: hint }) : null), input];
     };
-    const startOn = el('select', {}, el('option', { value: '', text: 'What you used last' }),
+    const startOn = el('select', {}, el('option', { value: '', text: 'Projects' }), // (lazyfix66) no choice = Projects (Codex's projects-first start)
       H.agents().map((a) => el('option', { value: a.id, text: a.name, selected: s.startOn === a.id })),
       Tools.all().map((t) => el('option', { value: `tool:${t.id}`, text: t.name, selected: s.startOn === `tool:${t.id}` })));
     const hotkey = el('input', { value: s.hotkey ?? 'Control+Alt+H', placeholder: 'e.g. Control+Alt+H (empty = off)' });
@@ -190,7 +190,7 @@ const AppUI = (() => {
       el('div', { class: 'button-row', title: 'Claude, Codex, ffmpeg, sync, folders from the other computer, permissions, updates: one list, one button each' },
         gbtn('Check this computer…', 'Is this computer ready? Each thing with its state and one button to fix it (nothing installs without your click)', () => { dialog.close(); (window.Lazy?.load ? Lazy.load('firstrun') : Promise.resolve()).then(() => FirstRun.open()); })), // (round 28, firstrun)
       fold('start', 'Starting and closing', 'What Hearth does when your computer starts, when it opens and when you close its window',
-        () => [`Opens on ${startOn.value ? startOn.selectedOptions[0]?.text || '…' : 'what you used last'}`, startupIn.checked ? 'starts with your computer' : '', trayIn.checked ? 'stays in the tray' : ''].filter(Boolean).join(' · '),
+        () => [`Opens on ${startOn.value ? startOn.selectedOptions[0]?.text || '…' : 'Projects'}`, startupIn.checked ? 'starts with your computer' : '', trayIn.checked ? 'stays in the tray' : ''].filter(Boolean).join(' · '),
         home(section('Starting and closing', field('Open on start', startOn, '', 'What Hearth shows when it opens'), startupRow, trayRow, el('span', { class: 'sf-slot' })), 'start')));
 
     // ---- Updates & what's new ----

@@ -7,8 +7,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 localStorage.setItem('lazy.hold', '1');
 if (!H.config.agents.some((a) => a.id === 'threedirector')) {
   H.config.agents.push({ id: 'threedirector', name: 'Three Director', icon: '◆', color: '#7c5cff', mode: 'native', engine: 'claude', dock: 'three', threeTools: true });
-  await saveConfig();
 }
+// (lazyfix66) the held start opens on a chat: with no Open on start choice Hearth opens on Projects (Codex, 3d7723c),
+// and a first screen that is a lazy tool loads its own group (that's its first use), so "all held" needs a chat start
+H.config.settings = { ...(H.config.settings || {}), startOn: H.claudeAgent().id };
+await saveConfig();
 return 'held';
 //@@ reload
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
