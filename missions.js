@@ -73,7 +73,8 @@ const Missions = (() => {
   // why a mission can't run in this chat now (null: it can)
   function why(agentId, m) {
     const agent = H.agent(agentId);
-    if (m.needs === 'partner' && !partner(agentId)) return `${m.label} needs ${agent?.engine === 'codex' ? 'a Claude' : 'an Astra'} chat agent too (＋ adds one).`;
+    // (round 67) Swarm in the Lab is a crew of the director's own helpers: no partner needed there
+    if (m.needs === 'partner' && !partner(agentId) && !(m.id === 'swarm' && inLab(agentId))) return `${m.label} needs ${agent?.engine === 'codex' ? 'a Claude' : 'an Astra'} chat agent too (＋ adds one).`;
     if (m.needs === 'research' && agent?.engine !== 'codex' && !astraAgent()) return 'Research needs an Astra agent (it searches the web): ＋ → Astra.';
     return null;
   }

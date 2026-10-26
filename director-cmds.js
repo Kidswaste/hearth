@@ -239,8 +239,11 @@
       if (!a) return 'No Astra (Codex) director: `/director-engine astra` in a director chat makes one.';
       const on = onOff(args);
       if (on === undefined) return `${a.name}: hub tools **${a.hubTools ? 'on' : 'off'}**${SETS.some((k) => a[k]) ? '' : ' (it has no tool sets: give it some in its settings)'}.`;
-      await saveAgent(a, { hubTools: on || undefined });
-      return `${a.name}: hub tools **${on ? 'on' : 'off'}** from its next message.`;
+      // (round 67) an Astra that isn't a director used to get only the chat tools from "on": it now gets the Lab too
+      // (the scene open in the three.js Lab), and "off" takes back only what "on" gave
+      const lab = !a.dock && (on ? !a.threeTools : a.labFromAstraTools);
+      await saveAgent(a, { hubTools: on || undefined, ...(lab ? { threeTools: on || undefined, labFromAstraTools: on || undefined } : {}) });
+      return `${a.name}: hub tools **${on ? 'on' : 'off'}** from its next message${on && !a.dock && a.threeTools ? ': chat tools, and it can see and change the scene open in the three.js Lab' : ''}.`;
     },
   });
   cmd({

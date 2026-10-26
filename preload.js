@@ -210,6 +210,8 @@ contextBridge.exposeInMainWorld('hub', {
     status: call('ae:status'),
     run: call('ae:run'),
     running: call('ae:running'),
+    // (round 67) a script that answers later (aemain.js runJob): job(code, label) → { ok, job }, then onJobDone
+    job: call('ae:job'), jobs: call('ae:jobs'), onJobDone: on('ae:job-done'),
   },
   // Capture (capturemain.js): screenshots / recordings of Hearth itself, the exact frame reader
   capture: {

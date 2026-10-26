@@ -548,7 +548,7 @@ const Native = (() => {
         if (saved) toast(`Saved ${saved.split(/[\\/]/).pop()}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(saved) } });
       }
       if (codeAction.dataset.act === 'three') ThreeLab.openCode(code);
-      if (codeAction.dataset.act === 'ae') (async () => { await window.Lazy?.load?.('adobe'); const r = await Adobe.run('aftereffects', code, { label: 'From chat' }); toast(r.ok ? 'Sent to After Effects (one undo in AE takes it back)' : r.error, { type: r.ok ? undefined : 'error', timeout: r.ok ? 3500 : 9000 }); })().catch((err) => toast(err.message, { type: 'error' }));
+      if (codeAction.dataset.act === 'ae') (async () => { await window.Lazy?.load?.('adobe'); const r = Adobe.aeJob ? await Adobe.aeJob(code, 'From chat') : await Adobe.run('aftereffects', code, { label: 'From chat' }); toast(r.ok ? 'Running in After Effects: keep working, Hearth tells you when it is done (one undo in AE takes it back)' : r.error, { type: r.ok ? undefined : 'error', timeout: r.ok ? 3500 : 9000 }); })().catch((err) => toast(err.message, { type: 'error' }));
       if (codeAction.dataset.act === 'shader') ThreeLab.openShader(code);
       return;
     }
@@ -710,6 +710,13 @@ const Native = (() => {
       ? el('button', { class: 'suggest-chip cmd', text: s, dataset: { suggest: s }, title: 'Run this chat command (nothing is sent)' })
       : el('button', { class: 'suggest-chip', text: s, dataset: { suggest: s }, title: 'Send this' })))));
     if (m.attachments?.length) node.append(el('div', { class: 'msg-attachments' }, m.attachments.map((a) => el('span', { class: 'attach-chip small', text: `${a.kind === 'image' ? '🖼' : '📄'} ${a.name}`, ...(a.lean ? { title: a.lean.same ? `Not sent again: the same as at ${a.lean.same}` : a.lean.diff ? `Only the changes since ${a.lean.diff} were sent (≈ ${a.lean.tokens} tokens)` : `Sent ≈ ${a.lean.tokens} tokens${a.lean.wholeTokens > a.lean.tokens ? ` of ≈ ${a.lean.wholeTokens}` : ''}${a.lean.px ? ` (at ${a.lean.px} px)` : ''}` } : {}) }))));
+    if (m.role === 'assistant' && m.blocked?.length) {
+      const lab = m.blocked.some((x) => /^three_|forge_|video_|board_|hub/i.test(x));
+      const what = m.blocked.map((x) => x.replace(/^three_/, '')).join(', ');
+      node.append(el('div', { class: 'msg-blocked', title: m.blocked.join(', ') },
+        `⚠ ${agent.name} couldn't use ${lab ? 'the Lab tools' : 'some of Hearth\'s tools'} in this reply (${what}), so it may not have seen or changed what it describes.`,
+        agent.dock ? el('button', { class: 'suggest-chip cmd', text: 'Run this director on Claude', dataset: { suggest: '/director-engine claude' }, title: 'Same chat and scene, the task state handed over' }) : null));
+    }
     if (m.role === 'error' && m.needsLogin) {
       node.append(el('button', { class: 'primary login-btn', text: `Sign in to ${ENGINE_LABEL[agent.engine] || agent.engine}`, dataset: { engine: agent.engine } }));
     }
@@ -1939,6 +1946,7 @@ const Native = (() => {
       const suggest = [...raw.matchAll(SUGGEST_TAG)].map((m) => m[1].trim()).filter(Boolean).slice(0, 4);
       const message = { role: 'assistant', text: visibleText(raw), at, usage: event.usage, ms: at - p.started, ...extras, ...(suggest.length ? { suggest } : {}), ...(chat.model ? { model: chat.model } : {}) };
       if (p.tools.length) message.tools = p.tools;
+      if (event.blocked?.length) message.blocked = event.blocked; // (round 67) said plainly under the reply, not only in its thinking
       if (facts.length) {
         message.remembered = facts;
         if (!window.ChatMemory?.intercept?.(chat, facts, message)) rememberFacts(chat.agentId, facts); // (round 24) /memory approve on: it waits for your OK
@@ -2159,6 +2167,14 @@ const Native = (() => {
   // What the user is looking at, as an image file for the second opinion.
   async function screenshotFor(agent) {
     try {
+      // (round 67) a chat that owns a Lab scene: that scene (backstage when another one is on screen), not whatever shows
+      const chatId = agent && H.activeChat[agent.id];
+      const sk = chatId && typeof ChatScenes !== 'undefined' && ChatScenes.linkOf?.(chatId);
+      if (sk && typeof HubBridge !== 'undefined' && typeof ThreeLab !== 'undefined' && (!window.Lazy?.isIn || Lazy.isIn('lab'))) {
+        const r = await HubBridge.call('three_screenshot', { size: 'medium', force: true }, { chatId }).catch(() => null);
+        const data = r?.ok && r.images?.[0]?.data;
+        if (data) return await window.hub.saveAttachment(`lab-${Date.now()}.jpg`, data);
+      }
       if (agent?.dock === 'three' && typeof ThreeLab !== 'undefined') {
         const url = await ThreeLab.shot?.();
         if (url) return await window.hub.saveAttachment(`lab-${Date.now()}.png`, url.split(',')[1]);
