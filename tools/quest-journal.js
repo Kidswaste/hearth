@@ -301,7 +301,7 @@ const QuestJournal = (() => {
     const recaps=()=>dialog('Your memories',body=>{for(const item of window.ClickFirst?.questItems?.()||[])if(item?.action&&/review|month|went to/i.test(item.label))body.append(button(item.label,()=>{body.closest('dialog').close();return item.action();},'qj-command-link'));});
     const groups=[
       {id:'quests',name:'Today',icon:'notebook',page:'adventure',items:[['Find a quest','catalog'],['Find a small step',sessionPicker],['This week',()=>extra(/Plan my week/)]]},
-      {id:'map',name:'Map',icon:'compass',page:'world',items:[['Plan an outing',()=>window.OutingGuide?.open()],['My plans',savedPlans],['Friends',()=>mapNotebook('friends')],['Places',()=>mapNotebook('places')],['Events',()=>outingDesk()],['Make a walk',()=>extra(/Make a walk/)]]},
+      {id:'map',name:'Map',icon:'compass',page:'world',items:[['Plan an outing',()=>window.OutingGuide?.open()],['My plans',savedPlans],['Friends',()=>mapNotebook('friends')],['Places',()=>mapNotebook('places')],['Add a place',()=>placeForm(atlasView?.center()||{})]/* (lifechecks70) the redesign left only a double-click on the map to pin your own place: its link is back */,['Events',()=>outingDesk()],['Make a walk',()=>extra(/Make a walk/)]]},
       {id:'progress',name:'Progress',icon:'spark',page:'collection',items:[['Collection','collection'],['Skills','skills'],['Rewards','rewards'],['Memories',recaps]]}
     ];
     for(const g of groups){
@@ -320,7 +320,7 @@ const QuestJournal = (() => {
       body.append(button('+ Plan an outing',()=>{body.closest('dialog').close();return window.OutingGuide?.open();},'qj-primary'));
       const list=E('div',{class:'qj-plan-list'});body.append(list);
       const add=(title,detail,fn)=>list.append(button(title+' · '+detail,()=>{body.closest('dialog').close();return fn();},'qj-field-list-item'));
-      for(const plan of state.world.plans)add(plan.title,plan.date||'Date open',()=>worldPlanDetail(plan.id));
+      for(const plan of state.world.plans){const c=state.campaigns.find(c=>c.id===`c-world-${plan.id}`);add(plan.title,plan.status==='archived'?'Resting':c?c.quests.filter(q=>C.done(state,q.id)).length+'/3 done':plan.date||'Date open',()=>worldPlanDetail(plan.id));list.lastChild.dataset.plan=plan.id;} /* (lifechecks70) a plan made into a quest shows its progress (and a resting plan says so), as the old Saved plans notebook did */
       try{
         const r=await window.hub.kvGet('sidequest-outings-v1');
         for(const plan of r?.saved||[])add(plan.event.title,'Saved outing',()=>outingDesk({tab:'saved',eventId:plan.event.id}));

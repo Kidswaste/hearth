@@ -45,8 +45,8 @@ await cmd('/quest paris 11e'); check([...root().querySelectorAll('.qj-atlas-pin'
 root().querySelector('.qj-paris-chip').click(); await wait(150); check(!root().querySelector('.qj-paris-chip'), 'chip clears the filter');
 await until(() => pins() >= allPins - 2, 'all pins back');
 await category('music'); check(pins() >= 12, 'Codex kind filter includes guide music places'); await category('all');
-const search = root().querySelector('[aria-label="Find a saved place"]'); search.value = 'records'; search.dispatchEvent(new Event('input', { bubbles: true })); await wait(150);
-check(pins() === 4, 'search finds guide words (records: ' + pins() + ')'); search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true })); await wait(150);
+const search = root().querySelector('[aria-label="Find a saved place"]'); search.value = 'records'; search.dispatchEvent(new Event('input', { bubbles: true })); await until(() => pins() === 4, 'search narrows the pins').catch(() => {}); // (lifechecks70) Codex's smoother search updates the map on the next frame (pins diffed), not within 150 ms
+check(pins() === 4, 'search finds guide words (records: ' + pins() + ')'); search.value = ''; search.dispatchEvent(new Event('input', { bubbles: true })); await until(() => pins() >= allPins - 2, 'search cleared');
 const list = await cmd('/quest places records'); check(list.split('\n').length === 4 && /Superfly/.test(list) && /Dizonord/.test(list), 'places lists in chat');
 
 // 3. a pin's panel shows the guide note and starts its go → do → proof quest
