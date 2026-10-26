@@ -200,11 +200,11 @@ const QuestJournal = (() => {
     // (.qj-under-dialog: content-visibility hidden, its size kept, quest-journal.css), so opening restyles only the
     // dialog; on closing the page comes back in the next frame and focus returns after it (no forced restyle in the click).
     root.append(d); d.addEventListener('close', () => { hideHint();d.remove();
-      const last = !root.querySelector('dialog.qj-dialog[open]'); if (last) root.classList.remove('qj-under-dialog');
+      const last = !root.querySelector('dialog.qj-dialog[open]'); if (last) { root.classList.remove('qj-under-dialog'); document.documentElement.classList.remove('qj-modal-up'); } // (dialogperf68) html.qj-modal-up: tools/quest-mapfirst.css
       if (last && dialogHome) { dialogHome.append(root); dialogHome = null; root.classList.remove('qj-portal'); }
       const back = () => { if (root.querySelector('dialog[open]')) return; const now = document.activeElement; if (now && now !== document.body && now.isConnected) return; /* (questfix65) only when nothing has focus yet: a control focused in the meantime (or one in another dialog) keeps it */ if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); };
       if (last) requestAnimationFrame(() => setTimeout(back)); else if (opener?.isConnected) opener.focus(); });
-    build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); root.classList.add('qj-under-dialog'); d.showModal(); return d;
+    build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); root.classList.add('qj-under-dialog'); if (!dialogHome && window.QuestMapFirst?.modalSkip?.()) document.documentElement.classList.add('qj-modal-up'); /* (dialogperf68) the rail, side panel, bars and other surfaces skip style under the dialog too (tools/quest-mapfirst.css) */ d.showModal(); return d;
   }
   function mutate(fn, message = 'Progress saved.', { paint = true } = {}) {
     const task = saving.catch(() => {}).then(async () => {

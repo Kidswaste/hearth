@@ -250,5 +250,18 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     if (!ctlAbort) { ctlAbort = new AbortController(); document.addEventListener('scroll', scheduleClear, { capture: true, passive: true, signal: ctlAbort.signal }); window.addEventListener('resize', scheduleClear, { passive: true, signal: ctlAbort.signal }); }
     scheduleClear();
   }
-  return { open, keep, tone, off, ownsChip, overlay, on, toggle, planWalk, explore, showStatus, LAYERS, ROWS, QUEST_ZOOM, guidePins, setPanel, clearControls, get panelOpen() { return panelOpen; }, get prefs() { return { ...prefs }; } };
+  // ---------- (round 68, dialogperf68) a Studio dialog skips the rest of the app's style (quest-mapfirst.css) ----------
+  // quest-journal.js dialog() asks modalSkip() before it sets html.qj-modal-up. It answers yes once this group's CSS is
+  // on (the rail's contain-intrinsic-size reads 'auto …') and one more frame has been drawn, so the rail / bars / header
+  // have a remembered size to keep: a dialog opened in the very first frame after the Studio loads just skips less.
+  let skipReady = 0, skipTries = 0;
+  const armSkip = () => requestAnimationFrame(() => {
+    if (skipReady === 1) { skipReady = 2; return; }
+    const rail = document.getElementById('rail');
+    if (rail && String(getComputedStyle(rail).containIntrinsicSize).startsWith('auto')) skipReady = 1;
+    if (skipReady < 2 && ++skipTries < 30) armSkip();
+  });
+  armSkip();
+  const modalSkip = () => skipReady === 2;
+  return { open, keep, tone, off, ownsChip, overlay, on, toggle, planWalk, explore, showStatus, LAYERS, ROWS, QUEST_ZOOM, guidePins, setPanel, clearControls, modalSkip, get panelOpen() { return panelOpen; }, get prefs() { return { ...prefs }; } };
 })();
