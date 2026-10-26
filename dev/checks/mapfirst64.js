@@ -48,7 +48,8 @@ try {
   step('fresh: this week’s shows are on the map with venue logos, no command', pinIds('[data-place^="show-venue-"]').length >= 3 && ShowSync.snap.enabled, pinIds('[data-place^="show-venue-"]').length);
   const strip = root().querySelector('.qmf-strip');
   const kids = [...strip.children], tops = new Set(kids.map((k) => Math.round(k.getBoundingClientRect().top)));
-  step('one strip on the map, one row: Places · Shows · My walks · Visited · Plan a walk', strip.closest('.qj-atlas') && tops.size === 1 && kids.map((k) => k.textContent.replace(/\d+/g, '').trim()).join('|') === 'Layers|Food & stops|Nights|My walks|Visited|More places|Plan a walk', kids.map((k) => k.textContent));
+  // (lifechecks70) errands67 added the strip's ＋ Errand button (one row still)
+  step('one strip on the map, one row: Places · Shows · My walks · Visited · Plan a walk', strip.closest('.qj-atlas') && tops.size === 1 && kids.map((k) => k.textContent.replace(/\d+/g, '').trim()).join('|') === 'Layers|Food & stops|Nights|My walks|Visited|More places|Plan a walk|Errand', kids.map((k) => k.textContent));
   step('every chip starts on', ['places', 'shows', 'walks', 'visited'].every((id) => chip(id).getAttribute('aria-pressed') === 'true'));
   step('no failure line while the read worked', !root().querySelector('.qmf-status'));
   document.querySelectorAll('.toast').forEach((n) => n.remove());

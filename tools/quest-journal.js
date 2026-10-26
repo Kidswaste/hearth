@@ -301,7 +301,7 @@ const QuestJournal = (() => {
     const recaps=()=>dialog('Your memories',body=>{for(const item of window.ClickFirst?.questItems?.()||[])if(item?.action&&/review|month|went to/i.test(item.label))body.append(button(item.label,()=>{body.closest('dialog').close();return item.action();},'qj-command-link'));});
     const groups=[
       {id:'quests',name:'Today',icon:'notebook',page:'adventure',items:[['Find a quest','catalog'],['Find a small step',sessionPicker],['This week',()=>extra(/Plan my week/)]]},
-      {id:'map',name:'Map',icon:'compass',page:'world',items:[['Plan an outing',()=>window.OutingGuide?.open()],['My plans',savedPlans],['Friends',()=>mapNotebook('friends')],['Places',()=>mapNotebook('places')],['Events',()=>outingDesk()],['Make a walk',()=>extra(/Make a walk/)]]},
+      {id:'map',name:'Map',icon:'compass',page:'world',items:[['Plan an outing',()=>window.OutingGuide?.open()],['My plans',savedPlans],['Friends',()=>mapNotebook('friends')],['Places',()=>mapNotebook('places')],['Add a place',()=>placeForm(atlasView?.center()||{})]/* (lifechecks70) the redesign left only a double-click on the map to pin your own place: its link is back */,['Events',()=>outingDesk()],['Make a walk',()=>extra(/Make a walk/)]]},
       {id:'progress',name:'Progress',icon:'spark',page:'collection',items:[['Collection','collection'],['Skills','skills'],['Rewards','rewards'],['Memories',recaps]]}
     ];
     for(const g of groups){
@@ -320,7 +320,7 @@ const QuestJournal = (() => {
       body.append(button('+ Plan an outing',()=>{body.closest('dialog').close();return window.OutingGuide?.open();},'qj-primary'));
       const list=E('div',{class:'qj-plan-list'});body.append(list);
       const add=(title,detail,fn)=>list.append(button(title+' · '+detail,()=>{body.closest('dialog').close();return fn();},'qj-field-list-item'));
-      for(const plan of state.world.plans)add(plan.title,plan.date||'Date open',()=>worldPlanDetail(plan.id));
+      for(const plan of state.world.plans){const c=state.campaigns.find(c=>c.id===`c-world-${plan.id}`);add(plan.title,plan.status==='archived'?'Resting':c?c.quests.filter(q=>C.done(state,q.id)).length+'/3 done':plan.date||'Date open',()=>worldPlanDetail(plan.id));list.lastChild.dataset.plan=plan.id;} /* (lifechecks70) a plan made into a quest shows its progress (and a resting plan says so), as the old Saved plans notebook did */
       try{
         const r=await window.hub.kvGet('sidequest-outings-v1');
         for(const plan of r?.saved||[])add(plan.event.title,'Saved outing',()=>outingDesk({tab:'saved',eventId:plan.event.id}));
@@ -992,7 +992,7 @@ const QuestJournal = (() => {
       const objective = p(c.done, 'qj-objective');
       twist.addEventListener('change', () => { objective.textContent = c.done + (twist.checked ? ` Creative constraint: ${c.twist}` : ''); });
       body.append(row(button(state.deck.saved.includes(cid)?'Unsave card':'Save for later',()=>mutate(s=>C.markCard(s,cid,'saved')),'qj-quiet'),button('Not my thing',async()=>{await mutate(s=>C.markCard(s,cid,'hidden'));d.close();},'qj-quiet')));
-      const take = button('Take this quest →', async () => { const q = await mutate(s => C.takeCard(s, cid, twist.checked), 'Quest added to your workbench. The chosen brief is saved.'); d.close(); questDetail(q.id); }, 'qj-primary');
+      const take = button('Take this quest →', async () => { const q = await mutate(s => { /* (lifechecks70) Find a quest opens any card's brief, and opening it is the "open" step takeCard asks for: the old mixtape's dealt hand and filters are no longer on screen, so without this only the 3 cards still in that hidden hand could be taken ("Deal or open this card before taking it.") */ if (!s.deck.hidden.includes(cid) && !C.deckHand(s).some(x => x.id === cid)) { s.deck.filters = { lane: 'any', mood: 'any', minutes: 60, shelf: 'all' }; s.deck.hand = [cid, ...s.deck.hand.filter(x => x !== cid)]; } return C.takeCard(s, cid, twist.checked); }, 'Quest added to your workbench. The chosen brief is saved.'); d.close(); questDetail(q.id); }, 'qj-primary');
       take.disabled = C.sideCount(state) >= 3;
       body.append(label(`${laneNames[c.lane]} / ${c.minutes} MINUTES`), objective, E('aside', { class: 'qj-twist' }, E('label', {}, twist, E('strong', { text: 'Add a creative constraint' })), p(c.twist), p('Optional. Same XP either way. Your choice becomes part of the brief when you take the quest.')), E('aside', { class: 'qj-starting-note' }, label('YOUR FIRST MOVE'), p(c.tiny)), p('Show the actual result at the finish line. Astra reviews the evidence before completion; a promise or a high score alone never earns the reward.'), take);
       if (C.sideCount(state) >= 3) body.append(p('Your three side-quest slots are full. Park, skip or finish one before taking this card.'), button('Go to my workbench', () => { d.close(); navigate('adventure'); }, 'qj-quiet'));
