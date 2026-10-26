@@ -121,6 +121,10 @@ class LazyParams:
 spec = importlib.util.spec_from_file_location('liveset', Path(__file__).with_name('creative-vst-liveset.py'))
 liveset = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(liveset)
+# (round 66, bouncelog66) the last 30 s of what the desk played, saved only when the owner clicks "Save a sketch"
+spec = importlib.util.spec_from_file_location('sketch', Path(__file__).with_name('creative-vst-sketch.py'))
+sketch = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(sketch)
 
 BUFFERS = (64, 128, 256, 512, 1024)  # (round 61) 64–512 for live play; 1024 kept from Codex's first version
 AHEAD_MS = 5.0  # (round 61) audio rendered ahead of the device: enough for a Python thread's wake-up, small to feel
@@ -332,6 +336,7 @@ class Engine:
         self.timings = {}
         self.strip = lambda text: text
         self.liveset = liveset.LiveSet(self)  # (round 64, liveset64) idle until Hearth opens a set ('set-open')
+        self.sketch = sketch.Sketch(self)  # (round 66, bouncelog66) the 30-second ring (allocated on the first live block)
 
     def from_controller(self, message):
         # Notes from the controller never touch active_notes: the stale-note guard is for Hearth's own keys only.
@@ -749,6 +754,7 @@ class Engine:
                 self.position += self.frames
                 self.load_avg = self.load_avg * .9 + .1 * self.process_ms / (self.frames / self.rate * 1000)
                 self.peak = float(np.max(np.abs(block)))
+                self.sketch.keep(block)  # (round 66, bouncelog66) the last 30 s kept for "Save a sketch" (one slice copy)
                 self.processed += 1
                 # (round 61) the gain ramps across the block (no zipper noise); a Stop fades this block to silence.
                 target = 0.0 if self.fading else self.gain
@@ -1080,6 +1086,8 @@ class Engine:
             return self.take_status()
         if action == 'record-take':
             return self.record_take(job)
+        if action in sketch.ACTIONS:  # (round 66, bouncelog66) 'sketch-status' / 'sketch-save'
+            return self.sketch.command(action, job)
         if action == 'editor-place':  # (round 64, vstembed64) the placeholder moved / scrolled / got covered (streamed)
             return {'editor': self.embed.place(job.get('embed') if isinstance(job.get('embed'), dict) else {})}
         if not self.plugin or self.path != job.get('plugin'):
