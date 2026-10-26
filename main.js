@@ -31,6 +31,10 @@ require('electron').protocol.registerSchemesAsPrivileged(['hearth-game', 'hearth
 // (round 52, gameready) Chromium's compiled-shader cache (kept on disk for a persistent session: ▶ Play's window uses
 // one, so a game's second launch skips its compiles) may hold 32 MB instead of 6: a big game's programs fit
 app.commandLine.appendSwitch('gpu-program-cache-size-kb', '32768');
+// (round 67, render fix) Chromium keeps 16 WebGL contexts alive per app and silently kills the oldest past that. Every
+// Lab layer has its own context, so a 12-layer scene in the preview plus the same scene in the offline render page
+// (24) lost its contexts at frame 1, read as "the graphics card restarted", every time. 64 leaves room for both.
+app.commandLine.appendSwitch('max-active-webgl-contexts', '64');
 // (round 19, splash) modules the first screen doesn't need are required on their first use instead of before the window
 // opens (Electron's 'ready' waits for everything main.js does at load): the same object to every caller, made on demand
 function later(file, onLoad) {
