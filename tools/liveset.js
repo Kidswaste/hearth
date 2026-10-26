@@ -99,6 +99,19 @@ const LiveSet = (() => {
     p.file = await put(`song ${p.id}.wav`, P.encodeWav({ rate: m.rate, channels: m.channels })); p.prepared = { bpm: s.bpm, ratio: 1, warn: '' };
     if (armed) await load(p); await save(); draw(); return p;
   }
+  // (round 67, sketchpads67) a WAV from Sessions (a whole sketch → a one-shot pad, a loop trimmed from one → a loop pad) on
+  // the next empty clip pad of a song (ix: its number, or 'new' for a new song). The first clip of a song sets its tempo,
+  // like a park take does; the file is played where it is (main's liveClip accepts <data>/creative-sketches).
+  async function addFile(ix, { file, label, bpm, bars, beats = 4, loop }) {
+    await desk(); const s = set();
+    if (ix === 'new') { C.addScene(s, { bpm, beats }); ix = s.scenes.length - 1; }
+    const sc = s.scenes[ix]; if (!sc) throw Error('No such song in the set.');
+    const first = !C.clips(sc).length;
+    const p = C.addPad(s, ix, { kind: 'clip', label, loop: !!loop, bars, source: { type: 'take', file, bpm, sketch: label, place: label } });
+    if (first) { sc.bpm = bpm; sc.beats = beats; }
+    sceneIx = ix; await prepare(p, sc); if (armed) await load(p); await save(); draw();
+    return { pad: p, song: sc.name, key: C.keyOf(sc, p), number: C.clips(sc).indexOf(p) + 1 };
+  }
   async function addPreset(x) { const p = C.addPad(set(), sceneIx, { kind: 'preset', label: x.label, instrument: x.instrument, preset: { label: x.label, id: x.id || null, from: x.from } }); await save(); draw(); if (armed) preloadNext(); return p; }
   async function stateOf(p) {
     if (p.preset.from === 'soundbank' && p.preset.id) { const r = await hub.soundbank.state(p.preset.id); if (!r?.ok) throw Error(r?.error || `Could not read “${p.label}”.`); return r.state; }
@@ -404,5 +417,5 @@ const LiveSet = (() => {
   if (typeof Commands !== 'undefined' && !Commands.get('liveset')) Commands.register({ name: 'liveset', aliases: ['live-set'], args: '[add take <n> | add song | add preset <name> | launch <pad> | panic | rehearse | perform | stage on|off | proof]', desc: 'Live set for an open mic: pads in the Sound desk — loops on the bar, Serum 2 / Vital presets on the beat, rehearse and record', area: 'Create', run: command, complete, examples: ['/liveset', '/liveset add take 1', '/liveset rehearse', '/liveset stage on', '/liveset proof'] });
   if (typeof Keys !== 'undefined') for (const [keys, what] of C.KEYMAP) Keys.add({ area: 'Live set', keys: KL(keys), what });
   queueMicrotask(() => { if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Sound desk: live set for an open mic (pads, stage)', () => command('').then(t => toast(t, { timeout: 5000 })).catch(err => toast(err.message, { type: 'error' }))); });
-  return { button, open, close, pause, press, panic, stopAll, sceneLaunch, startRun, endRun, offer, tempo, go, knob, setStage, command, complete, set: () => set(), _test: { polling: () => !!poll, status: () => status, armed: () => armed, local, view: () => view, stage: () => stage, running: () => running, scene: () => scene(), lastRun: () => lastRun } };
+  return { addFile, button, open, close, pause, press, panic, stopAll, sceneLaunch, startRun, endRun, offer, tempo, go, knob, setStage, command, complete, set: () => set(), _test: { polling: () => !!poll, status: () => status, armed: () => armed, local, view: () => view, stage: () => stage, running: () => running, scene: () => scene(), lastRun: () => lastRun } };
 })();

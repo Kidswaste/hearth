@@ -36,7 +36,7 @@ const WeekendPlan = (() => {
       projects = projects.map((p) => ({ id: p.id, name: p.name, status: p.status, updated: p.updated, notes: p.notes, persona: p.workspace?.persona, open: p.id === openId }));
     }
     let takes = _test.takes;
-    if (!takes) { try { const r = await window.hub?.parkSong?.list?.(); takes = Array.isArray(r?.takes) ? r.takes : []; } catch { takes = []; } }
+    if (!takes) { try { const r = await window.hub?.parkSong?.list?.(); takes = Array.isArray(r?.takes) ? r.takes.filter((t) => t?.kind !== 'sketch-loop') : []; } catch { takes = []; } } // (round 67, sketchpads67) loops trimmed from session sketches aren't park loops
     return { shows, weather, projects, takes, notes };
   }
   async function load() {

@@ -1,0 +1,38 @@
+/* (round 67, sketchpads67) Sessions › 🎛 Put on a pad / ✂ Trim loop: one small box under a sketch, the loops trimmed
+   from it on their own lines. No blur, no animation; the handles move two divs (no canvas redraw while dragging). */
+.bl-sketch .sp-pad-btn, .bl-sketch .sp-trim-btn { padding: 3px 10px; border-radius: 999px; }
+.sp-loops { display: flex; flex-direction: column; gap: 4px; margin-left: 22px; }
+.sp-loops:empty { display: none; }
+.sp-loop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: #d9cfe3; }
+.sp-loop .sp-play { min-width: 30px; border-radius: 50%; }
+.sp-box { align-self: stretch; display: flex; flex-direction: column; gap: 8px; margin: 2px 0 4px; padding: 10px 12px; border: 1px solid #c9b8ff40; border-radius: 12px; background: #1b1724; font-size: 12px; }
+.sp-head { display: flex; align-items: center; gap: 8px; }
+.sp-head .sp-x { margin-left: auto; padding: 2px 8px; background: transparent; border-color: transparent; color: #a99fb3; }
+.sp-dim, .sp-src { color: #9d93a8; font-size: 12px; }
+.sp-said { color: #e6dcef; min-height: 1em; }
+.sp-said:empty { display: none; }
+/* the pad picker: one row per song, ten cells (filled · the next empty one to click · later ones) */
+.sp-songs { display: flex; flex-direction: column; gap: 6px; }
+.sp-song { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sp-song-name { min-width: 150px; color: #eee7f3; }
+.sp-cells { display: flex; gap: 4px; }
+.sp-cell { display: inline-grid; place-items: center; min-width: 30px; height: 26px; padding: 0 4px; border-radius: 6px; box-sizing: border-box; font-size: 11px; }
+.sp-full { background: #6f5bb555; color: #e9e1ff; }
+.sp-later { border: 1px dashed #ffffff22; color: #ffffff40; }
+button.sp-cell.sp-free { padding: 0 6px; line-height: 1; min-height: 0; border: 1px solid #ffbe59aa; background: #ffbe5922; color: #ffd89a; }
+.sp-foot, .sp-done { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sp-done { color: #8fe0a8; }
+/* the trim: waveform, the selected loop, two handles */
+.sp-wave { position: relative; height: 72px; border-radius: 8px; background: #0f0d14; overflow: hidden; touch-action: none; user-select: none; }
+.sp-cv { display: block; width: 100%; height: 72px; }
+.sp-sel { position: absolute; top: 0; bottom: 0; background: #ffbe5922; border-top: 2px solid #ffbe59; border-bottom: 2px solid #ffbe59; box-sizing: border-box; cursor: grab; }
+.sp-h { position: absolute; top: 0; bottom: 0; width: 14px; margin-left: -7px; cursor: ew-resize; outline: none; }
+.sp-h::after { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: #ffbe59; }
+.sp-h:focus-visible::after { width: 4px; left: 5px; background: #fff; }
+.sp-h-label { position: absolute; top: 2px; left: 9px; padding: 0 4px; border-radius: 4px; background: #ffbe59; color: #1b1720; font-size: 10px; line-height: 14px; pointer-events: none; }
+.sp-h-end .sp-h-label { left: auto; right: 9px; }
+.sp-info { color: #c9bfd3; }
+.sp-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sp-field { display: inline-flex; align-items: center; gap: 6px; }
+.sp-bpm { width: 70px; }
+.sp-save { border-color: #6fcf8f88; }
