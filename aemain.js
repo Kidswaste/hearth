@@ -134,6 +134,8 @@ function macError(stderr) {
   return s.trim().split('\n').pop() || 'osascript failed';
 }
 
+// (round 68, bugbutton68) the After Effects bridge failing, for 🪲 Something broke (bugmain.js)
+const bugGone = (code, what = '') => { try { require('./bugmain').gone('the After Effects bridge', { code: Number.isFinite(Number(code)) ? Number(code) : null, what: what || String(code || '') }); } catch { /* tests without it */ } };
 // Runs a script in the running AE (or starts AE first): AfterFX.exe -r on Windows, AppleScript DoScriptFile on a Mac.
 // Resolves when AE accepted the script (or after a few seconds while AE is still starting).
 function runScript(code, label = 'script', override, { body = null } = {}) {
@@ -149,7 +151,8 @@ function runScript(code, label = 'script', override, { body = null } = {}) {
     for (const f of old) fs.rmSync(f, { force: true });
   } catch { /* housekeeping only */ }
   if (!IS_MAC) {
-    spawn(st.afterfx, ['-r', file], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
+    // (round 68, bugbutton68) After Effects couldn't be started: 🪲 Something broke lists it (it was an uncaught error before)
+    spawn(st.afterfx, ['-r', file], { detached: true, stdio: 'ignore', windowsHide: false }).on('error', (err) => { console.warn('ae: start', err.message); bugGone(err.code || err.message); }).unref();
     return Promise.resolve({ file, ok: true });
   }
   // AppleScript strings: escape backslashes and quotes. `tell application` launches AE when it isn't open.
@@ -160,6 +163,7 @@ function runScript(code, label = 'script', override, { body = null } = {}) {
     const child = execFile('osascript', ['-e', script], { timeout: 10 * 60 * 1000 }, (err, _out, stderr) => {
       if (done) return;
       done = true;
+      if (err) bugGone(err.code, macError(stderr || err.message)); // (round 68, bugbutton68)
       resolve(err ? { file, ok: false, error: macError(stderr || err.message) } : { file, ok: true });
     });
     // A long script (or AE's splash screen) keeps osascript waiting: report "sent" after 8 s.

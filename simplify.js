@@ -30,6 +30,7 @@ const Simplify = (() => {
   function moreItems() {
     // (round 67, slowbutton67) first: 🐢 That was slow (the card of the last hiccup; the ⋯ wears a dot after one)
     const slow = window.Jank?.openCard ? [{ label: 'That was slow', icon: 'clock', tip: 'Click right after a hiccup: what it was, today’s count, Copy report for Claude', action: () => Jank.openCard() }] : [];
+    if (window.BugWatch) slow.push({ label: 'Something broke', icon: 'bug', tip: 'What went wrong lately, Copy report for Claude, Restart Hearth', action: () => BugWatch.open() }); // (round 68)
     const rows = [...slow, ...TUCKED.filter(([id]) => $(id)).map(([id, label]) => ({
       label: String(label).replace(/^[^\p{L}\d]+/u, '').replace(/⌘\+/g, 'Ctrl+'), icon: ICON[id], checked: $(id).classList.contains('on'), action: () => $(id).click() }))];
     const hidden = !window.WorkspaceNav && typeof Tools !== 'undefined' ? Tools.all().filter((t) => !Tools.enabled().includes(t)) : [];

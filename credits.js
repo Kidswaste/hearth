@@ -190,7 +190,7 @@ const Credits = (() => {
       try {
         const r = await makeReel(id, { ratio, dir: dir || await exportDir(), say: (t) => { status.textContent = t; } });
         status.replaceChildren(el('span', { text: `Saved: ${r.output} ` }), el('button', { type: 'button', class: 'ghost small', text: 'Show in folder', on: { click: () => window.hub.fs.reveal(r.output) } }));
-      } catch (err) { status.textContent = err.message; } finally { go.disabled = false; }
+      } catch (err) { status.textContent = calmError(err); } finally { go.disabled = false; }
     });
     wrap.append(
       el('p', { class: 'cr-small', text: n ? `Pictures of up to 8 of the ${n} versions the time machine kept, each with a card saying who did it, then these credits. The scene on screen shows each version for a moment, then comes back as it was.` : 'This scene has no versions in the time machine yet.' }),

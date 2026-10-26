@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, desktopCaptur
 const fs = require('fs');
 const path = require('path');
 require('./jankmain').watchIpc(ipcMain); // (round 67, slowbutton67) IPC handlers that run long are named for 🐢 That was slow (two clock reads per call)
+require('./bugmain').watch(); // (round 68, bugbutton68) the main process's own errors, kept for 🪲 Something broke (listens only: nothing runs until one happens)
 // (round 52, gameperf) exact JS heap numbers (performance.memory): ▶ Play's stats see garbage per second and each GC
 // pause instead of 20-minute-old buckets. Reading them costs nothing until a page asks.
 app.commandLine.appendSwitch('enable-precise-memory-info');
@@ -747,13 +748,16 @@ function registerAfterWindow() {
   } });
   require('./notifymain').register(ipcMain, { getWin: () => win, app, shell, appshell, Notification: require('electron').Notification, send }); // (round 44, notify) desktop notifications: Electron's own (Hearth's name / icon, Focus / Do Not Disturb), one per chat, a burst summed up, a click opens the chat / card / file
   require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
+  require('./leavesoonmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, powerMonitor: require('electron').powerMonitor }); // (round 68, leavesoon68) ⏰ Remind me to leave: ONE timeout to the next reminder (rings with Hearth in the tray; missed ones aren't rung late)
   require('./showsyncmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 61, showsync61) this week's shows from Shotgun / DICE: polite fetches, nothing while idle
+  lazyIpc('ticketsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 68, tickets68) 🎟 My ticket: copies in data/tickets/<show>, the Downloads look (names only), Wallet passes; loaded on first use
   const outingGuide = require('./outing-guidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, Notification: require('electron').Notification });
   require('./questguidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, onChanged: snapshot => outingGuide.syncGuide(snapshot) });
   require('./weekquestmain').register(ipcMain); // (round 62, weekquest62) the week plan's Paris forecast (Open-Meteo, no key), only when the week card opens
   require('./safetynetmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 29) Hearth never loses work: the session marker, the page reloading after a crash, the work journal
   crashsafe.register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 50, crashsafe) replies being written, renders cut off, temp files killed writes left, Windows update restarts
   require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
+  require('./bugmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 68, bugbutton68) 🪲 Something broke: what went wrong lately (after safetynet: its session marker says whether the last run ended unexpectedly)
   lazyIpc('assetsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 24) the asset library: folder scans + hashes off-thread, thumbnails cache, Poly Haven / ambientCG downloads (round 29: on first use)
   require('./connectionsmain').register(ipcMain, { readConfig }); // (round 26) the owner's own MCP servers: Test, and what engines.js hands each AI
   lazyIpc('hooksmain.js', (m, ipc) => m.register(ipc, () => win)); // (round 26) hooks: "when a file appears in a folder" (fs.watch, only while a hook asks; round 29: loaded then)

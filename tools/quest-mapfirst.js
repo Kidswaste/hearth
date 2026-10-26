@@ -25,13 +25,13 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
   // map layers (QuestJournal.addMapLayer) per chip. parisjournal64's My Paris layer IS the Visited chip: its own chip(kit)
   // isn't added to the filter row (ownsChip), and Visited reads / sets My Paris's own on / off, so the two never disagree
   // (parisdedupe64) Codex's Outing desk venue pins (tools/outing-desk.js, layer 'outing-desk') ride the Shows chip: one row, four chips
-  const LAYER_OF = { showsync: 'shows', 'outing-desk': 'shows', questwalk: 'walks', parisjournal: 'visited', errands: 'errands' }; // (round 67, errands67) errands: its own row in Layers
+  const LAYER_OF = { showsync: 'shows', 'outing-desk': 'shows', questwalk: 'walks', parisjournal: 'visited', errands: 'errands', leave: 'leave' }; // (round 67, errands67) errands: its own row in Layers · (round 68, leavesoon68) leave: ⏰ Leave reminders + 🏠 Home
   const PJ = () => (typeof window.ParisJournal !== 'undefined' && window.ParisJournal?.toggle ? window.ParisJournal : null);
   const read = (k, d) => { try { return store.get(k, d); } catch { return d; } };
   const write = (k, v) => { try { store.set(k, v); } catch { /* a convenience: the default (all on) still works */ } };
   // (round 66, mapbuttons66) every layer id defaults ON: a profile that saved older settings (round 64 saved only these four)
   // gets each newer layer shown, and only a layer the owner switched off (a stored false) stays off
-  const DEFAULTS = { places: true, shows: true, walks: true, visited: true, jams: true, quests: true, errands: true }; // (round 67, errands67) + errands
+  const DEFAULTS = { places: true, shows: true, walks: true, visited: true, jams: true, quests: true, errands: true, leave: true }; // (round 67, errands67) + errands
   let prefs = { ...DEFAULTS, ...(read(KEY, {}) || {}) };
   let showsTriedAt = 0, fetching = false, seeding = false, merging = false;
   const on = (id) => (id === 'visited' && PJ() ? PJ().prefs.on !== false : prefs[id] !== false);
@@ -189,6 +189,7 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     { id: 'jams', name: 'Park jams', help: 'Parks for an outdoor music session', count: () => guideCount('jams') },
     { id: 'quests', name: 'Paris place quests', help: 'Guide places with a quest; zoom in to see them', count: () => guideCount('quests') },
     { id: 'errands', name: 'Errands', help: 'Your errands, with an open now / closes at badge', count: () => (window.Errands ? Errands.list().length : 0) }, // (round 67, errands67)
+    { id: 'leave', name: 'Leave reminders', help: '⏰ Where your leave reminders take you, and your 🏠 Home', count: () => (window.LeaveSoon ? LeaveSoon.items().filter((it) => LeaveSoon.isOn(it.key)).length : 0) }, // (round 68, leavesoon68)
     { id: 'walks', name: 'My walks', help: 'The walk you planned, as a line' },
     { id: 'visited', name: 'Visited · My Paris', help: 'Your ✓ visits and what you did' },
     { id: 'full', name: 'Whole guide when zoomed out', help: 'Every guide place even at the city zoom (busier)' }
@@ -249,5 +250,18 @@ const QuestMapFirst = window.QuestMapFirst = (() => {
     if (!ctlAbort) { ctlAbort = new AbortController(); document.addEventListener('scroll', scheduleClear, { capture: true, passive: true, signal: ctlAbort.signal }); window.addEventListener('resize', scheduleClear, { passive: true, signal: ctlAbort.signal }); }
     scheduleClear();
   }
-  return { open, keep, tone, off, ownsChip, overlay, on, toggle, planWalk, explore, showStatus, LAYERS, ROWS, QUEST_ZOOM, guidePins, setPanel, clearControls, get panelOpen() { return panelOpen; }, get prefs() { return { ...prefs }; } };
+  // ---------- (round 68, dialogperf68) a Studio dialog skips the rest of the app's style (quest-mapfirst.css) ----------
+  // quest-journal.js dialog() asks modalSkip() before it sets html.qj-modal-up. It answers yes once this group's CSS is
+  // on (the rail's contain-intrinsic-size reads 'auto …') and one more frame has been drawn, so the rail / bars / header
+  // have a remembered size to keep: a dialog opened in the very first frame after the Studio loads just skips less.
+  let skipReady = 0, skipTries = 0;
+  const armSkip = () => requestAnimationFrame(() => {
+    if (skipReady === 1) { skipReady = 2; return; }
+    const rail = document.getElementById('rail');
+    if (rail && String(getComputedStyle(rail).containIntrinsicSize).startsWith('auto')) skipReady = 1;
+    if (skipReady < 2 && ++skipTries < 30) armSkip();
+  });
+  armSkip();
+  const modalSkip = () => skipReady === 2;
+  return { open, keep, tone, off, ownsChip, overlay, on, toggle, planWalk, explore, showStatus, LAYERS, ROWS, QUEST_ZOOM, guidePins, setPanel, clearControls, modalSkip, get panelOpen() { return panelOpen; }, get prefs() { return { ...prefs }; } };
 })();

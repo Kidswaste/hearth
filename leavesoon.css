@@ -1,0 +1,16 @@
+/* (round 68, leavesoon68) ⏰ Remind me to leave (leavesoon.js): the toggle, the ✦ tracker rows, the map's hint and pins. */
+.ls-toggle { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ls-toggle.on { color: #ffcf8a; border-color: #ffb75988; }
+.ls-toggle:disabled { opacity: .55; cursor: default; }
+.ls-detail { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.ls-detail-k { font-size: 10px; letter-spacing: .08em; color: var(--muted, #a9a2b6); }
+.wp-slot .ls-toggle, .er-map-row .ls-toggle { font-size: 11px; padding: 2px 7px; }
+.qh-row.ls-hud { align-items: center; }
+.qh-row.ls-hud .qh-row-main { gap: 1px; min-width: 0; }
+.qh-row.ls-hud .qh-take { flex: none; }
+.qh-row.ls-now .qh-row-title, .qh-row.ls-fired .qh-row-title { color: #ffcf8a; }
+.qh-row.ls-missed .qh-row-title { color: var(--muted, #a9a2b6); }
+.qj-atlas.ls-picking, .qj-atlas.ls-picking .qj-atlas-pin { cursor: crosshair; }
+.qj-atlas .ls-hint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: #1d1a12f2; border: 1px solid #9ad0ff66; color: #eef6ff; font: 12px system-ui, sans-serif; white-space: nowrap; }
+.qj .qj-atlas .ls-hint .qj-button { padding: 3px 8px; min-height: 0; font-size: 10.5px; text-transform: none; letter-spacing: 0; }
+.qj-atlas-pin.ls-look { outline: 2px solid #ffb759aa; outline-offset: 1px; border-radius: 10px; }

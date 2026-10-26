@@ -1,0 +1,17 @@
+/* 🪲 Something broke (round 68, bugbutton68): the card (bugcard.js) */
+.bugcard { width: min(560px, calc(100vw - 32px)); }
+.bugcard form { gap: 10px; }
+.bugcard p { margin: 0; }
+.bugcard .bc-head { font-size: 1.05em; font-weight: 600; line-height: 1.4; }
+.bugcard .bc-now { font-size: 1em; }
+.bugcard .bc-counts, .bugcard .bc-note, .bugcard .bc-earlier { color: var(--muted, #aaa); line-height: 1.4; }
+.bugcard .bc-note, .bugcard .bc-earlier { font-size: .85em; }
+.bugcard .bc-lines { margin: 0; padding: 0; list-style: none; max-height: 220px; overflow: auto; line-height: 1.4; }
+.bugcard .bc-lines li { display: grid; grid-template-columns: 3.2em 1fr; gap: 0 8px; padding: 3px 0; }
+.bugcard .bc-lines li + li { border-top: 1px solid rgba(127, 127, 127, .15); }
+.bugcard .bc-time { opacity: .7; font-variant-numeric: tabular-nums; }
+.bugcard .bc-text { overflow-wrap: anywhere; }
+.bugcard .bc-where { grid-column: 2; font-size: .85em; opacity: .7; }
+.bugcard .bc-more { display: block; opacity: .7; font-size: .85em; }
+.bugcard .bc-saved { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; background: rgba(245, 165, 36, .1); }
+.bugcard .bc-tip { line-height: 1.4; }

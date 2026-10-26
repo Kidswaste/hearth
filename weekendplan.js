@@ -44,6 +44,7 @@ const WeekendPlan = (() => {
     if (st !== 'ok' || !C || !S) throw Error(st === 'missing' ? 'No quest journal yet. Click Open Sidequest Studio in the ✦ tracker: it starts one.' : 'Your quest journal could not be read just now. Nothing was changed.');
     await Lazy.load('questjournal'); // QuestParis's places / park quest and ShowSyncCore's show quests (the Studio isn't opened)
     const src = await sources(); now = clock();
+    if (typeof TicketsHook !== 'undefined') await TicketsHook.ready?.catch(() => {}); // (round 68, tickets68) which shows already have a ticket
     const pin = QuestParis.byId('place-buttes'), parkAt = pin ? { lat: pin.lat, lon: pin.lon, name: QuestParis.parkName('place-buttes') } : null;
     built = WP().build({ C, s: S, now, shows: src.shows, guide: QuestParis.guide, personal: QuestParis.personal, weather: src.weather, parkAt, projects: src.projects, takes: src.takes });
     status = src.notes.join(' ');
@@ -89,8 +90,8 @@ const WeekendPlan = (() => {
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', onEsc, true);
   }
-  function outside(e) { if (panel && !panel.contains(e.target) && !e.target.closest?.('#menu, .qh-chip, #toasts, .iv-dialog')) close(); }
-  function onEsc(e) { if (e.key === 'Escape' && panel && !document.querySelector('#menu:not([hidden]), dialog.iv-dialog[open]')) { e.preventDefault(); e.stopPropagation(); close(); } }
+  function outside(e) { if (panel && !panel.contains(e.target) && !e.target.closest?.('#menu, .qh-chip, #toasts, .iv-dialog, .tk-view')) close(); }
+  function onEsc(e) { if (e.key === 'Escape' && panel && !document.querySelector('#menu:not([hidden]), dialog.iv-dialog[open], dialog.tk-view[open]')) { e.preventDefault(); e.stopPropagation(); close(); } }
   function place() {
     const rail = document.getElementById('rail')?.getBoundingClientRect(), l = Math.round((rail?.right || 64) + 6);
     const list = document.getElementById('panel'), lr = list && list.offsetParent ? list.getBoundingClientRect() : null;
@@ -133,8 +134,16 @@ const WeekendPlan = (() => {
         el('span', { class: 'qh-k wp-when', text: `${dayName(o.day)} · ${o.time} · ${sl.label}` }, isIn ? el('span', { class: 'wp-in', text: '✓ planned', title: 'Already on your week plan' }) : null),
         el('span', { class: 'qh-row-title', text: o.title }), el('span', { class: 'qh-sub', text: o.why || '' }),
         // (round 67, invite67) a show night: 👋 Bring someone opens the invite card (lazy group 'invite')
-        o.kind === 'show' && o.show ? btn('👋 Bring someone', () => Lazy.load('invite').then(() => Invite.open(o.show, { from: 'weekend' })), 'wp-bring', 'Write a short invite for this show: Copy, or open WhatsApp / Messages / Instagram with it (never sent for you)') : null),
-      el('div', { class: 'wp-acts' }, swapB, keepB));
+        o.kind === 'show' && o.show ? btn('👋 Bring someone', () => Lazy.load('invite').then(() => Invite.open(o.show, { from: 'weekend' })), 'wp-bring', 'Write a short invite for this show: Copy, or open WhatsApp / Messages / Instagram with it (never sent for you)') : null,
+        // (round 68, tickets68) the show's ticket: pick the file (a copy is kept under the show), then the big bright view for the door
+        o.kind === 'show' && o.show && typeof TicketsHook !== 'undefined' ? (() => { const has = TicketsHook.has(o.show.key); const b = btn(has ? '🎟 Open my ticket' : '🎟 Add my ticket', () => (TicketsHook.has(o.show.key) ? TicketsHook.open(o.show.key) : TicketsHook.pick(o.show, 'pick')), 'wp-bring wp-ticket', has ? 'Your ticket, big and bright, ready to scan at the door' : 'Pick your ticket (PDF, image, screenshot, Wallet pass): Hearth keeps a copy under this show'); b.dataset.k = `ticket:${o.show.key}`; return b; })() : null),
+      el('div', { class: 'wp-acts' }, swapB, keepB, o.at ? leaveSlot(o) : null)); // (round 68, leavesoon68) ⏰ Remind me to leave (a slot with a place)
+  }
+  // (round 68, leavesoon68) "⏰" on a slot with a place: Hearth tells you when to leave for it (leavesoon.js)
+  function leaveSlot(o) {
+    const ph = el('span', { class: 'wp-leave' });
+    Lazy.load('leavesoon').then(() => { const t = LeaveSoon.slotToggle(o, WP().itemId(o), 'qh-btn wp-remind'); if (t) ph.replaceWith(t); else ph.remove(); }).catch(() => ph.remove());
+    return ph;
   }
   function emptyWhy(id) {
     return { night: 'No show saved for this weekend. Shows come from the Paris map’s Shows layer (Shotgun / DICE).', outside: 'No free afternoon left this weekend.', nearby: 'Nothing unvisited close by.', studio: 'No free time left for a session.' }[id] || 'Nothing to propose.';
@@ -148,5 +157,6 @@ const WeekendPlan = (() => {
     say(`Your weekend (${built.weekend.label})\n${plan().map((sl) => WP().line(sl)).join('\n')}`, [{ label: 'Accept plan', run: () => acceptPlan() }]);
   }
 
+  document.addEventListener('hearth:tickets', () => { if (panel && built) render(); }); // (round 68, tickets68) a ticket added / removed: the slot's button follows
   return { open, close, run, swap, keep, acceptPlan, isOpen: () => Boolean(panel), state: () => ({ built, slots: plan(), swaps: { ...swaps }, left: [...left], status, lastAccepted }), _test };
 })();

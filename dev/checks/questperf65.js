@@ -12,6 +12,9 @@
 // page's own "Outing desk" button is gone). The check also reports what round 66's map layers cost (mapbuttons66's
 // Park jams + Paris place quests, herepin66's pin): one map re-render with them on vs off, at the city zoom and at
 // zoom 14 where the place quests appear, and the layers' own pin work per render (out.layers66; reported, no budget).
+// (round 68, dialogperf68) The details dialog's script was the modal's own forced restyle (showModal makes the page
+// inert); the rail, side panel, bars and other surfaces now skip style under a Studio dialog (out.modalUp checks it
+// happens, that nothing moves and that all of it is back after ×).
 //   node dev/smoke.js --script dev/checks/questperf65.js --check-timeout 240000
 const source = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
 Object.defineProperty(HTMLImageElement.prototype, 'src', { ...source, set(value) { if (String(value).startsWith('https://tile.openstreetmap.org/')) { this.dataset.fixture = 'offline'; queueMicrotask(() => this.dispatchEvent(new Event('error'))); return; } source.set.call(this, value); } });
@@ -120,6 +123,16 @@ try {
   await it('nav-map', async () => { root().querySelector('[data-nav-group="map"]').click(); await wait(0); });
   for (let round = 1; round <= 3; round++) for (const [name, fn] of plan) await it1(`${name}#${round}`, fn);
   const tr = await smoke({ trace: 'stop', detail: true, dump: window.QP_DUMP || undefined });
+  // (round 68, dialogperf68) under a Studio dialog the rail, side panel, bars and other surfaces skip style
+  // (html.qj-modal-up, app.css) and keep their size: nothing moves, and everything is back after ×
+  { await closeAll(); await frame(); const rects = () => ['#rail', '#app > main', '#surfaces', '.qj'].map((s) => { const r = document.querySelector(s)?.getBoundingClientRect(); return r ? [r.x, r.y, r.width, r.height].map(Math.round).join(',') : '-'; }).join(' | ');
+    const before = rects(); btn('Place details').click(); await until(dlg, 'details (modal-up)'); await frame();
+    const during = rects(), up = document.documentElement.classList.contains('qj-modal-up'), railSkipped = getComputedStyle(document.getElementById('rail')).contentVisibility === 'hidden';
+    const shown = dlg().checkVisibility?.() !== false && dlg().getBoundingClientRect().width > 0;
+    dlg().querySelector('.qj-close').click(); await until(() => !dlg(), 'closed (modal-up)'); await frame(); await frame();
+    const after = rects(), down = !document.documentElement.classList.contains('qj-modal-up'), railBack = document.getElementById('rail').checkVisibility?.() !== false;
+    out.modalUp = { up, railSkipped, shown, down, railBack, same: before === during && before === after, before, during };
+    if (!up || !railSkipped || !shown || !down || !railBack || before !== during || before !== after) fails.push(`modal-up: ${JSON.stringify(out.modalUp)}`); }
   out.pinSelected = root().querySelector('.qj-atlas-pin.selected')?.dataset.place === pinId || root().querySelector('.qj-atlas-pin.selected')?.dataset.place;
   out.journalAfter = { favorite: QuestJournal.snapshot().atlas.places.find((p) => p.id === pinId)?.favorite };
   const SCRIPT = ['FunctionCall', 'EventDispatch', 'TimerFire', 'FireAnimationFrame', 'v8.callFunction', 'RunMicrotasks', 'FireIdleCallback'];

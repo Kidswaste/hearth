@@ -198,6 +198,8 @@ contextBridge.exposeInMainWorld('hub', {
   net: { probe: call('net:probe'), onPower: on('net:power'), prepareProject: call('net:prepareProject') }, // connection + this computer's offline project check
   weekquest: { weather: call('weekquest:weather') }, // (round 62, weekquest62) the week plan's forecast (weekquestmain.js)
   shows: { get: call('shows:get'), refresh: call('shows:refresh'), settings: call('shows:settings'), follow: call('shows:follow'), unfollow: call('shows:unfollow'), test: call('shows:test'), remind: call('shows:remind'), onRemind: on('shows:remind') }, // (round 61, showsync61) this week's shows from Shotgun / DICE (showsyncmain.js)
+  leave: { op: call('leave:op'), onDue: on('leave:due'), onChanged: on('leave:changed') }, // (round 68, leavesoon68) ⏰ Remind me to leave (leavesoonmain.js: one timer)
+  tickets: { op: call('tickets:op') }, // (round 68, tickets68) 🎟 My ticket (ticketsmain.js): list · add · remove (Trash) · suggest (Downloads, names only) · hud · pass · awake
   safetynet: { last: call('safetynet:last'), reloading: call('safetynet:reloading'), status: call('safetynet:status'), keep: call('safetynet:keep'), done: call('safetynet:done'), testCrash: call('safetynet:test-crash') }, // (round 29) after an unexpected exit: what was kept (safetynetmain.js)
   crashsafe: { take: call('crashsafe:take'), done: call('crashsafe:done'), ack: call('crashsafe:ack'), test: call('crashsafe:test'), check: call('crashsafe:check'), onOrphan: on('crashsafe:orphan'), onFlush: on('crashsafe:flush'), onFrames: on('crashsafe:frames') }, // (round 50) replies cut off by a crash, renders cut off, the computer going down (crashsafemain.js)
   devreport: { info: call('devreport:info'), gh: call('devreport:gh'), send: call('devreport:send'), states: call('devreport:states'), log: call('devreport:log'), crashes: call('devreport:crashes'), annotate: call('devreport:annotate') }, // (round 21) Report to the developer
@@ -281,6 +283,7 @@ contextBridge.exposeInMainWorld('hub', {
   // (round 20) jank watch (jankmain.js): main loop lag + GPU events since the last take, culprits' line numbers, display / GPU
   jank: { take: call('jank:take'), info: call('jank:info'), lines: call('jank:lines'), profile: call('jank:profile'), busy: (b) => ipcRenderer.send('jank:busy', b, Date.now()), off: (o) => ipcRenderer.send('jank:off', o),
     recent: call('jank:recent'), testStall: call('jank:test-stall') }, // (round 67, slowbutton67) the main side's last minute for 🐢 That was slow (+ busy's send time: how late the main process took it); testStall: test copies only
+  bug: { note: call('bug:note'), recent: call('bug:recent'), start: call('bug:start'), saved: call('bug:saved'), test: call('bug:test') }, // (round 68, bugbutton68) 🪲 Something broke (bugmain.js): problems in, the card's list, the note after an unexpected close; test: test copies only
   // (round 24) the asset library (assetsmain.js): scans / hashes, bytes for thumbnails, the thumbnail cache, free sources, import, watch
   assets: {
     status: call('assets:status'), scan: call('assets:scan'), hash: call('assets:hash'), exists: call('assets:exists'), read: call('assets:read'), readText: call('assets:readText'),
