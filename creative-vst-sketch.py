@@ -17,8 +17,9 @@ SECONDS = 30.0          # what a sketch keeps
 SPARE_S = 0.5           # ring margin: a save never reads the part the audio worker may be writing
 SILENT = 1e-4           # a block quieter than this isn't "something heard"
 FADE_S = 0.005          # 5 ms fade at both ends of the sketch (no click)
+PEEK_SILENT = 'The desk was silent for the last 30 seconds: play something, then measure again.'  # (round 68, refab68)
 TARGET_RATE = 48000     # every Sound desk file is 48 kHz (creative-vst-host.py TARGET_RATE)
-ACTIONS = ('sketch-status', 'sketch-save')
+ACTIONS = ('sketch-status', 'sketch-save', 'sketch-peek')  # (round 68, refab68) + 'sketch-peek': 🎧 Reference measures what the desk just played
 
 
 class Sketch:
@@ -68,7 +69,7 @@ class Sketch:
         out = ring[:, start:start + n].copy() if start + n <= size else np.concatenate([ring[:, start:], ring[:, :n - (size - start)]], axis=1)
         return out, self.rate
 
-    def save(self, job):
+    def save(self, job, peek=False):
         np = self.e.np
         output = job.get('output')
         if not output:
@@ -78,6 +79,8 @@ class Sketch:
             raise ValueError('Nothing to save yet: play something first (the sketch keeps the last 30 seconds of the desk).')
         peak = float(np.max(np.abs(audio))) if audio.size else 0.0
         if peak < SILENT:
+            if peek:  # (round 68, refab68)
+                raise ValueError(PEEK_SILENT)
             raise ValueError('The last 30 seconds were silent, so nothing was saved. Play something and save again.')
         frames = round(audio.shape[1] * TARGET_RATE / rate)
         audio, converted = self.e.to_target(audio, rate, frames)
@@ -95,7 +98,8 @@ class Sketch:
             w.setframerate(TARGET_RATE)
             w.writeframes(pcm.tobytes())
         os.replace(part, str(output))
-        self.saved += 1
+        if not peek:  # (round 68, refab68) a peek is a scratch copy for measuring, not a sketch
+            self.saved += 1
         return {'path': str(output), 'seconds': round(pcm.shape[0] / TARGET_RATE, 3), 'frames': int(pcm.shape[0]),
                 'sampleRate': TARGET_RATE, 'peak': round(peak, 5), 'playedRate': rate, 'converted': converted}
 
@@ -104,4 +108,6 @@ class Sketch:
             return self.status()
         if action == 'sketch-save':
             return self.save(job)
+        if action == 'sketch-peek':  # (round 68, refab68) the same last 30 s, to a scratch path main chose (temp folder)
+            return self.save(job, peek=True)
         raise ValueError('Unknown sketch action.')
