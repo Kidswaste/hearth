@@ -150,3 +150,10 @@ examples 14, keywords 14, names 13; then keys-sheet lines 17 KB, palette actions
 - Risk: in the moment between the first frame and lazy-meta.js being read (a few ms), a still-waiting lazy command's
   description is empty in `/help list` or the "/" rows; Ctrl/⌘+K's first opening waits for Find anything, which loads
   after the words.
+
+## Round 67, slowbutton67: +3 KB for the hiccup recorder
+The first screen was at 2,330.2 KB of 2,330. 🐢 That was slow needs the jank watch (jank.js, first screen) to keep its
+last minute raw and count the day's hiccups over 500 ms from the start: a hiccup can't be recorded by code that loads
+when the button is clicked. That is ≈ 2.3 KB in jank.js (the card, its words and the report are in the lazy
+'jankwatch' group; stale comments in jank.js were shortened to make room). Budget **2,330 → 2,333 KB** (first screen
+2,332.5 KB). The next stream that needs first-screen room: look for a lazy candidate first (dev/coverage-report.js).

@@ -1,0 +1,16 @@
+/* 🐢 That was slow (round 67, slowbutton67): the card (slowcard.js) */
+.slowcard { width: min(520px, calc(100vw - 32px)); }
+.slowcard form { gap: 10px; }
+.slowcard p { margin: 0; }
+.slowcard .sc-head { font-size: 1.05em; font-weight: 600; line-height: 1.4; }
+.slowcard .sc-lines { margin: 0; padding-left: 18px; line-height: 1.45; color: var(--muted, #aaa); }
+.slowcard .sc-lines li + li { margin-top: 3px; }
+.slowcard .sc-tip { line-height: 1.4; }
+.slowcard .sc-day { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; background: rgba(127, 127, 127, .1); }
+.slowcard .sc-count { font-weight: 600; }
+.slowcard .sc-week { display: flex; gap: 4px; align-items: flex-end; height: 38px; }
+.slowcard .sc-bar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 30px; height: 100%; }
+.slowcard .sc-bar i { display: block; width: 10px; height: var(--h, 0%); min-height: 2px; border-radius: 3px; background: var(--accent, #f5a524); opacity: .85; }
+.slowcard .sc-bar[data-n="0"] i { opacity: .25; }
+.slowcard .sc-bar b { font-size: 9px; font-weight: 400; opacity: .7; margin-top: 2px; }
+.slowcard .sc-note { font-size: .85em; opacity: .7; }

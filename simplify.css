@@ -55,3 +55,6 @@
 .workspace-materials{display:flex;gap:8px;margin-bottom:14px}
 @media(max-width:700px){.hearth-three-spaces #rail{width:66px}.space-button{min-height:62px;font-size:10px;border-radius:12px}.workspace-switcher{padding:5px;gap:3px}.workspace-switcher button{padding:7px 8px}}
 @media(prefers-reduced-motion:reduce){.space-button,.space-button:before{transition:none}}
+
+/* (round 67) after a hiccup ≥ 1 s the rail's ⋯ (🐢 That was slow) turns amber for 2 min */
+#rail-more[data-slow] { color: #f5a524; }
