@@ -649,4 +649,4 @@ function register(ipcMain, gw, deps = {}) {
   });
 }
 
-module.exports = { register, pace, offerChrome, chromeDownloads, isAppGuest: (contents) => Boolean(contents?.hostWebContents && hostIds.has(contents.hostWebContents.id)), _test: { isAuth, imageUri } };
+module.exports = { register, pace, offerChrome, chromeDownloads, getKey: (service) => getKey(String(service || '')), /* (round 69, ratp69) ratpmain.js reads the PRIM key here, main-side only */ isAppGuest: (contents) => Boolean(contents?.hostWebContents && hostIds.has(contents.hostWebContents.id)), _test: { isAuth, imageUri } };
