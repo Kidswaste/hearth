@@ -15,6 +15,7 @@ const ParisJournal = window.ParisJournal = (() => {
   const PREF = 'parisjournal64';
   let prefs = { on: true, month: '', ...(store.get(PREF, {}) || {}) };
   let takes = null, takesLoading = null; // parkjam62's takes, read once (and again after a new take)
+  let sessions = []; // (round 66, bouncelog66) logged music sessions, read with the takes
   let memo = { s: null, shows: null, takes: null, list: [] };
   let lastCard = null;
   const _test = { saved: [], dir: '' }; // (checks) dir: write the card in the run's own folder, never the real Pictures folder
@@ -28,6 +29,8 @@ const ParisJournal = window.ParisJournal = (() => {
     if (takes && !force) return Promise.resolve(takes);
     return (takesLoading ||= (async () => {
       try { const r = await window.hub.parkSong?.list?.(); takes = Array.isArray(r?.takes) ? r.takes : []; } catch { takes = []; }
+      // (round 66, bouncelog66) logged music sessions (read only; a failed read just shows none)
+      try { const r = await window.hub.kvGet('music-sessions', null, { status: true }); sessions = r?.state === 'ok' && Array.isArray(r.value?.sessions) ? r.value.sessions : []; } catch { sessions = []; }
       memo.s = null; return takes;
     })().finally(() => { takesLoading = null; }));
   }
@@ -36,7 +39,7 @@ const ParisJournal = window.ParisJournal = (() => {
     const shows = showStore();
     if (memo.s === s && memo.shows === shows && memo.takes === takes) return memo.list;
     let list = [];
-    try { list = K.collect({ C: QuestCore, s, P: typeof QuestParis !== 'undefined' ? QuestParis : null, shows, takes: takes || [] }); } catch (err) { console.warn('[parisjournal]', err); }
+    try { list = K.collect({ C: QuestCore, s, P: typeof QuestParis !== 'undefined' ? QuestParis : null, shows, takes: takes || [], sessions }); } catch (err) { console.warn('[parisjournal]', err); }
     memo = { s, shows, takes, list };
     return list;
   }
@@ -249,7 +252,7 @@ const ParisJournal = window.ParisJournal = (() => {
   }
   try { AppUI.addAction?.('Quest: My Paris this month', () => run('month', null).catch((err) => toast(calmError(err), { type: 'error' }))); } catch { /* the palette isn't there */ }
   // a new park take → read the park folders again next time the map draws (no timer)
-  document.addEventListener('hearth:quest-week', (e) => { if (e.detail?.kind === 'park-jam') { takes = null; memo.s = null; if (prefs.on) redraw(); } });
+  document.addEventListener('hearth:quest-week', (e) => { if (e.detail?.kind === 'park-jam' || e.detail?.kind === 'music-session') { takes = null; memo.s = null; if (prefs.on) redraw(); } });
   redraw();
   const openMonth = (month = K.monthOf(Date.now())) => recapDialog(month);
   return { run, complete, layer, recapDialog, openMonth, saveCard, drawCard, openMoments, moments: () => moments(studioState()), everything, toggle, setMonth, get prefs() { return { ...prefs }; }, get lastCard() { return lastCard; }, reloadTakes: () => loadTakes(true).then(redraw), _test };

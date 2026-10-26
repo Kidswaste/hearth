@@ -4,6 +4,8 @@
 //     `mapPlace`, personal quests with a pin), finished walks (questwalk63 `c-walk-*`, each stop), visit stamps
 //   · showprep62's "Shows I went to" log (kv show-nights): every night kept, with its rating, moment and photo
 //   · parkjam62's park takes (<data>/creative-park/<sketch>/*.json, listed by creative-vstmain.js parkList)
+//   · (round 66, bouncelog66) logged music sessions (kv music-sessions): a dot on the timeline, a pin at the park when
+//     Park mode was on there, the sketch playing in the moment
 // and turns them into moments ({ id, kind, at, month, title, place, arrs, places, photo, note, rating, loop… }), months,
 // pins (one per spot), a monthly recap (counts, the 20 arrondissements, what's new, "Paris explored" % of the guide's
 // places) and the lines of the image card. Nothing here fetches, uploads or calls an AI.
@@ -13,6 +15,7 @@
     show: { name: 'Show', many: 'shows', icon: 'music', color: '#ffb14a' },
     walk: { name: 'Walk', many: 'walks', icon: 'arrow', color: '#ffd75e' },
     park: { name: 'Park session', many: 'park sessions', icon: 'play', color: '#7ee0a8' },
+    music: { name: 'Music session', many: 'music sessions', icon: 'music', color: '#b78aff' }, // (round 66, bouncelog66) logged Sound desk sessions (not a tile on the card)
   };
   // Rough centre of each arrondissement (the same table as dev/quest-paris-test.js; 12e without the Bois de Vincennes,
   // 16e without the Bois de Boulogne). Used only when a place has no arrondissement of its own and no postcode.
@@ -69,7 +72,7 @@
   }
 
   /** Every moment the owner actually lived, newest first. `takes` = parkList's takes; `shows` = the show log. */
-  function collect({ C, s, P, shows = null, takes = [] } = {}) {
+  function collect({ C, s, P, shows = null, takes = [], sessions: logged = [] } = {}) {
     const out = [];
     for (const c of s?.campaigns || []) {
       if (!Array.isArray(c.quests) || !c.quests.length) continue;
@@ -117,6 +120,14 @@
         arrs: arr ? [arr] : [], places: spot?.guide ? [spot.id] : [], loop: last.layered || last.loop || '', loops: list.map((t) => ({ at: t.at, path: t.layered || t.loop, bars: t.bars, bpm: t.bpm })).filter((t) => t.path),
         note: `${list.length} loop${list.length === 1 ? '' : 's'} · ${last.bars} bars at ${Math.round(last.bpm)} BPM${last.notes ? ` · ${last.notes} notes` : ''}${last.instrument ? ` · ${last.instrument}` : ''}`, sketch: last.sketch || '', photo: '' });
     }
+    // (round 66, bouncelog66) logged Sound desk sessions: at the park when Park mode named one, else on the timeline only
+    for (const r of logged || []) {
+      if (!r?.logged || typeof r.start !== 'string' || !Number.isFinite(Date.parse(r.start))) continue;
+      const spot = r.place ? placeByName(s, P, r.place) : null, arr = spot?.arr || null, sk = (r.sketches || [])[0];
+      out.push({ id: `music-${String(r.id).replace(/[^\w-]+/g, '-').slice(0, 80)}`, kind: 'music', at: r.start, title: `Music session · ${r.minutes} min`, place: spot && has(spot) ? spot : { id: null, name: r.place || 'Sound desk', lat: null, lon: null, kind: 'music', arr: null },
+        arrs: arr ? [arr] : [], places: [], loop: sk?.path || '', note: [(r.instruments || []).join(' + ') || 'Sound desk', r.used?.park ? 'Park mode' : '', r.used?.liveset ? 'Live set' : '', r.used?.arrange ? 'Arrange' : ''].filter(Boolean).join(' · '),
+        photo: '', campaign: r.logged.quests?.[0]?.campaign || '', quest: r.logged.quests?.[0]?.quest || undefined });
+    }
     for (const m of out) { m.month = monthOf(m.at); if (!m.place || !has(m.place)) m.pinless = true; }
     return out.filter((m) => m.month).sort((a, b) => String(b.at).localeCompare(String(a.at)));
   }
@@ -162,13 +173,13 @@
   /** The monthly recap: counts, the 20 arrondissements (n per cell), what's new this month, Paris explored. */
   function recap(list, month, { guide = [], stamps: st = [] } = {}) {
     const mine = list.filter((m) => m.month === month), before = list.filter((m) => m.month < month);
-    const counts = { place: 0, show: 0, walk: 0, park: 0 }; for (const m of mine) counts[m.kind]++;
+    const counts = { place: 0, show: 0, walk: 0, park: 0, music: 0 }; for (const m of mine) counts[m.kind]++;
     const arrs = Array.from({ length: 20 }, () => 0); for (const m of mine) for (const a of m.arrs) arrs[a - 1]++;
     const seenArr = new Set(before.flatMap((m) => m.arrs));
     const newArrs = arrs.map((n, i) => (n && !seenArr.has(i + 1) ? i + 1 : 0)).filter(Boolean);
     const spotKey = (m) => m.place?.id || fold(m.place?.name);
     const seenSpot = new Set(before.flatMap((m) => [spotKey(m), ...(m.spots || []).map((p) => p.id || fold(p.name))]));
-    const newSpots = []; for (const m of [...mine].reverse()) for (const p of m.kind === 'walk' ? m.spots : [m.place]) { const k = p?.id || fold(p?.name); if (k && !seenSpot.has(k)) { seenSpot.add(k); newSpots.push(p.name); } }
+    const newSpots = []; for (const m of [...mine].reverse()) for (const p of m.kind === 'walk' ? m.spots : m.kind === 'music' && !has(m.place) ? [] : [m.place]) { const k = p?.id || fold(p?.name); if (k && !seenSpot.has(k)) { seenSpot.add(k); newSpots.push(p.name); } }
     const ids = new Set(guide.map((g) => g.id)), end = shiftMonth(month, 1);
     const upto = (lim) => { const x = new Set(); for (const m of list) if (m.month < lim) for (const id of m.places) if (ids.has(id)) x.add(id); for (const p of st) if (ids.has(p.id) && monthOf(p.at) < lim) x.add(p.id); return x; };
     const now = upto(end), was = upto(month), total = ids.size;
@@ -181,7 +192,7 @@
   /** The recap in words (the chat's answer and the card's lines). */
   function recapText(r) {
     if (!r.total) return `${r.label}: nothing on your Paris map yet. Finish a place quest, keep a show night (/shows went), walk a walk or record a park loop, and it shows up here.`;
-    const c = r.counts, bits = ['place', 'show', 'walk', 'park'].filter((k) => c[k]).map((k) => plural(c[k], k));
+    const c = r.counts, bits = ['place', 'show', 'walk', 'park', 'music'].filter((k) => c[k]).map((k) => plural(c[k], k));
     const lines = [`${r.label} in Paris: ${bits.join(' · ')}.`, `${r.arrCount} of 20 arrondissements${r.arrCount ? `: ${r.arrs.map((n, i) => (n ? arrLabel(i + 1) : '')).filter(Boolean).join(', ')}` : ''}${r.newArrs.length ? ` (new: ${r.newArrs.map(arrLabel).join(', ')})` : ''}.`];
     if (r.newSpots.length) lines.push(`New this month: ${r.newSpots.slice(0, 6).join(', ')}${r.newSpots.length > 6 ? ` +${r.newSpots.length - 6}` : ''}.`);
     lines.push(`Paris explored: ${r.explored.pct}% of the guide's ${r.explored.total} places${r.explored.gained ? ` (+${r.explored.gained} this month)` : ''}.`);
