@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session, desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
+require('./jankmain').watchIpc(ipcMain); // (round 67, slowbutton67) IPC handlers that run long are named for 🐢 That was slow (two clock reads per call)
 // (round 52, gameperf) exact JS heap numbers (performance.memory): ▶ Play's stats see garbage per second and each GC
 // pause instead of 20-minute-old buckets. Reading them costs nothing until a page asks.
 app.commandLine.appendSwitch('enable-precise-memory-info');

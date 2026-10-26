@@ -276,7 +276,8 @@ contextBridge.exposeInMainWorld('hub', {
     onFrame: on('cview:frame'), onEvent: on('cview:event'),
   },
   // (round 20) jank watch (jankmain.js): main loop lag + GPU events since the last take, culprits' line numbers, display / GPU
-  jank: { take: call('jank:take'), info: call('jank:info'), lines: call('jank:lines'), profile: call('jank:profile'), busy: (b) => ipcRenderer.send('jank:busy', b), off: (o) => ipcRenderer.send('jank:off', o) },
+  jank: { take: call('jank:take'), info: call('jank:info'), lines: call('jank:lines'), profile: call('jank:profile'), busy: (b) => ipcRenderer.send('jank:busy', b, Date.now()), off: (o) => ipcRenderer.send('jank:off', o),
+    recent: call('jank:recent'), testStall: call('jank:test-stall') }, // (round 67, slowbutton67) the main side's last minute for 🐢 That was slow (+ busy's send time: how late the main process took it); testStall: test copies only
   // (round 24) the asset library (assetsmain.js): scans / hashes, bytes for thumbnails, the thumbnail cache, free sources, import, watch
   assets: {
     status: call('assets:status'), scan: call('assets:scan'), hash: call('assets:hash'), exists: call('assets:exists'), read: call('assets:read'), readText: call('assets:readText'),

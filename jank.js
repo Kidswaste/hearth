@@ -3,9 +3,7 @@
 // the real thing. Observers only: no polling, no per-frame work, nothing sent anywhere.
 //   long frames  PerformanceObserver 'long-animation-frame' (≥ 50 ms; 'longtask' where that's missing) and why: script
 //                and tasks, style & layout forced by a script, the frame's own style / layout / paint, other browser
-//                work. Which code: Chromium names only scripts that aren't file:// URLs (Hearth's are), so when unnamed
-//                long frames keep coming a short profile names them (file:line, function, the handler it started
-//                from; jankmain.js), a few times a day at most; /smooth profile asks for one
+//                work. Which code: Chromium doesn't name file:// scripts (Hearth's); /smooth profile names them
 //   inputs       Event Timing ('event', ≥ 16 ms) grouped by interaction (key, click, tap: input → next paint), plus a
 //                count of every interaction so p50 / p95 stay honest (fast ones never make an entry)
 //   dropped      frames lost to a long frame while something moves (an animation runs, you scroll or drag)
@@ -20,6 +18,7 @@
 //   await Jank.calm(maxMs, label)   resolves at once when calm, else when the gesture ends (≤ maxMs); label counts it
 //   (window.Jank?.calm?.(…) ?? Promise.resolve()) from modules that may load first
 // The report and its commands (/smooth, /smooth reset|off|on) are in jank-report.js (loaded on first use).
+// (round 67) 🐢 That was slow (slowcard.js) reads Jank.slow()
 const Jank = (() => {
   const KV = 'jank-log';
   const HOUR = 3600e3; const KEEP = 24 * 7; // hourly buckets, a week
@@ -121,6 +120,7 @@ const Jank = (() => {
     if (off) return;
     poke(e.type === 'pointerdown');
     vaAt = -1e9; // (what's open may change with this input)
+    if (dotAt && Date.now() - dotAt > 12e4) slowDot(0); // (the ⋯'s dot after a hiccup ≥ 1 s: 2 min)
     if (e.repeat) return;
     lastArea = targetArea(e.target);
     areaOf(bucket(), lastArea).n += 1;
@@ -160,6 +160,7 @@ const Jank = (() => {
     r.lf += 1; r.ms += Math.round(dur); r.worst = Math.max(r.worst, Math.round(dur));
     r.s += Math.round(script); r.f += Math.round(forced); r.r += Math.round(render); r.o += Math.round(other);
     if (animating()) r.drop += Math.max(1, Math.round(dur / (1000 / (env.hz || 60))) - 1);
+    if (readyAt) keep({ t: at(e.startTime), kind: 'frame', ms: Math.round(dur), area, s: Math.round(script), f: Math.round(forced), r: Math.round(render), o: Math.round(other), file, fn: top?.sourceFunctionName || '' });
     if (top && top.duration >= 20) {
       const fn = String(top.sourceFunctionName || '').slice(0, 60);
       const key = `${file}|${top.sourceCharPosition ?? -1}|${fn}|${top.invokerType || ''}`;
@@ -174,14 +175,10 @@ const Jank = (() => {
   }
 
   // ---------- profiles: which code (jankmain.js samples the page's JS for a few seconds) ----------
-  // Automatically when 3 unnamed long frames come within 15 s: at most every 3 minutes and 12 times a day (never in a
-  // test copy); or on demand (/smooth profile). Each long stretch found becomes a culprit: the app line it spent the
-  // most time under, and the handler it started from.
+  // Each long stretch found becomes a culprit: the app line it spent the most time under, and the handler it started
+  // from. (round 65, uilag65) Only when asked (/smooth profile): profiling the live window froze it (docs/upgrades/
+  // uilag65.md); automatic (3 unnamed long frames in 15 s, ≤ 12 a day) only after localStorage['jank.autoprof'] = '1'.
   const recent = []; let profiling = null; let lastProf = 0;
-  // (round 65, uilag65) no longer automatic: the owner's week-long report showed the watch itself as the top culprit
-  // (99 long frames, worst 8 s, "jank.js viewArea"): attaching the debugger and running / stopping a CPU profile on the
-  // live window freezes it for a second or more each time, and the profile then names whatever ran when it began (this
-  // file). A profile now runs only when asked (/smooth profile), or automatically after `localStorage['jank.autoprof'] = '1'`.
   function autoProfile() {
     recent.length = 0;
     if (ls('jank.autoprof') !== '1') return;
@@ -221,6 +218,7 @@ const Jank = (() => {
   function input(e, id) {
     let i = 1; while (e.duration >= EDGES[i]) i += 1;
     const was = seen.get(id);
+    if (e.duration >= 100 && readyAt) keep({ t: at(e.startTime), kind: 'input', id, ms: Math.round(e.duration), type: e.name, area: e.target?.isConnected ? targetArea(e.target) : lastArea });
     if (was && was.i >= i) return;
     const r = was?.r || areaOf(bucket(), e.target?.isConnected ? targetArea(e.target) : lastArea);
     if (was && cur && was.b === cur) r.h[was.i] -= 1; else if (was) return; // (that hour was saved already)
@@ -243,7 +241,7 @@ const Jank = (() => {
   }
   if (!off) observe();
   // WebGL views in this page losing their GPU context (the Lab's preview tells through Jank.gpu)
-  addEventListener('webglcontextlost', () => { if (!off) note('gpu', `A WebGL view lost its GPU context (${viewArea()})`); }, true);
+  addEventListener('webglcontextlost', () => { if (!off) { note('gpu', `A WebGL view lost its GPU context (${viewArea()})`); keep({ t: Date.now(), kind: 'gpu', ms: 0, area: viewArea(), what: 'A WebGL view lost its GPU context' }); } }, true);
 
   // ---------- the Lab preview (its stats message, twice a second while it's on screen) ----------
   const ring = new Uint8Array(60); let ri = 0; let asked = ls('jank.labAsked') === '1';
@@ -257,6 +255,8 @@ const Jank = (() => {
     L.worst = Math.max(L.worst, Math.round(msg.worst || 0)); L.p95 = Math.max(L.p95, Number(msg.p95) || 0);
     if (msg.quality > 0) L.q = Math.min(L.q, msg.quality);
     if (msg.light) L.light += 1;
+    labAt = Date.now(); labLast = msg;
+    if (msg.worst >= 100 && readyAt) keep({ t: labAt - Math.round(msg.worst), kind: 'lab', ms: Math.round(msg.worst), area: 'Lab', fps: Math.round(msg.fps) });
     ring[ri++ % ring.length] = bad ? 1 : 0;
     // keeps dropping frames (40 of the last 30 s), even at lowered resolution: suggest Light mode, once, ever
     if (!asked && !msg.light && !env.test && ri >= ring.length && ring.reduce((a, x) => a + x, 0) >= 40) suggestLight();
@@ -269,6 +269,33 @@ const Jank = (() => {
       action: { label: '🪶 Light mode', fn: () => { const c = bucket(); c.ad['Light mode turned on'] = (c.ad['Light mode turned on'] || 0) + 1; Commands.exec('/lab light on').catch?.(() => {}); } },
     });
   }
+
+  // ---------- 🐢 That was slow (round 67, slowbutton67): the observers' last minute, raw; hiccups ≥ 500 ms a day ----------
+  const last = []; const spans = []; let labAt = 0; let labLast = null; let dotAt = 0;
+  const at = (st) => Math.round(performance.timeOrigin + st);
+  function keep(x) {
+    last.push(x);
+    while (last.length > 120 || last[0]?.t < Date.now() - 6e4) last.shift();
+    x.lab = Date.now() - labAt < 1500;
+    if (x.ms >= 500) hiccup(x.t, x.ms);
+  }
+  // (localStorage 'jank.hiccups' { local day: n }, 2 weeks); one freeze seen several times counts once
+  function hiccup(t, ms) {
+    if (off || !readyAt || !(ms >= 500)) return;
+    const sp = spans.find((p) => t <= p[1] + 1e3 && t + ms >= p[0] - 1e3);
+    if (sp) { sp[1] = Math.max(sp[1], t + ms); return; }
+    spans.push([t, t + ms]); spans.length > 30 && spans.shift();
+    let d = {}; try { d = JSON.parse(ls('jank.hiccups')) || {}; } catch { /* fresh */ }
+    const k = new Date(t - new Date(t).getTimezoneOffset() * 6e4).toISOString().slice(0, 10); d[k] = (d[k] || 0) + 1;
+    for (const o of Object.keys(d).sort().slice(0, -14)) delete d[o];
+    ls('jank.hiccups', JSON.stringify(d));
+    if (ms >= 1000) slowDot(1);
+  }
+  function slowDot(on) { // (a dot on the rail's ⋯, where 🐢 That was slow is)
+    const b = document.getElementById('rail-more'); dotAt = on ? Date.now() : 0;
+    if (b && (b.dataset.slow == null) === !!on) { if (on) { b.dataset.slow = b.title; b.title = '🐢 That was slow? It\'s in here'; } else { b.title = b.dataset.slow; delete b.dataset.slow; } }
+  }
+  const slow = () => { vaAt = -1e9; return { last, labAt, labLast, off, ready: readyAt > 0, env, view: viewArea(), hiccup, slowDot }; };
 
   // ---------- the log ----------
   const sumKeys = ['n', 'lf', 'ms', 'drop', 's', 'f', 'r', 'o'];
@@ -317,6 +344,7 @@ const Jank = (() => {
           if (m.lag) { const b = bucket(); b.main = mergeLag(b.main, m.lag); }
           for (const ev of m.events || []) { const b = bucket(); b.ev.push(ev); }
           if (m.held) { const b = bucket(); b.ad['sync pass'] = (b.ad['sync pass'] || 0) + m.held; }
+          for (const st of m.stalls || []) hiccup(st.t, st.ms); // (round 67) the main process's freezes count too
         }
       } catch { /* old main.js */ }
       if (!dirty && !older.length) return;
@@ -362,7 +390,8 @@ const Jank = (() => {
 
   return {
     busy: () => isBusy && !off, calm, later: (fn, max, label) => calm(max, label).then(fn),
-    lab, profile, profiling: () => Boolean(profiling), gpu: (what) => { if (!off) note('gpu', `${what} lost its GPU context`); },
+    lab, profile, profiling: () => Boolean(profiling), gpu: (what) => { if (!off) { note('gpu', `${what} lost its GPU context`); keep({ t: Date.now(), kind: 'gpu', ms: 0, area: viewArea(), what: `${what} lost its GPU context` }); } },
+    slow, openCard: () => Lazy.load('jankwatch').then(() => SlowCard.open()),
     data, flush, reset, setOff, isOff: () => off, env: () => ({ ...env }), merge, EDGES,
     _test: { frame, input, interact, rel, fileArea, targetArea, viewArea, live: () => cur, suggestLight, ring },
   };

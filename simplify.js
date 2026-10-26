@@ -28,8 +28,10 @@ const Simplify = (() => {
   // on the right, and the tools hidden from the rail one click away (Settings → Tools in the rail brings them back)
   const ICON = { 'palette-btn': 'command', 'add-btn': 'plus', 'notes-btn': 'notes', 'memory-btn': 'memory', 'grid-btn': 'grid', 'bar-btn': 'broadcast', 'import-btn': 'export', 'capture-btn': 'capture', 'apps-btn': 'web', 'full-btn': 'full', 'board-drawer-btn': 'board' }; // (round 49, appcalm) the two that left the rail
   function moreItems() {
-    const rows = TUCKED.filter(([id]) => $(id)).map(([id, label]) => ({
-      label: String(label).replace(/^[^\p{L}\d]+/u, '').replace(/⌘\+/g, 'Ctrl+'), icon: ICON[id], checked: $(id).classList.contains('on'), action: () => $(id).click() }));
+    // (round 67, slowbutton67) first: 🐢 That was slow (the card of the last hiccup; the ⋯ wears a dot after one)
+    const slow = window.Jank?.openCard ? [{ label: 'That was slow', icon: 'clock', tip: 'Click right after a hiccup: what it was, today’s count, Copy report for Claude', action: () => Jank.openCard() }] : [];
+    const rows = [...slow, ...TUCKED.filter(([id]) => $(id)).map(([id, label]) => ({
+      label: String(label).replace(/^[^\p{L}\d]+/u, '').replace(/⌘\+/g, 'Ctrl+'), icon: ICON[id], checked: $(id).classList.contains('on'), action: () => $(id).click() }))];
     const hidden = !window.WorkspaceNav && typeof Tools !== 'undefined' ? Tools.all().filter((t) => !Tools.enabled().includes(t)) : [];
     if (window.WorkspaceNav) rows.push({ label: 'Advanced tools & commands', icon: 'command', action: () => activate('tool:commands') });
     if (hidden.length) rows.push('-', 'Not in the rail', ...hidden.map((t) => ({ label: t.name, icon: typeof Icons !== 'undefined' ? Icons.keyFor(t) : null, action: () => activate(`tool:${t.id}`) })), { label: 'Put tools back in the rail…', icon: 'gear', action: () => AppUI.openSettings('rail') });

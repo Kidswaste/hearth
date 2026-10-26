@@ -13,8 +13,13 @@
 //           main process each long stretch is named by the app line it spent the most time under and the handler it
 //           started from; then the debugger detaches. Never while DevTools are attached.
 //   info    the display's refresh rate and the GPU's name (for the report and "frames dropped")
+//   recent  (round 67, slowbutton67) the last minute for 🐢 That was slow, from what already happens (no timer, no
+//           profiler): IPC handlers whose synchronous part ran ≥ 100 ms, by channel (watchIpc wraps ipcMain.handle /
+//           on from the top of main.js: two clock reads per call); the window's "busy" messages arriving late (each
+//           carries its send time: a message ≥ 250 ms late means this process was stuck that long); background jobs
+//           starting (a cloud sync pass); GPU / page events; the loop-lag sampler's worst since the last save
 // Nothing here is sent anywhere: the window keeps its own log (kv/jank-log.json, a local-only file for sync).
-// Required from main.js: register(ipcMain, bgmain, getWin) once.
+// Required from main.js: watchIpc(ipcMain) first, register(ipcMain, bgmain, getWin) once.
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -23,8 +28,55 @@ let hist = null; let histOn = false; let since = Date.now();
 let busy = false; let busyAt = 0; let held = 0;
 const events = []; // { t, kind: 'gpu' | 'page' | 'hang' | 'unhang', what }
 function note(kind, what) {
-  events.push({ t: Date.now(), kind, what: String(what || '').slice(0, 160) });
+  const ev = { t: Date.now(), kind, what: String(what || '').slice(0, 160) };
+  events.push(ev);
   if (events.length > 50) events.shift();
+  keepR(R.ev, ev);
+}
+
+// ---------- the last minute (round 67, slowbutton67) ----------
+const R = { slow: [], late: [], jobs: [], ev: [] }; // rings of { t (epoch ms), ms?, what }
+let takenAt = 0; // stalls after this are handed to the window's daily count at the next take()
+function keepR(list, x, max = 30) { list.push(x); if (list.length > max) list.shift(); }
+const SLOW_IPC = 100; const LATE = 250;
+// every IPC handler registered after this is timed (its synchronous part: an async handler's awaits don't count)
+const wrapped = new WeakMap();
+function watchIpc(ipcMain) {
+  if (!ipcMain || ipcMain.__jankTimed) return;
+  ipcMain.__jankTimed = true;
+  const { performance } = require('perf_hooks');
+  const timed = (ch, fn) => {
+    if (typeof fn !== 'function') return fn;
+    const w = function timedIpc(...a) {
+      const t0 = performance.now();
+      try { return fn.apply(this, a); } finally {
+        const d = performance.now() - t0;
+        if (d >= SLOW_IPC) keepR(R.slow, { t: Date.now() - Math.round(d), ms: Math.round(d), what: String(ch).slice(0, 80) });
+      }
+    };
+    wrapped.set(fn, w);
+    return w;
+  };
+  if (typeof ipcMain.handle !== 'function' || typeof ipcMain.on !== 'function') return;
+  const handle = ipcMain.handle.bind(ipcMain); const on = ipcMain.on.bind(ipcMain);
+  ipcMain.handle = (ch, fn) => handle(ch, timed(ch, fn));
+  ipcMain.on = (ch, fn) => on(ch, timed(ch, fn));
+  ipcMain.addListener = ipcMain.on;
+  if (typeof ipcMain.removeListener === 'function') {
+    const off = ipcMain.removeListener.bind(ipcMain);
+    ipcMain.removeListener = (ch, fn) => off(ch, wrapped.get(fn) || fn);
+    ipcMain.off = ipcMain.removeListener;
+  }
+}
+// a background job of this process starting (named in the card when a freeze lands near it)
+function mark(what) { keepR(R.jobs, { t: Date.now(), what: String(what || '').slice(0, 80) }); }
+// freezes of this process since `from` (IPC handlers that ran long + late "busy" messages)
+const stallsSince = (from) => [...R.slow, ...R.late].filter((x) => x.t + x.ms > from && x.ms >= 500).map((x) => ({ t: x.t, ms: x.ms }));
+function recent(win = 35e3) {
+  const from = Date.now() - Math.max(1000, Math.min(120e3, Number(win) || 35e3));
+  const pick = (list) => list.filter((x) => x.t + (x.ms || 0) >= from).map((x) => ({ ...x }));
+  const lag = hist && histOn && hist.count ? { max: ms(hist.max), p99: ms(hist.percentile(99)), since } : null;
+  return { slow: pick(R.slow), late: pick(R.late), jobs: pick(R.jobs), events: pick(R.ev), lag, stalls: stallsSince(from) };
 }
 function setHist(on) {
   try {
@@ -41,7 +93,8 @@ function take() {
   since = Date.now();
   const ev = events.splice(0, events.length);
   const h = held; held = 0;
-  return { lag, events: ev, held: h };
+  const stalls = stallsSince(takenAt); takenAt = Date.now();
+  return { lag, events: ev, held: h, stalls };
 }
 // is the owner mid-gesture? (the window's word for it; a message lost to a reload can't hold work for more than 5 s)
 const ownerBusy = () => busy && Date.now() - busyAt < 5000;
@@ -166,7 +219,16 @@ function register(ipcMain, bgmain, getWin) {
   let off = false;
   bgmain?.subscribe?.(pace);
   if (!bgmain) setHist(true);
-  ipcMain.on('jank:busy', (_e, b) => { busy = Boolean(b); busyAt = Date.now(); });
+  ipcMain.on('jank:busy', (_e, b, sentAt) => {
+    busy = Boolean(b); busyAt = Date.now();
+    // (round 67) sent at `sentAt` by the window, taken now: the gap is how long this process was stuck (≤ 1 min: a
+    // longer one is the computer sleeping)
+    const late = busyAt - Number(sentAt);
+    if (late >= LATE && late < 60e3) keepR(R.late, { t: Number(sentAt), ms: late, what: 'the window waited for the main process' });
+  });
+  ipcMain.handle('jank:recent', (_e, win) => recent(win));
+  // test copies only: freeze this process on purpose (dev/checks/slowbutton67.js)
+  if (process.env.HEARTH_TEST_SAVE_DIR) ipcMain.handle('jank:test-stall', (_e, msLong) => { const end = Date.now() + Math.max(0, Math.min(5000, Number(msLong) || 0)); while (Date.now() < end) { /* frozen on purpose */ } return true; });
   ipcMain.on('jank:off', (_e, o) => { off = Boolean(o); pace(bgmain?.state?.() || {}); });
   ipcMain.handle('jank:take', () => take());
   ipcMain.handle('jank:info', () => info());
@@ -174,6 +236,6 @@ function register(ipcMain, bgmain, getWin) {
   ipcMain.handle('jank:lines', (_e, list) => (Array.isArray(list) ? list.slice(0, 40).map(([f, p]) => lineOf(f, p)) : []));
 }
 // syncmain asks before a pass: hold it while the owner is mid-gesture (counted for the report)
-function hold() { const b = ownerBusy(); if (b) held += 1; return b; }
+function hold() { const b = ownerBusy(); if (b) held += 1; else mark('a cloud sync pass'); return b; }
 
-module.exports = { register, hold, busy: ownerBusy, _test: { note, take, lineOf, stretches, lastProfile: () => lastProfile } };
+module.exports = { register, hold, busy: ownerBusy, watchIpc, mark, _test: { note, take, lineOf, stretches, recent, R, lastProfile: () => lastProfile } };

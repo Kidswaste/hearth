@@ -143,6 +143,7 @@
     const help = { role: 'help', submenu: [
       show('Keyboard shortcuts', 'CmdOrCtrl+/', () => a.keys?.()),
       { label: 'Report a problem…', click: () => a.report?.() },
+      { label: '🐢 That was slow…', click: () => a.slow?.() }, // (round 67, slowbutton67) what the last hiccup was
     ] };
     if (mac) {
       return [

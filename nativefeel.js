@@ -128,6 +128,7 @@ const NativeFeel = (() => {
     else if (action === 'keys') { if (typeof KeysUI !== 'undefined') KeysUI.open(); else AppUI.shortcutsHelp?.(); }
     else if (action === 'zoom') AppUI.zoom(arg > 0 ? 0.1 : arg < 0 ? -0.1 : 0);
     else if (action === 'onTop') AppUI.toggleOnTop?.();
+    else if (action === 'slow') window.Jank?.openCard?.(); // (round 67, slowbutton67) 🐢 That was slow
     else if (action === 'report') (window.Lazy ? Lazy.load('devreport') : Promise.resolve()).then(() => DevReport.open()).catch(() => Commands.tryRun?.('/report', H.claudeAgent()?.id));
   }
   window.hub?.native?.onMenu?.(menu);

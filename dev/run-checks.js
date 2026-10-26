@@ -52,9 +52,11 @@ UNIT.push('framebar-test'); // (round 64, framebar64) the Lab's frame budget bar
 UNIT.push('liveset64-test'); // (round 64, liveset64) Live set: set model, keys, bar quantize, preset preload timing, proof steps (+ the real host: quantized launch, twin switch with no underrun, panic, run recorder)
 UNIT.push('inspodrop-test'); // (round 65, inspodrop65) a drawer tile dropped in a chat as real media: key-frame sampling, the picture budget, media kinds, frame sizes, the clip's line
 UNIT.push('winfresh-test'); // (round 60, winfresh60) the Windows zip install: a shallow checkout updating (gaps, rewrites, deeper fetch), private-repo sign-in, shortcuts / login item
+UNIT.push('slowcard-test'); // (round 67, slowbutton67) 🐢 That was slow: the summariser (both processes' sightings → one hiccup, its cause in plain words, the day line, the report for Claude)
 UNIT.push('herepin66-test'); // (round 66, herepin66) I'm here on the Paris map: distance → walking minutes (4.5 km/h), the 3-hour pin, tonight's shows, nearest-first ranking, the tracker row
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
+  slowbutton67: ['slowbutton67', 'unit:slowcard-test', 'jankwatch', 'tidy', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 67) 🐢 That was slow: a renderer and a main-process freeze made on purpose, the card's words, the daily count, Copy report for Claude
   herepin66: ['herepin66', 'unit:herepin66-test', 'mapfirst64', 'questhud61', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 66) 📍 I'm here on the Paris map: a clicked spot (no GPS), Close to you by walking minutes, Start this quest / Show on map, the ✦ tracker's Near me, fades after 3 h
   showprep62: ['showprep62', 'unit:showprep-test', 'showsync61', 'unit:showsync-test', 'questhud61', 'quest-paris', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:notify-test'], // (round 62) show night companion: Get ready, How was it?, Shows I went to, follow
   mapfirst64: ['mapfirst64', 'quest-paris', 'showsync61', 'questwalk63', 'showprep62', 'quest-world', 'quest-map-tiles', 'quest-field', 'quest-focus', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 64) the Paris map shows the guide, shows, walks and visits by default; one layer strip; clicks only
