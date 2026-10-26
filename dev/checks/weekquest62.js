@@ -12,6 +12,7 @@ const step = (name, ok, info) => { out.steps.push(`${ok ? '✓' : '✖'} ${name}
 const vis = (n) => Boolean(n && !n.hidden && n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden');
 const agent = H.claudeAgent().id;
 const run = (line) => Commands.tryRun(line, agent);
+activate(agent); // (sweep69) Hearth now starts on the Projects desk (lazyfix66): the chat commands' notes land in the chat, so be in it
 const card = () => document.querySelector('.wq-panel');
 const chip = () => document.querySelector('#rail .qh-chip');
 const disk = async () => (await window.hub.kvGet('quest-journal')) || {};
@@ -69,7 +70,7 @@ const pRow = props().find((r) => r.dataset.prop === 'pq-airpods');
 drag(pRow, card().querySelector(`.wq-day[data-day="${dropDay}"]`));
 await until(async () => (await disk()).weekly.plans.find((p) => p.week === wk.week).items.some((x) => x.campaign === 'c-pq-airpods' && x.day === dropDay), 'dragged proposal planned');
 step('drag a proposal onto a day: planned on that day', true, dropDay);
-const moveTo = wk.days.find((x) => x >= wk.from && x !== dropDay && x !== showDay) || showDay;
+const moveTo = wk.days.find((x) => x >= wk.from && x !== dropDay && x !== showDay && x !== C.day()) || showDay; // (sweep69) not today: run on a Monday, the moved chip landed on today and took the ✦ chip from today's planned quest (step 4)
 await until(() => card().querySelector('.wq-chip[data-item="wk-pq-airpods"]'), 'airpods chip');
 drag(card().querySelector('.wq-chip[data-item="wk-pq-airpods"]'), card().querySelector(`.wq-day[data-day="${moveTo}"]`));
 await until(async () => (await disk()).weekly.plans.find((p) => p.week === wk.week).items.find((x) => x.id === 'wk-pq-airpods')?.day === moveTo, 'chip moved');

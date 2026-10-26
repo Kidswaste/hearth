@@ -62,6 +62,7 @@ UNIT.push('ratp69-test'); // (round 69, ratp69) leave reminders honest about the
 UNIT.push('tickets68-test'); // (round 68, tickets68) 🎟 My ticket: file kinds, the show's night in Paris time (1 am starts, date-only, DST), the index (damaged → refused), file names → shows (Downloads suggestions), the main side's copies / Trash / Wallet pass on a throwaway folder
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
+  sweep69: ['quest-studio', 'quest-proof', 'questhud61', 'showprep62', 'liveset64', 'loopsong63', 'routine-feedback', 'visual-feedback', 'weekquest62', 'rewards63', 'lazy', 'unit:boot-test', 'unit:vst-live-host-test', 'unit:capture-test'], // (round 69) stale quest / music checks on today's Life space and Sound desk, visited show venues at every zoom, frame reads with duplicate timestamps, the feedback checks' flags
   tickets68: ['tickets68', 'unit:tickets68-test', 'showsync61', 'invite67', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 68) 🎟 My ticket: add (picker, drop, Downloads suggestion) on a show card, the bright view (PDF / PNG), the ✦ tracker's Ticket ready, the weekend plan, Shows I went to, remove → Trash
   invite67: ['invite67', 'unit:invite67-test', 'showsync61', 'showprep62', 'weekendplan66', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 67) 👋 Bring someone: the invite card from a show card, the venue pin and the weekend plan (offline, cached shows), Copy / Open in… never sends, I sent it → a social quest's invite step
   ratp69: ['ratp69', 'unit:ratp69-test', 'leavesoon68', 'unit:leavesoon68-test', 'lazy', 'unit:boot-test'], // (round 69) leave reminders honest about the Métro: a night show → Noctilien / taxi — check, line status from a fake PRIM / community server (--fake-ratp), Add key…, the one check ~30 min before → ⚠ Line 2: disrupted — Leave earlier, offline → unknown
@@ -306,9 +307,15 @@ const FIX = [
   { re: /hearth-gameready-tools/, path: `${T}/hearth-gameready-tools/node_modules/.bin/gltfpack`, make: () => sh('npm', ['install', '--silent', '--no-audit', '--no-fund', '--prefix', `${T}/hearth-gameready-tools`, 'gltfpack@1.3.0']) },
   { re: /hearth-pins-fixture/, path: `${T}/hearth-pins-fixture/pinterest-like.html`, make: () => { fs.mkdirSync(`${T}/hearth-pins-fixture`, { recursive: true }); fs.copyFileSync(path.join(DEV, 'fixtures', 'pinterest-like.html'), `${T}/hearth-pins-fixture/pinterest-like.html`); } },
 ];
+// (round 69, sweep69) checks whose header names no smoke line (Codex's) get their flags here: the feedback checks answer
+// through the fake engines (no Codex / Claude here) and visual-feedback reviews a test MP4 it is handed
+const EXTRA_FLAGS = {
+  'routine-feedback': ['--fake-engines'],
+  'visual-feedback': ['--fake-engines', '--eval', `window.FEEDBACK_FIXTURE=${JSON.stringify(`${T}/hearth-test-videos/neon_tunnel_v1.mp4`)}`],
+};
 const srcOf = (n) => (n.startsWith('unit:') ? fs.readFileSync(path.join(DEV, `${n.slice(5)}.js`), 'utf8') : fs.readFileSync(path.join(CHECKS, `${n}.js`), 'utf8'));
 const exists = (p) => { try { return fs.statSync(p).isFile() || fs.readdirSync(p).length > 0; } catch { return false; } };
-const needed = FIX.filter((f) => wanted.some((n) => f.re.test(srcOf(n)) || /^journey-/.test(n.replace('unit:', ''))));
+const needed = FIX.filter((f) => wanted.some((n) => f.re.test(srcOf(n)) || (EXTRA_FLAGS[n] || []).some((a) => f.re.test(a)) || /^journey-/.test(n.replace('unit:', ''))));
 // (round 56, fixes56) two runs at once make a missing fixture once: the other waits for it (a lock folder next to it;
 // one left by a run that died is taken after 15 minutes)
 const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -414,7 +421,7 @@ for (const n of wanted) {
   } else {
     const shots = path.join(OUT, n);
     // step pictures only when asked (--shots): a 1080×1080 screenshot mid-journey can starve a recording on a busy machine
-    const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(pairDirs[n]?.flags || []), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
+    const a = [path.join(DEV, 'smoke.js'), ...flagsOf(srcOf(n)), ...(EXTRA_FLAGS[n] || []), ...(pairDirs[n]?.flags || []), ...(argv.includes('--shots') ? ['--eval', `window.JOURNEY_SHOTS=${JSON.stringify(shots)}`] : []), '--script', path.join(CHECKS, `${n}.js`), '--shot', path.join(OUT, `${n}.png`)];
     // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
     const env = n === 'mainhang65' ? { ...process.env, HEARTH_LOOPLAG: 'prof', HEARTH_FAULTS_LIVE: '1', HEARTH_SLOWFS_US: process.env.HEARTH_SLOWFS_US || '150' } // (round 65) the main-process lag probe, a Windows-slow disk
       : /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }

@@ -9,7 +9,7 @@ const sceneId=ProjectWorkspace.currentScene(),scene=ThreeLab.scenes.get(sceneId)
 const second={id:primary.agentId+'-feedback-second',agentId:primary.agentId,title:'Flower · final shot',messages:[],session:{}};
 await hub.saveChat(second);Native.adopt(second,{openIt:false});Projects.add(project,'chat',second.id,second.title,{links:false});await Projects.flush();await ProjectWorkspace.conversation(project,second.id);
 const chat=await Native.load(second.id),agent=H.agent(chat.agentId);chat.model='fixture-model';chat.effort='max';Native.save(chat);
-const cmd=await ThreeLab.cmd({show:false});cmd.play(false);cmd.seek(1);await wait(200);const start=cmd.player.time;
+const cmd=await ThreeLab.cmd({show:false});cmd.play(false);cmd.seek(1);await until(()=>!cmd.player.playing,'Lab did not pause');await wait(200);const start=cmd.player.time;// (sweep69) a scene that just opened is still starting to play: the pause lands ~0.5 s later, so read the paused spot after it
 Routines._test.scale(.02);store.set('routines.last',{});
 Routines.card(chat.agentId,{chatId:chat.id});await until(()=>document.querySelector('.rt-dlg[open]'),'Setup absent');
 let dlg=document.querySelector('.rt-dlg[open]'),toggle=dlg.querySelector('[aria-label="Use visual feedback"]');

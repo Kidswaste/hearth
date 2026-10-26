@@ -5,7 +5,7 @@ let checks = 0; const check = (ok, why) => { if (!ok) throw Error(why); checks++
 const root = () => document.querySelector('.qj'), scope = () => root().querySelector('dialog[open]') || root();
 const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === name); check(b, 'Button: ' + name); b.click(); await until(() => !b.disabled); await wait(80); };
 const field = (name, value) => { const n = scope().querySelector(`[aria-label="${name}"]`); check(n, 'Field: ' + name); n.value = value; n.dispatchEvent(new Event('input', { bubbles: true })); };
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click(); await until(() => root()?.querySelector('.qj-console-name')?.textContent);
+document.querySelector('#agent-buttons [data-space="life"]').click(); await until(() => root()?.querySelector('.qj-console-name')?.textContent);
 const s = () => QuestJournal.snapshot(), C = QuestCore;
 document.querySelectorAll('.toast').forEach(n => n.remove());
 check(root().querySelectorAll('.qj-object').length === 5, 'illustrated desk navigation retained');
@@ -40,7 +40,7 @@ check(getComputedStyle(root().querySelector('.qj-life-card')).animationName === 
 await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [] } });
 await QuestJournal.flush(); return `Life expeditions and glass: ${checks} checks passed.`;
 //@@ reload
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+document.querySelector('#agent-buttons [data-space="life"]').click();
 for (let i = 0; i < 160 && !document.querySelector('.qj-console-name')?.textContent; i++) await new Promise(r => setTimeout(r, 60));
 const s = QuestJournal.snapshot(), c = s.campaigns.find(c => c.id === 'c-life-base');
 if (!c?.intention.includes('music desk') || c.paused || QuestCore.xp(s) !== 20 || !QuestCore.done(s, 'q-life-base-clear') || !QuestCore.latest(s, 'q-life-base-clear')?.review || s.campaigns.filter(c => c.id === 'c-life-base').length !== 1) throw Error('Life expedition failed persistence after real reload');

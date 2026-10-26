@@ -77,8 +77,9 @@ await until(() => LiveSet._test.status()?.current === C.presets(sc0())[1].id, 80
 const swap = LiveSet._test.status().swaps.at(-1); ok((swap.at - LiveSet._test.status().origin) % 24000 === 0, `key W: "Loud" switched exactly on a beat line (bar ${swap.bar}, beat ${swap.beat})`);
 ok(api.current() && (await api.values(['level'])).level.value === .9, 'the live synth now plays "Loud"');
 await wait(300); ok(LiveSet._test.status().underruns === u0, `no underrun across the preset switch (${u0} → ${LiveSet._test.status().underruns})`);
-const knob = pads[0].querySelector('.lv-knob'); knob.value = '-0.6'; knob.dispatchEvent(new Event('input', { bubbles: true }));
-await until(() => Math.abs((LiveSet._test.status()?.pads?.[sc0().pads[0].id]?.fx ?? 0) + 0.6) < 1e-6, 4000, 'the knob in the host'); ok(/Low-pass/.test(pads[0].querySelector('.lv-fx').textContent), 'the pad\'s knob filters it in the host: ' + pads[0].querySelector('.lv-fx').textContent);
+const pad1 = () => document.querySelector(`.lv-view .lv-pad[data-pad="${sc0().pads[0].id}"]`); // (sweep69) the pads are drawn again once the set arms and its run recorder starts: read the pad on screen, not the one clicked before
+const knob = pad1().querySelector('.lv-knob'); knob.value = '-0.6'; knob.dispatchEvent(new Event('input', { bubbles: true }));
+await until(() => Math.abs((LiveSet._test.status()?.pads?.[sc0().pads[0].id]?.fx ?? 0) + 0.6) < 1e-6, 4000, 'the knob in the host'); ok(/Low-pass/.test(pad1().querySelector('.lv-fx').textContent), 'the pad\'s knob filters it in the host: ' + pad1().querySelector('.lv-fx').textContent);
 
 // 4. rehearse, panic, keep the run
 await click('.lv-view button', /^● Rehearse$/); await until(() => LiveSet._test.status()?.run, 5000, 'recording'); ok(!document.querySelector('.lv-rec').hidden, '● REC shows while rehearsing');
@@ -107,6 +108,7 @@ await Lazy.load('questjournal'); await QuestParisUI.journal(); const J = QuestJo
 await J.mutate(st => { const c = QuestParis.startPersonal(st, 'openmic'); for (const q of c.quests.slice(0, 2)) st.records[q.id] = { startedAt: new Date().toISOString(), completedAt: new Date().toISOString() }; return c; }, 'test: the first two steps done');
 activate('tool:creative'); await click('.wb-sound-desk button', /^🎤 Live set$/); await until(() => document.querySelector('.lv-view .lv-run'), 8000, 'the Live set again, with its last run');
 await click('.lv-view button', /^Offer as open-mic proof$/); await until(() => set().runs[0].proof, 30000, 'the proof');
+await until(() => H.activeId === 'tool:quests' && document.querySelector('.qj dialog[open]'), 15000, 'the offered quest opens in Life'); // (sweep69) the offer opens its quest after saving the proof; wait for it so it can't land after the Rehearse click below
 const qs = J.ui().state(), camp = qs.campaigns.find(c => c.id === 'c-pq-openmic'), item = qs.submissions[set().runs[0].proof.quest].at(-1);
 ok(camp.quests.length === 4 && set().runs[0].proof.step === 'Decide your own next step' && /Live set run/.test(item.proof.excerpt) && /cannot hear/.test(item.proof.coverage) && !QuestCore.done(qs, set().runs[0].proof.quest), 'the rehearsal is proof for “Decide your own next step” (Go to an open mic, 4 steps); no XP before a review');
 J.ui().questDetail(camp.quests[2].id); const rehearse = await until(() => [...document.querySelectorAll('button')].find(b => b.textContent === '🎤 Rehearse your set'), 8000, 'the quest card\'s button');

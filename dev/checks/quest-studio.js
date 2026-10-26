@@ -8,8 +8,8 @@ const root = () => document.querySelector('.qj');
 const scope = () => root().querySelector('dialog[open]') || root();
 const press = async (name, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === name); check(b, 'Button available: ' + name); b.click(); await until(() => !b.disabled); await wait(60); };
 const field = (name, value) => { const n = scope().querySelector(`[aria-label="${name}"]`); check(n, 'Field available: ' + name); n.value = value; n.dispatchEvent(new Event('input', { bubbles: true })); n.dispatchEvent(new Event('change', { bubbles: true })); };
-const rail = document.querySelector('#agent-buttons [data-id="tool:quests"]');
-check(rail && rail.querySelector('svg') && rail.title.includes('Sidequest Studio'), 'studio has a named SVG rail button before lazy load');
+const rail = document.querySelector('#agent-buttons [data-space="life"]');
+check(rail && rail.querySelector('svg') && rail.title === 'Life', 'studio has a named SVG rail button before lazy load');
 check(!Lazy.isIn('questjournal'), 'studio code remains lazy at startup'); rail.click();
 await until(() => root()?.querySelector('.qj-hero h2'));
 check(H.activeId === 'tool:quests', 'main menu button opens studio');
@@ -23,8 +23,10 @@ const s = () => QuestJournal.snapshot(), C = QuestCore;
 // Deterministic review response in the throwaway test profile; never called in the live app.
 QuestReview.run = () => ({ promise: Promise.resolve({ status: 'reviewed', score: 60, dimensions: [15,15,15,15], meetsBrief: true, summary: 'Test fixture review.', better: 'Tighten one transition.', next: 'Export a changed transition.', coverage: 'Fixture text.', limitations: 'Mock reviewer; no artistic judgment.' }), cancel() {} });
 check(root().dataset.motion === 'on' && getComputedStyle(root().querySelector('.qj-quest-object .qj-art')).animationPlayState === 'running', 'ambient motion runs in the visible studio');
-await press('Motion on'); check(s().motion === false && root().dataset.motion === 'off' && getComputedStyle(root().querySelector('.qj-quest-object .qj-art')).animationPlayState === 'paused', 'motion control pauses ambience and saves preference');
-await press('Motion off');
+// (sweep69) the motion switch moved into Life's Settings dialog ("Reduce motion" / "Enable motion")
+const motionSwitch = async name => { await press('Settings'); await press(name, root().querySelector('dialog[open]')); root().querySelector('dialog[open]')?.close(); await wait(60); };
+await motionSwitch('Reduce motion'); check(s().motion === false && root().dataset.motion === 'off' && getComputedStyle(root().querySelector('.qj-quest-object .qj-art')).animationPlayState === 'paused', 'motion control pauses ambience and saves preference');
+await motionSwitch('Enable motion');
 activate(H.agents().find(a => a.mode === 'native').id); await wait(120); check(root().dataset.motion === 'off', 'hidden studio pauses its animations');
 activate('tool:quests'); await wait(120); check(root().dataset.motion === 'on', 'returning to studio resumes motion');
 await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] } }); await wait(100);
@@ -36,31 +38,31 @@ root().querySelector('.qj-skipped').open = true; await press('Revisit quest', ro
 check(root().querySelector('.qj-hero h2').textContent === first.title && !C.skipped(s(), first.id), 'set-aside drawer restores a quest');
 await press(window.QuestGuide?.open ? 'Quest details' : 'Begin quest →'); await press('Focus for 5 minutes'); // (questfix65) with Codex's guided companion the hero's primary is "Continue with helper →" (its own window); "Quest details" opens the quest in the Studio
 await press('Skip for now →'); check(s().focus === null, 'skip also clears that quest focus timer');
-const daily = root().querySelector('.qj-side'); const title = daily.querySelector('h3').textContent;
-await press('Not today', daily); check(![...root().querySelectorAll('.qj-side h3')].some(n => n.textContent === title) && C.xp(s()) === 0, 'declined daily suggestion disappears without XP');
-await press('+ Suggest a quest'); field('Quest idea', 'Kitchen <drums>'); field('A small finish line', 'Save one eight-bar loop'); field('Idea quest size', '5'); await press('Save for next time');
+// (sweep69) Life's Today page no longer lists daily invitations with "Not today" (only accepted side quests); the idea
+// box lives in Find a quest › Saved ideas & cards
+await press('Find a quest'); const kept = () => root().querySelector('.qj-catalog-kept');
+await press('+ Suggest a quest', kept()); field('Quest idea', 'Kitchen <drums>'); field('A small finish line', 'Save one eight-bar loop'); field('Idea quest size', '5'); await press('Save for next time');
 check(s().ideas.length === 1 && s().ideas[0].minutes === 5 && root().querySelector('.qj-idea-row strong').textContent === 'Kitchen <drums>', 'personal idea stays literal and queued');
-await press('Edit idea'); field('Quest idea', 'Kitchen drums'); await press('Save for next time');
-await press('Make this my quest'); const ideaQuest = s().ideas[0].questId;
+await press('Edit idea', kept()); field('Quest idea', 'Kitchen drums'); await press('Save for next time');
+await press('Make this my quest', kept()); const ideaQuest = s().ideas[0].questId;
 check(ideaQuest && C.xp(s()) === 0 && scope().textContent.includes('Save one eight-bar loop'), 'accepting idea creates an uncompleted side quest');
 await press('I reached the finish line →');
 field('External chat link', 'https://chatgpt.com/c/studio-fixture'); field('Paste the actual result from that chat', 'Fixture work: eight bars of kitchen percussion, with a kick pattern and a varied snare.'); await press('Use this pasted result'); await press('Submit proof & ask Astra'); await press('Complete quest · +20 XP');
 check(C.xp(s()) === 20 && C.done(s(), ideaQuest), 'user idea finishes through the real completion flow');
-await press('+ Suggest a quest'); field('Quest idea', 'Try a watery shader'); field('A small finish line', 'Keep one still'); field('Idea skill path', 'visual'); await press('Save for next time');
-await press('Motion on'); root().querySelector('.qj-celebrate')?.remove(); document.querySelectorAll('.toast-x').forEach(b => b.click());
+QuestJournal.navigate('catalog'); await wait(60); await press('+ Suggest a quest', kept()); field('Quest idea', 'Try a watery shader'); field('A small finish line', 'Keep one still'); field('Idea skill path', 'visual'); await press('Save for next time');
+await motionSwitch('Reduce motion'); root().querySelector('.qj-celebrate')?.remove(); document.querySelectorAll('.toast-x').forEach(b => b.click());
 root().scrollTop = 0;
 await smoke({ shot: window.SMOKE_SAVES + '/studio-next.png' });
 await smoke({ cdp: 'Emulation.setDeviceMetricsOverride', params: { width: 760, height: 900, deviceScaleFactor: 1, mobile: false } }); await wait(150);
 check(root().scrollWidth <= root().clientWidth + 2, 'idea box, motion controls and menu fit a narrow panel');
-root().querySelector('.qj-idea-box').scrollIntoView({ block: 'center' }); await smoke({ shot: window.SMOKE_SAVES + '/studio-ideas-narrow.png' });
+kept().open = true; root().querySelector('.qj-idea-box').scrollIntoView({ block: 'center' }); await smoke({ shot: window.SMOKE_SAVES + '/studio-ideas-narrow.png' });
 await smoke({ cdp: 'Emulation.clearDeviceMetricsOverride' });
 await QuestJournal.flush();
 return `Studio: ${checks} checks passed (rail, placement migration, motion, skips, ideas and narrow layout).`;
 //@@ reload
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+document.querySelector('#agent-buttons [data-space="life"]').click();
 for (let i = 0; i < 150 && !document.querySelector('.qj-hero h2'); i++) await new Promise(r => setTimeout(r, 60));
 const saved = QuestJournal.snapshot();
 if (saved.motion !== false || document.querySelector('.qj').dataset.motion !== 'off') throw Error('Motion preference was not restored');
 if (!QuestCore.skipped(saved, 'q-material-seed') || QuestCore.xp(saved) !== 20 || saved.ideas.filter(i => !i.questId)[0]?.title !== 'Try a watery shader') throw Error('Skipped quest, idea or XP did not survive reload');
-if (saved.sideQuests.filter(q => QuestCore.skipped(saved, q.id)).length !== 1) throw Error('Declined daily suggestion was not preserved');
 return 'Studio reload preserves skipped quests, pending ideas, completed personal quest, XP and motion preference.';

@@ -49,6 +49,7 @@ step('the chip stays inside the rail (one chip, not a row)', r.left >= rail.left
 await idle(1500, 'journal shown');
 
 // ---------- 3. chat: /quest, /quest next, /quest done (no Studio open: the tracker saves by the Studio's rules) ----------
+activate(agent); await wait(200); // (sweep69) Hearth now starts on the Projects desk (lazyfix66): /quest is typed in a chat, so be in one
 const before = document.querySelectorAll('.surface.active .note, .surface.active [class*="note"]').length;
 await run('/quest'); await wait(200);
 const chatText = () => document.querySelector('.surface.active')?.textContent || '';
@@ -68,7 +69,9 @@ const studioBtn = (t) => [...document.querySelectorAll('.qj button')].find((b) =
 // (questfix65) with Codex's guided companion (QuestGuide) the hero's primary is always "Continue with helper →"; a started quest
 // then shows in the Studio as its small-start XP in the header, so "repainted" = that header matches the saved journal
 const xpShown = () => document.querySelector('.qj .qj-xp-line strong')?.textContent === `${C.xp(QuestJournal.snapshot()).toLocaleString()} XP`;
-const continued = () => (window.QuestGuide?.open ? Boolean(studioBtn('Continue with helper →')) && xpShown() && C.xp(QuestJournal.snapshot()) > 0 : Boolean(studioBtn('Continue quest →')));
+// (sweep69) Codex's Life space labels a started quest's hero button "Continue quest →" with or without the guide
+// ("Continue with helper →" is gone); the header XP still has to match the saved journal
+const continued = () => Boolean(studioBtn('Continue quest →') || studioBtn('Continue with helper →')) && (!window.QuestGuide?.open || (xpShown() && C.xp(QuestJournal.snapshot()) > 0));
 step('Studio → shows the first move the chat checked off', continued() && C.record(QuestJournal.snapshot(), q0.id).startedAt, document.querySelector('.qj-hero h2')?.textContent);
 studioBtn('Skip for now →').click();
 await until(() => chip().getAttribute('aria-label').includes(q1.title), 'chip follows the Studio');
@@ -157,7 +160,10 @@ if (lab) {
   step('in the Lab: the chip shows, off the preview', vis(chip()) && (!prev || c.right <= prev.left + 1), { chip: Math.round(c.right), preview: prev && Math.round(prev.left) });
   QuestHud.open(); await until(() => panel(), 'panel in the Lab'); await wait(150);
   const pl = panel().getBoundingClientRect();
-  step('in the Lab: the open panel sits over the chats list, not the preview', !prev || pl.right <= prev.left + 1, { panel: Math.round(pl.right), preview: prev && Math.round(prev.left) });
+  // (sweep69) Codex's three-spaces layout has no chats list beside the Lab any more (the preview starts at the rail):
+  // when there is no room left of the preview, the open panel may cover its edge but never the picture's middle
+  const room = !prev || prev.left >= pl.width;
+  step(room ? 'in the Lab: the open panel sits over the chats list, not the preview' : 'in the Lab: the open panel keeps off the middle of the preview', !prev || (room ? pl.right <= prev.left + 1 : pl.right <= prev.left + prev.width / 2), { panel: Math.round(pl.right), preview: prev && [Math.round(prev.left), Math.round(prev.width)] });
   await smoke({ shot: `${window.SMOKE_TMP || window.SMOKE_SAVES}/questhud-lab.png` });
   QuestHud.close();
   activate(agent); await wait(200);
