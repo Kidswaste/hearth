@@ -1,6 +1,6 @@
 # Round 67 plan: direction, taste, honesty
 
-Status: stream 1 built (see `astrafix67.md`); streams 3-5 in their own sessions; stream 2 next. Stays clear of round 66 (map pin, weekend plan, music
+Status: all five streams built (stream 1 `astrafix67.md`, 2 `direction67.md`, 3 `moodqualities67.md`, 4 `credits67.md`, 5 `finishlines67.md`).
 session log, map buttons and layers, startup fix).
 
 What the code research found, in short: most of the building blocks already exist. The trouble
