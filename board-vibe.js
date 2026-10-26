@@ -74,13 +74,14 @@ const BoardVibe = (() => {
     // texture: Sobel edges and fine grain (difference from a 3×3 blur)
     let edgeN = 0; let grad = 0; let grain = 0;
     const G = new Float32Array(n);
+    const ori = new Float64Array(12); // (round 67) edge directions in 15° steps, weighted by strength: the shape language
     let cx = 0; let cy = 0; let cw = 0;
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         const i = y * w + x;
         const gx = -Y[i - w - 1] - 2 * Y[i - 1] - Y[i + w - 1] + Y[i - w + 1] + 2 * Y[i + 1] + Y[i + w + 1];
         const gy = -Y[i - w - 1] - 2 * Y[i - w] - Y[i - w + 1] + Y[i + w - 1] + 2 * Y[i + w] + Y[i + w + 1];
-        const m = Math.hypot(gx, gy) / 4; G[i] = m; grad += m; if (m > 0.09) edgeN++;
+        const m = Math.hypot(gx, gy) / 4; G[i] = m; grad += m; if (m > 0.09) { edgeN++; ori[Math.floor(((Math.atan2(gy, gx) + Math.PI) % Math.PI) / (Math.PI / 12)) % 12] += m; }
         const blur = (Y[i - w - 1] + Y[i - w] + Y[i - w + 1] + Y[i - 1] + Y[i] + Y[i + 1] + Y[i + w - 1] + Y[i + w] + Y[i + w + 1]) / 9;
         grain += Math.abs(Y[i] - blur);
         const wgt = Math.abs(Y[i] - light) + m * 2;
@@ -113,11 +114,15 @@ const BoardVibe = (() => {
     for (let y = 2; y < h - 2; y++) { let v = 0; for (let x = 0; x < w; x++) v += Math.abs(Y[(y + 1) * w + x] - Y[(y - 1) * w + x]); v /= w; rowMean += v; if (v > bestV) { bestV = v; bestRow = y; } }
     rowMean /= Math.max(1, h - 4);
     const horizon = bestRow > 0 && bestV > rowMean * 3 && bestV > 0.08 ? r2(bestRow / (h - 1)) : null;
+    // shape language: share of edge strength along horizontals / verticals (bins around 0° and 90°), along diagonals,
+    // and how evenly it spreads over every direction (curves spread evenly; 1 = perfectly even)
+    const oriT = ori.reduce((a, b) => a + b, 0);
+    const shape = oriT ? { straight: r2((ori[0] + ori[11] + ori[5] + ori[6]) / oriT), diagonal: r2((ori[2] + ori[3] + ori[8] + ori[9]) / oriT), spread: r2(-ori.reduce((a, b) => (b ? a + (b / oriT) * Math.log(b / oriT) : a), 0) / Math.log(12)) } : null;
     const hueTotal = hues.reduce((a, b) => a + b, 0);
     const hueFamilies = hueTotal ? hues.map((v, i) => [i * 30, v / hueTotal]).filter(([, v]) => v > 0.12).sort((a, b) => b[1] - a[1]).map(([deg]) => deg) : [];
     return {
       palette: palette(data, n > 20000 ? 3 : 2), light: r2(light), contrast: r2(contrast), sat: r2(sat), colorful: r2(colorful), warmth: r2(warmth),
-      edges: r2(edges), grain: r2(grainV), centroid, thirds: r2(clamp(1 - thirdsDist / 0.24)), centered: r2(clamp(1 - centerDist / 0.3)), symmetry: r2(symmetry), space, horizon, hueFamilies,
+      edges: r2(edges), grain: r2(grainV), centroid, thirds: r2(clamp(1 - thirdsDist / 0.24)), centered: r2(clamp(1 - centerDist / 0.3)), symmetry: r2(symmetry), space, horizon, hueFamilies, shape,
     };
   }
 
@@ -245,7 +250,7 @@ const BoardVibe = (() => {
     const pal = mergePalettes(looks.map((x) => x.palette));
     const out = { ...look, palette: pal, centroid: looks[Math.floor(looks.length / 2)]?.centroid || [0.5, 0.5], horizon: null, hueFamilies: looks[0]?.hueFamilies || [],
       kind: 'clip', duration: r2(dur), size: [vw, vh], aspect: aspectWord(vw, vh), motion, cuts: cuts.slice(0, 40), cutCount: cuts.length, pace, cutsPerMin: dur ? Math.round((cuts.length / dur) * 60) : 0, lightArc,
-      colorDrift: looks.length > 2 ? r2(Math.abs(looks[0].warmth - looks.at(-1).warmth)) : 0 };
+      colorDrift: looks.length > 2 ? r2(Math.abs(looks[0].warmth - looks.at(-1).warmth)) : 0, shape: looks[Math.floor(looks.length / 2)]?.shape || null };
     out.moods = moods({ ...out });
     if (debug) out.diffs = diffs.map((x) => [r2(x.t), Math.round(x.px * 1000) / 1000, Math.round(x.hist * 1000) / 1000]);
     v.removeAttribute('src'); v.load();

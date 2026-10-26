@@ -255,7 +255,7 @@ function directorPlan(prompt, msg, engine) {
     const name = ask.replace(/^(add|make|build|put)\s+(a|an|some|the)?\s*/i, '').slice(0, 24) || 'Layer';
     // a board vibe attached (board.js: "vibe · <name>.txt", or /board-use text): its palette colors the new layer,
     // the reference media itself is never used (round 7: references give a vibe, not footage)
-    const vibe = (prompt.match(/<file name="vibe[^"]*">([\s\S]*?)<\/file>/i) || [])[1] || (/references give a vibe/i.test(prompt) ? prompt : '');
+    const vibe = (prompt.match(/<file name="(?:vibe|qualities|mix)[^"]*">([\s\S]*?)<\/file>/i) || [])[1] || (/references give a vibe|MOODBOARD QUALITIES/i.test(prompt) ? prompt : ''); // (round 67) qualities / mix chips too
     const palette = [...new Set((vibe.match(/#[0-9a-f]{6}\b/gi) || []).map((h) => h.toLowerCase()))];
     if (palette.length) {
       calls.push(['three_add_layer', { name, code: layerCode(name, ask.length, palette[0]) }]);

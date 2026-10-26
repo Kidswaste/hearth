@@ -6,8 +6,10 @@
 //   clip → its key frames as pictures + one short "video, N s" line naming the file; one video chip with the frames
 //   strip in the chat box (× removes them all); the same without ffmpeg (the window's <video> + canvas);
 //   remote picture → fetched once (a second drop reuses the copy);
-//   several tiles, the whole board (the drawer's top strip), 12 pictures (10 + a note), Shift = the vibe text,
-//   right-click › Attach to chat / Attach as vibe text.
+//   several tiles, the whole board (the drawer's top strip), 12 pictures (10 + a note), a plain drop = the qualities text,
+//   right-click › Send the actual picture / Only one part (vibe text).
+// (round 67, moodqualities67) a plain drop now attaches the QUALITIES: the real media is Shift+drop (what `drop` does
+// here by default), the tile's Picture button or right-click › Send the actual picture.
 //   sh dev/board-fixtures.sh && node dev/smoke.js --fake-engines --serve-dir /tmp/hearth-board-fixtures --check-timeout 400000 --script dev/checks/inspodrop65.js --shot /tmp/inspodrop65.png
 const FIX = window.BOARD_FIXTURES || '/tmp/hearth-board-fixtures';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -54,7 +56,7 @@ try {
   BoardDrawer.toggle(true);
   await until(() => document.querySelectorAll('.bdd-tile').length >= 5, 8000);
   const tileOf = (it) => [...document.querySelectorAll('.bdd-tile')].find((t) => t.title.split('\n')[0] === (it.title || it.type));
-  const drop = async (src, { shiftKey = false, payload = null } = {}) => {
+  const drop = async (src, { shiftKey = true, payload = null } = {}) => {
     const dt = new DataTransfer();
     if (payload) dt.setData(BoardDrawer.REF_TYPE, JSON.stringify(payload));
     else src.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
@@ -66,7 +68,7 @@ try {
   const settle = async (n, ms = 30000) => { await until(() => v.attachments.length >= n, ms); await wait(400); };
   const chips = () => [...v.chips.querySelectorAll(':scope > .attach-chip')];
   const inAttach = (p) => String(p || '').startsWith(attDir);
-  ok(/attach the picture itself/.test(tileOf(img)?.title || ''), `a picture tile says what a drag does (${tileOf(img)?.title})`);
+  ok(/the picture itself/.test(tileOf(img)?.title || ''), `a picture tile says what a drag does (${tileOf(img)?.title})`);
 
   // 1. a picture
   v.attachments.length = 0; Native.renderChips(C.id);
@@ -134,9 +136,9 @@ try {
   v.attachments.length = 0; Native.renderChips(C.id);
 
   // 5. several tiles (a chat card / a selection): each picture on its own, a note as its vibe text
-  await drop(null, { payload: { boardId: b.id, itemIds: [img.id, remote.id, note.id] } }); await settle(3);
+  await drop(null, { payload: { boardId: b.id, itemIds: [img.id, remote.id, note.id], picture: true } }); await settle(3);
   out.several = v.attachments.map((a) => `${a.kind}:${a.name}`);
-  ok(v.attachments.filter((a) => a.kind === 'image').length === 2 && v.attachments.some((a) => a.kind === 'text' && /^vibe · /.test(a.name) && /tungsten/.test(a.content)), `several: 2 pictures + the note's vibe (${out.several})`);
+  ok(v.attachments.filter((a) => a.kind === 'image').length === 2 && v.attachments.some((a) => a.kind === 'text' && /^(vibe|qualities) · /.test(a.name) && /tungsten/.test(a.content)), `several: 2 pictures + the note's vibe (${out.several})`);
   v.attachments.length = 0; Native.renderChips(C.id);
 
   // 6. the whole board (the drawer's top strip): its media, clips share the picture budget
@@ -147,29 +149,29 @@ try {
   ok(out.whole.pictures === 2 && out.whole.clips === 2 && out.whole.frames === 6 + calmN && !v.attachments.some((a) => /^vibe · /.test(a.name)), `whole board: 2 pictures + 2 clips (6 + ${calmN} frames), no vibe text (${JSON.stringify(out.whole)})`);
   v.attachments.length = 0; Native.renderChips(C.id);
 
-  // 7. Shift while dropping: the vibe text as before
-  await drop(tileOf(img), { shiftKey: true }); await settle(1);
-  ok(v.attachments.length === 1 && v.attachments[0].kind === 'text' && /^vibe · /.test(v.attachments[0].name), `Shift+drop: the vibe text (${v.attachments[0]?.name})`);
+  // 7. a plain drop (round 67): the qualities text, not the picture
+  await drop(tileOf(img), { shiftKey: false }); await settle(1);
+  ok(v.attachments.length === 1 && v.attachments[0].kind === 'text' && /^qualities · /.test(v.attachments[0].name), `plain drop: the qualities text (${v.attachments[0]?.name})`);
   v.attachments.length = 0; Native.renderChips(C.id);
 
-  // 8. right-click a tile: Attach to chat / Attach as vibe text
+  // 8. right-click a tile: Send the actual picture / Only one part (vibe text)
   const t8 = tileOf(img); const tr = t8.getBoundingClientRect();
   t8.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: tr.left + 5, clientY: tr.top + 5 }));
   await wait(200);
   out.tileMenu = menuRows().map((x) => x.textContent.trim());
-  ok(out.tileMenu.some((x) => /^Attach to chat/.test(x)) && out.tileMenu.some((x) => /Attach as vibe text/.test(x)) && out.tileMenu.some((x) => /Show it to a chat/.test(x)), `tile menu (${out.tileMenu.slice(0, 5)})`);
-  menuRows().find((x) => /^Attach to chat/.test(x.textContent.trim()))?.click();
+  ok(out.tileMenu.some((x) => /^Send the actual picture/.test(x)) && out.tileMenu.some((x) => /Only one part \(vibe text\)/.test(x)) && out.tileMenu.some((x) => /Show it to a chat/.test(x)), `tile menu (${out.tileMenu.slice(0, 5)})`);
+  menuRows().find((x) => /^Send the actual picture/.test(x.textContent.trim()))?.click();
   await settle(1);
-  ok(v.attachments.length === 1 && v.attachments[0].kind === 'image', 'right-click › Attach to chat → the picture');
+  ok(v.attachments.length === 1 && v.attachments[0].kind === 'image', 'right-click › Send the actual picture → the picture');
   v.attachments.length = 0; Native.renderChips(C.id);
   t8.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: tr.left + 5, clientY: tr.top + 5 }));
   await wait(200);
-  menuRows().find((x) => /Attach as vibe text/.test(x.textContent))?.click();
+  menuRows().find((x) => /Only one part \(vibe text\)/.test(x.textContent))?.click();
   await wait(300);
   const sub = menuRows().map((x) => x.textContent.trim());
   menuRows().find((x) => /→/.test(x.textContent) && !/back/.test(x.textContent))?.click();
   await settle(1);
-  ok(v.attachments.length === 1 && /^vibe · /.test(v.attachments[0]?.name || ''), `right-click › Attach as vibe text › … → the vibe (${sub.slice(0, 3)})`);
+  ok(v.attachments.length === 1 && /^vibe · /.test(v.attachments[0]?.name || ''), `right-click › Only one part (vibe text) › … → the vibe (${sub.slice(0, 3)})`);
   closeMenu();
   v.attachments.length = 0; Native.renderChips(C.id);
 
