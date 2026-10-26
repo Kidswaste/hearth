@@ -53,3 +53,11 @@
 .qml-row small{color:#a79fb3;font-size:10.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .qj .qj-atlas .qml-panel .qml-done{justify-self:end;margin-top:4px;min-height:28px;padding:4px 12px}
 @container(max-width:760px){.qj-atlas .qml-panel{bottom:66px;max-height:calc(100% - 124px)}}
+/* (round 68, dialogperf68) while a Studio dialog is up (html.qj-modal-up, quest-journal.js dialog()) the rest of the app
+   skips style too: a modal makes the whole page inert, so the rail, side panel, main's bars, the hidden surfaces and the
+   Studio's header were restyled inside every dialog click. They're under the 0.86 backdrop and come back on close.
+   Sizes are kept (contain-intrinsic-size auto = the last size drawn): nothing moves, no resize watcher wakes. Each
+   selector ends in an id / class, so it's only tried on those elements. Here (lazy, with the Studio), not in app.css:
+   the first screen's CSS budget. */
+#rail,#panel,#app>main>.workspace-switcher,#app>main>.meter-strip,#broadcast,#error,.surface>.tool-head,.tool-dock,.tool-dock-divider{contain-intrinsic-size:auto none}
+html.qj-modal-up #rail,html.qj-modal-up #panel,html.qj-modal-up #app>main>.workspace-switcher,html.qj-modal-up #app>main>.meter-strip,html.qj-modal-up #broadcast,html.qj-modal-up #error,html.qj-modal-up #surfaces:not(.grid)>.surface:not(.active):not(.capturing),html.qj-modal-up #surfaces:not(.grid)>.surface.active>.tool-head,html.qj-modal-up #surfaces:not(.grid)>.surface.active .tool-dock,html.qj-modal-up #surfaces:not(.grid)>.surface.active .tool-dock-divider{content-visibility:hidden}
