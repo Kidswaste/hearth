@@ -44,7 +44,7 @@ Counted honestly: one line per thing you can see or use.
 - `projbundle-core.js` (pure, Node + window): the format, the zip-slip / size / version guards, secrets scrub, `prepare` (chats / files as chosen), `remap` (fresh ids + every link), `canon` (deep compare minus ids, for checks).
 - `projbundlemain.js` (main, loaded on first use through `lazyIpc`): the streamed zip writer (each entry's header patched after its bytes stream through a CRC counter; Zip64 for files ≥ 4 GB), `peek`, `unpack` (streamed inflate with a size cap, CRC check, `wx` writes inside `data/assets/projects/` only, free-space check), cancel per job.
 - `projbundle.js` + `projbundle.css` (new lazy group **projbundle**, tier `use`: nothing loads until one of the three clicks).
-- Small hooks: `tools/three.js` `ThreeLab.scenes.adoptScene()` (a scene under its fresh id with its extras, references, notes, still and cues), `tools/three-media.js` `player.adoptMap()`, one `lazyIpc` line in `main.js`, one `projbundle` line in `preload.js`.
+- Small hooks: `tools/three.js` `ThreeLab.scenes.adoptScene()` (a scene under its fresh id with its extras, references, notes, still and cues), `tools/three-media.js` `player.adoptMap()`, one `lazyIpc` line in `main.js`, one `projbundle` line in `preload.js`, `projbundle` added to the existing `lazy-at.js#…,projects,…` tag in `index.html` (no new script tag; first screen unchanged at 1865 / 1866 KB).
 - An export never changes what it exports: the scene in the editor is read as it is on screen without saving it.
 
 ## Tested

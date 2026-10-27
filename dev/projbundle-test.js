@@ -201,14 +201,14 @@ ok('cancel: an export stopped mid-file leaves no file and no .part; an unpack st
   w('music/huge.wav', Buffer.alloc(120 * 1048576, 3));
   const b = C.prepare({ project: { id: 'p', name: 'Huge', items: [] }, scenes: [{ id: 's', sketch: { id: 's', name: 'S', code: '' }, extras: { media: { path: path.join(SRC, 'music/huge.wav') } }, refs: [], notes: [] }] }).body;
   const out = path.join(OUT, 'Huge.hearthproject');
-  const sender = { send: (_c, d) => { if (d.phase === 'write' && d.done > 10 * 1048576) M.cancel('jc'); }, isDestroyed: () => false };
+  const sender = { send: (_c, d) => { if (d.phase === 'write') M.cancel('jc'); }, isDestroyed: () => false }; // (the first progress event: before any bytes are through)
   const r = await M.exportBundle({ body: b, name: 'Huge', job: 'jc', out }, sender);
   assert.deepStrictEqual(r, { ok: false, canceled: true });
   assert.ok(!fs.existsSync(out) && !fs.existsSync(`${out}.part`));
   const r2 = await M.exportBundle({ body: b, name: 'Huge', job: 'jd', out });
   assert.ok(r2.ok);
   const before2 = fs.existsSync(path.join(DATA, 'assets', 'projects')) ? fs.readdirSync(path.join(DATA, 'assets', 'projects')).length : 0;
-  const sender2 = { send: (_c, d) => { if (d.phase === 'unpack' && d.done > 10 * 1048576) M.cancel('je'); }, isDestroyed: () => false };
+  const sender2 = { send: (_c, d) => { if (d.phase === 'unpack') M.cancel('je'); }, isDestroyed: () => false };
   const u = await M.unpack({ file: out, job: 'je' }, sender2);
   assert.ok(u.canceled, JSON.stringify(u));
   assert.strictEqual(fs.readdirSync(path.join(DATA, 'assets', 'projects')).length, before2);
