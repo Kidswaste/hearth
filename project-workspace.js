@@ -113,9 +113,6 @@ window.ProjectWorkspace = (() => {
         const early=C.resume(p,{...returnPoint(id),...options,...(tab?{tab}:{})},H.chats,[]).chatId,chatRead=early?Native.load(early):null;chatRead?.catch(()=>{});
         await Promise.all([Lazy.load('lab'),Lazy.load('board'),Lazy.load('creative')]);
         const desk=WorkbenchUI.setProject(p.id,{title:p.name,plugins:C.workspace(p.workspace).plugins});desk.catch(()=>{});
-        // the Lab mounting for the first time opens the scene of the chat on screen: this project's chat is put there
-        // first, so the Lab's first page is the project's scene (not the last Lab scene, released and loaded again)
-        const first=H.chats.find(x=>x.id===early);if(first&&!ThreeLab.workspace)Native.selectChat(first.agentId,first.id);
         await ThreeLab.cmd({show:false});cancelled(controller.signal);
         active=id;const point=C.resume(p,{...returnPoint(id),...options,...(tab?{tab}:{})},H.chats,ThreeLab.scenes.all());
         conversationId=point.chatId;conversationScene=point.sceneId;tab=point.tab;
