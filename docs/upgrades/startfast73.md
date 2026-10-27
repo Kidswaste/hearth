@@ -23,19 +23,20 @@ failures, which turned out to be real.
 - The machine is this shared 4-CPU box with software GL, with other streams running at the same time. Base (main
   3790ef2) and new runs were interleaved. Counts and bytes are exact; times move by ±30 %, so compare medians.
 
-## Numbers (big profile, cold start, ms since the process started; medians, base n = 5, new n = 6)
+## Numbers (big profile, cold start, ms since the process started; medians, base n = 5, new n = 8)
 | What | Before | After | |
 |---|---:|---:|---|
 | Window on screen | 533 | 531 | same |
-| **First usable chat** (Hearth's ready mark: the chat and its box drawn, typing works) | 1,259 | **936** | −26 % |
+| **First usable chat** (Hearth's ready mark: the chat and its box drawn, typing works) | 1,259 | **958** | −24 % |
 | … of which waiting for the chats list (splash "chats") | 309 | **78** | −75 % |
 | … the page loaded → first usable chat | 354 | **122** | −66 % |
-| **Settled** (the window's last long task) | 1,656 | **1,183** | −29 % |
-| Every feature loaded | 5,536 | 5,220 | −6 % |
+| **Settled** (the window's last long task) | 1,656 | **1,303** | −21 % |
+| Every feature loaded | 5,536 | 5,226 | −6 % |
 | Keys typed from the first screen on: slowest handlers | 4–6 ms | 3–8 ms | same (typing was never blocked) |
 | Window long tasks before the first usable chat | 50–107 ms (1–2) | 52–69 ms (0–1) | |
 | **First-screen code** (what the window parses before its first frame) | 73 scripts · 2,043 KB · 29 sheets · 451 KB CSS | **70 · 1,857 KB · 28 · 423 KB** | −186 KB JS, −28 KB CSS |
-| Data the window took in during its first 8 s (kv reads) | 3.1 MB (2.2 MB Lab scenes, 0.84 MB usage counts…) | Lab scenes' names only when Projects Home shows (a few KB) | |
+| Data the window took in during its first 8 s (kv reads) | 3.1 MB (2.2 MB Lab scenes, 0.84 MB usage counts…) | **0.85 MB** (the Lab scenes' names: 3 KB) | −2.2 MB |
+| The main process answering the chats list | 294 ms | **58 ms** | |
 | Projects Home suggestions (1,600 names) | 60 ms | 42 ms, in an idle moment | |
 
 Idle (`idlecpu`, 10 s each, window wakeups per second / its CPU; budget 1.5, Lab 2):
@@ -168,7 +169,7 @@ their argument hints, the 169 prompt presets and 12 categories, the node view in
 
 ## For the patch notes
 - **Hearth starts faster with a big history.** It now remembers the chats list between starts instead of reading
-  every chat again, so the chats and your chat box are ready about a quarter sooner (here: 1.26 s → 0.94 s with
+  every chat again, so the chats and your chat box are ready about a quarter sooner (here: 1.26 s → 0.96 s with
   1,500 chats).
 - **Less to load before the first picture.** The node view, the prompt presets and some rarely used commands load
   right after the window appears instead of before it (about 9 % less code at startup). Everything still works from
