@@ -103,7 +103,7 @@ footer says where it looked. Nothing is read in the background: only on a click.
   every button named; Escape closes; a project's menu › Earlier versions… → "notes: 1 line changed" → Restore (in the
   window and on disk); Deleted things → a deleted chat → Restore; a Lab scene card › Earlier versions… → a time machine
   version → Preview → Restore.
-- Also run: `unit:sync72-test` (179 / 179), `unit:boot-test`, `projects`, `backupauto`, `lazy` (results in the final report).
+- Also run, all passing: `versions75` (app), `unit:sync72-test` (179 / 179), `unit:boot-test` (2,938), `projects`, `backupauto`, `lazy`, `unit:datasafe-scan`, `unit:winmac-test` (609), `unit:errorcalm-scan`.
 
 ## Numbers
 - First screen: +0.57 KB of code (the lazy group's line + its manifest, one menu row in panel.js): 1865.65 KB, budget 1866.
