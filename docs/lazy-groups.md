@@ -12,6 +12,9 @@ The long notes that used to sit after each group in `lazy-data.js` (moved here i
 - **resume**: (round 13/20) pick up where you left, Freshen, repeated-error fixes
 - **assist**: (round 5) Astra / Claude take decisions off your hands (Lab shuffle & pick, next steps)
 - **kit**: the Kit: colors, easing, palettes, BPM, frame sizes (the Lab's Color / Easing tabs)
+- **promptlib**: (round 73, startfast73) the built-in prompt presets (prompt-library.js): notes.js's Prompts reads them the first time the prompts are listed ("/" menu, /prompt…), not before the first screen
+- **directorcmds**: (round 73, startfast73) the directors' /commands (director-cmds.js: /director cost, undo, activity, mode, engine, width, chips…): commands only, so their stand-ins (names, args, palette rows) are there from the first screen and the file loads in an idle moment after it
+- **nodes**: (round 73, startfast73) the node view (nodes.js + nodes.css, NodeView): asap, right after the first frame and before the Lab (`lab`, `codeflow` and `flows` load it first: `after`); a code block's Nodes button is there from the start and loads it when clicked
 - **safetynet**: (round 29) Hearth never loses work: the work journal + the card after an unexpected exit (first of the 'soon' groups: it keeps from the start)
 - **polish8**: (round 40, firstscreen) board / capture menus and keys (round 8)
 - **a11y**: (round 40, a11y) names, roles, focus return, polite announcements: right after the first frame

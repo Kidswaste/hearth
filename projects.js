@@ -101,6 +101,9 @@ const Projects = (() => {
   const liveBoard = () => (loadedLazy('board') && typeof Board !== 'undefined' && Board.boards?.().length ? Board : null);
   const Src = {
     sketches: () => cached('sketches', 20000, async () => labScenes()?.all?.() || (await window.hub.kvGet('three-sketches', [])) || []),
+    // (round 73, startfast73) the scenes' ids, names and times only (Home's cards, suggestions, timing): a few KB instead of
+    // every scene's code (2 MB with 50 scenes, ≈ 0.1–0.2 s for the window to take in when Home is the first screen)
+    sceneList: () => cached('sceneList', 20000, async () => labScenes()?.all?.() || (await window.hub.kvPick?.('three-sketches', ['id', 'name', 'updatedAt']).catch(() => null)) || (await Src.sketches())),
     // the Lab's own small stills (kv 'three-thumbs', taken a few seconds after a scene runs)
     sceneThumbs: () => cached('sceneThumbs', 120000, async () => (await window.hub.kvGet('three-thumbs', {})) || {}),
     // (the board's own index and the board on screen when the board is loaded: they're ahead of their saves)
@@ -122,11 +125,11 @@ const Projects = (() => {
   addEventListener('hearth:synced', (e) => {
     const rels = (e.detail?.files || []).map((f) => f.rel);
     if (rels.includes('kv/projects.json')) reloadFromDisk();
-    if (rels.some((r) => /^kv\/(three-sketches|three-thumbs)\.json$/.test(r))) forget('sketches', 'sceneThumbs');
+    if (rels.some((r) => /^kv\/(three-sketches|three-thumbs)\.json$/.test(r))) forget('sketches', 'sceneList', 'sceneThumbs');
     if (rels.some((r) => /^kv\/boards?/.test(r))) forget('boards');
     if (rels.some((r) => /^workspace\//.test(r))) forget('workspace');
   });
-  addEventListener('hearth:sketch', () => forget('sketches'));
+  addEventListener('hearth:sketch', () => forget('sketches', 'sceneList'));
   async function reloadFromDisk() {
     try { const d = C.normalize(await window.hub.kvGet(KEY, null)); clearTimeout(saveT); data = d; idx = null; changed(null, 'sync', false); } catch (err) { console.warn('projects from sync', err); }
   }
@@ -136,7 +139,7 @@ const Projects = (() => {
   const IMG = /\.(png|jpe?g|webp|gif)$/i;
   let look = null; // { sketches: Map, thumbs, boards: Map, renders: Map, captures: Map } read by lookFor()
   async function lookFor() {
-    const [sk, th, bd, rn, cp] = await Promise.all([Src.sketches(), Src.sceneThumbs(), Src.boards(), Src.renders(), Src.captures()]);
+    const [sk, th, bd, rn, cp] = await Promise.all([Src.sceneList(), Src.sceneThumbs(), Src.boards(), Src.renders(), Src.captures()]);
     look = { sketches: new Map((sk || []).map((s) => [s.id, s])), thumbs: th || {}, boards: new Map((bd || []).map((b) => [b.id, b])), renders: new Map((rn || []).map((r) => [r.id, r])), captures: new Map((cp || []).map((c) => [c.path, c])) };
     return look;
   }

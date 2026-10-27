@@ -86,9 +86,35 @@ function entryOf(chat, st) {
   const keep = Boolean(texts) && textChars + n <= TEXT_CAP;
   if (keep) textChars += n;
   const { id, agentId, title, updatedAt, pinned, model } = chat;
-  return { size: st.size, mtimeMs: st.mtimeMs, sum: { id, agentId, title, updatedAt, pinned: Boolean(pinned), model }, texts: keep ? texts : null, n: keep ? n : 0 };
+  return { size: st.size, mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, sum: { id, agentId, title, updatedAt, pinned: Boolean(pinned), model }, texts: keep ? texts : null, n: keep ? n : 0 };
 }
-function drop(file) { const e = index.get(file); if (e) { textChars -= e.n; index.delete(file); } }
+function drop(file) { const e = index.get(file); if (e) { textChars -= e.n; index.delete(file); rows.dirty = true; } }
+// (round 73, startfast73) the list's rows kept on disk between starts (data/.cache/chat-list.json: this computer only,
+// never synced; a cache). The first list of a session used to read and parse every chat file (≈ 0.45 s with 1,500 chats,
+// 140 MB): now a file whose size and modified time match its kept row isn't read; changed / new files are, as before.
+const rows = { file: null, loaded: false, dirty: false, t: null };
+function rowsLoad(cacheFile, dir) {
+  if (rows.loaded || !cacheFile) return;
+  rows.loaded = true; rows.file = cacheFile;
+  let j = null;
+  try { j = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch { return; }
+  if (j?.v !== 1 || !j.rows || typeof j.rows !== 'object') return;
+  for (const [name, r] of Object.entries(j.rows)) {
+    const file = path.join(dir, name);
+    if (index.has(file) || !r || typeof r.size !== 'number' || typeof r.mtimeMs !== 'number' || typeof r.ctimeMs !== 'number' || !r.sum || typeof r.sum !== 'object') continue;
+    index.set(file, { size: r.size, mtimeMs: r.mtimeMs, ctimeMs: r.ctimeMs, sum: r.sum, texts: null, n: 0 });
+  }
+}
+function rowsSave(dir) {
+  if (!rows.file || !rows.dirty || rows.t) return;
+  rows.t = setTimeout(() => {
+    rows.t = null; if (!rows.dirty) return; rows.dirty = false;
+    const out = {};
+    for (const [file, e] of index) if (!e.stub && path.dirname(file) === dir) out[path.basename(file)] = { size: e.size, mtimeMs: e.mtimeMs, ctimeMs: e.ctimeMs, sum: e.sum };
+    try { atomicText(rows.file, JSON.stringify({ v: 1, rows: out })); } catch { /* a cache: the next start reads the files */ }
+  }, 3000);
+  rows.t.unref?.();
+}
 function readChat(file) { try { return JSON.parse(SS.readRetry(dfs, file)); } catch { return null; } }
 // every chat file, fresh: unchanged files come from the index, changed / new ones are read once
 // (round 43, datasafe) a held chat file is read again a few times; one that still can't be read keeps its last row (or
@@ -114,13 +140,13 @@ function chats(dir) {
     const st = stat(file);
     if (!st) continue;
     let e = index.get(file);
-    if (!e || e.size !== st.size || e.mtimeMs !== st.mtimeMs) {
+    if (!e || e.size !== st.size || e.mtimeMs !== st.mtimeMs || (e.ctimeMs != null && e.ctimeMs !== st.ctimeMs)) { // (ctime: a kept row also matches the file's change time)
       const chat = readChat(file);
       if (!chat) { bad += 1; const s = e || { size: -1, mtimeMs: -1, sum: DS.chatStub(f, st), texts: null, n: 0, stub: true }; if (!e) stubs.set(file, s); out.push({ file, e: s }); continue; }
       stubs.delete(file);
       drop(file);
       e = entryOf(chat, st);
-      index.set(file, e);
+      index.set(file, e); rows.dirty = true;
     }
     out.push({ file, e });
   }
@@ -164,11 +190,13 @@ const OPS = {
     if (restored) return { bytes: text.length, restored };
     if (kept) return { bytes: text.length, kept };
     // a chat saved here goes straight into the index (no read back)
-    if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); if (recallIdx) recallIdx.add(file, value, index.get(file)); }
+    if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); rows.dirty = true; rowsSave(path.dirname(file)); if (recallIdx) recallIdx.add(file, value, index.get(file)); }
     return { bytes: text.length };
   },
-  list({ dir, ds }) {
+  list({ dir, ds, cache }) {
+    rowsLoad(cache, dir);
     const list = chats(dir).map(({ e }) => e.sum).sort((a, b) => b.updatedAt - a.updatedAt);
+    rowsSave(dir);
     return ds ? { list, doubt: chats.doubt } : list; // (round 43, datasafe) with what couldn't be read
   },
   search({ dir, query }) {
@@ -212,6 +240,16 @@ const OPS = {
     try { const v = JSON.parse(text); const st = stat(file); if (st) written.set(file, { h: sha(text), size: st.size, mtimeMs: st.mtimeMs }); return v; } catch { /* cut short or garbled */ }
     // (round 29, safetynet) a store that can't be read falls back to its previous version (<name>.prev.json)
     try { return JSON.parse(fs.readFileSync(file.replace(/\.json$/, '.prev.json'), 'utf8')); } catch { return fallback ?? null; }
+  },
+  // (round 73, startfast73) a big list store's rows with only some of their fields (the Lab's scenes' ids, names and
+  // times, without their code): the window gets a few KB instead of MBs. null: not a list, or not readable (the caller
+  // reads the whole store then, with its careful fallbacks)
+  pick({ file, fields }) {
+    let v;
+    try { v = JSON.parse(SS.readRetry(fs, file)); } catch { return null; }
+    if (!Array.isArray(v)) return null;
+    const keys = Array.isArray(fields) ? fields.map(String) : [];
+    return v.filter((x) => x && typeof x === 'object').map((x) => { const o = {}; for (const k of keys) if (x[k] !== undefined) o[k] = x[k]; return o; });
   },
   // the files thread (a second copy of this worker, so a big folder never holds up a save): fsapi's recursive listing
   // and its full-text search of a folder

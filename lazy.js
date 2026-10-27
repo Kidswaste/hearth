@@ -137,9 +137,10 @@ const Lazy = (() => {
     const have = (seen.keys ||= new Set(Keys.all().map((x) => `${x.area}|${x.keys}`)));
     if (have.has(id)) return; // an eager line has these keys
     have.add(id);
-    Keys.add({ area: k.area, keys: k.keys, what: k.what, sel: k.sel || null, run: () => load(g.name).then(() => { const e = stubKeys.get(id); if (e?.run && !e.run.__lazy) e.run(); }) });
+    // (round 73) a line's words come with lazy-meta.js right after the first frame: '…' until then (Keys.add skips a line without words)
+    Keys.add({ area: k.area, keys: k.keys, what: k.what || '…', sel: k.sel || null, run: () => load(g.name).then(() => { const e = stubKeys.get(id); if (e?.run && !e.run.__lazy) e.run(); }) });
     const e = Keys.all().at(-1);
-    if (e && `${e.area}|${e.keys}` === id) { e.run.__lazy = true; stubKeys.set(id, e); }
+    if (e && `${e.area}|${e.keys}` === id) { e.run.__lazy = true; if (!k.what) e.wordsLater = true; stubKeys.set(id, e); }
   }
   function stubBridge(g, prefix) {
     if (typeof HubBridge === 'undefined') return;
@@ -215,7 +216,8 @@ const Lazy = (() => {
   // area, keys…; its description, examples, keywords and undo line are in lazy-meta.js (LazyText, written by
   // dev/lazy-manifest.js), read once right after the first frame, before any group loads (load() waits for it), and put
   // into the stand-ins still waiting for their group. Lazy.text() → Promise (the same one each time).
-  const TEXT_KEYS = ['desc', 'examples', 'keywords', 'undo'];
+  // (round 73, startfast73) + the commands' argument hints and the keys-sheet lines' words ('#keys': { 'area|keys': what })
+  const TEXT_KEYS = ['desc', 'examples', 'keywords', 'undo', 'args'];
   const textOf = (group, name) => (typeof LazyText !== 'undefined' && LazyText[group]?.[name]) || null;
   let textP = null;
   function fillText() {
@@ -225,6 +227,10 @@ const Lazy = (() => {
       const obj = t && stubSelf.get(key);
       if (!obj) continue;
       for (const k of TEXT_KEYS) if (t[k] != null && (obj[k] == null || obj[k] === '')) { obj[k] = t[k]; n += 1; }
+    }
+    for (const g of groups.values()) {
+      const w = typeof LazyText !== 'undefined' && LazyText[g.name]?.['#keys'];
+      if (w) for (const [id, what] of Object.entries(w)) { const e = stubKeys.get(id); if (e && (e.wordsLater || !e.what)) { e.what = what; delete e.wordsLater; } }
     }
     if (n) { try { Commands.addInfo?.({}); } catch { /* the search index rebuilds on its own */ } }
   }

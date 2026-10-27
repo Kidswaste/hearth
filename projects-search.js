@@ -32,7 +32,7 @@ const ProjectsSearch = (() => {
     const L = await P.lookFor();
     for (const p of P.live()) out.push({ type: 'project', ref: p.id, title: p.name, sub: C.countText(p), body: (p.notes || '').toLowerCase(), at: Math.max(p.updated || 0, p.opened || 0), mark: p.ident.glyph, color: p.ident.color });
     for (const c of H.chats || []) out.push({ type: 'chat', ref: c.id, title: c.title || 'Chat', sub: H.agent(c.agentId)?.name || '', at: c.updatedAt || 0 });
-    for (const s of L.sketches.values()) {
+    for (const s of (await P.Src.sketches()) || []) { // (round 73) the scenes whole here (their code is searched): lookFor() has their names only
       const layers = s.layers?.length ? s.layers : [{ name: 'main', code: s.code }];
       const sliders = [...new Set(layers.flatMap((l) => C.sliderNames(l.code)))];
       out.push({ type: 'scene', ref: s.id, title: s.name || 'Scene', sub: `${layers.length} layer${layers.length === 1 ? '' : 's'}${sliders.length ? ` · sliders: ${sliders.slice(0, 6).join(', ')}` : ''}`,

@@ -370,6 +370,7 @@ ipcMain.handle('kv:get', (_e, name, fallback, o) => {
   waiting.set(k, Date.now());
   return syncGate.then(() => { waiting.delete(k); return kvRead(name, fallback, o); });
 });
+ipcMain.handle('kv:pick', (_e, name, fields) => (syncGate ? syncGate.then(() => store.getKVPick(name, fields)) : store.getKVPick(name, fields))); // (round 73) a big list's rows, a few fields each
 ipcMain.handle('kv:set', afterSync((_e, name, value, o) => store.setKV(name, value, o)));
 // (round 20, offmain) how long the main process's thread was blocked since the last ask (event-loop delay: max / p99 in
 // ms, and the store thread's writes): dev/checks/offmain.js measures flows with it; started on the first ask
@@ -796,7 +797,7 @@ function registerAfterWindow() {
     // battery, none while the computer sleeps (was a stat every 5 s per file, always)
     nets.push(() => { if (!w) arm(); check(); });
   }
-  powerwise.every(`config-stat:files`, 10000, () => { for (const net of nets) { try { net(); } catch { /* the next file still checked */ } } });
+  powerwise.every(`config-stat:files`, 10000, () => { for (const net of nets) { try { net(); } catch { /* the next file still checked */ } } }, { hiddenScale: 6 }); // (round 73) hidden: once a minute (fs.watch tells changes first)
   bgmain.register(() => win);
   bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });
   syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)

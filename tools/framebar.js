@@ -74,8 +74,12 @@ const FrameBar = (() => {
       b.dataset.level = f.level;
       S.track.setAttribute('aria-valuenow', String(Math.round(f.fill * 100)));
       S.track.setAttribute('aria-valuetext', `${C().ms1(f.ms)} of ${C().ms1(f.budget)} ms at ${f.hz} Hz`);
-      S.txt.textContent = `${C().ms1(f.ms)} / ${C().ms1(f.budget)} ms`;
-      b.title = `Frame budget: ${C().ms1(f.ms)} ms of a ${C().ms1(f.budget)} ms frame (${f.hz} Hz${pref() === 'auto' ? ', this screen' : ''})${f.gpu ? ' · frames come late: the GPU' : ''}. Point or click: each layer and Why?`;
+      // (round 73, startfast73) words changed in place, the title only when it differs: a new text node / the same title
+      // written again woke every page-wide observer with each stats message (≈ every 3 s on a still picture)
+      const txt = `${C().ms1(f.ms)} / ${C().ms1(f.budget)} ms`;
+      if (S.txt.firstChild?.nodeType === 3) { if (S.txt.firstChild.data !== txt) S.txt.firstChild.data = txt; } else S.txt.textContent = txt;
+      const title = `Frame budget: the time each frame takes (the words next to it) of the ${C().ms1(f.budget)} ms a frame has at ${f.hz} Hz${pref() === 'auto' ? ', this screen' : ''}${f.gpu ? ' · frames come late: the GPU' : ''}. Point or click: each layer and Why?`;
+      if (b.title !== title) b.title = title;
     }
     if (S.card?.isConnected) paintCard();
   }

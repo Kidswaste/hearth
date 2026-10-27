@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('hub', {
   getHistory: call('history:get'),
   saveHistory: call('history:save'),
   kvGet: call('kv:get'),
+  kvPick: call('kv:pick'), // (round 73) a big list store's rows with only some fields: kvPick('three-sketches', ['id', 'name', 'updatedAt'])
   questGuide: call('questguide:call'),
   onQuestGuide: on('questguide:changed'),
   onQuestGuideReview: on('questguide:review'),

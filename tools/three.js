@@ -3081,22 +3081,33 @@ const ThreeLab = (() => {
       const t = !adaptOn ? 'Quality: full' : lighter ? `Quality: auto · ${Math.round(msg.quality * 100)} %` : 'Quality: auto';
       if (qChip.textContent !== t) qChip.textContent = t;
       qChip.classList.toggle('lighter', lighter); qChip.classList.toggle('warn', lighter);
-      qChip.title = lighter ? 'Frames were dropping, so the preview draws lighter while you watch (resolution first, then filters, shadows, particles). Stills, screenshots, recordings and renders stay full quality. Click: Auto or Full.' : adaptOn ? 'Quality: auto — the preview draws lighter only while frames drop (renders stay full). Click: Auto or Full.' : 'Quality: full — the preview always draws at full resolution, even when frames drop. Click: Auto or Full.';
+      const title = lighter ? 'Frames were dropping, so the preview draws lighter while you watch (resolution first, then filters, shadows, particles). Stills, screenshots, recordings and renders stay full quality. Click: Auto or Full.' : adaptOn ? 'Quality: auto — the preview draws lighter only while frames drop (renders stay full). Click: Auto or Full.' : 'Quality: full — the preview always draws at full resolution, even when frames drop. Click: Auto or Full.';
+      if (qChip.title !== title) qChip.title = title; // (round 73) the same title written again still woke every page observer
       return qChip;
     }
     function paintStats(msg) {
       const sig = `${Math.round(msg.fps)}|${msg.quality}|${adaptOn}|${Math.round(msg.worst || 0)}|${msg.ms.toFixed(1)}|${msg.calls}|${msg.triangles}|${msg.points}|${msg.geometries}|${msg.textures}|${msg.programs}`;
       if (sig === statsSig) return;
       statsSig = sig;
-      stats.replaceChildren(
-        el('b', { class: msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok', text: `${Math.round(msg.fps)} fps` }),
-        typeof FrameBar !== 'undefined' ? FrameBar.el() : null, // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
-        qualityChip(msg), // (round 72, labfps72) Quality: auto · 70 % (it was "preview 70%"), a click away from Full
-        msg.worst ? el('span', { class: msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok', text: `worst ${Math.round(msg.worst)} ms`, title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }) : null,
-        el('span', { text: `${msg.ms.toFixed(1)} ms render` }), el('span', { text: `${msg.calls} draw calls` }),
-        el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
-        el('span', { text: `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders` }));
+      // (round 73, startfast73) the line's parts are made once and their words changed in place: a new line every stats
+      // message (≈ every 3 s even on a still, dozing picture) woke three page-wide observers and a pass of a11y each time
+      const fb = typeof FrameBar !== 'undefined' ? FrameBar.el() : null; // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
+      if (!statsParts || statsParts.fb !== fb) {
+        const t = (tag, o) => { const n = el(tag, o || {}); n.append(document.createTextNode('')); return n; };
+        statsParts = { fb, fps: t('b'), worst: t('span', { title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }), ms: t('span'), calls: t('span'), tris: t('span'), points: t('span'), geo: t('span') };
+        const P = statsParts;
+        stats.replaceChildren(P.fps, ...(fb ? [fb] : []), qualityChip(msg), P.worst, P.ms, P.calls, P.tris, P.points, P.geo); // (round 72, labfps72) Quality: auto · 70 %, a click away from Full
+      }
+      const P = statsParts;
+      const put = (n, text, cls) => { if (n.firstChild.data !== text) n.firstChild.data = text; if (cls !== undefined && n.className !== cls) n.className = cls; };
+      qualityChip(msg);
+      put(P.fps, `${Math.round(msg.fps)} fps`, msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok');
+      P.worst.hidden = !msg.worst; if (msg.worst) put(P.worst, `worst ${Math.round(msg.worst)} ms`, msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok');
+      put(P.ms, `${msg.ms.toFixed(1)} ms render`); put(P.calls, `${msg.calls} draw calls`); put(P.tris, `${msg.triangles.toLocaleString()} tris`);
+      P.points.hidden = !msg.points; if (msg.points) put(P.points, `${msg.points.toLocaleString()} points`);
+      put(P.geo, `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders`);
     }
+    let statsParts = null;
     previewHost.addEventListener('mouseenter', () => { if (lastStatsMsg) requestAnimationFrame(() => paintStats(lastStatsMsg)); });
     // (round 64, framebar64) ▮ the frame budget bar lives in the stats line (the fps and the bar stay on screen, the rest
     // of the line shows on hover: tools/framebar.css). The bar only reads the stats; the preview measures each layer
@@ -3243,7 +3254,8 @@ const ThreeLab = (() => {
         // (round 38, inputlatency) asked right after the coming frame, when the page's style is fresh: asked here (a
         // message between two frames, twice a second) it styled and laid out the whole Lab first whenever a drag had
         // just changed it (in the frame's rAF it did the same before the frame's own writes)
-        if (!statsRaf) statsRaf = requestAnimationFrame(() => setTimeout(() => { statsRaf = 0; const vis = stats.checkVisibility({ opacityProperty: true, visibilityProperty: true }); fbShown(vis); if (lastStatsMsg && vis) { paintStats(lastStatsMsg); if (typeof FrameBar !== 'undefined') FrameBar.paint(lastStatsMsg); } }, 0));
+        // (round 73) parked behind a chat or the window hidden: the line can't be seen, nothing is scheduled (the next message after it shows paints it)
+        if (!statsRaf && !parkedNow && document.visibilityState === 'visible') statsRaf = requestAnimationFrame(() => setTimeout(() => { statsRaf = 0; const vis = stats.checkVisibility({ opacityProperty: true, visibilityProperty: true }); fbShown(vis); if (lastStatsMsg && vis) { paintStats(lastStatsMsg); if (typeof FrameBar !== 'undefined') FrameBar.paint(lastStatsMsg); } }, 0));
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (/^audio-/.test(msg.type) && typeof ThreeAudio !== 'undefined' && ThreeAudio.onMessage(msg)) return; // (round 23, labaudio)

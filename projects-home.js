@@ -90,7 +90,9 @@ const ProjectsHome = (() => {
     S.io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { S.io.unobserve(e.target); e.target.remove(); more(); } }, { root: S.root, rootMargin: '400px' });
     more();
     // suggestions are found when Home shows (names, links, timing: no tokens)
-    P.suggestions(3).then((ss) => { if (n !== homeN) return; sugg.replaceChildren(...ss.map(suggestion)); }).catch(() => {});
+    // (round 73, startfast73) in an idle moment: Home is often the first screen, and finding them reads every chat, scene and board name
+    new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(r, { timeout: 1500 }) : setTimeout(r, 0))).then(() => (n === homeN ? P.suggestions(3) : null))
+      .then((ss) => { if (!ss || n !== homeN) return; sugg.replaceChildren(...ss.map(suggestion)); }).catch(() => {});
   }
   function empty() {
     return el('div', { class: 'pj-empty' },

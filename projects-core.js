@@ -164,7 +164,8 @@ const ProjectsCore = (() => {
     const free = things.filter((t) => !taken.has(itemId(t.type, t.ref)));
     const byId = new Map(free.map((t) => [itemId(t.type, t.ref), t]));
     const keyed = new Map(); // key → Set of thing ids
-    for (const t of free) for (const k of keysOf(t.name)) { if (!keyed.has(k)) keyed.set(k, new Set()); keyed.get(k).add(itemId(t.type, t.ref)); }
+    const kOf = new Map(free.map((t) => [itemId(t.type, t.ref), keysOf(t.name)])); // (round 73, startfast73) each name's keys once (was again per key: ≈ 30–60 ms with 1,500 chats as Home showed)
+    for (const t of free) for (const k of kOf.get(itemId(t.type, t.ref))) { if (!keyed.has(k)) keyed.set(k, new Set()); keyed.get(k).add(itemId(t.type, t.ref)); }
     // bigrams first, then the biggest groups
     const keys = [...keyed.keys()].filter((k) => !dismissed.has(k) && keyed.get(k).size >= 2)
       .sort((a, b) => (b.includes(' ') - a.includes(' ')) || keyed.get(b).size - keyed.get(a).size || a.localeCompare(b));
@@ -176,7 +177,7 @@ const ProjectsCore = (() => {
       for (const id of [...ids]) for (const l of byId.get(id)?.links || []) if (byId.has(l) && !used.has(l) && !ids.includes(l)) ids.push(l);
       // timing: things far from the group's newest (more than 60 days before) stay out, unless the name is exact
       const newest = Math.max(...ids.map((id) => byId.get(id).at || 0));
-      const kept = ids.filter((id) => (byId.get(id).at || 0) >= newest - 60 * DAY || keysOf(byId.get(id).name).has(k));
+      const kept = ids.filter((id) => (byId.get(id).at || 0) >= newest - 60 * DAY || kOf.get(id).has(k));
       const types = new Set(kept.map((id) => byId.get(id).type));
       if (kept.length < 3 || (types.size < 2 && kept.length < 4)) continue;
       const times = kept.map((id) => byId.get(id).at || 0);

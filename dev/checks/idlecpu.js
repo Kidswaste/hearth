@@ -7,7 +7,8 @@
 //   · the main process' timers (powerwisemain's counter)
 //   · CSS animations still running, and whether what they move can be seen
 // Setups: a chat open (no streaming) · the Lab with a still scene · the Lab with an animated (looping) scene, paused ·
-// the board (pictures, a GIF, videos: /tmp/hearth-board-fixtures) · the grid view with 4 chats · ◉ Activity open.
+// the board (pictures, a GIF, videos: /tmp/hearth-board-fixtures) · the grid view with 4 chats · ◉ Activity open · (round 73) Hearth hidden after
+// using the Lab (the tray / minimized: every process together, budget hiddenAllCpu).
 // Budgets per setup on the window's CPU and wakeups (window.IDLE_REPORT = 1 reports without failing).
 //   node dev/smoke.js --fake-engines --check-timeout 600000 --lib dev/checks/journey-lib.js --script dev/checks/idlecpu.js
 const probe = () => {
@@ -240,10 +241,26 @@ document.activeElement?.blur?.();
 await measure('activity');
 Activity.close?.();
 
+// ---------- 7. (round 73, startfast73) Hearth hidden: in the tray / minimized, after using the Lab ----------
+// The owner leaves Hearth running in the background: then every process should sleep (no frames, no polling). The window
+// is hidden by the main process (as the tray's close does); every process counts, the Lab's pages included.
+activate('tool:three'); await wait(1500);
+await T({ window: 'hide' });
+await until(() => document.visibilityState === 'hidden', 5000);
+out.hiddenState = document.visibilityState;
+await measure('hidden');
+await T({ window: 'show' }); await wait(800);
+{
+  const r = out.setups.hidden;
+  const all = Object.values(r.procs).reduce((a, v) => a + v.cpuPct, 0);
+  r.allCpuPct = Math.round(all * 100) / 100;
+  r.allCtxPerSec = Math.round(Object.values(r.procs).reduce((a, v) => a + v.ctxPerSec, 0) * 10) / 10;
+}
+
 // ---------- budgets (window.IDLE_REPORT = 1 reports without failing; window.IDLE_BUDGET overrides) ----------
 // per setup, over 10 s of idle: the window's CPU and wakeups (timers, frames, idle callbacks, observers), the main
 // process', and the Lab preview's page while the Lab is on screen (CPU, frames it wakes for)
-const B = { windowCpu: 1.5, wakeups: 1.5, labWakeups: 2, mainCpu: 1, mainTimersPerMin: 20, labCpu: 2.5, labFrames: 15, ...(window.IDLE_BUDGET || {}) };
+const B = { windowCpu: 1.5, wakeups: 1.5, labWakeups: 2, mainCpu: 1, mainTimersPerMin: 20, labCpu: 2.5, labFrames: 15, hiddenWakeups: 0.3, hiddenMainTimersPerMin: 2, hiddenAllCpu: 0.8, ...(window.IDLE_BUDGET || {}) };
 out.table = [];
 for (const [name, r] of Object.entries(out.setups)) {
   const w = r.procs.window || { cpuPct: 0 }; const m = r.procs.main || { cpuPct: 0 }; const l = r.procs['lab preview'];
@@ -257,6 +274,17 @@ for (const [name, r] of Object.entries(out.setups)) {
   if (r.mainTimers.perMin > B.mainTimersPerMin) out.problems.push(`${name}: the main process ran ${r.mainTimers.perMin} timers/min (> ${B.mainTimersPerMin})`);
   if (onLab && l && l.cpuPct > B.labCpu) out.problems.push(`${name}: the Lab preview used ${l.cpuPct} % idle (> ${B.labCpu})`);
   if (onLab && r.lab.framesPerSec > B.labFrames) out.problems.push(`${name}: the Lab preview woke for ${r.lab.framesPerSec} frames/s on a still picture (> ${B.labFrames})`);
+}
+// (round 73) hidden: the window next to nothing, the main process' own timers rare, every process together ≈ 0
+{
+  const r = out.setups.hidden;
+  if (out.hiddenState !== 'hidden') out.problems.push(`hidden: the page still says ${out.hiddenState}`);
+  if (r) {
+    out.table.push(`hidden (all processes): ${r.allCpuPct}% · ${r.allCtxPerSec} wakeups/s (kernel)`);
+    if (r.page.perSec > B.hiddenWakeups) out.problems.push(`hidden: the window woke ${r.page.perSec}×/s (> ${B.hiddenWakeups}): ${r.page.top.slice(0, 3).join('; ')}`);
+    if (r.mainTimers.perMin > B.hiddenMainTimersPerMin) out.problems.push(`hidden: the main process ran ${r.mainTimers.perMin} timers/min (> ${B.hiddenMainTimersPerMin}): ${(r.mainTimers.top || []).slice(0, 3).join('; ')}`);
+    if (r.allCpuPct > B.hiddenAllCpu) out.problems.push(`hidden: all processes used ${r.allCpuPct} % of a CPU (> ${B.hiddenAllCpu}): ${JSON.stringify(r.procs)}`);
+  }
 }
 if (out.metricsTrouble) out.problems.push(`the process numbers failed: ${out.metricsTrouble[0]}`);
 if (window.IDLE_REPORT) { out.unenforced = out.problems; out.problems = []; }
