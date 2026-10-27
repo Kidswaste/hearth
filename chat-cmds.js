@@ -481,7 +481,7 @@ const ChatCmds = (() => {
       if (act === 'copy') await copyText(b.code, 'Code copied');
       else if (act === 'save') { const ext = { js: 'js', javascript: 'js', python: 'py', py: 'py', html: 'html', css: 'css', json: 'json', glsl: 'glsl', bash: 'sh', sh: 'sh', md: 'md' }[b.lang.toLowerCase()] || 'txt'; const p = await window.hub.saveFile({ defaultPath: `snippet.${ext}`, content: b.code }); if (p) toast(`Saved ${p.split(/[\\/]/).pop()}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); }
       else if (act === 'lab') { if (typeof ThreeLab === 'undefined') throw new Error('The Three.js Lab isn\'t available'); ThreeLab.openCode(b.code); }
-      else if (act === 'nodes') { if (!window.NodeView?.openCode) throw new Error('The node view isn\'t installed'); window.NodeView.openCode(b.code, b.lang); }
+      else if (act === 'nodes') { if (window.Lazy) await Lazy.load('nodes'); if (!window.NodeView?.openCode) throw new Error('The node view isn\'t installed'); window.NodeView.openCode(b.code, b.lang); }
       else if (act === 'insert') Native.insertDraft(ctx.agentId, `\`\`\`${b.lang}\n${b.code}\n\`\`\`\n`);
       else return 'Use copy, save, lab, nodes or insert.';
     },

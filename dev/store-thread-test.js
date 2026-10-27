@@ -99,6 +99,22 @@ const J = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
     fs.writeFileSync(file, '{ broken');
     ok((await store.runOff('syncHash', { file, rel: 'kv/paths.json', cloud: true, ctx: null })).bad === true, 'a half-written store is reported, not hashed');
   }
+  // (round 73, startfast73) the list's rows kept on disk (data/.cache/chat-list.json) between starts: a new thread reuses
+  // the row of a file that kept its size and times (no read), and reads a file that changed
+  {
+    const cache = path.join(store.DATA_DIR, '.cache', 'chat-list.json');
+    await store.listChats(); await new Promise((r) => setTimeout(r, 3400));
+    const j = fs.existsSync(cache) ? J(cache) : null;
+    ok(j?.v === 1 && j.rows['c7.json']?.sum?.title === 'Chat 7', `list rows kept on disk: ${Object.keys(j?.rows || {}).length}`);
+    j.rows['c7.json'].sum.title = 'Kept row'; j.rows['c8.json'].sum.title = 'Stale row';
+    fs.writeFileSync(cache, JSON.stringify(j));
+    const c8 = path.join(store.DATA_DIR, 'chats', 'c8.json'); const t = new Date(Date.now() + 5000); fs.utimesSync(c8, t, t);
+    const r = spawnSync(process.execPath, ['-e', "require('./store.js').listChats().then((l) => { console.log(JSON.stringify(l)); process.exit(0); })"], { cwd: process.cwd(), env: process.env, encoding: 'utf8', timeout: 20000 });
+    let l2 = []; try { l2 = JSON.parse(String(r.stdout || '').trim().split('\n').pop() || '[]'); } catch { /* reported below */ }
+    ok(l2.find((x) => x.id === 'c7')?.title === 'Kept row', `a new thread lists an unchanged chat from its kept row (no read): ${l2.find((x) => x.id === 'c7')?.title} ${r.stderr || ''}`);
+    ok(l2.find((x) => x.id === 'c8')?.title === 'Chat 8', 'a chat whose file changed is read again');
+    ok(l2.length === (await store.listChats()).length, `the same chats as the running thread: ${l2.length}`);
+  }
   // quitting writes what is still pending
   store.saveChat({ id: 'last', agentId: 'a', title: 'last', updatedAt: 1, messages: [] });
   store.flushSync();

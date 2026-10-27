@@ -796,7 +796,7 @@ function registerAfterWindow() {
     // battery, none while the computer sleeps (was a stat every 5 s per file, always)
     nets.push(() => { if (!w) arm(); check(); });
   }
-  powerwise.every(`config-stat:files`, 10000, () => { for (const net of nets) { try { net(); } catch { /* the next file still checked */ } } });
+  powerwise.every(`config-stat:files`, 10000, () => { for (const net of nets) { try { net(); } catch { /* the next file still checked */ } } }, { hiddenScale: 6 }); // (round 73) hidden: once a minute (fs.watch tells changes first)
   bgmain.register(() => win);
   bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });
   syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)

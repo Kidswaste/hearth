@@ -528,6 +528,9 @@ const Native = (() => {
   }
 
   // ---------- message list ----------
+  // (round 73, startfast73) the node view (nodes.js) loads after the first screen: its button is there from the start
+  const hasNodes = () => (window.Lazy && !Lazy.isIn('nodes')) || Boolean(window.NodeView?.openCode);
+  const nodeView = (fn) => (window.Lazy ? Lazy.load('nodes') : Promise.resolve()).then(() => { if (window.NodeView?.openCode) fn(window.NodeView); }).catch(() => {});
   async function onListClick(e, agentId) {
     const t = e.target;
     const copy = t.closest('.copy-code, .copy-msg');
@@ -544,7 +547,7 @@ const Native = (() => {
       const code = pre.querySelector('code').textContent;
       const lang = pre.dataset.lang || '';
       if (codeAction.dataset.act === 'unfold') { pre.classList.remove('code-folded'); codeAction.remove(); return; }
-      if (codeAction.dataset.act === 'nodes') window.NodeView?.openCode?.(code, lang);
+      if (codeAction.dataset.act === 'nodes') nodeView((N) => N.openCode(code, lang));
       if (codeAction.dataset.act === 'more') {
         const r = codeAction.getBoundingClientRect();
         showMenu(r.left, r.bottom + 4, [
@@ -552,7 +555,7 @@ const Native = (() => {
           { label: pre.classList.contains('code-wrap') ? 'Don\'t wrap lines' : 'Wrap long lines', action: () => pre.classList.toggle('code-wrap') },
           { label: 'Copy as a Markdown block', action: () => copyText(`\`\`\`${lang}\n${code}\n\`\`\``, 'Code copied') },
           { label: 'Save to notes', action: () => Notes.append(`\`\`\`${lang}\n${code}\n\`\`\``) },
-          window.NodeView?.openCode ? { label: 'Open in the node view', action: () => window.NodeView.openCode(code, lang) } : null,
+          hasNodes() ? { label: 'Open in the node view', action: () => nodeView((N) => N.openCode(code, lang)) } : null,
           typeof ThreeLab !== 'undefined' && /^(js|javascript|mjs)$/i.test(lang) ? { label: 'Open in Three.js Lab', action: () => ThreeLab.openCode(code) } : null,
         ].filter(Boolean));
         return;
@@ -667,7 +670,7 @@ const Native = (() => {
       if (/^(js|javascript|mjs)$/.test(lang) && /three|THREE\./.test(code)) bar.append(el('button', { class: 'code-act', text: 'Open in Three.js Lab', dataset: { act: 'three' } }));
       if (/^(glsl|frag|shader)$/.test(lang) || (/gl_FragColor|fragColor|void main\s*\(/.test(code) && !/import /.test(code))) bar.append(el('button', { class: 'code-act', text: 'Shader playground', dataset: { act: 'shader' } }));
       if (/^(jsx|extendscript)$/.test(lang) || /app\.project|CompItem|app\.beginUndoGroup/.test(code)) bar.append(el('button', { class: 'code-act', text: 'Run in After Effects', dataset: { act: 'ae' } }));
-      if (window.NodeView?.openCode) bar.append(el('button', { class: 'code-act', text: 'Nodes', title: 'Open in the node view', dataset: { act: 'nodes' } }));
+      if (hasNodes()) bar.append(el('button', { class: 'code-act', text: 'Nodes', title: 'Open in the node view', dataset: { act: 'nodes' } }));
       bar.append(el('button', { class: 'code-act', text: '⋯', title: 'More: insert in your message, wrap lines, copy as a quote', dataset: { act: 'more' } }));
       pre.append(bar);
       pre.prepend(el('span', { class: 'code-label', text: `${lang || 'text'} · ${lines} line${lines === 1 ? '' : 's'}` }));

@@ -293,7 +293,7 @@ const Jank = (() => {
   }
   function slowDot(on) { // (a dot on the rail's ⋯, where 🐢 That was slow is)
     const b = document.getElementById('rail-more'); dotAt = on ? Date.now() : 0;
-    if (b && (b.dataset.slow == null) === !!on) { if (on) { b.dataset.slow = b.title; b.title = '🐢 That was slow? It\'s in here'; } else { b.title = b.dataset.slow; delete b.dataset.slow; } }
+    if (b && (b.dataset.slow == null) === !!on) { if (on) { b.dataset.slow = b.title; b.title = 'More · 🐢 That was slow? It\'s in here'; } else { b.title = b.dataset.slow; delete b.dataset.slow; } }
   }
   const slow = () => { vaAt = -1e9; return { last, labAt, labLast, off, ready: readyAt > 0, env, view: viewArea(), hiccup, slowDot }; };
 

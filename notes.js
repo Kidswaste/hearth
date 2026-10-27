@@ -361,8 +361,14 @@ const Notes = (() => {
 // kept in kv 'prompts', favorites / hidden presets / use counts in kv 'prompts-meta'.
 // Blanks: {{name}}, {{name=default}} or {{name|choice a,choice b}}.
 const Prompts = (() => {
-  const LIB = typeof PromptLibrary !== 'undefined' ? PromptLibrary : { CATS: {}, list: [] };
-  const CATS = { mine: 'My prompts', ...LIB.CATS };
+  // (round 73, startfast73) the built-in presets (prompt-library.js, 30 KB) load with the prompts, not before the first screen
+  let LIB = { CATS: {}, list: [] };
+  const CATS = { mine: 'My prompts' };
+  async function libIn() {
+    if (LIB.list.length) return;
+    try { if (window.Lazy) await Lazy.load('promptlib'); } catch { /* the presets stay out: your own prompts still work */ }
+    if (typeof PromptLibrary !== 'undefined') { LIB = PromptLibrary; Object.assign(CATS, LIB.CATS); }
+  }
   let user = null; // your prompts
   let meta = null; // { hidden: [ids], favs: [ids], uses: { id: n } }
   let prompts = null; // merged, favorites first
@@ -380,6 +386,7 @@ const Prompts = (() => {
   }
   async function load() {
     if (!prompts) {
+      await libIn();
       user = (await window.hub.kvGet('prompts', null)) || [];
       meta = { hidden: [], favs: [], uses: {}, ...(await window.hub.kvGet('prompts-meta', {})) };
       rebuild();

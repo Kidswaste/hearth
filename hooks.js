@@ -171,6 +171,7 @@ const Hooks = (() => {
   window.hub.hooks?.onFile((d) => { if (!C.junk(d.path)) emit('file', d, (h) => norm(h.when.dir) === norm(d.dir)); });
   let watchKey = null;
   function syncWatch() {
+    clock(); // (round 73) the 30 s clock follows the hooks (an added time hook starts it)
     const dirs = paused() ? [] : [...new Set(all().filter(({ h }) => h.on && h.when.kind === 'file').map(({ h }) => h.when.dir))];
     const key = dirs.join('\n');
     if (key === watchKey) return;
@@ -192,7 +193,18 @@ const Hooks = (() => {
   }
   // (round 39, powerwise) on the background schedule (never more than a minute late; none while the computer sleeps,
   // a moment after it wakes)
-  if (window.Power) Power.every('hooks', 30000, tick, { first: 2000, max: 60000 }); else { setInterval(tick, 30000); setTimeout(tick, 2000); }
+  // (round 73, startfast73) the clock only while a time-of-day / every-few-hours hook is on: with none (the usual case)
+  // nothing wakes every 30 s; folders are watched from the config (syncWatch) as before
+  const timed = () => all().some(({ h }) => h.on && (h.when.kind === 'time' || h.when.kind === 'every'));
+  let clockOn = false;
+  const clock = () => {
+    const want = timed();
+    if (want === clockOn) return;
+    clockOn = want;
+    if (window.Power) { if (want) Power.every('hooks', 30000, tick, { first: 2000, max: 60000 }); else Power.stop?.('hooks'); }
+    else if (want) { clock.iv = setInterval(tick, 30000); setTimeout(tick, 2000); } else clearInterval(clock.iv);
+  };
+  clock(); setTimeout(syncWatch, 2000);
   window.hub.onConfigChanged?.(() => setTimeout(syncWatch, 200));
 
   // ---------- ⋯ AI setup: "Hooks: when… then…" ----------

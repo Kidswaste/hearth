@@ -239,7 +239,7 @@ function chatNames() {
 let lastList = null;
 function listChats() {
   if (thread()) {
-    return ask({ op: 'list', dir: CHATS_DIR, ds: true }).then((r) => {
+    return ask({ op: 'list', dir: CHATS_DIR, ds: true, cache: path.join(DATA_DIR, '.cache', 'chat-list.json') }).then((r) => {
       chatsDoubt = r.doubt ? { at: Date.now(), ...r.doubt } : null;
       lastList = r.list; return r.list.slice();
     }).catch(() => listChatsSync());
