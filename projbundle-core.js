@@ -268,7 +268,7 @@ const ProjBundleCore = (() => {
     const f = (s.files || 0);
     lines.push(f ? `${plural(f, 'file')} and captures${m?.bytes ? ` · ${fmtSize(m.bytes)} in all` : ''}` : m?.leftOut?.files ? `Files and captures left out when it was saved (${m.leftOut.files})` : `${m?.files ? `${plural(m.files, 'file')} it uses · ${fmtSize(m.bytes)}` : 'No files'}`);
     if (s.notes || s.sceneNotes) lines.push(['Project notes', s.sceneNotes ? plural(s.sceneNotes, 'scene note') : ''].filter(Boolean).join(' · '));
-    if (m?.secrets) lines.push(`${plural(m.secrets, 'secret')} (API keys, tokens) were removed when it was saved`);
+    if (m?.secrets) lines.push(`${plural(m.secrets, 'secret')} (API keys, tokens) ${m.secrets === 1 ? 'was' : 'were'} removed when it was saved`);
     if ((m?.skipped || []).length) lines.push(`${plural(m.skipped.length, 'file')} weren't on the computer it came from: ${m.skipped.slice(0, 3).join(', ')}${m.skipped.length > 3 ? '…' : ''}`);
     return lines;
   }

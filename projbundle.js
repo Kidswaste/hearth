@@ -35,8 +35,8 @@ const ProjBundle = (() => {
   const boardIn = () => Boolean(window.Lazy?.loaded('board') && typeof Board !== 'undefined' && Board._?.S?.index);
   async function gather(p, { files = true } = {}) {
     await P.ready();
-    // what's on screen is saved into the stores first (the open scene's editor, the boards' pending writes)
-    try { if (labIn()) ThreeLab.tm?.persist?.(); } catch { /* nothing open */ }
+    // the boards' pending writes go to their stores first; the scene in the editor is read as it is on screen (its code
+    // typed but not saved yet), without saving it (an export never changes what it exports)
     if (boardIn()) await Board._.flush().catch(() => {});
     const items = p.items.slice();
     const w = p.workspace || {};
@@ -57,7 +57,16 @@ const ProjBundle = (() => {
       if (mapsAll[`scene:${id}`]) maps[`scene:${id}`] = mapsAll[`scene:${id}`];
       const song = extras?.media?.path;
       if (song && mapsAll[song]) maps[song] = mapsAll[song];
-      scenes.push({ id, sketch: C.copy(sk), extras, refs: C.copy(lab ? ThreeLab.refsOf(id) : refsAll[id] || []), notes: C.copy(notesAll[id] || []), thumb: thumbsAll[id]?.url ? { ...thumbsAll[id] } : (lab && ThreeLab.scenes.thumbOf(id) ? { url: ThreeLab.scenes.thumbOf(id), at: Date.now() } : null), maps });
+      const sketch = C.copy(sk);
+      if (lab && ThreeLab.scenes.currentId() === id) {
+        try {
+          const st = ThreeLab.tm?.state?.(id);
+          if (Array.isArray(sketch.layers)) for (const L of sketch.layers) { const live = st?.layers?.find((x) => x.id === L.id); if (live && typeof live.code === 'string') L.code = live.code; }
+          else if (typeof st?.layers?.[0]?.code === 'string') sketch.code = st.layers[0].code;
+          if (Array.isArray(sketch.layers) && sketch.layers[0]) sketch.code = sketch.layers[0].code ?? sketch.code;
+        } catch { /* as saved */ }
+      }
+      scenes.push({ id, sketch, extras, refs: C.copy(lab ? ThreeLab.refsOf(id) : refsAll[id] || []), notes: C.copy(notesAll[id] || []), thumb: thumbsAll[id]?.url ? { ...thumbsAll[id] } : (lab && ThreeLab.scenes.thumbOf(id) ? { url: ThreeLab.scenes.thumbOf(id), at: Date.now() } : null), maps });
     }
     // their sequences (the Lab sequence keeps them in video-cuts, keyed "seq:<name>", each saying its scene)
     const sequences = [];
@@ -368,7 +377,7 @@ const ProjBundle = (() => {
       // boards: their content into the boards made above
       for (const x of b.boards || []) {
         const nb = await Board.load(x.id);
-        const { id: _i, name: _n, created: _c, ...rest } = x.board;
+        const { id: _i, name: _n, ...rest } = x.board;
         Object.assign(nb, rest, { id: x.id, name: nb.name, chats: x.board.chats || [], updated: Date.now() });
         await Board.save(nb, { now: true });
       }
@@ -415,7 +424,8 @@ const ProjBundle = (() => {
   function dropFiles(files) {
     const f = [...(files || [])].find((x) => isBundle(x.name));
     if (!f) return false;
-    const path = window.hub.pathForFile?.(f) || f.path;
+    let path = f.path || '';
+    try { path = window.hub.pathForFile?.(f) || path; } catch { /* not a File from a drop (a path given by hand) */ }
     if (!path) return false;
     importProject(path);
     return true;
