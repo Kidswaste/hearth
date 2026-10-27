@@ -120,6 +120,8 @@ const Sync = (() => {
     out.push({ label: st.paused ? 'Resume sync' : 'Pause sync', action: () => pause(!st.paused) });
     out.push({ label: MAC ? 'Show the cloud folder in Finder' : 'Open the cloud folder', action: () => api().open() });
     out.push({ label: 'Sync big videos', checked: st.big !== false, hint: st.skippedBig?.length ? `${st.skippedBig.length} kept here` : '', action: () => big(st.big === false) });
+    out.push({ label: 'What syncs…', more: true, hint: (st.kinds || []).some((k) => !k.on && !k.perComputer) ? 'some off' : '', action: () => panelAt('kinds') }); // (round 73, syncmedia73)
+    out.push({ label: 'Free up space on this computer…', more: true, action: () => panelAt('free') });
     out.push({ label: 'Deleted files…', more: true, action: () => trash() });
     if (!st.conflicts) out.push({ label: 'Conflicts…', more: true, action: () => conflicts() });
     out.push({ label: 'Other drive or folder…', more: true, action: () => setup({ change: true }) });
@@ -132,6 +134,10 @@ const Sync = (() => {
   async function panel() {
     if (panelLoading) return;
     try { if (typeof SyncPanel === 'undefined' && window.Lazy) { panelLoading = true; await Lazy.load('syncpanel'); } SyncPanel.toggle(dot); } catch (err) { console.warn('sync panel:', err); menu(); } finally { panelLoading = false; }
+  }
+  // (round 73, syncmedia73) the panel opened at What syncs / Free up space (the ⋯ menu, /sync what, /sync space)
+  async function panelAt(mode) {
+    try { if (typeof SyncPanel === 'undefined' && window.Lazy) await Lazy.load('syncpanel'); await SyncPanel.open(dot, { mode }); } catch (err) { console.warn('sync panel:', err); }
   }
   let lastAuto = null; // the last conflicts settled by themselves: { done, at } (the panel says so)
   function menu(e) {
@@ -487,7 +493,7 @@ const Sync = (() => {
   // ---------- /sync ----------
   function registerCommands() {
     if (typeof Commands === 'undefined' || Commands.get?.('sync')) return;
-    const SUBS = ['status', 'now', 'on', 'off', 'pause', 'resume', 'conflicts', 'review', 'trash', 'restore', 'open', 'big', 'download', 'menu'];
+    const SUBS = ['status', 'now', 'on', 'off', 'pause', 'resume', 'conflicts', 'review', 'trash', 'restore', 'open', 'big', 'download', 'menu', 'what', 'space'];
     Commands.register({
       name: 'sync', args: '[status|now|on|pause|resume|conflicts|review|trash|restore <name>|open|big on/off|off]', area: 'App',
       desc: 'Sync with your cloud drive (Mac ⇄ PC): is everything synced?, sync now, conflicts, deleted files',
@@ -512,6 +518,7 @@ const Sync = (() => {
         if (sub === 'open') { await api().open(); return null; }
         if (sub === 'download') { await download(); return null; }
         if (sub === 'menu') { menu(); return null; }
+        if (sub === 'what' || sub === 'space') { await panelAt(sub === 'what' ? 'kinds' : 'free'); return null; } // (round 73, syncmedia73) What syncs · Free up space (in the sync panel)
         if (sub === 'big') { await big(!/^(off|no|0)$/i.test(rest[0] || 'on')); return null; }
         if (sub === 'restore') {
           const q = rest.join(' ').toLowerCase();
@@ -597,5 +604,5 @@ const Sync = (() => {
   else setTimeout(init, 0);
 
   return { status: () => st, refresh, now, setup, conflicts, held, whatIs, trash, menu, items, line, settingsSection, pause, off, big, background,
-    shortLine, glyph: glyphOf, nameOf, peersLine, download, panel, lastAuto: () => lastAuto, where, listen: (f) => { panelListeners.add(f); return () => panelListeners.delete(f); } }; // (round 72) for the panel
+    shortLine, glyph: glyphOf, nameOf, peersLine, download, panel, panelAt, lastAuto: () => lastAuto, where, listen: (f) => { panelListeners.add(f); return () => panelListeners.delete(f); } }; // (round 72) for the panel
 })();

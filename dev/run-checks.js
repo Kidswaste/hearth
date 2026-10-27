@@ -47,6 +47,7 @@ UNIT.push('vst-live-host-test'); // (round 61, vstlive61) the Sound desk's live 
 UNIT.push('parkjam62-test'); // (round 62, parkjam62) Park jam: output pick, battery controls, WAV / MIDI / ambience layer, proof text, the host's loop recorder (fake laptop host)
 UNIT.push('soundbank63-test'); // (round 63, soundbank63) Sound bank: tags from controls, similarity, search, atomic index, read-only plugin folders, the preview queue (+ real host with the fake Pedalboard)
 UNIT.push('loopsong63-test'); // (round 63, loopsong63) park loops → a song: arrangement model, snapping, tempo plan, mixdown / stems / −1 dBFS, stretch, MIDI, parkList / MP3
+UNIT.push('syncmedia73-test'); // (round 73, syncmedia73) big files through the simulator: two lanes (chats never wait behind a video), read once / never re-read, resume, a mix both ways, What syncs (off never deletes), Free up space (only synced big files; provider tools and words)
 UNIT.push('sync72-test'); // (round 72, sync72) PC ↔ Mac through a simulated cloud provider (own views, delays, half downloads, placeholders, its copies, case / accents, skewed clocks, days offline): scripted scenarios + a randomized run, merges
 UNIT.push('twocopies-test'); // (round 64, twocopies64) two Hearth folders on one computer: finding the other copies (Windows / Mac layouts), the profile each keeps, entries kept apart, Bring its chats here (copy only), the zip recipe
 UNIT.push('vstembed64-test'); // (round 64, vstembed64) 48 kHz, fast load (cached control list, warm host, scan cache), the editor inside Hearth on a fake Win32 layer

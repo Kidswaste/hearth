@@ -18,6 +18,24 @@ const crypto = require('crypto');
 
 const sha = (b) => crypto.createHash('sha1').update(b).digest('hex');
 const fold = (s) => String(s).normalize('NFC').toLowerCase();
+// (round 73, syncmedia73) big files (a 2 GB mix of videos and stems) are hashed in steps and kept by the server as a
+// hard link to the uploaded file ("blob"), never whole in memory; downloads of them are written sparse (zero runs
+// skipped) so a test's disk use stays near the size of what the engines really write
+const BLOB_MIN = 16 * 1024 * 1024;
+function hashSync(file) {
+  const h = crypto.createHash('sha1'); const fd = raw.openSync(file, 'r'); const buf = Buffer.alloc(4 << 20);
+  try { for (let pos = 0; ;) { const n = fs.readSync(fd, buf, 0, buf.length, pos); if (!n) break; h.update(buf.subarray(0, n)); pos += n; } } finally { fs.closeSync(fd); }
+  return h.digest('hex');
+}
+function sparseCopy(src, dst) {
+  const r = raw.openSync(src, 'r'); const w = raw.openSync(dst, 'w'); const buf = Buffer.alloc(4 << 20); let pos = 0;
+  try {
+    for (;;) { const n = fs.readSync(r, buf, 0, buf.length, pos); if (!n) break; const b = buf.subarray(0, n); if (b.some((x) => x !== 0)) fs.writeSync(w, b, 0, n, pos); pos += n; }
+    fs.ftruncateSync(w, pos);
+  } finally { fs.closeSync(r); fs.closeSync(w); }
+}
+const bytesOf = (s) => s.buf || raw.readFileSync(s.blob); // (only for the half of a download: written in place)
+const sizeOf = (s) => (s.buf ? s.buf.length : s.size);
 
 // ---------- the originals (the provider always uses these) ----------
 const raw = {};
@@ -69,7 +87,8 @@ function hydrate(p) {
   const d = k && dataless.get(k);
   if (!d) return;
   dataless.delete(k);
-  raw.writeFileSync(p, d.buf);
+  if (d.kept) { d.onRead?.(p); return; } // (round 73) evicted by the owner's click: the bytes never left in the simulation
+  if (d.blob) sparseCopy(d.blob, p); else raw.writeFileSync(p, d.buf);
   const t = new Date(d.mtime); raw.utimesSync(p, t, t);
   d.onRead?.(p);
 }
@@ -92,7 +111,8 @@ function install() {
   fs.unlinkSync = (p) => raw.unlinkSync(ci(p));
   fs.truncateSync = (p, ...a) => raw.truncateSync(ci(p), ...a);
   fs.copyFileSync = (a, b, ...r) => { const q = ci(a); hydrate(q); return raw.copyFileSync(q, ci(b), ...r); };
-  fsp.stat = (p, ...a) => rawP.stat(ci(p), ...a);
+  // (round 73, syncmedia73) a placeholder has no blocks on the disk (what the engine looks at on a Mac)
+  fsp.stat = async (p, ...a) => { const st = await rawP.stat(ci(p), ...a); if (dataless.size && st && dataless.has(`${st.dev}:${st.ino}`)) st.blocks = 0; return st; };
   fsp.lstat = (p, ...a) => rawP.lstat(ci(p), ...a);
   fsp.readFile = async (p, ...a) => { const q = ci(p); hydrate(q); return rawP.readFile(q, ...a); };
   fsp.writeFile = (p, ...a) => rawP.writeFile(ci(p), ...a);
@@ -139,6 +159,22 @@ function cloud(o = {}) {
     v.tick = () => tick(v);
     v.request = (file) => { const real = path.join(path.dirname(file), path.basename(file).replace(/^\.(.+)\.icloud$/, '$1')); v.requested.add(fold(path.relative(v.dir, real).split(path.sep).join('/'))); };
     v.attributes = async (paths) => new Map(paths.map((p) => [p, isDataless(p) ? 0x400000 : 0]));
+    // (round 73, syncmedia73) "make online-only" as the provider does it (Windows attrib +U, macOS evict): refused while
+    // the file isn't uploaded as it is (still going up, changed since, never seen by the server); the file keeps its
+    // modified time; it becomes a placeholder (dataless: no blocks / "pending" attributes; or an iCloud stub)
+    v.evict = (file) => {
+      if (!v.online) return { ok: false, error: 'offline' };
+      const rel = path.relative(v.dir, path.resolve(file)).split(path.sep).join('/');
+      const k = fold(rel); const kn = v.known.get(k); const srv = server.get(k);
+      const f = look(v, rel);
+      if (!f) return { ok: false, error: 'ENOENT' };
+      if (f.dataless || f.stub) return { ok: true, already: true };
+      if (!kn || !srv || srv.ver !== kn.ver || v.uploading.has(k) || srv.hash !== f.hash) return { ok: false, error: 'not uploaded yet' };
+      if (v.placeholders === 'stub') { writeInto(v, srv, 'stub'); v.known.set(k, { ...kn, stub: true }); }
+      else dataless.set(ino(f.file), { kept: true, hash: f.hash, mtime: f.st.mtimeMs });
+      v.stats.evicted = (v.stats.evicted || 0) + 1;
+      return { ok: true };
+    };
     v.idle = () => !v.downloading.size && !v.uploading.size && [...server.values()].every((s) => v.known.get(fold(s.key))?.ver === s.ver);
     views.push(v);
     return v;
@@ -154,10 +190,10 @@ function cloud(o = {}) {
     }
     const k = `${st.dev}:${st.ino}`;
     const d = dataless.get(k);
-    if (d) return { file, st, hash: sha(d.buf), buf: d.buf, dataless: true };
+    if (d) return { file, st, hash: d.hash || sha(d.buf), buf: d.buf, blob: d.blob, dataless: true };
     const ck = `${k}:${st.size}:${st.mtimeMs}`;
     let h = v.hashes.get(file);
-    if (!h || h.ck !== ck) { h = { ck, hash: sha(raw.readFileSync(file)) }; v.hashes.set(file, h); }
+    if (!h || h.ck !== ck) { h = { ck, hash: st.size > BLOB_MIN ? hashSync(file) : sha(raw.readFileSync(file)) }; v.hashes.set(file, h); }
     return { file, st, hash: h.hash };
   }
   function scan(v) {
@@ -185,8 +221,21 @@ function cloud(o = {}) {
     }
     return `${dir}${stem} ${crypto.randomBytes(3).toString('hex')}${ext}`;
   }
-  const commit = (v, k, key, buf, hash) => {
-    const s = { key, buf, hash, mtime: v.now(), ver: ++V, by: v.name };
+  // (round 73) f: what the view has ({ file, st, buf? / blob? }): a big file goes to the server as a hard link (blobDir)
+  let blobN = 0;
+  const content = (f) => {
+    if (f.buf) return { buf: f.buf, size: f.buf.length };
+    if (f.blob) return { blob: f.blob, size: f.st.size };
+    if (o.blobDir && f.st.size > BLOB_MIN) {
+      raw.mkdirSync(o.blobDir, { recursive: true });
+      const b = path.join(o.blobDir, `blob-${++blobN}`);
+      fs.linkSync(f.file, b);
+      return { blob: b, size: f.st.size };
+    }
+    const buf = raw.readFileSync(f.file); return { buf, size: buf.length };
+  };
+  const commit = (v, k, key, c, hash) => {
+    const s = { key, ...c, hash, mtime: v.now(), ver: ++V, by: v.name };
     server.set(k, s);
     v.known.set(k, { ver: s.ver, hash, key });
     v.stats.up += 1;
@@ -209,16 +258,18 @@ function cloud(o = {}) {
       raw.rmSync(stubFile, { force: true });
       if (how === 'dataless') {
         raw.rmSync(target, { force: true });
-        raw.writeFileSync(target, ''); raw.truncateSync(target, s.buf.length); raw.utimesSync(target, t, t);
-        dataless.set(ino(target), { buf: s.buf, mtime: s.mtime });
+        raw.writeFileSync(target, ''); raw.truncateSync(target, sizeOf(s)); raw.utimesSync(target, t, t);
+        dataless.set(ino(target), { buf: s.buf, blob: s.blob, hash: s.hash, mtime: s.mtime });
         v.stats.stubs += 1;
       } else if (how === 'half') {
-        raw.writeFileSync(target, s.buf.subarray(0, Math.floor(s.buf.length / 2))); // written in place, partly; "now" as its time
+        raw.rmSync(target, { force: true }); // (round 73) a new file: never written into another one's blob
+        raw.writeFileSync(target, bytesOf(s).subarray(0, Math.floor(sizeOf(s) / 2))); // written in place, partly; "now" as its time
         const n = new Date(v.now()); raw.utimesSync(target, n, n);
         v.stats.partial += 1;
       } else {
         const tmp = path.join(path.dirname(target), `.sim-${crypto.randomBytes(3).toString('hex')}`);
-        raw.writeFileSync(tmp, s.buf); raw.utimesSync(tmp, t, t);
+        if (s.blob) sparseCopy(s.blob, tmp); else raw.writeFileSync(tmp, s.buf);
+        raw.utimesSync(tmp, t, t);
         raw.renameSync(tmp, target);
       }
     }
@@ -249,8 +300,7 @@ function cloud(o = {}) {
         const cname = conflictName(v, f.key);
         const dst = path.join(v.dir, ...cname.split('/'));
         raw.renameSync(f.file, dst);
-        const buf = f.buf || raw.readFileSync(dst);
-        commit(v, fold(cname), cname, buf, f.hash);
+        commit(v, fold(cname), cname, content({ ...f, file: dst, st: raw.statSync(dst) }), f.hash);
         view.set(fold(cname), { key: cname, file: dst, st: raw.statSync(dst), hash: f.hash });
         v.known.delete(k);
         v.stats.copies += 1;
@@ -264,7 +314,7 @@ function cloud(o = {}) {
         if (--u.left > 0) continue;
         v.uploading.delete(k);
       }
-      commit(v, k, f.key, f.buf || raw.readFileSync(f.file), f.hash);
+      commit(v, k, f.key, content(f), f.hash);
     }
     for (const [k, kn] of [...v.known]) {
       if (view.has(k) || v.downloading.has(k)) continue;
@@ -293,7 +343,7 @@ function cloud(o = {}) {
       if (f && !f.stub && kn && f.hash !== kn.hash) continue; // changed here too: the upload side handles it next tick
       const ph = placeheld(v, s.key) && !v.requested.has(k) ? v.placeholders : null;
       let how = ph === 'stub' ? 'stub' : ph === 'dataless' || ph === 'win' ? 'dataless' : 'whole';
-      if (how === 'whole' && v.partialDown && s.buf.length > v.partialDown) { how = 'half'; v.downloading.set(k, { ver: s.ver, left: v.downTicks || 2 }); }
+      if (how === 'whole' && v.partialDown && sizeOf(s) > v.partialDown) { how = 'half'; v.downloading.set(k, { ver: s.ver, left: v.downTicks || 2 }); }
       writeInto(v, s, how);
       v.requested.delete(k);
       v.known.set(k, { ver: s.ver, hash: s.hash, key: s.key, stub: how === 'stub' });

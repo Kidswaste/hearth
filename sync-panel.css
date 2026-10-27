@@ -45,3 +45,20 @@
 .sp-foot .spacer { flex: 1; }
 .sp-auto { margin: 0; }
 /* the indicator itself is in sync.css (first screen): the chip next to the dot */
+/* (round 73, syncmedia73) big files on their way (one bar each, moved with a transform), What syncs, Free up space */
+.sp-tr { gap: 3px; }
+.sp-tr-top { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.sp-tr-top .sp-name { flex: 1; min-width: 0; }
+.sp-tr-n { flex: none; font-variant-numeric: tabular-nums; }
+.sp-bar { height: 4px; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--fh-info, #5aa9ff) 16%, transparent); }
+.sp-bar > i { display: block; height: 100%; background: var(--fh-info, #5aa9ff); transform-origin: 0 50%; transform: scaleX(0); }
+.sp-fold { align-self: flex-start; text-align: left; }
+.sp-kind-list { display: flex; flex-direction: column; gap: 4px; }
+.sp-kind { display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; border-radius: 7px; cursor: pointer; }
+.sp-kind:hover { background: var(--panel-2, rgba(255, 255, 255, .04)); }
+.sp-kind input { margin-top: 3px; flex: none; }
+.sp-kind-main { display: flex; flex-direction: column; min-width: 0; }
+.sp-kind.off b { opacity: .7; }
+.sp-free-list { max-height: 240px; overflow: auto; }
+.sp-free-row { padding: 2px 0; }
+.sp-freed > b { color: var(--fh-ok, #5fc98a); }

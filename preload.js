@@ -253,6 +253,7 @@ contextBridge.exposeInMainWorld('hub', {
     pause: call('sync:pause'), big: call('sync:big'), conflicts: call('sync:conflicts'), resolve: call('sync:resolve'),
     trash: call('sync:trash'), restore: call('sync:restore'), open: call('sync:open'), download: call('sync:download'), ack: call('sync:ack'), preview: call('sync:preview'), resolveAll: call('sync:resolveAll'), autoResolve: call('sync:autoResolve'), onAutoResolved: on('sync:auto-resolved'),
     onStatus: on('sync:status'), onPulled: on('sync:pulled'),
+    kinds: call('sync:kinds'), freeable: call('sync:freeable'), free: call('sync:free'), // (round 73, syncmedia73) What syncs · Free up space
   },
   video: {
     tools: call('video:tools'),
