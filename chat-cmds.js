@@ -332,14 +332,15 @@ const ChatCmds = (() => {
     },
   });
   R({
-    name: 'jump', aliases: ['j', 'goto'], area: 'Messages', args: '<# | top | bottom | first | last | mine | reply | pin | bookmark | new>', desc: 'Scroll to a message (numbers are shown on hover)',
-    complete: pick([{ value: 'top' }, { value: 'bottom' }, { value: 'last', hint: 'the last message' }, { value: 'mine', hint: 'your last message' }, { value: 'reply', hint: 'the last reply' }, { value: 'pin', hint: 'next pinned message' }, { value: 'bookmark' }, { value: 'new', hint: 'where unread replies start' }]),
+    name: 'jump', aliases: ['j', 'goto'], area: 'Messages', args: '<# | top | bottom | first | last | mine | reply | pin | bookmark | new | all>', desc: 'Scroll to a message (numbers are shown on hover); all: draw every message of a long chat',
+    complete: pick([{ value: 'top' }, { value: 'bottom' }, { value: 'last', hint: 'the last message' }, { value: 'mine', hint: 'your last message' }, { value: 'reply', hint: 'the last reply' }, { value: 'pin', hint: 'next pinned message' }, { value: 'bookmark' }, { value: 'new', hint: 'where unread replies start' }, { value: 'all', hint: 'draw every message (the earlier ones of a long chat rest until you scroll up)' }]),
     run: (args, ctx) => {
       const chat = need(ctx);
       const v = Native.view(ctx.agentId);
       const a = args.trim().toLowerCase();
       if (!a || a === 'bottom' || a === 'end') { v.list.scrollTop = v.list.scrollHeight; return; }
       if (a === 'top' || a === 'start') { v.list.scrollTop = 0; return; }
+      if (a === 'all') { Native.showEarlier(ctx.agentId); return 'Every message of this chat is drawn now (until Hearth restarts).'; } // (round 72, chatwindow72)
       if (a === 'new') { const s = v.list.querySelector('.new-sep'); if (!s) return 'No unread replies here.'; s.scrollIntoView({ block: 'start' }); return; }
       const roleOf = { mine: 'user', me: 'user', reply: 'assistant' }[a];
       if (roleOf) { Native.jumpTo(ctx.agentId, mustIndex(chat, 'last', roleOf)); return; }

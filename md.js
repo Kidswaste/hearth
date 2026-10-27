@@ -365,7 +365,9 @@
   }
   // how many characters of these texts still need rendering (what's worth handing to the worker)
   const uncached = (texts) => (texts || []).reduce((a, t) => a + (typeof t === 'string' && t.length >= WARM_MIN && !mdCache.has(t) ? t.length : 0), 0);
-  G.Md = { warm, uncached, has: (t) => mdCache.has(t), html: (t) => warm([t], Infinity).then(() => renderMarkdownCached(t)), stats: () => ({ ...stats, cached: mdCache.size, worker: Boolean(worker), broken }),
+  // (round 72, chatwindow72) messages gone back to rest let their HTML go (their text stays; made again when they wake)
+  const forget = (texts) => { for (const t of texts || []) { const h = mdCache.get(t); if (h !== undefined) { mdCache.delete(t); mdChars -= t.length + h.length; } } };
+  G.Md = { warm, uncached, forget, has: (t) => mdCache.has(t), html: (t) => warm([t], Infinity).then(() => renderMarkdownCached(t)), stats: () => ({ ...stats, cached: mdCache.size, worker: Boolean(worker), broken }),
     live, liveStats: () => ({ ...liveStats }), _hlCut: hlCut }; // (round 35) the streaming reply's renderer (native.js paintBody)
   // the worker is started at the first idle moment after the start, so the first long chat doesn't wait for it
   addEventListener('hearth:ready', () => (G.requestIdleCallback || setTimeout)(() => spawn(), { timeout: 4000 }), { once: true });
