@@ -116,14 +116,15 @@ window.ProjectWorkspace = (() => {
         await ThreeLab.cmd({show:false});cancelled(controller.signal);
         active=id;const point=C.resume(p,{...returnPoint(id),...options,...(tab?{tab}:{})},H.chats,ThreeLab.scenes.all());
         conversationId=point.chatId;conversationScene=point.sceneId;tab=point.tab;
-        const c=chatOf(p);await (c.id===early?chatRead:Native.load(c.id));Native.selectChat(c.agentId,c.id);P.touch(p);
+        // (round 72) the chat keeps its place only when it was already the one shown; another one opens at its end
+        const c=chatOf(p);await (c.id===early?chatRead:Native.load(c.id));const wasShown=H.activeChat[c.agentId]===c.id;Native.selectChat(c.agentId,c.id);P.touch(p);
         await desk;
         timings.filesMs=Math.round(performance.now()-started);cancelled(controller.signal);
         stage(1,'Building your scene…');surface='three';activate('tool:three');Tools.openDock('three');
         // (round 72) the scene starts first and the chat draws while its page works; the moodboard is read meanwhile
         const board=Board.ready().then(()=>Board.load(p.workspace.boardId));board.catch(()=>{});
         const scene=options.preview!==false?ThreeLab.workspace.prepare(sceneOf(p),{signal:controller.signal,progress:text=>stage(1,text)}):null;scene?.catch(()=>{});
-        await Native.refresh(c.agentId,{keepScroll:true});
+        await Native.refresh(c.agentId,{keepScroll:wasShown});
         if(scene)await scene;
         else if(!ThreeLab.scenes.open(sceneOf(p)))throw Error('This scene is not available yet.');
         timings.sceneMs=Math.round(performance.now()-started)-timings.filesMs;cancelled(controller.signal);

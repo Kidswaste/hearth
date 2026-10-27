@@ -63,13 +63,13 @@ const Native = (() => {
         // (round 72, projects72) moving the list puts its scroll back at the top: there the "Show earlier" watcher drew
         // 60 more messages on every project tab switch (a long chat grew, and opened in its middle). Its place comes back:
         // the end while it follows, else the same distance from the end
-        const l = existing.list; const fromEnd = l?.scrollHeight ? l.scrollHeight - l.scrollTop : null;
+        const l = existing.list; const fromEnd = !follows(existing) && l?.scrollHeight ? l.scrollHeight - l.scrollTop : null; // (no layout read while it follows)
         root.append(existing.title.closest('.native-head'), existing.wrap, existing.form);
         existing.root = root;
         const place = () => { if (!l?.isConnected || !l.scrollHeight) return; if (follows(existing)) l.scrollTop = l.scrollHeight; else if (fromEnd != null) l.scrollTop = l.scrollHeight - fromEnd; };
-        // (a dock is often shown just after the move, in the same task: then its size is known at the next frame, which
-        // comes before the "Show earlier" watcher looks)
-        if (l?.scrollHeight) place(); else requestAnimationFrame(place);
+        // at the next frame, before the "Show earlier" watcher looks (a dock is often shown just after the move, in the same
+        // task; and no layout is forced in the middle of the move)
+        requestAnimationFrame(place);
       }
       root.classList.toggle('dock-chat', root.classList.contains('tool-dock'));
       return existing;
