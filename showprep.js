@@ -286,7 +286,7 @@ const ShowPrep = (() => {
     const st = P.stats(store), out = pins.map((p) => ({ ...p }));
     for (const v of st.venues) {
       const id = `show-venue-${SC.hash(v.key)}`, pin = out.find((p) => p.id === id), at = new Date(v.last).toISOString();
-      if (pin) { pin.visitedAt = at; pin.visits = v.n; }
+      if (pin) { pin.visitedAt = at; pin.visits = v.n; delete pin.minZoom; } // (sweep69) a venue you went to is drawn at every zoom, like the visited-only ones below (showsync's quiet map hid this week's ordinary venues below zoom 15, ✓ badge included)
       else if (SC.inParis(v.lat, v.lon)) out.push({ id, name: v.name || 'Venue', lat: v.lat, lon: v.lon, kind: 'music', color: '#ff6b9d', logo: '', quest: '', visitedAt: at, show: true, count: 0, visits: v.n });
     }
     return out;

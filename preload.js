@@ -50,7 +50,9 @@ contextBridge.exposeInMainWorld('hub', {
   audioDoctor: { probe: call('audiodoctor:probe'), live: call('audiodoctor:live'), open: call('audiodoctor:open'), asio: call('creative-vst:asio') }, // (round 64, audiodoctor64) /audio doctor: the music setup checked on this PC, on demand (audiodoctormain.js)
   liveset: { save: call('creative-vst:live-save'), mp3: call('creative-vst:live-mp3') }, // (round 64, liveset64) the Live set's folder (<data>/creative-live/<set>/): prepared clips, run logs · a run as MP3
   bouncelog: { note: call('bouncelog:note'), folder: call('bouncelog:folder'), ours: call('bouncelog:ours') }, // (round 66, bouncelog66) Session log: <data>/creative-sketches/<project>/ (a session's note for a quest proof)
+  dawsend: { begin: call('dawsend:begin'), open: call('dawsend:open'), write: call('dawsend:write'), close: call('dawsend:close'), put: call('dawsend:put'), copy: call('dawsend:copy'), state: call('dawsend:state'), finish: call('dawsend:finish'), cancel: call('dawsend:cancel'), defaultDir: call('dawsend:default-dir') }, // (round 69, stems69) 📤 Send to my DAW: the stems folder, written in pieces, renamed when done
   sketchpads: { saveLoop: call('sketchpads:save-loop'), loops: call('sketchpads:loops'), trashList: call('sketchpads:trash-list') }, // (round 67, sketchpads67) Sessions › ✂ Trim loop: a new loop beside its sketch, the sketch's loops, a loop to the Trash
+  parisPhotos: { put: call('parisphotos:put'), dir: call('parisphotos:dir'), trash: call('parisphotos:trash'), heic: call('parisphotos:heic'), scan: call('parisphotos:scan') }, // (round 69, photos69) My Paris photos (parisphotosmain.js)
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),
   attachmentsDir: call('attachments:dir'),
@@ -198,7 +200,7 @@ contextBridge.exposeInMainWorld('hub', {
   net: { probe: call('net:probe'), onPower: on('net:power'), prepareProject: call('net:prepareProject') }, // connection + this computer's offline project check
   weekquest: { weather: call('weekquest:weather') }, // (round 62, weekquest62) the week plan's forecast (weekquestmain.js)
   shows: { get: call('shows:get'), refresh: call('shows:refresh'), settings: call('shows:settings'), follow: call('shows:follow'), unfollow: call('shows:unfollow'), test: call('shows:test'), remind: call('shows:remind'), onRemind: on('shows:remind') }, // (round 61, showsync61) this week's shows from Shotgun / DICE (showsyncmain.js)
-  leave: { op: call('leave:op'), onDue: on('leave:due'), onChanged: on('leave:changed') }, // (round 68, leavesoon68) ⏰ Remind me to leave (leavesoonmain.js: one timer)
+  leave: { op: call('leave:op'), onDue: on('leave:due'), onChanged: on('leave:changed'), onWarn: on('leave:warn') /* (round 69, ratp69) ⚠ a line on the way is disrupted */ }, // (round 68, leavesoon68) ⏰ Remind me to leave (leavesoonmain.js: one timer)
   tickets: { op: call('tickets:op') }, // (round 68, tickets68) 🎟 My ticket (ticketsmain.js): list · add · remove (Trash) · suggest (Downloads, names only) · hud · pass · awake
   safetynet: { last: call('safetynet:last'), reloading: call('safetynet:reloading'), status: call('safetynet:status'), keep: call('safetynet:keep'), done: call('safetynet:done'), testCrash: call('safetynet:test-crash') }, // (round 29) after an unexpected exit: what was kept (safetynetmain.js)
   crashsafe: { take: call('crashsafe:take'), done: call('crashsafe:done'), ack: call('crashsafe:ack'), test: call('crashsafe:test'), check: call('crashsafe:check'), onOrphan: on('crashsafe:orphan'), onFlush: on('crashsafe:flush'), onFrames: on('crashsafe:frames') }, // (round 50) replies cut off by a crash, renders cut off, the computer going down (crashsafemain.js)

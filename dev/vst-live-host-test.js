@@ -106,7 +106,7 @@ if (py.status !== 0) { out.skipped.push('host part: python3 with numpy not found
     const render = await V('render', { duration: .5, notes: [{ note: 60, time: 0, length: .2 }] }); assert.ok(render.ok, render.error);
     assert.equal(Buffer.from(render.audio, 'base64').subarray(0, 4).toString(), 'RIFF'); const resumed = await V('live-status'); assert.equal(resumed.playing, true); assert.equal(resumed.device, asioId); assert.equal(resumed.buffer, 128);
     // same settings again: nothing restarts; another buffer: the stream restarts with it; bad values refused
-    const blocks = (await V('live-status')).blocks; const same = await V('live-start', { device: asioId, buffer: 128, gain: .1 }); assert.ok(same.blocks >= blocks, 'same settings: no restart'); assert.equal(same.gain, .1);
+    const blocks = (await V('live-status')).blocks; const same = await V('live-start', { device: asioId, buffer: 128, gain: .1 }); assert.ok(same.blocks >= blocks, 'same settings: no restart'); assert.ok(Math.abs(same.gain - .1 * require('../volumemain').get()) < 1e-9, `monitor .1 × Hearth's playback volume (${require('../volumemain').get()}): ${same.gain}`); // (sweep69) the host plays at monitor × the master playback volume (75 % by default, volumemain.js), once
     const bigger = await V('live-start', { device: asioId, buffer: 256, gain: .1 }); assert.equal(bigger.buffer, 256); assert.equal(bigger.depth, 1);
     assert.match((await V('live-start', { buffer: 100 })).error, /64, 128, 256, 512 or 1024/);
     const wasapi = devices.devices.find(d => d.api === 'Windows WASAPI' && /Universal Audio/.test(d.name)).id, mme = devices.devices.find(d => d.api === 'MME').id;

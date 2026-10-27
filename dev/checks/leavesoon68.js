@@ -60,7 +60,10 @@ try {
   await until(() => root() && QuestJournal.ready(), 'journal');
   await until(() => window.LeaveSoon && window.LeaveSoonCore, 'leavesoon rides in with the map code');
   const K = LeaveSoonCore;
-  const t0 = Date.now(); await LeaveSoon._test.clock(t0);
+  // (round 69, ratp69) a fixed time of day on the fake clock (tomorrow 15:30): from ~19:15 Paris on, the errand's closing
+  // time was tomorrow while the show (+5 h) came first, and steps 5–6 failed by the hour the check ran
+  const day0 = new Date(Date.now() + 86400e3); day0.setHours(15, 30, 0, 0);
+  const t0 = day0.getTime(); await LeaveSoon._test.clock(t0);
   step('no reminder on: the main side holds no timer', (await window.hub.leave.op({ op: 'test', now: t0 })).value.armed === false);
 
   // setup (not under test): an errand at Apple Opéra (daily 10–20) and a show 5 h from now

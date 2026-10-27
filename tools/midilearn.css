@@ -1,0 +1,30 @@
+/* (round 69, midilearn69) 🎹 Map my controller: a panel in the Sound desk, above the instrument (never over the plugin's
+   own window). Plain rows, no blur, no animation; the values under the rows change text only. */
+.ml-panel { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 10px; padding: 12px 14px; border: 1px solid #ffffff1c; border-radius: 14px; background: #141218; color: #eee7f3; font-size: 13px; }
+.ml-head { display: flex; align-items: baseline; gap: 10px; }
+.ml-head .ml-close { margin-left: auto; padding: 2px 9px; background: transparent; border-color: transparent; color: #a99fb3; }
+.ml-line { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
+.ml-dim { color: #9d93a8; font-size: 12px; }
+.ml-pickup { display: inline-flex; align-items: center; gap: 6px; }
+.ml-panel button.ml-mode { padding: 3px 10px; border-radius: 999px; }
+.ml-panel button.ml-mode[aria-pressed="true"] { border-color: #9fd8ff; background: #9fd8ff22; color: #e9f7ff; }
+.ml-panel button.ml-learn { padding: 5px 16px; border-radius: 999px; font-weight: 600; }
+.ml-panel button.ml-learn.ml-on { border-color: #ffbe59; background: #ffbe5922; color: #ffe2b3; }
+.ml-step { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px dashed #ffbe5966; border-radius: 12px; background: #ffbe590a; }
+.ml-step[hidden] { display: none; }
+.ml-ask { margin: 0; color: #fff3df; }
+.ml-panel button.ml-touched { align-self: flex-start; border-color: #9fd8ffaa; }
+.ml-find { max-width: 340px; }
+.ml-list { display: flex; flex-wrap: wrap; gap: 4px; max-height: 168px; overflow: auto; contain: content; }
+.ml-panel button.ml-item { padding: 2px 9px; font-size: 12px; }
+.ml-rows { display: flex; flex-direction: column; gap: 4px; }
+.ml-row { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 10px; background: #ffffff06; }
+.ml-row-main { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; }
+.ml-name { min-width: 16ch; font-weight: 600; color: #f1e9f6; }
+.ml-range { display: inline-flex; align-items: center; gap: 4px; }
+.ml-range input { width: 4.2em; }
+.ml-inv { display: inline-flex; align-items: center; gap: 4px; }
+.ml-panel button.ml-remove { margin-left: auto; padding: 2px 9px; color: #c9bfd3; }
+.ml-now, .ml-said { margin: 0; font-variant-numeric: tabular-nums; }
+.ml-said:empty, .ml-foot:empty { display: none; }
+.ml-foot { margin: 0; }

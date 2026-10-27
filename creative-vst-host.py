@@ -31,6 +31,11 @@ controller, phrases) with its sample position; 'record-take' writes the WAV (16-
   ('editor' {embed}, 'editor-place', 'editor-pop', 'editor-embed', 'editor-close'); with the editor open, reading
   controls, a state snapshot / recall and a bounce run off the main thread (pedalboard >= 0.8.8 allows it) and a bounce
   never resets the instance under its open window.
+
+(round 69, midilearn69) Map my controller (creative-vst-midimap.py, docs/upgrades/midilearn69.md): a mapped CC from the
+owner's controller is taken before it reaches the plugin and moves its control from the audio thread, smoothed, with
+takeover / jump pickup; pitch bend, the mod wheel and sustain always pass untouched. Saved per instrument in the data
+folder ('midimap-status' / 'midimap-learn' / 'midimap-set').
 """
 import base64
 import importlib.util
@@ -125,6 +130,10 @@ spec.loader.exec_module(liveset)
 spec = importlib.util.spec_from_file_location('sketch', Path(__file__).with_name('creative-vst-sketch.py'))
 sketch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sketch)
+# (round 69, midilearn69) Map my controller: mapped CCs → controls, smoothed in the audio thread, pickup, learn
+spec = importlib.util.spec_from_file_location('midimap', Path(__file__).with_name('creative-vst-midimap.py'))
+midimap = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(midimap)
 
 BUFFERS = (64, 128, 256, 512, 1024)  # (round 61) 64–512 for live play; 1024 kept from Codex's first version
 AHEAD_MS = 5.0  # (round 61) audio rendered ahead of the device: enough for a Python thread's wake-up, small to feel
@@ -337,9 +346,12 @@ class Engine:
         self.strip = lambda text: text
         self.liveset = liveset.LiveSet(self)  # (round 64, liveset64) idle until Hearth opens a set ('set-open')
         self.sketch = sketch.Sketch(self)  # (round 66, bouncelog66) the 30-second ring (allocated on the first live block)
+        self.midimap = midimap.MidiMap(self)  # (round 69, midilearn69) the owner's controller mappings for this instrument
 
     def from_controller(self, message):
         # Notes from the controller never touch active_notes: the stale-note guard is for Hearth's own keys only.
+        if self.midimap.feed(message):  # (round 69, midilearn69) a mapped knob / fader moves its control instead
+            return
         if self.running.is_set():
             try:
                 self.events.put_nowait(message)
@@ -369,6 +381,7 @@ class Engine:
         if plugin.name != expected or not plugin.is_instrument:
             raise ValueError('This file is not the supported instrument.')
         self.plugin, self.path = plugin, job['plugin']
+        self.midimap.loaded(expected)  # (round 69, midilearn69) this instrument's saved mappings
         self.timings['pluginMs'] = round((time.perf_counter() - began) * 1000)
         # (round 64) controls indexed from the C++ list (no wrappers built); Codex's full dict only on an unknown pedalboard
         self.index_controls()
@@ -740,6 +753,7 @@ class Engine:
                     self.active_notes.clear()
                 with self.lock:
                     began = time.perf_counter()
+                    self.midimap.tick(self.frames, self.rate)  # (round 69, midilearn69) mapped knobs glide their controls
                     # (round 64, liveset64) with a set open, a preset switch is carried out at its exact sample here
                     block = self.liveset.render(messages) if self.liveset.active else self.plugin(messages, duration=self.frames / self.rate, sample_rate=self.rate,
                                         num_channels=2, buffer_size=self.frames, reset=False)
@@ -1094,6 +1108,8 @@ class Engine:
             raise ValueError('Load the selected instrument first.')
         if action in liveset.ACTIONS:  # (round 64, liveset64)
             return self.liveset.command(action, job)
+        if action in midimap.ACTIONS:  # (round 69, midilearn69) 'midimap-status' / 'midimap-learn' / 'midimap-set'
+            return self.midimap.command(action, job)
         if action in ('live-start', 'open'):
             return self.start(job)
         if action == 'midi':
@@ -1299,6 +1315,7 @@ def serve(config, response):
         return engine.embed.opened(want, known, stop=lambda: not engine.editor_requested)
 
     def close_editor():
+        engine.embed.let_go()  # (vstfix70) out of Hearth's window first (hidden), then the plugin's loop is asked to end
         if engine.editor_event:
             engine.editor_event.set()
         end = time.monotonic() + 3

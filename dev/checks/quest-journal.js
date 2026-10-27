@@ -14,46 +14,39 @@ QuestReview.run = () => ({ promise: Promise.resolve({ status: 'reviewed', score:
 const submitFixture = async () => { input('External chat link', 'https://chatgpt.com/c/journal-fixture'); input('Paste the actual result from that chat', 'Fixture output: a named tile export with violet, cream and dark green colors and a checked seam.'); await press('Use this pasted result'); await press('Submit proof & ask Astra'); };
 check(QuestCore.xp(QuestJournal.snapshot()) === 0, 'fresh journal starts at zero');
 check(Commands.list().some(c => c.name === 'quests'), '/quests registered');
-check(getComputedStyle(root().querySelector('.qj-traveller .qj-mini-path')).getPropertyValue('--path').trim() === QuestCore.paths[0].color, 'skill path colors use the current catalog palette through CSS variables');
-const studioNav = root().querySelector('.qj-nav');
-check(studioNav.querySelectorAll('button svg').length === 5 && !studioNav.querySelector('parsererror'), 'five original SVG destinations render');
-for (const [page, selector] of [['campaigns', '.qj-campaign'], ['skills', '.qj-branch'], ['rewards', '.qj-reward'], ['collection', '.qj-empty'], ['adventure', '.qj-hero']]) {
-  const b = studioNav.querySelector(`[data-page="${page}"]`); b.click(); await until(() => !b.disabled);
-  check(b.getAttribute('aria-current') === 'page' && Boolean(root().querySelector(selector)), 'illustrated destination works: ' + page);
+// (lifechecks70) Codex's Life redesign replaced the illustrated desk (five SVG objects, bench captions, hover lift) with
+// three tabs (Today / Map / Progress, each with an SVG icon) and their links; the same destinations are checked through them.
+check(getComputedStyle(root().querySelector('.qj-hero')).getPropertyValue('--path').trim() === QuestCore.paths.find(p => p.id === QuestJournal.snapshot().campaigns[0].path).color, 'skill path colors use the current catalog palette through CSS variables');
+const studioNav = root().querySelector('.qj-life-nav'), tab = id => studioNav.querySelector(`[data-nav-group="${id}"]`);
+check(studioNav.querySelectorAll('.qj-command-tab svg').length === 3 && !studioNav.querySelector('parsererror'), 'three Life tabs render with their SVG icons');
+for (const [group, page, selector] of [['quests', 'catalog', '.qj-catalog-card'], ['progress', 'skills', '.qj-branch'], ['progress', 'rewards', '.qj-reward'], ['progress', 'collection', '.qj-empty'], ['quests', 'adventure', '.qj-hero']]) {
+  tab(group).click(); await wait(60);
+  const b = studioNav.querySelector(`.qj-command-panel:not([hidden]) [data-page="${page}"]`) || tab(group); b.click(); await until(() => root().querySelector(selector));
+  check(root().dataset.view === page && tab(group).getAttribute('aria-current') === 'page', 'Life destination works: ' + page);
 }
 check(QuestCore.xp(QuestJournal.snapshot()) === 0, 'exploring the studio never awards XP');
-const notebook = studioNav.querySelector('[data-page="adventure"]'); notebook.focus();
-await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 } });
-await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 } });
-check(document.activeElement.dataset.page === 'campaigns' && root().querySelector('.qj-bench-caption').textContent.startsWith('Project crate'), 'Tab reaches the next object and shows its hint');
+tab('map').focus();
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 } });
+await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 } });
+check(document.activeElement === tab('progress'), 'arrow keys move between the Life tabs');
 await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' } });
 await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 } });
-await until(() => root().querySelector('.qj-campaign'));
-check(document.activeElement.dataset.page === 'campaigns', 'keyboard activation retains focus on the menu');
-const machine = studioNav.querySelector('[data-page="rewards"]'), rect = machine.getBoundingClientRect();
-await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: rect.x + rect.width / 2, y: rect.y + 40 } });
-await wait(280);
-check(root().querySelector('.qj-bench-caption').textContent.startsWith('Treat machine') && getComputedStyle(machine.querySelector('svg')).transform !== 'none', 'pointer inspection lifts the object and shows its hint');
-await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] } });
-await wait(80);
-check(getComputedStyle(machine.querySelector('svg')).transform === 'none' && getComputedStyle(machine.querySelector('svg')).transitionDuration === '0s', 'reduced motion removes object movement');
-await smoke({ cdp: 'Emulation.setEmulatedMedia', params: { features: [] } });
-await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: 1, y: 1 } });
+await until(() => root().dataset.view === 'collection');
+check(document.activeElement === tab('progress'), 'keyboard activation retains focus on the tab');
 QuestJournal.navigate('adventure');
-await Lazy.load('creative'); activate('tool:creative'); await until(() => document.querySelector('.cp-stage h2'));
-CreativePlayground.openFeature('quests'); await press('Open quest journal →', document.querySelector('.cp-stage'));
-check(H.activeId === 'tool:quests', 'Playground opens the dedicated quest journal');
-await press('Begin quest →'); await press('Open creative tool ↗');
+await press('Quest details'); await press('Open creative tool ↗');
 check(H.activeId === 'tool:creative' && CreativePlayground.snapshot().feature === 'pattern', 'quest opens the actual seamless tile tool');
-await press('✦ Quest journal', document.querySelector('.cp-heading'));
+document.querySelector('#agent-buttons [data-space="life"]').click(); await until(() => H.activeId === 'tool:quests' && root().querySelector('.qj-hero'));
+check(H.activeId === 'tool:quests', 'the rail\'s Life button brings the journal back');
 document.querySelectorAll('.toast-x').forEach(b => b.click());
 await smoke({ shot: window.SMOKE_SAVES + '/quest-adventure.png' });
-await press('Make this smaller');
+await press('Quest details'); await press('2-minute start');
 input('Make the first action your own', 'Open the tile generator and keep one color.'); await press('Save smaller step');
 await press('I took the first step · +5 XP');
 check(QuestCore.xp(QuestJournal.snapshot()) === 5 && QuestCore.stats(QuestJournal.snapshot()).finished === 0, 'small start does not fake a completion');
-await press('Make this smaller'); await press('Small start already earned ✓'); check(QuestCore.xp(QuestJournal.snapshot()) === 5, 'repeated small start earns nothing extra');
-await press('Continue quest →'); await press('I reached the finish line →');
+await press('Quest details'); await press('2-minute start'); await press('Small start already earned ✓'); check(QuestCore.xp(QuestJournal.snapshot()) === 5, 'repeated small start earns nothing extra');
+if (root().querySelector('dialog[open]')) await close();
+await press('Quest details'); await press('I reached the finish line →');
 await press('Submit proof & ask Astra'); check(Boolean(root().querySelector('dialog[open]')), 'finish line requires proof');
 check(scope().textContent.includes('Upload proof'), 'proof validation is visible inside modal');
 input('What were you aiming for, and what changed?', 'A tile worth keeping.');
@@ -68,7 +61,7 @@ await press('Submit proof & ask Astra'); await press('Complete quest · +20 XP')
 check(QuestCore.xp(QuestJournal.snapshot()) === 25, 'small start and completion total exactly one award');
 check(QuestJournal.snapshot().records['q-material-seed'].artifact?.path, 'actual attachment path saved');
 check(root().querySelector('.qj-hero h2').textContent === 'Give it a palette', 'next milestone becomes main quest');
-for (let i = 0; i < 3; i++) { await press('Begin quest →'); await press('I reached the finish line →'); await submitFixture(); await press(/^Complete quest/); }
+for (let i = 0; i < 3; i++) { await press('Quest details'); await press('I reached the finish line →'); await submitFixture(); await press(/^Complete quest/); }
 check(QuestCore.stats(QuestJournal.snapshot()).campaigns === 1, 'campaign finish counted');
 check(QuestCore.level(QuestCore.xp(QuestJournal.snapshot())).n === 2, 'level 2 earned through finished work');
 QuestJournal.navigate('skills');
@@ -85,17 +78,18 @@ await press('Return reward'); check(QuestCore.balance(QuestJournal.snapshot()) =
 await press('+ Add a reward'); input('Reward', 'A quiet studio evening'); input('Sparks', '5'); await press('Save reward');
 await smoke({ shot: window.SMOKE_SAVES + '/quest-rewards.png' });
 check(QuestJournal.snapshot().rewards.some(r => r.name === 'A quiet studio evening'), 'personal reward persists');
-QuestJournal.navigate('campaigns'); await press('+ Your own campaign');
+QuestJournal.navigate('catalog'); await press('+ Your own'); // (lifechecks70) campaigns live in Find a quest
 input('Campaign name', 'Finish my <small> project'); input('Why this matters to me', 'Make something I can keep.');
 input('Milestones · one finishable step per line', 'Open the project\nExport one version'); await press('Create campaign →');
 check(root().querySelector('.qj-hero h2').textContent === 'Open the project', 'personal campaign has an immediate next step');
 check(!root().querySelector('small'), 'campaign title is not interpreted as markup');
-await press('Begin quest →'); await press('Focus for 5 minutes');
+await press('Quest details'); await press('Focus for 5 minutes');
 check(QuestJournal.snapshot().focus?.remaining === 300000, 'focus timer saved');
 await press('Pause', root().querySelector('.qj-focus')); check(QuestJournal.snapshot().focus.end === 0, 'focus can pause');
 await press('Resume', root().querySelector('.qj-focus')); check(QuestJournal.snapshot().focus.end > Date.now(), 'focus resumes');
 await press('End focus'); check(!QuestJournal.snapshot().focus, 'ending timer does not finish the quest');
-const side = root().querySelector('.qj-side'); await press('Accept quest +', side); check(QuestJournal.snapshot().sideQuests.length === 1, 'side quest accepted'); await press('Park this side quest');
+// (lifechecks70) Today no longer lists invitations: a daily quest is started from Find a quest
+QuestJournal.navigate('catalog'); { const daily = QuestCore.daily().find(q => !QuestCore.find(QuestJournal.snapshot(), q.id)); await press('Open', root().querySelector(`[data-catalog-id="${daily.id}"]`)); await press('Start'); } check(QuestJournal.snapshot().sideQuests.length === 1, 'side quest accepted'); await press('Park this side quest');
 check(QuestJournal.snapshot().sideQuests[0].parked, 'side quest can rest');
 QuestJournal.navigate('collection'); const firstPortfolio = [...root().querySelectorAll('.qj-portfolio-card')].find(card => card.querySelector('h3').textContent === 'Find a pattern that pulls you in'); await press('Open review & versions →', firstPortfolio); const evidence = scope().querySelector('.qj-evidence-preview'); evidence.closest('details').open = true; await until(() => evidence.querySelector('img')?.complete);
 check(evidence.querySelector('img').naturalWidth === 96, 'real image displays in proof history'); await close();
@@ -104,13 +98,13 @@ QuestJournal.questDetail('q-material-seed'); await press('Undo completion'); che
 // Draft handoff is explicit and preserves a preexisting draft, without starting an engine turn.
 const astra = H.agents().find(a => a.mode === 'native' && a.engine === 'codex' && !a.dock);
 activate(astra.id); Native.setDraft(astra.id, 'Keep this earlier thought.'); activate('tool:quests'); QuestJournal.navigate('adventure');
-await press('Begin quest →'); await press('Prepare Astra draft');
+await press('Quest details'); await press('Prepare Astra draft');
 check(Native.view(astra.id).input.value.includes('Keep this earlier thought.') && Native.view(astra.id).input.value.includes('Open the project'), 'Astra draft preserves previous text and includes the quest');
 check(!Native.isBusy(Native.chatOf(astra.id)?.id), 'draft was not sent'); activate('tool:quests');
 // Real backup export/import and recovery copy.
-await press('Journal options'); await press('Export backup'); await close();
+await press('Settings'); await press('Journal & backups'); await press('Export backup'); await close(); // (lifechecks70) Journal options moved into Life › Settings
 const saved = await hub.kvGet('quest-journal'); const restore = QuestCore.clone(saved); restore.campaigns.find(c => c.custom).title = 'Restored campaign';
-await press('Journal options'); await press('Restore backup');
+await press('Settings'); await press('Journal & backups'); await press('Restore backup');
 const data = new DataTransfer(); data.items.add(new File([JSON.stringify(restore)], 'quest-backup.json', { type: 'application/json' })); const upload = scope().querySelector('input[type=file]'); upload.files = data.files; upload.dispatchEvent(new Event('change'));
 await until(() => scope().textContent.includes('A recovery copy')); await press('Replace with this journal');
 check(QuestJournal.snapshot().campaigns.some(c => c.title === 'Restored campaign'), 'backup import restores journal');
@@ -118,11 +112,11 @@ check((await hub.kvGet('quest-journal-before-restore')).campaigns.some(c => c.ti
 // Narrow layout and keyboard escape.
 await smoke({ cdp: 'Emulation.setDeviceMetricsOverride', params: { width: 760, height: 900, deviceScaleFactor: 1, mobile: false } }); await wait(150);
 check(root().scrollWidth <= root().clientWidth + 2, 'journal has no horizontal overflow at narrow width');
-check([...root().querySelectorAll('.qj-object')].every(b => { const r = b.getBoundingClientRect(); return r.width >= 44 && r.left >= root().getBoundingClientRect().left && r.right <= root().getBoundingClientRect().right; }), 'all five SVG destinations remain visible touch targets at narrow width');
+check([...root().querySelectorAll('.qj-command-tab')].every(b => { const r = b.getBoundingClientRect(); return r.width >= 44 && r.left >= root().getBoundingClientRect().left && r.right <= root().getBoundingClientRect().right; }), 'the Life tabs and Settings remain visible touch targets at narrow width');
 QuestJournal.navigate('skills'); await wait(100); check(root().scrollWidth <= root().clientWidth + 2, 'skill tree fits narrow width');
 await smoke({ shot: window.SMOKE_SAVES + '/quest-narrow.png' });
 await smoke({ cdp: 'Emulation.clearDeviceMetricsOverride' });
-QuestJournal.navigate('adventure'); await press('Begin quest →');
+QuestJournal.navigate('adventure'); await press('Quest details');
 await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 } });
 await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 } });
 check(!root().querySelector('dialog[open]'), 'Escape closes modal');

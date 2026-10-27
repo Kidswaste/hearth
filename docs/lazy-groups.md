@@ -1,0 +1,95 @@
+# Lazy groups: why each exists
+
+The long notes that used to sit after each group in `lazy-data.js` (moved here in round 70 to keep the first screen small). `lazy-data.js` keeps the short `(round N, stream)` tag.
+
+- **questjournal**: (round 67, invite67) + invite-hook.js: 👋 Bring someone on every show card, /shows invite · (round 61, showsync61) + showsync*: this week's Shotgun / DICE shows as a Paris map layer, /shows · (round 63, questwalk63) + quest-walk*: afternoon walks, /quest walk · (round 64, mapfirst64) + quest-mapfirst*: the map shows guide places, shows, walks and visits by default, one layer strip · (round 66, herepin66) + herepin.js: 📍 I'm here on the map, Close to you
+- **creative**: (round 62, parkjam62) + parkjam*: Park mode + the loop recorder in the Sound desk (/jam park)
+- **audiodoctor**: (round 64, audiodoctor64) 🎚 /audio doctor: the music setup checked on this PC with one-click fixes (only when asked)
+- **questcore**: (round 61, questhud61; listed after questjournal so the recording puts its files first) Codex's quest rules on their own: the rail's quest tracker needs them without the Studio's UI · (round 66, herepin66) + herepin-core.js: the tracker's 📍 Near me row · (round 67, errands67) + errands-core.js: the tracker's errand badges
+- **enginehealth**: (round 40, firstscreen; before chatcmds: its /engines and /astra-doctor replace the chat's, as before) Claude Code / Codex installs: the check a moment after the start, /doctor, the fix buttons under a failed reply
+- **chatcmds**: (round 40, firstscreen; first: its Ctrl/⌘+K lines are the commands there were at the first screen, as before) the chat's own /commands (+ their Ctrl/⌘+K lines, auto-title)
+- **bigscreen**: (round 38) ⛶ full screen + size of everything per screen (the zoom itself is set before the first frame by preload.js)
+- **resume**: (round 13/20) pick up where you left, Freshen, repeated-error fixes
+- **assist**: (round 5) Astra / Claude take decisions off your hands (Lab shuffle & pick, next steps)
+- **kit**: the Kit: colors, easing, palettes, BPM, frame sizes (the Lab's Color / Easing tabs)
+- **safetynet**: (round 29) Hearth never loses work: the work journal + the card after an unexpected exit (first of the 'soon' groups: it keeps from the start)
+- **polish8**: (round 40, firstscreen) board / capture menus and keys (round 8)
+- **a11y**: (round 40, a11y) names, roles, focus return, polite announcements: right after the first frame
+- **datasafe**: (round 43, datasafe) the calm card when something couldn't be read at the start ("nothing was changed"), 🛟 Recover… (chats, memory, settings, tool data)
+- **idlecpu**: (round 44, idlecpu) nobody using the window for a minute: the look's ambient loops pause (the GPU stops redrawing it every frame)
+- **errorcalm**: (round 45, errorcalm) every error the owner sees: one plain sentence + the one action that fixes it, the raw text behind Details (toasts, failed replies, notes, the Lab console's plain line)
+- **jankwatch**: (round 20) /smooth: the jank watch's report (jank.js measures from the start) · (round 67, slowbutton67) 🐢 That was slow: the card
+- **projects**: (round 23) Home, projects, search everything (Ctrl/⌘+Shift+K)
+- **devreport**: (round 21) /report: Report to the developer (devreport-hooks.js puts the ⚑ buttons)
+- **context**: (round 24) @ references, relevant memory, what each message sent, fresh start from a summary
+- **assets**: (round 24) one asset library: textures, HDRIs, models, fonts, sounds, LUTs (Ctrl/⌘+Shift+A, /assets)
+- **voice**: (round 23) talk to chats (push to talk, local whisper, voice commands), hear replies
+- **remote**: (round 24) /remote: phone remote over the LAN (remotemain.js serves remote-page.html)
+- **interop**: (round 25) /osc, /midi-out, /obs, /link: OSC, MIDI out, OBS Browser Source + obs-websocket, Ableton Link (interopmain.js)
+- **patchnotes**: (round 29) 📰 patch notes: one short file per round, docs/patch-notes
+- **options**: (round 26) ⋯ AI setup: personality, instructions, what it can use, memory, habits
+- **connections**: (round 26) the owner's MCP servers in ⋯ AI setup → What it can use: ＋ Add a connection, Test, per-AI on / off (connectionsmain.js)
+- **gallery**: (round 27) the Lab gallery: "Start from something like…" (New, the starter's chip, the ◎ mission, /gallery)
+- **packs**: (round 28) ⇪ packs: a scene and everything it uses as one .hearthpack (Sketch ▾ › Share, ✦ More › ⇪ Share, the gallery's right-click, drops)
+- **hooks**: (round 26) ⚡ hooks: when something happens, an AI gets your words (⋯ AI setup → Hooks)
+- **notify**: (round 44) Tell me when…: Electron's own desktop notifications while you're in another app (replies, renders, Keep going, an AI waiting for you, updates), one per chat, bursts summed up, a click opens the chat / card / file (notifymain.js)
+- **activity**: (round 27) ◉ Activity: what runs, what waits for you, the last 24 h; stuck replies; desktop notifications
+- **aiundo**: (round 28) one undo for what the AIs did: the timeline in Activity, ↶ Undo what it did on replies
+- **glrecover**: (round 43) the graphics card restarted / drawing without it: one calm note, /graphics (glrecovermain.js tells it) · (round 52, gpu52) the graphics path: Settings › Advanced › Graphics, /graphics power|backend, started without the card
+- **undoall**: (round 41) one "Undo last change": the app's change log, Ctrl/⌘+Z outside text boxes / the Lab, Recent changes in Activity
+- **publishkit**: (round 27) 📮 Ready to post: platform checks, safe areas, cover, words, a post folder (publish-hooks.js: the mission, the render buttons)
+- **firstrun**: (round 28) Check this computer: a new computer ready in two minutes (Settings › Advanced, the first launch on a fresh computer; firstrunmain.js)
+- **budget**: (round 36: + tokenaudit, where its tokens go, in Spending) // (round 35: + concise, how long its answers are) (round 34: + autocompact, offer to continue lighter) (round 32: + cachewise, the cache note + what the cache saved) (round 30) Spending: a weekly limit per AI (⋯ AI setup), warnings at 80 / 100 %, cheaper answers near it, the week at a glance
+- **chrome**: (round 31: + Chrome views, its pages shown and used here) (round 30) Google sign-in in the owner's real Chrome: ⋯ AI setup › What it can use › Chrome, website chats in Chrome, the offer after Google refused (chromemain.js drives it)
+- **recall**: (round 30) "what did we decide about X?": the chats panel's "Find the answer" row, the ◎ mission, /recall; the index is built in idle moments on the store thread
+- **recallui**: (round 30) the recall card: decisions / open questions as quotes, Jump to it, the optional AI sum-up (cost first)
+- **pinboard**: (round 30) Find images like this: Pinterest (in the Hearth Chrome) / Unsplash / Are.na / Cosmos → a picker → the board (pinboard-hook.js: the ways in, loaded with the board)
+- **quickstart**: (round 31) "What can I do here?": the ways in (each window's ⋯, once by itself the first time a window opens, Ctrl/⌘+K)
+- **quickstartui**: (round 31) the card: 3–5 things worth trying in this window, from what you haven't used and what's on screen (free)
+- **labvar**: (round 32) 🎲 Variations: 6 takes on the Lab scene to click, made locally (✦ More › ✨ Look & motion, the toolbar's ⋯, the ◎ mission; tools/three-easy.js loads it)
+- **framebar**: (round 64, framebar64) ▮ the frame budget bar in the Lab's stats line: the frame vs the screen's rate (240 Hz = 4.17 ms), each layer on hover, "why?" → top costs + suggestions drafted for the Three Director (tools/three.js loads it the first time the stats line shows)
+- **scenedoctor**: (round 34) 🩺 Fix my scene: a free local check of the Lab scene with one-click fixes (✦ More, the toolbar's ⋯, the calm hint: tools/three-doctor-hook.js in the lab group)
+- **twocomputers**: (round 35) two computers: "This computer: Mac (…)", an AI's folders per computer (Pick this folder on this computer), the welcome note, songs found again / Find this file (right after the first screen)
+- **backupauto**: (round 45) 💾 automatic, checked backups: "Last backup: 2 h ago ✓" in Settings › This computer & sync, Backups… (by date, what's inside, Restore missing things), the calm notes (right after the first screen)
+- **multiformat**: (round 33) ▦ All formats: the Lab scene / sequence exported to 16:9, 9:16, 1:1, 4:5 in one go, each reframed (⇪ Export, ✦ More › ⇪ Make, the toolbar's ⋯, 📮)
+- **labtemplates**: (round 35) 📐 My templates: any scene as a reusable starting point, a form + live preview → a new scene, 0 tokens (✦ More, the toolbar's ⋯, Sketch ▾, the gallery: tools/three-templates-hook.js in the lab group)
+- **kinetictype**: (round 45) 🅰 Text that moves: 22 kinetic type presets on the beat / bar / kick with live previews, lyric lines on taps or markers, 0 tokens (＋ Add, a 🅰 layer's right-click, Lab search, Find anything: tools/three-kinetic-hook.js in the lab group)
+- **labvis**: (round 50) 🎵 Music visualizer: 17 looks that move with the song (spectrum bars, waveform, oscilloscope, rings / burst on the kick, starfield, tunnel, VU meters, spectrogram, logo bounce…) with live previews, renders exact, 0 tokens (＋ Add, a 🎵 layer's right-click, Lab search, Find anything: tools/three-vis-hook.js in the lab group)
+- **presentready**: (round 52) ▣ Present gets the scene ready first (everything loaded, compiled, warmed across the timeline, measured), holds 100 % quality while presenting, or bakes a perfect video when this computer can't hold it live (tools/three.js togglePresent loads it)
+- **gameperf**: (round 52) ▶ game performance: the stats chip (F in ▶ Play), every stutter explained, the performance doctor with fixes (one click + undo on a Lab scene, patches as suggestions for an html build), max-fidelity suggestions; /game-perf, three_do perf
+- **gameready**: (round 52) ▶ Play gets a game ready inside its window (a Lab scene or an HTML build): everything loaded, textures at full quality uploaded, every shader compiled and warmed before the first frame, Optimize for play into Hearth's cache (GameMode.play / /game-ready load it)
+- **directorgame**: (round 53) ▶ Play-test: the Three Director plays the owner's game in the ▶ Play window in one call (three_do play: an input script, the numbers back, errors with line + fix, one small picture on ask), /playtest
+- **labmaterials**: (round 50) ◉ Looks for 3D things: 16 material presets as balls, color + shine, one undo each, kept with the layer (◉ Look › on a picked 3D thing, ✨ Look & motion › ◉ Material…, /material, three_do material: tools/three-materials-hook.js in the lab group)
+- **labrecipes**: (round 39) 📜 Recipes: record the Lab steps you repeat, replay them on any scene as one undo step, 0 tokens (✦ More › 📜 Recipes, the toolbar's ⋯; the recorder's taps: tools/three-recipes-hook.js in the lab group)
+- **labkeys**: (round 46) ◆ the ease card a click on a keyframe diamond opens on the Lab timeline: six drawn eases, a two-handle curve, Snap to beats (tools/three-media.js loads it on the first click)
+- **labdirection**: (round 67, direction67) ✦ Direction: Try 4 ways (the crew), Mark it up, plain sliders, the vision card with drift, branches; the chip sits after the scene picker / ⚑ Finish line
+- **labfinish**: (round 67, finishlines67) ⚑ Finish line: a size, a "done when" list and ✦ Polish this (a side quest with three steps) per Lab scene; the chip sits after the scene picker
+- **labbatch**: (round 42) ⧉ Make a batch: one template (or this scene) → many videos from a list / a CSV / every song in a folder, a preview of the first ones, one render-queue row, one folder + summary CSV, 0 tokens (✦ More › ⇪ Make, the toolbar's ⋯, My templates; tools/three-batch-hook.js in the lab group)
+- **labsearch**: (round 36) 🔎 Lab search: one box for the Lab's menus, effects, layers, sliders, templates, starting points, scenes, help (/ in the Lab, the toolbar's 🔎: tools/three-search-hook.js in the lab group)
+- **appsearch**: (round 37) 🔎 Find anything: Ctrl/⌘+K over Settings, AI setup, menus, missions, chats and their messages, the Lab, patch notes, "how do I…" (loads the first time the palette opens)
+- **dragdrop**: (round 38) files with Finder / Explorer: drops on chats / the Lab preview with one overlay saying what happens, paste of copied files, native drags out
+- **attachlean**: (round 40) lean attachments: pictures sent at 1568 px, big texts as an outline + the parts asked about, a file sent before referenced, the cost on each chip (click: send whole)
+- **filewatch**: (round 42) files changed outside Hearth (Finder / Explorer, VS Code, Photoshop): the Lab's media swapped in place, AI changes marked "changed outside", chat box attachments read again; one watcher service in the main process (filewatchmain.js)
+- **searchcore**: (round 37, appsearch; listed after the groups that use it: dev/lazy-manifest.js puts each group's files right after its `at` file, so a later group's files come first) the search engine Lab search and Find anything share (plain words, synonyms, typos, menus → rows)
+- **trynew**: (round 64, newtour64) ✦ Try what's new: hands-on paths through rounds 61–63 on the guided spotlight (tour.js), /try, the Try it row in What's new, one Hints offer
+- **whatsnew**: (round 42) ✦ Since you were away: one digest of the missed rounds' patch notes after an update (Settings › What's new…, Ctrl/⌘+K)
+- **routines**: Project Auto-improve and optional visual feedback between rounds.
+- **costcoach**: (round 43) 🧭 Cost coach: where the tokens went in the last 7 days and the 3 changes that would save the most (⋯ AI setup › Spending, a weekly note through Hints, /cost-coach)
+- **usagelimits**: (round 48) ⏳ Usage left: each AI's plan left per window in the Usage window, the heads-up of when it runs out at your pace, How to save from now on (Cost coach's fixes), calm notes at 80 / 95 % and on reset, /usage-left
+- **sendpreview**: (round 44) send preview: "≈ 52k" next to Send only when a message will cost much more than usual, why in plain words, the one cheaper way in one click; calibrated per AI on real usage
+- **handoff**: (round 42) lean handoffs: Continue with…, /handoff, Ask Astra instead and second opinions send a short brief, not the whole chat (Send the whole chat instead)
+- **historylean**: (round 50) lighter history: after a break (the prompt cache gone), a long chat goes on in a fresh session with a lighter history (tool results / pictures / earlier code as stubs), /history-lean
+- **questhud**: (round 64, clickfirst64) clickfirst.js: every round 61–63 feature by clicking (This week, More, the Studio's My week ▾, the Lab's ▶ Playtest) · // (round 61, questhud61) ✦ the quest tracker in the rail: the chip, its panel, /quest, Ctrl/⌘+Shift+O (no journal yet: no chip, QuestCore stays unloaded)
+- **weekquest**: (round 62, weekquest62) the week card (3–5 quests on days, the nudge switch) and the week in review: /quest week, /quest review, the ✦ chip's menu (its one nudge timer + Sunday offer ride in 'questhud': weekquest-nudge.js)
+- **weekendplan**: (round 66, weekendplan66) 🗓 Plan my weekend: the card (a night out, the park, a place near it, a studio session; Swap / Keep / Accept plan), loaded on first click of the ✦ panel's button (Thu evening → Sun); its thinking (weekendplan-core.js) rides in 'questhud'
+- **leavesoon**: (round 69, ratp69) ratp-core.js: the Métro at night, the route's lines, line status words // (round 68, leavesoon68) ⏰ Remind me to leave: the toggles (show cards / quests, errands, weekend slots), the ✦ tracker's "Leaving soon" rows, 🏠 Home on the map; loaded with the Paris map's code (errands.js) and when the ✦ tracker opens. The timer is main-side (leavesoonmain.js)
+- **tickets**: (round 68, tickets68) 🎟 My ticket: adding a ticket (picker, drop, a Downloads suggestion) and the big bright view for the door; loaded on the first click of 🎟 Add my ticket / Open my ticket
+- **invite**: (round 67, invite67) 👋 Bring someone: the invite card (tone, French / English, Copy, Open in WhatsApp / Messages / Instagram — never sends, ✨ Rewrite with Claude only on click, I sent it → a social quest's invite step), loaded on the first click of a show card's button or the weekend plan's
+- **localanswers**: (round 45) 💡 Answered by Hearth: questions about Hearth answered here for free (a card above the chat box: Show me · Ask the AI anyway); Find anything's catalogs load on the first question
+- **diskcalm**: (round 53) 🧹 Space Hearth uses: one fold in Settings › This computer & sync (each part in plain words, Free up for what comes back by itself, to the Trash), Ctrl/⌘+K Disk space, /disk, the calm tidy's line in Activity, a note only past 25 GB or under 5 GB free
+- **sketchpads**: (round 67, sketchpads67) Sessions › 🎛 Put on a pad / ✂ Trim loop: loaded when Sessions first shows a sketch
+- **refab**: (round 68, refab68) Sound desk › 🎧 Reference: A ⇄ B level-matched against a reference track, loaded on its first click
+- **midilearn**: (round 69, midilearn69) Sound desk › 🎹 Map my controller: Learn a knob → a control, loaded on its first click
+- **dawsend**: (round 69, stems69) 📤 Send to my DAW: stems at bar 1, the mix, MIDI, presets, a README into a folder of the owner's choice; loaded on the button's first click
+- **chatsafe**: (round 55, chatsafe55) chats waiting for their AI (missing / turned off): read-only under its own name, the Lab's read-only chat panel, Bring back …, Continue with Claude… (asked first, a copy), /bring-back
+- **credits**: (round 67, credits67) honest credits per Lab piece: who did what (time machine, sliders, Sound desk, recordings), the Lab toolbar's Credits button, Copy, the "How it was made" video

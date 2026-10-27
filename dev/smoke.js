@@ -12,6 +12,7 @@
 //   node dev/smoke.js --data dev/old-data --script dev/checks/journey-upgrade.js     # start from a copy of a data/ folder
 //   node dev/smoke.js --fake-meshy --script dev/checks/apps-meshy.js   # app windows against dev/fake-meshy.js (no network)
 //   node dev/smoke.js --fake-assets --script dev/checks/assets.js    # the asset library against dev/fake-assets.js
+//   node dev/smoke.js --fake-ratp --script dev/checks/ratp69.js      # Métro line status against dev/fake-ratp.js (round 69)
 //   node dev/smoke.js --pw-chrome --script dev/checks/chrome.js     # Hearth's Chrome: Playwright's Chromium as "Chrome", test pages
 //   node dev/smoke.js --screen 3840x2160 --dpr 2 --script dev/checks/bigscreen.js   # (round 38) a 4K screen at 200 %
 //   node dev/smoke.js --coverage /tmp/cov.json --script dev/checks/trim-drive.js   # JS function + CSS rule coverage of the
@@ -161,6 +162,9 @@ async function cdpConnect(dir) {
     const fake = await require('./fake-meshy').start();
     Object.assign(env, { HEARTH_MESHY_BASE: fake.base, HEARTH_POLYHAVEN_BASE: `${fake.base}/ph`, HEARTH_APPS_PARK_MS: '4000' });
   }
+  // --fake-ratp: (round 69, ratp69) the Métro line-status sources (PRIM + the community API) from dev/fake-ratp.js; without
+  // it a smoke run fetches no line status at all (ratpmain.js: "status unknown")
+  if (args.includes('--fake-ratp')) Object.assign(env, { HEARTH_RATP_BASE: (await require('./fake-ratp').start()).base });
   // --fake-assets: (round 24) fake Poly Haven + ambientCG APIs for the asset library (dev/fake-assets.js), and a folder of
   // real asset files at /tmp/hearth-asset-fixtures (made here when missing)
   if (args.includes('--fake-assets')) {
@@ -177,6 +181,7 @@ async function cdpConnect(dir) {
     if (args.includes('--fake-vst-no-ua')) env.FAKE_SD_NO_UA = '1'; // (round 62, parkjam62) the laptop alone in the park: no UA interface listed
     // (round 64, vstembed64) the editor-in-Hearth path runs on a fake Win32 window layer (dev/fixtures/fake-vst-py/fakewin32.py)
     if (py.status === 0) env.HEARTH_VST_FAKE_WIN32 = '1';
+    if (py.status === 0) env.FAKE_MIDI_INBOX = path.join(runTmp, 'fake-midi-inbox.jsonl'); // (round 69, midilearn69) checks append controller messages here (dev/fixtures/fake-vst-py/rtmidi.py)
     // --fake-vst-embed (dev/checks/vstembed64.js): the editor stays open until Hearth closes it, a Serum-like cost of
     // reading controls the first time (300 × 2 ms), and Serum 2's editor refusing to be a child window (the fallback line)
     if (args.includes('--fake-vst-embed')) Object.assign(env, { FAKE_EDITOR_S: 'hold', FAKE_PB_PARAMS: '300', FAKE_PB_WRAP_MS: '2', FAKE_EMBED_REFUSE: 'Serum 2' });

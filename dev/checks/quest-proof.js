@@ -2,7 +2,7 @@
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const until = async fn => { for (let i = 0; i < 220; i++) { if (await fn()) return; await wait(60); } throw Error('Proof UI timed out'); };
 let checks = 0; const check = (value, message) => { if (!value) throw Error(message); checks++; };
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+document.querySelector('#agent-buttons [data-space="life"]').click();
 await until(() => document.querySelector('.qj-hero'));
 const root = () => document.querySelector('.qj'), scope = () => root().querySelector('dialog[open]') || root();
 const press = async (text, parent = scope()) => { const b = [...parent.querySelectorAll('button')].find(b => b.textContent === text); check(b, 'Button: ' + text); b.click(); await until(() => !b.disabled); await wait(50); };
@@ -13,12 +13,15 @@ QuestReview.run = (q, item) => { calls++; check(item.proof.fingerprint.length ==
   const promise = mode === 'cancel' ? new Promise((resolve, no) => { reject = no; }) : mode === 'fail' ? Promise.reject(Error('Fixture engine offline. Proof is saved.')) : Promise.resolve(mode === 'missing' ? { ...response(), status: 'needs-evidence', score: null, dimensions: [], meetsBrief: false, summary: 'The evidence needs a clearer view.' } : response());
   return { promise, cancel: () => reject?.(Error('Review cancelled. Your proof is saved.')) };
 };
-await press('Browse commissions →');
-check(root().querySelectorAll('.qj-commission').length === 5 && s().campaigns.filter(c => c.commission).flatMap(c => c.quests).length === 15, 'five personal campaigns and fifteen milestones');
+// (sweep69) Codex's Life space folded the commission wall into Find a quest (the commissions are project cards there)
+QuestJournal.navigate('commissions'); await until(() => root().querySelector('.qj-catalog-card'));
+const commissionIds = s().campaigns.filter(c => c.commission).map(c => c.id), wall = () => [...root().querySelectorAll('.qj-catalog-card')].filter(n => commissionIds.includes(n.dataset.catalogId));
+check(wall().length === 5 && s().campaigns.filter(c => c.commission).flatMap(c => c.quests).length === 15, 'five personal campaigns and fifteen milestones');
 check(root().textContent.includes('Forgeheart') && root().textContent.includes('demo') && root().textContent.includes('loop'), 'commission wall matches personal interests');
 document.querySelectorAll('.toast-x').forEach(b => b.click()); await smoke({ shot: window.SMOKE_SAVES + '/quest-commissions.png' });
-const visual = [...root().querySelectorAll('.qj-commission')].find(n => n.textContent.includes('One visual with a pulse'));
-await press('Take this commission →', visual); await press('Sketch · 10m · 30 XP');
+const visual = wall().find(n => n.textContent.includes('One visual with a pulse'));
+await press('Open', visual); { const d = root().querySelector('dialog[open]'); await press([...d.querySelectorAll('button')].some(b => b.textContent === 'Resume') ? 'Resume' : 'Continue', d); }
+await press('Sketch · 10m · 30 XP');
 const qid = 'q-studio-visual-frame'; check(C.find(s(), qid).xp === 30 && C.xp(s()) === 0, 'scope contract changes promised work and reward without granting progress');
 await press('I reached the finish line →'); await press('Submit proof & ask Astra');
 check(calls === 0 && scope().textContent.includes('Upload proof'), 'missing proof cannot call model or complete');
@@ -51,7 +54,7 @@ await press('Show source chat ↗'); check(H.activeChat[agent.id] === 'quest-pro
 root().querySelector('.qj-celebrate')?.remove();
 activate('tool:quests'); QuestJournal.navigate('collection'); check(root().querySelectorAll('.qj-portfolio-card').length === 2, 'portfolio contains completed and pending work');
 await smoke({ shot: window.SMOKE_SAVES + '/quest-portfolio.png' });
-QuestJournal.navigate('rewards'); const treat = [...root().querySelectorAll('.qj-reward')].find(n => n.textContent.includes('sample pack / plugin fund')); await press('Save toward this', treat); check(s().rewardGoal === 'r-studio-wishlist' && C.balance(s()) === 6, 'wishlist goal saves without spending sparks');
+QuestJournal.navigate('rewards'); const treat = [...root().querySelectorAll('.qj-reward')].find(n => n.textContent.includes('sample pack / plugin fund')); { const b = treat.querySelector('[aria-label="Save toward this"]'); check(b, 'Button: Save toward this'); b.click(); await until(() => !b.isConnected || !b.disabled); await wait(50); } // (sweep69) now a ★ icon button named by its label check(s().rewardGoal === 'r-studio-wishlist' && C.balance(s()) === 6, 'wishlist goal saves without spending sparks');
 await smoke({ shot: window.SMOKE_SAVES + '/quest-rewards-new.png' });
 QuestJournal.navigate('adventure'); check(root().querySelector('.qj-goal-strip').textContent.includes('94 sparks'), 'notebook shows remaining reward progress');
 // Decode a real WAV without playing it; never pretend the reviewer listened.
@@ -68,7 +71,7 @@ QuestJournal.navigate('commissions'); await smoke({ cdp: 'Emulation.setDeviceMet
 QuestJournal.navigate('collection'); await press('Open review & versions →'); check(scope().scrollWidth <= scope().clientWidth+2, 'scorecard fits narrow viewport'); await smoke({ shot: window.SMOKE_SAVES + '/quest-scorecard-narrow.png' }); close(); await smoke({ cdp: 'Emulation.clearDeviceMetricsOverride' }); await QuestJournal.flush();
 return `Proof studio: ${checks} assertions passed; real evidence ingestion, mocked review responses, gates, scope, failure/cancel, source chat, revisions, wishlist, audio limits, portfolio and responsive layouts.`;
 //@@ reload
-document.querySelector('#agent-buttons [data-id="tool:quests"]').click();
+document.querySelector('#agent-buttons [data-space="life"]').click();
 for(let i=0;i<160&&!document.querySelector('.qj-hero');i++) await new Promise(r=>setTimeout(r,60));
 const saved=QuestJournal.snapshot();
 if(QuestCore.xp(saved)!==30||saved.rewardGoal!=='r-studio-wishlist'||QuestCore.submissions(saved,'q-studio-visual-frame').length!==2||QuestCore.latest(saved,'q-studio-visual-frame').review.score!==62) throw Error('Proof, score history, scope XP or wishlist did not survive reload');

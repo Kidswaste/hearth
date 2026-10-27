@@ -13,14 +13,18 @@ const ParisJournal = window.ParisJournal = (() => {
   const J = () => (typeof QuestJournal !== 'undefined' ? QuestJournal : null);
   const ui = () => J().paris.ui();
   const PREF = 'parisjournal64';
-  let prefs = { on: true, month: '', ...(store.get(PREF, {}) || {}) };
+  let prefs = { on: true, month: '', cardPhotos: true, ...(store.get(PREF, {}) || {}) }; // (round 69, photos69) cardPhotos: up to 4 photos on the month's card
   let takes = null, takesLoading = null; // parkjam62's takes, read once (and again after a new take)
   let sessions = []; // (round 66, bouncelog66) logged music sessions, read with the takes
-  let memo = { s: null, shows: null, takes: null, list: [] };
+  let memo = { s: null, shows: null, takes: null, photos: -1, list: [] };
+  const PH = () => (typeof ParisPhotos !== 'undefined' ? ParisPhotos : null); // (round 69, photos69) the photos you added to moments
   let lastCard = null;
   const _test = { saved: [], dir: '' }; // (checks) dir: write the card in the run's own folder, never the real Pictures folder
-  const savePrefs = () => store.set(PREF, { on: prefs.on, month: prefs.month });
-  const fmtDay = (t) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const savePrefs = () => store.set(PREF, { on: prefs.on, month: prefs.month, cardPhotos: prefs.cardPhotos });
+  // (round 70, bigprofile70) one date formatter for every dot (toLocaleDateString built one per call: 2 per dot, ≈ 130 ms
+  // per Sidequest map draw with a few hundred moments); same words
+  const DAY_FMT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const fmtDay = (t) => DAY_FMT.format(new Date(t));
 
   // ---------- what exists ----------
   const studioState = () => { try { return J()?.ready?.() ? ui().state() : null; } catch { return null; } };
@@ -37,10 +41,10 @@ const ParisJournal = window.ParisJournal = (() => {
   function moments(s) {
     if (!s) return [];
     const shows = showStore();
-    if (memo.s === s && memo.shows === shows && memo.takes === takes) return memo.list;
+    if (memo.s === s && memo.shows === shows && memo.takes === takes && memo.photos === (PH()?.version ?? -1)) return memo.list;
     let list = [];
-    try { list = K.collect({ C: QuestCore, s, P: typeof QuestParis !== 'undefined' ? QuestParis : null, shows, takes: takes || [], sessions }); } catch (err) { console.warn('[parisjournal]', err); }
-    memo = { s, shows, takes, list };
+    try { list = K.collect({ C: QuestCore, s, P: typeof QuestParis !== 'undefined' ? QuestParis : null, shows, takes: takes || [], sessions }); PH()?.decorate(list); } catch (err) { console.warn('[parisjournal]', err); }
+    memo = { s, shows, takes, photos: PH()?.version ?? -1, list };
     return list;
   }
   // the journal for a recap from chat without opening the Studio: the open Studio's, else the tracker's, else one careful
@@ -54,7 +58,7 @@ const ParisJournal = window.ParisJournal = (() => {
     return QuestCore.validate(QuestCore.upgrade(r.value));
   }
   async function everything() {
-    const [s] = await Promise.all([journalState(), loadTakes(), typeof ShowPrep !== 'undefined' ? ShowPrep.load().catch(() => null) : null]);
+    const [s] = await Promise.all([journalState(), loadTakes(), typeof ShowPrep !== 'undefined' ? ShowPrep.load().catch(() => null) : null, PH()?.load().catch(() => null)]);
     return { s, list: moments(s) };
   }
   const guide = () => (typeof QuestParis !== 'undefined' ? QuestParis.guide : []);
@@ -86,9 +90,12 @@ const ParisJournal = window.ParisJournal = (() => {
     b.dataset.chip = 'visited'; return b;
   }
   const monthButton = (kit, month) => { const b = kit.button('My month in Paris', () => recapDialog(month, kit), 'qj-quiet pj-recap-btn'); b.dataset.help = 'Your month on the map: places, shows, walks, park sessions, the arrondissements you lit up, and an image card to share'; return b; };
+  // (round 69, photos69) 📷 From a folder…: a folder of photos (a phone import) → which go with which moment (suggestions; Add is a click)
+  const folderButton = (kit) => { const b = kit.button('📷 From a folder…', () => PH()?.fromFolder(kit, () => moments(studioState())), 'qj-quiet pp-folder-btn'); b.dataset.help = 'Pick a folder of photos (a phone import): Hearth suggests which go with which moment by when, and where, they were taken. Nothing is added until you click Add.'; return b; };
+  const stripActs = (kit, month) => kit.E('div', { class: 'pj-acts' }, ...(PH() ? [folderButton(kit)] : []), monthButton(kit, month));
   function strip(kit) {
     const s = studioState(), list = moments(s), ms = K.months(list), { E } = kit;
-    if (!prefs.on) return E('section', { class: 'pj-strip pj-off', attrs: { 'aria-label': 'My Paris' } }, kit.label('MY PARIS'), E('span', { class: 'pj-hint', text: `Hidden from the map · ${list.length} moment${list.length === 1 ? '' : 's'} kept` }), kit.button('Show my Paris', () => toggle(true), 'qj-quiet pj-show'), monthButton(kit, K.monthOf(Date.now())));
+    if (!prefs.on) return E('section', { class: 'pj-strip pj-off', attrs: { 'aria-label': 'My Paris' } }, kit.label('MY PARIS'), E('span', { class: 'pj-hint', text: `Hidden from the map · ${list.length} moment${list.length === 1 ? '' : 's'} kept` }), kit.button('Show my Paris', () => toggle(true), 'qj-quiet pj-show'), stripActs(kit, K.monthOf(Date.now())));
     if (prefs.month && !ms.some((m) => m.key === prefs.month)) prefs.month = '';
     const box = E('section', { class: 'pj-strip', attrs: { 'aria-label': 'My Paris timeline' } });
     const chips = E('div', { class: 'pj-months', attrs: { role: 'group', 'aria-label': 'Show one month' } });
@@ -102,13 +109,13 @@ const ParisJournal = window.ParisJournal = (() => {
       else { const t = shown.map((m) => Date.parse(m.at)); lo = Math.min(...t); hi = Math.max(...t); if (hi - lo < 864e5) { lo -= 432e5; hi += 432e5; } }
       for (const m of [...shown].reverse()) {
         const x = Math.max(0, Math.min(1, (Date.parse(m.at) - lo) / (hi - lo))), k = K.KINDS[m.kind];
-        const dot = E('button', { type: 'button', class: `pj-dot pj-${m.kind}${m.photo ? ' has-photo' : ''}`, attrs: { role: 'listitem', 'aria-label': `${fmtDay(m.at)} · ${k.name} · ${m.title}`, title: `${fmtDay(m.at)} · ${m.title}` }, on: { click: () => openMoments([m.id], kit) } });
+        const dot = E('button', { type: 'button', class: `pj-dot pj-${m.kind}${m.photo || m.cover ? ' has-photo' : ''}`, attrs: { role: 'listitem', 'aria-label': `${fmtDay(m.at)} · ${k.name} · ${m.title}`, title: `${fmtDay(m.at)} · ${m.title}` }, on: { click: () => openMoments([m.id], kit) } });
         dot.style.setProperty('--x', `${(x * 100).toFixed(2)}%`); dot.style.setProperty('--c', k.color); dot.dataset.moment = m.id;
         track.append(dot);
       }
     } else track.append(E('span', { class: 'pj-empty', text: prefs.month || !list.length ? 'Nothing here yet: finish a place quest, tap “How was it?” after a show, walk a walk or record a park loop.' : '' }));
     const month = prefs.month || K.monthOf(Date.now());
-    box.append(kit.label('MY PARIS'), chips, track, monthButton(kit, month));
+    box.append(kit.label('MY PARIS'), chips, track, stripActs(kit, month));
     return box;
   }
 
@@ -138,6 +145,7 @@ const ParisJournal = window.ParisJournal = (() => {
     if (c) acts.append(button('Open the quest', () => { close(); const q = m.quest || c.quests.at(-1).id; kit.questDetail(q); }, 'qj-quiet'));
     if (m.kind === 'show' && typeof ShowPrep !== 'undefined') acts.append(button('My show log', () => { close(); ShowPrep.logDialog(kit); }, 'qj-quiet'));
     if (acts.children.length) card.append(acts);
+    if (PH()) card.append(PH().section(m, kit, card)); // (round 69, photos69) the moment's photos: a strip, 📷 Add photos, drop photos on the card
     return card;
   }
   const secondLine = (m) => m.title && m.title !== m.place?.name; // several moments at one spot: each says what it was
@@ -162,6 +170,14 @@ const ParisJournal = window.ParisJournal = (() => {
         label(`PARIS EXPLORED · ${r.explored.pct}% OF THE GUIDE${r.explored.gained ? ` · +${r.explored.gained} THIS MONTH` : ''}`), bar);
       if (r.newSpots.length) body.append(label('NEW THIS MONTH'), p(r.newSpots.join(' · ')));
       if (!r.total) body.append(p('Nothing on your map this month yet. Finish a place quest, keep a show night, walk a walk or record a park loop.'));
+      // (round 69, photos69) up to 4 of the month's photos on the card: a toggle, with the ones it would use
+      const pics = PH() ? PH().cardPhotos(r.moments) : r.moments.filter((m) => m.photo).slice(0, 3).map((m) => m.photo);
+      if (pics.length) {
+        const row = E('div', { class: 'pp-cardpics' }, ...pics.map((f) => E('img', { attrs: { src: WinMac.fileUrl(f), alt: '', loading: 'lazy', decoding: 'async' } })));
+        row.hidden = !prefs.cardPhotos;
+        const tick = E('input', { type: 'checkbox', attrs: prefs.cardPhotos ? { checked: '' } : {}, on: { change: (e) => { prefs.cardPhotos = e.target.checked; savePrefs(); row.hidden = !prefs.cardPhotos; } } });
+        body.append(E('label', { class: 'pp-keep pj-cardpics' }, tick, E('span', { text: `Photos on the card (${pics.length} of up to 4)` })), row);
+      }
       const status = E('p', { class: 'qj-paris-best pj-saved' });
       const prev = K.shiftMonth(month, -1), next = K.shiftMonth(month, 1), cur = K.monthOf(Date.now());
       body.append(E('div', { class: 'qj-actions' },
@@ -197,12 +213,15 @@ const ParisJournal = window.ParisJournal = (() => {
     g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(84, 840, 912, 20); g.fillStyle = '#7ee0a8'; g.fillRect(84, 840, Math.round(912 * c.explored.pct / 100), 20);
     let y = 900;
     // up to three of your photos, cropped square (read from disk here; the canvas never touches the network)
-    const pics = (await Promise.all(c.photos.map(photoBitmap))).filter(Boolean);
-    if (pics.length) { pics.forEach((bm, i) => { const k = Math.min(bm.width, bm.height), x = 84 + i * 166; g.drawImage(bm, (bm.width - k) / 2, (bm.height - k) / 2, k, k, x, y, 150, 150); bm.close?.(); }); y += 196; } else y += 30;
+    // (round 69, photos69) up to 4: the photos you added first, one per moment, then a moment's own photo; none when the toggle is off
+    const files = !prefs.cardPhotos ? [] : PH() ? PH().cardPhotos(r.moments) : c.photos;
+    const pics = (await Promise.all(files.map(photoBitmap))).filter(Boolean);
+    if (pics.length) { pics.forEach((bm, i) => { const k = Math.min(bm.width, bm.height), x = 84 + i * 196; g.drawImage(bm, (bm.width - k) / 2, (bm.height - k) / 2, k, k, x, y, 180, 180); bm.close?.(); }); y += 220; } else y += 30;
     const fit = (text, max) => { let t = text; while (g.measureText(t).width > max && t.length > 4) t = t.slice(0, -2); return t === text ? t : `${t.trimEnd()}…`; };
     if (c.fresh.length) { g.fillStyle = '#d9b777'; g.font = F(700, 26); g.fillText('NEW THIS MONTH', 84, y); g.fillStyle = '#f4efe6'; g.font = F(500, 30); g.fillText(fit(c.fresh.join(' · '), 912), 84, y + 42); y += 92; }
     if (c.best) { g.fillStyle = '#ffb14a'; g.font = F(700, 30); g.fillText(fit(`${'★'.repeat(c.best.rating)}  ${c.best.title}`, 912), 84, y); if (c.best.note) { g.fillStyle = '#c9c4ba'; g.font = F(400, 26); g.fillText(fit(`“${c.best.note}”`, 912), 84, y + 38); } }
     g.fillStyle = '#77736c'; g.font = F(500, 22); g.fillText('Hearth · Sidequest Studio', 84, H - 64);
+    cv.dataset.photos = String(pics.length);
     return cv;
   }
   async function saveCard(month) {
@@ -211,7 +230,7 @@ const ParisJournal = window.ParisJournal = (() => {
     const dir = _test.dir || WinMac.join(await window.hub.fs.home(), 'Pictures', 'Hearth', 'My Paris'), file = WinMac.join(dir, K.fileName(month));
     const bytes = new Uint8Array(await blob.arrayBuffer());
     await window.hub.fs.write(file, bytes);
-    lastCard = file; _test.saved.push({ file, bytes: bytes.length, w: cv.width, h: cv.height });
+    lastCard = file; _test.saved.push({ file, bytes: bytes.length, w: cv.width, h: cv.height, photos: cv.dataset.photos | 0 });
     return file;
   }
 
@@ -252,6 +271,7 @@ const ParisJournal = window.ParisJournal = (() => {
   }
   try { AppUI.addAction?.('Quest: My Paris this month', () => run('month', null).catch((err) => toast(calmError(err), { type: 'error' }))); } catch { /* the palette isn't there */ }
   // a new park take → read the park folders again next time the map draws (no timer)
+  document.addEventListener('hearth:paris-photos', () => { memo.s = null; if (prefs.on) redraw(); }); // (round 69, photos69) photos added / removed: pins and dots get their cover
   document.addEventListener('hearth:quest-week', (e) => { if (e.detail?.kind === 'park-jam' || e.detail?.kind === 'music-session') { takes = null; memo.s = null; if (prefs.on) redraw(); } });
   redraw();
   const openMonth = (month = K.monthOf(Date.now())) => recapDialog(month);
