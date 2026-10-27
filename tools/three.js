@@ -3,6 +3,7 @@
 const ThreeLab = (() => {
   const SANDBOX = 'tools/three-sandbox.html';
   let tabs = null;
+  let startHint = null; // (round 73, coldopen73) the scene the Lab's first mount opens with (a project opening: cmd({ sketch }))
   const api = {}; // filled by each tab as it mounts
   // "  12| code" for lines a..b (1-based) of a list of lines.
   const numbered = (lines, a, b) => lines.slice(a - 1, b).map((ln, k) => `${String(a + k).padStart(4)}| ${ln}`).join('\n');
@@ -1065,6 +1066,7 @@ const ThreeLab = (() => {
     // (round 72, projects72) a project → project switch keeps the preview page (three.js loaded, contexts warm): the next
     // project's scene runs in it like any Lab sketch switch, instead of a new page per switch. Leaving to Projects releases it.
     let pageKept = false;
+    let plainSwap = false; // (round 73, coldopen73) the next scene swap without the old picture's cross-fade (a project opening under its loading card)
     let stallArm = null; // (round 39, powerwise) the stall / park safety timer's pace follows the park (set below)
     function syncPark(force = false) {
       const on = !workspacePreparing && ((!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || xpResting() || previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing'));
@@ -3794,7 +3796,10 @@ const ThreeLab = (() => {
         for (const L of rerun) { box.send({ type: 'hot-layer', layer: { ...spec(L), fx: fx(L) } }); building(L.id, true); }
       } else {
         // (a warm run of another scene than this one, e.g. the chat on screen owns another: no cross-fade from it, as on a new page)
-        box.send(fresh && !overWarm ? { type: 'run-layers', layers: layersOf().map(spec) } : { type: 'swap-layers', layers: layersOf().map(spec), fx: !overWarm || warmOf === current.id ? 'xfade' : '' });
+        // (round 73) a project opening swaps without the old picture: it lay under the opaque loading card, and taking it
+        // read back every layer of the scene left (a few ms on a GPU, ≈ 0.1–0.4 s in software GL), in front of the new scene
+        box.send(fresh && !overWarm ? { type: 'run-layers', layers: layersOf().map(spec) } : { type: 'swap-layers', layers: layersOf().map(spec), fx: plainSwap ? '' : !overWarm || warmOf === current.id ? 'xfade' : '' });
+        plainSwap = false;
         for (const id of [...builds.keys()]) if (!layerById(id)) building(id, false);
         for (const L of layersOf()) building(L.id, true);
       }
@@ -3944,6 +3949,7 @@ const ThreeLab = (() => {
     }
     // opts.by: who switched ('scene' = chat-scenes.js following the chat on screen); fires 'hearth:sketch'
     function openSketch(id, opts = {}) {
+      plainSwap = opts.by === 'project' || window.ProjectWorkspace?.state?.().phase === 'opening'; // (round 73, see plainSwap)
       workspaceReleased = false; pageKept = false;
       // unsaved slider values in any layer of the sketch you leave
       const left = current;
@@ -4156,8 +4162,11 @@ ${code}
       if (fresh && kvOk.has('three-sketches') && !scenesRead.hold) save();
       else if (early.length && kvOk.has('three-sketches')) save();
       // the chat on screen may own another sketch (chat-scenes.js): open that one instead of the last one
-      const want = typeof ChatScenes !== 'undefined' ? ChatScenes.startSketch?.(sketches.map((x) => x.id)) : null;
-      openSketch(want || store.get('three.current', sketches[0].id), { by: want ? 'scene' : 'start' });
+      // (round 73) a project opening mounts the Lab with its own scene: the scene last open in the Lab ran first, then the
+      // project's (its sliders scanned and its page loaded twice in the first open of a session)
+      const hinted = startHint && sketches.some((x) => x.id === startHint) ? startHint : null; startHint = null;
+      const want = hinted || (typeof ChatScenes !== 'undefined' ? ChatScenes.startSketch?.(sketches.map((x) => x.id)) : null);
+      openSketch(want || store.get('three.current', sketches[0].id), { by: hinted ? 'project' : want ? 'scene' : 'start' });
       api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
       dispatchEvent(new Event('hearth:lab-ready'));
       SSafe?.opened?.({ read: scenesRead, fresh, others: reads.slice(1).map((r, i) => (r.ok ? null : names[i + 1])).filter(Boolean) }); // (round 43) the calm card, when needed
@@ -4241,7 +4250,9 @@ ${code}
       // switch to a chat's sketch (the one you leave is saved first; unsaved sliders get the usual toast)
       open(id) {
         if (!sketches.some((x) => x.id === id)) return false;
-        if (id !== current?.id || workspaceReleased) { persist(); openSketch(id, { by: 'scene' }); }
+        // (round 73, coldopen73) a scene a project closed was saved then (only if changed, round 72): not stamped and
+        // rewritten again here when the next project's chat opens its own scene
+        if (id !== current?.id || workspaceReleased) { if (!workspaceReleased) persist(); openSketch(id, { by: 'scene' }); }
         return true;
       },
       // id: (round 52, chatkeep) a scene that never reached the disk comes back under its own id (its chat still links it)
@@ -5331,8 +5342,9 @@ ${frag}\`,
     onScreen: () => api.onScreen?.() ?? false,
     // The chat commands' way in (tools/three-cmds.js): the Lab, loaded and shown (unless show: false), with its
     // sketch tab on top; resolves to api.cmd.
-    async cmd({ show = true } = {}) {
+    async cmd({ show = true, sketch = null } = {}) {
       if (show && H.surfaceIdFor?.(H.activeId) !== 'tool:three') activate('tool:three', { focus: false });
+      if (!tabs && sketch) startHint = sketch; // (round 73) only the first mount: later ones keep the Lab's own scene
       if (!tabs) Tools.shown(Tools.get('three'));
       if (show && tabs?.current !== 'sketch') tabs.show('sketch');
       for (let i = 0; i < 80 && !(api.cmd && api.director); i += 1) await new Promise((r) => setTimeout(r, 100));

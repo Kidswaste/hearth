@@ -602,6 +602,9 @@ renderer.setAnimationLoop((now) => {
     const t0 = performance.now();
     lastSnap = { shown: labShown(), loading: !cover?.classList.contains('out') };
     if (!lastSnap.shown || lastSnap.loading || !ThreeLab.director?.shot) return null;
+    // (round 73, coldopen73) a project opening: its loading card covers the Lab, so no picture to fade from (asking one
+    // kept the preview page busy encoding it, and the compositor capturing, in front of the project's scene)
+    if (window.ProjectWorkspace?.state?.().phase === 'opening') { lastSnap.project = true; return null; }
     const S = lab(); const at = S.currentId();
     // (round 29, bugbash) two quick sources, the first picture wins: the preview's own small JPEG (no waiting for its
     // next frame) and the window's compositor (what is on screen there, whatever the preview page is busy with). The

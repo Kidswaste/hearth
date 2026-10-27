@@ -24,11 +24,30 @@
 // No network, fake engines, a throwaway copy of the fixture (never real data).
 // Opt-in (the 146 MB fixture): BIGPROFILE70=1 node dev/run-checks.js --exact projects72
 //   by hand: node dev/smoke.js --fake-engines --data /tmp/hearth-bigprofile72 --wait 1000 --check-timeout 600000 --script dev/checks/projects72.js
+// (round 73, coldopen73) Two parts. The first is the session before: Clink opened once and left (a fresh profile's very
+// first open, reported, not held to a budget), then Hearth starts again (//@@ reload: everything read back from disk),
+// as for the owner, who always has a project they were in. The second part is the run below: its cold open is the
+// first project opened after that start.
+{ const w8 = (ms) => new Promise((r) => setTimeout(r, ms));
+  const til = async (fn, what, n = 600) => { for (let i = 0; i < n; i++) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await w8(20); } throw Error(`timed out: ${what}`); };
+  try { localStorage.setItem('pj72.opts', JSON.stringify({ report: Boolean(window.PJ_REPORT), budget: window.PJ_BUDGET || null })); } catch { /* none */ }
+  await til(() => document.querySelector('#agent-buttons .space-button'), 'app', 1500); await w8(2500);
+  document.querySelector('#agent-buttons [data-space=projects]').click();
+  const c = await til(() => document.querySelector('.pj-card[data-project="pjbp0"]'), 'cards', 1500); await w8(300);
+  const t0 = performance.now(); c.click();
+  await til(() => ProjectWorkspace.state().phase === 'ready' && ProjectWorkspace.state().project === 'pjbp0', 'first open', 2000);
+  const first = { wall: Math.round(performance.now() - t0), timings: ProjectWorkspace.state().timings };
+  await w8(500); await ProjectWorkspace.home(); await Projects.flush(); await w8(800);
+  localStorage.setItem('pj72.first', JSON.stringify(first));
+  return JSON.stringify({ session: 'before the restart', firstEverOpen: first }); }
+//@@ reload
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 const until = async (fn, what, n = 600) => { for (let i = 0; i < n; i++) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(20); } throw Error(`timed out: ${what}`); };
-const BUDGET = Object.assign({ open: 800, switch: 600, desk: 150, files: 150, switchTask: 250 }, window.PJ_BUDGET || {});
-const out = { budget: BUDGET, fixture: {}, open: {}, switch: {}, resume: {}, desk: {}, missing: {}, offline: {}, lifecycle: {}, profiles: {} }; const fails = [];
+const OPTS = (() => { try { return JSON.parse(localStorage.getItem('pj72.opts')) || {}; } catch { return {}; } })(); // (round 73) set before the restart
+if (OPTS.report) window.PJ_REPORT = 1;
+const BUDGET = Object.assign({ open: 800, switch: 600, desk: 150, files: 150, switchTask: 250 }, OPTS.budget || {}, window.PJ_BUDGET || {});
+const out = { budget: BUDGET, fixture: {}, open: { firstEver: JSON.parse(localStorage.getItem('pj72.first') || 'null') }, switch: {}, resume: {}, desk: {}, missing: {}, offline: {}, lifecycle: {}, profiles: {} }; const fails = [];
 const need = (ok, what) => { if (!ok) fails.push(what); return ok; };
 const click = (node) => { if (!node) throw Error('nothing to click'); node.click(); };
 const menuItem = (re) => [...document.querySelectorAll('#menu button')].find((b) => re.test(b.textContent.trim()));
@@ -44,12 +63,14 @@ const sc = { start: 0, drawn: 0, warm: 0 };
 addEventListener('message', (e) => { const d = e.data; const t = d?.type; if (t === 'fixture-layer-start' && !sc.start) sc.start = d.at; if (t === 'stack-drawn') sc.drawn = Date.now(); if (t === 'ready-prepped') sc.warm = Number(d.ms) || 0; }, true);
 // a click → the project ready; wall from the click, the scene's own part, the longest window task, the app's stage timings
 async function timed(id, act) {
-  await frame(); Object.assign(sc, { start: 0, drawn: 0, warm: 0 }); const t0 = performance.now(); act();
-  await until(() => ready(id), `${id} ready`, 2000);
+  await frame(); Object.assign(sc, { start: 0, drawn: 0, warm: 0 }); const t0 = performance.now(); const d0 = Date.now(); act();
+  const stages = {}; await until(() => { const st = ProjectWorkspace.state(); if (st.stage && !(st.stage in stages)) stages[st.stage] = Date.now() - d0; return ready(id); }, `${id} ready`, 2000); const d1 = Date.now();
   await frame(); const wall = Math.round(performance.now() - t0);
   const draw = sc.start && sc.drawn > sc.start ? sc.drawn - sc.start : 0;
   const scene = Math.round(draw + sc.warm);
-  return { hearth: wall - scene, wall, scene, sceneDraw: Math.round(draw), sceneWarm: Math.round(sc.warm), longest: longestSince(t0), timings: ProjectWorkspace.state().timings };
+  // (round 73) where Hearth's part lies: before the scene's code starts in its page, after it drew (the warm-up's own ms excluded)
+  const split = sc.start ? { before: sc.start - d0, after: sc.drawn ? d1 - sc.drawn - Math.round(sc.warm) : null, drawnAt: sc.drawn ? sc.drawn - d0 : null, readyAt: d1 - d0, stages } : null;
+  return { hearth: wall - scene, wall, scene, sceneDraw: Math.round(draw), sceneWarm: Math.round(sc.warm), split, longest: longestSince(t0), timings: ProjectWorkspace.state().timings };
 }
 async function toProjects() {
   click(document.querySelector('.workspace-back') || document.querySelector('#agent-buttons [data-space=projects]'));
@@ -84,9 +105,20 @@ try {
   out.fixture = { projects: P.all().length, items: P.all().reduce((n, p) => n + p.items.length, 0), clinkItems: P.get('pjbp0')?.items.length, chats: H.chats.length };
   need(out.fixture.projects === 40, 'fixture: 40 projects');
   // ---------- cold open: the Clink card ----------
+  // (round 73) the Lab mounts out of sight after the start when the last project's scene is the Lab's (tools/three-boot.js
+  // mountSoon): given up to 20 s here (software GL draws the warm page slowly); the owner's first click comes later
+  { const t0 = performance.now(); try { await until(() => H.surfaces.get('tool:three')?.mounted || (LabBoot.state().skipped && !LabBoot.state().up), 'lab mounted', 1000); } catch { /* not this time */ }
+    out.open.labBeforeClick = { mounted: Boolean(H.surfaces.get('tool:three')?.mounted), waited: Math.round(performance.now() - t0), boot: LabBoot.state() }; }
   // the pointer reaches the card first, as with a real click (300 ms on it), then the click
   card('pjbp0').dispatchEvent(new PointerEvent('pointerenter', { bubbles: false })); await wait(300);
+  // (round 73) the project's long chat on its first open: drawn once at its end, no resting block of older messages woken
+  // on the way (it used to draw at its top, then wake 20 older messages there and stay in the middle)
+  const chatProbe = { rests: [], msgs: 0 }; const probeT = setInterval(() => { const c = ProjectWorkspace.currentChat?.(); const l = c && Native.view(c.agentId)?.list; if (!l || !Native.view(c.agentId) || H.activeChat[c.agentId] !== 'claude-project-pjbp0') return; const r = l.querySelectorAll(':scope > .msg-rest').length; if (r && r !== chatProbe.rests.at(-1)) chatProbe.rests.push(r); chatProbe.msgs = Math.max(chatProbe.msgs, l.querySelectorAll('.msg').length); }, 8);
   await profile('cold-open', async () => { out.open.cold = await timed('pjbp0', () => click(card('pjbp0'))); });
+  await wait(900); clearInterval(probeT);
+  { const c = ProjectWorkspace.currentChat(); const l = Native.view(c.agentId)?.list; out.open.chat = { restingBlocks: chatProbe.rests.join(' → '), mostDrawn: chatProbe.msgs, fromEnd: l && l.clientHeight ? Math.round(l.scrollHeight - l.scrollTop - l.clientHeight) : 'not on screen' };
+    need(chatProbe.rests.every((r, i) => !i || r >= chatProbe.rests[i - 1]), `first open of the long chat woke older messages (resting blocks ${out.open.chat.restingBlocks})`);
+    need(out.open.chat.fromEnd === 'not on screen' || out.open.chat.fromEnd < 80, `first open of the long chat isn't at its end (${out.open.chat.fromEnd} px above it)`); }
   need(out.open.cold.hearth < BUDGET.open, `cold open: Hearth's part ${out.open.cold.hearth} ms ≥ ${BUDGET.open}`);
   need(ProjectWorkspace.currentChat()?.id === 'claude-project-pjbp0', 'cold open: the project chat');
   // ---------- warm open (best of 2) ----------
@@ -99,7 +131,7 @@ try {
   for (let r = 0; r < 3; r++) for (const id of order) { await wait(250); const x = await switchTo(id); runs.push({ id, ...x }); }
   await profile('switch', async () => { out.switch.profiled = await switchTo('pjbp1'); });
   await switchTo('pjbp0');
-  for (const id of order) { const xs = runs.filter((x) => x.id === id).sort((a, b) => a.hearth - b.hearth); out.switch[id] = { best: xs[0].hearth, bestWall: Math.min(...xs.map((x) => x.wall)), scene: xs[0].scene, runs: xs.map((x) => `${x.hearth}/${x.wall}`).join(' '), longest: Math.max(...xs.map((x) => x.longest)), timings: xs[0].timings }; }
+  for (const id of order) { const xs = runs.filter((x) => x.id === id).sort((a, b) => a.hearth - b.hearth); out.switch[id] = { best: xs[0].hearth, split: xs[0].split, bestWall: Math.min(...xs.map((x) => x.wall)), scene: xs[0].scene, runs: xs.map((x) => `${x.hearth}/${x.wall}`).join(' '), longest: Math.max(...xs.map((x) => x.longest)), timings: xs[0].timings }; }
   const bestSwitch = Math.max(...order.map((id) => out.switch[id].best));
   need(bestSwitch < BUDGET.switch, `switch: Hearth's part ${bestSwitch} ms ≥ ${BUDGET.switch}`);
   const switchTask = Math.min(...order.map((id) => out.switch[id].longest));

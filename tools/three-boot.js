@@ -16,7 +16,7 @@ const LabBoot = (() => {
   const LET_GO_MS = 15 * 60000;
   let w = null; // { host, frame, n, query, sketch, ready, ran, drawn, taken, t0, times }
   let started = false;
-  const st = { warmed: 0, taken: 0, dropped: 0, skipped: null, times: null };
+  const st = { warmed: 0, taken: 0, dropped: 0, skipped: null, times: null, mounted: false };
   const flag = () => { try { return localStorage.getItem('labboot.warm'); } catch { return null; } };
   const can = () => typeof Element !== 'undefined' && typeof Element.prototype.moveBefore === 'function';
   const labUp = () => Boolean(H.surfaces?.get?.('tool:three')?.mounted);
@@ -54,7 +54,7 @@ const LabBoot = (() => {
     if (d.type === 'stack-drawn' && w.ran) {
       w.drawn = true; mark('drawn');
       // drawn once: the page sleeps until the Lab takes it (a frame or two more for late shaders first)
-      setTimeout(() => { if (w && !w.taken) post({ type: 'park', on: true }); }, 400);
+      setTimeout(() => { if (w && !w.taken) post({ type: 'park', on: true }); mountSoon(); }, 400);
     }
   }
   function drop(why) {
@@ -96,6 +96,35 @@ const LabBoot = (() => {
     frame.src = `${SANDBOX}${query}&n=${n}`;
     st.warmed += 1;
     setTimeout(() => drop('unused'), LET_GO_MS);
+  }
+
+  // (round 73, coldopen73) the first project opened after a start mounted the Lab inside the click (its UI, its scene's
+  // sliders read, this page taken, the first layout: ≈ 0.3–0.5 s of the open). When the last thing the Lab showed was a
+  // project's scene (the newest project return point, from the last 14 days, names the Lab's current scene), the Lab
+  // mounts out of sight in an idle moment once this page has drawn: with the scene it opens with anyway (nothing on
+  // screen changes, the page sleeps while the Lab is hidden), and the project's moodboard / desk code loads too. Opening
+  // the project then finds its scene in the Lab. Tests: localStorage 'labboot.mount' = '0' never, '1' always
+  let mountAsked = false;
+  function likelyProject() {
+    let pts = {}; try { pts = store.get('workspace.returnPoints', {}) || {}; } catch { /* none */ }
+    const p = Object.values(pts).filter((x) => x && typeof x === 'object').sort((a, b) => (b.at || 0) - (a.at || 0))[0];
+    return p && p.at > Date.now() - USED_DAYS * 864e5 && p.sceneId && p.sceneId === store.get('three.current') ? p : null;
+  }
+  function mountSoon() {
+    let f = null; try { f = localStorage.getItem('labboot.mount'); } catch { /* none */ }
+    if (mountAsked || f === '0' || (f !== '1' && !likelyProject())) return;
+    mountAsked = true;
+    const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 200));
+    idle(() => (window.Jank?.calm?.(4000, 'lab mount') ?? Promise.resolve()).catch(() => {}).then(() => {
+      if (labUp() || window.ProjectWorkspace?.current?.() || typeof Tools === 'undefined') return;
+      Tools.warm('tool:three'); st.mounted = true; // (asked: a stand-in tool hands over to the Lab a moment later)
+      for (const g of ['board', 'creative']) window.Lazy?.load?.(g).catch(() => {});
+      // never shown in 15 minutes (no project opened, the Lab never visited): its page is let go, as this warm page
+      // would have been (the Lab starts it again when it's shown)
+      let seen = false; const look = (e) => { if (e.detail?.surfaceId === 'tool:three') seen = true; };
+      document.addEventListener('hearth:activate', look);
+      setTimeout(() => { document.removeEventListener('hearth:activate', look); if (!seen && !window.ProjectWorkspace?.current?.() && H.surfaceIdFor?.(H.activeId) !== 'tool:three') window.ThreeLab?.workspace?.close?.().then(() => { st.released = true; }, () => {}); }, LET_GO_MS);
+    }));
   }
 
   // The Lab's preview frame takes the warm page (tools/three.js sandboxFrame): the iframe itself (moved, not
