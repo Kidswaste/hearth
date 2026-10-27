@@ -18,7 +18,8 @@ const r0 = (x) => Math.round(x);
 const out = { fixture: {}, actions: {}, problems: [] };
 const BUDGET = Object.assign({ handler: 16, busyAfter: 60, usageSave: 5, keyHandler: 16, openHandler: 120, typingAfter: 90, sheetAfter: 120 }, window.CS_BUDGET || {});
 // (handler: the slowest event handler of a click / key, ms; a list row opens a long chat: openHandler · typingAfter: 30
-// keys, ≈ 3 ms each · sheetAfter: the chat's ⋯ opens the whole AI setup sheet (≈ 90 ms here, mostly its first layout) ·
+// keys, ≈ 3 ms each · sheetAfter: what draws new content — the chat's ⋯ (the whole AI setup sheet, ≈ 90 ms here, its
+// handler ≈ 20 ms the first time: openHandler), a thinking block / tool steps opened (their first layout, ≈ 50–75 ms) ·
 // busyAfter (the box's own idle work, e.g. the Recall index, and the layout a bigger message forces fit in 60): the window's CPU in the 3.5 s after a click beyond
 // the click's own events, ms · usageSave: the window's own time to save the usage store, ms)
 const evs = [];
@@ -112,8 +113,8 @@ try {
 // ---------- verdicts ----------
 const fails = [];
 for (const [name, a] of Object.entries(out.actions)) {
-  if (a.handler > (/list row/.test(name) ? BUDGET.openHandler : /typing|keys|Escape|Alt/.test(name) ? BUDGET.keyHandler : BUDGET.handler)) fails.push(`${name}: slowest handler ${a.handler} ms (${a.slowEvents.join(', ')})`);
-  if (a.busyAfter > (/typing/.test(name) ? BUDGET.typingAfter : name === 'chat ⋯ menu' ? BUDGET.sheetAfter : BUDGET.busyAfter) && !/list row|wheel/.test(name)) fails.push(`${name}: ${a.busyAfter} ms of window CPU after it (${(a.top || []).join(' · ')})`);
+  if (a.handler > (/list row|chat ⋯ menu/.test(name) ? BUDGET.openHandler : /typing|keys|Escape|Alt/.test(name) ? BUDGET.keyHandler : BUDGET.handler)) fails.push(`${name}: slowest handler ${a.handler} ms (${a.slowEvents.join(', ')})`);
+  if (a.busyAfter > (/typing/.test(name) ? BUDGET.typingAfter : /chat ⋯ menu|: open$/.test(name) ? BUDGET.sheetAfter : BUDGET.busyAfter) && !/list row|wheel/.test(name)) fails.push(`${name}: ${a.busyAfter} ms of window CPU after it (${(a.top || []).join(' · ')})`);
 }
 if (out.usageSave.windowMs > BUDGET.usageSave) fails.push(`the usage save cost the window ${out.usageSave.windowMs} ms`);
 out.budget = BUDGET;

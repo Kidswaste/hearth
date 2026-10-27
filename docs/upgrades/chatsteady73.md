@@ -11,9 +11,9 @@ Same machine, back to back (headless Electron, software GL, a shared 4-CPU box).
 
 **A 900-message chat climbed to the top** (`dev/checks/chatwindow72.js`, 180 wheel turns):
 
-| What | Before (2 runs) | After (4 runs) |
+| What | Before (2 runs) | After (5 runs) |
 |---|---|---|
-| Content jumps where you stopped | 4, 3 (703 px, −448 px, 1,500 px…) | **0, 0, 0, 0** |
+| Content jumps where you stopped | 4, 3 (703 px, −448 px, 1,500 px…) | **0 in all 5** |
 | Frame rate while climbing | 19 fps | 32 fps |
 | Climb main-thread tasks / style / layout | 12.3–13.1 s / 1.6–1.7 s / 0.9 s | 11.7 s / 1.5 s / 0.7 s |
 | Peak elements in the list | 4,143 | 4,142 |
@@ -87,7 +87,26 @@ reads the file); before, every save sent ≈ 840 KB over IPC and the main side p
   unit:boot-test, unit:chatsteady73-test, unit:store-thread-test, unit:datasafe-scan, unit:sync-test, usagelimits,
   unit:usagelimits-test, habits, speed, declutter).
 
-RESULTS_PLACEHOLDER
+## Test results (this branch)
+- chatwindow72: 5 runs, all with **0 jumps** and 0 late wheel turns (before: 3–4 jumps a climb).
+- chatsteady73: the usage save 0.2–0.4 ms on the window (was 23–32 ms); see the table. Its budgets: handlers ≤ 16 ms
+  (a chat opened from the list / the AI setup sheet ≤ 120), ≤ 60 ms of window CPU after a click (new content drawn ≤ 120,
+  30 keys ≤ 90), the usage save ≤ 5 ms. The code before this round fails it (the usage save, the clicks after it).
+- chatperf, lazy, habits, speed: pass. Unit: boot-test (first screen 2,045 / 2,050 KB), chatsteady73-test,
+  store-thread-test, datasafe-scan, sync-test, usagelimits-test, winmac-test, streamrender-test: pass.
+- Failing the same way on main 3790ef2 (not from this change): chatswitch ("no rail button for tool:three / claude",
+  a recent chat's scripts 8.1–8.7 ms vs 8), usagelimits (the "84 % used" pace line's wording at this time of day),
+  declutter (`#rail .spacer` not found).
+
+## Risks / not done
+- Up to a minute of clicks is saved late; a crash (not a quit or reload) loses that minute of counts. Nothing else
+  waits on them being on disk.
+- A picture or video that takes over 0.6 s to measure (a slow network picture) wakes without its box; once seen its
+  size is remembered.
+- The AI setup sheet (the chat's ⋯) still costs ≈ 20 ms the first time and ≈ 90 ms of drawing in all; opening a
+  thinking block ≈ 50–75 ms of first layout. Both draw new content; not reduced here.
+- While sync guards writes, the main side reads the usage file again for each minute's merge (≈ 50 ms there once a
+  minute; before, ≈ 840 KB came over IPC and was parsed after every click).
 
 ## For the patch notes
 - Scrolling up a very long chat no longer jumps: messages appear above what you're reading at their real size,
