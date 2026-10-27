@@ -150,6 +150,7 @@ contextBridge.exposeInMainWorld('hub', {
   },
   onDownload: on('download:update'),
   onGameCall: on('game:call'),
+  onGameHops: on('game:hops'), // (round 74, labcalls74) a call's hop times, after it answered
   gameResult: (id, result) => ipcRenderer.invoke('game:result', id, result),
   directorCost: call('director:cost'), // (agents?) → per-message cost of each director's tools (mcp/cost.js)
   directorGuide: call('director:guide'), // (topic) → the Three Director's guide text for that topic

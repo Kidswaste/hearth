@@ -15,13 +15,17 @@ const INFO_PATH = process.env.HUB_BRIDGE_INFO || path.join(__dirname, '..', 'dat
 
 let info = null; // { port, token } of the running hub, read once
 function readInfo() { try { info = JSON.parse(fs.readFileSync(INFO_PATH, 'utf8')); } catch { info = null; } return info; }
-function post(tool, args) {
+// (round 74, labcalls74) hop times of one call (Date.now(), the same clock in every process): t.in = the call arrived
+// here, t.post = sent to the hub, t.recv = the hub's whole answer read, t.parsed = parsed; the hub sends its own back
+// in the answer's _hop and gets ours after the answer went out (hopsAfter), off the call's path
+function post(tool, args, t = {}) {
   return new Promise((resolve) => {
     const body = JSON.stringify({ tool, args });
-    const req = net().request({ host: '127.0.0.1', port: info.port, path: '/call', method: 'POST', agent, headers: { 'Content-Type': 'application/json', 'x-hub-token': info.token, 'Content-Length': Buffer.byteLength(body) } }, (res) => {
-      let data = '';
-      res.on('data', (c) => { data += c; });
-      res.on('end', () => { if (res.statusCode === 403) { resolve({ stale: true }); return; } try { resolve(JSON.parse(data)); } catch { resolve({ ok: false, error: `Bad reply from the hub (${res.statusCode})` }); } });
+    t.post = Date.now();
+    const req = net().request({ host: '127.0.0.1', port: info.port, path: '/call', method: 'POST', agent, headers: { 'Content-Type': 'application/json', 'x-hub-token': info.token, 'x-hub-t': String(t.in || t.post), 'Content-Length': Buffer.byteLength(body) } }, (res) => {
+      const parts = [];
+      res.on('data', (c) => { parts.push(c); });
+      res.on('end', () => { t.recv = Date.now(); if (res.statusCode === 403) { resolve({ stale: true }); return; } try { const r = JSON.parse(Buffer.concat(parts).toString('utf8')); t.parsed = Date.now(); resolve(r); } catch { resolve({ ok: false, error: `Bad reply from the hub (${res.statusCode})` }); } });
     });
     req.on('error', (err) => resolve({ stale: true, ok: false, error: `Couldn't reach Hearth (the hub): ${err.message}` }));
     // Renders can take a while; the bridge itself enforces per-tool limits.
@@ -29,11 +33,11 @@ function post(tool, args) {
     req.end(body);
   });
 }
-async function callHub(tool, args) {
+async function callHub(tool, args, t = {}) {
   if (!info && !readInfo()) return { ok: false, error: 'Hearth (the hub) is not running.' };
-  let r = await post(tool, args);
+  let r = await post(tool, args, t);
   // the hub restarted (new port / token) since the address was read: read it again, once
-  if (r.stale) { const was = JSON.stringify(info); if (readInfo() && JSON.stringify(info) !== was) r = await post(tool, args); }
+  if (r.stale) { const was = JSON.stringify(info); if (readInfo() && JSON.stringify(info) !== was) r = await post(tool, args, t); }
   if (r.stale) { const { stale, ...rest } = r; return rest.ok === false ? rest : { ok: false, error: 'Hearth (the hub) refused the call (it restarted?): try again.' }; }
   return r;
 }
@@ -41,6 +45,18 @@ async function callHub(tool, args) {
 // Tool results as the model reads them, kept cheap: an object becomes "key: value" lines (values as compact JSON,
 // multi-line text and lists of lines as text), instead of 2-space-indented JSON where indentation and escaped
 // newlines cost tokens on every call. Strings pass through.
+// (round 74) this server's hop times of a call, sent after its answer went to the engine (one small local post, never
+// on the call's path; nothing reaches the model): the hub's call log gets every hop of the call
+function hopsAfter(hop, t) {
+  if (!hop?.id || !info) return;
+  try {
+    const body = JSON.stringify({ id: hop.id, mcp: t });
+    const req = net().request({ host: '127.0.0.1', port: info.port, path: '/hops', method: 'POST', agent, headers: { 'Content-Type': 'application/json', 'x-hub-token': info.token, 'Content-Length': Buffer.byteLength(body) } }, (res) => res.resume());
+    req.on('error', () => {});
+    req.end(body);
+  } catch { /* timing only */ }
+}
+
 function fmtValue(v) {
   if (typeof v === 'string') return v;
   if (v === undefined) return 'done';
@@ -139,13 +155,15 @@ function serve(def, mod) {
       const args = { ...(params.arguments || {}), ...extraArgs, ...(process.env.HUB_CHAT_ID ? { hubChatId: process.env.HUB_CHAT_ID } : {}) };
       const asked = params.arguments || {};
       const more = asked.more === true && Object.keys(asked).length === 1; // { more: true } alone: the rest of the last cut result
-      const r = (more && capped.more(params.name, caps[params.name])) || (def.help && typeof args.help === 'string' && helpOf(def.help, args.help)) || (local[params.name] && await local[params.name](args)) || await callHub(params.name, args);
+      const t = { in: Date.now() }; // (round 74) hop times
+      const r = (more && capped.more(params.name, caps[params.name])) || (def.help && typeof args.help === 'string' && helpOf(def.help, args.help)) || (local[params.name] && await local[params.name](args)) || await callHub(params.name, args, t);
       const content = [];
       for (const img of [].concat(r.images || (r.image ? [{ data: r.image, mime: r.mime }] : []))) {
         content.push({ type: 'image', data: img.data, mimeType: img.mime || 'image/png' });
       }
       content.push({ type: 'text', text: more ? r.value : capped.cut(params.name, r.ok ? fmtValue(r.value) : `Error: ${r.error}`, caps[params.name]) });
       send({ jsonrpc: '2.0', id, result: { content, isError: !r.ok } });
+      if (r._hop) { t.out = Date.now(); hopsAfter(r._hop, t); }
     } else if (method === 'ping') {
       send({ jsonrpc: '2.0', id, result: {} });
     } else if (id !== undefined) {

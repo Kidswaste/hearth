@@ -5115,6 +5115,7 @@ ${frag}\`,
     // (round 72, labbridge72) the chats' scene links are read first (a call routed before that went to the scene on screen)
     if (ctx.chatId && typeof ChatScenes !== 'undefined' && ChatScenes.ready) await Promise.race([ChatScenes.ready(), new Promise((r) => setTimeout(r, 5000))]);
     const route = typeof ChatScenes !== 'undefined' && api.scenes ? ChatScenes.routeThree(tool, ctx.chatId) : null;
+    HubBridge.mark?.('route'); // (round 74, labcalls74)
     if (route && !route.sketchId) return { ok: false, error: route.error || 'This chat has no Lab scene: nothing was changed.' }; // (round 72) unlinked / not arrived yet, in words
     // the Lab sequence is one for every chat (its scenes are anyone's): never backstage
     if (tool === 'three_sequence' && typeof ThreeSeq !== 'undefined') return ThreeSeq.handle(tool, args, { sketchId: route?.sketchId || null });

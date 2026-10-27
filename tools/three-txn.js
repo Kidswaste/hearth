@@ -23,6 +23,7 @@ const LabTxn = (() => {
   // tools whose own answer already says what changed (no second line about it)
   const SAYS = /^three_(edit_code|set_code|add_layer|update_layer|undo|sliders)$/;
   const stats = { calls: 0, rolledBack: 0, turnsUndone: 0, shots: 0, lastMs: 0 };
+  const mark = (k) => { if (typeof HubBridge !== 'undefined') HubBridge.mark?.(k); }; // (round 74, labcalls74) hop steps
 
   // ---------- a scene, as data ----------
   const sceneFor = (ctx = {}) => (ctx.chatId && typeof ChatScenes !== 'undefined' ? ChatScenes.linkOf?.(ctx.chatId) : null) || S()?.currentId() || null;
@@ -206,12 +207,15 @@ const LabTxn = (() => {
     }
     const t0 = performance.now(); const at = Date.now();
     const before = await snap(id);
+    mark('txn:before');
     if (!before) return next();
     open.set(id, { chatId: ctx.chatId || null });
     let r;
     try { r = await next(); } catch (err) { r = { ok: false, error: err.message }; } finally { open.delete(id); }
+    mark('call');
     stats.calls += 1;
     const after = await snap(id);
+    mark('txn:after');
     const failed = !r || r.ok === false || r.partial;
     const changedIt = after && sigOf(after) !== sigOf(before);
     if (failed && changedIt && !/took over 55 s/.test(String(r?.error || ''))) {
@@ -230,8 +234,9 @@ const LabTxn = (() => {
       const words = describe(before, after);
       remember(ctx, tool, before, after, at, words);
       if (words && !SAYS.test(tool)) r = withWords(r, words);
+      mark('txn:words');
     }
-    if (!failed && a.shot === true && !r.images?.length && tool !== 'three_screenshot') r = await withShot(r, ctx);
+    if (!failed && a.shot === true && !r.images?.length && tool !== 'three_screenshot') { r = await withShot(r, ctx); mark('picture'); }
     stats.lastMs = Math.round(performance.now() - t0);
     return r;
   }

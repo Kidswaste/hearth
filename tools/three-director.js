@@ -292,12 +292,13 @@ const ThreeDirector = (() => {
   const GRACE = 220;
   const waiters = new Set();
   function onBox(m) { if (m && (m.type === 'drawn' || m.type === 'error' || m.type === 'ran')) for (const w of [...waiters]) w(m); }
+  const mark = (k) => { if (typeof HubBridge !== 'undefined') HubBridge.mark?.(k); }; // (round 74, labcalls74) hop steps
   function settle(ms) {
     return new Promise((resolve) => {
       let grace = 0; let drew = false;
-      const done = () => { waiters.delete(w); clearTimeout(cap); clearTimeout(grace); resolve(); };
+      const done = () => { waiters.delete(w); clearTimeout(cap); clearTimeout(grace); mark(drew ? 'page:grace' : 'page:wait'); resolve(); };
       // 'ran' (the code loaded) without a first frame soon after: answer anyway (a layer that draws nothing new)
-      const w = (m) => { if (m.type === 'ran') { if (!drew) { clearTimeout(grace); grace = setTimeout(done, 900); } return; } drew = true; clearTimeout(grace); grace = setTimeout(done, GRACE); };
+      const w = (m) => { if (m.type === 'ran') { if (!drew) { mark('page:ran'); clearTimeout(grace); grace = setTimeout(done, 900); } return; } if (!drew) mark('page:drawn'); drew = true; clearTimeout(grace); grace = setTimeout(done, GRACE); };
       const cap = setTimeout(done, Math.max(0, ms));
       waiters.add(w);
     });
@@ -404,7 +405,9 @@ const ThreeDirector = (() => {
   // shot: true always sends one, shot: false never; /director-autoshot off (the AI setup row) = only when asked.
   const AUTO_KEY = (d) => JSON.stringify([null, null, d?.route?.crew ? d.route.chatId : 0]); // = a plain screenshot's view
   async function autoShot(d, args, B, ctx, value) {
+    mark('handler');
     const images = await autoShot0(d, args, B, ctx, value);
+    mark(images ? 'picture' : 'picture:none');
     // "errors: none" is said after the picture: an error that came in meanwhile (a slow module load) is reported
     // instead, without the picture of a broken layer
     if (value?.errors === 'none') {

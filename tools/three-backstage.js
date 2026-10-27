@@ -186,10 +186,13 @@ function makeBackstage(opts = {}) {
   // page's first frame) + a short grace for its console lines, never a fixed half of the wait (backstage calls took
   // 1.3 s+ more than on screen); the wait stays the cap
   const GRACE = 220;
+  const mark = (k) => { if (!opts.scenes && typeof HubBridge !== 'undefined') HubBridge.mark?.(k); }; // (round 74, labcalls74) hop steps
   const settle = async (wait) => {
     const cap = Math.min(WAIT_MAX, Math.max(0.3, Number(wait) || 2.5)) * 1000;
     await Promise.race([started, sleep(cap)]);
+    mark('page:drawn');
     await sleep(GRACE);
+    mark('page:grace');
   };
 
   // ---------- the director API, for one sketch ----------
@@ -556,6 +559,7 @@ function makeBackstage(opts = {}) {
     }
     if (tool === 'three_media_info') return { ok: true, value: { loaded: false, note: 'No music backstage: the song plays when the owner opens this chat.', song: SC().songOf(route.sketchId)?.split(/[\\/]/).pop() || 'none linked' } };
     if (await load(x)) await settle(1.2); // a fresh page: let it start before reading it
+    mark('page:load');
     if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d, { chatId: route.chatId, batch: route.batch }); if (r) return r; }
     if (tool === 'three_layers') return { ok: true, value: d.layers() };
     if (tool === 'three_get_code') return { ok: true, value: d.getCode() };
