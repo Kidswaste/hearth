@@ -163,6 +163,7 @@ const BounceLog = (() => {
     if (!panel || !h) return; const { e, btn } = h; if (window.Lazy?.loaded?.('sketchpads')) SketchPads.close(); panel.replaceChildren();
     const head = e('div', null, 'bl-head'); const close = btn('✕', () => closePanel(), 'bl-close'); close.setAttribute('aria-label', 'Close Sessions');
     head.append(e('strong', 'Sessions'), e('span', 'Every session of 10 minutes or more, newest first.', 'bl-dim'), close); panel.append(head);
+    if (window.Lazy) Lazy.load('quickidea').then(() => QuickIdeas.sessionsSection(panel)).catch(() => {}); // (round 71, quickidea71) 💡 Ideas for music (saved with 💡 Quick idea → 🎵 Music), under the sessions
     const rows = list?.sessions || [];
     if (!rows.length) { panel.append(e('p', 'No sessions yet. Play in the Sound desk for 10 minutes and Hearth offers to keep it here, with a 30-second sketch if you want one.', 'bl-empty')); return; }
     const ul = e('ul', null, 'bl-list');

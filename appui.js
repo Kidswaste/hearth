@@ -91,6 +91,9 @@ const AppUI = (() => {
       H.agents().map((a) => el('option', { value: a.id, text: a.name, selected: s.startOn === a.id })),
       Tools.all().map((t) => el('option', { value: `tool:${t.id}`, text: t.name, selected: s.startOn === `tool:${t.id}` })));
     const hotkey = el('input', { value: s.hotkey ?? 'Control+Alt+H', placeholder: 'e.g. Control+Alt+H (empty = off)' });
+    const ideaKey = el('input', { value: s.quickIdeaKey ?? 'Control+Alt+I', placeholder: 'e.g. Control+Alt+I (empty = off)' }); // (round 71, quickidea71) 💡 Quick idea from any app
+    const ideaKeyNote = el('span', { class: 'hint' });
+    window.hub.quickIdea?.op({ op: 'key' }).then((r) => { const k = r?.value; if (k && k.key && !k.ok && k.key === ideaKey.value.trim()) ideaKeyNote.textContent = `Off: ${k.why || 'another app uses it'}. Pick another key.`; }).catch(() => {});
     const [trayRow, trayIn] = check('Closing the window keeps Hearth running in the tray', s.closeToTray, '', 'The window closes but Hearth keeps going (replies, renders, sync); the tray icon brings it back');
     const isMac = /Mac/.test(navigator.platform);
     const [startupRow, startupIn] = check(isMac ? 'Start Hearth when you log in' : 'Start Hearth when Windows starts', s.launchAtStartup, '', isMac ? 'Hearth opens by itself when you sign in (on a Mac, also add Hearth.app in System Settings › General › Login Items)' : 'Hearth opens by itself when you sign in to this computer');
@@ -231,7 +234,8 @@ const AppUI = (() => {
         home(section('Keys',
           el('div', { class: 'button-row', title: 'Your keyboard keys and what hides behind Alt (the keys button bottom left shows them too)' },
             gbtn('Keyboard keys…', 'Shows every key, what waits behind Alt, and every right-click menu', () => { dialog.close(); KeysUI.open(); })),
-          field('Show / hide Hearth from anywhere', hotkey, '', 'A hotkey (key combination) that brings Hearth up or hides it, even from another app (e.g. Control+Alt+H; empty: off)')), 'keys')),
+          field('Show / hide Hearth from anywhere', hotkey, '', 'A hotkey (key combination) that brings Hearth up or hides it, even from another app (e.g. Control+Alt+H; empty: off)'),
+          el('label', { title: 'A key combination that opens the small 💡 Quick idea window from any app (the tray menu has it too). Empty: off. A key another app already uses stays off.' }, '💡 Quick idea from anywhere', ideaKey, ideaKeyNote)), 'keys')), // (round 71, quickidea71)
       fold('board', 'Mood board', 'How items snap while you drag them on the mood board, and its small map',
         () => { const g = swOn('board-snap'); const m = swOn('board-minimap'); return g === undefined ? 'Guides, grid, minimap' : `Guides ${g ? 'on' : 'off'} · grid ${swOn('board-grid') ? 'on' : 'off'} · minimap ${m || 'auto'}`; }, boardSec),
       fold('spell', 'Spell check languages', 'The languages the message box checks your spelling in',
@@ -288,6 +292,7 @@ const AppUI = (() => {
         ...(NC ? { notifyWhen: whenNow().notifyWhen } : {}),
         sleepWebsAfter: Number(sleepSel.value) || undefined,
         hotkey: hotkey.value.trim(),
+        quickIdeaKey: ideaKey.value.trim(), // (round 71, quickidea71) empty: off
         spellLanguages: langBoxes.map((l) => l.querySelector('input')).filter((i) => i.checked).map((i) => i.dataset.code),
         forgeheartFolder: fhIn.value.trim() || undefined,
         forgeDebugBuild: dbgIn.value.trim() || undefined,
@@ -299,6 +304,7 @@ const AppUI = (() => {
       const result = await saveConfig();
       dialog.close();
       if (result && result.hotkeyOk === false) toast(`The hotkey "${hotkey.value}" couldn't be registered (another app may use it).`, { type: 'error' });
+      else if (result && result.quickIdeaKeyOk === false) toast(`The 💡 Quick idea key "${result.quickIdeaKey}" is off: ${result.quickIdeaWhy || 'another app uses it'}. The tray menu still has 💡 Quick idea…`, { type: 'error' }); // (round 71, quickidea71)
       else toast('Settings saved', { timeout: 1500 });
     });
     dialog.append(form);
@@ -951,6 +957,7 @@ const AppUI = (() => {
     window.hub.onTray((what) => {
       if (what === 'palette') palette();
       if (what === 'new-chat') { const a = H.claudeAgent(); if (a) { activate(a.id); Native.newChat(a.id); } }
+      if (what === 'ideas' || what === 'ideas-open') Lazy.load('quickidea').then(() => (what === 'ideas' ? QuickIdeas.deliver() : QuickIdeas.open())).catch((err) => console.warn('[quick idea]', err)); // (round 71, quickidea71) 💡
     });
     window.hub.onContextAction((what, text) => {
       if (what === 'ask') draftToClaude(`About this:\n\n> ${text.replace(/\n/g, '\n> ')}\n\n`);

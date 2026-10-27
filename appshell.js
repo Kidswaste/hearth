@@ -167,11 +167,19 @@ function trayIcon(fallback) {
     return img;
   } catch { return fallback.resize({ width: 16, height: 16 }); }
 }
+// (round 71, quickidea71) 💡 Quick idea: main.js hands the opener (quickideamain.js, loaded on first use); the tray gets
+// its item and applySettings its own key (settings.quickIdeaKey, Control+Alt+I by default; empty: off; a key another
+// app holds, or the show / hide key itself, leaves it off and says so in Settings)
+let quickIdea = null, quickKey = { key: '', ok: true, why: '' }, trayMenu = null;
+function onQuickIdea(fn) { quickIdea = typeof fn === 'function' ? fn : null; }
+const quickKeyInfo = () => ({ ...quickKey });
+const trayMenuOf = () => trayMenu; // (checks: the tray menu's items, clicked like the owner would)
 function setupTray(win, icon, actions) {
   tray = new Tray(trayIcon(icon));
   tray.setToolTip(APP_NAME);
-  tray.setContextMenu(Menu.buildFromTemplate([
+  tray.setContextMenu(trayMenu = Menu.buildFromTemplate([
     { label: `Show ${APP_NAME}`, click: () => { win.show(); win.focus(); } },
+    ...(quickIdea ? [{ label: '💡 Quick idea…', click: () => quickIdea() }] : []), // (round 71, quickidea71) the main window stays where it is
     { label: 'New chat with Claude', click: () => { win.show(); win.focus(); actions.send('tray:new-chat'); } },
     { label: 'Command palette', click: () => { win.show(); win.focus(); actions.send('tray:palette'); } },
     { type: 'separator' },
@@ -187,6 +195,13 @@ function applySettings(win, settings = {}) {
   if (hotkey) {
     try { hotkeyOk = globalShortcut.register(hotkey, () => toggleWindow(win)); } catch { hotkeyOk = false; }
   }
+  // (round 71, quickidea71) 💡 Quick idea's own key (after unregisterAll above, so a changed key never lingers)
+  const qk = String(settings.quickIdeaKey ?? 'Control+Alt+I').trim();
+  quickKey = { key: qk, ok: true, why: '' };
+  if (quickIdea && qk) {
+    if (hotkey && require('./quickidea-core').sameKey(qk, hotkey)) quickKey = { key: qk, ok: false, why: 'it is the show / hide key' };
+    else { let ok = false; try { ok = globalShortcut.register(qk, () => quickIdea()); } catch { ok = false; } quickKey = { key: qk, ok, why: ok ? '' : 'another app uses it' }; }
+  }
   // On a Mac the setup script's Hearth.app is what you'd add to Login Items (System Settings → General).
   // (round 60, winfresh60) the folder quoted: Electron writes the arguments joined by spaces, unquoted, so a folder like
   // C:\Users\Jane Doe\Hearth started nothing at login; the folder is this file's own (named anything)
@@ -198,7 +213,7 @@ function applySettings(win, settings = {}) {
     if (require('./twocopies-core').loginItemPlan({ want: Boolean(settings.launchAtStartup), items, appDir: __dirname }) !== 'leave') app.setLoginItemSettings({ openAtLogin: Boolean(settings.launchAtStartup), args });
   }
   session.defaultSession.setSpellCheckerLanguages(settings.spellLanguages?.length ? settings.spellLanguages : ['en-US']);
-  return { hotkeyOk };
+  return { hotkeyOk, quickIdeaKeyOk: quickKey.ok, quickIdeaKey: quickKey.key, quickIdeaWhy: quickKey.why };
 }
 function setupCloseToTray(win, getSettings) {
   win.on('close', (e) => {
@@ -357,7 +372,7 @@ function setupDownloads(send) {
 }
 
 module.exports = {
-  ensureIcon, loadWindowState, trackWindowState, setupTray, applySettings, setupCloseToTray,
+  ensureIcon, loadWindowState, trackWindowState, setupTray, applySettings, setupCloseToTray, onQuickIdea, quickKeyInfo, trayMenuOf,
   createShortcuts, firstRunShortcuts, restartApp, writeIconFiles, APP_NAME, ICON_ICO_PATH: ICON_ICO, attachContextMenu, setupDownloads, skipDownloads, toggleWindow, ICON_ICO,
   markQuitting: () => { quitting = true; },
   pngFromRgba, trayIcon, // (round 36, nativefeel) the taskbar badge, the tray icon

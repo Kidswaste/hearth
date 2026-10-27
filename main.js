@@ -752,6 +752,9 @@ function registerAfterWindow() {
   require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
   require('./leavesoonmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, powerMonitor: require('electron').powerMonitor }); // (round 68, leavesoon68) ⏰ Remind me to leave: ONE timeout to the next reminder (rings with Hearth in the tray; missed ones aren't rung late)
   require('./showsyncmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 61, showsync61) this week's shows from Shotgun / DICE: polite fetches, nothing while idle
+  // (round 71, quickidea71) 💡 Quick idea: the tray item / its key open a small always-on-top window; the inbox store and the voice memos (loaded on first use)
+  const quickIpc = lazyIpc('quickideamain.js', (m, ipc) => m.register(ipc, { store, dataDir: store.DATA_DIR, getWin: () => win, send, icon: appshell.ensureIcon(), keyInfo: appshell.quickKeyInfo, trayMenu: appshell.trayMenuOf }));
+  appshell.onQuickIdea(() => { quickIpc.load(); require('./quickideamain').open(); });
   lazyIpc('ticketsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 68, tickets68) 🎟 My ticket: copies in data/tickets/<show>, the Downloads look (names only), Wallet passes; loaded on first use
   const outingGuide = require('./outing-guidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, Notification: require('electron').Notification });
   require('./questguidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, onChanged: snapshot => outingGuide.syncGuide(snapshot) });
