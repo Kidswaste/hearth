@@ -168,10 +168,13 @@ try {
     need(chatList()?.querySelectorAll('.msg').length === drawn0, `tab switches drew more of the chat (${out.desk.chatDrawn} messages)`);
     need(out.desk.chatFromEnd != null && out.desk.chatFromEnd < 80, `the chat lost its place at its end (${out.desk.chatFromEnd} px above it)`);
     click([...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === 'Desk')); await until(() => document.querySelector('.pw-desk .pw-project-files') && H.surfaceIdFor(H.activeId) === 'tool:home', 'desk again');
-    // (round 74) the shelf is clicked once the Desk is on screen (its first frames drawn), as a person clicks what they see.
-    // It used to be clicked 5–20 ms after the Desk tab, before the Desk had drawn once: the rows came in the first frame
-    // after the click, but that frame was the Desk's own first one (60–110 ms in software GL right after the Scene tab)
-    await frame(); await frame();
+    // (round 74) the shelf is clicked once the Desk is on screen and its frames are steady again (three in a row under
+    // 34 ms, at most 2 s), as a person clicks what they see. It used to be clicked 5–20 ms after the Desk tab: the rows
+    // still came in the first frame after the click, but right after the Scene tab the Desk is rasterized again in
+    // software for ≈ 1–1.5 s here (frames 130–250 ms apart, base and branch alike), and that frame waited for it
+    { const t0 = performance.now(); let last = await new Promise(requestAnimationFrame); let ok = 0;
+      while (ok < 3 && performance.now() - t0 < 2000) { const t = await new Promise(requestAnimationFrame); ok = t - last < 34 ? ok + 1 : 0; last = t; }
+      out.desk.steadyAfterTab = Math.round(performance.now() - t0); }
     const files = document.querySelector('.pw-project-files');
     // (round 74) in frames too: the animation frames from the click to the one that shows the rows, and how long that took
     let t0 = 0; await profile('desk-files', async () => { const ticks = []; let on = true; const tick = (t) => { ticks.push(t); if (on) requestAnimationFrame(tick); }; requestAnimationFrame(tick); await frame();

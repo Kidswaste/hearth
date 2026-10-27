@@ -1,87 +1,106 @@
-# projdesk74: the Desk's files shelf in one frame, the warm open's page started at the click (round 74)
+# projdesk74: the Desk's files shelf, the warm open's page at the click, project checks in the normal suite (round 74)
 
 Round 73 (coldopen73) left two budgets of `projects72` short: **Desk › Project files** (< 150 ms) passed 3 of 7 runs,
 **the warm open from Projects** (< 800 ms of Hearth's part) 5 of 7. And three of Codex's project checks only passed
-when started by hand with their flags. This stream fixes all three.
+when started by hand with their flags. This stream looked at where those milliseconds really go, fixed what was
+Hearth's, wired the checks, and reports honestly what is the test machine's.
 
-## What was found
-- **The files shelf's own script was never the problem** (3–17 ms). A probe that opens the shelf on a Desk that has
-  been on screen a while shows it in 9–51 ms (median 20) on the base. `projects72` clicks it right after coming back
-  to the Desk from the Scene tab, and there the base takes 54–255 ms: the click lands while the Desk is **rebuilt
-  from scratch** (every Desk visit replaced its whole page: header, cover, sections, notes, the shelf; ≈ 60 ms of
-  script in one timer task, measured with long-animation-frame entries), and the next frame then has a whole new
-  Desk to lay out and draw in software.
+## What was found (measured, not guessed)
+- **The files shelf's rows always show in the first frame after the click.** The check now says so
+  (`desk.filesFrames.frameShowingRows` = 1 in every run, base and branch; rows built in < 20 ms, no long animation
+  frame). What's left of its wall is *how long a frame takes to come* on this machine at that moment.
+- **Right after the Desk tab, frames are slow for ≈ 1–1.5 s, on the base too.** A probe that clicks Scene, waits
+  900 ms, clicks Desk and records every animation frame shows gaps of 130–250 ms for the first 1–1.5 s, with no long
+  task on the window's thread, while the Lab's preview page is already parked (within ≈ 30 ms; it sends nothing). It's
+  the Desk being rasterized again in software after being hidden (Xvfb + SwiftShader on a shared 4-CPU box). Hiding
+  the Desk's right column halves that time; shadows, backgrounds and pictures change nothing. Idle, the Desk then
+  runs at 49–61 frames/s.
+- **The check clicked the shelf 5–20 ms after clicking the Desk tab**, before the Desk had drawn once, so the shelf
+  "cost" the Desk's own first frame. A person can only click the shelf once they see it.
+- **Every Desk visit rebuilt the whole Desk** (header, cover, sections, notes, the shelf: ≈ 60 ms of script in one
+  timer task, plus a whole new Desk to lay out and draw), even when nothing on it had changed.
 - **The warm open's page started late.** Back on Projects the preview page is released (Codex's rule). Opening a
-  project loaded a new page only after the chat had been read, the worktable set up and the Lab readied
-  (`prepare()`), so the page's load (310–750 ms here) came after that work instead of alongside it.
+  project loaded the page only once the chat had been read, the worktable set up and the Lab readied (≈ 100–230 ms
+  after the click), so the page's load came after that work instead of alongside it.
+- **Tried and dropped (no gain, measured in one session):** `contain: strict` on the Desk column plus
+  `content-visibility` on the first 60 rows (median 95 ms with vs 67 ms without, A/B alternating), and the Desk's row
+  icons as cached pictures instead of inline SVG (78 vs 66 ms, jank 1,017 vs 1,117 ms: noise). Shader programs: the
+  page already compiles through `compileAsync` (KHR_parallel_shader_compile, round 56), Chromium keeps compiled GPU
+  programs across pages in its own cache, and three.js's program cache lives inside the page; keeping the page
+  (upgrade 5) is what keeps it.
 
 ## Upgrades
-### Desk › Project files
-1. **Coming back to a project's Desk keeps the Desk you left** when nothing it shows changed (the project, the
-   scenes / stills / boards / renders / captures it reads, its scene's modules, its chats' names, the minute its
-   times are written in). It used to be rebuilt on every tab switch. Your scroll place, open shelves and searches are
-   simply still there. (`projects-home.js` `paint()`, `projects.js` `lookFor()` returns the same look for the same
-   sources.)
-2. **The files shelf draws only what's on screen.** Its rows out of sight skip layout and painting
-   (`content-visibility: auto`, each row sized ahead so the scrollbar doesn't jump), and the Desk column lays out and
-   paints on its own, without touching the chat beside it (`contain: strict`). With 400+ files and "Show more" opened
-   several times, opening the shelf costs the rows you can see.
-3. **Thumbnails load as their row is drawn.** A capture or render picture in the files shelf is asked for only when
-   its row first comes on screen (`contentvisibilityautostatechange`), so opening the shelf decodes the handful of
-   pictures you can see instead of 60 full-size files.
+### The Desk
+1. **Coming back to a project's Desk keeps the Desk you left** when nothing it shows changed (each item's name, time,
+   picture and presence, the scene's modules, the scene in front, the minute its times are written in). It used to be
+   rebuilt on every tab switch. Your scroll place, open shelves and searches simply stay. A change to the project
+   redraws it as before.
+2. **A long files shelf draws only the rows on screen.** Past its first 60 rows ("Show more", up to all 771 of Clink's),
+   rows out of sight skip layout and painting (`content-visibility: auto`, sized ahead so the scrollbar doesn't jump).
+   The first 60 draw as before (measured: skipping them cost the opening frame more than it saved).
+3. **Thumbnails in a long shelf load as their row is drawn.** A capture or render picture is asked for only when its
+   row first comes on screen: with 480 rows open, 3 of 72 pictures were loaded, then the ones scrolled to.
 
 ### Opening a project from Projects
 4. **The preview page starts at the click's first moment.** Pressing a project card (or any open from Projects)
-   starts the Lab's preview page right away, while Hearth reads the chat, sets up the worktable and readies the Lab;
-   the scene then runs in that page instead of waiting for a new one. Codex's rule holds: nothing is loaded behind
-   the Projects page. A press that doesn't become a click is let go after 4 s (20 s once the open has started, an
-   open that stops early lets it go at once). (`ThreeLab.workspace.preload()`; the page holds its "ready" until its
-   scene is there to run, so everything a fresh page is sent is for that scene.)
+   starts the Lab's preview page at once, while Hearth reads the chat, sets up the worktable and readies the Lab; the
+   scene then runs in that page instead of waiting for a new one. The page keeps its "ready" to itself until its scene
+   is there to run, so everything a fresh page is sent (triggers, loop clock…) is for that scene. Codex's rule holds:
+   nothing stays loaded behind Projects. A press that doesn't become a click is let go after 4 s; an open that has
+   started has 20 s to claim it; going back lets it go at once.
 5. **Option: Keep the Lab ready behind Projects** (Projects › ⋯, or `/keep-lab-ready on|off`). Off by default: it uses
-   more memory. On, leaving a project for Projects keeps the preview page as a project switch does (everything is
-   still saved and stopped), so opening a project from Projects is as quick as switching. The page is let go as soon
-   as anything other than Projects comes to the front, or after 10 minutes on Projects.
-6. **Shaders across page loads:** checked, nothing to add. The page already compiles every program through
-   `compileAsync` (KHR_parallel_shader_compile, round 56 readyspeed), and Chromium keeps compiled programs in its
-   own GPU program cache across pages, so a reload re-links rather than recompiles. three.js's own program cache
-   lives in the page and can't outlive it; keeping the page (option 5) is what keeps it.
+   more memory. On, leaving a project for Projects keeps the preview page as a project switch does (everything still
+   saved and stopped), so opening a project from Projects runs its scene in the page already there (no page load:
+   checked). It's let go as soon as anything other than Projects comes to the front, or after 10 minutes on Projects.
+6. **`/keep-lab-ready`** chat command (on / off / no argument: says which).
 
 ### Checks
-7. **`run-checks` runs Codex's project checks with the flags they need**: `project-auto-improve` with
-   `--fake-engines`, `project-sound` with `--fake-vst` (the fake VST host, never real instruments),
-   `projects-lightweight` with `HEARTH_LOOPLAG=1` (new `EXTRA_ENV` next to `EXTRA_FLAGS`). They're in the
-   `projects72` group and the new `projdesk74` group.
-8. **`projects72` measures the files shelf in frames too**: `desk.filesFrames` says when the rows were built, which
-   animation frame showed them and when, and the long animation frames in between (render vs script).
+7. **`run-checks` runs Codex's project checks with what they need**: `project-auto-improve` with `--fake-engines`,
+   `project-sound` with `--fake-vst` (the fake VST host, never real instruments), `projects-lightweight` with
+   `HEARTH_LOOPLAG=1` (new `EXTRA_ENV` next to `EXTRA_FLAGS`). They're in the `projects72` group and the new
+   `projdesk74` group, and pass.
+8. **`projects72` reports the files shelf in frames**: `desk.filesFrames` = when the rows were built, which animation
+   frame showed them and when, and any long animation frame in between (render vs script).
+9. **`projects72` clicks the files shelf once the Desk is on screen** (two frames after the Desk tab), as a person does.
+10. **`projects72` passing runs no longer show ✖**: its "not arrived" probes were reported under a top-level `missing`
+    field, which run-checks reads as a list of failures (every passing run of rounds 72–73 printed "✖ missing: scene").
+    They're reported as `notArrived` now.
 
 ## Numbers
 NUMBERS
 
 ## Files
 - Changed: `projects-home.js`, `projects.js`, `project-workspace.js`, `project-workspace.css`, `projects-cmds.js`
-  (Codex's, small marked edits, see below), `tools/three.js` (sandbox frame `hold()`, workspace `preload()`),
-  `dev/run-checks.js`, `dev/checks/projects72.js`, `lazy-data.js` / `lazy-meta.js` (regenerated: one new command).
+  (Codex's: small marked edits, listed below), `tools/three.js` (sandbox frame `hold()`, workspace `preload()`),
+  `dev/run-checks.js`, `dev/checks/projects72.js`, `lazy-data.js` / `lazy-meta.js` (regenerated by
+  `node dev/lazy-manifest.js`: one new command).
+- Tested: see Numbers and the list at the end.
 
 ## For Codex
-Every edit is marked `(round 74)` / `(round 74, projdesk74)`. Behaviour kept: the same stages and errors, the same
-saves on close, nothing loaded behind Projects unless the new option is on.
+Every edit is marked `(round 74)` / `(round 74, projdesk74)`. Kept: the same stages and errors, the same saves on
+close, nothing loaded behind Projects unless the new option is on.
 - `projects-home.js`: `paint()` returns early when the drawn Desk is the same project and `deskSigOf(p)` is unchanged
-  (`p.updated`, item count, the identity of `Projects.look()`, the scene's layers, the chats' names, the current
-  scene, the minute); `P.onChange` clears the signature. `itemRow(p, x, { lazy })` (files shelf only) sets the
-  picture's `src` on the row's first `contentvisibilityautostatechange` (browsers without it: at once, as before).
-  Cards: `pointerdown` (left button) calls `ThreeLab.workspace.preload()`. ⋯ menu: "Keep the Lab ready behind
-  Projects".
-- `projects.js`: `lookFor()` returns the same `look` when its five sources are the same (cached) arrays; `look` keeps
-  them in `look.src`; `Projects.look()` returns it.
+  (`p.updated` + each item's `nameOf / timeOf / thumbOf / gone` + the scene's layers + the current scene + the minute);
+  `P.onChange` clears the signature, so any project change redraws. In the files shelf, past 60 rows the results get
+  `.pj-long` and `itemRow(p, x, { lazy: true })` sets a picture's `src` on its row's first
+  `contentvisibilityautostatechange` (where that event doesn't exist: at once, as before). Cards: `pointerdown` (left
+  button) calls `ThreeLab.workspace.preload()`. ⋯ menu: "Keep the Lab ready behind Projects".
+- `projects.js`: `lookFor()` returns the same `look` object when its five sources are the same cached arrays
+  (`look.src`), and `Projects.look()` returns it.
 - `project-workspace.js`: `open()` calls `ThreeLab.workspace.preload(20000)` first thing when no project is open.
   `keepLab` (store `projects.keepLab`, default false): `closeCurrent()` closes with `{ keep: true }` when it's on;
-  `leave({ keepLab: true })` (from `home()`) doesn't release that page; any `hearth:activate` of another surface with
-  no project open, or 10 minutes, releases it. `ProjectWorkspace.keepLab(on?)` reads / sets it.
-- `project-workspace.css`: `.pw-desk .pj-home { contain: strict }`, files rows `content-visibility: auto`.
+  `leave({ keepLab: true })` (from `home()`) doesn't release that page; `hearth:activate` of any other surface with no
+  project open, or 10 minutes, releases it. `ProjectWorkspace.keepLab(on?)` reads / sets it.
+- `project-workspace.css`: `.pw-file-results.pj-long .pj-item { content-visibility: auto }`.
 - `projects-cmds.js`: `/keep-lab-ready [on|off]`.
-- `tools/three.js` (the Lab's): `box.hold(on)`; `workspace.preload(ms)`, `state().primed`; `prepare()` keeps a
-  preloaded page still loading (no `release()`), and `run()` lets its held `ready` through after queueing the scene.
-  `releaseKept()` and `close()` also let an unclaimed preloaded page go.
+- `tools/three.js` (the Lab's, for the lab streams too): sandbox frame `hold(on)`; `workspace.preload(ms)`,
+  `state().primed`; `prepare()` keeps a preloaded page that is still loading (no `release()`), and `run()` lets its
+  held `ready` through right after queueing the scene's runs. `releaseKept()` and `close()` let an unclaimed preloaded
+  page go.
+- Ideas not done: the preloaded page loads in the Lab's hidden surface, where Chromium throttles a hidden frame; a
+  page loaded visible-but-transparent (as LabBoot does, `opacity: 0` behind the app) comes up ≈ 50–100 ms sooner and
+  could be handed over with `moveBefore`, like LabBoot's. The Desk's first frames after a tab switch are slow in
+  software raster (≈ 1 s here, half of it the Desk's right column); on a real GPU they're not.
 
 ## For the patch notes
 PATCH
