@@ -1,6 +1,6 @@
 // (round 74, synchard74) A file that can't sync, in the sync panel, by clicks: on a Mac that syncs with a Windows PC, a
 // Lab capture named "Capture 10:32.png" (":" is fine on a Mac, impossible on Windows) is held back, never sent to the
-// cloud; the indicator says "⚠ 1 can't sync"; the panel lists it by name with why in plain words and a "Rename for
+// cloud; the indicator says "⚠ 1 to fix"; the panel lists it by name with why in plain words and a "Rename for
 // Windows" button; one click renames it, the chat that links to it follows, it goes up and the indicator is back to
 // ✓ Synced. The PC runs an older Hearth (no format in its record): the panel says to update it there too. Only a temp
 // folder is used as the cloud.
@@ -34,7 +34,7 @@ if (gotIt) { await click(gotIt); await wait(300); }
 
 // 1. held back, said in a word on the indicator
 step('the capture is held back: not in the cloud folder', !(await exists(F('captures/Capture 10:32.png'))) && (await exists(CAP)));
-step('the indicator says "⚠ 1 can\'t sync"', /⚠ 1 can't sync/.test(chip()), chip());
+step('the indicator says "⚠ 1 to fix"', /⚠ 1 to fix/.test(chip()), chip());
 step('…and its name says why to look', /1 file can't sync — see why/.test(dot()?.getAttribute('aria-label') || ''), dot()?.getAttribute('aria-label'));
 
 // 2. the panel: by name, why in plain words, the fix

@@ -62,8 +62,8 @@ const Sync = (() => {
     const s = dotState(); const n = st.pending > 99 ? '99+' : st.pending;
     if (s === 'paused') return '‖ Paused';
     if (s === 'offline') return '○ Offline';
+    if (blockedN() && !st.conflicts && (st.state === 'synced' || st.state === 'pending')) return `⚠ ${blockedN()} to fix`; // (round 74, synchard74) (short: the rail is narrow; its name says "can't sync — see why")
     if (s === 'conflict') return st.conflicts ? `⚠ ${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'}` : '⚠ Look';
-    if (blockedN() && (st.state === 'synced' || st.state === 'pending')) return `⚠ ${blockedN()} can't sync`; // (round 74, synchard74)
     if (s === 'syncing') return st.state === 'pending' && st.pending ? `↻ ${n} waiting` : '↻ Syncing';
     return '✓ Synced';
   };

@@ -24,7 +24,7 @@ where one exists.
 | 12 | **On a Windows PC with tens of thousands of files, nothing would sync** ("only in the cloud" for every file) | each pass asked PowerShell about every cloud file in one call (8 s / 8 MB limits); a failed call marks every file unknown | only files changed since the last pass (in the cloud or here) are asked about, in batches of 1,500; a failed batch only leaves its own files waiting |
 
 ## What the owner sees
-- The indicator at the bottom of the rail says **⚠ 2 can't sync** (its words: "2 files can't sync — see why") when a file
+- The indicator at the bottom of the rail says **⚠ 2 to fix** (its words: "2 files can't sync — see why") when a file
   is blocked; the ⋯ menu has "2 files can't sync — see why…".
 - The sync panel has a **Can't sync (N)** section: each file by name, why in plain words, and its button:
 
@@ -100,7 +100,7 @@ the cloud in one pass (no delete + upload). The unit run uses 5,000 files (`--ma
 16. A newer Hearth can tell an older one to stop writing (`.sync/format.json`); the older one says to update.
 17. Every computer's record and journal line carry the sync format and the app version.
 ### Seeing it and fixing it
-18. The indicator says "⚠ N can't sync" when a file is blocked.
+18. The indicator says "⚠ N to fix" when a file is blocked (its name and tooltip: "N files can't sync — see why").
 19. The sync panel lists each blocked file by name with why in plain words.
 20. Rename for Windows (":" "?" "*" "<>" "|", quotes, trailing dots / spaces, CON / NUL / COM1…).
 21. Shorten for Windows for paths over 260 characters (folders shortened the same way for every file in them).
@@ -154,10 +154,10 @@ the cloud in one pass (no delete + upload). The unit run uses 5,000 files (`--ma
   mid-readdir), and a PC view's `winNames` (OneDrive / iCloud for Windows never create such names).
 - Also run, all pass: unit:sync72-test (+ `--thread`, + `--only random --seeds 30`: 300 / 300), unit:syncmedia73-test,
   unit:sync-test (180), unit:cloud-files-test, unit:winmac-test (609), unit:boot-test, unit:datasafe-scan,
-  unit:errorcalm-scan. APP_CHECKS
+  unit:errorcalm-scan. App checks (under the shared lock): synchard74, sync72, syncmedia73, lazy pass.
 - `node dev/sync72-perf.js --fixture <50,000 files>`: the table above (before with `--root` on the base commit).
 - `dev/checks/synchard74.js` (app, clicks): a Mac syncing with a Windows PC on an older Hearth; "Capture 10:32.png" is
-  held back (not in the cloud folder); the chip says "⚠ 1 can't sync"; the panel's "Can't sync (1)" names it, says
+  held back (not in the cloud folder); the chip says "⚠ 1 to fix"; the panel's "Can't sync (1)" names it, says
   "“:” in it, which Windows can't use", has Rename for Windows, and says "Hearth on Studio PC is an older version";
   one click: renamed, "1 link to it updated", the chat's attachment path follows, it reaches the cloud folder, the
   chip is back to ✓ Synced; every button named; Escape closes.
@@ -210,7 +210,7 @@ New: `sync-hard.js`, `dev/synchard74-test.js`, `dev/checks/synchard74.js`.
 - Sync now copes with what real computers do: a file another program is using (the Sound desk playing a WAV, your
   cloud drive, an antivirus), a read-only file, or a full disk no longer shows up as a scary error and is never left
   half-copied. Hearth tries again by itself.
-- Click the sync indicator at the bottom of the left rail: when something can't sync it says "⚠ 1 can't sync", and the
+- Click the sync indicator at the bottom of the left rail: when something can't sync it says "⚠ 1 to fix", and the
   panel lists the file by name, says why in plain words, and gives you the button that fixes it.
 - Names your PC can't use (a Mac capture called "Capture 10:32.png", a name ending in a dot, "CON.txt", a very long
   folder path) now get a "Rename for Windows" button on the Mac. Links to the file in your chats and scenes follow the
