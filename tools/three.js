@@ -4366,7 +4366,8 @@ ${code}
         await ThreeLab.idle();
         // Save live slider edits too: closing a document must not leave its current sound/look only in memory.
         for (const ctl of controllers.values()) if (ctl.pending?.()) ctl.save?.();
-        persist(); rememberMedia();
+        // (round 72) only what changed: an untouched scene isn't stamped "updated now" and rewritten (all scenes, MBs) per close
+        if (current && (sel()?.code !== editor.value || current.code !== (layersOf()[0]?.code ?? editor.value))) persist(); rememberMedia();
         const results = await Promise.all([save.flush(), saveExtras.flush()]);
         for (const r of results) if (r?.error) throw Error(r.error);
         window.PresentReady?.stop();

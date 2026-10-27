@@ -35,7 +35,27 @@ the other computer, and deleting a project.
   `window.PJ_REPORT = 1` reports without failing, `window.PJ_BUDGET` overrides budgets.
 
 ## Numbers (this machine: Xvfb, software GL, a shared 4-CPU box that other checks were using; before = round 71 main fee53a5, after = this branch, same fixture, same check)
-NUMBERS_TABLE
+Two runs of each (the box was shared with other agents' checks, so single numbers swing by ±50 %). "Hearth's part"
+is the wall minus the scene's own drawing and warm-up (see above); the wall is given too.
+
+| | before | after |
+|---|---|---|
+| **switch** with the name ▾ (best of 3 per project; the slowest project · the fastest) | 955 · 575 ms / 1,088 · 690 ms | 534 · 367 ms / 682 · 424 ms |
+| switch, the wall with the scene (software GL) | 2.5–4.4 s | 1.7–2.7 s |
+| **cold open** (the first since start, the pointer on the card first) | 975 ms / 2,572 ms | 786 ms (1,846 ms in a run before the card prefetch) |
+| **warm open** from Projects (best of 2) | 431 ms / 816 ms | 454 ms / 592 ms |
+| Desk paint (Desk tab clicked) | 64 / 71 ms | 57 / 83 ms |
+| Desk › Project files opened (771 items) · a search typed | 260 · 47 ms / 205 · 65 ms | 80 · 16 ms / 129 · 29 ms |
+| typing in the notes: a key's own work · the longest task after the keys | 5 ms · 463 ms / 3 ms · 486 ms | 2.4 ms · none / 2.5 ms · none |
+| words typed past the notes' 4,000 characters | silently dropped, Desk redrawn per key | the box stops at 4,000 |
+| Prepare for offline (Clink: 537 paths, 15 chats · the missing-scene project) | 134–313 · 37–88 ms | 178–279 · 59–65 ms |
+| a project whose chat hasn't arrived, tried | rewritten and moved to the top | left as it is |
+| delete → after the Undo toast | gone | ⋯ › Recently deleted projects |
+
+Where a switch's time goes now (step timings, after): closing the project you leave ≈ 60–100 ms (the Lab's saves),
+the moodboard / sound / worktable ≈ 30–50 ms, the next chat ≈ 5 ms to read and ≈ 30–55 ms to draw (while the scene
+starts), the Lab's sketch switch ≈ 80–125 ms of script (sliders read from 2–4 layers of 150–450 lines each). The
+rest of the wall is the scene drawing its first frame in software GL.
 
 ## What was found and fixed
 1. **Every project switch threw the preview page away and built a new one** (`tools/three.js` `workspace.close()` /
@@ -67,7 +87,9 @@ NUMBERS_TABLE
 7. **The daily "seen buttons" pass froze a project's first open of the day for ≈ 0.5 s** (`usage.js` `see()`, run by
    the weekly tidy in `habits.js`). It checked the visibility of every button of the screen, and a 700-message chat
    has thousands of identical message buttons. It now looks at the first 20 messages' buttons (the others are the
-   same buttons).
+   same buttons). Its sibling, the pass that marks often-used buttons (`decorate()`, after changes on screen), walked
+   every message footer of that chat (≈ 70–130 ms, landing inside project switches here): it marks the last 60 footers
+   now; older messages keep the marks they got when they were new.
 8. **The Desk drew 80 ms after you clicked it.** Coming on screen used the 80 ms wait meant for bursts of changes;
    it draws at once now.
 9. **The first open of a session loaded the Lab, the moodboard and the creative board's code after the click.** The
@@ -95,7 +117,7 @@ NUMBERS_TABLE
 
 ## Files
 - Changed: `project-workspace.js`, `projects.js`, `projects-core.js`, `projects-home.js` (Codex's), `tools/three.js`
-  (the Lab's `workspace` API: `close({ keep })`, `releaseKept()`, `state().kept`), `usage.js` (`see()`), `offline.js`
+  (the Lab's `workspace` API: `close({ keep })`, `releaseKept()`, `state().kept`), `usage.js` (`see()`, `decorate()`), `offline.js`
   (one line before the check).
 - New: `dev/checks/projects72.js` (opt-in), `--projects` in `dev/bigprofile.js` (+ drawing scenes), a `projects72`
   group and fixture in `dev/run-checks.js`, a trash test in `dev/projects-test.js`.
