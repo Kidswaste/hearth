@@ -62,17 +62,18 @@ const ProjectsHome = (() => {
     await P.lookFor();
     if (version !== paintVersion) return;
     if (!visible()) { S.stale = true; return; }
-    // (round 74, projdesk74) back on the Desk of the same project with nothing changed (the project, the sources it reads,
-    // its scene's modules, its chats' titles, the minute its times are written in): the Desk drawn before is kept as it
-    // is. It was rebuilt on every tab switch (≈ 60 ms of script plus a whole new Desk to draw), right where you click next
+    // (round 74, projdesk74) back on the Desk of the same project with nothing it shows changed (deskSigOf): the Desk
+    // drawn before is kept as it is. It was rebuilt on every tab switch (≈ 60 ms of script plus a whole new Desk to draw), right where you click next
     const p = S.open && P.get(S.open);
     if (p && drawn === p.id && deskSig && deskSig === deskSigOf(p) && S.body.querySelector('.pj-p-head')) return;
     keepDesk();
     if (p) { paintProject(p); deskSig = deskSigOf(p); } else { S.open = null; deskSig = null; paintHome(); }
   }
   let deskSig = null;
-  const deskSigOf = (p) => { const sc = window.ThreeLab?.scenes?.get?.(ProjectWorkspace.currentScene() || p.workspace?.sceneId); return JSON.stringify([p.updated, p.items.length, srcId(P.look?.()), sc ? sc.layers?.map((x) => `${x.id}:${x.name}:${x.visible !== false}`) : null, p.items.filter((x) => x.type === 'chat').map((x) => P.nameOf(x)), ProjectWorkspace.currentScene(), Math.floor(Date.now() / 60000)]); };
-  const srcIds = new WeakMap(); let srcN = 0; const srcId = (o) => { if (!o || typeof o !== 'object') return 0; if (!srcIds.has(o)) srcIds.set(o, ++srcN); return srcIds.get(o); };
+  // what the Desk shows, as text: each item's name, time, picture and presence (a few ms for 771 items), the scene's
+  // modules, the current scene, and the minute its times are written in (sources re-read after 15–30 s give new
+  // arrays with the same content: compared by what they say, not by identity)
+  const deskSigOf = (p) => { const sc = window.ThreeLab?.scenes?.get?.(ProjectWorkspace.currentScene() || p.workspace?.sceneId); return JSON.stringify([p.updated, p.items.map((x) => `${P.nameOf(x)}\u0001${P.timeOf(x) || x.at}\u0001${P.thumbOf(x) || ''}\u0001${P.gone(x) ? 1 : 0}`), sc ? sc.layers?.map((x) => `${x.id}:${x.name}:${x.visible !== false}`) : null, ProjectWorkspace.currentScene(), Math.floor(Date.now() / 60000)]); };
 
   // ---------- the cards ----------
   let homeN = 0;
