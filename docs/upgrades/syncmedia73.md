@@ -14,13 +14,14 @@ on this round's base engine (`--root`).
 
 | phase | before | after |
 |---|---|---|
-| PC: the mix goes up | 39.6 s · **4,020 MB read** | 27.9 s · **2,225 MB read** (each big file read once) |
-| a chat written 0.3 s into that upload reaches the cloud folder | **39.2 s** (waited for every video) | **2.7 s** |
+| PC: the mix goes up | 39.6 s · **4,020 MB read** | 28–30 s · **2,225–2,249 MB read** (each big file read once) |
+| a chat written 0.3 s into that upload reaches the cloud folder | **39.2 s** (waited for every video) | **2.7–2.9 s** |
 | half-copied files sitting in the cloud folder (the cloud client uploads them as they grow) | 56 files, 1.7 GB | **0** |
 | PC: steady passes (nothing changed) | 0 MB read | 0 MB read |
 | quit halfway through a new 300 MB render, start again | resumed, 144 MB written | resumed, 144 MB written |
-| Mac joins: everything comes down | 25.4 s | 24.2 s |
-| a chat written on the PC while the Mac downloads the videos lands on the Mac | **24.7 s** | **5.5 s** |
+| Mac joins: everything comes down | 25.4 s | 22–24 s |
+| a chat written on the PC while the Mac downloads the videos lands on the Mac | **24.7 s** | **3.6–5.5 s** |
+| event loop, longest delay in any phase | 36 ms | 48 ms (one run had a single 245 ms spike in the Mac phase on the loaded machine; not seen again with `--trace-gc`) |
 | Mac: Free up space (all 29 big files) | — | 2.1 GB made online-only, 18 ms; next pass: nothing downloads, nothing waits |
 
 ## What changed
@@ -101,8 +102,8 @@ on this round's base engine (`--root`).
 - `dev/sync-sim.js`: big files hashed in steps and kept by the server as hard links (a 2 GB mix never sits in memory),
   sparse downloads, `view.evict()` (refuses a file not uploaded as it is), placeholders show no blocks to the engine.
 - `node dev/syncmedia73-perf.js`: the table above (`--gb`, `--root` for before / after).
-- `dev/checks/syncmedia73.js` (app, clicks): RESULT_APP_CHECK
-- Also run: RESULT_OTHERS
+- `dev/checks/syncmedia73.js` (app, clicks): passes — the render's row "↑ Intro final.mp4" with a progress bar, not listed twice under Waiting; a chat saved meanwhile is in the cloud folder while the render still copies; the bar is the same element and its percentage rises (kept even when the panel redraws for the chat); done → row gone, render whole in the cloud, ✓ Synced; "What syncs: everything ›" opens 8 named toggles (runtime off), Renders "48.0 MB here · 48.0 MB in the cloud"; Lab captures off → "Nothing is deleted" toast, "everything but Lab captures", a new capture stays out of the cloud while still Synced, on again it goes up; Free up space opens its own view and, on this Linux box, says "Not possible with this cloud drive" with why and "1 big file, 48.0 MB, would qualify. Nothing was changed."; ‹ Back; the ⋯ menu has both rows and opens straight at Free up space.
+- Also run (all pass): unit:syncmedia73-test, unit:sync72-test (+ `--thread`), unit:sync-test, unit:cloud-files-test, unit:winmac-test, unit:boot-test, unit:datasafe-scan, unit:errorcalm-scan, dev/twocomputers-test.js; app checks sync72, sync, lazy.
 - Not testable here: real OneDrive / iCloud / Dropbox clients and their eviction (simulated from their documented
   behaviour; cloud-evict.js is unit-tested with fake tools); a real Windows `attrib` or Mac `brctl` / `fileproviderctl`.
 
