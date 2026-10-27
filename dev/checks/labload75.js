@@ -161,6 +161,8 @@ for (let k = 0; k < N; k++) {
   if (k + 1 === 6 || k + 1 === 15 || k + 1 === N) await sample(`after ${k + 1} switches`);
 }
 const m1 = await metrics();
+// (after) the loading line showed while a scene's files came in for the first time (made once, kept hidden after)
+if (await sbx('return Boolean(window.__labAssets)')) step('the loading line showed on a first visit', await sbx("return Boolean(document.querySelector('.lab-assetline'))"));
 if (m0 && m1) { const c = {}; for (const p of m1.procs) { const p0 = m0.procs.find((x) => x.pid === p.pid); const k = procOf(m1, p.pid); c[k] = (c[k] || 0) + ((p.cpuS ?? 0) - (p0?.cpuS ?? 0)); } out.cpuPerSwitchMs = Object.fromEntries(Object.entries(c).map(([k, v]) => [k, Math.round((v * 1000) / N)])); }
 const fails = [];
 const bad = out.switches.filter((x) => x.error);
