@@ -47,7 +47,7 @@ const until = async (fn, what, n = 600) => { for (let i = 0; i < n; i++) { try {
 const OPTS = (() => { try { return JSON.parse(localStorage.getItem('pj72.opts')) || {}; } catch { return {}; } })(); // (round 73) set before the restart
 if (OPTS.report) window.PJ_REPORT = 1;
 const BUDGET = Object.assign({ open: 800, switch: 600, desk: 150, files: 150, switchTask: 250 }, OPTS.budget || {}, window.PJ_BUDGET || {});
-const out = { budget: BUDGET, fixture: {}, open: { firstEver: JSON.parse(localStorage.getItem('pj72.first') || 'null') }, switch: {}, resume: {}, desk: {}, missing: {}, offline: {}, lifecycle: {}, profiles: {} }; const fails = [];
+const out = { budget: BUDGET, fixture: {}, open: { firstEver: JSON.parse(localStorage.getItem('pj72.first') || 'null') }, switch: {}, resume: {}, desk: {}, notArrived: {}, offline: {}, lifecycle: {}, profiles: {} }; const fails = [];
 const need = (ok, what) => { if (!ok) fails.push(what); return ok; };
 const click = (node) => { if (!node) throw Error('nothing to click'); node.click(); };
 const menuItem = (re) => [...document.querySelectorAll('#menu button')].find((b) => re.test(b.textContent.trim()));
@@ -168,6 +168,10 @@ try {
     need(chatList()?.querySelectorAll('.msg').length === drawn0, `tab switches drew more of the chat (${out.desk.chatDrawn} messages)`);
     need(out.desk.chatFromEnd != null && out.desk.chatFromEnd < 80, `the chat lost its place at its end (${out.desk.chatFromEnd} px above it)`);
     click([...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === 'Desk')); await until(() => document.querySelector('.pw-desk .pw-project-files') && H.surfaceIdFor(H.activeId) === 'tool:home', 'desk again');
+    // (round 74) the shelf is clicked once the Desk is on screen (its first frames drawn), as a person clicks what they see.
+    // It used to be clicked 5–20 ms after the Desk tab, before the Desk had drawn once: the rows came in the first frame
+    // after the click, but that frame was the Desk's own first one (60–110 ms in software GL right after the Scene tab)
+    await frame(); await frame();
     const files = document.querySelector('.pw-project-files');
     // (round 74) in frames too: the animation frames from the click to the one that shows the rows, and how long that took
     let t0 = 0; await profile('desk-files', async () => { const ticks = []; let on = true; const tick = (t) => { ticks.push(t); if (on) requestAnimationFrame(tick); }; requestAnimationFrame(tick); await frame();
@@ -194,13 +198,14 @@ try {
     need(out.desk.noteKeyMax < 16, `notes: a key's own work ${out.desk.noteKeyMax} ms ≥ 16`);
     about.querySelector('summary').click(); }
   // ---------- not arrived: a scene, a chat ----------
+  // (round 74) reported as notArrived: run-checks reads a top-level "missing…" field as a list of failures, so every passing run showed ✖
   for (const [id, key] of [['pjbp38', 'scene'], ['pjbp39', 'chat']]) {
     const before = JSON.stringify(P.get(id));
     await toProjects(); click(card(id));
     const d = await until(() => document.querySelector('dialog.pw-loading.failed'), `${key} not arrived`, 1500);
-    out.missing[key] = d.querySelector('.pw-load-status')?.textContent; out.missing[`${key}Detail`] = d.querySelector('.pw-load-detail')?.textContent;
-    need(/not (available|arrived)|hasn.t arrived|isn.t on this computer/i.test(out.missing[key]), `${key} not arrived: says so (${out.missing[key]})`);
-    need(!/error|undefined|null|cannot read|failed to/i.test(out.missing[key]), `${key} not arrived: calm words`);
+    out.notArrived[key] = d.querySelector('.pw-load-status')?.textContent; out.notArrived[`${key}Detail`] = d.querySelector('.pw-load-detail')?.textContent;
+    need(/not (available|arrived)|hasn.t arrived|isn.t on this computer/i.test(out.notArrived[key]), `${key} not arrived: says so (${out.notArrived[key]})`);
+    need(!/error|undefined|null|cannot read|failed to/i.test(out.notArrived[key]), `${key} not arrived: calm words`);
     const after = P.get(id); need(after && after.workspace[`${key}Id`] === JSON.parse(before).workspace[`${key}Id`] && after.items.length === JSON.parse(before).items.length, `${key} not arrived: links kept`);
     click([...d.querySelectorAll('button')].find((b) => /Back to projects/.test(b.textContent)));
     await until(() => !document.querySelector('dialog.pw-loading') && card('pjbp0'), 'back');

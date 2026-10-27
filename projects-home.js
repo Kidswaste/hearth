@@ -237,8 +237,9 @@ const ProjectsHome = (() => {
     const paint=()=>{
       if(!d.open)return;
       painted=true;
+      const long=limit>60;results.classList.toggle('pj-long',long); // (round 74) past the first 60 rows: drawn as they come on screen
       const q=query.value.trim().toLowerCase(),hits=p.items.filter(x=>(!kind.value||x.type===kind.value)&&(!q||P.nameOf(x).toLowerCase().includes(q)||String(x.ref).toLowerCase().includes(q))).sort((a,b)=>(P.timeOf(b)||b.at)-(P.timeOf(a)||a.at)),shown=hits.slice(0,limit);
-      results.replaceChildren(...ORDER.flatMap(t=>{const xs=shown.filter(x=>x.type===t);return xs.length?[el('section',{class:'pj-sec'},el('h4',{text:C.TYPES[t].icon+' '+C.TYPES[t].label}),el('div',{class:'pj-items'},...xs.map(x=>itemRow(p,x,{lazy:true}))))]:[];}),...(!hits.length?[el('p',{class:'hint',text:q||kind.value?'No matching files.':'Add a scene, chat, or file to see it here.'})]:[])); // (round 74) lazy: a row's picture loads once the row is drawn
+      results.replaceChildren(...ORDER.flatMap(t=>{const xs=shown.filter(x=>x.type===t);return xs.length?[el('section',{class:'pj-sec'},el('h4',{text:C.TYPES[t].icon+' '+C.TYPES[t].label}),el('div',{class:'pj-items'},...xs.map(x=>itemRow(p,x,{lazy:long}))))]:[];}),...(!hits.length?[el('p',{class:'hint',text:q||kind.value?'No matching files.':'Add a scene, chat, or file to see it here.'})]:[])); // (round 74) lazy: a long shelf's row picture loads once the row is drawn
       count.textContent=`${shown.length} of ${hits.length}`;more.hidden=shown.length>=hits.length;
       const saved=desks.get(p.id)||state;saved.fileLimit=limit;desks.set(p.id,saved);
     };
@@ -246,9 +247,9 @@ const ProjectsHome = (() => {
     if((state.open||[]).includes('pw-project-files')){d.open=true;paint();}
     return d;
   }
-  // (round 74, projdesk74) lazy (the files shelf): the shelf's rows skip layout and paint while out of sight
-  // (content-visibility, project-workspace.css); a row's picture (a full-size capture / render file) is asked for only
-  // when its row is first drawn, so opening the shelf decodes the few pictures on screen, not 60
+  // (round 74, projdesk74) lazy (a long files shelf, past "Show more"): its rows skip layout and paint while out of sight
+  // (content-visibility, project-workspace.css .pj-long); a row's picture (a full-size capture / render file) is asked
+  // for only when its row is first drawn, so 400 rows decode the few pictures on screen, not 400
   const CV_EVENT = 'oncontentvisibilityautostatechange' in document.documentElement;
   function itemRow(p, x, { lazy = false } = {}) {
     const pic = ['scene', 'seq', 'render', 'capture', 'board'].includes(x.type) ? P.thumbOf(x) : null;
