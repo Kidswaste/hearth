@@ -1556,7 +1556,9 @@ const Native = (() => {
       el('button', { type: 'button', text: 'Show all', title: 'Draw every message of this chat (slower in a very long chat)', on: { click: () => showEarlier(agentId) } }));
   }
   // waking and resting blocks, find and jumps into resting messages: chat-rest.js (loaded right after the first frame)
-  const restWatch = (agentId, v) => (typeof ChatRest !== 'undefined' ? ChatRest.watch(agentId, v) : null);
+  // (round 74, checkhealth74) not even `typeof` before its group is in: reading the lazy global asks for the group while the
+  // first screen is still being drawn (chat-rest.js watches the chats drawn before it once it loads)
+  const restWatch = (agentId, v) => ((!window.Lazy || Lazy.isIn('chatrest')) && typeof ChatRest !== 'undefined' ? ChatRest.watch(agentId, v) : null);
   // the earlier messages of the open chat: `step` more (the resting blocks just above), else all of them (Show all)
   function showEarlier(agentId, step = 0) {
     const v = views.get(agentId); const id = H.activeChat[agentId];
