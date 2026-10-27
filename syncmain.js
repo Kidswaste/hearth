@@ -64,6 +64,9 @@ function start() {
     skip: K.skipper(settings.kinds),
     onLane: () => schedule(300, 'lane'),
     evict: (file) => Evict.evict(file, { provider: settings.provider, root: settings.root }),
+    // (round 73) app checks only (smoke runs set HEARTH_TEST_SAVE_DIR): data/sync/test-slow.json = ms per 4 MB piece, so
+    // a check can watch a big file's progress; never read in a normal run
+    chunkWait: process.env.HEARTH_TEST_SAVE_DIR ? async () => { try { const ms = Number(fs.readFileSync(path.join(opts.dataDir, 'sync', 'test-slow.json'), 'utf8')); if (ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 2000))); } catch { /* not slowed */ } } : undefined,
     // (round 20, offmain) big JSON stores are parsed and hashed on the store's files thread
     hashJson: opts.store?.runOff ? (file, a) => opts.store.runOff('syncHash', { file, ...a }) : undefined,
     // (round 72, sync72) a big store arriving / changed on both computers: its JSON work on the same thread

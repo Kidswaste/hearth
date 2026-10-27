@@ -129,11 +129,15 @@ const SyncPanel = (() => {
   function transfersSec(st) {
     const list = st.transfers || [];
     if (!list.length) return null;
+    // the same files as on screen: that section stays (a redraw for something else doesn't rebuild the bars)
+    const key = JSON.stringify([list.slice(0, 5).map((t) => `${t.rel}:${t.op}:${t.moving}`), st.moving || list.length]);
+    const old = box?.querySelector('.sp-moving');
+    if (old && old.dataset.key === key) { paintBars(st); return old; }
     const rows = list.slice(0, 5).map((t) => el('li', { class: `sp-tr${t.moving ? ' on' : ''}`, dataset: { rel: t.rel } },
       el('div', { class: 'sp-tr-top' }, el('span', { class: 'sp-name', text: `${t.op === 'down' ? '↓' : t.op === 'up' ? '↑' : '…'} ${Sync.nameOf(t.rel)}` }), el('span', { class: 'hint sp-tr-n', text: amount(t) })),
       t.moving && t.op !== 'check' ? el('div', { class: 'sp-bar', attrs: { role: 'progressbar', 'aria-label': `${Sync.nameOf(t.rel)} progress`, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pct(t) * 100)) } }, el('i', { style: { transform: `scaleX(${pct(t)})` } })) : null));
     const more = (st.moving || list.length) - rows.length;
-    return el('div', { class: 'sp-sec sp-moving' }, el('b', { text: `Big files on their way (${st.moving || list.length})` }),
+    return el('div', { class: 'sp-sec sp-moving', dataset: { key } }, el('b', { text: `Big files on their way (${st.moving || list.length})` }),
       el('span', { class: 'hint', text: 'One at a time, beside everything else: chats and settings don\'t wait for them. A copy cut short goes on where it stopped.' }),
       el('ul', { class: 'sp-wait' }, ...rows), more > 0 ? el('span', { class: 'hint', text: `…and ${more} more` }) : null);
   }
@@ -271,12 +275,15 @@ const SyncPanel = (() => {
         list.length > 1 ? el('div', { class: 'sp-row' }, el('button', { type: 'button', class: 'ghost small', text: 'Settle all for me', title: 'Chats, scenes and settings: merged (the newer one wins where they differ); pictures and files: the newer one', on: { click: settleAll } })) : null));
     } else if (st.conflicts) parts.push(el('p', { class: 'hint', text: `${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'}…` }));
     // what is waiting, and why
-    const waiting = st.waiting || [];
-    if (waiting.length || st.pending) {
+    // (round 73) the big files on their way have their own section (with bars): not listed twice
+    const lane = new Set((st.transfers || []).map((t) => t.rel));
+    const waiting = (st.waiting || []).filter((x) => !(lane.has(x.rel) && (x.why === 'moving' || x.why === 'queued')));
+    const pendingRest = Math.max(0, (st.pending || 0) - (st.moving || 0));
+    if (waiting.length || pendingRest) {
       const cloudOnly = waiting.filter((x) => x.why === 'cloud-only').length;
-      parts.push(el('div', { class: 'sp-sec' }, el('b', { text: `Waiting (${Math.max(st.pending || 0, waiting.length)})` }),
+      parts.push(el('div', { class: 'sp-sec' }, el('b', { text: `Waiting (${Math.max(pendingRest, waiting.length)})` }),
         el('ul', { class: 'sp-wait' }, ...waiting.slice(0, 6).map((x) => el('li', {}, el('span', { class: 'sp-name', text: Sync.nameOf(x.rel) }), el('span', { class: 'hint', text: whyText(x.why, st) })))),
-        waiting.length > 6 || st.pending > waiting.length ? el('span', { class: 'hint', text: `…and ${Math.max(st.pending, waiting.length) - Math.min(6, waiting.length)} more` }) : null,
+        waiting.length > 6 || pendingRest > waiting.length ? el('span', { class: 'hint', text: `…and ${Math.max(pendingRest, waiting.length) - Math.min(6, waiting.length)} more` }) : null,
         cloudOnly ? el('div', { class: 'sp-row' }, el('button', { type: 'button', class: 'ghost small', text: `Download ${cloudOnly === 1 ? 'it' : `those ${cloudOnly}`} now`, title: 'Big files your cloud drive keeps online only are never downloaded unless you ask', on: { click: async (e) => { e.currentTarget.disabled = true; await Sync.download(); sig = ''; render(); } } })) : null));
     }
     parts.push(transfersSec(st), kindsSec(st)); // (round 73, syncmedia73)
