@@ -66,7 +66,10 @@ const Native = (() => {
         const l = existing.list; const fromEnd = l?.scrollHeight ? l.scrollHeight - l.scrollTop : null;
         root.append(existing.title.closest('.native-head'), existing.wrap, existing.form);
         existing.root = root;
-        if (l?.isConnected) { if (follows(existing)) l.scrollTop = l.scrollHeight; else if (fromEnd != null) l.scrollTop = l.scrollHeight - fromEnd; }
+        const place = () => { if (!l?.isConnected || !l.scrollHeight) return; if (follows(existing)) l.scrollTop = l.scrollHeight; else if (fromEnd != null) l.scrollTop = l.scrollHeight - fromEnd; };
+        // (a dock is often shown just after the move, in the same task: then its size is known at the next frame, which
+        // comes before the "Show earlier" watcher looks)
+        if (l?.scrollHeight) place(); else requestAnimationFrame(place);
       }
       root.classList.toggle('dock-chat', root.classList.contains('tool-dock'));
       return existing;
