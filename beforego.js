@@ -27,7 +27,7 @@ const BeforeGo = window.BeforeGo = (() => {
   }
 
   // a show as the cards know it; a show's leave reminder → its show
-  const plain = (s) => ({ key: String(s.key), title: s.title || 'Show', start: Number(s.start), dateOnly: !!s.dateOnly, venue: { name: s.venue?.name || '', address: s.venue?.address || '' }, lineup: (s.lineup || []).slice(0, 12) });
+  const plain = (s) => ({ key: String(s.key), title: s.title || 'Show', start: Number(s.start), doors: Number.isFinite(s.doors) ? s.doors : null, dateOnly: !!s.dateOnly, venue: { name: s.venue?.name || '', address: s.venue?.address || '', ...(Number.isFinite(s.venue?.lat) ? { lat: s.venue.lat, lon: s.venue.lon } : {}) }, lineup: (s.lineup || []).slice(0, 12) });
   function showOf(it) {
     const key = it.ref?.show || String(it.key).replace(/^show:/, '');
     try { const s = (typeof ShowSync !== 'undefined' ? ShowSync.upcoming() : []).find((x) => x.key === key); if (s) return plain(s); } catch { /* the cards aren't loaded */ }
@@ -90,7 +90,9 @@ const BeforeGo = window.BeforeGo = (() => {
       el('ul', { class: 'bg-list' }, rows.map(row)),
       el('footer', { class: 'bg-foot' },
         el('span', { class: 'bg-progress', text: pr.text }),
-        btn('Edit my list…', editList, 'bg-edit', 'Change the list for every show (kept on this computer). The ticket and the jacket are Hearth’s own rows.')),
+        btn('Edit my list…', editList, 'bg-edit', 'Change the list for every show (kept on this computer). The ticket and the jacket are Hearth’s own rows.'),
+        // (round 71, eatnearby71) 🍜 Eat nearby: food stops close to the venue, open before doors (its own lazy group)
+        s.dateOnly || !Number.isFinite(s.start) ? null : btn('🍜 Eat nearby', () => { const show = s; close(); return Lazy.load('eatnearby').then(() => EatNearby.open(show)); }, 'bg-eat', 'Food stops within about 10 minutes’ walk of the venue, open in the 2 hours before doors; “Go here first” moves your leave time earlier')),
       cur.ring ? el('div', { class: 'bg-acts' },
         btn('Show on map', () => Lazy.load('leavesoon').then(() => LeaveSoon.showOnMap(cur.ring.key)), 'bg-map', 'See the venue on the Paris map'),
         cur.ring.state === 'on' ? null : btn('Snooze 10 min', async () => { const r = await leave('snooze'); toast(r?.ok && r.value.state === 'snoozed' ? `⏰ Snoozed: I’ll remind you again at ${hm(r.value.snoozeUntil)}.` : '⏰ That reminder is over: nothing to snooze.', { timeout: 2500 }); }, 'bg-snooze', 'Remind me again in 10 minutes'),
