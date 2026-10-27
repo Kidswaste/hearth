@@ -8,7 +8,8 @@
 //   warm open     ‹ Projects → the Clink card again
 //   switch        the name ▾ in the workspace bar → another project in its menu (3 rounds, best of 3)
 //   resume        a project left on its Scene tab comes back on its Scene; a related chat comes back as the chat
-//   desk          Desk with many files: the page, "Project files" opened, a search typed, Show more
+//   desk          Desk with many files: the page, "Project files" opened, a search typed, Show more; the project's chat
+//                 keeps its place (its end) and draws no more messages while the tabs change
 //   not arrived   the project whose scene / chat isn't here says so calmly and keeps its links (nothing rewritten)
 //   offline       right-click › Prepare for offline… → the dialog's answer (the missing scene and files listed)
 //   delete / undo right-click › Delete the project… → Undo; archive → ⋯ › Archived projects lists it → back to Active
@@ -120,11 +121,18 @@ try {
   // ---------- desk with many files ----------
   { click([...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === 'Desk'));
     await until(() => document.querySelector('.pw-desk .pw-project-files'), 'desk files'); await wait(400);
+    // the project's chat moves between its tools (Desk, Scene): it keeps its place at its end and draws no more messages
+    const chatList = () => Native.view(ProjectWorkspace.currentChat().agentId)?.list; const drawn0 = chatList()?.querySelectorAll('.msg').length;
     const runs2 = [];
     for (let i = 0; i < 3; i++) { click([...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === 'Scene')); await until(() => H.surfaceIdFor(H.activeId) === 'tool:three', 'scene'); await wait(250);
       const t0 = performance.now(); click([...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === 'Desk'));
       await until(() => document.querySelector('.pw-desk .pw-project-files') && H.surfaceIdFor(H.activeId) === 'tool:home', 'desk'); await frame(); runs2.push({ wall: Math.round(performance.now() - t0), longest: longestSince(t0) }); }
     out.desk.paint = Math.min(...runs2.map((r) => r.wall)); out.desk.paintRuns = runs2.map((r) => r.wall).join(' ');
+    click([...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === 'Scene')); await until(() => H.surfaceIdFor(H.activeId) === 'tool:three', 'scene'); await wait(900);
+    { const l = chatList(); out.desk.chatDrawn = `${drawn0} → ${l?.querySelectorAll('.msg').length}`; out.desk.chatFromEnd = l ? Math.round(l.scrollHeight - l.scrollTop - l.clientHeight) : null; }
+    need(chatList()?.querySelectorAll('.msg').length === drawn0, `tab switches drew more of the chat (${out.desk.chatDrawn} messages)`);
+    need(out.desk.chatFromEnd != null && out.desk.chatFromEnd < 80, `the chat lost its place at its end (${out.desk.chatFromEnd} px above it)`);
+    click([...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === 'Desk')); await until(() => document.querySelector('.pw-desk .pw-project-files') && H.surfaceIdFor(H.activeId) === 'tool:home', 'desk again');
     const files = document.querySelector('.pw-project-files');
     let t0 = 0; await profile('desk-files', async () => { t0 = performance.now(); files.querySelector('summary').click(); await until(() => files.querySelector('.pw-file-results .pj-item'), 'files'); await frame(); out.desk.files = Math.round(performance.now() - t0); });
     out.desk.filesRows = files.querySelectorAll('.pj-item').length; out.desk.count = files.querySelector('.pw-file-footer .hint')?.textContent;
