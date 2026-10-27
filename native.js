@@ -66,7 +66,11 @@ const Native = (() => {
         const l = existing.list; const fromEnd = !follows(existing) && l?.scrollHeight ? l.scrollHeight - l.scrollTop : null; // (no layout read while it follows)
         root.append(existing.title.closest('.native-head'), existing.wrap, existing.form);
         existing.root = root;
-        const place = () => { if (!l?.isConnected || !l.scrollHeight) return; if (follows(existing)) l.scrollTop = l.scrollHeight; else if (fromEnd != null) l.scrollTop = l.scrollHeight - fromEnd; };
+        // (round 73, coldopen73) a following list lost its place in the move: a draw that keeps the place before the
+        // frame below (a project opening redraws its chat right after the move) places it at the end instead of keeping
+        // the top, where older messages woke
+        const due = follows(existing) && H.activeChat[agentId]; if (due) existing.placeDue = due;
+        const place = () => { if (due && existing.placeDue === due && l?.clientHeight) existing.placeDue = null; if (!l?.isConnected || !l.scrollHeight) return; if (follows(existing)) l.scrollTop = l.scrollHeight; else if (fromEnd != null) l.scrollTop = l.scrollHeight - fromEnd; };
         // at the next frame, before the "Show earlier" watcher looks (a dock is often shown just after the move, in the same
         // task; and no layout is forced in the middle of the move)
         requestAnimationFrame(place);
