@@ -10,7 +10,7 @@
 @keyframes sync-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { #sync-dot[data-state="syncing"] i { animation: none; } }
 /* (round 72, sync72) the indicator: a small chip (✓ · ↻ 12 · ⚠ 1 · ○ · ‖) in place of the dot; its words are its name */
-#sync-dot { width: auto; min-width: 44px; max-width: calc(var(--sidebar-w, 60px) - 8px); height: 22px; padding: 0 7px; gap: 0; font: 600 10.5px/1 var(--font, inherit); letter-spacing: .01em; opacity: .85; border-radius: 11px; }
+#sync-dot { width: auto; min-width: 44px; max-width: calc(100% - 4px); height: 22px; padding: 0 5px; gap: 0; font: 600 10.5px/1 var(--font, inherit); letter-spacing: .01em; opacity: .85; border-radius: 11px; }
 #sync-dot i { display: none; }
 #sync-dot .sync-chip { color: var(--fh-ok, #5fc98a); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 #sync-dot[data-state="syncing"] .sync-chip { color: var(--fh-info, #5aa9ff); }

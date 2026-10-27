@@ -74,7 +74,7 @@ const Sync = (() => {
     if (!rail) return;
     if (!st.on) { dot?.remove(); dot = null; return; }
     if (!dot) {
-      dot = el('button', { class: 'tool-btn sync-dot', id: 'sync-dot', type: 'button', dataset: { feature: 'Sync dot' }, 'aria-label': 'Sync', 'aria-haspopup': 'dialog' }, el('i'), el('span', { class: 'sync-chip' }));
+      dot = el('button', { class: 'tool-btn sync-dot', id: 'sync-dot', type: 'button', dataset: { feature: 'Sync dot' }, attrs: { 'aria-label': 'Sync', 'aria-haspopup': 'dialog' } }, el('i'), el('span', { class: 'sync-chip' }));
       // (round 72, sync72) a click opens the sync panel (plain words, what waits, conflicts side by side, Sync now);
       // right-click keeps the menu. The panel's code loads on that first click (lazy group syncpanel).
       dot.addEventListener('click', () => panel());
@@ -141,12 +141,12 @@ const Sync = (() => {
   async function refresh() { try { st = await api().status(); } catch { /* not ready */ } mountDot(); return st; }
   async function now(o = {}) {
     st = { ...st, state: 'syncing' }; paintDot();
-    st = await api().now(o);
+    st = await api().now({ mass: o.mass, fresh: o.fresh });
     mountDot();
     if (st.state === 'error' && st.error) toast(`Sync couldn't finish with ${where()}`, { type: 'error', timeout: 9000, raw: st.error, calm: { where: 'sync', what: 'The sync folder' }, retry: () => now() }); // (round 45, errorcalm)
     // (round 45, errorcalm) the folder gone: the line says it plainly, the one fix is a click away
     else if (st.state === 'offline' && st.error !== 'held') toast(line(), { timeout: 9000, raw: `${st.error === 'missing' ? 'Hearth/files missing in' : 'Not reachable:'} ${st.root || where()}`, action: st.error === 'missing' ? { label: 'Start it again from here', fn: () => now({ fresh: true }) } : { label: 'Pick the folder again…', fn: () => setup({ change: true }) } });
-    else toast(line(), { timeout: 3500 });
+    else if (!o.quiet) toast(line(), { timeout: 3500 }); // (round 72) the sync panel says it itself
     return st;
   }
   async function pause(on) { st = await api().pause(on); mountDot(); toast(on ? 'Sync paused. Hearth keeps everything here meanwhile.' : 'Sync resumed.', { timeout: 2500 }); }

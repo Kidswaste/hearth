@@ -134,10 +134,10 @@ const SyncPanel = (() => {
     if (my !== seq || s === sig || !box) return; // nothing it shows changed: the DOM stays as it is
     sig = s;
     const head = el('div', { class: 'sp-head' },
-      el('span', { class: `sp-glyph-big s-${st.paused ? 'paused' : st.state}`, text: Sync.glyph(), 'aria-hidden': 'true' }),
+      el('span', { class: `sp-glyph-big s-${st.paused ? 'paused' : st.state}`, text: Sync.glyph(), attrs: { 'aria-hidden': 'true' } }),
       el('div', { class: 'sp-title' }, el('h2', { text: Sync.shortLine() }),
         el('span', { class: 'hint', text: [st.on ? `with ${Sync.where()}` : '', st.at ? `checked ${ago(st.at)}` : '', Sync.peersLine()].filter(Boolean).join(' · ') })),
-      el('button', { type: 'button', class: 'ghost small sp-x', text: '×', title: 'Close', 'aria-label': 'Close the sync panel', on: { click: close } }));
+      el('button', { type: 'button', class: 'ghost small sp-x', text: '×', title: 'Close', attrs: { 'aria-label': 'Close the sync panel' }, on: { click: close } }));
     const parts = [head];
     // the deletions guard
     if (st.held) parts.push(el('div', { class: 'sp-sec sp-warn' }, el('p', { text: `${st.held.deletes} files were deleted at once. Sync waits for your yes before deleting them everywhere.` }),
@@ -149,7 +149,7 @@ const SyncPanel = (() => {
       const words = window.calmError ? calmError(err.message, { where: 'sync', what }) : err.message;
       parts.push(el('div', { class: 'sp-sec sp-warn' }, el('b', { text: `Last problem (${ago(err.at)})` }),
         el('p', { text: `${err.rel ? `${what}: ` : ''}${words}${/again/i.test(words) ? '' : ' Hearth tries again by itself.'}` }),
-        window.ErrorCalm?.details ? ErrorCalm.details(`${err.op ? `${err.op} ` : ''}${err.rel ? `${err.rel}: ` : ''}${err.message}`) : null)); // the word-for-word reason, with Copy
+        typeof ErrorCalm !== 'undefined' && ErrorCalm.details ? ErrorCalm.details(`${err.op ? `${err.op} ` : ''}${err.rel ? `${err.rel}: ` : ''}${err.message}`) : null)); // the word-for-word reason, with Copy
     }
     // conflicts, side by side
     if (list.length) {
@@ -170,11 +170,11 @@ const SyncPanel = (() => {
     if (auto && Date.now() - auto.at < 864e5) parts.push(el('p', { class: 'hint sp-auto', text: `Settled ${auto.done} conflict${auto.done === 1 ? '' : 's'} by itself ${ago(auto.at)} (merged; the other versions are in Deleted files).` }));
     if (st.skippedBig?.length) parts.push(el('p', { class: 'hint', text: `${st.skippedBig.length} big video${st.skippedBig.length === 1 ? '' : 's'} kept on this computer (Sync big videos is off).` }));
     // the actions
-    const now = el('button', { type: 'button', class: 'primary sp-now', text: 'Sync now', on: { click: async () => { now.disabled = true; now.textContent = 'Syncing…'; try { await Sync.now(); } finally { now.disabled = false; now.textContent = 'Sync now'; sig = ''; render(); } } } });
+    const now = el('button', { type: 'button', class: 'primary sp-now', text: 'Sync now', on: { click: async () => { now.disabled = true; now.textContent = 'Syncing…'; try { await Sync.now({ quiet: true }); } finally { now.disabled = false; now.textContent = 'Sync now'; sig = ''; render(); } } } });
     parts.push(el('div', { class: 'sp-foot' }, st.on ? now : el('button', { type: 'button', class: 'primary', text: 'Turn on sync…', on: { click: () => { close(); Sync.setup(); } } }),
       el('button', { type: 'button', class: 'ghost small', text: 'Deleted files…', on: { click: () => { close(); Sync.trash(); } } }),
       el('span', { class: 'spacer' }),
-      el('button', { type: 'button', class: 'ghost small', text: '⋯', title: 'More: pause, open the cloud folder, big videos, other drive, turn off', 'aria-label': 'More sync options', on: { click: (e) => showMenuAt(e.currentTarget, Sync.items()) } })));
+      el('button', { type: 'button', class: 'ghost small', text: '⋯', title: 'More: pause, open the cloud folder, big videos, other drive, turn off', attrs: { 'aria-label': 'More sync options' }, on: { click: (e) => showMenuAt(e.currentTarget, Sync.items()) } })));
     const keepScroll = box.scrollTop;
     box.replaceChildren(...parts.filter(Boolean));
     box.scrollTop = keepScroll;
@@ -198,7 +198,7 @@ const SyncPanel = (() => {
   function open(at) {
     if (box) { close(); }
     anchor = at || document.getElementById('sync-dot');
-    box = el('div', { class: 'sync-panel', role: 'dialog', 'aria-label': 'Sync', tabindex: '-1' });
+    box = el('div', { class: 'sync-panel', attrs: { role: 'dialog', 'aria-label': 'Sync', tabindex: '-1' } }); // (el() sets attributes through attrs)
     document.body.append(box);
     anchor?.classList.add('on');
     const away = (e) => { if (box && !box.contains(e.target) && !anchor?.contains(e.target) && !e.target.closest?.('#menu')) close(); };
