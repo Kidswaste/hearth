@@ -33,6 +33,11 @@ await until(() => Sync.status().state === 'synced', 20000);
 await until(() => /Synced/.test(chip()), 4000);
 step('the indicator says "✓ Synced" in the rail, its name says when', /^✓ Synced$/.test(chip()) && /^Sync: Synced (just now|\d+ min ago)$/.test(dot()?.getAttribute('aria-label') || ''), { chip: chip(), name: dot()?.getAttribute('aria-label') });
 
+// the one-time "Welcome to this computer" note (a first sync with another computer) sits where the panel opens: Got it
+await wait(1500);
+const gotIt = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Got it' && J.visible(b));
+if (gotIt) { await click(gotIt); await wait(300); }
+
 // 1. a click opens the panel: plain words, Sync now
 await click('#sync-dot');
 await until(() => panel()?.querySelector('h2'), 20000); // (its code loads on first use: behind the after-start groups on a busy start)
@@ -60,7 +65,8 @@ await settle();
 await click(btn(/^Sync now$/));
 await until(() => Sync.status().state === 'pending', 8000);
 await until(() => /waiting/.test(chip()) && /Waiting/.test(panel()?.textContent || ''), 4000);
-step('a file still arriving: "↻ 1 waiting" in the rail', /^↻ 1 waiting$/.test(chip()), chip());
+const cs = dot()?.querySelector('.sync-chip');
+step('a file still arriving: "↻ 1 waiting" in the rail, whole (not cut off)', /^↻ 1 waiting$/.test(chip()) && cs.scrollWidth <= cs.clientWidth + 1, { chip: chip(), scroll: cs?.scrollWidth, client: cs?.clientWidth, dot: dot()?.getBoundingClientRect().width, rail: document.getElementById('rail').clientWidth });
 const waitRow = [...(panel()?.querySelectorAll('.sp-wait li') || [])].map((li) => li.textContent).join(' | ');
 step('the panel names it and says why, in words', /Waiting \(1\)/.test(panel().textContent) && /sync72-arriving|Arriving/.test(waitRow) && /on its way from Studio Mac/.test(waitRow), waitRow);
 // it arrives whole: the journal now says its real size
