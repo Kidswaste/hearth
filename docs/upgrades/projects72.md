@@ -10,7 +10,7 @@ the other computer, and deleting a project.
   quest journal, 50 Lab scenes…). Everything is made up, with a fixed seed. Each project has its own chat, scene,
   moodboard and Desk, like the ones Codex's workspace makes:
   - "Clink" is the heavy one: a 700-message chat, 14 related long chats, 4 scenes, 3 boards, 400 files (half on disk,
-    half "not arrived from the other computer"), 220 captures, 120 renders and 4,000 characters of notes;
+    half "not arrived from the other computer"), 220 captures, 120 renders and 3,800 characters of notes (room to type);
   - two medium projects (a 400-message chat, 6 related chats, 120 files), the rest small;
   - "Not arrived: scene" links a scene that isn't on this computer, "Not arrived: chat" a chat that isn't;
   - 3 paused and 2 archived projects.
@@ -106,6 +106,7 @@ rest of the wall is the scene drawing its first frame in software GL.
    it draws at once now.
 9. **The first open of a session loaded the Lab, the moodboard and the creative board's code after the click.** The
    pointer reaching a project card (or the card getting keyboard focus) now starts loading that code, once per session.
+   (Its gain was inside this machine's noise: the first open's cost is mostly the Lab's first mount, see the budgets.)
 10. **Deleting a project could only be undone for 8 seconds.** The grouping, its notes (up to 4,000 characters), look,
     cover and workspace links were gone after that (the chats, scenes and files themselves always stayed). A deleted
     project now waits in **Projects › ⋯ › Recently deleted projects** (the 30 newest), and a click brings it back as
@@ -196,14 +197,13 @@ preview released whenever no project is open.
 - **Switching projects is quicker.** Picking another project from the project's name ▾ no longer starts the preview
   from scratch: the next project's scene starts in the one already open, and its chat and moodboard get ready at the
   same time.
-- **Opening a project you just pointed at starts sooner** the first time after Hearth starts.
 - **Deleted projects can come back.** Projects › ⋯ › Recently deleted projects keeps the last 30, with their notes and
   links: click one to bring it back. (Deleting a project never touched its chats, scenes or files.)
 - **Project notes no longer lose what you type past their 4,000-character limit**, and typing in them no longer
   stutters on a big profile.
 - **A project whose scene or chat hasn't come over from your other computer yet** says so calmly ("It may still be on
   its way…") and keeps its links; Hearth no longer moves that project to the top each time you try it.
-- **A project's chat stays where you are** when you move between Desk, Scene, Sound and the boards (it used to jump
+- **A project's chat stays where you are** when you move between the project's tabs (Desk, Scene…) (it used to jump
   back into older messages and load 60 more of them each time, so long sessions got slower).
 - **Opening a project for the first time each day no longer freezes for half a second** when its chat is very long.
 - **Leaving a project no longer re-saves its scene when you didn't change it**, so your two computers have less to sync
