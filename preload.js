@@ -8,6 +8,9 @@ if (startZoom !== 1) { try { webFrame.setZoomFactor(startZoom); } catch { /* the
 
 contextBridge.exposeInMainWorld('hub', {
   volume: { get: call('volume:get'), set: call('volume:set') },
+  // (round 72, longrun72) how many IPC listeners this window holds (in all, and per channel with more than one): the
+  // hub.onX(cb) subscriptions have no "off", so one made again and again piles up for as long as the window lives
+  ipcListeners: () => { const multi = {}; let total = 0; for (const n of ipcRenderer.eventNames()) { const c = ipcRenderer.listenerCount(n); total += c; if (c > 1) multi[String(n)] = c; } return { total, multi }; },
   getConfig: call('config:get'),
   saveConfig: call('config:save'),
   onConfigChanged: on('config:changed'),

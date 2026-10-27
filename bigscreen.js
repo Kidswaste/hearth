@@ -43,6 +43,7 @@ const Bigscreen = (() => {
   const rows = new Set();
   function sizeRow({ compact = false } = {}) {
     if (!big || typeof el !== 'function') return null;
+    for (const r of rows) if (!r.isConnected) rows.delete(r); // (round 72, longrun72) a closed Settings' row goes now (it waited for a screen change: one whole Settings kept per opening)
     // (round 39, settingscalm) Settings shows one control per row: the same choices in one list, its note on hover
     if (compact) {
       const sel = el('select', { class: 'big-size-pick', attrs: { 'aria-label': 'Size of everything' } });

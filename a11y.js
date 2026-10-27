@@ -122,9 +122,13 @@ const A11y = (() => {
   // <dialog>: the opener is what had focus when it opened (Chromium keeps it for modals; non-modal ones and dialogs
   // that removed their opener get it here)
   const dialogOpeners = new WeakMap();
+  // (round 72, longrun72) one observer for every dialog, reading the dialog from the record: an observer per dialog whose
+  // callback held its dialog stayed alive (an observer with a registration is kept) and kept every closed dialog, with
+  // everything inside it, for as long as Hearth ran (a whole Settings per opening)
+  const dialogWatch = new MutationObserver((recs) => { for (const r of recs) { const d = r.target; if (d.open && !dialogOpeners.has(d)) { const a = document.activeElement; dialogOpeners.set(d, a && !d.contains(a) ? a : null); } } });
   function watchDialog(d) {
     if (d.__a11y) return; d.__a11y = true;
-    new MutationObserver(() => { if (d.open && !dialogOpeners.has(d)) { const a = document.activeElement; dialogOpeners.set(d, a && !d.contains(a) ? a : null); } }).observe(d, { attributes: true, attributeFilter: ['open'] });
+    dialogWatch.observe(d, { attributes: true, attributeFilter: ['open'] });
     if (d.open) { const a = document.activeElement; dialogOpeners.set(d, a && !d.contains(a) ? a : null); }
   }
   document.addEventListener('close', (e) => { const d = e.target; if (d?.tagName !== 'DIALOG') return; const o = dialogOpeners.get(d); dialogOpeners.delete(d); giveBack(o); }, true);

@@ -30,17 +30,29 @@ const probe = TEST ? (() => {
     return own.replace(/^at\s+/, '').replace(/\(?(?:file:\/\/)?[^()]*[\\/]([^\\/]+\.js:\d+):\d+\)?/, '$1').slice(0, 90);
   };
   const count = (key) => { P.n += 1; P.by.set(key, (P.by.get(key) || 0) + 1); };
+  // (round 72, longrun72) the timers alive right now, by the line that made them (a timeout until it fires or is
+  // cleared, an interval until it is cleared): a count that keeps rising over hours is a timer pile-up
+  P.live = new Map();
   for (const name of ['setTimeout', 'setInterval']) {
     const orig = global[name];
+    const once = name === 'setTimeout';
     const wrapped = function (fn, ms, ...rest) {
       if (typeof fn !== 'function') return orig.call(this, fn, ms, ...rest);
-      const key = `${name === 'setInterval' ? 'interval' : 'timeout'} ${site(wrapped)}`;
-      return orig.call(this, function (...a) { count(key); return fn.apply(this, a); }, ms, ...rest);
+      const key = `${once ? 'timeout' : 'interval'} ${site(wrapped)}`;
+      let t = null;
+      t = orig.call(this, function (...a) { count(key); if (once) P.live.delete(t); return fn.apply(this, a); }, ms, ...rest);
+      if (t && typeof t === 'object') P.live.set(t, key);
+      return t;
     };
     Object.defineProperty(wrapped, 'name', { value: name });
     if (orig.__promisify__) wrapped.__promisify__ = orig.__promisify__;
     global[name] = wrapped;
   }
+  for (const name of ['clearTimeout', 'clearInterval']) {
+    const orig = global[name];
+    global[name] = function (t) { if (t && typeof t === 'object') P.live.delete(t); return orig.call(this, t); };
+  }
+  P.liveBy = () => { const by = {}; for (const [t, k] of P.live) { if (t._destroyed) { P.live.delete(t); continue; } by[k] = (by[k] || 0) + 1; } return by; };
   // fs.watchFile polls the disk on its own timer (no JS callback per poll): counted as stats per minute
   const fs = require('fs');
   const wf = fs.watchFile;
@@ -199,6 +211,10 @@ function testHook(t) {
   if (t.saver != null) setSys({ saver: Boolean(t.saver) });
   if (t.sleep === 'suspend') sys({ asleep: true });
   if (t.sleep === 'resume') sys({ asleep: false });
+  // (round 72, longrun72) the computer's own power events as every listener hears them (suspend / resume / lock-screen /
+  // unlock-screen), not only bgmain's state; and a long-run sample of the main process (longrunSample below)
+  if (t.power) { try { require('electron').powerMonitor.emit(String(t.power)); out.power = String(t.power); } catch (err) { out.power = `error: ${err.message}`; } }
+  if (t.longrun) out.longrun = longrunSample(t.longrun);
   const w = getWin();
   if (t.window === 'hide' && w) w.hide();
   if (t.window === 'show' && w) { w.show(); w.focus(); }
@@ -222,6 +238,32 @@ function testHook(t) {
   out.stub = stub ? { starts: stub.starts.slice(), stops: stub.stops.slice(), live: [...stub.live] } : null;
   out.bg = bg?.state?.() || null;
   return out;
+}
+
+// (round 72, longrun72; tests only) what can pile up in the main process over hours, after a full GC: JS heap, live
+// handles by kind (timers, watchers, sockets, child processes with what they run), live timers by the line that made
+// them, IPC listeners (ipcMain channels with more than one listener; invoke handlers), listeners on app / powerMonitor /
+// the hub window, the app's processes by type, web contents and windows
+let gcFn = null;
+function longrunSample(o = {}) {
+  const { app, ipcMain, webContents, BrowserWindow, powerMonitor } = require('electron');
+  if (o.gc !== false) { try { if (!gcFn) { require('v8').setFlagsFromString('--expose_gc'); gcFn = require('vm').runInNewContext('gc'); } gcFn(); gcFn(); } catch { /* no gc: the heap reads higher */ } }
+  const mu = process.memoryUsage();
+  const handles = {}; const children = {};
+  for (const h of process._getActiveHandles?.() || []) {
+    const k = h?.constructor?.name || typeof h; handles[k] = (handles[k] || 0) + 1;
+    if (k === 'ChildProcess') { const c = String(h.spawnfile || '?').split(/[\\/]/).pop() + (h.spawnargs?.[1] ? ` ${String(h.spawnargs[1]).split(/[\\/]/).pop()}` : ''); children[c] = (children[c] || 0) + 1; }
+  }
+  const res = {}; for (const k of process.getActiveResourcesInfo?.() || []) res[k] = (res[k] || 0) + 1;
+  const multi = {}; let ipcN = 0;
+  for (const n of ipcMain.eventNames()) { const c = ipcMain.listenerCount(n); ipcN += c; if (c > 1) multi[String(n)] = c; }
+  const count = (em) => { const by = {}; let n = 0; try { for (const e of em.eventNames()) { const c = em.listenerCount(e); n += c; if (c > 2) by[String(e)] = c; } } catch { /* gone */ } return { n, by }; };
+  const w = getWin();
+  const listeners = { app: count(app), powerMonitor: count(powerMonitor), ...(w && !w.isDestroyed() ? { win: count(w), wc: count(w.webContents) } : {}) };
+  const procs = {}; for (const m of app.getAppMetrics()) { const p = procs[m.type] ||= { n: 0, mb: 0 }; p.n += 1; p.mb += Math.round((m.memory?.workingSetSize || 0) / 1024); }
+  let snapshot; if (o.snapshot) { try { snapshot = require('v8').writeHeapSnapshot(String(o.snapshot)); } catch (err) { snapshot = `error: ${err.message}`; } } // (by-constructor diffs)
+  return { snapshot, heap: mu.heapUsed, rss: mu.rss, external: mu.external, arrayBuffers: mu.arrayBuffers, handles, children, res, timers: probe?.liveBy?.() || null,
+    ipc: { total: ipcN, multi, invoke: ipcMain._invokeHandlers?.size ?? null }, listeners, procs, contents: webContents.getAllWebContents().length, windows: BrowserWindow.getAllWindows().length };
 }
 
 // (round 44, idlecpu; tests only) every process' CPU time (seconds since it started), Chromium's idle wakeups / s since the

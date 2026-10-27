@@ -42,6 +42,7 @@ const BackupAuto = (() => {
     return { text: `Last backup: ${ago(s.lastOk)} ✓`, mark: s.stale ? 'bad' : 'ok' };
   }
   function line() {
+    for (const fn of [...subs]) if (fn.sweep) fn(); // (round 72, longrun72) the lines of closed Settings go now: they waited for a backup state change (rare), keeping one whole Settings alive per opening
     const text = el('span', { class: 'ba-line-text sc-line' });
     const retry = el('button', { type: 'button', class: 'ghost small ba-retry', text: 'Retry', hidden: true, title: 'Try the backup again now', on: { click: () => backupNow() } });
     const row = el('div', { class: 'sc-row ba-line', title: 'Hearth backs up your scenes, chats, memory and settings by itself, once a day when the computer is idle, and checks each backup' },
@@ -57,7 +58,8 @@ const BackupAuto = (() => {
     paint();
     const off = on(paint);
     // gone with Settings: unsubscribed when the row leaves the page (checked on the next change)
-    subs.add(function gone() { if (!row.isConnected) { off(); subs.delete(gone); } });
+    const gone = () => { if (!row.isConnected) { off(); subs.delete(gone); } };
+    gone.sweep = true; subs.add(gone);
     if (!st) refresh();
     return row;
   }
