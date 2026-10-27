@@ -1,0 +1,34 @@
+/* 🕘 Earlier versions (round 75, versions75): the timeline, Preview and Deleted things (versions.js). Plain layers: no
+   blur, no animation. */
+.vs-dialog { width: min(680px, 94vw); }
+.vs-dialog .hint { opacity: .72; font-size: .92em; }
+.vs-list, .vs-things, .vs-del { list-style: none; margin: 8px 0; padding: 0; max-height: 56vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.vs-row { display: grid; grid-template-columns: 150px 1fr auto; gap: 10px; align-items: center; padding: 7px 8px; border: 1px solid var(--line, #2a2d35); border-radius: 9px; }
+.vs-row:hover { background: color-mix(in srgb, var(--text, #e8e8ea) 4%, transparent); }
+.vs-when { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.vs-when b { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vs-chip { align-self: flex-start; font-size: 11px; padding: 1px 7px; border-radius: 999px; color: var(--fh-info, #5aa9ff); background: color-mix(in srgb, var(--fh-info, #5aa9ff) 14%, transparent); white-space: nowrap; }
+.vs-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vs-sum { overflow-wrap: anywhere; }
+.vs-where { font-size: 11.5px; opacity: .65; }
+.vs-acts { display: flex; gap: 6px; }
+.vs-empty { display: flex; flex-direction: column; gap: 4px; padding: 14px 4px; }
+.vs-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vs-tabs { display: flex; gap: 6px; margin: 2px 0 8px; }
+.vs-tabs .on { border-color: var(--fh-ember, #ff8a3d); color: var(--fh-ember, #ff8a3d); }
+.vs-q { width: 100%; margin: 4px 0; }
+.vs-thing { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 6px 8px; background: none; border: 1px solid transparent; border-radius: 8px; }
+.vs-thing:hover, .vs-thing:focus-visible { border-color: var(--line, #2a2d35); }
+.vs-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.vs-sec h3 { margin: 12px 0 4px; font-size: 13px; opacity: .8; }
+.vs-del li { display: flex; gap: 10px; align-items: center; padding: 4px 2px; }
+.vs-del li small { flex: none; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vs-home { min-height: 200px; }
+.vs-preview { max-height: 60vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+.vs-preview h3 { margin: 8px 0 2px; font-size: 13px; }
+.vs-code { margin: 0; padding: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; border-radius: 8px; background: color-mix(in srgb, var(--text, #e8e8ea) 5%, transparent); }
+.vs-msg { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vs-msg small { opacity: .6; }
+.vs-you { background: color-mix(in srgb, var(--fh-info, #5aa9ff) 9%, transparent); }
+.vs-ai { background: color-mix(in srgb, var(--text, #e8e8ea) 4%, transparent); }
+@media (max-width: 560px) { .vs-row { grid-template-columns: 1fr; } }

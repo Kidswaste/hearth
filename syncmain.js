@@ -291,3 +291,4 @@ function quit() { stop(); }
 function pathCtx() { try { return engine ? engine.ctx() : null; } catch { return null; } }
 function incoming(rel) { try { return engine ? engine.incoming(rel) : null; } catch { return null; } }
 module.exports = { register, ready, guardConfig, quit, status: publicStatus, pathCtx, incoming, peers: () => (engine ? engine.peers() : Promise.resolve([])), pace: setPace, setBusy: (fn) => { busy = typeof fn === 'function' ? fn : () => 0; }, setHold: (fn) => { hold = typeof fn === 'function' ? fn : () => false; }, _pace: () => ({ quiet, every: tickEvery(), ...pace }) };
+module.exports.engine = () => engine; // (round 75, versions75) the engine's places (cloud folder, conflicts, Deleted files) for 🕘 Earlier versions (versionsmain.js)

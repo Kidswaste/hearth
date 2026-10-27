@@ -243,6 +243,7 @@ const Panel = (() => {
           { label: 'Copy as Markdown', action: async () => copyText(await Native.markdownOf(item.chatId), 'Chat copied') },
           { label: 'Export as Markdown file…', action: () => onChat(agent.id, item.chatId, '/export md file') },
         ] },
+        { label: 'Earlier versions…', action: () => Lazy.load('versions').then(() => Versions.open({ kind: 'chat', id: item.chatId, name: item.title })) }, // (round 75, versions75)
         ...fromHooks(hooks.itemMenu, item, agent),
         others.length ? { label: 'Continue with', items: () => others.map((a) => ({ label: a.name, action: () => Native.continueWith(item.chatId, a.id) })) } : null,
         { label: 'Delete chat', key: 'Del', danger: true, action: () => { if (confirm(`Delete "${item.title}"? You can restore it for 30 days (Ctrl+K → Recently deleted chats).`)) Native.remove(item.chatId); } },

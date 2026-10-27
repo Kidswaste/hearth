@@ -342,6 +342,7 @@ const SyncPanel = (() => {
     const now = el('button', { type: 'button', class: 'primary sp-now', text: 'Sync now', on: { click: async () => { now.disabled = true; now.textContent = 'Syncing…'; try { await Sync.now({ quiet: true }); } finally { now.disabled = false; now.textContent = 'Sync now'; sig = ''; render(); } } } });
     parts.push(el('div', { class: 'sp-foot' }, st.on ? now : el('button', { type: 'button', class: 'primary', text: 'Turn on sync…', on: { click: () => { close(); Sync.setup(); } } }),
       el('button', { type: 'button', class: 'ghost small', text: 'Deleted files…', on: { click: () => { close(); Sync.trash(); } } }),
+      el('button', { type: 'button', class: 'ghost small', text: 'Earlier versions…', title: 'Earlier versions of synced things: chats, projects, Lab scenes, boards, settings; and Deleted things', on: { click: () => { close(); window.Lazy.load('versions').then(() => Versions.home()); } } }), // (round 75, versions75)
       el('span', { class: 'spacer' }),
       el('button', { type: 'button', class: 'ghost small', text: '⋯', title: 'More: pause, open the cloud folder, big videos, other drive, turn off', attrs: { 'aria-label': 'More sync options' }, on: { click: (e) => showMenuAt(e.currentTarget, Sync.items()) } })));
     const keepScroll = box.scrollTop;

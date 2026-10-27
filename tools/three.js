@@ -605,6 +605,7 @@ const ThreeLab = (() => {
         ['History', 'Time machine, earlier versions, deleted and lost scenes', [
           ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H', () => window.ThreeHistoryUI?.open()],
           ['Earlier versions and deleted sketches…', 'Of the selected layer; deleted sketches come back from here', () => historyDialog()],
+          ['🕘 Earlier versions of the scene…', 'From every safety copy: automatic copies, sync, conflicts, backups', () => window.Lazy.load('versions').then(() => Versions.open({ kind: 'scene', id: current?.id, name: current?.name }))], // (round 75, versions75)
           ...(window.LabSceneSafe ? [LabSceneSafe.sketchRow()] : [])]], // (round 43) 🛟 Recover lost scenes… (tools/three-scenesafe.js)
         ['⇪ Share & export', 'A pack, the code, a web page, Photoshop', [
           ...packs,
@@ -3906,6 +3907,7 @@ const ThreeLab = (() => {
           { label: p.has(sk.id) ? '☆ Unpin' : '★ Pin to the top', action: () => togglePin(sk.id) },
           ...(pj?.sketchMenu?.(sk.id, sk.name) || []),
           { label: 'Rename…', action: async () => { const n = await Modal.prompt('Rename sketch', { value: sk.name }); if (n?.trim()) { sk.name = n.trim(); save(); renderPicker(); fill(); } } },
+          { label: 'Earlier versions…', action: () => { dlg.close(); window.Lazy.load('versions').then(() => Versions.open({ kind: 'scene', id: sk.id, name: sk.name })); } }, // (round 75, versions75)
           { label: 'Duplicate', action: () => { if (sk.id === current?.id) persist(); const copy = { ...JSON.parse(JSON.stringify(sk)), id: `s${Date.now()}`, name: `${sk.name} copy`, updatedAt: Date.now() }; sketches.push(copy); if (extras[sk.id]?.media) (extras[copy.id] ||= {}).media = { ...extras[sk.id].media }; if (extras[sk.id]?.timeline) { (extras[copy.id] ||= {}).timeline = { ...extras[sk.id].timeline }; player.copyMap(clockPath(sk.id), clockPath(copy.id)).catch(() => {}); } saveExtras(); save(); renderPicker(); fill(); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(sk.id, copy.id).catch(() => {}); toast(`Duplicated "${sk.name}"`, { timeout: 1500 }); } },
           { label: 'Delete…', danger: true, action: async () => {
             if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
@@ -4339,6 +4341,8 @@ ${code}
         if (s === current) openSketch(sketches[0].id); else renderPicker();
         return true;
       },
+      // (round 75, versions75) Deleted things › Restore: a deleted scene back under its own id, out of History's deleted list
+      undelete(id) { const t = trash.find((x) => x.id === id); if (!t || sketches.some((x) => x.id === id)) return null; const x = api.scenes.create({ name: t.name, code: t.code ?? t.layers?.[0]?.code ?? '', layers: t.layers || null, id }); trash = trash.filter((y) => y.id !== id); saveHistory(); return x; },
       setExtras(id, ex) { if (!sketches.some((x) => x.id === id) || !ex || typeof ex !== 'object') return false; extras[id] = { ...(extras[id] || {}), ...JSON.parse(JSON.stringify(ex)) }; saveExtras(); return true; }, // (round 28, packs) a scene from a .hearthpack: its sliders, looks, song link
       // (round 75, projbundle75) a scene from a .hearthproject or a duplicated project (projbundle.js): the sketch as given
       // under its fresh id, its extras, references, notes, still and timeline cues; saved at once, never over a scene that's there
