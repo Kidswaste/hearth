@@ -3,7 +3,7 @@
 // captures, files in the chats' workspace, app downloads, deploys. It has one identity (a name, a color and a mark from
 // the makes' palette: MakesCore.identity), a cover, notes and a status.
 //   create / addItem / removeItem / rename / setStatus / setNotes / setCover   (plain data, every change stamps `updated`)
-//   normalize(data)    → { list, dismissed, v }: what kv 'projects' holds; lists of objects with ids, so cloud sync merges
+//   normalize(data)    → { list, dismissed, v, trash? }: what kv 'projects' holds; lists of objects with ids, so cloud sync merges
 //                        two computers' changes item by item (sync-merge.js merge3), small (names, refs, times; no pictures)
 //   suggest(things, …) → token-free suggestions: things whose names share words ("Stoop Ronin"), joined by their links
 //                        (a chat's scene, a board's chats, a make's rooms) and timing (made within days of each other)
@@ -23,6 +23,7 @@ const ProjectsCore = (() => {
     deploy: { label: 'Deploy', many: 'deploys', icon: '⇡' },
   };
   const STATUS = { active: 'Active', paused: 'Paused', done: 'Done', archived: 'Archived' };
+  const TRASH_KEEP = 30;
   const cap = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const itemId = (type, ref) => `${type}:${ref}`;
   const plural = (n, type) => `${n} ${n === 1 ? TYPES[type]?.label.toLowerCase() || type : TYPES[type]?.many || `${type}s`}`;
@@ -107,13 +108,15 @@ const ProjectsCore = (() => {
   function normalize(d) {
     d = compact(d, { identities: true });
     const list = Array.isArray(d?.list) ? d.list.filter((p) => p && typeof p.id === 'string' && p.ident && Array.isArray(p.items)) : [];
-    for (const p of list) {
+    // (round 72, projects72) Recently deleted: a deleted project's grouping, notes, look and links, newest first (30)
+    const trash = Array.isArray(d?.trash) ? d.trash.filter((p) => p && typeof p.id === 'string' && p.ident && Array.isArray(p.items) && !list.some((x) => x.id === p.id)).slice(0, TRASH_KEEP) : [];
+    for (const p of [...list, ...trash]) {
       p.items = p.items.filter((x) => x && TYPES[x.type] && x.ref != null).map((x) => ({ ...x, id: itemId(x.type, x.ref) }));
       if (!STATUS[p.status]) p.status = 'active';
       p.name = cap(p.name || 'Project', 48);
       p.notes = typeof p.notes === 'string' ? p.notes : '';
     }
-    return { v: 1, list, dismissed: Array.isArray(d?.dismissed) ? d.dismissed.filter((x) => typeof x === 'string').slice(-200) : [] };
+    return { v: 1, list, dismissed: Array.isArray(d?.dismissed) ? d.dismissed.filter((x) => typeof x === 'string').slice(-200) : [], ...(trash.length ? { trash } : {}) };
   }
   // newest first: what was opened or changed last
   const recent = (list) => list.slice().sort((a, b) => Math.max(b.updated || 0, b.opened || 0) - Math.max(a.updated || 0, a.opened || 0));
@@ -238,6 +241,6 @@ const ProjectsCore = (() => {
     return out;
   }
 
-  return { TYPES, STATUS, MC, cap, itemId, plural, newId, create, addItem, removeItem, has, rename, setStatus, setNotes, setCover, setIdent, live, ofItem, counts, countText, compact, normalize, recent, cover, latest, words, keysOf, suggest, tokens, search, snippet, sliderNames, titleCase };
+  return { TYPES, STATUS, TRASH_KEEP, MC, cap, itemId, plural, newId, create, addItem, removeItem, has, rename, setStatus, setNotes, setCover, setIdent, live, ofItem, counts, countText, compact, normalize, recent, cover, latest, words, keysOf, suggest, tokens, search, snippet, sliderNames, titleCase };
 })();
 if (typeof module !== 'undefined') module.exports = ProjectsCore;

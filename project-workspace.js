@@ -21,7 +21,7 @@ window.ProjectWorkspace = (() => {
   document.addEventListener('hearth:creative-feature',()=>{if(get()&&surface==='creative'&&H.activeId==='tool:creative')remember(CreativePlayground.snapshot().feature==='vst'?'sound':'board');});
   function switcher(anchor) {
     const rect=anchor.getBoundingClientRect(),labels={overview:'Desk',chat:'Chat',scene:'Scene',board:'Creative board',sound:'Sound',moodboard:'Moodboard'};
-    showMenu(rect.left,rect.bottom+4,[...P.live().slice(0,12).map(p=>({label:`${p.ident.glyph} ${p.name}`,checked:p.id===active,hint:labels[returnPoint(p.id).tab]||'Desk',action:()=>open(p.id)})),'-',{label:'All projects',action:()=>home()},{label:'＋ New project',action:()=>wizard()}]);
+    showMenu(rect.left,rect.bottom+4,[...P.live().slice(0,12).map(p=>({label:`${p.ident.glyph} ${p.name}`,checked:p.id===active,hint:labels[returnPoint(p.id).tab]||'Desk',action:()=>open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});})})),'-',{label:'All projects',action:()=>home()},{label:'＋ New project',action:()=>wizard()}]);
   }
   const base = path => String(path).split(/[\\/]/).pop();
   const agentFor = tool => surfaces.has(tool) && get() ? H.agent(chatOf(get())?.agentId) : null;
@@ -34,7 +34,8 @@ window.ProjectWorkspace = (() => {
     if (preparing.has(p.id)) return preparing.get(p.id);
     const task = (async () => {
       // Save each reference immediately. Retrying a partial setup reuses completed parts.
-      const w = C.workspace(p.workspace); P.setWorkspace(p,w);
+      // (round 72) a project whose chat hasn't arrived yet isn't rewritten (nor moved to the top) each time it's tried
+      const w = C.workspace(p.workspace); if(JSON.stringify(w)!==JSON.stringify(p.workspace))P.setWorkspace(p,w);
       if (!w.chatId) {
         const old = p.items.filter(x=>x.type==='chat').map(x=>H.chats.find(c=>c.id===x.ref)).find(c=>H.agent(c?.agentId)?.mode==='native');
         if (old) await save(p,{chatId:old.id});
@@ -81,16 +82,17 @@ window.ProjectWorkspace = (() => {
     d.onclose=()=>{clearTimeout(slow);d.remove();};document.body.append(d);d.showModal();
     const ui={
       update(n,text){step=Math.max(step,n);status.textContent=text;fill.style.transform=`scaleX(${(step+1)/5})`;stages.querySelectorAll('span').forEach((s,i)=>s.classList.toggle('done',i<=step));d.querySelector('[role=progressbar]').setAttribute('aria-valuetext',text);clearTimeout(slow);slow=setTimeout(()=>{detail.textContent='Still working. Larger assets and instruments can take a little longer.';},7000);},
-      error(err,retry,editor){clearTimeout(slow);d.classList.add('failed');status.textContent=calmError(err);detail.textContent='Your project and saved links are kept.';actions.replaceChildren(action('Retry',retry),...(editor?[action('Open scene editor',editor)]:[]),action(closing?'Keep working':'Back to projects',closing?()=>d.close():()=>home()));},
+      error(err,retry,editor){clearTimeout(slow);d.classList.add('failed');status.textContent=calmError(err);detail.textContent=/not (available|arrived) on this computer|has not arrived/i.test(err?.message)?'It may still be on its way from your other computer. Your project and saved links are kept.':'Your project and saved links are kept.';actions.replaceChildren(action('Retry',retry),...(editor?[action('Open scene editor',editor)]:[]),action(closing?'Keep working':'Back to projects',closing?()=>d.close():()=>home()));},
       close(){d.close();clearTimeout(slow);d.remove();}
     };return ui;
   }
-  async function closeCurrent(ui) {
+  // switching: another project opens right after, so the Lab keeps its preview page for it (round 72, projects72)
+  async function closeCurrent(ui,{switching=false}={}) {
     const p=get();if(!p)return;
     remember();
     ui?.update(0,'Saving scene and chat…');
     const c=chatOf(p);Native.view(c?.agentId)?.saveDraft?.flush();
-    if(Lazy.loaded('lab'))await ThreeLab.workspace?.close();
+    if(Lazy.loaded('lab'))await ThreeLab.workspace?.close(switching?{keep:true}:undefined);
     ui?.update(2,'Saving creative board and instrument…');
     if(Lazy.loaded('board')){await Board._.flush();Board._.stopAllPreviews();Board._.cancelAnim();}
     if(Lazy.loaded('creative')){await WorkbenchUI.setProject(null);CreativePlayground.pause();}
@@ -104,7 +106,7 @@ window.ProjectWorkspace = (() => {
       const ui=loading(p),started=performance.now(),timings={};
       const stage=(n,text)=>{ui.update(n,text);loadState={phase:'opening',project:id,stage:text,timings};};
       try{
-        await closeCurrent(ui);cancelled(controller.signal);
+        await closeCurrent(ui,{switching:true});cancelled(controller.signal);
         active=id;stage(0,'Reading project files…');
         await ensure(p);cancelled(controller.signal);
         await Promise.all([Lazy.load('lab'),Lazy.load('board'),Lazy.load('creative')]);
@@ -115,12 +117,15 @@ window.ProjectWorkspace = (() => {
         await WorkbenchUI.setProject(p.id,{title:p.name,plugins:C.workspace(p.workspace).plugins});
         timings.filesMs=Math.round(performance.now()-started);cancelled(controller.signal);
         stage(1,'Building your scene…');surface='three';activate('tool:three');Tools.openDock('three');
+        // (round 72) the scene starts first and the chat draws while its page works; the moodboard is read meanwhile
+        const board=Board.ready().then(()=>Board.load(p.workspace.boardId));board.catch(()=>{});
+        const scene=options.preview!==false?ThreeLab.workspace.prepare(sceneOf(p),{signal:controller.signal,progress:text=>stage(1,text)}):null;scene?.catch(()=>{});
         await Native.refresh(c.agentId,{keepScroll:true});
-        if(options.preview!==false)await ThreeLab.workspace.prepare(sceneOf(p),{signal:controller.signal,progress:text=>stage(1,text)});
+        if(scene)await scene;
         else if(!ThreeLab.scenes.open(sceneOf(p)))throw Error('This scene is not available yet.');
         timings.sceneMs=Math.round(performance.now()-started)-timings.filesMs;cancelled(controller.signal);
         stage(2,'Preparing the creative board…');
-        await Board.ready();if(!await Board.load(p.workspace.boardId))throw Error('The moodboard is not available on this computer yet.');
+        if(!await board)throw Error('The moodboard is not available on this computer yet.');
         stage(3,'Restoring your instrument…');
         const soundAt=performance.now();const warning=await WorkbenchUI.preloadSound({signal:controller.signal});timings.soundMs=Math.round(performance.now()-soundAt);cancelled(controller.signal);
         await go(tab,ticket);cancelled(controller.signal);
@@ -129,7 +134,8 @@ window.ProjectWorkspace = (() => {
       }catch(err){
         if(err.name==='AbortError'||controller.signal.aborted){ui.close();return;}
         loadState={phase:'error',project:id,error:calmError(err),timings};
-        ui.error(err,()=>open(id,tab),()=>open(id,'scene',{preview:false}));throw err;
+        // (round 72) the editor is offered only for a scene that is on this computer; the dialog is the message (err.shown)
+        ui.error(err,()=>open(id,tab),Lazy.loaded('lab')&&ThreeLab.scenes?.get(sceneOf(p))?()=>open(id,'scene',{preview:false}):null);err.shown=true;throw err;
       }finally{if(opening===controller)opening=null;}
     });
   }
@@ -172,7 +178,7 @@ window.ProjectWorkspace = (() => {
   }
   function leave() {
     opening?.abort();route++;
-    return serial(async()=>{const p=get();if(!p){document.querySelector('.pw-loading')?.close();return;}const ui=loading(p,true);loadState={phase:'closing',project:p.id};try{await closeCurrent(ui);ui.close();}catch(err){loadState={phase:'error',project:p.id,error:calmError(err)};ui.error(err,()=>home());throw err;}});
+    return serial(async()=>{const p=get();if(!p){document.querySelector('.pw-loading')?.close();if(Lazy.loaded('lab'))ThreeLab.workspace?.releaseKept?.();return;}const ui=loading(p,true);loadState={phase:'closing',project:p.id};try{await closeCurrent(ui);ui.close();}catch(err){loadState={phase:'error',project:p.id,error:calmError(err)};ui.error(err,()=>home());throw err;}});
   }
   async function home() { await leave();await Lazy.load('projects');ProjectsHome.show(null);activate('tool:home'); }
   async function create(options) {

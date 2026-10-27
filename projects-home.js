@@ -47,7 +47,8 @@ const ProjectsHome = (() => {
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input')); } });
     P.onChange(e => { if(e.why==='notes'&&e.id===drawn&&S.body.querySelector('.pj-notes')?.value===e.project.notes)return;S.stale = true; if (visible()) paintSoon(); });
     addEventListener('hearth:view', () => { if (visible() && S.stale) paintSoon(); });
-    document.addEventListener('hearth:activate', () => { if (!visible()) { keepDesk();ProjectFrontpage.stop(); clearTimeout(paintT); ++paintVersion; S.stale = true; S.io?.disconnect(); } else if (S.stale) paintSoon(); });
+    // (round 72) coming on screen draws at once (the 80 ms wait is for bursts of changes, not for a click)
+    document.addEventListener('hearth:activate', () => { if (!visible()) { keepDesk();ProjectFrontpage.stop(); clearTimeout(paintT); ++paintVersion; S.stale = true; S.io?.disconnect(); } else if (S.stale) { clearTimeout(paintT); paint(); } });
     document.addEventListener('visibilitychange', () => { if (visible() && S.stale) paintSoon(); });
     paint();
   }
@@ -108,8 +109,8 @@ const ProjectsHome = (() => {
       el('div', { class: 'pj-meta', text: C.countText(p) }), cont);
     const identity=el('button',{type:'button',class:'pj-go pw-banner-edit',text:'✦',title:'Generate a Three.js banner / logo',attrs:{'aria-label':`Design ${p.name} banner`},on:{click:e=>{e.stopPropagation();ProjectFrontpage.edit(p).catch(err=>toast(calmError(err),{type:'error'}));}}});pic.append(identity);
     tint(c, p.ident.color);
-    c.addEventListener('click', (e) => { if (e.target.closest('.pj-go')) return; ProjectWorkspace.open(p.id).catch(err=>toast(calmError(err),{type:'error'})); });
-    c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target===c) ProjectWorkspace.open(p.id).catch(err=>toast(calmError(err),{type:'error'})); });
+    c.addEventListener('click', (e) => { if (e.target.closest('.pj-go')) return; ProjectWorkspace.open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});}); });
+    c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target===c) ProjectWorkspace.open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});}); });
     c.addEventListener('contextmenu', (e) => showMenuAt(e, P.menu(p)));
     return c;
   }
@@ -148,6 +149,8 @@ const ProjectsHome = (() => {
       { label: 'Suggest projects', action: () => suggestNow() },
       { label: `${P.grouping() ? '✓ ' : ''}Group chats by project`, action: () => P.setGrouping(!P.grouping()) },
       { label: 'Archived projects', items: () => { const xs = P.all().filter((p) => p.status === 'archived'); return xs.length ? xs.map((p) => ({ label: `${p.ident.glyph} ${p.name}`, action: () => show(p.id) })) : [{ label: 'None', disabled: true }]; } },
+      // (round 72, projects72) a deleted project comes back with its notes, look and links (its chats and scenes never left)
+      { label: 'Recently deleted projects', items: () => { const xs = P.trashed(); return xs.length ? xs.map((p) => ({ label: `${p.ident.glyph} ${p.name}`, hint: `Restore · deleted ${timeAgo(p.deletedAt)}`, action: () => { if (P.restoreProject(p.id)) toast(`“${p.name}” is back in Projects`, { timeout: 4000 }); } })) : [{ label: 'Nothing deleted', disabled: true }]; } },
     ].filter(Boolean);
   }
   async function suggestNow() {
