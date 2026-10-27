@@ -4,6 +4,7 @@
 // runs on a timer: it redraws when the engine sends a status (its own cadence) and only if something it shows changed.
 const SyncPanel = (() => {
   let box = null; let anchor = null; let off = null; let sig = ''; let busy = false;
+  let mode = 'main'; let kindsOpen = false; let freeList = null; let freeDone = null; // (round 73, syncmedia73) What syncs · Free up space
   const api = () => window.hub?.sync;
   const MAC = /Mac/.test(navigator.platform); const WIN = /Win/.test(navigator.platform);
   const PLAT = { darwin: 'Mac', win32: 'PC', linux: 'Linux' };
@@ -30,6 +31,8 @@ const SyncPanel = (() => {
     unlisted: 'its folder couldn\'t be read just now',
     'cloud-error': 'the cloud folder didn\'t answer for it',
     error: 'couldn\'t be copied; Hearth tries again by itself',
+    queued: 'a big file: it goes on its own, after the one moving now (chats don\'t wait for it)', // (round 73)
+    moving: 'moving now',
   };
   const whyText = (w, st) => { const v = WHY[w]; return typeof v === 'function' ? v(st) : v || 'waiting'; };
 
@@ -118,6 +121,112 @@ const SyncPanel = (() => {
     sig = ''; render();
   }
 
+  // ---------- (round 73, syncmedia73) big files on their way, with progress ----------
+  // Built when the list changes; the bars and numbers are updated in place on each status (at most 2 a second, from
+  // the engine): a transform on one bar per file, a text only if it changed. Nothing redraws the panel for a percentage.
+  const pct = (t) => (t.total ? Math.min(1, t.done / t.total) : 0);
+  const amount = (t) => (t.op === 'check' ? (t.moving ? 'checking…' : 'to check') : !t.moving ? 'queued' : `${fmtBytes(t.done || 0)} of ${fmtBytes(t.total || 0)} · ${Math.round(pct(t) * 100)}%`);
+  function transfersSec(st) {
+    const list = st.transfers || [];
+    if (!list.length) return null;
+    const rows = list.slice(0, 5).map((t) => el('li', { class: `sp-tr${t.moving ? ' on' : ''}`, dataset: { rel: t.rel } },
+      el('div', { class: 'sp-tr-top' }, el('span', { class: 'sp-name', text: `${t.op === 'down' ? '↓' : t.op === 'up' ? '↑' : '…'} ${Sync.nameOf(t.rel)}` }), el('span', { class: 'hint sp-tr-n', text: amount(t) })),
+      t.moving && t.op !== 'check' ? el('div', { class: 'sp-bar', attrs: { role: 'progressbar', 'aria-label': `${Sync.nameOf(t.rel)} progress`, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(pct(t) * 100)) } }, el('i', { style: { transform: `scaleX(${pct(t)})` } })) : null));
+    const more = (st.moving || list.length) - rows.length;
+    return el('div', { class: 'sp-sec sp-moving' }, el('b', { text: `Big files on their way (${st.moving || list.length})` }),
+      el('span', { class: 'hint', text: 'One at a time, beside everything else: chats and settings don\'t wait for them. A copy cut short goes on where it stopped.' }),
+      el('ul', { class: 'sp-wait' }, ...rows), more > 0 ? el('span', { class: 'hint', text: `…and ${more} more` }) : null);
+  }
+  function paintBars(st) {
+    for (const t of st.transfers || []) {
+      const li = box?.querySelector(`.sp-tr[data-rel="${CSS.escape(t.rel)}"]`);
+      if (!li) continue;
+      const n = li.querySelector('.sp-tr-n'); const txt = amount(t);
+      if (n && n.textContent !== txt) n.textContent = txt;
+      const bar = li.querySelector('.sp-bar'); const i = bar?.firstChild; const tf = `scaleX(${pct(t)})`;
+      if (i && i.style.transform !== tf) { i.style.transform = tf; bar.setAttribute('aria-valuenow', String(Math.round(pct(t) * 100))); }
+    }
+  }
+
+  // ---------- (round 73, syncmedia73) What syncs ----------
+  const sizeLine = (k) => {
+    const here = k.n ? `${fmtBytes(k.bytes)} here` : 'nothing here';
+    const there = k.cloudN ? `${fmtBytes(k.cloudBytes)} in the cloud` : '';
+    return [k.on ? '' : 'off here: left where it is', here, there, k.perComputer ? k.note : ''].filter(Boolean).join(' · ');
+  };
+  function kindsSec(st) {
+    const kinds = st.kinds || [];
+    if (!st.on || !kinds.length) return null;
+    const off = kinds.filter((k) => !k.on && !k.perComputer);
+    const summary = off.length ? `everything but ${off.map((k) => k.label).join(', ')}` : 'everything';
+    const fold = el('button', { type: 'button', class: 'ghost small sp-fold', text: `What syncs: ${summary} ${kindsOpen ? '▾' : '›'}`, attrs: { 'aria-expanded': String(kindsOpen) }, on: { click: () => { kindsOpen = !kindsOpen; sig = ''; render(); } } });
+    if (!kindsOpen) return el('div', { class: 'sp-sec sp-kinds' }, fold);
+    const rows = kinds.map((k) => {
+      const input = el('input', { type: 'checkbox', checked: k.on, attrs: { 'aria-label': `Sync ${k.label}` } });
+      input.addEventListener('change', () => setKind(k, input.checked, input));
+      return el('label', { class: `sp-kind${k.on ? '' : ' off'}`, title: k.note || '', dataset: { kind: k.id } }, input, el('span', { class: 'sp-kind-main' }, el('b', { text: k.label }), el('span', { class: 'hint', text: sizeLine(k) })));
+    });
+    return el('div', { class: 'sp-sec sp-kinds' }, fold,
+      el('span', { class: 'hint', text: 'Turning one off never deletes anything: its files stay where they are, here and in the cloud. Sync just leaves them alone on this computer.' }),
+      el('div', { class: 'sp-kind-list' }, ...rows),
+      el('div', { class: 'sp-row' }, el('button', { type: 'button', class: 'ghost small sp-free-open', text: 'Free up space on this computer…', title: 'Big files already safe in the cloud: make your cloud drive\'s copy online-only (Hearth keeps its own)', on: { click: () => openFree() } })));
+  }
+  async function setKind(k, on, input) {
+    if (input) input.disabled = true;
+    try {
+      await api().kinds(k.id, on);
+      toast(on ? `${k.label} sync again on this computer. Nothing is deleted: what's only on one side is copied to the other.` : `${k.label} stop syncing on this computer. Nothing is deleted: the files stay here and in the cloud, as they are.`, { timeout: 6000 });
+      await Sync.refresh();
+    } catch (err) { toast(window.calmError ? calmError(err, { where: 'sync' }) : String(err?.message || err), { type: 'error' }); }
+    sig = ''; render();
+  }
+
+  // ---------- (round 73, syncmedia73) Free up space on this computer ----------
+  // the list first (big synced files whose cloud drive copy also takes room here), then one click; never anything not
+  // synced (the engine checks each file again right before), and a plain "can't" when the cloud drive can't do it
+  async function openFree() {
+    mode = 'free'; freeList = null; freeDone = null; sig = ''; render();
+    freeList = await api().freeable().catch((err) => ({ items: [], bytes: 0, can: false, why: String(err?.message || err) }));
+    sig = ''; render();
+  }
+  const FAIL = { 'not-synced': 'changed since, or not synced yet: left as it is', refused: 'your cloud drive said no', unsupported: 'your cloud drive can\'t do it' };
+  function freeView() {
+    const back = el('button', { type: 'button', class: 'ghost small', text: '‹ Back', on: { click: () => { mode = 'main'; sig = ''; render(); } } });
+    const head = el('div', { class: 'sp-head' }, el('div', { class: 'sp-title' }, el('h2', { text: 'Free up space on this computer' }),
+      el('span', { class: 'hint', text: `Big files already safe in ${Sync.where()}` })), el('button', { type: 'button', class: 'ghost small sp-x', text: '×', title: 'Close', attrs: { 'aria-label': 'Close the sync panel' }, on: { click: close } }));
+    const parts = [head];
+    if (!freeList) parts.push(el('p', { class: 'hint', text: 'Looking for big files that are safely in the cloud…' }));
+    else if (freeDone) {
+      const r = freeDone;
+      parts.push(el('div', { class: 'sp-sec sp-freed' },
+        el('b', { text: r.done?.length ? `Freed ${fmtBytes(r.bytes)}: ${r.done.length} file${r.done.length === 1 ? ' is' : 's are'} online-only in ${Sync.where()} now.` : 'Nothing was freed.' }),
+        r.later ? el('span', { class: 'hint', text: `${r.later} of them: your cloud drive finishes it in a moment.` }) : null,
+        r.done?.length ? el('span', { class: 'hint', text: 'Hearth still has its own copy of each and works from it. They stay in the cloud and on your other computer.' }) : null,
+        r.unsupported || r.error ? el('p', { text: r.error || 'Your cloud drive can\'t make files online-only from Hearth.' }) : null,
+        ...(r.failed || []).slice(0, 6).map((f) => el('span', { class: 'hint', text: `${Sync.nameOf(f.rel)}: ${FAIL[f.why] || 'not freed'}${f.error && f.why === 'refused' ? ` (${String(f.error).slice(0, 80)})` : ''}` }))));
+    } else if (!freeList.can) {
+      parts.push(el('div', { class: 'sp-sec sp-warn' }, el('b', { text: 'Not possible with this cloud drive' }), el('p', { text: freeList.why || 'Your cloud drive can\'t make files online-only from Hearth.' }),
+        freeList.items?.length ? el('span', { class: 'hint', text: `(${freeList.items.length} big file${freeList.items.length === 1 ? '' : 's'}, ${fmtBytes(freeList.bytes)}, would qualify. Nothing was changed.)` }) : null));
+    } else if (!freeList.items.length) {
+      parts.push(el('p', { text: 'Nothing to free: no big synced file has a second copy taking room in the cloud drive\'s folder on this computer.' }), el('span', { class: 'hint', text: 'Files still moving, or changed and not synced yet, are never listed.' }));
+    } else {
+      const n = freeList.items.length;
+      parts.push(el('p', { text: `${n} big file${n === 1 ? ' is' : 's are'} safely in the cloud. Hearth works from its own copy; ${Sync.where()} keeps a second one in its folder. Making that one online-only frees ${fmtBytes(freeList.bytes)} here.` }),
+        el('span', { class: 'hint', text: 'They stay in the cloud and on your other computer. Nothing that isn\'t synced is touched.' }),
+        el('ul', { class: 'sp-wait sp-free-list' }, ...freeList.items.slice(0, 40).map((x) => el('li', { class: 'sp-free-row' }, el('span', { class: 'sp-name', text: Sync.nameOf(x.rel) }), el('span', { class: 'hint', text: `${fmtBytes(x.size)} · ${x.rel}` })))),
+        n > 40 ? el('span', { class: 'hint', text: `…and ${n - 40} more` }) : null);
+      const go = el('button', { type: 'button', class: 'primary sp-free-go', text: `Make them online-only (${fmtBytes(freeList.bytes)})`, on: { click: async () => {
+        go.disabled = true; go.textContent = 'Asking your cloud drive…';
+        freeDone = await api().free(freeList.items.map((x) => x.rel)).catch((err) => ({ ok: false, error: String(err?.message || err), done: [], failed: [] }));
+        sig = ''; render();
+      } } });
+      parts.push(el('div', { class: 'sp-foot' }, go, back));
+      return parts;
+    }
+    parts.push(el('div', { class: 'sp-foot' }, back));
+    return parts;
+  }
+
   // ---------- the panel ----------
   let seq = 0;
   async function render() {
@@ -130,9 +239,12 @@ const SyncPanel = (() => {
       list = (await Promise.all(raw.slice(0, 12).map((c) => api().preview?.(c.id).catch(() => null)))).map((p, i) => p || raw[i]);
     }
     const auto = Sync.lastAuto();
-    const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000)]);
-    if (my !== seq || s === sig || !box) return; // nothing it shows changed: the DOM stays as it is
+    const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000),
+      mode, kindsOpen, freeList, freeDone, (st.transfers || []).map((t) => `${t.rel}:${t.op}:${t.moving}`), st.moving, kindsOpen ? (st.kinds || []).map((k) => `${k.id}:${k.on}:${k.n}:${Math.round(k.bytes / 1e5)}:${Math.round(k.cloudBytes / 1e5)}`) : (st.kinds || []).map((k) => k.on)]); // (round 73) + moving files, What syncs, Free up space
+    if (my !== seq || !box) return;
+    if (s === sig) { paintBars(st); return; } // nothing it shows changed: the DOM stays as it is (only the bars move)
     sig = s;
+    if (mode === 'free') { const keep = box.scrollTop; box.replaceChildren(...freeView(st).filter(Boolean)); box.scrollTop = keep; place(); return; } // (round 73)
     const head = el('div', { class: 'sp-head' },
       el('span', { class: `sp-glyph-big s-${st.paused ? 'paused' : st.state}`, text: Sync.glyph(), attrs: { 'aria-hidden': 'true' } }),
       el('div', { class: 'sp-title' }, el('h2', { text: Sync.shortLine() }),
@@ -167,6 +279,7 @@ const SyncPanel = (() => {
         waiting.length > 6 || st.pending > waiting.length ? el('span', { class: 'hint', text: `…and ${Math.max(st.pending, waiting.length) - Math.min(6, waiting.length)} more` }) : null,
         cloudOnly ? el('div', { class: 'sp-row' }, el('button', { type: 'button', class: 'ghost small', text: `Download ${cloudOnly === 1 ? 'it' : `those ${cloudOnly}`} now`, title: 'Big files your cloud drive keeps online only are never downloaded unless you ask', on: { click: async (e) => { e.currentTarget.disabled = true; await Sync.download(); sig = ''; render(); } } })) : null));
     }
+    parts.push(transfersSec(st), kindsSec(st)); // (round 73, syncmedia73)
     if (auto && Date.now() - auto.at < 864e5) parts.push(el('p', { class: 'hint sp-auto', text: `Settled ${auto.done} conflict${auto.done === 1 ? '' : 's'} by itself ${ago(auto.at)} (merged; the other versions are in Deleted files).` }));
     if (st.skippedBig?.length) parts.push(el('p', { class: 'hint', text: `${st.skippedBig.length} big video${st.skippedBig.length === 1 ? '' : 's'} kept on this computer (Sync big videos is off).` }));
     // the actions
@@ -195,8 +308,9 @@ const SyncPanel = (() => {
     const left = Math.min(innerWidth - box.offsetWidth - 8, r.right + 8);
     box.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
   }
-  function open(at) {
+  function open(at, o = {}) {
     if (box) { close(); }
+    mode = o.mode === 'free' ? 'free' : 'main'; kindsOpen = o.mode === 'kinds'; freeList = null; freeDone = null; // (round 73)
     anchor = at || document.getElementById('sync-dot');
     box = el('div', { class: 'sync-panel', attrs: { role: 'dialog', 'aria-label': 'Sync', tabindex: '-1' } }); // (el() sets attributes through attrs)
     document.body.append(box);
@@ -209,12 +323,13 @@ const SyncPanel = (() => {
     addEventListener('resize', place);
     off = () => { stop(); document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', esc, true); removeEventListener('resize', place); };
     sig = '';
+    if (mode === 'free') { openFree(); return Promise.resolve(box); } // (round 73) straight to Free up space (the ⋯ menu)
     return render().then(() => { box?.querySelector('.sp-now, .sp-keep, button')?.focus({ preventScroll: true }); return box; });
   }
   function close() {
     off?.(); off = null;
     anchor?.classList.remove('on');
-    box?.remove(); box = null; sig = '';
+    box?.remove(); box = null; sig = ''; mode = 'main'; freeList = null; freeDone = null;
   }
   const toggle = (at) => (box ? (close(), null) : open(at));
   return { open, close, toggle, isOpen: () => Boolean(box), render: () => { sig = ''; return render(); } };

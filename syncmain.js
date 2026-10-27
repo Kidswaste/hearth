@@ -5,12 +5,15 @@
 //   IPC: sync:status · sync:detect · sync:on { root? } · sync:off · sync:now { mass?, fresh? } · sync:pause (bool)
 //        sync:big (bool) · sync:conflicts · sync:resolve (id, keep) · sync:trash · sync:restore (id) · sync:open
 //        sync:download · sync:ack (rels?) · sync:preview (id)        events → 'sync:status', 'sync:pulled'
+//        (round 73, syncmedia73) sync:kinds (id, on) · sync:freeable · sync:free (rels)
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const S = require('./sync-merge');
 const { createEngine, hearthIn } = require('./sync-engine');
+const K = require('./sync-kinds'); // (round 73, syncmedia73) What syncs
+const Evict = require('./cloud-evict'); // (round 73, syncmedia73) Free up space
 
 let engine = null; let opts = null; let getWin = () => null;
 let watchers = []; let timer = null; let tick = null; let lastStatus = null;
@@ -56,6 +59,11 @@ function start() {
   engine = createEngine({
     dataDir: opts.dataDir, configPath: opts.configPath, themePath: opts.themePath, cloudRoot: settings.root,
     big: settings.big !== false,
+    // (round 73, syncmedia73) kinds turned off on this computer are left alone; big files move on their own lane (a pass
+    // after each); Free up space asks the cloud drive itself (cloud-evict.js)
+    skip: K.skipper(settings.kinds),
+    onLane: () => schedule(300, 'lane'),
+    evict: (file) => Evict.evict(file, { provider: settings.provider, root: settings.root }),
     // (round 20, offmain) big JSON stores are parsed and hashed on the store's files thread
     hashJson: opts.store?.runOff ? (file, a) => opts.store.runOff('syncHash', { file, ...a }) : undefined,
     // (round 72, sync72) a big store arriving / changed on both computers: its JSON work on the same thread
@@ -177,6 +185,8 @@ function publicStatus() {
     on: Boolean(settings.on), paused: Boolean(settings.paused), big: settings.big !== false,
     root: settings.root || '', label: settings.label || '', provider: settings.provider || '',
     machine: engine?.machine()?.name || os.hostname(),
+    kinds: K.list(settings.kinds, st?.kindSizes || {}), // (round 73, syncmedia73) What syncs: each kind, on / off here, sizes
+    transfers: st?.transfers || [], moving: st?.moving || 0, // (round 73) big files on their way, with progress
     ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], waiting: st.waiting || [], lastError: st.lastError || null, held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
   };
 }
@@ -222,6 +232,28 @@ function register(ipcMain, win, o) {
   h('sync:open', () => { if (!engine) return false; require('electron').shell.openPath(fs.existsSync(engine.cloudDir) ? engine.cloudDir : settings.root); return true; });
   // the big files that are still only in the cloud: downloaded now (you asked)
   h('sync:download', async () => { if (!engine) return publicStatus(); engine.set({ allowDownload: new Set(publicStatus().cloudOnly) }); await run({ force: true }); engine?.set({ allowDownload: null }); return publicStatus(); });
+  // (round 73, syncmedia73) What syncs: a kind on / off on this computer. Off never deletes anything: the files stay
+  // where they are here and in the cloud; sync just leaves them alone until it is on again.
+  h('sync:kinds', (id, on) => {
+    if (!K.KINDS.some((k) => k.id === id)) return publicStatus();
+    settings = { ...settings, kinds: { ...(settings.kinds || {}), [id]: Boolean(on) } };
+    saveSettings(); engine?.set({ skip: K.skipper(settings.kinds) }); schedule(on ? 0 : 500, 'kinds');
+    const p = publicStatus(); send('sync:status', p); return p;
+  });
+  // Free up space: the list first (big synced files whose cloud copy also takes room here), then the click
+  h('sync:freeable', async () => {
+    const sup = Evict.support({ provider: settings.provider, root: settings.root });
+    if (!engine) return { items: [], bytes: 0, can: false, why: 'Sync is off.' };
+    return { ...(await engine.freeable()), can: sup.ok, why: sup.ok ? '' : sup.why, how: sup.how || '' };
+  });
+  h('sync:free', async (rels) => {
+    if (!engine) return { ok: false, error: 'Sync is off' };
+    const sup = Evict.support({ provider: settings.provider, root: settings.root });
+    if (!sup.ok) return { ok: false, unsupported: true, error: sup.why, done: [], failed: [], bytes: 0 };
+    const r = await engine.free(Array.isArray(rels) ? rels.map(String).slice(0, 2000) : []);
+    schedule(1500, 'free');
+    return { ok: true, ...r };
+  });
   h('sync:ack', (rels) => { engine?.ackPulled(Array.isArray(rels) ? rels : null); return true; });
   start();
 }

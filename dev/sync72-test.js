@@ -87,7 +87,7 @@ function computer(w, name, o = {}) {
   w.ms.push(m);
   return m;
 }
-async function pass(m, o) { m.last = await m.e.pass(o); return m.last; }
+async function pass(m, o) { m.last = await m.e.pass(o); if (m.e.laneIdle && !o?.noLane) { await m.e.laneIdle(); if (m.e.status().moving === 0 && m.last.pending) m.last = await m.e.pass(o); } return m.last; } // (round 73) the big lane's copies land within the round (a pass after them, as the app asks)
 // one round: time moves on, then each computer's provider and engine run (in a seeded order)
 async function round(w, { step = 2000, order } = {}) {
   w.clock.advance(step);

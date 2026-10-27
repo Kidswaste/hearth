@@ -54,7 +54,7 @@ function world(name) {
   return w;
 }
 const cloudFile = (w, rel) => path.join(w.cloud, 'Hearth', 'files', ...rel.split('/'));
-async function settle(...ms) { for (let i = 0; i < 3; i++) for (const m of ms) await m.e.pass(); }
+async function settle(...ms) { for (let i = 0; i < 3; i++) for (const m of ms) { await m.e.pass(); await m.e.laneIdle?.(); } } // (round 73) + the big lane's copies
 const chat = (id, msgs, extra = {}) => ({ id, agentId: 'claude', title: `Chat ${id}`, updatedAt: 1, messages: msgs, ...extra });
 const msg = (role, at, text) => ({ role, at, text });
 // the synced part of a data folder: rel → content hash (JSON compared in cloud form via each machine's own paths)
@@ -497,13 +497,14 @@ async function main() {
   W(A.p('captures/recordings/long.mp4'), big2);
   let chunks = 0;
   const cut = A.make({ fault: (stage) => { if (stage === 'chunk' && ++chunks === 20) throw Object.assign(new Error('quit'), { code: 'FAULT' }); } });
-  try { await cut.pass(); } catch { /* the cut */ }
-  const parts = fs.readdirSync(path.dirname(cloudFile(w, 'captures/recordings/long.mp4'))).filter((f) => f.includes('.hearth-part-long'));
-  ok(parts.length >= 1, 'a cut-short copy leaves a resumable part');
+  try { await cut.pass(); await cut.laneIdle?.(); } catch { /* the cut */ }
+  // (round 73, syncmedia73) a push is put together in this computer's sync folder (data/sync/parts), not in the cloud folder
+  const parts = fs.readdirSync(path.join(A.data, 'sync', 'parts')).filter((f) => /^\.hearth-part-[0-9a-f]+$/.test(f));
+  ok(parts.length >= 1 && !fs.readdirSync(path.dirname(cloudFile(w, 'captures/recordings/long.mp4'))).some((f) => f.includes('.hearth-part')), 'a cut-short copy leaves a resumable part (outside the cloud folder)');
   A.e = A.make();
-  r = await A.e.pass();
+  await A.e.pass(); await A.e.laneIdle?.(); r = A.e.status(); // (round 73) big copies run on their own lane
   ok(r.resumed >= 1 && r.bytes < big2.length && fs.readFileSync(cloudFile(w, 'captures/recordings/long.mp4')).equals(big2), `the copy resumed (${Math.round(r.bytes / 1024)} KB copied after the cut of ${Math.round(big2.length / 1024)} KB)`);
-  await B.e.pass();
+  await B.e.pass(); await B.e.laneIdle?.();
   ok(fs.readFileSync(B.p('captures/recordings/long.mp4')).equals(big2), 'and arrives whole on the other computer');
 
   // both computers syncing at the same moment

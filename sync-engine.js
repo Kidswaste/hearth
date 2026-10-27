@@ -22,6 +22,7 @@ const path = require('path');
 const crypto = require('crypto');
 const S = require('./sync-merge');
 const SS = require('./scenesafe-core');
+const K = require('./sync-kinds'); // (round 73, syncmedia73) what syncs, by kind: sizes for the panel
 // (round 43, datasafe) a state / machine file held for a moment (Windows) isn't "none": no new id or empty state over it
 const HELD = Symbol('held');
 
@@ -176,6 +177,7 @@ function createEngine(o) {
     if (old && old !== h) { (state.prev ||= {})[rel] = old; if (S.isJsonRel(rel)) { const f = basePath(rel); baseJob(rel, () => fsp.rename(f, `${f}.prev`).catch(() => fsp.rm(`${f}.prev`, { force: true }))); } }
     state.base[rel] = h; if (text !== undefined && S.isJsonRel(rel)) writeBase(rel, text);
     if (state.keepAll) delete state.keepAll[rel]; // a new version both sides agree on: settled
+    if (state.freed) delete state.freed[rel]; // (round 73) a new version: its cloud copy is whole again
   }
   function rebase(rel) {
     const p = state.prev?.[rel];
@@ -414,7 +416,11 @@ function createEngine(o) {
   }
   const nameOf = (mid) => peers.find((p) => p.id === mid)?.name || (mid ? String(mid).replace(/-[0-9a-f]{8}$/, '') : 'another computer');
   let journalOut = [];
-  async function flushJournal() {
+  // (round 73, syncmedia73) one flush at a time: the big lane and a pass may both end at once (two read-append-write
+  // rounds side by side lost one's lines)
+  let journalQ = Promise.resolve();
+  const flushJournal = () => (journalQ = journalQ.then(flushJournalNow, flushJournalNow));
+  async function flushJournalNow() {
     if (!journalOut.length) return;
     const file = path.join(META, 'journal', `${machine.id}.jsonl`);
     let lines = [];
@@ -458,15 +464,18 @@ function createEngine(o) {
   }
   // big files: copied in chunks into "<name>.hearth-part" next to the target; a copy cut short (quit, crash, the
   // cloud folder gone) goes on from where it stopped next time, if the source hasn't changed.
-  async function copyBig(src, dst, ent, expectHash) {
+  // (round 73, syncmedia73) x: { stage (put the copy together in this folder, then move it in whole: a push's half file
+  // never sits in the cloud folder, where the cloud client starts uploading it as it grows), onChunk(pos, size) (progress) }
+  async function copyBig(src, dst, ent, expectHash, x = {}) {
     const st0 = await fsp.stat(src);
-    const part = path.join(path.dirname(dst), `.hearth-part-${path.basename(dst)}`);
+    const part = x.stage ? path.join(x.stage, `.hearth-part-${sha(nfc(dst)).slice(0, 20)}`) : path.join(path.dirname(dst), `.hearth-part-${path.basename(dst)}`);
     const meta = `${part}.json`;
     await fsp.mkdir(path.dirname(dst), { recursive: true });
+    if (x.stage) await fsp.mkdir(x.stage, { recursive: true });
     let start = 0;
     const m = readJsonSync(meta);
     const pst = statSync(part);
-    if (m && pst && m.size === st0.size && m.mtime === st0.mtimeMs && pst.size <= st0.size) start = pst.size - (pst.size % CHUNK);
+    if (m && pst && m.size === st0.size && m.mtime === st0.mtimeMs && (!x.stage || m.src === src) && pst.size <= st0.size) start = pst.size - (pst.size % CHUNK);
     else { await fsp.writeFile(meta, JSON.stringify({ size: st0.size, mtime: st0.mtimeMs, src })); await fsp.writeFile(part, ''); }
     const h = crypto.createHash('sha1');
     const buf = Buffer.alloc(CHUNK);
@@ -485,7 +494,9 @@ function createEngine(o) {
         h.update(buf.subarray(0, bytesRead));
         pos += bytesRead;
         status.bytes = (status.bytes || 0) + bytesRead;
+        x.onChunk?.(pos, st0.size); // (round 73)
         o.fault?.('chunk', dst, pos);
+        if (o.chunkWait) await o.chunkWait(dst, pos); // (round 73) tests: hold a copy mid-way
         if (stopping) throw Object.assign(new Error('stopped'), { code: 'STOPPED' });
       }
     } finally { await rf.close(); await wf.close(); }
@@ -495,7 +506,16 @@ function createEngine(o) {
       await fsp.rm(part, { force: true }); await fsp.rm(meta, { force: true });
       return null; // changed while copying: next pass
     }
-    const ok = await renameRetry(part, dst, () => same(dst, ent));
+    let ok;
+    try { ok = await renameRetry(part, dst, () => same(dst, ent)); } catch (err) {
+      if (err.code !== 'EXDEV') throw err;
+      // (round 73) the staging folder is on another disk than the cloud drive: copied over once, then renamed
+      const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
+      await fsp.copyFile(part, tmp); await flushed(tmp);
+      ok = await renameRetry(tmp, dst, () => same(dst, ent));
+      if (!ok) await fsp.rm(tmp, { force: true });
+      await fsp.rm(part, { force: true });
+    }
     await fsp.rm(meta, { force: true });
     if (!ok) { await fsp.rm(part, { force: true }); return null; }
     return hex;
@@ -544,18 +564,21 @@ function createEngine(o) {
   // them) or when asked ("Download the big files now"); iCloud's ".icloud" stubs can't be read at all, their download
   // is requested from iCloud instead. Big videos are never downloaded behind your back.
   const isStub = (C) => /\.icloud$/i.test(C.file || '');
+  // (round 73, syncmedia73) a file whose cloud copy the owner made online-only (Free up space) still follows changes:
+  // a NEW version from the other computer is read (downloaded) as before; an unchanged one is never touched
+  const freedChanged = (rel, C) => Boolean(state.freed?.[rel]) && !cachedThere(rel, C);
   function readable(rel, C) {
     if (C.downloading) return false;
     if (!C.placeholder) return true;
-    if (isStub(C)) { const j = journalLatest.get(rel); if (!j || (j.s ?? 0) <= SMALL || o.allowDownload?.has(rel)) o.requestDownload?.(C.file, rel); return false; }
-    return (C.size ?? 0) <= SMALL || Boolean(o.allowDownload?.has(rel));
+    if (isStub(C)) { const j = journalLatest.get(rel); if (state.freed?.[rel] ? Boolean(j?.h && j.h !== state.cloud[rel]?.[2]) : (!j || (j.s ?? 0) <= SMALL || o.allowDownload?.has(rel))) o.requestDownload?.(C.file, rel); return false; }
+    return (C.size ?? 0) <= SMALL || Boolean(o.allowDownload?.has(rel)) || Boolean(state.freed?.[rel]);
   }
   async function cloudReady(rel, C) {
     if (!C.downloading && !C.placeholder) return true;
     if (isStub(C)) { readable(rel, C); return false; } // asks the Mac provider for its stub
     // Preserve small-file / explicit downloads, but do not move a placeholder
     // until its read completes and the provider confirms local availability.
-    if (C.cloudUnknown || (C.size > SMALL && !o.allowDownload?.has(rel))) return false;
+    if (C.cloudUnknown || (C.size > SMALL && !o.allowDownload?.has(rel) && !freedChanged(rel, C))) return false; // (round 73) freedChanged
     try {
       await hashFile(C.file, () => stopping);
       if (platform === 'win32') {
@@ -620,7 +643,7 @@ function createEngine(o) {
   const counts = () => ({ pulled: 0, pushed: 0, merged: 0, conflicts: 0, deletedHere: 0, deletedThere: 0, renamed: 0, skipped: 0, errors: 0 });
   let sum = counts();
   let pulledNow = [];
-  const notePulled = (rel, kind) => pulledNow.push({ rel, kind, from: nameOf(journalLatest.get(rel)?.m) });
+  const notePulled = (rel, kind, acc) => (acc?.pulled || pulledNow).push({ rel, kind, from: nameOf(journalLatest.get(rel)?.m) }); // (round 73) acc: the big lane's own
   // a JSON value as this computer stores it (pretty unless the file was compact)
   function localJsonText(rel, value, L) {
     if (rel === 'app/config.json') {
@@ -641,7 +664,9 @@ function createEngine(o) {
     journalOut.push({ t: now(), op: 'put', rel, h, s: st?.size });
   }
 
-  async function push(rel, L, C, h) {
+  // (round 73, syncmedia73) acc: { sum, pulled, onChunk } of the big lane (it runs beside the passes: their counters
+  // and pulled lists are not its own)
+  async function push(rel, L, C, h, acc) {
     const dst = C?.file && !/\.icloud$/.test(C.file) ? C.file : cloudPathOf(rel);
     const cent = C ? { size: C.size, mtime: C.mtime } : null;
     if (C?.placeholder && /\.icloud$/.test(C.file || '')) { // replacing an iCloud stub: move it aside first
@@ -660,15 +685,15 @@ function createEngine(o) {
       ok = await casWrite(dst, target, buf, 'push');
       if (ok) setBase(rel, h);
     } else {
-      ok = Boolean(await copyBig(L.file, dst, target, h));
+      ok = Boolean(await copyBig(L.file, dst, target, h, { stage: STAGE, onChunk: acc?.onChunk })); // (round 73) staged, with progress
       if (ok) setBase(rel, h);
     }
     if (!ok) return false;
     await afterCloudWrite(rel, h);
-    sum.pushed += 1;
+    (acc?.sum || sum).pushed += 1;
     return true;
   }
-  async function pull(rel, L, C, h) {
+  async function pull(rel, L, C, h, acc) {
     const file = localPathOf(rel);
     const lent = L && !L.unavailable ? { size: L.size, mtime: L.mtime } : null;
     if (L?.unavailable) return false;
@@ -703,7 +728,7 @@ function createEngine(o) {
       ok = await casWrite(file, lent, buf, 'pull');
       if (ok) { setBase(rel, h); await afterLocalWrite(rel, h); }
     } else {
-      ok = Boolean(await copyBig(C.file, file, lent, h));
+      ok = Boolean(await copyBig(C.file, file, lent, h, { onChunk: acc?.onChunk })); // (round 73) progress
       if (ok) { setBase(rel, h); await afterLocalWrite(rel, h); }
     }
     if (!ok) return false;
@@ -711,8 +736,8 @@ function createEngine(o) {
     // other computers don't wait for a version that never comes
     const j = journalLatest.get(rel);
     if (j && (j.h !== h || (C.size !== null && j.s !== C.size))) journalOut.push({ t: now(), op: 'put', rel, h, s: C.size ?? undefined });
-    sum.pulled += 1;
-    notePulled(rel, kindOf(rel));
+    (acc?.sum || sum).pulled += 1;
+    notePulled(rel, kindOf(rel), acc);
     return true;
   }
   async function relHashNow(rel) {
@@ -802,6 +827,7 @@ function createEngine(o) {
     delete state.cloud[rel];
     await writeConflictRecord({ id: cid, rel, kind: 'file', copy: path.basename(copy), at: now(), by: machine.name, from: nameOf(journalLatest.get(rel)?.m), ...sides(journalLatest.get(rel)?.m, L.mtime, journalLatest.get(rel)?.t || C.mtime), size: L.size, theirsSize: C.size ?? null, fields: [] });
     sum.conflicts += 1;
+    if (laneBig(rel, L)) { laneAdd({ op: 'push', rel, L, C: null, h: lh }); return true; } // (round 73) a big one on its own lane
     return push(rel, L, null, lh);
   }
   // (round 19) each side's computer, platform and time of its last change, so the choice says what it saves over
@@ -927,6 +953,108 @@ function createEngine(o) {
     } catch (err) { sum.errors += 1; log('copy', cp.rel, err.message); return false; }
   }
 
+  // ---------- (round 73, syncmedia73) the big lane ----------
+  // Big files (videos, renders, stems: over 8 MB and not a JSON store) are hashed and copied here, one at a time, beside
+  // the passes. A pass plans them and goes on, so a chat or a setting never waits behind a 2 GB upload (it waited for
+  // the whole copy before). A new big file is hashed while it copies (read once, not twice). Each file's progress is in
+  // the status (transfers); a copy cut short goes on from where it stopped (copyBig). After each file the lane asks for
+  // a pass (o.onLane) so what it changed settles at once.
+  const LANE_MIN = o.laneMin ?? SMALL;
+  const STAGE = path.join(stateDir, 'parts');
+  const lane = { q: [], cur: null, run: null, tick: 0, fault: null };
+  const inLane = (rel) => lane.cur?.rel === rel || lane.q.some((j) => j.rel === rel);
+  const laneBig = (rel, ...ents) => !S.isJsonRel(rel) && ents.some((e) => e && !e.unavailable && (e.size ?? 0) > LANE_MIN);
+  const cachedHere = (rel, L) => { const c = state.local[rel]; return Boolean(c && c[0] === L.size && c[1] === L.mtime && c[2]); };
+  function cachedThere(rel, C) { const c = state.cloud[rel]; return Boolean(c && c[2] && (C.size === null || c[0] === C.size) && (C.size === null || c[1] === C.mtime)); }
+  function laneAdd(job) {
+    if (inLane(job.rel)) return;
+    lane.q.push({ op: job.op, side: job.side, rel: job.rel, L: job.L, C: job.C, h: job.h, done: 0, total: Math.max(job.L?.size || 0, job.C?.size || 0), at: now() });
+    laneGo();
+  }
+  function laneGo() {
+    if (lane.run || !lane.q.length || stopping) return;
+    lane.run = (async () => {
+      while (lane.q.length && !stopping) {
+        const j = lane.cur = lane.q.shift();
+        const acc = { sum: counts(), pulled: [], onChunk: (pos) => { j.done = pos; if (Date.now() - lane.tick >= 500) { lane.tick = Date.now(); emit(); } } };
+        let ok = false;
+        emit();
+        try { ok = Boolean(await laneDo(j, acc)); } catch (err) {
+          if (err.code === 'STOPPED') break;
+          if (err.code === 'FAULT') { lane.fault = err; lane.q.length = 0; break; } // tests: a simulated crash
+          if (err.code !== 'ENOENT') { status.lastError = { rel: j.rel, op: j.op, message: err.message, code: err.code || '', at: now() }; log('lane', j.op, j.rel, err.message); }
+        }
+        lane.cur = null;
+        await baseIdle(); await flushJournal().catch((err) => log('journal', err.message));
+        saveState();
+        if (acc.pulled.length) o.onPulled?.(acc.pulled);
+        emit();
+        if (ok) o.onLane?.({ rel: j.rel, op: j.op }); // a pass settles it (none after a file that couldn't move: no loop)
+      }
+    })().finally(() => { lane.run = null; lane.cur = null; });
+    return lane.run;
+  }
+  async function laneDo(j, acc) {
+    if (j.op === 'push') return push(j.rel, j.L, j.C, j.h, acc);
+    if (j.op === 'pull') return pull(j.rel, j.L, j.C, j.h, acc);
+    if (j.op === 'hash') { const h = j.side === 'c' ? await cloudHash(j.rel, j.C) : await localHash(j.rel, j.L); return typeof h === 'string' && h.length === 40; }
+    if (j.op === 'pushNew') { // new here, nothing in the cloud, no history: hashed while it copies, staged outside the cloud folder
+      const hex = await copyBig(j.L.file, cloudPathOf(j.rel), null, null, { stage: STAGE, onChunk: acc.onChunk });
+      if (!hex) return false;
+      const st = await fsp.stat(j.L.file).catch(() => null);
+      if (st && st.size === j.L.size && st.mtimeMs === j.L.mtime) state.local[j.rel] = [st.size, st.mtimeMs, hex];
+      setBase(j.rel, hex);
+      await afterCloudWrite(j.rel, hex);
+      acc.sum.pushed += 1;
+      return true;
+    }
+    return false;
+  }
+  const laneList = () => [lane.cur, ...lane.q].filter(Boolean).slice(0, 30).map((j) => ({ rel: j.rel, op: j.op === 'pull' ? 'down' : j.op === 'hash' ? 'check' : 'up', done: j.done || 0, total: j.total || 0, moving: j === lane.cur }));
+  const laneIdle = async () => { while (lane.run) await lane.run; };
+
+  // ---------- (round 73, syncmedia73) Free up space ----------
+  // A big synced file is on this computer twice: Hearth's copy in the data folder (the one it uses) and the cloud
+  // drive's copy in its folder. The cloud drive can make ITS copy online-only (o.evict: Windows attrib +U, macOS evict):
+  // it stays in the cloud and on the other computer, and Hearth keeps working from its own. Only files whose three
+  // versions agree (here, in the cloud, the last synced), not moving, and over 8 MB (small ones are read by sync, which
+  // would download them again). Never anything not synced; only when the owner clicks (the panel lists them first).
+  async function freeCheck(rel) {
+    if (o.skip?.(rel) || S.isJsonRel(rel) || inLane(rel) || S.localOnly(rel)) return null;
+    const c = state.cloud[rel]; const l = state.local[rel]; const b = state.base[rel];
+    if (!c || !l || !b || c[2] !== b || l[2] !== b || (c[0] || 0) <= SMALL) return null;
+    const file = cloudPathOf(rel);
+    let st; let sl;
+    try { [st, sl] = await Promise.all([fsp.stat(file), fsp.stat(localPathOf(rel))]); } catch { return null; }
+    if (st.size !== c[0] || st.mtimeMs !== c[1] || sl.size !== l[0] || sl.mtimeMs !== l[1]) return null; // changed since the last pass
+    if (platform === 'darwin' && st.size > 0 && st.blocks === 0) return null; // already online-only
+    return { rel, size: st.size, file };
+  }
+  async function freeable() {
+    let items = [];
+    for (const rel of Object.keys(state.cloud)) { const x = await freeCheck(rel); if (x) items.push(x); }
+    if (platform === 'win32' && items.length) { // already online-only (Files On-Demand): not listed
+      let a; try { a = await (o.cloudAttributes || require('./cloud-files').attributes)(items.map((x) => x.file)); } catch { a = new Map(); }
+      items = items.filter((x) => !require('./cloud-files').pending(a.get(x.file)) || !Number.isInteger(a.get(x.file)));
+    }
+    items.sort((x, y) => y.size - x.size);
+    return { items: items.map((x) => ({ rel: x.rel, size: x.size })), bytes: items.reduce((n, x) => n + x.size, 0), can: Boolean(o.evict) };
+  }
+  async function free(rels) {
+    const out = { done: [], failed: [], bytes: 0, unsupported: false };
+    if (!o.evict) return { ...out, unsupported: true };
+    for (const rel of rels || []) {
+      const x = await freeCheck(String(rel));
+      if (!x) { out.failed.push({ rel, why: 'not-synced' }); continue; }
+      let r; try { r = await o.evict(x.file, { rel: x.rel }); } catch (err) { r = { ok: false, error: err.message }; }
+      if (!r?.ok) { out.failed.push({ rel, why: r?.unsupported ? 'unsupported' : 'refused', error: r?.error || '' }); if (r?.unsupported) { out.unsupported = true; break; } continue; }
+      (state.freed ||= {})[x.rel] = 1;
+      if (!r.already) { out.done.push(x.rel); out.bytes += x.size; if (r.later) out.later = (out.later || 0) + 1; } // later: the drive finishes it in a moment
+    }
+    saveState(); emit();
+    return out;
+  }
+
   // ---------- one pass ----------
   async function pass(opts = {}) {
     if (running) { again = true; return running; }
@@ -957,13 +1085,15 @@ function createEngine(o) {
     }
     if (opts.fresh) { await baseIdle(); state.base = {}; baseDirs.clear(); try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ } }
     status.state = 'syncing'; emit();
+    laneGo(); // (round 73) a lane stopped with the engine goes on
     await readPeers();
     const local = await scanLocal();
     const { files: cloud, copies } = await scanCloud();
+    status.kindSizes = K.sizes(local, cloud); // (round 73, syncmedia73) What syncs: each kind's size here and in the cloud
     // (round 72, sync72) the cloud client moved OUR last upload aside (its own copy) because the other computer's
     // version got there first: the file in the cloud is now theirs and never saw ours. The base goes back one step, so
     // ours (still here) and theirs merge three-way below; the copy (ours) then goes to the trash.
-    for (const cp of copies) if (cp.ours) { rebase(cp.orig); rebased.add(cp.orig); }
+    for (const cp of copies) if (cp.ours && !o.skip?.(cp.orig)) { rebase(cp.orig); rebased.add(cp.orig); }
     const cap = o.big === false ? (o.bigCap || BIG_CAP) : Infinity;
     const plan = []; const skippedBig = []; const cloudOnly = []; const unreadable = []; let pending = 0;
     // (round 72, sync72) what waits and why, by name (the first 60), for the sync panel: "12 waiting" in plain words
@@ -984,6 +1114,16 @@ function createEngine(o) {
       try { const th = await hash(trashRel, entry); return th === h ? true : th === INFLIGHT || th === UNKNOWN ? 'wait' : false; } catch { return false; }
     };
     const rels = new Set([...local.keys(), ...cloud.keys(), ...Object.keys(state.base)]);
+    // (round 73, syncmedia73) sizes of files deleted here that may have been renamed: a big file being hashed on the lane
+    // with one of these sizes holds that delete back a pass (else a renamed video went to the trash and up again)
+    const goneSizes = new Set(); const laneSizes = new Set();
+    // and a file moved here keeps its size and modified time: its hash comes along (a renamed 2 GB video isn't read again)
+    const moved = new Map();
+    for (const rel of Object.keys(state.base)) {
+      if (!local.has(rel) && cloud.get(rel)?.size) goneSizes.add(cloud.get(rel).size);
+      if (!cloud.has(rel) && local.get(rel)?.size) goneSizes.add(local.get(rel).size);
+      const c = state.local[rel]; if (!local.has(rel) && c?.[2] && c[0] > LANE_MIN) moved.set(`${c[0]}:${c[1]}`, c[2]);
+    }
     // (round 43, datasafe) a file or folder that couldn't be listed / looked at on one side is unknown there this pass:
     // never "deleted" (a held chats folder on Windows looked like every chat deleted, and the cloud copy went to trash)
     const blindIn = (set, rel) => set.size > 0 && (set.has(rel) || set.has('') || [...set].some((b) => b.endsWith('/') && rel.startsWith(b)));
@@ -991,6 +1131,8 @@ function createEngine(o) {
       if (stopping) break;
       if (S.localOnly(rel)) continue; // previously mirrored caches stay untouched on either side
       const L = local.get(rel); const C = cloud.get(rel); const bh = state.base[rel];
+      if (o.skip?.(rel)) { if (bh) dropBase(rel); continue; } // (round 73, syncmedia73) a kind turned off here: both sides left as they are (and no history: turned on again, nothing is deleted)
+      if (inLane(rel)) { pending += 1; why(rel, lane.cur?.rel === rel ? 'moving' : 'queued'); continue; } // (round 73) moving on the big lane
       if (C?.downloading) await cloudReady(rel, C);
       if (L?.unavailable) { pending += 0; continue; } // a render on a drive that isn't plugged in: left alone
       if ((!L && blindIn(local.blind, rel)) || (!C && blindIn(cloud.blind, rel))) { pending += 1; why(rel, 'unlisted'); continue; }
@@ -998,6 +1140,16 @@ function createEngine(o) {
       // (round 19) the chats' workspace syncs what they make, never a huge file (a model checkpoint, a build archive)
       const capHere = S.isWorkspaceRel(rel) ? Math.min(cap, o.bigCap || BIG_CAP) : cap;
       if ((L && L.size > capHere) || (C && (C.size ?? 0) > capHere)) { skippedBig.push(rel); continue; }
+      // (round 73, syncmedia73) a big file not hashed yet goes to the big lane (hashed there; a new one hashed while it
+      // copies), so this pass doesn't read gigabytes before the chats
+      if (L && laneBig(rel, L) && !cachedHere(rel, L) && moved.has(`${L.size}:${L.mtime}`)) state.local[rel] = [L.size, L.mtime, moved.get(`${L.size}:${L.mtime}`)];
+      if (L && laneBig(rel, L) && !cachedHere(rel, L)) {
+        if (!C && !bh && !goneSizes.has(L.size)) laneAdd({ op: 'pushNew', rel, L }); else { laneAdd({ op: 'hash', side: 'l', rel, L }); laneSizes.add(L.size); }
+        pending += 1; why(rel, 'queued'); continue;
+      }
+      if (C && laneBig(rel, C) && !C.placeholder && !C.downloading && !cachedThere(rel, C) && !(journalLatest.get(rel)?.s === C.size && journalLatest.get(rel)?.h && journalLatest.get(rel)?.op !== 'del') && !fresh(rel, C, o.settleMs ?? 2000)) {
+        laneAdd({ op: 'hash', side: 'c', rel, C }); laneSizes.add(C.size); pending += 1; why(rel, 'queued'); continue;
+      }
       let lh = null; let ch = null;
       try { lh = L ? await localHash(rel, L) : null; } catch (err) { unreadable.push(rel); pending += 1; why(rel, 'unreadable'); log('hash', rel, err.message); continue; }
       try { ch = C ? await cloudHash(rel, C) : null; } catch (err) { pending += 1; why(rel, 'cloud-error'); log('cloud hash', rel, err.message); continue; }
@@ -1024,8 +1176,10 @@ function createEngine(o) {
       }
     }
     for (const p of plan) if (p.op === 'wait') { cloudOnly.push(p.rel); pending += 1; why(p.rel, 'cloud-only'); }
+    // (round 73) a delete that may be half of a rename whose new name is still being hashed on the lane: next pass
+    for (const p of plan) if ((p.op === 'deleteThere' || p.op === 'deleteHere') && laneSizes.has((p.L || p.C)?.size)) { p.op = 'later'; pending += 1; why(p.rel, 'queued'); }
     // renames: a delete and an add of the same content become one move (big files aren't copied again)
-    const live = plan.filter((p) => p.op !== 'wait');
+    const live = plan.filter((p) => p.op !== 'wait' && p.op !== 'later');
     for (const d of live.filter((p) => p.op === 'deleteThere' && !isStub(p.C))) {
       const a = live.find((p) => p.op === 'push' && !p.C && p.h === d.h && !p.used && !state.base[p.rel]);
       if (a) { a.used = true; d.op = 'renameThere'; d.to = a.rel; }
@@ -1052,6 +1206,8 @@ function createEngine(o) {
     for (const p of ops) {
       if (stopping) break;
       if (p.op === 'held') continue;
+      // (round 73, syncmedia73) big copies go to their own lane: the rest of this pass (chats, settings) doesn't wait
+      if ((p.op === 'push' || p.op === 'pull') && laneBig(p.rel, p.L, p.C)) { laneAdd(p); pending += 1; why(p.rel, 'queued'); continue; }
       try {
         let ok = true;
         if (p.op === 'push') ok = await push(p.rel, p.L, p.C, p.h);
@@ -1071,7 +1227,7 @@ function createEngine(o) {
       if (++n % 25 === 0) { if (baseJobs.size > 32) await baseIdle(); saveState(true); } // (round 72) ≤ 32 base writes in flight
     }
     await baseIdle(); // (round 72) every base written before the state that names them
-    for (const cp of copies) if (!(await absorbCopy(cp, local))) { pending += 1; if (!cp.unsure) cloudOnly.push(cp.rel); why(cp.orig, cp.unsure ? 'copy-check' : 'arriving'); }
+    for (const cp of copies) if (!o.skip?.(cp.orig) && !(await absorbCopy(cp, local))) { pending += 1; if (!cp.unsure) cloudOnly.push(cp.rel); why(cp.orig, cp.unsure ? 'copy-check' : 'arriving'); }
     await flushJournal().catch((err) => log('journal', err.message));
     await writeMachine(false).catch(() => {});
     if (now() - (state.purgedAt || 0) > 864e5) await purge().catch(() => {});
@@ -1096,7 +1252,7 @@ function createEngine(o) {
     return { ...status, pulledFiles: pulledNow.slice() };
   }
   const emit = () => o.onStatus?.(publicStatus());
-  const publicStatus = () => ({ ...status, machine: { id: machine.id, name: machine.name }, cloudRoot, cloudDir, peers: peers.map((p) => ({ name: p.name, platform: p.platform, lastSeen: p.lastSeen, lastOk: p.lastOk })) });
+  const publicStatus = () => ({ ...status, transfers: laneList(), moving: lane.q.length + (lane.cur ? 1 : 0), machine: { id: machine.id, name: machine.name }, cloudRoot, cloudDir, peers: peers.map((p) => ({ name: p.name, platform: p.platform, lastSeen: p.lastSeen, lastOk: p.lastOk })) });
 
   // ---------- trash, conflicts ----------
   async function purge() {
@@ -1117,7 +1273,7 @@ function createEngine(o) {
         try { const st = await fsp.stat(f); if (now() - st.mtimeMs > (tmp ? 864e5 : 7 * 864e5)) await fsp.rm(f, { force: true }); } catch { /* gone */ }
       }
     };
-    await sweep(FILES); await sweep(dataDir);
+    await sweep(FILES); await sweep(dataDir); await sweep(STAGE); // (round 73) staged parts of copies never finished
   }
   async function listConflicts() {
     const out = [];
@@ -1308,7 +1464,8 @@ function createEngine(o) {
   function writeJsonSync(f, v) { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = `${f}.${rand()}.tmp`; fs.writeFileSync(t, JSON.stringify(v)); fs.renameSync(t, f); }
 
   return {
-    pass, stop: () => { stopping = true; }, status: publicStatus, set: (patch) => Object.assign(o, patch), option: (k) => o[k], machine: () => ({ ...machine }),
+    pass, stop: () => { stopping = true; lane.q.length = 0; }, status: publicStatus,
+    laneIdle, freeable, free, /* (round 73, syncmedia73) */ set: (patch) => Object.assign(o, patch), option: (k) => o[k], machine: () => ({ ...machine }),
     conflicts: listConflicts, resolve, resolveAll, preview, incoming, trash: listTrash, restore, guardWrite, relOfLocal,
     ackPulled: (rels) => { if (!rels) pulledPrev.clear(); else for (const r of rels) pulledPrev.delete(r); },
     hasPulled: (rel) => pulledPrev.has(rel),
