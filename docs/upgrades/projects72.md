@@ -87,7 +87,8 @@ rest of the wall is the scene drawing its first frame in software GL.
 7. **The daily "seen buttons" pass froze a project's first open of the day for ≈ 0.5 s** (`usage.js` `see()`, run by
    the weekly tidy in `habits.js`). It checked the visibility of every button of the screen, and a 700-message chat
    has thousands of identical message buttons. It now looks at the first 20 messages' buttons (the others are the
-   same buttons). Its sibling, the pass that marks often-used buttons (`decorate()`, after changes on screen), walked
+   same buttons). The weekly tidy's own scan of the same screen (`declutter.js` `neverUsedIn()`) does the same now
+   (a tuck is by selector, so the first 20 messages stand for all). Its sibling, the pass that marks often-used buttons (`decorate()`, after changes on screen), walked
    every message footer of that chat (≈ 70–130 ms, landing inside project switches here): it marks the last 60 footers
    now; older messages keep the marks they got when they were new.
 8. **The Desk drew 80 ms after you clicked it.** Coming on screen used the 80 ms wait meant for bursts of changes;
@@ -101,6 +102,11 @@ rest of the wall is the scene drawing its first frame in software GL.
     merges between computers like the projects themselves; an empty bin leaves the file exactly as before.
 11. **Prepare for offline checked the project as last saved** (up to 300 ms behind). It saves the project first, so
     something just added to it is checked too.
+12. **Closing a project stamped its scene "updated now" and rewrote every scene**, even when nothing had changed
+    (`workspace.close()` called `persist()` unconditionally). Each switch sent the whole scenes store (all scenes'
+    code, MBs on a big profile) to the disk and to sync, moved the scene to the top of "recent", and two computers
+    opening the same project made the same scene differ for sync. Now it saves only when the editor holds something
+    the scene doesn't; slider edits waiting to be written are still written first, as before.
 
 ## Checked, nothing to change
 - **Resume** works on the heavy profile: a project left on its Scene tab comes back on its Scene, with its scene; a
@@ -117,7 +123,8 @@ rest of the wall is the scene drawing its first frame in software GL.
 
 ## Files
 - Changed: `project-workspace.js`, `projects.js`, `projects-core.js`, `projects-home.js` (Codex's), `tools/three.js`
-  (the Lab's `workspace` API: `close({ keep })`, `releaseKept()`, `state().kept`), `usage.js` (`see()`, `decorate()`), `offline.js`
+  (the Lab's `workspace` API: `close({ keep })` and its save only when changed, `releaseKept()`, `state().kept`),
+  `usage.js` (`see()`, `decorate()`), `declutter.js` (`neverUsedIn()`), `offline.js`
   (one line before the check).
 - New: `dev/checks/projects72.js` (opt-in), `--projects` in `dev/bigprofile.js` (+ drawing scenes), a `projects72`
   group and fixture in `dev/run-checks.js`, a trash test in `dev/projects-test.js`.
@@ -143,6 +150,11 @@ preview released whenever no project is open.
 - `projects-home.js`: notes `maxLength: 4000`; the Desk paints at once on `hearth:activate`; cards prefetch the `lab`,
   `board` and `creative` groups on `pointerenter` / `focus` (once).
 - `projects.js` `changed()`: a `notes` change redraws the chats list after 1.2 s instead of 50 ms.
+- `tools/three.js` `workspace.close()`: `persist()` only when the editor or the first layer differ from the scene
+  (`save.flush()` / `saveExtras.flush()` are unchanged, so anything already waiting is written).
+- For the meter stream (not changed here): `usage.js`'s debounced save sends the whole `ui-usage` store over IPC
+  3 s after any click; with a year of use (the fixture's 900 KB) that is ≈ 70 ms on the window's thread, and it landed
+  inside project switches in the profiles.
 - Ideas not done: a page warmed on a card's hover would make the first open after Projects faster still, but it would
   keep a preview page behind the Projects page (your rule says no); the Desk's `P.lookFor()` re-reads captures / renders
   every 15–30 s on the first paint after that (the cached look could draw first and refresh after).
@@ -159,4 +171,6 @@ preview released whenever no project is open.
 - **A project whose scene or chat hasn't come over from your other computer yet** says so calmly ("It may still be on
   its way…") and keeps its links; Hearth no longer moves that project to the top each time you try it.
 - **Opening a project for the first time each day no longer freezes for half a second** when its chat is very long.
+- **Leaving a project no longer re-saves its scene when you didn't change it**, so your two computers have less to sync
+  and the scene doesn't jump to the top of your recent scenes.
 - Prepare for offline checks what you just added to the project, too.
