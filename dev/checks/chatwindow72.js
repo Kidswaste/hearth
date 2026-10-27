@@ -101,12 +101,12 @@ const sb = list(); out.open.scrollHeight = sb.scrollHeight; out.open.atEnd = sb.
 {
   const L = list(); let peak = nodes(); const jumps = []; let steps = 0; let blank = 0;
   const center = () => { const r = L.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height * 0.4); return e?.closest?.('.msg, .msg-rest') || null; };
-  const settled = async () => { let last = -1; for (let k = 0; k < 20; k++) { await wait(40); if (Math.abs(L.scrollTop - last) < 1) return; last = L.scrollTop; } };
+  const settled = async () => { await wait(160); let last = -1; let still = 0; for (let k = 0; k < 40 && still < 3; k++) { await wait(40); still = Math.abs(L.scrollTop - last) < 1 ? still + 1 : 0; last = L.scrollTop; } }; // (the wheel's smooth scroll first starts, then stops)
   m0 = await metrics(); t = performance.now();
   // each turn of the wheel: once the scroll stops, what's on screen must stay put while the blocks around it wake / rest
   const meas = await measure(100, async () => {
     for (let i = 0; i < 300; i++) {
-      await wheel(-1500); await settled(); steps += 1;
+      const s0 = L.scrollTop; await wheel(-1500); await until(() => Math.abs(L.scrollTop - s0) >= 1, 1500); await settled(); steps += 1; // (the wheel's own scroll first: a late one isn't a jump)
       const a = center(); const ay = a?.getBoundingClientRect().top;
       if (a?.classList.contains('msg-rest')) blank += 1; // (a spacer under the eye: woken too late)
       await wait(220);
@@ -135,8 +135,9 @@ const sb = list(); out.open.scrollHeight = sb.scrollHeight; out.open.atEnd = sb.
   const bar = v().root.querySelector('.chat-find input');
   if (bar) { bar.focus(); await smoke({ cdp: 'Input.insertText', params: { text: RARE } }); await wait(400); await key('Enter', 'Enter'); }
   const hit = (await until(() => list().querySelector('.msg[data-index="4"] mark.find-hit'), 5000)) ? list().querySelector('.msg[data-index="4"] mark.find-hit') : null;
-  await wait(300);
-  const r = hit?.getBoundingClientRect(); const lr = list().getBoundingClientRect();
+  await wait(600);
+  const now = list().querySelector('.msg[data-index="4"] mark.find-hit'); // (marked again as the blocks around it wake)
+  const r = now?.getBoundingClientRect(); const lr = list().getBoundingClientRect();
   out.find = { bar: Boolean(bar), count: v().root.querySelector('.chat-find .find-count')?.textContent, found: Boolean(hit), onScreen: Boolean(r && r.top >= lr.top - 2 && r.bottom <= lr.bottom + 2) };
   if (bar) { await key('Escape', 'Escape'); await wait(200); }
 }

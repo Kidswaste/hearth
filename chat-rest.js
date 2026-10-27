@@ -88,7 +88,7 @@ const ChatRest = (() => {
       if (frac != null && items.length) list.scrollTop += top(items[0]) + frac * span(items) - top(list);
       else if (a) R.keepAnchor(list, a);
       R.foldFresh(v, chat, 0);
-      for (const fn of hooks.render) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
+      for (const fn of hooks.blocks) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
       return true;
     } finally { v.waking = false; }
   }
@@ -111,7 +111,7 @@ const ChatRest = (() => {
     for (const m of chat.messages.slice(b * R.BLOCK, (b + 1) * R.BLOCK)) { cache?.delete(m); if (m.role !== 'user') texts.push(m.text); }
     window.Md?.forget?.(texts);
     watch(agentId, v);
-    for (const fn of hooks.render) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
+    for (const fn of hooks.blocks) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
   }
   // `step` more of the open chat's earlier messages (the resting blocks just above what's drawn)
   async function more(agentId, step) {

@@ -133,7 +133,7 @@ const ChatUX = (() => {
     f.hits = markAll(v.list, q);
     // (round 72, chatwindow72) the resting messages of a long chat count too: one stand-in each, in message order (the
     // message is woken when you reach it, then its own matches are marked)
-    const rest = q && window.ChatRest ? ChatRest.restingHits(agentId, q) : [];
+    const rest = q && typeof ChatRest !== 'undefined' ? ChatRest.restingHits(agentId, q) : [];
     const at = (h) => (h.nodeType ? Number(h.closest('.msg')?.dataset.index ?? 1e9) : h.index);
     if (rest.length) f.hits = [...f.hits, ...rest.map((index) => ({ index }))].sort((a, b) => at(a) - at(b));
     f.at = -1;
@@ -173,8 +173,9 @@ const ChatUX = (() => {
     finds.delete(agentId);
     if (v) clearMarks(v.list);
   }
-  // re-highlight after the chat re-renders (a reply arrived, you scrolled to another chat…)
-  Native.hooks.render.push((agentId) => {
+  // re-highlight after the chat re-renders (a reply arrived, you scrolled to another chat…, round 72: a block of a long
+  // chat woke or went back to rest)
+  const again = (agentId) => {
     const f = finds.get(agentId);
     if (!f) return;
     const v = Native.view(agentId);
@@ -182,7 +183,9 @@ const ChatUX = (() => {
     const at = f.at;
     run(agentId, { jump: false });
     if (at >= 0 && f.hits.length) { f.at = Math.min(at, f.hits.length - 1); f.hits[f.at].classList?.add('cur'); f.count.textContent = `${f.at + 1} / ${f.hits.length}`; }
-  });
+  };
+  Native.hooks.render.push(again);
+  Native.hooks.blocks?.push(again);
 
   // ---------- chat tags and folders (data/kv/chat-meta.json: { chatId: { tags: [], folder } }) ----------
   let meta = {};

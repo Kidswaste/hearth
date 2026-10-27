@@ -15,7 +15,7 @@ const Native = (() => {
   const unfolded = new Set(); // "chatId:index" of long replies the user unfolded (they stay open)
   // Extension points for chat-*.js: render(agentId, view, chat), message(node, m, index, agent),
   // event(event, chat), mark(chat, index, key, on), send(agentId, chat, text).
-  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [], speak: [], options: [], msgMenu: [], chips: [] }; // chips(agentId, attachments): the chat box's attachments changed (round 42, filewatch.js follows their files) // msgMenu(agentId, index, m, chat) → more Reply › items (round 41, routines.js) // newChat(agentId): "New chat" (chat-scenes.js)
+  const hooks = { render: [], message: [], event: [], mark: [], send: [], newChat: [], finish: [], compose: [], speak: [], options: [], msgMenu: [], chips: [], blocks: [] }; // blocks(agentId, v, chat): (round 72) a long chat's earlier block woke / went back to rest (chat-rest.js) // chips(agentId, attachments): the chat box's attachments changed (round 42, filewatch.js follows their files) // msgMenu(agentId, index, m, chat) → more Reply › items (round 41, routines.js) // newChat(agentId): "New chat" (chat-scenes.js)
   // (round 23, voice.js) speak: { text(raw) → what is read, say(text, done) → true when it reads it itself (a system
   // voice), stop() }: the last one added reads replies aloud
   // (round 9, chatcore) finish(event, chat, extras): add fields to the reply about to be saved (chat-things.js: the
@@ -143,7 +143,7 @@ const Native = (() => {
         else if (performance.now() - userAt < 700) v.follow = gap < 24;
         const near = gap < 80;
         if (jump.hidden !== near) jump.hidden = near;
-        if (list.awake) window.ChatRest?.soon(agentId, 250); // (round 72) far blocks rest again
+        if (list.awake && typeof ChatRest !== 'undefined') ChatRest.soon(agentId, 250); // (round 72) far blocks rest again
         if (near && jump.classList.contains('has-new')) jump.classList.remove('has-new');
       });
     }, true);
@@ -1527,12 +1527,12 @@ const Native = (() => {
       el('button', { type: 'button', text: 'Show all', title: 'Draw every message of this chat (slower in a very long chat)', on: { click: () => showEarlier(agentId) } }));
   }
   // waking and resting blocks, find and jumps into resting messages: chat-rest.js (loaded right after the first frame)
-  const restWatch = (agentId, v) => window.ChatRest?.watch(agentId, v);
+  const restWatch = (agentId, v) => (typeof ChatRest !== 'undefined' ? ChatRest.watch(agentId, v) : null);
   // the earlier messages of the open chat: `step` more (the resting blocks just above), else all of them (Show all)
   function showEarlier(agentId, step = 0) {
     const v = views.get(agentId); const id = H.activeChat[agentId];
     if (!v || !id || fullChats.has(id)) return;
-    if (step && window.ChatRest) { ChatRest.more(agentId, step); return; }
+    if (step && typeof ChatRest !== 'undefined') { ChatRest.more(agentId, step); return; }
     fullChats.add(id);
     render(agentId, { keepScroll: true }); // (keeps your place: the message at the top stays there)
   }
@@ -1547,7 +1547,7 @@ const Native = (() => {
     // (round 72, chatwindow72) a resting message: its block is woken, then the jump (the chat isn't drawn whole any more)
     const chat = chats.get(H.activeChat[agentId]);
     if (!node && v && chat && index >= 0 && index < shownFrom(chat, unreadFrom.get(chat.id))) {
-      if (!window.ChatRest) { fullChats.add(chat.id); later(); render(agentId); return false; }
+      if (typeof ChatRest === 'undefined') { fullChats.add(chat.id); later(); render(agentId); return false; }
       ChatRest.wakeAt(agentId, index).then((ok) => { if (ok) jumpTo(agentId, index); });
       return true;
     }
