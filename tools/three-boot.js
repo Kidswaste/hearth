@@ -117,7 +117,7 @@ const LabBoot = (() => {
     const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 200));
     idle(() => (window.Jank?.calm?.(4000, 'lab mount') ?? Promise.resolve()).catch(() => {}).then(() => {
       if (labUp() || window.ProjectWorkspace?.current?.() || typeof Tools === 'undefined') return;
-      Tools.warm('tool:three'); st.mounted = labUp();
+      Tools.warm('tool:three'); st.mounted = true; // (asked: a stand-in tool hands over to the Lab a moment later)
       for (const g of ['board', 'creative']) window.Lazy?.load?.(g).catch(() => {});
     }));
   }
