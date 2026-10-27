@@ -36,7 +36,7 @@ const NB = 256;
 const BUSY = new Set(['EBUSY', 'EPERM', 'EACCES', 'EAGAIN', 'EMFILE', 'ENFILE', 'UNKNOWN', 'ETIMEDOUT', 'ECANCELED']);
 const HELD = 'held';
 // FNV-1a: the same bucket for a name on every run and every computer
-function bucketOf(rel) { let h = 0x811c9dc5; for (let i = 0; i < rel.length; i++) { h ^= rel.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0) & (NB - 1); }
+function bucketOf(rel, nb = NB) { let h = 0x811c9dc5; for (let i = 0; i < rel.length; i++) { h ^= rel.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0) & (nb - 1); }
 const sameVal = (a, b) => a === b || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]));
 const hex = (i) => i.toString(16).padStart(2, '0');
 const rand = () => crypto.randomBytes(3).toString('hex');
@@ -86,8 +86,11 @@ async function renameRetry(from, to) {
   }
 }
 
-// o: { dir (data/sync), cloudRoot, log, breathe () → Promise | null, rename (from, to), fresh () → a new state, onError (err) }
+// o: { dir (data/sync), cloudRoot, log, breathe () → Promise | null, rename (from, to), fresh () → a new state, onError (err),
+//      buckets (a power of 2, default 256: tests use fewer) }
 function createStateStore(o) {
+  const NB = o.buckets > 0 && (o.buckets & (o.buckets - 1)) === 0 ? Math.min(o.buckets, 4096) : 256; // eslint-disable-line no-shadow
+  const bucket = (rel) => bucketOf(rel, NB);
   const dir = path.join(o.dir, 'state');
   const key = path.resolve(dir);
   const indexFile = path.join(dir, 'index.json');
@@ -105,7 +108,7 @@ function createStateStore(o) {
   let queued = null; let q = Promise.resolve();
   const st = { costMs: 0, saves: 0, written: 0, bytes: 0, lastMs: 0 };
 
-  const mark = (k) => { if (typeof k !== 'string') return; const b = bucketOf(k); dirty.add(b); members[b].add(k); };
+  const mark = (k) => { if (typeof k !== 'string') return; const b = bucket(k); dirty.add(b); members[b].add(k); };
   const watch1 = (m) => {
     if (!m || typeof m !== 'object' || target.has(m)) return m;
     const px = new Proxy(m, {
@@ -132,6 +135,8 @@ function createStateStore(o) {
       if (idx.state === HELD) return { held: true, why: 'index' };
       let leg = null; try { leg = await fsp.stat(legacyFile); } catch { /* none */ }
       let idxAt = 0; if (idx.state === 'ok') { try { idxAt = (await fsp.stat(indexFile)).mtimeMs; } catch { /* gone meanwhile */ } }
+      // pieces a valid index names stay until a save replaces them; anything else in the folder is what a cut save left
+      const named = new Set(idx.state === 'ok' && idx.value?.v === 2 && idx.value.parts && typeof idx.value.parts === 'object' ? Object.values(idx.value.parts) : []);
       // the old single file: when there are no pieces yet, or a Hearth from before this round wrote it since
       if (leg && (idx.state !== 'ok' || leg.mtimeMs > idxAt)) {
         const r = await readJson(legacyFile);
@@ -141,22 +146,23 @@ function createStateStore(o) {
           reset(); migrating = true;
           for (const k of MAPS) if (!s[k] || typeof s[k] !== 'object') s[k] = {};
           watch(s); allDirty = true;
+          await tidy(named);
           log('state', 'moving the single state file into pieces');
           return { state: s, migrated: true };
         }
-        if (idx.state !== 'ok') { reset(); migrating = r.state === 'ok' || r.state === 'bad'; const s2 = fresh(); watch(s2); return { state: s2, fresh: true, why: r.state === 'ok' ? 'other-drive' : 'legacy-bad' }; }
+        if (idx.state !== 'ok') { reset(); await tidy(named); migrating = r.state === 'ok' || r.state === 'bad'; const s2 = fresh(); watch(s2); return { state: s2, fresh: true, why: r.state === 'ok' ? 'other-drive' : 'legacy-bad' }; }
       }
       const ix = idx.value;
       if (idx.state !== 'ok' || !ix || ix.v !== 2 || !ix.small || ix.small.cloudRoot !== o.cloudRoot || !ix.parts || typeof ix.parts !== 'object') {
-        reset(); const s = fresh(); watch(s);
+        reset(); await tidy(named); const s = fresh(); watch(s);
         return { state: s, fresh: true, why: idx.state === 'missing' ? 'none' : idx.state === 'ok' ? 'other-drive' : 'index-bad' };
       }
       const maps = Object.fromEntries(MAPS.map((k) => [k, {}]));
       const mem = Array.from({ length: NB }, () => new Set());
-      const lost = [];
+      const lost = []; let moved = false;
       for (const [b, name] of Object.entries(ix.parts)) {
         const bi = Number(b);
-        if (!(bi >= 0 && bi < NB) || typeof name !== 'string' || name.includes('/') || name.includes('\\')) continue;
+        if (!(Number.isInteger(bi) && bi >= 0) || typeof name !== 'string' || name.includes('/') || name.includes('\\')) continue;
         const r = await readJson(path.join(dir, name));
         if (r.state === HELD) return { held: true, why: name };
         const rows = r.state === 'ok' && r.value?.rows && typeof r.value.rows === 'object' ? r.value.rows : null;
@@ -166,15 +172,15 @@ function createStateStore(o) {
         for (const [rel, row] of Object.entries(rows)) {
           if (!row || typeof row !== 'object') continue;
           for (const k of MAPS) if (own(row, KEYS[k])) maps[k][rel] = row[KEYS[k]];
-          mem[bi].add(rel);
+          const bb = bucket(rel); if (bb !== bi) moved = true; mem[bb].add(rel); // (saved with another bucket count: all written again)
         }
         const br = breathe(); if (br) await br;
       }
       reset();
       members = mem;
       const s = { ...ix.small, ...maps };
-      watch(s); allDirty = false; // (wrapping marks everything: these are what is on the disk)
-      for (const name of lost) { const bi = Number(Object.entries(ix.parts).find(([, n]) => n === name)?.[0]); if (bi >= 0) dirty.add(bi); }
+      watch(s); allDirty = moved; // (wrapping marks everything: these are what is on the disk)
+      for (const name of lost) { const bi = Number(Object.entries(ix.parts).find(([, n]) => n === name)?.[0]); if (bi >= 0 && bi < NB) dirty.add(bi); else allDirty = true; }
       if (lost.length) log('state', `pieces missing or damaged: ${lost.join(', ')}`);
       // what a save cut short left (pieces no index names, temp files) goes; the old single file is kept as .prev
       await tidy(new Set(Object.values(ix.parts)));
@@ -208,7 +214,7 @@ function createStateStore(o) {
       allDirty = false;
       members = Array.from({ length: NB }, () => new Set());
       let n = 0;
-      for (const k of MAPS) for (const rel of Object.keys(plain(state[k]))) { members[bucketOf(rel)].add(rel); if ((++n & 4095) === 0) await pause(); }
+      for (const k of MAPS) for (const rel of Object.keys(plain(state[k]))) { members[bucket(rel)].add(rel); if ((++n & 4095) === 0) await pause(); }
       for (let i = 0; i < NB; i++) dirty.add(i);
     }
     const take = [...dirty].sort((a, b) => a - b); dirty.clear();
@@ -235,12 +241,12 @@ function createStateStore(o) {
       // (another cloud folder's index: a full save, below, replaces every piece it names)
       const cur = disk.state === 'ok' && disk.value?.v === 2 && disk.value.parts && typeof disk.value.parts === 'object' ? disk.value : { gen: 0, parts: {} };
       const gen = (Number(cur.gen) || 0) + 1; const tag = rand();
-      const parts = { ...cur.parts }; const old = [];
+      const parts = full ? {} : { ...cur.parts }; const old = full ? Object.values(cur.parts) : []; // (a full save names only its own)
       const todo = texts.filter(([, t]) => t);
       for (let i = 0; i < todo.length; i += 8) {
         await Promise.all(todo.slice(i, i + 8).map(async ([b, t]) => { const name = `p-${hex(b)}-${gen}-${tag}.json`; madeNow.push(name); await writeFlushed(path.join(dir, name), t); st.bytes += t.length; }));
       }
-      for (const [b, t] of texts) { if (parts[b]) old.push(parts[b]); if (t) parts[b] = `p-${hex(b)}-${gen}-${tag}.json`; else delete parts[b]; }
+      for (const [b, t] of texts) { if (!full && parts[b]) old.push(parts[b]); if (t) parts[b] = `p-${hex(b)}-${gen}-${tag}.json`; else delete parts[b]; }
       const tmp = `${indexFile}.${rand()}.tmp`;
       madeNow.push(path.basename(tmp));
       await writeFlushed(tmp, JSON.stringify({ v: 2, gen, at: Date.now(), small, parts }));

@@ -164,7 +164,7 @@ if (process.argv[2] === '--store') {
   // ---------- store.js on throwaway copies, thread off and on ----------
   for (const thread of ['0', '1']) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-scenesafe-'));
-    for (const f of ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'scenesafe-core.js', 'datasafe-core.js', 'recall-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
+    for (const f of ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js', 'scenesafe-core.js', 'datasafe-core.js', 'recall-core.js'] /* (round 75) + sync-hard.js (sync-merge.js needs it since round 74), kvops.js */) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
     fs.copyFileSync(__filename, path.join(dir, 't.js'));
     const run = spawnSync(process.execPath, [path.join(dir, 't.js'), '--store'], { cwd: dir, env: (({ HEARTH_STORE_THREAD: _t, ...e }) => (thread === '1' ? { ...e, HEARTH_STORE_THREAD: '1' } : e))(process.env), encoding: 'utf8', timeout: 60000 });
     const out = `${run.stdout}${run.stderr}`;
