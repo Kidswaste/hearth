@@ -64,12 +64,12 @@ addEventListener('message', (e) => { const d = e.data; const t = d?.type; if (t 
 // a click → the project ready; wall from the click, the scene's own part, the longest window task, the app's stage timings
 async function timed(id, act) {
   await frame(); Object.assign(sc, { start: 0, drawn: 0, warm: 0 }); const t0 = performance.now(); const d0 = Date.now(); act();
-  await until(() => ready(id), `${id} ready`, 2000); const d1 = Date.now();
+  const stages = {}; await until(() => { const st = ProjectWorkspace.state(); if (st.stage && !(st.stage in stages)) stages[st.stage] = Date.now() - d0; return ready(id); }, `${id} ready`, 2000); const d1 = Date.now();
   await frame(); const wall = Math.round(performance.now() - t0);
   const draw = sc.start && sc.drawn > sc.start ? sc.drawn - sc.start : 0;
   const scene = Math.round(draw + sc.warm);
   // (round 73) where Hearth's part lies: before the scene's code starts in its page, after it drew (the warm-up's own ms excluded)
-  const split = sc.start ? { before: sc.start - d0, after: sc.drawn ? d1 - sc.drawn - Math.round(sc.warm) : null } : null;
+  const split = sc.start ? { before: sc.start - d0, after: sc.drawn ? d1 - sc.drawn - Math.round(sc.warm) : null, drawnAt: sc.drawn ? sc.drawn - d0 : null, readyAt: d1 - d0, stages } : null;
   return { hearth: wall - scene, wall, scene, sceneDraw: Math.round(draw), sceneWarm: Math.round(sc.warm), split, longest: longestSince(t0), timings: ProjectWorkspace.state().timings };
 }
 async function toProjects() {
