@@ -939,7 +939,7 @@ const ThreeSeq = (() => {
   async function renderOutputs(opts = {}) {
     const last = store.get('three.seq.renderOpts', {});
     const out = [];
-    for (const f of outputsOf()) out.push(await render({ format: f, fps: last.fps || null, crf: QUALITY[last.quality]?.crf || 18, sound: last.sound !== false, ...opts }));
+    for (const f of outputsOf()) out.push(await render({ format: f, fps: last.fps || null, crf: QUALITY[last.quality]?.crf || 18, sound: true, ...opts }));
     return out;
   }
   // go to a clip (by number, "Titles.2" or name): selected, the playhead at its start
@@ -2078,7 +2078,9 @@ const ThreeSeq = (() => {
     if (!S.edit) await current();
     const cur = D.formatOf(S.edit);
     const last = store.get('three.seq.renderOpts', {});
-    const st = { formats: new Set((last.formats || []).filter((f) => D.FORMATS[f])), fps: last.fps || S.edit?.seq?.fps || 30, quality: QUALITY[last.quality] ? last.quality : 'high', sound: last.sound !== false, open: last.open !== false, range: Boolean(rangeOf()) };
+    // (round 67) "With the sound" starts checked every time: turning it off is for one render (remembered, it left every
+    // later render of a sequence with a song silent without anyone noticing)
+    const st = { formats: new Set((last.formats || []).filter((f) => D.FORMATS[f])), fps: last.fps || S.edit?.seq?.fps || 30, quality: QUALITY[last.quality] ? last.quality : 'high', sound: true, open: last.open !== false, range: Boolean(rangeOf()) };
     if (S.edit?.seq?.outputs?.length) st.formats = new Set(outputsOf()); // (labcut) the sequence's outputs, when it has them
     if (!st.formats.size) st.formats.add(cur);
     const dlg = el('dialog', { class: 'ui-modal sq-render-panel' });

@@ -355,3 +355,7 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
 .ed-axis-z > span { color:#a59bff; }
 .ed-axis .ed-num { width:65px; }
 .ed-axis button { min-width:24px; padding:2px 4px; }
+/* (round 67, render fix) while a render runs the preview rests behind this note (tools/three.js paintXpRest) */
+.xp-rest-note { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; text-align: center; color: var(--text, #eae0d5); font-size: 13px; background: var(--surface, #0f1113); }
+.xp-rest-note b { font-size: 15px; color: var(--fh-gold, #ffd75e); }
+.xp-rest-note span { max-width: 360px; color: var(--muted, #9a948c); line-height: 1.45; }

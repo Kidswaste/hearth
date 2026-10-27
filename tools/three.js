@@ -1027,7 +1027,22 @@ const ThreeLab = (() => {
     // page gets the GPU / CPU it would share with it. Never the Stage window, never during a recording.
     let xpOn = false;
     const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording)) }; };
-    addEventListener('hearth:lab-export', (e) => { const on = Boolean(e.detail?.on); if (on === xpOn) return; xpOn = on; if (fpsPref() < 0 && box.ready) box.send(capMsg()); });
+    // (round 67, render fix) and the preview rests (parks, as when the Lab is off screen) behind a short note: a many-layer
+    // scene drawn in the preview took half the GPU from the render (a 12-layer scene: 112 s → 48 s for 2 s of video).
+    // "Show the preview anyway" keeps it drawing until that render ends.
+    let xpWatch = false; let xpNote = null;
+    const xpResting = () => xpOn && !xpWatch && !box.onStage && !player.recording;
+    function paintXpRest() {
+      const on = xpResting();
+      previewHost.classList.toggle('xp-resting', on);
+      if (on && !xpNote) {
+        xpNote = el('div', { class: 'xp-rest-note', attrs: { role: 'status' } },
+          el('b', { text: 'Rendering…' }), el('span', { text: 'The preview rests so the render gets the whole graphics card (about twice as fast).' }),
+          el('button', { type: 'button', class: 'stage-btn', text: 'Show the preview anyway', on: { click: () => { xpWatch = true; paintXpRest(); syncPark(true); } } }));
+        previewHost.append(xpNote);
+      } else if (!on && xpNote) { xpNote.remove(); xpNote = null; }
+    }
+    addEventListener('hearth:lab-export', (e) => { const on = Boolean(e.detail?.on); if (on === xpOn) return; xpOn = on; if (!on) xpWatch = false; if (fpsPref() < 0 && box.ready) box.send(capMsg()); paintXpRest(); syncPark(); });
     fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send(capMsg()); });
     // the window in front or not (an iframe taking the focus is still this window: document.hasFocus() says so)
     let focusT = 0;
@@ -1039,7 +1054,7 @@ const ThreeLab = (() => {
     let workspacePreparing = false, workspaceMessage = null, workspaceReleased = false, workspaceDrawn = null;
     let stallArm = null; // (round 39, powerwise) the stall / park safety timer's pace follows the park (set below)
     function syncPark(force = false) {
-      const on = !workspacePreparing && ((!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing'));
+      const on = !workspacePreparing && ((!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || xpResting() || previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing'));
       if (on === parkedNow && !force) return;
       parkedNow = on;
       api.parkTweaks?.(on);
