@@ -1337,8 +1337,6 @@ function createEngine(o) {
       if (!cloud.has(rel) && local.get(rel)?.size) goneSizes.add(local.get(rel).size);
       const c = state.local[rel]; if (!local.has(rel) && c?.[2] && c[0] > LANE_MIN) moved.set(`${c[0]}:${c[1]}`, c[2]);
     }
-    // (round 43, datasafe) a file or folder that couldn't be listed / looked at on one side is unknown there this pass:
-    // never "deleted" (a held chats folder on Windows looked like every chat deleted, and the cloud copy went to trash)
     // (round 75, syncstate75) a first sync (or many new files from the other computer): the small files not hashed yet are
     // read and hashed 8 at a time before the plan below (which then finds them cached); one after the other, 50,000 took
     // ≈ 16 s. Errors are left for the plan (it hashes again and says why).
@@ -1355,8 +1353,11 @@ function createEngine(o) {
       if (want.length > 64) {
         let wn = 0;
         await Promise.all(Array.from({ length: 8 }, async () => { while (wn < want.length && !stopping) { const j = want[wn++]; try { await j(); } catch { /* the plan says */ } const b = breathe(); if (b) await b; } }));
+        tick = now(); // (a long read here is not a sleep: what was hashed before one stays right, keyed by size + time)
       }
     }
+    // (round 43, datasafe) a file or folder that couldn't be listed / looked at on one side is unknown there this pass:
+    // never "deleted" (a held chats folder on Windows looked like every chat deleted, and the cloud copy went to trash)
     const blindIn = (set, rel) => set.size > 0 && (set.has(rel) || set.has('') || [...set].some((b) => b.endsWith('/') && rel.startsWith(b)));
     for (const rel of rels) {
       if (stopping) break;

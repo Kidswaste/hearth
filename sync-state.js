@@ -191,7 +191,7 @@ function createStateStore(o) {
   function reset() { members = Array.from({ length: NB }, () => new Set()); dirty.clear(); allDirty = true; migrating = false; }
   async function tidy(keep) {
     let names = []; try { names = await fsp.readdir(dir); } catch { return; }
-    for (const n of names) if (n !== 'index.json' && !keep.has(n) && /^(p-[0-9a-f]{2}-\d+-[0-9a-f]+\.json|index\.json\.[0-9a-f]+\.tmp)$/.test(n)) await fsp.rm(path.join(dir, n), { force: true }).catch(() => {});
+    for (const n of names) if (n !== 'index.json' && !keep.has(n) && /^(p-[0-9a-f]{2,3}-\d+-[0-9a-f]+\.json|index\.json\.[0-9a-f]+\.tmp)$/.test(n)) await fsp.rm(path.join(dir, n), { force: true }).catch(() => {});
   }
 
   // ---------- saving ----------
