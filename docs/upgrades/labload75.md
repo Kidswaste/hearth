@@ -72,17 +72,18 @@ Samples after a forced GC at switches 6, 15 and 30.
 | Window heap | 12.9 → 12.4 MB | 13.0 → 12.5 MB |
 | Media playing / alive · AudioContexts | 1 / 1 · 1 | 1 / 1 · 2 (the scene's own + three's) |
 | three's AudioContext after the first switch | **closed** (THREE.Audio silent) | running |
-| Files copied to the page over 30 switches | ≈ 2.1 GB (every visit) | **209 MB** (first visits only) |
-| Preview CPU per switch | 2,225 ms | **998 ms** |
-| Window CPU per switch · main process | 604 · 294 ms | **225 · 69 ms** |
-| Scene's assets in after its first frame (`ready-prepped` assets), revisits, median | 5.8 s | **3.3 s** |
-| Switch → scene complete (model, sky, photos in), revisits, median | 10.2 s | 10.8 s |
-| GPU process CPU per switch | 34.5 s | 34.2 s |
-The asset cache held 45 entries / 318 MB for the three scenes (27 files, 12 photos, 3 models, 3 skies), 699 hits.
+| Files copied to the page over 30 switches | ≈ 2.1 GB (every visit) | **167–209 MB** (first visits only) |
+| Preview CPU per switch | 2,225 ms | **749–998 ms** |
+| Window CPU per switch · main process | 604 · 294 ms | **206–225 · 60–69 ms** |
+| Scene's assets in after its first frame (`ready-prepped` assets), revisits, median | 5.8 s | **2.2–3.3 s** |
+| Switch → scene complete (model, sky, photos in), revisits, median | 10.2 s | 9.3–10.8 s |
+| GPU process CPU per switch | 34.5 s | 34.1–34.2 s |
+(After: two runs, the measuring run and the final check run.) The asset cache held 45 entries / 318 MB for the three
+scenes (27 files, 12 photos, 3 models, 3 skies), ≈ 700 hits, 45 misses, nothing evicted.
 
 Read the wall times with care: on this machine the GPU is software (SwiftShader), and drawing these scenes costs the
 GPU process ≈ 34 s of CPU per switch, the same before and after; that's what the 10 s of each switch is. Everything
-the cache removes is CPU work in the page, the window and the main process (−55 %, −63 %, −77 %), which on the
+the cache removes is CPU work in the page, the window and the main process (−55–66 %, −63–66 %, −77–80 %), which on the
 owner's RTX 4080 is most of what a switch of an asset-heavy scene waits for. One honest trade: a revisit now has its
 photos, model and sky before its first frame, so its first picture comes complete but ≈ 1.5 s later here (a software
 GPU uploads them in that frame); before, the scene drew first and its files popped in over the next seconds.
