@@ -35,17 +35,17 @@ the other computer, and deleting a project.
   `window.PJ_REPORT = 1` reports without failing, `window.PJ_BUDGET` overrides budgets.
 
 ## Numbers (this machine: Xvfb, software GL, a shared 4-CPU box that other checks were using; before = round 71 main fee53a5, after = this branch, same fixture, same check)
-Before: 2 runs of round 71's code; after: 6 runs of this branch's (the last ones with every fix). The box was shared
+Before: 2 runs of round 71's code; after: 7 runs of this branch's (the last ones with every fix). The box was shared
 with other agents' checks the whole time (load 2.5–4 on 4 CPUs), so single numbers swing by ±30 %: medians are given
 with the range. "Hearth's part" is the wall minus the scene's own drawing and warm-up (see above).
 
 | | before | after (median, range) |
 |---|---|---|
-| **switch** with the name ▾, Hearth's part (best of 3; the slowest of the 3 projects) | 955, 1,088 ms | **625 ms** (577–682) |
-| switch, the fastest of the 3 projects | 575, 690 ms | **375 ms** (296–518) |
+| **switch** with the name ▾, Hearth's part (best of 3; the slowest of the 3 projects) | 955, 1,088 ms | **625 ms** (563–682) |
+| switch, the fastest of the 3 projects | 575, 690 ms | **347 ms** (296–518) |
 | switch, the whole wall with the scene drawing in software GL | 2.5–4.4 s | 1.7–3.0 s |
-| **cold open** (the first since start; the pointer on the card 300 ms first), Hearth's part | 975, 2,572 ms | **1,070 ms** (786–1,230) |
-| **warm open** from Projects (best of 2), Hearth's part | 431, 816 ms | **515 ms** (448–592; one run 1,574) |
+| **cold open** (the first since start; the pointer on the card 300 ms first), Hearth's part | 975, 2,572 ms | **1,135 ms** (786–1,230) |
+| **warm open** from Projects (best of 2), Hearth's part | 431, 816 ms | **478 ms** (448–592; one run 1,574) |
 | Desk paint (Desk tab clicked) | 64, 71 ms | 57–83 ms |
 | Desk › Project files opened (771 items) | 260, 205 ms | 28–242 ms (its script: 3–7 ms) |
 | typing in the notes: the longest task after the keys | 463, 486 ms | none |
@@ -55,8 +55,8 @@ with the range. "Hearth's part" is the wall minus the scene's own drawing and wa
 | a project whose chat hasn't arrived, tried | rewritten and moved to the top | left as it is |
 | delete → after the Undo toast | gone | ⋯ › Recently deleted projects |
 
-**Budgets, honestly:** switching (< 600 ms of Hearth's part, slowest project) passed in 2 of the 6 runs and missed by
-25–80 ms in the others; the fastest projects are at 300–500 ms. The cold open (< 800 ms) passed once (786 ms): the
+**Budgets, honestly:** switching (< 600 ms of Hearth's part, slowest project) passed in 3 of the 7 runs (the last one
+included: 306 / 461 / 563 ms) and missed by 25–80 ms in the others. The cold open (< 800 ms) passed once (786 ms): the
 first open of a session still mounts the Lab (≈ 300 ms: its UI and reading every scene) and runs Clink's first
 sketch switch (≈ 180 ms of slider scanning on 4 layers × 450 lines); on this machine those share the CPU with the
 software-GL scene. A warm open is under budget.
@@ -145,7 +145,14 @@ rest of the wall is the scene drawing its first frame in software GL.
   `offline.js` (one line before the check).
 - New: `dev/checks/projects72.js` (opt-in), `--projects` in `dev/bigprofile.js` (+ drawing scenes), a `projects72`
   group and fixture in `dev/run-checks.js`, a trash test in `dev/projects-test.js`.
-- Tested: CHECKS_LINE
+- Tested (all app checks under `flock /tmp/hearth-run.lock`, a throwaway copy, fake engines): projects72 (functional
+  steps all pass; budgets as above), projects, project-workspaces, project-continuity, project-lifecycle,
+  project-fluidity, project-desk, project-allowance, project-map-worker, quest-project, quest-project-context, lazy —
+  pass; project-auto-improve (needs `--fake-engines`, which run-checks doesn't give it), project-sound (`--fake-vst`),
+  projects-lightweight (`HEARTH_LOOPLAG=1`) — pass when started with their flags by hand; offline-project fails on the
+  base too (it downloads three.js modules: no route out from this box); unit: boot-test (first screen 2,340 / 2,345 KB),
+  projects-test (13), datasafe-scan, winmac-test, errorcalm-scan pass; chatsafe-scan fails the same way on the base
+  (`routines.js`, Codex's).
 
 ## For Codex
 All edits are small and marked `(round 72)`. Behaviour kept: the same stages and errors, the same saves on close, the
