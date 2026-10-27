@@ -55,6 +55,9 @@ const ready = (id) => { const s = ProjectWorkspace.state(); return s.phase === '
 const card = (id) => document.querySelector(`.pj-card[data-project="${id}"]`);
 const longs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push({ at: e.startTime, ms: Math.round(e.duration) }); }).observe({ type: 'longtask' }); } catch { /* none */ }
 const longestSince = (t) => Math.max(0, ...longs.filter((x) => x.at >= t).map((x) => x.ms));
+// (round 74, projdesk74) long animation frames: how a measured frame's time splits between script and rendering
+const loafs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) loafs.push(e); }).observe({ type: 'long-animation-frame' }); } catch { /* none */ }
+const loafSince = (t, t1) => loafs.filter((e) => e.startTime + e.duration >= t && e.startTime <= t1).map((e) => { const r = e.renderStart ? e.startTime + e.duration - e.renderStart : 0; return `${Math.round(e.startTime - t)}+${Math.round(e.duration)}ms (render ${Math.round(r)}, script ${Math.round(e.duration - r)})`; });
 window.hub.openExternal = () => {};
 // the scene's own work: the fixture's layers post 'fixture-layer-start' (Date.now()) as their code starts in the page
 // (it's another origin: a sandboxed page); from the first of them to the page's 'stack-drawn' is the layers' own code and
@@ -166,7 +169,11 @@ try {
     need(out.desk.chatFromEnd != null && out.desk.chatFromEnd < 80, `the chat lost its place at its end (${out.desk.chatFromEnd} px above it)`);
     click([...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === 'Desk')); await until(() => document.querySelector('.pw-desk .pw-project-files') && H.surfaceIdFor(H.activeId) === 'tool:home', 'desk again');
     const files = document.querySelector('.pw-project-files');
-    let t0 = 0; await profile('desk-files', async () => { t0 = performance.now(); files.querySelector('summary').click(); await until(() => files.querySelector('.pw-file-results .pj-item'), 'files'); await frame(); out.desk.files = Math.round(performance.now() - t0); });
+    // (round 74) in frames too: the animation frames from the click to the one that shows the rows, and how long that took
+    let t0 = 0; await profile('desk-files', async () => { const ticks = []; let on = true; const tick = (t) => { ticks.push(t); if (on) requestAnimationFrame(tick); }; requestAnimationFrame(tick); await frame();
+      t0 = performance.now(); const n0 = ticks.length; files.querySelector('summary').click(); await until(() => files.querySelector('.pw-file-results .pj-item'), 'files'); const rowsAt = performance.now(); await frame(); out.desk.files = Math.round(performance.now() - t0); on = false;
+      const after = ticks.slice(n0); const shown = after.findIndex((t) => t >= rowsAt);
+      out.desk.filesFrames = { rowsBuiltAt: Math.round(rowsAt - t0), frameShowingRows: shown < 0 ? null : shown + 1, frameAt: shown < 0 ? null : Math.round(after[shown] - t0), longFrames: loafSince(t0, performance.now()) }; });
     out.desk.filesRows = files.querySelectorAll('.pj-item').length; out.desk.count = files.querySelector('.pw-file-footer .hint')?.textContent;
     out.desk.faded = files.querySelectorAll('.pj-item.pj-gone').length;
     const q = files.querySelector('.pw-file-search'); await profile('desk-search', async () => { t0 = performance.now(); q.value = 'take'; q.dispatchEvent(new Event('input')); await frame(); out.desk.search = Math.round(performance.now() - t0); });

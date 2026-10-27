@@ -86,13 +86,21 @@ window.ProjectWorkspace = (() => {
       close(){d.close();clearTimeout(slow);d.remove();}
     };return ui;
   }
+  // (round 74, projdesk74) opt-in, off by default: "Keep the Lab ready behind Projects (uses more memory)". Leaving a
+  // project for Projects keeps its preview page as a switch does (everything still saved and stopped), so a project
+  // opened from Projects runs its scene in it. Let go as soon as anything but Projects comes to the front, or after
+  // 10 minutes on Projects. Off, the rule stays: nothing loaded behind the Projects page.
+  const keepLab=()=>store.get('projects.keepLab',false)===true;let keepTimer=0;
+  const letLabGo=()=>{clearTimeout(keepTimer);if(!get()&&!opening&&Lazy.loaded('lab'))ThreeLab.workspace?.releaseKept?.();};
+  document.addEventListener('hearth:activate',e=>{if(!get()&&!opening&&e.detail?.surfaceId!=='tool:home')letLabGo();});
   // switching: another project opens right after, so the Lab keeps its preview page for it (round 72, projects72)
   async function closeCurrent(ui,{switching=false}={}) {
     const p=get();if(!p)return;
     remember();
     ui?.update(0,'Saving scene and chat…');
     const c=chatOf(p);Native.view(c?.agentId)?.saveDraft?.flush();
-    if(Lazy.loaded('lab'))await ThreeLab.workspace?.close(switching?{keep:true}:undefined);
+    const keep=switching||keepLab();clearTimeout(keepTimer);if(!switching&&keep)keepTimer=setTimeout(letLabGo,10*60000); // (round 74) keepLab
+    if(Lazy.loaded('lab'))await ThreeLab.workspace?.close(keep?{keep:true}:undefined);
     ui?.update(2,'Saving creative board and instrument…');
     if(Lazy.loaded('board')){await Board._.flush();Board._.stopAllPreviews();Board._.cancelAnim();}
     if(Lazy.loaded('creative')){await WorkbenchUI.setProject(null);CreativePlayground.pause();}
@@ -100,6 +108,7 @@ window.ProjectWorkspace = (() => {
   }
   function open(id, tab=null, options={}) {
     opening?.abort();const controller=new AbortController();opening=controller;const ticket=++route;
+    if(!active&&Lazy.loaded('lab'))ThreeLab.workspace?.preload?.(20000); // (round 74) from Projects: the preview page starts now, alongside the chat / worktable / Lab work below
     return serial(async()=>{
       await P.ready();if(controller.signal.aborted)return;const p=P.get(id);if(!p)throw Error('Project not found.');
       if(get()===p&&loadState.phase==='ready'){opening=null;if(tab)await go(tab,ticket);return p;}
@@ -179,11 +188,11 @@ window.ProjectWorkspace = (() => {
     conversationId=id;const linked=ChatScenes.linkOf(id);conversationScene=p.items.some(x=>x.type==='scene'&&x.ref===linked)?linked:null;
     await go('chat');await Native.refresh(c.agentId,{keepScroll:true});
   }
-  function leave() {
+  function leave({keepLab:keepIt=false}={}) {
     opening?.abort();route++;
-    return serial(async()=>{const p=get();if(!p){document.querySelector('.pw-loading')?.close();if(Lazy.loaded('lab'))ThreeLab.workspace?.releaseKept?.();return;}const ui=loading(p,true);loadState={phase:'closing',project:p.id};try{await closeCurrent(ui);ui.close();}catch(err){loadState={phase:'error',project:p.id,error:calmError(err)};ui.error(err,()=>home());throw err;}});
+    return serial(async()=>{const p=get();if(!p){document.querySelector('.pw-loading')?.close();if(Lazy.loaded('lab')&&!(keepIt&&keepLab()))ThreeLab.workspace?.releaseKept?.();return;}const ui=loading(p,true);loadState={phase:'closing',project:p.id};try{await closeCurrent(ui);ui.close();}catch(err){loadState={phase:'error',project:p.id,error:calmError(err)};ui.error(err,()=>home());throw err;}});
   }
-  async function home() { await leave();await Lazy.load('projects');ProjectsHome.show(null);activate('tool:home'); }
+  async function home() { await leave({keepLab:true});await Lazy.load('projects');ProjectsHome.show(null);activate('tool:home'); }
   async function create(options) {
     const name=String(options.name || '').trim(); if(!name)throw Error('Give your project a name.');
     await leave();
@@ -263,5 +272,5 @@ window.ProjectWorkspace = (() => {
   document.addEventListener('hearth:activate',e=>{const sid=e.detail.surfaceId;if(!get())return;if(!surfaces.has(String(sid).replace('tool:',''))){leave().catch(err=>toast(calmError(err),{type:'error'}));return;}surface=sid.slice(5);});
   Native.hooks.options.push((_a,chat,_text,_message,options)=>{if(P.projectOfChat(chat.id)?.workspace && !options.lean)options.asDirector='three';});
   Native.hooks.compose.push((_a,chat,text)=>{const p=P.projectOfChat(chat.id);if(!p?.workspace)return text;return `[Hearth project: ${JSON.stringify({name:p.name,scene:p.id===active?sceneOf(p):ChatScenes.linkOf(chat.id)||p.workspace.sceneId,moodboard:p.workspace.boardId,plugins:p.workspace.plugins})}. Work on this project's linked scene/board. Sound controls require its Sound desk open.]\n${text}`;});
-  return { current,currentChat:()=>chatOf(get()) || null,currentScene:()=>sceneOf(get()) || null,switcher,agentFor,surfaceFor,open,go,openScene,conversation,home,leave,create,wizard,ensure,describe,frontpage,importScenes,designBanner,toolbar,settings,svg,state:()=>structuredClone(loadState) };
+  return { current,currentChat:()=>chatOf(get()) || null,currentScene:()=>sceneOf(get()) || null,switcher,agentFor,surfaceFor,open,go,openScene,conversation,home,leave,create,wizard,keepLab:(on)=>{if(on!=null){store.set('projects.keepLab',Boolean(on));if(!on)letLabGo();}return keepLab();},ensure,describe,frontpage,importScenes,designBanner,toolbar,settings,svg,state:()=>structuredClone(loadState) };
 })();

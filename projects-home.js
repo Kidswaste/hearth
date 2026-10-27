@@ -45,7 +45,7 @@ const ProjectsHome = (() => {
     S.search = ProjectsSearch.view({ input, list: results, chips, empty: '' });
     input.addEventListener('input', () => { const on = Boolean(input.value.trim()); S.root.querySelector('.pj-home-find').hidden = !on; S.body.hidden = on; });
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input')); } });
-    P.onChange(e => { if(e.why==='notes'&&e.id===drawn&&S.body.querySelector('.pj-notes')?.value===e.project.notes)return;S.stale = true; if (visible()) paintSoon(); });
+    P.onChange(e => { if(e.why==='notes'&&e.id===drawn&&S.body.querySelector('.pj-notes')?.value===e.project.notes)return;deskSig=null;S.stale = true; if (visible()) paintSoon(); });
     addEventListener('hearth:view', () => { if (visible() && S.stale) paintSoon(); });
     // (round 72) coming on screen draws at once (the 80 ms wait is for bursts of changes, not for a click)
     document.addEventListener('hearth:activate', () => { if (!visible()) { keepDesk();ProjectFrontpage.stop(); clearTimeout(paintT); ++paintVersion; S.stale = true; S.io?.disconnect(); } else if (S.stale) { clearTimeout(paintT); paint(); } });
@@ -62,9 +62,17 @@ const ProjectsHome = (() => {
     await P.lookFor();
     if (version !== paintVersion) return;
     if (!visible()) { S.stale = true; return; }
+    // (round 74, projdesk74) back on the Desk of the same project with nothing changed (the project, the sources it reads,
+    // its scene's modules, its chats' titles, the minute its times are written in): the Desk drawn before is kept as it
+    // is. It was rebuilt on every tab switch (≈ 60 ms of script plus a whole new Desk to draw), right where you click next
+    const p = S.open && P.get(S.open);
+    if (p && drawn === p.id && deskSig && deskSig === deskSigOf(p) && S.body.querySelector('.pj-p-head')) return;
     keepDesk();
-    if (S.open && P.get(S.open)) paintProject(P.get(S.open)); else { S.open = null; paintHome(); }
+    if (p) { paintProject(p); deskSig = deskSigOf(p); } else { S.open = null; deskSig = null; paintHome(); }
   }
+  let deskSig = null;
+  const deskSigOf = (p) => { const sc = window.ThreeLab?.scenes?.get?.(ProjectWorkspace.currentScene() || p.workspace?.sceneId); return JSON.stringify([p.updated, p.items.length, srcId(P.look?.()), sc ? sc.layers?.map((x) => `${x.id}:${x.name}:${x.visible !== false}`) : null, p.items.filter((x) => x.type === 'chat').map((x) => P.nameOf(x)), ProjectWorkspace.currentScene(), Math.floor(Date.now() / 60000)]); };
+  const srcIds = new WeakMap(); let srcN = 0; const srcId = (o) => { if (!o || typeof o !== 'object') return 0; if (!srcIds.has(o)) srcIds.set(o, ++srcN); return srcIds.get(o); };
 
   // ---------- the cards ----------
   let homeN = 0;
@@ -116,6 +124,8 @@ const ProjectsHome = (() => {
     c.addEventListener('contextmenu', (e) => showMenuAt(e, P.menu(p)));
     // (round 72) the pointer on a card: the workspace's code starts loading (the first open of a session waits less)
     c.addEventListener('pointerenter', prefetch, { once: true }); c.addEventListener('focus', prefetch, { once: true });
+    // (round 74, projdesk74) the press is the click's first moment: the preview page starts loading now (let go in 4 s if no open claims it)
+    c.addEventListener('pointerdown', (e) => { if (e.button === 0 && !e.target.closest('.pj-go') && Lazy.loaded('lab')) ThreeLab.workspace?.preload?.(); });
     return c;
   }
   const prefetch = () => { for (const g of ['lab', 'board', 'creative']) if (!Lazy.loaded(g)) Lazy.load(g).catch(() => {}); };
@@ -153,6 +163,8 @@ const ProjectsHome = (() => {
       { label: 'Search everything…', key: 'Ctrl+Shift+K', action: () => ProjectsSearch.open() },
       { label: 'Suggest projects', action: () => suggestNow() },
       { label: `${P.grouping() ? '✓ ' : ''}Group chats by project`, action: () => P.setGrouping(!P.grouping()) },
+      // (round 74, projdesk74) opt-in: the preview page stays loaded behind this page, so opening a project is as quick as switching
+      { label: `${ProjectWorkspace.keepLab() ? '✓ ' : ''}Keep the Lab ready behind Projects`, hint: 'Opens projects faster · uses more memory', action: () => { const on = ProjectWorkspace.keepLab(!ProjectWorkspace.keepLab()); toast(on ? 'The Lab stays ready behind Projects (uses more memory)' : 'The Lab is let go behind Projects', { timeout: 3000 }); } },
       { label: 'Archived projects', items: () => { const xs = P.all().filter((p) => p.status === 'archived'); return xs.length ? xs.map((p) => ({ label: `${p.ident.glyph} ${p.name}`, action: () => show(p.id) })) : [{ label: 'None', disabled: true }]; } },
       // (round 72, projects72) a deleted project comes back with its notes, look and links (its chats and scenes never left)
       { label: 'Recently deleted projects', items: () => { const xs = P.trashed(); return xs.length ? xs.map((p) => ({ label: `${p.ident.glyph} ${p.name}`, hint: `Restore · deleted ${timeAgo(p.deletedAt)}`, action: () => { if (P.restoreProject(p.id)) toast(`“${p.name}” is back in Projects`, { timeout: 4000 }); } })) : [{ label: 'Nothing deleted', disabled: true }]; } },
@@ -226,7 +238,7 @@ const ProjectsHome = (() => {
       if(!d.open)return;
       painted=true;
       const q=query.value.trim().toLowerCase(),hits=p.items.filter(x=>(!kind.value||x.type===kind.value)&&(!q||P.nameOf(x).toLowerCase().includes(q)||String(x.ref).toLowerCase().includes(q))).sort((a,b)=>(P.timeOf(b)||b.at)-(P.timeOf(a)||a.at)),shown=hits.slice(0,limit);
-      results.replaceChildren(...ORDER.flatMap(t=>{const xs=shown.filter(x=>x.type===t);return xs.length?[el('section',{class:'pj-sec'},el('h4',{text:C.TYPES[t].icon+' '+C.TYPES[t].label}),el('div',{class:'pj-items'},...xs.map(x=>itemRow(p,x))))]:[];}),...(!hits.length?[el('p',{class:'hint',text:q||kind.value?'No matching files.':'Add a scene, chat, or file to see it here.'})]:[]));
+      results.replaceChildren(...ORDER.flatMap(t=>{const xs=shown.filter(x=>x.type===t);return xs.length?[el('section',{class:'pj-sec'},el('h4',{text:C.TYPES[t].icon+' '+C.TYPES[t].label}),el('div',{class:'pj-items'},...xs.map(x=>itemRow(p,x,{lazy:true}))))]:[];}),...(!hits.length?[el('p',{class:'hint',text:q||kind.value?'No matching files.':'Add a scene, chat, or file to see it here.'})]:[])); // (round 74) lazy: a row's picture loads once the row is drawn
       count.textContent=`${shown.length} of ${hits.length}`;more.hidden=shown.length>=hits.length;
       const saved=desks.get(p.id)||state;saved.fileLimit=limit;desks.set(p.id,saved);
     };
@@ -234,13 +246,18 @@ const ProjectsHome = (() => {
     if((state.open||[]).includes('pw-project-files')){d.open=true;paint();}
     return d;
   }
-  function itemRow(p, x) {
+  // (round 74, projdesk74) lazy (the files shelf): the shelf's rows skip layout and paint while out of sight
+  // (content-visibility, project-workspace.css); a row's picture (a full-size capture / render file) is asked for only
+  // when its row is first drawn, so opening the shelf decodes the few pictures on screen, not 60
+  const CV_EVENT = 'oncontentvisibilityautostatechange' in document.documentElement;
+  function itemRow(p, x, { lazy = false } = {}) {
     const pic = ['scene', 'seq', 'render', 'capture', 'board'].includes(x.type) ? P.thumbOf(x) : null;
     const t = P.timeOf(x) || x.at;
     const r = el('button', { type: 'button', class: `pj-item${P.gone(x) ? ' pj-gone' : ''}${p.cover === x.id ? ' pj-is-cover' : ''}`, title: `${P.nameOf(x)}${P.gone(x) ? ' (not here: deleted, or not arrived from your other computer yet)' : ''}\nClick: open · right-click: more` },
-      pic ? el('img', { class: 'pj-thumb', src: pic, alt: '', loading: 'lazy', decoding: 'async' }) : el('span', { class: 'pj-thumb pj-thumb-icon', text: C.TYPES[x.type].icon }),
+      pic ? el('img', { class: 'pj-thumb', ...(lazy && CV_EVENT ? {} : { src: pic }), alt: '', loading: 'lazy', decoding: 'async' }) : el('span', { class: 'pj-thumb pj-thumb-icon', text: C.TYPES[x.type].icon }),
       el('span', { class: 'pj-item-name', text: P.nameOf(x).replace(`${p.name} · `, '') }),
       t ? el('span', { class: 'pj-item-time', text: timeAgo(t) }) : null);
+    if (pic && lazy && CV_EVENT) { const show = (e) => { if (e.skipped) return; r.removeEventListener('contentvisibilityautostatechange', show); r.querySelector('img.pj-thumb').src = pic; }; r.addEventListener('contentvisibilityautostatechange', show); } // (round 74)
     r.addEventListener('click', () => { P.touch(p); P.openItem(x); });
     r.addEventListener('contextmenu', (e) => showMenuAt(e, P.itemMenu(p, x)));
     return r;
