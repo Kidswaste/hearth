@@ -130,7 +130,7 @@ tidy();
 // ---------- 5. What's new and the patch notes ----------
 await Lazy.load('whatsnew');
 await WhatsNew.open({ since: 60 });
-const row = await until(() => document.querySelector('dialog.wn-dialog[open] .tn-row'), 'the Try it row in What\'s new', 120).catch(() => null);
+const row = await until(() => document.querySelector('dialog.wn-dialog[open] .tn-row:not(.tn7-row)'), 'the Try it row in What\'s new', 120).catch(() => null);
 step('What\'s new: a Try it per round (61–63) and "N of 13 tried"', Boolean(row && row.querySelectorAll('.tn-round').length === 3 && /2 of 13 tried/.test(row.textContent)), row?.textContent);
 row?.querySelector('.tn-round[data-round="62"]')?.click();
 await until(() => card()?.dataset.tour, 'round 62 from What\'s new', 200).catch(() => null);

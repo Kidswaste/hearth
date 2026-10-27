@@ -63,10 +63,11 @@ const LeaveSoon = window.LeaveSoon = (() => {
     if (typeof ShowPrepCore === 'undefined') await Lazy.load('questjournal').catch(() => {}); // the Métro stations' list
     const o = origin(); if (!o) return { needHome: true };
     if (!spec.place || !K.inParis(spec.place)) throw Error('This has no spot on the Paris map, so Hearth can’t tell how long it takes to get there.');
-    const t = spec.target(K.travel(o, spec.place).min);
+    const dest = spec.stop || spec.place; // (round 71, eatnearby71) "🍜 Go here first": the trip goes to the food stop, then on foot to the venue
+    const t = spec.target(K.travel(o, dest).min + K.stopMin(spec.stop));
     if (t.error) throw Error(t.error);
-    const travel = honest(K.travel(o, spec.place), t.at); // (round 69, ratp69) the Métro closes at night
-    const item = { key: spec.key, kind: spec.kind, title: spec.title, place: { name: spec.place.name || '', lat: spec.place.lat, lon: spec.place.lon }, targetAt: t.at, words: t.words, travel, from: o.from, origin: o.sig, ref: spec.ref || {} };
+    const travel = honest(K.travel(o, dest), t.at); // (round 69, ratp69) the Métro closes at night
+    const item = { key: spec.key, kind: spec.kind, title: spec.title, place: { name: spec.place.name || '', lat: spec.place.lat, lon: spec.place.lon }, targetAt: t.at, words: t.words, travel, from: o.from, origin: o.sig, ref: spec.ref || {}, ...(spec.stop ? { stop: spec.stop } : {}) };
     return { item: { ...item, ...K.plan(item, K.now()) } };
   }
   async function turnOn(spec, beforeMap = () => {}) {
@@ -97,7 +98,7 @@ const LeaveSoon = window.LeaveSoon = (() => {
       if (typeof ShowPrepCore === 'undefined') await Lazy.load('questjournal').catch(() => {});
       for (const it of stale) {
         try {
-          const travel = honest(K.travel(o, it.place), it.targetAt), next = { ...it, travel, from: o.from, origin: o.sig };
+          const travel = honest(K.travel(o, it.stop || it.place), it.targetAt), next = { ...it, travel, from: o.from, origin: o.sig }; // (round 71, eatnearby71) via its food stop
           const r = await api().op({ op: 'put', item: { ...next, ...K.plan(next, K.now()) } });
           if (r?.ok) { items.set(it.key, r.value); n++; }
         } catch { /* too late from there now: it keeps its time */ }
@@ -346,7 +347,7 @@ const LeaveSoon = window.LeaveSoon = (() => {
   let attached = { journal: false, shows: false };
   function attach() {
     try { if (!attached.journal && J()) { J().addMapLayer(layer); J().addDetailHook(detail); attached.journal = true; } } catch { /* not yet */ }
-    try { if (!attached.shows && typeof ShowSync !== 'undefined' && ShowSync.extend) { ShowSync.extend({ card: (kit, s, acts) => { if (!s.dateOnly) acts.append(showToggle(s, 'qj-button qj-quiet')); if (soonShow(s)) acts.append(beforeButton(s)); } }); attached.shows = true; } } catch { /* not yet */ }
+    try { if (!attached.shows && typeof ShowSync !== 'undefined' && ShowSync.extend) { ShowSync.extend({ card: (kit, s, acts) => { if (!s.dateOnly) acts.append(showToggle(s, 'qj-button qj-quiet')); if (soonShow(s)) acts.append(beforeButton(s)); if (soonShow(s) && !s.dateOnly) acts.append(eatButton(s)); } }); attached.shows = true; } } catch { /* not yet */ }
   }
   // (round 70, leavefix70) 🎒 Before I go on a show's card (a show still to come, or tonight's): the tickable list
   // (beforego.js, its own lazy group, loaded on this click)
@@ -354,6 +355,11 @@ const LeaveSoon = window.LeaveSoon = (() => {
   const before = (open) => Lazy.load('beforego').then(() => open(window.BeforeGo)).catch((err) => toast(calmError(err), { type: 'error' }));
   function beforeButton(s) {
     return el('button', { type: 'button', class: 'qj-button qj-quiet bg-open', text: '🎒 Before I go', title: 'A short list to tick before you head out: your ticket, phone charged, earplugs, ID, card / cash (and a jacket when the forecast says so)', on: { click: (e) => { e.stopPropagation(); before((B) => B.open(s)); } } });
+  }
+  // (round 71, eatnearby71) 🍜 Eat nearby on a show's card: food stops within ~10 min walk of the venue, open before doors
+  // (eatnearby.js, its own lazy group, loaded on this click); "Go here first" adds the stop to this show's ⏰ reminder
+  function eatButton(s, spec) {
+    return el('button', { type: 'button', class: 'qj-button qj-quiet en-open', text: '🍜 Eat nearby', title: 'Food stops within about 10 minutes’ walk of the venue, open in the 2 hours before doors. “Go here first” moves your leave time earlier.', on: { click: (e) => { e.stopPropagation(); Lazy.load('eatnearby').then(() => EatNearby.open(s, { spec })).catch((err) => toast(calmError(err), { type: 'error' })); } } });
   }
   // a quest's detail in the Studio: a show quest (its show still to come) or an errand still open
   function detail({ campaign }) {
@@ -370,6 +376,6 @@ const LeaveSoon = window.LeaveSoon = (() => {
   refresh().catch(() => {});
 
   return { refresh, items: () => [...items.values()], get, isOn, origin, home, setHome, clearHome, pickHome, turnOn, turnOff, snooze, dismiss, recompute, showOnMap, hudRows, sayMissed, honest, statusSoon, leaveEarlier, keyDialog,
-    toggle, showToggle, errandToggle, slotToggle, showSpec, errandSpec, slotSpec, attach, layer, beforeButton, get picking() { return !!picking; },
+    toggle, showToggle, errandToggle, slotToggle, showSpec, errandSpec, slotSpec, attach, layer, beforeButton, eatButton, get picking() { return !!picking; },
     _test: { clock: async (ms) => { K.setClock(ms); const r = await api().op({ op: 'test', now: ms == null ? Date.now() : ms }); return r?.value; } } }; // (checks) one fake clock for both sides
 })();

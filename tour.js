@@ -55,7 +55,7 @@ const Tour = (() => {
     setProg(cur.tour.id, done ? { step: 0, done: true } : { step: cur.i });
     const ended = cur; // (round 64, newtour64) a tour may want to know how it ended (Try what's new keeps its own progress)
     cur = null; clearTimeout(findT); unhookClick(); ro?.disconnect(); ro = null;
-    removeEventListener('resize', reflow); removeEventListener('keydown', onKey, true);
+    removeEventListener('resize', reflow); removeEventListener('scroll', reflow, true); removeEventListener('keydown', onKey, true);
     card?.remove(); ring?.remove(); card = ring = target = null;
     try { ended.tour.onEnd?.({ done, step: ended.i, total: ended.steps.length, how }); } catch (err) { console.warn('tour end', err); }
     return true;
@@ -181,7 +181,7 @@ const Tour = (() => {
     const steps = stepsOf(t);
     const p = prog()[t.id];
     cur = { tour: t, steps, i: 0, opened: new Set() }; // opened: the Show me steps shown (round 71)
-    addEventListener('resize', reflow); addEventListener('keydown', onKey, true);
+    addEventListener('resize', reflow); addEventListener('scroll', reflow, { capture: true, passive: true }); addEventListener('keydown', onKey, true); // (round 71) the ring follows a scrolled list (Settings)
     if (typeof Usage !== 'undefined') Usage.track?.(`Tour › ${t.name}`, { area: 'Tours', label: t.name });
     show(!restart && p && !p.done ? p.step || 0 : 0);
     return t;

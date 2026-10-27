@@ -126,10 +126,21 @@
   function plan(item, at = now()) {
     if (!fin(item?.targetAt)) throw Error('There’s no time to plan from.');
     if (item.targetAt <= at) throw Error(`That's already past (${item.words || hm(item.targetAt)}).`);
-    const leaveAt = floor5(item.targetAt - item.travel.min * MIN);
-    if (leaveAt <= at) throw Error(`It’s already time to go: ${item.travel.text}, and it ${item.words || `is at ${hm(item.targetAt)}`}.`);
+    const leaveAt = floor5(item.targetAt - (item.travel.min + stopMin(item.stop)) * MIN); // (round 71, eatnearby71) a food stop first: its eat time + the walk on to the venue
+    if (leaveAt <= at) throw Error(`It’s already time to go: ${item.travel.text}${item.stop ? `, ${stopText(item.stop)}` : ''}, and it ${item.words || `is at ${hm(item.targetAt)}`}.`);
     const notifyAt = Math.max(leaveAt - LEAD * MIN, at + 2000); // less than 10 min to go: it rings in a moment
     return { leaveAt, notifyAt };
+  }
+  // (round 71, eatnearby71) "🍜 Go here first": a reminder may carry one food stop on the way ({ id, name, lat, lon, eatMin,
+  // walkMin: from there to the venue }); the trip (travel) then goes to the stop, and the leave time moves earlier by
+  // eatMin + walkMin (eatnearby-core.js builds it)
+  const stopMin = (st) => (st ? st.eatMin + st.walkMin : 0);
+  const stopText = (st) => `eat at ${st.name} first (${st.eatMin} min, then ${st.walkMin} min walk)`;
+  function stopOf(st) {
+    if (!st || typeof st !== 'object' || !inParis(st) || !clean(st.name)) return null;
+    const eat = Math.round(+st.eatMin), walk = Math.round(+st.walkMin);
+    if (!fin(eat) || eat < 5 || eat > 180 || !fin(walk) || walk < 0 || walk > 60) return null;
+    return { id: clean(st.id, 100), name: clean(st.name, 120), lat: +st.lat, lon: +st.lon, eatMin: eat, walkMin: walk };
   }
   const KINDS = new Set(['show', 'errand', 'plan']);
   const STATES = new Set(['on', 'fired', 'snoozed', 'dismissed', 'missed']);
@@ -143,6 +154,7 @@
       leaveAt: +it.leaveAt, notifyAt: +it.notifyAt, state: it.state || 'on', ref: it.ref && typeof it.ref === 'object' ? JSON.parse(JSON.stringify(it.ref, (k, v) => (typeof v === 'string' ? v.slice(0, 200) : v))) : {}, createdAt: fin(it.createdAt) ? +it.createdAt : 0 };
     for (const k of ['firedAt', 'snoozeUntil', 'missedAt', 'dismissedAt', 'checkedAt', 'earlierBy', 'warnedAt']) if (fin(it[k])) out[k] = +it[k];
     const st = statusOf(it.status); if (st) out.status = st; // (round 69, ratp69) the route's line status, as last checked
+    const sp = stopOf(it.stop); if (sp) out.stop = sp; // (round 71, eatnearby71)
     if (it.missedSeen) out.missedSeen = true;
     return out;
   }
@@ -237,12 +249,12 @@
     const m = minsTo(it.leaveAt, at);
     const lead = m >= 1 ? `Leave in ${m} min for ${it.title}` : `Time to leave for ${it.title}`;
     const st = it.status && (it.status.state === 'disrupted' || it.status.state === 'blocked') ? (it.earlierBy ? `⚠ line ${it.status.line}: leaving ${it.earlierBy} min earlier` : it.status.words.replace(/ — leave .*$/, '')) : ''; // (round 69, ratp69) the route's line status
-    return { title: `${lead} — ${it.travel.text}`, body: [st, `Leave at ${hm(it.leaveAt)} from ${it.from}`, it.words, it.place.name, it.travel.mode !== 'walk' || it.travel.night ? it.travel.how : ''].filter(Boolean).join(' · ') };
+    return { title: `${lead} — ${it.travel.text}`, body: [st, `Leave at ${hm(it.leaveAt)} from ${it.from}`, it.stop ? `🍜 ${stopText(it.stop).replace(/^e/, 'E')}` : '', it.words, it.place.name, it.travel.mode !== 'walk' || it.travel.night ? it.travel.how : ''].filter(Boolean).join(' · ') };
   }
   /** the ✦ tracker row: { text, sub, state, title } */
   function hud(it, at = now()) {
     const lw = `Leave at ${when(it.leaveAt, at)}`;
-    const sub = `${it.title} · ${it.travel.text} from ${it.from}`;
+    const sub = `${it.title} · ${it.travel.text} from ${it.from}${it.stop ? ` · 🍜 ${it.stop.name} first` : ''}`; // (round 71, eatnearby71)
     if (it.state === 'missed') return { text: `⏰ Missed · ${lw.toLowerCase()}`, sub, state: 'missed', title: 'Hearth was closed (or asleep) when this reminder was due, so it didn’t ring late.' };
     if (it.state === 'dismissed') return null;
     if (it.leaveAt <= at && it.targetAt > at) return { text: '⏰ Time to leave', sub, state: 'now', title: `${it.words || ''}` };
@@ -255,9 +267,9 @@
   // the note used to say "at 19:05" with no word that it meant tomorrow
   function confirmText(it, at = now()) {
     const nd = when(it.notifyAt, at), ld = when(it.leaveAt, at), same = nd.slice(0, -5) === ld.slice(0, -5);
-    return `⏰ I’ll remind you ${nd.length > 5 ? nd.slice(0, -5) : ''}at ${hm(it.notifyAt)} to leave at ${same ? hm(it.leaveAt) : ld} (${it.travel.text} from ${it.from}${it.kind === 'errand' && it.words ? `; it ${it.words}` : ''}).`;
+    return `⏰ I’ll remind you ${nd.length > 5 ? nd.slice(0, -5) : ''}at ${hm(it.notifyAt)} to leave at ${same ? hm(it.leaveAt) : ld} (${it.travel.text} from ${it.from}${it.stop ? `; ${stopText(it.stop)}` : ''}${it.kind === 'errand' && it.words ? `; it ${it.words}` : ''}).`;
   }
 
   return { WALK_MAX, KMH, LEAD, SNOOZE, ERRAND_MARGIN, GRACE, KEEP, MAX, now, setClock, inParis, metres, walkMin, stations, nearestStation, travel, about, hm, when, dayKey, localAt,
-    showTarget, slotTarget, errandTarget, plan, check, empty, validate, dueOf, settle, next, put, fire, snooze, dismiss, earlier, remove, missed, notice, hud, confirmText };
+    showTarget, slotTarget, errandTarget, plan, stopOf, stopMin, check, empty, validate, dueOf, settle, next, put, fire, snooze, dismiss, earlier, remove, missed, notice, hud, confirmText };
 });

@@ -8,12 +8,12 @@ let checks = 0;
 const test = (name, fn) => { fn(); checks++; console.log('✓ ' + name); };
 const OPENS = ['hud', 'show', 'settings', 'map', 'desk', 'sessions', 'railmore', 'lab', 'drawer'];
 // the brief's list (rounds 66–70) + the creative session's round 67 (Direction card, moodboard, credits, finish lines)
-const FEATURES = ['weekend', 'herepin', 'sessions', 'layers', 'slow', 'errand', 'invite', 'pads', 'ticket', 'leave', 'reference', 'broke', 'photos', 'controller', 'daw', 'metro', 'beforego', 'follow',
+const FEATURES = ['weekend', 'herepin', 'sessions', 'layers', 'slow', 'errand', 'invite', 'pads', 'ticket', 'leave', 'reference', 'broke', 'photos', 'controller', 'daw', 'metro', 'beforego', 'follow', 'eat',
   'direction', 'moodboard', 'credits', 'finish'];
 
-test('five themed tours (Paris nights · Sidequest · Music · Help when it breaks · In the Lab), 2–7 steps each', () => {
+test('five themed tours (Paris nights · Sidequest · Music · Help when it breaks · In the Lab), 2–8 steps each', () => {
   assert.deepEqual(C.TOURS.map((t) => t.name), ['Paris nights', 'Sidequest', 'Music', 'Help when it breaks', 'In the Lab']);
-  for (const t of C.TOURS) assert.ok(t.steps.length >= 2 && t.steps.length <= 7 && t.icon && t.why, t.id);
+  for (const t of C.TOURS) assert.ok(t.steps.length >= 2 && t.steps.length <= 8 && t.icon && t.why, t.id);
   assert.deepEqual(C.ROUNDS, [66, 67, 68, 69, 70]);
 });
 test('every feature of the list has exactly one step, and every step is one of them', () => {

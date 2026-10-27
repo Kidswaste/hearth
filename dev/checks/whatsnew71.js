@@ -97,13 +97,14 @@ try {
         await wait(380); // the ring follows a panel that slides in
         // the step's OWN button (its first target list, never the fallback)
         const own = TryNew.targetOf({ target: s.target }).map((f) => f()).find(Boolean);
+        await wait(200); // (finding it scrolls it into view, as the tour does: the ring follows)
         const rr = ring.getBoundingClientRect(); const br = own?.getBoundingClientRect();
         const onIt = Boolean(br && Math.abs(rr.left + 4 - br.left) < 3 && Math.abs(rr.top + 4 - br.top) < 3 && Math.abs(rr.width - 8 - br.width) < 3);
         const inView = Boolean(br && br.width > 2 && br.height > 2 && br.top >= 0 && br.left >= 0 && br.bottom <= innerHeight && br.right <= innerWidth);
         const hit = br ? document.elementsFromPoint(br.left + br.width / 2, br.top + br.height / 2).find((x) => !x.classList.contains('tour-ring') && !x.closest('.tour-card')) : null;
         const onTop = Boolean(hit && (hit === own || own.contains(hit)));
         ok = first && Boolean(own) && vis(own) && onIt && inView && onTop && !card().querySelector('.tour-hint');
-        info = `${out.timings[s.id]} ms · ${own ? `${own.tagName.toLowerCase()}.${String(own.className).split(' ').filter(Boolean).slice(0, 2).join('.')} “${own.textContent.trim().slice(0, 30)}”` : 'its button is NOT there'}${first ? '' : ' · (no Show me first)'}${onIt ? '' : ' · ring elsewhere'}${inView ? '' : ' · off screen'}${onTop ? '' : ` · covered by ${hit?.className || 'nothing'}`}`;
+        info = `${out.timings[s.id]} ms · ${own ? `${own.tagName.toLowerCase()}.${String(own.className).split(' ').filter(Boolean).slice(0, 2).join('.')} “${own.textContent.trim().slice(0, 30)}”` : 'its button is NOT there'}${first ? '' : ' · (no Show me first)'}${onIt ? '' : ` · ring elsewhere ${JSON.stringify([rr.left, rr.top, rr.width, br?.left, br?.top, br?.width].map(Math.round))} in ${ring.parentElement?.tagName}.${ring.parentElement?.className} ${getComputedStyle(ring).position}`}${inView ? '' : ' · off screen'}${onTop ? '' : ` · covered by ${hit?.className || 'nothing'}`}`;
       } catch (err) { info = err.message; }
       step(`${name}: Show me rings its own visible button`, ok, info);
       if (['weekend', 'invite', 'herepin', 'pads', 'slow', 'direction', 'moodboard'].includes(s.id)) await shot(s.id);

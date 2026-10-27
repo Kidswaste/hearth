@@ -28,6 +28,7 @@ const TryNew71Core = (() => {
       { id: 'ticket', round: 68, title: '🎟 My ticket', open: 'show', target: SHOW('.tk-btn'), text: '🎟 Add my ticket keeps your ticket with the show; at the door, Open my ticket shows it big and bright.' },
       { id: 'leave', round: 68, title: '⏰ Remind me to leave', open: 'show', target: SHOW('.ls-toggle'), text: '⏰ Remind me to leave rings 10 minutes before it’s time to go, with the Métro trip from your pin or Home.' },
       { id: 'beforego', round: 70, title: '🎒 Before I go', open: 'show', target: SHOW('.bg-open'), text: '🎒 Before I go is a short list to tick before you head out: ticket, phone charged, earplugs, ID.' },
+      { id: 'eat', round: 71, title: '🍜 Eat nearby', open: 'show', target: SHOW('.en-open'), text: '🍜 Eat nearby lists food stops a short walk from the venue, open before doors; Go here first moves your leave reminder.' },
       { id: 'follow', round: 70, title: '★ Follow', open: 'show', target: SHOW('.fw-btn'), text: '★ Follow an artist or a venue: when they announce a new show, the ✦ chip tells you.' },
       { id: 'metro', round: 69, title: '🚇 Métro status key', open: 'settings', target: ['text:Paris Métro status key…'], text: 'Optional: a free Métro key here lets leave reminders warn you when your line is disrupted.' },
     ] },
@@ -55,7 +56,7 @@ const TryNew71Core = (() => {
       { id: 'moodboard', round: 67, title: '🖼 Moodboard', open: 'drawer', target: ['.bdd .bdd-dist input'], fallback: ['.bdd'], text: 'A tile dragged into a chat now sends what it feels like, not the picture; this slider goes from Close to it to Only its spirit.' },
     ] },
   ];
-  const ROUNDS = [66, 67, 68, 69, 70];
+  const ROUNDS = [66, 67, 68, 69, 70]; // (eatnearby71's 🍜 Eat nearby rides along in Paris nights: it shipped with this round)
   const STEPS = TOURS.flatMap((t) => t.steps.map((s) => ({ ...s, tour: t.id })));
   const byId = (id) => TOURS.find((t) => t.id === id) || null;
   const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();

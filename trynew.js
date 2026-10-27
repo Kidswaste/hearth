@@ -7,6 +7,8 @@
 //     notes of rounds 61–63) and in /try; a round's Try it runs its paths in order, skipping what you tried
 //   · never nags: ONE Hints offer, ever (updater.js asks for it a minute after the start; Not now = forever)
 //   · ways in: What's new (a Try it per round), Settings › What's new… › Try what's new, Ctrl/⌘+K, /try
+// (round 71, whatsnew71) + five 1-minute themed tours of rounds 66–70 (trynew71-core.js: Paris nights · Sidequest · Music ·
+// Help when it breaks · In the Lab), each step one sentence + Show me on the real button, and the one card after an update.
 // Lazy group "trynew" (tier "use"), after "discover" (Tour).
 const TryNew = (() => {
   const C = TryNewCore;
@@ -33,8 +35,9 @@ const TryNew = (() => {
     const there = () => document.querySelector('.surface.active .wb-park-toggle, .surface.active .ph-win, .surface.active select[aria-label="Audio output"]');
     // the desk is there with its ✦ Preset window (the window leaves when the desk does: entering the station again brings it)
     if (await until(() => there() && document.querySelector('.surface.active .ph-win, .surface.active .ph-pill'), 1500)) return;
-    const btn = await until(() => [...document.querySelectorAll('.surface.active button')].find((b) => vis(b) && /^Serum 2 (&|and) Vital/.test(b.textContent.trim())), 5000);
-    btn?.click();
+    // (round 71, whatsnew71) the Playground's own way to the Sound desk (its "Serum 2 & Vital" station button was renamed)
+    if (typeof CreativePlayground !== 'undefined' && await until(() => document.querySelector('.surface.active .wb-stations'), 5000)) await CreativePlayground.openFeature('vst', { reuse: true });
+    else (await until(() => [...document.querySelectorAll('.surface.active button')].find((b) => vis(b) && /^Serum 2 (&|and) Vital/.test(b.textContent.trim())), 5000))?.click();
     await until(there, 5000);
   }
   function chat() {
@@ -237,7 +240,11 @@ const TryNew = (() => {
     await QuestHud.openStudio(null, 'world'); // the Paris map (Show me is the owner's click: as if he had clicked Map)
     await until(() => vis(document.querySelector('.surface.active .qml-open')) && document.querySelector('.surface.active .hp-btn'), 6000);
   }
-  async function hud() { await Lazy.load('questhud'); if (!QuestHud.isOpen?.()) await QuestHud.open(); await until(() => vis(document.querySelector('.qh-panel')), 3000); }
+  async function hud() {
+    await Lazy.load('questhud'); if (!QuestHud.isOpen?.()) await QuestHud.open();
+    const p = await until(() => vis(document.querySelector('.qh-panel')) && document.querySelector('.qh-panel'), 3000);
+    await Promise.all((p?.getAnimations?.({ subtree: true }) || []).map((a) => a.finished.catch(() => {}))); // the ring goes on once it has slid in
+  }
   async function sessions() {
     await desk();
     if (vis(document.querySelector('.bl-panel'))) return;
@@ -247,8 +254,12 @@ const TryNew = (() => {
   async function settings() {
     if (!document.querySelector('dialog.settings-dialog[open]')) await AppUI.openSettings();
     const sd = await until(() => document.querySelector('dialog.settings-dialog[open]'), 4000);
-    const fold = sd?.querySelector('details[data-fold="hearth"]');
-    if (fold && !fold.open) fold.open = true; // Housekeeping
+    // Advanced › Housekeeping (and any fold around it)
+    for (let d = sd?.querySelector('details[data-fold="hearth"]'); d && d !== sd; d = d.parentElement) if (d.tagName === 'DETAILS' && !d.open) d.open = true;
+    // once the folds have opened (they animate), the key's button in the middle of the list, so the ring lands on it still
+    await Promise.all((sd?.getAnimations?.({ subtree: true }) || []).map((a) => a.finished.catch(() => {})));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    [...(sd?.querySelectorAll('button') || [])].find((b) => b.textContent.trim().startsWith('Paris Métro status key'))?.scrollIntoView({ block: 'center' });
   }
   async function railMore() {
     try { hideMenu(); } catch { /* no menu */ }
@@ -271,6 +282,7 @@ const TryNew = (() => {
     try { hideMenu(); } catch { /* no menu */ }
     try { if (keep !== 'hud' && typeof QuestHud !== 'undefined' && QuestHud.isOpen?.()) QuestHud.close(); } catch { /* fine */ }
     if (keep !== 'show') qjOpen().forEach((d) => d.close());
+    try { if (keep !== 'sessions' && typeof BounceLog !== 'undefined') BounceLog.closePanel(); } catch { /* fine */ } // its list sits over the desk's top row
     if (keep !== 'settings') document.querySelector('dialog.settings-dialog[open]')?.close();
     try { if (keep !== 'drawer' && typeof BoardDrawer !== 'undefined' && BoardDrawer.isOpen()) BoardDrawer.toggle(false); } catch { /* fine */ }
     clear(keep);
