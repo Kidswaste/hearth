@@ -178,7 +178,8 @@ try {
     const files = document.querySelector('.pw-project-files');
     // (round 74) in frames too: the animation frames from the click to the one that shows the rows, and how long that took
     let t0 = 0; await profile('desk-files', async () => { const ticks = []; let on = true; const tick = (t) => { ticks.push(t); if (on) requestAnimationFrame(tick); }; requestAnimationFrame(tick); await frame();
-      t0 = performance.now(); const n0 = ticks.length; files.querySelector('summary').click(); await until(() => files.querySelector('.pw-file-results .pj-item'), 'files'); const rowsAt = performance.now(); await frame(); out.desk.files = Math.round(performance.now() - t0); on = false;
+      let rowsAt = 0; const mo = new MutationObserver(() => { if (!rowsAt && files.querySelector('.pw-file-results .pj-item')) rowsAt = performance.now(); }); mo.observe(files, { childList: true, subtree: true });
+      t0 = performance.now(); const n0 = ticks.length; files.querySelector('summary').click(); await until(() => files.querySelector('.pw-file-results .pj-item'), 'files'); rowsAt = rowsAt || performance.now(); mo.disconnect(); await frame(); out.desk.files = Math.round(performance.now() - t0); on = false;
       const after = ticks.slice(n0); const shown = after.findIndex((t) => t >= rowsAt);
       out.desk.filesFrames = { rowsBuiltAt: Math.round(rowsAt - t0), frameShowingRows: shown < 0 ? null : shown + 1, frameAt: shown < 0 ? null : Math.round(after[shown] - t0), longFrames: loafSince(t0, performance.now()) }; });
     out.desk.filesRows = files.querySelectorAll('.pj-item').length; out.desk.count = files.querySelector('.pw-file-footer .hint')?.textContent;
