@@ -331,10 +331,12 @@ const ThreeLab = (() => {
   const live = (() => {
     const c = { reloads: {}, sent: {}, log: [] };
     let why = null;
+    const onReload = new Set(); // (round 72, labbridge72) (name) => …: a page that reloads drops what it was answering
     const COUNTED = /^(hot-layer|swap-layers|run-layers|remove-layer|layer-props|media-unload)$/;
     const note = (what) => { c.log.push({ at: Date.now(), what, why: why || 'ui' }); if (c.log.length > 200) c.log.splice(0, c.log.length - 200); };
     return {
-      reload(name) { c.reloads[name] = (c.reloads[name] || 0) + 1; note(`reload ${name}`); },
+      reload(name) { c.reloads[name] = (c.reloads[name] || 0) + 1; note(`reload ${name}`); for (const fn of onReload) { try { fn(name); } catch (err) { console.warn(err); } } },
+      onReload(fn) { onReload.add(fn); return () => onReload.delete(fn); },
       retune(name) { c.retunes = (c.retunes || 0) + 1; note(`retune ${name}`); }, // (round 37, labboot) fit ⇄ exact size in place
       gl(what, name) { const g = (c.gl ||= {}); g[what] = (g[what] || 0) + 1; note(`gpu ${what} ${name}`); }, // (round 43, glrecover) lost / restored / stuck
       sent(name, type) { if (!COUNTED.test(type)) return; const k = `${name} ${type}`; c.sent[k] = (c.sent[k] || 0) + 1; if (type !== 'layer-props') note(k); },
@@ -1914,30 +1916,36 @@ const ThreeLab = (() => {
     const refUse = (r) => (r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`);
     const REF_ICONS = { image: '🖼', video: '🎞', model: '🧊', audio: '🔊', font: '🔤', data: '📄' };
     const fmtSize = (n) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-    function refKey(name, except = null) {
+    function refKey(name, except = null, among = refsOf()) {
       let k = name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9]+(.)?/g, (_, c) => (c ? c.toUpperCase() : '')).replace(/^[^a-zA-Z_]+/, '') || 'ref';
       k = k[0].toLowerCase() + k.slice(1);
-      const taken = new Set(refsOf().filter((r) => r !== except).map((r) => r.key));
+      const taken = new Set(among.filter((r) => r !== except).map((r) => r.key));
       let out = k; let i = 2;
       while (taken.has(out)) { out = `${k}${i}`; i += 1; }
       return out;
     }
-    async function addRef(src, { key } = {}) {
-      if (!current) throw new Error('Open a sketch first');
-      const owner=current.id;
+    async function addRef(src, { key, sketchId = null } = {}) {
+      // (round 72, labbridge72) sketchId: another scene's references (a chat's scene that runs backstage): saved with that
+      // scene, its bytes go to the preview when it's opened
+      const other = sketchId && sketchId !== current?.id ? sketchId : null;
+      if (other && !sketches.some((x) => x.id === other)) throw new Error('That scene is gone (deleted?)');
+      if (!current && !other) throw new Error('Open a sketch first');
+      const owner = other || current.id;
+      const list = () => (refsAll[owner] ||= []);
       const name = String(src).split(/[\\/]/).pop().replace(/^\d{10,}-/, '');
       const kind = refKindOf(name);
       if (!kind) throw new Error(`${name} isn't a file a sketch can use (images, videos, 3D models, audio, fonts, data files)`);
       const st = await window.hub.fs.stat(src);
-      if(current?.id!==owner)throw new Error('Sketch changed while importing; try again in the intended sketch');
+      if(!other&&current?.id!==owner)throw new Error('Sketch changed while importing; try again in the intended sketch');
       if (st.size > 400 * 1048576) throw new Error(`${name} is over 400 MB`);
-      const existing = refsOf().find((r) => r.name === name && r.size === st.size);
+      const existing = list().find((r) => r.name === name && r.size === st.size);
       if (existing) return existing;
       const path = await window.hub.importRef(src);
-      if(current?.id!==owner)throw new Error('Sketch changed while importing; the copied asset was kept safely');
-      const r = { id: `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, key: refKey(key || name), name, kind, path, size: st.size, at: Date.now(), ...(/[\\/]refs[\\/]\d{10,}-/.test(src) ? {} : { src }) }; // (round 42) src: the original, followed when you save it again
-      refsOf().push(r);
+      if(!other&&current?.id!==owner)throw new Error('Sketch changed while importing; the copied asset was kept safely');
+      const r = { id: `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, key: refKey(key || name, null, list()), name, kind, path, size: st.size, at: Date.now(), ...(/[\\/]refs[\\/]\d{10,}-/.test(src) ? {} : { src }) }; // (round 42) src: the original, followed when you save it again
+      list().push(r);
       saveRefs();
+      if (other) return r;
       await loadRefBytes();
       renderRefsBtn();
       if (refsDlg?.open) renderRefsDlg();
@@ -2053,6 +2061,7 @@ const ThreeLab = (() => {
       if (r.kind === 'image') Native.attachPaths(agent.id, [r.path]);
     }
     api.addRef = (p, o) => addRef(p, o);
+    api.refsFor = (id) => (refsAll[id] || []).slice(); // (round 72) a scene's references, on screen or not
     const noteBtn = btn('📌 Note', 'Take a screenshot and a note at this moment, for a change you want here (N)', () => takeNote(), 'ghost small imp-capture');
     const notesBtn = btn('Notes', 'Your notes on this sketch: jump to them, mark them done, send them to the Three Director', (e) => notesList(e.currentTarget));
     notesBtn.dataset.feature = 'Notes list';
@@ -3075,6 +3084,12 @@ const ThreeLab = (() => {
     let pendingShot = null;
     // Requests to the sandbox that answer later (eval / input), by id.
     const sandboxCalls = new Map();
+    // (round 72, labbridge72) the preview reloading (Run, a fresh page, a lost GPU…) while an eval / play-test waits on it: the
+    // old page will never answer, so the call ends now, in words, instead of "did not answer" seconds later
+    live.onReload((name) => {
+      if (name !== 'preview' || !sandboxCalls.size) return;
+      for (const [id, resolve] of [...sandboxCalls]) { sandboxCalls.delete(id); resolve({ ok: false, error: 'The Lab preview reloaded while this ran (the page it ran in is gone): nothing was changed by it. Call it again.' }); }
+    });
     function sandboxCall(msg, timeout) {
       return new Promise((resolve) => {
         const id = `c${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
@@ -5023,7 +5038,11 @@ ${frag}\`,
     if (!tabs) Tools.shown(Tools.get('three')); // load the Lab in the background if needed
     if (!tabs) return { ok: false, error: 'Three.js Lab could not be loaded.' };
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
+    if (!api.director) return { ok: false, error: 'The Three.js Lab is still starting (it took over 10 s): nothing was changed. Call it again in a moment.' }; // (round 72) not a silent fall-through
+    // (round 72, labbridge72) the chats' scene links are read first (a call routed before that went to the scene on screen)
+    if (ctx.chatId && typeof ChatScenes !== 'undefined' && ChatScenes.ready) await Promise.race([ChatScenes.ready(), new Promise((r) => setTimeout(r, 5000))]);
     const route = typeof ChatScenes !== 'undefined' && api.scenes ? ChatScenes.routeThree(tool, ctx.chatId) : null;
+    if (route && !route.sketchId) return { ok: false, error: route.error || 'This chat has no Lab scene: nothing was changed.' }; // (round 72) unlinked / not arrived yet, in words
     // the Lab sequence is one for every chat (its scenes are anyone's): never backstage
     if (tool === 'three_sequence' && typeof ThreeSeq !== 'undefined') return ThreeSeq.handle(tool, args, { sketchId: route?.sketchId || null });
     // the motion-design kit (tools/three-motion.js): its layers go through three_add_layer, so they reach this chat's scene
@@ -5240,7 +5259,9 @@ ${frag}\`,
     // A picture of the Lab preview (data URL) for second opinions; null when nothing renders.
     shot: async () => (api.director ? api.director.shot() : null),
     // Files dropped in the Three Director's chat become references of the open sketch.
-    addReference: (p) => (api.addRef ? api.addRef(p) : Promise.reject(new Error('Open the Three.js Lab first'))),
+    // (round 72, labbridge72) o.sketchId: that scene's references (a chat's scene backstage), not the one on screen
+    addReference: (p, o = {}) => (api.addRef ? api.addRef(p, o) : Promise.reject(new Error('Open the Three.js Lab first'))),
+    refsOf: (id) => api.refsFor?.(id) || [],
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
     openShader(code) { ensureOpen('shader'); setTimeout(() => api.openShader?.(code), 60); },
     restartVisible: () => api.restartVisible?.() ?? false,

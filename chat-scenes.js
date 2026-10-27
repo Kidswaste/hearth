@@ -23,6 +23,7 @@ const ChatScenes = (() => {
 
   let data = { links: {}, videos: {}, idents: {} };
   let loaded = false;
+  let readyFn; const readyP = new Promise((r) => { readyFn = r; });
   const save = debounce(() => window.hub.kvSet('chat-scenes', data), 400);
   const workers = new Map(); // chatId -> { list: ['claude', 'codex'], active: 'codex' | null } set by a jam (jam.js) while it runs
 
@@ -126,13 +127,13 @@ const ChatScenes = (() => {
   function ownerOf(sketchId) {
     if (!sketchId) return null;
     let best = null;
-    for (const [chatId, L] of Object.entries(data.links)) if (L.sketch === sketchId && summaryOf(chatId) && (!best || L.at > data.links[best].at)) best = chatId;
+    for (const [chatId, L] of Object.entries(data.links)) if (L.sketch === sketchId && !L.guest && summaryOf(chatId) && (!best || L.at > data.links[best].at)) best = chatId;
     return best;
   }
   function link(chatId, sketchId, { rename = true } = {}) {
     if (!chatId || !sketchId) return;
     // one owner per sketch: the chat that had it lets go
-    for (const [id, L] of Object.entries(data.links)) if (L.sketch === sketchId && id !== chatId) delete data.links[id];
+    for (const [id, L] of Object.entries(data.links)) if (L.sketch === sketchId && id !== chatId && !L.guest) delete data.links[id]; // (round 72) guests stay
     const S = lab();
     const sk = S?.get(sketchId);
     // a scene that hasn't arrived from the other computer yet (cloud sync) is remembered, to be given back when it does
@@ -149,7 +150,35 @@ const ChatScenes = (() => {
     paintAll();
     dispatchEvent(new CustomEvent('hearth:scene-link', { detail: { chatId, sketchId } })); // (round 23) a project's chat brings its scene along (projects.js)
   }
-  function unlink(chatId) { delete data.links[chatId]; save(); paintAll(); }
+  function unlink(chatId) { delete data.links[chatId]; save(); paintAll(); dispatchEvent(new CustomEvent('hearth:scene-link', { detail: { chatId, sketchId: null } })); }
+  // (round 72, labbridge72) A chat that isn't a docked director (a plain Claude / Astra chat with the Lab's tools, a
+  // project's chat) works on the scene it's linked to as a guest: its calls reach that scene (on screen or backstage),
+  // never whatever happens to be open, and it takes the scene from nobody (two chats can work on one scene; the
+  // owner chat keeps its scene, color and tag). why: 'click' | 'screen' (the Lab showed it at the chat's first call) | 'project'.
+  function linkGuest(chatId, sketchId, { why = 'click' } = {}) {
+    if (!chatId || !sketchId) return;
+    const name = lab()?.get(sketchId)?.name || data.links[chatId]?.name || '';
+    data.links[chatId] = { sketch: sketchId, auto: '', at: Date.now(), guest: true, why, ...(name ? { name } : {}) };
+    save();
+    paintAll();
+    dispatchEvent(new CustomEvent('hearth:scene-link', { detail: { chatId, sketchId, guest: true, why } }));
+  }
+  // a chat with the Lab's tools that isn't a docked director's (its calls route by its link, see routeThree)
+  function isLabChat(chatId) {
+    const a = agentOfChat(chatId);
+    if (!a || a.dock === 'three') return false;
+    return Boolean(a.threeTools) || Boolean(projectSceneOf(chatId));
+  }
+  // a project's chat (project-workspace.js): the project's own scene
+  function projectSceneOf(chatId) {
+    try { return (typeof Projects !== 'undefined' && Projects.isLoaded?.() && Projects.projectOfChat(chatId)?.workspace?.sceneId) || null; } catch { return null; }
+  }
+  // the name of a chat's scene, also before the Lab is in (kept with the link)
+  function sceneName(chatId) {
+    const L = chatId && data.links[chatId];
+    if (!L) return null;
+    return lab()?.get(L.sketch)?.name || L.name || 'a Lab scene';
+  }
   // Chat titles change (first message, auto-title, rename): sketches that still carry the name we gave follow.
   function followTitles() {
     const S = lab();
@@ -352,6 +381,9 @@ renderer.setAnimationLoop((now) => {
     // (round 22) a crew helper's turns (tools/three-crew.js) work on its own variation, on that variation's stage
     const cr = chatId && window.ThreeCrew?.routeFor?.(chatId);
     if (cr) return cr;
+    // (round 72, labbridge72) any other chat of yours (a plain chat with the Lab's tools, a project's chat) goes by its
+    // own link: before, its calls landed on the scene on screen, or on a working director's scene
+    if (chatId && summaryOf(chatId) && !isThreeChat(chatId) && (data.links[chatId] || isLabChat(chatId))) return guestRoute(chatId, S);
     if (!chatId || !isThreeChat(chatId)) {
       // no chat given (tests, /director try, an older run): the one director chat that's answering, if only one is
       const working = H.chats.filter((c) => isThreeChat(c.id) && Native.isBusy(c.id));
@@ -372,7 +404,23 @@ renderer.setAnimationLoop((now) => {
     setTimeout(paintAll, 0);
     return { chatId, sketchId: sk };
   }
-  function relink(chatId, sketchId) { if (chatId && sketchId) { data.links[chatId] = { sketch: sketchId, auto: '', at: Date.now() }; save(); paintAll(); } }
+  function relink(chatId, sketchId) { if (chatId && sketchId) { const guest = data.links[chatId]?.guest || (summaryOf(chatId) && !isThreeChat(chatId)); data.links[chatId] = { sketch: sketchId, auto: '', at: Date.now(), ...(guest ? { guest: true, name: lab()?.get(sketchId)?.name || '' } : {}) }; save(); paintAll(); } }
+  // → { chatId, sketchId } or { chatId, sketchId: null, error, needLink } (tools/three.js answers the error, in words)
+  function guestRoute(chatId, S) {
+    let sk = linkOf(chatId);
+    if (!sk && arriving(chatId)) return { chatId, sketchId: null, error: `This chat's scene "${sceneName(chatId)}" hasn't arrived from the other computer yet (cloud sync), so nothing was changed. Tell the owner; it works as soon as it's here.` };
+    const ps = !sk && projectSceneOf(chatId);
+    if (ps && S.get(ps)) { linkGuest(chatId, ps, { why: 'project' }); sk = ps; }
+    // nothing linked but the owner is looking at the Lab: that scene, said in the chat (🔗 chip, a one-line note)
+    if (!sk && S.currentId() && labInView()) { linkGuest(chatId, S.currentId(), { why: 'screen' }); sk = S.currentId(); }
+    if (!sk) {
+      setTimeout(() => dispatchEvent(new CustomEvent('hearth:scene-link-needed', { detail: { chatId } })), 0);
+      const was = data.links[chatId] && !S.get(data.links[chatId].sketch) ? ` (its scene "${data.links[chatId].name || 'that scene'}" was deleted)` : '';
+      return { chatId, sketchId: null, needLink: true, error: `This chat isn't linked to a Lab scene yet${was}, so nothing was changed. It takes one click: "🔗 Link this chat to a scene", over the chat box (or /scene link for the scene open in the Lab).` };
+    }
+    setTimeout(paintAll, 0);
+    return { chatId, sketchId: sk };
+  }
 
   // ---------- painting ----------
   // Claude's spark / Astra's star (icons.js), lit while that agent works on the scene
@@ -529,6 +577,8 @@ renderer.setAnimationLoop((now) => {
     return true;
   }
   const previewCover = () => lab()?.previewHost()?.querySelector(':scope > .scene-cover') || null;
+  // the owner really looks at the Lab: its surface is the one shown (a hidden one keeps its layout while a call draws behind)
+  const labInView = () => { const sf = H.surfaces?.get('tool:three')?.el; return Boolean(sf?.classList.contains('active')) && labShown(); };
   const labShown = () => { const h = lab()?.previewHost(); return Boolean(h?.offsetParent) && !h.classList.contains('on-stage') && document.visibilityState === 'visible'; };
   // The picture on screen now: null when the Lab isn't showing, its page is still loading, or it takes too long.
   let lastSnap = null; // the last picture taken for a switch (tests: why there was no fade)
@@ -650,6 +700,7 @@ renderer.setAnimationLoop((now) => {
     try { const d = await window.hub.kvGet('chat-scenes', null); if (d) data = { links: d.links || {}, videos: d.videos || {}, idents: d.idents || {} }; } catch { /* first run */ }
     try { thumbs = (await window.hub.kvGet('chat-scene-thumbs', null)) || {}; } catch { /* first run */ }
     loaded = true;
+    readyFn();
     sync();
     Panel.render();
   })();
@@ -659,6 +710,8 @@ renderer.setAnimationLoop((now) => {
   function chatFor(ctx) {
     const a = H.agent(ctx.agentId);
     if (a?.dock === 'three') return { agent: a, chatId: H.activeChat[a.id] || null };
+    // (round 72) a plain chat with the Lab's tools: its own (guest) link
+    if (a && (a.threeTools || isLabChat(H.activeChat[a.id]))) return { agent: a, chatId: H.activeChat[a.id] || null, guest: true };
     const t = threeAgent();
     return t ? { agent: t, chatId: H.activeChat[t.id] || null } : { agent: null, chatId: null };
   }
@@ -670,7 +723,7 @@ renderer.setAnimationLoop((now) => {
       examples: ['/scene', '/scene link', '/scene new'],
       complete: () => [{ value: 'link', hint: 'the open sketch becomes this chat\'s scene' }, { value: 'new', hint: 'a fresh starter scene for this chat' }, { value: 'unlink', hint: 'this chat lets go of its scene (the sketch stays)' }],
       run: async (args, ctx) => {
-        const { agent, chatId } = chatFor(ctx);
+        const { agent, chatId, guest } = chatFor(ctx);
         if (!agent) return 'Per-chat scenes are for the Three Director: /director-setup docks one in the Lab.';
         await ThreeLab.cmd({ show: false });
         for (let i = 0; i < 50 && !lab(); i += 1) await new Promise((r) => setTimeout(r, 100));
@@ -678,6 +731,16 @@ renderer.setAnimationLoop((now) => {
         if (!S) return 'The Lab did not load.';
         const sub = String(args || '').trim().toLowerCase();
         const name = (id) => `"${S.get(id)?.name}"`;
+        // (round 72, labbridge72) a plain chat: link / new / unlink its guest link (the 🔗 chip over its chat box does the same by click)
+        if (guest) {
+          if (!chatId) return 'Send a first message in this chat, then link it to a scene (the 🔗 chip over the chat box).';
+          if (sub === 'new') { const sk = freshScene(chatId); linkGuest(chatId, sk.id); return `This chat works on a fresh scene now: ${name(sk.id)} (open it from the 🔗 chip).`; }
+          if (sub === 'link') { linkGuest(chatId, S.currentId()); return `This chat works on ${name(S.currentId())} now (the scene open in the Lab).`; }
+          if (sub === 'unlink') { if (!linkOf(chatId)) return 'This chat has no scene.'; const was = name(linkOf(chatId)); unlink(chatId); return `This chat let go of ${was} (the scene stays in Your sketches).`; }
+          if (sub) return 'Use /scene, /scene link, /scene new or /scene unlink.';
+          const sk = linkOf(chatId);
+          return sk ? `🔗 This chat works on **${S.get(sk).name}** · ${S.currentId() === sk ? 'on screen' : 'not on screen (its calls run backstage)'}${ownerOf(sk) && ownerOf(sk) !== chatId ? ` · it's also the scene of the chat "${titleOf(ownerOf(sk))}"` : ''}` : 'This chat isn\'t linked to a scene: /scene link (the one open in the Lab), /scene new, or the 🔗 chip over the chat box.';
+        }
         if (sub === 'new') {
           if (!chatId) { S.open(draftSketch().id); return 'A fresh scene is open: it becomes this chat\'s when you send your first message.'; }
           const sk = freshScene(chatId);
@@ -768,6 +831,9 @@ renderer.setAnimationLoop((now) => {
 
   return {
     identity, linkOf, ownerOf, link, unlink, relink, routeThree, glyphFor, sync, paintAll, starter,
+    linkGuest, isLabChat, sceneName, isGuest: (chatId) => Boolean(data.links[chatId]?.guest), // (round 72, labbridge72)
+    freshGuest(chatId) { const sk = freshScene(chatId); linkGuest(chatId, sk.id); return sk; }, // a fresh starter (not opened) for a plain chat
+    ready: () => readyP, // resolves once the links are read (a call routed before that went to the scene on screen)
     refreshLinks, recoverLost, get _data() { return data; },
     // comp-dispatch.js: a chat (made in the background) gets a fresh scene of its own, in its color, not opened
     fresh(chatId) { const sk = freshScene(chatId); link(chatId, sk.id, { rename: false }); data.links[chatId].auto = sk.name; save(); return sk; },

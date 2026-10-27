@@ -96,8 +96,11 @@ const r3 = await HubBridge.call('three_eval', { code: '[innerWidth, innerHeight,
 step(r3.ok !== false, 'backstage eval', r3.value ?? r3.error);
 const r4 = await HubBridge.call('three_console', {}, { chatId: A });
 step(r4.ok !== false && /fps/.test(String(r4.value?.stats || '')), 'backstage renders (fps)', r4.value?.stats);
-const r5 = await HubBridge.call('three_sliders', {}, { chatId: A });
+// (round 72, labbridge72) sliders work backstage now (read from the code); the timeline still needs the scene on screen
+const r5 = await HubBridge.call('three_timeline', {}, { chatId: A });
 step(r5.ok === false && /on screen/.test(r5.error), 'on-screen-only tools explain themselves', r5.error?.slice(0, 90));
+const r5b = await HubBridge.call('three_sliders', {}, { chatId: A });
+step(r5b.ok !== false, 'sliders read backstage', r5b.error?.slice(0, 90));
 // the dock's undo of that edit: undone in A's sketch, the Lab stays on B
 const u = await ThreeDirector.undo();
 step(u?.restored === 'before' && !orbCode(skA).includes('orb1_flow: { value: 1.4') && S.currentId() === skB && orbCode(skB) === bBefore, 'undo of a background edit stays in its scene', u?.layer);

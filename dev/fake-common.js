@@ -341,7 +341,15 @@ function plan(prompt, engine = 'claude') {
     think: has('think'), tool: has('tool'), tools3: has('tools3'), code: has('code'), table: has('table'), long: has('long'),
     remember: has('remember'), suggest: has('suggest'), slow: has('slow'), error: has('error'), login: has('login'),
     crash: has('crash'), big: has('big'), echo: has('echo'), mcp: has('mcp'), progress: has('progress'),
-    mcpCalls: (() => { const m = msg.match(/^mcp:\s*(\[[\s\S]*\])\s*$/m); try { return m ? JSON.parse(m[1]) : null; } catch { return null; } })(),
+    // (round 72, labbridge72) one line first (attachment notes below it end in "]" too); "@@ATTACHED@@" / "@@ATTACHED2@@"
+    // stand for the first / second file path the prompt lists under an "[Attached …]" line (what a model would copy)
+    mcpCalls: (() => {
+      const m = msg.match(/^mcp:\s*(\[.*\])\s*$/m) || msg.match(/^mcp:\s*(\[[\s\S]*\])\s*$/m);
+      if (!m) return null;
+      const att = []; let on = false;
+      for (const line of prompt.split('\n')) { if (/^\[Attached /.test(line)) { on = true; continue; } if (on && /^([a-zA-Z]:[\\/]|\/)/.test(line.trim())) att.push(line.trim()); else on = false; }
+      try { return JSON.parse(m[1].replace(/@@ATTACHED(\d?)@@/g, (_, n) => JSON.stringify(att[(Number(n) || 1) - 1] || 'no-attachment-path').slice(1, -1))); } catch { return null; }
+    })(),
     // (round 14) `access: [["Write", {"file_path": "/x/a.txt", "content": "hi"}], ["Bash", {"command": "ls"}]]`: built-in
     // tool calls, permitted like the real CLIs do (see accessTool below), then really run
     accessCalls: (() => { const m = msg.match(/^access:\s*(\[[\s\S]*\])\s*$/m); try { return m ? JSON.parse(m[1]) : null; } catch { return null; } })(),
