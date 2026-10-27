@@ -1809,7 +1809,7 @@ const tickFrames = (t) => {
   FT60[1] = 0; frameCalls = 0;
   frameTick += 1;
   const dozed = DOZE.on; // (this frame came after a doze's wait: its gap isn't a slow frame)
-  if (frameSeen === frameTick - 1 && FT60[3] && !dozed) { if (t - FT60[3] > FT60[2]) FT60[2] = t - FT60[3]; if (mode === 'sketch') adaptQuality(t - FT60[3]); }
+  if (frameSeen === frameTick - 1 && FT60[3] && !dozed) { if (t - FT60[3] > FT60[2]) FT60[2] = t - FT60[3]; ccGap(t - FT60[3]); if (mode === 'sketch') adaptQuality(t - FT60[3]); }
   // (labpace) the frames the layers showed (drawn or still), for the steadiness readout
   if (!dozed) PACE.drewAvg = (PACE.drewAvg || 0) * 0.9 + (PACE.lastDraw === frameTick - 1 ? 0.1 : 0);
   if ((frameSeen === frameTick - 1 || PACE.stillSeen === frameTick - 1) && !parked && !dozed) { if (PACE.presentAt) PACE.meter.feed(t - PACE.presentAt); PACE.presentAt = t; }
@@ -2618,7 +2618,10 @@ window.__lab240 = {
 // Only for plain cases: ≥ 256 copies, frustumCulled on, one opaque built-in material (no custom shader, displacement,
 // morphs, skinning, custom depth material or onBeforeRender), no point-light shadows. Never in ▶ Play (no added
 // per-frame work there), exports, stills or recordings. (checks: window.__labDraw.info() / .set({ cull: false }))
-const CC = { on: true, min: 256, frames: 0, copies: 0, drawnCopies: 0, ms: 0, meshes: 0, permed: new Set() };
+// Only while frames miss the screen's refresh (and 2 s after): sorting costs the CPU ≈ 0.2–0.7 µs a copy here, so a
+// crowd that already fits its frame isn't touched (checks: .set({ cull: 'always' }))
+const CC = { on: true, always: false, until: -1, min: 256, frames: 0, copies: 0, drawnCopies: 0, ms: 0, meshes: 0, permed: new Set() };
+function ccGap(gap) { if (gap > Math.max(dispMs, fpsCap ? 1000 / fpsCap : 0) * 1.15) CC.until = realNow() + 2000; }
 const CCS = new WeakMap(); // scene → { tick, list, lights, point }; mesh → its state
 const ccM = new THREE.Matrix4(); const ccF = [new THREE.Frustum()];
 function ccScan(scene) {
@@ -2652,7 +2655,7 @@ function ccRepair() {
   }
 }
 function ccCull(r, scene, camera) {
-  if (!CC.on || GAME || XP_PAGE || fullRes() || r.__helper || !scene?.isObject3D || !camera?.isCamera || camera.isArrayCamera) { if (CC.permed.size) ccRepair(); return null; }
+  if (!CC.on || (!CC.always && realNow() > CC.until) || GAME || XP_PAGE || fullRes() || r.__helper || !scene?.isObject3D || !camera?.isCamera || camera.isArrayCamera) { if (CC.permed.size) ccRepair(); return null; }
   const st = ccScan(scene);
   if (!st.list.length) return null;
   const t0 = realNow();
@@ -2731,8 +2734,8 @@ function ccCull(r, scene, camera) {
   return back;
 }
 window.__labDraw = {
-  set: ({ cull, casters } = {}) => { if (cull != null) CC.on = Boolean(cull); if (casters != null) SHG.casters = Boolean(casters); return window.__labDraw.info(); },
-  info: () => ({ cull: { on: CC.on, frames: CC.frames, meshes: CC.meshes, copies: CC.copies, drawnCopies: CC.drawnCopies, ms: Math.round(CC.ms * 10) / 10 }, casters: SHG.casters, shadows: { skipped: SHG.skipped, drawn: SHG.drawn }, why: { ...PACE.why } }),
+  set: ({ cull, casters } = {}) => { if (cull != null) { CC.on = Boolean(cull); CC.always = cull === 'always'; } if (casters != null) SHG.casters = Boolean(casters); return window.__labDraw.info(); },
+  info: () => ({ cull: { on: CC.on, always: CC.always, missing: realNow() <= CC.until, frames: CC.frames, meshes: CC.meshes, copies: CC.copies, drawnCopies: CC.drawnCopies, ms: Math.round(CC.ms * 10) / 10 }, casters: SHG.casters, shadows: { skipped: SHG.skipped, drawn: SHG.drawn }, why: { ...PACE.why } }),
   reset: () => { CC.frames = 0; CC.copies = 0; CC.drawnCopies = 0; CC.ms = 0; CC.meshes = 0; SHG.skipped = 0; SHG.drawn = 0; return 1; },
 };
 
