@@ -1548,7 +1548,7 @@ const Native = (() => {
     const chat = chats.get(H.activeChat[agentId]);
     if (!node && v && chat && index >= 0 && index < shownFrom(chat, unreadFrom.get(chat.id))) {
       if (typeof ChatRest === 'undefined') { fullChats.add(chat.id); later(); render(agentId); return false; }
-      ChatRest.wakeAt(agentId, index).then((ok) => { if (ok) jumpTo(agentId, index); });
+      ChatRest.wakeAt(agentId, index).then((ok) => { if (ok && jumpTo(agentId, index)) ChatRest.settle(agentId, () => v.list.querySelector(`.msg[data-index="${index}"]`), index === 0 ? 'start' : 'center'); });
       return true;
     }
     if (!node) { if (v?.drawing) later(); return false; }

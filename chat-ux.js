@@ -154,7 +154,7 @@ const ChatUX = (() => {
         if (!ok || finds.get(agentId) !== f) return;
         run(agentId, { jump: false });
         const i = f.hits.findIndex((h) => h.nodeType && h.closest('.msg')?.dataset.index === String(hit.index));
-        if (i >= 0) { f.at = i - 1; step(agentId, 1); }
+        if (i >= 0) { f.at = i - 1; step(agentId, 1); ChatRest.settle(agentId, () => finds.get(agentId)?.hits.find((h) => h.nodeType && h.classList.contains('cur'))); }
       });
       return;
     }

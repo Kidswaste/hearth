@@ -135,6 +135,12 @@ const ChatRest = (() => {
     if (H.activeChat[agentId] !== id) return false;
     return Boolean(v.list.querySelector(`.msg[data-index="${index}"]`)) || (index < R.shownFrom(chat, R.unreadFrom.get(id)) && wake(agentId, v, chat, Math.floor(index / R.BLOCK)));
   }
+  // a node just woken is first laid out at its placeholder size (chatcore.css content-visibility): once the messages
+  // around it have drawn, it is put back in view if that moved it away
+  function settle(agentId, node, block = 'center') { // (node: or a function that finds it again)
+    const fix = () => { const v = views.get(agentId); const n = typeof node === 'function' ? node() : node; if (!v || !n?.isConnected) return; const r = n.getBoundingClientRect(); const l = v.list.getBoundingClientRect(); if (r.top < l.top || r.bottom > l.bottom) n.scrollIntoView({ block }); };
+    requestAnimationFrame(() => requestAnimationFrame(fix)); setTimeout(fix, 350);
+  }
   // find in chat (chat-ux.js): the resting messages of the open chat that hold `q` (their text or thinking)
   function restingHits(agentId, q) {
     const v = views.get(agentId); const id = H.activeChat[agentId]; const chat = id && chats.get(id); const needle = String(q || '').toLowerCase();
@@ -148,5 +154,5 @@ const ChatRest = (() => {
   }
   // (the chats drawn before this file loaded start being watched now)
   for (const [agentId, v] of views) watch(agentId, v);
-  return { watch, soon, wake, wakeAt, more, restingHits };
+  return { watch, soon, wake, wakeAt, more, restingHits, settle };
 })();
