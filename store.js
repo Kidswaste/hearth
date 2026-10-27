@@ -455,6 +455,53 @@ function buildTokenStats(agents = []) {
   writeStats(stats);
   return stats;
 }
+// (round 73, chatsteady73) a store changed a few fields at a time (the feature-usage counts, usage.js): the window sends
+// only what changed, as [op, path, value] (inc: add to a number · max · def: set when missing · set · del), applied here
+// to the store as it is (a save still on its way, else the disk) and saved like setKV (sync's merge, .prev, held files
+// all as before). Sending the whole store (≈ 900 KB after a year of use) cost the window ≈ 70 ms after every click.
+// → { ok: true }, or { ok: false, state } when the store is missing / can't be read (the window then sends it whole)
+const BAD_KEY = new Set(['__proto__', 'constructor', 'prototype']);
+function applyOps(root, ops) {
+  for (const x of Array.isArray(ops) ? ops : []) {
+    const [op, p, v] = Array.isArray(x) ? x : [];
+    if (!Array.isArray(p) || !p.length || p.some((k) => typeof k !== 'string' || BAD_KEY.has(k))) continue;
+    let o = root;
+    for (const k of p.slice(0, -1)) { if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {}; o = o[k]; }
+    const k = p[p.length - 1];
+    if (op === 'inc') o[k] = (Number(o[k]) || 0) + (Number(v) || 0);
+    else if (op === 'max') o[k] = Math.max(Number(o[k]) || 0, Number(v) || 0);
+    else if (op === 'def') { if (o[k] === undefined) o[k] = v; } else if (op === 'set') o[k] = v;
+    else if (op === 'del') delete o[k];
+  }
+  return root;
+}
+// the store as last merged, kept while nobody else changed it (the same save on its way, or the file as that save left
+// it): a year-sized store isn't read and parsed again every minute (≈ 40 ms on this thread). Not while sync guards
+// writes (its merge can change what is written).
+let mergeMemo = null;
+function mergeKV(name, ops) {
+  const file = kvPath(name);
+  if (SS.guardedName(file)) return { ok: false, state: 'guarded' }; // (the Lab's scenes: whole saves with their guard)
+  let value = null;
+  const m = !beforeWrite && mergeMemo?.file === file ? mergeMemo : null;
+  if (m) {
+    const p = pending.get(file);
+    let same = p ? p.value === m.value : false;
+    if (!p && m.size >= 0) { try { const st = fs.statSync(file); same = st.size === m.size && st.mtimeMs === m.mtimeMs; } catch { same = false; } }
+    if (same) value = m.value;
+  }
+  if (!value) {
+    const r = readKVStatus(file);
+    if (r.state !== 'ok' || !r.value || typeof r.value !== 'object' || Array.isArray(r.value)) { mergeMemo = null; return { ok: false, state: r.state }; }
+    value = r.value;
+  }
+  applyOps(value, ops);
+  const w = writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json') });
+  const memo = mergeMemo = beforeWrite ? null : { file, value, size: -1, mtimeMs: -1 };
+  if (memo) Promise.resolve(w).then(() => { if (mergeMemo === memo && !pending.has(file)) { try { const st = fs.statSync(file); memo.size = st.size; memo.mtimeMs = st.mtimeMs; } catch { mergeMemo = null; } } }, () => { if (mergeMemo === memo) mergeMemo = null; });
+  return { ok: true };
+}
+
 function getTokenStats(agents) {
   // (round 43, datasafe) a stats file that's there but can't be read is not rebuilt over (it reads next time)
   if (statsLive) return statsLive; // (round 65) the newest, still being written
@@ -518,6 +565,7 @@ module.exports = {
     const removed = Array.isArray(o?.removed) ? o.removed.filter((x) => typeof x === 'string').slice(0, 5000) : undefined;
     return writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json'), removed });
   },
+  mergeKV, applyOps, // (round 73, chatsteady73) a store saved by what changed (usage.js)
   saveAttachment,
   importRef,
   ATTACH_DIR,

@@ -8,7 +8,29 @@ const Usage = (() => {
   //   dayItems: { 'YYYY-MM-DD': { key: clicks } } (last 35 days, for "used today" and streaks in the meter) }
   let data = null;
   const listeners = new Set(); // called after every counted use (the token meter shows today's total live)
-  const save = debounce(() => { if (data) window.hub.kvSet(KV, data); }, 3000);
+  // (round 73, chatsteady73) saved by what changed, once a minute (and when the window hides or closes): the whole
+  // store (≈ 900 KB after a year) went over IPC 3 s after every click, ≈ 70 ms of the window's thread each time.
+  // Every change is noted as [op, path, value] (store.js mergeKV applies them to the file); the counts recorded are
+  // exactly the same. When the main side can't apply them (no file yet, an unreadable one) the store goes whole.
+  let ops = []; const opAt = new Map(); let whole = false; let saveT = 0; let saving = null;
+  const note = (op, path, v) => {
+    const k = `${op}\u0001${path.join('\u0001')}`; const i = opAt.get(k);
+    if (i != null && (op === 'inc' || op === 'max' || op === 'set')) { const o = ops[i]; o[2] = op === 'inc' ? o[2] + v : op === 'max' ? Math.max(o[2], v) : v; return; }
+    if (op === 'inc' || op === 'max' || op === 'set') opAt.set(k, ops.length);
+    ops.push([op, path, v]);
+  };
+  function flush() {
+    clearTimeout(saveT); saveT = 0;
+    if (!data || (!ops.length && !whole)) return saving;
+    const batch = ops; const all = whole; ops = []; opAt.clear(); whole = false;
+    const full = () => window.hub.kvSet(KV, data);
+    const go = () => (all || !window.hub.kvMerge ? full() : window.hub.kvMerge(KV, batch).then((r) => (r?.ok ? r : full())));
+    // (sent at once, even while the last one is on its way: the main side applies them in order)
+    const p = go().catch((err) => { console.warn('usage save', err); }).finally(() => { if (saving === p) saving = null; });
+    saving = p;
+    return p;
+  }
+  const save = () => { if (!saveT) saveT = setTimeout(flush, 60000); };
   const DAY = 86400000;
   // local day (the token meter counts days the same way)
   const today = () => new Date().toLocaleDateString('en-CA');
@@ -43,13 +65,15 @@ const Usage = (() => {
   function track(key, { label, area } = {}) {
     if (!data || !key) return;
     const now = Date.now();
-    const it = (data.items[key] ||= { n: 0, first: now, label: label || key.split(' › ').pop(), area: area || key.split(' › ')[0] });
-    it.n += 1;
-    it.last = now;
-    data.days[today()] = (data.days[today()] || 0) + 1;
+    if (!data.items[key]) { data.items[key] = { n: 0, first: now, label: label || key.split(' › ').pop(), area: area || key.split(' › ')[0] }; note('def', ['items', key], { ...data.items[key] }); }
+    const it = data.items[key];
+    it.n += 1; note('inc', ['items', key, 'n'], 1);
+    it.last = now; note('max', ['items', key, 'last'], now);
+    const d0 = today();
+    data.days[d0] = (data.days[d0] || 0) + 1; note('inc', ['days', d0], 1);
     const di = (data.dayItems ||= {});
-    if (!di[today()]) for (const d of Object.keys(di).sort().slice(0, -KEEP_DAY_ITEMS + 1)) delete di[d];
-    (di[today()] ||= {})[key] = (di[today()][key] || 0) + 1;
+    if (!di[d0]) for (const d of Object.keys(di).sort().slice(0, -KEEP_DAY_ITEMS + 1)) { delete di[d]; note('del', ['dayItems', d]); }
+    (di[d0] ||= {})[key] = (di[d0][key] || 0) + 1; note('inc', ['dayItems', d0, key], 1);
     save();
     listeners.forEach((fn) => fn(key));
     scheduleDecorate();
@@ -58,6 +82,7 @@ const Usage = (() => {
   function seen(key, label, area) {
     if (!data || !key || data.items[key]) return;
     data.items[key] = { n: 0, first: Date.now(), label, area };
+    note('def', ['items', key], { ...data.items[key] });
     save();
   }
 
@@ -78,10 +103,17 @@ const Usage = (() => {
   const idleDecorate = () => { if (window.requestIdleCallback) requestIdleCallback(() => { decorateTimer = 0; decorate(); }, { timeout: 2000 }); else { decorateTimer = 0; decorate(); } };
   function scheduleDecorate() { if (decorateTimer) return; decorateTimer = setTimeout(idleDecorate, 600); }
   const trackedDays = () => (data ? (Date.now() - data.since) / DAY : 0);
+  // (round 73, chatsteady73) worked out again only after new uses, at most every 30 s (a year of use: 4,000 controls
+  // sorted on every pass, ≈ 2.5 ms after every click and each time something changed on screen)
+  let tiered = null; let usesSeen = -1; let tieredAt = 0;
   function tiers() {
+    const uses = ops.length + (data.days?.[today()] || 0);
+    if (tiered && (uses === usesSeen || performance.now() - tieredAt < 30000)) return tiered; // (your top 12 barely moves in 30 s)
+    tieredAt = performance.now();
     const counts = Object.values(data.items).map((x) => x.n).filter((n) => n > 0).sort((a, b) => b - a);
     const hotAt = Math.max(8, counts[Math.min(counts.length - 1, 11)] || 8); // roughly your top 12, at least 8 uses
-    return { hotAt, warmAt: 3 };
+    usesSeen = uses; tiered = { hotAt, warmAt: 3 };
+    return tiered;
   }
   // (round 35, streamrender) a control's name is worked out once per button (again only when its words change): a long
   // chat drawn whole has thousands of message buttons, and this pass (after changes on screen: ≈ every 0.8 s while a
@@ -164,6 +196,7 @@ const Usage = (() => {
     const s = new Set(data.hidden || []);
     if (s.has(key)) s.delete(key); else s.add(key);
     data.hidden = [...s];
+    note('set', ['hidden'], data.hidden);
     save();
     decorate();
   }
@@ -205,6 +238,7 @@ const Usage = (() => {
     const s = new Set(data.hidden || []);
     if (hide) s.add(key); else s.delete(key);
     data.hidden = [...s];
+    note('set', ['hidden'], data.hidden);
     save();
     decorate();
     return true;
@@ -219,7 +253,10 @@ const Usage = (() => {
 
   async function init() {
     data = await window.hub.kvGet(KV, null);
-    if (!data || !data.items) data = { since: Date.now(), items: {}, days: {}, hidden: [] };
+    if (!data || !data.items) { data = { since: Date.now(), items: {}, days: {}, hidden: [] }; whole = true; } // (a new store goes whole)
+    // what's still to save goes when the window hides or closes (a minute's clicks at most otherwise)
+    document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
+    addEventListener('beforeunload', flush); // (as the Lab and the cut store do: a reload or quit)
     document.addEventListener('click', onClick, true);
     document.addEventListener('change', onChange, true);
     // Re-check buttons when the layout changes, not for every clock tick or streamed word.
@@ -258,7 +295,7 @@ const Usage = (() => {
   }
 
   return {
-    init, track, dialog, decorate, keyOf, see, // keyOf(button): its "Area › Label" name (declutter.js: Customise this… → Hide)
+    init, track, dialog, decorate, keyOf, see, flush, // flush(): what changed, saved now (tests; a reload / quit does it) // keyOf(button): its "Area › Label" name (declutter.js: Customise this… → Hide)
     // shortcuts, opened agents / tools, an agent's tool calls
     key: (combo, what) => track(`Shortcut › ${combo}${what ? ` (${what})` : ''}`, { area: 'Shortcuts' }),
     open: (id) => track(`Open › ${id}`, { area: 'Opened', label: id }),

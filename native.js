@@ -929,7 +929,7 @@ const Native = (() => {
   const SIG_SKIP = new Set(['text', 'thinking', 'sent', 'edits', 'images', 'lastReply']);
   function msgSig(m, index, isLast) {
     let rest;
-    try { rest = JSON.stringify(m, function skip(k, val) { return this === m && SIG_SKIP.has(k) ? undefined : val; }); } catch { return null; }
+    try { rest = JSON.stringify(m, function skip(k, val) { return (this === m && SIG_SKIP.has(k)) || ((k === 'w' || k === 'h') && this?.path) ? undefined : val; }); } catch { return null; } // (round 73) a picture's size, learned when it loads, redraws nothing
     return `${gen}|${index}|${isLast ? 1 : 0}|${m.lastReply ? 1 : 0}|${m.thinking?.length || 0}|${m.edits?.length || 0}|${m.images?.length || 0}|${rest}`;
   }
   const handoff = new WeakMap(); // (round 35) a finished reply → its live node { el, p } (onEvent)
@@ -1741,7 +1741,12 @@ const Native = (() => {
   }
   function showCard(sh) {
     const url = WinMac.fileUrl(sh.path);
-    return el('figure', { class: 'show-card' }, el('img', { src: url, alt: sh.caption, loading: 'lazy', decoding: 'async', title: 'Click to open full size', on: { click: () => window.hub.fs.open(sh.path) } }), el('figcaption', { text: sh.caption }));
+    // (round 73, chatsteady73) its box keeps the picture's size before it loads (kept on the card, else seen before)
+    const s = sh.w ? [sh.w, sh.h] : imgSizes.get(url);
+    const img = el('img', { src: url, alt: sh.caption, loading: 'lazy', decoding: 'async', title: 'Click to open full size', on: { click: () => window.hub.fs.open(sh.path) } });
+    if (s) img.style.aspectRatio = `${s[0]} / ${s[1]}`;
+    img.addEventListener('load', () => { if (img.naturalWidth) { sh.w = img.naturalWidth; sh.h = img.naturalHeight; noteSize(url, sh.w, sh.h); } }, { once: true });
+    return el('figure', { class: 'show-card' }, img, el('figcaption', { text: sh.caption }));
   }
   function opinionCard(op) {
     return el('div', { class: 'opinion-card' }, el('div', { class: 'opinion-head', text: `🔎 ${op.from}'s second opinion${op.q ? `: ${op.q.slice(0, 80)}${op.q.length > 80 ? '…' : ''}` : ''}` }),
@@ -2770,7 +2775,8 @@ const Native = (() => {
       return (paths || []).length;
     },
     unreadFrom, rememberFacts, forgetFacts, fmt, clearNotes,
-    _rest: { views, chats, hooks, planOf, topAnchor, keepAnchor, foldFresh, shownFrom, unreadFrom, nextSlice, SLICE_MS, BLOCK, restLine }, // (round 72) chat-rest.js
+    _rest: { views, chats, hooks, planOf, topAnchor, keepAnchor, foldFresh, shownFrom, unreadFrom, nextSlice, SLICE_MS, BLOCK, restLine, fillFold }, // (round 72) chat-rest.js
+    mediaSize: (src) => imgSizes.get(src), noteSize, // (round 73, chatsteady73) [w, h] of a picture / video seen before (chat-media.js, chat-rest.js)
     prefetch, // (round 45, chatswitch) a chat you rest on in the chats list is made ready before the click (panel.js)
     // (round 9) a card in a reply that is still streaming (chat-things.js); null when no reply runs in that chat
     repaint: (chatId) => schedulePaint(chatId), // (round 21) chat-live.js: its panel opened / changed
