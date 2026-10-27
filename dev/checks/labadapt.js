@@ -191,8 +191,8 @@ await safe('switch', async () => {
   window.showMenu = (x, y, it) => { items.push(...(typeof it === 'function' ? it() : it)); return null; };
   try { await sbx1('dispatchEvent(new MouseEvent("contextmenu", { clientX: 40, clientY: 40, bubbles: true })); return 1'); await until(() => items.length, 3000); } finally { window.showMenu = orig; }
   const view = items.find((i) => i && i.label === 'View');
-  const row = view ? (typeof view.items === 'function' ? view.items() : view.items).find((i) => i && /Lighten to stay smooth/.test(i.label)) : null;
-  step('right-click › View › Lighten to stay smooth (checked)', Boolean(row && row.checked === true), { found: Boolean(row), hint: row?.hint });
+  const row = view ? (typeof view.items === 'function' ? view.items() : view.items).find((i) => i && /Lighten to stay smooth|^Quality: auto/.test(i.label)) : null; // (round 74) renamed "Quality: auto" by labfps72 (round 72), the same setting
+  step('right-click › View › Quality: auto (was Lighten to stay smooth) (checked)', Boolean(row && row.checked === true), { found: Boolean(row), hint: row?.hint });
   if (row) {
     await A('set({ level: 4, hold: true })'); await wait(400);
     row.action(); await wait(1000);

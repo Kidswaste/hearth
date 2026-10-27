@@ -965,7 +965,16 @@ const ThreeDirector = (() => {
     // /undo-edit, /redo-edit, the dock's ↶ button
     // (round 73, labtools73) what an AI did in its last reply is one step (tools/three-txn.js), when it's the newest change
     undo: async (opts) => {
-      if (window.LabTxn?.wantsUndo?.(history)) return LabTxn.undoTurn(opts || {});
+      if (window.LabTxn?.wantsUndo?.(history)) {
+        try { return await LabTxn.undoTurn(opts || {}); } catch (err) {
+          // (round 74, checkhealth74) the scene changed since that reply (a look added, sliders shuffled…): its code edit
+          // still comes back alone when the layer is as the AI left it, as ↶ did before round 73 — not a refusal, nor
+          // "Undo anyway" putting the whole scene back over the later changes
+          if (opts?.force || !/changed after/.test(err.message) || !history.length) throw err;
+          window.LabTxn?.noteCodeUndo?.();
+          try { return await undo(ThreeLab.director || (await ThreeLab.cmd({ show: false }), ThreeLab.director), opts); } catch { throw err; }
+        }
+      }
       window.LabTxn?.noteCodeUndo?.();
       return undo(ThreeLab.director || (await ThreeLab.cmd({ show: false }), ThreeLab.director), opts);
     },

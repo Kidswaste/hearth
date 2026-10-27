@@ -205,7 +205,11 @@ const AudioDoctor = (() => {
   // ---------- chat command, Ctrl/⌘+K ----------
   const SUBS = [['doctor', 'check everything (a quiet 2-second test tone included)'], ['quick', 'devices and versions only: no plugin loads, no sound'], ['live', 'the 2-second live test again'], ['loopback', 'output 1 patched into input 1: time the round trip'], ['copy', 'copy the last report']];
   async function command(args = '', ctx) {
-    const a = String(args).trim().toLowerCase().replace(/^doctor\s*/, '') || 'doctor';
+    // (round 74, checkhealth74) the Lab's own /audio (what it hears, "names") shares the name: it answers "names", and a
+    // bare /audio while the Lab is on screen (tools/three-audio-cmds.js, registered as /hear)
+    const raw = String(args).trim().toLowerCase();
+    if (typeof window.LabHear === 'function' && (/^(names?|list)$/.test(raw) || (!raw && typeof ThreeLab !== 'undefined' && ThreeLab.onScreen?.()))) return window.LabHear(raw); // (LabHear is set by the Lab's own file: ThreeLab is there)
+    const a = raw.replace(/^doctor\s*/, '') || 'doctor';
     if (a === 'copy') { if (!report) await check({ quick: true }); return `Copied:\n\n${await copyReport()}`; }
     if (a === 'live' || a === 'loopback') { lastCtx = ctx || lastCtx; const r = await liveTest({ loopback: a === 'loopback' }); return lastCtx?.note || !r ? undefined : C.cardText(rowsNow(), report); }
     return run({ ctx, quick: a === 'quick', keepLive: false });

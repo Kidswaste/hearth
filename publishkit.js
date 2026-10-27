@@ -39,7 +39,7 @@ const PublishKit = (() => {
   function context(o = {}) {
     const c = { file: base(o.file), duration: cur?.info?.duration || 0, hint: o.hint || '' };
     try {
-      if (window.Lazy?.loaded?.('lab') && window.ThreeLab?.peek) {
+      if (window.Lazy?.loaded?.('lab') && typeof ThreeLab !== 'undefined' && ThreeLab.peek) { // (round 74) a script-level const: window.ThreeLab never was
         const st = ThreeLab.peek()?.state;
         if (st?.song) c.song = songTitle(st.song);
         if (st?.sketch) c.scene = st.sketch;

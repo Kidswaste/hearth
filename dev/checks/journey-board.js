@@ -19,7 +19,8 @@ const menuText = () => menuRows().map((b) => b.textContent.trim().replace(/\s+/g
 
 // 1. ▦ Board from the rail (a real click on its rail button)
 activate(claude.id); await wait(400);
-const railBtn = document.querySelector('#rail .agent-btn[data-id="tool:board"]') || [...document.querySelectorAll('#rail .tool-btn-rail')].find((b) => /Board/.test(b.title));
+const railBtn = document.querySelector('#rail .agent-btn[data-id="tool:board"]') || [...document.querySelectorAll('#rail .tool-btn-rail')].find((b) => /Board/.test(b.title)) || RAIL.button('tool:board'); // (round 74) today's rail: dev/checks/rail-lib.js
+await wait(100);
 step('▦ Board is in the rail', visible(railBtn) && hitOk(railBtn), railBtn?.title);
 if (railBtn) await click(railBtn);
 await until(() => Board.isMounted() && Board.visible(), 8000);
