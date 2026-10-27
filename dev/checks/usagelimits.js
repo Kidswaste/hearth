@@ -110,7 +110,11 @@ await wait(500);
 Offline?._test?.clear?.();
 
 // ---------- 4. Claude Code's local /usage (no model turn) ----------
-await sw({ claudeVersion: '2.1.301', claudeUsageText: 'Current session: 9% used · resets 11pm\nCurrent week (all models): 84% used · resets Oct 31, 9am' });
+// (round 74, checkhealth74) the week resets ~7 days from now (it said "Oct 31, 9am": once the calendar caught up, 3+ days
+// of the week had gone by and the card rightly gave a pace forecast instead of the plain number this part checks)
+const wkReset = new Date(Date.now() + 7 * 864e5 - 3600e3);
+const wkText = `${wkReset.toLocaleString('en-US', { month: 'short' })} ${wkReset.getDate()}, ${wkReset.getHours() % 12 || 12}${wkReset.getHours() < 12 ? 'am' : 'pm'}`;
+await sw({ claudeVersion: '2.1.301', claudeUsageText: `Current session: 9% used · resets 11pm\nCurrent week (all models): 84% used · resets ${wkText}` });
 const r = await UsageLimits.readClaude({ fresh: true });
 ok(r?.ok && /Current session/.test(r.text), `the local /usage read (${JSON.stringify(r)})`);
 const wk = UsageLimits.state?.engines?.claude?.windows?.seven_day;

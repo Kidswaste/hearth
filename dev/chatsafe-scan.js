@@ -23,7 +23,7 @@ const ALLOW = [
   ['options.js', 'sheet.agentId = x.id', 'the AI setup sheet\'s AI chips: which AI it shows, not a chat'],
   ['apps-meshy.js', '{ ...base, agentId: ctx.agentId || base.agentId }', 'a Meshy job\'s note of who asked (for its permission card), not a chat'],
   ['quickstart.js', '{ ...labNow(), agentId: director()?.id || null', 'Quick start\'s picture of the Lab (which director is there), not a chat'],
-  ['routines.js', '{ ...spec, agentId, chatId: chat.id', 'a 🔁 Keep going routine: the chat it runs in (the chat keeps its own AI)'],
+  ['routines.js', 'agentId, chatId: chat.id, title: chat.title', 'a 🔁 Keep going routine: the chat it runs in (the chat keeps its own AI) · (round 74) Codex\'s budget spread now sits between ...spec and agentId'],
   ['twocomputers.js', '{ ...p, agentId: a.id, agent: a.name }', 'a row of the file-access list (which AI\'s folder), not a chat'],
   ['voice.js', 'S.agentId = agentId', 'voice input state: which chat composer gets the words'],
   ['native.js', 'if (chat && !chat.agentId && (agentId === home || !home)) { chat.agentId = agentId;', 'a chat that names no AI, opened in Claude\'s view (its home in the chats list): written down, nothing moved'],

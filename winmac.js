@@ -113,7 +113,8 @@ const WinMac = (() => {
   const MAC_SYM = { ctrl: '⌃', alt: '⌥', shift: '⇧', cmd: '⌘' };
   const WIN_WORD = { ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', cmd: 'Ctrl' };
   // Hearth's Ctrl shortcuts macOS keeps for itself with ⌘: shown (and pressed) with the real Control key on a Mac
-  const MAC_REAL_CTRL = new Set(['ctrl+tab', 'ctrl+shift+tab', 'ctrl+space', 'ctrl+alt+space', 'ctrl+alt+h', 'ctrl+alt+d', 'ctrl+alt+esc']);
+  // (round 74, checkhealth74) + ctrl+alt+i: 💡 Quick idea's system-wide key is Control+Alt+I (⌥⌘I is Developer tools)
+  const MAC_REAL_CTRL = new Set(['ctrl+tab', 'ctrl+shift+tab', 'ctrl+space', 'ctrl+alt+space', 'ctrl+alt+h', 'ctrl+alt+d', 'ctrl+alt+esc', 'ctrl+alt+i']);
   const modOf = (m) => (/^⌘\/|\/⌘|^cmd|^command|^⌘/i.test(m) ? 'cmd' : /^(?:control|⌃)/i.test(m) ? 'ctrl' : /^ctrl/i.test(m) ? 'ctrl?' : /^(?:alt|option|⌥)/i.test(m) ? 'alt' : 'shift');
   function sayChain(mods, key, mac) {
     const k = key.length === 1 ? key.toUpperCase() : key;

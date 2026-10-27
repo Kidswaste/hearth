@@ -2,6 +2,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   let snap = null, manualStep = null;
+  const SAVE_KEY = /Mac/.test(globalThis.navigator?.platform || '') ? '⌘S' : 'Ctrl+S'; // (round 74, checkhealth74) FL Studio saves with ⌘S on a Mac
   const error = message => { $('error').textContent = message || ''; $('error').hidden = !message; if (message) $('error').scrollIntoView({ block: 'nearest' }); };
   async function call(op, data = {}) {
     error('');
@@ -38,7 +39,7 @@
     $('connect').hidden = step?.app !== 'fl' && s.session?.kind !== 'music';
     $('connect').textContent = s.fl?.connected ? 'FL connected' : s.project?.path ? 'Project connected' : 'Connect FL';
     $('setup-path').textContent = s.fl?.folder || '';
-    $('project-path').textContent = s.project?.path ? `Connected · ${s.project.path.split(/[\\/]/).pop()}${s.project.bpm ? ` · ${s.project.bpm} BPM` : ''}. ${s.project.error || (paused ? 'Resume the guide, then save in FL Studio to check the next step.' : 'Press Ctrl+S in FL Studio after each step to check it.')}` : 'No project connected yet';
+    $('project-path').textContent = s.project?.path ? `Connected · ${s.project.path.split(/[\\/]/).pop()}${s.project.bpm ? ` · ${s.project.bpm} BPM` : ''}. ${s.project.error || (paused ? 'Resume the guide, then save in FL Studio to check the next step.' : `Press ${SAVE_KEY} in FL Studio after each step to check it.`)}` : 'No project connected yet';
     $('project-path').title = s.project?.path || '';
     $('forget-project').hidden = !s.project?.path;
     $('install').textContent = s.fl?.installed ? 'Reinstall FL connection' : 'Install FL connection';
@@ -46,8 +47,8 @@
     if (paused) obs.textContent = 'Automatic checks paused. Resume when you want to continue.';
     else if (done) obs.textContent = `${s.session.done.filter(d => d.kind === 'automatic').length} steps observed · ${s.session.done.filter(d => d.kind === 'manual').length} confirmed by you`;
     else if (step?.check === 'app') obs.textContent = s.fl?.running ? 'FL Studio detected · checking your next step' : 'Waiting for FL Studio to open';
-    else if (step?.check === 'bpm') obs.textContent = s.fl?.connected ? `Live tempo: ${s.telemetry.bpm} BPM · target ${step.targetBpm}` : s.project?.path ? s.project.error || `Saved tempo: ${s.project.bpm || '…'} BPM · press Ctrl+S to check` : 'Connect your .flp or live FL to check automatically';
-    else if (step?.check === 'bass') obs.textContent = s.project?.path ? s.project.error || 'Watching your saved project · Ctrl+S checks bass notes' : s.fl?.connected ? 'Live: checks grid notes and playback. Off-grid piano-roll notes? Connect your .flp for saved-note checks.' : 'Connect your .flp or live FL to check automatically';
+    else if (step?.check === 'bpm') obs.textContent = s.fl?.connected ? `Live tempo: ${s.telemetry.bpm} BPM · target ${step.targetBpm}` : s.project?.path ? s.project.error || `Saved tempo: ${s.project.bpm || '…'} BPM · press ${SAVE_KEY} to check` : 'Connect your .flp or live FL to check automatically';
+    else if (step?.check === 'bass') obs.textContent = s.project?.path ? s.project.error || `Watching your saved project · ${SAVE_KEY} checks bass notes` : s.fl?.connected ? 'Live: checks grid notes and playback. Off-grid piano-roll notes? Connect your .flp for saved-note checks.' : 'Connect your .flp or live FL to check automatically';
     else if (step?.check === 'tool') obs.textContent = 'Opening the workbench checks this step automatically.';
     else if (step?.check === 'project-change') obs.textContent = `Watching saved ${step.target==='board'?'creative board':step.target} changes in ${s.session.projectStart?.name||'your project'}. Quality is reviewed later.`;
     else if (step?.check === 'project-output') obs.textContent = 'Waiting for a new kept image, saved preset or linked project output.';
