@@ -58,7 +58,7 @@ const BackupAuto = (() => {
     paint();
     const off = on(paint);
     // gone with Settings: unsubscribed when the row leaves the page (checked on the next change)
-    const gone = () => { if (!row.isConnected) { off(); subs.delete(gone); } };
+    const made = Date.now(); const gone = () => { if (!row.isConnected && Date.now() - made > 10000) { off(); subs.delete(gone); } }; // (not one still being built)
     gone.sweep = true; subs.add(gone);
     if (!st) refresh();
     return row;

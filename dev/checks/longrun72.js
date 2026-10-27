@@ -208,7 +208,7 @@ async function sample() {
       pending: win.pending, pendingTop: win.pendingTop, fires: win.fires, firesTop: win.firesTop, raf: P.rafCalls, ipc: ipcWin, chats: H.chats?.length, lag: win.lag, longs: win.longs },
     main: main && { heap: main.heap, rss: main.rss, ext: main.external, handles: main.handles, children: main.children, res: main.res, timers: main.timers, ipc: main.ipc, listeners: main.listeners, procs: main.procs, contents: main.contents, windows: main.windows },
     mainTimers: timersMain && { perMin: timersMain.perMin, top: timersMain.top?.slice(0, 6), statPolls: timersMain.statPollsPerMin },
-    mainLag: lag?.delay ? { p99: lag.delay.p99, max: lag.delay.max, blocks: (lag.blocks || []).filter((b) => b.ms >= 100).map((b) => `${b.ms}ms · ${(b.app || []).slice(0, 2).join(' | ')}`), ipcTop: (lag.ipc?.top || []).slice(0, 4).map((x) => `${x.n}× ${x.ms}ms ${x.k}`), sends: (lag.sends || []).slice(0, 4) } : null,
+    mainLag: lag?.delay ? { p99: lag.delay.p99, max: lag.delay.max, blocks: (lag.blocks || []).filter((b) => b.ms >= 100).map((b) => `${b.ms}ms · ${(b.app || []).slice(0, 3).join(' | ')} · from ${String(b.first || '').slice(0, 120)}`), ipcTop: (lag.ipc?.top || []).slice(0, 4).map((x) => `${x.n}× ${x.ms}ms ${x.k}`), sends: (lag.sends || []).slice(0, 4) } : null,
     stalls: { n: stalls.length, worst: Math.max(0, ...stalls.map((x) => x.ms)) },
   };
   P.rafCalls = 0;

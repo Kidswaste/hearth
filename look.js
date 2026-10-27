@@ -258,7 +258,7 @@ const Look = (() => {
       accentReset.disabled = !f.accent;
     };
     box.refresh();
-    for (const p of pickers) if (!p.isConnected) pickers.delete(p); // (round 72, longrun72) a closed Settings' picker goes now (it waited for the next look change: one whole Settings kept per opening)
+    box.made = Date.now(); for (const p of pickers) if (!p.isConnected && Date.now() - (p.made || 0) > 10000) pickers.delete(p); // (round 72, longrun72) a closed Settings' picker goes now (it waited for the next look change: one whole Settings kept per opening)
     pickers.add(box);
     return box;
   }

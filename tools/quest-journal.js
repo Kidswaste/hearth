@@ -588,6 +588,7 @@ const QuestJournal = (() => {
     }
     showMatches(atlasOptions);
     if(keep){atlasView.update(atlasOptions);map.querySelectorAll(':scope>.qmf-strip,:scope>.qmf-status').forEach(n=>n.remove());}else atlasView=QuestAtlas.mount(map,atlasOptions); // (round 65, questperf65) same map, pins diffed
+    if(keep)keep.search=null; // (round 72, longrun72) the kept page's old search goes: each one held the one before it (and its filters), a chain one longer per map redraw
     worldKeep={layout,map,panel,search:()=>{
       const places=mapPlaces(),selected=places.find(p=>p.id===(previewPlace||state.atlas.selected))||places[0],pins=[];
       for(const layer of mapLayers){try{if(!window.QuestMapFirst?.off(layer.id))pins.push(...(layer.pins?.(mapFilter)||[]));}catch(err){console.warn('[quest map search]',layer.id,err);}}
