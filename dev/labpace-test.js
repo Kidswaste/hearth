@@ -226,6 +226,42 @@ for (const n of [100, 500, 2000]) {
     check(looks3 <= 480 / 8 + 480 / 32 + 2 && looks3 >= 480 / 32, 'pokes every 50 ms on a long-moving game: every 8th frame for 2 s after the first, then every 32nd again', `${looks3} of 960`); }
 }
 
+// ---------- 4b. render on demand (round 74, labdraw74) ----------
+{
+  const st = {}; let t = 0; let cur = { a: 1, b: 2, live: false }; let looks = 0;
+  const sigOf = () => { looks += 1; return cur; };
+  const draw = (poke = 0, soft = 0) => !P.still(st, t, poke, sigOf, undefined, soft);
+  for (let i = 0; i < 120; i += 1) { t += 1000 / 120; draw(); } // (settles: drawn, twice more, still)
+  let n = 0; for (let i = 0; i < 120 * 10; i += 1) { t += 1000 / 120; if (draw()) n += 1; }
+  check(n <= 2 + Math.ceil(10000 / P.REFRESH / 4) + 1 && n >= 2, `a still scene for 10 more s: a refresh a second while it settles (3 s), then every 4 s (${n} draws, was ≈ 10)`, n);
+  let soft = 0; looks = 0; n = 0;
+  for (let i = 0; i < 120; i += 1) { t += 1000 / 120; soft += 1; if (draw(0, soft)) n += 1; } // (the pointer moving over it, every frame for 1 s)
+  check(n <= 1 && looks >= 60, 'the pointer moving over a still picture: looked at, not drawn (a refresh at most)', { drawn: n, looks });
+  t += 1000 / 120; soft += 1; cur = { a: 5, b: 2, live: false };
+  check(draw(0, soft), 'a soft poke that changed the picture (an orbit, a hover effect): drawn that frame');
+  for (let i = 0; i < 10; i += 1) { t += 1000 / 120; draw(0, soft); }
+  let poked = 0; for (let i = 0; i < 12; i += 1) { t += 1000 / 120; if (draw(1, soft)) poked += 1; }
+  check(poked === 1, 'a hard poke (a message, a click) on a still, settled picture: drawn once (was 3: the 2 confirming frames again)', poked);
+  // a hard poke while it is still settling keeps settling as before; one that finds a change starts over
+  t += 1000 / 120; cur = { a: 6, b: 2, live: false }; let after = 0; for (let i = 0; i < 12; i += 1) { t += 1000 / 120; if (draw(2, soft)) after += 1; }
+  check(after === 1 + P.AFTER, 'a poke that finds a change: drawn, then the two confirming frames', after);
+}
+// the shadow maps' signature: casters and lights only (round 74, labdraw74)
+{
+  const T = makeScene(20);
+  T.scene.children[0].castShadow = true; T.scene.children[1].castShadow = true;
+  const sh = () => { const x = P.signature(T.scene, null, null, [1], true); return `${x.a}|${x.b}`; };
+  const s0 = sh();
+  T.scene.children[5].position.x += 1; T.scene.children[6].material.color.r = 0.2; T.scene.background.r = 0.7;
+  check(sh() === s0, 'the shadow maps\' signature: a non-casting object moving, a material, the background: same maps');
+  T.scene.children[1].position.y += 0.5;
+  const s1 = sh(); check(s1 !== s0, '… a caster moving: new maps');
+  T.light.intensity = 3; check(sh() !== s1, '… a light changing: new maps');
+  const g = obj({ children: [T.scene.children[0]] }); T.scene.children[0] = g; const s2 = sh(); g.position.x = 2;
+  check(sh() !== s2, '… a group (casting nothing itself) moving its casting child: new maps');
+  check(P.signature(T.scene, T.camera, T.r, [1]).a !== P.signature(T.scene, T.camera, T.r, [1], true).a, 'the full signature still sees everything (casters only for the maps)');
+}
+
 // ---------- 5. a still scene on fake displays: the GPU work and the signature's own work ----------
 for (const hz of [60, 240]) {
   const T = makeScene(50); const st = {}; let drawn = 0; let t = 0; let firstAfter = -1; let sigs = 0;

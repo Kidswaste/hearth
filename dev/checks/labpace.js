@@ -57,6 +57,7 @@ const mat = new THREE.MeshStandardMaterial({ color: '#80c0ff', roughness: 0.4 })
 const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1, 0.32, 160, 24), mat); scene.add(knot);
 for (let i = 0; i < 40; i++) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), mat); s.position.set(Math.cos(i) * 2.6, Math.sin(i * 0.7), Math.sin(i) * 2.6); scene.add(s); }
 window.__moveLater = (ms) => setTimeout(() => { knot.rotation.y += 0.4; window.__movedAt = document.timeline.currentTime; }, ms);
+addEventListener('pointermove', () => { if (window.__hover) knot.rotation.x += 0.05; }); // (a hover effect, switched on by the pointer step)
 function frame() { requestAnimationFrame(frame); mat.color.setHSL(P.hue, 0.6, 0.6); renderer.render(scene, camera); }
 requestAnimationFrame(frame);`;
 // an animation written per frame, the old way and with f60, side by side (one accumulator each)
@@ -91,7 +92,9 @@ await safe('still', async () => {
   const avg = (a, key) => Math.round((a.reduce((s, x) => s + x[key], 0) / a.length) * 10) / 10;
   out.perf.still = { off: { drawnPerSec: avg(acc.off, 'drawnPerSec'), callsPerSec: avg(acc.off, 'callsPerSec') }, on: { drawnPerSec: avg(acc.on, 'drawnPerSec'), callsPerSec: avg(acc.on, 'callsPerSec') } };
   step('a still scene with pacing off draws every frame it can (the "before")', out.perf.still.off.drawnPerSec >= 4 * Math.max(1, out.perf.still.on.drawnPerSec), out.perf.still);
-  step('a still scene with pacing on draws ≈ once a second (a refresh), not every frame', out.perf.still.on.drawnPerSec <= 2.5, out.perf.still);
+  // (round 74, labdraw74) ≤ 1 a second: the safety refresh only (a second apart while it settles, then 4 s); the
+  // check's own messages (evals) and the Lab's clock no longer draw a frame each (they used to: 3 frames per message)
+  step('a still scene with pacing on draws at most once a second (a refresh), not every frame', out.perf.still.on.drawnPerSec <= 1, out.perf.still);
   const st = await PS();
   out.stillState = { still: st.still, skipped: st.skipped, sigUs: st.sigUs, refreshes: st.refreshes };
   step('it knows it is still (the readout says so)', st.still === true, out.stillState);
@@ -117,10 +120,17 @@ await safe('resume', async () => {
   step('a slider moved: it draws at once', r2.frames >= 1, { frames: r2.frames, how });
   await wait(800);
   await sbx(PROBE);
-  await sbx('for (let i = 0; i < 5; i++) dispatchEvent(new PointerEvent("pointermove", { clientX: 100 + i, clientY: 100 })); return 1');
+  await sbx('window.__hover = true; for (let i = 0; i < 5; i++) dispatchEvent(new PointerEvent("pointermove", { clientX: 100 + i, clientY: 100 })); return 1');
   await wait(300);
-  const r3 = await sbx('window.__dp.on = false; return { frames: window.__dp.frames.length }');
-  step('a pointer over the preview: it draws (hover effects, orbit controls)', r3.frames >= 1, r3);
+  const r3 = await sbx('window.__dp.on = false; window.__hover = false; return { frames: window.__dp.frames.length }');
+  step('a pointer over the preview that moves something (a hover effect, orbit controls): it draws', r3.frames >= 1, r3);
+  // (round 74, labdraw74) a pointer that changes nothing: looked at, not drawn (a refresh may land in the window)
+  await wait(1500);
+  await sbx(PROBE);
+  await sbx('for (let i = 0; i < 5; i++) dispatchEvent(new PointerEvent("pointermove", { clientX: 120 + i, clientY: 100 })); return 1');
+  await wait(300);
+  const r4 = await sbx('window.__dp.on = false; return { frames: window.__dp.frames.length, why: window.__labPace.state().why }');
+  step('a pointer over the preview that changes nothing: no frame drawn for it (a refresh at most)', r4.frames <= 1, r4);
 });
 // 3) parked: no draws and the page asks for no frames at all; back on screen: it draws at once
 await safe('parked', async () => {

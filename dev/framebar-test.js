@@ -121,6 +121,11 @@ t('suggest: instancing, shared materials, shadows, casters, lights, overdraw fir
   const more = C.suggest({ ...calm, tris: 3e6, post: { offscreen: 4, filters: [{ type: 'bloom', ms: 2 }] }, scan: { ...calm.scan, shadowLights: [{ size: 512, passes: 6 }], shadowCalls: 12, textures: { n: 9, mb: 900 } } }, { budgetMs: 1000 / 240 }).map((s) => s.id);
   for (const k of ['post', 'pointshadow', 'tris', 'textures']) assert(more.includes(k), `${k} in ${more}`);
   assert.deepStrictEqual(C.suggest({ ok: false }), []);
+  // (round 74, labdraw74) a big crowd of detailed copies: the level-of-detail hint, naming copies × triangles
+  const crowd = C.suggest({ ...calm, ms: { frame: 3, drawIn: 2.8, drawOut: 0 }, tris: 480000, scan: { ...calm.scan, materials: [{ name: '', type: 'MeshStandardMaterial', calls: 2, objs: 1, tris: 480000, inst: 3000, transparent: false, mats: 1 }] } }, { budgetMs: 1000 / 240, layer: 'Crowd' });
+  const lod = crowd.find((s) => s.id === 'crowdlod');
+  assert(lod && /3000 copies × 160 triangles/.test(lod.title) && /simpler/.test(lod.fix) && /Crowd/.test(lod.draft), JSON.stringify(crowd.map((s) => s.title)));
+  assert(!C.suggest({ ...calm, scan: { ...calm.scan, materials: [{ type: 'MeshStandardMaterial', calls: 1, objs: 1, tris: 24000, inst: 2000, mats: 1 }] } }, { budgetMs: 1000 / 240 }).some((s) => s.id === 'crowdlod'), 'a crowd of 12-triangle copies: no hint');
 });
 
 t('formatting: ms and big numbers stay short', () => {
