@@ -155,7 +155,7 @@ function createEngine(o) {
       fs.renameSync(`${f}.tmp`, f);
     } catch (err) { log('base', rel, err.message); }
   }
-  function dropBase(rel) { delete state.base[rel]; if (state.prev) delete state.prev[rel]; try { fs.rmSync(basePath(rel), { force: true }); fs.rmSync(`${basePath(rel)}.prev`, { force: true }); } catch { /* fine */ } }
+  function dropBase(rel) { delete state.base[rel]; if (state.prev) delete state.prev[rel]; if (state.keepAll) delete state.keepAll[rel]; try { fs.rmSync(basePath(rel), { force: true }); fs.rmSync(`${basePath(rel)}.prev`, { force: true }); } catch { /* fine */ } }
   // (round 72, sync72) the base before the last one is kept too (its hash; a JSON store's text as base/<rel>.prev, a
   // rename, no copy): when a cloud client moves our upload aside, ours and theirs merge from it (rebase)
   function setBase(rel, h, text) {
@@ -194,7 +194,9 @@ function createEngine(o) {
     return now() - goneSeen.get(rel) < (o.goneWaitMs ?? 30 * 60000);
   }
   const copySeen = new Map(); // (round 72) a cloud client's copy of a non-JSON file: when it was first seen as it is
-  const rebased = new Set(); // (round 72) stores whose base went back a step: merged keeping everything until they settle
+  // (round 72) stores whose base went back a step: merged keeping everything until they settle (in state.json: a restart
+  // between the two must not merge them the ordinary way)
+  const rebased = { has: (rel) => Boolean(state.keepAll?.[rel]), add: (rel) => { (state.keepAll ||= {})[rel] = 1; }, delete: (rel) => { if (state.keepAll) delete state.keepAll[rel]; } };
 
   let status = { state: 'idle', at: 0, pending: 0, conflicts: 0, cloudOnly: [], skippedBig: [], unreadable: [], held: null, error: '', last: null };
   let running = null; let again = false; let stopping = false;

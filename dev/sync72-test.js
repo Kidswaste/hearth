@@ -493,6 +493,10 @@ scenario('random', async () => {
     let at = 10;
     const say = (m, id) => { const t = `${m.name} ${at}`; m.edit(`chats/${id}.json`, (c) => { (c || (c = chat(id, []))).messages.push(msg('user', at++, t)); return c; }); said.get(id).add(t); };
     for (const id of ['x', 'y', 'z']) { said.set(id, new Set()); pc.write(`chats/${id}.json`, chat(id, [])); }
+    const victims = ['v1', 'v2', 'v3', 'v4']; const deleted = new Set(); // chats only ever deleted (never edited after)
+    for (const id of victims) pc.write(`chats/${id}.json`, chat(id, [msg('user', 1, `victim ${id}`)]));
+    pc.write('kv/projects.json', PROJECT('Notes'));
+    const scenes = new Set(); const lines = new Set();
     ok(await converge(w) > 0, `random ${sd}: first sync`, why(w));
     for (let step = 0; step < 50; step++) {
       const m = pick([pc, mac]);
@@ -500,8 +504,11 @@ scenario('random', async () => {
       if (r < 0.45) { if (m.has(`chats/${pick(['x', 'y', 'z'])}.json`)) say(m, pick(['x', 'y', 'z'])); }
       else if (r < 0.6) { const id = `n${step}`; said.set(id, new Set()); m.write(`chats/${id}.json`, chat(id, [])); say(m, id); }
       else if (r < 0.7) m.write(`attachments/f${step}.bin`, Buffer.alloc(1000 + Math.floor(R() * 200000), step & 255));
-      else if (r < 0.8) m.edit('kv/three-sketches.json', (l) => { const list = Array.isArray(l) ? l : []; list.push(scene(`s${step}`, [layer('l', `// ${m.name}`)])); return list; });
-      else if (r < 0.9) { const v = pick([pc, mac]).view; v.online = !v.online; }
+      else if (r < 0.75) { scenes.add(`s${step}`); m.edit('kv/three-sketches.json', (l) => { const list = Array.isArray(l) ? l : []; if (list.length && R() < 0.5) pick(list).name = `${m.name} ${step}`; list.push(scene(`s${step}`, [layer('l', `// ${m.name}`)])); return list; }); }
+      else if (r < 0.79) { const t = `${m.name} note ${step}`; lines.add(t); m.edit('kv/projects.json', (d) => { d.list[0].notes += `\n${t}`; }); }
+      else if (r < 0.8) { const id = victims.find((v) => !deleted.has(v)); if (id && m.has(`chats/${id}.json`)) { m.deleteChat(id); deleted.add(id); } }
+      else if (r < 0.87) { const v = pick([pc, mac]).view; v.online = !v.online; }
+      else if (r < 0.9) m.e = m.make(); // Hearth restarted on that computer (what the engine keeps only in memory is gone)
       else await round(w, { step: Math.floor(R() * 600000) });
       if (R() < 0.5) await round(w);
     }
@@ -510,6 +517,13 @@ scenario('random', async () => {
     let lost = [];
     for (const [id, set] of said) for (const m of [pc, mac]) { const t = texts(m.json(`chats/${id}.json`)); lost.push(...[...set].filter((x) => !t.includes(x)).map((x) => `${m.name}:${id}:${x}`)); if (dupes(t).length) lost.push(`${m.name}:${id}: duplicated ${dupes(t)}`); }
     ok(!lost.length, `random ${sd}: every message on both computers, once`, lost.slice(0, 8));
+    for (const m of [pc, mac]) {
+      const ids = new Set((m.json('kv/three-sketches.json') || []).map((x) => x.id));
+      ok([...scenes].every((id) => ids.has(id)), `random ${sd}: every scene made on either computer, on the ${m.name}`, [...scenes].filter((id) => !ids.has(id)));
+      const notes = m.json('kv/projects.json').list[0].notes;
+      ok([...lines].every((t) => notes.includes(t)), `random ${sd}: every line added to the notes, on the ${m.name}`, [...lines].filter((t) => !notes.includes(t)));
+      ok([...deleted].every((id) => !m.has(`chats/${id}.json`)) && victims.filter((v) => !deleted.has(v)).every((id) => m.has(`chats/${id}.json`)), `random ${sd}: deleted chats gone, the others there, on the ${m.name}`, { deleted: [...deleted], here: victims.filter((id) => m.has(`chats/${id}.json`)) });
+    }
     ok(!copies(pc).length && !copies(mac).length, `random ${sd}: no duplicate files`, [...copies(pc), ...copies(mac)]);
   }
 });
