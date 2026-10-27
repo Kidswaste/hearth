@@ -2,6 +2,7 @@
    Calm: no loops, no transitions on the bars, no backdrop-filter; soft colours from the tracker's gold. */
 .sh-hud { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .sh-hud .qh-row-main { cursor: inherit; }
+.sh-hud .qh-row-title { white-space: normal; } /* the whole "This week: 3 h 20 making music", never cut */
 .sh-hud:focus-visible { outline: 2px solid var(--ui-gold, #d9b777); outline-offset: 1px; }
 .sh-pi { display: grid; place-items: center; }
 .sh-ring { display: block; }

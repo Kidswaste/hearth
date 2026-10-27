@@ -33,10 +33,10 @@ const SESSIONS = { v: 1, sessions: [
 ] };
 await hub.kvSet('music-sessions', SESSIONS);
 const kv0 = JSON.stringify((await hub.kvGet('music-sessions', null)));
-// timers: every interval / timeout made from Studio hours' own files from here on
-const made = []; const realSI = window.setInterval, realST = window.setTimeout;
-window.setInterval = function (...a) { if (/studiohours/.test(new Error().stack || '')) made.push('interval'); return realSI.apply(this, a); };
-window.setTimeout = function (...a) { if (/studiohours/.test(new Error().stack || '')) made.push('timeout'); return realST.apply(this, a); };
+// timers: every interval / timeout Studio hours' own files make DIRECTLY from here on (a toast's own auto-hide, which a click asked for, is the toast's)
+const made = []; const realSI = window.setInterval, realST = window.setTimeout, direct = () => /studiohours/.test((new Error().stack || '').split('\n')[3] || '');
+window.setInterval = function (...a) { if (direct()) made.push('interval'); return realSI.apply(this, a); };
+window.setTimeout = function (...a) { if (direct()) made.push('timeout'); return realST.apply(this, a); };
 const creativeBefore = Lazy.loaded('creative');
 try { localStorage.removeItem('studiohours.prefs'); localStorage.removeItem('studiohours.sunday'); } catch { /* fresh profile */ }
 await Lazy.load('studiohours'); StudioHours._test.clock(() => Z('2026-10-27T11:00:00Z'));
