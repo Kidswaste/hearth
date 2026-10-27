@@ -713,6 +713,7 @@ function registerAfterWindow() {
   lazyIpc('motionmain.js', (m, ipc) => m.register(ipc, () => win, { dataDir: store.DATA_DIR })); // (round 25) camera / body tracking: MediaPipe's files, downloaded once after a yes; the camera permission on a Mac
   lazyIpc('firstrunmain.js', (m, ipc) => m.register(ipc, () => win, { readConfig, dataDir: store.DATA_DIR })); // (round 28) Check this computer: Mac permissions, Windows paths, chats' folders, the shown install commands
   lazyIpc('packsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 28) packs: a scene and everything it uses as one .hearthpack file (zip-slip guard, size caps)
+  lazyIpc('projbundlemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win })); // (round 75, projbundle75) a whole project as one .hearthproject: streamed export / checked import (zip-slip, caps, versions)
   appsmain.register(ipcMain, () => win, { store, appshell }); // app windows (Meshy, Suno, Figma…), their downloads, the Meshy API
   syncmain.register(ipcMain, () => win, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, themePath: THEME_PATH, store }); // sync through a cloud drive folder
   require('./chatmediamain').register(ipcMain, { workspace: path.join(store.DATA_DIR, 'workspace') }); // pictures / videos a chat made, shown in the reply

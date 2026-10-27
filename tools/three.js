@@ -4340,6 +4340,20 @@ ${code}
         return true;
       },
       setExtras(id, ex) { if (!sketches.some((x) => x.id === id) || !ex || typeof ex !== 'object') return false; extras[id] = { ...(extras[id] || {}), ...JSON.parse(JSON.stringify(ex)) }; saveExtras(); return true; }, // (round 28, packs) a scene from a .hearthpack: its sliders, looks, song link
+      // (round 75, projbundle75) a scene from a .hearthproject or a duplicated project (projbundle.js): the sketch as given
+      // under its fresh id, its extras, references, notes, still and timeline cues; saved at once, never over a scene that's there
+      adoptScene({ sketch, extras: ex = null, refs = null, notes = null, thumb = null, maps = null } = {}) {
+        if (!sketch?.id || !/^[\w-]{1,80}$/.test(sketch.id) || sketches.some((x) => x.id === sketch.id)) return null;
+        const x = JSON.parse(JSON.stringify(sketch));
+        sketches.push(x);
+        if (ex && typeof ex === 'object') { extras[x.id] = JSON.parse(JSON.stringify(ex)); saveExtras(); }
+        if (Array.isArray(refs) && refs.length) { refsAll[x.id] = JSON.parse(JSON.stringify(refs)); saveRefs(); }
+        if (Array.isArray(notes) && notes.length) { notesAll[x.id] = JSON.parse(JSON.stringify(notes)); saveNotes(); }
+        if (thumb?.url) { thumbs[x.id] = { ...thumb }; saveThumbs(); }
+        for (const [k, m] of Object.entries(maps || {})) player.adoptMap?.(k, m).catch?.(() => {});
+        save(); renderPicker();
+        return x;
+      },
       thumbOf: (id) => thumbs[id]?.url || null,
       previewHost: () => previewHost,
       // (round 43, scenesafe) 🛟 Recover lost scenes (tools/three-scenesafe.js): found scenes join the list (never replacing

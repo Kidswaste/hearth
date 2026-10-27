@@ -1,0 +1,13 @@
+/* (round 75, projbundle75) Export / Import / Duplicate project: the card reuses the project wizard's look (.pw-wizard)
+   and the opening dialog's bar (.pw-load-bar); only its rows and lists are here. */
+.pb-card{width:min(520px,calc(100vw - 36px))}
+.pb-card h2{margin:4px 0 14px;font-size:22px;overflow-wrap:anywhere}
+.pb-line{margin:6px 0;line-height:1.5}
+.pb-check{display:flex;gap:10px;align-items:center;padding:9px 12px;margin:6px 0;border:1px solid #ffffff17;border-radius:12px;background:#ffffff06;cursor:pointer}
+.pb-check:has(input:disabled){opacity:.55;cursor:default}
+.pb-list{margin:8px 0;padding-left:18px;line-height:1.6}
+.pb-problems li{color:#ffc3b6}
+.pb-bar{margin:16px 0 8px}
+.pb-status{min-height:20px;font-size:12px;color:#cdbfd0;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pb-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.pj-home.pb-drop{outline:2px dashed #ed9bd7aa;outline-offset:-8px}
