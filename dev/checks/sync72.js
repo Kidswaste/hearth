@@ -35,8 +35,9 @@ step('the indicator says "✓ Synced" in the rail, its name says when', /^✓ Sy
 
 // 1. a click opens the panel: plain words, Sync now
 await click('#sync-dot');
-await until(() => panel()?.querySelector('h2'), 6000);
+await until(() => panel()?.querySelector('h2'), 20000); // (its code loads on first use: behind the after-start groups on a busy start)
 step('a click on the indicator opens the sync panel next to it', Boolean(panel()) && panel().getAttribute('role') === 'dialog' && /Synced/.test(panel().querySelector('h2')?.textContent || ''), panel()?.textContent?.slice(0, 160));
+if (!panel()) return J.done();
 step('it says where (the folder), when it checked, and the other computer', /with /.test(panel().textContent) && /checked/.test(panel().textContent) && /Studio Mac \(Mac\)/.test(panel().textContent), panel()?.querySelector('.sp-title .hint')?.textContent);
 step('Sync now, Deleted files, ⋯ More', Boolean(btn(/^Sync now$/)) && Boolean(btn(/Deleted files/)) && Boolean(panel().querySelector('[aria-label="More sync options"]')));
 await click(btn(/^Sync now$/));

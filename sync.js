@@ -78,7 +78,7 @@ const Sync = (() => {
       // (round 72, sync72) a click opens the sync panel (plain words, what waits, conflicts side by side, Sync now);
       // right-click keeps the menu. The panel's code loads on that first click (lazy group syncpanel).
       dot.addEventListener('click', () => panel());
-      dot.addEventListener('pointerenter', () => paintDot());
+      dot.addEventListener('pointerenter', () => { paintDot(); if (typeof SyncPanel === 'undefined' && window.Lazy) Lazy.load('syncpanel').catch(() => {}); }); // (the panel's code starts loading on the way to the click)
       dot.addEventListener('contextmenu', (e) => { e.preventDefault(); menu(e); });
     }
     const keys = document.getElementById('keys-btn');
@@ -128,8 +128,10 @@ const Sync = (() => {
   }
   // (round 72, sync72) the sync panel (sync-panel.js, loaded on the first click)
   const panelListeners = new Set();
+  let panelLoading = false; // a second click while its code still loads doesn't open-then-close it
   async function panel() {
-    try { if (typeof SyncPanel === 'undefined' && window.Lazy) await Lazy.load('syncpanel'); SyncPanel.toggle(dot); } catch (err) { console.warn('sync panel:', err); menu(); }
+    if (panelLoading) return;
+    try { if (typeof SyncPanel === 'undefined' && window.Lazy) { panelLoading = true; await Lazy.load('syncpanel'); } SyncPanel.toggle(dot); } catch (err) { console.warn('sync panel:', err); menu(); } finally { panelLoading = false; }
   }
   let lastAuto = null; // the last conflicts settled by themselves: { done, at } (the panel says so)
   function menu(e) {
