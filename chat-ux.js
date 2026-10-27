@@ -129,7 +129,13 @@ const ChatUX = (() => {
     const v = Native.view(agentId);
     if (!f || !v) return 0;
     clearMarks(v.list);
-    f.hits = markAll(v.list, f.input.value.trim());
+    const q = f.input.value.trim();
+    f.hits = markAll(v.list, q);
+    // (round 72, chatwindow72) the resting messages of a long chat count too: one stand-in each, in message order (the
+    // message is woken when you reach it, then its own matches are marked)
+    const rest = q && window.ChatRest ? ChatRest.restingHits(agentId, q) : [];
+    const at = (h) => (h.nodeType ? Number(h.closest('.msg')?.dataset.index ?? 1e9) : h.index);
+    if (rest.length) f.hits = [...f.hits, ...rest.map((index) => ({ index }))].sort((a, b) => at(a) - at(b));
     f.at = -1;
     f.count.textContent = f.input.value.trim() ? (f.hits.length ? `${f.hits.length} found` : 'none') : '';
     if (f.hits.length && jump) step(agentId, 1, true);
@@ -138,10 +144,20 @@ const ChatUX = (() => {
   function step(agentId, dir, fromStart = false) {
     const f = finds.get(agentId);
     if (!f?.hits.length) return;
-    f.hits[f.at]?.classList.remove('cur');
+    f.hits[f.at]?.classList?.remove('cur');
     // start from the latest messages: what you look for is usually recent
     f.at = fromStart ? f.hits.length - 1 : (f.at + dir + f.hits.length) % f.hits.length;
     const hit = f.hits[f.at];
+    if (!hit.nodeType) { // (round 72) a resting message: woken, then its first match
+      f.count.textContent = `${f.at + 1} / ${f.hits.length}`;
+      ChatRest.wakeAt(agentId, hit.index).then((ok) => {
+        if (!ok || finds.get(agentId) !== f) return;
+        run(agentId, { jump: false });
+        const i = f.hits.findIndex((h) => h.nodeType && h.closest('.msg')?.dataset.index === String(hit.index));
+        if (i >= 0) { f.at = i - 1; step(agentId, 1); }
+      });
+      return;
+    }
     hit.classList.add('cur');
     hit.closest('.msg.collapsed')?.classList.remove('collapsed');
     const details = hit.closest('details');
@@ -165,7 +181,7 @@ const ChatUX = (() => {
     if (v && f.bar.parentElement !== v.list.parentElement) v.list.parentElement.prepend(f.bar);
     const at = f.at;
     run(agentId, { jump: false });
-    if (at >= 0 && f.hits.length) { f.at = Math.min(at, f.hits.length - 1); f.hits[f.at].classList.add('cur'); f.count.textContent = `${f.at + 1} / ${f.hits.length}`; }
+    if (at >= 0 && f.hits.length) { f.at = Math.min(at, f.hits.length - 1); f.hits[f.at].classList?.add('cur'); f.count.textContent = `${f.at + 1} / ${f.hits.length}`; }
   });
 
   // ---------- chat tags and folders (data/kv/chat-meta.json: { chatId: { tags: [], folder } }) ----------

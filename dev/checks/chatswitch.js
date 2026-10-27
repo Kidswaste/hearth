@@ -221,7 +221,7 @@ await go('long', 'check');
 const shownLong = v.list.querySelectorAll('.msg[data-index]').length;
 if (shownLong < 40 || shownLong > 60) fail(`the long chat opens on its last messages (shows ${shownLong})`);
 if (v.list.querySelector('.msg[data-index]')?.dataset.index < 900) fail('the long chat should open near its end');
-if (!v.list.querySelector('.show-earlier')) fail('the long chat should offer ↑ Show earlier');
+if (!v.list.querySelector('.rest-line')) fail('the long chat should say its earlier messages are resting (· Show all)'); // (round 72, chatwindow72)
 // find, jump, Show earlier still work on a chat switched back to
 if (typeof ChatUX !== 'undefined' && ChatUX.find) {
   ChatUX.find(claude.id, 'Reply 999'); await wait(400);

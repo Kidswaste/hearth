@@ -143,6 +143,7 @@ const Native = (() => {
         else if (performance.now() - userAt < 700) v.follow = gap < 24;
         const near = gap < 80;
         if (jump.hidden !== near) jump.hidden = near;
+        if (list.awake) window.ChatRest?.soon(agentId, 250); // (round 72) far blocks rest again
         if (near && jump.classList.contains('has-new')) jump.classList.remove('has-new');
       });
     }, true);
@@ -611,16 +612,6 @@ const Native = (() => {
     }
   }
 
-  // "↑ Show earlier" reached by scrolling up loads the rest. (round 20, soak) one observer per view, let go at the next
-  // draw: each one used to stay alive (and with it the render's closure: every message node of that draw) until
-  // scrolled into view, so switching between long chats kept their old nodes forever (≈ 110 per switch)
-  function watchEarlier(v, agentId, more) {
-    v.earlierT = setTimeout(() => {
-      if (!more.isConnected) return;
-      const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); if (v.earlierIO === io) v.earlierIO = null; showEarlier(agentId, EARLIER); } }, { root: v.list });
-      io.observe(more); v.earlierIO = io;
-    }, 600);
-  }
   async function loadChat(id) {
     chatUsed.set(id, Date.now());
     if (!chats.has(id)) {
@@ -1009,7 +1000,8 @@ const Native = (() => {
     const misses = texts.length;
     if (from > 0 && !warmedEarlier.has(chat)) {
       warmedEarlier.add(chat);
-      const earlier = chat.messages.slice(0, from).filter((m) => m.role === 'assistant' || m.role === 'opinion').map((m) => m.text);
+      // (round 72, chatwindow72) only the two blocks just above (the rest are made when you scroll up to them)
+      const earlier = chat.messages.slice(Math.max(0, from - 2 * BLOCK), from).filter((m) => m.role === 'assistant' || m.role === 'opinion').map((m) => m.text);
       if (Md.uncached(earlier)) (window.requestIdleCallback || setTimeout)(() => Md.warm(earlier, 0), { timeout: 1500 });
     }
     return { wait, misses };
@@ -1064,7 +1056,7 @@ const Native = (() => {
     const p = v.panes.get(key);
     if (!p || key === v.paneKey) return;
     v.panes.delete(key);
-    p.list.foldIO?.disconnect(); p.list.foldWatch?.clear(); p.list.foldWait = null;
+    p.list.foldIO?.disconnect(); p.list.foldWatch?.clear(); p.list.foldWait = null; p.list.restIO?.disconnect();
     p.list.remove();
     v.nodes?.delete(key);
   }
@@ -1097,32 +1089,51 @@ const Native = (() => {
     const pins = chat.messages.map((m, i) => (m.pinnedMsg ? i : -1)).filter((i) => i >= 0);
     if (pins.length) head.push(pinnedStrip(agentId, chat, pins));
     const firstNew = unreadFrom.get(chat.id);
-    // A long chat opens on its last 40 messages (switching to one rebuilt every message: ~36k laid-out objects);
-    // "↑ Show earlier" or scrolling up to it brings the rest, and jumpTo() loads them when it needs an older one.
+    // A long chat opens on its last 40–59 messages (switching to one rebuilt every message: ~36k laid-out objects).
+    // (round 72, chatwindow72) the earlier ones rest in blocks of BLOCK: one empty spacer of the block's height each (the
+    // scrollbar stays honest), woken as you scroll up to them and put back to rest far out of view (restTick); jumpTo()
+    // and find wake the one they need. `list.awake`: the blocks drawn now.
     const from = shownFrom(chat, firstNew);
-    let more = null;
-    if (from > 0) {
-      const label = from > EARLIER + 10 ? `↑ Show earlier messages (${from} more)` : `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`;
-      more = bitOf(list, used, `more|${label}`, () => el('button', { type: 'button', class: 'ghost show-earlier', text: label, on: { click: () => showEarlier(agentId, EARLIER) } }));
-      head.push(more);
-    }
+    const awake = list.awake ||= new Set();
+    const nb = Math.ceil(from / BLOCK);
+    // (messages leaving the end part as the chat grows stay drawn: they rest later, measured, when far away)
+    if (list.restFrom != null && from > list.restFrom) for (let b = Math.floor(list.restFrom / BLOCK); b < nb; b++) awake.add(b);
+    list.restFrom = from;
+    for (const b of awake) if (b >= nb) awake.delete(b);
+    let lastRest = nb - 1; while (lastRest >= 0 && awake.has(lastRest)) lastRest -= 1;
     let day = '';
     const busy = pending.has(chat.id);
     const onlyOpinionsAfter = chat.messages.slice(lastReplyIdx + 1).every((x) => x.role === 'opinion');
-    const plan = [];
-    for (let i = from; i < chat.messages.length; i++) {
+    const plan = []; const spans = new Map(); const sepOf = new Map(); // block → [start, end) in plan · a line → its block
+    for (let i = 0; i < chat.messages.length; i++) {
+      const b = i < from ? Math.floor(i / BLOCK) : -1;
+      if (b >= 0 && !awake.has(b)) {
+        const hi = Math.min(from, (b + 1) * BLOCK);
+        plan.push(restBit(list, used, chat, b, hi));
+        if (b === lastRest) plan.push(bitOf(list, used, 'restline', () => restLine(agentId))); // "Earlier messages are resting · Show all"
+        const at = chat.messages[hi - 1]?.at; if (at) day = dayLabel(at);
+        i = hi - 1; continue;
+      }
+      if (b >= 0 && i % BLOCK === 0) spans.set(b, [plan.length]);
       const m = chat.messages[i];
-      if (m.compactReq) continue; // the "please compact" request is shown as part of the divider
-      // a quiet date line where the day changes (Today / Yesterday / the date)
-      const d = m.at ? dayLabel(m.at) : '';
-      if (d && d !== day) { if (day || chat.messages.length > 1) plan.push(bitOf(list, used, `day|${d}`, () => el('div', { class: 'day-sep', text: d }))); day = d; }
-      if (firstNew === i) plan.push(bitOf(list, used, 'new', () => el('div', { class: 'new-sep', text: 'New' })));
-      if (m.compactSummary) { plan.push(compactDivider(m)); continue; }
-      m.lastReply = i === lastReplyIdx && onlyOpinionsAfter && !busy ? true : undefined;
-      plan.push(i);
+      if (!m.compactReq) { // the "please compact" request is shown as part of the divider
+        const n0 = plan.length;
+        // a quiet date line where the day changes (Today / Yesterday / the date)
+        const d = m.at ? dayLabel(m.at) : '';
+        if (d && d !== day) { if (day || chat.messages.length > 1) plan.push(bitOf(list, used, `day|${d}`, () => el('div', { class: 'day-sep', text: d }))); day = d; }
+        if (firstNew === i) plan.push(bitOf(list, used, 'new', () => el('div', { class: 'new-sep', text: 'New' })));
+        if (m.compactSummary) plan.push(compactDivider(m));
+        else { m.lastReply = i === lastReplyIdx && onlyOpinionsAfter && !busy ? true : undefined; plan.push(i); }
+        if (b >= 0) for (let k = n0; k < plan.length; k++) if (typeof plan[k] !== 'number') sepOf.set(plan[k], b);
+      }
+      if (b >= 0 && ((i + 1) % BLOCK === 0 || i + 1 === from)) spans.get(b)?.push(plan.length);
     }
-    const make = (x) => (typeof x === 'number' ? nodeFor(cache, nextCache, chat.messages[x], agent, x, x === lastIdx && !busy) : x);
-    return { head, plan, make, more };
+    const make = (x) => {
+      const n = typeof x === 'number' ? nodeFor(cache, nextCache, chat.messages[x], agent, x, x === lastIdx && !busy) : x;
+      n.restB = typeof x === 'number' ? (x < from ? Math.floor(x / BLOCK) : undefined) : sepOf.get(x); // (its block: restTick)
+      return n;
+    };
+    return { head, plan, make, spans };
   }
   function touchChat(id) {
     chatUsed.set(id, Date.now());
@@ -1205,11 +1216,8 @@ const Native = (() => {
     let later = null; // (round 45) the earlier part of a chat drawn end first: { plan, before } made after the first frame
     if (!chat) out.push(emptyState(agent));
     else {
-      const { head, plan, make, more } = planOf(v.list, agentId, agent, chat, cache, nextCache, usedBits);
+      const { head, plan, make } = planOf(v.list, agentId, agent, chat, cache, nextCache, usedBits);
       out.push(...head);
-      v.earlierIO?.disconnect(); v.earlierIO = null; clearTimeout(v.earlierT); // (the last draw's "Show earlier" watch)
-      // reaching ↑ Show earlier by scrolling up loads them too (after the chat has settled at the bottom)
-      if (more) watchEarlier(v, agentId, more);
       // (round 45) many messages to make (a chat opened afresh): its end first
       let cut = 0;
       if (tailFirst) {
@@ -1269,6 +1277,7 @@ const Native = (() => {
       if (v.jumpAfter != null && !later) takeJump(agentId, v, chat); // (round 35) a jump waiting for this draw
       const near = nearBottom(v.list);
       if (v.jump.hidden !== near) v.jump.hidden = near;
+      restWatch(agentId, v);
       for (const fn of hooks.render) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
     });
     if (later) await drawLater(agentId, v, chat, chatId, later, warm, seq);
@@ -1344,6 +1353,7 @@ const Native = (() => {
       foldFresh(v, chat, 0);
       if (follows(v)) { const top = list.scrollHeight - list.clientHeight; if (top - list.scrollTop >= 1) list.scrollTop = top; }
       if (v.jumpAfter != null) takeJump(agentId, v, chat);
+      restWatch(agentId, v);
       for (const fn of hooks.render) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
     });
   }
@@ -1471,46 +1481,80 @@ const Native = (() => {
     return strip;
   }
   const WINDOW = 40;
-  const fullChats = new Set(); // chats whose earlier messages are shown (this session)
-  // (round 26, smooth26) "Show earlier" / scrolling up brings EARLIER more at a time: all 260 earlier messages of a
-  // 300-message chat in one go was a ~300 ms frame (here) right under your wheel
-  const EARLIER = 60;
-  const earlierFrom = new Map(); // chat id → first message shown after some "Show earlier"
+  const fullChats = new Set(); // chats shown whole (Show all, this session)
+  // (round 72, chatwindow72) a long chat's earlier messages rest in blocks of BLOCK (planOf): its end part starts on a
+  // block's edge (40–59 messages), so a new message moves it once every BLOCK messages instead of every time
+  const BLOCK = 20;
   function shownFrom(chat, firstNew) {
-    if (fullChats.has(chat.id) || chat.messages.length <= WINDOW + 10) return 0;
-    let from = Math.min(chat.messages.length - WINDOW, earlierFrom.get(chat.id) ?? Infinity);
-    if (firstNew != null && firstNew < from) from = Math.max(0, firstNew - 2);
+    const n = chat.messages.length;
+    if (fullChats.has(chat.id) || n <= WINDOW + 10) return 0;
+    let from = Math.floor((n - WINDOW) / BLOCK) * BLOCK;
+    if (firstNew != null && firstNew - 2 < from) from = Math.max(0, Math.floor((firstNew - 2) / BLOCK) * BLOCK);
     return from;
   }
-  // the earlier messages of the open chat (step: that many more, else all), keeping what's on screen where it is
+  // A resting block's spacer: the height it had when last drawn, else a guess from its text (what's on screen stays put
+  // when it wakes either way: restAnchor)
+  function restBit(list, used, chat, b, hi) {
+    const sp = bitOf(list, used, `rest|${b}`, () => el('div', { class: 'msg-rest', dataset: { block: b } }));
+    const seen = list.restH?.get(b); const n = hi - b * BLOCK;
+    let h = seen?.n === n ? seen.h : null;
+    if (h == null) {
+      list.restW ||= list.clientWidth || 760;
+      const g = (list.restG ||= new Map()).get(b);
+      h = g?.n === n ? g.h : guessH(chat.messages, b * BLOCK, hi, list.restW);
+      list.restG.set(b, { n, h });
+    }
+    if (sp.restPx !== h) { sp.restPx = h; sp.style.height = `${h}px`; }
+    return sp;
+  }
+  function guessH(msgs, lo, hi, w) {
+    const cpl = Math.max(30, (w - 90) / 7.4); // characters per line
+    let all = 0;
+    for (let i = lo; i < hi; i++) {
+      const m = msgs[i];
+      if (!m || m.compactReq) continue;
+      let px = 0; let code = -1;
+      for (const line of String(m.text || '').split('\n')) {
+        if (line.startsWith('```')) { code = code < 0 ? 0 : -1; px += code ? 0 : 34; } else if (code >= 0) { if (code++ < CODE_FOLD_LINES) px += 19; } else px += line ? Math.ceil(line.length / cpl) * 23 : 6;
+      }
+      if (m.role !== 'user' && px > COLLAPSE_PX) px = 440; // (folded when it comes near: features.css .msg.collapsed)
+      all += px + 64 + (m.thinking ? 40 : 0) + (m.tools?.length ? 30 : 0) + (m.shows?.length || 0) * 260 + (m.things?.length ? 300 : 0) + (m.attachments?.length ? 34 : 0);
+    }
+    return all;
+  }
+  function restLine(agentId) {
+    return el('div', { class: 'rest-line', title: 'Older messages are drawn as you scroll up to them, to keep long chats light' }, 'Earlier messages are resting · ',
+      el('button', { type: 'button', text: 'Show all', title: 'Draw every message of this chat (slower in a very long chat)', on: { click: () => showEarlier(agentId) } }));
+  }
+  // waking and resting blocks, find and jumps into resting messages: chat-rest.js (loaded right after the first frame)
+  const restWatch = (agentId, v) => window.ChatRest?.watch(agentId, v);
+  // the earlier messages of the open chat: `step` more (the resting blocks just above), else all of them (Show all)
   function showEarlier(agentId, step = 0) {
     const v = views.get(agentId); const id = H.activeChat[agentId];
     if (!v || !id || fullChats.has(id)) return;
-    const chat = chats.get(id);
-    const from = chat && step ? shownFrom(chat, unreadFrom.get(id)) - step : 0;
-    if (from > 10) earlierFrom.set(id, from); else fullChats.add(id);
-    const h0 = v.list.scrollHeight; const t0 = v.list.scrollTop;
-    const keep = () => { v.list.scrollTop = t0 + (v.list.scrollHeight - h0); };
-    keep();
-    // (round 20) render waits for its chat (and the Markdown worker): keep the place after it drew
-    // (round 35) as a redraw that keeps your place (keepScroll: the message at the top stays there): drawn as a fresh
-    // one it ended by scrolling to the bottom, so scrolling up into earlier messages threw you back to the end
-    render(agentId, { keepScroll: true }).then(keep);
+    if (step && window.ChatRest) { ChatRest.more(agentId, step); return; }
+    fullChats.add(id);
+    render(agentId, { keepScroll: true }); // (keeps your place: the message at the top stays there)
   }
   // Scrolls to message #index (0-based) and flashes it; unfolds it when folded.
   function jumpTo(agentId, index) {
     const v = views.get(agentId);
-    // (round 35, streamrender) an older message of a long chat: the chat is drawn whole, and the jump happens once that
-    // draw has placed its scroll (it put you back at the bottom after the jump: recall's "show me" landed on the end)
+    // (round 35, streamrender) a waiting jump happens once the draw on its way has placed its scroll
     // (round 45, chatswitch) a waiting jump belongs to its chat (it jumped in the next chat you opened: a jump done while
     // another draw was on its way stayed waiting, and the next draw, of any chat, took it)
     const later = () => { v.jumpAfter = index; v.jumpFor = H.activeChat[agentId]; };
-    if (v && !v.list.querySelector(`.msg[data-index="${index}"]`) && H.activeChat[agentId] && !fullChats.has(H.activeChat[agentId])) { fullChats.add(H.activeChat[agentId]); later(); render(agentId); }
     const node = v?.list.querySelector(`.msg[data-index="${index}"]`);
+    // (round 72, chatwindow72) a resting message: its block is woken, then the jump (the chat isn't drawn whole any more)
+    const chat = chats.get(H.activeChat[agentId]);
+    if (!node && v && chat && index >= 0 && index < shownFrom(chat, unreadFrom.get(chat.id))) {
+      if (!window.ChatRest) { fullChats.add(chat.id); later(); render(agentId); return false; }
+      ChatRest.wakeAt(agentId, index).then((ok) => { if (ok) jumpTo(agentId, index); });
+      return true;
+    }
     if (!node) { if (v?.drawing) later(); return false; }
     if (v.drawing) later(); // a draw on its way would put the scroll back: jump again after it
     node.scrollIntoView({ block: index === 0 ? 'start' : 'center' });
-    if (index < (chats.get(H.activeChat[agentId])?.messages.length ?? 0) - 1) v.follow = false; // (round 45) reading an old message: a picture loading below no longer pulls you back to the end
+    if (index < (chat?.messages.length ?? 0) - 1) v.follow = false; // (round 45) reading an old message: a picture loading below no longer pulls you back to the end
     node.classList.add('flash-msg');
     setTimeout(() => node.classList.remove('flash-msg'), 900);
     return true;
@@ -2575,7 +2619,7 @@ const Native = (() => {
     const summary = H.chats.find((c) => c.id === chatId);
     if (pending.has(chatId)) window.hub.stop(chatId);
     await window.hub.deleteChat(chatId);
-    chats.delete(chatId); chatUsed.delete(chatId); earlierFrom.delete(chatId); fullChats.delete(chatId); unreadFrom.delete(chatId); // (round 48, memory48)
+    chats.delete(chatId); chatUsed.delete(chatId); fullChats.delete(chatId); unreadFrom.delete(chatId); // (round 48, memory48)
     H.chats = H.chats.filter((c) => c.id !== chatId);
     if (summary && H.activeChat[summary.agentId] === chatId) newChat(summary.agentId);
     for (const v of views.values()) dropPane(v, chatId); // (round 45) its kept list goes with it
@@ -2708,6 +2752,7 @@ const Native = (() => {
       return (paths || []).length;
     },
     unreadFrom, rememberFacts, forgetFacts, fmt, clearNotes,
+    _rest: { views, chats, hooks, planOf, topAnchor, keepAnchor, foldFresh, shownFrom, unreadFrom, nextSlice, SLICE_MS, BLOCK, restLine }, // (round 72) chat-rest.js
     prefetch, // (round 45, chatswitch) a chat you rest on in the chats list is made ready before the click (panel.js)
     // (round 9) a card in a reply that is still streaming (chat-things.js); null when no reply runs in that chat
     repaint: (chatId) => schedulePaint(chatId), // (round 21) chat-live.js: its panel opened / changed
@@ -2740,7 +2785,7 @@ const Native = (() => {
       // (round 45, chatswitch) what the kept lists hold: lists per chat window, elements in the parked ones
       kept() { let lists = 0; let nodes = 0; for (const v of views.values()) for (const [k, p] of v.panes || []) { lists += 1; if (k !== v.paneKey) nodes += p.list.getElementsByTagName('*').length; } return { lists, nodes }; },
       // (round 48, memory48) sizes of what's kept per chat id (dev/checks/memory48.js: nothing grows with chats visited)
-      maps() { let nodes = 0; for (const v of views.values()) nodes += v.nodes?.size || 0; return { chats: chats.size, used: chatUsed.size, unread: unreadFrom.size, earlier: earlierFrom.size, full: fullChats.size, after: afterReply.size, pending: pending.size, nodeChats: nodes }; },
+      maps() { let nodes = 0; for (const v of views.values()) nodes += v.nodes?.size || 0; return { chats: chats.size, used: chatUsed.size, unread: unreadFrom.size, full: fullChats.size, after: afterReply.size, pending: pending.size, nodeChats: nodes }; },
       // the live reply of a chat painted now with all its text; its HTML and the text it shows
       livePaint(chatId) { const p = pending.get(chatId); if (!p?.el) return null; const text = visibleText(p.text); paintBody(p, p.el.querySelector('.body'), text); return { html: p.el.querySelector('.body').innerHTML, text }; },
     },

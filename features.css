@@ -1055,8 +1055,8 @@ body.chat-zen .msg:hover .msg-foot, body.chat-zen .native-head:hover .chat-meta,
 .tool-dock .pinned-strip { top: -14px; }
 
 /* day lines and the unread "New" line */
-.day-sep, .new-sep { display: flex; align-items: center; gap: 10px; margin: 10px 0 14px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-.day-sep::before, .day-sep::after, .new-sep::before, .new-sep::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.day-sep, .new-sep, .rest-line { display: flex; align-items: center; gap: 10px; margin: 10px 0 14px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.day-sep::before, .day-sep::after, .new-sep::before, .new-sep::after, .rest-line::before, .rest-line::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .new-sep { color: var(--ui-hot); }
 .new-sep::before, .new-sep::after { background: color-mix(in srgb, var(--ui-hot) 60%, transparent); }
 

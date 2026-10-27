@@ -57,7 +57,7 @@ let mutations = 0;
 const mo = new MutationObserver((list) => { mutations += list.length; });
 mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
 const vis = (s) => [...document.querySelectorAll(s)].some((n) => n.checkVisibility?.({ visibilityProperty: true }) && n.getBoundingClientRect().width > 0);
-const globalSig = async () => JSON.stringify({ zoom: await window.hub.getZoom?.(), grid: H.grid, panel: H.panelOpen, active: H.activeId, palette: vis('.palette'), find: vis('.find-bar'), notes: vis('.notes-panel'), bar: vis('.cmdbar-input'), sheet: vis('.keys-sheet'), broadcast: !document.getElementById('broadcast')?.classList.contains('hidden'), atts: Native.view(H.claudeAgent().id)?.attachments?.length || 0, onTop: document.body.classList.contains('on-top') });
+const globalSig = async () => JSON.stringify({ zoom: await window.hub.getZoom?.(), grid: H.grid, panel: H.panelOpen, active: H.activeId, palette: vis('.palette'), find: vis('.find-bar') || vis('.chat-find'), notes: vis('.notes-panel'), bar: vis('.cmdbar-input'), sheet: vis('.keys-sheet'), broadcast: !document.getElementById('broadcast')?.classList.contains('hidden'), atts: Native.view(H.claudeAgent().id)?.attachments?.length || 0, onTop: document.body.classList.contains('on-top') });
 const uiSig = () => JSON.stringify({ kids: document.body.children.length, overlays: document.querySelectorAll('.bd-compare, .bd-viewer, .bd-info, .bd-card, .ui-modal, [class*="-overlay"], [class*="-viewer"]').length, dialogs: document.querySelectorAll('dialog[open]').length, menu: vis('#menu'), toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.slice(0, 30)).join('|'), focus: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 30)}` });
 // app-wide actions an area key may legitimately do itself (the key IS that action there)
 const OWN_GLOBAL = /palette|Ctrl\+K|Ctrl\+;|Ctrl\+\/|F1|Command|Settings|Notes|Find|sheet|Ctrl\+Shift\+M/i;
@@ -107,6 +107,7 @@ const closeAll = async () => {
   document.querySelector('.palette')?.remove();
   if (typeof KeysUI !== 'undefined') KeysUI.close?.();
   document.querySelector('.find-bar .find-close, .find-bar button:last-child')?.click();
+  document.querySelector('.chat-find button:last-child')?.click(); // (round 72) Ctrl+F on a chat: its own find
   if (vis('.notes-panel')) Notes.close?.();
   if (typeof ThreeFX !== 'undefined') ThreeFX.close?.(); // the Lab's effects picker (X, Alt+X)
   if (vis('.cmdbar-input')) document.querySelector('.cmdbar-input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -256,7 +257,7 @@ if (AREAS.includes('Everywhere')) {
   // (keysfix) the app state these keys change (the rail item, side by side, the chats panel, the ask-all bar, the
   // palette…): Ctrl+\ and Ctrl+B did their job (handleShortcut ran from the chat box, the state changed) but write only
   // 2 nodes, under the "more DOM writes than idle" bar, so they were "dead (keys at TEXTAREA)" on some runs
-  const appSig = () => JSON.stringify({ grid: H.grid, panel: H.panelOpen, active: H.activeId, chat: H.activeChat?.[H.activeId] || null, palette: vis('.palette'), find: vis('.find-bar'), notes: vis('.notes-panel'), bar: vis('.cmdbar-input'), sheet: vis('.keys-sheet'), broadcast: !document.getElementById('broadcast')?.classList.contains('hidden'), atts: Native.view(H.claudeAgent().id)?.attachments?.length || 0, onTop: document.body.classList.contains('on-top') });
+  const appSig = () => JSON.stringify({ grid: H.grid, panel: H.panelOpen, active: H.activeId, chat: H.activeChat?.[H.activeId] || null, palette: vis('.palette'), find: vis('.find-bar') || vis('.chat-find'), notes: vis('.notes-panel'), bar: vis('.cmdbar-input'), sheet: vis('.keys-sheet'), broadcast: !document.getElementById('broadcast')?.classList.contains('hidden'), atts: Native.view(H.claudeAgent().id)?.attachments?.length || 0, onTop: document.body.classList.contains('on-top') });
   await runArea('Everywhere', {
     sig: appSig,
     skip: /^(Esc|Ctrl\+=|Ctrl\+-|Ctrl\+0)$/, // Esc only closes; the text size is checked below

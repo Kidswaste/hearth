@@ -505,6 +505,9 @@ const AppUI = (() => {
     if (findBar) { findBar.querySelector('input').select(); return; }
     const s = H.surfaces.get(H.activeId);
     const view = s?.webview || s?.el.querySelector('.tabpane:not([hidden]) webview');
+    // (round 72, chatwindow72) on a chat: its own find (it reaches the resting messages of a long chat too)
+    const cv = !view && typeof ChatUX !== 'undefined' && Native.view?.(H.activeId);
+    if (cv?.root?.offsetParent) { ChatUX.find(H.activeId); return; }
     const input = el('input', { placeholder: 'Find…' });
     const count = el('span', { class: 'find-count' });
     const go = (forward = true, findNext = true) => {
