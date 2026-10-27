@@ -98,7 +98,10 @@ const Usage = (() => {
     const { hotAt, warmAt } = tiers();
     const canFade = trackedDays() >= 14;
     const hidden = new Set(data.hidden || []);
-    const roots = document.querySelectorAll('.three-toolbar, .media-bar .mb-main, .native-head, .msg-foot, .tw-head, .tool-head');
+    // (round 72, projects72) the last 60 message footers only: a 700-message chat has hundreds of the same footers, and
+    // this pass (≈ 70–130 ms on such a chat) landed in the middle of opening a project; older ones keep their marks
+    const foots = [...document.querySelectorAll('.msg-foot')];
+    const roots = [...document.querySelectorAll('.three-toolbar, .media-bar .mb-main, .native-head, .tw-head, .tool-head'), ...foots.slice(-60)];
     for (const root of roots) {
       for (const node of root.querySelectorAll('button, select')) {
         const { key, label, area } = nameOf(node);
