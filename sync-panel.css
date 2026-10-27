@@ -21,8 +21,7 @@
 .sp-sec { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line, #333); }
 .sp-warn > b, .sp-warn > p:first-child { color: var(--fh-ember, #ff8a3d); }
 .sp-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.sp-details summary { cursor: pointer; font-size: .85em; opacity: .7; }
-.sp-details code { display: block; font-size: .82em; opacity: .75; overflow-wrap: anywhere; white-space: pre-wrap; }
+.sync-panel .ec-details pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .82em; max-height: 120px; overflow: auto; }
 .sp-wait { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 .sp-wait li { display: flex; flex-direction: column; min-width: 0; }
 .sp-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

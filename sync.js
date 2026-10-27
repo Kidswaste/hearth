@@ -47,7 +47,14 @@ const Sync = (() => {
     if (s === 'synced') return `Synced ${ago(st.lastOk || st.at)}`;
     return 'Syncing…';
   }
-  const chipOf = () => { const s = dotState(); return s === 'paused' ? '‖' : s === 'offline' ? '○' : s === 'conflict' ? `⚠${st.conflicts ? ` ${st.conflicts}` : ''}` : s === 'syncing' ? `↻${st.state === 'pending' && st.pending ? ` ${st.pending > 99 ? '99+' : st.pending}` : ''}` : '✓'; };
+  const chipOf = () => {
+    const s = dotState(); const n = st.pending > 99 ? '99+' : st.pending;
+    if (s === 'paused') return '‖ Paused';
+    if (s === 'offline') return '○ Offline';
+    if (s === 'conflict') return st.conflicts ? `⚠ ${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'}` : '⚠ Look';
+    if (s === 'syncing') return st.state === 'pending' && st.pending ? `↻ ${n} waiting` : '↻ Syncing';
+    return '✓ Synced';
+  };
   const glyphOf = () => chipOf().slice(0, 1);
   const KV_NAMES = { 'three-sketches': 'Lab scenes', boards: 'Mood boards', notes: 'Notes', prompts: 'Prompts', 'video-cuts': 'Video edits', 'chat-scenes': 'Chat scenes', 'three-lab-extras': 'Lab looks and songs', 'chat-meta': 'Chat tags and folders', projects: 'Projects', 'three-beatmaps': 'Beat grids', 'video-notes': 'Video notes' };
   function nameOf(rel) {
@@ -90,7 +97,6 @@ const Sync = (() => {
     if (chip && chip.textContent !== c) chip.textContent = c;
     const name = `Sync: ${words}`;
     if (dot.getAttribute('aria-label') !== name) dot.setAttribute('aria-label', name);
-    for (const f of panelListeners) { try { f(); } catch { panelListeners.delete(f); } }
   }
 
   // ---------- the menu (the dot, Settings ⋯, /sync menu) ----------
@@ -550,7 +556,7 @@ const Sync = (() => {
   // ---------- start ----------
   async function init() {
     if (!api()) return;
-    api().onStatus((s) => { st = s; mountDot(); for (const f of listeners) { try { f(); } catch { listeners.delete(f); } } });
+    api().onStatus((s) => { st = s; mountDot(); for (const f of [...listeners, ...panelListeners]) { try { f(); } catch { listeners.delete(f); panelListeners.delete(f); } } }); // (round 72) + the open sync panel
     api().onPulled((list) => onPulled(list).catch(() => {}));
     // (round 26) conflicts settled by themselves after a sync: one quiet line, undo one click away
     api().onAutoResolved?.((r) => { if (r?.done) lastAuto = { done: r.done, at: Date.now() }; if (r?.done) toast(`Sync settled ${r.done} conflict${r.done === 1 ? '' : 's'} by itself (data merged, files: the newer one). Undo from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } }); refresh(); });

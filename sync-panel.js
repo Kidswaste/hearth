@@ -149,7 +149,7 @@ const SyncPanel = (() => {
       const words = window.calmError ? calmError(err.message, { where: 'sync', what }) : err.message;
       parts.push(el('div', { class: 'sp-sec sp-warn' }, el('b', { text: `Last problem (${ago(err.at)})` }),
         el('p', { text: `${err.rel ? `${what}: ` : ''}${words}${/again/i.test(words) ? '' : ' Hearth tries again by itself.'}` }),
-        el('details', { class: 'sp-details' }, el('summary', { text: 'Details' }), el('code', { text: `${err.op || ''} ${err.rel || ''} ${err.code || ''} ${err.message}`.trim() }))));
+        window.ErrorCalm?.details ? ErrorCalm.details(`${err.op ? `${err.op} ` : ''}${err.rel ? `${err.rel}: ` : ''}${err.message}`) : null)); // the word-for-word reason, with Copy
     }
     // conflicts, side by side
     if (list.length) {

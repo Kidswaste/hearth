@@ -1162,7 +1162,9 @@ function createEngine(o) {
       }
       notePulled(rec.rel, kindOf(rec.rel));
     } else if (keep === 'both') {
-      const from = String(rec.from || 'the other computer').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 40);
+      // (round 72, sync72) named like the panel's buttons: "(from Mac)" / "(from PC)" (its name when both are the same kind)
+      const kind = (p) => ({ darwin: 'Mac', win32: 'PC' })[p];
+      const from = String(kind(rec.fromPlatform) && kind(rec.fromPlatform) !== kind(platform) ? kind(rec.fromPlatform) : rec.from || 'the other computer').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 40);
       if (isJson) {
         const m = /^chats\/(.+)\.json$/.exec(rec.rel);
         if (!m && rec.rel === 'app/config.json') return { ok: false, error: 'Settings are one version or the other: pick one, or Merge.' };
