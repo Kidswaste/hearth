@@ -150,6 +150,7 @@ contextBridge.exposeInMainWorld('hub', {
   },
   onDownload: on('download:update'),
   onGameCall: on('game:call'),
+  onGameHops: on('game:hops'), // (round 74, labcalls74) a call's hop times, after it answered
   gameResult: (id, result) => ipcRenderer.invoke('game:result', id, result),
   directorCost: call('director:cost'), // (agents?) → per-message cost of each director's tools (mcp/cost.js)
   directorGuide: call('director:guide'), // (topic) → the Three Director's guide text for that topic
@@ -189,6 +190,8 @@ contextBridge.exposeInMainWorld('hub', {
   publish: { analyze: call('publish:analyze') },
   // (round 28) packs (packsmain.js): a scene and everything it uses as one .hearthpack; peek before anything is added
   packs: { plan: call('packs:plan'), write: call('packs:write'), peek: call('packs:peek'), unpack: call('packs:unpack'), pending: call('packs:pending'), onOpen: on('packs:open') },
+  // (round 75, projbundle75) a whole project as one .hearthproject (projbundlemain.js): export / check / unpack, streamed with progress + cancel
+  projbundle: { sizes: call('projbundle:sizes'), export: call('projbundle:export'), peek: call('projbundle:peek'), unpack: call('projbundle:unpack'), discard: call('projbundle:discard'), cancel: call('projbundle:cancel'), onProgress: on('projbundle:progress') },
   // (round 26) hooks (hooksmain.js): the folders a hook watches, and the new files in them
   hooks: { watch: call('hooks:watch'), onFile: on('hooks:file') },
   // (round 19, reach) paths from the other computer → this one's; open / reveal / preview what a chat made (reachmain.js)
@@ -196,6 +199,7 @@ contextBridge.exposeInMainWorld('hub', {
   // (round 35, twocomputers) which computer this is, media found again after switching computers (twocomputersmain.js)
   scenesafe: { scan: call('scenes:scan') }, // (round 43, scenesafe) 🛟 Recover lost scenes (scenesafemain.js)
   backupauto: { state: call('backupauto:state'), list: call('backupauto:list'), run: call('backupauto:run'), verify: call('backupauto:verify'), inspect: call('backupauto:inspect'), places: call('backupauto:places'), setDir: call('backupauto:setDir'), setAuto: call('backupauto:setAuto'), before: call('backupauto:before'), battery: call('backupauto:battery'), reveal: call('backupauto:reveal'), test: call('backupauto:test'), onChanged: on('backupauto:changed') }, // (round 45, backupauto) automatic, checked backups (backupautomain.js)
+  versions: { list: call('versions:list'), read: call('versions:read'), keep: call('versions:keep'), restore: call('versions:restore'), undo: call('versions:undo'), deleted: call('versions:deleted'), thing: call('versions:thing'), undelete: call('versions:undelete') }, // (round 75, versions75) 🕘 Earlier versions / Deleted things (versionsmain.js)
   datasafe: { health: call('data:health'), recheck: call('data:recheck'), scan: call('data:scan'), recover: call('data:recover'), onDoubt: on('data:doubt') }, // (round 43, datasafe) what couldn't be read · 🛟 Recover… (datasafemain.js)
   chatsafe: { bring: call('chatsafe:bring') }, // (round 55, chatsafe55) Bring back the AI a chat waits for (chatsafemain.js)
   fw: { want: call('fw:want'), own: call('fw:own'), state: call('fw:state'), test: call('fw:test'), onChanges: on('fw:changes') }, // (round 42, filewatch) files changed outside Hearth (filewatchmain.js)
@@ -256,6 +260,7 @@ contextBridge.exposeInMainWorld('hub', {
     trash: call('sync:trash'), restore: call('sync:restore'), open: call('sync:open'), download: call('sync:download'), ack: call('sync:ack'), preview: call('sync:preview'), resolveAll: call('sync:resolveAll'), autoResolve: call('sync:autoResolve'), onAutoResolved: on('sync:auto-resolved'),
     onStatus: on('sync:status'), onPulled: on('sync:pulled'),
     kinds: call('sync:kinds'), freeable: call('sync:freeable'), free: call('sync:free'), // (round 73, syncmedia73) What syncs · Free up space
+    fix: call('sync:fix'), // (round 74, synchard74) a blocked file's fix button
   },
   video: {
     tools: call('video:tools'),

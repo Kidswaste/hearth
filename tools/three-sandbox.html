@@ -695,7 +695,8 @@ function instrument(renderFn) {
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
     const rfBack = RF.on && !this.__helper ? rfApply(camera) : null; // (round 33, multiformat) a format's pan / zoom
     if (this.shadowMap?.enabled && scene?.isObject3D) shGate(this, scene); // (round 50 "lab240gpu": maps only when they can change)
-    try { renderFn.call(this, scene, camera); } finally { rvBack?.(); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
+    const ccBack = CC.on || CC.permed.size ? ccCull(this, scene, camera) : null; // (round 74, labdraw74: a big crowd draws the copies a view can see)
+    try { renderFn.call(this, scene, camera); } finally { ccBack?.(); rvBack?.(); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
     if (this.domElement?.__lcf && !this.getRenderTarget()) { glNote(this, scene0, camera0); if (this.__adProbe) adProbeNow(this); } // (round 56, labcanvas56)
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     FT60[0] = realNow() - t0;
@@ -1358,6 +1359,9 @@ function adaptQuality(gap) {
   const now = performance.now();
   AD.gap = gap;
   adNow = now;
+  // (round 74, labdraw74) while a slider is being moved (and 1.2 s after), slow frames are the edit's own work (a
+  // rebuilt shape, a recompiled look): Quality auto doesn't step down for them; it judges the frames once you let go
+  if (now < (AD.editUntil || 0)) { AD.editSkips = (AD.editSkips || 0) + 1; return; }
   const v = AD.core.feed(gap, target, now, adCapInstead);
   if (!v) return;
   if (v.winMin > 4 && v.winMin < 60) dispMs = dispMs * 0.5 + v.winMin * 0.5;
@@ -1366,7 +1370,7 @@ function adaptQuality(gap) {
   if (!capWant.auto || !capWant.focused || lightMode) return;
   if (v.share < 0.04 && autoCap && AD.core.level === 0 && now - capSince > capBack) { autoCap = 0; capSince = now; capBack = Math.min(160000, capBack * 2); applyCap(); }
 }
-function adaptInfo() { const s = AD.core.state(); return { on: AD.on, battery: PACE.battery, floor: s.min || 0, level: s.level, scale: s.scale, fx: s.fx, shadow: s.shadow, parts: s.parts, covered: AD.cull, flips: s.flips, hold: s.hold }; }
+function adaptInfo() { const s = AD.core.state(); return { editing: performance.now() < (AD.editUntil || 0), editSkips: AD.editSkips || 0, on: AD.on, battery: PACE.battery, floor: s.min || 0, level: s.level, scale: s.scale, fx: s.fx, shadow: s.shadow, parts: s.parts, covered: AD.cull, flips: s.flips, hold: s.hold }; }
 function setAdapt(on) {
   AD.on = Boolean(on) && !XP_PAGE;
   if (!AD.on) { AD.core.reset(); quality = 1; adCoverClear(); }
@@ -1421,12 +1425,15 @@ function paceCore(opt = {}) {
   // numbers read from the scene go through SB, a Float64Array, slot by slot, hashed by vb(n), instead of being handed to
   // v() one by one (a fractional number passed to a function that isn't inlined is a new heap number too). A signature
   // of a 200-object game made ≈ 100 KB of garbage, ≈ 1 KB a frame at a look every 32 frames per renderer
-  const F = new Float64Array(1); const U = new Uint32Array(F.buffer); const HS = new Int32Array(2); const SB = new Float64Array(32);
+  const F = new Float64Array(1); const U = new Uint32Array(F.buffer); const NAN_AS = -1.2345678e-300; const HS = new Int32Array(2); const SB = new Float64Array(32);
   let live = false; let nodes = 0;
   const vb = (n) => {
     let a = HS[0]; let b = HS[1];
     for (let i = 0; i < n; i += 1) {
-      F[0] = SB[i];
+      // (round 74, labdraw74) a missing number (undefined → NaN: a material field another kind has, a BufferGeometry's
+      // instanceCount) is hashed as one fixed value. NaN's bits aren't fixed: once V8 compiled this code differently the
+      // same NaN came out with other bits, so a still scene "changed" now and then and drew 3 more frames each time
+      const x = SB[i]; F[0] = x === x ? x : NAN_AS;
       a = Math.imul(a ^ U[0], 0x9e3779b1); a = Math.imul((a << 13) | (a >>> 19), 0x85ebca77) ^ U[1];
       b = Math.imul(b ^ U[1], 0xc2b2ae3d); b = Math.imul((b << 15) | (b >>> 17), 0x27d4eb2f) ^ U[0] ^ a;
     }
@@ -1496,10 +1503,26 @@ function paceCore(opt = {}) {
     SB[0] = c.fov; SB[1] = c.zoom; SB[2] = c.near; SB[3] = c.far; SB[4] = c.aspect; SB[5] = c.left; SB[6] = c.right; SB[7] = c.top; SB[8] = c.bottom; SB[9] = c.filmOffset;
     const e = c.projectionMatrix?.elements; if (e) { SB[10] = e[0]; SB[11] = e[5]; SB[12] = e[8]; SB[13] = e[9]; SB[14] = e[10]; SB[15] = e[14]; vb(16); } else vb(10);
   };
+  // (round 74, labdraw74) casters: a shadow map's signature (shGate). A shadow map holds only what casts a shadow and the
+  // lights, so an object that casts nothing is left out (its transform kept when it has children: they may cast), and
+  // so are the background, environment and fog. A camera orbiting, particles or a non-casting crowd moving no longer
+  // redraw the maps (the whole scene's casters once more per shadow light, each frame)
+  let casters = false;
   function obj(o) {
     if (++nodes > MAX_NODES) { live = true; return; }
     if (!o.visible) { SB[0] = 0; vb(1); return; } // (nothing under a hidden object is drawn)
     const p = o.position; const q = o.quaternion; const s = o.scale;
+    if (casters && !o.castShadow && !o.isLight) {
+      const ch = o.children; if (!ch.length) return;
+      if (o.isLOD) live = true; // (its levels switch with the view camera)
+      let k = 0; SB[k++] = 2;
+      if (p) { SB[k++] = p.x; SB[k++] = p.y; SB[k++] = p.z; } if (q) { SB[k++] = q.x; SB[k++] = q.y; SB[k++] = q.z; SB[k++] = q.w; } if (s) { SB[k++] = s.x; SB[k++] = s.y; SB[k++] = s.z; }
+      vb(k);
+      if (o.matrixAutoUpdate === false) vl(o.matrix.elements);
+      v(o.layers?.mask); SB[0] = ch.length; vb(1);
+      for (let i = 0; i < ch.length; i += 1) obj(ch[i]);
+      return;
+    }
     let k = 0; SB[k++] = 1;
     if (p) { SB[k++] = p.x; SB[k++] = p.y; SB[k++] = p.z; } if (q) { SB[k++] = q.x; SB[k++] = q.y; SB[k++] = q.z; SB[k++] = q.w; } if (s) { SB[k++] = s.x; SB[k++] = s.y; SB[k++] = s.z; }
     vb(k);
@@ -1521,9 +1544,9 @@ function paceCore(opt = {}) {
     const ch = o.children; for (let i = 0; i < ch.length; i += 1) obj(ch[i]);
   }
   // a frame's signature: scene, camera, renderer state, and `extra` numbers from the page (pixel ratio, size…)
-  function signature(scene, camera, r, extra) {
-    HS[0] = 0x2545f491; HS[1] = 0x6c8e9cf5; live = false; nodes = 0; pass += 1;
-    if (scene) {
+  function signature(scene, camera, r, extra, castOnly = false) {
+    HS[0] = 0x2545f491; HS[1] = 0x6c8e9cf5; live = false; nodes = 0; pass += 1; casters = castOnly;
+    if (scene && castOnly) { if (scene.overrideMaterial) mat(scene.overrideMaterial); obj(scene); } else if (scene) {
       const bg = scene.background; if (bg?.isColor) col(bg); else tex(bg);
       SB[0] = scene.backgroundBlurriness; SB[1] = scene.backgroundIntensity; vb(2); tex(scene.environment); SB[0] = scene.environmentIntensity; vb(1);
       const f = scene.fog; if (f) { col(f.color); SB[0] = f.near; SB[1] = f.far; SB[2] = f.density; vb(3); }
@@ -1533,6 +1556,7 @@ function paceCore(opt = {}) {
     if (camera) obj(camera);
     if (r) { SB[0] = r.toneMapping; SB[1] = r.toneMappingExposure; SB[2] = r.autoClear; SB[3] = r.shadowMap?.enabled; SB[4] = r.localClippingEnabled; const cv = r.domElement; SB[5] = cv ? cv.width : NaN; SB[6] = cv ? cv.height : NaN; vb(7); }
     if (extra) vl(extra);
+    casters = false;
     return { a: HS[0], b: HS[1], live, nodes };
   }
   // ---- the gate: is this frame's picture the one already on screen? (st: one per renderer; true = don't draw) ----
@@ -1553,15 +1577,28 @@ function paceCore(opt = {}) {
   // happened from outside (a title held, a game paused, a setting switched) was otherwise still looked at every 32nd
   // frame, so it drew 32–64 frames more of the same picture (≈ 1–2 s at 30 fps) before the gate saw it still.
   const POKE_QUIET = opt.pokeQuiet ?? 250;
-  function still(st, now, poke, sigOf, refresh = REFRESH) {
+  // (round 74, labdraw74) render on demand: a still picture that nothing changes draws nothing.
+  //   · a poke whose look finds nothing changed draws that frame once (it used to start the 2 confirming frames over:
+  //     3 draws per message, click or setting);
+  //   · soft pokes (the pointer moving over the picture, an eval, the song's clock, stats asks: `soft`, a second counter)
+  //     only look at once: the picture draws if the look sees a change (an orbit, a hover effect), else nothing;
+  //   · the safety redraw (a change the signature can't see) comes once a second for SETTLE ms after the last change,
+  //     then every REFRESH_LONG ms (a still scene drew ≈ 3 times a second: labpace measured it).
+  const SETTLE = opt.settle ?? 3000; const REFRESH_LONG = opt.refreshLong ?? 4000;
+  function still(st, now, poke, sigOf, refresh, soft) {
     st.refreshes ||= 0; st.looks ||= 0;
+    if (refresh === undefined) refresh = now - (st.chg ?? -1e9) < SETTLE ? REFRESH : REFRESH_LONG;
+    if (soft !== undefined && soft !== st.soft) { st.soft = soft; st.lookAt = -1e9; } // (looked at this frame, below)
     if (poke !== st.poke) {
       st.poke = poke;
       const quiet = now - (st.pokeAt ?? -1e9) >= POKE_QUIET; st.pokeAt = now;
       if ((st.moving || 0) > 0) { if (quiet) st.mv0 = now; return false; }
       const s = sigOf(); st.looks += 1;
       const moved = st.looks > 1 && !s.live && (s.a !== st.a || s.b !== st.b); // (a change since its last look: it's moving)
-      st.a = s.a; st.b = s.b; st.same = 0; st.moving = moved ? 1 : 0; if (moved) st.mv0 = now; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0; return false;
+      const settled = st.looks > 1 && !s.live && !moved && (st.same || 0) > AFTER;
+      st.a = s.a; st.b = s.b; st.moving = moved ? 1 : 0; if (moved) st.mv0 = now; st.at = now; st.lookAt = now; st.liveFor = s.live ? 60 : 0;
+      if (!settled) { st.same = 0; st.chg = now; }
+      return false;
     }
     if (st.liveFor > 0) { st.liveFor -= 1; return false; }
     if ((st.moving || 0) >= 30) { st.k = ((st.k || 0) + 1) % (now - st.mv0 >= MOVING_LONG ? 32 : 8); if (st.k) return false; }
@@ -1571,10 +1608,10 @@ function paceCore(opt = {}) {
     }
     st.lookAt = now;
     const s = sigOf(); st.looks += 1;
-    if (s.live) { st.same = 0; st.moving = 0; st.liveFor = 60; return false; }
+    if (s.live) { st.same = 0; st.moving = 0; st.liveFor = 60; st.chg = now; return false; }
     const changed = s.a !== st.a || s.b !== st.b;
     st.a = s.a; st.b = s.b;
-    if (changed) { if (!st.moving) st.mv0 = now; st.same = 0; st.moving = (st.moving || 0) + 1; st.at = now; return false; }
+    if (changed) { if (!st.moving) st.mv0 = now; st.same = 0; st.moving = (st.moving || 0) + 1; st.at = now; st.chg = now; return false; }
     st.moving = 0; st.same = (st.same || 0) + 1;
     if (st.same <= AFTER) { st.at = now; return false; }
     if (now - (st.at ?? -1e9) >= refresh) { st.at = now; st.refreshes += 1; return false; }
@@ -1607,7 +1644,7 @@ function paceCore(opt = {}) {
 }
 // </pace-core>
 // the page's side of it (state, the gate in the render wrapper, the loops that sleep, the readout)
-const PACE = { core: paceCore(), on: true, poke: 0, drawn: 0, skipped: 0, refreshes: 0, sigs: 0, sigMs: 0, sleeps: 0, wakes: 0, battery: false, drag: false, dragLow: false, wheelUntil: 0, lastDraw: -1, lastSkip: -1, presentAt: 0, fxTick: -1, fxOn: false };
+const PACE = { core: paceCore(), on: true, poke: 0, soft: 0, why: { early: 0, refresh: 0, poke: 0, change: 0, settle: 0, live: 0 }, drawn: 0, skipped: 0, refreshes: 0, sigs: 0, sigMs: 0, sleeps: 0, wakes: 0, battery: false, drag: false, dragLow: false, wheelUntil: 0, lastDraw: -1, lastSkip: -1, presentAt: 0, fxTick: -1, fxOn: false };
 PACE.meter = PACE.core.meter();
 globalThis.f60 = 1; // (a sketch's setup, before its first frame: one 60 fps frame)
 // Page loops that may sleep (the frame counter, the compositor, the song's loop points, the sequence clock): while the
@@ -1616,8 +1653,12 @@ globalThis.f60 = 1; // (a sketch's setup, before its first frame: one 60 fps fra
 const paceSleeping = new Set();
 function paceNext(fn, sleep) { if (sleep) { if (!paceSleeping.has(fn)) { paceSleeping.add(fn); PACE.sleeps += 1; } return; } if (DOZE.on) dozeRAF(fn); else realRAF(fn); }
 function paceWake() { if (!paceSleeping.size) return; const l = [...paceSleeping]; paceSleeping.clear(); PACE.wakes += 1; for (const fn of l) realRAF(fn); }
+// (round 74, labdraw74) soft pokes: the pointer moving, and messages that never change the picture by themselves (an
+// eval, the song's clock, stats and pace asks): the still check looks at once and draws only if the picture changed
+const PACE_SOFT = new Set(['eval', 'live-frame', 'live-gain', 'media-clock', 'loop-clock', 'framebar', 'pace', 'fps-cap', 'audio-probe', 'trig-watch', 'look-info']);
 const pacePoke = (e) => {
-  PACE.poke += 1; if (paceSleeping.size) paceWake();
+  if (e?.type === 'pointermove' || (e?.type === 'message' && PACE_SOFT.has(e.data?.type))) PACE.soft += 1; else PACE.poke += 1;
+  if (paceSleeping.size) paceWake();
   if (DOZE.on || DOZE.from >= 0) dozeWake(e?.type === 'message' ? `message ${e.data?.type || '?'}` : e?.type);
 };
 // Dozing (round 44, idlecpu): the Lab on screen with a picture that stays still (nothing moved for 5 s: every layer
@@ -1698,7 +1739,7 @@ function paceDragK() {
   if (!PACE.dragLow && (AD.gap || 0) > target * 1.35) PACE.dragLow = true; // (latched until the pointer comes up: no flicker)
   return PACE.dragLow ? 0.7 : 1;
 }
-const paceExtra = [0, 0, 0, 0];
+const paceExtra = [0, 0, 0, 0, 0, 0, 0, 0]; const paceCC = new THREE.Color();
 // (round 60, gcchurn60) the signature's inputs for this render, and one kept function that reads them (a new closure per
 // render per frame before, garbage even on the frames where the gate didn't look)
 const PSIG = { r: null, scene: null, camera: null, EL: null };
@@ -1706,6 +1747,8 @@ function paceSig() {
   const r = PSIG.r; const EL = PSIG.EL;
   const t0 = realNow();
   paceExtra[0] = r.__q || 1; paceExtra[1] = r.getPixelRatio?.() || 1; paceExtra[2] = quality; paceExtra[3] = EL ? EL.gen : 0;
+  // (round 74, labdraw74) the clear color too (renderer.setClearColor from an eval or a slider: the picture changes)
+  if (r.getClearColor) { r.getClearColor(paceCC); paceExtra[4] = paceCC.r; paceExtra[5] = paceCC.g; paceExtra[6] = paceCC.b; paceExtra[7] = r.getClearAlpha?.() ?? 1; }
   const s = PACE.core.signature(PSIG.scene, PSIG.camera, r, paceExtra);
   PACE.sigMs += realNow() - t0; PACE.sigs += 1;
   return s;
@@ -1719,12 +1762,17 @@ function paceSkip(r, scene, camera, EL) {
   st.tick = frameTick;
   if (r.getRenderTarget?.()) { st.multi = frameTick; return false; }
   if (frameTick - st.multi < 120) return false;
-  if (EL && (EL.drawnGen !== EL.gen || EL.pics?.length || realNow() - (EL.adReadAt ?? -1e9) < 5000)) return false;
+  if (EL && (EL.drawnGen !== EL.gen || EL.pics?.length || realNow() - (EL.adReadAt ?? -1e9) < 5000)) { PACE.why.early += 1; return false; }
   PSIG.r = r; PSIG.scene = scene; PSIG.camera = camera; PSIG.EL = EL;
-  const before = st.refreshes || 0;
-  const skip = PACE.core.still(st, realNow(), PACE.poke, paceSig, DOZE.ms >= 250 ? 4000 : undefined);
+  const before = st.refreshes || 0; const poked = st.poke !== PACE.poke;
+  const skip = PACE.core.still(st, realNow(), PACE.poke, paceSig, DOZE.ms >= 250 ? 4000 : undefined, PACE.soft);
   PSIG.r = null; PSIG.scene = null; PSIG.camera = null; PSIG.EL = null; // (nothing of a gone scene held here)
-  if (!skip) { if ((st.refreshes || 0) !== before) { PACE.refreshes += 1; PACE.refreshAt = frameTick; if (EL) EL.dzSkip = frameTick; } return false; }
+  if (!skip) {
+    if ((st.refreshes || 0) !== before) { PACE.refreshes += 1; PACE.refreshAt = frameTick; PACE.why.refresh += 1; if (EL) EL.dzSkip = frameTick; return false; }
+    const why = poked ? 'poke' : st.liveFor > 0 ? 'live' : st.moving ? 'change' : 'settle';
+    PACE.why[why] += 1; // (round 74: why it drew, for checks: __labPace.state().why)
+    return false;
+  }
   PACE.skipped += 1; PACE.lastSkip = frameTick;
   if (EL) EL.dzSkip = frameTick; // (round 44, idlecpu: this layer's frame was checked and still, see "dozing")
   if (frameSeen !== frameTick && PACE.stillSeen !== frameTick) { PACE.stillSeen = frameTick; frames += 1; } // (the picture shows this frame too)
@@ -1747,10 +1795,10 @@ function pacePower(on) {
 }
 // (checks and /lab perf: window.__labPace.state() / .on(false) / .power(true) / .reset() / .hold(level))
 window.__labPace = {
-  state: () => ({ ...paceInfo(), sigs: PACE.sigs, poke: PACE.poke, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level, doze: { on: DOZE.on, ms: DOZE.ms, why: DOZE.why || '', by: DOZE.by || '', log: DOZE.log.slice(-6), dozes: DOZE.dozes, wakes: DOZE.wakes, flushes: DOZE.flushes } }),
+  state: () => ({ ...paceInfo(), sigs: PACE.sigs, poke: PACE.poke, soft: PACE.soft, why: { ...PACE.why }, sleeps: PACE.sleeps, wakes: PACE.wakes, frameTick, parked, cap: fpsCap, quality, level: AD.core.level, doze: { on: DOZE.on, ms: DOZE.ms, why: DOZE.why || '', by: DOZE.by || '', log: DOZE.log.slice(-6), dozes: DOZE.dozes, wakes: DOZE.wakes, flushes: DOZE.flushes } }),
   on: (v) => { PACE.on = v !== false; PACE.poke += 1; dozeWake('pacing switched'); return PACE.on; },
   power: (v) => { pacePower(v); return { cap: fpsCap, level: AD.core.level, quality }; },
-  reset: () => { PACE.drawn = 0; PACE.skipped = 0; PACE.refreshes = 0; PACE.sigs = 0; PACE.sigMs = 0; PACE.sleeps = 0; PACE.wakes = 0; PACE.meter.reset(); return 1; },
+  reset: () => { for (const k in PACE.why) PACE.why[k] = 0; PACE.drawn = 0; PACE.skipped = 0; PACE.refreshes = 0; PACE.sigs = 0; PACE.sigMs = 0; PACE.sleeps = 0; PACE.wakes = 0; PACE.meter.reset(); return 1; },
   sleeping: () => paceSleeping.size,
   gates: () => [...renderers].filter((r) => !r.__stale && r.__pace).map((r) => { const g = r.__pace; return { layer: r.__layer || null, moving: g.moving || 0, same: g.same || 0, liveFor: g.liveFor || 0, looks: g.looks || 0, multi: frameTick - g.multi < 120 }; }), // (round 55, labplay55: each renderer's still gate)
 };
@@ -1761,7 +1809,7 @@ const tickFrames = (t) => {
   FT60[1] = 0; frameCalls = 0;
   frameTick += 1;
   const dozed = DOZE.on; // (this frame came after a doze's wait: its gap isn't a slow frame)
-  if (frameSeen === frameTick - 1 && FT60[3] && !dozed) { if (t - FT60[3] > FT60[2]) FT60[2] = t - FT60[3]; if (mode === 'sketch') adaptQuality(t - FT60[3]); }
+  if (frameSeen === frameTick - 1 && FT60[3] && !dozed) { if (t - FT60[3] > FT60[2]) FT60[2] = t - FT60[3]; ccGap(t - FT60[3]); if (mode === 'sketch') adaptQuality(t - FT60[3]); }
   // (labpace) the frames the layers showed (drawn or still), for the steadiness readout
   if (!dozed) PACE.drewAvg = (PACE.drewAvg || 0) * 0.9 + (PACE.lastDraw === frameTick - 1 ? 0.1 : 0);
   if ((frameSeen === frameTick - 1 || PACE.stillSeen === frameTick - 1) && !parked && !dozed) { if (PACE.presentAt) PACE.meter.feed(t - PACE.presentAt); PACE.presentAt = t; }
@@ -2511,12 +2559,12 @@ function occlClear() { if (!OC.n) return; OC.by = null; OC.n = 0; for (const L o
 // kept (a fresh one every second anyway). A scene that keeps moving draws its maps every frame with no signature,
 // looking every 32 frames whether it stopped. The sketch's own choice is left alone: shadowMap.autoUpdate = false
 // (it updates them itself) turns this off for that renderer. Never in exports, stills, renders or the scene editor.
-const SHG = { on: true, skipped: 0, drawn: 0 };
+const SHG = { on: true, skipped: 0, drawn: 0, casters: true };
 const shExtra = [0];
 // (round 60, gcchurn60) the scene the gate looks at, and one kept function for its signature (a closure per renderer per
 // frame before)
 let shScene = null;
-const shSig = () => PACE.core.signature(shScene, null, null, shExtra);
+const shSig = () => PACE.core.signature(shScene, null, null, shExtra, SHG.casters && shExtra[0] !== THREE.VSMShadowMap); // (round 74: casters and lights only; VSM maps hold the receivers too)
 function shGate(r, scene) {
   const sm = r.shadowMap;
   let g = sm.__gate;
@@ -2558,6 +2606,137 @@ function shGate(r, scene) {
 window.__lab240 = {
   set: ({ off = false } = {}) => { OC.on = !off; SHG.on = !off; ADR.on = !off; TY.tight = !off; if (off) occlClear(); return { on: OC.on }; }, // (round 51: and type layers drawn tight)
   info: () => ({ on: OC.on, by: OC.by?.id || null, hidden: [...layers.values()].filter((L) => L.occl).map((L) => L.id), shadows: { skipped: SHG.skipped, drawn: SHG.drawn }, coverReads: { async: ADR.reads, got: ADR.got } }),
+};
+// ---------- big instanced crowds: only the copies a camera can see (round 74, labdraw74) ----------
+// three.js culls an InstancedMesh as one thing (one sphere around every copy): a crowd spread around the camera is
+// drawn whole, every copy's vertices run in the main pass and again in each shadow pass, though many are behind the
+// camera and most are outside the sun's shadow box. On the frames the sketch moves its copies (it writes
+// instanceMatrix: the buffer goes to the GPU that frame anyway), the copies that can show in this render (inside the
+// camera's view or a shadow light's box; each copy's own sphere: the shape's sphere, computed once, times the copy's
+// scale) are put first and only those are drawn (count). The sketch's own order is back right after render(), so its
+// code, raycasts and getMatrixAt see what they wrote. Exact: a copy outside every view adds no pixel and no shadow.
+// Only for plain cases: ≥ 256 copies, frustumCulled on, one opaque built-in material (no custom shader, displacement,
+// morphs, skinning, custom depth material or onBeforeRender), no point-light shadows. Never in ▶ Play (no added
+// per-frame work there), exports, stills or recordings. (checks: window.__labDraw.info() / .set({ cull: false }))
+// Only while frames miss the screen's refresh (and 2 s after): sorting costs the CPU ≈ 0.2–0.7 µs a copy here, so a
+// crowd that already fits its frame isn't touched (checks: .set({ cull: 'always' }))
+const CC = { on: true, always: false, until: -1, min: 256, frames: 0, copies: 0, drawnCopies: 0, ms: 0, meshes: 0, permed: new Set() };
+function ccGap(gap) { if (gap > Math.max(dispMs, fpsCap ? 1000 / fpsCap : 0) * 1.15) CC.until = realNow() + 2000; }
+const CCS = new WeakMap(); // scene → { tick, list, lights, point }; mesh → its state
+const ccM = new THREE.Matrix4(); const ccF = [new THREE.Frustum()];
+function ccScan(scene) {
+  let st = CCS.get(scene);
+  if (!st) { st = { tick: -1e9, list: [], lights: [], point: false }; CCS.set(scene, st); }
+  if (frameTick - st.tick < 60 && frameTick >= st.tick) return st; // (looked at again every 60 frames: new crowds, lights)
+  st.tick = frameTick; st.list.length = 0; st.lights.length = 0; st.point = false;
+  scene.traverse((o) => {
+    if (o.isInstancedMesh) { if (o.count >= CC.min) st.list.push(o); } else if (o.isLight && o.castShadow && o.shadow) { if (o.isPointLight) st.point = true; else st.lights.push(o); }
+  });
+  return st;
+}
+function ccPlain(o) {
+  if (!o.frustumCulled || !o.visible || o.morphTexture || o.isSkinnedMesh || o.customDepthMaterial || o.customDistanceMaterial) return false;
+  const g = o.geometry; const m = o.material;
+  if (!g || g.morphAttributes?.position?.length || !m || Array.isArray(m) || m.transparent || m.isShaderMaterial || m.isNodeMaterial || m.displacementMap) return false;
+  if (m.onBeforeCompile !== m.constructor?.prototype?.onBeforeCompile) return false;
+  const pr = o.constructor?.prototype; if (!pr || o.onBeforeRender !== pr.onBeforeRender || o.onBeforeShadow !== pr.onBeforeShadow) return false;
+  return true;
+}
+// the GPU holds our order (an earlier frame): a change of the sketch's that isn't sorted now goes up whole, both lists
+function ccWhole(S, im, ic) { im.clearUpdateRanges?.(); im.needsUpdate = true; if (ic) { ic.clearUpdateRanges?.(); ic.needsUpdate = true; } S.perm = false; }
+// a render that doesn't sort (a still, a recording, culling switched off…): a crowd whose GPU lists are in our order and
+// that the sketch changed since goes up whole in its own order first (its matrices alone would land on our colors)
+function ccRepair() {
+  for (const o of CC.permed) {
+    const S = CCS.get(o); const im = o.instanceMatrix; const ic = o.instanceColor;
+    if (!S || !im || frameTick - (S.at || 0) > 2000) { CC.permed.delete(o); continue; } // (not sorted for a long while: let go, nothing of a gone scene held)
+    if (im.version === S.ver && (!ic || ic.version === S.cver)) continue;
+    ccWhole(S, im, ic); S.ver = im.version; S.cver = ic ? ic.version : -1; CC.permed.delete(o);
+  }
+}
+function ccCull(r, scene, camera) {
+  if (!CC.on || (!CC.always && realNow() > CC.until) || GAME || XP_PAGE || fullRes() || r.__helper || !scene?.isObject3D || !camera?.isCamera || camera.isArrayCamera) { if (CC.permed.size) ccRepair(); return null; }
+  const st = ccScan(scene);
+  if (!st.list.length) return null;
+  const t0 = realNow();
+  let back = null;
+  for (let j = 0; j < st.list.length; j += 1) {
+    const o = st.list[j]; const im = o.instanceMatrix; const ic = o.instanceColor;
+    if (!im?.array) continue;
+    let S = CCS.get(o);
+    if (!S) { S = { ver: -1, cver: -1, perm: false, keep: null, ckeep: null }; CCS.set(o, S); }
+    const wrote = im.version !== S.ver; const cwrote = Boolean(ic) && ic.version !== S.cver;
+    const shadowed = Boolean(r.shadowMap?.enabled) && Boolean(o.castShadow || (o.receiveShadow && r.shadowMap.type === THREE.VSMShadowMap));
+    const n = o.count;
+    if (!wrote || n < CC.min || !ccPlain(o) || (shadowed && st.point)) {
+      if (S.perm && (wrote || cwrote)) { ccWhole(S, im, ic); CC.permed.delete(o); }
+      S.ver = im.version; S.cver = ic ? ic.version : -1;
+      continue;
+    }
+    // the frusta in the mesh's own space (each copy's sphere tested there: exact under any transform of the mesh)
+    if (scene.matrixWorldAutoUpdate !== false) o.updateWorldMatrix(true, false);
+    if (camera.matrixWorldAutoUpdate !== false) camera.updateWorldMatrix(true, false);
+    let nf = 0;
+    const fr = (proj, inv, cam) => { const f = ccF[nf] || (ccF[nf] = new THREE.Frustum()); ccM.multiplyMatrices(proj, inv).multiply(o.matrixWorld); f.setFromProjectionMatrix(ccM, cam.coordinateSystem ?? THREE.WebGLCoordinateSystem, Boolean(cam.reversedDepth)); nf += 1; };
+    fr(camera.projectionMatrix, camera.matrixWorldInverse, camera);
+    if (shadowed) {
+      for (const L of st.lights) {
+        const sh = L.shadow; const sc = sh?.camera; if (!sc || typeof sh.updateMatrices !== 'function') continue;
+        if (L.matrixWorldAutoUpdate !== false) L.updateWorldMatrix(true, false);
+        if (L.target?.parent && L.target.matrixWorldAutoUpdate !== false) L.target.updateWorldMatrix(true, false);
+        sh.updateMatrices(L); // (what three.js does before drawing this map; done again there)
+        fr(sc.projectionMatrix, sc.matrixWorldInverse, sc);
+      }
+    }
+    const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
+    if (o.boundingSphere === null) o.computeBoundingSphere(); // (three's own sphere of all the copies: made from all of them, before count changes)
+    const bs = g.boundingSphere; const cx = bs.center.x; const cy = bs.center.y; const cz = bs.center.z; const R = bs.radius * 1.01 + 1e-6;
+    const a = im.array; const ca = ic ? ic.array : null; const cs = ic ? ic.itemSize : 0;
+    if (!S.keep || S.keep.length !== a.length) S.keep = new Float32Array(a.length);
+    if (ca && (!S.ckeep || S.ckeep.length !== ca.length)) S.ckeep = new Float32Array(ca.length);
+    const keep = S.keep; const ckeep = S.ckeep;
+    keep.set(a); if (ca) ckeep.set(ca);
+    let vis = 0; let nh = 0;
+    if (!S.hid || S.hid.length < n) S.hid = new Int32Array(n);
+    const hid = S.hid;
+    for (let i = 0; i < n; i += 1) {
+      const e = i * 16;
+      const m0 = keep[e]; const m1 = keep[e + 1]; const m2 = keep[e + 2]; const m4 = keep[e + 4]; const m5 = keep[e + 5]; const m6 = keep[e + 6]; const m8 = keep[e + 8]; const m9 = keep[e + 9]; const m10 = keep[e + 10];
+      const px = m0 * cx + m4 * cy + m8 * cz + keep[e + 12]; const py = m1 * cx + m5 * cy + m9 * cz + keep[e + 13]; const pz = m2 * cx + m6 * cy + m10 * cz + keep[e + 14];
+      const rad = R * Math.sqrt(Math.max(m0 * m0 + m1 * m1 + m2 * m2, m4 * m4 + m5 * m5 + m6 * m6, m8 * m8 + m9 * m9 + m10 * m10));
+      let seen = false;
+      for (let k = 0; k < nf && !seen; k += 1) {
+        const P = ccF[k].planes; let inside = true;
+        for (let q = 0; q < 6; q += 1) { const pl = P[q]; const nn = pl.normal; if (nn.x * px + nn.y * py + nn.z * pz + pl.constant < -rad) { inside = false; break; } }
+        seen = inside;
+      }
+      if (!seen) { hid[nh] = i; nh += 1; continue; }
+      if (vis !== i) { a.set(keep.subarray(e, e + 16), vis * 16); if (ca) ca.set(ckeep.subarray(i * cs, i * cs + cs), vis * cs); }
+      vis += 1;
+    }
+    // the copies no view sees go after them: the GPU's list is the whole crowd in another order (a frame drawn again
+    // later for a still, a thumbnail or a merge draws every copy from it, the same picture)
+    for (let h = 0, at = vis; h < nh; h += 1, at += 1) { const i = hid[h]; a.set(keep.subarray(i * 16, i * 16 + 16), at * 16); if (ca) ca.set(ckeep.subarray(i * cs, i * cs + cs), at * cs); }
+    CC.copies += n; CC.drawnCopies += vis; CC.meshes += 1;
+    if (vis > n * 0.95) { // (nearly all show: drawn as the sketch wrote them)
+      a.set(keep); if (ca) ca.set(ckeep);
+      if (S.perm) { ccWhole(S, im, ic); CC.permed.delete(o); }
+      S.ver = im.version; S.cver = ic ? ic.version : -1;
+      continue;
+    }
+    o.count = vis;
+    im.clearUpdateRanges?.(); im.needsUpdate = true; if (ic) { ic.clearUpdateRanges?.(); ic.needsUpdate = true; }
+    const prev = back;
+    back = () => { prev?.(); a.set(keep); if (ca) ca.set(ckeep); o.count = n; S.ver = im.version; S.cver = ic ? ic.version : -1; S.perm = true; S.at = frameTick; CC.permed.add(o); };
+  }
+  CC.ms += realNow() - t0;
+  if (back) CC.frames += 1;
+  return back;
+}
+window.__labDraw = {
+  set: ({ cull, casters } = {}) => { if (cull != null) { CC.on = Boolean(cull); CC.always = cull === 'always'; } if (casters != null) SHG.casters = Boolean(casters); return window.__labDraw.info(); },
+  info: () => ({ cull: { on: CC.on, always: CC.always, missing: realNow() <= CC.until, frames: CC.frames, meshes: CC.meshes, copies: CC.copies, drawnCopies: CC.drawnCopies, ms: Math.round(CC.ms * 10) / 10 }, casters: SHG.casters, shadows: { skipped: SHG.skipped, drawn: SHG.drawn }, why: { ...PACE.why } }),
+  reset: () => { CC.frames = 0; CC.copies = 0; CC.drawnCopies = 0; CC.ms = 0; CC.meshes = 0; SHG.skipped = 0; SHG.drawn = 0; return 1; },
 };
 
 // ---------- audio / video ----------
@@ -5033,6 +5212,7 @@ globalThis.tweak = (spec = {}) => {
   return out;
 };
 function setTweak({ index, value, layer, call, key }) {
+  AD.editUntil = performance.now() + 1200; // (round 74, labdraw74: Quality auto holds its step while a slider moves)
   TV[index] = value;
   const set = call != null ? layers.get(layer || 'main')?.tweakSets[call] : null;
   if (!set || !(key in set.vals)) return;

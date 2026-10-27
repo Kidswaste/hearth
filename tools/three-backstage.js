@@ -147,6 +147,7 @@ function makeBackstage(opts = {}) {
     ensureBox();
     clearTimeout(idleTimer);
     const sig = sigOf(s);
+    ran = false;
     if (!force && loaded?.id === s.id && loaded.sig === sig && box.ready) return false;
     const Ls = layersOf(s);
     if (!force && loaded?.id === s.id && loaded.codes && box.ready) {
@@ -157,7 +158,7 @@ function makeBackstage(opts = {}) {
       consoleLines = consoleLines.filter((l) => l.layer && ids.has(l.layer) && !rerun.has(l.layer));
       if (await sendRefs(s)) for (const L of Ls) if (/\brefs\.|refTexture\(/.test(L.code)) rerun.add(L.id); // (round 73) a new reference: its users run again
       syncClock(s);
-      if (rerun.size) { waitDrawn = true; started = new Promise((r) => { onStart = r; setTimeout(r, 6000); }); } else started = Promise.resolve();
+      if (rerun.size) { waitDrawn = true; ran = true; started = new Promise((r) => { onStart = r; setTimeout(r, 6000); }); } else started = Promise.resolve();
       Ls.forEach((L, z) => {
         const { code, ...props } = specOf(L, z);
         if (rerun.has(L.id)) box.send({ type: 'hot-layer', layer: { code, ...props, ...(L.precomp ? { precomp: pcSpec(L, s) } : {}) } });
@@ -173,6 +174,7 @@ function makeBackstage(opts = {}) {
     errors = []; consoleLines = []; lastStats = null; waitDrawn = false;
     await readRefs(s); // (round 73) read before the page starts (the page gets them before its layers run)
     started = new Promise((r) => { onStart = r; setTimeout(r, 9000); });
+    ran = true;
     box.reload();
     box.send({ type: 'tweak-init', values: {}, keys: {}, mods: {} });
     refsSig = null; await sendRefs(s, { fresh: true });
@@ -185,11 +187,18 @@ function makeBackstage(opts = {}) {
   // (round 73, labtools73) answers like the Lab on screen: at the change's first frame (a re-run layer's 'drawn', a fresh
   // page's first frame) + a short grace for its console lines, never a fixed half of the wait (backstage calls took
   // 1.3 s+ more than on screen); the wait stays the cap
-  const GRACE = 220;
+  // (round 74, labcalls74) the grace is 100 ms (a page's console lines from its start and first frame come before its
+  // 'drawn': one page's messages keep their order), and none when nothing ran again (props, keyframes, a removed layer)
+  const GRACE = 100;
+  let ran = false; // the last load ran code (a fresh page, a layer re-run)
+  const mark = (k) => { if (!opts.scenes && typeof HubBridge !== 'undefined') HubBridge.mark?.(k); }; // (round 74, labcalls74) hop steps
   const settle = async (wait) => {
+    if (!ran) return;
     const cap = Math.min(WAIT_MAX, Math.max(0.3, Number(wait) || 2.5)) * 1000;
     await Promise.race([started, sleep(cap)]);
+    mark('page:drawn');
     await sleep(GRACE);
+    mark('page:grace');
   };
 
   // ---------- the director API, for one sketch ----------
@@ -263,6 +272,8 @@ function makeBackstage(opts = {}) {
     }
     const d = {
       backstage: true,
+      building: () => Boolean(onStart), // (round 74, labcalls74) a fresh page / a re-run layer hasn't drawn yet
+      built: (ms = 6000) => Promise.race([started, sleep(ms)]),
       codeOf(ref = null) { const L = must(ref); const x = s(); return { id: L.id, name: L.name, sketchId: x.id, sketch: x.name, code: L.code }; },
       getCode() { const L = must(null); return { sketch: s().name, layer: L.name, layers: summary(), frame: frameOf(sketchId), lines: L.code.split('\n').length, ...ThreeLab._util.codeOrOutline(L.code), note: NOTE }; },
       layers: () => ({ sketch: s().name, selected: layerName(selId()), layers: summary(), note: NOTE }),
@@ -498,7 +509,7 @@ function makeBackstage(opts = {}) {
     times = times.slice(0, 16);
     const cells = []; const frames = [];
     for (const [i, t] of times.entries()) {
-      d.media.seek(t); await sleep(380);
+      d.media.seek(t); // (round 74, labcalls74) no fixed 380 ms: the page sets its clock at once, the picture is its next frame
       const url = (await d.shotSmall(400)) || (await d.shot());
       if (!url) continue;
       cells.push(P.frameCanvas(await P.loadImg(url), { max: 400 })); frames.push({ n: i + 1, time: t });
@@ -556,6 +567,7 @@ function makeBackstage(opts = {}) {
     }
     if (tool === 'three_media_info') return { ok: true, value: { loaded: false, note: 'No music backstage: the song plays when the owner opens this chat.', song: SC().songOf(route.sketchId)?.split(/[\\/]/).pop() || 'none linked' } };
     if (await load(x)) await settle(1.2); // a fresh page: let it start before reading it
+    mark('page:load');
     if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d, { chatId: route.chatId, batch: route.batch }); if (r) return r; }
     if (tool === 'three_layers') return { ok: true, value: d.layers() };
     if (tool === 'three_get_code') return { ok: true, value: d.getCode() };
@@ -594,18 +606,34 @@ function makeBackstage(opts = {}) {
     const url = img ? `data:${img.mime || 'image/png'};base64,${img.data}` : await smallShot(360, 3000); // (round 73) small, and never long: it is a row's picture (the next call waits behind it)
     if (url && opts.onStill) opts.onStill(url, route); else if (url) ChatScenes.setThumb(route.chatId, url);
   }
+  // (round 74, labcalls74) the chat row's still is taken once the AI pauses (no call for 1.5 s), beside the calls, never
+  // in front of one: in round 73 the next call waited behind it, up to its 3 s cap while the page was busy (a model
+  // loading), ≈ 3 s lost after each edit. A director's own screenshot is the row's picture at once.
+  let busy = 0; let stillTimer = 0; const stillWant = new Map(); // chat id → its last edit
+  function stillSoon(tool, route, r) {
+    if (tool === 'three_screenshot') { rowStill(tool, route, r).catch(() => {}); return; }
+    if (!EDITS.has(tool) || r?.ok === false || !route?.chatId) return;
+    stillWant.set(route.chatId, { tool, route, r });
+    clearTimeout(stillTimer);
+    const go = () => {
+      if (busy) { stillTimer = setTimeout(go, 1500); return; }
+      const all = [...stillWant.values()]; stillWant.clear();
+      // (only the scene the page runs now: another chat's call may have loaded its own since)
+      all.filter((w) => loaded?.id === w.route.sketchId).reduce((q, w) => q.then(() => rowStill(w.tool, w.route, w.r)).catch(() => {}), Promise.resolve());
+    };
+    stillTimer = setTimeout(go, 1500);
+  }
   // One at a time: two background chats take turns with the sandbox.
   function handle(tool, args, route) {
     if (route?.stage && route.stage !== self) return route.stage.handle(tool, args, route); // a crew's own stage
+    busy += 1;
     const p = chain.then(async () => {
       log.push({ at: Date.now(), chatId: route.chatId, sketch: route.sketchId, tool });
       if (log.length > 30) log.shift();
       const t0 = performance.now();
-      try { return await run(tool, args || {}, route); } catch (err) { return { ok: false, error: err.message }; } finally { timing.calls += 1; timing.ms += Math.round(performance.now() - t0); }
+      try { return await run(tool, args || {}, route); } catch (err) { return { ok: false, error: err.message }; } finally { timing.calls += 1; timing.ms += Math.round(performance.now() - t0); busy -= 1; }
     });
-    // (round 73, labtools73) the chat row's still is taken after the answer has gone (it held every edit's answer for a
-    // whole picture); the next call still waits its turn behind it
-    chain = p.then((r) => rowStill(tool, route, r)).catch(() => {}).finally(sleepSoon);
+    chain = p.then((r) => stillSoon(tool, route, r)).catch(() => {}).finally(sleepSoon);
     return p;
   }
 

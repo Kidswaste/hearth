@@ -47,7 +47,7 @@ const until = async (fn, what, n = 600) => { for (let i = 0; i < n; i++) { try {
 const OPTS = (() => { try { return JSON.parse(localStorage.getItem('pj72.opts')) || {}; } catch { return {}; } })(); // (round 73) set before the restart
 if (OPTS.report) window.PJ_REPORT = 1;
 const BUDGET = Object.assign({ open: 800, switch: 600, desk: 150, files: 150, switchTask: 250 }, OPTS.budget || {}, window.PJ_BUDGET || {});
-const out = { budget: BUDGET, fixture: {}, open: { firstEver: JSON.parse(localStorage.getItem('pj72.first') || 'null') }, switch: {}, resume: {}, desk: {}, missing: {}, offline: {}, lifecycle: {}, profiles: {} }; const fails = [];
+const out = { budget: BUDGET, fixture: {}, open: { firstEver: JSON.parse(localStorage.getItem('pj72.first') || 'null') }, switch: {}, resume: {}, desk: {}, notArrived: {}, offline: {}, lifecycle: {}, profiles: {} }; const fails = [];
 const need = (ok, what) => { if (!ok) fails.push(what); return ok; };
 const click = (node) => { if (!node) throw Error('nothing to click'); node.click(); };
 const menuItem = (re) => [...document.querySelectorAll('#menu button')].find((b) => re.test(b.textContent.trim()));
@@ -55,6 +55,9 @@ const ready = (id) => { const s = ProjectWorkspace.state(); return s.phase === '
 const card = (id) => document.querySelector(`.pj-card[data-project="${id}"]`);
 const longs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push({ at: e.startTime, ms: Math.round(e.duration) }); }).observe({ type: 'longtask' }); } catch { /* none */ }
 const longestSince = (t) => Math.max(0, ...longs.filter((x) => x.at >= t).map((x) => x.ms));
+// (round 74, projdesk74) long animation frames: how a measured frame's time splits between script and rendering
+const loafs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) loafs.push(e); }).observe({ type: 'long-animation-frame' }); } catch { /* none */ }
+const loafSince = (t, t1) => loafs.filter((e) => e.startTime + e.duration >= t && e.startTime <= t1).map((e) => { const r = e.renderStart ? e.startTime + e.duration - e.renderStart : 0; return `${Math.round(e.startTime - t)}+${Math.round(e.duration)}ms (render ${Math.round(r)}, script ${Math.round(e.duration - r)})`; });
 window.hub.openExternal = () => {};
 // the scene's own work: the fixture's layers post 'fixture-layer-start' (Date.now()) as their code starts in the page
 // (it's another origin: a sandboxed page); from the first of them to the page's 'stack-drawn' is the layers' own code and
@@ -165,8 +168,20 @@ try {
     need(chatList()?.querySelectorAll('.msg').length === drawn0, `tab switches drew more of the chat (${out.desk.chatDrawn} messages)`);
     need(out.desk.chatFromEnd != null && out.desk.chatFromEnd < 80, `the chat lost its place at its end (${out.desk.chatFromEnd} px above it)`);
     click([...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === 'Desk')); await until(() => document.querySelector('.pw-desk .pw-project-files') && H.surfaceIdFor(H.activeId) === 'tool:home', 'desk again');
+    // (round 74) the shelf is clicked once the Desk is on screen and its frames are steady again (three in a row under
+    // 34 ms, at most 2 s), as a person clicks what they see. It used to be clicked 5–20 ms after the Desk tab: the rows
+    // still came in the first frame after the click, but right after the Scene tab the Desk is rasterized again in
+    // software for ≈ 1–1.5 s here (frames 130–250 ms apart, base and branch alike), and that frame waited for it
+    { const t0 = performance.now(); let last = await new Promise(requestAnimationFrame); let ok = 0;
+      while (ok < 3 && performance.now() - t0 < 2000) { const t = await new Promise(requestAnimationFrame); ok = t - last < 34 ? ok + 1 : 0; last = t; }
+      out.desk.steadyAfterTab = Math.round(performance.now() - t0); }
     const files = document.querySelector('.pw-project-files');
-    let t0 = 0; await profile('desk-files', async () => { t0 = performance.now(); files.querySelector('summary').click(); await until(() => files.querySelector('.pw-file-results .pj-item'), 'files'); await frame(); out.desk.files = Math.round(performance.now() - t0); });
+    // (round 74) in frames too: the animation frames from the click to the one that shows the rows, and how long that took
+    let t0 = 0; await profile('desk-files', async () => { const ticks = []; let on = true; const tick = (t) => { ticks.push(t); if (on) requestAnimationFrame(tick); }; requestAnimationFrame(tick); await frame();
+      let rowsAt = 0; const mo = new MutationObserver(() => { if (!rowsAt && files.querySelector('.pw-file-results .pj-item')) rowsAt = performance.now(); }); mo.observe(files, { childList: true, subtree: true });
+      t0 = performance.now(); const n0 = ticks.length; files.querySelector('summary').click(); await until(() => files.querySelector('.pw-file-results .pj-item'), 'files'); rowsAt = rowsAt || performance.now(); mo.disconnect(); await frame(); out.desk.files = Math.round(performance.now() - t0); on = false;
+      const after = ticks.slice(n0); const shown = after.findIndex((t) => t >= rowsAt);
+      out.desk.filesFrames = { rowsBuiltAt: Math.round(rowsAt - t0), frameShowingRows: shown < 0 ? null : shown + 1, frameAt: shown < 0 ? null : Math.round(after[shown] - t0), longFrames: loafSince(t0, performance.now()) }; });
     out.desk.filesRows = files.querySelectorAll('.pj-item').length; out.desk.count = files.querySelector('.pw-file-footer .hint')?.textContent;
     out.desk.faded = files.querySelectorAll('.pj-item.pj-gone').length;
     const q = files.querySelector('.pw-file-search'); await profile('desk-search', async () => { t0 = performance.now(); q.value = 'take'; q.dispatchEvent(new Event('input')); await frame(); out.desk.search = Math.round(performance.now() - t0); });
@@ -187,13 +202,14 @@ try {
     need(out.desk.noteKeyMax < 16, `notes: a key's own work ${out.desk.noteKeyMax} ms ≥ 16`);
     about.querySelector('summary').click(); }
   // ---------- not arrived: a scene, a chat ----------
+  // (round 74) reported as notArrived: run-checks reads a top-level "missing…" field as a list of failures, so every passing run showed ✖
   for (const [id, key] of [['pjbp38', 'scene'], ['pjbp39', 'chat']]) {
     const before = JSON.stringify(P.get(id));
     await toProjects(); click(card(id));
     const d = await until(() => document.querySelector('dialog.pw-loading.failed'), `${key} not arrived`, 1500);
-    out.missing[key] = d.querySelector('.pw-load-status')?.textContent; out.missing[`${key}Detail`] = d.querySelector('.pw-load-detail')?.textContent;
-    need(/not (available|arrived)|hasn.t arrived|isn.t on this computer/i.test(out.missing[key]), `${key} not arrived: says so (${out.missing[key]})`);
-    need(!/error|undefined|null|cannot read|failed to/i.test(out.missing[key]), `${key} not arrived: calm words`);
+    out.notArrived[key] = d.querySelector('.pw-load-status')?.textContent; out.notArrived[`${key}Detail`] = d.querySelector('.pw-load-detail')?.textContent;
+    need(/not (available|arrived)|hasn.t arrived|isn.t on this computer/i.test(out.notArrived[key]), `${key} not arrived: says so (${out.notArrived[key]})`);
+    need(!/error|undefined|null|cannot read|failed to/i.test(out.notArrived[key]), `${key} not arrived: calm words`);
     const after = P.get(id); need(after && after.workspace[`${key}Id`] === JSON.parse(before).workspace[`${key}Id`] && after.items.length === JSON.parse(before).items.length, `${key} not arrived: links kept`);
     click([...d.querySelectorAll('button')].find((b) => /Back to projects/.test(b.textContent)));
     await until(() => !document.querySelector('dialog.pw-loading') && card('pjbp0'), 'back');

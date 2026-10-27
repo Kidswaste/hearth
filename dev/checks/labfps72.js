@@ -195,8 +195,10 @@ async function stretch(name, during, ms = SEC * 1000, profile = false) {
 await sbx('window.__labAdapt.set({ level: 0, hold: true }); return 1'); // (full quality held: the runs compare)
 
 await safe('steady', async () => {
+  await sbx('window.__labDraw?.reset?.(); return 1'); // (round 74, labdraw74: what the preview's own savings did over the stretch)
   const S = await stretch('steady', null, SEC * 1000, true);
   if (!S) return;
+  out.numbers.labDraw = await sbx('return window.__labDraw?.info?.() || null');
   step('steady: no shader compiled while the scene just plays', S.compiles === 0 && S.links === 0, { compiles: S.compiles, links: S.links });
   step('steady: no GPU read-back that waits, every frame (Hearth\'s own)', S.syncReadsPerFrame < 0.05, { syncReadsPerFrame: S.syncReadsPerFrame });
   step('steady: no picture drawn twice for a read while it plays', S.redraws === 0, { redraws: S.redraws });

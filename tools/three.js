@@ -152,6 +152,7 @@ const ThreeLab = (() => {
       if (data.type === 'ready') {
         // A page being replaced by a newer load can still say "ready"; only the current load counts.
         if (data.n && data.n !== nonce) return;
+        if (holding) { held = data; return; } // (round 74) kept until hold(false)
         // the same load saying "ready" twice: the browser restarted the page by itself (its frame was moved in the
         // page), so it is up but empty; the owner runs its content again (data.again)
         if (ready && data.n && ready.n === data.n) data.again = true;
@@ -212,8 +213,15 @@ const ThreeLab = (() => {
     // A load that never says "ready" (seen when a reload lands while the page before it is still starting: black
     // preview, nothing plays, "not rendering") is retried with a fresh page, twice at most.
     let watchdog = 0; let retries = 0;
+    // (round 74, projdesk74) a page loaded ahead of its scene (a project opened from Projects: ThreeLab.workspace.preload)
+    // keeps its 'ready' to itself until the scene is there to run (hold(false)): to the Lab it is still loading, so the
+    // run waits for it instead of loading another, and everything the Lab sends a fresh page (its triggers, loop clock…)
+    // is for the scene that runs in it
+    let holding = false; let held = null;
+    const unhide = (on) => { for (const [k, v] of [['visibility', 'visible'], ['opacity', '0'], ['pointerEvents', 'none']]) frame.style[k] = on ? v : ''; };
     const queryNow = () => `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}${typeof H !== 'undefined' && H.config?.settings?.gpuPower === 'saver' ? '&gpu=low' : ''}`; // (round 52, gpu52: /graphics power saver)
     const load = (fresh = false) => {
+      if (holding) unhide(false); holding = false; held = null; // (round 74) a new load is never held
       if (tweaks.size) flushTweaks(); // to the page they were meant for, as before
       // (round 37, labboot) the first load of a warmed preview: the page is (or is getting) up for this same query, so it
       // is taken as it is: no new page, its 'ready' handled as if it came now (a different query: a normal load below)
@@ -282,7 +290,12 @@ const ThreeLab = (() => {
     if (!lazy) load();
     return {
       frame, send, reload: (fresh) => load(Boolean(fresh)), useStage,
+      // (round 74, projdesk74) hold(true) right after a load: its 'ready' waits; hold(false) lets it through (now, if it came)
+      // While held, the frame is drawn though its Lab is hidden (visible, transparent, click-through, like LabBoot's warm
+      // page): Chromium throttles a frame inside a hidden surface, and a page loaded that way came up slower than a new one
+      hold(on) { holding = Boolean(on); unhide(holding); if (!holding && held) { const d = held; held = null; handle(d); } },
       release() {
+        if (holding) unhide(false); holding = false; held = null; // (round 74)
         nonce = null; ready = null; loadedWith = null; queue = []; warmRun = false;
         clearTimeout(watchdog); clearTimeout(coverT); clearTimeout(gl.timer); gl.lost = false; gl.again = false;
         cancelAnimationFrame(tweakRaf); clearTimeout(tweakTimer); tweaks.clear(); tweakRaf = 0;
@@ -592,6 +605,7 @@ const ThreeLab = (() => {
         ['History', 'Time machine, earlier versions, deleted and lost scenes', [
           ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H', () => window.ThreeHistoryUI?.open()],
           ['Earlier versions and deleted sketches…', 'Of the selected layer; deleted sketches come back from here', () => historyDialog()],
+          ['🕘 Earlier versions of the scene…', 'From every safety copy: automatic copies, sync, conflicts, backups', () => window.Lazy.load('versions').then(() => Versions.open({ kind: 'scene', id: current?.id, name: current?.name }))], // (round 75, versions75)
           ...(window.LabSceneSafe ? [LabSceneSafe.sketchRow()] : [])]], // (round 43) 🛟 Recover lost scenes… (tools/three-scenesafe.js)
         ['⇪ Share & export', 'A pack, the code, a web page, Photoshop', [
           ...packs,
@@ -1066,6 +1080,9 @@ const ThreeLab = (() => {
     // (round 72, projects72) a project → project switch keeps the preview page (three.js loaded, contexts warm): the next
     // project's scene runs in it like any Lab sketch switch, instead of a new page per switch. Leaving to Projects releases it.
     let pageKept = false;
+    // (round 74, projdesk74) a page started at a project's click (preload) and not yet claimed by prepare(); let go if unclaimed
+    let pagePrimed = false, primeTimer = 0;
+    const unprime = () => { clearTimeout(primeTimer); if (!pagePrimed) return; pagePrimed = false; if (workspaceReleased) { box.release(); ranOnce = false; } };
     let plainSwap = false; // (round 73, coldopen73) the next scene swap without the old picture's cross-fade (a project opening under its loading card)
     let stallArm = null; // (round 39, powerwise) the stall / park safety timer's pace follows the park (set below)
     function syncPark(force = false) {
@@ -3810,6 +3827,7 @@ const ThreeLab = (() => {
       if (!partial && !box.onStage && !quiet) window.LabBoot?.ran(current.id, box.query); // (round 37) the query to warm a page with next time
       if (editOn && !partial && sel()) box.send({ type: 'edit', cmd: 'on', layer: sel().id });
       if (fresh) box.send(capMsg());
+      if (fresh) box.hold(false); // (round 74) a page preloaded at a project's click: its 'ready' now, with this scene's runs waiting
       ranOnce = true;
       if (!partial && !quiet) scheduleThumb();
       if (!quiet) dispatchEvent(new CustomEvent('hearth:lab-ran', { detail: { id: current.id, partial } })); // (round 34) 🩺 the blank-frame hint (tools/three-doctor-hook.js)
@@ -3889,6 +3907,7 @@ const ThreeLab = (() => {
           { label: p.has(sk.id) ? '☆ Unpin' : '★ Pin to the top', action: () => togglePin(sk.id) },
           ...(pj?.sketchMenu?.(sk.id, sk.name) || []),
           { label: 'Rename…', action: async () => { const n = await Modal.prompt('Rename sketch', { value: sk.name }); if (n?.trim()) { sk.name = n.trim(); save(); renderPicker(); fill(); } } },
+          { label: 'Earlier versions…', action: () => { dlg.close(); window.Lazy.load('versions').then(() => Versions.open({ kind: 'scene', id: sk.id, name: sk.name })); } }, // (round 75, versions75)
           { label: 'Duplicate', action: () => { if (sk.id === current?.id) persist(); const copy = { ...JSON.parse(JSON.stringify(sk)), id: `s${Date.now()}`, name: `${sk.name} copy`, updatedAt: Date.now() }; sketches.push(copy); if (extras[sk.id]?.media) (extras[copy.id] ||= {}).media = { ...extras[sk.id].media }; if (extras[sk.id]?.timeline) { (extras[copy.id] ||= {}).timeline = { ...extras[sk.id].timeline }; player.copyMap(clockPath(sk.id), clockPath(copy.id)).catch(() => {}); } saveExtras(); save(); renderPicker(); fill(); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(sk.id, copy.id).catch(() => {}); toast(`Duplicated "${sk.name}"`, { timeout: 1500 }); } },
           { label: 'Delete…', danger: true, action: async () => {
             if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
@@ -4322,7 +4341,23 @@ ${code}
         if (s === current) openSketch(sketches[0].id); else renderPicker();
         return true;
       },
+      // (round 75, versions75) Deleted things › Restore: a deleted scene back under its own id, out of History's deleted list
+      undelete(id) { const t = trash.find((x) => x.id === id); if (!t || sketches.some((x) => x.id === id)) return null; const x = api.scenes.create({ name: t.name, code: t.code ?? t.layers?.[0]?.code ?? '', layers: t.layers || null, id }); trash = trash.filter((y) => y.id !== id); saveHistory(); return x; },
       setExtras(id, ex) { if (!sketches.some((x) => x.id === id) || !ex || typeof ex !== 'object') return false; extras[id] = { ...(extras[id] || {}), ...JSON.parse(JSON.stringify(ex)) }; saveExtras(); return true; }, // (round 28, packs) a scene from a .hearthpack: its sliders, looks, song link
+      // (round 75, projbundle75) a scene from a .hearthproject or a duplicated project (projbundle.js): the sketch as given
+      // under its fresh id, its extras, references, notes, still and timeline cues; saved at once, never over a scene that's there
+      adoptScene({ sketch, extras: ex = null, refs = null, notes = null, thumb = null, maps = null } = {}) {
+        if (!sketch?.id || !/^[\w-]{1,80}$/.test(sketch.id) || sketches.some((x) => x.id === sketch.id)) return null;
+        const x = JSON.parse(JSON.stringify(sketch));
+        sketches.push(x);
+        if (ex && typeof ex === 'object') { extras[x.id] = JSON.parse(JSON.stringify(ex)); saveExtras(); }
+        if (Array.isArray(refs) && refs.length) { refsAll[x.id] = JSON.parse(JSON.stringify(refs)); saveRefs(); }
+        if (Array.isArray(notes) && notes.length) { notesAll[x.id] = JSON.parse(JSON.stringify(notes)); saveNotes(); }
+        if (thumb?.url) { thumbs[x.id] = { ...thumb }; saveThumbs(); }
+        for (const [k, m] of Object.entries(maps || {})) player.adoptMap?.(k, m).catch?.(() => {});
+        save(); renderPicker();
+        return x;
+      },
       thumbOf: (id) => thumbs[id]?.url || null,
       previewHost: () => previewHost,
       // (round 43, scenesafe) 🛟 Recover lost scenes (tools/three-scenesafe.js): found scenes join the list (never replacing
@@ -4394,10 +4429,21 @@ ${code}
     // A project owns a live preview only while open. The same preparation protocol as Present warms its assets
     // and shaders; releasing the sandbox document also releases WebGL, audio, game timers and decoded textures.
     api.workspace = {
-      state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready, parked: parkedNow, kept: pageKept }),
+      state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready, parked: parkedNow, kept: pageKept, primed: pagePrimed }),
       resume() { if(workspaceReleased && current)openSketch(current.id,{by:'workspace-resume'}); },
       // a page kept for a switch that didn't happen (cancelled, back to Projects): released now
-      releaseKept() { if (workspaceReleased && pageKept) { pageKept = false; box.release(); ranOnce = false; } },
+      releaseKept() { unprime(); if (workspaceReleased && pageKept) { pageKept = false; box.release(); ranOnce = false; } },
+      // (round 74, projdesk74) a project opened from Projects found no page (released there: nothing stays loaded behind
+      // Projects) and loaded one only once its chat, worktable and Lab were ready. The page now starts at the click's
+      // first moment (the card's press, or open() itself), in parallel with that work; prepare() runs the scene in it.
+      // Unclaimed in time (4 s after a press that didn't become a click; 20 s once open() asked) it is let go again.
+      preload(ms = 4000) {
+        if (pagePrimed) { clearTimeout(primeTimer); primeTimer = setTimeout(unprime, ms); return true; }
+        if (!workspaceReleased || pageKept || player.recording || box.onStage || box.loading || box.ready) return false;
+        pagePrimed = true; box.reload(); box.hold(true);
+        primeTimer = setTimeout(unprime, ms);
+        return true;
+      },
       async prepare(id, { signal, progress = () => {} } = {}) {
         if (player.recording) throw Error('Finish the recording before switching projects.');
         if (!sketches.some(s => s.id === id)) throw Error('This scene is not available on this computer yet.');
@@ -4434,14 +4480,18 @@ ${code}
             if (signal?.aborted) return abort();
             if(current?.id===id&&!workspaceReleased){
               if(box.ready&&workspaceDrawn===id)warm();
-            }else{if(!pageKept||!box.ready||box.onStage){box.release();ranOnce=false;}refsSig=null;openSketch(id,{by:'project'});}
+            }else{
+              // (round 74) a page preloaded at the click is still loading (held): the scene's run waits for it (no new load)
+              const primed=pagePrimed&&!box.onStage&&box.loading;pagePrimed=false;clearTimeout(primeTimer);
+              if(!primed&&(!pageKept||!box.ready||box.onStage)){box.release();ranOnce=false;}refsSig=null;openSketch(id,{by:'project'}); // (its run lets the held page's 'ready' through)
+            }
             syncPark(true);
           });
         } finally { workspacePreparing = false; syncPark(true); }
       },
       // keep: a switch straight to another project (its scene runs in this page next); otherwise the page is released
       async close({ keep = false } = {}) {
-        if (workspaceReleased) { if (!keep && pageKept) { pageKept = false; box.release(); ranOnce = false; } return; }
+        if (workspaceReleased) { if (!keep) unprime(); if (!keep && pageKept) { pageKept = false; box.release(); ranOnce = false; } return; } // (round 74) unprime
         if (player.recording) throw Error('Finish the recording before closing this project.');
         await ThreeLab.idle();
         // Save live slider edits too: closing a document must not leave its current sound/look only in memory.
@@ -4506,11 +4556,15 @@ ${code}
         return { id: L.id, name: L.name, sketchId: current?.id, sketch: current?.name, code: L.id === sel()?.id ? editor.value : L.code };
       },
       openSketch: (id) => api.openSketchById?.(id),
+      building: () => builds.size > 0, // (round 74, labcalls74) a layer that ran hasn't drawn its first frame yet
+      built: (ms = 6000) => Promise.all([...builds.keys()].map((id) => whenDrawn(id, ms))), // …and once each drew or failed
       setFrame: (id) => stage.setMode(id),
       // The whole sketch as it is now (every layer), and putting such a capture back (jam.js: one undo point per
       // round). A capture whose sketch is gone, or restored with asNew, becomes a new sketch.
-      capture() {
-        persist();
+      // (round 74, labcalls74) o.save: false reads the scene as it is (the editor's text included) without stamping it
+      // "updated now" and saving every scene: a Lab tool call notes its scene before and after, twice per call
+      capture(o = {}) {
+        if (o.save === false) { const L = sel(); if (L && current && L.code !== editor.value) persist(); } else persist();
         return { sketchId: current?.id, sketch: current?.name, selId, layers: JSON.parse(JSON.stringify(layersOf())), errors: errors.length };
       },
       async restore(snap, { asNew = null, wait = 2 } = {}) {
@@ -4578,7 +4632,9 @@ ${code}
           ids.splice(to, 0, L.id);
           reorderLayers(ids);
         }
-        await sleep(Math.min(15, Math.max(0.3, wait)) * 1000);
+        // (round 74, labcalls74) props only (opacity, name, visible, x…): nothing runs again, so no first frame to wait for
+        // (it waited ≥ 0.3 s for one); the preview gets them in its next frame, before any picture asked after this
+        await sleep(patch.code == null && patch.order == null ? 0 : Math.min(15, Math.max(0.3, wait)) * 1000);
         return { updated: L.name, ...report() };
       },
       // property: opacity | x | y | scale | rotate or a slider (key or label); keys: [{ time, value, ease }]; clear removes them.
@@ -5115,6 +5171,7 @@ ${frag}\`,
     // (round 72, labbridge72) the chats' scene links are read first (a call routed before that went to the scene on screen)
     if (ctx.chatId && typeof ChatScenes !== 'undefined' && ChatScenes.ready) await Promise.race([ChatScenes.ready(), new Promise((r) => setTimeout(r, 5000))]);
     const route = typeof ChatScenes !== 'undefined' && api.scenes ? ChatScenes.routeThree(tool, ctx.chatId) : null;
+    HubBridge.mark?.('route'); // (round 74, labcalls74)
     if (route && !route.sketchId) return { ok: false, error: route.error || 'This chat has no Lab scene: nothing was changed.' }; // (round 72) unlinked / not arrived yet, in words
     // the Lab sequence is one for every chat (its scenes are anyone's): never backstage
     if (tool === 'three_sequence' && typeof ThreeSeq !== 'undefined') return ThreeSeq.handle(tool, args, { sketchId: route?.sketchId || null });

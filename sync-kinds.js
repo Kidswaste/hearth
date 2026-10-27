@@ -22,7 +22,7 @@ function kindOf(rel) {
   let k = memo.get(r);
   if (k !== undefined) return k;
   k = KINDS.find((x) => x.re.test(r))?.id || '';
-  if (memo.size > 20000) memo.clear(); // bounded: a big profile has ~5,000 files
+  if (memo.size > 250000) memo.clear(); // bounded: a big profile has ~5,000 files (round 74, synchard74: 20,000 was refilled from scratch on every pass at 50,000 files)
   memo.set(r, k);
   return k;
 }
@@ -41,7 +41,16 @@ function sizes(local, cloud) {
   for (const [rel, e] of cloud || []) { const k = kindOf(rel); if (k && e) { out[k].cloudN += 1; out[k].cloudBytes += e.size || 0; } }
   return out;
 }
+// (round 75, syncstate75) the same, letting the engine's event loop breathe (breathe() → a Promise when it is time):
+// 100,000 names at 50,000 files held the main process ≈ 30 ms in one piece
+async function sizesAsync(local, cloud, breathe) {
+  const out = Object.fromEntries(KINDS.map((k) => [k.id, { n: 0, bytes: 0, cloudN: 0, cloudBytes: 0 }]));
+  let i = 0;
+  for (const [rel, e] of local || []) { const k = kindOf(rel); if (k && e && !e.unavailable) { out[k].n += 1; out[k].bytes += e.size || 0; } if ((++i & 4095) === 0 && breathe) { const b = breathe(); if (b) await b; } }
+  for (const [rel, e] of cloud || []) { const k = kindOf(rel); if (k && e) { out[k].cloudN += 1; out[k].cloudBytes += e.size || 0; } if ((++i & 4095) === 0 && breathe) { const b = breathe(); if (b) await b; } }
+  return out;
+}
 // the list the panel shows: label, note, on / off here, sizes
 const list = (choices = {}, sz = {}) => KINDS.map((k) => ({ id: k.id, label: k.label, note: k.note, perComputer: Boolean(k.perComputer), big: Boolean(k.big), on: isOn(k.id, choices), ...(sz[k.id] || { n: 0, bytes: 0, cloudN: 0, cloudBytes: 0 }) }));
 
-module.exports = { KINDS, kindOf, isOn, skipper, sizes, list };
+module.exports = { KINDS, kindOf, isOn, skipper, sizes, sizesAsync, list };

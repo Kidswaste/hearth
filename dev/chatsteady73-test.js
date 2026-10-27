@@ -12,7 +12,7 @@ const { spawnSync } = require('child_process');
 
 if (process.argv[2] !== '--inside') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-chatsteady73-'));
-  for (const f of ['store.js', 'scenesafe-core.js', 'datasafe-core.js', 'storework.js', 'fswalk.js', 'sync-merge.js']) fs.copyFileSync(path.join(__dirname, '..', f), path.join(dir, f));
+  for (const f of ['store.js', 'scenesafe-core.js', 'datasafe-core.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js' /* (round 75) */]) fs.copyFileSync(path.join(__dirname, '..', f), path.join(dir, f));
   fs.copyFileSync(__filename, path.join(dir, 't.js'));
   const r = spawnSync(process.execPath, [path.join(dir, 't.js'), '--inside'], { cwd: dir, env: { ...process.env, HEARTH_STORE_THREAD: '1' }, stdio: 'inherit', timeout: 60000 });
   fs.rmSync(dir, { recursive: true, force: true });

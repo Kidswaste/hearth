@@ -208,6 +208,7 @@ function flushSync() {
 // Write to a temp file first so a crash mid-write can't corrupt a chat.
 // Sync (syncmain.js) can merge a save with a version that just arrived from another computer (beforeWrite).
 let beforeWrite = null;
+let beforeWants = null; // (round 75, syncstate75) which files the guard may change (null: any); the others merge on the store thread
 function writeJson(file, value, o) {
   // (round 43, scenesafe) the ids the caller sent, before sync's merge: the guard tells "not sent" from "merged away"
   const sent = SS.guardedName(file) && Array.isArray(value) ? SS.idsOf(value) : undefined;
@@ -460,28 +461,35 @@ function buildTokenStats(agents = []) {
 // to the store as it is (a save still on its way, else the disk) and saved like setKV (sync's merge, .prev, held files
 // all as before). Sending the whole store (≈ 900 KB after a year of use) cost the window ≈ 70 ms after every click.
 // → { ok: true }, or { ok: false, state } when the store is missing / can't be read (the window then sends it whole)
-const BAD_KEY = new Set(['__proto__', 'constructor', 'prototype']);
-function applyOps(root, ops) {
-  for (const x of Array.isArray(ops) ? ops : []) {
-    const [op, p, v] = Array.isArray(x) ? x : [];
-    if (!Array.isArray(p) || !p.length || p.some((k) => typeof k !== 'string' || BAD_KEY.has(k))) continue;
-    let o = root;
-    for (const k of p.slice(0, -1)) { if (!o[k] || typeof o[k] !== 'object' || Array.isArray(o[k])) o[k] = {}; o = o[k]; }
-    const k = p[p.length - 1];
-    if (op === 'inc') o[k] = (Number(o[k]) || 0) + (Number(v) || 0);
-    else if (op === 'max') o[k] = Math.max(Number(o[k]) || 0, Number(v) || 0);
-    else if (op === 'def') { if (o[k] === undefined) o[k] = v; } else if (op === 'set') o[k] = v;
-    else if (op === 'del') delete o[k];
-  }
-  return root;
-}
+const applyOps = (root, ops) => require('./kvops').applyOps(root, ops); // (round 75, syncstate75) shared with the store thread (kvops.js; required when first used)
 // the store as last merged, kept while nobody else changed it (the same save on its way, or the file as that save left
 // it): a year-sized store isn't read and parsed again every minute (≈ 40 ms on this thread). Not while sync guards
 // writes (its merge can change what is written).
 let mergeMemo = null;
+// (round 75, syncstate75) on the store thread when it runs (storework.js mergeKV): the file read, parsed, changed and
+// written there; the main process only passes the changes on (≈ 50 ms of it once a minute with sync on: sync's guard
+// turned the memo below off, so the whole year-sized store was read and parsed here). Here, as before, when the thread
+// isn't there, when a whole save of the store is still on its way or waiting for a held file, and when sync's guard
+// wants this very file (it just arrived from the other computer: its merge needs the value here).
+const offMerging = new Map(); // file → the promise of the last merge sent to the thread
 function mergeKV(name, ops) {
   const file = kvPath(name);
   if (SS.guardedName(file)) return { ok: false, state: 'guarded' }; // (the Lab's scenes: whole saves with their guard)
+  const guard = Boolean(beforeWrite) && (!beforeWants || beforeWants(file));
+  if (!guard && !pending.has(file) && !held.has(file) && thread()) {
+    const ds = dsFlags(file); seen.add(file); mergeMemo = null;
+    const p = ask({ op: 'mergeKV', file, ops, prev: file.replace(/\.json$/, '.prev.json'), ...ds })
+      .then((r) => { if (r?.ok) { wstats.writes += 1; held.delete(file); return { ok: true }; } return { ok: false, state: r?.state || 'unreadable' }; },
+        (err) => (isHeld(err) ? { ok: false, state: 'unreadable' } : mergeOnMain(file, ops))) // held: the window saves it whole (held then, as any save)
+      .finally(() => { if (offMerging.get(file) === p) offMerging.delete(file); });
+    offMerging.set(file, p);
+    return p;
+  }
+  // one sent to the thread still on its way: this one after it (it reads what that one wrote)
+  if (offMerging.has(file)) return offMerging.get(file).then(() => mergeKV(name, ops));
+  return mergeOnMain(file, ops);
+}
+function mergeOnMain(file, ops) {
   let value = null;
   const m = !beforeWrite && mergeMemo?.file === file ? mergeMemo : null;
   if (m) {
@@ -573,7 +581,7 @@ module.exports = {
   getUsage: () => readJson(USAGE_PATH, {}),
   getTokenStats,
   rebuildTokenStats: buildTokenStats,
-  setBeforeWrite: (fn) => { beforeWrite = typeof fn === 'function' ? fn : null; },
+  setBeforeWrite: (fn, wants) => { beforeWrite = typeof fn === 'function' ? fn : null; beforeWants = beforeWrite && typeof wants === 'function' ? wants : null; }, // (round 75) wants(file): would the guard change a save of it
   // (round 43, datasafe) what couldn't be read in this window's session (the calm card), saves waiting for a held file,
   // and a fresh page (a reload reads everything again: the old page's doubts go with it; held saves stay)
   health: () => ({

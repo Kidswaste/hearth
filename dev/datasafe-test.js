@@ -25,7 +25,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, typeof v === 'string' ? v : JSON.stringify(v, null, 2)); };
 const J = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return undefined; } };
 const ls = (d) => { try { return fs.readdirSync(d); } catch { return []; } };
-const STORE_FILES = ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'scenesafe-core.js', 'datasafe-core.js', 'datasafemain.js', 'recall-core.js', 'configsafe-core.js', 'crashsafe-core.js'];
+const STORE_FILES = ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js' /* (round 75) */, 'scenesafe-core.js', 'datasafe-core.js', 'datasafemain.js', 'recall-core.js', 'configsafe-core.js', 'crashsafe-core.js'];
 // a fake fs whose reads of chosen files fail with a Windows error (n times, or always)
 function faulty(fails) {
   const left = new Map(Object.entries(fails));
@@ -313,11 +313,11 @@ async function main() {
     const cloudChats = ls(path.join(cloud, 'Hearth', 'files', 'chats'));
     check(cloudChats.length === 3 && ls(path.join(mac.data, 'chats')).length === 3, 'sync: the PC\'s chats folder held (EPERM) → nothing deleted in the cloud or on the Mac', { cloudChats, mac: ls(path.join(mac.data, 'chats')) });
     // a held state file isn't replaced by an empty one
-    const sf = path.join(pc.data, 'sync', 'state.json');
+    const sf = path.join(pc.data, 'sync', 'state', 'index.json'); // (round 75, syncstate75: the state in pieces, read asynchronously)
     const stBefore = fs.readFileSync(sf, 'utf8');
-    const realRead = fs.readFileSync;
-    fs.readFileSync = (p, ...a) => { if (String(p) === sf) { const e = new Error('EBUSY'); e.code = 'EBUSY'; throw e; } return realRead.call(fs, p, ...a); };
-    let e2; try { e2 = createEngine({ dataDir: pc.data, configPath: pc.config, themePath: pc.theme, cloudRoot: cloud, machineName: 'PC', home: pc.home, settleMs: 0 }); await e2.pass(); } finally { fs.readFileSync = realRead; }
+    const realRead = fs.promises.readFile;
+    fs.promises.readFile = async (p, ...a) => { if (String(p) === sf) { const e = new Error('EBUSY'); e.code = 'EBUSY'; throw e; } return realRead.call(fs.promises, p, ...a); };
+    let e2; try { e2 = createEngine({ dataDir: pc.data, configPath: pc.config, themePath: pc.theme, cloudRoot: cloud, machineName: 'PC', home: pc.home, settleMs: 0 }); await e2.pass(); } finally { fs.promises.readFile = realRead; }
     check(fs.readFileSync(sf, 'utf8') === stBefore, 'sync: a held state file is never replaced by a fresh one (the pass waits)');
     await e2.pass();
     check(ls(path.join(cloud, 'Hearth', 'files', 'chats')).length === 3, 'sync: …then it reads, and everything is still there');

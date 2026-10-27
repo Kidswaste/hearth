@@ -139,8 +139,11 @@ const Projects = (() => {
   const IMG = /\.(png|jpe?g|webp|gif)$/i;
   let look = null; // { sketches: Map, thumbs, boards: Map, renders: Map, captures: Map } read by lookFor()
   async function lookFor() {
-    const [sk, th, bd, rn, cp] = await Promise.all([Src.sceneList(), Src.sceneThumbs(), Src.boards(), Src.renders(), Src.captures()]);
-    look = { sketches: new Map((sk || []).map((s) => [s.id, s])), thumbs: th || {}, boards: new Map((bd || []).map((b) => [b.id, b])), renders: new Map((rn || []).map((r) => [r.id, r])), captures: new Map((cp || []).map((c) => [c.path, c])) };
+    const src = await Promise.all([Src.sceneList(), Src.sceneThumbs(), Src.boards(), Src.renders(), Src.captures()]);
+    // (round 74, projdesk74) the same (cached) sources as last time: the same look, not five new maps (the Desk keeps what it drew)
+    if (look?.src && src.every((x, i) => x === look.src[i])) return look;
+    const [sk, th, bd, rn, cp] = src;
+    look = { src, sketches: new Map((sk || []).map((s) => [s.id, s])), thumbs: th || {}, boards: new Map((bd || []).map((b) => [b.id, b])), renders: new Map((rn || []).map((r) => [r.id, r])), captures: new Map((cp || []).map((c) => [c.path, c])) };
     return look;
   }
   // a scene's picture: the Lab's still of it, else the still of the chat that owns it (chat-scenes.js)
@@ -228,6 +231,9 @@ const Projects = (() => {
     return true;
   }
   const trashed = () => (data.trash || []).slice();
+  // (round 75, versions75) 🕘 Earlier versions › Restore: a project put back as an earlier version of itself (its id kept;
+  // versions.js kept the one it replaces first), saved like any change so sync sends it
+  function replaceWith(id, v) { const p = get(id); if (!p || !v || typeof v !== 'object') return null; for (const k of Object.keys(p)) if (k !== 'id') delete p[k]; Object.assign(p, JSON.parse(JSON.stringify(v)), { id, updated: Date.now() }); changed(p, 'restore'); return p; }
   function restoreProject(id, { at = 0, as = null } = {}) {
     const t = (data.trash || []).find((x) => x.id === id);
     if (!t || get(id)) return get(id);
@@ -536,6 +542,10 @@ const Projects = (() => {
       { label: 'Status', items: () => Object.entries(C.STATUS).map(([k, l]) => ({ label: l, checked: p.status === k, action: () => setStatus(p, k) })) },
       { label: 'Look', items: () => [{ label: 'Next color', action: () => nextColor(p) }, { label: 'Next mark', action: () => nextMark(p) }] },
       { label: 'Notes…', action: () => notesPrompt(p) },
+      // (round 75, projbundle75) the project as one file / a full copy (projbundle.js, loaded on the first click)
+      { label: '⇪ Export project…', hint: 'one .hearthproject file', action: () => bundle((B) => B.exportProject(p)) },
+      { label: '⧉ Duplicate project', action: () => bundle((B) => B.duplicateProject(p)) },
+      { label: 'Earlier versions…', action: () => window.Lazy.load('versions').then(() => Versions.open({ kind: 'project', id: p.id, name: p.name })) }, // (round 75, versions75)
       '-',
       { label: 'Delete the project…', danger: true, action: () => removeProject(p) },
     ].filter(Boolean);
@@ -566,16 +576,18 @@ const Projects = (() => {
     );
     return out;
   }
+  // (round 75, projbundle75) Export / Import / Duplicate live in their own lazy group: loaded on first use
+  const bundle = (fn) => (window.Lazy ? window.Lazy.load('projbundle') : Promise.resolve()).then(() => fn(ProjBundle)).catch((err) => toast(calmError(err), { type: 'error', raw: err }));
   async function renamePrompt(p) { const n = await Modal.prompt('Rename the project', { value: p.name }); if (n?.trim()) rename(p, n.trim()); }
   async function notesPrompt(p) { const n = await Modal.prompt(`Notes · ${p.name}`, { value: p.notes, label: 'Anything to remember about it (synced with your other computer)', multiline: true }); if (n != null) setNotes(p, n); }
 
   return {
     ready: () => ready, isLoaded: () => loaded, all, live, get, find, ofItem, projectOfChat, here, hereChat, currentScene, currentBoard,
-    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, fromMake, syncMakes, hidesMake,
+    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, replaceWith, fromMake, syncMakes, hidesMake,
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
-    openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt,
+    openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt, bundle,
     grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu, sketchGroups, sketchBrowse, sketchMenu,
-    Src, warm, lookFor, coverOf, thumbOf, timeOf, nameOf, lastOf, gone, fileUrl, forget, onChange, changed, core: C,
+    Src, warm, lookFor, look: () => look, coverOf, thumbOf, timeOf, nameOf, lastOf, gone, fileUrl, forget, onChange, changed, core: C,
     _data: () => data,
   };
 })();

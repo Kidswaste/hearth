@@ -35,6 +35,54 @@ const SyncPanel = (() => {
     moving: 'moving now',
   };
   const whyText = (w, st) => { const v = WHY[w]; return typeof v === 'function' ? v(st) : v || 'waiting'; };
+  WHY['disk-full'] = 'the disk is full: it waits for room'; // (round 74)
+
+  // ---------- (round 74, synchard74) files that can't sync, in plain words, each with its fix ----------
+  // the engine sends a code (sync-hard.js); here: what it means for the owner and the one button that fixes it
+  const OTHER = WIN ? 'Mac' : 'PC';
+  const BLOCKED = {
+    'win-chars': (b) => ({ text: `Its name has ${b.part ? `“${[...new Set([...b.part].filter((c) => /[<>:"|?*\\]/.test(c)))].join(' ') || 'a character'}”` : 'a character'} in it, which Windows can't use, so it stays on this ${HERE} until renamed.`, fix: 'Rename for Windows' }),
+    'win-ending': () => ({ text: 'Its name ends with a dot or a space, which Windows drops, so it stays here until renamed.', fix: 'Rename for Windows' }),
+    'win-reserved': (b) => ({ text: `“${clip(b.part, 30)}” is a name Windows keeps for itself (like CON or NUL), so it stays here until renamed.`, fix: 'Rename for Windows' }),
+    'win-long': () => ({ text: 'Its folders and name are too long for Windows (over 260 characters), so it stays here until shortened.', fix: 'Shorten for Windows' }),
+    'win-there': () => ({ text: `Made on your ${OTHER} with a name Windows can't use. On the ${OTHER}, open this panel and click “Rename for Windows”.` }),
+    locked: (b) => ({ text: b.where === 'cloud' ? 'Your cloud drive is busy with it right now. Hearth tries again by itself.' : 'Another program is using it right now (the Sound desk, a player, your cloud drive or an antivirus). Close it there, or Hearth tries again by itself.', fix: 'Try again now' }),
+    'read-only': (b) => ({ text: `It is marked read-only ${b.where === 'cloud' ? 'in the cloud folder' : `on this ${HERE}`}, so sync can't update it.`, fix: 'Allow changes' }),
+    'disk-full': (b) => ({ text: b.where === 'cloud' ? 'The disk with your cloud folder is full. Nothing was damaged; it goes once there is room.' : `This ${HERE}'s disk is full. Nothing was damaged; it copies once there is room.`, fix: 'Free up space…' }),
+    'too-long': () => ({ text: 'Its path is too long for this computer.', fix: 'Shorten it' }),
+    'bad-name': () => ({ text: 'This computer can\'t use its name.', fix: 'Rename it' }),
+    drive: () => ({ text: 'The drive didn\'t answer for it (disconnected or asleep). Hearth tries again by itself.', fix: 'Try again now' }),
+    denied: (b) => ({ text: `macOS didn't let Hearth change it${b.where === 'cloud' ? ' in the cloud folder' : ''}. In System Settings › Privacy & Security › Files and Folders (or Full Disk Access), allow Hearth, then try again.`, fix: 'Try again now' }),
+    'newer-app': () => ({ text: `It was last saved by a newer Hearth on your ${OTHER}. Update Hearth here (⬆ Update) to sync it; nothing is lost meanwhile.` }),
+    'secret-cloud': () => ({ text: 'A key or password file an older version put in your cloud copy. Keys never sync now.', fix: 'Remove from the cloud' }),
+  };
+  const FIX = { 'win-chars': 'rename', 'win-ending': 'rename', 'win-reserved': 'rename', 'win-long': 'rename', 'too-long': 'rename', 'bad-name': 'rename', 'read-only': 'writable', 'secret-cloud': 'unsecret', locked: 'retry', drive: 'retry', denied: 'retry', 'disk-full': 'space' };
+  function blockedSec(st) {
+    const list = st.blocked || [];
+    if (!list.length && !(st.peersOld || []).length) return null;
+    const rows = list.slice(0, 8).map((b) => {
+      const w = (BLOCKED[b.why] || (() => ({ text: 'It can\'t sync right now.' })))(b);
+      const how = FIX[b.why];
+      const btn = w.fix && how ? el('button', { type: 'button', class: 'ghost small sp-fix', text: w.fix, dataset: { rel: b.rel, how }, title: how === 'rename' ? 'Renames it on this computer; links to it in your chats and scenes follow' : '', on: { click: (e) => fixOne(b, how, w.fix, e.currentTarget) } }) : null;
+      return el('li', { class: 'sp-blk', dataset: { why: b.why } }, el('div', { class: 'sp-tr-top' }, el('span', { class: 'sp-name', text: Sync.nameOf(b.rel), title: b.rel }), btn), el('span', { class: 'hint', text: w.text }));
+    });
+    const old = (st.peersOld || []).map((x) => el('p', { class: 'hint sp-old', text: `Hearth on ${x.name || 'the other computer'} is an older version: update it there too (⬆ Update), so it handles these cases as well.` }));
+    return el('div', { class: 'sp-sec sp-blocked' }, list.length ? el('b', { text: `Can't sync (${list.length})` }) : null,
+      list.length ? el('span', { class: 'hint', text: 'Each stays as it is on this computer: nothing is lost.' }) : null,
+      list.length ? el('ul', { class: 'sp-wait' }, ...rows) : null, list.length > 8 ? el('span', { class: 'hint', text: `…and ${list.length - 8} more` }) : null, ...old);
+  }
+  async function fixOne(b, how, label, button) {
+    if (busy) return;
+    if (how === 'space') { openFree(); return; }
+    busy = true; if (button) button.disabled = true;
+    try {
+      if (how === 'retry') { await Sync.now({ quiet: true }); return; }
+      const r = await api().fix(b.rel, how);
+      if (!r?.ok) { toast(r?.error || 'That didn\'t work', { type: 'error' }); return; }
+      toast(how === 'rename' ? `Renamed to “${Sync.nameOf(r.to)}”${r.links ? `; ${r.links} link${r.links === 1 ? '' : 's'} to it updated` : ''}. It syncs now.` : how === 'writable' ? 'Changes allowed. It syncs now.' : 'Removed from the cloud copy (kept in Deleted files on this computer).', { timeout: 5000 });
+      await Sync.now({ quiet: true });
+    } finally { busy = false; sig = ''; render(); }
+  }
 
   // ---------- a conflict, one side ----------
   const IMG = /\.(png|jpe?g|webp|gif|bmp|avif)$/i; const VID = /\.(mp4|webm|mov|m4v|mkv)$/i;
@@ -243,7 +291,7 @@ const SyncPanel = (() => {
       list = (await Promise.all(raw.slice(0, 12).map((c) => api().preview?.(c.id).catch(() => null)))).map((p, i) => p || raw[i]);
     }
     const auto = Sync.lastAuto();
-    const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000),
+    const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, (st.blocked || []).map((b) => `${b.rel}:${b.why}:${b.where}`), (st.peersOld || []).length, // (round 74) + what can't sync st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000),
       mode, kindsOpen, freeList, freeDone, (st.transfers || []).map((t) => `${t.rel}:${t.op}:${t.moving}`), st.moving, kindsOpen ? (st.kinds || []).map((k) => `${k.id}:${k.on}:${k.n}:${Math.round(k.bytes / 1e5)}:${Math.round(k.cloudBytes / 1e5)}`) : (st.kinds || []).map((k) => k.on)]); // (round 73) + moving files, What syncs, Free up space
     if (my !== seq || !box) return;
     if (s === sig) { paintBars(st); return; } // nothing it shows changed: the DOM stays as it is (only the bars move)
@@ -267,6 +315,7 @@ const SyncPanel = (() => {
         el('p', { text: `${err.rel ? `${what}: ` : ''}${words}${/again/i.test(words) ? '' : ' Hearth tries again by itself.'}` }),
         typeof ErrorCalm !== 'undefined' && ErrorCalm.details ? ErrorCalm.details(`${err.op ? `${err.op} ` : ''}${err.rel ? `${err.rel}: ` : ''}${err.message}`) : null)); // the word-for-word reason, with Copy
     }
+    parts.push(blockedSec(st)); // (round 74, synchard74) what can't sync, why, and its fix
     // conflicts, side by side
     if (list.length) {
       parts.push(el('div', { class: 'sp-sec' }, el('b', { text: `${list.length} thing${list.length === 1 ? ' was' : 's were'} changed on both computers — choose` }),
@@ -293,6 +342,7 @@ const SyncPanel = (() => {
     const now = el('button', { type: 'button', class: 'primary sp-now', text: 'Sync now', on: { click: async () => { now.disabled = true; now.textContent = 'Syncing…'; try { await Sync.now({ quiet: true }); } finally { now.disabled = false; now.textContent = 'Sync now'; sig = ''; render(); } } } });
     parts.push(el('div', { class: 'sp-foot' }, st.on ? now : el('button', { type: 'button', class: 'primary', text: 'Turn on sync…', on: { click: () => { close(); Sync.setup(); } } }),
       el('button', { type: 'button', class: 'ghost small', text: 'Deleted files…', on: { click: () => { close(); Sync.trash(); } } }),
+      el('button', { type: 'button', class: 'ghost small', text: 'Earlier versions…', title: 'Earlier versions of synced things: chats, projects, Lab scenes, boards, settings; and Deleted things', on: { click: () => { close(); window.Lazy.load('versions').then(() => Versions.home()); } } }), // (round 75, versions75)
       el('span', { class: 'spacer' }),
       el('button', { type: 'button', class: 'ghost small', text: '⋯', title: 'More: pause, open the cloud folder, big videos, other drive, turn off', attrs: { 'aria-label': 'More sync options' }, on: { click: (e) => showMenuAt(e.currentTarget, Sync.items()) } })));
     const keepScroll = box.scrollTop;
