@@ -118,6 +118,7 @@ file is stringified once per save, not twice.
 - `node dev/sync-test.js` (180), `dev/cloud-files-test.js`, `dev/twocomputers-test.js` (117),
   `dev/store-thread-test.js` (63): still pass.
 - `node dev/sync72-perf.js`: the speed table (exits 1 over the 50 ms budget).
+- App checks: `sync72`, `lazy`, `sync` pass; `unit:boot-test` (2,852), `unit:winmac-test`, `unit:datasafe-scan`, `unit:errorcalm-scan` pass.
 - `dev/checks/sync72.js` (app, clicks): the chip; the panel opens on a click (words, where, when, the other
   computer); Sync now; no status / conflict calls while it sits open (no polling); a file still arriving → "↻ 1 waiting"
   with its name and why; a chat renamed on both → "⚠ 1 conflict", both versions side by side with what each has, Keep
@@ -148,7 +149,7 @@ All edits in `sync-engine.js` are marked `(round 72, sync72)`; `cloud-files.js` 
 ## Edits outside the lane (small, additive)
 `sync-merge.js` (text merge, keepAll / shared, keepBoth), `syncmain.js` (pullJson / mergeJson options, waiting /
 lastError in the status), `storework.js` (syncPull / syncMerge), `sync.js` / `sync.css` (the chip, click → panel,
-a few exports), `lazy-data.js` + `docs/lazy-groups.md` (group `syncpanel`), `mcp/hearth-map.js` (one sentence in
+a few exports), `lazy-data.js` + `docs/lazy-groups.md` (group `syncpanel`; its code also starts loading when the pointer reaches the chip), `index.html` (`syncpanel` added to an existing lazy-at.js tag: no new script; first-screen CSS kept in budget by removing the old dot's now-unused styles), `mcp/hearth-map.js` (one sentence in
 `sync`), `dev/run-checks.js` (UNIT).
 
 ## Risks
