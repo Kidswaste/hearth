@@ -60,8 +60,13 @@ const Native = (() => {
     const existing = views.get(agentId);
     if (existing) {
       if (existing.root !== root || !root.contains(existing.form)) {
+        // (round 72, projects72) moving the list puts its scroll back at the top: there the "Show earlier" watcher drew
+        // 60 more messages on every project tab switch (a long chat grew, and opened in its middle). Its place comes back:
+        // the end while it follows, else the same distance from the end
+        const l = existing.list; const fromEnd = l?.scrollHeight ? l.scrollHeight - l.scrollTop : null;
         root.append(existing.title.closest('.native-head'), existing.wrap, existing.form);
         existing.root = root;
+        if (l?.isConnected) { if (follows(existing)) l.scrollTop = l.scrollHeight; else if (fromEnd != null) l.scrollTop = l.scrollHeight - fromEnd; }
       }
       root.classList.toggle('dock-chat', root.classList.contains('tool-dock'));
       return existing;
