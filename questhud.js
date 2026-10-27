@@ -144,6 +144,7 @@ const QuestHud = (() => {
     lastSig = ''; paint();
     loadTickets(); // (round 68, tickets68) 🎟 Ticket ready on the show's day (one small ask, now only)
     loadFollows(); // (round 70, follow70) ★ New: a followed artist / venue has a new show
+    Lazy.load('studiohours').then(() => StudioHours.refresh()).catch(() => {}); // (round 71, studiohours71) 🎛 This week: N h making music (read now, only when the panel opens)
     if (prefs.near === 'gps') locate();
     panel?.querySelector('.qh-step button, .qh-foot button')?.focus({ preventScroll: true });
   }
@@ -193,6 +194,7 @@ const QuestHud = (() => {
       const others = QC.actives(C, S, prefs.pin).filter((q) => q.id !== cd?.id);
       if (others.length) body.push(el('div', { class: 'qh-sec', text: 'Also active' }), ...others.map((q) => otherRow(QC.card(C, S, q))));
       if (typeof ClickFirst !== 'undefined') body.push(...ClickFirst.weekRows(C, S, btn)); // (round 64, clickfirst64) This week: Plan your week / See the plan, Week in review ›, Make a walk
+      if (window.Lazy?.isIn('studiohours') && typeof StudioHours !== 'undefined') body.push(...StudioHours.hudRows()); // (round 71, studiohours71) 🎛 This week: 3 h 20 making music + the 7-day bar → Studio hours
       if (typeof WeekendPlanCore !== 'undefined' && WeekendPlanCore.inWindow(WeekendPlanCore.now())) body.push(btn('🗓 Plan my weekend', () => { close(); return weekend(); }, 'qh-row wp-hud', 'Thursday evening to Sunday: a balanced weekend from your saved shows, the park, a place nearby and a studio session (Swap, Keep, Accept plan)')); // (round 66, weekendplan66)
       if (typeof RewardShelf !== 'undefined') body.push(...RewardShelf.hudRows(C, S, btn)); // (round 63, rewards63) "120 XP to your next reward", Claim… with a confirm, the jar
       body.push(btn('🗺 My month in Paris', () => { close(); return Lazy.load('questjournal').then(() => ParisJournal.openMonth()); }, 'qh-row pj-hud', 'This month on your Paris map: places, shows, walks, park sessions, the arrondissements you lit up, an image card to share')); // (round 64, parisjournal64) // (round 63, rewards63) "120 XP to your next reward", Claim… with a confirm, the jar

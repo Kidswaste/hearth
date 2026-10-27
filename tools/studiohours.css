@@ -1,0 +1,41 @@
+/* (round 71, studiohours71) 🎛 Studio hours: the tracker's row (questhud.css's .qh-row) and its card (.qh-panel).
+   Calm: no loops, no transitions on the bars, no backdrop-filter; soft colours from the tracker's gold. */
+.sh-hud { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sh-hud .qh-row-main { cursor: inherit; }
+.sh-hud .qh-row-title { white-space: normal; } /* the whole "This week: 3 h 20 making music", never cut */
+.sh-hud:focus-visible { outline: 2px solid var(--ui-gold, #d9b777); outline-offset: 1px; }
+.sh-pi { display: grid; place-items: center; }
+.sh-ring { display: block; }
+.sh-ring-bg { fill: none; stroke: color-mix(in srgb, var(--ui-gold, #d9b777) 18%, transparent); stroke-width: 3; }
+.sh-ring-fg { fill: none; stroke: color-mix(in srgb, var(--ui-gold, #d9b777) 75%, transparent); stroke-width: 3; stroke-linecap: round; }
+.sh-mini { flex: none; display: flex; align-items: flex-end; gap: 2px; height: 18px; width: 40px; }
+.sh-mini i { flex: 1; min-height: 2px; border-radius: 1.5px; background: color-mix(in srgb, var(--ui-gold, #d9b777) 55%, transparent); }
+.sh-mini i.zero { height: 2px !important; background: color-mix(in srgb, var(--muted) 30%, transparent); }
+.sh-mini i.today { background: var(--ui-gold, #d9b777); }
+.sh-mini i.later { opacity: .35; }
+/* the card */
+.sh-top { display: flex; align-items: center; gap: 10px; margin: 2px 2px 8px; }
+.sh-total { font-size: 18px; line-height: 1.2; }
+.sh-goal-line { color: var(--ui-gold, #d9b777); }
+.sh-err { margin: 0 2px 6px; }
+.sh-bars { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; margin: 0 2px; }
+.sh-col { display: grid; grid-template-rows: 1fr auto; gap: 2px; min-width: 0; }
+.sh-track { position: relative; height: 44px; border-radius: 4px; background: color-mix(in srgb, var(--muted) 10%, transparent); }
+.sh-weeks .sh-track { height: 52px; }
+.sh-track i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 4px; background: color-mix(in srgb, var(--ui-gold, #d9b777) 50%, transparent); }
+.sh-col.now .sh-track i { background: var(--ui-gold, #d9b777); }
+.sh-col.later { opacity: .45; }
+.sh-lab { font-size: 9.5px; color: var(--muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+.sh-col.now .sh-lab { color: var(--ui-gold, #d9b777); }
+.sh-stats { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 12px; margin: 10px 2px 4px; font-size: 12px; }
+.sh-stats b { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sh-h { font-size: 10.5px; color: var(--muted); text-align: right; text-transform: uppercase; letter-spacing: .04em; }
+.sh-k { color: var(--muted); }
+.sh-facts { display: grid; gap: 2px; margin: 6px 2px 4px; font-size: 12px; }
+.sh-facts > div, .sh-goal { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.sh-inst { text-align: right; }
+.sh-goal { margin: 8px 2px 2px; font-size: 12px; }
+.sh-goal-btn { padding: 2px 8px; font-size: 11px; }
+.sh-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 2px 2px; justify-content: flex-end; }
+.sh-chip { padding: 2px 9px; font-size: 11px; border-radius: 999px; }
+.sh-chip.on { border-color: color-mix(in srgb, var(--ui-gold, #d9b777) 55%, transparent); color: var(--ui-gold, #d9b777); }
