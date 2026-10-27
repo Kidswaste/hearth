@@ -4,6 +4,7 @@ const QuestJournal = (() => {
   let root, content, status, state, writable = false, page = 'adventure', saving = Promise.resolve(), ticker, legacy;
   let atlasView = null, worldKeep = null; // worldKeep: (round 65, questperf65) the mounted map page's { layout, map, panel }, kept across re-renders of the map page
   let needsRender = true, paintFrame = 0, searchFrame = 0;
+  let scrolledDown = false; // (round 71, studioperf71) the Studio is scrolled past its top (a passive scroll listener, mount): a page change at the top skips scrollTo, which forced a layout of the whole new page inside the click
   const visible = () => !document.hidden && (H.surfaceIdFor?.(H.activeId) || H.activeId) === 'tool:quests';
   function scheduleRender() { needsRender = true; if (!visible() || paintFrame) return; paintFrame = requestAnimationFrame(() => { paintFrame = 0; render(); }); }
   function scheduleMapSearch() {
@@ -192,6 +193,13 @@ const QuestJournal = (() => {
     if (!inProject && !dialogHome && H.activeId !== 'tool:quests') activate('tool:quests');
     hideHint();const opener = document.activeElement;
     const d = E('dialog', { class: 'qj-dialog', attrs: { 'aria-label': title } });
+    // (round 71, studioperf71) Chromium fires a dialog's 'close' event with the next drawn frame. When frames stall (a hidden
+    // or minimized window, a slow software-GL frame under the blurred backdrop: 1 frame in 500 ms on the test box) the
+    // cleanup below waited with it, and closed dialogs (the Outing desk's above all, which swaps its views) stayed in the
+    // page. Closed by code, the cleanup now also runs 120 ms later if the event hasn't come yet (it runs once; the event
+    // and the other listeners are unchanged). Normally the event comes first and nothing changes.
+    let cleaned = false;
+    const closeNow = d.close; d.close = function (...a) { const r = closeNow.apply(this, a); setTimeout(() => { if (!cleaned && !d.open) cleanup(); }, 120); return r; };
     const body = E('div', { class: 'qj-dialog-body' });
     d.append(E('header', { class: 'qj-dialog-head' }, E('div', {}, label(subtitle || 'QUEST JOURNAL'), E('h2', { text: title })), button('×', () => d.close(), 'qj-close')), body);
     // (round 65, questperf65) a modal dialog makes the whole page inert, which restyles every element drawn behind it,
@@ -199,11 +207,12 @@ const QuestJournal = (() => {
     // on the owner's PC. Under the near-opaque backdrop the Studio's own page isn't drawn while a dialog is up
     // (.qj-under-dialog: content-visibility hidden, its size kept, quest-journal.css), so opening restyles only the
     // dialog; on closing the page comes back in the next frame and focus returns after it (no forced restyle in the click).
-    root.append(d); d.addEventListener('close', () => { hideHint();d.remove();
+    root.append(d); d.addEventListener('close', () => cleanup());
+    function cleanup() { if (cleaned) return; cleaned = true; hideHint();d.remove(); // (studioperf71) once: the 'close' event, or the fallback above
       const last = !root.querySelector('dialog.qj-dialog[open]'); if (last) { root.classList.remove('qj-under-dialog'); document.documentElement.classList.remove('qj-modal-up'); } // (dialogperf68) html.qj-modal-up: tools/quest-mapfirst.css
       if (last && dialogHome) { dialogHome.append(root); dialogHome = null; root.classList.remove('qj-portal'); }
       const back = () => { if (root.querySelector('dialog[open]')) return; const now = document.activeElement; if (now && now !== document.body && now.isConnected) return; /* (questfix65) only when nothing has focus yet: a control focused in the meantime (or one in another dialog) keeps it */ if (opener?.isConnected) opener.focus(); else root.querySelector('[data-focus="current"]')?.focus(); };
-      if (last) requestAnimationFrame(() => setTimeout(back)); else if (opener?.isConnected) opener.focus(); });
+      if (last) requestAnimationFrame(() => setTimeout(back)); else if (opener?.isConnected) opener.focus(); }
     build(body, d); body.append(E('p', { class: 'qj-dialog-status', attrs: { role: 'status', 'aria-live': 'polite' } })); glaze(d); root.classList.add('qj-under-dialog'); if (!dialogHome && window.QuestMapFirst?.modalSkip?.()) document.documentElement.classList.add('qj-modal-up'); /* (dialogperf68) the rail, side panel, bars and other surfaces skip style under the dialog too (tools/quest-mapfirst.css) */ d.showModal(); return d;
   }
   function mutate(fn, message = 'Progress saved.', { paint = true } = {}) {
@@ -1184,7 +1193,7 @@ const QuestJournal = (() => {
     bar.querySelector('.qj-focus-name').textContent = C.find(state, f.quest)?.title || 'Your focus session';
     const control=bar.querySelector('[data-focus="pause-timer"]'),text=!remaining?'Review quest':f.end?'Pause':'Resume';if(control.textContent!==text)actionLabel(control,text);
   }
-  function navigate(to) { if(['campaigns','deck','commissions','life'].includes(to)){catalogFilter={path:to==='life'?'life':'all',format:['campaigns','commissions'].includes(to)?'project':to==='deck'?'small':'all',query:''};to='catalog';} const moved = to !== page; root?.querySelectorAll('audio,video').forEach(v => v.pause()); page = to; render(); if (moved) root?.scrollTo({ top: 0, behavior: 'instant' }); } // (round 65, questperf65) the same page (a filter, the Map tab while on the map) keeps its scroll: no forced layout
+  function navigate(to) { if(['campaigns','deck','commissions','life'].includes(to)){catalogFilter={path:to==='life'?'life':'all',format:['campaigns','commissions'].includes(to)?'project':to==='deck'?'small':'all',query:''};to='catalog';} const moved = to !== page; root?.querySelectorAll('audio,video').forEach(v => v.pause()); page = to; render(); if (moved && scrolledDown) root?.scrollTo({ top: 0, behavior: 'instant' }); } // (round 71, studioperf71) already at the top: nothing to scroll, no forced layout (24–58 ms per page change on a full journal here) // (round 65, questperf65) the same page (a filter, the Map tab while on the map) keeps its scroll: no forced layout
   async function exportJournal() { await saving.catch(() => {}); const r = await window.hub.saveFile({ defaultPath: `hearth-quest-journal-${C.day()}.json`, filters: [{ name: 'Quest journal', extensions: ['json'] }], content: JSON.stringify(state, null, 2) }); notice(r ? 'Journal exported, including progress and reward history. Attached files are referenced, not copied.' : 'Export cancelled.'); }
   function importJournal() {
     dialog('Restore a quest journal', (body, d) => {
@@ -1201,6 +1210,7 @@ const QuestJournal = (() => {
     status = E('p', { class: 'qj-status', attrs: { role: 'status', 'aria-live': 'polite' }, text: 'Opening your journal…' }); content = E('main', { class: 'qj-content' });
     const focusBar = E('div', { class: 'qj-focus', hidden: true }, E('span', { class: 'qj-focus-clock' }), E('span', { class: 'qj-focus-name' }), button('Pause', async () => { if (!left()) return questDetail(state.focus.quest); const remaining = left(); await mutate(s => { if (s.focus.end) { s.focus.remaining = remaining; s.focus.end = 0; } else s.focus.end = Date.now() + s.focus.remaining; }); }, 'qj-quiet', 'pause-timer'), button('End focus', () => mutate(s => { s.focus = null; }, 'Focus ended. Your quest is waiting whenever you are.'), 'qj-quiet'));
     const nav = navigation(menu);
+    root.addEventListener('scroll', () => { scrolledDown = root.scrollTop > 0; }, { passive: true }); // (round 71, studioperf71) see navigate()
     root.append(top, nav, content, status, focusBar);setupHints(); await load();
     try { legacy = await window.hub.kvGet('creative-playground'); } catch { /* Old notebook is never modified. */ }
     clearInterval(ticker); ticker = setInterval(() => { if (visible()) tick(); }, 1000);
