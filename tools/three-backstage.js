@@ -16,7 +16,7 @@ function makeBackstage(opts = {}) {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const clip = (s, n) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const PROP_KEYS = ['name', 'visible', 'opacity', 'blend', 'in', 'out', 'fadeIn', 'fadeOut', 'x', 'y', 'scale', 'rotate'];
-  const OK_TOOLS = new Set(['three_undo', 'three_get_code', 'three_read_code', 'three_search_code', 'three_edit_code', 'three_set_code', 'three_update_layer', 'three_console', 'three_screenshot', 'three_eval', 'three_layers', 'three_add_layer', 'three_remove_layer', 'three_set_frame', 'three_new_sketch', 'three_select_layer', 'three_media_info']);
+  const OK_TOOLS = new Set(['three_undo', 'three_get_code', 'three_read_code', 'three_search_code', 'three_edit_code', 'three_set_code', 'three_update_layer', 'three_console', 'three_screenshot', 'three_eval', 'three_layers', 'three_add_layer', 'three_remove_layer', 'three_set_frame', 'three_new_sketch', 'three_select_layer', 'three_media_info', 'three_sliders', 'three_references']); // (round 72) sliders / references too
 
   let host = null; let box = null;
   let loaded = null; // { id, sig } of what the sandbox runs
@@ -183,7 +183,34 @@ function makeBackstage(opts = {}) {
         return { removed: L.name, ...report() };
       },
       selectLayer(ref) { const L = must(ref); return { selected: L.name, note: 'Backstage: the selection is only for your next calls (the owner\'s selected layer stays).', ...d.getCode() }; },
-      sliders() { throw new Error('Sliders need the scene on screen. Change the values in the code with three_edit_code instead, or ask the owner to open this chat.'); },
+      // (round 72, labbridge72) a layer's named tweak() controls read from its code; a move is written into the code (saved:
+      // nobody is there to Save it), and the layer runs again here. Live-only states (♪ links, looks) need the scene on screen.
+      sliders(ref, set) {
+        const L = must(ref);
+        if (typeof ThreeTweaks === 'undefined') throw new Error('Sliders need the scene on screen here: change the values in the code with three_edit_code.');
+        const items = ThreeTweaks.scan(L.code).items.filter((it) => it.key != null);
+        const view = () => items.map((it) => ({ key: it.key, label: it.label || it.key, value: it.orig, ...(it.min != null ? { min: it.min, max: it.max } : {}), ...(it.group ? { group: it.group } : {}) }));
+        const moved = [];
+        if (set && typeof set === 'object' && Object.keys(set).length) {
+          const vals = items.map((it) => it.orig);
+          for (const [k, v] of Object.entries(set)) {
+            const i = items.findIndex((it) => String(it.key).toLowerCase() === String(k).toLowerCase());
+            if (i < 0) continue;
+            const it = items[i];
+            const nv = it.kind === 'number' ? Number(v) : it.kind === 'bool' ? (v === true || v === 'true' || v === 1) : String(v);
+            if (it.kind === 'number' && !Number.isFinite(nv)) continue;
+            if (it.kind === 'color' && !/^#[0-9a-f]{6}$/i.test(nv)) continue;
+            vals[i] = nv; moved.push(it.key);
+          }
+          if (moved.length) {
+            L.code = ThreeTweaks.applyValues(L.code, items, vals);
+            changed();
+            if (!quiet) load(s());
+            items.forEach((it, i) => { it.orig = vals[i]; });
+          }
+        }
+        return { layer: L.name, changed: moved, sliders: view(), note: moved.length ? 'Backstage: written into the layer\'s code (saved).' : undefined };
+      },
       evalInSketch: (code) => new Promise((resolve) => {
         const id = `b${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
         evals.set(id, (m) => resolve(m.ok ? { ok: true, value: m.value } : { ok: false, error: m.error }));
@@ -227,6 +254,18 @@ function makeBackstage(opts = {}) {
       // one line, like on screen (round 21): not the whole report
       const r = d.report(); const f = r.frame;
       return { ok: true, value: { frame: f?.width ? `${f.id || args.size} ${f.width}×${f.height}` : args.size, ...(r.errors?.length ? { errors: r.errors.slice(0, 4).map((e) => `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(e.message, 200)}`) } : {}) } };
+    }
+    // (round 72, labbridge72) a file the owner gave in the chat goes into THIS scene's references (not the one on screen)
+    if (tool === 'three_references') {
+      const action = args.action || 'list';
+      const list = () => ThreeLab.refsOf(route.sketchId).map((r) => ({ name: r.key, kind: r.kind, file: r.name, use: r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}` }));
+      if (action === 'list') return { ok: true, value: { references: list(), note: 'Backstage: no pictures of them here; they load when the owner opens this scene.' } };
+      if (action !== 'add') return { ok: false, error: `references ${action} needs this scene on screen; add and list work backstage.` };
+      const p = String(args.path || '');
+      const dir = await window.hub.attachmentsDir();
+      if (!p.toLowerCase().startsWith(dir.toLowerCase())) return { ok: false, error: 'You can only add files the owner attached in this chat (their path is in the hub\'s attachments folder). Ask them to drop the file in the chat.' };
+      const r = await ThreeLab.addReference(p, { key: args.name || undefined, sketchId: route.sketchId });
+      return { ok: true, value: { added: r.key, kind: r.kind, scene: x.name, use: r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`, note: 'Saved with this scene; backstage runs without references, so a layer using it draws once the owner opens the scene.' } };
     }
     if (tool === 'three_media_info') return { ok: true, value: { loaded: false, note: 'No music backstage: the song plays when the owner opens this chat.', song: SC().songOf(route.sketchId)?.split(/[\\/]/).pop() || 'none linked' } };
     if (await load(x)) await settle(1.2); // a fresh page: let it start before reading it

@@ -466,9 +466,15 @@ const Native = (() => {
   // Media dropped in the Three Director's chat (videos, models, sounds…) are added to the open sketch's
   // references, with a note telling the director their names. Throws when the Lab can't take it.
   async function labReference(agentId, path) {
-    const r = await ThreeLab.addReference(path);
+    // (round 72, labbridge72) into the scene this chat works on (its link: on screen or not); a plain chat that isn't
+    // linked yet keeps the file as an attachment (three_do references add puts it in its scene once linked)
+    const chatId = H.activeChat[agentId] || null;
+    const sk = chatId && typeof ChatScenes !== 'undefined' ? ChatScenes.linkOf(chatId) : null;
+    if (!sk && H.agent(agentId)?.dock !== 'three') throw new Error('This chat isn\'t linked to a Lab scene yet');
+    const r = await ThreeLab.addReference(path, sk ? { sketchId: sk } : {});
     const use = r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`;
-    views.get(agentId).attachments.push({ kind: 'text', name: `reference: ${r.key}`, content: `The user added "${r.name}" (${r.kind}) to this sketch's references as "${r.key}". In code: ${use}.` });
+    const scene = sk && typeof ChatScenes !== 'undefined' ? ChatScenes.sceneName(chatId) : null;
+    views.get(agentId).attachments.push({ kind: 'text', name: `reference: ${r.key}`, content: `The user added "${r.name}" (${r.kind}) to ${scene ? `the scene "${scene}"'s` : 'this sketch\'s'} references as "${r.key}". In code: ${use}.` });
   }
   async function addPath(agentId, path) {
     const v = views.get(agentId);
@@ -1815,7 +1821,8 @@ const Native = (() => {
     let full = text;
     for (const a of atts.filter((x) => x.kind === 'text')) full += `\n\n${a.wrapped || `<file name="${a.name}">\n${a.content}\n</file>`}`; // wrapped: attachlean's trimmed / referenced form
     const files = atts.filter((x) => x.kind === 'file');
-    if (files.length) full += `\n\n[Attached files, open them with your ${H.agent(agentId)?.engine === 'codex' ? 'read-only commands' : 'Read tool'}]\n${files.map((f) => f.path).join('\n')}`;
+    // (round 72, labbridge72) a Lab chat is told how a file reaches its scene (a GLB / video it can't open as text)
+    if (files.length) full += `\n\n[Attached files, open them with your ${H.agent(agentId)?.engine === 'codex' ? 'read-only commands' : 'Read tool'}${labChat(agentId) ? '; three_do references {action: "add", path} puts one in your scene' : ''}]\n${files.map((f) => f.path).join('\n')}`;
     const images = atts.filter((x) => x.kind === 'image').map((x) => x.path);
     return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name, ...(a.tokens ? { tokens: a.tokens, ref: a.ref } : {}), ...(a.leanMeta ? { lean: a.leanMeta } : {}) })) };
   }

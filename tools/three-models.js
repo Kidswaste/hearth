@@ -165,7 +165,7 @@ lab3d.model(refs.${refKey}, P, { ${o} });
     if (!/^([a-zA-Z]:[\\/]|\/)/.test(file)) { const it = await findItem(file); if (!it) throw new Error(`Nothing called “${file}” in the model library.`); return it.kind === 'sky' ? sky(it.path, { ctx, name: it.name }) : add(it.path, { name: name || it.name, ctx, replace, source: it.source, values: over }); }
     if (SKY_RE.test(file)) return sky(file, { ctx, name });
     if (!MODEL_RE.test(file)) throw new Error(`${base(file)} isn't a 3D model the Lab reads (.glb, .gltf, .fbx, .obj, .stl, .ply). Spline / Blender: export as GLB.`);
-    if (!onScreen(ctx)) throw new Error('This chat\'s scene isn\'t on screen: open it in the Lab first (models are copied into the scene shown).');
+    if (!onScreen(ctx)) throw new Error('This chat\'s scene isn\'t on screen, and a model layer is made in the scene shown: ask the owner to open it (the 🔗 Scene chip over the chat box › Open), or put the file in with three_do references add (it loads with refs.<key>).'); // (round 72) what to do instead
     const st = await window.hub.fs.stat(file).catch(() => null);
     if (!st) throw new Error(`No file at ${file}`);
     const big = st.size > 25 * 1048576;

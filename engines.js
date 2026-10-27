@@ -1176,6 +1176,11 @@ function send({ agent: agent0, chatId, session, text, options = {} }, emit, live
   if (engine === 'claude' && options.images?.length) {
     text += `\n\n[Attached image${options.images.length > 1 ? 's' : ''}: open with your Read tool before answering]\n${options.images.join('\n')}`;
   }
+  // (round 72, labbridge72) Astra sees attached pictures as image input with no path, so with the Lab's tools it couldn't
+  // put the one the owner gave into the scene (three_do references add needs the path): the paths, one line each
+  if (engine === 'codex' && options.images?.length && agent.threeTools) {
+    text += `\n\n[Attached image file${options.images.length > 1 ? 's' : ''} (three_do references {action: "add", path} puts one in your scene)]\n${options.images.join('\n')}`;
+  }
   const bin = options._bin || LOCATE[engine]?.();
   if (!bin) {
     emit({ type: 'error', message: `Couldn't find ${ENGINES[engine]?.label || engine} on this ${IS_MAC ? 'Mac' : 'PC'}.\n\nFix: press Install (it runs \`${Installs.updatePlan(engine, null).command}\` in a ${IS_WIN ? 'PowerShell' : 'Terminal'} window), install the ${engine === 'codex' ? 'Codex (ChatGPT)' : 'Claude'} desktop app, or set its path in Settings → Engines. /doctor shows what Hearth looked for${IS_WIN ? ' (PATH, npm\'s %APPDATA%\\npm, nvm, Volta, scoop, winget, pnpm and the desktop apps)' : IS_MAC ? ` (${MacPolish.lookedIn()})` : ''}.`, fixAction: 'install', fixEngine: engine });

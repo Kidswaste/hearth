@@ -1,0 +1,7 @@
+/* (round 72, labbridge72) 🔗 Scene: <name> over the chat box of a chat linked to a Lab scene (chat-scenelink.js) */
+.scene-link-chip { position: absolute; right: 6px; bottom: calc(100% + 4px); z-index: 3; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 1px 8px !important; min-height: 0 !important; font-size: 11.5px !important; line-height: 18px; border-radius: 6px;
+  background: color-mix(in srgb, var(--bg, #111) 88%, transparent) !important; color: var(--muted) !important;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent) !important; opacity: .9; }
+.scene-link-chip:hover { color: var(--text) !important; border-color: color-mix(in srgb, var(--accent, #ffc23d) 55%, transparent) !important; opacity: 1; }
+.scene-link-chip.unlinked { color: var(--text) !important; border-style: dashed !important; border-color: color-mix(in srgb, var(--accent, #ffc23d) 60%, transparent) !important; }

@@ -93,3 +93,4 @@ The long notes that used to sit after each group in `lazy-data.js` (moved here i
 - **dawsend**: (round 69, stems69) 📤 Send to my DAW: stems at bar 1, the mix, MIDI, presets, a README into a folder of the owner's choice; loaded on the button's first click
 - **chatsafe**: (round 55, chatsafe55) chats waiting for their AI (missing / turned off): read-only under its own name, the Lab's read-only chat panel, Bring back …, Continue with Claude… (asked first, a copy), /bring-back
 - **credits**: (round 67, credits67) honest credits per Lab piece: who did what (time machine, sliders, Sound desk, recordings), the Lab toolbar's Credits button, Copy, the "How it was made" video
+- **scenelink**: (round 72, labbridge72) the 🔗 Scene chip over a chat box (which Lab scene the chat works on; click: open / link another / a fresh one / unlink) and the "Link this chat to a scene" note when an AI's Lab call found no scene; right after the first frame
