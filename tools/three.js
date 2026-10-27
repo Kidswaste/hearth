@@ -3,6 +3,7 @@
 const ThreeLab = (() => {
   const SANDBOX = 'tools/three-sandbox.html';
   let tabs = null;
+  let startHint = null; // (round 73, coldopen73) the scene the Lab's first mount opens with (a project opening: cmd({ sketch }))
   const api = {}; // filled by each tab as it mounts
   // "  12| code" for lines a..b (1-based) of a list of lines.
   const numbered = (lines, a, b) => lines.slice(a - 1, b).map((ln, k) => `${String(a + k).padStart(4)}| ${ln}`).join('\n');
@@ -4132,8 +4133,11 @@ ${code}
       if (fresh && kvOk.has('three-sketches') && !scenesRead.hold) save();
       else if (early.length && kvOk.has('three-sketches')) save();
       // the chat on screen may own another sketch (chat-scenes.js): open that one instead of the last one
-      const want = typeof ChatScenes !== 'undefined' ? ChatScenes.startSketch?.(sketches.map((x) => x.id)) : null;
-      openSketch(want || store.get('three.current', sketches[0].id), { by: want ? 'scene' : 'start' });
+      // (round 73) a project opening mounts the Lab with its own scene: the scene last open in the Lab ran first, then the
+      // project's (its sliders scanned and its page loaded twice in the first open of a session)
+      const hinted = startHint && sketches.some((x) => x.id === startHint) ? startHint : null; startHint = null;
+      const want = hinted || (typeof ChatScenes !== 'undefined' ? ChatScenes.startSketch?.(sketches.map((x) => x.id)) : null);
+      openSketch(want || store.get('three.current', sketches[0].id), { by: hinted ? 'project' : want ? 'scene' : 'start' });
       api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
       dispatchEvent(new Event('hearth:lab-ready'));
       SSafe?.opened?.({ read: scenesRead, fresh, others: reads.slice(1).map((r, i) => (r.ok ? null : names[i + 1])).filter(Boolean) }); // (round 43) the calm card, when needed
@@ -5306,8 +5310,9 @@ ${frag}\`,
     onScreen: () => api.onScreen?.() ?? false,
     // The chat commands' way in (tools/three-cmds.js): the Lab, loaded and shown (unless show: false), with its
     // sketch tab on top; resolves to api.cmd.
-    async cmd({ show = true } = {}) {
+    async cmd({ show = true, sketch = null } = {}) {
       if (show && H.surfaceIdFor?.(H.activeId) !== 'tool:three') activate('tool:three', { focus: false });
+      if (!tabs && sketch) startHint = sketch; // (round 73) only the first mount: later ones keep the Lab's own scene
       if (!tabs) Tools.shown(Tools.get('three'));
       if (show && tabs?.current !== 'sketch') tabs.show('sketch');
       for (let i = 0; i < 80 && !(api.cmd && api.director); i += 1) await new Promise((r) => setTimeout(r, 100));

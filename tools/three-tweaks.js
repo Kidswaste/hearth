@@ -26,7 +26,20 @@ const ThreeTweaks = (() => {
   const NUMBER = /^(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d+)?)n?/;
 
   // ---------- scanning ----------
+  // (round 73, coldopen73) scans kept per code, the scene's version: a project opened, switched back to, or a layer run
+  // again with the same code is read once (≈ 10–60 ms per 450-line layer here); each caller gets its own copy (they
+  // move items as the code around them changes). The newest 40, up to ≈ 2 M characters of code
+  const scans = new Map(); let scanChars = 0;
   function scan(code) {
+    code = String(code ?? '');
+    let r = scans.get(code);
+    if (r) { scans.delete(code); scans.set(code, r); } else {
+      r = scanFresh(code); scans.set(code, r); scanChars += code.length;
+      for (const k of scans.keys()) { if (scans.size <= 40 && scanChars <= 2e6) break; scans.delete(k); scanChars -= k.length; }
+    }
+    return { code, items: r.items.map((it) => ({ ...it, ...(it.range ? { range: { ...it.range } } : {}), ...(it.options ? { options: [...it.options] } : {}) })) };
+  }
+  function scanFresh(code) {
     const items = [];
     const toks = [];
     const stack = [];

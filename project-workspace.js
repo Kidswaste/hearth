@@ -113,7 +113,7 @@ window.ProjectWorkspace = (() => {
         const early=C.resume(p,{...returnPoint(id),...options,...(tab?{tab}:{})},H.chats,[]).chatId,chatRead=early?Native.load(early):null;chatRead?.catch(()=>{});
         await Promise.all([Lazy.load('lab'),Lazy.load('board'),Lazy.load('creative')]);
         const desk=WorkbenchUI.setProject(p.id,{title:p.name,plugins:C.workspace(p.workspace).plugins});desk.catch(()=>{});
-        await ThreeLab.cmd({show:false});cancelled(controller.signal);
+        await ThreeLab.cmd({show:false,sketch:options.sceneId||returnPoint(id).sceneId||p.workspace.sceneId});cancelled(controller.signal); // (round 73) a first mount opens this scene
         active=id;const point=C.resume(p,{...returnPoint(id),...options,...(tab?{tab}:{})},H.chats,ThreeLab.scenes.all());
         conversationId=point.chatId;conversationScene=point.sceneId;tab=point.tab;
         const c=chatOf(p);await (c.id===early?chatRead:Native.load(c.id));Native.selectChat(c.agentId,c.id);P.touch(p);
