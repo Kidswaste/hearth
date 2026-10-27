@@ -412,6 +412,10 @@ const Sync = (() => {
     const here = window.TwoComputers?.hereEl?.() || ''; // (round 35) "This computer: Mac (name)"
     const sec = section('Sync (Mac and PC, through your cloud drive)', here, text, el('div', { class: 'button-row' }, btn, more), bigRow);
     sec.classList.add('sync-settings');
+    // (round 72, longrun72) a closed Settings' line goes when the next one is made, or on the next status: it kept that
+    // whole Settings alive for as long as Hearth ran
+    const made = Date.now(); upd.gone = () => !text.isConnected && Date.now() - made > 10000; // (not one still being built)
+    for (const f of listeners) if (f.gone?.()) listeners.delete(f);
     listeners.add(upd);
     return sec;
   }
@@ -518,7 +522,7 @@ const Sync = (() => {
   // ---------- start ----------
   async function init() {
     if (!api()) return;
-    api().onStatus((s) => { st = s; mountDot(); for (const f of listeners) { try { f(); } catch { listeners.delete(f); } } });
+    api().onStatus((s) => { st = s; mountDot(); for (const f of listeners) { if (f.gone?.()) { listeners.delete(f); continue; } try { f(); } catch { listeners.delete(f); } } });
     api().onPulled((list) => onPulled(list).catch(() => {}));
     // (round 26) conflicts settled by themselves after a sync: one quiet line, undo one click away
     api().onAutoResolved?.((r) => { if (r?.done) toast(`Sync settled ${r.done} conflict${r.done === 1 ? '' : 's'} by itself (data merged, files: the newer one). Undo from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } }); refresh(); });

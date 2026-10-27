@@ -43,6 +43,7 @@ const Bigscreen = (() => {
   const rows = new Set();
   function sizeRow({ compact = false } = {}) {
     if (!big || typeof el !== 'function') return null;
+    for (const r of rows) if (!r.isConnected && Date.now() - (r.made || 0) > 10000) rows.delete(r); // (round 72, longrun72) a closed Settings' row goes now (it waited for a screen change: one whole Settings kept per opening)
     // (round 39, settingscalm) Settings shows one control per row: the same choices in one list, its note on hover
     if (compact) {
       const sel = el('select', { class: 'big-size-pick', attrs: { 'aria-label': 'Size of everything' } });
@@ -58,7 +59,7 @@ const Bigscreen = (() => {
         const tip = `How big everything is on ${info.name}, kept for each screen (Auto picks it from the screen's size; ${mac ? '⌘' : 'Ctrl'} + / − too)`;
         if (row.title !== tip) row.title = tip;
       };
-      row.sync();
+      row.sync(); row.made = Date.now();
       rows.add(row);
       return row;
     }
@@ -79,7 +80,7 @@ const Bigscreen = (() => {
       const text = `${info.name}${pref !== 'auto' ? '' : ' · picked from its size'} · ${mac ? '⌘' : 'Ctrl'} + / − too`;
       if (note.textContent !== text) note.textContent = text;
     };
-    row.sync();
+    row.sync(); row.made = Date.now();
     rows.add(row);
     return row;
   }

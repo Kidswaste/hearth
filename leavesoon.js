@@ -166,15 +166,15 @@ const LeaveSoon = window.LeaveSoon = (() => {
   const redraw = () => { try { if (J()?.page === 'world') J().addMapLayer(layer); } catch { /* the map isn't open */ } };
 
   // ---------- the ✦ tracker rows ----------
-  const sawMissed = new Set(), missedIn = new Map(); // a missed one shows in one opening of the tracker (all its repaints), then never again
+  const sawMissed = new Set(), missedIn = new Map(); // a missed one shows in one opening of the tracker (all its repaints), then never again · (round 72, longrun72) that opening's panel is held weakly: a closed tracker panel isn't kept alive for each missed reminder
   function hudRows(btn) {
     if (!loaded) return [];
     const rows = [], seen = [], panel = document.querySelector('.qh-panel');
     for (const it of [...items.values()].sort((a, b) => a.leaveAt - b.leaveAt)) {
       const h = K.hud(it); if (!h) continue;
       if (h.state === 'missed') {
-        if (!(panel && missedIn.get(it.key) === panel) && (it.missedSeen || sawMissed.has(it.key))) continue;
-        if (!missedIn.has(it.key)) { missedIn.set(it.key, panel); seen.push(it.key); }
+        if (!(panel && missedIn.get(it.key)?.deref?.() === panel) && (it.missedSeen || sawMissed.has(it.key))) continue;
+        if (!missedIn.has(it.key)) { missedIn.set(it.key, panel ? new WeakRef(panel) : null); seen.push(it.key); }
       }
       const acts = [], st = it.status, bad = st && (st.state === 'disrupted' || st.state === 'blocked') && h.state !== 'missed';
       if (st?.state === 'unknown' && (st.why === 'nokey' || st.why === 'badkey') && h.state !== 'missed') acts.push(btn('Add key…', () => { QuestHud.close(); keyDialog().catch((err) => toast(calmError(err), { type: 'error' })); }, 'qh-take ls-addkey', 'Line status unknown: add your free PRIM key in Settings (IDFM’s open data; stored encrypted on this computer)'));
