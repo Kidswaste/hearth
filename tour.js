@@ -110,6 +110,8 @@ const Tour = (() => {
     cur.i = Math.max(0, Math.min(steps.length - 1, i));
     setProg(cur.tour.id, { step: cur.i });
     const step = steps[cur.i];
+    // (round 71, whatsnew71) a "Show me" step: the card says it first; the place opens and the ring goes on at Show me
+    if (step.showMe && !cur.opened.has(cur.i)) { clearTimeout(findT); target = null; ring?.remove(); ring = null; ro?.disconnect(); unhookClick(); paint(step); return; }
     await openFor(step);
     // the control may take a moment to appear (a tool opening, a panel drawing): look a few times, never per frame
     target = null;
@@ -120,12 +122,13 @@ const Tour = (() => {
   function paint(step) {
     const { tour, steps, i } = cur;
     const last = i === steps.length - 1;
+    const waiting = Boolean(step.showMe && !cur.opened.has(i)); // (round 71) Show me not clicked yet
     const btn = (text, cls, fn, title = '') => el('button', { type: 'button', class: cls, text, title, on: { click: (e) => { e.stopPropagation(); fn(); } } });
     const body = el('div', { class: 'tour-body' },
       el('div', { class: 'tour-head' }, el('span', { class: 'tour-ic', text: tour.icon }), el('b', { text: step.title }), el('span', { class: 'spacer' }),
         el('span', { class: 'tour-n', text: `${i + 1}/${steps.length}` }), btn('×', 'tour-x', () => { stop(); toast(`Tour paused: it picks up at step ${i + 1} next time`, { timeout: 2400 }); }, 'Stop (it picks up here next time)')),
       el('p', { class: 'tour-text', text: step.text }),
-      !target && step.target ? el('p', { class: 'tour-hint', text: 'Not on screen right now.' }) : null,
+      !target && step.target && !waiting ? el('p', { class: 'tour-hint', text: 'Not on screen right now.' }) : null,
       el('div', { class: 'tour-btns' },
         i ? btn('‹ Back', 'ghost small', () => show(i - 1)) : null,
         // (round 64, newtour64) Skip / Later for tours that offer them (Try what's new): skip = not for me, later = paused here
@@ -133,7 +136,8 @@ const Tour = (() => {
         tour.onEnd && tour.skippable ? btn('Later', 'ghost small tour-later', () => { stop({ how: 'later' }); toast(`${tour.name}: paused at step ${i + 1}`, { timeout: 2200 }); }, 'Pause here: it picks up at this step next time') : null,
         step.cmd ? btn('Try it', 'ghost small tour-try', () => { try { tour.onTry?.(step); } catch { /* progress is a convenience */ } runLine(step.cmd); }, D.safeLine(step.cmd, (n) => Boolean(Commands.get(n))) ? 'Runs it' : 'Puts it in the chat box') : null,
         el('span', { class: 'spacer' }),
-        btn(last ? 'Done ✓' : 'Next ›', 'small primary tour-next', () => (last ? (stop({ done: true }), toast(tour.doneText || `${tour.name}: done. Discover has the other tours.`, { timeout: 2200 })) : show(i + 1)))));
+        step.showMe ? btn('Show me', `small ${waiting ? 'primary' : 'ghost'} tour-show`, () => { cur.opened.add(i); show(i); }, 'Takes you there and rings the button') : null, // (round 71, whatsnew71)
+        btn(last ? 'Done ✓' : 'Next ›', `small ${waiting ? 'ghost' : 'primary'} tour-next`, () => (last ? (stop({ done: true }), toast(tour.doneText || `${tour.name}: done. Discover has the other tours.`, { timeout: 2200 })) : show(i + 1)))));
     if (!card) {
       card = el('div', { class: 'tour-card speed-card', role: 'dialog', 'aria-label': `Tour: ${tour.name}`, 'data-no-usage': '' });
       // drag it out of the way by its head
@@ -176,7 +180,7 @@ const Tour = (() => {
     stop();
     const steps = stepsOf(t);
     const p = prog()[t.id];
-    cur = { tour: t, steps, i: 0 };
+    cur = { tour: t, steps, i: 0, opened: new Set() }; // opened: the Show me steps shown (round 71)
     addEventListener('resize', reflow); addEventListener('keydown', onKey, true);
     if (typeof Usage !== 'undefined') Usage.track?.(`Tour › ${t.name}`, { area: 'Tours', label: t.name });
     show(!restart && p && !p.done ? p.step || 0 : 0);

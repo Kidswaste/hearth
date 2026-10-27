@@ -10,3 +10,12 @@
 .tn-count { font-size: 11.5px; }
 .wn-card .tn-row { margin: 0 0 6px; }
 .tour-card .tour-skip, .tour-card .tour-later { padding: 1px 6px; font-size: 11px; color: var(--muted); }
+/* (round 71, whatsnew71) the tours of rounds 66–70: the one card after an update, its tour chips (also in What's new),
+   and tour.js's Show me button */
+.tn7-card { width: min(380px, calc(100vw - 100px)); }
+.tn7-lead { margin: 2px 2px 4px; font-size: 13px; font-weight: 600; line-height: 1.4; }
+.tn7-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; }
+.tn7-chip { padding: 1px 8px; font-size: 11.5px; white-space: nowrap; }
+.tn7-chip.done { color: var(--muted); }
+.tn-row .tn7-chips { margin: 0; }
+.tour-card .tour-show { padding: 1px 10px; }

@@ -145,6 +145,8 @@ if (pick && [...pick.options].some((o) => o.value === 'round-60.md')) { pick.val
 tidy();
 
 // ---------- 5b. the ✦ tracker panel's link ----------
+// (round 71, whatsnew71) the five tours of rounds 66–70 take that place until they're seen (dev/checks/whatsnew71.js): seen here
+store.set('trynew.tours71', Object.fromEntries(TryNew71Core.TOURS.map((t) => [t.id, { state: 'done', at: Date.now() }])));
 await Lazy.load('questhud'); await QuestHud.openStudio(null, 'adventure');
 await until(() => vis(document.querySelector('#rail .qh-chip')), 'the chip (the Studio holds a quest)', 100).catch(() => null);
 QuestHud.open();
