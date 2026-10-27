@@ -540,6 +540,7 @@ const Offline = (() => {
       working = true; button.disabled = true;
       status.textContent = download ? 'Saving scene libraries locally… Keep Hearth open.' : 'Checking this computer…';
       try {
+        await window.Projects?.flush?.(); // (round 72) the check reads the saved project: what was just added to it counts too
         const r = await hub.net.prepareProject({ projectId: project.id, version: store.get('three.version', '0.186.1'), download });
         if (!dialog.isConnected) return;
         status.textContent = `${r.ready ? '✓ Files and scene libraries are local' : 'A few things still need attention'} · ${r.computer}`;

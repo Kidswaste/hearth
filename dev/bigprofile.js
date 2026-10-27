@@ -187,7 +187,7 @@ function bigprofile(dir = '/tmp/hearth-bigprofile70', { chats = 1500, long = 120
 // (round 72, projects72) projects on top of the heavy profile, like the owner's after months of Codex's workspaces:
 // each project has its own chat (a native agent), its scene (one of the 50 Lab scenes), its moodboard and its desk.
 //   · project 0 "Clink" is the heavy one: a 700-message chat, 14 related long chats, 4 scenes, 3 boards, 400 files
-//     (half on disk, half "not arrived from the other computer"), 220 captures and 120 renders, 4,000 characters of notes
+//     (half on disk, half "not arrived from the other computer"), 220 captures and 120 renders, 3,800 characters of notes
 //   · projects 1–2 are medium (a 400-message chat, 6 related chats, 120 files), the rest small (40–120 messages)
 //   · "Not arrived: scene" links a scene that isn't on this computer; "Not arrived: chat" a chat that isn't
 //   · 2 archived and 3 paused projects; device-local return points are left to the app (localStorage)
@@ -196,7 +196,9 @@ function addProjects(dir, { count, sketches, longIds, sentence, int, pick, now, 
   // the scenes draw for real (a renderer per layer, meshes, sliders), like the owner's: a scene that never renders
   // waits out the sandbox's 700 ms "nothing drew" fallback and would make every open look slow. Light on purpose: the
   // test machine draws with software GL (SwiftShader), where a heavy scene's own GPU work would hide Hearth's
-  const draw = (l) => `\nconst P${l} = tweak({ spin: { value: 0.5, min: -2, max: 2, label: 'Spin' }, size: { value: 1, min: 0.2, max: 3, label: 'Size' }, tint: { value: '#${['ff9866', '7a5cff', '56c6ff', 'c8f04a'][l % 4]}', label: 'Tint', group: 'Color' } });\nconst renderer = new THREE.WebGLRenderer({ alpha: ${l ? 'true' : 'false'} });\nrenderer.setSize(innerWidth, innerHeight);\ndocument.body.append(renderer.domElement);\nconst camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);\ncamera.position.z = 5;\nconst meshes = Array.from({ length: 6 }, (_, i) => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 1), new THREE.MeshBasicMaterial({ color: P${l}.tint, wireframe: true })); m.position.set((i % 3) - 1, Math.floor(i / 3) - 0.5, -${l}); scene.add(m); return m; });\nrenderer.setAnimationLoop((now, f60) => { for (const m of meshes) { m.rotation.y += 0.01 * P${l}.spin * (f60 || 1); m.scale.setScalar(P${l}.size); } renderer.render(scene, camera); });\n`;
+  // Each layer says when its own code starts (a 'fixture-layer-start' message to the window): dev/checks/projects72.js
+  // counts from there to the page's 'stack-drawn' as the scene's own work, apart from Hearth's
+  const draw = (l) => `\ntry { parent.postMessage({ type: 'fixture-layer-start', at: Date.now() }, '*'); } catch { /* a page without a parent */ }\nconst P${l} = tweak({ spin: { value: 0.5, min: -2, max: 2, label: 'Spin' }, size: { value: 1, min: 0.2, max: 3, label: 'Size' }, tint: { value: '#${['ff9866', '7a5cff', '56c6ff', 'c8f04a'][l % 4]}', label: 'Tint', group: 'Color' } });\nconst renderer = new THREE.WebGLRenderer({ alpha: ${l ? 'true' : 'false'} });\nrenderer.setSize(innerWidth, innerHeight);\ndocument.body.append(renderer.domElement);\nconst camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);\ncamera.position.z = 5;\nconst meshes = Array.from({ length: 6 }, (_, i) => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 1), new THREE.MeshBasicMaterial({ color: P${l}.tint, wireframe: true })); m.position.set((i % 3) - 1, Math.floor(i / 3) - 0.5, -${l}); scene.add(m); return m; });\nrenderer.setAnimationLoop((now, f60) => { for (const m of meshes) { m.rotation.y += 0.01 * P${l}.spin * (f60 || 1); m.scale.setScalar(P${l}.size); } renderer.render(scene, camera); });\n`;
   for (const s of sketches) { for (const L of s.layers) L.code = L.code.replace('export default scene;\n', draw(L.slot)); s.code = s.layers[0].code; }
   json('kv/three-sketches.json', sketches);
   const chatOf =(id, title, n, at) => {
@@ -228,7 +230,7 @@ function addProjects(dir, { count, sketches, longIds, sentence, int, pick, now, 
     if (heavy) { for (let k = 0; k < 220; k++) items.push({ type: 'capture', ref: W(`captures/clink-${k}.png`), name: `clink-${k}.png` }); for (let k = 0; k < 120; k++) items.push({ type: 'render', ref: `rj-bp-${k}`, name: `Clink render ${k}` }); }
     links.links[chatId] = { sketch: sceneId, auto: '', at };
     const status = i >= count - 7 && i < count - 4 ? 'paused' : i >= count - 4 && i < count - 2 ? 'archived' : 'active';
-    list.push({ id, name, ident: ident(i), status, notes: heavy ? sentence(700).slice(0, 4000) : sentence(int(0, 40)), from: 'hand', make: null, cover: null, at: at - 30 * DAY, updated: at, opened: at,
+    list.push({ id, name, ident: ident(i), status, notes: heavy ? sentence(700).slice(0, 3800) : sentence(int(0, 40)), from: 'hand', make: null, cover: null, at: at - 30 * DAY, updated: at, opened: at,
       items: items.map((x, k) => ({ id: `${x.type}:${x.ref}`, type: x.type, ref: x.ref, name: x.name, at: at - k * 6e4 })),
       workspace: { v: 1, persona: pick(['partner', 'director', 'builder']), plugins: [], description: rnd() < 0.5 ? sentence(20) : '', chatId, sceneId, boardId } });
   }

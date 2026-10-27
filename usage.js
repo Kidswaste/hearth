@@ -241,8 +241,12 @@ const Usage = (() => {
   function see(root) {
     if (!data || !root) return 0;
     let n = 0;
+    // (round 72, projects72) a long chat's messages repeat the same few buttons thousands of times (700 messages: ≈ 0.5 s
+    // of visibility checks in one go when a project opened): the first 20 messages stand for the rest
+    let msgs = 0; let lastMsg = null;
     for (const node of root.querySelectorAll('button, select')) {
       if (n > 300) break;
+      const m = node.closest('.msg'); if (m && m !== lastMsg) { lastMsg = m; msgs += 1; } if (m && msgs > 20) continue;
       if (node.closest('[data-no-usage], dialog, #menu') || !node.checkVisibility?.({ visibilityProperty: true })) continue;
       const key = keyOf(node);
       if (key && !data.items[key]) { seen(key, labelOf(node), areaOf(node)); n += 1; }

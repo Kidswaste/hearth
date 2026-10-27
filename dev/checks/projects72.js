@@ -3,7 +3,8 @@
 // quest journal, 50 Lab scenes AND 40 projects — "Clink" with a 700-message chat, 14 related long chats, 4 scenes,
 // 3 boards, 400 files half of them not on this computer, 220 captures, 120 renders; two medium ones; a project whose
 // scene hasn't arrived and one whose chat hasn't). Everything by clicks, like the owner:
-//   cold open     ‹ Projects (rail) → the Clink card → the project is ready (its chat, scene, board, sound)
+//   cold open     Projects (rail) → the pointer on the Clink card (300 ms) → its click → the project is ready (its chat,
+//                 scene, board, sound): the first open since Hearth started
 //   warm open     ‹ Projects → the Clink card again
 //   switch        the name ▾ in the workspace bar → another project in its menu (3 rounds, best of 3)
 //   resume        a project left on its Scene tab comes back on its Scene; a related chat comes back as the chat
@@ -12,8 +13,8 @@
 //   offline       right-click › Prepare for offline… → the dialog's answer (the missing scene and files listed)
 //   delete / undo right-click › Delete the project… → Undo; archive → ⋯ › Archived projects lists it → back to Active
 // What counts: the wall from the click to "ready" (the loading card gone), minus the scene's OWN work in its page — its
-// layers' code running to their first frame (from the run the page received to 'stack-drawn') and the warm-up of its
-// textures and shaders (from 'ready-prep' received to 'ready-prepped'). That part is the scene's GPU work: here software GL
+// layers' code running to their first frame (from the first layer's code starting to 'stack-drawn') and the warm-up of
+// its textures and shaders (the page's own 'ready-prepped' ms). That part is the scene's GPU work: here software GL
 // (SwiftShader) makes it 1–3 s for the simplest 2–4-layer scene, on the owner's GPU a few frames. Everything else —
 // saving the project left, reading the chat, drawing it, the page's own start, the board, the instrument, the Desk — is
 // Hearth's, and that is what the budgets hold (both numbers are reported).
@@ -35,26 +36,19 @@ const card = (id) => document.querySelector(`.pj-card[data-project="${id}"]`);
 const longs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push({ at: e.startTime, ms: Math.round(e.duration) }); }).observe({ type: 'longtask' }); } catch { /* none */ }
 const longestSince = (t) => Math.max(0, ...longs.filter((x) => x.at >= t).map((x) => x.ms));
 window.hub.openExternal = () => {};
-// the scene's own work, timed where it happens: the page's message listener notes when a run / a warm-up arrived
-// (absolute times: performance.timeOrigin + now on both sides); the window notes 'stack-drawn' / 'ready-prepped'
-const abs = (w = window) => w.performance.timeOrigin + w.performance.now();
-const sc = { run: 0, drawn: 0, prep: 0, prepped: 0 };
-function hookPage() {
-  try {
-    const w = ThreeLab.scenes.previewHost().querySelector('iframe')?.contentWindow;
-    if (!w || w.__pj72) return; w.__pj72 = true;
-    w.addEventListener('message', (e) => { const t = e.data?.type; if (t === 'run-layers' || t === 'swap-layers') sc.run = abs(w); if (t === 'ready-prep') sc.prep = abs(w); }, true);
-  } catch { /* another origin: the scene's part can't be told apart (reported as 0) */ }
-}
-addEventListener('message', (e) => { const t = e.data?.type; if (t === 'ready') hookPage(); if (t === 'stack-drawn') sc.drawn = abs(); if (t === 'ready-prepped') sc.prepped = abs(); }, true);
+// the scene's own work: the fixture's layers post 'fixture-layer-start' (Date.now()) as their code starts in the page
+// (it's another origin: a sandboxed page); from the first of them to the page's 'stack-drawn' is the layers' own code and
+// first frames; 'ready-prepped' says how long the page's warm-up of textures and shaders took (ms)
+const sc = { start: 0, drawn: 0, warm: 0 };
+addEventListener('message', (e) => { const d = e.data; const t = d?.type; if (t === 'fixture-layer-start' && !sc.start) sc.start = d.at; if (t === 'stack-drawn') sc.drawn = Date.now(); if (t === 'ready-prepped') sc.warm = Number(d.ms) || 0; }, true);
 // a click → the project ready; wall from the click, the scene's own part, the longest window task, the app's stage timings
 async function timed(id, act) {
-  await frame(); hookPage(); Object.assign(sc, { run: 0, drawn: 0, prep: 0, prepped: 0 }); const a0 = abs(); const t0 = performance.now(); act();
+  await frame(); Object.assign(sc, { start: 0, drawn: 0, warm: 0 }); const t0 = performance.now(); act();
   await until(() => ready(id), `${id} ready`, 2000);
   await frame(); const wall = Math.round(performance.now() - t0);
-  const draw = sc.run >= a0 && sc.drawn > sc.run ? sc.drawn - sc.run : 0; const warm = sc.prep >= a0 && sc.prepped > sc.prep ? sc.prepped - sc.prep : 0;
-  const scene = Math.round(draw + warm);
-  return { hearth: wall - scene, wall, scene, sceneDraw: Math.round(draw), sceneWarm: Math.round(warm), longest: longestSince(t0), timings: ProjectWorkspace.state().timings };
+  const draw = sc.start && sc.drawn > sc.start ? sc.drawn - sc.start : 0;
+  const scene = Math.round(draw + sc.warm);
+  return { hearth: wall - scene, wall, scene, sceneDraw: Math.round(draw), sceneWarm: Math.round(sc.warm), longest: longestSince(t0), timings: ProjectWorkspace.state().timings };
 }
 async function toProjects() {
   click(document.querySelector('.workspace-back') || document.querySelector('#agent-buttons [data-space=projects]'));
@@ -74,7 +68,7 @@ async function profile(name, fn) {
     const tot = (n) => { let t = cnt[n.id] || 0; for (const c of n.children || []) t += tot(byId.get(c)); n.t = t; return t; };
     nodes.filter((n) => !nodes.some((m) => (m.children || []).includes(n.id))).forEach(tot);
     const self = {}; const incl = {}; for (const n of nodes) { const k = key(n); self[k] = (self[k] || 0) + (cnt[n.id] || 0) / 1e3; if (!/^:0 \((root|program|idle)\)/.test(k)) incl[k] = Math.max(incl[k] || 0, n.t / 1e3); }
-    const top = (o, n) => Object.entries(o).filter(([k]) => !/\((idle|program|root|garbage collector)\)/.test(k)).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${v.toFixed(1)} ${k}`);
+    const top = (o, n) => Object.entries(o).filter(([k]) => !/\((idle|root)\)/.test(k)).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${v.toFixed(1)} ${k}`);
     out.profiles[name] = { self: top(self, 12), total: top(incl, 12) };
   }
 }
@@ -89,6 +83,8 @@ try {
   out.fixture = { projects: P.all().length, items: P.all().reduce((n, p) => n + p.items.length, 0), clinkItems: P.get('pjbp0')?.items.length, chats: H.chats.length };
   need(out.fixture.projects === 40, 'fixture: 40 projects');
   // ---------- cold open: the Clink card ----------
+  // the pointer reaches the card first, as with a real click (300 ms on it), then the click
+  card('pjbp0').dispatchEvent(new PointerEvent('pointerenter', { bubbles: false })); await wait(300);
   await profile('cold-open', async () => { out.open.cold = await timed('pjbp0', () => click(card('pjbp0'))); });
   need(out.open.cold.hearth < BUDGET.open, `cold open: Hearth's part ${out.open.cold.hearth} ms ≥ ${BUDGET.open}`);
   need(ProjectWorkspace.currentChat()?.id === 'claude-project-pjbp0', 'cold open: the project chat');
@@ -130,15 +126,26 @@ try {
       await until(() => document.querySelector('.pw-desk .pw-project-files') && H.surfaceIdFor(H.activeId) === 'tool:home', 'desk'); await frame(); runs2.push({ wall: Math.round(performance.now() - t0), longest: longestSince(t0) }); }
     out.desk.paint = Math.min(...runs2.map((r) => r.wall)); out.desk.paintRuns = runs2.map((r) => r.wall).join(' ');
     const files = document.querySelector('.pw-project-files');
-    let t0 = performance.now(); files.querySelector('summary').click(); await until(() => files.querySelector('.pw-file-results .pj-item'), 'files'); await frame();
-    out.desk.files = Math.round(performance.now() - t0); out.desk.filesRows = files.querySelectorAll('.pj-item').length; out.desk.count = files.querySelector('.pw-file-footer .hint')?.textContent;
+    let t0 = 0; await profile('desk-files', async () => { t0 = performance.now(); files.querySelector('summary').click(); await until(() => files.querySelector('.pw-file-results .pj-item'), 'files'); await frame(); out.desk.files = Math.round(performance.now() - t0); });
+    out.desk.filesRows = files.querySelectorAll('.pj-item').length; out.desk.count = files.querySelector('.pw-file-footer .hint')?.textContent;
     out.desk.faded = files.querySelectorAll('.pj-item.pj-gone').length;
-    const q = files.querySelector('.pw-file-search'); t0 = performance.now(); q.value = 'take'; q.dispatchEvent(new Event('input')); await frame(); out.desk.search = Math.round(performance.now() - t0);
+    const q = files.querySelector('.pw-file-search'); await profile('desk-search', async () => { t0 = performance.now(); q.value = 'take'; q.dispatchEvent(new Event('input')); await frame(); out.desk.search = Math.round(performance.now() - t0); });
     q.value = ''; q.dispatchEvent(new Event('input')); await frame();
     t0 = performance.now(); files.querySelector('.pw-file-footer button').click(); await frame(); out.desk.more = Math.round(performance.now() - t0); out.desk.rowsAfterMore = files.querySelectorAll('.pj-item').length;
     need(out.desk.paint < BUDGET.desk, `desk paint ${out.desk.paint} ms ≥ ${BUDGET.desk}`);
     need(out.desk.files < BUDGET.files, `desk files ${out.desk.files} ms ≥ ${BUDGET.files}`);
-    files.querySelector('summary').click(); }
+    files.querySelector('summary').click();
+    // typing in the project's notes (4,000 characters already): each key's own work, and what follows it (the chats
+    // list, Home, the save) in the next 400 ms
+    const about = document.querySelector('.pw-about'); about.querySelector('summary').click(); await frame();
+    const notes = about.querySelector('.pj-notes'); notes.focus(); const keys = []; const t1 = performance.now();
+    notes.setSelectionRange(notes.value.length, notes.value.length);
+    await profile('notes-typing', async () => { for (const ch of ' and one more line') { const k0 = performance.now(); document.execCommand('insertText', false, ch); keys.push(performance.now() - k0); await wait(60); } });
+    need(notes.maxLength === 4000, 'notes: the box stops at the 4,000 characters a project keeps (nothing typed past it is dropped)');
+    await wait(400); out.desk.noteKeyMax = Math.round(Math.max(...keys) * 10) / 10; out.desk.noteKeyLongest = longestSince(t1);
+    need(P.get('pjbp0').notes.endsWith(' and one more line'), 'notes: typed words kept');
+    need(out.desk.noteKeyMax < 16, `notes: a key's own work ${out.desk.noteKeyMax} ms ≥ 16`);
+    about.querySelector('summary').click(); }
   // ---------- not arrived: a scene, a chat ----------
   for (const [id, key] of [['pjbp38', 'scene'], ['pjbp39', 'chat']]) {
     const before = JSON.stringify(P.get(id));
@@ -153,9 +160,10 @@ try {
   }
   // ---------- prepare for offline (right-click a card) ----------
   for (const id of ['pjbp0', 'pjbp38']) {
+    await until(() => !document.querySelector('dialog.offline-prepare'), 'the last offline dialog gone');
     card(id).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 300 }));
     const t0 = performance.now(); click(menuItem(/Prepare for offline/));
-    const d = await until(() => { const x = document.querySelector('dialog.offline-prepare'); return x && !/Checking/.test(x.querySelector('[role=status]').textContent) && x; }, 'offline answer', 3000);
+    const d = await until(() => { const x = document.querySelector('dialog.offline-prepare[open]'); return x && !/Checking/.test(x.querySelector('[role=status]').textContent) && x; }, 'offline answer', 3000);
     out.offline[id] = { ms: Math.round(performance.now() - t0), status: d.querySelector('[role=status]').textContent, rows: [...d.querySelectorAll(':scope > div > p')].map((p) => p.textContent), issues: d.querySelector('details summary')?.textContent };
     if (id === 'pjbp38') need([...d.querySelectorAll('p')].some((p) => /scene has not arrived/i.test(p.textContent)), 'offline: the missing scene is named');
     click([...d.querySelectorAll('button')].find((b) => b.textContent === 'Close')); await wait(100);

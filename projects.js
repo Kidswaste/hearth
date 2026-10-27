@@ -35,7 +35,8 @@ const Projects = (() => {
     const detail = { project: p, id: p?.id || null, why };
     for (const fn of listeners) { try { fn(detail); } catch (err) { console.warn(err); } }
     dispatchEvent(new CustomEvent('hearth:projects', { detail }));
-    clearTimeout(paintT); paintT = setTimeout(() => Panel.soon?.() ?? Panel.render(), 50);
+    // (round 72) notes typed on the Desk only change a group's tooltip in the chats list: it's drawn again once typing pauses
+    clearTimeout(paintT); paintT = setTimeout(() => Panel.soon?.() ?? Panel.render(), why === 'notes' ? 1200 : 50);
   }
   const onChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 

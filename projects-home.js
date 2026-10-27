@@ -112,8 +112,11 @@ const ProjectsHome = (() => {
     c.addEventListener('click', (e) => { if (e.target.closest('.pj-go')) return; ProjectWorkspace.open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});}); });
     c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target===c) ProjectWorkspace.open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});}); });
     c.addEventListener('contextmenu', (e) => showMenuAt(e, P.menu(p)));
+    // (round 72) the pointer on a card: the workspace's code starts loading (the first open of a session waits less)
+    c.addEventListener('pointerenter', prefetch, { once: true }); c.addEventListener('focus', prefetch, { once: true });
     return c;
   }
+  const prefetch = () => { for (const g of ['lab', 'board', 'creative']) if (!Lazy.loaded(g)) Lazy.load(g).catch(() => {}); };
   // "continue where you left off": the last chat, the last scene, the last render or still
   function continueChips(p) {
     const out = [];
@@ -172,7 +175,8 @@ const ProjectsHome = (() => {
     const mark = el('button', { type: 'button', class: 'pj-p-mark', text: p.ident.glyph, title: 'Next mark (right-click: next color)', on: { click: () => P.nextMark(p), contextmenu: (e) => { e.preventDefault(); P.nextColor(p); } } });
     const status = el('select', { class: 'pj-p-status', title: 'Status' }, ...Object.entries(C.STATUS).map(([k, l]) => el('option', { value: k, text: l, selected: p.status === k })));
     status.addEventListener('change', () => P.setStatus(p, status.value));
-    const notes = el('textarea', { class: 'pj-notes', rows: 3, placeholder: 'Notes (synced with your other computer)', value: p.notes || '' });
+    // (round 72) the notes hold 4,000 characters (ProjectsCore): the box stops there instead of dropping what's typed past it
+    const notes = el('textarea', { class: 'pj-notes', rows: 3, maxLength: 4000, placeholder: 'Notes (synced with your other computer)', value: p.notes || '' });
     // The Projects store already debounces disk writes. Keep the model current now,
     // so a repaint or immediate project close cannot replace an unsaved note.
     notes.addEventListener('input',()=>P.setNotes(P.get(p.id)||p,notes.value));
