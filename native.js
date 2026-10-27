@@ -1170,7 +1170,8 @@ const Native = (() => {
     // frame is still to come, or the list was out of sight then: a project's chat drawn in a hidden view at the start)
     // has no place to keep: kept, it read the list's size (a forced layout of the whole long chat, ≈ 250 ms) and kept
     // its top, where older messages woke and the chat stayed in the middle
-    if (keepScroll && chatId && v.placeDue === chatId) keepScroll = false;
+    // (it's still drawn as a redraw: only its place is the end)
+    const endDue = keepScroll && chatId && v.placeDue === chatId;
     // (round 45, chatswitch) a chat in memory draws right away (no turn waited: the click's own frame shows it)
     let chat = chatId ? (chats.has(chatId) ? touchChat(chatId) : await loadChat(chatId)) : null;
     if (chatId && !chat) H.activeChat[agentId] = null;
@@ -1205,7 +1206,7 @@ const Native = (() => {
     if (!keepScroll) v.placeDue = chatId || null; // (round 73) placed at this draw's frame (below)
     if (v.enterNext) { v.enterNext = false; enterAnim(agentId); }
     // (round 45) read only when kept: reading the list's size here laid out the chat before it changed (twice per switch)
-    const wasNearBottom = keepScroll && nearBottom(v.list);
+    const wasNearBottom = keepScroll && (endDue || nearBottom(v.list));
     const prevScroll = keepScroll ? v.list.scrollTop : 0;
     // (round 35) reading higher up: what's at the top of the chat stays there (a reply finishing below, or changing
     // height above, used to move the chat under you: only the scroll offset was kept)
