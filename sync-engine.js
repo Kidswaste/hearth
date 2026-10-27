@@ -175,6 +175,7 @@ function createEngine(o) {
     const old = state.base[rel];
     if (old && old !== h) { (state.prev ||= {})[rel] = old; if (S.isJsonRel(rel)) { const f = basePath(rel); baseJob(rel, () => fsp.rename(f, `${f}.prev`).catch(() => fsp.rm(`${f}.prev`, { force: true }))); } }
     state.base[rel] = h; if (text !== undefined && S.isJsonRel(rel)) writeBase(rel, text);
+    if (state.keepAll) delete state.keepAll[rel]; // a new version both sides agree on: settled
   }
   function rebase(rel) {
     const p = state.prev?.[rel];
