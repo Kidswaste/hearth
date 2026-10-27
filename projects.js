@@ -231,6 +231,9 @@ const Projects = (() => {
     return true;
   }
   const trashed = () => (data.trash || []).slice();
+  // (round 75, versions75) 🕘 Earlier versions › Restore: a project put back as an earlier version of itself (its id kept;
+  // versions.js kept the one it replaces first), saved like any change so sync sends it
+  function replaceWith(id, v) { const p = get(id); if (!p || !v || typeof v !== 'object') return null; for (const k of Object.keys(p)) if (k !== 'id') delete p[k]; Object.assign(p, JSON.parse(JSON.stringify(v)), { id, updated: Date.now() }); changed(p, 'restore'); return p; }
   function restoreProject(id, { at = 0, as = null } = {}) {
     const t = (data.trash || []).find((x) => x.id === id);
     if (!t || get(id)) return get(id);
@@ -539,6 +542,7 @@ const Projects = (() => {
       { label: 'Status', items: () => Object.entries(C.STATUS).map(([k, l]) => ({ label: l, checked: p.status === k, action: () => setStatus(p, k) })) },
       { label: 'Look', items: () => [{ label: 'Next color', action: () => nextColor(p) }, { label: 'Next mark', action: () => nextMark(p) }] },
       { label: 'Notes…', action: () => notesPrompt(p) },
+      { label: 'Earlier versions…', action: () => window.Lazy.load('versions').then(() => Versions.open({ kind: 'project', id: p.id, name: p.name })) }, // (round 75, versions75)
       '-',
       { label: 'Delete the project…', danger: true, action: () => removeProject(p) },
     ].filter(Boolean);
@@ -574,7 +578,7 @@ const Projects = (() => {
 
   return {
     ready: () => ready, isLoaded: () => loaded, all, live, get, find, ofItem, projectOfChat, here, hereChat, currentScene, currentBoard,
-    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, fromMake, syncMakes, hidesMake,
+    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, replaceWith, fromMake, syncMakes, hidesMake,
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
     openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt,
     grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu, sketchGroups, sketchBrowse, sketchMenu,

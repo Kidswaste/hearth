@@ -470,6 +470,7 @@
       { label: cur.readonly ? 'Unlock the board' : 'Lock the board', action: () => B._.lock() },
       { label: 'Give the vibe to the Three Director', action: () => B._.toLab() },
       { label: 'Duplicate the board', action: () => B.duplicate(), more: true },
+      { label: 'Earlier versions…', action: () => window.Lazy.load('versions').then(() => Versions.open({ kind: 'board', id: cur.id, name: cur.name })), more: true }, // (round 75, versions75)
       { label: ck(Boolean(S.index.list.find((x) => x.id === cur.id)?.star), 'Starred'), action: () => B._.star(), more: true },
       ...(cur.items.some((i) => i.hidden) ? [{ label: `Show hidden (${cur.items.filter((i) => i.hidden).length})`, action: () => B._.showHidden(), more: true }] : []), // (round 43, menucalm) only when something is hidden
       { label: 'Statistics', action: () => Modal.alert('Board', B._.stats().replace(/\*\*/g, '')), more: true },
