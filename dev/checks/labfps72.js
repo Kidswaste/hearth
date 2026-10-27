@@ -122,6 +122,14 @@ const HOOK = `if (!window.__lf72) { const n = { readPixels: 0, readsAsync: 0, fi
   try { const g = document.createElement('canvas').getContext('webgl2'); n.timer = Boolean(g && g.getExtension('EXT_disjoint_timer_query_webgl2')); g?.getExtension('WEBGL_lose_context')?.loseContext(); } catch { n.timer = false; } }
 return 1`;
 if ((await sbx(HOOK)) !== 1) step('the check\'s counters in the preview', false);
+// the GPU's own time where the graphics card has timer queries (EXT_disjoint_timer_query_webgl2): every layer's render()
+// wrapped in a TIME_ELAPSED query while a stretch asks for it (this check's own wrapper, never shipped), results read
+// when they're ready (never waited for)
+const GPUQ = `if (!window.__lf72gpu) { const G = window.__lf72gpu = { on: false, ns: 0, n: 0, disjoint: 0, pend: [], wrapped: 0 };
+  G.wrap = () => { for (const r of (window.__rdyLive ? window.__rdyLive() : [])) { if (r.__lf72q) continue; const gl = r.getContext && r.getContext(); const x = gl && gl.getExtension('EXT_disjoint_timer_query_webgl2'); if (!x) continue; r.__lf72q = 1; G.wrapped += 1; const orig = r.render; r.render = function (s, c) { if (!G.on || G.busy) return orig.call(this, s, c); const q = gl.createQuery(); G.busy = true; gl.beginQuery(x.TIME_ELAPSED_EXT, q); try { return orig.call(this, s, c); } finally { gl.endQuery(x.TIME_ELAPSED_EXT); G.busy = false; G.pend.push([gl, q, x]); } }; } return G.wrapped; };
+  G.poll = () => { G.pend = G.pend.filter(([gl, q, x]) => { if (gl.isContextLost()) return false; if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) return true; if (gl.getParameter(x.GPU_DISJOINT_EXT)) G.disjoint += 1; else { G.ns += gl.getQueryParameter(q, gl.QUERY_RESULT); G.n += 1; } gl.deleteQuery(q); return false; }); };
+  setInterval(() => { if (G.pend.length) G.poll(); }, 50); }
+return window.__lf72gpu.wrap()`;
 
 // the scene: built in place (the stress layers), the pictures arriving while it runs
 const t0 = performance.now();
@@ -162,8 +170,11 @@ async function stretch(name, during, ms = SEC * 1000, profile = false) {
   await wait(400);
   await sbx('window.__labPace.reset(); return 1');
   const a = await pv(); const ca = await cpu();
+  const gq = name === 'steady' ? await sbx(`${GPUQ}`) : 0;
+  if (gq) await sbx('const G = window.__lf72gpu; G.ns = 0; G.n = 0; G.disjoint = 0; G.on = true; return 1');
   const run = async () => { const stop = { on: true }; const w = during ? during(stop) : null; await wait(ms); stop.on = false; await w; };
   const g = profile ? await gcMs(run) : (await run(), null);
+  const gpuQ = gq ? await (async () => { await sbx('window.__lf72gpu.on = false; return 1'); await wait(600); return sbx('const G = window.__lf72gpu; G.poll(); return { ms: G.ns / 1e6, n: G.n, disjoint: G.disjoint, wrapped: G.wrapped }'); })() : null;
   const b = await pv(); const cb = await cpu(); const pf = perf();
   const frames = Math.max(1, (b?.tick || 0) - (a?.tick || 0)); const sec = ms / 1000;
   const d = (k) => (b?.gl?.[k] ?? 0) - (a?.gl?.[k] ?? 0); const dr = (k) => (b?.rb?.[k] ?? 0) - (a?.rb?.[k] ?? 0);
@@ -174,6 +185,7 @@ async function stretch(name, during, ms = SEC * 1000, profile = false) {
     gpuMsPerFrame: ca && cb ? r1(((cb.gpu - ca.gpu) * 1000) / frames) : null, gpuMsPerSec: ca && cb ? r1(((cb.gpu - ca.gpu) * 1000) / sec) : null,
     uploadsPerFrame: r2(d('uploads') / frames), reuploadsPerFrame: r2(d('reuploads') / frames), compiles: d('compiles'), links: d('links'), shaderWaitMs: r1(d('waitMs')),
     syncReadsPerFrame: r2((dr('readPixels') + dr('finish') + dr('waits')) / frames), asyncReads: dr('async'), redraws: (b?.canvas || 0) - (a?.canvas || 0),
+    gpuTimerMsPerFrame: gpuQ && gpuQ.n ? r2(gpuQ.ms / frames) : null, gpuTimer: gpuQ ? { renders: gpuQ.n, disjoint: gpuQ.disjoint, layers: gpuQ.wrapped } : null, // (steady only; null there: no timer queries on this GPU)
     gcMsPerFrame: g ? r2(g.gc / frames) : null, pageBusyMsPerFrame: g ? r1(g.busy / frames) : null,
     contexts: b?.ctx,
   };
