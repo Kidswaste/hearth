@@ -22,7 +22,7 @@ function kindOf(rel) {
   let k = memo.get(r);
   if (k !== undefined) return k;
   k = KINDS.find((x) => x.re.test(r))?.id || '';
-  if (memo.size > 20000) memo.clear(); // bounded: a big profile has ~5,000 files
+  if (memo.size > 250000) memo.clear(); // bounded: a big profile has ~5,000 files (round 74, synchard74: 20,000 was refilled from scratch on every pass at 50,000 files)
   memo.set(r, k);
   return k;
 }

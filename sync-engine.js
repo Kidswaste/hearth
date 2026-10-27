@@ -192,7 +192,7 @@ function createEngine(o) {
     baseJob(rel, async () => {
       const f = basePath(rel), d = path.dirname(f);
       if (!baseDirs.has(d)) { await fsp.mkdir(d, { recursive: true }); baseDirs.add(d); }
-      try { await fsp.writeFile(`${f}.tmp`, text); } catch (err) { if (err.code !== 'ENOENT') throw err; baseDirs.delete(d); await fsp.mkdir(d, { recursive: true }); baseDirs.add(d); await fsp.writeFile(`${f}.tmp`, text); }
+      try { await fsp.writeFile(`${f}.tmp`, text); } catch (err) { if (err.code !== 'ENOENT') { await fsp.rm(`${f}.tmp`, { force: true }).catch(() => {}); throw err; } /* (round 74) a full disk: no half .tmp left */ baseDirs.delete(d); await fsp.mkdir(d, { recursive: true }); baseDirs.add(d); await fsp.writeFile(`${f}.tmp`, text); }
       await fsp.rename(`${f}.tmp`, f);
     });
   }
@@ -378,7 +378,7 @@ function createEngine(o) {
     /^(.*) \([^()]*conflicted copy[^()]*(?:\(\d+\))?\)(\.[^./]+)?$/i, // Dropbox (round 72: also its second copy, "… copy 2026-10-27 (1))")
   ];
   const JSON_COPY = /^([\w-]+)(?: \d+| ?\(\d+\))\.json$/; // iCloud "x 2.json" / "x(1).json", Google Drive "x (1).json"
-  async function scanCloud() {
+  async function scanCloud(local = null) { // (round 74) local: this pass's local scan (which files changed here)
     const out = new Map(); const copies = [];
     out.blind = new Set(); out.secrets = []; // (round 74)
     const hosts = new Set([machine.name, ...peers.map((p) => p.name)].filter(Boolean).map((n) => String(n).toUpperCase().replace(/\.LOCAL$/, '')));
@@ -423,9 +423,10 @@ function createEngine(o) {
       out.set(rel, ent);
     }, '', out.blind);
     if (platform === 'win32') {
-      // (round 74, synchard74) only files new or changed since the last pass are asked about (their content may be
-      // needed); an unchanged one keeps its known hash whatever its download state. 50,000 files were all asked each pass.
-      const entries = [...[...out].filter(([rel, e]) => !cachedThere(rel, e)).map(([, e]) => e), ...copies];
+      // (round 74, synchard74) only files new or changed since the last pass, in the cloud or here (sync may write over
+      // its cloud copy), are asked about; one unchanged on both sides keeps its known hash whatever its download state.
+      // 50,000 files were all asked each pass.
+      const entries = [...[...out].filter(([rel, e]) => !cachedThere(rel, e) || !local?.get(rel) || local.get(rel).unavailable || !cachedHere(rel, local.get(rel))).map(([, e]) => e), ...copies];
       const probe = o.cloudAttributes || require('./cloud-files').attributes;
       let attributes; try { attributes = await probe(entries.map(e => e.file)); } catch { attributes = new Map(); }
       for (const e of entries) {
@@ -477,8 +478,10 @@ function createEngine(o) {
         let text = ''; try { text = await fsp.readFile(file, 'utf8'); } catch { continue; }
         journalSeen[f] = key;
         const mid = f.slice(0, -6);
+        let nl = 0;
         for (const line of text.split('\n')) {
           if (!line) continue;
+          if ((++nl & 511) === 0) { const b = breathe(); if (b) await b; } // (round 74, synchard74) thousands of lines: a breath now and then
           let j; try { j = S.parseJson(line); } catch { continue; }
           if (!j.rel) continue;
           const cur = journalLatest.get(j.rel);
@@ -1282,7 +1285,7 @@ function createEngine(o) {
     await readPeers();
     const filesId = await fsp.stat(FILES).then((x) => `${x.dev}:${x.ino}`, () => ''); // (round 74) the cloud folder this pass looks at
     const local = await scanLocal();
-    const { files: cloud, copies } = await scanCloud();
+    const { files: cloud, copies } = await scanCloud(local);
     // (round 74, synchard74) the cloud folder moved / renamed / unmounted DURING the scan (the drive ejected, the cloud
     // client relocating its folder): what was scanned is not the cloud, it is a hole. Paused, never "all deleted".
     if (!filesId || filesId !== await fsp.stat(FILES).then((x) => `${x.dev}:${x.ino}`, () => '')) return finish({ state: 'offline', error: 'missing' }, t0);
@@ -1331,7 +1334,9 @@ function createEngine(o) {
     const goneSizes = new Set(); const laneSizes = new Set();
     // and a file moved here keeps its size and modified time: its hash comes along (a renamed 2 GB video isn't read again)
     const moved = new Map();
+    let gi = 0;
     for (const rel of Object.keys(state.base)) {
+      if ((++gi & 2047) === 0) { const b = breathe(); if (b) await b; } // (round 74) 50,000 files: a breath now and then
       if (!local.has(rel) && cloud.get(rel)?.size) goneSizes.add(cloud.get(rel).size);
       if (!cloud.has(rel) && local.get(rel)?.size) goneSizes.add(local.get(rel).size);
       const c = state.local[rel]; if (!local.has(rel) && c?.[2] && c[0] > LANE_MIN) moved.set(`${c[0]}:${c[1]}`, c[2]);
