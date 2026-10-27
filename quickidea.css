@@ -1,0 +1,27 @@
+/* (round 71, quickidea71) 💡 Ideas: the inbox dialog, its rows, and the 🎵 Music ideas in the Sound desk's Sessions (quickidea.js) */
+.qi-inbox{width:min(620px,94vw);max-height:min(720px,88vh);display:flex;flex-direction:column;gap:8px;padding:14px 16px}
+.qi-inbox:not([open]){display:none}
+.qi-head{display:flex;align-items:center;gap:10px}
+.qi-head h2{margin:0;font-size:18px}
+.qi-head .spacer{flex:1}
+.qi-count{color:var(--muted);font-size:12.5px}
+.qi-body{overflow:auto;min-height:80px;flex:1 1 auto}
+.qi-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.qi-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px 10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+.qi-row.pending{border-style:dashed}
+.qi-row.failed{border-color:color-mix(in srgb,#ff5a5a 60%,var(--line))}
+.qi-where{font-size:12px;white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+.qi-main{display:flex;flex-direction:column;min-width:0}
+.qi-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qi-more,.qi-sub{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis}
+.qi-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.qi-btn{font-size:12.5px;padding:3px 9px}
+.qi-play{min-width:30px}
+.qi-empty{color:var(--muted);margin:14px 4px}
+.qi-trash{margin-top:12px}
+.qi-trash>summary{cursor:pointer;color:var(--muted)}
+.qi-trash .qi-list{margin:6px 0}
+.qi-foot{margin:0;color:var(--muted);font-size:12px}
+@media (max-width:560px){.qi-row{grid-template-columns:1fr}.qi-acts{justify-content:flex-start}}
+.qi-sessions{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:10px;border-top:1px solid #ffffff14}
+.qi-sessions .qi-row{border-color:#ffffff14;background:#ffffff06}

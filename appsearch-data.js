@@ -100,6 +100,7 @@ const AppSearchData = (() => {
     ['notify-updates', 'Tell me when…', 'Tell me when… a Hearth update is ready', 'Updates', 'notifications notify update ready new version', 'A Hearth update is ready (nothing installs without your click)'],
     ['keys', 'Keys', 'Keyboard keys…', 'Keyboard keys', 'keys shortcuts hotkeys keyboard alt right-click', 'Every key, what waits behind Alt, every right-click menu'],
     ['hotkey', 'Keys', 'Show / hide Hearth from anywhere', 'Show / hide Hearth', 'hotkey global shortcut bring up hide', 'A key combination that brings Hearth up or hides it, even from another app'],
+    ['quickidea-key', 'Keys', '💡 Quick idea from anywhere', 'Quick idea from anywhere', 'idea ideas quick note jot inbox voice memo hotkey global shortcut tray capture', 'A key that opens the small 💡 Quick idea window from any app (empty: off)'], // (round 71, quickidea71)
     ['sleep-webs', 'Housekeeping', 'Unload websites I haven\'t opened', 'Unload websites', 'memory websites sleep unload free', 'Frees memory; a website loads again when you open it'],
     ['meshy-key', 'Housekeeping', 'Meshy key…', 'Meshy key', 'meshy api key 3d', 'Paste your Meshy API key once (stored encrypted)'],
     ['prim-key', 'Housekeeping', 'Paris Métro status key…', 'Paris Métro status key', 'ratp metro métro idfm prim key line status disruption traffic leave reminder strike', 'A free PRIM key: leave reminders check the Métro lines on your way (stored encrypted)'], // (round 69, ratp69)
@@ -164,6 +165,7 @@ const AppSearchData = (() => {
   // ---------- how do I… ----------
   const HELP = [
     { title: 'How do I switch to dark or light mode?', tags: 'dark mode light mode theme look appearance colors night', text: 'Settings › Look & size: pick a look. More looks and tweaks › ◐ Match my computer makes Hearth follow your computer\'s light / dark mode by itself.', go: 'set:follow' },
+    { title: 'How do I jot down an idea quickly?', tags: 'idea ideas note jot quick voice memo record inbox tray later capture', text: 'Tray menu › 💡 Quick idea… (or its key from any app, set in Settings › Advanced › Keys): type it or hold 🎙 and talk, then click 🎵 Music, ✦ Quest, 📁 Project or 💬 Later. All of them: the rail’s ⋯ › 💡 Ideas.', go: 'set:quickidea-key' }, // (round 71, quickidea71)
     { title: 'How do I spend fewer tokens?', tags: 'cheaper cheap tokens cost money spend save budget limit', text: '⋯ AI setup › Spending: a weekly limit, Continue lighter for long chats, and Where its tokens go. How long its answers are › Short and How hard it thinks › Smart both save tokens too.', go: 'ai:spending' },
     { title: 'How do I let an AI use my files?', tags: 'files folders permission access read write disk', text: '⋯ AI setup › What it can use › Files on this computer, for every chat with that AI. For one chat only: right-click the chat header › Files it can use.', go: 'ai:files' },
     { title: 'How do I give an AI rules it always follows?', tags: 'instructions rules always standing prompt', text: '⋯ AI setup › Instructions: add one per line; untick one to pause it.', go: 'ai:instructions' },

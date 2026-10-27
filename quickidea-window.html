@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' blob:">
+<title>💡 Quick idea</title>
+<!-- (round 71, quickidea71) the small always-on-top window from the tray's "💡 Quick idea…" (or its key): a text box,
+     🎙 Hold to record (a WAV kept on this computer), and four big "where it goes" buttons. quickidea-window.js -->
+<style>
+  :root { --bg: #16120f; --card: #201a15; --card2: #2a221b; --text: #f1e8df; --muted: #b8a999; --line: #3a2f26; --accent: #ff7a2f; --accent-ink: #1b0f06; --rec: #ff4d4d; --ok: #7bd88f; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f6f0ea; --card: #fffaf5; --card2: #f1e6db; --text: #2a211a; --muted: #6f6256; --line: #e3d6c9; --accent: #e25d12; --accent-ink: #fff; --rec: #d62828; --ok: #23864a; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  main { display: flex; flex-direction: column; gap: 10px; height: 100%; padding: 14px 14px 10px; }
+  textarea { width: 100%; flex: 1 1 auto; min-height: 92px; resize: none; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: 15px/1.45 inherit; font-family: inherit; }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+  .mic { display: flex; align-items: center; gap: 8px; min-height: 34px; }
+  button { font: inherit; color: var(--text); cursor: pointer; }
+  #rec { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); user-select: none; touch-action: none; }
+  #rec:hover, #rec:focus-visible { border-color: var(--accent); outline: none; }
+  #rec.on { background: var(--rec); border-color: var(--rec); color: #fff; }
+  #rec.on .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) { #rec.on .dot { animation: none; } }
+  .memo { display: none; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+  .memo.has { display: inline-flex; }
+  .memo button { padding: 3px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); font-size: 12.5px; }
+  .label { color: var(--muted); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin: 2px 0 -4px; }
+  .dests { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .dest { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); text-align: left; min-height: 58px; }
+  .dest:hover, .dest:focus-visible { border-color: var(--accent); outline: none; }
+  .dest .t { font-weight: 650; font-size: 16px; }
+  .dest .s { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .dest.last { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .dest .enter { position: absolute; top: 8px; right: 10px; font-size: 11px; color: var(--accent); }
+  .dest[disabled] { opacity: .5; cursor: default; }
+  .picker { display: none; flex-direction: column; gap: 6px; }
+  .picker.open { display: flex; }
+  .picker .list { display: grid; gap: 6px; max-height: 190px; overflow: auto; }
+  .picker button { padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); text-align: left; }
+  .picker button:hover, .picker button:focus-visible { border-color: var(--accent); outline: none; }
+  .picker .back { background: transparent; border-color: transparent; color: var(--muted); padding: 4px 6px; }
+  .foot { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+  .foot .spacer { flex: 1; }
+  .foot button { padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 12.5px; }
+  #status { min-height: 18px; font-size: 13px; }
+  #status.ok { color: var(--ok); }
+  #status.err { color: var(--rec); }
+</style>
+</head>
+<body>
+<main>
+  <textarea id="text" placeholder="What’s the idea? (Enter saves · Shift+Enter: a new line)" aria-label="Your idea" spellcheck="true"></textarea>
+  <div class="mic">
+    <button type="button" id="rec" title="Hold while you talk: a voice memo kept on this computer (nothing is uploaded)" aria-label="Hold to record a voice memo"><span class="dot"></span><span id="rec-t">🎙 Hold to record</span></button>
+    <span class="memo" id="memo"><span id="memo-t"></span><button type="button" id="play" aria-label="Play the voice memo">▶</button><button type="button" id="drop" aria-label="Remove the voice memo" title="Remove the voice memo">✕</button></span>
+  </div>
+  <div class="label" id="where-label">Where it goes</div>
+  <div class="dests" id="dests" role="group" aria-labelledby="where-label"></div>
+  <div class="picker" id="picker" role="group" aria-label="Pick a project">
+    <div class="list" id="plist"></div>
+    <button type="button" class="back" id="pback">‹ Back</button>
+  </div>
+  <div id="status" role="status" aria-live="polite"></div>
+  <div class="foot"><span id="hint">Enter saves to Later · Esc closes</span><span class="spacer"></span><button type="button" id="inbox" title="Every idea you saved, with Move to… and Delete">💡 All ideas</button></div>
+</main>
+<script src="quickidea-core.js"></script>
+<script src="quickidea-window.js"></script>
+</body>
+</html>

@@ -261,7 +261,7 @@ function withExt(ctx, ext) {
 // Engine paths, folders, start-up / tray, the hotkey, the window layout and sync's own settings stay on each
 // computer; agents, the look and the rest of the settings travel. Machine paths anywhere are left out too.
 const MACHINE_SETTINGS = new Set(['enginePaths', 'aePath', 'ffmpegPath', 'captureDir', 'videoDirs', 'aeProjectDirs', 'forgeheartFolder', 'forgeDebugBuild',
-  'launchAtStartup', 'closeToTray', 'hotkey', 'sync', 'zoom']);
+  'launchAtStartup', 'closeToTray', 'hotkey', 'quickIdeaKey', 'sync', 'zoom']); // (round 71, quickidea71) quickIdeaKey: each computer its own
 const MACHINE_KEY = /(Path|Paths|Dir|Dirs|Folder|Folders|Exe|Bin)$/;
 const MACHINE_TOP = new Set(['layout']);
 // (round 35, twocomputers) fields that are this computer's own wherever they are (an agent's "Run commands without its

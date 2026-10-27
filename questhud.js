@@ -22,6 +22,7 @@ const QuestHud = (() => {
   let chip = null, peek = null, panel = null, lastSig = '', peekSig = '', here = null, hereErr = '';
   let chain = Promise.resolve();
   let fw = null; // (round 70, follow70) the ★ New rows (kv 'show-follows', written by follow.js after a show sync), read at start and when the panel opens
+  let ideasN = 0; // (round 71, quickidea71) 💡 ideas waiting in Later (the inbox's count, asked when the panel opens)
   let tix = null; // (round 68, tickets68) { ready, keys, suggest } from ticketsmain.js, asked only when the panel opens
   const key = () => WinMac.keyLabel(HOTKEY);
 
@@ -144,6 +145,7 @@ const QuestHud = (() => {
     lastSig = ''; paint();
     loadTickets(); // (round 68, tickets68) 🎟 Ticket ready on the show's day (one small ask, now only)
     loadFollows(); // (round 70, follow70) ★ New: a followed artist / venue has a new show
+    loadIdeas(); // (round 71, quickidea71) 💡 N ideas waiting
     if (prefs.near === 'gps') locate();
     panel?.querySelector('.qh-step button, .qh-foot button')?.focus({ preventScroll: true });
   }
@@ -183,6 +185,7 @@ const QuestHud = (() => {
     else if (status !== 'ok') body.push(el('p', { class: 'qh-empty', text: status === 'unknown' ? 'Opening your journal…' : 'Your quest journal could not be read just now. Nothing was changed.' }));
     else if (!cd) body.push(el('p', { class: 'qh-empty', text: 'Nothing active right now. Take one of today\'s picks, or track a campaign in the Studio.' }));
     if (fw?.length) body.push(...followRows()); // (round 70, follow70) ★ New: <artist> at <venue>, Fri 14 Nov · Make it a quest / Bring someone / Dismiss
+    if (ideasN) { const r = btn(`💡 ${ideasN} idea${ideasN === 1 ? '' : 's'} waiting · Ideas`, () => { close(); return ideasUI(); }, 'qh-row qi-hud', 'Ideas you saved for Later with 💡 Quick idea: Move to… a quest, a project or Music, or Delete'); r.dataset.k = 'ideas'; body.push(r); } // (round 71, quickidea71)
     if (status === 'ok' && tix) body.push(...ticketRows()); // (round 68, tickets68) 🎟 Ticket ready · <show> on its day; "Is this your ticket for X?" (Downloads)
     if (cd) body.push(questCard(cd));
     // (round 66, herepin66) 📍 Near me: while an "I'm here" pin is set on the Paris map (tools/herepin*.js), one row → Close to you
@@ -280,6 +283,13 @@ const QuestHud = (() => {
     b.dataset.k = `ticket-card:${key}`; return b;
   }
   document.addEventListener('hearth:tickets', () => { if (tix || panel) loadTickets(); });
+  // ---------- (round 71, quickidea71) 💡 Ideas: the inbox's Later count (one small ask when the panel opens / after a change) ----------
+  const ideasUI = () => Lazy.load('quickidea').then(() => QuickIdeas.open());
+  async function loadIdeas() {
+    if (!window.hub?.quickIdea) return;
+    try { const r = await window.hub.quickIdea.op({ op: 'count' }); const n = r?.ok ? r.value.later || 0 : ideasN; if (n !== ideasN) { ideasN = n; if (panel) renderPanel(); } } catch { /* a convenience */ }
+  }
+  window.hub?.quickIdea?.onChanged?.((d) => { const n = d?.counts?.later; if (Number.isFinite(n) && n !== ideasN) { ideasN = n; if (panel) renderPanel(); } });
   // ---------- (round 70, follow70) ★ New: a show with an artist / venue you follow came in with the show sync ----------
   // follow.js keeps them (kv 'show-follows'); this only reads that small file: at start, when the panel opens, after a change
   async function loadFollows() {
@@ -451,6 +461,7 @@ const QuestHud = (() => {
     return [
       ...(typeof ClickFirst !== 'undefined' ? [...ClickFirst.questItems(), '-'] : []), // (round 64, clickfirst64) every quest feature first, in words (Plan my week…, Week in review…, Make a walk…, My rewards…, shows, the park)
       ...(typeof WeekendPlanCore !== 'undefined' && WeekendPlanCore.inWindow(WeekendPlanCore.now()) ? [{ label: '🗓 Plan my weekend…', action: () => { close(); weekend().catch((err) => toast(calmError(err), { type: 'error' })); } }] : []), // (round 66, weekendplan66) Thu evening → Sun
+      { label: '💡 Ideas… (jotted with 💡 Quick idea)', action: () => { close(); ideasUI().catch((err) => toast(calmError(err), { type: 'error' })); } }, // (round 71, quickidea71)
       { label: 'Open Sidequest Studio', action: () => { close(); openStudio(); } },
       { label: prefs.hidden ? 'Show the quest chip in the rail' : 'Hide the quest chip (/quest hud on brings it back)', action: () => setHidden(!prefs.hidden) },
       { label: 'Near you…', items: [

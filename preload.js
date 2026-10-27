@@ -136,6 +136,8 @@ contextBridge.exposeInMainWorld('hub', {
   onTray: (cb) => {
     ipcRenderer.on('tray:new-chat', () => cb('new-chat'));
     ipcRenderer.on('tray:palette', () => cb('palette'));
+    ipcRenderer.on('tray:ideas', () => cb('ideas')); // (round 71, quickidea71) a saved Quest / Project idea to put in its place (quietly)
+    ipcRenderer.on('tray:ideas-open', () => cb('ideas-open')); // … and the small window's "All ideas"
   },
   onContextAction: (cb) => {
     ipcRenderer.on('context:ask', (_e, text) => cb('ask', text));
@@ -201,6 +203,7 @@ contextBridge.exposeInMainWorld('hub', {
   weekquest: { weather: call('weekquest:weather') }, // (round 62, weekquest62) the week plan's forecast (weekquestmain.js)
   shows: { get: call('shows:get'), refresh: call('shows:refresh'), settings: call('shows:settings'), follow: call('shows:follow'), unfollow: call('shows:unfollow'), test: call('shows:test'), remind: call('shows:remind'), onRemind: on('shows:remind') }, // (round 61, showsync61) this week's shows from Shotgun / DICE (showsyncmain.js)
   leave: { op: call('leave:op'), onDue: on('leave:due'), onChanged: on('leave:changed'), onWarn: on('leave:warn') /* (round 69, ratp69) ⚠ a line on the way is disrupted */ }, // (round 68, leavesoon68) ⏰ Remind me to leave (leavesoonmain.js: one timer)
+  quickIdea: { op: (a) => ipcRenderer.invoke('quickidea:op', a), onChanged: on('quickidea:changed') }, // (round 71, quickidea71) 💡 the ideas inbox (quickideamain.js): list · move · placed · trash · restore · empty-trash · open (the small window)
   tickets: { op: call('tickets:op') }, // (round 68, tickets68) 🎟 My ticket (ticketsmain.js): list · add · remove (Trash) · suggest (Downloads, names only) · hud · pass · awake
   safetynet: { last: call('safetynet:last'), reloading: call('safetynet:reloading'), status: call('safetynet:status'), keep: call('safetynet:keep'), done: call('safetynet:done'), testCrash: call('safetynet:test-crash') }, // (round 29) after an unexpected exit: what was kept (safetynetmain.js)
   crashsafe: { take: call('crashsafe:take'), done: call('crashsafe:done'), ack: call('crashsafe:ack'), test: call('crashsafe:test'), check: call('crashsafe:check'), onOrphan: on('crashsafe:orphan'), onFlush: on('crashsafe:flush'), onFrames: on('crashsafe:frames') }, // (round 50) replies cut off by a crash, renders cut off, the computer going down (crashsafemain.js)
