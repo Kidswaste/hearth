@@ -1,6 +1,7 @@
 // (round 73, startfast73) Sums sampling CPU profiles for the startup reports (dev/coldstart-report.js --profile):
 //   fromCpuprofile(p, toMs)  a .cpuprofile (the main process: dev/boot-probe.js HEARTH_BOOT_CPUPROF) → { nodes, samples }
-//   fromTrace(events, pid, toMs)  a trace's Profile / ProfileChunk events of one process (v8.cpu_profiler) → same
+//   fromTrace(events, pid, toMs, tid)  a trace's Profile / ProfileChunk events of one process (v8.cpu_profiler) → same;
+//                            with tid, only the profiles of that thread (the page's main thread, not its workers)
 //   top(prof, a, b, n)       self time by function (and by file) between two times (ms)
 //   busy(prof, gapMs)        busy stretches: runs of non-idle samples with gaps < gapMs → [{ at, ms }]
 // toMs maps the profile's own µs clock to the caller's ms clock.
@@ -19,13 +20,13 @@ function fromCpuprofile(p, toMs) {
   return { nodes, samples };
 }
 
-function fromTrace(events, pid, toMs) {
+function fromTrace(events, pid, toMs, tid) {
   const nodes = new Map(); const samples = [];
   const byId = new Map(); // profile id → running time (µs)
   for (const e of events) {
     if (e.pid !== pid) continue;
-    if (e.name === 'Profile') byId.set(e.id, e.args?.data?.startTime ?? 0);
-    if (e.name !== 'ProfileChunk') continue;
+    if (e.name === 'Profile' && (tid == null || e.tid === tid)) byId.set(e.id, e.args?.data?.startTime ?? 0);
+    if (e.name !== 'ProfileChunk' || !byId.has(e.id)) continue;
     const d = e.args?.data || {}; const cp = d.cpuProfile || {};
     for (const n of cp.nodes || []) nodes.set(n.id, { ...nodes.get(n.id), ...n });
     let t = byId.get(e.id) ?? 0;

@@ -83,7 +83,8 @@ for (const g of LazyData.GROUPS) {
 // lazy-meta.js (LazyText), which lazy.js reads right after the first frame and puts into the stand-ins still waiting.
 // A shared name (a `when` variant, or a command combined with another registration under its name or one of its
 // aliases: /retry with /again) keeps its words here: Commands.register combines the variants' descriptions as they register.
-const TEXT_KEYS = ['desc', 'examples', 'keywords', 'undo'];
+// (round 73, startfast73) + args (the commands' argument hints) and the keys-sheet lines' words (text[g]['#keys'])
+const TEXT_KEYS = ['desc', 'examples', 'keywords', 'undo', 'args'];
 const shared = new Set((old.shared || []).map((n) => n.toLowerCase()));
 const text = {};
 for (const [g, o] of Object.entries(meta)) {
@@ -97,9 +98,20 @@ for (const [g, o] of Object.entries(meta)) {
     return keep;
   });
 }
+for (const [g, o] of Object.entries(meta)) {
+  if (!o.keys) continue;
+  o.keys = o.keys.map((k) => {
+    // (the id lazy.js gives the stand-in line: its area as groupMeta puts it back; a line with no area keeps its words)
+    const area = k.area === undefined ? o.karea : k.area;
+    if (!k.what || typeof area !== 'string') return k;
+    const { what, ...keep } = k;
+    ((text[g] ||= {})['#keys'] ||= {})[`${area}|${k.keys}`] = what;
+    return keep;
+  });
+}
 const TEXT_FILE = path.join(ROOT, 'lazy-meta.js');
 const textSrc = `// Written by \`node dev/lazy-manifest.js\` (don't edit): the words of the lazy groups' commands (descriptions, examples,
-// keywords, undo lines), kept out of the first screen. lazy.js reads this file right after the first frame (Lazy.text())
+// keywords, undo lines, argument hints; '#keys': the keys-sheet lines' words), kept out of the first screen. lazy.js reads this file right after the first frame (Lazy.text())
 // and puts them into the stand-in commands still waiting for their group: /help, Ctrl/⌘+K and the Commands page show
 // them as before. { group: { command: { desc, examples, keywords, undo } } }
 const LazyText = ${JSON.stringify(text)};

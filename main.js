@@ -370,6 +370,7 @@ ipcMain.handle('kv:get', (_e, name, fallback, o) => {
   waiting.set(k, Date.now());
   return syncGate.then(() => { waiting.delete(k); return kvRead(name, fallback, o); });
 });
+ipcMain.handle('kv:pick', (_e, name, fields) => (syncGate ? syncGate.then(() => store.getKVPick(name, fields)) : store.getKVPick(name, fields))); // (round 73) a big list's rows, a few fields each
 ipcMain.handle('kv:set', afterSync((_e, name, value, o) => store.setKV(name, value, o)));
 // (round 20, offmain) how long the main process's thread was blocked since the last ask (event-loop delay: max / p99 in
 // ms, and the store thread's writes): dev/checks/offmain.js measures flows with it; started on the first ask

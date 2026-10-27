@@ -260,7 +260,7 @@ await T({ window: 'show' }); await wait(800);
 // ---------- budgets (window.IDLE_REPORT = 1 reports without failing; window.IDLE_BUDGET overrides) ----------
 // per setup, over 10 s of idle: the window's CPU and wakeups (timers, frames, idle callbacks, observers), the main
 // process', and the Lab preview's page while the Lab is on screen (CPU, frames it wakes for)
-const B = { windowCpu: 1.5, wakeups: 1.5, labWakeups: 2, mainCpu: 1, mainTimersPerMin: 20, labCpu: 2.5, labFrames: 15, hiddenWakeups: 0.5, hiddenMainTimersPerMin: 6, hiddenAllCpu: 1.5, ...(window.IDLE_BUDGET || {}) };
+const B = { windowCpu: 1.5, wakeups: 1.5, labWakeups: 2, mainCpu: 1, mainTimersPerMin: 20, labCpu: 2.5, labFrames: 15, hiddenWakeups: 0.3, hiddenMainTimersPerMin: 2, hiddenAllCpu: 0.8, ...(window.IDLE_BUDGET || {}) };
 out.table = [];
 for (const [name, r] of Object.entries(out.setups)) {
   const w = r.procs.window || { cpuPct: 0 }; const m = r.procs.main || { cpuPct: 0 }; const l = r.procs['lab preview'];

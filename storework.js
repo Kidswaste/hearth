@@ -241,6 +241,16 @@ const OPS = {
     // (round 29, safetynet) a store that can't be read falls back to its previous version (<name>.prev.json)
     try { return JSON.parse(fs.readFileSync(file.replace(/\.json$/, '.prev.json'), 'utf8')); } catch { return fallback ?? null; }
   },
+  // (round 73, startfast73) a big list store's rows with only some of their fields (the Lab's scenes' ids, names and
+  // times, without their code): the window gets a few KB instead of MBs. null: not a list, or not readable (the caller
+  // reads the whole store then, with its careful fallbacks)
+  pick({ file, fields }) {
+    let v;
+    try { v = JSON.parse(SS.readRetry(fs, file)); } catch { return null; }
+    if (!Array.isArray(v)) return null;
+    const keys = Array.isArray(fields) ? fields.map(String) : [];
+    return v.filter((x) => x && typeof x === 'object').map((x) => { const o = {}; for (const k of keys) if (x[k] !== undefined) o[k] = x[k]; return o; });
+  },
   // the files thread (a second copy of this worker, so a big folder never holds up a save): fsapi's recursive listing
   // and its full-text search of a folder
   flist({ dir, opts }) { return flist(dir, opts || {}); },

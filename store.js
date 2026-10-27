@@ -494,6 +494,15 @@ module.exports = {
     if (SS.guardedName(file)) return ask({ op: 'read', file, fallback }).catch(() => readKV(file, fallback));
     return ask({ op: 'read', file, fallback, ds: true }).then((r) => { seen.add(file); noteDoubt(file, r); return r.value; }).catch(() => readKV(file, fallback));
   },
+  // (round 73, startfast73) a big list store's rows with only these fields (storework.js pick), or null (read it whole)
+  getKVPick: (name, fields) => {
+    const file = kvPath(name);
+    const keys = Array.isArray(fields) ? fields.map(String).slice(0, 20) : [];
+    const own = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object').map((x) => { const o = {}; for (const k of keys) if (x[k] !== undefined) o[k] = x[k]; return o; }) : null);
+    let size = 0; try { size = fs.statSync(file).size; } catch { return null; }
+    if (pending.has(file) || !thread() || size <= 512 * 1024) return own(readKV(file, null));
+    return ask({ op: 'pick', file, fields: keys }).catch(() => null);
+  },
   // (round 43, scenesafe) the same read, saying what happened: { state: 'ok' | 'missing' | 'unreadable', value?, from?, prev? }
   getKVStatus: (name) => {
     const file = kvPath(name);

@@ -115,6 +115,17 @@ const J = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
     ok(l2.find((x) => x.id === 'c8')?.title === 'Chat 8', 'a chat whose file changed is read again');
     ok(l2.length === (await store.listChats()).length, `the same chats as the running thread: ${l2.length}`);
   }
+  // (round 73, startfast73) a big list store's rows with a few fields (the Lab's scenes for Projects): on the thread for a
+  // big file, in the main process for a small one; not a list → null (the caller reads it whole)
+  {
+    const big = Array.from({ length: 300 }, (_, i) => ({ id: `s${i}`, name: `Scene ${i}`, updatedAt: i, layers: [{ name: 'main', code: 'x'.repeat(4000) }] }));
+    fs.writeFileSync(path.join(kv, 'three-sketches.json'), JSON.stringify(big));
+    const r = await store.getKVPick('three-sketches', ['id', 'name', 'updatedAt']);
+    ok(Array.isArray(r) && r.length === 300 && r[7].name === 'Scene 7' && r[7].updatedAt === 7 && !('layers' in r[7]), `pick on the thread: ${JSON.stringify(r?.[7])}`);
+    fs.writeFileSync(path.join(kv, 'small-list.json'), JSON.stringify([{ id: 'a', name: 'A', code: 'x' }]));
+    ok(JSON.stringify(await store.getKVPick('small-list', ['id', 'name'])) === '[{"id":"a","name":"A"}]', 'pick of a small store');
+    ok((await store.getKVPick('big', ['id'])) === null, 'not a list: null');
+  }
   // quitting writes what is still pending
   store.saveChat({ id: 'last', agentId: 'a', title: 'last', updatedAt: 1, messages: [] });
   store.flushSync();

@@ -216,7 +216,8 @@ function summarize(profDir, mainProf, traceOut, traceBuf, page, toMain) {
     const mk = ev.find((e) => e.name === 'hearth:ready' && /user_timing/.test(e.cat || ''));
     if (!mk) throw new Error('no hearth:ready mark in the trace');
     const toMs = (tsUs) => toMain((tsUs - mk.ts) / 1000 + page.ready);
-    show('window', S.fromTrace(ev, mk.pid, toMs));
+    const mainTid = ev.find((e) => e.ph === 'M' && e.name === 'thread_name' && e.pid === mk.pid && e.args?.name === 'CrRendererMain')?.tid;
+    show('window', S.fromTrace(ev, mk.pid, toMs, mainTid)); // (its main thread: the Markdown worker's samples are its own)
   } catch (err) { lines.push(`  window profile: ${err.message}`); }
   const text = lines.join('\n');
   try { fs.writeFileSync(path.join(profDir, 'summary.txt'), text); } catch { /* ignore */ }
