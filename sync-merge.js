@@ -86,21 +86,32 @@ function merge3(base, ours, theirs, opts = {}) {
   base = compactProjects(base); ours = compactProjects(ours); theirs = compactProjects(theirs);
   const conflicts = [];
   const b = base === null || base === undefined ? ABSENT : base;
-  const value = m(b, ours, theirs, [], conflicts, { counters: Boolean(opts.counters), twoWay: b === ABSENT });
+  const value = m(b, ours, theirs, [], conflicts, { counters: Boolean(opts.counters), twoWay: b === ABSENT, shared: Boolean(opts.shared), keepAll: Boolean(opts.keepAll) });
   return { value: value === ABSENT ? null : value, conflicts };
 }
 const short = (v) => { if (v === ABSENT) return '(removed)'; const s = typeof v === 'string' ? v : JSON.stringify(v); return s && s.length > 80 ? `${s.slice(0, 77)}…` : s; };
 function m(b, o, t, p, c, opt) {
   if (eq(o, t)) return o;
-  if (b !== ABSENT && eq(b, o)) return t;
+  if (b !== ABSENT && eq(b, o) && !(opt.keepAll && (isObj(o) || Array.isArray(o)) && (isObj(t) || Array.isArray(t)))) return t; // (round 72) keepAll: looked into
   if (b !== ABSENT && eq(b, t)) return o;
   if (o === ABSENT) return t; // removed on one side, changed on the other: keep the change (nothing is lost)
   if (t === ABSENT) return o;
   if (isObj(o) && isObj(t)) return mergeObj(isObj(b) ? b : {}, o, t, p, c, opt, b === ABSENT);
   if (Array.isArray(o) && Array.isArray(t)) return mergeArr(Array.isArray(b) ? b : [], o, t, p, c, opt, b === ABSENT);
+  // (round 72, sync72) text changed on both computers: merged line by line (project notes, a scene's code: different
+  // lines edited on each side both stay). Lines changed two ways: prose (notes…) keeps both versions' lines, anything
+  // else (code) stays a conflict as before.
+  if (typeof o === 'string' && typeof t === 'string') {
+    const k = String(p[p.length - 1] ?? '');
+    const r = mergeText(typeof b === 'string' ? b : null, o, t, PROSE_KEY.test(k));
+    if (r !== null) return r;
+  }
   if (typeof o === 'number' && typeof t === 'number') {
     const k = String(p[p.length - 1] ?? '');
     if (TIME_KEY.test(k)) return Math.max(o, t);
+    // (round 72, sync72) shared: two versions of ONE history whose common base is unknown (a cloud client's copy):
+    // a count can't be split into both sides' additions, so the larger one is kept (never counted twice)
+    if (opt.counters && b === ABSENT && opt.shared) return Math.max(o, t);
     if (opt.counters) { const bn = typeof b === 'number' ? b : 0; return bn + (o - bn) + (t - bn); }
   }
   c.push({ path: p.join('.') || '(whole file)', ours: short(o), theirs: short(t) });
@@ -115,13 +126,68 @@ function mergeObj(b, o, t, p, c, opt, noBase) {
     const ov = has(o) ? o[k] : ABSENT;
     const tv = has(t) ? t[k] : ABSENT;
     // removed on one side, untouched on the other: removed
-    if (ov === ABSENT && bv !== ABSENT && eq(bv, tv)) continue;
-    if (tv === ABSENT && bv !== ABSENT && eq(bv, ov)) continue;
+    // (round 72, sync72) keepAll: the base may be newer than what one side started from (see sync-engine.js rebase), so
+    // "missing on one side" can't be told from "deleted there": nothing is removed (it waits, visible, to be deleted again)
+    if (!opt.keepAll && ov === ABSENT && bv !== ABSENT && eq(bv, tv)) continue;
+    if (!opt.keepAll && tv === ABSENT && bv !== ABSENT && eq(bv, ov)) continue;
     const r = m(bv, ov, tv, [...p, k], c, opt);
     if (r !== ABSENT) out[k] = r;
   }
   return out;
 }
+// ---------- text, line by line (round 72, sync72) ----------
+// Fields written as prose: when the same lines changed two ways, both versions' lines are kept (nothing hidden away).
+const PROSE_KEY = /^(notes?|description|summary|memo|journal|todos?|brief|plan|ideas?)$/i;
+const LINES_MAX = 4e6; // the line table's cells (lines × lines): bigger texts stay whole-value as before
+// the lines of a matched in b (longest common subsequence): m[i] = j or -1
+function lcs(a, b) {
+  const m = new Array(a.length).fill(-1);
+  let s = 0; while (s < a.length && s < b.length && a[s] === b[s]) { m[s] = s; s += 1; }
+  let ea = a.length; let eb = b.length;
+  while (ea > s && eb > s && a[ea - 1] === b[eb - 1]) { ea -= 1; eb -= 1; m[ea] = eb; }
+  const n = ea - s; const k = eb - s;
+  if (!n || !k) return m;
+  if (n * k > LINES_MAX) return null;
+  const T = Array.from({ length: n + 1 }, () => new Uint32Array(k + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = k - 1; j >= 0; j--) T[i][j] = a[s + i] === b[s + j] ? T[i + 1][j + 1] + 1 : Math.max(T[i + 1][j], T[i][j + 1]);
+  for (let i = 0, j = 0; i < n && j < k;) {
+    if (a[s + i] === b[s + j]) { m[s + i] = s + j; i += 1; j += 1; } else if (T[i + 1][j] >= T[i][j + 1]) i += 1; else j += 1;
+  }
+  return m;
+}
+const same = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
+// base null: two versions of one text with no known common version (a cloud client's copy, a first join): their
+// common lines once, each side's own lines in place (prose only). → the merged text, or null (a real conflict)
+function mergeText(base, o, t, prose) {
+  if (base === null) {
+    if (!prose) return null;
+    const A = o.split('\n'); const B = t.split('\n');
+    const mm = lcs(A, B);
+    if (!mm) return `${o}\n${t}`;
+    const out = []; let j = 0;
+    for (let i = 0; i < A.length; i++) { if (mm[i] < 0) { out.push(A[i]); continue; } while (j < mm[i]) out.push(B[j++]); out.push(A[i]); j += 1; }
+    while (j < B.length) out.push(B[j++]);
+    return out.join('\n');
+  }
+  if (!base.includes('\n') && !o.includes('\n') && !t.includes('\n')) return prose ? `${o}\n${t}` : null;
+  const Bs = base.split('\n'); const O = o.split('\n'); const Ts = t.split('\n');
+  const mo = lcs(Bs, O); const mt = lcs(Bs, Ts);
+  if (!mo || !mt) return prose ? `${o}\n${t}` : null;
+  const out = []; let i = 0; let j = 0; let k = 0;
+  while (i < Bs.length || j < O.length || k < Ts.length) {
+    if (i < Bs.length && mo[i] === j && mt[i] === k) { out.push(Bs[i]); i += 1; j += 1; k += 1; continue; }
+    let i2 = i; while (i2 < Bs.length && !(mo[i2] >= j && mt[i2] >= k)) i2 += 1; // the next line all three still share
+    const j2 = i2 < Bs.length ? mo[i2] : O.length; const k2 = i2 < Bs.length ? mt[i2] : Ts.length;
+    const rb = Bs.slice(i, i2); const ro = O.slice(j, j2); const rt = Ts.slice(k, k2);
+    if (same(ro, rb)) out.push(...rt);
+    else if (same(rt, rb) || same(ro, rt)) out.push(...ro);
+    else if (prose) out.push(...ro, ...rt.filter((x) => !ro.includes(x)));
+    else return null;
+    i = i2; j = j2; k = k2;
+  }
+  return out.join('\n');
+}
+
 // an item's identity in a list: its id, else (chat messages) role + time
 function keyOf(x) {
   if (isObj(x)) {
@@ -144,14 +210,14 @@ function mergeArr(b, o, t, p, c, opt, noBase) {
     for (const [k, ov] of O) {
       const inB = B.has(k); const inT = T.has(k);
       if (inT) out.push([k, m(inB ? B.get(k) : ABSENT, ov, T.get(k), [...p, k.replace(/^\w+:/, '')], c, opt)]);
-      else if (inB && eq(B.get(k), ov)) continue; // removed on their side
+      else if (inB && eq(B.get(k), ov) && !opt.keepAll) continue; // removed on their side
       else out.push([k, ov]); // added here, or changed here while removed there (keep the change)
     }
     // their new items go after the item they followed
     let after = null;
     for (const [k, tv] of T) {
       if (O.has(k)) { after = k; continue; }
-      if (B.has(k) && eq(B.get(k), tv)) continue; // removed on our side
+      if (B.has(k) && eq(B.get(k), tv) && !opt.keepAll) continue; // removed on our side
       let i = after === null ? -1 : out.findIndex(([kk]) => kk === after);
       while (i + 1 < out.length && !B.has(out[i + 1][0]) && !T.has(out[i + 1][0])) i += 1; // after our own new items there
       out.splice(i + 1, 0, [k, tv]);
@@ -373,7 +439,7 @@ function proposeCloud(list) {
 module.exports = {
   parseJson, watchIgnored,
   ignoredName, localOnly, dirLocalOnly, isJsonRel, isWorkspaceRel, HEAVY_DIRS, isCounterRel, MEDIA,
-  eq, clone, merge3, keyOf,
+  eq, clone, merge3, keyOf, mergeText, PROSE_KEY,
   toCloud, fromCloud, strToCloud, strFromCloud, withExt, isWinPath,
   portableConfig, applyPortable, stripMachine,
   detectClouds, proposeCloud,
