@@ -43,6 +43,11 @@ const ProjectsHome = (() => {
     S.root = el('div', { class: 'pj-home' }, head, el('div', { class: 'pj-home-find', hidden: true }, chips, results), S.body);
     body.append(S.root);
     S.search = ProjectsSearch.view({ input, list: results, chips, empty: '' });
+    // (round 75, projbundle75) a .hearthproject dropped on Projects is imported (the check card comes first)
+    const bundleDrag = (e) => [...(e.dataTransfer?.items || [])].some((x) => x.kind === 'file') && e.dataTransfer.types?.includes('Files');
+    S.root.addEventListener('dragover', (e) => { if (!bundleDrag(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; S.root.classList.add('pb-drop'); });
+    S.root.addEventListener('dragleave', (e) => { if (!S.root.contains(e.relatedTarget)) S.root.classList.remove('pb-drop'); });
+    S.root.addEventListener('drop', (e) => { S.root.classList.remove('pb-drop'); const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length) return; e.preventDefault(); if (!fs.some((f) => /\.hearthproject$/i.test(f.name))) { toast('Drop a .hearthproject file here to import a project', { timeout: 3500 }); return; } P.bundle((B) => B.dropFiles(fs)); });
     input.addEventListener('input', () => { const on = Boolean(input.value.trim()); S.root.querySelector('.pj-home-find').hidden = !on; S.body.hidden = on; });
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input')); } });
     P.onChange(e => { if(e.why==='notes'&&e.id===drawn&&S.body.querySelector('.pj-notes')?.value===e.project.notes)return;deskSig=null;S.stale = true; if (visible()) paintSoon(); });
@@ -154,6 +159,7 @@ const ProjectsHome = (() => {
   function moreMenu() {
     const a = H.claudeAgent?.();
     return [
+      { label: '⇩ Import project…', hint: 'a .hearthproject file', action: () => P.bundle((B) => B.importProject()) }, // (round 75, projbundle75) a new project from one file (or drop the file on Projects)
       { label: '✦ Generate animated Three.js frontpage…', action: () => ProjectWorkspace.frontpage() },
       { label: 'Bring Three.js chats into Projects', action: () => ProjectWorkspace.importScenes() },
       { label: `${store.get('projectFrontpage.enabled',false)?'✓ ':''}Animated frontpage`, action: () => { store.set('projectFrontpage.enabled',!store.get('projectFrontpage.enabled',false));paint(); } },

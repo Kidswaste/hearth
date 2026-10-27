@@ -539,6 +539,9 @@ const Projects = (() => {
       { label: 'Status', items: () => Object.entries(C.STATUS).map(([k, l]) => ({ label: l, checked: p.status === k, action: () => setStatus(p, k) })) },
       { label: 'Look', items: () => [{ label: 'Next color', action: () => nextColor(p) }, { label: 'Next mark', action: () => nextMark(p) }] },
       { label: 'Notes…', action: () => notesPrompt(p) },
+      // (round 75, projbundle75) the project as one file / a full copy (projbundle.js, loaded on the first click)
+      { label: '⇪ Export project…', hint: 'one .hearthproject file', action: () => bundle((B) => B.exportProject(p)) },
+      { label: '⧉ Duplicate project', action: () => bundle((B) => B.duplicateProject(p)) },
       '-',
       { label: 'Delete the project…', danger: true, action: () => removeProject(p) },
     ].filter(Boolean);
@@ -569,6 +572,8 @@ const Projects = (() => {
     );
     return out;
   }
+  // (round 75, projbundle75) Export / Import / Duplicate live in their own lazy group: loaded on first use
+  const bundle = (fn) => (window.Lazy ? window.Lazy.load('projbundle') : Promise.resolve()).then(() => fn(ProjBundle)).catch((err) => toast(calmError(err), { type: 'error', raw: err }));
   async function renamePrompt(p) { const n = await Modal.prompt('Rename the project', { value: p.name }); if (n?.trim()) rename(p, n.trim()); }
   async function notesPrompt(p) { const n = await Modal.prompt(`Notes · ${p.name}`, { value: p.notes, label: 'Anything to remember about it (synced with your other computer)', multiline: true }); if (n != null) setNotes(p, n); }
 
@@ -576,7 +581,7 @@ const Projects = (() => {
     ready: () => ready, isLoaded: () => loaded, all, live, get, find, ofItem, projectOfChat, here, hereChat, currentScene, currentBoard,
     create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, fromMake, syncMakes, hidesMake,
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
-    openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt,
+    openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt, bundle,
     grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu, sketchGroups, sketchBrowse, sketchMenu,
     Src, warm, lookFor, look: () => look, coverOf, thumbOf, timeOf, nameOf, lastOf, gone, fileUrl, forget, onChange, changed, core: C,
     _data: () => data,

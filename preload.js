@@ -190,6 +190,8 @@ contextBridge.exposeInMainWorld('hub', {
   publish: { analyze: call('publish:analyze') },
   // (round 28) packs (packsmain.js): a scene and everything it uses as one .hearthpack; peek before anything is added
   packs: { plan: call('packs:plan'), write: call('packs:write'), peek: call('packs:peek'), unpack: call('packs:unpack'), pending: call('packs:pending'), onOpen: on('packs:open') },
+  // (round 75, projbundle75) a whole project as one .hearthproject (projbundlemain.js): export / check / unpack, streamed with progress + cancel
+  projbundle: { sizes: call('projbundle:sizes'), export: call('projbundle:export'), peek: call('projbundle:peek'), unpack: call('projbundle:unpack'), discard: call('projbundle:discard'), cancel: call('projbundle:cancel'), onProgress: on('projbundle:progress') },
   // (round 26) hooks (hooksmain.js): the folders a hook watches, and the new files in them
   hooks: { watch: call('hooks:watch'), onFile: on('hooks:file') },
   // (round 19, reach) paths from the other computer → this one's; open / reveal / preview what a chat made (reachmain.js)

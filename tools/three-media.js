@@ -3440,6 +3440,8 @@ const ThreeMedia = (() => {
       get isVideo() { return st.video; },
       // the scene's own timeline (round 10): a scene with no song still has one (see loadClock)
       loadClock: (o) => loadClock(o), setClockLength: (s) => setClockLength(s), carry: (from, to) => carry(from, to), copyMap: (from, to) => copyMap(from, to),
+      // (round 75, projbundle75) a scene's cues / a song's beat map that came with a .hearthproject: kept only where there's none
+      adoptMap: async (key, m) => { allMaps ||= (await window.hub.kvGet('three-beatmaps', {})) || {}; if (!key || !m || typeof m !== 'object' || allMaps[key]) return false; allMaps[key] = JSON.parse(JSON.stringify(m)); saveMaps(); return true; },
       get clock() { return st.clock ? { seconds: D(), fps: clockFps(), frame: clockFrame(now()), frames: Math.round(D() * clockFps()) } : null; },
       get isClock() { return Boolean(st.clock); },
       get loop() { return region ? { ...region } : null; },
