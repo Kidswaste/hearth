@@ -103,10 +103,17 @@ const Usage = (() => {
   const idleDecorate = () => { if (window.requestIdleCallback) requestIdleCallback(() => { decorateTimer = 0; decorate(); }, { timeout: 2000 }); else { decorateTimer = 0; decorate(); } };
   function scheduleDecorate() { if (decorateTimer) return; decorateTimer = setTimeout(idleDecorate, 600); }
   const trackedDays = () => (data ? (Date.now() - data.since) / DAY : 0);
+  // (round 73, chatsteady73) worked out again only after new uses, at most every 30 s (a year of use: 4,000 controls
+  // sorted on every pass, ≈ 2.5 ms after every click and each time something changed on screen)
+  let tiered = null; let usesSeen = -1; let tieredAt = 0;
   function tiers() {
+    const uses = ops.length + (data.days?.[today()] || 0);
+    if (tiered && (uses === usesSeen || performance.now() - tieredAt < 30000)) return tiered; // (your top 12 barely moves in 30 s)
+    tieredAt = performance.now();
     const counts = Object.values(data.items).map((x) => x.n).filter((n) => n > 0).sort((a, b) => b - a);
     const hotAt = Math.max(8, counts[Math.min(counts.length - 1, 11)] || 8); // roughly your top 12, at least 8 uses
-    return { hotAt, warmAt: 3 };
+    usesSeen = uses; tiered = { hotAt, warmAt: 3 };
+    return tiered;
   }
   // (round 35, streamrender) a control's name is worked out once per button (again only when its words change): a long
   // chat drawn whole has thousands of message buttons, and this pass (after changes on screen: ≈ every 0.8 s while a

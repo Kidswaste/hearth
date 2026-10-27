@@ -475,13 +475,30 @@ function applyOps(root, ops) {
   }
   return root;
 }
+// the store as last merged, kept while nobody else changed it (the same save on its way, or the file as that save left
+// it): a year-sized store isn't read and parsed again every minute (≈ 40 ms on this thread). Not while sync guards
+// writes (its merge can change what is written).
+let mergeMemo = null;
 function mergeKV(name, ops) {
   const file = kvPath(name);
   if (SS.guardedName(file)) return { ok: false, state: 'guarded' }; // (the Lab's scenes: whole saves with their guard)
-  const r = readKVStatus(file);
-  if (r.state !== 'ok' || !r.value || typeof r.value !== 'object' || Array.isArray(r.value)) return { ok: false, state: r.state };
-  const value = applyOps(r.value, ops);
-  writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json') });
+  let value = null;
+  const m = !beforeWrite && mergeMemo?.file === file ? mergeMemo : null;
+  if (m) {
+    const p = pending.get(file);
+    let same = p ? p.value === m.value : false;
+    if (!p && m.size >= 0) { try { const st = fs.statSync(file); same = st.size === m.size && st.mtimeMs === m.mtimeMs; } catch { same = false; } }
+    if (same) value = m.value;
+  }
+  if (!value) {
+    const r = readKVStatus(file);
+    if (r.state !== 'ok' || !r.value || typeof r.value !== 'object' || Array.isArray(r.value)) { mergeMemo = null; return { ok: false, state: r.state }; }
+    value = r.value;
+  }
+  applyOps(value, ops);
+  const w = writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json') });
+  const memo = mergeMemo = beforeWrite ? null : { file, value, size: -1, mtimeMs: -1 };
+  if (memo) Promise.resolve(w).then(() => { if (mergeMemo === memo && !pending.has(file)) { try { const st = fs.statSync(file); memo.size = st.size; memo.mtimeMs = st.mtimeMs; } catch { mergeMemo = null; } } }, () => { if (mergeMemo === memo) mergeMemo = null; });
   return { ok: true };
 }
 

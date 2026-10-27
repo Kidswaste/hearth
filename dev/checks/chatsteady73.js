@@ -16,8 +16,9 @@ const until = async (fn, n = 200) => { for (let i = 0; i < n; i++) { try { const
 const cdp = (method, params) => Promise.race([smoke({ cdp: method, params }), wait(15000)]);
 const r0 = (x) => Math.round(x);
 const out = { fixture: {}, actions: {}, problems: [] };
-const BUDGET = Object.assign({ handler: 16, busyAfter: 40, usageSave: 5, keyHandler: 16, openHandler: 120 }, window.CS_BUDGET || {});
-// (handler: the slowest event handler of a click / key, ms; a list row opens a long chat: openHandler · busyAfter: the window's CPU in the 3.5 s after a click beyond
+const BUDGET = Object.assign({ handler: 16, busyAfter: 40, usageSave: 5, keyHandler: 16, openHandler: 120, typingAfter: 90 }, window.CS_BUDGET || {});
+// (handler: the slowest event handler of a click / key, ms; a list row opens a long chat: openHandler · typingAfter: 30
+// keys, ≈ 3 ms each · busyAfter: the window's CPU in the 3.5 s after a click beyond
 // the click's own events, ms · usageSave: the window's own time to save the usage store, ms)
 const evs = [];
 try { new PerformanceObserver((l) => { for (const e of l.getEntries()) evs.push({ name: e.name, t: e.startTime, h: e.processingEnd - e.startTime, p: e.processingEnd - e.processingStart, d: e.duration }); }).observe({ type: 'event', durationThreshold: 16, buffered: false }); } catch { out.problems.push('no Event Timing'); }
@@ -111,7 +112,7 @@ try {
 const fails = [];
 for (const [name, a] of Object.entries(out.actions)) {
   if (a.handler > (/list row/.test(name) ? BUDGET.openHandler : /typing|keys|Escape|Alt/.test(name) ? BUDGET.keyHandler : BUDGET.handler)) fails.push(`${name}: slowest handler ${a.handler} ms (${a.slowEvents.join(', ')})`);
-  if (a.busyAfter > BUDGET.busyAfter && !/list row|wheel/.test(name)) fails.push(`${name}: ${a.busyAfter} ms of window CPU after it (${(a.top || []).join(' · ')})`);
+  if (a.busyAfter > (/typing/.test(name) ? BUDGET.typingAfter : BUDGET.busyAfter) && !/list row|wheel/.test(name)) fails.push(`${name}: ${a.busyAfter} ms of window CPU after it (${(a.top || []).join(' · ')})`);
 }
 if (out.usageSave.windowMs > BUDGET.usageSave) fails.push(`the usage save cost the window ${out.usageSave.windowMs} ms`);
 out.budget = BUDGET;

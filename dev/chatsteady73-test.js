@@ -75,8 +75,17 @@ const J = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
   const t0 = process.hrtime.bigint(); store.mergeKV('ui-usage', minute); const ms = Number(process.hrtime.bigint() - t0) / 1e6;
   await store.idle();
   ok(J(file).days.today === 60 && J(file).items['Area 1 › Button 1'].n === 3, 'the big store merged');
-  console.log(JSON.stringify({ storeKB: Math.round(size / 1024), mergeMainMs: Math.round(ms * 10) / 10, opsSent: minute.length, opsJsonKB: Math.round(JSON.stringify(minute).length / 102.4) / 10 }));
+  // the next minute: the store as last merged is kept (nobody else changed it), not read and parsed again
+  const t1 = process.hrtime.bigint(); store.mergeKV('ui-usage', minute); const ms2 = Number(process.hrtime.bigint() - t1) / 1e6;
+  await store.idle();
+  ok(J(file).days.today === 120 && J(file).items['Area 1 › Button 1'].n === 4, 'the next merge builds on the last one');
+  // … and a change by someone else in between is read (not overwritten)
+  const o2 = J(file); o2.days.today += 1000; fs.writeFileSync(file, JSON.stringify(o2));
+  store.mergeKV('ui-usage', [['inc', ['days', 'today'], 1]]); await store.idle();
+  ok(J(file).days.today === 1121, `another writer's change after a merge is kept: ${J(file).days.today}`);
+  console.log(JSON.stringify({ storeKB: Math.round(size / 1024), mergeMainMs: Math.round(ms * 10) / 10, nextMergeMainMs: Math.round(ms2 * 10) / 10, opsSent: minute.length, opsJsonKB: Math.round(JSON.stringify(minute).length / 102.4) / 10 }));
   ok(ms < 150, `merging a minute of clicks into the year-sized store took ${ms} ms on the main side`);
+  ok(ms2 < 15, `the next minute's merge took ${ms2} ms on the main side`);
   console.log(`${failures ? 'FAIL' : 'PASS'} chatsteady73-test: ${passes} passed, ${failures} failed`);
   store.flushSync?.();
   process.exit(failures ? 1 : 0);
