@@ -63,6 +63,7 @@ const ParkJam = (() => {
     for (let i = 0; i < 300; i++) {
       const d = document.querySelector('.wb-sound-desk'), fresh = mounts > before || here();
       if (h && d && fresh && (d.querySelector('.wb-instrument-card') && (!A().current() || d.querySelector('.wb-live-transport')) || d.querySelector(':scope > .wb-note'))) break;
+      if (i % 40 === 39 && !d && typeof CreativePlayground !== 'undefined') CreativePlayground.openFeature('vst'); // (round 71, studiohours71) a cold start: the Playground's own first mount showed its home over our openFeature; ask again
       await wait(50);
     }
     if (!A().instruments().length) throw Error('Set up live audio and add Serum 2 or Vital in the Sound desk first (Creative Playground → Serum 2 / Vital).');

@@ -71,6 +71,18 @@ const WeekNudge = (() => {
     return fold;
   }
 
+  // (round 71, studiohours71) Sunday from 18:00 Paris: at most one kind "You made music 3 times this week 🎛" (never
+  // after a week with none). Checked on the same two moments (Hearth opening, coming to the front); its group loads only
+  // on a Sunday evening that hasn't had its note yet. No timer.
+  function studioSunday() {
+    try {
+      const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23' }).formatToParts(new Date(now())).map((x) => [x.type, x.value]));
+      if (p.weekday !== 'Sun' || +p.hour % 24 < 18 || store.get('studiohours.sunday', '') === `${p.year}-${p.month}-${p.day}`) return;
+      Lazy.load('studiohours').then(() => StudioHours.sunday()).catch(() => {});
+    } catch { /* a convenience */ }
+  }
+  addEventListener('focus', studioSunday);
+  queueMicrotask(studioSunday);
   document.addEventListener('hearth:quests', () => queueMicrotask(arm));
   addEventListener('focus', sunday);
   queueMicrotask(() => { if (J().status === 'ok') { arm(); sunday(); } });
