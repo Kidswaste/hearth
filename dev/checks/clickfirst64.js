@@ -46,8 +46,9 @@ const T = window.hub.shows?.test ? await window.hub.shows.test({ dev: window.SMO
 // ---------- quests ----------
 await safe('quests: fresh', async () => {
   step('fresh profile: no journal, no ✦ chip yet', (await hub.kvGet('quest-journal', null, { status: true }))?.state === 'missing' && !vis(chip()));
-  const rail = document.querySelector('#rail .agent-btn[data-id="tool:quests"]');
-  step('Sidequest Studio is in the rail', vis(rail), rail?.title);
+  // (round 74, checkhealth74) since Codex's Projects / Life spaces the Studio is the rail's Life
+  const rail = document.querySelector('#rail .agent-btn[data-id="tool:quests"]') || document.querySelector('#agent-buttons .space-button[data-space="life"]');
+  step('Sidequest Studio is in the rail (Life)', vis(rail), rail?.title);
   rail.click();
   await until(() => typeof QuestJournal !== 'undefined' && QuestJournal.ready?.(), 20000);
   // (questfix65) Codex's Quests / Map / Progress / Desk rail replaced the top bar's "My week ▾": clickfirst's quest features

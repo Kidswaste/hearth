@@ -201,7 +201,9 @@ try {
   // ---- 10. app downloads join the library; small index ----
   Apps.emit('download', { id: 'x1', app: 'meshy', appName: 'Meshy', name: 'plain_triangle.glb', path: `${FIX}/plain_triangle.glb`, state: 'completed' });
   ok(await until(() => Assets.all().find((x) => /plain_triangle/.test(x.p))?.src === 'download', 4000), 'a finished app download is indexed (from Meshy)');
-  await wait(900);
+  // (round 74, checkhealth74) the index is saved 600 ms after a change and kvSet lands a moment later: on a loaded machine
+  // a fixed 900 ms read it one save early (9 of 10); wait for the save itself (up to 4 s), the size is what's checked
+  await until(async () => Object.keys((await hub.kvGet('assets', null))?.items || {}).length === Assets.all().length, 4000);
   const kv = await hub.kvGet('assets', null);
   out.kvBytes = JSON.stringify(kv).length;
   ok(kv && Object.keys(kv.items).length === Assets.all().length && out.kvBytes < 12000, `the index in kv is small (${out.kvBytes} bytes for ${Object.keys(kv?.items || {}).length} assets)`);

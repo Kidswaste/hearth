@@ -54,11 +54,13 @@ await shot('customise-areas');
 close();
 
 // ---------- Alt reveal ----------
-const add = document.getElementById('add-btn');
+// (round 74, checkhealth74) the Projects / Life spaces hide the rail's ＋ Add an agent for good (＋ Add shortcut in the
+// rail, + Assistant above the chat, the rail ⋯ › Add an agent or website): the rail's next Alt-tucked button stands in
+const add = document.querySelector('.hearth-three-spaces') ? document.getElementById('palette-btn') : document.getElementById('add-btn');
 check('＋ add agent tucked away', !vis(add));
 key('keydown', 'Alt', { altKey: true }); await wait(260);
 check('holding Alt reveals (class)', document.documentElement.classList.contains('reveal-alt'));
-check('holding Alt shows ＋ in place', vis(add));
+check('holding Alt shows ＋ (⌕ on the spaces rail) in place', vis(add));
 await shot('alt-chat');
 key('keyup', 'Alt'); await wait(80);
 check('letting go of Alt tucks it away', !document.documentElement.classList.contains('reveal-alt') && !vis(add));
@@ -135,7 +137,7 @@ document.querySelectorAll('#toasts .toast').forEach((t) => t.remove());
 ctxAt(document.querySelector('#rail .spacer'), 10, 10); await wait(150);
 check('right-click the rail', menuLabels().some((l) => /Panels/.test(l)), menuLabels());
 close();
-ctxAt(document.querySelector('#agent-buttons .agent-btn'), 10, 10); await wait(150);
+ctxAt(document.querySelector('#agent-buttons .agent-btn') || document.querySelector('.workspace-switcher .agent-btn'), 10, 10); await wait(150); // (round 74) the AIs sit in the bar above the chat since the Projects / Life spaces
 check('right-click an agent: Recent chats › and Move ›', menuLabels().some((l) => /Move/.test(l)), menuLabels());
 close();
 // a long menu filters (type a letter)
@@ -234,7 +236,7 @@ close();
 const frame = [...L.querySelectorAll('.three-preview iframe')].find(vis);
 if (frame) {
   const r = frame.getBoundingClientRect();
-  const x = Math.round(r.left + r.width / 2); const y = Math.round(r.top + Math.min(80, r.height / 3));
+  const x = Math.round(r.left + r.width / 2); const y = Math.round(r.top + r.height / 2); // (round 74) the middle: the stage pill (Freeze · sizes · More…) now covers the top 80 px
   await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x, y, button: 'right', clickCount: 1 } });
   await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x, y, button: 'right', clickCount: 1 } });
   await until(() => menuOpen(), 2000);
@@ -254,6 +256,7 @@ ctxAt(FH.querySelector('.tabbar'), 10, 6); await wait(150);
 check('right-click a tab bar lists every tab', menuLabels().filter((l) => !/Customise/.test(l)).length === tabs.length, menuLabels());
 await shot('forge-tabs');
 close();
+activate(claude.id); await wait(400); // (round 74) the chats button is the chat space's (a tool's space hides it)
 const panelBtn = document.getElementById('panel-btn');
 ctxAt(panelBtn, 6, 6); await wait(150);
 const tuckRow = [...document.querySelectorAll('#menu > button')].find((b) => /Customise this/.test(b.textContent));

@@ -57,6 +57,7 @@ const n = out.numbers;
 
 // ---------- the history is there ----------
 const claude = H.claudeAgent();
+activate(claude.id); await wait(300); // (round 74, checkhealth74) Hearth starts on the Projects space now: the chats list is the chat space's
 if (!H.panelOpen) { H.panelOpen = true; applyLayout(); }
 await until(() => (H.chats || []).length >= 3000 && rowsNow().length > 20, 30000);
 out.chats = H.chats.length;

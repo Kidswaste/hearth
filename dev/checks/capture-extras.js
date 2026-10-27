@@ -13,15 +13,10 @@ const clickAt = async (n) => { const r = n.getBoundingClientRect(); const x = r.
 // 1) tape: switch screens with real clicks, type in the chat box, then stop → a tour with those steps
 activate(agentId); await sleep(300);
 ok(/Taping/.test(await run('/tour tape')), '/tour tape starts');
-// (round 74, checkhealth74) since the Projects / Life spaces the moodboard is reached from the rail's Projects, then
-// the Projects bar's Moodboard (both real clicks); the old rail button is still used when there is one
-let toolBtn = [...document.querySelectorAll('#agent-buttons .agent-btn')].find((b) => b.dataset.id === 'tool:board') || document.querySelector('[data-id="tool:board"]');
-const spaceBtn = !toolBtn && document.querySelector('#agent-buttons .space-button[data-space="projects"]');
-if (spaceBtn) {
-  await clickAt(spaceBtn);
-  for (let i = 0; i < 60 && !toolBtn; i++) { await sleep(100); toolBtn = [...document.querySelectorAll('.workspace-switcher [data-surface="tool:board"]')].find((b) => b.getClientRects().length); }
-  await sleep(300);
-}
+// (round 74, checkhealth74) since the Projects / Life spaces the rail switches spaces: a real click on its Projects (the
+// Projects home) is the screen change taped; the old rail button for the board is still used when there is one
+const toolBtn = [...document.querySelectorAll('#agent-buttons .agent-btn, button[data-id="tool:board"]')].find((b) => b.dataset.id === 'tool:board' && b.getClientRects().length && b.getBoundingClientRect().width > 0) // (a hidden one was clicked through to the page)
+  || document.querySelector('#agent-buttons .space-button[data-space="projects"]');
 if (toolBtn) await clickAt(toolBtn);
 await sleep(600);
 activate(agentId); await sleep(500);
@@ -31,7 +26,7 @@ for (const ch of '/help') { ta.value += ch; ta.dispatchEvent(new Event('input', 
 const text = CaptureTour.tape(false);
 document.querySelector('dialog.cap-tour-edit')?.close();
 out.taped = text;
-ok(/(open board|tool:board|click "Moodboard")/.test(text) && !/click \[data-id="tool:board"\]\nopen board/.test(text) && /type "\/help"/.test(text) && /open Claude/i.test(text), 'the tape has the screens and the typing');
+ok(/(open board|tool:board|click "Projects")/.test(text) && !/click \[data-id="tool:board"\]\nopen board/.test(text) && /type "\/help"/.test(text) && /open Claude/i.test(text), 'the tape has the screens and the typing');
 ok(!CaptureTour.lint(text).length, 'the taped tour lints clean');
 ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true }));
 

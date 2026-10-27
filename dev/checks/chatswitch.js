@@ -128,8 +128,18 @@ async function switchTo(key, label, opts = {}) {
   await wait(700); // idle slices after the switch count in its stretch
   return r;
 }
+// (round 74, checkhealth74) since the Projects / Life spaces (Codex, Oct 19) the rail holds spaces and shortcuts: an AI is
+// in the bar above the chat (or the rail's Chats from a tool), a tool is one click away through a rail shortcut (the
+// owner's ＋ Add to the rail › Tool · …, made below for the Lab)
+function railBtnFor(id) {
+  const shown = (n) => n && n.getClientRects().length ? n : null;
+  const direct = shown(document.querySelector(`#agent-buttons .agent-btn[data-id="${CSS.escape(id)}"]`)) || shown(document.querySelector(`.workspace-switcher .agent-btn[data-id="${CSS.escape(id)}"]`));
+  if (direct) return direct;
+  if (id.startsWith('tool:')) return [...document.querySelectorAll('#agent-buttons .space-button[data-shortcut]')].find((b) => (H.settings().workspaceShortcuts || []).some((x) => x.id === b.dataset.shortcut && x.type === 'tool' && `tool:${x.target}` === id)) || null;
+  return shown(document.querySelector('#agent-buttons .space-chats'));
+}
 async function railTo(id, label) {
-  const b = document.querySelector(`#agent-buttons .agent-btn[data-id="${CSS.escape(id)}"]`);
+  const b = railBtnFor(id);
   if (!b) { fail(`no rail button for ${id}`); return null; }
   const [x, y] = mid(b);
   await mouse('mouseMoved', x, y); await wait(120);
@@ -145,6 +155,11 @@ async function railTo(id, label) {
 
 // a first click on the list (its first use wakes a few things up: tips, glints), then quiet
 { const r = rowOf(C.start.id); r?.scrollIntoView({ block: 'nearest' }); await settle(); if (r) { const [x, y] = mid(r); await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y); } await wait(800); await quiet(6000); }
+if (window.WorkspaceNav && !railBtnFor('tool:three')) { // (round 74) before the trace: the Lab as a rail shortcut, as the owner adds one
+  const xs = Array.isArray(H.settings().workspaceShortcuts) ? H.settings().workspaceShortcuts : [{ id: 'forgeheart', name: 'Forgeheart', icon: 'ship', type: 'tool', target: 'forgeheart' }];
+  H.config.settings = { ...H.config.settings, workspaceShortcuts: [...xs, { id: 'pin-lab-cs', name: 'Lab', type: 'tool', target: 'three', icon: 'spark', color: '#d79bff' }] };
+  WorkspaceNav.render(); await settle();
+}
 await cdp('HeapProfiler.collectGarbage');
 const heap0 = performance.memory?.usedJSHeapSize || 0;
 await smoke({ trace: 'start', detail: true });

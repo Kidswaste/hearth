@@ -138,11 +138,12 @@ const railTools = [...document.querySelectorAll('#agent-buttons .agent-btn, #age
 const noIcon = railTools.filter((b) => !b.querySelector('svg')).map((b) => b.title || b.textContent.trim());
 step('every agent and tool in the rail has a drawn icon', !noIcon.length, noIcon);
 // (round 53) the Creative Playground waits in the rail ⋯ too (Ctrl/⌘+K and /playground open it; ⋯ › Put tools back keeps it in)
-// (round 74, checkhealth74) since the Projects / Life spaces it is one click from the Projects space's bar (Creative board)
+// (round 74, checkhealth74) since the Projects / Life spaces it is one click from the Projects space's bar (Creative board,
+// over any of its tools)
 let playgroundBar = false;
 if (!moreRows.some((t) => /Creative Playground/.test(t)) && window.WorkspaceNav) {
   const back = H.activeId;
-  await WorkspaceNav.open('projects'); await wait(400);
+  activate('tool:board'); await wait(500); // a tool of the Projects space (its home hides the bar)
   playgroundBar = vis(document.querySelector('.workspace-switcher [data-surface="tool:creative"]'));
   activate(back); await wait(300);
 }

@@ -53,7 +53,9 @@ const Tools = (() => {
     save({ hidden: [...hidden] });
   }
 
-  const dockedAgent = (toolId) => window.ProjectWorkspace?.agentFor?.(toolId) || H.agents().find((a) => a.dock === toolId && a.mode === 'native');
+  // (round 74, checkhealth74) a project's own director only once Projects is in (no project is open before): reading the
+  // lazy global earlier asked for the whole group while the first screen was being built
+  const dockedAgent = (toolId) => (projectsIn() ? window.ProjectWorkspace?.agentFor?.(toolId) : null) || H.agents().find((a) => a.dock === toolId && a.mode === 'native');
 
   function createSurface(tool) {
     const host = el('section', { class: 'surface tool-surface', dataset: { id: `tool:${tool.id}` } });
