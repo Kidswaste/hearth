@@ -119,6 +119,11 @@ const LabBoot = (() => {
       if (labUp() || window.ProjectWorkspace?.current?.() || typeof Tools === 'undefined') return;
       Tools.warm('tool:three'); st.mounted = true; // (asked: a stand-in tool hands over to the Lab a moment later)
       for (const g of ['board', 'creative']) window.Lazy?.load?.(g).catch(() => {});
+      // never shown in 15 minutes (no project opened, the Lab never visited): its page is let go, as this warm page
+      // would have been (the Lab starts it again when it's shown)
+      let seen = false; const look = (e) => { if (e.detail?.surfaceId === 'tool:three') seen = true; };
+      document.addEventListener('hearth:activate', look);
+      setTimeout(() => { document.removeEventListener('hearth:activate', look); if (!seen && !window.ProjectWorkspace?.current?.() && H.surfaceIdFor?.(H.activeId) !== 'tool:three') window.ThreeLab?.workspace?.close?.().then(() => { st.released = true; }, () => {}); }, LET_GO_MS);
     }));
   }
 

@@ -1163,8 +1163,9 @@ const Native = (() => {
     const stale = () => { if (v.drawSeq === seq) return false; v.drawing = Math.max(0, v.drawing - 1); return true; };
     const chatId = H.activeChat[agentId];
     // (round 73, coldopen73) a draw that keeps the place while a fresh draw of the same chat hasn't placed it yet (its
-    // frame is still to come: a project opening draws its chat twice in a row) has no place to keep: kept, it read the
-    // list's size (a forced layout of the whole long chat, ≈ 250 ms) and kept its top, where older messages woke
+    // frame is still to come, or the list was out of sight then: a project's chat drawn in a hidden view at the start)
+    // has no place to keep: kept, it read the list's size (a forced layout of the whole long chat, ≈ 250 ms) and kept
+    // its top, where older messages woke and the chat stayed in the middle
     if (keepScroll && chatId && v.placeDue === chatId) keepScroll = false;
     // (round 45, chatswitch) a chat in memory draws right away (no turn waited: the click's own frame shows it)
     let chat = chatId ? (chats.has(chatId) ? touchChat(chatId) : await loadChat(chatId)) : null;
@@ -1200,10 +1201,7 @@ const Native = (() => {
     if (!keepScroll) v.placeDue = chatId || null; // (round 73) placed at this draw's frame (below)
     if (v.enterNext) { v.enterNext = false; enterAnim(agentId); }
     // (round 45) read only when kept: reading the list's size here laid out the chat before it changed (twice per switch)
-    // (round 73, coldopen73) a list that follows its end is at its end (only your own scrolling up stops that): its size
-    // isn't read (a forced layout of the whole chat) and a place it couldn't take while out of sight isn't kept (a
-    // project's chat drawn at the start in a hidden view stayed at its top, where older messages woke)
-    const wasNearBottom = keepScroll && (follows(v) || nearBottom(v.list));
+    const wasNearBottom = keepScroll && nearBottom(v.list);
     const prevScroll = keepScroll ? v.list.scrollTop : 0;
     // (round 35) reading higher up: what's at the top of the chat stays there (a reply finishing below, or changing
     // height above, used to move the chat under you: only the scroll offset was kept)
@@ -1296,7 +1294,7 @@ const Native = (() => {
       if (keepScroll && !(wasNearBottom && v.follow !== false)) { v.list.scrollTop = prevScroll; if (anchor) keepAnchor(v.list, anchor); }
       else if (newSep && !keepScroll) { v.list.scrollTop = Math.max(0, newSep.offsetTop - 40); v.follow = v.list.scrollHeight - v.list.scrollTop - v.list.clientHeight < 4; }
       else if (!(v.scrollLock && keepScroll)) { v.follow = true; const top = v.list.scrollHeight - v.list.clientHeight; if (Math.abs(v.list.scrollTop - top) >= 1) v.list.scrollTop = top; }
-      if (v.drawSeq === seq) v.placeDue = null; // (round 73)
+      if (v.drawSeq === seq && v.placeDue === chatId) v.placeDue = v.list.clientHeight ? null : chatId; // (round 73) still due when out of sight (no layout: nothing took)
       if (v.jumpAfter != null && !later) takeJump(agentId, v, chat); // (round 35) a jump waiting for this draw
       const near = nearBottom(v.list);
       if (v.jump.hidden !== near) v.jump.hidden = near;
