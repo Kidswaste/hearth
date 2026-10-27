@@ -21,7 +21,11 @@ const out = { counts: {}, parts: {}, lists: {}, steps: [] };
 const fails = [];
 const step = (name, ok, info) => { out.steps.push(`${ok ? '✓' : '✖'} ${name}${info === undefined ? '' : `: ${typeof info === 'string' ? info : JSON.stringify(info)}`}`); if (!ok) fails.push(name); };
 // budgets at 1280×800, at rest (before this pass, from the same check on 40a5550: see docs/upgrades/appcalm.md)
-const BUDGET = { start: 24, reply: 22, replyPointed: 25, composer: 25, answer: 25, astra: 24, usage: 13, settings: 14, palette: 1, board: 21, toasts: 2 }; // before: 26, 24, 27, 27, 27, 26, 16, 14, 1, 23, 8 (and 5 notes at once)
+// (round 74, checkhealth74) the chat screens +3: Codex's Projects / Life spaces (Oct 19, 3d7723c / 131c11a) moved the
+// AIs out of the rail into a bar above the chat (Claude · Astra · + Assistant) and gave the rail Projects / Life / your
+// shortcuts / Chats; measured on 660fb71 (start 27, reply 25, replyPointed 28, composer 28, answer 28, astra 27, every
+// other screen unchanged), the rail itself still 12. The budgets hold that line: nothing may grow past it.
+const BUDGET = { start: 27, reply: 25, replyPointed: 28, composer: 28, answer: 28, astra: 27, usage: 13, settings: 14, palette: 1, board: 21, toasts: 2 }; // round 16: 24, 22, 25, 25, 25, 24 · before: 26, 24, 27, 27, 27, 26, 16, 14, 1, 23, 8 (and 5 notes at once)
 const PART_BUDGET = { rail: 12, list: 6, header: 1, box: 4 };
 const PARTS = { rail: '#rail', list: '#panel', header: '.surface.active .native-head', box: '.surface.active form.composer' };
 const parts = () => Object.fromEntries(Object.entries(PARTS).map(([k, s]) => [k, ctrls(document.querySelector(s)).length]));
@@ -130,11 +134,19 @@ step('the rail ⋯ says Find anything (not Command palette)', moreRows.some((t) 
 step('the rail ⋯ holds Full screen and the Board drawer', moreRows.some((t) => /Full screen/.test(t)) && moreRows.some((t) => /Board drawer/.test(t)), moreRows);
 const onScreen = [...document.querySelectorAll('#rail [title], #rail [aria-label], #rail-more')].filter(vis).map((n) => `${n.title} ${n.getAttribute('aria-label') || ''}`).join(' ');
 step('no "Command palette" in the rail', !/Command palette/i.test(onScreen) && !/Command palette/i.test(document.getElementById('palette-btn')?.title || ''), onScreen.slice(0, 200));
-const railTools = [...document.querySelectorAll('#agent-buttons .agent-btn')].filter(vis);
+const railTools = [...document.querySelectorAll('#agent-buttons .agent-btn, #agent-buttons .space-button:not(.space-chats)')].filter(vis); // (round 74) the spaces rail: Projects / Life / shortcuts / ＋ (Chats is a word)
 const noIcon = railTools.filter((b) => !b.querySelector('svg')).map((b) => b.title || b.textContent.trim());
 step('every agent and tool in the rail has a drawn icon', !noIcon.length, noIcon);
 // (round 53) the Creative Playground waits in the rail ⋯ too (Ctrl/⌘+K and /playground open it; ⋯ › Put tools back keeps it in)
-step('the rail ⋯ lists the Creative Playground under Not in the rail', moreRows.some((t) => /Creative Playground/.test(t)), moreRows);
+// (round 74, checkhealth74) since the Projects / Life spaces it is one click from the Projects space's bar (Creative board)
+let playgroundBar = false;
+if (!moreRows.some((t) => /Creative Playground/.test(t)) && window.WorkspaceNav) {
+  const back = H.activeId;
+  await WorkspaceNav.open('projects'); await wait(400);
+  playgroundBar = vis(document.querySelector('.workspace-switcher [data-surface="tool:creative"]'));
+  activate(back); await wait(300);
+}
+step('the Creative Playground waits in the rail ⋯ or the Projects space bar', moreRows.some((t) => /Creative Playground/.test(t)) || playgroundBar, moreRows);
 step('the full-screen and board-drawer buttons wait in the rail ⋯', !vis(document.getElementById('full-btn') || document.createElement('i')) && !vis(document.querySelector('.bd-rail-peek') || document.createElement('i')));
 step('the meter says what it opens in one sentence', /what's left/i.test(document.querySelector('.meter-pill')?.title || ''), document.querySelector('.meter-pill')?.title);
 

@@ -342,6 +342,8 @@ const FIX = [
 const EXTRA_FLAGS = {
   'routine-feedback': ['--fake-engines'],
   'visual-feedback': ['--fake-engines', '--eval', `window.FEEDBACK_FIXTURE=${JSON.stringify(`${T}/hearth-test-videos/neon_tunnel_v1.mp4`)}`],
+  // (round 74, checkhealth74) Codex's adaptive review (Auto / Deep passes) opens the same test video the same way
+  'adaptive-feedback': ['--fake-engines', '--eval', `window.FEEDBACK_FIXTURE=${JSON.stringify(`${T}/hearth-test-videos/neon_tunnel_v1.mp4`)}`],
 };
 const srcOf = (n) => (n.startsWith('unit:') ? fs.readFileSync(path.join(DEV, `${n.slice(5)}.js`), 'utf8') : fs.readFileSync(path.join(CHECKS, `${n}.js`), 'utf8'));
 const exists = (p) => { try { return fs.statSync(p).isFile() || fs.readdirSync(p).length > 0; } catch { return false; } };

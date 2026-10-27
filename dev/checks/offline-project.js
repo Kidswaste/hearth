@@ -1,17 +1,24 @@
-// Real module downloads once; then a new sandbox with the renderer network offline.
+// Real module downloads once (from the local three.js copy in the checks); then a new sandbox with the renderer network offline.
 // No real chats, scenes, files, or AI replies are used.
 const assert = (ok, label) => { if (!ok) throw new Error(label); console.log(`PASS ${label}`); };
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-await hub.kvSet('projects', { v: 1, list: [{ id: 'offline-test', name: 'Train test', items: [{ type: 'scene', ref: 'trip-scene' }] }] });
+// (round 74, checkhealth74, for Codex) the project is made through Projects: since round 72 the dialog saves Projects'
+// own list first (Projects.flush), which replaced a list written straight to kv ("Open a project first…"). The
+// libraries come from HEARTH_THREE_DIR when run-checks sets it (offline-library.js): no network needed.
+await Lazy.load('projects'); await Projects.ready();
+const project = Projects.create({ name: 'Train test' });
+Projects.add(project, 'scene', 'trip-scene', 'Train scene', { links: false });
+await Projects.flush();
+const PID = project.id;
 await hub.kvSet('three-sketches', [{ id: 'trip-scene', name: 'Train scene', code: "import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';" }]);
 await hub.kvSet('three-lab-extras', {});
 await hub.kvSet('three-refs', {});
 await hub.kvSet('video-cuts', {});
-const before = await hub.net.prepareProject({ projectId: 'offline-test' });
+const before = await hub.net.prepareProject({ projectId: PID });
 assert(!before.libraries.ready, 'new computer needs a download');
-const done = await hub.net.prepareProject({ projectId: 'offline-test', download: true });
+const done = await hub.net.prepareProject({ projectId: PID, download: true });
 assert(done.ready, JSON.stringify(done.libraries));
-const dialog = await Offline.prepare({ id: 'offline-test', name: 'Train test' });
+const dialog = await Offline.prepare({ id: PID, name: 'Train test' });
 for (let i = 0; i < 100 && !dialog.textContent.includes('Files and scene libraries are local'); i++) await wait(100);
 assert(dialog.textContent.includes('Files and scene libraries are local'), 'dialog shows this computer readiness');
 await smoke({ shot: `${window.SMOKE_SAVES}/offline-ready.png` });
