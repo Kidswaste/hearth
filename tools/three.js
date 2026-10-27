@@ -2073,6 +2073,18 @@ const ThreeLab = (() => {
     }
     api.addRef = (p, o) => addRef(p, o);
     api.refsFor = (id) => (refsAll[id] || []).slice(); // (round 72) a scene's references, on screen or not
+    // (round 73, labtools73) one taken out of a scene, on screen or not (a backstage chat's references remove, a tool call
+    // undone as a whole): the file goes to the Trash like the References dialog's remove
+    api.removeRef = (refId, { sketchId = null } = {}) => {
+      const owner = sketchId || current?.id;
+      const r = (refsAll[owner] || []).find((x) => x.id === refId);
+      if (!r) return false;
+      if (owner === current?.id) { removeRef(r); return true; }
+      refsAll[owner] = refsAll[owner].filter((x) => x !== r);
+      saveRefs();
+      window.hub.fs.trash(r.path).catch(() => {});
+      return true;
+    };
     const noteBtn = btn('📌 Note', 'Take a screenshot and a note at this moment, for a change you want here (N)', () => takeNote(), 'ghost small imp-capture');
     const notesBtn = btn('Notes', 'Your notes on this sketch: jump to them, mark them done, send them to the Three Director', (e) => notesList(e.currentTarget));
     notesBtn.dataset.feature = 'Notes list';
@@ -5300,6 +5312,7 @@ ${frag}\`,
     // (round 72, labbridge72) o.sketchId: that scene's references (a chat's scene backstage), not the one on screen
     addReference: (p, o = {}) => (api.addRef ? api.addRef(p, o) : Promise.reject(new Error('Open the Three.js Lab first'))),
     refsOf: (id) => api.refsFor?.(id) || [],
+    removeReference: (refId, o = {}) => (api.removeRef ? api.removeRef(refId, o) : false), // (round 73)
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
     openShader(code) { ensureOpen('shader'); setTimeout(() => api.openShader?.(code), 60); },
     restartVisible: () => api.restartVisible?.() ?? false,

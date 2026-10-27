@@ -94,13 +94,13 @@ const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 's
 // MORE_TOOLS, the guide topics), answered here without a hub call. Was ≈ 370 tokens per message.
 const DO_TOOL = {
   name: 'three_do',
-  description: `Lab actions: {cmd, ...args}. help {topic}: a cmd's args (topic = cmd), a guide topic or app. layer = name|id|n (1 = bottom)|top|bottom|selected.
+  description: `Lab actions: {cmd, ...args, shot: true adds a picture}. help {topic}: a cmd's args, a guide topic or app. layer = name|id|n (1 = bottom)|top|bottom|selected.
 batch {ops: [{cmd, ...}]} calls in one, in order · undo {force} your last edit
 Look: contact_sheet {count|times} the song as one picture · input {actions} play-test · play {game, script} a game
 Layers: layers select_layer remove_layer update_layer keyframes animate looks references
 Time: timeline timeline_edit triggers media_info load_media footage sequence autoedit loop
 Make: new_sketch set_frame model motion particles shader type physics asset comp crew make task notes
-run {command: "/grade"} a chat command`,
+run {command} a chat command`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
 };
 // the commands that have no own tool in full mode: their help line (round 25)

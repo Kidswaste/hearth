@@ -3316,6 +3316,39 @@ const ThreeMedia = (() => {
       zoomTo(a, b) { if (a == null) setView(null); else setView({ start: a, end: b }); },
       // cues: { add: [{ time, name, looks? }], remove: [name or time], clear: true }
       editCues: (o) => editCues(o || {}),
+      // (round 73, labtools73) another scene's timeline map (a chat's scene that runs backstage): read it, edit its cues
+      // and markers in place (the one loaded here goes through the usual path, with its undo)
+      async mapAt(p) {
+        if (p && p === st.path) return JSON.parse(JSON.stringify({ grid: map.grid, marks: map.marks, cues: map.cues }));
+        allMaps ||= (await window.hub.kvGet('three-beatmaps', {})) || {};
+        const m = allMaps[p];
+        return { grid: m?.grid ? { ...m.grid } : null, marks: emptyMarks(JSON.parse(JSON.stringify(m?.marks || {}))), cues: JSON.parse(JSON.stringify(m?.cues || [])) };
+      },
+      async editMapAt(p, { cues = null, markers = null } = {}) {
+        if (!p) return false;
+        if (p === st.path) { if (cues) editCues(cues); if (markers) this.editMarkers({ ...markers, snap: false }); return true; }
+        allMaps ||= (await window.hub.kvGet('three-beatmaps', {})) || {};
+        const m = allMaps[p] ||= { grid: null, marks: emptyMarks(), cues: [] };
+        m.marks = emptyMarks(m.marks); m.cues = [...(m.cues || [])];
+        if (cues) {
+          if (cues.clear) m.cues = [];
+          m.cues = m.cues.filter((c) => !(cues.remove || []).some((r) => (typeof r === 'number' ? Math.abs(r - c.t) < 0.02 : String(r).toLowerCase() === c.name.toLowerCase())));
+          for (const a of cues.add || []) {
+            const same = m.cues.find((c) => Math.abs(c.t - a.time) < 0.02);
+            const looks = Array.isArray(a.looks) ? a.looks.filter((l) => l?.layer && l?.name).map((l) => ({ layer: String(l.layer), name: String(l.name) })) : null;
+            if (same) { if (looks) same.looks = looks; if (a.name) same.name = String(a.name).slice(0, 40); continue; }
+            m.cues.push({ t: r4(Math.max(0, Number(a.time) || 0)), name: String(a.name || `Cue ${m.cues.length + 1}`).slice(0, 40), ...(looks ? { looks } : {}) });
+          }
+          m.cues.sort((a, b) => a.t - b.t);
+        }
+        if (markers) {
+          for (const lane of markers.clear || []) if (m.marks[lane]) m.marks[lane] = [];
+          for (const [lane, list] of Object.entries(markers.remove || {})) if (m.marks[lane]) m.marks[lane] = m.marks[lane].filter((t) => !list.some((x) => Math.abs(x - t) < 0.02));
+          for (const [lane, list] of Object.entries(markers.add || {})) if (m.marks[lane]) for (const t of list) m.marks[lane] = addMark(m.marks[lane], Math.max(0, Number(t) || 0));
+        }
+        saveMaps();
+        return true;
+      },
       get cues() { return map.cues.map((c) => ({ time: c.t, name: c.name, ...(c.looks?.length ? { looks: c.looks } : {}) })); },
       // ---------- for chat commands (tools/three-cmds.js) ----------
       tap: () => tap(), tapOne: () => tapOne(), get tapInfo() { return tapInfo; }, jumpCue: (d) => jumpCue(d),

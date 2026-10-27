@@ -127,6 +127,15 @@ const LabPhysics = (() => {
   }
   const onScreen = (ctx = {}) => { if (!ctx.chatId || typeof ChatScenes === 'undefined') return true; const r = ChatScenes.routeThree('three_layers', ctx.chatId); return !r || r.sketchId === ThreeLab.scenes?.currentId(); };
   const isRow = (L) => /^physics/.test(L.kind || '');
+  // (round 73, labtools73) the running layer, on screen or in the chat's backstage scene (three_eval reaches either)
+  async function evalIn(code, ctx = {}) {
+    if (onScreen(ctx) && D()) return D().evalInSketch(code);
+    const r = await HubBridge.call('three_eval', { code }, { chatId: ctx.chatId || null });
+    if (!r || r.ok === false) return { ok: false, error: r?.error };
+    let v = r.value; if (v && typeof v === 'object' && 'result' in v) v = v.result;
+    if (typeof v === 'string') { try { v = JSON.parse(v); } catch { /* text */ } }
+    return { ok: true, value: v };
+  }
   async function target(ref, ctx = {}) {
     const v = await call('three_layers', { report: 'full' }, ctx);
     const pool = (v.layers || []).filter(isRow);
@@ -196,13 +205,12 @@ const LabPhysics = (() => {
     const code = setOpts(await codeOf(L, ctx), (o) => { o.bodies = [...(Array.isArray(o.bodies) ? o.bodies : []), one].slice(-200); n = o.bodies.length; });
     return { ...(await apply(L, code, ctx)), added: `${type} at ${one.at.join(', ')}`, ownBodies: n };
   }
-  // a kick / drop / reset now (live: not on the timeline; the scene on screen only)
+  // a kick / drop / reset now (live: not on the timeline; on screen or backstage, round 73)
   async function poke(ref, what, ctx = {}) {
     const w = String(what || '').toLowerCase();
     if (!['kick', 'drop', 'reset'].includes(w)) throw new Error('poke: kick | drop | reset');
     const L = await target(ref, ctx);
-    if (!onScreen(ctx) || !D()) throw new Error('That scene isn\'t on screen: open it in the Lab first.');
-    const r = await D().evalInSketch(`return window.__labPhysics.poke(${JSON.stringify(L.id)}, ${JSON.stringify(w)})`);
+    const r = await evalIn(`return window.__labPhysics.poke(${JSON.stringify(L.id)}, ${JSON.stringify(w)})`, ctx); // (round 73) backstage too
     if (!r?.ok || !r.value) throw new Error(r?.error || 'The layer isn\'t running (an error?).');
     return { layer: L.name, poked: w };
   }
@@ -230,7 +238,7 @@ const LabPhysics = (() => {
     const code = await codeOf(L, ctx);
     let o = {}; try { o = optsOf(code); } catch { /* hand-written options */ }
     let live = null;
-    if (onScreen(ctx) && D()) { const r = await D().evalInSketch(`return window.__labPhysics.probe(${JSON.stringify(L.id)})`).catch(() => null); if (r?.ok && r.value) { const v = r.value; live = { simT: `${Math.round(v.simT * 100) / 100} s`, awake: v.awake, asleep: v.asleep, ...(v.behind > 0 ? { catchingUp: `${v.behind} steps` } : {}), cachedStates: v.snaps }; } }
+    { const r = await evalIn(`return window.__labPhysics.probe(${JSON.stringify(L.id)})`, ctx).catch(() => null); if (r?.ok && r.value) { const v = r.value; live = { simT: `${Math.round(v.simT * 100) / 100} s`, awake: v.awake, asleep: v.asleep, ...(v.behind > 0 ? { catchingUp: `${v.behind} steps` } : {}), cachedStates: v.snaps }; } }
     return { ...stateOf(L, ctx), preset: presetIdOf(code), options: o, sliders: sliderKeys(code), ...(live ? { now: live } : {}) };
   }
   function listText(filter = '') {

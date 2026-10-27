@@ -135,11 +135,12 @@ lab3d.model(refs.${refKey}, P, { ${o} });
     if (!r || r.ok === false) throw new Error(r?.error || `${tool} failed`);
     return r.value;
   }
-  // a reference added to a chat's scene needs it on screen (the Lab copies files into the scene shown)
+  // the scene a chat's calls reach: the one on screen, or (round 73, labtools73) its own scene backstage
+  const sceneOf = (ctx = {}) => (ctx.chatId && typeof ChatScenes !== 'undefined' ? ChatScenes.routeThree('three_layers', ctx.chatId)?.sketchId || null : null);
   function onScreen(ctx = {}) {
     if (!ctx.chatId || typeof ChatScenes === 'undefined') return true;
-    const r = ChatScenes.routeThree('three_layers', ctx.chatId);
-    return !r || r.sketchId === ThreeLab.scenes?.currentId();
+    const id = sceneOf(ctx);
+    return !id || id === ThreeLab.scenes?.currentId();
   }
   const isModelLayer = (L) => (L.sliders || []).includes('Crane (°)') && (L.sliders || []).includes('Material');
   async function modelLayers(ctx) { const v = await call('three_layers', { report: 'full' }, ctx); return (v.layers || []).filter(isModelLayer); }
@@ -159,19 +160,24 @@ lab3d.model(refs.${refKey}, P, { ${o} });
   async function setValues(L, set, ctx) { const v = await call('three_sliders', { layer: L.id, set, report: 'full' }, ctx); return v.changed; }
 
   // ---------- adding / replacing ----------
-  async function addRef(path) { await ThreeLab.cmd({ show: true }); return ThreeLab.addReference(path); }
+  // (round 73, labtools73) a chat whose scene isn't on screen gets the file in ITS scene's references (no switch)
+  async function addRef(path, ctx = {}) {
+    if (!ThreeLab.scenes) await call('three_layers', {}, ctx).catch(() => null); // the Lab starts (in the background) first
+    if (!onScreen(ctx)) return ThreeLab.addReference(path, { sketchId: sceneOf(ctx) });
+    await ThreeLab.cmd({ show: true });
+    return ThreeLab.addReference(path);
+  }
   async function add(file, { name = null, ctx = {}, replace = null, source = 'file', values: over = {} } = {}) {
     if (!file) throw new Error('Which model? A file path, a library number (/model library) or "last".');
     if (!/^([a-zA-Z]:[\\/]|\/)/.test(file)) { const it = await findItem(file); if (!it) throw new Error(`Nothing called “${file}” in the model library.`); return it.kind === 'sky' ? sky(it.path, { ctx, name: it.name }) : add(it.path, { name: name || it.name, ctx, replace, source: it.source, values: over }); }
     if (SKY_RE.test(file)) return sky(file, { ctx, name });
     if (!MODEL_RE.test(file)) throw new Error(`${base(file)} isn't a 3D model the Lab reads (.glb, .gltf, .fbx, .obj, .stl, .ply). Spline / Blender: export as GLB.`);
-    if (!onScreen(ctx)) throw new Error('This chat\'s scene isn\'t on screen, and a model layer is made in the scene shown: ask the owner to open it (the 🔗 Scene chip over the chat box › Open), or put the file in with three_do references add (it loads with refs.<key>).'); // (round 72) what to do instead
     const st = await window.hub.fs.stat(file).catch(() => null);
     if (!st) throw new Error(`No file at ${file}`);
     const big = st.size > 25 * 1048576;
     const tst = big ? toast(`🧊 Copying ${base(file)} (${Math.round(st.size / 1048576)} MB) into the Lab…`, { timeout: 0 }) : null;
     let r;
-    try { r = await addRef(file); } finally { tst?.remove?.(); }
+    try { r = await addRef(file, ctx); } finally { tst?.remove?.(); }
     const info = await glbInfo(file);
     const label = (name || stem(file)).slice(0, 40);
     await remember(file, { name: label, source, info });
@@ -188,10 +194,9 @@ lab3d.model(refs.${refKey}, P, { ${o} });
   }
   // a sky: the model layers' light and backdrop; with no model, the apps stream's sky layer
   async function sky(file, { ctx = {}, name = null, layer = null, lightOnly = false } = {}) {
-    if (!onScreen(ctx)) throw new Error('This chat\'s scene isn\'t on screen: open it in the Lab first.');
     const ms = await modelLayers(ctx).catch(() => []);
-    if (!ms.length) { if (typeof AppsLab !== 'undefined' && AppsLab.hdriCode) return AppsLab.addHdri(file, { name, legacy: true }); throw new Error('Add a model first'); }
-    const r = await addRef(file);
+    if (!ms.length) { if (onScreen(ctx) && typeof AppsLab !== 'undefined' && AppsLab.hdriCode) return AppsLab.addHdri(file, { name, legacy: true }); throw new Error(onScreen(ctx) ? 'Add a model first' : 'Add a model to this scene first (three_do model add): a sky lights the model.'); }
+    const r = await addRef(file, ctx);
     await remember(file, { name: name || stem(file), kind: 'sky', source: 'sky' });
     const L = layer ? await target(layer, ctx) : ms.find((x) => x.selected) || ms[ms.length - 1];
     await rebuild(L, { hdri: r.key }, ctx);
@@ -212,9 +217,8 @@ lab3d.model(refs.${refKey}, P, { ${o} });
   }
   // Mixamo: an animation file (FBX "without skin", a GLB with clips) joins the model's clips
   async function addClip(file, { layer = null, ctx = {} } = {}) {
-    if (!onScreen(ctx)) throw new Error('This chat\'s scene isn\'t on screen: open it in the Lab first.');
     const L = await target(layer, ctx);
-    const r = await addRef(file);
+    const r = await addRef(file, ctx);
     await remember(file, { kind: 'clip', source: 'clip' });
     const info = await glbInfo(file);
     await rebuild(L, { clipRefs: [r.key], addClips: info?.clips?.length ? info.clips : [stem(file)] }, ctx);
@@ -244,7 +248,7 @@ lab3d.model(refs.${refKey}, P, { ${o} });
     const M = MOVES[norm(id).replace(/\s+/g, '-')] || Object.values(MOVES).find((m) => norm(m.name) === norm(id));
     if (!M) throw new Error(`Camera moves: ${Object.keys(MOVES).join(', ')}`);
     const L = await target(layer, ctx);
-    const t0 = at != null ? Number(at) : onScreen(ctx) ? +(ThreeLab.director?.media?.time || 0).toFixed(2) : 0;
+    const t0 = at != null ? Number(at) : onScreen(ctx) ? +(ThreeLab.director?.media?.time || 0).toFixed(2) : +(ThreeLab.scenes?.timelineOf?.(sceneOf(ctx))?.time || 0).toFixed(2); // (round 73) backstage: where its playhead was left
     const len = Number(secs) > 0 ? Number(secs) : M.secs;
     for (const [prop, ks] of Object.entries(M.keys)) {
       await call('three_keyframes', { layer: L.id, property: prop, keys: ks.map(([f, value, ease]) => ({ time: +(t0 + f * len).toFixed(3), value, ease: ease || 'ease' })) }, ctx);
@@ -481,7 +485,7 @@ lab3d.model(refs.${refKey}, P, { ${o} });
     if (o === 'fit') return done(L, FITS);
     if (o === 'lite') return done(L, { detail: a.detail != null ? Number(a.detail) : 0.4 });
     if (o === 'aim' || o === 'lookat') return done(L, { aim: a.on !== false });
-    if (o === 'gizmo') return { editing: await gizmo(a.mode || 'translate', lay) };
+    if (o === 'gizmo') { if (!onScreen(ctx)) throw new Error('The move / rotate / scale handles are for the owner, on screen. Backstage, place it with op set {values: {x, z, height, turn, tilt, size}}.'); return { editing: await gizmo(a.mode || 'translate', lay) }; }
     throw new Error(`model ops: ${OPS}`);
   }
   const OPS = 'list | add {file|item, name} | replace {item, layer} | set {values} | material {preset, tint} | look {preset} | light {preset} | sky {query|file|"off"} | ground {preset} | clip {name|next, speed, loop, blend, play} | clipfile {file} (Mixamo) | move {preset, at, secs} | clearmoves | turntable {speed} | explode {amount} | fx {fog, bloom, dof} | react {pulse, glow | off} | fit | lite {detail} | aim {on} | info';

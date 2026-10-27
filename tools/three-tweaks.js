@@ -1893,5 +1893,5 @@ const ThreeTweaks = (() => {
     return `#${to(r)}${to(g)}${to(b)}`;
   }
 
-  return { scan, instrument, applyValues, controller, menu, MOTIONS, RATES };
+  return { scan, instrument, applyValues, controller, menu, MOTIONS, RATES, labelOf }; // (round 73, labtools73) labelOf: a backstage scene names its sliders as the panel does
 })();

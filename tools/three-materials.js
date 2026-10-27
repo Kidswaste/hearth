@@ -208,7 +208,7 @@ const LabMaterials = (() => {
   async function op(a = {}, ctx = {}) {
     const o = String(a.op || (a.preset || a.look ? 'set' : 'list')).toLowerCase();
     if (o === 'list' || o === 'help') return { looks: C.PRESETS.map((p) => p.id), names: Object.fromEntries(C.PRESETS.map((p) => [p.id, p.name])), args: 'set {layer, preset, color: #hex, shine: 0–1, part: path from the scene editor (none: the whole layer)} | off {layer, part} | info' };
-    if (!onScreen(ctx)) throw new Error('This chat’s scene isn’t on screen: open it in the Lab first.');
+    if (!onScreen(ctx)) return backstageOp(o, a, ctx); // (round 73, labtools73) the chat's own scene, not on screen
     if (o === 'info') return { layers: host().layers().filter((L) => lookOf(L)).map((L) => ({ layer: L.name, materials: Object.fromEntries(Object.entries(lookOf(L)).map(([k, s]) => [k === '*' || k === '#Model' ? 'whole layer' : k, C.describe(s)])) })) };
     const L = layerByRef(a.layer);
     if (!L) throw new Error(`No layer “${a.layer}”.`);
@@ -220,6 +220,45 @@ const LabMaterials = (() => {
     const spec = { k: p.id, ...(a.color ? { c: String(a.color) } : {}), ...(a.shine != null ? { s: Number(a.shine) > 1 ? Number(a.shine) / 100 : Number(a.shine) } : {}) };
     const changed = apply(t, spec);
     return { layer: L.name, look: C.describe(C.normalize(spec)), where: t.path || 'whole layer', changed, undo: 'three_do undo does not undo looks: set another or op off' };
+  }
+
+  // (round 73, labtools73) a look on a layer of a chat's scene that runs backstage: the same data the picker writes
+  // (layer.overrides['@look']), saved with the scene; its backstage page draws it at once (tools/three-backstage.js)
+  function backstageOp(o, a, ctx) {
+    const S = ThreeLab.scenes;
+    const id = ChatScenes.routeThree('three_layers', ctx.chatId)?.sketchId;
+    const sk = id && S?.get(id);
+    if (!sk) throw new Error('This chat’s scene is gone (deleted?).');
+    const Ls = S.layersOf(sk);
+    if (o === 'info') return { layers: Ls.filter((L) => lookOf(L)).map((L) => ({ layer: L.name, materials: Object.fromEntries(Object.entries(lookOf(L)).map(([k, x]) => [k === '*' || k === '#Model' ? 'whole layer' : k, C.describe(x)])) })) };
+    const ref = a.layer; const r = String(ref ?? '').toLowerCase();
+    const L = ref == null || ref === '' || ref === 'selected' ? Ls.find((x) => x.id === S.selectedOf(id)) || Ls[Ls.length - 1]
+      : r === 'top' ? Ls[Ls.length - 1] : r === 'bottom' ? Ls[0] : /^\d+$/.test(r) ? Ls[Number(r) - 1]
+        : Ls.find((x) => x.id === ref) || Ls.find((x) => String(x.name).toLowerCase() === r) || Ls.find((x) => String(x.name).toLowerCase().includes(r));
+    if (!L) throw new Error(`No layer “${a.layer}”.`);
+    const part = a.part || a.path || null;
+    const whole = isModel(L) ? '#Model' : '*';
+    const key = part || whole;
+    let spec = null;
+    if (o === 'set') {
+      const p = C.find(a.preset || a.look || '');
+      if (!p) throw new Error(`preset: ${C.PRESETS.map((x) => x.id).join(', ')}`);
+      spec = C.normalize({ k: p.id, ...(a.color ? { c: String(a.color) } : {}), ...(a.shine != null ? { s: Number(a.shine) > 1 ? Number(a.shine) / 100 : Number(a.shine) } : {}) });
+    } else if (o !== 'off') throw new Error('op: list | set | off | info');
+    const before = clone(lookOf(L));
+    const next = { ...(before || {}) };
+    if (spec) next[key] = spec; else delete next[key];
+    const after = Object.keys(next).length ? next : null;
+    const changed = JSON.stringify(before) !== JSON.stringify(after);
+    if (changed) {
+      const ov = { ...(L.overrides || {}) };
+      if (after) ov['@look'] = after; else delete ov['@look'];
+      L.overrides = Object.keys(ov).length ? ov : undefined;
+      S.changed(id);
+      stats.applied += 1;
+    }
+    if (o === 'off') return { layer: L.name, changed };
+    return { layer: L.name, look: C.describe(spec), where: part && part !== whole ? part : 'whole layer', changed, undo: 'three_do undo does not undo looks: set another or op off' };
   }
 
   // ---------- 📜 a recipe step: { spec, key, layer } on the layer of that name, else the selected one ----------
