@@ -289,7 +289,7 @@ const ThreeDirector = (() => {
   // The Lab tells us every message of its preview (tools/three.js → onBox): a layer's first new frame ('drawn') or
   // its error. The Lab's director waits (after a run) end at the first of them + a short grace for console lines,
   // so a change answers in ≈ its build time instead of a fixed 2.5 s. Nothing drawn: the full wait, as before.
-  const GRACE = 220;
+  const GRACE = 100; // (round 74, labcalls74) was 220 ms: a layer's console lines from its start and first frame come before its 'drawn'
   const waiters = new Set();
   function onBox(m) { if (m && (m.type === 'drawn' || m.type === 'error' || m.type === 'ran')) for (const w of [...waiters]) w(m); }
   const mark = (k) => { if (typeof HubBridge !== 'undefined') HubBridge.mark?.(k); }; // (round 74, labcalls74) hop steps
@@ -308,9 +308,12 @@ const ThreeDirector = (() => {
     Native.hooks.event.push((event, chat) => { try { endTurn(event, chat); } catch { /* not a director chat */ } });
   }
   // 24x24 grey thumbnail of a canvas, to tell "nothing visibly changed" without sending the picture again
+  // (round 74, labcalls74) from the decoded picture (an <img>) when there's no crop, on one kept canvas: drawn from a
+  // canvas it read the picture back from the GPU, ≈ 90 ms a picture here
+  let sigCanvas = null;
   function signature(c) {
-    const t = document.createElement('canvas'); t.width = 24; t.height = 24;
-    const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(c, 0, 0, 24, 24);
+    const t = (sigCanvas ||= Object.assign(document.createElement('canvas'), { width: 24, height: 24 }));
+    const g = t.getContext('2d', { willReadFrequently: true }); g.clearRect(0, 0, 24, 24); g.drawImage(c, 0, 0, 24, 24);
     const px = g.getImageData(0, 0, 24, 24).data; const out = new Uint8Array(576);
     for (let i = 0; i < 576; i += 1) out[i] = (px[i * 4] * 0.3 + px[i * 4 + 1] * 0.59 + px[i * 4 + 2] * 0.11) | 0;
     return out;
@@ -337,6 +340,7 @@ const ThreeDirector = (() => {
   // for detail. A later picture in the same reply that names no size is a thumbnail (384 px, ≈ 110).
   const SIZES = { small: 512, medium: 768, large: 1280 };
   const LATER_PX = 384;
+  const AUTO_MS = 600; // (round 74, labcalls74) the longest an automatic picture may hold an answer
   const SHOT_Q = 0.72;
   let prevShot = null; // the last picture the director got (canvas), for compare
   const loadImg = async (url) => { const img = new Image(); img.src = url; await img.decode(); return img; };
@@ -424,12 +428,25 @@ const ThreeDirector = (() => {
     if (args.shot === false || ctx?.batch?.shot) return null;
     const on = args.shot === true || store.get('director.autoShot', true) !== false;
     if (!on || (args.shot !== true && Array.isArray(value?.errors) && value.errors.length)) return null;
-    let c;
-    try { const url = await grab(d, LATER_PX); if (!url) return null; c = frameCanvas(await loadImg(url), { max: LATER_PX }); } catch { return null; }
-    const sig = signature(c); const key = AUTO_KEY(d);
+    let c; let img = null; let url = null;
+    // (round 74, labcalls74) a picture nobody asked for never holds the answer long: a page still building the change (a
+    // model loading, shaders compiling: d.building()) gets none at all, an idle one gives it in a frame or two (≈ 0.1–0.2 s
+    // even in software GL) and is waited for at most AUTO_MS; the answer then goes without it and says so (it held
+    // each edit 2–7 s here). shot: true waits for its picture.
+    let late = args.shot !== true && Boolean(d.building?.());
+    try {
+      url = late ? null : await (args.shot === true ? grab(d, LATER_PX) : Promise.race([grab(d, LATER_PX), sleep(AUTO_MS).then(() => { late = true; return null; })]));
+      if (late) { if (value && typeof value === 'object') value.picture = 'still drawing (three_screenshot to look)'; savedNotes.autoLate = (savedNotes.autoLate || 0) + 1; return null; }
+      if (!url) return null;
+      img = await loadImg(url);
+      c = frameCanvas(img, { max: LATER_PX });
+    } catch { return null; }
+    const sig = signature(img); const key = AUTO_KEY(d);
     if (args.shot !== true && B.lastSig?.key === key && sigDiff(sig, B.lastSig.sig) < 0.004) { if (value && typeof value === 'object') value.picture = 'no visible change'; savedNotes.shots += 1; return null; }
     B.lastSig = { key, sig }; prevShot = c; B.pics += 1; savedNotes.autoShots = (savedNotes.autoShots || 0) + 1;
-    return [{ data: await jpeg(c, 0.75), mime: 'image/jpeg' }];
+    // (round 74) the preview's own small JPEG at this size goes out as it is (no second encode), as a screenshot's does
+    const asIs = /^data:image\/jpeg/.test(url) && img.width === c.width && img.height === c.height;
+    return [{ data: asIs ? url.split(',')[1] : await jpeg(c, 0.75), mime: 'image/jpeg' }];
   }
   const withPic = (value, images) => ({ ok: true, value, ...(images ? { images } : {}) });
   async function screenshot(d, args, B = bucketOf(d)) {
@@ -438,7 +455,9 @@ const ThreeDirector = (() => {
     const max = later ? LATER_PX : SIZES[args.size] || SIZES[store.get('director.shotSize', 'small')] || SIZES.small; // /director-shot-size
     const at = resolveAt(d, args.at);
     if (args.at != null && at == null) return { ok: false, error: `Can't go to "${args.at}": give seconds, drop, kick, snare, hit or a cue name (and load a song).` };
-    if (at != null && d.media.loaded) { d.media.seek(at); await sleep(450); }
+    // (round 74, labcalls74) backstage the page's clock is set at once and the picture is its next frame: no fixed wait
+    // (on screen a seek can queue behind one still being answered: its 450 ms stay)
+    if (at != null && d.media.loaded) { d.media.seek(at); if (!d.backstage) await sleep(450); }
     const n = Math.max(0, Math.min(8, Math.round(Number(args.frames) || 0)));
     if (n >= 2) {
       const gap = Math.max(0.1, Math.min(5, Number(args.gap) || 0.5));
@@ -462,7 +481,7 @@ const ThreeDirector = (() => {
     // the same view as a picture sent earlier in this reply, nothing visibly changed: say so instead of sending it again
     // (a later thumbnail of an unchanged view too; a size asked for by name is its own view)
     const sigKey = JSON.stringify([args.size || null, args.region || null, d.route?.crew ? d.route.chatId : 0]);
-    const sig = signature(c);
+    const sig = signature(args.region ? c : img);
     if (!args.force && !args.compare && B.lastSig?.key === sigKey && sigDiff(sig, B.lastSig.sig) < 0.004) {
       savedNotes.shots += 1;
       return { ok: true, value: 'No visible change since your previous picture in this reply (same picture, not sent again; force: true sends it).' };

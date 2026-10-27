@@ -19,7 +19,8 @@ const LabTxn = (() => {
   const READ = /^three_(get_code|read_code|search_code|screenshot|console|layers|contact_sheet|timeline|eval|input|help|media_info|task|select_layer|seen)$/;
   const OUTSIDE = /^three_(sequence|comp|make|crew|play|perf|autoedit|loop|load_media|media_control|run|footage|triggers|new_sketch|set_frame|motion)$/;
   const READ_OP = /^(list|info|help|library|presets|types|status|check|show|find)$/i;
-  const isRead = (tool, a = {}) => READ.test(tool) || OUTSIDE.test(tool) || READ_OP.test(String(a.op ?? a.action ?? '')) || (tool === 'three_nodes' && /^\s*(list|presets|types|help)\b/i.test(String(a.command || '')));
+  const isRead = (tool, a = {}) => READ.test(tool) || OUTSIDE.test(tool) || READ_OP.test(String(a.op ?? a.action ?? '')) || (tool === 'three_nodes' && /^\s*(list|presets|types|help)\b/i.test(String(a.command || '')))
+    || (tool === 'three_sliders' && !(a.set && typeof a.set === 'object' && Object.keys(a.set).length)); // (round 74) sliders read, none set
   // tools whose own answer already says what changed (no second line about it)
   const SAYS = /^three_(edit_code|set_code|add_layer|update_layer|undo|sliders)$/;
   const stats = { calls: 0, rolledBack: 0, turnsUndone: 0, shots: 0, lastMs: 0 };
@@ -39,7 +40,8 @@ const LabTxn = (() => {
     if (!sk) return null;
     const here = onScreen(id);
     let layers;
-    try { layers = here && ThreeLab.director.capture ? ThreeLab.director.capture().layers : clone(sc.layersOf(sk)); } catch { layers = clone(sc.layersOf(sk)); }
+    // (round 74, labcalls74) read only: the scene isn't saved (stamped "updated now") just to be noted
+    try { layers = here && ThreeLab.director.capture ? ThreeLab.director.capture({ save: false }).layers : clone(sc.layersOf(sk)); } catch { layers = clone(sc.layersOf(sk)); }
     const vals = {};
     for (const L of layers) {
       let list = null;
