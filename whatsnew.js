@@ -124,9 +124,10 @@ const WhatsNew = (() => {
     return cardEl;
   }
   // (round 64, newtour64) ✦ Try what's new: a Try it per round (61–63) and "7 of 13 tried" above the lines (trynew.js, its own group)
+  // (round 71, whatsnew71) rounds 66–70: their five 1-minute tours, one chip each
   function tryRow(d, before) {
-    if (!before || !(d.rounds || []).some((r) => r >= 61 && r <= 63) || !window.Lazy) return;
-    Lazy.load('trynew').then(() => { const row = window.TryNew?.whatsNewRow(d.rounds); if (row && before.isConnected) before.before(row); }).catch(() => {});
+    if (!before || !(d.rounds || []).some((r) => (r >= 61 && r <= 63) || (r >= 66 && r <= 70)) || !window.Lazy) return;
+    Lazy.load('trynew').then(() => { for (const row of [window.TryNew?.whatsNewRow7?.(d.rounds), window.TryNew?.whatsNewRow(d.rounds)]) if (row && before.isConnected) before.before(row); }).catch(() => {});
   }
   function shown(d) {
     markSeen(Math.max(d.to, d.newest || 0));

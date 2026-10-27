@@ -7,6 +7,8 @@
 //     notes of rounds 61–63) and in /try; a round's Try it runs its paths in order, skipping what you tried
 //   · never nags: ONE Hints offer, ever (updater.js asks for it a minute after the start; Not now = forever)
 //   · ways in: What's new (a Try it per round), Settings › What's new… › Try what's new, Ctrl/⌘+K, /try
+// (round 71, whatsnew71) + five 1-minute themed tours of rounds 66–70 (trynew71-core.js: Paris nights · Sidequest · Music ·
+// Help when it breaks · In the Lab), each step one sentence + Show me on the real button, and the one card after an update.
 // Lazy group "trynew" (tier "use"), after "discover" (Tour).
 const TryNew = (() => {
   const C = TryNewCore;
@@ -33,8 +35,9 @@ const TryNew = (() => {
     const there = () => document.querySelector('.surface.active .wb-park-toggle, .surface.active .ph-win, .surface.active select[aria-label="Audio output"]');
     // the desk is there with its ✦ Preset window (the window leaves when the desk does: entering the station again brings it)
     if (await until(() => there() && document.querySelector('.surface.active .ph-win, .surface.active .ph-pill'), 1500)) return;
-    const btn = await until(() => [...document.querySelectorAll('.surface.active button')].find((b) => vis(b) && /^Serum 2 (&|and) Vital/.test(b.textContent.trim())), 5000);
-    btn?.click();
+    // (round 71, whatsnew71) the Playground's own way to the Sound desk (its "Serum 2 & Vital" station button was renamed)
+    if (typeof CreativePlayground !== 'undefined' && await until(() => document.querySelector('.surface.active .wb-stations'), 5000)) await CreativePlayground.openFeature('vst', { reuse: true });
+    else (await until(() => [...document.querySelectorAll('.surface.active button')].find((b) => vis(b) && /^Serum 2 (&|and) Vital/.test(b.textContent.trim())), 5000))?.click();
     await until(there, 5000);
   }
   function chat() {
@@ -112,6 +115,7 @@ const TryNew = (() => {
     const pr = prog();
     const mark1 = (x) => (pr[x.id]?.state === 'tried' ? '✓ tried' : pr[x.id]?.state === 'skipped' ? 'skipped' : pr[x.id]?.state === 'later' ? 'paused' : x.why);
     return [
+      menuItems7(), // (round 71, whatsnew71) the tours of rounds 66–70 first
       { label: `✦ Try what's new · ${C.label(pr)}`, hint: 'the next one', action: () => startNext() },
       ...C.ROUNDS.map((r) => ({ label: `Round ${r}`, hint: C.label(pr, r), items: [
         { label: 'Try them in order', hint: C.label(pr, r), action: () => startRound(r) },
@@ -175,24 +179,222 @@ const TryNew = (() => {
   // ---------- chat: /try ----------
   if (typeof Commands !== 'undefined' && !Commands.get('try')) {
     Commands.register({
-      name: 'try', area: 'App', args: '[name | round <61–63> | next | list | reset]',
-      desc: 'Try what\'s new: a short hands-on path through each new thing of rounds 61–63 (opens the place, rings the control, suggests the command)',
-      keywords: 'whats new tour try hands on guided quests paris serum vital park shows playtest hitch rewards sound bank preset walk week',
-      examples: ['/try', '/try round 62', '/try walk', '/try next', '/try list'],
-      complete: (args) => { const q = String(args || '').toLowerCase(); return [{ value: 'next' }, { value: 'list' }, ...C.ROUNDS.map((r) => ({ value: `round ${r}` })), ...C.PATHS.map((p) => ({ value: p.id, hint: p.name })), { value: 'reset' }].filter((o) => o.value.startsWith(q)); },
+      name: 'try', area: 'App', args: '[name | round <61–70> | tours | next | list | reset]',
+      desc: 'Try what\'s new: short hands-on tours of rounds 61–70 (opens the place, rings the real button)',
+      keywords: 'whats new tour tours try hands on guided quests paris nights serum vital park shows playtest hitch rewards sound bank preset walk week weekend ticket follow errand sessions reference controller daw slow broke direction finish credits moodboard',
+      examples: ['/try', '/try tours', '/try nights', '/try round 62', '/try walk', '/try list'],
+      complete: (args) => { const q = String(args || '').toLowerCase(); return [{ value: 'next' }, { value: 'list' }, { value: 'tours' }, ...TryNew71Core.TOURS.map((t) => ({ value: t.id, hint: t.name })), ...C.ROUNDS.map((r) => ({ value: `round ${r}` })), ...C.PATHS.map((p) => ({ value: p.id, hint: p.name })), { value: 'reset' }].filter((o) => o.value.startsWith(q)); },
       run: (args) => {
         const a = String(args || '').trim(); const w = a.toLowerCase().split(/\s+/);
         if (!a) { menu(); return ''; }
         if (w[0] === 'list') return `**✦ Try what's new** · ${C.label(prog())}\n${C.listText(prog())}`;
         if (w[0] === 'next') { startNext(); return ''; }
-        if (w[0] === 'reset') { set(KEY, {}); emit(); return 'Try what\'s new: every path is untried again.'; }
+        if (w[0] === 'reset') { set(KEY, {}); set(KEY7, {}); emit(); return 'Try what\'s new: every path and tour is untried again.'; }
+        if (w[0] === 'tours') { if (w[1] === 'list') return `**✦ The tours of rounds 66–70** · ${T7.label(prog7())}\n${T7.listText(prog7())}`; sinceCard({ manual: true }); return ''; } // (round 71, whatsnew71)
+        if (T7.find(a) && !C.byId(C.norm(a))) { startTour(a); return ''; }
+        if ((w[0] === 'round' || /^[67]\d$/.test(w[0])) && T7.forRound(w[0] === 'round' ? w[1] : w[0]).length) { startTours(T7.forRound(w[0] === 'round' ? w[1] : w[0]).map((t) => t.id)); return ''; } // (round 71) rounds 66–70: their tours
         if (w[0] === 'round' || /^6\d$/.test(w[0])) { const r = Number(w[0] === 'round' ? w[1] : w[0]); return startRound(r) ? '' : `No paths for round ${w[1] || w[0]}: ${C.ROUNDS.join(', ')}.`; }
         return start(a) ? '' : `No path called “${a}”. ${C.PATHS.map((p) => p.id).join(' · ')}`;
       },
     });
   }
-  try { AppUI.addAction?.('Try what\'s new: hands-on paths through rounds 61–63', () => menu()); } catch { /* no palette */ }
+  try { AppUI.addAction?.('Try what\'s new: hands-on paths through rounds 61–70', () => menu()); } catch { /* no palette */ }
 
-  return { start, startRound, startNext, menu, menuItems, whatsNewRow, patchNotesButton, offer, card, closeCard, mark, progress: prog, get cardEl() { return cardEl; }, get chain() { return chain ? { ...chain } : null; } };
+  // ======================= (round 71, whatsnew71) the tours of rounds 66–70 =======================
+  // Five short themed tours (trynew71-core.js): each step is one sentence and a "Show me" click that opens the place and
+  // rings the real button (tour.js step.showMe). Ways in, all clicks: the one card after an update ("Since you were
+  // last here: N updates — take the 1-minute tours?" · Later), the ✦ tracker's "✦ New tours", What's new and the patch
+  // notes of rounds 66–70, Settings › What's new… › Try what's new (this menu), Ctrl/⌘+K.
+  const T7 = TryNew71Core;
+  const KEY7 = 'trynew.tours71'; const SINCE = 'trynew.since71';
+  const prog7 = () => T7.clean(get(KEY7, {}));
+  function mark7(id, state) { const before = prog7()[id]?.state; set(KEY7, T7.mark(prog7(), id, state)); if (before !== prog7()[id]?.state) emit(); }
+  let chain7 = null; // the tour ids still to run after this one (Take the tours)
+
+  // ---------- the places Show me opens (each one only shows something; nothing is saved by opening it) ----------
+  const qjOpen = () => [...document.querySelectorAll('dialog.qj-dialog[open]')];
+  const isShowCard = (d) => Boolean(d?.querySelector('.ls-toggle, .tk-btn, .iv-bring, .fw-row, .bg-open'));
+  async function studioKit() {
+    await Lazy.load('questhud');
+    await QuestHud.openStudio(); // the Studio's first page (the map stays the owner's click)
+    if (!(await until(() => typeof QuestJournal !== 'undefined' && QuestJournal.ready?.(), 6000))) return null;
+    const ui = QuestJournal.paris?.ui?.(); return ui ? { ...ui, mutate: QuestJournal.mutate } : null;
+  }
+  // a show's card: the next show of the week with a time (its ⏰ / 🎒 need one), else any coming one; none cached → the list
+  async function showCard() {
+    if (isShowCard(qjOpen().at(-1))) return;
+    qjOpen().forEach((d) => d.close());
+    await Lazy.load('leavesoon').catch(() => {}); // the card's ⏰ Remind me to leave and 🎒 Before I go come with it
+    try { LeaveSoon.attach?.(); } catch { /* it attaches itself */ }
+    const kit = await studioKit();
+    if (!kit || typeof ShowSync === 'undefined') return;
+    await ShowSync.ensure?.().catch(() => {});
+    const soon = (s) => s && !s.cancelled && !s.dateOnly && Number.isFinite(s.start) && s.start > Date.now();
+    const s = ShowSync.week().find(soon) || ShowSync.upcoming().find(soon) || ShowSync.upcoming()[0];
+    if (s) ShowSync.showDetail(kit, s); else ShowSync.listDialog(kit);
+    await until(() => isShowCard(qjOpen().at(-1)), 3000);
+  }
+  async function map() {
+    if (vis(document.querySelector('.surface.active .qml-open'))) return;
+    await Lazy.load('questhud');
+    await QuestHud.openStudio(null, 'world'); // the Paris map (Show me is the owner's click: as if he had clicked Map)
+    await until(() => vis(document.querySelector('.surface.active .qml-open')) && document.querySelector('.surface.active .hp-btn'), 6000);
+  }
+  async function hud() {
+    await Lazy.load('questhud'); if (!QuestHud.isOpen?.()) await QuestHud.open();
+    const p = await until(() => vis(document.querySelector('.qh-panel')) && document.querySelector('.qh-panel'), 3000);
+    await Promise.all((p?.getAnimations?.({ subtree: true }) || []).map((a) => a.finished.catch(() => {}))); // the ring goes on once it has slid in
+  }
+  async function sessions() {
+    await desk();
+    if (vis(document.querySelector('.bl-panel'))) return;
+    document.querySelector('.surface.active .bl-open')?.click(); // Sessions only opens its list
+    await until(() => vis(document.querySelector('.bl-panel')) && (document.querySelector('.bl-panel .sp-pad-btn') || !document.querySelector('.bl-panel .bl-sketch')), 5000);
+  }
+  async function settings() {
+    if (!document.querySelector('dialog.settings-dialog[open]')) await AppUI.openSettings();
+    const sd = await until(() => document.querySelector('dialog.settings-dialog[open]'), 4000);
+    // Advanced › Housekeeping (and any fold around it)
+    for (let d = sd?.querySelector('details[data-fold="hearth"]'); d && d !== sd; d = d.parentElement) if (d.tagName === 'DETAILS' && !d.open) d.open = true;
+    // once the folds have opened (they animate), the key's button in the middle of the list, so the ring lands on it still
+    await Promise.all((sd?.getAnimations?.({ subtree: true }) || []).map((a) => a.finished.catch(() => {})));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    [...(sd?.querySelectorAll('button') || [])].find((b) => b.textContent.trim().startsWith('Paris Métro status key'))?.scrollIntoView({ block: 'center' });
+  }
+  async function railMore() {
+    try { hideMenu(); } catch { /* no menu */ }
+    document.getElementById('rail-more')?.click(); // the ⋯ only opens its menu
+    await until(() => vis(document.querySelector('#menu:not([hidden]) button')), 2000);
+  }
+  async function lab() {
+    if (!surfaceIs('tool:three')) activate('tool:three');
+    await Promise.all(['labdirection', 'labfinish', 'credits'].map((g) => Lazy.load(g).catch(() => {}))); // their chips (already there after the first quiet moment)
+    await until(() => vis(document.querySelector('.surface.active .dir-chip')) && vis(document.querySelector('.surface.active .cr-open')), 9000);
+  }
+  async function drawer() {
+    if (typeof BoardDrawer === 'undefined') await Lazy.load('board').catch(() => {});
+    if (typeof BoardDrawer !== 'undefined' && !BoardDrawer.isOpen()) BoardDrawer.toggle(true);
+    await until(() => vis(document.querySelector('.bdd .bdd-dist')) || vis(document.querySelector('.bdd')), 4000);
+  }
+  const OPEN7 = { hud, show: showCard, settings, map, desk, sessions, railmore: railMore, lab, drawer };
+  // what an earlier step left open goes when another place opens (a show's card over the map, the ⋯ menu, the ✦ panel…)
+  function clear7(keep) {
+    try { hideMenu(); } catch { /* no menu */ }
+    try { if (keep !== 'hud' && typeof QuestHud !== 'undefined' && QuestHud.isOpen?.()) QuestHud.close(); } catch { /* fine */ }
+    if (keep !== 'show') qjOpen().forEach((d) => d.close());
+    try { if (keep !== 'sessions' && typeof BounceLog !== 'undefined') BounceLog.closePanel(); } catch { /* fine */ } // its list sits over the desk's top row
+    if (keep !== 'settings') document.querySelector('dialog.settings-dialog[open]')?.close();
+    try { if (keep !== 'drawer' && typeof BoardDrawer !== 'undefined' && BoardDrawer.isOpen()) BoardDrawer.toggle(false); } catch { /* fine */ }
+    clear(keep);
+  }
+  // 'menu:<label>': a row of the open ⋯ menu whose words start so
+  const byMenu = (label) => () => [...document.querySelectorAll('#menu:not([hidden]) button')].find((b) => vis(b) && b.textContent.trim().startsWith(label)) || null;
+  const target7 = (list = []) => list.map((s) => (s.startsWith('menu:') ? byMenu(s.slice(5)) : s.startsWith('text:') ? byText(s.slice(5)) : bySel(s)));
+  // the step's own button, else (only when it can't show now) its fallback
+  const targetOf = (s) => [...target7(s.target), ...target7(s.fallback)];
+
+  function tour7(t) {
+    const steps = t.steps.map((s) => ({ title: s.title, text: s.text, showMe: true, feature: s.id, open: async () => { clear7(s.open); await OPEN7[s.open](); }, target: targetOf(s) }));
+    return {
+      id: `try71-${t.id}`, name: t.name, icon: t.icon, why: t.why, steps, skippable: true,
+      doneText: `${t.name}: seen ✓ · ${T7.label(T7.mark(prog7(), t.id, 'done'))}`,
+      onEnd: ({ done, how }) => {
+        try { hideMenu(); } catch { /* no menu */ }
+        if (done) mark7(t.id, 'done'); else if (how === 'skip') mark7(t.id, 'skipped'); else mark7(t.id, 'later');
+        if (typeof Usage !== 'undefined') Usage.track?.(`Try › ${t.name}`, { area: 'Tours', label: done ? 'done' : how || 'later' });
+        if (chain7 && (done || how === 'skip')) {
+          const nx = chain7.map(T7.byId).find((x) => x && x.id !== t.id && !['done', 'skipped'].includes(prog7()[x.id]?.state));
+          chain7 = chain7.filter((x) => x !== t.id);
+          if (nx) { setTimeout(() => run7(nx), 450); return; }
+          chain7 = null;
+          toast(`That's all of them: ${T7.label(prog7())}.`, { timeout: 2600 });
+        } else if (!done) chain7 = null;
+      },
+    };
+  }
+  function run7(t) { if (!t) return null; return Tour.start(tour7(t), { restart: ['done', 'skipped'].includes(prog7()[t.id]?.state) }); }
+  // startTour('nights') · startTours(['nights', 'music']) (the untaken ones in order; all taken → all again)
+  function startTour(q) { const t = typeof q === 'object' ? q : T7.find(q); Tour.stop(); chain7 = null; return t ? run7(t) : null; }
+  function startTours(ids = null) {
+    Tour.stop();
+    const todo = T7.queue(prog7(), ids);
+    const list = (todo.length ? todo : T7.TOURS.filter((t) => !ids || ids.includes(t.id))).map((t) => t.id);
+    if (!list.length) return null;
+    chain7 = list;
+    return run7(T7.byId(list[0]));
+  }
+
+  // ---------- the tour chips (the card, What's new, the patch notes) ----------
+  const stateWord = (id) => ({ done: '✓', skipped: 'skipped', later: 'paused' })[prog7()[id]?.state] || '';
+  function chips7(after = () => {}) {
+    const row = el('div', { class: 'tn7-chips', attrs: { role: 'group', 'aria-label': 'The tours' } });
+    const paint = () => row.replaceChildren(...T7.TOURS.map((t) => el('button', { type: 'button', class: `ghost small tn7-chip${prog7()[t.id]?.state === 'done' ? ' done' : ''}`, dataset: { tour: t.id }, text: `${t.icon} ${t.name}${stateWord(t.id) ? ` · ${stateWord(t.id)}` : ''}`, title: `${t.steps.length} steps, about a minute: ${t.why}`, on: { click: () => { after(); startTour(t); } } })));
+    paint();
+    addEventListener('hearth:trynew', () => { if (row.isConnected) paint(); });
+    return row;
+  }
+
+  // ---------- the card: once after an update (Later = not by itself again), or from the ✦ tracker / a menu ----------
+  let card7 = null;
+  function closeCard7() { if (!card7) return; const c = card7; card7 = null; c.classList.add('out'); setTimeout(() => c.remove(), 160); }
+  // sinceCard({ updates, j?, goBack?, manual? }): manual = asked for (no "since" wording, no one-time flag)
+  function sinceCard({ updates = 0, from = 0, manual = false, goBack = null, j = null } = {}) {
+    closeCard7(); closeCard();
+    const later = () => { if (!manual) set(SINCE, 'later'); closeCard7(); };
+    const lead = manual || !updates ? `Five short tours of what came in rounds 66–70 · ${T7.label(prog7())}` : T7.sinceText(updates);
+    card7 = el('div', { class: 'speed-card tn-card tn7-card', role: 'dialog', attrs: { 'aria-label': 'Take the tours', 'data-no-usage': '' } },
+      el('div', { class: 'sr-head' }, el('b', { text: manual ? '✦ The new tours' : '✦ Welcome back' }), el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'sr-x', text: '×', title: 'Later', attrs: { 'aria-label': 'Later' }, on: { click: later } })),
+      el('p', { class: 'tn7-lead', text: lead }),
+      el('p', { class: 'tn-text', text: 'Each step points at the real button, in one sentence; Show me takes you there. Nothing changes unless you click it.' }),
+      chips7(() => { if (!manual) set(SINCE, 'started'); closeCard7(); }),
+      el('div', { class: 'tn-foot' },
+        el('button', { type: 'button', class: 'small primary tn7-go', text: 'Take the tours', on: { click: () => { if (!manual) set(SINCE, 'started'); closeCard7(); startTours(); } } }),
+        el('button', { type: 'button', class: 'ghost small tn7-later', text: 'Later', title: 'It won\'t come back by itself: the ✦ chip\'s ✦ New tours has them any time', on: { click: later } }),
+        el('span', { class: 'spacer' }),
+        window.WhatsNew || typeof Lazy !== 'undefined' ? el('button', { type: 'button', class: 'ghost small tn7-what', text: 'What changed', title: 'Every change of these rounds, one line each', on: { click: () => { closeCard7(); Lazy.load('whatsnew').then(() => WhatsNew.open(from ? { since: from - 1 } : {})).catch(() => {}); } } }) : null,
+        goBack && j ? el('button', { type: 'button', class: 'ghost small up-back', text: '↶ Go back', title: `Go back to the version before this update (${j.from}): your chats and data stay`, on: { click: () => { closeCard7(); goBack(); } } }) : null));
+    document.body.append(card7);
+    return card7;
+  }
+  // after an update / at the start: the card when sinceDue says so (→ the node, through the caller's Hints offer), else null
+  //   seen: whatsnew.seen as Hearth started · rounds: the patch notes this copy has
+  function since({ seen, rounds, j = null, goBack = null } = {}) {
+    const due = T7.sinceDue({ seen, rounds, offered: get(SINCE, null), prog: prog7() });
+    if (!due) return null;
+    set(SINCE, 'shown');
+    if (!get(OFFER, null)) set(OFFER, 'since71'); // the older offer (rounds 61–63) stays away: one card, not two
+    try { store.set('whatsnew.seen', Math.max(Number(get('whatsnew.seen', 0)) || 0, due.to)); } catch { /* fine */ } // the digest is one click away on the card
+    return sinceCard({ updates: due.updates, from: due.from, j, goBack });
+  }
+  // the start-up path (updater.js): through Hints as a notice (after the update note, one at a time)
+  function offerSince({ seen, rounds } = {}) {
+    if (!T7.sinceDue({ seen, rounds, offered: get(SINCE, null), prog: prog7() })) return false;
+    const show = () => since({ seen, rounds });
+    if (window.Hints) Hints.offer({ id: 'trynew:since71', kind: 'notice', rank: 1, ttl: 20 * 60000, show });
+    else show();
+    return true;
+  }
+  // the What's new row and the patch notes' button for rounds 66–70
+  function whatsNewRow7(rounds) {
+    if (!(rounds || []).map(Number).some((r) => T7.ROUNDS.includes(r))) return null;
+    return el('div', { class: 'tn-row tn7-row', attrs: { 'data-no-usage': '' } }, el('span', { class: 'tn-lead', text: '✦ The 1-minute tours:' }),
+      chips7(() => { document.querySelector('dialog.wn-dialog[open], dialog.pn-dialog[open]')?.close(); window.WhatsNew?.closeCard?.(); }));
+  }
+  function patchNotesButton7(round) {
+    const ts = T7.forRound(round);
+    if (!ts.length) return null;
+    return el('button', { type: 'button', class: 'ghost small tn-pn', dataset: { round }, text: `✦ Show me · ${ts.map((t) => t.icon).join(' ')}`, title: `Short tours of this round's new things: ${ts.map((t) => t.name).join(', ')} (a minute each)`, on: { click: () => { document.querySelector('dialog.pn-dialog[open]')?.close(); startTours(ts.map((t) => t.id)); } } });
+  }
+  function menuItems7() {
+    const pr = prog7();
+    return { label: 'Rounds 66–70: the tours', hint: T7.label(pr), items: [
+      { label: 'Take them in order', hint: T7.label(pr), action: () => startTours() },
+      ...T7.TOURS.map((t) => ({ label: `${t.icon} ${t.name}`, hint: stateWord(t.id) || t.why, action: () => startTour(t) })),
+    ] };
+  }
+
+  return { start, startRound, startNext, menu, menuItems, whatsNewRow, patchNotesButton, offer, card, closeCard, mark, progress: prog, get cardEl() { return cardEl; }, get chain() { return chain ? { ...chain } : null; },
+    // (round 71, whatsnew71)
+    startTour, startTours, since, offerSince, sinceCard, closeCard7, whatsNewRow7, patchNotesButton7, menuItems7, progress7: prog7, tour7, OPEN7, targetOf, get card7() { return card7; }, get chain7() { return chain7 ? [...chain7] : null; } };
 })();
 window.TryNew = TryNew;

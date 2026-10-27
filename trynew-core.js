@@ -30,7 +30,7 @@ const TryNewCore = (() => {
     ] },
     { id: 'paris', round: 61, icon: '🗺', name: 'Paris map + guide', why: '36 places worth the trip, each a small quest', steps: [
       { title: 'Open the Paris map', open: 'studio:home', target: MAPKEY, clickNext: true, text: 'In Sidequest Studio: click Map. Food stops, record shops and your clubs come onto the map; More places (on the map) shows the whole guide.' },
-      { title: 'Places, shows, walks', target: ['.qmf-strip', ...GUIDE], text: 'Layers (first in this row) lists every map layer with a switch: Food & stops, Nights, Park jams, Paris place quests, My walks, Visited. The chips next to it switch the main ones, and More places for the whole guide (Paris guide, under the map, filters them: shows, records, night, free…).' },
+      { title: 'Places, shows, walks', target: ['.qmf-strip', ...GUIDE], text: 'Layers (first in this row) lists every map layer with a switch; the chips beside it switch the main ones, and More places shows the whole guide (Paris guide, under the map, filters it: shows, records, night, free…).' },
       { title: 'A place quest', target: ['.qj-paris-start', 'text:Start this quest'], clickNext: true, text: 'Click a pin, then Start this quest: go → do one thing there → bring proof home.' },
     ] },
     { id: 'shows', round: 61, icon: '🎟', name: 'This week’s shows', why: 'Shotgun + DICE, on the map', steps: [

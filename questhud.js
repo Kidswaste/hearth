@@ -158,7 +158,7 @@ const QuestHud = (() => {
     chip?.setAttribute('aria-expanded', 'false');
     if (chip && !chip.hidden && document.activeElement === document.body) chip.focus({ preventScroll: true });
   }
-  function outside(e) { if (panel && !panel.contains(e.target) && !chip?.contains(e.target) && !e.target.closest?.('#menu')) close(); }
+  function outside(e) { if (panel && !panel.contains(e.target) && !chip?.contains(e.target) && !e.target.closest?.('#menu, .tour-card')) close(); } // (round 71) a guided tour's card is talking about this panel
   function onEsc(e) { if (e.key === 'Escape' && panel && !document.querySelector('#menu:not([hidden])')) { e.preventDefault(); e.stopPropagation(); close(); } }
   // Next to the rail, bottom-aligned with the chip (or the rail's foot when the chip is hidden): over the chats list,
   // never over a chat's messages or the Lab preview for longer than you look at it
@@ -209,7 +209,10 @@ const QuestHud = (() => {
     foot.querySelector('button').dataset.k = 'studio';
     // (round 64, newtour64) ✦ Try what's new: the hands-on paths through rounds 61–63 (trynew.js), until all are tried
     const tn = Object.values(store.get('trynew.progress', {}) || {}).filter((v) => v?.state === 'tried').length;
-    if (tn < 13) foot.insertBefore(btn(`✦ New ${tn}/13`, () => { close(); return Lazy.load('trynew').then(() => TryNew.startNext()); }, 'qh-try', `Try what's new: a short hands-on path through each new thing of rounds 61–63, where to click (${tn} of 13 tried)`), foot.lastChild);
+    // (round 71, whatsnew71) first the five short tours of rounds 66–70 (trynew71-core.js), until all are seen
+    const t7 = Object.values(store.get('trynew.tours71', {}) || {}).filter((v) => v?.state === 'done').length;
+    if (t7 < 5) foot.insertBefore(btn(`✦ New tours ${t7}/5`, () => { close(); return Lazy.load('trynew').then(() => TryNew.sinceCard({ manual: true })); }, 'qh-try qh-try71', `Short tours of what's new since round 66: Paris nights, Sidequest, Music, Help when it breaks, In the Lab (${t7} of 5 seen)`), foot.lastChild);
+    else if (tn < 13) foot.insertBefore(btn(`✦ New ${tn}/13`, () => { close(); return Lazy.load('trynew').then(() => TryNew.startNext()); }, 'qh-try', `Try what's new: a short hands-on path through each new thing of rounds 61–63, where to click (${tn} of 13 tried)`), foot.lastChild);
     panel.replaceChildren(head, el('div', { class: 'qh-body' }, ...body), foot);
     if (focusKey) panel.querySelector(`[data-k="${CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
   }

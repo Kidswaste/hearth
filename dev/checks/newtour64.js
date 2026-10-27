@@ -130,7 +130,7 @@ tidy();
 // ---------- 5. What's new and the patch notes ----------
 await Lazy.load('whatsnew');
 await WhatsNew.open({ since: 60 });
-const row = await until(() => document.querySelector('dialog.wn-dialog[open] .tn-row'), 'the Try it row in What\'s new', 120).catch(() => null);
+const row = await until(() => document.querySelector('dialog.wn-dialog[open] .tn-row:not(.tn7-row)'), 'the Try it row in What\'s new', 120).catch(() => null);
 step('What\'s new: a Try it per round (61–63) and "N of 13 tried"', Boolean(row && row.querySelectorAll('.tn-round').length === 3 && /2 of 13 tried/.test(row.textContent)), row?.textContent);
 row?.querySelector('.tn-round[data-round="62"]')?.click();
 await until(() => card()?.dataset.tour, 'round 62 from What\'s new', 200).catch(() => null);
@@ -145,6 +145,8 @@ if (pick && [...pick.options].some((o) => o.value === 'round-60.md')) { pick.val
 tidy();
 
 // ---------- 5b. the ✦ tracker panel's link ----------
+// (round 71, whatsnew71) the five tours of rounds 66–70 take that place until they're seen (dev/checks/whatsnew71.js): seen here
+store.set('trynew.tours71', Object.fromEntries(TryNew71Core.TOURS.map((t) => [t.id, { state: 'done', at: Date.now() }])));
 await Lazy.load('questhud'); await QuestHud.openStudio(null, 'adventure');
 await until(() => vis(document.querySelector('#rail .qh-chip')), 'the chip (the Studio holds a quest)', 100).catch(() => null);
 QuestHud.open();

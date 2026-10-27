@@ -28,7 +28,8 @@ const PatchNotes = (() => {
     const pick = el('select', { class: 'pn-pick', attrs: { 'aria-label': 'Round' } }, files.map((f) => el('option', { value: f, text: `Round ${roundOf(f)}`, selected: f === cur })));
     // (round 64, newtour64) rounds 61–63: "✦ Try it · 2 of 5 tried" in the head (trynew.js, its own group)
     const trySlot = el('span', { class: 'pn-try' });
-    const tryBtn = () => { trySlot.replaceChildren(); const r = roundOf(cur); if (r >= 61 && r <= 63 && window.Lazy) Lazy.load('trynew').then(() => { if (roundOf(cur) === r) trySlot.replaceChildren(window.TryNew?.patchNotesButton(r) || ''); }).catch(() => {}); };
+    // (round 71, whatsnew71) rounds 66–70: "✦ Show me" runs the tours that cover that round
+    const tryBtn = () => { trySlot.replaceChildren(); const r = roundOf(cur); if (((r >= 61 && r <= 63) || (r >= 66 && r <= 70)) && window.Lazy) Lazy.load('trynew').then(() => { if (roundOf(cur) === r) trySlot.replaceChildren((r >= 66 ? window.TryNew?.patchNotesButton7?.(r) : window.TryNew?.patchNotesButton(r)) || ''); }).catch(() => {}); };
     const show = async () => { tryBtn(); body.replaceChildren(el('p', { class: 'hint', text: 'Loading…' })); try { body.replaceChildren(block(await readText(`docs/patch-notes/${cur}`))); } catch (err) { body.replaceChildren(el('p', { class: 'hint', text: calmError(err) })); } body.scrollTop = 0; };
     pick.addEventListener('change', () => { cur = pick.value; show(); });
     const dlg = el('dialog', { class: 'ui-modal pn-dialog' },
