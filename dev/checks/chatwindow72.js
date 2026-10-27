@@ -99,7 +99,7 @@ const sb = list(); out.open.scrollHeight = sb.scrollHeight; out.open.atEnd = sb.
 
 // ---------- 4. the wheel, up through the whole chat ----------
 {
-  const L = list(); let peak = nodes(); const jumps = []; let steps = 0; let blank = 0;
+  const L = list(); let peak = nodes(); const jumps = []; let steps = 0; let blank = 0; let late = 0;
   const center = () => { const r = L.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height * 0.4); return e?.closest?.('.msg, .msg-rest') || null; };
   const settled = async () => { await wait(160); let last = -1; let still = 0; for (let k = 0; k < 40 && still < 3; k++) { await wait(40); still = Math.abs(L.scrollTop - last) < 1 ? still + 1 : 0; last = L.scrollTop; } }; // (the wheel's smooth scroll first starts, then stops)
   m0 = await metrics(); t = performance.now();
@@ -107,16 +107,18 @@ const sb = list(); out.open.scrollHeight = sb.scrollHeight; out.open.atEnd = sb.
   const meas = await measure(100, async () => {
     for (let i = 0; i < 300; i++) {
       const s0 = L.scrollTop; await wheel(-1500); await until(() => Math.abs(L.scrollTop - s0) >= 1, 1500); await settled(); steps += 1; // (the wheel's own scroll first: a late one isn't a jump)
-      const a = center(); const ay = a?.getBoundingClientRect().top;
+      const a = center(); const ay = a?.getBoundingClientRect().top; const sy = L.scrollTop; const above = [...L.children].filter((n) => n.getBoundingClientRect().bottom <= ay + 1 && n.getBoundingClientRect().bottom > ay - 3000).map((n) => [n, Math.round(n.getBoundingClientRect().height)]);
       if (a?.classList.contains('msg-rest')) blank += 1; // (a spacer under the eye: woken too late)
       await wait(220);
       peak = Math.max(peak, nodes());
-      if (a?.classList.contains('msg') && a.isConnected) { const moved = Math.round(a.getBoundingClientRect().top - ay); if (Math.abs(moved) > 2) jumps.push(`${moved}px@#${a.dataset.index}${a.previousElementSibling?.className ? ` after ${a.previousElementSibling.className}` : ''}`); }
+      // (round 73) a whole wheel turn arriving late (the page busy waking a block: input waits) moves the view by exactly
+      // that turn, by your own scroll: counted apart as lateWheels (input latency), not as content moving
+      if (a?.classList.contains('msg') && a.isConnected) { const moved = Math.round(a.getBoundingClientRect().top - ay); if (Math.abs(moved - 1500) <= 2 && Math.abs(L.scrollTop - sy + 1500) <= 2) late += 1; else if (Math.abs(moved) > 2) jumps.push(`${moved}px@#${a.dataset.index}${a.previousElementSibling?.className ? ` after ${a.previousElementSibling.className}` : ''}${(() => { const ch = above.filter(([n, h]) => !n.isConnected || Math.abs(n.getBoundingClientRect().height - h) > 1).slice(0, 3).map(([n, h]) => `${n.dataset?.index ? `#${n.dataset.index}` : n.className}${n.isConnected ? ` ${h}→${Math.round(n.getBoundingClientRect().height)}` : ' gone'}`); return ch.length ? ` (above: ${ch.join(', ')})` : ''; })()}`); }
       if (L.scrollTop <= 0 && L.querySelector('.msg[data-index="0"]')) break;
     }
   });
   m1 = await metrics();
-  out.scrollUp = { steps, ms: Math.round(performance.now() - t), ...busy(m0, m1), frames: brief(meas), peakListNodes: peak, blankAtStop: blank, jumps: jumps.length, worstJumps: jumps.slice(0, 8), reachedFirst: Boolean(L.querySelector('.msg[data-index="0"]')) };
+  out.scrollUp = { steps, ms: Math.round(performance.now() - t), ...busy(m0, m1), frames: brief(meas), peakListNodes: peak, blankAtStop: blank, jumps: jumps.length, lateWheels: late, worstJumps: jumps.slice(0, 8), reachedFirst: Boolean(L.querySelector('.msg[data-index="0"]')) };
   // stays put once you stop: a message on screen keeps its place while the blocks around settle
   await wheel(300); await wait(200);
   const a = center(); const ay = a?.getBoundingClientRect().top; await wait(1500);
@@ -156,7 +158,7 @@ const sb = list(); out.open.scrollHeight = sb.scrollHeight; out.open.atEnd = sb.
 }
 
 // ---------- verdicts (budgets) ----------
-const B = { openMs: 1500, openNodes: 4500, peakNodes: 9000, jumps: 4, drift: 2, // (jumps: a few hundred px where a just-woken reply's picture / video takes its real size late, ≈ 0–3 per climb here; the old code had 1)
+const B = { openMs: 1500, openNodes: 4500, peakNodes: 9000, jumps: 0, drift: 2, // (round 73, chatsteady73: jumps 0 — pictures / videos of a waking block are measured first and their boxes reserved; round 72 allowed 4 for the 0–3 a climb had next to media)
   replyTaskMs: 900, worstKeyMs: 120 };
 out.budget = B;
 if (out.open.ms > B.openMs) bad(`opening took ${out.open.ms} ms (> ${B.openMs})`);

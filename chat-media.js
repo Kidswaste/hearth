@@ -89,9 +89,14 @@ const ChatMedia = (() => {
     const media = vid
       ? el('video', { controls: true, preload: 'none', playsInline: true, loop: true, class: 'cm-media', dataset: { src: fileUrl(p) } })
       : el('img', { src: fileUrl(p), alt: t.name || '', loading: 'lazy', decoding: 'async', class: 'cm-media', title: 'Click: full size', on: { click: () => open(p) } });
-    if (ratios.has(p)) media.style.aspectRatio = String(ratios.get(p));
+    // (round 73, chatsteady73) its box has the picture's / video's real size before it loads: kept on the thing (t.w,
+    // t.h: saved with the chat) or seen before (Native.mediaSize, kept between sessions); a video without it was drawn
+    // 2:1 until its first frame, and a woken message moved what you were reading by a few hundred px
+    const s = t.w ? [t.w, t.h] : Native.mediaSize?.(fileUrl(p));
+    if (s) media.style.aspectRatio = `${s[0]} / ${s[1]}`; else if (ratios.has(p)) media.style.aspectRatio = String(ratios.get(p));
     media.addEventListener(vid ? 'loadedmetadata' : 'load', () => {
       const w = vid ? media.videoWidth : media.naturalWidth; const h = vid ? media.videoHeight : media.naturalHeight;
+      if (w && h) { t.w = w; t.h = h; Native.noteSize?.(fileUrl(p), w, h); }
       if (w && h && !ratios.has(p)) { ratios.set(p, Math.round((w / h) * 1000) / 1000); if (ratios.size > 300) ratios.delete(ratios.keys().next().value); }
     }, { once: true });
     if (vid) watch(media);
@@ -131,5 +136,5 @@ const ChatMedia = (() => {
       },
     });
   }
-  return { namesIn, collect };
+  return { namesIn, collect, urlOf: fileUrl, HERO }; // urlOf: a reply's picture / video as the chat draws it (chat-rest.js)
 })();

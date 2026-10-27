@@ -64,14 +64,65 @@ const ChatRest = (() => {
   }
   // the height a run of nodes takes (to where the next one starts: margins included)
   const span = (nodes) => { const nx = nodes.at(-1).nextElementSibling; return (nx ? top(nx) : nodes.at(-1).getBoundingClientRect().bottom + 18) - top(nodes[0]); };
+  // (round 73, chatsteady73) the pictures and videos of messages about to wake whose size isn't known yet are measured
+  // first (alongside their Markdown, ≤ 0.6 s), once each: kept on the message (a reply's things / Lab screenshots: w, h,
+  // saved with the chat) and in the sizes Native keeps between sessions. Their boxes then have their real size the
+  // moment the block slips in: a video drawn 2:1 until its first frame, or a picture 0 px tall until it loaded, moved
+  // what you were reading by a few hundred px as you climbed a long chat.
+  const MD_IMG = /!\[[^\]]*\]\((https:\/\/[^)\s]+)\)/g;
+  function mediaOf(msgs) {
+    const out = [];
+    for (const m of msgs) {
+      if (m.role !== 'assistant' && m.role !== 'opinion') continue;
+      if (typeof ChatMedia !== 'undefined' && ChatMedia.urlOf) for (const t of (m.things || []).filter((x) => !x.gone && !x.pending && x.path && /^(image|frame|video)$/.test(x.k)).slice(0, ChatMedia.HERO || 2)) if (!t.w) out.push({ src: ChatMedia.urlOf(t.path), vid: t.k === 'video', o: t });
+      for (const sh of m.shows || []) if (!sh.w && sh.path) out.push({ src: WinMac.fileUrl(sh.path), o: sh });
+      if (String(m.text).includes('](https://')) for (const [, src] of String(m.text).matchAll(MD_IMG)) out.push({ src });
+    }
+    return out;
+  }
+  function measure({ src, vid, o }) {
+    const s = Native.mediaSize?.(src);
+    if (s) { if (o) { o.w = s[0]; o.h = s[1]; } return null; }
+    return new Promise((res) => {
+      const m = vid ? document.createElement('video') : new Image();
+      const done = (w, h) => {
+        clearTimeout(tm); m.onload = m.onloadedmetadata = m.onerror = null;
+        if (w && h) { Native.noteSize?.(src, w, h); if (o) { o.w = w; o.h = h; } }
+        if (vid) { m.removeAttribute('src'); m.load(); } // (lets go of the file)
+        res();
+      };
+      const tm = setTimeout(() => done(), 600);
+      if (vid) { m.preload = 'metadata'; m.muted = true; m.onloadedmetadata = () => done(m.videoWidth, m.videoHeight); } else { m.decoding = 'async'; m.onload = () => done(m.naturalWidth, m.naturalHeight); }
+      m.onerror = () => done();
+      m.src = src;
+    });
+  }
+  // (round 73) what you opened in a message (its thinking, its tool steps) stays open when its block rests and wakes
+  const opened = new WeakMap(); // message → [open?] of its <details>, in order
+  function keepOpen(chat, nodes) {
+    for (const n of nodes) {
+      const m = n.classList?.contains('msg') && chat.messages[Number(n.dataset.index)];
+      const ds = m && n.querySelectorAll('details');
+      if (ds?.length) opened.set(m, [...ds].map((d) => d.open)); else if (m) opened.delete(m);
+    }
+  }
+  function reopen(chat, nodes) {
+    for (const n of nodes) {
+      const m = n.classList?.contains('msg') && chat.messages[Number(n.dataset.index)]; const st = m && opened.get(m);
+      if (!st) continue;
+      const ds = n.querySelectorAll('details');
+      if (ds.length === st.length) ds.forEach((d, i) => { if (d.open !== st[i]) { d.open = st[i]; if (d.open) R.fillFold?.({ target: d }); } });
+    }
+  }
   // block `b` drawn in place of its spacer, exactly as a full draw makes it (native.js planOf)
   async function wake(agentId, v, chat, b) {
     const list = v.list;
     if (list.awake?.has(b)) return false;
     v.waking = true;
     try {
-      const texts = chat.messages.slice(b * R.BLOCK, (b + 1) * R.BLOCK).filter((m) => m.role === 'assistant' || m.role === 'opinion').map((m) => m.text);
-      if (window.Md && Md.uncached(texts)) await Md.warm(texts, 300);
+      const msgs = chat.messages.slice(b * R.BLOCK, (b + 1) * R.BLOCK);
+      const texts = msgs.filter((m) => m.role === 'assistant' || m.role === 'opinion').map((m) => m.text);
+      await Promise.all([window.Md && Md.uncached(texts) ? Md.warm(texts, 300) : null, ...mediaOf(msgs).map(measure)]);
       const gone = () => v.list !== list || H.activeChat[agentId] !== chat.id;
       if (gone() || list.awake.has(b) || !list.querySelector(`:scope > .msg-rest[data-block="${b}"]`)) return false;
       list.awake.add(b);
@@ -90,6 +141,13 @@ const ChatRest = (() => {
       // what's at the top of the view stays put; inside this spacer: the same proportion of the block
       const a = anchor(list);
       const frac = a?.node === sp ? (top(list) - top(sp)) / (sp.getBoundingClientRect().height || 1) : null;
+      reopen(chat, items);
+      // (round 73) drawn at their real size from the start: an older message off screen is otherwise laid out at a 180 px
+      // guess (chatcore.css content-visibility) until it comes near, and the one at the top of the view then grew or
+      // shrank under your eyes (≈ 40 px per user message here). After a frame they go back to that rule, which now
+      // remembers their real size.
+      for (const n of items) if (n.classList?.contains('msg')) n.style.contentVisibility = 'visible';
+      requestAnimationFrame(() => requestAnimationFrame(() => { for (const n of items) if (n.style?.contentVisibility) n.style.contentVisibility = ''; }));
       if (items.length) sp.replaceWith(...items); else sp.remove();
       placeLine(list, agentId);
       if (frac != null && items.length) list.scrollTop += top(items[0]) + frac * span(items) - top(list);
@@ -110,6 +168,7 @@ const ChatRest = (() => {
     list.bits.set(`rest|${b}`, sp);
     sp.restPx = h; sp.style.height = `${h}px`;
     nodes[0].before(sp);
+    keepOpen(chat, nodes);
     for (const n of nodes) { n.remove(); if (list.foldWatch?.delete(n)) list.foldIO?.unobserve(n); }
     list.awake.delete(b);
     placeLine(list, agentId);
