@@ -73,6 +73,10 @@ const HubBridge = (() => {
   const QUICK = /^three_(edit_code|set_code|add_layer|update_layer|screenshot|eval|console|read_code|search_code|sliders|get_code|set_frame|undo|layers|select_layer|keyframes|animate|nodes)$/;
   const capped = (tool, p) => (!QUICK.test(tool) ? p : Promise.race([p, new Promise((res) => setTimeout(() => res({ ok: false, error: `${tool.replace(/^three_/, '')} took over 55 s and was stopped waiting (the preview may be stuck: three_console, or ask the owner to look).` }), 55000))]));
 
+  // (round 73, labtools73) every Lab call goes through tools/three-txn.js once it's loaded (whole or not at all; one undo
+  // step per AI reply; what changed in words); calls made inside another call pass straight through it
+  let around = null;
+  const run = (h, tool, args, ctx) => (around && tool.startsWith('three_') ? around(tool, args, ctx, (c) => h.fn(tool, args, c || ctx)) : h.fn(tool, args, ctx));
   const emit = (entry) => { for (const fn of listeners) { try { fn(entry, log); } catch (err) { console.warn(err); } } };
 
   window.hub.onGameCall(async ({ id, tool: asked, args: given }) => {
@@ -91,7 +95,7 @@ const HubBridge = (() => {
     const h = handlerFor(tool);
     let result;
     try {
-      result = r0.error ? { ok: false, error: r0.error } : h ? await capped(tool, h.fn(tool, args || {}, { chatId: hubChatId })) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
+      result = r0.error ? { ok: false, error: r0.error } : h ? await capped(tool, run(h, tool, args || {}, { chatId: hubChatId })) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
     } catch (err) { result = { ok: false, error: err.message }; }
     result ||= { ok: false, error: `${tool} returned nothing.` };
     Object.assign(entry, { running: false, ms: Date.now() - entry.at, ok: result.ok !== false, error: result.ok === false ? String(result.error || '').slice(0, 300) : null });
@@ -115,7 +119,7 @@ const HubBridge = (() => {
     const ops = Array.isArray(args.ops) ? args.ops : [];
     if (!ops.length) return { ok: false, error: 'batch needs ops: [{ cmd, ...args }, …]' };
     if (ops.length > BATCH_MAX) return { ok: false, error: `At most ${BATCH_MAX} ops in a batch.` };
-    const lines = []; const images = [];
+    const lines = []; const images = []; let partial = false;
     // (round 49, directorfrugal) a batch that looks for itself (screenshot / play-test / contact sheet) gets no automatic
     // pictures from its edits (tools/three-director.js autoShot)
     const shot = ops.some((o) => /^(three_)?(screenshot|input|contact_sheet)$/.test(String(o?.cmd || o?.tool || '')));
@@ -126,21 +130,23 @@ const HubBridge = (() => {
       if (name === 'three_' || NOT_IN_BATCH.test(name)) { lines.push(`${label}: Error: ${name === 'three_' ? 'give cmd' : 'not in a batch (call it on its own)'}`); break; }
       const h = handlerFor(name);
       let r;
-      try { r = h ? await capped(name, h.fn(name, a, { ...ctx, batch: { shot } })) : { ok: false, error: `Nothing handles ${name}.` }; } catch (err) { r = { ok: false, error: err.message }; }
+      try { r = h ? await capped(name, run(h, name, a, { ...ctx, batch: { shot } })) : { ok: false, error: `Nothing handles ${name}.` }; } catch (err) { r = { ok: false, error: err.message }; }
       r ||= { ok: false, error: 'no answer' };
       Usage.agentTool(name);
       for (const fn of results) { try { fn({ tool: name, via: 'three_batch', args: a, result: r, chatId: ctx.chatId || null, agentId: null }); } catch (err) { console.warn(err); } }
       images.push(...[].concat(r.images || (r.image ? [{ data: r.image, mime: r.mime }] : [])).filter((x) => x?.data));
       const text = r.ok === false ? `Error: ${r.error}` : fmtText(r.value);
       lines.push(text.includes('\n') ? `${label}:\n${text.replace(/^/gm, '  ')}` : `${label}: ${text}`);
-      if (r.ok === false) { if (i < ops.length - 1) lines.push(`(stopped: ${ops.length - i - 1} op${ops.length - i - 1 === 1 ? '' : 's'} not run)`); break; }
+      if (r.ok === false) { partial = true; if (i < ops.length - 1) lines.push(`(stopped: ${ops.length - i - 1} op${ops.length - i - 1 === 1 ? '' : 's'} not run)`); break; }
     }
-    return { ok: true, value: lines.join('\n'), ...(images.length ? { images } : {}) };
+    // partial: an op failed (tools/three-txn.js puts the scene back as it was before the batch)
+    return { ok: true, value: lines.join('\n'), ...(images.length ? { images } : {}), ...(partial ? { partial: true } : {}) };
   }
   handlers.push({ prefix: 'three_batch', fn: (tool, args, ctx) => batch(args || {}, ctx || {}) });
 
   return {
     register(prefixes, fn) { for (const prefix of prefixes) handlers.push({ prefix, fn }); },
+    setAround(fn) { around = typeof fn === 'function' ? fn : null; }, // (round 73) tools/three-txn.js
     // the docked director's activity strip (tools.js) and /director commands
     onCall(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     onResult(fn) { results.add(fn); return () => results.delete(fn); },
@@ -154,7 +160,7 @@ const HubBridge = (() => {
       if (r0.error) return { ok: false, error: r0.error };
       const h = handlerFor(r0.tool);
       if (!h) return { ok: false, error: `Nothing in the hub handles ${r0.tool}.` };
-      try { return await h.fn(r0.tool, r0.args || {}, { chatId: ctx.chatId || null }); } catch (err) { return { ok: false, error: err.message }; }
+      try { return await run(h, r0.tool, r0.args || {}, { chatId: ctx.chatId || null }); } catch (err) { return { ok: false, error: err.message }; }
     },
     summarize, resolve, fmtText, imageTokens,
   };

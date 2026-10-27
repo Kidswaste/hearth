@@ -95,7 +95,7 @@
   // ---------- undo / history ----------
   const needThree = () => { if (typeof ThreeDirector === 'undefined') throw new Error('The Three.js Lab isn\'t loaded.'); };
   cmd({
-    name: 'undo-edit', args: '[force]', desc: 'Undo the director\'s last code edit in the Lab (force: even if the layer changed since)', keys: '↶ in the docked chat',
+    name: 'undo-edit', args: '[force]', desc: 'Undo the director\'s last edit in the Lab: everything an AI changed in one reply is one step (force: even if it changed since)', keys: '↶ in the docked chat',
     complete: pick(['force']),
     run: async (args) => { needThree(); const h = await DirectorDock.undoEdit({ force: /^force$/i.test(args) }); return h ? `↶ "${h.layer}" is back to before the director's ${h.tool.replace(/^three_/, '').replace(/_/g, ' ')} (${timeAgo(h.at)}). \`/redo-edit\` puts it back.` : null; },
   });

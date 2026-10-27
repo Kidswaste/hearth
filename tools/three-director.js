@@ -849,7 +849,7 @@ const ThreeDirector = (() => {
     // keyframes / animation presets are the everyday way to move things (time first): a one-line result, not the
     // whole Lab report (≈ 2.8k characters before)
     if ((tool === 'three_keyframes' && d.setKeyframes) || (tool === 'three_animate' && d.applyPreset)) {
-      const r = tool === 'three_keyframes' ? d.setKeyframes(args.layer, args.property, args.keys, args.clear) : d.applyPreset(args.layer, args.preset);
+      const r = await (tool === 'three_keyframes' ? d.setKeyframes(args.layer, args.property, args.keys, args.clear) : d.applyPreset(args.layer, args.preset)); // (round 73) a backstage scene's preset reads its saved timeline first
       if (args.report === 'full') return { ok: true, value: r };
       const errs = (r.errors || []).map((e) => `${e.layer ? `[${e.layer}] ` : ''}${clip(e.message, 200)}`);
       const what = tool === 'three_keyframes' ? `${r.layer}.${r.property}: ${r.keyframes} key${r.keyframes === 1 ? '' : 's'}` : `${r.layer || args.layer}: ${args.preset}${r.keys != null ? ` (${r.keys} keys)` : ''}`;
@@ -963,10 +963,17 @@ const ThreeDirector = (() => {
   return {
     handle, trim,
     // /undo-edit, /redo-edit, the dock's ↶ button
-    undo: async (opts) => undo(ThreeLab.director || (await ThreeLab.cmd({ show: false }), ThreeLab.director), opts),
-    redo: async () => redo(ThreeLab.director || (await ThreeLab.cmd({ show: false }), ThreeLab.director)),
+    // (round 73, labtools73) what an AI did in its last reply is one step (tools/three-txn.js), when it's the newest change
+    undo: async (opts) => {
+      if (window.LabTxn?.wantsUndo?.(history)) return LabTxn.undoTurn(opts || {});
+      window.LabTxn?.noteCodeUndo?.();
+      return undo(ThreeLab.director || (await ThreeLab.cmd({ show: false }), ThreeLab.director), opts);
+    },
+    redo: async () => (window.LabTxn?.wantsRedo?.() ? LabTxn.redoTurn() : redo(ThreeLab.director || (await ThreeLab.cmd({ show: false }), ThreeLab.director))),
     history: () => history.slice(),
-    canRedo: () => redoStack.length > 0,
+    canRedo: () => redoStack.length > 0 || Boolean(window.LabTxn?.wantsRedo?.()),
+    // a reply undone as a whole: its code edits leave the per-edit history too (no second undo of them)
+    forget(sketchId, from, to) { let n = 0; for (let i = history.length - 1; i >= 0; i -= 1) { const h = history[i]; if (h.sketchId === sketchId && h.at >= from && h.at <= to) { history.splice(i, 1); n += 1; } } if (n) changed(); return n; },
     onHistory(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     newTurn, seen, saved: () => JSON.parse(JSON.stringify(savedNotes)),
     // (round 28, lookmatch) the small-picture path, for pictures made outside a tool call (a reference for the director)

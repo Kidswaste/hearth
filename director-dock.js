@@ -226,7 +226,7 @@ const DirectorDock = (() => {
     if (typeof ThreeDirector === 'undefined') { toast('Only the Three Director keeps an edit history', { type: 'error' }); return null; }
     try {
       const h = await ThreeDirector.undo({ force });
-      toast(`Undid the director's edit to "${h.layer}"${h.errors ? ` (${h.errors} error${h.errors === 1 ? '' : 's'} now)` : ''}`, { action: { label: 'Redo', fn: () => redoEdit() } });
+      toast(h.turn ? `Undid ${h.label}` : `Undid the director's edit to "${h.layer}"${h.errors ? ` (${h.errors} error${h.errors === 1 ? '' : 's'} now)` : ''}`, { action: { label: 'Redo', fn: () => redoEdit() } }); // (round 73) a whole reply
       return h;
     } catch (err) {
       const changed = /changed after/.test(err.message);
@@ -235,7 +235,7 @@ const DirectorDock = (() => {
     }
   }
   async function redoEdit() {
-    try { const h = await ThreeDirector.redo(); toast(`Redid the director's edit to "${h.layer}"`); return h; } catch (err) { toast(err.message, { type: 'error' }); return null; }
+    try { const h = await ThreeDirector.redo(); toast(h.turn ? `Redid ${h.label}` : `Redid the director's edit to "${h.layer}"`); return h; } catch (err) { toast(err.message, { type: 'error' }); return null; }
   }
 
   // ---------- the picture viewer ----------

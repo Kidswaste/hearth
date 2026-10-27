@@ -96,9 +96,12 @@ const r3 = await HubBridge.call('three_eval', { code: '[innerWidth, innerHeight,
 step(r3.ok !== false, 'backstage eval', r3.value ?? r3.error);
 const r4 = await HubBridge.call('three_console', {}, { chatId: A });
 step(r4.ok !== false && /fps/.test(String(r4.value?.stats || '')), 'backstage renders (fps)', r4.value?.stats);
-// (round 72, labbridge72) sliders work backstage now (read from the code); the timeline still needs the scene on screen
-const r5 = await HubBridge.call('three_timeline', {}, { chatId: A });
+// (round 72, labbridge72) sliders work backstage now (read from the code); (round 73, labtools73) the timeline too:
+// the music transport still needs the scene on screen
+const r5 = await HubBridge.call('three_media_control', { action: 'play' }, { chatId: A });
 step(r5.ok === false && /on screen/.test(r5.error), 'on-screen-only tools explain themselves', r5.error?.slice(0, 90));
+const r5t = await HubBridge.call('three_timeline', {}, { chatId: A });
+step(r5t.ok !== false && r5t.value?.layers, 'backstage timeline (round 73)', r5t.error || r5t.value?.note);
 const r5b = await HubBridge.call('three_sliders', {}, { chatId: A });
 step(r5b.ok !== false, 'sliders read backstage', r5b.error?.slice(0, 90));
 // the dock's undo of that edit: undone in A's sketch, the Lab stays on B
