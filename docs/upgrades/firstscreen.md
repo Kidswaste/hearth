@@ -160,3 +160,4 @@ when the button is clicked. That is ≈ 2.3 KB in jank.js (the card, its words a
 - Round 67 merge: 2333 → 2336 KB. The five round-67 streams each stayed lazy; together their manifest (lazy-data.js) and preload lines add ≈ 1.5 KB to the first screen.
 - Round 67 (creative session) merged with round 68: scripts 72 → 73 (collab-eyes.js) and 2336 → 2345 KB (Astra/Swarm/direction hooks in native.js, astra.js, director-cmds.js, manager.js, missions.js). Candidates to make lazy later.
 - Round 72: 2345 → 2352 KB for chatwindow72 (native.js +2.8 KB, chat-ux.js +1.2 KB). Note: native.js carries ~36 KB of comment lines — the next place to look before another bump.
+- Round 72 (sync72 merge): jsKB now measures code without whole-line // comments (notes stay in the files for people). At the change: 2,354 KB with notes = 2,042 KB of code; budget re-based 2352 → 2050.

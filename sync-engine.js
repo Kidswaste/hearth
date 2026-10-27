@@ -41,6 +41,9 @@ const appStore = rel => /^kv\/[^/]+\.json$/i.test(rel);
 const chatTrashRel = rel => /^chats\/[^/]+\.json$/i.test(rel) ? rel.replace(/^chats\//i, 'trash/') : null;
 
 async function exists(p) { try { await fsp.stat(p); return true; } catch { return false; } }
+// (round 72, sync72) two spellings of one name (case / Unicode form) that are the same file on this disk (Mac, Windows)
+const caseOnly = (a, b) => a !== b && nfc(a).toLowerCase() === nfc(b).toLowerCase();
+async function sameNode(a, b) { try { const [x, y] = await Promise.all([fsp.stat(a), fsp.stat(b)]); return x.ino === y.ino && x.dev === y.dev; } catch { return false; } }
 function statSync(p) { try { return fs.statSync(p); } catch { return null; } }
 async function hashFile(file, shouldStop) {
   const h = crypto.createHash('sha1');
@@ -134,7 +137,9 @@ function createEngine(o) {
     checkedAt = now();
     const key = JSON.stringify({ ...state, lastPass: 0, lastOk: 0 });
     if (key === savedKey && now() - savedAt < 10 * 60000) return;
-    const text = JSON.stringify(state);
+    // (round 72, sync72) the text written is that same one with the two clocks put back: one stringify of every file's
+    // hashes per save, not two (≈ 12 ms of the main process each on the heavy profile)
+    const text = key.replace('"lastPass":0', `"lastPass":${Number(state.lastPass) || 0}`).replace('"lastOk":0', `"lastOk":${Number(state.lastOk) || 0}`);
     fs.mkdirSync(path.dirname(stateFile), { recursive: true });
     const t = `${stateFile}.${rand()}.tmp`; fs.writeFileSync(t, text); fs.renameSync(t, stateFile);
     savedKey = key; savedAt = now();
@@ -144,22 +149,77 @@ function createEngine(o) {
   // (round 70, bigprofile70) each base folder is made once per run (a first pass over ~1,800 JSON files asked the disk
   // to make the same few folders ~1,800 times, on the main process); one that went away meanwhile is made again
   const baseDirs = new Set();
-  function writeBase(rel, text) {
-    try {
-      const f = basePath(rel), d = path.dirname(f);
-      if (!baseDirs.has(d)) { fs.mkdirSync(d, { recursive: true }); baseDirs.add(d); }
-      try { fs.writeFileSync(`${f}.tmp`, text); } catch (err) { if (err.code !== 'ENOENT') throw err; baseDirs.delete(d); fs.mkdirSync(d, { recursive: true }); baseDirs.add(d); fs.writeFileSync(`${f}.tmp`, text); }
-      fs.renameSync(`${f}.tmp`, f);
-    } catch (err) { log('base', rel, err.message); }
+  // (round 72, sync72) base files are written asynchronously, in order per store (a first pass made ~1,800 sync write +
+  // rename pairs on the main process: ≈ 1.3 s of it on a slow Windows disk); whoever reads one waits for its store's
+  // writes (baseIdle), and a pass ends only when all are on disk (state.json never names a base that isn't written)
+  const baseJobs = new Map();
+  function baseJob(rel, fn) {
+    const p = (baseJobs.get(rel) || Promise.resolve()).then(fn).catch((err) => log('base', rel, err.message));
+    baseJobs.set(rel, p);
+    p.then(() => { if (baseJobs.get(rel) === p) baseJobs.delete(rel); });
+    return p;
   }
-  function dropBase(rel) { delete state.base[rel]; try { fs.rmSync(basePath(rel), { force: true }); } catch { /* fine */ } }
-  function setBase(rel, h, text) { state.base[rel] = h; if (text !== undefined && S.isJsonRel(rel)) writeBase(rel, text); }
+  const baseIdle = (rel) => (rel ? baseJobs.get(rel) || Promise.resolve() : Promise.all([...baseJobs.values()]));
+  function writeBase(rel, text) {
+    baseJob(rel, async () => {
+      const f = basePath(rel), d = path.dirname(f);
+      if (!baseDirs.has(d)) { await fsp.mkdir(d, { recursive: true }); baseDirs.add(d); }
+      try { await fsp.writeFile(`${f}.tmp`, text); } catch (err) { if (err.code !== 'ENOENT') throw err; baseDirs.delete(d); await fsp.mkdir(d, { recursive: true }); baseDirs.add(d); await fsp.writeFile(`${f}.tmp`, text); }
+      await fsp.rename(`${f}.tmp`, f);
+    });
+  }
+  function dropBase(rel) { delete state.base[rel]; if (state.prev) delete state.prev[rel]; if (state.keepAll) delete state.keepAll[rel]; const f = basePath(rel); baseJob(rel, () => Promise.all([fsp.rm(f, { force: true }), fsp.rm(`${f}.prev`, { force: true })])); }
+  // (round 72, sync72) the base before the last one is kept too (its hash; a JSON store's text as base/<rel>.prev, a
+  // rename, no copy): when a cloud client moves our upload aside, ours and theirs merge from it (rebase)
+  function setBase(rel, h, text) {
+    const old = state.base[rel];
+    if (old && old !== h) { (state.prev ||= {})[rel] = old; if (S.isJsonRel(rel)) { const f = basePath(rel); baseJob(rel, () => fsp.rename(f, `${f}.prev`).catch(() => fsp.rm(`${f}.prev`, { force: true }))); } }
+    state.base[rel] = h; if (text !== undefined && S.isJsonRel(rel)) writeBase(rel, text);
+    if (state.keepAll) delete state.keepAll[rel]; // a new version both sides agree on: settled
+  }
+  function rebase(rel) {
+    const p = state.prev?.[rel];
+    delete state.cloud[rel];
+    if (!p) { dropBase(rel); return; }
+    // (the previous text missing: no base text, so they merge two-way, keeping everything)
+    if (S.isJsonRel(rel)) { const f = basePath(rel); baseJob(rel, () => fsp.rename(`${f}.prev`, f).catch(() => fsp.rm(f, { force: true }))); }
+    state.base[rel] = p; delete state.prev[rel];
+  }
+  // (round 72, sync72) "still being written": a modified time just now on this computer's clock. A time AHEAD of this
+  // clock (the other computer's clock runs ahead, its cloud client keeps its times) says nothing: such a file counts as
+  // settled once it has stayed the same for the settle time (it waited for the whole clock difference before)
+  const ahead = new Map();
+  function fresh(rel, C, ms) {
+    const age = now() - Math.floor(C.mtime);
+    if (age >= ms) { ahead.delete(rel); return false; }
+    if (age > -ms) return true;
+    const s = ahead.get(rel);
+    if (!s || s.size !== C.size || s.mtime !== C.mtime) { ahead.set(rel, { size: C.size, mtime: C.mtime, since: now() }); return true; }
+    if (now() - s.since < ms) return true;
+    ahead.delete(rel); return false;
+  }
+  // (round 72, sync72) which journal entry of the other computers a cached cloud hash was made under: a new entry since
+  // means the file may have changed under a placeholder (was: "older than our last good pass", which a late cloud client
+  // or a slower clock made true for a NEW version: the stale hash then let a local edit be pushed over it)
+  const jkey = (rel) => journalLatest.get(rel)?.t || 0; // its time is enough to tell a newer entry (kept small: state.json)
+  // (round 72, sync72) a chat the other computer deleted: how long its trash copy may take to arrive (this computer's clock)
+  const goneSeen = new Map();
+  function waitGone(rel) {
+    if (!goneSeen.has(rel)) { if (goneSeen.size > 500) goneSeen.clear(); goneSeen.set(rel, now()); }
+    return now() - goneSeen.get(rel) < (o.goneWaitMs ?? 30 * 60000);
+  }
+  const copySeen = new Map(); // (round 72) a cloud client's copy of a non-JSON file: when it was first seen as it is
+  // (round 72) stores whose base went back a step: merged keeping everything until they settle (in state.json: a restart
+  // between the two must not merge them the ordinary way)
+  const rebased = { has: (rel) => Boolean(state.keepAll?.[rel]), add: (rel) => { (state.keepAll ||= {})[rel] = 1; }, delete: (rel) => { if (state.keepAll) delete state.keepAll[rel]; } };
 
-  let status = { state: 'idle', at: 0, pending: 0, conflicts: 0, cloudOnly: [], skippedBig: [], unreadable: [], held: null, error: '', last: null };
+  let status = { state: 'idle', at: 0, pending: 0, conflicts: 0, cloudOnly: [], skippedBig: [], unreadable: [], waiting: [], lastError: null, held: null, error: '', last: null };
   let running = null; let again = false; let stopping = false;
   const pulledPrev = new Map(); // rel → the value this computer had before a pull (cloud form): the guard's base
   // (the oldest one is kept until the app reloads it: that is the version still in its memory; huge stores aren't kept)
   const remember = (rel, value, size = 0) => { if (!pulledPrev.has(rel) && size < 16e6) pulledPrev.set(rel, value); };
+  // (round 72) { lazy: text }: parsed only if the app does save an older version (rare), not on every pull
+  const prevOf = (rel) => { const v = pulledPrev.get(rel); return v && typeof v === 'object' && typeof v.lazy === 'string' ? S.parseJson(v.lazy) : v; };
 
   // ---------- path forms ----------
   let aliases = { data: [], cloud: [], home: [] };
@@ -240,7 +300,7 @@ function createEngine(o) {
     ctx = baseCtx();
   }
   const CLOUD_COPY = [
-    /^(.*) \([^()]*conflicted copy[^()]*\)(\.[^./]+)?$/i, // Dropbox
+    /^(.*) \([^()]*conflicted copy[^()]*(?:\(\d+\))?\)(\.[^./]+)?$/i, // Dropbox (round 72: also its second copy, "… copy 2026-10-27 (1))")
   ];
   const JSON_COPY = /^([\w-]+)(?: \d+| ?\(\d+\))\.json$/; // iCloud "x 2.json" / "x(1).json", Google Drive "x (1).json"
   async function scanCloud() {
@@ -266,9 +326,25 @@ function createEngine(o) {
       const jm = JSON_COPY.exec(name);
       if (!orig && jm) orig = `${dir}${jm[1]}.json`;
       const od = /^([\w-]+)-([A-Za-z0-9-]{2,})\.json$/.exec(name); // OneDrive "x-COMPUTERNAME.json"
-      if (!orig && od && hosts.has(od[2].toUpperCase()) && !state.base[rel]) orig = `${dir}${od[1]}.json`;
+      if (!orig && od && (hosts.has(od[2].toUpperCase()) || hosts.has(od[2].toUpperCase().replace(/-\d+$/, ''))) && !state.base[rel]) orig = `${dir}${od[1]}.json`; // (round 72) also its next copies "x-PC-2.json"
+      // (round 72, sync72) the same copies of ANY file (iCloud "logo 2.png", Google Drive "plan (1).md", OneDrive
+      // "theme-PCNAME.css"; they were pulled as new files: duplicates in both data folders): only next to a file both
+      // computers have synced (its base is known here) and while no computer's journal claims the name
+      let unsure = false;
+      if (!orig && !state.base[rel] && !journalLatest.has(rel)) {
+        const am = /^(.+?)(?: (\d{1,2})| ?\((\d{1,2})\))(\.[^./ ]+)?$/.exec(name);
+        let o2 = am && (Number(am[2]) >= 2 || am[3]) ? `${dir}${am[1]}${am[4] || ''}` : null;
+        if (!o2) { const ext = path.extname(name); const full = name.slice(0, name.length - ext.length); const stem = full.toUpperCase().replace(/-\d{1,2}$/, ''); for (const h of hosts) if (stem.length > h.length + 1 && stem.endsWith(`-${h}`)) { o2 = `${dir}${full.slice(0, stem.length - h.length - 1)}${ext}`; break; } }
+        if (o2 && state.base[o2]) { orig = o2; unsure = true; }
+      }
       if (orig && S.localOnly(orig)) return;
-      if (orig && orig !== rel && !state.base[rel]) { copies.push({ rel, orig, ...ent }); return; }
+      if (orig && orig !== rel && !state.base[rel]) {
+        // our own last upload, moved aside by the cloud client because the other computer's version got there first
+        // (same size and time as the file this computer wrote there)
+        const c = state.cloud[orig];
+        const ours = Boolean(c && c[2] && c[0] === st.size && c[1] === st.mtimeMs && c[2] === state.base[orig]);
+        copies.push({ rel, orig, ...ent, ours, unsure: unsure && !ours }); return;
+      }
       out.set(rel, ent);
     }, '', out.blind);
     if (platform === 'win32') {
@@ -330,6 +406,8 @@ function createEngine(o) {
           if (!j.rel) continue;
           const cur = journalLatest.get(j.rel);
           if (!cur || cur.t <= j.t) journalLatest.set(j.rel, { h: j.h, s: j.s, t: j.t, m: mid, op: j.op });
+          // (round 72, sync72) a move (a chat deleted to its trash is one) also says the old name is gone
+          if (j.op === 'move' && j.from) { const cf = journalLatest.get(j.from); if (!cf || cf.t <= j.t) journalLatest.set(j.from, { t: j.t, m: mid, op: 'del' }); }
         }
       }
     } catch { /* none yet */ }
@@ -430,7 +508,7 @@ function createEngine(o) {
   // (round 20, offmain) a big JSON store (≥ 256 KB: Lab scenes, boards, long chats) is read, put in its cloud form and
   // hashed on another thread when the app gives one (o.hashJson: the store thread in Hearth), so a pass never holds
   // the main process for the whole parse + stringify; big plain files are hashed in 1 MB steps (hashFile)
-  const OFF_MIN = 256 * 1024; const WHOLE_MAX = 1024 * 1024;
+  const OFF_MIN = o.offMin ?? 256 * 1024; const WHOLE_MAX = 1024 * 1024; // (round 72) offMin: tests send every store through the thread
   async function hashOff(file, size, rel, cloud) {
     if (!o.hashJson || size < OFF_MIN) return null;
     try { return await o.hashJson(file, { rel, cloud, ctx: cloud ? null : ctx }); } catch { return null; }
@@ -498,19 +576,23 @@ function createEngine(o) {
     // files must remain pending until their actual contents can be read.
     if (C.downloading) return !C.cloudUnknown && c && c[0] === C.size && c[1] === C.mtime && c[2] ? c[2] : UNKNOWN;
     if (C.placeholder && !readable(rel, C)) {
-      if (c && c[2] && (C.size === null || c[0] === C.size) && (!j || j.h === c[2] || j.t < (state.lastOk || 0))) return c[2];
-      return j && (C.size === null || j.s === C.size) ? j.h : UNKNOWN;
+      if (c && c[2] && (C.size === null || c[0] === C.size) && (!j || j.h === c[2] || c[3] === jkey(rel))) return c[2]; // (round 72, sync72) jkey
+      return j && j.op !== 'del' && (C.size === null || j.s === C.size) ? j.h : UNKNOWN; // (round 72) a delete has no hash
     }
     if (c && c[0] === C.size && c[1] === C.mtime && c[2]) return c[2];
     // still being written (whole milliseconds: a file's mtime has sub-ms precision while now() is truncated, so a file
     // written this very millisecond looked 0.4 ms "in the future" and never started its arriving clock below)
-    if (now() - Math.floor(C.mtime) < (o.settleMs ?? 2000)) return INFLIGHT;
+    if (fresh(rel, C, o.settleMs ?? 2000)) return INFLIGHT; // (round 72, sync72) a clock ahead no longer holds it
     // not the size the other computer wrote: still arriving (a cloud client writing in place), unless it stays like
     // this for a minute (then the journal is the one late, and the file is what it is)
-    if (j && j.op !== 'del' && j.s !== C.size && now() - j.t < 30 * 60 * 1000) {
+    // (round 72, sync72) SMALLER than what the other computer wrote is a download that stopped midway (a provider
+    // paused / offline mid-file): it waits as long as it stays short (up to 6 h), whatever the journal's age; a half
+    // video was pulled into the data folder after a minute before
+    const short = Boolean(j && j.op !== 'del' && typeof j.s === 'number' && C.size < j.s);
+    if (j && j.op !== 'del' && j.s !== C.size && (short || now() - j.t < 30 * 60 * 1000)) {
       const seen = arriving.get(rel);
       if (!seen || seen.size !== C.size || seen.mtime !== C.mtime) { arriving.set(rel, { size: C.size, mtime: C.mtime, since: now() }); return INFLIGHT; }
-      if (now() - seen.since < (o.stableMs ?? 60000)) return INFLIGHT;
+      if (now() - seen.since < (short ? (o.shortMs ?? 6 * 3600000) : (o.stableMs ?? 60000))) return INFLIGHT;
     }
     let h;
     const off = S.isJsonRel(rel) && C.size <= JSON_MAX ? await hashOff(C.file, C.size, rel, true) : null;
@@ -524,7 +606,7 @@ function createEngine(o) {
     } else if (C.size > SMALL && j && j.s === C.size && j.h) h = j.h;
     else if (C.size <= WHOLE_MAX) h = sha(await fsp.readFile(C.file));
     else h = await hashFile(C.file, () => stopping);
-    state.cloud[rel] = [C.size, C.mtime, h];
+    state.cloud[rel] = [C.size, C.mtime, h, jkey(rel)]; // (round 72, sync72) + the journal entry it was made under
     return h;
   }
   async function cloudText(rel, C) {
@@ -550,12 +632,12 @@ function createEngine(o) {
     return localForm(value, pretty);
   }
   async function afterLocalWrite(rel, h) {
-    const st = statSync(localPathOf(rel));
+    const st = await fsp.stat(localPathOf(rel)).catch(() => null); // (round 72) async: one stat per pulled file
     if (st) state.local[rel] = [st.size, st.mtimeMs, h];
   }
   async function afterCloudWrite(rel, h) {
     const st = await fsp.stat(cloudPathOf(rel));
-    if (st) state.cloud[rel] = [st.size, st.mtimeMs, h];
+    if (st) state.cloud[rel] = [st.size, st.mtimeMs, h, jkey(rel)];
     journalOut.push({ t: now(), op: 'put', rel, h, s: st?.size });
   }
 
@@ -591,7 +673,16 @@ function createEngine(o) {
     const lent = L && !L.unavailable ? { size: L.size, mtime: L.mtime } : null;
     if (L?.unavailable) return false;
     let ok;
-    if (S.isJsonRel(rel)) {
+    if (S.isJsonRel(rel) && rel !== 'app/config.json' && o.pullJson && Math.max(C.size || 0, L?.size || 0) >= OFF_MIN) {
+      // (round 72, sync72) a big store: read, checked, its paths made ours, the local copy kept aside and written out in
+      // this computer's form on the store thread (was 60–130 ms of the main process per store); here, only the writes
+      const r = await o.pullJson({ rel, cloudFile: C.file, h, ctx, localFile: L?.file || null,
+        recovery: L?.file && /^(?:chats|kv)\/[^/]+\.json$/i.test(rel) ? path.join(stateDir, 'recovery', ...rel.split('/')) : null,
+        aside: rel === 'kv/three-sketches.json' && L?.file ? { dir: path.join(dataDir, 'kv', '.history', 'three-sketches'), now: now() } : null }).catch((err) => { log('pull off', rel, err.message); return null; });
+      if (!r || r.stale) return false;
+      ok = await casWrite(file, lent, r.out, 'pull');
+      if (ok) { setBase(rel, h, r.cloudText); remember(rel, r.prevCloud === null ? null : { lazy: r.prevCloud }); await afterLocalWrite(rel, r.lh); }
+    } else if (S.isJsonRel(rel)) {
       const text = await cloudText(rel, C);
       if (sha(text) !== h) return false;
       const value = S.toCloud(S.parseJson(text), ctx); // (old paths of another computer written as-is are fixed too)
@@ -625,7 +716,7 @@ function createEngine(o) {
     return true;
   }
   async function relHashNow(rel) {
-    let v = S.parseJson(fs.readFileSync(localPathOf(rel), 'utf8'));
+    let v = S.parseJson(await fsp.readFile(localPathOf(rel), 'utf8')); // (round 72) not a sync read per pulled file
     if (rel === 'app/config.json') v = S.portableConfig(v);
     return sha(canon(S.toCloud(v, ctx)));
   }
@@ -662,21 +753,32 @@ function createEngine(o) {
     const lent = { size: L.size, mtime: L.mtime };
     const cent = { size: C.size, mtime: C.mtime };
     if (S.isJsonRel(rel) && lh !== BAD && ch !== BAD) {
-      const ours = S.parseJson(await localText(rel, L));
-      const theirsText = await cloudText(rel, C);
-      const theirs = S.toCloud(S.parseJson(theirsText), ctx);
-      const base = state.base[rel] ? readBase(rel) : null;
-      const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(rel) });
-      const text = canon(r.value);
-      const hm = sha(text);
+      await baseIdle(rel); // (round 72) its base file on disk first
+      let m; // { text, hm, local() (this computer's form), conflicts, theirsText, ours (for the write guard), aside() }
+      if (rel !== 'app/config.json' && o.mergeJson && Math.max(L.size || 0, C.size || 0) >= OFF_MIN) {
+        // (round 72, sync72) a big store: merged on the store thread (both parsed, three-way, the local form); here, writes
+        const r = await o.mergeJson({ rel, localFile: L.file, cloudFile: C.file, baseFile: state.base[rel] ? basePath(rel) : null, ctx, lh, ch, counters: S.isCounterRel(rel), keepAll: rebased.has(rel),
+          recovery: /^(?:chats|kv)\/[^/]+\.json$/i.test(rel) ? path.join(stateDir, 'recovery', ...rel.split('/')) : null,
+          aside: rel === 'kv/three-sketches.json' ? { dir: path.join(dataDir, 'kv', '.history', 'three-sketches'), now: now() } : null }).catch((err) => { log('merge off', rel, err.message); return null; });
+        if (!r || r.stale) return false;
+        m = { text: r.text, hm: r.hm, local: () => r.localOut, conflicts: r.conflicts, theirsText: r.theirsText, ours: r.oursText === null ? undefined : { lazy: r.oursText }, aside: async () => {} };
+      } else {
+        const ours = S.parseJson(await localText(rel, L));
+        const theirsText = await cloudText(rel, C);
+        const theirs = S.toCloud(S.parseJson(theirsText), ctx);
+        const base = state.base[rel] ? readBase(rel) : null;
+        const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(rel), keepAll: rebased.has(rel) }); // (round 72, sync72)
+        const text = canon(r.value);
+        m = { text, hm: sha(text), local: () => localJsonText(rel, S.fromCloud(r.value, ctx), L), conflicts: r.conflicts, theirsText, ours, aside: async () => { keepScenesAside(rel, L, r.value); await keepStateAside(rel, L); } };
+      }
+      const { text, hm } = m;
       // this computer first, then the cloud: a cloud write that loses its race leaves the old base, so the next pass
       // merges again instead of pushing a version that misses the other computer's changes
       if (hm !== lh) {
-        keepScenesAside(rel, L, r.value);
-        await keepStateAside(rel, L);
-        const ok = await casWrite(L.file, lent, localJsonText(rel, S.fromCloud(r.value, ctx), L), 'merge-local');
+        await m.aside();
+        const ok = await casWrite(L.file, lent, m.local(), 'merge-local');
         if (!ok) return false;
-        remember(rel, ours);
+        if (m.ours !== undefined) remember(rel, m.ours);
         await afterLocalWrite(rel, hm);
         notePulled(rel, kindOf(rel));
       }
@@ -685,8 +787,8 @@ function createEngine(o) {
         if (!ok) return false;
         await afterCloudWrite(rel, hm);
       }
-      setBase(rel, hm, text);
-      if (r.conflicts.length) await saveConflict(rel, { kind: 'json', text: theirsText, fields: r.conflicts, from: journalLatest.get(rel)?.m, oursAt: L.mtime, theirsAt: journalLatest.get(rel)?.t || C.mtime });
+      setBase(rel, hm, text); rebased.delete(rel);
+      if (m.conflicts.length) await saveConflict(rel, { kind: 'json', text: m.theirsText, fields: m.conflicts, from: journalLatest.get(rel)?.m, oursAt: L.mtime, theirsAt: journalLatest.get(rel)?.t || C.mtime });
       sum.merged += 1;
       return true;
     }
@@ -745,11 +847,13 @@ function createEngine(o) {
   async function renameThere(from, to, C, h) { // a file renamed / moved here: moved in the cloud too (no re-upload)
     if (!(await same(C.file, { size: C.size ?? undefined, mtime: C.mtime }))) return false;
     const dst = cloudPathOf(to);
-    if (await exists(dst)) return false;
+    const recase = caseOnly(from, to) && await sameNode(C.file, dst); // (round 72, sync72) Photo.png → photo.png: one file on a Mac / PC disk
+    if (!recase && await exists(dst)) return false;
     await fsp.mkdir(path.dirname(dst), { recursive: true });
-    if (!(await renameRetry(C.file, dst, async () => (await same(C.file, C)) && (await same(dst, null))))) return false;
+    if (!(await renameRetry(C.file, dst, async () => (await same(C.file, C)) && (recase || await same(dst, null))))) return false;
     const st = await fsp.stat(dst);
-    state.cloud[to] = [st.size, st.mtimeMs, h]; delete state.cloud[from];
+    state.cloud[to] = [st.size, st.mtimeMs, h, jkey(to)]; delete state.cloud[from];
+    await baseIdle(from); // (round 72)
     const t = S.isJsonRel(from) ? (() => { try { return fs.readFileSync(basePath(from), 'utf8'); } catch { return undefined; } })() : undefined;
     setBase(to, h, t); dropBase(from); delete state.local[from];
     journalOut.push({ t: now(), op: 'move', from, rel: to, h, s: st.size });
@@ -760,11 +864,13 @@ function createEngine(o) {
     if (SPECIAL[from] || SPECIAL[to] || L.ext) return false;
     if (!(await same(L.file, L))) return false;
     const dst = localPathOf(to);
-    if (await exists(dst)) return false;
+    const recase = caseOnly(from, to) && await sameNode(L.file, dst); // (round 72, sync72) a case-only rename (it waited forever)
+    if (!recase && await exists(dst)) return false;
     await fsp.mkdir(path.dirname(dst), { recursive: true });
-    if (!(await renameRetry(L.file, dst, async () => (await same(L.file, L)) && (await same(dst, null))))) return false;
+    if (!(await renameRetry(L.file, dst, async () => (await same(L.file, L)) && (recase || await same(dst, null))))) return false;
     const st = await fsp.stat(dst);
     state.local[to] = [st.size, st.mtimeMs, h]; delete state.local[from];
+    await baseIdle(from); // (round 72)
     const t = S.isJsonRel(from) ? (() => { try { return fs.readFileSync(basePath(from), 'utf8'); } catch { return undefined; } })() : undefined;
     setBase(to, h, t); dropBase(from); delete state.cloud[from];
     sum.renamed += 1;
@@ -776,14 +882,26 @@ function createEngine(o) {
   async function absorbCopy(cp, local) {
     // Cloud duplicates can appear before their download has finished. Keep the
     // whole copy in place until it is ready and has stopped changing.
-    if (!(await cloudReady(cp.rel, cp)) || now() - Math.floor(cp.mtime) < (o.settleMs ?? 4000)) return false;
+    // (round 72, sync72) our own upload moved aside (see rebase): this computer has it (or newer), it goes to the trash
+    if (cp.ours) { if (!(await same(cp.file, cp)) || !(await moveToCloudTrash(cp.rel, cp))) return false; sum.merged += 1; return true; }
+    if (!(await cloudReady(cp.rel, cp)) || fresh(cp.rel, cp, o.settleMs ?? 4000)) return false;
+    // (round 72, sync72) a copy of a non-JSON file (named like one, never claimed by a computer's journal) is taken for a
+    // cloud client's once it stayed as it is for 10 minutes: a file the other computer named so is claimed meanwhile
+    if (cp.unsure) {
+      const s = copySeen.get(cp.rel);
+      if (!s || s.size !== cp.size || s.mtime !== cp.mtime) { if (copySeen.size > 500) copySeen.clear(); copySeen.set(cp.rel, { size: cp.size, mtime: cp.mtime, since: now() }); return false; }
+      if (now() - s.since < (o.copyWaitMs ?? 600000)) return false;
+      copySeen.delete(cp.rel);
+    }
     const L = local.get(cp.orig);
     try {
       if (S.isJsonRel(cp.orig) && !cp.placeholder && L && !L.unavailable) {
         let theirs; try { theirs = S.toCloud(S.parseJson(await fsp.readFile(cp.file, 'utf8')), ctx); } catch { return; }
         const ours = S.parseJson(await localText(cp.orig, L));
-        const base = state.base[cp.orig] ? readBase(cp.orig) : null;
-        const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(cp.orig) });
+        // (round 72, sync72) a cloud client's copy forked from an OLDER version than this computer's base: the base may
+        // already be the other computer's version (just pulled), so the copy looked like it had deleted everything that
+        // version added (iCloud slow + a chat written on both → the PC's messages gone). Merged with no base: both kept.
+        const r = S.merge3(null, ours, theirs, { counters: S.isCounterRel(cp.orig), shared: true });
         const text = canon(r.value);
         if (sha(text) !== state.local[cp.orig]?.[2]) {
           keepScenesAside(cp.orig, L, r.value);
@@ -837,24 +955,33 @@ function createEngine(o) {
       await fsp.mkdir(FILES, { recursive: true });
       await atomicWrite(path.join(cloudDir, 'README.txt'), 'This folder is Hearth\'s sync copy (chats, scenes, boards, notes, settings…).\nHearth keeps working from each computer\'s own folder and copies changes here and back.\nPlease don\'t edit files here. Deleted things wait in trash/ for 30 days.\n');
     }
-    if (opts.fresh) { state.base = {}; baseDirs.clear(); try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ } }
+    if (opts.fresh) { await baseIdle(); state.base = {}; baseDirs.clear(); try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ } }
     status.state = 'syncing'; emit();
     await readPeers();
     const local = await scanLocal();
     const { files: cloud, copies } = await scanCloud();
+    // (round 72, sync72) the cloud client moved OUR last upload aside (its own copy) because the other computer's
+    // version got there first: the file in the cloud is now theirs and never saw ours. The base goes back one step, so
+    // ours (still here) and theirs merge three-way below; the copy (ours) then goes to the trash.
+    for (const cp of copies) if (cp.ours) { rebase(cp.orig); rebased.add(cp.orig); }
     const cap = o.big === false ? (o.bigCap || BIG_CAP) : Infinity;
     const plan = []; const skippedBig = []; const cloudOnly = []; const unreadable = []; let pending = 0;
+    // (round 72, sync72) what waits and why, by name (the first 60), for the sync panel: "12 waiting" in plain words
+    const waiting = []; const why = (rel, w) => { if (waiting.length < 60 && !waiting.some((x) => x.rel === rel)) waiting.push({ rel, why: w }); };
     // A cloud client may briefly remove a single chat while replacing/hydrating it.
     // Absence is not deletion intent. Hearth's Delete action moves the exact chat
     // to trash/<id>.json; require that matching copy on the side that lost it.
     // A stale trash copy must not delete a newer conversation. Ordinary files keep
     // their existing deletion/rename behavior, and an unreadable trash copy is safe.
+    // (round 72, sync72) → true | false | 'wait': a trash copy that is there but still arriving / only in the cloud is
+    // "can't tell yet" (it was "keep", and the deleted chat was published again: it came back on both computers);
+    // so is a chat the other computer's journal says it deleted / moved whose trash copy hasn't arrived (≤ 30 min)
     const chatRemoved = async (rel, h, files, hash) => {
       const trashRel = chatTrashRel(rel);
       if (!trashRel) return true;
       const entry = files.get(trashRel);
-      if (!entry || entry.unavailable) return false;
-      try { return await hash(trashRel, entry) === h; } catch { return false; }
+      if (!entry || entry.unavailable) return files === cloud && journalLatest.get(rel)?.op === 'del' && waitGone(rel) ? 'wait' : false;
+      try { const th = await hash(trashRel, entry); return th === h ? true : th === INFLIGHT || th === UNKNOWN ? 'wait' : false; } catch { return false; }
     };
     const rels = new Set([...local.keys(), ...cloud.keys(), ...Object.keys(state.base)]);
     // (round 43, datasafe) a file or folder that couldn't be listed / looked at on one side is unknown there this pass:
@@ -866,33 +993,37 @@ function createEngine(o) {
       const L = local.get(rel); const C = cloud.get(rel); const bh = state.base[rel];
       if (C?.downloading) await cloudReady(rel, C);
       if (L?.unavailable) { pending += 0; continue; } // a render on a drive that isn't plugged in: left alone
-      if ((!L && blindIn(local.blind, rel)) || (!C && blindIn(cloud.blind, rel))) { pending += 1; continue; }
+      if ((!L && blindIn(local.blind, rel)) || (!C && blindIn(cloud.blind, rel))) { pending += 1; why(rel, 'unlisted'); continue; }
       if (!L && !C) { dropBase(rel); delete state.local[rel]; delete state.cloud[rel]; continue; }
       // (round 19) the chats' workspace syncs what they make, never a huge file (a model checkpoint, a build archive)
       const capHere = S.isWorkspaceRel(rel) ? Math.min(cap, o.bigCap || BIG_CAP) : cap;
       if ((L && L.size > capHere) || (C && (C.size ?? 0) > capHere)) { skippedBig.push(rel); continue; }
       let lh = null; let ch = null;
-      try { lh = L ? await localHash(rel, L) : null; } catch (err) { unreadable.push(rel); pending += 1; log('hash', rel, err.message); continue; }
-      try { ch = C ? await cloudHash(rel, C) : null; } catch (err) { pending += 1; log('cloud hash', rel, err.message); continue; }
-      if (C?.downloading && (C.cloudUnknown || ch === UNKNOWN || lh !== ch)) { pending += 1; cloudOnly.push(rel); continue; }
-      if (lh === INFLIGHT || ch === INFLIGHT) { pending += 1; continue; }
-      if (lh === BAD || ch === BAD) { unreadable.push(rel); pending += 1; continue; }
+      try { lh = L ? await localHash(rel, L) : null; } catch (err) { unreadable.push(rel); pending += 1; why(rel, 'unreadable'); log('hash', rel, err.message); continue; }
+      try { ch = C ? await cloudHash(rel, C) : null; } catch (err) { pending += 1; why(rel, 'cloud-error'); log('cloud hash', rel, err.message); continue; }
+      if (C?.downloading && (C.cloudUnknown || ch === UNKNOWN || lh !== ch)) { pending += 1; cloudOnly.push(rel); why(rel, 'cloud-only'); continue; }
+      if (lh === INFLIGHT || ch === INFLIGHT) { pending += 1; why(rel, lh === INFLIGHT ? 'writing' : 'arriving'); continue; }
+      if (lh === BAD || ch === BAD) { unreadable.push(rel); pending += 1; why(rel, 'unreadable'); continue; }
       if (L && C) {
-        if (ch === UNKNOWN) { if (lh !== bh) { pending += 1; cloudOnly.push(rel); } continue; } // can't know without downloading
+        if (ch === UNKNOWN) { if (lh !== bh) { pending += 1; cloudOnly.push(rel); why(rel, 'cloud-only'); } continue; } // can't know without downloading
         if (lh === ch) { if (bh !== lh) setBase(rel, lh, S.isJsonRel(rel) ? await localText(rel, L) : undefined); continue; }
         if (lh === bh) plan.push({ op: readable(rel, C) ? 'pull' : 'wait', rel, L, C, h: ch });
         else if (ch === bh) plan.push({ op: 'push', rel, L, C, h: lh });
         else plan.push({ op: S.isJsonRel(rel) && !readable(rel, C) ? 'wait' : 'merge', rel, L, C, lh, ch });
       } else if (L) {
-        if (bh && lh === bh && !appStore(rel) && await chatRemoved(rel, lh, cloud, cloudHash)) plan.push({ op: 'deleteHere', rel, L, h: lh });
+        const gone = bh && lh === bh && !appStore(rel) ? await chatRemoved(rel, lh, cloud, cloudHash) : false;
+        if (gone === 'wait') { pending += 1; why(rel, 'deleting'); } // (round 72, sync72)
+        else if (gone) plan.push({ op: 'deleteHere', rel, L, h: lh });
         else plan.push({ op: 'push', rel, L, C: null, h: lh }); // new here (or changed here while deleted there: kept)
       } else {
-        if (!appStore(rel) && bh && (ch === bh || (ch === UNKNOWN && state.cloud[rel] && state.cloud[rel][1] === C.mtime)) && await chatRemoved(rel, bh, local, localHash)) plan.push({ op: 'deleteThere', rel, C, h: bh });
-        else if (ch === UNKNOWN || !readable(rel, C)) { cloudOnly.push(rel); pending += 1; }
+        const gone = !appStore(rel) && bh && (ch === bh || (ch === UNKNOWN && state.cloud[rel] && state.cloud[rel][1] === C.mtime)) ? await chatRemoved(rel, bh, local, localHash) : false;
+        if (gone === 'wait') { pending += 1; why(rel, 'deleting'); } // (round 72, sync72)
+        else if (gone) plan.push({ op: 'deleteThere', rel, C, h: bh });
+        else if (ch === UNKNOWN || !readable(rel, C)) { cloudOnly.push(rel); pending += 1; why(rel, 'cloud-only'); }
         else plan.push({ op: 'pull', rel, L: null, C, h: ch }); // new there (or changed there while deleted here: kept)
       }
     }
-    for (const p of plan) if (p.op === 'wait') { cloudOnly.push(p.rel); pending += 1; }
+    for (const p of plan) if (p.op === 'wait') { cloudOnly.push(p.rel); pending += 1; why(p.rel, 'cloud-only'); }
     // renames: a delete and an add of the same content become one move (big files aren't copied again)
     const live = plan.filter((p) => p.op !== 'wait');
     for (const d of live.filter((p) => p.op === 'deleteThere' && !isStub(p.C))) {
@@ -930,16 +1061,17 @@ function createEngine(o) {
         else if (p.op === 'deleteThere') ok = await deleteThere(p.rel, p.C);
         else if (p.op === 'renameThere') ok = await renameThere(p.rel, p.to, p.C, p.h);
         else if (p.op === 'renameHere') ok = await renameHere(p.rel, p.to, p.L, p.h);
-        if (!ok) { sum.skipped += 1; pending += 1; }
+        if (!ok) { sum.skipped += 1; pending += 1; why(p.rel, 'retry'); }
       } catch (err) {
         if (err.code === 'STOPPED') break;
         if (err.code === 'FAULT') throw err; // tests: a simulated crash
-        sum.errors += 1; pending += 1; log(p.op, p.rel, err.message);
+        sum.errors += 1; pending += 1; why(p.rel, 'error'); status.lastError = { rel: p.rel, op: p.op, message: err.message, code: err.code || '', at: now() }; log(p.op, p.rel, err.message);
         if (!(await exists(cloudRoot))) break; // the drive went away mid-pass
       }
-      if (++n % 25 === 0) saveState(true);
+      if (++n % 25 === 0) { if (baseJobs.size > 32) await baseIdle(); saveState(true); } // (round 72) ≤ 32 base writes in flight
     }
-    for (const cp of copies) if (!(await absorbCopy(cp, local))) { pending += 1; cloudOnly.push(cp.rel); }
+    await baseIdle(); // (round 72) every base written before the state that names them
+    for (const cp of copies) if (!(await absorbCopy(cp, local))) { pending += 1; if (!cp.unsure) cloudOnly.push(cp.rel); why(cp.orig, cp.unsure ? 'copy-check' : 'arriving'); }
     await flushJournal().catch((err) => log('journal', err.message));
     await writeMachine(false).catch(() => {});
     if (now() - (state.purgedAt || 0) > 864e5) await purge().catch(() => {});
@@ -951,7 +1083,8 @@ function createEngine(o) {
     }
     const offline = !(await exists(cloudRoot));
     if (!offline && !pending && !status.held) state.lastOk = now();
-    return finish({ state: offline ? 'offline' : status.held ? 'held' : conflicts.length ? 'conflict' : pending ? 'pending' : 'synced', pending, conflicts: conflicts.length, cloudOnly: cloudOnly.slice(0, 200), skippedBig, unreadable, error: '' }, t0);
+    if (!offline && !pending && !sum.errors) status.lastError = null; // (round 72) all caught up: the last problem is over
+    return finish({ state: offline ? 'offline' : status.held ? 'held' : conflicts.length ? 'conflict' : pending ? 'pending' : 'synced', pending, conflicts: conflicts.length, cloudOnly: cloudOnly.slice(0, 200), skippedBig, unreadable, waiting, error: '' }, t0);
   }
   function finish(patch, t0) {
     state.lastPass = now();
@@ -1030,14 +1163,26 @@ function createEngine(o) {
       }
       notePulled(rec.rel, kindOf(rec.rel));
     } else if (keep === 'both') {
-      const from = String(rec.from || 'the other computer').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 40);
+      // (round 72, sync72) named like the panel's buttons: "(from Mac)" / "(from PC)" (its name when both are the same kind)
+      const kind = (p) => ({ darwin: 'Mac', win32: 'PC' })[p];
+      const from = String(kind(rec.fromPlatform) && kind(rec.fromPlatform) !== kind(platform) ? kind(rec.fromPlatform) : rec.from || 'the other computer').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 40);
       if (isJson) {
         const m = /^chats\/(.+)\.json$/.exec(rec.rel);
-        if (!m) return { ok: false, error: 'Keep both works for chats, pictures and files; for this one pick a version, or Merge.' };
+        if (!m && rec.rel === 'app/config.json') return { ok: false, error: 'Settings are one version or the other: pick one, or Merge.' };
+        if (!m) { // (round 72, sync72) Keep both for data: a scene / board changed two ways stays twice ("… (from Mac)")
+          let ours = null; try { ours = oursValue(); } catch { /* none here */ }
+          const theirs = await theirsValue();
+          if (ours) remember(rec.rel, ours);
+          await keepHere(rec.rel, file);
+          await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(ours ? S.keepBoth(ours, theirs, from) : theirs, ctx), statSync(file) ? { file } : null));
+          made = rec.rel;
+        }
+        if (m) {
         const v = S.fromCloud(await theirsValue(), ctx);
         const nid = `${m[1].slice(0, 40)}-${rand().slice(0, 5)}`;
         made = `chats/${nid}.json`;
         await atomicWrite(localPathOf(made), localForm({ ...v, ...(v && 'id' in v ? { id: nid } : {}), title: `${v?.title || 'Chat'} (from ${from})` }, true));
+        }
       } else {
         const ext = path.extname(rec.rel); const stem = rec.rel.slice(0, rec.rel.length - ext.length);
         made = `${stem} (from ${from})${ext}`;
@@ -1094,7 +1239,7 @@ function createEngine(o) {
     const rec = (await listConflicts()).find((c) => c.id === id);
     if (!rec) return null;
     const file = localPathOf(rec.rel); const copy = path.join(CONFL, rec.copy);
-    const out = { ...rec, here: file, there: copy, oursAt: rec.oursAt || statSync(file)?.mtimeMs || null, theirsAt: rec.theirsAt || null, canMerge: rec.kind === 'json', canBoth: rec.kind !== 'json' || /^chats\//.test(rec.rel) };
+    const out = { ...rec, here: file, there: copy, oursAt: rec.oursAt || statSync(file)?.mtimeMs || null, theirsAt: rec.theirsAt || null, canMerge: rec.kind === 'json', canBoth: rec.rel !== 'app/config.json' }; // (round 72) Keep both for data too
     const read = (f, cloudForm) => { try { const st = statSync(f); if (!st || st.size > 6e6) return null; const v = S.parseJson(fs.readFileSync(f, 'utf8')); return cloudForm ? S.fromCloud(v, ctx) : v; } catch { return null; } };
     if (rec.kind === 'json') { out.ours = read(file, false); out.theirs = read(copy, true); } else { out.size = statSync(file)?.size ?? rec.size ?? null; out.theirsSize = statSync(copy)?.size ?? rec.theirsSize ?? null; }
     return out;
@@ -1154,7 +1299,7 @@ function createEngine(o) {
     const isCfg = rel === 'app/config.json';
     const ours = S.toCloud(isCfg ? S.portableConfig(value) : value, ctx);
     const theirs = S.toCloud(isCfg ? S.portableConfig(disk) : disk, ctx);
-    const r = S.merge3(pulledPrev.get(rel), ours, theirs, { counters: S.isCounterRel(rel) });
+    const r = S.merge3(prevOf(rel), ours, theirs, { counters: S.isCounterRel(rel) });
     const merged = S.fromCloud(r.value, ctx);
     return isCfg ? S.applyPortable(value, merged) : merged;
   }

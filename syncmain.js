@@ -58,6 +58,9 @@ function start() {
     big: settings.big !== false,
     // (round 20, offmain) big JSON stores are parsed and hashed on the store's files thread
     hashJson: opts.store?.runOff ? (file, a) => opts.store.runOff('syncHash', { file, ...a }) : undefined,
+    // (round 72, sync72) a big store arriving / changed on both computers: its JSON work on the same thread
+    pullJson: opts.store?.runOff ? (a) => opts.store.runOff('syncPull', a) : undefined,
+    mergeJson: opts.store?.runOff ? (a) => opts.store.runOff('syncMerge', a) : undefined,
     log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); },
     onStatus: (st) => { lastStatus = st; send('sync:status', publicStatus()); },
     onPulled: (list) => send('sync:pulled', list),
@@ -174,7 +177,7 @@ function publicStatus() {
     on: Boolean(settings.on), paused: Boolean(settings.paused), big: settings.big !== false,
     root: settings.root || '', label: settings.label || '', provider: settings.provider || '',
     machine: engine?.machine()?.name || os.hostname(),
-    ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
+    ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], waiting: st.waiting || [], lastError: st.lastError || null, held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
   };
 }
 
