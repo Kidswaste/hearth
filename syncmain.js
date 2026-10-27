@@ -90,7 +90,9 @@ function start() {
       execFile('brctl', ['download', real], () => {});
     },
   });
-  opts.store?.setBeforeWrite?.((file, value) => (engine ? engine.guardWrite(file, value) : value));
+  // (round 75, syncstate75) + which files the guard would change (one that just arrived from the other computer): the
+  // others' usage merges run on the store thread
+  opts.store?.setBeforeWrite?.((file, value) => (engine ? engine.guardWrite(file, value) : value), (file) => { const rel = engine?.relOfLocal(file); return Boolean(rel && engine.hasPulled(rel)); });
   watch();
   quiet = 0;
   armTick();

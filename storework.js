@@ -12,6 +12,7 @@
 //   read { file, fallback }       a big store read and parsed here
 //   flist / fsearch               fsapi.js's recursive folder listing and folder search (on a second copy: "files")
 //   syncHash { file, rel, cloud, ctx }  cloud sync: a big JSON store's cloud form + hash (sync-engine.js hashJson)
+//   mergeKV { file, ops, prev }   (round 75) a store saved by what changed (store.js mergeKV, kvops.js applyOps)
 //   recall { dir, q?, budgetMs? }  (round 30) "what did we decide about X?": catches the recall index up (only chats that
 //                                 changed, within the budget) and, with q, ranks the messages (recall-core.js)
 // Chat files are parsed once and kept (by size + mtime): a list or a search only re-reads the files that changed, and
@@ -57,6 +58,8 @@ function warmTexts() {
   coolT.unref?.();
 }
 const written = new Map(); // file → { h, size, mtimeMs } of the text this thread last wrote / saw there
+const merged = new Map(); // (round 75) file → { value, size, mtimeMs }: a store as mergeKV last wrote it
+const applyOps = (root, ops) => require('./kvops').applyOps(root, ops); // (round 75, syncstate75) kvops.js, required when first used
 const index = new Map(); // chat file → { size, mtimeMs, sum, texts, lower }
 const stubs = new Map(); // (round 43) chat file → its stub row, while it can't be read (kept for a folder that can't be listed)
 let textChars = 0;
@@ -337,7 +340,27 @@ const OPS = {
     const res = recallIdx.search(q, { textOf, limit });
     return { ...res, left, ms: Math.round(performance.now() - t0) };
   },
-  forget({ file }) { written.delete(file); drop(file); return true; },
+  // (round 75, syncstate75) a store saved by what changed (usage.js → store.js mergeKV): read here (with its .prev copy
+  // when damaged, as the main side did), the changes applied, written as write() does. The main process only passes
+  // the changes on. The value as last merged here is kept while the file stays as this thread left it (size + time):
+  // a year-sized store isn't read and parsed again every minute. → { ok: true } | { ok: false, state }
+  mergeKV({ file, ops, prev, doubt, blind }) {
+    let value = null;
+    const m = merged.get(file);
+    if (m) { const st = stat(file); if (st && st.size === m.size && st.mtimeMs === m.mtimeMs) value = m.value; else merged.delete(file); }
+    if (!value) {
+      const r = SS.readStatus(dfs, file);
+      if (r.state !== 'ok' || !r.value || typeof r.value !== 'object' || Array.isArray(r.value)) return { ok: false, state: r.state };
+      value = r.value;
+    }
+    applyOps(value, ops);
+    merged.delete(file);
+    const res = OPS.write({ file, value, prev, doubt, blind });
+    const st = stat(file);
+    if (st && !doubt && !blind && !res?.kept) { merged.set(file, { value, size: st.size, mtimeMs: st.mtimeMs }); if (merged.size > 8) merged.delete(merged.keys().next().value); }
+    return { ok: true };
+  },
+  forget({ file }) { written.delete(file); merged.delete(file); drop(file); return true; },
   ping() { return { chats: index.size, textChars }; },
 };
 

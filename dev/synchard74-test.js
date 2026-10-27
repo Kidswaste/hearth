@@ -43,6 +43,8 @@ const blockedRel = (m, rel, why) => blocked(m, why).find((b) => b.rel === rel);
 // files whose names say a copy was left half-done (temp files, parts of big copies)
 function leftovers(dir) { const out = []; const walk = (d) => { let es = []; try { es = raw.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of es) { const f = path.join(d, e.name); if (e.isDirectory()) walk(f); else if (/^\.hearth-(tmp|part)|\.tmp$/.test(e.name)) out.push(f); } }; walk(dir); return out; }
 function filesIn(dir) { const out = []; const walk = (d, r) => { let es = []; try { es = raw.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of es) { const rr = r ? `${r}/${e.name}` : e.name; if (e.isDirectory()) walk(path.join(d, e.name), rr); else out.push(rr); } }; walk(dir, ''); return out; }
+// (round 75, syncstate75) sync's state is in pieces: the index reads, and so does every piece it names
+function stateWhole(m) { try { const d = path.join(m.data, 'sync', 'state'); const ix = JSON.parse(raw.readFileSync(path.join(d, 'index.json'), 'utf8')); return ix.v === 2 && Object.values(ix.parts).every((n) => JSON.parse(raw.readFileSync(path.join(d, n), 'utf8')).v === 2); } catch { return false; } }
 const trashed = (m) => filesIn(path.join(m.data, 'sync', 'trash'));
 async function rounds(w, n, o) { for (let i = 0; i < n; i++) await T.round(w, o); }
 const scenarios = [];
@@ -180,7 +182,7 @@ scenario('diskfull', async () => {
     ok(!pc.has('renders/final.mp4'), 'diskfull: no half video in the data folder');
     const chat = pc.json('chats/a.json');
     ok(chat && (pc.read('chats/a.json') === before || T.texts(chat).join() === 'kept safe,from the Mac'), 'diskfull: the chat is either as it was or whole with the new message, never cut', pc.read('chats/a.json')?.slice(0, 120));
-    ok(JSON.parse(raw.readFileSync(path.join(pc.data, 'sync', 'state.json'), 'utf8')).v === 1, 'diskfull: sync\'s own state file still whole');
+    ok(stateWhole(pc), 'diskfull: sync\'s own state still whole (its index and every piece it names)'); // (round 75, syncstate75: in pieces)
     // a tighter disk: even the small writes fail; still nothing damaged
     Sim.quota(pc.data, 100);
     mac.edit('chats/a.json', (c) => { c.messages.push(T.msg('user', 3, 'more from the Mac')); });
