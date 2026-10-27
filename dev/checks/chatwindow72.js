@@ -111,12 +111,12 @@ const sb = list(); out.open.scrollHeight = sb.scrollHeight; out.open.atEnd = sb.
       if (a?.classList.contains('msg-rest')) blank += 1; // (a spacer under the eye: woken too late)
       await wait(220);
       peak = Math.max(peak, nodes());
-      if (a?.classList.contains('msg') && a.isConnected) { const moved = Math.round(a.getBoundingClientRect().top - ay); if (Math.abs(moved) > 2) jumps.push(moved); }
+      if (a?.classList.contains('msg') && a.isConnected) { const moved = Math.round(a.getBoundingClientRect().top - ay); if (Math.abs(moved) > 2) jumps.push(`${moved}px@#${a.dataset.index}${a.previousElementSibling?.className ? ` after ${a.previousElementSibling.className}` : ''}`); }
       if (L.scrollTop <= 0 && L.querySelector('.msg[data-index="0"]')) break;
     }
   });
   m1 = await metrics();
-  out.scrollUp = { steps, ms: Math.round(performance.now() - t), ...busy(m0, m1), frames: brief(meas), peakListNodes: peak, blankAtStop: blank, jumps: jumps.length, worstJumps: jumps.sort((a, b) => Math.abs(b) - Math.abs(a)).slice(0, 6), reachedFirst: Boolean(L.querySelector('.msg[data-index="0"]')) };
+  out.scrollUp = { steps, ms: Math.round(performance.now() - t), ...busy(m0, m1), frames: brief(meas), peakListNodes: peak, blankAtStop: blank, jumps: jumps.length, worstJumps: jumps.slice(0, 8), reachedFirst: Boolean(L.querySelector('.msg[data-index="0"]')) };
   // stays put once you stop: a message on screen keeps its place while the blocks around settle
   await wheel(300); await wait(200);
   const a = center(); const ay = a?.getBoundingClientRect().top; await wait(1500);
@@ -129,7 +129,8 @@ const sb = list(); out.open.scrollHeight = sb.scrollHeight; out.open.atEnd = sb.
   // back to the end first: message #4 rests again
   for (let i = 0; i < 6; i++) { L.scrollTop = L.scrollHeight; await wait(250); }
   await wait(900);
-  out.rest = { listNodesBackAtEnd: nodes(), openNodes, msg4InDom: Boolean(L.querySelector('.msg[data-index="4"]')) };
+  await gc(); const mr = await metrics();
+  out.rest = { listNodesBackAtEnd: nodes(), openNodes, msg4InDom: Boolean(L.querySelector('.msg[data-index="4"]')), heapMB: MB(mr.JSHeapUsedSize), documentNodes: mr.Nodes, mdCached: window.Md?.stats?.().cached };
   v().input.focus();
   await key('f', 'KeyF', 1); await wait(300);
   const bar = v().root.querySelector('.chat-find input');
@@ -162,7 +163,7 @@ if (out.open.listNodes > B.openNodes) bad(`open: ${out.open.listNodes} DOM nodes
 if (!out.open.atEnd) bad('the chat did not open at its end');
 if (out.scrollUp.peakListNodes > B.peakNodes) bad(`scrolling up peaked at ${out.scrollUp.peakListNodes} nodes (> ${B.peakNodes})`);
 if (!out.scrollUp.reachedFirst) bad('scrolling up never reached message #1');
-if (out.scrollUp.jumps > B.jumps) bad(`${out.scrollUp.jumps} content jumps while scrolling up (${out.scrollUp.worstJumps.join(', ')} px)`);
+if (out.scrollUp.jumps > B.jumps) bad(`${out.scrollUp.jumps} content jumps while scrolling up (${out.scrollUp.worstJumps.join(', ')})`);
 if (typeof out.scrollUp.settleDrift !== 'number' || Math.abs(out.scrollUp.settleDrift) > B.drift) bad(`the content moved ${out.scrollUp.settleDrift} px after the wheel stopped`);
 if (out.rest.msg4InDom) bad('message #4 still in the DOM back at the end (woken blocks should rest again)');
 if (out.rest.listNodesBackAtEnd > openNodes * 1.6 + 400) bad(`back at the end: ${out.rest.listNodesBackAtEnd} nodes (opened with ${openNodes})`);

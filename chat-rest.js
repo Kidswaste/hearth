@@ -55,6 +55,13 @@ const ChatRest = (() => {
     if (!last) line?.remove(); else if (last.nextSibling !== line) last.after(line);
   }
   const top = (n) => n.getBoundingClientRect().top;
+  // what's at the top of the view, never the quiet line itself (it moves as blocks wake: the message under it stays)
+  function anchor(list) {
+    const a = R.topAnchor(list);
+    if (!a?.node?.classList.contains('rest-line')) return a;
+    let n = a.node.nextElementSibling; while (n && !n.classList.contains('msg')) n = n.nextElementSibling;
+    return n ? { node: n, y: top(n) - top(list) } : null;
+  }
   // the height a run of nodes takes (to where the next one starts: margins included)
   const span = (nodes) => { const nx = nodes.at(-1).nextElementSibling; return (nx ? top(nx) : nodes.at(-1).getBoundingClientRect().bottom + 18) - top(nodes[0]); };
   // block `b` drawn in place of its spacer, exactly as a full draw makes it (native.js planOf)
@@ -81,7 +88,7 @@ const ChatRest = (() => {
       if (!sp) return true; // (drawn meanwhile)
       list.bits ||= new Map(); for (const [k, n] of used) list.bits.set(k, n);
       // what's at the top of the view stays put; inside this spacer: the same proportion of the block
-      const a = R.topAnchor(list);
+      const a = anchor(list);
       const frac = a?.node === sp ? (top(list) - top(sp)) / (sp.getBoundingClientRect().height || 1) : null;
       if (items.length) sp.replaceWith(...items); else sp.remove();
       placeLine(list, agentId);
@@ -97,7 +104,7 @@ const ChatRest = (() => {
     const list = v.list;
     const h = Math.round(span(nodes));
     (list.restH ||= new Map()).set(b, { n: Math.min(R.BLOCK, R.shownFrom(chat, R.unreadFrom.get(chat.id)) - b * R.BLOCK), h });
-    const a = R.topAnchor(list);
+    const a = anchor(list);
     list.bits ||= new Map();
     const sp = list.bits.get(`rest|${b}`) || el('div', { class: 'msg-rest', dataset: { block: b } });
     list.bits.set(`rest|${b}`, sp);
