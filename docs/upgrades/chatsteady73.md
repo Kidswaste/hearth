@@ -22,17 +22,17 @@ Same machine, back to back (headless Electron, software GL, a shared 4-CPU box).
 **Clicks and keys in a long chat on the heavy profile** (`dev/checks/chatsteady73.js`, new: dev/bigprofile.js's
 1,500 chats, 120 long, a year of usage). "After" = the window's CPU in the 3.5 s after the click:
 
-| Action | Before | After |
+| Action | Before | After (2 runs) |
 |---|---|---|
-| Saving the usage store (the window's own time) | 23–32 ms, 3 s after every click | **0.3 ms**, once a minute |
-| Thinking block shut → after | 57 ms (30 ms of it the usage save) | 14 ms |
-| Tool steps opened → after | 45 ms | 18 ms |
-| A message's ⋯ menu → after | 65 ms | 7 ms |
-| Copy a reply → after | 33 ms | 21 ms |
-| Click in the message box → after | 57 ms | 31 ms |
-| The chat's ⋯ (AI setup) shut → after | 45 ms | 13 ms |
-| Another long chat from the list → after | 67–76 ms | 61–62 ms (drawing the chat) |
-| Slowest key while typing (handlers) | 3 ms | 4 ms |
+| Saving the usage store (the window's own time) | 23–32 ms, 3 s after every click | **0.3–0.4 ms**, once a minute |
+| Thinking block shut → after | 57–68 ms (30–39 ms of it the usage save) | 9–14 ms |
+| Tool steps opened → after | 45–63 ms | 18–30 ms |
+| A message's ⋯ menu → after | 59–65 ms | 6–7 ms |
+| Click in the message box → after | 57–75 ms | 27–31 ms |
+| The chat's ⋯ (AI setup) shut → after | 45–53 ms | 4–13 ms |
+| Copy a reply → after | 33–58 ms | 21–47 ms (the Recall index's idle slices land here) |
+| Another long chat from the list → after | 67–76 ms | 48–89 ms (drawing the chat: unchanged) |
+| Slowest event handler of any click / key | 19–28 ms | 15–29 ms (the chat's ⋯ building the AI setup sheet; unchanged) |
 
 The main process: merging a minute of clicks into the year-sized store takes ≈ 4 ms (≈ 50 ms the first time, when it
 reads the file); before, every save sent ≈ 840 KB over IPC and the main side parsed it.
