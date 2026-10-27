@@ -300,3 +300,7 @@ html .qj dialog.qj-dialog[open]{animation:none!important;opacity:1;visibility:vi
 .hearth-three-spaces .qj-adventure-grid{grid-template-columns:1fr}.hearth-three-spaces .qj-top .qj-profile{max-width:350px}.hearth-three-spaces .qj-life-nav{position:sticky}
 
 .qj .qj-life-nav .qj-command-tab[aria-current=page]{color:#ffb6cf;background:linear-gradient(130deg,#ff6b9d1f,#bd8bff09);border-color:#ff6b9d4d}
+/* (round 71, studioperf71) the long card lists (Today's side quests, Find a quest, Collection: 100–300 cards on a full journal)
+   lay out only the cards on screen: a tab switch forced a layout of every card (37–89 ms here, more on the owner's PC).
+   An off-screen card keeps its last size once drawn (auto), and is drawn as it scrolls in; nothing else changes. */
+.qj-side-grid>.qj-card,.qj-catalog-grid>.qj-card,.qj-collection-grid>.qj-card{content-visibility:auto;contain-intrinsic-size:auto 300px}
