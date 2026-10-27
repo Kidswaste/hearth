@@ -17,13 +17,14 @@
 //   · a year of feature-usage, 400 days of token stats, a 4,000-line work journal, 800 attachments
 // Sync with the other computer is switched on by the check (into its own scratch cloud folder): the first pass and
 // then the minute-by-minute passes are part of what it measures.
-//   node dev/bigprofile.js [dir] [--chats 1500] [--long 120]      (default /tmp/hearth-bigprofile70)
+//   node dev/bigprofile.js [dir] [--chats 1500] [--long 120] [--projects 40]      (default /tmp/hearth-bigprofile70)
+//   (round 72) --projects N adds N projects with their chats, scenes, moodboards and desks (addProjects below)
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const { make } = require('./make-chatlist-fixture');
 
-function bigprofile(dir = '/tmp/hearth-bigprofile70', { chats = 1500, long = 120, seed = 70 } = {}) {
+function bigprofile(dir = '/tmp/hearth-bigprofile70', { chats = 1500, long = 120, seed = 70, projects = 0 } = {}) {
   const base = make(dir, chats, seed);
   let s = (seed * 7919) >>> 0;
   const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
@@ -179,14 +180,72 @@ function bigprofile(dir = '/tmp/hearth-bigprofile70', { chats = 1500, long = 120
   json('kv/token-stats.json', { v: 1, since: now - 400 * DAY, backfilledAt: now - 300 * DAY, days: tdays, chats: {} });
   json('safetynet/journal.json', Array.from({ length: 4000 }, (_, i) => ({ at: now - i * 6e4, what: `edit ${i}`, file: `notes/${i}.md` })));
   json('kv/notes.json', Array.from({ length: 150 }, (_, i) => ({ id: `n${i}`, title: `Note ${i}`, text: sentence(80), at: now - i * DAY })));
+  if (projects) Object.assign(out, addProjects(dir, { count: projects, sketches, longIds, sentence, int, pick, now, DAY, W, mk, json, rnd }));
   return out;
+}
+
+// (round 72, projects72) projects on top of the heavy profile, like the owner's after months of Codex's workspaces:
+// each project has its own chat (a native agent), its scene (one of the 50 Lab scenes), its moodboard and its desk.
+//   · project 0 "Clink" is the heavy one: a 700-message chat, 14 related long chats, 4 scenes, 3 boards, 400 files
+//     (half on disk, half "not arrived from the other computer"), 220 captures and 120 renders, 3,800 characters of notes
+//   · projects 1–2 are medium (a 400-message chat, 6 related chats, 120 files), the rest small (40–120 messages)
+//   · "Not arrived: scene" links a scene that isn't on this computer; "Not arrived: chat" a chat that isn't
+//   · 2 archived and 3 paused projects; device-local return points are left to the app (localStorage)
+function addProjects(dir, { count, sketches, longIds, sentence, int, pick, now, DAY, W, mk, json, rnd }) {
+  const chatDir = W('chats');
+  // the scenes draw for real (a renderer per layer, meshes, sliders), like the owner's: a scene that never renders
+  // waits out the sandbox's 700 ms "nothing drew" fallback and would make every open look slow. Light on purpose: the
+  // test machine draws with software GL (SwiftShader), where a heavy scene's own GPU work would hide Hearth's
+  // Each layer says when its own code starts (a 'fixture-layer-start' message to the window): dev/checks/projects72.js
+  // counts from there to the page's 'stack-drawn' as the scene's own work, apart from Hearth's
+  const draw = (l) => `\ntry { parent.postMessage({ type: 'fixture-layer-start', at: Date.now() }, '*'); } catch { /* a page without a parent */ }\nconst P${l} = tweak({ spin: { value: 0.5, min: -2, max: 2, label: 'Spin' }, size: { value: 1, min: 0.2, max: 3, label: 'Size' }, tint: { value: '#${['ff9866', '7a5cff', '56c6ff', 'c8f04a'][l % 4]}', label: 'Tint', group: 'Color' } });\nconst renderer = new THREE.WebGLRenderer({ alpha: ${l ? 'true' : 'false'} });\nrenderer.setSize(innerWidth, innerHeight);\ndocument.body.append(renderer.domElement);\nconst camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);\ncamera.position.z = 5;\nconst meshes = Array.from({ length: 6 }, (_, i) => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 1), new THREE.MeshBasicMaterial({ color: P${l}.tint, wireframe: true })); m.position.set((i % 3) - 1, Math.floor(i / 3) - 0.5, -${l}); scene.add(m); return m; });\nrenderer.setAnimationLoop((now, f60) => { for (const m of meshes) { m.rotation.y += 0.01 * P${l}.spin * (f60 || 1); m.scale.setScalar(P${l}.size); } renderer.render(scene, camera); });\n`;
+  for (const s of sketches) { for (const L of s.layers) L.code = L.code.replace('export default scene;\n', draw(L.slot)); s.code = s.layers[0].code; }
+  json('kv/three-sketches.json', sketches);
+  const chatOf =(id, title, n, at) => {
+    const messages = Array.from({ length: n }, (_, k) => (k % 2 === 0
+      ? { role: 'user', text: `${sentence(int(5, 25))}?`, at: at - (n - k) * 90e3 }
+      : { role: 'assistant', text: `Here is **${sentence(3)}**.\n\n- ${sentence(9)}\n- ${sentence(7)}\n\n${sentence(int(30, 90))}`, at: at - (n - k) * 90e3, usage: { input: 2000, output: 600 } }));
+    fs.writeFileSync(path.join(chatDir, `${id}.json`), JSON.stringify({ id, agentId: 'claude', title, createdAt: messages[0]?.at || at, updatedAt: at, session: {}, messages }));
+  };
+  mk('workspace/projects');
+  const files = (i, n) => Array.from({ length: n }, (_, k) => { const f = W(`workspace/projects/p${i}/${pick(['ref', 'take', 'sketch', 'poster', 'clip'])}-${k}.${pick(['png', 'wav', 'mp4', 'txt', 'blend'])}`); if (k % 2 === 0) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, 'x'); } return f; });
+  const boards = { list: [], current: null, links: {}, prefs: {} };
+  const list = []; const links = { links: {}, videos: {}, idents: {} };
+  const ident = (i) => ({ ci: i % 8, gi: i % 12, color: ['#ffc23d', '#ff7a1a', '#a970ff', '#ff3d7f', '#56c6ff', '#7cd992', '#c8f04a', '#c9d3ff'][i % 8], glyph: ['◆', '▲', '●', '■', '★', '✦', '⬢', '✚', '❖', '✿', '♥', '♣'][i % 12] });
+  for (let i = 0; i < count; i++) {
+    const id = `pjbp${i}`; const at = now - i * 1.5 * DAY; const heavy = i === 0; const medium = i === 1 || i === 2;
+    const name = i === 0 ? 'Clink' : i === count - 2 ? 'Not arrived: scene' : i === count - 1 ? 'Not arrived: chat' : `${pick(['Stoop', 'Neon', 'Ember', 'Glass', 'Orbit', 'Tunnel'])} ${pick(['Ronin', 'Reel', 'Poster', 'Loop', 'Drift', 'Tide'])} ${i}`;
+    const chatId = i === count - 1 ? 'claude-project-notarrived' : `claude-project-${id}`;
+    if (i !== count - 1) chatOf(chatId, name, heavy ? 700 : medium ? 400 : int(40, 120), at);
+    const sceneId = i === count - 2 ? 'sk-not-arrived' : sketches[i % sketches.length].id;
+    const boardId = `bdbp${i}`;
+    const board = { id: boardId, name: `${name} · Moodboard`, created: at, updated: at, seq: 40, view: { x: 80, y: 80, z: 0.6 }, chats: [chatId], items: Array.from({ length: heavy ? 120 : 30 }, (_, k) => ({ id: `i${k}`, type: 'text', text: sentence(int(2, 12)), textStyle: 'clean', fs: 48, x: (k % 10) * 560, y: Math.floor(k / 10) * 160, w: 520, h: 110, rot: 0, added: at })) };
+    json(`kv/board-${boardId}.json`, board);
+    boards.list.push({ id: boardId, name: board.name, updated: at, count: board.items.length, chats: [chatId] });
+    const items = [{ type: 'chat', ref: chatId, name }, { type: 'scene', ref: sceneId, name: sketches[i % sketches.length].name }, { type: 'board', ref: boardId, name: board.name }];
+    const related = heavy ? 14 : medium ? 6 : int(0, 2);
+    for (let r = 0; r < related; r++) { const c = longIds[(i * 7 + r) % longIds.length]; items.push({ type: 'chat', ref: c, name: '' }); if (r < 3) links.links[c] = { sketch: sketches[(i + r + 10) % sketches.length].id, auto: '', at }; }
+    if (heavy) { for (const s of sketches.slice(40, 44)) items.push({ type: 'scene', ref: s.id, name: s.name }); for (const k of [1, 2]) { const b = `bdbp0x${k}`; json(`kv/board-${b}.json`, { ...board, id: b, name: `Clink · Board ${k}`, items: board.items.slice(0, 40) }); boards.list.push({ id: b, name: `Clink · Board ${k}`, updated: at, count: 40, chats: [] }); items.push({ type: 'board', ref: b, name: `Clink · Board ${k}` }); } }
+    for (const f of files(i, heavy ? 400 : medium ? 120 : int(0, 12))) items.push({ type: 'file', ref: f, name: path.basename(f) });
+    if (heavy) { for (let k = 0; k < 220; k++) items.push({ type: 'capture', ref: W(`captures/clink-${k}.png`), name: `clink-${k}.png` }); for (let k = 0; k < 120; k++) items.push({ type: 'render', ref: `rj-bp-${k}`, name: `Clink render ${k}` }); }
+    links.links[chatId] = { sketch: sceneId, auto: '', at };
+    const status = i >= count - 7 && i < count - 4 ? 'paused' : i >= count - 4 && i < count - 2 ? 'archived' : 'active';
+    list.push({ id, name, ident: ident(i), status, notes: heavy ? sentence(700).slice(0, 3800) : sentence(int(0, 40)), from: 'hand', make: null, cover: null, at: at - 30 * DAY, updated: at, opened: at,
+      items: items.map((x, k) => ({ id: `${x.type}:${x.ref}`, type: x.type, ref: x.ref, name: x.name, at: at - k * 6e4 })),
+      workspace: { v: 1, persona: pick(['partner', 'director', 'builder']), plugins: [], description: rnd() < 0.5 ? sentence(20) : '', chatId, sceneId, boardId } });
+  }
+  boards.current = boards.list[0].id;
+  json('kv/projects.json', { v: 1, list, dismissed: [] });
+  json('kv/boards.json', boards);
+  json('kv/chat-scenes.json', links);
+  return { projects: list.length, projectItems: list.reduce((n, p) => n + p.items.length, 0) };
 }
 
 if (require.main === module) {
   const a = process.argv.slice(2); const o = (n, d) => { const i = a.indexOf(n); return i >= 0 ? Number(a[i + 1]) : d; };
   const dir = a.find((x, i) => !x.startsWith('--') && !/^--/.test(a[i - 1] || ''));
   const t0 = Date.now();
-  const r = bigprofile(dir || undefined, { chats: o('--chats', 1500), long: o('--long', 120) });
+  const r = bigprofile(dir || undefined, { chats: o('--chats', 1500), long: o('--long', 120), projects: o('--projects', 0) });
   console.log(JSON.stringify({ ...r, ms: Date.now() - t0 }));
 }
-module.exports = { bigprofile };
+module.exports = { bigprofile, addProjects };

@@ -157,7 +157,11 @@ const Declutter = (() => {
   // the buttons in this part of the screen you have never used (Usage counts clicks; after a few days of tracking)
   function neverUsedIn(root) {
     if (!root || typeof Usage === 'undefined' || !Usage.data?.items || (Usage.trackedDays?.() || 0) < 3) return [];
+    // (round 72, projects72) a long chat repeats its message buttons thousands of times (≈ 0.5 s of visibility checks
+    // when a project's chat had 700 messages): the first 20 messages stand for the rest (a tuck is by selector anyway)
+    let msgs = 0; let lastMsg = null;
     return [...root.querySelectorAll('button, select')].filter((b) => {
+      const m = b.closest('.msg'); if (m && m !== lastMsg) { lastMsg = m; msgs += 1; } if (m && msgs > 20) return false;
       if (!b.checkVisibility?.({ visibilityProperty: true }) || isMine(b)) return false;
       const it = Usage.data.items[Usage.keyOf?.(b)];
       // never used (seen 3+ days), or (round 13) used once or twice long ago, nothing in the last 30 days

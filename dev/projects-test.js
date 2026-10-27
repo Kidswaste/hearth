@@ -143,5 +143,23 @@ ok('continue: the latest of a kind by its own time (a chat answered later wins)'
   assert.strictEqual(C.countText(p), '2 chats · 1 scene');
 });
 
+// (round 72, projects72) Recently deleted: kept through normalize (and a sync merge), never beside the same live project
+ok('trash: kept by normalize (30 newest), dropped when the project is live again, absent when empty', () => {
+  const p = C.create({ id: 'pjt', name: 'Gone', notes: 'keep these words', items: [{ type: 'chat', ref: 'c1' }] });
+  const d = C.normalize({ v: 1, list: [], trash: [{ ...p, deletedAt: 5 }] });
+  assert.strictEqual(d.trash.length, 1);
+  assert.strictEqual(d.trash[0].notes, 'keep these words');
+  assert.strictEqual(d.trash[0].items[0].id, 'chat:c1');
+  assert.ok(!('trash' in C.normalize({ v: 1, list: [p] })));
+  assert.ok(!('trash' in C.normalize({ v: 1, list: [p], trash: [{ ...p, deletedAt: 5 }] })));
+  const many = Array.from({ length: 40 }, (_, i) => ({ ...C.create({ id: `pjt${i}` }), deletedAt: i }));
+  assert.strictEqual(C.normalize({ v: 1, list: [], trash: many }).trash.length, C.TRASH_KEEP);
+  const merge = require(path.join(__dirname, '..', 'sync-merge.js'));
+  const base = { v: 1, list: [p], dismissed: [] }; const ours = { v: 1, list: [], dismissed: [], trash: [{ ...p, deletedAt: 9 }] };
+  const theirs = { v: 1, list: [{ ...p, notes: 'keep these words' }], dismissed: [] };
+  const m = merge.merge3 ? merge.merge3(base, ours, theirs) : null;
+  if (m) { const n2 = C.normalize(m.value || m); assert.strictEqual(n2.list.length, 0); assert.strictEqual(n2.trash.length, 1); }
+});
+
 console.log(`${n - failed}/${n} passed`);
 if (failed) process.exit(1);

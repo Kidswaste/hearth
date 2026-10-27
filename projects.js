@@ -35,7 +35,8 @@ const Projects = (() => {
     const detail = { project: p, id: p?.id || null, why };
     for (const fn of listeners) { try { fn(detail); } catch (err) { console.warn(err); } }
     dispatchEvent(new CustomEvent('hearth:projects', { detail }));
-    clearTimeout(paintT); paintT = setTimeout(() => Panel.soon?.() ?? Panel.render(), 50);
+    // (round 72) notes typed on the Desk only change a group's tooltip in the chats list: it's drawn again once typing pauses
+    clearTimeout(paintT); paintT = setTimeout(() => Panel.soon?.() ?? Panel.render(), why === 'notes' ? 1200 : 50);
   }
   const onChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 
@@ -211,14 +212,30 @@ const Projects = (() => {
   function setWorkspace(p, patch) { p.workspace = { ...p.workspace, ...patch }; p.updated = Date.now(); changed(p, 'workspace'); }
   async function flush() { clearTimeout(saveT); const r = await window.hub.kvSet(KEY, data); if (r?.error) throw Error(r.error); }
   // deleting a project forgets the grouping only: chats, scenes and files stay where they are (Undo in the toast)
+  // (round 72, projects72) and it waits in Recently deleted (Projects › ⋯), with its notes, look and links, until 30
+  // newer ones push it out: Restore puts it back as it was
   function removeProject(p, { quiet = false } = {}) {
     const i = data.list.indexOf(p);
     if (i < 0) return false;
     data.list.splice(i, 1);
+    data.trash = [{ ...p, deletedAt: Date.now() }, ...(data.trash || []).filter((x) => x.id !== p.id)].slice(0, C.TRASH_KEEP);
     if (p.make && !data.dismissed.includes(`make:${p.make}`)) data.dismissed.push(`make:${p.make}`); // not made again from its make
     changed(null, 'delete');
-    if (!quiet) toast(`Project “${p.name}” deleted (its chats, scenes and files stay)`, { timeout: 8000, action: { label: 'Undo', fn: () => { data.list.splice(Math.min(i, data.list.length), 0, p); data.dismissed = data.dismissed.filter((k) => k !== `make:${p.make}`); changed(p, 'restore'); } } });
+    if (!quiet) toast(`Project “${p.name}” deleted (its chats, scenes and files stay; Projects › ⋯ › Recently deleted brings it back)`, { timeout: 8000, action: { label: 'Undo', fn: () => restoreProject(p.id, { at: i, as: p }) } });
     return true;
+  }
+  const trashed = () => (data.trash || []).slice();
+  function restoreProject(id, { at = 0, as = null } = {}) {
+    const t = (data.trash || []).find((x) => x.id === id);
+    if (!t || get(id)) return get(id);
+    const { deletedAt, ...rest } = t;
+    const p = as || rest;
+    data.trash = data.trash.filter((x) => x !== t);
+    if (!data.trash.length) delete data.trash;
+    data.list.splice(Math.min(at, data.list.length), 0, p);
+    data.dismissed = data.dismissed.filter((k) => k !== `make:${p.make}`);
+    changed(p, 'restore');
+    return p;
   }
 
   // ---------- from makes (automatically) ----------
@@ -551,7 +568,7 @@ const Projects = (() => {
 
   return {
     ready: () => ready, isLoaded: () => loaded, all, live, get, find, ofItem, projectOfChat, here, hereChat, currentScene, currentBoard,
-    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, fromMake, syncMakes, hidesMake,
+    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, fromMake, syncMakes, hidesMake,
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
     openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt,
     grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu, sketchGroups, sketchBrowse, sketchMenu,

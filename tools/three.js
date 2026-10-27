@@ -1062,6 +1062,9 @@ const ThreeLab = (() => {
     // hidden or minimised, another Lab tab). Recordings, the Stage window and offline renders go on.
     let parkedNow = false;
     let workspacePreparing = false, workspaceMessage = null, workspaceReleased = false, workspaceDrawn = null;
+    // (round 72, projects72) a project → project switch keeps the preview page (three.js loaded, contexts warm): the next
+    // project's scene runs in it like any Lab sketch switch, instead of a new page per switch. Leaving to Projects releases it.
+    let pageKept = false;
     let stallArm = null; // (round 39, powerwise) the stall / park safety timer's pace follows the park (set below)
     function syncPark(force = false) {
       const on = !workspacePreparing && ((!box.onStage && !player.recording && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }))) || xpResting() || previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing'));
@@ -3917,7 +3920,7 @@ const ThreeLab = (() => {
     }
     // opts.by: who switched ('scene' = chat-scenes.js following the chat on screen); fires 'hearth:sketch'
     function openSketch(id, opts = {}) {
-      workspaceReleased = false;
+      workspaceReleased = false; pageKept = false;
       // unsaved slider values in any layer of the sketch you leave
       const left = current;
       const pendings = left ? [...controllers.entries()].map(([lid, c]) => ({ lid, p: c.pending() })).filter((x) => x.p) : [];
@@ -4356,8 +4359,10 @@ ${code}
     // A project owns a live preview only while open. The same preparation protocol as Present warms its assets
     // and shaders; releasing the sandbox document also releases WebGL, audio, game timers and decoded textures.
     api.workspace = {
-      state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready, parked: parkedNow }),
+      state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready, parked: parkedNow, kept: pageKept }),
       resume() { if(workspaceReleased && current)openSketch(current.id,{by:'workspace-resume'}); },
+      // a page kept for a switch that didn't happen (cancelled, back to Projects): released now
+      releaseKept() { if (workspaceReleased && pageKept) { pageKept = false; box.release(); ranOnce = false; } },
       async prepare(id, { signal, progress = () => {} } = {}) {
         if (player.recording) throw Error('Finish the recording before switching projects.');
         if (!sketches.some(s => s.id === id)) throw Error('This scene is not available on this computer yet.');
@@ -4394,18 +4399,20 @@ ${code}
             if (signal?.aborted) return abort();
             if(current?.id===id&&!workspaceReleased){
               if(box.ready&&workspaceDrawn===id)warm();
-            }else{box.release();ranOnce=false;refsSig=null;openSketch(id,{by:'project'});}
+            }else{if(!pageKept||!box.ready||box.onStage){box.release();ranOnce=false;}refsSig=null;openSketch(id,{by:'project'});}
             syncPark(true);
           });
         } finally { workspacePreparing = false; syncPark(true); }
       },
-      async close() {
-        if (workspaceReleased) return;
+      // keep: a switch straight to another project (its scene runs in this page next); otherwise the page is released
+      async close({ keep = false } = {}) {
+        if (workspaceReleased) { if (!keep && pageKept) { pageKept = false; box.release(); ranOnce = false; } return; }
         if (player.recording) throw Error('Finish the recording before closing this project.');
         await ThreeLab.idle();
         // Save live slider edits too: closing a document must not leave its current sound/look only in memory.
         for (const ctl of controllers.values()) if (ctl.pending?.()) ctl.save?.();
-        persist(); rememberMedia();
+        // (round 72) only what changed: an untouched scene isn't stamped "updated now" and rewritten (all scenes, MBs) per close
+        if (current && (sel()?.code !== editor.value || current.code !== (layersOf()[0]?.code ?? editor.value))) persist(); rememberMedia();
         const results = await Promise.all([save.flush(), saveExtras.flush()]);
         for (const r of results) if (r?.error) throw Error(r.error);
         window.PresentReady?.stop();
@@ -4413,7 +4420,8 @@ ${code}
         await setLive(null); stopNowPlaying();
         player.toggle(false); player.unload({ silent: true });
         clearTimeout(thumbTimer); refsHold = null; refBytes.clear(); refsSig = null;
-        box.release(); ranOnce = false; workspaceReleased = true; stallArm?.(true);
+        if (keep && box.ready && !box.onStage) pageKept = true; else { pageKept = false; box.release(); ranOnce = false; }
+        workspaceReleased = true; stallArm?.(true);
       },
     };
     const sleep = (ms) => (typeof ThreeDirector !== 'undefined' && ThreeDirector.settle ? ThreeDirector.settle(ms) : new Promise((r) => setTimeout(r, ms)));
