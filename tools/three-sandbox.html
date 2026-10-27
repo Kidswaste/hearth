@@ -541,6 +541,7 @@ function applyCap() {
   let c = capWant.auto ? (!capWant.focused ? 30 : autoCap) : capWant.value;
   if (lightMode) c = c ? Math.min(c, 30) : 30;
   if (capWant.auto && PACE.battery) c = c ? Math.min(c, 60) : 60; // (round 33 "labpace": on battery, Auto holds 60 at most)
+  if (capWant.modal) c = c ? Math.min(c, 30) : 30; // (round 72, labfps72) a modal dialog over the Lab: 30 at most, whatever the setting
   if (RDY.lock) c = 0; // (round 52, presentready) a show draws at the screen's own rate
   if (c !== fpsCap) { fpsCap = c; capT = capNext = -1; }
 }
@@ -1999,6 +2000,11 @@ function glrLost(e) {
 function glrRestored(e) {
   if (!e.target.__glDead) return;
   GLR.restores += 1;
+  // (round 72, labfps72) the first context back says so at once: the GPU is back, the rest are on their way. A heavy
+  // scene's contexts come back one by one on a busy graphics process (9 layers took past the Lab's 4 s here), and the
+  // Lab used to give up on the GPU and make a whole new page (every shader compiled and every picture sent again: the
+  // heaviest moment, right after a reset) for a GPU that had come back. The Lab now waits for the rebuild instead.
+  if (GLR.lost && GLR.backAt !== GLR.epoch) { GLR.backAt = GLR.epoch; post({ type: 'gpu-restoring', epoch: GLR.epoch, layers: 0, first: true }); }
   // (a GPU process restart gives every context back, one event each: one rebuild after the last of them)
   realClearTimeout(GLR.timer);
   GLR.timer = realSetTimeout(glrRebuild, 120);
@@ -3695,6 +3701,32 @@ function ktxTexture(key, tex, fallback) {
   TY.pending.add(p); p.finally(() => TY.pending.delete(p));
   return true;
 }
+// (round 72, labfps72) uploads one at a time: a scene's big pictures (references of a megapixel or more) used to be
+// decoded together off the thread and then all sent to the graphics card in the same frame (with their mipmaps): a scene
+// with six 4K pictures stopped on that one frame (the upload is inside three.js' render(), so the Lab saw a render of
+// seconds). Now each big decoded picture is handed to its texture in a frame of its own (the next one after the last),
+// so the uploads spread over that many frames; small pictures, videos, the export page and a render's exact frames go on
+// at once (their frames wait for every picture anyway: TY.pending holds until the hand-over). A page that isn't drawing
+// (a hidden backstage) hands them over on a short timer instead. window.__labUploads() for checks.
+const UPQ = { q: [], tok: 0, seq: 0, t: 0, held: 0, frames: 0 };
+function upRelease(fn, px) {
+  if (XP_PAGE || !(px >= 1e6)) { fn(); return undefined; }
+  UPQ.held += 1;
+  return new Promise((res) => {
+    UPQ.q.push(() => { try { fn(); } finally { res(); } });
+    upArm();
+  });
+}
+// the next hand-over: at the next frame (or 150 ms on, when no frame comes)
+function upArm() { if (UPQ.tok || !UPQ.q.length) return; const k = UPQ.tok = ++UPQ.seq; const go = () => upFlush(k); realRAF(go); UPQ.t = realSetTimeout(go, 150); }
+function upFlush(k) {
+  if (k !== UPQ.tok) return;
+  UPQ.tok = 0; realClearTimeout(UPQ.t);
+  const fn = UPQ.q.shift();
+  if (fn) { UPQ.frames += 1; try { fn(); } catch { /* the texture is gone */ } }
+  upArm();
+}
+window.__labUploads = () => ({ held: UPQ.held, frames: UPQ.frames, waiting: UPQ.q.length });
 globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
   const url = refs[key];
   if (!url) throw new Error(`No reference "${key}". This sketch's references: ${Object.keys(refs).join(', ') || 'none (add some with the References button)'}`);
@@ -3719,7 +3751,8 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
       const dt0 = realNow(); // (round 56, readyspeed: its decode timed)
       const dec = createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
         rdyT('decode', dt0); if (who) ownNote(who, 'bmp', bmp);
-        tex.image = bmp; tex.flipY = false; tex.needsUpdate = true;
+        // (round 72, labfps72) a big picture goes to the graphics card in a frame of its own (see "uploads one at a time")
+        return upRelease(() => { tex.image = bmp; tex.flipY = false; tex.needsUpdate = true; }, bmp.width * bmp.height);
       }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
       // (round 42, labbatch) an exact frame (exports, a batch's logo per row) waits for the picture like for a font
       const pend = dec.finally(() => TY.pending.delete(pend)); TY.pending.add(pend);
@@ -13826,7 +13859,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'af' || /^audio-(core|track|probe)$/.test(msg.type)) { fxMessage(msg); return; } // (round 23, labaudio)
   if (msg.type === 'audio-stems') { STEMS.track = msg.track; STEMS.el = mediaEl; return; } // (round 30, stems) the song's parts, for the song loaded now
   // (auto: follow the screen and the window, see applyCap; focused: the Lab's window is the one in front)
-  if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; applyCap(); }
+  if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; capWant.modal = msg.modal === true; applyCap(); }
   if (msg.type === 'park') setParked(msg.on);
   if (msg.type === 'light') { lightMode = Boolean(msg.on); applyCap(); }
   if (msg.type === 'power') pacePower(msg.battery); // (round 33 "labpace": on battery or not, from the Lab)

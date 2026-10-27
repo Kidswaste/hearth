@@ -89,7 +89,7 @@ const GameMode = (() => {
       hold(true);
       let info;
       if (r?.route === 'live') info = await playLive(s, r, opts);
-      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs(), stream: streamTest(), look: lookPref(), audio: { off: store.get('gameaudio.off', false) === true }, notes: Notes()?.prefs?.(), hitch: Hitch()?.prefs?.() }); // (round 62, playnotes62) notes: the note key (F8) and its label for the hint · (round 63, hitchmap63) hitch: { on } records the hitch map (off by default) // (round 54, gameaudio: gameaudio.off leaves a game's sound as it is: a check's "before")
+      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs(), stream: streamTest(), look: lookPref(), quality: qualityPref(), audio: { off: store.get('gameaudio.off', false) === true }, notes: Notes()?.prefs?.(), hitch: Hitch()?.prefs?.() }); // (round 62, playnotes62) notes: the note key (F8) and its label for the hint · (round 63, hitchmap63) hitch: { on } records the hitch map (off by default) // (round 54, gameaudio: gameaudio.off leaves a game's sound as it is: a check's "before")
       if (info?.error) { const err = new Error(info.error); err.calm = true; err.offline = info.offline; throw err; } // (round 60, trimdrive60: e.g. offline before three.js was ever downloaded)
       now = { source: s, info, live: r?.route === 'live', at: Date.now(), plan };
       const own = plan ? Object.entries(plan.why).filter(([, w]) => w !== 'hidden') : [];
@@ -182,6 +182,11 @@ const GameMode = (() => {
       const pick = C.pickDisplay(ds, want);
       items.push('-', { label: 'Play on', items: () => ds.map((d) => ({ label: `${d.label} · ${d.w}×${d.h} · ${C.hzLabel(d.hz)}`, checked: d.id === pick?.id, action: () => store.set('gamemode.display', d.id) })) });
     }
+    // (round 72, labfps72) Quality: Auto (the resolution follows the frame rate: gamequality-preload.js) or Full
+    items.push({ label: `Quality: ${qualityPref() === 'full' ? 'Full' : 'Auto'}`, items: () => [
+      { label: 'Auto', hint: 'fewer pixels when frames drop, back up when there\'s room', checked: qualityPref() === 'auto', action: () => toast(setQuality('auto'), { timeout: 2500 }) },
+      { label: 'Full', hint: 'every pixel of the screen, always', checked: qualityPref() === 'full', action: () => toast(setQuality('full'), { timeout: 2500 }) },
+    ] });
     items.push({ label: `Graphics: ${LOOK[lookPref()] || 'Best'}`, items: () => [
       { label: 'Best', hint: 'sharp textures, true colours, shadows matched to the screen', checked: lookPref() === 'best', action: () => toast(setLook('best'), { timeout: 2500 }) },
       { label: 'Balanced', hint: 'sharp textures; the rest as the game sets it', checked: lookPref() === 'balanced', action: () => toast(setLook('balanced'), { timeout: 2500 }) },
@@ -197,6 +202,21 @@ const GameMode = (() => {
     store.set('gamemode.look', C.look(v));
     return `Graphics: ${LOOK[lookPref()] || lookPref()} from the next game${now ? ' (▶ Play again to see it now)' : ''}.`;
   }
+  // (round 72, labfps72) Quality: 'auto' (the default: the game's resolution follows its frame rate, 100 → 85 → 75 → 67 %
+  // of the screen's pixels and back up when there's room; a step that doesn't help is undone) or 'full' (every pixel).
+  // The game playing gets it at once (window.__gameQuality.set), the next ones from the start.
+  const qualityPref = () => (store.get('gamemode.quality', 'auto') === 'full' ? 'full' : 'auto');
+  function setQuality(v) {
+    const q = v === 'full' ? 'full' : 'auto';
+    store.set('gamemode.quality', q);
+    if (now && !now.live) window.hub.game.eval(`window.__gameQuality ? window.__gameQuality.set(${JSON.stringify(q)}) : ''`).catch(() => {});
+    return q === 'full' ? 'Quality: Full — ▶ Play draws every pixel of the screen.' : 'Quality: Auto — ▶ Play draws fewer pixels when frames drop, and goes back up when there\'s room.';
+  }
+  async function qualityNow() {
+    if (!now || now.live) return '';
+    try { return (await window.hub.game.eval('window.__gameQuality ? window.__gameQuality.line() : ""'))?.value || ''; } catch { return ''; }
+  }
+  window.hub.game?.onChip?.((d = {}) => { if (d.what === 'quality') store.set('gamemode.quality', d.value === 'full' ? 'full' : 'auto'); }); // (the F chip's Quality button, in the game window)
   // (round 56, shadowready) the Best look's shadow size: chosen under Getting ready's card, remembered per game
   // (playbudgetmain.js); /game look shadows says it, /game look shadows reset chooses again at the next ▶ Play
   async function shadows(reset) {
@@ -241,9 +261,9 @@ const GameMode = (() => {
     },
   });
   Commands.register({
-    name: 'game', area: 'Lab', args: '[stop | screens | input | latency | lowlatency on|off | look best|balanced | look shadows [reset] | helpers [on] | ready]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it; ready: how long getting ready took, step by step',
+    name: 'game', area: 'Lab', args: '[stop | screens | input | latency | lowlatency on|off | look best|balanced | quality auto|full | look shadows [reset] | helpers [on] | ready]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it; ready: how long getting ready took, step by step',
     examples: ['/game', '/game stop', '/game screens', '/game input', '/game latency', '/game look balanced', '/game helpers', '/game ready'], keywords: 'play clink game mode raw mouse input latency lag delay responsive helpers overhead budget ready loading time',
-    complete: () => ['stop', 'screens', 'input', 'latency', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'look shadows', 'look shadows reset', 'helpers', 'helpers on', 'ready'].map((v) => ({ value: v })),
+    complete: () => ['stop', 'screens', 'input', 'latency', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'quality auto', 'quality full', 'look shadows', 'look shadows reset', 'helpers', 'helpers on', 'ready'].map((v) => ({ value: v })),
     run: async (args) => {
       const a = String(args || '').trim();
       if (/^(stop|leave|quit|off)$/i.test(a)) { if (!now) return 'No game is playing.'; leave(); return null; }
@@ -253,6 +273,8 @@ const GameMode = (() => {
       // (round 54, gamelook) the look: /game look → what it is and what the game playing got; /game look best|balanced
       const ls = a.match(/^(?:look|graphics)\s+shadows?(?:\s+(reset|forget|again))?$/i); // (round 56, shadowready)
       if (ls) return shadows(Boolean(ls[1]));
+      const qm = a.match(/^quality(?:\s+(auto|full))?$/i); // (round 72, labfps72)
+      if (qm) { if (qm[1]) return setQuality(qm[1].toLowerCase()); const t = await qualityNow(); return `Quality: ${qualityPref() === 'full' ? 'Full' : 'Auto'} (/game quality auto | full)${t ? `\nNow: ${t}` : ''}`; }
       const lk = a.match(/^(?:look|graphics)(?:\s+(best|balanced))?$/i);
       if (lk) {
         if (lk[1]) return setLook(lk[1].toLowerCase());

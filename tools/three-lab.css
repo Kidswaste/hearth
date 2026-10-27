@@ -339,7 +339,11 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
 /* (round 64, framebar64) visible by default: with the pointer away from the preview the stats line keeps only the fps
    and the frame budget bar (declutter's 'lab-stats' keeps .fb-keep on screen; the bar: tools/framebar.css); pointing
    at the preview shows the whole line, as before */
-.three-preview:not(:hover) > .three-stats.fb-keep > :not(:first-child):not(.fb) { display: none; }
+.three-preview:not(:hover) > .three-stats.fb-keep > :not(:first-child):not(.fb):not(.lab-q.lighter) { display: none; }
+/* (round 72, labfps72) the preview's Quality chip in the stats line (Quality: auto · 70 % / Quality: full): the line
+   lets clicks through to the picture, this chip takes them */
+.three-stats .lab-q { pointer-events: auto; cursor: pointer; font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; text-decoration: underline dotted; text-underline-offset: 3px; }
+.three-stats .lab-q.warn { color: var(--warn, #ffb648); }
 /* Layer masks and explicit, color-coded object axes. Loaded with the Lab only. */
 .ly-mask { border: 1px solid #ffffff20; border-radius: 8px; padding: 6px; }
 .ly-mask summary { display:flex; align-items:center; gap:8px; cursor:pointer; }

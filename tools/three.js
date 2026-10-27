@@ -1026,7 +1026,15 @@ const ThreeLab = (() => {
     // (round 41, renderfast) while a Lab export renders, Auto eases the preview to its background rate (30): the export
     // page gets the GPU / CPU it would share with it. Never the Stage window, never during a recording.
     let xpOn = false;
-    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording)) }; };
+    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording)), modal: modalUp && !box.onStage && !player.recording }; };
+    // (round 72, labfps72) a modal over the Lab (a <dialog> opened with showModal(), the ⌘K Find anything palette): the
+    // preview behind it draws 30 frames a second at most, whatever the fps setting (it still moves under the dim; at
+    // 240 Hz the graphics card does an eighth of the work while you read or type in the dialog). Never on the Stage
+    // window or while recording. Watched by two quiet observers: the 'open' attribute anywhere, and the body's own children.
+    let modalUp = false; let modalT = 0;
+    const modalNow = () => Boolean(document.querySelector('dialog:modal') || document.querySelector('body > .palette'));
+    const modalCheck = () => { if (modalT) return; modalT = setTimeout(() => { modalT = 0; const m = modalNow(); if (m === modalUp) return; modalUp = m; if (box.ready) box.send(capMsg()); }, 0); };
+    try { const mo = new MutationObserver(modalCheck); mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] }); new MutationObserver(modalCheck).observe(document.body, { childList: true }); } catch { /* an old engine: no cap under dialogs */ }
     // (round 67, render fix) and the preview rests (parks, as when the Lab is off screen) behind a short note: a many-layer
     // scene drawn in the preview took half the GPU from the render (a 12-layer scene: 112 s → 48 s for 2 s of video).
     // "Show the preview anyway" keeps it drawing until that render ends.
@@ -3030,14 +3038,36 @@ const ThreeLab = (() => {
     let lastStats = null;
     // the fps / draw-call line (on hover): rebuilt only when its text changes, and painted when it shows again
     let lastStatsMsg = null; let statsSig = ''; let statsRaf = 0;
+    // (round 72, labfps72) the preview's Quality, visible and one click away: "Quality: auto" (the preview draws lighter
+    // while frames drop: resolution first, then filters, shadows, particles; stills, recordings and renders stay full)
+    // or "Quality: full" (always full, frames may drop). It shows with the rest of the line on hover, and stays on screen
+    // while the preview is lighter ("Quality: auto · 70 %"). Clicking it (or right-click › View) switches; it's the
+    // same setting as before ("Lighten to stay smooth"). Opened on pointerdown: the line is redrawn twice a second.
+    const qChip = el('button', { type: 'button', class: 'lab-q', dataset: { feature: 'Preview quality' } });
+    qChip.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
+    qChip.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
+    function qualityMenu(x, y) {
+      showMenu(x, y, [
+        { label: 'Quality: auto', hint: 'lighter while frames drop · renders stay full', checked: adaptOn, action: () => { setAdaptOn(true); statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg); } },
+        { label: 'Quality: full', hint: 'always full resolution · frames may drop', checked: !adaptOn, action: () => { setAdaptOn(false); statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg); } },
+      ]);
+    }
+    function qualityChip(msg) {
+      const lighter = adaptOn && msg.quality < 1;
+      const t = !adaptOn ? 'Quality: full' : lighter ? `Quality: auto · ${Math.round(msg.quality * 100)} %` : 'Quality: auto';
+      if (qChip.textContent !== t) qChip.textContent = t;
+      qChip.classList.toggle('lighter', lighter); qChip.classList.toggle('warn', lighter);
+      qChip.title = lighter ? 'Frames were dropping, so the preview draws lighter while you watch (resolution first, then filters, shadows, particles). Stills, screenshots, recordings and renders stay full quality. Click: Auto or Full.' : adaptOn ? 'Quality: auto — the preview draws lighter only while frames drop (renders stay full). Click: Auto or Full.' : 'Quality: full — the preview always draws at full resolution, even when frames drop. Click: Auto or Full.';
+      return qChip;
+    }
     function paintStats(msg) {
-      const sig = `${Math.round(msg.fps)}|${msg.quality}|${Math.round(msg.worst || 0)}|${msg.ms.toFixed(1)}|${msg.calls}|${msg.triangles}|${msg.points}|${msg.geometries}|${msg.textures}|${msg.programs}`;
+      const sig = `${Math.round(msg.fps)}|${msg.quality}|${adaptOn}|${Math.round(msg.worst || 0)}|${msg.ms.toFixed(1)}|${msg.calls}|${msg.triangles}|${msg.points}|${msg.geometries}|${msg.textures}|${msg.programs}`;
       if (sig === statsSig) return;
       statsSig = sig;
       stats.replaceChildren(
         el('b', { class: msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok', text: `${Math.round(msg.fps)} fps` }),
         typeof FrameBar !== 'undefined' ? FrameBar.el() : null, // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
-        msg.quality < 1 ? el('span', { class: 'warn', text: `preview ${Math.round(msg.quality * 100)}%`, title: 'Frames were dropping, so the preview draws lighter while you watch (resolution first, then filters, shadows, particles). Stills, screenshots, recordings and renders stay full quality.' }) : null,
+        qualityChip(msg), // (round 72, labfps72) Quality: auto · 70 % (it was "preview 70%"), a click away from Full
         msg.worst ? el('span', { class: msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok', text: `worst ${Math.round(msg.worst)} ms`, title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }) : null,
         el('span', { text: `${msg.ms.toFixed(1)} ms render` }), el('span', { text: `${msg.calls} draw calls` }),
         el('span', { text: `${msg.triangles.toLocaleString()} tris` }), msg.points ? el('span', { text: `${msg.points.toLocaleString()} points` }) : null,
@@ -3376,7 +3406,7 @@ const ThreeLab = (() => {
           { label: '▶ Play', hint: 'as a game, its own window', action: () => playGame() },
           { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
-          { label: 'Lighten to stay smooth', hint: 'full quality in renders', checked: adaptOn, action: () => { setAdaptOn(!adaptOn); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } },
+          { label: 'Quality: auto', hint: 'lighter while frames drop · full in renders', checked: adaptOn, action: () => { setAdaptOn(!adaptOn); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } },
           { label: '⌗ Composition guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
           ...(typeof ThreeGestures !== 'undefined' ? ThreeGestures.viewItems() : []), // (round 34) frame, reset, keep the view, moving around
           ...(window.LabAB ? LabAB.viewItems() : []), // (round 37) ◧ Before / after the last change (tools/three-abcompare.js)

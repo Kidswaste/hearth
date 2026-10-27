@@ -196,6 +196,22 @@ the hub); the owner: `/playtest`.
   settle() → Promise<report>, renderers() }`. The F chip's second line and the performance doctor show `text()`.
   `/game look shadows [reset]`: the size now / remembered; forget it (chosen again next ▶ Play).
 
+
+## Quality: auto (round 72, labfps72: gamequality-preload.js)
+- A third preload of the game session (Lab scenes and HTML builds). `--hearth-game` carries `quality: 'auto' | 'full'`
+  (Hearth's ▶ Play right-click › Quality, the F chip's Quality button, `/game quality auto|full`; hub store
+  `gamemode.quality`). The scale lives in `window.devicePixelRatio` as the game reads it (real ratio × scale: 1, 0.85,
+  0.75, 0.67); on a step every renderer three.js announced (`__THREE_DEVTOOLS__` observe, `__gameLook.renderers()`,
+  `__rdyLive()`) gets `setPixelRatio(devicePixelRatio)` once, then one `resize` event. EffectComposer targets keep
+  their own size (a composer game gains less).
+- No per-frame work: a 24-frame look every second while the phase is 'playing' (2 s after it starts), never hidden.
+  `qualityCore()` (pure, dev/labfps72-test.js): two looks over 1.2 × the refresh → a step down; no gain yet → the next
+  step down (vsync); no gain at the floor → back to the start, held 30 s, 60 s, then for this play; 3 looks with room →
+  a climb after `upWait` (8 s, ×2 after a climb that misses, ≤ 64 s).
+- `window.__gameQuality = { state() → { level, scale, mode, downs, ups, undone, held, upWait, why, hz, budget, renderers,
+  ratio, real, spentMs, looks, log: [[t, scale, why, medMs, renderers]] }, line() → "Quality auto · 85 %", set(mode),
+  renderers() }`. The F chip shows `line()` and a Quality: auto / full button.
+
 ## Loads during play (round 54, gamestream: tools/gamestream-page.js)
 - gamemodemain serves `/__gamestream-page.js` and puts `<script src="/__gamestream-page.js?off=0|1">` right after
   GameReady's tag in every HTML page of the window (Lab scene pages and HTML builds; always, armed or not). `game:play`
