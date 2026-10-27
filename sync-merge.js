@@ -364,8 +364,8 @@ function detectClouds(io) {
   }
   return found;
 }
-// Which one to propose: a drive that already has Hearth in it (the newest), else Dropbox, Google Drive, OneDrive, iCloud.
-const RANK = { dropbox: 0, gdrive: 1, onedrive: 2, icloud: 3 };
+// Which one to propose: a drive that already has Hearth in it (the newest), else Dropbox, Google Drive, iCloud, OneDrive.
+const RANK = { dropbox: 0, gdrive: 1, icloud: 2, onedrive: 3 };
 function proposeCloud(list) {
   return [...list].sort((a, b) => (b.hearth ? 1 : 0) - (a.hearth ? 1 : 0) || (b.hearth?.lastSeen || 0) - (a.hearth?.lastSeen || 0) || (RANK[a.id] ?? 9) - (RANK[b.id] ?? 9))[0] || null;
 }

@@ -12,6 +12,8 @@
 .cv-addr:focus { color: var(--cv-text); outline: none; border-color: color-mix(in srgb, var(--cv-accent) 60%, var(--cv-line)); }
 .cv-strip { flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; font-size: 12px; background: color-mix(in srgb, #4285f4 16%, var(--cv-surface)); border-bottom: 1px solid color-mix(in srgb, #4285f4 40%, transparent); }
 .cv-strip > span { flex: 1 1 200px; }
+/* Author display rules must not override hidden on dismissed sign-in UI. */
+.cv [hidden] { display: none !important; }
 .cv-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: var(--cv-bg); outline: none; touch-action: none; }
 .cv-canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; image-rendering: auto; }
 /* the keyboard's landing spot: there (it takes text, IME and pastes) but not seen */
