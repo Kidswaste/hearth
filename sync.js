@@ -15,7 +15,7 @@ const Sync = (() => {
   function line() {
     if (!st.on) return 'Sync is off.';
     const s = st.state;
-    if (s === 'offline') return st.error === 'missing' ? `The Hearth folder in ${where()} is missing. Nothing here was touched.` : `Offline: ${where()} isn't reachable. Everything keeps working here and catches up when it's back.`;
+    if (s === 'offline') return offlineLine();
     if (s === 'paused') return `Paused. Last synced ${ago(st.lastOk)}.`;
     if (s === 'held') return `${st.held?.deletes || 'Many'} files were deleted at once: waiting for your yes before syncing that.`;
     if (s === 'syncing' || s === 'starting' || s === 'idle') return `Syncing with ${where()}…`;
@@ -27,11 +27,21 @@ const Sync = (() => {
     if (s === 'error') bits.push(st.error ? calmError(st.error, { where: 'sync', what: 'the sync folder' }).replace(/\.$/, '') : 'something went wrong'); // (round 45, errorcalm) the raw reason: Sync now's note has it under Details
     return `${s === 'synced' || s === 'conflict' ? 'Everything is synced' : 'Syncing'} with ${where()} (checked ${ago(st.at)})${bits.length ? `: ${bits.join(', ')}` : '.'}`;
   }
+  // (round 74, synchard74) why sync is paused by itself, in plain words: the folder moved / unmounted, emptied by the
+  // cloud client starting over, or a newer Hearth on the other computer this one must catch up with
+  function offlineLine() {
+    if (st.error === 'missing') return `The Hearth folder in ${where()} isn't there (moved, renamed or the drive isn't connected). Sync is paused; nothing here was touched.`;
+    if (st.error === 'emptied') return `The Hearth folder in ${where()} is empty right now (your cloud drive may be starting over). Sync is paused; nothing here was deleted.`;
+    if (st.error === 'old-version') return 'Update Hearth on this computer: the other computer runs a newer Hearth that keeps things this one can\'t yet. Sync waits; nothing is lost.';
+    return `Offline: ${where()} isn't reachable. Everything keeps working here and catches up when it's back.`;
+  }
+  // (round 74, synchard74) files sync can't move for a reason the owner can fix (the panel lists them, with a button)
+  const blockedN = () => (st.on && !st.paused ? (st.blocked || []).length : 0);
   function peersLine() {
     const p = (st.peers || []).filter((x) => x.lastSeen);
     return p.length ? p.map((x) => `${x.name} (${x.platform === 'darwin' ? 'Mac' : x.platform === 'win32' ? 'Windows' : x.platform}) last synced ${ago(x.lastOk || x.lastSeen)}`).join(' · ') : '';
   }
-  const dotState = () => (!st.on ? 'off' : st.paused ? 'paused' : st.state === 'pending' || st.state === 'starting' || st.state === 'idle' ? 'syncing' : st.state === 'held' || st.state === 'error' ? 'conflict' : st.state);
+  const dotState = () => (!st.on ? 'off' : st.paused ? 'paused' : (st.state === 'synced' || st.state === 'pending') && (st.blocked || []).length ? 'conflict' : st.state === 'pending' || st.state === 'starting' || st.state === 'idle' ? 'syncing' : st.state === 'held' || st.state === 'error' ? 'conflict' : st.state); // (round 74) a file that can't sync: looked at like a conflict
   // (round 72, sync72) the indicator in words: "Synced 2 min ago" · "12 waiting" · "1 conflict — choose" (its chip shows
   // ✓ / ↻ 12 / ⚠ 1; the words are its name, its tooltip and the panel's title). Worked out when a status arrives or the
   // pointer comes over it: no timer of its own.
@@ -39,10 +49,11 @@ const Sync = (() => {
     if (!st.on) return 'Sync is off';
     if (st.paused) return `Sync paused · last synced ${ago(st.lastOk)}`;
     const s = st.state; const n = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
-    if (s === 'offline') return st.error === 'missing' ? 'The cloud copy is missing' : `Offline · catches up when ${where()} is back`;
+    if (s === 'offline') return st.error === 'missing' ? 'The cloud folder isn\'t there · paused' : st.error === 'emptied' ? 'The cloud folder is empty · paused' : st.error === 'old-version' ? 'Update Hearth here to keep syncing' : `Offline · catches up when ${where()} is back`; // (round 74)
     if (s === 'held') return `${n(st.held?.deletes || 0, 'deletion')} wait for your yes`;
     if (s === 'conflict') return `${n(st.conflicts, 'conflict')} — choose`;
     if (s === 'error') return 'Sync hit a problem — see why';
+    if (blockedN() && (s === 'pending' || s === 'synced')) return `${n(blockedN(), 'file')} can't sync — see why`; // (round 74)
     if (s === 'pending' && st.pending) return `${st.pending} waiting`;
     if (s === 'synced') return `Synced ${ago(st.lastOk || st.at)}`;
     return 'Syncing…';
@@ -52,6 +63,7 @@ const Sync = (() => {
     if (s === 'paused') return '‖ Paused';
     if (s === 'offline') return '○ Offline';
     if (s === 'conflict') return st.conflicts ? `⚠ ${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'}` : '⚠ Look';
+    if (blockedN() && (st.state === 'synced' || st.state === 'pending')) return `⚠ ${blockedN()} can't sync`; // (round 74, synchard74)
     if (s === 'syncing') return st.state === 'pending' && st.pending ? `↻ ${n} waiting` : '↻ Syncing';
     return '✓ Synced';
   };
@@ -112,7 +124,8 @@ const Sync = (() => {
       out.push({ label: `Delete those ${st.held.deletes} files (to the trash)`, action: () => now({ mass: 'apply' }) });
       out.push({ label: 'Keep them (bring them back)', action: () => now({ mass: 'keep' }) });
     }
-    if (st.state === 'offline' && st.error === 'missing') out.push({ label: 'Start the cloud copy again from this computer', action: () => now({ fresh: true }) });
+    if (st.state === 'offline' && (st.error === 'missing' || st.error === 'emptied')) out.push({ label: 'Start the cloud copy again from this computer', action: () => now({ fresh: true }) }); // (round 74) + emptied
+    if (blockedN()) out.push({ label: `${blockedN()} file${blockedN() === 1 ? '' : 's'} can't sync — see why…`, action: () => panel() }); // (round 74, synchard74)
     out.push({ label: 'Sync now', action: () => now() });
     if (st.conflicts) out.push({ label: `Conflicts…`, hint: String(st.conflicts), action: () => conflicts() });
     if (st.conflicts) out.push({ label: 'Settle all conflicts for me', action: async () => { const r = await api().resolveAll('auto'); if (r?.ok) toast(`Settled ${r.done} conflict${r.done === 1 ? '' : 's'}${r.failed ? ` (${r.failed} need you)` : ''}. Undo from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } }); refresh(); } });
@@ -153,7 +166,8 @@ const Sync = (() => {
     mountDot();
     if (st.state === 'error' && st.error) toast(`Sync couldn't finish with ${where()}`, { type: 'error', timeout: 9000, raw: st.error, calm: { where: 'sync', what: 'The sync folder' }, retry: () => now() }); // (round 45, errorcalm)
     // (round 45, errorcalm) the folder gone: the line says it plainly, the one fix is a click away
-    else if (st.state === 'offline' && st.error !== 'held') toast(line(), { timeout: 9000, raw: `${st.error === 'missing' ? 'Hearth/files missing in' : 'Not reachable:'} ${st.root || where()}`, action: st.error === 'missing' ? { label: 'Start it again from here', fn: () => now({ fresh: true }) } : { label: 'Pick the folder again…', fn: () => setup({ change: true }) } });
+    else if (st.state === 'offline' && st.error === 'old-version') toast(line(), { timeout: 9000 }); // (round 74, synchard74)
+    else if (st.state === 'offline' && st.error !== 'held') toast(line(), { timeout: 9000, raw: `${st.error === 'missing' || st.error === 'emptied' ? `Hearth/files ${st.error} in` : 'Not reachable:'} ${st.root || where()}`, action: st.error === 'missing' || st.error === 'emptied' ? { label: 'Start it again from here', fn: () => now({ fresh: true }) } : { label: 'Pick the folder again…', fn: () => setup({ change: true }) } });
     else if (!o.quiet) toast(line(), { timeout: 3500 }); // (round 72) the sync panel says it itself
     return st;
   }

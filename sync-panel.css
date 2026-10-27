@@ -62,3 +62,10 @@
 .sp-free-list { max-height: 240px; overflow: auto; }
 .sp-free-row { padding: 2px 0; }
 .sp-freed > b { color: var(--fh-ok, #5fc98a); }
+/* (round 74, synchard74) files that can't sync: the name, its fix button on the same line, why underneath */
+.sp-blocked > b { color: var(--fh-ember, #ff8a3d); }
+.sp-blk { gap: 1px; padding: 3px 0; }
+.sp-blk .sp-tr-top { align-items: center; }
+.sp-blk .sp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-fix { flex: none; padding: 1px 8px; }
+.sp-old { margin: 4px 0 0; }

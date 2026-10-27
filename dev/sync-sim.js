@@ -17,6 +17,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const sha = (b) => crypto.createHash('sha1').update(b).digest('hex');
+const Hard = require('../sync-hard'); // (round 74, synchard74) Windows names
 const fold = (s) => String(s).normalize('NFC').toLowerCase();
 // (round 73, syncmedia73) big files (a 2 GB mix of videos and stems) are hashed in steps and kept by the server as a
 // hard link to the uploaded file ("blob"), never whole in memory; downloads of them are written sparse (zero runs
@@ -41,7 +42,7 @@ const sizeOf = (s) => (s.buf ? s.buf.length : s.size);
 const raw = {};
 for (const k of ['statSync', 'existsSync', 'readFileSync', 'writeFileSync', 'openSync', 'renameSync', 'rmSync', 'mkdirSync', 'readdirSync', 'utimesSync', 'unlinkSync', 'truncateSync', 'copyFileSync']) raw[k] = fs[k];
 const rawP = {};
-for (const k of ['stat', 'lstat', 'readFile', 'writeFile', 'open', 'rename', 'rm', 'unlink', 'mkdir', 'readdir', 'copyFile', 'utimes', 'truncate']) rawP[k] = fsp[k];
+for (const k of ['stat', 'lstat', 'readFile', 'writeFile', 'open', 'rename', 'rm', 'unlink', 'mkdir', 'readdir', 'copyFile', 'utimes', 'truncate', 'chmod']) rawP[k] = fsp[k];
 
 // ---------- case / Unicode-insensitive volumes ----------
 const ciRoots = new Set();
@@ -94,6 +95,46 @@ function hydrate(p) {
 }
 const isDataless = (p) => { const k = ino(ci(p)); return Boolean(k && dataless.has(k)); };
 
+// ---------- (round 74, synchard74) real Windows / Mac troubles, for every fs call of the process ----------
+//   lock(file, code)   another program holds it (the Sound desk's host on a WAV, an antivirus, OneDrive): opening,
+//                      reading, replacing, deleting or moving it fails with EBUSY (or the code given: EPERM, EACCES)
+//   winReadOnly        Windows' read-only mark: replacing, deleting or writing a file without its write bit fails (EPERM)
+//                      (on this Linux box the tests run as root, where the bit alone stops nothing)
+//   quota(dir, bytes)  that many more bytes can be written under dir, then ENOSPC (the write that crosses it is cut)
+//   hook(op, p, p2)    a test's own: return an error code (or throw) to fail that call, nothing to let it through
+const T = { locks: new Map(), winReadOnly: false, quotas: new Map(), hook: null };
+const err = (code, op, p) => Object.assign(new Error(`${code}: simulated, ${op} '${p}'`), { code, syscall: op, path: p });
+const keyOf = (p) => (typeof p === 'string' ? path.resolve(ci(p)) : null);
+function lockOf(p) { if (!T.locks.size || typeof p !== 'string') return null; return T.locks.get(keyOf(p)) || null; }
+function readOnly(p) { if (!T.winReadOnly || typeof p !== 'string') return false; try { return !(raw.statSync(ci(p)).mode & 0o200); } catch { return false; } }
+function quotaOf(p) { if (!T.quotas.size || typeof p !== 'string') return null; const a = path.resolve(p); for (const [d, q] of T.quotas) if (a === d || a.startsWith(d + path.sep)) return q; return null; }
+// before a call: throws the simulated error, if any
+function check(op, p, p2, write) {
+  if (T.hook) { const c = T.hook(op, p, p2); if (c) throw err(c, op, p); }
+  for (const x of [p, p2]) { const l = lockOf(x); if (l) throw err(l, op, x); }
+  if (write) for (const x of write) if (readOnly(x)) throw err('EPERM', op, x);
+}
+// a write of n bytes under a quota: → how many may be written (the rest: ENOSPC after)
+function spend(p, n) { const q = quotaOf(p); if (!q) return n; const ok = Math.max(0, Math.min(n, q.left)); q.left -= ok; return ok; }
+const lenOf = (d) => (typeof d === 'string' ? Buffer.byteLength(d) : d?.length ?? 0);
+function lock(file, code = 'EBUSY') { T.locks.set(keyOf(file), code); }
+function unlock(file) { if (file) T.locks.delete(keyOf(file)); else T.locks.clear(); }
+function quota(dir, bytes) { if (bytes === null || bytes === undefined) T.quotas.delete(path.resolve(dir)); else T.quotas.set(path.resolve(dir), { left: bytes }); }
+// a FileHandle whose writes count against a quota and whose file may be locked meanwhile
+function wrapHandle(h, p) {
+  const q = () => quotaOf(p);
+  const write = h.write.bind(h);
+  h.write = async (buf, off = 0, len, pos) => {
+    if (!q()) return write(buf, off, len, pos);
+    const n = len ?? (lenOf(buf) - off);
+    const ok = spend(p, n);
+    if (ok > 0) await write(buf, off, ok, pos);
+    if (ok < n) throw err('ENOSPC', 'write', p);
+    return { bytesWritten: n, buffer: buf };
+  };
+  return h;
+}
+
 let installed = false;
 function install() {
   if (installed) return; installed = true;
@@ -101,9 +142,9 @@ function install() {
   fs.statSync = (p, ...a) => raw.statSync(ci(p), ...a);
   fs.existsSync = (p) => raw.existsSync(ci(p));
   fs.readFileSync = (p, ...a) => { const q = ci(p); hydrate(q); return raw.readFileSync(q, ...a); };
-  fs.writeFileSync = (p, ...a) => raw.writeFileSync(ci(p), ...a);
+  fs.writeFileSync = (p, d, ...a) => { check('open', p, null, [p]); const n = lenOf(d); if (spend(p, n) < n) throw err('ENOSPC', 'write', p); return raw.writeFileSync(ci(p), d, ...a); }; // (round 74)
   fs.openSync = (p, fl, ...a) => { const q = ci(p); if (readish(fl)) hydrate(q); return raw.openSync(q, fl, ...a); };
-  fs.renameSync = (a, b) => raw.renameSync(...ciRenameArgs(a, b));
+  fs.renameSync = (a, b) => { check('rename', a, b, [b]); return raw.renameSync(...ciRenameArgs(a, b)); }; // (round 74)
   fs.rmSync = (p, ...a) => raw.rmSync(ci(p), ...a);
   fs.mkdirSync = (p, ...a) => raw.mkdirSync(ci(p), ...a);
   fs.readdirSync = (p, ...a) => raw.readdirSync(ci(p), ...a);
@@ -114,15 +155,22 @@ function install() {
   // (round 73, syncmedia73) a placeholder has no blocks on the disk (what the engine looks at on a Mac)
   fsp.stat = async (p, ...a) => { const st = await rawP.stat(ci(p), ...a); if (dataless.size && st && dataless.has(`${st.dev}:${st.ino}`)) st.blocks = 0; return st; };
   fsp.lstat = (p, ...a) => rawP.lstat(ci(p), ...a);
-  fsp.readFile = async (p, ...a) => { const q = ci(p); hydrate(q); return rawP.readFile(q, ...a); };
-  fsp.writeFile = (p, ...a) => rawP.writeFile(ci(p), ...a);
-  fsp.open = async (p, fl, ...a) => { const q = ci(p); if (readish(fl)) hydrate(q); return rawP.open(q, fl, ...a); };
-  fsp.rename = async (a, b) => rawP.rename(...ciRenameArgs(a, b));
-  fsp.rm = (p, ...a) => rawP.rm(ci(p), ...a);
-  fsp.unlink = (p) => rawP.unlink(ci(p));
+  // (round 74, synchard74) each call checks the simulated locks / read-only marks / quotas first (check, spend)
+  fsp.readFile = async (p, ...a) => { check('open', p); const q = ci(p); hydrate(q); return rawP.readFile(q, ...a); };
+  fsp.writeFile = async (p, d, ...a) => {
+    check('open', p, null, [p]);
+    const n = lenOf(d); const ok = spend(p, n);
+    if (ok < n) { await rawP.writeFile(ci(p), typeof d === 'string' ? Buffer.from(d).subarray(0, ok) : d.subarray(0, ok)); throw err('ENOSPC', 'write', p); }
+    return rawP.writeFile(ci(p), d, ...a);
+  };
+  fsp.open = async (p, fl, ...a) => { check('open', p, null, readish(fl) ? null : [p]); const q = ci(p); if (readish(fl)) hydrate(q); return wrapHandle(await rawP.open(q, fl, ...a), p); };
+  fsp.rename = async (a, b) => { check('rename', a, b, [b]); return rawP.rename(...ciRenameArgs(a, b)); };
+  fsp.rm = async (p, ...a) => { check('unlink', p, null, [p]); return rawP.rm(ci(p), ...a); };
+  fsp.unlink = async (p) => { check('unlink', p, null, [p]); return rawP.unlink(ci(p)); };
   fsp.mkdir = (p, ...a) => rawP.mkdir(ci(p), ...a);
-  fsp.readdir = (p, ...a) => rawP.readdir(ci(p), ...a);
-  fsp.copyFile = async (a, b, ...r) => { const q = ci(a); hydrate(q); return rawP.copyFile(q, ci(b), ...r); };
+  fsp.readdir = async (p, ...a) => { check('scandir', p); return rawP.readdir(ci(p), ...a); };
+  fsp.chmod = (p, ...a) => rawP.chmod(ci(p), ...a);
+  fsp.copyFile = async (a, b, ...r) => { check('copyfile', a, b, [b]); const q = ci(a); hydrate(q); const st = raw.statSync(q); if (spend(b, st.size) < st.size) throw err('ENOSPC', 'copyfile', b); return rawP.copyFile(q, ci(b), ...r); };
   fsp.utimes = (p, ...a) => rawP.utimes(ci(p), ...a);
   fsp.truncate = (p, ...a) => rawP.truncate(ci(p), ...a);
 }
@@ -335,6 +383,9 @@ function cloud(o = {}) {
     for (const [k, s] of server) {
       const kn = v.known.get(k);
       if (v.uploading.has(k) || v.downloading.has(k)) continue;
+      // (round 74, synchard74) OneDrive / iCloud for Windows never create a file whose name Windows can't hold (":" "?"
+      // a trailing dot, CON…): it stays in the cloud, this PC's folder just never has it
+      if (v.winNames && Hard.winBad(s.key.replace(/^Hearth\/files\//, ''), { rootLen: 0 }) && Hard.winBad(s.key.replace(/^Hearth\/files\//, ''), { rootLen: 0 }).why !== 'win-long') { v.stats.refused = (v.stats.refused || 0) + 1; continue; }
       const f = view.get(k);
       if (kn && kn.ver === s.ver) {
         if (kn.stub && v.requested.has(k)) { writeInto(v, s, 'whole'); v.known.set(k, { ver: s.ver, hash: s.hash, key: s.key }); v.requested.delete(k); }
@@ -381,4 +432,4 @@ function snapshot(dataDir, S, ctx) {
   return out;
 }
 
-module.exports = { raw, rawP, ci, ciVolume, install, hydrate, isDataless, dataless, clock, cloud, snapshot, sha, fold };
+module.exports = { raw, rawP, ci, ciVolume, install, hydrate, isDataless, dataless, clock, cloud, snapshot, sha, fold, T, lock, unlock, quota }; // (round 74) T / lock / unlock / quota
