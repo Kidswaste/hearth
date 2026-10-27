@@ -116,6 +116,12 @@
         },
       });
     }
+    // (round 74, projdesk74) opt-in: keep the Lab's preview page loaded behind Projects (off by default: uses more memory)
+    if (!Commands.get('keep-lab-ready')) {
+      Commands.register({ name: 'keep-lab-ready', area: 'Projects', args: '[on|off]', desc: 'Keep the Lab ready behind Projects: opening a project from Projects is as quick as switching (uses more memory; off by default)', keywords: 'projects lab preview faster open memory warm keep ready',
+        complete: () => [{ value: 'on', hint: 'faster opens, more memory' }, { value: 'off', hint: 'nothing loaded behind Projects' }],
+        run: (args) => { const a = String(args || '').trim().toLowerCase(); const on = a ? ProjectWorkspace.keepLab(!/^(off|no|0|false)$/.test(a)) : ProjectWorkspace.keepLab(); return on ? 'The Lab stays ready behind Projects (uses more memory). /keep-lab-ready off to let it go.' : 'Nothing stays loaded behind Projects (the default). /keep-lab-ready on keeps the Lab ready there.'; } });
+    }
     if (!Commands.get('projects')) {
       Commands.register({ name: 'projects', area: 'Projects', args: '', desc: 'Every project (Home shows them as cards with covers)', keywords: 'list projects home',
         run: async (args, ctx) => { await P.ready(); if (ctx.source !== 'code') P.openHome(); return P.live().length ? P.live().slice(0, 15).map(lineOf).join('\n') : 'No projects yet: /project new <name>, or /project suggest.'; } });

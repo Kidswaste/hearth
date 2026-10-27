@@ -139,8 +139,11 @@ const Projects = (() => {
   const IMG = /\.(png|jpe?g|webp|gif)$/i;
   let look = null; // { sketches: Map, thumbs, boards: Map, renders: Map, captures: Map } read by lookFor()
   async function lookFor() {
-    const [sk, th, bd, rn, cp] = await Promise.all([Src.sceneList(), Src.sceneThumbs(), Src.boards(), Src.renders(), Src.captures()]);
-    look = { sketches: new Map((sk || []).map((s) => [s.id, s])), thumbs: th || {}, boards: new Map((bd || []).map((b) => [b.id, b])), renders: new Map((rn || []).map((r) => [r.id, r])), captures: new Map((cp || []).map((c) => [c.path, c])) };
+    const src = await Promise.all([Src.sceneList(), Src.sceneThumbs(), Src.boards(), Src.renders(), Src.captures()]);
+    // (round 74, projdesk74) the same (cached) sources as last time: the same look, not five new maps (the Desk keeps what it drew)
+    if (look?.src && src.every((x, i) => x === look.src[i])) return look;
+    const [sk, th, bd, rn, cp] = src;
+    look = { src, sketches: new Map((sk || []).map((s) => [s.id, s])), thumbs: th || {}, boards: new Map((bd || []).map((b) => [b.id, b])), renders: new Map((rn || []).map((r) => [r.id, r])), captures: new Map((cp || []).map((c) => [c.path, c])) };
     return look;
   }
   // a scene's picture: the Lab's still of it, else the still of the chat that owns it (chat-scenes.js)
@@ -575,7 +578,7 @@ const Projects = (() => {
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
     openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt,
     grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu, sketchGroups, sketchBrowse, sketchMenu,
-    Src, warm, lookFor, coverOf, thumbOf, timeOf, nameOf, lastOf, gone, fileUrl, forget, onChange, changed, core: C,
+    Src, warm, lookFor, look: () => look, coverOf, thumbOf, timeOf, nameOf, lastOf, gone, fileUrl, forget, onChange, changed, core: C,
     _data: () => data,
   };
 })();

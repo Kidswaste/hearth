@@ -175,7 +175,8 @@ const GROUPS = {
   inspodrop65: ['inspodrop65', 'unit:inspodrop-test', 'board-chat', 'eyes-ui', 'journey-board', 'board', 'board-links', 'board-extra', 'board-pack', 'chat-media', 'attachlean', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 65) drag a picture / clip from the board drawer into a chat: the real picture, a clip's key frames + its file, several / a whole board, Shift = vibe text
   mainhang65: ['mainhang65', 'idlecpu', 'twocopies64', 'updater', 'chatkeep', 'datasafe', 'soundbank63', 'lazy', 'unit:boot-test', 'unit:twocopies-test', 'unit:datasafe-scan', 'unit:winmac-test', 'unit:backupauto-test'], // (round 65) the main process never hangs the app: event-loop delay on a big data folder (startup, idle, everyday actions, the backup, sync passes)
   bigprofile70: ['bigprofile70', 'mainhang65', 'uilag65', 'lazy', 'unit:boot-test'], // (round 70) a heavy owner-like profile (dev/bigprofile.js): cold start, 2 min idle with sync on, typical clicks; main-process stalls and window long tasks (opt-in: BIGPROFILE70=1)
-  projects72: ['projects72', 'projects', 'project-workspaces', 'project-continuity', 'project-lifecycle', 'project-fluidity', 'project-desk', 'offline-project', 'projects-lightweight', 'lazy', 'unit:boot-test', 'unit:projects-test'], // (round 72) projects on the heavy profile: open (cold / warm), switch by the name ▾, resume, the Desk with 400 files, a scene / chat not arrived, Prepare for offline, delete → Undo / Recently deleted, archive (projects72 itself is opt-in: BIGPROFILE70=1)
+  projects72: ['projects72', 'projects', 'project-workspaces', 'project-continuity', 'project-lifecycle', 'project-fluidity', 'project-desk', 'offline-project', 'projects-lightweight', 'project-auto-improve', 'project-sound', 'lazy', 'unit:boot-test', 'unit:projects-test'], // (round 74: + the two checks wired below) (round 72) projects on the heavy profile: open (cold / warm), switch by the name ▾, resume, the Desk with 400 files, a scene / chat not arrived, Prepare for offline, delete → Undo / Recently deleted, archive (projects72 itself is opt-in: BIGPROFILE70=1)
+  projdesk74: ['projects72', 'projects', 'project-workspaces', 'project-continuity', 'project-desk', 'project-auto-improve', 'project-sound', 'projects-lightweight', 'lazy', 'unit:boot-test'], // (round 74) the Desk's files shelf in one frame, the warm open's page started at the click, and the project checks that needed hand-given flags (projects72 itself is opt-in: BIGPROFILE70=1)
   studioperf71: ['studioperf71', 'questperf65', 'quest-deck', 'quest-journal', 'quest-world', 'quest-field', 'quest-paris', 'mapfirst64', 'herepin66', 'errands67', 'outing-desk', 'city-integration', 'lazy', 'unit:boot-test'], // (round 71) Life on the heavy profile: Life › Map, tab switches, a quest dialog, a visit stamp; closed dialogs leave the page (studioperf71 itself is opt-in: BIGPROFILE70=1)
   uilag65: ['uilag65', 'lab240edit', 'menucalm', 'appcalm', 'clickfirst64', 'questhud61', 'vstembed64', 'jankwatch', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test'], // (round 65) the main window's lag: no automatic profiles from the jank watch, the hidden Lab / Studio / Sound desk skip style (modals, page-wide changes), scroll / hover / click / modal budgets on a big profile
   twocopies64: ['twocopies64', 'unit:twocopies-test', 'chatkeep', 'firstrun', 'datasafe', 'unit:winfresh-test', 'unit:configsafe-test', 'lazy', 'unit:boot-test', 'unit:datasafe-scan', 'unit:winmac-test', 'unit:chatsafe-scan'], // (round 64) a second Hearth folder next to the real one: the card before the window, its own profile, Bring its chats here
@@ -345,7 +346,14 @@ const FIX = [
 const EXTRA_FLAGS = {
   'routine-feedback': ['--fake-engines'],
   'visual-feedback': ['--fake-engines', '--eval', `window.FEEDBACK_FIXTURE=${JSON.stringify(`${T}/hearth-test-videos/neon_tunnel_v1.mp4`)}`],
+  // (round 74, projdesk74) Codex's project checks that only passed when started by hand: auto-improve sends through the
+  // fake engines, the Sound desk test needs the fake VST host (dev/fixtures/fake-vst-py; never real instruments)
+  'project-auto-improve': ['--fake-engines'],
+  'project-sound': ['--fake-vst'],
 };
+// (round 74, projdesk74) environment a check needs that no header can say: projects-lightweight reads the main
+// process's IPC counts (window.hub.power.test({ lag }), on only with HEARTH_LOOPLAG)
+const EXTRA_ENV = { 'projects-lightweight': { HEARTH_LOOPLAG: '1' } };
 const srcOf = (n) => (n.startsWith('unit:') ? fs.readFileSync(path.join(DEV, `${n.slice(5)}.js`), 'utf8') : fs.readFileSync(path.join(CHECKS, `${n}.js`), 'utf8'));
 const exists = (p) => { try { return fs.statSync(p).isFile() || fs.readdirSync(p).length > 0; } catch { return false; } };
 const needed = FIX.filter((f) => wanted.some((n) => f.re.test(srcOf(n)) || (EXTRA_FLAGS[n] || []).some((a) => f.re.test(a)) || /^journey-/.test(n.replace('unit:', ''))));
@@ -458,7 +466,8 @@ for (const n of wanted) {
     // (round 23) voice checks hear through dev/fake-whisper.js (whisper-cli's stand-in: canned text by the tone it hears)
     const env = n === 'mainhang65' || n === 'bigprofile70' || n === 'longrun72' ? { ...process.env, HEARTH_LOOPLAG: 'prof', HEARTH_FAULTS_LIVE: '1', HEARTH_SLOWFS_US: process.env.HEARTH_SLOWFS_US || '150' } // (round 65) the main-process lag probe, a Windows-slow disk · (round 72) longrun72 too
       : /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }
-      : /^(game(mode|ready|input|tex|look|audio|stream|fps54)|playloop|playbudget|playlatency|shadowready|labcanvas56|readyspeed|ctxloss|trim-drive|gcchurn60|playnotes62|hitchmap63)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } : process.env; // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network; round 60: trim-drive's ▶ Play commands too)
+      : /^(game(mode|ready|input|tex|look|audio|stream|fps54)|playloop|playbudget|playlatency|shadowready|labcanvas56|readyspeed|ctxloss|trim-drive|gcchurn60|playnotes62|hitchmap63)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' }
+      : EXTRA_ENV[n] ? { ...process.env, ...EXTRA_ENV[n] } : process.env; // (round 74) EXTRA_ENV // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network; round 60: trim-drive's ▶ Play commands too)
     r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: n === 'longrun72' ? 5400000 : 1800000, maxBuffer: 64 << 20, env }); // (round 72) the long run takes LR_MINUTES + setup
   }
   dropPair(n);
