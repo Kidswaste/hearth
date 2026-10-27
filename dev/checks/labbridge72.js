@@ -206,8 +206,8 @@ try {
   ok(/three_do: (?!ERROR)/.test(after?.text || ''), 'the next call in the same turn worked');
 
   // every Lab error the AI got today was a sentence, never a stack or "undefined"
-  out.errors = HubBridge.log().filter((e) => e.error).map((e) => `${e.tool}: ${e.error.slice(0, 90)}`);
-  ok(out.errors.every((e) => !/undefined|TypeError|ReferenceError|at \w+ \(/.test(e)), `errors in words (${out.errors})`);
+  out.aiErrors = HubBridge.log().filter((e) => e.error).map((e) => `${e.tool}: ${e.error.slice(0, 90)}`);
+  ok(out.aiErrors.every((e) => !/undefined|TypeError|ReferenceError|at \w+ \(/.test(e)), `errors in words (${out.aiErrors})`);
   // the chip's menu
   activate(C.id); await wait(300);
   chipOf(C.id)?.click();
