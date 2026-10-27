@@ -926,7 +926,7 @@ const Native = (() => {
   const SIG_SKIP = new Set(['text', 'thinking', 'sent', 'edits', 'images', 'lastReply']);
   function msgSig(m, index, isLast) {
     let rest;
-    try { rest = JSON.stringify(m, function skip(k, val) { return this === m && SIG_SKIP.has(k) ? undefined : val; }); } catch { return null; }
+    try { rest = JSON.stringify(m, function skip(k, val) { return (this === m && SIG_SKIP.has(k)) || ((k === 'w' || k === 'h') && this?.path) ? undefined : val; }); } catch { return null; } // (round 73) a picture's size, learned when it loads, redraws nothing
     return `${gen}|${index}|${isLast ? 1 : 0}|${m.lastReply ? 1 : 0}|${m.thinking?.length || 0}|${m.edits?.length || 0}|${m.images?.length || 0}|${rest}`;
   }
   const handoff = new WeakMap(); // (round 35) a finished reply → its live node { el, p } (onEvent)

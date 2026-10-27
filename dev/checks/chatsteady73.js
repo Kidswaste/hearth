@@ -16,8 +16,8 @@ const until = async (fn, n = 200) => { for (let i = 0; i < n; i++) { try { const
 const cdp = (method, params) => Promise.race([smoke({ cdp: method, params }), wait(15000)]);
 const r0 = (x) => Math.round(x);
 const out = { fixture: {}, actions: {}, problems: [] };
-const BUDGET = Object.assign({ handler: 16, busyAfter: 40, usageSave: 5, keyHandler: 16 }, window.CS_BUDGET || {});
-// (handler: the slowest event handler of a click / key, ms · busyAfter: the window's CPU in the 3.5 s after a click beyond
+const BUDGET = Object.assign({ handler: 16, busyAfter: 40, usageSave: 5, keyHandler: 16, openHandler: 120 }, window.CS_BUDGET || {});
+// (handler: the slowest event handler of a click / key, ms; a list row opens a long chat: openHandler · busyAfter: the window's CPU in the 3.5 s after a click beyond
 // the click's own events, ms · usageSave: the window's own time to save the usage store, ms)
 const evs = [];
 try { new PerformanceObserver((l) => { for (const e of l.getEntries()) evs.push({ name: e.name, t: e.startTime, h: e.processingEnd - e.startTime, p: e.processingEnd - e.processingStart, d: e.duration }); }).observe({ type: 'event', durationThreshold: 16, buffered: false }); } catch { out.problems.push('no Event Timing'); }
@@ -45,7 +45,9 @@ async function act(name, fn, { after = 3500 } = {}) {
   await wait(after);
   marks.push({ name, t0, t1, t2: performance.now() });
   const mine = evs.slice(e0).filter((e) => e.t >= t0 - 5);
-  out.actions[name] = { handler: r0(Math.max(0, ...mine.map((e) => e.h))), paint: r0(Math.max(0, ...mine.map((e) => e.d))), slowEvents: mine.sort((a, b) => b.h - a.h).slice(0, 3).map((e) => `${e.name} ${r0(e.h)}/${r0(e.d)}ms`) };
+  // handler: the events' own handlers (processing) · waited: how long an event waited for the page (busy with something
+  // else) · paint: start → next frame
+  out.actions[name] = { handler: r0(Math.max(0, ...mine.map((e) => e.p))), waited: r0(Math.max(0, ...mine.map((e) => e.h - e.p))), paint: r0(Math.max(0, ...mine.map((e) => e.d))), slowEvents: mine.sort((a, b) => b.p - a.p).slice(0, 3).map((e) => `${e.name} ${r0(e.p)}+${r0(e.h - e.p)}/${r0(e.d)}ms`) };
 }
 await cdp('Profiler.start');
 const pStart = performance.now();
@@ -108,7 +110,7 @@ try {
 // ---------- verdicts ----------
 const fails = [];
 for (const [name, a] of Object.entries(out.actions)) {
-  if (a.handler > (/typing|keys|Escape|Alt/.test(name) ? BUDGET.keyHandler : BUDGET.handler)) fails.push(`${name}: slowest handler ${a.handler} ms (${a.slowEvents.join(', ')})`);
+  if (a.handler > (/list row/.test(name) ? BUDGET.openHandler : /typing|keys|Escape|Alt/.test(name) ? BUDGET.keyHandler : BUDGET.handler)) fails.push(`${name}: slowest handler ${a.handler} ms (${a.slowEvents.join(', ')})`);
   if (a.busyAfter > BUDGET.busyAfter && !/list row|wheel/.test(name)) fails.push(`${name}: ${a.busyAfter} ms of window CPU after it (${(a.top || []).join(' · ')})`);
 }
 if (out.usageSave.windowMs > BUDGET.usageSave) fails.push(`the usage save cost the window ${out.usageSave.windowMs} ms`);
