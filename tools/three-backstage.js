@@ -273,6 +273,7 @@ function makeBackstage(opts = {}) {
     const d = {
       backstage: true,
       building: () => Boolean(onStart), // (round 74, labcalls74) a fresh page / a re-run layer hasn't drawn yet
+      built: (ms = 6000) => Promise.race([started, sleep(ms)]),
       codeOf(ref = null) { const L = must(ref); const x = s(); return { id: L.id, name: L.name, sketchId: x.id, sketch: x.name, code: L.code }; },
       getCode() { const L = must(null); return { sketch: s().name, layer: L.name, layers: summary(), frame: frameOf(sketchId), lines: L.code.split('\n').length, ...ThreeLab._util.codeOrOutline(L.code), note: NOTE }; },
       layers: () => ({ sketch: s().name, selected: layerName(selId()), layers: summary(), note: NOTE }),

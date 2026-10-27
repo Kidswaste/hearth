@@ -4507,6 +4507,7 @@ ${code}
       },
       openSketch: (id) => api.openSketchById?.(id),
       building: () => builds.size > 0, // (round 74, labcalls74) a layer that ran hasn't drawn its first frame yet
+      built: (ms = 6000) => Promise.all([...builds.keys()].map((id) => whenDrawn(id, ms))), // …and once each drew or failed
       setFrame: (id) => stage.setMode(id),
       // The whole sketch as it is now (every layer), and putting such a capture back (jam.js: one undo point per
       // round). A capture whose sketch is gone, or restored with asNew, becomes a new sketch.

@@ -312,8 +312,8 @@ const ThreeDirector = (() => {
   // canvas it read the picture back from the GPU, ≈ 90 ms a picture here
   let sigCanvas = null;
   function signature(c) {
-    const t = (sigCanvas ||= Object.assign(document.createElement('canvas'), { width: 24, height: 24 }));
-    const g = t.getContext('2d', { willReadFrequently: true }); g.clearRect(0, 0, 24, 24); g.drawImage(c, 0, 0, 24, 24);
+    const t = (sigCanvas ||= document.createElement('canvas')); t.width = 24; t.height = 24; // (setting the size clears it)
+    const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(c, 0, 0, 24, 24);
     const px = g.getImageData(0, 0, 24, 24).data; const out = new Uint8Array(576);
     for (let i = 0; i < 576; i += 1) out[i] = (px[i * 4] * 0.3 + px[i * 4 + 1] * 0.59 + px[i * 4 + 2] * 0.11) | 0;
     return out;
@@ -340,7 +340,8 @@ const ThreeDirector = (() => {
   // for detail. A later picture in the same reply that names no size is a thumbnail (384 px, ≈ 110).
   const SIZES = { small: 512, medium: 768, large: 1280 };
   const LATER_PX = 384;
-  const AUTO_MS = 600; // (round 74, labcalls74) the longest an automatic picture may hold an answer
+  const AUTO_MS = 1500; // (round 74, labcalls74) how long an automatic picture may hold an answer (at least; more on a slow page, ≤ 4 s)…
+  const BUILD_MS = 6000; // …after the change has drawn (or failed): at most this long (the preview's own building cap)
   const SHOT_Q = 0.72;
   let prevShot = null; // the last picture the director got (canvas), for compare
   const loadImg = async (url) => { const img = new Image(); img.src = url; await img.decode(); return img; };
@@ -429,13 +430,18 @@ const ThreeDirector = (() => {
     const on = args.shot === true || store.get('director.autoShot', true) !== false;
     if (!on || (args.shot !== true && Array.isArray(value?.errors) && value.errors.length)) return null;
     let c; let img = null; let url = null;
-    // (round 74, labcalls74) a picture nobody asked for never holds the answer long: a page still building the change (a
-    // model loading, shaders compiling: d.building()) gets none at all, an idle one gives it in a frame or two (≈ 0.1–0.2 s
-    // even in software GL) and is waited for at most AUTO_MS; the answer then goes without it and says so (it held
-    // each edit 2–7 s here). shot: true waits for its picture.
+    // (round 74, labcalls74) a picture nobody asked for never holds the answer long: once the change is built (its first
+    // frame or its error: needed anyway, the answer reports its errors, see autoShot) the preview gives one in a frame or
+    // two (≈ 0.1–0.2 s even in software GL) and is waited for at most AUTO_MS; the answer then goes without it and says
+    // so (it held each edit 2–7 s here, waiting for frames of a busy page). shot: true waits for its picture.
+    if (args.shot !== true && d.building?.() && d.built) { await d.built(BUILD_MS); mark('page:built'); }
     let late = args.shot !== true && Boolean(d.building?.());
+    // at the page's pace: three of its frames, twice what its small pictures took so far, within AUTO_MS–4 s
+    const fps = (() => { try { return Number(d.report()?.stats?.fps) || 0; } catch { return 0; } })();
+    const sm = savedNotes.pics.small; const avg = sm?.n ? sm.ms / sm.n : 0;
+    const autoMs = Math.min(4000, Math.max(AUTO_MS, fps > 0 ? 3000 / fps : 0, 2 * avg));
     try {
-      url = late ? null : await (args.shot === true ? grab(d, LATER_PX) : Promise.race([grab(d, LATER_PX), sleep(AUTO_MS).then(() => { late = true; return null; })]));
+      url = late ? null : await (args.shot === true ? grab(d, LATER_PX) : Promise.race([grab(d, LATER_PX), sleep(autoMs).then(() => { late = true; return null; })]));
       if (late) { if (value && typeof value === 'object') value.picture = 'still drawing (three_screenshot to look)'; savedNotes.autoLate = (savedNotes.autoLate || 0) + 1; return null; }
       if (!url) return null;
       img = await loadImg(url);
