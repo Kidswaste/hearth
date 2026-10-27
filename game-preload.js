@@ -72,13 +72,13 @@ function mount() {
     .err .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .err button, .box .fix { padding: 5px 11px; font-size: 12px; margin: 0; } .err .x { background: transparent; color: #a7adb8; padding: 5px 7px; }
     .fixit { background: #ff8a3d; color: #1a1206; } .box .fix { display: block; margin: 12px auto 0; }
-  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing${I.notesKey ? ` · ${String(I.notesKey).replace(/[<>&]/g, '')}: note` : ''}${I.hitch ? ' · ● recording the hitch map' : ''}</div><div class="col"><div class="chip" hidden></div><div class="acts" hidden>${I.notesKey ? `<button class="an" tabindex="-1">✎ Note (${String(I.notesKey).replace(/[<>&]/g, '')})</button>` : ''}<button class="ah" tabindex="-1">${I.hitch ? '■ Stop hitch map' : '● Record hitch map'}</button></div><div class="look" hidden></div><div class="note" hidden></div></div><div class="blip" aria-live="polite"></div>
+  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing${I.notesKey ? ` · ${String(I.notesKey).replace(/[<>&]/g, '')}: note` : ''}${I.hitch ? ' · ● recording the hitch map' : ''}</div><div class="col"><div class="chip" hidden></div><div class="acts" hidden>${I.notesKey ? `<button class="an" tabindex="-1">✎ Note (${String(I.notesKey).replace(/[<>&]/g, '')})</button>` : ''}<button class="aq" tabindex="-1" hidden title="Auto: fewer pixels when frames drop, back up when there's room · Full: every pixel (click to switch)"></button><button class="ah" tabindex="-1">${I.hitch ? '■ Stop hitch map' : '● Record hitch map'}</button></div><div class="look" hidden></div><div class="note" hidden></div></div><div class="blip" aria-live="polite"></div>
   <div class="err" hidden role="alert"><span class="m"></span><button class="fixit">Fix with the director</button><button class="x" aria-label="Hide">✕</button></div>
   <div class="card" hidden role="dialog" aria-label="Leave the game"><div class="box"><div class="t"></div><div class="s">Esc again or Enter goes back</div>
   <button class="back">Back to Hearth</button><button class="keep">Keep playing</button><button class="fix fixit" hidden>Fix with the director</button></div></div></div>`;
   (document.documentElement || document).appendChild(host);
   const $ = (s) => root.querySelector(s);
-  ui = { host, hint: $('.hint'), chip: $('.chip'), acts: $('.acts'), ah: $('.ah'), look: $('.look'), note: $('.note'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t'), blip: $('.blip'), err: $('.err'), errText: $('.err .m'), cardFix: $('.box .fix') };
+  ui = { host, hint: $('.hint'), chip: $('.chip'), acts: $('.acts'), ah: $('.ah'), aq: $('.aq'), look: $('.look'), note: $('.note'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t'), blip: $('.blip'), err: $('.err'), errText: $('.err .m'), cardFix: $('.box .fix') };
   for (const b of root.querySelectorAll('.fixit')) b.addEventListener('click', () => fixIt());
   // (round 64, clickfirst64) the F chip's two words, clicked with the mouse (when the game doesn't hold it): ✎ Note = F8;
   // ● Record / ■ Stop the hitch map (the hub keeps the setting). They never take the focus (Space / Enter stay the
@@ -86,6 +86,13 @@ function mount() {
   for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick']) ui.acts.addEventListener(t, (e) => { e.stopPropagation(); if (t === 'mousedown' || t === 'pointerdown') e.preventDefault(); });
   root.querySelector('.an')?.addEventListener('click', () => ipcRenderer.send('game:chip', 'note'));
   ui.ah.addEventListener('click', () => { ipcRenderer.send('game:chip', 'hitch'); ui.ah.textContent = /Record/.test(ui.ah.textContent) ? '■ Stop hitch map' : '● Record hitch map'; });
+  // (round 72, labfps72) Quality: auto ⇄ full, now in this game (gamequality-preload.js) and remembered by the hub
+  ui.aq.addEventListener('click', () => {
+    const to = /auto/.test(ui.aq.textContent) ? 'full' : 'auto';
+    ui.aq.textContent = `Quality: ${to}`;
+    webFrame.executeJavaScript(`window.__gameQuality ? window.__gameQuality.set(${JSON.stringify(to)}) : ''`).then((t) => { if (t) qual = String(t); }).catch(() => {});
+    ipcRenderer.send('game:chip', `quality-${to}`);
+  });
   root.querySelector('.err .x').addEventListener('click', () => { ui.err.hidden = true; });
   ui.title.textContent = I.title ? `Leave ${I.title}?` : 'Leave the game?';
   ui.back.addEventListener('click', () => ipcRenderer.send('game:back'));
@@ -121,13 +128,15 @@ let snd = ''; let sndAt = -1e9;
 // (round 55, playbudget) and Hearth's own work in the game a frame ("Hearth: 0.03 ms", tools/playbudget-page.js), which
 // counts this chip's own time too (told with the same read); a helper it switched off for being slow: one plain line
 let hearth = ''; let note = ''; let chipMs = 0;
+let qual = ''; // (round 72, labfps72) the game's Quality line (gamequality-preload.js), read with the same 2 s read
 let hitchLine = ''; // (round 63, hitchmap63) "● Hitch map 2:31" first on the chip while it records (read with the same 2 s read)
 const sound = () => {
   const ms = chipMs; chipMs = 0;
   try {
-    webFrame.executeJavaScript(`(function () { var a = window.__gameAudio, b = window.__hearthBudget, h = window.__hearthHitch; return JSON.stringify({ s: a ? a.line() : '', b: b ? b.chip(${ms.toFixed(4)}) : null, h: h ? h.line() : '' }); })()`).then((v) => {
+    webFrame.executeJavaScript(`(function () { var a = window.__gameAudio, b = window.__hearthBudget, h = window.__hearthHitch, q = window.__gameQuality; return JSON.stringify({ s: a ? a.line() : '', b: b ? b.chip(${ms.toFixed(4)}) : null, h: h ? h.line() : '', q: q ? q.line() : '' }); })()`).then((v) => {
       let o = null; try { o = JSON.parse(v); } catch { o = null; }
-      snd = o && typeof o.s === 'string' ? o.s : ''; hearth = o?.b?.line || ''; note = o?.b?.note || ''; hitchLine = typeof o?.h === 'string' ? o.h : '';
+      snd = o && typeof o.s === 'string' ? o.s : ''; hearth = o?.b?.line || ''; note = o?.b?.note || ''; hitchLine = typeof o?.h === 'string' ? o.h : ''; qual = typeof o?.q === 'string' ? o.q : ''; // (round 72, labfps72) "Quality auto · 85 %"
+      if (ui?.aq) { const qw = qual ? (/full/.test(qual) ? 'Quality: full' : 'Quality: auto') : ''; if (ui.aq.textContent !== qw) ui.aq.textContent = qw; ui.aq.hidden = !qw; }
       if (ui) { if (ui.note.textContent !== note) ui.note.textContent = note; ui.note.hidden = !(statsOn && note); const hw = hitchLine.startsWith('●') ? '■ Stop hitch map' : '● Record hitch map'; if (ui.ah.textContent !== hw) ui.ah.textContent = hw; } // (round 64, clickfirst64) the chip's hitch word follows the recording
     }).catch(() => {});
   } catch { /* fine */ }
@@ -143,7 +152,7 @@ function tick(t) {
     const g = gaps.slice(-240); const avg = g.reduce((a, b) => a + b, 0) / g.length;
     if (t - sndAt > 2000) { sndAt = t; sound(); }
     const inp = latFigure();
-    const line = `${hitchLine ? `${hitchLine} · ` : ''}${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${inp ? ` · ${inp}` : ''}${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}${hearth ? ` · ${hearth}` : ''}`;
+    const line = `${hitchLine ? `${hitchLine} · ` : ''}${Math.round(1000 / avg)} fps · ${avg.toFixed(1)} ms · ${Math.round(hz || 60)} Hz${inp ? ` · ${inp}` : ''}${how ? ` · ${how}` : ''}${snd ? ` · ${snd}` : ''}${qual ? ` · ${qual}` : ''}${hearth ? ` · ${hearth}` : ''}`;
     if (ui.chip.textContent !== line) ui.chip.textContent = line;
     gaps = g.slice(-120);
   }
