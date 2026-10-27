@@ -51,13 +51,27 @@ added to a scene that wasn't on screen, and materials, physics, keyframes, the t
 ### Faster backstage
 16. **Backstage answers at the first new frame** (+ 220 ms for console lines), like the Lab on screen, instead of a
     fixed 1.25 s per edit; the chat row's still is taken after the answer has gone instead of before.
+17. **No wasted pictures**: the calls a helper makes for the AI (a model add, a physics preset, a camera move…) no longer
+    each take a small picture that nobody sees, on screen or backstage: those tools answer seconds sooner.
 
-Upgrades: 16.
+Upgrades: 17.
 
 ## Measured (dev/checks/labtools73.js, fake engines, real MCP calls, SwiftShader, loaded 4-CPU box)
 The same 17-call reply on screen vs backstage (sum of call times, HubBridge log):
 
-LATENCY_TABLE
+| chat | on screen | backstage | ratio (all calls) | ratio (without the first) |
+|---|---|---|---|---|
+| Claude | 31.7 s | 37.6 s | 1.18× | 1.14× |
+| Astra | 28.7 s | 39.4 s | 1.37× | 1.34× |
+
+Budget: backstage ≤ 1.5× (the check fails above it). Runs vary with the machine's load (other agents' checks share its
+4 CPUs): across five runs the ratio was 1.15–1.37× after the fixes below. The first run measured 2.08× before three fixes:
+backstage pictures now use the preview's small JPEG (a full-size PNG of a layered scene waited for full-quality
+frames: ≈ 3 s each, some timing out), the chat row's still no longer holds each edit's answer, and a helper's own
+calls (a model add's add_layer, a physics preset's update_layer) no longer take a picture nobody sees (on screen
+too: the whole reply took 31.7 s on screen instead of 44–49 s). Quick calls
+(keyframes, presets, cues, sliders, a kick) answer in 10–40 ms both ways; what's left is page work (a model loading,
+physics compiling) and the ≈ 1.2–1.5 s re-run of a removed / replaced model's page backstage.
 
 Before this round, the backstage calls in this reply failed ("needs this scene on screen") from the model add onward.
 

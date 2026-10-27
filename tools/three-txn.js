@@ -182,14 +182,14 @@ const LabTxn = (() => {
     await restore(e.before, { keepRefs: true });
     undoStack.pop(); redoStack.push(e); lastUndo = 'turn'; stats.turnsUndone += 1;
     window.ThreeDirector?.forget?.(e.sceneId, e.at, e.lastAt);
-    return { turn: true, layer: e.scene, who: e.who, calls: e.calls, label: label(e), tool: 'three_last_reply', at: e.at, errors: 0, what: e.words.join('; ') };
+    return { turn: true, restored: 'before', layer: e.scene, who: e.who, calls: e.calls, label: label(e), tool: 'three_last_reply', at: e.at, errors: 0, what: e.words.join('; ') };
   }
   async function redoTurn() {
     const e = redoStack.at(-1);
     if (!e) throw new Error('Nothing to redo.');
     await restore(e.after, { keepRefs: true });
     redoStack.pop(); undoStack.push(e); lastUndo = undoStack.length ? 'turn' : null;
-    return { turn: true, layer: e.scene, who: e.who, calls: e.calls, label: label(e), tool: 'three_last_reply', at: e.at, errors: 0 };
+    return { turn: true, restored: 'after', layer: e.scene, who: e.who, calls: e.calls, label: label(e), tool: 'three_last_reply', at: e.at, errors: 0 };
   }
 
   // ---------- the wrapper (bridge.js) ----------
@@ -202,7 +202,7 @@ const LabTxn = (() => {
     const o = id && open.get(id);
     if (!id || (o && o.chatId === (ctx.chatId || null))) { // a call inside a call
       if (inject.tool === tool && (inject.n -= 1) <= 0) { inject.tool = null; return { ok: false, error: 'A test failure (injected by a check).' }; }
-      return next();
+      return next({ ...ctx, batch: { ...(ctx.batch || {}), shot: true } }); // its helper's answer: no picture of its own (the outer call's caller asks)
     }
     const t0 = performance.now(); const at = Date.now();
     const before = await snap(id);

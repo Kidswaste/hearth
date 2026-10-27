@@ -5101,7 +5101,7 @@ ${frag}\`,
     // comp (tools/three-comp.js): precomps in this chat's scene (on screen or not), parts dispatched to other chats
     if (tool === 'three_comp' && typeof ThreeComp !== 'undefined') return ThreeComp.handle(args, { chatId: ctx.chatId, sketchId: route?.sketchId || null });
     if (route && route.sketchId !== api.scenes.currentId() && typeof ThreeBackstage !== 'undefined') {
-      const r = await ThreeBackstage.handle(tool, args, route);
+      const r = await ThreeBackstage.handle(tool, args, ctx.batch ? { ...route, batch: ctx.batch } : route); // (round 73) a call inside a batch / a helper: no picture of its own
       if (tool === 'three_new_sketch' && r?.newSketchId) ChatScenes.relink(route.chatId, r.newSketchId);
       return r;
     }

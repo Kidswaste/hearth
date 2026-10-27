@@ -556,7 +556,7 @@ function makeBackstage(opts = {}) {
     }
     if (tool === 'three_media_info') return { ok: true, value: { loaded: false, note: 'No music backstage: the song plays when the owner opens this chat.', song: SC().songOf(route.sketchId)?.split(/[\\/]/).pop() || 'none linked' } };
     if (await load(x)) await settle(1.2); // a fresh page: let it start before reading it
-    if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d); if (r) return r; }
+    if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d, { chatId: route.chatId, batch: route.batch }); if (r) return r; }
     if (tool === 'three_layers') return { ok: true, value: d.layers() };
     if (tool === 'three_get_code') return { ok: true, value: d.getCode() };
     if (tool === 'three_add_layer') return { ok: true, value: await d.addLayer({ name: args.name, code: args.code, template: args.template, props: args.settings || {} }, args.wait) };

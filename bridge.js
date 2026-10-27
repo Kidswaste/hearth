@@ -76,7 +76,7 @@ const HubBridge = (() => {
   // (round 73, labtools73) every Lab call goes through tools/three-txn.js once it's loaded (whole or not at all; one undo
   // step per AI reply; what changed in words); calls made inside another call pass straight through it
   let around = null;
-  const run = (h, tool, args, ctx) => (around && tool.startsWith('three_') ? around(tool, args, ctx, () => h.fn(tool, args, ctx)) : h.fn(tool, args, ctx));
+  const run = (h, tool, args, ctx) => (around && tool.startsWith('three_') ? around(tool, args, ctx, (c) => h.fn(tool, args, c || ctx)) : h.fn(tool, args, ctx));
   const emit = (entry) => { for (const fn of listeners) { try { fn(entry, log); } catch (err) { console.warn(err); } } };
 
   window.hub.onGameCall(async ({ id, tool: asked, args: given }) => {
