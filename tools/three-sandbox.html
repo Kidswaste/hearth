@@ -95,6 +95,18 @@ if (parent !== window) {
     const u = URL.createObjectURL(new Blob([`export * from '${oc}';\nimport { OrbitControls as O } from '${oc}';\nexport class OrbitControls extends O { constructor(...a) { super(...a); try { globalThis.__labOrbit?.(this); } catch { /* fine */ } } }\n`], { type: 'text/javascript' }));
     orbits['three/addons/controls/OrbitControls.js'] = u; orbits['three/examples/jsm/controls/OrbitControls.js'] = u;
   } catch { /* the plain one */ }
+  // (round 75, labload75) a scene's own GLTFLoader / HDRLoader / RGBELoader / EXRLoader reading one of its references
+  // (refs.<name>) asks the page's asset cache first ("the scene's files, kept in this page"): a model or sky this page
+  // already parsed comes back without being read or parsed again. Same classes otherwise; any other URL loads as before.
+  if (params.get('pool') !== '0' && params.get('assets') !== '0') {
+    try {
+      for (const n of ['GLTFLoader', 'HDRLoader', 'RGBELoader', 'EXRLoader']) {
+        const real = `${base}/examples/jsm/loaders/${n}.js`;
+        const u = URL.createObjectURL(new Blob([`export * from '${real}';\nimport { ${n} as B } from '${real}';\nexport class ${n} extends B { load(u, ok, pr, er) { const h = globalThis.__labAssetLoad; return h ? h(this, '${n}', u, ok, pr, er, (a, b, c, d) => super.load(a, b, c, d)) : super.load(u, ok, pr, er); } }\n`], { type: 'text/javascript' }));
+        orbits[`three/addons/loaders/${n}.js`] = u; orbits[`three/examples/jsm/loaders/${n}.js`] = u;
+      }
+    } catch { /* the plain ones */ }
+  }
   im.textContent = JSON.stringify({ imports: { three: threeUrl, 'three/addons/': `${base}/examples/jsm/`, 'three/examples/jsm/': `${base}/examples/jsm/`, ...orbits } });
   document.currentScript.after(im);
   // three.js starts downloading while the page is still parsed (the module graph is fetched once per page; re-runs and
@@ -3835,14 +3847,221 @@ function setRefs(items) {
   if (old.length) realSetTimeout(() => {
     const busy = new Set(); for (const w of [...refVids]) { const v = w.deref(); if (!v || !v.getAttribute('src')) refVids.delete(w); else busy.add(v.getAttribute('src')); }
     const now = new Set(Object.values(refs));
-    for (const u of old) if (!now.has(u) && !busy.has(u)) URL.revokeObjectURL(u);
+    for (const u of old) if (!now.has(u) && !busy.has(u) && !AST.urlSig.has(u)) URL.revokeObjectURL(u); // (round 75: not one the asset cache keeps)
   }, 5000);
   for (const k of Object.keys(refs)) delete refs[k];
   for (const k of Object.keys(refBlobs)) delete refBlobs[k];
   for (const k of Object.keys(refKtx)) delete refKtx[k];
   RDYT.refsAt = realNow(); // (round 56, readyspeed)
-  for (const it of items || []) { const b = new Blob([it.buffer], { type: it.mime || '' }); refs[it.key] = URL.createObjectURL(b); refKinds[it.key] = it.kind; if (it.kind === 'image') refBlobs[it.key] = b; if (it.ktx2 && it.kind === 'image') refKtx[it.key] = it.ktx2; }
+  // (round 75, labload75) a reference with a `sig` (its file and time) is kept in the page's asset cache: one the page
+  // holds comes without its bytes (the window knows from 'refs-held'); one the cache let go meanwhile is asked again
+  AST.pin = new Set(); AST.keySig = {};
+  const need = [];
+  for (const it of items || []) {
+    let b; let url;
+    AST.recv += it.buffer?.byteLength || 0; // (what came over: dev/checks/labload75.js)
+    if (it.sig && AST.on) {
+      AST.pin.add(it.sig); AST.keySig[it.key] = it.sig;
+      let e = astGet(`b|${it.sig}`);
+      if (e) AST.hits += 1;
+      else if (it.buffer) {
+        b = new Blob([it.buffer], { type: it.mime || '' }); const u = URL.createObjectURL(b); AST.urlSig.set(u, it.sig);
+        e = astPut(`b|${it.sig}`, it.sig, it.buffer.byteLength, { blob: b, url: u }, () => astRevoke(u)); AST.misses += 1;
+      } else { need.push(it.sig); continue; }
+      b = e.val.blob; url = e.val.url;
+    } else { b = new Blob([it.buffer], { type: it.mime || '' }); url = URL.createObjectURL(b); }
+    refs[it.key] = url; refKinds[it.key] = it.kind; if (it.kind === 'image') refBlobs[it.key] = b; if (it.ktx2 && it.kind === 'image') refKtx[it.key] = it.ktx2;
+    // the open scene's pictures start decoding now, side by side (off the page's thread), before its code asks
+    if (it.warm && it.kind === 'image' && !refKtx[it.key]) astPicture(it.key)?.catch(() => {});
+  }
+  if (AST.on && (items || []).some((it) => it.sig)) { astTrim(); post({ type: 'refs-held', n: PAGE_N, sigs: astHeld() }); }
+  if (need.length) post({ type: 'refs-need', n: PAGE_N, sigs: need });
 }
+// ---------- the scene's files, kept in this page (round 75, labload75) ----------
+// A project switch keeps this page (round 72) and runs the next project's scene in it, and a scene seen before used to
+// start from nothing: its references' bytes copied over again from the window (a video reference is the whole video),
+// every picture decoded again, its model and its sky parsed again. Now the page keeps them in one cache, keyed by the
+// file and its time (`sig`: path | size | modified, from the window), bounded by size (the least recently used goes
+// first, never the open scene's): files' bytes (the window doesn't send what the page holds: 'refs-held'), decoded
+// pictures (ImageBitmaps, decoded off the page's thread), models a GLTFLoader parsed and skies an HDRLoader / RGBELoader
+// / EXRLoader parsed (the loaders in the import map ask here first). A scene gets its own copies of what it can change
+// (its model's objects, materials, textures, geometries; their vertex data and pictures are shared and read-only), so
+// nothing one scene does reaches the next. The open scene's pictures start decoding the moment its files arrive, side
+// by side, and a thin line at the top of the preview shows the loading when it takes a moment (not in exports, ▶ Play,
+// Present). Off: ?assets=0 (this page's loaders as before), set({ on: false }), or the window's store three.assetCache =
+// false (its files sent whole each time, as before: dev/checks/labload75.js's before). window.__labAssets: info() · set({ on, mb }) · clear().
+const PAGE_N = new URLSearchParams(location.search).get('n');
+const AST = { on: new URLSearchParams(location.search).get('assets') !== '0', mb: Math.min(768, Math.max(192, (navigator.deviceMemory || 4) * 96)), e: new Map(), size: 0, tick: 0, pin: new Set(), urlSig: new Map(), keySig: {},
+  hits: 0, misses: 0, evicted: 0, recv: 0, kept: new WeakSet(), cib: typeof createImageBitmap === 'function' ? window.createImageBitmap : null, // (the page's own: not a layer's, so a layer that goes doesn't close what's kept)
+  load: { n: 0, done: 0, total: 0, t0: 0, el: null, timer: 0, shown: false } };
+function astGet(key) { const e = AST.e.get(key); if (e) e.t = ++AST.tick; return e || null; }
+function astPut(key, sig, size, val, drop) { const old = AST.e.get(key); if (old) astDrop(old); const e = { key, sig, size, t: ++AST.tick, val, drop }; AST.e.set(key, e); AST.size += size; return e; }
+function astSize(e, size) { if (AST.e.get(e.key) !== e) return; AST.size += size - e.size; e.size = size; }
+function astDrop(e) { if (AST.e.get(e.key) !== e) return; AST.e.delete(e.key); AST.size -= e.size; AST.evicted += 1; try { e.drop?.(); } catch { /* gone */ } }
+function astTrim() {
+  const max = AST.mb * 1048576; if (AST.size <= max) return;
+  for (const e of [...AST.e.values()].filter((x) => !AST.pin.has(x.sig)).sort((a, b) => a.t - b.t)) { if (AST.size <= max) break; astDrop(e); }
+}
+const astHeld = () => [...AST.e.values()].filter((e) => e.key.startsWith('b|')).map((e) => e.sig);
+// a file let go: its URL goes 5 s later (anything still loading it has its copy), unless the scene shows it now
+function astRevoke(url) {
+  realSetTimeout(() => {
+    if (Object.values(refs).includes(url)) return;
+    for (const w of refVids) { const v = w.deref(); if (v && v.getAttribute('src') === url) return; }
+    AST.urlSig.delete(url); URL.revokeObjectURL(url);
+  }, 5000);
+}
+// a picture of the open scene, decoded once per page (flipped as three.js would at upload): a Promise of its
+// ImageBitmap, or null when it isn't one the cache keeps (the caller decodes it itself, as before)
+function astPicture(key) {
+  const sig = AST.keySig[key]; const blob = refBlobs[key];
+  if (!AST.on || !sig || !blob || !AST.cib) return null;
+  const k = `p|${sig}`;
+  const e = astGet(k);
+  if (e) {
+    if (e.val.bmp?.width) { AST.hits += 1; return Promise.resolve(e.val.bmp); }
+    if (!e.val.bmp) return e.val.p; // (still decoding)
+    astDrop(e); // (closed meanwhile: a file changed on disk)
+  }
+  AST.misses += 1; astBegin();
+  const ent = astPut(k, sig, 0, { p: null, bmp: null }, () => { const bm = ent.val.bmp; try { if (bm?.width && !ownInUse().has(bm)) bm.close(); } catch { /* fine */ } });
+  ent.val.p = AST.cib.call(window, blob, { imageOrientation: 'flipY', premultiplyAlpha: 'none' })
+    .then((bmp) => { ent.val.bmp = bmp; AST.kept.add(bmp); astSize(ent, bmp.width * bmp.height * 4); astTrim(); return bmp; }, (err) => { astDrop(ent); throw err; })
+    .finally(astEnd);
+  return ent.val.p;
+}
+// what a scene's own loaders find here (see the import map): a model or a sky this page already parsed, for one of the
+// scene's references or a web address (by its address; other blob: URLs load as before). The first load parses as usual
+// and keeps what came out. (Without it a sky loaded by a scene stayed whole with each gone scene: +4 MB a switch.)
+const AST_DATA = { HDRLoader: 1, RGBELoader: 1, EXRLoader: 1 };
+globalThis.__labAssetLoad = (loader, name, url, onLoad, onProgress, onError, superLoad) => {
+  // (a web address: kept by its address; a blob: URL only when it's one of the scene's references)
+  const u = String(url);
+  const sig = !AST.on ? null : AST.urlSig.get(u) || (/^(https?|hearth-three):/i.test(u) && !loader.path && !loader.requestHeader?.Authorization ? `url|${u}` : null);
+  if (!sig || !(name === 'GLTFLoader' || (AST_DATA[name] && typeof loader._applyTexData === 'function' && typeof loader.parse === 'function'))) return superLoad(url, onLoad, onProgress, onError);
+  const mgr = loader.manager; const k = `${name === 'GLTFLoader' ? 'g' : `h${name}`}|${sig}`;
+  let e = astGet(k); let first = false;
+  if (e) AST.hits += 1;
+  else {
+    AST.misses += 1; astBegin(); first = true;
+    const ent = e = astPut(k, sig, 0, { p: null });
+    // (a model: the loader's own load, its manager counting it; a sky: read and parsed here, the manager told below)
+    ent.val.p = (name === 'GLTFLoader'
+      ? new Promise((res, rej) => superLoad(url, res, onProgress, rej)).then((g) => { astSize(ent, astGltfBytes(g)); return g; })
+      : fetch(url).then((r) => r.arrayBuffer()).then((buf) => { const d = loader.parse(buf); if (d?.data) AST.kept.add(d.data); astSize(ent, d?.data?.byteLength || 0); return d; }))
+      .then((v) => { astTrim(); return v; }, (err) => { astDrop(ent); throw err; }).finally(astEnd);
+  }
+  // (the layer that asked: when it's gone by the time this is in, its callback isn't called: a gone scene's late sky
+  // used to build its PMREM on a renderer already let go, and throw)
+  let who = null; try { who = ownerUrl(); } catch { /* fine */ }
+  const live = () => !who || urlLayer.has(who);
+  const counted = !(first && name === 'GLTFLoader');
+  if (counted) mgr?.itemStart?.(url);
+  const fail = (err) => { if (counted) mgr?.itemError?.(url); if (onError) onError(err); else console.error(err); };
+  const end = () => { if (counted) mgr?.itemEnd?.(url); };
+  if (name === 'GLTFLoader') {
+    e.val.p.then((g) => { if (!live()) { end(); return; } let out; try { out = astGltfCopy(g); } catch (err) { fail(err); end(); return; } try { onLoad?.(out); } finally { end(); } }, (err) => { fail(err); end(); });
+    return undefined;
+  }
+  const tex = new THREE.DataTexture();
+  e.val.p.then((d) => { try { loader._applyTexData(tex, d); if (live()) onLoad?.(tex, d); } finally { end(); } }, (err) => { fail(err); end(); });
+  return tex;
+};
+function astGltfBytes(g) {
+  let n = 0; const seen = new Set();
+  for (const s of g.scenes?.length ? g.scenes : [g.scene]) s?.traverse?.((o) => {
+    const geo = o.geometry; if (geo && !seen.has(geo)) { seen.add(geo); for (const a of Object.values(geo.attributes || {})) n += (a.isInterleavedBufferAttribute ? a.data.array : a.array)?.byteLength || 0; n += geo.index?.array?.byteLength || 0; }
+    for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const v of Object.values(m)) if (v?.isTexture && v.image?.width && !seen.has(v.image)) { seen.add(v.image); AST.kept.add(v.image); n += v.image.width * v.image.height * 4; }
+  });
+  return n;
+}
+// a scene's own copy of a kept model: new objects, geometries (their vertex data shared), materials and textures (their
+// pictures shared). A skinned model keeps its bones' links (three's clone binds the copy's skeleton to its own bones).
+function astGltfCopy(g) {
+  const geos = new Map(); const mats = new Map(); const texs = new Map(); const ibs = new Map();
+  const attr = (a) => {
+    if (a.isInterleavedBufferAttribute) {
+      let ib = ibs.get(a.data); if (!ib) { ib = new THREE.InterleavedBuffer(a.data.array, a.data.stride); ib.setUsage(a.data.usage); ibs.set(a.data, ib); }
+      return new THREE.InterleavedBufferAttribute(ib, a.itemSize, a.offset, a.normalized);
+    }
+    const c = new THREE.BufferAttribute(a.array, a.itemSize, a.normalized); c.name = a.name; c.usage = a.usage; if (a.gpuType != null) c.gpuType = a.gpuType; return c;
+  };
+  const geo = (s) => {
+    let c = geos.get(s); if (c) return c;
+    c = new THREE.BufferGeometry(); c.name = s.name; c.userData = { ...s.userData };
+    for (const [n, a] of Object.entries(s.attributes)) c.attributes[n] = attr(a);
+    if (s.index) c.index = attr(s.index);
+    for (const [n, list] of Object.entries(s.morphAttributes || {})) c.morphAttributes[n] = list.map(attr);
+    c.morphTargetsRelative = s.morphTargetsRelative;
+    for (const gr of s.groups) c.addGroup(gr.start, gr.count, gr.materialIndex);
+    c.drawRange = { ...s.drawRange };
+    if (s.boundingBox) c.boundingBox = s.boundingBox.clone();
+    if (s.boundingSphere) c.boundingSphere = s.boundingSphere.clone();
+    geos.set(s, c); return c;
+  };
+  const tex = (t) => { let c = texs.get(t); if (!c) { c = t.clone(); texs.set(t, c); } return c; };
+  const mat = (m) => { let c = mats.get(m); if (c) return c; c = m.clone(); for (const k of Object.keys(c)) if (c[k]?.isTexture) c[k] = tex(c[k]); mats.set(m, c); return c; };
+  const copy = (root) => {
+    if (!root) return root;
+    const out = astClone(root);
+    out.traverse((o) => { if (o.geometry) o.geometry = geo(o.geometry); if (Array.isArray(o.material)) o.material = o.material.map(mat); else if (o.material) o.material = mat(o.material); });
+    return out;
+  };
+  const scenes = (g.scenes || []).map(copy);
+  const at = g.scenes ? g.scenes.indexOf(g.scene) : -1;
+  return { ...g, scene: at >= 0 ? scenes[at] : copy(g.scene), scenes, cameras: [], userData: { ...(g.userData || {}) } };
+}
+// three's Object3D.clone, plus what SkeletonUtils.clone adds for skinned meshes: each copy's skeleton on the copy's bones
+function astClone(root) {
+  const out = root.clone(true);
+  let skinned = false; root.traverse((o) => { if (o.isSkinnedMesh) skinned = true; });
+  if (!skinned) return out;
+  const src = []; const dst = []; root.traverse((o) => src.push(o)); out.traverse((o) => dst.push(o));
+  const map = new Map(src.map((o, i) => [o, dst[i]]));
+  for (let i = 0; i < src.length; i += 1) {
+    const s = src[i]; const d = dst[i];
+    if (!s.isSkinnedMesh) continue;
+    d.skeleton = s.skeleton.clone();
+    d.bindMatrix.copy(s.bindMatrix);
+    d.skeleton.bones = s.skeleton.bones.map((b) => map.get(b) || b);
+    d.bind(d.skeleton, d.bindMatrix);
+  }
+  return out;
+}
+// the loading line: shown when the open scene's files take more than a moment (a 2 px line at the top of the preview,
+// "Loading 3 of 8" in its corner), gone when the last is in; the window gets the count for a project's loading card
+// (RDY.pend: getting ready (a project's opening, Present) waits for the scene's models and skies too, not only its pictures)
+function astBegin() { const L = AST.load; if (!L.n) { L.done = 0; L.total = 0; L.t0 = realNow(); } L.n += 1; L.total += 1; RDY.pend += 1; astLine(); }
+function astEnd() { const L = AST.load; L.n = Math.max(0, L.n - 1); L.done += 1; RDY.pend = Math.max(0, RDY.pend - 1); astLine(); }
+function astLine() {
+  const L = AST.load;
+  post({ type: 'asset-progress', done: L.done, total: L.total });
+  if (XP_PAGE || GAME || mode !== 'sketch') return;
+  if (!L.n) { realClearTimeout(L.timer); L.timer = 0; if (L.shown) { L.shown = false; L.el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, fill: 'forwards' }); } return; }
+  if (L.shown) { astPaint(); return; }
+  if (!L.timer) L.timer = realSetTimeout(() => { L.timer = 0; if (!L.n || presentCursor) return; L.shown = true; astPaint(); L.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, fill: 'forwards' }); }, 250);
+}
+function astPaint() {
+  const L = AST.load;
+  if (!L.el) {
+    L.el = document.createElement('div'); L.el.className = 'lab-assetline'; L.el.__page = true;
+    L.el.style.cssText = 'position:fixed;left:0;right:0;top:0;height:16px;z-index:2147483600;pointer-events:none;opacity:0;font:10px/14px system-ui,sans-serif;color:rgba(255,255,255,.85);text-shadow:0 1px 2px rgba(0,0,0,.6)';
+    const bar = document.createElement('i'); bar.style.cssText = 'position:absolute;left:0;top:0;height:2px;width:100%;transform-origin:0 0;transform:scaleX(0);background:linear-gradient(90deg,#ff8a3d,#ffd36e);transition:transform .2s ease-out';
+    const txt = document.createElement('span'); txt.style.cssText = 'position:absolute;right:8px;top:3px';
+    L.el.append(bar, txt);
+    document.body.appendChild(L.el);
+  }
+  const k = L.total ? L.done / L.total : 0;
+  const tr = `scaleX(${k.toFixed(3)})`; if (L.el.firstChild.style.transform !== tr) L.el.firstChild.style.transform = tr;
+  const t = `Loading ${Math.min(L.done + 1, L.total)} of ${L.total}`;
+  if (L.el.lastChild.textContent !== t) L.el.lastChild.textContent = t;
+}
+window.__labAssets = {
+  info: () => ({ on: AST.on, entries: AST.e.size, mb: +(AST.size / 1048576).toFixed(1), budgetMB: AST.mb, hits: AST.hits, misses: AST.misses, evicted: AST.evicted, pinned: AST.pin.size, receivedMB: +(AST.recv / 1048576).toFixed(1),
+    kinds: [...AST.e.keys()].reduce((o, k) => { const t = k[0]; o[t] = (o[t] || 0) + 1; return o; }, {}), loading: AST.load.n }),
+  set: (o = {}) => { if ('on' in o) { AST.on = Boolean(o.on); if (!AST.on) post({ type: 'refs-held', n: PAGE_N, sigs: [] }); } if (o.mb > 0) AST.mb = Number(o.mb); astTrim(); return window.__labAssets.info(); },
+  clear: () => { for (const e of [...AST.e.values()]) if (!AST.pin.has(e.sig)) astDrop(e); post({ type: 'refs-held', n: PAGE_N, sigs: astHeld() }); return window.__labAssets.info(); },
+};
 // (round 53, gametex) ▶ Play's page: a picture with a compressed copy (KTX2, made by Optimize for play in Hearth's cache)
 // stays compressed on the graphics card (4–8× less video memory). refTexture() gives the same texture object at once;
 // it becomes a compressed one when KTX2Loader has transcoded the copy, or gets the original picture when the graphics
@@ -3928,8 +4147,9 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
     let who = null; try { who = ownerUrl(); } catch { /* fine */ } // (round 39: its picture is closed with the layer that asked for it)
     const picture = () => {
       const dt0 = realNow(); // (round 56, readyspeed: its decode timed)
-      const dec = createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }).then((bmp) => {
-        rdyT('decode', dt0); if (who) ownNote(who, 'bmp', bmp);
+      const kept = astPicture(key); // (round 75, labload75: decoded once per page, kept for the next visit; not this layer's to close)
+      const dec = (kept || createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' })).then((bmp) => {
+        rdyT('decode', dt0); if (who && !kept) ownNote(who, 'bmp', bmp);
         // (round 72, labfps72) a big picture goes to the graphics card in a frame of its own (see "uploads one at a time")
         return upRelease(() => { tex.image = bmp; tex.flipY = false; tex.needsUpdate = true; }, bmp.width * bmp.height);
       }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
@@ -3952,6 +4172,14 @@ function updateRef(it) {
   const url = URL.createObjectURL(b);
   refs[it.key] = url; refKinds[it.key] = it.kind;
   if (it.kind === 'image') refBlobs[it.key] = b;
+  // (round 75, labload75) the changed file is kept under its new time; what the cache kept of the old one goes
+  if (it.sig && AST.on) {
+    const was = AST.keySig[it.key];
+    if (was && was !== it.sig) { AST.pin.delete(was); for (const e of [...AST.e.values()]) if (e.sig === was) astDrop(e); }
+    AST.pin.add(it.sig); AST.keySig[it.key] = it.sig; AST.urlSig.set(url, it.sig);
+    astPut(`b|${it.sig}`, it.sig, it.buffer.byteLength, { blob: b, url }, () => astRevoke(url)); astTrim();
+    post({ type: 'refs-held', n: PAGE_N, sigs: astHeld() });
+  }
   let n = 0;
   for (const w of [...(refTexs[it.key] || [])]) {
     const tex = w.deref();
@@ -11974,6 +12202,12 @@ const ownBytes = (a) => (a && typeof a.byteLength === 'number' ? a.byteLength : 
   URL.createObjectURL = function (o) { const u = mk.call(URL, o); if (OWN.mods.size) { try { ownNote(ownerUrl(), 'url', u); } catch { /* fine */ } } return u; };
   if (typeof createImageBitmap === 'function') { const cib = window.createImageBitmap; window.createImageBitmap = function (...a) { const u = OWN.mods.size ? ownerUrl() : null; const p = cib.apply(window, a); if (u) p.then((b) => ownNote(u, 'bmp', b), () => {}); return p; }; }
   if (typeof AudioContext === 'function') { const AC = AudioContext; window.AudioContext = class extends AC { constructor(...a) { super(...a); try { ownNote(ownerUrl(), 'ac', this); } catch { /* fine */ } } }; }
+  // (round 75, labload75) three.js keeps ONE AudioContext for the page (THREE.AudioContext.getContext(), made by the
+  // first THREE.AudioListener): made from a layer's code, it was that layer's, so it was closed when the layer went, and
+  // every later scene's THREE.Audio played into a closed context (silent, without an error). That one is the page's now
+  // (never suspended or closed with a layer: each scene's THREE.Audio sources stop with its scene, see ownDispose), and
+  // a closed one is made anew.
+  try { const TA = THREE.AudioContext; const get = TA?.getContext; if (typeof get === 'function' && typeof TA.setContext === 'function') TA.getContext = function () { let c = get.call(TA); if (c?.state === 'closed') { c = new window.AudioContext(); TA.setContext(c); } OWN.threeAC = c; return c; }; } catch { /* an old three.js */ }
   const md = navigator.mediaDevices;
   if (md?.getUserMedia) { const gum = md.getUserMedia.bind(md); md.getUserMedia = function (c) { const u = ownerUrl(); const p = gum(c); if (u) p.then((s) => ownNote(u, 'stream', s), () => {}); return p; }; }
 }
@@ -11985,19 +12219,62 @@ function ownRetire(u) {
     const o = k === 'url' ? null : w.deref(); if (!o) continue;
     try {
       if (k === 'media' && !o.paused) o.pause();
-      else if (k === 'ac' && o.state === 'running') o.suspend();
+      else if (k === 'ac' && o.state === 'running' && o !== OWN.threeAC) o.suspend(); // (round 75: three's own stays)
       else if (k === 'stream') { for (const t of o.getTracks()) t.stop(); OWN.n.streams += 1; }
     } catch { /* gone */ }
   }
   OWN.queue.push(e);
   if (!OWN.timer) OWN.timer = realSetTimeout(ownSweep, 2500);
 }
+// (round 75, labload75) a layer that goes (a scene switch, a project switch in a kept page, a re-run, a removed layer)
+// gives back what its scenes hold on the graphics card, through three.js while its renderer still works: every geometry,
+// material, texture (a video's too) and render target its scenes reach (meshes, points, lines, sprites, instanced and
+// skinned meshes' own data, backgrounds, environments, materials' maps and uniforms), and its THREE.Audio sources stop
+// and let go of their nodes. Never what another running layer draws (a kept model's shared data, a precomp). The
+// context pool then deletes anything left on its context (round 21); the videos and AudioContexts its code made are
+// stopped and closed with the rest of what it made (above). window.__labMem().guard.own.disposed counts them.
+function ownDispose(L) {
+  if (!OWN.on || mode !== 'sketch' || !L.renderers.size || L.hotHeld) return; // (a live edit that hands its state on keeps its objects)
+  const scenes = new Set();
+  for (const r of L.renderers) { if (r.__stale || r.__gutted) continue; for (const s of r.__seen || []) scenes.add(s); if (r.__lastScene) scenes.add(r.__lastScene); if (r.__lastCamera) scenes.add(r.__lastCamera); } // (its camera: an AudioListener rides on it)
+  if (!scenes.size) return;
+  const use = ownInUse([...renderers].filter((r) => !L.renderers.has(r)));
+  const seen = new Set(); let n = 0;
+  const free = (o) => { if (!o || seen.has(o) || use.has(o)) return false; seen.add(o); return true; };
+  const tex = (t) => {
+    if (!t?.isTexture || !free(t)) return;
+    if (t.renderTarget && free(t.renderTarget)) { try { t.renderTarget.dispose(); n += 1; } catch { /* gone */ } return; }
+    if (t.isVideoTexture && t.image && !use.has(t.image)) { try { t.image.pause(); } catch { /* fine */ } }
+    try { t.dispose(); n += 1; } catch { /* gone */ }
+  };
+  const mat = (m) => {
+    if (!m || !free(m)) return;
+    for (const k in m) { const v = m[k]; if (v?.isTexture) tex(v); }
+    for (const u of Object.values(m.uniforms || {})) { const v = u?.value; if (v?.isTexture) tex(v); else if (Array.isArray(v)) v.forEach(tex); else if (v?.texture?.isTexture) tex(v.texture); }
+    try { m.dispose(); n += 1; } catch { /* gone */ }
+  };
+  for (const sc of scenes) {
+    if (!sc?.isObject3D || use.has(sc)) continue;
+    if (sc.isScene) { tex(sc.background); tex(sc.environment); mat(sc.overrideMaterial); }
+    sc.traverse((o) => {
+      if (o.geometry && free(o.geometry)) { try { o.geometry.dispose(); n += 1; } catch { /* gone */ } }
+      if (Array.isArray(o.material)) o.material.forEach(mat); else mat(o.material);
+      if ((o.isInstancedMesh || o.isBatchedMesh) && free(o)) { try { o.dispose(); } catch { /* gone */ } }
+      if (o.isSkinnedMesh && o.skeleton && free(o.skeleton)) { try { o.skeleton.dispose(); } catch { /* gone */ } }
+      if (o.isLight && o.shadow?.map && free(o.shadow.map)) { try { o.shadow.dispose(); } catch { /* gone */ } }
+      if (o.isAudio && free(o)) { try { if (o.isPlaying) o.stop(); } catch { /* fine */ } try { o.disconnect(); } catch { /* not connected */ } }
+      if (o.type === 'AudioListener' && o.gain && free(o)) { try { o.gain.disconnect(); } catch { /* fine */ } }
+    });
+  }
+  OWN.n.disposed = (OWN.n.disposed || 0) + n;
+}
 // what the layers still running draw (their renderers' scenes): never emptied, even if a gone module made it
-function ownInUse() {
+// (round 75: `list` = only these renderers, for a layer that goes while the others run)
+function ownInUse(list = renderers) {
   const use = new Set();
   const tex = (t) => { if (t?.isTexture) { use.add(t); if (t.image) use.add(t.image); if (t.source?.data) use.add(t.source.data); if (t.renderTarget) use.add(t.renderTarget); } };
   const mat = (m) => { if (!m || use.has(m)) return; use.add(m); for (const k in m) { const v = m[k]; if (v?.isTexture) tex(v); } for (const u of Object.values(m.uniforms || {})) { const v = u?.value; if (v?.isTexture) tex(v); else if (Array.isArray(v)) v.forEach(tex); else if (v?.texture?.isTexture) tex(v.texture); } };
-  for (const r of renderers) {
+  for (const r of list) {
     if (r.__stale) continue;
     for (const s of r.__seen || (r.__lastScene ? [r.__lastScene] : [])) {
       if (!s?.isObject3D) continue;
@@ -12049,6 +12326,7 @@ function ownSweep() {
       else if (k === 'tex') {
         if (inUse(o)) continue;
         const im = o.image;
+        if (im && (inUse(im) || AST.kept.has(im) || AST.kept.has(im.data))) continue; // (round 75: a picture another texture shows, or the asset cache keeps)
         if (typeof ImageBitmap !== 'undefined' && im instanceof ImageBitmap) { if (im.width) { bytes += im.width * im.height * 4; im.close(); OWN.n.textures += 1; } }
         else if (im?.data?.length) { bytes += im.data.byteLength; im.data = new im.data.constructor(0); OWN.n.textures += 1; }
       } else if (k === 'cv') {
@@ -12058,7 +12336,7 @@ function ownSweep() {
       } else if (k === 'img') { if (!o.isConnected && !inUse(o) && o.getAttribute('src')) { o.removeAttribute('src'); OWN.n.media += 1; } }
       else if (k === 'media') { if (!o.isConnected && !inUse(o)) { o.pause(); o.srcObject = null; o.removeAttribute('src'); o.load(); OWN.n.media += 1; } }
       else if (k === 'bmp') { if (o.width && !inUse(o)) { bytes += o.width * o.height * 4; o.close(); OWN.n.bitmaps += 1; } }
-      else if (k === 'ac') { if (o.state !== 'closed') { o.close().catch(() => {}); OWN.n.audio += 1; } }
+      else if (k === 'ac') { if (o.state !== 'closed' && o !== OWN.threeAC) { o.close().catch(() => {}); OWN.n.audio += 1; } }
     } catch { /* gone */ }
   }
   OWN.n.mb = +(OWN.n.mb + bytes / 1048576).toFixed(1);
@@ -12099,6 +12377,7 @@ function memAfterSwitch() {
 const memSwitched = () => { if (mode !== 'sketch') return; if (MEMG.timer) realClearTimeout(MEMG.timer); MEMG.timer = realSetTimeout(memAfterSwitch, 3000); };
 function teardownLayer(L) {
   matteDispose(L);
+  try { ownDispose(L); } catch { /* gone */ } // (round 75, labload75)
   if (L.url) ownRetire(L.url); // (round 39, labmemory)
   if (L.pc) pcUnmount(L);
   L.gen += 1;

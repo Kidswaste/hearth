@@ -1935,6 +1935,15 @@ const ThreeLab = (() => {
     // the sandbox gets their bytes (refs.<key> = blob URL, refTexture(key)) before each full run.
     let refsAll = {};
     const refBytes = new Map(); // id → ArrayBuffer
+    // (round 75, labload75) the preview page keeps a scene's files in its asset cache (three-sandbox.html "the scene's files,
+    // kept in this page"), keyed by `sig` (the file, its size and its time): what the page says it holds ('refs-held', per
+    // page load) isn't read from disk or copied over again; a page that lost one asks ('refs-need')
+    const refSigs = new Map(); // id → sig
+    let pageN = null; let pageHeld = { n: null, sigs: new Set() };
+    const assetCacheOn = () => store.get('three.assetCache', true) !== false; // (a dev switch for before / after: dev/checks/labload75.js)
+    const heldNow = () => (assetCacheOn() && box.ready && pageHeld.n != null && pageHeld.n === pageN ? pageHeld.sigs : null);
+    const refHeld = (r) => Boolean(heldNow()?.has(refSigs.get(r.id)));
+    const refReady = (r) => refBytes.has(r.id) || refHeld(r);
     let refsHold = null; // (round 48, labstartfast) a scene switch waiting for its references' bytes before its run (openSketch)
     const refsOf = () => (current ? (refsAll[current.id] ||= []) : []);
     const saveRefs = saver(() => { dispatchEvent(new Event('hearth:lab-refs')); return kvOk.has('three-refs') ? window.hub.kvSet('three-refs', refsAll) : null; }, 300); // (round 42: filewatch follows them)
@@ -2003,8 +2012,11 @@ const ThreeLab = (() => {
       // (a video reference is the whole video) until the Lab closed; another scene's are read again when it opens
       const mine = new Set(refsOf().map((r) => r.id));
       for (const id of [...refBytes.keys()]) if (!mine.has(id)) refBytes.delete(id);
+      for (const id of [...refSigs.keys()]) if (!mine.has(id)) refSigs.delete(id);
+      // (round 75, labload75) each file's sig (path | size | modified) first: a file the page holds isn't read at all
+      if (assetCacheOn()) await Promise.all(refsOf().map(async (r) => { try { const st = await window.hub.fs.stat(r.path); const sig = st && !st.error ? `${r.path}|${st.size}|${Math.round(st.mtimeMs || st.mtime || 0)}` : null; if (sig && refSigs.get(r.id) !== sig) { refSigs.set(r.id, sig); if (refBytes.has(r.id) && st.size !== refBytes.get(r.id).byteLength) refBytes.delete(r.id); } } catch { /* file gone */ } }));
       // (round 48, labstartfast) read at once, not one after the other
-      await Promise.all(refsOf().filter((r) => !refBytes.has(r.id)).map(async (r) => {
+      await Promise.all(refsOf().filter((r) => !refReady(r)).map(async (r) => {
         try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); if(current?.id!==owner||workspaceReleased)return; refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ }
       }));
       if(current?.id===owner&&!workspaceReleased)sendRefs();
@@ -2013,7 +2025,7 @@ const ThreeLab = (() => {
     // (round 39, labmemory) the same references and palette as the page already has aren't copied over again (each
     // scene switch sent every file whole: a video reference was copied twice per switch); a new page asks afresh
     let refsSig = null;
-    const refsSigOf = (refs) => JSON.stringify([refs.map((r) => [r.id, r.key, r.kind, refBytes.get(r.id).byteLength]), current?.palette || []]);
+    const refsSigOf = (refs) => JSON.stringify([refs.map((r) => [r.id, r.key, r.kind, refSigs.get(r.id) || refBytes.get(r.id)?.byteLength]), current?.palette || []]);
     // (round 42, filewatch) a reference changed on disk (saved again in Photoshop, replaced in Finder; from: its original,
     // copied over Hearth's copy first): read again and swapped into the textures using it in place, no re-run; a model /
     // sound / data reference runs the scene again (in place). Another scene's is read when that scene opens.
@@ -2025,20 +2037,26 @@ const ThreeLab = (() => {
       let u8; try { u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); } catch (err) { return { ok: false, error: err.message, missing: true }; }
       const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
       refBytes.set(r.id, buf); r.size = buf.byteLength; saveRefs();
+      refSigs.delete(r.id); if (assetCacheOn()) { try { const st = await window.hub.fs.stat(r.path); if (st && !st.error) refSigs.set(r.id, `${r.path}|${st.size}|${Math.round(st.mtimeMs || st.mtime || 0)}`); } catch { /* fine */ } } // (round 75)
       if (r.kind === 'image' || r.kind === 'video') {
-        refsSig = refsSigOf(refsOf().filter((x) => refBytes.has(x.id)));
-        box.send({ type: 'ref-update', item: { key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: buf.slice(0) } });
+        refsSig = refsSigOf(refsOf().filter((x) => refReady(x)));
+        box.send({ type: 'ref-update', item: { key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: buf.slice(0), ...(refSigs.has(r.id) ? { sig: refSigs.get(r.id) } : {}) } });
         return { ok: true, inPlace: true };
       }
       refsSig = null; sendRefs(); run({ sync: true });
       return { ok: true, inPlace: false };
     }
-    function sendRefs() {
-      const refs = refsOf().filter((r) => refBytes.has(r.id));
+    // (round 75, labload75) fresh: a run in a page that just started; a file the last page held (so not read) is read
+    // now, and the scene runs again once it's here
+    function sendRefs({ fresh = false } = {}) {
+      const refs = refsOf().filter((r) => refReady(r));
+      const missing = refsOf().filter((r) => !refReady(r) && refSigs.has(r.id));
+      if (missing.length && !workspaceReleased) { const want = current; loadRefBytes().then((added) => { if (fresh && added && current === want && layersOf().some((L) => /\brefs\b|refTexture/.test(L.code))) run({ sync: true }); }).catch(() => {}); }
       const sig = refsSigOf(refs);
       if (sig === refsSig && refs.length) return;
       refsSig = sig;
-      const items = refs.map((r) => ({ key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: refBytes.get(r.id).slice(0) }));
+      const held = heldNow(); const warm = layersOf().map((L) => L.code).join('\n');
+      const items = refs.map((r) => { const s = assetCacheOn() ? refSigs.get(r.id) : null; return { key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', ...(s ? { sig: s, ...(warm.includes(r.key) ? { warm: true } : {}) } : {}), ...(s && held?.has(s) ? {} : { buffer: refBytes.get(r.id).slice(0) }) }; });
       box.send({ type: 'refs', items, palette: current?.palette || [] });
     }
     const refsBtn = btn('🖼 References', 'Images, videos, 3D models, sounds and data for this sketch. The Three Director can see and use them; you can also drop files in its chat.', () => openRefs());
@@ -3283,7 +3301,10 @@ const ThreeLab = (() => {
       if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
       if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
       if (msg.type === 'ready') fbOn = false; // (round 64, framebar64) a fresh page measures nothing until the stats line shows again
-      if (msg.type === 'ready') refsSig = null; // (round 39, labmemory) a fresh page has no references yet
+      if (msg.type === 'ready') { refsSig = null; pageN = msg.n ?? null; pageHeld = { n: null, sigs: new Set() }; } // (round 39, labmemory) a fresh page has no references yet · (round 75) nor any kept file
+      if (msg.type === 'refs-held') { if (msg.n === pageN) { pageHeld = { n: msg.n, sigs: new Set(msg.sigs || []) }; for (const r of refsOf()) if (pageHeld.sigs.has(refSigs.get(r.id))) refBytes.delete(r.id); } return; } // (round 75, labload75: the window keeps no copy of what the page holds)
+      if (msg.type === 'refs-need') { if (msg.n === pageN) { for (const x of msg.sigs || []) pageHeld.sigs.delete(x); refsSig = null; const want = current; loadRefBytes().then(() => { if (current === want) run({ sync: true }); }).catch(() => {}); } return; }
+      if (msg.type === 'asset-progress') return;
       if (msg.type === 'ready') window.PerfectLoop?.onReady?.(); // (round 31) ∞ a fresh page gets the scene's loop clock again
       if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); if (!adaptOn) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); parkedNow = false; parkSoon(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
@@ -3798,7 +3819,7 @@ const ThreeLab = (() => {
       const warmOf = fresh ? box.takeWarmRun() : false;
       const overWarm = Boolean(warmOf);
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
-      if (fresh) { player.attach(); sendRefs(); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
+      if (fresh) { player.attach(); sendRefs({ fresh: true }); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
       if (!fresh && !partial && !player.path) box.send({ type: 'media-unload' }); // a sketch without a song: the last one stops
       const valuesOf = (L) => { const p = preps.get(L.id); if (!p) return undefined; const b = baseOf(L); return Object.fromEntries(p.values.map((v, i) => [b + i, v])); };
       // (a precomp: another scene as this layer, tools/three-comp.js: its scene's layers come with it)
@@ -4017,7 +4038,7 @@ const ThreeLab = (() => {
       const usesRefs = () => layersOf().some((L) => /\brefs\b|refTexture/.test(L.code));
       const want = current;
       const reading = loadRefBytes();
-      if (usesRefs() && refsOf().some((r) => !refBytes.has(r.id))) {
+      if (usesRefs() && refsOf().some((r) => !refReady(r))) {
         const token = refsHold = {};
         let ran = false;
         const go = () => { if (ran || refsHold !== token) return; ran = true; refsHold = null; if (current === want) run(); };
@@ -4446,6 +4467,7 @@ ${code}
               }catch(err){finish(err);}
             };
             workspaceMessage = msg => {
+              if (msg.type === 'asset-progress' && msg.total > 1 && msg.done < msg.total) progress(`Loading scene assets (${msg.done + 1} of ${msg.total})`); // (round 75, labload75)
               if (msg.type === 'stack-drawn' && !sent) {
                 if (msg.noGl) return finish(Error('The scene could not start its graphics context. Try opening it again.'));
                 warm();

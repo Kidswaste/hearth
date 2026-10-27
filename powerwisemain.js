@@ -278,7 +278,7 @@ function metrics() {
     try { for (const tid of fs.readdirSync(`/proc/${pid}/task`)) { try { const s = fs.readFileSync(`/proc/${pid}/task/${tid}/status`, 'utf8'); n += Number(/voluntary_ctxt_switches:\s+(\d+)/.exec(s)?.[1] || 0) + Number(/nonvoluntary_ctxt_switches:\s+(\d+)/.exec(s)?.[1] || 0); } catch { /* thread gone */ } } } catch { return null; }
     return n;
   };
-  const procs = app.getAppMetrics().map((m) => ({ pid: m.pid, type: m.type, name: m.name || m.serviceName || '', cpuS: m.cpu?.cumulativeCPUUsage ?? null, pct: m.cpu?.percentCPUUsage ?? null, wake: m.cpu?.idleWakeupsPerSecond ?? null, ctx: switches(m.pid) }));
+  const procs = app.getAppMetrics().map((m) => ({ pid: m.pid, type: m.type, name: m.name || m.serviceName || '', cpuS: m.cpu?.cumulativeCPUUsage ?? null, pct: m.cpu?.percentCPUUsage ?? null, wake: m.cpu?.idleWakeupsPerSecond ?? null, ctx: switches(m.pid), mem: m.memory?.workingSetSize ?? null })); // (round 75, labload75: mem = working set KB, the GPU process' for dev/checks/labload75.js)
   const pages = [];
   for (const wc of webContents.getAllWebContents()) {
     try {
