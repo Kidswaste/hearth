@@ -4,7 +4,8 @@
 //   crowd    a big InstancedMesh crowd moved every frame (a shadowed sun): only the copies the camera or the sun's
 //            shadow box can see are drawn (triangles a frame cull on vs off), the picture is the SAME (pixels compared,
 //            the crowd's order back in the sketch's hands after render: getMatrixAt reads what it wrote)
-//   hidden   a hidden layer's renderer draws nothing (its code still runs); shown again: it draws that frame
+//   hidden   a hidden layer costs nothing (its frames don't run, nothing drawn: the Lab's own rule since labcanvas56,
+//            held here); shown again: it draws at once
 //   shadows  a shadowed scene whose camera orbits and whose non-casting particles move: the maps are kept (casters
 //            and lights didn't move) instead of drawn every frame
 //   slider   Quality auto doesn't step down while a slider is moving (frames forced "slow"), and does once let go
@@ -37,9 +38,10 @@ const PS = () => sbx('return window.__labPace.state()');
 await D.newSketch('labdraw74 still', STILL, 3);
 await wait(5000); // (settled: past the 3 s of refreshes a second)
 await safe('still', async () => {
+  await sbx('window.__labPace.reset(); return 1');
   const a = await PS(); await wait(6000); const b = await PS();
   const sec = 6; const drawn = b.drawn - a.drawn;
-  out.numbers.still = { drawnPerSec: Math.round((drawn / sec) * 100) / 100, refreshes: b.refreshes - a.refreshes, why: b.why, pokes: b.poke - a.poke, soft: b.soft - a.soft };
+  out.numbers.still = { drawnPerSec: Math.round((drawn / sec) * 100) / 100, refreshes: b.refreshes - a.refreshes, why: b.why, pokes: b.poke - a.poke, soft: b.soft - a.soft, quality: b.quality, level: b.level };
   step('a still scene left alone (2 evals in the window): ≤ 1 draw a second (settled: a refresh every 4 s)', drawn / sec <= 1, out.numbers.still);
   // a slider: drawn at once
   const s0 = (await PS()).drawn; c.setSlider('hue', 0.2); await wait(400);
@@ -47,12 +49,14 @@ await safe('still', async () => {
   step('a slider moved on a still scene: it draws at once', s1 > s0, { drew: s1 - s0 });
 });
 await safe('slider', async () => {
+  // a scene that draws every frame (Quality auto judges drawn frames), with a slider
+  await D.newSketch('labdraw74 spin', STILL.replace('mat.color.setHSL(P.hue, 0.6, 0.6);', 'mat.color.setHSL(P.hue, 0.6, 0.6); scene.rotation.y += 0.01 * f60;'), 3);
+  await wait(2500);
   await sbx('window.__labAdapt.set({ level: 0, hold: false, target: 1 }); return 1'); // (a target of 1 ms: every frame is "slow")
   const t0 = Date.now(); let v = 0.2;
   while (Date.now() - t0 < 3000) { v = v > 0.8 ? 0.2 : v + 0.05; try { c.setSlider('hue', v); } catch { /* fine */ } await wait(100); }
   const during = await sbx('return window.__labAdapt.state()');
-  await wait(3500);
-  const after = await sbx('return window.__labAdapt.state()');
+  const after = await until(async () => { const x = await sbx('return window.__labAdapt.state()'); return x?.level > 0 ? x : null; }, 8000) || await sbx('return window.__labAdapt.state()');
   out.numbers.slider = { during: { level: during.level, editing: during.editing, editSkips: during.editSkips }, after: { level: after.level, editing: after.editing } };
   step('Quality auto: no step down while a slider moves (frames "slow")', during.level === 0 && during.editing === true && during.editSkips > 0, out.numbers.slider);
   step('… and it steps down once the slider is let go (frames still slow)', after.level > 0, out.numbers.slider);
@@ -72,7 +76,7 @@ const P = tweak({ t: [0.3, 0, 10] });
 const N = 2000; const im = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.12, 0.4, 4, 8), new THREE.MeshStandardMaterial({ color: '#ddd' }), N); im.castShadow = true; im.receiveShadow = true; scene.add(im);
 const o = new THREE.Object3D(); const col = new THREE.Color(); for (let i = 0; i < N; i++) im.setColorAt(i, col.setHSL((i * 0.13) % 1, 0.5, 0.5));
 window.__crowd = im;
-renderer.setAnimationLoop(() => { const s = P.t; for (let i = 0; i < N; i++) { const a = i * 0.618 + s; const r = 3 + (i % 70) * 0.25; o.position.set(Math.cos(a) * r, 0.35 + Math.abs(Math.sin(s * 4 + i)) * 0.2, Math.sin(a) * r); o.updateMatrix(); im.setMatrixAt(i, o.matrix); } im.instanceMatrix.needsUpdate = true; renderer.render(scene, camera); });`;
+renderer.setAnimationLoop(() => { const s = P.t; for (let i = 0; i < N; i++) { const a = i * 0.618 + s; const r = 3 + (i % 70) * 0.25; o.position.set(Math.cos(a) * r, 0.35 + Math.abs(Math.sin(s * 4 + i)) * 0.2, Math.sin(a) * r); o.updateMatrix(); im.setMatrixAt(i, o.matrix); } im.instanceMatrix.needsUpdate = true; renderer.render(scene, camera); if (window.__grab) { window.__grab = 0; window.__grabbed = renderer.domElement.toDataURL('image/png'); } });`;
 const HIDDEN = `${HEAD}
 const mat = new THREE.MeshNormalMaterial(); const ms = []; for (let i = 0; i < 30; i++) { const m = new THREE.Mesh(new THREE.TorusKnotGeometry(0.3, 0.1, 64, 8), mat); m.position.set((i % 6 - 2.5) * 1.5, 7 + Math.floor(i / 6) * 0.8, -4); scene.add(m); ms.push(m); }
 window.__hidRuns = 0;
@@ -110,25 +114,29 @@ await safe('crowd', async () => {
   // the same picture: only the crowd shown, cull on vs off, the merged preview's pixels
   for (const n of ['Hidden', 'Shadows']) await D.updateLayer(n, { visible: false }, 0.2);
   await wait(1200);
-  const shot = () => sbx('return window.__labAdapt.peek()');
-  const pOn = await shot();
+  // the frame as the sketch's own render() just drew it (the culled draw itself), read in the same task
+  const shot = async () => { await sbx('window.__grabbed = null; window.__grab = 1; return 1'); await until(async () => typeof (await sbx('return window.__grabbed')) === 'string', 8000); return sbx('return window.__grabbed'); };
+  const pOn = await shot(); await wait(800); const pOn2 = await shot(); // (a control: the same setting twice)
   await sbx('window.__labDraw.set({ cull: false }); return 1'); await wait(1200);
   const pOff = await shot();
   await sbx('window.__labDraw.set({ cull: true }); return 1');
+  const TMP = window.SMOKE_TMP || '/tmp';
+  for (const [n, u] of [['on', pOn], ['on2', pOn2], ['off', pOff]]) if (typeof u === 'string') await window.hub.fs.write(`${TMP}/labdraw74-crowd-${n}.png`, Uint8Array.from(atob(u.split(',')[1]), (ch) => ch.charCodeAt(0))).catch(() => null);
   const px = async (u) => { const img = new Image(); img.src = u; await img.decode(); const cv = new OffscreenCanvas(img.width, img.height); const g = cv.getContext('2d'); g.drawImage(img, 0, 0); return g.getImageData(0, 0, img.width, img.height).data; };
   if (typeof pOn !== 'string' || typeof pOff !== 'string') { step('… the same picture with and without it', false, { pOn: typeof pOn, pOff: typeof pOff }); return; }
-  const A = await px(pOn); const B = await px(pOff);
-  let diff = 0; let max = 0; for (let i = 0; i < A.length; i++) { const d = Math.abs(A[i] - B[i]); if (d > 2) diff += 1; if (d > max) max = d; }
-  out.numbers.crowd.picture = { bytes: A.length, differing: diff, maxDiff: max };
+  const A = await px(pOn); const B = await px(pOff); const A2 = typeof pOn2 === 'string' ? await px(pOn2) : A;
+  const cmp = (X, Y) => { let diff = 0; let max = 0; for (let i = 0; i < X.length; i++) { const d = Math.abs(X[i] - Y[i]); if (d > 2) diff += 1; if (d > max) max = d; } return { diff, max }; };
+  const d1 = cmp(A, B); const d0 = cmp(A, A2); const diff = d1.diff;
+  out.numbers.crowd.picture = { bytes: A.length, differing: d1.diff, maxDiff: d1.max, control: d0 };
   step('… the same picture with and without it (pixels compared)', A.length === B.length && diff <= A.length * 0.0005, out.numbers.crowd.picture);
 });
 await safe('hidden', async () => {
   // (Hidden and Shadows are hidden now, from the crowd's picture)
   await sbx('window.__labDraw.reset(); return 1');
   const a = await sbx(`return { f: ${R('ld-1')}.info.render.frame, runs: window.__hidRuns }`); await wait(1500);
-  const b = await sbx(`return { f: ${R('ld-1')}.info.render.frame, runs: window.__hidRuns, skipped: window.__labDraw.info().hidden.skipped }`);
-  out.numbers.hidden = { renders: b.f - a.f, codeFrames: b.runs - a.runs, skipped: b.skipped };
-  step('a hidden layer draws nothing (its code still runs every frame)', b.f - a.f === 0 && b.runs - a.runs > 3 && b.skipped > 3, out.numbers.hidden);
+  const b = await sbx(`return { f: ${R('ld-1')}.info.render.frame, runs: window.__hidRuns }`);
+  out.numbers.hidden = { renders: b.f - a.f, frames: b.runs - a.runs };
+  step('a hidden layer costs nothing (no frame run, nothing drawn)', b.f - a.f === 0 && b.runs - a.runs === 0, out.numbers.hidden);
   await D.updateLayer('Hidden', { visible: true }, 0.2);
   const c0 = await sbx(`return ${R('ld-1')}.info.render.frame`); await wait(600);
   const c1 = await sbx(`return ${R('ld-1')}.info.render.frame`);

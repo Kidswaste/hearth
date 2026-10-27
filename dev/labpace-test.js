@@ -246,6 +246,17 @@ for (const n of [100, 500, 2000]) {
   t += 1000 / 120; cur = { a: 6, b: 2, live: false }; let after = 0; for (let i = 0; i < 12; i += 1) { t += 1000 / 120; if (draw(2, soft)) after += 1; }
   check(after === 1 + P.AFTER, 'a poke that finds a change: drawn, then the two confirming frames', after);
 }
+// (round 74, labdraw74) a missing number (NaN) hashes the same whatever its bits (V8's compiled code can hand back NaNs
+// with other bits: a still scene "changed" now and then)
+{
+  const T = makeScene(5); const m = T.scene.children[2].material;
+  const dv = new DataView(new ArrayBuffer(8)); dv.setUint32(0, 0x7ff00000); dv.setUint32(4, 1); const odd = dv.getFloat64(0); // (a NaN with another payload)
+  dv.setUint32(0, 0xfff80000); dv.setUint32(4, 0); const neg = dv.getFloat64(0);
+  m.clearcoat = NaN; const a = P.signature(T.scene, T.camera, T.r, [1]).a;
+  m.clearcoat = odd; const b = P.signature(T.scene, T.camera, T.r, [1]).a;
+  m.clearcoat = neg; const c = P.signature(T.scene, T.camera, T.r, [1]).a;
+  check(Number.isNaN(odd) && a === b && a === c, 'a NaN with other bits (a field the material doesn\'t have) gives the same signature', { a, b, c });
+}
 // the shadow maps' signature: casters and lights only (round 74, labdraw74)
 {
   const T = makeScene(20);

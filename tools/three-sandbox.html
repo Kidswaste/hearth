@@ -670,8 +670,6 @@ function instrument(renderFn) {
     }
     // (round 31 "labadapt") a layer fully under an opaque one draws nothing; its code still runs (see "covered layers")
     if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; EL.dzSkip = frameTick; return; }
-    if (EL && hiddenNow(EL)) { HID.skipped += 1; EL.hidSkip = true; EL.dzSkip = frameTick; return; } // (round 74, labdraw74: a layer that doesn't show draws nothing)
-    const unhid = Boolean(EL?.hidSkip); if (unhid) EL.hidSkip = false; // (its first frame shown again: drawn, whatever the still check says)
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
     if (EL && (EL.lookTry || EL.lk || EL.props.overrides?.['@look'])) lookApply(this, EL, scene); // (round 50, labmaterials) ◉ looks on its meshes
     camera = editCamera(this, scene, camera);
@@ -689,7 +687,7 @@ function instrument(renderFn) {
       this.__inQ = true; try { this.setPixelRatio(this.__basePR * q); } finally { this.__inQ = false; }
     }
     const rvBack = RDY.reveal && !this.__helper && scene?.isObject3D && !this.getRenderTarget?.() ? rdyReveal(scene) : null; // (round 59, readylab59) ▶ Play's prep frame: what the game hides for now drawn once under the card
-    if (!unhid && paceSkip(this, scene, camera, EL)) { rvBack?.(); lvBack?.(); cmBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
+    if (paceSkip(this, scene, camera, EL)) { rvBack?.(); lvBack?.(); cmBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
     PACE.drawn += 1; PACE.lastDraw = frameTick;
     if (PACE.refreshAt !== frameTick) { PACE.drawPrev = frameTick; if (DOZE.on) dozeWake('drew'); } // (round 44, idlecpu: it moved: full rate at once)
     const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
@@ -697,7 +695,7 @@ function instrument(renderFn) {
     const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
     const rfBack = RF.on && !this.__helper ? rfApply(camera) : null; // (round 33, multiformat) a format's pan / zoom
     if (this.shadowMap?.enabled && scene?.isObject3D) shGate(this, scene); // (round 50 "lab240gpu": maps only when they can change)
-    const ccBack = CC.on ? ccCull(this, scene, camera) : null; // (round 74, labdraw74: a big crowd draws the copies a view can see)
+    const ccBack = CC.on || CC.permed.size ? ccCull(this, scene, camera) : null; // (round 74, labdraw74: a big crowd draws the copies a view can see)
     try { renderFn.call(this, scene, camera); } finally { ccBack?.(); rvBack?.(); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
     if (this.domElement?.__lcf && !this.getRenderTarget()) { glNote(this, scene0, camera0); if (this.__adProbe) adProbeNow(this); } // (round 56, labcanvas56)
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
@@ -1427,12 +1425,15 @@ function paceCore(opt = {}) {
   // numbers read from the scene go through SB, a Float64Array, slot by slot, hashed by vb(n), instead of being handed to
   // v() one by one (a fractional number passed to a function that isn't inlined is a new heap number too). A signature
   // of a 200-object game made ≈ 100 KB of garbage, ≈ 1 KB a frame at a look every 32 frames per renderer
-  const F = new Float64Array(1); const U = new Uint32Array(F.buffer); const HS = new Int32Array(2); const SB = new Float64Array(32);
+  const F = new Float64Array(1); const U = new Uint32Array(F.buffer); const NAN_AS = -1.2345678e-300; const HS = new Int32Array(2); const SB = new Float64Array(32);
   let live = false; let nodes = 0;
   const vb = (n) => {
     let a = HS[0]; let b = HS[1];
     for (let i = 0; i < n; i += 1) {
-      F[0] = SB[i];
+      // (round 74, labdraw74) a missing number (undefined → NaN: a material field another kind has, a BufferGeometry's
+      // instanceCount) is hashed as one fixed value. NaN's bits aren't fixed: once V8 compiled this code differently the
+      // same NaN came out with other bits, so a still scene "changed" now and then and drew 3 more frames each time
+      const x = SB[i]; F[0] = x === x ? x : NAN_AS;
       a = Math.imul(a ^ U[0], 0x9e3779b1); a = Math.imul((a << 13) | (a >>> 19), 0x85ebca77) ^ U[1];
       b = Math.imul(b ^ U[1], 0xc2b2ae3d); b = Math.imul((b << 15) | (b >>> 17), 0x27d4eb2f) ^ U[0] ^ a;
     }
@@ -1768,7 +1769,8 @@ function paceSkip(r, scene, camera, EL) {
   PSIG.r = null; PSIG.scene = null; PSIG.camera = null; PSIG.EL = null; // (nothing of a gone scene held here)
   if (!skip) {
     if ((st.refreshes || 0) !== before) { PACE.refreshes += 1; PACE.refreshAt = frameTick; PACE.why.refresh += 1; if (EL) EL.dzSkip = frameTick; return false; }
-    PACE.why[poked ? 'poke' : st.liveFor > 0 ? 'live' : st.moving ? 'change' : 'settle'] += 1; // (round 74: why it drew, for checks: __labPace.state().why)
+    const why = poked ? 'poke' : st.liveFor > 0 ? 'live' : st.moving ? 'change' : 'settle';
+    PACE.why[why] += 1; // (round 74: why it drew, for checks: __labPace.state().why)
     return false;
   }
   PACE.skipped += 1; PACE.lastSkip = frameTick;
@@ -2616,7 +2618,7 @@ window.__lab240 = {
 // Only for plain cases: ≥ 256 copies, frustumCulled on, one opaque built-in material (no custom shader, displacement,
 // morphs, skinning, custom depth material or onBeforeRender), no point-light shadows. Never in ▶ Play (no added
 // per-frame work there), exports, stills or recordings. (checks: window.__labDraw.info() / .set({ cull: false }))
-const CC = { on: true, min: 256, frames: 0, copies: 0, drawnCopies: 0, ms: 0, meshes: 0 };
+const CC = { on: true, min: 256, frames: 0, copies: 0, drawnCopies: 0, ms: 0, meshes: 0, permed: new Set() };
 const CCS = new WeakMap(); // scene → { tick, list, lights, point }; mesh → its state
 const ccM = new THREE.Matrix4(); const ccF = [new THREE.Frustum()];
 function ccScan(scene) {
@@ -2639,8 +2641,18 @@ function ccPlain(o) {
 }
 // the GPU holds our order (an earlier frame): a change of the sketch's that isn't sorted now goes up whole, both lists
 function ccWhole(S, im, ic) { im.clearUpdateRanges?.(); im.needsUpdate = true; if (ic) { ic.clearUpdateRanges?.(); ic.needsUpdate = true; } S.perm = false; }
+// a render that doesn't sort (a still, a recording, culling switched off…): a crowd whose GPU lists are in our order and
+// that the sketch changed since goes up whole in its own order first (its matrices alone would land on our colors)
+function ccRepair() {
+  for (const o of CC.permed) {
+    const S = CCS.get(o); const im = o.instanceMatrix; const ic = o.instanceColor;
+    if (!S || !im || frameTick - (S.at || 0) > 2000) { CC.permed.delete(o); continue; } // (not sorted for a long while: let go, nothing of a gone scene held)
+    if (im.version === S.ver && (!ic || ic.version === S.cver)) continue;
+    ccWhole(S, im, ic); S.ver = im.version; S.cver = ic ? ic.version : -1; CC.permed.delete(o);
+  }
+}
 function ccCull(r, scene, camera) {
-  if (GAME || XP_PAGE || fullRes() || r.__helper || !scene?.isObject3D || !camera?.isCamera || camera.isArrayCamera) return null;
+  if (!CC.on || GAME || XP_PAGE || fullRes() || r.__helper || !scene?.isObject3D || !camera?.isCamera || camera.isArrayCamera) { if (CC.permed.size) ccRepair(); return null; }
   const st = ccScan(scene);
   if (!st.list.length) return null;
   const t0 = realNow();
@@ -2654,7 +2666,7 @@ function ccCull(r, scene, camera) {
     const shadowed = Boolean(r.shadowMap?.enabled) && Boolean(o.castShadow || (o.receiveShadow && r.shadowMap.type === THREE.VSMShadowMap));
     const n = o.count;
     if (!wrote || n < CC.min || !ccPlain(o) || (shadowed && st.point)) {
-      if (S.perm && (wrote || cwrote)) ccWhole(S, im, ic);
+      if (S.perm && (wrote || cwrote)) { ccWhole(S, im, ic); CC.permed.delete(o); }
       S.ver = im.version; S.cver = ic ? ic.version : -1;
       continue;
     }
@@ -2681,7 +2693,9 @@ function ccCull(r, scene, camera) {
     if (ca && (!S.ckeep || S.ckeep.length !== ca.length)) S.ckeep = new Float32Array(ca.length);
     const keep = S.keep; const ckeep = S.ckeep;
     keep.set(a); if (ca) ckeep.set(ca);
-    let vis = 0;
+    let vis = 0; let nh = 0;
+    if (!S.hid || S.hid.length < n) S.hid = new Int32Array(n);
+    const hid = S.hid;
     for (let i = 0; i < n; i += 1) {
       const e = i * 16;
       const m0 = keep[e]; const m1 = keep[e + 1]; const m2 = keep[e + 2]; const m4 = keep[e + 4]; const m5 = keep[e + 5]; const m6 = keep[e + 6]; const m8 = keep[e + 8]; const m9 = keep[e + 9]; const m10 = keep[e + 10];
@@ -2693,43 +2707,33 @@ function ccCull(r, scene, camera) {
         for (let q = 0; q < 6; q += 1) { const pl = P[q]; const nn = pl.normal; if (nn.x * px + nn.y * py + nn.z * pz + pl.constant < -rad) { inside = false; break; } }
         seen = inside;
       }
-      if (!seen) continue;
+      if (!seen) { hid[nh] = i; nh += 1; continue; }
       if (vis !== i) { a.set(keep.subarray(e, e + 16), vis * 16); if (ca) ca.set(ckeep.subarray(i * cs, i * cs + cs), vis * cs); }
       vis += 1;
     }
+    // the copies no view sees go after them: the GPU's list is the whole crowd in another order (a frame drawn again
+    // later for a still, a thumbnail or a merge draws every copy from it, the same picture)
+    for (let h = 0, at = vis; h < nh; h += 1, at += 1) { const i = hid[h]; a.set(keep.subarray(i * 16, i * 16 + 16), at * 16); if (ca) ca.set(ckeep.subarray(i * cs, i * cs + cs), at * cs); }
     CC.copies += n; CC.drawnCopies += vis; CC.meshes += 1;
     if (vis > n * 0.95) { // (nearly all show: drawn as the sketch wrote them)
       a.set(keep); if (ca) ca.set(ckeep);
-      if (S.perm) ccWhole(S, im, ic);
+      if (S.perm) { ccWhole(S, im, ic); CC.permed.delete(o); }
       S.ver = im.version; S.cver = ic ? ic.version : -1;
       continue;
     }
     o.count = vis;
     im.clearUpdateRanges?.(); im.needsUpdate = true; if (ic) { ic.clearUpdateRanges?.(); ic.needsUpdate = true; }
     const prev = back;
-    back = () => { prev?.(); a.set(keep); if (ca) ca.set(ckeep); o.count = n; S.ver = im.version; S.cver = ic ? ic.version : -1; S.perm = true; };
+    back = () => { prev?.(); a.set(keep); if (ca) ca.set(ckeep); o.count = n; S.ver = im.version; S.cver = ic ? ic.version : -1; S.perm = true; S.at = frameTick; CC.permed.add(o); };
   }
   CC.ms += realNow() - t0;
   if (back) CC.frames += 1;
   return back;
 }
-// ---------- hidden layers draw nothing (round 74, labdraw74) ----------
-// A layer that doesn't show (hidden, opacity 0, outside its time on the song) had its box out of the page but still drew
-// every frame: its whole scene on the GPU for nothing. Its code still runs (clocks, simulations stay right); only the
-// drawing is skipped, as for a covered layer, and it draws again the frame it shows. Layers another layer reads (a
-// matte's source, particles born from it, a shader's input, physics), a layer's first frame, sequences, precomps, the
-// scene editor and every still / recording / render draw as before.
-const HID = { on: true, skipped: 0 };
-function hiddenNow(EL) {
-  if (!HID.on || EL.drawnGen !== EL.gen || EL.props.pcOf || SQ.on || SQ.off || PC.list.size || edit.on || adFull() || GAME) return false;
-  if (layerMix(EL) > 0 || realNow() - (EL.adReadAt ?? -1e9) < 5000 || matteOnly(EL)) return false;
-  for (const B of layers.values()) if (B !== EL && B.props.mask?.source === EL.id) return false; // (a matte's source, shown or not)
-  return true;
-}
 window.__labDraw = {
-  set: ({ cull, hidden, casters } = {}) => { if (cull != null) CC.on = Boolean(cull); if (hidden != null) HID.on = Boolean(hidden); if (casters != null) SHG.casters = Boolean(casters); return window.__labDraw.info(); },
-  info: () => ({ cull: { on: CC.on, frames: CC.frames, meshes: CC.meshes, copies: CC.copies, drawnCopies: CC.drawnCopies, ms: Math.round(CC.ms * 10) / 10 }, hidden: { on: HID.on, skipped: HID.skipped }, casters: SHG.casters, shadows: { skipped: SHG.skipped, drawn: SHG.drawn }, why: { ...PACE.why } }),
-  reset: () => { CC.frames = 0; CC.copies = 0; CC.drawnCopies = 0; CC.ms = 0; CC.meshes = 0; HID.skipped = 0; SHG.skipped = 0; SHG.drawn = 0; return 1; },
+  set: ({ cull, casters } = {}) => { if (cull != null) CC.on = Boolean(cull); if (casters != null) SHG.casters = Boolean(casters); return window.__labDraw.info(); },
+  info: () => ({ cull: { on: CC.on, frames: CC.frames, meshes: CC.meshes, copies: CC.copies, drawnCopies: CC.drawnCopies, ms: Math.round(CC.ms * 10) / 10 }, casters: SHG.casters, shadows: { skipped: SHG.skipped, drawn: SHG.drawn }, why: { ...PACE.why } }),
+  reset: () => { CC.frames = 0; CC.copies = 0; CC.drawnCopies = 0; CC.ms = 0; CC.meshes = 0; SHG.skipped = 0; SHG.drawn = 0; return 1; },
 };
 
 // ---------- audio / video ----------

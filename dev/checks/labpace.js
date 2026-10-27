@@ -86,7 +86,10 @@ await safe('still', async () => {
   for (let round = 0; round < 2; round += 1) {
     for (const k of ['off', 'on']) {
       await PS(`on(${k === 'on'})`); await wait(1500);
+      const w0 = (await PS()).why;
       acc[k].push(await draws(3000));
+      const w1 = (await PS()).why; // (round 74: why it drew in the window: refresh / poke / change / settle / live / early)
+      if (k === 'on' && w0 && w1) (out.perf.stillWhy ||= []).push(Object.fromEntries(Object.keys(w1).map((n) => [n, w1[n] - (w0[n] || 0)])));
     }
   }
   const avg = (a, key) => Math.round((a.reduce((s, x) => s + x[key], 0) / a.length) * 10) / 10;
