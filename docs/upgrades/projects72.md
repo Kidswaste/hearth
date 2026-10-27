@@ -66,9 +66,11 @@ rest of the wall is the scene drawing its first frame in software GL.
    before — every save, the song, the game, the references and timers stop — but keeps the page, and B's scene runs in
    it. Going back to Projects, or anywhere outside a project, still releases the page (`about:blank`), as before. A
    switch that is cancelled or fails releases the kept page too (`ThreeLab.workspace.releaseKept()`, called by `leave()`).
-2. **The project's scene waited for its chat to draw, and its moodboard waited for the scene.** `open()` drew the
-   chat, then prepared the scene, then read the moodboard. Now the scene's page starts first, the chat draws while it
-   works, and the moodboard is read meanwhile. Errors are the same and in the same order.
+2. **Opening did everything one after the other.** `open()` read the chat after the Lab had mounted, set up the
+   worktable after that, drew the chat, then prepared the scene, then read the moodboard. Now the chat to resume is read
+   while the workspace's code loads, the worktable is set up while the Lab mounts, the scene's page starts before the
+   chat draws (the chat draws while the page works) and the moodboard is read meanwhile. Errors are the same and are
+   reported at the same points.
 3. **A project whose chat hadn't arrived was rewritten each time it was tried.** `ensure()` saved the workspace
    (and so its `updated` time) before finding out the chat wasn't there: the project jumped to the top of Recent and was
    written to disk (and synced) for nothing. It's saved now only when something in it actually changed.
@@ -107,6 +109,12 @@ rest of the wall is the scene drawing its first frame in software GL.
     code, MBs on a big profile) to the disk and to sync, moved the scene to the top of "recent", and two computers
     opening the same project made the same scene differ for sync. Now it saves only when the editor holds something
     the scene doesn't; slider edits waiting to be written are still written first, as before.
+13. **A project's chat grew by 60 messages on every tab switch, and opened in the middle of its history.** The chat
+    follows the project's tools (Desk, Scene, Sound…) by moving its live view (`Native.mount`). Moving a scrolling list
+    puts it back at its top, where the "↑ Show earlier" watcher fired: 60 more messages drawn per switch (100 → 160 →
+    220 on Clink; a long session made every switch heavier) and the place kept in the middle of the history. The view
+    now gets its place back right after a move (its end while it follows, else the same distance from the end), at the
+    next frame and without forcing a layout: on Clink it stays at 100 messages, at its end, through every tab switch.
 
 ## Checked, nothing to change
 - **Resume** works on the heavy profile: a project left on its Scene tab comes back on its Scene, with its scene; a
@@ -124,8 +132,8 @@ rest of the wall is the scene drawing its first frame in software GL.
 ## Files
 - Changed: `project-workspace.js`, `projects.js`, `projects-core.js`, `projects-home.js` (Codex's), `tools/three.js`
   (the Lab's `workspace` API: `close({ keep })` and its save only when changed, `releaseKept()`, `state().kept`),
-  `usage.js` (`see()`, `decorate()`), `declutter.js` (`neverUsedIn()`), `offline.js`
-  (one line before the check).
+  `native.js` (`mount()`: the moved chat's place), `usage.js` (`see()`, `decorate()`), `declutter.js` (`neverUsedIn()`),
+  `offline.js` (one line before the check).
 - New: `dev/checks/projects72.js` (opt-in), `--projects` in `dev/bigprofile.js` (+ drawing scenes), a `projects72`
   group and fixture in `dev/run-checks.js`, a trash test in `dev/projects-test.js`.
 - Tested: CHECKS_LINE
@@ -138,8 +146,10 @@ preview released whenever no project is open.
   the next project's `prepare()` (no `about:blank` in between). `leave()` without an open project calls
   `ThreeLab.workspace.releaseKept()`, so a cancelled or failed switch never leaves a page behind. `state().kept` says
   when a page is being kept.
-- In `open()`, `Board.ready()/load()` and `ThreeLab.workspace.prepare()` start before `Native.refresh()`; their
-  results are awaited in the old order.
+- In `open()`, the resumed chat's `Native.load()` starts right after `ensure()` (the same chat `C.resume` picks; it is
+  awaited where it was), `WorkbenchUI.setProject()` starts before `ThreeLab.cmd()` (awaited after `selectChat`), and
+  `Board.ready()/load()` and `ThreeLab.workspace.prepare()` start before `Native.refresh()`; every result is awaited
+  in the old order, so each error still shows at the same stage.
 - `ensure()` calls `P.setWorkspace` only when `ProjectWorkspaceCore.workspace()` changes something.
 - The loading dialog's error: the detail line names the other computer for "not available on this computer"
   errors; "Open scene editor" only when `ThreeLab.scenes.get(sceneOf(p))`; `err.shown = true`, and the card / Enter /
@@ -150,6 +160,13 @@ preview released whenever no project is open.
 - `projects-home.js`: notes `maxLength: 4000`; the Desk paints at once on `hearth:activate`; cards prefetch the `lab`,
   `board` and `creative` groups on `pointerenter` / `focus` (once).
 - `projects.js` `changed()`: a `notes` change redraws the chats list after 1.2 s instead of 50 ms.
+- `native.js` `mount()` (your project move): after `root.append(...)`, the list's place comes back at the next frame
+  (`follows(v)` → its end, else the same distance from the end).
+- Not fixed (for you or the chat stream): a project's FIRST open of a long chat still draws its last 40 messages at
+  the list's top, then "Show earlier" adds 60 and the place lands in the middle (Clink: 40 → 100 messages, ≈ 7,500 px
+  above the end). It isn't the move (fixed above) nor `keepScroll` (tried: no change); two draws race there
+  (`Native.refresh` from `open()` and one started while the Lab mounts). `dev/checks/projects72.js` reports the chat's
+  messages / place from the Desk on; a probe of the first open is easy to add there.
 - `tools/three.js` `workspace.close()`: `persist()` only when the editor or the first layer differ from the scene
   (`save.flush()` / `saveExtras.flush()` are unchanged, so anything already waiting is written).
 - For the meter stream (not changed here): `usage.js`'s debounced save sends the whole `ui-usage` store over IPC
@@ -170,6 +187,8 @@ preview released whenever no project is open.
   stutters on a big profile.
 - **A project whose scene or chat hasn't come over from your other computer yet** says so calmly ("It may still be on
   its way…") and keeps its links; Hearth no longer moves that project to the top each time you try it.
+- **A project's chat stays where you are** when you move between Desk, Scene, Sound and the boards (it used to jump
+  back into older messages and load 60 more of them each time, so long sessions got slower).
 - **Opening a project for the first time each day no longer freezes for half a second** when its chat is very long.
 - **Leaving a project no longer re-saves its scene when you didn't change it**, so your two computers have less to sync
   and the scene doesn't jump to the top of your recent scenes.

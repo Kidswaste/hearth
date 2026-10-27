@@ -113,18 +113,20 @@ window.ProjectWorkspace = (() => {
         const early=C.resume(p,{...returnPoint(id),...options,...(tab?{tab}:{})},H.chats,[]).chatId,chatRead=early?Native.load(early):null;chatRead?.catch(()=>{});
         await Promise.all([Lazy.load('lab'),Lazy.load('board'),Lazy.load('creative')]);
         const desk=WorkbenchUI.setProject(p.id,{title:p.name,plugins:C.workspace(p.workspace).plugins});desk.catch(()=>{});
+        // the Lab mounting for the first time opens the scene of the chat on screen: this project's chat is put there
+        // first, so the Lab's first page is the project's scene (not the last Lab scene, released and loaded again)
+        const first=H.chats.find(x=>x.id===early);if(first&&!ThreeLab.workspace)Native.selectChat(first.agentId,first.id);
         await ThreeLab.cmd({show:false});cancelled(controller.signal);
         active=id;const point=C.resume(p,{...returnPoint(id),...options,...(tab?{tab}:{})},H.chats,ThreeLab.scenes.all());
         conversationId=point.chatId;conversationScene=point.sceneId;tab=point.tab;
-        // (round 72) the chat keeps its place only when it was already the one shown; another one opens at its end
-        const c=chatOf(p);await (c.id===early?chatRead:Native.load(c.id));const wasShown=H.activeChat[c.agentId]===c.id;Native.selectChat(c.agentId,c.id);P.touch(p);
+        const c=chatOf(p);await (c.id===early?chatRead:Native.load(c.id));Native.selectChat(c.agentId,c.id);P.touch(p);
         await desk;
         timings.filesMs=Math.round(performance.now()-started);cancelled(controller.signal);
         stage(1,'Building your scene…');surface='three';activate('tool:three');Tools.openDock('three');
         // (round 72) the scene starts first and the chat draws while its page works; the moodboard is read meanwhile
         const board=Board.ready().then(()=>Board.load(p.workspace.boardId));board.catch(()=>{});
         const scene=options.preview!==false?ThreeLab.workspace.prepare(sceneOf(p),{signal:controller.signal,progress:text=>stage(1,text)}):null;scene?.catch(()=>{});
-        await Native.refresh(c.agentId,{keepScroll:wasShown});
+        await Native.refresh(c.agentId,{keepScroll:true});
         if(scene)await scene;
         else if(!ThreeLab.scenes.open(sceneOf(p)))throw Error('This scene is not available yet.');
         timings.sceneMs=Math.round(performance.now()-started)-timings.filesMs;cancelled(controller.signal);
