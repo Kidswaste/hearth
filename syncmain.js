@@ -6,6 +6,7 @@
 //        sync:big (bool) · sync:conflicts · sync:resolve (id, keep) · sync:trash · sync:restore (id) · sync:open
 //        sync:download · sync:ack (rels?) · sync:preview (id)        events → 'sync:status', 'sync:pulled'
 //        (round 73, syncmedia73) sync:kinds (id, on) · sync:freeable · sync:free (rels)
+//        (round 74, synchard74) sync:fix (rel, how): the sync panel's fix buttons for a file that can't sync
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -64,6 +65,8 @@ function start() {
     skip: K.skipper(settings.kinds),
     onLane: () => schedule(300, 'lane'),
     evict: (file) => Evict.evict(file, { provider: settings.provider, root: settings.root }),
+    // (round 74, synchard74) OneDrive refuses Windows-illegal names on a Mac too; the version in the machine record
+    winNames: settings.provider === 'onedrive', appVersion: (() => { try { return require('electron').app.getVersion(); } catch { return undefined; } })(),
     // (round 73) app checks only (smoke runs set HEARTH_TEST_SAVE_DIR): data/sync/test-slow.json = ms per 4 MB piece, so
     // a check can watch a big file's progress; never read in a normal run
     chunkWait: process.env.HEARTH_TEST_SAVE_DIR ? async () => { try { const ms = Number(fs.readFileSync(path.join(opts.dataDir, 'sync', 'test-slow.json'), 'utf8')); if (ms > 0) await new Promise((r) => setTimeout(r, Math.min(ms, 2000))); } catch { /* not slowed */ } } : undefined,
@@ -96,7 +99,7 @@ function start() {
 // (round 16) the calm check paces itself: every minute while things change, up to every 5 minutes after quiet passes
 // (the watchers still bring changes within seconds), ×3 on battery, ×2 while Hearth is minimized, and none while the
 // computer sleeps (one pass when it wakes up). Passes that start while a reply streams wait for a quieter moment.
-let quiet = 0; let pace = { hidden: false, battery: false, asleep: false }; let wokeAt = 0;
+let quiet = 0; let pace = { hidden: false, battery: false, asleep: false }; let wokeAt = 0; let sleptAt = 0;
 function tickEvery() { return Math.min(5, 1 + Math.floor(quiet / 3)) * EVERY * (pace.battery ? 3 : 1) * (pace.hidden ? 2 : 1); }
 function armTick() {
   clearTimeout(tick); tick = null;
@@ -108,7 +111,13 @@ function setPace(st = {}) {
   // (round 39, powerwise) battery saver / Low Power Mode counts as battery; after a wake the pass waits for the
   // network and the cloud drive's own client (15 s, was 3 s)
   pace = { hidden: Boolean(st.hidden), battery: Boolean(st.battery || st.saver), asleep: Boolean(st.asleep) };
-  if (was.asleep && !pace.asleep) { quiet = 0; wokeAt = Date.now(); schedule(require('./powerwise').WAKE.sync, 'wake'); }
+  if (!was.asleep && pace.asleep) sleptAt = Date.now(); // (round 74, synchard74)
+  if (was.asleep && !pace.asleep) {
+    // (round 74, synchard74) the time asleep doesn't count toward what sync waits for (a half download, a delete still
+    // arriving): the engine moves those clocks on, and a pass that was running starts again from a fresh look
+    if (sleptAt) { try { engine?.woke(Date.now() - sleptAt); } catch { /* fine */ } sleptAt = 0; }
+    quiet = 0; wokeAt = Date.now(); schedule(require('./powerwise').WAKE.sync, 'wake');
+  }
   if (was.asleep !== pace.asleep || was.battery !== pace.battery || was.hidden !== pace.hidden) armTick();
 }
 let busy = () => 0;
@@ -190,7 +199,7 @@ function publicStatus() {
     machine: engine?.machine()?.name || os.hostname(),
     kinds: K.list(settings.kinds, st?.kindSizes || {}), // (round 73, syncmedia73) What syncs: each kind, on / off here, sizes
     transfers: st?.transfers || [], moving: st?.moving || 0, // (round 73) big files on their way, with progress
-    ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], waiting: st.waiting || [], lastError: st.lastError || null, held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
+    ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], waiting: st.waiting || [], blocked: st.blocked || [], peersOld: st.peersOld || [], need: st.need || 0, lastError: st.lastError || null, held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
   };
 }
 
@@ -258,6 +267,14 @@ function register(ipcMain, win, o) {
     return { ok: true, ...r };
   });
   h('sync:ack', (rels) => { engine?.ackPulled(Array.isArray(rels) ? rels : null); return true; });
+  // (round 74, synchard74) a blocked file's fix: Rename for Windows / Allow changes / Remove from the cloud; then a pass
+  h('sync:fix', async (rel, how) => {
+    if (!engine) return { ok: false, error: 'Sync is off' };
+    if (!['rename', 'writable', 'unsecret'].includes(how)) return { ok: false, error: 'Nothing to fix there' };
+    const r = await engine.fix(String(rel || ''), how).catch((err) => ({ ok: false, error: err.message }));
+    if (r?.ok) schedule(300, 'fix');
+    return r;
+  });
   start();
 }
 // before the window opens: the first pass gets a moment, so a fresh start shows what the other computer did

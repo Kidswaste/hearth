@@ -7,6 +7,7 @@
 // in the home folder "hearth-home:/…" (file:/// URLs get "hearth-data-url:" and friends). Each machine expands them
 // to its own folders when it reads the cloud copy, so a chat attachment made on the PC opens on the Mac.
 const path = require('path');
+const Hard = require('./sync-hard'); // (round 74, synchard74) secrets never sync
 // PowerShell and several Windows exporters prefix otherwise valid UTF-8 JSON.
 const parseJson = text => JSON.parse(String(text).replace(/^\uFEFF/, ''));
 
@@ -29,7 +30,8 @@ const LOCAL_FILES = new Set(['window.json', 'game-bridge.json', 'hearth-origin.j
   'connectors.json', 'claude-flags.json', 'now-playing.ps1', 'now-playing-control.ps1', 'now-playing-cover.jpg', 'kv/fake-switches.json', 'kv/downloads-log.json',
   'kv/jank-log.json', 'kv/dev-reports.json', 'devreport-crashes.json', 'kv/offline-queue.json',
   'chrome-prefs.json', 'interop/obs.json', 'kv/media-here.json',
-  'config.json', 'theme.css']); // (round 20) this computer's smoothness log: about this machine, never synced · (round 34) offline-queue: messages waiting to go out from THIS computer (synced, the other one would send them too) · (round 35, twocomputers) chrome-prefs: this computer's Chrome (browser, shown or not) · interop/obs.json: this computer's OBS address + keychain-sealed password · media-here: files found again on this computer · (round 55, configsafe) config.json / theme.css: the owner's settings in data/, synced as app/config.json / app/theme.css (portable part), never a second time as data files
+  'config.json', 'theme.css',
+  'gpu52.json', 'game-cache/budget.json', 'game-cache/readyspeed.json', 'creative-vst/warm.json']); // (round 74, synchard74) this computer's own: its graphics start marker (the Mac took the PC's "that path crashed"), its GPU's measured budgets / getting-ready times per game, its instrument host's warm-up // (round 20) this computer's smoothness log: about this machine, never synced · (round 34) offline-queue: messages waiting to go out from THIS computer (synced, the other one would send them too) · (round 35, twocomputers) chrome-prefs: this computer's Chrome (browser, shown or not) · interop/obs.json: this computer's OBS address + keychain-sealed password · media-here: files found again on this computer · (round 55, configsafe) config.json / theme.css: the owner's settings in data/, synced as app/config.json / app/theme.css (portable part), never a second time as data files
 function localOnly(rel) {
   const r = rel.replace(/\\/g, '/');
   // Recent clicks / learned shortcuts describe this computer. Repeatedly merging
@@ -37,6 +39,7 @@ function localOnly(rel) {
   if (/^kv\/speed(?: \d+| ?\(\d+\)| \([^()]*conflicted copy[^()]*\))?\.json$/i.test(r)) return true;
   if (transientWorkspace(r)) return true;
   if (LOCAL_FILES.has(r)) return true;
+  if (Hard.secretName(r)) return true; // (round 74, synchard74) keys, tokens, passwords (.env, id_rsa, server.pem, credentials.json…): never synced
   if (/(^|\/)\./.test(r)) return true; // hidden files / folders
   if (/\.log(\.\d+)?$/i.test(r) || /^mcp-[^/]*\.json$/i.test(r)) return true;
   const parts = r.split('/');
@@ -375,7 +378,7 @@ function stripMachine(v, isSettings) {
   if (!isObj(v)) return v;
   const out = {};
   for (const k of Object.keys(v)) {
-    if ((isSettings && MACHINE_SETTINGS.has(k)) || MACHINE_KEY.test(k) || MACHINE_FIELD.has(k) || absPath(v[k])) continue;
+    if ((isSettings && MACHINE_SETTINGS.has(k)) || MACHINE_KEY.test(k) || MACHINE_FIELD.has(k) || absPath(v[k]) || Hard.secretKey(k) || Hard.secretValue(v[k])) continue; // (round 74, synchard74) + secrets
     out[k] = stripMachine(v[k], false);
   }
   return out;
@@ -397,7 +400,7 @@ function applyPortable(local, portable) {
       for (const k of Object.keys(pv)) out[k] = keep(lv[k], pv[k], false);
       for (const k of Object.keys(lv)) {
         if (Object.prototype.hasOwnProperty.call(pv, k)) continue;
-        if ((settings && MACHINE_SETTINGS.has(k)) || MACHINE_KEY.test(k) || MACHINE_FIELD.has(k) || absPath(lv[k])) out[k] = lv[k]; // this computer's own
+        if ((settings && MACHINE_SETTINGS.has(k)) || MACHINE_KEY.test(k) || MACHINE_FIELD.has(k) || absPath(lv[k]) || Hard.secretKey(k) || Hard.secretValue(lv[k])) out[k] = lv[k]; // this computer's own (round 74: + its secrets)
       }
       return out;
     }

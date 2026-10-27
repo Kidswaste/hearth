@@ -142,7 +142,7 @@ const REVIEWED = [
   ['shell-cmd', 'powerwisemain.js', "execFile('powershell.exe'"], // (round 40) Windows battery saver, guarded by process.platform === 'win32'
   ['file-url', 'portable.js', 'file:///'], // stored file:/// prefixes from the old data folder, matched as they were written
   ['file-url', 'sync-merge.js', 'file://'], // both the raw and the encoded spellings, on purpose (path tokens across machines)
-  ['slash-split', 'sync.js', 'rel.split'], ['slash-split', 'sync-engine.js', 'rel.'], // sync's own relative names always use /
+  ['slash-split', 'sync.js', 'rel.split'], ['slash-split', 'sync-engine.js', 'rel.'], ['slash-split', 'sync-hard.js', ''], // sync's own relative names always use / (round 74: sync-hard.js)
   ['shell-cmd', 'adobemain.js', 'osascript'], ['shell-cmd', 'adobemain.js', "spawn('open'"], ['shell-cmd', 'aemain.js', 'osascript'],
   ['shell-cmd', 'deploymain.js', 'osascript'], ['shell-cmd', 'nowplaying.js', ''], ['shell-cmd', 'appshell.js', 'powershell.exe'],
   ['shell-cmd', 'chrome-cdp.js', "'reg'"], ['shell-cmd', 'firstrunmain.js', "'reg'"], ['shell-cmd', 'installs.js', ''],
