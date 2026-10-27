@@ -11,7 +11,7 @@ the bottom of the rail (only while sync is on) and one line in Settings. Everyth
 1. **Sync through a cloud drive folder you already use**: Hearth makes a `Hearth` folder in it (`files/` mirror, `trash/`, a hidden `.sync/` for the journal) and keeps it in step with your data folder.
 2. **Finds your drives on the Mac**: iCloud Drive, Google Drive (each signed-in account, "My Drive" in any language), Dropbox (also a custom location from Dropbox's own info file) and OneDrive (personal and work).
 3. **Finds your drives on Windows**: iCloudDrive, Google Drive's drive letter (G: or any other), Dropbox (custom location too), %OneDrive% (personal and work).
-4. **Proposes the obvious one, one click**: a drive that already holds a Hearth first, else Dropbox, Google Drive, OneDrive, iCloud. `/sync` or Settings → Sync → **Turn on sync**.
+4. **Proposes the obvious one, one click**: a drive that already holds a Hearth first, else Dropbox, Google Drive, iCloud, OneDrive. `/sync` or Settings → Sync → **Turn on sync**.
 5. **"Use this Hearth" on the second computer**: the setup sees the Hearth already in the drive (which computer, when) and joins it; the first pass merges both sides, nothing is overwritten.
 6. **A one-time offer on the second computer**: when a drive there already holds a Hearth and sync is off, a quiet notice offers "Use this Hearth".
 7. **Other drive or any folder** (setup's "Other drive…" / "Choose a folder…", `/sync on <folder>`).
