@@ -218,9 +218,10 @@ const ThreeLab = (() => {
     // run waits for it instead of loading another, and everything the Lab sends a fresh page (its triggers, loop clock…)
     // is for the scene that runs in it
     let holding = false; let held = null;
+    const unhide = (on) => { for (const [k, v] of [['visibility', 'visible'], ['opacity', '0'], ['pointerEvents', 'none']]) frame.style[k] = on ? v : ''; };
     const queryNow = () => `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}${typeof H !== 'undefined' && H.config?.settings?.gpuPower === 'saver' ? '&gpu=low' : ''}`; // (round 52, gpu52: /graphics power saver)
     const load = (fresh = false) => {
-      holding = false; held = null; // (round 74) a new load is never held
+      if (holding) unhide(false); holding = false; held = null; // (round 74) a new load is never held
       if (tweaks.size) flushTweaks(); // to the page they were meant for, as before
       // (round 37, labboot) the first load of a warmed preview: the page is (or is getting) up for this same query, so it
       // is taken as it is: no new page, its 'ready' handled as if it came now (a different query: a normal load below)
@@ -290,9 +291,11 @@ const ThreeLab = (() => {
     return {
       frame, send, reload: (fresh) => load(Boolean(fresh)), useStage,
       // (round 74, projdesk74) hold(true) right after a load: its 'ready' waits; hold(false) lets it through (now, if it came)
-      hold(on) { holding = Boolean(on); if (!holding && held) { const d = held; held = null; handle(d); } },
+      // While held, the frame is drawn though its Lab is hidden (visible, transparent, click-through, like LabBoot's warm
+      // page): Chromium throttles a frame inside a hidden surface, and a page loaded that way came up slower than a new one
+      hold(on) { holding = Boolean(on); unhide(holding); if (!holding && held) { const d = held; held = null; handle(d); } },
       release() {
-        holding = false; held = null; // (round 74)
+        if (holding) unhide(false); holding = false; held = null; // (round 74)
         nonce = null; ready = null; loadedWith = null; queue = []; warmRun = false;
         clearTimeout(watchdog); clearTimeout(coverT); clearTimeout(gl.timer); gl.lost = false; gl.again = false;
         cancelAnimationFrame(tweakRaf); clearTimeout(tweakTimer); tweaks.clear(); tweakRaf = 0;
