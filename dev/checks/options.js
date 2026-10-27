@@ -78,7 +78,15 @@ try {
   ok(await until(() => S()), 'the Lab\'s ⋯ opens it');
   out.labAgent = S()?.querySelector('.opt-who .opt-chip.on')?.textContent;
   S()?.querySelector('.opt-head button[title^="Close"]')?.click();
-  ok(document.querySelector('#rail [data-id="tool:options"]') && !document.querySelector('#rail [data-id="tool:commands"]'), 'rail: ⚙ AI setup, no Commands button');
+  // (round 74, checkhealth74) the Projects / Life spaces keep tools off the rail: AI setup is Settings' "⋯ AI setup" there
+  let setupInSettings = false;
+  if (!document.querySelector('#rail [data-id="tool:options"]')) {
+    AppUI.openSettings(); await until(() => document.querySelector('dialog.settings-dialog[open]'), 5000);
+    const d = document.querySelector('dialog.settings-dialog[open]');
+    setupInSettings = [...(d?.querySelectorAll('button') || [])].some((b) => /⋯ AI setup/.test(b.textContent));
+    d?.close();
+  }
+  ok((document.querySelector('#rail [data-id="tool:options"]') || setupInSettings) && !document.querySelector('#rail [data-id="tool:commands"]'), 'rail ⚙ (or Settings › ⋯ AI setup): AI setup, no Commands button');
   const k = JSON.parse(keep); for (const [key, v] of Object.entries(k)) { if (v === undefined) delete A()[key]; else A()[key] = v; } await saveConfig();
   activate(C.id);
 } catch (err) { fail.push(`threw: ${err.message}`); }

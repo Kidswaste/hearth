@@ -140,7 +140,7 @@ try {
   Pinboard.close();
   // closed: nothing from the picker or its search stays in the page outside the board, nothing big turned over the app
   const left = [...document.querySelectorAll('[class*="pinb"]')].filter((n) => !n.closest('.bd-vp, .msg, .live-cards'));
-  const tilted = [...document.body.querySelectorAll('*')].filter((n) => { if (n.closest('.bd-vp')) return false; const t = getComputedStyle(n).transform; if (!t || t === 'none') return false; const r = n.getBoundingClientRect(); return r.width * r.height > 150 * 150 && !/^matrix\(1, 0, 0, 1,/.test(t); });
+  const tilted = [...document.body.querySelectorAll('*')].filter((n) => { if (n.closest('.bd-vp, .pw-gallery-hero')) return false; // (round 74) the Projects home's turned orbit art is its own const t = getComputedStyle(n).transform; if (!t || t === 'none') return false; const r = n.getBoundingClientRect(); return r.width * r.height > 150 * 150 && !/^matrix\(1, 0, 0, 1,/.test(t); });
   step(!left.length && !tilted.length, 'closed: nothing from the picker stays outside the board, nothing big turned over the app', { left: left.map((n) => n.className).slice(0, 5), tilted: tilted.map((n) => `${n.tagName}.${n.className}`).slice(0, 5) });
   // the card a reply shows (the same one saved replies draw)
   const card = PinboardHook.card(rec);

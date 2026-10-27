@@ -29,3 +29,4 @@ const RAIL = (() => {
   }
   return { button, shown };
 })();
+window.RAIL = RAIL; // (code a check keeps as text and runs again after a reload, as labstartfast does, finds it there too)

@@ -32,7 +32,7 @@ try {
   ok(await until(() => Progress.get(key), 3000), 'a reply in progress gets a progress item');
   ok(await until(() => document.querySelector('.msg.streaming > .pg-bar'), 5000), 'a bar on the reply being written');
   ok(await until(() => document.querySelector(`#chat-groups .item[data-key="${chatId}"] > .pg-bar`), 5000), 'a bar on its chat row');
-  ok(await until(() => document.querySelector(`#agent-buttons .agent-btn[data-id="${H.surfaceIdFor(C.id)}"] > .pg-bar`), 5000), 'a bar on the agent\'s rail icon');
+  ok(await until(() => document.querySelector(`:is(#agent-buttons, .workspace-switcher) .agent-btn[data-id="${H.surfaceIdFor(C.id)}"] > .pg-bar`), 5000), 'a bar on the agent\'s rail icon');
   ok(await until(() => dot() && !dot().hidden, 3000), 'the indicator shows at the bottom of the rail');
   await until(() => /about \d+ %/.test(document.querySelector('.msg.streaming .pg-note')?.textContent || ''), 4000);
   out.replyWords = document.querySelector('.msg.streaming .pg-note')?.textContent;

@@ -191,7 +191,8 @@ await safe('fix', async () => {
 
 await safe('chat', async () => {
   const t = await say('/playtest notes');
-  step('/playtest notes lists them', /2 playtest notes/.test(t) && /1\. 0:0\d/.test(t) && /the jump clips/.test(t), t);
+  // (round 74) each with its time in the play (0:11 on a loaded machine: the game took longer to start, "0:0x" failed)
+  step('/playtest notes lists them', /2 playtest notes/.test(t) && /1\. \d+:\d\d · /.test(t) && /the jump clips/.test(t), t);
   document.querySelector('dialog.pn-log[open]')?.close();
   const k = await say('/playtest key F9');
   const st = await N({ op: 'state' });

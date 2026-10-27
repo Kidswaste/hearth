@@ -40,6 +40,7 @@ const BEFORE = {
   board: ['📌 Find images like this…', 'New board…', 'Brief…', 'Lock the board', 'Give the vibe to the Three Director', 'Group by vibe (framed, named)', 'Palette → Lab look', 'Clips on a timeline', 'Duplicate the board', 'Starred', 'Statistics', 'Copy the board as a picture', 'Tidy media folder (unused files)', 'Save as a template…', 'Selected picture as the background', 'Untangle overlaps', 'Pictures or clips…', 'Website…', 'Note', 'Text', 'From the clipboard', '📌 Images like this board…', 'Search and filter…', 'Undo', 'Redo', 'Keys on the board…'],
 };
 const RENAMED = {
+  'Lighten to stay smooth': 'Quality: auto', // (round 74: labfps72's name for it, round 72)
   'Save a screenshot': '🖼 Save a screenshot', '📷 Screenshot': '🖼 Save a screenshot', 'The capture menu…': '◉ More capture…', 'Contact sheet': '🎞 Contact sheet as a file',
   Duplicate: '⧉ Duplicate', 'History…': 'Earlier versions and deleted sketches…', 'Export HTML…': 'Web page (one .html)…', 'Save the whole file as a file': 'Save the whole song as its own file',
   'Section here…': 'Section here', 'Whole song': 'Zoom out to the whole song', 'Copy “/jump 2”': 'Copy a way back here', '⌘ Command palette': '⌕ Find anything…', 'Command bar': 'Typed actions…',
@@ -124,7 +125,8 @@ await until(() => !Native.isBusy(H.activeChat[claude.id]) && Native.current(clau
 const CHAT = [
   ['Chat ⋯ (right-click)', '.surface.active .native-head'], ['Message ⋯', '.surface.active .messages .msg.assistant > .body'], ['Chat box (right-click)', '.surface.active form.composer'],
   ['Chats list (right-click)', '#panel .item'], ['Chat group (right-click)', '#panel .group-head'],
-  ['Rail: an AI', '#agent-buttons .agent-btn:not(.tool-btn-rail)'], ['Rail: a tool', '#agent-buttons .tool-btn-rail'], ['Rail (right-click)', '#rail .spacer'],
+  // (round 74, checkhealth74) the Projects / Life spaces: the AIs in the bar above the chat, a tool as a rail shortcut
+  ['Rail: an AI', '#agent-buttons .agent-btn:not(.tool-btn-rail), .workspace-switcher .agent-btn'], ['Rail: a tool', '#agent-buttons .tool-btn-rail, #agent-buttons .space-button[data-shortcut]'], ['Rail (right-click)', '#rail .spacer'],
 ];
 for (const [name, sel] of CHAT) {
   const n = first(sel);
