@@ -11,6 +11,8 @@
 //   · transactional: a batch whose 2nd op fails, and a camera move whose 2nd keyframe call fails, leave the scene as it
 //     was (on screen and backstage), and say so in words
 //   · latency: each call's time on screen vs backstage (HubBridge's log); backstage ≤ 1.5× on screen
+//   · (round 74, labcalls74) every hop of every call timed (MCP server → main → window → handler steps → back): the
+//     median call that sends no picture ≤ 400 ms on screen, ≤ 600 ms backstage; picture calls report their own cost
 //   node dev/smoke.js --fake-engines --wait 5000 --check-timeout 1200000 --script dev/checks/labtools73.js --shot /tmp/labtools73.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(120); } return null; };
@@ -108,7 +110,12 @@ const bare = (dt) => JSON.stringify({ ...dt, layers: dt.layers.map(({ vals, ...L
 // each top-level call's answer, per chat (the "applied:" words), and its time
 const answers = new Map();
 HubBridge.onResult((c) => { if (c.via === 'three_batch' || !c.chatId) return; if (!answers.has(c.chatId)) answers.set(c.chatId, []); const v = c.result?.value; answers.get(c.chatId).push({ tool: c.tool, ok: c.result?.ok !== false, error: c.result?.error || null, applied: v && typeof v === 'object' ? v.applied || null : typeof v === 'string' ? (/\napplied: (.*)$/.exec(v)?.[1] || null) : null, images: (c.result?.images || []).length, text: typeof v === 'string' ? v.slice(-300) : '' }); });
-const timesOf = (chatId) => HubBridge.log().filter((e) => e.chatId === chatId && !e.running).map((e) => ({ tool: e.via ? `${e.tool}` : e.tool, ms: e.ms, ok: e.ok }));
+const timesOf = (chatId) => HubBridge.log().filter((e) => e.chatId === chatId && !e.running).map((e) => ({ tool: e.via ? `${e.tool}` : e.tool, ms: e.ms, ok: e.ok, image: e.image || 0, hops: HubBridge.hopsOf ? HubBridge.hopsOf(e) : null }));
+// (round 74, labcalls74) per-hop timing: each call end to end (the engine's MCP server → main → this window → the
+// handler's steps → back), the median per tool on screen / backstage, and a budget for calls that send no picture
+const PICTURE = /^(capture a frame|contact sheet|material look \+ shot)$/;
+const med = (a) => { const v = a.filter(Number.isFinite).sort((x, y) => x - y); return v.length ? (v.length % 2 ? v[(v.length - 1) / 2] : Math.round((v[v.length / 2 - 1] + v[v.length / 2]) / 2)) : null; };
+const BUDGET = { on: 400, back: 600 }; // ms, median of the calls that send no picture (round 74)
 
 try {
   const C = H.agent('claude'); const AS = H.agent('astra');
@@ -209,6 +216,24 @@ try {
     ok(lat[who].ratio <= 1.5, `${who}: backstage calls take ≤ 1.5× on screen (${lat[who].backMs} ms vs ${lat[who].onMs} ms: ${lat[who].ratio}×)`);
   }
   out.latency = lat;
+
+  // (round 74, labcalls74) every hop of every call: the end-to-end time (the engine's MCP server in → out), where it went
+  const hopRows = {}; const hopSum = {};
+  for (const [k, r] of Object.entries(runs)) {
+    const side = /Back$/.test(k) ? 'back' : 'on';
+    hopRows[k] = r.times.map((x, i) => {
+      const h = x.hops || {};
+      const steps = Object.entries(h.steps || {}).filter(([, v]) => v >= 5).map(([n, v]) => `${n} ${Math.round(v)}`).join(', ');
+      return { step: STEP[i] || x.tool, total: h.total ?? x.ms, window: h.window ?? x.ms, wire: h.total != null && h.window != null ? h.total - h.window : null, picture: PICTURE.test(STEP[i] || '') || x.image > 0, steps };
+    });
+    const plain = hopRows[k].filter((x) => !x.picture);
+    const pics = hopRows[k].filter((x) => x.picture);
+    hopSum[k] = { side, median: med(plain.map((x) => x.total)), max: Math.max(...plain.map((x) => x.total).filter(Number.isFinite)), wireMedian: med(hopRows[k].map((x) => x.wire)), pictures: pics.map((x) => `${x.step} ${x.total} ms`), calls: plain.length };
+    ok(hopSum[k].median != null && hopSum[k].median <= BUDGET[side], `${k}: median call (no picture) ${hopSum[k].median} ms ≤ ${BUDGET[side]} ms ${side === 'on' ? 'on screen' : 'backstage'}`);
+    ok(hopRows[k].every((x) => x.total != null && x.window != null), `${k}: every call has its hop times (MCP server → main → window → back)`);
+  }
+  out.hops = hopRows;
+  out.hopSummary = hopSum;
 
   // ---------- a tool error never leaves a half-applied scene ----------
   const rb = {};

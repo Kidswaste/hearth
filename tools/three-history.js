@@ -92,7 +92,7 @@ const ThreeHistory = (() => {
   async function director(tool, args, ctx = {}, fn) {
     const id = READ.test(tool) ? null : sceneFor(ctx.chatId);
     if (!id || !T()) return fn(tool, args, ctx);
-    if (timers.has(id)) await capture(id).catch(() => null);
+    if (timers.has(id)) { await capture(id).catch(() => null); if (typeof HubBridge !== 'undefined') HubBridge.mark?.('history'); } // (round 74) a version still to save first
     window.LabTry?.touch?.(id, ctx.chatId); // (round 43, directorpreview) Try it first: the scene as it was, before this edit
     const a = active.get(id) || { tools: new Set(), running: 0 };
     a.by = engineOf(ctx.chatId); a.chat = ctx.chatId || null; a.running += 1;

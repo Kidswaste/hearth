@@ -79,7 +79,45 @@ const HubBridge = (() => {
   const run = (h, tool, args, ctx) => (around && tool.startsWith('three_') ? around(tool, args, ctx, (c) => h.fn(tool, args, c || ctx)) : h.fn(tool, args, ctx));
   const emit = (entry) => { for (const fn of listeners) { try { fn(entry, log); } catch (err) { console.warn(err); } } };
 
-  window.hub.onGameCall(async ({ id, tool: asked, args: given }) => {
+  // (round 74, labcalls74) every hop of an agent's call, timed: the MCP server (mcp/common.js) → the hub's bridge
+  // (gamebridge.js) → this window → the handler (marks: the scene noted, routed, the preview page, the picture…) → back.
+  // entry.hops: the times of each process (Date.now(), one clock on one computer), entry.marks: [step, ms since the call
+  // reached this window] set by HubBridge.mark(step) on the call running now. hopsOf(entry) = how long each hop took.
+  let cur = null; // the agent's call running now (the newest, when two run at once)
+  function mark(step) {
+    const e = cur;
+    if (!e || !e.running || !e.marks || e.marks.length >= 48) return;
+    e.marks.push([step, Math.round((performance.now() - e.p0) * 10) / 10]);
+  }
+  function hopsOf(e) {
+    const h = e?.hops;
+    if (!h) return null;
+    const c = h.mcpT || {}; const m = h.main || {};
+    const d = (a, b) => (Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, b - a) : null);
+    const out = {
+      mcp: d(c.in, c.post), // the MCP server: the call read, sent on
+      toHub: d(c.post ?? h.mcp, h.in), // its local HTTP request reaching the hub (main)
+      hubRead: d(h.in, h.send), // main: the body read and sent to this window
+      toWindow: d(h.send, h.rend), // main → this window (IPC)
+      window: d(h.rend, h.out), // this window: the handler (see steps)
+      toHubBack: d(h.out, m.back), // the answer back to main (IPC, pictures included)
+      hubReply: d(m.back, m.out), // main: the answer as JSON
+      toMcp: d(m.out, c.recv), // the HTTP answer read by the MCP server
+      mcpOut: d(c.recv, c.out), // parsed, formatted, written to the engine
+      total: d(c.in ?? h.mcp ?? h.in, c.out ?? m.out ?? h.out),
+    };
+    const steps = {}; let prev = 0;
+    for (const [k, t] of e.marks || []) { steps[k] = Math.round(((steps[k] || 0) + t - prev) * 10) / 10; prev = t; }
+    if (Number.isFinite(out.window)) steps.rest = Math.max(0, Math.round((out.window - prev) * 10) / 10);
+    return { ...out, steps };
+  }
+  window.hub.onGameHops?.(({ id, mcp, main }) => {
+    const e = log.findLast((x) => x.id === id);
+    if (e?.hops) { e.hops.mcpT = mcp || null; e.hops.main = main || null; }
+  });
+
+  window.hub.onGameCall(async ({ id, tool: asked, args: given, t: t0 }) => {
+    const rend = Date.now(); const p0 = performance.now();
     // the chat whose run made the call (mcp/common.js adds it); handlers get it as ctx.chatId, not in their args
     const { hubChatId = null, ...plain } = given || {};
     // (round 49, directorfrugal) the three-lab server asking whether this chat already has a help topic: not a tool
@@ -88,8 +126,10 @@ const HubBridge = (() => {
     const r0 = resolve(asked, plain);
     const { tool, args } = r0;
     Usage.agentTool(tool);
-    const entry = { id, tool, via: r0.via || null, agentId: args?.agentId || null, chatId: hubChatId, summary: summarize(tool, args), at: Date.now(), running: true };
+    const entry = { id, tool, via: r0.via || null, agentId: args?.agentId || null, chatId: hubChatId, summary: summarize(tool, args), at: Date.now(), running: true,
+      hops: { mcp: t0?.mcp ?? null, in: t0?.in ?? null, body: t0?.body ?? null, send: t0?.send ?? null, rend }, marks: [], p0 };
     log.push(entry);
+    cur = entry;
     if (log.length > LOG_MAX) log.shift();
     emit(entry);
     const h = handlerFor(tool);
@@ -103,6 +143,8 @@ const HubBridge = (() => {
     if (imgs.length) { entry.image = imgs.length; lastImage = { tool, url: `data:${imgs[0].mime || 'image/png'};base64,${imgs[0].data}`, at: Date.now() }; }
     // what the agent will read: the text as the MCP server formats it (mcp/common.js) + pictures (≈ w×h / 750 tokens)
     entry.tokens = Math.round((result.ok === false ? String(result.error || '').length + 7 : fmtText(result.value).length) / 4);
+    entry.hops.out = Date.now();
+    if (cur === entry) cur = log.findLast((x) => x.running && x.marks) || null;
     window.hub.gameResult(id, result);
     for (const fn of results) { try { fn({ tool, via: r0.via || null, args: args || {}, result, chatId: hubChatId, agentId: args?.agentId || null }); } catch (err) { console.warn(err); } }
     for (const im of imgs) entry.tokens += await imageTokens(im);
@@ -163,5 +205,6 @@ const HubBridge = (() => {
       try { return await run(h, r0.tool, r0.args || {}, { chatId: ctx.chatId || null }); } catch (err) { return { ok: false, error: err.message }; }
     },
     summarize, resolve, fmtText, imageTokens,
+    mark, hopsOf, // (round 74, labcalls74) a step of the call running now; how long each hop of a logged call took
   };
 })();

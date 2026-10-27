@@ -43,13 +43,17 @@ function start(getWin) {
     wc.on('did-start-navigation', (d) => { if (d?.isMainFrame !== false && !d?.isSameDocument && pending.size) dropAll('reloaded'); });
   };
   // Ask the renderer (which owns the game webview) to run one tool call.
-  const callRenderer = (tool, args) => new Promise((resolve) => {
+  // (round 74, labcalls74) t: this call's hop times (Date.now()): in = the request arrived, body = read, send = sent to
+  // the window, back = its answer came back, out = the answer written to the MCP server
+  const callRenderer = (tool, args, t = {}) => new Promise((resolve) => {
     const win = getWin();
     if (!win || win.isDestroyed() || win.webContents.isDestroyed()) { resolve({ ok: false, error: 'The hub window is not open.' }); return; }
     watch(win);
     const id = crypto.randomUUID();
-    pending.set(id, resolve);
-    win.webContents.send('game:call', { id, tool, args });
+    t.id = id;
+    pending.set(id, (r) => { t.back = Date.now(); resolve(r); });
+    t.send = Date.now();
+    win.webContents.send('game:call', { id, tool, args, t: { mcp: t.mcp || null, in: t.in, body: t.body, send: t.send } });
     // Renders can run for a long time; everything else should answer within a minute.
     // (three_do / forge_patch carry the real command in their arguments; the bridge routes them in the renderer)
     // (a Lab sequence render steps every frame: minutes for a long one)
@@ -63,17 +67,38 @@ function start(getWin) {
     }, limit));
   });
 
+  // (round 74, labcalls74) the hop times of the last calls (id → t), until the MCP server sends its own (/hops) and the
+  // window gets them all for its call log (HubBridge.log: hops); timing only, nothing reaches the model
+  const hops = new Map();
+  const keepHops = (t) => { hops.set(t.id, t); if (hops.size > 40) hops.delete(hops.keys().next().value); };
   const server = http.createServer((req, res) => {
-    const reply = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
-    if (req.method !== 'POST' || req.url !== '/call' || req.headers['x-hub-token'] !== token) { reply(403, { ok: false, error: 'forbidden' }); return; }
+    const t = { in: Date.now() };
+    const reply = (status, body) => { const text = JSON.stringify(body); t.out = Date.now(); res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(text); };
+    const known = req.method === 'POST' && (req.url === '/call' || req.url === '/hops') && req.headers['x-hub-token'] === token;
+    if (!known) { reply(403, { ok: false, error: 'forbidden' }); return; }
     let body = '';
     req.on('data', (c) => { body += c; if (body.length > 2e6) req.destroy(); });
+    if (req.url === '/hops') {
+      req.on('end', () => {
+        res.writeHead(204); res.end();
+        try {
+          const { id, mcp } = JSON.parse(body || '{}');
+          const m = hops.get(id); hops.delete(id);
+          const win = getWin();
+          if (m && win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send('game:hops', { id, mcp, main: m });
+        } catch { /* timing only */ }
+      });
+      return;
+    }
     req.on('end', async () => {
+      t.body = Date.now();
+      t.mcp = Number(req.headers['x-hub-t']) || null;
       try {
         const { tool, args } = JSON.parse(body || '{}');
-        const result = await callRenderer(tool, args || {});
+        const result = await callRenderer(tool, args || {}, t);
         delete result.png; // the full-size PNG is only for the hub's own Save button
-        reply(200, result);
+        reply(200, t.id ? { ...result, _hop: { id: t.id } } : result);
+        if (t.id) keepHops(t);
       } catch (err) { reply(400, { ok: false, error: err.message }); }
     });
   });

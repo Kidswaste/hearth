@@ -4506,11 +4506,15 @@ ${code}
         return { id: L.id, name: L.name, sketchId: current?.id, sketch: current?.name, code: L.id === sel()?.id ? editor.value : L.code };
       },
       openSketch: (id) => api.openSketchById?.(id),
+      building: () => builds.size > 0, // (round 74, labcalls74) a layer that ran hasn't drawn its first frame yet
+      built: (ms = 6000) => Promise.all([...builds.keys()].map((id) => whenDrawn(id, ms))), // …and once each drew or failed
       setFrame: (id) => stage.setMode(id),
       // The whole sketch as it is now (every layer), and putting such a capture back (jam.js: one undo point per
       // round). A capture whose sketch is gone, or restored with asNew, becomes a new sketch.
-      capture() {
-        persist();
+      // (round 74, labcalls74) o.save: false reads the scene as it is (the editor's text included) without stamping it
+      // "updated now" and saving every scene: a Lab tool call notes its scene before and after, twice per call
+      capture(o = {}) {
+        if (o.save === false) { const L = sel(); if (L && current && L.code !== editor.value) persist(); } else persist();
         return { sketchId: current?.id, sketch: current?.name, selId, layers: JSON.parse(JSON.stringify(layersOf())), errors: errors.length };
       },
       async restore(snap, { asNew = null, wait = 2 } = {}) {
@@ -4578,7 +4582,9 @@ ${code}
           ids.splice(to, 0, L.id);
           reorderLayers(ids);
         }
-        await sleep(Math.min(15, Math.max(0.3, wait)) * 1000);
+        // (round 74, labcalls74) props only (opacity, name, visible, x…): nothing runs again, so no first frame to wait for
+        // (it waited ≥ 0.3 s for one); the preview gets them in its next frame, before any picture asked after this
+        await sleep(patch.code == null && patch.order == null ? 0 : Math.min(15, Math.max(0.3, wait)) * 1000);
         return { updated: L.name, ...report() };
       },
       // property: opacity | x | y | scale | rotate or a slider (key or label); keys: [{ time, value, ease }]; clear removes them.
@@ -5115,6 +5121,7 @@ ${frag}\`,
     // (round 72, labbridge72) the chats' scene links are read first (a call routed before that went to the scene on screen)
     if (ctx.chatId && typeof ChatScenes !== 'undefined' && ChatScenes.ready) await Promise.race([ChatScenes.ready(), new Promise((r) => setTimeout(r, 5000))]);
     const route = typeof ChatScenes !== 'undefined' && api.scenes ? ChatScenes.routeThree(tool, ctx.chatId) : null;
+    HubBridge.mark?.('route'); // (round 74, labcalls74)
     if (route && !route.sketchId) return { ok: false, error: route.error || 'This chat has no Lab scene: nothing was changed.' }; // (round 72) unlinked / not arrived yet, in words
     // the Lab sequence is one for every chat (its scenes are anyone's): never backstage
     if (tool === 'three_sequence' && typeof ThreeSeq !== 'undefined') return ThreeSeq.handle(tool, args, { sketchId: route?.sketchId || null });
