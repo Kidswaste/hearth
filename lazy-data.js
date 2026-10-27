@@ -79,6 +79,7 @@ const LazyData = (() => {
     { name: 'framebar', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/framebar-core.js', 'tools/framebar.js'], css: ['tools/framebar.css'], globals: ['FrameBarCore', 'FrameBar'] }, // (round 64, framebar64) · docs/lazy-groups.md
     { name: 'scenedoctor', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-doctor-core.js', 'tools/three-doctor.js'], globals: ['DoctorCore', 'SceneDoctor'] }, // (round 34) · docs/lazy-groups.md
     { name: 'twocomputers', at: 'sync.js', files: ['twocomputers-core.js', 'twocomputers.js'], css: ['twocomputers.css'], globals: ['TwoCore', 'TwoComputers'] }, // (round 35) · docs/lazy-groups.md
+    { name: 'syncpanel', tier: 'use', at: 'sync.js', files: ['sync-panel.js'], css: ['sync-panel.css'], globals: ['SyncPanel'] }, // (round 72) · docs/lazy-groups.md
     { name: 'backupauto', at: 'sync.js', files: ['backupauto-core.js', 'backupauto.js'], css: ['backupauto.css'], globals: ['BackupAutoCore', 'BackupAuto'] }, // (round 45) · docs/lazy-groups.md
     { name: 'multiformat', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-formats-core.js', 'tools/three-formats.js'], css: ['tools/three-formats.css'], globals: ['FormatsCore', 'LabFormats'] }, // (round 33) · docs/lazy-groups.md
     { name: 'labtemplates', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-templates-core.js', 'tools/three-templates.js'], css: ['tools/three-templates.css'], globals: ['TemplateCore', 'LabTemplates'] }, // (round 35) · docs/lazy-groups.md

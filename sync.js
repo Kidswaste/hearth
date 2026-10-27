@@ -32,6 +32,23 @@ const Sync = (() => {
     return p.length ? p.map((x) => `${x.name} (${x.platform === 'darwin' ? 'Mac' : x.platform === 'win32' ? 'Windows' : x.platform}) last synced ${ago(x.lastOk || x.lastSeen)}`).join(' · ') : '';
   }
   const dotState = () => (!st.on ? 'off' : st.paused ? 'paused' : st.state === 'pending' || st.state === 'starting' || st.state === 'idle' ? 'syncing' : st.state === 'held' || st.state === 'error' ? 'conflict' : st.state);
+  // (round 72, sync72) the indicator in words: "Synced 2 min ago" · "12 waiting" · "1 conflict — choose" (its chip shows
+  // ✓ / ↻ 12 / ⚠ 1; the words are its name, its tooltip and the panel's title). Worked out when a status arrives or the
+  // pointer comes over it: no timer of its own.
+  function shortLine() {
+    if (!st.on) return 'Sync is off';
+    if (st.paused) return `Sync paused · last synced ${ago(st.lastOk)}`;
+    const s = st.state; const n = (k, w) => `${k} ${w}${k === 1 ? '' : 's'}`;
+    if (s === 'offline') return st.error === 'missing' ? 'The cloud copy is missing' : `Offline · catches up when ${where()} is back`;
+    if (s === 'held') return `${n(st.held?.deletes || 0, 'deletion')} wait for your yes`;
+    if (s === 'conflict') return `${n(st.conflicts, 'conflict')} — choose`;
+    if (s === 'error') return 'Sync hit a problem — see why';
+    if (s === 'pending' && st.pending) return `${st.pending} waiting`;
+    if (s === 'synced') return `Synced ${ago(st.lastOk || st.at)}`;
+    return 'Syncing…';
+  }
+  const chipOf = () => { const s = dotState(); return s === 'paused' ? '‖' : s === 'offline' ? '○' : s === 'conflict' ? `⚠${st.conflicts ? ` ${st.conflicts}` : ''}` : s === 'syncing' ? `↻${st.state === 'pending' && st.pending ? ` ${st.pending > 99 ? '99+' : st.pending}` : ''}` : '✓'; };
+  const glyphOf = () => chipOf().slice(0, 1);
   const KV_NAMES = { 'three-sketches': 'Lab scenes', boards: 'Mood boards', notes: 'Notes', prompts: 'Prompts', 'video-cuts': 'Video edits', 'chat-scenes': 'Chat scenes', 'three-lab-extras': 'Lab looks and songs', 'chat-meta': 'Chat tags and folders', projects: 'Projects', 'three-beatmaps': 'Beat grids', 'video-notes': 'Video notes' };
   function nameOf(rel) {
     let m = /^chats\/(.+)\.json$/.exec(rel);
@@ -50,8 +67,11 @@ const Sync = (() => {
     if (!rail) return;
     if (!st.on) { dot?.remove(); dot = null; return; }
     if (!dot) {
-      dot = el('button', { class: 'tool-btn sync-dot', id: 'sync-dot', type: 'button', dataset: { feature: 'Sync dot' }, 'aria-label': 'Sync' }, el('i'));
-      dot.addEventListener('click', (e) => menu(e));
+      dot = el('button', { class: 'tool-btn sync-dot', id: 'sync-dot', type: 'button', dataset: { feature: 'Sync dot' }, 'aria-label': 'Sync', 'aria-haspopup': 'dialog' }, el('i'), el('span', { class: 'sync-chip' }));
+      // (round 72, sync72) a click opens the sync panel (plain words, what waits, conflicts side by side, Sync now);
+      // right-click keeps the menu. The panel's code loads on that first click (lazy group syncpanel).
+      dot.addEventListener('click', () => panel());
+      dot.addEventListener('pointerenter', () => paintDot());
       dot.addEventListener('contextmenu', (e) => { e.preventDefault(); menu(e); });
     }
     const keys = document.getElementById('keys-btn');
@@ -63,8 +83,14 @@ const Sync = (() => {
     const s = dotState();
     if (dot.dataset.state !== s) dot.dataset.state = s;
     dot.classList.toggle('fresh', Boolean(fresh));
-    const t = `${STATE_WORD[st.paused ? 'paused' : st.state] || 'Sync'}: ${line()}${fresh ? `\nChanges from ${fresh.from} arrived: reload to see them.` : ''}\nClick or right-click: sync now, pause, conflicts…`;
+    const words = shortLine();
+    const t = `${words}\n${line()}${fresh ? `\nChanges from ${fresh.from} arrived: reload to see them.` : ''}\nClick: what's waiting, conflicts, Sync now · right-click: the menu`;
     if (dot.title !== t) dot.title = t;
+    const chip = dot.querySelector('.sync-chip'); const c = chipOf();
+    if (chip && chip.textContent !== c) chip.textContent = c;
+    const name = `Sync: ${words}`;
+    if (dot.getAttribute('aria-label') !== name) dot.setAttribute('aria-label', name);
+    for (const f of panelListeners) { try { f(); } catch { panelListeners.delete(f); } }
   }
 
   // ---------- the menu (the dot, Settings ⋯, /sync menu) ----------
@@ -94,6 +120,12 @@ const Sync = (() => {
     out.push({ label: 'Turn sync off', more: true, danger: true, action: () => off() });
     return out;
   }
+  // (round 72, sync72) the sync panel (sync-panel.js, loaded on the first click)
+  const panelListeners = new Set();
+  async function panel() {
+    try { if (typeof SyncPanel === 'undefined' && window.Lazy) await Lazy.load('syncpanel'); SyncPanel.toggle(dot); } catch (err) { console.warn('sync panel:', err); menu(); }
+  }
+  let lastAuto = null; // the last conflicts settled by themselves: { done, at } (the panel says so)
   function menu(e) {
     const r = (e?.currentTarget || dot)?.getBoundingClientRect?.();
     showMenu(r ? r.right + 6 : (e?.clientX || 60), r ? r.top - 120 : (e?.clientY || 300), items());
@@ -521,7 +553,7 @@ const Sync = (() => {
     api().onStatus((s) => { st = s; mountDot(); for (const f of listeners) { try { f(); } catch { listeners.delete(f); } } });
     api().onPulled((list) => onPulled(list).catch(() => {}));
     // (round 26) conflicts settled by themselves after a sync: one quiet line, undo one click away
-    api().onAutoResolved?.((r) => { if (r?.done) toast(`Sync settled ${r.done} conflict${r.done === 1 ? '' : 's'} by itself (data merged, files: the newer one). Undo from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } }); refresh(); });
+    api().onAutoResolved?.((r) => { if (r?.done) lastAuto = { done: r.done, at: Date.now() }; if (r?.done) toast(`Sync settled ${r.done} conflict${r.done === 1 ? '' : 's'} by itself (data merged, files: the newer one). Undo from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } }); refresh(); });
     api().ack(); // this window just read everything fresh
     registerCommands();
     registerBackground();
@@ -552,5 +584,6 @@ const Sync = (() => {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 0));
   else setTimeout(init, 0);
 
-  return { status: () => st, refresh, now, setup, conflicts, held, whatIs, trash, menu, items, line, settingsSection, pause, off, big, background };
+  return { status: () => st, refresh, now, setup, conflicts, held, whatIs, trash, menu, items, line, settingsSection, pause, off, big, background,
+    shortLine, glyph: glyphOf, nameOf, peersLine, download, panel, lastAuto: () => lastAuto, where, listen: (f) => { panelListeners.add(f); return () => panelListeners.delete(f); } }; // (round 72) for the panel
 })();

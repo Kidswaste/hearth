@@ -33,6 +33,21 @@ const DS = require('./datasafe-core');
 const dfs = DS.faults(fs, path.join(__dirname, 'data'));
 const dsEnv = { fs: dfs, path, cache: new Map() };
 const sha = (s) => crypto.createHash('sha1').update(s).digest('hex');
+// (round 72, sync72) for syncPull / syncMerge: a whole text written next to its place, then renamed (crash-safe)
+function atomicText(file, text) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  fs.writeFileSync(tmp, text); fs.renameSync(tmp, file);
+}
+// Lab scenes about to lose some (a delete on the other computer… or a list lost there): this computer's whole file is
+// kept in kv/.history/three-sketches first (🛟 Recover lost scenes finds it), as sync-engine.js keepScenesAside does
+function sceneAside(aside, mine, next, text) {
+  if (!Array.isArray(mine) || !Array.isArray(next)) return;
+  const have = new Set(next.map((x) => x?.id));
+  if (!mine.some((x) => x?.id && !have.has(x.id))) return;
+  fs.mkdirSync(aside.dir, { recursive: true });
+  fs.writeFileSync(path.join(aside.dir, SS.copyName(aside.now, mine.length, 'sync')), text);
+}
 const TEXT_CAP = 16 * 1024 * 1024;
 const TEXT_IDLE_MS = Number(process.env.HEARTH_TEXT_IDLE_MS) || 10 * 60 * 1000; // texts let go after this long without a search
 let textsWarm = false; let coolT = null;
@@ -210,6 +225,53 @@ const OPS = {
     if (!cloud && rel === 'app/config.json') v = S.portableConfig(v);
     const t = JSON.stringify(cloud ? v : S.toCloud(v, ctx));
     return { h: sha(t), t: t.length < 16e6 ? t : null }; // the text too: a push / merge in this pass uses it (no second parse)
+  },
+  // (round 72, sync72) a big JSON store arriving from the other computer (sync-engine.js pull), all the JSON work here:
+  // the cloud copy read and checked against the hash the pass saw, its paths made this computer's, this computer's
+  // version kept first (data/sync/recovery; Lab scenes about to lose some: kv/.history), the text to write in this
+  // computer's form (pretty unless it was compact) and its hash. Was ≈ 60–130 ms of the main process per big store.
+  syncPull({ rel, cloudFile, h, ctx, localFile, recovery, aside }) {
+    const S = require('./sync-merge');
+    let raw; try { raw = fs.readFileSync(cloudFile, 'utf8'); } catch { return { stale: true }; }
+    let cloudText; try { cloudText = JSON.stringify(S.parseJson(raw)); } catch { return { stale: true }; }
+    if (sha(cloudText) !== h) return { stale: true };
+    const value = S.toCloud(JSON.parse(cloudText), ctx);
+    let prev = null;
+    if (localFile) { try { prev = fs.readFileSync(localFile, 'utf8'); } catch (err) { if (err.code !== 'ENOENT') throw err; } }
+    let prevCloud = null;
+    if (prev !== null) {
+      const mine = S.parseJson(prev); // a local version that can't be read stops the replacement (as on the main side)
+      if (recovery) atomicText(recovery, prev);
+      if (aside && Array.isArray(mine) && Array.isArray(value)) sceneAside(aside, mine, value, prev);
+      if (prev.length < 16e6) prevCloud = JSON.stringify(S.toCloud(mine, ctx));
+    }
+    const pretty = prev === null || prev.length < 2 || /^[[{]\s/.test(prev.slice(0, 2));
+    const local = S.fromCloud(value, ctx);
+    const out = pretty ? JSON.stringify(local, null, 2) : JSON.stringify(local);
+    return { out, lh: sha(JSON.stringify(S.toCloud(JSON.parse(out), ctx))), cloudText, prevCloud };
+  },
+  // (round 72, sync72) both computers changed a big store (sync-engine.js merge): the three-way merge here; the main
+  // side only writes. lh / ch: the hashes the pass saw (changed since → stale, the next pass looks again)
+  syncMerge({ rel, localFile, cloudFile, baseFile, ctx, lh, ch, counters, keepAll, recovery, aside }) {
+    const S = require('./sync-merge');
+    let localRaw; let cloudRaw;
+    try { localRaw = fs.readFileSync(localFile, 'utf8'); cloudRaw = fs.readFileSync(cloudFile, 'utf8'); } catch { return { stale: true }; }
+    let ours; let theirsText;
+    try { ours = S.toCloud(S.parseJson(localRaw), ctx); theirsText = JSON.stringify(S.parseJson(cloudRaw)); } catch { return { stale: true }; }
+    const oursText = JSON.stringify(ours);
+    if (sha(oursText) !== lh || sha(theirsText) !== ch) return { stale: true };
+    let base = null; if (baseFile) { try { base = S.parseJson(fs.readFileSync(baseFile, 'utf8')); } catch { base = null; } }
+    const r = S.merge3(base, ours, S.toCloud(JSON.parse(theirsText), ctx), { counters, keepAll });
+    const text = JSON.stringify(r.value); const hm = sha(text);
+    let localOut = null;
+    if (hm !== lh) {
+      if (recovery) atomicText(recovery, localRaw);
+      if (aside && Array.isArray(r.value)) sceneAside(aside, S.parseJson(localRaw), r.value, localRaw);
+      const pretty = localRaw.length < 2 || /^[[{]\s/.test(localRaw.slice(0, 2));
+      const local = S.fromCloud(r.value, ctx);
+      localOut = pretty ? JSON.stringify(local, null, 2) : JSON.stringify(local);
+    }
+    return { text, hm, localOut, conflicts: r.conflicts, theirsText: r.conflicts.length ? theirsText : null, oursText: hm !== lh && oursText.length < 16e6 ? oursText : null }; // (only what the main side uses: less to copy over)
   },
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {

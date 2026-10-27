@@ -21,6 +21,7 @@ const arg = (n, d) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] :
 const ONLY = arg('--only', '');
 const SEEDS = Number(arg('--seeds', 4));
 const VERBOSE = argv.includes('--verbose') || Boolean(process.env.SYNC72_VERBOSE);
+const THREAD = argv.includes('--thread'); // every computer's big-store work on the store thread (as in the app)
 
 let failures = 0; let passes = 0;
 const ok = (cond, what, detail) => { if (cond) passes += 1; else { failures += 1; console.log(`FAIL ${what}${detail !== undefined ? ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 400)}` : ''}`); } };
@@ -36,7 +37,20 @@ function world(name, o = {}) {
   w.rnd = () => { w.seed = (w.seed * 1103515245 + 12345) & 0x7fffffff; return w.seed / 0x7fffffff; };
   return w;
 }
-// o: { platform, style, placeholders, nfd, skew, partialDown, slowUp, auto }
+// the store thread, as in the app (storework.js: syncHash / syncPull / syncMerge); one for the whole run
+let worker = null; let wseq = 0; const wjobs = new Map();
+function runOff(op, args) {
+  if (!worker) {
+    const { Worker } = require('worker_threads');
+    worker = new Worker(path.join(__dirname, '..', 'storework.js'));
+    worker.unref();
+    worker.on('message', ({ id, res, err }) => { const j = wjobs.get(id); if (!j) return; wjobs.delete(id); if (err) j.reject(new Error(err)); else j.resolve(res); });
+  }
+  // reading a placeholder downloads it (the OS does it on a real Mac / PC; here the provider lives in this thread)
+  for (const f of [args.file, args.cloudFile, args.localFile]) if (f) Sim.hydrate(Sim.ci(f));
+  return new Promise((resolve, reject) => { const id = ++wseq; wjobs.set(id, { resolve, reject }); worker.postMessage({ ...args, op, id }); });
+}
+// o: { platform, style, placeholders, nfd, skew, partialDown, slowUp, auto, thread (every store through the store thread) }
 function computer(w, name, o = {}) {
   const base = path.join(w.dir, name);
   const m = { name, w, auto: o.auto !== undefined ? o.auto : true, skew: o.skew || 0, pulled: [], autoResolved: [] };
@@ -55,6 +69,7 @@ function computer(w, name, o = {}) {
     cloudAttributes: m.view.attributes, requestDownload: (file) => m.view.request(file),
     autoResolve: () => m.auto, onAutoResolved: (r) => m.autoResolved.push(r), onPulled: (l) => m.pulled.push(...l),
     log: VERBOSE ? (...a) => console.log(`  ${name}:`, ...a) : undefined,
+    ...((o.thread ?? THREAD) ? { offMin: 0, hashJson: (file, a) => runOff('syncHash', { file, ...a }), pullJson: (a) => runOff('syncPull', a), mergeJson: (a) => runOff('syncMerge', a) } : {}),
     ...extra,
   });
   m.e = m.make();
@@ -482,13 +497,63 @@ scenario('provider-copies', async () => {
   }
 });
 
-// ---------- 12. everything at once, randomized ----------
+// ---------- 12. conflicts the owner settles (Keep PC / Keep Mac / Keep both), and what "waiting" says ----------
+scenario('choices', async () => {
+  const w = world('choices');
+  const pc = computer(w, 'PC', { platform: 'win32', auto: false });
+  const mac = computer(w, 'Mac', { platform: 'darwin', auto: false });
+  pc.write('kv/three-sketches.json', [scene('s1', [layer('l1', CODE)])]);
+  pc.write('chats/t.json', chat('t', [msg('user', 1, 'hi')], { title: 'Start' }));
+  pc.write('attachments/cover.png', Buffer.alloc(3000, 1));
+  ok(await converge(w) > 0, 'choices: first sync', why(w));
+  const twoWays = async () => {
+    mac.view.online = false;
+    pc.edit('kv/three-sketches.json', (l) => { l[0].layers[0].code = l[0].layers[0].code.replace('const c = 3;', 'const c = 30; // PC'); l[0].name = 'Neon (PC)'; });
+    pc.edit('chats/t.json', (c) => { c.title = 'Named on the PC'; });
+    pc.write('attachments/cover.png', Buffer.alloc(3100, 2));
+    await round(w); await round(w);
+    mac.edit('kv/three-sketches.json', (l) => { l[0].layers[0].code = l[0].layers[0].code.replace('const c = 3;', 'const c = 300; // Mac'); l[0].name = 'Neon (Mac)'; });
+    mac.edit('chats/t.json', (c) => { c.title = 'Named on the Mac'; });
+    mac.write('attachments/cover.png', Buffer.alloc(3200, 3));
+    mac.view.online = true;
+    return converge(w);
+  };
+  ok(await twoWays() > 0, 'choices: converges with conflicts left for the owner', why(w));
+  const list = await mac.e.conflicts();
+  ok(list.length >= 3 && ['kv/three-sketches.json', 'chats/t.json', 'attachments/cover.png'].every((r) => list.some((c) => c.rel === r)), 'choices: a scene, a chat title and a picture are listed as conflicts', list.map((c) => c.rel));
+  ok(mac.last.state === 'conflict' && mac.last.conflicts >= 3, 'choices: the status says conflict, with the count', mac.last.state);
+  const pv = await mac.e.preview(list.find((c) => c.rel === 'kv/three-sketches.json').id);
+  ok(pv && pv.canBoth && pv.canMerge && Array.isArray(pv.ours) && Array.isArray(pv.theirs) && pv.fromPlatform, 'choices: both versions side by side, "Keep both" offered for a scene', pv && { canBoth: pv.canBoth, from: pv.from, fromPlatform: pv.fromPlatform });
+  // Keep both on the scene, Keep PC (theirs, seen from the Mac) on the chat, Keep Mac (mine) on the picture
+  const byRel = (r) => list.find((c) => c.rel === r).id;
+  ok((await mac.e.resolve(byRel('kv/three-sketches.json'), 'both')).ok, 'choices: Keep both (scene)');
+  ok((await mac.e.resolve(byRel('chats/t.json'), 'theirs')).ok, 'choices: Keep PC (chat)');
+  ok((await mac.e.resolve(byRel('attachments/cover.png'), 'mine')).ok, 'choices: Keep Mac (picture)');
+  for (const c of await pc.e.conflicts()) await pc.e.resolve(c.id, 'mine'); // the PC's own records of the same pairs (none is left behind)
+  ok(await converge(w) > 0, 'choices: converges after the choices', why(w));
+  for (const m of [pc, mac]) {
+    const sc = m.json('kv/three-sketches.json');
+    const names = sc.map((s) => s.name);
+    ok(sc.length === 2 && names.some((n) => /^Neon \((PC|Mac)\)$/.test(n)) && names.some((n) => /\(from (PC|Mac)\)$/.test(n)), `choices: Keep both left both scenes, one named "(from …)", on the ${m.name}`, names);
+    ok(sc.some((s) => s.layers[0].code.includes('// PC')) && sc.some((s) => s.layers[0].code.includes('// Mac')), `choices: both versions of the code are there, on the ${m.name}`);
+  }
+  ok(!copies(pc).length && !copies(mac).length, 'choices: no duplicate files', [...copies(pc), ...copies(mac)]);
+  // waiting, in words: a file only in the cloud (an iCloud stub of a big video) is listed with its reason
+  const w2 = world('waiting');
+  const a = computer(w2, 'PC', { platform: 'win32' });
+  const b = computer(w2, 'Mac', { platform: 'darwin', placeholders: 'stub' });
+  a.write('captures/long.mp4', Buffer.alloc(9 * 1024 * 1024, 5));
+  for (let i = 0; i < 6; i++) await round(w2);
+  ok(b.last.pending >= 1 && b.last.waiting.some((x) => x.rel === 'captures/long.mp4' && x.why === 'cloud-only'), 'waiting: a big video only in the cloud is listed by name, "cloud-only"', b.last.waiting);
+});
+
+// ---------- 13. everything at once, randomized ----------
 scenario('random', async () => {
   for (let sd = 1; sd <= SEEDS; sd++) {
     const w = world(`random-${sd}`, { seed: sd * 7919 });
     const R = w.rnd; const pick = (a) => a[Math.floor(R() * a.length)];
-    const pc = computer(w, 'PC', { platform: 'win32', placeholders: pick([null, 'win']), style: pick(['onedrive', 'dropbox', 'icloud']), skew: Math.floor((R() - 0.5) * 240000), slowUp: 64 * 1024 });
-    const mac = computer(w, 'Mac', { platform: 'darwin', nfd: true, placeholders: pick([null, 'stub', 'dataless']), skew: Math.floor((R() - 0.5) * 240000), partialDown: 64 * 1024 });
+    const pc = computer(w, 'PC', { platform: 'win32', placeholders: pick([null, 'win']), style: pick(['onedrive', 'dropbox', 'icloud']), skew: Math.floor((R() - 0.5) * 240000), slowUp: 64 * 1024, thread: THREAD || R() < 0.5 });
+    const mac = computer(w, 'Mac', { platform: 'darwin', nfd: true, placeholders: pick([null, 'stub', 'dataless']), skew: Math.floor((R() - 0.5) * 240000), partialDown: 64 * 1024, thread: THREAD || R() < 0.5 });
     const said = new Map(); // chat id → texts that must survive
     let at = 10;
     const say = (m, id) => { const t = `${m.name} ${at}`; m.edit(`chats/${id}.json`, (c) => { (c || (c = chat(id, []))).messages.push(msg('user', at++, t)); return c; }); said.get(id).add(t); };

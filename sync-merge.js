@@ -243,6 +243,42 @@ function mergeArr(b, o, t, p, c, opt, noBase) {
   return o;
 }
 
+// ---------- "Keep both" for data (round 72, sync72) ----------
+// Everything from both versions; where they differ, this computer's value stays and the other one is added beside it:
+// an item of a list with ids (a Lab scene, a board, a project) as a copy named "… (from Mac)", text as both texts.
+// Anything else that differs keeps this computer's value (the other version waits in Deleted files, as always).
+function keepBoth(ours, theirs, from = 'the other computer', id = () => Math.random().toString(36).slice(2, 7)) {
+  const r = merge3(null, ours, theirs, { keepAll: true });
+  const out = r.value;
+  const done = new Set();
+  const copyOf = (x) => {
+    const y = clone(x);
+    if (isObj(y)) {
+      if (typeof y.id === 'string' || typeof y.id === 'number') y.id = `${y.id}-${id()}`;
+      for (const k of ['name', 'title', 'label']) if (typeof y[k] === 'string') { y[k] = `${y[k]} (from ${from})`; break; }
+    }
+    return y;
+  };
+  for (const c of r.conflicts) {
+    const segs = c.path === '(whole file)' ? [] : String(c.path).split('.');
+    let o = out; let t = theirs;
+    for (let i = 0; i < segs.length; i++) {
+      const seg = segs[i];
+      if (Array.isArray(o) && Array.isArray(t)) {
+        const find = (list) => list.findIndex((x) => { const k = keyOf(x); return k !== null && k.replace(/^\w+:/, '') === seg; });
+        const io = find(o); const it = find(t);
+        const key = segs.slice(0, i + 1).join('.');
+        if (io >= 0 && it >= 0 && !done.has(key)) { done.add(key); o.splice(io + 1, 0, copyOf(t[it])); }
+        break;
+      }
+      if (!isObj(o) || !isObj(t)) break;
+      if (i === segs.length - 1) { if (typeof o[seg] === 'string' && typeof t[seg] === 'string' && o[seg] !== t[seg]) o[seg] = `${o[seg]}${o[seg].includes('\n') || t[seg].includes('\n') ? '\n' : ' / '}${t[seg]}`; break; }
+      o = o[seg]; t = t[seg];
+    }
+  }
+  return out;
+}
+
 // ---------- path forms (Mac ⇄ Windows) ----------
 // ctx: { dataDir, cloudRoot, home, win (this computer is Windows), aliases: { data: [], cloud: [], home: [] } (other
 // computers' folders, from their machine records), ext: { rel → absolute path } (renders kept outside the data folder) }
@@ -439,7 +475,7 @@ function proposeCloud(list) {
 module.exports = {
   parseJson, watchIgnored,
   ignoredName, localOnly, dirLocalOnly, isJsonRel, isWorkspaceRel, HEAVY_DIRS, isCounterRel, MEDIA,
-  eq, clone, merge3, keyOf, mergeText, PROSE_KEY,
+  eq, clone, merge3, keyOf, mergeText, PROSE_KEY, keepBoth,
   toCloud, fromCloud, strToCloud, strFromCloud, withExt, isWinPath,
   portableConfig, applyPortable, stripMachine,
   detectClouds, proposeCloud,
