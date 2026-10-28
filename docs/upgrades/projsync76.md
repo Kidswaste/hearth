@@ -93,7 +93,7 @@ and missing means deleted (faded on the Desk, as before) and isn't counted.
 - `dev/projects-test.js` updated: in the list and Recently deleted at once now means "merged by sync" (see 4).
 - Ran: unit:projsync76-test, unit:sync72-test, unit:syncstate75-test, unit:synchard74-test, unit:versions75-test,
   unit:projbundle-test, unit:sync-test, unit:projects-test, projects, project-continuity, sync72, lazy, unit:boot-test,
-  projsync76 (results in the round report).
+  projsync76: all pass (app checks under the shared lock).
 
 ## Numbers
 - First screen: `lazy-data.js` +~40 bytes (one file and one global in the `projects` group). Everything else is in
