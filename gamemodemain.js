@@ -390,7 +390,12 @@ function register(ipcMain, c) {
     if (what === 'note') { Promise.resolve(pnotes()?.take?.({ by: 'chip' })).catch(() => {}); return; }
     const w = ctx.getWin(); if (what === 'hitch' && w && !w.isDestroyed()) w.webContents.send('game:chip-ev', { what: 'hitch' });
     if ((what === 'quality-auto' || what === 'quality-full') && w && !w.isDestroyed()) w.webContents.send('game:chip-ev', { what: 'quality', value: what.slice(8) }); // (round 72, labfps72: the hub keeps the choice)
+    // (round 76, gpuplay76) 📈 the chip's Test performance, and the test card's buttons (Copy report, a fix): the hub does them
+    if (what === 'perftest' && w && !w.isDestroyed()) w.webContents.send('game:chip-ev', { what: 'perftest' });
+    if (/^perf:[a-z0-9-]{1,24}$/.test(String(what)) && w && !w.isDestroyed()) w.webContents.send('game:chip-ev', { what: 'perf', value: what.slice(5) });
   });
+  // (round 76, gpuplay76) the performance test's card over the game (game-preload.js draws it): waiting / measuring / the report
+  ipcMain.handle('game:perf-card', hub((_e, d) => { if (!G?.win || G.win.isDestroyed()) return false; G.win.webContents.send('game:perf', d && typeof d === 'object' ? d : {}); return true; }));
   // checks: run a line in the game window's page, press a key / click there (real input, through Chromium)
   ipcMain.handle('game:eval', hub(async (_e, code) => { if (!G?.win || G.win.isDestroyed()) return { error: 'not playing' }; try { return { value: await G.win.webContents.executeJavaScript(String(code), true) }; } catch (err) { return { error: err.message }; } }));
   ipcMain.handle('game:key', hub((_e, { key = 'Escape', mods = [] } = {}) => {

@@ -30,6 +30,7 @@ const GameMode = (() => {
   const Loop = () => (typeof PlayLoop !== 'undefined' ? PlayLoop : null); // (round 53, playloop: same group, after this file)
   const Notes = () => (typeof PlayNotes !== 'undefined' ? PlayNotes : null); // (round 62, playnotes62: same group, after playloop.js)
   const Hitch = () => (typeof HitchMap !== 'undefined' ? HitchMap : null); // (round 63, hitchmap63: same group, after playnotes.js)
+  const Perf76 = () => (typeof GpuPlay !== 'undefined' ? GpuPlay : null); // (round 76, gpuplay76: same group, after hitchmap.js)
 
   // ---------- a Lab scene's data (the Lab's own list when it's loaded: the newest edits) ----------
   async function sketches() { return Lab()?.scenes?.all?.() || (await window.hub.kvGet('three-sketches', [])) || []; }
@@ -191,6 +192,7 @@ const GameMode = (() => {
       { label: 'Best', hint: 'sharp textures, true colours, shadows matched to the screen', checked: lookPref() === 'best', action: () => toast(setLook('best'), { timeout: 2500 }) },
       { label: 'Balanced', hint: 'sharp textures; the rest as the game sets it', checked: lookPref() === 'balanced', action: () => toast(setLook('balanced'), { timeout: 2500 }) },
     ] });
+    if (Perf76()) items.push('-', ...Perf76().menuItems()); // (round 76, gpuplay76) 📈 Test play performance · Last performance report
     return [...(Loop()?.menuItems?.(ds) || []), ...(Notes()?.menuItems?.() || []), ...(Hitch()?.menuItems?.() || []), ...items]; // (round 53, playloop: Back to the game, Play from here, Side by side) · (round 62, playnotes62: ✎ Playtest log) · (round 63, hitchmap63: Record the hitch map, ▦ Hitch map)
   }
   async function menu(x, y) { showMenu(x, y, await menuItems()); }
@@ -261,11 +263,15 @@ const GameMode = (() => {
     },
   });
   Commands.register({
-    name: 'game', area: 'Lab', args: '[stop | screens | input | latency | lowlatency on|off | look best|balanced | quality auto|full | look shadows [reset] | helpers [on] | ready]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it; ready: how long getting ready took, step by step',
-    examples: ['/game', '/game stop', '/game screens', '/game input', '/game latency', '/game look balanced', '/game helpers', '/game ready'], keywords: 'play clink game mode raw mouse input latency lag delay responsive helpers overhead budget ready loading time',
-    complete: () => ['stop', 'screens', 'input', 'latency', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'quality auto', 'quality full', 'look shadows', 'look shadows reset', 'helpers', 'helpers on', 'ready'].map((v) => ({ value: v })),
+    name: 'game', area: 'Lab', args: '[stop | screens | input | latency | lowlatency on|off | look best|balanced | quality auto|full | look shadows [reset] | helpers [on] | ready | test [secs] | report]', desc: 'Play the last game again (or the Lab scene open now); stop leaves it; ready: how long getting ready took, step by step; test: 20 s measured, in plain words',
+    examples: ['/game', '/game stop', '/game screens', '/game input', '/game latency', '/game look balanced', '/game helpers', '/game ready', '/game test'], keywords: 'play clink game mode raw mouse input latency lag delay responsive helpers overhead budget ready loading time fps framerate performance gpu test benchmark',
+    complete: () => ['stop', 'screens', 'input', 'latency', 'lowlatency on', 'lowlatency off', 'look best', 'look balanced', 'quality auto', 'quality full', 'look shadows', 'look shadows reset', 'helpers', 'helpers on', 'ready', 'test', 'report'].map((v) => ({ value: v })),
     run: async (args) => {
       const a = String(args || '').trim();
+      // (round 76, gpuplay76) 📈 Test play performance (gpuplay.js): the card shows in the game; report: the last one here
+      const pt = a.match(/^(?:test|perf(?:ormance)?|benchmark)(?:\s+(\d{1,3}))?$/i);
+      if (pt && Perf76()) { const r = await Perf76().test({ secs: Math.min(120, Math.max(3, Number(pt[1]) || 20)) }); return r ? `${r.title}: ${r.sum.headline}` : null; }
+      if (/^report$/i.test(a) && Perf76()) { Perf76().dialog(); return null; }
       if (/^(stop|leave|quit|off)$/i.test(a)) { if (!now) return 'No game is playing.'; leave(); return null; }
       // (round 53, gameinput) the game window's input
       const m = a.match(/^low-?latency\s+(on|off)$/i);
