@@ -32,7 +32,15 @@ const BUDGET = Object.assign({
   openProject: { spawns: 0, ps: 0, fsSync: 100, fsAsync: 100, stall: 300 },
   openLab: { spawns: 0, ps: 0, fsSync: 50, fsAsync: 100, stall: 300 },
   soundDesk: { spawns: 1, ps: 0, fsSync: 100, fsAsync: 100, stall: 300 },
-  playTest: { spawns: 0, ps: 0, fsSync: 150, fsAsync: 100, stall: 400 },
+  // (round 79, winstart79) ▶ Play: 62 → 37 sync calls (the rest: the store / readyspeed reads, not the build), worst stall
+  // 60–293 → 0 ms (three.js read + written asynchronously, kept between builds; modules, session and the player's page
+  // made ahead: HEARTH_GAME_WARM=1 here, for the owner a game played in the last 2 weeks); firstMs (asked → page
+  // loaded) 387 → 310 ms on this box
+  playTest: { spawns: 0, ps: 0, fsSync: 50, fsAsync: 200, stall: 120, firstMs: 2500 },
+  // (round 79, winstart79) an engine check (both engines, pinned fake engines here: kept copies): the sign-in questions
+  // (1 each, never kept) and ≈ 16 sync calls; the Windows scan itself (≈ 250 sync calls → 0, ≈ 40 async on a kept
+  // answer) is counted in dev/winstart79-test.js (no Windows PC here, and a test copy never scans the machine)
+  engineCheck: { spawns: 4, ps: 0, fsSync: 40, fsAsync: 200, stall: 150 },
   syncFirst: { spawns: 0, ps: 0, fsSync: 400, fsAsync: 70000, stall: 1500 },
   syncChange: { spawns: 0, ps: 0, fsSync: 150, fsAsync: 24000, stall: 250 },
 }, window.WP_BUDGET || {});
@@ -58,7 +66,7 @@ async function act(name, fn, settle = 1500) {
 function judge() {
   for (const [name, b] of Object.entries(BUDGET)) {
     const a = out.actions[name]; if (!a) { out.fails.push(`${name}: not measured`); continue; }
-    for (const k of ['spawns', 'ps', 'fsSync', 'fsAsync', 'stall']) if (a[k] != null && a[k] > b[k]) out.fails.push(`${name}: ${k} ${a[k]} > ${b[k]}`);
+    for (const k of ['spawns', 'ps', 'fsSync', 'fsAsync', 'stall', 'firstMs']) if (a[k] != null && a[k] > b[k]) out.fails.push(`${name}: ${k} ${a[k]} > ${b[k]}`);
   }
 }
 
@@ -106,6 +114,8 @@ await act('soundDesk', async () => {
   try { CreativePlayground.openFeature?.('vst'); } catch { /* none */ }
   await wait(2500);
 }, 2000);
+let playFirst = null; let warmBefore = null;
+try { warmBefore = (await window.hub.game.state())?.warm || null; } catch { /* older */ }
 await act('playTest', async () => {
   activate('tool:three');
   await until(() => ThreeLab.director, 'the Lab', 400);
@@ -117,11 +127,14 @@ renderer.setAnimationLoop((t) => { mesh.rotation.y = t / 1000; renderer.render(s
   await wait(1500);
   const btn = await until(() => document.querySelector('.surface.active [data-feature="Play"]') || document.querySelector('[data-feature="Play"]'), 'the Play button', 200);
   btn.click();
-  await until(async () => (await window.hub.game.state())?.playing, 'playing', 600, 100);
+  const st = await until(async () => { const x = await window.hub.game.state(); return x?.playing && x.timing?.loaded ? x : null; }, 'playing', 600, 100);
+  const T = st.timing; playFirst = { ms: T.loaded - T.asked, build: (T.built || T.asked) - T.asked, sessionMs: T.session ?? null, warm: T.warm ?? null, window: T.window - (T.built || T.asked), load: T.loaded - T.window, cached: T.cached };
   await wait(3000);
   await window.hub.game.leave();
   await until(async () => !(await window.hub.game.state())?.playing, 'left', 200, 100);
 }, 2000);
+if (out.actions.playTest && playFirst) { out.actions.playTest.firstMs = playFirst.ms; out.actions.playTest.first = playFirst; out.actions.playTest.warmBefore = warmBefore; }
+await act('engineCheck', async () => { await window.hub.engineInstalls({ engines: ['claude', 'codex'] }); }, 1500);
 // ---------- sync, last (its passes would land in the other actions): switched on (its first pass), then a pass after a change ----------
 const CLOUD = `${window.SMOKE_TMP}/wp78-cloud`;
 await window.hub.fs.write(`${CLOUD}/.keep`, '');
@@ -139,6 +152,6 @@ try { await window.hub.sync.off?.(); } catch { /* fine */ }
 
 judge();
 if (window.WP_REPORT) { out.report = out.fails; out.fails = []; }
-out.table = Object.entries(out.actions).map(([k, a]) => `${k.padEnd(12)} spawns ${a.spawns} (ps ${a.ps}) · fsSync ${a.fsSync} (+${a.fsSyncNode} Node's own; ${a.fsSyncMs} ms) · fsAsync ${a.fsAsync} · watch ${a.watch} · stall ${a.stall} ms (sim ${a.simSpentMs} ms)`);
+out.table = Object.entries(out.actions).map(([k, a]) => `${k.padEnd(12)} spawns ${a.spawns} (ps ${a.ps}) · fsSync ${a.fsSync} (+${a.fsSyncNode} Node's own; ${a.fsSyncMs} ms) · fsAsync ${a.fsAsync} · watch ${a.watch} · stall ${a.stall} ms (sim ${a.simSpentMs} ms)${a.first ? ` · first ▶ Play ${a.first.ms} ms (build ${a.first.build}, window ${a.first.window}, load ${a.first.load}; session ${a.first.sessionMs} ms, warm ${a.first.warm})` : ''}`);
 try { await window.hub.fs.write(`${window.SMOKE_TMP}/winperf78.json`, JSON.stringify(out, null, 1)); out.file = `${window.SMOKE_TMP}/winperf78.json`; } catch { /* the printed result */ }
 return out;

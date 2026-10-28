@@ -126,8 +126,17 @@ function login(id, { paths = {} } = {}) {
 }
 
 // ---------- three.js, copied next to the page ----------
+// (round 79, winstart79) the answer kept a few minutes (each ▶ Play / publish asked again: a few synchronous opens)
+const srcMemo = new Map();
 function threeSources(version, opts = {}) {
   const dirs = [opts.threeDir, process.env.HEARTH_THREE_DIR, path.join(__dirname, 'node_modules', 'three'), path.join(ROOT(), `three@${version}`)].filter(Boolean);
+  const k = `${version}|${dirs.join('|')}`; const m = srcMemo.get(k);
+  if (m && Date.now() - m.at < 5 * 60e3) return m.dirs;
+  const found = threeSourcesNow(version, dirs);
+  if (found.length) srcMemo.set(k, { at: Date.now(), dirs: found }); // (none yet: asked again, the download makes one)
+  return found;
+}
+function threeSourcesNow(version, dirs) {
   return dirs.filter((d) => {
     try { const v = JSON.parse(fs.readFileSync(path.join(d, 'package.json'), 'utf8')).version; return !v || v === version; } catch { return exists(path.join(d, 'build')); }
   });
@@ -158,10 +167,14 @@ async function fetchThree(version, rel) {
 }
 async function vendorThree(version, codes, dest, opts = {}) {
   const srcs = threeSources(version, opts);
+  // (round 79, winstart79) read and written asynchronously (three.js is 1.3 MB: the synchronous read + write held the
+  // main thread ≈ 200 ms at a ▶ Play / publish, longer on Windows with Defender scanning the new file); a file already
+  // there with the same size (▶ Play rebuilding a scene of the same three.js) isn't written again
   const read = async (rel) => {
-    for (const d of srcs) { const f = path.join(d, rel); if (exists(f)) return fs.readFileSync(f, 'utf8'); }
+    for (const d of srcs) { const f = path.join(d, rel); try { return await fs.promises.readFile(f, 'utf8'); } catch { /* the next source */ } }
     return fetchThree(version, rel);
   };
+  const same = async (out, text) => { try { return (await fs.promises.stat(out)).size === Buffer.byteLength(text); } catch { return false; } };
   const want = ['build/three.module.js', 'examples/jsm/controls/OrbitControls.js'];
   for (const code of codes) for (const s of C.importsOf(code)) { const r = C.threePath(s); if (r) want.push(r); }
   const done = new Set();
@@ -173,8 +186,7 @@ async function vendorThree(version, codes, dest, opts = {}) {
     let text;
     try { text = await read(rel); } catch (err) { if (rel === 'build/three.module.js') throw err; missing.push(rel); continue; }
     const out = path.join(dest, ...rel.split('/'));
-    fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, text);
+    if (!(await same(out, text))) { await fs.promises.mkdir(path.dirname(out), { recursive: true }); await fs.promises.writeFile(out, text); }
     for (const s of C.importsOf(text)) {
       if (s.startsWith('.')) want.push(path.posix.join(path.posix.dirname(rel), s));
       else { const r = C.threePath(s); if (r) want.push(r); }
