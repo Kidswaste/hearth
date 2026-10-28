@@ -4194,7 +4194,10 @@ ${code}
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
-      if (firstId && lastMedia && extras[firstId]?.media === undefined) { (extras[firstId] ||= {}).media = { path: lastMedia, time: 0 }; saveExtras(); }
+      // (round 76, labframe76) only when no scene has a song of its own yet (a store from before per-scene songs):
+      // 'three.media' is the last song loaded anywhere, so every Lab start used to hand it to an open scene that never
+      // had one — the timeline then opened ≈ 0.1 s after the Lab was laid out (every canvas resized once)
+      if (firstId && lastMedia && extras[firstId]?.media === undefined && !Object.values(extras).some((x) => x && 'media' in x)) { (extras[firstId] ||= {}).media = { path: lastMedia, time: 0 }; saveExtras(); }
       // the starter scene: saved only when there truly were no scenes (not when the read failed, nor when copies of
       // earlier scenes exist: then it waits on screen and the Recover card offers them)
       const fresh = !sketches.length;

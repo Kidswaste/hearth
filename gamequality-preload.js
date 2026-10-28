@@ -115,37 +115,53 @@ function gameQualityPage(o) {
     return n;
   }
   // ---------- the looks ----------
-  const phase = () => { try { return window.__gameReady ? JSON.parse(window.__gameReady.pub()).phase : 'playing'; } catch (e) { return 'playing'; } };
+  // (round 76, labframe76) the phase read straight off getting ready's state (pub() built and parsed the whole state as
+  // text every second: ≈ 40 B a frame of garbage in gcchurn60's ▶ Play measure)
+  const phase = () => { try { const S = window.__gameReady; return S ? (typeof S.phase === 'string' ? S.phase : JSON.parse(S.pub()).phase) : 'playing'; } catch (e) { return 'playing'; } };
   let playingSince = 0;
-  function look() {
-    return new Promise((res) => {
-      const g = []; let last = 0; const t0 = now();
-      const f = (t) => {
-        const a = now();
-        if (last) g.push(t - last);
-        last = t;
-        SP[0] += now() - a;
-        if (g.length >= N || now() - t0 > 4000) { g.sort((x, y) => x - y); res(g.length >= 6 ? { med: g[g.length >> 1], p90: g[Math.min(g.length - 1, Math.floor(g.length * 0.9))], n: g.length } : null); } else realRAF(f);
-      };
-      realRAF(f);
-    });
+  // (round 76, labframe76) a look allocates nothing per frame and nothing per second it doesn't need: one kept frame
+  // callback, the gaps in a kept Float64Array, the frames' own timestamps (no clock read per frame), one kept answer, and no promise / async step per tick (gcchurn60 read them as ≈ 90 B a frame of Hearth's)
+  const G = new Float64Array(N); const GT = new Float64Array(1); // GT[0]: the last frame's time
+  let gn = 0; let gOn = false; let gCap = false; let gFirst = true;
+  const LK = { med: 0, p90: 0, n: 0 };
+  // (one subtraction a frame; the 4 s limit is one timer per look, not a clock compare per frame; the gaps sorted by the
+  // engine in place, the unused tail padded with Infinity: a sort written here boxed every number it compared)
+  function lookFrame(t) {
+    if (!gOn) return;
+    if (gFirst) { gFirst = false; GT[0] = t; realRAF(lookFrame); return; }
+    G[gn] = t - GT[0]; gn += 1; GT[0] = t;
+    if (gn < N && !gCap) { realRAF(lookFrame); return; }
+    lookEnd();
   }
+  function lookEnd() {
+    if (!gOn) return;
+    gOn = false;
+    if (gn < 6) { lookDone(null); return; }
+    G.fill(Infinity, gn); G.sort();
+    LK.med = G[gn >> 1]; LK.p90 = G[Math.min(gn - 1, Math.floor(gn * 0.9))]; LK.n = gn;
+    lookDone(LK);
+  }
+  let gGen = 0;
+  function lookStart() { gn = 0; gFirst = true; gCap = false; gOn = true; const my = ++gGen; realRAF(lookFrame); realTimeout(() => { if (gOn && gGen === my) { gCap = true; lookEnd(); } }, 4000); }
   let busy = false;
-  async function tick() {
-    realTimeout(tick, EVERY);
-    if (busy || document.hidden) { playingSince = document.hidden ? 0 : playingSince; return; }
-    if (phase() !== 'playing') { playingSince = 0; return; }
-    if (!playingSince) { playingSince = now(); return; }
-    if (now() - playingSince < 2000) return; // (the first 2 s of play: the game settles, gamelook's first look)
-    busy = true;
+  function lookDone(L) {
+    SP[1] += 1;
     try {
-      const L = await look(); SP[1] += 1;
       if (!L) return;
       const a = now();
       const v = core.feed(L, BUDGET, now());
       if (v.step) { const n = apply(v.scale); log.push([Math.round(now()), v.scale, v.why, +L.med.toFixed(2), n]); if (log.length > 20) log.shift(); }
       SP[0] += now() - a;
     } finally { busy = false; }
+  }
+  function tick() {
+    realTimeout(tick, EVERY);
+    if (busy || gOn || document.hidden) { playingSince = document.hidden ? 0 : playingSince; return; }
+    if (phase() !== 'playing') { playingSince = 0; return; }
+    if (!playingSince) { playingSince = now(); return; }
+    if (now() - playingSince < 2000) return; // (the first 2 s of play: the game settles, gamelook's first look)
+    busy = true;
+    lookStart();
   }
   realTimeout(tick, EVERY);
   const pct = () => `${Math.round(scale * 100)} %`;
