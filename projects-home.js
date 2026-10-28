@@ -80,7 +80,7 @@ const ProjectsHome = (() => {
   // what the Desk shows, as text: each item's name, time, picture and presence (a few ms for 771 items), the scene's
   // modules, the current scene, and the minute its times are written in (sources re-read after 15–30 s give new
   // arrays with the same content: compared by what they say, not by identity)
-  const deskSigOf = (p) => { const sc = window.ThreeLab?.scenes?.get?.(ProjectWorkspace.currentScene() || p.workspace?.sceneId); return JSON.stringify([p.updated, p.items.map((x) => `${P.nameOf(x)}\u0001${P.timeOf(x) || x.at}\u0001${P.thumbOf(x) || ''}\u0001${P.gone(x) ? 1 : 0}`), sc ? sc.layers?.map((x) => `${x.id}:${x.name}:${x.visible !== false}`) : null, ProjectWorkspace.currentScene(), Math.floor(Date.now() / 60000)]); };
+  const deskSigOf = (p) => { const sc = (typeof ThreeLab !== 'undefined' ? ThreeLab : null)?.scenes?.get?.(ProjectWorkspace.currentScene() || p.workspace?.sceneId); return JSON.stringify([p.updated, p.items.map((x) => `${P.nameOf(x)}\u0001${P.timeOf(x) || x.at}\u0001${P.thumbOf(x) || ''}\u0001${P.gone(x) ? 1 : 0}`), sc ? sc.layers?.map((x) => `${x.id}:${x.name}:${x.visible !== false}`) : null, ProjectWorkspace.currentScene(), Math.floor(Date.now() / 60000)]); }; // (round 76, projsync76) ThreeLab is a const, never on window: the scene's modules were left out of the sig (a Desk visit after a layer changed kept the old list)
 
   // ---------- the cards ----------
   let homeN = 0;
@@ -243,7 +243,13 @@ const ProjectsHome = (() => {
   // from what sync already reports: no timer, no extra reads). Its words change when sync reports (Sync.listen) or
   // something lands (the Desk is drawn again); a click opens the sync panel. Nothing while sync is off.
   let dataDir = null;
-  const present = (x) => (['chat', 'scene', 'seq', 'board'].includes(x.type) ? !P.gone(x) : null);
+  // what this computer has: the Lab's and the boards' own lists when they're loaded (the Desk's cached look can be up
+  // to 20 s behind: a scene made a moment ago here isn't "arriving"), else the look
+  function present(x) {
+    if (x.type === 'scene' || x.type === 'seq') { const L = Lazy.loaded('lab') && typeof ThreeLab !== 'undefined' ? ThreeLab.scenes : null; if (L?.get) return Boolean(L.get(x.ref)); }
+    if (x.type === 'board' && Lazy.loaded('board') && typeof Board !== 'undefined' && Board.boards) { try { const list = Board.boards(); if (list?.length) return list.some((b) => b.id === x.ref); } catch { /* not ready */ } }
+    return ['chat', 'scene', 'seq', 'board'].includes(x.type) ? !P.gone(x) : null;
+  }
   function syncStatus(p) {
     if (typeof Sync === 'undefined' || typeof ProjSyncCore === 'undefined') return null;
     if (dataDir === null) { dataDir = ''; P.Src.workspaceDir().then((d) => { dataDir = String(d || '').replace(/[\\/]workspace$/, ''); S.body?.querySelectorAll('.pj-sync-line').forEach((n) => n.refresh?.()); }).catch(() => {}); }
