@@ -90,6 +90,12 @@ async function renameRetry(from, to, check) {
   }
 }
 
+// (round 79, syncscope79) one file of a look (a scan): the last pass's look is kept between passes (a scoped pass
+// starts from it), 2 × 50,000 of these at 50,000 files: the absolute path is made when asked, not kept (≈ 20 MB less)
+class Ent {
+  constructor(root, key, r, size, mtime, placeholder) { this.root = root; this.key = key; this.r = r === key ? null : r; this.size = size; this.mtime = mtime; this.placeholder = placeholder; }
+  get file() { return path.join(this.root, ...(this.r ?? this.key).split('/')); }
+}
 function createEngine(o) {
   const now = o.now || (() => Date.now());
   const log = o.log || (() => {});
@@ -149,6 +155,9 @@ function createEngine(o) {
   const ready = loadState().catch((err) => { heldStart = true; log('state', err.message); }).finally(() => { loading = false; });
   const keysOf = (m) => Object.keys(store.plain(m)); // (round 75) through the plain object: Object.keys of a watched map (a Proxy) asks it key by key (≈ 10× slower at 50,000)
   const afterLoad = (fn) => async (...a) => { await ready; return fn(...a); };
+  // (round 79, syncscope79) fix / Free up space / a conflict's choice / a restore write files outside a pass: the next
+  // pass looks at everything (it doesn't trust what the last one saw)
+  const wrote = (fn) => async (...a) => { try { return await fn(...a); } finally { needFull = 'wrote'; } };
   const saveState = (checkpoint = false) => {
     if (heldStart || loading) return; // (round 43, datasafe) the real one couldn't be read yet: never written over
     if (checkpoint && now() - checkedAt < Math.max(5000, store.stats().costMs * 40)) return; // (round 74) ≤ ~2.5 % of a pass
@@ -304,8 +313,11 @@ function createEngine(o) {
   // ---------- scanning ----------
   // (round 43, datasafe) a folder that can't be listed (held, a cloud client busy with it) is "unknown", not "empty":
   // walk.blind collects it, and nothing under it is deleted or pulled over this pass
-  async function walk(root, fn, rel = '', blind = null) {
+  async function walk(root, fn, rel = '', blind = null, dirs = null) {
     let ents;
+    // (round 79, syncscope79) dirs: each folder's modified time, read BEFORE it is listed (a file added or removed after
+    // the listing changes it again): a scoped pass compares it to find adds / removes a watcher didn't report
+    if (dirs) { try { dirs.set(rel, (await fsp.stat(rel ? path.join(root, ...rel.split('/')) : root)).mtimeMs); } catch { dirs.delete(rel); } }
     // (round 74, synchard74) + a folder that was listed a moment ago and is gone now (a cloud drive unmounted / moved
     // mid-scan), or the whole folder gone, is unknown too: it read as "every file in it deleted"
     try { ents = await fsp.readdir(rel ? path.join(root, ...rel.split('/')) : root, { withFileTypes: true }); } catch (err) { if (blind && err.code !== 'ENOTDIR') blind.add(rel ? `${nfc(rel)}/` : ''); return; }
@@ -316,28 +328,37 @@ function createEngine(o) {
     const flush = async () => { if (!batch.length) return; const res = await Promise.all(batch.map(([e, r]) => fn(e, r))); batch = []; for (const c of res) if (typeof c === 'function') c(); };
     for (const e of ents) {
       const r = rel ? `${rel}/${e.name}` : e.name;
-      if (e.isDirectory()) { await flush(); if (!S.dirLocalOnly(nfc(r)) && !S.localOnly(`${nfc(r)}/x`)) await walk(root, fn, r, blind); continue; }
+      if (e.isDirectory()) { await flush(); if (!S.dirLocalOnly(nfc(r)) && !S.localOnly(`${nfc(r)}/x`)) await walk(root, fn, r, blind, dirs); continue; }
       batch.push([e, r]); if (batch.length >= WALK_N) await flush();
     }
     await flush();
   }
   const WALK_N = o.walkN || 24;
-  async function scanLocal() {
+  // (round 79, syncscope79) one file of the data folder → its entry (st0: already looked at, by a scoped pass)
+  const localFn = (out) => async (e, r, st0) => {
+    if (!e.isFile() || S.ignoredName(e.name) || S.localOnly(nfc(r))) return;
+    const file = path.join(dataDir, ...r.split('/'));
+    try { const st = st0 || await fsp.stat(file); return () => { const k = nfc(r); out.set(k, new Ent(dataDir, k, r, st.size, st.mtimeMs, false)); }; } catch (err) { return () => { if (err.code !== 'ENOENT') out.blind.add(nfc(r)); /* else gone */ }; } // (round 75) committed in order
+  };
+  async function scanLocal(dirs = null) {
     const out = new Map();
     out.blind = new Set();
-    await walk(dataDir, async (e, r) => {
-      if (!e.isFile() || S.ignoredName(e.name) || S.localOnly(nfc(r))) return;
-      const file = path.join(dataDir, ...r.split('/'));
-      try { const st = await fsp.stat(file); return () => out.set(nfc(r), { file, size: st.size, mtime: st.mtimeMs }); } catch (err) { return () => { if (err.code !== 'ENOENT') out.blind.add(nfc(r)); /* else gone */ }; } // (round 75) committed in order
-    }, '', out.blind);
+    await walk(dataDir, localFn(out), '', out.blind, dirs);
+    await localExtras(out);
+    return out;
+  }
+  async function localExtras(out) { // (round 79) config / theme and the renders outside the data folder: looked at every pass
+    for (const rel of out.extras || []) out.delete(rel); // (a scoped pass starts from the last pass's entries)
+    out.extras = new Set();
     for (const [rel, file] of Object.entries(SPECIAL)) {
       if (!file) continue;
-      try { const st = await fsp.stat(file); out.set(rel, { file, size: st.size, mtime: st.mtimeMs }); } catch { /* none */ }
+      try { const st = await fsp.stat(file); out.set(rel, { file, size: st.size, mtime: st.mtimeMs }); out.extras.add(rel); } catch { /* none */ }
     }
     // renders saved outside the data folder (Lab recordings and exports from before round 17), listed in kv/video-library
     refreshExt();
     for (const [rel, abs] of Object.entries(state.ext)) {
       if (out.has(rel)) continue;
+      out.extras.add(rel);
       try { const st = await fsp.stat(abs); out.set(rel, { file: abs, size: st.size, mtime: st.mtimeMs, ext: true }); } catch { out.set(rel, { unavailable: true }); }
     }
     return out;
@@ -375,11 +396,10 @@ function createEngine(o) {
     /^(.*) \([^()]*conflicted copy[^()]*(?:\(\d+\))?\)(\.[^./]+)?$/i, // Dropbox (round 72: also its second copy, "… copy 2026-10-27 (1))")
   ];
   const JSON_COPY = /^([\w-]+)(?: \d+| ?\(\d+\))\.json$/; // iCloud "x 2.json" / "x(1).json", Google Drive "x (1).json"
-  async function scanCloud(local = null) { // (round 74) local: this pass's local scan (which files changed here)
-    const out = new Map(); const copies = [];
-    out.blind = new Set(); out.secrets = []; // (round 74)
+  // (round 79, syncscope79) one file of the cloud folder → its entry, or a cloud client's copy (st0: already looked at)
+  const cloudFn = (out, copies) => {
     const hosts = new Set([machine.name, ...peers.map((p) => p.name)].filter(Boolean).map((n) => String(n).toUpperCase().replace(/\.LOCAL$/, '')));
-    await walk(FILES, async (e, r) => {
+    return async (e, r, st0) => {
       if (!e.isFile()) return;
       let name = e.name; let placeholder = false;
       const stub = /^\.(.+)\.icloud$/.exec(name);
@@ -387,11 +407,11 @@ function createEngine(o) {
       const rel = nfc(r.replace(/[^/]+$/, name));
       if (S.localOnly(rel)) { if (Hard.secretName(rel) && !/(^|\/)\./.test(rel)) out.secrets.push(rel); return; } // (round 74, synchard74) a key synced by an older version: shown, with a fix
       const file = path.join(FILES, ...r.split('/'));
-      let st; try { st = await fsp.stat(file); } catch (err) { return () => { if (err.code !== 'ENOENT') out.blind.add(rel); }; }
+      let st = st0; if (!st) try { st = await fsp.stat(file); } catch (err) { return () => { if (err.code !== 'ENOENT') out.blind.add(rel); }; }
       return () => { // (round 75, syncstate75) committed in the folder's order (walk looks at several files at once)
       // a Mac "dataless" file (Optimise Mac Storage, Google Drive streaming): stat works, reading downloads it
       if (!placeholder && platform === 'darwin' && st.size > 0 && st.blocks === 0) placeholder = true;
-      const ent = { file, size: placeholder && stub ? null : st.size, mtime: st.mtimeMs, placeholder };
+      const ent = new Ent(FILES, rel, r, placeholder && stub ? null : st.size, st.mtimeMs, placeholder); // (round 79: its path made when asked)
       // copies a cloud client made when both computers wrote the same file
       const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/') + 1) : '';
       let orig = null;
@@ -416,11 +436,20 @@ function createEngine(o) {
         // (same size and time as the file this computer wrote there)
         const c = state.cloud[orig];
         const ours = Boolean(c && c[2] && c[0] === st.size && c[1] === st.mtimeMs && c[2] === state.base[orig]);
-        copies.push({ rel, orig, ...ent, ours, unsure: unsure && !ours }); return;
+        copies.push({ rel, orig, file, size: ent.size, mtime: ent.mtime, placeholder: ent.placeholder, ours, unsure: unsure && !ours }); return;
       }
       out.set(rel, ent);
       };
-    }, '', out.blind);
+    };
+  };
+  async function scanCloud(local = null, dirs = null) { // (round 74) local: this pass's local scan (which files changed here)
+    const out = new Map(); const copies = [];
+    out.blind = new Set(); out.secrets = []; // (round 74)
+    await walk(FILES, cloudFn(out, copies), '', out.blind, dirs);
+    await probeWin(out, copies, local);
+    return { files: out, copies };
+  }
+  async function probeWin(out, copies, local) {
     if (platform === 'win32') {
       // (round 74, synchard74) only files new or changed since the last pass, in the cloud or here (sync may write over
       // its cloud copy), are asked about; one unchanged on both sides keeps its known hash whatever its download state.
@@ -433,7 +462,216 @@ function createEngine(o) {
         if (require('./cloud-files').pending(a)) { e.placeholder = true; e.downloading = true; e.cloudUnknown = !Number.isInteger(a); }
       }
     }
-    return { files: out, copies };
+  }
+
+  // ---------- (round 79, syncscope79) scoped passes ----------
+  // A pass used to look at (stat) every file on both sides: ≈ 2 × 50,000 calls at 50,000 files, for each change; on
+  // Windows each one goes through the antivirus and the cloud drive's filter. When the watchers say which paths changed
+  // (opts.scope: { local: [rel], cloud: [rel] }: paths in the data folder / in <cloud>/Hearth/files, files or folders),
+  // a pass starts from what the last pass saw and looks again only at:
+  //   · those paths (a folder: walked again; a path that appeared or went: its folder listed again, for its neighbours)
+  //   · what the last pass left open (waiting, held, retried) and every entry the state's cache doesn't confirm (sync's
+  //     own copies change the cache: those are looked at again, never trusted from the last look)
+  //   · the files the other computers' journals name since the last pass
+  //   · safety checks that catch a lost watcher event: some folders' modified times (adds / removes) and some files
+  //     (size + time), in turn, so every one is checked now and then
+  // A whole look (full pass) still happens: the first pass, after a wake, an error, a pass cut short, a folder that
+  // couldn't be read, a cloud folder that moved, an option changed, anything a fix / restore / conflict choice wrote,
+  // a lost event found by the checks (right away), and at least every o.fullEveryMs (6 h); the caller asks for more
+  // (syncmain.js: a watcher that failed or overflowed, idle on mains power). Nothing here decides what to copy: the
+  // plan is the same code on the same maps, and every write still checks its file right before (a stale entry only
+  // makes that file wait for the next pass, never overwrites anything).
+  const FULL_EVERY = o.fullEveryMs ?? 6 * 3600000;
+  const SAMPLE_N = o.sampleN ?? 48; const DIRS_N = o.dirsN ?? 256; const SCOPE_MAX = o.scopeMax ?? 4000; const RELIST_MAX = 64;
+  let seen = null; // the last pass's look: { local, cloud, dirsL, dirsC, filesId, fullAt, startedAt, touchy, keysL, keysC, dirKeysL, dirKeysC, cur }
+  let needFull = 'start'; // why the next pass must look at everything ('' = a scoped pass may run)
+  const jNew = new Set(); let jNewAll = false; // names the other computers' journals mention since the last pass
+  const scopeAcc = { local: new Set(), cloud: new Set(), full: false, any: false }; // asked for while a pass ran
+  let pendRels = new Set(); // this pass's names left open (all of them; `waiting` keeps 60)
+  const noteJournal = (rel) => { if (jNewAll) return; jNew.add(nfc(rel)); if (jNew.size > SCOPE_MAX) { jNewAll = true; jNew.clear(); } };
+  const scopeStats = { full: 0, scoped: 0, missed: 0, lastFull: 0, lastWhy: '', looked: 0, mode: '' };
+  function addScope(opts) {
+    if (!opts?.scope || opts.fresh || opts.mass) { scopeAcc.full = true; return; }
+    scopeAcc.any = true;
+    for (const r of opts.scope.local || []) scopeAcc.local.add(r);
+    for (const r of opts.scope.cloud || []) scopeAcc.cloud.add(r);
+  }
+  function takeScope() {
+    const r = scopeAcc.full || !scopeAcc.any ? {} : { scope: { local: [...scopeAcc.local], cloud: [...scopeAcc.cloud] } };
+    scopeAcc.local.clear(); scopeAcc.cloud.clear(); scopeAcc.full = false; scopeAcc.any = false;
+    return r;
+  }
+  // → the scope to use ({ local, cloud }), or { why } for a full look
+  function scopeOf(opts, filesId, nf) {
+    if (nf) return { why: nf };
+    if (!opts.scope) return { why: 'asked' };
+    if (!seen) return { why: 'start' };
+    if (opts.fresh || opts.mass) return { why: 'asked' };
+    if (!filesId || seen.filesId !== filesId) return { why: 'moved' };
+    if (now() - seen.fullAt >= FULL_EVERY || now() < seen.fullAt - 60000) return { why: 'due' };
+    if (jNewAll) return { why: 'journal' };
+    const l = opts.scope.local || []; const c = opts.scope.cloud || [];
+    if (l.length + c.length > SCOPE_MAX) return { why: 'many' };
+    if ([...l, ...c].some((r) => !r || typeof r !== 'string')) return { why: 'root' }; // a nameless event: the system lost track
+    return { local: l.map((r) => nfc(r)), cloud: c.map((r) => nfc(r)) };
+  }
+  const parentOf = (r) => (r.includes('/') ? r.slice(0, r.lastIndexOf('/')) : ''); // winmac-ok (sync's names always use /)
+  const underSkipped = (r) => { const parts = r.split('/'); for (let i = 1; i < parts.length; i++) { const d = parts.slice(0, i).join('/'); if (S.dirLocalOnly(d) || S.localOnly(`${d}/x`)) return true; } return false; };
+  const stubReal = (r) => r.replace(/(^|\/)\.([^/]+)\.icloud$/, '$1$2');
+  const stubOf = (r) => { const d = parentOf(r); return `${d ? `${d}/` : ''}.${r.slice(d ? d.length + 1 : 0)}.icloud`; };
+  const fakeEnt = (name) => ({ name, isFile: () => true, isDirectory: () => false });
+  // looks again at `rels` on one side, and the safety checks; out / dirs: the last pass's maps, changed in place
+  async function rescope(side, out, dirs, rels, fn, x) {
+    const root = side === 'l' ? dataDir : FILES;
+    const abs = (r) => (r ? path.join(root, ...r.split('/')) : root);
+    const relist = new Set(); const gone = new Set(); const rewalk = new Set(); const look = new Set(rels);
+    const moved = new Set(); // folders whose modified time changed since the last pass
+    let looked = 0; let missed = 0;
+    const late = (t) => t < x.since - 1000; // changed before the last pass started: its event should have come
+    // when a file changed ON THIS DISK: its change time (a cloud client keeps the other computer's modified time, so a
+    // file landing now can look minutes old); tests on a simulated clock stamp the modified time
+    const when = (st) => (o.now ? st.mtimeMs : Math.max(st.mtimeMs, st.ctimeMs || 0));
+    const heard = (r) => { if (x.reported.has(r) || look.has(r)) return true; for (let i = r.lastIndexOf('/'); i > 0; i = r.lastIndexOf('/', i - 1)) if (x.reported.has(r.slice(0, i))) return true; return false; }; // (it, or a folder above it) // winmac-ok
+    const heardBelow = (d) => { for (const r of x.reported) if (r.startsWith(`${d}/`)) return true; return false; };
+    // 1. safety checks, in turn: folders' modified times (something added / removed in them) and files (size + time)
+    const dk = side === 'l' ? seen.dirKeysL : seen.dirKeysC; const cur = seen.cur;
+    const dn = Math.min(DIRS_N, dk.length);
+    for (let i = 0; i < dn; i++) {
+      const d = dk[(cur[`d${side}`] + i) % dk.length];
+      if (!dirs.has(d)) continue;
+      looked += 1;
+      let st = null; try { st = await fsp.stat(abs(d)); } catch (err) { if (err.code !== 'ENOENT' && err.code !== 'ENOTDIR') continue; }
+      if (!st) { if (d) { gone.add(d); relist.add(parentOf(d)); } continue; }
+      if (st.mtimeMs !== dirs.get(d)) { relist.add(d); moved.add(d); }
+    }
+    cur[`d${side}`] = dk.length ? (cur[`d${side}`] + dn) % dk.length : 0;
+    const fk = side === 'l' ? seen.keysL : seen.keysC;
+    const fnN = Math.min(SAMPLE_N, fk.length);
+    for (let i = 0; i < fnN; i++) {
+      const r = fk[(cur[side] + i) % fk.length]; const e = out.get(r);
+      if (!e || !e.file || look.has(r) || e.unavailable || e.ext || out.extras?.has(r)) continue;
+      looked += 1;
+      let st = null; try { st = await fsp.stat(e.file); } catch (err) { if (err.code !== 'ENOENT' && err.code !== 'ENOTDIR') continue; }
+      if (!st || (e.size !== null && st.size !== e.size) || st.mtimeMs !== e.mtime) {
+        look.add(side === 'c' && /\.icloud$/.test(e.file) ? stubOf(r) : r);
+        if (!heard(r) && (!st || late(when(st)))) { missed += 1; x.notes.push(`file ${side}:${r}`); }
+      }
+    }
+    cur[side] = fk.length ? (cur[side] + fnN) % fk.length : 0;
+    // 2. each path: a file (its entry again), a folder (walked again), gone (its entry and everything under it)
+    for (const r0 of look) {
+      if (!r0 || underSkipped(r0)) continue;
+      const real = side === 'c' ? stubReal(r0) : r0;
+      const forms = side === 'c' ? [stubOf(real), real] : [real]; // (the real file wins over a stub, as in a listing)
+      const had = out.has(real);
+      let any = false; let dir = false;
+      for (const f of forms) {
+        let st = null; looked += 1;
+        try { st = await fsp.stat(abs(f)); } catch (err) { if (err.code !== 'ENOENT' && err.code !== 'ENOTDIR') { out.blind.add(real); any = true; continue; } }
+        if (!st) continue;
+        if (st.isDirectory()) { if (f === real) dir = true; continue; }
+        if (!st.isFile()) continue;
+        if (!any && had) out.delete(real); // (made again below: a copy now, or a stub now)
+        any = true;
+        const c = await fn(fakeEnt(f.slice(f.lastIndexOf('/') + 1)), f, st); // winmac-ok
+        if (typeof c === 'function') c();
+      }
+      if (dir) { if (had) out.delete(real); gone.add(real); rewalk.add(real); relist.add(parentOf(real)); continue; }
+      if (!any) { if (had) out.delete(real); if (had || dirs.has(real)) { gone.add(real); relist.add(parentOf(real)); } continue; }
+      if (!had) relist.add(parentOf(real));
+    }
+    // 3. folders listed again: what appeared or went beside what was heard (a rename's other half, a lost event)
+    if (relist.size > RELIST_MAX) return { full: 'relist' };
+    const explained = new Set([...look].map((r) => parentOf(side === 'c' ? stubReal(r) : r))); let restat = 0;
+    const kids = new Map([...relist].map((d) => [d, { files: new Set(), dirs: new Set() }]));
+    if (kids.size) {
+      let ki = 0;
+      for (const k of out.keys()) { if ((++ki & 4095) === 0) { const b = breathe(); if (b) await b; } const kd = kids.get(parentOf(k)); if (kd) kd.files.add(k); }
+      for (const d of dirs.keys()) { if (!d) continue; const kd = kids.get(parentOf(d)); if (kd) kd.dirs.add(d); }
+    }
+    for (const [d, kd] of kids) {
+      if (d && underSkipped(`${d}/x`)) continue;
+      let ents; looked += 1;
+      try { ents = await fsp.readdir(abs(d), { withFileTypes: true }); } catch (err) {
+        if (err.code === 'ENOENT' || err.code === 'ENOTDIR') { if (d) gone.add(d); } else out.blind.add(d ? `${d}/` : '');
+        continue;
+      }
+      const named = new Set(); const subs = new Set();
+      for (const e of ents) {
+        const r = d ? `${d}/${e.name}` : e.name;
+        if (e.isDirectory()) {
+          if (S.dirLocalOnly(nfc(r)) || S.localOnly(`${nfc(r)}/x`)) continue;
+          subs.add(nfc(r));
+          if (!kd.dirs.has(nfc(r)) && !rewalk.has(nfc(r))) { rewalk.add(nfc(r)); if (!heard(nfc(r)) && !heardBelow(nfc(r))) { missed += 1; x.notes.push(`new folder ${side}:${r}`); } }
+          continue;
+        }
+        if (!e.isFile()) continue;
+        const real = nfc(side === 'c' ? stubReal(r) : r);
+        named.add(real);
+        if (out.has(real) || look.has(real) || look.has(r)) continue;
+        let st = null; try { st = await fsp.stat(abs(r)); } catch { continue; } // (gone again: nothing to add)
+        const c = await fn(e, r, st); looked += 1;
+        if (typeof c === 'function') c();
+        if (out.has(real) && !heard(real) && late(when(st))) { missed += 1; x.notes.push(`new ${side}:${real}`); }
+      }
+      for (const k of kd.files) {
+        if (named.has(k) || out.extras?.has(k) || out.get(k)?.ext) continue;
+        out.delete(k);
+        if (!heard(k) && (dirs.get(d) === undefined || late(dirs.get(d)))) { missed += 1; x.notes.push(`went ${side}:${k}`); }
+      }
+      for (const sd of kd.dirs) if (!subs.has(sd)) gone.add(sd);
+      // a folder that changed with nothing heard in it: a file saved there by a rename (how apps and cloud clients
+      // replace a file) whose event was lost leaves only the folder's time changed: its files are looked at again
+      if (moved.has(d) && !explained.has(d)) {
+        const again = [...kd.files].filter((k) => named.has(k) && !look.has(k));
+        if ((restat += again.length) > SCOPE_MAX) return { full: 'folder' };
+        for (const k of again) {
+          const e = out.get(k); if (!e?.file || e.ext) continue;
+          let st = null; looked += 1; try { st = await fsp.stat(e.file); } catch { /* listed a moment ago: the next pass */ }
+          if (!st || !st.isFile() || ((e.size === null || st.size === e.size) && st.mtimeMs === e.mtime)) continue;
+          const c = await fn(fakeEnt(e.file.slice(e.file.lastIndexOf(path.sep) + 1)), side === 'c' && /\.icloud$/.test(e.file) ? stubOf(k) : k, st);
+          if (typeof c === 'function') c();
+          if (late(when(st))) { missed += 1; x.notes.push(`changed ${side}:${k}`); }
+        }
+      }
+    }
+    // 4. what went (and everything under it), then the folders walked again
+    if (gone.size) {
+      const g = [...gone]; let gi = 0;
+      for (const k of [...out.keys()]) { if ((++gi & 4095) === 0) { const b = breathe(); if (b) await b; } if (g.some((p) => k === p || k.startsWith(`${p}/`))) out.delete(k); }
+      for (const k of [...dirs.keys()]) if (k && g.some((p) => k === p || k.startsWith(`${p}/`))) dirs.delete(k);
+    }
+    for (const r of rewalk) if (!underSkipped(`${r}/x`)) { await walk(root, fn, r, out.blind, dirs); looked += 1; }
+    for (const d of new Set([...relist, ...[...explained].filter((e) => dirs.has(e))])) if (!gone.has(d)) { try { dirs.set(d, (await fsp.stat(abs(d))).mtimeMs); } catch { /* gone */ } } // (the folders of what was heard: their time now, so a later lost event there shows)
+    return { looked, missed };
+  }
+  // the scoped look: the last pass's maps, looked at again where something may have changed
+  // → { local, cloud, copies, dirsL, dirsC, looked, missed, notes } | { full: why }
+  async function scopedScan(sc) {
+    const x = { since: seen.startedAt, reported: new Set([...sc.local, ...sc.cloud].map(stubReal)), notes: [] };
+    // (the last pass's maps, changed in place: copying 2 × 50,000 entries held the main process; a pass that doesn't
+    // end well leaves needFull set, so a half-changed map is never trusted)
+    const local = seen.local; local.blind = new Set();
+    const cloud = seen.cloud; cloud.blind = new Set(); cloud.secrets ||= []; const copies = [];
+    const dirsL = seen.dirsL; const dirsC = seen.dirsC;
+    // what the last pass left open, the journals' news, and every entry the state's cache doesn't confirm (sync's own
+    // copies, a file that waited, a file held while it was being saved): never trusted from the last look
+    const lrels = new Set(sc.local); const crels = new Set(sc.cloud);
+    for (const r of seen.touchy) { lrels.add(r); crels.add(r); }
+    for (const r of jNew) crels.add(r);
+    let si = 0;
+    for (const [rel, L] of local) { if ((++si & 4095) === 0) { const b = breathe(); if (b) await b; } if (!L.unavailable && !L.ext && !local.extras?.has(rel) && !cachedHere(rel, L) && !o.skip?.(rel)) lrels.add(rel); }
+    for (const [rel, C] of cloud) { if ((++si & 4095) === 0) { const b = breathe(); if (b) await b; } if ((C.downloading || !cachedThere(rel, C)) && !o.skip?.(rel)) crels.add(C.file && /\.icloud$/.test(C.file) ? stubOf(rel) : rel); }
+    for (const rel of keysOf(state.local)) { if ((++si & 4095) === 0) { const b = breathe(); if (b) await b; } if (!local.has(rel) && !SPECIAL[rel] && !state.ext[rel] && !o.skip?.(rel)) lrels.add(rel); } // (sync knows it here, the look doesn't)
+    // a chat heard on either side: its trash copy is looked at on both (Hearth's Delete moves it there; a delete is only
+    // taken when that copy is seen: with its event lost, the chat came back)
+    for (const r of [...lrels, ...crels]) { const t = chatTrashRel(stubReal(r)); if (t) { lrels.add(t); crels.add(t); } }
+    if (lrels.size + crels.size > SCOPE_MAX) return { full: 'many' };
+    const a = await rescope('l', local, dirsL, lrels, localFn(local), x); if (a.full) return a;
+    await localExtras(local);
+    const b = await rescope('c', cloud, dirsC, crels, cloudFn(cloud, copies), x); if (b.full) return b;
+    await probeWin(cloud, copies, local);
+    return { local, cloud, copies, dirsL, dirsC, looked: a.looked + b.looked, missed: a.missed + b.missed, notes: x.notes };
   }
 
   // ---------- peers and journals ----------
@@ -484,9 +722,9 @@ function createEngine(o) {
           let j; try { j = S.parseJson(line); } catch { continue; }
           if (!j.rel) continue;
           const cur = journalLatest.get(j.rel);
-          if (!cur || cur.t <= j.t) journalLatest.set(j.rel, { h: j.h, s: j.s, t: j.t, m: mid, op: j.op, f: j.f }); // (round 74, synchard74) f: the sync format of the Hearth that wrote it
+          if (!cur || cur.t <= j.t) { if (!cur || cur.t !== j.t || cur.h !== j.h || cur.op !== j.op) noteJournal(j.rel); journalLatest.set(j.rel, { h: j.h, s: j.s, t: j.t, m: mid, op: j.op, f: j.f }); } // (round 74, synchard74) f: the sync format of the Hearth that wrote it · (round 79) news for a scoped pass
           // (round 72, sync72) a move (a chat deleted to its trash is one) also says the old name is gone
-          if (j.op === 'move' && j.from) { const cf = journalLatest.get(j.from); if (!cf || cf.t <= j.t) journalLatest.set(j.from, { t: j.t, m: mid, op: 'del' }); }
+          if (j.op === 'move' && j.from) { const cf = journalLatest.get(j.from); if (!cf || cf.t <= j.t) { if (!cf || cf.t !== j.t) noteJournal(j.from); journalLatest.set(j.from, { t: j.t, m: mid, op: 'del' }); } }
         }
       }
     } catch { /* none yet */ }
@@ -1244,11 +1482,11 @@ function createEngine(o) {
 
   // ---------- one pass ----------
   async function pass(opts = {}) {
-    if (running) { again = true; return running; }
+    if (running) { again = true; addScope(opts); return running; } // (round 79, syncscope79) what it asked to look at waits for the next round
     stopping = false;
     running = (async () => {
       let r;
-      do { again = false; r = await passOnce(opts); opts = {}; } while (again && !stopping);
+      do { again = false; r = await passOnce(opts); opts = takeScope(); } while (again && !stopping); // (round 79) the asks that came meanwhile (any whole one: whole)
       await stateQ; // (round 74) its state on disk before the pass counts as done
       return r;
     })();
@@ -1256,6 +1494,7 @@ function createEngine(o) {
   }
   async function passOnce(opts) {
     sum = counts(); pulledNow = []; texts = new Map(); hashed = new Map(); status.resumed = 0; status.bytes = 0;
+    pendRels = new Set(); const nf0 = needFull; needFull = 'unfinished'; // (round 79, syncscope79) a pass that doesn't end well: the next one looks at everything
     await ready; // (round 75, syncstate75) the state read (asynchronously, at start)
     store.watch(state); // (round 74) the big maps say when they change (round 75: which buckets)
     const t0 = now();
@@ -1284,8 +1523,19 @@ function createEngine(o) {
     laneGo(); // (round 73) a lane stopped with the engine goes on
     await readPeers();
     const filesId = await fsp.stat(FILES).then((x) => `${x.dev}:${x.ino}`, () => ''); // (round 74) the cloud folder this pass looks at
-    const local = await scanLocal();
-    const { files: cloud, copies } = await scanCloud(local);
+    // (round 79, syncscope79) the paths the watchers heard (and what the last pass left open), or everything
+    let sc = scopeOf(opts, filesId, nf0); let scan = null;
+    if (!sc.why) { scan = await scopedScan(sc); if (scan.full) sc = { why: scan.full }; }
+    const fullLook = Boolean(sc.why);
+    const dirsL = fullLook ? new Map() : scan.dirsL; const dirsC = fullLook ? new Map() : scan.dirsC;
+    const local = fullLook ? await scanLocal(dirsL) : scan.local;
+    const { files: cloud, copies } = fullLook ? await scanCloud(local, dirsC) : { files: scan.cloud, copies: scan.copies };
+    seen = { local, cloud, dirsL, dirsC, filesId, startedAt: t0, touchy: new Set(), cur: seen?.cur || { l: 0, c: 0, dl: 0, dc: 0 },
+      fullAt: fullLook ? t0 : seen.fullAt, keysL: fullLook ? [...local.keys()] : seen.keysL, keysC: fullLook ? [...cloud.keys()] : seen.keysC,
+      dirKeysL: [...dirsL.keys()], dirKeysC: [...dirsC.keys()] }; // (folders found since the whole look are checked too)
+    jNew.clear(); jNewAll = false;
+    Object.assign(scopeStats, { mode: fullLook ? 'full' : 'scoped', lastWhy: sc.why || '', looked: fullLook ? local.size + cloud.size + dirsL.size + dirsC.size : scan.looked, notes: fullLook ? [] : scan.notes.slice(0, 8) });
+    if (fullLook) { scopeStats.full += 1; scopeStats.lastFull = t0; } else scopeStats.scoped += 1;
     // (round 74, synchard74) the cloud folder moved / renamed / unmounted DURING the scan (the drive ejected, the cloud
     // client relocating its folder): what was scanned is not the cloud, it is a hole. Paused, never "all deleted".
     if (!filesId || filesId !== await fsp.stat(FILES).then((x) => `${x.dev}:${x.ino}`, () => '')) return finish({ state: 'offline', error: 'missing' }, t0);
@@ -1312,7 +1562,7 @@ function createEngine(o) {
     const cap = o.big === false ? (o.bigCap || BIG_CAP) : Infinity;
     const plan = []; const skippedBig = []; const cloudOnly = []; const unreadable = []; let pending = 0;
     // (round 72, sync72) what waits and why, by name (the first 60), for the sync panel: "12 waiting" in plain words
-    const waiting = []; const why = (rel, w) => { if (waiting.length < 60 && !waiting.some((x) => x.rel === rel)) waiting.push({ rel, why: w }); };
+    const waiting = []; const why = (rel, w) => { pendRels.add(rel); /* (round 79) */ if (waiting.length < 60 && !waiting.some((x) => x.rel === rel)) waiting.push({ rel, why: w }); };
     // A cloud client may briefly remove a single chat while replacing/hydrating it.
     // Absence is not deletion intent. Hearth's Delete action moves the exact chat
     // to trash/<id>.json; require that matching copy on the side that lost it.
@@ -1376,7 +1626,7 @@ function createEngine(o) {
       // (round 77, synclatency77) o.hold(rel): a file saved again and again right now (a reply streaming into its chat)
       // waits while only this computer changed it; syncmain lets it through once it calms down, and at least every 20 s
       // (60 s while replies run). Not counted as waiting: nothing is late, it is still being written.
-      { const L0 = local.get(rel); const C0 = cloud.get(rel); if (L0 && !L0.unavailable && o.hold?.(rel) && !cachedHere(rel, L0) && (!C0 || cachedThere(rel, C0))) continue; }
+      { const L0 = local.get(rel); const C0 = cloud.get(rel); if (L0 && !L0.unavailable && o.hold?.(rel) && !cachedHere(rel, L0) && (!C0 || cachedThere(rel, C0))) { pendRels.add(rel); /* (round 79) looked at again next pass */ continue; } }
       if (C?.downloading) await cloudReady(rel, C);
       if (L?.unavailable) { pending += 0; continue; } // a render on a drive that isn't plugged in: left alone
       if ((!L && blindIn(local.blind, rel)) || (!C && blindIn(cloud.blind, rel))) { pending += 1; why(rel, 'unlisted'); continue; }
@@ -1510,12 +1760,18 @@ function createEngine(o) {
     await flushJournal().catch((err) => log('journal', err.message));
     await writeMachine(false).catch(() => {});
     if (now() - (state.purgedAt || 0) > 864e5) await purge().catch(() => {});
-    let conflicts = await listConflicts();
+    let conflicts = await listConflicts(); let resolvedNow = false;
     // (round 26) settled by themselves (o.autoResolve, on by default): data merged, files newest wins, losers in the trash
     if (conflicts.length && o.autoResolve?.()) {
       const r = await resolveAll('auto').catch((err) => { log('auto-resolve', err.message); return null; });
-      if (r?.done) { o.onAutoResolved?.(r); conflicts = await listConflicts(); }
+      if (r?.done) { o.onAutoResolved?.(r); conflicts = await listConflicts(); resolvedNow = true; }
     }
+    // (round 79, syncscope79) what the next pass may trust from this one: the names left open and the ones copied are
+    // looked at again; anything unusual (cut short, a folder unread, a cloud client's copies, deletes waiting for a yes,
+    // conflicts settled, errors) or a lost watcher event found: the next pass looks at everything (a lost event: now)
+    seen.touchy = pendRels; for (const p of ops) { seen.touchy.add(p.rel); if (p.to) seen.touchy.add(p.to); }
+    needFull = slept ? 'slept' : stopping ? 'stopped' : local.blind.size || cloud.blind.size ? 'unlisted' : copies.length ? 'copies' : status.held ? 'held' : resolvedNow ? 'resolved' : sum.errors ? 'errors' : '';
+    if (!fullLook && scan.missed) { scopeStats.missed += scan.missed; log('scoped pass: lost watcher events found', scan.notes.slice(0, 4).join(', ')); if (!needFull) { needFull = 'missed'; again = true; } }
     const offline = !(await exists(cloudRoot));
     if (!offline && !pending && !status.held) state.lastOk = now();
     if (!offline && !pending && !sum.errors) status.lastError = null; // (round 72) all caught up: the last problem is over
@@ -1537,7 +1793,7 @@ function createEngine(o) {
     return { ...status, pulledFiles: pulledNow.slice() };
   }
   const emit = () => o.onStatus?.(publicStatus());
-  const publicStatus = () => ({ ...status, aside: aside.brief(), /* (round 78, guardloss78) */ transfers: laneList(), moving: lane.q.length + (lane.cur ? 1 : 0), machine: { id: machine.id, name: machine.name }, cloudRoot, cloudDir, peers: peers.map((p) => ({ name: p.name, platform: p.platform, lastSeen: p.lastSeen, lastOk: p.lastOk })) });
+  const publicStatus = () => ({ ...status, scope: { mode: scopeStats.mode, why: scopeStats.lastWhy, looked: scopeStats.looked, lastFull: scopeStats.lastFull, missed: scopeStats.missed }, /* (round 79, syncscope79) */ aside: aside.brief(), /* (round 78, guardloss78) */ transfers: laneList(), moving: lane.q.length + (lane.cur ? 1 : 0), machine: { id: machine.id, name: machine.name }, cloudRoot, cloudDir, peers: peers.map((p) => ({ name: p.name, platform: p.platform, lastSeen: p.lastSeen, lastOk: p.lastOk })) });
 
   // ---------- trash, conflicts ----------
   async function purge() {
@@ -1831,8 +2087,9 @@ function createEngine(o) {
 
   return {
     pass, stop: () => { stopping = true; lane.q.length = 0; }, status: publicStatus,
-    laneIdle, freeable: afterLoad(freeable), free: afterLoad(free), /* (round 73, syncmedia73) */ fix: afterLoad(fix), woke: (ms) => { excuse(ms); if (running) again = true; }, /* (round 74, synchard74) */ set: (patch) => Object.assign(o, patch), option: (k) => o[k], machine: () => ({ ...machine }),
-    conflicts: listConflicts, aside: afterLoad(asideDo), /* (round 78, guardloss78) */ resolve: afterLoad(resolve), resolveAll: afterLoad(resolveAll), preview, incoming, trash: listTrash, restore: afterLoad(restore), guardWrite, relOfLocal, /* (round 75) after the state is read */
+    laneIdle, freeable: afterLoad(freeable), free: wrote(afterLoad(free)), /* (round 73, syncmedia73) */ fix: wrote(afterLoad(fix)), woke: (ms) => { excuse(ms); needFull = 'wake'; if (running) again = true; }, /* (round 74, synchard74) */ set: (patch) => { needFull = 'set'; return Object.assign(o, patch); }, option: (k) => o[k], machine: () => ({ ...machine }),
+    conflicts: listConflicts, aside: wrote(afterLoad(asideDo)), /* (round 78, guardloss78) */ resolve: wrote(afterLoad(resolve)), resolveAll: wrote(afterLoad(resolveAll)), preview, incoming, trash: listTrash, restore: wrote(afterLoad(restore)), guardWrite, relOfLocal, /* (round 75) after the state is read */
+    scope: () => ({ ...scopeStats, need: needFull }), // (round 79) tests / the main side: the last pass's look
     ackPulled: (rels, since) => { if (!rels) { pulledPrev.clear(); pulledAt.clear(); guardOurs.clear(); } else for (const r of rels) if (!(since > 0) || !((pulledAt.get(r) || 0) > since)) { pulledPrev.delete(r); pulledAt.delete(r); guardOurs.delete(r); } }, // (round 78) + guardOurs // (round 77, storeack77) since: when the reader began reading
     hasPulled: (rel) => pulledPrev.has(rel),
     // (round 77, synclatency77) for the watchers (syncmain.js): is this file, as it is now (size + modified time), the

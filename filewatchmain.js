@@ -317,7 +317,9 @@ function tree(dir, fn, o = {}) {
   const t = { dir: path.resolve(dir), fn, force: o.force !== false };
   trees.add(t);
   replan(true);
-  return { close() { if (trees.delete(t)) replan(); } };
+  // (round 79, syncscope79) healthy(): a live recursive system watch covers the folder (not polled, not gone): sync
+  // trusts what it hears to look only at those paths; otherwise its passes look at everything
+  return { close() { if (trees.delete(t)) replan(); }, healthy: () => [...roots.values()].some((r) => r.recursive && r.mode === 'watch' && r.w && C.inside(t.dir, r.dir, P, platform)) };
 }
 function state() {
   return {

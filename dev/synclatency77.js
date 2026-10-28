@@ -51,6 +51,7 @@ const Sim = require('./sync-sim');
 // (ReadDirectoryChangesW) hear every one. So here a recursive watch is one plain watch per folder (inotify on a folder
 // hears every rename into it), like the Mac / PC would. Test only.
 if (process.platform === 'linux' && !argv.includes('--node-watch')) {
+  process.env.HEARTH_SYNC_SCOPE = process.env.HEARTH_SYNC_SCOPE || '1'; // (round 79, syncscope79) watched as the Mac / PC: scoped passes, as there
   const { EventEmitter } = require('events');
   const realWatch = fs.watch;
   fs.watch = function watch(dir, o, cb) {
@@ -91,7 +92,7 @@ const cloud = Sim.cloud({ blobDir: path.join(RUN, 'blobs'), log: (name, what, ke
 // ---------- a computer: the app's sync main side, a fresh copy of the module for each ----------
 function computer(name) {
   const base = path.join(RUN, name);
-  const m = { name, busy: false, pulled: new Map(), statusAt: 0, passes: 0 };
+  const m = { name, busy: false, pulled: new Map(), statusAt: 0, passes: 0, scopes: {} }; // (round 79) scopes: passes by look (scoped / full)
   m.data = path.join(base, 'data'); m.cloudRoot = path.join(base, 'cloud');
   m.config = path.join(base, 'app', 'config.json'); m.theme = path.join(base, 'app', 'theme.css');
   for (const d of [m.data, path.join(m.data, 'chats'), path.join(m.data, 'kv'), path.join(m.data, 'captures'), path.join(m.data, 'sync'), path.dirname(m.config)]) fs.mkdirSync(d, { recursive: true });
@@ -106,7 +107,7 @@ function computer(name) {
   const handlers = {};
   const win = { isDestroyed: () => false, webContents: { send: (ch, d) => {
     if (ch === 'sync:pulled') { for (const x of d || []) m.pulled.set(x.rel, Date.now()); vlog(name, 'pulled', (d || []).map((x) => x.rel).join(' ')); }
-    if (ch === 'sync:status') { if (d?.state === 'syncing') { m.passes += 1; m.statusAt = Date.now(); vlog(name, 'pass'); } else m.statusAt = Date.now(); m.state = d?.state; m.pending = d?.pending; m.waiting = d?.waiting; if (d?.state !== 'syncing' && d?.waiting?.length) vlog(name, 'waiting', JSON.stringify(d.waiting).slice(0, 300)); }
+    if (ch === 'sync:status') { if (d?.state !== 'syncing' && d?.scope?.mode && d.at !== m.scopeAt) { m.scopeAt = d.at; m.scopes[d.scope.mode] = (m.scopes[d.scope.mode] || 0) + 1; } /* (round 79) */ if (d?.state === 'syncing') { m.passes += 1; m.statusAt = Date.now(); vlog(name, 'pass'); } else m.statusAt = Date.now(); m.state = d?.state; m.pending = d?.pending; m.waiting = d?.waiting; if (d?.state !== 'syncing' && d?.waiting?.length) vlog(name, 'waiting', JSON.stringify(d.waiting).slice(0, 300)); }
   } } };
   m.sm.register({ handle: (ch, fn) => { handlers[ch] = fn; } }, () => win, { dataDir: m.data, configPath: m.config, themePath: m.theme, store: null });
   m.sm.setBusy(() => (m.busy ? 1 : 0));
@@ -237,10 +238,10 @@ async function main() {
   }
   clearInterval(prov);
   pc.sm.quit(); mac.sm.quit();
-  const passes = { PC: pc.passes, Mac: mac.passes };
+  const passes = { PC: pc.passes, Mac: mac.passes }; const scopes = { PC: pc.scopes, Mac: mac.scopes }; // (round 79)
   const over = BUDGET ? results.filter((r) => r.item !== 'big' && (r.timedOut || r.engineDown > BUDGET)) : [];
-  if (JSON_OUT) process.stdout.write(`${JSON.stringify({ root: ROOT, profile: opt('--profile', 'icloud'), results, passes, idle, churn, over: over.length }, null, 1)}\n`);
-  else say(`passes: PC ${passes.PC}, Mac ${passes.Mac}${BUDGET ? ` · over ${BUDGET} ms: ${over.length}` : ''}`);
+  if (JSON_OUT) process.stdout.write(`${JSON.stringify({ root: ROOT, profile: opt('--profile', 'icloud'), results, passes, scopes, idle, churn, over: over.length }, null, 1)}\n`);
+  else say(`passes: PC ${passes.PC}, Mac ${passes.Mac} · looks ${JSON.stringify(scopes)}${BUDGET ? ` · over ${BUDGET} ms: ${over.length}` : ''}`);
   if (!argv.includes('--keep')) fs.rmSync(RUN, { recursive: true, force: true });
   process.exit(over.length || results.some((r) => r.timedOut) ? 1 : 0);
 }

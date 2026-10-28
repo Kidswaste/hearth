@@ -31,6 +31,14 @@ const WARM_MS = 6000; // a file that had its quick pass this long ago: the calm 
 const FIRST = (rel) => /^chats\/[^/]+\.json$/i.test(rel) || rel === 'kv/projects.json'; // chats and project notes: always the quick pass (never "warm")
 const FOLLOW = 1000; const FOLLOW_MAX = 6; // a file still arriving / being written: a pass again after 1, 2, 4… 32 s, then the calm check
 const JSON_SETTLE = 500; // (round 77) a store just written in the cloud folder: read after this (was 2 s like any file)
+// (round 79, syncscope79) a pass looks only at the paths the watchers heard (sync-engine.js opts.scope), trusting what
+// the last pass saw for the rest; it looks at everything (a "whole look") when it is the first, after a wake, when sync
+// itself was changed (a fix, a restore, a conflict's choice, an option, Sync now), when a watcher failed / overflowed /
+// was re-armed or isn't watching, when it heard a nameless event or more than SCOPE_CAP paths, and as a safety net
+// every FULL_EVERY (the engine's own rule too) or every IDLE_FULL while Hearth is idle on mains power. The engine adds
+// its own reasons (a folder unread, a pass cut short, a lost event found by its checks…).
+const FULL_EVERY = 6 * 3600000; const IDLE_FULL = 30 * 60000; const SCOPE_CAP = 2000;
+const SCOPED_WHY = new Set(['soon', 'watch', 'follow', 'lane', 'tick']); // passes the watchers / the calm check ask for
 
 const settingsFile = () => path.join(opts.dataDir, 'sync', 'settings.json');
 // (round 43, datasafe) a settings file held for a moment is read again; one that still can't be read is never saved over
@@ -140,7 +148,7 @@ function setPace(st = {}) {
 let busy = () => 0;
 let hold = () => false;
 function stop() {
-  clearTimeout(timer); clearTimeout(tick); timer = null; tick = null; dueAt = 0; dueWhy = ''; forced = false; dirty.clear(); dirtyAll = false; recent.clear(); lastSoon.clear(); heldSince.clear(); followN = 0; cloudWatched = false; // (round 77)
+  clearTimeout(timer); clearTimeout(tick); timer = null; tick = null; dueAt = 0; dueWhy = ''; forced = false; dirty.clear(); dirtyAll = false; scopeAcc.local.clear(); scopeAcc.cloud.clear(); scopeAcc.all = true; fwSeen = -1; recent.clear(); lastSoon.clear(); heldSince.clear(); followN = 0; cloudWatched = false; // (round 77)
   for (const w of watchers) { try { w.close(); } catch { /* closed */ } }
   watchers = [];
   if (engine) engine.stop();
@@ -155,6 +163,31 @@ const capMs = () => (busy() > 0 || pace.battery ? 60000 : 20000);
 // writes is no news); passes asked for by something else than a watcher (the calm check, a fix, the big lane) always run
 let dueAt = 0; let dueWhy = ''; let forced = false;
 const dirty = new Map(); let dirtyAll = false; // `${side}:${rel}` → { side, rel, abs }
+// (round 79, syncscope79) every path heard since the last pass began (the scope of the next one); all: a whole look
+const scopeAcc = { local: new Set(), cloud: new Set(), all: true };
+function scopeNote(side, rel) { if (rel === null) { scopeAcc.all = true; return; } if (scopeAcc[side].size >= SCOPE_CAP) scopeAcc.all = true; else scopeAcc[side].add(rel); }
+let fwSeen = -1; // the watcher service's errors + re-arms at the last pass (more: a watch failed or was opened again)
+function watchTrusted() {
+  if (!engine || !cloudWatched) return false;
+  // Linux: Node's recursive watch loses most saves that replace a file by a rename (round 77): whole looks there, as
+  // before (HEARTH_SYNC_SCOPE=1: tests that watch each folder plainly, as the Mac / PC hear)
+  if (process.platform === 'linux' && !process.env.HEARTH_SYNC_SCOPE) return false;
+  const ok = (side) => watchers.some((w) => w.side === side && (typeof w.healthy !== 'function' || w.healthy())); // (the data folder and the cloud folder, both)
+  if (!ok('local') || !ok('cloud')) return false;
+  try { const st = require('./filewatchmain').state(); const g = (st.errors || 0) + (st.rearms || 0); const same = fwSeen === g; fwSeen = g; return same; } catch { return true; }
+}
+// → { scope } for a scoped pass, or null (look at everything); the paths heard so far go to this pass either way
+function takeScope(why) {
+  const acc = { local: [...scopeAcc.local], cloud: [...scopeAcc.cloud], all: scopeAcc.all };
+  scopeAcc.local.clear(); scopeAcc.cloud.clear(); scopeAcc.all = false;
+  const trusted = watchTrusted(); // (always asked: it keeps the watcher service's count current)
+  if (acc.all || !trusted || !SCOPED_WHY.has(why || '')) return null;
+  const last = engine?.scope?.()?.lastFull || 0;
+  if (Date.now() - last >= FULL_EVERY) return null;
+  if (quiet >= 3 && !pace.battery && busy() === 0 && Date.now() - last >= IDLE_FULL) return null; // idle on mains power: the safety look now
+  return { local: acc.local, cloud: acc.cloud };
+}
+const scopeBack = () => { scopeAcc.all = true; }; // a pass that failed: the next one looks at everything
 const recent = new Map(); // `${side}:${rel}` → the times it was saved lately (hot or not)
 const lastSoon = new Map(); // `local:${rel}` → when a quick pass last went for a real change of it (not sync's own write)
 function schedule(ms, why) {
@@ -247,7 +280,9 @@ async function run(o = {}) {
   try {
     await opts.store?.idle?.(); // (round 20) saves still on the store thread land before the pass reads the folder
     if (!engine) return publicStatus();
-    const r = await engine.pass(o);
+    const scope = o.force || o.mass || o.fresh ? (takeScope(''), null) : takeScope(o.why); // (round 79, syncscope79)
+    let r;
+    try { r = await engine.pass(scope ? { ...o, scope } : o); } catch (err) { scopeBack(); throw err; }
     const moved = r?.last ? r.last.pulled + r.last.pushed + r.last.merged + r.last.deletedHere + r.last.deletedThere + r.last.renamed : 1;
     const was = quiet; quiet = moved || r?.pending ? 0 : quiet + 1;
     if ((was > 2) !== (quiet > 2) || (quiet && quiet % 3 === 0)) armTick(); // the calm check slows down (or speeds up again)
@@ -264,25 +299,31 @@ async function run(o = {}) {
 function watch() {
   for (const w of watchers) { try { w.close(); } catch { /* closed */ } }
   watchers = []; cloudWatched = false;
+  scopeAcc.all = true; // (round 79) unwatched for a moment: the next pass looks at everything
   // (round 77, synclatency77) side: 'local' | 'cloud' — each event goes to heard() (how soon), not a fixed debounce
   const add = (dir, side, skip) => {
     const hear = (name) => {
-      const n = String(name || '');
+      let n = String(name || '');
+      // (round 79, syncscope79) a nameless event (the system lost track: a full buffer on Windows, FSEvents' "look at
+      // the whole folder") → a whole look; an iCloud placeholder appearing / going is about the file it stands for
+      if (!n || (side === 'cloud' && n === 'files')) { scopeAcc.all = true; schedule(side === 'cloud' ? SOON_CLOUD : SOON_LOCAL, 'soon'); return; }
+      if (side === 'cloud') n = n.replace(/(^|[\\/])\.([^\\/]+)\.icloud$/, '$1$2');
       if (skip(n) || S.ignoredName(path.basename(n))) return;
       const abs = path.join(dir, n); const slash = n.split(path.sep).join('/').normalize('NFC');
+      if (side === 'local') scopeNote('local', slash); else if (/^files\//.test(slash)) scopeNote('cloud', slash.slice(6)); // (round 79) what the next pass looks at
       heard(side, side === 'cloud' ? (/^files\//.test(slash) ? slash.slice(6) : null) : slash || null, abs);
     };
     // (round 42, filewatch) through the one watcher service, shared with what the window follows in the data folder
     // (the Lab's references, My templates): one system watch, re-armed after a wake / when the folder comes back
     try {
       const fw = require('./filewatchmain');
-      watchers.push(fw.tree(dir, hear));
+      const t = fw.tree(dir, hear); t.side = side; watchers.push(t); // (round 79) side: which folder it hears
       return true;
     } catch { /* the service didn't load: its own watch as before */ }
     try {
       const w = fs.watch(dir, { recursive: true }, (_ev, name) => hear(name));
-      w.on('error', () => { try { w.close(); } catch { /* closed */ } watchers = watchers.filter((x) => x !== w); });
-      watchers.push(w);
+      w.on('error', () => { try { w.close(); } catch { /* closed */ } watchers = watchers.filter((x) => x !== w); scopeAcc.all = true; });
+      w.side = side; watchers.push(w);
       return true;
     } catch { /* no recursive watch here, or the folder is gone: the minute check covers it */ }
     return false;
@@ -308,6 +349,7 @@ function publicStatus() {
     machine: engine?.machine()?.name || os.hostname(),
     kinds: K.list(settings.kinds, st?.kindSizes || {}), // (round 73, syncmedia73) What syncs: each kind, on / off here, sizes
     transfers: st?.transfers || [], moving: st?.moving || 0, // (round 73) big files on their way, with progress
+    scope: st?.scope || null, // (round 79, syncscope79) the last pass: scoped or whole (why), how much it looked at
     aside: st?.aside || [], // (round 78, guardloss78) the losing sides of conflicts settled by themselves, kept aside (the sync panel)
     ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], waiting: st.waiting || [], blocked: st.blocked || [], peersOld: st.peersOld || [], need: st.need || 0, lastError: st.lastError || null, held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
   };

@@ -81,19 +81,29 @@ function ciRenameArgs(from, to) {
 }
 
 // ---------- placeholders that download when read ----------
-const dataless = new Map(); // `${dev}:${ino}` → { buf, mtime, onRead }
+const dataless = new Map(); // `${dev}:${ino}` → { buf, mtime, size, onRead }
+// (round 79, syncscope79) an entry is the file only while the file is as the provider left it (its size and time): a
+// placeholder removed some other way frees its inode, and a NEW file given the same inode was "hydrated" with the old
+// one's bytes (a picture written on the Mac came out as a chat). A stale entry is dropped.
+function dlOf(st) {
+  if (!st || !dataless.size) return null;
+  const k = `${st.dev}:${st.ino}`; const d = dataless.get(k);
+  if (!d) return null;
+  if ((d.size !== undefined && st.size !== d.size) || (d.mtime !== undefined && Math.abs(st.mtimeMs - d.mtime) >= 1)) { dataless.delete(k); return null; }
+  return d;
+}
+const dlAt = (p) => { try { return dlOf(raw.statSync(p)); } catch { return null; } };
 function hydrate(p) {
   if (typeof p !== 'string' || !dataless.size) return;
-  const k = ino(p);
-  const d = k && dataless.get(k);
+  const d = dlAt(p);
   if (!d) return;
-  dataless.delete(k);
+  dataless.delete(ino(p));
   if (d.kept) { d.onRead?.(p); return; } // (round 73) evicted by the owner's click: the bytes never left in the simulation
   if (d.blob) sparseCopy(d.blob, p); else raw.writeFileSync(p, d.buf);
   const t = new Date(d.mtime); raw.utimesSync(p, t, t);
   d.onRead?.(p);
 }
-const isDataless = (p) => { const k = ino(ci(p)); return Boolean(k && dataless.has(k)); };
+const isDataless = (p) => Boolean(dlAt(ci(p)));
 
 // ---------- (round 74, synchard74) real Windows / Mac troubles, for every fs call of the process ----------
 //   lock(file, code)   another program holds it (the Sound desk's host on a WAV, an antivirus, OneDrive): opening,
@@ -153,7 +163,7 @@ function install() {
   fs.truncateSync = (p, ...a) => raw.truncateSync(ci(p), ...a);
   fs.copyFileSync = (a, b, ...r) => { const q = ci(a); hydrate(q); return raw.copyFileSync(q, ci(b), ...r); };
   // (round 73, syncmedia73) a placeholder has no blocks on the disk (what the engine looks at on a Mac)
-  fsp.stat = async (p, ...a) => { const st = await rawP.stat(ci(p), ...a); if (dataless.size && st && dataless.has(`${st.dev}:${st.ino}`)) st.blocks = 0; return st; };
+  fsp.stat = async (p, ...a) => { const st = await rawP.stat(ci(p), ...a); if (dataless.size && st && dlOf(st)) st.blocks = 0; return st; };
   fsp.lstat = (p, ...a) => rawP.lstat(ci(p), ...a);
   // (round 74, synchard74) each call checks the simulated locks / read-only marks / quotas first (check, spend)
   fsp.readFile = async (p, ...a) => { check('open', p); const q = ci(p); hydrate(q); return rawP.readFile(q, ...a); };
@@ -225,7 +235,7 @@ function cloud(o = {}) {
       if (f.dataless || f.stub) return { ok: true, already: true };
       if (!kn || !srv || srv.ver !== kn.ver || v.uploading.has(k) || srv.hash !== f.hash) return { ok: false, error: 'not uploaded yet' };
       if (v.placeholders === 'stub') { writeInto(v, srv, 'stub'); v.known.set(k, { ...kn, stub: true }); }
-      else dataless.set(ino(f.file), { kept: true, hash: f.hash, mtime: f.st.mtimeMs });
+      else dataless.set(ino(f.file), { kept: true, hash: f.hash, mtime: f.st.mtimeMs, size: f.st.size });
       v.stats.evicted = (v.stats.evicted || 0) + 1;
       return { ok: true };
     };
@@ -243,7 +253,7 @@ function cloud(o = {}) {
       return { file, stub: true, ref, st };
     }
     const k = `${st.dev}:${st.ino}`;
-    const d = dataless.get(k);
+    const d = dlOf(st);
     if (d) return { file, st, hash: d.hash || sha(d.buf), buf: d.buf, blob: d.blob, dataless: true };
     const ck = `${k}:${st.size}:${st.mtimeMs}`;
     let h = v.hashes.get(file);
@@ -313,7 +323,7 @@ function cloud(o = {}) {
       if (how === 'dataless') {
         raw.rmSync(target, { force: true });
         raw.writeFileSync(target, ''); raw.truncateSync(target, sizeOf(s)); raw.utimesSync(target, t, t);
-        dataless.set(ino(target), { buf: s.buf, blob: s.blob, hash: s.hash, mtime: s.mtime });
+        dataless.set(ino(target), { buf: s.buf, blob: s.blob, hash: s.hash, mtime: raw.statSync(target).mtimeMs, size: sizeOf(s) });
         v.stats.stubs += 1;
       } else if (how === 'half') {
         raw.rmSync(target, { force: true }); // (round 73) a new file: never written into another one's blob
@@ -423,7 +433,7 @@ function cloud(o = {}) {
       const f = view.get(k);
       v.known.delete(k);
       if (!f) continue;
-      if (f.stub || f.dataless || f.hash === kn.hash) { raw.rmSync(f.file, { force: true }); dataless.delete(ino(f.file)); }
+      if (f.stub || f.dataless || f.hash === kn.hash) { const k = ino(f.file); raw.rmSync(f.file, { force: true }); if (k) dataless.delete(k); } // (round 79) the inode read before the file goes
       // else: changed here while deleted on the server: it goes up again next tick (an edit wins over a delete)
     }
   }
