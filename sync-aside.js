@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const DS = require('./datasafe-core'); // a notes file that can't be read is never "no notes" (and never saved over)
 
 const DAYS = 30; const MAX = 40;
 const day = (t) => new Date(t).toISOString().slice(0, 10);
@@ -15,16 +16,23 @@ const rand = () => crypto.randomBytes(4).toString('hex');
 
 function createAside({ stateDir, now = () => Date.now(), log = () => {} }) {
   const FILE = path.join(stateDir, 'aside.json');
-  let list = null;
+  let list = null; let canSave = true;
   const seen = new Map(); // rel → hash of the losing text already kept (the guard runs on every save until the ack)
   function load() {
     if (list) return list;
-    try { const v = JSON.parse(fs.readFileSync(FILE, 'utf8')); list = Array.isArray(v) ? v : []; } catch { list = []; }
+    const r = DS.load(fs, FILE, []);
+    list = Array.isArray(r.value) ? r.value : []; canSave = r.canSave;
     const cut = now() - DAYS * 864e5;
     list = list.filter((n) => n && n.id && n.at > cut).slice(0, MAX);
     return list;
   }
   function save() {
+    if (!canSave) { // read again first: a held / unreadable file is merged with, never written over
+      const r = DS.load(fs, FILE, []);
+      if (!r.canSave) return;
+      const have = new Set(list.map((n) => n.id));
+      list = [...list, ...(Array.isArray(r.value) ? r.value : []).filter((n) => n?.id && !have.has(n.id))].sort((a, b) => b.at - a.at); canSave = true;
+    }
     try {
       fs.mkdirSync(stateDir, { recursive: true });
       const tmp = `${FILE}.${rand()}.tmp`;
@@ -46,16 +54,17 @@ function createAside({ stateDir, now = () => Date.now(), log = () => {} }) {
     if (seen.get(rel) === h) return null;
     try {
       const d = day(now());
-      const dir = path.join(stateDir, 'trash', d, ...rel.split('/').slice(0, -1));
+      const parts = rel.split(/[\\/]/); // (sync's rels use /)
+      const dir = path.join(stateDir, 'trash', d, ...parts.slice(0, -1));
       fs.mkdirSync(dir, { recursive: true });
-      let name = rel.split('/').pop();
+      let name = parts.pop();
       if (fs.existsSync(path.join(dir, name))) name = `${rand()}-${name}`;
       const f = path.join(dir, name);
       const tmp = `${f}.${rand()}.tmp`;
       fs.writeFileSync(tmp, text); fs.renameSync(tmp, f);
       seen.set(rel, h);
       if (seen.size > 200) seen.delete(seen.keys().next().value);
-      const trashRel = [...rel.split('/').slice(0, -1), name].join('/');
+      const trashRel = [...parts, name].join('/');
       return add({ rel, trash: `here:${d}/${trashRel}`, ...info });
     } catch (err) { log('aside keep', rel, err.message); return null; }
   }
