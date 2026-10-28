@@ -251,6 +251,22 @@ const WinPolish = (() => {
   // have no Recycle Bin). Hearth only lets shell.trashItem run where the Recycle Bin exists: a local fixed drive.
   //   driveType(letter) → 'fixed' | 'removable' | 'network' | 'cdrom' | 'ram' | 'unknown' (cached; PowerShell asks)
   const driveCache = new Map();
+  // (round 78, winperf78) the answers kept between starts (data/win-drives.json, main.js names it): each drive's type
+  // with its volume serial number (fs.stat's dev on Windows), trusted again only while the drive in that letter has the
+  // same serial (another USB stick in E: is asked again). Fresh for a week: most starts then start no PowerShell at all.
+  let driveFile = '';
+  const DRIVES_FRESH = 7 * 864e5;
+  const serialNow = (L, ms = 2000) => Promise.race([nodeFs.promises.stat(`${L}:\\`).then((st) => st.dev, () => null), new Promise((r) => { const t = setTimeout(() => r(null), ms); t.unref?.(); })]);
+  async function saveDrives(serial = serialNow) {
+    if (!driveFile) return;
+    try {
+      const drives = {};
+      for (const [L, t] of driveCache) { if (t === 'unknown') continue; const dev = await serial(L); if (dev != null) drives[L] = { t, dev }; }
+      const tmp = `${driveFile}.tmp`;
+      await nodeFs.promises.writeFile(tmp, JSON.stringify({ at: Date.now(), drives }));
+      await nodeFs.promises.rename(tmp, driveFile);
+    } catch { /* asked again next time */ }
+  }
   function driveTypeDefault(letter) {
     const L = String(letter).toUpperCase();
     if (driveCache.has(L)) return driveCache.get(L);
@@ -260,23 +276,39 @@ const WinPolish = (() => {
       t = String(out).trim().toLowerCase() || 'unknown';
     } catch { /* unknown */ }
     driveCache.set(L, t);
+    if (t !== 'unknown') setImmediate(() => { saveDrives().catch(() => {}); });
     return t;
   }
   // (round 65, mainhang65) the one PowerShell question above blocked the whole app (≈ 0.5–1.5 s, up to 5 s) the first
   // time something on another drive went to the Recycle Bin. warmDrives() asks it once for every drive, in the
   // background (main.js, a minute after the start on Windows): the sync question is then only for a drive plugged in later.
-  function warmDrives() {
-    if (process.platform !== 'win32') return Promise.resolve(0);
-    return new Promise((resolve) => {
+  // (round 78) { file }: the kept answers first (each drive's serial checked); PowerShell only when they're a week old
+  async function warmDrives({ file = '', platform = process.platform, execFile = cp.execFile, serial = serialNow } = {}) {
+    if (platform !== 'win32') return 0;
+    if (file) driveFile = file;
+    let kept = null; try { kept = driveFile ? JSON.parse(await nodeFs.promises.readFile(driveFile, 'utf8')) : null; } catch { kept = null; }
+    if (kept?.drives && Date.now() - Number(kept.at || 0) < DRIVES_FRESH) {
+      let n = 0;
+      for (const [L, d] of Object.entries(kept.drives)) {
+        if (!/^[A-Z]$/.test(L) || driveCache.has(L) || !d?.t) continue;
+        if (await serial(L) === d.dev) { driveCache.set(L, String(d.t)); n += 1; }
+      }
+      return n;
+    }
+    const n = await new Promise((resolve) => {
       try {
-        cp.execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[System.IO.DriveInfo]::GetDrives() | ForEach-Object { $_.Name.Substring(0,1) + " " + $_.DriveType }'], { windowsHide: true, timeout: 15000, encoding: 'utf8' }, (err, out) => {
-          let n = 0;
-          if (!err) for (const line of String(out || '').split(/\r?\n/)) { const m = /^([A-Za-z]) (\w+)/.exec(line.trim()); if (m && !driveCache.has(m[1].toUpperCase())) { driveCache.set(m[1].toUpperCase(), m[2].toLowerCase()); n += 1; } }
-          resolve(n);
+        execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[System.IO.DriveInfo]::GetDrives() | ForEach-Object { $_.Name.Substring(0,1) + " " + $_.DriveType }'], { windowsHide: true, timeout: 15000, encoding: 'utf8' }, (err, out) => {
+          let k = 0;
+          if (!err) for (const line of String(out || '').split(/\r?\n/)) { const m = /^([A-Za-z]) (\w+)/.exec(line.trim()); if (m && !driveCache.has(m[1].toUpperCase())) { driveCache.set(m[1].toUpperCase(), m[2].toLowerCase()); k += 1; } }
+          resolve(k);
         });
       } catch { resolve(0); }
     });
+    if (n) await saveDrives(serial);
+    return n;
   }
+  // (tests) the drive answers this session holds
+  const _drives = { cache: driveCache, serialNow: (...a) => serialNow(...a) };
   function trashCheck(p, { platform = process.platform, env = process.env, fs = realFs, driveType = driveTypeDefault } = {}) {
     if (platform !== 'win32') return { ok: true, path: p };
     let s = String(p || '').replace(/\//g, '\\');
@@ -339,6 +371,6 @@ const WinPolish = (() => {
     return hit ? { text: hit[1], fix: hit[2], action: hit[3] } : null;
   }
 
-  return { envGet, binDirs, candidates, codexRuntime, codexRuntimeStatus, lookedIn, readShim, findNode, quoteArg, cmdLine, plan, spawn, cleanPath, trashCheck, warmDrives, trashError, plainError, dropStack, PKG, _driveCache: driveCache };
+  return { _drives, envGet, binDirs, candidates, codexRuntime, codexRuntimeStatus, lookedIn, readShim, findNode, quoteArg, cmdLine, plan, spawn, cleanPath, trashCheck, warmDrives, trashError, plainError, dropStack, PKG, _driveCache: driveCache };
 })();
 module.exports = WinPolish;

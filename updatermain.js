@@ -86,7 +86,16 @@ function create(opts = {}) {
 
   // ---------- before anything: can git work here, is something half-done? ----------
   async function preflight() {
-    const top = await git(['rev-parse', '--show-toplevel'], { timeout: 15000 });
+    // (round 78, winperf78) the four questions below in one git process when they all have an answer (a usual
+    // checkout): each git start costs ≈ 50–150 ms on Windows; anything unusual asks them one by one as before
+    const all = await git(['rev-parse', '--show-toplevel', '--show-prefix', '--absolute-git-dir', '--abbrev-ref', 'HEAD'], { timeout: 15000 });
+    const four = all.ok ? all.out.split(/\r?\n/) : [];
+    if (four.length === 4 && four[0] && four[2] && four[3]) {
+      if (four[1]) return ex('repo-other', { top: four[0] });
+      return checkout({ gitDir: four[2], branch: four[3] });
+    }
+    // (no .git here at all: git's answer to the four is its answer to the first)
+    const top = !all.ok && !C.gitDirOf(DIR) ? all : await git(['rev-parse', '--show-toplevel'], { timeout: 15000 });
     if (top.missing) return ex('git');
     if (!top.ok) {
       const why = C.classify(top.err);
@@ -100,6 +109,10 @@ function create(opts = {}) {
     if (prefix.ok && prefix.out) return ex('repo-other', { top: top.out });
     const gd = await git(['rev-parse', '--absolute-git-dir']);
     const gitDir = gd.ok ? gd.out : path.join(DIR, '.git');
+    return checkout({ gitDir, branch: null });
+  }
+  // (the rest of preflight: a lock, an update half done, the branch)
+  async function checkout({ gitDir, branch }) {
     const lock = path.join(gitDir, 'index.lock');
     if (!busy && fs.existsSync(lock)) {
       let age = 0;
@@ -118,7 +131,7 @@ function create(opts = {}) {
       }
       C.writeState(DIR, 'journal', null);
     }
-    const br = await git(['rev-parse', '--abbrev-ref', 'HEAD']);
+    const br = branch != null ? { ok: true, out: branch } : await git(['rev-parse', '--abbrev-ref', 'HEAD']);
     if (br.ok && br.out === 'HEAD') return ex('detached');
     return { ok: true, gitDir, branch: br.out };
   }
@@ -336,6 +349,27 @@ function create(opts = {}) {
   // (round 55, configsafe) o.own = { config, theme }: the owner's files in the data folder. config.json from a stash goes
   // into data/config.json, theme.css into data/theme.css (only while that one is still the repo's own: nothing of the
   // owner's written over); the tracked files are left as the repo has them
+  // (round 78, winperf78) every start asked git 2–5 times here (each a process: ≈ 50–150 ms on Windows with Defender)
+  // to learn what it learned at the last start. Now: the checkout's HEAD read from its files, the stash log's and the
+  // tracked files' size / date; the same as when everything was found settled → nothing to ask.
+  const headNow = () => {
+    try {
+      const gd = C.gitDirOf(DIR); if (!gd) return '';
+      let common = gd; try { common = path.resolve(gd, fs.readFileSync(path.join(gd, 'commondir'), 'utf8').trim()); } catch { /* not a worktree */ }
+      const head = fs.readFileSync(path.join(gd, 'HEAD'), 'utf8').trim();
+      const ref = /^ref:\s*(\S+)/.exec(head)?.[1];
+      if (!ref) return /^[0-9a-f]{40,64}$/.test(head) ? head : '';
+      for (const d of [gd, common]) { try { const v = fs.readFileSync(path.join(d, ...ref.split('/')), 'utf8').trim(); if (v) return v; } catch { /* packed */ } }
+      const packed = fs.readFileSync(path.join(common, 'packed-refs'), 'utf8');
+      return new RegExp(`^([0-9a-f]{40,64}) ${ref.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm').exec(packed)?.[1] || '';
+    } catch { return ''; }
+  };
+  const statKey = (f) => { try { const st = fs.statSync(f); return `${st.size}:${Math.round(st.mtimeMs)}`; } catch { return 'none'; } };
+  const stashKey = () => {
+    const gd = C.gitDirOf(DIR); if (!gd) return 'none';
+    let common = gd; try { common = path.resolve(gd, fs.readFileSync(path.join(gd, 'commondir'), 'utf8').trim()); } catch { /* not a worktree */ }
+    return [gd, common].map((d) => `${statKey(path.join(d, 'logs', 'refs', 'stash'))}/${statKey(path.join(d, 'refs', 'stash'))}`).join('|');
+  };
   async function bringBack(o = {}) {
     if (busy) return { ok: false, brought: [] };
     const own = o.own || null;
@@ -343,9 +377,12 @@ function create(opts = {}) {
     if (!gd) return { ok: true, brought: [] };
     let common = gd; try { common = path.resolve(gd, fs.readFileSync(path.join(gd, 'commondir'), 'utf8').trim()); } catch { /* not a worktree */ }
     if (![gd, common].some((d) => fs.existsSync(path.join(d, 'logs', 'refs', 'stash')) || fs.existsSync(path.join(d, 'refs', 'stash')))) return { ok: true, brought: [] }; // no stash: no git run
-    const done = new Set(C.readState(DIR, 'ownback', null)?.shas || []);
+    const kept = C.readState(DIR, 'ownback', null);
+    const sk = stashKey();
+    if (kept?.stashKey && kept.stashKey === sk) return { ok: true, brought: [] }; // (round 78) the same stashes, all handled
+    const done = new Set(kept?.shas || []);
     const list = lines(await git(['stash', 'list', '--format=%H%x09%gs'])).map((l) => l.split('\t')).filter(([h, m]) => h && C.OWN_EDITS.test(m || '') && !done.has(h));
-    if (!list.length) return { ok: true, brought: [] };
+    if (!list.length) { try { C.writeState(DIR, 'ownback', { ...(kept || {}), shas: [...done], stashKey: sk }); } catch { /* asked again next start */ } return { ok: true, brought: [] }; }
     busy = true;
     try {
       const head = parse(await git(['show', `HEAD:${CONFIG}`]));
@@ -394,12 +431,17 @@ function create(opts = {}) {
     // files, so what it changed there wins this once
     const stP = { state: path.join(keepP.keep, 'state.json') };
     const handed = Boolean(CS.readState(stP)?.handedBack);
+    // (round 78, winperf78) the same HEAD and the same tracked files as when both were found the repo's own: settled
+    const head = headNow();
+    const print = head ? JSON.stringify([head, statKey(path.join(DIR, CONFIG)), statKey(path.join(DIR, THEME)), Boolean(own.config), Boolean(own.theme), handed]) : '';
+    if (print && C.readState(DIR, 'settled', null)?.print === print) return { ok: true, settled: [], brought: [] };
     busy = true;
     try {
-      const settled = []; const brought = [];
+      const settled = []; const brought = []; let clean = true;
       for (const [f, mine] of [[CONFIG, own.config], [THEME, own.theme]]) {
         if (!mine || !(await sha(`HEAD:${f}`))) continue; // not a file git has
         if ((await git(['diff', '--quiet', 'HEAD', '--', f])).ok) continue; // already the repo's own
+        clean = false;
         let text = null; try { text = readRetry(fs, path.join(DIR, f)); } catch (err) { if (err.code !== 'ENOENT') continue; }
         if (text != null) CS.keepCopy(fs, keepP, f, text, Date.now());
         const headText = (await git(['show', `HEAD:${f}`])).out;
@@ -425,6 +467,7 @@ function create(opts = {}) {
         if ((await git(['checkout', 'HEAD', '--', f])).ok) settled.push(f);
       }
       if (handed && settled.includes(CONFIG)) CS.writeState(stP, { ...(CS.readState(stP) || {}), handedBack: null, tookBack: Date.now() });
+      if (clean && print) { try { C.writeState(DIR, 'settled', { print, at: Date.now() }); } catch { /* asked again next start */ } }
       return { ok: true, settled, brought };
     } finally { busy = false; }
   }

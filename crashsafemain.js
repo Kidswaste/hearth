@@ -98,12 +98,13 @@ async function cleanLeftovers(list) {
 
 // ---------- temp files killed writes left (data folder; config.json next to the app) ----------
 const SKIP_DIRS = new Set(['workspace', 'node_modules', 'electron', 'chrome', 'media', 'captures', 'renders', 'assets', 'ae', 'test-trash', 'mcp-runs']);
-function tmpFiles(root, depth = 3, out = []) {
+// (round 78, winperf78) listed asynchronously: ≈ 100 folders read with readdirSync on the main process at every start
+async function tmpFiles(root, depth = 3, out = []) {
   let ents = [];
-  try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { return out; }
+  try { ents = await fs.promises.readdir(root, { withFileTypes: true }); } catch { return out; }
   for (const e of ents) {
     const p = path.join(root, e.name);
-    if (e.isDirectory()) { if (depth > 0 && !SKIP_DIRS.has(e.name) && !e.name.startsWith('.hearth')) tmpFiles(p, depth - 1, out); } else if (C.realOf(e.name)) out.push(p);
+    if (e.isDirectory()) { if (depth > 0 && !SKIP_DIRS.has(e.name) && !e.name.startsWith('.hearth')) await tmpFiles(p, depth - 1, out); } else if (C.realOf(e.name)) out.push(p);
   }
   return out;
 }
@@ -111,7 +112,7 @@ const readMaybe = (p) => { try { return { text: fs.readFileSync(p, 'utf8'), stat
 async function sweep({ roots = [dataDir], before = Date.now() - 60000 } = {}) {
   const done = [];
   for (const root of roots) {
-    for (const p of tmpFiles(root, root === dataDir ? 3 : 0)) {
+    for (const p of await tmpFiles(root, root === dataDir ? 3 : 0)) {
       let st; try { st = fs.statSync(p); } catch { continue; }
       if (st.mtimeMs > before || st.size > 64 << 20) continue; // being written right now / not a store
       const name = path.basename(p);

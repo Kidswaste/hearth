@@ -739,7 +739,7 @@ function registerAfterWindow() {
   }, 4000);
   // (round 60, winfresh60) a copy's first start on Windows: the Start menu + Desktop "Hearth" shortcuts (once; another
   // copy's shortcuts are left alone and said once)
-  if (process.platform === 'win32') { const t = setTimeout(() => { require('./winpolish').warmDrives().catch(() => {}); }, 60000); t.unref?.(); } // (round 65, mainhang65) the drives' types asked in the background, never with the app waiting
+  if (process.platform === 'win32') { const t = setTimeout(() => { require('./winpolish').warmDrives({ file: path.join(store.DATA_DIR, 'win-drives.json') }).catch(() => {}); }, 60000); t.unref?.(); } // (round 65, mainhang65) the drives' types asked in the background, never with the app waiting · (round 78, winperf78) kept a week (each drive's serial checked): no PowerShell at most starts
   if (process.platform === 'win32') setTimeout(() => appshell.firstRunShortcuts({ dataDir: store.DATA_DIR }).then((r) => {
     if (r.action === 'elsewhere' && !r.hold) win?.webContents.executeJavaScript(`window.toast?.(${JSON.stringify(`Your Hearth shortcuts still open the copy in ${r.other}. Settings › Create Start menu & desktop shortcuts points them at this one.`)}, { timeout: 12000 })`).catch(() => {});
     else if (r.error) console.warn('shortcuts:', r.error);

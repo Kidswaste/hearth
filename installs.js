@@ -74,8 +74,17 @@ function quick(bin, args, ms = 8000, cwd = os.tmpdir()) {
     child.on('close', (code) => { clearTimeout(timer); resolve({ code, out: out.trim().slice(0, 2000) }); });
   });
 }
-async function version(bin, { cwd, fresh = false } = {}) {
+// (round 78, winperf78) one question per binary at a time: the engine check and Astra's doctor asked together at the
+// start and each started its own `--version`
+const asking = new Map();
+function version(bin, o = {}) {
   const key = binKey(bin);
+  if (asking.has(key)) return asking.get(key);
+  const p = versionNow(bin, o, key).finally(() => asking.delete(key));
+  asking.set(key, p);
+  return p;
+}
+async function versionNow(bin, { cwd, fresh = false } = {}, key = binKey(bin)) {
   const d = data();
   if (!fresh && d.versions[key]) return { ...d.versions[key], semver: semverOf(d.versions[key].text) };
   const r = await quick(bin, ['--version'], 8000, cwd);

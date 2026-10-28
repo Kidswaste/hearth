@@ -41,8 +41,12 @@ function writeIndex(index) {
 }
 const fileOf = (key, f) => path.join(dir(), key, f.file);
 const urlOf = (key, f) => pathToFileURL(fileOf(key, f)).href;
-function view(index, now = Date.now()) {
-  return C.summary(index, now).map((t) => ({ ...t, files: t.files.map((f) => ({ id: f.id, name: f.name, kind: f.kind, bytes: f.bytes, addedAt: f.addedAt, url: urlOf(t.key, f), here: fs.existsSync(fileOf(t.key, f)) })) }));
+// (round 78, winperf78) each ticket file looked at asynchronously, all at once (was existsSync one by one on the main
+// process: 80 at the start on the test profile, through the ✦ tracker); keep(t) leaves out shows not asked about
+const here = (p) => fsp.access(p).then(() => true, () => false);
+async function view(index, now = Date.now(), keep = null) {
+  const shows = C.summary(index, now).filter((t) => !keep || keep(t));
+  return Promise.all(shows.map(async (t) => ({ ...t, files: await Promise.all(t.files.map(async (f) => ({ id: f.id, name: f.name, kind: f.kind, bytes: f.bytes, addedAt: f.addedAt, url: urlOf(t.key, f), here: await here(fileOf(t.key, f)) }))) })));
 }
 
 // ---------- add: a copy under the show ----------
@@ -72,7 +76,7 @@ async function add({ show, path: src, data, name, from = 'pick' } = {}) {
     writeIndex(index);
   }
   cache.at = 0;
-  return { dup, entry: { id: entry.id, name: entry.name, kind: entry.kind, url: urlOf(sh.key, entry) }, list: view(index) };
+  return { dup, entry: { id: entry.id, name: entry.name, kind: entry.kind, url: urlOf(sh.key, entry) }, list: await view(index) };
 }
 
 // ---------- remove: to the Trash / Recycle Bin (never deleted for good) ----------
@@ -92,7 +96,7 @@ async function remove({ key, id } = {}) {
   const where = await toBin(path.join(dir(), key, f.file));
   writeIndex(index);
   try { fs.rmdirSync(path.join(dir(), key)); } catch { /* not empty, or gone */ }
-  return { where, list: view(index) };
+  return { where, list: await view(index) };
 }
 
 // ---------- Downloads: names only, a suggestion only (nothing is moved, renamed or opened) ----------
@@ -158,14 +162,14 @@ async function pick(req, e) {
 async function op(req = {}, e = null) {
   const o = String(req.op || '');
   if (o === 'pick') return pick(req, e);
-  if (o === 'list') { const r = readIndex(); return { list: view(r.index), problem: r.ok ? '' : 'Your ticket list could not be read just now. Nothing was changed.' }; }
+  if (o === 'list') { const r = readIndex(); return { list: await view(r.index), problem: r.ok ? '' : 'Your ticket list could not be read just now. Nothing was changed.' }; }
   if (o === 'add') return add(req);
   if (o === 'remove') return remove(req);
   if (o === 'suggest') { const r = readIndex(); return { suggest: await suggest(req.shows, r.index) }; }
   if (o === 'hud') {
     const r = readIndex(), now = Date.now();
     const soon = (Array.isArray(req.shows) ? req.shows : []).filter((s) => Number(s?.start) - now < 7 * 24 * 3600e3); // this week's show quests
-    return { ready: view(r.index, now).filter((t) => t.phase === 'day'), keys: Object.keys(r.index.shows), suggest: soon.length ? await suggest(soon, r.index) : [] };
+    return { ready: await view(r.index, now, (t) => t.phase === 'day'), keys: Object.keys(r.index.shows), suggest: soon.length ? await suggest(soon, r.index) : [] };
   }
   if (o === 'dismiss') { const index = mustRead(); const sig = String(req.sig || '').slice(0, 400); if (sig && !index.dismissed.includes(sig)) { index.dismissed.push(sig); writeIndex(index); } return { ok: true }; }
   if (o === 'pass') return pass(req);
