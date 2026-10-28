@@ -93,15 +93,16 @@ which the ack would let it write over what arrived). `--list` prints what's decl
 20. Followed venues / show settings from the other computer are no longer overwritten by this computer's next save.
 21. A second arrival while a store is being read can no longer let the older copy be written over it.
 22. A very big store (16 MB+) is never written over what arrived.
+23. No more "Changes from your Mac arrived — Reload" toast when everything that arrived already updated on screen by itself.
 ### For builders
-23. One helper for every new store (`StoreAck.hold`) — written first, read again, acked, on screen; `StoreAck.into` /
+24. One helper for every new store (`StoreAck.hold`) — written first, read again, acked, on screen; `StoreAck.into` /
     `StoreAck.keepCaret` keep what the screen holds.
-24. `dev/storeack-scan.js` catches a store reloaded on arrival without it.
+25. `dev/storeack-scan.js` catches a store reloaded on arrival without it.
 
-24 upgrades.
+25 upgrades.
 
 ## Tested
-- **`node dev/storeack77-test.js`** (new, in UNIT, **177 checks**) through the two-computer simulator with the real sync
+- **`node dev/storeack77-test.js`** (new, in UNIT, **177 checks in 19 scenarios**) through the two-computer simulator with the real sync
   engine and its write guard and the real coordinator: `core` (order write → read → apply → ack; typed during the read;
   a failed read / apply / write → no ack, nothing read over; nobody declared → no ack; two holders and a late write →
   no ack; a store without a guard base; a path pattern; again(); `into`; the engine ignores an ack for a read begun
@@ -118,9 +119,12 @@ which the ack would let it write over what arrived). `--list` prints what's decl
   caret and the typed words stay, both on disk, acked; the Mac's note deleted here → stays deleted in the cloud. The
   board on screen: the Mac's note appears on it; taken off → stays off in the cloud. The Lab: a Mac scene joins, deleted
   on the Mac it leaves (the scene on screen stays open).
-- Ran: unit:storeack77-test, unit:storeack-scan, unit:projsync76-test, unit:sync72-test, unit:sync-test,
-  unit:projects-test, unit:datasafe-scan, unit:winmac-test, unit:errorcalm-scan, unit:boot-test, and the app checks
-  listed in the report (under the shared lock).
+- Ran (all pass): unit:storeack77-test, unit:storeack-scan, unit:projsync76-test, unit:sync72-test, unit:sync-test,
+  unit:projects-test, unit:datasafe-scan, unit:datasafe-test, unit:scenesafe-test, unit:store-thread-test,
+  unit:winmac-test, unit:errorcalm-scan, unit:boot-test, unit:soundbank63-test, unit:quickidea71-test,
+  unit:showsync-test, unit:bouncelog66-test, unit:follow70-test; app checks (under the shared lock): storeack77,
+  scenes-sync, projects, project-continuity, sync72, sync, lazy, projsync76, timemachine, workbenches, bouncelog66,
+  follow70, photos69, showprep62, quickidea71, soundbank63. Group: `node dev/run-checks.js storeack77`.
 
 ## Numbers
 - First screen: `storeack-core.js` (≈ 5 KB of code) + a few lines each in notes.js, usage.js, chat-scenes.js:
@@ -139,6 +143,14 @@ Edits in your files are small and marked `(round 77, storeack77)`:
   waits while typing / drawing).
 - `projects.js`: `reloadFromDisk()` became a StoreAck holder (same steps, the ack now with `since`).
 - `store.js` (shared): `writeJson(…, { fresh })` skips the guard; `mergeOnMain` passes it.
+
+## Edits outside the lane (small, marked)
+`sync-engine.js`, `syncmain.js`, `store.js`, `sync.js` (the toast), `projects.js`, `tools/three.js`,
+`tools/three-history.js`, `board.js`, `chat-scenes.js`, `notes.js`, `usage.js`, `tools/workbench-ui.js`,
+`tools/bouncelog.js`, `follow.js`, `showprep.js`, `tools/parisphotos.js`, `quickideamain.js`, `soundbankmain.js`,
+`showsyncmain.js`, `index.html` (one script tag), `dev/run-checks.js` (UNIT + group), `dev/boot-test.js` (scripts
+70 → 71), `docs/upgrades/firstscreen.md`. New: `storeack-core.js`, `storeackmain.js`, `dev/storeack77-test.js`,
+`dev/storeack-scan.js`, `dev/checks/storeack77.js`. Not touched: the creative-direction session's files (credits.js…).
 
 ## Risks
 - The guard's line merge treats edits on **adjacent lines** of the same text (the Mac changed line 3, this computer
