@@ -18,7 +18,7 @@ let mark = null; // { at, cpu: Map pid → cumulative CPU seconds (or null) }
 const regQuery = (key, value) => new Promise((resolve) => {
   if (process.platform !== 'win32') { resolve(null); return; }
   try {
-    require('child_process').execFile('reg', ['query', key, '/v', value], { windowsHide: true, timeout: 3000 }, (err, out) => {
+    require('child_process').execFile('reg', ['query', key, '/v', value], { windowsHide: true, timeout: 3000 }, (err, out) => { // winmac-ok: Windows-only (guarded above), reg.exe is a system tool
       if (err) { resolve(null); return; }
       const m = /REG_\w+\s+(.*)$/m.exec(String(out || ''));
       resolve(m ? m[1].trim() : null);

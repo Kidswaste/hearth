@@ -190,9 +190,9 @@ const GpuPlay = (() => {
       else dialog();
       return last;
     } catch (err) {
-      card({ state: 'wait', text: `📈 Test stopped: ${err?.message || err}` }); setTimeout(() => card({ state: 'off' }), 5000); // (said over the game too: Hearth may be behind it)
+      card({ state: 'wait', text: `📈 Test stopped: ${calmError(err)}` }); setTimeout(() => card({ state: 'off' }), 5000); // (said over the game too: Hearth may be behind it)
       try { await ev(call({ op: 'stop' })); } catch { /* gone */ }
-      toast(`Performance test stopped: ${err?.message || err}`, { timeout: 5000 });
+      toast(`Performance test stopped: ${calmError(err)}`, { timeout: 5000 });
       return null;
     } finally { run = null; }
   }
@@ -228,7 +228,7 @@ const GpuPlay = (() => {
         const r = id === 'backend-d3d11' ? await Gpu52.set('backend', auto ? 'd3d11' : 'auto') : id === 'power-high' ? await Gpu52.set('power', 'high') : await Gpu52.set('canvas', 'auto');
         text = typeof r === 'string' ? r : r?.text || '';
       } else return '';
-    } catch (err) { text = `Couldn't: ${err?.message || err}`; }
+    } catch (err) { text = `Couldn't: ${calmError(err)}`; }
     if (from === 'game' && last) card(cardOf(last, text));
     else if (text) toast(text, { timeout: 5000, ...(RESTART.has(id) ? { action: { label: 'Restart', fn: () => window.hub.restartApp?.() } } : {}) });
     return text;
