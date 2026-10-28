@@ -611,8 +611,26 @@ app.on('before-quit', (e) => {
   store.flushSync();
   engines.stopAll(); // includes idle persistent Codex connections and their MCP children
   if (nowplaying.loaded) nowplaying.stop(); syncmain.quit();
+  armQuitWatchdog();
 });
 let quitFlushed = false;
+// (windows hourly 1) a quit or Restart that never finished left Hearth running with no window (seen on Windows: the
+// relaunch waits for the old copy to exit). Nothing in Hearth cancels a quit on purpose, so 10 s after the last
+// before-quit it saves once more, notes which windows were still open (data/logs/quit-stuck.log) and exits.
+let quitWatch = null;
+function armQuitWatchdog() {
+  if (quitWatch) return;
+  quitWatch = setTimeout(() => {
+    try {
+      const open = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed()).map((w) => `${w.getTitle() || '(untitled)'}${w.isVisible() ? '' : ' (hidden)'}`);
+      const dir = path.join(store.DATA_DIR, 'logs'); fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(path.join(dir, 'quit-stuck.log'), `${new Date().toISOString()} quit still waiting after 10 s; open windows: ${open.join(', ') || 'none'}\n`);
+    } catch { /* the exit below matters more */ }
+    try { store.flushSync(); } catch { /* already flushed in before-quit */ }
+    app.exit(0);
+  }, 10000);
+  quitWatch.unref?.();
+}
 ipcMain.on('stage:fullscreen', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.setFullScreen(!stageWin.isFullScreen()); });
 // (round 22, labstage) the Stage window as a live output: which screens there are, and putting it fullscreen on one
 // (the other screen than Hearth's by default), so the hub stays on the main screen
