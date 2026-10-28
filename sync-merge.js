@@ -84,7 +84,8 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 // added on two computers all stay, in time order. A true conflict (one field changed two ways) keeps ours and is
 // reported, so the caller can keep their whole version as a conflict copy.
 const ABSENT = Symbol('absent');
-const TIME_KEY = /(^|[a-z])(At|Time|Ts)$|^(updated|modified|lastSeen|last|mtime|seen|since)$/;
+// (round 76, projsync76) + opened: a project opened on both computers (Desk, a card, Continue) was "⚠ 1 conflict"
+const TIME_KEY = /(^|[a-z])(At|Time|Ts)$|^(updated|modified|lastSeen|last|mtime|seen|since|opened)$/;
 function merge3(base, ours, theirs, opts = {}) {
   base = compactProjects(base); ours = compactProjects(ours); theirs = compactProjects(theirs);
   const conflicts = [];
@@ -238,6 +239,20 @@ function mergeArr(b, o, t, p, c, opt, noBase) {
   if (!noBase && prefix(o) && prefix(t)) {
     const ot = o.slice(b.length);
     return [...o, ...t.slice(b.length).filter((x) => !ot.some((y) => eq(x, y)))];
+  }
+  // (round 76, projsync76) lists without ids that a project's worktable keeps: things put on the shelf FIRST on both
+  // computers (shelf.unshift) and a storyboard's shots edited on each side (one shot here, another there) were a
+  // conflict, and one computer's change lost. Both only added, before and / or after the base: both additions stay.
+  // The same length everywhere with each place changed on one side at most: each side's change stays.
+  if (!noBase) {
+    const at = (list) => { if (b.length > list.length) return -1; for (let s = 0; s + b.length <= list.length; s++) if (b.every((x, i) => eq(x, list[s + i]))) return s; return -1; };
+    const so = at(o); const st = at(t);
+    if (b.length && so >= 0 && st >= 0) {
+      const head = [...o.slice(0, so), ...t.slice(0, st).filter((x) => !o.slice(0, so).some((y) => eq(x, y)))];
+      const ot = o.slice(so + b.length);
+      return [...head, ...b, ...ot, ...t.slice(st + b.length).filter((x) => !ot.some((y) => eq(x, y)))];
+    }
+    if (o.length === b.length && t.length === b.length && b.every((x, i) => eq(x, o[i]) || eq(x, t[i]))) return b.map((x, i) => (eq(x, o[i]) ? t[i] : o[i]));
   }
   if (noBase) { // first join: everything from both
     return [...o, ...t.filter((x) => !o.some((y) => eq(x, y)))];

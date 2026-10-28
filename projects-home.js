@@ -52,6 +52,8 @@ const ProjectsHome = (() => {
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input')); } });
     P.onChange(e => { if(e.why==='notes'&&e.id===drawn&&S.body.querySelector('.pj-notes')?.value===e.project.notes)return;deskSig=null;S.stale = true; if (visible()) paintSoon(); });
     addEventListener('hearth:view', () => { if (visible() && S.stale) paintSoon(); });
+    // (round 76, projsync76) something landed from the other computer: an open Desk shows it (what arrived, its sync line)
+    addEventListener('hearth:synced', () => { if (!S.open) return; S.stale = true; if (visible()) paintSoon(); else S.body?.querySelectorAll('.pj-sync-line').forEach((n) => n.refresh?.()); });
     // (round 72) coming on screen draws at once (the 80 ms wait is for bursts of changes, not for a click)
     document.addEventListener('hearth:activate', () => { if (!visible()) { keepDesk();ProjectFrontpage.stop(); clearTimeout(paintT); ++paintVersion; S.stale = true; S.io?.disconnect(); } else if (S.stale) { clearTimeout(paintT); paint(); } });
     document.addEventListener('visibilitychange', () => { if (visible() && S.stale) paintSoon(); });
@@ -78,7 +80,7 @@ const ProjectsHome = (() => {
   // what the Desk shows, as text: each item's name, time, picture and presence (a few ms for 771 items), the scene's
   // modules, the current scene, and the minute its times are written in (sources re-read after 15–30 s give new
   // arrays with the same content: compared by what they say, not by identity)
-  const deskSigOf = (p) => { const sc = window.ThreeLab?.scenes?.get?.(ProjectWorkspace.currentScene() || p.workspace?.sceneId); return JSON.stringify([p.updated, p.items.map((x) => `${P.nameOf(x)}\u0001${P.timeOf(x) || x.at}\u0001${P.thumbOf(x) || ''}\u0001${P.gone(x) ? 1 : 0}`), sc ? sc.layers?.map((x) => `${x.id}:${x.name}:${x.visible !== false}`) : null, ProjectWorkspace.currentScene(), Math.floor(Date.now() / 60000)]); };
+  const deskSigOf = (p) => { const sc = (typeof ThreeLab !== 'undefined' ? ThreeLab : null)?.scenes?.get?.(ProjectWorkspace.currentScene() || p.workspace?.sceneId); return JSON.stringify([p.updated, p.items.map((x) => `${P.nameOf(x)}\u0001${P.timeOf(x) || x.at}\u0001${P.thumbOf(x) || ''}\u0001${P.gone(x) ? 1 : 0}`), sc ? sc.layers?.map((x) => `${x.id}:${x.name}:${x.visible !== false}`) : null, ProjectWorkspace.currentScene(), Math.floor(Date.now() / 60000)]); }; // (round 76, projsync76) ThreeLab is a const, never on window: the scene's modules were left out of the sig (a Desk visit after a layer changed kept the old list)
 
   // ---------- the cards ----------
   let homeN = 0;
@@ -120,7 +122,7 @@ const ProjectsHome = (() => {
     const cont = el('div', { class: 'pj-continue' }, ...continueChips(p));
     const c = el('div', { class: `pj-card pj-st-${p.status}`, tabIndex: 0, title: `${p.name}${p.notes ? `\n${C.cap(p.notes, 200)}` : ''}\nClick: resume this project · right-click: more`, dataset: { project: p.id } },
       pic,
-      el('div', { class: 'pj-card-head' }, el('span', { class: 'pj-mark', text: p.ident.glyph }), el('b', { class: 'pj-name', text: p.name }), p.status !== 'active' ? el('span', { class: 'pj-pill', text: C.STATUS[p.status] }) : null),
+      el('div', { class: 'pj-card-head' }, el('span', { class: 'pj-mark', text: p.ident.glyph }), el('b', { class: 'pj-name', text: p.name }), p.status !== 'active' ? el('span', { class: 'pj-pill', text: C.STATUS[p.status] }) : null, p.revived ? el('span', { class: 'pj-pill pj-pill-revived', text: 'Deleted elsewhere?', title: 'Deleted on your other computer, but it changed after that: open it to keep it or delete it' }) : null), // (round 76, projsync76)
       el('p', { class: 'pj-card-description', text: p.workspace?.description || C.cap(p.notes || 'Open your project workspace', 110) }),
       el('div', { class: 'pj-meta', text: C.countText(p) }), cont);
     const identity=el('button',{type:'button',class:'pj-go pw-banner-edit',text:'✦',title:'Generate a Three.js banner / logo',attrs:{'aria-label':`Design ${p.name} banner`},on:{click:e=>{e.stopPropagation();ProjectFrontpage.edit(p).catch(err=>toast(calmError(err),{type:'error'}));}}});pic.append(identity);
@@ -207,6 +209,7 @@ const ProjectsHome = (() => {
         el('button', { type: 'button', class: 'ghost small pj-back', text: '‹ Projects', on: { click: () => ProjectWorkspace.home() } }),
         el('div', { class: 'pj-p-line' }, mark, name, status),
         el('div', { class: 'pj-meta', text: `${C.countText(p)} · made ${p.from === 'make' ? 'from a make' : p.from === 'suggest' ? 'from a suggestion' : 'by hand'} · ${timeAgo(p.at)}` }),
+        syncLine(p), revivedNote(p), // (round 76, projsync76)
         el('div', { class: 'pj-p-actions' },
           el('button', { type: 'button', class: 'primary small', text: '▶ Scene', title: 'Resume the scene', on: { click: () => ProjectWorkspace.go('scene') } }),
           el('button', { type: 'button', class: 'ghost small', text: '＋ Add', title: 'This chat, the scene on screen, a recent chat / scene / board / render / file…', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); P.warm?.(); showMenu(b.left, b.bottom + 4, P.addMenu(p)); } } }),
@@ -234,6 +237,44 @@ const ProjectsHome = (() => {
     if(modules.open)paintModules();
     S.root.scrollTop=state.scroll||0;
     if(state.focus){const field=[...S.body.querySelectorAll('input,textarea,select')].find(e=>e.className===state.focus.className);field?.focus({preventScroll:true});if(field?.setSelectionRange&&state.focus.start!=null)try{field.setSelectionRange(state.focus.start,state.focus.end);}catch{}}
+  }
+  // ---------- (round 76, projsync76) the project across your two computers ----------
+  // One line under the project's name: "All here · synced 2 min ago" / "3 files still arriving from Mac" (ProjSyncCore,
+  // from what sync already reports: no timer, no extra reads). Its words change when sync reports (Sync.listen) or
+  // something lands (the Desk is drawn again); a click opens the sync panel. Nothing while sync is off.
+  let dataDir = null;
+  // what this computer has: the Lab's and the boards' own lists when they're loaded (the Desk's cached look can be up
+  // to 20 s behind: a scene made a moment ago here isn't "arriving"), else the look
+  function present(x) {
+    if (x.type === 'scene' || x.type === 'seq') { const L = Lazy.loaded('lab') && typeof ThreeLab !== 'undefined' ? ThreeLab.scenes : null; if (L?.get) return Boolean(L.get(x.ref)); }
+    if (x.type === 'board' && Lazy.loaded('board') && typeof Board !== 'undefined' && Board.boards) { try { const list = Board.boards(); if (list?.length) return list.some((b) => b.id === x.ref); } catch { /* not ready */ } }
+    return ['chat', 'scene', 'seq', 'board'].includes(x.type) ? !P.gone(x) : null;
+  }
+  function syncStatus(p) {
+    if (typeof Sync === 'undefined' || typeof ProjSyncCore === 'undefined') return null;
+    if (dataDir === null) { dataDir = ''; P.Src.workspaceDir().then((d) => { dataDir = String(d || '').replace(/[\\/]workspace$/, ''); S.body?.querySelectorAll('.pj-sync-line').forEach((n) => n.refresh?.()); }).catch(() => {}); }
+    return ProjSyncCore.status(P.get(p.id) || p, { sync: Sync.status(), present, dataDir, ci: !/Mac/.test(navigator.platform), names: (x) => (x.type === 'worktable' ? x.name : P.nameOf(x)), ago: (t) => (t ? timeAgo(t) : 'not yet') });
+  }
+  function syncLine(p) {
+    const node = el('button', { type: 'button', class: 'pj-sync-line', on: { click: (e) => { e.stopPropagation(); Sync.panel?.(e); } } });
+    node.refresh = () => {
+      const r = syncStatus(p);
+      node.hidden = !r;
+      if (!r) return;
+      node.dataset.kind = r.kind; node.title = r.title; node.setAttribute('aria-label', `Sync status: ${r.text}`);
+      node.textContent = `${r.kind === 'here' ? '✓' : r.kind === 'arriving' || r.kind === 'going' ? '↻' : r.kind === 'offline' ? '○' : '‖'} ${r.text}`;
+    };
+    node.refresh();
+    if (typeof Sync !== 'undefined' && Sync.listen) { const f = () => node.refresh(); f.gone = () => !node.isConnected; Sync.listen(f); }
+    return node;
+  }
+  // deleted on one computer while it changed on the other: kept, and the choice is here (ProjectsCore.revive)
+  function revivedNote(p) {
+    if (!p.revived) return null;
+    return el('div', { class: 'pj-revived', attrs: { role: 'status' } },
+      el('span', { text: `Deleted on your other computer${p.revived.at ? ` (${timeAgo(p.revived.at)})` : ''}, but it changed after that, so it's still here.` }),
+      el('button', { type: 'button', class: 'primary small', text: 'Keep it', on: { click: () => P.settleRevived(P.get(p.id), true) } }),
+      el('button', { type: 'button', class: 'ghost small', text: 'Delete it', title: 'It waits in Projects › ⋯ › Recently deleted', on: { click: () => { P.settleRevived(P.get(p.id), false); ProjectWorkspace.home().catch(() => {}); } } }));
   }
   function filesShelf(p,state) {
     const query=el('input',{type:'search',class:'pw-file-search',placeholder:'Find in this project…',value:state.fileQuery||'',attrs:{'aria-label':'Find project files'}});

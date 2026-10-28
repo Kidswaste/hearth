@@ -29,6 +29,11 @@ window.ProjectWorkspace = (() => {
   function svg(kind) { const s = document.createElementNS('http://www.w3.org/2000/svg','svg'), p = document.createElementNS(s.namespaceURI,'path'); s.setAttribute('viewBox','0 0 24 24'); s.setAttribute('aria-hidden','true'); p.setAttribute('d',C.ICONS[kind] || C.ICONS.spark); s.append(p); return s; }
   const action = (text, fn, cls = 'ghost small') => el('button',{type:'button',class:cls,text,on:{click:async e=>{const b=e.currentTarget;b.disabled=true;try{await fn();}catch(err){toast(calmError(err),{type:'error'});}finally{b.disabled=false;}}}});
   const save = async (p, patch) => { P.setWorkspace(p, patch); await P.flush(); };
+  // (round 76, projsync76) the project already has a scene / board (or its chat is linked to one) that isn't here: made
+  // on the other computer moments ago, still on its way. Opening waits for it instead of making a second one (the two
+  // computers then each had their own, and the project's link was a conflict). Older than a day and missing = deleted:
+  // a new one is made, as before.
+  const onItsWay=(p,type,linked=null)=>{const day=Date.now()-864e5,fresh=Math.max(p.updated||0,p.at||0)>day;return Boolean((typeof Sync!=='undefined'?Sync.status():null)?.on)&&((Boolean(linked)&&fresh)||p.items.some(x=>x.type===type&&(fresh||(x.at||0)>day)));};
   async function ensure(p, options = {}) {
     if(p.workspace?.chatId && p.workspace.sceneId && p.workspace.boardId && chatOf(p))return p;
     if (preparing.has(p.id)) return preparing.get(p.id);
@@ -52,6 +57,7 @@ window.ProjectWorkspace = (() => {
         await Lazy.load('lab'); await ThreeLab.cmd({show:false});
         const linked=ChatScenes.linkOf(p.workspace.chatId), old=p.items.find(x=>x.type==='scene' && ThreeLab.scenes.get(x.ref));
         const source=options.sceneId && ThreeLab.scenes.get(options.sceneId);
+        if(!source&&!old&&!(linked&&ThreeLab.scenes.get(linked))&&onItsWay(p,'scene',linked))throw Error('This project’s scene has not arrived on this computer yet.'); // (round 76, projsync76) never a second scene for one on its way
         const scene=source ? ThreeLab.scenes.duplicate(source.id,p.name) : linked && ThreeLab.scenes.get(linked) || old && ThreeLab.scenes.get(old.ref) || ChatScenes.fresh(p.workspace.chatId);
         if (!scene) throw Error('The scene is still loading. Reopen the project to finish setup.');
         if (!old && !linked) ThreeLab.scenes.rename(scene.id,p.name);
@@ -62,6 +68,7 @@ window.ProjectWorkspace = (() => {
         await Lazy.load('board'); await Board.ready();
         const old=p.items.find(x=>x.type==='board' && Board.findBoard(x.ref));
         const source=options.boardId && await Board.load(options.boardId);
+        if(!source&&!old&&onItsWay(p,'board'))throw Error('This project’s moodboard has not arrived on this computer yet.'); // (round 76, projsync76)
         const board=old ? await Board.load(old.ref) : source ? await Board.duplicate(source) : await Board.create(`${p.name} · Moodboard`,{quiet:true,open:false});
         if(source)await Board.rename(`${p.name} · Moodboard`,board);
         Board.linkChat(p.workspace.chatId,board.id); P.add(p,'board',board.id,board.name,{links:false}); await save(p,{boardId:board.id});
@@ -83,7 +90,13 @@ window.ProjectWorkspace = (() => {
     const ui={
       update(n,text){step=Math.max(step,n);status.textContent=text;fill.style.transform=`scaleX(${(step+1)/5})`;stages.querySelectorAll('span').forEach((s,i)=>s.classList.toggle('done',i<=step));d.querySelector('[role=progressbar]').setAttribute('aria-valuetext',text);clearTimeout(slow);slow=setTimeout(()=>{detail.textContent='Still working. Larger assets and instruments can take a little longer.';},7000);},
       error(err,retry,editor){clearTimeout(slow);d.classList.add('failed');status.textContent=calmError(err);detail.textContent=/not (available|arrived) on this computer|has not arrived/i.test(err?.message)?'It may still be on its way from your other computer. Your project and saved links are kept.':'Your project and saved links are kept.';actions.replaceChildren(action('Retry',retry),...(editor?[action('Open scene editor',editor)]:[]),action(closing?'Keep working':'Back to projects',closing?()=>d.close():()=>home()));},
-      close(){d.close();clearTimeout(slow);d.remove();}
+      close(){d.close();clearTimeout(slow);d.remove();},
+      // (round 76, projsync76) opened before all of it arrived from the other computer: a calm wait, not an error. It
+      // opens by itself when something lands (hearth:synced: what sync already says, no polling); Try now / Back stay.
+      arriving(err,retry){clearTimeout(slow);d.classList.add('pw-arriving');const st=(typeof Sync!=='undefined'?Sync.status():null)||{},peer=[...(st.peers||[])].sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0))[0]?.name||'your other computer',r=(typeof ProjSyncCore!=='undefined'?ProjSyncCore:null)?.status(p,{sync:st,present:x=>['chat','scene','seq','board'].includes(x.type)?!P.gone(x):null,names:x=>P.nameOf(x)});
+        status.textContent=`Still arriving from ${peer}…`;detail.textContent=`${calmError(err).replace(/\.$/,'')}. It opens by itself as soon as it lands; nothing here is changed meanwhile.${r?.names?.length?` Waiting for: ${r.names.slice(0,4).join(', ')}${r.names.length>4?'…':''}.`:''}`;
+        let t=0;const landed=()=>{clearTimeout(t);t=setTimeout(()=>{if(!d.isConnected)return;removeEventListener('hearth:synced',landed);d.close();retry();},600);};addEventListener('hearth:synced',landed);d.addEventListener('close',()=>{clearTimeout(t);removeEventListener('hearth:synced',landed);});
+        actions.replaceChildren(action('Try now',()=>{removeEventListener('hearth:synced',landed);d.close();return retry();}),action('Back to projects',()=>home()));}
     };return ui;
   }
   // (round 74, projdesk74) opt-in, off by default: "Keep the Lab ready behind Projects (uses more memory)". Leaving a
@@ -147,6 +160,7 @@ window.ProjectWorkspace = (() => {
         if(err.name==='AbortError'||controller.signal.aborted){ui.close();return;}
         loadState={phase:'error',project:id,error:calmError(err),timings};
         // (round 72) the editor is offered only for a scene that is on this computer; the dialog is the message (err.shown)
+        if((typeof ProjSyncCore!=='undefined'&&ProjSyncCore.arriving(err))&&(typeof Sync!=='undefined'?Sync.status():null)?.on){ui.arriving(err,()=>open(id,tab,options).catch(e=>{if(!e?.shown)toast(calmError(e),{type:'error'});}));err.shown=true;throw err;} // (round 76, projsync76)
         ui.error(err,()=>open(id,tab),Lazy.loaded('lab')&&ThreeLab.scenes?.get(sceneOf(p))?()=>open(id,'scene',{preview:false}):null);err.shown=true;throw err;
       }finally{if(opening===controller)opening=null;}
     });
