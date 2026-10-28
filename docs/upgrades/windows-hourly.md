@@ -11,3 +11,15 @@ One small Windows fix an hour, each checked in a throwaway copy of Hearth and pu
 - **Checked**: a test copy whose page refused to unload, then Restart: the log line appeared at 10 s
   ("open windows: Projects · Hearth (hidden)"), the copy exited and the relaunched copy started.
 - **Next time it happens**: open `data/logs/quit-stuck.log` to see which window held the quit up.
+
+## Pass 2 (Oct 28): tool connections that use `npx` never started
+- **What you saw**: a connection (Settings › Connections) whose command is `npx …` failed its Test with "It didn't
+  start", and Claude / Codex never got its tools.
+- **Why**: Hearth looked for the bare name first, and Node puts an extensionless sh script `npx` next to `npx.cmd`
+  (`C:\Program Files\nodejs`); Windows can't run it (ENOENT). Also, a `.cmd` in a folder with a space plus an
+  argument with a space was split by `cmd.exe /c`.
+- **Fix** (`connectionsmain.js`): on Windows `.exe` / `.cmd` / `.bat` are tried first; npm's `.cmd` shims run their
+  Node script directly (winpolish's plan, as the agents already do); other `.cmd` files go through `cmd /d /c call …`.
+- **Checked**: `npx --version`, `vercel --version` (now straight through Node) and a `.cmd` in `a b\` given
+  "hello world" all run; `dev/connections-test.js` 7/7. `dev/checks/connections.js` fails the same 6 UI steps with
+  and without this change (the check is older than the current Connections screen): not fixed here.

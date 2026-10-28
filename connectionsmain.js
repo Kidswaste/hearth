@@ -49,13 +49,15 @@ function extraDirs() {
   return [...(IS_MAC ? ['/opt/homebrew/bin'] : []), '/usr/local/bin', '/usr/bin', path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'), path.join(home, '.npm-global', 'bin'), path.join(home, '.volta', 'bin'), path.join(home, '.bun', 'bin')];
 }
 const pathDirs = () => [...new Set([...(process.env.PATH || '').split(path.delimiter), ...extraDirs()].filter(Boolean))];
-const exts = () => (IS_WIN ? ['', '.cmd', '.exe', '.bat'] : ['']);
+// (windows hourly 2) Windows tries .exe / .cmd / .bat first: npm leaves an extensionless sh script next to npx.cmd
+// (C:\Program Files\nodejs\npx) that Windows can't run (ENOENT), so `npx` connections never started
+const exts = (c = '') => (IS_WIN ? ['.exe', '.cmd', '.bat', ...(path.extname(c) ? [''] : [])] : ['']);
 // The full path of a program (an absolute path is kept when it's there), or null.
 function which(cmd) {
   const c = String(cmd || '').trim();
   if (!c) return null;
   if (path.isAbsolute(c) || /[\\/]/.test(c)) return fs.existsSync(c) ? c : null;
-  for (const dir of pathDirs()) for (const e of exts()) { const f = path.join(dir, c + e); try { if (fs.statSync(f).isFile()) return f; } catch { /* not here */ } }
+  for (const dir of pathDirs()) for (const e of exts(c)) { const f = path.join(dir, c + e); try { if (fs.statSync(f).isFile()) return f; } catch { /* not here */ } }
   return null;
 }
 // What to actually run: the program's full path (a Windows .cmd goes through cmd.exe) and a PATH that finds Node /
@@ -66,8 +68,15 @@ function launch(conn) {
   const args = (Array.isArray(conn.args) ? conn.args : []).map(String);
   const dirs = [...new Set([found ? path.dirname(found) : null, ...pathDirs()].filter(Boolean))];
   const PATH = dirs.join(path.delimiter);
-  if (IS_WIN && /\.(cmd|bat)$/i.test(file)) return { command: process.env.ComSpec || 'cmd.exe', args: ['/d', '/c', file, ...args], PATH, found };
-  return { command: file, args, PATH, found };
+  if (IS_WIN && /\.(cmd|bat)$/i.test(file)) {
+    // (windows hourly 2) npm's .cmd runs its Node script directly (as winpolish does for the agents): `cmd.exe /c` broke
+    // on a quoted path with spaces plus a quoted argument
+    let p = null; try { p = require('./winpolish').plan(file, args); } catch { /* no helper: cmd.exe below */ }
+    if (p && (p.via === 'node' || (p.via === 'direct' && p.shim))) return { command: p.command, args: p.args, PATH, found, extraEnv: p.extraEnv || {} };
+    // (`call` first: cmd /c strips the outer quotes when the line starts with one, splitting a path with spaces)
+    return { command: process.env.ComSpec || 'cmd.exe', args: ['/d', '/c', 'call', file, ...args], PATH, found, extraEnv: {} };
+  }
+  return { command: file, args, PATH, found, extraEnv: {} };
 }
 const cleanEnv = (env) => Object.fromEntries(Object.entries(env && typeof env === 'object' ? env : {}).filter(([k, v]) => ENV_NAME.test(k) && v != null).map(([k, v]) => [k, String(v)]));
 const cleanHeaders = (h) => Object.fromEntries(Object.entries(h && typeof h === 'object' ? h : {}).filter(([k, v]) => HEADER_NAME.test(k) && v != null).map(([k, v]) => [k, String(v)]));
@@ -91,7 +100,7 @@ function claudeServers(agent, all = list()) {
       out[name] = { type: /\/sse\/?$/i.test(conn.url) ? 'sse' : 'http', url: conn.url, ...(Object.keys(headers).length ? { headers } : {}) };
     } else {
       const l = launch(conn);
-      out[name] = { command: l.command, args: l.args, env: { PATH: l.PATH, ...cleanEnv(conn.env) } };
+      out[name] = { command: l.command, args: l.args, env: { PATH: l.PATH, ...l.extraEnv, ...cleanEnv(conn.env) } };
     }
   }
   return out;
@@ -119,7 +128,7 @@ function codexArgs(agent, tomlStr = (s) => JSON.stringify(String(s)), all = list
       if (Object.keys(h).length) args.push('-c', `${p}.http_headers=${table(h)}`);
     } else {
       const l = launch(conn);
-      args.push('-c', `${p}.command=${tomlStr(l.command)}`, '-c', `${p}.args=[${l.args.map(tomlStr).join(', ')}]`, '-c', `${p}.env=${table({ PATH: l.PATH, ...cleanEnv(conn.env) })}`);
+      args.push('-c', `${p}.command=${tomlStr(l.command)}`, '-c', `${p}.args=[${l.args.map(tomlStr).join(', ')}]`, '-c', `${p}.env=${table({ PATH: l.PATH, ...l.extraEnv, ...cleanEnv(conn.env) })}`);
     }
     // a first npx / uvx start downloads the package
     args.push('-c', `${p}.startup_timeout_sec=60`, '-c', `${p}.tool_timeout_sec=300`);
@@ -157,7 +166,7 @@ function testStdio(conn, ms) {
     const base = path.basename(String(conn.command || '')).replace(/\.(cmd|exe|bat)$/i, '');
     if (!l.found) { resolve({ ok: false, error: `“${conn.command || '(no command)'}” isn't on this computer.`, hint: HINT[base] || 'Check the command, or give its full path.' }); return; }
     let child;
-    try { child = spawn(l.command, l.args, { env: { ...process.env, PATH: l.PATH, ...cleanEnv(conn.env) }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); } catch (err) { resolve({ ok: false, error: `It didn't start: ${err.message}`, hint: HINT[base] }); return; }
+    try { child = spawn(l.command, l.args, { env: { ...process.env, PATH: l.PATH, ...l.extraEnv, ...cleanEnv(conn.env) }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); } catch (err) { resolve({ ok: false, error: `It didn't start: ${err.message}`, hint: HINT[base] }); return; }
     let buf = ''; let err = ''; let next = 1; let done = false;
     const waiting = new Map();
     const finish = (r) => { if (done) return; done = true; clearTimeout(timer); for (const w of waiting.values()) w({ error: { message: 'stopped' } }); try { child.stdin.end(); child.kill(); } catch { /* gone */ } resolve(r); };
