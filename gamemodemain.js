@@ -103,6 +103,35 @@ function gameSession() {
   return ses;
 }
 
+// (round 79, winstart79) ▶ Play warmed ahead. The first ▶ Play of a start used to do everything at the click, on the
+// main thread: load its modules (≈ 15 files: on Windows each a Defender-scanned open), make its Electron session (the
+// persistent partition, its protocol and three preloads), read + build the Lab player's page. main.js calls warm()
+// 20 s after the start, only when a game was played in the last 2 weeks (data/game-cache/last-play, touched at each
+// ▶ Play; HEARTH_GAME_WARM=1 / 0 forces it on / off): the same work, one small step at a time, before the click.
+const LAST_PLAY = () => path.join(ctx?.dataDir || '', 'game-cache', 'last-play');
+const warmState = { session: false, at: 0, ms: {}, steps: [] };
+function playedNow() {
+  if (!ctx?.dataDir) return;
+  P.mkdir(path.dirname(LAST_PLAY()), { recursive: true }).then(() => P.writeFile(LAST_PLAY(), String(Date.now()))).catch(() => {});
+}
+async function warm() {
+  if (warmState.at || G) return warmState;
+  warmState.at = Date.now();
+  const step = async (name, fn) => {
+    await new Promise((r) => setTimeout(r, 30)); // (a breath between steps: nothing waits behind one long block)
+    if (G) return; // a game started meanwhile: it does the rest itself
+    const t = Date.now();
+    try { await fn(); warmState.steps.push(name); } catch (err) { warmState.steps.push(`${name}: ${err.message}`); }
+    warmState.ms[name] = Date.now() - t;
+  };
+  await step('modules', () => { budget(); pnotes(); hitch(); audio(); ready(); require('./deploymain'); try { require('./gameperfmain'); } catch { /* not in this Hearth */ } });
+  await step('session', () => { gameSession(); warmState.session = true; });
+  await step('page', () => labPageOnce());
+  // the window's preloads read once (on Windows the first open of each is scanned; the game window then finds them ready)
+  await step('preloads', () => Promise.all(['game-preload.js', 'gamelook-preload.js', 'gamequality-preload.js', 'volume-preload.js'].map((f) => P.readFile(path.join(__dirname, f)).catch(() => null))));
+  return warmState;
+}
+
 // ---------- screens ----------
 function displays() {
   const { screen } = require('electron');
@@ -163,6 +192,19 @@ function hostScript(S) {
 </script>
 `;
 }
+// (round 79, winstart79) the build asks the disk asynchronously (it held the main thread at the first ▶ Play: the meta
+// read, the stamps, removing the last build, three.js read + written, the pictures copied, the page written); three.js
+// stays in place between builds of the same version (only the scene's own files are made again); the Lab player's
+// page is made once per version of tools/three-sandbox.html (labPageOnce, warmed at the start: warm())
+const P = fs.promises;
+const stampOf = async (p) => { try { const s = await P.stat(p); return `${s.size}:${s.mtimeMs}`; } catch { return '-'; } };
+const there = (p) => P.access(p).then(() => true, () => false);
+let pageMemo = null; // { stamp, html }
+async function labPageOnce() {
+  const stamp = (await Promise.all(['three-sandbox.html', 'sandbox-motion.js', 'sandbox-lab3d.js', 'three-materials-core.js'].map((f) => stampOf(path.join(__dirname, 'tools', f))))).join('|'); // (the player and the libraries deploymain.labPage() puts in it)
+  if (pageMemo?.stamp !== stamp) pageMemo = { stamp, html: require('./deploymain').labPage() };
+  return pageMemo.html;
+}
 async function buildScene(spec) {
   const deploy = require('./deploymain');
   const id = String(spec.id || 'scene').replace(/[^\w-]+/g, '_').slice(0, 60);
@@ -171,55 +213,62 @@ async function buildScene(spec) {
   if (!layers.length) throw new Error('This scene has no code to play.');
   const version = String(spec.version || '0.186.1');
   const sandbox = path.join(__dirname, 'tools', 'three-sandbox.html');
-  const stamp = (p) => { try { const s = fs.statSync(p); return `${s.size}:${s.mtimeMs}`; } catch { return '-'; } };
-  const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r) => [r.key, r.path, stamp(r.path), ready()?.swapFor?.(r.path) || '', ready()?.texFor?.(r.path)?.out || '']), song: spec.song?.path ? [spec.song.path, stamp(spec.song.path)] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: stamp(sandbox), me: stamp(__filename) })).digest('hex').slice(0, 16);
+  const refStamps = await Promise.all((spec.refs || []).map((r) => (r.path ? stampOf(r.path) : '-')));
+  const [songStamp, sandboxStamp, meStamp] = await Promise.all([spec.song?.path ? stampOf(spec.song.path) : null, stampOf(sandbox), stampOf(__filename)]);
+  const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r, i) => [r.key, r.path, refStamps[i], ready()?.swapFor?.(r.path) || '', ready()?.texFor?.(r.path)?.out || '']), song: spec.song?.path ? [spec.song.path, songStamp] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: sandboxStamp, me: meStamp })).digest('hex').slice(0, 16);
   const metaFile = path.join(dir, 'hearth-play.json');
-  try { const m = JSON.parse(fs.readFileSync(metaFile, 'utf8')); if (m.key === key && fs.existsSync(path.join(dir, 'play.html'))) return { dir, version, cached: true, notes: m.notes || [] }; } catch { /* a new build */ }
-  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 4, retryDelay: 150 }); // (Windows: a virus scanner / the last window can hold a file a moment)
-  fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
+  let was = null;
+  try { was = JSON.parse(await P.readFile(metaFile, 'utf8')); if (was.key === key && await there(path.join(dir, 'play.html'))) return { dir, version, cached: true, notes: was.notes || [] }; } catch { /* a new build */ }
+  // the last build goes (Windows: a virus scanner / the last window can hold a file a moment); its three.js stays when
+  // it's the same version and complete (vendorThree adds what this scene imports more, and skips what's there)
+  const keepThree = was?.version === version && !was?.ktx && await there(path.join(dir, 'three', 'build', 'three.module.js'));
+  if (keepThree) { for (const n of await P.readdir(dir).catch(() => [])) if (n !== 'three') await P.rm(path.join(dir, n), { recursive: true, force: true, maxRetries: 4, retryDelay: 150 }); }
+  else await P.rm(dir, { recursive: true, force: true, maxRetries: 4, retryDelay: 150 });
+  await P.mkdir(path.join(dir, 'assets'), { recursive: true });
   const notes = [];
   // (round 52, gameready) a 🧊 model layer's runtime (lab3d) imports its loaders / decoders on demand (GLTFLoader,
   // meshopt, KTX2, Draco…): they're vendored with the page too, or the model never loads in the game window
-  const libCodes = layers.some((L) => /\blab3d\.model\s*\(/.test(L.code)) ? [fs.readFileSync(path.join(__dirname, 'tools', 'sandbox-lab3d.js'), 'utf8')] : [];
+  const libCodes = layers.some((L) => /\blab3d\.model\s*\(/.test(L.code)) ? [await P.readFile(path.join(__dirname, 'tools', 'sandbox-lab3d.js'), 'utf8')] : [];
   // (round 53, gametex) compressed (KTX2) copies in use: three's KTX2Loader and its Basis transcoder go with the page
   const ktx = (spec.refs || []).some((r) => r.path && (ready()?.texFor?.(r.path) || ready()?.swapFor?.(r.path)));
   if (ktx) libCodes.push("import 'three/addons/loaders/KTX2Loader.js';");
   const v = await deploy.vendorThree(version, [...layers.map((L) => L.code), ...libCodes], path.join(dir, 'three'), {});
   if (v.missing.length) notes.push(`Not found for three.js ${version}: ${v.missing.join(', ')}`);
   if (ktx) { try { await ready().vendorKtx(path.join(dir, 'three'), version); } catch (err) { notes.push(`Compressed textures: ${err.message} (the originals are used)`); } }
+  const hasBasis = await there(path.join(dir, 'three', 'examples', 'jsm', 'libs', 'basis', 'basis_transcoder.wasm'));
   const refs = [];
   const songFile = spec.song?.path ? `assets/song${path.extname(spec.song.path).toLowerCase() || '.mp3'}` : null;
   const taken = new Set(songFile ? [songFile] : []); // (round 54, fixes54) "Logo" and "logo" are one file on a Mac / Windows disk (and a picture called "song" isn't the song): the second gets its own name
-  for (const r of spec.refs || []) {
-    if (!r.path || !fs.existsSync(r.path)) { notes.push(`Picture / file "${r.key}" is missing`); continue; }
+  for (const [i, r] of (spec.refs || []).entries()) {
+    if (!r.path || refStamps[i] === '-') { notes.push(`Picture / file "${r.key}" is missing`); continue; }
     const stem = `assets/${String(r.key || path.basename(r.path)).replace(/[^\w.-]+/g, '_')}`;
     let file = `${stem}${path.extname(r.path)}`;
-    for (let i = 2; taken.has(file.toLowerCase()); i += 1) file = `${stem}-${i}${path.extname(r.path)}`;
+    for (let n = 2; taken.has(file.toLowerCase()); n += 1) file = `${stem}-${n}${path.extname(r.path)}`;
     taken.add(file.toLowerCase());
-    fs.copyFileSync(ready()?.swapFor?.(r.path) || r.path, path.join(dir, file)); // (round 52, gameready: its optimized copy when there's one)
+    await P.copyFile(ready()?.swapFor?.(r.path) || r.path, path.join(dir, file)); // (round 52, gameready: its optimized copy when there's one)
     // (round 53, gametex) a picture's compressed copy next to it (the original stays: the fallback)
-    const tx = r.kind === 'image' && fs.existsSync(path.join(dir, 'three', 'examples', 'jsm', 'libs', 'basis', 'basis_transcoder.wasm')) ? ready()?.texFor?.(r.path) : null;
-    let ktx2 = null; if (tx) { ktx2 = `${file}.ktx2`; fs.copyFileSync(tx.out, path.join(dir, ktx2)); }
+    const tx = r.kind === 'image' && hasBasis ? ready()?.texFor?.(r.path) : null;
+    let ktx2 = null; if (tx) { ktx2 = `${file}.ktx2`; await P.copyFile(tx.out, path.join(dir, ktx2)); }
     refs.push({ key: r.key, kind: r.kind, mime: C.mimeOf(r.path), file, ...(ktx2 ? { ktx2 } : {}) });
   }
   let song = null;
-  if (spec.song?.path && fs.existsSync(spec.song.path)) {
+  if (spec.song?.path && songStamp !== '-') {
     const file = songFile;
-    fs.copyFileSync(spec.song.path, path.join(dir, file));
+    await P.copyFile(spec.song.path, path.join(dir, file));
     song = { file, mime: C.mimeOf(spec.song.path), name: path.basename(spec.song.path) };
   }
   // (round 56, readyspeed) three.js fetched and compiled while the page starts (the layers import it only once the
   // pictures are in): the same addresses the player imports, so it's one module
-  const pre = ['three.module.js', 'three.core.js'].filter((f) => fs.existsSync(path.join(dir, 'three', 'build', f))).map((f) => `<link rel="modulepreload" href="three/build/${f}">`).join('');
-  const page = deploy.labPage().replace(/<head[^>]*>/i, (m) => `${m}${pre}`).replace('</body>', () => `${hostScript({ layers, refs, song, palette: spec.palette || [], values: spec.values || {}, analysis: spec.analysis || null, plan: spec.plan || { merge: [], why: {} } })}</body>`);
-  fs.writeFileSync(path.join(dir, 'play.html'), page);
-  fs.writeFileSync(metaFile, JSON.stringify({ key, name: spec.name || id, at: Date.now(), version, notes }, null, 2));
+  const pre = (await Promise.all(['three.module.js', 'three.core.js'].map(async (f) => ((await there(path.join(dir, 'three', 'build', f))) ? f : null)))).filter(Boolean).map((f) => `<link rel="modulepreload" href="three/build/${f}">`).join('');
+  const page = (await labPageOnce()).replace(/<head[^>]*>/i, (m) => `${m}${pre}`).replace('</body>', () => `${hostScript({ layers, refs, song, palette: spec.palette || [], values: spec.values || {}, analysis: spec.analysis || null, plan: spec.plan || { merge: [], why: {} } })}</body>`);
+  await P.writeFile(path.join(dir, 'play.html'), page);
+  await P.writeFile(metaFile, JSON.stringify({ key, name: spec.name || id, at: Date.now(), version, notes, ...(ktx ? { ktx: true } : {}) }, null, 2));
   return { dir, version, cached: false, notes };
 }
 
 // ---------- the window ----------
 function info() {
-  if (!G) return { playing: false };
+  if (!G) return { playing: false, warm: { ...warmState, steps: [...warmState.steps] } };
   return { playing: true, timing: G.timing || null, budget: G.budget ? { off: G.budget.off, last: G.budget.last } : null, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, latency: PL.brief(PL.last(G.win)), fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
 }
 function leave(why = 'left') {
@@ -278,11 +327,13 @@ async function play(_e, req = {}) {
     entry = `play.html?mode=sketch&v=${encodeURIComponent(b.version)}&n=1&game=1&cap=0${req.input?.lowLatency ? '&lowlat=1' : ''}`;
   } else {
     let p = path.resolve(source.path);
-    let st; try { st = fs.statSync(p); } catch { throw new Error(`Not found: ${source.path}`); }
-    if (st.isDirectory()) { if (!fs.existsSync(path.join(p, 'index.html'))) throw new Error('No index.html in this folder.'); root = p; entry = 'index.html'; } else { root = path.dirname(p); entry = encodeURIComponent(path.basename(p)); }
+    let st; try { st = await P.stat(p); } catch { throw new Error(`Not found: ${source.path}`); }
+    if (st.isDirectory()) { if (!(await there(path.join(p, 'index.html')))) throw new Error('No index.html in this folder.'); root = p; entry = 'index.html'; } else { root = path.dirname(p); entry = encodeURIComponent(path.basename(p)); }
   }
   roots.set(token, root);
-  const s = gameSession();
+  const warmWas = warmState.session; // (round 79, winstart79) for the timing: was the session made ahead (warm()) or now
+  const tS = Date.now(); const s = gameSession(); const tSession = Date.now() - tS;
+  playedNow();
   const mac = process.platform === 'darwin';
   const bounds = d?.bounds || { x: 0, y: 0, width: 1280, height: 720 };
   const win = new BrowserWindow({
@@ -293,7 +344,7 @@ async function play(_e, req = {}) {
   if (!mac) win.setMenu(null);
   const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) || offs.has('audio'), stream: { off: Boolean(req.stream?.off), skip: offs.has('stream') }, hitch: hitchOn };
   g.budget = { hz: fid.hz, title: source.title, off: [...offs], was, last: null };
-  g.timing = { asked: T0, built: built?.at || null, cached: built?.cached ?? null, window: Date.now(), loaded: null };
+  g.timing = { asked: T0, built: built?.at || null, cached: built?.cached ?? null, session: tSession, warm: Boolean(warmWas), window: Date.now(), loaded: null };
   g.release = ctx.powerwise.hold('present', { label: `${source.title} is playing` });
   try { ctx.powerwise.quiet(true); } catch { /* fine */ }
   const wc = win.webContents;
@@ -409,4 +460,4 @@ function register(ipcMain, c) {
     return true;
   }));
 }
-module.exports = { register, SCHEME, info, leave, _test: { buildScene, hostScript, setCtx: (c) => { ctx = c; } } };
+module.exports = { register, SCHEME, info, leave, warm, _test: { labPageOnce, warmState, buildScene, hostScript, setCtx: (c) => { ctx = c; } } };
