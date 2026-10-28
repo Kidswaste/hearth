@@ -154,7 +154,7 @@ const ChatUX = (() => {
         if (!ok || finds.get(agentId) !== f) return;
         run(agentId, { jump: false });
         const i = f.hits.findIndex((h) => h.nodeType && h.closest('.msg')?.dataset.index === String(hit.index));
-        if (i >= 0) { f.at = i - 1; step(agentId, 1); ChatRest.settle(agentId, () => finds.get(agentId)?.hits.find((h) => h.nodeType && h.classList.contains('cur'))); }
+        if (i >= 0) { f.at = i - 1; step(agentId, 1); }
       });
       return;
     }
@@ -162,7 +162,11 @@ const ChatUX = (() => {
     hit.closest('.msg.collapsed')?.classList.remove('collapsed');
     const details = hit.closest('details');
     if (details) details.open = true;
-    hit.scrollIntoView({ block: 'center' });
+    // (round 76, chatjump76) its message is held where it landed while the chat around it settles (chat-rest.js hold):
+    // find on an old message used to be pulled back to the end by a picture loading below
+    const v = Native.view(agentId); const msg = hit.closest('.msg');
+    if (v?.list.awake && msg && typeof ChatRest !== 'undefined') ChatRest.hold(agentId, msg, { first: hit });
+    else { hit.scrollIntoView({ block: 'center' }); const ms = v?.list.querySelectorAll(':scope > .msg'); if (msg && ms?.length && msg !== ms[ms.length - 1]) v.follow = false; }
     f.count.textContent = `${f.at + 1} / ${f.hits.length}`;
   }
   function closeFind(agentId) {

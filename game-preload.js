@@ -174,6 +174,19 @@ function stats(on) {
   }
 }
 addEventListener('DOMContentLoaded', () => mount());
+// (round 76, chatjump76) a press on Hearth's own words over the game (the F chip's ✎ Note / ● Record hitch map, the leave
+// card, the error line, the note box) is never the game's: a Lab scene's page (and many games) asks for the pointer lock
+// on any mousedown at the window, and once locked the release and the click went to the locked element, not the
+// button: a real mouse click on "✎ Note (F8)" made no note while a script's .click() did. Registered here, before the
+// game's own scripts, so it runs first at the window; one cheap check per press (events from inside a shadow root
+// reach the window with the host as their target).
+for (const t of ['pointerdown', 'mousedown']) {
+  addEventListener(t, (e) => {
+    if (!ui || e.target !== ui.host) return;
+    e.stopImmediatePropagation();
+    if (!(NB.input && e.composedPath()[0] === NB.input)) e.preventDefault(); // (the buttons never take the focus; the note box's field does)
+  }, true);
+}
 
 // ---------- input → the game's frame (round 56, playlatency) ----------
 // Measured only while the F chip shows ("Input: 3.1 ms": your own keys and mouse) or /game latency runs (2 s of tiny

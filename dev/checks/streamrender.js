@@ -244,21 +244,37 @@ await seg('scroll-long', async () => {
   await wait(500);
   out.longShown = list.querySelectorAll('.msg').length;
 });
+// (round 76, chatjump76) a jump / a find must land its message in view (time to land reported) and KEEP it there while the
+// blocks around it wake and its pictures load: watched every frame for 1.5 s after it lands (drift = how far it moved)
+const inView = (n) => { const r = n?.isConnected && n.getBoundingClientRect(); const lr = list.getBoundingClientRect(); return Boolean(r && r.height && r.bottom > lr.top && r.top < lr.bottom); };
+async function landsAndStays(find) {
+  const t = performance.now(); let landed = null;
+  while (performance.now() - t < 3000) { await new Promise((r) => requestAnimationFrame(r)); if (inView(find())) { landed = Math.round(performance.now() - t); break; } }
+  let outFrames = 0; let frames = 0; let y0 = null; let drift = 0;
+  const tEnd = performance.now() + 1500;
+  while (landed != null && performance.now() < tEnd) {
+    await new Promise((r) => requestAnimationFrame(r)); frames += 1;
+    const n = find(); if (!inView(n)) { outFrames += 1; continue; }
+    const y = n.getBoundingClientRect().top - list.getBoundingClientRect().top; if (y0 == null) y0 = y; drift = Math.max(drift, Math.abs(y - y0));
+  }
+  return { landed, outFrames, frames, drift: Math.round(drift) };
+}
 await seg('jump', async () => {
   // like recall's jump (recall.js): asks again until the message is drawn
   let ok = false;
   for (let i = 0; i < 30 && !ok; i++) { ok = Native.jumpTo(claude.id, 2); if (!ok) await wait(100); }
-  await settle(); await wait(200);
-  const n = list.querySelector('.msg[data-index="2"]'); const r = n?.getBoundingClientRect(); const lr = list.getBoundingClientRect();
-  out.jump = `${ok} · in view: ${Boolean(r && r.bottom > lr.top && r.top < lr.bottom)}`;
-  if (!(r && r.bottom > lr.top && r.top < lr.bottom)) fails.push(`jump to message #3: not in view (${out.jump})`);
+  const r = await landsAndStays(() => list.querySelector('.msg[data-index="2"]'));
+  out.jump = `${ok} · landed in view after ${r.landed ?? 'never (3 s)'} ms · then out of view ${r.outFrames}/${r.frames} frames · moved ${r.drift} px`;
+  if (r.landed == null || r.outFrames || r.drift > 24) fails.push(`jump to message #3: ${out.jump}`);
 });
 await seg('find', async () => {
   if (typeof ChatUX === 'undefined') { out.find = 'no ChatUX'; return; }
-  const f = ChatUX.find(claude.id, 'zanzibarite'); await settle(); await wait(200);
-  const hit = list.querySelector('mark.cur, .find-hit.cur, .cur'); const r = hit?.getBoundingClientRect(); const lr = list.getBoundingClientRect();
-  out.find = `${f?.hits?.length ?? 0} found · in view: ${Boolean(r && r.bottom > lr.top && r.top < lr.bottom)}`;
-  if (!f?.hits?.length || !(r && r.bottom > lr.top && r.top < lr.bottom)) fails.push(`find in chat: ${out.find}`);
+  // (from the end of the chat, where find is usually opened: the chat follows the end there)
+  list.scrollTop = list.scrollHeight; await wait(600);
+  const f = ChatUX.find(claude.id, 'zanzibarite');
+  const r = await landsAndStays(() => list.querySelector('mark.cur, .find-hit.cur, .cur'));
+  out.find = `${f?.hits?.length ?? 0} found · landed in view after ${r.landed ?? 'never (3 s)'} ms · then out of view ${r.outFrames}/${r.frames} frames · moved ${r.drift} px`;
+  if (!f?.hits?.length || r.landed == null || r.outFrames || r.drift > 24) fails.push(`find in chat: ${out.find}`);
   ChatUX.closeFind(claude.id);
 });
 await seg('select', async () => {
