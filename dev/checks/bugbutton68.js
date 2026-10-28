@@ -65,7 +65,8 @@ document.querySelectorAll('#toasts .toast').forEach((t) => t.remove()); // (the 
 await click(document.getElementById('rail-more'));
 const row = await until(() => [...document.querySelectorAll('#menu button')].find((b) => /Something broke/.test(b.textContent)), 4000);
 const rows = [...document.querySelectorAll('#menu button')].filter((b) => !b.hidden).map((b) => b.textContent.trim());
-check('the rail ⋯ has "Something broke" right after "That was slow" (with its icon)', row && row.querySelector('.menu-ico') && /That was slow/.test(rows[0]) && /Something broke/.test(rows[1]), rows.slice(0, 3).join(' | '));
+// (round 74, checkhealth74) round 71's 💡 Ideas sits between them now: still the first rows of the ⋯
+check('the rail ⋯ has "Something broke" next to "That was slow" (with its icon)', row && row.querySelector('.menu-ico') && /That was slow/.test(rows[0]) && rows.slice(1, 3).some((t) => /Something broke/.test(t)), rows.slice(0, 3).join(' | '));
 if (row) await click(row);
 card = await until(() => document.querySelector('dialog.bugcard[open]'), 8000);
 const head = card?.querySelector('.bc-head')?.textContent || '';

@@ -213,7 +213,7 @@ async function stretch(name, go, { ready = null, quiet = 1500, trace = true } = 
   return r;
 }
 const pressLab = async () => {
-  const btn = document.querySelector('#agent-buttons .agent-btn[data-id="tool:three"]');
+  const btn = RAIL.button('tool:three'); await wait(50); // (round 74) the rail's way to the Lab today (dev/checks/rail-lib.js)
   const r = btn.getBoundingClientRect(); const x = Math.round(r.left + r.width / 2); const y = Math.round(r.top + r.height / 2);
   await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x, y, button: 'left', clickCount: 1 } });
   await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 } });

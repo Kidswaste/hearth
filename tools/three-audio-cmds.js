@@ -28,7 +28,12 @@
   const curveText = (c) => { if (!c) return ''; const p = []; if (c.thr) p.push(`threshold ${pct(c.thr)}`); if (c.gam && c.gam !== 1) p.push(`punch ${c.gam}×`); if (c.att) p.push(`attack ${c.att} ms`); if (c.rel) p.push(`release ${c.rel} ms`); if (c.inv) p.push('inverted'); return p.length ? ` (${p.join(', ')})` : ''; };
   const reactions = (l) => l.layers().flatMap((L) => (L.ctl?.controls?.() || []).filter((c) => c.followsMusic).map((c) => `${c.label}${l.layers().length > 1 ? ` [${L.name}]` : ''} → ${ThreeAudio.label(c.followsMusic.band)} ${Math.round(c.followsMusic.amount * 100)}%${curveText(c.followsMusic.c)}`));
 
-  reg('audio', 'What the Lab hears now: hits (kick / snare / hats / vocals), the 8 bands, loudness, brightness, beat and bar with how sure, the key; "names" lists every feature a slider or sketch can use', '[names]', async (args) => {
+  // (round 74, checkhealth74) since round 64 the Audio doctor's /audio (audiodoctor.js, a boot stand-in) took the name
+  // first and this one was never registered (nor /hear): it goes in as /hear (alias /audio-now) and the doctor's /audio
+  // hands "names" and a bare /audio with the Lab on screen to it (window.LabHear)
+  const hearWhat = 'What the Lab hears now: hits (kick / snare / hats / vocals), the 8 bands, loudness, brightness, beat and bar with how sure, the key; "names" lists every feature a slider or sketch can use';
+  const audioName = Commands.get('audio') ? 'hear' : 'audio';
+  reg(audioName, hearWhat, '[names]', window.LabHear = async (args = '') => {
     const l = await lab();
     if (/^names?|list$/i.test(args.trim())) return ThreeAudio.GROUPS.map(([g, list]) => `**${g}**: ${list.map(([n, lb]) => `${n} (${lb})`).join(' · ')}`).join('\n') + '\nIn a sketch: audio.feat.kickOn, audio.env(\'kickOn\', 5, 300), audio.chroma, audio.keyName; onHit(\'kickOn\', fn).';
     const names = AudioFeat.NAMES.slice(0, 43);
@@ -46,7 +51,7 @@
       `Beat ${v.bpm ? `${Math.round(v.bpm * 10) / 10} BPM` : '—'} · beat ${Math.round(v.beatInBar) || '—'} of the bar, phase ${pct(v.barPhase)} (${pct(v.beatConf)} sure of the beat, ${pct(v.barConf)} of bar 1) · key ${key}`,
       `Song: build ${pct(v.build)} · drop ${pct(v.drop)} · intensity ${pct(v.intensity)}`,
     ].join('\n');
-  }, (a) => pick(['names'], a), { aliases: ['hear', 'audio-now'], keywords: 'audio features bands onsets kick snare hats loudness lufs centroid flux key chroma beat phase', examples: ['/audio', '/audio names'] });
+  }, (a) => pick(['names'], a), { aliases: audioName === 'audio' ? ['hear', 'audio-now'] : ['audio-now'], keywords: 'audio features bands onsets kick snare hats loudness lufs centroid flux key chroma beat phase', examples: ['/audio', '/audio names'] });
 
   reg('audio-in', 'Live input: list the inputs, pick one (a mic, an audio interface, a loopback device for the computer\'s sound), the default, monitoring on / off, or off', '[list|default|loopback|<device>|monitor on|off|off]', async (args) => {
     const l = await lab();

@@ -861,7 +861,8 @@ function handleShortcut({ key, shift }) {
   else if (key === 'b') { $('broadcast').classList.toggle('hidden'); applyLayout(); }
   else if (key === 'n') { if (H.agent(H.activeId)?.mode === 'native') Native.newChat(H.activeId); }
   else if (key === 'r') { if (shift) { // (Ctrl/⌘+Shift+R reloads all of Hearth: one key from the Lab's Shift+R, so not while the Lab is on screen)
-    if (window.ThreeLab?.onScreen?.()) toast(WinMac.keyLabel('Ctrl/⌘+Shift+R reloads all of Hearth, so it does nothing while the Lab is open. Ctrl/⌘+K › Restart Hearth still works.'), { timeout: 5000 });
+    // (round 74, checkhealth74) ThreeLab is a script-level const, never window.ThreeLab: this guard never held and the key reloaded Hearth in the Lab
+    if ((!window.Lazy || Lazy.isIn('lab')) && typeof ThreeLab !== 'undefined' && ThreeLab.onScreen?.()) toast(WinMac.keyLabel('Ctrl/⌘+Shift+R reloads all of Hearth, so it does nothing while the Lab is open. Ctrl/⌘+K › Restart Hearth still works.'), { timeout: 5000 });
     else window.hub.reloadWindow(`${/Mac/.test(navigator.platform) ? '⌘⇧R' : 'Ctrl+Shift+R'} pressed`); } else if (!ThreeLab.restartVisible()) H.surfaces.get(H.activeId)?.webview?.reload(); }
   else if (key === ',') AppUI.openSettings();
   else if (key === 'k' && shift) (window.Lazy ? Lazy.load('projects') : Promise.resolve()).then(() => ProjectsSearch.open()).catch(() => AppUI.palette()); // (round 23) search everything (projects-search.js)

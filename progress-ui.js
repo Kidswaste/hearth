@@ -32,7 +32,8 @@ const ProgressUI = (() => {
       const s = String(loc);
       if (s.startsWith('reply:')) { const n = replyEl(s.slice(6)); return n ? [n] : []; }
       if (s.startsWith('row:')) { const n = document.querySelector(`#chat-groups .item[data-key="${esc(s.slice(4))}"]`); return n ? [n] : []; }
-      if (s.startsWith('rail:')) { const n = document.querySelector(`#agent-buttons .agent-btn[data-id="${esc(s.slice(5))}"]`); return n ? [n] : []; }
+      // (round 74, checkhealth74) since the Projects / Life spaces an AI's icon sits in the bar above the chat
+      if (s.startsWith('rail:')) { const id = esc(s.slice(5)); const n = document.querySelector(`#agent-buttons .agent-btn[data-id="${id}"]`) || document.querySelector(`.workspace-switcher .agent-btn[data-id="${id}"]`); return n ? [n] : []; }
       return [...document.querySelectorAll(s)].slice(0, 6);
     } catch { return []; }
   }

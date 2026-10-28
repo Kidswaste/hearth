@@ -113,7 +113,7 @@ const closeAll = async () => {
   if (vis('.cmdbar-input')) document.querySelector('.cmdbar-input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await wait(60);
 };
-const SKIP_ALL = /^(Ctrl\+R|Ctrl\+Shift\+R|Ctrl\+Alt\+H|Ctrl\+Shift\+Space|Ctrl\+Shift\+T)$/; // reloads, the OS hotkey, ask-all sends, always-on-top
+const SKIP_ALL = /^(Ctrl\+R|Ctrl\+Shift\+R|Ctrl\+Alt\+H|Ctrl\+Alt\+I|Ctrl\+Shift\+Space|Ctrl\+Shift\+T)$/; // reloads, the OS hotkeys (show Hearth; round 74: 💡 Quick idea, a system-wide key the main side owns — the page never sees it), ask-all sends, always-on-top
 const linesOf = (area) => Keys.all().filter((k) => k.area === area);
 // progress in a file (a stuck key shows where it stopped): QA_KEYS_LOG or the run's save folder
 const LOG = window.QA_KEYS_LOG || `${window.SMOKE_SAVES}/qa-keys-progress.txt`;

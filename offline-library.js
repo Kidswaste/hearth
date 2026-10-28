@@ -10,8 +10,20 @@ function valid(version, rel) {
   return VERSION.test(version) && /^(build|examples\/jsm|src)\/[\w./-]+\.js$/.test(rel)
     && !rel.split('/').some(p => p === '..' || p === '.' || !p);
 }
-function create({ dataDir, fetcher = (...args) => fetch(...args) }) {
+function create({ dataDir, fetcher = (...args) => fetch(...args), localDir = '' }) {
   const pending = new Map();
+  // (round 74, checkhealth74) "download" from a local three.js package of the same version when one is given
+  // (HEARTH_THREE_DIR, as deploymain.js / gametexmain.js already use): the checks run without network. Only on a
+  // download, so a new computer still reports what it lacks; the copy goes through the same checks and atomic write.
+  async function localCopy(version, rel) {
+    if (!localDir) return null;
+    try {
+      if (JSON.parse(await fs.promises.readFile(path.join(localDir, 'package.json'), 'utf8')).version !== version) return null;
+      const file = path.join(localDir, ...rel.split('/'));
+      if ((await fs.promises.stat(file)).size > MAX_FILE) return null;
+      return await fs.promises.readFile(file, 'utf8');
+    } catch { return null; }
+  }
   const fileOf = (v, r) => path.join(dataDir, 'deploy', `three@${v}`, ...r.split('/'));
   async function read(version, rel, download = true) {
     if (!valid(version, rel)) throw new Error('Unsupported Three.js library path.');
@@ -27,6 +39,14 @@ function create({ dataDir, fetcher = (...args) => fetch(...args) }) {
     const key = `${version}/${rel}`;
     if (pending.has(key)) return pending.get(key);
     const job = (async () => {
+      const copy = await localCopy(version, rel);
+      if (copy != null && copy.trim() && !/^\s*</.test(copy)) {
+        await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+        const tmp = `${dest}.${process.pid}.offline-part`;
+        try { await fs.promises.writeFile(tmp, copy); await fs.promises.rename(tmp, dest); }
+        finally { await fs.promises.unlink(tmp).catch(() => {}); }
+        return copy;
+      }
       const res = await fetcher(`https://cdn.jsdelivr.net/npm/three@${version}/${rel}`, { signal: AbortSignal.timeout(20000), redirect: 'error' });
       if (!res.ok) throw new Error(`Library download failed (${res.status}): ${rel}`);
       if (Number(res.headers.get('content-length')) > MAX_FILE) throw new Error('Library file is too large.');
@@ -89,7 +109,7 @@ function create({ dataDir, fetcher = (...args) => fetch(...args) }) {
 }
 let instance;
 function register({ protocol, ipcMain, dataDir }) {
-  instance = create({ dataDir, fetcher: (url, opts) => require('electron').net.fetch(url, opts) });
+  instance = create({ dataDir, fetcher: (url, opts) => require('electron').net.fetch(url, opts), localDir: process.env.HEARTH_THREE_DIR || '' });
   protocol.handle(SCHEME, req => instance.response(req));
   ipcMain.handle('net:prepareProject', (_e, args) => require('./offline-project').check({ ...args, dataDir, library: instance }));
 }

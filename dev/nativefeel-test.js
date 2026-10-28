@@ -293,7 +293,8 @@ function rest() {
   const winTaken = { f11: 'Full screen', 'ctrl+shift+i': 'Developer tools' };
   for (const { f, keys } of lines.filter((l) => l.f !== 'nativefeel.js')) { // (nativefeel.js lists the menus' own keys)
     for (const part of keys.split(/\s*[/·]\s*/).map(norm)) {
-      if (macTaken[part] && !(part === 'ctrl+alt+h' && f === 'keys-ui.js')) ok(false, `Mac menu's ${macTaken[part]} takes ${part} from ${f}`);
+      // (round 74) a key the Mac presses with the real Control (WinMac.MAC_REAL_CTRL: the show / hide key ⌃⌥H, 💡 Quick idea ⌃⌥I) is not the menu's ⌥⌘ one
+      if (macTaken[part] && !(f === 'keys-ui.js' && require('../winmac.js').MAC_REAL_CTRL.has(part))) ok(false, `Mac menu's ${macTaken[part]} takes ${part} from ${f}`);
       if (winTaken[part]) ok(false, `Windows menu's ${winTaken[part]} takes ${part} from ${f}`);
     }
   }

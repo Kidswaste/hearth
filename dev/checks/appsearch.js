@@ -59,6 +59,9 @@ try {
   step('first screen: Find anything is not loaded (tier "use"), nor the search core', lazyState('appsearch') === 'stub' && lazyState('searchcore') === 'stub', [lazyState('appsearch'), lazyState('searchcore')]);
 
   // ---------- Ctrl/⌘+K, a real key press ----------
+  // (round 74, checkhealth74) Hearth now starts on the Projects space: open a Claude chat first, as the owner would
+  // before asking about its permissions (its header menu's rows are what "permissions" must find)
+  activate(H.claudeAgent().id); await until(() => document.querySelector('.surface.active .composer textarea'), 5000); await wait(300);
   document.querySelector('.surface.active .composer textarea')?.focus();
   await ctrlK();
   const opened = await until(() => box()?.isConnected, 5000);

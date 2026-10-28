@@ -405,11 +405,12 @@ async function cdpConnect(dir) {
     // --lib <file> (repeatable): shared helpers put in front of the --script body (e.g. dev/checks/journey-lib.js).
     const libFiles = args.flatMap((a, i) => (a === '--lib' ? [path.resolve(args[i + 1])] : []));
     // A check that uses a shared helper without its --lib gets it anyway (editor.js / cut.js used to fail plainly
-    // with "J is not defined"): J → journey-lib, M → smooth-lib, decodeFrameCode → dev/editor-frames.js.
+    // with "J is not defined"): J → journey-lib, M → smooth-lib, decodeFrameCode → dev/editor-frames.js, (round 74)
+    // RAIL → checks/rail-lib.js (the button that opens an AI or a tool on today's rail).
     if (scriptFile) {
       const body = fs.readFileSync(scriptFile, 'utf8');
       // LF → labframes-lib (which itself uses J, so the helpers already added count as users too)
-      const AUTO = [[/\bLF\.\w|=\s*LF;/, /\bconst LF =/, 'checks/labframes-lib.js'], [/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js'], [/\bSQL\.\w|=\s*SQL;/, /\bconst SQL =/, 'checks/sequence-lib.js'], [/\bBS\.run\(/, /\bconst BS =/, 'checks/bigscreen-lib.js']];
+      const AUTO = [[/\bRAIL\.\w/, /\bconst RAIL =/, 'checks/rail-lib.js'], [/\bLF\.\w|=\s*LF;/, /\bconst LF =/, 'checks/labframes-lib.js'], [/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js'], [/\bSQL\.\w|=\s*SQL;/, /\bconst SQL =/, 'checks/sequence-lib.js'], [/\bBS\.run\(/, /\bconst BS =/, 'checks/bigscreen-lib.js']];
       for (const [uses, defines, lib] of AUTO) {
         const f = path.join(__dirname, lib);
         const users = [body, ...libFiles.map((x) => fs.readFileSync(x, 'utf8'))].join('\n');

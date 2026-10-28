@@ -279,7 +279,7 @@ const PlayNotes = (() => {
     // (round 64, clickfirst64) always here, so it can be found before the first game: with none yet it says what to do
     return [{ label: '✎ Playtest log', hint: s ? `${prefs().label} in ▶ Play drops a note` : `▶ Play a game, then ${prefs().label} drops a note`, action: () => open(s ? { source: s, session: S.session } : {}).catch(fail) }];
   }
-  try { Keys.add({ area: '▶ Play', keys: C.DEFAULT_KEY, what: 'In the game: a playtest note (picture, time, state, fps); Shift+F8 with words · /playtest key changes it' }); } catch { /* no keys sheet */ }
+  try { Keys.add({ area: '▶ Play', keys: C.DEFAULT_KEY, what: 'In the game: a playtest note (picture, time, state, fps); Shift+F8 with words (the log: the Lab’s Capture & playtest)' }); } catch { /* no keys sheet */ }
   try { AppUI.addAction?.('✎ Playtest log', () => open({ session: S.session }).catch(fail)); } catch { /* no palette */ }
 
   return { prefs, setKey, open, jump, restore, fix, toDirector, command, menuItems, take: (box = false) => N({ op: 'take', box }), state: () => ({ session: S.session, n: S.n, told: S.told, source: S.source, key: keyText(), view: Boolean(S.view), stats: { ...S.stats }, last: S.last, lastDraft: S.lastDraft || null }) };

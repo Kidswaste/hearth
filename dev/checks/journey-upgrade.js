@@ -23,6 +23,7 @@ step('renamed + pinned chats kept', Boolean(story) && Boolean(pinned));
 let msgs = 0; let withUsage = 0;
 for (const c of list) { const full = await Native.load(c.id); msgs += full.messages.length; withUsage += full.messages.filter((m) => m.usage).length; }
 step('every message loads (12) with its usage', msgs === 12 && withUsage === 6, { msgs, withUsage });
+activate(H.claudeAgent().id); await new Promise((r) => setTimeout(r, 400)); // (round 74) Hearth starts on the Projects space: the chats list is the chat space's
 const panelItems = [...document.querySelectorAll('#panel .item')].filter(visible).map((n) => n.textContent.trim().slice(0, 40));
 step('chats panel shows the chats', panelItems.length >= 3, panelItems.slice(0, 6));
 

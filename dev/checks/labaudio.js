@@ -46,7 +46,9 @@ for (let i = 0; i < n; i++) x[i] = (x[i] / peak) * 0.9;
 activate('tool:three');
 const c = await ThreeLab.cmd();
 await wait(1200);
-for (const nm of ['audio', 'audio-in', 'loopback', 'react-to', 'react-preset', 'react-curve', 'react-off', 'song-features']) if (Commands.get(nm)?.area !== 'Three.js Lab') step(`/${nm} registered in the Lab area`, false);
+// (round 74, checkhealth74) the Audio doctor's /audio holds the name since round 64: the Lab's is /hear, and /audio hands it
+// "names" and a bare /audio in the Lab (checked below by what /audio says)
+for (const nm of [Commands.get('audio')?.area === 'Three.js Lab' ? 'audio' : 'hear', 'audio-in', 'loopback', 'react-to', 'react-preset', 'react-curve', 'react-off', 'song-features']) if (Commands.get(nm)?.area !== 'Three.js Lab') step(`/${nm} registered in the Lab area`, false);
 step('8 new commands registered', ['audio', 'audio-in', 'loopback', 'react-to', 'react-preset', 'react-curve', 'react-off', 'song-features'].every((nm) => Commands.get(nm)));
 step('no duplicate commands', !(Commands.duplicates?.() || []).length, Commands.duplicates?.());
 const base = ThreeData.TEMPLATES.find((t) => t.name === 'Basic scene').code

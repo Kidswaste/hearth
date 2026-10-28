@@ -110,7 +110,11 @@ await wait(500);
 Offline?._test?.clear?.();
 
 // ---------- 4. Claude Code's local /usage (no model turn) ----------
-await sw({ claudeVersion: '2.1.301', claudeUsageText: 'Current session: 9% used · resets 11pm\nCurrent week (all models): 84% used · resets Oct 31, 9am' });
+// (round 74, checkhealth74) the week resets ~7 days from now: it said "Oct 31, 9am", a date the calendar has reached
+// (written on Oct 15, that week hadn't started yet; now it is days in and the card rightly forecasts from the pace)
+const wkReset = new Date(Date.now() + 7 * 864e5 - 3600e3);
+const wkText = `${wkReset.toLocaleString('en-US', { month: 'short' })} ${wkReset.getDate()}, ${wkReset.getHours() % 12 || 12}${wkReset.getHours() < 12 ? 'am' : 'pm'}`;
+await sw({ claudeVersion: '2.1.301', claudeUsageText: `Current session: 9% used · resets 11pm\nCurrent week (all models): 84% used · resets ${wkText}` });
 const r = await UsageLimits.readClaude({ fresh: true });
 ok(r?.ok && /Current session/.test(r.text), `the local /usage read (${JSON.stringify(r)})`);
 const wk = UsageLimits.state?.engines?.claude?.windows?.seven_day;
@@ -129,7 +133,9 @@ await until(() => document.querySelector('.ul-card.ul-claude .ul-win'), 10000);
 await wait(600);
 const ahead2 = document.querySelector('.ul-card.ul-claude .ul-ahead')?.textContent || '';
 out.ahead2 = ahead2;
-ok(/^84% of this week's limit is used; 16% left until .+go lighter/.test(ahead2) && !/early/i.test(ahead2), `84 % used: the line follows the bar, never "too early" (${ahead2})`);
+// (round 74) with this chat's own tokens in the week the card may forecast from them instead: at 84 % that must say the
+// limit comes (never "you're fine"), still never "too early"
+ok((/^84% of this week's limit is used; 16% left until .+go lighter/.test(ahead2) || /^At your pace this week you'll reach the weekly limit/.test(ahead2)) && !/early/i.test(ahead2), `84 % used: the line follows the bar, never "too early" (${ahead2})`);
 await smoke({ shot: '/tmp/usagelimits-card2.png' });
 // the Light look: the cards follow the theme (readable text on its background)
 const wasTheme = H.config.theme;

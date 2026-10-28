@@ -46,8 +46,9 @@ const T = window.hub.shows?.test ? await window.hub.shows.test({ dev: window.SMO
 // ---------- quests ----------
 await safe('quests: fresh', async () => {
   step('fresh profile: no journal, no ✦ chip yet', (await hub.kvGet('quest-journal', null, { status: true }))?.state === 'missing' && !vis(chip()));
-  const rail = document.querySelector('#rail .agent-btn[data-id="tool:quests"]');
-  step('Sidequest Studio is in the rail', vis(rail), rail?.title);
+  // (round 74, checkhealth74) since Codex's Projects / Life spaces the Studio is the rail's Life
+  const rail = document.querySelector('#rail .agent-btn[data-id="tool:quests"]') || document.querySelector('#agent-buttons .space-button[data-space="life"]');
+  step('Sidequest Studio is in the rail (Life)', vis(rail), rail?.title);
   rail.click();
   await until(() => typeof QuestJournal !== 'undefined' && QuestJournal.ready?.(), 20000);
   // (questfix65) Codex's Quests / Map / Progress / Desk rail replaced the top bar's "My week ▾": clickfirst's quest features
@@ -55,12 +56,15 @@ await safe('quests: fresh', async () => {
   // month, rewards, shows I went to). Hovering / focusing / clicking a tab shows its row; every feature is there in words.
   const nav = await until(() => document.querySelector('.qj-command-nav'));
   const tabs = [...nav.querySelectorAll('.qj-command-tab')];
-  step('the Studio\'s rail: Quests · Map · Progress · Desk in words', vis(nav) && ['Quests', 'Map', 'Progress', 'Desk'].every((w) => tabs.some((b) => b.textContent.includes(w))), tabs.map((b) => b.textContent.trim()));
+  // (round 74, checkhealth74) Codex's Life redesign: Today · Map · Progress (Quests → Today, the Desk left the Studio's rail);
+  // the quest features themselves are checked one click away in the ✦ panel's ⋯ More below
+  step('the Studio\'s rail: Today · Map · Progress in words', vis(nav) && ['Today', 'Map', 'Progress'].every((w) => tabs.some((b) => b.textContent.includes(w))), tabs.map((b) => b.textContent.trim()));
   await shot('studio', 'Sidequest Studio › Quests / Map / Progress / Desk (the quest features in their rows)', 'Rail › Sidequest Studio › hover a tab');
   const rows = [];
   for (const t of tabs) { t.dispatchEvent(new PointerEvent('pointerenter')); await wait(120); const panel = nav.querySelector(`.qj-command-panel[data-group="${t.dataset.navGroup}"]`); rows.push(...[...panel.querySelectorAll('button')].filter(vis).map((b) => b.textContent.trim())); }
   nav.dispatchEvent(new PointerEvent('pointerleave'));
-  step('the rows list every quest feature in words', ['Plan my week', 'Week in review', 'Make a walk', 'My month in Paris', 'Rewards', 'Shows this week', 'Shows I went to', 'Park mode', 'Arrange park loops'].every((w) => rows.some((r) => r.includes(w))), rows);
+  if (rows.some((r) => /Plan my week/.test(r))) step('the rows list every quest feature in words', ['Plan my week', 'Week in review', 'Make a walk', 'My month in Paris', 'Rewards', 'Shows this week', 'Shows I went to', 'Park mode', 'Arrange park loops'].every((w) => rows.some((r) => r.includes(w))), rows);
+  else step('the Studio\'s rows say what they do in words (Find a quest…; the features are in the ✦ panel\'s ⋯ More)', rows.length >= 2 && rows.every((r) => /\w{3}/.test(r)), rows);
   await shot('studio-menu');
   step('the ✦ chip appears once the Studio has a journal', await until(() => vis(chip())));
 });
@@ -168,8 +172,10 @@ await safe('sound desk', async () => {
   await hub.fs.write(`${dir}/Vital.vst3/Contents/Resources/moduleinfo.json`, '{"Name":"Vital"}'); await hub.fs.write(`${dir}/Serum2.vst3/Contents/Resources/moduleinfo.json`, '{"Name":"Serum 2"}');
   await Lazy.load('creative'); const project = WorkbenchCore.defaults(); project.vst.roots = [dir]; await hub.kvSet('creative-workbenches', project);
   document.querySelector('#rail .agent-btn[data-id="tool:creative"]')?.click() ?? activate('tool:creative');
-  await until(() => vis(find(/^Serum 2 & Vital$/)), 15000);
-  await click(/^Serum 2 & Vital$/);
+  // (round 74, checkhealth74) the station button was renamed (round 71); the Projects bar's Sound opens the same desk
+  const soundBtn = await until(() => find(/^Serum 2 & Vital$/) || [...document.querySelectorAll('.workspace-switcher button[data-feature="vst"]')].find(vis), 15000);
+  if (!soundBtn) throw Error('no Serum 2 & Vital / Sound button');
+  soundBtn.click(); await wait(200);
   await until(() => document.querySelectorAll('.wb-instrument-card').length === 2, 15000);
   await click(/^Vital$/, document, '.wb-instrument-card');
   await until(() => /^LIVE/.test(document.querySelector('.wb-live-stats')?.textContent || ''), 20000);

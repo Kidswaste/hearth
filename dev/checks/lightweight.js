@@ -116,7 +116,10 @@ ok(z.listeners - a.listeners <= 40, `a session once warm leaves ≤ 40 listeners
 // window / document listeners, hidden pages, WebGL contexts in the window
 ok(z.docL <= a.docL && z.docL - s0.docL <= 16, `document listeners don't grow per session (${s0.docL} · ${a.docL} → ${z.docL})`);
 ok(z.winL <= a.winL && z.winL - s0.winL <= 30, `window listeners don't grow per session (${s0.winL} · ${a.winL} → ${z.winL})`);
-ok(z.observers <= a.observers && z.observers - s0.observers <= 16, `observers don't grow per session (${s0.observers} · ${a.observers} → ${z.observers}: ${z.topObservers.join(' · ')})`);
+// (round 74, checkhealth74) + chat-rest.js's IntersectionObserver, one per chat list drawn (round 72: 3 here, Claude /
+// Astra / the Lab's dock) made during the first session and kept: measured 20 → 38 → 38 on 660fb71 (flat once warm,
+// what this guards), so the allowance from the start is 16 + 3 (one per list) — a per-session leak still fails the first half
+ok(z.observers <= a.observers && z.observers - s0.observers <= 19, `observers don't grow per session (${s0.observers} · ${a.observers} → ${z.observers}: ${z.topObservers.join(' · ')})`);
 ok(z.intervals <= a.intervals && z.intervals - s0.intervals <= 3, `intervals don't grow per session (${s0.intervals} · ${a.intervals} → ${z.intervals}: ${z.topIntervals.join(' · ')})`);
 ok((z.detached['aside.opt-sheet'] || 0) <= 400, `closed ⋯ AI setup sheets are let go (${z.detached['aside.opt-sheet'] || 0} detached nodes of them)`);
 const sheetBtns = Object.entries(z.byListener).filter(([k]) => /btn options\.js/.test(k)).reduce((n, [, v]) => n + v, 0);

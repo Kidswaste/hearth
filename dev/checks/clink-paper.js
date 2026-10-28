@@ -1,3 +1,4 @@
+// opt-in: CLINK_FIXTURE (round 74, checkhealth74, for Codex: it reads the owner's copied Clink scene smvboj46861, which a fresh test profile has not; set CLINK_FIXTURE=1 with --data on a copy that has it)
 const sketches=await hub.kvGet('three-sketches',[]),scene=sketches.find(s=>s.id==='smvboj46861'),layer=scene?.layers.find(l=>l.name==='Screens • title card & victory');
 if(!layer)throw Error('Use the copied Clink fixture.');
 const original=layer.code.slice(layer.code.indexOf('function paperBG('),layer.code.indexOf('function fighter(',layer.code.indexOf('function paperBG(')));

@@ -21,7 +21,7 @@ async function key(k) {
 }
 const mid = (n) => { const r = n.getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)]; };
 const settle = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 30))));
-const railBtn = (id) => document.querySelector(`#agent-buttons .agent-btn[data-id="${id}"]`);
+const railBtn = (id) => RAIL.button(id); // (round 74) today's rail: dev/checks/rail-lib.js
 
 H.config.theme = { ...(H.config.theme || {}), ...AppUI.THEMES.forgeheart, preset: 'forgeheart' };
 delete H.config.theme.label; delete H.config.theme.group;
@@ -82,6 +82,7 @@ await seg('ai-setup', async () => {
 });
 // ◎ (Missions): open, point across the cards, Esc, 5 times
 await seg('missions', async () => {
+  if (H.activeId !== claude.id) { activate(claude.id); await settle(); await wait(300); } // (round 74) its chat on screen
   const b = Native.view(claude.id).root.querySelector('.ms-btn');
   for (let i = 0; i < 5; i++) {
     await click(...mid(b)); await settle();

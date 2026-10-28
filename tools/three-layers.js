@@ -387,7 +387,7 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       el('div', { class: 'tw-head' }, el('b', { text: 'Layers' }), count, el('span', { class: 'spacer' }), addBtn, dupBtn, delBtn),
       list, props);
     root.tabIndex = 0;
-    root.setAttribute('role', 'group'); root.setAttribute('aria-label', 'Layers (Ctrl+C / Ctrl+V copy and paste layers, Delete removes the selected one)'); // (round 73) a focusable box says what it is
+    root.setAttribute('role', 'group'); { const say = 'Layers (Ctrl+C / Ctrl+V copy and paste layers, Delete removes the selected one)'; root.setAttribute('aria-label', window.WinMac ? WinMac.keyLabel(say) : say); } // (round 73) a focusable box says what it is · (round 74, checkhealth74) ⌘C / ⌘V on a Mac
     root.addEventListener('pointerdown', (e) => { if (!e.target.closest('input,textarea,select,button,[contenteditable]')) root.focus({ preventScroll: true }); });
     root.addEventListener('keydown', (e) => {
       if (e.target.closest('input,textarea,select,[contenteditable]') || e.altKey || e.repeat) return;
