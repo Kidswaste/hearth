@@ -15,7 +15,10 @@ vm.runInContext(fs.readFileSync(require.resolve('../engine-health'), 'utf8') + '
   assert.match(text, /listing is not an account access test/);
   assert.equal(context.health.problems(report).length, 0);
   report.watch.models = { status: 'unavailable', selections: [], catalog: [] };
-  text = await context.health.runDoctor(''); assert.match(text, /could not verify now/); assert.doesNotMatch(text, /listed with this reasoning/);
+  // (round 79, winstart79) codexcare58 (round 58) reworded this line to "couldn't check models right now"; the test kept the old words
+  text = await context.health.runDoctor(''); assert.match(text, /couldn't check models right now/); assert.match(text, /does not mean up to date/); assert.doesNotMatch(text, /listed with this reasoning/);
+  report.watch.models = { status: 'slow', selections: [], catalog: [] };
+  text = await context.health.runDoctor(''); assert.match(text, /didn't answer within a few seconds/); assert.doesNotMatch(text, /listed with this reasoning/);
   report.codex.broken = true; report.codex.runtime = { complete: false, missing: ['codex-code-mode-host.exe'] };
   assert.match(context.health.problems(report)[0].text, /missing codex-code-mode-host.exe/);
   report.watch.models = { status: 'checked', selections: [{ name: 'Astra', model: 'retired', effort: 'max', status: 'not-listed' }], catalog: [] };

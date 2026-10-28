@@ -39,7 +39,7 @@ await safe('lab', async () => {
   btnEl?.click();
   const on = await until(playing, 60000);
   const st = (await until(async () => { const x = await G().state(); return x?.pid ? x : null; }, 60000)) || await G().state(); // (its page loaded: its process known)
-  out.measure.openMs = Math.round(performance.now() - t0);
+  out.measure.openMs = Math.round(performance.now() - t0); out.measure.timing = st?.timing ? { build: (st.timing.built || st.timing.asked) - st.timing.asked, window: st.timing.window - (st.timing.built || st.timing.asked), load: (st.timing.loaded || 0) - st.timing.window, session: st.timing.session ?? null } : null; // (round 79, winstart79) where the first ▶ Play's time goes
   step('Play opens a separate window (its own renderer process, the hearth-game: page)', on && st.separate && /^hearth-game:\/\/[0-9a-f]+\/play\.html/.test(st.url), { url: st?.url, pid: st?.pid, separate: st?.separate, priority: st?.priority, how: st?.how, fullscreen: st?.fullscreen, display: st?.display });
   const drawn = await until(async () => { const v = await ev('window.__hearthGame && window.__hearthGame.drawn && window.__gameInfo && window.__gameInfo().frames > 20 ? JSON.stringify(window.__gameInfo()) : null'); return v ? JSON.parse(v) : null; }, 90000);
   out.measure.labInfo = drawn;

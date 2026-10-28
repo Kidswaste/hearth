@@ -704,7 +704,15 @@ function registerAfterWindow() {
   if (!process.env.HEARTH_TEST_SAVE_DIR) { try { powerwise.every('diskcalm', 6 * 3600e3, () => { diskcalmIpc.load(); return require('./diskcalmmain').tick(); }, { hidden: 'run', first: 10 * 60e3 }); } catch { /* no schedule: tidies when asked */ } }
   lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
   lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
-  lazyIpc('gamemodemain.js', (m, ipc) => m.register(ipc, { getWin: () => win, powerwise, dataDir: store.DATA_DIR })); // (round 52) ▶ Play: a game in its own full-screen window
+  const gameIpc = lazyIpc('gamemodemain.js', (m, ipc) => m.register(ipc, { getWin: () => win, powerwise, dataDir: store.DATA_DIR })); // (round 52) ▶ Play: a game in its own full-screen window
+  // (round 79, winstart79) ▶ Play warmed 20 s after the start (its modules, its session, the player's page), only when a
+  // game was played in the last 2 weeks (HEARTH_GAME_WARM=1 / 0: always / never)
+  { const t = setTimeout(async () => {
+    const force = process.env.HEARTH_GAME_WARM;
+    const st = force ? null : await fs.promises.stat(path.join(store.DATA_DIR, 'game-cache', 'last-play')).catch(() => null);
+    if (force === '0' || (force !== '1' && !(st && Date.now() - st.mtimeMs < 14 * 864e5))) return;
+    try { gameIpc.load(); await require('./gamemodemain').warm(); } catch (err) { console.warn('play warm:', err.message); }
+  }, 20000); t.unref?.(); }
   lazyIpc('gpuplaymain.js', (m, ipc) => m.register(ipc, { getWin: () => win })); // (round 76, gpuplay76) 📈 Test play performance: processor use per process, the screens, Windows' graphics settings (read only), the clipboard
   lazyIpc('directorgamemain.js', (m, ipc) => m.register(ipc, { getWin: () => win })); // (round 53, directorgame) the director's play-test: an input script into the ▶ Play window only, one small picture
   lazyIpc('voicemain.js', (m, ipc) => m.register(ipc, () => win, { settings, dataDir: store.DATA_DIR })); // (round 23) voice: local speech-to-text (whisper), system voices

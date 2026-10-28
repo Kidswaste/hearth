@@ -1554,7 +1554,7 @@ function learnTooOld(engine, bin, text) {
 // fresh: read the versions again (after an update). login: false skips the sign-in check.
 async function checkEngine(engine, { fresh = false, login = true } = {}) {
   const pinned = given(engine);
-  const files = Installs.candidates(engine);
+  const files = Installs.find ? await Installs.find(engine, { fresh }) : Installs.candidates(engine); // (round 79, winstart79) the kept copies checked first, asynchronously; fresh (/doctor, after an install window, after a wake): looks everywhere again
   if (pinned && !files.includes(pinned)) files.unshift(pinned);
   const copies = [];
   for (const file of files.slice(0, 12)) {
