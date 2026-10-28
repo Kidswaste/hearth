@@ -66,7 +66,7 @@ const Tools = (() => {
       el('span', { class: 'tool-desc', text: tool.description || '' }),
       // (round 26) ⋯ Options for this window (options.js), on its own tab
       tool.id === 'options' ? null : el('button', { type: 'button', class: 'ghost small tool-opts', text: '⋯', title: 'AI setup for this window\'s AI: who it is, its instructions and what it can use',
-        on: { click: () => Lazy.load('options').then(() => Options.open({ place: tool.id })).catch((err) => toast(err.message, { type: 'error' })) } }));
+        on: { click: (e) => { const b = e.currentTarget; Lazy.load('options').then(() => Options.open({ place: tool.id, anchor: b })).catch((err) => toast(err.message, { type: 'error' })); } } })); // (round 76: the drawer starts under it)
     const body = el('div', { class: 'tool-body' });
     const dock = el('aside', { class: 'tool-dock', hidden: true });
     const divider = el('div', { class: 'tool-dock-divider', hidden: true, title: 'Drag to resize the chat' });

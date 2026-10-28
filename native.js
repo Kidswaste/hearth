@@ -94,7 +94,7 @@ const Native = (() => {
     else newBtn.hidden = true;
     modelSel.hidden = true;
     title.addEventListener('dblclick', () => renameCurrent(agentId));
-    menuBtn.addEventListener('click', (e) => { if (typeof Lazy !== 'undefined' && Lazy.load) Lazy.load('options').then(() => Options.open({ agentId, place: 'chat' })).catch(() => chatMenu(agentId, e)); else chatMenu(agentId, e); });
+    menuBtn.addEventListener('click', (e) => { if (typeof Lazy !== 'undefined' && Lazy.load) Lazy.load('options').then(() => Options.open({ agentId, place: 'chat', anchor: menuBtn })).catch(() => chatMenu(agentId, e)); else chatMenu(agentId, e); });
     menuBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); chatMenu(agentId, e); });
     // (round 26, smooth26) pointing at ⋯ fetches AI setup (18 KB): the click then opens it at once
     menuBtn.addEventListener('pointerenter', () => { if (typeof Lazy !== 'undefined' && Lazy.load && !Lazy.loaded('options')) window.Jank?.calm?.(1500, null).then(() => Lazy.load('options')).catch(() => {}) ?? Lazy.load('options').catch(() => {}); }, { once: true });
@@ -1579,12 +1579,14 @@ const Native = (() => {
     const chat = chats.get(H.activeChat[agentId]);
     if (!node && v && chat && index >= 0 && index < shownFrom(chat, unreadFrom.get(chat.id))) {
       if (typeof ChatRest === 'undefined') { fullChats.add(chat.id); later(); render(agentId); return false; }
-      ChatRest.wakeAt(agentId, index).then((ok) => { if (ok && jumpTo(agentId, index)) ChatRest.settle(agentId, () => v.list.querySelector(`.msg[data-index="${index}"]`), index === 0 ? 'start' : 'center'); });
+      ChatRest.wakeAt(agentId, index).then((ok) => { if (ok) jumpTo(agentId, index); });
       return true;
     }
     if (!node) { if (v?.drawing) later(); return false; }
     if (v.drawing) later(); // a draw on its way would put the scroll back: jump again after it
-    node.scrollIntoView({ block: index === 0 ? 'start' : 'center' });
+    // (round 76, chatjump76) landed and held in place while the messages around it draw and its pictures load (chat-rest.js)
+    if (!v.list.awake || typeof ChatRest === 'undefined') node.scrollIntoView({ block: index === 0 ? 'start' : 'center' });
+    else ChatRest.hold(agentId, () => v.list.querySelector(`.msg[data-index="${index}"]`), { block: index === 0 ? 'start' : 'center' });
     if (index < (chat?.messages.length ?? 0) - 1) v.follow = false; // (round 45) reading an old message: a picture loading below no longer pulls you back to the end
     node.classList.add('flash-msg');
     setTimeout(() => node.classList.remove('flash-msg'), 900);

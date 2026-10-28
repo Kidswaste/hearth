@@ -65,6 +65,7 @@ function mount() {
     .note { max-width: min(560px, 80vw); padding: 3px 9px; border-radius: 7px; background: #0008; color: #ffcf9e; font-size: 11.5px; }
     .acts { display: flex; gap: 6px; pointer-events: auto; } .acts button { font: 600 11.5px system-ui, sans-serif; padding: 3px 9px; margin: 0; border-radius: 7px; background: #000a; color: #eef0f4; }
     .acts button:hover { background: #2a2e37; }
+    .acts .ah { min-width: 9.6em; } /* (round 76, chatjump76) Quality shows up first in the row (it arrives a read after the chip) and ● Record / ■ Stop keep one width: the words under your mouse never move (a real click on ✎ Note landed on Quality) */
     .card { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; pointer-events: auto; }
     .box { min-width: 280px; padding: 22px 24px 18px; border-radius: 14px; background: #16181d; box-shadow: 0 12px 40px #000c; text-align: center; }
     .t { font-size: 16px; font-weight: 600; margin-bottom: 4px; } .s { color: #a7adb8; margin-bottom: 16px; }
@@ -84,7 +85,7 @@ function mount() {
     .pf ul { margin: 0 0 8px; padding-left: 18px; color: #c9ced8; font-size: 12px; line-height: 1.45; } .pf .tip { margin: 0 0 8px; color: #ffcf9e; font-size: 12px; line-height: 1.4; }
     .pf .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; } .pf .row button { font-size: 12px; padding: 6px 11px; margin: 0; background: #2a2e37; color: #eef0f4; } .pf .row button:hover { background: #3a3f4a; }
     .pf .row .copy { background: #ff8a3d; color: #1a1206; } .pf .pn { margin: 8px 0 0; font-size: 11.5px; color: #9fe0a8; } .pf .sm { margin: 8px 0 0; font-size: 11px; color: #8a909b; }
-  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing${I.notesKey ? ` · ${String(I.notesKey).replace(/[<>&]/g, '')}: note` : ''}${I.hitch ? ' · ● recording the hitch map' : ''}</div><div class="col"><div class="chip" hidden></div><div class="acts" hidden>${I.notesKey ? `<button class="an" tabindex="-1">✎ Note (${String(I.notesKey).replace(/[<>&]/g, '')})</button>` : ''}<button class="aq" tabindex="-1" hidden title="Auto: fewer pixels when frames drop, back up when there's room · Full: every pixel (click to switch)"></button><button class="ah" tabindex="-1">${I.hitch ? '■ Stop hitch map' : '● Record hitch map'}</button><button class="ap" tabindex="-1" title="20 s of play measured: frames vs your screen, graphics card vs processor, what to change">📈 Test performance</button></div><div class="look" hidden></div><div class="note" hidden></div></div><div class="blip" aria-live="polite"></div><div class="pfpill" hidden aria-live="polite"></div><div class="pf" hidden role="dialog" aria-label="Play performance"></div>
+  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing${I.notesKey ? ` · ${String(I.notesKey).replace(/[<>&]/g, '')}: note` : ''}${I.hitch ? ' · ● recording the hitch map' : ''}</div><div class="col"><div class="chip" hidden></div><div class="acts" hidden><button class="aq" tabindex="-1" hidden title="Auto: fewer pixels when frames drop, back up when there's room · Full: every pixel (click to switch)"></button>${I.notesKey ? `<button class="an" tabindex="-1">✎ Note (${String(I.notesKey).replace(/[<>&]/g, '')})</button>` : ''}<button class="ah" tabindex="-1">${I.hitch ? '■ Stop hitch map' : '● Record hitch map'}</button><button class="ap" tabindex="-1" title="20 s of play measured: frames vs your screen, graphics card vs processor, what to change">📈 Test performance</button></div><div class="look" hidden></div><div class="note" hidden></div></div><div class="blip" aria-live="polite"></div><div class="pfpill" hidden aria-live="polite"></div><div class="pf" hidden role="dialog" aria-label="Play performance"></div>
   <div class="err" hidden role="alert"><span class="m"></span><button class="fixit">Fix with the director</button><button class="x" aria-label="Hide">✕</button></div>
   <div class="card" hidden role="dialog" aria-label="Leave the game"><div class="box"><div class="t"></div><div class="s">Esc again or Enter goes back</div>
   <button class="back">Back to Hearth</button><button class="keep">Keep playing</button><button class="fix fixit" hidden>Fix with the director</button></div></div></div>`;
@@ -187,6 +188,19 @@ function stats(on) {
   }
 }
 addEventListener('DOMContentLoaded', () => mount());
+// (round 76, chatjump76) a press on Hearth's own words over the game (the F chip's ✎ Note / ● Record hitch map, the leave
+// card, the error line, the note box) is never the game's: a Lab scene's page (and many games) asks for the pointer lock
+// on any mousedown at the window, and once the lock is granted the release and the click go to the locked element, not
+// the button (and the game would shoot / jump on a press meant for Hearth). Registered here, before the game's own
+// scripts, so it runs first at the window; one cheap check per press (events from inside a shadow root reach the
+// window with the host as their target).
+for (const t of ['pointerdown', 'mousedown']) {
+  addEventListener(t, (e) => {
+    if (!ui || e.target !== ui.host) return;
+    e.stopImmediatePropagation();
+    if (!(NB.input && e.composedPath()[0] === NB.input)) e.preventDefault(); // (the buttons never take the focus; the note box's field does)
+  }, true);
+}
 
 // ---------- input → the game's frame (round 56, playlatency) ----------
 // Measured only while the F chip shows ("Input: 3.1 ms": your own keys and mouse) or /game latency runs (2 s of tiny

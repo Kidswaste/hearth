@@ -115,14 +115,17 @@ const ChatRest = (() => {
     }
   }
   // block `b` drawn in place of its spacer, exactly as a full draw makes it (native.js planOf)
-  async function wake(agentId, v, chat, b) {
+  // (round 76, chatjump76) hurry: a jump / a find is waiting on this block: its Markdown waits ≤ 120 ms and its media
+  // sizes ≤ 150 ms (they go on being measured and kept); hold() then keeps the message in place as the rest arrive
+  async function wake(agentId, v, chat, b, { hurry = false } = {}) {
     const list = v.list;
     if (list.awake?.has(b)) return false;
     v.waking = true;
     try {
       const msgs = chat.messages.slice(b * R.BLOCK, (b + 1) * R.BLOCK);
       const texts = msgs.filter((m) => m.role === 'assistant' || m.role === 'opinion').map((m) => m.text);
-      await Promise.all([window.Md && Md.uncached(texts) ? Md.warm(texts, 300) : null, ...mediaOf(msgs).map(measure)]);
+      const media = Promise.all(mediaOf(msgs).map(measure));
+      await Promise.all([window.Md && Md.uncached(texts) ? Md.warm(texts, hurry ? 120 : 300) : null, hurry ? Promise.race([media, new Promise((r) => setTimeout(r, 150))]) : media]);
       const gone = () => v.list !== list || H.activeChat[agentId] !== chat.id;
       if (gone() || list.awake.has(b) || !list.querySelector(`:scope > .msg-rest[data-block="${b}"]`)) return false;
       list.awake.add(b);
@@ -192,14 +195,63 @@ const ChatRest = (() => {
     if (!v || !chat || !chat.messages[index]) return false;
     for (let i = 0; i < 150 && (v.drawing || v.waking); i++) await new Promise((r) => setTimeout(r, 20));
     if (H.activeChat[agentId] !== id) return false;
-    return Boolean(v.list.querySelector(`.msg[data-index="${index}"]`)) || (index < R.shownFrom(chat, R.unreadFrom.get(id)) && wake(agentId, v, chat, Math.floor(index / R.BLOCK)));
+    return Boolean(v.list.querySelector(`.msg[data-index="${index}"]`)) || (index < R.shownFrom(chat, R.unreadFrom.get(id)) && wake(agentId, v, chat, Math.floor(index / R.BLOCK), { hurry: true }));
   }
-  // a node just woken is first laid out at its placeholder size (chatcore.css content-visibility): once the messages
-  // around it have drawn, it is put back in view if that moved it away
-  function settle(agentId, node, block = 'center') { // (node: or a function that finds it again)
-    const fix = () => { const v = views.get(agentId); const n = typeof node === 'function' ? node() : node; if (!v || !n?.isConnected) return; const r = n.getBoundingClientRect(); const l = v.list.getBoundingClientRect(); if (r.top < l.top || r.bottom > l.bottom) n.scrollIntoView({ block }); };
-    requestAnimationFrame(() => requestAnimationFrame(fix)); setTimeout(fix, 350);
+  // (round 76, chatjump76) a jump or a find lands its message in view and HOLDS it there while what's around it settles:
+  // the blocks next to it waking (their messages laid out at the 180 px guess of chatcore.css until drawn), pictures
+  // loading at a size not known yet, the far blocks going back to rest. Each size change of the list's children is
+  // answered in the same frame, after layout and before paint (a ResizeObserver), by moving the scroll so the message
+  // is exactly where it landed: nothing is seen moving. Following the end stops (a picture loading below pulled the
+  // chat back to the bottom a moment after find landed on an old message). The hold ends at your own input (wheel,
+  // press, key, touch), after 1 s with nothing changing and every picture in the chat loaded or failed, or after 6 s.
+  // node: the message (or a function finding it again); first: what to bring into view first (find's mark)
+  function hold(agentId, node, { block = 'center', first = null } = {}) {
+    const v = views.get(agentId); const list = v?.list;
+    if (!list) return;
+    v.hold?.();
+    const get = typeof node === 'function' ? node : () => node;
+    let want = null; let quiet = 0; let ended = false;
+    const t0 = performance.now();
+    const ro = new ResizeObserver(() => place()); const seen = new WeakSet();
+    const watchKids = () => { for (const k of list.children) if (!seen.has(k)) { seen.add(k); ro.observe(k); } };
+    const mo = new MutationObserver(() => { watchKids(); place(); });
+    const input = () => stop();
+    const INPUT = ['wheel', 'pointerdown', 'keydown', 'touchstart'];
+    function stop() {
+      if (ended) return;
+      ended = true; clearTimeout(quiet); ro.disconnect(); mo.disconnect();
+      for (const t of INPUT) list.removeEventListener(t, input, { capture: true });
+      if (v.hold === stop) v.hold = null;
+    }
+    function settled() {
+      if (ended) return;
+      if (performance.now() - t0 < 6000 && [...list.querySelectorAll('img')].some((i) => !i.complete)) { quiet = setTimeout(settled, 400); return; }
+      stop();
+    }
+    function place() {
+      if (ended) return;
+      const n = get();
+      if (!n?.isConnected || v.list !== list || performance.now() - t0 > 6000) { stop(); return; }
+      const l = list.getBoundingClientRect(); const r = n.getBoundingClientRect();
+      if (want == null) {
+        const f = first?.isConnected ? first : n; const q = f.getBoundingClientRect();
+        if (f !== n || q.top < l.top || q.bottom > l.bottom) f.scrollIntoView({ block });
+        want = n.getBoundingClientRect().top - l.top;
+        const msgs = list.querySelectorAll(':scope > .msg');
+        if (n !== msgs[msgs.length - 1]) v.follow = false;
+      } else {
+        const d = r.top - l.top - want;
+        if (Math.abs(d) >= 1) list.scrollTop += d;
+      }
+      clearTimeout(quiet); quiet = setTimeout(settled, 1000);
+    }
+    v.hold = stop;
+    for (const t of INPUT) list.addEventListener(t, input, { capture: true, passive: true });
+    place();
+    watchKids(); mo.observe(list, { childList: true });
   }
+  // (the name chat-ux.js / native.js used before round 76: the node put back in view once its neighbours had drawn)
+  const settle = (agentId, node, block = 'center') => hold(agentId, node, { block });
   // find in chat (chat-ux.js): the resting messages of the open chat that hold `q` (their text or thinking)
   function restingHits(agentId, q) {
     const v = views.get(agentId); const id = H.activeChat[agentId]; const chat = id && chats.get(id); const needle = String(q || '').toLowerCase();
@@ -213,5 +265,5 @@ const ChatRest = (() => {
   }
   // (the chats drawn before this file loaded start being watched now)
   for (const [agentId, v] of views) watch(agentId, v);
-  return { watch, soon, wake, wakeAt, more, restingHits, settle };
+  return { watch, soon, wake, wakeAt, more, restingHits, settle, hold };
 })();

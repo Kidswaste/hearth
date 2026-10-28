@@ -251,13 +251,17 @@ const Options = (() => {
     // (round 36, tokenaudit) + one line, once, when an unused tool costs more than ≈ 500 tokens a message
     try { const s = Budget.state(a.id); const n = typeof TokenAudit !== 'undefined' ? TokenAudit.nudge(a) : ''; return `${s.limit ? `${s.pct}% of this week's limit` : 'No weekly limit'}${n ? ` · ${n}` : ''}`; } catch { return ''; }
   }
-  function build(host, agentId, page = false, show = null) {
+  function build(host, agentId, page = false, show = null, anchor = null) {
     // (round 31, quickstart-hooks.js) "?": What can I do here? (the card shows in the window, so the drawer goes)
     const qs = !page && window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? QuickstartHooks.button(QuickstartHooks.placeOf(agentId), agentId, () => hide()) : null;
     const head = el('header', { class: 'opt-head' }, el('b', { text: 'AI setup' }), el('span', { class: 'spacer' }), qs, page ? null : btn('✕', 'Close (Esc)', () => hide()));
     const body = el('div', { class: 'opt-body' });
     const root = el(page ? 'div' : 'aside', { class: `opt-sheet${page ? ' opt-page' : ''}`, attrs: { 'aria-label': 'AI setup' } }, head, body);
     root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !page && !e.target.closest('textarea')) { e.stopPropagation(); hide(); } });
+    // (round 76, chatjump76) the drawer starts under the ⋯ that opened it: since the AIs moved to the bar above the chat,
+    // the chat's header (its ⋯, and the composer's ◎ under the drawer's side) sat under a drawer fixed at 44 px, so a real
+    // click on ⋯ to close it landed in the drawer and nothing closed (a script's .click() still toggled it)
+    if (!page && anchor?.isConnected) { const r = anchor.getBoundingClientRect(); if (r.bottom > 38 && r.bottom < innerHeight / 2) root.style.top = `${Math.round(r.bottom + 6)}px`; }
     host.append(root);
     sheet = { root, body, agentId, page, sid: sidNow(), show };
     paint();
@@ -269,10 +273,11 @@ const Options = (() => {
     return a?.mode === 'native' ? a.id : H.claudeAgent()?.id;
   }
   // show: a fold to open and scroll to ('tools', 'connections', 'hooks', 'memory', 'habits', 'spending', 'missions')
-  function open({ agentId, place, show } = {}) {
+  // anchor: the button that opened it (the drawer starts under it, so the same button closes it)
+  function open({ agentId, place, show, anchor } = {}) {
     const id = agentId || agentFor(place);
     if (sheet && !sheet.page) { const same = sheet.agentId === id; hide(); if (same && !show) return null; }
-    return build(document.body, id, false, show || null);
+    return build(document.body, id, false, show || null, anchor || null);
   }
   function hide() { if (sheet && !sheet.page) { sheet.root.remove(); sheet = null; } }
   // another window: the drawer goes (a re-render of the same window keeps it)
