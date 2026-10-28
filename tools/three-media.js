@@ -226,6 +226,17 @@ const ThreeMedia = (() => {
     for (let t = grid.anchor - Math.floor(grid.anchor / p) * p; t < duration; t += p) out.push(r4(t));
     return out;
   }
+  // (round 77, labaudio77) the beat grid / markers message a preview gets for a song ('media-map'), from the song's
+  // analysis and its saved map (grid, markers, cues): one function for the Lab on screen (sendMap) and for a scene
+  // running backstage (tools/three-backstage.js), so both play the same beats. The grid in use is yours, else the
+  // detected straight grid; a played song (the tempo drifts) has none: its tracked beats, counted from the detected 1.
+  function songMap(analysis, m, duration, beatsNow = null) {
+    const ag = analysis?.grid?.straight ? analysis.grid : null;
+    const g = m?.grid || ag;
+    const dIdx = g ? 0 : analysis?.downIndex || 0;
+    const beats = beatsNow || (g ? gridBeats(g, duration) : analysis?.beats || []);
+    return { beats, bpm: g?.bpm || analysis?.bpm || 0, bpb: g?.bpb || 4, anchor: g?.anchor ?? beats[dIdx] ?? 0, manual: Boolean(g), downIndex: dIdx, marks: emptyMarks(m?.marks), cues: (m?.cues || []).map((c) => ({ t: c.t, name: c.name })) };
+  }
   // Last index with beats[i] <= t (-1 if none).
   function beatIndex(beats, t) {
     let lo = 0; let hi = beats.length - 1; let k = -1;
@@ -271,7 +282,7 @@ const ThreeMedia = (() => {
   // frame: { get() → { id, width, height }, set(id) } so the record menu can switch between the social sizes.
   // onCueLookHere(cue) → { layer, name } saves the selected layer's current sliders as a look for that cue.
   function player({ send, sketchName, onLoaded, onPick, onCue, lookChoices, frame: frameHook, onCueLookHere }) {
-    const st = { path: null, name: null, bytes: null, mime: null, video: false, clock: null, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0, rate: 1 };
+    const st = { path: null, name: null, bytes: null, mime: null, video: false, clock: null, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0, rate: 1, lead: 0 };
     let region = null; // { a, b } seconds
     let locked = false;
     let snapMode = store.get('three.snapMode', '1/4');
@@ -322,7 +333,7 @@ const ThreeMedia = (() => {
     const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
     playBtn.dataset.feature = 'Play / pause';
     playBtn.dataset.key = 'Space';
-    playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); menuAt(playBtn, [['Play from the start', 'Home, then Space', () => { seek(0); toggle(true); }], region ? ['Play the loop', '', () => { seek(region.a); toggle(true); }] : false, ...RATES.map((r) => [`${st.rate === r ? '● ' : ''}${r === 1 ? 'Normal speed' : `${r}× speed`}`, '', () => setRate(r)]), null, [`${scrubOn ? '● ' : ''}Sound while dragging the playhead`, 'Hear the song under the playhead as you scrub', () => setScrubSound(!scrubOn)]].filter((x) => x !== false)); });
+    playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); menuAt(playBtn, [['Play from the start', 'Home, then Space', () => { seek(0); toggle(true); }], region ? ['Play the loop', '', () => { seek(region.a); toggle(true); }] : false, ...RATES.map((r) => [`${st.rate === r ? '● ' : ''}${r === 1 ? 'Normal speed' : `${r}× speed`}`, '', () => setRate(r)]), null, [`${scrubOn ? '● ' : ''}Sound while dragging the playhead`, 'Hear the song under the playhead as you scrub', () => setScrubSound(!scrubOn)], avRow()].filter((x) => x !== false)); });
     const timeEl = el('span', { class: 'mb-time', text: '0:00', title: 'Click to jump to a time (m:ss.mmm or seconds)' });
     timeEl.addEventListener('click', async () => { if (!D()) return; const v = await Modal.prompt('Jump to', { value: fmtMs(now()), placeholder: 'm:ss.mmm or seconds' }); const t = parseTime(v ?? ''); if (Number.isFinite(t)) seek(t); });
     // Slow motion for precise edits (the sketch sees the slowed music too). Recording always runs at 1×.
@@ -674,6 +685,7 @@ const ThreeMedia = (() => {
         st.samples = a.samples; st.wave = a.wave;
         delete a.samples; delete a.wave;
         st.analysis = a; anaVer += 1;
+        if (typeof ThreeBackstage !== 'undefined') ThreeBackstage.songPrep?.put(path, a); // (round 77, labaudio77: a scene on this song backstage needs no second analysis)
       } catch (err) { if (seq === loadSeq) { st.analysis = null; if (!quiet && !(st.video && hooks.silentVideo?.(st))) toast(st.video ? `${st.name} has no audio track to analyze (it still works as a video texture)` : `Couldn't analyze ${st.name}: ${err.message}`, { type: 'error' }); } }
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       analyzing = false;
@@ -837,6 +849,16 @@ const ThreeMedia = (() => {
     // DJ's jog wheel), from the analysis' 22 kHz copy in the Lab window, at the Lab's volume: ≤ 1 grain per 45 ms,
     // its own small audio context made on the first scrub and put to sleep 1.5 s after the last one. Off: the play
     // button's right-click menu (three.scrubSound).
+    // (round 77, labaudio77) the pictures follow what you hear: the play button's menu says how far behind the song's
+    // clock your speakers play (the preview waits for them) and whether the sound output changed under the song
+    const avLog = [];
+    function avRow() {
+      if (!st.bytes || st.clock) return false;
+      const ms = st.lead ? Math.round(st.lead * 1000) : 0;
+      const last = avLog.at(-1);
+      const desc = `${ms ? `Your speakers play ${ms} ms behind the song's clock: the pictures wait for them` : 'Play to measure your speakers'}${last ? ` · ${last.what}${last.why ? ` (${last.why})` : ''}` : ''}`;
+      return ['♪ Pictures in sync with the sound', desc, () => Commands.run?.(Commands.get('hear') ? 'hear' : 'audio', 'sync')];
+    }
     let scrubOn = store.get('three.scrubSound', true);
     const scrub = { ctx: null, last: 0, lastT: -1, sleep: 0, n: 0 };
     function setScrubSound(on) { scrubOn = Boolean(on); store.set('three.scrubSound', scrubOn); if (!scrubOn) scrub.ctx?.suspend().catch(() => {}); return scrubOn; }
@@ -869,6 +891,9 @@ const ThreeMedia = (() => {
       // (a paused report while a seek is still on its way is an older spot too)
       if (msg.type === 'media-state' && (msg.seekAck || seekQ.busy) && !msg.playing && !st.playing && !msg.ended) msg = { ...msg, time: st.time };
       if (msg.type === 'media-state' && msg.seekAck) seekAcked();
+      // (round 77, labaudio77) the sound output changed under the song (the preview kept it playing): kept for the play
+      // button's menu and /hear sync
+      if (msg.type === 'av-event') { avLog.push(msg); if (avLog.length > 12) avLog.shift(); if (/again|could not/.test(msg.what)) console.info(`Lab sound: ${msg.what}${msg.why ? ` (${msg.why})` : ''}`); return; }
       if (hooks.message?.(msg)) return;
       if (msg.type === 'media-state') {
         // the sandbox sends this a few times a second while it plays: only a real change (play / pause / end / a new
@@ -877,8 +902,10 @@ const ThreeMedia = (() => {
         // While it plays, the playhead runs on its own smooth clock and is steered toward the reported time: snapping
         // to every report (late by however long the message took) made it jump back and forth. A real jump (seek,
         // loop, a stall over 0.3 s) still snaps.
+        // (round 77, labaudio77) the playhead shows what's heard: the element runs ahead of the speakers by msg.lead
+        if (msg.lead != null) st.lead = msg.lead;
         if (same && st.playing && msg.playing) {
-          const predicted = now(); const err = msg.time - predicted;
+          const predicted = now(); const err = msg.time - (msg.lead || 0) - predicted;
           if (Math.abs(err) < 0.3) { st.time = predicted + err * 0.15; st.stampAt = performance.now(); if (!wish) return; }
         }
         Object.assign(st, { time: hooks.stateTime ? hooks.stateTime(msg.time, msg.playing) : msg.time, duration: finiteDur(msg.duration) || st.duration, playing: msg.playing, stampAt: performance.now() });
@@ -966,7 +993,7 @@ const ThreeMedia = (() => {
     function sendMap() {
       if (!st.bytes) return;
       send({ type: 'media', cmd: 'trim', value: map.trim || null });
-      send({ type: 'media-map', beats: beats(), bpm: bpmNow(), bpb: bpbNow(), anchor: G()?.anchor ?? beats()[dIdx()] ?? 0, manual: Boolean(G()), downIndex: dIdx(), marks: map.marks, cues: map.cues.map((c) => ({ t: c.t, name: c.name })) });
+      send({ type: 'media-map', ...songMap(st.analysis, map, D(), beats()) }); // (round 77: the same message a backstage scene gets)
     }
     // Tap tempo that learns (button or T): the median gap of the last 16 taps (stray taps ignored), shown live.
     // Close to the song's detected tempo (or half / double of it, the classic mistake either way) the grid locks to
@@ -3239,6 +3266,7 @@ const ThreeMedia = (() => {
       redraw: () => draw(), paintAll: () => paint(),
       _scrubStats: () => ({ ...scrubStats }),
       scrubSound: (on) => (on == null ? scrubOn : setScrubSound(on)), // (round 49, labscrub) the scrub sound on / off
+      get av() { return { leadMs: st.playing && st.lead ? Math.round(st.lead * 1000) : null, log: avLog.slice() }; }, // (round 77, labaudio77)
       pushUndo(entry) { mapUndo.push({ hook: entry }); if (mapUndo.length > 80) mapUndo.shift(); paint(); },
       // J / L shuttle speeds (2×, 4×, 8×) outside the speed menu; 1 goes back to normal
       shuttleRate(r) { const t = now(); st.rate = r > 0 ? r : 1; st.time = t; st.stampAt = performance.now(); send({ type: 'media', cmd: 'rate', value: st.rate }); rateSel.classList.toggle('on', st.rate !== 1); paint(); },
@@ -3483,5 +3511,5 @@ const ThreeMedia = (() => {
   }
 
   // _test.core: the analysis math (tools/three-music-core.js) for unit tests on synthetic signals
-  return { analyze, stage, player, isMedia, SIZES, _test: { gridBeats, snapTime, parseTime, fmtMs, beatIndex, addMark, get core() { return typeof MusicCore === 'undefined' ? null : MusicCore; } } };
+  return { analyze, stage, player, isMedia, SIZES, songMap, _test: { gridBeats, snapTime, parseTime, fmtMs, beatIndex, addMark, get core() { return typeof MusicCore === 'undefined' ? null : MusicCore; } } };
 })();
