@@ -30,7 +30,9 @@ const ShowPrep = (() => {
     if (store) return Promise.resolve(store);
     return (loading ||= read().then((r) => { store = r.value; canSave = r.ok; problem = r.ok ? '' : r.error; return store; }).finally(() => { loading = null; }));
   }
+  let busy = 0; // (round 77, storeack77) saves on their way
   function save(change) {
+    busy += 1;
     const task = saving.catch(() => {}).then(async () => {
       await load();
       if (!canSave) throw Error('Your show log could not be read, so nothing was changed (Hearth never saves over it). Restart Hearth, or look in 🛟 Recover.');
@@ -41,8 +43,16 @@ const ShowPrep = (() => {
       store = checked; window.hub.shows?.remind?.({ op: 'arm' }).catch?.(() => {}); // the main process re-reads it: one timer, or none
       return out;
     });
-    saving = task; return task;
+    saving = task; task.catch(() => {}).finally(() => { busy -= 1; }); return task;
   }
+  // (round 77, storeack77) the show log (prep, went, reminders) from the other computer: a change being saved lands first,
+  // then it's read again — the reminders are armed again from it — and sync is told (StoreAck), so later saves don't merge
+  // against the version from before (removals carry their own time)
+  window.StoreAck?.hold(KEY, {
+    name: 'Show nights & reminders', pending: () => busy > 0, flush: () => saving.catch(() => {}),
+    read: () => (store ? read() : undefined),
+    apply: (r) => { if (!store || !r) return undefined; if (!r.ok) return false; store = r.value; canSave = true; problem = ''; window.hub.shows?.remind?.({ op: 'arm' }).catch?.(() => {}); return undefined; },
+  });
 
   // ---------- which shows Hearth knows (this week's list, prepared, logged, show quests) ----------
   const fromCampaign = (c) => (c?.show ? { key: c.show.key, dateOnly:!!c.show.dateOnly, title: c.show.title, start: Date.parse(c.show.start), end: null, doors: null, venue: { name: c.show.venue, address: c.show.address || '', lat: null, lon: null }, lineup: [], links: {}, tickets: c.show.url ? [{ platform: c.show.platforms?.[0] || '', url: c.show.url }] : [], platforms: c.show.platforms || [] } : null);

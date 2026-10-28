@@ -28,17 +28,25 @@ const BounceLog = (() => {
     loaded = typeof DataSafe !== 'undefined' ? await DataSafe.load(K.KV, null) : await window.hub.kvGet(K.KV, null, { status: true }).then((r) => ({ value: r?.value ?? null, ok: r?.state === 'ok' || r?.state === 'missing' }));
     list = K.validate(loaded.value); return list;
   }
-  let chain = Promise.resolve();
+  let chain = Promise.resolve(); let busy = 0;
   function saveRow(st = sess) {
     if (!st) return chain;
     const row = K.entry(st, now());
+    busy += 1;
     chain = chain.catch(() => {}).then(async () => {
       await load(); list = K.upsert(list, row);
       const r = typeof DataSafe !== 'undefined' ? await DataSafe.save(K.KV, list, loaded) : await window.hub.kvSet(K.KV, list);
       if (r?.refused) throw Error('Your sessions list could not be read just now, so nothing was changed.');
-    });
+    }).finally(() => { busy -= 1; });
     return chain;
   }
+  // (round 77, storeack77) sessions from the other computer: a row being saved lands first, then the list is read again
+  // (the open Sessions panel too) and sync is told (StoreAck), so a session removed here after it arrived stays out
+  window.StoreAck?.hold(K.KV, {
+    name: 'Music sessions', pending: () => busy > 0, flush: () => chain.catch(() => {}),
+    read: () => (list ? StoreAck.kv(K.KV, null) : undefined),
+    apply: (v) => { if (!list || v === undefined) return undefined; list = K.validate(v); loaded = { value: v, ok: true, state: 'ok' }; if (panel) drawPanel(); return undefined; },
+  });
 
   // ---------- the clock ----------
   const onInput = () => { if (sess && visible()) K.activity(sess, now()); };

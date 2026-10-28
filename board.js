@@ -38,7 +38,7 @@ const Board = (() => {
   }
   const prefs = () => S.index?.prefs || {};
   function setPref(k, v) { S.index.prefs[k] = v; saveIndex(); }
-  const saveIndex = debounce(() => window.hub.kvSet('boards', S.index), 300);
+  const saveIndex = saver(() => window.hub.kvSet('boards', S.index), 300); // (round 77, storeack77) saver: StoreAck can write it first
   const kvName = (id) => `board-${id}`;
   async function load(id) {
     if (!id) return null;
@@ -79,6 +79,49 @@ const Board = (() => {
     for (const r of await Promise.all(writes)) if (r?.error) throw Error(r.error);
   }
   addEventListener('beforeunload', flush);
+  // (round 77, storeack77) boards from the other computer (StoreAck, storeack-core.js): what changed here is written
+  // first (sync's guard merges it with what arrived), then the list and the board on screen show what's on disk — your
+  // view, selection and undo stay — and sync is told, so a picture taken off a board right after it arrived stays off.
+  // A note or text being typed in: the board waits until you leave it, then catches up.
+  const SA = window.StoreAck;
+  const typing = () => { if (drag) return true; const a = document.activeElement; return Boolean(S.mounted && a && S.ui.root?.contains(a) && a.closest('[contenteditable="true"], textarea, input')); }; // (or dragging)
+  let putOff = null;
+  SA?.hold('boards', {
+    name: 'Boards (list)', saver: saveIndex, read: () => SA.kv('boards', null),
+    apply: (idx) => {
+      if (!S.index) return undefined;
+      if (!idx || !Array.isArray(idx.list)) return false;
+      const cur = S.index.current;
+      S.index = { ...idx, links: idx.links || {}, prefs: idx.prefs || {} };
+      if (idx.list.some((e) => e.id === cur)) S.index.current = cur; // the board open here stays open
+      for (const id of [...S.boards.keys()]) if (!idx.list.some((e) => e.id === id) && S.boards.get(id) !== S.cur) S.boards.delete(id);
+      if (S.mounted) renderHud();
+      emit('boards');
+      return undefined;
+    },
+  });
+  const one = SA?.hold(/^kv\/board-(b[0-9a-z]+)\.json$/, {
+    name: 'Boards (each board)',
+    pending: () => timers.size > 0, flush: () => flush(),
+    read: (rel) => { const id = rel.slice(9, -5); return S.boards.has(id) ? SA.kv(`board-${id}`, null) : null; },
+    apply: (b, rel) => {
+      const id = rel.slice(9, -5); const mine = S.boards.get(id);
+      if (!mine) return undefined; // not held here: read when opened
+      if (!b || !Array.isArray(b.items)) return mine === S.cur ? false : (S.boards.delete(id), undefined); // gone there: the one open here stays
+      if (mine === S.cur && typing()) { putOff = rel; return false; }
+      if (JSON.stringify(b) === JSON.stringify(mine)) return undefined;
+      for (const k of Object.keys(mine)) delete mine[k];
+      Object.assign(mine, b); mine.view ||= { x: 0, y: 0, z: 1 };
+      if (mine === S.cur) {
+        for (const sid of [...S.sel]) if (!mine.items.some((i) => i.id === sid)) S.sel.delete(sid);
+        if (S.mounted) { renderAll(); renderHud(); }
+      }
+      emit('boards');
+      return undefined;
+    },
+  });
+  const catchUp = () => { if (putOff) setTimeout(() => { if (putOff && !typing()) { const r = putOff; putOff = null; one?.again(r); } }, 600); };
+  addEventListener('focusout', catchUp, true); addEventListener('pointerup', catchUp, true);
   async function create(name, { quiet = false, template = null, open: openIt = true } = {}) {
     // "New board…" from the rail ▦ menu or Ctrl+K before the board was ever opened: load the boards first
     if (!S.index) await ready();

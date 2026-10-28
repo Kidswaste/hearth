@@ -212,7 +212,11 @@ let beforeWants = null; // (round 75, syncstate75) which files the guard may cha
 function writeJson(file, value, o) {
   // (round 43, scenesafe) the ids the caller sent, before sync's merge: the guard tells "not sent" from "merged away"
   const sent = SS.guardedName(file) && Array.isArray(value) ? SS.idsOf(value) : undefined;
-  if (beforeWrite) { try { value = beforeWrite(file, value) ?? value; } catch { /* save as given */ } }
+  // (round 77, storeack77) o.fresh: the value was made from what is on disk right now (a store saved by what changed:
+  // mergeKV), so it already holds what arrived from the other computer. Merged again by the guard (its base the version
+  // before the arrival), a count arrived was counted twice on every save (feature usage grew by the other computer's
+  // clicks each minute) and a thing taken out came back
+  if (beforeWrite && !o?.fresh) { try { value = beforeWrite(file, value) ?? value; } catch { /* save as given */ } }
   if (o?.off) return writeOff(file, value, { ...o, sent });
   try { return writeSync(file, value, o?.prev, { sent, removed: o?.removed, ...dsFlags(file) }); } catch (err) { if (isHeld(err)) return hold(file, value, o || {}); throw err; }
 }
@@ -504,7 +508,7 @@ function mergeOnMain(file, ops) {
     value = r.value;
   }
   applyOps(value, ops);
-  const w = writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json') });
+  const w = writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json'), fresh: true }); // (round 77) fresh: see writeJson
   const memo = mergeMemo = beforeWrite ? null : { file, value, size: -1, mtimeMs: -1 };
   if (memo) Promise.resolve(w).then(() => { if (mergeMemo === memo && !pending.has(file)) { try { const st = fs.statSync(file); memo.size = st.size; memo.mtimeMs = st.mtimeMs; } catch { mergeMemo = null; } } }, () => { if (mergeMemo === memo) mergeMemo = null; });
   return { ok: true };

@@ -276,6 +276,9 @@ function createEngine(o) {
   const pulledPrev = new Map(); // rel → the value this computer had before a pull (cloud form): the guard's base
   // (the oldest one is kept until the app reloads it: that is the version still in its memory; huge stores aren't kept)
   const remember = (rel, value, size = 0) => { if (!pulledPrev.has(rel) && size < 16e6) pulledPrev.set(rel, value); };
+  // (round 77, storeack77) when each store last arrived: an ack for a read that began before that is a read of the older
+  // version (a second arrival landed while the window was reading): ignored, the guard stays until it reads again
+  const pulledAt = new Map();
   // (round 72) { lazy: text }: parsed only if the app does save an older version (rare), not on every pull
   const prevOf = (rel) => { const v = pulledPrev.get(rel); return v && typeof v === 'object' && typeof v.lazy === 'string' ? S.parseJson(v.lazy) : v; };
 
@@ -740,7 +743,7 @@ function createEngine(o) {
   const counts = () => ({ pulled: 0, pushed: 0, merged: 0, conflicts: 0, deletedHere: 0, deletedThere: 0, renamed: 0, skipped: 0, errors: 0 });
   let sum = counts();
   let pulledNow = [];
-  const notePulled = (rel, kind, acc) => (acc?.pulled || pulledNow).push({ rel, kind, from: nameOf(journalLatest.get(rel)?.m) }); // (round 73) acc: the big lane's own
+  const notePulled = (rel, kind, acc) => { pulledAt.set(rel, Date.now()); return (acc?.pulled || pulledNow).push({ rel, kind, from: nameOf(journalLatest.get(rel)?.m) }); }; // (round 73) acc: the big lane's own · (round 77) pulledAt
   // a JSON value as this computer stores it (pretty unless the file was compact)
   function localJsonText(rel, value, L) {
     if (rel === 'app/config.json') {
@@ -1742,7 +1745,7 @@ function createEngine(o) {
     pass, stop: () => { stopping = true; lane.q.length = 0; }, status: publicStatus,
     laneIdle, freeable: afterLoad(freeable), free: afterLoad(free), /* (round 73, syncmedia73) */ fix: afterLoad(fix), woke: (ms) => { excuse(ms); if (running) again = true; }, /* (round 74, synchard74) */ set: (patch) => Object.assign(o, patch), option: (k) => o[k], machine: () => ({ ...machine }),
     conflicts: listConflicts, resolve: afterLoad(resolve), resolveAll: afterLoad(resolveAll), preview, incoming, trash: listTrash, restore: afterLoad(restore), guardWrite, relOfLocal, /* (round 75) after the state is read */
-    ackPulled: (rels) => { if (!rels) pulledPrev.clear(); else for (const r of rels) pulledPrev.delete(r); },
+    ackPulled: (rels, since) => { if (!rels) { pulledPrev.clear(); pulledAt.clear(); } else for (const r of rels) if (!(since > 0) || !((pulledAt.get(r) || 0) > since)) { pulledPrev.delete(r); pulledAt.delete(r); } }, // (round 77, storeack77) since: when the reader began reading
     hasPulled: (rel) => pulledPrev.has(rel),
     peers: async () => { await readPeers(); return peers; },
     cloudDir, FILES, stateDir, ctx: () => ctx,
