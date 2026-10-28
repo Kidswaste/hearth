@@ -79,7 +79,7 @@ function mount() {
     .err button, .box .fix { padding: 5px 11px; font-size: 12px; margin: 0; } .err .x { background: transparent; color: #a7adb8; padding: 5px 7px; }
     .fixit { background: #ff8a3d; color: #1a1206; } .box .fix { display: block; margin: 12px auto 0; }
     .pfpill { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: #000b; font-size: 12.5px; }
-    .pf { position: fixed; right: 12px; top: 12px; width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 16px 18px 14px; border-radius: 14px; background: #16181df2; box-shadow: 0 12px 40px #000c; pointer-events: auto; }
+    .pf { position: fixed; left: 12px; top: 12px; width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 16px 18px 14px; border-radius: 14px; background: #16181df2; box-shadow: 0 12px 40px #000c; pointer-events: auto; }
     .pf h2 { margin: 0 0 6px; font-size: 15px; } .pf .ph { font-weight: 600; line-height: 1.4; margin: 0 0 8px; }
     .pf ul { margin: 0 0 8px; padding-left: 18px; color: #c9ced8; font-size: 12px; line-height: 1.45; } .pf .tip { margin: 0 0 8px; color: #ffcf9e; font-size: 12px; line-height: 1.4; }
     .pf .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; } .pf .row button { font-size: 12px; padding: 6px 11px; margin: 0; background: #2a2e37; color: #eef0f4; } .pf .row button:hover { background: #3a3f4a; }
