@@ -193,8 +193,13 @@ const ChatUX = (() => {
 
   // ---------- chat tags and folders (data/kv/chat-meta.json: { chatId: { tags: [], folder } }) ----------
   let meta = {};
-  const saveMeta = debounce(() => window.hub.kvSet('chat-meta', meta), 300);
+  const saveMeta = saver(() => window.hub.kvSet('chat-meta', meta), 300); // (round 78) a saver: StoreAck writes what waits first
   async function loadMeta() { meta = (await window.hub.kvGet('chat-meta', {})) || {}; Panel.render(); }
+  // (round 78, guardloss78) tags / folders, bookmarks and snippets from the other computer (or brought back by 🛟 Recover):
+  // what waits here is written first, then read again (the list redraws), then sync is told (a tag taken off stays off)
+  window.StoreAck?.hold('chat-meta', { saver: saveMeta, read: () => StoreAck.kv('chat-meta', {}), apply: (v) => { const next = v && typeof v === 'object' ? v : {}; if (JSON.stringify(next) !== JSON.stringify(meta)) { meta = next; Panel.render(); } } });
+  window.StoreAck?.hold('chat-bookmarks', { drop: () => { bookmarks = null; } }); // written at once; read again on next use
+  window.StoreAck?.hold('chat-snippets', { drop: () => { snippets = null; } });
   const metaOf = (chatId) => meta[chatId] || {};
   function setMeta(chatId, patch) {
     const next = { ...metaOf(chatId), ...patch };

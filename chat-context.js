@@ -10,7 +10,9 @@ const ChatContext = (() => {
   let data = null; // { [chatId]: { board, scene, sequence, project, captures: [{ path, at }], renders: [{ path, at }], forget: [] } }
   let loading = null;
   const load = () => (data ? Promise.resolve(data) : (loading ||= window.hub.kvGet(KV, {}).then((d) => { data = d && typeof d === 'object' ? d : {}; return data; }).catch(() => { data = {}; return data; })));
-  const saveSoon = debounce(() => { if (data) window.hub.kvSet(KV, prune(data)); }, 600);
+  const saveSoon = saver(() => { if (data) window.hub.kvSet(KV, prune(data)); }, 600); // (round 78) a saver: StoreAck flushes it
+  // (round 78, guardloss78) what a chat uses (board, scene, sequence…) set on the other computer: written first, read again, acked
+  window.StoreAck?.hold(KV, { saver: saveSoon, read: () => StoreAck.kv(KV, {}), apply: (d) => { if (data) data = d && typeof d === 'object' ? d : {}; } });
   const base = (p) => String(p || '').split(/[\\/]/).pop();
   const VIDEO = /\.(mp4|webm|mov|m4v|mkv)$/i;
   const autoOn = () => store.get('chat.ctxAuto', true) !== false;

@@ -174,22 +174,52 @@ function mergeText(base, o, t, prose) {
     return out.join('\n');
   }
   if (!base.includes('\n') && !o.includes('\n') && !t.includes('\n')) return prose ? `${o}\n${t}` : null;
+  // (round 78, guardloss78) diff3 by hunks: each side's changes as base ranges [s, e) replaced by lines. Two hunks only
+  // collide when they share a base line, or both insert at the same place (or one inserts inside the other's range).
+  // Hunks that only TOUCH (the Mac changed line 3, this computer added a line right after it) both apply, in base order;
+  // before, the whole stretch between two shared lines was one block and that was a conflict (one side was lost).
   const Bs = base.split('\n'); const O = o.split('\n'); const Ts = t.split('\n');
   const mo = lcs(Bs, O); const mt = lcs(Bs, Ts);
   if (!mo || !mt) return prose ? `${o}\n${t}` : null;
-  const out = []; let i = 0; let j = 0; let k = 0;
-  while (i < Bs.length || j < O.length || k < Ts.length) {
-    if (i < Bs.length && mo[i] === j && mt[i] === k) { out.push(Bs[i]); i += 1; j += 1; k += 1; continue; }
-    let i2 = i; while (i2 < Bs.length && !(mo[i2] >= j && mt[i2] >= k)) i2 += 1; // the next line all three still share
-    const j2 = i2 < Bs.length ? mo[i2] : O.length; const k2 = i2 < Bs.length ? mt[i2] : Ts.length;
-    const rb = Bs.slice(i, i2); const ro = O.slice(j, j2); const rt = Ts.slice(k, k2);
-    if (same(ro, rb)) out.push(...rt);
-    else if (same(rt, rb) || same(ro, rt)) out.push(...ro);
-    else if (prose) out.push(...ro, ...rt.filter((x) => !ro.includes(x)));
-    else return null;
-    i = i2; j = j2; k = k2;
+  const hs = [...hunksOf(Bs, O, mo, 'o'), ...hunksOf(Bs, Ts, mt, 't')].sort((x, y) => x.s - y.s || x.e - y.e || (x.side < y.side ? -1 : 1));
+  const out = []; let i = 0;
+  for (let h = 0; h < hs.length;) {
+    const group = [hs[h]]; h += 1;
+    while (h < hs.length && group.some((g) => collide(g, hs[h]))) { group.push(hs[h]); h += 1; }
+    const s = Math.min(...group.map((g) => g.s)); const e = Math.max(...group.map((g) => g.e));
+    while (i < s) out.push(Bs[i++]);
+    const sides = new Set(group.map((g) => g.side));
+    if (sides.size === 1) { for (const g of group) out.push(...g.lines); } else {
+      // both sides changed this stretch: each side's version of base[s, e)
+      const ver = (side) => { const r = []; let k = s; for (const g of group.filter((x) => x.side === side)) { while (k < g.s) r.push(Bs[k++]); r.push(...g.lines); k = g.e; } while (k < e) r.push(Bs[k++]); return r; };
+      const ro = ver('o'); const rt = ver('t');
+      if (same(ro, rt)) out.push(...ro);
+      else if (prose) out.push(...ro, ...rt.filter((x) => !ro.includes(x)));
+      else return null;
+    }
+    i = e;
   }
+  while (i < Bs.length) out.push(Bs[i++]);
   return out.join('\n');
+}
+// a side's changes against the base: { s, e, lines, side } = base lines [s, e) became `lines` (s === e: an insertion)
+function hunksOf(Bs, X, mm, side) {
+  const out = []; let i = 0; let j = 0;
+  for (;;) {
+    let i2 = i; while (i2 < Bs.length && mm[i2] < 0) i2 += 1;
+    const j2 = i2 < Bs.length ? mm[i2] : X.length;
+    if (i2 > i || j2 > j) out.push({ s: i, e: i2, lines: X.slice(j, j2), side });
+    if (i2 >= Bs.length) return out;
+    i = i2 + 1; j = j2 + 1;
+  }
+}
+// two hunks touch the same base lines (or insert at one place, or one inserts strictly inside the other's range)
+function collide(a, b) {
+  if (a.s < b.e && b.s < a.e) return true;
+  if (a.s === a.e && b.s === b.e) return a.s === b.s;
+  if (a.s === a.e) return b.s < a.s && a.s < b.e;
+  if (b.s === b.e) return a.s < b.s && b.s < a.e;
+  return false;
 }
 
 // an item's identity in a list: its id, else (chat messages) role + time
@@ -253,6 +283,10 @@ function mergeArr(b, o, t, p, c, opt, noBase) {
       return [...head, ...b, ...ot, ...t.slice(st + b.length).filter((x) => !ot.some((y) => eq(x, y)))];
     }
     if (o.length === b.length && t.length === b.length && b.every((x, i) => eq(x, o[i]) || eq(x, t[i]))) return b.map((x, i) => (eq(x, o[i]) ? t[i] : o[i]));
+    // (round 78, guardloss78) …and one place changed on both sides (a storyboard shot's notes edited here and there):
+    // merged inside, field by field / line by line, when nothing moved (no item is another place's base item)
+    const moved = (x, i) => b.some((y, j) => j !== i && eq(y, x));
+    if (o.length === b.length && t.length === b.length && b.every((x, i) => eq(x, o[i]) || eq(x, t[i]) || (isObj(x) && isObj(o[i]) && isObj(t[i]) && !moved(o[i], i) && !moved(t[i], i)))) return b.map((x, i) => (eq(x, o[i]) ? t[i] : eq(x, t[i]) ? o[i] : m(x, o[i], t[i], [...p, String(i)], c, opt)));
   }
   if (noBase) { // first join: everything from both
     return [...o, ...t.filter((x) => !o.some((y) => eq(x, y)))];

@@ -27,6 +27,8 @@
 .sp-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* a conflict: what it is, both versions side by side, the three choices */
 .sp-conflict { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line, #333); border-radius: 9px; }
+.sp-aside { display: flex; flex-direction: column; gap: 4px; padding: 7px 8px; border: 1px dashed var(--line, #333); border-radius: 9px; } /* (round 78, guardloss78) kept aside */
+.sp-aside .sp-acts { display: flex; flex-wrap: wrap; gap: 4px; }
 .sp-what { font-weight: 650; overflow-wrap: anywhere; }
 .sp-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .sp-side { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 7px; background: var(--panel-2, rgba(255, 255, 255, .04)); }

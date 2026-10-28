@@ -16,7 +16,10 @@ const ChatMemory = (() => {
     data = { chats: {}, projects: {}, sent: {}, ...(d && typeof d === 'object' ? d : {}) };
     return data;
   }).catch(() => { data = { chats: {}, projects: {}, sent: {} }; return data; })));
-  const saveSoon = debounce(() => { if (data) window.hub.kvSet(KV, data); }, 500);
+  const saveSoon = saver(() => { if (data) window.hub.kvSet(KV, data); }, 500); // (round 78) a saver: StoreAck flushes it
+  // (round 78, guardloss78) facts pinned / forgotten on the other computer (or brought back by 🛟 Recover): what waits here
+  // is written first, then read again, then sync is told (a fact forgotten stays forgotten)
+  window.StoreAck?.hold(KV, { saver: saveSoon, read: () => StoreAck.kv(KV, {}), apply: (d) => { if (data) data = { chats: {}, projects: {}, sent: {}, ...(d && typeof d === 'object' ? d : {}) }; } });
   const approveOn = () => store.get('memory.approve', false) === true;
   const bucket = (scope) => (scope === 'project' ? data.projects : data.chats);
   const factsOf = (scope, id) => (data && id ? (bucket(scope)[id] || []).map((f) => ({ ...f, scope })) : []);

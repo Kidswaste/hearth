@@ -22,6 +22,7 @@ const Sync = (() => {
     const bits = [];
     if (s === 'pending' && st.pending) bits.push(`${st.pending} file${st.pending === 1 ? '' : 's'} on the way${st.cloudOnly?.length ? ` (${st.cloudOnly.length} only in the cloud for now)` : ''}`);
     if (st.conflicts) bits.push(`${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'} to look at`);
+    if (asideN()) bits.push(`${asideN()} version${asideN() === 1 ? '' : 's'} kept aside to compare`); // (round 78, guardloss78)
     if (st.skippedBig?.length) bits.push(`${st.skippedBig.length} big video${st.skippedBig.length === 1 ? '' : 's'} kept on this computer`);
     if (st.unreadable?.length) bits.push(`${st.unreadable.length} unreadable file${st.unreadable.length === 1 ? '' : 's'} skipped`);
     if (s === 'error') bits.push(st.error ? calmError(st.error, { where: 'sync', what: 'the sync folder' }).replace(/\.$/, '') : 'something went wrong'); // (round 45, errorcalm) the raw reason: Sync now's note has it under Details
@@ -55,9 +56,11 @@ const Sync = (() => {
     if (s === 'error') return 'Sync hit a problem — see why';
     if (blockedN() && (s === 'pending' || s === 'synced')) return `${n(blockedN(), 'file')} can't sync — see why`; // (round 74)
     if (s === 'pending' && st.pending) return `${st.pending} waiting`;
-    if (s === 'synced') return `Synced ${ago(st.lastOk || st.at)}`;
+    if (s === 'synced') return `Synced ${ago(st.lastOk || st.at)}${asideN() ? ` · ${asideN()} kept aside — compare` : ''}`; // (round 78, guardloss78)
     return 'Syncing…';
   }
+  // (round 78, guardloss78) versions sync kept aside in the last day (one side of a conflict it settled by itself)
+  const asideN = () => (st.aside || []).filter((n) => Date.now() - n.at < 864e5).length;
   const chipOf = () => {
     const s = dotState(); const n = st.pending > 99 ? '99+' : st.pending;
     if (s === 'paused') return '‖ Paused';

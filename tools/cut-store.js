@@ -14,6 +14,14 @@ const CutStore = (() => {
   const write = saver(() => { pending = false; window.hub.kvSet('video-cuts', cuts); }, 400);
   const save = () => { pending = true; write(); };
   addEventListener('beforeunload', () => { if (pending && cuts) { pending = false; window.hub.kvSet('video-cuts', cuts); } });
+  // (round 78, guardloss78) sequences and cuts from the other computer (or brought back by 🛟 Recover): what waits here is
+  // written first, then read again (each key that changed says so), then sync is told (a sequence deleted stays deleted)
+  window.StoreAck?.hold('video-cuts', { pending: () => pending, flush: () => write.flush(), read: () => StoreAck.kv('video-cuts', {}), apply: (v) => {
+    if (!cuts) return; // not read yet: the first use reads the new one
+    const next = v && typeof v === 'object' ? v : {}; const was = cuts;
+    cuts = next;
+    for (const k of new Set([...Object.keys(was), ...Object.keys(next)])) if (JSON.stringify(was[k]) !== JSON.stringify(next[k])) emit('change', { path: k, from: 'sync', deleted: !(k in next) });
+  } });
   async function load() {
     if (cuts) return cuts;
     loading ||= window.hub.kvGet('video-cuts', {}).then((x) => { cuts = x || {}; return cuts; }).catch(() => { cuts = {}; return cuts; });

@@ -96,8 +96,11 @@ lab3d.model(refs.${refKey}, P, { ${o} });
 
   // ---------- the library: everything downloaded / generated / used, with pictures ----------
   let lib = null; // [{ id, name, path, kind: 'model'|'sky'|'clip', source, thumb, at, info }]
-  const saveLib = debounce(() => window.hub.kvSet(KV, lib), 400);
+  const saveLib = saver(() => window.hub.kvSet(KV, lib), 400); // (round 78) a saver: StoreAck flushes it
   async function library() { lib ||= await window.hub.kvGet(KV, []) || []; return lib; }
+  // (round 78, guardloss78) models / skies added or removed on the other computer (or brought back by 🛟 Recover): what
+  // waits is written first, then read again, then sync is told (one taken out stays out)
+  window.StoreAck?.hold(KV, { saver: saveLib, read: () => StoreAck.kv(KV, []), apply: (v) => { if (lib) lib = Array.isArray(v) ? v : []; } });
   const kindOf = (p) => (SKY_RE.test(p) ? 'sky' : MODEL_RE.test(p) ? 'model' : null);
   async function remember(path, { name, source = 'file', thumb = null, kind = null, info = null } = {}) {
     const L = await library();

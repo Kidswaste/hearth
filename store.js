@@ -205,6 +205,31 @@ function flushSync() {
   pending.clear();
 }
 
+// (round 78, guardloss78) a store written by the main process while the window may hold it (🛟 Recover): until the
+// window has read it again (its ack, sync:ack → outsideAck), a save of it from the window is merged three-way with what
+// is there now, the version from just before as base — as sync's guard does for an arrival — so what was brought back
+// isn't saved over by the window's older copy (its own change waiting is kept too). Six hours at most.
+const outside = new Map(); // file → { base, at }
+const OUTSIDE_MS = 6 * 3600e3;
+function outsideMerge(file, value) {
+  const x = outside.get(file);
+  if (!x) return value;
+  if (Date.now() - x.at > OUTSIDE_MS) { outside.delete(file); return value; }
+  let now;
+  if (pending.has(file)) now = pending.get(file).value; else { try { now = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return value; } }
+  try { return require('./sync-merge').merge3(x.base, value, now).value ?? value; } catch { return value; }
+}
+const outsideFile = (n) => (n === 'memory.json' ? MEMORY_PATH : /[\\/]/.test(n) ? n : kvPath(n));
+function outsideWrite(name, base) { outside.set(outsideFile(name), { base: base === undefined ? null : JSON.parse(JSON.stringify(base)), at: Date.now() }); }
+function outsideAck(rels, since = 0) {
+  if (!rels) { outside.clear(); return; }
+  for (const rel of rels) {
+    const file = rel === 'memory.json' ? MEMORY_PATH : path.join(DATA_DIR, ...String(rel).split('/'));
+    const x = outside.get(file);
+    if (x && !(since > 0 && since < x.at)) outside.delete(file); // a read begun before the write is a read of the older copy
+  }
+}
+
 // Write to a temp file first so a crash mid-write can't corrupt a chat.
 // Sync (syncmain.js) can merge a save with a version that just arrived from another computer (beforeWrite).
 let beforeWrite = null;
@@ -217,6 +242,7 @@ function writeJson(file, value, o) {
   // before the arrival), a count arrived was counted twice on every save (feature usage grew by the other computer's
   // clicks each minute) and a thing taken out came back
   if (beforeWrite && !o?.fresh) { try { value = beforeWrite(file, value) ?? value; } catch { /* save as given */ } }
+  if (outside.size && !o?.fresh && !o?.outside) value = outsideMerge(file, value); // (round 78, guardloss78)
   if (o?.off) return writeOff(file, value, { ...o, sent });
   try { return writeSync(file, value, o?.prev, { sent, removed: o?.removed, ...dsFlags(file) }); } catch (err) { if (isHeld(err)) return hold(file, value, o || {}); throw err; }
 }
@@ -540,7 +566,7 @@ module.exports = {
   saveHistory: (history) => writeJson(HISTORY_PATH, history, { off: true, prev: HISTORY_PATH.replace(/\.json$/, '.prev.json') }),
   // { shared: "notes for every agent", agents: { [agentId]: "notes for one agent" } }
   getMemory: () => ({ shared: '', agents: {}, ...readJson(MEMORY_PATH, {}) }),
-  saveMemory: (memory) => writeJson(MEMORY_PATH, memory, { off: true, prev: MEMORY_PATH.replace(/\.json$/, '.prev.json') }), // (round 43) + its .prev copy
+  saveMemory: (memory, o) => writeJson(MEMORY_PATH, memory, { off: true, prev: MEMORY_PATH.replace(/\.json$/, '.prev.json'), outside: Boolean(o?.outside) }), // (round 43) + its .prev copy · (round 78) o.outside: 🛟 Recover
   getKV: (name, fallback = null) => readKV(kvPath(name), fallback),
   // (round 20) the kv:get IPC: a big store (over 512 KB, e.g. the Lab scenes) is read and parsed on the store thread
   getKVOff: (name, fallback = null) => {
@@ -575,8 +601,9 @@ module.exports = {
     // (round 20) the copy is made on the store thread right before the write, and skipped with it when nothing changed
     const file = kvPath(name);
     const removed = Array.isArray(o?.removed) ? o.removed.filter((x) => typeof x === 'string').slice(0, 5000) : undefined;
-    return writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json'), removed });
+    return writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json'), removed, outside: Boolean(o?.outside) }); // (round 78) o.outside: 🛟 Recover's own write
   },
+  outsideWrite, outsideAck, _outside: () => outside.size, // (round 78, guardloss78) 🛟 Recover's writes vs the window's copy
   mergeKV, applyOps, // (round 73, chatsteady73) a store saved by what changed (usage.js)
   saveAttachment,
   importRef,

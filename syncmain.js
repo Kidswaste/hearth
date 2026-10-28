@@ -308,6 +308,7 @@ function publicStatus() {
     machine: engine?.machine()?.name || os.hostname(),
     kinds: K.list(settings.kinds, st?.kindSizes || {}), // (round 73, syncmedia73) What syncs: each kind, on / off here, sizes
     transfers: st?.transfers || [], moving: st?.moving || 0, // (round 73) big files on their way, with progress
+    aside: st?.aside || [], // (round 78, guardloss78) the losing sides of conflicts settled by themselves, kept aside (the sync panel)
     ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], waiting: st.waiting || [], blocked: st.blocked || [], peersOld: st.peersOld || [], need: st.need || 0, lastError: st.lastError || null, held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
   };
 }
@@ -348,6 +349,8 @@ function register(ipcMain, win, o) {
   h('sync:resolveAll', async (mode) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.resolveAll(['auto', 'newest', 'mine', 'theirs'].includes(mode) ? mode : 'auto'); schedule(500, 'resolve-all'); return { ok: true, ...r }; });
   h('sync:autoResolve', (on) => { if (on !== undefined) { settings = { ...settings, autoResolve: Boolean(on) }; saveSettings(); } return settings.autoResolve !== false; });
   h('sync:preview', async (id) => (engine ? engine.preview(String(id)) : null)); // (round 19) both sides of a conflict
+  // (round 78, guardloss78) a conflict's losing side kept aside: the notes (no id), or one note's compare / both / theirs / dismiss
+  h('sync:aside', async (id, how) => { if (!engine) return id ? { ok: false, error: 'Sync is off' } : []; const r = await engine.aside(id ? String(id) : null, ['compare', 'both', 'theirs', 'dismiss'].includes(how) ? how : 'compare'); if (r?.ok && (how === 'both' || how === 'theirs')) schedule(500, 'aside'); return r; });
   h('sync:trash', async () => (engine ? engine.trash() : []));
   h('sync:restore', async (id, ro) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.restore(String(id), { replace: Boolean(ro?.replace) }); schedule(500, 'restore'); return r; });
   h('sync:open', () => { if (!engine) return false; require('electron').shell.openPath(fs.existsSync(engine.cloudDir) ? engine.cloudDir : settings.root); return true; });
@@ -375,7 +378,7 @@ function register(ipcMain, win, o) {
     schedule(1500, 'free');
     return { ok: true, ...r };
   });
-  h('sync:ack', (rels, o) => { engine?.ackPulled(Array.isArray(rels) ? rels : null, Number(o?.since) || 0); return true; }); // (round 77, storeack77) o.since: when the window began reading
+  h('sync:ack', (rels, o) => { engine?.ackPulled(Array.isArray(rels) ? rels : null, Number(o?.since) || 0); opts.store?.outsideAck?.(Array.isArray(rels) ? rels : null, Number(o?.since) || 0); return true; }); // (round 77, storeack77) o.since: when the window began reading · (round 78, guardloss78) + 🛟 Recover's writes (store.js)
   // (round 74, synchard74) a blocked file's fix: Rename for Windows / Allow changes / Remove from the cloud; then a pass
   h('sync:fix', async (rel, how) => {
     if (!engine) return { ok: false, error: 'Sync is off' };

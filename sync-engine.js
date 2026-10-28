@@ -25,6 +25,7 @@ const SS = require('./scenesafe-core');
 const K = require('./sync-kinds'); // (round 73, syncmedia73) what syncs, by kind: sizes for the panel
 const Hard = require('./sync-hard'); // (round 74, synchard74) Windows names, locked / read-only / full disks, versions, secrets
 const SState = require('./sync-state'); // (round 75, syncstate75) sync's own state kept in pieces (data/sync/state/)
+const Aside = require('./sync-aside'); // (round 78, guardloss78) a conflict's losing side, kept in Deleted files with a note
 // (round 43, datasafe) a state / machine file held for a moment (Windows) isn't "none": no new id or empty state over it
 const HELD = Symbol('held');
 
@@ -104,6 +105,7 @@ function createEngine(o) {
   const CHUNK = o.chunk || 4 * 1024 * 1024;
   const SPECIAL = { 'app/config.json': o.configPath, 'app/theme.css': o.themePath };
   fs.mkdirSync(stateDir, { recursive: true });
+  const aside = Aside.createAside({ stateDir, now: () => now(), log: (...a) => log(...a) }); // (round 78, guardloss78)
 
   // ---------- this computer ----------
   const machineFile = path.join(stateDir, 'machine.json');
@@ -1535,7 +1537,7 @@ function createEngine(o) {
     return { ...status, pulledFiles: pulledNow.slice() };
   }
   const emit = () => o.onStatus?.(publicStatus());
-  const publicStatus = () => ({ ...status, transfers: laneList(), moving: lane.q.length + (lane.cur ? 1 : 0), machine: { id: machine.id, name: machine.name }, cloudRoot, cloudDir, peers: peers.map((p) => ({ name: p.name, platform: p.platform, lastSeen: p.lastSeen, lastOk: p.lastOk })) });
+  const publicStatus = () => ({ ...status, aside: aside.brief(), /* (round 78, guardloss78) */ transfers: laneList(), moving: lane.q.length + (lane.cur ? 1 : 0), machine: { id: machine.id, name: machine.name }, cloudRoot, cloudDir, peers: peers.map((p) => ({ name: p.name, platform: p.platform, lastSeen: p.lastSeen, lastOk: p.lastOk })) });
 
   // ---------- trash, conflicts ----------
   async function purge() {
@@ -1572,7 +1574,7 @@ function createEngine(o) {
   //        'both'   both stay: the other one is saved next to it as "… (from MacBook)" (whole files and chats)
   //        'merge'  data (JSON): everything from both, the newer side winning where they differ (this one to the trash first)
   // (round 19) every choice can be undone from Deleted files: the version that lost is there under its real name.
-  async function resolve(id, keep) {
+  async function resolve(id, keep, ro = {}) { // (round 78, guardloss78) ro.auto: settled by itself → the loser gets a note
     const rec = (await listConflicts()).find((c) => c.id === id);
     if (!rec) return { ok: false, error: 'No such conflict' };
     const copy = path.join(CONFL, rec.copy);
@@ -1585,12 +1587,24 @@ function createEngine(o) {
       if (keep === 'merge' && !isJson) return { ok: false, error: 'Only data (chats, scenes, settings…) can be merged; pictures and files are one version or the other.' };
       let ours = null;
       if (isJson) { try { ours = oursValue(); remember(rec.rel, ours); } catch { /* none here */ } }
-      await keepHere(rec.rel, file);
+      const keptHere = await keepHere(rec.rel, file);
+      let lost = keep === 'theirs' && ro.auto && keptHere ? 'ours' : null; // (round 78, guardloss78) newest wins: this one lost
       if (isJson) {
         let v = await theirsValue();
         if (keep === 'merge' && ours) {
           const theirsNewer = (rec.theirsAt || 0) > (rec.oursAt || 0);
-          v = S.merge3(null, theirsNewer ? v : ours, theirsNewer ? ours : v, { counters: S.isCounterRel(rec.rel) }).value;
+          const mr = S.merge3(null, theirsNewer ? v : ours, theirsNewer ? ours : v, { counters: S.isCounterRel(rec.rel) });
+          v = mr.value;
+          // (round 78, guardloss78) fields changed two ways: the newer side's value won; the older side is kept whole
+          // (this computer's: in Deleted files already; the other's: put there under its real name, not only in conflicts/)
+          if (ro.auto && mr.conflicts.length) lost = theirsNewer ? (keptHere ? 'ours' : null) : 'theirs';
+        }
+        if (lost === 'theirs') {
+          const tdir = path.join(TRASH, day(now()), ...rec.rel.split('/').slice(0, -1));
+          await fsp.mkdir(tdir, { recursive: true });
+          let dst = path.join(tdir, path.basename(rec.rel));
+          if (await exists(dst)) dst = path.join(tdir, `${rand()}-${path.basename(rec.rel)}`);
+          try { await fsp.copyFile(copy, dst); noteLoser(rec, 'theirs', dst, TRASH); } catch (err) { log('aside copy', rec.rel, err.message); }
         }
         await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null));
       } else {
@@ -1600,6 +1614,7 @@ function createEngine(o) {
         await fsp.copyFile(copy, tmp);
         await flushed(tmp); await renameRetry(tmp, file);
       }
+      if (lost === 'ours') noteLoser(rec, 'ours', keptHere, path.join(stateDir, 'trash')); // (round 78, guardloss78)
       notePulled(rec.rel, kindOf(rec.rel));
     } else if (keep === 'both') {
       // (round 72, sync72) named like the panel's buttons: "(from Mac)" / "(from PC)" (its name when both are the same kind)
@@ -1640,7 +1655,7 @@ function createEngine(o) {
       await fsp.mkdir(tdir, { recursive: true });
       let dst = path.join(tdir, path.basename(rec.rel));
       if (await exists(dst)) dst = path.join(tdir, `${rand()}-${path.basename(rec.rel)}`);
-      try { await renameRetry(copy, dst); } catch { /* gone */ }
+      try { await renameRetry(copy, dst); if (ro.auto) noteLoser(rec, 'theirs', dst, TRASH); } catch { /* gone */ } // (round 78, guardloss78) + its note
     }
     const dir = path.join(TRASH, day(now()), 'conflicts');
     await fsp.mkdir(dir, { recursive: true });
@@ -1658,20 +1673,22 @@ function createEngine(o) {
     const out = { done: 0, failed: 0, by: {}, rels: [] };
     for (const rec of await listConflicts()) {
       let keep = mode === 'auto' ? autoPick(rec) : mode === 'newest' ? newerSide(rec) : mode === 'theirs' ? 'theirs' : 'mine';
-      let r = await resolve(rec.id, keep).catch((err) => ({ ok: false, error: err.message }));
-      if (!r?.ok && keep === 'merge') { keep = newerSide(rec); r = await resolve(rec.id, keep).catch((err) => ({ ok: false, error: err.message })); }
+      const ro = { auto: mode === 'auto' }; // (round 78, guardloss78) settled by itself / "Settle all for me": the loser gets a note
+      let r = await resolve(rec.id, keep, ro).catch((err) => ({ ok: false, error: err.message }));
+      if (!r?.ok && keep === 'merge') { keep = newerSide(rec); r = await resolve(rec.id, keep, ro).catch((err) => ({ ok: false, error: err.message })); }
       if (r?.ok) { out.done += 1; out.by[keep] = (out.by[keep] || 0) + 1; out.rels.push(rec.rel); } else { out.failed += 1; log('resolve-all', rec.rel, r?.error); }
     }
     return out;
   }
   // this computer's version, before a choice replaces it: a copy in data/sync/trash under its real name (Deleted files)
-  async function keepHere(rel, file) {
-    if (!statSync(file)) return;
+  async function keepHere(rel, file) { // → where it was kept (round 78), or null
+    if (!statSync(file)) return null;
     const dir = path.join(stateDir, 'trash', day(now()), ...rel.split('/').slice(0, -1));
     await fsp.mkdir(dir, { recursive: true });
     let dst = path.join(dir, path.basename(file));
     if (await exists(dst)) dst = path.join(dir, `${rand()}-${path.basename(file)}`);
     await fsp.copyFile(file, dst);
+    return dst;
   }
   // (round 19) what a conflict is about, for the choice: both versions (JSON values, or the files' paths), sizes, times
   async function preview(id) {
@@ -1734,13 +1751,79 @@ function createEngine(o) {
   function guardWrite(file, value) {
     const rel = relOfLocal(file);
     if (!rel || !pulledPrev.has(rel)) return value;
-    let disk; try { disk = S.parseJson(fs.readFileSync(file, 'utf8')); } catch { return value; }
+    let disk; let diskText; try { diskText = fs.readFileSync(file, 'utf8'); disk = S.parseJson(diskText); } catch { return value; }
     const isCfg = rel === 'app/config.json';
     const ours = S.toCloud(isCfg ? S.portableConfig(value) : value, ctx);
     const theirs = S.toCloud(isCfg ? S.portableConfig(disk) : disk, ctx);
     const r = S.merge3(prevOf(rel), ours, theirs, { counters: S.isCounterRel(rel) });
+    guardLoser(rel, diskText, theirs, r); // (round 78, guardloss78)
+    guardOurs.set(rel, ours); // (round 78) the window's copy as it last saved it (see asideDo)
     const merged = S.fromCloud(r.value, ctx);
     return isCfg ? S.applyPortable(value, merged) : merged;
+  }
+
+  // (round 78, guardloss78) the guard settled a real conflict (this computer's version won a field changed two ways):
+  // the version on the disk (what arrived from the other computer) goes to Deleted files with a note in the sync panel.
+  // Not when the disk holds the guard's own last merge (this computer kept saving before the window read it again).
+  const guardOurs = new Map(); // rel → the window's value at its last guarded save (cloud form), until it acks
+  function guardLoser(rel, diskText, theirs, r) {
+    try {
+      const th = sha(canon(theirs));
+      if (r.conflicts.length && !aside.wroteIs(rel, th)) {
+        const j = journalLatest.get(rel);
+        const n = aside.keepText(rel, diskText, { why: 'guard', side: 'theirs', kind: 'json', from: nameOf(j?.m), fromPlatform: platOf(j?.m), fields: r.conflicts.slice(0, 5) });
+        if (n) { log('kept aside (guard)', rel); setTimeout(emit, 0); }
+      }
+      aside.wrote(rel, sha(canon(r.value)));
+    } catch (err) { log('guard aside', rel, err.message); }
+  }
+  // (round 78, guardloss78) a conflict settled by itself (auto): the side that lost is in Deleted files (dst); a note says so
+  function noteLoser(rec, side, dst, root) {
+    try {
+      const r = path.relative(root, dst).split(path.sep).join('/');
+      const own = side === 'ours';
+      aside.add({ rel: rec.rel, trash: `${root === TRASH ? 'cloud' : 'here'}:${r}`, why: 'auto', side, kind: rec.kind, from: own ? machine.name : rec.from, fromPlatform: own ? platform : rec.fromPlatform, fields: (rec.fields || []).slice(0, 5) });
+    } catch (err) { log('aside note', rec.rel, err.message); }
+  }
+  const trashFile = (id) => { const m = /^(cloud|here):(\d{4}-\d\d-\d\d)\/(.+)$/.exec(String(id || '')); if (!m || m[3].split('/').some((p) => !p || p === '.' || p === '..')) return null; return path.join(m[1] === 'cloud' ? TRASH : path.join(stateDir, 'trash'), m[2], ...m[3].split('/')); };
+  // the sync panel's kept-aside notes: list (no id) · 'compare' (both versions) · 'both' (Keep both) · 'theirs' (use the
+  // version kept aside; the one in place goes to Deleted files first) · 'dismiss'. The window holding the store is told
+  // as for a resolve (onPulled → StoreAck: its change not written yet goes through the guard first, then it reads again).
+  async function asideDo(id, how) {
+    if (!id) return aside.brief();
+    const n = aside.get(id);
+    if (!n) return { ok: false, error: 'Already settled' };
+    if (how === 'dismiss') { aside.drop(id); emit(); return { ok: true }; }
+    const src = trashFile(n.trash); const file = localPathOf(n.rel); const isJson = S.isJsonRel(n.rel);
+    const readV = (f) => { try { const st = f && statSync(f); if (!st || st.size > 6e6) return null; return S.fromCloud(S.parseJson(fs.readFileSync(f, 'utf8')), ctx); } catch { return null; } };
+    if (how === 'compare') return { ok: true, ...n, kept: isJson ? readV(src) : null, now: isJson ? readV(file) : null, here: file, there: src };
+    if (how !== 'both' && how !== 'theirs') return { ok: false, error: 'Nothing to do' };
+    if (!src || !statSync(src)) { aside.drop(id); emit(); return { ok: false, error: 'That version is no longer in Deleted files' }; }
+    if (n.rel === 'app/config.json' && how === 'both') return { ok: false, error: 'Settings are one version or the other.' };
+    const kind = (p) => ({ darwin: 'Mac', win32: 'PC' })[p];
+    const fromName = String(kind(n.fromPlatform) || n.from || 'the other computer').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 40);
+    let made = n.rel;
+    if (isJson) {
+      let ours = null; try { const v = S.parseJson(fs.readFileSync(file, 'utf8')); ours = S.toCloud(n.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } catch { /* none here */ }
+      const kept = S.toCloud(S.fromCloud(S.parseJson(await fsp.readFile(src, 'utf8')), ctx), ctx);
+      const v = how === 'both' && ours ? S.keepBoth(ours, kept, fromName) : kept;
+      // the guard's base for the window's next save: its copy as it last saved it (its change waiting since then merges
+      // with this version; the line it had won stays replaced), else this version's predecessor on the disk
+      if (pulledPrev.has(n.rel) && guardOurs.has(n.rel)) pulledPrev.set(n.rel, guardOurs.get(n.rel)); else if (ours) remember(n.rel, ours);
+      await keepHere(n.rel, file);
+      await atomicWrite(file, localJsonText(n.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null));
+    } else {
+      const ext = path.extname(n.rel); const stem = n.rel.slice(0, n.rel.length - ext.length);
+      if (how === 'both') { made = `${stem} (from ${fromName})${ext}`; for (let i = 2; await exists(localPathOf(made)); i++) made = `${stem} (from ${fromName} ${i})${ext}`; } else await keepHere(n.rel, file);
+      const dst = localPathOf(made);
+      const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
+      await fsp.mkdir(path.dirname(dst), { recursive: true });
+      await fsp.copyFile(src, tmp); await flushed(tmp); await renameRetry(tmp, dst);
+    }
+    notePulled(made, kindOf(made));
+    if (pulledNow.length) { o.onPulled?.(pulledNow.slice()); pulledNow = []; }
+    aside.drop(id); emit();
+    return { ok: true, rel: n.rel, made };
   }
 
   function readJsonSync(f) { try { return S.parseJson(SS.readRetry(fs, f)); } catch (err) { return err?.code && SS.BUSY.has(err.code) ? HELD : null; } }
@@ -1749,8 +1832,8 @@ function createEngine(o) {
   return {
     pass, stop: () => { stopping = true; lane.q.length = 0; }, status: publicStatus,
     laneIdle, freeable: afterLoad(freeable), free: afterLoad(free), /* (round 73, syncmedia73) */ fix: afterLoad(fix), woke: (ms) => { excuse(ms); if (running) again = true; }, /* (round 74, synchard74) */ set: (patch) => Object.assign(o, patch), option: (k) => o[k], machine: () => ({ ...machine }),
-    conflicts: listConflicts, resolve: afterLoad(resolve), resolveAll: afterLoad(resolveAll), preview, incoming, trash: listTrash, restore: afterLoad(restore), guardWrite, relOfLocal, /* (round 75) after the state is read */
-    ackPulled: (rels, since) => { if (!rels) { pulledPrev.clear(); pulledAt.clear(); } else for (const r of rels) if (!(since > 0) || !((pulledAt.get(r) || 0) > since)) { pulledPrev.delete(r); pulledAt.delete(r); } }, // (round 77, storeack77) since: when the reader began reading
+    conflicts: listConflicts, aside: afterLoad(asideDo), /* (round 78, guardloss78) */ resolve: afterLoad(resolve), resolveAll: afterLoad(resolveAll), preview, incoming, trash: listTrash, restore: afterLoad(restore), guardWrite, relOfLocal, /* (round 75) after the state is read */
+    ackPulled: (rels, since) => { if (!rels) { pulledPrev.clear(); pulledAt.clear(); guardOurs.clear(); } else for (const r of rels) if (!(since > 0) || !((pulledAt.get(r) || 0) > since)) { pulledPrev.delete(r); pulledAt.delete(r); guardOurs.delete(r); } }, // (round 78) + guardOurs // (round 77, storeack77) since: when the reader began reading
     hasPulled: (rel) => pulledPrev.has(rel),
     // (round 77, synclatency77) for the watchers (syncmain.js): is this file, as it is now (size + modified time), the
     // version sync already has (its own write, or one it already read)? Then an event about it is no news: no pass
