@@ -743,7 +743,7 @@ function createEngine(o) {
   const counts = () => ({ pulled: 0, pushed: 0, merged: 0, conflicts: 0, deletedHere: 0, deletedThere: 0, renamed: 0, skipped: 0, errors: 0 });
   let sum = counts();
   let pulledNow = [];
-  const notePulled = (rel, kind, acc) => { pulledAt.set(rel, Date.now()); return (acc?.pulled || pulledNow).push({ rel, kind, from: nameOf(journalLatest.get(rel)?.m) }); }; // (round 73) acc: the big lane's own · (round 77) pulledAt
+  const notePulled = (rel, kind, acc) => { pulledAt.set(rel, Date.now()); return (acc?.pulled || pulledNow).push({ rel, kind, from: nameOf(journalLatest.get(rel)?.m), ...(S.isJsonRel(rel) && !pulledPrev.has(rel) && !/-deleted$/.test(kind) ? { guard: false } : {}) }); }; // (round 73) acc: the big lane's own · (round 77, storeack77) pulledAt; guard: false = no base kept for the write guard (a store ≥ 16 MB): the window must not write its older copy first
   // a JSON value as this computer stores it (pretty unless the file was compact)
   function localJsonText(rel, value, L) {
     if (rel === 'app/config.json') {

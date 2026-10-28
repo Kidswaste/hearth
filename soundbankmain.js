@@ -244,7 +244,7 @@ function create({ dataDir, hostFactory, log = () => {} }) {
 function register(ipcMain, { dataDir, getWin, app }) {
   const vst = require('./creative-vstmain.js');
   const bank = create({ dataDir, hostFactory: () => vst.create({ dataDir, lowPriority: true }) });
-  require('./storeack-core').main.hold('creative-vst/soundbank/index.json', { name: 'Sound bank', read: async () => true, apply: () => bank.arrived() }); // (round 77, storeack77)
+  require('./storeackmain').hold('creative-vst/soundbank/index.json', { name: 'Sound bank', read: async () => true, apply: () => bank.arrived() }); // (round 77, storeack77)
   const own = (e, fn) => { if (e.sender !== getWin()?.webContents || e.senderFrame !== e.sender.mainFrame) return { ok: false, error: 'Only the Hearth workspace can use the sound bank.' }; try { return fn(); } catch (err) { return { ok: false, error: err.message }; } };
   ipcMain.handle('soundbank:list', (e, o) => own(e, () => bank.list(o || {})));
   ipcMain.handle('soundbank:similar', (e, id, n) => own(e, () => bank.similarTo(String(id), Math.min(24, Number(n) || 8))));

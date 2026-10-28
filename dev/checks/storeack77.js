@@ -48,7 +48,7 @@ step('sync was told the window holds what arrived (ack)', acks.some((a) => a.ack
 await smoke({ shot: '/tmp/storeack77-notes.png' });
 // the Mac's note deleted here right away: it stays deleted
 await click([...document.querySelectorAll('.notes-panel .notes-item')].find((b) => /From the Mac/.test(b.textContent)));
-await click([...document.querySelectorAll('.notes-panel button')].find((b) => b.textContent.trim() === 'Delete'));
+[...document.querySelectorAll('.notes-panel button')].find((b) => b.textContent.trim() === 'Delete').click(); // (its foot button: tidied away until used)
 await until(() => [...document.querySelectorAll('dialog button')].some((b) => b.textContent.trim() === 'Delete' && J.visible(b)), 4000);
 await click([...document.querySelectorAll('dialog button')].find((b) => b.textContent.trim() === 'Delete' && J.visible(b)));
 await wait(900); await syncNow(); await syncNow();

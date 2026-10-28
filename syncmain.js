@@ -15,7 +15,7 @@ const S = require('./sync-merge');
 const { createEngine, hearthIn } = require('./sync-engine');
 const K = require('./sync-kinds'); // (round 73, syncmedia73) What syncs
 const Evict = require('./cloud-evict'); // (round 73, syncmedia73) Free up space
-const SAmain = require('./storeack-core').main; // (round 77, storeack77) stores the main process holds in memory
+const SAmain = require('./storeackmain'); // (round 77, storeack77) stores the main process holds in memory
 
 let engine = null; let opts = null; let getWin = () => null;
 let watchers = []; let timer = null; let tick = null; let lastStatus = null;

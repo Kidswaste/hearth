@@ -90,6 +90,15 @@ scenario('core', async () => {
   C4.hold('shared', { pending: () => late, flush: () => { late = false; n4 += 1; } });
   r = await C4.arrived([{ rel: 'kv/shared.json' }]);
   ok(n4 === 1 && !acks.some((x) => x.c4), 'core: a late write by one holder while another holds a copy → no ack', { n4, r });
+  // a store sync keeps no guard base for (≥ 16 MB: the engine says guard: false): a change waiting here is neither
+  // written over what arrived nor read over; without one it's read again as usual
+  const C7 = SA.create({ ack: (rels) => acks.push({ rels, c7: true }) });
+  let w7 = 0; let a7 = 0; let p7 = true;
+  C7.hold('huge', { pending: () => p7, flush: () => { w7 += 1; p7 = false; }, read: async () => 'disk', apply: () => { a7 += 1; } });
+  r = await C7.arrived([{ rel: 'kv/huge.json', guard: false }]);
+  ok(w7 === 0 && a7 === 0 && r.kept.join() === 'kv/huge.json' && !acks.some((x) => x.c7), 'core: no guard for it: the change waiting here is not written over what arrived, nor read over', { w7, a7, r });
+  p7 = false; r = await C7.arrived([{ rel: 'kv/huge.json', guard: false }]);
+  ok(a7 === 1 && r.acked.join() === 'kv/huge.json', 'core: no guard, nothing waiting: read again as usual', { a7, r });
   // regex stores, drop holders, again()
   const dropped = []; const C5 = SA.create({ ack: (rels) => acks.push({ rels, c5: true }) });
   const h5 = C5.hold(/^showsync\/[^/]+\.json$/, { drop: (rel) => dropped.push(rel) });

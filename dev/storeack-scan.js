@@ -68,9 +68,9 @@ function scan(only = null) {
   for (const file of list) {
     let src; try { src = only ? only.src?.[file] ?? fs.readFileSync(path.join(ROOT, file), 'utf8') : fs.readFileSync(path.join(ROOT, file), 'utf8'); } catch { continue; }
     texts.set(file, src);
-    const d = { names: new Set(), any: /\bStoreAck\b[\s\S]{0,40}\.hold\(|storeack-core'\)\.main\.hold\(|\.sync\??\.ack\??\.?\(|ackPulled\(/.test(src) };
+    const d = { names: new Set(), any: /\bStoreAck\b[\s\S]{0,40}\.hold\(|storeackmain'\)\.hold\(|\.sync\??\.ack\??\.?\(|ackPulled\(/.test(src) };
     for (const m of src.matchAll(/\.hold\(\s*([^,)]+)\s*,/g)) {
-      if (!/StoreAck|SA\b|main$/.test(src.slice(Math.max(0, m.index - 40), m.index))) continue;
+      if (!/StoreAck|SA\b|storeackmain'\)$/.test(src.slice(Math.max(0, m.index - 40), m.index))) continue;
       const n = nameOf(m[1], src, file);
       if (n) { d.names.add(n); if (!declared.has(n)) declared.set(n, new Set()); declared.get(n).add(file); }
     }

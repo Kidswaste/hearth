@@ -174,7 +174,7 @@ async function test(a) {
 let inFlight = 0;
 function init(opts) {
   o = opts;
-  require('./storeack-core').main.hold(C.KEY, { name: 'Quick ideas', pending: () => inFlight > 0, flush: () => chain.catch(() => {}),
+  require('./storeackmain').hold(C.KEY, { name: 'Quick ideas', pending: () => inFlight > 0, flush: () => chain.catch(() => {}),
     read: () => readAsync().catch(() => null), apply: (s) => { if (s) changed(s, 'synced'); } }); // an open inbox redraws
 }
 // main.js: lazyIpc('quickideamain.js', …): loaded on the first call from a window, or by the tray item / the key

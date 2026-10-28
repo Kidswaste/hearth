@@ -493,13 +493,14 @@ const Sync = (() => {
       if (done.length) api().ack(done);
     }
     if (list.some((x) => x.kind === 'config')) configArrived = true; // config.json hot-reloads by itself: acked once the app has it
+    // (round 77, storeack77) no "Reload" toast when every store that arrived is one this window updates by itself
     const other = list.filter((x) => !/^chats\//.test(x.rel) && !['config', 'theme', 'file', 'file-deleted'].includes(x.kind));
     if (other.length) {
       const from = other.find((x) => x.from && x.from !== 'trash')?.from || 'your other computer';
       const first = !fresh;
       fresh = { from, at: Date.now() };
       paintDot();
-      if (first) toast(`Changes from ${from} arrived (${[...new Set(other.map((x) => nameOf(x.rel)))].slice(0, 3).join(', ')}).`, { action: { label: 'Reload', fn: reload }, timeout: 8000 });
+      if (first && other.some((x) => !window.StoreAck?.held(x.rel))) toast(`Changes from ${from} arrived (${[...new Set(other.map((x) => nameOf(x.rel)))].slice(0, 3).join(', ')}).`, { action: { label: 'Reload', fn: reload }, timeout: 8000 });
     }
     window.dispatchEvent(new CustomEvent('hearth:synced', { detail: { files: list } }));
   }
