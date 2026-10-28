@@ -24,7 +24,8 @@ const ChatScenes = (() => {
   let data = { links: {}, videos: {}, idents: {} };
   let loaded = false;
   let readyFn; const readyP = new Promise((r) => { readyFn = r; });
-  const save = saver(() => window.hub.kvSet('chat-scenes', data), 400); // (round 77, storeack77) saver: StoreAck can write it first
+  // (round 77, storeack77) a saver: StoreAck can write it first
+  const save = saver(() => window.hub.kvSet('chat-scenes', data), 400);
   const workers = new Map(); // chatId -> { list: ['claude', 'codex'], active: 'codex' | null } set by a jam (jam.js) while it runs
 
   // ---------- identity ----------
@@ -125,14 +126,13 @@ const ChatScenes = (() => {
   // there, and unlinked there too (before, only new ones joined) — and sync is told, so a chat unlinked here right after
   // its link arrived stays unlinked
   window.StoreAck?.hold('chat-scenes', {
-    name: 'Chat ↔ scene links', saver: save, read: () => StoreAck.kv('chat-scenes', null),
+    saver: save, read: () => StoreAck.kv('chat-scenes', null),
     apply: (d) => {
-      if (!loaded) return undefined;
-      if (!d || typeof d !== 'object' || !d.links) return false;
-      const next = { links: d.links || {}, videos: d.videos || {}, idents: d.idents || {} }; // (as the first read keeps it)
-      if (JSON.stringify(next) === JSON.stringify(data)) return undefined;
-      data = next; resync();
-      return undefined;
+      if (!loaded) return;
+      if (!d?.links) return false;
+      // (as the first read keeps it)
+      const next = { links: d.links, videos: d.videos || {}, idents: d.idents || {} };
+      if (JSON.stringify(next) !== JSON.stringify(data)) { data = next; resync(); }
     },
   });
   addEventListener('hearth:lab-scenes-arrived', () => { recoverLost(); });

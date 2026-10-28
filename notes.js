@@ -43,15 +43,13 @@ const Notes = (() => {
   // (merged line by line with what arrived), then the list and the open note show what's on disk now — the note you're
   // typing in keeps your caret and scroll — and sync is told, so a note deleted here right after it arrived stays deleted
   window.StoreAck?.hold('notes', {
-    name: 'Notes', saver: save, read: () => StoreAck.kv('notes', null),
+    saver: save, read: () => StoreAck.kv('notes', null),
     apply: (v) => {
-      if (!loaded) return undefined;
+      if (!loaded) return;
       if (!Array.isArray(v)) return false;
-      notes = v;
-      if (!notes.length) notes = [{ id: `n${Date.now()}`, title: 'Scratchpad', text: '', updatedAt: Date.now() }];
+      notes = v.length ? v : [{ id: `n${Date.now()}`, title: 'Scratchpad', text: '', updatedAt: Date.now() }];
       if (!notes.some((n) => n.id === currentId)) currentId = notes[0].id;
-      if (panel) StoreAck.keepCaret(panel.querySelector('textarea'), () => render());
-      return undefined;
+      if (panel) StoreAck.keepCaret(panel.querySelector('textarea'), render);
     },
   });
   const current = () => notes.find((n) => n.id === currentId) || notes[0];
@@ -408,9 +406,15 @@ const Prompts = (() => {
     }
     return prompts;
   }
-  // (round 77, storeack77) saved prompts / favorites from the other computer: read again (writes here are immediate)
-  for (const [name, set] of [['prompts', (v) => { if (Array.isArray(v)) user = v; else return false; }], ['prompts-meta', (v) => { if (v && typeof v === 'object' && !Array.isArray(v)) meta = { hidden: [], favs: [], uses: {}, ...v }; else return false; }]]) {
-    window.StoreAck?.hold(name, { name: 'Saved prompts', read: () => StoreAck.kv(name, null), apply: (v) => { if (!prompts) return undefined; if (set(v) === false) return false; rebuild(); return undefined; } });
+  // (round 77, storeack77) saved prompts / favorites from the other computer: read again (writes here are immediate) ·
+  // storeack: holds prompts, prompts-meta
+  for (const k of ['prompts', 'prompts-meta']) {
+    window.StoreAck?.hold(k, { read: () => StoreAck.kv(k, null), apply: (v) => {
+      if (!prompts) return;
+      if (!v || Array.isArray(v) !== (k === 'prompts')) return false;
+      if (k === 'prompts') user = v; else meta = { hidden: [], favs: [], uses: {}, ...v };
+      rebuild();
+    } });
   }
   const persist = async () => { rebuild(); await window.hub.kvSet('prompts', user); };
   const persistMeta = async () => { rebuild(); await window.hub.kvSet('prompts-meta', meta); };

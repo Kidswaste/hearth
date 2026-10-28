@@ -2,152 +2,126 @@
 // of it arrives: the change not written yet goes first (sync's write guard merges it with what arrived), then the store
 // is read again and put on screen, then sync is told this side now holds what arrived (ack), so later saves merge against
 // it — without the ack a thing taken out right after it arrived came back (round 76, projects bug 7).
-// Pure (no DOM, no Electron): sync.js makes the window's one (window.StoreAck), syncmain.js the main process's one, and
-// dev/storeack77-test.js runs it against the real sync engine in the two-computer simulator.
+// Pure (no Electron): the window's one (window.StoreAck, hears every hearth:synced), the main process's one
+// (require('./storeack-core').main, syncmain.js hands it arrivals), and dev/storeack77-test.js runs it against the real
+// sync engine in the two-computer simulator; dev/storeack-scan.js flags stores read again on arrival without it.
 //   hold(store, h)    store: a kv name ('notes'), a data-folder path ('tickets/index.json') or a RegExp of paths
-//                     h: { name,                  who holds it (the scan and /sync's debug list say it)
+//                     h: { name,                  who holds it
 //                          saver | pending + flush,  a change not written yet → write it now
 //                          read(rel) + apply(value, rel),  read it again (async), then put it in memory and on screen
 //                                                  (sync, so nothing typed in between is lost: see run()); apply returns
 //                                                  false when it couldn't (then sync keeps merging: nothing is lost)
 //                          drop(rel) }             or: forget the copy, the next use reads it again
 //                     neither read nor drop: it holds nothing (reads fresh at each change): only its pending change goes
-//                     → { off(), fresh(since) }  fresh: "I just read it from disk" (a lazy module's first read: acked
-//                     when no other holder of it keeps an older copy)
+//                     → { off(), again(rel) }  again: an arrival put off (an edit was open on it) handled now
 //   arrived(files)    sync:pulled's list ([{ rel, kind }]) → { acked, kept, unknown }
+//   into(target, src) what arrived put into the objects a screen holds (same objects, new values)
 // A store nobody declared is never acked: someone may hold an older copy, and sync's guard is what keeps the other
 // computer's changes from being undone by its next save (a thing taken out may come back: never lost).
 (function (root, factory) {
   const api = factory();
-  if (typeof module !== 'undefined' && module.exports) { // the main process's one (syncmain.js hands it arrivals and the ack)
-    let ackFn = null; api.main = api.create({ ack: (rels, since) => ackFn?.(rels, since), log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log(...a); } });
-    api.main.setAck = (fn) => { ackFn = typeof fn === 'function' ? fn : null; };
+  if (typeof module !== 'undefined' && module.exports) {
+    // the main process's one (syncmain.js hands it arrivals and the ack)
+    let f = null;
+    api.main = api.create({ ack: (r, t) => f?.(r, t) });
+    api.main.setAck = (fn) => { f = fn; };
     module.exports = api;
+    return;
   }
-  else { // the window's one: each arrival sync.js announces (hearth:synced, after the files are written)
-    root.StoreAckCore = api;
-    root.StoreAck = api.create({ ack: (rels, since) => root.hub?.sync?.ack?.(rels, { since }), log: (...a) => console.warn(...a) });
-    // a store read again for an arrival: what's there (or d when it's gone); one that can't be read throws, so nothing
-    // in memory is replaced by an empty copy and nothing is acked
-    root.StoreAck.kv = async (name, d = null) => {
-      const r = await root.hub.kvGet(name, d, { status: true });
-      if (r?.state === 'ok') return r.value ?? d;
-      if (r?.state === 'missing') return d;
-      throw Error(`${name} could not be read (${r?.state || 'no answer'})`);
-    };
-    // a text field shown again with what arrived (fn redraws it) keeps its caret, selection and scroll: moved by what was
-    // added or taken out before them
-    root.StoreAck.into = api.into;
-    root.StoreAck.keepCaret = (area, fn) => {
-      const on = area && root.document?.activeElement === area;
-      const was = area ? { v: area.value, a: area.selectionStart, b: area.selectionEnd, top: area.scrollTop } : null;
-      fn();
-      if (!area || !was || area.value === was.v) return;
-      let i = 0; while (i < was.a && i < area.value.length && was.v[i] === area.value[i]) i += 1;
-      const d = i >= was.a ? 0 : area.value.length - was.v.length;
-      area.scrollTop = was.top;
-      if (on) try { area.setSelectionRange(Math.max(0, was.a + d), Math.max(0, was.b + d)); } catch { /* not a text field */ }
-    };
-    root.addEventListener?.('hearth:synced', (e) => { root.StoreAck.arrived(e.detail?.files || []).catch(() => {}); });
-  }
+  // the window's one: every arrival sync.js announces (hearth:synced, after the files are written)
+  const SA = root.StoreAck = api.create({ ack: (r, since) => root.hub.sync?.ack(r, { since }), log: console.warn });
+  SA.into = api.into;
+  // a store read again for an arrival: what's there (or d when it's gone); one that can't be read throws, so nothing
+  // in memory is replaced by an empty copy and nothing is acked
+  SA.kv = async (name, d = null) => {
+    const r = await root.hub.kvGet(name, d, { status: true });
+    if (r?.state === 'ok') return r.value ?? d;
+    if (r?.state === 'missing') return d;
+    throw Error(`${name}: ${r?.state}`);
+  };
+  // a text field shown again with what arrived (fn redraws it) keeps its caret, selection and scroll: moved by what was
+  // added or taken out before them
+  SA.keepCaret = (area, fn) => {
+    const v = area?.value; const a = area?.selectionStart; const b = area?.selectionEnd; const top = area?.scrollTop;
+    const on = area && root.document.activeElement === area;
+    fn();
+    if (!area || area.value === v) return;
+    let i = 0; while (i < a && v[i] === area.value[i]) i += 1;
+    const d = i >= a ? 0 : area.value.length - v.length;
+    area.scrollTop = top;
+    if (on) area.setSelectionRange(Math.max(0, a + d), Math.max(0, b + d));
+  };
+  root.addEventListener('hearth:synced', (e) => { SA.arrived(e.detail?.files || []).catch(() => {}); });
 }(typeof self !== 'undefined' ? self : this, () => {
-  const relOf = (s) => (s instanceof RegExp ? s : /[/.]/.test(String(s)) ? String(s).replace(/\\/g, '/') : `kv/${s}.json`);
-  const JSONISH = /\.json$/i;
+  const relOf = (s) => (s instanceof RegExp || /[/.]/.test(s) ? s : `kv/${s}.json`);
   function create({ ack, now = () => Date.now(), log = () => {} } = {}) {
-    const holders = new Set(); // { store, h, at }
-    const chains = new Map(); // rel → the arrival being handled (one at a time per store)
+    // { store, h } · rel → the arrival being handled (one at a time per store)
+    const holders = new Set(); const chains = new Map();
     const holdersOf = (rel) => [...holders].filter((x) => (x.store instanceof RegExp ? x.store.test(rel) : x.store === rel));
-    const pending = (h) => { try { return Boolean(h.saver ? h.saver.pending?.() : h.pending?.()); } catch { return false; } };
-    const flush = (h) => (h.saver ? h.saver.flush?.() : h.flush?.());
-    const holdsCopy = (h) => Boolean(h.read || h.drop);
+    const pending = (h) => (h.saver ? h.saver.pending() : h.pending?.());
+    const flush = (h) => (h.saver ? h.saver.flush() : h.flush?.());
+    const copy = (h) => Boolean(h.read || h.drop);
     function hold(store, h = {}) {
       const x = { store: relOf(store), h };
       holders.add(x);
-      return {
-        off: () => holders.delete(x),
-        // an arrival this holder put off (an edit was open on it): handled again now
-        again: (rel = typeof x.store === 'string' ? x.store : null) => (rel ? arrived([{ rel }]) : Promise.resolve(null)),
-        // a first read done after a pull: acked when every other holder of this store holds no copy
-        fresh: (since = now(), rel = typeof x.store === 'string' ? x.store : null) => {
-          if (!rel || holdersOf(rel).some((y) => y !== x && holdsCopy(y.h) && !y.h.empty?.())) return false;
-          Promise.resolve(ack?.([rel], since)).catch(() => {});
-          return true;
-        },
-      };
+      return { off: () => holders.delete(x), again: (rel = x.store) => arrived([{ rel }]) };
     }
-    // one store: each holder's change written, then read again and applied (tried again when something was typed while
-    // it was being read), then whether it can be acked
+    // one store: 1. every holder's change written (each merged with what arrived by sync's guard) before anyone reads;
+    // 2. read again and put in place (apply is sync: nothing typed in between is lost); something typed while it was
+    // read is written and read again — with another holder holding a copy that write leaves it older than the disk:
+    // then no ack (sync keeps merging). A change that couldn't be written is never read over.
     async function run(rel, list, files) {
-      let ok = true;
-      // 1. every holder's change written (each merged with what arrived by sync's guard), before anyone reads
-      const failed = new Set();
-      for (const x of list) {
-        try { if (pending(x.h)) await flush(x.h); } catch (err) { log('storeack: could not write', x.h.name || rel, err?.message || err); failed.add(x); ok = false; } // its change stays in memory: not read over
-      }
-      // 2. read again and put in place; something typed while it was being read is written and read again (with more
-      // than one holder that write could leave another one older than the disk: then no ack, sync keeps merging)
-      const since = now(); const late = new Set(); // holders that wrote after the reads began
+      let ok = true; const failed = new Set(); const late = new Set();
+      const write = async (x, isLate) => {
+        try { await flush(x.h); if (isLate) late.add(x); return true; } catch (err) { log('storeack', rel, err); ok = false; return false; }
+      };
+      for (const x of list) if (pending(x.h) && !(await write(x))) failed.add(x);
+      const since = now();
       for (const x of list) {
         const { h } = x;
         if (failed.has(x)) continue;
         for (let i = 0; ; i++) {
-          if (h.drop) {
-            if (pending(h)) { try { await flush(h); late.add(x); } catch { ok = false; break; } if (i < 3) continue; ok = false; break; }
-            try { h.drop(rel); } catch { ok = false; } break;
-          }
-          if (!h.read) { if (pending(h)) { try { await flush(h); late.add(x); } catch { ok = false; } } break; }
-          let v; try { v = await h.read(rel, files); } catch (err) { log('storeack: could not read', h.name || rel, err?.message || err); ok = false; break; }
-          if (pending(h)) { try { await flush(h); late.add(x); } catch { ok = false; break; } if (i < 3) continue; ok = false; break; } // typed meanwhile: written first, read again
-          let r; try { r = h.apply?.(v, rel, files); } catch (err) { log('storeack: could not apply', h.name || rel, err?.message || err); r = false; }
-          if (r === false) ok = false;
+          if (!copy(h)) { if (pending(h)) await write(x, true); break; }
+          let v;
+          if (h.read) { try { v = await h.read(rel, files); } catch (err) { log('storeack', rel, err); ok = false; break; } }
+          if (pending(h)) { if (!(await write(x, true))) break; if (i < 3) continue; ok = false; break; }
+          try { if ((h.read ? h.apply?.(v, rel, files) : h.drop(rel)) === false) ok = false; } catch (err) { log('storeack', rel, err); ok = false; }
           break;
         }
       }
-      if ([...late].some((w) => list.some((y) => y !== w && holdsCopy(y.h)))) ok = false;
+      if ([...late].some((w) => list.some((y) => y !== w && copy(y.h)))) ok = false;
       return { rel, ok, since };
     }
     async function arrived(files = []) {
-      const list = (Array.isArray(files) ? files : []).filter((f) => f && typeof f.rel === 'string');
-      const rels = [...new Set(list.map((f) => f.rel.replace(/\\/g, '/')))].filter((r) => JSONISH.test(r) && !/^chats\//.test(r));
+      const rels = [...new Set((files || []).map((f) => String(f?.rel)))].filter((r) => /\.json$/i.test(r) && !r.startsWith('chats/'));
       const unknown = []; const jobs = [];
       for (const rel of rels) {
         const hs = holdersOf(rel);
         if (!hs.length) { unknown.push(rel); continue; }
-        const prev = chains.get(rel) || Promise.resolve();
-        const job = prev.catch(() => {}).then(() => run(rel, hs, list));
+        const job = (chains.get(rel) || Promise.resolve()).catch(() => {}).then(() => run(rel, hs, files));
         chains.set(rel, job);
         job.finally(() => { if (chains.get(rel) === job) chains.delete(rel); }).catch(() => {});
         jobs.push(job);
       }
-      const done = await Promise.all(jobs);
-      const good = done.filter((d) => d.ok);
-      if (good.length) {
-        const since = Math.min(...good.map((d) => d.since));
-        try { await ack?.(good.map((d) => d.rel), Number.isFinite(since) ? since : now()); } catch { /* sync off */ }
-      }
+      const done = await Promise.all(jobs); const good = done.filter((d) => d.ok);
+      if (good.length) { try { await ack?.(good.map((d) => d.rel), Math.min(...good.map((d) => d.since))); } catch { /* sync off */ } }
       return { acked: good.map((d) => d.rel), kept: done.filter((d) => !d.ok).map((d) => d.rel), unknown };
     }
-    const held = () => [...holders].map((x) => ({ store: String(x.store), name: x.h.name || '', copy: holdsCopy(x.h) }));
-    return { hold, arrived, held, holdersOf };
+    return { hold, arrived };
   }
   // what arrived put INTO the object in memory (same objects, same arrays): parts of a screen that hold a piece of the
   // store (a station's settings, a list) see the new values instead of an orphan copy. Arrays: element by element.
   const plain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const both = (a, b) => (plain(a) && plain(b)) || (Array.isArray(a) && Array.isArray(b));
   function into(target, src) {
-    if (Array.isArray(target) && Array.isArray(src)) {
-      for (let i = 0; i < src.length; i++) {
-        if (i < target.length && ((plain(target[i]) && plain(src[i])) || (Array.isArray(target[i]) && Array.isArray(src[i])))) into(target[i], src[i]);
-        else target[i] = src[i];
-      }
+    if (!both(target, src)) return src;
+    if (Array.isArray(src)) {
+      src.forEach((v, i) => { target[i] = both(target[i], v) ? into(target[i], v) : v; });
       target.length = src.length;
       return target;
     }
-    if (!plain(target) || !plain(src)) return src;
     for (const k of Object.keys(target)) if (!(k in src)) delete target[k];
-    for (const [k, v] of Object.entries(src)) {
-      const t = target[k];
-      target[k] = (plain(t) && plain(v)) || (Array.isArray(t) && Array.isArray(v)) ? into(t, v) : v;
-    }
+    for (const [k, v] of Object.entries(src)) target[k] = both(target[k], v) ? into(target[k], v) : v;
     return target;
   }
   return { create, relOf, into };

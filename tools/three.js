@@ -4325,7 +4325,7 @@ ${code}
         return kept ? false : undefined;
       },
     });
-    // (a store gone or not an object: what's here stays, sync keeps merging)
+    // (a store gone or not an object: what's here stays, sync keeps merging) · storeack: holds three-lab-extras, three-notes, three-refs
     const labStore = (name, label, s, set) => SA?.hold(name, {
       name: label, saver: s, read: () => SA.kv(name, null),
       apply: (v) => { if (!kvOk.has(name)) return undefined; if (!v || typeof v !== 'object' || Array.isArray(v)) return false; set(v); return undefined; },
