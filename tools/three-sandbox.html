@@ -2775,6 +2775,102 @@ window.__labDraw = {
   reset: () => { CC.frames = 0; CC.copies = 0; CC.drawnCopies = 0; CC.ms = 0; CC.meshes = 0; SHG.skipped = 0; SHG.drawn = 0; return 1; },
 };
 
+// ---------- the song's clock for the pictures (round 77, labaudio77) ----------
+// What a frame shows must be what you HEAR when it reaches the screen. The song's <video> element reports where the
+// audio graph has read it to (its currentTime): that moves in steps of one audio callback (10 ms here), stays the same
+// for a whole task, and runs AHEAD of the speakers by the output path (10–40 ms on wired outputs, 150–250 ms on
+// Bluetooth headphones). Reading it raw each frame made the pictures early by that much, with a 10 ms stair-step
+// jitter (at 240 Hz: 2–3 frames showing the same moment, then a jump).
+// So the page keeps one clock per song, fitted on the AUDIO clock: every few ms a sample "the song position heard at
+// performance time x" (from the AudioContext's output timestamp: which context time reaches the speakers when; or,
+// without one, the element's time minus base + output latency), a line through the last ~1.5 s of samples (older ones
+// fade), and each frame reads that line at the moment the frame will be SHOWN (its frame time + one screen frame).
+// The line's slope is fitted too, so a sound card whose clock runs 0.02 % fast (common) doesn't drift away over a
+// 5-minute song, and it never moves backwards. It starts over three ways:
+//   · fresh (play from pause, another song, a hidden tab, a new playback speed): it holds on the start until the
+//     sound reaches the speakers
+//   · a seek / loop wrap while playing: the speakers still play the old spot for one output path, so the pictures do
+//     too, then jump with the sound
+//   · a sample far off the line nobody announced (an output device switched, a stall): the new line at once, but a
+//     step back of under ½ s (a longer output path: headphones) holds the picture until the sound catches up
+// Paused, the pictures show the element's exact time (scrubbing and seeks are exact): the page does that, not this.
+// <avsync-core> (pure: dev/labaudio77-test.js runs it in Node)
+function avsyncCore(opt = {}) {
+  const TAU = opt.tau ?? 1.5; // s: how far back the fit looks (older samples fade)
+  const SNAP = opt.snap ?? 0.05; // s: a sample farther off the line than this is a jump: start over there
+  const GAP = opt.gap ?? 0.3; // s: samples farther apart (a hidden tab, a parked preview, a long hitch): start over
+  const PPM = opt.ppm ?? 0.002; // the fitted speed stays within 0.2 % of the nominal one (sound cards differ by < 0.03 %)
+  const MIN = opt.min ?? 0.4; // s of samples before the speed is fitted (until then: the nominal speed)
+  const HOLD = opt.hold ?? 0.5; // s: an unannounced step back shorter than this holds the picture instead
+  const STEP = opt.step ?? 0.006; // s: 3 samples in a row this far off on the same side: the sound moved (an underrun, a
+  // glitch, a device's buffer changing size), start over there instead of drifting onto it over the fit's 1.5 s
+  // the state: one Float64Array, nothing allocated per sample or per read (gcchurn60)
+  //   W SU SV SUU SUV the fit's weighted sums (u = x − X0 in s, v = y − Y0 − rate·u: what the nominal speed misses)
+  //   X0 Y0 the fit's origin · LX the last sample's x · RATE the nominal speed (playbackRate) · A B the line (v = A + B·u)
+  //   OUT the last value read (never back) · FLOOR what it holds on after a start until the line passes it
+  //   SNAPS starts · ERR the last sample's distance to the line · SPAN s of samples since the start · N samples
+  //   JUMP the next sample starts over (1 fresh, 2 a seek while playing) at TGT (where it was sent: NaN, the element's
+  //   time then) · PX until then the old line (OX0 OY0 OS)
+  const W = 0; const SU = 1; const SV = 2; const SUU = 3; const SUV = 4; const X0 = 5; const Y0 = 6; const LX = 7; const RATE = 8;
+  const A = 9; const B = 10; const OUT = 11; const FLOOR = 12; const SNAPS = 13; const ERR = 14; const SPAN = 15; const JUMP = 16; const N = 17;
+  const PX = 18; const OX0 = 19; const OY0 = 20; const OS = 21; const TGT = 22; const RUN = 23;
+  const make = () => { const S = new Float64Array(24); S[RATE] = 1; S[JUMP] = 1; S[OUT] = -Infinity; S[FLOOR] = -Infinity; S[PX] = -Infinity; S[TGT] = NaN; return S; };
+  const at = (S, x) => S[Y0] + (S[RATE] + S[B]) * (x - S[X0]) + S[A];
+  // kind: 1 fresh · 2 a seek while playing · 3 unannounced; pos: where it starts (the seek's target: the element's
+  // time read after the next audio callback is a callback further on, which would hold the old spot 10 ms too long)
+  function start(S, x, y, rate, pos, kind) {
+    const had = S[N] > 0 && S[OUT] > -Infinity;
+    if (kind !== 3 && S[TGT] === S[TGT]) pos = S[TGT];
+    S[TGT] = NaN;
+    if (kind === 2 && had) { S[OY0] = at(S, x); S[OX0] = x; S[OS] = S[RATE] + S[B]; S[PX] = x + Math.max(0, pos - y) / (rate || 1); } else S[PX] = -Infinity;
+    S[FLOOR] = kind === 3 ? (had && S[OUT] > y && S[OUT] - y < HOLD ? S[OUT] : y) : pos;
+    S[W] = 1; S[SU] = 0; S[SV] = 0; S[SUU] = 0; S[SUV] = 0; S[X0] = x; S[Y0] = y; S[LX] = x; S[RATE] = rate; S[A] = 0; S[B] = 0;
+    S[OUT] = kind === 2 && had ? S[OUT] : -Infinity; S[SNAPS] += 1; S[ERR] = 0; S[SPAN] = 0; S[JUMP] = 0; S[N] += 1; S[RUN] = 0;
+  }
+  // one sample: the song position y (s) heard at performance time x (s), the nominal speed, where the element is; 1 when
+  // it started over
+  function feed(S, x, y, rate, pos) {
+    if (S[JUMP]) { start(S, x, y, rate, pos, S[JUMP]); return 1; }
+    if (rate !== S[RATE] || x - S[LX] > GAP || x < S[LX]) { start(S, x, y, rate, pos, 3); return 1; } // (nobody said: what's heard now)
+    if (x === S[LX]) return 0; // the same sample again (the audio clock hasn't ticked)
+    const e = y - at(S, x); S[ERR] = e;
+    if (e > SNAP || e < -SNAP) { start(S, x, y, rate, pos, 3); return 1; }
+    S[RUN] = e > STEP ? (S[RUN] > 0 ? S[RUN] + 1 : 1) : e < -STEP ? (S[RUN] < 0 ? S[RUN] - 1 : -1) : 0;
+    if (S[RUN] >= 3 || S[RUN] <= -3) { start(S, x, y, rate, pos, 3); return 1; }
+    const dx = x - S[LX]; const d = Math.exp(-dx / TAU);
+    S[W] *= d; S[SU] *= d; S[SV] *= d; S[SUU] *= d; S[SUV] *= d;
+    S[LX] = x; S[SPAN] += dx; S[N] += 1;
+    let u = x - S[X0];
+    if (u > 20) { // a new origin now and then (the sums stay small numbers; the line is the same)
+      S[SUU] = S[SUU] - 2 * u * S[SU] + u * u * S[W]; S[SUV] -= u * S[SV]; S[SU] -= u * S[W];
+      S[A] += S[B] * u; S[Y0] += S[RATE] * u; S[X0] = x; u = 0;
+    }
+    const v = y - S[Y0] - S[RATE] * u;
+    S[W] += 1; S[SU] += u; S[SV] += v; S[SUU] += u * u; S[SUV] += u * v;
+    const den = S[W] * S[SUU] - S[SU] * S[SU];
+    if (S[SPAN] >= MIN && den > 1e-9) { const lim = PPM * rate; const b = (S[W] * S[SUV] - S[SU] * S[SV]) / den; S[B] = b > lim ? lim : b < -lim ? -lim : b; }
+    S[A] = (S[SV] - S[B] * S[SU]) / S[W];
+    return 0;
+  }
+  // the song's time heard at performance time x (s)
+  function read(S, x) {
+    let t;
+    if (x < S[PX]) t = S[OY0] + S[OS] * (x - S[OX0]); // a seek's old spot, still in the speakers
+    else {
+      if (S[PX] > -Infinity) { S[PX] = -Infinity; S[OUT] = -Infinity; } // the seek reached the speakers: from here
+      t = at(S, x);
+      if (t < S[FLOOR]) t = S[FLOOR]; else S[FLOOR] = -Infinity;
+    }
+    if (t < S[OUT] && S[OUT] - t < SNAP) t = S[OUT];
+    S[OUT] = t;
+    return t;
+  }
+  // the page says it moved: a start from pause / another song (seek false), or a seek while playing; target: where to
+  const jump = (S, seek = false, target = NaN) => { if (S[JUMP] !== 1) S[JUMP] = seek ? 2 : 1; S[TGT] = target; };
+  return { make, feed, read, at, jump, SNAP, GAP, TAU, STEP, I: { W, A, B, OUT, FLOOR, SNAPS, ERR, SPAN, N, RATE, PX } };
+}
+// </avsync-core>
+
 // ---------- audio / video ----------
 // The Lab sends a loaded mp3/mp4 here. Sketches read it through the `audio` and `media` globals:
 //   audio.level / bass / mid / treble (0..1), audio.beat (1 on a beat, fading), audio.spectrum (Uint8Array),
@@ -2950,6 +3046,7 @@ const demoHits = (kind, t) => (kind === 'kick' ? Math.exp(-((t % 0.5)) / 0.12) :
 function graph() {
   if (actx) return;
   actx = new AudioContext();
+  avHook(actx); // (round 77, labaudio77: its state changes / errors are looked at)
   analyser = actx.createAnalyser();
   analyser.fftSize = 2048;
   analyser.smoothingTimeConstant = 0.6;
@@ -3031,7 +3128,7 @@ function update() {
     }
     return;
   }
-  const t = mediaEl.currentTime;
+  const t = songNow(); // (round 77, labaudio77: the time heard when this frame shows)
   const gridBeats = beatMap?.beats?.length ? beatMap.beats : analysis?.beats;
   if (gridBeats?.length) {
     // Beats from the user's grid (or the Lab's analysis): exact, and steady even at low frame rates.
@@ -3058,7 +3155,7 @@ const audio = {
     for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
     return n ? s / n / 255 : 0;
   },
-  get time() { return mediaEl && !liveKind ? mediaEl.currentTime : performance.now() / 1000; },
+  get time() { return mediaEl && !liveKind ? songNow() : performance.now() / 1000; },
   // 'system' or 'mic' while live input runs, else null
   get live() { return liveKind; },
   get duration() { return mediaEl?.duration || 0; },
@@ -3077,7 +3174,7 @@ const audio = {
     const own = sqOwnMarks(name); // a sequence scene's own hits, moved with its clip (like its keyframes)
     if (own) return pulse(own.marks, own.t, trigFade(name) / 1000);
     const marks = beatMap?.marks?.[name];
-    if (mediaEl && !liveKind && marks?.length) return pulse(marks, mediaEl.currentTime, trigFade(name) / 1000);
+    if (mediaEl && !liveKind && marks?.length) return pulse(marks, songNow(), trigFade(name) / 1000);
     if (mediaEl || liveKind) { update(); return trigOn(name) ? trigPulse(name) : 0; }
     const t = performance.now() / 1000;
     return name === 'hats' ? 0.7 * Math.exp(-((t * 4) % 1) / 0.1) : name === 'bass' ? demoHits('kick', t) : demoHits(name, t);
@@ -3137,7 +3234,7 @@ Object.defineProperties(audio, {
   // the song section you named with cues: { name, index, start, end, progress 0..1 } or null
   cue: { get() {
     const cs = beatMap?.cues; if (!cs?.length || !mediaEl) return null;
-    const t = mediaEl.currentTime; let i = -1;
+    const t = songNow(); let i = -1;
     for (let k = 0; k < cs.length; k += 1) if (cs[k].t <= t) i = k;
     if (i < 0) return null;
     const end = cs[i + 1]?.t ?? (mediaEl.duration || cs[i].t + 1);
@@ -3203,11 +3300,11 @@ function featVal(name) {
     if (name === 'beat') return audio.beat; if (name === 'bpm') return audio.bpm;
     if (name === 'beatConf') return beatMap?.manual ? 1 : analysis?.grid?.tempoConf ?? 0.5;
     if (name === 'barConf') return beatMap?.manual ? 1 : analysis?.grid?.downbeatConf ?? 0.5;
-    const bi = barInfo(mediaEl.currentTime); return name === 'beatInBar' ? bi.beatInBar : name === 'bar' ? bi.bar : name === 'beatPhase' ? bi.beatPhase : bi.barPhase;
+    const bi = barInfo(songNow()); return name === 'beatInBar' ? bi.beatInBar : name === 'bar' ? bi.bar : name === 'beatPhase' ? bi.beatPhase : bi.barPhase;
   }
   if (liveKind && FX.live && realNow() - FX.liveAt < 500) return FX.live[k];
   if (fxSong() && FX.track && FX.trackEl === mediaEl) {
-    const T = FX.track; const fr = Math.max(0, Math.min(T.n - 1, Math.floor(mediaEl.currentTime * T.fps)));
+    const T = FX.track; const fr = Math.max(0, Math.min(T.n - 1, Math.floor(songNow() * T.fps)));
     return FX.core.dec(k, T.data[fr * T.F + k]);
   }
   return FX.core ? fxFallback()[k] : fxDemo(name);
@@ -3256,7 +3353,7 @@ function stemStandIn(k) {
 function stemVal(k) {
   if (fxSong() && STEMS.el !== mediaEl && (STEMS.asked !== mediaEl || realNow() - STEMS.askedAt > 8000)) { STEMS.asked = mediaEl; STEMS.askedAt = realNow(); post({ type: 'audio-stems-want' }); }
   const T = STEMS.track;
-  if (fxSong() && T && STEMS.el === mediaEl) return T.data[Math.max(0, Math.min(T.n - 1, Math.floor(mediaEl.currentTime * T.fps))) * T.F + k] / 255;
+  if (fxSong() && T && STEMS.el === mediaEl) return T.data[Math.max(0, Math.min(T.n - 1, Math.floor(songNow() * T.fps))) * T.F + k] / 255;
   return stemStandIn(k);
 }
 const stemsView = Object.defineProperties({}, Object.fromEntries([...STEMS.keys.map((key, k) => [key, { enumerable: true, get: () => stemVal(k) }]),
@@ -3382,12 +3479,12 @@ function loopSceneT() {
   const L = ctxLayer ? layers.get(ctxLayer) : null;
   if (L?.props.pcOf) return keyTime(L);
   if (SQ.on) return L?.props.seqT0 != null ? sqLocal(L) : SQ.T;
-  return mediaEl && !liveKind ? mediaEl.currentTime : realNow() / 1000;
+  return mediaEl && !liveKind ? songNow() : realNow() / 1000;
 }
 // performance.now() / a frame's time for a layer while the loop is on (null: not this page's business)
 function loopNowMs() {
   if (!LOOPC.on || SQ.on || !mediaEl || liveKind) return null;
-  if (ctxLayer) return loopFold(mediaEl.currentTime) * 1000;
+  if (ctxLayer) return loopFold(songNow()) * 1000;
   if (LOOPC.importing && layerOfStack(new Error().stack)) return 0;
   return null;
 }
@@ -3427,7 +3524,9 @@ function loopMessage(msg) {
 }
 globalThis.media = media;
 let stateTimer = 0;
-const sendState = (x) => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended, ...(fclock && isVideo ? { frame: fpres.frame } : {}), ...x }); };
+// (round 77, labaudio77) lead: while a song plays, how far its element runs ahead of the speakers (s): the Lab's playhead
+// shows what's heard
+const sendState = (x) => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended, ...(fclock && isVideo ? { frame: fpres.frame } : {}), ...(!mediaEl.paused && !avRendered() && AV.src ? { lead: Math.round(AV.lead * 1e4) / 1e4 } : {}), ...x }); };
 // Loop points (A–B) are checked every frame here, so the loop is tight; a recording can stop exactly at B.
 let region = null;
 let trim = null; // the song's in / out (round 6, the Lab's /song-trim): plays only between them
@@ -3449,11 +3548,12 @@ function mediaTick() {
     mediaEl.pause();
   } else if (region && loopOn && recUntil == null && prevT >= region.a - 0.1 && prevT < region.b && t >= region.b) {
     if (LOOPC.on) loopSeam(); // (round 31, perfectloop) the last beat blending into the first
+    avJump(true, region.a); // (round 77: the pictures wrap when the sound does)
     mediaEl.currentTime = region.a;
     sendState();
   } else if (trim && !(region && loopOn) && prevT < trim.b && t >= trim.b) {
     // the trimmed song's end: loop back to its start, or stop there like the end of the file
-    if (loopOn && recUntil == null) { mediaEl.currentTime = trim.a; sendState(); } else { mediaEl.pause(); mediaEl.currentTime = trim.b; post({ type: 'media-state', time: trim.b, duration: mediaEl.duration || 0, playing: false, ended: true }); }
+    if (loopOn && recUntil == null) { avJump(true, trim.a); mediaEl.currentTime = trim.a; sendState(); } else { mediaEl.pause(); mediaEl.currentTime = trim.b; post({ type: 'media-state', time: trim.b, duration: mediaEl.duration || 0, playing: false, ended: true }); }
   }
   prevT = mediaEl.currentTime;
 }
@@ -3483,14 +3583,9 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   srcNode.connect(gainNode);
   if (recDest) srcNode.connect(recDest);
   gainNode.gain.value = volume;
-  for (const ev of ['play', 'pause', 'ended', 'seeked', 'loadedmetadata']) m.addEventListener(ev, sendState);
-  m.addEventListener('play', mediaKick); // (round 55: the loop points / trim / recording end, while it plays)
   fpres.frame = -1; fpres.time = 0; fpart = -1; fwant = null;
-  if (video) watchFrames(m);
-  // (round 26, smooth26) the 4×/s position report runs only while it plays (a paused song woke the page for nothing)
-  const stateTick = () => { if (mediaEl !== m) return; clearInterval(stateTimer); stateTimer = m.paused ? 0 : realSetInterval(() => { if (!m.paused) sendState(); }, 250); };
-  for (const ev of ['play', 'pause', 'ended']) m.addEventListener(ev, stateTick);
-  stateTick();
+  wireMedia(m);
+  avJump(); // (round 77, labaudio77) a new song: its clock starts over
   m.addEventListener('loadedmetadata', async () => {
     // a recorder's WebM doesn't say how long it is (Infinity): seek past the end once so the browser measures it
     if (m.duration === Infinity) await new Promise((res) => { const t = realSetTimeout(res, 6000); m.addEventListener('durationchange', () => { if (Number.isFinite(m.duration)) { clearTimeout(t); res(); } }); try { m.currentTime = 1e101; } catch { res(); } });
@@ -3502,6 +3597,26 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
     if (playing) { actx.resume(); m.play().catch((err) => post({ type: 'console', level: 'warn', text: `Couldn't start playback: ${err.message}` })); }
   }, { once: true });
   m.addEventListener('error', () => post({ type: 'error', message: `Couldn't play ${name} (${m.error?.message || 'unsupported format'})` }));
+}
+// (round 77, labaudio77) what a song's element is hooked to, the same for a new song and for the one a device switch
+// makes again (avRebuild): the position reports, the loop points' frame loop, footage frames, the song clock's jumps
+function wireMedia(m) {
+  for (const ev of ['play', 'pause', 'ended', 'seeked', 'loadedmetadata']) m.addEventListener(ev, sendState);
+  m.addEventListener('play', mediaKick); // (round 55: the loop points / trim / recording end, while it plays)
+  if (isVideo) watchFrames(m);
+  // (round 26, smooth26) the 4×/s position report runs only while it plays (a paused song woke the page for nothing);
+  // (round 77) it also looks after the sound output (avWatch)
+  const stateTick = () => { if (mediaEl !== m) return; clearInterval(stateTimer); stateTimer = m.paused ? 0 : realSetInterval(() => { if (!m.paused && mediaEl === m) { sendState(); avWatch(); } }, 250); };
+  for (const ev of ['play', 'pause', 'ended']) m.addEventListener(ev, stateTick);
+  stateTick();
+  // the song clock (round 77): a start from pause or after a stall starts it fresh there; a seek while it plays (the
+  // timeline, a loop wrap, the song's own loop, a sequence putting it back) keeps the old spot until the sound changes
+  // ('playing' also comes right after a seek: a seek's own start stands then, the picture keeps the old spot until
+  // the sound changes)
+  const fresh = () => { if (mediaEl === m) avJump(false, m.currentTime); };
+  m.addEventListener('play', fresh);
+  m.addEventListener('playing', () => { if (realNow() - (m.__seekAt || -1e9) > 600) fresh(); });
+  m.addEventListener('seeking', () => { m.__seekAt = realNow(); if (mediaEl === m) avJump(!m.paused, m.currentTime); });
 }
 // The sketch you switch to has no song: the one playing stops and goes (the page stays).
 function unloadMedia() {
@@ -3530,15 +3645,208 @@ function mediaCommand({ cmd, value, req = null, frameStop = false, ack = false }
     else if (trim && !(region && loopOn) && (mediaEl.currentTime < trim.a - 0.01 || mediaEl.currentTime >= trim.b - 0.01)) mediaEl.currentTime = trim.a;
     if (fparts && partAt(mediaEl.currentTime) < 0 && partAfter(mediaEl.currentTime) < 0) enterPart(0); // played from after the last part: from the top
     prevT = mediaEl.currentTime;
+    avJump(false, mediaEl.currentTime); // (round 77: the song clock starts here)
     mediaEl.play().catch(() => {});
   }
   if (cmd === 'region') { region = value; applyLoop(); }
   if (cmd === 'trim') { trim = value && value.b > value.a ? value : null; applyLoop(); }
   if (cmd === 'pause') { mediaEl.pause(); if (frameStop && fclock && isVideo) stopOnFrame(req); }
-  if (cmd === 'seek') { if (fclock && isVideo) { fwant = req != null ? { req, at: performance.now() } : fwant; fholdUntil = 0; } mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - (fclock && isVideo ? 0.0005 : 0.01))); if (fparts && isVideo) fpart = partAt(value); if (ack) ackSeek(); else sendState(); }
+  if (cmd === 'seek') { if (fclock && isVideo) { fwant = req != null ? { req, at: performance.now() } : fwant; fholdUntil = 0; } mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - (fclock && isVideo ? 0.0005 : 0.01))); avJump(!mediaEl.paused, mediaEl.currentTime); if (fparts && isVideo) fpart = partAt(value); if (ack) ackSeek(); else sendState(); }
   if (cmd === 'loop') { loopOn = Boolean(value); applyLoop(); }
   if (cmd === 'volume') gainNode.gain.value = value;
   if (cmd === 'rate') { mediaEl.defaultPlaybackRate = value; mediaEl.playbackRate = value * (fparts?.[fpart]?.speed || 1); sendState(); }
+}
+
+// ---------- the song's clock, the page's side (round 77, labaudio77; the math is <avsync-core> above) ----------
+// songNow(): the song's time as heard when this frame shows. In a frame it's worked out once (the first read) and every
+// read of that frame gets the same value; paused it's the element's exact time. A sample is taken at most every 4 ms
+// (each frame at 240 Hz): the AudioContext's output timestamp when it has one (the context time at the speakers and
+// when: the output path's real delay, Bluetooth included), else the element's time minus base + output latency.
+// Footage and recordings use the time rendered (no output path): footage's own picture leads its sound by that path
+// too (the pictures follow the picture), and a recording records what's rendered.
+const AV = { core: avsyncCore(), S: null, E: -1, el: null, t: 0, at: -1e9, src: 0, lead: 0, step: 0.01, lastPos: NaN, ring: null, rn: 0, ri: 0, fr: null, fn: 0, fi: 0, sx: 0, sy: 0, held: true, jTo: NaN, jAt: 0, off: false };
+AV.S = AV.core.make();
+// the page moved the song: a start (from pause, a new song) or a seek while it plays; to: where
+function avJump(seek = false, to = NaN) {
+  const now = realNow();
+  if (seek && to === AV.jTo && now - AV.jAt < 500) return; // the same seek again (its 'seeking' event, after the command)
+  AV.jTo = to; AV.jAt = now;
+  if (seek && mediaEl) mediaEl.__seekAt = now;
+  AV.core.jump(AV.S, seek, to);
+}
+const avRendered = () => isVideo || Boolean(recorder);
+function avSample(nowMs) {
+  const m = mediaEl; const rate = m.playbackRate || 1; const pos = m.currentTime;
+  if (pos !== AV.lastPos) { const d = pos - AV.lastPos; if (d > 0.0005 && d < 0.05) AV.step += (d - AV.step) * 0.05; AV.lastPos = pos; } // (the element's step: one audio callback)
+  let x; let y;
+  const ts = actx && actx.state === 'running' && actx.getOutputTimestamp ? actx.getOutputTimestamp() : null;
+  const c = actx ? actx.currentTime : 0;
+  if (ts && ts.performanceTime > 0 && ts.contextTime > 0 && c >= ts.contextTime && c - ts.contextTime < 0.6) {
+    x = ts.performanceTime / 1000; AV.lead = c - ts.contextTime;
+    y = avRendered() ? pos : pos - rate * AV.lead; AV.src = avRendered() ? 3 : 1;
+  } else {
+    AV.lead = actx ? (actx.baseLatency || 0) + (actx.outputLatency || 0) : 0;
+    x = nowMs / 1000; y = pos + (AV.step / 2) * rate - (avRendered() ? 0 : rate * AV.lead); AV.src = avRendered() ? 3 : 2;
+  }
+  AV.core.feed(AV.S, x, y, rate, pos); AV.sx = x; AV.sy = y;
+  if (AV.ring) { const i = (AV.ri % AV.rn) * 4; AV.ring[i] = x; AV.ring[i + 1] = y; AV.ring[i + 2] = pos; AV.ring[i + 3] = nowMs; AV.ri += 1; }
+}
+function songNow() {
+  const m = mediaEl;
+  if (!m) return 0;
+  if (m.paused || SQ.off || AV.off) { AV.held = true; return m.currentTime; }
+  if (AV.el !== m || AV.held) { AV.el = m; AV.held = false; avJump(false, m.currentTime); } // (a start: before its 'play' event arrives)
+  if (FR.inRaf) {
+    if (AV.E === FR.E) return AV.t;
+    AV.E = FR.E;
+    const now = realNow();
+    if (now - AV.at >= 4) { AV.at = now; avSample(now); }
+    AV.t = AV.core.read(AV.S, (FR.t + dispMs) / 1000); // (shown one screen frame after the frame's time)
+    if (AV.fr) { const i = (AV.fi % AV.fn) * 5; const sh = FR.t + dispMs; AV.fr[i] = sh; AV.fr[i + 1] = AV.t; AV.fr[i + 2] = AV.sy + (m.playbackRate || 1) * (sh / 1000 - AV.sx); AV.fr[i + 3] = m.currentTime; AV.fr[i + 4] = AV.src; AV.fi += 1; } // (checks: the newest audio-clock sample carried to the show time, and the raw element time the page used before)
+    return AV.t;
+  }
+  const now = realNow();
+  if (now - AV.at >= 4) { AV.at = now; avSample(now); }
+  return AV.core.read(AV.S, now / 1000);
+}
+
+// ---------- the sound output changing under a playing song (round 77, labaudio77) ----------
+// Headphones plugged in, an audio interface switched, the output's sample rate changed (44.1 ↔ 48 kHz), the system
+// taking the output away for a moment: the song must keep sounding, once. While a song plays the position report's
+// timer (4×/s) looks: a context the system suspended or interrupted is resumed; one that stays silent (closed, its
+// clock stuck for over a second, or not back 1.5 s after a resume) is made again. A device change (this page's own
+// devicechange, or the Lab window's, sent as 'av-devices') checks the output's rate: a new rate makes the song's
+// sound path again at that rate (no resampling, the shortest output path). Made again = a new context and a new
+// element on the same file, ready at the spot the old one is about to reach; the old one pauses exactly there and
+// the new one starts (never both at once), then the old one is let go. The pictures stay on what's heard throughout.
+// Not while a recording runs (its sound is tied to the old context): only a resume then.
+const AVD = { busy: false, n: 0, log: [], lastC: -1, stuckAt: 0, resumeAt: 0, devT: 0, probeRate: 0, threeResumed: 0, prev: null };
+function avNote(what, extra = {}) {
+  const e = { at: Date.now(), what, rate: actx?.sampleRate || 0, state: actx?.state || '', ...extra };
+  AVD.log.push(e); if (AVD.log.length > 20) AVD.log.shift();
+  post({ type: 'av-event', ...e });
+}
+function avWatch() {
+  const m = mediaEl;
+  if (!m || m.paused || !actx || AVD.busy) return;
+  if (actx.state === 'closed') { avRebuild('its sound output closed'); return; }
+  if (actx.state !== 'running') { // suspended / interrupted: nobody here suspends it
+    if (!AVD.resumeAt) { AVD.resumeAt = realNow(); actx.resume().catch(() => {}); return; }
+    if (realNow() - AVD.resumeAt > 1500) { AVD.resumeAt = 0; avRebuild('its sound output stopped and did not come back'); }
+    return;
+  }
+  if (AVD.resumeAt) { AVD.resumeAt = 0; avNote('resumed'); }
+  const c = actx.currentTime;
+  if (c === AVD.lastC) { if (!AVD.stuckAt) AVD.stuckAt = realNow(); else if (realNow() - AVD.stuckAt > 1200) { AVD.stuckAt = 0; avRebuild('its sound output stopped moving'); return; } } else AVD.stuckAt = 0;
+  AVD.lastC = c;
+}
+// the output's own rate now (a context made and closed: only on a device change)
+function avOutputRate() {
+  if (AVD.probeRate) return AVD.probeRate; // (checks: a simulated device)
+  try { const p = new AudioContext(); const r = p.sampleRate; p.close().catch(() => {}); return r; } catch { return 0; }
+}
+function avDevices() {
+  clearTimeout(AVD.devT);
+  AVD.devT = realSetTimeout(() => {
+    try { const T = OWN.threeAC; if (T && T.state === 'suspended' && !parked) { T.resume().catch(() => {}); AVD.threeResumed += 1; } } catch { /* three's own */ }
+    if (!mediaEl || !actx) return;
+    const r = avOutputRate();
+    if (r && r !== actx.sampleRate) { avRebuild(`the output's sample rate is now ${r / 1000} kHz`, r); return; }
+    avNote('device changed');
+    avWatch();
+  }, 300);
+}
+try { navigator.mediaDevices?.addEventListener?.('devicechange', avDevices); } catch { /* none here: the Lab window tells */ }
+const avOnce = (el, ev, ms) => new Promise((r) => { const t = realSetTimeout(() => r(false), ms); el.addEventListener(ev, () => { clearTimeout(t); r(true); }, { once: true }); });
+async function avRebuild(why, rate = 0) {
+  if (AVD.busy || !mediaEl || !actx) return false;
+  if (recorder) { actx.resume().catch(() => {}); avNote('kept (recording)', { why }); return false; }
+  AVD.busy = true; const t0 = realNow();
+  const old = mediaEl; const oldCtx = actx; const oldSrc = srcNode; const playing = !old.paused; const vol = gainNode ? gainNode.gain.value : 1;
+  try {
+    const ctx = rate ? new AudioContext({ sampleRate: rate }) : new AudioContext();
+    const an = ctx.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0.6;
+    const g = ctx.createGain(); g.gain.value = vol; g.connect(ctx.destination);
+    const m = document.createElement('video');
+    m.playsInline = true; m.preload = 'auto'; m.loop = old.loop; m.defaultPlaybackRate = old.defaultPlaybackRate; m.playbackRate = old.playbackRate; m.src = mediaUrl;
+    const s2 = ctx.createMediaElementSource(m); s2.connect(an); s2.connect(g);
+    if (!(await avOnce(m, 'loadedmetadata', 4000))) throw new Error('the song did not load again');
+    if (ctx.state !== 'running') await ctx.resume().catch(() => {});
+    // ready where the old one will be in a moment when it still sounds (it plays on meanwhile: no silence), else at
+    // the spot it stopped
+    const sounding = playing && oldCtx.state === 'running' && !AVD.stuckAt;
+    const ahead = sounding ? 0.12 * (old.playbackRate || 1) : 0;
+    const at = Math.min(old.currentTime + ahead, Math.max(0, (old.duration || Infinity) - 0.05));
+    m.currentTime = at; await avOnce(m, 'seeked', 2000);
+    let handed = old.currentTime;
+    if (playing && sounding) { const until = realNow() + 600; while (old.currentTime < at - 0.003 && !old.paused && realNow() < until) await new Promise((r) => realSetTimeout(r, 1)); handed = old.currentTime; }
+    if (mediaEl !== old) { try { m.removeAttribute('src'); m.load(); ctx.close(); } catch { /* fine */ } return false; } // (another song meanwhile)
+    old.pause(); // the old one stops here…
+    if (Math.abs(handed - at) > 0.02 || !sounding) { m.currentTime = handed; await avOnce(m, 'seeked', 1000); }
+    mediaEl = m; actx = ctx; analyser = an; gainNode = g; srcNode = s2; recDest = null; // (a recording makes its own on this one)
+    if (liveSrc && liveStream) { try { liveSrc.disconnect(); s2.disconnect(an); } catch { /* fine */ } liveSrc = ctx.createMediaStreamSource(liveStream); liveSrc.connect(an); }
+    avHook(ctx);
+    wireMedia(m);
+    avJump(playing, handed);
+    if (playing) await m.play().catch(() => {}); // …and the new one goes on from there: never both
+    try { oldSrc?.disconnect(); } catch { /* fine */ }
+    old.removeAttribute('src'); old.load(); oldCtx.close().catch(() => {}); AVD.prev = old;
+    if (isVideo) videoTex = null; // (media.texture() makes one on the new element)
+    AVD.n += 1; AVD.lastC = -1; AVD.stuckAt = 0; AVD.resumeAt = 0;
+    avNote('sound made again', { why, ms: Math.round(realNow() - t0), from: oldCtx.sampleRate });
+    sendState();
+    return true;
+  } catch (err) { avNote('could not make the sound again', { why, error: String(err?.message || err) }); return false; } finally { AVD.busy = false; }
+}
+// the context's own signals: a state change is looked at at once; a render error makes it again
+function avHook(ctx) {
+  try { ctx.addEventListener('statechange', () => { if (ctx === actx && mediaEl && !mediaEl.paused) realSetTimeout(avWatch, 60); }); } catch { /* fine */ }
+  try { ctx.addEventListener('error', () => { if (ctx === actx) avRebuild('its sound output failed'); }); } catch { /* fine */ }
+}
+// (checks, /hear sync) window.__labAV: the state, the song clock's readout, a frame / sample log, simulated device events
+window.__labAV = {
+  state() {
+    const I = AV.core.I; const S = AV.S;
+    // the song's elements playing now (the song's and the one a device switch replaced: never both)
+    const playingEls = (mediaEl && !mediaEl.paused ? 1 : 0) + (AVD.prev && AVD.prev !== mediaEl && !AVD.prev.paused ? 1 : 0);
+    return {
+      song: Boolean(mediaEl), playing: Boolean(mediaEl && !mediaEl.paused), video: isVideo, silent: SILENT,
+      source: ['', 'output clock', 'latency', 'rendered'][AV.src] || 'none', leadMs: Math.round(AV.lead * 10000) / 10, stepMs: Math.round(AV.step * 10000) / 10,
+      slopePpm: Math.round(S[I.B] * 1e6), starts: S[I.SNAPS], samples: S[I.N], lastErrMs: Math.round(S[I.ERR] * 10000) / 10, jump: { at: AV.jAt, to: AV.jTo },
+      ctx: actx ? { state: actx.state, rate: actx.sampleRate, base: actx.baseLatency, output: actx.outputLatency } : null,
+      volume: gainNode ? gainNode.gain.value : null, recoveries: AVD.n, log: AVD.log.slice(-8), threeResumed: AVD.threeResumed, playingEls,
+      time: mediaEl ? mediaEl.currentTime : null, heard: mediaEl ? songNow() : null, dispMs,
+    };
+  },
+  // the next n frames and audio-clock samples ([x, y, element, now]) are kept
+  watch(n = 0) { AV.fn = n; AV.fi = 0; AV.fr = n ? new Float64Array(n * 5) : null; AV.rn = n; AV.ri = 0; AV.ring = n ? new Float64Array(n * 4) : null; return n; },
+  // [show time ms, the time the frame used, the newest audio-clock sample at the show time, the raw element time, source]
+  frames() { const out = []; if (!AV.fr) return out; const k = Math.min(AV.fi, AV.fn); for (let j = AV.fi - k; j < AV.fi; j += 1) { const i = (j % AV.fn) * 5; out.push([AV.fr[i], AV.fr[i + 1], AV.fr[i + 2], AV.fr[i + 3], AV.fr[i + 4]]); } return out; },
+  samples() { const out = []; if (!AV.ring) return out; const k = Math.min(AV.ri, AV.rn); for (let j = AV.ri - k; j < AV.ri; j += 1) { const i = (j % AV.rn) * 4; out.push([AV.ring[i], AV.ring[i + 1], AV.ring[i + 2], AV.ring[i + 3]]); } return out; },
+  // the output timestamp right now, raw: { ctx, contextTime, performanceTime, pos, rate } (the checks' own reference)
+  raw() { const ts = actx?.getOutputTimestamp?.() || {}; return { ctx: actx?.currentTime ?? null, contextTime: ts.contextTime ?? null, performanceTime: ts.performanceTime ?? null, pos: mediaEl?.currentTime ?? null, rate: mediaEl?.playbackRate || 1, now: realNow() }; },
+  // simulated: a device change (with a new output rate), the system suspending / closing the output, a stuck clock
+  device(rate = 0) { AVD.probeRate = rate || 0; avDevices(); return true; },
+  suspend() { return actx?.suspend().then(() => actx.state); },
+  close() { return actx?.close().then(() => 'closed'); },
+};
+// backstage (round 77): a page that runs a scene nobody's looking at plays nothing out loud: every AudioContext's
+// destination is a silent gain in front of the real one (the song's clock, its analyser and three.js' THREE.Audio all
+// still run), and a media element of a sketch's own is muted when it plays (the song's element isn't: it goes through
+// the context, muted it would feed the analyser silence)
+const SILENT = new URLSearchParams(location.search).get('silent') === '1';
+if (SILENT) {
+  try {
+    const BAC = window.BaseAudioContext?.prototype; const d = BAC && Object.getOwnPropertyDescriptor(BAC, 'destination');
+    if (d?.get) {
+      const mute = new WeakMap(); let making = false;
+      // (the playback volume hook wraps connect and reads the destination itself: while the muted gain is being
+      // connected, the real one is answered)
+      Object.defineProperty(BAC, 'destination', { configurable: true, enumerable: d.enumerable, get() { const real = d.get.call(this); if (making || !(this instanceof AudioContext)) return real; let g = mute.get(this); if (!g) { making = true; try { g = this.createGain(); g.gain.value = 0; mute.set(this, g); g.connect(real); } finally { making = false; } } return g; } });
+    }
+    const play0 = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...a) { if (this !== mediaEl) this.muted = true; return play0.apply(this, a); };
+  } catch { /* an old engine: the song's volume is 0 anyway */ }
 }
 
 // ---------- footage frames (round 8, labframes) ----------
@@ -3716,7 +4024,7 @@ function blReady() {
 }
 // an export frame waits for the math when its layers have links (never a first frame without them)
 async function blWait() { if (!globalThis.beatlink && [...layers.values()].some((L) => L.props.links)) { blReady(); await BL.want; } }
-const blTime = () => (liveKind ? realNow() / 1000 : mediaEl ? mediaEl.currentTime : SQ.on ? SQ.T : realNow() / 1000);
+const blTime = () => (liveKind ? realNow() / 1000 : mediaEl ? songNow() : SQ.on ? SQ.T : realNow() / 1000);
 function blStemFn(k) { const T = STEMS.track; return fxSong() && T && STEMS.el === mediaEl ? (t) => T.data[Math.max(0, Math.min(T.n - 1, Math.floor(t * T.fps))) * T.F + k] / 255 : null; }
 // live drum hits: a rising edge of the heard hit pulse (kickOn / snareOn / hatOn), counted
 function blLiveHit(name) {
@@ -5597,7 +5905,7 @@ function evalKeys(keys, t, base) {
   if (typeof a.v === 'string' && typeof b.v === 'string') return mixColor(a.v, b.v, u);
   return a.v + (b.v - a.v) * u;
 }
-const songTime = () => (SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : null);
+const songTime = () => (SQ.on ? SQ.T : mediaEl ? songNow() : null);
 // ---------- precomps: the clocks (round 10 "comp"; the rest is in "precomps" after the sequence) ----------
 // A precomp is a layer made of another scene's layers. Those layers (props.pcOf = the precomp's id) live on their own
 // scene's clock: the precomp's time, i.e. the time of the scene the precomp sits in, through its start / speed /
@@ -5614,7 +5922,7 @@ function hostTime(P) {
   const G = P.props.pcOf ? layers.get(P.props.pcOf) : null;
   if (G) return pcTime(G);
   if (SQ.on) return P.props.seqT0 != null ? sqLocal(P) : SQ.T;
-  return mediaEl ? mediaEl.currentTime : realNow() / 1000;
+  return mediaEl ? songNow() : realNow() / 1000;
 }
 // the precomp's own scene time now: (host − start) × speed + offset, or its time-remap keys (After Effects' Time
 // Remap: host seconds → its seconds), looped over its length (or held on its last frame)
@@ -5653,7 +5961,7 @@ function layerMix(L) {
   if (p.pcOf && !layers.get(p.pcOf)?.pcMounted) return 0;
   const op = prop(L, 'opacity', 1);
   if (!mediaEl && !SQ.on && !p.pcOf) return op;
-  const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : mediaEl.currentTime;
+  const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : songNow();
   if (p.in != null && t < p.in) return 0;
   if (p.out != null && t >= p.out) return 0;
   let k = 1;
@@ -5886,7 +6194,7 @@ globalThis.__layerClock = (id) => {
   const L = layers.get(id);
   if (!L) return null;
   const p = L.props;
-  const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : performance.now() / 1000;
+  const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : mediaEl ? songNow() : performance.now() / 1000;
   if (p.pcOf) return t;
   if (p.seqT0 != null) return (t - p.seqT0) * (p.seqRate || 1);
   if (mediaEl) return t;
@@ -5899,7 +6207,7 @@ Object.defineProperty(globalThis, 'layer', {
     if (!L) return null;
     const p = L.props;
     // (a precomp's layer: its own scene's clock)
-    const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : mediaEl ? mediaEl.currentTime : performance.now() / 1000;
+    const t = p.pcOf ? keyTime(L) : SQ.on ? SQ.T : mediaEl ? songNow() : performance.now() / 1000;
     return { id: L.id, name: p.name, in: p.in ?? null, out: p.out ?? null, clock: t, time: p.seqT0 != null ? (t - p.seqT0) * (p.seqRate || 1) : p.in != null ? t - p.in : t, scene: p.pcOf ? t : p.seqT0 != null ? (t - p.seqT0) * (p.seqRate || 1) : mediaEl ? t : null, progress: p.in != null && p.out != null ? (t - p.in) / (p.out - p.in) : null, mix: layerMix(L) };
   },
 });
@@ -8025,7 +8333,7 @@ globalThis.filter = (type, P = {}) => {
     FT60[1] += realNow() - c0;
     renderer.__fxBytes = size.x * size.y * 4 + (targets ? size.x * size.y * 16 : 0);
     uniforms.uRes.value.set(Math.round(innerWidth * devicePixelRatio), Math.round(innerHeight * devicePixelRatio));
-    const t = mediaEl ? mediaEl.currentTime : (performance.now() - t0) / 1000;
+    const t = mediaEl ? songNow() : (performance.now() - t0) / 1000;
     setFilterMusic(uniforms, t);
     setFxParams(def, P, refs);
     L.fx.frame?.(); // (round 24: a filter's own textures, e.g. a grade's LUT)
@@ -10579,7 +10887,7 @@ globalThis.shapeLayer = (P = {}, opts = {}) => {
     let t;
     const clocked = Boolean(p.pcOf || p.seqT0 != null || SQ.on);
     if (clocked) t = globalThis.__layerClock?.(L.id) ?? 0;
-    else if (mediaEl && !liveKind) t = mediaEl.currentTime; // (the song's time, as a render's: Starts at sets where it draws on)
+    else if (mediaEl && !liveKind) t = songNow(); // (the song's time, as a render's: Starts at sets where it draws on)
     else {
       const dk = `${mode}|${v.dur}|${v.delay}|${v.hold}|${v.ease}|${v.reverse}|${v.offset}`;
       if (dk !== drawKey) { drawKey = dk; t0 = realNow(); } // (no song: a changed draw-on plays again)
@@ -12152,7 +12460,7 @@ function installRunGuards() {
         // (labpace) f60: this frame's length in 60 fps frames (a cap's skipped frames count; a pause starts again at 1)
         globalThis.f60 = PACE.core.f60(lt < 0 ? -1 : t - lt); lt = t;
         if (o.L) o.L.dzRun = frameTick; // (round 44, idlecpu: it ran this frame; see "dozing")
-        within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(mediaEl.currentTime) * 1000 : t);
+        within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(songNow()) * 1000 : t);
         if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
       };
       e = { o, run };
@@ -13588,10 +13896,12 @@ function sqClock() {
   const wall = SQ.T0 + ((realNow() - SQ.at0) / 1000) * SQ.rate;
   if (s && !mediaEl.paused && !mediaEl.seeking && sqInSong(wall)) {
     const t = mediaEl.currentTime + s.offset;
-    // the song leads while it plays (a few ms of jitter in its clock are smoothed by the wall clock); a song that
-    // jumped away (something else moved it: a page restarting, the music timeline) is put back instead (seqguard)
+    // a song that jumped away (something else moved it: a page restarting, the music timeline) is put back (seqguard)
     if (Math.abs(t - wall) > 0.6) { mediaEl.currentTime = Math.max(0, wall - s.offset); return wall; }
-    if (Math.abs(t - wall) > 0.03) { SQ.T0 = t; SQ.at0 = realNow(); return t; }
+    // (round 77, labaudio77) the song leads while it plays, on its clock as heard (songNow: fitted on the audio clock,
+    // no 10 ms steps, no drift): the wall clock only carries the sequence where the song isn't. Before, the wall clock
+    // led and was put back on the song only past 30 ms apart: a sound card 0.02 % off made a 30 ms jump every 2.5 min
+    const h = songNow() + s.offset; SQ.T0 = h; SQ.at0 = realNow(); return h;
   }
   return wall;
 }
@@ -14367,6 +14677,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'lib') { libGot(msg); return; } // (round 25, diet) motion / lab3d code from the hub
   if (msg.type === 'grade-lut') gradeSetLut(msg.name, msg.N, msg.data); // (round 24) an imported .cube LUT (tools/three-grade.js)
   if (msg.type === 'media') mediaCommand(msg);
+  if (msg.type === 'av-devices') avDevices(); // (round 77, labaudio77: the Lab window heard a device change)
   if (msg.type === 'media-map') beatMap = msg;
   if (msg.type === 'media-clock') { fclock = msg.clock ? { fps: msg.clock.fps || 30, times: msg.clock.times || null, frames: msg.clock.frames || 0, exact: Boolean(msg.clock.exact) } : null; if (mediaEl && fclock) fpres.frame = fFrameAt(fpres.time || mediaEl.currentTime); }
   if (msg.type === 'media-cuts') { fparts = msg.parts?.length ? msg.parts : null; fpart = fparts && mediaEl ? partAt(mediaEl.currentTime) : -1; if (!fparts && mediaEl) { mediaEl.playbackRate = mediaEl.defaultPlaybackRate || 1; mediaEl.muted = false; fholdUntil = 0; } }

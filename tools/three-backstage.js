@@ -2,13 +2,56 @@
 // the call here). It's a second, hidden Lab sandbox with the same director API shape the Lab gives
 // tools/three-director.js (codeOf, updateLayer, report, shot, evalInSketch…), so the director's usual loop works:
 // edit code, see errors / console / fps, take screenshots, evaluate code. Edits land in that chat's sketch (saved
-// like any edit) and show the next time you open the chat. No music backstage (the demo beat plays) and no
-// references; tools that need the scene on screen (sliders, looks, music, timeline, notes, input…) answer with a
-// short note. One call at a time; the sandbox only runs while a background director works.
+// like any edit) and show the next time you open the chat. Tools that need the scene on screen answer with a short
+// note. One call at a time; the sandbox only runs while a background director works.
+// (round 77, labaudio77) A song scene runs on its song backstage, SILENTLY (the page's sound goes to a muted output,
+// ?silent=1): the song plays in the page at volume 0, with the same analysis (beats, grid, bar 1, sections, drops), the
+// same beat map (your grid, markers, cues) and the same whole-song features as on screen, so sketches that read
+// audio.beat / audio.bar / audio.feat.kickOn, keyframed layers, presets that follow beats and "a frame at 1 s" behave
+// as they would in front of you. The song's analysis is made once per file (in a Worker, like the Lab's) and kept by
+// labload75's file key (path | size | modified time): see SongPrep below.
 // (round 22, labcrew) ThreeBackstage.make(opts) makes another, independent stage: a crew (tools/three-crew.js) runs
 // one per variation, in parallel, smaller and slower ({ long, cap }), on its own scene data ({ scenes }: the shape of
 // ThreeLab.scenes), with its pictures sent to opts.onStill instead of a chat row. A call whose route names a stage
 // (route.stage) goes to that stage.
+// (round 77, labaudio77) a song's analysis for a scene that runs backstage: the file read and analysed once (the same
+// analysis the Lab on screen makes: ThreeMedia.analyze, the decode off the main thread and the math in a Worker), kept
+// by labload75's file key (path | size | modified time, as the preview's asset cache keys a file), so a song changed
+// on disk is analysed again and an unchanged one never twice. The analyses of the 8 songs used last are kept (beats,
+// grid, sections, drops: small; the samples aren't kept); the Lab on screen hands its own analysis over when it makes
+// one (put), so a scene you just looked at needs none backstage.
+const SongPrep = (() => {
+  const mem = new Map(); // key → { sig, analysis, duration }
+  const jobs = new Map();
+  const stats = { hits: 0, made: 0, handed: 0, ms: 0 };
+  async function sigOf(path) {
+    const st = await window.hub.fs.stat(path);
+    if (!st || st.error || st.isDir) throw new Error('missing');
+    return { sig: `${path}|${st.size}|${Math.round(st.mtimeMs || st.mtime || 0)}`, size: st.size };
+  }
+  async function read(path) { const u8 = await window.hub.fs.read(path, { encoding: 'buffer', maxBytes: 2 * 1024 ** 3 }); return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength); }
+  const keep = (e) => { mem.delete(e.sig); mem.set(e.sig, e); while (mem.size > 8) mem.delete(mem.keys().next().value); return e; };
+  async function get(path, bytes = null) {
+    const { sig } = await sigOf(path);
+    const hit = mem.get(sig);
+    if (hit) { stats.hits += 1; return keep(hit); }
+    if (!jobs.has(sig)) {
+      jobs.set(sig, (async () => {
+        const t0 = performance.now();
+        const a = await ThreeMedia.analyze(bytes || await read(path));
+        delete a.samples; delete a.wave;
+        stats.made += 1; stats.ms += Math.round(performance.now() - t0);
+        return keep({ sig, analysis: a, duration: a.duration });
+      })().finally(() => jobs.delete(sig)));
+    }
+    return jobs.get(sig);
+  }
+  async function put(path, analysis) {
+    if (!path || !analysis || /^scene:/.test(path)) return;
+    try { const { sig } = await sigOf(path); if (!mem.has(sig)) { const a = { ...analysis }; delete a.samples; delete a.wave; keep({ sig, analysis: a, duration: a.duration }); stats.handed += 1; } } catch { /* gone */ }
+  }
+  return { get, put, sigOf, read, has: (sig) => mem.has(sig), get size() { return mem.size; }, stats };
+})();
 function makeBackstage(opts = {}) {
   const LONG = opts.long || 640; // the backstage frame's long side in px (pictures for the model are ≤ 1280 anyway)
   const SC = () => opts.scenes || ThreeLab.scenes;
@@ -40,6 +83,9 @@ function makeBackstage(opts = {}) {
     else if (m.type === 'stats') lastStats = { fps: m.fps, worstFrameMs: m.worst, renderMs: m.ms, drawCalls: m.calls, triangles: m.triangles, points: m.points, lines: m.lines, textures: m.textures, fpsCap: 15 };
     else if (m.type === 'shot' && pendingShot) { const fn = pendingShot; pendingShot = null; if (fn.t0) { timing.shots += 1; timing.shotMs += Math.round(performance.now() - fn.t0); } fn(m.dataUrl); }
     else if ((m.type === 'eval-result' || m.type === 'input-result') && evals.has(m.id)) { evals.get(m.id)(m); evals.delete(m.id); }
+    // (round 77, labaudio77) the song backstage: its length as the page plays it, and the audio features a sketch reads
+    else if (m.type === 'media-state' && song && m.duration > 0) song.elDur = m.duration;
+    else if (m.type === 'audio-want') audioWant(m);
   }
   function frameOf(id) {
     const f = SC()?.frameOf(id) || 'fit';
@@ -53,7 +99,7 @@ function makeBackstage(opts = {}) {
     document.body.append(host);
     // (round 16 "labperf": 15 frames a second is plenty for a scene nobody watches: the director's screenshots and
     // fps reads still work, the GPU does a quarter of the work)
-    box = ThreeLab._sandbox(host, onMessage, () => `&dpr=1&cap=${opts.cap || 15}`);
+    box = ThreeLab._sandbox(host, onMessage, () => `&dpr=1&cap=${opts.cap || 15}&silent=1`); // (round 77: nothing out loud backstage)
   }
   // Nothing backstage for a minute: the page goes blank (no GPU or CPU while nothing works in the background).
   function sleepSoon() {
@@ -99,12 +145,81 @@ function makeBackstage(opts = {}) {
     v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
     return buf;
   }
-  function syncClock(s, { fresh = false } = {}) {
+  async function syncClock(s, { fresh = false } = {}) {
+    if (await syncSong(s, { fresh })) return;
     const len = clockLenOf(s);
     if (!len) { if (clock && !fresh) { box.send({ type: 'media', cmd: 'pause' }); } clock = null; return; }
-    if (!fresh && clock?.id === s.id && Math.abs(clock.len - len) < 1e-3) return;
+    if (!fresh && clock?.id === s.id && !clock.song && Math.abs(clock.len - len) < 1e-3) return;
     clock = { id: s.id, len, time: 0 };
     box.send({ type: 'media-load', buffer: silentWav(len), mime: 'audio/wav', video: false, name: 'scene timeline', startAt: 0, playing: true, loop: true, volume: 0, analysis: null });
+  }
+  // (round 77, labaudio77) a song scene: its song, silent (volume 0 on a muted page), from its start, looping like the
+  // Lab's; the analysis and the beat map follow as soon as they're ready (the first time a few seconds in a Worker,
+  // then from memory). false: not a song scene here (or its file is gone: the scene's own timeline, as before).
+  let song = null; // { id, path, sig, name, bytes, analysis, duration, elDur, coreSent, want }
+  const songPathOf = (s) => { const p = !opts.scenes ? SC()?.songOf?.(s.id) : null; return p && /\.(mp3|wav|ogg|flac|m4a|aac|opus)$/i.test(p) ? p : null; };
+  async function syncSong(s, { fresh = false } = {}) {
+    const path = songPathOf(s);
+    if (!path) { song = null; return false; }
+    let sig;
+    try { sig = (await SongPrep.sigOf(path)).sig; } catch { song = null; return false; }
+    if (!fresh && song?.id === s.id && song.sig === sig && clock?.song) return true;
+    let bytes;
+    try { bytes = await SongPrep.read(path); } catch { song = null; return false; }
+    const name = String(path).split(/[\\/]/).pop();
+    const ext = name.split('.').pop().toLowerCase();
+    const mine = { id: s.id, path, sig, name, bytes, analysis: null, duration: 0, elDur: 0, coreSent: false, want: false };
+    song = mine;
+    clock = { id: s.id, len: Infinity, time: 0, song: true };
+    const m0 = await mapOf(path);
+    box.send({ type: 'media-load', buffer: bytes.slice(0), mime: MIMES[ext] || 'audio/mpeg', video: false, name, startAt: 0, playing: true, loop: true, volume: 0, analysis: null, trim: m0.trim || null });
+    SongPrep.get(path, bytes).then(async (e) => {
+      if (song !== mine) return;
+      mine.analysis = e.analysis; mine.duration = e.duration; clock.len = e.duration;
+      box.send({ type: 'media-analysis', analysis: e.analysis });
+      box.send({ type: 'media-map', ...ThreeMedia.songMap(e.analysis, await mapOf(path), e.duration) });
+      if (mine.want) sendTrack(mine);
+    }).catch((err) => console.warn('Backstage song analysis:', err.message));
+    return true;
+  }
+  // the song's saved map (grid, markers, cues, trim) as the Lab keeps it
+  async function mapOf(path) {
+    const P = typeof ThreeLab !== 'undefined' ? ThreeLab.director?.media : null;
+    const m = (await P?.mapAt?.(path).catch(() => null)) || null;
+    let trim = null; try { const all = await window.hub.kvGet('three-beatmaps', {}); trim = all?.[path]?.trim || null; } catch { /* none */ }
+    return { grid: m?.grid || null, marks: m?.marks || { kick: [], snare: [], hit: [] }, cues: m?.cues || [], trim };
+  }
+  // the page asked for the audio features (a sketch or a slider read one): the analysis core, and the song's
+  // whole-song features from ThreeAudio (the same cache the Lab on screen uses)
+  function audioWant(m) {
+    if (song && !song.coreSent && typeof hearthAudioCore === 'function') { box.send({ type: 'audio-core', src: String(hearthAudioCore) }); song.coreSent = true; }
+    if (m.song && song) { song.want = true; sendTrack(song); }
+  }
+  function sendTrack(sg) {
+    if (!sg.analysis || sg.trackBusy || typeof ThreeAudio === 'undefined' || !ThreeAudio.trackFor) return;
+    sg.trackBusy = true;
+    ThreeAudio.trackFor({ path: sg.path, bytes: sg.bytes, duration: sg.elDur || sg.duration, drops: sg.analysis.drops || [] })
+      .then(({ track }) => { if (song === sg) box.send(ThreeAudio.trackMsg(track)); })
+      .catch((err) => console.warn('Backstage song features:', err.message))
+      .finally(() => { sg.trackBusy = false; });
+  }
+  // the song's analysis, waited for (a preset or the timeline needs its beats): null when it can't come
+  async function songReady(sketchId, ms = 30000) {
+    const path = songPathOf({ id: sketchId });
+    if (!path) return null;
+    try { return await Promise.race([SongPrep.get(path, song?.path === path ? song.bytes : null), sleep(ms).then(() => null)]); } catch { return null; }
+  }
+  const songElDur = () => song?.elDur || 0;
+  // the song as the Lab on screen's three_media_info describes it (from the same analysis), plus "silent backstage"
+  function songInfo(time) {
+    const sg = song; const a = sg?.analysis;
+    if (!sg || !a) return { loaded: true, file: sg?.path || null, time, backstage: 'silent', analysis: 'still analysing' };
+    return {
+      loaded: true, file: sg.path, video: false, duration: Math.round((sg.elDur || sg.duration) * 1000) / 1000, time: Math.round(time * 1000) / 1000, playing: true,
+      grid: { bpm: a.bpm, ...(a.grid ? { tempoSure: a.grid.tempoConf, barOneSure: a.grid.downbeatConf, straight: a.grid.straight } : {}), setBy: 'auto-detected (your own grid, when set, is used the same way)' },
+      sections: a.sections, drops: a.drops, beats: a.beats?.length || 0,
+      backstage: 'the song plays silently here, with the same beats, grid and audio features as on screen',
+    };
   }
   // (round 73) the scene's references, so model / picture / video layers draw backstage too (bytes read once per stage,
   // only this scene's kept)
@@ -157,7 +272,7 @@ function makeBackstage(opts = {}) {
       errors = errors.filter((e) => e.layer && ids.has(e.layer) && !rerun.has(e.layer));
       consoleLines = consoleLines.filter((l) => l.layer && ids.has(l.layer) && !rerun.has(l.layer));
       if (await sendRefs(s)) for (const L of Ls) if (/\brefs\.|refTexture\(/.test(L.code)) rerun.add(L.id); // (round 73) a new reference: its users run again
-      syncClock(s);
+      await syncClock(s);
       if (rerun.size) { waitDrawn = true; ran = true; started = new Promise((r) => { onStart = r; setTimeout(r, 6000); }); } else started = Promise.resolve();
       Ls.forEach((L, z) => {
         const { code, ...props } = specOf(L, z);
@@ -178,7 +293,8 @@ function makeBackstage(opts = {}) {
     box.reload();
     box.send({ type: 'tweak-init', values: {}, keys: {}, mods: {} });
     refsSig = null; await sendRefs(s, { fresh: true });
-    syncClock(s, { fresh: true });
+    if (song) song.coreSent = false; // (a fresh page has no analysis core yet)
+    await syncClock(s, { fresh: true });
     box.send({ type: 'run-layers', layers: Ls.map((L, z) => ({ ...specOf(L, z), ...(L.precomp ? { precomp: pcSpec(L, s) } : {}) })) });
     loaded = { id: s.id, sig, codes: new Map(Ls.map((L) => [L.id, codeKey(L, s)])) };
     return true;
@@ -231,7 +347,8 @@ function makeBackstage(opts = {}) {
       sliders: sliderLabels(L),
       ...(Object.keys(L.keys || {}).length ? { keyframes: Object.fromEntries(Object.entries(L.keys).map(([p, ks]) => [p.replace(/^s:/, 'slider '), ks.map((k) => `${k.t}s=${k.v}${k.ease && k.ease !== 'ease' ? ` (${k.ease})` : ''}`)])) } : {}),
     }));
-    const NOTE = `Backstage: this chat's scene "${s().name}" isn't on screen (the owner is looking at another chat), so it runs hidden, without music (its own timeline plays; a song scene gets the demo beat). Your changes are saved to it and show when the owner opens this chat.`;
+    const hasSong = () => Boolean(songPathOf({ id: sketchId }));
+    const NOTE = `Backstage: this chat's scene "${s().name}" isn't on screen (the owner is looking at another chat), so it runs hidden, ${hasSong() ? 'on its song, silently (the same beats, grid and audio features as on screen)' : 'on its own timeline'}. Your changes are saved to it and show when the owner opens this chat.`;
     const report = () => ({
       sketch: s().name,
       layer: layerName(selId()),
@@ -241,7 +358,7 @@ function makeBackstage(opts = {}) {
       stats: lastStats || 'no frames rendered yet (nothing calls renderer.render, or it failed)',
       frame: frameOf(sketchId),
       sliders: 'backstage: sliders show when the owner opens this chat',
-      music: 'none backstage (demo 120 bpm beat)',
+      music: hasSong() ? `its song, silent backstage (${song?.analysis ? `${Math.round((song.analysis.bpm || 0) * 10) / 10} bpm, the same beats as on screen` : 'analysing'})` : 'none (the scene\'s own timeline)',
       note: NOTE,
     });
     const changed = () => SC().changed(sketchId);
@@ -263,6 +380,15 @@ function makeBackstage(opts = {}) {
       const tl = SC().timelineOf?.(sketchId); const song = SC().songOf?.(sketchId);
       const m = (await player()?.mapAt?.(mapPath())) || { grid: null, marks: { kick: [], snare: [], hit: [] }, cues: [] };
       let lp = null; try { const v = store.get(`three.loop:${mapPath()}`, null); if (v?.a != null) lp = { a: v.a, b: v.b }; } catch { /* none */ }
+      // (round 77, labaudio77) a song scene: the song's own analysis and beat map, as the Lab on screen has them (its
+      // length as the page plays it, the detected grid when you set none)
+      const e = song ? await songReady(sketchId) : null;
+      if (e) {
+        const pl = loaded?.id === sketchId && songPathOf({ id: sketchId }) === song ? songElDur() : 0;
+        const dur = pl || e.duration; // (the length the page plays, as the Lab on screen uses the element's)
+        const sm = ThreeMedia.songMap(e.analysis, m, dur);
+        return { clock: false, song: String(song).split(/[\\/]/).pop(), duration: dur, fps: tl?.fps || 30, bpm: sm.bpm || 120, bpb: sm.bpb, beats: sm.beats, grid: m.grid, detected: !m.grid ? { bpm: sm.bpm, downbeat: sm.anchor } : null, marks: m.marks || {}, cues: m.cues || [], loop: lp, analysis: e.analysis };
+      }
       const duration = tl?.len || Math.max(10, Math.ceil(lastKeyT(s())));
       const g = m.grid;
       const bpm = g?.bpm || 120; const bpb = g?.bpb || 4;
@@ -371,8 +497,8 @@ function makeBackstage(opts = {}) {
       media: {
         get loaded() { return Boolean(clock && clock.id === sketchId); },
         get time() { return clock?.time || 0; },
-        info: () => (clock && clock.id === sketchId ? { loaded: false, time: clock.time || 0, sceneTimeline: { seconds: clock.len, fps: SC().timelineOf?.(sketchId)?.fps || 30, time: clock.time || 0 }, note: 'Backstage: the scene\'s own timeline, silent.' } : { loaded: false, note: 'no music backstage' }),
-        seek(t) { if (!clock || clock.id !== sketchId) return; clock.time = Math.max(0, Math.min(clock.len, Number(t) || 0)); box.send({ type: 'media', cmd: 'seek', value: clock.time }); },
+        info: () => (clock && clock.id === sketchId ? (clock.song ? songInfo(clock.time || 0) : { loaded: false, time: clock.time || 0, sceneTimeline: { seconds: clock.len, fps: SC().timelineOf?.(sketchId)?.fps || 30, time: clock.time || 0 }, note: 'Backstage: the scene\'s own timeline, silent.' }) : { loaded: false, note: hasSong() ? 'its song plays silently once the scene runs backstage' : 'no song on this scene' }),
+        seek(t) { if (!clock || clock.id !== sketchId) return; clock.time = Math.max(0, Math.min(Number.isFinite(clock.len) ? clock.len : (songElDur() || Infinity), Number(t) || 0)); box.send({ type: 'media', cmd: 'seek', value: clock.time }); },
         toggle() {}, setLoop: () => false,
       },
       // ---------- (round 73, labtools73) keyframes, animation presets, the timeline: the scene's data, as on screen ----------
@@ -427,7 +553,7 @@ function makeBackstage(opts = {}) {
         const inR = (list) => (list || []).filter((t) => t >= (r.from ?? 0) - 1e-4 && t <= (r.to ?? Infinity) + 1e-4);
         return {
           duration: T.duration, ...(T.clock ? { sceneTimeline: { seconds: T.duration, fps: T.fps } } : { song: T.song || 'none (demo beat backstage)' }),
-          grid: T.grid ? { bpm: T.grid.bpm, downbeat: T.grid.anchor, beatsPerBar: T.grid.bpb || 4, setBy: 'user' } : { bpm: T.bpm, setBy: T.clock ? 'scene timeline' : 'auto-detected when the scene is on screen' },
+          grid: T.grid ? { bpm: T.grid.bpm, downbeat: T.grid.anchor, beatsPerBar: T.grid.bpb || 4, setBy: 'user' } : T.detected ? { bpm: Math.round(T.detected.bpm * 100) / 100, downbeat: T.detected.downbeat, beatsPerBar: T.bpb, setBy: 'auto-detected (the same as on screen)' } : { bpm: T.bpm, setBy: T.clock ? 'scene timeline' : 'auto-detected when the scene is on screen' },
           markers: Object.fromEntries(Object.entries(T.marks).map(([k, v]) => [k, inR(v)])),
           cues: T.cues.map((c) => ({ time: c.t, name: c.name })),
           loop: T.loop ? { start: T.loop.a, end: T.loop.b } : null,
@@ -565,7 +691,11 @@ function makeBackstage(opts = {}) {
       const r = await ThreeLab.addReference(p, { key: args.name || undefined, sketchId: route.sketchId });
       return { ok: true, value: { added: r.key, kind: r.kind, scene: x.name, use: r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`, note: 'Saved with this scene and usable in its code right away.' } };
     }
-    if (tool === 'three_media_info') return { ok: true, value: { loaded: false, note: 'No music backstage: the song plays when the owner opens this chat.', song: SC().songOf(route.sketchId)?.split(/[\\/]/).pop() || 'none linked' } };
+    if (tool === 'three_media_info') {
+      // (round 77, labaudio77) a song scene: its song as the Lab on screen describes it (from the same analysis)
+      if (songPathOf(x)) { await load(x); const e = await songReady(route.sketchId); if (e) return { ok: true, value: songInfo(clock?.song ? clock.time || 0 : 0) }; }
+      return { ok: true, value: { loaded: false, note: songPathOf(x) ? 'Its song could not be read here (moved?): it plays when the owner opens this chat.' : 'No song on this scene.', song: SC().songOf(route.sketchId)?.split(/[\\/]/).pop() || 'none linked' } };
+    }
     if (await load(x)) await settle(1.2); // a fresh page: let it start before reading it
     mark('page:load');
     if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d, { chatId: route.chatId, batch: route.batch }); if (r) return r; }
@@ -653,7 +783,7 @@ function makeBackstage(opts = {}) {
   const thumb = (max = 240) => smallShot(max, 4000);
   // (round 22) a crew stage is thrown away when its crew ends: its page and GPU go with it
   function dispose() { clearTimeout(idleTimer); if (box) box.frame.src = 'about:blank'; host?.remove(); host = null; box = null; loaded = null; }
-  const self = { handle, timing, dataDirector: (sketchId) => director(sketchId, null, { quiet: true }), log: () => log.slice(), get running() { return loaded?.id || null; }, OK_TOOLS, thumb, dispose,
+  const self = { songPrep: SongPrep, get song() { return song ? { path: song.path, analysed: Boolean(song.analysis), elDur: song.elDur } : null; }, handle, timing, dataDirector: (sketchId) => director(sketchId, null, { quiet: true }), log: () => log.slice(), get running() { return loaded?.id || null; }, OK_TOOLS, thumb, dispose,
     director: (sketchId, route) => director(sketchId, route),
     // (round 35, labtemplates) a stage shown as a live preview (My templates' form lays its page over a box) and fed
     // what code doesn't carry (references, the palette)

@@ -41,6 +41,16 @@ const ThreeAudio = (() => {
   function attach(o) {
     lab = o;
     st.coreSent = false;
+    devWatch();
+  }
+  // (round 77, labaudio77) the computer's audio devices changed (headphones in / out, an interface switched): the
+  // preview is told (its frame may not hear devicechange itself) and checks its sound output (see "the sound output
+  // changing" in three-sandbox.html); a scene running backstage is told too
+  let devOn = false;
+  function devWatch() {
+    if (devOn || !navigator.mediaDevices?.addEventListener) return;
+    devOn = true;
+    navigator.mediaDevices.addEventListener('devicechange', () => { send({ type: 'av-devices' }); if (typeof ThreeBackstage !== 'undefined') ThreeBackstage.send?.({ type: 'av-devices' }); });
   }
   const send = (m) => lab?.send(m);
   // a fresh preview page: it asks again on its first read
@@ -178,7 +188,6 @@ const ThreeAudio = (() => {
   // ---------- a song's features: once per song, in a Worker, cached ----------
   const VER = 'af1';
   const mem = new Map(); // key → track (the last 3)
-  let running = null;
   const keyOf = (p) => `${VER}|${p.path}|${Math.round((p.duration || 0) * 1000)}`;
   function idb() {
     return new Promise((res) => {
@@ -215,40 +224,53 @@ const ThreeAudio = (() => {
       w.postMessage({ id: 1, mono, rate, drops }, [mono.buffer]);
     });
   }
+  // (round 77, labaudio77) a song's features by file and length: from memory, else IndexedDB, else computed once in a
+  // Worker (two asking at once share the one job). The Lab on screen and a scene running backstage
+  // (tools/three-backstage.js) both get theirs here, so a backstage scene's sliders follow the same kicks and drops.
+  const jobs = new Map(); // key → the track being computed
+  async function trackFor({ path, bytes, duration, drops = [], again = false }) {
+    const key = keyOf({ path, duration });
+    let tr = again ? null : mem.get(key) || null;
+    if (!tr && !again) tr = await idbGet(key);
+    const cached = Boolean(tr);
+    if (!tr) {
+      if (!jobs.has(key)) {
+        jobs.set(key, (async () => {
+          const t0 = performance.now();
+          const { mono, rate } = await decode(bytes);
+          let t = await viaWorker(mono, rate, drops, (x) => { songFeatures.progress = x; });
+          if (!t) t = AF().analyzeTrack(mono, rate, { drops }); // no Worker: here (rare)
+          t.meta.total = Math.round(performance.now() - t0);
+          idbPut(key, { fps: t.fps, n: t.n, F: t.F, data: t.data, meta: t.meta });
+          return t;
+        })().finally(() => jobs.delete(key)));
+      }
+      tr = await jobs.get(key);
+    }
+    mem.set(key, tr); while (mem.size > 3) mem.delete(mem.keys().next().value);
+    return { track: tr, cached };
+  }
+  const trackMsg = (tr) => ({ type: 'audio-track', track: { fps: tr.fps, n: tr.n, F: tr.F, data: tr.data, meta: tr.meta } });
   // the loaded song's features (computed or from the cache) → sent to the preview; returns the track's meta
   async function songFeatures({ again = false } = {}) {
     const p = lab?.player;
     if (!p?.loaded || p.isClock || !p.bytes) return null;
-    const key = keyOf(p); const path = p.path;
-    let tr = again ? null : mem.get(key) || null;
-    if (!tr && !again) tr = await idbGet(key);
-    let cached = Boolean(tr);
-    if (!tr) {
-      if (running?.key === key) return running.promise;
-      const job = (async () => {
-        const t0 = performance.now();
-        const { mono, rate } = await decode(p.bytes);
-        const drops = p.analysis?.drops || [];
-        let t = await viaWorker(mono, rate, drops, (x) => { songFeatures.progress = x; });
-        if (!t) t = AF().analyzeTrack(mono, rate, { drops }); // no Worker: here (rare)
-        t.meta.total = Math.round(performance.now() - t0);
-        return t;
-      })();
-      running = { key, promise: job.then((t) => t.meta, () => null) };
-      try { tr = await job; } finally { running = null; }
-      cached = false;
-      idbPut(key, { fps: tr.fps, n: tr.n, F: tr.F, data: tr.data, meta: tr.meta });
-    }
-    mem.set(key, tr); while (mem.size > 3) mem.delete(mem.keys().next().value);
+    const path = p.path;
+    // (round 77, labaudio77) a sketch that reads a feature the moment its song loads asked before the song's analysis
+    // was done: the features were made without the analysis' drops, kept under a length of 0, and a scene running
+    // backstage on the same song got other drops. They wait for the analysis now (≤ 30 s).
+    for (let i = 0; i < 300 && !p.analysis && p.loaded && p.path === path; i += 1) await new Promise((r) => setTimeout(r, 100));
+    if (p.path !== path) return null;
+    const { track: tr, cached } = await trackFor({ path, bytes: p.bytes, duration: p.duration, drops: p.analysis?.drops || [], again });
     // still the same song: off to the preview
-    if (lab.player.path === path) send({ type: 'audio-track', track: { fps: tr.fps, n: tr.n, F: tr.F, data: tr.data, meta: tr.meta } });
+    if (lab.player.path === path) send(trackMsg(tr));
     return { ...tr.meta, cached };
   }
   const songMeta = () => { const p = lab?.player; if (!p?.loaded) return null; return mem.get(keyOf(p))?.meta || null; };
 
   return {
     attach, onReady, onMessage, probe, attachLive, detachLive, setNeed, setMonitor, monitorOn, liveValues,
-    devices, findDevice, useDevice, inputMenu, loopbackHowTo, songFeatures, songMeta, resolve, label, mappable, GROUPS,
+    devices, findDevice, useDevice, inputMenu, loopbackHowTo, songFeatures, songMeta, resolve, label, mappable, GROUPS, trackFor, trackMsg,
     get lab() { return lab; },
     get stats() { return { frames: st.frames, wanted: st.wanted, worklet: Boolean(live.node), coreSent: st.coreSent, lastSent: st.sentAt }; },
   };

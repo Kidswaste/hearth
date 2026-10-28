@@ -31,10 +31,27 @@
   // (round 74, checkhealth74) since round 64 the Audio doctor's /audio (audiodoctor.js, a boot stand-in) took the name
   // first and this one was never registered (nor /hear): it goes in as /hear (alias /audio-now) and the doctor's /audio
   // hands "names" and a bare /audio with the Lab on screen to it (window.LabHear)
-  const hearWhat = 'What the Lab hears now: hits (kick / snare / hats / vocals), the 8 bands, loudness, brightness, beat and bar with how sure, the key; "names" lists every feature a slider or sketch can use';
+  const hearWhat = 'What the Lab hears now: hits (kick / snare / hats / vocals), the 8 bands, loudness, brightness, beat and bar with how sure, the key; "names" lists every feature a slider or sketch can use; "sync" how the pictures follow the sound (your speakers\' delay, the sound output)';
+  // (round 77, labaudio77) /hear sync: the preview's song clock in plain words (tools/three-sandbox.html "the song's
+  // clock"): what it follows, how late the speakers play, the sound card's drift, the output and its recoveries
+  async function syncText() {
+    const r = await ThreeLab.director?.evalInSketch?.('return window.__labAV ? window.__labAV.state() : null').catch(() => null);
+    const s = r?.ok ? r.value : null;
+    if (!s) return 'The preview didn\'t answer (is the Lab\'s preview running?)';
+    if (!s.song) return 'No song on this scene: nothing to keep in sync (load one with 🎵).';
+    const how = { 'output clock': 'the sound output\'s own clock (when each moment reaches your speakers)', latency: 'the delay the sound output reports', rendered: s.video ? 'the footage\'s own picture (footage shows its frames as it plays them)' : 'the sound as it is recorded (a recording runs)' }[s.source] || 'the song (press play to measure)';
+    const last = (s.log || []).filter((e) => /again|resumed|could not|kept/.test(e.what)).at(-1);
+    return [
+      `**Pictures and sound**: the pictures follow ${how}.`,
+      s.playing && s.source !== 'rendered' ? `Your speakers play **${s.leadMs} ms** after the song's clock; each frame shows what you hear when it reaches the screen.` : (s.playing ? '' : 'Paused: the pictures show the exact spot under the playhead.'),
+      s.playing && s.samples > 50 ? `The sound card's clock runs ${s.slopePpm >= 0 ? '+' : ''}${s.slopePpm} ppm against the computer's: followed, so a long song never drifts.` : '',
+      s.ctx ? `Sound output: ${s.ctx.rate / 1000} kHz, ${s.ctx.state}${s.recoveries ? ` · the sound was made again ${s.recoveries}× after the output changed` : ''}${last ? ` (last: ${last.what}${last.why ? `, ${last.why}` : ''})` : ''}.` : '',
+    ].filter(Boolean).join('\n');
+  }
   const audioName = Commands.get('audio') ? 'hear' : 'audio';
-  reg(audioName, hearWhat, '[names]', window.LabHear = async (args = '') => {
+  reg(audioName, hearWhat, '[names|sync]', window.LabHear = async (args = '') => {
     const l = await lab();
+    if (/^sync$/i.test(args.trim())) return syncText();
     if (/^names?|list$/i.test(args.trim())) return ThreeAudio.GROUPS.map(([g, list]) => `**${g}**: ${list.map(([n, lb]) => `${n} (${lb})`).join(' · ')}`).join('\n') + '\nIn a sketch: audio.feat.kickOn, audio.env(\'kickOn\', 5, 300), audio.chroma, audio.keyName; onHit(\'kickOn\', fn).';
     const names = AudioFeat.NAMES.slice(0, 43);
     const r = await ThreeAudio.probe(names);
@@ -51,7 +68,7 @@
       `Beat ${v.bpm ? `${Math.round(v.bpm * 10) / 10} BPM` : '—'} · beat ${Math.round(v.beatInBar) || '—'} of the bar, phase ${pct(v.barPhase)} (${pct(v.beatConf)} sure of the beat, ${pct(v.barConf)} of bar 1) · key ${key}`,
       `Song: build ${pct(v.build)} · drop ${pct(v.drop)} · intensity ${pct(v.intensity)}`,
     ].join('\n');
-  }, (a) => pick(['names'], a), { aliases: audioName === 'audio' ? ['hear', 'audio-now'] : ['audio-now'], keywords: 'audio features bands onsets kick snare hats loudness lufs centroid flux key chroma beat phase', examples: ['/audio', '/audio names'] });
+  }, (a) => pick(['names', 'sync'], a), { aliases: audioName === 'audio' ? ['hear', 'audio-now'] : ['audio-now'], keywords: 'audio features bands onsets kick snare hats loudness lufs centroid flux key chroma beat phase sync latency speakers bluetooth', examples: ['/audio', '/audio names', '/audio sync'] });
 
   reg('audio-in', 'Live input: list the inputs, pick one (a mic, an audio interface, a loopback device for the computer\'s sound), the default, monitoring on / off, or off', '[list|default|loopback|<device>|monitor on|off|off]', async (args) => {
     const l = await lab();

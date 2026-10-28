@@ -3248,7 +3248,7 @@ const ThreeLab = (() => {
           c.onReads({ used: pick(msg.used), live: pick(msg.live) });
         }
       }
-      if (/^(media-state|record-started|record-error|recording)$/.test(msg.type)) {
+      if (/^(media-state|record-started|record-error|recording|av-event)$/.test(msg.type)) { // (round 77, labaudio77: av-event, the sound output changing)
         player.onMessage(msg);
         if (!keyTimer && msg.type === 'media-state' && keyedNow()) keyLoop(); // (round 44, idlecpu) playing / a seek: the knobs follow again · (round 54) only with something keyframed to follow: a scrub sends this ~60× a second, and each one made a 100 ms timer the first tick dropped again
         if (msg.type === 'media-state' && window.Power && Boolean(msg.playing) !== mediaPlaying) { if (!msg.playing) rememberMedia(); mediaArm(Boolean(msg.playing)); }
