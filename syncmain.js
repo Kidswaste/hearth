@@ -21,6 +21,16 @@ let engine = null; let opts = null; let getWin = () => null;
 let watchers = []; let timer = null; let tick = null; let lastStatus = null;
 let settings = {};
 const DEBOUNCE_LOCAL = 2500; const DEBOUNCE_CLOUD = 4000; const EVERY = 60 * 1000;
+// (round 77, synclatency77) what the watchers hear decides how soon the pass runs: a store (a chat, a project's notes,
+// a scene, settings) saved here or arriving in the cloud folder, or the other computer's journal saying what it wrote,
+// goes in a moment; other files (pictures, videos, the workspace) a little later; a file saved again and again (a reply
+// streaming into its chat: "hot") keeps the calm debounce above. Nothing here runs a timer while nothing changes.
+const SOON_LOCAL = 400; const SOON_CLOUD = 300; const OTHER_LOCAL = 1200; const OTHER_CLOUD = 1000;
+const HOT_N = 3; const HOT_MS = 3000; // saved this many times within this long = hot
+const WARM_MS = 6000; // a file that had its quick pass this long ago: the calm debounce for now (a store saved every 2 s, like the usage counts, isn't sent every 2 s)
+const FIRST = (rel) => /^chats\/[^/]+\.json$/i.test(rel) || rel === 'kv/projects.json'; // chats and project notes: always the quick pass (never "warm")
+const FOLLOW = 1000; const FOLLOW_MAX = 6; // a file still arriving / being written: a pass again after 1, 2, 4… 32 s, then the calm check
+const JSON_SETTLE = 500; // (round 77) a store just written in the cloud folder: read after this (was 2 s like any file)
 
 const settingsFile = () => path.join(opts.dataDir, 'sync', 'settings.json');
 // (round 43, datasafe) a settings file held for a moment is read again; one that still can't be read is never saved over
@@ -76,6 +86,8 @@ function start() {
     // (round 72, sync72) a big store arriving / changed on both computers: its JSON work on the same thread
     pullJson: opts.store?.runOff ? (a) => opts.store.runOff('syncPull', a) : undefined,
     mergeJson: opts.store?.runOff ? (a) => opts.store.runOff('syncMerge', a) : undefined,
+    jsonSettleMs: JSON_SETTLE, // (round 77, synclatency77)
+    hold: holdHot, // (round 77) a chat a reply is streaming into goes up when it calms down (≥ every 20 s / 60 s while busy)
     log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); },
     onStatus: (st) => { lastStatus = st; send('sync:status', publicStatus()); },
     // (round 77, storeack77) the stores the main process holds (quick ideas, the sound bank, show sync) first hear it
@@ -128,7 +140,7 @@ function setPace(st = {}) {
 let busy = () => 0;
 let hold = () => false;
 function stop() {
-  clearTimeout(timer); clearTimeout(tick); timer = null; tick = null;
+  clearTimeout(timer); clearTimeout(tick); timer = null; tick = null; dueAt = 0; dueWhy = ''; forced = false; dirty.clear(); dirtyAll = false; recent.clear(); lastSoon.clear(); heldSince.clear(); followN = 0; cloudWatched = false; // (round 77)
   for (const w of watchers) { try { w.close(); } catch { /* closed */ } }
   watchers = [];
   if (engine) engine.stop();
@@ -137,24 +149,101 @@ function stop() {
 }
 // changes on either side: one pass a moment after things go quiet (and at most every 20 s while they don't)
 let firstAt = 0;
+// while a reply streams (its chat file is saved again and again) or on battery: at most every minute
+const capMs = () => (busy() > 0 || pace.battery ? 60000 : 20000);
+// (round 77, synclatency77) the pass due (when, why); what the watchers heard since the last one (an echo of sync's own
+// writes is no news); passes asked for by something else than a watcher (the calm check, a fix, the big lane) always run
+let dueAt = 0; let dueWhy = ''; let forced = false;
+const dirty = new Map(); let dirtyAll = false; // `${side}:${rel}` → { side, rel, abs }
+const recent = new Map(); // `${side}:${rel}` → the times it was saved lately (hot or not)
+const lastSoon = new Map(); // `local:${rel}` → when a quick pass last went for a real change of it (not sync's own write)
 function schedule(ms, why) {
   if (!engine || settings.paused) return;
-  if (!firstAt) firstAt = Date.now();
+  const t = Date.now();
+  if (!firstAt) firstAt = t;
   // while a reply streams (its chat file is saved again and again) or on battery: wait for a longer quiet moment
   const slow = busy() > 0 || pace.battery;
   if (slow && why === 'watch') ms *= 2;
-  let wait = Math.max(0, Math.min(ms, (slow ? 60000 : 20000) - (Date.now() - firstAt)));
+  if (pace.battery && why === 'soon') ms *= 2; // (round 77) a store saved: still soon on battery, a little calmer
+  let wait = Math.max(0, Math.min(ms, capMs() - (t - firstAt)));
   // (round 39, powerwise) just woken: changes the cloud client brings in meanwhile wait for the same moment
-  const settle = wokeAt ? wokeAt + require('./powerwise').WAKE.sync - Date.now() : 0;
+  const settle = wokeAt ? wokeAt + require('./powerwise').WAKE.sync - t : 0;
   if (settle > 0) wait = Math.max(wait, settle);
+  if (why !== 'watch' && why !== 'soon') forced = true;
+  // (round 77, synclatency77) a pass already due sooner stays: a streaming chat's saves no longer push back the pass a
+  // chat message / a note / an arrival asked for (only a calm 'watch' pass is pushed back by the next 'watch' event)
+  if (timer && dueAt <= t + wait && !(why === 'watch' && dueWhy === 'watch')) return;
   clearTimeout(timer);
+  dueAt = t + wait; dueWhy = why;
   // (round 20, jankwatch) a pass due while the owner types / drags / scrolls waits for the gesture to end (≤ 30 s)
   let tries = 0;
-  timer = setTimeout(function go() { const h = hold(); if (h === 'quiet' || (tries < 20 && h)) { tries += 1; timer = setTimeout(go, h === 'quiet' ? 5000 : 1500); return; } firstAt = 0; run({ why }); }, wait); // ('quiet': the Lab presents, round 52: no limit, it waits the show out)
+  timer = setTimeout(function go() {
+    const h = hold(); if (h === 'quiet' || (tries < 20 && h)) { tries += 1; dueAt = Date.now() + (h === 'quiet' ? 5000 : 1500); timer = setTimeout(go, h === 'quiet' ? 5000 : 1500); return; } // ('quiet': the Lab presents, round 52: no limit, it waits the show out)
+    timer = null; dueAt = 0;
+    // (round 77) only sync's own writes were heard: nothing to do; only those and a file still hot (a reply streaming):
+    // its calm pass, as before (never past the cap: then the pass runs)
+    const v = forced ? 'run' : verdict();
+    if (v === 'hot' && Date.now() - firstAt < capMs()) { for (const [k, d] of dirty) if (!(d.side === 'local' && d.rel && isHot('local', d.rel))) dirty.delete(k); schedule(DEBOUNCE_LOCAL, 'watch'); return; }
+    firstAt = 0; forced = false; dirty.clear(); dirtyAll = false;
+    if (v !== 'echo') run({ why });
+  }, wait);
+}
+// (round 77, synclatency77) a watcher heard a file: how soon a pass should look (side: 'local' | 'cloud')
+function heard(side, rel, abs) {
+  const t = Date.now(); const k = `${side}:${rel || abs}`;
+  let l = recent.get(k); if (!l) { if (recent.size >= 400) for (const [x, v] of recent) if (t - v[v.length - 1] > HOT_MS) recent.delete(x); recent.set(k, l = []); }
+  if (!l.length || t - l[l.length - 1] > 150) l.push(t); // one save is several events (temp file, rename): counted once
+  while (l.length && t - l[0] > HOT_MS) l.shift();
+  if (dirty.size < 500) dirty.set(k, { side, rel, abs }); else dirtyAll = true;
+  const warm = side === 'local' && !FIRST(rel || '') && t - (lastSoon.get(k) || -1e15) < WARM_MS; // (a save here; what arrives is paced by the other computer)
+  if (l.length >= HOT_N || warm) { schedule(side === 'cloud' ? DEBOUNCE_CLOUD : DEBOUNCE_LOCAL, 'watch'); return; } // hot / warm: calm, as before
+  const store = !rel || S.isJsonRel(rel); // (a journal line, a store, or something not a file of the mirror: soon)
+  schedule(side === 'cloud' ? (store ? SOON_CLOUD : OTHER_CLOUD) : (store ? SOON_LOCAL : OTHER_LOCAL), 'soon');
+}
+// (round 77, synclatency77) saved HOT_N times within HOT_MS (a reply streaming into its chat, a note typed with autosave)
+const isHot = (side, rel) => { const l = recent.get(`${side}:${rel}`); const t = Date.now(); return Boolean(l && l.filter((x) => t - x <= HOT_MS).length >= HOT_N); };
+// the engine asks, for a file changed only here: wait? Yes while it is hot, but never longer than the calm cap (20 s, 60 s
+// while replies run / on battery): a long reply still reaches the other computer now and then, as before
+const heldSince = new Map();
+function holdHot(rel) {
+  if (!isHot('local', rel)) { heldSince.delete(rel); return false; }
+  const t = Date.now(); const since = heldSince.get(rel);
+  if (!since) { if (heldSince.size > 100) heldSince.clear(); heldSince.set(rel, t); return true; }
+  if (t - since < capMs() * 0.8) return true; // (a little under the cap: the cap's pass lets it through)
+  heldSince.delete(rel); return false;
+}
+// every file heard since the last pass is, as it is now, the version sync already has (its own write, or one it read)
+// → 'run' | 'echo' (nothing new) | 'hot' (nothing new but a file still being saved again and again)
+// (a local file that is news is remembered: saved again within WARM_MS, it waits the calm debounce)
+function verdict() {
+  if (dirtyAll || !dirty.size || !engine?.knows) return 'run';
+  let hot = false; let news = false; const t = Date.now();
+  for (const [k, d] of dirty) {
+    if (!d.rel) { news = true; continue; }
+    if (d.side === 'local' && isHot('local', d.rel)) { hot = true; continue; }
+    let st; try { st = fs.statSync(d.abs); } catch { news = true; continue; } // gone: news (a delete)
+    if (!st.isFile() || !engine.knows(d.side, d.rel, st.size, st.mtimeMs)) {
+      news = true;
+      if (d.side === 'local') { if (lastSoon.size >= 400) for (const [x, v] of lastSoon) if (t - v >= WARM_MS) lastSoon.delete(x); lastSoon.set(k, t); }
+    }
+  }
+  return news ? 'run' : hot ? 'hot' : 'echo';
+}
+let followN = 0; let cloudWatched = false; const runs = {}; // runs: passes by why (tests)
+// (round 77, synclatency77) ms until the first file "arriving" in the cloud folder has stood its settle time (≥ 0; Infinity
+// when none can tell: a clock ahead, a journal still late — the follow-up's own pace then)
+function settledIn(waiting) {
+  let soonest = Infinity;
+  for (const w of waiting.slice(0, 20)) {
+    if (w.why !== 'arriving' || !engine) continue;
+    try { const st = fs.statSync(path.join(engine.FILES, ...String(w.rel).split('/'))); const at = Math.floor(st.mtimeMs) + (S.isJsonRel(w.rel) ? JSON_SETTLE : 2000) - Date.now(); if (at > 0 && at < soonest) soonest = at; } catch { /* gone, a stub */ }
+  }
+  return soonest;
 }
 async function run(o = {}) {
   if (!engine) return publicStatus();
   if (settings.paused && !o.force) return publicStatus();
+  runs[o.why || 'now'] = (runs[o.why || 'now'] || 0) + 1;
   try {
     await opts.store?.idle?.(); // (round 20) saves still on the store thread land before the pass reads the folder
     if (!engine) return publicStatus();
@@ -162,37 +251,52 @@ async function run(o = {}) {
     const moved = r?.last ? r.last.pulled + r.last.pushed + r.last.merged + r.last.deletedHere + r.last.deletedThere + r.last.renamed : 1;
     const was = quiet; quiet = moved || r?.pending ? 0 : quiet + 1;
     if ((was > 2) !== (quiet > 2) || (quiet && quiet % 3 === 0)) armTick(); // the calm check slows down (or speeds up again)
+    // (round 77, synclatency77) a file still arriving from the cloud client or still being written here: looked at again
+    // soon (1, 2, 4… 32 s), not at the next calm check a minute later; nothing is armed once nothing is on its way
+    // (or right when a file that just landed in the cloud folder is old enough to be read: its time + the settle)
+    if ((r?.waiting || []).some((w) => w.why === 'arriving' || w.why === 'writing' || w.why === 'copy-check')) { if (followN < FOLLOW_MAX) schedule(Math.min(FOLLOW * 2 ** followN++, settledIn(r.waiting) + 60), 'follow'); } else followN = 0;
   } catch (err) { lastStatus = { ...(lastStatus || {}), state: 'error', error: err.message }; send('sync:status', publicStatus()); }
-  if (!watchers.length) watch(); // the drive came back: watch it again
+  // the drive came back: watch it again; (round 77) and Hearth's folder in the drive, made by the first pass after sync
+  // was turned on (it wasn't watched until the next start: arrivals waited for the calm check, up to a minute)
+  if (!watchers.length || (engine && !cloudWatched && fs.existsSync(engine.cloudDir))) watch();
   return publicStatus();
 }
 function watch() {
   for (const w of watchers) { try { w.close(); } catch { /* closed */ } }
-  watchers = [];
-  const add = (dir, ms, skip) => {
+  watchers = []; cloudWatched = false;
+  // (round 77, synclatency77) side: 'local' | 'cloud' — each event goes to heard() (how soon), not a fixed debounce
+  const add = (dir, side, skip) => {
+    const hear = (name) => {
+      const n = String(name || '');
+      if (skip(n) || S.ignoredName(path.basename(n))) return;
+      const abs = path.join(dir, n); const slash = n.split(path.sep).join('/').normalize('NFC');
+      heard(side, side === 'cloud' ? (/^files\//.test(slash) ? slash.slice(6) : null) : slash || null, abs);
+    };
     // (round 42, filewatch) through the one watcher service, shared with what the window follows in the data folder
     // (the Lab's references, My templates): one system watch, re-armed after a wake / when the folder comes back
     try {
       const fw = require('./filewatchmain');
-      watchers.push(fw.tree(dir, (name) => { const n = String(name || ''); if (skip(n) || S.ignoredName(path.basename(n))) return; schedule(ms, 'watch'); }));
-      return;
+      watchers.push(fw.tree(dir, hear));
+      return true;
     } catch { /* the service didn't load: its own watch as before */ }
     try {
-      const w = fs.watch(dir, { recursive: true }, (_ev, name) => {
-        const n = String(name || '');
-        if (skip(n) || S.ignoredName(path.basename(n))) return;
-        schedule(ms, 'watch');
-      });
+      const w = fs.watch(dir, { recursive: true }, (_ev, name) => hear(name));
       w.on('error', () => { try { w.close(); } catch { /* closed */ } watchers = watchers.filter((x) => x !== w); });
       watchers.push(w);
+      return true;
     } catch { /* no recursive watch here, or the folder is gone: the minute check covers it */ }
+    return false;
   };
   // (round 19) the workspace is watched too (what chats make syncs), but not its dependency folders and caches
   const own = (n) => /^(sync|mcp-runs|ae)([\\/]|$)/.test(n) || /(^|[\\/])(node_modules|__pycache__|venv|\.venv|\.git|\.cache|\.next)([\\/]|$)/.test(n) || /^(window|game-bridge|engine-installs|connectors|claude-flags)\.json$/.test(n) || /\.log$/.test(n);
-  add(opts.dataDir, DEBOUNCE_LOCAL, n => own(n) || S.watchIgnored(n));
-  if (engine && fs.existsSync(engine.cloudDir)) add(engine.cloudDir, DEBOUNCE_CLOUD, n => S.watchIgnored(n, true));
-  for (const f of [opts.configPath, opts.themePath]) {
-    try { const w = fs.watch(f, () => schedule(DEBOUNCE_LOCAL, 'config')); watchers.push(w); } catch { /* missing */ }
+  add(opts.dataDir, 'local', n => own(n) || S.watchIgnored(n));
+  // (round 77, synclatency77) the other computers' journals are heard too (a line there = a file on its way or landed:
+  // the pass that was waiting for it goes now); this computer's own journal and the machine records are not
+  const mine = engine ? `${engine.machine().id}.jsonl` : '';
+  const journal = (n) => { const m = /^\.sync[\\/]journal[\\/]([^\\/]+\.jsonl)$/.exec(n); return m ? (m[1] === mine ? 'own' : 'peer') : null; };
+  if (engine && fs.existsSync(engine.cloudDir)) cloudWatched = add(engine.cloudDir, 'cloud', n => { const j = journal(n); return j ? j === 'own' : S.watchIgnored(n, true); });
+  for (const [f, rel] of [[opts.configPath, 'app/config.json'], [opts.themePath, 'app/theme.css']]) {
+    try { const w = fs.watch(f, () => { if (dirty.size < 500) dirty.set(`local:${rel}`, { side: 'local', rel, abs: f }); else dirtyAll = true; schedule(OTHER_LOCAL, 'soon'); }); watchers.push(w); } catch { /* missing */ } // (round 77) was 2.5 s; its echo (a settings file sync wrote) is no news
   }
 }
 
@@ -295,5 +399,5 @@ function quit() { stop(); }
 // (round 19, reach) paths from the other computer: its folders (machine records), and whether a file is on its way
 function pathCtx() { try { return engine ? engine.ctx() : null; } catch { return null; } }
 function incoming(rel) { try { return engine ? engine.incoming(rel) : null; } catch { return null; } }
-module.exports = { register, ready, guardConfig, quit, status: publicStatus, pathCtx, incoming, peers: () => (engine ? engine.peers() : Promise.resolve([])), pace: setPace, setBusy: (fn) => { busy = typeof fn === 'function' ? fn : () => 0; }, setHold: (fn) => { hold = typeof fn === 'function' ? fn : () => false; }, _pace: () => ({ quiet, every: tickEvery(), ...pace }) };
+module.exports = { register, ready, guardConfig, quit, status: publicStatus, pathCtx, incoming, peers: () => (engine ? engine.peers() : Promise.resolve([])), pace: setPace, setBusy: (fn) => { busy = typeof fn === 'function' ? fn : () => 0; }, setHold: (fn) => { hold = typeof fn === 'function' ? fn : () => false; }, _pace: () => ({ quiet, every: tickEvery(), ...pace }), _due: () => ({ due: timer ? dueAt - Date.now() : null, why: timer ? dueWhy : '', follow: followN, cloudWatched, runs: { ...runs } }) }; // (round 77, synclatency77) _due: tests (a pass armed? none while idle)
 module.exports.engine = () => engine; // (round 75, versions75) the engine's places (cloud folder, conflicts, Deleted files) for 🕘 Earlier versions (versionsmain.js)
