@@ -29,12 +29,17 @@ const SPAWN_LAT_MS = knob('HEARTH_SPAWN_LAT_MS', 120);
 const PS_LAT_MS = knob('HEARTH_PS_LAT_MS', 500);
 const ASYNC_MS = knob('HEARTH_SLOWFS_ASYNC_MS', 1);
 const P = { since: performance.now(), fs: new Map(), ipc: new Map(), sends: new Map(), profile: null, spawns: new Map(), fsAsync: new Map(), watch: new Map(), spawnLog: [], simMs: 0 };
+let watching = 0; // (round 78) inside an fs.watch call
 const h = monitorEventLoopDelay({ resolution: 10 });
 h.enable();
 
+// (round 78) linuxWatch: the call came from Node's own recursive fs.watch on Linux (a JS tree walk that Windows and the
+// Mac never make: they watch natively), so the Windows simulation doesn't charge it
+let linuxWatch = false;
 const site = (skip, n = 2) => {
   const o = {}; const lim = Error.stackTraceLimit; Error.stackTraceLimit = 8 + n * 2;
   Error.captureStackTrace(o, skip); Error.stackTraceLimit = lim;
+  linuxWatch = /internal\/fs\/recursive_watch/.test(String(o.stack || ''));
   const lines = String(o.stack || '').split('\n').slice(1).map((l) => l.trim()).filter((l) => !/mainlag-probe\.js|node:|\(<anonymous>\)$/.test(l));
   const f = (l) => (l || '?').replace(/^at\s+/, '').replace(/\(?(?:file:\/\/)?[^()]*[\\/]([^\\/]+\.js:\d+):\d+\)?/, '$1').slice(0, 80);
   return lines.slice(0, n).map(f).join(' < ');
@@ -51,8 +56,10 @@ for (const name of Object.keys(fs)) {
   const wrapped = function (...a) {
     const t0 = performance.now();
     try { return orig.apply(this, a); } finally {
-      if (SLOW_US) spin(t0 + SLOW_US / 1000);
-      add(P.fs, `${name} ${site(wrapped)}`, performance.now() - t0);
+      // (round 78) inside fs.watch or under Node's Linux recursive watcher: Node's own, not charged as a Windows cost
+      const where = site(wrapped); const own = watching || linuxWatch;
+      if (SLOW_US && !own) spin(t0 + SLOW_US / 1000);
+      add(P.fs, own ? `${name} ` : `${name} ${where}`, performance.now() - t0);
     }
   };
   Object.defineProperty(wrapped, 'name', { value: name });
@@ -95,7 +102,7 @@ for (const name of ['watch', 'watchFile']) {
   const wrapped = function (file, o, ...rest) {
     const rec = Boolean(o && typeof o === 'object' && o.recursive);
     add(P.watch, `${name}${rec ? ' recursive' : ''} ${site(wrapped)}`, 0);
-    return orig.call(this, file, o, ...rest);
+    watching += 1; try { return orig.call(this, file, o, ...rest); } finally { watching -= 1; }
   };
   fs[name] = wrapped;
 }

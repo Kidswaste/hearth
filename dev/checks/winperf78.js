@@ -19,17 +19,22 @@ const frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r,
 const until = async (fn, what, n = 400, step = 50) => { for (let i = 0; i < n; i++) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(step); } throw Error(`timed out: ${what}`); };
 const lag = (label) => window.hub.power.test({ lag: { label } });
 const out = { sim: null, actions: {}, problems: [], fails: [] };
-// per action: processes started (all / PowerShell), sync fs calls, async fs calls, the worst main-thread stall (ms)
+// per action: processes started (all / PowerShell), the app's own sync fs calls (Node's own — module loading, Linux'
+// recursive watch walk — reported apart), async fs calls, the worst main-thread stall (ms, simulated costs included).
+// Measured round 78 (after → budget, ≈ 1.5–2× headroom for a loaded box): startup 9 → 12 processes (a fresh profile:
+// the engines' versions asked once; a warm start asks 3), 632 → 900 sync calls, 4.6k → 6k async (the first start's
+// tool-use log reads every recent chat), 216 → 600 ms · a sync pass after a change: 18.7k async (each pass looks at every
+// file on both sides) → 24k
 const BUDGET = Object.assign({
-  startup: { spawns: 2, ps: 0, fsSync: 1600, fsAsync: 1200, stall: 1500 },
-  openChat: { spawns: 0, ps: 0, fsSync: 20, fsAsync: 80, stall: 250 },
-  sendMessage: { spawns: 1, ps: 0, fsSync: 80, fsAsync: 200, stall: 250 },
-  openProject: { spawns: 0, ps: 0, fsSync: 80, fsAsync: 400, stall: 300 },
-  openLab: { spawns: 0, ps: 0, fsSync: 80, fsAsync: 400, stall: 300 },
-  syncFirst: { spawns: 1, ps: 0, fsSync: 400, fsAsync: 40000, stall: 300 },
-  syncChange: { spawns: 1, ps: 0, fsSync: 60, fsAsync: 6000, stall: 250 },
-  soundDesk: { spawns: 2, ps: 0, fsSync: 80, fsAsync: 400, stall: 300 },
-  playTest: { spawns: 1, ps: 0, fsSync: 120, fsAsync: 600, stall: 400 },
+  startup: { spawns: 12, ps: 0, fsSync: 900, fsAsync: 6000, stall: 600 },
+  openChat: { spawns: 0, ps: 0, fsSync: 20, fsAsync: 100, stall: 250 },
+  sendMessage: { spawns: 1, ps: 0, fsSync: 120, fsAsync: 400, stall: 250 },
+  openProject: { spawns: 0, ps: 0, fsSync: 100, fsAsync: 100, stall: 300 },
+  openLab: { spawns: 0, ps: 0, fsSync: 50, fsAsync: 100, stall: 300 },
+  soundDesk: { spawns: 1, ps: 0, fsSync: 100, fsAsync: 100, stall: 300 },
+  playTest: { spawns: 0, ps: 0, fsSync: 150, fsAsync: 100, stall: 400 },
+  syncFirst: { spawns: 0, ps: 0, fsSync: 400, fsAsync: 70000, stall: 1500 },
+  syncChange: { spawns: 0, ps: 0, fsSync: 150, fsAsync: 24000, stall: 250 },
 }, window.WP_BUDGET || {});
 const longest = (r) => Math.max(0, ...(r.blocks || []).map((b) => b.ms));
 const brief = (r, wall) => ({

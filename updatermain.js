@@ -94,7 +94,8 @@ function create(opts = {}) {
       if (four[1]) return ex('repo-other', { top: four[0] });
       return checkout({ gitDir: four[2], branch: four[3] });
     }
-    const top = await git(['rev-parse', '--show-toplevel'], { timeout: 15000 });
+    // (no .git here at all: git's answer to the four is its answer to the first)
+    const top = !all.ok && !C.gitDirOf(DIR) ? all : await git(['rev-parse', '--show-toplevel'], { timeout: 15000 });
     if (top.missing) return ex('git');
     if (!top.ok) {
       const why = C.classify(top.err);
