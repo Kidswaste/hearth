@@ -35,6 +35,7 @@ const JSON_OUT = argv.includes('--json');
 const VERBOSE = argv.includes('--verbose');
 const CALM = Number(opt('--calm', 5000)); // how long both computers stay calm before the next item (idle)
 const IDLE_CHECK = Number(opt('--idlecheck', 0));
+const ECHO_WAIT = Number(opt('--echo-wait', 1500)); // after an item: how long its echo passes are counted
 const CHURN = Number(opt('--churn', 0)); // after the items: a store saved every 2 s for this long on the PC (like the usage counts), counting its passes // after the items: this long idle, counting passes (should be none)
 // realistic cloud clients: iCloud / OneDrive notice a change in ~1–3 s and bring it down a few seconds later; a fast one
 // (Dropbox on the same network) in under a second each way
@@ -182,7 +183,7 @@ async function measure(from, to, name, mode) {
   }
   if (r.window == null) { r.timedOut = true; r.waiting = to.waiting; }
   // the passes this item cost on each side, its echoes included (an echo pass would come within a second or so)
-  else { await sleep(1500); r.passes = { from: from.passes - p0[0], to: to.passes - p0[1] }; }
+  else { await sleep(ECHO_WAIT); r.passes = { from: from.passes - p0[0], to: to.passes - p0[1] }; }
   if (r.up != null && r.down != null && r.window != null) { r.engineDown = r.window - r.down; r.engine = r.up + r.engineDown; r.cloud = r.down - r.up; }
   return r;
 }

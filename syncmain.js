@@ -26,7 +26,8 @@ const DEBOUNCE_LOCAL = 2500; const DEBOUNCE_CLOUD = 4000; const EVERY = 60 * 100
 // streaming into its chat: "hot") keeps the calm debounce above. Nothing here runs a timer while nothing changes.
 const SOON_LOCAL = 400; const SOON_CLOUD = 300; const OTHER_LOCAL = 1200; const OTHER_CLOUD = 1000;
 const HOT_N = 3; const HOT_MS = 3000; // saved this many times within this long = hot
-const WARM_MS = 8000; // a file that had its quick pass this long ago: the calm debounce for now (a store saved every 2 s, like the usage counts, isn't sent every 2 s)
+const WARM_MS = 6000; // a file that had its quick pass this long ago: the calm debounce for now (a store saved every 2 s, like the usage counts, isn't sent every 2 s)
+const FIRST = (rel) => /^chats\/[^/]+\.json$/i.test(rel) || rel === 'kv/projects.json'; // chats and project notes: always the quick pass (never "warm")
 const FOLLOW = 1000; const FOLLOW_MAX = 6; // a file still arriving / being written: a pass again after 1, 2, 4… 32 s, then the calm check
 const JSON_SETTLE = 500; // (round 77) a store just written in the cloud folder: read after this (was 2 s like any file)
 
@@ -191,7 +192,7 @@ function heard(side, rel, abs) {
   if (!l.length || t - l[l.length - 1] > 150) l.push(t); // one save is several events (temp file, rename): counted once
   while (l.length && t - l[0] > HOT_MS) l.shift();
   if (dirty.size < 500) dirty.set(k, { side, rel, abs }); else dirtyAll = true;
-  const warm = side === 'local' && t - (lastSoon.get(k) || -1e15) < WARM_MS; // (a save here; what arrives is paced by the other computer)
+  const warm = side === 'local' && !FIRST(rel || '') && t - (lastSoon.get(k) || -1e15) < WARM_MS; // (a save here; what arrives is paced by the other computer)
   if (l.length >= HOT_N || warm) { schedule(side === 'cloud' ? DEBOUNCE_CLOUD : DEBOUNCE_LOCAL, 'watch'); return; } // hot / warm: calm, as before
   const store = !rel || S.isJsonRel(rel); // (a journal line, a store, or something not a file of the mirror: soon)
   schedule(side === 'cloud' ? (store ? SOON_CLOUD : OTHER_CLOUD) : (store ? SOON_LOCAL : OTHER_LOCAL), 'soon');
