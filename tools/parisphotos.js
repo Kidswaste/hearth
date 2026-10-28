@@ -30,15 +30,25 @@ const ParisPhotos = window.ParisPhotos = (() => {
       return data;
     })().finally(() => { loading = null; }));
   }
+  let busy = 0; // (round 77, storeack77) saves on their way
   function save(fn) {
+    busy += 1;
     chain = chain.catch(() => {}).then(async () => {
       await load(); const next = fn(data);
       const r = typeof DataSafe !== 'undefined' ? await DataSafe.save(K.KV, next, loaded) : await window.hub.kvSet(K.KV, next);
       if (r?.refused) throw Error('Your photo list could not be read just now, so nothing was changed. Try again in a moment.');
       data = next; changed();
-    });
+    }).finally(() => { busy -= 1; });
     return chain;
   }
+  // (round 77, storeack77) the photo list from the other computer: a change being saved lands first, then the list is read
+  // again (pins and moments redraw: hearth:paris-photos) and sync is told (StoreAck), so a photo removed here right after
+  // it arrived stays removed
+  window.StoreAck?.hold(K.KV, {
+    name: 'My Paris photos', pending: () => busy > 0, flush: () => chain.catch(() => {}),
+    read: () => (data ? StoreAck.kv(K.KV, null) : undefined),
+    apply: (v) => { if (!data || v === undefined) return undefined; data = K.validate(v); loaded = { value: v, ok: true, state: 'ok' }; changed(); return undefined; },
+  });
   const abs = (rel) => (root && rel ? WinMac.join(root, ...rel.split('/')) : '');
   const view = (p) => ({ ...p, src: abs(p.file), thumbSrc: abs(p.thumb) });
   /** the photos of a moment, as files on this computer (sync; [] until the list is read) */

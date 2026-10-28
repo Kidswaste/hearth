@@ -31,6 +31,9 @@ const Usage = (() => {
     return p;
   }
   const save = () => { if (!saveT) saveT = setTimeout(flush, 60000); };
+  // (round 77, storeack77) the other computer's counts arrived: this window's are sent first, and sync is told (StoreAck):
+  // what it saves is applied to the file as it is then (store.js mergeKV), so it holds no older copy to merge
+  window.StoreAck?.hold(KV, { pending: () => ops.length > 0 || whole, flush });
   const DAY = 86400000;
   // local day (the token meter counts days the same way)
   const today = () => new Date().toLocaleDateString('en-CA');

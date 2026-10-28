@@ -24,12 +24,14 @@ async function readAsync() {
 }
 // one change at a time: read → change → write (the write is awaited: done means on disk)
 function change(fn) {
+  inFlight += 1;
   const task = chain.catch(() => {}).then(async () => {
     const s = await readAsync();
     const result = await fn(s);
     await o.store.setKV(C.KEY, s);
     return { s, result };
   });
+  task.catch(() => {}).finally(() => { inFlight -= 1; });
   chain = task; return task;
 }
 const view = (s) => ({ ideas: s.ideas, trash: s.trash, last: s.last, counts: C.counts(s), memoDir: memoDir() });
@@ -166,7 +168,15 @@ async function test(a) {
   throw Error(`unknown test ${a.what}`);
 }
 
-function init(opts) { o = opts; }
+// (round 77, storeack77) the other computer's ideas arrived: a change on its way lands first (sync's guard merges it), and
+// sync is told (StoreAck: each change reads the file again, nothing older is held), so an idea deleted or moved here
+// right after it arrived stays that way
+let inFlight = 0;
+function init(opts) {
+  o = opts;
+  require('./storeackmain').hold(C.KEY, { name: 'Quick ideas', pending: () => inFlight > 0, flush: () => chain.catch(() => {}),
+    read: () => readAsync().catch(() => null), apply: (s) => { if (s) changed(s, 'synced'); } }); // an open inbox redraws
+}
 // main.js: lazyIpc('quickideamain.js', …): loaded on the first call from a window, or by the tray item / the key
 function register(ipcMain, opts) {
   init(opts);

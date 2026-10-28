@@ -112,6 +112,29 @@ const WorkbenchUI = (() => {
   async function addAsset(asset) { await ready(); if (!asset || typeof asset.name !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(asset.image || '') || asset.image.length > 8e6) throw Error('Use a PNG asset up to 8 MB.'); state.shelf.unshift({name:asset.name.slice(0,100),image:asset.image}); state.shelf=state.shelf.slice(0,24); await persist(); }
   if (typeof HubBridge !== 'undefined') HubBridge.register(['chat_sound'], async (_tool, args, context) => { try { const p=window.Projects?.projectOfChat(context?.chatId); if(p?.workspace && scope!==p.id)throw Error(`Open the Sound desk in “${p.name}” before using its instrument. Another project's sound will not be changed.`); return { ok: true, value: await soundTool(args) }; } catch (err) { return { ok: false, error: err.message }; } });
   addEventListener('beforeunload',()=>{flush().catch(()=>{});});
+  // (round 77, storeack77 — For Codex) the worktable when the other computer's version arrives (StoreAck,
+  // storeack-core.js): a change not written yet goes first (sync's guard merges it with what arrived), then what's on
+  // disk is put INTO the state in memory (same objects: open stations keep working on it) and the station on screen is
+  // drawn again (its scroll kept) — the Sound desk keeps playing and shows it next time — then sync is told, so a thing
+  // taken off the shelf right after it arrived stays off. Typing in a field or drawing: it waits until you're done.
+  let wbDown=false,wbPutOff=null;
+  addEventListener('pointerdown',ev=>{if(root?.contains(ev.target))wbDown=true;},true);
+  const wbBusy=()=>{const a=document.activeElement;return wbDown||Boolean(root?.isConnected&&a&&root.contains(a)&&a.matches('input:not([type=range]):not([type=checkbox]):not([type=file]),textarea,[contenteditable="true"]'));};
+  const wbHold=window.StoreAck?.hold(/^kv\/(workbench-[\w-]+|creative-workbenches)\.json$/,{
+    name:'Worktable',pending:()=>pendingSaves.size>0,flush:()=>flush(),
+    read:async rel=>{if(rel!==`kv/${KEY}.json`||!loaded||!writable)return undefined;await loaded;const raw=await StoreAck.kv(KEY,null);return raw?{v:await validateAsync(raw)}:null;},
+    apply:(got,rel)=>{
+      if(got===undefined||rel!==`kv/${KEY}.json`)return undefined; // not the worktable held here
+      if(!got)return false; // gone there: what's here stays (sync keeps merging)
+      if(wbBusy()){wbPutOff=rel;return false;}
+      if(JSON.stringify(got.v)===JSON.stringify(state))return undefined;
+      StoreAck.into(state,got.v);
+      if(root?.isConnected&&mountedKey===KEY&&current!=='vst'){const host=root.parentNode,old=root,top=old.scrollTop,ptop=host.scrollTop;mount(host,current,api).then(()=>{old.remove();root.scrollTop=top;host.scrollTop=ptop;}).catch(()=>{});}
+      return undefined;
+    },
+  });
+  addEventListener('pointerup',()=>{wbDown=false;if(wbPutOff)setTimeout(()=>{if(wbPutOff&&!wbBusy()){const r=wbPutOff;wbPutOff=null;wbHold?.again(r);}},600);},true);
+  addEventListener('focusout',()=>{if(wbPutOff)setTimeout(()=>{if(wbPutOff&&!wbBusy()){const r=wbPutOff;wbPutOff=null;wbHold?.again(r);}},600);},true);
   // parisquests61: "Make music at the park" names the worktable after the park (only the project name changes; returns the old one).
   async function startSketch(title) { await ready(); const before = state.title; state.title = String(title || '').trim().slice(0, 160) || before; await persist(); return before; }
   return { mount, pause, suspend, resume, ready, setProject, preloadSound: options => WorkbenchVST.preload({ ...workspaceHelpers(), state: state.vst },options), soundTool, addAsset, startSketch, snapshot: () => C.copy(state), flush, scope: () => scope, animaticHTML };

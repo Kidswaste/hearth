@@ -15,6 +15,7 @@ const S = require('./sync-merge');
 const { createEngine, hearthIn } = require('./sync-engine');
 const K = require('./sync-kinds'); // (round 73, syncmedia73) What syncs
 const Evict = require('./cloud-evict'); // (round 73, syncmedia73) Free up space
+const SAmain = require('./storeackmain'); // (round 77, storeack77) stores the main process holds in memory
 
 let engine = null; let opts = null; let getWin = () => null;
 let watchers = []; let timer = null; let tick = null; let lastStatus = null;
@@ -77,7 +78,8 @@ function start() {
     mergeJson: opts.store?.runOff ? (a) => opts.store.runOff('syncMerge', a) : undefined,
     log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); },
     onStatus: (st) => { lastStatus = st; send('sync:status', publicStatus()); },
-    onPulled: (list) => send('sync:pulled', list),
+    // (round 77, storeack77) the stores the main process holds (quick ideas, the sound bank, show sync) first hear it
+    onPulled: (list) => { SAmain.arrived(list).catch(() => {}); send('sync:pulled', list); },
     autoResolve: () => settings.autoResolve !== false, // (round 26) conflicts settle by themselves unless turned off
     onAutoResolved: (r) => send('sync:auto-resolved', r),
     // iCloud ".icloud" stubs can't be read: ask iCloud for them (Mac), at most once in ten minutes per file
@@ -92,6 +94,7 @@ function start() {
   });
   // (round 75, syncstate75) + which files the guard would change (one that just arrived from the other computer): the
   // others' usage merges run on the store thread
+  SAmain.setAck((rels, since) => engine?.ackPulled(rels, since)); // (round 77, storeack77)
   opts.store?.setBeforeWrite?.((file, value) => (engine ? engine.guardWrite(file, value) : value), (file) => { const rel = engine?.relOfLocal(file); return Boolean(rel && engine.hasPulled(rel)); });
   watch();
   quiet = 0;
@@ -268,7 +271,7 @@ function register(ipcMain, win, o) {
     schedule(1500, 'free');
     return { ok: true, ...r };
   });
-  h('sync:ack', (rels) => { engine?.ackPulled(Array.isArray(rels) ? rels : null); return true; });
+  h('sync:ack', (rels, o) => { engine?.ackPulled(Array.isArray(rels) ? rels : null, Number(o?.since) || 0); return true; }); // (round 77, storeack77) o.since: when the window began reading
   // (round 74, synchard74) a blocked file's fix: Rename for Windows / Allow changes / Remove from the cloud; then a pass
   h('sync:fix', async (rel, how) => {
     if (!engine) return { ok: false, error: 'Sync is off' };

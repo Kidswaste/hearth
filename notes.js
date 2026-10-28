@@ -39,6 +39,19 @@ const Notes = (() => {
     if (!notes.some((n) => n.id === currentId)) currentId = notes[0].id;
     return notes;
   }
+  // (round 77, storeack77) notes from the other computer (StoreAck, storeack-core.js): what you typed is written first
+  // (merged line by line with what arrived), then the list and the open note show what's on disk now — the note you're
+  // typing in keeps your caret and scroll — and sync is told, so a note deleted here right after it arrived stays deleted
+  window.StoreAck?.hold('notes', {
+    saver: save, read: () => StoreAck.kv('notes', null),
+    apply: (v) => {
+      if (!loaded) return;
+      if (!Array.isArray(v)) return false;
+      notes = v.length ? v : [{ id: `n${Date.now()}`, title: 'Scratchpad', text: '', updatedAt: Date.now() }];
+      if (!notes.some((n) => n.id === currentId)) currentId = notes[0].id;
+      if (panel) StoreAck.keepCaret(panel.querySelector('textarea'), render);
+    },
+  });
   const current = () => notes.find((n) => n.id === currentId) || notes[0];
   const titleOf = (text) => (text.split('\n').find((l) => l.trim()) || 'Untitled').replace(/^#+\s*/, '').slice(0, 40);
   const tagsOf = (text) => [...new Set([...String(text || '').matchAll(/(^|[\s(])#([a-z][\w-]{1,30})/gi)].map((m) => m[2].toLowerCase()))];
@@ -392,6 +405,16 @@ const Prompts = (() => {
       rebuild();
     }
     return prompts;
+  }
+  // (round 77, storeack77) saved prompts / favorites from the other computer: read again (writes here are immediate) ·
+  // storeack: holds prompts, prompts-meta
+  for (const k of ['prompts', 'prompts-meta']) {
+    window.StoreAck?.hold(k, { read: () => StoreAck.kv(k, null), apply: (v) => {
+      if (!prompts) return;
+      if (!v || Array.isArray(v) !== (k === 'prompts')) return false;
+      if (k === 'prompts') user = v; else meta = { hidden: [], favs: [], uses: {}, ...v };
+      rebuild();
+    } });
   }
   const persist = async () => { rebuild(); await window.hub.kvSet('prompts', user); };
   const persistMeta = async () => { rebuild(); await window.hub.kvSet('prompts-meta', meta); };

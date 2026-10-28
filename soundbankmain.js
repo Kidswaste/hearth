@@ -64,7 +64,7 @@ function create({ dataDir, hostFactory, log = () => {} }) {
   function load() {
     if (index && (canSave || !again)) return index; again = false;
     const r = DS.load(fs, file, null), good = j => j?.v === 1 && j.entries && typeof j.entries === 'object';
-    if (good(r.value)) { index = r.value; canSave = r.canSave; if (r.from === 'prev') log('soundbank: index read from its .prev copy'); }
+    if (good(r.value)) { index = r.value; canSave = r.canSave; baseText = JSON.stringify(r.value); if (r.from === 'prev') log('soundbank: index read from its .prev copy'); }
     else if (r.state === 'missing') { index ||= fresh(); canSave = true; }
     else if (r.state === 'unreadable' && r.code === 'EGARBLED' || (r.state === 'ok' && !good(r.value))) {
       try { fs.copyFileSync(file, file.replace(/\.json$/, '.json.unreadable')); index = fresh(); canSave = true; log('soundbank: index damaged, kept aside as index.json.unreadable'); }
@@ -77,7 +77,24 @@ function create({ dataDir, hostFactory, log = () => {} }) {
     if (!index || !canSave) return false;
     // the last good index stays as index.prev.json (datasafe's fallback), once per session, before the first write
     if (!prevKept) { try { fs.copyFileSync(file, file.replace(/\.json$/, '.prev.json')); } catch { /* none yet */ } prevKept = true; }
-    writeAtomic(file, JSON.stringify(index)); return true;
+    const text = JSON.stringify(index); writeAtomic(file, text); baseText = text; return true;
+  }
+  // (round 77, storeack77) the other computer's index arrived (sync wrote it): the index here was kept in memory and saved
+  // whole by itself (no sync guard on this file), so its next save put the old one back — a favorite or a preset added
+  // on the other computer was lost. Now it takes what arrived; a change here not written yet is merged with it first
+  // (three-way, the version this side last read or wrote as the base: both sides' changes stay)
+  let baseText = null; // the index as this side last read or wrote it
+  function arrived() {
+    if (!index) return; // not read yet: read when first used
+    const r = DS.load(fs, file, null);
+    if (!(r.value?.v === 1 && r.value.entries && typeof r.value.entries === 'object')) return false; // gone / unreadable: what's here stays
+    if (saveTimer && baseText) {
+      clearTimeout(saveTimer); saveTimer = null;
+      index = require('./sync-merge').merge3(JSON.parse(baseText), JSON.parse(JSON.stringify(index)), r.value).value;
+      canSave = true; write();
+    } else if (!saveTimer) { index = r.value; canSave = r.canSave; baseText = JSON.stringify(r.value); }
+    else return false; // a change here and no base to merge against: it's written as it is (the next pass merges it)
+    index.settings ||= { pluginFolders: false, folders: [] }; index.settings.folders ||= []; index.files ||= {}; index.entries ||= {};
   }
   function save(now = false) { clearTimeout(saveTimer); saveTimer = null; if (now) { write(); return; } saveTimer = setTimeout(() => { saveTimer = null; try { write(); } catch (e) { log('soundbank: save failed ' + e.message); } }, 250); }
   function retag(x) { x.tags = C.tagsOf({ name: `${x.name} ${x.label || ''}`, folder: x.folder || '', style: x.style || '', metaTags: x.metaTags || [], features: x.features }); x.vector = C.vector(x.features || {}); return x; }
@@ -221,12 +238,13 @@ function create({ dataDir, hostFactory, log = () => {} }) {
     if (x.source !== 'plugin') { const s = states.get(id); return s ? { ok: true, state: s, instrument: x.instrument, name: x.name } : { ok: false, error: 'This bank preset is loaded from the Sound desk bank.' }; }
     try { const st = fs.statSync(x.file); if (st.size > 16e6) throw Error('Preset file too large.'); const state = encodeState(fs.readFileSync(x.file)); if (state.length > 12e6) throw Error('Preset too large.'); return { ok: true, state, instrument: x.instrument, name: x.name }; } catch (e) { return { ok: false, error: e.message }; }
   }
-  return { list, similarTo, update, settings, startPreviews, cancel, status, previewBytes, stateOf, scanFolders, syncBank, flush: () => { if (saveTimer) save(true); }, stop: () => { cancel(); if (saveTimer) save(true); }, _test: { index: () => load(), file, previews, canSave: () => canSave } };
+  return { list, similarTo, update, settings, startPreviews, cancel, status, previewBytes, stateOf, scanFolders, syncBank, arrived, flush: () => { if (saveTimer) save(true); }, stop: () => { cancel(); if (saveTimer) save(true); }, _test: { index: () => load(), file, previews, canSave: () => canSave } };
 }
 
 function register(ipcMain, { dataDir, getWin, app }) {
   const vst = require('./creative-vstmain.js');
   const bank = create({ dataDir, hostFactory: () => vst.create({ dataDir, lowPriority: true }) });
+  require('./storeackmain').hold('creative-vst/soundbank/index.json', { name: 'Sound bank', read: async () => true, apply: () => bank.arrived() }); // (round 77, storeack77)
   const own = (e, fn) => { if (e.sender !== getWin()?.webContents || e.senderFrame !== e.sender.mainFrame) return { ok: false, error: 'Only the Hearth workspace can use the sound bank.' }; try { return fn(); } catch (err) { return { ok: false, error: err.message }; } };
   ipcMain.handle('soundbank:list', (e, o) => own(e, () => bank.list(o || {})));
   ipcMain.handle('soundbank:similar', (e, id, n) => own(e, () => bank.similarTo(String(id), Math.min(24, Number(n) || 8))));

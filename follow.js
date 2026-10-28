@@ -21,7 +21,9 @@ const Follow = (() => {
     if (store) return Promise.resolve(store);
     return (loading ||= read().then((r) => { store = r.value; canSave = r.ok; problem = r.ok ? '' : r.error; return store; }).finally(() => { loading = null; }));
   }
+  let busy = 0; // (round 77, storeack77) saves on their way
   function save(change) {
+    busy += 1;
     const task = saving.catch(() => {}).then(async () => {
       await load();
       if (!canSave) throw Error('Your followed artists and venues could not be read, so nothing was changed (Hearth never saves over them). Restart Hearth, or look in 🛟 Recover.');
@@ -32,8 +34,16 @@ const Follow = (() => {
       store = checked; announce();
       return out;
     });
-    saving = task; return task;
+    saving = task; task.catch(() => {}).finally(() => { busy -= 1; }); return task;
   }
+  // (round 77, storeack77) follows from the other computer: a change being saved lands first, then the list is read again
+  // (the tracker, badges and pins show them now, not at the next restart: hearth:follows) and sync is told (StoreAck), so
+  // later saves don't merge against the version from before (unfollows carry their own time: those already won)
+  window.StoreAck?.hold(KEY, {
+    name: 'Followed artists & venues', pending: () => busy > 0, flush: () => saving.catch(() => {}),
+    read: () => (store ? read() : undefined),
+    apply: (r) => { if (!store || !r) return undefined; if (!r.ok) return false; store = r.value; canSave = true; problem = ''; announce(); return undefined; },
+  });
   // the ✦ tracker, the card buttons, the ★ badges and the map pins follow this
   const announce = () => document.dispatchEvent(new CustomEvent('hearth:follows', { detail: { pending: F.pending(store || F.empty()).length, follows: F.active(store || F.empty()).length } }));
   const S = () => store || F.empty();

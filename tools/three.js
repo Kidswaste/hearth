@@ -4282,7 +4282,57 @@ ${code}
     }
     // the sketch on screen has edits that aren't saved into it yet (sliders moved, code typed)
     const dirtyHere = () => { try { return Boolean(current && editor.value !== ((sel() || layersOf()[0])?.code ?? current.code)); } catch { return false; } };
-    addEventListener('hearth:synced', (e) => { if ((e.detail?.files || []).some((f) => f.rel === 'kv/three-sketches.json')) refreshFromDisk().catch((err) => console.warn('scenes from sync', err)); });
+    // (round 77, storeack77) the Lab's stores when the other computer's version arrives (StoreAck, storeack-core.js):
+    // what changed here is written first (sync's guard merges it with what arrived), then the Lab takes what's on disk —
+    // new scenes, newer ones, and scenes deleted there leave the picker — and sync is told, so a scene (or a note, a
+    // reference) taken out here right after it arrived stays out. The scene on screen keeps your edit, selection and
+    // scroll: it's only opened again when it changed. While an edit is being tried (Keep / Undo), or when the scene on
+    // screen was deleted there, the Lab keeps what it has and sync keeps merging (nothing lost; acked next time).
+    // (three-history / three-thumbs: megabytes of versions and pictures, left to sync's guard: never lost, not re-read)
+    const SA = window.StoreAck;
+    SA?.hold('three-sketches', {
+      name: 'Lab scenes',
+      pending: () => save.pending() || dirtyHere(), flush: () => { if (dirtyHere()) persist(); return save.flush(); },
+      read: async () => { await laterRead?.catch(() => {}); return SA.kv('three-sketches', null); },
+      apply: (disk) => {
+        if (!kvOk.has('three-sketches')) return undefined; // not read yet: its first read is this version
+        if (!Array.isArray(disk)) return false;
+        const trying = window.LabTry && LabTry.disk(sketches) !== sketches;
+        const deleted = new Set(trash.map((t) => t.id).filter(Boolean));
+        const onDisk = new Map(disk.filter((d) => d?.id).map((d) => [d.id, d]));
+        let added = 0; let updated = 0; let removed = 0; let reopen = false; let kept = trying;
+        for (const d of onDisk.values()) {
+          const mine = sketches.find((x) => x.id === d.id);
+          if (!mine) { if (!deleted.has(d.id)) { sketches.push(JSON.parse(JSON.stringify(d))); added += 1; } continue; }
+          if (JSON.stringify(mine) === JSON.stringify(d)) continue;
+          if (trying && window.LabTry.holds?.(d.id)) continue;
+          if (mine === current) { if (dirtyHere()) { kept = true; continue; } reopen = true; }
+          for (const k of Object.keys(mine)) delete mine[k];
+          Object.assign(mine, JSON.parse(JSON.stringify(d))); updated += 1;
+        }
+        if (!trying) {
+          for (const x of [...sketches]) {
+            if (!x?.id || onDisk.has(x.id) || removedIds.has(x.id)) continue;
+            if (x === current) { kept = true; continue; } // deleted there while it's on screen: stays here for now
+            sketches.splice(sketches.indexOf(x), 1); removed += 1;
+          }
+        }
+        if (added || updated || removed) {
+          renderPicker();
+          if (reopen && current) openSketch(current.id, { by: 'scene' });
+          dispatchEvent(new CustomEvent('hearth:lab-scenes-arrived', { detail: { added, updated, removed } }));
+        }
+        return kept ? false : undefined;
+      },
+    });
+    // (a store gone or not an object: what's here stays, sync keeps merging) · storeack: holds three-lab-extras, three-notes, three-refs
+    const labStore = (name, label, s, set) => SA?.hold(name, {
+      name: label, saver: s, read: () => SA.kv(name, null),
+      apply: (v) => { if (!kvOk.has(name)) return undefined; if (!v || typeof v !== 'object' || Array.isArray(v)) return false; set(v); return undefined; },
+    });
+    labStore('three-lab-extras', 'Lab scene settings', saveExtras, (v) => { extras = v; });
+    labStore('three-notes', 'Lab notes', saveNotes, (v) => { notesAll = v; });
+    labStore('three-refs', 'Lab references', saveRefs, (v) => { refsAll = v; dispatchEvent(new Event('hearth:lab-refs')); });
     api.scenes = {
       all: () => sketches,
       get: (id) => sketches.find((x) => x.id === id) || null,

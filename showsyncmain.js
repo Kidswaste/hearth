@@ -260,6 +260,9 @@ function register(ipcMain, { dataDir }) {
   // until a check installs the saved responses with shows:test: no check ever reads the real Shotgun / DICE
   let fetcher = process.env.HEARTH_TEST_SAVE_DIR ? () => Promise.reject(Error('offline (test run)')) : (u, o) => net.fetch(u, o);
   api = create({ dataDir, fetch: (u, o) => fetcher(u, o), shrink: electronShrink, log: (...a) => console.warn('[showsync]', ...a) });
+  // (round 77, storeack77) its files arrived from the other computer (follows, settings, listings): the copies kept in
+  // memory are let go and read again when next used — they were saved back whole as they were, over what arrived
+  require('./storeackmain').hold(/^showsync\/[^/]+\.json$/, { name: 'Show listings', drop: (rel) => { if (api?._stores) delete api._stores[rel.slice(9)]; } });
   const safe = (fn) => async (_e, ...a) => { try { return { ok: true, value: await fn(...a) } } catch (err) { return { ok: false, error: err.message } } };
   ipcMain.handle('shows:get', safe(() => api.snapshot()));
   ipcMain.handle('shows:refresh', safe((o) => api.refresh(o || {})));

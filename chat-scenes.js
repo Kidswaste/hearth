@@ -24,7 +24,8 @@ const ChatScenes = (() => {
   let data = { links: {}, videos: {}, idents: {} };
   let loaded = false;
   let readyFn; const readyP = new Promise((r) => { readyFn = r; });
-  const save = debounce(() => window.hub.kvSet('chat-scenes', data), 400);
+  // (round 77, storeack77) a saver: StoreAck can write it first
+  const save = saver(() => window.hub.kvSet('chat-scenes', data), 400);
   const workers = new Map(); // chatId -> { list: ['claude', 'codex'], active: 'codex' | null } set by a jam (jam.js) while it runs
 
   // ---------- identity ----------
@@ -120,7 +121,20 @@ const ChatScenes = (() => {
     resync();
   }
   function resync() { const a = threeAgent(); const c = a && H.activeChat[a.id]; if (c && linkOf(c) && lab()?.currentId() !== linkOf(c)) { shown.three = null; sync(); } else paintAll(); }
-  addEventListener('hearth:synced', (e) => { if ((e.detail?.files || []).some((f) => f.rel === 'kv/chat-scenes.json')) refreshLinks().catch((err) => console.warn('chat scenes from sync', err)); });
+  // (round 77, storeack77) kv/chat-scenes.json from the other computer (StoreAck, storeack-core.js): a link made here is
+  // written first (sync's guard merges it with what arrived), then the links are what's on disk — made there, changed
+  // there, and unlinked there too (before, only new ones joined) — and sync is told, so a chat unlinked here right after
+  // its link arrived stays unlinked
+  window.StoreAck?.hold('chat-scenes', {
+    saver: save, read: () => StoreAck.kv('chat-scenes', null),
+    apply: (d) => {
+      if (!loaded) return;
+      if (!d?.links) return false;
+      // (as the first read keeps it)
+      const next = { links: d.links, videos: d.videos || {}, idents: d.idents || {} };
+      if (JSON.stringify(next) !== JSON.stringify(data)) { data = next; resync(); }
+    },
+  });
   addEventListener('hearth:lab-scenes-arrived', () => { recoverLost(); });
 
   // The chat that owns a sketch (only chats that still exist count; a chat back from the trash gets it again).

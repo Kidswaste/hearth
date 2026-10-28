@@ -124,29 +124,33 @@ const Projects = (() => {
   };
   addEventListener('hearth:synced', (e) => {
     const rels = (e.detail?.files || []).map((f) => f.rel);
-    if (rels.includes('kv/projects.json')) reloadFromDisk();
+    // (round 77, storeack77) kv/projects.json: StoreAck (below) writes, reads again, acks
     if (rels.some((r) => /^kv\/(three-sketches|three-thumbs)\.json$/.test(r))) forget('sketches', 'sceneList', 'sceneThumbs');
     if (rels.some((r) => /^kv\/boards?/.test(r))) forget('boards');
     if (rels.some((r) => /^workspace\//.test(r))) forget('workspace');
   });
   addEventListener('hearth:sketch', () => forget('sketches', 'sceneList'));
-  async function reloadFromDisk() {
-    try {
-      // (round 76, projsync76) a change made here in the last moment (a rename, notes, an item taken out) was dropped
-      // when the other computer's version arrived: it's written first (sync's write guard merges it with what arrived).
-      // Then sync is told this window now holds what arrived, so a later "take out" of something that came from the
-      // other computer isn't merged back in (the guard's base stayed the version before the arrival)
-      if (dirty) await flush().catch(() => {});
-      try { await window.hub.sync?.ack?.([`kv/${KEY}.json`]); } catch { /* sync off */ }
-      const was = new Map(data.list.map((p) => [p.id, p])); const front = here()?.id || null;
-      const raw = await window.hub.kvGet(KEY, null); const d = C.normalize(raw); clearTimeout(saveT); data = d; idx = null;
+  // (round 76, projsync76) a change made here in the last moment (a rename, notes, an item taken out) was dropped when
+  // the other computer's version arrived: it's written first (sync's write guard merges it with what arrived). Then sync
+  // is told this window now holds what arrived, so a later "take out" of something that came from the other computer
+  // isn't merged back in (the guard's base stayed the version before the arrival)
+  // (round 77, storeack77) through StoreAck (storeack-core.js): the same steps for every store, and an ack that only
+  // counts when nothing arrived again while it was being read
+  let arrivedFront = null; let arrivedWas = null;
+  window.StoreAck?.hold(KEY, {
+    name: 'Projects',
+    pending: () => dirty, flush: () => flush(),
+    read: async () => { arrivedWas = new Map(data.list.map((p) => [p.id, p])); arrivedFront = here()?.id || null; return window.StoreAck.kv(KEY, null); },
+    apply: (raw) => {
+      if (raw != null && (typeof raw !== 'object' || !Array.isArray(raw.list))) return false; // not a store: kept, never read over
+      const d = C.normalize(raw); clearTimeout(saveT); data = d; idx = null;
       // (round 76, projsync76) normalize may settle a delete the other computer made while this one only opened the
       // project (or mark one revived): saved back so both computers end the same
       const marks = (list) => JSON.stringify((Array.isArray(list) ? list : []).map((p) => [p?.id, Boolean(p?.revived)]));
       changed(null, 'sync', marks(raw?.list) !== marks(d.list));
-      arrivals(was, front);
-    } catch (err) { console.warn('projects from sync', err); }
-  }
+      try { arrivals(arrivedWas || new Map(), arrivedFront); } catch (err) { console.warn('projects from sync', err); }
+    },
+  });
   // (round 76, projsync76) what a delete from the other computer means here, said once: the project in front of you
   // deleted there (Restore), or one deleted there while it changed here (kept: open it to choose)
   function arrivals(was, front) {

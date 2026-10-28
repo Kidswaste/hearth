@@ -50,24 +50,27 @@ const ThreeHistory = (() => {
       if (e && okId(id)) { stats.saves += 1; window.hub.kvSet(KV(id), e.doc).catch((err) => console.warn('time machine save', err)); }
     }, 1500));
   }
-  // another computer's versions arrived (cloud sync): merged in by id (the delete of a thinned one is left to thinning)
-  function mergeIn(e, disk) {
-    if (!disk?.versions) return 0;
-    const have = new Set(e.doc.versions.map((v) => v.id));
-    let n = 0;
-    for (const [k, st] of Object.entries(disk.keys || {})) if (!e.doc.keys[k]) e.doc.keys[k] = st;
-    for (const v of disk.versions) if (v?.id && !have.has(v.id)) { e.doc.versions.push(v); n += 1; }
-    if (n) { C.heal(e.doc); const lv = C.latest(e.doc); e.last = lv ? C.stateOf(e.doc, lv) : null; emit(e.id, null); }
-    return n;
-  }
+  // (round 77, storeack77) a scene's versions from the other computer (StoreAck, storeack-core.js): a save waiting here
+  // goes first (sync's guard merges it), then the history in memory is what's on disk (new versions show in the strip)
+  // and sync is told; the pictures (-t) are let go and read again when shown — storeack: guard (a picture pruned here can
+  // come back: nothing lost, only bytes)
+  const tmId = (rel) => { const m = /^kv\/three-tm-([\w-]+?)(-t)?\.json$/.exec(rel || ''); return m && !m[2] ? m[1] : null; };
+  window.StoreAck?.hold(/^kv\/three-tm-[\w-]+\.json$/, {
+    name: 'Lab time machine',
+    pending: () => [...saveT.keys()].length > 0,
+    flush: () => Promise.all([...saveT].map(([id, t]) => { clearTimeout(t); saveT.delete(id); const e = docs.get(id); return e && okId(id) ? window.hub.kvSet(KV(id), e.doc) : null; })),
+    read: (rel) => { const id = tmId(rel); return id && docs.has(id) ? StoreAck.kv(KV(id), null) : undefined; },
+    apply: (d, rel) => {
+      const id = tmId(rel); const e = id && docs.get(id);
+      if (!e || d === undefined) return undefined; // not held here (or a scene's pictures)
+      if (!d?.versions || !d.keys) return false;
+      e.doc = d; C.heal(e.doc); const lv = C.latest(e.doc); e.last = lv ? C.stateOf(e.doc, lv) : null;
+      emit(e.id, null);
+      return undefined;
+    },
+  });
   addEventListener('hearth:synced', (ev) => {
-    for (const f of ev.detail?.files || []) {
-      const m = /^kv\/three-tm-([\w-]+?)(-t)?\.json$/.exec(f.rel || '');
-      if (!m) continue;
-      if (m[2]) { thumbMem.delete(m[1]); continue; }
-      const e = docs.get(m[1]);
-      if (e) window.hub.kvGet(KV(m[1]), null).then((d) => { if (mergeIn(e, d)) saveSoon(m[1]); }).catch(() => {});
-    }
+    for (const f of ev.detail?.files || []) { const m = /^kv\/three-tm-([\w-]+?)-t\.json$/.exec(f.rel || ''); if (m) thumbMem.delete(m[1]); }
   });
 
   // ---------- who is changing a scene ----------
