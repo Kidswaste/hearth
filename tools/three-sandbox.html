@@ -3525,8 +3525,9 @@ function loopMessage(msg) {
 globalThis.media = media;
 let stateTimer = 0;
 // (round 77, labaudio77) lead: while a song plays, how far its element runs ahead of the speakers (s): the Lab's playhead
-// shows what's heard
-const sendState = (x) => { if (mediaEl) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended, ...(fclock && isVideo ? { frame: fpres.frame } : {}), ...(!mediaEl.paused && !avRendered() && AV.src ? { lead: Math.round(AV.lead * 1e4) / 1e4 } : {}), ...x }); };
+// shows what's heard; nothing is reported while the sound output is being made again (the old element pausing and the
+// new one starting would flicker the play button: avRebuild reports once it's done)
+const sendState = (x) => { if (mediaEl && !AVD.busy) post({ type: 'media-state', time: mediaEl.currentTime, duration: mediaEl.duration || 0, playing: !mediaEl.paused, ended: mediaEl.ended, ...(fclock && isVideo ? { frame: fpres.frame } : {}), ...(!mediaEl.paused && !avRendered() && AV.src ? { lead: Math.round(AV.lead * 1e4) / 1e4 } : {}), ...x }); };
 // Loop points (A–B) are checked every frame here, so the loop is tight; a recording can stop exactly at B.
 let region = null;
 let trim = null; // the song's in / out (round 6, the Lab's /song-trim): plays only between them
