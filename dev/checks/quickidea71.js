@@ -100,7 +100,7 @@ try {
   // ---------- the 💡 Ideas inbox from the rail's ⋯ ----------
   await T('show-main'); await wait(300);
   document.getElementById('rail-more')?.click(); await wait(200);
-  const ideasRow = menuItem(/💡 Ideas/);
+  const ideasRow = menuItem(/^(💡 )?Ideas\b/) // (round 74) the rail ⋯ draws its icon now;
   step('the rail\'s ⋯ has 💡 Ideas', Boolean(ideasRow));
   ideasRow?.click();
   const dlg = await until(() => document.querySelector('dialog.qi-inbox[open] .qi-row') && document.querySelector('dialog.qi-inbox[open]'), 'the inbox');
