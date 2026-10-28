@@ -183,6 +183,8 @@ function clock(t0 = Date.now()) {
   return { now: () => t, advance: (ms) => { t += ms; }, at: (skew = 0) => () => t + skew };
 }
 
+// (round 77, synclatency77) ms a change of `size` bytes takes with a base delay and a rate (bytes / s)
+const wallDelay = (base, size, rate) => (base || 0) + (rate ? (size / rate) * 1000 : 0);
 // ---------- the cloud: a server and one view per computer ----------
 function cloud(o = {}) {
   const log = o.log || (() => {});
@@ -199,8 +201,12 @@ function cloud(o = {}) {
   function view(dir, opt = {}) {
     // opt: { name, style: 'icloud'|'onedrive'|'dropbox'|'gdrive', placeholders: null|'stub'|'dataless'|'win',
     //        nfd (Mac names), partialDown (bytes: bigger downloads arrive in pieces, in place), slowUp (bytes: bigger
-    //        uploads take upTicks ticks), upTicks, downTicks, now() (this computer's clock), metaPlaceholders }
-    const v = { dir: path.resolve(dir), online: true, known: new Map(), downloading: new Map(), uploading: new Map(), requested: new Set(), hashes: new Map(), stats: { up: 0, down: 0, copies: 0, stubs: 0, partial: 0 }, ...opt };
+    //        uploads take upTicks ticks), upTicks, downTicks, now() (this computer's clock), metaPlaceholders,
+    //        (round 77, synclatency77) upDelay / downDelay (ms of WALL time a change waits before it goes up / comes
+    //        down: the client noticing it, the network) and upRate / downRate (bytes per second on top), for tests that
+    //        run the provider in real time (dev/synclatency77.js), keepMtime (the file's own modified time travels with
+    //        it, as real clients do; else the upload's time); none set = the tick-based provider as before }
+    const v = { dir: path.resolve(dir), online: true, known: new Map(), downloading: new Map(), uploading: new Map(), requested: new Set(), hashes: new Map(), upSeen: new Map(), stats: { up: 0, down: 0, copies: 0, stubs: 0, partial: 0 }, ...opt };
     v.now = opt.now || (() => Date.now());
     raw.mkdirSync(v.dir, { recursive: true });
     if (opt.ci !== false) ciVolume(v.dir);
@@ -223,7 +229,7 @@ function cloud(o = {}) {
       v.stats.evicted = (v.stats.evicted || 0) + 1;
       return { ok: true };
     };
-    v.idle = () => !v.downloading.size && !v.uploading.size && [...server.values()].every((s) => v.known.get(fold(s.key))?.ver === s.ver);
+    v.idle = () => !v.downloading.size && !v.uploading.size && !v.upSeen.size && [...server.values()].every((s) => v.known.get(fold(s.key))?.ver === s.ver);
     views.push(v);
     return v;
   }
@@ -283,7 +289,7 @@ function cloud(o = {}) {
     const buf = raw.readFileSync(f.file); return { buf, size: buf.length };
   };
   const commit = (v, k, key, c, hash) => {
-    const s = { key, ...c, hash, mtime: v.now(), ver: ++V, by: v.name };
+    const s = { key, ...c, hash, mtime: c.mtime ?? v.now(), ver: ++V, by: v.name, at: Date.now() }; // (round 77) at: wall time it reached the server; c.mtime: keepMtime
     server.set(k, s);
     v.known.set(k, { ver: s.ver, hash, key });
     v.stats.up += 1;
@@ -338,12 +344,14 @@ function cloud(o = {}) {
         continue;
       }
       if (kn && kn.hash === f.hash) {
+        v.upSeen.delete(k); // (round 77) back as it was: nothing to send
         if (kn.key !== f.key && !v.nfd) { const s = server.get(k); if (s && s.ver === kn.ver) { s.key = f.key; s.ver = ++V; v.known.set(k, { ...kn, key: f.key, ver: s.ver }); } } // case-only rename
         continue;
       }
       const srv = server.get(k);
-      if (srv && srv.hash === f.hash) { v.known.set(k, { ver: srv.ver, hash: f.hash, key: f.key }); continue; }
+      if (srv && srv.hash === f.hash) { v.known.set(k, { ver: srv.ver, hash: f.hash, key: f.key }); v.upSeen.delete(k); continue; }
       if (srv && (!kn || srv.ver !== kn.ver)) {
+        v.upSeen.delete(k); // (round 77)
         // changed here AND on the server since this view last had it: the provider keeps ours as a copy
         const cname = conflictName(v, f.key);
         const dst = path.join(v.dir, ...cname.split('/'));
@@ -355,6 +363,13 @@ function cloud(o = {}) {
         log(v.name, 'conflict copy', cname);
         continue;
       }
+      // (round 77, synclatency77) a real-time delay before the upload lands on the server (noticing + sending)
+      if (v.upDelay || v.upRate) {
+        const u = v.upSeen.get(k);
+        if (!u || u.hash !== f.hash) { v.upSeen.set(k, { hash: f.hash, at: Date.now() }); continue; }
+        if (Date.now() - u.at < wallDelay(v.upDelay, f.st.size, v.upRate)) continue;
+        v.upSeen.delete(k);
+      }
       // an upload: big ones take a few ticks (the server keeps the old version meanwhile)
       if (v.slowUp && f.st.size > v.slowUp) {
         const u = v.uploading.get(k);
@@ -362,7 +377,7 @@ function cloud(o = {}) {
         if (--u.left > 0) continue;
         v.uploading.delete(k);
       }
-      commit(v, k, f.key, content(f), f.hash);
+      commit(v, k, f.key, v.keepMtime ? { ...content(f), mtime: f.st.mtimeMs } : content(f), f.hash); // (round 77) keepMtime: the file's own time travels with it (iCloud, OneDrive, Dropbox do)
     }
     for (const [k, kn] of [...v.known]) {
       if (view.has(k) || v.downloading.has(k)) continue;
@@ -372,13 +387,14 @@ function cloud(o = {}) {
       v.uploading.delete(k);
     }
     for (const k of [...v.uploading.keys()]) if (!view.has(k)) v.uploading.delete(k);
+    for (const k of [...v.upSeen.keys()]) if (!view.has(k)) v.upSeen.delete(k); // (round 77) gone before it went up
     // ---- the server → this computer ----
     view = scan(v);
     for (const [k, d] of [...v.downloading]) { // the second half of a download in pieces
       if (--d.left > 0) continue;
       v.downloading.delete(k);
       const s = server.get(k);
-      if (s && s.ver === d.ver) writeInto(v, s, 'whole');
+      if (s && s.ver === d.ver) { writeInto(v, s, 'whole'); log(v.name, 'down', s.key, 'rest'); }
     }
     for (const [k, s] of server) {
       const kn = v.known.get(k);
@@ -392,6 +408,7 @@ function cloud(o = {}) {
         continue;
       }
       if (f && !f.stub && kn && f.hash !== kn.hash) continue; // changed here too: the upload side handles it next tick
+      if ((v.downDelay || v.downRate) && Date.now() - (s.at || 0) < wallDelay(v.downDelay, sizeOf(s), v.downRate)) continue; // (round 77) still on its way
       const ph = placeheld(v, s.key) && !v.requested.has(k) ? v.placeholders : null;
       let how = ph === 'stub' ? 'stub' : ph === 'dataless' || ph === 'win' ? 'dataless' : 'whole';
       if (how === 'whole' && v.partialDown && sizeOf(s) > v.partialDown) { how = 'half'; v.downloading.set(k, { ver: s.ver, left: v.downTicks || 2 }); }

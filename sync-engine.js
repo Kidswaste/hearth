@@ -702,7 +702,8 @@ function createEngine(o) {
     if (c && c[0] === C.size && c[1] === C.mtime && c[2]) return c[2];
     // still being written (whole milliseconds: a file's mtime has sub-ms precision while now() is truncated, so a file
     // written this very millisecond looked 0.4 ms "in the future" and never started its arriving clock below)
-    if (fresh(rel, C, o.settleMs ?? 2000)) return INFLIGHT; // (round 72, sync72) a clock ahead no longer holds it
+    // (round 77, synclatency77) o.jsonSettleMs: a store needs less (a half-written JSON never parses: still arriving below)
+    if (fresh(rel, C, S.isJsonRel(rel) && o.jsonSettleMs != null ? o.jsonSettleMs : o.settleMs ?? 2000)) return INFLIGHT; // (round 72, sync72) a clock ahead no longer holds it
     // not the size the other computer wrote: still arriving (a cloud client writing in place), unless it stays like
     // this for a minute (then the journal is the one late, and the file is what it is)
     // (round 72, sync72) SMALLER than what the other computer wrote is a download that stopped midway (a provider
@@ -1367,6 +1368,10 @@ function createEngine(o) {
       const L = local.get(rel); const C = cloud.get(rel); const bh = state.base[rel];
       if (o.skip?.(rel)) { if (bh) dropBase(rel); continue; } // (round 73, syncmedia73) a kind turned off here: both sides left as they are (and no history: turned on again, nothing is deleted)
       if (inLane(rel)) { pending += 1; why(rel, lane.cur?.rel === rel ? 'moving' : 'queued'); continue; } // (round 73) moving on the big lane
+      // (round 77, synclatency77) o.hold(rel): a file saved again and again right now (a reply streaming into its chat)
+      // waits while only this computer changed it; syncmain lets it through once it calms down, and at least every 20 s
+      // (60 s while replies run). Not counted as waiting: nothing is late, it is still being written.
+      { const L0 = local.get(rel); const C0 = cloud.get(rel); if (L0 && !L0.unavailable && o.hold?.(rel) && !cachedHere(rel, L0) && (!C0 || cachedThere(rel, C0))) continue; }
       if (C?.downloading) await cloudReady(rel, C);
       if (L?.unavailable) { pending += 0; continue; } // a render on a drive that isn't plugged in: left alone
       if ((!L && blindIn(local.blind, rel)) || (!C && blindIn(cloud.blind, rel))) { pending += 1; why(rel, 'unlisted'); continue; }
@@ -1744,6 +1749,9 @@ function createEngine(o) {
     conflicts: listConflicts, resolve: afterLoad(resolve), resolveAll: afterLoad(resolveAll), preview, incoming, trash: listTrash, restore: afterLoad(restore), guardWrite, relOfLocal, /* (round 75) after the state is read */
     ackPulled: (rels) => { if (!rels) pulledPrev.clear(); else for (const r of rels) pulledPrev.delete(r); },
     hasPulled: (rel) => pulledPrev.has(rel),
+    // (round 77, synclatency77) for the watchers (syncmain.js): is this file, as it is now (size + modified time), the
+    // version sync already has (its own write, or one it already read)? Then an event about it is no news: no pass
+    knows: (side, rel, size, mtime) => { const c = (side === 'cloud' ? state.cloud : state.local)?.[rel]; return Boolean(c && c[2] && c[0] === size && c[1] === mtime); },
     peers: async () => { await readPeers(); return peers; },
     cloudDir, FILES, stateDir, ctx: () => ctx,
     _state: () => state, _stateStore: () => store.stats(), // (round 75) tests: saves, buckets written, main-process ms
