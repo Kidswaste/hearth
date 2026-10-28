@@ -106,7 +106,8 @@ and missing means deleted (faded on the Desk, as before) and isn't counted.
 - `projects-core.js`: `normalize()` runs `revive(list, trash)`: a project in both (only a sync merge does that) → the
   delete wins when they're the same but for `opened` / `updated` / `deletedAt` (item ids made again from refs: sync
   rewrites paths in refs, not in ids); else `p.revived = { at: deletedAt }` and its trash copy stays beside it.
-  `keepRevived(p, t)` (exported) folds the trash copy's note lines / items in.
+  `keepRevived(p, t)` (exported) folds the trash copy's note lines / items in. A `revived` mark without its trash copy
+  (settled on the other computer, or carried into a duplicate) is dropped.
 - `projects.js`: `save()` tracks `dirty`; `reloadFromDisk()` flushes a pending change first, calls
   `hub.sync.ack(['kv/projects.json'])`, saves back when normalize changed the marks, then `arrivals()` (the two toasts);
   `settleRevived(p, keep)` (exported); `trashed()` leaves out live ids; `removeProject` strips `revived`; one menu row.

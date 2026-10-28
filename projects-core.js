@@ -117,7 +117,7 @@ const ProjectsCore = (() => {
     const out = [];
     for (const p of list) {
       const t = trash.find((x) => x.id === p.id);
-      if (!t) { out.push(p); continue; }
+      if (!t) { if (p.revived) delete p.revived; out.push(p); continue; } // (its deleted copy gone: settled elsewhere, or a copy of it)
       if (!p.revived && sameMinusTimes(p, t)) continue; // the delete wins: nothing changed but when it was opened
       if (!p.revived) p.revived = { at: t.deletedAt || 0 };
       out.push(p);
