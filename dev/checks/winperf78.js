@@ -35,10 +35,10 @@ const longest = (r) => Math.max(0, ...(r.blocks || []).map((b) => b.ms));
 const brief = (r, wall) => ({
   wall, spawns: r.spawns?.n ?? null, ps: r.spawns?.ps ?? null, spawnBlockMs: r.spawns?.blockMs ?? null, byProg: r.spawns?.byProg || [],
   spawnSites: (r.spawns?.top || []).slice(0, 5).map((x) => `${x.n}× ${x.k}`),
-  fsSync: r.fsSync.n, fsSyncMs: r.fsSync.ms, fsSyncTop: r.fsSync.top.slice(0, 5).map((x) => `${x.n}× ${x.ms}ms ${x.k}`),
+  fsSync: r.fsSync.n - (r.fsSync.node || 0), fsSyncNode: r.fsSync.node || 0, fsSyncMs: r.fsSync.ms, fsSyncTop: r.fsSync.top.slice(0, 5).map((x) => `${x.n}× ${x.ms}ms ${x.k}`),
   fsAsync: r.fsAsync?.n ?? null, fsAsyncTop: (r.fsAsync?.top || []).slice(0, 5).map((x) => `${x.n}× ${x.k}`),
   watch: r.watch?.n ?? 0, watchTop: (r.watch?.top || []).slice(0, 4).map((x) => `${x.n}× ${x.k}`),
-  stall: longest(r), delayMax: r.delay.max, blocks: (r.blocks || []).slice(0, 3).map((b) => `${b.ms}ms · ${(b.app || []).slice(0, 2).join(' | ')}`),
+  stall: longest(r), simSpentMs: r.sim?.spentMs ?? null, delayMax: r.delay.max, blocks: (r.blocks || []).slice(0, 3).map((b) => `${b.ms}ms · ${(b.app || []).slice(0, 2).join(' | ')}`),
 });
 async function act(name, fn, settle = 1500) {
   await lag(`before ${name}`);
@@ -63,6 +63,7 @@ await until(() => document.querySelector('#panel .item') || document.querySelect
 { const longs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push(e.duration); }).observe({ type: 'longtask', buffered: true }); } catch { /* none */ }
   for (let i = 0, last = -1, still = 0; i < 80 && still < 6; i++) { await wait(500); if (longs.length === last) still += 1; else { still = 0; last = longs.length; } } }
 await wait(2000);
+while (performance.now() < 32000) await wait(500); // (the update check 25 s after the start belongs to the start)
 { const r = await lag('startup'); if (!r?.spawns) { out.problems.push('the lag probe is off or old (HEARTH_LOOPLAG + winperf78 counters)'); return out; } out.actions.startup = brief(r, null); out.sim = r.sim; }
 window.hub.openExternal = () => {};
 
@@ -94,19 +95,6 @@ await act('openLab', async () => {
   await until(() => typeof ThreeLab !== 'undefined' && ThreeLab.scenes && ThreeLab.director, 'the Lab', 800);
   await wait(800);
 }, 2500);
-// ---------- sync: switched on (its first pass), then a pass after a change ----------
-const CLOUD = `${window.SMOKE_TMP}/wp78-cloud`;
-await window.hub.fs.write(`${CLOUD}/.keep`, '');
-await act('syncFirst', async () => {
-  await window.hub.sync.on({ root: CLOUD });
-  await until(async () => ['synced', 'conflict', 'pending'].includes((await window.hub.sync.status())?.state), 'the first pass', 900, 200);
-}, 2000);
-await act('syncChange', async () => {
-  const before = (await window.hub.sync.status())?.at || 0;
-  await window.hub.kvSet?.('winperf78-note', { at: Date.now(), text: 'a small change' });
-  await window.hub.sync.now?.();
-  await until(async () => ((await window.hub.sync.status())?.at || 0) > before, 'a pass after the change', 600, 100);
-}, 2000);
 await act('soundDesk', async () => {
   await Lazy.load('creative'); activate('tool:creative');
   await until(() => document.querySelector('.wb-stations, .wb-sound-desk, .creative-playground, [data-tool="creative"]'), 'the Sound desk', 300);
@@ -129,10 +117,23 @@ renderer.setAnimationLoop((t) => { mesh.rotation.y = t / 1000; renderer.render(s
   await window.hub.game.leave();
   await until(async () => !(await window.hub.game.state())?.playing, 'left', 200, 100);
 }, 2000);
+// ---------- sync, last (its passes would land in the other actions): switched on (its first pass), then a pass after a change ----------
+const CLOUD = `${window.SMOKE_TMP}/wp78-cloud`;
+await window.hub.fs.write(`${CLOUD}/.keep`, '');
+await act('syncFirst', async () => {
+  await window.hub.sync.on({ root: CLOUD });
+  await until(async () => ['synced', 'conflict', 'pending'].includes((await window.hub.sync.status())?.state), 'the first pass', 900, 200);
+}, 2000);
+await act('syncChange', async () => {
+  const before = (await window.hub.sync.status())?.at || 0;
+  await window.hub.kvSet?.('winperf78-note', { at: Date.now(), text: 'a small change' });
+  await window.hub.sync.now?.();
+  await until(async () => ((await window.hub.sync.status())?.at || 0) > before, 'a pass after the change', 600, 100);
+}, 2000);
 try { await window.hub.sync.off?.(); } catch { /* fine */ }
 
 judge();
 if (window.WP_REPORT) { out.report = out.fails; out.fails = []; }
-out.table = Object.entries(out.actions).map(([k, a]) => `${k.padEnd(12)} spawns ${a.spawns} (ps ${a.ps}) · fsSync ${a.fsSync} (${a.fsSyncMs} ms) · fsAsync ${a.fsAsync} · watch ${a.watch} · stall ${a.stall} ms`);
+out.table = Object.entries(out.actions).map(([k, a]) => `${k.padEnd(12)} spawns ${a.spawns} (ps ${a.ps}) · fsSync ${a.fsSync} (+${a.fsSyncNode} Node's own; ${a.fsSyncMs} ms) · fsAsync ${a.fsAsync} · watch ${a.watch} · stall ${a.stall} ms (sim ${a.simSpentMs} ms)`);
 try { await window.hub.fs.write(`${window.SMOKE_TMP}/winperf78.json`, JSON.stringify(out, null, 1)); out.file = `${window.SMOKE_TMP}/winperf78.json`; } catch { /* the printed result */ }
 return out;

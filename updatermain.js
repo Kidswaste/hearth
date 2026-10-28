@@ -86,6 +86,14 @@ function create(opts = {}) {
 
   // ---------- before anything: can git work here, is something half-done? ----------
   async function preflight() {
+    // (round 78, winperf78) the four questions below in one git process when they all have an answer (a usual
+    // checkout): each git start costs ≈ 50–150 ms on Windows; anything unusual asks them one by one as before
+    const all = await git(['rev-parse', '--show-toplevel', '--show-prefix', '--absolute-git-dir', '--abbrev-ref', 'HEAD'], { timeout: 15000 });
+    const four = all.ok ? all.out.split(/\r?\n/) : [];
+    if (four.length === 4 && four[0] && four[2] && four[3]) {
+      if (four[1]) return ex('repo-other', { top: four[0] });
+      return checkout({ gitDir: four[2], branch: four[3] });
+    }
     const top = await git(['rev-parse', '--show-toplevel'], { timeout: 15000 });
     if (top.missing) return ex('git');
     if (!top.ok) {
@@ -100,6 +108,10 @@ function create(opts = {}) {
     if (prefix.ok && prefix.out) return ex('repo-other', { top: top.out });
     const gd = await git(['rev-parse', '--absolute-git-dir']);
     const gitDir = gd.ok ? gd.out : path.join(DIR, '.git');
+    return checkout({ gitDir, branch: null });
+  }
+  // (the rest of preflight: a lock, an update half done, the branch)
+  async function checkout({ gitDir, branch }) {
     const lock = path.join(gitDir, 'index.lock');
     if (!busy && fs.existsSync(lock)) {
       let age = 0;
@@ -118,7 +130,7 @@ function create(opts = {}) {
       }
       C.writeState(DIR, 'journal', null);
     }
-    const br = await git(['rev-parse', '--abbrev-ref', 'HEAD']);
+    const br = branch != null ? { ok: true, out: branch } : await git(['rev-parse', '--abbrev-ref', 'HEAD']);
     if (br.ok && br.out === 'HEAD') return ex('detached');
     return { ok: true, gitDir, branch: br.out };
   }

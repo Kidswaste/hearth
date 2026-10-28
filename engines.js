@@ -1577,7 +1577,7 @@ async function checkEngine(engine, { fresh = false, login = true } = {}) {
   // Settings → Engines names an older copy than one Hearth found
   if (pinned && newest && newest.path !== pinned && Installs.cmp(newest.semver, pick?.semver) > 0) r.newer = { path: newest.path, version: newest.version };
   r.plan = Installs.updatePlan(engine, pick?.path || null);
-  if (pick && login && !r.broken) { const s = await Installs.signedIn(engine, pick.path, WORKSPACE); r.signedIn = s.ok; r.signText = s.text; if (s.ok != null) signCache.set(engine, { path: pick.path, at: Date.now(), ok: s.ok, text: s.text }); }
+  if (pick && login && !r.broken) { const s = await Installs.signedIn(engine, pick.path, WORKSPACE); r.signedIn = s.ok; r.signText = s.text; if (s.ok != null) signCache.set(engine, { path: pick.path, at: Date.now(), ok: s.ok, text: s.text }); } // (round 78) kept for the doctor
   return r;
 }
 async function checkInstalls(opts = {}) {

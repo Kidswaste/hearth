@@ -203,7 +203,18 @@ function setupTray(win, icon, actions) {
   ]));
   tray.on('click', () => toggleWindow(win));
 }
+// (round 78, winperf78) every settings save (≈ 80 places save them: agents, the Lab, toggles) re-registered both
+// system-wide keys, read the Windows "start at login" entry from the registry and set the spell checker again. Now
+// only when one of those settings changed (or a key couldn't be registered last time: tried again).
+let applied = { key: '', result: null };
 function applySettings(win, settings = {}) {
+  const key = JSON.stringify([win?.id ?? null, settings.hotkey ?? null, settings.quickIdeaKey ?? null, Boolean(quickIdea), Boolean(settings.launchAtStartup), settings.spellLanguages || null]);
+  if (applied.result && applied.key === key && applied.result.hotkeyOk && applied.result.quickIdeaKeyOk) return { ...applied.result };
+  const result = applySettingsNow(win, settings);
+  applied = { key, result };
+  return { ...result };
+}
+function applySettingsNow(win, settings = {}) {
   globalShortcut.unregisterAll();
   const hotkey = settings.hotkey ?? 'Control+Alt+H';
   let hotkeyOk = true;

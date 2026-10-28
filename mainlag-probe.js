@@ -28,7 +28,7 @@ const SPAWN_MS = knob('HEARTH_SPAWN_MS', 40);
 const SPAWN_LAT_MS = knob('HEARTH_SPAWN_LAT_MS', 120);
 const PS_LAT_MS = knob('HEARTH_PS_LAT_MS', 500);
 const ASYNC_MS = knob('HEARTH_SLOWFS_ASYNC_MS', 1);
-const P = { since: performance.now(), fs: new Map(), ipc: new Map(), sends: new Map(), profile: null, spawns: new Map(), fsAsync: new Map(), watch: new Map(), spawnLog: [] };
+const P = { since: performance.now(), fs: new Map(), ipc: new Map(), sends: new Map(), profile: null, spawns: new Map(), fsAsync: new Map(), watch: new Map(), spawnLog: [], simMs: 0 };
 const h = monitorEventLoopDelay({ resolution: 10 });
 h.enable();
 
@@ -40,7 +40,8 @@ const site = (skip, n = 2) => {
   return lines.slice(0, n).map(f).join(' < ');
 };
 const add = (map, key, ms) => { const e = map.get(key) || { n: 0, ms: 0 }; e.n += 1; e.ms += ms; map.set(key, e); };
-const spin = (until) => { while (performance.now() < until) { /* the slow disk */ } };
+// (round 78) the simulated Windows costs spent, so a stall can be told apart from the app's own work
+const spin = (until) => { const a = performance.now(); while (performance.now() < until) { /* the slow disk */ } P.simMs += Math.max(0, performance.now() - a); };
 
 // ---------- fs.*Sync ----------
 const fs = require('fs');
@@ -224,11 +225,12 @@ async function take({ reset = true, label = '' } = {}) {
   const top = (map, n = 14) => [...map].sort((a, b) => b[1].ms - a[1].ms || b[1].n - a[1].n).slice(0, n).map(([k, v]) => ({ k, n: v.n, ms: Math.round(v.ms * 10) / 10 }));
   const out = { label, seconds: Math.round(secs * 10) / 10, slowFsUs: SLOW_US, procStart: Math.round(Date.now() - process.uptime() * 1000), profAt: P.profAt || 0,
     delay: { p50: ms(h.percentile(50)), p90: ms(h.percentile(90)), p99: ms(h.percentile(99)), max: ms(h.max), mean: ms(h.mean), count: h.count },
-    fsSync: { n: [...P.fs.values()].reduce((a, v) => a + v.n, 0), ms: Math.round([...P.fs.values()].reduce((a, v) => a + v.ms, 0)), top: top(P.fs) },
+    // (round 78) node: calls with no app line behind them (module loading, Node's own recursive fs.watch on Linux)
+    fsSync: { n: [...P.fs.values()].reduce((a, v) => a + v.n, 0), ms: Math.round([...P.fs.values()].reduce((a, v) => a + v.ms, 0)), node: [...P.fs].filter(([k]) => !k.includes(' ') || /^\S+ $/.test(k)).reduce((a, [, v]) => a + v.n, 0), top: top(P.fs) },
     ipc: { n: [...P.ipc.values()].reduce((a, v) => a + v.n, 0), top: top(P.ipc, 12), busiest: [...P.ipc].sort((a, b) => b[1].n - a[1].n).slice(0, 8).map(([k, v]) => `${Math.round(v.n / secs * 10) / 10}/s ${k}`) },
     sends: [...P.sends].sort((a, b) => b[1].n - a[1].n).slice(0, 8).map(([k, v]) => `${Math.round(v.n / secs * 10) / 10}/s ${k}`),
     // (round 78, winperf78) processes started (blockMs: the thread held by the starts themselves), async fs, watches
-    sim: { winsim: SIM, spawnMs: SPAWN_MS, spawnLatMs: SPAWN_LAT_MS, psLatMs: PS_LAT_MS, asyncMs: ASYNC_MS },
+    sim: { winsim: SIM, spawnMs: SPAWN_MS, spawnLatMs: SPAWN_LAT_MS, psLatMs: PS_LAT_MS, asyncMs: ASYNC_MS, spentMs: Math.round(P.simMs) },
     spawns: { n: [...P.spawns.values()].reduce((a, v) => a + v.n, 0), blockMs: Math.round([...P.spawns.values()].reduce((a, v) => a + v.ms, 0)),
       ps: [...P.spawns].filter(([k]) => isPs(k.split(' ')[0])).reduce((a, [, v]) => a + v.n, 0), top: top(P.spawns, 12),
       byProg: Object.entries([...P.spawns].reduce((o, [k, v]) => { const g = k.split(' ')[0]; o[g] = (o[g] || 0) + v.n; return o; }, {})).sort((a, b) => b[1] - a[1]) },
@@ -238,7 +240,7 @@ async function take({ reset = true, label = '' } = {}) {
     try { const { profile } = await post('Profiler.stop'); out.blocks = blocks(profile).slice(0, 12); out.appTop = blocks.appTop; } catch (err) { out.profileError = err.message; }
     if (reset) await startProfile();
   }
-  if (reset) { h.reset(); P.fs.clear(); P.ipc.clear(); P.sends.clear(); P.spawns.clear(); P.fsAsync.clear(); P.watch.clear(); P.since = performance.now(); }
+  if (reset) { h.reset(); P.fs.clear(); P.ipc.clear(); P.sends.clear(); P.spawns.clear(); P.fsAsync.clear(); P.watch.clear(); P.simMs = 0; P.since = performance.now(); }
   return out;
 }
 
