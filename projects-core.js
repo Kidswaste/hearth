@@ -105,11 +105,44 @@ const ProjectsCore = (() => {
     });
     return changed ? { ...d, list } : d;
   }
+  // (round 76, projsync76) deleted on one computer while changed on the other: sync keeps the change (nothing is lost),
+  // so the project is in the list AND in Recently deleted. Only being opened there (opened / updated times) isn't a
+  // change: the delete goes through. A real change brings it back marked `revived` (the Desk and a toast ask: keep it
+  // or delete it), its deleted copy kept beside it until the owner chooses (keepRevived folds that copy's notes / items in).
+  const QUIET = new Set(['opened', 'updated', 'deletedAt', 'revived']);
+  // (an item's id is made again from its ref: sync rewrites a path in the ref for this computer, not inside the id)
+  const quiet = (a) => JSON.stringify(Object.keys(a).filter((k) => !QUIET.has(k)).sort().map((k) => [k, k === 'items' && Array.isArray(a.items) ? a.items.map((x) => (x && TYPES[x.type] ? { ...x, id: itemId(x.type, x.ref) } : x)) : a[k]]));
+  const sameMinusTimes = (a, b) => quiet(a) === quiet(b);
+  function revive(list, trash) {
+    const out = [];
+    for (const p of list) {
+      const t = trash.find((x) => x.id === p.id);
+      if (!t) { out.push(p); continue; }
+      if (!p.revived && sameMinusTimes(p, t)) continue; // the delete wins: nothing changed but when it was opened
+      if (!p.revived) p.revived = { at: t.deletedAt || 0 };
+      out.push(p);
+    }
+    return out;
+  }
+  // the owner kept a revived project: the deleted copy's notes lines and items it doesn't have join it
+  function keepRevived(p, t, at = Date.now()) {
+    delete p.revived;
+    if (t) {
+      const mine = String(p.notes || '').split('\n');
+      const extra = String(t.notes || '').split('\n').filter((x) => x.trim() && !mine.includes(x));
+      if (extra.length) p.notes = [...mine, ...extra].join('\n').replace(/^\n+/, '').slice(0, 4000);
+      for (const x of t.items || []) if (!p.items.some((y) => y.id === x.id)) p.items.push(x);
+    }
+    p.updated = at;
+    return p;
+  }
   function normalize(d) {
     d = compact(d, { identities: true });
-    const list = Array.isArray(d?.list) ? d.list.filter((p) => p && typeof p.id === 'string' && p.ident && Array.isArray(p.items)) : [];
+    const all = Array.isArray(d?.trash) ? d.trash.filter((p) => p && typeof p.id === 'string' && p.ident && Array.isArray(p.items)) : [];
+    const list = revive(Array.isArray(d?.list) ? d.list.filter((p) => p && typeof p.id === 'string' && p.ident && Array.isArray(p.items)) : [], all);
     // (round 72, projects72) Recently deleted: a deleted project's grouping, notes, look and links, newest first (30)
-    const trash = Array.isArray(d?.trash) ? d.trash.filter((p) => p && typeof p.id === 'string' && p.ident && Array.isArray(p.items) && !list.some((x) => x.id === p.id)).slice(0, TRASH_KEEP) : [];
+    // (round 76, projsync76) a revived project's deleted copy stays beside it until the owner chooses
+    const trash = all.filter((p) => !list.some((x) => x.id === p.id && !x.revived)).slice(0, TRASH_KEEP);
     for (const p of [...list, ...trash]) {
       p.items = p.items.filter((x) => x && TYPES[x.type] && x.ref != null).map((x) => ({ ...x, id: itemId(x.type, x.ref) }));
       if (!STATUS[p.status]) p.status = 'active';
@@ -242,6 +275,6 @@ const ProjectsCore = (() => {
     return out;
   }
 
-  return { TYPES, STATUS, TRASH_KEEP, MC, cap, itemId, plural, newId, create, addItem, removeItem, has, rename, setStatus, setNotes, setCover, setIdent, live, ofItem, counts, countText, compact, normalize, recent, cover, latest, words, keysOf, suggest, tokens, search, snippet, sliderNames, titleCase };
+  return { TYPES, STATUS, TRASH_KEEP, MC, keepRevived, cap, itemId, plural, newId, create, addItem, removeItem, has, rename, setStatus, setNotes, setCover, setIdent, live, ofItem, counts, countText, compact, normalize, recent, cover, latest, words, keysOf, suggest, tokens, search, snippet, sliderNames, titleCase };
 })();
 if (typeof module !== 'undefined') module.exports = ProjectsCore;

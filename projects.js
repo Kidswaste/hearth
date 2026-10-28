@@ -25,8 +25,8 @@ const Projects = (() => {
     try { data = C.normalize(await window.hub.kvGet(KEY, null)); } catch { /* first run */ }
     loaded = true;
   })();
-  let saveT = 0;
-  function save() { clearTimeout(saveT); saveT = setTimeout(() => window.hub.kvSet(KEY, data).catch(() => {}), 300); }
+  let saveT = 0; let dirty = false; // (round 76) dirty: a change not written yet
+  function save() { clearTimeout(saveT); dirty = true; saveT = setTimeout(() => { dirty = false; window.hub.kvSet(KEY, data).catch(() => {}); }, 300); }
   const listeners = new Set();
   let paintT = 0;
   function changed(p = null, why = 'change', persist = true) {
@@ -131,7 +131,40 @@ const Projects = (() => {
   });
   addEventListener('hearth:sketch', () => forget('sketches', 'sceneList'));
   async function reloadFromDisk() {
-    try { const d = C.normalize(await window.hub.kvGet(KEY, null)); clearTimeout(saveT); data = d; idx = null; changed(null, 'sync', false); } catch (err) { console.warn('projects from sync', err); }
+    try {
+      // (round 76, projsync76) a change made here in the last moment (a rename, notes, an item taken out) was dropped
+      // when the other computer's version arrived: it's written first (sync's write guard merges it with what arrived).
+      // Then sync is told this window now holds what arrived, so a later "take out" of something that came from the
+      // other computer isn't merged back in (the guard's base stayed the version before the arrival)
+      if (dirty) await flush().catch(() => {});
+      try { await window.hub.sync?.ack?.([`kv/${KEY}.json`]); } catch { /* sync off */ }
+      const was = new Map(data.list.map((p) => [p.id, p])); const front = here()?.id || null;
+      const raw = await window.hub.kvGet(KEY, null); const d = C.normalize(raw); clearTimeout(saveT); data = d; idx = null;
+      // (round 76, projsync76) normalize may settle a delete the other computer made while this one only opened the
+      // project (or mark one revived): saved back so both computers end the same
+      const marks = (list) => JSON.stringify((Array.isArray(list) ? list : []).map((p) => [p?.id, Boolean(p?.revived)]));
+      changed(null, 'sync', marks(raw?.list) !== marks(d.list));
+      arrivals(was, front);
+    } catch (err) { console.warn('projects from sync', err); }
+  }
+  // (round 76, projsync76) what a delete from the other computer means here, said once: the project in front of you
+  // deleted there (Restore), or one deleted there while it changed here (kept: open it to choose)
+  function arrivals(was, front) {
+    for (const p of data.list) if (p.revived && was.has(p.id) && !was.get(p.id).revived) toast(`“${p.name}” was deleted on your other computer, but it changed since, so it's kept. Open it to keep it or delete it.`, { timeout: 12000, action: { label: 'Open', fn: () => openHome(p.id) } });
+    for (const [id, p] of was) if (!get(id) && (data.trash || []).some((x) => x.id === id) && (id === front || p.opened > Date.now() - 864e5)) toast(`“${p.name}” was deleted on your other computer. Its chats, scenes and files stay here; it waits in Recently deleted.`, { timeout: 12000, action: { label: 'Restore', fn: () => { if (restoreProject(id)) toast(`“${p.name}” is back`, { timeout: 3000 }); } } });
+  }
+  // (round 76, projsync76) the owner's choice for a revived project: keep it (the deleted copy's notes / items join
+  // it) or delete it after all (Recently deleted, as any delete)
+  function settleRevived(p, keep) {
+    if (!p?.revived) return false;
+    const t = (data.trash || []).find((x) => x.id === p.id);
+    if (!keep) { delete p.revived; return removeProject(p); }
+    C.keepRevived(p, t);
+    data.trash = (data.trash || []).filter((x) => x.id !== p.id);
+    if (!data.trash.length) delete data.trash;
+    changed(p, 'restore');
+    toast(`“${p.name}” is kept`, { timeout: 3000 });
+    return true;
   }
 
   // names, times and pictures of items (Home's cards, continue, covers)
@@ -216,7 +249,7 @@ const Projects = (() => {
   function nextMark(p) { C.setIdent(p, { gi: p.ident.gi + 1 }); changed(p, 'ident'); }
   function touch(p) { if (!p) return; p.opened = Date.now(); save(); }
   function setWorkspace(p, patch) { p.workspace = { ...p.workspace, ...patch }; p.updated = Date.now(); changed(p, 'workspace'); }
-  async function flush() { clearTimeout(saveT); const r = await window.hub.kvSet(KEY, data); if (r?.error) throw Error(r.error); }
+  async function flush() { clearTimeout(saveT); dirty = false; const r = await window.hub.kvSet(KEY, data); if (r?.error) throw Error(r.error); }
   // deleting a project forgets the grouping only: chats, scenes and files stay where they are (Undo in the toast)
   // (round 72, projects72) and it waits in Recently deleted (Projects › ⋯), with its notes, look and links, until 30
   // newer ones push it out: Restore puts it back as it was
@@ -224,13 +257,14 @@ const Projects = (() => {
     const i = data.list.indexOf(p);
     if (i < 0) return false;
     data.list.splice(i, 1);
-    data.trash = [{ ...p, deletedAt: Date.now() }, ...(data.trash || []).filter((x) => x.id !== p.id)].slice(0, C.TRASH_KEEP);
+    const { revived: _r, ...was } = p; // (round 76, projsync76) a revived project deleted after all: no mark in the trash
+    data.trash = [{ ...was, deletedAt: Date.now() }, ...(data.trash || []).filter((x) => x.id !== p.id)].slice(0, C.TRASH_KEEP);
     if (p.make && !data.dismissed.includes(`make:${p.make}`)) data.dismissed.push(`make:${p.make}`); // not made again from its make
     changed(null, 'delete');
     if (!quiet) toast(`Project “${p.name}” deleted (its chats, scenes and files stay; Projects › ⋯ › Recently deleted brings it back)`, { timeout: 8000, action: { label: 'Undo', fn: () => restoreProject(p.id, { at: i, as: p }) } });
     return true;
   }
-  const trashed = () => (data.trash || []).slice();
+  const trashed = () => (data.trash || []).filter((x) => !get(x.id)); // (round 76) a revived project's deleted copy isn't listed
   // (round 75, versions75) 🕘 Earlier versions › Restore: a project put back as an earlier version of itself (its id kept;
   // versions.js kept the one it replaces first), saved like any change so sync sends it
   function replaceWith(id, v) { const p = get(id); if (!p || !v || typeof v !== 'object') return null; for (const k of Object.keys(p)) if (k !== 'id') delete p[k]; Object.assign(p, JSON.parse(JSON.stringify(v)), { id, updated: Date.now() }); changed(p, 'restore'); return p; }
@@ -547,6 +581,8 @@ const Projects = (() => {
       { label: '⧉ Duplicate project', action: () => bundle((B) => B.duplicateProject(p)) },
       { label: 'Earlier versions…', action: () => window.Lazy.load('versions').then(() => Versions.open({ kind: 'project', id: p.id, name: p.name })) }, // (round 75, versions75)
       '-',
+      // (round 76, projsync76) deleted on one computer while it changed on the other: the choice
+      ...(p.revived ? [{ label: 'Keep it (it was deleted on the other computer)', action: () => settleRevived(p, true) }] : []),
       { label: 'Delete the project…', danger: true, action: () => removeProject(p) },
     ].filter(Boolean);
   }
@@ -583,7 +619,7 @@ const Projects = (() => {
 
   return {
     ready: () => ready, isLoaded: () => loaded, all, live, get, find, ofItem, projectOfChat, here, hereChat, currentScene, currentBoard,
-    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, replaceWith, fromMake, syncMakes, hidesMake,
+    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, replaceWith, settleRevived, fromMake, syncMakes, hidesMake,
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
     openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt, bundle,
     grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu, sketchGroups, sketchBrowse, sketchMenu,

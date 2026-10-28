@@ -144,14 +144,22 @@ ok('continue: the latest of a kind by its own time (a chat answered later wins)'
 });
 
 // (round 72, projects72) Recently deleted: kept through normalize (and a sync merge), never beside the same live project
-ok('trash: kept by normalize (30 newest), dropped when the project is live again, absent when empty', () => {
+ok('trash: kept by normalize (30 newest), a delete merged with the other computer\'s version settled (round 76), absent when empty', () => {
   const p = C.create({ id: 'pjt', name: 'Gone', notes: 'keep these words', items: [{ type: 'chat', ref: 'c1' }] });
   const d = C.normalize({ v: 1, list: [], trash: [{ ...p, deletedAt: 5 }] });
   assert.strictEqual(d.trash.length, 1);
   assert.strictEqual(d.trash[0].notes, 'keep these words');
   assert.strictEqual(d.trash[0].items[0].id, 'chat:c1');
   assert.ok(!('trash' in C.normalize({ v: 1, list: [p] })));
-  assert.ok(!('trash' in C.normalize({ v: 1, list: [p], trash: [{ ...p, deletedAt: 5 }] })));
+  // (round 76, projsync76) in the list AND in Recently deleted only happens when sync merged a delete with the other
+  // computer's version: the same but for when it was opened → the delete wins; really changed → kept, marked for a
+  // choice, its deleted copy kept beside it
+  const both = C.normalize({ v: 1, list: [{ ...p, opened: 99 }], trash: [{ ...p, deletedAt: 5 }] });
+  assert.ok(!both.list.length && both.trash.length === 1);
+  const kept = C.normalize({ v: 1, list: [{ ...p, notes: 'changed there' }], trash: [{ ...p, deletedAt: 5 }] });
+  assert.ok(kept.list.length === 1 && kept.list[0].revived?.at === 5 && kept.trash.length === 1 && kept.trash[0].notes === 'keep these words');
+  const back = C.keepRevived(kept.list[0], kept.trash[0], 7);
+  assert.ok(!back.revived && back.notes === 'changed there\nkeep these words' && back.updated === 7);
   const many = Array.from({ length: 40 }, (_, i) => ({ ...C.create({ id: `pjt${i}` }), deletedAt: i }));
   assert.strictEqual(C.normalize({ v: 1, list: [], trash: many }).trash.length, C.TRASH_KEEP);
   const merge = require(path.join(__dirname, '..', 'sync-merge.js'));
