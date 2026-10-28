@@ -36,6 +36,13 @@ Your job: check the things below on real Windows and report back plain results (
 - Time from saving a chat message on one computer to it appearing on the other (stopwatch).
 - Settings › What syncs and Free up space on this computer: does "online-only" work with OneDrive here?
 
+## 4b. Scoped sync passes (round 79)
+- Make a change on the PC (send a chat message): does it reach the Mac within seconds? Does the sync panel ever show items stuck "waiting"?
+- Leave Hearth idle 30 min on mains power, then check the sync panel is calm (no errors).
+
+## 4c. Engines and first Play (round 79)
+- After a restart, open the doctor (Claude / Astra) — engines found? Then ▶ Play a game you played recently: did the window freeze at all?
+
 ## 5. Projects (rounds 72–76)
 - Switch between 3 projects with the name ▾ switcher: does it feel instant? Any reload flashes?
 - First project opened after restarting Hearth: time to usable.
