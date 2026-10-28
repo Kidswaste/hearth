@@ -44,14 +44,14 @@ const ms = (fn) => { const t = process.hrtime.bigint(); const r = fn(); return [
   const o2 = J(file); o2.days.today += 1000; fs.writeFileSync(file, JSON.stringify(o2));
   await store.mergeKV('ui-usage', [['inc', ['days', 'today'], 1]]); await store.idle();
   ok(J(file).days.today === 1121, 'a change by someone else between two merges is kept', J(file).days.today);
-  // the guard wants this file (it just arrived): the merge runs on the main side with the guard, as before
+  // (round 77, storeack77) a merge is made from the file on disk right now, so it already holds what arrived: it is
+  // written fresh, never merged again by the guard (that counted the other computer's clicks twice each minute)
   store.setBeforeWrite((f, v) => { guarded += 1; return /ui-usage/.test(f) ? { ...v, guardSaw: true } : v; }, (f) => /ui-usage/.test(f));
   const r3 = await store.mergeKV('ui-usage', [['inc', ['days', 'today'], 1]]); await store.idle();
-  ok(r3?.ok && guarded === 1 && J(file).guardSaw === true && J(file).days.today === 1122, 'a file the guard wants: merged through the guard (its change kept)', { r3, guarded, today: J(file).days.today });
-  // a guard that says nothing about which files: every merge goes through it (as before this round)
+  ok(r3?.ok && guarded === 0 && !J(file).guardSaw && J(file).days.today === 1122, 'a file the guard wants: written fresh from disk, not merged twice (its change kept, counted once)', { r3, guarded, today: J(file).days.today });
   store.setBeforeWrite((f, v) => { guarded += 1; return v; });
   await store.mergeKV('ui-usage', [['inc', ['days', 'today'], 1]]); await store.idle();
-  ok(guarded === 2 && J(file).days.today === 1123, 'a guard without a file list: the merge goes through it');
+  ok(guarded === 0 && J(file).days.today === 1123, 'a guard without a file list: still written fresh, counted once');
   store.setBeforeWrite(null);
   // a whole save still on its way, then a merge: built on it; a thread merge then a main one: in order
   store.setKV('ui-usage', { ...J(file), days: { ...J(file).days, today: 5000 } });
