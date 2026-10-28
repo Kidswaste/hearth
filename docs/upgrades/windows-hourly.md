@@ -23,3 +23,13 @@ One small Windows fix an hour, each checked in a throwaway copy of Hearth and pu
 - **Checked**: `npx --version`, `vercel --version` (now straight through Node) and a `.cmd` in `a b\` given
   "hello world" all run; `dev/connections-test.js` 7/7. `dev/checks/connections.js` fails the same 6 UI steps with
   and without this change (the check is older than the current Connections screen): not fixed here.
+
+## Pass 3 (Oct 29): a save at quit lost to a file OneDrive or antivirus was holding
+- **What you saw**: rarely, the last change before closing Hearth wasn't there next time ("save failed … EPERM" in
+  the log), more likely with the data folder synced or under a busy antivirus.
+- **Why**: Windows refuses to replace a file another program has open for a moment (EPERM / EBUSY / EACCES). The
+  store thread already retried; the main thread's save (the quit flush, and the fallback when a thread save fails),
+  the usage stats and the sync writer did not.
+- **Fix** (`store.js`, `storework.js`): the same short retry (5 tries, at most 0.6 s) in those three places.
+- **Checked**: against a real lock (PowerShell holding the file with no sharing for 250 ms), a plain rename failed
+  with EPERM and the retry saved; `dev/store-thread-test.js` 70/70; a save and read back in a test copy.

@@ -38,7 +38,7 @@ const sha = (s) => crypto.createHash('sha1').update(s).digest('hex');
 function atomicText(file, text) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-  fs.writeFileSync(tmp, text); fs.renameSync(tmp, file);
+  fs.writeFileSync(tmp, text); renameRetry(tmp, file); // (windows hourly 3) a cloud client holding the file
 }
 // Lab scenes about to lose some (a delete on the other computer… or a list lost there): this computer's whole file is
 // kept in kv/.history/three-sketches first (🛟 Recover lost scenes finds it), as sync-engine.js keepScenesAside does

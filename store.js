@@ -130,6 +130,17 @@ function ask(msg) {
 }
 // (round 50, crashsafe) a temp file written and flushed to the disk (fsync): after a power cut the rename that follows
 // leaves the old file or the whole new one, never an empty / half one
+// (windows hourly 3) as the store thread's renameRetry (storework.js): on Windows a cloud client, antivirus or the
+// search indexer holds a file for a moment (EPERM / EBUSY / EACCES). The quit flush and the fallback after a failed
+// thread save run here, and one such moment lost that save ("save failed" in the log).
+function renameRetry(from, to) {
+  for (let i = 0; ; i++) {
+    try { fs.renameSync(from, to); return; } catch (err) {
+      if (i >= 4 || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60 * (i + 1));
+    }
+  }
+}
 function writeFlushed(p, text) {
   const fd = fs.openSync(p, 'w');
   try { fs.writeSync(fd, text); try { fs.fsyncSync(fd); } catch { /* a disk that can't */ } } finally { fs.closeSync(fd); }
@@ -148,7 +159,7 @@ function writeSync(file, value, prev, g = null) {
   if (prev && keepPrev && fs.existsSync(file)) fs.copyFileSync(file, prev);
   const tmp = `${file}.tmp`;
   writeFlushed(tmp, JSON.stringify(value, null, 2)); // (round 50, crashsafe) on the disk before the rename, as the store thread does
-  fs.renameSync(tmp, file);
+  renameRetry(tmp, file);
   if (SS.guardedName(file)) SS.afterWrite(ssEnv, file, value);
   seen.add(file); held.delete(file);
   return restored ? { restored } : kept ? { kept } : undefined;
@@ -437,7 +448,7 @@ function statInto(stats, agentId, usage, meta, at = Date.now()) {
     if (meta.model) c.model = meta.model;
   }
 }
-const writeStats = (stats) => { const tmp = `${STATS_PATH}.tmp`; writeFlushed(tmp, JSON.stringify(stats)); fs.renameSync(tmp, STATS_PATH); };
+const writeStats = (stats) => { const tmp = `${STATS_PATH}.tmp`; writeFlushed(tmp, JSON.stringify(stats)); renameRetry(tmp, STATS_PATH); };
 // (round 65, mainhang65) after every reply the stats were read, flushed to the disk (fsync) and renamed on the main
 // thread: on a Windows disk a flush can take a long moment, with the whole app waiting. Now they are kept in memory
 // while a write is on its way and written off the main thread (temp file, flush, rename: crashsafe's writeAtomic),
