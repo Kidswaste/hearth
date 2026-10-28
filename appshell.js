@@ -128,10 +128,24 @@ function writeIconFiles() {
   fs.writeFileSync(ICON_ICO, Buffer.concat([header, dir, ...pngs]));
 }
 // (an .ico from before round 36 has fewer sizes: drawn again once)
-const icoCount = () => { try { const b = Buffer.alloc(6); const fd = fs.openSync(ICON_ICO, 'r'); fs.readSync(fd, b, 0, 6, 0); fs.closeSync(fd); return b.readUInt16LE(4); } catch { return 0; } };
+// (round 78, winperf78) the .ico read once per start: its PNGs by size (the tray's 16–32 px come from it instead of
+// being drawn pixel by pixel on the main thread at every start, ≈ 30 ms), and the window icon made once, not at each of
+// the 4–5 calls of a start (each was a stat + an open / read / close + a PNG decode; on Windows each open is scanned)
+let icoPngs = null; let iconImg = null;
+function readIco() {
+  try {
+    const b = fs.readFileSync(ICON_ICO);
+    const n = b.readUInt16LE(4); const out = new Map();
+    for (let k = 0; k < n; k++) { const o = 6 + k * 16; const z = b[o] || 256; out.set(z, b.subarray(b.readUInt32LE(o + 12), b.readUInt32LE(o + 12) + b.readUInt32LE(o + 8))); }
+    return out;
+  } catch { return null; }
+}
 function ensureIcon() {
-  if (!fs.existsSync(ICON_PNG) || icoCount() !== ICO_SIZES.length) writeIconFiles();
-  return nativeImage.createFromPath(ICON_PNG);
+  if (iconImg && !iconImg.isEmpty()) return iconImg;
+  icoPngs = readIco();
+  if (!icoPngs || icoPngs.size !== ICO_SIZES.length || !fs.existsSync(ICON_PNG)) { writeIconFiles(); icoPngs = readIco(); }
+  iconImg = nativeImage.createFromPath(ICON_PNG);
+  return iconImg;
 }
 
 // ---------- window memory ----------
@@ -162,8 +176,9 @@ function toggleWindow(win) {
 // 200 %), not the 256 px picture shrunk: crisp on a scaled Windows screen and on a Retina menu bar
 function trayIcon(fallback) {
   try {
-    const img = nativeImage.createFromBuffer(drawIcon(16), { scaleFactor: 1 });
-    for (const [scaleFactor, z] of [[1.25, 20], [1.5, 24], [2, 32]]) img.addRepresentation({ scaleFactor, buffer: drawIcon(z) });
+    const png = (z) => icoPngs?.get(z) || drawIcon(z); // (round 78) from the .ico read at the start
+    const img = nativeImage.createFromBuffer(png(16), { scaleFactor: 1 });
+    for (const [scaleFactor, z] of [[1.25, 20], [1.5, 24], [2, 32]]) img.addRepresentation({ scaleFactor, buffer: png(z) });
     return img;
   } catch { return fallback.resize({ width: 16, height: 16 }); }
 }

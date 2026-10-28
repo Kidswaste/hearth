@@ -1491,6 +1491,8 @@ function quick(bin, args, ms = 10000) {
   });
 }
 
+// (round 78, winperf78) the last sign-in answer per engine (engine check / doctor), reused for SIGN_FRESH_MS
+const signCache = new Map(); const SIGN_FRESH_MS = 5 * 60000;
 // Diagnostics for /astra-doctor: where each engine was found, its version and (Codex) whether it's signed in.
 // agents (optional): native agents whose prompt size per message is estimated (instructions + memory).
 async function doctor(agents = []) {
@@ -1500,12 +1502,20 @@ async function doctor(agents = []) {
     const from = !bin ? null : given(engine) ? 'Settings → Engines' : Installs.KIND_LABEL[Installs.kindOf(engine, bin)];
     const r = { label: ENGINES[engine].label, found: Boolean(bin), path: bin, from };
     if (bin) {
-      const v = await quick(bin, ['--version']);
-      r.version = v.code === 0 ? (v.out.split('\n').find(Boolean) || '').trim() : null;
+      // (round 78, winperf78) the version Installs keeps per binary (same file, same size and date: asked once) and a
+      // sign-in answer from the last 5 minutes: each was a new process of the engine's CLI (Node: ≈ 0.5–1.5 s on
+      // Windows with Defender), 3 at every start (Astra's panel asks the doctor) on top of the engine check's own
+      const v = await Installs.version(bin, { cwd: WORKSPACE });
+      r.version = v.text || null;
       if (engine === 'codex') {
-        const s = await quick(bin, ['login', 'status']);
-        r.loggedIn = s.code === 0 && !/not logged in/i.test(s.out);
-        r.loginText = s.out.split('\n').filter(Boolean).pop() || '';
+        const c = signCache.get(engine);
+        if (c && c.path === bin && Date.now() - c.at < SIGN_FRESH_MS) { r.loggedIn = c.ok === true; r.loginText = c.text || ''; }
+        else {
+          const s = await quick(bin, ['login', 'status']);
+          r.loggedIn = s.code === 0 && !/not logged in/i.test(s.out);
+          r.loginText = s.out.split('\n').filter(Boolean).pop() || '';
+          signCache.set(engine, { path: bin, at: Date.now(), ok: r.loggedIn, text: r.loginText });
+        }
       }
     }
     report[engine] = r;
@@ -1567,7 +1577,7 @@ async function checkEngine(engine, { fresh = false, login = true } = {}) {
   // Settings → Engines names an older copy than one Hearth found
   if (pinned && newest && newest.path !== pinned && Installs.cmp(newest.semver, pick?.semver) > 0) r.newer = { path: newest.path, version: newest.version };
   r.plan = Installs.updatePlan(engine, pick?.path || null);
-  if (pick && login && !r.broken) { const s = await Installs.signedIn(engine, pick.path, WORKSPACE); r.signedIn = s.ok; r.signText = s.text; }
+  if (pick && login && !r.broken) { const s = await Installs.signedIn(engine, pick.path, WORKSPACE); r.signedIn = s.ok; r.signText = s.text; if (s.ok != null) signCache.set(engine, { path: pick.path, at: Date.now(), ok: s.ok, text: s.text }); }
   return r;
 }
 async function checkInstalls(opts = {}) {

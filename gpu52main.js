@@ -40,7 +40,7 @@ function winRegistry(exe, power, run = require('child_process').execFile) {
     run('reg', ['query', REG, '/v', exe], { windowsHide: true, timeout: 5000 }, (err, out) => {
       const current = err ? null : (/REG_SZ\s+(.*)$/m.exec(String(out || '')) || [])[1]?.trim() || null;
       const plan = Core.winPref({ current, ours: marker.win?.ours ?? null, power });
-      const done = (wrote) => { writeMarker({ ...marker, win: { ours: wrote ? plan.want : marker.win?.ours ?? null, user: plan.user } }); resolve({ current, ...plan, wrote }); };
+      const done = (wrote) => { writeMarker({ ...marker, win: { ours: wrote ? plan.want : marker.win?.ours ?? null, user: plan.user, checked: { exe, power, at: Date.now() } } }); resolve({ current, ...plan, wrote }); };
       if (!plan.write) { done(false); return; }
       run('reg', ['add', REG, '/v', exe, '/t', 'REG_SZ', '/d', plan.write, '/f'], { windowsHide: true, timeout: 5000 }, (e2) => done(!e2));
     });
@@ -78,7 +78,10 @@ function register(ipcMain, { getWin, app = require('electron').app, screen = nul
   later(T.settle, () => { look().catch(() => {}); });
   later(T.late, () => { look().catch(() => {}); }); // (a start that went to software a moment later)
   app.on('before-quit', () => { const next = Core.settle(marker, Core.kind(readStatus())); if (next) writeMarker(next); }); // (a quick quit on the card isn't a start that failed)
-  if (process.platform === 'win32' && !TEST) later(T.reg, () => { winRegistry(process.execPath, D.power).catch(() => {}); });
+  // (round 78, winperf78) asked once a week (or when Hearth's program or the graphics choice changed), not at every
+  // start: 1–2 reg.exe processes 15 s into each start (a choice made in Windows' Settings is never written over anyway)
+  const regFresh = () => { const c = marker.win?.checked; return Boolean(c && c.exe === process.execPath && c.power === D.power && Date.now() - c.at < 7 * 864e5); };
+  if (process.platform === 'win32' && !TEST) later(T.reg, () => { if (!regFresh()) winRegistry(process.execPath, D.power).catch(() => {}); });
 
   const hzOf = () => {
     try {
