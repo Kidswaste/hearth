@@ -348,6 +348,8 @@ function register(ipcMain, win, o) {
   h('sync:resolveAll', async (mode) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.resolveAll(['auto', 'newest', 'mine', 'theirs'].includes(mode) ? mode : 'auto'); schedule(500, 'resolve-all'); return { ok: true, ...r }; });
   h('sync:autoResolve', (on) => { if (on !== undefined) { settings = { ...settings, autoResolve: Boolean(on) }; saveSettings(); } return settings.autoResolve !== false; });
   h('sync:preview', async (id) => (engine ? engine.preview(String(id)) : null)); // (round 19) both sides of a conflict
+  // (round 78, guardloss78) a conflict's losing side kept aside: the notes (no id), or one note's compare / both / theirs / dismiss
+  h('sync:aside', async (id, how) => { if (!engine) return id ? { ok: false, error: 'Sync is off' } : []; const r = await engine.aside(id ? String(id) : null, ['compare', 'both', 'theirs', 'dismiss'].includes(how) ? how : 'compare'); if (r?.ok && (how === 'both' || how === 'theirs')) schedule(500, 'aside'); return r; });
   h('sync:trash', async () => (engine ? engine.trash() : []));
   h('sync:restore', async (id, ro) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.restore(String(id), { replace: Boolean(ro?.replace) }); schedule(500, 'restore'); return r; });
   h('sync:open', () => { if (!engine) return false; require('electron').shell.openPath(fs.existsSync(engine.cloudDir) ? engine.cloudDir : settings.root); return true; });

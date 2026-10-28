@@ -292,7 +292,7 @@ const SyncPanel = (() => {
     }
     const auto = Sync.lastAuto();
     const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, (st.blocked || []).map((b) => `${b.rel}:${b.why}:${b.where}`), (st.peersOld || []).length, // (round 74) + what can't sync st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000),
-      mode, kindsOpen, freeList, freeDone, (st.transfers || []).map((t) => `${t.rel}:${t.op}:${t.moving}`), st.moving, kindsOpen ? (st.kinds || []).map((k) => `${k.id}:${k.on}:${k.n}:${Math.round(k.bytes / 1e5)}:${Math.round(k.cloudBytes / 1e5)}`) : (st.kinds || []).map((k) => k.on)]); // (round 73) + moving files, What syncs, Free up space
+      mode, kindsOpen, freeList, freeDone, (st.aside || []).map((n) => n.id), [...asideOpen.keys()], /* (round 78) + kept aside */ (st.transfers || []).map((t) => `${t.rel}:${t.op}:${t.moving}`), st.moving, kindsOpen ? (st.kinds || []).map((k) => `${k.id}:${k.on}:${k.n}:${Math.round(k.bytes / 1e5)}:${Math.round(k.cloudBytes / 1e5)}`) : (st.kinds || []).map((k) => k.on)]); // (round 73) + moving files, What syncs, Free up space
     if (my !== seq || !box) return;
     if (s === sig) { paintBars(st); return; } // nothing it shows changed: the DOM stays as it is (only the bars move)
     sig = s;
@@ -323,6 +323,7 @@ const SyncPanel = (() => {
         ...list.map(card),
         list.length > 1 ? el('div', { class: 'sp-row' }, el('button', { type: 'button', class: 'ghost small', text: 'Settle all for me', title: 'Chats, scenes and settings: merged (the newer one wins where they differ); pictures and files: the newer one', on: { click: settleAll } })) : null));
     } else if (st.conflicts) parts.push(el('p', { class: 'hint', text: `${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'}…` }));
+    parts.push(asideSec(st)); // (round 78, guardloss78) versions kept aside when sync picked a side by itself
     // what is waiting, and why
     // (round 73) the big files on their way have their own section (with bars): not listed twice
     const lane = new Set((st.transfers || []).map((t) => t.rel));
@@ -349,6 +350,47 @@ const SyncPanel = (() => {
     box.replaceChildren(...parts.filter(Boolean));
     box.scrollTop = keepScroll;
     place();
+  }
+  // ---------- (round 78, guardloss78) kept aside ----------
+  // Where both computers changed the same thing and sync picked one version by itself (a save right after the other
+  // computer's version arrived, or a conflict settled by itself), the other version is in Deleted files. One plain line
+  // each: "Mac's version of Notes kept aside — compare", then Compare (both, side by side), Keep both, Use that one, OK.
+  const asideOpen = new Map(); // note id → its compare (both versions), once opened
+  const whoseOf = (n) => (n.side === 'ours' ? `This ${HERE}'s` : `${(() => { const t = there(n); return t[0].toUpperCase() + t.slice(1); })()}'s`);
+  function asideSec(st) {
+    const list = st.aside || [];
+    if (!list.length) return null;
+    const row = (n) => {
+      const what = Sync.whatIs({ rel: n.rel, fields: n.fields, kind: n.kind });
+      const act = (label, how, title) => el('button', { type: 'button', class: `ghost small sp-aside-${how}`, text: label, title, on: { click: () => asideDo(n, how) } });
+      const cmp = asideOpen.get(n.id);
+      return el('div', { class: 'sp-aside', dataset: { id: n.id } },
+        el('div', { class: 'sp-what', text: `${whoseOf(n)} version of ${what.replace(/^The /, 'the ')} kept aside — compare` }),
+        el('span', { class: 'hint', text: `${n.why === 'guard' ? 'Changed here and there at once' : 'Settled by itself'} ${ago(n.at)}; it waits in Deleted files.` }),
+        cmp ? el('div', { class: 'sp-sides' },
+          el('div', { class: 'sp-side here' }, el('b', { text: 'In use now' }), side({ ...cmp, kind: n.kind === 'file' ? 'file' : 'json', ours: cmp.now, theirs: cmp.kept, here: cmp.here, there: cmp.there }, 'ours')),
+          el('div', { class: 'sp-side there' }, el('b', { text: 'Kept aside' }), side({ ...cmp, kind: n.kind === 'file' ? 'file' : 'json', ours: cmp.now, theirs: cmp.kept, here: cmp.here, there: cmp.there }, 'theirs'))) : null,
+        el('div', { class: 'sp-acts' },
+          cmp ? null : act('Compare', 'compare', 'Both versions side by side'),
+          n.rel === 'app/config.json' ? null : act('Keep both', 'both', 'Both stay: what differs is kept twice (a scene or a board as “… (from …)”, text as both texts)'),
+          act('Use that one', 'theirs', 'The version kept aside comes back; the one in use now waits in Deleted files'),
+          act('OK', 'dismiss', 'Keep things as they are (the other version stays in Deleted files for 30 days)')));
+    };
+    return el('div', { class: 'sp-sec sp-aside-sec' }, el('b', { text: `Kept aside (${list.length})` }),
+      el('span', { class: 'hint', text: 'Both computers changed the same thing and sync kept one version. The other one is safe in Deleted files.' }),
+      ...list.slice(0, 5).map(row));
+  }
+  async function asideDo(n, how) {
+    if (busy) return; busy = true;
+    try {
+      const r = await api().aside?.(n.id, how).catch((err) => ({ ok: false, error: err.message }));
+      if (!r?.ok) { toast(window.calmError ? calmError(r?.error || 'failed', { where: 'sync' }) : r?.error, { type: 'error', raw: r?.error }); return; }
+      if (how === 'compare') { asideOpen.set(n.id, r); return; }
+      asideOpen.delete(n.id);
+      if (how === 'both') toast(`Kept both versions of ${Sync.whatIs({ rel: n.rel })}.`, { timeout: 4000 });
+      else if (how === 'theirs') toast(`${whoseOf(n)} version is back. The other one waits in Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => Sync.trash() } });
+      await Sync.refresh();
+    } finally { busy = false; sig = ''; render(); }
   }
   async function settleAll() {
     const r = await api().resolveAll('auto').catch((err) => ({ ok: false, error: err.message }));

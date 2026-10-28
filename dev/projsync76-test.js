@@ -166,7 +166,8 @@ scenario('both', async () => {
   mac.view.online = true;
   ok(await T.converge(w) > 0, 'both: converges after the same shot changed two ways', T.why(w));
   const n1 = pc.json('kv/workbench-pjstoop.json').storyboard.panels[1].notes;
-  ok(['Closer (PC)', 'Closer (Mac)'].includes(n1) && T.recoverable(w, n1 === 'Closer (PC)' ? 'Closer (Mac)' : 'Closer (PC)'), 'both: the same shot two ways: one wins, the other can be brought back', n1);
+  // (round 78, guardloss78) a shot's notes (prose) changed two ways now merge inside the shot: both lines stay
+  ok((n1.includes('Closer (PC)') && n1.includes('Closer (Mac)')) || (['Closer (PC)', 'Closer (Mac)'].includes(n1) && T.recoverable(w, n1 === 'Closer (PC)' ? 'Closer (Mac)' : 'Closer (PC)')), 'both: the same shot two ways: both kept (or one wins and the other can be brought back)', n1);
   ok(!T.copies(pc).length && !T.copies(mac).length, 'both: no duplicate files', [...T.copies(pc), ...T.copies(mac)]);
 });
 
