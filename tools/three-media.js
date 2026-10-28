@@ -281,6 +281,7 @@ const ThreeMedia = (() => {
   // onCue({ index, cues, playing }) when playback enters another cue's section; lookChoices() → [{ layer, layerName, names }].
   // frame: { get() → { id, width, height }, set(id) } so the record menu can switch between the social sizes.
   // onCueLookHere(cue) → { layer, name } saves the selected layer's current sliders as a look for that cue.
+  let mapsHold = null; // (round 78, guardloss78) the beat grids' StoreAck holder (the latest player's)
   function player({ send, sketchName, onLoaded, onPick, onCue, lookChoices, frame: frameHook, onCueLookHere }) {
     const st = { path: null, name: null, bytes: null, mime: null, video: false, clock: null, analysis: null, samples: null, time: 0, duration: 0, playing: false, loop: store.get('three.mediaLoop', true), volume: store.get('three.mediaVolume', 0.8), stampAt: 0, rate: 1, lead: 0 };
     let region = null; // { a, b } seconds
@@ -977,7 +978,21 @@ const ThreeMedia = (() => {
       selected = null;
       mapChanged({ undoable: false });
     }
-    const saveMaps = debounce(() => { if (allMaps) window.hub.kvSet('three-beatmaps', allMaps); }, 400);
+    const saveMaps = saver(() => { if (allMaps) window.hub.kvSet('three-beatmaps', allMaps); }, 400); // (round 78) a saver: StoreAck flushes it
+    // (round 78, guardloss78) beat grids, marks and cues from the other computer (or brought back by 🛟 Recover): what waits
+    // here is written first, then read again; the song on screen shows the new grid, unless a mark is selected on it (then
+    // it waits: no ack, sync keeps merging, nothing lost). One holder (the latest player).
+    mapsHold?.off();
+    mapsHold = window.StoreAck?.hold('three-beatmaps', { saver: saveMaps, read: () => StoreAck.kv('three-beatmaps', {}), apply: (v) => {
+      if (!allMaps) return undefined; // not read yet: it reads the new one when first needed
+      const next = v && typeof v === 'object' ? v : {};
+      const m = st.path ? next[st.path] : null;
+      const same = !st.path || JSON.stringify(m || null) === JSON.stringify(allMaps[st.path] || null);
+      if (!same && selected) return false;
+      allMaps = next;
+      if (!same) { map = { grid: m?.grid || null, marks: emptyMarks(m?.marks), cues: m?.cues || [], trim: map.trim ?? null }; cueIdx = -2; sizeCanvas(); sendMap(); paint(); }
+      return undefined;
+    } });
     function sizeCanvas() { canvas.style.height = `${(gridView?.tall ? 170 : 112) + tracksH() + (shownLanes().length - CORE_LANES.length) * 14}px`; }
     function mapChanged() {
       sizeCanvas();

@@ -377,7 +377,7 @@ function register(ipcMain, win, o) {
     schedule(1500, 'free');
     return { ok: true, ...r };
   });
-  h('sync:ack', (rels, o) => { engine?.ackPulled(Array.isArray(rels) ? rels : null, Number(o?.since) || 0); return true; }); // (round 77, storeack77) o.since: when the window began reading
+  h('sync:ack', (rels, o) => { engine?.ackPulled(Array.isArray(rels) ? rels : null, Number(o?.since) || 0); opts.store?.outsideAck?.(Array.isArray(rels) ? rels : null, Number(o?.since) || 0); return true; }); // (round 77, storeack77) o.since: when the window began reading · (round 78, guardloss78) + 🛟 Recover's writes (store.js)
   // (round 74, synchard74) a blocked file's fix: Rename for Windows / Allow changes / Remove from the cloud; then a pass
   h('sync:fix', async (rel, how) => {
     if (!engine) return { ok: false, error: 'Sync is off' };

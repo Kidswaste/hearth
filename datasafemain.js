@@ -387,7 +387,7 @@ async function recover(picks = []) {
   if (!lastScan) throw new Error('Look again: that list is out of date');
   try { await require('./backupautomain').before('recover'); } catch { /* (round 45, backupauto) a backup first, unless a fresh one exists; Recover only adds */ }
   const recs = [...new Set(picks)].map((k) => lastScan.keys.get(k)).filter(Boolean);
-  const done = { chats: [], memory: 0, agents: 0, settings: 0, kv: [] };
+  const done = { chats: [], memory: 0, agents: 0, settings: 0, kv: [], rels: [] }; // (round 78) rels: the stores written (StoreAck)
   // chats: one that isn't here comes back as it was; one you have comes in next to it as "… (recovered)"
   const curIds = new Set((await Promise.resolve(o.store.listChats()).catch(() => [])).map((c) => c.id));
   for (const r of recs.filter((x) => x.kind === 'chat')) {
@@ -428,8 +428,10 @@ async function recover(picks = []) {
       if (l.scope === 'shared') found.shared += `${l.line}\n`;
       else if (l.scope.startsWith('agent:')) { const id = l.scope.slice(6); found.agents[id] = `${found.agents[id] || ''}${l.line}\n`; } else { const [k, kk] = l.scope.split(':'); if (kk) { found[k] ||= {}; found[k][kk] = `${found[k][kk] || ''}${l.line}\n`; } }
     }
-    const m = DS.mergeMemory(o.store.getMemory(), found);
-    if (m.added.length) { await o.store.saveMemory(m.value); done.memory = m.added.length; }
+    const before = o.store.getMemory();
+    const m = DS.mergeMemory(before, found);
+    // (round 78, guardloss78) the window's memory editor may hold an older copy: its next save is merged with this one
+    if (m.added.length) { o.store.outsideWrite?.('memory.json', before); await o.store.saveMemory(m.value, { outside: true }); done.memory = m.added.length; done.rels.push('memory.json'); }
   }
   // settings: agents you don't have, settings you never set
   const ag = recs.filter((x) => x.kind === 'agent'); const st = recs.filter((x) => x.kind === 'setting');
@@ -446,9 +448,15 @@ async function recover(picks = []) {
     const copy = readJsonF(r.file);
     if (copy === undefined) continue;
     const cur = o.store.getKV(r.name, null);
-    await o.store.setKV(r.name, DS.union(copy, cur));
-    done.kv.push(r.name);
+    // (round 78, guardloss78) through StoreAck: the window may hold this store (and a change not written yet). Until it has
+    // read it again (datasafe.js hands done.rels to StoreAck: its change written first, merged with this; read; acked),
+    // a save of its older copy is merged with what was brought back, never written over it (store.js outsideMerge)
+    o.store.outsideWrite?.(r.name, cur);
+    await o.store.setKV(r.name, DS.union(copy, cur), { outside: true });
+    done.kv.push(r.name); done.rels.push(`kv/${r.name}.json`);
   }
+  // (round 78, guardloss78) stores the main process holds (quick ideas…) take what came back too (storeackmain.js)
+  if (done.rels.length) { try { done.mainHeld = (await require('./storeackmain').arrived(done.rels.map((rel) => ({ rel, kind: 'kv' })))).acked; } catch { done.mainHeld = []; } }
   return done;
 }
 

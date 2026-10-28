@@ -14,6 +14,10 @@
 //                 the Mac's version (and the window's change waiting goes through the guard, not over it); OK clears it
 //   auto-loses    a pass conflict settled by itself (the newer side wins a field): the older side is in Deleted files
 //                 under its real name (before: only in the trash's conflicts/ folder, never listed) with a note
+//   recover       🛟 Recover through StoreAck (a child process on a throwaway copy of store.js + datasafemain.js): the
+//                 window holds the chat tags store emptied + a change of its own not written yet; Recover brings the
+//                 tags back; the window saving its older copy before it reads again keeps them (merged, its change too);
+//                 then StoreAck: written first, read again, acked → after the ack a tag taken off stays off
 // Never touches real data or a real cloud drive: a temp folder.
 //   node dev/guardloss78-test.js [--only name,name]
 'use strict';
@@ -207,7 +211,70 @@ scenario('auto-loses', async () => {
   ok(await T.converge(w) > 0 && JSON.stringify(pc.json(rel)) === JSON.stringify(mac.json(rel)), 'auto-loses: both computers end the same', T.why(w));
 });
 
+// ---------- 5. 🛟 Recover through StoreAck ----------
+scenario('recover', async () => {
+  const os = require('os'); const fs = require('fs'); const path = require('path'); const { spawnSync } = require('child_process');
+  const ROOT = path.join(__dirname, '..');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-guardloss78-'));
+  for (const f of ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js', 'scenesafe-core.js', 'datasafe-core.js', 'datasafemain.js', 'recall-core.js', 'configsafe-core.js', 'crashsafe-core.js', 'storeack-core.js', 'projects-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
+  fs.mkdirSync(path.join(dir, 'data', 'kv'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'data', 'kv', 'chat-meta.json'), JSON.stringify({ a: { tags: ['x'] }, b: { folder: 'Work' }, c: { folder: 'Play' } }));
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ agents: [{ id: 'claude', name: 'Claude' }], settings: {} }));
+  const r = spawnSync(process.execPath, [__filename, '--recover-child'], { cwd: dir, encoding: 'utf8', timeout: 60000 });
+  const out = (r.stdout || '').trim().split('\n').pop();
+  let res = null; try { res = JSON.parse(out); } catch { /* below */ }
+  ok(res && !res.error, 'recover: the child ran', { out: r.stdout?.slice(-1500), err: r.stderr?.slice(-1500) });
+  if (!res || res.error) return;
+  ok(res.found, 'recover: the emptied tags are offered by Recover', res);
+  ok(res.rels?.includes('kv/chat-meta.json'), 'recover: Recover says which stores it wrote (for StoreAck)', res.rels);
+  ok(res.afterRace.a && res.afterRace.b && res.afterRace.c && res.afterRace.d, 'recover: the window saving its older copy (with its own new tag) keeps what came back — merged, nothing lost', res.afterRace);
+  ok(res.acked && res.outsideLeft === 0, 'recover: StoreAck wrote what waited, read it again and acked (the merge is over)', res);
+  ok(res.held.a && res.held.d, 'recover: the window now holds what came back and its own change', res.held);
+  ok(!res.afterRemove.a && res.afterRemove.b, 'recover: after the ack, a tag taken off stays off', res.afterRemove);
+  ok(res.control.lost, 'recover: (control) without it, the window\'s older copy was written over what came back', res.control);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+async function recoverChild() {
+  const fs = require('fs'); const path = require('path');
+  const store = require(path.join(process.cwd(), 'store.js'));
+  const DM = require(path.join(process.cwd(), 'datasafemain.js'));
+  const SA = require(path.join(process.cwd(), 'storeack-core.js'));
+  const D = path.join(process.cwd(), 'data');
+  const J = () => JSON.parse(fs.readFileSync(path.join(D, 'kv', 'chat-meta.json'), 'utf8'));
+  // the tags emptied by a save that never read them (DataSafe keeps a copy aside: what Recover offers)
+  await store.setKV('chat-meta', {}); await store.idle();
+  // the window holds it (read now: empty) and adds a tag of its own, not written yet
+  let held = store.getKV('chat-meta', {}); let dirty = false;
+  held = { ...held, d: { tags: ['mine'] } }; dirty = true;
+  const cfg = DM.config({ configPath: path.join(process.cwd(), 'config.json'), dataDir: D });
+  DM._set({ dataDir: D, configPath: path.join(process.cwd(), 'config.json'), store, cfg, syncmain: null });
+  store.newPage?.();
+  const s = await DM.scan({});
+  const pick = s.kv.find((k) => k.name === 'chat-meta');
+  const done = await DM.recover(pick ? [pick.key] : []);
+  await store.idle();
+  // a save of the window's older copy racing the arrival (a debounced save landing now)
+  await store.setKV('chat-meta', held); await store.idle();
+  const afterRace = J();
+  // StoreAck, as datasafe.js runs it (ack → sync:ack → store.outsideAck)
+  const C = SA.create({ ack: (rels, since) => store.outsideAck(rels, since) });
+  C.hold('chat-meta', { pending: () => dirty, flush: async () => { await store.setKV('chat-meta', held); await store.idle(); dirty = false; }, read: async () => store.getKV('chat-meta', {}), apply: (v) => { held = v; } });
+  held = { ...held, d: { tags: ['mine', 'more'] } }; dirty = true;
+  const a = await C.arrived(done.rels.map((rel) => ({ rel, kind: 'kv' })));
+  const outsideLeft = store._outside();
+  const heldNow = { ...held };
+  // after the ack: the window takes a tag off and saves → stays off
+  delete held.a; await store.setKV('chat-meta', held); await store.idle();
+  const afterRemove = J();
+  // control: the same race with the merge over (the window's older copy written as is)
+  await store.setKV('chat-meta', { d: { tags: ['mine'] } }); await store.idle();
+  const control = { lost: !J().b };
+  console.log(JSON.stringify({ found: Boolean(pick), rels: done.rels, afterRace, acked: a.acked.includes('kv/chat-meta.json'), outsideLeft, held: heldNow, afterRemove, control }));
+  store.flushSync?.();
+}
+
 async function main() {
+  if (process.argv.includes('--recover-child')) { try { await recoverChild(); } catch (err) { console.log(JSON.stringify({ error: String(err.stack || err) })); } process.exit(0); }
   const t0 = Date.now();
   for (const s of scenarios) {
     if (ONLY && !ONLY.includes(s.name)) continue;

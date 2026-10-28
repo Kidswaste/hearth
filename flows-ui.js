@@ -55,6 +55,9 @@ const FlowsUI = (() => {
 
   // ---------- the flows ----------
   let mine = []; // your flows (kv flows-mine)
+  // (round 78, guardloss78) your flows from the other computer (or 🛟 Recover): written at once here, so it's read again
+  // and sync told (a flow deleted stays deleted)
+  window.StoreAck?.hold('flows-mine', { read: () => StoreAck.kv('flows-mine', []), apply: (v) => { mine = Array.isArray(v) ? v : []; } });
   let genKey = '';
   // journeys, the flows made from the commands (again when commands were added), yours
   function ensure() {

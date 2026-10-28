@@ -11,8 +11,10 @@
 //      sync's guard on purpose: never lost, a removal may come back) or listed in ALLOW with why
 //   B. a store declared with StoreAck.hold('name') (so it gets acked) that another file writes (kvSet / setKV with that
 //      name) without declaring it too — that file could hold an older copy (ALLOW with why when it reads fresh)
+//   C. (round 78, guardloss78) a synced store written somewhere that nobody declares and GUARDED doesn't explain: each
+//      store is declared, or its line in GUARDED says why the guard alone is fine (this computer's own stores never arrive)
 //   node dev/storeack-scan.js [--list]   (unit:storeack-scan) → "N files, M stores declared, 0 problem(s)" or FAIL lines
-//   --list also prints the synced stores written somewhere that nobody declares (left to the guard: fine, never lost)
+//   --list also prints what's declared, the stores left to the guard (with why) and this computer's own
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -26,7 +28,42 @@ const ALLOW = [
   ['credits.js', "hearth:synced", 'the creative-direction session\'s file (not touched here): its credit log merges on save (round 77 audit: left to sync\'s guard)'],
   ['projects.js', "forget('sketches'", 'Projects forgets its read-only caches of OTHER stores (scenes, boards, workspace): read again when shown, never written'],
   ['projbundle.js', 'kvSet(key, b.workbench)', 'an imported project\'s worktable, written only when none is there (was?.state === \'missing\')'],
+  ['tools/three-frames.js', "kvSet('video-cuts', all)", '(round 78) only when CutStore isn\'t loaded: read fresh right before, nothing held'],
 ];
+// (round 78, guardloss78) synced stores written somewhere and declared by nobody, each with why sync's write guard alone is
+// fine (it merges a save with what arrived: never lost; without an ack a removal right after an arrival may come back)
+const FRESH = 'read fresh right before every change, nothing held: no older copy to write';
+const GROWS = 'a log / history that only grows (trimmed by age or count): an old entry trimmed may come back once — harmless';
+const PICS = 'pictures / versions (megabytes): re-reading them on every arrival would cost frames (storeack77 audit); never lost';
+const GUARDED = {
+  'access-log': GROWS, aiundo: GROWS, 'error-log': GROWS, 'tool-use': GROWS, makes: GROWS, 'deploy-history': GROWS, 'media-ids': GROWS, renders: `${GROWS} (renders.js; projects.js forgets its read-only copy on arrival)`,
+  'astra-scoreboard': `${FRESH} (astra.js)`, 'board-palettes': `${FRESH} (board-links.js)`, 'board-templates': `${FRESH} (board-links.js)`, 'capture-marks': `${FRESH} (capture.js, capture-view.js)`,
+  'forge-patch-sets': `${FRESH} (tools/forge-game.js)`, 'forge-snapshots': `${FRESH} (tools/forge-game.js)`, 'three-footage': `${FRESH} (tools/three-frames.js)`, 'present-bakes': `${FRESH} (tools/three-ready.js reads with status; diskcalmmain.js)`,
+  'projects-frontpage': `${FRESH}: the front page's editor writes it whole, the page reads it when shown`,
+  'chat-scene-thumbs': PICS, 'lab-gallery-thumbs': PICS, 'three-thumbs': PICS, 'three-history': PICS,
+  'apps-habits': 'which apps were opened / dismissed (the Discover chip): a dismissal may come back once — harmless',
+  discover: 'what Discover has shown / dismissed: a dismissal may come back once — harmless',
+  'inspo-drop': 'a cache of fetched inspiration pictures (board-drop.js): rebuilt when needed',
+  'send-preview': 'Send preview\'s learned sizes (a small cache, DataSafe-loaded)',
+  'router-learn': 'Smart\'s learned numbers: merged field by field by the guard; a number is never "removed"',
+  'cost-coach': 'the cost coach\'s small counters (read with status, merged by the guard)',
+  'local-answers': 'misses of local answers (a short list, capped): harmless if one comes back',
+  'usage-limits': 'usage readings (the newest wins by time in the guard\'s merge)',
+  'director-tasks': 'the director\'s task records: a finished task taken out may come back once — rare, harmless',
+  'memory-meta': 'small facts about memory lines (when added, from where): saved whole, rarely removed',
+  'astra-personas': 'your custom Astra personas: read at start, saved whole when you add one; one deleted may come back — rare, never lost',
+  'capture-tours': 'your capture tours: read once, saved whole; one deleted may come back — rare, never lost',
+  'lab-grade-luts': 'imported LUT names (their data in lab-grade-lut-<name> stores): imported rarely; never lost',
+  'meshy-library': 'Meshy generations: items are updated in place while a generation runs (re-reading mid-task would drop that); only grows',
+  assets: 'the asset library index (assets.js, several main-side writers): a removal may come back; never lost',
+  'forge-patches': 'Forge Debug patches (tools/forge-game.js): saved whole; one deleted may come back — rare',
+  'quest-journal': 'Codex\'s journal (tools/quest-journal.js mutate(), questhud / showprep / showsync read with status): not changed here (For Codex)',
+  'quest-journal-before-restore': 'Codex\'s journal backup: written once before a restore, never read back into memory',
+  'sidequest-outings-v1': 'Codex\'s outing notebook (tools/outing-desk.js): not changed here (For Codex)',
+  'creative-playground': 'Codex\'s creative playground notebook: not changed here (For Codex)',
+  'credit-log': 'the creative-direction session\'s file (credits.js): it merges on save; not touched here',
+};
+const Sm = require('../sync-merge'); // (round 78) this computer's own stores (data/kv that never syncs)
 
 function files(dir = ROOT, rel = '') {
   const out = [];
@@ -100,8 +137,13 @@ function scan(only = null) {
     if (allowed(w.file, w.text)) continue;
     problems.push(`${w.file}:${w.line} writes '${w.name}', which ${[...by].join(', ')} acks when it arrives, without declaring it (StoreAck.hold): an older copy here would be written over what arrived`);
   }
-  const undeclared = [...new Set(writes.map((w) => w.name))].filter((n) => !declared.has(n)).sort();
-  return { files: list.length, problems, declared, undeclared };
+  const written = [...new Set(writes.map((w) => w.name))].filter((n) => !declared.has(n)).sort();
+  // (round 78, guardloss78) C. each is declared, this computer's own (never arrives), or explained in GUARDED
+  const own = written.filter((n) => Sm.localOnly(`kv/${n}.json`));
+  const guarded = written.filter((n) => !own.includes(n) && GUARDED[n]);
+  const undeclared = written.filter((n) => !own.includes(n) && !GUARDED[n]);
+  if (!only || only.checkC) for (const n of undeclared) problems.push(`'${n}' is written (${writes.filter((w) => w.name === n).map((w) => `${w.file}:${w.line}`).slice(0, 3).join(', ')}) and synced, but nobody declares it with StoreAck.hold: declare it, or add its line to GUARDED with why the guard alone is fine`);
+  return { files: list.length, problems, declared, undeclared, guarded, own };
 }
 
 if (require.main === module) {
@@ -117,9 +159,12 @@ if (require.main === module) {
   if (probe("addEventListener('hearth:synced', () => { paint(); });")) self.push('self-test: a listener that only repaints was flagged');
   if (!probe2("const KEY = 'notes'; window.StoreAck?.hold(KEY, { read: () => 1 });", "hub.kvSet('notes', list);")) self.push('self-test: an undeclared writer of an acked store was not caught');
   if (probe2("window.StoreAck?.hold('notes', {});", "window.StoreAck?.hold('notes', {}); hub.kvSet('notes', list);")) self.push('self-test: a declared second writer was flagged');
+  { const only = ['c.js']; only.src = { 'c.js': "hub.kvSet('brand-new-store', x); hub.kvSet('error-log', y); hub.kvSet('jank-log', z);" }; only.checkC = true; const c = scan(only); if (c.problems.length !== 1 || !/brand-new-store/.test(c.problems[0])) self.push('self-test: (round 78) a synced store nobody declares or explains was not caught (or a GUARDED / own one was)'); }
   if (process.argv.includes('--list')) {
     console.log(`declared (acked on arrival): ${[...r.declared].map(([n, f]) => `${n} (${[...f].join(', ')})`).join(' · ')}`);
-    console.log(`written, not declared (left to sync's guard: never lost, a removal may come back): ${r.undeclared.join(', ')}`);
+    console.log(`left to sync's guard on purpose (never lost; why, per store, in GUARDED): ${r.guarded.join(', ')}`);
+    console.log(`this computer's own (never synced, nothing arrives): ${r.own.join(', ')}`);
+    console.log(`written, not declared, not explained: ${r.undeclared.length ? r.undeclared.join(', ') : '(none)'}`);
   }
   const all = [...self, ...r.problems];
   for (const p of all) console.log(`FAIL ${p}`);

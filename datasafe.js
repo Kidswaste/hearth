@@ -116,8 +116,12 @@ const DataSafe = (() => {
         const done = await api.recover(boxes.filter((b) => b.checked).map((b) => b.dataset.key));
         dlg.close();
         if (done.chats.length) { H.chats = await window.hub.listChats(); if (typeof Panel !== 'undefined') Panel.render(); }
+        // (round 78, guardloss78) the stores Recover wrote, as an arrival: what waits here is written first (merged with what
+        // came back), each is read again and shown, then acked; only one nobody here could take in still asks for a reload
+        let stale = done.kv.length;
+        if (done.rels?.length && window.StoreAck) { try { const a = await StoreAck.arrived(done.rels.map((rel) => ({ rel, kind: 'kv', from: 'recover' }))); stale = [...a.kept, ...a.unknown].filter((r) => r !== 'memory.json' && !(done.mainHeld || []).includes(r)).length; } catch { /* the reload below */ } }
         const said = [done.chats.length && plural(done.chats.length, 'chat'), done.memory && plural(done.memory, 'memory line'), done.agents && plural(done.agents, 'AI'), done.settings && plural(done.settings, 'setting'), done.kv.length && plural(done.kv.length, 'tool store')].filter(Boolean);
-        toast(said.length ? `🛟 Brought back ${said.join(', ')}${done.kv.length ? ' (reload to see the tool data)' : ''}` : 'Nothing new to bring back', { timeout: 9000, ...(done.kv.length ? { action: { label: 'Reload', fn: () => window.hub.reloadWindow?.() || location.reload() } } : {}) });
+        toast(said.length ? `🛟 Brought back ${said.join(', ')}${stale ? ' (reload to see the tool data)' : ''}` : 'Nothing new to bring back', { timeout: 9000, ...(stale ? { action: { label: 'Reload', fn: () => window.hub.reloadWindow?.() || location.reload() } } : {}) });
         window.DataSafe.last = done;
       } catch (err) { go.disabled = false; toast(err.message, { type: 'error' }); }
     });
