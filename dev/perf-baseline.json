@@ -1,0 +1,419 @@
+{
+ "about": "dev/perfguard.js baseline (round 77, perfguard77): medians of per-launch values; spread = their median absolute deviation. Rebaseline: docs/upgrades/perfguard77.md",
+ "when": "2026-10-28T05:15:29.770Z",
+ "machine": {
+  "cpus": 4,
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+  "memGB": 16,
+  "platform": "linux 6.18.44-fc-v180",
+  "node": "v22.22.0",
+  "electron": "44.5.1",
+  "gl": "SwiftShader (software) under Xvfb",
+  "commit": "6a8482d",
+  "dirty": true,
+  "loadStart": [
+   1.99,
+   2.83,
+   2.25
+  ],
+  "loadEnd": [
+   3.02,
+   2.94,
+   2.33
+  ],
+  "minutes": 1
+ },
+ "settings": {
+  "runs": 3,
+  "starts": 5,
+  "sync": 3,
+  "parts": [
+   "startup"
+  ],
+  "fixture": "/tmp/hearth-bigprofile72",
+  "syncFixture": "/tmp/hearth-sync72-bigprofile"
+ },
+ "parts": {
+  "startup": {
+   "when": "2026-10-28T05:15:29.770Z",
+   "commit": "6a8482d",
+   "dirty": true,
+   "load": [
+    [
+     1.99,
+     2.83,
+     2.25
+    ],
+    [
+     3.02,
+     2.94,
+     2.33
+    ]
+   ]
+  },
+  "sync": {
+   "when": "2026-10-28T05:04:30Z",
+   "commit": "6a8482d",
+   "dirty": false,
+   "load": [
+    [
+     1.64,
+     1.37,
+     0.81
+    ],
+    null
+   ]
+  },
+  "app": {
+   "when": "2026-10-28T05:11:26.593Z",
+   "commit": "6a8482d",
+   "dirty": true,
+   "load": [
+    [
+     1.78,
+     2.25,
+     1.51
+    ],
+    [
+     3.58,
+     3.41,
+     2.27
+    ]
+   ]
+  }
+ },
+ "metrics": {
+  "sync.steadyStall": {
+   "label": "Sync steady pass: main-process stall",
+   "unit": "ms",
+   "median": 18.89,
+   "spread": 0.02,
+   "spreadPct": 0.11,
+   "n": 3,
+   "values": [
+    18.91,
+    17.47,
+    18.89
+   ]
+  },
+  "sync.changeStall": {
+   "label": "Sync small-change pass: main-process stall",
+   "unit": "ms",
+   "median": 17.2,
+   "spread": 0.81,
+   "spreadPct": 4.71,
+   "n": 3,
+   "values": [
+    16.39,
+    19.92,
+    17.2
+   ]
+  },
+  "sync.steadyWall": {
+   "label": "Sync steady pass: wall time",
+   "unit": "ms",
+   "median": 247,
+   "spread": 10,
+   "spreadPct": 4.05,
+   "n": 3,
+   "values": [
+    236,
+    257,
+    247
+   ]
+  },
+  "project.coldOpen": {
+   "label": "Project cold open (Hearth's part)",
+   "unit": "ms",
+   "median": 143,
+   "spread": 13,
+   "spreadPct": 9.09,
+   "n": 3,
+   "values": [
+    180,
+    143,
+    130
+   ]
+  },
+  "project.warmOpen": {
+   "label": "Project warm open (Hearth's part)",
+   "unit": "ms",
+   "median": 486,
+   "spread": 3,
+   "spreadPct": 0.62,
+   "n": 3,
+   "values": [
+    486,
+    489,
+    444
+   ]
+  },
+  "project.switch": {
+   "label": "Project switch (Hearth's part)",
+   "unit": "ms",
+   "median": 227,
+   "spread": 1,
+   "spreadPct": 0.44,
+   "n": 3,
+   "values": [
+    227,
+    210,
+    228
+   ]
+  },
+  "chat.switch": {
+   "label": "Long chat opened from its list row",
+   "unit": "ms",
+   "median": 121,
+   "spread": 8,
+   "spreadPct": 6.61,
+   "n": 3,
+   "values": [
+    113,
+    121,
+    129
+   ]
+  },
+  "chat.clickHandler": {
+   "label": "Chat list click: window handlers",
+   "unit": "ms",
+   "median": 6.7,
+   "spread": 0.4,
+   "spreadPct": 5.97,
+   "n": 3,
+   "values": [
+    7.35,
+    6.3,
+    6.7
+   ]
+  },
+  "chat.clickCpu": {
+   "label": "Chat list click: window CPU in 600 ms",
+   "unit": "ms",
+   "median": 36.95,
+   "spread": 0.35,
+   "spreadPct": 0.95,
+   "n": 3,
+   "values": [
+    36.55,
+    37.3,
+    36.95
+   ]
+  },
+  "chat.keyHandler": {
+   "label": "Typing: window handlers per key",
+   "unit": "ms",
+   "median": 0.2,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    0.2,
+    0.2,
+    0.4
+   ]
+  },
+  "lab.toolCall": {
+   "label": "Lab tool call (no picture), end to end",
+   "unit": "ms",
+   "median": 13,
+   "spread": 2,
+   "spreadPct": 15.38,
+   "n": 3,
+   "values": [
+    15,
+    9.5,
+    13
+   ]
+  },
+  "lab.stillDraws": {
+   "label": "Still Lab scene: draws a second",
+   "unit": "/s",
+   "median": 0.4,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    0.4,
+    0.2,
+    0.4
+   ]
+  },
+  "idle.windowCpu": {
+   "label": "Idle on a chat: the window",
+   "unit": "% CPU",
+   "median": 0.1,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    0,
+    0.1,
+    0.1
+   ]
+  },
+  "idle.allCpu": {
+   "label": "Idle on a chat: every process",
+   "unit": "% CPU",
+   "median": 1.5,
+   "spread": 0.2,
+   "spreadPct": 13.33,
+   "n": 3,
+   "values": [
+    1.3,
+    1.5,
+    1.7
+   ]
+  },
+  "mem.windowHeap": {
+   "label": "Window JS heap after GC (end of run)",
+   "unit": "MB",
+   "median": 30.8,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    30.8,
+    30.7,
+    30.8
+   ]
+  },
+  "start.ready": {
+   "label": "Start → first usable chat",
+   "unit": "ms",
+   "median": 564,
+   "spread": 17,
+   "spreadPct": 3.01,
+   "n": 5,
+   "values": [
+    517,
+    581,
+    549,
+    591,
+    564
+   ]
+  },
+  "start.settled": {
+   "label": "Start → settled (last long task)",
+   "unit": "ms",
+   "median": 893,
+   "spread": 98,
+   "spreadPct": 10.97,
+   "n": 5,
+   "values": [
+    517,
+    961,
+    893,
+    991,
+    564
+   ]
+  }
+ },
+ "tops": {
+  "sync": {
+   "(anon) sync-engine.js:377": 187,
+   "(anon) sync-engine.js:323": 167,
+   "(anon) sync-engine.js:311": 22.01,
+   "(garbage collector)": 8.34,
+   "flush sync-engine.js:311": 8,
+   "(anon) sync-merge.js:22": 7.67,
+   "localOnly sync-merge.js:35": 4,
+   "(anon) sync-engine.js:386": 2,
+   "passOnce sync-engine.js:1251": 1.67,
+   "walk sync-engine.js:302": 1.33,
+   "(anon) sync-engine.js:326": 1,
+   "getStatsFromBinding utils:552": 0.67,
+   "spin mainlag-probe.js:27": 0.33
+  },
+  "projects": {
+   "(garbage collector) :0": 210,
+   "remove :0": 165,
+   "get scrollTop :0": 159,
+   "get clientWidth :0": 149,
+   "showModal :0": 132,
+   "el ui.js:81": 72.94,
+   "labShown chat-scenes.js:582": 65.7,
+   "paintProject projects-home.js:191": 61.61,
+   "checkVisibility :0": 53.6,
+   "get scrollHeight :0": 46.97,
+   "invoke sandbox_bundle:2": 43.64,
+   "querySelector :0": 42.54,
+   "querySelectorAll :0": 32.43,
+   "append :0": 27.24,
+   "decorate usage.js:128": 21.37
+  },
+  "chats": {
+   "(garbage collector) :0": 46.73,
+   "querySelectorAll :0": 25.46,
+   "get clientWidth :0": 22.94,
+   "focus :0": 21.2,
+   "messageEl native.js:688": 19.13,
+   "el ui.js:81": 18.13,
+   "full meter.js:57": 16.26,
+   "querySelector :0": 14.57,
+   "decorate usage.js:128": 10.07,
+   "(anon) :0": 8.53,
+   "nameOf usage.js:122": 5.3,
+   "state three.js:4427": 4.7,
+   "closest :0": 3.6,
+   "toggle :0": 3.2,
+   "badge meter.js:414": 2.9
+  },
+  "lab": {
+   "(garbage collector) :0": 99.01,
+   "get scrollHeight :0": 58.07,
+   "frameCanvas three-director.js:349": 41.14,
+   "toBlob :0": 37.83,
+   "ownerOf chat-scenes.js:127": 34.23,
+   "get clientWidth :0": 31.73,
+   "querySelector :0": 31.49,
+   "invoke :0": 30.93,
+   "focus :0": 30.17,
+   "paintPicker chat-scenes.js:526": 25.69,
+   "checkVisibility :0": 25.1,
+   "(anon) chat-scenes.js:55": 21.27,
+   "summary projects.js:60": 14.64,
+   "querySelectorAll :0": 13.04,
+   "getBoundingClientRect :0": 10.57
+  },
+  "idle": {
+   "today apps-discover.js:15": 0.46,
+   "(anon) :0": 0.13,
+   "setTimeout :0": 0.1,
+   "(anon) powerwise.js:187": 0.1
+  },
+  "startup": {
+   "start phase: shell → chats": 70.6,
+   "ipc answered: kv:get ×35": 54.82,
+   "ipc answered: chats:list ×1": 54.37,
+   "start phase: start → shell": 49.6,
+   "ipc answered: fs:list ×2": 46.61,
+   "main: wrapSafe loader:1826": 43,
+   "main: emit node:events:489": 39,
+   "window: (garbage collector)": 34,
+   "window: append": 34,
+   "main: (anon) browser_init:1": 28,
+   "window: before": 24,
+   "main: spawn": 23,
+   "start phase: chats → ready": 21.6,
+   "window: suggest projects-core.js:196": 20,
+   "main: (garbage collector)": 18,
+   "window: (anon) native.js:1298": 16,
+   "window: el ui.js:81": 15,
+   "main: createWindow main.js:187": 12,
+   "main: (anon) showsync-venues.js:1": 12,
+   "window: (anon) native.js:2": 12,
+   "window: (anon) cut-presets.js:5": 10,
+   "ipc answered: kv:pick ×1": 9.27,
+   "main: get defaultSession browser_init:1": 9,
+   "window: dispatchEvent": 9,
+   "window: (anon)": 7,
+   "window: words projects-core.js:182": 7,
+   "main: readFileUtf8": 6,
+   "window: init look.js:388": 4,
+   "start phase: ready → gone": 3.9,
+   "main: normalizeSpawnArguments node:child_process:584": 3
+  }
+ },
+ "problems": []
+}
