@@ -9,7 +9,8 @@ lag probe to count processes and fs calls and to *cost* them like Windows, (2) a
 ## How it is measured
 - `mainlag-probe.js` (tests only, `HEARTH_LOOPLAG`): besides the event-loop delay, CPU profile, sync fs and IPC it now
   counts **every process started** (spawn / execFile / exec / fork and the Sync ones, by program and call site, with the
-  time the start held the thread), **every async fs call** (fs.promises + callbacks) and **fs.watch** calls.
+  time the start held the thread), **every async fs call** (fs.promises + callbacks; only with the simulation on or
+  `HEARTH_PROBE_FS=1`: a stack per call would otherwise show up in the perf guard's sync timings) and **fs.watch** calls.
 - **Windows simulation knob** `HEARTH_WINSIM=1` (each part settable alone): `HEARTH_SLOWFS_US` 150 (each sync fs call),
   `HEARTH_SPAWN_MS` 40 (each process start holds the main thread: `uv_spawn` → `CreateProcess` is synchronous on Windows),
   `HEARTH_SPAWN_LAT_MS` 120 (the child answers later), `HEARTH_PS_LAT_MS` 500 (PowerShell, on top), `HEARTH_SLOWFS_ASYNC_MS`
@@ -102,6 +103,17 @@ Per **action** on Windows:
 - `powerwisemain.js` compiles C# through PowerShell (`Add-Type`) to read the battery saver: laptops on battery only.
 - Module loading at start (≈ 100 `realpathSync` / `readFileSync` from `require`): each is a scanned open on Windows;
   nothing to change without a bundler (no build step by rule).
+
+## Tested
+- `winperf78` (opt-in) passes on this branch (and fails on the base only for the reply's 274 sync fs calls); `perfguard`
+  (PERFGUARD=1): no regression (project warm open better, −18 %; its sync part re-measured after making the probe's
+  async counting opt-in, which had inflated the steady pass's wall time); `lazy`, `unit:boot-test`, `chat-media`,
+  `tickets68`, `crashsafe`, `gpu52`, `quickidea71`, `settingscalm`, `projects-lightweight`.
+- Units: `winperf78-test` (27), `cloud-files-test`, `sync72-test`, `winpolish-test`, `gpu52-test`, `crashsafe-test`,
+  `tickets68-test`, `updater-test`, `updatesafe-test`, `configsafe-test`, `astra-engine-test`, `robust-engine-test`,
+  `engine-watch-test`, `cache-test`, `winmac-test`, `datasafe-scan`, `errorcalm-scan`, `storeack-scan`, `chatsafe-scan`.
+- Not runnable here: real Windows (PowerShell, reg.exe, Defender). `engine-health-watch-test` fails on the base too
+  (engine-health.js wording, untouched).
 
 ## For Codex
 - `cloud-files.js` (yours originally): `attributes()` now goes through one long-lived PowerShell (`SERVER_SCRIPT`, a

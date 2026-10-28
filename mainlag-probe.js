@@ -37,7 +37,7 @@ h.enable();
 // Mac never make: they watch natively), so the Windows simulation doesn't charge it
 let linuxWatch = false;
 const site = (skip, n = 2) => {
-  const o = {}; const lim = Error.stackTraceLimit; Error.stackTraceLimit = 8 + n * 2;
+  const o = {}; const lim = Error.stackTraceLimit; Error.stackTraceLimit = n > 2 ? 8 + n * 2 : 8;
   Error.captureStackTrace(o, skip); Error.stackTraceLimit = lim;
   linuxWatch = /internal\/fs\/recursive_watch/.test(String(o.stack || ''));
   const lines = String(o.stack || '').split('\n').slice(1).map((l) => l.trim()).filter((l) => !/mainlag-probe\.js|node:|\(<anonymous>\)$/.test(l));
@@ -71,7 +71,10 @@ for (const name of Object.keys(fs)) {
 const ASYNC_FS = ['access', 'appendFile', 'chmod', 'copyFile', 'cp', 'lstat', 'mkdir', 'mkdtemp', 'open', 'opendir', 'readdir', 'readFile', 'readlink', 'realpath', 'rename', 'rm', 'rmdir', 'stat', 'statfs', 'symlink', 'truncate', 'unlink', 'utimes', 'writeFile', 'exists'];
 const SLOW_ASYNC = /^(open|readFile|writeFile|appendFile|stat|lstat|copyFile|readdir|rename)$/;
 const later = (ms) => new Promise((r) => setTimeout(r, ms));
-for (const name of ASYNC_FS) {
+// (only with the Windows simulation or HEARTH_PROBE_FS=1: a stack per call costs ≈ 0.1 ms, which the perf guard's sync timings
+// would count as the app's)
+const COUNT_ASYNC = SIM || process.env.HEARTH_PROBE_FS === '1';
+for (const name of COUNT_ASYNC ? ASYNC_FS : []) {
   const pr = fs.promises[name];
   if (typeof pr === 'function') {
     const wrapped = async function (...a) {
