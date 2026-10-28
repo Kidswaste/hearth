@@ -38,8 +38,14 @@ const RAW = `(() => { const P = Element.prototype; const rpl = P.requestPointerL
   f.hearthRaw = null; P.requestPointerLock = f;
   const D = Document.prototype; const xpl = D.exitPointerLock;
   if (xpl) D.exitPointerLock = function () { dispatchEvent(new Event('hearth-game-unlock')); return xpl.call(this); }; })();`;
-const GL = `(() => { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, o) { if (/^(webgl2?|experimental-webgl)$/.test(t)) o = { antialias: true, powerPreference: 'high-performance', ${I.lowLatency ? 'desynchronized: true, ' : ''}...(o || {}) }; return g.call(this, t, o); }; })();`;
-const code = `${RAW}\n${I.kind === 'html' ? GL : ''}`;
+// (round 76, gpuplay76) three.js always passes powerPreference: 'default' (it isn't asking for a card): that no longer
+// overrides the fast card (on a two-card laptop / Mac an HTML build was left on the small one)
+const GL = `(() => { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, o) { if (/^(webgl2?|experimental-webgl)$/.test(t)) { o = { antialias: true, ${I.lowLatency ? 'desynchronized: true, ' : ''}...(o || {}) }; if (!o.powerPreference || o.powerPreference === 'default') o.powerPreference = 'high-performance'; } return g.call(this, t, o); }; })();`;
+// (round 76, gpuplay76) the page's WebGL contexts, noted when made (only then: nothing per frame), for 📈 Test play
+// performance (gpuplay.js times the graphics card's work on them during its 20 s, and reads the card WebGL got)
+const REG = `(() => { const P = HTMLCanvasElement.prototype; const g = P.getContext; if (g.__hearthReg) return; const seen = new WeakSet(); let list = []; Object.defineProperty(window, '__hearthGLs', { value: () => { list = list.filter((w) => { const c = w.deref(); return c && !c.isContextLost(); }); return list.map((w) => w.deref()); }, configurable: true });
+  const f = function (t, o) { const c = g.call(this, t, o); if (c && (t === 'webgl2' || t === 'webgl' || t === 'experimental-webgl') && !seen.has(c)) { seen.add(c); list.push(new WeakRef(c)); } return c; }; f.__hearthReg = true; P.getContext = f; })();`;
+const code = `${RAW}\n${REG}\n${I.kind === 'html' ? GL : ''}`;
 try { if (contextBridge.executeInMainWorld) contextBridge.executeInMainWorld({ func: new Function(code) }); else webFrame.executeJavaScript(code); } catch { try { webFrame.executeJavaScript(code); } catch { /* plain */ } } // eslint-disable-line no-new-func
 
 let ui = null;
@@ -72,19 +78,26 @@ function mount() {
     .err .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .err button, .box .fix { padding: 5px 11px; font-size: 12px; margin: 0; } .err .x { background: transparent; color: #a7adb8; padding: 5px 7px; }
     .fixit { background: #ff8a3d; color: #1a1206; } .box .fix { display: block; margin: 12px auto 0; }
-  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing${I.notesKey ? ` · ${String(I.notesKey).replace(/[<>&]/g, '')}: note` : ''}${I.hitch ? ' · ● recording the hitch map' : ''}</div><div class="col"><div class="chip" hidden></div><div class="acts" hidden>${I.notesKey ? `<button class="an" tabindex="-1">✎ Note (${String(I.notesKey).replace(/[<>&]/g, '')})</button>` : ''}<button class="aq" tabindex="-1" hidden title="Auto: fewer pixels when frames drop, back up when there's room · Full: every pixel (click to switch)"></button><button class="ah" tabindex="-1">${I.hitch ? '■ Stop hitch map' : '● Record hitch map'}</button></div><div class="look" hidden></div><div class="note" hidden></div></div><div class="blip" aria-live="polite"></div>
+    .pfpill { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: #000b; font-size: 12.5px; }
+    .pf { position: fixed; right: 12px; top: 12px; width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 16px 18px 14px; border-radius: 14px; background: #16181df2; box-shadow: 0 12px 40px #000c; pointer-events: auto; }
+    .pf h2 { margin: 0 0 6px; font-size: 15px; } .pf .ph { font-weight: 600; line-height: 1.4; margin: 0 0 8px; }
+    .pf ul { margin: 0 0 8px; padding-left: 18px; color: #c9ced8; font-size: 12px; line-height: 1.45; } .pf .tip { margin: 0 0 8px; color: #ffcf9e; font-size: 12px; line-height: 1.4; }
+    .pf .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; } .pf .row button { font-size: 12px; padding: 6px 11px; margin: 0; background: #2a2e37; color: #eef0f4; } .pf .row button:hover { background: #3a3f4a; }
+    .pf .row .copy { background: #ff8a3d; color: #1a1206; } .pf .pn { margin: 8px 0 0; font-size: 11.5px; color: #9fe0a8; } .pf .sm { margin: 8px 0 0; font-size: 11px; color: #8a909b; }
+  </style><div class="w"><div class="hint">Esc: menu · F: stats · ${MODP}: back to editing${I.notesKey ? ` · ${String(I.notesKey).replace(/[<>&]/g, '')}: note` : ''}${I.hitch ? ' · ● recording the hitch map' : ''}</div><div class="col"><div class="chip" hidden></div><div class="acts" hidden>${I.notesKey ? `<button class="an" tabindex="-1">✎ Note (${String(I.notesKey).replace(/[<>&]/g, '')})</button>` : ''}<button class="aq" tabindex="-1" hidden title="Auto: fewer pixels when frames drop, back up when there's room · Full: every pixel (click to switch)"></button><button class="ah" tabindex="-1">${I.hitch ? '■ Stop hitch map' : '● Record hitch map'}</button><button class="ap" tabindex="-1" title="20 s of play measured: frames vs your screen, graphics card vs processor, what to change">📈 Test performance</button></div><div class="look" hidden></div><div class="note" hidden></div></div><div class="blip" aria-live="polite"></div><div class="pfpill" hidden aria-live="polite"></div><div class="pf" hidden role="dialog" aria-label="Play performance"></div>
   <div class="err" hidden role="alert"><span class="m"></span><button class="fixit">Fix with the director</button><button class="x" aria-label="Hide">✕</button></div>
   <div class="card" hidden role="dialog" aria-label="Leave the game"><div class="box"><div class="t"></div><div class="s">Esc again or Enter goes back</div>
   <button class="back">Back to Hearth</button><button class="keep">Keep playing</button><button class="fix fixit" hidden>Fix with the director</button></div></div></div>`;
   (document.documentElement || document).appendChild(host);
   const $ = (s) => root.querySelector(s);
-  ui = { host, hint: $('.hint'), chip: $('.chip'), acts: $('.acts'), ah: $('.ah'), aq: $('.aq'), look: $('.look'), note: $('.note'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t'), blip: $('.blip'), err: $('.err'), errText: $('.err .m'), cardFix: $('.box .fix') };
+  ui = { host, hint: $('.hint'), chip: $('.chip'), acts: $('.acts'), ah: $('.ah'), aq: $('.aq'), pfpill: $('.pfpill'), pf: $('.pf'), look: $('.look'), note: $('.note'), card: $('.card'), back: $('.back'), keep: $('.keep'), title: $('.t'), blip: $('.blip'), err: $('.err'), errText: $('.err .m'), cardFix: $('.box .fix') };
   for (const b of root.querySelectorAll('.fixit')) b.addEventListener('click', () => fixIt());
   // (round 64, clickfirst64) the F chip's two words, clicked with the mouse (when the game doesn't hold it): ✎ Note = F8;
   // ● Record / ■ Stop the hitch map (the hub keeps the setting). They never take the focus (Space / Enter stay the
   // game's), and the game never sees these clicks.
   for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick']) ui.acts.addEventListener(t, (e) => { e.stopPropagation(); if (t === 'mousedown' || t === 'pointerdown') e.preventDefault(); });
   root.querySelector('.an')?.addEventListener('click', () => ipcRenderer.send('game:chip', 'note'));
+  root.querySelector('.ap')?.addEventListener('click', () => ipcRenderer.send('game:chip', 'perftest')); // (round 76, gpuplay76) the hub runs the test on this game
   ui.ah.addEventListener('click', () => { ipcRenderer.send('game:chip', 'hitch'); ui.ah.textContent = /Record/.test(ui.ah.textContent) ? '■ Stop hitch map' : '● Record hitch map'; });
   // (round 72, labfps72) Quality: auto ⇄ full, now in this game (gamequality-preload.js) and remembered by the hub
   ui.aq.addEventListener('click', () => {
@@ -345,3 +358,34 @@ const onHitch = () => ipcRenderer.send('game:hitch-spike');
 function hitchListen(on) { if (on === hitchOn) return; hitchOn = on; if (on) addEventListener('hearth-hitch', onHitch); else { removeEventListener('hearth-hitch', onHitch); hitchLine = ''; } }
 if (I.hitch) hitchListen(true);
 ipcRenderer.on('game:hitch-on', (_e, d = {}) => { hitchListen(Boolean(d.on)); if (statsOn) sound(); });
+
+// ---------- 📈 Test play performance (round 76, gpuplay76) ----------
+// The hub (gpuplay.js) measures 20 s of this game and sends: 'wait' / 'running' (a small pill at the bottom, nothing to
+// click) → 'done' (the report in plain words, its one-click fixes, 📋 Copy report for Claude, Test again, Close) →
+// 'off'. A button here only tells the hub (game:chip 'perf:<id>'); the game never sees these clicks.
+let pfWired = false;
+ipcRenderer.on('game:perf', (_e, d = {}) => {
+  const u = mount();
+  if (!pfWired) {
+    pfWired = true;
+    for (const t of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'wheel']) u.pf.addEventListener(t, (e) => { e.stopPropagation(); if (t === 'mousedown' || t === 'pointerdown') e.preventDefault(); });
+  }
+  const st = String(d.state || 'off');
+  u.pfpill.hidden = !(st === 'wait' || st === 'running');
+  if (!u.pfpill.hidden) { const t = String(d.text || '📈 Measuring…'); if (u.pfpill.textContent !== t) u.pfpill.textContent = t; }
+  if (st !== 'done') { u.pf.hidden = true; return; }
+  const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = String(text); return n; };
+  const btn = (label, id, cls, title) => { const b = mk('button', cls || '', label); b.tabIndex = -1; b.dataset.k = id; if (title) b.title = String(title); b.addEventListener('click', () => ipcRenderer.send('game:chip', `perf:${id}`)); return b; };
+  const kids = [mk('h2', '', `📈 ${d.title ? `${d.title}: ` : ''}play performance`), mk('p', 'ph', d.headline || '')];
+  const ul = mk('ul', ''); for (const l of (d.lines || []).slice(0, 12)) ul.append(mk('li', '', l)); kids.push(ul);
+  for (const t of (d.tips || []).slice(0, 4)) kids.push(mk('p', 'tip', t));
+  const fixes = (d.actions || []).slice(0, 6);
+  if (fixes.length) { const r = mk('div', 'row'); for (const a of fixes) r.append(btn(a.label, a.id, '', a.why)); kids.push(r); }
+  const row = mk('div', 'row'); row.append(btn('📋 Copy report for Claude', 'copy', 'copy', 'Puts the numbers on your clipboard (nothing is sent anywhere): paste them into a Claude chat'), btn('📈 Test again', 'again'), btn('Close', 'close')); kids.push(row);
+  if (d.note) kids.push(mk('p', 'pn', d.note));
+  kids.push(mk('p', 'sm', 'Measured on this computer; nothing is sent anywhere. Esc: back to Hearth.'));
+  u.pf.dataset.bound = String(d.bound || '');
+  u.pf.replaceChildren(...kids);
+  u.pf.hidden = false;
+  try { document.exitPointerLock?.(); } catch { /* fine */ } // (the mouse, to click a fix)
+});

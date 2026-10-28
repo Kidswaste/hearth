@@ -1,0 +1,11 @@
+/* 📈 Play performance (round 76, gpuplay76): Hearth's copy of the last report (gpuplay.js dialog); the card over the
+   game is drawn by game-preload.js in its own shadow root */
+.gpuplay { width: min(600px, calc(100vw - 32px)); }
+.gpuplay form { gap: 10px; }
+.gpuplay p { margin: 0; }
+.gpuplay .gp-head { font-size: 1.05em; font-weight: 600; line-height: 1.4; }
+.gpuplay .gp-lines { margin: 0; padding-left: 18px; line-height: 1.45; color: var(--muted, #aaa); font-size: .92em; }
+.gpuplay .gp-lines li + li { margin-top: 3px; }
+.gpuplay .gp-tip { line-height: 1.4; }
+.gpuplay .gp-fixes { display: flex; flex-wrap: wrap; gap: 6px; }
+.gpuplay .gp-note { font-size: .85em; opacity: .7; }
