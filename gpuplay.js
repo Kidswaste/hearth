@@ -28,8 +28,9 @@ const GpuPlay = (() => {
     if (o.op === 'read') return W.__hearthPerfTest ? W.__hearthPerfTest.read() : 'null';
     if (o.op === 'stop') { if (W.__hearthPerfTest) W.__hearthPerfTest.stop(); return 'stopped'; }
     if (W.__hearthPerfTest && W.__hearthPerfTest.running) return 'running';
-    const now = () => performance.now();
-    const raf = W.requestAnimationFrame.bind(W);
+    // the browser's own clock and frames (a Lab page gives its layers their own: a sequence's clock, paced frames)
+    const now = () => Performance.prototype.now.call(performance);
+    const raf = (f) => Window.prototype.requestAnimationFrame.call(W, f);
     const S = { running: true, done: false, t0: now(), ms: o.ms, gaps: [], cpu: [], frames: 0, laf: [], lafN: 0, gpuWhy: '', result: null, draws: null };
     // the WebGL contexts: the ones game-preload.js saw made (__hearthGLs), and the Lab page's own (canvas.__gl)
     let gls = []; try { gls = W.__hearthGLs ? W.__hearthGLs() : []; } catch (e) { gls = []; }
@@ -160,6 +161,7 @@ const GpuPlay = (() => {
       if (!info || !st.playing) return null;
       if (st.live) { toast(`${s.title} needs the Lab while it plays, so it can't be tested in ▶ Play's window.`, { timeout: 6000 }); return null; }
     }
+    if (st.resting) { toast(`${st.source?.title || 'The game'} is resting while you edit: go back to it (▶ Play › Back to the game), then test.`, { timeout: 5000 }); return null; }
     const title = st.source?.title || 'The game';
     run = { title, t0: Date.now(), secs };
     try {
@@ -188,7 +190,7 @@ const GpuPlay = (() => {
       else dialog();
       return last;
     } catch (err) {
-      card({ state: 'off' });
+      card({ state: 'wait', text: `📈 Test stopped: ${err?.message || err}` }); setTimeout(() => card({ state: 'off' }), 5000); // (said over the game too: Hearth may be behind it)
       try { await ev(call({ op: 'stop' })); } catch { /* gone */ }
       toast(`Performance test stopped: ${err?.message || err}`, { timeout: 5000 });
       return null;
