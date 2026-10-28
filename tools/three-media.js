@@ -624,7 +624,11 @@ const ThreeMedia = (() => {
       // (round 48, labstartfast) the overview's row shows from the start of a load, not once the song is decoded: it
       // came in under the preview half a second into the Lab's first run, and every canvas of the scene was resized
       loadingMini = seq; if (minimap.hidden) minimap.hidden = false;
-      const miniBack = () => { if (loadingMini === seq) { loadingMini = 0; minimap.hidden = !D(); } };
+      // (round 76, labframe76) the whole timeline's height too (grid row, timeline, overview: hidden while .mb-empty),
+      // from the start of the load: a song read from disk after the Lab's first layout grew the bar 78 → 281 px and
+      // resized every canvas of the scene once
+      bar.classList.remove('mb-empty');
+      const miniBack = () => { if (loadingMini === seq) { loadingMini = 0; minimap.hidden = !D(); bar.classList.toggle('mb-empty', !st.bytes); } };
       let bytes;
       try {
         const u8 = await window.hub.fs.read(path, { encoding: 'buffer', maxBytes: 2 * 1024 ** 3 });
@@ -1855,7 +1859,7 @@ const ThreeMedia = (() => {
     // same-value write still counts as a DOM change and restyles the row)
     function paint() {
       if (paintRaf) { cancelAnimationFrame(paintRaf); paintRaf = 0; }
-      bar.classList.toggle('mb-empty', !st.bytes);
+      bar.classList.toggle('mb-empty', !st.bytes && !loadingMini); // (round 76: a load under way keeps the height, see load)
       bar.classList.toggle('mb-clock', Boolean(st.clock));
       miniShown();
       bar.classList.toggle('locked', locked);

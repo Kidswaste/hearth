@@ -573,7 +573,7 @@ const perfNote = { stale: 0, composed: 0, reused: 0, passSkipped: 0, pooled: 0, 
 // (round 60, gcchurn60) the frame's timing numbers live in one Float64Array (a fractional number stored into a module
 // variable is a new heap number every time: several per frame): FT60[0] the last render's ms (was frameMs), [1] this
 // frame's work (frameWork), [2] the worst gap since the stats' last look (worstGap), [3] the last frame's time (lastFrameAt)
-const FT60 = new Float64Array(4);
+const FT60 = new Float64Array(5); // (round 76: [4] the last gap, see tickFrames)
 let frameCalls = 0; let lastCalls = 0;
 // (round 60, gcchurn60) the last 120 frames' work, in whole microseconds: a ring (an array pushed and shifted every frame
 // grew its storage again every few dozen frames); wr(k): the k-th oldest of the wrN kept (µs)
@@ -1794,7 +1794,9 @@ function paceInfo() {
   const m = PACE.meter.read();
   // (still: frames have been skipped just now and few drew lately; one poke's few frames don't make it "moving")
   const still = PACE.lastSkip >= 0 && frameTick - PACE.lastSkip < 30 && (PACE.drewAvg || 0) < 0.35;
-  return { ...m, still, on: PACE.on, battery: PACE.battery, drawn: PACE.drawn, skipped: PACE.skipped, refreshes: PACE.refreshes, sigUs: PACE.sigs ? Math.round((PACE.sigMs / PACE.sigs) * 1000) : 0, sleeping: paceSleeping.size, dragLow: PACE.dragLow };
+  // (round 76, labframe76: the meter's reading is a new object each time: filled in, not spread into another)
+  m.still = still; m.on = PACE.on; m.battery = PACE.battery; m.drawn = PACE.drawn; m.skipped = PACE.skipped; m.refreshes = PACE.refreshes; m.sigUs = PACE.sigs ? Math.round((PACE.sigMs / PACE.sigs) * 1000) : 0; m.sleeping = paceSleeping.size; m.dragLow = PACE.dragLow;
+  return m;
 }
 // on battery (the Lab says so, from the computer's battery): Auto fps holds 60 at most, and the adaptive steps start
 // one step lighter (85 % resolution); renders, stills and recordings stay full quality; plugged in: as before
@@ -1821,7 +1823,15 @@ const tickFrames = (t) => {
   FT60[1] = 0; frameCalls = 0;
   frameTick += 1;
   const dozed = DOZE.on; // (this frame came after a doze's wait: its gap isn't a slow frame)
-  if (frameSeen === frameTick - 1 && FT60[3] && !dozed) { if (t - FT60[3] > FT60[2]) FT60[2] = t - FT60[3]; ccGap(t - FT60[3]); if (mode === 'sketch') adaptQuality(t - FT60[3]); }
+  if (frameSeen === frameTick - 1 && FT60[3] && !dozed) {
+    // (round 76, labframe76) the gap worked out once into a typed slot, crowd culling's test made here (a fractional
+    // number handed to a function is a new heap number each time where this runs unoptimised)
+    FT60[4] = t - FT60[3];
+    if (FT60[4] > FT60[2]) FT60[2] = FT60[4];
+    if (dispMs !== CC.dm || fpsCap !== CC.fc) ccLimit();
+    if (FT60[4] > CC.gapMs) CC.until = realNow() + 2000;
+    if (mode === 'sketch') adaptQuality(FT60[4]);
+  }
   // (labpace) the frames the layers showed (drawn or still), for the steadiness readout
   if (!dozed) PACE.drewAvg = (PACE.drewAvg || 0) * 0.9 + (PACE.lastDraw === frameTick - 1 ? 0.1 : 0);
   if ((frameSeen === frameTick - 1 || PACE.stillSeen === frameTick - 1) && !parked && !dozed) { if (PACE.presentAt) PACE.meter.feed(t - PACE.presentAt); PACE.presentAt = t; }
@@ -2183,11 +2193,14 @@ function statsTick() {
   // (round 60, gcchurn60) the last 60 frames' work sorted by hand into a kept typed array (no copy, no boxed sort)
   const wn = Math.min(60, wrN); const w = statsW;
   for (let k = 0; k < wn; k += 1) { const x = wr(wrN - wn + k); let j = k - 1; while (j >= 0 && w[j] > x) { w[j + 1] = w[j]; j -= 1; } w[j + 1] = x; }
-  const at = (p) => (wn ? +(w[Math.min(wn - 1, Math.floor(wn * p))] / 1000).toFixed(2) : 0);
-  post({ type: 'stats', fps, worst, quality, ms: FT60[0], calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0,
-    p50: at(0.5), p95: at(0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, adapt: adaptInfo(), pace: paceInfo(), note: { ...perfNote },
-    hz: Math.round(1000 / dispMs), fb: FB.on ? fbRows() : null }); // (round 64, framebar64: the screen's rate; each layer's share while the bar shows)
+  // (round 76, labframe76) the message made once: no closure per read, percentiles without text (toFixed), perfNote sent
+  // as it is and the message not spread again by post() (both ways of sending copy it there and then)
+  const msg = { source: 'three-sandbox', type: 'stats', fps, worst, quality, ms: FT60[0], calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0,
+    p50: statsAt(wn, 0.5), p95: statsAt(wn, 0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, adapt: adaptInfo(), pace: paceInfo(), note: perfNote,
+    hz: Math.round(1000 / dispMs), fb: FB.on ? fbRows() : null }; // (round 64, framebar64: the screen's rate; each layer's share while the bar shows)
+  if (window.__stageHost) window.__stageHost.post(msg); else parent.postMessage(msg, '*');
 }
+function statsAt(wn, p) { return wn ? Math.round(statsW[Math.min(wn - 1, Math.floor(wn * p))] / 10) / 100 : 0; }
 statsRun(!parked);
 // A GPU memory estimate (MB): what the page's WebGL canvases hold (color + depth, ×2 for a kept last frame: since
 // round 56 only a canvas that keeps one), the filters' merged pictures and feedback buffers, plus ~1 MB per texture (a guess: three.js
@@ -2234,22 +2247,28 @@ function fbMark(L) { const f = L.fb; if (f) for (let k = 0; k < 5; k += 1) f[k +
 function fbRows() {
   const n = frameTick - FB.tick; FB.tick = frameTick;
   if (n <= 0) return null;
-  const rows = [];
-  layers.forEach((L) => {
-    const f = L.fb; if (!f) return;
-    const row = [L.id];
-    for (let k = 0; k < 5; k += 1) { row.push(Math.round(((f[k] - f[k + 5]) / n) * 1000) / 1000); f[k + 5] = f[k]; }
-    const t = fbTex(L); row.push(t.n, t.mb, t.progs);
-    rows.push(row);
-  });
-  return { n, rows };
+  // (round 76, labframe76) each row made at its size (no growing by push), no callback made per read, fbTex's answer kept
+  FBR.n = n; FBR.rows = []; layers.forEach(fbRow);
+  const out = { n, rows: FBR.rows }; FBR.rows = null;
+  return out;
+}
+const FBR = { n: 1, rows: null };
+const fbQ = (f, k, n) => { const v = Math.round(((f[k] - f[k + 5]) / n) * 1000) / 1000; f[k + 5] = f[k]; return v; };
+function fbRow(L) {
+  const f = L.fb; if (!f) return;
+  const n = FBR.n;
+  const a = fbQ(f, 0, n); const b = fbQ(f, 1, n); const c = fbQ(f, 2, n); const d = fbQ(f, 3, n); const e = fbQ(f, 4, n);
+  const t = fbTex(L);
+  FBR.rows.push([L.id, a, b, c, d, e, t.n, t.mb, t.progs]);
 }
 // textures a layer holds: the count from three.js; their memory walked again only when that count changes
+const FBT = { n: 0, mb: 0, progs: 0 }; // (round 76: one kept answer, read at once by fbRow)
 function fbTex(L) {
   let n = 0; let progs = 0;
   for (const r of L.renderers) { if (r.__stale) continue; n += r.info?.memory?.textures || 0; progs += r.info?.programs?.length || 0; }
   if (L.fbTexN !== n) { L.fbTexN = n; try { L.fbTexMB = fbTexList(fbScenes(L)).mb; } catch { L.fbTexMB = 0; } }
-  return { n, mb: L.fbTexMB || 0, progs };
+  FBT.n = n; FBT.mb = L.fbTexMB || 0; FBT.progs = progs;
+  return FBT;
 }
 function fbScenes(L) {
   const out = new Map();
@@ -2632,8 +2651,10 @@ window.__lab240 = {
 // per-frame work there), exports, stills or recordings. (checks: window.__labDraw.info() / .set({ cull: false }))
 // Only while frames miss the screen's refresh (and 2 s after): sorting costs the CPU ≈ 0.2–0.7 µs a copy here, so a
 // crowd that already fits its frame isn't touched (checks: .set({ cull: 'always' }))
-const CC = { on: true, always: false, until: -1, min: 256, frames: 0, copies: 0, drawnCopies: 0, ms: 0, meshes: 0, permed: new Set() };
-function ccGap(gap) { if (gap > Math.max(dispMs, fpsCap ? 1000 / fpsCap : 0) * 1.15) CC.until = realNow() + 2000; }
+const CC = { gapMs: Infinity, dm: -1, fc: -1, on: true, always: false, until: -1, min: 256, frames: 0, copies: 0, drawnCopies: 0, ms: 0, meshes: 0, permed: new Set() };
+// (round 76, labframe76) a frame later than this (the screen's frame or the cap's, +15 %) turns culling on for 2 s;
+// worked out again by tickFrames only when the screen's rate or the cap change
+function ccLimit() { CC.dm = dispMs; CC.fc = fpsCap; CC.gapMs = Math.max(dispMs, fpsCap ? 1000 / fpsCap : 0) * 1.15; }
 const CCS = new WeakMap(); // scene → { tick, list, lights, point }; mesh → its state
 const ccM = new THREE.Matrix4(); const ccF = [new THREE.Frustum()];
 function ccScan(scene) {
@@ -2641,10 +2662,13 @@ function ccScan(scene) {
   if (!st) { st = { tick: -1e9, list: [], lights: [], point: false }; CCS.set(scene, st); }
   if (frameTick - st.tick < 60 && frameTick >= st.tick) return st; // (looked at again every 60 frames: new crowds, lights)
   st.tick = frameTick; st.list.length = 0; st.lights.length = 0; st.point = false;
-  scene.traverse((o) => {
-    if (o.isInstancedMesh) { if (o.count >= CC.min) st.list.push(o); } else if (o.isLight && o.castShadow && o.shadow) { if (o.isPointLight) st.point = true; else st.lights.push(o); }
-  });
+  ccSt = st; scene.traverse(ccVisit); ccSt = null; // (round 76, labframe76: one kept visitor, no closure per look)
   return st;
+}
+let ccSt = null;
+function ccVisit(o) {
+  const st = ccSt;
+  if (o.isInstancedMesh) { if (o.count >= CC.min) st.list.push(o); } else if (o.isLight && o.castShadow && o.shadow) { if (o.isPointLight) st.point = true; else st.lights.push(o); }
 }
 function ccPlain(o) {
   if (!o.frustumCulled || !o.visible || o.morphTexture || o.isSkinnedMesh || o.customDepthMaterial || o.customDistanceMaterial) return false;
@@ -5648,12 +5672,15 @@ function matteSource(L) {
   return layers.get(m.source) || [...layers.values()].find(B=>B!==L && B.props.pcOf===L.props.pcOf && (B.props.name===m.sourceName || B.props.name?.endsWith(` · ${m.sourceName}`)));
 }
 const matteUsed={frame:-1,version:-1,ids:new Set()};
+// (round 76, labframe76) looked at once a frame with nothing made: a kept callback instead of a Map iterator, the set
+// emptied only when it holds something (Set.clear() makes a new table) — ≈ 110 B a frame in gcchurn60's Lab measure
+function matteScan(B) { if (B.props.mask?.kind === 'video' && layerMix(B) > 0) { const src = matteSource(B); if (src && src !== B) matteUsed.ids.add(src.id); } }
 function matteOnly(L) {
   if(matteUsed.frame!==frameTick || matteUsed.version!==layerVer){
-    matteUsed.frame=frameTick;matteUsed.version=layerVer;matteUsed.ids.clear();
-    for(const B of layers.values())if(B.props.mask?.kind==='video' && layerMix(B)>0){const src=matteSource(B);if(src && src!==B)matteUsed.ids.add(src.id);}
+    matteUsed.frame=frameTick;matteUsed.version=layerVer;if(matteUsed.ids.size)matteUsed.ids.clear();
+    layers.forEach(matteScan);
   }
-  return matteUsed.ids.has(L.id);
+  return matteUsed.ids.size !== 0 && matteUsed.ids.has(L.id);
 }
 const rawCanvases = L => [...L.box.querySelectorAll('canvas')].filter(c=>!c.classList.contains('lab-video-mask') && !c.classList.contains('lab-xfade') && c.closest('.lab-layer')===L.box);
 function matteDispose(L) {
