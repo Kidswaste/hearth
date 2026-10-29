@@ -51,3 +51,14 @@ One small Windows fix an hour, each checked in a throwaway copy of Hearth and pu
   the event loop running the whole time; delete → gone → restore → back in a test copy; `dev/store-thread-test.js` 70/70.
 - **Noticed, not changed** (not Windows-only): Recently deleted ages a chat by its file's modified time, which a move
   keeps, so a chat last changed over 30 days ago is purged on the next look at the Trash right after it's deleted.
+
+## Pass 6 (Oct 29): read-aloud mangled every accent on Windows
+- **What you heard**: Windows' own voice reading a reply in French said "caf├⌐" for "café" (any é, è, à, ù, ç, œ).
+- **Why**: the text goes to PowerShell on stdin (never on the command line), and Windows PowerShell 5.1 reads stdin
+  in the console's OEM code page, not UTF-8.
+- **Fix** (`voicemain.js`): the speech script sets `[Console]::InputEncoding` to UTF-8 first.
+- **Checked**: PowerShell read "café élan où" as "caf├⌐ ├⌐lan o├╣" before and "café élan où" after; Hearth's own
+  `say()` (sound sent nowhere) read "Bonjour, café élan où Noël" exactly; a test copy starts with no page errors.
+  Also checked, fine as they are: cloud-files' PowerShell helper with accented paths (both ways).
+  `dev/voice-test.js` stops at its first step on Windows with and without this change (its fake whisper is a .js
+  file, which Windows can't start: EFTYPE): not fixed here.
