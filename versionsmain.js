@@ -240,13 +240,37 @@ function create(o = {}) {
   }
   // (round 82, bigchat82) a giant chat's version for the window (Preview, Restore): its bytes in this computer's form,
   // made on the files thread ({ __chatBytes }: the window parses them); never parsed here
-  async function read(token) {
+  // (round 85, projbig85) o2.peek ({ to, count }): Preview of a giant chat's version gets only what it shows
+  // ({ __chatPeek: { title, n, start, end, msgs } }, made on the files thread: storework.js chatPeek); the window parsed
+  // all 60 MB (≈ 2.4 s there) and this process held ≈ 0.4 s sending them. A backup's copy is taken out of its zip into a
+  // temporary folder first (as restoreBig). A version that isn't giant: as before
+  async function read(token, o2 = {}) {
     const t = tokens.get(String(token || ''));
+    if (o2?.peek && t && t.kind === 'chat' && !t.value && (t.file || t.zip) && o.chatPeek) {
+      const p = await peekBig(t, o2.peek).catch(() => null);
+      if (p) return { __chatPeek: p };
+    }
     if (t && t.kind === 'chat' && t.file && !t.zip && o.chatBytes) {
       const st = await fsp.stat(t.file).catch(() => null);
       if (st && st.size >= BIG_CHAT && st.size <= MAX_BYTES) { const r = await o.chatBytes({ file: t.file, ctx: t.cloud ? ctx() : null, wrapped: Boolean(t.wrapped) }).catch(() => null); if (r?.bytes) return { __chatBytes: r.bytes }; }
     }
     return readTok(token);
+  }
+  async function peekBig(t, pk = {}) {
+    let tmp = null; let file = t.file;
+    try {
+      if (t.zip) {
+        const Zip = require('./zipkit');
+        const e = (await Zip.entries(t.zip)).find((x) => !x.dir && x.name.replace(/^(\.\/)+/, '') === t.member);
+        if (!e || e.size < BIG_CHAT || e.size > MAX_BYTES) return null;
+        tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'hearth-versions-'));
+        await Zip.extract(t.zip, tmp, { members: [e.name] });
+        file = path.join(tmp, ...e.name.split('/'));
+      }
+      const st = await fsp.stat(file).catch(() => null);
+      if (!st || st.size < BIG_CHAT || st.size > MAX_BYTES) return null;
+      return await o.chatPeek({ file, ctx: t.cloud ? ctx() : null, wrapped: Boolean(t.wrapped), to: pk.to == null ? null : Number(pk.to), count: Number(pk.count) || 300 });
+    } finally { if (tmp) fsp.rm(tmp, { recursive: true, force: true }).catch(() => {}); }
   }
 
   // ---------- keeping the version in place, restoring ----------
@@ -484,12 +508,13 @@ function register(ipcMain, opts = {}) {
     readChat: (id) => (store.getChatFresh ? store.getChatFresh(id) : store.getChat(id)), writeChat: (chat) => store.saveChat(chat), restoreChat: (id) => store.restoreChat(id),
     chatRestore: store.restoreChatBig, chatHead: store.chatHead, // (round 84, bigchat84) a giant chat restored / listed on the store threads
     digest: store.runOff ? (a) => store.runOff('chatDigest', a) : undefined, chatIdle: store.idle, chatBytes: store.runOff ? (a) => store.runOff('chatBytes', a) : undefined, // (round 82, bigchat82) giant chats: listed from digests made on the files thread
+    chatPeek: store.runOff ? (a) => store.runOff('chatPeek', a) : undefined, // (round 85, projbig85) a giant version's Preview: only what it shows
     readKV: (name) => store.getKVStatus(name), writeKV: (name, v) => store.setKV(name, v),
     readConfig: opts.readConfig, saveConfig: opts.saveConfig,
   }));
   const h = (ch, fn) => ipcMain.handle(ch, async (_e, ...a) => { try { made(); return await fn(...a); } catch (err) { return { ok: false, error: err.message, code: err.code || null }; } });
   h('versions:list', (s, o) => inst.list(s, o || {}));
-  h('versions:read', (token) => inst.read(token));
+  h('versions:read', (token, o) => inst.read(token, o || {})); // (round 85: o.peek)
   h('versions:keep', async (s, thing) => ({ ok: true, before: await inst.keep(s, thing) }));
   h('versions:restore', (s, token, o) => inst.restore(s, token, o || {}));
   h('versions:undo', async (kind, over, target, cur) => inst.undoOnto(String(kind), over, target, cur)); // (a thing the window holds: the merged value it applies)

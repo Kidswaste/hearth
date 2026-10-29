@@ -27,7 +27,8 @@
 .vs-preview { max-height: 60vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
 .vs-preview h3 { margin: 8px 0 2px; font-size: 13px; }
 .vs-code { margin: 0; padding: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; border-radius: 8px; background: color-mix(in srgb, var(--text, #e8e8ea) 5%, transparent); }
-.vs-msg { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vs-msg { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; content-visibility: auto; contain-intrinsic-size: auto 72px; } /* (round 85, projbig85) laid out when scrolled to */
+.vs-peek { display: flex; flex-direction: column; gap: 6px; } /* (round 85) a giant version's Preview, drawn in parts */
 .vs-msg small { opacity: .6; }
 .vs-you { background: color-mix(in srgb, var(--fh-info, #5aa9ff) 9%, transparent); }
 .vs-ai { background: color-mix(in srgb, var(--text, #e8e8ea) 4%, transparent); }
