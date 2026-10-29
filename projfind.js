@@ -70,7 +70,7 @@ const ProjFind = (() => {
     S.pid = p.id; S.rows = []; S.sel = -1; S.more.clear(); S.last = null; S.seq += 1;
     S.input = el('input', { type: 'search', class: 'pf-input', placeholder: keyText('Find in this project… (Ctrl/⌘+F)'), spellcheck: false, attrs: { 'aria-label': 'Find in this project: messages, notes, worktable, scenes, boards, files', 'aria-controls': 'pf-results', autocomplete: 'off' } });
     S.status = el('div', { class: 'pf-status', attrs: { role: 'status', 'aria-live': 'polite' } });
-    S.list = el('div', { class: 'pf-results', id: 'pf-results', attrs: { role: 'listbox', 'aria-label': 'Found in this project' } });
+    S.list = el('div', { class: 'pf-results', id: 'pf-results', attrs: { role: 'region', 'aria-label': 'Found in this project' } });
     S.node = el('section', { class: 'pf', dataset: { project: p.id } }, S.input, S.status, S.list);
     S.input.addEventListener('input', () => { S.more.clear(); query(); });
     S.input.addEventListener('keydown', onKey);
@@ -84,7 +84,7 @@ const ProjFind = (() => {
     if (e.key === 'Enter') { e.preventDefault(); if (S.rows.length) openAt(Math.max(0, S.sel)); return; }
     if (e.key === 'Escape') { if (S.input.value) { e.preventDefault(); e.stopPropagation(); S.input.value = ''; query(); } else S.input.blur(); }
   }
-  function mark() { timed(() => { for (const r of S.list.querySelectorAll('.pf-row')) { const on = Number(r.dataset.i) === S.sel; r.classList.toggle('sel', on); r.setAttribute('aria-selected', on ? 'true' : 'false'); if (on) r.scrollIntoView({ block: 'nearest' }); } }); }
+  function mark() { timed(() => { for (const r of S.list.querySelectorAll('.pf-row')) { const on = Number(r.dataset.i) === S.sel; r.classList.toggle('sel', on); if (on) r.scrollIntoView({ block: 'nearest' }); } }); }
 
   // ---------- a query: the newest words win (one in flight at a time; typing meanwhile asks again right after) ----------
   async function query() {
@@ -140,7 +140,7 @@ const ProjFind = (() => {
         const rows = shown.map((h) => {
           const i = S.rows.push(h) - 1;
           const main = h.g === 'file' ? el('span', { class: 'pf-snip' }, snipNode(h.snip, h.marks)) : snipNode(h.snip, h.marks);
-          return el('button', { type: 'button', class: 'pf-row', dataset: { i: String(i), g: h.g }, attrs: { role: 'option', 'aria-selected': 'false' }, title: 'Open it here (right-click: more)' },
+          return el('button', { type: 'button', class: 'pf-row', dataset: { i: String(i), g: h.g }, title: 'Open it here (right-click: more)' },
             el('span', { class: 'pf-where' }, el('span', { class: 'pf-where-t', text: whereOf(h) }), h.at && h.g !== 'scene' ? el('span', { class: 'pf-when', text: when(h.at) }) : null),
             main, el('span', { class: 'pf-open', text: 'Open', attrs: { 'aria-hidden': 'true' } }));
         });

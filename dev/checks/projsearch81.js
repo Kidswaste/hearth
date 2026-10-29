@@ -57,15 +57,12 @@ try {
   await lag(true);
   const t0 = performance.now();
   await desk();
-  rafOn = true; lastT = 0; requestAnimationFrame(rafTick); // (frames from the Desk on screen until the index is read: reported)
   need(Boolean(box()), 'the Desk has the Find in this project box');
   out.index.placeholder = box()?.placeholder;
   // ---------- the index, read on the store thread in the background ----------
   await until(() => ProjFind.state().ready.includes('pjbp0'), 'the index', 4000);
-  rafOn = false;
   const st = ProjFind.state();
   out.index.build = st.stats.build; out.index.wall = Math.round(performance.now() - t0);
-  out.index.frames = { n: gaps.length, over16: gaps.filter((g) => g > 16.7 * 1.5).length, longest: Math.round(Math.max(0, ...gaps)) };
   const m1 = await lag(true);
   if (m1) { const h = m1.ipc.top.find((x) => x.k === 'handle projects:find'); out.index.main = { delayMax: m1.delay.max, delayP99: m1.delay.p99, findCalls: h?.n || 0, findMs: h?.ms || 0 }; if (h?.n) need(h.ms / h.n < BUDGET.mainPerCall, `main process: ${Math.round(h.ms / h.n * 10) / 10} ms per find call`); } else out.index.main = 'no lag probe (HEARTH_LOOPLAG)';
   need(st.stats.build?.calls > 1, `the index was read in slices (${st.stats.build?.calls} calls)`);
@@ -164,6 +161,10 @@ try {
   dispatchEvent(new CustomEvent('hearth:synced', { detail: { files: [{ rel: `chats/${rel.ref}.json` }] } }));
   await until(() => rows('chat').length, 'the saved message found by itself', 400);
   out.live.save = { ms: Math.round(performance.now() - tz), chat: rel.ref };
+  // ---------- another big project read while this Desk is on screen: the page's frames meanwhile (reported) ----------
+  { rafOn = true; lastT = 0; requestAnimationFrame(rafTick); const tb = performance.now();
+    await ProjFind.warm(Projects.get('pjbp1'), 'check'); rafOn = false;
+    out.index.other = { project: 'pjbp1', wall: Math.round(performance.now() - tb), ...ProjFind.state().stats.build, frames: gaps.length, framesOver25ms: gaps.filter((g) => g > 25).length, longestFrame: Math.round(Math.max(0, ...gaps)) }; }
   // ---------- this page's own work, over the whole run ----------
   const fin = ProjFind.state().stats;
   out.own = { maxTaskMs: fin.maxTaskMs, tasks: fin.tasks, calls: fin.calls };
