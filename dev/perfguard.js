@@ -13,8 +13,8 @@
 // kept the load ≈ 3, so the guard now
 //   - measures CPU TIME beside the wall times (the main process's + the window's CPU for a start, the window thread's CPU per open /
 //     switch / click / key, main + window CPU per Lab tool call, a sync pass's CPU): a busy box makes things wait,
-//     it barely makes them cost more CPU. Wall times stay (they are what the owner feels) but are judged after
-//     dividing by the CALIBRATION FACTOR: a fixed CPU + GC + layout micro-benchmark (dev/perfguard-calib.js) timed
+//     it barely makes them cost more CPU. Wall times stay (they are what the owner feels); both are judged after
+//     dividing by the CALIBRATION FACTOR (never below 1): a fixed CPU + GC + layout micro-benchmark (dev/perfguard-calib.js) timed
 //     before and after every step (and in the app's window at the start and end of each launch), against the same
 //     benchmark when the baseline was recorded;
 //   - records the load average and the calibration in its report (report.json) and REFUSES TO JUDGE when the box is
