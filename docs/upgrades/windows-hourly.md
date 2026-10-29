@@ -33,3 +33,11 @@ One small Windows fix an hour, each checked in a throwaway copy of Hearth and pu
 - **Fix** (`store.js`, `storework.js`): the same short retry (5 tries, at most 0.6 s) in those three places.
 - **Checked**: against a real lock (PowerShell holding the file with no sharing for 250 ms), a plain rename failed
   with EPERM and the retry saved; `dev/store-thread-test.js` 70/70; a save and read back in a test copy.
+
+## Pass 4 (Oct 29): pass 3's retry could freeze Hearth for up to 0.6 s
+- **Why**: pass 3's wait (up to 0.6 s) ran on the main thread, against round 65's rule (≤ 50 ms of waiting in all
+  there, `scenesafe-core` `waitFor`): a held file during a normal save would have frozen the window.
+- **Fix** (`store.js`): while Hearth runs the retry uses `SS.waitFor` (5 + 10 + 15 + 20 ms); only the quit flush, with
+  no window left to keep smooth, waits up to 0.6 s.
+- **Checked**: against a real 250 ms lock, the running case gave up after 87 ms (the save is held and tried again,
+  as before) and the quit case saved after 383 ms; `dev/store-thread-test.js` 70/70; a save in a test copy.
