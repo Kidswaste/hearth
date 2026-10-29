@@ -83,7 +83,7 @@ const AUDIT = [
   ['offline-project.js', 1, 'not-chat', 'main process: whether a chat file is here'],
   ['offline.js', 33, 'throws', 'retries and the calm lines at the end (pushes, the last messages, splices near the end); "pick up with the other AI" reads every older text: it throws'],
   ['projbundle-core.js', 4, 'not-chat', "a project bundle's own list"],
-  ['projbundle-work.js', 3, 'not-chat', 'main-process thread: chat files'],
+  ['projbundle-work.js', 4, 'not-chat', 'main-process thread: chat files'],
   ['projbundle.js', 1, 'not-chat', 'a gathered chat (a giant one is a stand-in)'],
   ['projects-cmds.js', 1, 'not-chat', 'search results'],
   ['projfind-core.js', 1, 'not-chat', 'store thread: chat files'],
