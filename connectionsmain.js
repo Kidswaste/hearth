@@ -165,7 +165,7 @@ const tail = (s, n = 300) => String(s || '').trim().split('\n').filter(Boolean).
 // as engines.js does for agent runs.
 function stopTree(child) {
   if (IS_WIN && child.pid) {
-    try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => { try { child.kill(); } catch { /* gone */ } }); return; } catch { /* below */ }
+    try { /* winmac-ok: Windows-only (IS_WIN above), taskkill.exe is a system tool */ spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => { try { child.kill(); } catch { /* gone */ } }); return; } catch { /* below */ }
   }
   child.kill();
 }
