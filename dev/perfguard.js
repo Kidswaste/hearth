@@ -258,7 +258,7 @@ function factorOf(now, base, part) {
   if (!now || !base) return null;
   const r = (a, b) => (Number.isFinite(a) && Number.isFinite(b) && b > 0 ? a / b : null);
   const xs = part === 'app' && r(now.win, base.win) != null ? [Math.max(r(now.win, base.win), r(now.par, base.par) ?? 0)] : [r(now.single, base.single), r(now.par, base.par)].filter((x) => x != null);
-  return xs.length ? rnd(Math.min(3, Math.max(0.5, Math.exp(xs.reduce((a, x) => a + Math.log(x), 0) / xs.length)))) : null;
+  return xs.length ? rnd(Math.min(3, Math.max(1, Math.exp(xs.reduce((a, x) => a + Math.log(x), 0) / xs.length)))) : null; // (≥ 1: a busier box excuses, a quieter one doesn't tighten — the benchmark itself moves ±10 % between minutes)
 }
 function loadGate(c, f) {
   const why = [];
