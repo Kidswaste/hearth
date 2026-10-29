@@ -282,7 +282,7 @@ function judge(base, now, ctx = {}) {
     const scaled = f != null ? c.median / f : c.median;
     const delta = scaled - b.median;
     let verdict = delta > tol ? 'REGRESSED' : delta < -tol ? 'better' : 'ok';
-    if (d.kind === 'wall' && ctx.gate?.[d.part]?.length) verdict = verdict === 'better' ? 'better' : 'too loaded';
+    if (verdict === 'REGRESSED' && ctx.gate?.[d.part]?.length) verdict = 'too loaded'; // (refused: the box can't tell)
     rows.push({ k, d, b, c, tol, delta, f, scaled, verdict });
   }
   // a wall time over the line whose own CPU time is fine, on a box slower than at the baseline: the wait is the box's
@@ -415,10 +415,12 @@ function writeReport(rep) { fs.writeFileSync(path.join(OUT, 'report.json'), `${J
       if (cb && cn && cb.single && cn.single && Math.max(cb.single / cn.single, cn.single / cb.single) > 1.4) why.push(`the box's speed differed between the sides (calibration base ${cb.single} ms, new ${cn.single} ms)`);
       box[part] = { base: cb, new: cn, factor: f, tooLoaded: why }; gate[part] = why;
     }
-    const reg = rows.filter((r) => r.verdict === 'REGRESSED'); const unsure = rows.filter((r) => r.verdict === 'unsure');
+    // a part too loaded to tell: what looked worse there isn't judged (what looked fine stays fine)
+    for (const r of rows) if ((r.verdict === 'REGRESSED' || r.verdict === 'unsure') && gate[r.d.part]?.length) r.verdict = 'too loaded';
+    const reg = rows.filter((r) => r.verdict === 'REGRESSED'); const unsure = rows.filter((r) => r.verdict === 'unsure' || r.verdict === 'too loaded');
     const missing = rows.filter((r) => r.verdict === 'not measured');
-    const loaded = PARTS.filter((p) => gate[p].length);
-    const verdict = loaded.length ? 'inconclusive' : reg.length || missing.length ? 'regressed' : unsure.length ? 'inconclusive' : 'ok';
+    const loaded = [...new Set(rows.filter((r) => r.verdict === 'too loaded').map((r) => r.d.part))];
+    const verdict = reg.length || missing.length ? 'regressed' : unsure.length ? 'inconclusive' : 'ok';
     log(`\nperfguard A/B: new (${mach.commit}${mach.dirty ? ' + changes' : ''}) vs base (${AB} = ${base.sha}); every sample of each side, base and new launched in turn.`);
     log(`Regressed = Mann–Whitney p ≤ ${ALPHA}, the 95 % interval of the median difference above 0, and the difference over max(10 %, floor).\n`);
     log(table(rows, true));
@@ -433,7 +435,7 @@ function writeReport(rep) { fs.writeFileSync(path.join(OUT, 'report.json'), `${J
     if (problems.length) log(`\nproblems:\n  ${problems.join('\n  ')}`);
     writeReport({ mode: 'ab', verdict, base: { ref: AB, sha: base.sha }, new: { commit: mach.commit, dirty: mach.dirty }, machine: machEnd, box, rows: rows.map(({ d, ...r }) => ({ label: d.label, unit: d.unit, kind: d.kind, ...r })), problems });
     const summary = verdict === 'inconclusive'
-      ? `? inconclusive: ${loaded.length ? `too loaded to tell (${loaded.join(', ')})` : `${unsure.length} change(s) too close to call (${unsure.map((r) => r.d.label).join(', ')}): run again on a quieter box or with more --runs / --rounds`}`
+      ? `? inconclusive: ${unsure.map((r) => `${r.d.label} (${r.verdict === 'too loaded' ? 'too loaded to tell' : 'too close to call'})`).join(', ')}: run again on a quieter box${loaded.length ? '' : ', or with more --runs / --rounds'}`
       : verdict === 'regressed' ? `✖ ${reg.length} regressed${missing.length ? ` · ✖ ${missing.length} not measured` : ''}` : '✓ no regression';
     log(`\n${summary} · ${rows.filter((r) => r.verdict === 'better').length} better · ${mins()} min · ${path.join(OUT, 'report.json')}`);
     process.exit(EXIT[verdict]);
@@ -516,7 +518,7 @@ function writeReport(rep) { fs.writeFileSync(path.join(OUT, 'report.json'), `${J
   if (m.problems.length) log(`\nproblems:\n  ${m.problems.join('\n  ')}`);
   const outDir = opt('--from') ? path.resolve(opt('--from')) : OUT;
   if (!opt('--from')) writeReport({ mode: 'compare', verdict, baseline: { when: base.when, commit: base.machine?.commit, calib: base.calib || null }, machine: m.machine, box: Object.fromEntries(parts.map((p) => [p, { now: ctx.calib[p], factor: ctx.factor[p], tooLoaded: ctx.gate[p] }])), rows: rows.map(({ d, ...r }) => ({ label: d.label, unit: d.unit, kind: d.kind, ...r })), problems: m.problems });
-  const summary = verdict === 'inconclusive' ? `? inconclusive: ${unsure.length} wall time(s) over the line on a box too busy to tell (${unsure.map((r) => r.d.label).join(', ')}); their CPU times are fine — run again on a quieter box, or use --ab <base>` : bad.length ? `✖ ${bad.length} regressed` : '✓ no regression';
+  const summary = verdict === 'inconclusive' ? `? inconclusive: ${unsure.length} metric(s) over the line on a box too busy to tell (${unsure.map((r) => r.d.label).join(', ')}) — run again on a quieter box, or use --ab <base>` : bad.length ? `✖ ${bad.length} regressed` : '✓ no regression';
   log(`\n${summary}${missing.length ? ` · ✖ ${missing.length} not measured` : ''} · ${rows.filter((r) => r.verdict === 'better').length} better · ${mins()} min · ${path.join(outDir, 'measured.json')}`);
   process.exit(EXIT[verdict]);
 })().catch((err) => { console.error(err); process.exit(EXIT.error); });
