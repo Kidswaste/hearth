@@ -352,6 +352,29 @@ async function restoreChatBig({ id, src, keep, at, over }) {
   return r;
 }
 
+// (round 85, projbig85) a project's GIANT chat added by name (projbundlemain.js adopt: an import's part file or a chat
+// here for Duplicate project), written on the store thread as a whole save writes it (storework.js chatAdopt), after this
+// source chat's saves on their way; the window never sends it, this process never parses it. A source held / in doubt
+// (its file isn't what the window has): nothing is written. No thread (Node tools): the same, here
+async function adoptChatBig({ file, head, src }) {
+  if (path.dirname(String(file)) !== CHATS_DIR || !src?.file) return { ok: false, error: 'Not a chat Hearth can add' };
+  if (pending.has(file) || fs.existsSync(file)) return { ok: false, error: 'That chat is already in your list.' };
+  if (held.has(src.file) || doubts.has(src.file)) return { ok: false, held: true, code: 'EHELD', error: 'A chat in it can\'t be read just now. Nothing was added; try again in a moment.' };
+  if (thread()) {
+    const r = await ask({ op: 'chatAdopt', file, head, src });
+    if (r?.ok) { seen.add(file); wstats.writes += 1; }
+    return r;
+  }
+  let msgs = null;
+  try { const v = JSON.parse(fs.readFileSync(src.file, 'utf8').replace(/^﻿/, '')); msgs = src.list ? v : v?.messages; } catch { msgs = null; }
+  if (!Array.isArray(msgs)) return { ok: false, held: true, code: 'EHELD', error: 'A chat in it can\'t be read just now. Nothing was added; try again in a moment.' };
+  const value = {}; let placed = false;
+  for (const k of Object.keys(head)) { if (k === '__bigChat' || k === '__bigPart') continue; if (k === 'messages') { value.messages = msgs; placed = true; } else value[k] = head[k]; }
+  if (!placed) value.messages = msgs;
+  writeSync(file, value, null);
+  return { ok: true, n: msgs.length, title: value.title };
+}
+
 function allChats() {
   return chatNames()
     .map((f) => readJson(path.join(CHATS_DIR, f), null))
@@ -679,6 +702,7 @@ module.exports = {
   getChat: (id) => readJson(chatPath(id), null),
   getChatFresh, openChat, openPart, saveChatDelta, // (round 82, bigchat82)
   restoreChatBig, chatHead, BIGCHAT, // (round 84, bigchat84)
+  adoptChatBig, // (round 85, projbig85)
   saveChat,
   deleteChat: (id) => trashChat(id),
   listTrash,

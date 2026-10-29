@@ -88,12 +88,20 @@ const ProjBundle = (() => {
     // chats: the whole conversation, which AI it's with, its scene and board
     const csLinks = (typeof ChatScenes !== 'undefined' ? ChatScenes.data?.()?.links : null) || (await kv('chat-scenes', {}))?.links || {};
     const chats = [];
+    // (round 85, projbig85) a GIANT chat (≥ 8 MB on disk) isn't loaded or copied here (≈ 2 s of this thread for 60 MB):
+    // it stands in by its own fields, its count, size and the paths it points at ({ __bigChat }); the export reads it
+    // from its file on a thread of the main process, Duplicate copies it there (projbundlemain.js). One that can't be
+    // read stops here: nothing is written, it's never taken as "no chat"
+    const info = chatIds.length && pb().chats ? await pb().chats(chatIds) : {};
     for (const id of chatIds) {
-      const chat = (await Native.load?.(id).catch(() => null)) || await hub().getChat(id).catch(() => null);
+      const inf = info?.[id];
+      if (inf?.state === 'unreadable') throw new Error(`Hearth couldn't read the chat “${items.find((x) => x.ref === id)?.name || id}” just now (nothing was written): try again in a moment`);
+      const big = inf?.state === 'big' && inf.head;
+      const chat = big ? { ...inf.head, __bigChat: { id, n: inf.n, size: inf.size, paths: inf.paths || [] } } : (await Native.load?.(id).catch(() => null)) || await hub().getChat(id).catch(() => null);
       if (!chat?.messages) { away.push(`A chat (${items.find((x) => x.ref === id)?.name || id})`); continue; }
       const a = H.agent(chat.agentId);
       const scene = (typeof ChatScenes !== 'undefined' && ChatScenes.linkOf?.(id)) || csLinks[id]?.sketch || null;
-      chats.push({ id, agent: { id: chat.agentId, engine: a?.engine || '', dock: a?.dock || '', name: a?.name || '' }, chat: C.copy(chat), scene: ids.has(scene) ? scene : null, board: bIndex?.links?.[id] || null });
+      chats.push({ id, agent: { id: chat.agentId, engine: a?.engine || '', dock: a?.dock || '', name: a?.name || '' }, chat: big ? chat : C.copy(chat), scene: ids.has(scene) ? scene : null, board: bIndex?.links?.[id] || null });
     }
     for (const c of chats) if (c.board && !boards.some((b) => b.id === c.board)) c.board = null;
     // the creative worktable (one per project)
@@ -166,7 +174,7 @@ const ProjBundle = (() => {
       const sizeOf = new Map(sz.files.map((f) => [f.path, f]));
       const baseBytes = parts.base.reduce((n, x) => n + (sizeOf.get(x)?.size || 0), 0);
       const chatOnly = parts.chats.filter((x) => !parts.base.includes(x));
-      const chatBytes = C.chatBytes(body) + chatOnly.reduce((n, x) => n + (sizeOf.get(x)?.size || 0), 0);
+      const chatBytes = C.chatBytes(body) + body.chats.reduce((n, c) => n + (c.chat?.__bigChat?.size || 0), 0) + chatOnly.reduce((n, x) => n + (sizeOf.get(x)?.size || 0), 0); // (round 85: a giant chat by its file's size)
       const fileFound = sz.dirs.filter((x) => x.found);
       const fileBytes = fileFound.reduce((n, x) => n + x.size, 0);
       const fileCount = fileFound.reduce((n, x) => n + (x.files || 0), 0);
@@ -187,7 +195,10 @@ const ProjBundle = (() => {
         ui.onCancel(() => resolve(false));
       });
       if (!go || !ui.d.open) { ui.close(); return null; }
-      const prep = C.prepare({ ...body, away: undefined }, { chats: chatsBox.checked, files: filesBox.checked });
+      // (round 85, projbig85) a giant chat goes by its name only ({ __bigChat: { id } }): prepared on the main process's
+      // thread exactly as prepare() does here (its secrets counted there)
+      const bare = body.chats.map((c) => (c.chat?.__bigChat ? { ...c, chat: { __bigChat: { id: c.chat.__bigChat.id }, messages: [] } } : c));
+      const prep = C.prepare({ ...body, chats: bare, away: undefined }, { chats: chatsBox.checked, files: filesBox.checked });
       const job = `ex${Date.now().toString(36)}`;
       let canceled = false;
       const stop = () => { canceled = true; pb().cancel(job).catch(() => {}); ui.say('Stopping…'); };
@@ -221,7 +232,7 @@ const ProjBundle = (() => {
     if (!file) return null;
     busy = true;
     const ui = dialog('Import a project', { eyebrow: 'PROJECT / IMPORT' });
-    let dir = null;
+    let dir = null; let parts = null; // (round 85) parts: its giant chats' messages, waiting on the main side (released after)
     try {
       ui.say('Checking the file…');
       ui.buttons(button('Cancel', () => ui.close()));
@@ -259,10 +270,10 @@ const ProjBundle = (() => {
         else toast(`Couldn't import it: ${(r?.problems || ['it can\'t be read'])[0]}`, { type: 'error' });
         return null;
       }
-      dir = r.dir;
+      dir = r.dir; parts = r.parts || null;
       ui.onCancel(() => {}); ui.buttons();
       ui.say('Adding its scenes, boards and chats…');
-      const res = await apply(r.body, { mode: 'import' });
+      const res = await apply(r.body, { mode: 'import', parts });
       ui.close();
       const skipped = [...(r.skipped || []), ...res.skipped];
       last.imported = res.project.id; last.skipped = skipped;
@@ -273,7 +284,7 @@ const ProjBundle = (() => {
       if (dir) pb().discard(dir).catch(() => {});
       toast(calmError(err), { type: 'error', raw: err });
       return null;
-    } finally { busy = false; }
+    } finally { busy = false; if (parts) pb().release?.(parts).catch?.(() => {}); }
   }
   // the toast after an import / a copy: what it made, what it skipped (Details lists them all)
   function done(p, text, skipped, { show = false } = {}) {
@@ -321,9 +332,19 @@ const ProjBundle = (() => {
     return { agent: kind, moved: true };
   }
   // body (this computer's paths) → a new project. mode: 'import' | 'duplicate'; suffix for the copies' names
-  async function apply(body0, { mode = 'import', suffix = '' } = {}) {
+  // (round 85, projbig85) a chat written on the main side, put in the chats list as Native's save does (its summary;
+  // the chat itself loads from disk when opened, like any chat not opened yet)
+  function listChat(chat) {
+    const summary = { id: chat.id, agentId: chat.agentId, title: chat.title, updatedAt: chat.updatedAt, pinned: Boolean(chat.pinned), model: chat.model, ...(chat.engine ? { engine: chat.engine } : {}) };
+    H.chats = [summary, ...(H.chats || []).filter((x) => x.id !== chat.id)];
+    try { if (typeof Panel !== 'undefined') (Panel.soon || Panel.render)(); } catch { /* the list draws later */ }
+  }
+  // (round 85, projbig85) parts: the import's giant chats' messages waiting on the main side (unpack's r.parts)
+  async function apply(body0, { mode = 'import', suffix = '', parts = null } = {}) {
     await P.ready();
-    const body = C.copy(body0);
+    // (round 85, projbig85) only what is changed here is copied (each chat's entry and own fields): remap copies the rest;
+    // a whole JSON copy of the body first was a 30–50 ms piece of a long task for a project of 760 things
+    const body = { ...body0, chats: (body0.chats || []).map((c) => ({ ...c, chat: c.chat && typeof c.chat === 'object' ? { ...c.chat } : c.chat })) };
     const skipped = [];
     const made = { scenes: [], chats: [], boards: [] };
     const hasScenes = (body.scenes || []).length || (body.sequences || []).length;
@@ -384,10 +405,21 @@ const ProjBundle = (() => {
       // chats: saved, known to the chats list, linked to their scene and board again
       for (const c of b.chats || []) {
         const chat = { ...c.chat, id: c.id, session: {} };
-        const r = await hub().saveChat(chat);
-        if (r?.error) throw new Error(r.error);
-        made.chats.push(chat.id);
-        Native.adopt(chat, { openIt: false });
+        const big = chat.__bigPart || chat.__bigChat;
+        if (big) {
+          // (round 85, projbig85) a giant chat: written by the store thread from its own fields (as made here) and its
+          // messages (the import's part / the original chat), byte for byte the whole save below; only listed here
+          delete chat.__bigPart; delete chat.__bigChat;
+          const r = await pb().adopt(c.chat.__bigPart ? { job: parts, part: big.key, id: chat.id, head: chat } : { chat: big.id, id: chat.id, head: chat });
+          if (!r?.ok) throw new Error(r?.error || `The chat “${chat.title || 'chat'}” couldn't be added`);
+          made.chats.push(chat.id);
+          listChat(chat);
+        } else {
+          const r = await hub().saveChat(chat);
+          if (r?.error) throw new Error(r.error);
+          made.chats.push(chat.id);
+          Native.adopt(chat, { openIt: false });
+        }
         if (c.scene && typeof ChatScenes !== 'undefined') ChatScenes.link(chat.id, c.scene, { rename: false });
         if (c.board && typeof Board !== 'undefined' && window.Lazy?.loaded('board')) Board.linkChat(chat.id, c.board);
       }

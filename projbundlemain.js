@@ -15,10 +15,19 @@
 //                                          failure removes what it wrote. → the body with this computer's paths
 //   projbundle:cancel (job)                stops an export / unpack between two chunks
 // The owner's own files are only ever read (exports) — an import writes nothing outside data/assets/projects/.
+// (round 85, projbig85) the heavy parts run on a thread (projbundle-work.js): a GIANT chat (≥ 8 MB) travels by its name,
+// read there from its file; the body's JSON, its CRC and its deflate are made there; an import's project.json is parsed
+// there and its big chats' messages wait in part files until the window adds each by name (the store thread writes it):
+//   projbundle:chats (ids)                 each chat: missing / small / unreadable / big (its own fields, count, size, paths)
+//   projbundle:adopt ({ job, part } | { chat }, id, head)   a big chat written as a whole save writes it, by the store
+//                                          thread: head (its own fields) + the messages of an import's part or of a
+//                                          chat here (Duplicate); never over a chat that's there
+//   projbundle:release (job)               an import's part files removed (a temporary folder)
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
+const crypto = require('crypto');
 const { promisify } = require('util');
 const { pipeline } = require('stream/promises');
 const { Transform, PassThrough, Writable } = require('stream');
@@ -31,6 +40,32 @@ const crc32 = zipkit.crc32;
 const U32 = 0xffffffff;
 let opts = { dataDir: path.join(__dirname, 'data'), getWin: () => null };
 const jobs = new Map(); // job id → AbortController
+const W = require('./projbundle-work'); // (round 85, projbig85) the heavy parts (on a thread: work() below)
+const SAFE_ID = /^[\w-]{1,80}$/;
+const chatFile = (id) => (SAFE_ID.test(String(id || '')) ? path.join(opts.dataDir, 'chats', `${id}.json`) : null);
+// (round 85, projbig85) projbundle-work.js on its own thread, started on first use, let go a minute after its last job;
+// inline (this thread) where a thread can't start. → the op's result; a failure there rejects (never "nothing")
+let thr = null;
+function work(op, args) {
+  if (process.env.HEARTH_PROJBUNDLE_INLINE !== '1' && !thr) {
+    try {
+      const { Worker } = require('worker_threads');
+      const w = new Worker(path.join(__dirname, 'projbundle-work.js'), { workerData: { projbundleWork: true } });
+      const t = { w, seq: 0, wait: new Map(), timer: null };
+      w.on('message', ({ id, res, err, code }) => { const j = t.wait.get(id); if (!j) return; t.wait.delete(id); if (err) j.no(Object.assign(new Error(err), { code })); else j.ok(res); });
+      const dead = (why) => { if (thr === t) thr = null; for (const j of t.wait.values()) j.no(new Error(`The project file's helper stopped (${why})`)); t.wait.clear(); };
+      w.on('error', (e) => dead(e.message)); w.on('exit', (c) => dead(`exited ${c}`));
+      w.unref();
+      thr = t;
+    } catch { thr = null; }
+  }
+  if (!thr) return Promise.resolve().then(() => W.OPS[op](args));
+  const t = thr; clearTimeout(t.timer);
+  const id = ++t.seq;
+  return new Promise((ok, no) => { t.wait.set(id, { ok, no }); t.w.ref(); t.w.postMessage({ id, op, args }); })
+    .finally(() => { if (!t.wait.size) { t.w.unref(); clearTimeout(t.timer); t.timer = setTimeout(() => { if (thr === t && !t.wait.size) { thr = null; t.w.terminate().catch(() => {}); } }, 60000); t.timer.unref?.(); } });
+}
+const asBuf = (u) => (u && !Buffer.isBuffer(u) ? Buffer.from(u.buffer, u.byteOffset, u.byteLength) : u);
 const statOf = (p) => { try { return fs.statSync(p); } catch { return null; } };
 const unFile = (s) => { let p = String(s).replace(/^file:\/\/(localhost)?/i, ''); try { p = decodeURIComponent(p); } catch { /* as is */ } if (/^\/[A-Za-z]:[\\/]/.test(p)) p = p.slice(1); return p; };
 const root = () => path.join(opts.dataDir, 'assets', 'projects');
@@ -76,15 +111,45 @@ function walkDir(dir, cap = 20000) {
   go(dir, '', 0);
   return out;
 }
-function sizes({ paths = [], dirs = [] } = {}) {
-  const one = (p, dir) => {
+// (round 85, projbig85) the export card's sizes with the disk's answers awaited (a project of 740 files held this
+// process ≈ 120 ms in stat / readdir calls before its card showed); the same answers as here() / walkDir()
+async function hereAsync(p, { dir = false } = {}) {
+  const raw = unFile(p);
+  const ok = (st) => st && (dir ? st.isDirectory() || st.isFile() : st.isFile());
+  const st = await fs.promises.stat(raw).catch(() => null);
+  if (ok(st)) return { path: raw, size: st.isFile() ? st.size : 0, dir: st.isDirectory() };
+  return here(p, { dir }); // (the other computer's form mapped here: as before)
+}
+async function walkDirAsync(dir, cap = 20000) {
+  const out = [];
+  const go = async (d, rel, depth) => {
+    if (out.length >= cap || depth > 12) return;
+    let ents = [];
+    try { ents = await fs.promises.readdir(d, { withFileTypes: true }); } catch { return; }
+    ents.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const e of ents) {
+      if (out.length >= cap) return;
+      if (e.name.startsWith('.') || P.secretFile(e.name)) continue;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      const abs = path.join(d, e.name);
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) await go(abs, r, depth + 1); continue; }
+      if (!e.isFile()) continue; // links and devices stay out
+      const st = await fs.promises.stat(abs).catch(() => null);
+      if (st) out.push({ abs, rel: r, size: st.size });
+    }
+  };
+  await go(dir, '', 0);
+  return out;
+}
+async function sizes({ paths = [], dirs = [] } = {}) {
+  const one = async (p, dir) => {
     if (P.secretFile(p)) return { path: p, found: false, secret: true, size: 0 };
-    const h = here(p, { dir });
+    const h = await hereAsync(p, { dir });
     if (!h) return { path: p, found: false, size: 0 };
-    if (h.dir) { const fs2 = walkDir(h.path); return { path: p, found: true, dir: true, files: fs2.length, size: fs2.reduce((n, f) => n + f.size, 0) }; }
+    if (h.dir) { const fs2 = await walkDirAsync(h.path); return { path: p, found: true, dir: true, files: fs2.length, size: fs2.reduce((n, f) => n + f.size, 0) }; }
     return { path: p, found: true, files: 1, size: h.size };
   };
-  return { files: paths.map((p) => one(p, false)), dirs: dirs.map((p) => one(p, true)) };
+  return { files: await Promise.all(paths.map((p) => one(p, false))), dirs: await Promise.all(dirs.map((p) => one(p, true))) };
 }
 
 // ---------- writing (streamed) ----------
@@ -110,7 +175,12 @@ async function writeZip(out, items, { signal, onBytes = () => {} } = {}) {
       const offset = pos;
       let crc = 0; let size = 0; let csize = 0; let method;
       let z64 = false;
-      if (it.data) {
+      if (it.pre) { // (round 85, projbig85) made on the thread (projbundle-work.js exportB): its CRC, sizes and bytes
+        ({ crc, size, method } = it.pre); csize = it.pre.bytes.length;
+        await put(localHeader({ name, method, time, date, crc, size, csize, z64 }));
+        for (let o = 0; o < csize; o += 4 << 20) { if (signal?.aborted) throw cancelErr(); await put(it.pre.bytes.subarray(o, Math.min(csize, o + (4 << 20)))); }
+        onBytes(size, it.name);
+      } else if (it.data) {
         size = it.data.length; crc = crc32(it.data);
         const comp = await deflateRaw(it.data, { level: 6 });
         method = comp.length < size ? 8 : 0;
@@ -203,14 +273,23 @@ const progressTo = (sender, job) => {
 
 // The body (already prepared in the window: chats / files as chosen, secrets scrubbed) → the file.
 // { body, name, job, leftOut, secrets, out? }
+// (round 85, projbig85) a big chat comes as { __bigChat: { id } }: read from its file on the thread (projbundle-work.js
+// exportA, after this chat's saves on their way); one that can't be read stops the export before anything is written.
+// The body's copy, paths, rewrite, JSON, CRC and deflate run there too (this process held ≈ 4.7 s for a 60 MB chat)
 async function exportBundle(o = {}, sender = null) {
-  const body = P.copy(o.body || {});
-  if (!body.project) throw new Error('Nothing to export');
-  const chk = P.checkBody(body);
-  if (!chk.ok) throw new Error(chk.problems[0]);
-  const out = o.out || await pickOut(o.name || body.project.name);
-  if (!out) return { ok: false, canceled: true };
+  if (!o.body?.project) throw new Error('Nothing to export');
   const job = String(o.job || Date.now());
+  const big = {};
+  for (const c of o.body.chats || []) { const id = c?.chat?.__bigChat?.id; if (id != null) { const f = chatFile(id); if (!f) throw new Error('A chat in it has a name Hearth refuses'); big[id] = f; } }
+  if (Object.keys(big).length) await opts.idle?.(); // (what is on its way to those chats lands first)
+  const drop = () => { work('forget', { job }).catch(() => {}); };
+  let a; let out;
+  try {
+    a = await work('exportA', { job, body: o.body, chats: big }); // (a body Hearth refuses, a chat that can't be read: thrown here)
+    out = o.out || await pickOut(o.name || o.body.project.name);
+  } catch (err) { drop(); throw err; }
+  if (!out) { drop(); return { ok: false, canceled: true }; }
+  const body = o.body;
   const ctl = new AbortController(); jobs.set(job, ctl);
   const send = progressTo(sender, job);
   try {
@@ -219,9 +298,8 @@ async function exportBundle(o = {}, sender = null) {
     const items = []; const skipped = []; const map = new Map();
     let n = 0; let bytes = 0;
     const entryFor = (kind, nm) => `${kind}/${n++}/${safeBase(nm)}`;
-    // (the project's file / capture / render / download items are its own files, below: not assets)
-    const assetSrc = { ...body, files: undefined, project: { ...body.project, items: body.project.items.filter((x) => !P.KIND_ITEMS.includes(x.type)) } };
-    for (const src of P.collectPaths(assetSrc)) {
+    // (the project's file / capture / render / download items are its own files, below: not assets; found by exportA)
+    for (const src of a.paths) {
       const h = here(src);
       if (!h) { skipped.push(safeBase(unFile(src))); map.set(src, ''); continue; }
       const entry = entryFor('assets', h.path);
@@ -245,15 +323,14 @@ async function exportBundle(o = {}, sender = null) {
     }
     const names = new Set();
     for (const it of items) { if (!P.entryOk(it.name) || names.has(it.name.toLowerCase())) throw new Error(`"${it.name}" can't be packed (a name Hearth refuses)`); names.add(it.name.toLowerCase()); }
-    // the body with tokens: paths → entries, file items → their entries (a file that wasn't found leaves the project)
-    let b2 = P.rewrite(body, (s) => (map.has(s) ? map.get(s) : s));
-    b2.project.items = b2.project.items.filter((x) => !itemRefs.has(x.id) || itemRefs.get(x.id)).map((x) => (itemRefs.get(x.id) ? { ...x, ref: itemRefs.get(x.id), id: `${x.type}:${itemRefs.get(x.id)}` } : x));
-    if (b2.project.cover && !b2.project.items.some((x) => x.id === b2.project.cover)) { const was = body.project.items.find((x) => x.id === b2.project.cover); b2.project.cover = was && itemRefs.get(was.id) ? `${was.type}:${itemRefs.get(was.id)}` : null; }
-    b2.files = (b2.files || []).filter((f) => itemRefs.get(f.id)).map((f) => ({ id: `${f.type}:${itemRefs.get(f.id)}`, type: f.type, name: f.name || '', dir: Boolean(f.dir), path: itemRefs.get(f.id) }));
-    b2 = JSON.parse(JSON.stringify(b2));
-    const manifest = P.makeManifest({ name: body.project.name, version: versionOf(), platform: process.platform, counts: P.summarize(b2), bytes, files: items.length, leftOut: o.leftOut || {}, skipped: [...new Set(skipped)], secrets: o.secrets || 0 });
-    const head = [{ name: P.MANIFEST, data: Buffer.from(JSON.stringify(manifest, null, 1)) }, { name: P.BODY, data: Buffer.from(JSON.stringify(b2)) }];
-    const total = bytes + head.reduce((s, x) => s + x.data.length, 0);
+    if (ctl.signal.aborted) throw cancelErr();
+    // the body with tokens: paths → entries, file items → their entries (a file that wasn't found leaves the project);
+    // its JSON, CRC and deflate (round 85: on the thread, projbundle-work.js exportB)
+    const b = await work('exportB', { job, map: [...map], itemRefs: [...itemRefs] });
+    if (ctl.signal.aborted) throw cancelErr();
+    const manifest = P.makeManifest({ name: body.project.name, version: versionOf(), platform: process.platform, counts: b.counts, bytes, files: items.length, leftOut: o.leftOut || {}, skipped: [...new Set(skipped)], secrets: (o.secrets || 0) + (a.secrets || 0) });
+    const head = [{ name: P.MANIFEST, data: Buffer.from(JSON.stringify(manifest, null, 1)) }, { name: P.BODY, pre: { crc: b.crc, size: b.size, method: b.method, bytes: asBuf(b.bytes) } }];
+    const total = bytes + head.reduce((s, x) => s + (x.pre ? x.pre.size : x.data.length), 0);
     let done = 0;
     send({ phase: 'write', done, total }, true);
     const size = await writeZip(out, [...head, ...items], { signal: ctl.signal, onBytes: (k, file) => { done += k; send({ phase: 'write', done, total, file: path.basename(file) }); } });
@@ -262,7 +339,7 @@ async function exportBundle(o = {}, sender = null) {
   } catch (err) {
     if (err.code === 'ECANCELED') return { ok: false, canceled: true };
     throw err;
-  } finally { jobs.delete(job); }
+  } finally { jobs.delete(job); drop(); }
 }
 
 // ---------- reading ----------
@@ -298,7 +375,33 @@ async function open(file) {
   return { path: p, size: st.size, entries };
 }
 // → { ok, problems, manifest, counts, lines, size, path, unpacked }; with body: true the parsed body too (unpack)
-async function peek(file, { body: wantBody = false } = {}) {
+// (round 85, projbig85) with job: project.json is read, parsed, checked and counted on the thread (projbundle-work.js
+// peekBody: this process held ≈ 1.2 s per look for a 60 MB chat) and kept there for unpack (job) — no body comes here
+async function peek(file, { body: wantBody = false, job = null } = {}) {
+  if (!wantBody) return peekOff(file, { job });
+  return peekHere(file, { body: wantBody });
+}
+async function peekOff(file, { job = null } = {}) {
+  let pk;
+  try { pk = await open(file); } catch (err) { return { ok: false, problems: [err.message], path: unFile(file) }; }
+  const chk = P.checkEntries(pk.entries, pk.size);
+  const base = { path: pk.path, size: pk.size, unpacked: chk.bytes, file: path.basename(pk.path) };
+  if (!chk.ok) return { ok: false, problems: chk.problems, ...base };
+  let m;
+  const fh = await fs.promises.open(pk.path, 'r');
+  try { m = JSON.parse((await readSmall(fh, pk.entries.find((e) => e.name === P.MANIFEST), P.LIMITS.manifest)).toString('utf8')); } catch (err) { return { ok: false, problems: [`Its manifest.json can't be read (${err.message})`], ...base }; } finally { await fh.close().catch(() => {}); }
+  const mc = P.checkManifest(m);
+  if (!mc.ok) return { ok: false, problems: mc.problems, manifest: mc.m, ...base };
+  const r = await work('peekBody', { job, file: pk.path, entry: pk.entries.find((e) => e.name === P.BODY), entries: pk.entries.map((e) => ({ name: e.name, dir: Boolean(e.dir) })) })
+    .catch((err) => ({ ok: false, problems: [`Its project.json can't be read (${err.message})`] }));
+  if (!r.ok) return { ok: false, problems: r.problems, manifest: mc.m, ...base };
+  const counts = r.counts;
+  const manifest = { ...mc.m, counts };
+  if (r.dangling.length) manifest.skipped = [...new Set([...manifest.skipped, ...r.dangling.map((d) => d.split('/').pop())])];
+  return { ok: true, problems: [], manifest, counts, lines: P.describe(manifest, counts), from: P.from(manifest), ...base, ...(job != null ? { entries: pk.entries } : {}) };
+}
+// the way before round 85 (the body parsed here): kept for tools that want the body itself (peek(file, { body: true }))
+async function peekHere(file, { body: wantBody = false } = {}) {
   let pk;
   try { pk = await open(file); } catch (err) { return { ok: false, problems: [err.message], path: unFile(file) }; }
   const chk = P.checkEntries(pk.entries, pk.size);
@@ -351,12 +454,12 @@ async function extractOne(file, fh, e, target, { signal, onBytes }) {
 }
 async function unpack(o = {}, sender = null) {
   const file = String(o.file || '');
-  const pv = await peek(file, { body: true });
-  if (!pv.ok) return { ok: false, problems: pv.problems, path: pv.path };
   const job = String(o.job || Date.now());
+  const pv = await peekOff(file, { job }); // (round 85, projbig85: the body stays on the thread until finishImport)
+  if (!pv.ok) return { ok: false, problems: pv.problems, path: pv.path };
   const ctl = new AbortController(); jobs.set(job, ctl);
   const send = progressTo(sender, job);
-  let dir = null;
+  let dir = null; let partsDir = null;
   try {
     fs.mkdirSync(root(), { recursive: true });
     const need = pv.unpacked + 256 * 1048576;
@@ -378,14 +481,17 @@ async function unpack(o = {}, sender = null) {
         try { await extractOne(pv.path, fh, e, target, { signal: ctl.signal, onBytes: (k) => { done += k; send({ phase: 'unpack', done, total, file: e.name.split('/').pop() }); } }); } catch (err) { if (err.code === 'ECANCELED') throw err; bad.push(e.name); }
       }
     } finally { await fh.close().catch(() => {}); }
-    // the body with this computer's paths (a damaged file's references are left empty and named)
-    const badSet = new Set(bad);
-    const local = (entry) => path.join(dir, ...entry.split('/'));
-    const body = P.rewrite(pv.body, (s) => { const e = P.entryOfToken(s); if (e == null) return s; if (badSet.has(e)) return ''; return local(e); });
+    // the body with this computer's paths (a damaged file's references are left empty and named); (round 85) made on
+    // the thread, each big chat's messages left in a part file there (the window adds the chat by name: adopt)
+    partsDir = path.join(os.tmpdir(), `hearth-projbundle-${crypto.randomBytes(6).toString('hex')}`);
+    const fin = await work('finishImport', { job, dir, bad, partsDir });
+    if (fin.parts.length) keepParts(job, partsDir, fin.parts); else fs.promises.rm(partsDir, { recursive: true, force: true }).catch(() => {});
     send({ phase: 'done', done: total, total }, true);
-    return { ok: true, dir, body, manifest: pv.manifest, skipped: [...pv.manifest.skipped, ...bad.map((x) => `${x.split('/').pop()} (damaged in the file)`)], path: pv.path };
+    return { ok: true, dir, body: fin.body, manifest: pv.manifest, skipped: [...pv.manifest.skipped, ...bad.map((x) => `${x.split('/').pop()} (damaged in the file)`)], path: pv.path, ...(fin.parts.length ? { parts: job } : {}) };
   } catch (err) {
+    work('forget', { job }).catch(() => {});
     if (dir && P.inside(root(), dir, path)) await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+    if (partsDir) { parts.delete(job); await fs.promises.rm(partsDir, { recursive: true, force: true }).catch(() => {}); }
     if (err.code === 'ECANCELED') return { ok: false, canceled: true, path: pv.path };
     return { ok: false, problems: [err.message], path: pv.path };
   } finally { jobs.delete(job); }
@@ -397,6 +503,42 @@ async function discard(dir) {
   return true;
 }
 
+// ---------- (round 85, projbig85) big chats added by name ----------
+// an import's part files (a temporary folder of its own, removed by release or 30 minutes after)
+const parts = new Map(); // job → { dir, keys: Set, t }
+function keepParts(job, dir, keys) {
+  const t = setTimeout(() => release(job), 30 * 60000); t.unref?.();
+  parts.set(job, { dir, keys: new Set(keys), t });
+}
+async function release(job) {
+  const p = parts.get(String(job));
+  if (!p) return false;
+  parts.delete(String(job)); clearTimeout(p.t);
+  await fs.promises.rm(p.dir, { recursive: true, force: true }).catch(() => {});
+  return true;
+}
+// what the window needs to put a project's big chats in a bundle / a copy without holding them: each chat's state
+// (read on the thread, after its saves on their way). ids: chat ids → { [id]: { state, size?, n?, head?, paths? } }
+async function chatsInfo(ids = []) {
+  const files = [...new Set((Array.isArray(ids) ? ids : []).map(String))].map((id) => ({ id, file: chatFile(id) })).filter((x) => x.file);
+  if (!files.length) return {};
+  await opts.idle?.();
+  return work('chatInfo', { files });
+}
+// a big chat written whole by the store thread (opts.adoptChat → store.js adoptChatBig): its own fields (head: what the
+// window made of them: fresh id, its AI, session out) + the messages of an import's part file (job + part) or of a
+// chat here (chat: its id, Duplicate). Never over a chat that's there; a source that can't be read writes nothing.
+async function adopt({ job, part, chat, id, head } = {}) {
+  const file = chatFile(id);
+  if (!file || !head || typeof head !== 'object' || Array.isArray(head)) return { ok: false, error: 'Not a chat Hearth can add' };
+  let src = null;
+  if (part != null) { const p = parts.get(String(job)); if (!p || !p.keys.has(String(part))) return { ok: false, error: 'That part of the project file is gone (import it again)' }; src = { file: path.join(p.dir, String(part)), list: true }; }
+  else { const f = chatFile(chat); if (!f) return { ok: false, error: 'Not a chat Hearth can copy' }; src = { file: f, list: false }; }
+  if (!opts.adoptChat) return { ok: false, error: 'Hearth can\'t add it just now' };
+  const r = await opts.adoptChat({ file, head: { ...head, id: String(id) }, src });
+  return r || { ok: false, error: 'Hearth can\'t add it just now' };
+}
+
 function register(ipcMain, o = {}) {
   opts = { ...opts, ...o };
   ipcMain.handle('projbundle:sizes', (_e, a) => sizes(a || {}));
@@ -405,6 +547,10 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('projbundle:unpack', (e, a) => unpack(a || {}, e.sender));
   ipcMain.handle('projbundle:discard', (_e, dir) => discard(dir));
   ipcMain.handle('projbundle:cancel', (_e, job) => { const c = jobs.get(String(job)); if (c) c.abort(); return Boolean(c); });
+  // (round 85, projbig85) big chats by name
+  ipcMain.handle('projbundle:chats', (_e, ids) => chatsInfo(ids));
+  ipcMain.handle('projbundle:adopt', async (_e, a) => { try { return await adopt(a || {}); } catch (err) { return { ok: false, error: err.message }; } });
+  ipcMain.handle('projbundle:release', (_e, job) => release(job));
 }
 
-module.exports = { register, sizes, exportBundle, peek, unpack, discard, writeZip, walkDir, cancel: (job) => jobs.get(String(job))?.abort(), _set: (o) => { opts = { ...opts, ...o }; } };
+module.exports = { register, sizes, exportBundle, peek, peekHere, unpack, discard, chatsInfo, adopt, release, writeZip, walkDir, cancel: (job) => jobs.get(String(job))?.abort(), _set: (o) => { opts = { ...opts, ...o }; }, _partsDir: (job) => parts.get(String(job))?.dir || null };

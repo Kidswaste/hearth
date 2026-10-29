@@ -24,6 +24,8 @@
 //                                 (bigchat-core.js deltaWrite: unchanged messages copied byte for byte, the file the same
 //                                 as a whole save); { ok: false } when this thread doesn't hold that version (the window
 //                                 then saves it whole, once)
+//   chatAdopt { file, head, src }  (round 85, projbig85) a project's giant chat added by name (import / Duplicate project)
+//   chatPeek { file, ctx, wrapped, to, count }  (round 85) Earlier versions' Preview of a giant chat: only what it shows
 // Chat files are parsed once and kept (by size + mtime): a list or a search only re-reads the files that changed, and
 // a chat saved through here is indexed from the value itself (no re-read). Texts are kept up to TEXT_CAP characters
 // in all; past that, a search reads the files again (still on this thread).
@@ -299,6 +301,14 @@ function restoredChat(v, current, now) {
   v.updatedAt = now;
   delete v.deletedAt;
   return v;
+}
+// (round 85, projbig85) a chat from its own fields + its messages, in the place `messages` holds among its keys (the
+// stand-ins' markers left out): the object a whole save of { ...chat, id, session: {} } was given
+function adoptValue(head, msgs) {
+  const value = {}; let placed = false;
+  for (const k of Object.keys(head)) { if (k === '__bigChat' || k === '__bigPart') continue; if (k === 'messages') { value.messages = msgs; placed = true; } else value[k] = head[k]; }
+  if (!placed) value.messages = msgs;
+  return value;
 }
 const OPS = {
   write({ file, value, prev, chatDir, sent, removed, doubt, blind, chatVer }) {
@@ -596,6 +606,27 @@ const OPS = {
     const copy = new Uint8Array(new ArrayBuffer(out.length)); copy.set(out); // (its own memory: handed over whole)
     return { bytes: copy, __transfer: [copy.buffer] };
   },
+  // (round 85, projbig85) Earlier versions' Preview of a giant chat: only what the preview shows (its title, its count,
+  // messages [start, to): role, from and the first 4,000 characters of the text), its other messages never parsed when
+  // the copy can be cut (bigchat-core scanBuf); the window parsed all 60 MB (≈ 2.4 s there, 0.4 s here sending it)
+  chatPeek({ file, ctx, wrapped, to, count = 300 }) {
+    const S = require('./sync-merge');
+    const got = readStill(file);
+    if (!got) return null;
+    let buf = null; let head = null; let n = 0; let at = null;
+    if (!wrapped && !ctx) buf = got.buf;
+    else if (!wrapped) { const cf = BC().cloudForm(got.buf, null, S); if (cf) buf = BC().localFromCloud(cf, ctx, S, true).out; }
+    if (buf) { const st = BC().scanBuf(buf); if (!st.bad && st.arrS >= 0) { try { head = BC().headOf(buf, st); n = BC().elCount(st); at = (k) => JSON.parse(buf.toString('utf8', st.els[k * 2], st.els[k * 2 + 1])); } catch { head = null; } } }
+    if (!head) {
+      let v = S.parseJson(got.buf.toString('utf8')); if (ctx) v = S.fromCloud(v, ctx); if (wrapped) v = v?.thing;
+      if (!v || typeof v !== 'object' || !Array.isArray(v.messages)) return null;
+      head = v; n = v.messages.length; at = (k) => v.messages[k];
+    }
+    const end = Math.max(0, Math.min(n, to == null ? n : Number(to) || 0)); const start = Math.max(0, end - Math.max(1, Math.min(1000, Number(count) || 300)));
+    const msgs = [];
+    for (let k = start; k < end; k++) { const m = at(k); msgs.push(m && typeof m === 'object' ? { role: m.role, from: m.from, text: String(m.text ?? '').slice(0, 4000) } : { role: '', text: '' }); }
+    return { title: head.title, n, start, end, msgs };
+  },
   // (round 84, bigchat84) a chat's own fields and its message count, its messages never parsed when it is big (the
   // Trash list, Deleted things, a backup's restore compare titles and times): { head: { id, title, agentId, createdAt,
   // updatedAt, pinned }, n } or { error } (a file that can't be read is said so: never "no chat")
@@ -652,6 +683,19 @@ const OPS = {
     const next = restoredChat(target, cur, at);
     const w = OPS.write({ file, value: next, chatDir: true });
     return { ok: true, kept, title: next.title, n: next.messages.length, bytes: w?.bytes || 0 };
+  },
+  // (round 85, projbig85) a project's GIANT chat added by name (an import, Duplicate project): its own fields as the
+  // window made them (head: a fresh id, its AI, its session out) with the messages of src (an import's part file: a
+  // list; or a chat here: its messages), written as a whole save writes it. The window never held it, the main process
+  // never parsed it. Never over a chat that's there; a source that can't be read: nothing written (never "no chat")
+  chatAdopt({ file, head, src }) {
+    if (fs.existsSync(file)) return { ok: false, error: 'That chat is already in your list.' };
+    let msgs = null;
+    try { const v = JSON.parse(SS.readRetry(dfs, src.file).replace(/^﻿/, '')); msgs = src.list ? v : v?.messages; } catch { msgs = null; }
+    if (!Array.isArray(msgs)) return { ok: false, held: true, code: 'EHELD', error: 'A chat in it can\'t be read just now. Nothing was added; try again in a moment.' };
+    const value = adoptValue(head, msgs);
+    const w = OPS.write({ file, value, chatDir: true });
+    return { ok: true, n: msgs.length, bytes: w?.bytes || 0, title: value.title };
   },
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {

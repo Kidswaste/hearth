@@ -104,18 +104,50 @@ const Versions = (() => {
   // ---------- Preview (read-only) ----------
   async function thingOf(S, e) {
     if (e.tm) { const st = await ThreeHistory.stateOf(e.tm, S.id); const cur = lab()?.get?.(S.id); return st ? { ...clone(cur || {}), layers: st.layers, palette: st.palette } : null; }
-    return readThing(e.token);
+    return readThing(e.token, S.kind === 'chat' ? { peek: { count: PEEK } } : undefined);
   }
   // (round 82, bigchat82) a giant chat's version comes as bytes (parsed here, never on the main process)
-  async function readThing(token) { const v = await api().read(token); return v?.__chatBytes ? JSON.parse(new TextDecoder().decode(v.__chatBytes)) : v; }
+  // (round 85, projbig85) o.peek: a giant chat's Preview gets only what it shows ({ __chatPeek }: its title, count and
+  // last messages, cut on the files thread); parsing all 60 MB here was a ≈ 2.4 s task. Earlier ones on a click
+  async function readThing(token, o) { const v = await api().read(token, ...(o ? [o] : [])); if (v?.__chatPeek) return v; return v?.__chatBytes ? JSON.parse(new TextDecoder().decode(v.__chatBytes)) : v; }
+  const PEEK = 300;
+  const msgEl = (m) => el('div', { class: `vs-msg vs-${m.role === 'user' ? 'you' : 'ai'}` }, el('small', { text: m.role === 'user' ? 'You' : m.from || 'Reply' }), el('div', { text: String(m.text ?? '').slice(0, 4000) }));
+  function peekView(e, pk) {
+    let start = pk.start; let shown = pk.msgs.length;
+    const hint = el('p', { class: 'hint' });
+    const say = () => { hint.textContent = `${VC.plural(pk.n, 'message')}${pk.n > shown ? ` (the last ${shown} shown)` : ''}`; };
+    // drawn 30 at a time, each its own task (300 long messages laid out at once were a ≈ 0.3 s task)
+    const list = el('div', { class: 'vs-peek' });
+    const draw = (ms, before = false) => {
+      const go = (from) => {
+        if (!list.isConnected && from) return; // (closed)
+        const part = document.createDocumentFragment(); part.append(...ms.slice(from, from + 30).map(msgEl));
+        list.insertBefore(part, before ? list.children[from] || null : null); // (earlier ones: before the ones there, in order)
+        if (from + 30 < ms.length) setTimeout(() => go(from + 30), 0);
+      };
+      go(0);
+    };
+    draw(pk.msgs);
+    const more = el('button', { type: 'button', class: 'ghost small vs-earlier', text: `Show ${Math.min(PEEK, start)} earlier`, hidden: start <= 0, on: { click: async () => {
+      more.disabled = true;
+      const r = await api().read(e.token, { peek: { to: start, count: PEEK } }).catch(() => null);
+      const p = r?.__chatPeek;
+      if (!p || !hint.isConnected) { more.disabled = false; return; }
+      draw(p.msgs, true); start = p.start; shown += p.msgs.length; say();
+      more.hidden = start <= 0; more.textContent = `Show ${Math.min(PEEK, start)} earlier`; more.disabled = false;
+    } } });
+    say();
+    return [hint, more, list];
+  }
   async function preview(S, e) {
     const v = await thingOf(S, e).catch(() => null);
     if (!v) { toast('That version can\'t be read any more.', { timeout: 4000 }); return; }
-    const cur = liveOf(S);
-    const body = el('div', { class: 'vs-preview', attrs: { tabindex: '0', 'aria-label': 'The version (read-only)' } }, ...view(S.kind, v));
+    const pk = v.__chatPeek || null;
+    const cur = pk ? null : liveOf(S);
+    const body = el('div', { class: 'vs-preview', attrs: { tabindex: '0', 'aria-label': 'The version (read-only)' } }, ...(pk ? peekView(e, pk) : view(S.kind, v)));
     const pd = el('dialog', { class: 'ui-modal vs-dialog vs-pv' },
       el('form', { method: 'dialog' },
-        el('h2', { text: `${VC.KINDS[S.kind].name(v)} · ${VC.when(e.at)}` }),
+        el('h2', { text: `${pk ? pk.title || 'Chat' : VC.KINDS[S.kind].name(v)} · ${VC.when(e.at)}` }),
         el('p', { class: 'hint', text: `Read-only. ${e.machine ? `From ${e.machine}. ` : ''}${e.label}.${cur || e.summary ? ` Compared with now: ${cur ? VC.summary(S.kind, v, cur) : e.summary}.` : ''}` }),
         body,
         el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }),
@@ -130,7 +162,7 @@ const Versions = (() => {
     if (kind === 'chat') {
       const ms = (v.messages || []).slice(-300);
       return [el('p', { class: 'hint', text: `${VC.plural((v.messages || []).length, 'message')}${(v.messages || []).length > 300 ? ' (the last 300 shown)' : ''}` }),
-        ...ms.map((m) => el('div', { class: `vs-msg vs-${m.role === 'user' ? 'you' : 'ai'}` }, el('small', { text: m.role === 'user' ? 'You' : m.from || 'Reply' }), el('div', { text: String(m.text ?? '').slice(0, 4000) })))];
+        ...ms.map(msgEl)];
     }
     if (kind === 'project') return [el('p', {}, el('b', { text: v.name }), ` · ${v.status || 'active'} · ${VC.plural((v.items || []).length, 'thing')}`), el('h3', { text: 'Notes' }), pre(v.notes || '(none)'), el('h3', { text: 'In it' }), el('ul', {}, (v.items || []).slice(0, 80).map((x) => el('li', { text: `${x.type}: ${x.name || x.ref}` })))];
     if (kind === 'scene') return [el('p', { class: 'hint', text: VC.plural((v.layers || []).length || 1, 'layer') }), ...((v.layers || []).length ? v.layers : [{ name: 'main', code: v.code }]).slice(0, 12).flatMap((L) => [el('h3', { text: L.name || 'Layer' }), pre(L.code)])];
