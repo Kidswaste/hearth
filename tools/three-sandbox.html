@@ -3151,7 +3151,7 @@ const trigTick = () => {
 const demoHits = (kind, t) => (kind === 'kick' ? Math.exp(-((t % 0.5)) / 0.12) : kind === 'snare' ? Math.exp(-(((t - 0.5) % 1 + 1) % 1) / 0.12) : 0);
 function graph() {
   if (actx) return;
-  actx = new AudioContext();
+  actx = new AudioContext({ latencyHint: 'playback' }); // (Oct 29) a bigger buffer: the 10 ms "interactive" one crackled while the GPU worked (sync uses getOutputTimestamp, so it stays in time)
   avHook(actx); // (round 77, labaudio77: its state changes / errors are looked at)
   analyser = actx.createAnalyser();
   analyser.fftSize = 2048;
@@ -3877,7 +3877,7 @@ async function avRebuild(why, rate = 0) {
   AVD.busy = true; const t0 = realNow();
   const old = mediaEl; const oldCtx = actx; const oldSrc = srcNode; const playing = !old.paused; const vol = gainNode ? gainNode.gain.value : 1;
   try {
-    const ctx = rate ? new AudioContext({ sampleRate: rate }) : new AudioContext();
+    const ctx = rate ? new AudioContext({ sampleRate: rate, latencyHint: 'playback' }) : new AudioContext({ latencyHint: 'playback' }); // (as graph())
     const an = ctx.createAnalyser(); an.fftSize = 2048; an.smoothingTimeConstant = 0.6;
     const g = ctx.createGain(); g.gain.value = vol; g.connect(ctx.destination);
     const m = document.createElement('video');
