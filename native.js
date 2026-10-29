@@ -1946,14 +1946,14 @@ const Native = (() => {
             d.sh = d.msgs.map((m) => { if (m && typeof m === 'object') textPx(m, lastCpl); return shapeOf(m); }); p.got.push(d);
             if (d.tail) window.Md?.warm?.(d.msgs.filter((m) => m && (m.role === 'assistant' || m.role === 'opinion')).map((m) => m.text), 0); // (its end's replies rendered on the Markdown worker meanwhile)
           } else if ('chat' in d) p.chat = d.chat;
-          if (d.done) { parsing.delete(d.id); if (p.got) { const ms = p.chat.messages; const sh = []; for (const g of p.got.sort((a, b) => a.from - b.from)) for (let k = 0; k < g.msgs.length; k++) { ms.push(g.msgs[k]); sh.push(g.sh[k]); } preShapes.set(p.chat, sh); } p.ok(p.chat); }
+          if (d.done) { parsing.delete(d.id); if (p.got) { const ms = p.chat.messages; const sh = []; for (const g of p.got.sort((a, b) => a.from - b.from)) for (let k = 0; k < g.msgs.length; k++) { ms.push(g.msgs[k]); sh.push(g.sh[k]); } preShapes.set(p.chat, sh); setTimeout(() => p.ok(p.chat), 0); } else p.ok(p.chat); } // (drawn in a task of its own)
         };
         parser.onerror = () => { for (const p of parsing.values()) p.no(new Error('parser stopped')); parsing.clear(); parser = null; };
       }
       const id = ++parseSeq; let done;
       const p = new Promise((ok, no) => { done = { ok, no }; });
       const list = Array.isArray(bytes) ? bytes : [bytes];
-      parsing.set(id, done); parser.postMessage({ id, parts: list, chunk: 1.5e6, tail: WINDOW + 2 * BLOCK + 20 }, list.map((b) => b.buffer));
+      parsing.set(id, done); parser.postMessage({ id, parts: list, chunk: 1e6, tail: WINDOW + 2 * BLOCK + 20 }, list.map((b) => b.buffer));
       return p;
     } catch { const list = Array.isArray(bytes) ? bytes : [bytes]; const all = new Uint8Array(list.reduce((n, b) => n + b.length, 0)); let o = 0; for (const b of list) { all.set(b, o); o += b.length; } return Promise.resolve(JSON.parse(new TextDecoder().decode(all))); }
   }

@@ -26,6 +26,7 @@ const ALLOW = [
   ['routines.js', 'agentId, chatId: chat.id, title: chat.title', 'a 🔁 Keep going routine: the chat it runs in (the chat keeps its own AI) · (round 74) Codex\'s budget spread now sits between ...spec and agentId'],
   ['projbundle.js', 'c.chat.agentId = agent.id;', 'a project bundle\'s chat being imported: it gets a fresh id here (ids.chat → fresh(), round 75 projbundle75) before it is saved'],
   ['versions-core.js', 'if (current?.agentId) v.agentId = current.agentId;', 'an earlier version of a chat put back keeps the chat\'s CURRENT AI (versions75): the rule itself, not a move'],
+  ['storework.js', 'if (current?.agentId) v.agentId = current.agentId;', 'versions-core restoreValue\'s rule on the store thread (round 84, bigchat84: a giant chat restored there): the version keeps the chat\'s CURRENT AI, not a move'],
   ['twocomputers.js', '{ ...p, agentId: a.id, agent: a.name }', 'a row of the file-access list (which AI\'s folder), not a chat'],
   ['voice.js', 'S.agentId = agentId', 'voice input state: which chat composer gets the words'],
   ['native.js', 'if (chat && !chat.agentId && (agentId === home || !home)) { chat.agentId = agentId;', 'a chat that names no AI, opened in Claude\'s view (its home in the chats list): written down, nothing moved'],

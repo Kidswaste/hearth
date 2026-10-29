@@ -285,6 +285,21 @@ function chats(dir) {
   return out;
 }
 
+// (round 84, bigchat84) versions-core restoreValue('chat', v, current, now) for a version this thread just parsed (its
+// own: changed in place, not copied first), its texts compared as they are (not through canon's one long string): the
+// same chat, ≈ 4 s → ≈ 0.1 s for 6,000 messages (dev/bigchat84-test.js checks it against restoreValue)
+function restoredChat(v, current, now) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  if (current?.id) v.id = current.id;
+  if (current?.agentId) v.agentId = current.agentId;
+  const texts = (ms) => (Array.isArray(ms) ? ms.filter((m) => Boolean(m) && typeof m === 'object' && !Array.isArray(m)).map((m) => String(m?.text ?? m?.content ?? '')) : []);
+  const a = texts(v.messages); const b = current ? texts(current.messages) : null;
+  if (current && (a.length !== b.length || a.some((t, i) => t !== b[i]))) delete v.session;
+  else if (current?.session) v.session = structuredClone(current.session);
+  v.updatedAt = now;
+  delete v.deletedAt;
+  return v;
+}
 const OPS = {
   write({ file, value, prev, chatDir, sent, removed, doubt, blind, chatVer }) {
     // (round 43, datasafe) a save built on a failed read: merged with the file (throws when it's still held: nothing is
@@ -632,9 +647,9 @@ const OPS = {
     let target = thing;
     if (over && cur) { // an Undo: the chat as that restore left it, made again from what it was made of
       const was = load(over.src); const before = load({ file: over.before, wrapped: true });
-      if (was && before) { try { const v = S.merge3(VC.restoreValue('chat', was, before, over.at), thing, structuredClone(cur)).value; if (v && typeof v === 'object') target = v; } catch { /* the version as it is */ } }
+      if (was && before) { try { const v = S.merge3(restoredChat(was, before, over.at), thing, structuredClone(cur)).value; if (v && typeof v === 'object') target = v; } catch { /* the version as it is */ } }
     }
-    const next = VC.restoreValue('chat', target, cur, at);
+    const next = restoredChat(target, cur, at);
     const w = OPS.write({ file, value: next, chatDir: true });
     return { ok: true, kept, title: next.title, n: next.messages.length, bytes: w?.bytes || 0 };
   },
