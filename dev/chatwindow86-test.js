@@ -17,7 +17,7 @@
 //     byte for byte, and the same file as native.js's saving by change on the whole chat (the way before); a shorter
 //     chat without trunc is refused (nothing written)
 //   · native.js withContext's tail rows (round 86: read from the end) = joining every row, as before
-//   node dev/chatwindow86-test.js
+//   node dev/chatwindow86-test.js [--bench]      (--bench: the store thread's ops on bigchat84's giant chat, timed)
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -102,7 +102,34 @@ function windowed(r, ver, misses) {
   return { chat, st, sh, p };
 }
 
+// --bench: the store thread's ops on bigchat84's giant chat (made if missing; a copy is used), and the window's save of
+// a change (windowed vs whole)
+async function bench() {
+  const src = '/tmp/hearth-bigchat84/chats/claude-giant0.json';
+  if (!fs.existsSync(src)) require('./bigchat84-fixture.js').make('/tmp/hearth-bigchat84');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cw86b-')); const file = path.join(dir, 'giant.json'); fs.copyFileSync(src, file);
+  const T = thread(); const t = async (label, msg) => { const t0 = performance.now(); const r = await T.op(msg); console.log(`${label.padEnd(36)} ${Math.round(performance.now() - t0)} ms`); return r; };
+  try {
+    const r = await t('chatWinOpen (first: cut + records)', { op: 'chatWinOpen', file, ver: 'b1', cpl: 90, tail: 300 });
+    console.log(`  → ${r.n} messages, ${(r.bytes.length / 1048576).toFixed(1)} MB to the window (its end + one record each; the file: ${(fs.statSync(file).size / 1048576).toFixed(1)} MB)`);
+    await t('chatWinOpen (again, same file)', { op: 'chatWinOpen', file, ver: 'b2', cpl: 90, tail: 300 });
+    await t('chatRange (a block of 20)', { op: 'chatRange', file, ver: 'b2', from: 2000, to: 2020 });
+    await t('chatRange (400: load-all\'s piece)', { op: 'chatRange', file, ver: 'b2', from: 0, to: 400 });
+    await t('chatFind (first: lowered bytes)', { op: 'chatFind', file, q: 'zanzibar84quokka' });
+    await t('chatFind (next query)', { op: 'chatFind', file, q: 'portal grain' });
+    await t('chatCalc lighter + preview + lean', { op: 'chatCalc', file, what: ['lighter', 'preview', 'lean'], agent: { mode: 'native', engine: 'claude' }, tools: true });
+    // the window's save of one new message: windowed (its 300 loaded) vs whole (6,000)
+    const W = windowed(r, 'b2', []); const whole = JSON.parse(fs.readFileSync(file, 'utf8')); const so = shapeRec(whole, 'o');
+    const m = { role: 'user', text: 'hi', at: 2e12 };
+    W.chat.messages.push(m); whole.messages.push(m);
+    let t0 = performance.now(); C.delta(W.chat, W.sh, W.st.a.keys(), (k) => W.st.a.t[k], N); const tw = performance.now() - t0;
+    t0 = performance.now(); wholeDelta(whole, so); const to = performance.now() - t0;
+    console.log(`save of a new message (window side)    windowed ${tw.toFixed(1)} ms · whole ${to.toFixed(1)} ms`);
+  } finally { T.end(); fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
 async function main() {
+  if (process.argv.includes('--bench')) { await bench(); return; }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cw86-'));
   const T = thread();
   try {
@@ -149,6 +176,16 @@ async function main() {
       // a message that isn't an object reads as itself
       const odd = C.makeArray({ n: 3, loaded: [[2, { role: 'user', text: 'a' }]], meta: (k) => C.recOf(C.metaOf([null, 7][k], 90)), miss: () => { throw new C.NotLoaded(0); }, refuse: () => { throw new Error('no'); } });
       ok(odd.px[0] === null && odd.px[1] === 7, 'windowed: a null / number message reads as itself');
+    }
+
+    // ---------- what may be let go: the message as saved (a key set to undefined isn't there for JSON) ----------
+    {
+      const m = { role: 'assistant', text: 'x', usage: { input: 1, output: 2 }, list: [1, undefined, { a: undefined }] };
+      const sh = N.shapeOf(m);
+      ok(C.sameSaved(sh, m) && C.sameSaved(sh, Object.assign(m, { lastReply: undefined })), 'sameSaved: a drawn message (lastReply: undefined) is still the saved one');
+      ok(!C.sameSaved(sh, { ...m, text: 'y' }) && !C.sameSaved(sh, { ...m, reaction: { emoji: '🔥' } }) && !C.sameSaved(sh, { role: 'assistant', text: 'x', usage: { input: 1, output: 2 } }), 'sameSaved: a changed, added or removed field is not');
+      const sh2 = N.shapeOf({ role: 'user', x: 5 });
+      ok(!C.sameSaved(sh2, { role: 'user', x: undefined }), 'sameSaved: a value set to undefined (gone from a save) is a change');
     }
 
     // ---------- records: the heights native.js guesses ----------

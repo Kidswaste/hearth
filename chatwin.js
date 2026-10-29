@@ -98,6 +98,16 @@ const ChatWin = (() => {
     }, n ? 1000 : 50);
   }
   const bad = (chat) => Boolean(S.get(chat)?.poison);
+  // a windowed chat whose list something replaced with a new array (chat.messages = …): that array is the chat now,
+  // unless it carries stubs (made from the window's unloaded messages): then it can't be saved (that would be a part
+  // as the whole): it is read again from disk. → true when the save must not go
+  function replaced(chat) {
+    const st = S.get(chat);
+    if (!st || st.full || chat.messages === st.px) return Boolean(st?.poison);
+    if (Array.isArray(chat.messages) && chat.messages.some((m) => C.isStub(m))) { try { refuse(chat, st, 0, 'a list made of messages that aren\'t loaded', true); } catch { /* stopped */ } return true; }
+    S.delete(chat); // (a whole new list: the chat as any other from now on)
+    return false;
+  }
 
   // messages [a, b) read from the store thread and put in place (each with its shape: unchanged). other: a file that
   // isn't the version this window holds may fill them (the whole-save fallback: sync merges that save as before)
@@ -290,7 +300,7 @@ const ChatWin = (() => {
     for (const c of R.chats.values()) { const st = live(c); if (st) { windowed += 1; loaded += st.a.keys().length; total += st.a.t.length; } }
     return { ...stat, windowed, loaded, total };
   }
-  const api = { is, open, keys, has, ensure, cut, whole, release, guess, usage, pins, save, hits, calc, calcSync, bad, all, stats, rewindow, on, TAIL };
+  const api = { is, open, keys, has, ensure, cut, whole, release, guess, usage, pins, save, hits, calc, calcSync, bad, replaced, all, stats, rewindow, on, TAIL };
   R.W.x = api;
   return api;
 })();

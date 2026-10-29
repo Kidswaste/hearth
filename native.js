@@ -1931,6 +1931,7 @@ const Native = (() => {
   function saveWhole(chat) { if (cw(chat)) return W.x.whole(chat, 'save').then(() => saveWhole(chat)); if (Array.isArray(chat.messages) && window.hub.saveChatDelta) { const ver = newVer(); takeShape(chat, ver); return window.hub.saveChat(chat, { ver }); } return window.hub.saveChat(chat); }
   function saveChat(chat) {
     if (cw(chat)) return W.x.save(chat);
+    if (W.x?.replaced(chat)) return Promise.reject(new Error('This long chat opens again from disk: this change wasn\'t saved.'));
     const s = shapes.get(chat);
     if (!s || !Array.isArray(chat.messages)) return chat.messages?.length >= BIG_MSGS ? saveWhole(chat) : window.hub.saveChat(chat);
     const keys = Object.keys(chat); const set = {}; let n = keys.length !== s.keys.length || keys.some((k, i) => k !== s.keys[i]) ? 1 : 0;
