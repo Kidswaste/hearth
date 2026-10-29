@@ -1037,7 +1037,7 @@ const ThreeLab = (() => {
     // Lab isn't on screen (the preview parks: see syncPark).
     const FPS_OPTS = [['-1', 'Auto fps'], ['0', 'Max fps'], ['60', '60 fps'], ['30', '30 fps']];
     const fpsPref = () => Number(store.get('three.fpsCap', -1));
-    const fpsSel = el('select', { class: 'fps-sel', title: 'Preview frame rate: Auto follows the screen and the window; lower = lighter on the GPU and steadier recordings', dataset: { feature: 'Preview fps' } },
+    const fpsSel = el('select', { class: 'fps-sel', title: 'Preview frame rate: Auto holds 60 at most (30 behind other windows), light on the graphics card so other apps\' sound doesn\'t crackle; Max = the screen\'s own rate', dataset: { feature: 'Preview fps' } },
       FPS_OPTS.map(([v, l]) => el('option', { value: v, text: l, selected: v === String(fpsPref()) })));
     let winFocused = document.hasFocus();
     // (round 41, renderfast) while a Lab export renders, Auto eases the preview to its background rate (30): the export

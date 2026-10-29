@@ -228,7 +228,8 @@ await safe('battery', async () => {
   step('… the corner note says it is the battery', /battery/.test(note?.textContent || ''), note?.textContent);
   send({ type: 'power', battery: false }); await wait(1200);
   const st2 = await PS();
-  step('plugged in: back to the screen\'s rate and full resolution', st2.cap === 0 && st2.level === 0 && st2.quality === 1, { cap: st2.cap, level: st2.level, quality: st2.quality });
+  // (Oct 29) Auto holds 60 at most on any screen now (a 240 Hz preview made Windows' audio crackle in every app)
+  step('plugged in: Auto\'s 60 and full resolution', st2.cap === 60 && st2.level === 0 && st2.quality === 1, { cap: st2.cap, level: st2.level, quality: st2.quality });
   await sbx('window.__labAdapt.set({ level: 0, hold: false, target: 0 }); return 1');
 });
 // 7) dragging on a slow preview: 70 % while the pointer is down, full on release
