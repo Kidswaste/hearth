@@ -193,8 +193,9 @@ ok('then read again once whole', r.built === 1 && group(r, 'chat').hits[0]?.k ==
 {
   const ix3 = PF.createIndex();
   const seen = [];
-  for (let i = 0; i < 20; i++) { const x = PF.run(ix3, { spec, dirs, budgetMs: 0 }, env); seen.push(x.left); if (!x.left) break; }
-  ok('budget 0: one source per call, left goes down to 0', seen.at(-1) === 0 && seen.length >= 5 && seen.every((v, i) => i === 0 || v <= seen[i - 1]), seen);
+  // (round 82, bigchat82) a source is built doc by doc now: budget 0 moves on one doc (or one source) per call
+  for (let i = 0; i < 2000; i++) { const x = PF.run(ix3, { spec, dirs, budgetMs: 0 }, env); seen.push(x.left); if (!x.left) break; }
+  ok('budget 0: one step per call, left goes down to 0', seen.at(-1) === 0 && seen.length >= 5 && seen.every((v, i) => i === 0 || v <= seen[i - 1]), seen.length);
   const part = PF.createIndex();
   const p1 = PF.run(part, { spec, dirs, budgetMs: 0, q: 'portal' }, env);
   ok('a query while reading: partial results and what is left', p1.left > 0 && typeof p1.total === 'number', p1);

@@ -25,7 +25,7 @@ const Q = 0x22; const BS = 0x5c;
 
 // ---------- the cut ----------
 // depth 0: outside the chat · 1: the chat object · 2: inside its "messages" list (st.inMsgs) or another top value
-function scanInit() { return { p: 0, d: 0, expectKey: false, key: null, pending: null, inMsgs: false, arrS: -1, arrE: -1, elS: -1, els: [], done: false, bad: false, end: -1 }; }
+function scanInit(o = {}) { return { array: Boolean(o.array), root: null, p: 0, d: 0, expectKey: false, key: null, pending: null, inMsgs: false, arrS: -1, arrE: -1, elS: -1, els: [], done: false, bad: false, end: -1 }; }
 // the closing quote of the string opening at p (an escaped quote has an odd number of backslashes before it), or -1
 // when it isn't within the bytes read so far
 function strEnd(buf, p, avail) {
@@ -54,8 +54,11 @@ function scanStep(st, buf, avail) {
       p = q + 1; continue;
     }
     if (c === 0x7b || c === 0x5b) { // { [
-      if (d === 0) { if (c !== 0x7b) { st.bad = true; break; } d = 1; st.expectKey = true; } else if (d === 1) {
-        if (st.pending === 'messages' && c === 0x5b) { if (st.arrS >= 0) { st.bad = true; break; } st.arrS = p; st.inMsgs = true; }
+      if (d === 0) {
+        if (c === 0x5b && st.array) { st.root = 'array'; st.arrS = p; st.inMsgs = true; d = 2; } // (a store that is one list: the Lab's scenes)
+        else if (c !== 0x7b) { st.bad = true; break; } else { d = 1; st.expectKey = true; }
+      } else if (d === 1) {
+        if (st.pending === 'messages' && c === 0x5b) { if (st.arrS >= 0) { st.bad = true; break; } st.arrS = p; st.inMsgs = true; if (st.stop) { st.pending = null; d = 2; p += 1; break; } }
         st.pending = null; d = 2;
       } else { if (d === 2 && st.inMsgs && st.elS < 0) st.elS = p; d += 1; }
     } else if (c === 0x7d || c === 0x5d) { // } ]
@@ -63,6 +66,7 @@ function scanStep(st, buf, avail) {
         if (c !== 0x5d) { st.bad = true; break; }
         if (st.elS >= 0) endPrim(st, buf, p);
         st.arrE = p + 1; st.inMsgs = false; d = 1;
+        if (st.root === 'array') { st.done = true; st.end = p + 1; d = 0; p += 1; break; }
       } else {
         d -= 1;
         if (d < 0) { st.bad = true; break; }
@@ -85,8 +89,41 @@ function scanStep(st, buf, avail) {
   return st;
 }
 function scanBuf(buf) {
+  const fast = fastCut(buf);
+  if (fast) return fast;
   const st = scanStep(scanInit(), buf, buf.length);
   if (!st.done || st.arrS < 0 || st.arrE < 0) st.bad = true;
+  return st;
+}
+// A chat laid out as JSON.stringify(chat, null, 2) lays it out: each message is "{" … "\n    }" (its own fields one
+// level deeper, so "\n    }" can only be its end: strings hold no raw newline), so one native search finds where it
+// ends instead of walking its bytes. The part before and after the messages is cut as usual. null: not laid out so
+// (the full cut then). Same result as the full cut (dev/bigchat82-test.js).
+const NL4 = Buffer.from('\n    }'); const OPEN4 = Buffer.from('\n    {'); const CLOSE2 = Buffer.from('\n  ]');
+function fastCut(buf) {
+  const st = scanInit(); st.stop = true; // (stops right inside the messages' [)
+  for (let avail = Math.min(buf.length, 65536); ; avail = Math.min(buf.length, avail * 4)) {
+    scanStep(st, buf, avail);
+    if (st.bad || st.inMsgs || st.done || avail >= buf.length) break;
+  }
+  if (st.bad || !st.inMsgs || st.els.length) return null;
+  let p = st.arrS + 1;
+  if (buf[p] === 0x5d) st.arrE = p + 1;
+  else {
+    for (;;) {
+      if (p + 6 > buf.length || buf.compare(OPEN4, 0, 6, p, p + 6) !== 0) return null;
+      const s = p + 5;
+      let e;
+      if (buf[s + 1] === 0x7d) e = s + 2; else { const q = buf.indexOf(NL4, s); if (q < 0) return null; e = q + 6; }
+      st.els.push(s, e);
+      if (buf[e] === 0x2c) { p = e + 1; continue; }
+      if (e + 4 > buf.length || buf.compare(CLOSE2, 0, 4, e, e + 4) !== 0) return null;
+      st.arrE = e + 4; break;
+    }
+  }
+  st.inMsgs = false; st.elS = -1; st.d = 1; st.p = st.arrE; st.stop = false;
+  scanStep(st, buf, buf.length);
+  if (!st.done || st.bad) return null;
   return st;
 }
 // the chat without its messages: the bytes before its [ and from its ], parsed (messages: [] where it was)
@@ -99,15 +136,16 @@ const elCount = (st) => st.els.length / 2;
 // r.step(over) reads, cuts and parses messages until over() says the slice is spent; → 'more' | 'done' | 'changed'
 // (the file changed under it: start again) | 'bad' (not a chat this can cut: read it whole instead). Each parsed
 // message is handed to o.onMessage(m, k, start, end). r.head once done. Nothing stays open between steps.
+// o.array: the file may be one list (the Lab's scenes): its items are handed over the same way (r.head stays null)
 function reader(fs, file, o = {}) {
   const chunk = o.chunk || 4 * 1024 * 1024;
-  let st = null; let buf = null; let got = 0; let size = 0; let sig = null; let k = 0;
+  let st = null; let buf = null; let got = 0; let size = 0; let sig = null; let k = 0; let reads = 0;
   const r = { state: 'more', head: null, count: () => k, sig: () => sig, bytes: () => size, st: () => st };
   r.step = (over = () => false) => {
     if (r.state !== 'more') return r.state;
     let s0;
     try { s0 = fs.statSync(file); } catch { r.state = 'changed'; return r.state; }
-    if (!buf) { size = s0.size; sig = `${s0.size}:${s0.mtimeMs}`; buf = Buffer.allocUnsafe(size); st = scanInit(); } else if (`${s0.size}:${s0.mtimeMs}` !== sig) { buf = null; r.state = 'changed'; return r.state; }
+    if (!buf) { size = s0.size; sig = `${s0.size}:${s0.mtimeMs}`; buf = Buffer.allocUnsafe(size); st = scanInit(o); } else if (`${s0.size}:${s0.mtimeMs}` !== sig) { buf = null; r.state = 'changed'; return r.state; }
     let fd = null;
     try {
       for (;;) {
@@ -116,11 +154,12 @@ function reader(fs, file, o = {}) {
           let m; try { m = JSON.parse(buf.toString('utf8', s, e)); } catch { r.state = 'bad'; break; }
           o.onMessage?.(m, k, s, e); k += 1;
         } else if (st.done) {
-          try { r.head = headOf(buf, st); } catch { r.state = 'bad'; break; }
+          if (st.root !== 'array') { try { r.head = headOf(buf, st); } catch { r.state = 'bad'; break; } }
           r.state = 'done'; break;
         } else if (st.bad || got >= size) { r.state = 'bad'; break; } else {
           if (fd === null) fd = fs.openSync(file, 'r');
-          const n = fs.readSync(fd, buf, got, Math.min(chunk, size - got), got);
+          // (the first reads small: a thread's code that hasn't run yet is slow, and grows fast once warm)
+          const n = fs.readSync(fd, buf, got, Math.min(chunk, 16384 * 2 ** Math.min(reads++, 12), size - got), got);
           if (!n) { r.state = 'changed'; break; }
           got += n;
           scanStep(st, buf, got);
@@ -324,4 +363,4 @@ function deltaWrite(fs, file, tmp, e, d, o = {}) {
 // the summary the chats list shows, from a head
 const sumOf = (h) => ({ id: h.id, agentId: h.agentId, title: h.title, updatedAt: h.updatedAt, pinned: Boolean(h.pinned), model: h.model });
 
-module.exports = { BIG, deltaWrite, sumOf, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST };
+module.exports = { BIG, deltaWrite, sumOf, fastCut, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST };

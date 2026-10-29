@@ -38,6 +38,7 @@ const { list: flist, search: fsearch } = require('./fswalk');
 const { workerData } = require('worker_threads');
 let BCmod = null; const BC = () => (BCmod ||= require('./bigchat-core')); // (round 82, bigchat82) giant chats, required when first met
 const BIG = Number(process.env.HEARTH_BIGCHAT_MIN) || 8 * 1024 * 1024;
+const FIND_BIG = Math.min(BIG, 128 * 1024); // (round 82) Find in this project / recall: a chat this big is read (and its words indexed) a slice at a time
 // (round 82) how many chatDelta ops are finished (the main process waits on it before stopping this thread at quit)
 const deltaDone = workerData?.deltaSab ? new Int32Array(workerData.deltaSab) : null;
 
@@ -78,6 +79,21 @@ const index = new Map(); // chat file → { size, mtimeMs, sum, texts, lower }
 const stubs = new Map(); // (round 43) chat file → its stub row, while it can't be read (kept for a folder that can't be listed)
 let textChars = 0;
 let recallIdx = null; // (round 30) recall-core.js's index, made on the first recall op
+const recallJobs = new Map(); // (round 82, bigchat82) file → a long chat being read for recall, a slice at a time
+const spans = new Map(); // (round 82) file → { sig, els }: where each message of a long chat sits in it (one message read back for a quote)
+// one message of a long chat read back from its bytes (undefined: not known here, read the chat)
+function msgAt(file, k, e) {
+  const sp = spans.get(file);
+  if (!sp || !e || sp.sig !== `${e.size}:${e.mtimeMs}` || k * 2 + 1 >= sp.els.length) return undefined;
+  let fd = null;
+  try {
+    fd = fs.openSync(file, 'r');
+    const st = fs.fstatSync(fd); if (`${st.size}:${st.mtimeMs}` !== sp.sig) return undefined;
+    const s = sp.els[k * 2]; const b = Buffer.allocUnsafe(sp.els[k * 2 + 1] - s);
+    fs.readSync(fd, b, 0, b.length, s);
+    return JSON.parse(b.toString('utf8'));
+  } catch { return undefined; } finally { if (fd !== null) fs.closeSync(fd); }
+}
 let findIdx = null; let findT = null; // (round 81, projsearch81) projfind-core.js's index: made on the first find, let go 20 min after the last
 // (round 82, bigchat82) giant chats the window holds: file → { ver (the window's version), sig (the file as this thread
 // left / read it), head, els (each message's bytes in it; null until the first change needs them) }. Small: no messages
@@ -395,13 +411,32 @@ const OPS = {
     const t0 = performance.now();
     recallIdx ||= require('./recall-core').createIndex();
     const live = new Set(); let left = 0; let added = 0;
+    const soft = budgetMs * 0.7;
     for (const { file, e } of chats(dir)) {
       live.add(file);
-      if (recallIdx.has(file, e)) continue;
-      if (performance.now() - t0 > budgetMs) { left += 1; continue; }
+      if (recallIdx.has(file, e)) { const j = recallJobs.get(file); if (j) { recallIdx.abort(j.b); recallJobs.delete(file); } continue; }
+      if (performance.now() - t0 > (e.size >= FIND_BIG ? soft : budgetMs)) { left += 1; continue; }
+      // (round 82, bigchat82) a long chat (≥ 128 KB): read and indexed a slice at a time; what it was stays found until then
+      if (e.size >= FIND_BIG) {
+        const sig = `${e.size}:${e.mtimeMs}`;
+        let j = recallJobs.get(file);
+        if (j && j.sig !== sig) { recallIdx.abort(j.b); recallJobs.delete(file); j = null; }
+        if (!j) {
+          const b = recallIdx.begin(file, e); const els = [];
+          j = { sig, b, els, r: BC().reader(fs, file, { chunk: 512 * 1024, onMessage: (m, k, s, x) => { recallIdx.msg(b, m, k); els.push(s, x); } }) };
+          recallJobs.set(file, j);
+        }
+        const state = j.r.step(() => performance.now() - t0 > soft);
+        if (state === 'more') { left += 1; continue; }
+        recallJobs.delete(file);
+        if (state === 'done') { recallIdx.end(j.b, j.r.head || {}); spans.set(file, { sig, els: j.els }); added += 1; continue; }
+        recallIdx.abort(j.b);
+        if (state === 'changed') { left += 1; continue; }
+      }
       const chat = readChat(file);
       if (chat) { recallIdx.add(file, chat, e); added += 1; } else live.delete(file);
     }
+    for (const [file, j] of recallJobs) if (!live.has(file)) { recallIdx.abort(j.b); recallJobs.delete(file); }
     if (added && !left) recallIdx.trim?.(); // (round 34, lightweight) caught up: its lists cut to size
     for (const file of recallIdx.keys()) if (file.startsWith(dir) && !live.has(file)) recallIdx.drop(file);
     const size = recallIdx.size();
@@ -410,6 +445,7 @@ const OPS = {
     const textOf = (file, k) => {
       const e = index.get(file);
       if (e?.texts) return e.texts[k] || '';
+      const one = msgAt(file, k, e); if (one !== undefined) return one?.text || ''; // (round 82) a long chat: that one message read
       if (!reread.has(file)) reread.set(file, readChat(file));
       return reread.get(file)?.messages?.[k]?.text || '';
     };
@@ -441,7 +477,8 @@ const OPS = {
     const PF = require('./projfind-core');
     findIdx ||= PF.createIndex();
     clearTimeout(findT); findT = setTimeout(() => { findIdx = null; }, 20 * 60000); findT.unref?.();
-    return PF.run(findIdx, msg, { stat, join: path.join, now: () => performance.now(), read: (f) => { try { return JSON.parse(SS.readRetry(dfs, f)); } catch { return null; } } });
+    return PF.run(findIdx, msg, { stat, join: path.join, now: () => performance.now(), read: (f) => { try { return JSON.parse(SS.readRetry(dfs, f)); } catch { return null; } },
+      big: { min: FIND_BIG, open: (file, onMessage, o) => BC().reader(fs, file, { ...o, onMessage, chunk: 512 * 1024 }) } }); // (round 82, bigchat82) a long chat (≥ 128 KB): read and indexed in slices
   },
   forget({ file }) { written.delete(file); merged.delete(file); bigs.delete(file); drop(file); if (findIdx) findIdx.stale(file); return true; },
   ping() { return { chats: index.size, textChars }; },

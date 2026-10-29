@@ -52,6 +52,9 @@ for (const [label, chat, pretty] of [['pretty', chatOf(60), true], ['compact', c
   const head = B.headOf(buf, st);
   ok(JSON.stringify(head) === JSON.stringify({ ...chat, messages: [] }), `${label}: the head is the chat without its messages`);
   ok(B.prettyLayout(buf, st) === pretty || (chat.messages.length === 0), `${label}: layout told (${B.prettyLayout(buf, st)})`);
+  // (the fast cut for a file laid out as the app writes it: the same cut, or none)
+  const fc = B.fastCut(buf);
+  ok(pretty && chat.messages.length ? fc && fc.els.join() === st.els.join() && fc.arrS === st.arrS && fc.arrE === st.arrE && fc.end === st.end : (!fc || fc.els.join() === st.els.join()), `${label}: fast cut ${fc ? 'same' : 'none'}`);
   // cut in uneven pieces (resumable): the same cut
   const st2 = B.scanInit(); let avail = 0;
   while (avail < buf.length) { avail = Math.min(buf.length, avail + int(1, 400)); B.scanStep(st2, buf, avail); }

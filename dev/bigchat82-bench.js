@@ -49,6 +49,7 @@ async function held(fn) {
 }
 const time = (fn) => { const t0 = performance.now(); const r = fn(); return { r, ms: r1(performance.now() - t0) }; };
 const median = (xs) => { const s = [...xs].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+const pct = (xs, q) => { const s = [...xs].sort((x, y) => x - y); return r1(s[Math.min(s.length - 1, Math.floor(s.length * q))]); };
 
 (async () => {
   const giant = JSON.parse(fs.readFileSync(GIANT, 'utf8'));
@@ -63,16 +64,17 @@ const median = (xs) => { const s = [...xs].sort((x, y) => x - y); return s[Math.
     let left = 1; let n = 0;
     while (left && n < 2000) { const { res, ms } = await T.op({ op: 'projfind', spec, dirs: { chats: CHATS, kv: KV }, budgetMs: 12 }); slices.push(ms); left = res.left; n += 1; }
     const q = await T.op({ op: 'projfind', spec, dirs: { chats: CHATS, kv: KV }, q: 'portal shader', budgetMs: 12 });
-    out.projfind = { slices: slices.length, longestSlice: r1(Math.max(...slices)), totalMs: r1(slices.reduce((x, y) => x + y, 0)), queryMs: r1(q.ms), hits: q.res.total };
+    out.projfind = { slices: slices.length, p95Slice: pct(slices, 0.95), longestSlice: r1(Math.max(...slices)), totalMs: r1(slices.reduce((x, y) => x + y, 0)), queryMs: r1(q.ms), hits: q.res.total };
     await T.end();
   }
   // ---------- recall (and app search's chat part): the index built in slices ----------
   if (want('recall')) {
     const T = thread(); const slices = [];
+    await T.op({ op: 'list', dir: CHATS }); // (as in the app: the chats list is read at start, long before recall's first slice)
     let left = 1; let n = 0;
     while (left && n < 2000) { const { res, ms } = await T.op({ op: 'recall', dir: CHATS, budgetMs: 12 }); slices.push(ms); left = res.left; n += 1; }
     const q = await T.op({ op: 'recall', dir: CHATS, q: 'what did we decide about the portal shader?', budgetMs: 40, limit: 6 });
-    out.recall = { slices: slices.length, longestSlice: r1(Math.max(...slices)), totalMs: r1(slices.reduce((x, y) => x + y, 0)), queryMs: r1(q.ms) };
+    out.recall = { slices: slices.length, p95Slice: pct(slices, 0.95), longestSlice: r1(Math.max(...slices)), totalMs: r1(slices.reduce((x, y) => x + y, 0)), queryMs: r1(q.ms) };
     await T.end();
   }
   // ---------- the chats list after the giant chat changed (sync brought a new version) ----------
