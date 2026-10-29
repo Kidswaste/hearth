@@ -63,6 +63,14 @@ is normal, but a few blocks are whole dialogs that only a click opens:
    public function keeps its name and returns what it returned (all were already async).
 6. No CSS moved (the dialogs' rules stay in their sheets), so nothing is unstyled for a frame.
 
+7. **Ctrl+Shift+U right after closing the Usage window opens it again.** The key's toggle asked "is the dashboard
+   open?" through a variable that is cleared only when the dialog's close event runs, a task later. Pressed right
+   after an Esc / × / Ctrl+Shift+U close, the key "closed" the already-closed window and nothing opened. This was
+   the same before this stream (meter.js); it showed up as a flaky step in dev/checks/firstscreen83.js after the
+   round-83 merge. The toggle now reads the dialog's own `open` state, and each dashboard's close handler forgets
+   and removes only its own dialog (a late close can't take a newer one away). The check now also presses the key
+   with no wait after a close: it fails on the old code and passed 8/8 with the fix.
+
 ### For the next streams (dev, not counted)
 - `node dev/smoke.js --data <profile> --coverage-ready /tmp/r.json --coverage /tmp/a.json --wait 9000`, then
   `node dev/firstscreen-coverage.js /tmp/r.json /tmp/a.json --blocks 40`: what the first screen parses but doesn't run.

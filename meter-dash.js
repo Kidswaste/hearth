@@ -138,7 +138,9 @@ const MeterDash = (() => {
     rangeBar.addEventListener('click', (e) => { const r = e.target.closest('button')?.dataset.r; if (r) { range = r; store.set('meter.range', r); draw(); } });
     tabBar.addEventListener('click', (e) => { const t = e.target.closest('button')?.dataset.t; if (t) { current = t; store.set('meter.tab', t); draw(); } });
     close.addEventListener('click', () => dlg.close());
-    dlg.addEventListener('close', () => { const d = dlg; setTimeout(() => d?.remove(), 0); if (dlg === d) dlg = null; });
+    // (round 83) its own dialog: a close that lands after a newer dashboard opened leaves that one alone
+    const mine = dlg;
+    dlg.addEventListener('close', () => { setTimeout(() => mine.remove(), 0); if (dlg === mine) dlg = null; });
     dlg.redraw = draw;
     document.body.append(dlg);
     dlg.tabIndex = -1;
