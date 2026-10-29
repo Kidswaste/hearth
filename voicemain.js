@@ -187,7 +187,9 @@ function register(ipcMain, getWin, { settings = () => ({}), dataDir } = {}) {
     else if (IS_WIN) {
       cmd = 'powershell.exe';
       const v = String(o.voice || '').replace(/'/g, "''");
-      const ps = `Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Volume = ${Math.round(master * 100)}; $s.Rate = ${Math.round((rate - 1) * 8)}; ${v ? `try { $s.SelectVoice('${v}') } catch {}; ` : ''}$t = [Console]::In.ReadToEnd(); $s.Speak($t)`;
+      // (windows hourly 6) stdin read as UTF-8: PowerShell 5.1 reads it in the console's OEM code page, so "café" was
+      // spoken as "caf├⌐" (every accent mangled)
+      const ps = `[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Volume = ${Math.round(master * 100)}; $s.Rate = ${Math.round((rate - 1) * 8)}; ${v ? `try { $s.SelectVoice('${v}') } catch {}; ` : ''}$t = [Console]::In.ReadToEnd(); $s.Speak($t)`;
       args = ['-NoProfile', '-NonInteractive', '-Command', ps];
     } else { cmd = 'spd-say'; args = ['-w', '-r', String(Math.round((rate - 1) * 60)), ...(o.voice ? ['-y', String(o.voice)] : []), '-e']; }
     return new Promise((resolve) => {
