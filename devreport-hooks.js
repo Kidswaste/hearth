@@ -44,7 +44,7 @@ const DevReportHooks = (() => {
     const show = () => toast(`Something broke inside Hearth: ${it.message.split('\n')[0].slice(0, 120)}`, { type: 'error', timeout: 9000, devreport: false, action: { label: 'Report to the developer', fn: () => report({ kind: 'page', item: it }) } });
     (window.Jank?.calm?.(8000, null) ?? Promise.resolve()).then(() => setTimeout(show, 400));
   }
-  const NOISE = /ResizeObserver|Script error\.?$|aborted|AbortError|cancel/i;
+  const NOISE = /ResizeObserver|Script error\.?$|aborted|AbortError|cancel|still loading its older messages/i; // (round 86: a long chat's older part loading)
   addEventListener('error', (e) => {
     if (!e.message || NOISE.test(e.message)) return;
     const it = note('page', e.message, e.error?.stack || `${e.message}\n    at ${e.filename || '?'}:${e.lineno || 0}:${e.colno || 0}`);

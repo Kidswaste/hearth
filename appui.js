@@ -529,8 +529,10 @@ const AppUI = (() => {
     setTimeout(() => { lastError = ''; }, 5000);
     toast(`Something went wrong: ${message}`, { type: 'error', action: { label: 'Copy details', fn: () => copyText(message, 'Error') }, timeout: 8000 });
   }
-  window.addEventListener('error', (e) => reportError(e.message));
-  window.addEventListener('unhandledrejection', (e) => reportError(e.reason?.message || String(e.reason)));
+  // (round 86) a long chat's older messages still loading isn't a fault: a calm note, not "Something went wrong"
+  const calmMiss = (r) => r?.code === 'ENOTLOADED' && (toast(r.message, { timeout: 3500 }), true);
+  window.addEventListener('error', (e) => calmMiss(e.error) || reportError(e.message));
+  window.addEventListener('unhandledrejection', (e) => calmMiss(e.reason) || reportError(e.reason?.message || String(e.reason)));
 
   // One time: back to Forgeheart for whoever was moved to Swirl automatically (Swirl stays in Settings → Theme).
   function offerSwirl() {
