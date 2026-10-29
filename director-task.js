@@ -161,7 +161,9 @@ const DirectorTask = (() => {
       return withContext(chat, raw);
     }
     const state = text(chat.id, { from });
-    const recent = chat.messages.slice(0, -1).filter((m) => (m.role === 'user' || m.role === 'assistant') && m.text).slice(-3)
+    // (round 86, chatwindow86) the last three, read from the end (the same three: a windowed giant chat's older messages aren't read)
+    const last3 = []; for (let i = chat.messages.length - 2; i >= 0 && last3.length < 3; i--) { const m = chat.messages[i]; if ((m.role === 'user' || m.role === 'assistant') && m.text) last3.unshift(m); }
+    const recent = last3
       .map((m) => `${m.role === 'user' ? 'User' : 'Director'}: ${cap(m.text, 300)}`).join('\n');
     return [state || `[You are taking over this chat from ${from}, in the same scene.]`, recent ? `<recent_messages>\n${recent}\n</recent_messages>` : '', raw].filter(Boolean).join('\n\n');
   }

@@ -15,7 +15,7 @@ function diff(prev, chat) {
   for (const k of keys) if (k !== 'messages' && JSON.stringify(prev[k]) !== JSON.stringify(chat[k])) set[k] = chat[k];
   const msgs = [];
   chat.messages.forEach((m, k) => { if (k >= prev.messages.length || JSON.stringify(prev.messages[k]) !== JSON.stringify(m)) msgs.push([k, m]); });
-  return { keys, set, n: chat.messages.length, msgs };
+  return { keys, set, n: chat.messages.length, msgs, trunc: chat.messages.length < prev.messages.length }; // (round 86, chatwindow86: a shorter chat says so, as native.js does)
 }
 const clone = (v) => JSON.parse(JSON.stringify(v));
 

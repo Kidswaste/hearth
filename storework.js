@@ -26,6 +26,17 @@
 //                                 then saves it whole, once)
 //   chatAdopt { file, head, src }  (round 85, projbig85) a project's giant chat added by name (import / Duplicate project)
 //   chatPeek { file, ctx, wrapped, to, count }  (round 85) Earlier versions' Preview of a giant chat: only what it shows
+//   chatWinOpen { file, ver, cpl, tail }  (round 86, chatwindow86) a GIANT chat opened WINDOWED: its own fields, its last
+//                                 `tail` messages and its pinned ones as bytes, and one small record per message (chatwin-core
+//                                 metaOf: its height, its usage, its small fields as a short text); the rest stays in the file. { whole: true }: open it the
+//                                 usual way (a file the cut can't read, or not laid out as the app writes it)
+//   chatRange { file, ver, from, to }  (round 86) messages [from, to) of a giant chat as bytes ({"messages":[…]}): cut once
+//                                 per version of the file (the offsets kept with its sig, in `bigs`); same: whether the file is
+//                                 the version the window holds. A file that can't be read: { error } (never an empty range)
+//   chatFind { file, q }          (round 86) find in a windowed chat: the messages whose text or thinking holds q (exact:
+//                                 the same test as chat-rest.js restingHits, on each candidate the lowered bytes point at)
+//   chatCalc { file, what, agent, tools, upto }  (round 86) whole-chat numbers for a windowed chat, from the file: autocompact's
+//                                 decision, sendpreview's history, historylean's lighter history (the same pure code)
 // Chat files are parsed once and kept (by size + mtime): a list or a search only re-reads the files that changed, and
 // a chat saved through here is indexed from the value itself (no re-read). Texts are kept up to TEXT_CAP characters
 // in all; past that, a search reads the files again (still on this thread).
@@ -39,6 +50,7 @@ const crypto = require('crypto');
 const { list: flist, search: fsearch } = require('./fswalk');
 const { workerData } = require('worker_threads');
 let BCmod = null; const BC = () => (BCmod ||= require('./bigchat-core')); // (round 82, bigchat82) giant chats, required when first met
+let CWmod = null; const CW = () => (CWmod ||= require('./chatwin-core')); // (round 86, chatwindow86) windowed giant chats
 const BIG = Number(process.env.HEARTH_BIGCHAT_MIN) || 8 * 1024 * 1024;
 const SYNC_BIG = Number(process.env.HEARTH_SYNCCHAT_MIN) || 16e6; // (round 82) sync: a chat this big goes by its messages' bytes (bigchat-core.js)
 const isChatRel = (rel) => /^chats\/[^/]+\.json$/i.test(String(rel || ''));
@@ -182,6 +194,11 @@ let findIdx = null; let findT = null; // (round 81, projsearch81) projfind-core.
 // are in the file. A change from any of those versions applies; after it, only the version it made does.
 const bigs = new Map();
 const bigSig = (st) => (st ? `${st.size}:${st.mtimeMs}` : '');
+// (round 86, chatwindow86) find in a windowed chat: its lowered bytes (bigchat-core searchIndex) while you search (two
+// chats at most, let go 10 minutes after the last find)
+const winFind = new Map(); let winFindT = null;
+const winCalc = { sig: null, chat: null, t: null }; // (the last chat parsed for chatCalc: 15 s, for the next ask about the same version)
+const elOf = (els, p) => { let lo = 0; let hi = els.length / 2 - 1; while (lo <= hi) { const m = (lo + hi) >> 1; if (p < els[m * 2]) hi = m - 1; else if (p >= els[m * 2 + 1]) lo = m + 1; else return m; } return -1; };
 
 function stat(file) { try { return fs.statSync(file); } catch { return null; } }
 function sameOnDisk(file, h) {
@@ -385,6 +402,8 @@ const OPS = {
         if (cut.bad || !BC().prettyLayout(buf, cut)) { bigs.delete(file); return { ok: false, why: 'layout' }; }
         e.head = BC().headOf(buf, cut); e.els = cut.els;
       }
+      // (round 86, chatwindow86) a chat saved SHORTER only when the window says so (edit-from-here, retry, a cut: trunc)
+      if (d.n < e.els.length / 2 && !d.trunc) return { ok: false, why: 'shrink' };
       const tmp = `${file}.w.tmp`;
       let r;
       try { r = BC().deltaWrite(fs, file, tmp, e, d); } catch (err) { try { fs.rmSync(tmp, { force: true }); } catch { /* gone */ } bigs.delete(file); return { ok: false, why: err.message }; }
@@ -392,6 +411,7 @@ const OPS = {
       const st = stat(file);
       if (!st) { bigs.delete(file); return { ok: false, why: 'gone' }; }
       Object.assign(e, { vers: new Set([d.to]), sig: bigSig(st), head: r.head, els: r.els });
+      if (e.meta) { const L = e.meta.list; L.length = d.n; for (const [k, m] of d.msgs) L[k] = CW().metaOf(m, e.meta.cpl); } // (round 86) the windowed records follow
       written.set(file, { h: '', size: st.size, mtimeMs: st.mtimeMs }); // (no hash: a whole save of the same chat writes again)
       merged.delete(file);
       if (findIdx) findIdx.stale(file);
@@ -696,6 +716,130 @@ const OPS = {
     const value = adoptValue(head, msgs);
     const w = OPS.write({ file, value, chatDir: true });
     return { ok: true, n: msgs.length, bytes: w?.bytes || 0, title: value.title };
+  },
+  // (round 86, chatwindow86) a GIANT chat opened windowed (see the header and chatwin-core.js). The file is cut once per
+  // version (its offsets kept with its sig in `bigs`, with its records: a delta keeps both up to date), so opening it
+  // again, or a range of it, reads only those bytes. A file that can't be read: { error } (the window then opens it the
+  // usual way, which says so if it can't either: never an empty chat)
+  chatWinOpen({ file, ver, cpl, tail = 300 }) {
+    const got = readStill(file);
+    if (!got) return { error: 'read' };
+    let e = bigs.get(file);
+    if (!e || e.sig !== got.sig || !e.els || !e.head) {
+      const cut = BC().scanBuf(got.buf);
+      if (cut.bad || cut.arrS < 0 || !BC().prettyLayout(got.buf, cut)) return { whole: true };
+      e = { vers: e?.sig === got.sig ? e.vers : new Set(), sig: got.sig, head: BC().headOf(got.buf, cut), els: cut.els, meta: e?.sig === got.sig ? e.meta : null };
+      bigs.set(file, e);
+    }
+    e.vers.add(String(ver)); if (e.vers.size > 16) e.vers.delete(e.vers.values().next().value);
+    const els = e.els; const n = els.length / 2; const buf = got.buf;
+    const c = Math.max(20, Number(cpl) || 90);
+    if (!e.meta || e.meta.cpl !== c || e.meta.list.length !== n) {
+      const list = new Array(n);
+      for (let k = 0; k < n; k++) list[k] = CW().metaOf(JSON.parse(buf.toString('utf8', els[k * 2], els[k * 2 + 1])), c);
+      e.meta = { cpl: c, list };
+    }
+    const from = Math.max(0, n - Math.max(0, Number(tail) || 0));
+    const pk = []; for (let k = 0; k < from; k++) if (e.meta.list[k]?.[2]?.pinnedMsg) pk.push(k);
+    const L = e.meta.list;
+    const parts = [Buffer.from(`{"cpl":${c},"h":${JSON.stringify(L.map((x) => x[0]))},"u":${JSON.stringify(L.map((x) => x[3]))},"r":${JSON.stringify(L.map(CW().recOf))},"pk":${JSON.stringify(pk)},"pins":[`)];
+    pk.forEach((k, i) => { if (i) parts.push(Buffer.from(',')); parts.push(buf.subarray(els[k * 2], els[k * 2 + 1])); });
+    parts.push(Buffer.from('],"messages":['));
+    if (from < n) parts.push(buf.subarray(els[from * 2], els[n * 2 - 1]));
+    parts.push(Buffer.from(']}'));
+    const all = Buffer.concat(parts); const bytes = new Uint8Array(new ArrayBuffer(all.length)); bytes.set(all);
+    return { head: JSON.stringify(e.head), n, from, bytes, __transfer: [bytes.buffer] };
+  },
+  chatRange({ file, ver, from, to }) {
+    const st = stat(file);
+    if (!st) return { error: 'gone' };
+    let e = bigs.get(file);
+    if (!e || e.sig !== bigSig(st) || !e.els) {
+      const got = readStill(file);
+      if (!got) return { error: 'read' };
+      const cut = BC().scanBuf(got.buf);
+      if (cut.bad || cut.arrS < 0) return { error: 'cut' };
+      const keep = e?.sig === got.sig ? e : null;
+      e = { vers: keep ? keep.vers : new Set(), sig: got.sig, head: BC().headOf(got.buf, cut), els: cut.els, meta: keep ? keep.meta : null };
+      if (BC().prettyLayout(got.buf, cut)) bigs.set(file, e); // (one the app didn't lay out: not kept, its changes can't go by delta)
+    }
+    const n = e.els.length / 2;
+    const a = Math.max(0, Math.min(n, Number(from) || 0)); const b = Math.max(a, Math.min(n, Number(to) || 0));
+    let region = Buffer.alloc(0);
+    if (b > a) {
+      const fd = fs.openSync(file, 'r');
+      try {
+        if (bigSig(fs.fstatSync(fd)) !== e.sig) return { error: 'changed' };
+        const s0 = e.els[a * 2]; region = Buffer.allocUnsafe(e.els[b * 2 - 1] - s0);
+        for (let got = 0; got < region.length;) { const r = fs.readSync(fd, region, got, region.length - got, s0 + got); if (!r) return { error: 'changed' }; got += r; }
+      } finally { fs.closeSync(fd); }
+    }
+    const all = Buffer.concat([Buffer.from('{"messages":['), region, Buffer.from(']}')]);
+    const bytes = new Uint8Array(new ArrayBuffer(all.length)); bytes.set(all);
+    return { n, from: a, to: b, same: e.vers.has(String(ver)), bytes, __transfer: [bytes.buffer] };
+  },
+  chatFind({ file, q }) {
+    const needle = String(q || '').toLowerCase();
+    if (!needle) return { hits: [], n: 0 };
+    const st = stat(file);
+    if (!st) return { error: 'gone' };
+    const sig = bigSig(st);
+    let x = winFind.get(file);
+    if (!x || x.sig !== sig) {
+      winFind.delete(file);
+      const got = readStill(file);
+      if (!got || got.sig !== sig) return { error: 'read' };
+      const ix = BC().searchIndex(got.buf);
+      if (!ix) return { error: 'cut' };
+      x = { sig, ix }; winFind.set(file, x);
+      for (const k of winFind.keys()) { if (winFind.size <= 2) break; if (k !== file) winFind.delete(k); }
+    }
+    clearTimeout(winFindT); winFindT = setTimeout(() => winFind.clear(), 10 * 60000); winFindT.unref?.();
+    const { ix } = x; const n = ix.n; const cand = new Uint8Array(n);
+    if (!/^[\x20-\x7e]+$/.test(needle)) cand.fill(1); // (not plain ASCII: every message is read; exact either way)
+    else {
+      const esc = Buffer.from(JSON.stringify(needle).slice(1, -1), 'utf8');
+      for (let p = ix.lower.indexOf(esc); p >= 0;) { const k = elOf(ix.els, p); if (k >= 0) { cand[k] = 1; p = ix.lower.indexOf(esc, ix.els[k * 2 + 1]); } else p = ix.lower.indexOf(esc, p + 1); }
+      for (let k = 0; k < n; k++) if (ix.special[k]) cand[k] = 1;
+    }
+    const hits = [];
+    const fd = fs.openSync(file, 'r');
+    try {
+      if (bigSig(fs.fstatSync(fd)) !== sig) return { error: 'changed' };
+      for (let k = 0; k < n; k++) {
+        if (!cand[k]) continue;
+        const s0 = ix.els[k * 2]; const b = Buffer.allocUnsafe(ix.els[k * 2 + 1] - s0);
+        fs.readSync(fd, b, 0, b.length, s0);
+        if (CW().findHit(JSON.parse(b.toString('utf8')), needle)) hits.push(k);
+      }
+    } finally { fs.closeSync(fd); }
+    return { hits, n };
+  },
+  // whole-chat numbers features show or decide from, worked out here from the file (the window holds only a part):
+  // lighter (autocompact's "continue lighter?" decision), preview (sendpreview's usual reply and history, and what
+  // continuing lighter would leave), lean (historylean's lighter history before message `upto`, and its inputs). The
+  // same pure code as in the window (autocompact.js, sendpreview-core.js, historylean-core.js) on the parsed chat
+  chatCalc({ file, what = [], agent = {}, tools = false, upto }) {
+    const got = readStill(file);
+    if (!got) return { error: 'read' };
+    let chat = winCalc.sig === got.sig ? winCalc.chat : null;
+    if (!chat) { try { chat = JSON.parse(got.buf.toString('utf8').replace(/^\uFEFF/, '')); } catch { return { error: 'parse' }; } }
+    if (!chat || typeof chat !== 'object' || !Array.isArray(chat.messages)) return { error: 'parse' };
+    Object.assign(winCalc, { sig: got.sig, chat }); clearTimeout(winCalc.t); winCalc.t = setTimeout(() => { winCalc.sig = null; winCalc.chat = null; }, 15000); winCalc.t.unref?.();
+    const out = { n: chat.messages.length };
+    const AC = () => require('./autocompact');
+    if (what.includes('lighter')) out.lighter = AC().decide(AC().inputOf(chat, agent));
+    if (what.includes('preview')) {
+      const SPC = require('./sendpreview-core');
+      out.preview = { st: SPC.stats(chat), history: SPC.historyOf(chat), lighter: AC().split(chat).older.length ? AC().decide({ ...AC().inputOf(chat, agent), at: 1 }) : null };
+    }
+    if (what.includes('lean')) {
+      const HLC = require('./historylean-core');
+      const end = upto ?? chat.messages.length; const now = Date.now();
+      const built = HLC.build(chat, { upto: end, chatTools: Boolean(tools) });
+      out.lean = { now, built, input: HLC.inputOf(chat, agent, { now, upto: end, chatTools: Boolean(tools), built }) };
+    }
+    return out;
   },
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {

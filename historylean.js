@@ -34,6 +34,9 @@ const HistoryLean = (() => {
     if (!agent || agent.mode !== 'native') return null;
     const end = upto ?? chat.messages.length;
     const tools = chatTools(agent);
+    // (round 86, chatwindow86) a windowed giant chat: the store thread's lighter history and inputs (from the file), the
+    // gap since the last reply made again for `now`; none yet: no plan (the session goes on, as when it's off)
+    if (Native.isWin?.(chat)) { const c = Native._rest.W.x.calcSync(chat, 'lean', { upto: end, tools }); if (!c) return null; const input = { ...c.input, gap: Number.isFinite(c.input.gap) ? c.input.gap + (now - c.now) : c.input.gap }; return { ...C.decide(input), input }; }
     const input = C.inputOf(chat, agent, { now, upto: end, chatTools: tools, built: built(chat, end, tools) });
     return { ...C.decide(input), input };
   }
@@ -66,7 +69,8 @@ const HistoryLean = (() => {
     if (chat.handoff && chat.handoff.at > l.at) return null; // handed over since
     const agent = agentOf(chat);
     const upto = Math.max(0, chat.messages.length - 1);
-    const b = built(chat, upto, chatTools(agent));
+    const b = Native.isWin?.(chat) ? Native._rest.W.x.calcSync(chat, 'lean', { upto, tools: chatTools(agent) })?.built : built(chat, upto, chatTools(agent)); // (round 86)
+    if (!b) return null;
     return `${b.text}${text}`;
   }
 
@@ -93,6 +97,9 @@ const HistoryLean = (() => {
 
   if (typeof Native !== 'undefined') {
     Native.hooks.send.push(onSend);
+    // (round 86, chatwindow86) a windowed giant chat's lighter history worked out ahead (on the store thread) once a reply is in or it opens
+    Native.hooks.event.push((e, chat) => { if (e?.type === 'done' && chat && Native.isWin?.(chat)) { try { plan(chat); } catch { /* none */ } } });
+    Native.hooks.render.push((agentId, v, chat) => { if (chat && Native.isWin?.(chat)) { try { plan(chat); } catch { /* none */ } } });
     Native.hooks.message.push(onMessage);
   }
   if (typeof Commands !== 'undefined' && !Commands.get('history-lean')) {

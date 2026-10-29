@@ -25,6 +25,7 @@ await wait(4000);
 const probeOn = Boolean((await lag('boot'))?.delay);
 if (!probeOn) out.problems.push('the main lag probe is off (HEARTH_LOOPLAG)');
 const claude = H.claudeAgent();
+store.set('chat.window86', false); // (round 86, chatwindow86) this check covers the whole-chat way; a windowed giant chat: dev/checks/chatwindow86.js
 const ID = 'claude-giant0';
 const sum = (H.chats || []).find((c) => c.id === ID);
 if (!sum) { out.problems.push('the giant chat is not in the list'); return out; }

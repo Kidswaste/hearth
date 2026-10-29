@@ -133,7 +133,7 @@ const ChatUX = (() => {
     f.hits = markAll(v.list, q);
     // (round 72, chatwindow72) the resting messages of a long chat count too: one stand-in each, in message order (the
     // message is woken when you reach it, then its own matches are marked)
-    const rest = q && typeof ChatRest !== 'undefined' ? ChatRest.restingHits(agentId, q) : [];
+    const rest = q && typeof ChatRest !== 'undefined' ? ChatRest.restingHits(agentId, q, () => finds.get(agentId) === f && run(agentId, { jump: f.at < 0 })) : [];
     const at = (h) => (h.nodeType ? Number(h.closest('.msg')?.dataset.index ?? 1e9) : h.index);
     if (rest.length) f.hits = [...f.hits, ...rest.map((index) => ({ index }))].sort((a, b) => at(a) - at(b));
     f.at = -1;

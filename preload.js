@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('hub', {
   listChats: call('chats:list'),
   getChat: call('chats:get'),
   saveChat: call('chats:save'),
-  openChat: call('chats:open'), openChatPart: call('chats:part'), saveChatDelta: call('chats:delta'), // (round 82, bigchat82) giant chats: opened as bytes, saved by what changed (chatsave.js)
+  openChat: call('chats:open'), openChatPart: call('chats:part'), saveChatDelta: call('chats:delta'), chatWin: call('chats:win'), // (round 82, bigchat82) giant chats: opened as bytes, saved by what changed (chatsave.js) · (round 86) windowed: ranges, find
   deleteChat: call('chats:delete'),
   searchChatText: call('chats:searchText'),
   projFind: call('projects:find'), // (round 81, projsearch81) Find in this project ({ spec, q?, budgetMs? }) → grouped hits / { left } (projfind-core.js on the store thread)

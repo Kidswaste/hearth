@@ -62,6 +62,7 @@ const SendPreview = (() => {
       fixed.set(agent.id, { ...(c || {}), at: c?.at || 0, p });
     }
     if (c?.tokens) return { tokens: c.tokens, from: 'audit' };
+    if (Native.isWin?.(chat)) return { tokens: C.DEFAULT_FIXED, from: 'default' }; // (round 86: its first reply's words are on disk)
     const ms = chat?.messages || [];
     const start = chat?.compact ? chat.compact.index : chat?.handoff?.at || 0;
     const i = ms.findIndex((m, k) => k >= start && m.role === 'assistant' && m.usage);
@@ -108,6 +109,8 @@ const SendPreview = (() => {
   const memo = new WeakMap(); // chat → { key, st, history }
   function chatPart(chat) {
     if (!chat) return { st: C.stats(null), history: C.historyOf(null) };
+    // (round 86, chatwindow86) a windowed giant chat: worked out on the store thread from the file (none yet: no preview)
+    if (Native.isWin?.(chat)) { const p = Native._rest.W.x.calcSync(chat, 'preview', { again: () => soon(chat.agentId) }); return p ? { key: '', st: p.st, history: p.history, lighter: p.lighter } : null; }
     const ms = chat.messages || [];
     const key = `${ms.length}|${ms.at(-1)?.at || 0}|${ms.at(-1)?.text?.length || 0}|${chat.session?.id || ''}|${chat.compact?.index ?? ''}|${chat.handoff?.at ?? ''}|${chat.handoff?.whole ? 1 : 0}`;
     const m = memo.get(chat);
@@ -123,7 +126,8 @@ const SendPreview = (() => {
     const v = Native.view(agentId);
     if (!agent || agent.mode !== 'native') return null;
     const chat = 'chat' in o ? o.chat : Native.chatOf(agentId);
-    let { st, history } = chatPart(chat);
+    const cp = chatPart(chat); if (!cp) return null; // (round 86: not worked out yet)
+    let { st, history } = cp;
     // (round 50, historylean) after a break a long chat goes on with its lighter history: count that, and the engine's own cache life
     let hl = null; try { hl = chat && window.HistoryLean ? HistoryLean.plan(chat, { now }) : null; } catch { hl = null; }
     if (hl?.rebase) history = { tokens: Math.max(0, hl.after - hl.input.fixed), cacheable: 0, kind: 'leanbreak', session: false };
@@ -157,7 +161,7 @@ const SendPreview = (() => {
     if (chat?.messages?.length && histShare >= 0.3 && !Native.isBusy(chat.id)) {
       // what continuing lighter would leave (autocompact's own numbers; read once per change of the chat: it reads
       // every older message)
-      const part = chatPart(chat);
+      const part = chatPart(chat) || { lighter: null };
       if (!('lighter' in part)) {
         part.lighter = null;
         if (typeof Autocompact !== 'undefined') {
@@ -348,6 +352,7 @@ const SendPreview = (() => {
     if (a && Date.now() - a.at < 15000 && chat?.id) sent.set(chat.id, { agentId, ...a });
   }
   function rawOf(s, chat) {
+    if (Native.isWin?.(chat)) return 0; // (round 86, chatwindow86) not learned from a windowed giant chat (its history is on disk)
     try {
       const before = { ...chat, session: s.session, messages: chat.messages.slice(0, s.n) };
       const w = work(s.agentId, s.text, { now: s.at, chat: s.n ? before : null, attachments: s.attachments, mission: null });
