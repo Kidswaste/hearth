@@ -534,7 +534,7 @@ function writeReport(rep) { fs.writeFileSync(path.join(OUT, 'report.json'), `${J
   if (m.problems.length) log(`\nproblems:\n  ${m.problems.join('\n  ')}`);
   const outDir = opt('--from') ? path.resolve(opt('--from')) : OUT;
   if (!opt('--from')) writeReport({ mode: 'compare', verdict, baseline: { when: base.when, commit: base.machine?.commit, calib: base.calib || null }, machine: m.machine, box: Object.fromEntries(parts.map((p) => [p, { now: ctx.calib[p], factor: ctx.factor[p], tooLoaded: ctx.gate[p] }])), rows: rows.map(({ d, ...r }) => ({ label: d.label, unit: d.unit, kind: d.kind, ...r })), problems: m.problems });
-  const summary = verdict === 'inconclusive' ? `? inconclusive: ${unsure.length} metric(s) over the line on a box too busy to tell (${unsure.map((r) => r.d.label).join(', ')}) — run again on a quieter box, or use --ab <base>` : bad.length ? `✖ ${bad.length} regressed` : '✓ no regression';
+  const summary = verdict === 'inconclusive' ? `? inconclusive: ${unsure.map((r) => `${r.d.label} (${r.verdict === 'unsure' ? 'over the line, not told apart from the noise' : r.verdict === 'load?' ? 'waiting, on a slower box' : 'too loaded to tell'})`).join(', ')} — run again on a quieter box, or use --ab <base>` : bad.length ? `✖ ${bad.length} regressed` : '✓ no regression';
   log(`\n${summary}${missing.length ? ` · ✖ ${missing.length} not measured` : ''} · ${rows.filter((r) => r.verdict === 'better').length} better · ${mins()} min · ${path.join(outDir, 'measured.json')}`);
   process.exit(EXIT[verdict]);
 })().catch((err) => { console.error(err); process.exit(EXIT.error); });
