@@ -42,12 +42,12 @@ const engine = (who, data) => createEngine({ dataDir: data, configPath: path.joi
 const out = { fixture: FIXTURE, slowFsUs: Number(process.env.HEARTH_SLOWFS_US), phases: [] };
 async function phase(label, fn) {
   await probe.take({ reset: true }); // starts this phase's histogram and profile
-  const t0 = Date.now();
+  const t0 = Date.now(); const c0 = process.cpuUsage();
   const r = await fn();
-  const ms = Date.now() - t0;
+  const ms = Date.now() - t0; const cu = process.cpuUsage(c0); // (round 82, perfguard82) the pass's CPU time (every thread: main + the store thread)
   const p = await probe.take({ reset: true, label });
   const busiest = p.blocks?.[0]?.ms || 0;
-  const row = { label, ms, delayP99: p.delay.p99, delayMax: p.delay.max, busiest, fsSyncN: p.fsSync.n, fsSyncMs: p.fsSync.ms, moved: r?.last ? Object.fromEntries(Object.entries(r.last).filter(([, v]) => v)) : null, pending: r?.pending, blocks: (p.blocks || []).slice(0, 4).map((b) => ({ ms: b.ms, top: b.app?.slice(0, 3) || b.top })), fsTop: p.fsSync.top.slice(0, 5).map((x) => `${x.n}× ${Math.round(x.ms)}ms ${x.k}`) };
+  const row = { label, ms, cpuMs: Math.round((cu.user + cu.system) / 100) / 10, delayP99: p.delay.p99, delayMax: p.delay.max, busiest, fsSyncN: p.fsSync.n, fsSyncMs: p.fsSync.ms, moved: r?.last ? Object.fromEntries(Object.entries(r.last).filter(([, v]) => v)) : null, pending: r?.pending, blocks: (p.blocks || []).slice(0, 4).map((b) => ({ ms: b.ms, top: b.app?.slice(0, 3) || b.top })), fsTop: p.fsSync.top.slice(0, 5).map((x) => `${x.n}× ${Math.round(x.ms)}ms ${x.k}`) };
   out.phases.push(row);
   if (!JSON_OUT) console.log(`${label.padEnd(34)} ${String(ms).padStart(6)} ms   loop p99 ${String(row.delayP99).padStart(6)} ms  max ${String(row.delayMax).padStart(6)} ms   busiest ${String(busiest).padStart(4)} ms   fs.*Sync ${row.fsSyncN}× ${row.fsSyncMs} ms   ${JSON.stringify(row.moved)}`);
   return r;

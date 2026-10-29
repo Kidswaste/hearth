@@ -15,6 +15,15 @@
 //   lab.stillDraws     a still scene left alone: the preview's draws a second over 10 s (labdraw74 / labpace)
 //   idle.windowCpu / idle.allCpu   a chat on screen, nobody touching it: % of one CPU over 10 s (idlecpu)
 //   mem.windowHeap     the window's JS heap after a forced GC at the end (MB; the flat-memory guard's cheap proxy)
+// (round 82, perfguard82) CPU time beside the wall times, so a busy box doesn't read as a regression: the window's main
+// thread's own CPU (CDP Performance.getMetrics ThreadTime) per action, and the main + window CPU (power.test) per round:
+//   project.coldOpenCpu / warmOpenCpu / switchCpu   the window thread's CPU ms for that open / switch
+//   chat.switchCpu      the window thread's CPU ms from a row click to the long chat drawn
+//   chat.clickThreadCpu the window thread's CPU ms in the 700 ms after a row click (chat.clickCpu's twin, without waits)
+//   chat.keyCpu         the window thread's CPU ms per typed key
+//   lab.toolCallCpu     the main process's + the window's CPU ms per Lab tool call (a round of 9 calls and its turn, ÷ 9)
+// and the calibration benchmark (dev/perfguard-calib.js BENCH_SRC, here with real layout) at the start and the end of the
+// launch: R.calib.before / after (perfguard.js passes it in with --lib; without it, no calibration).
 // Each section's window CPU profile gives its top functions (self time): the culprit list perfguard.js prints.
 // The result is written to <SMOKE_TMP>/perfguard-probe.json (smoke.js --tmp keeps that folder).
 //   node dev/smoke.js --fake-engines --data /tmp/hearth-bigprofile72 --wait 1000 --check-timeout 600000 --script dev/perfguard-probe.js
@@ -65,12 +74,38 @@ async function profStop(section, windows = []) {
   R.tops[section] = [...self].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, ms]) => [k, Math.round(ms * 10) / 10]);
   return busy;
 }
+// (round 82) the window main thread's CPU so far, ms (Performance.getMetrics ThreadTime: what the thread ran, not waited)
+await cdp('Performance.enable');
+const thr = async () => { const m = (await cdp('Performance.getMetrics'))?.metrics || []; const v = m.find((x) => x.name === 'ThreadTime')?.value; return Number.isFinite(v) ? v * 1000 : NaN; };
+// Hearth's own processes' CPU so far, ms: the main process + this window (not the GPU process — SwiftShader here, whose
+// threads spin while they wait — nor the Lab preview's page, whose scene animates: both grow with the wall time)
+const appCpu = async () => {
+  const m = (await window.hub.power.test({ metrics: true }).catch(() => null))?.metrics; if (!m?.procs?.length) return NaN;
+  const win = new Set(m.pages.filter((p) => p.type === 'window' && /index\.html/.test(p.url)).map((p) => p.pid));
+  const own = m.procs.filter((p) => p.type === 'Browser' || win.has(p.pid));
+  return own.length === 2 ? own.reduce((a, p) => a + (p.cpuS || 0), 0) * 1000 : NaN;
+};
+// (round 82) the calibration benchmark with real layout: a fixed off-screen box of 300 wrapped words, re-laid out 12 times
+const calib = async () => {
+  if (typeof perfguardBench !== 'function') return null;
+  const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:-20000px;top:0;width:600px;height:4000px;overflow:hidden;contain:strict';
+  for (let i = 0; i < 300; i++) { const d = document.createElement('span'); d.textContent = `calibration word ${i} with a few more words`; d.style.cssText = 'display:inline-block;padding:2px;margin:1px;font:13px sans-serif'; box.append(d); }
+  document.body.append(box);
+  const layout = () => { let s = 0; for (let k = 0; k < 12; k++) { box.style.width = `${400 + (k % 4) * 60}px`; s += box.lastChild.offsetTop; } return s; };
+  perfguardBench(layout); const runs = [];
+  for (let i = 0; i < 7; i++) { runs.push(perfguardBench(layout)); await wait(30); }
+  box.remove();
+  const md = (k) => Math.round(med(runs.map((r) => r[k])) * 100) / 100;
+  return { at: new Date().toISOString(), single: md('total'), cpu: md('cpu'), gc: md('gc'), layout: md('layout') };
+};
+R.calib = {};
 const section = async (name, fn) => { const t0 = Date.now(); try { await fn(); } catch (err) { R.problems.push(`${name}: ${String(err?.message || err).slice(0, 300)}`); if (prof) await profStop(name); } R.notes[`${name}Secs`] = Math.round((Date.now() - t0) / 100) / 10; };
 window.hub.openExternal = () => {};
 await until(() => document.querySelector('#panel .item') || document.querySelector('#agent-buttons .space-button'), 'app', 1500);
 // quiet first: no window long task for 3 s (≤ 40 s), so each launch starts measuring from the same calm
 { const longs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push(e.duration); }).observe({ type: 'longtask', buffered: true }); } catch { /* none */ }
   for (let i = 0, last = -1, still = 0; i < 80 && still < 6; i++) { await wait(500); if (longs.length === last) still += 1; else { still = 0; last = longs.length; } } }
+R.calib.before = await calib();
 
 // ---------- projects (projects72's measure: Hearth's part = the wall minus the scene's own work in its page) ----------
 await section('projects', async () => {
@@ -80,11 +115,13 @@ await section('projects', async () => {
   const card = (id) => document.querySelector(`.pj-card[data-project="${id}"]`);
   const menuItem = (re) => [...document.querySelectorAll('#menu button')].find((b) => re.test(b.textContent.trim()));
   const timed = async (id, act) => {
-    await frame(); Object.assign(sc, { start: 0, drawn: 0, warm: 0 }); const t0 = performance.now(); act();
+    await frame(); Object.assign(sc, { start: 0, drawn: 0, warm: 0 }); const c0 = await thr(); const t0 = performance.now(); act();
     await until(() => ready(id), `${id} ready`, 2000); await frame();
     const wall = performance.now() - t0; const scene = (sc.start && sc.drawn > sc.start ? sc.drawn - sc.start : 0) + sc.warm;
+    lastCpu = (await thr()) - c0; // (round 82) the window thread's CPU for it
     return wall - scene;
   };
+  let lastCpu = NaN;
   const toProjects = async () => { (document.querySelector('.workspace-back') || document.querySelector('#agent-buttons [data-space=projects]')).click(); await until(() => !ProjectWorkspace.current() && card('pjbp0'), 'Projects home', 1500); await frame(); };
   document.querySelector('#agent-buttons [data-space=projects]').click();
   await until(() => card('pjbp0'), 'cards', 1500); await Projects.ready();
@@ -92,11 +129,12 @@ await section('projects', async () => {
   try { await until(() => H.surfaces.get('tool:three')?.mounted || (LabBoot.state().skipped && !LabBoot.state().up), 'lab mounted', 1000); } catch { /* not this time */ }
   card('pjbp0').dispatchEvent(new PointerEvent('pointerenter', { bubbles: false })); await wait(300);
   await profStart();
-  add('project.coldOpen', await timed('pjbp0', () => card('pjbp0').click()));
-  for (let i = 0; i < 2; i++) { await toProjects(); await wait(300); add('project.warmOpen', await timed('pjbp0', () => card('pjbp0').click())); }
+  add('project.coldOpen', await timed('pjbp0', () => card('pjbp0').click())); add('project.coldOpenCpu', lastCpu);
+  for (let i = 0; i < 2; i++) { await toProjects(); await wait(300); add('project.warmOpen', await timed('pjbp0', () => card('pjbp0').click())); add('project.warmOpenCpu', lastCpu); }
   for (let r = 0; r < 2; r++) for (const id of ['pjbp1', 'pjbp2', 'pjbp0']) {
     await wait(250);
     add('project.switch', await timed(id, () => { document.querySelector('.workspace-project-name').click(); const name = Projects.get(id).name; menuItem(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))).click(); }));
+    add('project.switchCpu', lastCpu);
   }
   await profStop('projects');
   await ProjectWorkspace.home(); await wait(800);
@@ -115,21 +153,24 @@ await section('chats', async () => {
   for (let i = 1; i <= 8; i++) {
     const row = await until(() => document.querySelector(`#chat-groups .item[data-key="${CSS.escape(longChats[i].id)}"]`), `row ${i}`, 40).catch(() => null);
     if (!row) { R.problems.push(`chats: no list row for ${longChats[i].id}`); continue; }
-    HT.ms = 0; HT.on = true; const t0 = performance.now();
+    const c0 = await thr(); HT.ms = 0; HT.on = true; const t0 = performance.now();
     await click(row);
     HT.on = false; const handler = HT.ms;
     await until(() => H.activeChat[claude.id] === longChats[i].id && Native.view(claude.id).list.querySelectorAll('.msg').length > 20, `long chat ${i}`, 200, 5);
-    await frame(); const t1 = performance.now();
-    add('chat.switch', t1 - t0); add('chat.clickHandler', handler);
+    await frame(); const t1 = performance.now(); const c1 = await thr();
+    add('chat.switch', t1 - t0); add('chat.clickHandler', handler); add('chat.switchCpu', c1 - c0);
     marks.push([t0, t0 + 600]);
-    await wait(700);
+    await wait(Math.max(0, t0 + 700 - performance.now())); add('chat.clickThreadCpu', (await thr()) - c0);
+    await wait(Math.max(0, t1 + 700 - performance.now()));
   }
   const busy = await profStop('chats', marks);
   busy.forEach((ms) => add('chat.clickCpu', ms));
   const box = Native.view(claude.id)?.input || [...document.querySelectorAll('textarea')].find((t) => t.checkVisibility?.());
   if (!box) throw Error('no chat box');
   await click(box); await wait(200);
-  for (const ch of 'the fog in the intro, bass drop') { HT.ms = 0; HT.on = true; await key(ch); HT.on = false; add('chat.keyHandler', HT.ms); await wait(30); }
+  const text = 'the fog in the intro, bass drop'; const k0 = await thr();
+  for (const ch of text) { HT.ms = 0; HT.on = true; await key(ch); HT.on = false; add('chat.keyHandler', HT.ms); await wait(30); }
+  add('chat.keyCpu', ((await thr()) - k0) / text.length);
   box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true }));
 });
 
@@ -168,8 +209,9 @@ renderer.setAnimationLoop((now) => { mesh.rotation.z = now / 1000 * P.spin; mesh
   await profStart();
   for (let k = 0; k < 2; k++) {
     activate(C.id); Native.open(C.id, chatId); await wait(200); activate('tool:three'); await wait(300);
-    const steps = calls(k);
+    const steps = calls(k); const a0 = await appCpu();
     await turn(`mcp please\nmcp: ${JSON.stringify(steps)}`);
+    add('lab.toolCallCpu', ((await appCpu()) - a0) / steps.length); // (round 82) main + window CPU per call (the turn included)
     await wait(200);
     const log = HubBridge.log().filter((e) => e.chatId === chatId && !e.running).slice(-steps.length);
     if (log.length < steps.length) R.problems.push(`lab: round ${k + 1} logged ${log.length} of ${steps.length} calls`);
@@ -214,6 +256,7 @@ await section('memory', async () => {
   const h = await cdp('Runtime.getHeapUsage');
   add('mem.windowHeap', (h?.usedSize ?? performance.memory?.usedJSHeapSize ?? NaN) / 1048576);
 });
+R.calib.after = await calib();
 R.medians = Object.fromEntries(Object.entries(R.samples).map(([k, v]) => [k, med(v)]));
 await window.hub.fs.write(`${window.SMOKE_TMP}/perfguard-probe.json`, JSON.stringify(R, null, 1));
 return JSON.stringify({ medians: R.medians, notes: R.notes, problems: R.problems });
