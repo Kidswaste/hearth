@@ -218,6 +218,15 @@ function testHook(t) {
   const w = getWin();
   if (t.window === 'hide' && w) w.hide();
   if (t.window === 'show' && w) { w.show(); w.focus(); }
+  // (gpuload84) a window's own event as the system sends it ('minimize' / 'restore' / 'blur' / 'focus'; Xvfb has no
+  // window manager to minimize), to the window whose page URL starts with t.winEvent.url (or Hearth's), and every
+  // window's page URL and whether its page may rest when hidden (backgroundThrottling)
+  if (t.winEvent || t.windows) {
+    const { BrowserWindow } = require('electron');
+    const all = BrowserWindow.getAllWindows().filter((x) => !x.isDestroyed());
+    if (t.winEvent) { const x = t.winEvent.url ? all.find((b) => b.webContents.getURL().startsWith(t.winEvent.url)) : w; if (x) { x.emit(String(t.winEvent.event)); out.emitted = true; } }
+    out.windows = all.map((b) => ({ url: b.webContents.getURL().slice(0, 120), throttling: b.webContents.getBackgroundThrottling?.() ?? null }));
+  }
   if (t.agentMs != null) process.env.HEARTH_AGENT_AWAKE_MS = String(t.agentMs);
   if (t.turn) out.turn = Boolean(turn(t.turn));
   if (t.endTurn) { turns.get(String(t.endTurn))?.end(); out.ended = true; }

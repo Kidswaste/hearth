@@ -569,6 +569,9 @@ ipcMain.handle('stage:open', (_e, { query, width, height, fresh }) => {
       webPreferences: { preload: path.join(__dirname, 'stage-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
     });
     const w = stageWin;
+    // (gpuload84) minimized, the Stage's page may rest (it drew at the screen's rate for nobody); restored, as before
+    w.on('minimize', () => { try { w.webContents.setBackgroundThrottling(true); } catch { /* closing */ } });
+    w.on('restore', () => { try { w.webContents.setBackgroundThrottling(false); } catch { /* closing */ } });
     const awake = powerwise.hold('present', { label: 'the Stage window is showing' }); // (round 39) a second screen: the screen stays on
     w.on('closed', () => { awake(); if (stageWin === w) stageWin = null; if (!w.__silent && !win.isDestroyed()) win.webContents.send('stage:closed'); });
     stageWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

@@ -5948,7 +5948,9 @@ let untracked = 0; // (round 24) > 0 while the page makes a helper renderer of i
 function trackRenderer(r) {
   if (untracked) return;
   const st = new Error().stack;
-  if (staleStack(st)) { dropStale(r); return; }
+  // (gpuload84) only a sketch page has stale layer modules: the Shader playground's and Model viewer's own renderer is
+  // made through the three module's blob too, read as a stale module's and dropped (both tabs showed nothing)
+  if (mode === 'sketch' && staleStack(st)) { dropStale(r); return; }
   renderers.add(r);
   if (r.domElement?.__lcf) r.domElement.__rnd = r; // (round 56, labcanvas56: who draws its last frame again)
   if (GAME && r.domElement && r.domElement === GM.canvas) gmTag(r); // (round 52, gamemode) a renderer on the shared context
@@ -13196,6 +13198,14 @@ function swapLayers(specs, fx = 'xfade') {
 
 // ---------- shader mode ----------
 let shader = null;
+// (gpuload84) the Lab's Shader playground and Model viewer tabs drew on every frame of the screen: 240 a second on a
+// 240 Hz screen, a full-pane shader each time, enough GPU load to make Windows' audio crackle in other apps. They hold 60
+// at most, like the preview's Auto (window.__toolPace: the frames drawn, for dev/checks/gpuload84.js).
+function toolPace(fps = 60) {
+  const iv = 1000 / fps; let next = 0;
+  const P = globalThis.__toolPace = { drawn: 0, asked: 0 };
+  return (t) => { P.asked += 1; if (t < next - 1) return false; next = t - next > iv ? t + iv : next + iv; P.drawn += 1; return true; };
+}
 function setupShader() {
   const renderer = new THREE.WebGLRenderer({ antialias: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -13222,7 +13232,9 @@ function setupShader() {
   addEventListener('pointermove', (e) => uniforms.uMouse.value.set(e.clientX * renderer.getPixelRatio(), (innerHeight - e.clientY) * renderer.getPixelRatio()));
   addEventListener('resize', () => renderer.setSize(innerWidth, innerHeight));
   const clock = new THREE.Clock();
-  renderer.setAnimationLoop(() => {
+  const due = toolPace(); // (gpuload84) the Shader playground: 60 at most, not the screen's rate
+  renderer.setAnimationLoop((t) => {
+    if (!due(t)) return;
     renderer.getDrawingBufferSize(size);
     uniforms.uResolution.value.copy(size);
     uniforms.uTime.value = clock.getElapsedTime();
@@ -13285,7 +13297,9 @@ async function setupViewer() {
   const nodes = new Map();
   const materials = new Map();
   const clock = new THREE.Clock();
-  renderer.setAnimationLoop(() => {
+  const due = toolPace(); // (gpuload84) the Model viewer: 60 at most, not the screen's rate
+  renderer.setAnimationLoop((t) => {
+    if (!due(t)) return;
     mixer?.update(clock.getDelta() * speed);
     boxHelper?.update();
     selectHelper?.update();

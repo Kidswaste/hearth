@@ -17,7 +17,7 @@ const IdleCpu = (() => {
   const HUSH_MS = (() => { try { return Number(localStorage.getItem('idlecpu.hushMs')) || 60000; } catch { return 60000; } })();
   let last = performance.now();
   let timer = 0; let hushed = false; let recording = false;
-  const st = { hushes: 0, wakes: 0 };
+  const st = { hushes: 0, wakes: 0, blurHushes: 0 };
   function arm(ms = HUSH_MS) { if (!timer && !hushed) timer = setTimeout(check, Math.max(500, ms)); }
   function check() {
     timer = 0;
@@ -26,8 +26,29 @@ const IdleCpu = (() => {
     hushed = true; st.hushes += 1;
     root.setAttribute('data-hush', '');
   }
+  // (gpuload84) Hearth on screen but another app in front (the DAW, Spotify): after 5 s with no input in this window,
+  // EVERY endless animation pauses where it is (spinners, streaming shimmers, pulses: <html data-blurhush>), not only
+  // the look's ambient ones. Each one keeps the GPU drawing the window on every screen frame (240 a second on a fast
+  // screen) for an app nobody is using, and that load made Windows' audio crackle. What they show stays on screen; they
+  // move again on the first input here, or the moment Hearth is the window in front again. Never while recording.
+  const BLUR_MS = (() => { try { return Number(localStorage.getItem('idlecpu.blurMs')) || 5000; } catch { return 5000; } })();
+  let focused = document.hasFocus(); let blurT = 0; let blurHushed = false;
+  const blurWake = () => { clearTimeout(blurT); blurT = 0; if (blurHushed) { blurHushed = false; root.removeAttribute('data-blurhush'); } };
+  const blurArm = (ms = BLUR_MS) => {
+    clearTimeout(blurT);
+    blurT = focused || blurHushed ? 0 : setTimeout(() => {
+      blurT = 0; if (focused || recording) return;
+      const quiet = performance.now() - last; if (quiet < BLUR_MS - 50) { blurArm(BLUR_MS - quiet); return; }
+      blurHushed = true; st.blurHushes += 1; root.setAttribute('data-blurhush', '');
+    }, Math.max(200, ms));
+  };
+  const setFocused = (on) => { on = Boolean(on); if (on === focused) return; focused = on; if (on) blurWake(); else blurArm(); };
+  try { window.hub?.onWindowFocus?.((on) => setFocused(on)); } catch { /* no hub: the page's own events below */ }
+  addEventListener('focus', () => setFocused(true));
+  addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus()) setFocused(false); }, 0)); // (focus going into a frame inside isn't a blur of the window)
   function input() {
     last = performance.now();
+    if (blurHushed) { blurWake(); blurArm(); } // (a countdown already running looks at the last input when it ends)
     if (!hushed) return;
     hushed = false; st.wakes += 1;
     root.removeAttribute('data-hush');
@@ -35,7 +56,7 @@ const IdleCpu = (() => {
   }
   for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) addEventListener(ev, input, { capture: true, passive: true });
   // a capture of Hearth itself: the look stays as it is for the recording
-  document.addEventListener('hearth:recording', (e) => { recording = Boolean(e.detail?.recording); if (recording) input(); });
-  arm();
-  return { state: () => ({ hushed, idleMs: Math.round(performance.now() - last), hushes: st.hushes, wakes: st.wakes, hushMs: HUSH_MS }) };
+  document.addEventListener('hearth:recording', (e) => { recording = Boolean(e.detail?.recording); if (recording) input(); else blurArm(); });
+  arm(); blurArm();
+  return { state: () => ({ hushed, idleMs: Math.round(performance.now() - last), hushes: st.hushes, wakes: st.wakes, hushMs: HUSH_MS, focused, blurHushed, blurHushes: st.blurHushes, blurMs: BLUR_MS }) };
 })();

@@ -5,3 +5,8 @@
 :root[data-hush] :is(#rail, #broadcast, .palette-card, .tool-head, .native-head, .empty, .empty-icon, .tabbar button, .item, .agent-btn)::after,
 :root[data-hush] .empty-icon,
 :root[data-hush] body::before, :root[data-hush] body::after { animation-play-state: paused !important; }
+
+/* (gpuload84, idlecpu.js) another app in front for 5 s with no input here: every endless animation pauses where it is
+   (spinners, shimmers and pulses included: what they show stays), so the GPU stops drawing the window on every frame of
+   the screen. The first input in the window, or Hearth in front again, plays them on. */
+:root[data-blurhush] *, :root[data-blurhush] *::before, :root[data-blurhush] *::after { animation-play-state: paused !important; }

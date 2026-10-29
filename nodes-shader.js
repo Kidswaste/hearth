@@ -901,9 +901,17 @@ float sgSimplex(vec2 v) {
       for (const [k, v] of values) { const l = loc(k); if (!l) continue; if (Array.isArray(v)) gl.uniform3f(l, v[0], v[1], v[2]); else gl.uniform1f(l, v); }
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
+    // (gpuload84) paced, not the screen's rate: on a 240 Hz screen this full-canvas shader drew 240 times a second (paused
+    // too), and that much GPU work made Windows' audio crackle in other apps. Playing: 60 at most (30 while Hearth isn't
+    // the window in front), paused: 10 (a knob or the mouse still shows), not on screen: nothing (a look twice a second).
+    let next = 0;
     function frame(now) {
-      if (lost) return;
+      if (lost || gone) return;
+      if (document.hidden || (canvas.checkVisibility && !canvas.checkVisibility({ visibilityProperty: true }))) { raf = 0; setTimeout(() => { if (!raf && !lost && !gone) { last = performance.now(); raf = requestAnimationFrame(frame); } }, 500); return; }
       raf = requestAnimationFrame(frame);
+      const iv = 1000 / (!playing ? 10 : document.hasFocus() ? 60 : 30);
+      if (now < next - 1) return;
+      next = now - next > iv ? now + iv : next + iv;
       if (playing) t += Math.min(0.1, (now - last) / 1000);
       last = now;
       draw();

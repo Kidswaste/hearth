@@ -323,14 +323,19 @@ const track = new THREE.NumberKeyframeTrack('.material.opacity', times, values);
       update();
     });
     // Preview: a dot travels the track using the curve, then pauses and repeats.
-    let start = performance.now();
+    // (gpuload84) 60 a second at most (it moved the dot on every frame of a 240 Hz screen), and nothing while the tab
+    // isn't on screen (the Lab's Easing tab stays in the page behind the others): a look twice a second until it is
+    let start = performance.now(); let next = 0;
     const loop = (now) => {
       if (!canvas.isConnected) return;
+      if (document.hidden || (track.checkVisibility && !track.checkVisibility({ visibilityProperty: true }))) { setTimeout(() => requestAnimationFrame(loop), 500); return; }
+      requestAnimationFrame(loop);
+      if (now < next - 1) return;
+      next = now - next > 1000 / 60 ? now + 1000 / 60 : next + 1000 / 60;
       const dur = Number(duration.value);
       const t = ((now - start) % (dur + 500)) / dur;
       const e = bezier(...pts)(Math.min(1, t));
       dot.style.left = `calc(${e * 100}% - ${e * 16}px)`;
-      requestAnimationFrame(loop);
     };
     container.append(el('div', { class: 'kit-ease' },
       el('div', { class: 'kit-ease-left' }, canvas,

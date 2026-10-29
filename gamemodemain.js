@@ -369,6 +369,11 @@ async function play(_e, req = {}) {
   // (round 63, hitchmap63) recording the hitch map: the close waits once for the page's ring (≤ 1.2 s), then goes on
   win.on('close', (e) => { const p = G === g ? hitch()?.closing?.(g) : null; if (p) { e.preventDefault(); p.finally(() => { if (!win.isDestroyed()) win.close(); }); } });
   win.on('closed', () => ended(g));
+  // (gpuload84) backgroundThrottling stays off (a game on another screen or partly covered never slows), but a minimized
+  // game drew on at the screen's rate (240 a second on a fast screen) for nobody: minimized, the page may rest like any
+  // hidden page; back on screen, it's as before
+  win.on('minimize', () => { try { wc.setBackgroundThrottling(true); } catch { /* closing */ } });
+  win.on('restore', () => { try { wc.setBackgroundThrottling(false); } catch { /* closing */ } });
   wc.on('render-process-gone', () => { if (!win.isDestroyed()) win.close(); });
   wc.once('did-finish-load', () => {
     // its own renderer process, at a higher priority (Windows: above normal; a Mac / Linux user process can't raise it)
