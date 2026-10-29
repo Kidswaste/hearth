@@ -72,7 +72,13 @@ function runCli(cli, args, { cwd, emit, timeout = 15 * 60000, env } = {}) {
     };
     child.stdout.on('data', (d) => feed(d, 'out'));
     child.stderr.on('data', (d) => feed(d, 'err'));
-    const timer = setTimeout(() => { try { child.kill(); } catch { /* gone */ } err += '\nTimed out.'; }, timeout);
+    // (windows hourly 10) on Windows the whole tree (taskkill /T): kill() ended only cmd.exe, the CLI under it kept running
+    // and holding the output pipes, so 'close' never came and a timed-out deploy waited forever
+    const stop = () => {
+      if (isWin() && child.pid) { try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => { try { child.kill(); } catch { /* gone */ } }); return; } catch { /* below */ } }
+      try { child.kill(); } catch { /* gone */ }
+    };
+    const timer = setTimeout(() => { stop(); err += '\nTimed out.'; }, timeout);
     child.on('error', (e) => { clearTimeout(timer); resolve({ code: -1, out, err: `${err}${e.message}` }); });
     child.on('close', (code) => { clearTimeout(timer); resolve({ code, out, err }); });
   });
