@@ -162,9 +162,13 @@ try {
   await until(() => rows('chat').length, 'the saved message found by itself', 400);
   out.live.save = { ms: Math.round(performance.now() - tz), chat: rel.ref };
   // ---------- another big project read while this Desk is on screen: the page's frames meanwhile (reported) ----------
-  { rafOn = true; lastT = 0; requestAnimationFrame(rafTick); const tb = performance.now();
-    await ProjFind.warm(Projects.get('pjbp1'), 'check'); rafOn = false;
-    out.index.other = { project: 'pjbp1', wall: Math.round(performance.now() - tb), ...ProjFind.state().stats.build, frames: gaps.length, framesOver25ms: gaps.filter((g) => g > 25).length, longestFrame: Math.round(Math.max(0, ...gaps)) }; }
+  { const framesDuring = async (fn) => { gaps.length = 0; lastT = 0; rafOn = true; requestAnimationFrame(rafTick); const loaf = []; let po = null; try { po = new PerformanceObserver((l) => loaf.push(...l.getEntries())); po.observe({ type: 'long-animation-frame' }); } catch { /* none */ } const tb = performance.now(); await fn(); const wall = Math.round(performance.now() - tb); rafOn = false; await frame(); po?.disconnect();
+      const scripts = {}; for (const e of loaf) for (const sc of e.scripts || []) { const k = `${String(sc.sourceURL || '').split('/').pop()}:${sc.sourceFunctionName || sc.invoker || ''}`; scripts[k] = (scripts[k] || 0) + Math.round(sc.duration); }
+      return { wall, frames: gaps.length, over25ms: gaps.filter((g) => g > 25).length, longest: Math.round(Math.max(0, ...gaps)), longFrameScripts: Object.entries(scripts).sort((a, b) => b[1] - a[1]).slice(0, 4) }; };
+    const idle = await framesDuring(() => wait(600)); // the same Desk doing nothing, for comparison
+    const during = await framesDuring(() => ProjFind.warm(Projects.get('pjbp2'), 'check'));
+    out.index.other = { project: 'pjbp2', build: ProjFind.state().stats.build, framesIdle: idle, framesWhileReading: during };
+    need(!during.longFrameScripts.some(([k]) => /projfind/.test(k)), `no long frame caused by Find in this project while another project is read (${JSON.stringify(during.longFrameScripts)})`); }
   // ---------- this page's own work, over the whole run ----------
   const fin = ProjFind.state().stats;
   out.own = { maxTaskMs: fin.maxTaskMs, tasks: fin.tasks, calls: fin.calls };

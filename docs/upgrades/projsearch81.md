@@ -44,11 +44,13 @@ on this computer.
   with nothing new leaves the rows under your mouse alone).
 
 ## Numbers (heavy fixture: `dev/bigprofile.js --projects 40`, "Clink": 700-message chat + 14 long chats, 5 scenes, 3 boards, 740 files)
-- Index of Clink: 34 sources, 10,661 docs, ≈ 5 MB of text; **245–300 ms of store-thread time in 13–17 slices**
+- Index of Clink: 34 sources, 10,661 docs, ≈ 5 MB of text; **245–335 ms of store-thread time in 13–18 slices**
   (≈ 1.3–2 s of wall time while the Desk is in use), longest slice ≈ 20 ms on the thread.
-- **First query after the index: 22–36 ms** from typing to rows painted ("portal": 5,614 matches; the thread's part
-  11–24 ms); other queries 17–41 ms; on an idle machine the thread's part is 5–12 ms (Node, `prof` of the same project).
-- The window's longest own task (painting results, moving the selection): **1.8–5.2 ms** (budget 16 ms).
+- **First query after the index: 19–36 ms** from typing to rows painted ("portal": 5,614 matches; the thread's part
+  10–24 ms), 59 ms in one run on a very busy machine; other queries 17–51 ms; on an idle machine the thread's part is 5–12 ms (Node, `prof` of the same project).
+- The window's longest own task (painting results, moving the selection): **2–5 ms** in 5 of 6 runs, 15.8 ms once on a very busy machine (budget 16 ms).
+- Another big project read while the Desk is on screen: 10 frames in 304 ms, longest 33 ms (the same Desk idle: longest
+  117 ms); no long frame has any of this feature's code in it (Long Animation Frames).
 - Main process: ≈ 1 ms per find call (IPC hand-over only).
 - Before tuning, the first query was 101 ms (every matching message folded whole): scoring without copying text + only
   the best of each kind read whole brought it to ≈ 22 ms.
@@ -97,10 +99,10 @@ on this computer.
   letting go (idle, size cap), **the real store thread** (storework.js in a worker: built off-main; a `write` op then a
   find reads only that chat), a Clink-sized project (built in slices; every query < 100 ms).
 - `BIGPROFILE70=1 node dev/run-checks.js --exact projsearch81` — **pass** (by real mouse clicks / typed keys via CDP):
-  Projects → Clink → Desk; index read in slices; first query 22–36 ms; grouped results; a message opens and stays in
+  Projects → Clink → Desk; index read in slices; first query 19–59 ms; grouped results; a message opens and stays in
   view; real Ctrl+F lands in the box; a code row opens the Lab on that layer with the line selected; a board note opens
   selected; notes typed are found and Open selects them; a storyboard title typed on the Creative board is found and Open
-  selects it; a chat saved + the arrival event is found without retyping (≈ 350 ms); the window's own task ≤ 5 ms;
+  selects it; a chat saved + the arrival event is found without retyping (≈ 350 ms); the window's own task ≤ 16 ms; frames while another project is read no worse than idle;
   ≈ 1 ms of main process per call.
 - `projects`, `project-workspaces`, `chatwindow72`, `storeack77`, `lazy` — pass. `unit:boot-test` (first screen
   1874 / 1880 KB: unchanged — everything new is in the lazy `projects` group or the store thread), `unit:storeack-scan`,
