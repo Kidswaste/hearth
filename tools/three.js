@@ -3192,6 +3192,7 @@ const ThreeLab = (() => {
       });
     }
 
+    const HEALTH_MSG = /^(error|health|health-clear|layer-paused|gpu-lost|gpu-restored)$/;
     const layerName = (id) => (layersOf().length > 1 ? layerById(id || 'main')?.name : null);
     function log(level, text, line, layer) {
       const lname = layerName(layer);
@@ -3215,6 +3216,7 @@ const ThreeLab = (() => {
       editor.syncScroll();
     }
     function onMessage(msg) {
+      if (HEALTH_MSG.test(msg.type)) window.LabHealth?.fromBox(msg, current?.id, 'screen'); // (round 80, laberrors80) the scene's health → its chats
       if(msg.type==='stack-drawn'&&!msg.noGl)workspaceDrawn=current?.id;
       workspaceMessage?.(msg);
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
@@ -3723,6 +3725,7 @@ const ThreeLab = (() => {
     const glWait = (ms = 8000) => (!glp.phase ? Promise.resolve(true) : new Promise((r) => { glp.waits.push(r); setTimeout(() => r(false), ms); }));
     api.gl = { wait: glWait, state: () => ({ phase: glp.phase, since: glp.phase ? glp.at : 0, stuck: glp.stuck, log: glp.log.slice(), box: box.gl }) };
     previewHost.append(stall);
+    api.healthHost = { host: previewHost, send: (m) => box.send(m), sceneId: () => current?.id || null }; // (round 80, laberrors80) a paused layer's note + ▶ Resume
     // (round 38, inputlatency) the safety check runs when the window is idle: it asks the page whether the preview is on
     // screen (a style and layout of the whole Lab), and on a timer it landed in the middle of slider drags and scrubs,
     // holding up the next pointer move
@@ -5449,6 +5452,7 @@ ${frag}\`,
     get present() { return api.present || null; }, // (round 52, gamemode) the player (its song pauses while a game plays)
     get tm() { return api.tm || null; }, // (round 23) tools/three-history*.js
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
+    get healthHost() { return api.healthHost || null; }, // (round 80, laberrors80) tools/three-health.js
     get framebar() { return api.framebar || null; }, // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
     get groupsHost() { return api.groupsHost || null; }, // (round 44) layer groups (tools/three-groups.js)
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)

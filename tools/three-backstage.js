@@ -75,6 +75,7 @@ function makeBackstage(opts = {}) {
   const timing = { calls: 0, ms: 0, shots: 0, shotMs: 0, shotTimeouts: 0, loads: 0, fresh: 0, loadMs: 0 }; // (round 73) where backstage time goes
 
   function onMessage(m) {
+    if (!opts.scenes && loaded?.id && /^(error|health|health-clear|layer-paused|gpu-lost|gpu-restored)$/.test(m.type)) window.LabHealth?.fromBox(m, loaded.id, 'backstage'); // (round 80, laberrors80)
     // a fresh page has started at its first stats; a layer re-run in place once it has drawn
     if (onStart && (m.type === 'drawn' || m.type === 'error' || (m.type === 'stats' && !waitDrawn))) { const fn = onStart; onStart = null; fn(); }
     if (m.type === 'gpu-stuck') { loaded = null; return; } // (round 43, glrecover) the page is made again empty: the next call runs the scene in it

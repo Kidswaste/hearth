@@ -138,6 +138,8 @@ const HubBridge = (() => {
       result = r0.error ? { ok: false, error: r0.error } : h ? await capped(tool, run(h, tool, args || {}, { chatId: hubChatId })) : { ok: false, error: `Nothing in the hub handles ${tool}.` };
     } catch (err) { result = { ok: false, error: err.message }; }
     result ||= { ok: false, error: `${tool} returned nothing.` };
+    // (round 80, laberrors80) the chat's scene broke since its last call: one "health:" line (healthy: nothing added)
+    if (hubChatId && window.LabHealth) { try { result = LabHealth.decorate(tool, result, hubChatId, entry.at) || result; } catch (err) { console.warn(err); } }
     Object.assign(entry, { running: false, ms: Date.now() - entry.at, ok: result.ok !== false, error: result.ok === false ? String(result.error || '').slice(0, 300) : null });
     const imgs = [].concat(result.images || (result.image ? [{ data: result.image, mime: result.mime }] : [])).filter((x) => x?.data);
     if (imgs.length) { entry.image = imgs.length; lastImage = { tool, url: `data:${imgs[0].mime || 'image/png'};base64,${imgs[0].data}`, at: Date.now() }; }
