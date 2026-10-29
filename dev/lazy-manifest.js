@@ -5,7 +5,10 @@
 // old places in index.html (LazyData.GROUPS[].at) with dev/lazy-record.js noting who registers what. Then the lazy
 // build runs too and both are compared (commands, aliases, actions, keys, apps, tools must match).
 //   node dev/lazy-manifest.js            # rewrite lazy-data.js, then compare
-//   node dev/lazy-manifest.js --check    # exit 1 when lazy-data.js is out of date or the lazy build differs
+//   node dev/lazy-manifest.js --check    # writes nothing: exit 1 when lazy-data.js / lazy-meta.js are out of date, the lazy build differs or a file threw
+//   node dev/lazy-manifest.js --check --emit /tmp/x.json   # + the would-be text of both files (dev/lazymanifest-test.js)
+// (round 85, manifest85) byte-stable from run to run: the files go back in lazy.js's order (never before a group they
+// need), the registry is read once the first screen is up, and a name registered with `when` always counts as shared.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -27,8 +30,14 @@ function smoke(root, body) {
   const m = text.match(/\[LAZY\](\{[\s\S]*\})/);
   if (!m) { console.error(text.slice(-3000)); throw new Error('no result in the smoke output'); }
   if (/problem\(s\):/.test(text)) console.log(text.slice(text.lastIndexOf('problem(s):') - 4).slice(0, 2000));
-  return JSON.parse(m[1]);
+  const out = JSON.parse(m[1]);
+  // (round 85, manifest85) a file that throws while the copy loads registers nothing after the throw: name it
+  out.exceptions = /problem\(s\):/.test(text) ? text.slice(text.lastIndexOf('problem(s):')).split('\n').filter((l) => /^exception: /.test(l)) : [];
+  return out;
 }
+// (round 85, manifest85) read once the first screen is up (start.js: Meter.init, then 'hearth:ready'), never mid-start
+const READY = `if (!performance.getEntriesByName('hearth:ready').length) await new Promise((r) => { addEventListener('hearth:ready', r, { once: true }); setTimeout(r, 30000); });
+await new Promise((r) => setTimeout(r, 300));`;
 const SNAP = `
 const names = Commands.list().map((d) => d.name).sort();
 const snap = { names, aliases: Commands.list().flatMap((d) => d.aliases.map((a) => a.toLowerCase() + '>' + d.name)).sort(), actions: AppUI.actions().map((a) => a.label).sort(),
@@ -43,12 +52,57 @@ for (const n of fs.readdirSync(ROOT)) if (!skip.has(n)) fs.cpSync(path.join(ROOT
 let html = fs.readFileSync(path.join(copy, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
 const tag = (f) => `  <script defer src="${f}"></script>\n`;
 html = html.replace(tag('lazy.js'), '').replace(tag('lazy-data.js'), '');
-const after = (f, add) => { if (!html.includes(tag(f))) throw new Error(`index.html has no ${f} (LazyData.GROUPS at)`); html = html.replace(tag(f), tag(f) + add); };
-for (const g of LazyData.GROUPS) {
-  const own = g.places || {};
-  after(g.at, g.files.filter((f) => !own[f]).map(tag).join(''));
-  for (const [f, at] of Object.entries(own)) after(at, tag(f));
+// (round 85, manifest85) the files go back in the order lazy.js registers the stand-ins at run time, and never before a
+// group they need. Each group used to be put right after its `at` file, so groups sharing one came out reversed
+// (projbundle before projects: "Projects is not defined") and a group placed earlier than one it needs (`after`)
+// ran first (questjournal's follow-hook.js before follow's follow-core.js: "FollowCore is not defined"): their files
+// threw while the copy loaded and what they register was missing from the recording.
+//  1. same `at`: one after the other, in the order of the lazy-at.js tags (lazy.js Lazy.at), then LazyData.GROUPS
+//  2. a group whose `after` group(s) still land later moves right after the last of them (as lazy.js loads it: after)
+const tagOrder = new Map();
+for (const m of html.matchAll(/<script defer src="lazy-at\.js#([^"]*)"><\/script>/g)) for (const n of decodeURIComponent(m[1]).split(',').map((x) => x.trim())) if (n && !tagOrder.has(n)) tagOrder.set(n, tagOrder.size);
+const groupIx = new Map(LazyData.GROUPS.map((g, i) => [g.name, i]));
+const rank = (g) => (tagOrder.has(g.name) ? tagOrder.get(g.name) : tagOrder.size + groupIx.get(g.name));
+const ordered = [...LazyData.GROUPS].sort((p, q) => rank(p) - rank(q));
+const tail = new Map(); // anchor file → the last file put after it (the next one goes after that)
+const put = (anchor, files) => {
+  if (!files.length) return;
+  let at = anchor;
+  while (tail.has(at)) at = tail.get(at); // (a file put after a file that itself got followers: after the last of them)
+  if (!html.includes(tag(at))) throw new Error(`index.html has no ${anchor} (LazyData.GROUPS at)`);
+  html = html.replace(tag(at), tag(at) + files.map(tag).join(''));
+  tail.set(at, files.at(-1));
+};
+const ownFiles = (g) => g.files.filter((f) => !(g.places || {})[f]);
+for (const g of ordered) {
+  put(g.at, ownFiles(g));
+  for (const [f, at] of Object.entries(g.places || {})) put(at, [f]);
 }
+const byName = new Map(LazyData.GROUPS.map((g) => [g.name, g]));
+const posOf = () => { const p = new Map(); [...html.matchAll(/<script defer src="([^"]+)"><\/script>/g)].forEach((m, i) => p.set(m[1], i)); return p; };
+const moved = [];
+for (let pass = 0, again = true; again; pass++) {
+  if (pass > LazyData.GROUPS.length) throw new Error(`LazyData.GROUPS after: a loop (${moved.slice(-5).join(', ')})`);
+  again = false;
+  for (const g of ordered) {
+    const pos = posOf(), mine = ownFiles(g);
+    if (!mine.length) continue;
+    const first = Math.min(...mine.map((f) => pos.get(f)));
+    let need = null;
+    for (const d of g.after || []) for (const f of byName.get(d)?.files || []) if (pos.get(f) > first && (!need || pos.get(f) > pos.get(need))) need = f;
+    if (!need) continue;
+    for (const f of mine) html = html.replace(tag(f), '');
+    for (const f of mine) { // (the chain of files put after one another closes over the ones that leave)
+      for (const [k, v] of [...tail]) if (v === f) { if (tail.has(f)) tail.set(k, tail.get(f)); else tail.delete(k); }
+      tail.delete(f);
+    }
+    put(need, mine);
+    moved.push(`${g.name} → after ${need}`);
+    again = true;
+  }
+}
+if (moved.length) console.log(`(placed after the groups they need: ${moved.join(' · ')})`);
+const after = (f, add) => { if (!html.includes(tag(f))) throw new Error(`index.html has no ${f}`); html = html.replace(tag(f), tag(f) + add); };
 after('commands.js', tag('lazy-data.js') + tag('dev/lazy-record.js'));
 after('apps.js', tag('dev/lazy-record.js'));
 after('appui.js', tag('dev/lazy-record.js'));
@@ -59,7 +113,7 @@ fs.mkdirSync(path.join(copy, 'devrec'), { recursive: true });
 fs.copyFileSync(path.join(__dirname, 'lazy-record.js'), path.join(copy, 'devrec', 'lazy-record.js'));
 fs.writeFileSync(path.join(copy, 'index.html'), html.replaceAll('src="dev/lazy-record.js"', 'src="devrec/lazy-record.js"'));
 console.log('recording the old order…');
-const old = smoke(copy, `${SNAP} return '[LAZY]' + JSON.stringify({ rec: window.__lazyRec?.out || {}, snap, shared: Commands.list().filter((d) => d.variants).flatMap((d) => [d.name, ...d.variants.map((v) => v.name)]) });`);
+const old = smoke(copy, `${READY} ${SNAP} return '[LAZY]' + JSON.stringify({ rec: window.__lazyRec?.out || {}, snap, shared: Commands.list().filter((d) => d.variants).flatMap((d) => [d.name, ...d.variants.map((v) => v.name)]) });`);
 
 const meta = {};
 const uniq = (xs, key) => { const seen = new Set(); return xs.filter((x) => { const k = key(x); if (seen.has(k)) return false; seen.add(k); return true; }); };
@@ -85,7 +139,10 @@ for (const g of LazyData.GROUPS) {
 // aliases: /retry with /again) keeps its words here: Commands.register combines the variants' descriptions as they register.
 // (round 73, startfast73) + args (the commands' argument hints) and the keys-sheet lines' words (text[g]['#keys'])
 const TEXT_KEYS = ['desc', 'examples', 'keywords', 'undo', 'args'];
-const shared = new Set((old.shared || []).map((n) => n.toLowerCase()));
+// (round 85, manifest85) + every name a group registers with `when`: whether the registry shows such a name combined
+// at the moment it is read depended on timers (chat-cost.js's /context joins the meter's again after an override), so
+// /context's words went back and forth between lazy-data.js and lazy-meta.js from one run to the next
+const shared = new Set([...(old.shared || []), ...Object.values(old.rec).flatMap((r) => (r.commands || []).filter((c) => c.when).map((c) => c.name))].map((n) => n.toLowerCase()));
 const text = {};
 for (const [g, o] of Object.entries(meta)) {
   if (!o.commands) continue;
@@ -135,6 +192,15 @@ if (lost.length && !process.argv.includes('--force')) {
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ }
   process.exit(1);
 }
+// (round 85, manifest85) a file that threw while the old order loaded left out what it registers after the throw:
+// that recording is not written (--force writes it anyway)
+if (old.exceptions.length) {
+  console.error(`✖ ${old.exceptions.length} exception(s) while the old order loaded (a file before one it needs? LazyData.GROUPS at / after):\n  ${old.exceptions.join('\n  ')}`);
+  if (!process.argv.includes('--force')) { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp */ } process.exit(1); }
+}
+// --emit <file>: the two generated files' would-be text as JSON (dev/lazymanifest-test.js compares two runs)
+const emit = process.argv.includes('--emit') ? process.argv[process.argv.indexOf('--emit') + 1] : null;
+if (emit) fs.writeFileSync(emit, JSON.stringify({ 'lazy-data.js': next, 'lazy-meta.js': textSrc }));
 if (next !== src) {
   if (check) { console.log('✖ lazy-data.js is out of date: run node dev/lazy-manifest.js'); bad++; } else { fs.writeFileSync(FILE, next); console.log('wrote lazy-data.js'); }
 }

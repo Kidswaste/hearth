@@ -170,6 +170,9 @@ const ChatCost = (() => {
     // the meter registers its /context with override when it starts, which may come after this: join it again then
     const join = () => { const d = Commands.get('context'); if (!d?.variants?.some((x) => x.run === mine)) Commands.register(def); };
     join();
+    // (round 85, manifest85) start.js runs Meter.init right before 'hearth:ready': join again then, not only on the
+    // timers (a start slower than 1.5 s left /context without this part until the 5 s one, and the manifest flapped)
+    addEventListener('hearth:ready', join, { once: true });
     for (const ms of [1500, 5000, 15000]) setTimeout(join, ms);
   }
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', register); else register();
