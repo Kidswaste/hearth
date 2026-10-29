@@ -4217,7 +4217,16 @@ ${code}
       // project's (its sliders scanned and its page loaded twice in the first open of a session)
       const hinted = startHint && sketches.some((x) => x.id === startHint) ? startHint : null; startHint = null;
       const want = hinted || (typeof ChatScenes !== 'undefined' ? ChatScenes.startSketch?.(sketches.map((x) => x.id)) : null);
-      openSketch(want || store.get('three.current', sketches[0].id), { by: hinted ? 'project' : want ? 'scene' : 'start' });
+      // (round 86, projopen86) the Lab's first start in two window tasks: its toolbar and lists above, a painted frame,
+      // then the scene (its sliders scanned, its layers run: ≈ 60–120 ms for a big scene). It was one task of ≈ 100–
+      // 350 ms. A scene opened meanwhile (a project opening asked for its own) stays: it was the one shown after anyway
+      const nextPaint = () => new Promise((r) => { let done = false; const go = () => { if (!done) { done = true; r(); } }; requestAnimationFrame(() => setTimeout(go, 0)); setTimeout(go, 50); });
+      await nextPaint();
+      // …and its layers' sliders read one layer per task (ThreeTweaks keeps each scan by its code: the run below finds
+      // them read): a big scene's 6 layers were ≈ 40–60 ms of reading inside its first run
+      { const first = sketches.find((x) => x.id === (want || store.get('three.current', sketches[0].id))) || sketches[0];
+        for (const code of (first?.layers?.length ? first.layers.map((L) => L.code) : [first?.code])) { if (current || typeof code !== 'string' || typeof ThreeTweaks === 'undefined') break; try { ThreeTweaks.scan(code); } catch { /* read again in the run */ } await new Promise((r) => setTimeout(r, 0)); } }
+      if (!current) openSketch(want || store.get('three.current', sketches[0].id), { by: hinted ? 'project' : want ? 'scene' : 'start' });
       api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
       dispatchEvent(new Event('hearth:lab-ready'));
       SSafe?.opened?.({ read: scenesRead, fresh, others: reads.slice(1).map((r, i) => (r.ok ? null : names[i + 1])).filter(Boolean) }); // (round 43) the calm card, when needed
