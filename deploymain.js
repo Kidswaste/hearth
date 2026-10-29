@@ -20,6 +20,15 @@ const ROOT = () => path.join(dataDir(), 'deploy');
 const exists = (p) => { try { return Boolean(p) && fs.existsSync(p); } catch { return false; } };
 const isMac = () => process.platform === 'darwin';
 const isWin = () => process.platform === 'win32';
+// (windows hourly 11) the GitHub Pages copy is a git repository: git makes its object files read-only, and on Windows
+// a read-only file can't be deleted, so rmSync threw EPERM, the deploy that had just been pushed said it failed, and
+// a hearth-ghpages-… folder stayed in Temp each time. Those files are made writable, then removed again.
+function rmGitCopy(dir) {
+  try { fs.rmSync(dir, { recursive: true, force: true }); return; } catch (err) { if (!isWin() || !['EPERM', 'EACCES'].includes(err.code)) throw err; }
+  const writable = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) writable(p); else { try { fs.chmodSync(p, 0o666); } catch { /* gone */ } } } };
+  writable(dir);
+  fs.rmSync(dir, { recursive: true, force: true });
+}
 
 // ---------- finding the CLIs ----------
 // GUI apps on a Mac don't get the shell's PATH: npm / Homebrew / nvm / volta folders are searched by hand.
@@ -72,7 +81,13 @@ function runCli(cli, args, { cwd, emit, timeout = 15 * 60000, env } = {}) {
     };
     child.stdout.on('data', (d) => feed(d, 'out'));
     child.stderr.on('data', (d) => feed(d, 'err'));
-    const timer = setTimeout(() => { try { child.kill(); } catch { /* gone */ } err += '\nTimed out.'; }, timeout);
+    // (windows hourly 10) on Windows the whole tree (taskkill /T): kill() ended only cmd.exe, the CLI under it kept running
+    // and holding the output pipes, so 'close' never came and a timed-out deploy waited forever
+    const stop = () => {
+      if (isWin() && child.pid) { try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => { try { child.kill(); } catch { /* gone */ } }); return; } catch { /* below */ } }
+      try { child.kill(); } catch { /* gone */ }
+    };
+    const timer = setTimeout(() => { stop(); err += '\nTimed out.'; }, timeout);
     child.on('error', (e) => { clearTimeout(timer); resolve({ code: -1, out, err: `${err}${e.message}` }); });
     child.on('close', (code) => { clearTimeout(timer); resolve({ code, out, err }); });
   });
@@ -428,7 +443,7 @@ async function deploy(job, emit = () => {}, { paths = {} } = {}) {
         const r = await g(args);
         if (r.code !== 0) return { ok: false, error: `git ${args.find((a) => /^(init|checkout|add|commit|push)$/.test(a))}: ${firstLine(r.err) || firstLine(r.out)}`, log };
       }
-    } finally { fs.rmSync(work, { recursive: true, force: true }); }
+    } finally { try { rmGitCopy(work); } catch (err) { console.warn('deploy: temp copy left', work, err.message); } } // (never the deploy's own result)
     step(80, 'Turning Pages on');
     await go(p.pages({ owner, slug: job.slug }), { cwd: os.tmpdir() }); // already on: 409, fine
     return { ok: true, url: `https://${owner.toLowerCase()}.github.io/${job.slug}/`, site: job.slug, owner, log, note: 'GitHub Pages takes a minute to go live the first time.' };

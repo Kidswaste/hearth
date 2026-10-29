@@ -114,6 +114,9 @@ const Astra = (() => {
         if (ev.type === 'thinking') { thinking += ev.text; return; }
         if (ev.type === 'tool') { tools.push(ev.name); return; }
         if (ev.type === 'progress') return;
+        // (round 67 fix) only these end a turn: Codex's codexTurn (sent at turn/started, ≈ 0.6 s in, for steering) and the
+        // other live events (status, pulse, step, codexQuestion…) ended every Astra seat at once as "No answer"
+        if (ev.type !== 'done' && ev.type !== 'error' && ev.type !== 'stopped') return;
         runs.delete(id);
         live?.runIds.delete(id);
         const done = ev.type === 'done';
