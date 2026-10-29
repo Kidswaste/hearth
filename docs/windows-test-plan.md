@@ -8,6 +8,7 @@ Your job: check the things below on real Windows and report back plain results (
 - Never touch Quentin's real data. Use a throwaway copy of Hearth's data folder for anything that writes
   (`HEARTH_DATA_DIR` pointed at a temp folder, or Hearth's own `--profile`/test flags if present — check README).
 - Never upload anything. Never sign in to anything. Ask Quentin before closing his running Hearth.
+- Before pushing a fix to main, run `node dev/run-checks.js --exact unit:winmac-test unit:datasafe-scan unit:errorcalm-scan unit:storeack-scan unit:boot-test` (a Windows-only call needs a `winmac-ok` comment saying why).
 - If a step needs Quentin (e.g. putting on headphones), ask him in one plain sentence.
 
 ## 0. Get the latest
