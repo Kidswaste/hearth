@@ -44,6 +44,7 @@ const sizeOf = (f) => { try { return fs.statSync(f).size; } catch { return 0; } 
 // (round 82) giant chats' cloud forms as made here this pass (a pass hashes a file, then pushes / pulls / merges it: made
 // once), by file + whether it was converted (local) + its size and time; let go a minute after the last use
 const forms = new Map(); let formsT = null;
+const digests = new Map(); // (round 82) Earlier versions: a giant chat copy's digest by its file (kept while it stays the same)
 // read(file) → { buf, sig } only when the file stayed the same while read (else null: the whole-file way)
 function readStill(file) { const s1 = bigSig(stat(file)); const buf = fs.readFileSync(file); return s1 && bigSig(stat(file)) === s1 ? { buf, sig: s1 } : null; }
 // got: bytes already read with their sig (readStill): a kept form is used only for those very bytes
@@ -472,6 +473,38 @@ const OPS = {
     if (!cf) return null;
     forms.delete(`l:${file}`); // (its bytes are handed over)
     return { h: cf.h, text: cf.text, __transfer: [cf.text.buffer] };
+  },
+  // (round 82, bigchat82) Earlier versions of a giant chat: a copy's digest (bigchat-core.js digestBytes), not the copy.
+  // ctx: a cloud copy (its paths made this computer's first) · wrapped: a copy kept before a restore ({ thing })
+  chatDigest({ file, ctx, wrapped }) {
+    const S = require('./sync-merge'); const VC = require('./versions-core');
+    const key = `${ctx ? 'c' : 'l'}${wrapped ? 'w' : ''}:${file}`;
+    const got = readStill(file);
+    if (!got) return null;
+    const had = digests.get(key);
+    if (had && had.sig === got.sig) return had.dg;
+    let dg = wrapped ? null : BC().digestBytes(got.buf, ctx, S, VC);
+    if (!dg) { // (a wrapped copy, a file the cut can't read: parsed here, never on the main process)
+      let v; try { v = S.parseJson(got.buf.toString('utf8')); } catch { return null; }
+      if (ctx) v = S.fromCloud(v, ctx);
+      if (wrapped) v = v?.thing;
+      dg = BC().digestValue(v, VC);
+    }
+    if (dg) { digests.set(key, { sig: got.sig, dg }); if (digests.size > 32) digests.delete(digests.keys().next().value); }
+    return dg;
+  },
+  // (round 82, bigchat82) a giant chat's copy in this computer's form, as bytes for the window (Earlier versions' Preview /
+  // Restore): a cloud copy laid out from its bytes (localFromCloud), a wrapped one taken out of its wrapper here
+  chatBytes({ file, ctx, wrapped }) {
+    const S = require('./sync-merge');
+    const got = readStill(file);
+    if (!got) return null;
+    let out = null;
+    if (!wrapped && !ctx) out = got.buf;
+    else if (!wrapped) { const cf = BC().cloudForm(got.buf, null, S); if (cf) out = BC().localFromCloud(cf, ctx, S, true).out; }
+    if (!out) { let v = S.parseJson(got.buf.toString('utf8')); if (ctx) v = S.fromCloud(v, ctx); if (wrapped) v = v?.thing; if (!v) return null; out = Buffer.from(JSON.stringify(v), 'utf8'); }
+    const copy = new Uint8Array(new ArrayBuffer(out.length)); copy.set(out); // (its own memory: handed over whole)
+    return { bytes: copy, __transfer: [copy.buffer] };
   },
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {

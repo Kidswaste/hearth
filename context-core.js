@@ -77,6 +77,24 @@ const ContextCore = (() => {
   const DID = /\b(?:i(?:'ve| have)? (?:added|changed|set|made|created|renamed|removed|replaced|moved|fixed|built|wrote|updated|saved|rendered|linked|tuned|turned)|(?:added|created|built|rendered|saved) (?:a|the|an)\b|now (?:has|uses|plays|shows))/i;
   const OPEN = /(?:^\s*[-*] \[ \]|\b(?:next(?: step)?|todo|to do|left to do|still (?:need|to)|later|not yet|remaining|then we|after that|we could|you could (?:also|then)|shall i|want me to|should i)\b)/i;
   const PATH = /(?:[A-Za-z]:\\|\/|~\/)?(?:[\w.-]+[\\/])*[\w.-]+\.(?:js|mjs|ts|tsx|jsx|json|html?|css|glsl|frag|vert|md|txt|py|png|jpe?g|webp|gif|mp4|webm|mov|wav|mp3|glb|gltf|obj|hdr|exr|cube|ttf|otf|woff2?)\b/g;
+  // (round 82, bigchat82) PATH's matches, found only in the runs of path characters that hold one of its extensions: a
+  // match can't hold any other character, so it lies inside one run, and each run is matched on its own exactly as the
+  // whole text would be (\b at a run's end sees a non-word character either way). PATH tried at every position of a
+  // 6,000-message chat's text was 1.7 s of the window's time on a hand-over
+  const PATH_EXT = new RegExp(PATH.source.slice(PATH.source.lastIndexOf('\\.(?:')), 'g');
+  const runCh = (c) => (c >= 48 && c <= 58) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 46 || c === 45 || c === 92 || c === 47 || c === 126; // [\w.\-\\/:~]
+  function pathsIn(text) {
+    const t = String(text); const out = []; let done = -1; let m;
+    PATH_EXT.lastIndex = 0;
+    while ((m = PATH_EXT.exec(t))) { // each extension found: the run of path characters around it, once
+      if (m.index < done) continue;
+      let s = m.index; while (s > 0 && runCh(t.charCodeAt(s - 1))) s -= 1;
+      let e = m.index + 1; while (e < t.length && runCh(t.charCodeAt(e))) e += 1;
+      for (const p of t.slice(s, e).match(PATH) || []) out.push(p);
+      done = e; PATH_EXT.lastIndex = e;
+    }
+    return out;
+  }
   const NAMED = /`([^`\n]{2,40})`|"([^"\n]{2,40})"(?=\s*(?:layer|scene|sketch|slider|board|sequence|preset|project|file)\b)|\b(?:layer|scene|sketch|slider|board|sequence|preset|project)\s+"([^"\n]{2,40})"/gi;
   // (attached files, references and carried-over conversations are not the conversation itself)
   const sentences = (t) => String(t || '').replace(/```[\s\S]*?```/g, ' ').replace(/<(file|earlier_conversation|summary|since_then)\b[^>]*>[\s\S]*?<\/\1>/g, ' ').replace(/\[(?:Memory|Hearth context)[^\]]*\]/g, ' ').split(/(?<=[.!?])\s+|\n+/).map((s) => s.trim().replace(/^(?:[-*•]|\d+\.)\s+/, '')).filter((s) => s.length > 6);
@@ -96,9 +114,10 @@ const ContextCore = (() => {
       ...(replies.at(-1)?.suggest || []).filter((s) => !s.startsWith('/')).map((s) => clip(s, 60)),
     ], 5);
     const files = []; const names = [];
+    const fileSet = new Set(); const nameSet = new Set(); // (round 82, bigchat82) seen sets: includes() on the growing lists made a 6,000-message chat's summary take 30 s
     for (const m of ms) {
-      for (const p of String(m.text).match(PATH) || []) if (!files.includes(p) && !/^\d/.test(p)) files.push(p);
-      for (const n of String(m.text).matchAll(NAMED)) { const x = (n[1] || n[2] || n[3]).trim(); if (x && !names.includes(x) && !/\s{2}|^[/(]|^https?:/.test(x) && x.length < 40) names.push(x); }
+      for (const p of pathsIn(m.text)) if (!fileSet.has(p) && !/^\d/.test(p)) { fileSet.add(p); files.push(p); }
+      for (const n of String(m.text).matchAll(NAMED)) { const x = (n[1] || n[2] || n[3]).trim(); if (x && !nameSet.has(x) && !/\s{2}|^[/(]|^https?:/.test(x) && x.length < 40) { nameSet.add(x); names.push(x); } }
     }
     const lastUser = users.at(-1); const lastReply = replies.at(-1);
     const parts = [

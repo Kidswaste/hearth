@@ -459,6 +459,75 @@ function mergeChat({ baseBuf, localBuf, cloudBuf, ctx, S, lh, ch, counters, keep
   return { text, hm, localOut, conflicts: r.conflicts, theirsText: r.conflicts.length ? T.text.toString('utf8') : null, oursText: null, fast: true };
 }
 
+// ---------- Earlier versions (round 82): a giant chat's DIGEST instead of the chat ----------
+// versions75 lists every copy of a chat it can find (sync's base, the cloud copy, Deleted files, backups…) with what
+// differs from now ("12 messages fewer · 3 messages worded differently"). For a 60 MB chat that was JSON.parse of each
+// copy on the main process (7 s with 3 copies). A digest is what the list needs, made on the files thread from the
+// copy's bytes: { __digest, key (what the copy IS: its own fields without times / session, every message), n (messages),
+// title, updatedAt, ids (each message's id or null), texts (a hash of each message's words) }. versions-core.js lists and
+// sums up digests as it does chats (same "same as now", same summary).
+const md5 = (b) => require('crypto').createHash('md5').update(b).digest('base64');
+// the bytes of an object's own "text" (else "content") value, as written
+function textTok(buf, s, e) {
+  if (buf[s] !== 0x7b) return null;
+  let p = s + 1; let d = 1; let key = null; let expectKey = true; let at = { text: null, content: null }; let want = null;
+  while (p < e) {
+    const c = buf[p];
+    if (c === Q) {
+      const q = strEnd(buf, p, e); if (q < 0) break;
+      if (d === 1 && expectKey) { key = buf.toString('utf8', p + 1, q); expectKey = false; } else if (d === 1 && want) { at[want] = [p, q + 1]; want = null; }
+      p = q + 1; continue;
+    }
+    if (c === 0x7b || c === 0x5b) { if (d === 1 && want) { const s0 = p; let dd = 0; let x = p; while (x < e) { const ch = buf[x]; if (ch === Q) { x = strEnd(buf, x, e) + 1; continue; } if (ch === 0x7b || ch === 0x5b) dd += 1; else if (ch === 0x7d || ch === 0x5d) { dd -= 1; if (!dd) { x += 1; break; } } x += 1; } at[want] = [s0, x]; want = null; p = x; continue; } d += 1; } else if (c === 0x7d || c === 0x5d) d -= 1;
+    else if (c === 0x2c) { if (d === 1) expectKey = true; } else if (c === 0x3a) { if (d === 1) want = key === 'text' || key === 'content' ? key : null; } else if (c > 0x20 && d === 1 && want) {
+      let q = p; while (q < e && buf[q] !== 0x2c && buf[q] !== 0x7d && buf[q] > 0x20) q += 1;
+      at[want] = [p, q]; want = null; p = q; continue;
+    }
+    p += 1;
+  }
+  return at;
+}
+// textOf(m) of versions-core (String(m.text ?? m.content ?? '')), as a hash, from the message's bytes
+function textKey(buf, s, e) {
+  const at = textTok(buf, s, e) || {};
+  const val = (r) => (r ? buf.toString('utf8', r[0], r[1]) : null);
+  let t = val(at.text); if (t === null || t === 'null') t = val(at.content); if (t === null || t === 'null') t = '""';
+  if (t[0] !== '"') { try { t = JSON.stringify(String(JSON.parse(t))); } catch { /* as written */ } }
+  return md5(t);
+}
+function digestBytes(buf, ctx, S, VC) {
+  const st = scanBuf(buf);
+  if (st.bad) return null;
+  let head; try { head = headOf(buf, st); } catch { return null; }
+  if (ctx) head = S.fromCloud(head, ctx);
+  const all = sha1(); all.update(VC.canon({ ...head, messages: undefined }));
+  const n = elCount(st); const ids = []; const texts = []; const bs = { at: -2 };
+  let scratch = Buffer.allocUnsafe(65536);
+  for (let k = 0; k < n; k++) {
+    const s = st.els[k * 2]; const e = st.els[k * 2 + 1];
+    if (scratch.length < e - s) scratch = Buffer.allocUnsafe((e - s) * 2);
+    const f = {};
+    let w = compactInto(buf, s, e, scratch, 0, f, bs);
+    let b = scratch;
+    if (w < 0 || (ctx && f.cloud)) { let m; try { m = JSON.parse(buf.toString('utf8', s, e)); } catch { return null; } if (ctx) m = S.fromCloud(m, ctx); b = Buffer.from(JSON.stringify(m) ?? 'null', 'utf8'); w = b.length; }
+    all.update('\n'); all.update(b.subarray(0, w));
+    if (b[0] === 0x7b) { const tf = topFields(b, 0, w); ids.push(tf.id ?? null); texts.push(textKey(b, 0, w)); }
+  }
+  return { __digest: true, key: all.digest('hex'), n: ids.length, title: head.title, updatedAt: head.updatedAt, ids, texts };
+}
+// the same digest from a chat already parsed (a wrapped copy, a file the cut can't read): equal to digestBytes for the same chat
+function digestValue(chat, VC) {
+  if (!chat || typeof chat !== 'object' || !Array.isArray(chat.messages)) return null;
+  const all = sha1(); all.update(VC.canon({ ...chat, messages: undefined }));
+  const ids = []; const texts = [];
+  for (const m of chat.messages) {
+    const b = Buffer.from(JSON.stringify(m) ?? 'null', 'utf8');
+    all.update('\n'); all.update(b);
+    if (m && typeof m === 'object' && !Array.isArray(m)) { ids.push(m.id ?? null); texts.push(md5(JSON.stringify(String(m.text ?? m.content ?? '')))); }
+  }
+  return { __digest: true, key: all.digest('hex'), n: ids.length, title: chat.title, updatedAt: chat.updatedAt, ids, texts };
+}
+
 // ---------- a big chat saved by what changed (storework.js op chatDelta) ----------
 // What the store thread knows of the file as it last wrote / read it: e = { head (the chat without its messages), els
 // (each message's [start, end) in the file), sig }. d (from the window, chatsave.js): { keys (the chat's keys in order),
@@ -520,4 +589,4 @@ function deltaWrite(fs, file, tmp, e, d, o = {}) {
 // the summary the chats list shows, from a head
 const sumOf = (h) => ({ id: h.id, agentId: h.agentId, title: h.title, updatedAt: h.updatedAt, pinned: Boolean(h.pinned), model: h.model });
 
-module.exports = { BIG, cloudForm, localFromCloud, mergeChat, prettyInto, deltaWrite, sumOf, fastCut, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST };
+module.exports = { BIG, digestBytes, digestValue, cloudForm, localFromCloud, mergeChat, prettyInto, deltaWrite, sumOf, fastCut, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST };

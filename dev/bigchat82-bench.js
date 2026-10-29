@@ -3,7 +3,7 @@
 // real worker): Find in this project's index slices, recall's index slices, the chats list / search after the giant
 // chat changed, a new message saved (window → main → store thread), opening it (main), sync (hash, push, pull, merge),
 // Earlier versions. Run on a copy made by `node dev/bigprofile.js <dir> --projects 6 --giant 1` (made here if missing).
-//   node dev/bigchat82-bench.js [--dir <dir>] [--out file.json] [--only a,b]
+//   node --expose-gc dev/bigchat82-bench.js [--dir <dir>] [--out file.json] [--only a,b] [--root <a checkout to measure>]
 // Reports, per path: the longest piece of work that held one thread (main / store thread / sync thread) and the total.
 'use strict';
 const fs = require('fs');
@@ -11,9 +11,9 @@ const os = require('os');
 const path = require('path');
 const v8 = require('v8');
 const { Worker } = require('worker_threads');
-const ROOT = path.join(__dirname, '..');
 const a = process.argv.slice(2);
 const arg = (n, d) => { const i = a.indexOf(n); return i >= 0 ? a[i + 1] : d; };
+const ROOT = path.resolve(arg('--root', path.join(__dirname, '..'))); // (--root: another checkout, e.g. the code before this round)
 const DIR = arg('--dir', path.join(os.tmpdir(), 'hearth-bigchat82'));
 const ONLY = arg('--only', '') ? new Set(arg('--only').split(',')) : null;
 const want = (k) => !ONLY || ONLY.has(k);
@@ -38,6 +38,7 @@ function thread() {
 }
 // the longest stretch the main thread was held (a 1 ms ticker's longest gap) while fn runs
 async function held(fn) {
+  if (global.gc) global.gc(); // (run with --expose-gc: the bench's own 60 MB chat isn't collected inside the measure)
   let last = performance.now(); let gap = 0;
   const t = setInterval(() => { const n = performance.now(); gap = Math.max(gap, n - last); last = n; }, 1);
   const t0 = performance.now();
@@ -147,9 +148,15 @@ const pct = (xs, q) => { const s = [...xs].sort((x, y) => x - y); return r1(s[Ma
     const bdir = path.join(stateDir, 'base', 'chats'); fs.mkdirSync(bdir, { recursive: true });
     fs.writeFileSync(path.join(bdir, 'claude-giant0.json'), JSON.stringify(S.toCloud({ ...giant, messages: giant.messages.slice(0, -10) }, ctx)));
     fs.writeFileSync(path.join(bdir, 'claude-giant0.json.prev'), JSON.stringify(S.toCloud({ ...giant, messages: giant.messages.slice(0, -30) }, ctx)));
-    const inst = V.create({ dataDir: DIR, stateDir, ctx: () => ctx, here: 'this computer' });
+    // as versionsmain.register wires it in the app: digests made on the files thread (round 82), when there
+    const T = thread();
+    const wired = fs.readFileSync(path.join(ROOT, 'storework.js'), 'utf8').includes('chatDigest(') ? { digest: (x) => T.op({ op: 'chatDigest', ...x }).then((y) => y.res), chatBytes: (x) => T.op({ op: 'chatBytes', ...x }).then((y) => y.res) } : {};
+    const inst = V.create({ dataDir: DIR, stateDir, ctx: () => ctx, here: 'this computer', ...wired });
     const r = await held(() => inst.list({ kind: 'chat', id: 'claude-giant0' }));
-    out.versions = { main_longestMs: r.longest, totalMs: r.total, versions: r.r.versions.length, summaries: r.r.versions.map((x) => x.summary) };
+    const again = await held(() => inst.list({ kind: 'chat', id: 'claude-giant0' }));
+    const rd = await held(() => inst.read(r.r.versions[0].token));
+    out.versions = { main_longestMs: r.longest, totalMs: r.total, againTotalMs: again.total, againLongestMs: again.longest, read_mainLongestMs: rd.longest, readTotalMs: rd.total, versions: r.r.versions.length, summaries: r.r.versions.map((x) => x.summary) };
+    await T.end();
     fs.rmSync(stateDir, { recursive: true, force: true });
   }
   const json = JSON.stringify(out, null, 2);

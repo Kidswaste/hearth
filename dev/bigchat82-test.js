@@ -132,11 +132,11 @@ for (const [label, chat, pretty] of [['pretty', chatOf(60), true], ['compact', c
 
 module.exports = { chatOf, message, ok, rnd, int, pick };
 if (require.main === module) {
-  const more = process.env.BIGCHAT82_PARTS ? process.env.BIGCHAT82_PARTS.split(',') : ['delta', 'sync', 'versions', 'index'];
+  const more = process.env.BIGCHAT82_PARTS ? process.env.BIGCHAT82_PARTS.split(',') : ['delta', 'sync', 'versions', 'index', 'summaries'];
   (async () => {
     for (const part of more) {
       const f = path.join(__dirname, `bigchat82-${part}.js`);
-      if (fs.existsSync(f)) { const r = await require(f)({ ok, chatOf, message, rnd, int, pick, B, ROOT }); if (r) console.log(`  ${part}: ${r}`); }
+      if (fs.existsSync(f)) { const r = await require(f)({ ok, chatOf, message, rnd, int, pick, B, ROOT }); if (r) console.log(`  ${part}: ${r}`); } else if (part !== 'none') ok(false, `no part ${part}`);
     }
     console.log(`bigchat82: ${passes} passed, ${failures} failed`);
     process.exit(failures ? 1 : 0);
