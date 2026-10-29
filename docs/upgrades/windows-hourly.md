@@ -41,3 +41,13 @@ One small Windows fix an hour, each checked in a throwaway copy of Hearth and pu
   no window left to keep smooth, waits up to 0.6 s.
 - **Checked**: against a real 250 ms lock, the running case gave up after 87 ms (the save is held and tried again,
   as before) and the quit case saved after 383 ms; `dev/store-thread-test.js` 70/70; a save in a test copy.
+
+## Pass 5 (Oct 29): deleting or restoring a chat failed while OneDrive held its file
+- **What you saw**: now and then a chat wouldn't delete (or come back from Recently deleted) with an EPERM / EBUSY
+  error, more likely with the data folder in a cloud drive.
+- **Fix** (`store.js`, `renameSoon`): the move to / from the Trash tries again for up to 1 s, asynchronously (the
+  window keeps running while it waits).
+- **Checked**: against a real 400 ms lock, a plain move threw EBUSY and the new one moved the chat after 639 ms with
+  the event loop running the whole time; delete → gone → restore → back in a test copy; `dev/store-thread-test.js` 70/70.
+- **Noticed, not changed** (not Windows-only): Recently deleted ages a chat by its file's modified time, which a move
+  keeps, so a chat last changed over 30 days ago is purged on the next look at the Trash right after it's deleted.

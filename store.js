@@ -33,7 +33,17 @@ function trashChat(id) {
   const src = chatPath(id);
   if (pending.has(src)) return idle().then(() => trashChat(id)); // (round 20) its last save lands first, then it moves
   if (!fs.existsSync(src)) return;
-  fs.renameSync(src, path.join(TRASH_DIR, `${id}.json`));
+  return renameSoon(src, path.join(TRASH_DIR, `${id}.json`));
+}
+// (windows hourly 5) moving a chat to / from the Trash: a cloud client or antivirus holding the file for a moment
+// (EPERM / EBUSY / EACCES) made the delete or the restore fail. Tried again for up to 1 s, without blocking the window.
+async function renameSoon(from, to) {
+  for (let i = 0; ; i++) {
+    try { await fs.promises.rename(from, to); return; } catch (err) {
+      if (i >= 4 || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+      await new Promise((r) => setTimeout(r, 100 * (i + 1)));
+    }
+  }
 }
 function listTrash() {
   const cutoff = Date.now() - TRASH_DAYS * 864e5;
@@ -51,8 +61,7 @@ function restoreChat(id) {
   if (!SAFE_ID.test(id)) throw new Error(`bad chat id: ${id}`);
   const file = path.join(TRASH_DIR, `${id}.json`);
   if (!fs.existsSync(file)) return false;
-  fs.renameSync(file, chatPath(id));
-  return true;
+  return renameSoon(file, chatPath(id)).then(() => true);
 }
 
 function chatPath(id) {
