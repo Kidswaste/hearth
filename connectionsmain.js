@@ -160,6 +160,15 @@ const tokensOf = (tools) => Math.round(JSON.stringify(tools.map((t) => ({ name: 
 const HINT = { npx: 'It needs Node.js: install it from nodejs.org, then Test again.', uvx: 'It needs Python\'s uv: install it from docs.astral.sh/uv, then Test again.', node: 'It needs Node.js (nodejs.org).', python: 'It needs Python (python.org).', python3: 'It needs Python (python.org).', docker: 'It needs Docker Desktop running.' };
 const tail = (s, n = 300) => String(s || '').trim().split('\n').filter(Boolean).slice(-3).join(' · ').slice(-n);
 
+// (windows hourly 8) on Windows kill() ends only the process started: a server run through cmd.exe (a .cmd) or npm's
+// shim kept running after its Test (one left behind per Test of a server that hung). taskkill /T ends the whole tree,
+// as engines.js does for agent runs.
+function stopTree(child) {
+  if (IS_WIN && child.pid) {
+    try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => { try { child.kill(); } catch { /* gone */ } }); return; } catch { /* below */ }
+  }
+  child.kill();
+}
 function testStdio(conn, ms) {
   return new Promise((resolve) => {
     const l = launch(conn);
@@ -169,7 +178,7 @@ function testStdio(conn, ms) {
     try { child = spawn(l.command, l.args, { env: { ...process.env, PATH: l.PATH, ...l.extraEnv, ...cleanEnv(conn.env) }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); } catch (err) { resolve({ ok: false, error: `It didn't start: ${err.message}`, hint: HINT[base] }); return; }
     let buf = ''; let err = ''; let next = 1; let done = false;
     const waiting = new Map();
-    const finish = (r) => { if (done) return; done = true; clearTimeout(timer); for (const w of waiting.values()) w({ error: { message: 'stopped' } }); try { child.stdin.end(); child.kill(); } catch { /* gone */ } resolve(r); };
+    const finish = (r) => { if (done) return; done = true; clearTimeout(timer); for (const w of waiting.values()) w({ error: { message: 'stopped' } }); try { child.stdin.end(); stopTree(child); } catch { /* gone */ } resolve(r); };
     const timer = setTimeout(() => finish({ ok: false, error: `No answer in ${Math.round(ms / 1000)} s.`, hint: tail(err) || 'A first start downloads the package: try once more. Otherwise check the command and its arguments.' }), ms);
     child.on('error', (e) => finish({ ok: false, error: e.code === 'ENOENT' ? `“${conn.command}” isn't on this computer.` : `It didn't start: ${e.message}`, hint: HINT[base] }));
     child.on('exit', (code) => setTimeout(() => finish({ ok: false, error: `It stopped before answering (exit ${code ?? '?'}).`, hint: tail(err) || 'Check the arguments (a folder or file it needs?).' }), 50));

@@ -72,3 +72,13 @@ One small Windows fix an hour, each checked in a throwaway copy of Hearth and pu
 - **Checked**: PowerShell's JSON for "Beyoncé" / "Café œuvre" came through as "Beyonc�" / "Caf� ouvre" before and
   exactly after; the real Now Playing script, run from a scratch folder, read Spotify's current track; a test copy
   starts with no page errors.
+
+## Pass 8 (Oct 29): a connection's Test left its server running
+- **What you'd see**: after testing a tool connection (Settings › Connections) whose server hung or was slow, a
+  `node.exe` stayed in Task Manager, one more per Test.
+- **Why**: on Windows `kill()` ends only the process Hearth started; a server started through `cmd.exe` (any `.cmd`,
+  including `npx` since pass 2) or a shim kept running under it.
+- **Fix** (`connectionsmain.js`, `stopTree`): the Test ends the whole tree with `taskkill /T /F`, as engines.js does
+  for agent runs.
+- **Checked**: a `.cmd` server (in a folder with a space) that never answers: 1 process left behind before, 0 after;
+  `dev/connections-test.js` 7/7; a test copy starts with no page errors.
