@@ -211,7 +211,7 @@ const ChatWin = (() => {
   // a block far away back to rest: its messages let go (not the last ones, a pinned one, or one changed and not saved yet)
   function release(chat, lo, hi) {
     const st = live(chat); const s = SV.shapes.get(chat);
-    if (!st || !s) return 0;
+    if (!st || !s || st.whole) return 0; // (not while the whole chat is being read in)
     let n = 0; const end = Math.min(hi, st.a.t.length - TAIL);
     for (let k = Math.max(0, lo); k < end; k++) {
       if (!(k in st.a.t)) continue;
@@ -237,12 +237,13 @@ const ChatWin = (() => {
     const st = live(chat);
     if (st?.poison) return Promise.reject(new Error('This long chat opens again from disk: this change wasn\'t saved.'));
     const s = SV.shapes.get(chat);
-    const fall = () => whole(chat, 'save').then(() => SV.saveWhole(chat));
+    // (the change stays in the window when even that can't be done: said once, tried again with the next save)
+    const fall = () => whole(chat, 'save').then(() => SV.saveWhole(chat)).catch((err) => { if (Date.now() - (st?.failT || 0) > 30000) { if (st) st.failT = Date.now(); toast(`This long chat couldn't be saved just now: ${err.message}`, { type: 'error', timeout: 8000 }); } throw err; });
     if (!st || !s) return fall();
     const d = C.delta(chat, s, st.a.keys(), (k) => st.a.t[k], SV);
     if (!d) return Promise.resolve();
     const from = s.ver; const to = s.ver = SV.newVer();
-    return window.hub.saveChatDelta({ id: chat.id, from, to, ...d }).then((r) => { if (!r?.ok) stat.refused.push(String(r?.why || 'none')); return r?.ok || SV.shapes.get(chat)?.ver !== to ? r : fall(); }, () => (SV.shapes.get(chat)?.ver === to ? fall() : null));
+    return window.hub.saveChatDelta({ id: chat.id, from, to, ...d }).then((r) => { if (!r?.ok && stat.refused.push(String(r?.why || 'none')) > 40) stat.refused.shift(); return r?.ok || SV.shapes.get(chat)?.ver !== to ? r : fall(); }, () => (SV.shapes.get(chat)?.ver === to ? fall() : null));
   }
 
   // ---------- find in the chat (chat-rest.js restingHits) ----------
