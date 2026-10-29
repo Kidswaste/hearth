@@ -232,7 +232,7 @@ const ProjectsHome = (() => {
     const about=el('details',{class:'pw-about'},el('summary',{text:'Project notes & setup'}),notes,p.workspace?.description?el('p',{class:'pw-about-copy',text:p.workspace.description}):null,row('Project setup','spark',()=>ProjectWorkspace.settings(p)),row('Write description with AI','chat',()=>ProjectWorkspace.describe(p)));
     const conversations=chats.length>1?block('Conversations',...chats.map(x=>row(P.nameOf(x),'chat',()=>ProjectWorkspace.conversation(p,x.ref)))):null;
     const files=filesShelf(p,state);
-    S.body.replaceChildren(head,...(window.QuestGuide?.projectCard?[QuestGuide.projectCard(p)]:[]),materials,modules,sound,...(conversations?[conversations]:[]),about,files);
+    S.body.replaceChildren(head,...(window.ProjFind?[ProjFind.box(p)]:[]),...(window.QuestGuide?.projectCard?[QuestGuide.projectCard(p)]:[]),materials,modules,sound,...(conversations?[conversations]:[]),about,files); // (round 81, projsearch81) ProjFind.box: Find in this project, one box for everything in it (projfind.js)
     for(const d of S.body.querySelectorAll('details'))d.open=(state.open||[]).includes(d.className);
     if(modules.open)paintModules();
     S.root.scrollTop=state.scroll||0;
@@ -277,7 +277,7 @@ const ProjectsHome = (() => {
       el('button', { type: 'button', class: 'ghost small', text: 'Delete it', title: 'It waits in Projects › ⋯ › Recently deleted', on: { click: () => { P.settleRevived(P.get(p.id), false); ProjectWorkspace.home().catch(() => {}); } } }));
   }
   function filesShelf(p,state) {
-    const query=el('input',{type:'search',class:'pw-file-search',placeholder:'Find in this project…',value:state.fileQuery||'',attrs:{'aria-label':'Find project files'}});
+    const query=el('input',{type:'search',class:'pw-file-search',placeholder:'Filter these files…',value:state.fileQuery||'',attrs:{'aria-label':'Find project files'}});
     const kind=el('select',{class:'pw-file-kind',attrs:{'aria-label':'Project file type'}},el('option',{value:'',text:'All types'}),...ORDER.filter(t=>p.items.some(x=>x.type===t)).map(t=>el('option',{value:t,text:C.TYPES[t].label})));kind.value=state.fileType||'';
     const results=el('div',{class:'pw-file-results'}),count=el('span',{class:'hint',attrs:{role:'status'}}),more=el('button',{type:'button',class:'ghost small',text:'Show more'});
     const d=el('details',{class:'pw-project-files'},el('summary',{text:`Project files · ${p.items.length}`}),el('div',{class:'pw-file-filters'},query,kind),results,el('div',{class:'pw-file-footer'},count,more));

@@ -357,6 +357,7 @@ ipcMain.handle('chats:save', afterSync((_e, chat) => store.saveChat(chat)));
 ipcMain.handle('chats:delete', afterSync((_e, id) => store.deleteChat(id)));
 ipcMain.handle('chats:searchText', (_e, query) => store.searchChats(query));
 ipcMain.handle('chats:recall', (_e, o) => store.recall(o || {})); // (round 30) recall: "what did we decide about X?", ranked, local
+ipcMain.handle('projects:find', (_e, o) => store.projFind(o || {})); // (round 81, projsearch81) Find in this project: indexed and searched on the store thread
 ipcMain.handle('chats:trash', () => store.listTrash());
 ipcMain.handle('chats:restore', afterSync((_e, id) => store.restoreChat(id)));
 ipcMain.handle('history:get', afterSync(() => store.getHistory()));

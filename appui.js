@@ -502,6 +502,7 @@ const AppUI = (() => {
   // ---------- find in page ----------
   let findBar = null;
   function find() {
+    if (window.ProjFind?.take()) return; // (round 81, projsearch81) on a project's Desk: Find in this project
     if (findBar) { findBar.querySelector('input').select(); return; }
     const s = H.surfaces.get(H.activeId);
     const view = s?.webview || s?.el.querySelector('.tabpane:not([hidden]) webview');

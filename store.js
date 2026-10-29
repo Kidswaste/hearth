@@ -338,6 +338,19 @@ function recallSync({ q = '', limit } = {}) {
   const byId = new Map(all.map((c) => [c.id, c]));
   return q ? { ...recallLocal.search(q, { textOf: (id, k) => byId.get(id)?.messages?.[k]?.text || '', limit }), left: 0 } : { left: 0, ...recallLocal.size() };
 }
+// (round 81, projsearch81) Find in this project (projfind-core.js): on the store thread, after the saves asked before it;
+// here only without a thread (Node tests / tools)
+let findLocal = null;
+function projFind(o = {}) {
+  const msg = { op: 'projfind', spec: o.spec || {}, dirs: { chats: CHATS_DIR, kv: KV_DIR }, q: o.q, budgetMs: o.budgetMs, limit: o.limit };
+  if (thread()) return ask(msg).catch(() => projFindSync(msg));
+  return projFindSync(msg);
+}
+function projFindSync(msg) {
+  const PF = require('./projfind-core');
+  findLocal ||= PF.createIndex();
+  return PF.run(findLocal, msg, { stat: (f) => { try { return fs.statSync(f); } catch { return null; } }, join: path.join, now: () => performance.now(), read: (f) => { const p = pending.get(f); if (p) return p.value; try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } } });
+}
 function searchChatsSync(query) {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];
@@ -581,6 +594,7 @@ module.exports = {
   listChats,
   searchChats,
   recall,
+  projFind, // (round 81, projsearch81)
   getChat: (id) => readJson(chatPath(id), null),
   saveChat: (chat) => writeJson(chatPath(chat.id), chat, { off: true, chat: true }),
   deleteChat: (id) => trashChat(id),
