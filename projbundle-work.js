@@ -32,12 +32,16 @@ const state = new Map(); // job → { body, secrets }
 const cache = new Map(); // file → { sig, chat } (the card's read, used again by the export a moment later)
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 // a chat file read (a cloud client or antivirus holding it a moment: tried again), parsed; throws when it can't be
-function readChat(file) {
-  let text = null; let err = null;
+function readBytes(file) { // (round 86, projopen86: the bytes, for a head cut without parsing)
+  let buf = null; let err = null;
   for (let i = 0; i < 5; i++) {
-    try { text = fs.readFileSync(file, 'utf8'); break; } catch (e) { err = e; if (e.code === 'ENOENT' || !['EPERM', 'EBUSY', 'EACCES', 'EAGAIN'].includes(e.code)) break; sleep(80 * (i + 1)); }
+    try { buf = fs.readFileSync(file); break; } catch (e) { err = e; if (e.code === 'ENOENT' || !['EPERM', 'EBUSY', 'EACCES', 'EAGAIN'].includes(e.code)) break; sleep(80 * (i + 1)); }
   }
-  if (text == null) throw Object.assign(new Error(err?.code === 'ENOENT' ? 'gone' : `can't be read (${err?.code || 'read'})`), { code: err?.code || 'EREAD' });
+  if (buf == null) throw Object.assign(new Error(err?.code === 'ENOENT' ? 'gone' : `can't be read (${err?.code || 'read'})`), { code: err?.code || 'EREAD' });
+  return buf;
+}
+function readChat(file) {
+  const text = readBytes(file).toString('utf8');
   const chat = JSON.parse(text.replace(/^﻿/, ''));
   if (!chat || typeof chat !== 'object' || Array.isArray(chat) || !Array.isArray(chat.messages)) throw Object.assign(new Error('not a chat'), { code: 'EPARSE' });
   return chat;
@@ -55,14 +59,32 @@ function loadBig(file) {
 }
 const headOf = (chat) => { const h = {}; for (const k of Object.keys(chat)) h[k] = k === 'messages' ? [] : chat[k]; return h; };
 
+// (round 86, projopen86) a big chat's own fields and count WITHOUT parsing its messages (Duplicate project needs no
+// more: the store thread copies the messages from the file). Cut by bigchat-core (scanBuf, headOf): the same head and
+// count as a parse gives (dev/projopen86-test.js). A chat it can't cut: null (then it's parsed, as before)
+function headBytes(file) {
+  const BC = require('./bigchat-core');
+  const buf = readBytes(file);
+  const st = BC.scanBuf(buf);
+  if (st.bad || st.arrS < 0 || st.arrE < 0) return null;
+  let head;
+  try { head = BC.headOf(buf, st); } catch { return null; }
+  if (!head || typeof head !== 'object' || Array.isArray(head) || !Array.isArray(head.messages)) return null;
+  return { head, n: BC.elCount(st) };
+}
+
 const OPS = {
-  chatInfo({ files = [] } = {}) {
+  // lite (round 86): no paths wanted (Duplicate project): a big chat's head and count cut from its bytes, not parsed
+  chatInfo({ files = [], lite = false } = {}) {
     const out = {};
     for (const { id, file } of files) {
       let st = null;
       try { st = fs.statSync(file); } catch (e) { out[id] = e.code === 'ENOENT' ? { state: 'missing' } : { state: 'unreadable', why: e.code || 'stat' }; continue; }
       if (st.size < BIG) { out[id] = { state: 'small' }; continue; }
       try {
+        const had = cache.get(file);
+        const cut = lite && !(had && had.sig === sigOf(st)) ? headBytes(file) : null; // (a parse kept from the card: used as before)
+        if (cut) { out[id] = { state: 'big', size: st.size, n: cut.n, head: cut.head, paths: [] }; continue; }
         const chat = loadBig(file);
         out[id] = { state: 'big', size: st.size, n: chat.messages.length, head: headOf(chat), paths: P.collectPaths(chat) };
       } catch (e) { out[id] = e.code === 'ENOENT' ? { state: 'missing' } : { state: 'unreadable', why: e.code || e.message }; }

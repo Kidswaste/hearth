@@ -612,6 +612,9 @@ renderer.setAnimationLoop((now) => {
     return window.hub.capture.shot({ rect: { x: r.left * z, y: r.top * z, width: r.width * z, height: r.height * z }, save: false, format: 'jpg', quality: 0.8, preview: 1280 }).then((o) => o?.dataUrl || null, () => null);
   }
   async function snapNow(ms = 700, { screen = true } = {}) { // screen: the compositor may answer (a switch); not for row stills (no menus / toasts in them)
+    // (round 86, projopen86) a project opening (see below) is known first: labShown() reads the preview's layout, a
+    // forced layout of the window (≈ 12–16 ms with a long chat drawn) inside the opening's task, for no picture
+    if (window.ProjectWorkspace?.state?.().phase === 'opening') { lastSnap = { project: true }; return null; }
     const cover = previewCover();
     const t0 = performance.now();
     lastSnap = { shown: labShown(), loading: !cover?.classList.contains('out') };

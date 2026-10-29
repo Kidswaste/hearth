@@ -546,11 +546,12 @@ async function release(job) {
 }
 // what the window needs to put a project's big chats in a bundle / a copy without holding them: each chat's state
 // (read on the thread, after its saves on their way). ids: chat ids → { [id]: { state, size?, n?, head?, paths? } }
-async function chatsInfo(ids = []) {
+// (round 86, projopen86) o.lite: no paths wanted (Duplicate project): a big chat's head and count cut, not parsed
+async function chatsInfo(ids = [], o = {}) {
   const files = [...new Set((Array.isArray(ids) ? ids : []).map(String))].map((id) => ({ id, file: chatFile(id) })).filter((x) => x.file);
   if (!files.length) return {};
   await opts.idle?.();
-  return work('chatInfo', { files });
+  return work('chatInfo', { files, lite: Boolean(o?.lite) });
 }
 // a big chat written whole by the store thread (opts.adoptChat → store.js adoptChatBig): its own fields (head: what the
 // window made of them: fresh id, its AI, session out) + the messages of an import's part file (job + part) or of a
@@ -575,7 +576,7 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('projbundle:discard', (_e, dir) => discard(dir));
   ipcMain.handle('projbundle:cancel', (_e, job) => { const c = jobs.get(String(job)); if (c) c.abort(); return Boolean(c); });
   // (round 85, projbig85) big chats by name
-  ipcMain.handle('projbundle:chats', (_e, ids) => chatsInfo(ids));
+  ipcMain.handle('projbundle:chats', (_e, ids, o) => chatsInfo(ids, o || {})); // (round 86: o.lite)
   ipcMain.handle('projbundle:adopt', async (_e, a) => { try { return await adopt(a || {}); } catch (err) { return { ok: false, error: err.message }; } });
   ipcMain.handle('projbundle:release', (_e, job) => release(job));
 }

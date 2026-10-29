@@ -5,6 +5,9 @@ window.ProjectWorkspace = (() => {
   let lifecycle = Promise.resolve(), opening = null, loadState = { phase:'idle' };
   const serial = fn => lifecycle = lifecycle.catch(()=>{}).then(fn);
   const cancelled = signal => { if(signal?.aborted)throw new DOMException('Opening cancelled','AbortError'); };
+  // (round 86, projopen86) a painted frame between an opening's heavy pieces (the card, the scene, the chat, the Desk):
+  // each its own window task instead of one 80–130 ms task. A hidden window paints no frame: 50 ms at most
+  const painted = () => new Promise(r => { let done=false; const go=()=>{ if(!done){done=true;r();} }; requestAnimationFrame(()=>setTimeout(go,0)); setTimeout(go,50); });
   const describing = new Set();
   const get = () => active && P.get(active);
   const chatOf = p => (H.chats || []).find(c => c.id === (p?.id===active && conversationId || p?.workspace?.chatId));
@@ -128,6 +131,7 @@ window.ProjectWorkspace = (() => {
       const ui=loading(p),started=performance.now(),timings={};
       const stage=(n,text)=>{ui.update(n,text);loadState={phase:'opening',project:id,stage:text,timings};};
       try{
+        await painted(); // (round 86, projopen86) the card shows before the project left is saved
         await closeCurrent(ui,{switching:true});cancelled(controller.signal);
         active=id;stage(0,'Reading project files…');
         await ensure(p);cancelled(controller.signal);
@@ -145,6 +149,7 @@ window.ProjectWorkspace = (() => {
         // (round 72) the scene starts first and the chat draws while its page works; the moodboard is read meanwhile
         const board=Board.ready().then(()=>Board.load(p.workspace.boardId));board.catch(()=>{});
         const scene=options.preview!==false?ThreeLab.workspace.prepare(sceneOf(p),{signal:controller.signal,progress:text=>stage(1,text)}):null;scene?.catch(()=>{});
+        await painted(); // (round 86, projopen86) the chat is drawn after the scene's start has painted (one task each)
         await Native.refresh(c.agentId,{keepScroll:true});
         if(scene)await scene;
         else if(!ThreeLab.scenes.open(sceneOf(p)))throw Error('This scene is not available yet.');
@@ -154,6 +159,7 @@ window.ProjectWorkspace = (() => {
         stage(3,'Restoring your instrument…');
         const soundAt=performance.now();const warning=await WorkbenchUI.preloadSound({signal:controller.signal});timings.soundMs=Math.round(performance.now()-soundAt);cancelled(controller.signal);
         await go(tab,ticket);cancelled(controller.signal);
+        await painted();cancelled(controller.signal); // (round 86, projopen86) the tab drawn (the Desk) in its own task before the card goes
         timings.totalMs=Math.round(performance.now()-started);const lastSwitch=loadState.lastSwitch;stage(4,'Ready to make something.');loadState={phase:'ready',project:id,timings,lastSwitch};
         ui.close();if(warning)toast(warning,{timeout:7000});return p;
       }catch(err){

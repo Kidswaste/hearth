@@ -23,10 +23,19 @@
   const longs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push({ at: e.startTime, ms: Math.round(e.duration) }); }).observe({ type: 'longtask' }); } catch { /* none */ }
   await til(() => document.querySelector('#agent-buttons .space-button'), 'app'); await w8(3000);
   // the Lab's first start, backstage (an import or Duplicate with scenes starts it so)
+  if (window.PO_PROF) { await smoke({ cdp: 'Profiler.enable' }); await smoke({ cdp: 'Profiler.setSamplingInterval', params: { interval: 250 } }); await smoke({ cdp: 'Profiler.start' }); }
   const t0 = performance.now();
   await Lazy.load('lab'); await ThreeLab.cmd({ show: false }); await til(() => ThreeLab.scenes?.adoptScene, 'lab');
   const ready = Math.round(performance.now() - t0); await w8(2500);
   const labFirst = { ms: ready, windowLong: longs.filter((x) => x.at >= t0).map((x) => x.ms).sort((a, b) => b - a).slice(0, 8) };
+  if (window.PO_PROF) { // the long tasks' heaviest app functions (as in the part below)
+    const p = (await smoke({ cdp: 'Profiler.stop' }))?.profile;
+    if (p) { const by = new Map(p.nodes.map((n) => [n.id, n])); const parent = new Map(); for (const n of p.nodes) for (const c of n.children || []) parent.set(c, n.id);
+      const key = (f) => `${f.functionName || '(anon)'} ${String(f.url).split('/').pop()}:${f.lineNumber + 1}`; const tasks = []; let cur = null;
+      for (let i = 0; i < p.samples.length; i++) { const f = by.get(p.samples[i]).callFrame; const dt = (p.timeDeltas[i] || 0) / 1000; if (f.functionName === '(idle)') { if (cur) tasks.push(cur); cur = null; continue; } if (!cur) cur = { ms: 0, incl: new Map() }; cur.ms += dt; const seen = new Set(); for (let id = p.samples[i]; id != null; id = parent.get(id)) { const g = by.get(id).callFrame; if (!/\.js$/.test(g.url)) continue; const k = key(g); if (!seen.has(k)) { seen.add(k); cur.incl.set(k, (cur.incl.get(k) || 0) + dt); } } }
+      if (cur) tasks.push(cur);
+      labFirst.longTasks = tasks.filter((x) => x.ms >= 40).sort((a, b) => b.ms - a.ms).slice(0, 4).map((x) => `${Math.round(x.ms)}ms: ${[...x.incl].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([k, v]) => `${Math.round(v)}ms ${k}`).join(' · ')}`); }
+  }
   // Clink opened once and left, as the owner always has a project they were in
   document.querySelector('#agent-buttons [data-space=projects]').click();
   const c = await til(() => document.querySelector('.pj-card[data-project="pjbp0"]'), 'cards'); await w8(300);
