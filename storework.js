@@ -38,6 +38,27 @@ const { list: flist, search: fsearch } = require('./fswalk');
 const { workerData } = require('worker_threads');
 let BCmod = null; const BC = () => (BCmod ||= require('./bigchat-core')); // (round 82, bigchat82) giant chats, required when first met
 const BIG = Number(process.env.HEARTH_BIGCHAT_MIN) || 8 * 1024 * 1024;
+const SYNC_BIG = Number(process.env.HEARTH_SYNCCHAT_MIN) || 16e6; // (round 82) sync: a chat this big goes by its messages' bytes (bigchat-core.js)
+const isChatRel = (rel) => /^chats\/[^/]+\.json$/i.test(String(rel || ''));
+const sizeOf = (f) => { try { return fs.statSync(f).size; } catch { return 0; } };
+// (round 82) giant chats' cloud forms as made here this pass (a pass hashes a file, then pushes / pulls / merges it: made
+// once), by file + whether it was converted (local) + its size and time; let go a minute after the last use
+const forms = new Map(); let formsT = null;
+// read(file) → { buf, sig } only when the file stayed the same while read (else null: the whole-file way)
+function readStill(file) { const s1 = bigSig(stat(file)); const buf = fs.readFileSync(file); return s1 && bigSig(stat(file)) === s1 ? { buf, sig: s1 } : null; }
+// got: bytes already read with their sig (readStill): a kept form is used only for those very bytes
+function formOf(file, ctx, S, got = null) {
+  const key = `${ctx ? 'l' : 'c'}:${file}`;
+  clearTimeout(formsT); formsT = setTimeout(() => forms.clear(), 60000); formsT.unref?.();
+  const sig = got ? got.sig : bigSig(stat(file));
+  const had = forms.get(key);
+  if (had && had.sig === sig) return had.cf;
+  const r = got || readStill(file);
+  if (!r || r.sig !== sig) return null;
+  const cf = BC().cloudForm(r.buf, ctx, S);
+  if (cf) { forms.set(key, { sig, cf }); if (forms.size > 4) forms.delete(forms.keys().next().value); }
+  return cf;
+}
 const FIND_BIG = Math.min(BIG, 128 * 1024); // (round 82) Find in this project / recall: a chat this big is read (and its words indexed) a slice at a time
 // (round 82) how many chatDelta ops are finished (the main process waits on it before stopping this thread at quit)
 const deltaDone = workerData?.deltaSab ? new Int32Array(workerData.deltaSab) : null;
@@ -353,6 +374,10 @@ const OPS = {
   // cloud sync (sync-engine.js hashJson): a big JSON store read, put in its cloud form and hashed, as the engine does
   syncHash({ file, rel, cloud, ctx }) {
     const S = require('./sync-merge');
+    // (round 82, bigchat82) a giant chat: its cloud form made from its messages' bytes (bigchat-core.js cloudForm)
+    if (isChatRel(rel) && sizeOf(file) >= SYNC_BIG) {
+      try { const cf = formOf(file, cloud ? null : ctx, S); if (cf) return { h: cf.h, t: null }; } catch { /* the whole-file way below */ }
+    }
     let v;
     try { v = S.parseJson(fs.readFileSync(file, 'utf8')); } catch { return { bad: true }; }
     if (!cloud && rel === 'app/config.json') v = S.portableConfig(v);
@@ -365,6 +390,23 @@ const OPS = {
   // computer's form (pretty unless it was compact) and its hash. Was ≈ 60–130 ms of the main process per big store.
   syncPull({ rel, cloudFile, h, ctx, localFile, recovery, aside }) {
     const S = require('./sync-merge');
+    // (round 82, bigchat82) a giant chat: checked and laid out in this computer's form from its messages' bytes
+    if (isChatRel(rel) && Math.max(sizeOf(cloudFile), localFile ? sizeOf(localFile) : 0) >= SYNC_BIG) {
+      let cf; try { cf = formOf(cloudFile, null, S); } catch { return { stale: true }; }
+      if (cf) {
+        forms.delete(`c:${cloudFile}`); // (its bytes are handed over)
+        if (cf.h !== h) return { stale: true };
+        let prev = null;
+        if (localFile) { try { prev = fs.readFileSync(localFile); } catch (err) { if (err.code !== 'ENOENT') throw err; } }
+        if (prev !== null) {
+          if (BC().scanBuf(prev).bad) S.parseJson(prev.toString('utf8')); // a local version that can't be read stops the replacement (as below)
+          if (recovery) atomicText(recovery, prev);
+        }
+        const pretty = prev === null || prev.length < 2 || /^[[{]\s/.test(prev.toString('latin1', 0, 2));
+        const r = BC().localFromCloud(cf, ctx, S, pretty);
+        return { out: r.out, lh: r.lh, cloudText: cf.text, prevCloud: null, __transfer: [r.out.buffer, cf.text.buffer] };
+      }
+    }
     let raw; try { raw = fs.readFileSync(cloudFile, 'utf8'); } catch { return { stale: true }; }
     let cloudText; try { cloudText = JSON.stringify(S.parseJson(raw)); } catch { return { stale: true }; }
     if (sha(cloudText) !== h) return { stale: true };
@@ -387,6 +429,22 @@ const OPS = {
   // side only writes. lh / ch: the hashes the pass saw (changed since → stale, the next pass looks again)
   syncMerge({ rel, localFile, cloudFile, baseFile, ctx, lh, ch, counters, keepAll, recovery, aside }) {
     const S = require('./sync-merge');
+    // (round 82, bigchat82) a giant chat changed on both computers: merged with the messages all three versions share
+    // stood in for (bigchat-core.js mergeChat): a new message on each side doesn't re-merge 60 MB
+    if (isChatRel(rel) && Math.max(sizeOf(localFile), sizeOf(cloudFile)) >= SYNC_BIG) {
+      let lr; let cr; let bb = null;
+      try { lr = readStill(localFile); cr = readStill(cloudFile); } catch { return { stale: true }; }
+      if (!lr || !cr) return { stale: true }; // (one is being written: the next pass)
+      if (baseFile) { try { bb = fs.readFileSync(baseFile); } catch { bb = null; } }
+      const O = formOf(localFile, ctx, S, lr); const T = formOf(cloudFile, null, S, cr);
+      const lb = lr.buf;
+      const r = O && T ? BC().mergeChat({ baseBuf: bb, localBuf: lb, cloudBuf: cr.buf, ctx, S, lh, ch, counters, keepAll, forms: { O, T } }) : null;
+      if (r?.stale) return r;
+      if (r) {
+        if (r.localOut && recovery) atomicText(recovery, lb);
+        return { ...r, __transfer: [r.text.buffer, ...(r.localOut ? [r.localOut.buffer] : [])].filter((x, i, a) => a.indexOf(x) === i) };
+      }
+    }
     let localRaw; let cloudRaw;
     try { localRaw = fs.readFileSync(localFile, 'utf8'); cloudRaw = fs.readFileSync(cloudFile, 'utf8'); } catch { return { stale: true }; }
     let ours; let theirsText;
@@ -405,6 +463,15 @@ const OPS = {
       localOut = pretty ? JSON.stringify(local, null, 2) : JSON.stringify(local);
     }
     return { text, hm, localOut, conflicts: r.conflicts, theirsText: r.conflicts.length ? theirsText : null, oursText: hm !== lh && oursText.length < 16e6 ? oursText : null }; // (only what the main side uses: less to copy over)
+  },
+  // (round 82, bigchat82) a giant chat's cloud form for a push (sync-engine.js o.textJson): made here (or kept from
+  // this pass's hash), handed over without a copy; the main process writes the bytes as they are
+  syncText({ file, ctx }) {
+    const S = require('./sync-merge');
+    const cf = formOf(file, ctx, S);
+    if (!cf) return null;
+    forms.delete(`l:${file}`); // (its bytes are handed over)
+    return { h: cf.h, text: cf.text, __transfer: [cf.text.buffer] };
   },
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {

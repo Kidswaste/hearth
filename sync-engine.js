@@ -775,7 +775,7 @@ function createEngine(o) {
   // handle (open, write, flush, close: 4 calls, was 6). A full disk leaves no half temp file behind.
   const madeDirs = new Set();
   async function writeFlushed(tmp, data) {
-    const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data));
+    const buf = Buffer.isBuffer(data) ? data : data instanceof Uint8Array ? Buffer.from(data.buffer, data.byteOffset, data.byteLength) : Buffer.from(String(data)); // (round 82: bytes handed over by a thread)
     let fh = null;
     try {
       fh = await fsp.open(tmp, 'w');
@@ -1016,8 +1016,11 @@ function createEngine(o) {
     const target = C?.placeholder && /\.icloud$/.test(C.file || '') ? null : cent;
     let ok;
     if (S.isJsonRel(rel)) {
-      const text = await localText(rel, L);
-      if ((hashed.get(text) ?? sha(text)) !== h) return false; // (round 20) a text hashed on the store thread isn't hashed again
+      // (round 82, bigchat82) a giant chat: its cloud form made on the files thread from its messages' bytes, handed over
+      // as bytes (was: read, parsed, converted and stringified HERE, on the main process: ≈ 2 s for a 60 MB chat)
+      const big = o.textJson && /^chats\//.test(rel) && (L.size || 0) >= (o.textMin ?? 16e6) ? await o.textJson({ file: L.file, rel, ctx }).catch(() => null) : null;
+      const text = big?.text || await localText(rel, L);
+      if ((big?.text ? big.h : hashed.get(text) ?? sha(text)) !== h) return false; // (round 20) a text hashed on the store thread isn't hashed again
       ok = await casWrite(dst, target, text, 'push');
       if (ok) setBase(rel, h, text);
     } else if (L.size <= SMALL) {

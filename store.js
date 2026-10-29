@@ -128,12 +128,18 @@ function thread() {
   try {
     const { Worker } = require('worker_threads');
     worker = new Worker(path.join(__dirname, 'storework.js'), { workerData: { deltaSab } }); // (round 82) deltaSab: its finished chatDelta count
-    worker.on('message', ({ id, res, err, ms }) => { const j = jobs.get(id); if (!j) return; jobs.delete(id); wstats.ms += ms || 0; if (err) j.reject(new Error(err)); else j.resolve(res); });
+    worker.on('message', ({ id, res, err, ms }) => { const j = jobs.get(id); if (!j) return; jobs.delete(id); wstats.ms += ms || 0; if (err) j.reject(new Error(err)); else j.resolve(asBuffers(res)); });
     const dead = (why) => { workerOff = true; worker = null; for (const j of jobs.values()) j.reject(new Error(`store thread: ${why}`)); jobs.clear(); };
     worker.on('error', (err) => dead(err.message));
     worker.on('exit', (code) => { if (worker) dead(`exited (${code})`); });
   } catch { workerOff = true; worker = null; }
   return worker;
+}
+// (round 82, bigchat82) bytes handed over by a thread arrive as Uint8Arrays: made Buffers (no copy) so writes take them as bytes
+function asBuffers(res) {
+  if (!res || typeof res !== 'object' || Buffer.isBuffer(res)) return res;
+  for (const k of Object.keys(res)) { const v = res[k]; if (v instanceof Uint8Array && !Buffer.isBuffer(v)) res[k] = Buffer.from(v.buffer, v.byteOffset, v.byteLength); }
+  return res;
 }
 function ask(msg) {
   const w = thread();
@@ -213,7 +219,7 @@ function runOff(op, args) {
     try {
       const { Worker } = require('worker_threads');
       filesWorker = new Worker(path.join(__dirname, 'storework.js'));
-      filesWorker.on('message', ({ id, res, err }) => { const j = filesJobs.get(id); if (!j) return; filesJobs.delete(id); if (err) j.reject(new Error(err)); else j.resolve(res); });
+      filesWorker.on('message', ({ id, res, err }) => { const j = filesJobs.get(id); if (!j) return; filesJobs.delete(id); if (err) j.reject(new Error(err)); else j.resolve(asBuffers(res)); });
       const dead = (why) => { filesWorker = null; for (const j of filesJobs.values()) j.reject(new Error(why)); filesJobs.clear(); };
       filesWorker.on('error', (e) => dead(e.message)); filesWorker.on('exit', () => dead('exited'));
     } catch (err) { filesWorker = null; return Promise.reject(err); }

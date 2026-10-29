@@ -178,10 +178,12 @@ function reader(fs, file, o = {}) {
 // A number token is as JSON.stringify writes it when writing back what it parses to gives the same characters
 const numOk = (buf, s, e) => { const t = buf.toString('latin1', s, e); const n = Number(t); return Number.isFinite(n) && JSON.stringify(n) === t; };
 // a string's escapes as JSON.stringify writes them: \" \\ \b \f \n \r \t, \u00XX only below 0x20, \uD8xx–\uDFxx
-// only for a lone surrogate (taken as fine here: rare, and a pair would be written raw — a mismatch shows as a hash
-// difference, never as damage). \/ and \u for anything else mean "not written by JSON.stringify"
-function escOk(buf, s, e) {
-  let i = buf.indexOf(BS, s);
+// only for a lone surrogate. \/ and \u for anything else mean "not written by JSON.stringify". bs: { at } the next
+// backslash at or after the strings looked at so far (one search for many strings: a stretch without any isn't
+// searched again for each string in it)
+function escOk(buf, s, e, bs) {
+  let i = bs.at;
+  if (i !== -1 && i < s) i = buf.indexOf(BS, s);
   while (i >= 0 && i < e) {
     const c = buf[i + 1];
     if (c === 0x75) { // \uXXXX: lowercase hex, a control character without a short form, or a lone surrogate
@@ -194,6 +196,7 @@ function escOk(buf, s, e) {
     } else if (c === Q || c === BS || c === 0x62 || c === 0x66 || c === 0x6e || c === 0x72 || c === 0x74) i = buf.indexOf(BS, i + 2);
     else return false;
   }
+  bs.at = i;
   return true;
 }
 // a string value that sync's toCloud might rewrite: starts like a path (/…, \…, C:…, file:…). Conservative on purpose
@@ -205,51 +208,63 @@ function pathyAt(buf, p) {
   return false;
 }
 // "hearth-" at the start of a string: fromCloud might rewrite it
-const cloudyAt = (buf, p) => buf[p + 1] === 0x68 && buf.toString('latin1', p + 1, p + 8) === 'hearth-';
-// the value's bytes [s, e) without whitespace, into out at w → the new w, or -1 (not as JSON.stringify writes it)
-function compactInto(buf, s, e, out, w, flags) {
-  let p = s;
+const cloudyAt = (buf, p) => buf[p + 1] === 0x68 && buf[p + 7] === 0x2d && buf.toString('latin1', p + 1, p + 8) === 'hearth-';
+const isNum = (x) => (x >= 0x30 && x <= 0x39) || x === 0x2e || x === 0x65 || x === 0x45 || x === 0x2b || x === 0x2d;
+// the value's bytes [s, e) without whitespace, into out at w → the new w, or -1 (not as JSON.stringify writes it).
+// Bytes are copied in runs (between whitespace), not string by string. bs: escOk's shared search (one per buffer)
+function compactInto(buf, s, e, out, w, flags, bs = { at: -2 }) {
+  let p = s; let run = s;
   while (p < e) {
     const c = buf[p];
     if (c === Q) {
       const q = strEnd(buf, p, e);
-      if (q < 0) return -1;
-      if (!escOk(buf, p + 1, q)) return -1;
-      if (flags) { if (!flags.pathy && pathyAt(buf, p)) flags.pathy = true; if (!flags.cloud && cloudyAt(buf, p)) flags.cloud = true; }
-      w += buf.copy(out, w, p, q + 1); p = q + 1; continue;
+      if (q < 0 || !escOk(buf, p + 1, q, bs)) return -1;
+      if (flags) { if (!flags.pathy && pathyAt(buf, p)) flags.pathy = true; if (!flags.cloud && c === Q && cloudyAt(buf, p)) flags.cloud = true; }
+      p = q + 1; continue;
     }
-    if (c <= 0x20) { p += 1; continue; }
+    if (c <= 0x20) {
+      if (p > run) w += buf.copy(out, w, run, p);
+      p += 1; while (p < e && buf[p] <= 0x20) p += 1;
+      run = p; continue;
+    }
     if (c === 0x2d || (c >= 0x30 && c <= 0x39)) {
-      let q = p + 1;
-      while (q < e) { const x = buf[q]; if ((x >= 0x30 && x <= 0x39) || x === 0x2e || x === 0x65 || x === 0x45 || x === 0x2b || x === 0x2d) q += 1; else break; }
+      let q = p + 1; while (q < e && isNum(buf[q])) q += 1;
       if (!numOk(buf, p, q)) return -1;
-      w += buf.copy(out, w, p, q); p = q; continue;
+      p = q; continue;
     }
-    out[w++] = c; p += 1;
+    p += 1;
   }
+  if (e > run) w += buf.copy(out, w, run, e);
   return w;
 }
 const SP = ' '.repeat(256);
 const indent = (n) => (n <= 128 ? SP.slice(0, n * 2) : '  '.repeat(n));
-// compact (canonical) bytes → JSON.stringify(value, null, 2) as it sits at depth `level` (its first line not indented)
-function prettyOf(buf, s, e, level = 0) {
-  const parts = []; let d = level; let p = s; let from = s;
-  const flush = (to) => { if (to > from) parts.push(buf.toString('utf8', from, to)); };
+const SPB = Buffer.from(`\n${' '.repeat(512)}`);
+// compact (canonical) bytes → JSON.stringify(value, null, 2) as it sits at depth `level` (its first line not
+// indented), into out at w (null: only the size) → the new w
+function prettyInto(buf, s, e, level, out, w) {
+  let d = level; let p = s; let from = s;
+  const flush = (to) => { if (to > from) { if (out) buf.copy(out, w, from, to); w += to - from; } };
+  const nl = () => { const n = 1 + d * 2; if (out) { if (n <= SPB.length) SPB.copy(out, w, 0, n); else { out[w] = 0x0a; out.fill(0x20, w + 1, w + n); } } w += n; };
   while (p < e) {
     const c = buf[p];
     if (c === Q) { const q = strEnd(buf, p, e); if (q < 0) throw new Error('cut string'); p = q + 1; continue; }
     if (c === 0x7b || c === 0x5b) {
-      const close = c === 0x7b ? 0x7d : 0x5d;
-      if (buf[p + 1] === close) { p += 2; continue; } // {} [] stay as they are
-      flush(p + 1); d += 1; parts.push(`\n${indent(d)}`); p += 1; from = p; continue;
+      if (buf[p + 1] === (c === 0x7b ? 0x7d : 0x5d)) { p += 2; continue; } // {} [] stay as they are
+      flush(p + 1); d += 1; nl(); p += 1; from = p; continue;
     }
-    if (c === 0x7d || c === 0x5d) { flush(p); d -= 1; parts.push(`\n${indent(d)}`); from = p; p += 1; continue; }
-    if (c === 0x2c) { flush(p + 1); parts.push(`\n${indent(d)}`); p += 1; from = p; continue; }
-    if (c === 0x3a) { flush(p + 1); parts.push(' '); p += 1; from = p; continue; }
+    if (c === 0x7d || c === 0x5d) { flush(p); d -= 1; nl(); from = p; p += 1; continue; }
+    if (c === 0x2c) { flush(p + 1); nl(); p += 1; from = p; continue; }
+    if (c === 0x3a) { flush(p + 1); if (out) out[w] = 0x20; w += 1; p += 1; from = p; continue; }
     p += 1;
   }
   flush(e);
-  return parts.join('');
+  return w;
+}
+function prettyOf(buf, s, e, level = 0) {
+  const out = Buffer.allocUnsafe(prettyInto(buf, s, e, level, null, 0));
+  prettyInto(buf, s, e, level, out, 0);
+  return out.toString('utf8');
 }
 // an object's own id / role / at as parsed values (undefined when it has none), read off its top level only
 function topFields(buf, s, e) {
@@ -300,6 +315,148 @@ function prettyLayout(buf, st) {
   if (buf.toString('latin1', st.arrS, st.els[0]) !== LIST.pretty.open || buf.toString('latin1', st.els[n * 2 - 1], st.arrE) !== LIST.pretty.close) return false;
   for (let i = 1; i < n; i++) if (st.els[i * 2] - st.els[i * 2 - 1] !== 6 || buf.toString('latin1', st.els[i * 2 - 1], st.els[i * 2]) !== LIST.pretty.sep) return false;
   return true;
+}
+
+// ---------- sync (round 82): a giant chat's cloud form, a pull and a merge, by its messages' bytes ----------
+// sync-merge.js's whole-file way: JSON.parse the 60 MB file, toCloud / fromCloud every string, JSON.stringify, hash —
+// 1–9 s of a thread per pass for one chat (and for the push, on the main process). Here a message whose bytes are
+// already as JSON.stringify writes them and hold no string sync would rewrite (a path for toCloud, "hearth-…" for
+// fromCloud) is COPIED (compact) or re-laid out (pretty) as bytes; the others (few: pictures attached, things made) are
+// parsed and converted one by one. Same bytes, same hashes as the whole-file way (dev/bigchat82-sync.js).
+const FLAG_PATHY = 1; const FLAG_CLOUDY = 2;
+const sha1 = () => require('crypto').createHash('sha1');
+// a growable output buffer
+function sink(cap) {
+  const o = { b: Buffer.allocUnsafe(Math.max(1024, cap)), w: 0 };
+  o.room = (n) => { if (o.w + n > o.b.length) { const nb = Buffer.allocUnsafe(Math.max(o.b.length * 2, o.w + n + 1024)); o.b.copy(nb, 0, 0, o.w); o.b = nb; } };
+  o.put = (x) => { const b = typeof x === 'string' ? Buffer.from(x, 'utf8') : x; o.room(b.length); b.copy(o.b, o.w); o.w += b.length; };
+  return o;
+}
+// flags of a piece of compact JSON (pathy / cloudy strings in it)
+function flagsOf(b) { const f = {}; compactInto(b, 0, b.length, Buffer.allocUnsafe(b.length), 0, f); return (f.pathy ? FLAG_PATHY : 0) | (f.cloud ? FLAG_CLOUDY : 0); }
+// A chat file's bytes → its cloud form (sync-engine's canon(toCloud(JSON.parse(file)))) as bytes, with where each message
+// sits in it. ctx null: a cloud copy (only made canonical). → { text, h, offs [s, e…], flags (per message), head } | null
+function cloudForm(buf, ctx, S) {
+  const st = scanBuf(buf);
+  if (st.bad) return null;
+  let head; try { head = headOf(buf, st); } catch { return null; }
+  if (ctx) head = S.toCloud(head, ctx);
+  const [pre, post] = shell(head, false);
+  const n = elCount(st); const offs = new Array(n * 2); const flags = new Uint8Array(n); const bs = { at: -2 };
+  const o = sink(buf.length + 4096);
+  o.put(pre); o.put('[');
+  for (let k = 0; k < n; k++) {
+    if (k) { o.room(1); o.b[o.w++] = 0x2c; }
+    const s = st.els[k * 2]; const e = st.els[k * 2 + 1];
+    o.room(e - s);
+    const f = {}; const w0 = o.w;
+    const w = compactInto(buf, s, e, o.b, w0, f, bs);
+    if (w < 0 || (ctx && f.pathy)) {
+      let m; try { m = JSON.parse(buf.toString('utf8', s, e)); } catch { return null; }
+      if (ctx) m = S.toCloud(m, ctx);
+      const piece = Buffer.from(JSON.stringify(m) ?? 'null', 'utf8');
+      o.w = w0; o.put(piece);
+      flags[k] = flagsOf(piece);
+    } else { o.w = w; flags[k] = (f.pathy ? FLAG_PATHY : 0) | (f.cloud ? FLAG_CLOUDY : 0); }
+    offs[k * 2] = w0; offs[k * 2 + 1] = o.w;
+  }
+  o.put(']'); o.put(post);
+  const text = o.b.subarray(0, o.w);
+  return { text, h: sha1().update(text).digest('hex'), offs, flags, head, n };
+}
+// what a pull writes here: the cloud copy in this computer's form (pretty unless the file here was compact), and the
+// hash of THAT in cloud form (lh, as syncPull computes it). cf: cloudForm(cloud bytes, null). As syncPull, the copy
+// goes through toCloud first (a path the other computer left as it was may be one of this computer's), then fromCloud
+function localFromCloud(cf, ctx, S, pretty) {
+  const headL = S.fromCloud(S.toCloud(cf.head, ctx), ctx);
+  const [pre, post] = shell(headL, pretty);
+  const o = sink(Math.round(cf.text.length * (pretty ? 1.25 : 1)) + 4096);
+  const L = pretty ? LIST.pretty : LIST.compact;
+  // the local copy in cloud form again: the cloud text itself unless a converted part comes back different (then hashed)
+  const headBack = S.toCloud(headL, ctx);
+  const diff = new Map(); // message → its own cloud form when it differs from the copy's
+  const headSame = JSON.stringify(headBack) === JSON.stringify(cf.head);
+  o.put(pre); o.put(cf.n ? L.open : '[]');
+  for (let k = 0; k < cf.n; k++) {
+    if (k) o.put(L.sep);
+    const s = cf.offs[k * 2]; const e = cf.offs[k * 2 + 1]; const fl = cf.flags[k];
+    if (fl & (FLAG_CLOUDY | FLAG_PATHY)) {
+      const m = S.fromCloud(S.toCloud(JSON.parse(cf.text.toString('utf8', s, e)), ctx), ctx);
+      o.put(pretty ? prettyMsg(m) : (JSON.stringify(m) ?? 'null'));
+      const bk = Buffer.from(JSON.stringify(S.toCloud(m, ctx)) ?? 'null', 'utf8');
+      if (!bk.equals(cf.text.subarray(s, e))) diff.set(k, bk);
+    } else {
+      if (pretty) { const size = prettyInto(cf.text, s, e, 2, null, 0); o.room(size); o.w = prettyInto(cf.text, s, e, 2, o.b, o.w); } else o.put(cf.text.subarray(s, e));
+    }
+  }
+  if (cf.n) o.put(L.close);
+  o.put(post);
+  if (headSame && !diff.size) return { out: o.b.subarray(0, o.w), lh: cf.h };
+  const back = sha1(); const [cpre, cpost] = shell(headBack, false);
+  back.update(cpre); back.update(cf.n ? '[' : '[]');
+  for (let k = 0; k < cf.n; k++) { if (k) back.update(','); back.update(diff.get(k) || cf.text.subarray(cf.offs[k * 2], cf.offs[k * 2 + 1])); }
+  if (cf.n) back.update(']');
+  back.update(cpost);
+  return { out: o.b.subarray(0, o.w), lh: back.digest('hex') };
+}
+// Both computers changed a giant chat: sync-merge.js merge3 on the chat with each message that is the SAME (bytes) in
+// the base, here and there stood in for by a tiny stand-in holding only what the merge looks at (id, role, at: how it
+// keys and orders messages; a stand-in shared by the three sides compares equal at once). Every other message is parsed.
+// The result is laid out again from bytes: stand-ins → their bytes, the rest stringified. → as storework's syncMerge
+// returns, or null (no base, not chats: the whole-file merge then). localBuf: this computer's file (its form).
+function mergeChat({ baseBuf, localBuf, cloudBuf, ctx, S, lh, ch, counters, keepAll, forms = {} }) {
+  if (!baseBuf) return null;
+  const O = forms.O || cloudForm(localBuf, ctx, S); const T = forms.T || cloudForm(cloudBuf, null, S); const B = forms.B || cloudForm(baseBuf, null, S); // (forms: made earlier this pass)
+  if (!O || !T || !B) return null;
+  if (O.h !== lh || T.h !== ch) return { stale: true };
+  // (theirs goes through toCloud too, as in syncMerge: only its messages with a path-like string can change)
+  const local = scanBuf(localBuf);
+  const prettyHere = localBuf.length < 2 || /^[[{]\s/.test(localBuf.toString('latin1', 0, 2));
+  const localPretty = prettyHere && !local.bad && elCount(local) === O.n && prettyLayout(localBuf, local);
+  const proxyOf = new Map(); // stand-in → its index in O (and B, T)
+  const piece = (X, k) => X.text.subarray(X.offs[k * 2], X.offs[k * 2 + 1]);
+  const parsed = (X, k) => JSON.parse(X.text.toString('utf8', X.offs[k * 2], X.offs[k * 2 + 1]));
+  const bm = new Array(B.n); const om = new Array(O.n); const tm = new Array(T.n);
+  for (let k = 0; k < B.n; k++) {
+    const pb = piece(B, k);
+    if (k < O.n && k < T.n && pb[0] === 0x7b && !(T.flags[k] & FLAG_PATHY) && pb.equals(piece(O, k)) && pb.equals(piece(T, k))) {
+      const f = topFields(B.text, B.offs[k * 2], B.offs[k * 2 + 1]);
+      const x = {}; if ('id' in f) x.id = f.id; if ('role' in f) x.role = f.role; if ('at' in f) x.at = f.at;
+      proxyOf.set(x, k); bm[k] = om[k] = tm[k] = x;
+    } else bm[k] = parsed(B, k);
+  }
+  for (let k = 0; k < O.n; k++) if (!om[k]) om[k] = parsed(O, k);
+  for (let k = 0; k < T.n; k++) if (!tm[k]) tm[k] = T.flags[k] & FLAG_PATHY ? S.toCloud(parsed(T, k), ctx) : parsed(T, k);
+  const r = S.merge3({ ...B.head, messages: bm }, { ...O.head, messages: om }, { ...S.toCloud(T.head, ctx), messages: tm }, { counters, keepAll });
+  const v = r.value;
+  if (!v || typeof v !== 'object' || !Array.isArray(v.messages)) return null;
+  const msgs = v.messages;
+  // the cloud text
+  const [cpre, cpost] = shell({ ...v, messages: [] }, false);
+  const o = sink(Math.max(O.text.length, T.text.length) + 4096);
+  o.put(cpre); o.put('[');
+  msgs.forEach((x, i) => { if (i) o.put(','); const k = proxyOf.get(x); o.put(k !== undefined ? piece(O, k) : Buffer.from(JSON.stringify(x) ?? 'null', 'utf8')); });
+  o.put(']'); o.put(cpost);
+  const text = o.b.subarray(0, o.w);
+  const hm = sha1().update(text).digest('hex');
+  let localOut = null;
+  if (hm !== lh) {
+    const headL = S.fromCloud({ ...v, messages: [] }, ctx);
+    const [pre, post] = shell(headL, prettyHere);
+    const L = prettyHere ? LIST.pretty : LIST.compact;
+    const lo = sink(localBuf.length + 4096);
+    lo.put(pre); lo.put(msgs.length ? L.open : '[]');
+    msgs.forEach((x, i) => {
+      if (i) lo.put(L.sep);
+      const k = proxyOf.get(x);
+      if (k !== undefined && !(O.flags[k] & (FLAG_PATHY | FLAG_CLOUDY)) && (localPretty || !prettyHere)) lo.put(localPretty ? localBuf.subarray(local.els[k * 2], local.els[k * 2 + 1]) : piece(O, k));
+      else { const m = S.fromCloud(k !== undefined ? parsed(O, k) : x, ctx); lo.put(prettyHere ? prettyMsg(m) : (JSON.stringify(m) ?? 'null')); }
+    });
+    if (msgs.length) lo.put(L.close);
+    lo.put(post);
+    localOut = lo.b.subarray(0, lo.w);
+  }
+  return { text, hm, localOut, conflicts: r.conflicts, theirsText: r.conflicts.length ? T.text.toString('utf8') : null, oursText: null, fast: true };
 }
 
 // ---------- a big chat saved by what changed (storework.js op chatDelta) ----------
@@ -363,4 +520,4 @@ function deltaWrite(fs, file, tmp, e, d, o = {}) {
 // the summary the chats list shows, from a head
 const sumOf = (h) => ({ id: h.id, agentId: h.agentId, title: h.title, updatedAt: h.updatedAt, pinned: Boolean(h.pinned), model: h.model });
 
-module.exports = { BIG, deltaWrite, sumOf, fastCut, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST };
+module.exports = { BIG, cloudForm, localFromCloud, mergeChat, prettyInto, deltaWrite, sumOf, fastCut, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST };

@@ -123,13 +123,18 @@ const pct = (xs, q) => { const s = [...xs].sort((x, y) => x - y); return r1(s[Ma
     const h1 = await T.op({ op: 'syncHash', file: localFile, rel: 'chats/claude-giant0.json', cloud: false, ctx });
     const h2 = await T.op({ op: 'syncHash', file: cloudFile, rel: 'chats/claude-giant0.json', cloud: true, ctx: null });
     const lh = h1.res.h; const ch = h2.res.h;
-    // push: the engine's localText (main) when the store thread's text was too big to hand back
-    const push = time(() => canon(S.parseJson(fs.readFileSync(localFile, 'utf8'))));
+    const txt = (x) => (typeof x === 'string' ? x : Buffer.from(x).toString('utf8'));
+    const bytes = (x) => (typeof x === 'string' ? Buffer.from(x) : Buffer.from(x.buffer, x.byteOffset, x.byteLength)); // (what the main side writes)
+    // push: the bytes to write. Before: the engine's localText ON THE MAIN PROCESS (the thread's text was too big to hand
+    // back); after: syncText on the files thread (handed over), the main process only writes them
+    let push;
+    try { const tx = await T.op({ op: 'syncText', file: localFile, rel: 'chats/claude-giant0.json', ctx }); push = { threadMs: r1(tx.ms), ...time(() => bytes(tx.res.text)) }; } catch { push = time(() => canon(S.parseJson(fs.readFileSync(localFile, 'utf8')))); }
     const m = await T.op({ op: 'syncMerge', rel: 'chats/claude-giant0.json', localFile, cloudFile, baseFile, ctx, lh, ch, counters: false, keepAll: false });
-    const mainWrites = time(() => { Buffer.from(String(m.res.text)); if (m.res.localOut) Buffer.from(String(m.res.localOut)); });
+    const mainWrites = time(() => { bytes(m.res.text); if (m.res.localOut) bytes(m.res.localOut); });
     const p = await T.op({ op: 'syncPull', rel: 'chats/claude-giant0.json', cloudFile, h: ch, ctx, localFile, recovery: null, aside: null });
-    out.sync = { hashLocalMs: r1(h1.ms), hashCloudMs: r1(h2.ms), push_mainMs: push.ms, mergeThreadMs: r1(m.ms), merge_mainWritesMs: mainWrites.ms, mergeOk: Boolean(m.res && !m.res.stale), merged: m.res?.text ? JSON.parse(String(m.res.text)).messages.length : null, pullThreadMs: r1(p.ms), pullOk: Boolean(p.res && !p.res.stale) };
-    out.sync.mergeSame = m.res?.text ? sha(String(m.res.text)) === sha(JSON.stringify(S.merge3(S.toCloud(base, ctx), S.toCloud(ours, ctx), S.toCloud(theirs, ctx)).value)) : null;
+    const pullMain = time(() => { bytes(p.res.out); bytes(p.res.cloudText); });
+    out.sync = { hashLocalMs: r1(h1.ms), hashCloudMs: r1(h2.ms), push_mainMs: push.ms, push_threadMs: push.threadMs ?? null, mergeThreadMs: r1(m.ms), merge_mainWritesMs: mainWrites.ms, mergeOk: Boolean(m.res && !m.res.stale), merged: m.res?.text ? JSON.parse(txt(m.res.text)).messages.length : null, pullThreadMs: r1(p.ms), pull_mainMs: pullMain.ms, pullOk: Boolean(p.res && !p.res.stale) };
+    out.sync.mergeSame = m.res?.text ? sha(txt(m.res.text)) === sha(JSON.stringify(S.merge3(S.toCloud(base, ctx), S.toCloud(ours, ctx), S.toCloud(theirs, ctx)).value)) : null;
     await T.end();
     fs.rmSync(cloudRoot, { recursive: true, force: true });
   }
