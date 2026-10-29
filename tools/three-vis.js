@@ -354,11 +354,15 @@ visualizer(P, { preset: ${q(p.id)}${img} });
     // previews only for the cards in view; the loop stops when the picker closes or the window hides
     const io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver((es) => { for (const x of es) { const c = cards.find((k) => k.btn === x.target); if (c) c.vis = x.isIntersecting; } }, { root: grid }) : null;
     if (io) for (const c of cards) io.observe(c.btn);
-    let raf = 0; const t0 = performance.now();
-    const loop = () => {
+    // (gpuload84) the cards draw 30 times a second, not on every frame of the screen (240 on a fast one: a grid of
+    // canvases redrawn that often loaded the graphics card enough to crackle other apps' sound)
+    let raf = 0; const t0 = performance.now(); let next = 0;
+    const loop = (now) => {
       if (!shade.isConnected) return;
       raf = requestAnimationFrame(loop);
       if (document.hidden) return;
+      if (now < next - 1) return;
+      next = now - next > 1000 / 30 ? now + 1000 / 30 : next + 1000 / 30;
       const t = (performance.now() - t0) / 1000; const c = ctl();
       for (const k of rows) if (k.vis) { try { drawCard(k, t, c); } catch (err) { console.warn('visualizer preview', err); k.vis = false; } }
     };
