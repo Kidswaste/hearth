@@ -30,7 +30,9 @@ const r0 = (x) => Math.round(x);
 const MB = (x) => Math.round((x / 1048576) * 10) / 10;
 const OFF = Boolean(window.CW86_OFF);
 const out = { mode: OFF ? 'off (whole)' : 'windowed', problems: [] };
-const BUDGET = Object.assign({ task: 60, mainBlock: 100, heapMB: 40 }, window.CW_BUDGET || {});
+// (wake: find and jump draw an older block in place, and that block's first layout — chatwindow72/76's, the same with
+// the setting off — is 35–75 ms here on its own: measured, budgeted apart)
+const BUDGET = Object.assign({ task: 60, wake: 100, mainBlock: 100, heapMB: 40 }, window.CW_BUDGET || {});
 const RARE = 'zanzibar84quokka';
 const ID = 'claude-giant0';
 const lag = (label) => window.hub.power?.test?.({ lag: { label } });
@@ -126,7 +128,7 @@ await step('find', async () => {
   const r = { bar: Boolean(bar), found: Boolean(hit), count: v().root.querySelector('.chat-find .find-count')?.textContent || null };
   if (bar) { await key('Escape', 'Escape'); await wait(200); }
   return r;
-});
+}, { taskBudget: BUDGET.wake });
 if (!out.find.found) out.problems.push(`find: ${JSON.stringify({ bar: out.find.bar, found: out.find.found, count: out.find.count })}`);
 await step('jump', async () => {
   Native.jumpTo(claude.id, 100);
@@ -134,7 +136,7 @@ await step('jump', async () => {
   await wait(500);
   const r = n?.getBoundingClientRect(); const lr = list().getBoundingClientRect();
   return { found: Boolean(n), onScreen: Boolean(r && r.bottom > lr.top && r.top < lr.bottom) };
-});
+}, { taskBudget: BUDGET.wake });
 if (!out.jump.found || !out.jump.onScreen) out.problems.push(`jump: ${JSON.stringify({ found: out.jump.found, onScreen: out.jump.onScreen })}`);
 for (let i = 0; i < 6; i++) { list().scrollTop = list().scrollHeight; await wait(400); }
 await wait(2000);

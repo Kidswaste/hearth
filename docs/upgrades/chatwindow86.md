@@ -21,8 +21,8 @@ noise per task.
 | Window heap with the giant chat open (after a GC) | **+60 MB** | **+5.5 MB** |
 | Open, from the click until the end is drawn | no task ≥ 50 ms (bigchat84's slices) · 2.2 s | no task ≥ 50 ms · 1.6 s |
 | Scroll to the very top (message #1 drawn) | 50 ms task · 120 ms | none · 120 ms (one range of 20 read) |
-| Find a word only in #30 (Alt+F) | **140–143 ms** | 53 ms (the store thread finds it) |
-| Jump to #100 | none | 52 ms (the block's layout, as before) |
+| Find a word only in #30 (Alt+F) | **140–143 ms** | 53–75 ms (the store thread finds it; what's left is the woken block's first layout, chatwindow72's) |
+| Jump to #100 | none–50 ms | 52 ms (the same layout) |
 | Send, the reply arrives | 56–65 ms | none (2 saves by change) |
 | A reaction on #2002 (never loaded) | none | none (its block read, saved by change) |
 | Edit-from-here on an old message of yours | **200–214 ms** | none (its block and the new end read, cut with trunc) |
@@ -31,7 +31,10 @@ noise per task.
 | Sync brings a changed version of the chat (let go, opened again) | **146 ms** + 57–68 ms · 2.4 s | none · 1.6 s |
 | Window heap at the end of the check | +118 MB | +11 MB |
 
-The main process never blocked ≥ 50 ms in any step, before or after (its longest stretch: 13–39 ms).
+The main process never blocked ≥ 50 ms in any step, before or after (its longest stretch: 13–39 ms). The check
+budgets 60 ms per task, except for find and jump (100 ms). Those two draw an older block in place, and that block's
+first layout (`getBoundingClientRect` in chat-rest's anchor, profiled) takes 35–75 ms here on its own, with the setting
+off too.
 
 The store thread (`node dev/chatwindow86-test.js --bench`, the fixture's chat):
 - open windowed: 267 ms the first time (the file cut once, one record per message made), 75 ms again. It sends the
