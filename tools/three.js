@@ -3974,7 +3974,11 @@ const ThreeLab = (() => {
       q.focus();
     }
     let pickerSig = '';
+    // (round 86, projopen86) several scenes added in a row (a project import / Duplicate): one picker draw after them
+    let pickerTimer = 0;
+    function pickerSoon() { if (!pickerTimer) pickerTimer = setTimeout(() => { pickerTimer = 0; renderPicker(); }, 0); }
     function renderPicker() {
+      if (pickerTimer) { clearTimeout(pickerTimer); pickerTimer = 0; }
       // ★ pinned ones (pin them in the sketch browser) first, then the most recent
       const pins = new Set(store.get('three.sketchPins', []));
       const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt);
@@ -4433,7 +4437,7 @@ ${code}
         if (Array.isArray(notes) && notes.length) { notesAll[x.id] = JSON.parse(JSON.stringify(notes)); saveNotes(); }
         if (thumb?.url) { thumbs[x.id] = { ...thumb }; saveThumbs(); }
         for (const [k, m] of Object.entries(maps || {})) player.adoptMap?.(k, m).catch?.(() => {});
-        save(); renderPicker();
+        save(); pickerSoon(); // (round 86, projopen86) the picker drawn once for a project's scenes added together (it was once per scene, ≈ 15–20 ms each)
         return x;
       },
       thumbOf: (id) => thumbs[id]?.url || null,

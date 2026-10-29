@@ -113,13 +113,6 @@ function walkDir(dir, cap = 20000) {
 }
 // (round 85, projbig85) the export card's sizes with the disk's answers awaited (a project of 740 files held this
 // process ≈ 120 ms in stat / readdir calls before its card showed); the same answers as here() / walkDir()
-async function hereAsync(p, { dir = false } = {}) {
-  const raw = unFile(p);
-  const ok = (st) => st && (dir ? st.isDirectory() || st.isFile() : st.isFile());
-  const st = await fs.promises.stat(raw).catch(() => null);
-  if (ok(st)) return { path: raw, size: st.isFile() ? st.size : 0, dir: st.isDirectory() };
-  return here(p, { dir }); // (the other computer's form mapped here: as before)
-}
 async function walkDirAsync(dir, cap = 20000) {
   const out = [];
   const go = async (d, rel, depth) => {
@@ -141,15 +134,49 @@ async function walkDirAsync(dir, cap = 20000) {
   await go(dir, '', 0);
   return out;
 }
+// (round 86, projopen86) here() for many paths at once: each as it is (asked without blocking), then the ones not found
+// mapped from the other computer's form in one call (reachmain localizeMany: the disk awaited, the mapping in slices)
+// and those asked again. The same answers as here() for each path
+// (it replaces round 85's hereAsync, which mapped each path not found with its own blocking calls).
+async function hereMany(list) {
+  const okOf = (st, dir) => st && (dir ? st.isDirectory() || st.isFile() : st.isFile());
+  const res = new Array(list.length).fill(null);
+  const raws = list.map(({ p }) => unFile(p));
+  const BATCH = 64;
+  const miss = [];
+  for (let i = 0; i < list.length; i += BATCH) {
+    await Promise.all(list.slice(i, i + BATCH).map(async ({ dir }, k) => {
+      const j = i + k; const st = await fs.promises.stat(raws[j]).catch(() => null);
+      if (okOf(st, dir)) res[j] = { path: raws[j], size: st.isFile() ? st.size : 0, dir: st.isDirectory() }; else miss.push(j);
+    }));
+  }
+  if (!miss.length) return res;
+  miss.sort((a, b) => a - b);
+  let hits = [];
+  try { hits = await require('./reachmain').localizeMany(miss.map((j) => raws[j])); } catch { hits = []; /* no mapping */ }
+  for (let i = 0; i < miss.length; i += BATCH) {
+    await Promise.all(miss.slice(i, i + BATCH).map(async (j, k) => {
+      const hit = hits[i + k]; if (!hit?.path) return;
+      const st = await fs.promises.stat(hit.path).catch(() => null);
+      if (okOf(st, list[j].dir)) res[j] = { path: hit.path, size: st.isFile() ? st.size : 0, dir: st.isDirectory() };
+    }));
+  }
+  return res;
+}
 async function sizes({ paths = [], dirs = [] } = {}) {
-  const one = async (p, dir) => {
+  // (round 86, projopen86) every path found in one batch (hereMany), then each answered as before
+  const all = [...paths.map((p) => ({ p, dir: false })), ...dirs.map((p) => ({ p, dir: true }))];
+  const found = await hereMany(all.map((x) => (P.secretFile(x.p) ? { p: '', dir: x.dir } : x)));
+  const at = new Map(); all.forEach((x, i) => at.set(x, found[i]));
+  const one = async (x) => {
+    const { p, dir } = x;
     if (P.secretFile(p)) return { path: p, found: false, secret: true, size: 0 };
-    const h = await hereAsync(p, { dir });
+    const h = at.get(x);
     if (!h) return { path: p, found: false, size: 0 };
     if (h.dir) { const fs2 = await walkDirAsync(h.path); return { path: p, found: true, dir: true, files: fs2.length, size: fs2.reduce((n, f) => n + f.size, 0) }; }
     return { path: p, found: true, files: 1, size: h.size };
   };
-  return { files: await Promise.all(paths.map((p) => one(p, false))), dirs: await Promise.all(dirs.map((p) => one(p, true))) };
+  return { files: await Promise.all(all.slice(0, paths.length).map(one)), dirs: await Promise.all(all.slice(paths.length).map(one)) };
 }
 
 // ---------- writing (streamed) ----------

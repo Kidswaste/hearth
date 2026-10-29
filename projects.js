@@ -536,7 +536,10 @@ const Projects = (() => {
     const rest = new Set(ids);
     const out = [];
     for (const p of live()) {
-      const mine = ids.filter((id) => rest.has(id) && C.has(p, 'scene', id));
+      // (round 86, projopen86) the project's item ids once (C.has per id scanned all of its items: a project of 1,000
+      // things × 55 scenes was ≈ 15 ms per Lab picker draw, on every scene shown and every scene a project import adds)
+      const have = new Set(); for (const x of p.items) have.add(x.id);
+      const mine = ids.filter((id) => rest.has(id) && have.has(C.itemId('scene', id)));
       if (!mine.length) continue;
       for (const id of mine) rest.delete(id);
       out.push({ label: `${p.ident.glyph} ${p.name}`, ids: mine });
