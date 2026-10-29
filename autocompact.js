@@ -39,6 +39,36 @@ const Autocompact = (() => {
   const words = (t) => { const s = new Set(); for (const w of String(t || '').toLowerCase().replace(/```[\s\S]*?```/g, ' ').match(/[a-z][a-z0-9_-]{2,}/g) || []) if (!STOP.has(w)) s.add(w.slice(0, 6)); return s; };
   const shared = (a, b) => { let n = 0; for (const w of a) if (b.has(w)) n++; return n; };
   const talk = (m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'opinion') && !m.compactReq && !m.compactSummary && m.text;
+  // (round 82, bigchat82) the older messages' words, kept between replies: a long chat's older part only grows, so each
+  // reply adds the new ones instead of reading every older message again (≈ 0.25 s of the window per reply in a
+  // 6,000-message chat). Checked each time: the same message objects with the same text, else made again. Per word, the
+  // older messages that have it (relevance: how many of the last exchanges' words each one shares) and all of them (topic)
+  const wordIx = new WeakMap(); // older[0] → { msgs, texts, ctxs, size, tk, post: Map(word → [i]), all: Set }
+  function olderWords(older, stop = null) { // stop(): a slice is spent (warm: the index made in idle moments)
+    if (older.length < 300) return null; // (a short chat: as before)
+    let ix = wordIx.get(older[0]);
+    if (ix) {
+      const n = Math.min(ix.msgs.length, older.length); let p = 0;
+      while (p < n && ix.msgs[p] === older[p] && ix.texts[p] === older[p].text && ix.ctxs[p] === older[p].ctx) p += 1;
+      if (p < ix.msgs.length) ix = null; // (an older message changed or went: made again)
+    }
+    if (!ix) { ix = { msgs: [], texts: [], ctxs: [], size: [], tk: [], post: new Map(), all: new Set() }; wordIx.set(older[0], ix); }
+    for (let i = ix.msgs.length; i < older.length; i++) {
+      if (stop && stop()) break;
+      const m = older[i]; const w = words(m.text);
+      ix.msgs.push(m); ix.texts.push(m.text); ix.ctxs.push(m.ctx); ix.size.push(w.size); ix.tk.push(tok(m.ctx || m.text));
+      for (const x of w) { let a = ix.post.get(x); if (!a) ix.post.set(x, (a = [])); a.push(i); ix.all.add(x); }
+    }
+    return ix;
+  }
+  // a long chat just opened: its older messages' words made in idle moments, so its first reply doesn't make them all
+  function warm(chat) {
+    if (typeof requestIdleCallback === 'undefined') return;
+    let older; try { older = split(chat).older; } catch { return; }
+    if (older.length < 300) return;
+    const step = (dl) => { const ix = olderWords(older, () => dl.timeRemaining() < 3); if (ix && ix.msgs.length < older.length) requestIdleCallback(step, { timeout: 3000 }); };
+    requestIdleCallback(step, { timeout: 3000 });
+  }
   const usageOf = (chat) => [...(chat?.messages || [])].reverse().find((m) => m.role === 'assistant' && m.usage)?.usage || null;
 
   // Where the verbatim tail starts: the user message that opens the last `keep` exchanges (never before `from`).
@@ -81,12 +111,21 @@ const Autocompact = (() => {
     out.after = after;
     // how much of the older history the last exchanges still talk about (a message sharing ≥ 2 of their words)
     const recent = words(kept.map((m) => m.text).join(' '));
-    const olderWords = older.map((m) => ({ t: tok(m.ctx || m.text), w: words(m.text) }));
-    const relTok = olderWords.reduce((n, x) => n + (shared(x.w, recent) >= Math.min(2, x.w.size) ? x.t : 0), 0);
+    const ix = input.wholeWords ? null : olderWords(older); // (wholeWords: the whole way, for tests)
+    let relTok = 0; let all;
+    if (ix) { // (round 82) from the kept index: the same sums
+      const cnt = new Int32Array(older.length);
+      for (const r of recent) { const a = ix.post.get(r); if (a) for (const i of a) cnt[i] += 1; }
+      for (let i = 0; i < older.length; i++) if (cnt[i] >= Math.min(2, ix.size[i])) relTok += ix.tk[i];
+      all = ix.all;
+    } else {
+      const ow = older.map((m) => ({ t: tok(m.ctx || m.text), w: words(m.text) }));
+      relTok = ow.reduce((n, x) => n + (shared(x.w, recent) >= Math.min(2, x.w.size) ? x.t : 0), 0);
+      all = new Set(); for (const x of ow) for (const w of x.w) all.add(w);
+    }
     const relevance = olderTok ? Math.min(1, relTok / olderTok) : 1;
     // a topic change: the newest message shares (almost) nothing with the older history
     const lastWords = words(input.lastUser);
-    const all = new Set(); for (const x of olderWords) for (const w of x.w) all.add(w);
     const topic = lastWords.size >= 4 && shared(lastWords, all) / lastWords.size < 0.2;
     const factor = topic ? 0.6 : relevance < 0.35 ? 0.75 : 1;
     Object.assign(out, { relevance: Math.round(relevance * 100) / 100, topic, factor });
@@ -323,7 +362,7 @@ ${transcript(parts)}
     }
   }
 
-  return { decide, inputOf, split, tailStart, transcript, prompt, shape, fromLocal, line, run, row, handles, atOf, offerFor,
+  return { warm, decide, inputOf, split, tailStart, transcript, prompt, shape, fromLocal, line, run, row, handles, atOf, offerFor,
     DEFAULT_AT, PRESETS, KEEP_EXCHANGES, CHEAP, HEADS, SUMMARY_MAX_TOKENS };
 })();
 if (typeof module !== 'undefined') module.exports = Autocompact; else window.Autocompact = Autocompact;

@@ -86,6 +86,12 @@ module.exports = async function delta({ ok, chatOf, message, rnd, int, ROOT }) {
     ok(r.ok, '…and still starts the chain');
     r = await op({ op: 'write', file, value: chat, chatDir: true });
     ok((await op({ op: 'chatDelta', file, from: 'w4', to: 'w5', ...diff(chat, chat) })).ok === false, 'a whole save without a version (another writer): the chain ends');
+    // two readers of the same bytes (the window, then someone else opening it): either's change applies, then only the new version
+    await op({ op: 'chatOpen', file, ver: 'A' }); await op({ op: 'chatOpen', file, ver: 'B' });
+    const b6 = clone(chat); chat.messages.push(message(13));
+    r = await op({ op: 'chatDelta', file, from: 'A', to: 'A2', ...diff(b6, chat) });
+    const r6 = await op({ op: 'chatDelta', file, from: 'B', to: 'B2', ...diff(b6, chat) });
+    ok(r.ok && r6.ok === false && fs.readFileSync(file, 'utf8') === JSON.stringify(chat, null, 2), 'two readers: the first change applies, the other version is then refused');
     // a compact file (not laid out as the app writes it): refused, nothing written
     fs.writeFileSync(file, JSON.stringify(chat));
     await op({ op: 'chatOpen', file, ver: 'c0' });

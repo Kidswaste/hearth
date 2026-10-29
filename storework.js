@@ -138,9 +138,10 @@ function msgAt(file, k, e) {
   } catch { return undefined; } finally { if (fd !== null) fs.closeSync(fd); }
 }
 let findIdx = null; let findT = null; // (round 81, projsearch81) projfind-core.js's index: made on the first find, let go 20 min after the last
-// (round 82, bigchat82) giant chats the window holds: file → { ver (the window's version), sig (the file as this thread
-// left / read it), head, els (each message's bytes in it; null until the first change needs them) }. Small: no messages
-// are kept here, only where they are in the file.
+// (round 82, bigchat82) giant chats the window holds: file → { vers (the versions handed out for the file as it is: a
+// window's copy and anyone else's who opened it since), sig (the file as this thread left / read it), head, els (each
+// message's bytes in it; null until the first change needs them) }. Small: no messages are kept here, only where they
+// are in the file. A change from any of those versions applies; after it, only the version it made does.
 const bigs = new Map();
 const bigSig = (st) => (st ? `${st.size}:${st.mtimeMs}` : '');
 
@@ -260,7 +261,7 @@ const OPS = {
     }
     let text = JSON.stringify(value, null, 2);
     let h = sha(text);
-    if (sameOnDisk(file, h)) { if (chatDir && chatVer && Array.isArray(value?.messages)) { const st = stat(file); if (st) bigs.set(file, { ver: chatVer, sig: bigSig(st), head: { ...value, messages: [] }, els: null }); } return { skipped: true }; }
+    if (sameOnDisk(file, h)) { if (chatDir && chatVer && Array.isArray(value?.messages)) { const st = stat(file); const had = bigs.get(file); if (st && had?.sig === bigSig(st)) had.vers.add(chatVer); else if (st) bigs.set(file, { vers: new Set([chatVer]), sig: bigSig(st), head: { ...value, messages: [] }, els: null }); } return { skipped: true }; }
     // (round 43, scenesafe) the Lab's scenes / History: scenes nobody deleted are kept, rotating copies, a damaged file
     // kept aside (scenesafe-core.js); a file held by another program throws here: the save waits for the next one
     let restored = null; let keepPrev = true;
@@ -286,7 +287,7 @@ const OPS = {
     // (round 82, bigchat82) a giant one isn't tokenized for recall here (seconds of this thread on every save): its next
     // recall reads it in slices (recall below). chatVer: the window holds this version now (its next saves: by change)
     if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); rows.dirty = true; rowsSave(path.dirname(file)); if (recallIdx && text.length < BIG) recallIdx.add(file, value, index.get(file)); }
-    if (chatDir) { if (chatVer && st && Array.isArray(value?.messages)) bigs.set(file, { ver: chatVer, sig: bigSig(st), head: { ...value, messages: [] }, els: null }); else bigs.delete(file); }
+    if (chatDir) { if (chatVer && st && Array.isArray(value?.messages)) bigs.set(file, { vers: new Set([chatVer]), sig: bigSig(st), head: { ...value, messages: [] }, els: null }); else bigs.delete(file); }
     return { bytes: text.length };
   },
   // (round 82, bigchat82) a giant chat for the window: its bytes, handed over (transferred) without a copy
@@ -297,7 +298,7 @@ const OPS = {
       const ab = new ArrayBuffer(st.size); const u = new Uint8Array(ab);
       for (let pos = 0; pos < st.size;) { const n = fs.readSync(fd, u, pos, st.size - pos, pos); if (!n) break; pos += n; }
       const prev = bigs.get(file);
-      bigs.set(file, { ver, sig: bigSig(st), head: prev?.sig === bigSig(st) ? prev.head : null, els: prev?.sig === bigSig(st) ? prev.els : null });
+      if (prev?.sig === bigSig(st)) { prev.vers.add(ver); if (prev.vers.size > 16) prev.vers.delete(prev.vers.values().next().value); } else bigs.set(file, { vers: new Set([ver]), sig: bigSig(st), head: null, els: null });
       return { bytes: u, __transfer: [ab] };
     } finally { fs.closeSync(fd); }
   },
@@ -307,7 +308,7 @@ const OPS = {
     const { file } = d;
     try {
       const e = bigs.get(file);
-      if (!e || e.ver !== d.from) return { ok: false, why: 'version' };
+      if (!e || !e.vers.has(d.from)) return { ok: false, why: 'version' };
       const st0 = stat(file);
       if (!st0 || bigSig(st0) !== e.sig) { bigs.delete(file); return { ok: false, why: 'changed' }; }
       if (!e.els || !e.head) {
@@ -323,7 +324,7 @@ const OPS = {
       renameRetry(tmp, file);
       const st = stat(file);
       if (!st) { bigs.delete(file); return { ok: false, why: 'gone' }; }
-      Object.assign(e, { ver: d.to, sig: bigSig(st), head: r.head, els: r.els });
+      Object.assign(e, { vers: new Set([d.to]), sig: bigSig(st), head: r.head, els: r.els });
       written.set(file, { h: '', size: st.size, mtimeMs: st.mtimeMs }); // (no hash: a whole save of the same chat writes again)
       merged.delete(file);
       if (findIdx) findIdx.stale(file);

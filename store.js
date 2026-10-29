@@ -481,7 +481,7 @@ function addUsage(agentId, usage, meta = {}) {
   entry.output += usage.output || 0;
   entry.replies += 1;
   if (usage.cached) entry.cached = (entry.cached || 0) + usage.cached;
-  writeJson(USAGE_PATH, all);
+  writeJson(USAGE_PATH, all, { off: true }); // (round 82, bigchat82) on the store thread: its flush to disk held the main process ≈ 60–70 ms after every reply
   try { addTokenStat(agentId, usage, meta); } catch { /* the meter's aggregates are best-effort */ }
 }
 

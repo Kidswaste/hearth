@@ -1869,10 +1869,18 @@ const Native = (() => {
         .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`).join('\n\n');
       return `We compacted our earlier conversation to save context. Here is your summary of it${after ? ', then what we said since' : ''}. Continue naturally.\n\n<summary>\n${chat.compact.summary}\n</summary>${after ? `\n\n<since_then>\n${after.length > CONTEXT_CHARS ? `…${after.slice(-CONTEXT_CHARS)}` : after}\n</since_then>` : ''}\n\n${text}`;
     }
-    const earlier = chat.messages.slice(0, -1).filter((m) => m.role !== 'error')
-      .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`).join('\n\n');
+    // (round 82, bigchat82) the rows taken from the end until they hold CONTEXT_CHARS (the same text: only the end is
+    // sent; joining a 6,000-message chat's every row first was ≈ 50 ms of each message sent)
+    const rows = []; let len = -2; let all = true;
+    for (let i = chat.messages.length - 2; i >= 0; i--) {
+      const m = chat.messages[i]; if (m.role === 'error') continue;
+      const row = `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`;
+      rows.push(row); len += row.length + 2;
+      if (len > CONTEXT_CHARS && i > 0 && chat.messages.slice(0, i).some((x) => x.role !== 'error')) { all = false; break; }
+    }
+    const earlier = rows.reverse().join('\n\n');
     if (!earlier) return text;
-    const trimmed = earlier.length > CONTEXT_CHARS ? `…${earlier.slice(-CONTEXT_CHARS)}` : earlier;
+    const trimmed = !all || earlier.length > CONTEXT_CHARS ? `…${earlier.slice(-CONTEXT_CHARS)}` : earlier;
     const where = chat.imported ? ` (imported from ${chat.imported})` : chat.continuedFrom ? ` (from a ${chat.continuedFrom} chat)` : '';
     return `Here is our earlier conversation${where}. Continue it naturally.\n\n<earlier_conversation>\n${trimmed}\n</earlier_conversation>\n\n${text}`;
   }
@@ -1910,12 +1918,27 @@ const Native = (() => {
     const from = s.ver; const to = s.ver = newVer();
     return window.hub.saveChatDelta({ id: chat.id, from, to, keys, set, n: ms.length, msgs }).then((r) => (r?.ok || shapes.get(chat)?.ver !== to ? r : saveWhole(chat)), () => (shapes.get(chat)?.ver === to ? saveWhole(chat) : null)); // (only the newest change falls back)
   }
-  // a chat as it is on disk: a giant one comes as bytes and is parsed here (never whole on the main process)
+  // a chat as it is on disk: a giant one comes as bytes, parsed off this thread (chatparse-worker.js; here if that fails)
+  let parser = null; let parseSeq = 0; const parsing = new Map();
+  function parseOff(bytes) {
+    try {
+      if (!parser) {
+        parser = new Worker('chatparse-worker.js');
+        parser.onmessage = (e) => { const p = parsing.get(e.data.id); parsing.delete(e.data.id); if (p) (e.data.err ? p.no(new Error(e.data.err)) : p.ok(e.data.chat)); };
+        parser.onerror = () => { for (const p of parsing.values()) p.no(new Error('parser stopped')); parsing.clear(); parser = null; };
+      }
+      const id = ++parseSeq; let done;
+      const p = new Promise((ok, no) => { done = { ok, no }; });
+      parsing.set(id, done); parser.postMessage({ id, bytes }, [bytes.buffer]);
+      return p;
+    } catch { return Promise.resolve(JSON.parse(new TextDecoder().decode(bytes))); }
+  }
   async function getChat(id) {
     const r = window.hub.openChat ? await window.hub.openChat(id) : { chat: await window.hub.getChat(id) };
     if (!r?.bytes) return r?.chat ?? null;
-    const chat = JSON.parse(new TextDecoder().decode(r.bytes));
-    if (Array.isArray(chat?.messages)) takeShape(chat, r.ver);
+    const chat = await parseOff(r.bytes).catch(() => null);
+    if (!chat) return window.hub.getChat(id); // (the parser failed: the whole chat the old way; its next save is whole)
+    if (Array.isArray(chat?.messages)) { takeShape(chat, r.ver); window.Autocompact?.warm?.(chat); } // (its older words made in idle moments)
     return chat;
   }
 
