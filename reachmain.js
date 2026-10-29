@@ -58,15 +58,18 @@ function mapFolder(p, map) {
 }
 
 // → { path, foreign, rel } (path: this computer's form; rel: inside the data folder, "/" separated) or null
+const cleanOf = (input) => unFile(String(input || '').trim().replace(/^["'`<(]+|["'`>),.;:]+$/g, ''));
+const foreignOf = (p, o) => { try { return require('./twocomputers-core').foreign(p, o.platform || process.platform); } catch { return false; } };
 function localize(input, o = {}) {
-  let p = unFile(String(input || '').trim().replace(/^["'`<(]+|["'`>),.;:]+$/g, ''));
+  let p = cleanOf(input);
   if (!p || !absLike(p)) return null;
   const dataDir = o.dataDir || opts.dataDir;
   const relOf = (q) => { const r = path.relative(dataDir, q); return r && !r.startsWith('..') && !path.isAbsolute(r) ? fwd(r) : null; };
   // (round 35, twocomputers) the other computer's way of writing a path is never looked up as it is ("/Users/x/a" on
   // Windows is C:\Users\x\a by accident, "D:\a" on the Mac a relative name): mapped below, or nothing
-  const other = (() => { try { return require('./twocomputers-core').foreign(p, o.platform || process.platform); } catch { return false; } })();
-  if (!other && statOf(p)) return { path: p, foreign: false, rel: relOf(p) };
+  const other = foreignOf(p, o);
+  // (round 86, projopen86) o.here: the disk's answer for p already asked (localizeMany): true / false, not asked again
+  if (!other && (o.here !== undefined ? o.here : statOf(p))) return { path: p, foreign: false, rel: relOf(p) };
   const mapped = mapFolder(p, o.map !== undefined ? o.map : opts.folderMap?.());
   if (mapped) return { path: mapped, foreign: true, rel: relOf(mapped) };
   // this computer's own path written with the other slashes ("C:/Users/…" is fine; "/C:/…" was handled above)
@@ -93,6 +96,28 @@ function localize(input, o = {}) {
   const h = /^(?:\/Users\/[^/]+|\/home\/[^/]+|[A-Za-z]:\/Users\/[^/]+)(\/.*)?$/i.exec(f);
   if (h) { const home = o.home || os.homedir(); const q = h[1] ? join(home, h[1]) : home; if (path.resolve(q) !== path.resolve(p)) return { path: q, foreign: true, rel: relOf(q) }; }
   return null;
+}
+
+// (round 86, projopen86) many paths in one call (the export card's sizes: a project of 740 files from the other
+// computer held the main process ≈ 35 ms mapping them one by one, each with its own blocking stat): the same answers
+// as localize(input, o) for each, in order. The disk is asked without blocking (a few at a time), the sync context and
+// folder map are read once, and the mapping runs in slices of ≤ 4 ms with the main loop free in between.
+async function localizeMany(inputs, o = {}) {
+  const list = Array.isArray(inputs) ? inputs : [];
+  const shared = { ...o, ctx: o.ctx !== undefined ? o.ctx : opts.syncmain?.pathCtx?.(), map: o.map !== undefined ? o.map : opts.folderMap?.() };
+  const cleaned = list.map((x) => { const p = cleanOf(x); return p && absLike(p) && !foreignOf(p, shared) ? p : null; });
+  const here = new Array(list.length).fill(false);
+  const BATCH = 64;
+  for (let i = 0; i < list.length; i += BATCH) {
+    await Promise.all(cleaned.slice(i, i + BATCH).map(async (p, k) => { if (p) here[i + k] = Boolean(await fs.promises.stat(p).catch(() => null)); }));
+  }
+  const out = new Array(list.length);
+  let t = Date.now();
+  for (let i = 0; i < list.length; i += 1) {
+    out[i] = localize(list[i], { ...shared, here: here[i] });
+    if (Date.now() - t >= 4) { await new Promise((r) => setImmediate(r)); t = Date.now(); }
+  }
+  return out;
 }
 
 // what the renderer gets for each item: where it is here, whether it exists, and if not, whether it is coming
@@ -181,4 +206,4 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('reach:info', () => info());
 }
 
-module.exports = { register, localize, resolveOne, unFile, mapFolder, _set: (o) => { opts = { ...opts, ...o }; topsAt = 0; } };
+module.exports = { register, localize, localizeMany, resolveOne, unFile, mapFolder, _set: (o) => { opts = { ...opts, ...o }; topsAt = 0; } };

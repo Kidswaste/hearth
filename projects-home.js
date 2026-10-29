@@ -19,7 +19,7 @@ const ProjectsHome = (() => {
     state.moduleQuery=S.body.querySelector('.pw-module-search')?.value||'';
     state.fileQuery=S.body.querySelector('.pw-file-search')?.value||'';
     state.fileType=S.body.querySelector('.pw-file-kind')?.value||'';
-    state.scroll=S.root.scrollTop;
+    state.scroll=S.top??S.root.scrollTop; // (round 86, projopen86) the place kept by its scroll events: reading scrollTop here laid out the whole window (≈ 30–50 ms) as the Desk was left
     const focus=document.activeElement;
     state.focus=focus&&S.body.contains(focus)&&focus.matches('input,textarea,select')?{className:focus.className,start:focus.selectionStart,end:focus.selectionEnd}:null;
     desks.delete(drawn);desks.set(drawn,state);if(desks.size>100)desks.delete(desks.keys().next().value);
@@ -41,6 +41,7 @@ const ProjectsHome = (() => {
     const head = el('div', { class: 'pj-home-head' }, el('h2', { text: 'Projects' }), input, quick);
     S.body = el('div', { class: 'pj-home-body' });
     S.root = el('div', { class: 'pj-home' }, head, el('div', { class: 'pj-home-find', hidden: true }, chips, results), S.body);
+    S.root.addEventListener('scroll', () => { S.top = S.root.scrollTop; }, { passive: true }); // (round 86, projopen86) see keepDesk
     body.append(S.root);
     S.search = ProjectsSearch.view({ input, list: results, chips, empty: '' });
     // (round 75, projbundle75) a .hearthproject dropped on Projects is imported (the check card comes first)
@@ -235,7 +236,7 @@ const ProjectsHome = (() => {
     S.body.replaceChildren(head,...(window.ProjFind?[ProjFind.box(p)]:[]),...(window.QuestGuide?.projectCard?[QuestGuide.projectCard(p)]:[]),materials,modules,sound,...(conversations?[conversations]:[]),about,files); // (round 81, projsearch81) ProjFind.box: Find in this project, one box for everything in it (projfind.js)
     for(const d of S.body.querySelectorAll('details'))d.open=(state.open||[]).includes(d.className);
     if(modules.open)paintModules();
-    S.root.scrollTop=state.scroll||0;
+    S.top=S.root.scrollTop=state.scroll||0; // (round 86: S.top, see keepDesk; a clamped place comes back by its scroll event)
     if(state.focus){const field=[...S.body.querySelectorAll('input,textarea,select')].find(e=>e.className===state.focus.className);field?.focus({preventScroll:true});if(field?.setSelectionRange&&state.focus.start!=null)try{field.setSelectionRange(state.focus.start,state.focus.end);}catch{}}
   }
   // ---------- (round 76, projsync76) the project across your two computers ----------
@@ -319,7 +320,7 @@ const ProjectsHome = (() => {
     if(!id && ProjectWorkspace.current()){ProjectWorkspace.home().catch(err=>toast(calmError(err),{type:'error'}));return;}
     S.open = id && P.get(id) ? id : null;
     if (S.open) P.touch(P.get(S.open));
-    if (S.mounted) { if(!S.open)S.root.scrollTop=0;paint(); }
+    if (S.mounted) { if(!S.open)S.top=S.root.scrollTop=0;paint(); } // (round 86: S.top)
   }
 
   Tools.define({

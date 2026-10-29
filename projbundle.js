@@ -92,7 +92,8 @@ const ProjBundle = (() => {
     // it stands in by its own fields, its count, size and the paths it points at ({ __bigChat }); the export reads it
     // from its file on a thread of the main process, Duplicate copies it there (projbundlemain.js). One that can't be
     // read stops here: nothing is written, it's never taken as "no chat"
-    const info = chatIds.length && pb().chats ? await pb().chats(chatIds) : {};
+    // (round 86, projopen86) a copy (files: false, Duplicate) needs no paths: its big chats' heads are cut, not parsed
+    const info = chatIds.length && pb().chats ? await pb().chats(chatIds, files ? undefined : { lite: true }) : {};
     for (const id of chatIds) {
       const inf = info?.[id];
       if (inf?.state === 'unreadable') throw new Error(`Hearth couldn't read the chat “${items.find((x) => x.ref === id)?.name || id}” just now (nothing was written): try again in a moment`);
@@ -314,6 +315,7 @@ const ProjBundle = (() => {
   }
 
   // ---------- adding a body as a new project ----------
+  const nextTask = () => new Promise((r) => setTimeout(r, 0)); // (round 86, projopen86)
   async function labReady() {
     await window.Lazy?.load('lab');
     await ThreeLab.cmd({ show: false });
@@ -384,6 +386,7 @@ const ProjBundle = (() => {
     };
     const { body: b, map, dropped } = C.remap(body, { ids, suffix });
     skipped.push(...dropped);
+    await nextTask(); // (round 86, projopen86) the copy above (≈ 30 ms for a long chat) and the scenes below: tasks of their own
     try {
       // scenes (a duplicate's references are copied: removing a reference deletes its file)
       for (const s of b.scenes || []) {
@@ -392,6 +395,7 @@ const ProjBundle = (() => {
         const x = ThreeLab.scenes.adoptScene({ sketch: s.sketch, extras: s.extras, refs: s.refs, notes: s.notes, thumb: s.thumb, maps: s.maps });
         if (!x) throw new Error(`The scene “${s.sketch?.name}” couldn't be added`);
         made.scenes.push(x.id);
+        await nextTask(); // (round 86, projopen86) the scenes added in slices: one per task (a big scene's copy is a few ms)
       }
       for (const q of b.sequences || []) await CutStore.storeEdit(q.key, q.edit, mode === 'duplicate' ? 'Copied with its project' : 'Imported with its project');
       if ((b.sequences || []).length) await window.ThreeSeq?.list?.().catch?.(() => {});

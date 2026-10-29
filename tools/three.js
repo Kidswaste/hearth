@@ -2125,8 +2125,8 @@ const ThreeLab = (() => {
     const noteBtn = btn('📌 Note', 'Take a screenshot and a note at this moment, for a change you want here (N)', () => takeNote(), 'ghost small imp-capture');
     const notesBtn = btn('Notes', 'Your notes on this sketch: jump to them, mark them done, send them to the Three Director', (e) => notesList(e.currentTarget));
     notesBtn.dataset.feature = 'Notes list';
-    function renderNotes() {
-      player.setNotes(notesOf().map((n) => ({ id: n.id, t: n.t, text: n.text, done: n.done })), { onOpen: (id, x, y) => openNote(id, x, y) });
+    function renderNotes({ soon = false } = {}) { // (round 86, projopen86) soon: the timeline's pins drawn in the coming frame (see setNotes)
+      player.setNotes(notesOf().map((n) => ({ id: n.id, t: n.t, text: n.text, done: n.done })), { onOpen: (id, x, y) => openNote(id, x, y) }, { soon });
       const open = notesOf().filter((n) => !n.done).length;
       notesBtn.textContent = notesOf().length ? `Notes ${open}${open !== notesOf().length ? `/${notesOf().length}` : ''}` : 'Notes';
     }
@@ -3974,7 +3974,11 @@ const ThreeLab = (() => {
       q.focus();
     }
     let pickerSig = '';
+    // (round 86, projopen86) several scenes added in a row (a project import / Duplicate): one picker draw after them
+    let pickerTimer = 0;
+    function pickerSoon() { if (!pickerTimer) pickerTimer = setTimeout(() => { pickerTimer = 0; renderPicker(); }, 0); }
     function renderPicker() {
+      if (pickerTimer) { clearTimeout(pickerTimer); pickerTimer = 0; }
       // ★ pinned ones (pin them in the sketch browser) first, then the most recent
       const pins = new Set(store.get('three.sketchPins', []));
       const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt);
@@ -4021,7 +4025,7 @@ const ThreeLab = (() => {
       rememberMedia();
       // (the Lab sequence on screen keeps its own shape and song: the scenes' come back when it closes)
       const seqOn = typeof ThreeSeq !== 'undefined' && ThreeSeq.active;
-      if (left && stage && !seqOn) { (extras[left.id] ||= {}).frame = stage.size.id; saveExtras(); }
+      if (left && stage && !seqOn) { (extras[left.id] ||= {}).frame = stage.sizeId ?? stage.size.id; saveExtras(); } // (round 86, projopen86: sizeId, no layout)
       current = sketches.find((s) => s.id === id) || sketches[0];
       materialize(current);
       // This sketch's frame size and song (with where it was in the song).
@@ -4034,7 +4038,7 @@ const ThreeLab = (() => {
       tweaksSlot.replaceChildren(ctlFor(sel()).el); ctlFor(sel()).showUI();
       renderPicker();
       renderLayers();
-      renderNotes();
+      renderNotes({ soon: true });
       renderRefsBtn();
       renderPalette();
       // (round 48, labstartfast) a scene whose code uses its references runs once, with them: their bytes are read
@@ -4213,7 +4217,16 @@ ${code}
       // project's (its sliders scanned and its page loaded twice in the first open of a session)
       const hinted = startHint && sketches.some((x) => x.id === startHint) ? startHint : null; startHint = null;
       const want = hinted || (typeof ChatScenes !== 'undefined' ? ChatScenes.startSketch?.(sketches.map((x) => x.id)) : null);
-      openSketch(want || store.get('three.current', sketches[0].id), { by: hinted ? 'project' : want ? 'scene' : 'start' });
+      // (round 86, projopen86) the Lab's first start in two window tasks: its toolbar and lists above, a painted frame,
+      // then the scene (its sliders scanned, its layers run: ≈ 60–120 ms for a big scene). It was one task of ≈ 100–
+      // 350 ms. A scene opened meanwhile (a project opening asked for its own) stays: it was the one shown after anyway
+      const nextPaint = () => new Promise((r) => { let done = false; const go = () => { if (!done) { done = true; r(); } }; requestAnimationFrame(() => setTimeout(go, 0)); setTimeout(go, 50); });
+      await nextPaint();
+      // …and its layers' sliders read one layer per task (ThreeTweaks keeps each scan by its code: the run below finds
+      // them read): a big scene's 6 layers were ≈ 40–60 ms of reading inside its first run
+      { const first = sketches.find((x) => x.id === (want || store.get('three.current', sketches[0].id))) || sketches[0];
+        for (const code of (first?.layers?.length ? first.layers.map((L) => L.code) : [first?.code])) { if (current || typeof code !== 'string' || typeof ThreeTweaks === 'undefined') break; try { ThreeTweaks.scan(code); } catch { /* read again in the run */ } await new Promise((r) => setTimeout(r, 0)); } }
+      if (!current) openSketch(want || store.get('three.current', sketches[0].id), { by: hinted ? 'project' : want ? 'scene' : 'start' });
       api.director = director; // only once saved sketches are loaded, so director edits never land on a placeholder
       dispatchEvent(new Event('hearth:lab-ready'));
       SSafe?.opened?.({ read: scenesRead, fresh, others: reads.slice(1).map((r, i) => (r.ok ? null : names[i + 1])).filter(Boolean) }); // (round 43) the calm card, when needed
@@ -4433,7 +4446,7 @@ ${code}
         if (Array.isArray(notes) && notes.length) { notesAll[x.id] = JSON.parse(JSON.stringify(notes)); saveNotes(); }
         if (thumb?.url) { thumbs[x.id] = { ...thumb }; saveThumbs(); }
         for (const [k, m] of Object.entries(maps || {})) player.adoptMap?.(k, m).catch?.(() => {});
-        save(); renderPicker();
+        save(); pickerSoon(); // (round 86, projopen86) the picker drawn once for a project's scenes added together (it was once per scene, ≈ 15–20 ms each)
         return x;
       },
       thumbOf: (id) => thumbs[id]?.url || null,
