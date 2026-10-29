@@ -9,9 +9,12 @@
 //   · the main thread held ≥ 40 ms (dev/idleburst83-tick.js: when, how long) and the window's long tasks (≥ 50 ms)
 //   · with --prof: sampling CPU profiles of the main thread (dev/boot-probe.js) and the window (CDP Profiler), the top
 //     functions / files per 10 s window, and each main-thread busy stretch ≥ 20 ms named by its top function
-// The first launch is a warm-up (caches, the sync first pass with --sync); it isn't counted.
+// The first launch is a warm-up (caches, the sync first pass with --sync, the Lab marked as used lately so its warm
+// preview page is made after each start, as for the owner; --no-lab: not); it isn't counted.
 //   node dev/idleburst83.js [--app <dir>] [--data /tmp/hearth-bigprofile72] [--runs 10] [--prof] [--sync]
-//        [--keep <dir>] [--json out.json] [--lock]
+//        [--keep <dir>] [--json out.json] [--lock] [--span 30000] [--lazy] [--ab <base app dir>]
+// --ab: that app (an exported copy of the base commit) and this one in turn, the same fixture and minutes.
+// Summary per side: % of a CPU per 10 s window, the 2–12 s window (after the start), the worst main hold / window long task.
 // --sync: sync switched on (a scratch cloud folder) in the warm-up launch, so every counted start has it on, as the
 //   owner's does. --lock: each launch under flock /tmp/hearth-run.lock (other agents get turns in between).
 const fs = require('fs');
@@ -34,11 +37,11 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const median = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a - b); return s.length ? s[Math.floor((s.length - 1) / 2)] : NaN; };
 const r1 = (n) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : null);
 
-function copyApp() {
-  const dir = opt('--keep') ? path.resolve(opt('--keep')) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-'));
+function copyApp(app = APP, keep = opt('--keep')) {
+  const dir = keep ? path.resolve(keep) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-'));
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules', 'dev']);
-  for (const n of fs.readdirSync(APP)) if (!skip.has(n)) fs.cpSync(path.join(APP, n), path.join(dir, n), { recursive: true });
+  for (const n of fs.readdirSync(app)) if (!skip.has(n)) fs.cpSync(path.join(app, n), path.join(dir, n), { recursive: true });
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
   pkg.name = 'hearth-ib83-test';
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2));
@@ -105,6 +108,8 @@ async function launch(dir, userData, port, { warm = false, profDir = null } = {}
     const nowMain = () => Date.now() - probe.wall0;
     if (warm) {
       for (let i = 0; i < 600 && !(await c.evaluate("performance.getEntriesByName('hearth:ready').length > 0").catch(() => false)); i++) await wait(50);
+      // the owner uses the Lab every day: its warm preview page is made after each start (tools/three-boot.js)
+      if (!args.includes('--no-lab')) await c.evaluate("store.set('labboot.used', Date.now()); true").catch(() => null);
       if (SYNC) {
         const cloud = `${userData}-cloud`; fs.mkdirSync(cloud, { recursive: true });
         const st = await c.evaluate(`(async () => { await window.hub.sync.on({ root: ${JSON.stringify(cloud)} });
@@ -149,7 +154,7 @@ async function launch(dir, userData, port, { warm = false, profDir = null } = {}
       const windows = Array.from({ length: Math.ceil(SPAN / 10000) }, (_, i) => i * 10000).map((x) => pct(fp + x, fp + Math.min(SPAN, x + 10000)));
       // per second, main process + window (to see when a burst starts / ends)
       const perSec = []; for (let x = 0; x < SPAN; x += 1000) { const q = pct(fp + x, fp + x + 1000); perSec.push([q.main, q.window]); }
-      const page = await c.evaluate('({ timeOrigin: performance.timeOrigin, ready: performance.getEntriesByName("hearth:ready")[0]?.startTime ?? null, longs: __ib.longs, lazy: window.Lazy ? Lazy.state().filter((g) => g.at).map((g) => [g.name, Math.round(g.at), Math.round(g.ms || 0)]) : [] })').catch(() => null);
+      const page = await c.evaluate('({ timeOrigin: performance.timeOrigin, ready: performance.getEntriesByName("hearth:ready")[0]?.startTime ?? null, longs: __ib.longs, lazy: window.Lazy ? Lazy.state().filter((g) => g.at).map((g) => [g.name, Math.round(g.at), Math.round(g.ms || 0)]) : [], misses: window.Lazy?.misses ? Lazy.misses().map((m) => `${m.group}@${m.at} ${m.name} ← ${m.where}`) : [] })').catch(() => null);
       const toMain = (ms) => page.timeOrigin + ms - probe.wall0;
       let winProf = null;
       if (profDir) { const r = await c.send('Profiler.stop'); winProf = r.result?.profile; if (winProf) fs.writeFileSync(path.join(profDir, 'window.cpuprofile'), JSON.stringify(winProf)); }
@@ -161,8 +166,8 @@ async function launch(dir, userData, port, { warm = false, profDir = null } = {}
       const longs = (page?.longs || []).map(([s, d]) => [Math.round(toMain(s) - fp), d]).filter(([t]) => t >= 0 && t < SPAN);
       // the store / files threads' ops (ms on the thread) per 10 s window from the first picture
       const opWin = []; for (let x = 0; x < SPAN; x += 10000) { const o = {}; for (const [k, [n, ms]] of Object.entries(tk.opSecs || {})) { const [sec, op] = k.split(' '); const t = Number(sec) * 1000 - fp; if (t >= x && t < x + 10000) { o[op] = o[op] || [0, 0]; o[op][0] += n; o[op][1] += ms; } } opWin.push(Object.entries(o).filter(([, v]) => v[1] >= 20).map(([op, [n, ms]]) => `${op} ×${n} ${Math.round(ms)}ms`).join(', ')); }
-      const out = { opWin, spawned: (tk.spawned || []).map(([t, ...x]) => [Math.round(t - fp), ...x]), watched: (tk.watched || []).map(([t, ...x]) => [Math.round(t - fp), ...x]), perSec, lazy: (page?.lazy || []).map(([n, a, ms]) => [n, Math.round(toMain(a) - fp), ms]), fp: Math.round(fp), ready: page?.ready != null ? Math.round(toMain(page.ready) - fp) : null, windows, mainHeld: held, windowLongs: longs };
-      if (profDir) out.prof = profile(mainProf, winProf, winProfAt - probe.wall0, fp);
+      const out = { misses: page?.misses || [], opWin, spawned: (tk.spawned || []).map(([t, ...x]) => [Math.round(t - fp), ...x]), watched: (tk.watched || []).map(([t, ...x]) => [Math.round(t - fp), ...x]), perSec, lazy: (page?.lazy || []).map(([n, a, ms]) => [n, Math.round(toMain(a) - fp), ms]), fp: Math.round(fp), ready: page?.ready != null ? Math.round(toMain(page.ready) - fp) : null, windows, mainHeld: held, windowLongs: longs };
+      if (profDir) out.prof = profile(mainProf, winProf, winProfAt - probe.wall0, fp, held);
       return out;
     }
     b.send('Browser.close');
@@ -198,11 +203,13 @@ function procTree(root) {
   return { procs, threads };
 }
 
-function profile(mainFile, winProf, winAt, fp) {
+function profile(mainFile, winProf, winAt, fp, held = []) {
   const res = {};
   const mp = readJson(mainFile);
   if (mp) {
     const p = S.fromCpuprofile(mp, (us) => mp.perf0 + (us - mp.startTime) / 1000);
+    // each time the main thread was held ≥ 40 ms (the tick): what ran in it
+    res.heldWhat = held.map(([t, ms]) => { const x = S.top(p, fp + t - 5, fp + t + ms + 5, 4); return `+${t}ms held ${ms}ms: ${x.fns.join(' | ')}`; });
     res.main = [0, 10000, 20000].map((x) => { const t = S.top(p, fp + x, fp + x + 10000, 14); return { from: x / 1000, busyMs: t.busyMs, fns: t.fns, files: t.files }; });
     res.mainSecs = []; for (let x = 0; x < SPAN; x += 1000) { const t = S.top(p, fp + x, fp + x + 1000, 5); if (t.busyMs >= 15) res.mainSecs.push(`+${x / 1000}s ${t.busyMs}ms: ${t.fns.join(' · ')}`); }
     res.mainStretches = S.busy(p, 3).filter((s) => s.at >= fp && s.at < fp + SPAN && s.ms >= 20)
@@ -225,56 +232,83 @@ async function locked(fn) {
   try { return await fn(); } finally { holder.stdin.end('\n'); fs.closeSync(fd); }
 }
 
+function report(r, i, tag) {
+  const w = r.windows;
+  console.log(`${tag}run ${i}: main % ${w.map((x) => x.main).join(' / ')} · window % ${w.map((x) => x.window).join(' / ')} · utility ${w.map((x) => x.utility).join(' / ')} · main held ≥40ms ${r.mainHeld.length} (worst ${Math.max(0, ...r.mainHeld.map((x) => x[1]))}) · window long ${r.windowLongs.length} (worst ${Math.max(0, ...r.windowLongs.map((x) => x[1]))}) · ready +${r.ready} · load ${r.load.toFixed(2)}`);
+  for (const [k, w0] of r.windows.entries()) console.log(`   ${k * 10}–${k * 10 + 10}s: main ${w0.main} · window ${w0.window}${r.opWin[k] ? ` · threads: ${r.opWin[k]}` : ''} · ${Object.entries(w0).filter(([key, v]) => key.includes(':') && v >= 0.5).sort((x, y) => y[1] - x[1]).map(([key, v]) => `${key} ${v}`).join(' · ')}`);
+  console.log(`   per s (main,window): ${r.perSec.map(([a, b]) => `${Math.round(a)},${Math.round(b)}`).join(' ')}`);
+  if (r.prof) {
+    for (const m of r.prof.main || []) console.log(`   main ${m.from}–${m.from + 10}s busy ${m.busyMs} ms: ${m.fns.slice(0, 8).join(' · ')}\n      files: ${m.files.slice(0, 8).join(' · ')}`);
+    for (const x of (r.prof.mainStretches || []).slice(0, 25)) console.log(`   ▸ ${x}`);
+    for (const x of r.prof.mainSecs || []) console.log(`   • main ${x}`);
+    for (const x of r.prof.heldWhat || []) console.log(`   ✋ main ${x}`);
+    for (const x of r.prof.windowSecs || []) console.log(`   ◦ window ${x}`);
+    for (const m of r.prof.window || []) console.log(`   window ${m.from}–${m.from + 10}s busy ${m.busyMs} ms: ${m.fns.slice(0, 6).join(' · ')}`);
+  }
+  if (args.includes('--lazy')) {
+    console.log(`   lazy groups (at ms after fp, ms): ${r.lazy.map(([n, a, ms]) => `${n}@${a}+${ms}`).join(' ')}`);
+    console.log(`   lazy misses (a global touched before its group loaded):\n      ${r.misses.join('\n      ')}`);
+    console.log(`   spawned: ${r.spawned.map((x) => x.join(' ')).join(' | ')}`);
+    console.log(`   watched: ${r.watched.length} (${r.watched.slice(0, 12).map((x) => x.join(' ')).join(' | ')})`);
+  }
+  if (r.mainHeld.length) console.log(`   main held: ${r.mainHeld.map(([t, ms]) => `+${t}:${ms}`).join(' ')}`);
+  if (r.windowLongs.length) console.log(`   window long: ${r.windowLongs.map(([t, ms]) => `+${t}:${ms}`).join(' ')}`);
+}
+
+function summarize(runs) {
+  const col = (k, w) => runs.map((r) => r.windows[w]?.[k]);
+  const WIX = Array.from({ length: Math.ceil(SPAN / 10000) }, (_, i) => i);
+  // after the start: the 10 s from 2 s past the first picture (the first screen and what you open most are in by then)
+  const after = (r, j) => r1(r.perSec.slice(2, 12).reduce((a, x) => a + x[j], 0) / Math.max(1, r.perSec.slice(2, 12).length));
+  const worst = (xs, a, b) => Math.max(0, ...xs.filter(([t]) => t >= a && t < b).map((x) => x[1]));
+  return {
+    runs: runs.length, WIX,
+    mainPct: WIX.map((w) => r1(median(col('main', w)))), windowPct: WIX.map((w) => r1(median(col('window', w)))),
+    utilityPct: WIX.map((w) => r1(median(col('utility', w)))),
+    main0to10: col('main', 0), window0to10: col('window', 0),
+    mainAfter: runs.map((r) => after(r, 0)), windowAfter: runs.map((r) => after(r, 1)),
+    mainHeldWorst0to10: runs.map((r) => worst(r.mainHeld, 0, 10000)), windowLongWorst0to10: runs.map((r) => worst(r.windowLongs, 0, 10000)),
+    mainHeldWorstAfter: runs.map((r) => worst(r.mainHeld, 2000, SPAN)), windowLongWorstAfter: runs.map((r) => worst(r.windowLongs, 2000, SPAN)),
+  };
+}
+function printSummary(sm, tag = '') {
+  console.log(`\n${tag}median % of one CPU (each 10 s from the first picture, ${sm.WIX.map((w) => `${w * 10}–${w * 10 + 10}`).join(' / ')} s), ${sm.runs} launches:`);
+  console.log(`  main ${sm.mainPct.join(' / ')} · window ${sm.windowPct.join(' / ')} · utility ${sm.utilityPct.join(' / ')}`);
+  console.log(`  0–10 s     main ${sm.main0to10.join(' ')} (median ${r1(median(sm.main0to10))}) · window ${sm.window0to10.join(' ')} (median ${r1(median(sm.window0to10))})`);
+  console.log(`  2–12 s     main ${sm.mainAfter.join(' ')} (median ${r1(median(sm.mainAfter))}) · window ${sm.windowAfter.join(' ')} (median ${r1(median(sm.windowAfter))})`);
+  console.log(`  worst main hold (ms) 0–10 s: ${sm.mainHeldWorst0to10.join(' ')} · from 2 s: ${sm.mainHeldWorstAfter.join(' ')}`);
+  console.log(`  worst window long task (ms) 0–10 s: ${sm.windowLongWorst0to10.join(' ')} · from 2 s: ${sm.windowLongWorstAfter.join(' ')}`);
+}
+
 (async () => {
   if (!fs.existsSync(path.join(DATA, 'chats'))) {
     console.log(`making the fixture ${DATA} (dev/bigprofile.js --projects 40)…`);
     execFileSync('node', [path.join(__dirname, 'bigprofile.js'), DATA, '--projects', '40'], { stdio: ['ignore', 'ignore', 'inherit'] });
   }
-  const dir = copyApp();
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-ud-'));
-  const port = 9600 + Math.floor(Math.random() * 300);
-  console.log(`app copy ${dir} · runs ${RUNS}${PROF ? ' · profiled' : ''}${SYNC ? ' · sync on' : ''} · load ${os.loadavg().map((x) => x.toFixed(2)).join(' ')}`);
-  await locked(() => launch(dir, userData, port, { warm: true }));
-  const runs = [];
+  // --ab <base app dir>: that app and this one launched in turn (new, base · base, new · …), same fixture, same minutes
+  const AB = opt('--ab') ? path.resolve(opt('--ab')) : null;
+  const keep = opt('--keep');
+  const sides = [{ name: 'new', app: APP }, ...(AB ? [{ name: 'base', app: AB }] : [])].map((x, k) => ({
+    ...x, dir: copyApp(x.app, keep ? (AB ? `${keep}-${x.name}` : keep) : null),
+    userData: fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-ud-')), port: 9600 + k * 7 + Math.floor(Math.random() * 280), runs: [] }));
+  console.log(`${sides.map((x) => `${x.name}: ${x.app}`).join(' · ')} · runs ${RUNS}${PROF ? ' · profiled' : ''}${SYNC ? ' · sync on' : ''} · load ${os.loadavg().map((x) => x.toFixed(2)).join(' ')}`);
+  for (const sd of sides) await locked(() => launch(sd.dir, sd.userData, sd.port, { warm: true }));
   for (let i = 0; i < RUNS; i++) {
-    const profDir = PROF ? fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-prof-')) : null;
-    let r = null;
-    try { r = await locked(() => launch(dir, userData, port, { profDir })); } catch (err) { console.log(`run ${i}: failed ${err.message}`); continue; }
-    r.load = os.loadavg()[0];
-    runs.push(r);
-    const w = r.windows;
-    console.log(`run ${i}: main % ${w.map((x) => x.main).join(' / ')} · window % ${w.map((x) => x.window).join(' / ')} · utility ${w.map((x) => x.utility).join(' / ')} · main held ≥40ms ${r.mainHeld.length} (worst ${Math.max(0, ...r.mainHeld.map((x) => x[1]))}) · window long ${r.windowLongs.length} (worst ${Math.max(0, ...r.windowLongs.map((x) => x[1]))}) · ready +${r.ready} · load ${r.load.toFixed(2)}`);
-    for (const [k, w0] of r.windows.entries()) console.log(`   ${k * 10}–${k * 10 + 10}s: main ${w0.main} · window ${w0.window}${r.opWin[k] ? ` · threads: ${r.opWin[k]}` : ''} · ${Object.entries(w0).filter(([key, v]) => key.includes(':') && v >= 0.5).sort((x, y) => y[1] - x[1]).map(([key, v]) => `${key} ${v}`).join(' · ')}`);
-    console.log(`   per s (main,window): ${r.perSec.map(([a, b]) => `${Math.round(a)},${Math.round(b)}`).join(' ')}`);
-    if (r.prof) {
-      for (const m of r.prof.main || []) console.log(`   main ${m.from}–${m.from + 10}s busy ${m.busyMs} ms: ${m.fns.slice(0, 8).join(' · ')}\n      files: ${m.files.slice(0, 8).join(' · ')}`);
-      for (const s of (r.prof.mainStretches || []).slice(0, 25)) console.log(`   ▸ ${s}`);
-      for (const x of r.prof.mainSecs || []) console.log(`   • main ${x}`);
-      for (const x of r.prof.windowSecs || []) console.log(`   ◦ window ${x}`);
-      for (const m of r.prof.window || []) console.log(`   window ${m.from}–${m.from + 10}s busy ${m.busyMs} ms: ${m.fns.slice(0, 6).join(' · ')}`);
+    const order = sides.length > 1 && i % 2 ? [...sides].reverse() : sides;
+    for (const sd of order) {
+      const profDir = PROF ? fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-prof-')) : null;
+      let r = null;
+      try { r = await locked(() => launch(sd.dir, sd.userData, sd.port, { profDir })); } catch (err) { console.log(`${sd.name} run ${i}: failed ${err.message}`); continue; }
+      r.load = os.loadavg()[0];
+      sd.runs.push(r);
+      report(r, i, sides.length > 1 ? `[${sd.name}] ` : '');
     }
-    if (args.includes('--lazy')) console.log(`   lazy groups (at ms after fp, ms): ${r.lazy.map(([n, a, ms]) => `${n}@${a}+${ms}`).join(' ')}`);
-    if (args.includes('--lazy')) { console.log(`   spawned: ${r.spawned.map((x) => x.join(' ')).join(' | ')}`); console.log(`   watched: ${r.watched.length} (${r.watched.slice(0, 12).map((x) => x.join(' ')).join(' | ')})`); }
-    if (r.mainHeld.length) console.log(`   main held: ${r.mainHeld.map(([t, ms]) => `+${t}:${ms}`).join(' ')}`);
-    if (r.windowLongs.length) console.log(`   window long: ${r.windowLongs.map(([t, ms]) => `+${t}:${ms}`).join(' ')}`);
   }
-  const col = (k, w) => runs.map((r) => r.windows[w]?.[k]);
-  const WIX = Array.from({ length: Math.ceil(SPAN / 10000) }, (_, i) => i);
-  const summary = {
-    runs: runs.length,
-    mainPct: WIX.map((w) => r1(median(col('main', w)))), windowPct: WIX.map((w) => r1(median(col('window', w)))),
-    utilityPct: WIX.map((w) => r1(median(col('utility', w)))),
-    main0to10: col('main', 0), window0to10: col('window', 0),
-    mainHeldWorst0to10: runs.map((r) => Math.max(0, ...r.mainHeld.filter(([t]) => t < 10000).map((x) => x[1]))),
-    windowLongWorst0to10: runs.map((r) => Math.max(0, ...r.windowLongs.filter(([t]) => t < 10000).map((x) => x[1]))),
-  };
-  console.log(`\nmedian % of one CPU (each 10 s from the first picture, ${WIX.map((w) => `${w * 10}–${w * 10 + 10}`).join(' / ')} s):`);
-  console.log(`  main ${summary.mainPct.join(' / ')} · window ${summary.windowPct.join(' / ')} · utility ${summary.utilityPct.join(' / ')}`);
-  console.log(`  main 0–10 s per launch: ${summary.main0to10.join(' ')}`);
-  console.log(`  window 0–10 s per launch: ${summary.window0to10.join(' ')}`);
-  console.log(`  main held worst 0–10 s per launch (ms): ${summary.mainHeldWorst0to10.join(' ')}`);
-  console.log(`  window long task worst 0–10 s per launch (ms): ${summary.windowLongWorst0to10.join(' ')}`);
-  if (opt('--json')) fs.writeFileSync(opt('--json'), JSON.stringify({ summary, runs }, null, 1));
-  if (!opt('--keep')) fs.rmSync(dir, { recursive: true, force: true });
-  fs.rmSync(userData, { recursive: true, force: true }); fs.rmSync(`${userData}-cloud`, { recursive: true, force: true });
+  const out = {};
+  for (const sd of sides) { out[sd.name] = { summary: summarize(sd.runs), runs: sd.runs }; printSummary(out[sd.name].summary, sides.length > 1 ? `[${sd.name}] ` : ''); }
+  if (opt('--json')) fs.writeFileSync(opt('--json'), JSON.stringify(sides.length > 1 ? out : out.new, null, 1));
+  for (const sd of sides) {
+    if (!keep) fs.rmSync(sd.dir, { recursive: true, force: true });
+    fs.rmSync(sd.userData, { recursive: true, force: true }); fs.rmSync(`${sd.userData}-cloud`, { recursive: true, force: true });
+  }
 })().catch((err) => { console.error(err); process.exit(2); });

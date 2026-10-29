@@ -126,6 +126,7 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir } = {
     // wait for the first screen, then for the 'soon' feature groups
     for (let i = 0; i < 300; i++) {
       const s = await c.evaluate(`(() => { const r = performance.getEntriesByName('hearth:ready').length > 0;
+        window.Lazy?.calmNow?.(); // (round 83, idleburst83) the calm start's waiting groups at once: the start measured as before (dev/idleburst83.js measures the calm start itself)
         const g = window.Lazy ? Lazy.state().filter((x) => x.tier === 'soon') : [];
         return r && g.length > 0 && g.every((x) => x.state === 'loaded' || x.state === 'failed'); })()`).catch(() => false);
       if (s) { cpuReady = await procCpu(); break; }

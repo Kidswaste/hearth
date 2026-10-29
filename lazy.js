@@ -428,16 +428,48 @@ const Lazy = (() => {
 
   // ---------- after the first screen: the 'soon' groups, one per idle moment ----------
   const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 600 }) : setTimeout(fn, 30));
+  // (round 83, idleburst83) a calm start: what you do first gets the computer. The asap groups (the Lab, the chat's own
+  // commands…) and the ones that keep your work (safetynet: drafts / Lab work journaled from the first key) load right
+  // after the first frame as before; every other 'soon' group waits until the start is over (CALM.after ms after the
+  // first screen) AND nothing was typed / clicked / scrolled for CALM.quiet ms, or CALM.cap ms at most; then one at a
+  // time, each in an idle moment, CALM.gap ms apart (they used to load back to back ~6 s in: the window and the main
+  // process busy together for ~2 s, every start). Using a feature still loads its group at once (its stand-ins).
+  // Lazy.calmNow() opens the gate (dev/smoke.js: checks start as they always did); localStorage 'lazy.calmMs' sets after.
+  const CALM = { after: 10000, quiet: 3000, cap: 30000, gap: 120, open: false, last: 0, waiters: [] };
+  try { const v = Number(localStorage.getItem('lazy.calmMs')); if (Number.isFinite(v) && localStorage.getItem('lazy.calmMs') !== null) CALM.after = Math.max(0, v); } catch { /* no storage */ }
+  const KEEPS = new Set(['safetynet']);
+  for (const ev of ['pointerdown', 'keydown', 'wheel']) addEventListener(ev, () => { CALM.last = performance.now(); }, { capture: true, passive: true });
+  function calmGate() {
+    if (CALM.open) return Promise.resolve();
+    return new Promise((resolve) => {
+      CALM.waiters.push(resolve);
+      if (CALM.waiters.length > 1) return;
+      const check = () => {
+        if (CALM.open) return;
+        const now = performance.now();
+        const due = Math.max(readyAt + CALM.after, CALM.last + CALM.quiet);
+        if (now >= due || now >= readyAt + CALM.cap) { openGate(); return; }
+        setTimeout(check, Math.min(due, readyAt + CALM.cap) - now + 20);
+      };
+      check();
+    });
+  }
+  function openGate() { if (CALM.open) return; CALM.open = true; for (const w of CALM.waiters.splice(0)) w(); }
   function soon() {
-    const queue = [...groups.values()].filter((g) => g.tier === 'soon');
+    const all = [...groups.values()].filter((g) => g.tier === 'soon');
+    const early = (g) => g.asap || KEEPS.has(g.name);
+    const queue = [...all.filter(early), ...all.filter((g) => !early(g))]; // (deps still load first: load() waits for g.after)
+    let lastEnd = 0;
     const next = () => {
       const g = queue.shift();
       if (!g) return;
       // (round 20) not mid-gesture: a load waits for typing / a drag / a scroll to end (≤ 4 s; jank.js)
       // (round 29, fastboot) g.asap (the Lab, what you open most): right after the first frame, without waiting for an idle
       // moment (with a busy start those come seconds later); still never mid-gesture
-      const go = () => (window.Jank?.calm?.(4000, 'feature load') ?? Promise.resolve()).then(() => load(g.name)).catch(() => {}).finally(next);
-      if (g.asap) go(); else idle(go);
+      const go = () => (window.Jank?.calm?.(4000, 'feature load') ?? Promise.resolve()).then(() => (g.state === 'stub' ? load(g.name) : null)).catch(() => {}).finally(() => { lastEnd = performance.now(); next(); });
+      if (g.asap) { go(); return; }
+      if (KEEPS.has(g.name)) { idle(go); return; }
+      calmGate().then(() => setTimeout(() => idle(go), CALM.open && !CALM.fast ? Math.max(0, CALM.gap - (performance.now() - lastEnd)) : 0));
     };
     next();
   }
@@ -508,6 +540,8 @@ const Lazy = (() => {
   const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null }));
   return {
     load, state, start, at, text,
+    calmNow: () => { CALM.fast = true; openGate(); }, // (round 83) the rest of the 'soon' groups now, back to back (tests)
+    calm: () => ({ open: CALM.open, after: CALM.after, quiet: CALM.quiet, waiting: [...groups.values()].filter((g) => g.tier === 'soon' && g.state === 'stub').length }),
     loaded: (name) => groups.get(name)?.state === 'loaded',
     // (round 29) in yet, without asking for it: false while the group is a stand-in or loading (true for a name that
     // isn't lazy). For code that only decorates a lazy feature (`Lazy.isIn('lab') && ThreeLab…`): no miss, no load

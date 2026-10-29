@@ -433,11 +433,12 @@ async function cdpConnect(dir) {
         for (let i = 0; i < 60; i++) { const ready = await run('document.readyState === "complete" && typeof H !== "undefined" && H.agents().length > 0'); if (ready.value === true) break; await new Promise((r) => setTimeout(r, 500)); }
       }
       // (round 44, capturefix2) the groups that load by themselves after the first screen (every tier but 'use') are in
+      // (round 83, idleburst83: Lazy.calmNow() first: the 'soon' groups that wait for a calm start load at once, as before)
       // before a check runs: on a loaded machine `Capture` was still a stand-in (undefined) after --wait, and
       // capture-record failed at its first line. Up to 30 s; --no-lazy-wait keeps the old timing (boot checks).
       if (scriptFile && ci >= evals.length && !args.includes('--no-lazy-wait')) {
         // (and the page is up: chatcalm once ran into a window still loading, "H is not defined")
-        for (let i = 0; i < 60; i++) { const ready = await run('document.readyState === "complete" && (typeof H !== "undefined" || !/index\\.html/.test(location.href)) && (!window.Lazy || localStorage.getItem("lazy.hold") === "1" || Lazy.state().every((g) => g.tier === "use" || (g.state !== "stub" && g.state !== "loading")))'); if (ready.value === true) break; await new Promise((r) => setTimeout(r, 500)); }
+        for (let i = 0; i < 60; i++) { const ready = await run('document.readyState === "complete" && (typeof H !== "undefined" || !/index\\.html/.test(location.href)) && (!window.Lazy || localStorage.getItem("lazy.hold") === "1" || (window.Lazy.calmNow?.(), Lazy.state().every((g) => g.tier === "use" || (g.state !== "stub" && g.state !== "loading"))))'); if (ready.value === true) break; await new Promise((r) => setTimeout(r, 500)); }
       }
       const r = await run(c);
       console.log(`\n▶ ${c.length > 160 ? `${c.slice(0, 160)}…` : c}\n${r.error ? `✖ ${r.error}` : typeof r.value === 'string' ? r.value : JSON.stringify(r.value, null, 2)}`);
