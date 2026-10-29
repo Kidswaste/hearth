@@ -290,7 +290,18 @@ function writeJson(file, value, o) {
 // window's later saves send only what changed (chatsave.js): the thread copies the rest from the file.
 const BIGCHAT = Number(process.env.HEARTH_BIGCHAT_MIN) || 8 * 1024 * 1024;
 const guardWants = (file) => (Boolean(beforeWrite) && (!beforeWants || beforeWants(file))) || outside.has(file);
-// → { chat } (a chat like any other, or null), or { bytes, ver } for a giant one (the window parses it)
+// → { chat } (a chat like any other, or null), or { token, parts, size, ver } for a giant one: its bytes then fetched
+// in 4 MB parts (openPart), parsed in the window's worker. One 60 MB reply held the main process ≈ 60–90 ms to send;
+// a part is a few ms (and the main process never parses it)
+const PART = 4 * 1024 * 1024;
+const opened = new Map(); // token → { parts (each its own memory, as the store thread read them), t }
+function openPart(token, i) {
+  const o = opened.get(String(token)); const k = Number(i);
+  if (!o || !Number.isInteger(k) || k < 0 || k >= o.parts.length) return null;
+  const u = o.parts[k]; o.parts[k] = null;
+  if (o.parts.every((x) => x === null)) { clearTimeout(o.t); opened.delete(String(token)); }
+  return u ? Buffer.from(u.buffer, u.byteOffset, u.byteLength) : null;
+}
 async function openChat(id) {
   const file = chatPath(id);
   if (thread() && (deltaFiles.has(file) || pending.has(file))) await idle(); // (what's on its way lands first)
@@ -298,9 +309,12 @@ async function openChat(id) {
   if (size < BIGCHAT || !thread() || pending.has(file) || held.has(file)) return { chat: readJson(file, null) };
   const ver = `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   try {
-    const r = await ask({ op: 'chatOpen', file, ver });
+    const r = await ask({ op: 'chatOpen', file, ver, part: PART });
     seen.add(file);
-    return { bytes: r.bytes, ver };
+    const token = `${ver}${Math.random().toString(36).slice(2, 10)}`;
+    const t = setTimeout(() => opened.delete(token), 120000); t.unref?.();
+    opened.set(token, { parts: r.parts, t });
+    return { token, parts: r.parts.length, size: r.size, ver };
   } catch { return { chat: readJson(file, null) }; }
 }
 // d: { id, from, to, keys, set, n, msgs } → { ok: true } | { ok: false, why } (the window then saves the chat whole).
@@ -647,7 +661,7 @@ module.exports = {
   recall,
   projFind, // (round 81, projsearch81)
   getChat: (id) => readJson(chatPath(id), null),
-  getChatFresh, openChat, saveChatDelta, // (round 82, bigchat82)
+  getChatFresh, openChat, openPart, saveChatDelta, // (round 82, bigchat82)
   saveChat,
   deleteChat: (id) => trashChat(id),
   listTrash,

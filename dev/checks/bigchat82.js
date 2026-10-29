@@ -1,3 +1,4 @@
+// opt-in: BIGCHAT82
 // (round 82, bigchat82) A GIANT chat in the app: 6,000 messages, ≈ 63 MB (dev/bigprofile.js --giant 1: tool output,
 // attachments' details, thinking, plans). Opened from the chats list, a message sent (the fake engine answers), Find in
 // this chat, the chats list searched. Measured: the main process's event-loop delay and busy stretches (mainlag-probe.js),
@@ -77,7 +78,13 @@ if (blocksOver(lSend, BUDGET.mainBlock).length) out.problems.push(`sending held 
 // on disk: the new messages there, every other one as it was
 await window.hub.listChats();
 // (the file as it is now: as bytes where Hearth has hub.openChat, else the whole chat — the code before this round)
-const readDisk = async () => { if (!window.hub.openChat) return window.hub.getChat(ID); const r = await window.hub.openChat(ID); return r?.bytes ? JSON.parse(new TextDecoder().decode(r.bytes)) : r?.chat; };
+const readDisk = async () => {
+  if (!window.hub.openChat) return window.hub.getChat(ID);
+  const r = await window.hub.openChat(ID); if (!r?.parts) return r?.chat;
+  const parts = []; for (let i = 0; i < r.parts; i++) parts.push(await window.hub.openChatPart(r.token, i));
+  const all = new Uint8Array(parts.reduce((n, b) => n + b.length, 0)); let o = 0; for (const b of parts) { all.set(b, o); o += b.length; }
+  return JSON.parse(new TextDecoder().decode(all));
+};
 const disk = await readDisk();
 out.disk = { messages: disk?.messages?.length, last: disk?.messages?.at(-1)?.role, hasText: disk?.messages?.some((m) => m.text === text) };
 const same = disk && JSON.stringify(disk.messages.slice(0, n0)) === JSON.stringify(chat.messages.slice(0, n0)) && disk.messages.length === chat.messages.length;

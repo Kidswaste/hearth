@@ -96,17 +96,39 @@ const pct = (xs, q) => { const s = [...xs].sort((x, y) => x - y); return r1(s[Ma
     const ser = []; const de = [];
     for (let i = 0; i < 3; i++) { const t0 = performance.now(); const b = v8.serialize(chat); const t1 = performance.now(); v8.deserialize(b); ser.push(t1 - t0); de.push(performance.now() - t1); }
     const T = thread();
-    const w = await T.op({ op: 'write', file: path.join(os.tmpdir(), 'bigchat82-save.json'), value: chat, chatDir: true });
-    out.save = { window_ipcSendMs: r1(median(ser)), main_ipcReceiveMs: r1(median(de)), main_toThreadMs: r1(median(ser)), main_totalMs: r1(median(de) + median(ser)), threadWriteMs: r1(w.ms) };
-    if (fs.existsSync(path.join(ROOT, 'bigchat-core.js'))) out.save.note = 'whole save (the path a chat without a delta takes)';
+    const sf = path.join(os.tmpdir(), 'bigchat82-save.json');
+    if (fs.readFileSync(path.join(ROOT, 'storework.js'), 'utf8').includes('chatDelta(')) {
+      // (after) the window sends what changed (native.js shape compare: in the app check), the main process passes it on
+      fs.copyFileSync(GIANT, sf);
+      await T.op({ op: 'chatOpen', file: sf, ver: 'b0', part: 64 * 1024 * 1024 });
+      const d = { id: 'x', from: 'b0', to: 'b1', keys: Object.keys(chat), set: { updatedAt: chat.updatedAt }, n: chat.messages.length, msgs: [[chat.messages.length - 1, chat.messages.at(-1)]] };
+      const ds = []; const dd = [];
+      for (let i = 0; i < 3; i++) { const t0 = performance.now(); const b = v8.serialize(d); const t1 = performance.now(); v8.deserialize(b); ds.push(t1 - t0); dd.push(performance.now() - t1); }
+      const first = await T.op({ op: 'chatDelta', file: sf, ...d });
+      const d2 = { ...d, from: 'b1', to: 'b2', n: chat.messages.length + 1, msgs: [[chat.messages.length, { role: 'assistant', text: 'and a reply', at: Date.now() }]] };
+      const second = await T.op({ op: 'chatDelta', file: sf, ...d2 });
+      out.save = { window_ipcSendMs: r1(median(ds)), main_ipcReceiveMs: r1(median(dd)), main_toThreadMs: r1(median(ds)), main_totalMs: r1(median(dd) + median(ds)), threadWriteMs: r1(second.ms), threadFirstAfterOpenMs: r1(first.ms), ok: first.res?.ok && second.res?.ok };
+    } else {
+      const w = await T.op({ op: 'write', file: sf, value: chat, chatDir: true });
+      out.save = { window_ipcSendMs: r1(median(ser)), main_ipcReceiveMs: r1(median(de)), main_toThreadMs: r1(median(ser)), main_totalMs: r1(median(de) + median(ser)), threadWriteMs: r1(w.ms) };
+    }
+    fs.rmSync(sf, { force: true });
     await T.end();
   }
   // ---------- opening it (main: read + parse, then the reply to the window) ----------
   if (want('open')) {
-    const DS = require(path.join(ROOT, 'datasafe-core.js'));
-    const rd = []; const sr = [];
-    for (let i = 0; i < 3; i++) { const t0 = performance.now(); const v = DS.load(fs, GIANT, null).value; const t1 = performance.now(); v8.serialize(v); sr.push(performance.now() - t1); rd.push(t1 - t0); }
-    out.open = { main_readParseMs: r1(median(rd)), main_ipcReplyMs: r1(median(sr)), main_totalMs: r1(median(rd) + median(sr)) };
+    if (fs.readFileSync(path.join(ROOT, 'storework.js'), 'utf8').includes('chatOpen(')) {
+      // (after) the store thread reads the bytes and hands them over (transferred); the main process passes them on
+      const T = thread(); const rd = []; const sr = []; const th = [];
+      for (let i = 0; i < 3; i++) { const r = await T.op({ op: 'chatOpen', file: GIANT, ver: `o${i}`, part: 4 * 1024 * 1024 }); const each = r.res.parts.map((u) => { const t1 = performance.now(); v8.serialize(u); return performance.now() - t1; }); sr.push(Math.max(...each)); rd.push(each.reduce((x, y) => x + y, 0)); th.push(r.ms); }
+      out.open = { main_readParseMs: 0, main_ipcReplyMs: r1(median(sr)), main_totalMs: r1(median(rd)), threadReadMs: r1(median(th)), note: 'bytes in 4 MB parts (main: the longest part / all parts); parsed in a window worker (chatparse-worker.js)' };
+      await T.end();
+    } else {
+      const DS = require(path.join(ROOT, 'datasafe-core.js'));
+      const rd = []; const sr = [];
+      for (let i = 0; i < 3; i++) { const t0 = performance.now(); const v = DS.load(fs, GIANT, null).value; const t1 = performance.now(); v8.serialize(v); sr.push(performance.now() - t1); rd.push(t1 - t0); }
+      out.open = { main_readParseMs: r1(median(rd)), main_ipcReplyMs: r1(median(sr)), main_totalMs: r1(median(rd) + median(sr)) };
+    }
   }
   // ---------- sync ----------
   if (want('sync')) {

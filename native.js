@@ -1920,7 +1920,7 @@ const Native = (() => {
   }
   // a chat as it is on disk: a giant one comes as bytes, parsed off this thread (chatparse-worker.js; here if that fails)
   let parser = null; let parseSeq = 0; const parsing = new Map();
-  function parseOff(bytes) {
+  function parseOff(bytes) { // bytes: one Uint8Array or its parts
     try {
       if (!parser) {
         parser = new Worker('chatparse-worker.js');
@@ -1929,14 +1929,16 @@ const Native = (() => {
       }
       const id = ++parseSeq; let done;
       const p = new Promise((ok, no) => { done = { ok, no }; });
-      parsing.set(id, done); parser.postMessage({ id, bytes }, [bytes.buffer]);
+      const list = Array.isArray(bytes) ? bytes : [bytes];
+      parsing.set(id, done); parser.postMessage({ id, parts: list }, list.map((b) => b.buffer));
       return p;
-    } catch { return Promise.resolve(JSON.parse(new TextDecoder().decode(bytes))); }
+    } catch { const list = Array.isArray(bytes) ? bytes : [bytes]; const all = new Uint8Array(list.reduce((n, b) => n + b.length, 0)); let o = 0; for (const b of list) { all.set(b, o); o += b.length; } return Promise.resolve(JSON.parse(new TextDecoder().decode(all))); }
   }
   async function getChat(id) {
     const r = window.hub.openChat ? await window.hub.openChat(id) : { chat: await window.hub.getChat(id) };
-    if (!r?.bytes) return r?.chat ?? null;
-    const chat = await parseOff(r.bytes).catch(() => null);
+    if (!r?.parts) return r?.chat ?? null;
+    const parts = []; for (let i = 0; i < r.parts; i++) parts.push(await window.hub.openChatPart(r.token, i)); // (a few ms of the main process each)
+    const chat = parts.every(Boolean) ? await parseOff(parts).catch(() => null) : null;
     if (!chat) return window.hub.getChat(id); // (the parser failed: the whole chat the old way; its next save is whole)
     if (Array.isArray(chat?.messages)) { takeShape(chat, r.ver); window.Autocompact?.warm?.(chat); } // (its older words made in idle moments)
     return chat;

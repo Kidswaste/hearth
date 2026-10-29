@@ -29,8 +29,8 @@ module.exports = async function delta({ ok, chatOf, message, rnd, int, ROOT }) {
   try {
     let chat = chatOf(200);
     fs.writeFileSync(file, JSON.stringify(chat, null, 2));
-    const o = await op({ op: 'chatOpen', file, ver: 'v0' });
-    ok(o.bytes && Buffer.from(o.bytes).toString('utf8') === JSON.stringify(chat, null, 2), 'chatOpen: the file\'s bytes, handed over');
+    const o = await op({ op: 'chatOpen', file, ver: 'v0', part: 65536 });
+    ok(o.parts?.length > 1 && Buffer.concat(o.parts.map((u) => Buffer.from(u))).toString('utf8') === JSON.stringify(chat, null, 2), 'chatOpen: the file\'s bytes in parts, handed over');
     let ver = 'v0'; let good = 0; let n = 0;
     const steps = [
       (c) => { c.messages.push(message(c.messages.length)); c.updatedAt += 1; }, // a new message (the common one)
@@ -123,12 +123,13 @@ module.exports = async function delta({ ok, chatOf, message, rnd, int, ROOT }) {
     const fs = require('fs'); const path = require('path');
     const out = {};
     const store = require('./store.js');
-    const chat = { id: 'claude-giant', agentId: 'claude', title: 'G', updatedAt: 1, messages: Array.from({ length: 400 }, (_, k) => ({ role: k % 2 ? 'assistant' : 'user', text: 'x'.repeat(3000) + k, at: k })) };
+    const chat = { id: 'claude-giant', agentId: 'claude', title: 'G', updatedAt: 1, messages: Array.from({ length: 400 }, (_, k) => ({ role: k % 2 ? 'assistant' : 'user', text: 'x'.repeat(12000) + k, at: k })) }; // (≈ 5 MB: two parts)
     (async () => {
       await store.saveChat(chat);
       const file = path.join(store.DATA_DIR, 'chats', 'claude-giant.json');
       const o = await store.openChat('claude-giant');
-      out.openBytes = Boolean(o.bytes) && Buffer.from(o.bytes).toString() === fs.readFileSync(file, 'utf8');
+      const parts = []; for (let i = 0; i < (o.parts || 0); i++) parts.push(store.openPart(o.token, i));
+      out.openBytes = o.parts > 1 && Buffer.concat(parts).toString() === fs.readFileSync(file, 'utf8') && store.openPart(o.token, 0) === null; // (parts of 4 MB; let go once all were fetched)
       chat.messages.push({ role: 'user', text: 'one more', at: 999 });
       const r = await store.saveChatDelta({ id: chat.id, from: o.ver, to: 'n1', keys: Object.keys(chat), set: {}, n: chat.messages.length, msgs: [[chat.messages.length - 1, chat.messages.at(-1)]] });
       out.delta = r.ok && fs.readFileSync(file, 'utf8') === JSON.stringify(chat, null, 2);

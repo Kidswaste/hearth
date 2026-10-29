@@ -290,16 +290,22 @@ const OPS = {
     if (chatDir) { if (chatVer && st && Array.isArray(value?.messages)) bigs.set(file, { vers: new Set([chatVer]), sig: bigSig(st), head: { ...value, messages: [] }, els: null }); else bigs.delete(file); }
     return { bytes: text.length };
   },
-  // (round 82, bigchat82) a giant chat for the window: its bytes, handed over (transferred) without a copy
-  chatOpen({ file, ver }) {
+  // (round 82, bigchat82) a giant chat for the window: its bytes in parts of `part` bytes (each its own memory), handed
+  // over (transferred) without a copy; the main process passes each part on as it is
+  chatOpen({ file, ver, part = 4 * 1024 * 1024 }) {
     const fd = fs.openSync(file, 'r');
     try {
       const st = fs.fstatSync(fd);
-      const ab = new ArrayBuffer(st.size); const u = new Uint8Array(ab);
-      for (let pos = 0; pos < st.size;) { const n = fs.readSync(fd, u, pos, st.size - pos, pos); if (!n) break; pos += n; }
+      const parts = [];
+      for (let pos = 0; pos < st.size || !parts.length;) {
+        const u = new Uint8Array(new ArrayBuffer(Math.min(part, st.size - pos)));
+        for (let got = 0; got < u.length;) { const n = fs.readSync(fd, u, got, u.length - got, pos + got); if (!n) throw new Error('changed while read'); got += n; }
+        parts.push(u); pos += u.length;
+        if (!u.length) break;
+      }
       const prev = bigs.get(file);
       if (prev?.sig === bigSig(st)) { prev.vers.add(ver); if (prev.vers.size > 16) prev.vers.delete(prev.vers.values().next().value); } else bigs.set(file, { vers: new Set([ver]), sig: bigSig(st), head: null, els: null });
-      return { bytes: u, __transfer: [ab] };
+      return { parts, size: st.size, __transfer: parts.map((u) => u.buffer) };
     } finally { fs.closeSync(fd); }
   },
   // (round 82, bigchat82) a giant chat saved by what changed (see the header). The file is cut once (the first change
