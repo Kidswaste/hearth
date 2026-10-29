@@ -89,10 +89,42 @@ is normal, but a few blocks are whole dialogs that only a click opens:
 - **astra.js (131 KB, Codex) and jam.js (48 KB, the creative session) were not touched.** Nothing of theirs moved.
 
 ## Numbers
-(filled in below from the perfguard A/B run)
+| What | Before (7b2a9f0) | After |
+|---|---:|---:|
+| First-screen code (boot-test) | 71 scripts · 1,881 KB · 28 sheets · 423 KB CSS | 71 · **1,802 KB** · 28 · 423 KB |
+| appui.js · meter.js · sync.js (code) | 78.8 · 80.4 · 47.4 KB | 38.7 · 55.4 · 32.8 KB |
+| lazy-data.js (3 group lines) | 106.6 KB | 106.9 KB |
+| Budget | 1,884 KB | **1,810 KB** |
+
+Startup, `node dev/perfguard.js --ab 7b2a9f0 --only startup --lock --rounds 5` (heavy profile, base and new launched in
+turn, 15 cold starts each, 4 shared CPUs, load ≤ 4.8): **✓ no regression**.
+
+| Metric | Base | New | Change | p |
+|---|---:|---:|---:|---:|
+| Start → first usable chat | 1,052 ms | 1,088 ms | +36 ms (+3 %) | 0.3 (noise; allowed +105) |
+| Start → settled (last long task) | 1,771 ms | 1,782 ms | +11 ms (+1 %) | 0.15 |
+| CPU to the first screen (main + window) | 5,430 ms | 5,490 ms | +60 ms (+1 %) | 0.22 |
+| CPU to settled | 5,540 ms | 5,590 ms | +50 ms (+1 %) | 0.25 |
+
+An earlier 3-round run said "inconclusive" (+7 %, settled too close to call). In that run the new side's first block
+was slow before any page code had run (the main process's app ready at 272 ms against about 220 ms, on unchanged
+code), so it was load. With 5 rounds both sides are the same within noise. **On this box the cut is not measurable in
+milliseconds.** V8 only pre-parses the bodies of functions that are never called, so 79 KB less to read and pre-parse
+is a few ms, below the noise of software GL and four shared CPUs. The gain is room: the next features fit without a
+budget raise. The three groups load in idle moments after the first screen, and "settled" didn't move.
 
 ## Tested
-(filled in below)
+- `node --check` on every touched JS file. `node dev/lazy-manifest.js` (rewritten; ✓ names 956, aliases 340, actions
+  1408, keys 516, apps 51, tools 9, dups 0). `node dev/boot-test.js` (2,998 checks, new budget).
+  `node dev/lazy-groups-test.js` ✓.
+- Unit scans and Node tests: datasafe-scan, winmac-test (+ `dev/winmac-scan.js` 0 hits), errorcalm-scan,
+  storeack-scan, chatsafe-scan, commandonly-scan, boot-test, sync-test, appsearch-test: all pass.
+- App checks (under `flock /tmp/hearth-run.lock`, 5 per hold): **firstscreen83** (new, 42 steps: every moved dialog
+  through its old name with its group loaded and after a reload with every group held), lazy, chatperf, chatwindow72,
+  projects, labtools73, sync72, qa-commands, appsearch, settingscalm, usagelimits, backupauto, sync, options: all pass.
+- `appcalm` fails on 'Ctrl/⌘+K finds "playground"' (the palette ranking). It **fails the same way on the base**
+  (7b2a9f0, run with `dev/smoke.js --app`), so this stream didn't cause it.
+- perfguard A/B as above.
 
 ## Files
 - New: `appui-dialogs.js`, `meter-dash.js`, `sync-conflicts.js`, `dev/firstscreen-coverage.js`,
