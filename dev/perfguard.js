@@ -250,13 +250,14 @@ function calibOf(m, part, side) {
     loadavg: node.map((c) => c.loadavg?.[0]).filter(Number.isFinite), unstable: singles.length > 1 ? rnd(Math.max(...singles) / Math.min(...singles)) : 1,
   };
 }
-// how much slower the box is now than at the baseline: the geometric mean of the benchmark's ratios (app: the window's
-// benchmark, with layout, in place of Node's single thread), null without a calibrated baseline
+// how much slower the box is now than at the baseline: for the app, the slower of the window's own benchmark (with
+// layout: the app part's numbers are nearly all the window's) and Node's 3-thread one (the box's contention: in one
+// run at load 4.5 the window's benchmark was +3 % while chat clicks were +18–26 % and the 3-thread one +17 %); for
+// startup and sync the geometric mean of Node's 1-thread and 3-thread benchmarks; null without a calibrated baseline
 function factorOf(now, base, part) {
   if (!now || !base) return null;
   const r = (a, b) => (Number.isFinite(a) && Number.isFinite(b) && b > 0 ? a / b : null);
-  const one = part === 'app' && r(now.win, base.win) != null ? r(now.win, base.win) : r(now.single, base.single);
-  const xs = [one, r(now.par, base.par)].filter((x) => x != null);
+  const xs = part === 'app' && r(now.win, base.win) != null ? [Math.max(r(now.win, base.win), r(now.par, base.par) ?? 0)] : [r(now.single, base.single), r(now.par, base.par)].filter((x) => x != null);
   return xs.length ? rnd(Math.min(3, Math.max(0.5, Math.exp(xs.reduce((a, x) => a + Math.log(x), 0) / xs.length)))) : null;
 }
 function loadGate(c, f) {
