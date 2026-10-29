@@ -10,7 +10,10 @@ const COVER = path.join(DATA_DIR, 'now-playing-cover.jpg');
 let proc = null; let timer = null; let listener = null; let last = '';
 
 // Windows: one PowerShell process that prints a JSON line every 1.5 s (the cover is saved when the track changes).
+// (windows hourly 7) UTF-8 out: Windows PowerShell 5.1 writes a pipe in the OEM code page, so "Beyoncé" arrived as
+// "Beyonc�" and "œ" as "o" in the title, artist and album
 const PS_LOOP = String.raw`
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $ErrorActionPreference = 'SilentlyContinue'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation${'`'}1' })[0]
@@ -85,6 +88,7 @@ function start(onUpdate) {
     fs.writeFileSync(file, PS_LOOP);
     proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file], { windowsHide: true, env: { ...process.env, NP_COVER: COVER } });
     let buf = '';
+    proc.stdout.setEncoding('utf8'); // (an é split across two chunks stays one é)
     proc.stdout.on('data', (d) => {
       buf += d;
       let nl;

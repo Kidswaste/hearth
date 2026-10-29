@@ -62,3 +62,13 @@ One small Windows fix an hour, each checked in a throwaway copy of Hearth and pu
   Also checked, fine as they are: cloud-files' PowerShell helper with accented paths (both ways).
   `dev/voice-test.js` stops at its first step on Windows with and without this change (its fake whisper is a .js
   file, which Windows can't start: EFTYPE): not fixed here.
+
+## Pass 7 (Oct 29): Now Playing lost accents in titles and artists
+- **What you saw**: the Now Playing card showed "Beyonc�" or "Caf� ouvre" for a song with é, è, à, œ… in its
+  title, artist or album.
+- **Why**: pass 6's problem the other way round: Windows PowerShell 5.1 writes a pipe in the OEM code page.
+- **Fix** (`nowplaying.js`): the loop script sets `[Console]::OutputEncoding` to UTF-8, and Hearth reads its output
+  as UTF-8 text (a character split across two chunks stays whole).
+- **Checked**: PowerShell's JSON for "Beyoncé" / "Café œuvre" came through as "Beyonc�" / "Caf� ouvre" before and
+  exactly after; the real Now Playing script, run from a scratch folder, read Spotify's current track; a test copy
+  starts with no page errors.
