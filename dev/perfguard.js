@@ -272,13 +272,12 @@ const calibLine = (c, f) => (c ? `calibration ${c.single} ms${c.win != null ? ` 
 
 // ---------- compare mode ----------
 // (round 82) a metric over the line must also be told apart from the noise: a one-sided Mann–Whitney test of every
-// sample now (a wall time ÷ the calibration factor) against every sample of the baseline (p ≤ 0.05). Then:
+// sample now (a time, wall or CPU, ÷ the calibration factor) against every sample of the baseline (p ≤ 0.05). Then:
 //   CPU time / level over the line: REGRESSED when significant, else "unsure" (inconclusive)
-//   wall time over the line: REGRESSED when significant AND its CPU twin is over its own line too (more work) — or,
-//     with its CPU twin fine (the extra time is waiting, not work), when it is more than WAIT_LINE worse and the box
-//     isn't slower than at the baseline ("load?" if it is). Within WAIT_LINE, or not significant, a wall time with a
-//     fine CPU twin is ok: this box's waits (software GL, other agents' disks) swing ±30 % between sessions on their own.
-const WAIT_LINE = 0.35;
+//   wall time over the line and significant: REGRESSED — unless its CPU twin is fine (the extra time is waiting, not
+//     work) AND the box is slower than at the baseline: then "load?" (inconclusive). A wall time over the line that is
+//     NOT significant, with a fine CPU twin, is ok: this box's waits (software GL, other agents' disks) swing ±30 %
+//     between sessions on their own. (A new timer or a lost cache on a box no slower than at the baseline still fails.)
 function judge(base, now, ctx = {}) {
   const rows = [];
   for (const [k, d] of Object.entries(METRICS)) {
@@ -286,7 +285,9 @@ function judge(base, now, ctx = {}) {
     const b = base.metrics?.[k]; const c = now[k];
     if (!b || !c) { if (b || c) rows.push({ k, d, b, c, verdict: b ? 'not measured' : 'new (no baseline)' }); continue; }
     const tol = Math.max(0.15 * Math.abs(b.median), 3 * (b.spread || 0), d.floor);
-    const f = d.kind === 'wall' ? ctx.factor?.[d.part] ?? null : null;
+    // (a CPU time too: the calibration runs without waiting for a CPU here — it measures how much work a CPU gets
+    // through now, and a shared core's caches / sibling thread slow Hearth's CPU time by the same factor)
+    const f = d.kind === 'wall' || d.kind === 'cpu' ? ctx.factor?.[d.part] ?? null : null;
     const scaled = f != null ? c.median / f : c.median;
     const delta = scaled - b.median;
     const bx = (base.raw?.[k] || []).flat(); const nx = (ctx.raw?.[k] || []).flat().map((x) => (f != null ? x / f : x));
@@ -300,7 +301,7 @@ function judge(base, now, ctx = {}) {
     if (!twin || !['ok', 'better'].includes(twin.verdict)) continue; // (its CPU grew too, or isn't known: as judged)
     const slower = (ctx.factor?.[r.d.part] ?? 1) > LOAD.slower || (ctx.calib?.[r.d.part]?.wait ?? 1) > 1.15;
     r.why = `its CPU time (${twin.d.label}) is ${twin.verdict}`;
-    if (r.verdict === 'unsure' || r.delta <= WAIT_LINE * Math.abs(r.b.median)) { r.note = `over the line by waiting, not work (${r.why}${r.verdict === 'unsure' ? ', and within the noise' : ''})`; r.verdict = 'ok'; } else if (slower) r.verdict = 'load?';
+    if (r.verdict === 'unsure') { r.note = `over the line, but within the noise and by waiting, not work (${r.why})`; r.verdict = 'ok'; } else if (slower) r.verdict = 'load?';
   }
   for (const r of rows) if ((r.verdict === 'REGRESSED' || r.verdict === 'unsure') && ctx.gate?.[r.d.part]?.length) r.verdict = 'too loaded'; // (refused: the box can't tell)
   return rows;
@@ -518,7 +519,7 @@ function writeReport(rep) { fs.writeFileSync(path.join(OUT, 'report.json'), `${J
   // a part asked for that measured nothing guards nothing: that fails too (its problems say why)
   const missing = rows.filter((r) => r.verdict === 'not measured' && parts.includes(r.d.part));
   const verdict = bad.length || missing.length ? 'regressed' : unsure.length ? 'inconclusive' : 'ok';
-  log(`\nperfguard: now vs baseline (${base.when?.slice(0, 10)}, commit ${base.machine?.commit}); allowed = max(15 %, 3 × spread, floor); a wall time is judged ÷ the calibration factor (how much slower the box is than at the baseline)\n`);
+  log(`\nperfguard: now vs baseline (${base.when?.slice(0, 10)}, commit ${base.machine?.commit}); allowed = max(15 %, 3 × spread, floor); a time (wall or CPU) is judged ÷ the calibration factor (how much slower the box is than at the baseline)\n`);
   log(table(rows));
   log('\nthe box:');
   for (const part of parts) log(`  ${part.padEnd(8)} now:      ${calibLine(ctx.calib[part], ctx.factor[part])}\n  ${''.padEnd(8)} baseline: ${calibLine(base.calib?.[part])}${!base.calib?.[part] ? ' (recorded before round 82: wall times judged as measured)' : ''}${ctx.gate[part].length ? `\n  ${''.padEnd(8)} ✖ too loaded to tell its wall times: ${ctx.gate[part].join('; ')}` : ''}`);
