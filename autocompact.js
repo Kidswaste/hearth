@@ -251,7 +251,7 @@ ${transcript(parts)}
     if (!agent || agent.mode !== 'native' || Native.isBusy(chat.id) || running.has(chat.id)) return null;
     // (round 86, chatwindow86) a windowed giant chat: the store thread's decision from the file (its older messages
     // aren't here); none yet: no offer (never one made from a part of the chat)
-    const d = Native.isWin?.(chat) ? Native._rest.W.x.decided(chat) : decide(inputOf(chat, agent));
+    const d = Native.isWin?.(chat) ? Native._rest.W.x.calcSync(chat, 'lighter') : decide(inputOf(chat, agent));
     if (!d?.offer) return null;
     // once per growth step: an ignored offer comes back only when the chat is half again as big
     if (chat.lighterOffered && d.before < chat.lighterOffered * 1.5) return null;
@@ -272,7 +272,7 @@ ${transcript(parts)}
     // (round 38, hintcalm) the offer waits for calm (not while you type) and stays away with Don't show tips (hints.js)
     const offer = (d) => (window.Hints ? Hints.offer({ id: `lighter:${chat.id}`, kind: 'inline', once: false, ttl: 15 * 60000, still: () => H.activeChat[chat.agentId] === chat.id && Boolean(offerFor(chat)), show: () => show(chat.agentId, chat, offerFor(chat) || d) }) : show(chat.agentId, chat, d));
     const go = () => { if (H.activeChat[chat.agentId] !== chat.id) return; const d = offerFor(chat); if (d) offer(d); };
-    if (Native.isWin?.(chat)) { const agent = H.agent(chat.agentId); setTimeout(() => Native._rest.W.x.decide(chat, agent).then(go, () => {}), 300); return; } // (round 86)
+    if (Native.isWin?.(chat)) { setTimeout(() => Native._rest.W.x.calc(chat, 'lighter').then(go, () => {}), 300); return; } // (round 86)
     setTimeout(go, 300);
   }
 
@@ -293,7 +293,7 @@ ${transcript(parts)}
     const agent = H.agent(agentId);
     if (!chat || !agent) throw new Error('Open a chat first.');
     if (Native.isBusy(chat.id) || running.has(chat.id)) throw new Error('Still answering');
-    if (Native.isWin?.(chat)) await Native.load(chat.id); // (round 86, chatwindow86) the summary reads the older messages: the chat whole first
+    if (Native.isWin?.(chat)) await Native.loadWhole(chat.id); // (round 86, chatwindow86) the summary reads the older messages: the chat whole first
     const parts = split(chat);
     if (!parts.older.length) { toast(`Nothing to make lighter yet: the last ${KEEP_EXCHANGES} exchanges always go word for word.`, { timeout: 2500 }); return null; }
     const d = decide({ ...inputOf(chat, agent), at: 1 });

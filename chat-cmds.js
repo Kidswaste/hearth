@@ -1113,6 +1113,7 @@ const ChatCmds = (() => {
     },
     run: async (args, ctx) => {
       const chat = need(ctx);
+      if (Native.isWin?.(chat)) await Native.loadWhole(chat.id); // (round 86, chatwindow86) a windowed giant chat: whole first (one save dialog)
       const [fmtName = 'md', dest = 'file'] = args.toLowerCase().split(/\s+/).filter(Boolean);
       const f = EXPORT_FORMATS[fmtName] ? fmtName : 'md';
       if (chat.messages?.length >= BIG_EXPORT && typeof ChatExport !== 'undefined' && window.hub.saveStream) { // (round 84, bigchat84)

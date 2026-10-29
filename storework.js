@@ -35,7 +35,8 @@
 //                                 the version the window holds. A file that can't be read: { error } (never an empty range)
 //   chatFind { file, q }          (round 86) find in a windowed chat: the messages whose text or thinking holds q (exact:
 //                                 the same test as chat-rest.js restingHits, on each candidate the lowered bytes point at)
-//   chatDecide { file, agent }    (round 86) autocompact's "continue lighter?" decision for a windowed chat, from the file
+//   chatCalc { file, what, agent, tools, upto }  (round 86) whole-chat numbers for a windowed chat, from the file: autocompact's
+//                                 decision, sendpreview's history, historylean's lighter history (the same pure code)
 // Chat files are parsed once and kept (by size + mtime): a list or a search only re-reads the files that changed, and
 // a chat saved through here is indexed from the value itself (no re-read). Texts are kept up to TEXT_CAP characters
 // in all; past that, a search reads the files again (still on this thread).
@@ -194,9 +195,9 @@ let findIdx = null; let findT = null; // (round 81, projsearch81) projfind-core.
 const bigs = new Map();
 const bigSig = (st) => (st ? `${st.size}:${st.mtimeMs}` : '');
 // (round 86, chatwindow86) find in a windowed chat: its lowered bytes (bigchat-core searchIndex) while you search (two
-// chats at most, let go 10 minutes after the last find) · the last "continue lighter?" decision, by the file's sig
+// chats at most, let go 10 minutes after the last find)
 const winFind = new Map(); let winFindT = null;
-const winDecide = new Map();
+const winCalc = { sig: null, chat: null, t: null }; // (the last chat parsed for chatCalc: 15 s, for the next ask about the same version)
 const elOf = (els, p) => { let lo = 0; let hi = els.length / 2 - 1; while (lo <= hi) { const m = (lo + hi) >> 1; if (p < els[m * 2]) hi = m - 1; else if (p >= els[m * 2 + 1]) lo = m + 1; else return m; } return -1; };
 
 function stat(file) { try { return fs.statSync(file); } catch { return null; } }
@@ -813,17 +814,31 @@ const OPS = {
     } finally { fs.closeSync(fd); }
     return { hits, n };
   },
-  chatDecide({ file, agent }) {
+  // whole-chat numbers features show or decide from, worked out here from the file (the window holds only a part):
+  // lighter (autocompact's "continue lighter?" decision), preview (sendpreview's usual reply and history, and what
+  // continuing lighter would leave), lean (historylean's lighter history before message `upto`, and its inputs). The
+  // same pure code as in the window (autocompact.js, sendpreview-core.js, historylean-core.js) on the parsed chat
+  chatCalc({ file, what = [], agent = {}, tools = false, upto }) {
     const got = readStill(file);
     if (!got) return { error: 'read' };
-    const key = JSON.stringify(agent || {});
-    const c = winDecide.get(file);
-    if (c && c.sig === got.sig && c.key === key) return { d: c.d };
-    let chat; try { chat = JSON.parse(got.buf.toString('utf8').replace(/^\uFEFF/, '')); } catch { return { error: 'parse' }; }
-    const AC = require('./autocompact');
-    const d = AC.decide(AC.inputOf(chat, agent || {}));
-    winDecide.clear(); winDecide.set(file, { sig: got.sig, key, d });
-    return { d };
+    let chat = winCalc.sig === got.sig ? winCalc.chat : null;
+    if (!chat) { try { chat = JSON.parse(got.buf.toString('utf8').replace(/^\uFEFF/, '')); } catch { return { error: 'parse' }; } }
+    if (!chat || typeof chat !== 'object' || !Array.isArray(chat.messages)) return { error: 'parse' };
+    Object.assign(winCalc, { sig: got.sig, chat }); clearTimeout(winCalc.t); winCalc.t = setTimeout(() => { winCalc.sig = null; winCalc.chat = null; }, 15000); winCalc.t.unref?.();
+    const out = { n: chat.messages.length };
+    const AC = () => require('./autocompact');
+    if (what.includes('lighter')) out.lighter = AC().decide(AC().inputOf(chat, agent));
+    if (what.includes('preview')) {
+      const SPC = require('./sendpreview-core');
+      out.preview = { st: SPC.stats(chat), history: SPC.historyOf(chat), lighter: AC().split(chat).older.length ? AC().decide({ ...AC().inputOf(chat, agent), at: 1 }) : null };
+    }
+    if (what.includes('lean')) {
+      const HLC = require('./historylean-core');
+      const end = upto ?? chat.messages.length; const now = Date.now();
+      const built = HLC.build(chat, { upto: end, chatTools: Boolean(tools) });
+      out.lean = { now, built, input: HLC.inputOf(chat, agent, { now, upto: end, chatTools: Boolean(tools), built }) };
+    }
+    return out;
   },
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {

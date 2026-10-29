@@ -25,7 +25,7 @@ const ChatWin = (() => {
   const S = new WeakMap(); // chat → its window: { id, a (chatwin-core makeArray), meta, cpl, … }
   const TAIL = 300; // the last messages always held
   const PART = 400; // messages per range when the whole chat is read
-  const stat = { opened: 0, fetched: 0, ranges: 0, released: 0, wholes: [], misses: [], poisoned: 0, rewindowed: 0 };
+  const stat = { opened: 0, fetched: 0, ranges: 0, released: 0, wholes: [], misses: [], poisoned: 0, rewindowed: 0, refused: [] };
   const live = (chat) => { const st = chat && S.get(chat); return st && chat.messages === st.px ? st : null; };
   const is = (chat) => Boolean(live(chat));
   const text = (b) => new TextDecoder().decode(b);
@@ -74,8 +74,8 @@ const ChatWin = (() => {
 
   // ---------- what isn't loaded ----------
   function miss(chat, st, k, key) {
-    if (stat.misses.length < 40) stat.misses.push({ chat: st.id, k, key: String(key), at: Date.now(), where: String(new Error().stack || '').split('\n').slice(3, 7).map((l) => l.trim()).join(' | ') });
-    setTimeout(() => whole(chat, 'miss').catch(() => {}), 0); // (so trying again works)
+    if (stat.misses.length < 200) stat.misses.push({ chat: st.id, k, key: String(key), at: Date.now(), where: String(new Error().stack || '').split('\n').slice(3, 7).map((l) => l.trim()).join(' | ') });
+    if (!window.CW86_NOHEAL) setTimeout(() => whole(chat, 'miss').catch(() => {}), 0); // (so trying again works; CW86_NOHEAL: the app check lists every miss)
     throw new C.NotLoaded(k, key);
   }
   function refuse(chat, st, k, why, hard) {
@@ -137,7 +137,15 @@ const ChatWin = (() => {
     await fill(chat, st, lo, hi, PART, false);
     return true;
   }
-  const has = (chat, k) => { const st = live(chat); return !st || st.a.loaded(k); };
+  // the chat cut to its first n messages (edit-from-here, retry): its new end loaded first (what it shows, what the
+  // next message sends along), then cut in place; saved by change with trunc (chatDelta's "truncate to n")
+  async function cut(chat, n) {
+    const st = live(chat);
+    if (!st) { chat.messages = chat.messages.slice(0, n); return; }
+    await ensure(chat, Math.max(0, n - TAIL), n);
+    if (chat.messages === st.px) chat.messages.length = n; else chat.messages = chat.messages.slice(0, n);
+  }
+  const has = (chat, k, hi = k + 1) => { const st = live(chat); if (!st) return true; for (let i = k; i < Math.min(hi, st.a.t.length); i++) if (!st.a.loaded(i)) return false; return true; };
   const keys = (chat) => live(chat)?.a.keys() || [];
 
   // ---------- the whole chat (load-all) ----------
@@ -146,7 +154,7 @@ const ChatWin = (() => {
     if (!st) return Promise.resolve(chat);
     if (st.poison) return Promise.reject(new Error('This long chat opens again from disk first.'));
     if (st.whole) return st.whole;
-    const t0 = performance.now(); let note = null;
+    const t0 = performance.now(); let note = null; const where = String(new Error().stack || '').split('\n').slice(2, 6).map((l) => l.trim()).join(' | ');
     const nt = setTimeout(() => { note = toast('Loading the whole chat…', { timeout: 30000 }); }, 400);
     st.whole = (async () => {
       await fill(chat, st, 0, st.a.t.length, PART, true);
@@ -155,7 +163,7 @@ const ChatWin = (() => {
       for (let k = 0; k < all.length; k++) { if (a.gone.has(k)) continue; if (!(k in a.t)) throw new Error('This long chat didn\'t load whole: nothing was changed.'); all[k] = a.t[k]; }
       chat.messages = all; // (the same message objects, now one plain array: the chat as any other)
       st.full = Date.now();
-      stat.wholes.push({ chat: st.id, why, ms: Math.round(performance.now() - t0) });
+      stat.wholes.push({ chat: st.id, why, ms: Math.round(performance.now() - t0), where });
       if (stat.wholes.length > 40) stat.wholes.shift();
       later(chat);
       return chat;
@@ -164,11 +172,11 @@ const ChatWin = (() => {
   }
   // after a quiet minute, a giant chat loaded whole goes back to its window (what isn't saved, drawn or pinned stays)
   function later(chat, ms = 60000) { const st = S.get(chat); if (!st) return; clearTimeout(st.backT); st.backT = setTimeout(() => { if (!rewindow(chat)) later(chat, 60000); }, ms); }
-  function rewindow(chat) {
+  function rewindow(chat, now = false) { // (now: the app check, without the quiet minute)
     const st = S.get(chat);
     if (!st || !st.full || is(chat) || !on() || R.chats.get(chat.id) !== chat) return true; // (nothing to do: stop)
     const ms = chat.messages; const s = SV.shapes.get(chat);
-    if (!Array.isArray(ms) || !s || s.msgs.length !== ms.length || Native.isBusy(chat.id) || Date.now() - st.full < 30000) return false;
+    if (!Array.isArray(ms) || !s || s.msgs.length !== ms.length || Native.isBusy(chat.id) || (!now && Date.now() - st.full < 30000)) return false;
     const n = ms.length;
     let keepFrom = Math.max(0, n - TAIL);
     const awake = new Set();
@@ -219,7 +227,7 @@ const ChatWin = (() => {
     const d = C.delta(chat, s, st.a.keys(), (k) => st.a.t[k], SV);
     if (!d) return Promise.resolve();
     const from = s.ver; const to = s.ver = SV.newVer();
-    return window.hub.saveChatDelta({ id: chat.id, from, to, ...d }).then((r) => (r?.ok || SV.shapes.get(chat)?.ver !== to ? r : fall()), () => (SV.shapes.get(chat)?.ver === to ? fall() : null));
+    return window.hub.saveChatDelta({ id: chat.id, from, to, ...d }).then((r) => { if (!r?.ok) stat.refused.push(String(r?.why || 'none')); return r?.ok || SV.shapes.get(chat)?.ver !== to ? r : fall(); }, () => (SV.shapes.get(chat)?.ver === to ? fall() : null));
   }
 
   // ---------- find in the chat (chat-rest.js restingHits) ----------
@@ -238,16 +246,35 @@ const ChatWin = (() => {
     return [];
   }
 
-  // ---------- continue lighter? (autocompact.js) from the file, on the store thread ----------
-  const decided = (chat) => { const st = live(chat); const s = SV.shapes.get(chat); return st?.dec && st.dec.ver === s?.ver ? st.dec.d : null; };
-  async function decide(chat, agent) {
-    const st = live(chat); const s = SV.shapes.get(chat);
-    if (!st || !s) return null;
-    const ver = s.ver;
-    const r = await window.hub.chatWin('decide', { id: chat.id, agent: { lighterAt: agent?.lighterAt } });
-    if (!r?.d) return null; // (can't be read just now: no offer, nothing done)
-    st.dec = { ver, d: r.d };
-    return r.d;
+  // ---------- whole-chat numbers (autocompact.js, sendpreview.js, historylean.js), worked out on the store thread ----------
+  // kind: 'lighter' (continue lighter?), 'preview' (the history a message re-reads), 'lean' (the lighter history before
+  // message `upto`). Kept by a key of what they depend on (the same idea as those modules' own memos); calcSync gives the
+  // kept answer or null (asked for now: again() when it's in). Never an answer made from a part of the chat: none
+  // until the store thread has read the file (nothing is offered or decided meanwhile)
+  const calcKey = (chat, kind, upto, tools) => { const ms = chat.messages; const u = upto ?? ms.length; return `${kind}|${u}|${ms[u - 1]?.at || 0}|${chat.compact?.index ?? ''}|${chat.compact?.tail ?? ''}|${chat.handoff?.at ?? ''}|${chat.lean?.at ?? ''}|${chat.session?.id || ''}|${chat.leanOff ? 1 : 0}|${chat.lighterOffered || 0}|${tools ? 1 : 0}`; };
+  const agentOf = (chat) => { const a = H.agent(chat.agentId); return a && chat.engine && chat.engine !== a.engine ? { ...a, engine: chat.engine } : a; };
+  function calc(chat, kind, { upto, tools = false } = {}) {
+    const st = live(chat);
+    if (!st) return Promise.resolve(null);
+    const key = calcKey(chat, kind, upto, tools);
+    const c = (st.calc ||= new Map()); const had = c.get(kind);
+    if (had?.key === key) return had.p;
+    const a = agentOf(chat) || {};
+    const p = window.hub.chatWin('calc', { id: chat.id, what: [kind], agent: { id: a.id, mode: a.mode, engine: a.engine, lighterAt: a.lighterAt, model: a.model }, tools, upto }).then((r) => {
+      const v = r && !r.error ? r[kind] ?? null : null;
+      const e = c.get(kind); if (e?.key === key) { e.v = v; e.done = true; if (v == null) c.delete(kind); }
+      return v;
+    }, () => { if (c.get(kind)?.key === key) c.delete(kind); return null; });
+    c.set(kind, { key, p, v: null, done: false });
+    return p;
+  }
+  function calcSync(chat, kind, o = {}) {
+    const st = live(chat);
+    if (!st) return null;
+    const had = st.calc?.get(kind);
+    if (had?.key === calcKey(chat, kind, o.upto, o.tools) && had.done) return had.v;
+    calc(chat, kind, o).then((v) => { if (v != null) o.again?.(); });
+    return null;
   }
 
   const on = () => store.get('chat.window86', true) !== false;
@@ -258,7 +285,7 @@ const ChatWin = (() => {
     for (const c of R.chats.values()) { const st = live(c); if (st) { windowed += 1; loaded += st.a.keys().length; total += st.a.t.length; } }
     return { ...stat, windowed, loaded, total };
   }
-  const api = { is, open, keys, has, ensure, whole, release, guess, save, hits, decide, decided, bad, all, stats, rewindow, on, TAIL };
+  const api = { is, open, keys, has, ensure, cut, whole, release, guess, save, hits, calc, calcSync, bad, all, stats, rewindow, on, TAIL };
   R.W.x = api;
   return api;
 })();

@@ -469,7 +469,9 @@ const Commands = (() => {
     active = { source: ctx.source, say: ctx.say, note: ctx.note, draft: opts.draft, error: opts.error };
     try {
       for (const fn of befores) { try { fn({ def: hit.def, args: hit.args, source: ctx.source, place: ctx.place, agentId, nested: nested || opts.history === false }); } catch { /* a listener never breaks a command */ } }
-      const out = await hit.def.run(hit.args, ctx);
+      // (round 86, chatwindow86) a command that reached a long chat's older messages not loaded yet (they stop it before
+      // it changes anything: NotLoaded) runs again once the chat is loaded whole
+      let out; try { out = await hit.def.run(hit.args, ctx); } catch (e) { const c = e?.code === 'ENOTLOADED' && Native.current(agentId); if (!c) throw e; await Native.loadWhole(c.id); out = await hit.def.run(hit.args, ctx); }
       if (typeof out === 'string' && out) ctx.say(out);
       Usage.track(`Chat command › /${hit.def.name}`);
       noteRecent(hit.def.name);

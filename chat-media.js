@@ -51,7 +51,7 @@ const ChatMedia = (() => {
     const mine = !extras.things;
     const things = extras.things || (extras.things = []); // the same array lands on the saved message
     collect(chat, event.text, since, things).then((n) => {
-      if (!n) { if (mine && !things.length) { const msg = chat.messages.find((x) => x.things === things); if (msg) delete msg.things; } return; }
+      if (!n) { if (mine && !things.length) { const msg = chat.messages.findLast((x) => x.things === things); if (msg) delete msg.things; } return; }
       Native.save(chat);
       if (H.activeId === chat.agentId) Native.refresh(chat.agentId, { keepScroll: true });
     }).catch((err) => console.warn('chat media', err));

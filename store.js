@@ -340,12 +340,12 @@ function saveChatDelta(d) {
   let file; try { file = chatPath(d?.id); } catch { return { ok: false, why: 'id' }; }
   if (!thread() || guardWants(file) || held.has(file) || doubts.has(file) || !seen.has(file)) return { ok: false, why: 'whole' };
   deltaSent += 1; deltaFiles.set(file, (deltaFiles.get(file) || 0) + 1);
-  return ask({ op: 'chatDelta', file, from: d.from, to: d.to, keys: d.keys, set: d.set, n: d.n, msgs: d.msgs })
+  return ask({ op: 'chatDelta', file, from: d.from, to: d.to, keys: d.keys, set: d.set, n: d.n, msgs: d.msgs, trunc: Boolean(d.trunc) }) // (round 86: trunc, a chat cut shorter on purpose)
     .then((r) => { if (r?.ok) wstats.writes += 1; return r || { ok: false, why: 'none' }; }, (err) => ({ ok: false, why: err.message }))
     .finally(() => { const n = (deltaFiles.get(file) || 1) - 1; if (n > 0) deltaFiles.set(file, n); else deltaFiles.delete(file); });
 }
 // (round 86, chatwindow86) a windowed giant chat's other reads, on the store thread in the order of its saves:
-// range { id, ver, from, to } → { n, same, bytes } · find { id, q } → { hits } · decide { id, agent } → { d }. A file
+// range { id, ver, from, to } → { n, same, bytes } · find { id, q } → { hits } · calc { id, what, agent, tools, upto }. A file
 // that can't be read answers { error }: the window never takes that as "no messages"
 async function chatWin(op, a) {
   let file; try { file = chatPath(a?.id); } catch { return { error: 'id' }; }
@@ -356,7 +356,7 @@ async function chatWin(op, a) {
       return r?.bytes ? { n: r.n, from: r.from, to: r.to, same: Boolean(r.same), bytes: Buffer.from(r.bytes.buffer, r.bytes.byteOffset, r.bytes.byteLength) } : { error: r?.error || 'read' };
     }
     if (op === 'find') return (await ask({ op: 'chatFind', file, q: String(a.q || '') })) || { error: 'read' };
-    if (op === 'decide') return (await ask({ op: 'chatDecide', file, agent: { lighterAt: a.agent?.lighterAt } })) || { error: 'read' };
+    if (op === 'calc') { const g = a.agent || {}; return (await ask({ op: 'chatCalc', file, what: Array.isArray(a.what) ? a.what.map(String) : [], agent: { id: g.id, mode: g.mode, engine: g.engine, lighterAt: g.lighterAt, model: g.model }, tools: Boolean(a.tools), upto: a.upto == null ? undefined : Number(a.upto) })) || { error: 'read' }; }
   } catch (err) { return { error: err.message || 'read' }; }
   return { error: 'op' };
 }

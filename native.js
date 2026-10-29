@@ -644,7 +644,7 @@ const Native = (() => {
     } else if (chats.size > CHAT_KEEP) { const c = chats.get(id); chats.delete(id); chats.set(id, c); } // most recent last
     return chats.get(id);
   }
-  // (round 86, chatwindow86) every other module's way to a chat (Native.load): a windowed one loaded whole first
+  // (round 86, chatwindow86) Native.loadWhole: a windowed giant chat loaded whole first (what reads every message's content)
   const loadFull = async (id) => { const c = await loadChat(id); return cw(c) ? W.x.whole(c, 'load') : c; };
   // (round 20, soak) a long session opens many chats: only the last CHAT_KEEP stay in memory (whole histories can be
   // big), never one on screen in an agent, streaming, or used in the last minute; the others load again from disk
@@ -1124,7 +1124,7 @@ const Native = (() => {
     // (messages leaving the end part as the chat grows stay drawn: they rest later, measured, when far away)
     if (list.restFrom != null && from > list.restFrom) for (let b = Math.floor(list.restFrom / BLOCK); b < nb; b++) awake.add(b);
     list.restFrom = from;
-    for (const b of awake) if (b >= nb) awake.delete(b);
+    for (const b of awake) if (b >= nb || (cw(chat) && !W.x.has(chat, b * BLOCK, (b + 1) * BLOCK))) awake.delete(b); // (round 86: a windowed chat's block not loaded rests)
     let lastRest = nb - 1; while (lastRest >= 0 && awake.has(lastRest)) lastRest -= 1;
     let day = '';
     const busy = pending.has(chat.id);
@@ -1864,6 +1864,11 @@ const Native = (() => {
     await window.hub.saveMemory(memory);
   }
 
+  // (round 86, chatwindow86) the rows of messages [from, last) that `keep` takes, joined, read from the END until they
+  // hold more than CONTEXT_CHARS: the same end as joining them all (only the end is ever sent), and a windowed chat's
+  // older messages are never read for it
+  const rowOf = (m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`;
+  function tailRows(ms, from, keep) { const rows = []; let len = -2; for (let i = ms.length - 2; i >= Math.max(0, from) && len <= CONTEXT_CHARS; i--) { const m = ms[i]; if (!keep(m)) continue; const r = rowOf(m); rows.push(r); len += r.length + 2; } return rows.reverse().join('\n\n'); }
   // When the engine has no session for this chat's history (imported, edited, regenerated or
   // continued from another agent), send the earlier conversation along once.
   function withContext(chat, text) {
@@ -1874,16 +1879,14 @@ const Native = (() => {
     // then what was said since; "Send the whole chat instead" put the whole chat there instead
     const h = chat.handoff;
     if (h?.brief && !(chat.compact && chat.compact.index >= h.at)) {
-      const since = chat.messages.slice(h.at, -1).filter((m) => m.role !== 'error' && !m.handoffBrief && (m.ctx || m.text))
-        .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`).join('\n\n');
+      const since = tailRows(chat.messages, h.at, (m) => m.role !== 'error' && !m.handoffBrief && (m.ctx || m.text));
       const tail = since.length > CONTEXT_CHARS ? `…${since.slice(-CONTEXT_CHARS)}` : since;
       if (h.whole) return `Here is our earlier conversation (from a ${h.from || chat.continuedFrom || 'another'} chat). Continue it naturally.\n\n<earlier_conversation>\n${h.whole}${tail ? `\n\n${tail}` : ''}\n</earlier_conversation>\n\n${text}`;
       return `${h.brief}${tail ? `\n\n<since_then>\n${tail}\n</since_then>` : ''}\n\n${text}`;
     }
     if (chat.compact) {
       // (round 34, autocompact) a lighter continuation carries its last exchanges word for word: from `tail`
-      const after = chat.messages.slice(chat.compact.tail ?? chat.compact.index, -1).filter((m) => m.role !== 'error' && !m.compactSummary && !m.compactReq)
-        .map((m) => `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`).join('\n\n');
+      const after = tailRows(chat.messages, chat.compact.tail ?? chat.compact.index, (m) => m.role !== 'error' && !m.compactSummary && !m.compactReq);
       return `We compacted our earlier conversation to save context. Here is your summary of it${after ? ', then what we said since' : ''}. Continue naturally.\n\n<summary>\n${chat.compact.summary}\n</summary>${after ? `\n\n<since_then>\n${after.length > CONTEXT_CHARS ? `…${after.slice(-CONTEXT_CHARS)}` : after}\n</since_then>` : ''}\n\n${text}`;
     }
     // (round 82, bigchat82) the rows taken from the end until they hold CONTEXT_CHARS (the same text: only the end is
@@ -1891,7 +1894,7 @@ const Native = (() => {
     const rows = []; let len = -2; let all = true;
     for (let i = chat.messages.length - 2; i >= 0; i--) {
       const m = chat.messages[i]; if (m.role === 'error') continue;
-      const row = `${m.role === 'user' ? 'User' : m.role === 'opinion' ? `${m.from} (second opinion)` : 'Assistant'}: ${m.ctx || m.text}`;
+      const row = rowOf(m);
       rows.push(row); len += row.length + 2;
       if (len > CONTEXT_CHARS && i > 0 && chat.messages.slice(0, i).some((x) => x.role !== 'error')) { all = false; break; }
     }
@@ -2461,7 +2464,7 @@ const Native = (() => {
     if (chat.compact && index < chat.compact.index) delete chat.compact;
     const next = await Modal.prompt('Edit message', { value: original.text, multiline: true, label: 'Everything after this message will be replaced by a new reply.' });
     if (next == null || !next.trim()) return;
-    if (cw(chat)) chat.messages.length = index; else chat.messages = chat.messages.slice(0, index); // (round 86: a windowed chat cut in place)
+    if (cw(chat)) await W.x.cut(chat, index); else chat.messages = chat.messages.slice(0, index); // (round 86: a windowed chat cut in place, its new end loaded)
     // the earlier wording is kept (shown on hover over "edited")
     const edits = [...(original.edits || []), original.text].slice(-5);
     chat.messages.push({ ...original, text: next.trim(), sent: original.sent ? original.sent.replace(original.text, next.trim()) : undefined, at: Date.now(), edited: true, edits });
@@ -2475,7 +2478,7 @@ const Native = (() => {
     const lastUser = chat.messages.map((m) => m.role).lastIndexOf('user');
     if (lastUser < 0) return;
     if (chat.compact && lastUser < chat.compact.index) delete chat.compact;
-    if (cw(chat)) { await W.x.ensure(chat, lastUser, lastUser + 1); chat.messages.length = lastUser + 1; } else chat.messages = chat.messages.slice(0, lastUser + 1);
+    if (cw(chat)) await W.x.cut(chat, lastUser + 1); else chat.messages = chat.messages.slice(0, lastUser + 1);
     chat.session = {};
     await send(agentId, chat.messages[lastUser].text, { fromHistory: true });
   }
@@ -2875,7 +2878,7 @@ const Native = (() => {
   }
 
   return { showEarlier, isDraft,
-    chatOf, ensureChat, adopt, save: remember, loadChat: loadFull, partnerOf, rememberFacts, forgetFacts,
+    chatOf, ensureChat, adopt, save: remember, loadChat, loadWhole: loadFull, partnerOf, rememberFacts, forgetFacts,
     takeAttachments: (agentId) => packAttachments(agentId, ''),
     secondOpinion,
     isAgentBusy: (agentId) => Boolean(pendingFor(agentId)),
@@ -2889,7 +2892,7 @@ const Native = (() => {
     sendText: (agentId, text) => send(agentId, text).catch((err) => toast(err.message, { type: 'error' })),
     markdownOf: async (chatId) => chatMarkdown(await loadFull(chatId)),
     // additive API for chat-*.js / chat commands
-    hooks, current, view: (agentId) => views.get(agentId) || null, load: loadFull, save: remember, adopt, isWin: cw,
+    hooks, current, view: (agentId) => views.get(agentId) || null, load: loadChat, save: remember, adopt, isWin: cw,
     compact: compactChat, summarizeAndContinue, branch: branchFrom, edit: editMessage, retry: regenerate, quote,
     secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, speakMessage, stopSpeaking, isSpeaking: () => Boolean(speaking), plainText, modelMenu, toggleRaw,
     setModel: setChatModel, renameCurrent, stop: stopReply, pendingFor, renderQueue, insertDraft, setStyle, renderStyle,

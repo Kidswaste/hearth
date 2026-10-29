@@ -55,7 +55,7 @@ const Handoff = (() => {
   async function sendWhole(agentId, chat) {
     const h = chat.handoff;
     if (!h) return;
-    const src = h.source ? await Native.loadChat(h.source) : chat;
+    const src = h.source ? await (Native.loadWhole || Native.loadChat)(h.source) : (Native.isWin?.(chat) ? await Native.loadWhole(chat.id) : chat); // (round 86: a windowed giant chat whole first)
     const msgs = (src?.messages || []).slice(0, h.source ? h.sourceAt ?? src.messages.length : h.at);
     h.whole = C.wholeText(msgs, { name: h.from });
     h.wholeTokens = C.tok(h.whole);
@@ -119,11 +119,12 @@ const Handoff = (() => {
   async function earlierTool(args) {
     const agentId = args?.agentId;
     const chat = agentId ? Native.chatOf(agentId) : null;
+    if (Native.isWin?.(chat)) await Native.loadWhole(chat.id); // (round 86, chatwindow86) its earlier messages word for word: the chat whole first
     const h = chat?.handoff;
     // (round 50, historylean) a chat that went on with a lighter history: any of its messages, word for word
     if (chat?.lean && !(h && h.at > chat.lean.at)) return { ok: true, value: C.earlier(chat.messages, { query: String(args.query || ''), last: Number(args.last) || 0 }) };
     if (!h) return { ok: false, error: 'This chat has no earlier chat handed over.' };
-    const src = h.source ? await Native.loadChat(h.source) : chat;
+    const src = h.source ? await (Native.loadWhole || Native.loadChat)(h.source) : (Native.isWin?.(chat) ? await Native.loadWhole(chat.id) : chat); // (round 86: a windowed giant chat whole first)
     const msgs = (src?.messages || []).slice(0, h.source ? h.sourceAt ?? src.messages.length : h.at);
     return { ok: true, value: C.earlier(msgs, { query: String(args.query || ''), last: Number(args.last) || 0 }) };
   }

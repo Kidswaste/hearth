@@ -65,11 +65,14 @@ const ChatWinCore = (() => {
     }
     return p;
   }
+  // (one Set per distinct list of keys: most messages share a few)
+  const SETS = new Map();
+  const keySet = (keys) => { const id = keys.join('\u0001'); let x = SETS.get(id); if (!x) { if (SETS.size > 500) SETS.clear(); SETS.set(id, (x = new Set(keys))); } return x; };
   // meta: the message's record · miss(k, key) and write(k, key) throw
   function stubOf(meta, k, miss, write) {
     if (!meta) throw new NotLoaded(k);
     if (meta[1] === null) return meta[2]; // (not an object: the value itself, exact)
-    const keys = meta[1]; const s = meta[2]; const has = new Set(keys);
+    const keys = meta[1]; const s = meta[2]; const has = keySet(keys);
     const no = (t, p) => write(k, p);
     const px = new Proxy({}, {
       get(t, p) { if (typeof p === 'string' && has.has(p)) { if (own(s, p)) return ro(s[p], k, write); return miss(k, p); } return Reflect.get(t, p); },
