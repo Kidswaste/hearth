@@ -89,7 +89,9 @@ const Hints = (() => {
     const out = [];
     for (const c of document.querySelectorAll('.composer')) if (vis(c)) { const r = c.getBoundingClientRect(); if (r.width && r.height) out.push(r); }
     try {
-      const h = (typeof ThreeLab !== 'undefined' && ThreeLab.stageHooks?.host) || null;
+      // (only once the Lab is in: touching ThreeLab before that loaded the whole Lab group while the first screen was built)
+      const labIn = !window.Lazy || window.Lazy.loaded('lab');
+      const h = (labIn && typeof ThreeLab !== 'undefined' && ThreeLab.stageHooks?.host) || null;
       if (h && vis(h)) {
         const fr = ThreeLab.stageHooks?.frameRect; const r = fr && fr.width ? fr : h.getBoundingClientRect();
         if (r.width && r.height) out.push({ left: r.left + r.width * 0.3, right: r.right - r.width * 0.3, top: r.top + r.height * 0.3, bottom: r.bottom - r.height * 0.3 });

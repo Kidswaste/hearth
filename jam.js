@@ -56,6 +56,8 @@ const Jam = (() => {
         if (ev.type === 'delta') { out += ev.text; return; }
         if (ev.type === 'tool') { tools.push(ev.name); return; }
         if (ev.type === 'thinking' || ev.type === 'progress') return;
+        // only these end a turn: Astra's codexTurn (sent at turn/started) and the other live events ended her at once
+        if (ev.type !== 'done' && ev.type !== 'error' && ev.type !== 'stopped') return;
         runs.delete(id);
         L?.runIds.delete(id);
         clearTimeout(timer);

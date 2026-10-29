@@ -61,3 +61,8 @@ Minimal, additive edits to `astra.js`:
 - `start()` asks `CollabEyes.packet(chat.id)` before running the mode: its text joins the task, its picture joins
   `images`, `m.eyes` holds the scene name (shown as "👁 saw the scene" in `collabEl`).
 - The `/ask-astra` / `/ask-claude` commands add the same packet (`picture: false` when `--shot` already attaches one).
+- (Oct 29 fix) `call()` ends a seat's turn only on `done` / `error` / `stopped`. Since the app-server transport sends
+  `codexTurn` at `turn/started` (Oct 15, steering), every Astra seat ended there, about 0.6 s in, as "No answer", and
+  her real reply was dropped (Claude never got a relay's draft either). `jam.js` had the same check. The test copy's
+  `--fake-engines` Astra uses the exec transport, which never sends it; `node dev/collab-appserver-smoke.js` runs a
+  relay over the app-server fake (`dev/fake-codex-server.js`).
