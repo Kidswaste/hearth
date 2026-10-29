@@ -17,6 +17,13 @@
 //                                 changed since), then the query (projfind-core.js); made on the first find, let go when idle
 //   recall { dir, q?, budgetMs? }  (round 30) "what did we decide about X?": catches the recall index up (only chats that
 //                                 changed, within the budget) and, with q, ranks the messages (recall-core.js)
+//   chatOpen { file, ver }        (round 82, bigchat82) a GIANT chat's bytes for the window (handed over, not copied, to
+//                                 the main process, which only passes them on): its parse happens in the window, never here
+//                                 nor on the main process; the thread notes which version the window now holds (ver)
+//   chatDelta { file, from, to, keys, set, n, msgs }  (round 82) a giant chat saved by what changed since version `from`
+//                                 (bigchat-core.js deltaWrite: unchanged messages copied byte for byte, the file the same
+//                                 as a whole save); { ok: false } when this thread doesn't hold that version (the window
+//                                 then saves it whole, once)
 // Chat files are parsed once and kept (by size + mtime): a list or a search only re-reads the files that changed, and
 // a chat saved through here is indexed from the value itself (no re-read). Texts are kept up to TEXT_CAP characters
 // in all; past that, a search reads the files again (still on this thread).
@@ -28,6 +35,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { list: flist, search: fsearch } = require('./fswalk');
+const { workerData } = require('worker_threads');
+let BCmod = null; const BC = () => (BCmod ||= require('./bigchat-core')); // (round 82, bigchat82) giant chats, required when first met
+const BIG = Number(process.env.HEARTH_BIGCHAT_MIN) || 8 * 1024 * 1024;
+// (round 82) how many chatDelta ops are finished (the main process waits on it before stopping this thread at quit)
+const deltaDone = workerData?.deltaSab ? new Int32Array(workerData.deltaSab) : null;
 
 const SS = require('./scenesafe-core');
 const ssEnv = { fs, path, cache: new Map() };
@@ -67,6 +79,11 @@ const stubs = new Map(); // (round 43) chat file → its stub row, while it can'
 let textChars = 0;
 let recallIdx = null; // (round 30) recall-core.js's index, made on the first recall op
 let findIdx = null; let findT = null; // (round 81, projsearch81) projfind-core.js's index: made on the first find, let go 20 min after the last
+// (round 82, bigchat82) giant chats the window holds: file → { ver (the window's version), sig (the file as this thread
+// left / read it), head, els (each message's bytes in it; null until the first change needs them) }. Small: no messages
+// are kept here, only where they are in the file.
+const bigs = new Map();
+const bigSig = (st) => (st ? `${st.size}:${st.mtimeMs}` : '');
 
 function stat(file) { try { return fs.statSync(file); } catch { return null; } }
 function sameOnDisk(file, h) {
@@ -122,6 +139,16 @@ function rowsSave(dir) {
   rows.t.unref?.();
 }
 function readChat(file) { try { return JSON.parse(SS.readRetry(dfs, file)); } catch { return null; } }
+// (round 82, bigchat82) a giant chat's own fields (title, times, pinned…) without parsing its messages: the bytes cut
+// (bigchat-core.js), only the part around the messages parsed. The list's row needs nothing else. ≈ 10× less work
+// than JSON.parse of the whole file; a file the cut can't read is parsed whole, as before
+function readHead(file) {
+  let buf;
+  try { buf = dfs.readFileSync(file); } catch { return readChat(file); }
+  const st = BC().scanBuf(buf);
+  if (st.bad) { try { return JSON.parse(buf.toString('utf8').replace(/^\uFEFF/, '')); } catch { return null; } }
+  try { return BC().headOf(buf, st); } catch { return null; }
+}
 // every chat file, fresh: unchanged files come from the index, changed / new ones are read once
 // (round 43, datasafe) a held chat file is read again a few times; one that still can't be read keeps its last row (or
 // a stub row: chats never vanish from the list because a read failed); a folder that can't be listed (held, a cloud
@@ -147,7 +174,7 @@ function chats(dir) {
     if (!st) continue;
     let e = index.get(file);
     if (!e || e.size !== st.size || e.mtimeMs !== st.mtimeMs || (e.ctimeMs != null && e.ctimeMs !== st.ctimeMs)) { // (ctime: a kept row also matches the file's change time)
-      const chat = readChat(file);
+      const chat = st.size >= BIG ? readHead(file) : readChat(file); // (round 82, bigchat82) a giant one: its own fields only (cut, not parsed)
       if (!chat) { bad += 1; const s = e || { size: -1, mtimeMs: -1, sum: DS.chatStub(f, st), texts: null, n: 0, stub: true }; if (!e) stubs.set(file, s); out.push({ file, e: s }); continue; }
       stubs.delete(file);
       drop(file);
@@ -163,7 +190,7 @@ function chats(dir) {
 }
 
 const OPS = {
-  write({ file, value, prev, chatDir, sent, removed, doubt, blind }) {
+  write({ file, value, prev, chatDir, sent, removed, doubt, blind, chatVer }) {
     // (round 43, datasafe) a save built on a failed read: merged with the file (throws when it's still held: nothing is
     // written); the first save of a session that shrinks a store a lot keeps a copy aside; rotating copies
     let kept = 0;
@@ -174,7 +201,7 @@ const OPS = {
     }
     let text = JSON.stringify(value, null, 2);
     let h = sha(text);
-    if (sameOnDisk(file, h)) return { skipped: true };
+    if (sameOnDisk(file, h)) { if (chatDir && chatVer && Array.isArray(value?.messages)) { const st = stat(file); if (st) bigs.set(file, { ver: chatVer, sig: bigSig(st), head: { ...value, messages: [] }, els: null }); } return { skipped: true }; }
     // (round 43, scenesafe) the Lab's scenes / History: scenes nobody deleted are kept, rotating copies, a damaged file
     // kept aside (scenesafe-core.js); a file held by another program throws here: the save waits for the next one
     let restored = null; let keepPrev = true;
@@ -197,8 +224,53 @@ const OPS = {
     if (restored) return { bytes: text.length, restored };
     if (kept) return { bytes: text.length, kept };
     // a chat saved here goes straight into the index (no read back)
-    if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); rows.dirty = true; rowsSave(path.dirname(file)); if (recallIdx) recallIdx.add(file, value, index.get(file)); }
+    // (round 82, bigchat82) a giant one isn't tokenized for recall here (seconds of this thread on every save): its next
+    // recall reads it in slices (recall below). chatVer: the window holds this version now (its next saves: by change)
+    if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); rows.dirty = true; rowsSave(path.dirname(file)); if (recallIdx && text.length < BIG) recallIdx.add(file, value, index.get(file)); }
+    if (chatDir) { if (chatVer && st && Array.isArray(value?.messages)) bigs.set(file, { ver: chatVer, sig: bigSig(st), head: { ...value, messages: [] }, els: null }); else bigs.delete(file); }
     return { bytes: text.length };
+  },
+  // (round 82, bigchat82) a giant chat for the window: its bytes, handed over (transferred) without a copy
+  chatOpen({ file, ver }) {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const st = fs.fstatSync(fd);
+      const ab = new ArrayBuffer(st.size); const u = new Uint8Array(ab);
+      for (let pos = 0; pos < st.size;) { const n = fs.readSync(fd, u, pos, st.size - pos, pos); if (!n) break; pos += n; }
+      const prev = bigs.get(file);
+      bigs.set(file, { ver, sig: bigSig(st), head: prev?.sig === bigSig(st) ? prev.head : null, els: prev?.sig === bigSig(st) ? prev.els : null });
+      return { bytes: u, __transfer: [ab] };
+    } finally { fs.closeSync(fd); }
+  },
+  // (round 82, bigchat82) a giant chat saved by what changed (see the header). The file is cut once (the first change
+  // after it was opened), then each save copies what didn't change and writes what did
+  chatDelta(d) {
+    const { file } = d;
+    try {
+      const e = bigs.get(file);
+      if (!e || e.ver !== d.from) return { ok: false, why: 'version' };
+      const st0 = stat(file);
+      if (!st0 || bigSig(st0) !== e.sig) { bigs.delete(file); return { ok: false, why: 'changed' }; }
+      if (!e.els || !e.head) {
+        const buf = fs.readFileSync(file);
+        if (bigSig(stat(file)) !== e.sig) { bigs.delete(file); return { ok: false, why: 'changed' }; }
+        const cut = BC().scanBuf(buf);
+        if (cut.bad || !BC().prettyLayout(buf, cut)) { bigs.delete(file); return { ok: false, why: 'layout' }; }
+        e.head = BC().headOf(buf, cut); e.els = cut.els;
+      }
+      const tmp = `${file}.w.tmp`;
+      let r;
+      try { r = BC().deltaWrite(fs, file, tmp, e, d); } catch (err) { try { fs.rmSync(tmp, { force: true }); } catch { /* gone */ } bigs.delete(file); return { ok: false, why: err.message }; }
+      renameRetry(tmp, file);
+      const st = stat(file);
+      if (!st) { bigs.delete(file); return { ok: false, why: 'gone' }; }
+      Object.assign(e, { ver: d.to, sig: bigSig(st), head: r.head, els: r.els });
+      written.set(file, { h: '', size: st.size, mtimeMs: st.mtimeMs }); // (no hash: a whole save of the same chat writes again)
+      merged.delete(file);
+      if (findIdx) findIdx.stale(file);
+      drop(file); index.set(file, { size: st.size, mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, sum: BC().sumOf(r.head), texts: null, n: 0 }); rows.dirty = true; rowsSave(path.dirname(file));
+      return { ok: true, bytes: r.bytes };
+    } finally { if (deltaDone) { Atomics.add(deltaDone, 0, 1); Atomics.notify(deltaDone, 0); } }
   },
   list({ dir, ds, cache }) {
     rowsLoad(cache, dir);
@@ -371,7 +443,7 @@ const OPS = {
     clearTimeout(findT); findT = setTimeout(() => { findIdx = null; }, 20 * 60000); findT.unref?.();
     return PF.run(findIdx, msg, { stat, join: path.join, now: () => performance.now(), read: (f) => { try { return JSON.parse(SS.readRetry(dfs, f)); } catch { return null; } } });
   },
-  forget({ file }) { written.delete(file); merged.delete(file); drop(file); if (findIdx) findIdx.stale(file); return true; },
+  forget({ file }) { written.delete(file); merged.delete(file); bigs.delete(file); drop(file); if (findIdx) findIdx.stale(file); return true; },
   ping() { return { chats: index.size, textChars }; },
 };
 
@@ -379,5 +451,8 @@ parentPort.on('message', (msg) => {
   const t0 = performance.now();
   let res; let err = null;
   try { res = OPS[msg.op](msg); } catch (e) { err = e.message || String(e); }
-  parentPort.postMessage({ id: msg.id, res, err, ms: performance.now() - t0 });
+  // (round 82, bigchat82) big bytes handed over, not copied (res.__transfer: their ArrayBuffers)
+  const tr = res && typeof res === 'object' && Array.isArray(res.__transfer) ? res.__transfer : null;
+  if (tr) delete res.__transfer;
+  parentPort.postMessage({ id: msg.id, res, err, ms: performance.now() - t0 }, tr || undefined);
 });

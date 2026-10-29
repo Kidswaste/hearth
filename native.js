@@ -636,7 +636,7 @@ const Native = (() => {
   async function loadChat(id) {
     chatUsed.set(id, Date.now());
     if (!chats.has(id)) {
-      const chat = await window.hub.getChat(id);
+      const chat = await getChat(id); // (round 82, bigchat82: was window.hub.getChat(id))
       if (!chat) return null;
       if (chats.has(id)) return chats.get(id); // (loaded meanwhile by another caller: keep that one)
       chats.set(id, chat);
@@ -1877,8 +1877,50 @@ const Native = (() => {
     return `Here is our earlier conversation${where}. Continue it naturally.\n\n<earlier_conversation>\n${trimmed}\n</earlier_conversation>\n\n${text}`;
   }
 
+  // (round 82, bigchat82) GIANT chats (thousands of messages, tens of MB): sending the whole chat on every save held the
+  // window ≈ 70 ms and the main process ≈ 200 ms. A chat opened as bytes (hub.openChat, parsed here) or past BIG_MSGS
+  // keeps its SHAPE (each value's place: strings and numbers by reference, so nothing is copied); a save compares the
+  // chat with it (a few ms for 6,000 messages) and sends only the fields and messages that changed. The store thread
+  // copies the rest from the file (byte for byte what a whole save writes). If the thread doesn't hold that version
+  // (sync brought a change, another save wrote it whole), the chat is saved whole once and the chain starts again.
+  const BIG_MSGS = 800;
+  const shapes = new WeakMap(); // chat → { ver, keys, head: Map(key → shape), msgs: [shape] }
+  const shapeOf = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return [0, ...v.map(shapeOf)]; const o = [1]; for (const k of Object.keys(v)) o.push(k, shapeOf(v[k])); return o; };
+  function sameShape(sh, v) {
+    if (!Array.isArray(sh)) return Object.is(sh, v);
+    if (v === null || typeof v !== 'object' || Array.isArray(v) !== (sh[0] === 0)) return false;
+    if (sh[0] === 0) { if (v.length !== sh.length - 1) return false; for (let i = 0; i < v.length; i++) if (!sameShape(sh[i + 1], v[i])) return false; return true; }
+    const ks = Object.keys(v); if (ks.length * 2 !== sh.length - 1) return false;
+    for (let i = 0; i < ks.length; i++) if (ks[i] !== sh[1 + i * 2] || !sameShape(sh[2 + i * 2], v[ks[i]])) return false;
+    return true;
+  }
+  const newVer = () => `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  function takeShape(chat, ver) { const head = new Map(); for (const k of Object.keys(chat)) if (k !== 'messages') head.set(k, shapeOf(chat[k])); shapes.set(chat, { ver, keys: Object.keys(chat), head, msgs: chat.messages.map(shapeOf) }); }
+  function saveWhole(chat) { if (Array.isArray(chat.messages) && window.hub.saveChatDelta) { const ver = newVer(); takeShape(chat, ver); return window.hub.saveChat(chat, { ver }); } return window.hub.saveChat(chat); }
+  function saveChat(chat) {
+    const s = shapes.get(chat);
+    if (!s || !Array.isArray(chat.messages)) return chat.messages?.length >= BIG_MSGS ? saveWhole(chat) : window.hub.saveChat(chat);
+    const keys = Object.keys(chat); const set = {}; let n = keys.length !== s.keys.length || keys.some((k, i) => k !== s.keys[i]) ? 1 : 0;
+    for (const k of keys) if (k !== 'messages' && (!s.head.has(k) || !sameShape(s.head.get(k), chat[k]))) { set[k] = chat[k]; s.head.set(k, shapeOf(chat[k])); n += 1; }
+    for (const k of s.head.keys()) if (!keys.includes(k)) { s.head.delete(k); n += 1; }
+    const ms = chat.messages; const msgs = [];
+    for (let k = 0; k < ms.length; k++) if (k >= s.msgs.length || !sameShape(s.msgs[k], ms[k])) { msgs.push([k, ms[k]]); s.msgs[k] = shapeOf(ms[k]); }
+    if (!n && !msgs.length && ms.length === s.msgs.length) return Promise.resolve(); // nothing changed
+    s.msgs.length = ms.length; s.keys = keys;
+    const from = s.ver; const to = s.ver = newVer();
+    return window.hub.saveChatDelta({ id: chat.id, from, to, keys, set, n: ms.length, msgs }).then((r) => (r?.ok || shapes.get(chat)?.ver !== to ? r : saveWhole(chat)), () => (shapes.get(chat)?.ver === to ? saveWhole(chat) : null)); // (only the newest change falls back)
+  }
+  // a chat as it is on disk: a giant one comes as bytes and is parsed here (never whole on the main process)
+  async function getChat(id) {
+    const r = window.hub.openChat ? await window.hub.openChat(id) : { chat: await window.hub.getChat(id) };
+    if (!r?.bytes) return r?.chat ?? null;
+    const chat = JSON.parse(new TextDecoder().decode(r.bytes));
+    if (Array.isArray(chat?.messages)) takeShape(chat, r.ver);
+    return chat;
+  }
+
   function remember(chat) {
-    window.hub.saveChat(chat);
+    saveChat(chat); // (round 82, bigchat82: was window.hub.saveChat(chat))
     const summary = { id: chat.id, agentId: chat.agentId, title: chat.title, updatedAt: chat.updatedAt, pinned: Boolean(chat.pinned), model: chat.model, ...(chat.engine ? { engine: chat.engine } : {}) };
     H.chats = [summary, ...H.chats.filter((c) => c.id !== chat.id)];
     (Panel.soon || Panel.render)(); // (round 16) one list redraw for a burst of saves (send, reply, things found…)

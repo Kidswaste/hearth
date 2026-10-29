@@ -118,12 +118,16 @@ function hold(file, value, o) {
 const pending = new Map(); // file → { value, n }
 let worker = null; let workerOff = !process.versions.electron && !process.env.HEARTH_STORE_THREAD; let jobSeq = 0; let writeSeq = 0;
 const jobs = new Map(); // id → { resolve, reject }
+// (round 82, bigchat82) giant chats saved by what changed: how many were sent to the thread / finished there (the quit
+// waits for them: the main process never holds such a chat whole, so there is nothing to write in their place)
+const deltaSab = new SharedArrayBuffer(4); let deltaSent = 0;
+const deltaFiles = new Map(); // file → changes on their way
 const wstats = { writes: 0, skipped: 0, ms: 0, fallbacks: 0 };
 function thread() {
   if (worker || workerOff) return worker;
   try {
     const { Worker } = require('worker_threads');
-    worker = new Worker(path.join(__dirname, 'storework.js'));
+    worker = new Worker(path.join(__dirname, 'storework.js'), { workerData: { deltaSab } }); // (round 82) deltaSab: its finished chatDelta count
     worker.on('message', ({ id, res, err, ms }) => { const j = jobs.get(id); if (!j) return; jobs.delete(id); wstats.ms += ms || 0; if (err) j.reject(new Error(err)); else j.resolve(res); });
     const dead = (why) => { workerOff = true; worker = null; for (const j of jobs.values()) j.reject(new Error(`store thread: ${why}`)); jobs.clear(); };
     worker.on('error', (err) => dead(err.message));
@@ -183,14 +187,14 @@ function writeSync(file, value, prev, g = null) {
 // (round 43, scenesafe) resolves with { restored: [ids] } when the scenes guard kept scenes the save would have dropped
 // (round 43, datasafe) resolves with { held: true } when the file couldn't be read to merge with (tried again later),
 // { kept: n } when a save built on a failed read was merged with the disk
-function writeOff(file, value, { prev = null, chat = false, sent, removed } = {}) {
+function writeOff(file, value, { prev = null, chat = false, sent, removed, ver } = {}) {
   const ds = dsFlags(file);
   const o = { prev, chat, removed };
   if (!thread()) { try { return Promise.resolve(writeSync(file, value, prev, { sent, removed, ...ds })); } catch (err) { if (isHeld(err)) return Promise.resolve(hold(file, value, o)); console.error('save failed', file, err.message); return Promise.resolve(); } }
   const n = ++writeSeq;
   pending.set(file, { value, n });
   seen.add(file);
-  return ask({ op: 'write', file, value, prev, chatDir: chat, sent, removed, ...ds })
+  return ask({ op: 'write', file, value, prev, chatDir: chat, sent, removed, ...ds, ...(ver && !ds.doubt && !ds.blind ? { chatVer: ver } : {}) })
     .then((r) => { wstats.writes += 1; if (r?.skipped) wstats.skipped += 1; held.delete(file); return r?.restored ? { restored: r.restored } : r?.kept ? { kept: r.kept } : undefined; })
     .catch((err) => {
       if (isHeld(err)) { if (pending.get(file)?.n === n) pending.delete(file); return hold(file, value, o); } // never written blind: the disk stays as it is
@@ -221,6 +225,8 @@ function runOff(op, args) {
 function idle() { return worker ? ask({ op: 'ping' }).catch(() => null) : Promise.resolve(null); }
 // on quit: the thread is stopped and what is still pending is written here, synchronously
 function flushSync() {
+  // (round 82, bigchat82) giant chats' changes on their way: the thread finishes them first (≤ 5 s)
+  if (worker && deltaSent) { const v = new Int32Array(deltaSab); const until = Date.now() + 5000; for (let d = Atomics.load(v, 0); d < deltaSent && Date.now() < until; d = Atomics.load(v, 0)) Atomics.wait(v, 0, d, 100); }
   const w = worker; worker = null; workerOff = true; flushing = true;
   try { w?.terminate(); } catch { /* gone */ }
   try { filesWorker?.terminate(); } catch { /* gone */ }
@@ -270,6 +276,45 @@ function writeJson(file, value, o) {
   if (o?.off) return writeOff(file, value, { ...o, sent });
   try { return writeSync(file, value, o?.prev, { sent, removed: o?.removed, ...dsFlags(file) }); } catch (err) { if (isHeld(err)) return hold(file, value, o || {}); throw err; }
 }
+
+// (round 82, bigchat82) GIANT chats (≥ 8 MB: thousands of messages with tool output). Opening one used to read and parse
+// it here (≈ 0.6 s of the main process for 60 MB) and send it on (≈ 70 ms more); saving a new message sent it all from
+// the window (≈ 70 ms there), here (≈ 140 ms to receive it, ≈ 70 ms to pass it to the thread) and wrote it all.
+// Now the store thread reads its bytes and hands them over (transferred: no copy here), the window parses them, and the
+// window's later saves send only what changed (chatsave.js): the thread copies the rest from the file.
+const BIGCHAT = Number(process.env.HEARTH_BIGCHAT_MIN) || 8 * 1024 * 1024;
+const guardWants = (file) => (Boolean(beforeWrite) && (!beforeWants || beforeWants(file))) || outside.has(file);
+// → { chat } (a chat like any other, or null), or { bytes, ver } for a giant one (the window parses it)
+async function openChat(id) {
+  const file = chatPath(id);
+  if (thread() && (deltaFiles.has(file) || pending.has(file))) await idle(); // (what's on its way lands first)
+  let size = 0; try { size = fs.statSync(file).size; } catch { /* missing: as getChat */ }
+  if (size < BIGCHAT || !thread() || pending.has(file) || held.has(file)) return { chat: readJson(file, null) };
+  const ver = `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    const r = await ask({ op: 'chatOpen', file, ver });
+    seen.add(file);
+    return { bytes: r.bytes, ver };
+  } catch { return { chat: readJson(file, null) }; }
+}
+// d: { id, from, to, keys, set, n, msgs } → { ok: true } | { ok: false, why } (the window then saves the chat whole).
+// Not while sync's guard wants this chat (it just arrived from the other computer: the merge needs it whole), nor
+// while it's held / in doubt (those saves merge with the disk, whole)
+function saveChatDelta(d) {
+  let file; try { file = chatPath(d?.id); } catch { return { ok: false, why: 'id' }; }
+  if (!thread() || guardWants(file) || held.has(file) || doubts.has(file) || !seen.has(file)) return { ok: false, why: 'whole' };
+  deltaSent += 1; deltaFiles.set(file, (deltaFiles.get(file) || 0) + 1);
+  return ask({ op: 'chatDelta', file, from: d.from, to: d.to, keys: d.keys, set: d.set, n: d.n, msgs: d.msgs })
+    .then((r) => { if (r?.ok) wstats.writes += 1; return r || { ok: false, why: 'none' }; }, (err) => ({ ok: false, why: err.message }))
+    .finally(() => { const n = (deltaFiles.get(file) || 1) - 1; if (n > 0) deltaFiles.set(file, n); else deltaFiles.delete(file); });
+}
+// a whole save of a chat: with the window's version (ver) only when it is written as sent (no merge on the way)
+function saveChat(chat, o = {}) {
+  const file = chatPath(chat.id);
+  return writeJson(file, chat, { off: true, chat: true, ...(o?.ver && !guardWants(file) ? { ver: String(o.ver) } : {}) });
+}
+// a chat read after its changes on their way are on disk (versions, exports)
+async function getChatFresh(id) { const file = chatPath(id); if (deltaFiles.has(file)) await idle(); return readJson(file, null); }
 
 function allChats() {
   return chatNames()
@@ -596,7 +641,8 @@ module.exports = {
   recall,
   projFind, // (round 81, projsearch81)
   getChat: (id) => readJson(chatPath(id), null),
-  saveChat: (chat) => writeJson(chatPath(chat.id), chat, { off: true, chat: true }),
+  getChatFresh, openChat, saveChatDelta, // (round 82, bigchat82)
+  saveChat,
   deleteChat: (id) => trashChat(id),
   listTrash,
   restoreChat,
