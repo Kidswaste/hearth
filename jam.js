@@ -545,6 +545,13 @@ const Jam = (() => {
     // a copy with its song, frame size and looks (Lab scenes.duplicate), so the jam hears the song too
     const S = ThreeLab.scenes;
     const copy = S?.get(before.sketchId) ? S.duplicate(before.sketchId, m.sketch) : null;
+    // (Oct 29) a jam started in a project lands in it: its chat and its copy were nowhere in the project ("my jam
+    // doesn't appear anywhere"); the project open now, else the one holding the scene the jam copied
+    try {
+      const P = window.Projects;
+      const proj = P?.here?.() || (before.sketchId ? P?.ofItem?.('scene', before.sketchId)?.[0] : null) || null;
+      if (proj) { P.add(proj, 'chat', chat.id, 'Jam'); if (copy) P.add(proj, 'scene', copy.id, m.sketch); }
+    } catch (err) { console.warn('jam: project', err); }
     if (copy && S.open(copy.id)) await sleep(1200);
     else await d.restore(before, { asNew: m.sketch, wait: 1.2 });
     m.sketchId = d.capture().sketchId;
